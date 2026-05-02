@@ -208,16 +208,21 @@ def ensure_paper_bg_for_page(
     except Exception:  # noqa: BLE001
         _logger.exception("paper_bg page offset 失敗")
 
-    # __papers__ Collection に link (他から外す)
-    papers_coll = _ensure_papers_collection(scene)
-    if papers_coll is not None and not any(o is obj for o in papers_coll.objects):
+    # ページ Collection 直下に link (2026-05-03 リアーキ: 旧 __papers__ Collection
+    # に集約していた方式を撤廃し、 各ページ Mesh は対応するページ Collection
+    # 直下に置く。 Outliner で「P0001__p0001__1ページ」配下に paper_bg が
+    # 並ぶ。 これにより coma_plane と同じく per-page 階層に統一される)
+    page_coll = on.find_collection_by_bname_id(page_id, kind="page")
+    if page_coll is None:
+        page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
+    if page_coll is not None and not any(o is obj for o in page_coll.objects):
         try:
-            papers_coll.objects.link(obj)
+            page_coll.objects.link(obj)
         except Exception:  # noqa: BLE001
-            _logger.exception("link paper_bg to __papers__ failed")
-    # 他 Collection からの link は外す (Outliner ヒエラルキ汚染防止)
+            _logger.exception("link paper_bg to page collection failed")
+    # 他 Collection (旧 __papers__ や scene root) からの link は外す
     for coll in tuple(obj.users_collection):
-        if coll is papers_coll:
+        if coll is page_coll:
             continue
         try:
             coll.objects.unlink(obj)
@@ -288,6 +293,21 @@ def regenerate_all_paper_bgs(scene: bpy.types.Scene, work) -> int:
                 bpy.data.objects.remove(obj, do_unlink=True)
             except Exception:  # noqa: BLE001
                 pass
+    # 旧 __papers__ Collection が残っていれば削除 (2026-05-03 リアーキで撤廃)
+    try:
+        legacy_coll = on.find_collection_by_bname_id(PAPERS_COLLECTION_BNAME_ID, kind="papers_root")
+        if legacy_coll is None:
+            legacy_coll = bpy.data.collections.get(PAPERS_COLLECTION_NAME)
+        if legacy_coll is not None:
+            for parent in list(bpy.data.collections):
+                if legacy_coll.name in parent.children:
+                    parent.children.unlink(legacy_coll)
+            if scene.collection is not None and legacy_coll.name in scene.collection.children:
+                scene.collection.children.unlink(legacy_coll)
+            if legacy_coll.users == 0:
+                bpy.data.collections.remove(legacy_coll)
+    except Exception:  # noqa: BLE001
+        _logger.exception("regenerate_all_paper_bgs: legacy __papers__ purge failed")
     return count
 
 

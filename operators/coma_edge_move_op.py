@@ -606,6 +606,12 @@ def _page_offset_for_area(context, work, area, page_index: int) -> tuple[float, 
 
 
 def _iter_selection_edge_refs(work, selection: dict | None):
+    """選択中の辺/枠線を yield する (描画用).
+
+    描画では kind による narrowness を尊重 (edge 選択中は 1 辺、 border は
+    全辺)。 ▲ ハンドルの hit テストには ``_iter_panel_edge_refs_for_handles``
+    を使うこと。
+    """
     if selection is None:
         return
     kind = selection.get("type")
@@ -633,6 +639,36 @@ def _iter_selection_edge_refs(work, selection: dict | None):
         yield page_index, coma_index, edge_index, poly[edge_index], poly[(edge_index + 1) % len(poly)]
 
 
+def _iter_panel_edge_refs_for_handles(work, selection: dict | None):
+    """▲ ハンドル hit テスト用: 選択中の (page, coma) の **全 4 辺** を yield する.
+
+    描画用 ``_iter_selection_edge_refs`` と異なり、 kind が ``edge`` (= 1 辺
+    だけ選択) でも、 vertex でも、 panel 全 4 辺の ▲ をクリック対象にする。
+    これにより ``edge`` 状態のまま連続して別辺の ▲ をクリックできる
+    (枠線カットツールでの ``_pick_edge_or_vertex`` 直後など)。
+    """
+    if selection is None:
+        return
+    kind = selection.get("type")
+    if kind not in {"edge", "border", "vertex"}:
+        return
+    page_index = int(selection.get("page", -1))
+    coma_index = int(selection.get("coma", -1))
+    if not (0 <= page_index < len(work.pages)):
+        return
+    page = work.pages[page_index]
+    if not page_range.page_in_range(page):
+        return
+    if not (0 <= coma_index < len(page.comas)):
+        return
+    panel = page.comas[coma_index]
+    poly = _coma_polygon(panel)
+    if len(poly) < 2:
+        return
+    for edge_index in range(len(poly)):
+        yield page_index, coma_index, edge_index, poly[edge_index], poly[(edge_index + 1) % len(poly)]
+
+
 def _hit_selection_handle(
     context,
     work,
@@ -645,7 +681,7 @@ def _hit_selection_handle(
 ) -> dict | None:
     best: dict | None = None
     best_dist = HANDLE_HIT_RADIUS_PX
-    for page_index, coma_index, edge_index, a, b in _iter_selection_edge_refs(work, selection):
+    for page_index, coma_index, edge_index, a, b in _iter_panel_edge_refs_for_handles(work, selection):
         ox, oy = _page_offset_for_area(context, work, area, page_index)
         edge_a = (a[0] + ox, a[1] + oy)
         edge_b = (b[0] + ox, b[1] + oy)

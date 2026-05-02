@@ -95,17 +95,23 @@ def main() -> None:
             break
         assert coma_coll_name is not None, "coma_plane should be linked to a collection"
 
-        # ---- paper_bg Material と __papers__ Collection の事前スナップショット ----
+        # ---- paper_bg Material と paper_bg Object の事前スナップショット ----
+        # 旧 __papers__ Collection は撤廃され、 paper_bg はページ Collection
+        # 直下に置かれる (2026-05-03 リアーキ)。
         paper_mat = bpy.data.materials.get(pbg.PAPER_BG_MATERIAL_NAME)
         assert paper_mat is not None
         paper_mat_ptr = paper_mat.as_pointer()
-        papers_coll = bpy.data.collections.get(pbg.PAPERS_COLLECTION_NAME)
-        assert papers_coll is not None
-        papers_layer_hidden_before = None
-        for layer_coll in scene.view_layers[0].layer_collection.children:
-            if layer_coll.collection is papers_coll:
-                papers_layer_hidden_before = bool(layer_coll.hide_viewport)
-                break
+        paper_bg_obj = bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page.id}")
+        assert paper_bg_obj is not None
+        paper_bg_in_page_coll = any(
+            str(c.get("bname_id", "") or "") == page.id for c in paper_bg_obj.users_collection
+        )
+        assert paper_bg_in_page_coll, (
+            f"paper_bg はページ Collection 直下に置かれるべき: "
+            f"{[c.name for c in paper_bg_obj.users_collection]}"
+        )
+        # 旧 __papers__ Collection は purge されているはず
+        assert bpy.data.collections.get(pbg.PAPERS_COLLECTION_NAME) is None
 
         # 2. coma.rect_*_mm 変更 → update callback 経由で coma_plane が追従
         coma.shape_type = "rect"
@@ -169,13 +175,16 @@ def main() -> None:
         assert kind2 == "coma", kind2
         assert key2 == f"{page.id}:{coma.id}", key2
 
-        # 6. paper_bg Material と __papers__ visibility が不変
+        # 6. paper_bg Material identity が不変 (副作用ゼロ確認)
         paper_mat_after = bpy.data.materials.get(pbg.PAPER_BG_MATERIAL_NAME)
         assert paper_mat_after is not None and paper_mat_after.as_pointer() == paper_mat_ptr
-        for layer_coll in scene.view_layers[0].layer_collection.children:
-            if layer_coll.collection is papers_coll:
-                assert bool(layer_coll.hide_viewport) == papers_layer_hidden_before
-                break
+        # paper_bg はページ Collection 直下のまま
+        paper_bg_obj_after = bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page.id}")
+        assert paper_bg_obj_after is paper_bg_obj
+        assert any(
+            str(c.get("bname_id", "") or "") == page.id
+            for c in paper_bg_obj_after.users_collection
+        )
 
         # 7. 旧 __masks__ Collection / page_mask_* / coma_mask_* が無いこと
         assert bpy.data.collections.get("__masks__") is None

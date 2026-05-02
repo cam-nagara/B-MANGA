@@ -75,13 +75,24 @@ def draw(context, work, region, rv3d) -> None:
 
     if kind == "edge":
         edge_index = int(getattr(wm, "bname_edge_select_edge", -1))
+        # 選択辺だけハイライト + ▲ ハンドル
         _draw_edge(shader, region, rv3d, world_poly, edge_index)
+        # 他 3 辺の ▲ ハンドルもクリック可能なので、 マーカーだけ描画する
+        # (辺ハイライトは行わない、 ▲ のみ)。 これにより kind="edge" のまま
+        # でも連続して別辺の ▲ をクリックできる UI を提供する。
+        for other in range(len(world_poly)):
+            if other == edge_index:
+                continue
+            _draw_edge_handles_only(shader, region, rv3d, world_poly, other)
     elif kind == "border":
         for edge_index in range(len(world_poly)):
             _draw_edge(shader, region, rv3d, world_poly, edge_index)
     elif kind == "vertex":
         vertex_index = int(getattr(wm, "bname_edge_select_vertex", -1))
         _draw_vertex(shader, region, rv3d, world_poly, vertex_index)
+        # vertex 選択中も全辺の ▲ を表示 (連続 ▲ クリック対応)
+        for edge_index in range(len(world_poly)):
+            _draw_edge_handles_only(shader, region, rv3d, world_poly, edge_index)
 
 
 def _page_offset(context, work, page_index: int) -> tuple[float, float]:
@@ -150,6 +161,27 @@ def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index
             pass
     _draw_square_marker(shader, ap)
     _draw_square_marker(shader, bp)
+    for handle, direction_idx in _handle_centers(ap, bp):
+        _draw_triangle_handle(shader, handle, ap, bp, direction_idx)
+
+
+def _draw_edge_handles_only(
+    shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int
+) -> None:
+    """指定辺の ▲ ハンドルだけ描画 (辺ハイライトや頂点マーカーは描かない).
+
+    kind="edge" / "vertex" 時に「選択していない他辺」の ▲ も描画する用途。
+    これにより、 ユーザーは選択辺以外の ▲ も一覧でき、 連続して別辺の ▲ を
+    クリック可能。
+    """
+    if len(poly) < 2 or not (0 <= edge_index < len(poly)):
+        return
+    a = poly[edge_index]
+    b = poly[(edge_index + 1) % len(poly)]
+    ap = _world_to_region(region, rv3d, a)
+    bp = _world_to_region(region, rv3d, b)
+    if ap is None or bp is None:
+        return
     for handle, direction_idx in _handle_centers(ap, bp):
         _draw_triangle_handle(shader, handle, ap, bp, direction_idx)
 

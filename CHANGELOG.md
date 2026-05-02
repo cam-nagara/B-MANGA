@@ -3,6 +3,59 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — 枠線カットツールでも連続 ▲ クリック可能に + paper_bg をページ Collection 直下へ移設
+
+### 症状
+- ``枠線カットツール`` (knife_cut) で連続して ▲ ハンドルをクリックできない
+  (5/2 修正は object_tool / 枠線選択ツール modal だけで knife_cut には未対処
+  だった)
+- ページ Mesh (paper_bg) が ``__papers__`` Collection に集約されていて、
+  Outliner で「ページ配下のメッシュ」として認識しづらい
+
+### 原因
+- ▲ ハンドルの hit テスト関数 ``_hit_selection_handle`` が、 描画と兼用の
+  ``_iter_selection_edge_refs`` を使っていたため、 ``edge`` / ``vertex`` 選択
+  時に panel の **1 辺しか走査しない**。 knife_cut は最初のクリックで
+  ``_pick_edge_or_vertex`` が ``edge`` 状態にするため、 以後の ▲ クリックは
+  選択辺の handle にしか反応しない (object_tool では 5/2 commit で WM kind
+  を border に戻すことで回避していたが、 knife_cut は kind を edge のまま
+  維持する設計のため別のアプローチが必要)
+- paper_bg を ``__papers__`` Collection に集約していたため、 ページ単位で
+  「このページの Mesh」を見つけるのに専用 Collection を辿る必要があった
+
+### 修正
+- ``operators/coma_edge_move_op``:
+  - ▲ ハンドル hit テスト専用の ``_iter_panel_edge_refs_for_handles`` を新設。
+    ``edge`` / ``vertex`` 状態でも常に panel **全 4 辺** の ▲ を走査する
+  - ``_hit_selection_handle`` を新ヘルパに切替え (描画の narrowness と
+    hit テストの広さを分離)
+- ``ui/overlay_coma_selection``:
+  - ``_draw_edge_handles_only`` を新設 (▲ ハンドルだけ描画、 辺 / 頂点
+    マーカーは描かない)
+  - ``kind == "edge"`` のとき、 選択辺の ▲ + 他 3 辺の ▲ も描画するように変更。
+    ``kind == "vertex"`` でも全辺の ▲ を表示
+  - これにより knife_cut でも視覚的に 4 辺すべての ▲ がいつも見える + 連続
+    クリック可能
+- ``utils/paper_bg_object``:
+  - ``ensure_paper_bg_for_page`` の link 先を ``__papers__`` から **ページ
+    Collection 直下** へ変更 (``find_collection_by_bname_id(page_id, kind="page")``
+    で取得、 無ければ ``om.ensure_page_collection`` で生成)
+  - ``regenerate_all_paper_bgs`` の末尾で旧 ``__papers__`` Collection が残って
+    いれば parent から unlink + ``bpy.data.collections.remove`` で完全撤去
+    (起動時の自動 migration)
+  - 既存の ``apply_page_collection_transforms`` が page Collection 直下の
+    Object を ``direct_child_set`` で page offset に揃えるため、 paper_bg は
+    page offset 変化に自動追従 (追加コード不要)
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) を更新:
+  - 旧 ``__papers__`` Collection 検証 → ``paper_bg はページ Collection 直下``
+    検証 + ``__papers__ は purge 済`` 検証へ書き換え
+  - paper_bg Material identity と paper_bg の所属 Collection が coma_plane
+    操作前後で不変であることを assert (副作用ゼロ確認)
+- 連続 ▲ クリックは UI 操作のため自動テスト未追加 (実機で knife_cut 起動
+  → 4 辺の ▲ が常時表示 → 連続クリック可能を確認)
+
 ## 2026-05-02 — 三角ハンドル拡張を連続クリックで実行できない問題を修正
 
 ### 症状
