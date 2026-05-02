@@ -3,6 +3,46 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — マスク方式リアーキ徹底チェックで発見した 5 件の不備を修正
+
+### 監査範囲
+直前 commit (4c19ada) のリアーキテクチャに対して、 起こり得るユーザー操作と
+関数チェーンを最深部まで追跡。
+
+### 発見と修正
+1. **CRITICAL**: PropertyGroup 識別を Python ``is`` で行っており、 Blender が
+   属性アクセス毎に新しい Python ラッパを返すため、 update callback 経由の
+   ``_find_page_and_coma`` が常に親ページを発見できず Mesh 更新が空振りする
+   状態だった (実機テストで mesh が初期 180×270mm のまま固定される現象を
+   再現確認 → 致命的)。 ``coma_plane._find_page_and_coma`` /
+   ``_find_page_and_coma_for_vertex`` を ``as_pointer()`` (RNA struct アドレス)
+   ベースの比較に書き換え。
+2. **CRITICAL**: ``utils/page_grid.apply_page_collection_transforms`` が
+   coma_plane Object を識別する ``bname_kind`` を持たないため (``managed=False``
+   で除外)、 page offset 変化時に coma_plane の location が追従しなかった。
+   関数末尾で ``coma_plane.update_coma_plane_locations(scene, work)`` を呼ぶよう
+   改修。
+3. **HIGH**: 新規コマ追加 (``coma_op.create_rect_coma`` /
+   ``BNAME_OT_coma_duplicate``) で coma_plane Mesh が即時生成されず、 次回
+   セーブ (mirror_work_to_outliner 経由) まで未生成のまま放置されていた。
+   いずれの op も末尾で ``coma_plane.ensure_coma_plane`` を直接呼ぶよう改修。
+4. **HIGH**: コマ削除 (``BNAME_OT_coma_remove``) で coma_plane Object /
+   Mesh / Material が orphan 化していた。 ``coma_plane.remove_coma_plane`` を
+   末尾で呼ぶよう改修。
+5. **MEDIUM**: ``_find_page_and_coma`` の id (``cNN``) fallback がページ間
+   重複時に誤ページを返しうるリスクを廃し、 identity 一致 (``as_pointer()``)
+   のみに限定。
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` を全項目拡張 (``BNAME_COMA_PLANE_OK``):
+  - ``coma.rect_*_mm`` 変更で mesh extents が即追従 (上記 #1 の as_pointer 修正
+    無しでは Fail することを debug print で先に確認)
+  - ``page.offset_x_mm`` 変更 → ``apply_page_collection_transforms`` →
+    coma_plane location が追従 (上記 #2 の Fix 無しでは Fail)
+  - ``coma_op.create_rect_coma`` で新コマを追加した直後に
+    ``find_coma_plane_object`` が見つかること (上記 #3 の Fix 無しでは Fail)
+  - ``remove_coma_plane`` で Object / Material 共に消えること (#4)
+
 ## 2026-05-02 — マスク方式リアーキテクチャ: コマ Collection 直下の coma_plane Mesh が背景色 + マスクを兼用 (旧 ``__masks__`` 撤廃)
 
 ### 経緯

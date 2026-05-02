@@ -182,6 +182,49 @@ def main() -> None:
         for obj in bpy.data.objects:
             assert not obj.name.startswith("page_mask_"), obj.name
             assert not obj.name.startswith("coma_mask_"), obj.name
+
+        # ---- 8. 新規コマ追加で coma_plane が即時生成されること ----
+        from bname_dev.operators import coma_op
+        from pathlib import Path as _P
+
+        new_entry = coma_op.create_rect_coma(
+            work,
+            page,
+            _P(work.work_dir),
+            x_mm=120.0,
+            y_mm=130.0,
+            width_mm=40.0,
+            height_mm=50.0,
+            title="新規コマ",
+        )
+        new_plane = cp.find_coma_plane_object(page.id, new_entry.id)
+        assert new_plane is not None, "新規コマの coma_plane が即時生成されるべき"
+        # 新規コマの location も page offset 込み
+        assert _approx(new_plane.location.x, mm_to_m(page_ox_mm + 120.0))
+        assert _approx(new_plane.location.y, mm_to_m(page_oy_mm + 130.0))
+
+        # ---- 9. ページオフセット変化で coma_plane location が追従 ----
+        # apply_page_collection_transforms (= 末尾で update_coma_plane_locations
+        # を呼ぶよう Fix #1 で改修済) が new_entry の coma_plane の location も
+        # page_grid offset に追従させることを直接確認
+        from bname_dev.utils import page_grid as _pg
+
+        # page.manual_offset_x_mm を変えて page offset を強制シフト
+        old_loc_x = float(new_plane.location.x)
+        page.offset_x_mm = float(getattr(page, "offset_x_mm", 0.0)) + 50.0
+        _pg.apply_page_collection_transforms(bpy.context, work)
+        new_loc_x = float(new_plane.location.x)
+        assert _approx(new_loc_x - old_loc_x, mm_to_m(50.0)), (old_loc_x, new_loc_x)
+
+        # ---- 10. コマ削除で coma_plane が即時掃除 ----
+        # page.comas からの削除と remove_coma_plane の連携を直接テスト
+        plane_name = f"{cp.COMA_PLANE_NAME_PREFIX}{page.id}_{new_entry.id}"
+        assert bpy.data.objects.get(plane_name) is not None
+        cp.remove_coma_plane(page.id, new_entry.id)
+        assert bpy.data.objects.get(plane_name) is None, "remove_coma_plane で Object 消滅"
+        # Material も users==0 で削除されるはず
+        mat_name = f"{cp.COMA_PLANE_MATERIAL_PREFIX}{page.id}_{new_entry.id}"
+        assert bpy.data.materials.get(mat_name) is None, "remove_coma_plane で Material 消滅"
     finally:
         if mod is not None:
             mod.unregister()

@@ -365,6 +365,17 @@ def create_rect_coma(
     coma_io.save_coma_meta(work_dir, page.id, entry)
     page_io.save_page_json(work_dir, page)
     page.coma_count = len(page.comas)
+    # コマ平面 Mesh (背景色 + マスク兼用) を即時 ensure。 これが無いと、
+    # 次セーブ (mirror_work_to_outliner) まで coma_plane が未生成で、
+    # その間ドラッグや色変更の update callback が空振り (False return) する。
+    try:
+        from ..utils import coma_plane as _cp
+
+        scene = bpy.context.scene if bpy.context is not None else None
+        if scene is not None:
+            _cp.ensure_coma_plane(scene, work, page, entry)
+    except Exception:  # noqa: BLE001
+        _logger.exception("create_rect_coma: ensure_coma_plane failed")
     return entry
 
 
@@ -463,6 +474,13 @@ class BNAME_OT_coma_remove(Operator):
                 page.active_coma_index = len(page.comas) - 1
             _save_page_and_pages(work, page, work_dir)
             _sync_layer_stack_after_coma_change(context)
+            # 削除コマの coma_plane Mesh / Material も即時掃除
+            try:
+                from ..utils import coma_plane as _cp
+
+                _cp.remove_coma_plane(page.id, stem)
+            except Exception:  # noqa: BLE001
+                _logger.exception("coma_remove: remove_coma_plane failed")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("panel_remove failed")
             self.report({"ERROR"}, f"コマ削除失敗: {exc}")
@@ -512,6 +530,13 @@ class BNAME_OT_coma_duplicate(Operator):
             coma_io.save_coma_meta(work_dir, page.id, new_entry)
             _save_page_and_pages(work, page, work_dir)
             _sync_layer_stack_after_coma_change(context)
+            # 複製でコマが増えた分の coma_plane Mesh を即時 ensure
+            try:
+                from ..utils import coma_plane as _cp
+
+                _cp.ensure_coma_plane(context.scene, work, page, new_entry)
+            except Exception:  # noqa: BLE001
+                _logger.exception("coma_duplicate: ensure_coma_plane failed")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("panel_duplicate failed")
             self.report({"ERROR"}, f"コマ複製失敗: {exc}")

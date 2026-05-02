@@ -190,19 +190,46 @@ def find_coma_plane_object(page_id: str, coma_id: str) -> Optional[bpy.types.Obj
 
 
 def _find_page_and_coma(work, target_coma):
-    """``target_coma`` PropertyGroup の親ページを線形探索で見つける."""
+    """``target_coma`` PropertyGroup の親ページを ``as_pointer()`` で探す.
+
+    Blender の PropertyGroup は属性アクセス毎に新しい Python ラッパが
+    返されるため Python ``is`` 比較は不安定。 ``as_pointer()`` (RNA struct
+    の C アドレス) は同一データに対して安定なので、 これで identity 一致を
+    判定する。 ページ間で同じ ``coma_id`` (cNN) を持ちうるため id 一致
+    fallback は採らない。
+    """
     if work is None or target_coma is None:
         return None, None
-    target_id = str(getattr(target_coma, "id", "") or "")
+    try:
+        target_ptr = int(target_coma.as_pointer())
+    except Exception:  # noqa: BLE001
+        return None, None
     for page in getattr(work, "pages", []) or []:
         for c in getattr(page, "comas", []) or []:
-            if c is target_coma:
-                return page, c
-            if target_id and str(getattr(c, "id", "") or "") == target_id:
-                # 同 stem コマがページ間に複数あり得るので identity 一致を優先
-                # する。 ここまでで identity 不一致 (page をまたいで同 coma_id)
-                # の場合だけ id fallback を返す
-                return page, c
+            try:
+                if int(c.as_pointer()) == target_ptr:
+                    return page, c
+            except Exception:  # noqa: BLE001
+                continue
+    return None, None
+
+
+def _find_page_and_coma_for_vertex(work, target_vertex):
+    """``BNameComaVertex`` の所属コマ・ページを ``as_pointer()`` で探す."""
+    if work is None or target_vertex is None:
+        return None, None
+    try:
+        target_ptr = int(target_vertex.as_pointer())
+    except Exception:  # noqa: BLE001
+        return None, None
+    for page in getattr(work, "pages", []) or []:
+        for coma in getattr(page, "comas", []) or []:
+            for v in getattr(coma, "vertices", []) or []:
+                try:
+                    if int(v.as_pointer()) == target_ptr:
+                        return page, coma
+                except Exception:  # noqa: BLE001
+                    continue
     return None, None
 
 
@@ -482,7 +509,7 @@ def on_coma_background_color_changed(coma) -> None:
 def on_vertex_changed(vertex) -> None:
     """``BNameComaVertex.x_mm`` / ``y_mm`` 変更時に呼ぶ.
 
-    vertex を持つ coma を逆引きして geometry 更新。
+    vertex を持つ coma を ``as_pointer()`` で逆引きして geometry 更新。
     """
     if vertex is None:
         return
@@ -490,12 +517,10 @@ def on_vertex_changed(vertex) -> None:
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if work is None or not getattr(work, "loaded", False):
         return
-    for page in getattr(work, "pages", []) or []:
-        for coma in getattr(page, "comas", []) or []:
-            for v in getattr(coma, "vertices", []) or []:
-                if v is vertex:
-                    update_coma_plane_geometry(scene, work, page, coma)
-                    return
+    page, coma = _find_page_and_coma_for_vertex(work, vertex)
+    if page is None or coma is None:
+        return
+    update_coma_plane_geometry(scene, work, page, coma)
 
 
 def register() -> None:

@@ -335,6 +335,17 @@ def apply_page_collection_transforms(context, work) -> int:
                     mm_to_m(oy_mm + sub_y),
                 )
         updated += 1
+
+    # コマ平面 Mesh (utils/coma_plane.py) は ``__masks__`` 撤廃後の新方式で、
+    # コマ Collection 直下 + ``bname_managed=False`` で識別フラグも持たないため
+    # 上記の bname_kind 判定では拾われない。 page offset 変更時に追従させるため、
+    # 末尾で明示的に locations を再計算する。
+    try:
+        from . import coma_plane as _cp
+
+        _cp.update_coma_plane_locations(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: coma_plane location update failed")
     return updated
 
 
