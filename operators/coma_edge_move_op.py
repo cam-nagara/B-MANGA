@@ -30,6 +30,7 @@ from ..utils import (
     edge_selection,
     geom,
     log,
+    mask_object,
     page_browser,
     page_grid,
     page_range,
@@ -106,6 +107,38 @@ def _world_mm_to_region(region, rv3d, x_mm, y_mm) -> tuple[float, float] | None:
     if p is None:
         return None
     return float(p.x), float(p.y)
+
+
+def _refresh_coma_masks_for_pages(work, page_indices) -> int:
+    """指定ページの全コマについて mask Mesh Object を再生成する.
+
+    枠線辺ドラッグ / 三角ハンドル拡張でコマ形状 (rect_*_mm / vertices) が
+    変わっても、 ``__masks__`` Collection 内の mask Mesh は自動更新されない。
+    Boolean modifier は mask Mesh の geometry を参照するため、 mask Mesh が
+    旧形状のままだとレイヤー側のクリッピング範囲が新コマ枠にならない。
+    本関数は ``ensure_coma_mask_object`` を冪等に呼び直して mesh.from_pydata
+    で頂点を更新し、 depsgraph 経由で Boolean modifier を再評価させる。
+    """
+    if work is None:
+        return 0
+    scene = bpy.context.scene
+    if scene is None:
+        return 0
+    n = 0
+    pages = list(getattr(work, "pages", []) or [])
+    for pi in page_indices:
+        if not (0 <= pi < len(pages)):
+            continue
+        page = pages[pi]
+        for coma in getattr(page, "comas", []) or []:
+            if not getattr(coma, "id", ""):
+                continue
+            try:
+                if mask_object.ensure_coma_mask_object(scene, page, coma) is not None:
+                    n += 1
+            except Exception:  # noqa: BLE001
+                _logger.exception("edge_move: ensure_coma_mask_object failed")
+    return n
 
 
 def _coma_polygon(panel) -> list[tuple[float, float]]:
@@ -1559,6 +1592,9 @@ class BNAME_OT_coma_edge_move(Operator):
             page_io.save_pages_json(work_dir, work)
         except Exception:  # noqa: BLE001
             _logger.exception("edge_move: save pages.json failed")
+        # コマ形状が変わったので mask Mesh も追従させる
+        # (Boolean modifier が新形状で再評価される)
+        _refresh_coma_masks_for_pages(work, affected_pages)
 
 
 class _EdgeExtendShim:
@@ -1586,6 +1622,8 @@ class _EdgeExtendShim:
             page_io.save_pages_json(work_dir, work)
         except Exception:  # noqa: BLE001
             _logger.exception("edge_move: save page %s failed", getattr(page, "id", ""))
+        # 三角ハンドル拡張で形状が変わったので mask Mesh を追従更新
+        _refresh_coma_masks_for_pages(work, {page_index})
 
     def _push_undo_step(self, message: str) -> None:
         try:

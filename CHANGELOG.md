@@ -3,6 +3,47 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — 枠線辺ドラッグ / 三角ハンドル拡張で coma mask Mesh が追従しない
+
+### 症状
+- 枠線辺の三角ハンドル (▲) でコマ枠を拡張、 または辺を直接ドラッグして
+  コマ形状を変えても、 配下のレイヤーに掛かるクリッピング範囲が旧形状の
+  ままになり、 新しい枠の外まで描画が表示される / 内側が削れる挙動が出ていた
+
+### 原因
+- ``__masks__`` Collection 内の coma mask Mesh (``coma_mask_mesh_<page>_<coma>``)
+  は ``utils/mask_object.ensure_coma_mask_object`` で生成され、 Boolean
+  modifier の reference object として配下レイヤーのクリッピングを担っている
+- しかし ``operators/coma_edge_move_op.py`` の ``_save_changes`` (ドラッグ
+  終了 / 三角ハンドル拡張) と ``_EdgeExtendShim._save_changes`` (オブジェ
+  クトツール経由) はいずれも meta JSON 書き出しまでで終了しており、
+  ``ensure_coma_mask_object`` を呼び直す経路が無かった
+- 結果として ``rect_x_mm/rect_y_mm/rect_width_mm/rect_height_mm`` および
+  ``vertices`` は更新されるのに、 mask Mesh の geometry / Object location
+  は旧形状のまま。 Boolean modifier は旧 mesh で評価され続け、 新しいコマ枠
+  に追従しない
+
+### 修正
+- ``operators/coma_edge_move_op.py``:
+  - ``_refresh_coma_masks_for_pages(work, page_indices)`` を新設。
+    指定ページ内の全コマについて ``mask_object.ensure_coma_mask_object``
+    を冪等に呼び直し、 mask Mesh の頂点を ``mesh.from_pydata`` で更新する
+    (Boolean modifier は depsgraph 経由で次フレームに新形状で再評価される)
+  - ``BNAME_OT_coma_edge_move._save_changes`` の末尾で ``affected_pages``
+    を渡してリフレッシュ (通常ドラッグ + ``_do_extend`` 由来の三角ハンドル
+    拡張の両方をカバー)
+  - ``_EdgeExtendShim._save_changes`` の末尾でも対象ページをリフレッシュ
+    (オブジェクトツール内クリックから ``_do_extend`` を呼ぶ経路をカバー)
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_edge_extend_mask_check.py`` を追加:
+  - ``ensure_coma_mask_object`` で初期生成した mask Mesh の頂点 / location
+    が初期 rect ``(10,20,50,60)mm`` を表すことを確認
+  - rect を ``(5,15,80,90)mm`` に変えて ``_refresh_coma_masks_for_pages``
+    を呼ぶと、 同じ Mesh Object が新 width/height/location に追従する
+    ことを確認 (Object identity は維持)
+  - rect を ``(5,15,30,40)mm`` に縮めても再追従することを確認
+
 ## 2026-05-02 — 用紙色 (paper_color) の変更が 3D ビューポートに反映されない
 
 ### 症状
