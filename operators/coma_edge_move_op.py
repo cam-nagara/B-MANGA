@@ -30,7 +30,6 @@ from ..utils import (
     edge_selection,
     geom,
     log,
-    mask_object,
     page_browser,
     page_grid,
     page_range,
@@ -115,6 +114,11 @@ def _focus_active_coma(work, page_index: int, coma_index: int) -> None:
 
     scene = bpy.context.scene if bpy.context is not None else None
     _at.focus_active_coma(scene, work, page_index, coma_index)
+
+
+# 旧 _refresh_coma_masks_for_pages はリファクタで撤去。
+# coma 形状の mask Mesh への追従は core/coma.py の rect_*_mm / vertices
+# update callback 経由で coma_plane Mesh が自動的に行う。
 
 
 def _coma_polygon(panel) -> list[tuple[float, float]]:
@@ -1574,12 +1578,9 @@ class BNAME_OT_coma_edge_move(Operator):
             page_io.save_pages_json(work_dir, work)
         except Exception:  # noqa: BLE001
             _logger.exception("edge_move: save pages.json failed")
-        # コマ形状が変わった分だけ mask Mesh を追従更新
-        # (副作用ゼロ: __masks__ Collection や view_layer には触らない)
-        try:
-            mask_object.update_masks_for_pages(work, affected_pages)
-        except Exception:  # noqa: BLE001
-            _logger.exception("edge_move: mask geometry sync failed")
+        # NOTE: コマ形状の mask Mesh への追従は core/coma.py の rect_*_mm
+        # update callback (_on_coma_geometry_changed → coma_plane.on_coma_geometry_changed)
+        # で自動的に行われる。 ここでの明示同期は不要。
 
 
 class _EdgeExtendShim:
@@ -1607,11 +1608,9 @@ class _EdgeExtendShim:
             page_io.save_pages_json(work_dir, work)
         except Exception:  # noqa: BLE001
             _logger.exception("edge_move: save page %s failed", getattr(page, "id", ""))
-        # 三角ハンドル拡張で形状が変わった分だけ mask Mesh を追従更新
-        try:
-            mask_object.update_masks_for_pages(work, {page_index})
-        except Exception:  # noqa: BLE001
-            _logger.exception("edge_move shim: mask geometry sync failed")
+        # NOTE: 三角ハンドル拡張で変わった rect_*_mm は update callback
+        # (_on_coma_geometry_changed) が coma_plane Mesh を即時追従させるので
+        # ここでの明示同期は不要。
 
     def _push_undo_step(self, message: str) -> None:
         try:

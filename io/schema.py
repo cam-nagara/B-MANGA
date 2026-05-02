@@ -747,7 +747,9 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.overlap_clipping = bool(data.get("overlapClipping", True))
     if hasattr(entry, "visible"):
         entry.visible = bool(data.get("visible", True))
-    bg_alpha = float(data.get("backgroundColorAlpha", 0.0))
+    # 既定値を opaque (1.0) に変更 (2026-05-02 リアーキ: コマ平面 Mesh が
+    # 背景色 + マスク Boolean reference を兼ねるため、 alpha=0 だと意味が無い)
+    bg_alpha = float(data.get("backgroundColorAlpha", 1.0))
     entry.background_color = hex_to_rgba(data.get("backgroundColor", "#FFFFFF"), bg_alpha)
     coma_border_from_dict(entry.border, data.get("border", {}))
     coma_white_margin_from_dict(entry.white_margin, data.get("whiteMargin", {}))

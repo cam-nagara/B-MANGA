@@ -1,7 +1,9 @@
 """コマ/ページマスクをレイヤーに適用する.
 
-`utils/mask_object.py` で生成した mask Mesh Object を実際にレイヤー
-Object 側で参照して、コマ枠/ページ枠の外をクリップする。
+2026-05-02 リアーキテクチャで mask Mesh は専用 Object を持たず、
+コマ Collection 直下の **coma_plane Mesh** (``utils/coma_plane.py``) と
+``__papers__`` Collection の **paper_bg Mesh** (``utils/paper_bg_object.py``)
+を Boolean reference に兼用する。 旧 ``__masks__`` Collection は廃止。
 
 実装方針:
     - Mesh 系レイヤー (raster / image plane / balloon plane / text plane):
@@ -9,10 +11,6 @@ Object 側で参照して、コマ枠/ページ枠の外をクリップする。
     - GP 系レイヤー (gp / effect): Blender 5.1 GP v3 では外部 Mesh Object
       をマスク source にする一般 Modifier が無いため、現状は no-op。
       Phase 5d で `__bname_mask` 内蔵 layer 方式で実装予定。
-
-mask Object 自体は ``hide_render=True`` + ``hide_viewport=True`` で 3D ビュー
-にも描画されない。Modifier の target として参照するだけなら hidden でも
-有効。
 """
 
 from __future__ import annotations
@@ -22,8 +20,9 @@ from typing import Optional
 import bpy
 
 from . import log
-from . import mask_object as mo
+from . import coma_plane as cp
 from . import object_naming as on
+from . import paper_bg_object as pbg
 
 _logger = log.get_logger(__name__)
 
@@ -32,21 +31,27 @@ MOD_NAME_PAGE_MASK = "BName Page Mask"
 
 
 def _resolve_coma_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
-    """parent_key (例 "p0001:c01") からコママスク Object を取得."""
+    """parent_key (例 "p0001:c01") からコマ平面 Object を取得.
+
+    コマ Collection 直下の ``coma_plane_<page>_<coma>`` Mesh が、 ビューポート
+    背景色とマスク Boolean reference を兼用する。
+    """
     if not parent_key or ":" not in parent_key:
         return None
     page_id, coma_id = parent_key.split(":", 1)
-    name = f"{mo.COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}"
-    return bpy.data.objects.get(name)
+    return cp.find_coma_plane_object(page_id, coma_id)
 
 
 def _resolve_page_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
-    """parent_key (page_id) からページマスク Object を取得."""
+    """parent_key (page_id) からページマスク Object を取得.
+
+    ``__papers__`` Collection の paper_bg Mesh をマスクとして兼用する
+    (専用ページマスク Mesh は持たない)。
+    """
     page_id = parent_key.split(":", 1)[0] if parent_key else ""
     if not page_id:
         return None
-    name = f"{mo.PAGE_MASK_NAME_PREFIX}{page_id}"
-    return bpy.data.objects.get(name)
+    return bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page_id}")
 
 
 def _ensure_boolean_intersect_modifier(

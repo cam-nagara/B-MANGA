@@ -291,6 +291,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("mirror paper backgrounds failed")
 
+        # コマ Collection 直下に coma_plane Mesh を ensure
+        # (背景色 + Boolean マスク兼用 / 旧 __masks__ Collection の置き換え)
+        try:
+            from . import coma_plane as _cp
+
+            _cp.regenerate_all_coma_planes(scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror coma planes failed")
+
         for folder in getattr(work, "layer_folders", []):
             folder_id = str(getattr(folder, "id", "") or "")
             if not folder_id:

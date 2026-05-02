@@ -60,6 +60,13 @@ def _on_coma_background_color_changed(self, context) -> None:
                 coma_camera.sync_world_background_color(context, panel=self)
     except Exception:  # noqa: BLE001
         pass
+    # コマ Collection 直下の coma_plane Mesh の Material 色を即時反映
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.on_coma_background_color_changed(self)
+    except Exception:  # noqa: BLE001
+        pass
     _tag_view3d_redraw(context)
 
 
@@ -67,11 +74,42 @@ def _on_coma_visible_changed(_self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _on_coma_geometry_changed(self, context) -> None:
+    """``rect_*_mm`` 変更で coma_plane Mesh を即時更新.
+
+    update callback で呼ぶことで、 枠線辺ドラッグ / 三角ハンドル拡張 /
+    レイヤー移動ツール等、 個別 operator に同期コールを散らす必要を無くす
+    (rect_*_mm を書き換えれば常に Mesh が追従する仕組み)。
+    """
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.on_coma_geometry_changed(self)
+    except Exception:  # noqa: BLE001
+        pass
+    _tag_view3d_redraw(context)
+
+
+def _on_coma_vertex_changed(self, context) -> None:
+    """``BNameComaVertex.x_mm`` / ``y_mm`` 変更で coma_plane Mesh を即時更新."""
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.on_vertex_changed(self)
+    except Exception:  # noqa: BLE001
+        pass
+    _tag_view3d_redraw(context)
+
+
 class BNameComaVertex(bpy.types.PropertyGroup):
     """コマ枠の頂点 (mm)."""
 
-    x_mm: FloatProperty(name="X", default=0.0)  # type: ignore[valid-type]
-    y_mm: FloatProperty(name="Y", default=0.0)  # type: ignore[valid-type]
+    x_mm: FloatProperty(  # type: ignore[valid-type]
+        name="X", default=0.0, update=_on_coma_vertex_changed
+    )
+    y_mm: FloatProperty(  # type: ignore[valid-type]
+        name="Y", default=0.0, update=_on_coma_vertex_changed
+    )
 
 
 class BNameLayerRef(bpy.types.PropertyGroup):
@@ -108,10 +146,18 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     vertices: CollectionProperty(type=BNameComaVertex)  # type: ignore[valid-type]
 
     # 矩形ショートカット (shape_type='rect' のときに使用)
-    rect_x_mm: FloatProperty(name="X", default=0.0)  # type: ignore[valid-type]
-    rect_y_mm: FloatProperty(name="Y", default=0.0)  # type: ignore[valid-type]
-    rect_width_mm: FloatProperty(name="幅", default=50.0, min=0.1)  # type: ignore[valid-type]
-    rect_height_mm: FloatProperty(name="高さ", default=50.0, min=0.1)  # type: ignore[valid-type]
+    rect_x_mm: FloatProperty(  # type: ignore[valid-type]
+        name="X", default=0.0, update=_on_coma_geometry_changed
+    )
+    rect_y_mm: FloatProperty(  # type: ignore[valid-type]
+        name="Y", default=0.0, update=_on_coma_geometry_changed
+    )
+    rect_width_mm: FloatProperty(  # type: ignore[valid-type]
+        name="幅", default=50.0, min=0.1, update=_on_coma_geometry_changed
+    )
+    rect_height_mm: FloatProperty(  # type: ignore[valid-type]
+        name="高さ", default=50.0, min=0.1, update=_on_coma_geometry_changed
+    )
 
     # --- Z順序・重なりくり抜き ---
     z_order: IntProperty(  # type: ignore[valid-type]
@@ -137,10 +183,10 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     )
     background_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="背景色",
-        description="コマ内側に敷く背景色。アルファ0で透明",
+        description="コマ内側に敷く背景色 (用紙色を初期値とする)。alpha=0 でも mask 用 Mesh は opaque 表示",
         subtype="COLOR",
         size=4,
-        default=(1.0, 1.0, 1.0, 0.0),
+        default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         update=_on_coma_background_color_changed,

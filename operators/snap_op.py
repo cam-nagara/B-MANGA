@@ -6,7 +6,7 @@ import bpy
 from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
-from ..utils import mask_object, snap
+from ..utils import snap
 from ..utils.geom import Rect
 
 
@@ -49,10 +49,7 @@ class BNAME_OT_snap_active_coma(Operator):
         entry.rect_y_mm = snapped.y
         entry.rect_width_mm = snapped.width
         entry.rect_height_mm = snapped.height
-        try:
-            mask_object.update_coma_mask_geometry(page, entry)
-        except Exception:  # noqa: BLE001
-            pass
+        # NOTE: rect_*_mm の update callback 経由で coma_plane Mesh が自動追従する。
         self.report({"INFO"}, f"スナップ適用: {entry.coma_id}")
         return {"FINISHED"}
 

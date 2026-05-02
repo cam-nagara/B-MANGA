@@ -10,6 +10,7 @@ from . import (  # noqa: E402,F401
     active_collection_sync,
     active_target,
     balloon_curve_object,
+    coma_plane,
     effect_line_object,
     empty_layer_object,
     gp_object_layer,
@@ -26,9 +27,11 @@ def register() -> None:
     outliner_watch.register()
     active_collection_sync.register()
     paper_bg_object.register()
+    coma_plane.register()
 
 
 def unregister() -> None:
+    coma_plane.unregister()
     paper_bg_object.unregister()
     active_collection_sync.unregister()
     outliner_watch.unregister()

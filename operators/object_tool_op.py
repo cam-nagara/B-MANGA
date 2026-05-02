@@ -7,7 +7,7 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..utils import edge_selection, layer_stack as layer_stack_utils, mask_object, object_selection
+from ..utils import edge_selection, layer_stack as layer_stack_utils, object_selection
 from . import (
     balloon_op,
     effect_line_op,
@@ -592,11 +592,8 @@ class BNAME_OT_object_tool(Operator):
                     panel.rect_y_mm = ny
                     panel.rect_width_mm = nw
                     panel.rect_height_mm = nh
-                # コマ rect の変更に追従して mask Mesh も更新
-                try:
-                    mask_object.update_coma_mask_geometry(page, panel)
-                except Exception:  # noqa: BLE001
-                    pass
+                # NOTE: rect_*_mm 変更は core/coma.py の update callback 経由で
+                # coma_plane Mesh が自動追従する。
             elif kind == "balloon":
                 _page_index, page, _idx, entry = _find_balloon_by_key(
                     work,

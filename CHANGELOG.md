@@ -3,6 +3,76 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — マスク方式リアーキテクチャ: コマ Collection 直下の coma_plane Mesh が背景色 + マスクを兼用 (旧 ``__masks__`` 撤廃)
+
+### 経緯
+- 三角ハンドル / 枠線辺ドラッグ / レイヤー移動ツール等でコマ rect / vertices
+  を変えても、 配下レイヤーに掛かる Boolean クリッピングが旧形状のまま固定
+  される問題に対し、 5/2 朝からの一連の commit で operator 側で明示的に
+  mask Mesh を再生成するアプローチを取ってきたが、 (1) 副作用 (用紙色非表示
+  / ラスター描画不可) や (2) 同期漏れが続出した
+- 根本解決として、 ユーザー要望どおり **マスク専用 Mesh を全廃** し、
+  ビューポート背景色とマスク Boolean reference を **1 枚の Mesh で兼用**
+  する方式に切り替える
+
+### 新アーキテクチャ
+- **コマ平面 Mesh** (``utils/coma_plane.py``):
+  - コマ Collection (``c01`` 等) 直下に ``coma_plane_<page>_<coma>`` Mesh
+    Object を 1 枚配置。 ビューポート背景色 + Boolean マスクを兼用
+  - Material は per-coma (``BName_ComaPlane_<page>_<coma>``)、 Emission Color
+    + ``mat.diffuse_color`` を ``coma.background_color`` に同期
+  - Z = 0.05 (paper_bg=0 と raster=0.1 の間)
+  - ``BNameComaEntry`` の ``rect_x_mm/y_mm/width_mm/height_mm`` と
+    ``BNameComaVertex.x_mm/y_mm`` に **update callback** を仕込み、
+    PropertyGroup を書き換えるだけで Mesh が即時追従するようにした
+    (operator 側の同期コール不要)
+  - ``coma.background_color`` のデフォルトを opaque 白 ``(1,1,1,1)`` に変更
+    (旧 ``(1,1,1,0)`` の透明)。 schema deserialize の alpha フォールバックも
+    ``1.0`` に
+- **ページマスク** は ``utils/paper_bg_object.py`` の paper_bg Mesh をそのまま
+  Boolean reference に兼用 (専用ページマスク Mesh は廃止)
+- **旧 ``__masks__`` Collection** (``page_mask_*`` / ``coma_mask_*``) は
+  ``mask_object.purge_legacy_masks_collection`` で完全削除
+- ``utils/mask_apply.py``:
+  - ``_resolve_coma_mask_object``: ``coma_plane.find_coma_plane_object`` で
+    coma_plane Object を返す
+  - ``_resolve_page_mask_object``: ``paper_bg_object`` の paper_bg Object
+    を返す
+- ``utils/mask_object.py`` は薄い後方互換 shim 化。 ``regenerate_all_masks`` /
+  ``remove_orphan_masks`` は ``regenerate_all_paper_bgs`` /
+  ``regenerate_all_coma_planes`` + ``purge_legacy_masks_collection`` への
+  委譲に書き換え。 旧 ``ensure_*_mask_object`` / ``update_coma_mask_geometry``
+  / ``update_masks_for_pages`` は削除
+
+### 撤去された operator 側コード
+これまで mask の同期漏れを補うために散らばっていた以下の明示同期は、 全て
+``core/coma.py`` の update callback 経由で coma_plane Mesh が自動追従する
+ため不要になり撤去:
+- ``operators/coma_edge_move_op``: ``_save_changes`` /
+  ``_EdgeExtendShim._save_changes`` 末尾の ``mask_object.update_masks_for_pages``
+- ``operators/coma_vertex_edit_op._save_and_cleanup`` の ``update_coma_mask_geometry``
+- ``operators/coma_edit_op`` (to_polygon / to_rect) の ``update_coma_mask_geometry``
+- ``operators/snap_op`` の ``update_coma_mask_geometry``
+- ``operators/object_tool_op._apply_snapshots`` (coma 分岐) の同上
+- ``operators/layer_move_op._apply_delta`` (kind=="coma") の同上
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` (旧テストを完全置換、 ``BNAME_COMA_PLANE_OK``):
+  - work 作成直後に coma_plane Object がコマ Collection 直下に生成され、
+    ``background_color`` のデフォルトが opaque 白 (1,1,1,1) であることを確認
+  - ``coma.rect_*_mm`` 変更だけ (operator なし) で coma_plane Mesh の頂点 +
+    location (page offset 込み) が即時追従することを確認
+  - ``coma.background_color`` 変更だけで Material の Emission Color と
+    ``mat.diffuse_color`` が追従することを確認
+  - polygon shape の頂点追従 + ``focus_active_coma`` 後の resolve_active_target
+    も検証
+  - **重要**: ``BName_PaperBackground`` Material identity と ``__papers__``
+    Collection の ``hide_viewport`` が coma_plane 操作前後で不変、 旧
+    ``__masks__`` Collection / ``page_mask_*`` / ``coma_mask_*`` Object が
+    存在しないことを確認
+- 既存 ``test/blender_paper_color_check.py`` (``BNAME_PAPER_COLOR_OK``) も
+  引き続き通過
+
 ## 2026-05-02 — コマ枠形状変更時の mask Mesh 連動 (リトライ) + 枠線選択ツール選択コマの新規レイヤー parent 解決
 
 ### 症状 (再修正)

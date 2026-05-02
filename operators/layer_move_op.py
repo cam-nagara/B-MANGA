@@ -7,7 +7,7 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_COMA, MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
-from ..utils import geom, gp_layer_parenting as gp_parent, layer_stack as layer_stack_utils, mask_object, page_grid
+from ..utils import geom, gp_layer_parenting as gp_parent, layer_stack as layer_stack_utils, page_grid
 from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
 from . import coma_modal_state, coma_picker, view_event_region
 
@@ -452,12 +452,8 @@ class BNAME_OT_layer_move_tool(Operator):
                 layer_stack_utils.translate_raster_layers_for_parent_keys(
                     context, {layer_stack_utils.gp_parent_key_for_coma(page, target)}, dx_mm, dy_mm
                 )
-                # コマ移動に追従して mask Mesh の location も更新
-                # (Boolean modifier 経由で配下レイヤーのクリッピングが追従)
-                try:
-                    mask_object.update_coma_mask_geometry(page, target)
-                except Exception:  # noqa: BLE001
-                    pass
+                # NOTE: rect_x_mm / rect_y_mm 変更は core/coma.py の update
+                # callback 経由で coma_plane Mesh が自動追従する。
             return True
         if kind == "balloon" and page is not None:
             if _move_would_violate_layer_scope(context, page, target, dx_mm, dy_mm):
