@@ -3,6 +3,46 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — 三角ハンドル拡張を連続クリックで実行できない問題を修正
+
+### 症状
+- オブジェクトツール / 枠線選択ツールでコマを選択 (border 状態) すると 4 辺
+  すべての ▲ ハンドルが表示される
+- 1 つの ▲ をクリックすると拡張処理は走る
+- しかし**続けて別の辺の ▲ をクリックしても反応しない**
+- 一旦コマを別オブジェクトに切替えてから選択し直すと、 また 1 回だけ ▲ を
+  クリックできるようになる
+
+### 原因
+``operators/coma_edge_move_op.extend_selected_handle_at_event`` (および
+modal 内の同等処理) が、 ▲ クリック後に
+``edge_selection.set_selection("edge", ..., edge_index=...)`` で
+**選択 kind を ``border`` から ``edge`` (= ヒットした 1 辺だけ) へ絞って**
+終わっていた。 次のクリック時の hit テスト
+(``_hit_selection_handle`` → ``_iter_selection_edge_refs``) は kind が
+``edge`` の場合 ``selection.edge`` の 1 辺しか走査しないため、 他 3 辺の ▲ が
+hit テスト対象から外れて反応しなくなる。
+
+### 修正
+- ``operators/coma_edge_move_op.extend_selected_handle_at_event``:
+  - 関数冒頭で WM の ``bname_edge_select_kind`` (= ``pre_kind``) と
+    ``bname_edge_select_edge`` (= ``pre_edge_index``) を保存
+  - ``_do_extend`` の後で:
+    - ``pre_kind == "edge"`` (= 既に 1 辺だけ選択中だった) なら元の辺を復元
+    - それ以外 (``border`` / ``none`` / 不明) は ``border`` に正規化して
+      4 辺すべての ▲ を再表示
+- ``BNAME_OT_coma_edge_move.modal`` の ▲ クリック分岐 (line 961 付近):
+  - クリック前の ``self._selection`` を snapshot
+  - ``_do_extend`` 後、 元が ``border`` なら ``self._selection`` を
+    ``{"type":"border", page, coma}`` に戻して redraw
+  - これにより枠線選択ツールでも連続して別辺の ▲ をクリック可能に
+
+### 検証 (Blender 5.1.1 実機)
+- 既存 ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) の
+  通過を維持
+- 実機での連続 ▲ クリックは UI 操作のため自動テスト未追加 (オブジェクト
+  ツール modal を実機で起動して確認)
+
 ## 2026-05-02 — マスク方式リアーキ徹底チェックで発見した 5 件の不備を修正
 
 ### 監査範囲

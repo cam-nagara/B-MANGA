@@ -959,6 +959,14 @@ class BNAME_OT_coma_edge_move(Operator):
                     my,
                 )
                 if handle_hit is not None:
+                    # 拡張前の selection kind を保持。 ``_do_extend`` 後に
+                    # border 状態へ戻すことで、 連続して別辺の ▲ ハンドルを
+                    # クリックできるようにする (border のままだと 4 辺すべての
+                    # ▲ が表示されるが、 edge に絞ったままだと 1 辺の ▲ しか
+                    # hit テストされず 2 回目以降が反応しない問題を回避)。
+                    pre_selection_snapshot = (
+                        dict(self._selection) if isinstance(self._selection, dict) else None
+                    )
                     self._selection = {
                         "type": "edge",
                         "page": int(handle_hit["page"]),
@@ -967,6 +975,19 @@ class BNAME_OT_coma_edge_move(Operator):
                     }
                     self._update_wm_selection(context)
                     self._do_extend(int(handle_hit["direction"]))
+                    # 元が border 選択 (= コマ全体) なら border に戻す
+                    if (
+                        pre_selection_snapshot is not None
+                        and pre_selection_snapshot.get("type") == "border"
+                        and int(pre_selection_snapshot.get("coma", -1)) == int(handle_hit["coma"])
+                        and int(pre_selection_snapshot.get("page", -1)) == int(handle_hit["page"])
+                    ):
+                        self._selection = {
+                            "type": "border",
+                            "page": int(handle_hit["page"]),
+                            "coma": int(handle_hit["coma"]),
+                        }
+                        self._update_wm_selection(context)
                     self._tag_redraw()
                     return {"RUNNING_MODAL"}
                 # 新規ピック
@@ -1623,7 +1644,17 @@ class _EdgeExtendShim:
 
 
 def extend_selected_handle_at_event(context, event) -> bool:
-    """オブジェクトツール等の通常クリックから、表示中の▲ハンドルを実行する."""
+    """オブジェクトツール等の通常クリックから、表示中の▲ハンドルを実行する.
+
+    ``_do_extend`` 実行後は edge selection を **元の kind に戻す** こと。
+    具体的には:
+    - クリック前 ``border`` (= コマ全体選択。 4 辺すべての ▲ ハンドルが
+      表示されている) なら、 ``border`` のまま維持。 そうしないと連続して
+      別辺の ▲ をクリックできない (絞り込まれた 1 辺のハンドルしか hit
+      テストされず、 他 3 辺の ▲ が反応しなくなる現象を解消する)。
+    - クリック前 ``edge`` (= 既に 1 辺だけ選択中) なら、 その辺を維持。
+    - その他 (none 等) の場合は安全側として ``border`` にしておく。
+    """
     hit = find_selected_handle_at_event(context, event)
     if hit is None:
         return False
@@ -1639,6 +1670,10 @@ def extend_selected_handle_at_event(context, event) -> bool:
     if not (0 <= coma_index < len(page.comas)):
         return False
     panel = page.comas[coma_index]
+    # クリック前の選択 kind を保持 (extend 後にこの kind へ戻す)
+    wm = getattr(context, "window_manager", None)
+    pre_kind = str(getattr(wm, "bname_edge_select_kind", "none") or "none") if wm is not None else "none"
+    pre_edge_index = int(getattr(wm, "bname_edge_select_edge", -1)) if wm is not None else -1
     work.active_page_index = page_index
     page.active_coma_index = coma_index
     scene = getattr(context, "scene", None)
@@ -1649,6 +1684,8 @@ def extend_selected_handle_at_event(context, event) -> bool:
         object_selection.coma_key(page, panel),
         mode="single",
     )
+    # _do_extend は selection["edge"] (= ヒットした辺) を起点に処理するので、
+    # 一時的に edge_selection を hit edge へ切替える。
     edge_selection.set_selection(
         context,
         "edge",
@@ -1664,6 +1701,25 @@ def extend_selected_handle_at_event(context, event) -> bool:
     }
     shim = _EdgeExtendShim(context, work, selection)
     BNAME_OT_coma_edge_move._do_extend(shim, int(hit["direction"]))
+    # クリック前の kind を復元 (border 選択中なら border に戻し、 4 辺全ての
+    # ▲ ハンドルを再表示できるようにする → 連続で別辺をクリック可能)
+    if pre_kind == "edge" and 0 <= pre_edge_index:
+        edge_selection.set_selection(
+            context,
+            "edge",
+            page_index=page_index,
+            coma_index=coma_index,
+            edge_index=pre_edge_index,
+        )
+    else:
+        # border / none / unknown はすべて border に正規化
+        # (オブジェクトツールでコマをクリックして選択した直後は border 状態)
+        edge_selection.set_selection(
+            context,
+            "border",
+            page_index=page_index,
+            coma_index=coma_index,
+        )
     _tag_view3d_redraw(context)
     return True
 
