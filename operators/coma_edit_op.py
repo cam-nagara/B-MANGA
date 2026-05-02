@@ -13,7 +13,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import page_io, coma_io
-from ..utils import log, paths
+from ..utils import log, mask_object, paths
 from . import coma_picker
 
 _logger = log.get_logger(__name__)
@@ -125,6 +125,10 @@ class BNAME_OT_coma_to_polygon(Operator):
                 _logger.exception("coma_to_polygon: save failed")
                 self.report({"ERROR"}, f"保存失敗: {exc}")
                 return {"CANCELLED"}
+        try:
+            mask_object.update_coma_mask_geometry(page, entry)
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_to_polygon: mask geometry sync failed")
         self.report({"INFO"}, "多角形化しました")
         return {"FINISHED"}
 
@@ -182,6 +186,10 @@ class BNAME_OT_coma_to_rect(Operator):
                 _logger.exception("coma_to_rect: save failed")
                 self.report({"ERROR"}, f"保存失敗: {exc}")
                 return {"CANCELLED"}
+        try:
+            mask_object.update_coma_mask_geometry(page, entry)
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_to_rect: mask geometry sync failed")
         self.report({"INFO"}, "矩形化しました")
         return {"FINISHED"}
 

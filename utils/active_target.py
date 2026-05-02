@@ -17,6 +17,52 @@ from typing import Optional
 import bpy
 
 
+def focus_active_coma(scene, work, page_index: int, coma_index: int) -> None:
+    """ビューポート上のコマ選択 (枠線選択ツール / オブジェクトツール等) を
+    PropertyGroup 上の active 階層にも反映する.
+
+    新規レイヤー追加 (``resolve_active_target``) は ``page.active_coma_index``
+    と ``scene.bname_current_coma_id`` を参照するため、 viewport クリック
+    だけで「このコマを active にする」状態にしないとレイヤー追加時に
+    ページ直下にしか入らない。 本関数はそのギャップを埋める。
+
+    既に同値ならスキップ (update callback の連鎖を避ける)。
+    """
+    if work is None:
+        return
+    pages = list(getattr(work, "pages", []) or [])
+    if not (0 <= page_index < len(pages)):
+        return
+    try:
+        if int(getattr(work, "active_page_index", -1)) != page_index:
+            work.active_page_index = page_index
+    except Exception:  # noqa: BLE001
+        pass
+    page = pages[page_index]
+    comas = list(getattr(page, "comas", []) or [])
+    if not (0 <= coma_index < len(comas)):
+        return
+    try:
+        if int(getattr(page, "active_coma_index", -1)) != coma_index:
+            page.active_coma_index = coma_index
+    except Exception:  # noqa: BLE001
+        pass
+    coma_id = str(getattr(comas[coma_index], "id", "") or "")
+    if scene is None or not coma_id:
+        return
+    try:
+        if str(getattr(scene, "bname_current_coma_id", "") or "") != coma_id:
+            scene.bname_current_coma_id = coma_id
+    except Exception:  # noqa: BLE001
+        pass
+    if hasattr(scene, "bname_active_layer_kind"):
+        try:
+            if str(getattr(scene, "bname_active_layer_kind", "") or "") != "coma":
+                scene.bname_active_layer_kind = "coma"
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def resolve_active_target(
     context, *, prefer_page=None
 ) -> tuple[str, str, Optional[object]]:

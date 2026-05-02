@@ -7,7 +7,7 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..utils import edge_selection, layer_stack as layer_stack_utils, object_selection
+from ..utils import edge_selection, layer_stack as layer_stack_utils, mask_object, object_selection
 from . import (
     balloon_op,
     effect_line_op,
@@ -203,10 +203,12 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         page_index = int(hit["page"])
         coma_index = int(hit["coma"])
         page = work.pages[page_index]
-        work.active_page_index = page_index
-        page.active_coma_index = coma_index
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "coma"
+        # 新規レイヤー追加 (resolve_active_target) もこのコマを active として
+        # 扱えるよう、active_page_index / active_coma_index に加えて
+        # bname_current_coma_id も同期する
+        from ..utils import active_target as _at
+
+        _at.focus_active_coma(context.scene, work, page_index, coma_index)
         if kind == "coma_edge":
             edge_selection.set_selection(
                 context,
@@ -590,6 +592,11 @@ class BNAME_OT_object_tool(Operator):
                     panel.rect_y_mm = ny
                     panel.rect_width_mm = nw
                     panel.rect_height_mm = nh
+                # コマ rect の変更に追従して mask Mesh も更新
+                try:
+                    mask_object.update_coma_mask_geometry(page, panel)
+                except Exception:  # noqa: BLE001
+                    pass
             elif kind == "balloon":
                 _page_index, page, _idx, entry = _find_balloon_by_key(
                     work,

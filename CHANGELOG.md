@@ -3,6 +3,86 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — コマ枠形状変更時の mask Mesh 連動 (リトライ) + 枠線選択ツール選択コマの新規レイヤー parent 解決
+
+### 症状 (再修正)
+- 三角ハンドル / 枠線辺ドラッグ / 枠線移動 (レイヤー移動ツール) / 頂点編集 等で
+  コマ rect / vertices を変えても、 配下レイヤーに掛かる Boolean クリッピング
+  が旧形状のまま固定される (5/2 早朝 commit 54697e2 で導入した「重い」修正
+  はこの問題を解決した一方、 用紙色が表示されない / ラスター描画ができなく
+  なる副作用を起こしたため revert 済 (commit 6d60a31))
+- 枠線選択ツール / オブジェクトツールで viewport 上のコマをクリックして
+  「選択中」にしても、 N パネル「新規レイヤー作成」セクションのボタン
+  (ラスター / GP / 効果線) で追加したレイヤーが ページ直下にしか入らず、
+  選択中コマの配下に作成されない
+
+### 原因
+- マスク Mesh ↔ コマ形状 同期:
+  - ``utils/mask_object.ensure_coma_mask_object`` を呼ぶと ``__masks__``
+    Collection や ``layer_collection.exclude / hide_viewport`` まで触り直す
+    副作用がある (前回 commit はここを使ったため、 paper_bg や raster paint
+    に影響が出た)
+  - mask Mesh の geometry / Object location だけを更新する、 副作用ゼロの
+    軽量更新ヘルパが存在しなかった
+- 選択中コマの解決:
+  - ``operators/coma_edge_move_op.py`` の枠線辺/border/頂点クリックは
+    ``object_selection.select_key`` (WM 上の選択 list) しか更新せず、
+    ``page.active_coma_index`` / ``scene.bname_current_coma_id`` を更新して
+    いなかった
+  - ``utils/active_target.resolve_active_target`` は WM 選択を見ないため、
+    新規レイヤー追加 op (``raster_layer_add`` / ``gp_layer_create_per_object``
+    等) が ``("page", page_id, page)`` を返してしまい、 配下にコマが入らない
+
+### 修正
+- ``utils/mask_object.py``:
+  - ``update_coma_mask_geometry(page, coma) -> bool`` を新設。 既存 mask Mesh
+    と Object が **両方すでに存在する場合のみ** ``mesh.from_pydata`` で頂点
+    を、 ``obj.location`` で配置を更新する。 ``ensure_masks_collection`` を
+    呼ばないので ``__masks__`` Collection / view_layer / paper_bg には一切
+    触らない (副作用ゼロ)。 mask 未生成なら何もせず ``False`` を返す
+  - ``update_masks_for_pages(work, page_indices) -> int`` を新設。 指定ページ
+    内の全コマについて軽量更新を一括で呼ぶ
+- ``utils/active_target.py``:
+  - ``focus_active_coma(scene, work, page_index, coma_index)`` を新設。
+    ``work.active_page_index`` / ``page.active_coma_index`` /
+    ``scene.bname_current_coma_id`` / ``scene.bname_active_layer_kind="coma"``
+    を一括同期する (既に同値ならスキップ)
+- ``operators/coma_edge_move_op.py``:
+  - 枠線辺ドラッグ完了 (``_save_changes``) と三角ハンドル拡張
+    (``_do_extend`` 経由 + ``_EdgeExtendShim._save_changes``) の末尾で
+    ``mask_object.update_masks_for_pages`` を呼んで mask Mesh を追従させる
+  - 単一辺/border/頂点クリックの分岐で ``focus_active_coma`` を呼んで
+    active 階層を hit したコマに切替える
+- ``operators/coma_vertex_edit_op.py``:
+  - ``_save_and_cleanup`` 末尾で ``mask_object.update_coma_mask_geometry``
+    を呼んで mask Mesh を追従
+- ``operators/coma_edit_op.py``:
+  - ``BNAME_OT_coma_to_polygon.execute`` / ``BNAME_OT_coma_to_rect.execute``
+    の保存後にも ``update_coma_mask_geometry`` を呼ぶ
+- ``operators/snap_op.py``:
+  - スナップで rect 4 辺を変えた直後に ``update_coma_mask_geometry`` を呼ぶ
+- ``operators/object_tool_op.py``:
+  - rect resize / move (``_apply_snapshots`` の coma 分岐) のたびに
+    ``update_coma_mask_geometry`` を呼んで リアルタイムに mask 追従
+  - コマヒット時の active 階層更新を直書きから
+    ``active_target.focus_active_coma`` 呼び出しに集約
+    (``bname_current_coma_id`` も同期されるようになる)
+- ``operators/layer_move_op.py``:
+  - ``_apply_delta`` の ``kind == "coma"`` 分岐で ``_move_panel`` 直後に
+    ``update_coma_mask_geometry`` を呼んで mask が drag 中もリアルタイム追従
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` を追加 (``BNAME_COMA_MASK_SYNC_OK``):
+  - mask Object 未生成時は ``update_coma_mask_geometry`` が ``False`` を返す
+  - rect 拡張/縮小で mask Mesh の頂点 / location が即時追従
+  - **重要**: ``BName_PaperBackground`` Material の identity と ``__papers__``
+    Collection の ``LayerCollection.hide_viewport`` が mask 更新前後で不変
+    (paper_color / raster paint への副作用が無いことを保証)
+  - polygon shape でも頂点が追従
+  - ``focus_active_coma`` 呼び出し後に ``resolve_active_target`` が
+    ``("coma", "<page_id>:<coma_id>", page)`` を返す
+- 既存テスト ``test/blender_paper_color_check.py`` も引き続き通過
+
 ## 2026-05-02 — 用紙色 (paper_color) の変更が 3D ビューポートに反映されない
 
 ### 症状

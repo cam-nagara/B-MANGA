@@ -226,6 +226,94 @@ def ensure_coma_mask_object(
     return obj
 
 
+def update_coma_mask_geometry(page, coma) -> bool:
+    """既存の coma mask Mesh の geometry / Object location を coma 形状に追従させる.
+
+    ``ensure_coma_mask_object`` と異なり、 ``__masks__`` Collection や
+    Outliner / view_layer 周りには一切触らない (副作用ゼロ)。 mask Mesh と
+    mask Object が **両方すでに存在する場合のみ** 更新する。 未生成なら何も
+    せず ``False`` を返す。
+
+    用途: 枠線辺ドラッグ / 三角ハンドル拡張 / レイヤー移動ツール等で、 コマ形状
+    (``rect_*_mm`` / ``vertices``) が更新された後に呼ぶ。 ``mesh.from_pydata``
+    で頂点だけを差し替えるため、 Boolean modifier は depsgraph 経由で次フレーム
+    に新形状で再評価される。 ``ensure_masks_collection`` は呼ばないので
+    ``__papers__`` / ``layer_collection.exclude`` 等の副作用は起きない。
+    """
+    page_id = str(getattr(page, "id", "") or "") if page is not None else ""
+    coma_id = str(getattr(coma, "id", "") or "") if coma is not None else ""
+    if not page_id or not coma_id:
+        return False
+    mesh_name = f"{COMA_MASK_MESH_PREFIX}{page_id}_{coma_id}"
+    obj_name = f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}"
+    obj = bpy.data.objects.get(obj_name)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if obj is None or mesh is None:
+        return False
+
+    shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
+    if shape_type == "rect":
+        rect_x = float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
+        rect_y = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
+        width = float(getattr(coma, "rect_width_mm", 50.0) or 50.0)
+        height = float(getattr(coma, "rect_height_mm", 50.0) or 50.0)
+        verts = [
+            (0.0, 0.0, 0.0),
+            (mm_to_m(width), 0.0, 0.0),
+            (mm_to_m(width), mm_to_m(height), 0.0),
+            (0.0, mm_to_m(height), 0.0),
+        ]
+        faces = [(0, 1, 2, 3)]
+        offset_x_m = mm_to_m(rect_x)
+        offset_y_m = mm_to_m(rect_y)
+    else:
+        vertices = getattr(coma, "vertices", None)
+        if vertices is None or len(vertices) < 3:
+            return False
+        points = [(float(v.x_mm), float(v.y_mm)) for v in vertices]
+        verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in points]
+        faces = [tuple(range(len(verts)))]
+        offset_x_m = 0.0
+        offset_y_m = 0.0
+
+    try:
+        mesh.clear_geometry()
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
+    except Exception:  # noqa: BLE001
+        _logger.exception("update_coma_mask_geometry: mesh rebuild failed (%s)", mesh_name)
+        return False
+
+    try:
+        if obj.location.x != offset_x_m:
+            obj.location.x = offset_x_m
+        if obj.location.y != offset_y_m:
+            obj.location.y = offset_y_m
+    except Exception:  # noqa: BLE001
+        _logger.exception("update_coma_mask_geometry: location update failed (%s)", obj_name)
+    return True
+
+
+def update_masks_for_pages(work, page_indices) -> int:
+    """指定ページ内の全コマについて ``update_coma_mask_geometry`` を呼ぶ.
+
+    まだ mask Mesh/Object が無いコマはスキップする (副作用ゼロ)。 戻り値は
+    実際に更新できたコマ数。
+    """
+    if work is None:
+        return 0
+    n = 0
+    pages = list(getattr(work, "pages", []) or [])
+    for pi in page_indices or ():
+        if not (0 <= pi < len(pages)):
+            continue
+        page = pages[pi]
+        for coma in getattr(page, "comas", []) or []:
+            if update_coma_mask_geometry(page, coma):
+                n += 1
+    return n
+
+
 def regenerate_all_masks(scene: bpy.types.Scene, work) -> dict:
     """全 mask Object を再生成して orphan も削除. 冪等で安全."""
     result = {"page_masks": 0, "coma_masks": 0}

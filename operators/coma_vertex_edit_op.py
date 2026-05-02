@@ -30,7 +30,7 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_active_page, get_work
 from ..io import page_io, coma_io
-from ..utils import geom, log, viewport_colors
+from ..utils import geom, log, mask_object, viewport_colors
 from . import coma_modal_state, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -570,6 +570,11 @@ class BNAME_OT_coma_edit_vertices(Operator):
             if work_dir is not None:
                 coma_io.save_coma_meta(work_dir, page.id, entry)
                 page_io.save_page_json(work_dir, page)
+            # 頂点 / 辺ハンドルでコマ形状が変わった分だけ mask Mesh を追従
+            try:
+                mask_object.update_coma_mask_geometry(page, entry)
+            except Exception:  # noqa: BLE001
+                _logger.exception("coma_edit_vertices: mask geometry sync failed")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("coma_edit_vertices: save failed")
             self.report({"ERROR"}, f"保存失敗: {exc}")
