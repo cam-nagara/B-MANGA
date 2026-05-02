@@ -58,6 +58,30 @@ def _on_paper_visual_changed(_self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _on_paper_color_changed(self, context) -> None:
+    """``paper_color`` 変更時に paper_bg Mesh のマテリアル色を即時反映.
+
+    ``_ensure_paper_material`` は呼び直すたびに material のノード木 (Emission
+    の Color) と ``mat.diffuse_color`` (Solid 表示用) を ``paper.paper_color``
+    から更新するので、 既存の paper_bg Object の Material slot がそのまま
+    新色を表示する (Mesh / Object 自体には触らない)。
+    ``mat.update_tag()`` で depsgraph に材質変更を通知し、 Material Preview /
+    Rendered だけでなく Solid モードのビューポートも即時に再描画する。
+    """
+    try:
+        from ..utils import paper_bg_object as _pbg
+
+        mat = _pbg._ensure_paper_material(self)
+        if mat is not None:
+            try:
+                mat.update_tag()
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper_color update: material refresh failed")
+    _tag_view3d_redraw(context)
+
+
 def _on_paper_layout_changed(_self, context) -> None:
     try:
         from ..core.work import get_work
@@ -205,7 +229,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
-        update=_on_paper_visual_changed,
+        update=_on_paper_color_changed,
     )
     display_alpha: FloatProperty(  # type: ignore[valid-type]
         name="紙面表示アルファ",

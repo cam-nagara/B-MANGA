@@ -3,6 +3,45 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-02 — 用紙色 (paper_color) の変更が 3D ビューポートに反映されない
+
+### 症状
+- 用紙パネル (N パネル → B-Name → 用紙) の「用紙色」を変更しても、
+  3D ビューポートに表示されている paper_bg Mesh の色が白のままで
+  追従しなかった
+- 基本枠 / 仕上がり枠 / セーフライン等の表示切替 (GPU overlay 系) は
+  正しく即時反映されているのに、用紙色だけが反映されない状態
+
+### 原因
+- ``core/paper.py`` の ``paper_color`` プロパティの ``update`` コールバックが
+  ``_on_paper_visual_changed`` (``area.tag_redraw()`` のみ) に紐付いていた
+- paper_bg は GPU overlay ではなく opaque な Mesh + ``BName_PaperBackground``
+  Material で表示しているため、 viewport 再描画だけでは色が変わらない
+  (Material の Emission ノード Color と ``mat.diffuse_color`` を更新する
+  必要がある)
+- ``_ensure_paper_material(paper)`` を呼ぶ口がコールバック側になく、
+  Material は ``regenerate_all_paper_bgs`` 経由で初回生成されたきり
+  paper_color 変更時に再構築されなかった
+
+### 修正
+- ``core/paper.py``:
+  - ``_on_paper_color_changed(self, context)`` を新設。
+    ``_ensure_paper_material(self)`` で Emission Color と
+    ``mat.diffuse_color`` を即時更新し、 ``mat.update_tag()`` で depsgraph
+    に材質変更を通知してから ``_tag_view3d_redraw`` を呼ぶ
+  - ``paper_color`` プロパティの ``update`` を
+    ``_on_paper_visual_changed`` → ``_on_paper_color_changed`` に差し替え
+
+### 検証 (Blender 5.1.1 実機)
+- factory_settings → addon register → ``bname.work_new`` → ``paper.paper_color``
+  を ``(0.8, 0.1, 0.1, 1.0)`` (赤) に変更:
+  - ``BName_PaperBackground.diffuse_color`` が ``(0.8, 0.1, 0.1, 1.0)`` に
+    更新されることを確認 (修正前は ``(1, 1, 1, 1)`` のまま)
+  - Material の Emission ノード Color も同値に更新されることを確認
+  - paper_bg Object (``page_paper_bg_p0001``) が同じ Material slot を
+    参照しており、新色が反映されることを確認
+- 続けて ``(0.1, 0.7, 0.2, 1.0)`` (緑) に再変更しても同様に追従することを確認
+
 ## 2026-05-01 — ページ範囲外 (in_page_range=False) ページの paper_bg を viewport から隠す
 
 ### 症状
