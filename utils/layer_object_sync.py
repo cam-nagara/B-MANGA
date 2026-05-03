@@ -300,6 +300,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma planes failed")
 
+        # 旧 __masks__ Collection (page_mask_*, coma_mask_* + __masks__ Coll
+        # 自体) を強制 purge。 古い work.blend を開いた直後の自動 migration。
+        try:
+            from . import mask_object as _mo
+
+            _mo.purge_legacy_masks_collection()
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror legacy __masks__ purge failed")
+
         for folder in getattr(work, "layer_folders", []):
             folder_id = str(getattr(folder, "id", "") or "")
             if not folder_id:

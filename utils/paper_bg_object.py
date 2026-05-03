@@ -294,22 +294,66 @@ def regenerate_all_paper_bgs(scene: bpy.types.Scene, work) -> int:
                 bpy.data.objects.remove(obj, do_unlink=True)
             except Exception:  # noqa: BLE001
                 pass
-    # 旧 __papers__ Collection が残っていれば削除 (2026-05-03 リアーキで撤廃)
-    try:
-        legacy_coll = on.find_collection_by_bname_id(PAPERS_COLLECTION_BNAME_ID, kind="papers_root")
-        if legacy_coll is None:
-            legacy_coll = bpy.data.collections.get(PAPERS_COLLECTION_NAME)
-        if legacy_coll is not None:
-            for parent in list(bpy.data.collections):
-                if legacy_coll.name in parent.children:
-                    parent.children.unlink(legacy_coll)
-            if scene.collection is not None and legacy_coll.name in scene.collection.children:
-                scene.collection.children.unlink(legacy_coll)
-            if legacy_coll.users == 0:
-                bpy.data.collections.remove(legacy_coll)
-    except Exception:  # noqa: BLE001
-        _logger.exception("regenerate_all_paper_bgs: legacy __papers__ purge failed")
+    # 旧 __papers__ Collection を強制 purge (2026-05-03 リアーキで撤廃)
+    purge_legacy_papers_collection(scene)
     return count
+
+
+def purge_legacy_papers_collection(scene: bpy.types.Scene) -> int:
+    """旧 ``__papers__`` Collection を強制削除する.
+
+    残存している配下 Object はページ Collection 直下に既に link 済 (または
+    管理外) である前提で、 まず Collection から全 Object を切り離す
+    (``users_collection`` 経由で他 parent に存在しない Object は削除しない —
+    安全側)。 そのあと Collection を全 parent から外して
+    ``bpy.data.collections.remove`` する。
+    """
+    removed = 0
+    legacy_coll = on.find_collection_by_bname_id(
+        PAPERS_COLLECTION_BNAME_ID, kind="papers_root"
+    )
+    if legacy_coll is None:
+        legacy_coll = bpy.data.collections.get(PAPERS_COLLECTION_NAME)
+    if legacy_coll is None:
+        return 0
+    # 配下 Object を __papers__ から unlink (他 Collection に link されていれば
+    # そのまま残る; 他に link が無ければ scene root に逃がす)
+    for obj in list(legacy_coll.objects):
+        try:
+            legacy_coll.objects.unlink(obj)
+        except Exception:  # noqa: BLE001
+            pass
+        if not obj.users_collection and scene is not None and scene.collection is not None:
+            try:
+                scene.collection.objects.link(obj)
+            except Exception:  # noqa: BLE001
+                pass
+    # 全 parent Collection から legacy_coll を unlink
+    try:
+        for parent in list(bpy.data.collections):
+            if legacy_coll.name in parent.children:
+                try:
+                    parent.children.unlink(legacy_coll)
+                except Exception:  # noqa: BLE001
+                    pass
+        if scene is not None and scene.collection is not None and legacy_coll.name in scene.collection.children:
+            try:
+                scene.collection.children.unlink(legacy_coll)
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        _logger.exception("purge_legacy_papers_collection: unlink failed")
+    # users が 0 でなくとも fake_user を切ってから削除 (legacy migration 強制)
+    try:
+        legacy_coll.use_fake_user = False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        bpy.data.collections.remove(legacy_coll, do_unlink=True)
+        removed = 1
+    except Exception:  # noqa: BLE001
+        _logger.exception("purge_legacy_papers_collection: remove failed")
+    return removed
 
 
 def set_paper_bg_visible(visible: bool) -> int:

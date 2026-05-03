@@ -102,18 +102,28 @@ def purge_legacy_masks_collection() -> int:
                     bpy.data.meshes.remove(mesh_data)
                 except Exception:  # noqa: BLE001
                     pass
-        # Collection 自体を削除 (root から外して remove)
+        # Collection 自体を強制削除 (root + scene から外して do_unlink で remove)
         try:
             for parent in list(bpy.data.collections):
                 if coll.name in parent.children:
-                    parent.children.unlink(coll)
+                    try:
+                        parent.children.unlink(coll)
+                    except Exception:  # noqa: BLE001
+                        pass
             scene = bpy.context.scene if bpy.context is not None else None
-            if scene is not None and coll.name in scene.collection.children:
-                scene.collection.children.unlink(coll)
-            bpy.data.collections.remove(coll)
+            if scene is not None and scene.collection is not None and coll.name in scene.collection.children:
+                try:
+                    scene.collection.children.unlink(coll)
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                coll.use_fake_user = False
+            except Exception:  # noqa: BLE001
+                pass
+            bpy.data.collections.remove(coll, do_unlink=True)
             removed += 1
         except Exception:  # noqa: BLE001
-            pass
+            _logger.exception("purge_legacy_masks_collection: remove __masks__ failed")
     # 名前 prefix で残っている孤立 Object も掃除
     for obj in list(bpy.data.objects):
         kind = obj.get(PROP_MASK_KIND)

@@ -3,6 +3,55 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — 旧 ``__papers__`` / ``__masks__`` Collection の自動 migration が走らない真因を修正
+
+### 症状
+古い work.blend を開いても新アーキへの migration が走らず:
+- ``__papers__`` Collection と配下の ``page_paper_bg_*`` Object がそのまま残る
+- ``__masks__`` Collection と配下の ``page_mask_*`` / ``coma_mask_*`` Object
+  がそのまま残る
+- ``coma_plane_*`` が生成されず、 ▲ クリックや mask 連動が動かない
+- ユーザーには「最近の修正がなかったことにされ、 回帰した」 ように見える状態
+
+### 真因
+1. ``mirror_work_to_outliner`` (load_post の主役) が ``__masks__`` の purge を
+   呼んでいなかった。 ``mask_object.purge_legacy_masks_collection`` は shim
+   レベルで定義してあったが ``mask_object_op`` (手動実行 op) と ``repair_op``
+   からしか呼ばれていなかったため、 通常の load_post 経路では起動しない
+2. ``regenerate_all_paper_bgs`` 末尾の ``__papers__`` purge は
+   ``legacy_coll.users == 0`` のときだけ ``bpy.data.collections.remove`` する
+   防御策で書いていたが、 何らかの参照が残っていると永遠に削除できない
+   (具体的には旧 work.blend の `Scene.collection.children` に居続ける)
+3. 旧 ``__masks__`` purge も同じく ``bpy.data.collections.remove(coll)``
+   (do_unlink なし) なので参照残ると失敗する
+
+### 修正
+- ``utils/paper_bg_object``:
+  - 末尾の inline purge を ``purge_legacy_papers_collection(scene)`` に切り出し
+  - 配下 Object を un-orphan (page Coll に link 済でなければ scene root に逃がす)
+    してから、 全 parent Collection から ``__papers__`` を unlink、 fake_user
+    を切って ``bpy.data.collections.remove(coll, do_unlink=True)`` で **強制削除**
+- ``utils/mask_object.purge_legacy_masks_collection``:
+  - 同じく fake_user 切り + ``do_unlink=True`` で強制削除
+- ``utils/layer_object_sync.mirror_work_to_outliner``:
+  - ``regenerate_all_coma_planes`` の直後に
+    ``mask_object.purge_legacy_masks_collection()`` を呼ぶ。 これで load_post /
+    save_pre から呼ばれる mirror 経由で **自動的に** ``__masks__`` が migrate される
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_legacy_migration_check.py`` を追加 (``BNAME_LEGACY_MIGRATION_OK``):
+  - factory_settings → addon register → ``bname.work_new`` で正常作品を作成
+  - そのあと旧アーキ相当の ``__papers__`` Collection + ``page_paper_bg_<id>`` と
+    ``__masks__`` Collection + ``page_mask_<id>`` + ``coma_mask_<page>_<coma>``
+    を捏造
+  - ``mirror_work_to_outliner`` を再実行 (古い work.blend を開いた相当)
+  - 検証:
+    - ``__masks__`` Collection と配下 Object が完全 purge
+    - ``__papers__`` Collection も完全 purge
+    - paper_bg はページ Collection 直下に再 link 済 (``__papers__`` には居ない)
+    - coma_plane が生成されている
+- 既存 ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) も通過
+
 ## 2026-05-03 — ▲ ハンドル: hover ハイライト + 横長プロポーション化
 
 ### 改善内容
