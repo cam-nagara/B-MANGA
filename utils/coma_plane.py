@@ -318,6 +318,8 @@ def update_coma_plane_geometry(
     - ``__masks__`` 等の副 collection は触らない (副作用ゼロ)
     - ``scene`` / ``work`` が None なら page offset 再計算をスキップし、
       Mesh local geometry のみ更新する
+    - 同コマ配下の raster material の shader マスク bbox も同期更新する
+      (Boolean Modifier 廃止に伴う代替経路)
     """
     if page is None or coma is None:
         return False
@@ -338,6 +340,13 @@ def update_coma_plane_geometry(
         return False
     if scene is not None and work is not None:
         _set_obj_location(obj, scene, work, page, coma)
+        # 同コマ配下の raster material の shader マスク bbox も追従更新
+        try:
+            from ..operators import raster_layer_op as _rop
+
+            _rop.update_raster_mask_for_coma(scene, work, page, coma)
+        except Exception:  # noqa: BLE001
+            _logger.exception("update_coma_plane_geometry: raster mask update failed")
     return True
 
 
