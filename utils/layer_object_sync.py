@@ -104,12 +104,14 @@ def prune_snapshots(valid_bname_ids: set[str]) -> int:
 
 # ---------- Z 座標と prefix (計画書 §4.2) ----------
 
-# 1 ページ内のレイヤー 1 段あたりの Z オフセット (m)。0.1 (= 100mm)。
+# 1 ページ内のレイヤー 1 段あたりの Z オフセット (m)。0.01 (= 10mm)。
 # **ページごとにリセット**して、各ページで rank 1, 2, 3, ... と順序を振る。
-# rank 1 = z=0.1, rank 2 = z=0.2, ... 用紙 (paper_bg, z=0) は常に最下段。
+# rank 1 = z=0.01, rank 2 = z=0.02, ... 用紙 (paper_bg, z=0) は常に最下段。
 # 旧仕様では z_index (10, 100, 1000+) をそのまま乗じていたため、 高 z_index
 # レイヤー (フキダシ z_index=1010) が world z=101m に飛んでいた。
-BNAME_Z_STEP_M = 0.1
+# 2026-05-04: ユーザー要望で 0.1 → 0.01 に縮小 (coma_plane Z も同期して
+# 0.1 → 0.01 に変更し、 paper_bg Z=0 との隙間を維持)。
+BNAME_Z_STEP_M = 0.01
 
 
 def z_for_index(z_index: int) -> float:

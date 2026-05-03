@@ -58,13 +58,13 @@ PROP_COMA_PLANE_OWNER_ID = "bname_coma_plane_owner_id"  # "<page_id>:<coma_id>"
 PROP_COMA_MASK_KIND = "bname_coma_mask_kind"  # "coma_mask"
 PROP_COMA_MASK_OWNER_ID = "bname_coma_mask_owner_id"
 
-# raster Mesh の Z (0.1) と完全に同一の Z に置く。 平行 plane 同士の
-# Boolean Intersect (FLOAT solver) は立体交差が定義できず空 mesh を返す
-# ため、 同一 Z 平面上で 2D 形状交差として評価されるよう揃える。
-# 描画順は Blender 標準で OPAQUE (coma_plane) → BLENDED (raster) になり
-# z-fighting も起こさない (depth は同値だが LESS_EQUAL で raster が pass)。
-# paper_bg (Z=0) はその下に独立して敷かれる。
-COMA_PLANE_Z_M = 0.1
+# raster Mesh の Object.location.z (= rank * BNAME_Z_STEP_M, 1 段目で 0.01)
+# と完全に同一の Z に置く。 描画順は Blender 標準で OPAQUE (coma_plane) →
+# BLENDED (raster) になり、 同 Z でも LESS_EQUAL で raster が pass するので
+# z-fighting しない。 paper_bg (Z=0) はその下に独立して敷かれる。
+# 2026-05-04: BNAME_Z_STEP_M を 0.1 → 0.01 に縮小したのに合わせて 0.1 → 0.01
+# に変更。
+COMA_PLANE_Z_M = 0.01
 
 
 # ---------------- Material ----------------
