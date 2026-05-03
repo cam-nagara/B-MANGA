@@ -3,6 +3,46 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — 枠線カットツール (knife_cut) で ▲ ハンドルが反応しない真因を修正
+
+### 症状
+- 枠線カットツール (knife_cut) で ▲ ハンドルが連続してクリックできない問題が
+  c18d111 後も再発していた
+
+### 根本原因
+``operators/coma_edge_move_op.find_selected_handle_at_event`` が早い段階で
+WM の ``bname_edge_select_kind`` を見て、 値が ``edge`` / ``border`` 以外
+(``vertex`` / ``none``) のときに **None で bail out** していた。
+``_iter_panel_edge_refs_for_handles`` は kind に関係なく全 4 辺を走査するよう
+改修済だったが、 そこに到達する前にゲートで弾かれていた。
+
+knife_cut のシナリオ:
+1. ユーザーが knife_cut ツールに入る (kind=``none`` か、 直前のピックで
+   ``edge`` / ``vertex``)
+2. ▲ クリック
+3. ``find_selected_handle_at_event`` で kind=``vertex`` または ``none`` のため
+   bail → ▲ 拡張処理が走らず、 後段の ``_pick_edge_or_vertex`` が走って
+   別の挙動 (cut の p1 設定など) になる
+4. ユーザー側からは「クリックは届いているが何も起こらない」ように見える
+
+### 修正
+``operators/coma_edge_move_op.find_selected_handle_at_event`` を全面書き直し:
+- 解決優先順位を明示:
+  1. WM ``bname_edge_select_*`` (kind: edge / border / **vertex も許可**)
+  2. ``page.active_coma_index`` (オブジェクトツール / アウトライナー /
+     レイヤースタック でコマ active なら ▲ を反応)
+- ``candidates`` リストにそれぞれ selection dict を積み、 順番に
+  ``_hit_selection_handle`` を試行。 最初に hit したものを返す
+- どの kind でも ``_iter_panel_edge_refs_for_handles`` 経由でコマ全 4 辺を
+  hit テストするため、 連続 ▲ クリックが kind に依存せず動く
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) の通過
+  を維持
+- knife_cut での連続 ▲ クリックは UI 操作のため自動テスト未追加 (実機で
+  knife_cut 起動 → 初回 ▲ クリック以降も連続して別辺の ▲ が反応することを
+  ご確認ください)
+
 ## 2026-05-03 — 連続 ▲ クリック / paper_bg 移設 リアーキの徹底チェックと追加修正
 
 ### 監査範囲

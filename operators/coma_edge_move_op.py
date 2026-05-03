@@ -702,27 +702,76 @@ def _hit_selection_handle(
 
 
 def find_selected_handle_at_event(context, event) -> dict | None:
-    """現在の枠線選択に表示されている▲ハンドルをイベント位置から解決する."""
+    """現在の枠線/コマ選択から ▲ ハンドルをイベント位置で解決する.
+
+    解決の優先順位:
+    1. WM の ``bname_edge_select_*`` (kind: edge / border / vertex)
+    2. ``page.active_coma_index`` (枠線選択ツールを通っていなくても、
+       オブジェクトツールやアウトライナーでコマがアクティブなら ▲ を反応させる)
+
+    どの kind でも hit テストは ``_iter_panel_edge_refs_for_handles`` を経由
+    して **コマ全 4 辺の ▲** を走査するため、 1 度 ▲ を押したあと kind が
+    edge / vertex に変わっていても連続して別辺の ▲ をクリックできる。
+    """
     work = get_work(context)
     if work is None or not getattr(work, "loaded", False):
         return None
     wm = getattr(context, "window_manager", None)
     if wm is None:
         return None
-    kind = getattr(wm, "bname_edge_select_kind", "none")
-    selection = {
-        "type": "border" if kind == "border" else "edge",
-        "page": int(getattr(wm, "bname_edge_select_page", -1)),
-        "coma": int(getattr(wm, "bname_edge_select_coma", -1)),
-        "edge": int(getattr(wm, "bname_edge_select_edge", -1)),
-    }
-    if kind not in {"edge", "border"}:
-        return None
     view = _event_view_context(context, event)
     if view is None:
         return None
     area, region, rv3d, mx, my = view
-    return _hit_selection_handle(context, work, selection, area, region, rv3d, mx, my)
+
+    candidates: list[dict] = []
+    kind = getattr(wm, "bname_edge_select_kind", "none")
+    page_index = int(getattr(wm, "bname_edge_select_page", -1))
+    coma_index = int(getattr(wm, "bname_edge_select_coma", -1))
+    if kind in {"edge", "border", "vertex"} and 0 <= page_index < len(work.pages):
+        page_obj = work.pages[page_index]
+        comas = list(getattr(page_obj, "comas", []) or [])
+        if 0 <= coma_index < len(comas):
+            candidates.append(
+                {
+                    "type": kind if kind in {"edge", "border", "vertex"} else "border",
+                    "page": page_index,
+                    "coma": coma_index,
+                    "edge": int(getattr(wm, "bname_edge_select_edge", -1)),
+                }
+            )
+    # フォールバック: page.active_coma_index (オブジェクトツール / アウト
+    # ライナー / レイヤースタック でコマを active にしただけのケース)
+    try:
+        active_page_index = int(getattr(work, "active_page_index", -1))
+        if 0 <= active_page_index < len(work.pages):
+            page_obj = work.pages[active_page_index]
+            active_coma_index = int(getattr(page_obj, "active_coma_index", -1))
+            comas = list(getattr(page_obj, "comas", []) or [])
+            if 0 <= active_coma_index < len(comas):
+                already_listed = any(
+                    int(c.get("page", -1)) == active_page_index
+                    and int(c.get("coma", -1)) == active_coma_index
+                    for c in candidates
+                )
+                if not already_listed:
+                    candidates.append(
+                        {
+                            "type": "border",
+                            "page": active_page_index,
+                            "coma": active_coma_index,
+                        }
+                    )
+    except Exception:  # noqa: BLE001
+        pass
+
+    for selection in candidates:
+        hit = _hit_selection_handle(
+            context, work, selection, area, region, rv3d, mx, my
+        )
+        if hit is not None:
+            return hit
+    return None
 
 
 # ---------- Modal Operator ----------
