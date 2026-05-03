@@ -844,10 +844,31 @@ class BNAME_OT_effect_line_tool(Operator):
             )
             self._start_drag(layer, part, x_mm, y_mm, bounds)
             return {"RUNNING_MODAL"}
+        parent_key_for_create = _parent_key_for_world_point(context, x_mm, y_mm)
+        # 作成位置に応じて active 階層 (page or coma) を切替えて Outliner も同期
+        try:
+            from ..utils import active_target as _at
+
+            work_for_focus = get_work(context)
+            if work_for_focus is not None:
+                page_id = parent_key_for_create.split(":", 1)[0] if parent_key_for_create else ""
+                page_for_focus = None
+                for p in getattr(work_for_focus, "pages", []) or []:
+                    if str(getattr(p, "id", "") or "") == page_id:
+                        page_for_focus = p
+                        break
+                if page_for_focus is not None:
+                    pk = "coma" if ":" in parent_key_for_create else "page"
+                    _at.focus_creation_target(
+                        context, work_for_focus, page_for_focus,
+                        pk, parent_key_for_create,
+                    )
+        except Exception:  # noqa: BLE001
+            pass
         obj, layer = _create_effect_layer(
             context,
             (x_mm, y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
-            parent_key=_parent_key_for_world_point(context, x_mm, y_mm),
+            parent_key=parent_key_for_create,
         )
         object_selection.select_key(
             context,

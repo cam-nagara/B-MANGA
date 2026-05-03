@@ -116,6 +116,44 @@ def focus_active_page(scene, work, page_index: int) -> None:
         pass
 
 
+def focus_creation_target(
+    context, work, page, parent_kind: str, parent_key: str
+) -> None:
+    """新規レイヤー作成 op の作成パスから呼ぶ汎用 active 切替.
+
+    parent_kind / parent_key (例: "coma" + "p0001:c02" or "page" + "p0001")
+    を解析して、 該当ページ/コマを active 階層にし、 Outliner Collection も
+    同期する。 viewport クリック位置に基づいて作成された entry の Object が
+    対応する Collection に link されるよう、 既存の active を上書きする。
+    """
+    if work is None or page is None:
+        return
+    pages = list(getattr(work, "pages", []) or [])
+    page_index = -1
+    for i, p in enumerate(pages):
+        if p is page:
+            page_index = i
+            break
+    if page_index < 0:
+        return
+    coma_id = ""
+    if str(parent_kind) == "coma" and ":" in str(parent_key or ""):
+        coma_id = str(parent_key).split(":", 1)[1]
+    if coma_id:
+        comas = list(getattr(page, "comas", []) or [])
+        coma_index = -1
+        for j, c in enumerate(comas):
+            if str(getattr(c, "id", "") or "") == coma_id:
+                coma_index = j
+                break
+        if coma_index >= 0:
+            scene = getattr(context, "scene", None)
+            focus_active_coma(scene, work, page_index, coma_index)
+            return
+    scene = getattr(context, "scene", None)
+    focus_active_page(scene, work, page_index)
+
+
 def resolve_active_target(
     context, *, prefer_page=None
 ) -> tuple[str, str, Optional[object]]:

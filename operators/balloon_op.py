@@ -19,6 +19,14 @@ from bpy.types import Operator
 from ..core.work import get_active_page, get_work
 from ..io import balloon_presets
 from ..utils import layer_stack as layer_stack_utils, log, object_selection
+from ..utils import active_target as _active_target
+
+
+def _focus_creation_target(context, work, page, parent_kind: str, parent_key: str) -> None:
+    try:
+        _active_target.focus_creation_target(context, work, page, parent_kind, parent_key)
+    except Exception:  # noqa: BLE001
+        pass
 from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key, page_stack_key
 from . import coma_modal_state, selection_context_menu, view_event_region
 
@@ -726,6 +734,9 @@ class BNAME_OT_balloon_tool(Operator):
             self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
             return {"RUNNING_MODAL"}
         parent_kind, parent_key = _parent_for_creation_point(page, lx, ly)
+        # 作成位置のコマ (またはページ直下) を active 階層にも反映し、
+        # Outliner Collection ハイライトを同期する
+        _focus_creation_target(context, work, page, parent_kind, parent_key)
         entry = _create_balloon_entry(
             context,
             page,

@@ -737,6 +737,21 @@ class BNAME_OT_text_tool(Operator):
         if _creation_blocked(context, page, x_mm, y_mm, width, height):
             self.report({"ERROR"}, "このモードではその位置にテキストを作成できません")
             return {"RUNNING_MODAL"}
+        # 作成位置のコマ (またはページ直下) を active 階層 + Outliner にも反映
+        try:
+            from ..utils import active_target as _at
+            from ..utils import layer_hierarchy as _lh
+
+            panel = _lh.coma_containing_point(page, lx, ly)
+            if panel is not None:
+                parent_kind = "coma"
+                parent_key = _lh.coma_stack_key(page, panel)
+            else:
+                parent_kind = "page"
+                parent_key = _lh.page_stack_key(page)
+            _at.focus_creation_target(context, work, page, parent_kind, parent_key)
+        except Exception:  # noqa: BLE001
+            pass
         entry, _missing_parent = _create_text_entry(
             context,
             page,
