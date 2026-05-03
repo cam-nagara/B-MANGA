@@ -3,6 +3,36 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — coma_plane の Z を raster と同 Z=0.1 に統一 (ラスター描画不可の真因)
+
+### 症状
+新アーキ移行後、 ラスターレイヤーに Texture Paint で何も描けない (ペイント
+モードに入りブラシで触っても全く反応しない / 何も塗れない)。
+
+### 真因
+``utils/coma_plane.py`` の ``COMA_PLANE_Z_M`` を ``0.05`` (paper_bg=0 と
+raster=0.1 の中間) に置いていた。 ラスター Mesh は Boolean Intersect
+modifier (target = coma_plane) でクリップされるが、 **Z 異なる平行 plane
+同士の Boolean Intersect は立体交差が定義されず空 mesh を返す** (FLOAT
+solver 含む)。 結果、 ラスター Mesh 自体の geometry が空になり、
+Texture Paint の brush raycast が当たる対象が消えるためペイント不能。
+
+### 修正
+- ``utils/coma_plane.py``:
+  - ``COMA_PLANE_Z_M`` を ``0.1`` (raster と同一 Z) に変更
+  - 同一 Z 平面では Boolean Intersect が 2D 形状交差として正しく評価され、
+    ラスターの coma 範囲内 geometry が残るようになる
+  - 描画順は Blender 標準で OPAQUE (coma_plane) → BLENDED (raster) に
+    なり z-fighting も起こさない (depth が同値だが ``LESS_EQUAL`` で
+    raster pass)。 paper_bg (Z=0) はその下に独立して敷かれる
+- 既存ファイル: 次回 mirror_work_to_outliner (load_post / save_pre) の
+  ``ensure_coma_plane`` → ``_set_obj_location`` で Z=0.1 に自動更新
+
+### 検証
+- ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) 通過
+- ペイント挙動は UI のため自動テスト不可 (実機で raster paint enter →
+  ブラシで描いてストロークが残ることをご確認ください)
+
 ## 2026-05-03 — 旧 ``__papers__`` / ``__masks__`` Collection の自動 migration が走らない真因を修正
 
 ### 症状

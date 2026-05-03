@@ -37,10 +37,13 @@ COMA_PLANE_MATERIAL_PREFIX = "BName_ComaPlane_"
 PROP_COMA_PLANE_KIND = "bname_coma_plane_kind"  # "coma_plane"
 PROP_COMA_PLANE_OWNER_ID = "bname_coma_plane_owner_id"  # "<page_id>:<coma_id>"
 
-# paper_bg (Z=0) と raster (Z=0.1) の間に置くことで:
-# - paper_bg の上にコマ背景色が乗る (用紙の色 → コマの色 という見た目)
-# - raster は coma_plane より上に来るので Boolean intersect されつつ正しく描画
-COMA_PLANE_Z_M = 0.05
+# raster Mesh の Z (0.1) と完全に同一の Z に置く。 平行 plane 同士の
+# Boolean Intersect (FLOAT solver) は立体交差が定義できず空 mesh を返す
+# ため、 同一 Z 平面上で 2D 形状交差として評価されるよう揃える。
+# 描画順は Blender 標準で OPAQUE (coma_plane) → BLENDED (raster) になり
+# z-fighting も起こさない (depth は同値だが LESS_EQUAL で raster が pass)。
+# paper_bg (Z=0) はその下に独立して敷かれる。
+COMA_PLANE_Z_M = 0.1
 
 
 # ---------------- Material ----------------
