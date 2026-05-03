@@ -1852,12 +1852,40 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         except Exception:  # noqa: BLE001
             pass
 
-        # 三角ハンドル (法線 ±)
+        # 三角ハンドル (選択辺の法線 ±)
         h1, h2 = _compute_handle_centers_px(region, rv3d, a, b) or (None, None)
         for handle, dir_idx in ((h1, 1), (h2, 2)):
             if handle is None:
                 continue
             _draw_triangle_handle(shader, handle, ap, bp, dir_idx)
+
+        # 他 3 辺の ▲ ハンドルも描画 (連続クリック対応 / hit テストと一致)
+        try:
+            page = work.pages[sel["page"]]
+            panel = page.comas[sel["coma"]]
+            poly = _coma_polygon(panel)
+            if len(poly) >= 2:
+                ox, oy = _page_offset(work, sel["page"])
+                sel_edge_idx = int(sel.get("edge", -1))
+                for ei in range(len(poly)):
+                    if ei == sel_edge_idx:
+                        continue
+                    other_a = (poly[ei][0] + ox, poly[ei][1] + oy)
+                    other_b = (poly[(ei + 1) % len(poly)][0] + ox, poly[(ei + 1) % len(poly)][1] + oy)
+                    other_ap = _world_mm_to_region(region, rv3d, other_a[0], other_a[1])
+                    other_bp = _world_mm_to_region(region, rv3d, other_b[0], other_b[1])
+                    if other_ap is None or other_bp is None:
+                        continue
+                    other_h1, other_h2 = (
+                        _compute_handle_centers_px(region, rv3d, other_a, other_b)
+                        or (None, None)
+                    )
+                    for handle, dir_idx in ((other_h1, 1), (other_h2, 2)):
+                        if handle is None:
+                            continue
+                        _draw_triangle_handle(shader, handle, other_ap, other_bp, dir_idx)
+        except Exception:  # noqa: BLE001
+            pass
 
     elif sel["type"] == "vertex":
         page = work.pages[sel["page"]]

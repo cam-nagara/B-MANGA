@@ -3,6 +3,42 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — 連続 ▲ クリック / paper_bg 移設 リアーキの徹底チェックと追加修正
+
+### 監査範囲
+直前 commit (c18d111) を起こり得るユーザー操作 + 関数チェーン追跡で監査。
+12 観点を点検した結果、 1 件の UX 不整合と 2 件のドキュメント腐敗を発見・修正。
+
+### 監査結果サマリ
+| # | 観点 | 判定 |
+|---|---|---|
+| 1 | ``_iter_panel_edge_refs_for_handles`` の全 caller 安全性 | OK (3 caller すべて安全に切替済) |
+| 2 | overlay 描画の副作用 (multi-coma 選択) | OK (重複描画は微少な overdraw のみ、 機能影響なし) |
+| 3 | paper_bg ↔ page Collection の生成順 | OK (mirror_work_to_outliner で page Coll → paper_bg の順序保証) |
+| 4 | ``__papers__`` 撤廃の影響範囲 | OK (依存コードゼロ、 docstring 2 箇所のみ stale) |
+| 5 | ``apply_page_collection_transforms`` の Z 保持 | OK (``_set_xy`` が Z を上書きせず paper_bg の Z=0 維持) |
+| 6 | ``refresh_paper_bg_visibility`` の独立性 | OK (PROP_BG_KIND ベースで Collection 非依存) |
+| 7 | ``set_paper_bg_visible`` (paint mode hide) | OK (同上) |
+| 8 | ``_ensure_papers_collection`` 残存 | dead code だが定数 PAPERS_COLLECTION_BNAME_ID は purge で使用、 関数は無害なので残置 |
+| 9 | ``_hit_selection_handle`` の return 値 | OK (hit edge を返す、 selected edge ではない) |
+| 10 | ``_do_extend`` の edge 解決 | OK (modal/shim 共に self._selection.edge = hit edge をセットしてから呼ぶ) |
+| 11 | ▲ 2D ピックと Z スタッキング | OK (region pixel 比較なので Z 無関係) |
+| 12 | ページ削除時の paper_bg 掃除 | OK (regenerate_all_paper_bgs の orphan 掃除で削除) |
+
+### 発見と追加修正
+1. **UX 不整合**: 枠線選択ツール modal の ``_draw_callback`` が ``sel.type=="edge"``
+   の時、 選択辺の ▲ ハンドルしか描画していなかった (overlay 側は全 4 辺の ▲
+   を描画する変更を入れたのに対し、 modal 側は未対応)。 modal でも他 3 辺の
+   ▲ を描画するよう ``_draw_callback`` を拡張 (``_iter_panel_edge_refs_for_handles``
+   と同じ全辺カバレッジ)。
+2. **stale docstring**: ``utils/paper_bg_object.py`` モジュール docstring
+   と ``utils/mask_apply.py`` の docstring が ``__papers__`` Collection を
+   前提のまま残っていたため、 ページ Collection 直下方式に書き換え。
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) と
+  ``test/blender_paper_color_check.py`` (``BNAME_PAPER_COLOR_OK``) ともに通過
+
 ## 2026-05-03 — 枠線カットツールでも連続 ▲ クリック可能に + paper_bg をページ Collection 直下へ移設
 
 ### 症状

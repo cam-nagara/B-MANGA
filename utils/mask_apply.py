@@ -2,8 +2,10 @@
 
 2026-05-02 リアーキテクチャで mask Mesh は専用 Object を持たず、
 コマ Collection 直下の **coma_plane Mesh** (``utils/coma_plane.py``) と
-``__papers__`` Collection の **paper_bg Mesh** (``utils/paper_bg_object.py``)
-を Boolean reference に兼用する。 旧 ``__masks__`` Collection は廃止。
+ページ Collection 直下の **paper_bg Mesh** (``utils/paper_bg_object.py``)
+を Boolean reference に兼用する。 旧 ``__masks__`` Collection は廃止
+(2026-05-03 リアーキで paper_bg も ``__papers__`` から各ページ Collection
+直下に移設済み)。
 
 実装方針:
     - Mesh 系レイヤー (raster / image plane / balloon plane / text plane):
@@ -45,7 +47,7 @@ def _resolve_coma_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
 def _resolve_page_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
     """parent_key (page_id) からページマスク Object を取得.
 
-    ``__papers__`` Collection の paper_bg Mesh をマスクとして兼用する
+    ページ Collection 直下の paper_bg Mesh をマスクとして兼用する
     (専用ページマスク Mesh は持たない)。
     """
     page_id = parent_key.split(":", 1)[0] if parent_key else ""

@@ -14,7 +14,8 @@
 - ズームしてもパターン揺らぎなし
 - Blender 標準のレンダリングフローに乗るため副作用が少ない
 
-Mesh は ``__papers__`` Collection に集約し、selectable=False で配置して
+Mesh は **対応するページ Collection 直下** に配置し (2026-05-03 リアーキ:
+旧 ``__papers__`` Collection は撤廃)、 ``hide_select=True`` で配置して
 ユーザーの誤選択を防ぐ。
 """
 
