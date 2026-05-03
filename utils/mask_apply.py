@@ -371,8 +371,19 @@ def apply_mask_to_layer_object(obj: bpy.types.Object) -> None:
     page_target = _resolve_page_mask_object(parent_key)
 
     obj_type = getattr(obj, "type", "")
+    kind = str(obj.get(on.PROP_KIND, "") or "")
     if obj_type == "MESH":
-        if ":" in parent_key:
+        # 2026-05-03: raster は Boolean Intersect だと平面同士の volume 交差
+        # が成立せず evaluated mesh が空 (描画不能) になる。 さらに Texture
+        # Paint mode で modifier 付き mesh に塗ると Blender がクラッシュする
+        # 既知問題もあるため、 raster は modifier ベースのマスクを完全に外し、
+        # shader 側 (or 別経路) でマスクする方針に切替。 当面は raster だけ
+        # 例外扱いし、 image_plane / balloon / text_plane 等は従来通り
+        # Boolean Intersect を使う。
+        if kind == "raster":
+            _remove_modifier_if_present(obj, MOD_NAME_COMA_MASK)
+            _remove_modifier_if_present(obj, MOD_NAME_PAGE_MASK)
+        elif ":" in parent_key:
             # コマ配下: コマスマスクのみ適用
             if coma_target is not None:
                 _ensure_boolean_intersect_modifier(obj, MOD_NAME_COMA_MASK, coma_target)

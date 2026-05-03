@@ -24,7 +24,10 @@ _logger = log.get_logger(__name__)
 # (0.1 刻み) に振り直すため、 Mesh 頂点側の Z リフトは不要 (= 0)。
 # Mesh ローカル z=0 + Object.location.z = rank*0.1 で自然な重なり順を実現。
 RASTER_Z_LIFT_M = 0.0
-RASTER_MATERIAL_VERSION = 2
+# version 3: blend_method を BLEND→HASHED, surface_render_method を
+# BLENDED→DITHERED に変更 (Texture Paint mode で BLENDED が viewport に
+# 描画されない問題の解消)。 既存 file の raster material を強制再生成する。
+RASTER_MATERIAL_VERSION = 3
 RASTER_MATERIAL_VERSION_PROP = "bname_raster_material_version"
 RASTER_IMAGE_NODE = "BName Raster Image"
 RASTER_EMISSION_NODE = "BName Raster Emission"
@@ -296,20 +299,18 @@ def ensure_raster_material(entry, image):
     except Exception:  # noqa: BLE001
         mat.diffuse_color = (0.0, 0.0, 0.0, 0.0)
     try:
-        # ラスターの alpha は連続的 (筆圧/エッジ AA) なので BLENDED が正解。
-        # DITHERED は alpha-clip + dither pattern を使うためズームすると
-        # pattern がジラジラ動く副作用がある。
-        mat.blend_method = "BLEND"
+        # Blender 5.1 EEVEE Next の Texture Paint mode では BLENDED 材質が
+        # viewport に描画されない (alpha 合成 layer が drawing pass を通らない)
+        # ため、 DITHERED (alpha hashed + depth 書込み) に変更。 連続的な alpha
+        # は dither pattern として表現される。 ズーム時の pattern ジラジラは
+        # 視覚的副作用として許容 (描画できないより遥かにマシ)。
+        mat.blend_method = "HASHED"
         mat.use_screen_refraction = False
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
         pass
-    # Blender 5.1 EEVEE Next: BLENDED 材質は alpha 合成 (滑らか)。
-    # depth buffer には書込まないため、用紙背景は overlay GPU 描画ではなく
-    # 実 Mesh (paper_bg_object.py) で表現する。実 Mesh は opaque 材質で
-    # depth を書き、BLENDED ラスター (z=0.005) が正しく alpha 合成される。
     try:
-        mat.surface_render_method = "BLENDED"
+        mat.surface_render_method = "DITHERED"
     except (AttributeError, TypeError):
         pass
     nodes = _ensure_raster_material_nodes(mat)
@@ -499,13 +500,26 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
             parent_key=stamp_parent_key,
             scene=context.scene,
         )
-        # コマ/ページマスクを Boolean Intersect で適用 (枠外を視覚的に切抜き)
+        # 2026-05-03: raster の Boolean マスクは廃止 (平面 volume 交差不能 +
+        # Texture Paint mode で modifier 付き mesh だと Blender がクラッシュ)。
+        # ここでは念のため既存 modifier だけ掃除する。 shader / 別経路での
+        # マスク化は Phase 2 で実装予定。
         try:
             from ..utils import mask_apply
 
             mask_apply.apply_mask_to_layer_object(obj)
         except Exception:  # noqa: BLE001
             _logger.exception("raster: mask_apply failed")
+        # raster Object の Z は assign_per_page_z_ranks (page rank * 0.1) で
+        # 上書きされるが、 ensure_raster_plane 直後 (新規 raster 追加直後) では
+        # まだ呼ばれていないことがあり、 raster Z が z_for_index = z_index*0.0001
+        # (例: z_index=10 → Z=0.001) のままだと coma_plane (Z=0.05) の後ろに
+        # 沈み、 Texture Paint で見えない。 ここで明示的に rank 再計算を呼んで
+        # raster Z を確実に coma_plane より前 (Z=0.1+) に押し上げる。
+        try:
+            _los.assign_per_page_z_ranks(context.scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("raster: assign_per_page_z_ranks failed")
     except Exception:  # noqa: BLE001
         _logger.exception("raster: stamp_layer_object failed")
     return obj
