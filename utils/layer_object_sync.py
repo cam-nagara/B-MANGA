@@ -338,15 +338,16 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("assign_per_page_z_ranks failed")
 
-        # 全 raster material の shader 側 coma 範囲マスク bbox を再計算
-        # (Boolean Modifier 廃止の代替経路。 既存 file ロード直後 / coma 形状
-        # 変更後の整合を確保する)。
+        # 既存 raster Object の Boolean Intersect modifier の target を最新の
+        # coma_mask Object に同期 (2026-05-04 案 1。 file ロード直後や
+        # coma_mask が新規生成された直後に Boolean が orphan target を持つ
+        # ことを防ぐ)。
         try:
-            from ..operators import raster_layer_op as _rop
+            from . import mask_apply as _ma
 
-            _rop.update_all_raster_masks(scene, work)
+            _ma.apply_masks_to_all_managed(scene)
         except Exception:  # noqa: BLE001
-            _logger.exception("update_all_raster_masks failed")
+            _logger.exception("apply_masks_to_all_managed failed")
 
 
 def _split_folder_parent(parent_key_raw: str) -> tuple[str, str]:

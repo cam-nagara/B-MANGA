@@ -31,10 +31,13 @@ RASTER_Z_LIFT_M = 0.0
 # 直したら BLENDED でも AA 込みで黒 stroke が綺麗に表示されることを実機
 # 確認)。 既存 file の version 3 material を強制再生成する。
 # version 5: shader に coma 世界 bbox マスク (4 Value node + Geometry Position
-# + Less/Greater Than chain) を追加。 Boolean modifier 廃止に伴う代替で、
-# raster の alpha を coma 範囲外で強制 0 にする。 rect coma は精密、 polygon
-# coma は bbox 簡易マスク (将来 mask image 方式で精密化予定)。
-RASTER_MATERIAL_VERSION = 5
+# + Less/Greater Than chain) を追加。 Boolean modifier 廃止に伴う代替。
+# version 6: shader マスクは OBJECT モードでは効くが Texture Paint mode で
+# active raster は image を直接 viewport に overlay する Blender 仕様により
+# 描画中だけマスクがバイパスされる問題が判明。 案 1 (coma_mask 専用 Object +
+# Boolean Intersect) に切替えるため shader マスクを撤回し simple な構成に
+# 戻す。 マスクは Boolean Modifier (mask_apply 経由) で実現する。
+RASTER_MATERIAL_VERSION = 6
 RASTER_MATERIAL_VERSION_PROP = "bname_raster_material_version"
 RASTER_IMAGE_NODE = "BName Raster Image"
 RASTER_EMISSION_NODE = "BName Raster Emission"
@@ -43,21 +46,6 @@ RASTER_ALPHA_SCALE_NODE = "BName Raster Alpha Scale"
 RASTER_ALPHA_MULTIPLY_NODE = "BName Raster Alpha Multiply"
 RASTER_MIX_NODE = "BName Raster Mix"
 RASTER_OUTPUT_NODE = "BName Raster Output"
-# Coma 範囲マスク (Boolean 廃止の代替) 用 shader nodes
-RASTER_MASK_GEOMETRY_NODE = "BName Raster Mask Geometry"
-RASTER_MASK_SEPARATE_NODE = "BName Raster Mask Separate"
-RASTER_MASK_X_MIN_NODE = "BName Raster Mask X Min"
-RASTER_MASK_X_MAX_NODE = "BName Raster Mask X Max"
-RASTER_MASK_Y_MIN_NODE = "BName Raster Mask Y Min"
-RASTER_MASK_Y_MAX_NODE = "BName Raster Mask Y Max"
-RASTER_MASK_X_GT_NODE = "BName Raster Mask X>Min"
-RASTER_MASK_X_LT_NODE = "BName Raster Mask X<Max"
-RASTER_MASK_Y_GT_NODE = "BName Raster Mask Y>Min"
-RASTER_MASK_Y_LT_NODE = "BName Raster Mask Y<Max"
-RASTER_MASK_X_AND_NODE = "BName Raster Mask X AND"
-RASTER_MASK_Y_AND_NODE = "BName Raster Mask Y AND"
-RASTER_MASK_XY_AND_NODE = "BName Raster Mask XY AND"
-RASTER_MASK_FINAL_MUL_NODE = "BName Raster Mask Final Mul"
 RASTER_BRUSH_INITIALIZED_PROP = "bname_raster_brush_initialized"
 
 
@@ -251,84 +239,15 @@ def _build_raster_material_nodes(mat) -> dict[str, object]:
     alpha_mul = nodes.new("ShaderNodeMath")
     alpha_mul.name = RASTER_ALPHA_MULTIPLY_NODE
     alpha_mul.operation = "MULTIPLY"
-
-    # ---- Coma 範囲マスク (Boolean modifier 廃止の代替) ----
-    # 世界座標 X / Y を coma の bbox 4 値と比較し、 範囲内=1, 範囲外=0 を作って
-    # alpha に掛ける。 coma 形状変更時は update_raster_material_mask_bbox で
-    # 4 つの Value node の値だけ書き換える (shader 構造は再構築不要)。
-    geom = nodes.new("ShaderNodeNewGeometry")
-    geom.name = RASTER_MASK_GEOMETRY_NODE
-    sep = nodes.new("ShaderNodeSeparateXYZ")
-    sep.name = RASTER_MASK_SEPARATE_NODE
-    x_min = nodes.new("ShaderNodeValue")
-    x_min.name = RASTER_MASK_X_MIN_NODE
-    x_max = nodes.new("ShaderNodeValue")
-    x_max.name = RASTER_MASK_X_MAX_NODE
-    y_min = nodes.new("ShaderNodeValue")
-    y_min.name = RASTER_MASK_Y_MIN_NODE
-    y_max = nodes.new("ShaderNodeValue")
-    y_max.name = RASTER_MASK_Y_MAX_NODE
-    # 初期値は「マスクなし = 全範囲 OK」 (世界座標で広い範囲)。 ensure 直後に
-    # update_raster_material_mask_bbox が呼ばれて実際のコマ bbox に置換される。
-    x_min.outputs[0].default_value = -1.0e6
-    x_max.outputs[0].default_value = 1.0e6
-    y_min.outputs[0].default_value = -1.0e6
-    y_max.outputs[0].default_value = 1.0e6
-
-    x_gt = nodes.new("ShaderNodeMath")
-    x_gt.name = RASTER_MASK_X_GT_NODE
-    x_gt.operation = "GREATER_THAN"
-    x_lt = nodes.new("ShaderNodeMath")
-    x_lt.name = RASTER_MASK_X_LT_NODE
-    x_lt.operation = "LESS_THAN"
-    y_gt = nodes.new("ShaderNodeMath")
-    y_gt.name = RASTER_MASK_Y_GT_NODE
-    y_gt.operation = "GREATER_THAN"
-    y_lt = nodes.new("ShaderNodeMath")
-    y_lt.name = RASTER_MASK_Y_LT_NODE
-    y_lt.operation = "LESS_THAN"
-    x_and = nodes.new("ShaderNodeMath")
-    x_and.name = RASTER_MASK_X_AND_NODE
-    x_and.operation = "MULTIPLY"
-    y_and = nodes.new("ShaderNodeMath")
-    y_and.name = RASTER_MASK_Y_AND_NODE
-    y_and.operation = "MULTIPLY"
-    xy_and = nodes.new("ShaderNodeMath")
-    xy_and.name = RASTER_MASK_XY_AND_NODE
-    xy_and.operation = "MULTIPLY"
-    final_mul = nodes.new("ShaderNodeMath")
-    final_mul.name = RASTER_MASK_FINAL_MUL_NODE
-    final_mul.operation = "MULTIPLY"
-
     mix = nodes.new("ShaderNodeMixShader")
     mix.name = RASTER_MIX_NODE
     out = nodes.new("ShaderNodeOutputMaterial")
     out.name = RASTER_OUTPUT_NODE
 
-    # Geometry Position → Separate XYZ → 4 つの比較
-    links.new(geom.outputs["Position"], sep.inputs[0])
-    links.new(sep.outputs["X"], x_gt.inputs[0])
-    links.new(x_min.outputs[0], x_gt.inputs[1])
-    links.new(sep.outputs["X"], x_lt.inputs[0])
-    links.new(x_max.outputs[0], x_lt.inputs[1])
-    links.new(sep.outputs["Y"], y_gt.inputs[0])
-    links.new(y_min.outputs[0], y_gt.inputs[1])
-    links.new(sep.outputs["Y"], y_lt.inputs[0])
-    links.new(y_max.outputs[0], y_lt.inputs[1])
-    links.new(x_gt.outputs[0], x_and.inputs[0])
-    links.new(x_lt.outputs[0], x_and.inputs[1])
-    links.new(y_gt.outputs[0], y_and.inputs[0])
-    links.new(y_lt.outputs[0], y_and.inputs[1])
-    links.new(x_and.outputs[0], xy_and.inputs[0])
-    links.new(y_and.outputs[0], xy_and.inputs[1])
-
-    # raster.Alpha × alpha_scale (= alpha_mul の出力) を mask (xy_and) と掛ける
     if tex.outputs.get("Alpha") is not None:
         links.new(tex.outputs["Alpha"], alpha_mul.inputs[0])
         links.new(alpha_scale.outputs[0], alpha_mul.inputs[1])
-        links.new(alpha_mul.outputs[0], final_mul.inputs[0])
-        links.new(xy_and.outputs[0], final_mul.inputs[1])
-        links.new(final_mul.outputs[0], mix.inputs[0])
+        links.new(alpha_mul.outputs[0], mix.inputs[0])
     links.new(transparent.outputs["BSDF"], mix.inputs[1])
     links.new(emission.outputs["Emission"], mix.inputs[2])
     links.new(mix.outputs["Shader"], out.inputs["Surface"])
@@ -338,10 +257,6 @@ def _build_raster_material_nodes(mat) -> dict[str, object]:
         "tex": tex,
         "emission": emission,
         "alpha_scale": alpha_scale,
-        "x_min": x_min,
-        "x_max": x_max,
-        "y_min": y_min,
-        "y_max": y_max,
     }
 
 
@@ -362,10 +277,6 @@ def _ensure_raster_material_nodes(mat) -> dict[str, object]:
         "alpha_mul": (RASTER_ALPHA_MULTIPLY_NODE, "ShaderNodeMath"),
         "mix": (RASTER_MIX_NODE, "ShaderNodeMixShader"),
         "output": (RASTER_OUTPUT_NODE, "ShaderNodeOutputMaterial"),
-        "x_min": (RASTER_MASK_X_MIN_NODE, "ShaderNodeValue"),
-        "x_max": (RASTER_MASK_X_MAX_NODE, "ShaderNodeValue"),
-        "y_min": (RASTER_MASK_Y_MIN_NODE, "ShaderNodeValue"),
-        "y_max": (RASTER_MASK_Y_MAX_NODE, "ShaderNodeValue"),
     }
     resolved = {
         key: _node_by_name_and_type(tree, name, bl_idname)
@@ -378,181 +289,7 @@ def _ensure_raster_material_nodes(mat) -> dict[str, object]:
         "tex": resolved["tex"],
         "emission": resolved["emission"],
         "alpha_scale": resolved["alpha_scale"],
-        "x_min": resolved["x_min"],
-        "x_max": resolved["x_max"],
-        "y_min": resolved["y_min"],
-        "y_max": resolved["y_max"],
     }
-
-
-def _coma_world_bbox_m(work, scene, page, coma) -> Optional[tuple[float, float, float, float]]:
-    """coma の世界座標 bbox (xmin_m, ymin_m, xmax_m, ymax_m) を返す.
-
-    rect coma: rect_x_mm, rect_y_mm, rect_width_mm, rect_height_mm から計算.
-    polygon coma: vertices の min/max bbox (簡易マスク. 内部的には bbox 内
-    全部塗れてしまうが、 polygon 外の bbox 領域は raster image alpha=0 が
-    保たれるので実用上は polygon マスクと殆ど差がない見え方になる).
-
-    page world offset を考慮する.
-    """
-    if work is None or scene is None or page is None or coma is None:
-        return None
-    pages = list(getattr(work, "pages", []))
-    page_idx = -1
-    for i, p in enumerate(pages):
-        if p is page or str(getattr(p, "id", "") or "") == str(getattr(page, "id", "") or ""):
-            page_idx = i
-            break
-    page_ox_mm = 0.0
-    page_oy_mm = 0.0
-    if page_idx >= 0:
-        try:
-            from ..utils import page_grid as _pg
-
-            page_ox_mm, page_oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
-        except Exception:  # noqa: BLE001
-            _logger.exception("raster mask: page_total_offset_mm failed")
-
-    shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
-    if shape_type == "rect":
-        x_mm = float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
-        y_mm = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
-        w_mm = max(0.0, float(getattr(coma, "rect_width_mm", 0.0) or 0.0))
-        h_mm = max(0.0, float(getattr(coma, "rect_height_mm", 0.0) or 0.0))
-        if w_mm <= 0.0 or h_mm <= 0.0:
-            return None
-        xmin_mm = page_ox_mm + x_mm
-        ymin_mm = page_oy_mm + y_mm
-        xmax_mm = xmin_mm + w_mm
-        ymax_mm = ymin_mm + h_mm
-    else:
-        verts = list(getattr(coma, "vertices", []) or [])
-        if len(verts) < 3:
-            return None
-        xs = [float(v.x_mm) for v in verts]
-        ys = [float(v.y_mm) for v in verts]
-        xmin_mm = page_ox_mm + min(xs)
-        ymin_mm = page_oy_mm + min(ys)
-        xmax_mm = page_ox_mm + max(xs)
-        ymax_mm = page_oy_mm + max(ys)
-    return (mm_to_m(xmin_mm), mm_to_m(ymin_mm), mm_to_m(xmax_mm), mm_to_m(ymax_mm))
-
-
-def update_raster_material_mask_bbox(
-    mat: bpy.types.Material,
-    bbox_world_m: Optional[tuple[float, float, float, float]],
-) -> bool:
-    """raster material の mask 用 4 Value node に世界 bbox を書き込む.
-
-    bbox_world_m が None の場合はマスクを実質無効化 (= 全範囲 1)。 戻り値は
-    更新したかどうか。
-    """
-    if mat is None or not getattr(mat, "use_nodes", False):
-        return False
-    tree = mat.node_tree
-    if tree is None:
-        return False
-    x_min = tree.nodes.get(RASTER_MASK_X_MIN_NODE)
-    x_max = tree.nodes.get(RASTER_MASK_X_MAX_NODE)
-    y_min = tree.nodes.get(RASTER_MASK_Y_MIN_NODE)
-    y_max = tree.nodes.get(RASTER_MASK_Y_MAX_NODE)
-    if x_min is None or x_max is None or y_min is None or y_max is None:
-        return False
-    if bbox_world_m is None:
-        x_min.outputs[0].default_value = -1.0e6
-        x_max.outputs[0].default_value = 1.0e6
-        y_min.outputs[0].default_value = -1.0e6
-        y_max.outputs[0].default_value = 1.0e6
-    else:
-        xmin, ymin, xmax, ymax = bbox_world_m
-        x_min.outputs[0].default_value = float(xmin)
-        x_max.outputs[0].default_value = float(xmax)
-        y_min.outputs[0].default_value = float(ymin)
-        y_max.outputs[0].default_value = float(ymax)
-    try:
-        mat.update_tag()
-    except Exception:  # noqa: BLE001
-        pass
-    return True
-
-
-def _resolve_coma_for_raster_entry(scene, work, entry):
-    """raster entry の parent_key から (page, coma) を解決.
-
-    parent_kind が "coma" 以外、 または coma が存在しない場合は (page, None)
-    を返す (= マスク無効化対象)。
-    """
-    if work is None or entry is None:
-        return None, None
-    parent_kind = str(getattr(entry, "parent_kind", "") or "")
-    parent_key = str(getattr(entry, "parent_key", "") or "")
-    if parent_kind != "coma" or ":" not in parent_key:
-        return None, None
-    page_id, coma_id = parent_key.split(":", 1)
-    for p in getattr(work, "pages", []) or []:
-        if str(getattr(p, "id", "") or "") != page_id:
-            continue
-        for c in getattr(p, "comas", []) or []:
-            if str(getattr(c, "id", "") or "") == coma_id:
-                return p, c
-        return p, None
-    return None, None
-
-
-def update_raster_mask_for_coma(scene, work, page, coma) -> int:
-    """指定 coma 配下の全 raster material の mask bbox を更新.
-
-    coma 形状変更 (rect_x_mm/y_mm/width/height や polygon vertices) の
-    callback 経路から呼ぶ。 戻り値は更新件数。
-    """
-    if scene is None or work is None or page is None or coma is None:
-        return 0
-    coll = _raster_collection(scene)
-    if coll is None:
-        return 0
-    bbox = _coma_world_bbox_m(work, scene, page, coma)
-    target_parent_key = f"{getattr(page, 'id', '')}:{getattr(coma, 'id', '')}"
-    n = 0
-    for entry in coll:
-        if str(getattr(entry, "parent_kind", "") or "") != "coma":
-            continue
-        if str(getattr(entry, "parent_key", "") or "") != target_parent_key:
-            continue
-        raster_id = str(getattr(entry, "id", "") or "")
-        if not raster_id:
-            continue
-        mat = bpy.data.materials.get(raster_material_name(raster_id))
-        if mat is None:
-            continue
-        if update_raster_material_mask_bbox(mat, bbox):
-            n += 1
-    return n
-
-
-def update_all_raster_masks(scene, work) -> int:
-    """全 raster material の mask bbox を再計算 (load_post / mirror 経路から呼ぶ)."""
-    if scene is None or work is None:
-        return 0
-    coll = _raster_collection(scene)
-    if coll is None:
-        return 0
-    n = 0
-    for entry in coll:
-        page, coma = _resolve_coma_for_raster_entry(scene, work, entry)
-        raster_id = str(getattr(entry, "id", "") or "")
-        if not raster_id:
-            continue
-        mat = bpy.data.materials.get(raster_material_name(raster_id))
-        if mat is None:
-            continue
-        if coma is None:
-            # コマ配下でない (ページ直下 / outside) raster はマスク無効化
-            update_raster_material_mask_bbox(mat, None)
-        else:
-            bbox = _coma_world_bbox_m(work, scene, page, coma)
-            update_raster_material_mask_bbox(mat, bbox)
-        n += 1
-    return n
 
 
 def ensure_raster_material(entry, image):
@@ -774,10 +511,10 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
             parent_key=stamp_parent_key,
             scene=context.scene,
         )
-        # 2026-05-03: raster の Boolean マスクは廃止 (平面 volume 交差不能 +
-        # Texture Paint mode で modifier 付き mesh だと Blender がクラッシュ)。
-        # ここでは念のため既存 modifier だけ掃除する。 shader / 別経路での
-        # マスク化は Phase 2 で実装予定。
+        # コマ/ページマスクを Boolean Intersect で適用. 2026-05-04 案 1:
+        # raster MESH の Boolean target は専用 coma_mask Object (Solidify 厚み
+        # 10m + hide_viewport, coma_plane.py で管理) で、 平面 volume 交差問題
+        # と OPAQUE 上書き問題の両方を解消している。
         try:
             from ..utils import mask_apply
 
@@ -794,18 +531,6 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
             _los.assign_per_page_z_ranks(context.scene, work)
         except Exception:  # noqa: BLE001
             _logger.exception("raster: assign_per_page_z_ranks failed")
-        # shader 側 coma 範囲マスクの初期値をセット (Boolean 廃止の代替)
-        try:
-            page_for_mask, coma_for_mask = _resolve_coma_for_raster_entry(
-                context.scene, work, entry
-            )
-            if coma_for_mask is not None:
-                bbox = _coma_world_bbox_m(work, context.scene, page_for_mask, coma_for_mask)
-                update_raster_material_mask_bbox(mat, bbox)
-            else:
-                update_raster_material_mask_bbox(mat, None)
-        except Exception:  # noqa: BLE001
-            _logger.exception("raster: mask bbox init failed")
     except Exception:  # noqa: BLE001
         _logger.exception("raster: stamp_layer_object failed")
     return obj

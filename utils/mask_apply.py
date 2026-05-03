@@ -33,15 +33,18 @@ MOD_NAME_PAGE_MASK = "BName Page Mask"
 
 
 def _resolve_coma_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
-    """parent_key (例 "p0001:c01") からコマ平面 Object を取得.
+    """parent_key (例 "p0001:c01") からコマ Boolean マスク用 Object を取得.
 
-    コマ Collection 直下の ``coma_plane_<page>_<coma>`` Mesh が、 ビューポート
-    背景色とマスク Boolean reference を兼用する。
+    2026-05-04: 旧仕様では coma_plane (背景色表示と兼用) を Boolean reference
+    にしていたが、 coma_plane を Solidify すると raster と同 Z で OPAQUE 白が
+    手前に出て描画を覆い隠す問題があり、 専用の coma_mask Object に分離した。
+    coma_mask は hide_viewport=True + Solidify 厚み 10m で全 raster Z 範囲を
+    包含する volume を持つ (coma_plane.py 参照)。
     """
     if not parent_key or ":" not in parent_key:
         return None
     page_id, coma_id = parent_key.split(":", 1)
-    return cp.find_coma_plane_object(page_id, coma_id)
+    return cp.find_coma_mask_object(page_id, coma_id)
 
 
 def _resolve_page_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
@@ -371,19 +374,13 @@ def apply_mask_to_layer_object(obj: bpy.types.Object) -> None:
     page_target = _resolve_page_mask_object(parent_key)
 
     obj_type = getattr(obj, "type", "")
-    kind = str(obj.get(on.PROP_KIND, "") or "")
     if obj_type == "MESH":
-        # 2026-05-03: raster は Boolean Intersect だと平面同士の volume 交差
-        # が成立せず evaluated mesh が空 (描画不能) になる。 さらに Texture
-        # Paint mode で modifier 付き mesh に塗ると Blender がクラッシュする
-        # 既知問題もあるため、 raster は modifier ベースのマスクを完全に外し、
-        # shader 側 (or 別経路) でマスクする方針に切替。 当面は raster だけ
-        # 例外扱いし、 image_plane / balloon / text_plane 等は従来通り
-        # Boolean Intersect を使う。
-        if kind == "raster":
-            _remove_modifier_if_present(obj, MOD_NAME_COMA_MASK)
-            _remove_modifier_if_present(obj, MOD_NAME_PAGE_MASK)
-        elif ":" in parent_key:
+        # 2026-05-04: raster を含む全 Mesh レイヤーで Boolean Intersect を使う。
+        # raster の Boolean target は専用の coma_mask Object (Solidify 厚み 10m,
+        # hide_viewport) で、 平面 volume 交差問題と OPAQUE 上書き問題を同時に
+        # 解消している。 raster 自身に Solidify を入れる必要が無いので Texture
+        # Paint mode のクラッシュ条件にも該当しない。
+        if ":" in parent_key:
             # コマ配下: コマスマスクのみ適用
             if coma_target is not None:
                 _ensure_boolean_intersect_modifier(obj, MOD_NAME_COMA_MASK, coma_target)

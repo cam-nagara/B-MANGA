@@ -34,8 +34,29 @@ COMA_PLANE_NAME_PREFIX = "coma_plane_"
 COMA_PLANE_MESH_PREFIX = "coma_plane_mesh_"
 COMA_PLANE_MATERIAL_PREFIX = "BName_ComaPlane_"
 
+# coma_mask: raster Mesh 用 Boolean Intersect の参照専用 Object.
+# coma_plane (背景色表示用、 OPAQUE) とは別 Object として持つ理由:
+# - coma_plane に Solidify を入れると raster と同 Z 配置で OPAQUE 白が
+#   raster より手前に出て描画を覆い隠してしまう (実機確認済み)
+# - coma_plane 自体に Boolean reference を兼ねさせると、 paint preview の
+#   shader bypass 経路で Texture Paint mode 中に範囲外がはみ出る
+# coma_mask は Solidify 厚み 10m で全 raster Z 範囲をカバーする巨大 volume と
+# し、 hide_viewport で viewport 表示は完全に消す (Boolean modifier の
+# evaluation のみに使う)。
+COMA_MASK_NAME_PREFIX = "coma_mask_"
+COMA_MASK_MESH_PREFIX = "coma_mask_mesh_"
+COMA_MASK_SOLIDIFY_NAME = "BName Coma Mask Solidify"
+# raster の Object.location.z は assign_per_page_z_ranks で page rank * 0.1
+# (= 0.1, 0.2, 0.3, ...) になる。 巨大 Z 範囲をカバーするため Solidify は
+# 厚み 10m, offset 0 で volume = [Z-5, Z+5] とする。 raster は数 Z 単位なので
+# 確実に内部に入る。
+COMA_MASK_SOLIDIFY_THICKNESS = 10.0
+COMA_MASK_Z_M = 0.0  # 巨大 Solidify 厚みで全 raster Z をカバーするため 0 で OK
+
 PROP_COMA_PLANE_KIND = "bname_coma_plane_kind"  # "coma_plane"
 PROP_COMA_PLANE_OWNER_ID = "bname_coma_plane_owner_id"  # "<page_id>:<coma_id>"
+PROP_COMA_MASK_KIND = "bname_coma_mask_kind"  # "coma_mask"
+PROP_COMA_MASK_OWNER_ID = "bname_coma_mask_owner_id"
 
 # raster Mesh の Z (0.1) と完全に同一の Z に置く。 平行 plane 同士の
 # Boolean Intersect (FLOAT solver) は立体交差が定義できず空 mesh を返す
@@ -192,6 +213,167 @@ def find_coma_plane_object(page_id: str, coma_id: str) -> Optional[bpy.types.Obj
     return bpy.data.objects.get(f"{COMA_PLANE_NAME_PREFIX}{page_id}_{coma_id}")
 
 
+def find_coma_mask_object(page_id: str, coma_id: str) -> Optional[bpy.types.Object]:
+    if not page_id or not coma_id:
+        return None
+    return bpy.data.objects.get(f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}")
+
+
+def _ensure_coma_mask_solidify(obj: bpy.types.Object) -> None:
+    """coma_mask Object に Solidify modifier を ensure (厚み 10m / offset 0).
+
+    Boolean Intersect FLOAT solver は volume 同士の交差を計算するため、 平面
+    (zero volume) では空 mesh を返す。 coma_mask に厚みを持たせて raster の
+    Z 範囲を完全包含する volume を与えることで Boolean が正しく評価される。
+    """
+    sol = obj.modifiers.get(COMA_MASK_SOLIDIFY_NAME)
+    if sol is None:
+        try:
+            sol = obj.modifiers.new(name=COMA_MASK_SOLIDIFY_NAME, type="SOLIDIFY")
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_mask: solidify create failed")
+            return
+    try:
+        sol.thickness = COMA_MASK_SOLIDIFY_THICKNESS
+        sol.offset = 0.0
+        sol.use_even_offset = False
+        sol.use_quality_normals = False
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_mask: solidify config failed")
+
+
+def ensure_coma_mask(
+    scene: bpy.types.Scene,
+    work,
+    page,
+    coma,
+) -> Optional[bpy.types.Object]:
+    """coma_mask Object (Boolean reference 専用) を ensure.
+
+    coma_plane と同じ geometry を別 Object に複製し、 Solidify で厚みを
+    与えて hide_viewport で表示を消す。 raster の Boolean Intersect は
+    この Object を target にする (mask_apply 経由)。
+    """
+    if scene is None or work is None or page is None or coma is None:
+        return None
+    page_id = str(getattr(page, "id", "") or "")
+    coma_id = str(getattr(coma, "id", "") or "")
+    if not page_id or not coma_id:
+        return None
+    owner_id = f"{page_id}:{coma_id}"
+    mesh_name = f"{COMA_MASK_MESH_PREFIX}{page_id}_{coma_id}"
+    obj_name = f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}"
+
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    _build_mesh_geometry(mesh, coma)
+
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    elif obj.data is not mesh:
+        obj.data = mesh
+
+    obj[PROP_COMA_MASK_KIND] = "coma_mask"
+    obj[PROP_COMA_MASK_OWNER_ID] = owner_id
+    obj[on.PROP_MANAGED] = False  # B-Name Outliner mirror 対象外
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.hide_select = True
+
+    _ensure_coma_mask_solidify(obj)
+    # location は coma_plane と同じ XY を使うが Z は raster Z 範囲全体を包含
+    # するために巨大厚み Solidify と組合せて Z=0 ベースとする。 XY だけ
+    # _set_obj_location 経由で計算してから Z を上書き。
+    _set_obj_location(obj, scene, work, page, coma)
+    try:
+        obj.location.z = COMA_MASK_Z_M
+    except Exception:  # noqa: BLE001
+        pass
+
+    # コマ Collection 直下に置く
+    coma_title = str(getattr(coma, "title", "") or coma_id)
+    coma_coll = on.find_collection_by_bname_id(owner_id, kind="coma")
+    if coma_coll is None:
+        coma_coll = om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
+    if coma_coll is not None and not any(o is obj for o in coma_coll.objects):
+        try:
+            coma_coll.objects.link(obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("link coma_mask to coma collection failed")
+    for c in tuple(obj.users_collection):
+        if c is coma_coll:
+            continue
+        try:
+            c.objects.unlink(obj)
+        except Exception:  # noqa: BLE001
+            pass
+    return obj
+
+
+def update_coma_mask_geometry(
+    scene: Optional[bpy.types.Scene],
+    work,
+    page,
+    coma,
+) -> bool:
+    """coma_mask Mesh / location を更新 (coma 形状変更時に呼ぶ)."""
+    if page is None or coma is None:
+        return False
+    page_id = str(getattr(page, "id", "") or "")
+    coma_id = str(getattr(coma, "id", "") or "")
+    if not page_id or not coma_id:
+        return False
+    mesh_name = f"{COMA_MASK_MESH_PREFIX}{page_id}_{coma_id}"
+    obj_name = f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}"
+    mesh = bpy.data.meshes.get(mesh_name)
+    obj = bpy.data.objects.get(obj_name)
+    if mesh is None or obj is None:
+        return False
+    try:
+        _build_mesh_geometry(mesh, coma)
+    except Exception:  # noqa: BLE001
+        _logger.exception("update_coma_mask_geometry: mesh rebuild failed (%s)", mesh_name)
+        return False
+    if scene is not None and work is not None:
+        _set_obj_location(obj, scene, work, page, coma)
+        try:
+            obj.location.z = COMA_MASK_Z_M
+        except Exception:  # noqa: BLE001
+            pass
+    return True
+
+
+def remove_coma_mask(page_id: str, coma_id: str) -> bool:
+    """指定 (page_id, coma_id) の coma_mask Object/Mesh を削除."""
+    if not page_id or not coma_id:
+        return False
+    obj_name = f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma_id}"
+    mesh_name = f"{COMA_MASK_MESH_PREFIX}{page_id}_{coma_id}"
+    removed = False
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None:
+        mesh_data = obj.data
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed = True
+        except Exception:  # noqa: BLE001
+            pass
+        if mesh_data is not None and mesh_data.users == 0:
+            try:
+                bpy.data.meshes.remove(mesh_data)
+            except Exception:  # noqa: BLE001
+                pass
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is not None and mesh.users == 0:
+        try:
+            bpy.data.meshes.remove(mesh)
+        except Exception:  # noqa: BLE001
+            pass
+    return removed
+
+
 def _find_page_and_coma(work, target_coma):
     """``target_coma`` PropertyGroup の親ページを ``as_pointer()`` で探す.
 
@@ -340,13 +522,8 @@ def update_coma_plane_geometry(
         return False
     if scene is not None and work is not None:
         _set_obj_location(obj, scene, work, page, coma)
-        # 同コマ配下の raster material の shader マスク bbox も追従更新
-        try:
-            from ..operators import raster_layer_op as _rop
-
-            _rop.update_raster_mask_for_coma(scene, work, page, coma)
-        except Exception:  # noqa: BLE001
-            _logger.exception("update_coma_plane_geometry: raster mask update failed")
+    # coma_mask (Boolean reference 専用) の geometry も同期更新
+    update_coma_mask_geometry(scene, work, page, coma)
     return True
 
 
@@ -397,7 +574,7 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
 
 
 def regenerate_all_coma_planes(scene: bpy.types.Scene, work) -> int:
-    """全コマの coma_plane を ensure し、 orphan を掃除.
+    """全コマの coma_plane / coma_mask を ensure し、 orphan を掃除.
 
     coma 形状 / 親階層が大きく変わったあと (work_open / load_post / knife_cut /
     repair) に呼ぶ。 戻り値は ensure 件数。
@@ -414,11 +591,29 @@ def regenerate_all_coma_planes(scene: bpy.types.Scene, work) -> int:
             if ensure_coma_plane(scene, work, page, coma) is not None:
                 n += 1
                 valid_owner_ids.add(owner_id)
-    # orphan 掃除
+            # coma_mask (Boolean 用) も並行 ensure
+            ensure_coma_mask(scene, work, page, coma)
+    # orphan 掃除 (coma_plane)
     for obj in list(bpy.data.objects):
         if obj.get(PROP_COMA_PLANE_KIND) != "coma_plane":
             continue
         owner = str(obj.get(PROP_COMA_PLANE_OWNER_ID, "") or "")
+        if owner not in valid_owner_ids:
+            mesh_data = obj.data
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+            if mesh_data is not None and mesh_data.users == 0:
+                try:
+                    bpy.data.meshes.remove(mesh_data)
+                except Exception:  # noqa: BLE001
+                    pass
+    # orphan 掃除 (coma_mask)
+    for obj in list(bpy.data.objects):
+        if obj.get(PROP_COMA_MASK_KIND) != "coma_mask":
+            continue
+        owner = str(obj.get(PROP_COMA_MASK_OWNER_ID, "") or "")
         if owner not in valid_owner_ids:
             mesh_data = obj.data
             try:
@@ -443,7 +638,12 @@ def regenerate_all_coma_planes(scene: bpy.types.Scene, work) -> int:
 
 
 def remove_coma_plane(page_id: str, coma_id: str) -> bool:
-    """指定 (page_id, coma_id) の coma_plane Object/Mesh/Material を削除."""
+    """指定 (page_id, coma_id) の coma_plane Object/Mesh/Material を削除.
+
+    並行して coma_mask Object/Mesh も削除する。
+    """
+    # coma_mask も同時に削除
+    remove_coma_mask(page_id, coma_id)
     if not page_id or not coma_id:
         return False
     obj_name = f"{COMA_PLANE_NAME_PREFIX}{page_id}_{coma_id}"
