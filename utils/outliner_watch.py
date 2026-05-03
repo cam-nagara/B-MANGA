@@ -245,6 +245,42 @@ def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     return True
 
 
+def _writeback_outliner_changes(scene) -> int:
+    """Outliner で D&D された Object の Collection 移動を実 entry に書戻し.
+
+    detect_outliner_changes が見つけた差分を kind ごとに対応する write-back
+    関数に振分ける。 各 write-back は parent_kind/parent_key 更新と同時に
+    mask_apply.apply_mask_to_layer_object を呼ぶため、 Boolean Intersect
+    Modifier (target=coma_mask) も自動追従する。
+
+    Returns: 書戻した件数。
+    """
+    if scene is None:
+        return 0
+    changes = los.detect_outliner_changes(scene)
+    if not changes:
+        return 0
+    n = 0
+    for obj, new_kind, new_key in changes:
+        kind = str(obj.get("bname_kind", "") or "")
+        ok = False
+        if kind == "raster":
+            ok = _writeback_raster_parent(scene, obj, new_kind, new_key)
+        elif kind in {"effect", "effect_legacy", "gp"}:
+            ok = _writeback_effect_parent(scene, obj, new_kind, new_key)
+        elif kind in {"image", "text"}:
+            ok = _writeback_empty_layer_parent(scene, obj, kind, new_kind, new_key)
+        else:
+            _logger.info(
+                "outliner watch: %s (kind=%s) → %s/%s "
+                "(write-back 未対応 kind)",
+                obj.name, kind, new_kind, new_key,
+            )
+        if ok:
+            n += 1
+    return n
+
+
 def _scan_once() -> float | None:
     """1 回分の scan。差分があれば実 entry へ反映する.
 
@@ -274,22 +310,7 @@ def _scan_once() -> float | None:
                 except Exception:  # noqa: BLE001
                     _logger.exception("outliner watch: mirror failed")
             _LAST_ENTRY_COUNTS = current_counts
-        changes = los.detect_outliner_changes(scene)
-        if changes:
-            for obj, new_kind, new_key in changes:
-                kind = str(obj.get("bname_kind", "") or "")
-                if kind == "raster":
-                    _writeback_raster_parent(scene, obj, new_kind, new_key)
-                elif kind in {"effect", "effect_legacy", "gp"}:
-                    _writeback_effect_parent(scene, obj, new_kind, new_key)
-                elif kind in {"image", "text"}:
-                    _writeback_empty_layer_parent(scene, obj, kind, new_kind, new_key)
-                else:
-                    _logger.info(
-                        "outliner watch: %s (kind=%s) → %s/%s "
-                        "(write-back 未対応 kind)",
-                        obj.name, kind, new_kind, new_key,
-                    )
+        _writeback_outliner_changes(scene)
         # Empty Object (image/text) の location 変化を entry.x_mm/y_mm に
         # 書戻し (オーバーレイ描画位置に連動)
         try:
@@ -323,11 +344,18 @@ def _on_load_post(_filepath: str) -> None:
 
 @persistent
 def _on_depsgraph_update_post(scene, depsgraph) -> None:
-    """Object.location 変化を即時 entry.x_mm/y_mm へ反映する.
+    """depsgraph 更新ごとに 2 系統の即時同期を行う.
 
-    Empty (image / text) を 3D ビューで G で動かしたとき、5 秒間隔の timer
-    scan を待たずにオーバーレイ描画位置を即時更新するため。
-    再帰抑止: ``los.suppress_sync()`` ガードと entry 同値チェックで.
+    1. Empty (image / text) を 3D ビューで G で動かしたとき、 5 秒間隔の
+       timer scan を待たずにオーバーレイ描画位置を即時更新する。
+    2. Outliner で Object を別 Collection (例: コマ Collection) にドラッグ
+       したとき、 _writeback_outliner_changes 経由で parent_key 書戻し +
+       mask_apply (Boolean Intersect Modifier 自動付与/付替え) を即時実行する。
+       これにより「コマ Collection に Object を入れたらコママスクが即時に
+       かかる」 操作感を実現する。
+
+    再帰抑止: ``los.suppress_sync()`` ガードと entry 同値チェックで重複処理を
+    防ぐ。
     """
     if los.is_sync_in_progress():
         return
@@ -350,7 +378,13 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
                 continue
             elo.sync_entry_position_from_object(scene, real_obj)
     except Exception:  # noqa: BLE001
-        _logger.exception("depsgraph_update_post sync failed")
+        _logger.exception("depsgraph_update_post empty sync failed")
+
+    # Collection 移動の即時検出 → mask 自動追従
+    try:
+        _writeback_outliner_changes(scene)
+    except Exception:  # noqa: BLE001
+        _logger.exception("depsgraph_update_post outliner writeback failed")
 
 
 def schedule_watch_timer() -> None:
