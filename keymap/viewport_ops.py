@@ -860,7 +860,15 @@ class BNAME_OT_view_zoom_step(Operator):
 
 
 class BNAME_OT_view_layer_pick(Operator):
-    """Ctrl+Shift+クリックで作画レイヤーを選択 (簡易: 直下のコマを active に)."""
+    """Ctrl+Shift+クリックで viewport 上の Object またはコマを選択.
+
+    優先順位:
+        1. クリック位置で raycast → B-Name 管理 Object (raster / GP / image
+           plane / balloon / text / effect 等) が hit したら、 その Object を
+           viewport で選択 (Outliner でもハイライト) し、 同コマも active に
+        2. raycast hit なし (or 非管理) → 従来のコマ矩形判定でコマを active に
+           (Outliner でもコマ Collection を選択)
+    """
 
     bl_idname = "bname.view_layer_pick"
     bl_label = "B-Name レイヤー選択"
@@ -869,23 +877,99 @@ class BNAME_OT_view_layer_pick(Operator):
     def invoke(self, context, event):
         print(f"[B-Name][OP] view_layer_pick.invoke event.type={event.type}"
               f" shift={event.shift} ctrl={event.ctrl}")
-        from ..core.work import get_active_page
+        from ..core.work import get_active_page, get_work
         from ..utils.geom import m_to_mm
+        from ..utils import active_collection_sync as _acs
+        from ..utils import active_target as _at
+        from ..utils import object_naming as _on
 
-        page = get_active_page(context)
-        if page is None:
-            return {"CANCELLED"}
         region = context.region
         rv3d = context.region_data
         if region is None or rv3d is None:
             return {"CANCELLED"}
 
         try:
-            from bpy_extras.view3d_utils import region_2d_to_location_3d
+            from bpy_extras.view3d_utils import (
+                region_2d_to_location_3d,
+                region_2d_to_origin_3d,
+                region_2d_to_vector_3d,
+            )
         except ImportError:
             return {"CANCELLED"}
 
         coord = (event.mouse_region_x, event.mouse_region_y)
+
+        # 1. Object raycast を試行 (B-Name 管理 Object なら直接選択)
+        try:
+            ray_origin = region_2d_to_origin_3d(region, rv3d, coord)
+            ray_dir = region_2d_to_vector_3d(region, rv3d, coord)
+            depsgraph = context.evaluated_depsgraph_get()
+            hit, _loc, _nor, _idx, hit_obj, _mat = context.scene.ray_cast(
+                depsgraph, ray_origin, ray_dir
+            )
+            if hit and hit_obj is not None and _on.is_managed(hit_obj):
+                view_layer = context.view_layer
+                # 既存選択を解除して hit Object のみを選択
+                try:
+                    for selected in tuple(context.selected_objects):
+                        try:
+                            selected.select_set(False)
+                        except Exception:  # noqa: BLE001
+                            pass
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    hit_obj.select_set(True)
+                    view_layer.objects.active = hit_obj
+                except Exception:  # noqa: BLE001
+                    pass
+                # 該当 Object の parent_key から page/coma を解決し B-Name &
+                # Outliner Collection も同期
+                parent_key = str(hit_obj.get(_on.PROP_PARENT_KEY, "") or "")
+                page_id = ""
+                coma_id = ""
+                if parent_key:
+                    if ":" in parent_key:
+                        page_id, coma_id = parent_key.split(":", 1)
+                    elif parent_key.startswith("p") or parent_key.startswith("P"):
+                        page_id = parent_key
+                if page_id:
+                    work = get_work(context)
+                    if work is not None:
+                        # focus_active_coma / focus_active_page で B-Name 側
+                        # active を確実に切替えてから Outliner 同期
+                        page_index = -1
+                        for i, p in enumerate(getattr(work, "pages", []) or []):
+                            if str(getattr(p, "id", "") or "") == page_id:
+                                page_index = i
+                                break
+                        if page_index >= 0:
+                            if coma_id:
+                                page = work.pages[page_index]
+                                coma_index = -1
+                                for j, c in enumerate(getattr(page, "comas", []) or []):
+                                    if str(getattr(c, "id", "") or "") == coma_id:
+                                        coma_index = j
+                                        break
+                                if coma_index >= 0:
+                                    _at.focus_active_coma(
+                                        context.scene, work, page_index, coma_index
+                                    )
+                                else:
+                                    _at.focus_active_page(context.scene, work, page_index)
+                            else:
+                                _at.focus_active_page(context.scene, work, page_index)
+                        else:
+                            # page index 不明の場合は Outliner 直接呼出にフォールバック
+                            _acs.request_active_coma(context, page_id, coma_id)
+                return {"FINISHED"}
+        except Exception:  # noqa: BLE001
+            _logger.exception("view_layer_pick: object raycast failed")
+
+        # 2. コマ矩形判定 (raycast hit なし or 非管理 Object)
+        page = get_active_page(context)
+        if page is None:
+            return {"CANCELLED"}
         world = region_2d_to_location_3d(region, rv3d, coord, (0.0, 0.0, 0.0))
         x_mm = m_to_mm(world.x)
         y_mm = m_to_mm(world.y)
@@ -900,7 +984,17 @@ class BNAME_OT_view_layer_pick(Operator):
                 continue
             for orig_idx, orig in enumerate(page.comas):
                 if orig.coma_id == entry.coma_id:
-                    page.active_coma_index = orig_idx
+                    work = get_work(context)
+                    if work is not None:
+                        page_index = int(getattr(work, "active_page_index", -1))
+                        if page_index >= 0:
+                            _at.focus_active_coma(
+                                context.scene, work, page_index, orig_idx
+                            )
+                        else:
+                            page.active_coma_index = orig_idx
+                    else:
+                        page.active_coma_index = orig_idx
                     return {"FINISHED"}
         return {"CANCELLED"}
 

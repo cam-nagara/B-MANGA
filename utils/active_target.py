@@ -61,6 +61,59 @@ def focus_active_coma(scene, work, page_index: int, coma_index: int) -> None:
                 scene.bname_active_layer_kind = "coma"
         except Exception:  # noqa: BLE001
             pass
+    # Outliner の active_layer_collection も即同期 (depsgraph_update_post を
+    # 待たずに viewport クリック直後にハイライトを更新する)。
+    try:
+        from . import active_collection_sync as _acs
+
+        page_id = str(getattr(page, "id", "") or "")
+        if page_id and coma_id:
+            _acs.request_active_coma(bpy.context, page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def focus_active_page(scene, work, page_index: int) -> None:
+    """ページ直下を active 階層にする (コマ未選択状態).
+
+    ``focus_active_coma`` のページ版。 Outliner も page Collection に同期する。
+    """
+    if work is None:
+        return
+    pages = list(getattr(work, "pages", []) or [])
+    if not (0 <= page_index < len(pages)):
+        return
+    try:
+        if int(getattr(work, "active_page_index", -1)) != page_index:
+            work.active_page_index = page_index
+    except Exception:  # noqa: BLE001
+        pass
+    page = pages[page_index]
+    try:
+        if int(getattr(page, "active_coma_index", -1)) != -1:
+            page.active_coma_index = -1
+    except Exception:  # noqa: BLE001
+        pass
+    if scene is not None:
+        try:
+            if str(getattr(scene, "bname_current_coma_id", "") or "") != "":
+                scene.bname_current_coma_id = ""
+        except Exception:  # noqa: BLE001
+            pass
+        if hasattr(scene, "bname_active_layer_kind"):
+            try:
+                if str(getattr(scene, "bname_active_layer_kind", "") or "") != "page":
+                    scene.bname_active_layer_kind = "page"
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        from . import active_collection_sync as _acs
+
+        page_id = str(getattr(page, "id", "") or "")
+        if page_id:
+            _acs.request_active_coma(bpy.context, page_id, "")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def resolve_active_target(
