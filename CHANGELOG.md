@@ -3,6 +3,46 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-03 — ▲ ハンドル: hover ハイライト + 横長プロポーション化
+
+### 改善内容
+- ▲ ハンドルの形状を「縦長で尖った三角」から「横長で squat な三角」に変更
+  (apex 0.7s 突き出し + base ±1.0s = 全幅 2.0s × 高さ 1.0s)。 視認性向上 +
+  クリック対象が把握しやすくなる
+- カーソルが ▲ にホバーすると黄色寄り (1.0, 0.85, 0.2, 1.0) でハイライト
+  表示。 クリック判定半径 (HANDLE_HIT_RADIUS_PX = 28px) と一致させ、
+  「光って見える ▲ をクリックすれば動く」 UI 一貫性を確保
+
+### 実装
+- ``operators/coma_edge_style_op.register``:
+  - WM プロパティ ``bname_overlay_pointer_x`` / ``_y`` / ``_valid`` を追加
+    (region 相対 px とフラグ)
+- ``utils/edge_selection`` に hover カーソル管理ヘルパを追加:
+  - ``update_overlay_pointer(context, region, event)`` — modal の MOUSEMOVE
+    から呼ぶ
+  - ``clear_overlay_pointer(context)`` — modal 終了時に invalid 化
+  - ``get_overlay_pointer(context)`` — draw 側が読む
+- ``operators/object_tool_op`` / ``coma_knife_cut_op`` /
+  ``coma_edge_move_op``:
+  - 各 modal の MOUSEMOVE で ``update_overlay_pointer`` を呼び region.tag_redraw
+  - ``finish_from_external`` で ``clear_overlay_pointer``
+- ``ui/overlay_coma_selection``:
+  - ``_draw_edge`` / ``_draw_edge_handles_only`` に ``pointer`` 引数追加
+  - ``_is_handle_hovered(handle_px, pointer)`` で半径判定
+  - ``_draw_triangle_handle`` に ``highlighted`` キーワード追加
+  - ▲ 形状を横長プロポーションに変更
+- ``operators/coma_edge_move_op``:
+  - ``COLOR_HANDLE_HIGHLIGHT`` 定数を追加
+  - ``_draw_triangle_handle`` に ``highlighted`` 引数追加 + 横長プロポーション化
+  - ``_draw_callback`` で WM から hover カーソルを取得し ``_is_handle_hovered_modal``
+    で判定して highlight フラグを伝搬
+
+### 検証 (Blender 5.1.1 実機)
+- ``test/blender_coma_mask_sync_check.py`` (``BNAME_COMA_PLANE_OK``) 通過
+- ▲ の hover ハイライトと形状変更は UI のため自動テスト不可 (実機で
+  オブジェクトツール / knife_cut / 枠線選択ツール どれでも ▲ にカーソルを
+  乗せると黄色く光ることをご確認ください)
+
 ## 2026-05-03 — 枠線カットツール (knife_cut) で ▲ ハンドルが反応しない真因を修正
 
 ### 症状

@@ -616,6 +616,7 @@ class BNAME_OT_coma_knife_cut(Operator):
             return
         self._externally_finished = True
         self._cleanup(context)
+        edge_selection.clear_overlay_pointer(context)
         coma_modal_state.clear_active("knife_cut", self, context)
 
     def modal(self, context, event):
@@ -692,6 +693,13 @@ class BNAME_OT_coma_knife_cut(Operator):
             return {"FINISHED", "PASS_THROUGH"}
 
         if event.type == "MOUSEMOVE":
+            # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録
+            if self._region is not None:
+                edge_selection.update_overlay_pointer(context, self._region, event)
+                try:
+                    self._region.tag_redraw()
+                except Exception:  # noqa: BLE001
+                    pass
             if not self._dragging and self._is_over_navigation_gizmo(event):
                 return {"PASS_THROUGH"}
             if not self._dragging and not self._is_inside_region(event):

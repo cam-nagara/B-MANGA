@@ -8,13 +8,18 @@ import gpu
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 
-from ..utils import geom, object_selection, page_browser, page_grid, viewport_colors
+from ..utils import edge_selection, geom, object_selection, page_browser, page_grid, viewport_colors
 from . import overlay_visibility
 
 _LINE_WIDTH_PX = 4.0
 _VERTEX_MARKER_SIZE_PX = 6.0
 _HANDLE_SIZE_PX = 20.0
 _HANDLE_OFFSET_PX = 21.0
+# hover 中の ▲ 用ハイライト色 (黄色寄り)
+_COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
+# hover 判定半径 (px)。 coma_edge_move_op.HANDLE_HIT_RADIUS_PX (28.0) と同じに
+# 揃えてクリック判定との一貫性を保つ
+_HOVER_RADIUS_PX = 28.0
 
 
 def draw(context, work, region, rv3d) -> None:
@@ -39,6 +44,7 @@ def draw(context, work, region, rv3d) -> None:
     wm = getattr(context, "window_manager", None)
     if wm is None:
         return
+    pointer = edge_selection.get_overlay_pointer(context)
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     for page_index, page, _coma_index, panel in selected_refs:
         if not overlay_visibility.page_visible(page) or not overlay_visibility.coma_visible(panel):
@@ -49,7 +55,7 @@ def draw(context, work, region, rv3d) -> None:
         ox, oy = _page_offset(context, work, page_index)
         world_poly = [(x + ox, y + oy) for x, y in poly]
         for edge_index in range(len(world_poly)):
-            _draw_edge(shader, region, rv3d, world_poly, edge_index)
+            _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
     if not active_coma_selection:
         return
     kind = getattr(wm, "bname_edge_select_kind", "none")
@@ -76,23 +82,23 @@ def draw(context, work, region, rv3d) -> None:
     if kind == "edge":
         edge_index = int(getattr(wm, "bname_edge_select_edge", -1))
         # 選択辺だけハイライト + ▲ ハンドル
-        _draw_edge(shader, region, rv3d, world_poly, edge_index)
+        _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
         # 他 3 辺の ▲ ハンドルもクリック可能なので、 マーカーだけ描画する
         # (辺ハイライトは行わない、 ▲ のみ)。 これにより kind="edge" のまま
         # でも連続して別辺の ▲ をクリックできる UI を提供する。
         for other in range(len(world_poly)):
             if other == edge_index:
                 continue
-            _draw_edge_handles_only(shader, region, rv3d, world_poly, other)
+            _draw_edge_handles_only(shader, region, rv3d, world_poly, other, pointer=pointer)
     elif kind == "border":
         for edge_index in range(len(world_poly)):
-            _draw_edge(shader, region, rv3d, world_poly, edge_index)
+            _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
     elif kind == "vertex":
         vertex_index = int(getattr(wm, "bname_edge_select_vertex", -1))
         _draw_vertex(shader, region, rv3d, world_poly, vertex_index)
         # vertex 選択中も全辺の ▲ を表示 (連続 ▲ クリック対応)
         for edge_index in range(len(world_poly)):
-            _draw_edge_handles_only(shader, region, rv3d, world_poly, edge_index)
+            _draw_edge_handles_only(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
 
 
 def _page_offset(context, work, page_index: int) -> tuple[float, float]:
@@ -139,7 +145,15 @@ def _world_to_region(region, rv3d, point: tuple[float, float]) -> tuple[float, f
     return float(coord.x), float(coord.y)
 
 
-def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int) -> None:
+def _is_handle_hovered(handle_px: tuple[float, float], pointer: tuple[int, int] | None) -> bool:
+    if pointer is None or handle_px is None:
+        return False
+    dx = handle_px[0] - pointer[0]
+    dy = handle_px[1] - pointer[1]
+    return (dx * dx + dy * dy) <= (_HOVER_RADIUS_PX * _HOVER_RADIUS_PX)
+
+
+def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int, *, pointer=None) -> None:
     if len(poly) < 2 or not (0 <= edge_index < len(poly)):
         return
     a = poly[edge_index]
@@ -162,11 +176,15 @@ def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index
     _draw_square_marker(shader, ap)
     _draw_square_marker(shader, bp)
     for handle, direction_idx in _handle_centers(ap, bp):
-        _draw_triangle_handle(shader, handle, ap, bp, direction_idx)
+        _draw_triangle_handle(
+            shader, handle, ap, bp, direction_idx,
+            highlighted=_is_handle_hovered(handle, pointer),
+        )
 
 
 def _draw_edge_handles_only(
-    shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int
+    shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int,
+    *, pointer=None,
 ) -> None:
     """指定辺の ▲ ハンドルだけ描画 (辺ハイライトや頂点マーカーは描かない).
 
@@ -183,7 +201,10 @@ def _draw_edge_handles_only(
     if ap is None or bp is None:
         return
     for handle, direction_idx in _handle_centers(ap, bp):
-        _draw_triangle_handle(shader, handle, ap, bp, direction_idx)
+        _draw_triangle_handle(
+            shader, handle, ap, bp, direction_idx,
+            highlighted=_is_handle_hovered(handle, pointer),
+        )
 
 
 def _draw_vertex(shader, region, rv3d, poly: list[tuple[float, float]], vertex_index: int) -> None:
@@ -219,7 +240,10 @@ def _draw_triangle_handle(
     edge_a_px: tuple[float, float],
     edge_b_px: tuple[float, float],
     direction_idx: int,
+    *,
+    highlighted: bool = False,
 ) -> None:
+    """▲ ハンドル描画 (横長プロポーション + hover ハイライト対応)."""
     cx, cy = center
     ex = edge_b_px[0] - edge_a_px[0]
     ey = edge_b_px[1] - edge_a_px[1]
@@ -233,12 +257,16 @@ def _draw_triangle_handle(
     tx = ex / length
     ty = ey / length
     size = _HANDLE_SIZE_PX
-    apex = (cx + nx * size, cy + ny * size)
-    base_l = (cx - tx * size * 0.5 - nx * size * 0.3, cy - ty * size * 0.5 - ny * size * 0.3)
-    base_r = (cx + tx * size * 0.5 - nx * size * 0.3, cy + ty * size * 0.5 - ny * size * 0.3)
+    # 横長プロポーション: 全幅 = 2.0s, 高さ = 1.0s (apex+0.7s, base-0.3s)
+    apex = (cx + nx * size * 0.7, cy + ny * size * 0.7)
+    base_l = (cx - tx * size * 1.0 - nx * size * 0.3, cy - ty * size * 1.0 - ny * size * 0.3)
+    base_r = (cx + tx * size * 1.0 - nx * size * 0.3, cy + ty * size * 1.0 - ny * size * 0.3)
     batch = batch_for_shader(shader, "TRIS", {"pos": [apex, base_l, base_r]}, indices=[(0, 1, 2)])
     shader.bind()
-    shader.uniform_float("color", viewport_colors.HANDLE_FILL)
+    shader.uniform_float(
+        "color",
+        _COLOR_HANDLE_HIGHLIGHT if highlighted else viewport_colors.HANDLE_FILL,
+    )
     batch.draw(shader)
 
 

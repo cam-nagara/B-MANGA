@@ -339,6 +339,12 @@ def register() -> None:
         soft_max=10.0,
         update=_on_selected_style_prop_changed,
     )
+    # ▲ ハンドル hover ハイライト用に viewport カーソル位置を track する
+    # (region 相対 px)。 各 B-Name modal が MOUSEMOVE で更新し、
+    # overlay_coma_selection / coma_edge_move_op の draw 側で hover を判定する。
+    bpy.types.WindowManager.bname_overlay_pointer_x = IntProperty(default=-1)
+    bpy.types.WindowManager.bname_overlay_pointer_y = IntProperty(default=-1)
+    bpy.types.WindowManager.bname_overlay_pointer_valid = bpy.props.BoolProperty(default=False)
 
 
 def unregister() -> None:
@@ -350,6 +356,9 @@ def unregister() -> None:
         "bname_edge_select_vertex",
         "bname_edge_style_color",
         "bname_edge_style_width_mm",
+        "bname_overlay_pointer_x",
+        "bname_overlay_pointer_y",
+        "bname_overlay_pointer_valid",
     ):
         try:
             delattr(bpy.types.WindowManager, prop)

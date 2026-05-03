@@ -55,6 +55,8 @@ COLOR_SELECTED_EDGE = viewport_colors.SELECTION_STRONG
 COLOR_SELECTED_BORDER = viewport_colors.SELECTION
 COLOR_SELECTED_VERTEX = viewport_colors.HANDLE_OUTLINE
 COLOR_HANDLE = viewport_colors.HANDLE_FILL
+# hover 中の ▲ ハンドルは黄色寄りに明るく強調 (alpha=1)
+COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 
 
 def _find_view3d(context):
@@ -931,6 +933,7 @@ class BNAME_OT_coma_edge_move(Operator):
             self._update_wm_selection(context)
         except Exception:  # noqa: BLE001
             pass
+        edge_selection.clear_overlay_pointer(context)
         coma_modal_state.clear_active("edge_move", self, context)
 
     def _push_undo_step(self, message: str) -> None:
@@ -1013,6 +1016,9 @@ class BNAME_OT_coma_edge_move(Operator):
             return {"FINISHED", "PASS_THROUGH"}
 
         if event.type == "MOUSEMOVE":
+            # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録
+            if self._region is not None:
+                edge_selection.update_overlay_pointer(context, self._region, event)
             if not self._dragging and self._is_over_navigation_gizmo(event):
                 return {"PASS_THROUGH"}
             if not self._dragging and not self._is_inside_region(event):
@@ -1021,7 +1027,7 @@ class BNAME_OT_coma_edge_move(Operator):
                 self._apply_drag(event)
                 self._tag_redraw()
             else:
-                self._tag_redraw()  # ハンドル hover 表示更新は省略 (簡易)
+                self._tag_redraw()  # ▲ hover の再描画
             return {"RUNNING_MODAL"}
 
         if event.type == "LEFTMOUSE":
@@ -1812,6 +1818,22 @@ def extend_selected_handle_at_event(context, event) -> bool:
 # ---------- POST_PIXEL 描画 ----------
 
 
+def _hover_pointer_for_modal(op: "BNAME_OT_coma_edge_move") -> tuple[int, int] | None:
+    """modal の draw_callback 用に WM 経由で hover カーソル位置を取得."""
+    try:
+        return edge_selection.get_overlay_pointer(bpy.context)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _is_handle_hovered_modal(handle_px, pointer) -> bool:
+    if pointer is None or handle_px is None:
+        return False
+    dx = handle_px[0] - pointer[0]
+    dy = handle_px[1] - pointer[1]
+    return (dx * dx + dy * dy) <= (HANDLE_HIT_RADIUS_PX * HANDLE_HIT_RADIUS_PX)
+
+
 def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
     sel = op._selection
     if sel is None:
@@ -1820,6 +1842,7 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
     rv3d = op._rv3d
     work = op._work
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    pointer = _hover_pointer_for_modal(op)
 
     if sel["type"] == "border":
         # 枠線全体ハイライト (panel の全 edge を強調表示)
@@ -1873,7 +1896,10 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
             for handle, dir_idx in ((h1, 1), (h2, 2)):
                 if handle is None:
                     continue
-                _draw_triangle_handle(shader, handle, ap, bp, dir_idx)
+                _draw_triangle_handle(
+                    shader, handle, ap, bp, dir_idx,
+                    highlighted=_is_handle_hovered_modal(handle, pointer),
+                )
         return
 
     if sel["type"] == "edge":
@@ -1906,7 +1932,10 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         for handle, dir_idx in ((h1, 1), (h2, 2)):
             if handle is None:
                 continue
-            _draw_triangle_handle(shader, handle, ap, bp, dir_idx)
+            _draw_triangle_handle(
+                shader, handle, ap, bp, dir_idx,
+                highlighted=_is_handle_hovered_modal(handle, pointer),
+            )
 
         # 他 3 辺の ▲ ハンドルも描画 (連続クリック対応 / hit テストと一致)
         try:
@@ -1932,7 +1961,10 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
                     for handle, dir_idx in ((other_h1, 1), (other_h2, 2)):
                         if handle is None:
                             continue
-                        _draw_triangle_handle(shader, handle, other_ap, other_bp, dir_idx)
+                        _draw_triangle_handle(
+                            shader, handle, other_ap, other_bp, dir_idx,
+                            highlighted=_is_handle_hovered_modal(handle, pointer),
+                        )
         except Exception:  # noqa: BLE001
             pass
 
@@ -1954,8 +1986,15 @@ def _draw_triangle_handle(
     shader, center: tuple[float, float],
     edge_a_px: tuple[float, float], edge_b_px: tuple[float, float],
     direction_idx: int,
+    *,
+    highlighted: bool = False,
 ) -> None:
-    """edge の法線方向 (direction_idx=1 or 2) を向く三角形を描画."""
+    """edge の法線方向 (direction_idx=1 or 2) を向く三角形を描画.
+
+    ``highlighted=True`` のときカーソル hover 用のハイライト色で塗る。
+    形状は「横に長くて低い」プロポーション (apex 0.7s 突き出し / base 半幅
+    1.0s の squat triangle)。
+    """
     cx, cy = center
     ex = edge_b_px[0] - edge_a_px[0]
     ey = edge_b_px[1] - edge_a_px[1]
@@ -1971,16 +2010,21 @@ def _draw_triangle_handle(
     tx = ex / L
     ty = ey / L
     s = HANDLE_SIZE_PX
-    # 三角形: 頂点 = 中心 + 法線方向 s, 左右 base = 中心 ± tangent * s/2 - 法線 * s/2
-    apex = (cx + nx * s, cy + ny * s)
-    base_l = (cx - tx * s * 0.5 - nx * s * 0.3, cy - ty * s * 0.5 - ny * s * 0.3)
-    base_r = (cx + tx * s * 0.5 - nx * s * 0.3, cy + ty * s * 0.5 - ny * s * 0.3)
+    # 三角形 (横長プロポーション):
+    # - apex: 法線方向 +0.7s
+    # - base: 法線方向 -0.3s, tangent 方向 ±1.0s (= 全幅 2.0s)
+    apex = (cx + nx * s * 0.7, cy + ny * s * 0.7)
+    base_l = (cx - tx * s * 1.0 - nx * s * 0.3, cy - ty * s * 1.0 - ny * s * 0.3)
+    base_r = (cx + tx * s * 1.0 - nx * s * 0.3, cy + ty * s * 1.0 - ny * s * 0.3)
     verts = [apex, base_l, base_r]
     batch = batch_for_shader(
         shader, "TRIS", {"pos": verts}, indices=[(0, 1, 2)],
     )
     shader.bind()
-    shader.uniform_float("color", COLOR_HANDLE)
+    shader.uniform_float(
+        "color",
+        COLOR_HANDLE_HIGHLIGHT if highlighted else COLOR_HANDLE,
+    )
     batch.draw(shader)
 
 

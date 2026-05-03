@@ -91,3 +91,60 @@ def set_selection(
 
 def clear_selection(context) -> bool:
     return set_selection(context, "none")
+
+
+def update_overlay_pointer(context, region, event) -> None:
+    """B-Name modal の MOUSEMOVE から呼ぶ: ▲ hover ハイライト用に
+    region 相対のカーソル位置を WindowManager に書き込む.
+
+    overlay_coma_selection.draw / coma_edge_move_op._draw_callback の
+    hover 判定で読まれる。 region が None なら invalid フラグを立てる。
+    """
+    wm = getattr(context, "window_manager", None)
+    if wm is None:
+        return
+    if region is None or event is None:
+        try:
+            if hasattr(wm, "bname_overlay_pointer_valid"):
+                wm.bname_overlay_pointer_valid = False
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        rx = int(getattr(event, "mouse_x", 0)) - int(getattr(region, "x", 0))
+        ry = int(getattr(event, "mouse_y", 0)) - int(getattr(region, "y", 0))
+        if hasattr(wm, "bname_overlay_pointer_x"):
+            wm.bname_overlay_pointer_x = rx
+        if hasattr(wm, "bname_overlay_pointer_y"):
+            wm.bname_overlay_pointer_y = ry
+        if hasattr(wm, "bname_overlay_pointer_valid"):
+            wm.bname_overlay_pointer_valid = True
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def clear_overlay_pointer(context) -> None:
+    """modal 終了時に hover 状態をリセット."""
+    wm = getattr(context, "window_manager", None)
+    if wm is None:
+        return
+    try:
+        if hasattr(wm, "bname_overlay_pointer_valid"):
+            wm.bname_overlay_pointer_valid = False
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def get_overlay_pointer(context) -> tuple[int, int] | None:
+    """``(x, y)`` (region 相対 px) を返す。 valid フラグが False なら None."""
+    wm = getattr(context, "window_manager", None) if context is not None else None
+    if wm is None:
+        return None
+    if not bool(getattr(wm, "bname_overlay_pointer_valid", False)):
+        return None
+    try:
+        return int(getattr(wm, "bname_overlay_pointer_x", -1)), int(
+            getattr(wm, "bname_overlay_pointer_y", -1)
+        )
+    except Exception:  # noqa: BLE001
+        return None

@@ -326,6 +326,21 @@ class BNAME_OT_object_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("object_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録
+        # (overlay_coma_selection.draw が読む)
+        if event.type == "MOUSEMOVE":
+            try:
+                view = view_event_region.view3d_window_under_event(context, event)
+            except Exception:  # noqa: BLE001
+                view = None
+            if view is not None:
+                _area, region, _rv3d, _mx, _my = view
+                edge_selection.update_overlay_pointer(context, region, event)
+                # hover 状態の再描画を促す
+                try:
+                    region.tag_redraw()
+                except Exception:  # noqa: BLE001
+                    pass
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -710,6 +725,7 @@ class BNAME_OT_object_tool(Operator):
         if not keep_selection:
             object_selection.clear(context)
         self._cleanup(context)
+        edge_selection.clear_overlay_pointer(context)
         coma_modal_state.clear_active("object_tool", self, context)
 
 
