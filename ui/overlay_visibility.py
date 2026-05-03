@@ -110,3 +110,59 @@ def entry_in_visible_coma(page, entry) -> bool:
     except Exception:  # noqa: BLE001
         panel = None
     return panel is None or coma_visible(panel, page=page)
+
+
+def _polygon_for_coma(coma) -> list[tuple[float, float]]:
+    if getattr(coma, "shape_type", "") == "rect":
+        x = float(getattr(coma, "rect_x_mm", 0.0))
+        y = float(getattr(coma, "rect_y_mm", 0.0))
+        w = float(getattr(coma, "rect_width_mm", 0.0))
+        h = float(getattr(coma, "rect_height_mm", 0.0))
+        return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+    verts = getattr(coma, "vertices", []) or []
+    return [(float(v.x_mm), float(v.y_mm)) for v in verts]
+
+
+def _point_in_polygon(px: float, py: float, polygon: list[tuple[float, float]]) -> bool:
+    if not polygon or len(polygon) < 3:
+        return False
+    inside = False
+    n = len(polygon)
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if ((yi > py) != (yj > py)) and (px < (xj - xi) * (py - yi) / (yj - yi + 1e-12) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def entry_bbox_within_parent_coma(page, entry) -> bool:
+    """parent_kind="coma" の entry について、 bbox 4 隅が親コマ polygon 内か.
+
+    text overlay で使う厳格判定。 parent_kind が page / outside / 空の場合は
+    True を返して従来挙動を維持する (= page 全体に描画される)。
+    親コマが見つからない or polygon が取れない場合も True (= マスクなし)。
+    """
+    parent_kind = str(getattr(entry, "parent_kind", "") or "")
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    if parent_kind != "coma" or ":" not in parent_key:
+        return True
+    coma_id = parent_key.split(":", 1)[1]
+    target_coma = None
+    for c in getattr(page, "comas", []) or []:
+        if str(getattr(c, "id", "") or "") == coma_id:
+            target_coma = c
+            break
+    if target_coma is None:
+        return True
+    polygon = _polygon_for_coma(target_coma)
+    if len(polygon) < 3:
+        return True
+    x = float(getattr(entry, "x_mm", 0.0))
+    y = float(getattr(entry, "y_mm", 0.0))
+    w = float(getattr(entry, "width_mm", 0.0))
+    h = float(getattr(entry, "height_mm", 0.0))
+    corners = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+    return all(_point_in_polygon(cx, cy, polygon) for cx, cy in corners)

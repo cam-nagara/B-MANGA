@@ -351,6 +351,20 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("apply_masks_to_all_managed failed")
 
+        # 旧設計の集約 GP Object (BName_EffectLines / BName_EffectLines_data)
+        # は新設計 (1 effect = 1 GP Object @ コマ Collection) で完全置換された
+        # ため、 viewport から強制 hide する。 中身 (effect_focus 等の旧 layer
+        # stroke) は user data として残し、 ユーザーが必要なら manual で
+        # 復活できる。 過去 file 互換のために削除はしない。
+        try:
+            for legacy_name in ("BName_EffectLines", "BName_EffectLines_data"):
+                lo = bpy.data.objects.get(legacy_name)
+                if lo is not None and not lo.hide_viewport:
+                    lo.hide_viewport = True
+                    lo.hide_render = True
+        except Exception:  # noqa: BLE001
+            _logger.exception("legacy effect lines hide failed")
+
 
 def _split_folder_parent(parent_key_raw: str) -> tuple[str, str]:
     """フォルダの ``parent_key`` 文字列を ``(parent_kind, parent_key)`` に分解.

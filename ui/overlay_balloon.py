@@ -12,7 +12,68 @@ DrawRectOutline = Callable[..., None]
 DrawPolygonFill = Callable[[list[tuple[float, float]], tuple[float, float, float, float]], None]
 DrawPolylineLoop = Callable[..., None]
 EntryVisiblePredicate = Callable[[object], bool]
+ComaPolygonResolver = Callable[[object], list[tuple[float, float]] | None]
 _BALLOON_HANDLE_SIZE_MM = 2.0
+
+
+def _clip_polygon_sutherland_hodgman(
+    subject: list[tuple[float, float]],
+    clip: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Sutherland-Hodgman による凸 clip polygon に対する subject polygon クリップ.
+
+    凸 clip (= コマ rect or convex polygon) を前提とし、 subject (= balloon
+    outline) を clip 内側にクリップした結果の polygon を返す。 結果が空なら
+    空 list を返す。 clip polygon は CCW 想定 (CW なら inside test を反転)。
+    """
+    if not subject or len(clip) < 3:
+        return list(subject)
+    # clip polygon の向き判定 (signed area > 0 なら CCW)
+    area = 0.0
+    for i in range(len(clip)):
+        x1, y1 = clip[i]
+        x2, y2 = clip[(i + 1) % len(clip)]
+        area += x1 * y2 - x2 * y1
+    ccw = area > 0.0
+
+    def inside(p, a, b):
+        # edge a→b に対して p が左側 (CCW なら inside) か
+        cross = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+        return cross >= 0.0 if ccw else cross <= 0.0
+
+    def intersect(a, b, c, d):
+        # 線分 a-b と c-d の直線交点 (a/b は subject 辺、 c/d は clip 辺)
+        x1, y1 = a
+        x2, y2 = b
+        x3, y3 = c
+        x4, y4 = d
+        denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+        if abs(denom) < 1.0e-12:
+            return b
+        t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+        return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
+    output = list(subject)
+    for ci in range(len(clip)):
+        if not output:
+            break
+        c_a = clip[ci]
+        c_b = clip[(ci + 1) % len(clip)]
+        input_pts = output
+        output = []
+        prev = input_pts[-1]
+        prev_in = inside(prev, c_a, c_b)
+        for cur in input_pts:
+            cur_in = inside(cur, c_a, c_b)
+            if cur_in:
+                if not prev_in:
+                    output.append(intersect(prev, cur, c_a, c_b))
+                output.append(cur)
+            elif prev_in:
+                output.append(intersect(prev, cur, c_a, c_b))
+            prev = cur
+            prev_in = cur_in
+    return output
 
 
 def _handle_rects(rect: Rect) -> list[Rect]:
@@ -43,6 +104,7 @@ def draw_balloons(
     draw_polygon_fill: DrawPolygonFill,
     draw_polyline_loop: DrawPolylineLoop,
     is_entry_visible: EntryVisiblePredicate | None = None,
+    coma_polygon_resolver: ComaPolygonResolver | None = None,
     active: bool = False,
 ) -> None:
     """ページ内のフキダシをオーバーレイ描画する."""
@@ -91,14 +153,31 @@ def draw_balloons(
             float(getattr(entry, "rotation_deg", 0.0)),
         )
 
-        draw_polygon_fill(outline, fill)
-        draw_polyline_loop(
-            outline,
-            line,
-            line_width=line_width,
-            style=line_style,
-            width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.6))),
-        )
+        # parent_kind="coma" なら親コマ polygon でクリップ (Sutherland-Hodgman)。
+        # tail も同 polygon でクリップする (吹出し本体と同じコマ範囲に収める)。
+        coma_poly = None
+        if coma_polygon_resolver is not None:
+            try:
+                coma_poly_local = coma_polygon_resolver(entry)
+                if coma_poly_local and len(coma_poly_local) >= 3:
+                    coma_poly = [(x + ox_mm, y + oy_mm) for x, y in coma_poly_local]
+            except Exception:  # noqa: BLE001
+                coma_poly = None
+
+        if coma_poly:
+            outline_clipped = _clip_polygon_sutherland_hodgman(outline, coma_poly)
+        else:
+            outline_clipped = outline
+
+        if outline_clipped and len(outline_clipped) >= 3:
+            draw_polygon_fill(outline_clipped, fill)
+            draw_polyline_loop(
+                outline_clipped,
+                line,
+                line_width=line_width,
+                style=line_style,
+                width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.6))),
+            )
 
         for tail in getattr(entry, "tails", []):
             _draw_balloon_tail(
@@ -111,6 +190,7 @@ def draw_balloons(
                 draw_polyline_loop=draw_polyline_loop,
                 line_style=line_style,
                 line_width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.6))),
+                clip_polygon=coma_poly,
             )
 
         selected = (
@@ -298,6 +378,7 @@ def _draw_balloon_tail(
     draw_polyline_loop: DrawPolylineLoop,
     line_style: str = "solid",
     line_width_mm: float = 0.6,
+    clip_polygon: list[tuple[float, float]] | None = None,
 ) -> None:
     cx = (rect.x + rect.x2) * 0.5
     cy = (rect.y + rect.y2) * 0.5
@@ -338,11 +419,16 @@ def _draw_balloon_tail(
             (tip_x, tip_y),
             (base_x - nx * rw, base_y - ny * rw),
         ]
-    draw_polygon_fill(pts, fill_color)
-    draw_polyline_loop(
-        pts,
-        line_color,
-        line_width=line_width,
-        style=line_style,
-        width_mm=max(0.001, float(line_width_mm)),
-    )
+    if clip_polygon and len(clip_polygon) >= 3:
+        pts_clipped = _clip_polygon_sutherland_hodgman(pts, clip_polygon)
+    else:
+        pts_clipped = pts
+    if pts_clipped and len(pts_clipped) >= 3:
+        draw_polygon_fill(pts_clipped, fill_color)
+        draw_polyline_loop(
+            pts_clipped,
+            line_color,
+            line_width=line_width,
+            style=line_style,
+            width_mm=max(0.001, float(line_width_mm)),
+        )

@@ -186,6 +186,8 @@ def _create_text_entry(
     width_mm: float,
     height_mm: float,
     parent_balloon_id: str = "",
+    parent_kind: str = "",
+    parent_key: str = "",
 ):
     entry = page.texts.add()
     entry.id = _allocate_text_id(page)
@@ -206,6 +208,21 @@ def _create_text_entry(
                 break
         else:
             missing_parent = parent_balloon_id
+
+    # クリック位置由来の親 (page or coma) を entry に書き込む。 parent_balloon_id
+    # が指定された場合 (= フキダシに紐付くテキスト) は balloon の親階層を継承
+    # するため、 ここでは未指定時のみ反映する。
+    if not parent_balloon_id:
+        if parent_kind:
+            try:
+                entry.parent_kind = parent_kind
+            except Exception:  # noqa: BLE001
+                pass
+        if parent_key is not None:
+            try:
+                entry.parent_key = parent_key
+            except Exception:  # noqa: BLE001
+                pass
 
     page.active_text_index = len(page.texts) - 1
     if hasattr(context.scene, "bname_active_layer_kind"):
@@ -738,18 +755,22 @@ class BNAME_OT_text_tool(Operator):
             self.report({"ERROR"}, "このモードではその位置にテキストを作成できません")
             return {"RUNNING_MODAL"}
         # 作成位置のコマ (またはページ直下) を active 階層 + Outliner にも反映
+        creation_parent_kind = ""
+        creation_parent_key = ""
         try:
             from ..utils import active_target as _at
             from ..utils import layer_hierarchy as _lh
 
             panel = _lh.coma_containing_point(page, lx, ly)
             if panel is not None:
-                parent_kind = "coma"
-                parent_key = _lh.coma_stack_key(page, panel)
+                creation_parent_kind = "coma"
+                creation_parent_key = _lh.coma_stack_key(page, panel)
             else:
-                parent_kind = "page"
-                parent_key = _lh.page_stack_key(page)
-            _at.focus_creation_target(context, work, page, parent_kind, parent_key)
+                creation_parent_kind = "page"
+                creation_parent_key = _lh.page_stack_key(page)
+            _at.focus_creation_target(
+                context, work, page, creation_parent_kind, creation_parent_key
+            )
         except Exception:  # noqa: BLE001
             pass
         entry, _missing_parent = _create_text_entry(
@@ -761,6 +782,8 @@ class BNAME_OT_text_tool(Operator):
             y_mm=y_mm,
             width_mm=width,
             height_mm=height,
+            parent_kind=creation_parent_kind,
+            parent_key=creation_parent_key,
         )
         self._editing = True
         self._editing_created_new = True

@@ -419,6 +419,23 @@ def _draw_balloons(page, ox_mm: float = 0.0, oy_mm: float = 0.0) -> None:
                 or str(getattr(active_page, "id", "") or "")
                 == str(getattr(page, "id", "") or "")
             )
+    def _resolve_coma_polygon_for_entry(entry):
+        """entry.parent_kind="coma" の場合だけ親コマ polygon を返す.
+
+        page 直下や outside の entry は None を返してクリップ無効化する
+        (= page 全体に描画される従来の挙動を維持)。
+        """
+        parent_kind = str(getattr(entry, "parent_kind", "") or "")
+        parent_key = str(getattr(entry, "parent_key", "") or "")
+        if parent_kind != "coma" or ":" not in parent_key:
+            return None
+        coma_id = parent_key.split(":", 1)[1]
+        for coma in getattr(page, "comas", []) or []:
+            if str(getattr(coma, "id", "") or "") != coma_id:
+                continue
+            return _shared_coma_polygon(coma)
+        return None
+
     overlay_balloon.draw_balloons(
         page,
         ox_mm=ox_mm,
@@ -428,6 +445,7 @@ def _draw_balloons(page, ox_mm: float = 0.0, oy_mm: float = 0.0) -> None:
         draw_polygon_fill=_draw_polygon_fill,
         draw_polyline_loop=_draw_polyline_loop,
         is_entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
+        coma_polygon_resolver=_resolve_coma_polygon_for_entry,
         active=active_guides,
     )
 
@@ -1073,7 +1091,10 @@ def _draw_page_overlay(
             ox_mm=ox_mm,
             oy_mm=oy_mm,
             active=active_text_guides,
-            entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
+            entry_visible=lambda entry: (
+                overlay_visibility.entry_in_visible_coma(page, entry)
+                and overlay_visibility.entry_bbox_within_parent_coma(page, entry)
+            ),
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
         )
@@ -1743,7 +1764,10 @@ def _draw_callback_pixel() -> None:
                     page,
                     ox_mm=ox,
                     oy_mm=oy,
-                    entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
+                    entry_visible=lambda entry: (
+                        overlay_visibility.entry_in_visible_coma(page, entry)
+                        and overlay_visibility.entry_bbox_within_parent_coma(page, entry)
+                    ),
                     draw_text_in_rect=_draw_text_in_rect,
                 )
     else:
