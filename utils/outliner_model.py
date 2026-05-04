@@ -39,8 +39,11 @@ OUTSIDE_BNAME_ID = "__outside__"
 
 # テキスト集約用 Collection の安定 ID と既定名。 全テキストレイヤーは
 # parent_kind / parent_key に関わらずこの Collection 直下に集約する (ユーザー仕様)。
+# 名前先頭の ``_`` は Outliner alpha sort で他 (outside / pNNNN / 多バイト名) より
+# 前に並べる目的 (ASCII 0x5F < 数字 / 英字 / 多バイト)。 これで「B-Name」 root の
+# 一番上に固定表示される。
 TEXT_COLLECTION_BNAME_ID = "__texts__"
-TEXT_COLLECTION_NAME = "テキスト"
+TEXT_COLLECTION_NAME = "_テキスト"
 
 # ページ / コマ Collection の color_tag (Blender 標準の COLOR_01..08)
 # 紫 = COLOR_06、水色 (青) = COLOR_05

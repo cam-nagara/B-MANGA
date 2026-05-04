@@ -313,6 +313,7 @@ class BNAME_OT_object_tool(Operator):
         active = coma_modal_state.get_active("object_tool")
         if active is not None:
             return {"FINISHED"}
+        coma_modal_state.exit_drawing_mode(context)
         coma_modal_state.finish_all(context, except_tool="object_tool")
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "DEFAULT")

@@ -4,6 +4,17 @@ from __future__ import annotations
 
 import weakref
 
+import bpy
+
+_DRAWING_MODES = frozenset({
+    "TEXTURE_PAINT",
+    "PAINT_GREASE_PENCIL",
+    "EDIT_GREASE_PENCIL",
+    "SCULPT_GREASE_PENCIL",
+    "VERTEX_GREASE_PENCIL",
+    "WEIGHT_GREASE_PENCIL",
+})
+
 
 _ACTIVE_REFS: dict[str, weakref.ReferenceType | None] = {
     "object_tool": None,
@@ -98,6 +109,34 @@ def set_modal_cursor(context, cursor: str) -> bool:
         return False
     try:
         window.cursor_modal_set(cursor)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def exit_drawing_mode(context) -> bool:
+    """TEXTURE_PAINT / PAINT_GREASE_PENCIL に居る場合は OBJECT へ戻す.
+
+    モーダルツール (枠線カット / フキダシ / テキスト / 効果線等) を起動する
+    直前に呼び、 「描画開始 → 別ツール選択 → 描画終了」 を自動化する。
+    TEXTURE_PAINT は ``bname.raster_layer_paint_exit`` を経由し、 PNG 自動保存と
+    paper_bg 再表示も併せて行う。
+    """
+    obj = getattr(getattr(context, "view_layer", None), "objects", None)
+    obj = getattr(obj, "active", None) if obj is not None else None
+    if obj is None:
+        return False
+    mode = getattr(obj, "mode", "") or ""
+    if mode not in _DRAWING_MODES:
+        return False
+    if mode == "TEXTURE_PAINT":
+        try:
+            bpy.ops.bname.raster_layer_paint_exit("EXEC_DEFAULT")
+            return True
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        bpy.ops.object.mode_set(mode="OBJECT")
         return True
     except Exception:  # noqa: BLE001
         return False

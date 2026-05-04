@@ -209,6 +209,7 @@ class BNAME_OT_coma_edit_vertices(Operator):
     def invoke(self, context, event):
         if coma_modal_state.get_active("coma_vertex_edit") is not None:
             return {"FINISHED"}
+        coma_modal_state.exit_drawing_mode(context)
         coma_modal_state.finish_all(context, except_tool="coma_vertex_edit")
         # マウス直下のコマへフォーカス (overview 時は全ページ逆引き)
         from . import coma_edit_op

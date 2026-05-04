@@ -501,6 +501,7 @@ class BNAME_OT_coma_knife_cut(Operator):
             return {"PASS_THROUGH"}
         if coma_modal_state.get_active("knife_cut") is not None:
             return {"FINISHED"}
+        coma_modal_state.exit_drawing_mode(context)
         coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
         coma_modal_state.finish_active("edge_move", context, keep_selection=False)
         coma_modal_state.finish_active("layer_move", context, keep_selection=False)

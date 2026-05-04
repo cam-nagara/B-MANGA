@@ -3,6 +3,79 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-04 — ツールセクション再構成 / 詳細設定の項目復元 / テキストコレクション最上位固定
+
+### 症状
+1. N パネル「ツール」のグリースペンシル / ラスター描画ボタンが頻繁にグレー
+   アウトし、 即座に切り替えられなかった。 さらに 「ラスター描画」 「GP 描画」
+   という独立セクションがあり、 描画開始 / 終了を別操作する二度手間状態。
+2. 効果線レイヤーの詳細設定ダイアログを開いても 「表示名 / z_index / 参照対象」
+   の 3 項目しか出ず、 種類 / 始点形状 / 終点形状 / 線 / 入り抜き / 色 / 流線 /
+   白抜き線 / まとまり等の本来の効果線パラメータが全部消えていた。
+3. フキダシ / テキストの詳細ダイアログにも本来あるべき項目 (フキダシ: 形状
+   パラメータ / 線色 / 塗り色 / ブレンド / 反転 / 不透明度 / 角丸 等。 テキスト:
+   話者 / フォント / サイズ / 色 / 縦書 / 行間 / 字間 / 白フチ / ルビ件数等)
+   の大半が欠落。
+4. テキストレイヤー集約用 Collection 「テキスト」 がアウトライナーで一番下に
+   表示されてしまい、 触りたいときに毎回スクロールが必要だった。
+
+### 修正
+- ``panels/tool_panel.py``: ブラシ / 編集ボタンの ``draw_slot.enabled`` /
+  ``edit_slot.enabled`` ガードを撤去。 アクティブレイヤー種別に関わらず常に
+  クリック可能。
+- ``panels/outliner_layer_panel.py``: 「ラスター描画」 「GP 描画」 ボックスを
+  完全削除。 描画開始 / 終了は **ツールセクションのアイコンクリックそのもの** で
+  発火する設計に統一。
+- ``operators/coma_modal_state.py``: ``exit_drawing_mode(context)`` ヘルパを
+  追加。 TEXTURE_PAINT は ``bname.raster_layer_paint_exit`` 経由で PNG 自動
+  保存 + paper_bg 再表示も同時に実行、 PAINT_GREASE_PENCIL 系 5 種は
+  ``object.mode_set(OBJECT)`` で抜ける。
+- 各モーダルツール (枠線カット / 枠線選択 / コマ頂点編集 / フキダシ / テキスト
+  / 効果線 / レイヤー移動 / オブジェクト) の ``invoke`` 先頭で
+  ``coma_modal_state.exit_drawing_mode(context)`` を呼び、 描画モード中に
+  別ツールアイコンを押した瞬間に確実に描画終了させる。
+- ``panels/gpencil_panel.py`` / ``operators/raster_layer_op.py``: GP↔ラスター
+  描画モード相互切替時にも、 もう片方の描画モードを先に抜けるよう
+  ``exit_drawing_mode`` を呼び出す。
+- ``operators/layer_detail_op.py``:
+  - 効果線 (kind=``effect`` / ``effect_legacy``) → 新ヘルパ ``_draw_effect_detail``。
+    Object の保存済み params を ``_load_layer_params_to_scene`` でシーン側
+    PropertyGroup に反映し、 効果線サイドバーパネルと同じ完全なパラメータ
+    群を ``draw_effect_params`` で表示。
+  - GP (kind=``gp``) → 新ヘルパ ``_draw_gp_detail``。 表示名 / z_index に加え、
+    Object の hide_viewport / hide_render、 アクティブ GP レイヤーの不透明度 /
+    色合い / hide / lock を編集可能に。
+  - フキダシ (kind=``balloon``) → 形状 / カスタムプリセット / 角丸 / 形状固有
+    パラメータ (山幅 / 山高 / ズラし / 小山幅高) / 配置 / 回転 / 反転 (水平・
+    垂直) / 線スタイル / 線幅 / 線色 / 塗り色 / ブレンドモード / 不透明度 /
+    所属 / 結合フォルダ ID を全て表示。
+  - テキスト (kind=``text``) → 本文 / 配置 / 話者種別・名前 / 基本フォント /
+    Q サイズ / pt サイズ / 太字・斜体 / 色 / 縦書横書 / 行間 / 字間 / 白フチ
+    (有効・幅・色) / ルビ・部分フォント・部分スタイル・縦中横の件数表示 /
+    所属を全て表示。
+- ``panels/effect_line_panel.py``: ``draw_effect_params(layout, params)`` を
+  panel から切り出し、 サイドバーと詳細ダイアログから共通利用。 同時に元
+  パネルでカバーしきれていなかった ``spacing_jitter`` / ``max_line_count`` /
+  「まとまり」 セクションも全表示するよう拡充。
+- ``utils/outliner_model.py``: テキスト集約 Collection 名を ``テキスト`` →
+  ``_テキスト`` に変更。 名前先頭の ``_`` (ASCII 0x5F) は Outliner の alpha
+  sort で他 Collection (``outside`` / ``pNNNN`` / 多バイト名) より前に並ぶため、
+  「B-Name」 root の **一番上** に固定表示される。
+
+### 検証 (Blender 5.1.1 実機)
+- ``D:/tmp/bname_import_check.py`` で addon register、 全モーダル operator (
+  ``coma_knife_cut`` / ``coma_edge_move`` / ``coma_edit_vertices`` / ``balloon_tool``
+  / ``text_tool`` / ``effect_line_tool`` / ``layer_move_tool`` / ``object_tool`` /
+  ``gpencil_master_mode_set`` / ``raster_layer_mode_set`` / ``layer_detail_open``)
+  の bpy.ops 露出、 ``exit_drawing_mode`` / ``draw_effect_params`` /
+  ``_draw_gp_detail`` / ``_draw_effect_detail`` の存在、 ``TEXT_COLLECTION_NAME``
+  が ``_テキスト`` で登録されることを確認 ── 全 OK。
+- 描画ツール切替の挙動 (paint mode 中に別ツールアイコンクリック → 自動退出 →
+  目的ツール起動) は UI 操作のため自動化不可。 実機でフキダシ / テキスト /
+  効果線 / カットツールを切替えながらストロークが意図通りに切れることを
+  ご確認ください。
+
+
 ## 2026-05-03 — coma_plane の Z を raster と同 Z=0.1 に統一 (ラスター描画不可の真因)
 
 ### 症状

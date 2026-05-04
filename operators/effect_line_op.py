@@ -890,6 +890,7 @@ class BNAME_OT_effect_line_tool(Operator):
         if active is not None:
             active.finish_from_external(context, keep_selection=True)
             return {"FINISHED"}
+        coma_modal_state.exit_drawing_mode(context)
         coma_modal_state.finish_active("coma_vertex_edit", context, keep_selection=True)
         coma_modal_state.finish_active("knife_cut", context, keep_selection=False)
         coma_modal_state.finish_active("edge_move", context, keep_selection=True)

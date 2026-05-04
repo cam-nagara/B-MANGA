@@ -64,6 +64,89 @@ def _draw_white_outline_settings(layout, params) -> None:
     box.prop(params, "white_outline_angle_deg")
 
 
+def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> None:
+    """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
+
+    ``with_generate_button=True`` で末尾に「効果線を生成」 ボタンを追加。
+    ``params`` は ``scene.bname_effect_line_params`` (BNameEffectLineParams)。
+    """
+    if params is None:
+        layout.label(text="未初期化", icon="ERROR")
+        return
+
+    box = layout.box()
+    box.label(text="種類")
+    box.prop(params, "effect_type")
+    if params.effect_type not in {"white_outline", "speed"}:
+        box.prop(params, "rotation_deg")
+
+    if params.effect_type == "white_outline":
+        _draw_white_outline_settings(layout, params)
+        if with_generate_button:
+            layout.operator("bname.effect_line_generate", icon="STROKE")
+        return
+
+    if params.effect_type != "speed":
+        _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
+        _draw_shape_settings(layout, params, "end", "終点形状")
+
+    box = layout.box()
+    box.label(text="線")
+    box.prop(params, "brush_size_mm")
+    row = box.row(align=True)
+    row.prop(params, "brush_jitter_enabled", text="乱れ")
+    sub = row.row()
+    sub.enabled = params.brush_jitter_enabled
+    sub.prop(params, "brush_jitter_amount", text="")
+
+    if params.effect_type != "beta_flash":
+        box.prop(params, "spacing_mode")
+        if params.spacing_mode == "angle":
+            box.prop(params, "spacing_angle_deg")
+        else:
+            box.prop(params, "spacing_distance_mm")
+        row = box.row(align=True)
+        row.prop(params, "spacing_jitter_enabled", text="間隔乱れ")
+        sub = row.row()
+        sub.enabled = params.spacing_jitter_enabled
+        sub.prop(params, "spacing_jitter_amount", text="")
+        box.prop(params, "max_line_count")
+
+        bundle_box = layout.box()
+        bundle_box.label(text="まとまり")
+        bundle_box.prop(params, "bundle_enabled")
+        sub = bundle_box.column(align=True)
+        sub.enabled = bool(params.bundle_enabled)
+        sub.prop(params, "bundle_line_count")
+        sub.prop(params, "bundle_jitter_amount")
+        sub.prop(params, "bundle_gap_mm")
+
+    box = layout.box()
+    box.label(text="入り抜き")
+    box.prop(params, "inout_apply")
+    row = box.row(align=True)
+    row.prop(params, "in_percent")
+    row.prop(params, "out_percent")
+
+    box = layout.box()
+    box.label(text="色")
+    box.prop(params, "opacity", slider=True)
+    box.prop(params, "line_color")
+    if params.effect_type == "beta_flash":
+        box.prop(params, "fill_color")
+        box.prop(params, "fill_opacity")
+        box.prop(params, "fill_base_shape")
+
+    if params.effect_type == "speed":
+        box = layout.box()
+        box.label(text="流線")
+        box.prop(params, "speed_angle_deg")
+        box.prop(params, "speed_line_count")
+
+    if with_generate_button:
+        layout.operator("bname.effect_line_generate", icon="STROKE")
+
+
 class BNAME_PT_effect_line(Panel):
     bl_idname = "BNAME_PT_effect_line"
     bl_label = "効果線"
@@ -76,64 +159,7 @@ class BNAME_PT_effect_line(Panel):
     def draw(self, context):
         layout = self.layout
         params = getattr(context.scene, "bname_effect_line_params", None)
-        if params is None:
-            layout.label(text="未初期化", icon="ERROR")
-            return
-
-        box = layout.box()
-        box.label(text="種類")
-        box.prop(params, "effect_type")
-        if params.effect_type not in {"white_outline", "speed"}:
-            box.prop(params, "rotation_deg")
-
-        if params.effect_type == "white_outline":
-            _draw_white_outline_settings(layout, params)
-            layout.operator("bname.effect_line_generate", icon="STROKE")
-            return
-
-        if params.effect_type != "speed":
-            _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
-            _draw_shape_settings(layout, params, "end", "終点形状")
-
-        box = layout.box()
-        box.label(text="線")
-        box.prop(params, "brush_size_mm")
-        row = box.row(align=True)
-        row.prop(params, "brush_jitter_enabled", text="乱れ")
-        sub = row.row()
-        sub.enabled = params.brush_jitter_enabled
-        sub.prop(params, "brush_jitter_amount", text="")
-
-        if params.effect_type != "beta_flash":
-            box.prop(params, "spacing_mode")
-            if params.spacing_mode == "angle":
-                box.prop(params, "spacing_angle_deg")
-            else:
-                box.prop(params, "spacing_distance_mm")
-
-        box = layout.box()
-        box.label(text="入り抜き")
-        box.prop(params, "inout_apply")
-        row = box.row(align=True)
-        row.prop(params, "in_percent")
-        row.prop(params, "out_percent")
-
-        box = layout.box()
-        box.label(text="色")
-        box.prop(params, "opacity", slider=True)
-        box.prop(params, "line_color")
-        if params.effect_type == "beta_flash":
-            box.prop(params, "fill_color")
-            box.prop(params, "fill_opacity")
-            box.prop(params, "fill_base_shape")
-
-        if params.effect_type == "speed":
-            box = layout.box()
-            box.label(text="流線")
-            box.prop(params, "speed_angle_deg")
-            box.prop(params, "speed_line_count")
-
-        layout.operator("bname.effect_line_generate", icon="STROKE")
+        draw_effect_params(layout, params)
 
 
 _CLASSES = (BNAME_PT_effect_line,)

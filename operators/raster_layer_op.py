@@ -1036,6 +1036,17 @@ class BNAME_OT_raster_layer_mode_set(Operator):
 
     def execute(self, context):
         if self.mode == "TEXTURE_PAINT":
+            # GP 系描画中なら先に確実に抜ける (raster paint との混在防止)。
+            try:
+                from . import coma_modal_state as _cms
+
+                obj_active = getattr(getattr(context, "view_layer", None), "objects", None)
+                obj_active = getattr(obj_active, "active", None) if obj_active is not None else None
+                if str(getattr(obj_active, "mode", "")).startswith("PAINT_GREASE_PENCIL") or \
+                        str(getattr(obj_active, "mode", "")).endswith("_GREASE_PENCIL"):
+                    _cms.exit_drawing_mode(context)
+            except Exception:  # noqa: BLE001
+                pass
             return bpy.ops.bname.raster_layer_paint_enter("EXEC_DEFAULT")
         if self.mode == "OBJECT":
             return bpy.ops.bname.raster_layer_paint_exit("EXEC_DEFAULT")

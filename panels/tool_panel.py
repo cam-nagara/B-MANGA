@@ -84,7 +84,6 @@ class BNAME_PT_tools(Panel):
         )
         op.mode = "OBJECT"
         draw_slot = row.row(align=True)
-        draw_slot.enabled = gp_layer_active or raster_layer_active
         if raster_layer_active:
             op = draw_slot.operator(
                 "bname.raster_layer_mode_set",
@@ -106,7 +105,6 @@ class BNAME_PT_tools(Panel):
             )
             op.mode = "PAINT_GREASE_PENCIL"
         edit_slot = row.row(align=True)
-        edit_slot.enabled = gp_layer_active
         op = edit_slot.operator(
             "bname.gpencil_master_mode_set",
             text="",

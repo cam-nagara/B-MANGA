@@ -686,6 +686,15 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
             from ..operators import coma_modal_state
 
             coma_modal_state.finish_all(context)
+            # ラスター Texture Paint / 別 GP 描画中なら、 切替前に確実に退出
+            # (PNG 自動保存 + paper_bg 再表示も含む)。 同モードへの再入は no-op。
+            if self.mode != _GP_PAINT_MODE:
+                coma_modal_state.exit_drawing_mode(context)
+            else:
+                obj_active = getattr(getattr(context, "view_layer", None), "objects", None)
+                obj_active = getattr(obj_active, "active", None) if obj_active is not None else None
+                if getattr(obj_active, "mode", "") == "TEXTURE_PAINT":
+                    coma_modal_state.exit_drawing_mode(context)
         except Exception:  # noqa: BLE001
             pass
         if self.mode in {_GP_PAINT_MODE, _GP_EDIT_MODE}:

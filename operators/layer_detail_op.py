@@ -139,8 +139,29 @@ def _draw_raster_detail(layout, entry) -> None:
 
 
 def _draw_balloon_detail(layout, entry) -> None:
-    layout.prop(entry, "title", text="表示名") if hasattr(entry, "title") else None
-    layout.prop(entry, "shape")
+    if hasattr(entry, "title"):
+        layout.prop(entry, "title", text="表示名")
+    box = layout.box()
+    box.label(text="形状")
+    box.prop(entry, "shape")
+    if str(getattr(entry, "shape", "")) == "custom":
+        box.prop(entry, "custom_preset_name")
+    box.prop(entry, "rounded_corner_enabled")
+    sub = box.row()
+    sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
+    sub.prop(entry, "rounded_corner_radius_mm")
+    sp = getattr(entry, "shape_params", None)
+    if sp is not None and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+        shape_box = layout.box()
+        shape_box.label(text="形状パラメータ")
+        col = shape_box.column(align=True)
+        col.prop(sp, "cloud_bump_width_mm")
+        col.prop(sp, "cloud_bump_height_mm")
+        col.prop(sp, "cloud_offset_percent")
+        row = col.row(align=True)
+        row.prop(sp, "cloud_sub_width_ratio")
+        row.prop(sp, "cloud_sub_height_ratio")
+
     box = layout.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)
@@ -149,15 +170,32 @@ def _draw_balloon_detail(layout, entry) -> None:
     row = box.row(align=True)
     row.prop(entry, "width_mm")
     row.prop(entry, "height_mm")
-    layout.prop(entry, "line_width_mm")
-    layout.prop(entry, "visible")
-    layout.prop(entry, "parent_kind")
-    layout.prop(entry, "parent_key")
-    layout.prop(entry, "folder_key")
+    box.prop(entry, "rotation_deg")
+    row = box.row(align=True)
+    row.prop(entry, "flip_h")
+    row.prop(entry, "flip_v")
+
+    box = layout.box()
+    box.label(text="線・塗り")
+    box.prop(entry, "line_style")
+    box.prop(entry, "line_width_mm")
+    box.prop(entry, "line_color")
+    box.prop(entry, "fill_color")
+    box.prop(entry, "blend_mode")
+    box.prop(entry, "opacity", slider=True)
+
+    box = layout.box()
+    box.label(text="表示・所属")
+    box.prop(entry, "visible")
+    box.prop(entry, "parent_kind")
+    box.prop(entry, "parent_key")
+    box.prop(entry, "folder_key")
+    box.prop(entry, "merge_group_id")
 
 
 def _draw_text_detail(layout, entry) -> None:
     layout.prop(entry, "body", text="本文")
+
     box = layout.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)
@@ -166,11 +204,118 @@ def _draw_text_detail(layout, entry) -> None:
     row = box.row(align=True)
     row.prop(entry, "width_mm")
     row.prop(entry, "height_mm")
-    layout.prop(entry, "parent_balloon_id")
-    layout.prop(entry, "visible")
-    layout.prop(entry, "parent_kind")
-    layout.prop(entry, "parent_key")
-    layout.prop(entry, "folder_key")
+
+    box = layout.box()
+    box.label(text="話者")
+    box.prop(entry, "speaker_type")
+    box.prop(entry, "speaker_name")
+
+    box = layout.box()
+    box.label(text="フォント・組版")
+    box.prop(entry, "font")
+    row = box.row(align=True)
+    row.prop(entry, "font_size_q")
+    row.prop(entry, "font_size_pt")
+    row = box.row(align=True)
+    row.prop(entry, "font_bold")
+    row.prop(entry, "font_italic")
+    box.prop(entry, "color")
+    box.prop(entry, "writing_mode")
+    row = box.row(align=True)
+    row.prop(entry, "line_height")
+    row.prop(entry, "letter_spacing")
+
+    box = layout.box()
+    box.label(text="白フチ")
+    box.prop(entry, "stroke_enabled")
+    sub = box.column(align=True)
+    sub.enabled = bool(getattr(entry, "stroke_enabled", False))
+    sub.prop(entry, "stroke_width_mm")
+    sub.prop(entry, "stroke_color")
+
+    box = layout.box()
+    box.label(text="ルビ・部分スタイル")
+    row = box.row(align=True)
+    row.label(text=f"ルビ: {len(getattr(entry, 'ruby_spans', ()) or ())} 件")
+    row.label(text=f"部分フォント: {len(getattr(entry, 'font_spans', ()) or ())} 件")
+    row = box.row(align=True)
+    row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
+    row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
+
+    box = layout.box()
+    box.label(text="表示・所属")
+    box.prop(entry, "visible")
+    box.prop(entry, "parent_balloon_id")
+    box.prop(entry, "parent_kind")
+    box.prop(entry, "parent_key")
+    box.prop(entry, "folder_key")
+
+
+def _draw_gp_detail(layout, obj) -> None:
+    """GP レイヤー Object の詳細."""
+    box = layout.box()
+    box.label(text="基本")
+    box.prop(obj, '["bname_title"]', text="表示名")
+    box.prop(obj, '["bname_z_index"]', text="z_index")
+    box.prop(obj, "hide_viewport", text="表示 (viewport)")
+    box.prop(obj, "hide_render", text="表示 (render)")
+
+    gp_data = getattr(obj, "data", None)
+    layers = getattr(gp_data, "layers", None) if gp_data is not None else None
+    if layers is not None and len(layers) > 0:
+        active_layer = getattr(layers, "active", None)
+        if active_layer is not None:
+            box = layout.box()
+            box.label(text=f"アクティブ GP レイヤー: {active_layer.name}")
+            if hasattr(active_layer, "opacity"):
+                box.prop(active_layer, "opacity")
+            if hasattr(active_layer, "tint_color"):
+                box.prop(active_layer, "tint_color")
+            if hasattr(active_layer, "tint_factor"):
+                box.prop(active_layer, "tint_factor")
+            row = box.row(align=True)
+            if hasattr(active_layer, "hide"):
+                row.prop(active_layer, "hide", text="非表示")
+            if hasattr(active_layer, "lock"):
+                row.prop(active_layer, "lock", text="ロック")
+
+
+def _draw_effect_detail(layout, context, obj) -> None:
+    """効果線 Object の詳細 (params 全表示)."""
+    box = layout.box()
+    box.label(text="基本")
+    box.prop(obj, '["bname_title"]', text="表示名")
+    box.prop(obj, '["bname_z_index"]', text="z_index")
+    if "bname_effect_target" in obj.keys():
+        box.prop(obj, '["bname_effect_target"]', text="参照対象")
+
+    # アクティブ GP レイヤーを解決して params をシーン側 PropertyGroup に同期
+    gp_data = getattr(obj, "data", None)
+    layers = getattr(gp_data, "layers", None) if gp_data is not None else None
+    active_layer = getattr(layers, "active", None) if layers is not None else None
+    scene = getattr(context, "scene", None)
+    params = getattr(scene, "bname_effect_line_params", None) if scene is not None else None
+
+    if params is None:
+        layout.label(text="効果線パラメータ未初期化", icon="ERROR")
+        return
+    if active_layer is None:
+        layout.label(text="(GP レイヤー未選択)", icon="INFO")
+        return
+
+    # Object の保存済み params を読み込んで scene 側 PropertyGroup に反映
+    try:
+        from . import effect_line_op as _elo
+
+        _elo._load_layer_params_to_scene(context, obj, active_layer)
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect detail: load params failed")
+
+    # effect_line_panel の draw_effect_params を再利用
+    from ..panels import effect_line_panel as _elp
+
+    layout.separator()
+    _elp.draw_effect_params(layout, params, with_generate_button=True)
 
 
 def _draw_object_meta(layout, obj) -> None:
@@ -239,13 +384,11 @@ class BNAME_OT_layer_detail_open(Operator):
             page, entry = _find_balloon_entry(scene, self.bname_id)
         elif kind == "text":
             page, entry = _find_text_entry(scene, self.bname_id)
-        elif kind in {"gp", "effect", "effect_legacy"}:
-            # GP / 効果線は entry を持たない (Object 自体が正)
-            box = layout.box()
-            box.prop(obj, '["bname_title"]', text="表示名")
-            box.prop(obj, '["bname_z_index"]', text="z_index")
-            if "bname_effect_target" in obj.keys():
-                box.prop(obj, '["bname_effect_target"]', text="参照対象")
+        elif kind == "gp":
+            _draw_gp_detail(layout, obj)
+            return
+        elif kind in {"effect", "effect_legacy"}:
+            _draw_effect_detail(layout, context, obj)
             return
         else:
             layout.label(text=f"kind={kind} の詳細表示は未対応", icon="INFO")
