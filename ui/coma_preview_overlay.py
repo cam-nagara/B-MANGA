@@ -38,8 +38,13 @@ def draw_coma_preview(work, page, entry, ox_mm: float = 0.0, oy_mm: float = 0.0)
     if width <= 0.0 or height <= 0.0:
         return False
 
+    # z は coma_plane (z=0.1m) と raster (z=0.1m) より上、テキスト等より下に
+    # して、コマプレビューが coma_plane の白塗りに上書きされないようにする。
+    # GPU shader (IMAGE) は depth_test を有効化しないため Z 値は実質
+    # OPAQUE Mesh との描画順序を制御するためだけに使う。
+    _COMA_PREVIEW_Z = 0.15
     verts = [
-        (mm_to_m(x + ox_mm), mm_to_m(y + oy_mm), 0.0)
+        (mm_to_m(x + ox_mm), mm_to_m(y + oy_mm), _COMA_PREVIEW_Z)
         for x, y in poly
     ]
     uvs = [
@@ -66,8 +71,15 @@ def draw_coma_preview(work, page, entry, ox_mm: float = 0.0, oy_mm: float = 0.0)
     )
     shader.bind()
     shader.uniform_sampler("image", tex)
+    # depth テストを一時的に無効化して thumb が必ず描画されるようにする。
+    # SOLID viewport の場合、 coma_plane (z=0.1, OPAQUE Mesh) が POST_VIEW
+    # handler より先に depth buffer に書き込むため、 thumb の depth_test が
+    # 残っていると coma_plane に覆われて何も見えなくなる。
+    prev_depth_test = gpu.state.depth_test_get()
+    gpu.state.depth_test_set("NONE")
     gpu.state.blend_set("ALPHA")
     batch.draw(shader)
+    gpu.state.depth_test_set(prev_depth_test)
     return True
 
 
