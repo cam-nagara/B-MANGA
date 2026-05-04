@@ -177,15 +177,51 @@ def _resolve_page_id_for_object(obj: bpy.types.Object) -> str:
     return ""
 
 
+# 種別ごとの Z 階層 base (ユーザー要望順 / 上 = 大):
+#   テキスト > フキダシ > 効果線 > コマ枠系
+# その他 (画像 / GP / ラスター) は中間。 これに per-page rank を加算する。
+KIND_Z_BASE: dict[str, int] = {
+    "coma": 100,
+    "raster": 200,
+    "image": 250,
+    "gp": 300,
+    "effect": 400,
+    "balloon": 500,
+    "text": 900,
+}
+
+# Object 側に保存される「ユーザー指定の階層 base」。 通常は KIND_Z_BASE と
+# 同値だが、 ユーザーがページレイヤー順パネルの上下ボタンで種別を跨いで
+# 並び替えると、 ここで隣接レイヤーの値が交換され「種別を超えた並び」が
+# 永続化される。 ない場合は KIND_Z_BASE[kind] にフォールバック。
+PROP_Z_KIND_BASE = "bname_z_kind_base"
+
+
+def _kind_base_z(obj: bpy.types.Object) -> int:
+    """Object の効果的な kind_base を返す.
+
+    まず Object に書き込まれた `bname_z_kind_base` (ユーザー並び替え後の値) を
+    見て、 なければ kind プロパティから KIND_Z_BASE 既定値を引く。
+    """
+    if PROP_Z_KIND_BASE in obj:
+        try:
+            return int(obj[PROP_Z_KIND_BASE])
+        except Exception:  # noqa: BLE001
+            pass
+    kind = str(obj.get(on.PROP_KIND, "") or "")
+    return int(KIND_Z_BASE.get(kind, 350))
+
+
 def assign_per_page_z_ranks(scene, work) -> int:
-    """各ページごとにレイヤーの ``location.z`` を rank * 0.1 でリセット.
+    """各ページごとにレイヤーの ``location.z`` を種別 base + 個別 z_index で確定.
 
-    重なり順 (z_index 昇順) でページ内 rank=1,2,3,... を振り、 z=0.1, 0.2,
-    0.3, ... を割当てる。 用紙 (paper_bg z=0) を最下段とし、 ページ間で
-    Z は独立 (page 1 と page 2 のレイヤーは Z=0.1 から共に始まる)。
+    並び順は ``(KIND_Z_BASE[kind], obj.z_index, obj.name)`` の tuple でソート。
+    その順に rank=1,2,3,... を振って ``rank * BNAME_Z_STEP_M`` を ``location.z``
+    に設定する。 paper_bg (managed=False) は除外され z=0 のまま。
 
-    旧実装の z_index*0.1 では z_index=1010 のフキダシが z=101m に飛んで
-    view_all 時に用紙が消える問題があったため、 per-page rank に変更。
+    これによりユーザー指定の Z 順 (上→下: テキスト > フキダシ > 効果線 >
+    コマ) を Object 配置レベルで保証する。 同種別内の並び替えは個別の
+    ``bname_z_index`` を入れ替えればそのまま反映される。
     """
     if scene is None or work is None or not getattr(work, "loaded", False):
         return 0
@@ -197,13 +233,21 @@ def assign_per_page_z_ranks(scene, work) -> int:
         page_id = _resolve_page_id_for_object(obj)
         if not page_id:
             continue
+        kind_base = _kind_base_z(obj)
         z_index = int(obj.get(on.PROP_Z_INDEX, 0) or 0)
-        page_groups.setdefault(page_id, []).append((z_index, obj))
+        page_groups.setdefault(page_id, []).append(
+            (kind_base, z_index, obj)
+        )
+
+    # coma_plane (z=0.01, managed=False) より明確に手前に出すため、
+    # managed レイヤーの最下段 rank を 2 (= z=0.02) から開始する。
+    MANAGED_Z_RANK_BASE = 2
 
     updated = 0
     for page_id, items in page_groups.items():
-        items.sort(key=lambda x: (x[0], x[1].name))  # z_index 昇順, tie は name
-        for rank, (_zi, obj) in enumerate(items, start=1):
+        items.sort(key=lambda x: (x[0], x[1], x[2].name))
+        for offset, (_kb, _zi, obj) in enumerate(items):
+            rank = MANAGED_Z_RANK_BASE + offset
             new_z = rank * BNAME_Z_STEP_M
             try:
                 loc = obj.location

@@ -872,6 +872,8 @@ class BNAME_OT_effect_line_tool(Operator):
     _dragging: bool
     _drag_action: str
     _drag_layer_name: str
+    _drag_obj_name: str
+    _drag_page_id: str
     _drag_start_x: float
     _drag_start_y: float
     _drag_orig_x: float
@@ -879,6 +881,9 @@ class BNAME_OT_effect_line_tool(Operator):
     _drag_orig_w: float
     _drag_orig_h: float
     _drag_moved: bool
+    _pending_create: bool
+    _pending_start_x: float
+    _pending_start_y: float
 
     @classmethod
     def poll(cls, context):
@@ -946,40 +951,16 @@ class BNAME_OT_effect_line_tool(Operator):
                 object_selection.effect_key(layer),
                 mode="single",
             )
-            self._start_drag(layer, part, x_mm, y_mm, bounds)
+            self._start_drag(obj, layer, part, x_mm, y_mm, bounds)
             return {"RUNNING_MODAL"}
-        parent_key_for_create = _parent_key_for_world_point(context, x_mm, y_mm)
-        # 作成位置に応じて active 階層 (page or coma) を切替えて Outliner も同期
-        try:
-            from ..utils import active_target as _at
-
-            work_for_focus = get_work(context)
-            if work_for_focus is not None:
-                page_id = parent_key_for_create.split(":", 1)[0] if parent_key_for_create else ""
-                page_for_focus = None
-                for p in getattr(work_for_focus, "pages", []) or []:
-                    if str(getattr(p, "id", "") or "") == page_id:
-                        page_for_focus = p
-                        break
-                if page_for_focus is not None:
-                    pk = "coma" if ":" in parent_key_for_create else "page"
-                    _at.focus_creation_target(
-                        context, work_for_focus, page_for_focus,
-                        pk, parent_key_for_create,
-                    )
-        except Exception:  # noqa: BLE001
-            pass
-        obj, layer = _create_effect_layer(
-            context,
-            (x_mm, y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
-            parent_key=parent_key_for_create,
-        )
-        object_selection.select_key(
-            context,
-            object_selection.effect_key(layer),
-            mode="single",
-        )
-        self._start_drag(layer, "create", x_mm, y_mm, (x_mm, y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM))
+        # 既存ヒットなし → 「ドラッグ確定後に作成」 モードに入る (クリックだけでは
+        # 何も作らない仕様)。 MOUSEMOVE で MIN サイズを超えた瞬間に Object 生成。
+        self._pending_create = True
+        self._pending_start_x = float(x_mm)
+        self._pending_start_y = float(y_mm)
+        self._dragging = True
+        self._drag_action = "create_pending"
+        self._drag_moved = False
         return {"RUNNING_MODAL"}
 
     def _should_leave_for_tool_key(self, event) -> bool:
@@ -992,6 +973,7 @@ class BNAME_OT_effect_line_tool(Operator):
 
     def _start_drag(
         self,
+        obj,
         layer,
         action: str,
         x_mm: float,
@@ -1001,6 +983,8 @@ class BNAME_OT_effect_line_tool(Operator):
         self._dragging = True
         self._drag_action = "move" if action == "body" else action
         self._drag_layer_name = str(getattr(layer, "name", "") or "")
+        self._drag_obj_name = str(getattr(obj, "name", "") or "") if obj is not None else ""
+        self._drag_page_id = self._page_id_for_obj(obj)
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
         self._drag_orig_x = float(bounds[0])
@@ -1009,10 +993,22 @@ class BNAME_OT_effect_line_tool(Operator):
         self._drag_orig_h = float(bounds[3])
         self._drag_moved = False
 
+    def _page_id_for_obj(self, obj) -> str:
+        if obj is None:
+            return ""
+        from ..utils import object_naming as _on
+
+        parent_key = str(obj.get(_on.PROP_PARENT_KEY, "") or "")
+        if not parent_key:
+            return ""
+        return parent_key.split(":", 1)[0]
+
     def _clear_drag_state(self) -> None:
         self._dragging = False
         self._drag_action = ""
         self._drag_layer_name = ""
+        self._drag_obj_name = ""
+        self._drag_page_id = ""
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
         self._drag_orig_x = 0.0
@@ -1020,6 +1016,9 @@ class BNAME_OT_effect_line_tool(Operator):
         self._drag_orig_w = 0.0
         self._drag_orig_h = 0.0
         self._drag_moved = False
+        self._pending_create = False
+        self._pending_start_x = 0.0
+        self._pending_start_y = 0.0
 
     def _modal_dragging(self, context, event):
         if not _event_in_view3d_window(context, event):
@@ -1041,7 +1040,13 @@ class BNAME_OT_effect_line_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def _drag_target(self, context):
-        obj = layer_stack_utils.get_effect_gp_object()
+        # 新設計: ドラッグ開始時に保存した obj_name を直接引く。 旧集約 GP
+        # Object に縛られていた fallback は廃止。
+        obj_name = str(getattr(self, "_drag_obj_name", "") or "")
+        if obj_name:
+            obj = bpy.data.objects.get(obj_name)
+        else:
+            obj = None
         if obj is None:
             return None, None
         layers = getattr(getattr(obj, "data", None), "layers", None)
@@ -1052,30 +1057,138 @@ class BNAME_OT_effect_line_tool(Operator):
                 return obj, layer
         return obj, None
 
-    def _update_drag(self, context, event) -> None:
-        obj, layer = self._drag_target(context)
+    def _page_offset_mm_for_drag(self, context) -> tuple[float, float]:
+        """ドラッグ対象 Object の所属ページ world オフセットを返す."""
+        from ..utils import page_grid as _pg
+
+        page_id = str(getattr(self, "_drag_page_id", "") or "")
+        if not page_id:
+            return 0.0, 0.0
+        work = get_work(context)
+        if work is None:
+            return 0.0, 0.0
+        for i, p in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(p, "id", "") or "") == page_id:
+                try:
+                    return _pg.page_total_offset_mm(work, context.scene, i)
+                except Exception:  # noqa: BLE001
+                    return 0.0, 0.0
+        return 0.0, 0.0
+
+    def _maybe_realize_pending_create(self, context, x_mm: float, y_mm: float):
+        """ドラッグが MIN しきい値を超えた瞬間に効果線 Object を生成."""
+        if not bool(getattr(self, "_pending_create", False)):
+            return None
+        sx = float(getattr(self, "_pending_start_x", 0.0))
+        sy = float(getattr(self, "_pending_start_y", 0.0))
+        if abs(x_mm - sx) <= _EFFECT_DRAG_EPS_MM and abs(y_mm - sy) <= _EFFECT_DRAG_EPS_MM:
+            return None
+        parent_key_for_create = _parent_key_for_world_point(context, sx, sy)
+        try:
+            from ..utils import active_target as _at
+
+            work_for_focus = get_work(context)
+            if work_for_focus is not None:
+                page_id = parent_key_for_create.split(":", 1)[0] if parent_key_for_create else ""
+                page_for_focus = None
+                for p in getattr(work_for_focus, "pages", []) or []:
+                    if str(getattr(p, "id", "") or "") == page_id:
+                        page_for_focus = p
+                        break
+                if page_for_focus is not None:
+                    pk = "coma" if ":" in parent_key_for_create else "page"
+                    _at.focus_creation_target(
+                        context, work_for_focus, page_for_focus,
+                        pk, parent_key_for_create,
+                    )
+        except Exception:  # noqa: BLE001
+            pass
+        # ストロークは page-local 座標で書く (obj.location が page world オフセット
+        # を持つため、 中心を world で渡すと二重適用で隣ページにずれる)。
+        page_id = parent_key_for_create.split(":", 1)[0] if parent_key_for_create else ""
+        ox_mm, oy_mm = 0.0, 0.0
+        from ..utils import page_grid as _pg
+        work_now = get_work(context)
+        if work_now is not None and page_id:
+            for i, p in enumerate(getattr(work_now, "pages", []) or []):
+                if str(getattr(p, "id", "") or "") == page_id:
+                    try:
+                        ox_mm, oy_mm = _pg.page_total_offset_mm(work_now, context.scene, i)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    break
+        local_x = sx - ox_mm
+        local_y = sy - oy_mm
+        obj, layer = _create_effect_layer(
+            context,
+            (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
+            parent_key=parent_key_for_create,
+        )
         if obj is None or layer is None:
-            self._clear_drag_state()
-            return
+            self._pending_create = False
+            return None
+        object_selection.select_key(
+            context, object_selection.effect_key(layer), mode="single",
+        )
+        self._drag_obj_name = str(getattr(obj, "name", "") or "")
+        self._drag_layer_name = str(getattr(layer, "name", "") or "")
+        self._drag_page_id = page_id
+        self._drag_action = "create"
+        # bounds は page-local 座標で記録 (drag_result_bounds がこれを基に再構築)
+        self._drag_orig_x = local_x
+        self._drag_orig_y = local_y
+        self._drag_orig_w = _EFFECT_MIN_SIZE_MM
+        self._drag_orig_h = _EFFECT_MIN_SIZE_MM
+        # _drag_start_x/y は world 座標のままにし、 _update_drag で local 変換する
+        self._drag_start_x = sx
+        self._drag_start_y = sy
+        self._pending_create = False
+        return obj, layer
+
+    def _update_drag(self, context, event) -> None:
         x_mm, y_mm = _event_world_xy_mm(context, event)
         if x_mm is None or y_mm is None:
             return
-        dx = float(x_mm) - self._drag_start_x
-        dy = float(y_mm) - self._drag_start_y
+        # ドラッグ確定後に作成 (フキダシ・テキストと挙動を揃える)
+        if bool(getattr(self, "_pending_create", False)):
+            res = self._maybe_realize_pending_create(context, x_mm, y_mm)
+            if res is None:
+                return
+            obj, layer = res
+        else:
+            obj, layer = self._drag_target(context)
+            if obj is None or layer is None:
+                self._clear_drag_state()
+                return
+        ox_mm, oy_mm = self._page_offset_mm_for_drag(context)
+        local_x = float(x_mm) - ox_mm
+        local_y = float(y_mm) - oy_mm
+        local_start_x = float(self._drag_start_x) - ox_mm
+        local_start_y = float(self._drag_start_y) - oy_mm
+        dx = local_x - local_start_x
+        dy = local_y - local_start_y
         if abs(dx) > _EFFECT_DRAG_EPS_MM or abs(dy) > _EFFECT_DRAG_EPS_MM:
             self._drag_moved = True
-        bounds = self._drag_result_bounds(dx, dy)
+        bounds = self._drag_result_bounds_local(dx, dy, local_start_x, local_start_y)
         _write_effect_strokes(context, obj, layer, bounds)
         _select_effect_layer(context, obj, layer)
 
-    def _drag_result_bounds(self, dx: float, dy: float) -> tuple[float, float, float, float]:
+    def _drag_result_bounds_local(
+        self,
+        dx: float, dy: float,
+        local_start_x: float, local_start_y: float,
+    ) -> tuple[float, float, float, float]:
+        """ドラッグ結果の bounds を page-local 座標で算出."""
         action = str(getattr(self, "_drag_action", "") or "")
         x = float(self._drag_orig_x)
         y = float(self._drag_orig_y)
         w = float(self._drag_orig_w)
         h = float(self._drag_orig_h)
         if action == "create":
-            return _rect_from_points(self._drag_start_x, self._drag_start_y, self._drag_start_x + dx, self._drag_start_y + dy)
+            return _rect_from_points(
+                local_start_x, local_start_y,
+                local_start_x + dx, local_start_y + dy,
+            )
         if action == "move":
             return x + dx, y + dy, w, h
         right = x + w
@@ -1095,6 +1208,11 @@ class BNAME_OT_effect_line_tool(Operator):
         return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
     def _finish_drag(self, context) -> None:
+        # pending のまま release ⇒ ドラッグ未確定なので何も作らない
+        if bool(getattr(self, "_pending_create", False)):
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         obj, layer = self._drag_target(context)
         moved = bool(getattr(self, "_drag_moved", False))
         action = self._drag_action
@@ -1108,6 +1226,10 @@ class BNAME_OT_effect_line_tool(Operator):
         self._clear_drag_state()
 
     def _cancel_drag(self, context) -> None:
+        if bool(getattr(self, "_pending_create", False)):
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         obj, layer = self._drag_target(context)
         if obj is not None and layer is not None:
             if self._drag_action == "create":

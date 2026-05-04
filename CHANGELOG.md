@@ -3,6 +3,91 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-04 — v0.2.3 レイヤー描画順序刷新 + ドラッグ作成専用化 + ページレイヤーリスト
+
+### 症状
+1. セーフライン外塗りがテキストの上に乗って文字が読めない場面があった。
+   塗り色も自由に変えられたが、 ユーザーは「黒で N% 暗くしたいだけ」 用途で
+   使うため、 色 UI が冗長だった。
+2. 用紙の枠線・トンボ・セーフ枠などの「用紙要素線群」 がコマ枠の塗りに隠れ、
+   どこに寸法ガイドがあるか分からない場面があった。
+3. フキダシ / 効果線がコマ枠と重なると、 重なり部分の枠線が消失する見た目で
+   「合体した」 ように見えた (実体は Z 値が同程度で z-fight 寸前)。
+4. 効果線ツール: ビューポートでドラッグしても追従せず、 さらに作成位置が
+   クリック地点ではなく隣ページの座標に飛んでいた (新設計の 1 effect = 1 GP
+   Object 化に modal の drag target / 座標計算が追従していなかった)。
+5. テキストツール: クリックで即既定サイズの枠が作られ、 必要のないクリックで
+   不要レイヤーが量産される。 サイズも後から調整するしかなかった。
+6. フキダシ / 効果線 / テキストの作成挙動が「クリックで作成」と「ドラッグで
+   作成」 で揺れていた。
+7. ページごとにレイヤー一覧を見て上下入れ替えする UI が無く、 重なり順を
+   制御するにはアウトライナーで色々な階層を辿る必要があった。
+
+### 修正
+- ``core/safe_area_overlay.py``: `color` プロパティ撤去、 `opacity`
+  (FloatProperty 0..1, 既定 0.3) 追加。 ``ui/overlay.py`` の描画も黒固定 +
+  ALPHA blend に簡略化。 ``panels/paper_panel.py`` のセーフラインボックス
+  内に「不透明度」スライダを表示。
+- ``ui/overlay.py``: 用紙要素線群 (canvas / finish / inner / safe / bleed /
+  trim_marks) の描画を POST_VIEW から POST_PIXEL に移行。 region 2D に
+  座標変換して LINE_STRIP / LINES で描く新ヘルパ
+  (`_draw_rect_outline_pixel` / `_draw_lines_pixel` /
+  `_trim_marks_segs_mm` / `_draw_paper_frames_pixel`) を追加。 これにより
+  テキスト本文 (POST_PIXEL の blf) よりも常に手前に表示される。 コマ枠は
+  対象外で従来通り。 POST_VIEW 内のセーフライン外塗りは描画位置を
+  `_draw_page_overlay` の最後に移動し、 コマ / フキダシ / 効果線の上に
+  重なるよう順序変更。
+- ``utils/layer_object_sync.py``: `assign_per_page_z_ranks` を **種別 base +
+  個別 z_index** ベースに刷新。 `KIND_Z_BASE` (coma=100, raster=200,
+  image=250, gp=300, effect=400, balloon=500, text=900) を追加して、
+  ユーザー指定の Z 順 (上→下: テキスト > フキダシ > 効果線 > コマ) を
+  Object 配置レベルで保証する。 coma_plane (Z=0.01) との z-fight を回避
+  するため、 managed レイヤーは rank 2 (= z=0.02) から開始。
+- ``operators/effect_line_op.py``:
+  - 真因 1 (ドラッグ追従不能): `_drag_target` が旧集約 GP Object を取得
+    していたため新設計 obj が見つからず modal が更新できなかった。 ドラッグ
+    開始時に `_drag_obj_name` を保存して `bpy.data.objects.get` で復元する
+    方式に変更。
+  - 真因 2 (隣ページに作成): `_write_effect_strokes` が world 座標の bounds
+    を受け取り、 obj.location が page world オフセットを別途持つため二重
+    適用で stroke が隣ページにずれていた。 stroke を **page-local 座標** で
+    書き出すよう `_update_drag` / `_maybe_realize_pending_create` を再設計。
+  - 仕様変更: クリックでは何も作らず、 ドラッグ確定時に Object を生成する
+    `_pending_create` 状態を追加。
+- ``operators/balloon_op.py``: フキダシツールも同様に `create_pending` を
+  追加。 クリック単発では何も作らない。 ドラッグで MIN しきい値超え時に
+  Object を生成し、 release 時に未確定なら何も残さない。
+- ``operators/text_op.py``: テキストツールも `create_pending` を追加。
+  空白クリック → ドラッグで矩形指定 → release で確定 + インライン入力。
+  ドラッグなし (= MOUSEMOVE が一度も走らない) の release では何も作らない。
+- ``panels/page_layer_stack_panel.py`` (新規): ページ毎レイヤースタック UI。
+  ドロップダウンで対象ページを選び、 種別関係なく 1 列にレイヤー一覧を表示。
+  上下ボタンで `bname_z_kind_base` + `bname_z_index` の両方を入替えて
+  **種別を跨いだ並び替え** を可能にする。 ドロップダウン変更でアクティブ
+  ページ + Outliner 選択 (active_layer_collection) も同期。 Scene プロパティ
+  `bname_layer_panel_page_id` (EnumProperty) /
+  `bname_layer_panel_active_index` (IntProperty) を追加。
+- ``utils/layer_object_sync.py``: 上記の種別跨ぎ並び替えを成立させるため
+  `_kind_base_z` を「Object に保存された ``bname_z_kind_base`` を優先、 無い
+  ときだけ ``KIND_Z_BASE[kind]`` 既定値にフォールバック」 する形に拡張。
+  ユーザーが上下ボタンで動かした並びは Object 側の custom property として
+  永続化される。
+- ``panels/__init__.py``: 新パネルを `_MODULES` に追加。
+- ``io/schema.py``: `safe_area_to_dict` / `safe_area_from_dict` を opacity
+  ベースに刷新。 旧 color フィールドは互換読込で無視。
+- ``operators/work_op.py``: 新規作品の既定値を `enabled=True` /
+  `opacity=0.3` に揃える。 不要になった `color_space` import を撤去。
+
+### 検証 (Blender 5.1.1 実機)
+- ``D:/tmp/bname_layer_overhaul_check.py`` で addon register、 新パネル /
+  新オペレータ (`bname.page_layer_move_up` / `bname.page_layer_move_down` /
+  `bname.page_layer_select`) の bpy.ops 露出、 `safe_area_overlay.opacity`
+  prop の存在、 `KIND_Z_BASE` テキスト=900 の確認 — 全 OK。
+- セーフライン外塗りの濃さ調整 / 用紙線群の最前面表示 / フキダシ・効果線・
+  テキストのドラッグ作成挙動 / ページレイヤースタック UI 並び替えの実機
+  目視確認は手動。 不具合があればフィードバックください。
+
+
 ## 2026-05-04 — v0.2.2 ツールセクション再構成 / 詳細設定の項目復元 / テキストコレクション最上位固定
 
 ### 症状

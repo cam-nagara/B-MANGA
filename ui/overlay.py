@@ -574,6 +574,152 @@ def _draw_polyline_loop(
         gpu.state.line_width_set(1.0)
 
 
+# ---------- POST_PIXEL 用: pixel 空間で線分を描く ----------
+
+
+def _world_mm_to_region(region, rv3d, x_mm: float, y_mm: float):
+    """mm 座標 (z=0 平面) を region pixel 座標へ変換."""
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+
+    co = location_3d_to_region_2d(
+        region, rv3d, (mm_to_m(x_mm), mm_to_m(y_mm), 0.0)
+    )
+    return None if co is None else (float(co[0]), float(co[1]))
+
+
+def _draw_rect_outline_pixel(
+    region, rv3d, rect: Rect, color: tuple[float, float, float, float],
+    line_width: float = 1.0,
+) -> None:
+    """矩形枠線を POST_PIXEL の pixel 座標で描画."""
+    p_bl = _world_mm_to_region(region, rv3d, rect.x, rect.y)
+    p_br = _world_mm_to_region(region, rv3d, rect.x2, rect.y)
+    p_tr = _world_mm_to_region(region, rv3d, rect.x2, rect.y2)
+    p_tl = _world_mm_to_region(region, rv3d, rect.x, rect.y2)
+    if None in (p_bl, p_br, p_tr, p_tl):
+        return
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    verts = [(p_bl[0], p_bl[1]), (p_br[0], p_br[1]),
+             (p_tr[0], p_tr[1]), (p_tl[0], p_tl[1]), (p_bl[0], p_bl[1])]
+    batch = batch_for_shader(shader, "LINE_STRIP", {"pos": verts})
+    shader.bind()
+    shader.uniform_float("color", color)
+    try:
+        gpu.state.line_width_set(max(1.0, float(line_width)))
+        batch.draw(shader)
+    finally:
+        gpu.state.line_width_set(1.0)
+
+
+def _draw_lines_pixel(
+    region, rv3d,
+    segs_mm: list[tuple[tuple[float, float], tuple[float, float]]],
+    color: tuple[float, float, float, float],
+    line_width: float = 1.0,
+) -> None:
+    """mm 線分群を pixel 座標へ変換し LINES で描画."""
+    if not segs_mm:
+        return
+    verts: list[tuple[float, float]] = []
+    for (x1, y1), (x2, y2) in segs_mm:
+        p1 = _world_mm_to_region(region, rv3d, x1, y1)
+        p2 = _world_mm_to_region(region, rv3d, x2, y2)
+        if p1 is None or p2 is None:
+            continue
+        verts.append(p1)
+        verts.append(p2)
+    if not verts:
+        return
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    batch = batch_for_shader(shader, "LINES", {"pos": verts})
+    shader.bind()
+    shader.uniform_float("color", color)
+    try:
+        gpu.state.line_width_set(max(1.0, float(line_width)))
+        batch.draw(shader)
+    finally:
+        gpu.state.line_width_set(1.0)
+
+
+def _trim_marks_segs_mm(
+    finish: Rect, bleed: Rect,
+    corner_arm_mm: float = 10.0,
+    center_size_mm: float = 10.0,
+    center_gap_mm: float = 5.0,
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """トンボ線分群を mm 座標で生成 (POST_PIXEL 描画用)."""
+    fr, br = finish, bleed
+    A = corner_arm_mm
+    segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    # コーナートンボ (4 隅 4 本ずつ)
+    segs.append(((br.x - A, fr.y), (br.x, fr.y)))
+    segs.append(((fr.x, br.y - A), (fr.x, br.y)))
+    segs.append(((br.x - A, br.y), (br.x, br.y)))
+    segs.append(((br.x, br.y - A), (br.x, br.y)))
+    segs.append(((br.x2, fr.y), (br.x2 + A, fr.y)))
+    segs.append(((fr.x2, br.y - A), (fr.x2, br.y)))
+    segs.append(((br.x2, br.y), (br.x2 + A, br.y)))
+    segs.append(((br.x2, br.y - A), (br.x2, br.y)))
+    segs.append(((br.x - A, fr.y2), (br.x, fr.y2)))
+    segs.append(((fr.x, br.y2), (fr.x, br.y2 + A)))
+    segs.append(((br.x - A, br.y2), (br.x, br.y2)))
+    segs.append(((br.x, br.y2), (br.x, br.y2 + A)))
+    segs.append(((br.x2, fr.y2), (br.x2 + A, fr.y2)))
+    segs.append(((fr.x2, br.y2), (fr.x2, br.y2 + A)))
+    segs.append(((br.x2, br.y2), (br.x2 + A, br.y2)))
+    segs.append(((br.x2, br.y2), (br.x2, br.y2 + A)))
+    # センタートンボ (4 辺中央 + 字)
+    cx_mid = (fr.x + fr.x2) * 0.5
+    cy_mid = (fr.y + fr.y2) * 0.5
+    half = center_size_mm * 0.5
+    gap = center_gap_mm
+    cy_top = br.y2 + gap + half
+    segs.append(((cx_mid, cy_top - half), (cx_mid, cy_top + half)))
+    segs.append(((cx_mid - half, cy_top), (cx_mid + half, cy_top)))
+    cy_bot = br.y - gap - half
+    segs.append(((cx_mid, cy_bot - half), (cx_mid, cy_bot + half)))
+    segs.append(((cx_mid - half, cy_bot), (cx_mid + half, cy_bot)))
+    cx_left = br.x - gap - half
+    segs.append(((cx_left, cy_mid - half), (cx_left, cy_mid + half)))
+    segs.append(((cx_left - half, cy_mid), (cx_left + half, cy_mid)))
+    cx_right = br.x2 + gap + half
+    segs.append(((cx_right, cy_mid - half), (cx_right, cy_mid + half)))
+    segs.append(((cx_right - half, cy_mid), (cx_right + half, cy_mid)))
+    return segs
+
+
+def _draw_paper_frames_pixel(
+    context, paper, rects, ox_mm: float, oy_mm: float,
+) -> None:
+    """用紙要素線群を POST_PIXEL で描画 (テキスト本文より上に出す).
+
+    用紙枠 / 仕上がり / 基本枠 / セーフライン / 裁ち落とし / トンボを
+    pixel 空間で描画する。 1px 固定線。 コマ枠は対象外 (POST_VIEW のまま)。
+    """
+    region, rv3d = _resolve_active_region(context)
+    if region is None or rv3d is None:
+        return
+    canvas_r = _translate_rect(rects.canvas, ox_mm, oy_mm)
+    finish_r = _translate_rect(rects.finish, ox_mm, oy_mm)
+    inner_r = _translate_rect(rects.inner_frame, ox_mm, oy_mm)
+    safe_r = _translate_rect(rects.safe, ox_mm, oy_mm)
+    bleed_r = _translate_rect(rects.bleed, ox_mm, oy_mm)
+    gpu.state.blend_set("ALPHA")
+    if getattr(paper, "show_canvas_frame", True):
+        _draw_rect_outline_pixel(region, rv3d, canvas_r, viewport_colors.PAPER_GUIDE_DIM)
+    if paper.bleed_mm > 0.0 and getattr(paper, "show_bleed_frame", True):
+        _draw_rect_outline_pixel(region, rv3d, bleed_r, viewport_colors.PAPER_GUIDE_DIM)
+    if getattr(paper, "show_finish_frame", True):
+        _draw_rect_outline_pixel(region, rv3d, finish_r, viewport_colors.PAPER_GUIDE_LIGHT)
+    if getattr(paper, "show_inner_frame", True):
+        _draw_rect_outline_pixel(region, rv3d, inner_r, viewport_colors.PAPER_GUIDE)
+    if getattr(paper, "show_safe_line", True):
+        _draw_rect_outline_pixel(region, rv3d, safe_r, viewport_colors.SAFE_LINE)
+    if paper.bleed_mm > 0.0 and getattr(paper, "show_trim_marks", True):
+        segs = _trim_marks_segs_mm(finish_r, bleed_r)
+        _draw_lines_pixel(region, rv3d, segs, viewport_colors.PAPER_GUIDE_LIGHT)
+
+
 def _resolve_active_region(context):
     """draw_handler 用に WINDOW region と rv3d を確実に取得.
 
@@ -1026,42 +1172,16 @@ def _draw_page_overlay(
     # ここでは GPU 塗りを描かない。GPU で描くと BLENDED ラスター paint を
     # 上から覆い隠す問題があった (旧バグ)。
 
-    # セーフライン外オーバーレイ (全ページに表示)
-    # 仕様: 常に乗算合成相当 + alpha 100%。
-    # Blender 5.x の gpu.state.blend_set("MULTIPLY") は受理されるが期待通り
-    # 動かないため、ALPHA で「色付き半透明」描画して乗算同等の見た目を出す。
-    # sa.color は Blender の COLOR プロパティなので scene-linear 値。
-    # UI表示相当の sRGB に戻してから alpha を色の暗さ (1 - brightness)
-    # に連動させる。これにより:
-    #   - (0.7, 0.7, 0.7) グレー: alpha=0.3 → 紙の白に薄灰 = 30% 暗いグレー
-    #   - (1, 0, 0) 赤:           alpha=0.67 → 赤フィルタ
-    #   - (0, 0, 1) 青:           alpha=0.67 → 青フィルタ
-    #   - (0, 0, 0) 黒:           alpha=1.0 → 完全に黒
-    # 暗い色ほどフィルタが強く、明るい色ほど薄く出る (乗算らしい挙動)。
-    sa = work.safe_area_overlay
-    if sa.enabled:
-        gpu.state.blend_set("ALPHA")
-        r, g, b = color_space.linear_to_srgb_rgb(sa.color[:3])
-        brightness = (r + g + b) / 3.0
-        alpha = max(0.0, min(1.0, 1.0 - brightness))
-        color = (r, g, b, alpha)
-        _draw_frame_with_hole(canvas_r, safe_r, color)
+    # 用紙要素線群は POST_VIEW では描画しない (テキスト本文 (POST_PIXEL) より
+    # 上に表示するため、 _draw_callback_pixel 側で再描画する)。
+    # 旧コードの POST_VIEW 描画はコメント参照のみとし、実描画はここでは行わない。
 
-    # 枠線群はビューポート上で常に 1px 表示にする。
-    if getattr(paper, "show_canvas_frame", True):
-        _draw_rect_outline(canvas_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-    # 裁ち落とし枠 (= 仕上がり枠 + 裁ち落とし幅)
-    if paper.bleed_mm > 0.0 and getattr(paper, "show_bleed_frame", True):
-        _draw_rect_outline(bleed_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-    if getattr(paper, "show_finish_frame", True):
-        _draw_rect_outline(finish_r, viewport_colors.PAPER_GUIDE_LIGHT, line_width=1.0)
-    if getattr(paper, "show_inner_frame", True):
-        _draw_rect_outline(inner_r, viewport_colors.PAPER_GUIDE, line_width=1.0)
-    if getattr(paper, "show_safe_line", True):
-        _draw_rect_outline(safe_r, viewport_colors.SAFE_LINE, line_width=1.0)
-    # トンボ (四隅 + 各辺中央センタートンボ) を仕上がり枠 / 裁ち落とし枠基準で描画
-    if paper.bleed_mm > 0.0 and getattr(paper, "show_trim_marks", True):
-        _draw_trim_marks(finish_r, bleed_r)
+    # セーフライン外オーバーレイ (全ページに表示)
+    # 仕様: 黒固定 + 不透明度 (既定 0.3)。 ALPHA blend で「黒 N%」相当を描く。
+    # テキストレイヤー (POST_PIXEL の blf) よりは下、 フキダシ・効果線・コマ
+    # よりは上で見せたいため、 _draw_page_overlay の最後に描画する (この時点で
+    # コマ枠 / フキダシ overlay / テキストガイド枠は描画済)。
+    # → 後段の "コマ / フキダシ / テキスト" 描画 後 に移動して描画する。
 
     # 画像レイヤー (アクティブページのみ — 全ページ一覧時は負荷とレイヤーの per-scene 制約で省略)
     if mode == MODE_PAGE and draw_image_layers:
@@ -1099,8 +1219,22 @@ def _draw_page_overlay(
             draw_rect_outline=_draw_rect_outline,
         )
 
+    # セーフライン外塗り (黒固定 + 不透明度)。 コマ枠 / フキダシ / 効果線 /
+    # テキストガイドの後に描画 = 上に重ねる。 テキスト本文 (POST_PIXEL の blf)
+    # は POST_VIEW より上に描画されるため、 結果として:
+    #   テキスト本文 > セーフライン外塗り > フキダシ overlay / コマ overlay
+    # の重なり順になる。
+    sa = work.safe_area_overlay
+    if sa.enabled:
+        opacity = max(0.0, min(1.0, float(getattr(sa, "opacity", 0.3))))
+        if opacity > 0.0:
+            gpu.state.blend_set("ALPHA")
+            _draw_frame_with_hole(canvas_r, safe_r, (0.0, 0.0, 0.0, opacity))
+
     # NOTE: 作品情報の blf 描画は POST_VIEW では効かないため _draw_callback_pixel
     # (POST_PIXEL handler) で別途実行する。ここでは呼ばない。
+    # 用紙要素線群 (canvas / finish / inner / safe / bleed / trim_marks) も
+    # _draw_callback_pixel で描画 (テキスト本文より手前に出すため)。
 
 
 def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
@@ -1770,6 +1904,11 @@ def _draw_callback_pixel() -> None:
                     ),
                     draw_text_in_rect=_draw_text_in_rect,
                 )
+            # 用紙要素線群を最後 (テキスト本文より上) に描画
+            _draw_paper_frames_pixel(
+                context, paper, overlay_shared.compute_paper_rects(paper),
+                ox, oy,
+            )
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
@@ -1798,6 +1937,11 @@ def _draw_callback_pixel() -> None:
                 oy_mm=oy,
                 entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                 draw_text_in_rect=_draw_text_in_rect,
+            )
+            # 用紙要素線群を最後 (テキスト本文より上) に描画
+            _draw_paper_frames_pixel(
+                context, paper, overlay_shared.compute_paper_rects(paper),
+                ox, oy,
             )
     region, rv3d = _resolve_active_region(context)
     overlay_coma_selection.draw(context, work, region, rv3d)

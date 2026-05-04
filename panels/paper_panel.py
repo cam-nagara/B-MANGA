@@ -72,13 +72,13 @@ class BNAME_PT_paper(Panel):
         row = box.row(align=True)
         row.prop(p, "safe_gutter_mm")
         row.prop(p, "safe_fore_edge_mm")
-        # セーフライン外塗り (旧「セーフライン外オーバーレイ」パネル) を統合
+        # セーフライン外塗り (黒固定 + 不透明度のみ可変)
         sa = work.safe_area_overlay
         row = box.row(align=True)
         row.prop(sa, "enabled", text="セーフライン外を塗る")
         sub = box.row(align=True)
         sub.enabled = sa.enabled
-        sub.prop(sa, "color", text="塗りつぶし色")
+        sub.prop(sa, "opacity", text="不透明度", slider=True)
 
         box = layout.box()
         box.label(text="色")

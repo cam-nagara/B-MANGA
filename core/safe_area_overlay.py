@@ -4,44 +4,37 @@
 ここではデータモデルと既定値のみ保持する。
 
 仕様:
-- 既定色 = 黒 30% グレー (RGB 0.7, 0.7, 0.7)、常に乗算合成・不透明度 100%
+- 黒固定 + 不透明度スライダで暗さ調整 (既定 0.3)
+- ALPHA blend で「黒 30%」相当を描く (Blender GPU 乗算は EEVEE Next で
+  期待通り動かないため ALPHA で代替)
 - 表示専用 — 書き出しには含めない
-- 作品共通既定 (work.json)、ページ単位でオーバーライド可
-
-opacity / blend_mode フィールドは UI から削除済 (常に乗算 alpha=1.0 で固定描画)。
 """
 
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, FloatVectorProperty
+from bpy.props import BoolProperty, FloatProperty
 
-from ..utils import color_space
 from ..utils import log
 
 _logger = log.get_logger(__name__)
 
-# Blender の COLOR プロパティは scene-linear 値を保持し、UIでは sRGB
-# 相当に変換して表示される。UI上の明度 0.7 は linear 約 0.448。
-_DEFAULT_DISPLAY_COLOR = (0.7, 0.7, 0.7)
-_DEFAULT_COLOR = color_space.srgb_to_linear_rgb(_DEFAULT_DISPLAY_COLOR)
-
 
 class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
-    """セーフライン外側を乗算で暗くするビューポート専用オーバーレイ."""
+    """セーフライン外側を黒で暗くするビューポート専用オーバーレイ."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="セーフライン",
-        description="セーフライン外を乗算で暗く表示 (書き出しには含まれない)",
+        description="セーフライン外を黒で暗く表示 (書き出しには含まれない)",
         default=True,
     )
-    color: FloatVectorProperty(  # type: ignore[valid-type]
-        name="塗りつぶし色",
-        subtype="COLOR",
-        size=3,
-        default=_DEFAULT_COLOR,
+    opacity: FloatProperty(  # type: ignore[valid-type]
+        name="不透明度",
+        description="セーフライン外側の暗さ (0=透明, 1=完全黒)",
+        default=0.3,
         min=0.0,
         max=1.0,
+        subtype="FACTOR",
     )
 
 

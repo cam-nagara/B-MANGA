@@ -641,6 +641,8 @@ class BNAME_OT_text_tool(Operator):
     _drag_orig_w: float
     _drag_orig_h: float
     _drag_moved: bool
+    _drag_creation_parent_kind: str
+    _drag_creation_parent_key: str
     _last_click_time: float
     _last_click_page_id: str
     _last_click_text_id: str
@@ -748,18 +750,12 @@ class BNAME_OT_text_tool(Operator):
             return {"RUNNING_MODAL"}
         if not can_create or lx is None or ly is None:
             return {"PASS_THROUGH"}
-        width = _TEXT_DEFAULT_WIDTH_MM
-        height = _TEXT_DEFAULT_HEIGHT_MM
-        x_mm = lx - width / 2.0
-        y_mm = ly - height / 2.0
-        if _creation_blocked(context, page, x_mm, y_mm, width, height):
-            self.report({"ERROR"}, "このモードではその位置にテキストを作成できません")
-            return {"RUNNING_MODAL"}
-        # 作成位置のコマ (またはページ直下) を active 階層 + Outliner にも反映
+        # クリック単発では何も作らない: ドラッグでサイズ確定した瞬間に作成。
+        # 作成位置のコマ / ページを保留状態に保存し、 release 時 (= ドラッグなし)
+        # は何も作成しないで通常状態に戻る。
         creation_parent_kind = ""
         creation_parent_key = ""
         try:
-            from ..utils import active_target as _at
             from ..utils import layer_hierarchy as _lh
 
             panel = _lh.coma_containing_point(page, lx, ly)
@@ -769,39 +765,22 @@ class BNAME_OT_text_tool(Operator):
             else:
                 creation_parent_kind = "page"
                 creation_parent_key = _lh.page_stack_key(page)
-            _at.focus_creation_target(
-                context, work, page, creation_parent_kind, creation_parent_key
-            )
         except Exception:  # noqa: BLE001
             pass
-        entry, _missing_parent = _create_text_entry(
-            context,
-            page,
-            body="",
-            speaker_type="normal",
-            x_mm=x_mm,
-            y_mm=y_mm,
-            width_mm=width,
-            height_mm=height,
-            parent_kind=creation_parent_kind,
-            parent_key=creation_parent_key,
-        )
-        self._editing = True
-        self._editing_created_new = True
-        self._edit_original_body = ""
-        self._edit_original_font_spans = ()
-        self._cursor_index = 0
-        self._selection_anchor = -1
-        self._page_id = getattr(page, "id", "")
-        self._text_id = getattr(entry, "id", "")
-        object_selection.select_key(
-            context,
-            object_selection.text_key(page, entry),
-            mode="single",
-        )
+        self._dragging = True
+        self._drag_action = "create_pending"
+        self._drag_page_id = getattr(page, "id", "")
+        self._drag_text_id = ""
+        self._drag_start_x = float(lx)
+        self._drag_start_y = float(ly)
+        self._drag_orig_x = 0.0
+        self._drag_orig_y = 0.0
+        self._drag_orig_w = 0.0
+        self._drag_orig_h = 0.0
+        self._drag_moved = False
+        self._drag_creation_parent_kind = creation_parent_kind
+        self._drag_creation_parent_key = creation_parent_key
         self._clear_click_state()
-        self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
         return {"RUNNING_MODAL"}
 
     def _modal_editing(self, context, event):
@@ -980,6 +959,8 @@ class BNAME_OT_text_tool(Operator):
         self._drag_orig_w = 0.0
         self._drag_orig_h = 0.0
         self._drag_moved = False
+        self._drag_creation_parent_kind = ""
+        self._drag_creation_parent_key = ""
 
     def _clear_click_state(self) -> None:
         self._last_click_time = 0.0
@@ -1019,6 +1000,9 @@ class BNAME_OT_text_tool(Operator):
         return distance <= _TEXT_DOUBLE_CLICK_DISTANCE_MM
 
     def _modal_dragging(self, context, event):
+        action = str(getattr(self, "_drag_action", "") or "")
+        if action == "create_pending":
+            return self._modal_create_pending(context, event)
         if event.type == "MOUSEMOVE":
             self._update_text_drag(context, event)
             return {"RUNNING_MODAL"}
@@ -1045,6 +1029,113 @@ class BNAME_OT_text_tool(Operator):
             self._cancel_text_drag(context)
             return {"RUNNING_MODAL"}
         return {"RUNNING_MODAL"}
+
+    def _modal_create_pending(self, context, event):
+        """テキスト作成: ドラッグで矩形を確定してから作成 + インライン入力."""
+        if event.type == "MOUSEMOVE":
+            self._update_create_pending(context, event)
+            return {"RUNNING_MODAL"}
+        if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+            self._finish_create_pending(context, event)
+            return {"RUNNING_MODAL"}
+        if event.type in {"ESC", "RIGHTMOUSE"} and event.value == "PRESS":
+            # 作成キャンセル: もし既に作成保留 entry がいたら削除
+            page_id = str(getattr(self, "_drag_page_id", "") or "")
+            text_id = str(getattr(self, "_drag_text_id", "") or "")
+            if page_id and text_id:
+                _remove_text_by_id(context, page_id, text_id)
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return {"RUNNING_MODAL"}
+        return {"RUNNING_MODAL"}
+
+    def _update_create_pending(self, context, event) -> None:
+        """create_pending 中の MOUSEMOVE: しきい値を超えたら entry 化、 既に
+        作成済なら矩形を更新する."""
+        work, current_page, lx, ly = _resolve_local_xy_for_page_from_event(
+            context, event,
+            str(getattr(self, "_drag_page_id", "") or ""),
+        )
+        if work is None or current_page is None or lx is None or ly is None:
+            return
+        sx = float(self._drag_start_x)
+        sy = float(self._drag_start_y)
+        if abs(lx - sx) <= _TEXT_DRAG_EPS_MM and abs(ly - sy) <= _TEXT_DRAG_EPS_MM:
+            return
+        text_id = str(getattr(self, "_drag_text_id", "") or "")
+        if not text_id:
+            # 初回しきい値超え: テキスト作成 + active 階層を Outliner にも反映
+            try:
+                from ..utils import active_target as _at
+
+                _at.focus_creation_target(
+                    context, work, current_page,
+                    str(getattr(self, "_drag_creation_parent_kind", "") or "page"),
+                    str(getattr(self, "_drag_creation_parent_key", "") or ""),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            entry, _missing = _create_text_entry(
+                context,
+                current_page,
+                body="",
+                speaker_type="normal",
+                x_mm=sx, y_mm=sy,
+                width_mm=_TEXT_MIN_SIZE_MM,
+                height_mm=_TEXT_MIN_SIZE_MM,
+                parent_kind=str(getattr(self, "_drag_creation_parent_kind", "") or "page"),
+                parent_key=str(getattr(self, "_drag_creation_parent_key", "") or ""),
+            )
+            self._drag_text_id = getattr(entry, "id", "")
+            object_selection.select_key(
+                context, object_selection.text_key(current_page, entry), mode="single",
+            )
+            self._drag_moved = True
+        page, entry, _idx = self._drag_text_entry(context)
+        if entry is None:
+            return
+        x, y, w, h = self._rect_from_drag(sx, sy, lx, ly)
+        _set_text_rect(entry, x, y, w, h)
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _rect_from_drag(self, x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
+        left = min(float(x0), float(x1))
+        right = max(float(x0), float(x1))
+        bottom = min(float(y0), float(y1))
+        top = max(float(y0), float(y1))
+        return (left, bottom,
+                max(_TEXT_MIN_SIZE_MM, right - left),
+                max(_TEXT_MIN_SIZE_MM, top - bottom))
+
+    def _finish_create_pending(self, context, event) -> None:
+        """release: ドラッグなしなら何もしない。 ドラッグありなら確定 → インライン入力."""
+        text_id = str(getattr(self, "_drag_text_id", "") or "")
+        page_id = str(getattr(self, "_drag_page_id", "") or "")
+        if not text_id:
+            self._clear_drag_state()
+            return
+        page = _find_page_by_id(context, page_id)
+        idx = _find_text_index(page, text_id) if page is not None else -1
+        if page is None or idx < 0:
+            self._clear_drag_state()
+            return
+        entry = page.texts[idx]
+        # 矩形が小さすぎ (= MIN サイズのまま) ならキャンセル相当で削除
+        if entry.width_mm <= _TEXT_MIN_SIZE_MM + 1e-3 and entry.height_mm <= _TEXT_MIN_SIZE_MM + 1e-3:
+            _remove_text_by_id(context, page_id, text_id)
+            self._clear_drag_state()
+            return
+        self._editing = True
+        self._editing_created_new = True
+        self._edit_original_body = ""
+        self._edit_original_font_spans = ()
+        self._cursor_index = 0
+        self._selection_anchor = -1
+        self._page_id = page_id
+        self._text_id = text_id
+        self._clear_drag_state()
+        self._begin_inline_input(context)
+        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
 
     def _drag_text_entry(self, context):
         page = _find_page_by_id(context, getattr(self, "_drag_page_id", ""))

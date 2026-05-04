@@ -237,47 +237,23 @@ def nombre_from_dict(n, data: dict[str, Any]) -> None:
 
 
 def safe_area_to_dict(sa) -> dict[str, Any]:
-    # opacity / blend_mode は仕様変更で常に 1.0 / multiply 固定 (PG から削除)
-    raw_color = tuple(float(c) for c in sa.color[:3])
-    color = color_space.linear_to_srgb_rgb(raw_color)
-    if all(abs(c - 0.7) < 1e-4 for c in raw_color):
-        # 旧実装は COLOR プロパティに 0.7 を直接入れていたため、
-        # UI上では約 0.854 に見える。未変更の旧既定は現行既定として保存する。
-        color_hex = "#B3B3B3"
-    elif all(abs(c - 0.7) < 1e-4 for c in color):
-        color_hex = "#B3B3B3"
-    else:
-        color_hex = color_to_hex(color)
     return {
         "enabled": bool(sa.enabled),
-        "color": color_hex,
+        "opacity": round(float(getattr(sa, "opacity", 0.3)), 4),
     }
 
 
 def safe_area_from_dict(sa, data: dict[str, Any]) -> None:
     data = data or {}
     sa.enabled = bool(data.get("enabled", True))
-    # color は size=3 の RGB のみ (旧データの alpha は無視)。
-    # 未保存時の既定値は明度 0.7 のグレーに揃える。
-    if "color" in data:
-        color_code = str(data["color"]).strip().upper()
-        # 旧版の既定値は #808080 だった。保存済み作品の「旧既定」が
-        # 新規既定に見えてしまうため、読み込み時に現行既定へ移行する。
-        if color_code in {
-            "#808080", "808080",
-            "#7F7F7F", "7F7F7F",
-            "#B2B2B2", "B2B2B2",
-            "#B3B3B3", "B3B3B3",
-            "#D9D9D9", "D9D9D9",
-            "#DADADA", "DADADA",
-        }:
-            sa.color = color_space.srgb_to_linear_rgb((0.7, 0.7, 0.7))
-        else:
-            rgba = hex_to_rgba(color_code)
-            sa.color = color_space.srgb_to_linear_rgb(rgba[:3])
+    if "opacity" in data:
+        try:
+            sa.opacity = max(0.0, min(1.0, float(data["opacity"])))
+        except Exception:  # noqa: BLE001
+            sa.opacity = 0.3
     else:
-        sa.color = color_space.srgb_to_linear_rgb((0.7, 0.7, 0.7))
-    # 旧 opacity / blendMode フィールドが残っていても無視 (互換読込)
+        sa.opacity = 0.3
+    # 旧 color / blendMode フィールドが残っていても無視 (互換読込)
 
 
 # ---------- ComaGap ----------

@@ -10,6 +10,7 @@ from . import (
     export_panel,
     gpencil_panel,
     layer_panel as _legacy_layer_panel,
+    page_layer_stack_panel,
     page_panel as _legacy_page_panel,
     coma_camera_panel,
     coma_detail_panel,
@@ -31,6 +32,7 @@ _MODULES = (
     coma_detail_panel,
     gpencil_panel,
     outliner_layer_panel,
+    page_layer_stack_panel,
     export_panel,
 )
 

@@ -734,22 +734,10 @@ class BNAME_OT_balloon_tool(Operator):
         ):
             self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
             return {"RUNNING_MODAL"}
-        parent_kind, parent_key = _parent_for_creation_point(page, lx, ly)
-        # 作成位置のコマ (またはページ直下) を active 階層にも反映し、
-        # Outliner Collection ハイライトを同期する
-        _focus_creation_target(context, work, page, parent_kind, parent_key)
-        entry = _create_balloon_entry(
-            context,
-            page,
-            shape=_BALLOON_DEFAULT_SHAPE,
-            x=lx,
-            y=ly,
-            w=_BALLOON_MIN_SIZE_MM,
-            h=_BALLOON_MIN_SIZE_MM,
-            parent_kind=parent_kind,
-            parent_key=parent_key,
-        )
-        self._start_create_drag(page, entry, lx, ly)
+        # クリック単発では作成しない: ドラッグでサイズ確定した瞬間に Object 化する
+        # ため、 ここでは「作成保留」 状態にだけ入る。 release 時に MOUSEMOVE が
+        # 一度も走らなかった (= ドラッグなし) なら何も作らない。
+        self._start_pending_create(page, lx, ly)
         return {"RUNNING_MODAL"}
 
     def _start_create_drag(self, page, entry, x_mm: float, y_mm: float) -> None:
@@ -761,6 +749,17 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_start_y = float(y_mm)
         self._drag_moved = False
         self._snapshots = [(entry.id, entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)]
+
+    def _start_pending_create(self, page, x_mm: float, y_mm: float) -> None:
+        """ドラッグ確定で作成する保留状態に入る (クリック単発では作成しない)."""
+        self._dragging = True
+        self._drag_action = "create_pending"
+        self._drag_page_id = getattr(page, "id", "")
+        self._drag_balloon_id = ""
+        self._drag_start_x = float(x_mm)
+        self._drag_start_y = float(y_mm)
+        self._drag_moved = False
+        self._snapshots = []
 
     def _start_tail_drag(self, page, entry, x_mm: float, y_mm: float) -> None:
         self._dragging = True
@@ -781,6 +780,44 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_start_y = float(y_mm)
         self._drag_moved = False
         self._snapshots = self._make_snapshots(page, entry)
+
+    def _maybe_realize_pending_create(self, context, event) -> None:
+        """ドラッグが MIN しきい値を超えた瞬間にフキダシ entry を生成."""
+        work, page, lx, ly = _resolve_local_xy_for_page_from_event(
+            context, event, str(getattr(self, "_drag_page_id", "") or ""),
+        )
+        if work is None or page is None or lx is None or ly is None:
+            return
+        sx = float(self._drag_start_x)
+        sy = float(self._drag_start_y)
+        if abs(lx - sx) <= _BALLOON_DRAG_EPS_MM and abs(ly - sy) <= _BALLOON_DRAG_EPS_MM:
+            return
+        if _creation_violates_layer_scope(
+            context, page, sx, sy, _BALLOON_MIN_SIZE_MM, _BALLOON_MIN_SIZE_MM
+        ):
+            return
+        parent_kind, parent_key = _parent_for_creation_point(page, sx, sy)
+        _focus_creation_target(context, work, page, parent_kind, parent_key)
+        entry = _create_balloon_entry(
+            context,
+            page,
+            shape=_BALLOON_DEFAULT_SHAPE,
+            x=sx, y=sy,
+            w=_BALLOON_MIN_SIZE_MM,
+            h=_BALLOON_MIN_SIZE_MM,
+            parent_kind=parent_kind,
+            parent_key=parent_key,
+        )
+        self._drag_action = "create"
+        self._drag_balloon_id = getattr(entry, "id", "")
+        self._drag_moved = True
+        self._snapshots = [(entry.id, entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)]
+        x, y, w, h = _rect_from_points(sx, sy, lx, ly)
+        _set_balloon_rect(page, entry, x, y, w, h)
+        idx = _find_balloon_index(page, entry.id)
+        if idx >= 0:
+            _select_balloon_index(context, work, page, idx, mode="single")
+        layer_stack_utils.tag_view3d_redraw(context)
 
     def _make_snapshots(self, page, entry) -> list[tuple[str, float, float, float, float]]:
         if bool(getattr(entry, "selected", False)) and self._drag_action == "move":
@@ -827,6 +864,10 @@ class BNAME_OT_balloon_tool(Operator):
         return page, entry
 
     def _update_drag(self, context, event) -> None:
+        action = str(getattr(self, "_drag_action", "") or "")
+        if action == "create_pending":
+            self._maybe_realize_pending_create(context, event)
+            return
         page, entry = self._drag_page_and_entry(context)
         if entry is None or page is None:
             self._clear_drag_state()
@@ -863,9 +904,14 @@ class BNAME_OT_balloon_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _finish_drag(self, context, event) -> None:
+        action = self._drag_action
+        # create_pending: ドラッグ未確定のまま release ⇒ 何も作らない
+        if action == "create_pending":
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         page, entry = self._drag_page_and_entry(context)
         moved = bool(getattr(self, "_drag_moved", False))
-        action = self._drag_action
         if action == "create" and not moved:
             _delete_balloon_by_id(context, self._drag_page_id, self._drag_balloon_id)
         elif action == "tail" and moved and page is not None and entry is not None:
