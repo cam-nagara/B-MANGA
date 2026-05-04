@@ -25,19 +25,37 @@ _PAGE_HELPER_DATA_RE = re.compile(
 
 
 def resolve_coma_blend_template_path(work, work_dir: Path) -> tuple[Path | None, str]:
-    """作品設定のコマテンプレートパスを実ファイルへ解決する.
+    """コマ用blendファイルのパスを実ファイルへ解決する.
 
-    戻り値は ``(path, error_message)``。未設定なら ``(None, "")``。
+    優先順位:
+        1. 作品情報パネルの ``work.coma_blend_template_path`` (作品ごとの個別指定)
+        2. アドオンプリファレンスの ``coma_blend_template_path`` (全作品共通)
+
+    戻り値は ``(path, error_message)``。どちらも未設定なら ``(None, "")``。
     相対パスと ``//`` パスは作品ルート基準で扱う。
     """
     raw = str(getattr(work, "coma_blend_template_path", "") or "").strip()
+    source = "work"
+    if not raw:
+        try:
+            from ..preferences import get_preferences
+
+            prefs = get_preferences()
+            if prefs is not None:
+                raw = str(getattr(prefs, "coma_blend_template_path", "") or "").strip()
+                if raw:
+                    source = "preferences"
+        except Exception:  # noqa: BLE001
+            _logger.exception("resolve_coma_blend_template_path: prefs lookup failed")
     if not raw:
         return None, ""
     path = _template_path_from_raw(raw, Path(work_dir))
     if path.suffix.lower() != ".blend":
-        return None, f"コマblendテンプレートは .blend を指定してください: {raw}"
+        label = "作品" if source == "work" else "プリファレンス"
+        return None, f"コマ用blendファイル ({label}) は .blend を指定してください: {raw}"
     if not path.is_file():
-        return None, f"コマblendテンプレートが見つかりません: {path}"
+        label = "作品" if source == "work" else "プリファレンス"
+        return None, f"コマ用blendファイル ({label}) が見つかりません: {path}"
     return path.resolve(), ""
 
 

@@ -125,10 +125,32 @@ class BNAME_OT_texts_to_empty_all(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# 後方互換: 旧 op 名 bname.texts_to_plane_all を Empty 版にエイリアス
-class BNAME_OT_texts_to_plane_all(BNAME_OT_texts_to_empty_all):
+# 後方互換: 旧 op 名 bname.texts_to_plane_all を Empty 版にエイリアス。
+# Blender 5.x では Operator サブクラスが親の bl_rna を継承すると
+# 「unable to get Python class for RNA struct」警告が連発するため、
+# 継承ではなく独立クラスとして定義し、execute は再実装してロジックを共有する。
+class BNAME_OT_texts_to_plane_all(bpy.types.Operator):
     bl_idname = "bname.texts_to_plane_all"
     bl_label = "全テキストを Empty として登録 (旧名)"
+    bl_description = BNAME_OT_texts_to_empty_all.bl_description
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return BNAME_OT_texts_to_empty_all.poll(context)
+
+    def execute(self, context):
+        from ..core.work import get_work
+
+        scene = context.scene
+        work = get_work(context)
+        n = 0
+        for page in getattr(work, "pages", []):
+            for entry in getattr(page, "texts", []):
+                if elo.ensure_text_empty_object(scene=scene, entry=entry, page=page):
+                    n += 1
+        self.report({"INFO"}, f"{n} 件のテキスト Empty を登録")
+        return {"FINISHED"}
 
 
 _CLASSES = (

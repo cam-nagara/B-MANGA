@@ -265,6 +265,23 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         return
     if not bool(getattr(work, "loaded", False)):
         return
+    # コマ編集モード (cNN.blend が mainfile) では Outliner mirror をスキップする。
+    # ここで B-Name root / 全ページ Collection を再構築すると、その後の
+    # save_as_mainfile で cNN.blend に overview 構造が丸ごと書き込まれ、
+    # 「コマファイルの中に B-Name コレクションが居座る」問題の真因になる。
+    # 復帰経路: exit_coma_mode → work.blend を open → load_post で overview
+    # モードになり、その load_post 内の mirror_work_to_outliner は再生成される。
+    try:
+        from ..core.mode import MODE_COMA, get_mode
+
+        # NOTE: ``get_mode`` は ``context`` を受け取り ``context.scene`` を読む
+        # API なので、scene そのものを渡すと内部で None 扱いされて MODE_PAGE
+        # にフォールバックする。bpy.context を渡すか、Scene の bname_mode を
+        # 直接見る必要がある。ここでは Scene プロパティを直接参照する。
+        if str(getattr(scene, "bname_mode", "") or "") == MODE_COMA:
+            return
+    except Exception:  # noqa: BLE001
+        pass
     with suppress_sync():
         om.ensure_root_collection(scene)
         om.ensure_outside_collection(scene)

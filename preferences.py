@@ -118,6 +118,16 @@ class BNamePreferences(bpy.types.AddonPreferences):
         subtype="DIR_PATH",
     )
 
+    coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
+        name="コマ用blendファイル (共通)",
+        description=(
+            "全作品共通で使うコマ用blendファイル (.blend)。"
+            "作品情報パネル側のコマ用blendファイルが空の場合に、こちらが使われる。"
+        ),
+        default="",
+        subtype="FILE_PATH",
+    )
+
     gpencil_follow_cursor: BoolProperty(  # type: ignore[valid-type]
         name="カーソル追従でアクティブページ切替",
         description=(
@@ -258,6 +268,14 @@ class BNamePreferences(bpy.types.AddonPreferences):
         col.label(text="1. 上のパスを Blender 本体の Preferences > File Paths > Asset Libraries に追加")
         col.label(text="2. 作品固有アセットは MyWork.bname/assets/ 配下 (B-Name が自動管理)")
         col.label(text="3. コマ編集モード中にアセットブラウザからドラッグ&ドロップでリンク参照")
+
+        box = layout.box()
+        box.label(text="コマ用blendファイル (全作品共通)", icon="FILE_BLEND")
+        box.prop(self, "coma_blend_template_path", text="")
+        col = box.column(align=True)
+        col.scale_y = 0.85
+        col.label(text="新しいコマ (cNN.blend) を作成するときの初期テンプレートとして全作品で使い回す", icon="INFO")
+        col.label(text="作品情報パネル側のコマ用blendファイルが設定されていれば、そちらが優先される")
 
         box = layout.box()
         box.label(text="Grease Pencil (overview)")

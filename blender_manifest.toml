@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_name"
-version = "0.1.0"
+version = "0.1.7"
 name = "B-Name"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-Name Project"
@@ -30,9 +30,7 @@ wheels = [
 platforms = ["windows-x64"]
 
 # Extensions Platform permissions
-# NOTE: [permissions] はテーブルセクションなので、このセクション以降に
-# top-level キー (wheels 等) を書くと、そのキーが permissions 配下のキーと
-# みなされてパースエラーになる。top-level キーは必ずこの行より上に書くこと。
-[permissions]
-network = "Meldex 連携用ローカル HTTP サーバー (localhost のみ)"
-files = "作品ファイル (.bname フォルダ) の読み書き"
+# Blender 5.1.1 (schema_version 1.0.0) は permissions を **string array** 形式
+# でのみ受け付ける。inline table やテーブルセクション形式は
+# "Unable to parse the manifest" を引き起こすため使用しない。
+permissions = ["network", "files"]

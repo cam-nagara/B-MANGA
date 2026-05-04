@@ -86,9 +86,12 @@ class BNAME_PT_work(Panel):
         sub.prop(work.paper, "read_direction", text="読む方向")
 
         box = layout.box()
-        box.label(text="コマ3Dテンプレート", icon="FILE_BLEND")
+        box.label(text="コマ用blendファイル (この作品のみ)", icon="FILE_BLEND")
         box.enabled = mode == MODE_PAGE
         box.prop(work, "coma_blend_template_path", text="")
+        sub = box.column(align=True)
+        sub.scale_y = 0.85
+        sub.label(text="空のときはプリファレンスの共通設定が使われる", icon="INFO")
 
 
 class BNAME_PT_coma_return(Panel):
