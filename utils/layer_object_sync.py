@@ -285,6 +285,8 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     with suppress_sync():
         om.ensure_root_collection(scene)
         om.ensure_outside_collection(scene)
+        # 全テキストレイヤー集約用 Collection (B-Name 直下、最上位 z_index)
+        om.ensure_text_collection(scene)
         for page in getattr(work, "pages", []):
             page_id = str(getattr(page, "id", "") or "")
             if not page_id:
@@ -299,6 +301,27 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
         # 画像 / テキストの Empty Object を ensure (オーバーレイ描画と並列)
         _mirror_image_text_empties(scene, work)
+
+        # フキダシ Curve Object を ensure (entry.parent_key に基づき該当 page/coma
+        # Collection 配下に置く)。 これを呼ばないと viewport 上では overlay 描画
+        # されるだけで Outliner にはフキダシが現れず、 ユーザーから「コマの
+        # 中に作成されない」 ように見える。
+        try:
+            from . import balloon_curve_object as _bco
+
+            for page in getattr(work, "pages", []):
+                for entry in getattr(page, "balloons", []):
+                    try:
+                        _bco.ensure_balloon_curve_object(
+                            scene=scene, entry=entry, page=page,
+                        )
+                    except Exception:  # noqa: BLE001
+                        _logger.exception(
+                            "mirror balloon curve failed: %s",
+                            getattr(entry, "id", ""),
+                        )
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror balloon curve top-level failed")
 
         # 用紙背景 (opaque Mesh) を全ページ分 ensure。BLENDED ラスター
         # 材質の depth 不在を補い、ラスター paint の上に被さらないように

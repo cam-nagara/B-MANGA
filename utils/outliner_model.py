@@ -37,6 +37,11 @@ ROOT_COLLECTION_NAME = "B-Name"
 # 突合に使う。
 OUTSIDE_BNAME_ID = "__outside__"
 
+# テキスト集約用 Collection の安定 ID と既定名。 全テキストレイヤーは
+# parent_kind / parent_key に関わらずこの Collection 直下に集約する (ユーザー仕様)。
+TEXT_COLLECTION_BNAME_ID = "__texts__"
+TEXT_COLLECTION_NAME = "テキスト"
+
 # ページ / コマ Collection の color_tag (Blender 標準の COLOR_01..08)
 # 紫 = COLOR_06、水色 (青) = COLOR_05
 PAGE_COLOR_TAG = "COLOR_06"
@@ -116,6 +121,33 @@ def ensure_outside_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     # シンプル名: "outside" (alpha sort で o は p の前に来る)
     _set_collection_name_safe(existing, "outside")
     return existing
+
+
+def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
+    """テキストレイヤー集約用 Collection を確保し、B-Name 直下に置く.
+
+    ユーザー仕様: 全テキストレイヤーは parent_kind / parent_key に関わらず
+    この単一 Collection に集約する。 z_index は最上位 (描画順で最前面) に
+    なるよう大きい値を割り当てる。
+    """
+    root = ensure_root_collection(scene)
+    coll = on.find_collection_by_bname_id(TEXT_COLLECTION_BNAME_ID, kind="text_root")
+    if coll is None:
+        coll = bpy.data.collections.get(TEXT_COLLECTION_NAME)
+        if coll is None:
+            coll = bpy.data.collections.new(TEXT_COLLECTION_NAME)
+    on.stamp_identity(
+        coll,
+        kind="text_root",
+        bname_id=TEXT_COLLECTION_BNAME_ID,
+        title=TEXT_COLLECTION_NAME,
+        # 最上位 (描画順で最前面)。 page collection の z_index は page index
+        # 由来 (1〜) なので 99999 で確実に上回る。
+        z_index=99999,
+    )
+    _normalize_collection_parent(coll, root, scene)
+    _set_collection_name_safe(coll, TEXT_COLLECTION_NAME)
+    return coll
 
 
 def ensure_page_collection(
@@ -302,7 +334,11 @@ def link_object_to_parent(
     管理外 Collection (例: scene.collection) は触らない (ユーザーの意図的
     多重 link を尊重)。
     """
-    if folder_id:
+    # テキストレイヤーは parent_kind / parent_key / folder_id に関わらず、
+    # B-Name 直下の「テキスト」 Collection に集約する (ユーザー仕様)。
+    if str(obj.get(on.PROP_KIND, "") or "") == "text":
+        target = ensure_text_collection(scene)
+    elif folder_id:
         target = on.find_collection_by_bname_id(folder_id, kind="folder")
     else:
         target = _resolve_parent_collection(scene, parent_kind, parent_key)
