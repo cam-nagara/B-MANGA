@@ -1243,19 +1243,60 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
                 page_offset_mm=page_offset_mm,
             )
         )
-    effect_obj = bpy.data.objects.get("BName_EffectLines")
-    # 効果線 GP は現状ページ非依存の単一オブジェクトで保持されており、
-    # そのまま全ページに適用すると同一ストロークが全ページへ重複出力される。
-    # ページ紐付けが実装されるまでは、編集中のアクティブページにのみ出す。
-    if effect_obj is not None and effect_obj is not master and _is_active_page(work, page):
+    # 新設計: 各 effect_line は独立した GP Object として該当 page/coma の
+    # Collection 配下に配置されている。 bname_kind="effect" + bname_parent_key
+    # が現ページに属する Object を全て出力する。
+    page_id = str(getattr(page, "id", "") or "")
+    for obj in bpy.data.objects:
+        if obj is master:
+            continue
+        try:
+            if str(obj.get("bname_kind", "") or "") != "effect":
+                continue
+        except Exception:  # noqa: BLE001
+            continue
+        # parent_key は "<page_id>:<coma_id>" or "<page_id>" 形式
+        try:
+            parent_key = str(obj.get("bname_parent_key", "") or "")
+        except Exception:  # noqa: BLE001
+            parent_key = ""
+        if parent_key:
+            obj_page_id = parent_key.split(":", 1)[0] if ":" in parent_key else parent_key
+            if obj_page_id and obj_page_id != page_id:
+                continue
+        else:
+            # parent_key が無い場合は active ページにのみ出す (古い entry の互換)
+            if not _is_active_page(work, page):
+                continue
         out.extend(
             _render_gp_object_layers(
-                effect_obj,
+                obj,
                 work,
                 page,
                 canvas_size,
                 dpi,
                 group_root="effects",
+                page_offset_mm=page_offset_mm,
+            )
+        )
+
+    # 旧設計の集約 GP Object (BName_EffectLines) は新設計移行後、 mirror で
+    # hide されるが、 過去 file 互換のためここでは active page のみ出力する
+    # (新設計の Object に移行済みの場合は中身が空になっているはず)。
+    legacy_effect_obj = bpy.data.objects.get("BName_EffectLines")
+    if (
+        legacy_effect_obj is not None
+        and legacy_effect_obj is not master
+        and _is_active_page(work, page)
+    ):
+        out.extend(
+            _render_gp_object_layers(
+                legacy_effect_obj,
+                work,
+                page,
+                canvas_size,
+                dpi,
+                group_root="effects_legacy",
                 page_offset_mm=(0.0, 0.0),
             )
         )

@@ -617,15 +617,75 @@ def _create_effect_layer(
     *,
     parent_key: str = "",
 ):
-    obj = layer_stack_utils.ensure_effect_gp_object(context.scene)
-    gp_data = obj.data
-    params = getattr(context.scene, "bname_effect_line_params", None)
+    """新規効果線 GP Object を作成 (新設計: 1 effect = 1 GP Object @ コマ Collection).
+
+    旧設計の集約 GP Object (`BName_EffectLines`) に layer を追加する方式を撤廃し、
+    各効果線が独立した GP Object として該当コマ / ページ Collection 配下に
+    配置される。 これにより Outliner 上で「効果線レイヤーが該当コマの中に
+    作成」されるようになる。
+    """
+    from ..utils import effect_line_object as elo
+    from . import effect_line_object_op as elop
+    from ..utils import object_naming as on
+
+    scene = context.scene
+    params = getattr(scene, "bname_effect_line_params", None)
     suffix = getattr(params, "effect_type", "effect") if params is not None else "effect"
-    layer_name = _unique_layer_name(gp_data, f"effect_{suffix}")
-    layer = gp_data.layers.new(layer_name)
+
+    # parent_kind / parent_key を解決
+    parent_kind = "page"
+    if parent_key and ":" in parent_key:
+        parent_kind = "coma"
+    elif not parent_key:
+        # parent_key が空ならアクティブ page/coma から導出
+        page_id, coma_id = elop._resolve_active_coma(context)
+        if coma_id:
+            parent_kind = "coma"
+            parent_key = f"{page_id}:{coma_id}"
+        elif page_id:
+            parent_kind = "page"
+            parent_key = page_id
+
+    bname_id = elop._make_effect_bname_id()
+    title = f"効果線_{suffix}"
+
+    # z_index は parent 配下の effect Object 群の最大値 + 10
+    max_z = 200
+    for o in bpy.data.objects:
+        if str(o.get(on.PROP_KIND, "") or "") != "effect":
+            continue
+        if str(o.get(on.PROP_PARENT_KEY, "") or "") != parent_key:
+            continue
+        try:
+            z = int(o.get(on.PROP_Z_INDEX, 0) or 0)
+        except Exception:  # noqa: BLE001
+            z = 0
+        if z > max_z:
+            max_z = z
+    z_index = max_z + 10
+
+    obj = elo.create_effect_line_object(
+        scene=scene,
+        bname_id=bname_id,
+        title=title,
+        z_index=z_index,
+        parent_kind=parent_kind,
+        parent_key=parent_key,
+    )
+    if obj is None or obj.data is None:
+        return None, None
+    gp_data = obj.data
+    if len(gp_data.layers) == 0:
+        layer = gp_data.layers.new("content")
+    else:
+        layer = gp_data.layers[0]
     gp_data.layers.active = layer
+    # GP layer 側の parent_key も保持 (overlay / export pipeline が参照する)
     if parent_key:
-        gp_parent.set_parent_key(layer, parent_key)
+        try:
+            gp_parent.set_parent_key(layer, parent_key)
+        except Exception:  # noqa: BLE001
+            pass
     seed = _seed_for_new_layer(obj)
     if bounds is None:
         bounds = (70.0, 110.0, 80.0, 100.0)
@@ -636,13 +696,38 @@ def _create_effect_layer(
 
 
 def _delete_effect_layer(context, obj, layer) -> None:
+    """効果線レイヤーを削除する.
+
+    新設計 (1 effect = 1 GP Object) では、 layer を消すと obj が空シェル
+    として残るため、 obj 全体を削除する。 旧設計の集約 GP Object
+    (BName_EffectLines) からの削除は layer のみ消す互換動作を維持する。
+    """
+    from ..utils import object_naming as on
+
     if obj is None or layer is None:
         return
     _remove_layer_bounds(obj, layer)
+    is_new_effect_obj = str(obj.get(on.PROP_KIND, "") or "") == "effect"
     try:
         obj.data.layers.remove(layer)
     except Exception:  # noqa: BLE001
         return
+    if is_new_effect_obj:
+        # 新設計: 1 effect = 1 GP Object → obj 全体を削除
+        try:
+            data = obj.data
+            bpy.data.objects.remove(obj, do_unlink=True)
+            try:
+                if data is not None and data.users == 0:
+                    blocks = getattr(bpy.data, "grease_pencils_v3", None) or getattr(
+                        bpy.data, "grease_pencils", None
+                    )
+                    if blocks is not None:
+                        blocks.remove(data)
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001
+            pass
     if hasattr(context.scene, "bname_active_effect_layer_name"):
         context.scene.bname_active_effect_layer_name = ""
     layer_stack_utils.sync_layer_stack_after_data_change(context)
@@ -704,30 +789,48 @@ def _effect_hit_part(bounds: tuple[float, float, float, float], x_mm: float, y_m
 
 
 def _hit_effect_layer(context, x_mm: float, y_mm: float):
-    from ..utils import gpencil
+    """全 effect GP Object をスキャンし、 (obj, layer, bounds, part) を返す.
 
-    obj = layer_stack_utils.get_effect_gp_object()
-    if obj is None:
-        return None, None, None, ""
-    layers = list(getattr(getattr(obj, "data", None), "layers", []) or [])
-    active_key = str(getattr(getattr(context, "scene", None), "bname_active_effect_layer_name", "") or "")
-    active = layer_stack_utils._find_gp_layer_by_key(obj.data.layers, active_key) if active_key else None
-    if active is None:
-        active = getattr(obj.data.layers, "active", None)
-    ordered = []
-    if active is not None:
-        ordered.append(active)
-    ordered.extend(layer for layer in reversed(layers) if layer != active)
-    for layer in ordered:
-        if gpencil.layer_effectively_hidden(layer):
+    新設計 (1 effect = 1 GP Object) に対応。 各 effect Object はデフォルトで
+    1 layer ("content") を持つ。 旧設計の単一集約 Object (BName_EffectLines)
+    は新規作成時に hide されるが、 念のため fallback として最後にスキャンする。
+    """
+    from ..utils import gpencil
+    from ..utils import object_naming as on
+
+    # 新設計の effect Object 群を Z 順 (新しい順) で並べる
+    candidates: list[bpy.types.Object] = []
+    for o in bpy.data.objects:
+        if str(o.get(on.PROP_KIND, "") or "") != "effect":
             continue
-        bounds = effect_layer_bounds(obj, layer)
-        if bounds is None:
+        if o.hide_viewport:
             continue
-        part = _effect_hit_part(bounds, x_mm, y_mm)
-        if part:
-            return obj, layer, bounds, part
-    return obj, None, None, ""
+        candidates.append(o)
+    candidates.sort(key=lambda o: int(o.get(on.PROP_Z_INDEX, 0) or 0), reverse=True)
+
+    # 旧設計の集約 obj が残っている場合は最後に追加 (互換性のため)
+    legacy_obj = layer_stack_utils.get_effect_gp_object()
+    if legacy_obj is not None and legacy_obj not in candidates:
+        if not legacy_obj.hide_viewport:
+            candidates.append(legacy_obj)
+
+    for obj in candidates:
+        gp_data = getattr(obj, "data", None)
+        if gp_data is None:
+            continue
+        layers = list(getattr(gp_data, "layers", []) or [])
+        if not layers:
+            continue
+        for layer in reversed(layers):
+            if gpencil.layer_effectively_hidden(layer):
+                continue
+            bounds = effect_layer_bounds(obj, layer)
+            if bounds is None:
+                continue
+            part = _effect_hit_part(bounds, x_mm, y_mm)
+            if part:
+                return obj, layer, bounds, part
+    return (candidates[0] if candidates else None), None, None, ""
 
 
 def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
