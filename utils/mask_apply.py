@@ -272,15 +272,42 @@ def _ensure_gp_internal_mask(
             except Exception:  # noqa: BLE001
                 pass
             if not already:
-                try:
-                    mask_coll.add(_GP_MASK_LAYER_NAME)
-                except Exception:  # noqa: BLE001
-                    # API バリエーション fallback: name を直接渡す形と Layer
-                    # オブジェクトを渡す形があり得る
+                # Blender 5.1 で GreasePencil v3 の mask_layers は ``add(name=...)``
+                # キーワード必須 / Object 渡しは旧版互換。 各種シグネチャを順に試す。
+                added = False
+                for try_args in (
+                    {"args": (_GP_MASK_LAYER_NAME,), "kwargs": {}},
+                    {"args": (), "kwargs": {"name": _GP_MASK_LAYER_NAME}},
+                    {"args": (mask_layer,), "kwargs": {}},
+                    {"args": (), "kwargs": {"layer": mask_layer}},
+                ):
                     try:
-                        mask_coll.add(mask_layer)
+                        mask_coll.add(*try_args["args"], **try_args["kwargs"])
+                        added = True
+                        break
                     except Exception:  # noqa: BLE001
-                        _logger.exception("GP mask_layers add failed")
+                        continue
+                if not added:
+                    # Blender 5.1 では `mask_layers.new()` パターンの場合もある
+                    try:
+                        new_fn = getattr(mask_coll, "new", None)
+                        if new_fn is not None:
+                            try:
+                                new_fn(name=_GP_MASK_LAYER_NAME)
+                                added = True
+                            except Exception:  # noqa: BLE001
+                                try:
+                                    new_fn(_GP_MASK_LAYER_NAME)
+                                    added = True
+                                except Exception:  # noqa: BLE001
+                                    pass
+                    except Exception:  # noqa: BLE001
+                        pass
+                if not added:
+                    _logger.debug(
+                        "GP mask_layers add: API mismatch — skipping mask setup for layer %s",
+                        getattr(layer, "name", "?"),
+                    )
         except Exception:  # noqa: BLE001
             _logger.exception("GP layer mask setup failed")
 
