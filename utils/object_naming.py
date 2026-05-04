@@ -44,6 +44,23 @@ KIND_PREFIX = {
     "effect": "L",
 }
 
+# parent_kind == "page" (コマ外+ページ内) のレイヤー Object は、 Outliner alpha
+# ソートで全てのコマ Collection (名前 ``c01`` 等) より上に並ぶよう、 既定の
+# ``L`` ではなく ``A`` を用いる。 case-insensitive ソートでも 'A' < 'C' < 'F' < 'L'
+# が保証されるため、 ページ Collection 内ですべてのコマより手前 (上端) に表示される。
+_ABOVE_COMA_KINDS = {"effect", "balloon", "image", "raster", "gp"}
+
+
+def prefix_char_for(kind: str, parent_kind: str = "") -> str:
+    """``kind`` と ``parent_kind`` から Outliner 整列用の prefix 1 文字を返す.
+
+    parent_kind == "page" かつ レイヤー種別なら 'A' (コマより上)。
+    それ以外は ``KIND_PREFIX`` の既定値。
+    """
+    if str(parent_kind or "") == "page" and kind in _ABOVE_COMA_KINDS:
+        return "A"
+    return KIND_PREFIX.get(kind, "L")
+
 # Object/Collection の custom property キー
 PROP_KIND = "bname_kind"
 PROP_ID = "bname_id"
@@ -77,7 +94,7 @@ def _truncate_utf8(text: str, max_bytes: int) -> tuple[str, bool]:
     return encoded[:cut].decode("utf-8", errors="ignore"), True
 
 
-def make_prefix(kind: str, z_index: int, sub_id: str = "") -> str:
+def make_prefix(kind: str, z_index: int, sub_id: str = "", parent_kind: str = "") -> str:
     """``L0040__text__`` 形式の prefix を生成する.
 
     Args:
@@ -87,11 +104,13 @@ def make_prefix(kind: str, z_index: int, sub_id: str = "") -> str:
             場合はその ID 数値部 (``p0001`` → 1)。
         sub_id: ページ/コマ/フォルダの場合の追加識別子 (``p0001`` ``c01``
             ``folder_xxxxxx`` 等)。レイヤーの場合は kind 名を再掲する。
+        parent_kind: ``page`` を指定するとレイヤー種別は ``A`` prefix に切替え
+            (Outliner ソートでコマより上)。
 
     Returns:
-        例: ``L0040__text__`` ``P0001__p0001__`` ``C0010__c01__``。
+        例: ``L0040__text__`` ``A0040__effect__`` ``P0001__p0001__`` ``C0010__c01__``。
     """
-    prefix_char = KIND_PREFIX.get(kind, "L")
+    prefix_char = prefix_char_for(kind, parent_kind)
     if sub_id:
         return f"{prefix_char}{z_index:04d}__{sub_id}__"
     return f"{prefix_char}{z_index:04d}__{kind}__"
@@ -102,6 +121,7 @@ def make_canonical_name(
     z_index: int,
     sub_id: str,
     title: str,
+    parent_kind: str = "",
 ) -> tuple[str, bool]:
     """``L0040__text__セリフ本文`` 形式の正規 Object 名を生成する.
 
@@ -110,7 +130,7 @@ def make_canonical_name(
     Returns:
         ``(name, truncated)``. truncated は title が切詰められたら True。
     """
-    prefix = make_prefix(kind, z_index, sub_id)
+    prefix = make_prefix(kind, z_index, sub_id, parent_kind)
     budget = MAX_OBJECT_NAME_BYTES - NAME_SAFETY_MARGIN_BYTES - len(
         prefix.encode("utf-8")
     )
@@ -141,7 +161,14 @@ def parse_canonical_name(name: str) -> Optional[tuple[str, str, str]]:
     return prefix_id, sub_id, title
 
 
-def assign_canonical_name(obj, kind: str, z_index: int, sub_id: str, title: str) -> str:
+def assign_canonical_name(
+    obj,
+    kind: str,
+    z_index: int,
+    sub_id: str,
+    title: str,
+    parent_kind: str = "",
+) -> str:
     """Object/Collection に正規名を付け直す.
 
     切詰め発生時は ``bname_title_truncated`` を立てる。Object 名衝突は
@@ -149,6 +176,9 @@ def assign_canonical_name(obj, kind: str, z_index: int, sub_id: str, title: str)
 
     library override / linked Object は名前変更が拒否されるため、リネームを
     試みず custom property のみ更新する。
+
+    parent_kind == "page" を指定するとレイヤー Object は ``A`` prefix が選ばれ、
+    Outliner alpha sort でコマ Collection より上に並ぶ。
     """
     # library 由来 (linked / override) は名前変更不可
     try:
@@ -156,7 +186,7 @@ def assign_canonical_name(obj, kind: str, z_index: int, sub_id: str, title: str)
             return obj.name
     except Exception:
         pass
-    name, truncated = make_canonical_name(kind, z_index, sub_id, title)
+    name, truncated = make_canonical_name(kind, z_index, sub_id, title, parent_kind)
     try:
         obj.name = name
     except Exception:

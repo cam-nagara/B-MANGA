@@ -180,8 +180,11 @@ def ensure_balloon_curve_object(
         stamp_key = entry_parent_key or str(getattr(page, "id", "") or "")
         stamp_folder = entry_folder_id
 
-    # 5. z_index は page.balloons 配列 index に基づく (kind 別 base offset)
-    BALLOON_Z_BASE = 1000
+    # 5. z_index は page.balloons 配列 index に基づく (kind 別 base offset)。
+    # parent_kind == "page" (コマ外+ページ内で作成) のフキダシは、 同一ページの
+    # コマ配下フキダシ/効果線より前面に来るよう base を 6000 へ引き上げる
+    # (効果線の page-level base 5000 より上)。
+    BALLOON_Z_BASE = 6000 if stamp_kind == "page" else 1000
     z_index = BALLOON_Z_BASE
     balloons = getattr(page, "balloons", None)
     if balloons is not None:

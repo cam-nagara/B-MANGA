@@ -93,6 +93,41 @@ def _active_gp_brush(context):
     return None
 
 
+def _active_image_paint_brush(context):
+    """ラスター描画 (TEXTURE_PAINT) 中のブラシを返す.
+
+    Blender 5.x では ``tool_settings.image_paint`` が TEXTURE_PAINT モード時の
+    ブラシを保持する。 brush.size 属性 (px) は GP ブラシと同じ意味で扱える。
+    """
+    tool_settings = getattr(context, "tool_settings", None)
+    if tool_settings is None:
+        return None
+    paint = getattr(tool_settings, "image_paint", None)
+    brush = getattr(paint, "brush", None) if paint is not None else None
+    if brush is not None and hasattr(brush, "size"):
+        return brush
+    return None
+
+
+def _active_brush(context):
+    """現在モードに合った paint ブラシを返す (GP / Texture Paint 両対応)."""
+    mode = str(getattr(context, "mode", "") or "")
+    if mode == "TEXTURE_PAINT" or mode == "PAINT_TEXTURE":
+        b = _active_image_paint_brush(context)
+        if b is not None:
+            return b
+    if "PAINT" in mode:
+        b = _active_gp_brush(context)
+        if b is not None:
+            return b
+    # context.mode が空のフォールバック (active_object の mode を見る)
+    obj = getattr(context, "active_object", None)
+    obj_mode = str(getattr(obj, "mode", "") or "")
+    if obj_mode == "TEXTURE_PAINT":
+        return _active_image_paint_brush(context)
+    return _active_gp_brush(context)
+
+
 def _active_gp_object(context):
     obj = getattr(context, "active_object", None)
     if obj is not None and getattr(obj, "type", "") == "GREASEPENCIL":
@@ -105,12 +140,20 @@ def _active_gp_object(context):
         return None
 
 
-def _is_gp_paint_context(context) -> bool:
-    obj = _active_gp_object(context)
-    if obj is None:
-        return False
-    mode = str(getattr(context, "mode", "") or getattr(obj, "mode", ""))
-    return "PAINT" in mode and _active_gp_brush(context) is not None
+def _is_paint_context(context) -> bool:
+    """GP / ラスター 何れかの paint モード中で size プロパティ持ちのブラシがあるか."""
+    mode = str(getattr(context, "mode", "") or "")
+    if "PAINT" in mode and _active_brush(context) is not None:
+        return True
+    obj = getattr(context, "active_object", None)
+    obj_mode = str(getattr(obj, "mode", "") or "")
+    if "PAINT" in obj_mode and _active_brush(context) is not None:
+        return True
+    return False
+
+
+# 旧 API 互換 (poll の他にも参照される場合に備える)
+_is_gp_paint_context = _is_paint_context
 
 
 def _brush_size_limits(brush, *, allow_zero: bool = False) -> tuple[int, int]:
@@ -165,7 +208,7 @@ class BNAME_OT_brush_size_drag(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return bool(work and work.loaded and _is_gp_paint_context(context))
+        return bool(work and work.loaded and _is_paint_context(context))
 
     def invoke(self, context, event):
         if (
@@ -175,7 +218,7 @@ class BNAME_OT_brush_size_drag(Operator):
             or not event.alt
         ):
             return {"PASS_THROUGH"}
-        brush = _active_gp_brush(context)
+        brush = _active_brush(context)
         if brush is None:
             return {"PASS_THROUGH"}
         self._brush = brush

@@ -649,8 +649,12 @@ def _create_effect_layer(
     bname_id = elop._make_effect_bname_id()
     title = f"効果線_{suffix}"
 
-    # z_index は parent 配下の effect Object 群の最大値 + 10
-    max_z = 200
+    # z_index は parent 配下の effect Object 群の最大値 + 10。
+    # ただし parent_kind == "page" (コマ外+ページ内で作成) のときは、 同一ページの
+    # 全コマ配下レイヤーより前面に来るよう base を高く取る (5000+)。
+    page_level = parent_kind == "page"
+    base_z = 5000 if page_level else 200
+    max_z = base_z
     for o in bpy.data.objects:
         if str(o.get(on.PROP_KIND, "") or "") != "effect":
             continue

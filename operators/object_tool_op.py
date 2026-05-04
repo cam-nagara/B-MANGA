@@ -119,6 +119,7 @@ def hit_object_at_event(context, event) -> dict | None:
         _hit_balloon_at_event,
         _hit_effect_at_event,
         _hit_coma_at_event,
+        _hit_page_at_event,
     ):
         hit = resolver(context, event)
         if hit is not None:
@@ -192,6 +193,23 @@ def _hit_coma_at_event(context, event) -> dict | None:
     }
 
 
+def _hit_page_at_event(context, event) -> dict | None:
+    """コマ外でも紙面 (ページ枠内) に当たればページとしてヒットを返す."""
+    work = get_work(context)
+    if work is None:
+        return None
+    page_index = coma_picker.find_page_at_event(context, event)
+    if page_index is None or not (0 <= page_index < len(work.pages)):
+        return None
+    page = work.pages[page_index]
+    return {
+        "kind": "page",
+        "page": page_index,
+        "part": "body",
+        "key": object_selection.page_key(page),
+    }
+
+
 def activate_hit(context, hit: dict, *, mode: str) -> None:
     """Activate a hit object in the same way as the object tool selection path."""
     work = get_work(context)
@@ -253,6 +271,12 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         obj, layer = _find_effect_layer(hit.get("layer_name", ""))
         if layer is not None:
             effect_line_op._select_effect_layer(context, obj, layer)
+        edge_selection.clear_selection(context)
+    elif kind == "page":
+        page_index = int(hit["page"])
+        from ..utils import active_target as _at
+
+        _at.focus_active_page(context.scene, work, page_index)
         edge_selection.clear_selection(context)
     if kind != "balloon":
         object_selection.select_key(context, key, mode=mode)
@@ -380,6 +404,10 @@ class BNAME_OT_object_tool(Operator):
             return {"RUNNING_MODAL"}
         self._activate_hit(context, hit, mode=mode)
         if mode in {"toggle", "add"}:
+            return {"RUNNING_MODAL"}
+        # ページのみのヒット (コマ外+ページ内) は選択するだけ。 ドラッグ移動/リサイズ
+        # は行わない (ページ自身は紙面サイズなので動かさない)。
+        if hit["kind"] == "page":
             return {"RUNNING_MODAL"}
         x_mm, y_mm = self._start_point_for_hit(context, event, hit)
         if x_mm is None or y_mm is None:

@@ -45,6 +45,7 @@ class _OverlayState:
     confirm_coma_id: str = ""
     confirm_page_index: int = -1
     confirm_until: float = 0.0  # time.monotonic() + 0.3
+    confirm_world_xy_mm: Optional[tuple[float, float]] = None
 
     # エラー演出 (短時間赤点滅)
     error_kind: str = ""
@@ -79,12 +80,21 @@ def clear_hover() -> None:
     set_hover("")
 
 
-def flash_confirm(kind: str, *, page_id: str = "", coma_id: str = "", page_index: int = -1, duration: float = 0.3) -> None:
+def flash_confirm(
+    kind: str,
+    *,
+    page_id: str = "",
+    coma_id: str = "",
+    page_index: int = -1,
+    duration: float = 0.3,
+    world_xy_mm: Optional[tuple[float, float]] = None,
+) -> None:
     _state.confirm_kind = str(kind or "")
     _state.confirm_page_id = str(page_id or "")
     _state.confirm_coma_id = str(coma_id or "")
     _state.confirm_page_index = int(page_index)
     _state.confirm_until = time.monotonic() + max(0.0, float(duration))
+    _state.confirm_world_xy_mm = world_xy_mm
     _tag_redraw_all()
 
 
@@ -261,6 +271,10 @@ def _pulse_alpha(until: float, base: float = 0.4) -> float:
 
 
 def _draw_hover() -> None:
+    if _state.hover_kind == "outside":
+        # ページ外ドロップ用インジケーター: 半透明の朱色円 + 斜め十字
+        _draw_outside_marker(_state.preview_world_xy_mm, alpha=0.85)
+        return
     if _state.hover_kind not in {"coma", "page"}:
         return
     color_fill = (0.2, 0.8, 1.0, 0.10)  # シアン半透明
@@ -276,9 +290,46 @@ def _draw_hover() -> None:
     )
 
 
+def _draw_outside_marker(world_xy_mm, *, alpha: float = 1.0) -> None:
+    """ページ外ドロップ位置に「ここに離すと外に出す」表示を描く."""
+    if world_xy_mm is None:
+        return
+    from ..utils import geom
+    import math
+
+    cx, cy = float(world_xy_mm[0]), float(world_xy_mm[1])
+    radius_mm = 6.0
+    seg = 32
+    pts_mm = []
+    for i in range(seg):
+        t = (i / seg) * 2.0 * math.pi
+        pts_mm.append((cx + math.cos(t) * radius_mm, cy + math.sin(t) * radius_mm))
+    poly3d = _mm_to_world_units(pts_mm)
+    fill = (1.0, 0.45, 0.25, alpha * 0.18)
+    line = (1.0, 0.55, 0.30, alpha * 0.95)
+    _draw_polygon_fill(poly3d, fill)
+    _draw_polygon_outline(poly3d, line, 2.5)
+    cross_mm = radius_mm * 0.55
+    diag1 = _mm_to_world_units([
+        (cx - cross_mm, cy - cross_mm),
+        (cx + cross_mm, cy + cross_mm),
+    ])
+    diag2 = _mm_to_world_units([
+        (cx - cross_mm, cy + cross_mm),
+        (cx + cross_mm, cy - cross_mm),
+    ])
+    _draw_polygon_outline(diag1, line, 2.5)
+    _draw_polygon_outline(diag2, line, 2.5)
+
+
 def _draw_confirm() -> None:
     alpha = _pulse_alpha(_state.confirm_until, base=0.5)
-    if alpha <= 0.0 or _state.confirm_kind not in {"coma", "page"}:
+    if alpha <= 0.0:
+        return
+    if _state.confirm_kind == "outside":
+        _draw_outside_marker(_state.confirm_world_xy_mm, alpha=alpha)
+        return
+    if _state.confirm_kind not in {"coma", "page"}:
         return
     color_fill = (0.3, 1.0, 0.5, alpha * 0.4)  # ライム
     color_line = (0.3, 1.0, 0.5, alpha)

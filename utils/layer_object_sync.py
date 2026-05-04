@@ -124,11 +124,14 @@ def z_for_index(z_index: int) -> float:
     return float(z_index) * 0.0001
 
 
-def apply_z_index(obj: bpy.types.Object, z_index: int) -> None:
+def apply_z_index(obj: bpy.types.Object, z_index: int, parent_kind: str = "") -> None:
     """Object の ``location.z`` (暫定) と name prefix を ``z_index`` から再生成.
 
     最終的な ``location.z`` は ``assign_per_page_z_ranks`` で page 単位に
     rank ベースで上書きされる。
+
+    parent_kind が ``"page"`` のとき、レイヤー Object 名 prefix が ``A`` に
+    切替り Outliner ソートでコマより上に並ぶ。
     """
     obj[on.PROP_Z_INDEX] = int(z_index)
     try:
@@ -141,7 +144,12 @@ def apply_z_index(obj: bpy.types.Object, z_index: int) -> None:
     title = str(obj.get(on.PROP_TITLE, "") or "")
     if kind and bname_id:
         on.assign_canonical_name(
-            obj, kind=kind, z_index=int(z_index), sub_id=kind, title=title
+            obj,
+            kind=kind,
+            z_index=int(z_index),
+            sub_id=kind,
+            title=title,
+            parent_kind=parent_kind,
         )
 
 
@@ -488,9 +496,14 @@ def stamp_layer_object(
         folder_id=folder_id,
     )
     on.assign_canonical_name(
-        obj, kind=kind, z_index=z_index, sub_id=kind, title=title
+        obj,
+        kind=kind,
+        z_index=z_index,
+        sub_id=kind,
+        title=title,
+        parent_kind=parent_kind,
     )
-    apply_z_index(obj, z_index)
+    apply_z_index(obj, z_index, parent_kind=parent_kind)
     # page world オフセットを X/Y に反映 (apply_z_index は Z のみ触る)
     if apply_page_offset and scene is not None:
         try:

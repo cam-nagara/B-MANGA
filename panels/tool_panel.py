@@ -22,15 +22,6 @@ _MODAL_TOOL_NAMES = (
 )
 
 
-def _active_stack_kind(context) -> str:
-    scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1)) if scene is not None else -1
-    if stack is None or not (0 <= idx < len(stack)):
-        return ""
-    return str(getattr(stack[idx], "kind", "") or "")
-
-
 def _any_bname_modal_tool_active() -> bool:
     return any(coma_modal_state.is_active(name) for name in _MODAL_TOOL_NAMES)
 
@@ -50,66 +41,49 @@ class BNAME_PT_tools(Panel):
 
     def draw(self, context):
         layout = self.layout
-        obj = None
-        try:
-            from ..utils import gpencil as gp_utils
-
-            obj = gp_utils.get_master_gpencil()
-        except Exception:  # noqa: BLE001
-            obj = None
-        mode = getattr(obj, "mode", "") if obj is not None else ""
-        active_stack_kind = _active_stack_kind(context)
-        gp_layer_active = (
-            active_stack_kind == "gp"
-            and getattr(context.scene, "bname_active_layer_kind", "") == "gp"
-        )
-        raster_layer_active = (
-            active_stack_kind == "raster"
-            and getattr(context.scene, "bname_active_layer_kind", "") == "raster"
-        )
         modal_tool_active = _any_bname_modal_tool_active()
         active_obj = getattr(getattr(context, "view_layer", None), "objects", None)
         active_obj = getattr(active_obj, "active", None) if active_obj is not None else None
         active_mode = getattr(active_obj, "mode", "")
+        is_object_mode = (
+            coma_modal_state.is_active("object_tool")
+            or (not modal_tool_active and active_mode == "OBJECT")
+        )
+        is_gp_paint = not modal_tool_active and active_mode == "PAINT_GREASE_PENCIL"
+        is_raster_paint = not modal_tool_active and active_mode == "TEXTURE_PAINT"
+        is_gp_edit = not modal_tool_active and active_mode == "EDIT"
 
         row = layout.row(align=True)
+        # オブジェクトツール: 常時選択可
         op = row.operator(
-            "bname.raster_layer_mode_set" if raster_layer_active else "bname.gpencil_master_mode_set",
+            "bname.gpencil_master_mode_set",
             text="",
             icon="OBJECT_DATAMODE",
-            depress=(
-                coma_modal_state.is_active("object_tool")
-                or (not modal_tool_active and active_mode == "OBJECT")
-            ),
+            depress=is_object_mode,
         )
         op.mode = "OBJECT"
-        draw_slot = row.row(align=True)
-        if raster_layer_active:
-            op = draw_slot.operator(
-                "bname.raster_layer_mode_set",
-                text="",
-                icon="BRUSH_DATA",
-                depress=(not modal_tool_active and active_mode == "TEXTURE_PAINT"),
-            )
-            op.mode = "TEXTURE_PAINT"
-        else:
-            op = draw_slot.operator(
-                "bname.gpencil_master_mode_set",
-                text="",
-                icon="OUTLINER_OB_GREASEPENCIL",
-                depress=(
-                    not modal_tool_active
-                    and gp_layer_active
-                    and mode == "PAINT_GREASE_PENCIL"
-                ),
-            )
-            op.mode = "PAINT_GREASE_PENCIL"
-        edit_slot = row.row(align=True)
-        op = edit_slot.operator(
+        # GP 描画: 常時選択可。 内部で他描画モードの自動退出を行う。
+        op = row.operator(
+            "bname.gpencil_master_mode_set",
+            text="",
+            icon="OUTLINER_OB_GREASEPENCIL",
+            depress=is_gp_paint,
+        )
+        op.mode = "PAINT_GREASE_PENCIL"
+        # ラスター描画: 常時選択可。 内部で他描画モードの自動退出を行う。
+        op = row.operator(
+            "bname.raster_layer_mode_set",
+            text="",
+            icon="BRUSH_DATA",
+            depress=is_raster_paint,
+        )
+        op.mode = "TEXTURE_PAINT"
+        # GP 線編集: 常時選択可。
+        op = row.operator(
             "bname.gpencil_master_mode_set",
             text="",
             icon="EDITMODE_HLT",
-            depress=(not modal_tool_active and gp_layer_active and mode == "EDIT"),
+            depress=is_gp_edit,
         )
         op.mode = "EDIT"
 

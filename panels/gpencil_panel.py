@@ -54,8 +54,32 @@ def _active_gp_layer_target(context):
 
 def _activate_gp_layer_for_tool(context):
     obj, layer = _active_gp_layer_target(context)
+    # ユーザーが GP 以外のレイヤー (ラスター/フキダシ等) を選択中でも GP 描画
+    # ボタンは常時クリック可能にしたいので、 master GP + その先頭レイヤーを
+    # 自動アクティブ化するフォールバックを設ける。
     if obj is None or layer is None:
-        return None
+        scene = getattr(context, "scene", None)
+        if scene is not None:
+            try:
+                obj = gp_utils.ensure_master_gpencil(scene)
+            except Exception:  # noqa: BLE001
+                obj = gp_utils.get_master_gpencil()
+        if obj is None:
+            return None
+        data = getattr(obj, "data", None)
+        layers = list(getattr(data, "layers", []) or [])
+        if not layers:
+            try:
+                layer = gp_utils.ensure_layer(data, "content")
+            except Exception:  # noqa: BLE001
+                return None
+        else:
+            layer = data.layers.active or layers[0]
+        if hasattr(scene, "bname_active_layer_kind"):
+            try:
+                scene.bname_active_layer_kind = "gp"
+            except Exception:  # noqa: BLE001
+                pass
     try:
         context.view_layer.objects.active = obj
         obj.select_set(True)

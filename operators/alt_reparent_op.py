@@ -65,7 +65,7 @@ def _selected_count(context) -> int:
 
 
 def _set_overlay_for_target(target) -> None:
-    if target is None or target.kind not in {"coma", "page"}:
+    if target is None:
         reparent_overlay.clear_hover()
         return
     if target.kind == "coma":
@@ -75,16 +75,23 @@ def _set_overlay_for_target(target) -> None:
             coma_id=str(getattr(target.panel, "coma_id", "") or ""),
             page_index=int(target.page_index),
         )
-    else:
+    elif target.kind == "page":
         reparent_overlay.set_hover(
             "page",
             page_id=str(getattr(target.page, "id", "") or ""),
             page_index=int(target.page_index),
         )
+    elif target.kind == "outside":
+        # ページ外ドロップ用ホバー: 円+斜め十字を pointer 位置に描く
+        reparent_overlay.set_hover("outside")
+        if target.world_xy_mm is not None:
+            reparent_overlay.set_preview(world_xy_mm=target.world_xy_mm)
+    else:
+        reparent_overlay.clear_hover()
 
 
 def _set_confirm_for_target(target) -> None:
-    if target is None or target.kind not in {"coma", "page"}:
+    if target is None:
         return
     if target.kind == "coma":
         reparent_overlay.flash_confirm(
@@ -93,11 +100,17 @@ def _set_confirm_for_target(target) -> None:
             coma_id=str(getattr(target.panel, "coma_id", "") or ""),
             page_index=int(target.page_index),
         )
-    else:
+    elif target.kind == "page":
         reparent_overlay.flash_confirm(
             "page",
             page_id=str(getattr(target.page, "id", "") or ""),
             page_index=int(target.page_index),
+        )
+    elif target.kind == "outside":
+        # ページ外確定演出: pointer 位置に円+斜め十字を 0.3s フラッシュ
+        reparent_overlay.flash_confirm(
+            "outside",
+            world_xy_mm=target.world_xy_mm,
         )
 
 

@@ -196,7 +196,9 @@ def ensure_text_empty_object(
     stamp_kind, stamp_key, stamp_folder = _resolve_parent_for_entry(
         entry, page, folder_id
     )
-    TEXT_Z_BASE = 2000
+    # parent_kind == "page" (コマ外+ページ内で作成) のテキストは、 コマ内テキストより
+    # 前面 (フキダシ page-level base 6000 より上) になるよう base を 7000 へ。
+    TEXT_Z_BASE = 7000 if stamp_kind == "page" else 2000
     z_index = TEXT_Z_BASE
     texts = getattr(page, "texts", None)
     if texts is not None:

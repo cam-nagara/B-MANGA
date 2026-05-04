@@ -326,6 +326,9 @@ class KeymapState:
                 kmi.properties.name = "VIEW3D_AST_brush_texture_paint"
             except Exception as exc:  # noqa: BLE001
                 print(f"[B-Name][KEYMAP] set asset shelf name failed: {exc!r}")
+        # Ctrl+Alt+ドラッグ → ブラシサイズ変更 (GP Paint と同じ挙動)
+        # ラスター描画中も B-Name のブラシサイズ調整を効かせるための先取り。
+        _add("bname.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
 
     def _populate_object_mode_overrides(self, kc) -> None:
         """Object Mode (mode keymap) にも Alt+drag / Alt+Shift+click を登録.

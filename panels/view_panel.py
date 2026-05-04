@@ -30,6 +30,7 @@ class BNAME_PT_view(Panel):
         mode = get_mode(context)
         is_coma_mode = mode == MODE_COMA
         scene = context.scene
+        work = get_work(context)
 
         col = layout.column(align=True)
         col.enabled = not is_coma_mode
@@ -39,6 +40,15 @@ class BNAME_PT_view(Panel):
         row = col.row(align=True)
         row.prop(scene, "bname_overview_cols", text="列数")
         row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+
+        if work is not None and work.loaded and len(work.pages) > 0:
+            page_row = layout.row(align=True)
+            page_row.enabled = not is_coma_mode
+            page_row.label(text="選択ページ", icon="FILE_BLANK")
+            sub = page_row.row(align=True)
+            sub.operator("bname.page_prev", text="", icon="TRIA_LEFT")
+            sub.prop(work, "active_page_index", text="")
+            sub.operator("bname.page_next", text="", icon="TRIA_RIGHT")
 
         if mode != MODE_PAGE:
             layout.separator()
