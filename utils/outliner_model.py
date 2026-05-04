@@ -324,6 +324,92 @@ def _normalize_collection_parent(
             )
 
 
+_PAGE_LEVEL_ABOVE_COMA_KINDS = {"effect", "balloon", "image", "raster", "gp"}
+_PAGE_LEVEL_WRAPPER_BNAME_ID_PREFIX = "page_above_"
+
+
+def _ensure_page_above_coma_wrapper(
+    scene: bpy.types.Scene,
+    obj: bpy.types.Object,
+    page_coll: bpy.types.Collection,
+) -> Optional[bpy.types.Collection]:
+    """page-level (parent_kind=page) のレイヤー Object を、 ページコレクション
+    内ですべてのコマ Collection より上に並べるための ラッパー Collection を
+    ensure する。
+
+    Blender の Outliner は子 Collection を **link 順** で表示する (alpha sort
+    は子 Object のみに適用される)。 そのためラッパー Collection は単に link
+    するだけだとコマ Collection の **後** に並んでしまう。 これを回避するため、
+    ensure 後にコマ Collection を一旦 unlink → relink することで、 ラッパーが
+    page_coll.children の先頭に来るよう順序を入れ替える。
+    """
+    if scene is None or obj is None or page_coll is None:
+        return None
+    bname_id = str(obj.get(on.PROP_ID, "") or "")
+    if not bname_id:
+        return None
+    wrapper_id = f"{_PAGE_LEVEL_WRAPPER_BNAME_ID_PREFIX}{bname_id}"
+    coll = on.find_collection_by_bname_id(wrapper_id, kind="page_above")
+    if coll is None:
+        coll = bpy.data.collections.new(obj.name)
+    on.stamp_identity(
+        coll,
+        kind="page_above",
+        bname_id=wrapper_id,
+        title=str(obj.get(on.PROP_TITLE, "") or obj.name),
+        z_index=int(obj.get(on.PROP_Z_INDEX, 0) or 0),
+        parent_key=str(obj.get(on.PROP_PARENT_KEY, "") or ""),
+    )
+    _normalize_collection_parent(coll, page_coll, scene)
+    _set_collection_name_safe(coll, obj.name)
+    # コマ Collection を再リンクしてラッパーを先頭側へ寄せる。 link 順 = 表示順。
+    # 既にラッパーが全コマ Collection より前にあれば再リンク不要 (頻繁に呼ばれる
+    # mirror_work_to_outliner の負荷を抑える)。
+    children_list = list(page_coll.children)
+    wrapper_idx = -1
+    last_coma_idx = -1
+    for i, c in enumerate(children_list):
+        if c is coll:
+            wrapper_idx = i
+        elif str(c.get(on.PROP_KIND, "") or "") == "coma":
+            last_coma_idx = i
+    if wrapper_idx < 0 or wrapper_idx > last_coma_idx >= 0:
+        coma_children = [
+            c for c in children_list
+            if str(c.get(on.PROP_KIND, "") or "") == "coma"
+        ]
+        for c in coma_children:
+            try:
+                page_coll.children.unlink(c)
+            except Exception:  # noqa: BLE001
+                pass
+        for c in coma_children:
+            try:
+                page_coll.children.link(c)
+            except Exception:  # noqa: BLE001
+                pass
+    return coll
+
+
+def _purge_unused_page_above_wrappers() -> int:
+    """所属 Object が居なくなった page_above ラッパー Collection を削除."""
+    removed = 0
+    for coll in list(bpy.data.collections):
+        if str(coll.get(on.PROP_KIND, "") or "") != "page_above":
+            continue
+        if len(coll.objects) > 0:
+            continue
+        # 子 Collection も無いなら削除
+        if len(coll.children) > 0:
+            continue
+        try:
+            bpy.data.collections.remove(coll)
+            removed += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return removed
+
+
 def link_object_to_parent(
     scene: bpy.types.Scene,
     obj: bpy.types.Object,
@@ -347,6 +433,24 @@ def link_object_to_parent(
         target = _resolve_parent_collection(scene, parent_kind, parent_key)
     if target is None:
         return None
+
+    # parent_kind == "page" のレイヤー Object (effect / balloon / image / raster /
+    # gp) は、 ページコレクション内ですべてのコマ Collection より上端に並べたい
+    # (ユーザー仕様: 「ページコレクション内ですべてのコマより上に」)。 Blender の
+    # Outliner は alpha sort 中でも Collection を Object より優先表示するので、
+    # Object のままでは絶対にコマ Collection の上に出せない。 そこで page-level
+    # レイヤーは Object と同じ canonical 名を付けたラッパー Collection に link
+    # することで、 ラッパー Collection が 'A' prefix によりコマ Collection
+    # ('c01' 等) より上に並ぶ → ユーザーの 「コマより上」 を Outliner 上で実現。
+    obj_kind = str(obj.get(on.PROP_KIND, "") or "")
+    if (
+        parent_kind == "page"
+        and obj_kind in _PAGE_LEVEL_ABOVE_COMA_KINDS
+        and not folder_id
+    ):
+        wrapper = _ensure_page_above_coma_wrapper(scene, obj, target)
+        if wrapper is not None:
+            target = wrapper
 
     # 既存の B-Name 管理 Collection への link を全部外す (`bname_no_normalize`
     # が立っていれば触らない)。scene.collection は管理外扱いなので残す。
@@ -388,6 +492,9 @@ def parent_key_from_collection(coll: bpy.types.Collection) -> tuple[str, str]:
         return ("coma", bname_id)
     if kind == "folder":
         return ("folder", bname_id)
+    if kind == "page_above":
+        # ラッパーは parent_key (= 親 page id) をそのまま継承する
+        return ("page", str(coll.get(on.PROP_PARENT_KEY, "") or ""))
     return ("none", "")
 
 

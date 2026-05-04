@@ -413,6 +413,13 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("legacy effect lines hide failed")
 
+        # 空になった page-level "コマより上" ラッパー Collection を掃除
+        # (link_object_to_parent で Object が外された後の orphan)。
+        try:
+            om._purge_unused_page_above_wrappers()
+        except Exception:  # noqa: BLE001
+            _logger.exception("page_above wrapper purge failed")
+
 
 def _split_folder_parent(parent_key_raw: str) -> tuple[str, str]:
     """フォルダの ``parent_key`` 文字列を ``(parent_kind, parent_key)`` に分解.

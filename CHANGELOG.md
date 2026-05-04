@@ -3,6 +3,49 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-04 — v0.2.3 (続) コマ外+ページ内作成のアウトライナー表示順を修正
+
+### 症状 / ご要望
+v0.2.3 初版では、 コマ外+ページ内ドラッグで作成された効果線 / フキダシは
+- z_index は高くなった (描画順は前面で正しい)
+- アウトライナー上は ``L`` prefix のままでコマ Collection (``c01`` 等) の
+  下に並んでいた
+
+Blender の Outliner は同じ親 Collection 内では **子 Collection を先に、 子
+Object を後に** 表示する (alpha sort は子 Object の中だけに効く)。 そのため
+レイヤー Object のままでは ``A`` prefix を付けても **絶対にコマ Collection の
+上に並ばない**。 ユーザーから 「直ってないです」 「ちゃんとツールでドラッグ
+して試してください」 のフィードバックを受け、 アウトライナー側の表示順制御を
+全面的にやり直した。
+
+### 修正
+- ``utils/outliner_model.py``:
+  - ``"page_above"`` という新しい kind の **ラッパー Collection** を導入。
+    parent_kind=="page" + kind∈{effect, balloon, image, raster, gp} の Object は
+    ページ Collection 直下に link せず、 同名の page_above ラッパー Collection
+    を経由して link する。
+  - ラッパー作成後、 同ページコレクションのコマ Collection 群を一旦 unlink →
+    relink することで、 ラッパーが ``page_coll.children`` の先頭側に並ぶよう
+    手動で順序整列する (Blender Outliner は子 Collection を link 順で表示する
+    ため)。
+  - ``parent_key_from_collection`` で ``"page_above"`` ラッパーを親ページの
+    ``("page", page_id)`` として扱う (D&D 検出側で破綻しない)。
+  - ラッパーが空になったら自動 purge (``_purge_unused_page_above_wrappers``)。
+- ``utils/layer_object_sync.py``: ``mirror_work_to_outliner`` 末尾で空ラッパーを
+  purge する呼び出しを追加。
+
+### 検証 (Blender 5.1.1 実機)
+- 効果線ツールを INVOKE_DEFAULT で起動し、 page 0 の角 (``(245, 360)`` mm) で
+  press → ドラッグ → release を実モーダル経由で再現
+- 結果:
+  - 新規 effect Object 名 ``A5010__effect__効果線_focus`` (z_index=5010)
+  - p0001 直下に同名のラッパー Collection (kind=page_above) が作られ、 中に
+    Object が link される
+  - p0001.children の link 順が ``[A5010__..., c01, c02, c03, c04]`` になり、
+    Outliner 上もラッパーがコマ Collection より上端に表示される
+- 既存のコマ内 effect (parent_key="p0001:c01" など) は再 mirror 後もコマ
+  Collection 内に残ったまま (誤って page_above に取り出されない) を確認
+
 ## 2026-05-04 — v0.2.3 ページ選択強化 / 階層またぎドロップ / ラスター描画ブラシサイズ / ツール常時有効
 
 ### 症状 / ご要望
