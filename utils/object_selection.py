@@ -117,16 +117,27 @@ def select_key(context, key: str, *, mode: str = "single") -> list[str]:
     key = str(key or "")
     if not key:
         return current
+    try:
+        from . import layer_links
+
+        linked_keys = layer_links.linked_object_keys_for_key(context, key)
+    except Exception:  # noqa: BLE001
+        linked_keys = []
+    linked_keys = linked_keys or [key]
     if mode == "toggle":
-        if key in current:
-            current = [item for item in current if item != key]
+        linked_set = set(linked_keys)
+        if any(item in current for item in linked_set):
+            current = [item for item in current if item not in linked_set]
         else:
-            current.append(key)
+            for item in linked_keys:
+                if item not in current:
+                    current.append(item)
     elif mode == "add":
-        if key not in current:
-            current.append(key)
+        for item in linked_keys:
+            if item not in current:
+                current.append(item)
     else:
-        current = [key]
+        current = list(linked_keys)
     set_keys(context, current)
     return current
 

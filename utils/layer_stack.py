@@ -2335,6 +2335,12 @@ def select_stack_index(context, index: int) -> bool:
         except Exception:  # noqa: BLE001
             _logger.exception("effect layer params restore failed")
         edge_selection.clear_selection(context)
+    try:
+        from . import layer_links
+
+        layer_links.expand_linked_selection(context, stack=stack, base_item=item)
+    except Exception:  # noqa: BLE001
+        _logger.exception("linked layer selection expansion failed")
     tag_view3d_redraw(context)
     return True
 

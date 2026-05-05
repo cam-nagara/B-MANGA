@@ -312,6 +312,8 @@ def main() -> None:
         assert hasattr(bpy.types, "BNAME_OT_layer_stack_detail")
         assert hasattr(bpy.types, "BNAME_OT_layer_stack_toggle_visibility")
         assert hasattr(bpy.types, "BNAME_OT_layer_stack_duplicate")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_multi_select")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_link_selected")
         assert hasattr(bpy.types, "BNAME_MT_layer_stack_add")
         text_coll = outliner_model.ensure_text_collection(context.scene)
         root_coll = outliner_model.ensure_root_collection(context.scene)
@@ -334,6 +336,39 @@ def main() -> None:
         text_b_uid = layer_stack_utils.target_uid("text", f"{page_key}:{text_b.id}")
 
         _stack(context)
+        text_a_index, _text_a_item = _find_stack_item(context, text_a_uid)
+        text_b_index, _text_b_item = _find_stack_item(context, text_b_uid)
+        layer_stack_utils.clear_all_selection(context)
+        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+            "EXEC_DEFAULT",
+            index=text_a_index,
+            mode="SET",
+        )
+        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+            "EXEC_DEFAULT",
+            index=text_b_index,
+            mode="TOGGLE",
+        )
+        assert "FINISHED" in bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+        from bname_dev.utils import layer_links
+        from bname_dev.utils import object_selection
+
+        linked = layer_links.linked_uids_for_uid(context, text_a_uid)
+        assert text_a_uid in linked and text_b_uid in linked
+        layer_stack_utils.clear_all_selection(context)
+        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+            "EXEC_DEFAULT",
+            index=text_a_index,
+            mode="SET",
+        )
+        _stack(context)
+        _text_b_index, text_b_item = _find_stack_item(context, text_b_uid)
+        assert layer_stack_utils.is_item_selected(context, text_b_item)
+        object_selection.select_key(context, object_selection.text_key(page, text_a), mode="single")
+        object_keys = set(object_selection.get_keys(context))
+        assert object_selection.text_key(page, text_a) in object_keys
+        assert object_selection.text_key(page, text_b) in object_keys
+
         _move_uid_before(context, text_a_uid, text_b_uid)
         stack_uids = [layer_stack_utils.stack_item_uid(item) for item in _stack(context)]
         if stack_uids.index(text_a_uid) > stack_uids.index(text_b_uid):

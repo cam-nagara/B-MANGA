@@ -123,7 +123,7 @@ def _select_icon(row, index: int, icon: str) -> None:
 
 
 def _select_name(row, index: int, text: str) -> None:
-    """名前ラベルを描画 (クリックは template_list 既定の選択動作)。
+    """名前ラベルを描画し、Shift/Ctrl を含むクリック選択を受け取る。
 
     Blender の UIList にはカスタムクラス向けのドラッグ並び替え API が無く、
     ボタン widget では drag-out を検出できないため、レイヤーの並び替えは
@@ -131,7 +131,13 @@ def _select_name(row, index: int, text: str) -> None:
     """
     cell = row.row(align=True)
     cell.alignment = "LEFT"
-    cell.label(text=text or "")
+    cell.operator_context = "INVOKE_DEFAULT"
+    op = cell.operator(
+        "bname.layer_stack_multi_select",
+        text=text or "",
+        emboss=False,
+    )
+    op.index = index
 
 
 def _select_icon_name(row, index: int, text: str, icon: str) -> None:
@@ -588,6 +594,7 @@ def _draw_layer_stack_box(layout, context) -> None:
         add_menu = col.operator("wm.call_menu", text="", icon="ADD")
         add_menu.name = "BNAME_MT_layer_stack_add"
         col.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
+        col.operator("bname.layer_stack_link_selected", text="", icon="LINKED")
         col.operator("bname.layer_stack_delete", text="", icon="REMOVE")
         col.separator()
         op = col.operator("bname.layer_stack_move", text="", icon="TRIA_UP_BAR")

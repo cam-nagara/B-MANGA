@@ -400,22 +400,32 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
 
         if self.mode == "RANGE" and 0 <= active_idx < len(stack):
+            from ..utils import layer_links
+
             layer_stack_utils.clear_all_selection(context)
             lo = min(active_idx, self.index)
             hi = max(active_idx, self.index)
             for i in range(lo, hi + 1):
                 layer_stack_utils.set_item_selected(context, stack[i], True)
+            layer_links.expand_linked_selection(context, stack=stack)
             # アクティブ行は変更せず、範囲の終端は選択フラグで表現する
             layer_stack_utils.tag_view3d_redraw(context)
             return {"FINISHED"}
 
         if self.mode == "TOGGLE":
+            from ..utils import layer_links
+
             target = stack[self.index]
             currently = layer_stack_utils.is_item_selected(context, target)
             if currently:
                 # アクティブ行を解除する場合は別の選択行にアクティブを移す
                 if self.index == active_idx:
-                    layer_stack_utils.set_item_selected(context, target, False)
+                    layer_links.set_item_and_linked_selected(
+                        context,
+                        target,
+                        False,
+                        stack=stack,
+                    )
                     new_active = -1
                     for i, it in enumerate(stack):
                         if i == self.index:
@@ -426,9 +436,19 @@ class BNAME_OT_layer_stack_multi_select(Operator):
                     if new_active >= 0:
                         layer_stack_utils.select_stack_index(context, new_active)
                 else:
-                    layer_stack_utils.set_item_selected(context, target, False)
+                    layer_links.set_item_and_linked_selected(
+                        context,
+                        target,
+                        False,
+                        stack=stack,
+                    )
             else:
-                layer_stack_utils.set_item_selected(context, target, True)
+                layer_links.set_item_and_linked_selected(
+                    context,
+                    target,
+                    True,
+                    stack=stack,
+                )
                 layer_stack_utils.select_stack_index(context, self.index)
             layer_stack_utils.tag_view3d_redraw(context)
             return {"FINISHED"}
