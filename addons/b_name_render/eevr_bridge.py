@@ -11,7 +11,7 @@ from math import radians
 import bpy
 
 
-def setup(scene, camera=None) -> bool:
+def setup(scene, camera=None, *, output_dir: str = "", output_name: str = "") -> bool:
     props = getattr(scene, "eeVR", None)
     if props is None:
         return False
@@ -28,7 +28,11 @@ def setup(scene, camera=None) -> bool:
     if hasattr(props, "save_images_to_directory"):
         props.save_images_to_directory = True
     if hasattr(props, "images_save_directory"):
-        props.images_save_directory = "//passes/"
+        props.images_save_directory = output_dir or "//passes/"
+    if output_dir:
+        scene["outputFolderName"] = output_dir
+    if output_name:
+        scene["outputImageName"] = output_name
     return True
 
 

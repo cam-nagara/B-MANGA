@@ -814,11 +814,10 @@ def _watch_bname_tab() -> Optional[float]:
 
         prefs = get_preferences()
         keymap_pref_enabled = True if prefs is None else bool(prefs.keymap_enabled)
-        # N パネルで B-Name タブが現在アクティブな area が 1 つでもあれば有効化、
-        # それ以外は他アドオンタブを開いている状態と判断して無効化する。
-        # preferences.keymap_enabled が False の場合は常時 False。
-        tab_active = _bname_tab_is_active()
-        enabled = bool(keymap_pref_enabled and tab_active)
+        # ツール切替やナビゲートは、B-Nameタブを開いていない瞬間にも
+        # 作画操作から即座に使える必要がある。サイドバー状態には連動させず、
+        # preferences.keymap_enabled だけを有効/無効の基準にする。
+        enabled = bool(keymap_pref_enabled)
 
         # キーマップ未作成 (register 時に wm/addon keyconfig が None だった等) なら再試行
         if not state.bname_items:

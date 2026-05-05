@@ -24,12 +24,15 @@ from . import (
     coma_modal_state,
     coma_picker,
     object_tool_selection,
+    raster_layer_op,
     selection_context_menu,
     text_op,
     view_event_region,
 )
 
 _DRAG_EPS_MM = 0.05
+_EDGE_PICK_WORLD_TOLERANCE_MIN_MM = 3.0
+_EDGE_PICK_WORLD_TOLERANCE_MAX_MM = 12.0
 
 
 def _find_page_by_id(work, page_id: str):
@@ -103,6 +106,67 @@ def _selection_mode(event) -> str:
     return "single"
 
 
+def _point_segment_distance_mm(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> float:
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1e-12:
+        return ((point[0] - start[0]) ** 2 + (point[1] - start[1]) ** 2) ** 0.5
+    t = max(0.0, min(1.0, ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_sq))
+    nearest = (start[0] + dx * t, start[1] + dy * t)
+    return ((point[0] - nearest[0]) ** 2 + (point[1] - nearest[1]) ** 2) ** 0.5
+
+
+def _edge_pick_world_tolerance_mm(region, rv3d, mx: float, my: float, px_tolerance: float) -> float:
+    here = coma_edge_move_op._region_to_world_mm(region, rv3d, mx, my)
+    side = coma_edge_move_op._region_to_world_mm(region, rv3d, mx + 1.0, my)
+    if here is None or side is None:
+        return _EDGE_PICK_WORLD_TOLERANCE_MAX_MM
+    mm_per_px = ((side[0] - here[0]) ** 2 + (side[1] - here[1]) ** 2) ** 0.5
+    return min(
+        max(_EDGE_PICK_WORLD_TOLERANCE_MIN_MM, mm_per_px * float(px_tolerance) * 1.5),
+        _EDGE_PICK_WORLD_TOLERANCE_MAX_MM,
+    )
+
+
+def _edge_hit_close_in_world(work, edge_hit: dict, region, rv3d, mx: float, my: float) -> bool:
+    point = coma_edge_move_op._region_to_world_mm(region, rv3d, mx, my)
+    if point is None:
+        return True
+    page_index = int(edge_hit.get("page", -1))
+    coma_index = int(edge_hit.get("coma", -1))
+    if not (0 <= page_index < len(work.pages)):
+        return False
+    page = work.pages[page_index]
+    if not (0 <= coma_index < len(page.comas)):
+        return False
+    poly = coma_edge_move_op._coma_polygon(page.comas[coma_index])
+    if len(poly) < 2:
+        return False
+    ox, oy = coma_edge_move_op._page_offset(work, page_index)
+    world_poly = [(float(x) + ox, float(y) + oy) for x, y in poly]
+    if edge_hit.get("type") == "vertex":
+        vertex_index = int(edge_hit.get("vertex", -1))
+        if not (0 <= vertex_index < len(world_poly)):
+            return False
+        vertex = world_poly[vertex_index]
+        dist = ((point[0] - vertex[0]) ** 2 + (point[1] - vertex[1]) ** 2) ** 0.5
+        tolerance = _edge_pick_world_tolerance_mm(region, rv3d, mx, my, coma_edge_move_op.VERTEX_PICK_TOLERANCE_PX)
+        return dist <= tolerance
+    edge_index = int(edge_hit.get("edge", -1))
+    if not (0 <= edge_index < len(world_poly)):
+        return False
+    start = world_poly[edge_index]
+    end = world_poly[(edge_index + 1) % len(world_poly)]
+    dist = _point_segment_distance_mm(point, start, end)
+    tolerance = _edge_pick_world_tolerance_mm(region, rv3d, mx, my, coma_edge_move_op.EDGE_PICK_TOLERANCE_PX)
+    return dist <= tolerance
+
+
 def hit_object_at_event(context, event) -> dict | None:
     """Return the selectable B-Name object under a viewport event."""
     work = get_work(context)
@@ -113,6 +177,8 @@ def hit_object_at_event(context, event) -> dict | None:
         return None
     area, region, rv3d, mx, my = view
     edge_hit = coma_edge_move_op._pick_edge_or_vertex(work, region, rv3d, int(mx), int(my))
+    if edge_hit is not None and not _edge_hit_close_in_world(work, edge_hit, region, rv3d, mx, my):
+        edge_hit = None
     if edge_hit is not None:
         page = work.pages[int(edge_hit["page"])]
         panel = page.comas[int(edge_hit["coma"])]
@@ -700,6 +766,23 @@ class BNAME_OT_object_tool(Operator):
                     "item_id": item_id,
                     "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
                 })
+            elif kind == "raster":
+                _idx, entry = _find_raster_by_key(context, item_id)
+                if entry is None:
+                    continue
+                image = raster_layer_op.ensure_raster_image(context, entry, create_missing=False)
+                if image is None:
+                    continue
+                try:
+                    pixels = image.pixels[:]
+                except Exception:  # noqa: BLE001
+                    pixels = ()
+                snapshots.append({
+                    "kind": "raster",
+                    "item_id": item_id,
+                    "image_name": str(getattr(image, "name", "") or ""),
+                    "pixels": tuple(pixels),
+                })
             elif kind == "gp":
                 obj, layer = _find_gp_layer(item_id)
                 bounds = object_tool_selection.gp_layer_local_bounds(layer)
@@ -840,6 +923,20 @@ class BNAME_OT_object_tool(Operator):
                 entry.y_mm = ny
                 entry.width_mm = nw
                 entry.height_mm = nh
+            elif kind == "raster":
+                _idx, entry = _find_raster_by_key(context, snapshot["item_id"])
+                if entry is None:
+                    continue
+                image = bpy.data.images.get(str(snapshot.get("image_name", "") or ""))
+                pixels = snapshot.get("pixels", ())
+                if image is not None and pixels:
+                    try:
+                        image.pixels[:] = pixels
+                        image.update()
+                    except Exception:  # noqa: BLE001
+                        pass
+                if self._drag_action == "move":
+                    raster_layer_op.translate_raster_layer_pixels(context, entry, dx, dy)
             elif kind == "gp":
                 _obj, layer = _find_gp_layer(snapshot["item_id"])
                 if layer is None:

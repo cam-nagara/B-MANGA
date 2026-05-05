@@ -52,12 +52,43 @@ def _create_work(work_dir: Path):
     text.height_mm = 20.0
 
     from bname_dev.operators import effect_line_op
+    from bname_dev.utils import gp_layer_parenting as gp_parent
+    from bname_dev.utils import gpencil as gp_utils
+    from bname_dev.utils.geom import mm_to_m
 
     effect_line_op._create_effect_layer(
         bpy.context,
         (20.0, 60.0, 35.0, 35.0),
         parent_key="",
     )
+
+    gp_obj = gp_utils.ensure_master_gpencil(bpy.context.scene)
+    gp_layer = gp_obj.data.layers.new("menu_gp")
+    gp_parent.set_parent_key(gp_layer, "")
+    frame = gp_utils.ensure_active_frame(gp_layer)
+    assert frame is not None and getattr(frame, "drawing", None) is not None
+    assert gp_utils.add_stroke_to_drawing(
+        frame.drawing,
+        [
+            (mm_to_m(100.0), mm_to_m(40.0), 0.0),
+            (mm_to_m(120.0), mm_to_m(60.0), 0.0),
+        ],
+    )
+
+    raster_result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    assert "FINISHED" in raster_result, raster_result
+
+    image = bpy.context.scene.bname_image_layers.add()
+    image.id = "menu_image"
+    image.title = "画像"
+    image.x_mm = 100.0
+    image.y_mm = 70.0
+    image.width_mm = 20.0
+    image.height_mm = 15.0
+
+    from bname_dev.utils import layer_stack as layer_stack_utils
+
+    layer_stack_utils.sync_layer_stack_after_data_change(bpy.context)
     return work
 
 
@@ -81,6 +112,10 @@ def _assert_menu_for_kind(kind: str) -> None:
     items = context_menu.selection_command_items(bpy.context)
     labels = [str(item.get("label", "")) for item in items]
     assert labels == ["詳細設定", "複製", "リンク複製", "削除"], (kind, labels)
+    for item in items:
+        op_id = str(item.get("operator", "") or "")
+        namespace, name = op_id.split(".", 1)
+        assert getattr(getattr(bpy.ops, namespace), name, None) is not None, (kind, op_id)
     enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
     assert enabled["詳細設定"]
     assert enabled["複製"]
@@ -95,7 +130,7 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         _create_work(temp_root / "Context_Menu.bname")
-        for kind in ("page", "coma", "balloon", "text", "effect"):
+        for kind in ("page", "coma", "gp", "effect", "raster", "image", "balloon", "text"):
             _assert_menu_for_kind(kind)
         print("BNAME_CONTEXT_MENU_COMMANDS_OK")
     finally:

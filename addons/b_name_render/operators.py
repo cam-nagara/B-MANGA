@@ -8,44 +8,19 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
-from . import command_runner, core, preset_library
+from . import command_runner, command_ui, core, preset_library
 
 
-def _draw_command(layout, command) -> None:
-    layout.prop(command, "enabled")
-    layout.prop(command, "name")
-    layout.prop(command, "command_type")
-    kind = command.command_type
-    if kind == "SET_VIEW_LAYER":
-        layout.prop(command, "view_layer_name")
-        layout.prop(command, "view_layer_enabled")
-    elif kind == "SET_COLLECTION_EXCLUDE":
-        layout.prop(command, "view_layer_name")
-        layout.prop(command, "collection_name")
-        layout.prop(command, "exclude_collection")
-    elif kind == "SET_NODE_MUTE":
-        layout.prop(command, "node_name")
-        layout.prop(command, "mute")
-    elif kind == "SET_OUTPUT_GROUP":
-        layout.prop(command, "node_group_name")
-        layout.prop(command, "label_contains")
-        layout.prop(command, "mute")
-    elif kind == "SET_AOV_INPUT":
-        layout.prop(command, "node_group_name")
-        layout.prop(command, "input_name")
-        layout.prop(command, "float_value")
-    elif kind == "SET_OUTPUT_NAME":
-        layout.prop(command, "text_value")
-    elif kind == "SET_OUTPUT_FOLDER":
-        layout.prop(command, "folder_path")
-    elif kind in {"RENDER", "RENDER_LAYER", "FISHEYE_RENDER_IMAGE_OR_LAYER", "FISHEYE_RENDER_FACES_OR_LAYER", "FISHEYE_ASSEMBLE_OR_LAYER"}:
-        if kind != "RENDER":
-            layout.prop(command, "node_group_name")
-            layout.prop(command, "label_contains")
-        layout.prop(command, "engine")
-        layout.prop(command, "sample_count")
-    elif kind == "OPERATOR":
-        layout.prop(command, "operator_idname")
+def _play_completion_sound() -> None:
+    state = core.get_state(bpy.context)
+    if state is None or not bool(state.sound_enabled):
+        return
+    try:
+        import winsound
+
+        winsound.MessageBeep(winsound.MB_OK)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class BNAME_RENDER_OT_load_builtin_presets(Operator):
@@ -106,6 +81,7 @@ class BNAME_RENDER_OT_preset_run(Operator):
         except Exception as exc:  # noqa: BLE001
             self.report({"ERROR"}, f"実行失敗: {exc}")
             return {"CANCELLED"}
+        _play_completion_sound()
         self.report({"INFO"}, f"実行完了: {count} カード")
         return {"FINISHED"}
 
@@ -202,7 +178,7 @@ class BNAME_RENDER_OT_command_card_click(Operator):
         preset = core.active_preset(context)
         if preset is None or not preset.commands:
             return
-        _draw_command(self.layout, preset.commands[preset.active_command_index])
+        command_ui.draw_command(self.layout, preset.commands[preset.active_command_index])
 
     def execute(self, context):
         if self._select_card(context)[0] is None:

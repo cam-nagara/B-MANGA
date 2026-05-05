@@ -76,7 +76,7 @@ def selection_command_items(context) -> list[dict]:
         },
         {
             "label": "削除",
-            "operator": "bname.layer_stack_remove",
+            "operator": "bname.layer_stack_delete",
             "icon": "TRASH",
             "enabled": has_item,
         },

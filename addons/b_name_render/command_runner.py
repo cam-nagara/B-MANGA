@@ -262,14 +262,23 @@ def _run_fisheye_or_layer(scene, command, mode: str) -> None:
     if not _is_fisheye_enabled(scene):
         _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
         return
-    if not eevr_bridge.setup(scene, getattr(scene, "camera", None)):
-        raise RuntimeError("eeVR設定が見つかりません")
+    _setup_eevr_from_command(scene, command)
     if mode == "IMAGE":
         eevr_bridge.render_image()
     elif mode == "FACES":
         eevr_bridge.render_faces()
     elif mode == "ASSEMBLE":
         eevr_bridge.assemble_images()
+
+
+def _setup_eevr_from_command(scene, command) -> None:
+    if not eevr_bridge.setup(
+        scene,
+        getattr(scene, "camera", None),
+        output_dir=str(getattr(command, "folder_path", "") or ""),
+        output_name=str(getattr(command, "text_value", "") or ""),
+    ):
+        raise RuntimeError("eeVR設定が見つかりません")
 
 
 def _run_command(context, command) -> None:
@@ -306,13 +315,15 @@ def _run_command(context, command) -> None:
     elif kind == "FISHEYE_ASSEMBLE_OR_LAYER":
         _run_fisheye_or_layer(scene, command, "ASSEMBLE")
     elif kind == "EEVR_SETUP":
-        if not eevr_bridge.setup(scene, getattr(scene, "camera", None)):
-            raise RuntimeError("eeVR設定が見つかりません")
+        _setup_eevr_from_command(scene, command)
     elif kind == "EEVR_RENDER_IMAGE":
+        _setup_eevr_from_command(scene, command)
         eevr_bridge.render_image()
     elif kind == "EEVR_RENDER_FACES":
+        _setup_eevr_from_command(scene, command)
         eevr_bridge.render_faces()
     elif kind == "EEVR_ASSEMBLE":
+        _setup_eevr_from_command(scene, command)
         eevr_bridge.assemble_images()
     elif kind == "OPERATOR" and command.operator_idname:
         eevr_bridge.run_operator(command.operator_idname)

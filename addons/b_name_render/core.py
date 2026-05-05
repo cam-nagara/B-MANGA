@@ -98,6 +98,60 @@ _CLASSES = (
 _REGISTERED_SCENE_PROPS: list[str] = []
 
 
+def _ensure_original_resolution(scene) -> tuple[int, int]:
+    current_x = max(1, int(getattr(scene.render, "resolution_x", 1) or 1))
+    current_y = max(1, int(getattr(scene.render, "resolution_y", 1) or 1))
+    original_x = int(getattr(scene, "original_resolution_x", 0) or 0)
+    original_y = int(getattr(scene, "original_resolution_y", 0) or 0)
+    if original_x <= 0 or original_y <= 0:
+        scene.original_resolution_x = current_x
+        scene.original_resolution_y = current_y
+        return current_x, current_y
+    return original_x, original_y
+
+
+def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
+    camera = getattr(scene, "camera", None)
+    camera_data = getattr(camera, "data", None)
+    if camera_data is None or not hasattr(camera_data, "type"):
+        return
+    try:
+        camera_data.type = "PANO" if enabled else "PERSP"
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _apply_output_resolution_mode(scene) -> None:
+    if scene is None or getattr(scene, "render", None) is None:
+        return
+    original_x, original_y = _ensure_original_resolution(scene)
+    scale = max(0.01, min(1.0, float(getattr(scene, "preview_scale_percentage", 100.0) or 100.0) / 100.0))
+    fisheye = bool(getattr(scene, "fisheye_layout_mode", False))
+    reduction = bool(getattr(scene, "reduction_mode", False))
+    _set_camera_projection_for_fisheye(scene, fisheye)
+    if fisheye:
+        edge = max(original_x, original_y)
+        if reduction:
+            edge = max(1, int(round(edge * scale)))
+        scene.render.resolution_x = edge
+        scene.render.resolution_y = edge
+        return
+    if reduction:
+        scene.render.resolution_x = max(1, int(round(original_x * scale)))
+        scene.render.resolution_y = max(1, int(round(original_y * scale)))
+        return
+    scene.render.resolution_x = original_x
+    scene.render.resolution_y = original_y
+
+
+def _on_output_mode_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def get_state(context) -> BNameRenderState | None:
     scene = getattr(context, "scene", None)
     return getattr(scene, "bname_render_state", None) if scene is not None else None
@@ -148,13 +202,13 @@ def _register_scene_prop(name: str, prop) -> None:
 
 def _register_scene_props() -> None:
     _register_scene_prop("my_tool", PointerProperty(type=BNameRenderToolSettings))
-    _register_scene_prop("fisheye_layout_mode", BoolProperty(name="魚眼モード", default=False))
-    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False))
+    _register_scene_prop("fisheye_layout_mode", BoolProperty(name="魚眼モード", default=False, update=_on_output_mode_changed))
+    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False, update=_on_output_mode_changed))
     _register_scene_prop("original_resolution_x", IntProperty(name="元解像度X", default=0, min=0))
     _register_scene_prop("original_resolution_y", IntProperty(name="元解像度Y", default=0, min=0))
     _register_scene_prop(
         "preview_scale_percentage",
-        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE"),
+        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE", update=_on_output_mode_changed),
     )
     _register_scene_prop("comic_frame_mode", BoolProperty(name="コマプレビューとして出力", default=False))
 

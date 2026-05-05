@@ -94,6 +94,16 @@ def _add_raster(context, parent_key: str):
     entry = context.scene.bname_raster_layers[context.scene.bname_active_raster_layer_index]
     entry.parent_kind = "coma"
     entry.parent_key = parent_key
+    from bname_dev.operators import raster_layer_op
+
+    image = raster_layer_op.ensure_raster_image(context, entry, create_missing=True)
+    assert image is not None
+    pixels = [0.0] * (int(image.size[0]) * int(image.size[1]) * 4)
+    mid = ((int(image.size[1]) // 2) * int(image.size[0]) + int(image.size[0]) // 2) * 4
+    pixels[mid:mid + 4] = [0.0, 0.0, 0.0, 1.0]
+    image.pixels[:] = pixels
+    image.update()
+    entry["bname_raster_dirty"] = False
     return entry
 
 
@@ -131,7 +141,7 @@ def main() -> None:
         from bname_dev.utils import text_real_object
         from bname_dev.utils.geom import Rect
         from bname_dev.utils.layer_hierarchy import coma_stack_key
-        from bname_dev.operators import effect_line_gen, object_tool_selection
+        from bname_dev.operators import effect_line_gen, object_tool_op, object_tool_selection
 
         context = bpy.context
         work = context.scene.bname_work
@@ -191,6 +201,30 @@ def main() -> None:
                     or on.get_bname_id(active_obj) != expected_id
                 ):
                     raise AssertionError(f"対象オブジェクトが一致しません: {key}")
+
+        for key in keys:
+            kind, _page_id, item_id = object_selection.parse_key(key)
+            fake_op = SimpleNamespace(_drag_action="move")
+            snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+                fake_op,
+                context,
+                [key],
+                primary_key=key,
+                action="move",
+            )
+            if not snapshots:
+                raise AssertionError(f"オブジェクトツール編集の準備ができません: {key}")
+            before = object_tool_selection.selection_bounds_for_key(context, key)
+            fake_op._snapshots = snapshots
+            object_tool_op.BNAME_OT_object_tool._apply_snapshots(fake_op, context, 4.0, 3.0)
+            if kind == "raster":
+                _idx, raster_entry = object_tool_selection.find_raster_by_key(context, item_id)
+                if raster_entry is None or not bool(raster_entry.get("bname_raster_dirty", False)):
+                    raise AssertionError("ラスターのドラッグ編集が画素移動として反映されません")
+                continue
+            after = object_tool_selection.selection_bounds_for_key(context, key)
+            if before is None or after is None or abs(float(after.x) - float(before.x)) < 0.5:
+                raise AssertionError(f"オブジェクトツール編集で位置が変わりません: {key}")
 
         page_key = object_selection.page_key(page)
         page_bounds = object_tool_selection.selection_bounds_for_key(context, page_key)
