@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_name_render"
-version = "0.1.4"
+version = "0.1.5"
 name = "B-Name-Render"
 tagline = "Card based render presets and fisheye rendering for B-Name workflows"
 maintainer = "B-Name Project"

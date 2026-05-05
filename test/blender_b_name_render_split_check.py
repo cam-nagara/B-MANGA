@@ -34,6 +34,7 @@ def main() -> None:
         bname = _load_package("bname_dev", ROOT)
         assert getattr(bpy.types, "BNAME_PT_export", None) is not None
         assert getattr(bpy.types, "BNAME_PT_export").bl_label == "ページ出力"
+        assert getattr(bpy.types, "BNAME_PT_gpencil", None) is None
         assert getattr(bpy.types, "BNAME_OT_export_page", None) is not None
         assert getattr(bpy.types, "BNAME_OT_export_all_pages", None) is not None
         assert getattr(bpy.types, "BNAME_OT_export_pdf", None) is not None
@@ -50,7 +51,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         state = bpy.context.scene.bname_render_state
         preset_names = {item.name for item in state.presets}
-        for required in ("すべて", "効果", "ページ", "キャラ", "背景", "背景pen合成", "画像ノード再読み込み"):
+        for required in ("すべて", "効果", "ページ", "キャラ", "キャラpen方向", "キャラpen合成", "背景", "背景pen合成", "画像ノード再読み込み"):
             assert required in preset_names, required
         for preset in state.presets:
             for command in preset.commands:

@@ -226,6 +226,14 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
         _end(),
         _aov("キャラ", "落ち影切替", 0),
     ],
+    "キャラpen方向": [
+        *_pen_output("キャラ", "出力_キャラ線画Pencil+4", "キャラ線画_Pencil+4", "キャラ", "FISHEYE_RENDER_FACES_OR_LAYER"),
+        _aov("キャラ", "落ち影切替", 0),
+    ],
+    "キャラpen合成": [
+        *_pen_output("キャラ", "出力_キャラ線画Pencil+4", "キャラ線画_Pencil+4", "キャラ", "FISHEYE_ASSEMBLE_OR_LAYER"),
+        _aov("キャラ", "落ち影切替", 0),
+    ],
     "背景pen": [
         *_pen_output("背景", "出力_背景線画Pencil+4", "背景線画_Pencil+4", "背景MH"),
         _begin(),

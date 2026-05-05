@@ -3,6 +3,29 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-06 — v0.5.5 / B-Name-Render v0.1.5 UI過不足を整理
+
+### 症状
+B-Name のツールとレイヤーへ集約済みの描画操作に対し、別の「Grease Pencil」パネルが残っていた。元アドオンの出力プリセットUIには「キャラpen方向」「キャラpen合成」があったが、B-Name-Render の初期プリセットには存在していなかった。
+
+### 原因
+旧描画管理パネルの登録解除が整理しきれておらず、B-Name-Render の初期プリセット移植では背景pen方向/合成だけがカード化され、キャラpen方向/合成のUI項目が抜けていた。
+
+### 修正
+- B-Name パネルから独立した「Grease Pencil」パネルを登録しないよう整理し、描画開始とレイヤー管理を「ツール」「レイヤー」へ集約。
+- B-Name-Render に「キャラpen方向」「キャラpen合成」プリセットを追加し、元アドオンUI上の出力プリセットを39件として補完。
+- UI棚卸しと登録分離監査を更新し、余分なパネルが戻らないことと39プリセットの存在を確認。
+- B-Name 本体バージョンを `0.5.4` から `0.5.5` へ、B-Name-Render バージョンを `0.1.4` から `0.1.5` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_b_name_render_split_check.py`
+- `test/blender_b_name_render_c00_audit.py`
+- `test/blender_b_name_render_ui_audit.py`
+- `test/blender_b_name_render_c00_execution_check.py`
+- `test/blender_bname_ui_inventory_visual_audit.py`
+- `test/blender_b_name_render_visual_presets.py`
+- B-Name-Render 全39出力プリセット、通常出力側68回のレンダー境界、低解像度実レンダー監査でエラー0件。
+
 ## 2026-05-06 — c00.blend 連携監査を強化
 
 ### 症状

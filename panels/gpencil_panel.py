@@ -834,17 +834,29 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
         return {"FINISHED"}
 
 
+_REMOVED_PANEL_CLASSES = (
+    BNAME_PT_gpencil,
+)
+
 _CLASSES = (
     BNAME_OT_gpencil_master_ensure,
     BNAME_OT_gpencil_master_mode_set,
     BNAME_MT_layer_stack_page_select,
     BNAME_UL_layer_stack,
     BNAME_PT_layer_stack,
-    BNAME_PT_gpencil,
 )
 
 
+def _unregister_removed_panels() -> None:
+    for cls in _REMOVED_PANEL_CLASSES:
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
+
+
 def register() -> None:
+    _unregister_removed_panels()
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     try:
@@ -863,3 +875,4 @@ def unregister() -> None:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+    _unregister_removed_panels()
