@@ -409,6 +409,19 @@ def _set_text_rect(entry, x: float, y: float, width: float, height: float) -> No
     entry.height_mm = max(_TEXT_MIN_SIZE_MM, float(height))
 
 
+def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
+    left = min(float(x0), float(x1))
+    right = max(float(x0), float(x1))
+    bottom = min(float(y0), float(y1))
+    top = max(float(y0), float(y1))
+    return (
+        left,
+        bottom,
+        max(_TEXT_MIN_SIZE_MM, right - left),
+        max(_TEXT_MIN_SIZE_MM, top - bottom),
+    )
+
+
 class BNAME_OT_text_add(Operator):
     """アクティブページにテキストを追加. マウス位置から座標決定."""
 
@@ -682,7 +695,7 @@ class BNAME_OT_text_tool(Operator):
         self._clear_click_state()
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("text_tool", self, context)
-        self.report({"INFO"}, "テキストツール: クリック位置にテキストを追加")
+        self.report({"INFO"}, "テキストツール: ドラッグで範囲を指定")
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -786,22 +799,13 @@ class BNAME_OT_text_tool(Operator):
             parent_kind=creation_parent_kind,
             parent_key=creation_parent_key,
         )
-        self._editing = True
-        self._editing_created_new = True
-        self._edit_original_body = ""
-        self._edit_original_font_spans = ()
-        self._cursor_index = 0
-        self._selection_anchor = -1
-        self._page_id = getattr(page, "id", "")
-        self._text_id = getattr(entry, "id", "")
         object_selection.select_key(
             context,
             object_selection.text_key(page, entry),
             mode="single",
         )
         self._clear_click_state()
-        self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
+        self._start_text_drag(page, entry, "create", lx, ly)
         return {"RUNNING_MODAL"}
 
     def _modal_editing(self, context, event):
@@ -924,7 +928,7 @@ class BNAME_OT_text_tool(Operator):
         self._page_id = ""
         self._text_id = ""
         self._clear_click_state()
-        self.report({"INFO"}, "テキストツール: クリック位置にテキストを追加")
+        self.report({"INFO"}, "テキストツール: ドラッグで範囲を指定")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _cancel_current_text_edit(self, context) -> None:
@@ -946,6 +950,21 @@ class BNAME_OT_text_tool(Operator):
         self._edit_original_body = str(getattr(entry, "body", ""))
         self._edit_original_font_spans = text_style.all_spans_snapshot(entry)
         self._cursor_index = len(self._edit_original_body)
+        self._selection_anchor = -1
+        self._page_id = getattr(page, "id", "")
+        self._text_id = getattr(entry, "id", "")
+        self._clear_drag_state()
+        self._clear_click_state()
+        self._begin_inline_input(context)
+        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _start_editing_created(self, context, page, entry) -> None:
+        self._editing = True
+        self._editing_created_new = True
+        self._edit_original_body = ""
+        self._edit_original_font_spans = ()
+        self._cursor_index = 0
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
@@ -1033,13 +1052,24 @@ class BNAME_OT_text_tool(Operator):
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
             moved = bool(getattr(self, "_drag_moved", False))
-            self._clear_drag_state()
-            if moved:
-                self._clear_click_state()
-                self._push_undo_step("B-Name: テキスト移動/リサイズ")
-                layer_stack_utils.sync_layer_stack_after_data_change(context)
+            action = str(getattr(self, "_drag_action", "") or "")
+            page, entry, idx = self._drag_text_entry(context)
+            if action == "create":
+                if entry is None or page is None or idx < 0:
+                    self._clear_drag_state()
+                    return {"RUNNING_MODAL"}
+                if moved:
+                    self._push_undo_step("B-Name: テキスト作成")
+                    layer_stack_utils.sync_layer_stack_after_data_change(context)
+                self._start_editing_created(context, page, entry)
             else:
-                layer_stack_utils.tag_view3d_redraw(context)
+                self._clear_drag_state()
+                if moved:
+                    self._clear_click_state()
+                    self._push_undo_step("B-Name: テキスト移動/リサイズ")
+                    layer_stack_utils.sync_layer_stack_after_data_change(context)
+                else:
+                    layer_stack_utils.tag_view3d_redraw(context)
             return {"RUNNING_MODAL"}
         if event.type in {"ESC", "RIGHTMOUSE"} and event.value == "PRESS":
             self._cancel_text_drag(context)
@@ -1081,13 +1111,20 @@ class BNAME_OT_text_tool(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _drag_result_rect(self, dx: float, dy: float) -> tuple[float, float, float, float]:
+        action = str(getattr(self, "_drag_action", "") or "")
+        if action == "create":
+            return _rect_from_points(
+                self._drag_start_x,
+                self._drag_start_y,
+                self._drag_start_x + dx,
+                self._drag_start_y + dy,
+            )
         x = float(self._drag_orig_x)
         y = float(self._drag_orig_y)
         w = float(self._drag_orig_w)
         h = float(self._drag_orig_h)
         right = x + w
         top = y + h
-        action = str(getattr(self, "_drag_action", "") or "")
         if action == "move":
             return x + dx, y + dy, w, h
         new_left = x
@@ -1105,8 +1142,11 @@ class BNAME_OT_text_tool(Operator):
         return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
     def _cancel_text_drag(self, context) -> None:
+        action = str(getattr(self, "_drag_action", "") or "")
         page, entry, _idx = self._drag_text_entry(context)
-        if entry is not None:
+        if action == "create":
+            _remove_text_by_id(context, self._drag_page_id, self._drag_text_id)
+        elif entry is not None:
             _set_text_rect(
                 entry,
                 self._drag_orig_x,

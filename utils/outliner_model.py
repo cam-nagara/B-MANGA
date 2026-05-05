@@ -39,11 +39,8 @@ OUTSIDE_BNAME_ID = "__outside__"
 
 # テキスト集約用 Collection の安定 ID と既定名。 全テキストレイヤーは
 # parent_kind / parent_key に関わらずこの Collection 直下に集約する (ユーザー仕様)。
-# 名前先頭の ``_`` は Outliner alpha sort で他 (outside / pNNNN / 多バイト名) より
-# 前に並べる目的 (ASCII 0x5F < 数字 / 英字 / 多バイト)。 これで「B-Name」 root の
-# 一番上に固定表示される。
 TEXT_COLLECTION_BNAME_ID = "__texts__"
-TEXT_COLLECTION_NAME = "_テキスト"
+TEXT_COLLECTION_NAME = "テキスト"
 
 # ページ / コマ Collection の color_tag (Blender 標準の COLOR_01..08)
 # 紫 = COLOR_06、水色 (青) = COLOR_05
@@ -70,6 +67,33 @@ def _set_collection_color_tag(coll: bpy.types.Collection, tag: str) -> None:
     try:
         if getattr(coll, "color_tag", None) != tag:
             coll.color_tag = tag
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _move_child_collection_to_top(parent: bpy.types.Collection, child: bpy.types.Collection) -> None:
+    """parent.children 内で child を先頭に寄せる。未対応環境では何もしない。"""
+    try:
+        index = parent.children.find(child.name)
+    except Exception:  # noqa: BLE001
+        index = -1
+    if index <= 0:
+        return
+    try:
+        parent.children.move(index, 0)
+        if len(parent.children) > 0 and parent.children[0] == child:
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        children = list(parent.children)
+        if child not in children:
+            return
+        ordered = [child] + [coll for coll in children if coll != child]
+        for coll in children:
+            parent.children.unlink(coll)
+        for coll in ordered:
+            parent.children.link(coll)
     except Exception:  # noqa: BLE001
         pass
 
@@ -150,6 +174,7 @@ def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     )
     _normalize_collection_parent(coll, root, scene)
     _set_collection_name_safe(coll, TEXT_COLLECTION_NAME)
+    _move_child_collection_to_top(root, coll)
     return coll
 
 

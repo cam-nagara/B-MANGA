@@ -279,6 +279,9 @@ def main() -> None:
         from bname_dev.operators import raster_layer_op
         from bname_dev.utils import gp_layer_parenting as gp_parent
         from bname_dev.utils import layer_stack as layer_stack_utils
+        from bname_dev.utils import layer_object_sync
+        from bname_dev.utils import object_naming as on
+        from bname_dev.utils import outliner_model
         from bname_dev.utils.geom import m_to_mm, mm_to_px
         from bname_dev.utils.layer_hierarchy import COMA_KIND, PAGE_KIND, coma_stack_key, page_stack_key
 
@@ -301,6 +304,22 @@ def main() -> None:
         balloon = _add_test_balloon(page, "dnd_balloon", page_key)
         text_a = _add_test_text(page, "dnd_text_a", page_key)
         text_b = _add_test_text(page, "dnd_text_b", page_key)
+        layer_object_sync.mirror_work_to_outliner(context.scene, work)
+
+        assert hasattr(bpy.types, "BNAME_UL_layer_stack")
+        assert hasattr(bpy.types, "BNAME_PT_layer_stack")
+        text_coll = outliner_model.ensure_text_collection(context.scene)
+        root_coll = outliner_model.ensure_root_collection(context.scene)
+        assert text_coll.name == "テキスト"
+        assert len(root_coll.children) > 0 and root_coll.children[0] == text_coll
+        text_objects = [
+            obj for obj in bpy.data.objects
+            if str(obj.get(on.PROP_KIND, "") or "") == "text"
+        ]
+        assert text_objects, "text outliner objects were not created"
+        for obj in text_objects:
+            if list(obj.users_collection) != [text_coll]:
+                raise AssertionError(f"text object collection mismatch: {obj.name}")
 
         gp_uid = layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(gp_layer))
         effect_uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(effect_layer))
@@ -375,7 +394,7 @@ def main() -> None:
         before_page_offset = (float(page.offset_x_mm), float(page.offset_y_mm))
         before_page_gp_world = _gp_point_world_mm(_gp_obj, _first_gp_point(gp_layer))
         before_page_effect_world = _gp_point_world_mm(_eff_obj, _first_gp_point(effect_layer))
-        raster_obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(raster.id))
+        raster_obj = on.find_object_by_bname_id(raster.id, kind="raster")
         assert raster_obj is not None
         before_raster_object = tuple(float(v) for v in raster_obj.location)
         before_page_balloon = (float(balloon.x_mm), float(balloon.y_mm))

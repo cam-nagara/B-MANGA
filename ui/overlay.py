@@ -1099,6 +1099,28 @@ def _draw_page_overlay(
             draw_rect_outline=_draw_rect_outline,
         )
 
+    # 用紙ガイドは作画要素の後に深度無視で再描画し、コマやテキストに隠れない
+    # 最前面の参照線として扱う。
+    try:
+        gpu.state.depth_test_set("NONE")
+        if getattr(paper, "show_canvas_frame", True):
+            _draw_rect_outline(canvas_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
+        if paper.bleed_mm > 0.0 and getattr(paper, "show_bleed_frame", True):
+            _draw_rect_outline(bleed_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
+        if getattr(paper, "show_finish_frame", True):
+            _draw_rect_outline(finish_r, viewport_colors.PAPER_GUIDE_LIGHT, line_width=1.0)
+        if getattr(paper, "show_inner_frame", True):
+            _draw_rect_outline(inner_r, viewport_colors.PAPER_GUIDE, line_width=1.0)
+        if getattr(paper, "show_safe_line", True):
+            _draw_rect_outline(safe_r, viewport_colors.SAFE_LINE, line_width=1.0)
+        if paper.bleed_mm > 0.0 and getattr(paper, "show_trim_marks", True):
+            _draw_trim_marks(finish_r, bleed_r)
+    finally:
+        try:
+            gpu.state.depth_test_set("LESS_EQUAL")
+        except Exception:  # noqa: BLE001
+            pass
+
     # NOTE: 作品情報の blf 描画は POST_VIEW では効かないため _draw_callback_pixel
     # (POST_PIXEL handler) で別途実行する。ここでは呼ばない。
 
@@ -1754,9 +1776,6 @@ def _draw_callback_pixel() -> None:
             )
             left_half = _is_left_half(i, start_side, read_direction)
             inner = bleed_rect(paper)
-            _draw_page_header_number_pixel(context, paper, i, ox, oy)
-            _draw_work_info_texts_pixel(context, work, inner, page_index=i,
-                                         ox_mm=ox, oy_mm=oy)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
             if page is not None:
                 overlay_text.draw_text_pixels(
@@ -1770,6 +1789,9 @@ def _draw_callback_pixel() -> None:
                     ),
                     draw_text_in_rect=_draw_text_in_rect,
                 )
+            _draw_page_header_number_pixel(context, paper, i, ox, oy)
+            _draw_work_info_texts_pixel(context, work, inner, page_index=i,
+                                         ox_mm=ox, oy_mm=oy)
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
@@ -1788,9 +1810,6 @@ def _draw_callback_pixel() -> None:
         inner = bleed_rect(paper)
         page = get_active_page(context)
         if page is not None and overlay_visibility.page_visible(page):
-            _draw_page_header_number_pixel(context, paper, idx, ox, oy)
-            _draw_work_info_texts_pixel(context, work, inner, page_index=idx,
-                                         ox_mm=ox, oy_mm=oy)
             overlay_text.draw_text_pixels(
                 context,
                 page,
@@ -1799,6 +1818,9 @@ def _draw_callback_pixel() -> None:
                 entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                 draw_text_in_rect=_draw_text_in_rect,
             )
+            _draw_page_header_number_pixel(context, paper, idx, ox, oy)
+            _draw_work_info_texts_pixel(context, work, inner, page_index=idx,
+                                         ox_mm=ox, oy_mm=oy)
     region, rv3d = _resolve_active_region(context)
     overlay_coma_selection.draw(context, work, region, rv3d)
 

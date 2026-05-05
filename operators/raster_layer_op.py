@@ -365,7 +365,11 @@ def sync_raster_runtime_display(context, entry) -> None:
     raster_id = str(getattr(entry, "id", "") or "")
     if not raster_id:
         return
-    obj = bpy.data.objects.get(raster_plane_name(raster_id))
+    from ..utils import object_naming as _on
+
+    obj = _on.find_object_by_bname_id(raster_id, kind="raster")
+    if obj is None:
+        obj = bpy.data.objects.get(raster_plane_name(raster_id))
     if obj is not None:
         visible = bool(getattr(entry, "visible", True))
         obj.hide_viewport = not visible

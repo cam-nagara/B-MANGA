@@ -13,6 +13,7 @@ from . import edge_selection
 from . import gpencil as gp_utils
 from . import layer_folder as layer_folder_utils
 from . import log
+from . import object_naming as on
 from .layer_hierarchy import (
     PAGE_KIND,
     COMA_KIND,
@@ -123,6 +124,26 @@ def get_effect_gp_object():
         _place_effect_gp_object(obj)
         return obj
     return None
+
+
+def _iter_effect_objects() -> list[bpy.types.Object]:
+    """新設計の効果線 Object を返す。旧集約 Object は含めない。"""
+    objects: list[bpy.types.Object] = []
+    for obj in bpy.data.objects:
+        if getattr(obj, "type", "") != "GREASEPENCIL":
+            continue
+        if str(obj.get(on.PROP_KIND, "") or "") != "effect":
+            continue
+        objects.append(obj)
+    objects.sort(key=lambda obj: int(obj.get(on.PROP_Z_INDEX, 0) or 0), reverse=True)
+    return objects
+
+
+def _effect_parent_key(obj, layer) -> str:
+    parent_key = gp_parent.parent_key(layer)
+    if parent_key:
+        return parent_key
+    return str(obj.get(on.PROP_PARENT_KEY, "") or "")
 
 
 def _node_stack_key(node) -> str:
@@ -617,6 +638,33 @@ def _partition_gp_targets(
     return root_targets, targets_by_parent
 
 
+def _partition_effect_object_targets(work) -> tuple[list[LayerTarget], dict[str, list[LayerTarget]]]:
+    root_targets: list[LayerTarget] = []
+    targets_by_parent: dict[str, list[LayerTarget]] = {}
+    for obj in _iter_effect_objects():
+        layers = getattr(getattr(obj, "data", None), "layers", None)
+        if layers is None:
+            continue
+        used: set[str] = set()
+        label = str(obj.get(on.PROP_TITLE, "") or obj.name)
+        for layer in reversed(list(layers)):
+            key = _ensure_node_stack_key(layer, used, "effect")
+            parent_key = _effect_parent_key(obj, layer)
+            if parent_key and gp_parent.parent_key_exists(work, parent_key):
+                targets_by_parent.setdefault(parent_key, []).append(
+                    LayerTarget(
+                        "effect",
+                        key,
+                        label,
+                        parent_key,
+                        gp_parent.parent_depth(parent_key),
+                    )
+                )
+            else:
+                root_targets.append(LayerTarget("effect", key, label))
+    return root_targets, targets_by_parent
+
+
 def collect_targets(context) -> list[LayerTarget]:
     """現在の作品/シーンから、前面→背面の統合レイヤー候補を返す."""
     scene = context.scene
@@ -630,6 +678,12 @@ def collect_targets(context) -> list[LayerTarget]:
         work,
         kind="effect",
     )
+    effect_object_root_targets, effect_object_targets_by_parent = (
+        _partition_effect_object_targets(work)
+    )
+    effect_root_targets.extend(effect_object_root_targets)
+    for parent_key, children in effect_object_targets_by_parent.items():
+        effect_targets_by_parent.setdefault(parent_key, []).extend(children)
 
     if work is not None and getattr(work, "loaded", False):
         from . import page_range
@@ -1448,11 +1502,11 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
             return "text", f"{page_stack_key(page)}:{getattr(page.texts[idx], 'id', '')}"
     if kind == "effect":
         key = str(getattr(scene, "bname_active_effect_layer_name", "") or "")
-        obj = get_effect_gp_object()
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        layer = _find_gp_layer_by_key(layers, key)
-        if layer is None and layers is not None:
-            layer = getattr(layers, "active", None)
+        obj, layer = _find_effect_layer_by_key(key)
+        if layer is None:
+            obj = get_effect_gp_object()
+            layers = getattr(getattr(obj, "data", None), "layers", None)
+            layer = getattr(layers, "active", None) if layers is not None else None
         if layer is not None:
             return "effect", _node_stack_key(layer)
 
@@ -1499,6 +1553,24 @@ def _find_gp_layer_by_key(layers, key: str):
     return None
 
 
+def _find_effect_layer_by_key(key: str):
+    """新設計の効果線 Object を優先して、(Object, Layer) を返す。"""
+    key = str(key or "")
+    if not key:
+        return None, None
+    for obj in _iter_effect_objects():
+        layers = getattr(getattr(obj, "data", None), "layers", None)
+        layer = _find_gp_layer_by_key(layers, key)
+        if layer is not None:
+            return obj, layer
+    obj = get_effect_gp_object()
+    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
+    layer = _find_gp_layer_by_key(layers, key)
+    if layer is not None:
+        return obj, layer
+    return None, None
+
+
 def _find_gp_group_by_key(groups, key: str):
     if groups is None:
         return None
@@ -1526,10 +1598,63 @@ def gp_layers_for_parent_keys(context, parent_keys: set[str]) -> list[object]:
 
 def effect_layers_for_parent_keys(context, parent_keys: set[str]) -> list[object]:
     _ = context
-    obj = get_effect_gp_object()
-    if obj is None or not parent_keys:
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    if not keys:
         return []
-    return list(gp_parent.iter_layers_with_parent(obj, set(parent_keys)))
+    layers_out: list[object] = []
+    obj = get_effect_gp_object()
+    if obj is not None:
+        layers_out.extend(list(gp_parent.iter_layers_with_parent(obj, keys)))
+    for effect_obj in _iter_effect_objects():
+        layers = getattr(getattr(effect_obj, "data", None), "layers", None)
+        if layers is None:
+            continue
+        for layer in layers:
+            if _effect_parent_key(effect_obj, layer) in keys:
+                layers_out.append(layer)
+    return layers_out
+
+
+def _effect_layer_pairs_for_parent_keys(parent_keys: set[str]) -> list[tuple[object, object]]:
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    if not keys:
+        return []
+    pairs: list[tuple[object, object]] = []
+    obj = get_effect_gp_object()
+    if obj is not None:
+        for layer in gp_parent.iter_layers_with_parent(obj, keys):
+            pairs.append((obj, layer))
+    for effect_obj in _iter_effect_objects():
+        layers = getattr(getattr(effect_obj, "data", None), "layers", None)
+        if layers is None:
+            continue
+        for layer in layers:
+            if _effect_parent_key(effect_obj, layer) in keys:
+                pairs.append((effect_obj, layer))
+    return pairs
+
+
+def _stamp_effect_object_parent(context, obj, parent_key: str) -> None:
+    if obj is None or str(obj.get(on.PROP_KIND, "") or "") != "effect":
+        return
+    parent_key = "" if parent_key == OUTSIDE_STACK_KEY else str(parent_key or "")
+    parent_kind = "coma" if ":" in parent_key else ("page" if parent_key else "outside")
+    try:
+        from . import layer_object_sync as los
+
+        los.stamp_layer_object(
+            obj,
+            kind="effect",
+            bname_id=str(obj.get(on.PROP_ID, "") or obj.name),
+            title=str(obj.get(on.PROP_TITLE, "") or obj.name),
+            z_index=int(obj.get(on.PROP_Z_INDEX, 0) or 0),
+            parent_kind=parent_kind,
+            parent_key=parent_key,
+            folder_id=str(obj.get(on.PROP_FOLDER_ID, "") or ""),
+            scene=getattr(context, "scene", None),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect object parent stamp failed: %s", getattr(obj, "name", ""))
 
 
 def delete_gp_layers_for_parent_keys(context, parent_keys: set[str]) -> int:
@@ -1551,15 +1676,14 @@ def delete_gp_layers_for_parent_keys(context, parent_keys: set[str]) -> int:
 
 
 def delete_effect_layers_for_parent_keys(context, parent_keys: set[str]) -> int:
-    obj = get_effect_gp_object()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is None or not parent_keys:
+    if not parent_keys:
         return 0
     removed = 0
-    for layer in list(gp_parent.iter_layers_with_parent(obj, set(parent_keys))):
+    for obj, layer in list(_effect_layer_pairs_for_parent_keys(parent_keys)):
         try:
-            gp_parent.set_parent_key(layer, "")
-            layers.remove(layer)
+            from ..operators import effect_line_op
+
+            effect_line_op._delete_effect_layer(context, obj, layer)
             removed += 1
         except Exception:  # noqa: BLE001
             _logger.exception("delete effect layer for parent failed: %s", getattr(layer, "name", ""))
@@ -1588,12 +1712,10 @@ def reparent_effect_layers(context, old_parent_key: str, new_parent_key: str) ->
     work = get_work(context)
     if not old_parent_key or not gp_parent.parent_key_exists(work, new_parent_key):
         return 0
-    obj = get_effect_gp_object()
-    if obj is None:
-        return 0
     changed = 0
-    for layer in list(gp_parent.iter_layers_with_parent(obj, {old_parent_key})):
+    for obj, layer in list(_effect_layer_pairs_for_parent_keys({old_parent_key})):
         gp_parent.set_parent_key(layer, new_parent_key)
+        _stamp_effect_object_parent(context, obj, new_parent_key)
         changed += 1
     if changed:
         tag_view3d_redraw(context)
@@ -1611,8 +1733,15 @@ def translate_gp_layers_for_parent_keys(context, parent_keys: set[str], dx_mm: f
 
 
 def translate_effect_layers_for_parent_keys(context, parent_keys: set[str], dx_mm: float, dy_mm: float) -> int:
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    # 新しい効果線 Object はページ/コマ Collection にリンクされるため、
+    # ページ移動では Collection transform だけでワールド位置が追従する。
+    # コマ単体移動時は Collection transform が走らないため stroke 座標を動かす。
+    is_page_move = any(key != OUTSIDE_STACK_KEY and ":" not in key for key in keys)
     moved = 0
-    for layer in effect_layers_for_parent_keys(context, parent_keys):
+    for obj, layer in _effect_layer_pairs_for_parent_keys(keys):
+        if is_page_move and str(obj.get(on.PROP_KIND, "") or "") == "effect":
+            continue
         gp_parent.translate_layer(layer, dx_mm, dy_mm)
         moved += 1
     if moved:
@@ -1884,9 +2013,7 @@ def resolve_stack_item(context, item):
             "page_index": page_idx,
         }
     if kind == "effect":
-        obj = get_effect_gp_object()
-        layers = getattr(getattr(obj, "data", None), "layers", None)
-        target = _find_gp_layer_by_key(layers, key)
+        obj, target = _find_effect_layer_by_key(key)
         return {"kind": kind, "target": target, "object": obj, "index": -1}
     return None
 
@@ -2569,6 +2696,26 @@ def _apply_effect_parenting(obj, stack, work) -> None:
         item.parent_key = ui_parent_key if ui_parent_key == OUTSIDE_STACK_KEY else desired_parent_key
 
 
+def _apply_effect_object_parenting(context, stack, work) -> None:
+    for item in stack:
+        if getattr(item, "kind", "") != "effect":
+            continue
+        obj, layer = _find_effect_layer_by_key(str(getattr(item, "key", "") or ""))
+        if obj is None or layer is None or str(obj.get(on.PROP_KIND, "") or "") != "effect":
+            continue
+        desired_parent_key = str(getattr(item, "parent_key", "") or "")
+        ui_parent_key = desired_parent_key
+        if desired_parent_key == OUTSIDE_STACK_KEY:
+            desired_parent_key = ""
+        if desired_parent_key and not gp_parent.parent_key_exists(work, desired_parent_key):
+            desired_parent_key = ""
+            if ui_parent_key != OUTSIDE_STACK_KEY:
+                ui_parent_key = ""
+        gp_parent.set_parent_key(layer, desired_parent_key)
+        _stamp_effect_object_parent(context, obj, desired_parent_key)
+        item.parent_key = ui_parent_key if ui_parent_key == OUTSIDE_STACK_KEY else desired_parent_key
+
+
 def _apply_image_parenting(context, stack) -> None:
     scene = getattr(context, "scene", None)
     coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
@@ -2738,6 +2885,7 @@ def apply_stack_order(context) -> None:
     if effect_obj is not None:
         _apply_effect_parenting(effect_obj, stack, get_work(context))
         _apply_gp_order(effect_obj, stack, effect=True)
+    _apply_effect_object_parenting(context, stack, get_work(context))
     _apply_image_parenting(context, stack)
     _apply_raster_parenting(context, stack)
     _apply_balloon_parenting(context, stack)
@@ -2863,12 +3011,9 @@ def delete_stack_index(context, index: int) -> bool:
         try:
             from ..operators import effect_line_op
 
-            effect_line_op._remove_layer_bounds(obj, target)
+            effect_line_op._delete_effect_layer(context, obj, target)
         except Exception:  # noqa: BLE001
-            _logger.exception("delete effect metadata from layer stack failed")
-        try:
-            obj.data.layers.remove(target)
-        except Exception:  # noqa: BLE001
+            _logger.exception("delete effect from layer stack failed")
             return False
         scene.bname_active_effect_layer_name = ""
     else:

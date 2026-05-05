@@ -83,27 +83,24 @@ class BNAME_PT_tools(Panel):
             ),
         )
         op.mode = "OBJECT"
-        draw_slot = row.row(align=True)
-        if raster_layer_active:
-            op = draw_slot.operator(
-                "bname.raster_layer_mode_set",
-                text="",
-                icon="BRUSH_DATA",
-                depress=(not modal_tool_active and active_mode == "TEXTURE_PAINT"),
-            )
-            op.mode = "TEXTURE_PAINT"
-        else:
-            op = draw_slot.operator(
-                "bname.gpencil_master_mode_set",
-                text="",
-                icon="OUTLINER_OB_GREASEPENCIL",
-                depress=(
-                    not modal_tool_active
-                    and gp_layer_active
-                    and mode == "PAINT_GREASE_PENCIL"
-                ),
-            )
-            op.mode = "PAINT_GREASE_PENCIL"
+        gp_draw = row.operator(
+            "bname.gpencil_master_mode_set",
+            text="",
+            icon="OUTLINER_OB_GREASEPENCIL",
+            depress=(
+                not modal_tool_active
+                and gp_layer_active
+                and mode == "PAINT_GREASE_PENCIL"
+            ),
+        )
+        gp_draw.mode = "PAINT_GREASE_PENCIL"
+        raster_draw = row.operator(
+            "bname.raster_layer_mode_set",
+            text="",
+            icon="BRUSH_DATA",
+            depress=(not modal_tool_active and active_mode == "TEXTURE_PAINT"),
+        )
+        raster_draw.mode = "TEXTURE_PAINT"
         edit_slot = row.row(align=True)
         op = edit_slot.operator(
             "bname.gpencil_master_mode_set",

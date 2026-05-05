@@ -57,6 +57,7 @@ def main() -> None:
 
         from bname_dev.operators import raster_layer_op
         from bname_dev.core.work import get_work
+        from bname_dev.utils import object_naming as on
 
         work = get_work(bpy.context)
         assert work is not None
@@ -86,7 +87,9 @@ def main() -> None:
         finally:
             bpy.data.images.remove(saved_image)
 
-        obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
+        obj = on.find_object_by_bname_id(entry.id, kind="raster")
+        if obj is None:
+            obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
         assert obj is not None
         mat = bpy.data.materials.get(raster_layer_op.raster_material_name(entry.id))
         assert mat is not None
@@ -137,6 +140,12 @@ def main() -> None:
         assert bpy.context.tool_settings.image_paint.canvas is image
         assert sorted(node.as_pointer() for node in mat.node_tree.nodes) == node_ptrs
         assert abs(_alpha_value_node(mat) - 0.25) < 1e-5
+
+        from bname_dev.operators import brush_size_op
+
+        assert brush_size_op.BNAME_OT_brush_size_drag.poll(bpy.context)
+        paint.brush.size = 12
+        assert brush_size_op._active_brush(bpy.context) is paint.brush
 
         paint.brush.color = (1.0, 0.0, 0.0)
         assert raster_layer_op.force_active_brush_grayscale(bpy.context) is True

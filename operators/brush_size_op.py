@@ -93,6 +93,27 @@ def _active_gp_brush(context):
     return None
 
 
+def _active_texture_paint_brush(context):
+    tool_settings = getattr(context, "tool_settings", None)
+    paint = getattr(tool_settings, "image_paint", None) if tool_settings is not None else None
+    brush = getattr(paint, "brush", None) if paint is not None else None
+    if brush is not None and hasattr(brush, "size"):
+        return brush
+    return None
+
+
+def _is_texture_paint_mode(mode: str) -> bool:
+    return str(mode or "") in {"TEXTURE_PAINT", "PAINT_TEXTURE"}
+
+
+def _active_brush(context):
+    obj = getattr(context, "active_object", None)
+    mode = str(getattr(context, "mode", "") or getattr(obj, "mode", ""))
+    if _is_texture_paint_mode(mode) or _is_texture_paint_mode(getattr(obj, "mode", "")):
+        return _active_texture_paint_brush(context)
+    return _active_gp_brush(context)
+
+
 def _active_gp_object(context):
     obj = getattr(context, "active_object", None)
     if obj is not None and getattr(obj, "type", "") == "GREASEPENCIL":
@@ -111,6 +132,17 @@ def _is_gp_paint_context(context) -> bool:
         return False
     mode = str(getattr(context, "mode", "") or getattr(obj, "mode", ""))
     return "PAINT" in mode and _active_gp_brush(context) is not None
+
+
+def _is_texture_paint_context(context) -> bool:
+    obj = getattr(context, "active_object", None)
+    if obj is None:
+        return False
+    mode = str(getattr(context, "mode", "") or getattr(obj, "mode", ""))
+    return (
+        (_is_texture_paint_mode(mode) or _is_texture_paint_mode(getattr(obj, "mode", "")))
+        and _active_texture_paint_brush(context) is not None
+    )
 
 
 def _brush_size_limits(brush, *, allow_zero: bool = False) -> tuple[int, int]:
@@ -165,7 +197,11 @@ class BNAME_OT_brush_size_drag(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return bool(work and work.loaded and _is_gp_paint_context(context))
+        return bool(
+            work
+            and work.loaded
+            and (_is_gp_paint_context(context) or _is_texture_paint_context(context))
+        )
 
     def invoke(self, context, event):
         if (
@@ -175,7 +211,7 @@ class BNAME_OT_brush_size_drag(Operator):
             or not event.alt
         ):
             return {"PASS_THROUGH"}
-        brush = _active_gp_brush(context)
+        brush = _active_brush(context)
         if brush is None:
             return {"PASS_THROUGH"}
         self._brush = brush

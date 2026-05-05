@@ -172,12 +172,9 @@ def active_effect_layer_bounds(context=None):
     ctx = context or bpy.context
     from ..utils import layer_stack as stack_utils
 
-    obj = stack_utils.get_effect_gp_object()
-    if obj is None:
-        return None, None, None
-    layers = getattr(getattr(obj, "data", None), "layers", None)
     key = str(getattr(getattr(ctx, "scene", None), "bname_active_effect_layer_name", "") or "")
-    active = stack_utils._find_gp_layer_by_key(layers, key) if key else None
+    obj, active = stack_utils._find_effect_layer_by_key(key) if key else (None, None)
+    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
     if active is None:
         active = getattr(layers, "active", None) if layers is not None else None
     bounds = effect_layer_bounds(obj, active)
@@ -594,21 +591,65 @@ def on_effect_params_changed(context, _params) -> None:
         _logger.exception("effect_line: param change rebuild failed")
 
 
-def _parent_key_for_world_point(context, x_mm: float, y_mm: float) -> str:
+def _creation_context_for_world_point(context, x_mm: float, y_mm: float):
     work = get_work(context)
     if work is None or not getattr(work, "loaded", False):
-        return ""
+        return None
     page_index = coma_picker.find_page_at_world_mm(work, x_mm, y_mm)
     if page_index is None or not (0 <= page_index < len(work.pages)):
-        return ""
+        return None
     page = work.pages[page_index]
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
     local_x = float(x_mm) - ox_mm
     local_y = float(y_mm) - oy_mm
     panel = layer_hierarchy.coma_containing_point(page, local_x, local_y)
     if panel is not None:
-        return layer_hierarchy.coma_stack_key(page, panel)
-    return layer_hierarchy.page_stack_key(page)
+        parent_key = layer_hierarchy.coma_stack_key(page, panel)
+    else:
+        parent_key = layer_hierarchy.page_stack_key(page)
+    return work, page, page_index, local_x, local_y, parent_key
+
+
+def _parent_key_for_world_point(context, x_mm: float, y_mm: float) -> str:
+    resolved = _creation_context_for_world_point(context, x_mm, y_mm)
+    return str(resolved[5]) if resolved is not None else ""
+
+
+def _event_local_xy_for_effect_obj(context, event, obj) -> tuple[float | None, float | None]:
+    world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
+    if world_x_mm is None or world_y_mm is None:
+        return None, None
+    try:
+        from ..utils import object_naming as on
+
+        parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
+        work = get_work(context)
+        if work is not None and parent_key:
+            page_id = parent_key.split(":", 1)[0]
+            for i, page in enumerate(getattr(work, "pages", []) or []):
+                if str(getattr(page, "id", "") or "") == page_id:
+                    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, i)
+                    return world_x_mm - ox_mm, world_y_mm - oy_mm
+    except Exception:  # noqa: BLE001
+        pass
+    return world_x_mm, world_y_mm
+
+
+def _world_local_xy_for_effect_obj(context, obj, x_mm: float, y_mm: float) -> tuple[float, float]:
+    try:
+        from ..utils import object_naming as on
+
+        parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
+        work = get_work(context)
+        if work is not None and parent_key:
+            page_id = parent_key.split(":", 1)[0]
+            for i, page in enumerate(getattr(work, "pages", []) or []):
+                if str(getattr(page, "id", "") or "") == page_id:
+                    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, i)
+                    return float(x_mm) - ox_mm, float(y_mm) - oy_mm
+    except Exception:  # noqa: BLE001
+        pass
+    return float(x_mm), float(y_mm)
 
 
 def _create_effect_layer(
@@ -676,9 +717,13 @@ def _create_effect_layer(
         return None, None
     gp_data = obj.data
     if len(gp_data.layers) == 0:
-        layer = gp_data.layers.new("content")
+        layer = gp_data.layers.new(_unique_layer_name(gp_data, title))
     else:
         layer = gp_data.layers[0]
+        try:
+            layer.name = _unique_layer_name(gp_data, title)
+        except Exception:  # noqa: BLE001
+            pass
     gp_data.layers.active = layer
     # GP layer 側の parent_key も保持 (overlay / export pipeline が参照する)
     if parent_key:
@@ -815,6 +860,7 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             candidates.append(legacy_obj)
 
     for obj in candidates:
+        local_x, local_y = _world_local_xy_for_effect_obj(context, obj, x_mm, y_mm)
         gp_data = getattr(obj, "data", None)
         if gp_data is None:
             continue
@@ -827,7 +873,7 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             bounds = effect_layer_bounds(obj, layer)
             if bounds is None:
                 continue
-            part = _effect_hit_part(bounds, x_mm, y_mm)
+            part = _effect_hit_part(bounds, local_x, local_y)
             if part:
                 return obj, layer, bounds, part
     return (candidates[0] if candidates else None), None, None, ""
@@ -871,6 +917,7 @@ class BNAME_OT_effect_line_tool(Operator):
     _cursor_modal_set: bool
     _dragging: bool
     _drag_action: str
+    _drag_obj_name: str
     _drag_layer_name: str
     _drag_start_x: float
     _drag_start_y: float
@@ -946,21 +993,20 @@ class BNAME_OT_effect_line_tool(Operator):
                 object_selection.effect_key(layer),
                 mode="single",
             )
-            self._start_drag(layer, part, x_mm, y_mm, bounds)
+            local_x, local_y = _event_local_xy_for_effect_obj(context, event, obj)
+            if local_x is None or local_y is None:
+                local_x, local_y = x_mm, y_mm
+            self._start_drag(obj, layer, part, local_x, local_y, bounds)
             return {"RUNNING_MODAL"}
-        parent_key_for_create = _parent_key_for_world_point(context, x_mm, y_mm)
+        create_ctx = _creation_context_for_world_point(context, x_mm, y_mm)
+        if create_ctx is None:
+            return {"PASS_THROUGH"}
+        work_for_focus, page_for_focus, _page_index, local_x, local_y, parent_key_for_create = create_ctx
         # 作成位置に応じて active 階層 (page or coma) を切替えて Outliner も同期
         try:
             from ..utils import active_target as _at
 
-            work_for_focus = get_work(context)
             if work_for_focus is not None:
-                page_id = parent_key_for_create.split(":", 1)[0] if parent_key_for_create else ""
-                page_for_focus = None
-                for p in getattr(work_for_focus, "pages", []) or []:
-                    if str(getattr(p, "id", "") or "") == page_id:
-                        page_for_focus = p
-                        break
                 if page_for_focus is not None:
                     pk = "coma" if ":" in parent_key_for_create else "page"
                     _at.focus_creation_target(
@@ -971,7 +1017,7 @@ class BNAME_OT_effect_line_tool(Operator):
             pass
         obj, layer = _create_effect_layer(
             context,
-            (x_mm, y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
+            (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
             parent_key=parent_key_for_create,
         )
         object_selection.select_key(
@@ -979,7 +1025,14 @@ class BNAME_OT_effect_line_tool(Operator):
             object_selection.effect_key(layer),
             mode="single",
         )
-        self._start_drag(layer, "create", x_mm, y_mm, (x_mm, y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM))
+        self._start_drag(
+            obj,
+            layer,
+            "create",
+            local_x,
+            local_y,
+            (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
+        )
         return {"RUNNING_MODAL"}
 
     def _should_leave_for_tool_key(self, event) -> bool:
@@ -992,6 +1045,7 @@ class BNAME_OT_effect_line_tool(Operator):
 
     def _start_drag(
         self,
+        obj,
         layer,
         action: str,
         x_mm: float,
@@ -1000,6 +1054,7 @@ class BNAME_OT_effect_line_tool(Operator):
     ) -> None:
         self._dragging = True
         self._drag_action = "move" if action == "body" else action
+        self._drag_obj_name = str(getattr(obj, "name", "") or "")
         self._drag_layer_name = str(getattr(layer, "name", "") or "")
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
@@ -1012,6 +1067,7 @@ class BNAME_OT_effect_line_tool(Operator):
     def _clear_drag_state(self) -> None:
         self._dragging = False
         self._drag_action = ""
+        self._drag_obj_name = ""
         self._drag_layer_name = ""
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
@@ -1041,7 +1097,10 @@ class BNAME_OT_effect_line_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def _drag_target(self, context):
-        obj = layer_stack_utils.get_effect_gp_object()
+        obj_name = str(getattr(self, "_drag_obj_name", "") or "")
+        obj = bpy.data.objects.get(obj_name) if obj_name else None
+        if obj is None:
+            obj = layer_stack_utils.get_effect_gp_object()
         if obj is None:
             return None, None
         layers = getattr(getattr(obj, "data", None), "layers", None)
@@ -1057,7 +1116,7 @@ class BNAME_OT_effect_line_tool(Operator):
         if obj is None or layer is None:
             self._clear_drag_state()
             return
-        x_mm, y_mm = _event_world_xy_mm(context, event)
+        x_mm, y_mm = _event_local_xy_for_effect_obj(context, event, obj)
         if x_mm is None or y_mm is None:
             return
         dx = float(x_mm) - self._drag_start_x

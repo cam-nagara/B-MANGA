@@ -12,6 +12,47 @@ from ..utils import page_browser
 B_NAME_CATEGORY = "B-Name"
 
 
+def _active_page_number_get(scene) -> int:
+    work = getattr(scene, "bname_work", None)
+    info = getattr(work, "work_info", None) if work is not None else None
+    start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
+    idx = int(getattr(work, "active_page_index", 0) or 0) if work is not None else 0
+    if work is None or not getattr(work, "loaded", False) or len(getattr(work, "pages", [])) == 0:
+        return start
+    idx = max(0, min(len(work.pages) - 1, idx))
+    return start + idx
+
+
+def _active_page_number_set(scene, value: int) -> None:
+    work = getattr(scene, "bname_work", None)
+    if work is None or not getattr(work, "loaded", False) or len(getattr(work, "pages", [])) == 0:
+        return
+    info = getattr(work, "work_info", None)
+    start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
+    idx = int(value) - start
+    idx = max(0, min(len(work.pages) - 1, idx))
+    try:
+        from ..utils import page_range
+
+        if not page_range.page_in_range(work.pages[idx]):
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    work.active_page_index = idx
+    scene.bname_overview_mode = True
+    scene.bname_current_coma_id = ""
+    scene.bname_current_coma_page_id = ""
+    if hasattr(scene, "bname_active_layer_kind"):
+        scene.bname_active_layer_kind = "page"
+    try:
+        from ..utils import edge_selection, layer_stack
+
+        edge_selection.clear_selection(bpy.context)
+        layer_stack.sync_layer_stack_after_data_change(bpy.context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNAME_PT_view(Panel):
     bl_idname = "BNAME_PT_view"
     bl_label = "ビュー"
@@ -39,6 +80,8 @@ class BNAME_PT_view(Panel):
         row = col.row(align=True)
         row.prop(scene, "bname_overview_cols", text="列数")
         row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+        row = col.row(align=True)
+        row.prop(scene, "bname_active_page_number", text="選択ページ")
 
         if mode != MODE_PAGE:
             layout.separator()
@@ -60,6 +103,12 @@ _CLASSES = (
 
 
 def register() -> None:
+    bpy.types.Scene.bname_active_page_number = bpy.props.IntProperty(
+        name="選択ページ",
+        min=1,
+        get=_active_page_number_get,
+        set=_active_page_number_set,
+    )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -70,3 +119,7 @@ def unregister() -> None:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+    try:
+        del bpy.types.Scene.bname_active_page_number
+    except AttributeError:
+        pass

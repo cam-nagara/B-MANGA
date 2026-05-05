@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.types import Panel, UIList
+from bpy.types import Menu, Panel, UIList
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
@@ -347,7 +347,8 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
         _select_name(row, index, item.label)
         return
     _draw_type_icon(row, index, _kind_icon(item.kind))
-    _select_name(row, index, target.name)
+    name = item.label if item.kind == "effect" and item.label else target.name
+    _select_name(row, index, name)
     if item.kind == "gp":
         controls["gp_style"] = _gp_color_style(target)
     if hasattr(target, "lock"):
@@ -422,6 +423,38 @@ class BNAME_UL_layer_stack(UIList):
 
     bl_idname = "BNAME_UL_layer_stack"
 
+    def filter_items(self, context, data, propname):
+        items = getattr(data, propname, None)
+        if items is None:
+            return [], []
+        work = get_work(context)
+        if work is None or not getattr(work, "loaded", False):
+            return [self.bitflag_filter_item] * len(items), []
+        active_idx = int(getattr(work, "active_page_index", -1))
+        active_page_key = ""
+        if 0 <= active_idx < len(work.pages):
+            active_page_key = layer_stack_utils.page_stack_key(work.pages[active_idx])
+        flags = []
+        for item in items:
+            kind = getattr(item, "kind", "")
+            if kind == "outside_group":
+                flags.append(0)
+                continue
+            if kind == "page":
+                flags.append(
+                    self.bitflag_filter_item
+                    if str(getattr(item, "key", "") or "") == active_page_key
+                    else 0
+                )
+                continue
+            page_key = layer_stack_utils._stack_item_page_key(item, context)
+            flags.append(
+                self.bitflag_filter_item
+                if active_page_key and page_key == active_page_key
+                else 0
+            )
+        return flags, []
+
     def draw_item(
         self,
         context,
@@ -476,6 +509,41 @@ def draw_stack_item_detail(layout, context, item, resolved) -> bool:
     return layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved)
 
 
+def _page_menu_label(work) -> str:
+    if work is None or not getattr(work, "loaded", False):
+        return "ページ"
+    idx = int(getattr(work, "active_page_index", -1))
+    if not (0 <= idx < len(work.pages)):
+        return "ページ"
+    page = work.pages[idx]
+    info = getattr(work, "work_info", None)
+    start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
+    title = str(getattr(page, "title", "") or "").strip()
+    base = f"{start + idx}ページ"
+    return f"{base} {title}" if title else base
+
+
+class BNAME_MT_layer_stack_page_select(Menu):
+    bl_idname = "BNAME_MT_layer_stack_page_select"
+    bl_label = "ページを選択"
+
+    def draw(self, context):
+        layout = self.layout
+        work = get_work(context)
+        if work is None or not getattr(work, "loaded", False):
+            layout.label(text="ページがありません", icon="INFO")
+            return
+        info = getattr(work, "work_info", None)
+        start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
+        for idx, page in enumerate(work.pages):
+            title = str(getattr(page, "title", "") or "").strip()
+            label = f"{start + idx}ページ"
+            if title:
+                label = f"{label} {title}"
+            op = layout.operator("bname.page_select", text=label, icon="FILE_BLANK")
+            op.index = idx
+
+
 def _draw_layer_stack_box(layout, context) -> None:
     scene = context.scene
     box = layout.box()
@@ -491,6 +559,13 @@ def _draw_layer_stack_box(layout, context) -> None:
     if stack is None:
         box.label(text="(レイヤーがありません)")
     else:
+        work = get_work(context)
+        page_row = box.row(align=True)
+        page_row.label(text="ページ", icon="FILE_BLANK")
+        page_row.menu(
+            BNAME_MT_layer_stack_page_select.bl_idname,
+            text=_page_menu_label(work),
+        )
         # Phase 1: Outliner 移行への案内 (計画書 Phase 1 完了条件)
         info_row = box.row(align=True)
         info_row.label(
@@ -732,6 +807,9 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
 _CLASSES = (
     BNAME_OT_gpencil_master_ensure,
     BNAME_OT_gpencil_master_mode_set,
+    BNAME_MT_layer_stack_page_select,
+    BNAME_UL_layer_stack,
+    BNAME_PT_layer_stack,
     BNAME_PT_gpencil,
 )
 

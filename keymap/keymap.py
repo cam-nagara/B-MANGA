@@ -292,9 +292,10 @@ class KeymapState:
         同様に B-Name の view_navigate を SPACE で先取りし、ブラシ
         切替を ``C`` キーへ移設する。
 
+        Ctrl+Alt+ドラッグは GP 描画と同じブラシサイズ調整に割り当てる。
         他のショートカット (E=消しゴム, X=Undo, V=Redo 等) は Blender
         既定がラスター描画上で重要な役割を持つため、Texture Paint では
-        SPACE / C のみを上書きする。
+        SPACE / C / Ctrl+Alt+ドラッグのみを上書きする。
         """
         try:
             from ..preferences import get_preferences
@@ -326,6 +327,7 @@ class KeymapState:
                 kmi.properties.name = "VIEW3D_AST_brush_texture_paint"
             except Exception as exc:  # noqa: BLE001
                 print(f"[B-Name][KEYMAP] set asset shelf name failed: {exc!r}")
+        _add("bname.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
 
     def _populate_object_mode_overrides(self, kc) -> None:
         """Object Mode (mode keymap) にも Alt+drag / Alt+Shift+click を登録.
