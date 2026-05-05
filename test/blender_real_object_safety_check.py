@@ -146,6 +146,17 @@ def main() -> None:
         assert balloon_obj.hide_viewport and balloon_obj.hide_render, "balloon visibility was not synced"
         balloon.visible = True
         assert not balloon_obj.hide_viewport and not balloon_obj.hide_render, "balloon visibility restore failed"
+        tail = balloon.tails.add()
+        tail.type = "straight"
+        tail.direction_deg = 270.0
+        tail.length_mm = 12.0
+        tail.root_width_mm = 5.0
+        assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail sync failed"
+        balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
+        assert balloon_obj is not None and balloon_obj.type == "CURVE"
+        assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to real curve"
+        tail.length_mm = 14.0
+        assert len(balloon_obj.data.splines) >= 2, "balloon tail update removed real curve tail"
         balloon_real_objects = [
             obj
             for obj in bpy.data.objects

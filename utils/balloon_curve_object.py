@@ -4,12 +4,13 @@
 として生成し、Outliner mirror に登録する。
 
 Curve は ``bevel_depth`` で線幅を持たせ、``fill_mode="BOTH"`` で内側塗り
-潰しを行う。Phase 4c では基本形状 (rect/ellipse/cloud/octagon 等) のみ対応。
-尻尾 (tail) は後段で実装。
+潰しを行う。基本形状 (rect/ellipse/cloud/octagon 等) と尻尾を同じ Curve
+Object 内の複数スプラインとして同期する。
 """
 
 from __future__ import annotations
 
+import math
 from typing import Optional, Sequence
 
 import bpy
@@ -24,10 +25,13 @@ _logger = log.get_logger(__name__)
 
 BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_CURVE_DATA_PREFIX = "balloon_curve_"
+BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 
 
 def _ensure_balloon_curve_data(
-    name: str, points_mm: Sequence[tuple[float, float]]
+    name: str,
+    points_mm: Sequence[tuple[float, float]],
+    tail_polygons_mm: Sequence[Sequence[tuple[float, float]]] | None = None,
 ) -> bpy.types.Curve:
     """点列 (mm) から Bezier Curve データブロックを ensure (再構築)."""
     curve = bpy.data.curves.get(name)
@@ -42,6 +46,23 @@ def _ensure_balloon_curve_data(
             break
     if not points_mm or len(points_mm) < 3:
         return curve
+    _append_bezier_loop(curve, points_mm)
+    for tail_points in tail_polygons_mm or ():
+        if len(tail_points) >= 3:
+            _append_poly_loop(curve, tail_points)
+    # 実体の安全性を優先し、白い用紙上でも残存が分かる輪郭線として持つ。
+    try:
+        curve.fill_mode = "NONE"
+    except Exception:  # noqa: BLE001
+        pass
+    # 線幅 (ベベル) は呼出側で設定。data 側のデフォルトは 0。
+    return curve
+
+
+def _append_bezier_loop(
+    curve: bpy.types.Curve,
+    points_mm: Sequence[tuple[float, float]],
+) -> None:
     spline = curve.splines.new(type="BEZIER")
     spline.bezier_points.add(len(points_mm) - 1)
     for i, (x_mm, y_mm) in enumerate(points_mm):
@@ -51,21 +72,48 @@ def _ensure_balloon_curve_data(
         bp.handle_left_type = "AUTO"
         bp.handle_right_type = "AUTO"
     spline.use_cyclic_u = True
-    # フキダシ内側を塗り潰す (透明色は呼出側 material 任せ)
+
+
+def _append_poly_loop(
+    curve: bpy.types.Curve,
+    points_mm: Sequence[tuple[float, float]],
+) -> None:
+    spline = curve.splines.new(type="POLY")
+    spline.points.add(len(points_mm) - 1)
+    for point, (x_mm, y_mm) in zip(spline.points, points_mm, strict=False):
+        point.co = (mm_to_m(x_mm), mm_to_m(y_mm), 0.0, 1.0)
+    spline.use_cyclic_u = True
+
+
+def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
+    color = getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))
+    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
     try:
-        curve.fill_mode = "BOTH"
+        return (
+            float(color[0]),
+            float(color[1]),
+            float(color[2]),
+            float(color[3]) * opacity,
+        )
+    except Exception:  # noqa: BLE001
+        return (0.0, 0.0, 0.0, opacity)
+
+
+def _ensure_balloon_curve_material(
+    curve: bpy.types.Curve,
+    *,
+    material_name: str,
+    entry=None,
+) -> bpy.types.Material:
+    """フキダシ輪郭用の material を ensure."""
+    mat = bpy.data.materials.get(material_name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=material_name)
+    line = _entry_line_rgba(entry)
+    try:
+        mat.diffuse_color = line
     except Exception:  # noqa: BLE001
         pass
-    # 線幅 (ベベル) は呼出側で設定。data 側のデフォルトは 0。
-    return curve
-
-
-def _ensure_balloon_curve_material(curve: bpy.types.Curve) -> bpy.types.Material:
-    """フキダシ用の薄い material を ensure (黒線 + 白塗り、透明 mix)."""
-    name = "BName_Balloon_Curve"
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name=name)
     try:
         mat.use_nodes = True
         nt = mat.node_tree
@@ -77,11 +125,11 @@ def _ensure_balloon_curve_material(curve: bpy.types.Curve) -> bpy.types.Material
         principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
         principled.location = (-100, 0)
         try:
-            principled.inputs["Base Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+            principled.inputs["Base Color"].default_value = line
         except Exception:  # noqa: BLE001
             pass
         try:
-            principled.inputs["Alpha"].default_value = 1.0
+            principled.inputs["Alpha"].default_value = line[3]
         except Exception:  # noqa: BLE001
             pass
         nt.links.new(principled.outputs["BSDF"], out.inputs["Surface"])
@@ -117,6 +165,61 @@ def _outline_points_for_entry(entry) -> list[tuple[float, float]]:
             (0.0, height),
         ]
     return pts
+
+
+def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
+    width = max(0.1, float(getattr(entry, "width_mm", 40.0) or 40.0))
+    height = max(0.1, float(getattr(entry, "height_mm", 20.0) or 20.0))
+    cx = width * 0.5
+    cy = height * 0.5
+    rx = max(width * 0.5, 0.01)
+    ry = max(height * 0.5, 0.01)
+    angle = math.radians(float(getattr(tail, "direction_deg", 270.0) or 270.0))
+    dx, dy = math.cos(angle), math.sin(angle)
+    denom = math.hypot(dx / rx, dy / ry)
+    base_x = cx + (dx / denom) if denom > 0 else cx
+    base_y = cy + (dy / denom) if denom > 0 else cy
+    length = max(0.0, float(getattr(tail, "length_mm", 0.0) or 0.0))
+    if length <= 0.001:
+        return []
+    tip_x = base_x + dx * length
+    tip_y = base_y + dy * length
+    nx, ny = -dy, dx
+    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
+    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
+    tail_type = str(getattr(tail, "type", "straight") or "straight")
+    if tail_type == "sticky":
+        return [
+            (base_x + nx * rw, base_y + ny * rw),
+            (tip_x + nx * tw if tw > 0 else tip_x, tip_y + ny * tw if tw > 0 else tip_y),
+            (tip_x - nx * tw if tw > 0 else tip_x, tip_y - ny * tw if tw > 0 else tip_y),
+            (base_x - nx * rw, base_y - ny * rw),
+        ]
+    if tail_type == "curve":
+        bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
+        mid_x = (base_x + tip_x) * 0.5 + nx * bend
+        mid_y = (base_y + tip_y) * 0.5 + ny * bend
+        return [
+            (base_x + nx * rw, base_y + ny * rw),
+            (mid_x, mid_y),
+            (tip_x, tip_y),
+            (mid_x, mid_y),
+            (base_x - nx * rw, base_y - ny * rw),
+        ]
+    return [
+        (base_x + nx * rw, base_y + ny * rw),
+        (tip_x, tip_y),
+        (base_x - nx * rw, base_y - ny * rw),
+    ]
+
+
+def _tail_polygons_for_entry(entry) -> list[list[tuple[float, float]]]:
+    polygons: list[list[tuple[float, float]]] = []
+    for tail in getattr(entry, "tails", []) or []:
+        pts = _tail_polygon_for_entry(entry, tail)
+        if len(pts) >= 3:
+            polygons.append(pts)
+    return polygons
 
 
 def _remove_balloon_object(obj: bpy.types.Object) -> None:
@@ -162,8 +265,8 @@ def ensure_balloon_curve_object(
 ) -> Optional[bpy.types.Object]:
     """``BNameBalloonEntry`` から balloon Curve Object を生成・更新する.
 
-    Phase 4c: rect/ellipse/cloud/fluffy/thorn 等の Meldex 共通形状を Bezier
-    Curve として描画する。尻尾 (tail) は後段で追加予定。
+    rect/ellipse/cloud/fluffy/thorn 等の Meldex 共通形状と尻尾を Curve として
+    描画する。
     """
     if scene is None or entry is None or page is None:
         return None
@@ -173,9 +276,18 @@ def ensure_balloon_curve_object(
 
     # 1. Curve データ生成
     points_mm = _outline_points_for_entry(entry)
+    tail_polygons_mm = _tail_polygons_for_entry(entry)
     curve_data_name = f"{BALLOON_CURVE_DATA_PREFIX}{balloon_id}"
-    curve_data = _ensure_balloon_curve_data(curve_data_name, points_mm)
-    _ensure_balloon_curve_material(curve_data)
+    curve_data = _ensure_balloon_curve_data(
+        curve_data_name,
+        points_mm,
+        tail_polygons_mm,
+    )
+    _ensure_balloon_curve_material(
+        curve_data,
+        material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
+        entry=entry,
+    )
     # ベベルでフキダシの線幅を再現 (entry.line_width_mm)
     line_width_mm = float(getattr(entry, "line_width_mm", 0.6) or 0.6)
     try:
