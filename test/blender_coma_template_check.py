@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -109,6 +110,57 @@ def main() -> None:
 
         result = bpy.ops.bname.exit_coma_mode()
         assert result == {"FINISHED"}, result
+
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "Template_Prefs.bname"))
+        assert result == {"FINISHED"}, result
+        work = bpy.context.scene.bname_work
+        work.coma_blend_template_path = ""
+
+        from bname_dev import preferences
+        from bname_dev.operators import object_tool_op
+        from bname_dev.utils import coma_scene, edge_selection, object_selection
+        from bname_dev.ui import overlay_coma_selection
+
+        original_get_preferences = preferences.get_preferences
+        preferences.get_preferences = lambda _context=None: SimpleNamespace(
+            coma_blend_template_path=str(template_path)
+        )
+        try:
+            resolved, error = coma_scene.resolve_coma_blend_template_path(
+                work,
+                Path(work.work_dir),
+            )
+            assert error == "", error
+            assert resolved == template_path.resolve(), resolved
+
+            page = work.pages[0]
+            coma = page.comas[0]
+            hit = {
+                "kind": "coma",
+                "page": 0,
+                "coma": 0,
+                "part": "body",
+                "key": object_selection.coma_key(page, coma),
+            }
+            assert object_tool_op.enter_coma_from_hit(bpy.context, hit)
+            assert Path(bpy.data.filepath).resolve() == (
+                temp_root / "Template_Prefs.bname" / "p0001" / "c01" / "c01.blend"
+            ).resolve()
+            assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT") is not None
+            assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP") is not None
+        finally:
+            preferences.get_preferences = original_get_preferences
+
+        region = SimpleNamespace(x=100, y=50)
+        event = SimpleNamespace(
+            mouse_x=999,
+            mouse_y=999,
+            mouse_region_x=18,
+            mouse_region_y=24,
+        )
+        edge_selection.update_overlay_pointer(bpy.context, region, event)
+        assert edge_selection.get_overlay_pointer(bpy.context) == (18, 24)
+        assert overlay_coma_selection._is_handle_hovered((20.0, 25.0), (18, 24))
         print("BNAME_COMA_TEMPLATE_OK")
     finally:
         if mod is not None:

@@ -603,6 +603,21 @@ def _draw_layer_stack_box(layout, context) -> None:
         op.direction = "DOWN"
         op = col.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
+        _draw_layer_order_box(box)
+
+
+def _draw_layer_order_box(layout) -> None:
+    box = layout.box()
+    box.label(text="重なり順", icon="SORT_ASC")
+    row = box.row(align=True)
+    for direction, label, icon in (
+        ("FRONT", "最前面", "TRIA_UP_BAR"),
+        ("UP", "前面へ", "TRIA_UP"),
+        ("DOWN", "背面へ", "TRIA_DOWN"),
+        ("BACK", "最背面", "TRIA_DOWN_BAR"),
+    ):
+        op = row.operator("bname.layer_stack_move", text=label, icon=icon)
+        op.direction = direction
 
 
 class BNAME_PT_layer_stack(Panel):

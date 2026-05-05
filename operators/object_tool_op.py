@@ -258,6 +258,17 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         object_selection.select_key(context, key, mode=mode)
 
 
+def enter_coma_from_hit(context, hit: dict) -> bool:
+    if str(hit.get("kind", "") or "") != "coma":
+        return False
+    activate_hit(context, hit, mode="single")
+    try:
+        result = bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+    except Exception:  # noqa: BLE001
+        return False
+    return result == {"FINISHED"}
+
+
 def _rect_resize_result(
     action: str,
     x: float,
@@ -330,18 +341,7 @@ class BNAME_OT_object_tool(Operator):
         # ▲ ハンドル hover ハイライト用にカーソル位置を WM に記録
         # (overlay_coma_selection.draw が読む)
         if event.type == "MOUSEMOVE":
-            try:
-                view = view_event_region.view3d_window_under_event(context, event)
-            except Exception:  # noqa: BLE001
-                view = None
-            if view is not None:
-                _area, region, _rv3d, _mx, _my = view
-                edge_selection.update_overlay_pointer(context, region, event)
-                # hover 状態の再描画を促す
-                try:
-                    region.tag_redraw()
-                except Exception:  # noqa: BLE001
-                    pass
+            self._update_overlay_pointer(context, event)
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -368,7 +368,11 @@ class BNAME_OT_object_tool(Operator):
 
     def _handle_left_press(self, context, event):
         mode = _selection_mode(event)
-        if mode == "single" and coma_edge_move_op.extend_selected_handle_at_event(context, event):
+        if (
+            event.value == "PRESS"
+            and mode == "single"
+            and coma_edge_move_op.extend_selected_handle_at_event(context, event)
+        ):
             return {"RUNNING_MODAL"}
         hit = self._hit_object(context, event)
         if hit is None:
@@ -378,6 +382,8 @@ class BNAME_OT_object_tool(Operator):
                 object_selection.clear(context)
                 edge_selection.clear_selection(context)
             return {"RUNNING_MODAL"}
+        if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
+            return {"FINISHED"}
         self._activate_hit(context, hit, mode=mode)
         if mode in {"toggle", "add"}:
             return {"RUNNING_MODAL"}
@@ -389,6 +395,9 @@ class BNAME_OT_object_tool(Operator):
         else:
             self._start_object_drag(context, hit, x_mm, y_mm)
         return {"RUNNING_MODAL"}
+
+    def _try_enter_coma_from_hit(self, context, hit: dict) -> bool:
+        return enter_coma_from_hit(context, hit)
 
     def _hit_object(self, context, event) -> dict | None:
         return hit_object_at_event(context, event)
@@ -557,6 +566,7 @@ class BNAME_OT_object_tool(Operator):
 
     def _modal_dragging(self, context, event):
         if event.type == "MOUSEMOVE":
+            self._update_overlay_pointer(context, event)
             self._update_drag(context, event)
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
@@ -567,6 +577,21 @@ class BNAME_OT_object_tool(Operator):
             self._cancel_drag(context)
             return {"RUNNING_MODAL"}
         return {"RUNNING_MODAL"}
+
+    def _update_overlay_pointer(self, context, event) -> None:
+        try:
+            view = view_event_region.view3d_window_under_event(context, event)
+        except Exception:  # noqa: BLE001
+            view = None
+        if view is None:
+            edge_selection.update_overlay_pointer(context, None, event)
+            return
+        _area, region, _rv3d, _mx, _my = view
+        edge_selection.update_overlay_pointer(context, region, event)
+        try:
+            region.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _update_drag(self, context, event) -> None:
         if self._drag_action == "coma_edge":

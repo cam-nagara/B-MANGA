@@ -1,7 +1,7 @@
 ---
 最終更新: 2026-05-05
-反映済みログ範囲: 2026-05-05 まで（ClaudeCode デスクトップアプリ、VSCode ClaudeCode、VSCode Codex の B-Name セッションログを横断確認）
-情報源: D:/Develop/Blender/B-Name/docs/B-Name-plan.md、2026-04-23〜2026-05-05 のセッションログ、現行コード、D:/Develop/Meldex-public/app/docs/spec-observation-rules.md、D:/Develop/Blender/B-Name/docs/仕様定点観測_設計意図.md
+反映済みログ範囲: 2026-05-05 まで。ただし 2026-05-05 再点検時点で、現 Codex セッションから ClaudeCode デスクトップアプリの全セッションログを完全取得できたとは確認できていない
+情報源: D:/Develop/Blender/B-Name/docs/B-Name-plan.md、現行コード、D:/Develop/Meldex-public/app/docs/spec-observation-rules.md、D:/Develop/Blender/B-Name/docs/仕様定点観測_設計意図.md、現セッションで参照できたユーザー発言とローカルログ
 ---
 
 # B-Name（Blender ネーム作画アドオン） 設計意図
@@ -15,7 +15,9 @@
 ## 0.7 2026-05-05 時点の追加設計意図（競合時はこの節を優先）
 
 ### 0.7.1 仕様定点観測のログ横断
-- 2026-05-05 時点の更新では、ClaudeCode デスクトップアプリ、VSCode の ClaudeCode、VSCode の Codex の B-Name セッションログを横断して確認した
+- 2026-05-05 の再点検で、現 Codex セッションから確認できた範囲は、リポジトリ内ドキュメント、現セッション、`C:\Users\niken\.claude\projects` 配下の一部ログ / memory、リポジトリ内 `.claude/worktrees`、Codex 側のローカル記録である
+- ClaudeCode デスクトップアプリの全セッションログ、VSCode ClaudeCode の全セッションログ、VSCode Codex の全セッションログを漏れなく取得できたとは扱わない
+- 今後、設計意図を更新する時は「参照できたログ範囲」と「参照できていない可能性があるログ範囲」を分けて記録する
 - 仕様判断では、同じ話題についての最新ユーザー発言を優先する
 - 自動挿入された環境説明、ツール実行結果、継続セッション要約、通知文は、ユーザー本人の仕様発言とは分けて扱う
 - ただし継続セッション要約にしか残っていない可能性がある話題は、直接のユーザー発言ログと照合してから補助的に参照する

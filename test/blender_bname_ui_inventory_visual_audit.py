@@ -572,6 +572,7 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "原稿上の表示",
         "選択ページ",
         "レイヤー",
+        "重なり順",
         "Outliner で階層を編集できます",
         "カーソル追従",
         "カメラアングル一覧",

@@ -111,8 +111,12 @@ def update_overlay_pointer(context, region, event) -> None:
             pass
         return
     try:
-        rx = int(getattr(event, "mouse_x", 0)) - int(getattr(region, "x", 0))
-        ry = int(getattr(event, "mouse_y", 0)) - int(getattr(region, "y", 0))
+        if hasattr(event, "mouse_region_x") and hasattr(event, "mouse_region_y"):
+            rx = int(getattr(event, "mouse_region_x", 0))
+            ry = int(getattr(event, "mouse_region_y", 0))
+        else:
+            rx = int(getattr(event, "mouse_x", 0)) - int(getattr(region, "x", 0))
+            ry = int(getattr(event, "mouse_y", 0)) - int(getattr(region, "y", 0))
         if hasattr(wm, "bname_overlay_pointer_x"):
             wm.bname_overlay_pointer_x = rx
         if hasattr(wm, "bname_overlay_pointer_y"):
