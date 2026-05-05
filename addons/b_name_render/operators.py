@@ -20,6 +20,7 @@ def _draw_command(layout, command) -> None:
         layout.prop(command, "view_layer_name")
         layout.prop(command, "view_layer_enabled")
     elif kind == "SET_COLLECTION_EXCLUDE":
+        layout.prop(command, "view_layer_name")
         layout.prop(command, "collection_name")
         layout.prop(command, "exclude_collection")
     elif kind == "SET_NODE_MUTE":

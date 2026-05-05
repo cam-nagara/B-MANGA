@@ -105,8 +105,11 @@ def _find_layer_collection(layer_collection, collection_name: str):
     return None
 
 
-def _set_collection_exclude(scene, collection_name: str, exclude: bool) -> None:
-    for view_layer in scene.view_layers:
+def _set_collection_exclude(scene, collection_name: str, exclude: bool, view_layer_name: str = "") -> None:
+    view_layers = [scene.view_layers.get(view_layer_name)] if view_layer_name else scene.view_layers
+    for view_layer in view_layers:
+        if view_layer is None:
+            continue
         layer_coll = _find_layer_collection(view_layer.layer_collection, collection_name)
         if layer_coll is not None:
             layer_coll.exclude = exclude
@@ -148,16 +151,35 @@ def _set_output_group(group_name: str, label: str, mute: bool) -> int:
     return count
 
 
-def _set_aov_input(group_name: str, input_name: str, value: float) -> int:
+def _set_input_in_node_tree(node_tree, input_name: str, value: float) -> int:
+    count = 0
+    for node in _iter_nodes_recursive(node_tree):
+        for socket in getattr(node, "inputs", []):
+            if getattr(socket, "name", "") == input_name and hasattr(socket, "default_value"):
+                socket.default_value = value
+                count += 1
+    return count
+
+
+def _set_aov_input(target_name: str, input_name: str, value: float) -> int:
+    collection = bpy.data.collections.get(target_name)
+    if collection is not None:
+        count = 0
+        for obj in collection.all_objects:
+            if getattr(obj, "type", "") != "MESH":
+                continue
+            for slot in getattr(obj, "material_slots", []):
+                material = getattr(slot, "material", None)
+                if material is None or not getattr(material, "use_nodes", False):
+                    continue
+                count += _set_input_in_node_tree(material.node_tree, input_name, value)
+        return count
+
     count = 0
     for group in bpy.data.node_groups:
-        if group_name and group_name not in group.name:
+        if target_name and target_name not in group.name:
             continue
-        for node in _iter_nodes_recursive(group):
-            for socket in getattr(node, "inputs", []):
-                if getattr(socket, "name", "") == input_name and hasattr(socket, "default_value"):
-                    socket.default_value = value
-                    count += 1
+        count += _set_input_in_node_tree(group, input_name, value)
     return count
 
 
@@ -217,7 +239,7 @@ def _run_command(context, command) -> None:
     elif kind == "SET_VIEW_LAYER":
         _set_view_layer(scene, command.view_layer_name, command.view_layer_enabled)
     elif kind == "SET_COLLECTION_EXCLUDE":
-        _set_collection_exclude(scene, command.collection_name, command.exclude_collection)
+        _set_collection_exclude(scene, command.collection_name, command.exclude_collection, command.view_layer_name)
     elif kind == "SET_NODE_MUTE":
         _set_node_mute(scene, command.node_name, command.mute)
     elif kind == "SET_OUTPUT_GROUP":

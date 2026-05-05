@@ -43,6 +43,18 @@ def _aov(group: str, input_name: str, value: float) -> dict:
     return _cmd("SET_AOV_INPUT", f"AOV: {group} {input_name}={value:g}", node_group_name=group, input_name=input_name, float_value=value)
 
 
+def _exclude(collection: str, exclude: bool, view_layer: str = "") -> dict:
+    state = "除外" if exclude else "表示"
+    suffix = f" / {view_layer}" if view_layer else ""
+    return _cmd(
+        "SET_COLLECTION_EXCLUDE",
+        f"{collection}{suffix}: {state}",
+        collection_name=collection,
+        exclude_collection=exclude,
+        view_layer_name=view_layer,
+    )
+
+
 def _render(samples: int = 1, engine: str = "CYCLES") -> dict:
     return _cmd("RENDER", f"レンダー: {samples}", sample_count=samples, engine=engine)
 
@@ -73,6 +85,39 @@ def _background_pass(label: str, samples: int = 1, *view_layers: str) -> list[di
         commands.append(_node(layer))
     commands.extend([_node("出力_背景"), _render_layer("出力_背景", label, samples), _end(), _aov("背景MH", "落ち影切替", 0)])
     return commands
+
+
+def _background_gradation() -> list[dict]:
+    return [
+        _aov("背景MH", "落ち影切替", 1),
+        _begin(),
+        _vl("グラデ"),
+        _node("グラデ"),
+        _node("出力_背景"),
+        _exclude("グラデ_白", False, "空"),
+        _exclude("グラデ_黒", True, "空"),
+        _render_layer("出力_背景", "グラデ_白", 64),
+        _exclude("グラデ_白", True, "空"),
+        _exclude("グラデ_黒", False, "空"),
+        _render_layer("出力_背景", "グラデ_黒", 64),
+        _exclude("グラデ_白", False, "空"),
+        _end(),
+        _aov("背景MH", "落ち影切替", 0),
+    ]
+
+
+def _background_effect_collection(label: str, show_collection: str, hide_collection: str) -> list[dict]:
+    return [
+        _begin(),
+        _vl("エフェクト"),
+        _node("エフェクト"),
+        _node("出力_背景"),
+        _exclude(hide_collection, True, "エフェクト"),
+        _exclude(show_collection, False, "エフェクト"),
+        _render_layer("出力_背景", label, 64),
+        _exclude(show_collection, True, "エフェクト"),
+        _end(),
+    ]
 
 
 BUILTIN_PRESETS: dict[str, list[dict]] = {
@@ -108,12 +153,12 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
         _aov("キャラ", "落ち影切替", 0),
     ],
     "キャラAOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_AOV＋出力_背景"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
-    "キャラpen": [_aov("キャラ", "落ち影切替", 1), _begin(), _vl("キャラ"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を除外", collection_name="コマ枠", exclude_collection=True), _node("キャラ線画Pencil+4"), _node("出力_キャラ線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を表示", collection_name="コマ枠", exclude_collection=False), _end(), _aov("キャラ", "落ち影切替", 0)],
-    "背景pen": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を除外", collection_name="コマ枠", exclude_collection=True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を表示", collection_name="コマ枠", exclude_collection=False), _end(), _aov("背景MH", "落ち影切替", 0)],
-    "背景pen方向": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を除外", collection_name="コマ枠", exclude_collection=True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_FACES", "eeVR方向画像レンダー"), _cmd("SET_COLLECTION_EXCLUDE", "コマ枠を表示", collection_name="コマ枠", exclude_collection=False), _end(), _aov("背景MH", "落ち影切替", 0)],
+    "キャラpen": [_aov("キャラ", "落ち影切替", 1), _begin(), _vl("キャラ"), _exclude("コマ枠", True), _node("キャラ線画Pencil+4"), _node("出力_キャラ線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _exclude("コマ枠", False), _end(), _aov("キャラ", "落ち影切替", 0)],
+    "背景pen": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _exclude("コマ枠", True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _exclude("コマ枠", False), _end(), _aov("背景MH", "落ち影切替", 0)],
+    "背景pen方向": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _exclude("コマ枠", True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_FACES", "eeVR方向画像レンダー"), _exclude("コマ枠", False), _end(), _aov("背景MH", "落ち影切替", 0)],
     "背景pen合成": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_ASSEMBLE", "eeVRパノラマ合成"), _end(), _aov("背景MH", "落ち影切替", 0)],
     "背景": [_aov("背景MH", "落ち影切替", 1), *_simple_output("背景", "背景", "出力_背景", "パス", 64), _aov("背景MH", "落ち影切替", 0), *_simple_layer("背景", "C_線画抽出_背景", "背景線画", 1), *_simple_layer("背景", "C_AOV＋出力_背景", "背景統合", 1)],
-    "背景_低速": [*_background_pass("Dライト", 64), *_background_pass("Gライト", 64), *_background_pass("AO", 64), *_background_pass("線画用", 1), *_background_pass("ベース", 1), *_background_pass("ベタ影", 1), *_background_pass("パース", 1, "Zパース", "Xパース", "Yパース"), *_background_pass("グラデ", 64, "グラデ_白", "グラデ_黒")],
+    "背景_低速": [*_background_pass("Dライト", 64), *_background_pass("Gライト", 64), *_background_pass("AO", 64), *_background_pass("線画用", 1), *_background_pass("ベース", 1), *_background_pass("ベタ影", 1), *_background_pass("パース", 1, "Zパース", "Xパース", "Yパース"), *_background_gradation()],
     "背景D": _background_pass("Dライト", 64),
     "背景G": _background_pass("Gライト", 64),
     "背景AO": _background_pass("AO", 64),
@@ -121,11 +166,11 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
     "背景ベース": [*_background_pass("ベース", 1), *_background_pass("ベタ影", 1)],
     "背景パース": [_begin(), _vl("Zパース"), _vl("Xパース"), _vl("Yパース"), _node("Zパース"), _node("Xパース"), _node("Yパース"), _node("出力_背景"), _render_layer("出力_背景", "パース", 1), _end()],
     "背景植物": _background_pass("植物", 64, "植物"),
-    "背景グラデ": _background_pass("グラデ", 64, "グラデ"),
-    "背景エフェクト": _background_pass("エフェクト", 64, "エフェクト"),
-    "背景フォグ": _background_pass("フォグ", 64, "エフェクト"),
-    "背景雲": _background_pass("雲", 64, "空"),
-    "背景空": [_begin(), _vl("空"), _node("空"), _node("出力_背景"), _cmd("SET_COLLECTION_EXCLUDE", "雲を除外", collection_name="雲", exclude_collection=True), _render_layer("出力_背景", "空", 1), _cmd("SET_COLLECTION_EXCLUDE", "雲を表示", collection_name="雲", exclude_collection=False), _end()],
+    "背景グラデ": _background_gradation(),
+    "背景エフェクト": _background_effect_collection("エフェクト", "エフェクト", "フォグ"),
+    "背景フォグ": _background_effect_collection("フォグ", "フォグ", "エフェクト"),
+    "背景雲": [_begin(), _vl("空"), _node("空"), _node("出力_背景"), _exclude("雲", False, "空"), _render_layer("出力_背景", "雲", 64), _end()],
+    "背景空": [_begin(), _vl("空"), _node("空"), _node("出力_背景"), _exclude("雲", True, "空"), _render_layer("出力_背景", "空", 1), _exclude("雲", False, "空"), _end()],
     "背景AOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_AOV＋出力_背景"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
     "効果統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_AOV_効果"), _node("効果統合"), _render(1), _end()],
     "キャラ統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_キャラ"), _node("C_AOV_キャラ"), _node("キャラ統合"), _render(1), _end()],

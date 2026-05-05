@@ -53,7 +53,7 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
     exclude_collection: BoolProperty(name="除外", default=True)  # type: ignore[valid-type]
 
     node_name: StringProperty(name="ノード名", default="")  # type: ignore[valid-type]
-    node_group_name: StringProperty(name="ノードグループ", default="")  # type: ignore[valid-type]
+    node_group_name: StringProperty(name="対象", default="")  # type: ignore[valid-type]
     label_contains: StringProperty(name="フレーム名", default="")  # type: ignore[valid-type]
     mute: BoolProperty(name="ミュート", default=False)  # type: ignore[valid-type]
 
