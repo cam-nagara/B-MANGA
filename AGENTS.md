@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-05-04 (Claude Code)
+最終更新: 2026-05-05 (Codex)
 
 ---
 
@@ -63,7 +63,8 @@
 
 (着手前にユーザーへ確認推奨)
 
-- PSD 書き出し強化 (主目標)。 コマ形状レイヤーマスク / 個別レイヤー保持
+- **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
+- PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))
 - 魚眼 F1+F2 ([`docs/B-Name-fisheye-plan-2026-04-28.md`](docs/B-Name-fisheye-plan-2026-04-28.md))
 - ラスターレイヤー強化 ([`docs/B-Name-raster-layer-plan-2026-04-28.md`](docs/B-Name-raster-layer-plan-2026-04-28.md))
@@ -89,6 +90,7 @@
 | `test/` | Blender 実機テスト (後述) |
 | `presets/` | 用紙プリセット |
 | `wheels/` | Blender Extensions 同梱 wheel |
+| `addons/b_name_render/` | B-Name-Render。 出力プリセット / 魚眼レンダリング / 完成画像書き出しを扱う独立アドオン |
 
 ### 3.2 触る頻度が高い領域 (2026-05 時点)
 

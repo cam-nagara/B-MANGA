@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import bpy
+
 from . import (
     alt_reparent_op,
     asset_op,
@@ -15,7 +17,7 @@ from . import (
     gp_layer_op,
     gpencil_op,
     image_layer_op,
-    io_op,
+    io_op as _legacy_io_op,
     layer_detail_op,
     layer_move_op,
     mask_object_op,
@@ -82,7 +84,6 @@ _MODULES = (
     thumbnail_op,
     mode_op,
     preset_op,
-    io_op,
     gpencil_op,
     gp_layer_op,
     view_op,
@@ -90,7 +91,28 @@ _MODULES = (
 )
 
 
+def _unregister_legacy_output_operators() -> None:
+    """B-Name-Render 分離前の書き出し Operator を確実に外す."""
+    try:
+        _legacy_io_op.unregister()
+    except Exception:
+        pass
+    for class_name in (
+        "BNAME_OT_export_page",
+        "BNAME_OT_export_all_pages",
+        "BNAME_OT_export_pdf",
+    ):
+        cls = getattr(bpy.types, class_name, None)
+        if cls is None:
+            continue
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+
 def register() -> None:
+    _unregister_legacy_output_operators()
     for module in _MODULES:
         module.register()
 
@@ -101,3 +123,4 @@ def unregister() -> None:
             module.unregister()
         except Exception:
             pass
+    _unregister_legacy_output_operators()
