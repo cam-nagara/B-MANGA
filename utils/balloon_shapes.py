@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -40,10 +41,15 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
         rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
+        cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),
+        cloud_bump_height_jitter=float(getattr(sp, "cloud_bump_height_jitter", 0.0)),
         cloud_offset=float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0,
         cloud_sub_width_ratio=float(getattr(sp, "cloud_sub_width_ratio", 0.0)),
+        cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
+        cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
+        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
     )
 
 
@@ -112,18 +118,28 @@ def outline_for_shape(
     rounded_corner_enabled: bool = False,
     rounded_corner_radius_mm: float = 0.0,
     cloud_bump_width_mm: float = 10.0,
+    cloud_bump_width_jitter: float = 0.0,
     cloud_bump_height_mm: float = 4.0,
+    cloud_bump_height_jitter: float = 0.0,
     cloud_offset: float = 0.5,
     cloud_sub_width_ratio: float = 0.0,
+    cloud_sub_width_jitter: float = 0.0,
     cloud_sub_height_ratio: float = 0.0,
+    cloud_sub_height_jitter: float = 0.0,
+    jitter_seed: int = 0,
 ) -> list[tuple[float, float]]:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
         bump_w=max(2.0, float(cloud_bump_width_mm)),
+        bump_w_jitter=_clamp01(float(cloud_bump_width_jitter)),
         bump_h=max(0.5, float(cloud_bump_height_mm)),
+        bump_h_jitter=_clamp01(float(cloud_bump_height_jitter)),
         offset=max(0.0, min(1.0, float(cloud_offset))),
         sub_w=max(0.0, min(100.0, float(cloud_sub_width_ratio))),
+        sub_w_jitter=_clamp01(float(cloud_sub_width_jitter)),
         sub_h=max(0.0, min(100.0, float(cloud_sub_height_ratio))),
+        sub_h_jitter=_clamp01(float(cloud_sub_height_jitter)),
+        rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
     )
     if s == "rect":
         if rounded_corner_enabled and rounded_corner_radius_mm > 0.0:
@@ -155,12 +171,49 @@ def outline_for_shape(
 
 
 class _DynamicOpts:
-    def __init__(self, *, bump_w: float, bump_h: float, offset: float, sub_w: float, sub_h: float) -> None:
+    def __init__(
+        self,
+        *,
+        bump_w: float,
+        bump_w_jitter: float,
+        bump_h: float,
+        bump_h_jitter: float,
+        offset: float,
+        sub_w: float,
+        sub_w_jitter: float,
+        sub_h: float,
+        sub_h_jitter: float,
+        rng: random.Random,
+    ) -> None:
         self.bump_w = bump_w
+        self.bump_w_jitter = bump_w_jitter
         self.bump_h = bump_h
+        self.bump_h_jitter = bump_h_jitter
         self.offset = offset
         self.sub_w = sub_w
+        self.sub_w_jitter = sub_w_jitter
         self.sub_h = sub_h
+        self.sub_h_jitter = sub_h_jitter
+        self.rng = rng
+
+
+def _stable_seed(value: str) -> int:
+    seed = 2166136261
+    for char in str(value or ""):
+        seed ^= ord(char)
+        seed = (seed * 16777619) & 0xFFFFFFFF
+    return seed
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _jitter_factor(amount: float, rng: random.Random, *, min_factor: float = 0.15) -> float:
+    amount = _clamp01(amount)
+    if amount <= 0.0:
+        return 1.0
+    return max(float(min_factor), 1.0 + (rng.random() * 2.0 - 1.0) * amount)
 
 
 def _outline_rect(rect: Rect) -> list[tuple[float, float]]:
@@ -283,6 +336,31 @@ def _bump_sequence(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
     return sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, base_angle
 
 
+def _bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
+    sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, base_angle = _bump_sequence(
+        rx,
+        ry,
+        opts,
+        min_slots=min_slots,
+    )
+    segments: list[tuple[bool, float, float]] = []
+    total_span = 0.0
+    for i in range(bumps):
+        is_sub = sub_enabled and (i % 2 == 1)
+        base_span = sub_angle if is_sub else main_angle
+        width_jitter = opts.sub_w_jitter if is_sub else opts.bump_w_jitter
+        height_jitter = opts.sub_h_jitter if is_sub else opts.bump_h_jitter
+        span = max(0.001, base_span * _jitter_factor(width_jitter, opts.rng))
+        h_base = sub_h_ratio if is_sub else 1.0
+        h_mul = h_base * _jitter_factor(height_jitter, opts.rng)
+        segments.append((is_sub, span, h_mul))
+        total_span += span
+    if total_span <= 1.0e-9:
+        return base_angle, []
+    scale = (2.0 * math.pi) / total_span
+    return base_angle, [(is_sub, span * scale, h_mul) for is_sub, span, h_mul in segments]
+
+
 def _sample_cubic(
     p0: tuple[float, float],
     c1: tuple[float, float],
@@ -306,16 +384,15 @@ def _outline_cloud(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
     if base is None:
         return _outline_ellipse(rect)
     cx, cy, rx, ry, eff_h = base
-    sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, angle = _bump_sequence(rx, ry, opts, min_slots=6)
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return _outline_ellipse(rect)
 
     def ellipse_point(t: float) -> tuple[float, float]:
         return (cx + rx * math.cos(t), cy + ry * math.sin(t))
 
     pts = [ellipse_point(angle)]
-    for i in range(bumps):
-        is_sub = sub_enabled and (i % 2 == 1)
-        bump_angle = sub_angle if is_sub else main_angle
-        h_mul = sub_h_ratio if is_sub else 1.0
+    for _is_sub, bump_angle, h_mul in segments:
         start_angle = angle
         end_angle = angle + bump_angle
         angle = end_angle
@@ -345,7 +422,9 @@ def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
     if base is None:
         return _outline_ellipse(rect)
     cx, cy, rx, ry, eff_h = base
-    sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, angle = _bump_sequence(rx, ry, opts, min_slots=6)
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return _outline_ellipse(rect)
 
     def ellipse_point(t: float) -> tuple[float, float]:
         return (cx + rx * math.cos(t), cy + ry * math.sin(t))
@@ -354,10 +433,7 @@ def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
         return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
 
     pts = [ellipse_point(angle)]
-    for i in range(bumps):
-        is_sub = sub_enabled and (i % 2 == 1)
-        bump_angle = sub_angle if is_sub else main_angle
-        h_mul = sub_h_ratio if is_sub else 1.0
+    for _is_sub, bump_angle, h_mul in segments:
         mid_angle = angle + bump_angle * 0.5
         angle += bump_angle
         pts.append(peak_at(mid_angle, h_mul))
@@ -370,7 +446,9 @@ def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, fl
     if base is None:
         return _outline_ellipse(rect)
     cx, cy, rx, ry, eff_h = base
-    sub_enabled, sub_h_ratio, bumps, main_angle, sub_angle, angle = _bump_sequence(rx, ry, opts, min_slots=6)
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return _outline_ellipse(rect)
     tpull = 0.33
     depth_ratio = 0.9
 
@@ -378,10 +456,7 @@ def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, fl
         return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
 
     peaks: list[tuple[float, float]] = []
-    for i in range(bumps):
-        is_sub = sub_enabled and (i % 2 == 1)
-        bump_angle = sub_angle if is_sub else main_angle
-        h_mul = sub_h_ratio if is_sub else 1.0
+    for _is_sub, bump_angle, h_mul in segments:
         mid_angle = angle + bump_angle * 0.5
         angle += bump_angle
         peaks.append(peak_at(mid_angle, h_mul))
@@ -413,21 +488,33 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
     amp = eff_h * 0.5
     r_min = min(rx_base, ry_base)
     perimeter = _ellipse_perimeter(rx_base, ry_base)
-    num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w)))
+    width_factor = _jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5)
+    num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
     period = (2.0 * math.pi) / num_bumps
     base_angle = -math.pi * 0.5 + opts.offset * period
     steps = num_bumps * 6
     sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
-    sub_freq = num_bumps * 2 if sub_enabled else 0
+    sub_width_factor = _jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5)
+    sub_freq = max(1, round(num_bumps * 2.0 / sub_width_factor)) if sub_enabled else 0
     sub_amp_ratio = ((opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0) * 0.4 if sub_enabled else 0.0
+    main_height = [
+        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2)
+        for _i in range(num_bumps)
+    ]
+    sub_height = [
+        _jitter_factor(opts.sub_h_jitter, opts.rng, min_factor=0.2)
+        for _i in range(max(1, sub_freq))
+    ]
 
     raw: list[tuple[float, float]] = []
     for i in range(steps):
         t = base_angle + (i / steps) * 2.0 * math.pi
         phase = t - base_angle
-        wave = math.cos(num_bumps * phase)
+        main_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * num_bumps) % num_bumps
+        wave = math.cos(num_bumps * phase) * main_height[main_idx]
         if sub_freq > 0:
-            wave += sub_amp_ratio * math.cos(sub_freq * phase)
+            sub_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * sub_freq) % len(sub_height)
+            wave += sub_amp_ratio * math.cos(sub_freq * phase) * sub_height[sub_idx]
         r_mul = 1.0 + (amp / r_min) * wave
         raw.append((cx + rx_base * r_mul * math.cos(t), cy + ry_base * r_mul * math.sin(t)))
 

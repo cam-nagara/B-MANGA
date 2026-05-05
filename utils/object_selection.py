@@ -40,6 +40,15 @@ def effect_key(layer) -> str:
     return make_key("effect", "", item_id)
 
 
+def gp_key(layer) -> str:
+    try:
+        ptr = int(layer.as_pointer())
+    except Exception:  # noqa: BLE001
+        ptr = 0
+    item_id = f"ptr_{ptr:x}" if ptr else str(getattr(layer, "name", "") or "")
+    return make_key("gp", "", item_id)
+
+
 def page_key(page) -> str:
     return make_key("page", "", str(getattr(page, "id", "") or ""))
 
@@ -171,6 +180,18 @@ def is_text_selected(context, page, entry) -> bool:
     return text_key(page, entry) in set(get_keys(context))
 
 
+def is_image_selected(context, entry) -> bool:
+    return image_key(entry) in set(get_keys(context))
+
+
+def is_raster_selected(context, entry) -> bool:
+    return raster_key(entry) in set(get_keys(context))
+
+
+def is_gp_selected(context, layer) -> bool:
+    return gp_key(layer) in set(get_keys(context))
+
+
 def selected_effect_names(context) -> set[str]:
     names = set()
     for key in get_keys(context):
@@ -216,3 +237,14 @@ def _sync_balloon_flags(context, keys: list[str]) -> None:
         for entry in getattr(scene, "bname_raster_layers", []) or []:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("raster", "", getattr(entry, "id", "")) in key_set
+        try:
+            from ..utils import gpencil as gp_utils
+
+            obj = gp_utils.get_master_gpencil()
+            layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
+            if layers is not None:
+                for layer in layers:
+                    if hasattr(layer, "select"):
+                        layer.select = gp_key(layer) in key_set
+        except Exception:  # noqa: BLE001
+            pass

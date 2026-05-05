@@ -29,8 +29,14 @@ _EFFECT_TYPE_ITEMS = (
     ("white_outline", "白抜き線", "白線群の両側に黒線群を重ねた効果線"),
 )
 
+def _clean_effect_shape_label(label: str) -> str:
+    return str(label or "").replace("（旧）", "").replace("・旧", "")
+
+
 _EFFECT_SHAPE_ITEMS = tuple(
-    item for item in balloon._SHAPE_ITEMS if item[0] not in {"custom", "none"}
+    (item[0], _clean_effect_shape_label(item[1]), item[2])
+    for item in balloon._SHAPE_ITEMS
+    if item[0] not in {"custom", "none"}
 )
 
 _SPACING_MODE_ITEMS = (
@@ -49,7 +55,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 2
+EFFECT_PARAM_SCHEMA_VERSION = 3
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -63,21 +69,31 @@ EFFECT_PARAM_FIELDS = (
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
     "start_cloud_bump_width_mm",
+    "start_cloud_bump_width_jitter",
     "start_cloud_bump_height_mm",
+    "start_cloud_bump_height_jitter",
     "start_cloud_offset_percent",
     "start_cloud_sub_width_ratio",
+    "start_cloud_sub_width_jitter",
     "start_cloud_sub_height_ratio",
+    "start_cloud_sub_height_jitter",
     "end_shape",
     "end_rounded_corner_enabled",
     "end_rounded_corner_radius_mm",
     "end_cloud_bump_width_mm",
+    "end_cloud_bump_width_jitter",
     "end_cloud_bump_height_mm",
+    "end_cloud_bump_height_jitter",
     "end_cloud_offset_percent",
     "end_cloud_sub_width_ratio",
+    "end_cloud_sub_width_jitter",
     "end_cloud_sub_height_ratio",
+    "end_cloud_sub_height_jitter",
     "brush_size_mm",
     "brush_jitter_enabled",
     "brush_jitter_amount",
+    "length_jitter_enabled",
+    "length_jitter_amount",
     "spacing_mode",
     "spacing_angle_deg",
     "spacing_distance_mm",
@@ -202,23 +218,33 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_mm: FloatProperty(name="角半径", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_height_mm: FloatProperty(name="山の高さ", default=4.0, min=0.5, soft_max=25.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     end_shape: EnumProperty(name="終点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_radius_mm: FloatProperty(name="角半径", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_height_mm: FloatProperty(name="山の高さ", default=4.0, min=0.5, soft_max=25.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     brush_size_mm: FloatProperty(name="ブラシサイズ", default=0.40, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_enabled: BoolProperty(name="線の長さ 乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="長さ乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]

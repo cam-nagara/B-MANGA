@@ -82,10 +82,14 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     """形状固有パラメータ."""
 
     cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0)  # type: ignore[valid-type]
+    cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR")  # type: ignore[valid-type]
     cloud_bump_height_mm: FloatProperty(name="山の高さ", default=4.0, min=0.5, soft_max=25.0)  # type: ignore[valid-type]
+    cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR")  # type: ignore[valid-type]
     cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0)  # type: ignore[valid-type]
     cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0)  # type: ignore[valid-type]
+    cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR")  # type: ignore[valid-type]
     cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0)  # type: ignore[valid-type]
+    cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR")  # type: ignore[valid-type]
 
     # Legacy parameters kept for older B-Name files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", default=12, min=3, soft_max=60)  # type: ignore[valid-type]

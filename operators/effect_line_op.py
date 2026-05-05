@@ -560,6 +560,7 @@ def _write_effect_strokes(
         radius_xy_mm=(w * 0.5, h * 0.5),
         start_outline_mm=start_outline,
         start_extend_mm=start_extend,
+        seed=seed_value,
     )
     line_added = 0
     for stroke in strokes:

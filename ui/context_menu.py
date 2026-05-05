@@ -11,6 +11,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Menu
 
+from ..utils import layer_stack as layer_stack_utils
 from ..utils import object_naming as on
 
 
@@ -50,11 +51,20 @@ def _draw_layer_commands(layout, context) -> None:
     """選択中レイヤー Object に対して詳細/複製/削除 等のコマンドを描画."""
     obj = _active_managed_object(context)
     if obj is None:
-        layout.label(text="B-Name レイヤー Object を選択してください", icon="INFO")
+        item = layer_stack_utils.active_stack_item(context)
+        if item is not None:
+            layout.label(text=str(getattr(item, "label", "") or getattr(item, "name", "") or "選択中レイヤー"), icon="RESTRICT_SELECT_OFF")
+            row = layout.row()
+            row.operator_context = "INVOKE_DEFAULT"
+            op = row.operator("bname.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
+            op.index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+            op.offset_from_selection = True
+            return
+        layout.label(text="B-Name レイヤーを選択してください", icon="INFO")
         return
     kind = on.get_kind(obj)
-    bid = on.get_bname_id(obj)
-    layout.label(text=f"{kind}: {bid}", icon="OBJECT_DATA")
+    title = str(obj.get(on.PROP_TITLE, "") or obj.name)
+    layout.label(text=title, icon="OBJECT_DATA")
     layout.separator()
 
     detail_row = layout.row()

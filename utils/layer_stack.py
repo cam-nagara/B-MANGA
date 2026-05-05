@@ -1200,7 +1200,7 @@ def _stack_item_page_key(item, context=None) -> str:
     """スタック行が属するページキーを返す。ページ非依存なら "" を返す.
 
     - coma / balloon / text / balloon_group: 行 key が ``page_id:child_id`` 形式
-    - raster: 永続化された ``parent_key`` のページプレフィックス
+    - raster / image: 永続化された ``parent_key`` のページプレフィックス
     - gp / effect / gp_folder: ``parent_key`` のページプレフィックス
     """
     kind = getattr(item, "kind", "")
@@ -1213,7 +1213,7 @@ def _stack_item_page_key(item, context=None) -> str:
         if page_key == OUTSIDE_STACK_KEY:
             return ""
         return page_key
-    if kind in {"raster", "gp", "gp_folder", "effect"}:
+    if kind in {"raster", "image", "gp", "gp_folder", "effect"}:
         page_key, _ = split_child_key(parent_key)
         if page_key == OUTSIDE_STACK_KEY:
             return ""

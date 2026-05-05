@@ -138,6 +138,8 @@ def _shape_outline(
     prefix: str,
     rect: Rect,
     center_xy_mm: tuple[float, float],
+    *,
+    seed: int = 0,
 ) -> list[tuple[float, float]]:
     shape = getattr(params, f"{prefix}_shape", getattr(params, "base_shape", "rect"))
     if shape == "polygon":
@@ -148,12 +150,40 @@ def _shape_outline(
         rounded_corner_enabled=bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)),
         rounded_corner_radius_mm=float(getattr(params, f"{prefix}_rounded_corner_radius_mm", 0.0)),
         cloud_bump_width_mm=float(getattr(params, f"{prefix}_cloud_bump_width_mm", 10.0)),
+        cloud_bump_width_jitter=float(getattr(params, f"{prefix}_cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(params, f"{prefix}_cloud_bump_height_mm", 4.0)),
+        cloud_bump_height_jitter=float(getattr(params, f"{prefix}_cloud_bump_height_jitter", 0.0)),
         cloud_offset=float(getattr(params, f"{prefix}_cloud_offset_percent", 50.0)) / 100.0,
         cloud_sub_width_ratio=float(getattr(params, f"{prefix}_cloud_sub_width_ratio", 0.0)),
+        cloud_sub_width_jitter=float(getattr(params, f"{prefix}_cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(params, f"{prefix}_cloud_sub_height_ratio", 0.0)),
+        cloud_sub_height_jitter=float(getattr(params, f"{prefix}_cloud_sub_height_jitter", 0.0)),
+        jitter_seed=int(seed),
     )
     return _rotate_points(points, center_xy_mm, getattr(params, "rotation_deg", 0.0))
+
+
+def _length_jitter_factor(params, rng: random.Random) -> float:
+    if not bool(getattr(params, "length_jitter_enabled", False)):
+        return 1.0
+    amount = _clamp01(float(getattr(params, "length_jitter_amount", 0.0)))
+    if amount <= 0.0:
+        return 1.0
+    return max(0.05, 1.0 - amount * rng.random())
+
+
+def _apply_length_jitter(
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    params,
+    rng: random.Random,
+) -> tuple[float, float]:
+    factor = _length_jitter_factor(params, rng)
+    if factor >= 0.999999:
+        return x1, y1
+    return x0 + (x1 - x0) * factor, y0 + (y1 - y0) * factor
 
 
 def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool = False) -> bool:
@@ -353,10 +383,10 @@ def generate_focus_strokes(
     out: list[EffectLineStroke] = []
     cx, cy = center_xy_mm
     end_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm)
+    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm, seed=seed + 23)
     if start_outline_mm is None:
         start_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 2.0)
-        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm)
+        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
@@ -403,6 +433,7 @@ def generate_focus_strokes(
             radius_y_mm,
             angle,
         )
+        x1, y1 = _apply_length_jitter(x0, y0, x1, y1, params, rng)
 
         radius_mm = _jitter(
             params.brush_size_mm,
@@ -461,10 +492,11 @@ def generate_speed_strokes(
             offset += spacing_step * amount * (rng.random() * 2.0 - 1.0)
         mid_x = cx + nx * offset
         mid_y = cy + ny * offset
-        sx = mid_x - dx * span * 0.5
-        sy = mid_y - dy * span * 0.5
-        ex = mid_x + dx * span * 0.5
-        ey = mid_y + dy * span * 0.5
+        line_span = span * _length_jitter_factor(params, rng)
+        sx = mid_x - dx * line_span * 0.5
+        sy = mid_y - dy * line_span * 0.5
+        ex = mid_x + dx * line_span * 0.5
+        ey = mid_y + dy * line_span * 0.5
         radius_mm = _jitter(
             params.brush_size_mm,
             params.brush_jitter_amount if params.brush_jitter_enabled else 0.0,
@@ -548,9 +580,8 @@ def generate_beta_flash_strokes(
     seed: int = 0,
 ) -> list[EffectLineStroke]:
     """ベタフラ: 終点形状を閉じたストロークとして生成 (塗り設定は別途)."""
-    _ = seed
     rect = _scaled_rect(center_xy_mm[0], center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
-    outline = _shape_outline(params, "end", rect, center_xy_mm)
+    outline = _shape_outline(params, "end", rect, center_xy_mm, seed=seed + 23)
     points = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in outline]
     radius, radii = _stroke_radii(params, params.brush_size_mm, len(points))
     opacities = _stroke_opacities(params, len(points))
@@ -860,6 +891,7 @@ def generate_shape_guide_strokes(
     radius_xy_mm=(40.0, 50.0),
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
+    seed: int = 0,
 ) -> list[EffectLineStroke]:
     """始点/終点の形状ラインをガイドストロークとして返す。"""
     etype = getattr(params, "effect_type", "")
@@ -870,10 +902,10 @@ def generate_shape_guide_strokes(
     rx, ry = radius_xy_mm
     cx, cy = center_xy_mm
     end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm)
+    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm, seed=seed + 23)
     if start_outline_mm is None:
         start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
-        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm)
+        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm, seed=seed + 11)
         start_smooth = _shape_guide_uses_smooth_bezier(params, "start")
     else:
         start_outline = _actual_outline_by_rays(

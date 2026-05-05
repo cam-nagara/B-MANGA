@@ -7,7 +7,13 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
-from ..utils import edge_selection, layer_stack as layer_stack_utils, object_selection
+from ..utils import (
+    edge_selection,
+    gp_layer_parenting as gp_parent,
+    layer_stack as layer_stack_utils,
+    object_selection,
+)
+from ..utils.geom import Rect
 from . import (
     balloon_op,
     effect_line_op,
@@ -17,6 +23,7 @@ from . import (
     coma_edge_move_op,
     coma_modal_state,
     coma_picker,
+    object_tool_selection,
     selection_context_menu,
     text_op,
     view_event_region,
@@ -68,15 +75,20 @@ def _find_text_by_key(work, page_id: str, item_id: str):
     return page_index, page, -1, None
 
 
-def _find_effect_layer(name: str):
-    obj = layer_stack_utils.get_effect_gp_object()
-    layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
-    if layers is None:
-        return obj, None
-    for layer in layers:
-        if str(getattr(layer, "name", "") or "") == str(name or ""):
-            return obj, layer
-    return obj, None
+def _find_image_by_key(context, item_id: str):
+    return object_tool_selection.find_image_by_key(context, item_id)
+
+
+def _find_raster_by_key(context, item_id: str):
+    return object_tool_selection.find_raster_by_key(context, item_id)
+
+
+def _find_gp_layer(key: str):
+    return object_tool_selection.find_gp_layer(key)
+
+
+def _find_effect_layer(key: str):
+    return object_tool_selection.find_effect_layer(key)
 
 
 def _event_world_xy_mm(context, event) -> tuple[float | None, float | None]:
@@ -118,7 +130,11 @@ def hit_object_at_event(context, event) -> dict | None:
         _hit_text_at_event,
         _hit_balloon_at_event,
         _hit_effect_at_event,
+        _hit_image_at_event,
+        _hit_gp_at_event,
+        _hit_raster_at_event,
         _hit_coma_at_event,
+        _hit_page_at_event,
     ):
         hit = resolver(context, event)
         if hit is not None:
@@ -168,11 +184,31 @@ def _hit_effect_at_event(context, event) -> dict | None:
         return None
     return {
         "kind": "effect",
-        "layer_name": str(getattr(layer, "name", "") or ""),
+        "layer_name": object_selection.parse_key(object_selection.effect_key(layer))[2],
         "part": "move" if part == "body" else part,
         "key": object_selection.effect_key(layer),
         "world": (float(x_mm), float(y_mm)),
     }
+
+
+def _hit_image_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_image_at_event(context, event, _event_world_xy_mm)
+
+
+def _hit_gp_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_gp_at_event(context, event, _event_world_xy_mm)
+
+
+def _hit_raster_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_raster_at_event(context, event, _event_world_xy_mm)
+
+
+def selection_bounds_for_key(context, key: str) -> Rect | None:
+    return object_tool_selection.selection_bounds_for_key(context, key)
+
+
+def active_selection_key(context) -> str:
+    return object_tool_selection.active_selection_key(context)
 
 
 def _hit_coma_at_event(context, event) -> dict | None:
@@ -192,6 +228,31 @@ def _hit_coma_at_event(context, event) -> dict | None:
     }
 
 
+def _hit_page_at_event(context, event) -> dict | None:
+    work = get_work(context)
+    page_index = coma_picker.find_page_at_event(context, event)
+    if work is None or page_index is None or not (0 <= page_index < len(work.pages)):
+        return None
+    page = work.pages[page_index]
+    return {
+        "kind": "page",
+        "page": page_index,
+        "part": "body",
+        "key": object_selection.page_key(page),
+    }
+
+
+def _select_stack_target(context, kind: str, key: str) -> bool:
+    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        return False
+    uid = layer_stack_utils.target_uid(kind, key)
+    for i, item in enumerate(stack):
+        if layer_stack_utils.stack_item_uid(item) == uid:
+            return bool(layer_stack_utils.select_stack_index(context, i))
+    return False
+
+
 def activate_hit(context, hit: dict, *, mode: str) -> None:
     """Activate a hit object in the same way as the object tool selection path."""
     work = get_work(context)
@@ -199,7 +260,15 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         return
     kind = hit["kind"]
     key = str(hit.get("key", "") or "")
-    if kind in {"coma", "coma_edge", "coma_vertex"}:
+    if kind == "page":
+        page_index = int(hit["page"])
+        if 0 <= page_index < len(work.pages):
+            from ..utils import active_target as _at
+
+            _at.focus_active_page(context.scene, work, page_index)
+            _select_stack_target(context, "page", getattr(work.pages[page_index], "id", ""))
+        edge_selection.clear_selection(context)
+    elif kind in {"coma", "coma_edge", "coma_vertex"}:
         page_index = int(hit["page"])
         coma_index = int(hit["coma"])
         page = work.pages[page_index]
@@ -254,8 +323,38 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         if layer is not None:
             effect_line_op._select_effect_layer(context, obj, layer)
         edge_selection.clear_selection(context)
+    elif kind == "image":
+        index, entry = _find_image_by_key(context, object_selection.parse_key(key)[2])
+        if entry is not None:
+            if not _select_stack_target(context, "image", getattr(entry, "id", "")):
+                context.scene.bname_active_image_layer_index = index
+                context.scene.bname_active_layer_kind = "image"
+        edge_selection.clear_selection(context)
+    elif kind == "raster":
+        index, entry = _find_raster_by_key(context, object_selection.parse_key(key)[2])
+        if entry is not None:
+            if not _select_stack_target(context, "raster", getattr(entry, "id", "")):
+                context.scene.bname_active_raster_layer_index = index
+                context.scene.bname_active_layer_kind = "raster"
+        edge_selection.clear_selection(context)
+    elif kind == "gp":
+        obj, layer = _find_gp_layer(hit.get("layer_key", object_selection.parse_key(key)[2]))
+        if layer is not None:
+            if not _select_stack_target(context, "gp", layer_stack_utils._node_stack_key(layer)):
+                try:
+                    context.view_layer.objects.active = obj
+                    obj.select_set(True)
+                    obj.data.layers.active = layer
+                except Exception:  # noqa: BLE001
+                    pass
+                context.scene.bname_active_layer_kind = "gp"
+        edge_selection.clear_selection(context)
     if kind != "balloon":
         object_selection.select_key(context, key, mode=mode)
+    object_tool_selection.sync_outliner_selection_for_keys(
+        context,
+        object_selection.get_keys(context),
+    )
 
 
 def enter_coma_from_hit(context, hit: dict) -> bool:
@@ -314,6 +413,11 @@ class BNAME_OT_object_tool(Operator):
     _drag_moved: bool
     _edge_drag: object | None
     _layer_drag: object | None
+    _marquee_mode: str
+    _marquee_start_x: float
+    _marquee_start_y: float
+    _marquee_current_x: float
+    _marquee_current_y: float
 
     @classmethod
     def poll(cls, context):
@@ -368,6 +472,10 @@ class BNAME_OT_object_tool(Operator):
 
     def _handle_left_press(self, context, event):
         mode = _selection_mode(event)
+        if event.value == "DOUBLE_CLICK" and mode == "single":
+            coma_hit = _hit_coma_at_event(context, event)
+            if coma_hit is not None and self._try_enter_coma_from_hit(context, coma_hit):
+                return {"FINISHED"}
         if (
             event.value == "PRESS"
             and mode == "single"
@@ -378,8 +486,11 @@ class BNAME_OT_object_tool(Operator):
         if hit is None:
             if mode == "single" and self._try_start_layer_drag(context, event):
                 return {"RUNNING_MODAL"}
+            if self._start_marquee_select(context, event, mode):
+                return {"RUNNING_MODAL"}
             if mode == "single":
                 object_selection.clear(context)
+                object_tool_selection.sync_outliner_selection_for_keys(context, [])
                 edge_selection.clear_selection(context)
             return {"RUNNING_MODAL"}
         if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
@@ -410,6 +521,15 @@ class BNAME_OT_object_tool(Operator):
 
     def _hit_effect(self, context, event) -> dict | None:
         return _hit_effect_at_event(context, event)
+
+    def _hit_image(self, context, event) -> dict | None:
+        return _hit_image_at_event(context, event)
+
+    def _hit_gp(self, context, event) -> dict | None:
+        return _hit_gp_at_event(context, event)
+
+    def _hit_raster(self, context, event) -> dict | None:
+        return _hit_raster_at_event(context, event)
 
     def _activate_hit(self, context, hit: dict, *, mode: str) -> None:
         activate_hit(context, hit, mode=mode)
@@ -491,6 +611,24 @@ class BNAME_OT_object_tool(Operator):
         self._snapshots = self._make_snapshots(context, keys, primary_key=key, action=action)
         self._drag_moved = False
 
+    def _start_marquee_select(self, context, event, mode: str) -> bool:
+        x_mm, y_mm = _event_world_xy_mm(context, event)
+        if x_mm is None or y_mm is None:
+            return False
+        self._dragging = True
+        self._drag_action = "marquee"
+        self._drag_start_x = float(x_mm)
+        self._drag_start_y = float(y_mm)
+        self._marquee_start_x = float(x_mm)
+        self._marquee_start_y = float(y_mm)
+        self._marquee_current_x = float(x_mm)
+        self._marquee_current_y = float(y_mm)
+        self._marquee_mode = str(mode or "single")
+        self._drag_keys = []
+        self._snapshots = []
+        self._drag_moved = False
+        return True
+
     def _make_snapshots(self, context, keys: list[str], *, primary_key: str, action: str) -> list[dict]:
         work = get_work(context)
         snapshots: list[dict] = []
@@ -553,6 +691,26 @@ class BNAME_OT_object_tool(Operator):
                     "item_id": item_id,
                     "rect": (float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3])),
                 })
+            elif kind == "image":
+                _idx, entry = _find_image_by_key(context, item_id)
+                if entry is None:
+                    continue
+                snapshots.append({
+                    "kind": "image",
+                    "item_id": item_id,
+                    "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
+                })
+            elif kind == "gp":
+                obj, layer = _find_gp_layer(item_id)
+                bounds = object_tool_selection.gp_layer_local_bounds(layer)
+                if layer is None or bounds is None:
+                    continue
+                snapshots.append({
+                    "kind": "gp",
+                    "item_id": item_id,
+                    "rect": (bounds.x, bounds.y, bounds.width, bounds.height),
+                    "points": gp_parent.capture_layers([layer]),
+                })
         return snapshots
 
     def _panel_child_snapshots(self, page, panel) -> list[tuple[str, str, float, float]]:
@@ -594,6 +752,18 @@ class BNAME_OT_object_tool(Operator):
             pass
 
     def _update_drag(self, context, event) -> None:
+        if self._drag_action == "marquee":
+            x_mm, y_mm = _event_world_xy_mm(context, event)
+            if x_mm is None or y_mm is None:
+                return
+            self._marquee_current_x = float(x_mm)
+            self._marquee_current_y = float(y_mm)
+            dx = float(x_mm) - self._marquee_start_x
+            dy = float(y_mm) - self._marquee_start_y
+            if abs(dx) > _DRAG_EPS_MM or abs(dy) > _DRAG_EPS_MM:
+                self._drag_moved = True
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "coma_edge":
             if self._edge_drag is not None and self._edge_drag.apply(event):
                 self._drag_moved = True
@@ -661,6 +831,29 @@ class BNAME_OT_object_tool(Operator):
                     continue
                 nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh))
+            elif kind == "image":
+                _idx, entry = _find_image_by_key(context, snapshot["item_id"])
+                if entry is None:
+                    continue
+                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
+                entry.x_mm = nx
+                entry.y_mm = ny
+                entry.width_mm = nw
+                entry.height_mm = nh
+            elif kind == "gp":
+                _obj, layer = _find_gp_layer(snapshot["item_id"])
+                if layer is None:
+                    continue
+                layer_stack_utils.restore_gp_layer_snapshots(snapshot.get("points", []))
+                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 0.5)
+                if self._drag_action == "move":
+                    gp_parent.translate_layer(layer, dx, dy)
+                else:
+                    object_tool_selection.scale_gp_layer_from_snapshot(
+                        layer,
+                        (x, y, w, h),
+                        (nx, ny, nw, nh),
+                    )
 
     def _apply_panel_move(self, context, page, panel, snapshot: dict, dx: float, dy: float) -> None:
         if snapshot["shape"] == "rect":
@@ -693,6 +886,11 @@ class BNAME_OT_object_tool(Operator):
         layer_stack_utils.translate_raster_layers_for_parent_keys(context, {snapshot["gp_key"]}, dx, dy)
 
     def _finish_drag(self, context) -> None:
+        if self._drag_action == "marquee":
+            self._finish_marquee_select(context)
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         moved = bool(getattr(self, "_drag_moved", False))
         changed = moved
         edge_session = self._drag_action == "coma_edge"
@@ -712,6 +910,26 @@ class BNAME_OT_object_tool(Operator):
         elif not layer_session:
             layer_stack_utils.tag_view3d_redraw(context)
         self._clear_drag_state()
+
+    def _finish_marquee_select(self, context) -> None:
+        moved = bool(getattr(self, "_drag_moved", False))
+        mode = str(getattr(self, "_marquee_mode", "single") or "single")
+        if not moved:
+            if mode == "single":
+                object_selection.clear(context)
+                edge_selection.clear_selection(context)
+            return
+        x0 = float(getattr(self, "_marquee_start_x", 0.0))
+        y0 = float(getattr(self, "_marquee_start_y", 0.0))
+        x1 = float(getattr(self, "_marquee_current_x", x0))
+        y1 = float(getattr(self, "_marquee_current_y", y0))
+        rect = Rect(min(x0, x1), min(y0, y1), abs(x1 - x0), abs(y1 - y0))
+        object_tool_selection.select_keys_in_world_rect(
+            context,
+            rect,
+            mode=mode,
+            activate=lambda ctx, hit, hit_mode: activate_hit(ctx, hit, mode=hit_mode),
+        )
 
     def _cancel_drag(self, context) -> None:
         if self._drag_action == "layer_move" and self._layer_drag is not None:
@@ -733,6 +951,11 @@ class BNAME_OT_object_tool(Operator):
         self._drag_moved = False
         self._edge_drag = None
         self._layer_drag = None
+        self._marquee_mode = "single"
+        self._marquee_start_x = 0.0
+        self._marquee_start_y = 0.0
+        self._marquee_current_x = 0.0
+        self._marquee_current_y = 0.0
 
     def _cleanup(self, context) -> None:
         if getattr(self, "_cursor_modal_set", False):

@@ -171,12 +171,19 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
         shape_box.label(text="Meldex形状パラメータ")
-        shape_box.prop(sp, "cloud_bump_width_mm")
-        shape_box.prop(sp, "cloud_bump_height_mm")
+        row = shape_box.row(align=True)
+        row.prop(sp, "cloud_bump_width_mm")
+        row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
+        row = shape_box.row(align=True)
+        row.prop(sp, "cloud_bump_height_mm")
+        row.prop(sp, "cloud_bump_height_jitter", text="乱れ")
         shape_box.prop(sp, "cloud_offset_percent")
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_sub_width_ratio")
+        row.prop(sp, "cloud_sub_width_jitter", text="乱れ")
+        row = shape_box.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
+        row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
 
     move_box = box.box()
     move_box.label(text="親子連動移動", icon="CON_TRACKTO")
@@ -282,12 +289,19 @@ def _draw_effect_shape_settings(box, params, prefix: str, label: str, *, frame_t
         sub.enabled = bool(getattr(params, rounded_attr))
         sub.prop(params, f"{prefix}_rounded_corner_radius_mm")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
-        content.prop(params, f"{prefix}_cloud_bump_width_mm")
-        content.prop(params, f"{prefix}_cloud_bump_height_mm")
+        row = content.row(align=True)
+        row.prop(params, f"{prefix}_cloud_bump_width_mm")
+        row.prop(params, f"{prefix}_cloud_bump_width_jitter", text="乱れ")
+        row = content.row(align=True)
+        row.prop(params, f"{prefix}_cloud_bump_height_mm")
+        row.prop(params, f"{prefix}_cloud_bump_height_jitter", text="乱れ")
         content.prop(params, f"{prefix}_cloud_offset_percent")
         row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_sub_width_ratio")
+        row.prop(params, f"{prefix}_cloud_sub_width_jitter", text="乱れ")
+        row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_sub_height_ratio")
+        row.prop(params, f"{prefix}_cloud_sub_height_jitter", text="乱れ")
 
 
 def _draw_effect_line_settings(box, params) -> None:
@@ -299,6 +313,11 @@ def _draw_effect_line_settings(box, params) -> None:
     sub = row.row()
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
+    row = line_box.row(align=True)
+    row.prop(params, "length_jitter_enabled", text="長さ乱れ")
+    sub = row.row()
+    sub.enabled = params.length_jitter_enabled
+    sub.prop(params, "length_jitter_amount", text="")
 
 
 def _draw_effect_interval_settings(box, params) -> None:

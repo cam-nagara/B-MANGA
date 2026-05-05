@@ -28,12 +28,19 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
         sub.enabled = bool(getattr(params, rounded_attr))
         sub.prop(params, f"{prefix}_rounded_corner_radius_mm")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
-        content.prop(params, f"{prefix}_cloud_bump_width_mm")
-        content.prop(params, f"{prefix}_cloud_bump_height_mm")
+        row = content.row(align=True)
+        row.prop(params, f"{prefix}_cloud_bump_width_mm")
+        row.prop(params, f"{prefix}_cloud_bump_width_jitter", text="乱れ")
+        row = content.row(align=True)
+        row.prop(params, f"{prefix}_cloud_bump_height_mm")
+        row.prop(params, f"{prefix}_cloud_bump_height_jitter", text="乱れ")
         content.prop(params, f"{prefix}_cloud_offset_percent")
         row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_sub_width_ratio")
+        row.prop(params, f"{prefix}_cloud_sub_width_jitter", text="乱れ")
+        row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_sub_height_ratio")
+        row.prop(params, f"{prefix}_cloud_sub_height_jitter", text="乱れ")
 
 
 def _draw_white_outline_settings(layout, params) -> None:
@@ -98,6 +105,11 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     sub = row.row()
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
+    row = box.row(align=True)
+    row.prop(params, "length_jitter_enabled", text="長さ乱れ")
+    sub = row.row()
+    sub.enabled = params.length_jitter_enabled
+    sub.prop(params, "length_jitter_amount", text="")
 
     if params.effect_type != "beta_flash":
         box.prop(params, "spacing_mode")

@@ -28,7 +28,16 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
-from ..utils import border_geom, color_space, log, page_browser, stroke_style, text_style, viewport_colors
+from ..utils import (
+    border_geom,
+    color_space,
+    log,
+    object_selection,
+    page_browser,
+    stroke_style,
+    text_style,
+    viewport_colors,
+)
 from ..utils.geom import Rect, bleed_rect, mm_to_m
 from . import overlay_balloon
 from . import overlay_effect_line
@@ -196,6 +205,43 @@ def _draw_rect_outline_mm(
     for r in (top, bottom, left, right):
         if r.width > 0 and r.height > 0:
             _draw_rect_fill(r, color)
+
+
+def _selection_handle_rects(rect: Rect, size_mm: float = 2.0) -> list[Rect]:
+    half = size_mm * 0.5
+    points = (
+        (rect.x, rect.y),
+        (rect.x + rect.width * 0.5, rect.y),
+        (rect.x2, rect.y),
+        (rect.x, rect.y + rect.height * 0.5),
+        (rect.x2, rect.y + rect.height * 0.5),
+        (rect.x, rect.y2),
+        (rect.x + rect.width * 0.5, rect.y2),
+        (rect.x2, rect.y2),
+    )
+    return [Rect(x - half, y - half, size_mm, size_mm) for x, y in points]
+
+
+def _draw_object_tool_layer_bounds(context) -> None:
+    try:
+        from ..operators import object_tool_op
+    except Exception:  # noqa: BLE001
+        return
+    keys = set(object_selection.get_keys(context))
+    active_key = object_tool_op.active_selection_key(context)
+    if active_key:
+        keys.add(active_key)
+    for key in sorted(keys):
+        kind = object_selection.parse_key(key)[0]
+        if kind not in {"page", "coma", "balloon", "text", "effect", "image", "raster", "gp"}:
+            continue
+        rect = object_tool_op.selection_bounds_for_key(context, key)
+        if rect is None:
+            continue
+        _draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
+        for handle in _selection_handle_rects(rect):
+            _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
+            _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
 
 
 def _draw_segments_mm(
@@ -431,7 +477,7 @@ def _draw_balloons(page, ox_mm: float = 0.0, oy_mm: float = 0.0) -> None:
             return None
         coma_id = parent_key.split(":", 1)[1]
         for coma in getattr(page, "comas", []) or []:
-            if str(getattr(coma, "id", "") or "") != coma_id:
+            if not overlay_visibility._coma_matches_parent_key(page, coma, coma_id):
                 continue
             return _shared_coma_polygon(coma)
         return None
@@ -1088,10 +1134,7 @@ def _draw_page_overlay(
             ox_mm=ox_mm,
             oy_mm=oy_mm,
             active=active_text_guides,
-            entry_visible=lambda entry: (
-                overlay_visibility.entry_in_visible_coma(page, entry)
-                and overlay_visibility.entry_bbox_within_parent_coma(page, entry)
-            ),
+            entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
         )
@@ -1574,6 +1617,7 @@ def _draw_callback(phase: str = "post") -> None:
             draw_rect_outline=_draw_rect_outline,
             logger=_logger,
         )
+        _draw_object_tool_layer_bounds(context)
     finally:
         gpu.state.blend_set("NONE")
         # depth_test を元に戻す (他の draw_handler への副作用を避ける)
@@ -1782,10 +1826,7 @@ def _draw_callback_pixel() -> None:
                     page,
                     ox_mm=ox,
                     oy_mm=oy,
-                    entry_visible=lambda entry: (
-                        overlay_visibility.entry_in_visible_coma(page, entry)
-                        and overlay_visibility.entry_bbox_within_parent_coma(page, entry)
-                    ),
+                    entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                     draw_text_in_rect=_draw_text_in_rect,
                 )
             _draw_page_header_number_pixel(context, paper, i, ox, oy)

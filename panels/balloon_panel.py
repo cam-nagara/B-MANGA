@@ -140,12 +140,19 @@ class BNAME_PT_balloons(Panel):
         if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
             box = layout.box()
             box.label(text="Meldex形状パラメータ")
-            box.prop(sp, "cloud_bump_width_mm")
-            box.prop(sp, "cloud_bump_height_mm")
+            row = box.row(align=True)
+            row.prop(sp, "cloud_bump_width_mm")
+            row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
+            row = box.row(align=True)
+            row.prop(sp, "cloud_bump_height_mm")
+            row.prop(sp, "cloud_bump_height_jitter", text="乱れ")
             box.prop(sp, "cloud_offset_percent")
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_width_ratio")
+            row.prop(sp, "cloud_sub_width_jitter", text="乱れ")
+            row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
+            row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
 
         # 尻尾
         box = layout.box()

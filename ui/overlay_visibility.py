@@ -112,6 +112,19 @@ def entry_in_visible_coma(page, entry) -> bool:
     return panel is None or coma_visible(panel, page=page)
 
 
+def _coma_matches_parent_key(page, coma, coma_id: str) -> bool:
+    coma_id = str(coma_id or "")
+    if not coma_id:
+        return False
+    ids = {
+        str(getattr(coma, "id", "") or ""),
+        str(getattr(coma, "coma_id", "") or ""),
+    }
+    page_id = str(getattr(page, "id", "") or "")
+    ids.update({f"{page_id}:{item}" for item in list(ids) if item})
+    return coma_id in ids
+
+
 def _polygon_for_coma(coma) -> list[tuple[float, float]]:
     if getattr(coma, "shape_type", "") == "rect":
         x = float(getattr(coma, "rect_x_mm", 0.0))
@@ -152,7 +165,7 @@ def entry_bbox_within_parent_coma(page, entry) -> bool:
     coma_id = parent_key.split(":", 1)[1]
     target_coma = None
     for c in getattr(page, "comas", []) or []:
-        if str(getattr(c, "id", "") or "") == coma_id:
+        if _coma_matches_parent_key(page, c, coma_id):
             target_coma = c
             break
     if target_coma is None:
