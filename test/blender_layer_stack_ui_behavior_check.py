@@ -308,6 +308,11 @@ def main() -> None:
 
         assert hasattr(bpy.types, "BNAME_UL_layer_stack")
         assert hasattr(bpy.types, "BNAME_PT_layer_stack")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_move")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_detail")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_toggle_visibility")
+        assert hasattr(bpy.types, "BNAME_OT_layer_stack_duplicate")
+        assert hasattr(bpy.types, "BNAME_MT_layer_stack_add")
         text_coll = outliner_model.ensure_text_collection(context.scene)
         root_coll = outliner_model.ensure_root_collection(context.scene)
         assert text_coll.name == "テキスト"

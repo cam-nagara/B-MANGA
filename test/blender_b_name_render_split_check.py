@@ -32,12 +32,13 @@ def main() -> None:
     render = None
     try:
         bname = _load_package("bname_dev", ROOT)
-        assert getattr(bpy.types, "BNAME_PT_export", None) is None
-        assert getattr(bpy.types, "BNAME_OT_export_page", None) is None
-        assert getattr(bpy.types, "BNAME_OT_export_all_pages", None) is None
-        assert getattr(bpy.types, "BNAME_OT_export_pdf", None) is None
-        assert "bname_dev.operators.io_op" not in sys.modules
-        assert "bname_dev.panels.export_panel" not in sys.modules
+        assert getattr(bpy.types, "BNAME_PT_export", None) is not None
+        assert getattr(bpy.types, "BNAME_PT_export").bl_label == "ページ出力"
+        assert getattr(bpy.types, "BNAME_OT_export_page", None) is not None
+        assert getattr(bpy.types, "BNAME_OT_export_all_pages", None) is not None
+        assert getattr(bpy.types, "BNAME_OT_export_pdf", None) is not None
+        assert "bname_dev.operators.io_op" in sys.modules
+        assert "bname_dev.panels.export_panel" in sys.modules
 
         render = _load_package("bname_render_dev", ROOT / "addons" / "b_name_render")
         assert getattr(bpy.types, "BNAME_RENDER_PT_main", None) is not None

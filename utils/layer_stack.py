@@ -1199,7 +1199,7 @@ def _drop_parent_from_nesting_delta(stack, item, moved_index: int, nesting_delta
 def _stack_item_page_key(item, context=None) -> str:
     """スタック行が属するページキーを返す。ページ非依存なら "" を返す.
 
-    - balloon / text / balloon_group: 行 key が ``page_id:child_id`` 形式
+    - coma / balloon / text / balloon_group: 行 key が ``page_id:child_id`` 形式
     - raster: 永続化された ``parent_key`` のページプレフィックス
     - gp / effect / gp_folder: ``parent_key`` のページプレフィックス
     """
@@ -1208,7 +1208,7 @@ def _stack_item_page_key(item, context=None) -> str:
     parent_key = str(getattr(item, "parent_key", "") or "")
     if key == OUTSIDE_STACK_KEY or parent_key == OUTSIDE_STACK_KEY:
         return ""
-    if kind in {"balloon", "balloon_group", "text"}:
+    if kind in {COMA_KIND, "balloon", "balloon_group", "text"}:
         page_key, _ = split_child_key(key)
         if page_key == OUTSIDE_STACK_KEY:
             return ""

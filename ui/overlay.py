@@ -1026,26 +1026,22 @@ def _draw_page_overlay(
     # ここでは GPU 塗りを描かない。GPU で描くと BLENDED ラスター paint を
     # 上から覆い隠す問題があった (旧バグ)。
 
-    # セーフライン外オーバーレイ (全ページに表示)
-    # 仕様: 常に乗算合成相当 + alpha 100%。
-    # Blender 5.x の gpu.state.blend_set("MULTIPLY") は受理されるが期待通り
-    # 動かないため、ALPHA で「色付き半透明」描画して乗算同等の見た目を出す。
-    # sa.color は Blender の COLOR プロパティなので scene-linear 値。
-    # UI表示相当の sRGB に戻してから alpha を色の暗さ (1 - brightness)
-    # に連動させる。これにより:
-    #   - (0.7, 0.7, 0.7) グレー: alpha=0.3 → 紙の白に薄灰 = 30% 暗いグレー
-    #   - (1, 0, 0) 赤:           alpha=0.67 → 赤フィルタ
-    #   - (0, 0, 1) 青:           alpha=0.67 → 青フィルタ
-    #   - (0, 0, 0) 黒:           alpha=1.0 → 完全に黒
-    # 暗い色ほどフィルタが強く、明るい色ほど薄く出る (乗算らしい挙動)。
-    sa = work.safe_area_overlay
-    if sa.enabled:
-        gpu.state.blend_set("ALPHA")
-        r, g, b = color_space.linear_to_srgb_rgb(sa.color[:3])
-        brightness = (r + g + b) / 3.0
-        alpha = max(0.0, min(1.0, 1.0 - brightness))
-        color = (r, g, b, alpha)
-        _draw_frame_with_hole(canvas_r, safe_r, color)
+    safe_overlay_drawn = False
+
+    def _draw_safe_area_overlay_once() -> None:
+        nonlocal safe_overlay_drawn
+        if safe_overlay_drawn:
+            return
+        # セーフライン外オーバーレイ (全ページに表示)
+        # 乗算合成が Blender 5.x の GPU 描画で安定しないため、仕様上の代替として
+        # 黒固定 + 不透明度で表示する。既定値は 30%。
+        sa = work.safe_area_overlay
+        if sa.enabled:
+            gpu.state.blend_set("ALPHA")
+            alpha = max(0.0, min(1.0, float(getattr(sa, "opacity", 0.30))))
+            color = (0.0, 0.0, 0.0, alpha)
+            _draw_frame_with_hole(canvas_r, safe_r, color)
+        safe_overlay_drawn = True
 
     # 枠線群はビューポート上で常に 1px 表示にする。
     if getattr(paper, "show_canvas_frame", True):
@@ -1075,6 +1071,7 @@ def _draw_page_overlay(
             skip_stem = getattr(context.scene, "bname_current_coma_id", "")
         _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm, skip_preview_stem=skip_stem)
         _draw_balloons(page, ox_mm=ox_mm, oy_mm=oy_mm)
+        _draw_safe_area_overlay_once()
         active_text_guides = False
         if getattr(context.scene, "bname_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))
@@ -1098,6 +1095,8 @@ def _draw_page_overlay(
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
         )
+    else:
+        _draw_safe_area_overlay_once()
 
     # 用紙ガイドは作画要素の後に深度無視で再描画し、コマやテキストに隠れない
     # 最前面の参照線として扱う。

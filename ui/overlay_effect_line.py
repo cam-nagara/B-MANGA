@@ -49,24 +49,29 @@ def draw_active_effect_line_bounds(
         return
     drawn: set[str] = set()
     if active_effect and bounds is not None:
-        _draw_bounds(bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
+        world_bounds = effect_line_op.effect_layer_world_bounds(context, obj, layer, bounds)
+        if world_bounds is not None:
+            _draw_bounds(world_bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
         if layer is not None:
             drawn.add(str(getattr(layer, "name", "") or ""))
+            drawn.add(object_selection.parse_key(object_selection.effect_key(layer))[2])
     if selected_names:
-        obj = effect_line_op.layer_stack_utils.get_effect_gp_object()
-        layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
         for selected_name in selected_names:
-            if selected_name in drawn or layers is None:
+            if selected_name in drawn:
                 continue
-            selected_layer = effect_line_op.layer_stack_utils._find_gp_layer_by_key(layers, selected_name)
-            if selected_layer is None:
-                for candidate in layers:
-                    if str(getattr(candidate, "name", "") or "") == selected_name:
-                        selected_layer = candidate
-                        break
+            obj, selected_layer = effect_line_op.layer_stack_utils._find_effect_layer_by_key(selected_name)
+            if obj is None or selected_layer is None:
+                continue
             selected_bounds = effect_line_op.effect_layer_bounds(obj, selected_layer)
             if selected_bounds is not None:
-                _draw_bounds(selected_bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
+                world_bounds = effect_line_op.effect_layer_world_bounds(
+                    context,
+                    obj,
+                    selected_layer,
+                    selected_bounds,
+                )
+                if world_bounds is not None:
+                    _draw_bounds(world_bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
 
 
 def _draw_bounds(

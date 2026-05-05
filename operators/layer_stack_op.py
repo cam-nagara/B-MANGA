@@ -1305,7 +1305,7 @@ class BNAME_OT_layer_stack_detail(Operator):
         self._restore_edge_selection_if_needed(context, stack[self.index], edge_state)
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
-        return context.window_manager.invoke_props_dialog(self, width=520)
+        return context.window_manager.invoke_props_dialog(self, width=260)
 
     def execute(self, context):
         layer_stack_utils.tag_view3d_redraw(context)

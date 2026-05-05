@@ -6,6 +6,7 @@ import importlib.util
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -100,6 +101,32 @@ def main() -> None:
         assert obj is not None and layer is not None
         assert gp_parent.parent_key(layer) == coma_key
         assert str(obj.get(on.PROP_PARENT_KEY, "") or "") == coma_key
+        world_bounds = effect_line_op.effect_layer_world_bounds(
+            context,
+            obj,
+            layer,
+            effect_line_op.effect_layer_bounds(obj, layer),
+        )
+        assert world_bounds is not None
+        _assert_close(world_bounds[0], world_x, "effect handle world x")
+        _assert_close(world_bounds[1], world_y, "effect handle world y")
+
+        from bname_dev.ui import overlay_effect_line
+
+        drawn_rects = []
+
+        def _capture_outline(rect, *_args, **_kwargs):
+            drawn_rects.append(SimpleNamespace(x=rect.x, y=rect.y, width=rect.width, height=rect.height))
+
+        overlay_effect_line.draw_active_effect_line_bounds(
+            context,
+            draw_rect_fill=lambda *_args, **_kwargs: None,
+            draw_rect_outline=_capture_outline,
+        )
+        if not drawn_rects:
+            raise AssertionError("effect handle overlay was not drawn")
+        _assert_close(drawn_rects[0].x, world_x - 1.0, "effect overlay rect x")
+        _assert_close(drawn_rects[0].y, world_y - 1.0, "effect overlay rect y")
 
         parent_kind, balloon_parent_key = balloon_op._parent_for_creation_point(
             page,

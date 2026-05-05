@@ -52,7 +52,7 @@ def ensure_reference_images(work, current_page_id: str, coma_id: str) -> list[Re
     ref_dir.mkdir(parents=True, exist_ok=True)
 
     refs: list[ReferenceImage] = []
-    include_work_blend_mtime = _has_master_gpencil()
+    include_work_blend_mtime = paths.work_blend_path(work_dir).is_file()
     page = find_page_by_id(work, current_page_id)
     panel = _resolve_coma(work, current_page_id, coma_id)
     if page is not None and panel is not None:
@@ -206,6 +206,15 @@ def _is_page_left_half(work, page_id: str) -> bool:
 
 
 def _render_page_reference(work, page, out: Path) -> bool:
+    work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+    page_id = str(getattr(page, "id", "") or "")
+    if work_dir and page_id and not _current_mainfile_is(paths.work_blend_path(work_dir)):
+        if _render_page_reference_from_work_blend(work_dir, page_id, out):
+            return True
+    return _render_page_reference_in_scene(work, page, out)
+
+
+def _render_page_reference_in_scene(work, page, out: Path) -> bool:
     try:
         options = export_pipeline.ExportOptions(
             format="png",
@@ -227,10 +236,175 @@ def _render_page_reference(work, page, out: Path) -> bool:
         return False
 
 
+def _render_page_reference_from_work_blend(work_dir: Path, page_id: str, out: Path) -> bool:
+    work_blend = paths.work_blend_path(Path(work_dir))
+    if not work_blend.is_file():
+        return False
+    try:
+        import bpy
+    except Exception:  # pragma: no cover - bpy unavailable outside Blender
+        return False
+
+    before = _snapshot_bpy_ids(bpy)
+    old_scene = getattr(getattr(bpy.context, "window", None), "scene", None)
+    try:
+        with bpy.data.libraries.load(str(work_blend.resolve()), link=False) as (data_from, data_to):
+            data_to.scenes = list(getattr(data_from, "scenes", []) or [])
+        loaded_scenes = _new_bpy_ids(bpy.data.scenes, before["scenes"])
+        scene, loaded_work, loaded_page = _loaded_page_scene(loaded_scenes, work_dir, page_id)
+        if scene is None or loaded_work is None or loaded_page is None:
+            return False
+        window = getattr(bpy.context, "window", None)
+        if window is not None:
+            window.scene = scene
+        try:
+            with bpy.context.temp_override(scene=scene):
+                return _render_page_reference_in_scene(loaded_work, loaded_page, out)
+        except Exception:  # noqa: BLE001
+            if window is not None:
+                window.scene = scene
+            return _render_page_reference_in_scene(loaded_work, loaded_page, out)
+    except Exception:  # noqa: BLE001
+        _logger.exception("panel camera work.blend reference render failed: %s", page_id)
+        return False
+    finally:
+        try:
+            window = getattr(bpy.context, "window", None)
+            if window is not None and old_scene is not None:
+                window.scene = old_scene
+        except Exception:  # noqa: BLE001
+            pass
+        _remove_new_bpy_ids(bpy, before)
+
+
+def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
+    for scene in loaded_scenes:
+        work = getattr(scene, "bname_work", None)
+        if work is None:
+            continue
+        try:
+            _reload_loaded_work_metadata(work, work_dir)
+        except Exception:  # noqa: BLE001
+            _logger.exception("panel camera loaded work metadata sync failed")
+        page = find_page_by_id(work, page_id)
+        if page is None:
+            continue
+        for index, candidate in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(candidate, "id", "") or "") == page_id:
+                try:
+                    work.active_page_index = index
+                except Exception:  # noqa: BLE001
+                    pass
+                break
+        return scene, work, page
+    return None, None, None
+
+
+def _reload_loaded_work_metadata(work, work_dir: Path) -> None:
+    from ..io import page_io, work_io
+
+    work_io.load_work_json(work_dir, work)
+    page_io.load_pages_json(work_dir, work)
+    for page in getattr(work, "pages", []) or []:
+        if str(getattr(page, "id", "") or ""):
+            page_io.load_page_json(work_dir, page)
+    work.work_dir = str(Path(work_dir).resolve())
+    work.loaded = True
+
+
+def _snapshot_bpy_ids(bpy_module) -> dict[str, set[int]]:
+    return {
+        "scenes": _id_keys(bpy_module.data.scenes),
+        "objects": _id_keys(bpy_module.data.objects),
+        "collections": _id_keys(bpy_module.data.collections),
+        "meshes": _id_keys(bpy_module.data.meshes),
+        "curves": _id_keys(bpy_module.data.curves),
+        "cameras": _id_keys(bpy_module.data.cameras),
+        "materials": _id_keys(bpy_module.data.materials),
+        "images": _id_keys(bpy_module.data.images),
+        "grease_pencils": _id_keys(_grease_pencil_blocks(bpy_module)),
+    }
+
+
+def _id_keys(blocks) -> set[int]:
+    out: set[int] = set()
+    for block in tuple(blocks or []):
+        try:
+            out.add(int(block.as_pointer()))
+        except Exception:  # noqa: BLE001
+            out.add(id(block))
+    return out
+
+
+def _new_bpy_ids(blocks, before: set[int]) -> list[object]:
+    out = []
+    for block in tuple(blocks or []):
+        try:
+            key = int(block.as_pointer())
+        except Exception:  # noqa: BLE001
+            key = id(block)
+        if key not in before:
+            out.append(block)
+    return out
+
+
+def _grease_pencil_blocks(bpy_module):
+    blocks = getattr(bpy_module.data, "grease_pencils_v3", None)
+    if blocks is None:
+        blocks = getattr(bpy_module.data, "grease_pencils", None)
+    return blocks or []
+
+
+def _remove_new_bpy_ids(bpy_module, before: dict[str, set[int]]) -> None:
+    for scene in _new_bpy_ids(bpy_module.data.scenes, before["scenes"]):
+        try:
+            bpy_module.data.scenes.remove(scene)
+        except Exception:  # noqa: BLE001
+            pass
+    for obj in _new_bpy_ids(bpy_module.data.objects, before["objects"]):
+        try:
+            bpy_module.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+    for coll in _new_bpy_ids(bpy_module.data.collections, before["collections"]):
+        try:
+            bpy_module.data.collections.remove(coll)
+        except Exception:  # noqa: BLE001
+            pass
+    _remove_orphan_new_blocks(bpy_module.data.meshes, before["meshes"])
+    _remove_orphan_new_blocks(bpy_module.data.curves, before["curves"])
+    _remove_orphan_new_blocks(bpy_module.data.cameras, before["cameras"])
+    _remove_orphan_new_blocks(_grease_pencil_blocks(bpy_module), before["grease_pencils"])
+    _remove_orphan_new_blocks(bpy_module.data.materials, before["materials"])
+    _remove_orphan_new_blocks(bpy_module.data.images, before["images"])
+
+
+def _remove_orphan_new_blocks(blocks, before: set[int]) -> None:
+    remove = getattr(blocks, "remove", None)
+    if remove is None:
+        return
+    for block in _new_bpy_ids(blocks, before):
+        if int(getattr(block, "users", 0) or 0) > 0:
+            continue
+        try:
+            remove(block)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _current_mainfile_is(path: Path) -> bool:
+    try:
+        import bpy
+
+        current = Path(str(getattr(bpy.data, "filepath", "") or "")).resolve()
+        return bool(current) and current == Path(path).resolve()
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _render_current_coma_page_mask(work, page, panel, page_ref: Path | None, mate_page, mate_ref: Path | None, out: Path) -> bool:
     Image = export_pipeline.Image
-    ImageDraw = export_pipeline.ImageDraw
-    if Image is None or ImageDraw is None or page_ref is None:
+    if Image is None or page_ref is None:
         return False
     try:
         with Image.open(str(page_ref)) as opened:
@@ -245,14 +419,8 @@ def _render_current_coma_page_mask(work, page, panel, page_ref: Path | None, mat
         except Exception:  # noqa: BLE001
             mate_img = None
     canvas, panel_offset_x = _compose_page_reference_pair(work, page, page_img, mate_img)
-    points = _coma_points_px(panel, page_img.height, DEFAULT_REF_DPI, panel_offset_x)
-    if len(points) < 3:
-        return False
+    _ = panel, panel_offset_x
     try:
-        alpha = canvas.getchannel("A")
-        draw = ImageDraw.Draw(alpha)
-        draw.polygon(points, fill=0)
-        canvas.putalpha(alpha)
         out.parent.mkdir(parents=True, exist_ok=True)
         canvas.save(str(out))
         return True

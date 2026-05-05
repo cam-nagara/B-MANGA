@@ -144,6 +144,7 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
     from bname_dev.ui import overlay_image
 
     calls: list[str] = []
+    safe_colors: list[tuple[float, float, float, float]] = []
     original = {
         "draw_rect_outline": overlay._draw_rect_outline,
         "draw_trim_marks": overlay._draw_trim_marks,
@@ -165,10 +166,14 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
     def depth(value):
         calls.append(f"depth:{value}")
 
+    def safe_overlay(_outer, _inner, color):
+        calls.append("safe_overlay")
+        safe_colors.append(tuple(float(v) for v in color))
+
     try:
         overlay._draw_rect_outline = mark("paper")
         overlay._draw_trim_marks = mark("paper")
-        overlay._draw_frame_with_hole = mark("safe_overlay")
+        overlay._draw_frame_with_hole = safe_overlay
         overlay._draw_comas = mark("coma")
         overlay._draw_balloons = mark("balloon")
         overlay_text.draw_text_guides = mark("text")
@@ -201,6 +206,13 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
         text_index = calls.index("text")
     except ValueError as exc:
         raise AssertionError(f"text draw marker missing: {calls}") from exc
+    try:
+        balloon_index = calls.index("balloon")
+        safe_index = calls.index("safe_overlay")
+    except ValueError as exc:
+        raise AssertionError(f"draw order marker missing: {calls}") from exc
+    if not (balloon_index < safe_index < text_index):
+        raise AssertionError(f"safe area overlay must be below text and above balloons: {calls}")
     front_paper_indices = [
         i for i, name in enumerate(calls)
         if i > text_index and name == "paper"
@@ -209,6 +221,11 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
         raise AssertionError(f"paper guides were not redrawn after text: {calls}")
     if not any(name == "depth:NONE" for name in calls[text_index:]):
         raise AssertionError(f"front paper redraw did not disable depth: {calls}")
+    if not safe_colors:
+        raise AssertionError(f"safe area overlay was not drawn: {calls}")
+    r, g, b, a = safe_colors[0]
+    if (r, g, b) != (0.0, 0.0, 0.0) or abs(a - 0.30) > 1.0e-4:
+        raise AssertionError(f"safe area overlay must be black 30% opacity: {safe_colors[0]}")
     return calls
 
 
@@ -232,6 +249,21 @@ def _assert_brush_size_texture_paint(context) -> dict:
     brush_size_op._set_brush_size(brush, 37)
     assert brush.size == 37
     return {"texture_brush_size": int(brush.size)}
+
+
+def _assert_text_create_drag_rect(text_op, page, entry, x_mm: float, y_mm: float) -> None:
+    drag = SimpleNamespace()
+    text_op.BNAME_OT_text_tool._start_text_drag(drag, page, entry, "create", x_mm, y_mm)
+    x, y, w, h = text_op.BNAME_OT_text_tool._drag_result_rect(drag, 24.0, 18.0)
+    text_op._set_text_rect(entry, x, y, w, h)
+    for label, actual, expected in (
+        ("text drag x", entry.x_mm, x_mm),
+        ("text drag y", entry.y_mm, y_mm),
+        ("text drag width", entry.width_mm, 24.0),
+        ("text drag height", entry.height_mm, 18.0),
+    ):
+        if abs(float(actual) - float(expected)) > 1.0e-4:
+            raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
 def _write_visual_report(state: dict) -> Path:
@@ -311,6 +343,8 @@ def main() -> None:
         context = bpy.context
         scene = context.scene
         work = scene.bname_work
+        assert bool(work.safe_area_overlay.enabled)
+        assert abs(float(work.safe_area_overlay.opacity) - 0.30) <= 1.0e-4
         page1 = work.pages[0]
         page2 = work.pages[1]
         panel2 = page2.comas[0]
@@ -377,6 +411,7 @@ def main() -> None:
             parent_key=page2_key,
         )
         assert page_text.parent_kind == "page" and page_text.parent_key == page2_key
+        _assert_text_create_drag_rect(text_op, page2, page_text, page_local_x, page_local_y)
 
         layer_object_sync.mirror_work_to_outliner(scene, work)
         _assert_text_collection(context)
@@ -386,6 +421,8 @@ def main() -> None:
         page2_visible = _visible_stack_uids(context)
         if not any(page2_key in uid for uid in page2_visible):
             raise AssertionError(f"page2 rows are not visible: {page2_visible}")
+        if not any(uid.startswith("coma:") and page2_key in uid for uid in page2_visible):
+            raise AssertionError(f"page2 coma rows are not visible: {page2_visible}")
         if any(page1_key in uid for uid in page2_visible):
             raise AssertionError(f"page1 leaked into page2 filtered list: {page2_visible}")
 
@@ -433,7 +470,9 @@ def main() -> None:
                 "checks": [
                     "用紙ガイド: コマ/フキダシ/テキスト後に再描画",
                     "作成所属: 2ページ目のコマ内/ページ直下を確認",
+                    "テキスト: ドラッグ範囲作成を確認",
                     "テキスト: B-Name直下の「テキスト」に集約",
+                    "セーフライン外: 黒30%不透明度で描画",
                     "レイヤーリスト: 選択ページだけを表示",
                     "Alt階層移動: GP/効果線/フキダシを確認",
                     "ラスター中ブラシサイズ: Texture Paintブラシを確認",

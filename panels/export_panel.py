@@ -1,4 +1,4 @@
-"""書き出しパネル (Phase 6a)."""
+"""ページ出力パネル."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ B_NAME_CATEGORY = "B-Name"
 
 class BNAME_PT_export(Panel):
     bl_idname = "BNAME_PT_export"
-    bl_label = "書き出し"
+    bl_label = "ページ出力"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
@@ -29,7 +29,7 @@ class BNAME_PT_export(Panel):
     def draw(self, context):
         layout = self.layout
         if not export_pipeline.has_pillow():
-            layout.label(text="Pillow 未同梱 — 書き出し無効", icon="ERROR")
+            layout.label(text="Pillow 未同梱 - ページ出力無効", icon="ERROR")
             layout.label(text="wheels/ に Pillow を同梱後に有効化", icon="INFO")
             return
         layout.operator("bname.export_page", icon="RENDER_STILL")

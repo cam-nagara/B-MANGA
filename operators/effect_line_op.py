@@ -168,6 +168,44 @@ def effect_layer_bounds(obj, layer) -> tuple[float, float, float, float] | None:
     return _stroke_bounds(layer)
 
 
+def _page_world_offset_for_parent_key(context, parent_key: str) -> tuple[float, float] | None:
+    parent_key = str(parent_key or "")
+    if not parent_key:
+        return None
+    page_id = parent_key.split(":", 1)[0]
+    if not page_id:
+        return None
+    work = get_work(context)
+    if work is None:
+        return None
+    for page_index, page in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(page, "id", "") or "") == page_id:
+            return page_grid.page_total_offset_mm(work, context.scene, page_index)
+    return None
+
+
+def effect_layer_world_bounds(context, obj, layer, bounds=None) -> tuple[float, float, float, float] | None:
+    """効果線のページ内 bounds をビューポート上の world mm bounds に変換する."""
+    if obj is None or layer is None:
+        return None
+    if bounds is None:
+        bounds = effect_layer_bounds(obj, layer)
+    if bounds is None:
+        return None
+    x, y, w, h = bounds
+    from ..utils import object_naming as on
+
+    parent_key = gp_parent.parent_key(layer) or str(obj.get(on.PROP_PARENT_KEY, "") or "")
+    offset = _page_world_offset_for_parent_key(context, parent_key)
+    if offset is None and str(obj.get(on.PROP_KIND, "") or "") == "effect":
+        try:
+            offset = (m_to_mm(float(obj.location.x)), m_to_mm(float(obj.location.y)))
+        except Exception:  # noqa: BLE001
+            offset = (0.0, 0.0)
+    ox, oy = offset if offset is not None else (0.0, 0.0)
+    return float(x) + ox, float(y) + oy, float(w), float(h)
+
+
 def active_effect_layer_bounds(context=None):
     ctx = context or bpy.context
     from ..utils import layer_stack as stack_utils

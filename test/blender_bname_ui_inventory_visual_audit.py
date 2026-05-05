@@ -385,6 +385,7 @@ def _collect_panel(records: list[dict[str, Any]], context, cls, group_prefix: st
 def _registered_panel_classes():
     from bname_dev_ui_inventory.panels import (
         coma_camera_panel,
+        export_panel,
         gpencil_panel,
         outliner_layer_panel,
         paper_panel,
@@ -403,6 +404,7 @@ def _registered_panel_classes():
         gpencil_panel.BNAME_PT_gpencil,
         outliner_layer_panel.BNAME_PT_outliner_layers,
         coma_camera_panel.BNAME_PT_coma_camera,
+        export_panel.BNAME_PT_export,
     )
 
 
@@ -537,7 +539,6 @@ def _collect_legacy_status(records: list[dict[str, Any]]) -> None:
         ("旧独立パネル / ページ一覧", "統合先: レイヤー上部のページ選択 + ビューの選択ページ"),
         ("旧独立パネル / コマ一覧", "統合先: レイヤー"),
         ("旧独立パネル / 枠線ツール", "統合先: ツール + コマ詳細"),
-        ("旧独立パネル / 書き出し", "分離先: B-Name-Render"),
     )
     for group, detail in legacy:
         records.append(
@@ -587,6 +588,9 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "白抜き線",
         "流線",
         "レイヤーフォルダ",
+        "現在のページを書き出し",
+        "全ページを一括書き出し",
+        "PDF 結合書き出し",
     )
     return [label for label in required if label not in texts]
 

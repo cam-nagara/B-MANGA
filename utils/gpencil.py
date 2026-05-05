@@ -930,8 +930,9 @@ def add_stroke_to_drawing(
                 point.position = (x, y, z)
                 if hasattr(point, "radius"):
                     point.radius = point_radii[i] if i < len(point_radii) else radius
-                if hasattr(point, "opacity") and i < len(point_opacities):
-                    point.opacity = max(0.0, min(1.0, float(point_opacities[i])))
+                if hasattr(point, "opacity"):
+                    opacity = point_opacities[i] if i < len(point_opacities) else 1.0
+                    point.opacity = max(0.0, min(1.0, float(opacity)))
             _set_stroke_curve_type(drawing, start_index, stroke, pts, cyclic, curve_type, bezier_smooth)
             return True
         pos_attr = drawing.attributes.get("position")
@@ -945,7 +946,7 @@ def add_stroke_to_drawing(
             for i in range(len(pts)):
                 rad_attr.data[offset + i].value = point_radii[i] if i < len(point_radii) else radius
         opacity_attr = drawing.attributes.get("opacity")
-        if opacity_attr is not None and point_opacities:
+        if opacity_attr is not None:
             for i in range(len(pts)):
                 opacity_attr.data[offset + i].value = max(
                     0.0,

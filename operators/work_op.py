@@ -13,7 +13,6 @@ from ..core.mode import MODE_PAGE, MODE_COMA, get_mode, set_mode
 from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
-from ..utils import color_space
 from ..utils import gpencil as gp_utils
 from ..utils import log, page_grid, page_range, paths
 
@@ -61,10 +60,11 @@ def _apply_phase1_defaults(work) -> None:
     presets.load_default_preset_for_work(work)
     # セーフライン外塗りは新規作品ごとに既定値へ戻す。
     # PropertyGroup は同一 scene 内で前回値を保持するため、ここで明示的に初期化しないと
-    # 「前の作品で変えた色」が新規作品へ漏れる。プリセット適用後に置き直して、
+    # 「前の作品で変えた不透明度」が新規作品へ漏れる。プリセット適用後に置き直して、
     # 今後プリセット側が拡張されても新規作品の既定を固定する。
     work.safe_area_overlay.enabled = True
-    work.safe_area_overlay.color = color_space.srgb_to_linear_rgb((0.7, 0.7, 0.7))
+    work.safe_area_overlay.opacity = 0.30
+    work.safe_area_overlay.color = (0.0, 0.0, 0.0)
 
 
 def _cleanup_default_scene_objects() -> None:

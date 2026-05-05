@@ -78,7 +78,7 @@ class BNAME_PT_paper(Panel):
         row.prop(sa, "enabled", text="セーフライン外を塗る")
         sub = box.row(align=True)
         sub.enabled = sa.enabled
-        sub.prop(sa, "color", text="塗りつぶし色")
+        sub.prop(sa, "opacity", text="不透明度", slider=True)
 
         box = layout.box()
         box.label(text="色")

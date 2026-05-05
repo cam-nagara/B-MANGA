@@ -32,7 +32,12 @@ def text_key(page, entry) -> str:
 
 
 def effect_key(layer) -> str:
-    return make_key("effect", "", str(getattr(layer, "name", "") or ""))
+    try:
+        ptr = int(layer.as_pointer())
+    except Exception:  # noqa: BLE001
+        ptr = 0
+    item_id = f"ptr_{ptr:x}" if ptr else str(getattr(layer, "name", "") or "")
+    return make_key("effect", "", item_id)
 
 
 def page_key(page) -> str:

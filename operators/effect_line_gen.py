@@ -64,6 +64,50 @@ def _poly_perimeter_mm(points: Sequence[tuple[float, float]]) -> float:
     return total
 
 
+def _outline_point_at_fraction(
+    outline: Sequence[tuple[float, float]],
+    fraction: float,
+) -> tuple[float, float] | None:
+    if len(outline) < 2:
+        return None
+    perimeter = _poly_perimeter_mm(outline)
+    if perimeter <= 1.0e-9:
+        return (float(outline[0][0]), float(outline[0][1]))
+    target = (float(fraction) % 1.0) * perimeter
+    walked = 0.0
+    for i, point in enumerate(outline):
+        nxt = outline[(i + 1) % len(outline)]
+        length = math.hypot(nxt[0] - point[0], nxt[1] - point[1])
+        if length <= 1.0e-9:
+            continue
+        if walked + length >= target:
+            t = max(0.0, min(1.0, (target - walked) / length))
+            return (
+                float(point[0]) + (float(nxt[0]) - float(point[0])) * t,
+                float(point[1]) + (float(nxt[1]) - float(point[1])) * t,
+            )
+        walked += length
+    point = outline[-1]
+    return (float(point[0]), float(point[1]))
+
+
+def _extend_point_from_center(
+    center_xy_mm: tuple[float, float],
+    point_xy_mm: tuple[float, float],
+    extend_mm: float,
+) -> tuple[float, float]:
+    if extend_mm <= 0.0:
+        return point_xy_mm
+    cx, cy = center_xy_mm
+    dx = float(point_xy_mm[0]) - cx
+    dy = float(point_xy_mm[1]) - cy
+    length = math.hypot(dx, dy)
+    if length <= 1.0e-9:
+        return point_xy_mm
+    scale = (length + float(extend_mm)) / length
+    return cx + dx * scale, cy + dy * scale
+
+
 def _scaled_rect(cx: float, cy: float, rx: float, ry: float, scale: float) -> Rect:
     sx = max(0.001, float(rx) * float(scale))
     sy = max(0.001, float(ry) * float(scale))
@@ -317,23 +361,41 @@ def generate_focus_strokes(
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
         start_extend = max(0.0, float(start_extend_mm))
-    count = _focus_slot_count_for_outline(params, end_outline, radius_x_mm, radius_y_mm)
+    spacing_from_start_outline = (
+        start_outline_mm is not None
+        and str(getattr(params, "spacing_mode", "") or "") == "distance"
+        and len(start_outline) >= 2
+    )
+    count_outline = start_outline if spacing_from_start_outline else end_outline
+    count = _focus_slot_count_for_outline(params, count_outline, radius_x_mm, radius_y_mm)
     step_angle = (2.0 * math.pi) / max(1, count)
 
     for slot in _slot_positions(count, params, rng):
-        t = _slot_fraction(slot, count, closed=True)
-        angle = 2.0 * math.pi * t + math.radians(float(params.rotation_deg))
-        if bool(getattr(params, "spacing_jitter_enabled", False)):
-            amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
-            angle += step_angle * amount * (rng.random() * 2.0 - 1.0)
-        x0, y0 = _point_on_outline_or_ellipse(
-            center_xy_mm,
-            start_outline,
-            radius_x_mm * 2.0,
-            radius_y_mm * 2.0,
-            angle,
-            extend_mm=start_extend,
-        )
+        if spacing_from_start_outline:
+            slot_for_start = slot
+            if bool(getattr(params, "spacing_jitter_enabled", False)):
+                amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
+                slot_for_start += amount * (rng.random() * 2.0 - 1.0)
+            t = _slot_fraction(slot_for_start, count, closed=True)
+            frame_point = _outline_point_at_fraction(start_outline, t)
+            if frame_point is None:
+                continue
+            angle = math.atan2(frame_point[1] - cy, frame_point[0] - cx)
+            x0, y0 = _extend_point_from_center(center_xy_mm, frame_point, start_extend)
+        else:
+            t = _slot_fraction(slot, count, closed=True)
+            angle = 2.0 * math.pi * t + math.radians(float(params.rotation_deg))
+            if bool(getattr(params, "spacing_jitter_enabled", False)):
+                amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
+                angle += step_angle * amount * (rng.random() * 2.0 - 1.0)
+            x0, y0 = _point_on_outline_or_ellipse(
+                center_xy_mm,
+                start_outline,
+                radius_x_mm * 2.0,
+                radius_y_mm * 2.0,
+                angle,
+                extend_mm=start_extend,
+            )
         x1, y1 = _point_on_outline_or_ellipse(
             center_xy_mm,
             end_outline,
