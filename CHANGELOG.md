@@ -3,6 +3,31 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-06 — c00.blend 連携監査を強化
+
+### 症状
+B-Name と B-Name-Render が `D:\TM Dropbox\Share\B-Name\c_file\c00.blend` と完全に連携できるかについて、B-Name が実際に c00.blend をコマ用blendテンプレートとして開いた後の保持状態と、B-Name-Render の全出力プリセットを c00.blend 上で実行する確認が不足していた。魚眼系プリセットの通常出力側要求と、AOV用の素材テンプレートも監査条件に含まれていなかった。
+
+### 原因
+既存監査は c00.blend 内の要素名確認と低解像度レンダー確認が中心で、B-Name のコマ編集モード遷移、ページ画像下絵、用紙解像度、全プリセットの実行チェーン、eeVR 登録済み時の魚眼出力橋渡しを同時に見ていなかった。
+
+### 修正
+- B-Name が c00.blend をコマ用blendテンプレートとして開き、ページ画像下絵、用紙解像度、カメラ、必要なコレクション / ビューレイヤー / 出力ノード群を保持する実機監査を追加。
+- B-Name-Render の全37出力プリセットを c00.blend 上でレンダー直前まで実行し、全カードが必要な要素へ接続できることを確認する実機監査を追加。
+- 元 eeVR アドオンを登録した状態で、魚眼出力カードから eeVR 設定へ出力先、画像名、魚眼設定が渡ることを確認する監査を追加。
+- c00.blend 監査で、魚眼系カードの出力要求と AOV用素材テンプレートの入力も確認対象に追加。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_bname_c00_template_integration_check.py`
+- `test/blender_b_name_render_c00_audit.py`
+- `test/blender_b_name_render_c00_execution_check.py`
+- `test/blender_coma_template_check.py`
+- `test/blender_coma_underlay_reference_check.py`
+- `test/blender_b_name_render_split_check.py`
+- `test/blender_b_name_render_ui_audit.py`
+- `test/blender_b_name_render_visual_presets.py`
+- B-Name-Render 全37出力プリセット、通常出力側66回のレンダー境界、eeVR 登録済み時の魚眼出力橋渡しを確認。
+
 ## 2026-05-06 — B-Name-Render v0.1.4 UI導線とカード設定を補強
 
 ### 症状

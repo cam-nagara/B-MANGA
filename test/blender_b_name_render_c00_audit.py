@@ -91,7 +91,13 @@ def _required_from_presets(preset_library):
                 required["collections"].add(command.get("collection_name", ""))
             elif kind == "SET_NODE_MUTE":
                 required["node_names"].add(command.get("node_name", ""))
-            elif kind in {"SET_OUTPUT_GROUP", "RENDER_LAYER"}:
+            elif kind in {
+                "SET_OUTPUT_GROUP",
+                "RENDER_LAYER",
+                "FISHEYE_RENDER_IMAGE_OR_LAYER",
+                "FISHEYE_RENDER_FACES_OR_LAYER",
+                "FISHEYE_ASSEMBLE_OR_LAYER",
+            }:
                 required["node_groups"].add(command.get("node_group_name", ""))
                 required["output_labels"].add(command.get("label_contains", ""))
             elif kind == "SET_AOV_INPUT":
@@ -129,6 +135,14 @@ def _count_aov_target(target_name: str, input_name: str) -> int:
         if target_name and target_name not in group.name:
             continue
         count += _count_named_input(group, input_name)
+    return count
+
+
+def _count_template_aov_input(input_name: str) -> int:
+    count = 0
+    for material in bpy.data.materials:
+        if getattr(material, "use_nodes", False):
+            count += _count_named_input(material.node_tree, input_name)
     return count
 
 
@@ -249,6 +263,10 @@ def main() -> None:
             for target in required["aov_targets"]
             for input_name in required["inputs"]
         },
+        "aov_template_socket_counts": {
+            input_name: _count_template_aov_input(input_name)
+            for input_name in required["inputs"]
+        },
         "file_output_count": len([item for item in nodes if item["type"] == "OUTPUT_FILE"]),
     }
     if os.environ.get("BNAME_AUDIT_FULL") == "1":
@@ -266,6 +284,7 @@ def main() -> None:
     }
     assert not blocking_missing, blocking_missing
     assert not audit["placeholder_presets"], audit["placeholder_presets"]
+    assert all(count > 0 for count in audit["aov_template_socket_counts"].values()), audit["aov_template_socket_counts"]
     for prop_name in ("fisheye_layout_mode", "reduction_mode", "preview_scale_percentage", "my_tool"):
         assert audit["has_rna_props"][prop_name] is True, prop_name
 
