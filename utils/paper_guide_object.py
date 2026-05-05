@@ -287,23 +287,34 @@ def _link_to_page_collection(obj: bpy.types.Object, page_coll) -> None:
             pass
 
 
-def _object_page_id(obj: bpy.types.Object) -> str:
+def _object_page_id(obj: bpy.types.Object, work) -> str:
     parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
     if ":" in parent_key:
         return parent_key.split(":", 1)[0]
-    if parent_key.startswith(("p", "P")):
-        return parent_key
+    for page in getattr(work, "pages", []) or []:
+        if str(getattr(page, "id", "") or "") == parent_key:
+            return parent_key
+    if parent_key:
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, parent_key)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return semantic.split(":", 1)[0]
+        except Exception:  # noqa: BLE001
+            pass
     return ""
 
 
-def _page_z_levels(page_id: str) -> tuple[float, float, float]:
+def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
     max_all = 0.02
     max_non_text = 0.02
     min_text = 0.0
     for obj in bpy.data.objects:
         if obj.get(PROP_GUIDE_OWNER_ID):
             continue
-        if _object_page_id(obj) != page_id:
+        if _object_page_id(obj, work) != page_id:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
@@ -341,7 +352,7 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     if page_coll is None:
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
     in_range = bool(getattr(page, "in_page_range", True))
-    safe_z, guide_z, _ = _page_z_levels(page_id)
+    safe_z, guide_z, _ = _page_z_levels(work, page_id)
 
     mat_dim = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Dim", viewport_colors.PAPER_GUIDE_DIM)
     mat_light = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Light", viewport_colors.PAPER_GUIDE_LIGHT)

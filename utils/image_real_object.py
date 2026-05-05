@@ -54,9 +54,58 @@ def _resolve_parent_for_entry(entry, page, folder_id: str) -> tuple[str, str, st
         return "outside", "", ""
     if parent_kind == "coma" and parent_key:
         return "coma", parent_key, entry_folder
-    if parent_kind == "folder" and entry_folder:
-        return "folder", entry_folder, entry_folder
+    if parent_kind == "folder":
+        folder_key = entry_folder or parent_key
+        if folder_key:
+            return "folder", folder_key, folder_key
     return "page", parent_key or str(getattr(page, "id", "") or ""), entry_folder
+
+
+def _page_by_id(work, page_id: str):
+    if work is None or not page_id:
+        return None
+    for candidate in getattr(work, "pages", []) or []:
+        if str(getattr(candidate, "id", "") or "") == page_id:
+            return candidate
+    return None
+
+
+def _semantic_parent_key_for_entry(work, entry, fallback_page=None) -> str:
+    parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    folder_key = str(getattr(entry, "folder_key", "") or "")
+    if parent_kind in {"none", "outside"}:
+        return ""
+    if parent_kind == "folder":
+        folder_key = folder_key or parent_key
+        if folder_key:
+            try:
+                from . import layer_folder
+                from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+                semantic = layer_folder.semantic_parent_key_for_folder(work, folder_key)
+                return "" if semantic == OUTSIDE_STACK_KEY else semantic
+            except Exception:  # noqa: BLE001
+                return ""
+    if parent_key:
+        return parent_key
+    if folder_key:
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, folder_key)
+            if semantic != OUTSIDE_STACK_KEY:
+                return semantic
+        except Exception:  # noqa: BLE001
+            pass
+    return str(getattr(fallback_page, "id", "") or "")
+
+
+def page_for_entry(scene, work, entry, fallback_page=None):
+    key = _semantic_parent_key_for_entry(work, entry, fallback_page)
+    page_id = key.split(":", 1)[0] if key else ""
+    return _page_by_id(work, page_id)
 
 
 def _page_offset_mm(scene, work, page) -> tuple[float, float]:
@@ -77,6 +126,13 @@ def _page_offset_mm(scene, work, page) -> tuple[float, float]:
     except Exception:  # noqa: BLE001
         _logger.exception("image real object: page offset failed")
         return 0.0, 0.0
+
+
+def entry_page_offset_mm(scene, work, entry, fallback_page=None) -> tuple[float, float]:
+    page = page_for_entry(scene, work, entry, fallback_page)
+    if page is None:
+        return 0.0, 0.0
+    return _page_offset_mm(scene, work, page)
 
 
 def _image_z_index(scene, image_id: str) -> int:
@@ -298,7 +354,7 @@ def ensure_image_real_object(
     page,
     folder_id: str = "",
 ) -> Optional[bpy.types.Object]:
-    if scene is None or entry is None or page is None:
+    if scene is None or entry is None:
         return None
     image_id = str(getattr(entry, "id", "") or "")
     if not image_id:
@@ -329,7 +385,7 @@ def ensure_image_real_object(
         obj.data = mesh
 
     work = getattr(scene, "bname_work", None)
-    ox_mm, oy_mm = _page_offset_mm(scene, work, page)
+    ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
     width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
     height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + width_mm * 0.5 + ox_mm)
@@ -388,17 +444,11 @@ def sync_all_image_real_objects(scene: bpy.types.Scene, work) -> int:
         return 0
     count = 0
     for entry in coll:
+        page = page_for_entry(scene, work, entry)
+        parent_kind = str(getattr(entry, "parent_kind", "") or "page")
         parent_key = str(getattr(entry, "parent_key", "") or "")
-        page_id = parent_key.split(":", 1)[0] if parent_key else ""
-        page = None
-        for candidate in getattr(work, "pages", []) or []:
-            if str(getattr(candidate, "id", "") or "") == page_id:
-                page = candidate
-                break
-        if page is None and len(getattr(work, "pages", []) or []) > 0:
+        if page is None and parent_kind == "page" and not parent_key and len(getattr(work, "pages", []) or []) > 0:
             page = work.pages[0]
-        if page is None:
-            continue
         if ensure_image_real_object(scene=scene, entry=entry, page=page) is not None:
             count += 1
     cleanup_orphan_image_objects(scene)

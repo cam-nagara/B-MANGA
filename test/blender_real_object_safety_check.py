@@ -67,18 +67,22 @@ def main() -> None:
         from bname_dev.utils import layer_object_sync
         from bname_dev.utils import object_naming as on
         from bname_dev.utils import outliner_model
+        from bname_dev.utils import page_grid
         from bname_dev.utils import paper_guide_object
         from bname_dev.utils import text_real_object
-        from bname_dev.utils.layer_hierarchy import page_stack_key
+        from bname_dev.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
 
         context = bpy.context
         scene = context.scene
         work = get_work(context)
         assert work is not None and work.loaded
+        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
         page = work.pages[0]
+        page2 = work.pages[1]
         assert len(page.comas) > 0, "work_new should create a basic frame coma"
         coma = page.comas[0]
         page_key = page_stack_key(page)
+        page2_key = page_stack_key(page2)
 
         text, missing = text_op._create_text_entry(
             context,
@@ -117,6 +121,48 @@ def main() -> None:
         image_entry.opacity = 0.75
         image_entry.parent_kind = "page"
         image_entry.parent_key = page_key
+        folder = work.layer_folders.add()
+        folder.id = "folder_image_page2"
+        folder.title = "画像フォルダ"
+        folder.parent_key = page2_key
+        folder.expanded = True
+        folder_image_entry = scene.bname_image_layers.add()
+        folder_image_entry.id = "image_real_folder_page2"
+        folder_image_entry.title = "フォルダ内画像"
+        folder_image_entry.filepath = str(source_png)
+        folder_image_entry.x_mm = 18.0
+        folder_image_entry.y_mm = 21.0
+        folder_image_entry.width_mm = 16.0
+        folder_image_entry.height_mm = 10.0
+        folder_image_entry.parent_kind = "folder"
+        folder_image_entry.parent_key = folder.id
+        folder_image_entry.folder_key = folder.id
+        outside_folder = work.layer_folders.add()
+        outside_folder.id = "folder_image_outside"
+        outside_folder.title = "ページ外画像フォルダ"
+        outside_folder.parent_key = OUTSIDE_STACK_KEY
+        outside_folder.expanded = True
+        outside_folder_image_entry = scene.bname_image_layers.add()
+        outside_folder_image_entry.id = "image_real_folder_outside"
+        outside_folder_image_entry.title = "ページ外フォルダ内画像"
+        outside_folder_image_entry.filepath = str(source_png)
+        outside_folder_image_entry.x_mm = 11.0
+        outside_folder_image_entry.y_mm = 13.0
+        outside_folder_image_entry.width_mm = 9.0
+        outside_folder_image_entry.height_mm = 5.0
+        outside_folder_image_entry.parent_kind = "folder"
+        outside_folder_image_entry.parent_key = outside_folder.id
+        outside_folder_image_entry.folder_key = outside_folder.id
+        outside_image_entry = scene.bname_image_layers.add()
+        outside_image_entry.id = "image_real_outside"
+        outside_image_entry.title = "ページ外画像"
+        outside_image_entry.filepath = str(source_png)
+        outside_image_entry.x_mm = 7.0
+        outside_image_entry.y_mm = 9.0
+        outside_image_entry.width_mm = 8.0
+        outside_image_entry.height_mm = 6.0
+        outside_image_entry.parent_kind = "none"
+        outside_image_entry.parent_key = ""
         coma.white_margin.enabled = True
         coma.white_margin.width_mm = 1.5
         coma.border.style = "dashed"
@@ -161,6 +207,37 @@ def main() -> None:
         assert image_obj.data.uv_layers.active is not None, "image real object has no UV"
         legacy_image_empty = bpy.data.objects.get(f"image_{image_entry.id}")
         assert legacy_image_empty is None or legacy_image_empty.type != "EMPTY", "legacy image Empty still exists"
+        folder_image_obj = on.find_object_by_bname_id(folder_image_entry.id, kind="image")
+        assert folder_image_obj is not None, "folder image real object was not created"
+        ox2, oy2 = page_grid.page_total_offset_mm(work, scene, 1)
+        expected_x = ox2 + folder_image_entry.x_mm + folder_image_entry.width_mm * 0.5
+        expected_y = oy2 + folder_image_entry.y_mm + folder_image_entry.height_mm * 0.5
+        actual_x = folder_image_obj.location.x * 1000.0
+        actual_y = folder_image_obj.location.y * 1000.0
+        assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
+        assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
+        outside_image_obj = on.find_object_by_bname_id(outside_image_entry.id, kind="image")
+        assert outside_image_obj is not None, "outside image real object was not created"
+        expected_outside_x = outside_image_entry.x_mm + outside_image_entry.width_mm * 0.5
+        expected_outside_y = outside_image_entry.y_mm + outside_image_entry.height_mm * 0.5
+        assert abs(outside_image_obj.location.x * 1000.0 - expected_outside_x) < 1e-4
+        assert abs(outside_image_obj.location.y * 1000.0 - expected_outside_y) < 1e-4
+        outside_folder_image_obj = on.find_object_by_bname_id(outside_folder_image_entry.id, kind="image")
+        assert outside_folder_image_obj is not None, "outside folder image real object was not created"
+        expected_outside_folder_x = outside_folder_image_entry.x_mm + outside_folder_image_entry.width_mm * 0.5
+        expected_outside_folder_y = outside_folder_image_entry.y_mm + outside_folder_image_entry.height_mm * 0.5
+        assert abs(outside_folder_image_obj.location.x * 1000.0 - expected_outside_folder_x) < 1e-4
+        assert abs(outside_folder_image_obj.location.y * 1000.0 - expected_outside_folder_y) < 1e-4
+        page2.offset_x_mm += 17.0
+        page2.offset_y_mm -= 11.0
+        page_grid.apply_page_collection_transforms(context, work)
+        ox2, oy2 = page_grid.page_total_offset_mm(work, scene, 1)
+        expected_x = ox2 + folder_image_entry.x_mm + folder_image_entry.width_mm * 0.5
+        expected_y = oy2 + folder_image_entry.y_mm + folder_image_entry.height_mm * 0.5
+        actual_x = folder_image_obj.location.x * 1000.0
+        actual_y = folder_image_obj.location.y * 1000.0
+        assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
+        assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
 
         guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}_safe")
         assert guide_obj is not None, "paper guide object was not created"
@@ -225,6 +302,9 @@ def main() -> None:
         image_name = image.name
         border_name = border_obj.name
         image_obj_name = image_obj.name
+        folder_image_obj_name = folder_image_obj.name
+        outside_image_obj_name = outside_image_obj.name
+        outside_folder_image_obj_name = outside_folder_image_obj.name
         guide_name = guide_obj.name
         safe_fill_name = safe_fill_obj.name
         white_margin_name = white_margin_obj.name
@@ -237,6 +317,9 @@ def main() -> None:
 
         assert bpy.data.objects.get(text_name) is not None, "text object disappeared after unregister"
         assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after unregister"
+        assert bpy.data.objects.get(folder_image_obj_name) is not None, "folder image disappeared after unregister"
+        assert bpy.data.objects.get(outside_image_obj_name) is not None, "outside image disappeared after unregister"
+        assert bpy.data.objects.get(outside_folder_image_obj_name) is not None, "outside folder image disappeared after unregister"
         assert bpy.data.objects.get(border_name) is not None, "coma border disappeared after unregister"
         assert bpy.data.objects.get(guide_name) is not None, "paper guide disappeared after unregister"
         assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after unregister"
@@ -246,6 +329,9 @@ def main() -> None:
         bpy.ops.wm.open_mainfile(filepath=str(reopen_path))
         assert bpy.data.objects.get(text_name) is not None, "text object disappeared after reopen"
         assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after reopen"
+        assert bpy.data.objects.get(folder_image_obj_name) is not None, "folder image disappeared after reopen"
+        assert bpy.data.objects.get(outside_image_obj_name) is not None, "outside image disappeared after reopen"
+        assert bpy.data.objects.get(outside_folder_image_obj_name) is not None, "outside folder image disappeared after reopen"
         assert bpy.data.objects.get(border_name) is not None, "coma border disappeared after reopen"
         assert bpy.data.objects.get(guide_name) is not None, "paper guide disappeared after reopen"
         assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after reopen"

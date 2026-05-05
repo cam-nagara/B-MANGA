@@ -245,6 +245,26 @@ def apply_page_collection_transforms(context, work) -> int:
     full_canvas_kinds = {"raster", "gp", "effect"}
     entry_relative_kinds = {"balloon", "image", "text"}
 
+    def _owner_page_id(parent_key: str) -> str:
+        key = str(parent_key or "")
+        if not key:
+            return ""
+        if ":" in key:
+            return key.split(":", 1)[0]
+        for page in getattr(work, "pages", []) or []:
+            if str(getattr(page, "id", "") or "") == key:
+                return key
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, key)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return semantic.split(":", 1)[0]
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
+
     def _set_xy(obj, x_m: float, y_m: float) -> None:
         try:
             loc = obj.location
@@ -292,7 +312,7 @@ def apply_page_collection_transforms(context, work) -> int:
             kind = str(obj.get("bname_kind", "") or "")
             managed = bool(obj.get("bname_managed", False))
             parent_key = str(obj.get("bname_parent_key", "") or "")
-            owner_page_id = parent_key.split(":", 1)[0] if parent_key else ""
+            owner_page_id = _owner_page_id(parent_key)
             # parent_key がページ ID を持つのに現在処理中のページと違うなら、
             # 別ページの管轄なのでここでは触らない (そのページの iteration で更新される)
             if owner_page_id and owner_page_id != page_id_str:

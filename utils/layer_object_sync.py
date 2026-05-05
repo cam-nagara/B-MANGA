@@ -287,6 +287,22 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                     continue
                 coma_title = str(getattr(coma, "title", "") or coma_id)
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
+        for folder in getattr(work, "layer_folders", []):
+            folder_id = str(getattr(folder, "id", "") or "")
+            if not folder_id:
+                continue
+            title = str(getattr(folder, "title", "") or folder_id)
+            parent_key_raw = str(getattr(folder, "parent_key", "") or "")
+            parent_kind, parent_key = _split_folder_parent(parent_key_raw)
+            z_index = int(getattr(folder, "z_order", 0) or 0)
+            om.ensure_folder_collection(
+                scene,
+                folder_id=folder_id,
+                title=title,
+                parent_kind=parent_kind,
+                parent_key=parent_key,
+                z_index=z_index,
+            )
         # 画像 / テキストの表示 Object を ensure。
         # どちらも透明画像付き平面として実体化する。
         _mirror_image_text_objects(scene, work)
@@ -348,28 +364,6 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _mo.purge_legacy_masks_collection()
         except Exception:  # noqa: BLE001
             _logger.exception("mirror legacy __masks__ purge failed")
-
-        for folder in getattr(work, "layer_folders", []):
-            folder_id = str(getattr(folder, "id", "") or "")
-            if not folder_id:
-                continue
-            title = str(getattr(folder, "title", "") or folder_id)
-            parent_key_raw = str(getattr(folder, "parent_key", "") or "")
-            parent_kind, parent_key = _split_folder_parent(parent_key_raw)
-            # NOTE: 現状の BNameLayerFolder には z_order フィールドが無い。
-            # Phase 1 で z_order を実フィールド化するか、layer_stack の
-            # 順序から導出する。それまでは 0 fallback で複数フォルダが
-            # F0000 prefix に潰れるが、bname_id で識別できるので機能上の
-            # 問題はない (alpha sort では `.001` 自動付加で揺れる)。
-            z_index = int(getattr(folder, "z_order", 0) or 0)
-            om.ensure_folder_collection(
-                scene,
-                folder_id=folder_id,
-                title=title,
-                parent_kind=parent_kind,
-                parent_key=parent_key,
-                z_index=z_index,
-            )
 
         # 最後にページごとの Z rank を再計算 (page 内 0.1 刻み、 ページ間
         # は独立)。 paper_bg は z=0、 各レイヤーは z=0.1, 0.2, 0.3, ...

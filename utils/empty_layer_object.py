@@ -73,8 +73,10 @@ def _resolve_parent_for_entry(entry, page, folder_id: str) -> tuple[str, str, st
         return "outside", "", ""
     if entry_parent_kind == "coma" and entry_parent_key:
         return "coma", entry_parent_key, entry_folder_id
-    if entry_parent_kind == "folder" and entry_folder_id:
-        return "folder", entry_folder_id, entry_folder_id
+    if entry_parent_kind == "folder":
+        folder_key_value = entry_folder_id or entry_parent_key
+        if folder_key_value:
+            return "folder", folder_key_value, folder_key_value
     return (
         "page",
         entry_parent_key or str(getattr(page, "id", "") or ""),
@@ -275,18 +277,11 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         entry = find_image_entry(scene, bname_id)
         if entry is None:
             return False
-        page = None
         try:
             work = getattr(scene, "bname_work", None)
-            parent_key = str(getattr(entry, "parent_key", "") or "")
-            page_id = parent_key.split(":", 1)[0] if parent_key else ""
-            for candidate in getattr(work, "pages", []) or []:
-                if str(getattr(candidate, "id", "") or "") == page_id:
-                    page = candidate
-                    break
-            if page is None and len(getattr(work, "pages", []) or []) > 0:
-                page = work.pages[0]
-            ox_mm, oy_mm = _resolve_page_offset(scene, page)
+            from . import image_real_object
+
+            ox_mm, oy_mm = image_real_object.entry_page_offset_mm(scene, work, entry)
             new_x_mm -= ox_mm + float(getattr(entry, "width_mm", 0.0) or 0.0) * 0.5
             new_y_mm -= oy_mm + float(getattr(entry, "height_mm", 0.0) or 0.0) * 0.5
         except Exception:  # noqa: BLE001

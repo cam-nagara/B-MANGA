@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from ..utils import balloon_curve_object as bco
-from ..utils import empty_layer_object as elo
+from ..utils import image_real_object as iro
 from ..utils import log
 from ..utils import text_real_object as tro
 
@@ -61,24 +61,8 @@ class BNAME_OT_images_to_empty_all(bpy.types.Operator):
 
         scene = context.scene
         work = get_work(context)
-        coll = getattr(scene, "bname_image_layers", None) or []
-        n = 0
-        for entry in coll:
-            # 画像 entry の所属 page を逆引き (parent_key の page 部分)
-            parent_key = str(getattr(entry, "parent_key", "") or "")
-            page_id = parent_key.split(":", 1)[0] if parent_key else ""
-            page = None
-            for p in getattr(work, "pages", []):
-                if str(getattr(p, "id", "") or "") == page_id:
-                    page = p
-                    break
-            if page is None and len(work.pages) > 0:
-                page = work.pages[int(getattr(work, "active_page_index", 0) or 0)]
-            if page is None:
-                continue
-            if elo.ensure_image_empty_object(scene=scene, entry=entry, page=page):
-                n += 1
-        self.report({"INFO"}, f"{n} 件の画像 Empty を登録")
+        n = iro.sync_all_image_real_objects(scene, work)
+        self.report({"INFO"}, f"{n} 件の画像レイヤーを再登録")
         return {"FINISHED"}
 
 
