@@ -368,6 +368,9 @@ class BNAME_OT_layer_detail_open(Operator):
         if not self.bname_id or not self.kind:
             self.report({"WARNING"}, "選択 Object に B-Name ID / kind がありません")
             return {"CANCELLED"}
+        from ..utils import detail_popup
+
+        detail_popup.position_dialog_cursor(context, event, key="layer_detail")
         return context.window_manager.invoke_props_dialog(self, width=260)
 
     def draw(self, context):

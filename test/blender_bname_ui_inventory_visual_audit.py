@@ -482,6 +482,9 @@ def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets
     params = context.scene.bname_effect_line_params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
+        params.start_to_coma_frame = True
+        params.start_frame_density_basis = "rounded_frame"
+        params.spacing_mode = "distance"
         params.start_shape = "cloud"
         params.end_shape = "cloud"
         params.start_rounded_corner_enabled = True
@@ -521,6 +524,9 @@ def _collect_right_click_details(records: list[dict[str, Any]], context, targets
     params = context.scene.bname_effect_line_params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
+        params.start_to_coma_frame = True
+        params.start_frame_density_basis = "rounded_frame"
+        params.spacing_mode = "distance"
         _collect_draw(
             records,
             f"右クリック詳細設定 / 効果線 / {effect_type}",
@@ -584,6 +590,9 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "親フキダシ",
         "始点形状",
         "終点形状",
+        "密度基準",
+        "角丸率 (%)",
+        "密度補正",
         "白抜き線",
         "流線",
         "レイヤーフォルダ",

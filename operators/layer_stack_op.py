@@ -1347,39 +1347,9 @@ class BNAME_OT_layer_stack_detail(Operator):
     def _offset_cursor_for_selection_popup(self, context, event) -> None:
         if not bool(getattr(self, "offset_from_selection", False)):
             return
-        window = getattr(context, "window", None)
-        if window is None or event is None:
-            return
-        try:
-            original_x = int(getattr(event, "mouse_x", 0))
-            original_y = int(getattr(event, "mouse_y", 0))
-            if original_x <= 0 and original_y <= 0:
-                return
-            width = int(getattr(window, "width", 0))
-            height = int(getattr(window, "height", 0))
-            offset_x = 360
-            target_x = original_x + offset_x
-            if width > 0:
-                target_x = min(max(20, target_x), max(20, width - 20))
-            target_y = original_y
-            if height > 0:
-                target_y = min(max(20, target_y), max(20, height - 20))
-            if target_x == original_x and target_y == original_y:
-                return
-            window.cursor_warp(target_x, target_y)
+        from ..utils import detail_popup
 
-            def _restore_cursor():
-                try:
-                    current_window = getattr(bpy.context, "window", None)
-                    if current_window is not None:
-                        current_window.cursor_warp(original_x, original_y)
-                except Exception:  # noqa: BLE001
-                    pass
-                return None
-
-            bpy.app.timers.register(_restore_cursor, first_interval=0.05)
-        except Exception:  # noqa: BLE001
-            pass
+        detail_popup.position_dialog_cursor(context, event, key="layer_detail", offset_x=360)
 
     def _resolve_item(self, stack):
         if self.uid:

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from ..utils import balloon_shapes, log
 from ..utils.geom import Rect, mm_to_m
+from . import effect_line_density
 
 _logger = log.get_logger(__name__)
 
@@ -396,9 +397,19 @@ def generate_focus_strokes(
         and str(getattr(params, "spacing_mode", "") or "") == "distance"
         and len(start_outline) >= 2
     )
-    count_outline = start_outline if spacing_from_start_outline else end_outline
+    density_start_outline = (
+        effect_line_density.frame_density_outline(params, start_outline)
+        if spacing_from_start_outline
+        else start_outline
+    )
+    count_outline = density_start_outline if spacing_from_start_outline else end_outline
     count = _focus_slot_count_for_outline(params, count_outline, radius_x_mm, radius_y_mm)
     step_angle = (2.0 * math.pi) / max(1, count)
+    density_strength = (
+        effect_line_density.density_compensation_strength(params)
+        if str(getattr(params, "spacing_mode", "") or "") == "distance"
+        else 0.0
+    )
 
     for slot in _slot_positions(count, params, rng):
         if spacing_from_start_outline:
@@ -407,14 +418,22 @@ def generate_focus_strokes(
                 amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
                 slot_for_start += amount * (rng.random() * 2.0 - 1.0)
             t = _slot_fraction(slot_for_start, count, closed=True)
-            frame_point = _outline_point_at_fraction(start_outline, t)
-            if frame_point is None:
+            density_point = effect_line_density.outline_point_at_fraction(density_start_outline, t)
+            if density_point is None:
                 continue
-            angle = math.atan2(frame_point[1] - cy, frame_point[0] - cx)
+            angle = math.atan2(density_point[1] - cy, density_point[0] - cx)
+            frame_point = _ray_outline_point(center_xy_mm, start_outline, angle)
+            if frame_point is None:
+                frame_point = density_point
             x0, y0 = _extend_point_from_center(center_xy_mm, frame_point, start_extend)
         else:
             t = _slot_fraction(slot, count, closed=True)
             angle = 2.0 * math.pi * t + math.radians(float(params.rotation_deg))
+            if density_strength > 0.0:
+                density_point = effect_line_density.outline_point_at_fraction(end_outline, t)
+                if density_point is not None:
+                    density_angle = math.atan2(density_point[1] - cy, density_point[0] - cx)
+                    angle = effect_line_density.blend_angles(angle, density_angle, density_strength)
             if bool(getattr(params, "spacing_jitter_enabled", False)):
                 amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
                 angle += step_angle * amount * (rng.random() * 2.0 - 1.0)

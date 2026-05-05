@@ -15,6 +15,10 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
     box.label(text=label)
     if frame_toggle:
         box.prop(params, "start_to_coma_frame")
+        if bool(params.start_to_coma_frame):
+            box.prop(params, "start_frame_density_basis")
+            if params.start_frame_density_basis == "rounded_frame":
+                box.prop(params, "start_frame_density_rounding_percent")
     content = box.column(align=True)
     if frame_toggle:
         content.enabled = not bool(params.start_to_coma_frame)
@@ -117,6 +121,8 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
             box.prop(params, "spacing_angle_deg")
         else:
             box.prop(params, "spacing_distance_mm")
+            if params.effect_type != "speed":
+                box.prop(params, "spacing_density_compensation")
         row = box.row(align=True)
         row.prop(params, "spacing_jitter_enabled", text="間隔乱れ")
         sub = row.row()

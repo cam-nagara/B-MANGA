@@ -44,6 +44,19 @@ _SPACING_MODE_ITEMS = (
     ("distance", "距離指定", ""),
 )
 
+_FRAME_DENSITY_BASIS_ITEMS = (
+    ("frame", "コマ枠", "実際のコマ枠を密度基準にします"),
+    ("rounded_frame", "角丸コマ枠", "角を丸めた仮想コマ枠を密度基準にします"),
+    ("ellipse", "楕円", "コマ枠を包む楕円を密度基準にします"),
+)
+
+_DENSITY_COMPENSATION_ITEMS = (
+    ("none", "なし", ""),
+    ("weak", "弱", ""),
+    ("medium", "中", ""),
+    ("strong", "強", ""),
+)
+
 _INOUT_APPLY_ITEMS = (
     ("brush_size", "ブラシサイズ", ""),
     ("opacity", "不透明度", ""),
@@ -55,7 +68,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 3
+EFFECT_PARAM_SCHEMA_VERSION = 4
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -66,6 +79,8 @@ EFFECT_PARAM_FIELDS = (
     "rotation_deg",
     "start_shape",
     "start_to_coma_frame",
+    "start_frame_density_basis",
+    "start_frame_density_rounding_percent",
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
     "start_cloud_bump_width_mm",
@@ -97,6 +112,7 @@ EFFECT_PARAM_FIELDS = (
     "spacing_mode",
     "spacing_angle_deg",
     "spacing_distance_mm",
+    "spacing_density_compensation",
     "spacing_jitter_enabled",
     "spacing_jitter_amount",
     "max_line_count",
@@ -194,6 +210,10 @@ def effect_params_from_dict(params, data: dict) -> None:
         == _LEGACY_DEFAULT_SPEED_LINE_COUNT
     ):
         data["speed_line_count"] = _DEFAULT_SPEED_LINE_COUNT
+    if schema_version < 4:
+        data.setdefault("start_frame_density_basis", "rounded_frame")
+        data.setdefault("start_frame_density_rounding_percent", 100.0)
+        data.setdefault("spacing_density_compensation", "medium")
     for field in EFFECT_PARAM_FIELDS:
         if field not in data or not hasattr(params, field):
             continue
@@ -215,6 +235,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
 
     start_shape: EnumProperty(name="始点形状", items=_EFFECT_SHAPE_ITEMS, default="rect", update=_on_params_changed)  # type: ignore[valid-type]
     start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    start_frame_density_basis: EnumProperty(name="密度基準", items=_FRAME_DENSITY_BASIS_ITEMS, default="rounded_frame", update=_on_params_changed)  # type: ignore[valid-type]
+    start_frame_density_rounding_percent: FloatProperty(name="角丸率 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_mm: FloatProperty(name="角半径", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -249,6 +271,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
     spacing_distance_mm: FloatProperty(name="線の間隔 (距離)", default=0.40, min=0.01, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
+    spacing_density_compensation: EnumProperty(name="密度補正", items=_DENSITY_COMPENSATION_ITEMS, default="medium", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     spacing_jitter_amount: FloatProperty(name="間隔乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     max_line_count: IntProperty(name="最大本数", default=_DEFAULT_MAX_LINE_COUNT, min=1, soft_max=2000, update=_on_params_changed)  # type: ignore[valid-type]

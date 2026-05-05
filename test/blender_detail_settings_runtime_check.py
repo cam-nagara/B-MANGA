@@ -53,9 +53,13 @@ def main() -> None:
         from bname_dev.io import balloon_presets
         from bname_dev.ui import overlay_image
         from bname_dev.utils import balloon_shapes
+        from bname_dev.utils import detail_popup
+        from bname_dev.utils import object_naming
         from bname_dev.utils.geom import Rect
 
-        obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
+        obj = object_naming.find_object_by_bname_id(entry.id, kind="raster")
+        if obj is None:
+            obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
         assert obj is not None
 
         entry.visible = False
@@ -101,6 +105,35 @@ def main() -> None:
         assert outline[0] == (10.0, 20.0)
         assert outline[1] == (60.0, 70.0)
         assert outline[2] == (110.0, 20.0)
+
+        class _FakeWindow:
+            width = 1000
+            height = 800
+
+            def __init__(self):
+                self.warps = []
+
+            def cursor_warp(self, x, y):
+                self.warps.append((int(x), int(y)))
+
+        fake_window = _FakeWindow()
+        fake_wm = {}
+        fake_context = SimpleNamespace(window=fake_window, window_manager=fake_wm)
+        detail_popup.position_dialog_cursor(
+            fake_context,
+            SimpleNamespace(mouse_x=100, mouse_y=200),
+            key="test_detail",
+            offset_x=50,
+        )
+        assert fake_wm["bname_detail_popup_pos_test_detail_x"] == 150
+        assert fake_wm["bname_detail_popup_pos_test_detail_y"] == 200
+        detail_popup.position_dialog_cursor(
+            fake_context,
+            SimpleNamespace(mouse_x=300, mouse_y=400),
+            key="test_detail",
+            offset_x=50,
+        )
+        assert fake_window.warps[-1] == (150, 200)
     finally:
         if mod is not None:
             mod.unregister()

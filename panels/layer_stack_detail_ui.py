@@ -276,6 +276,10 @@ def _draw_effect_shape_settings(box, params, prefix: str, label: str, *, frame_t
     shape_box.label(text=label)
     if frame_toggle:
         shape_box.prop(params, "start_to_coma_frame")
+        if bool(params.start_to_coma_frame):
+            shape_box.prop(params, "start_frame_density_basis")
+            if params.start_frame_density_basis == "rounded_frame":
+                shape_box.prop(params, "start_frame_density_rounding_percent")
     content = shape_box.column(align=True)
     if frame_toggle:
         content.enabled = not bool(params.start_to_coma_frame)
@@ -328,6 +332,8 @@ def _draw_effect_interval_settings(box, params) -> None:
         interval_box.prop(params, "spacing_angle_deg")
     else:
         interval_box.prop(params, "spacing_distance_mm")
+        if params.effect_type != "speed":
+            interval_box.prop(params, "spacing_density_compensation")
     row = interval_box.row(align=True)
     row.prop(params, "spacing_jitter_enabled", text="乱れ")
     sub = row.row()

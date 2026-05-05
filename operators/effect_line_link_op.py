@@ -17,6 +17,8 @@ _LINKED_SHAPE_FIELDS = {
     "rotation_deg",
     "start_shape",
     "start_to_coma_frame",
+    "start_frame_density_basis",
+    "start_frame_density_rounding_percent",
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
     "start_cloud_bump_width_mm",
@@ -40,6 +42,7 @@ _LINKED_SHAPE_FIELDS = {
     "end_cloud_sub_width_jitter",
     "end_cloud_sub_height_ratio",
     "end_cloud_sub_height_jitter",
+    "spacing_density_compensation",
     "speed_angle_deg",
 }
 
