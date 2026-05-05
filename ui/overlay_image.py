@@ -38,10 +38,6 @@ def _get_image_layer_shader():
     if _IMAGE_LAYER_SHADER is not None:
         return _IMAGE_LAYER_SHADER
     vertex_src = """
-        uniform mat4 ModelViewProjectionMatrix;
-        in vec3 pos;
-        in vec2 texCoord;
-        out vec2 uvInterp;
         void main()
         {
             gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
@@ -49,18 +45,10 @@ def _get_image_layer_shader():
         }
     """
     fragment_src = """
-        uniform sampler2D image;
-        uniform vec4 tint;
-        uniform float opacity;
-        uniform float brightness;
-        uniform float contrast;
-        uniform float binarize_enabled;
-        uniform float binarize_threshold;
-        in vec2 uvInterp;
-        out vec4 fragColor;
         void main()
         {
             vec4 color = texture(image, uvInterp);
+            color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
             color.rgb = (color.rgb - vec3(0.5)) * (1.0 + contrast) + vec3(0.5 + brightness);
             color.rgb = clamp(color.rgb, 0.0, 1.0);
             if (binarize_enabled > 0.5) {
@@ -74,7 +62,25 @@ def _get_image_layer_shader():
         }
     """
     try:
-        _IMAGE_LAYER_SHADER = gpu.types.GPUShader(vertex_src, fragment_src)
+        interface = gpu.types.GPUStageInterfaceInfo("bname_image_layer_iface")
+        interface.smooth("VEC2", "uvInterp")
+        shader_info = gpu.types.GPUShaderCreateInfo()
+        shader_info.push_constant("MAT4", "ModelViewProjectionMatrix")
+        shader_info.sampler(0, "FLOAT_2D", "image")
+        shader_info.push_constant("VEC4", "tint")
+        shader_info.push_constant("FLOAT", "opacity")
+        shader_info.push_constant("FLOAT", "brightness")
+        shader_info.push_constant("FLOAT", "contrast")
+        shader_info.push_constant("FLOAT", "binarize_enabled")
+        shader_info.push_constant("FLOAT", "binarize_threshold")
+        shader_info.vertex_in(0, "VEC3", "pos")
+        shader_info.vertex_in(1, "VEC2", "texCoord")
+        shader_info.vertex_out(interface)
+        shader_info.fragment_out(0, "VEC4", "fragColor")
+        shader_info.vertex_source(vertex_src)
+        shader_info.fragment_source(fragment_src)
+        _IMAGE_LAYER_SHADER = gpu.shader.create_from_info(shader_info)
+        del shader_info
     except Exception:  # noqa: BLE001
         _IMAGE_LAYER_SHADER_FAILED = True
         _logger.exception("image layer shader compile failed")
@@ -143,9 +149,13 @@ def draw_image_layers(scene) -> None:
         shader.uniform_sampler("image", tex)
         if custom_shader is not None:
             _bind_image_adjustment_uniforms(shader, entry)
-        _apply_blend_mode(getattr(entry, "blend_mode", "normal"))
-        gpu.state.blend_set("ALPHA")
-        batch.draw(shader)
+        prev_blend = gpu.state.blend_get()
+        try:
+            _apply_blend_mode(getattr(entry, "blend_mode", "normal"))
+            gpu.state.blend_set("ALPHA")
+            batch.draw(shader)
+        finally:
+            gpu.state.blend_set(prev_blend)
 
 
 def _bind_image_adjustment_uniforms(shader, entry) -> None:
@@ -174,6 +184,11 @@ def _ensure_bpy_image(filepath: str):
     if not filepath:
         return None
     try:
-        return bpy.data.images.load(bpy.path.abspath(filepath), check_existing=True)
+        img = bpy.data.images.load(bpy.path.abspath(filepath), check_existing=True)
     except Exception:  # noqa: BLE001
         return None
+    try:
+        img.colorspace_settings.name = "sRGB"
+    except Exception:  # noqa: BLE001
+        pass
+    return img

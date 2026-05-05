@@ -6,7 +6,8 @@
 
 この test は ``mirror_work_to_outliner`` (load_post の主役) を呼んだ後で:
 - ``__papers__`` Collection と配下の ``page_paper_bg_*`` が **purge** される
-- ``__masks__`` Collection と配下の ``page_mask_*`` / ``coma_mask_*`` が purge される
+- ``__masks__`` Collection と配下の旧 ``page_mask_*`` が purge され、現在の
+  非表示 ``coma_mask_*`` は Boolean 参照として再生成される
 - 各ページ Collection 直下に ``page_paper_bg_<page>`` が生成される
 - 各コマ Collection 直下に ``coma_plane_<page>_<coma>`` が生成される
 を検証する。
@@ -113,10 +114,17 @@ def main() -> None:
         assert bpy.data.collections.get("__masks__") is None, (
             f"__masks__ should be purged but exists. children={bpy.data.collections}"
         )
-        # 2. page_mask_* / coma_mask_* Object は完全 purge
+        # 2. page_mask_* Object と旧 mask custom property は完全 purge。
+        # coma_mask_* は現在の Boolean 参照用の非表示実体なので存在が正しい。
         for obj in bpy.data.objects:
             assert not obj.name.startswith("page_mask_"), obj.name
-            assert not obj.name.startswith("coma_mask_"), obj.name
+            assert obj.get(mo.PROP_MASK_KIND) not in {"page", "coma"}, obj.name
+        mask_obj = cp.find_coma_mask_object(page.id, coma.id)
+        assert mask_obj is not None, "current coma_mask should be regenerated"
+        assert mask_obj.hide_viewport is True
+        assert mask_obj.hide_render is True
+        assert mask_obj.hide_select is True
+        assert mask_obj.get(cp.PROP_COMA_MASK_KIND) == "coma_mask"
         # 3. coma_plane_<page>_<coma> がコマ Collection 直下にある
         plane_obj = cp.find_coma_plane_object(page.id, coma.id)
         assert plane_obj is not None, "coma_plane should be created during mirror"

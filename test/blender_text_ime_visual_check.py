@@ -239,8 +239,9 @@ def _capture_commit():
     _commit_text()
     _STATE["commit_screenshot"] = _screenshot("text_ime_committed.png")
     _write_state()
-    print("BNAME_TEXT_IME_VISUAL_OK")
-    print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True))
+    print("BNAME_TEXT_IME_VISUAL_OK", flush=True)
+    print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True), flush=True)
+    sys.stdout.flush()
     _cleanup()
     os._exit(0)
     return None

@@ -59,6 +59,133 @@ def _outside_panel_point(work, page) -> tuple[float, float]:
     raise AssertionError("page-local point outside panels was not found")
 
 
+def _assert_rect_on_page(context, work, page_index: int, rect, label: str) -> None:
+    from bname_dev.utils import page_grid
+
+    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
+    center_x = float(rect.x) + float(rect.width) * 0.5
+    center_y = float(rect.y) + float(rect.height) * 0.5
+    local_x = center_x - ox_mm
+    local_y = center_y - oy_mm
+    paper = work.paper
+    if not (
+        0.0 <= local_x <= float(paper.canvas_width_mm)
+        and 0.0 <= local_y <= float(paper.canvas_height_mm)
+    ):
+        raise AssertionError(
+            f"{label}: 選択枠が対象ページ外です "
+            f"world=({center_x:.3f},{center_y:.3f}) "
+            f"local=({local_x:.3f},{local_y:.3f}) page={page_index}"
+        )
+
+
+def _check_creation_scope_for_layout(context, work, page_index: int, *, start_side: str, read_direction: str) -> None:
+    from bname_dev.operators import balloon_op, effect_line_op
+    from bname_dev.utils import gp_layer_parenting as gp_parent
+    from bname_dev.utils import layer_hierarchy, object_selection, page_grid
+    from bname_dev.operators import object_tool_selection, text_op
+
+    work.paper.start_side = start_side
+    work.paper.read_direction = read_direction
+    context.scene.bname_overview_mode = True
+    page_grid.apply_page_collection_transforms(context, work)
+
+    page = work.pages[page_index]
+    panel = page.comas[0]
+    page_key = layer_hierarchy.page_stack_key(page)
+    coma_key = layer_hierarchy.coma_stack_key(page, panel)
+    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
+
+    local_x, local_y = _inside_panel_point(panel)
+    world_x = ox_mm + local_x
+    world_y = oy_mm + local_y
+    resolved = effect_line_op._creation_context_for_world_point(context, world_x, world_y)
+    assert resolved is not None
+    _work, resolved_page, resolved_page_index, lx, ly, parent_key = resolved
+    assert resolved_page == page
+    assert resolved_page_index == page_index
+    assert parent_key == coma_key
+    _assert_close(lx, local_x, f"{start_side}/{read_direction} effect local x")
+    _assert_close(ly, local_y, f"{start_side}/{read_direction} effect local y")
+
+    obj, layer = effect_line_op._create_effect_layer(
+        context,
+        (lx, ly, 12.0, 10.0),
+        parent_key=parent_key,
+    )
+    assert obj is not None and layer is not None
+    assert gp_parent.parent_key(layer) == coma_key
+    world_bounds = effect_line_op.effect_layer_world_bounds(
+        context,
+        obj,
+        layer,
+        effect_line_op.effect_layer_bounds(obj, layer),
+    )
+    assert world_bounds is not None
+    _assert_close(world_bounds[0], world_x, f"{start_side}/{read_direction} effect handle world x")
+    _assert_close(world_bounds[1], world_y, f"{start_side}/{read_direction} effect handle world y")
+
+    effect_key = object_selection.effect_key(layer)
+    effect_rect = object_tool_selection.selection_bounds_for_key(context, effect_key)
+    assert effect_rect is not None
+    _assert_rect_on_page(context, work, page_index, effect_rect, f"{start_side}/{read_direction} 効果線")
+
+    parent_kind, balloon_parent_key = balloon_op._parent_for_creation_point(page, local_x, local_y)
+    assert parent_kind == "coma"
+    assert balloon_parent_key == coma_key
+    balloon = balloon_op._create_balloon_entry(
+        context,
+        page,
+        shape="ellipse",
+        x=local_x + 3.0,
+        y=local_y + 3.0,
+        w=18.0,
+        h=12.0,
+        parent_kind=parent_kind,
+        parent_key=balloon_parent_key,
+    )
+    balloon_rect = object_tool_selection.selection_bounds_for_key(
+        context,
+        object_selection.balloon_key(page, balloon),
+    )
+    assert balloon_rect is not None
+    _assert_rect_on_page(context, work, page_index, balloon_rect, f"{start_side}/{read_direction} フキダシ")
+
+    text, missing = text_op._create_text_entry(
+        context,
+        page,
+        body="ページずれ確認",
+        speaker_type="normal",
+        x_mm=local_x + 6.0,
+        y_mm=local_y + 6.0,
+        width_mm=20.0,
+        height_mm=14.0,
+        parent_kind=parent_kind,
+        parent_key=balloon_parent_key,
+    )
+    assert not missing
+    text_rect = object_tool_selection.selection_bounds_for_key(
+        context,
+        object_selection.text_key(page, text),
+    )
+    assert text_rect is not None
+    _assert_rect_on_page(context, work, page_index, text_rect, f"{start_side}/{read_direction} テキスト")
+
+    page_local_x, page_local_y = _outside_panel_point(work, page)
+    page_world_x = ox_mm + page_local_x
+    page_world_y = oy_mm + page_local_y
+    page_resolved = effect_line_op._creation_context_for_world_point(
+        context,
+        page_world_x,
+        page_world_y,
+    )
+    assert page_resolved is not None
+    assert page_resolved[2] == page_index
+    assert page_resolved[5] == page_key
+    _assert_close(page_resolved[3], page_local_x, f"{start_side}/{read_direction} page local x")
+    _assert_close(page_resolved[4], page_local_y, f"{start_side}/{read_direction} page local y")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_creation_scope_"))
     mod = None
@@ -66,6 +193,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "CreationScope.bname"))
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bname.page_add()
         assert result == {"FINISHED"}, result
         result = bpy.ops.bname.page_add()
         assert result == {"FINISHED"}, result
@@ -156,6 +285,22 @@ def main() -> None:
         )
         assert parent_kind == "page"
         assert balloon_parent_key == page_key
+
+        for start_side, read_direction in (
+            ("right", "left"),
+            ("left", "left"),
+            ("right", "right"),
+            ("left", "right"),
+            ("right", "down"),
+            ("left", "down"),
+        ):
+            _check_creation_scope_for_layout(
+                context,
+                work,
+                2,
+                start_side=start_side,
+                read_direction=read_direction,
+            )
     finally:
         if mod is not None:
             mod.unregister()

@@ -47,6 +47,67 @@ def _active_managed_object(context):
     return None
 
 
+def selection_command_items(context) -> list[dict]:
+    """選択中レイヤー向け右クリックメニュー項目を返す.
+
+    実際の Menu 描画と実機テストの両方で使い、項目の抜けを防ぐ。
+    """
+    item = layer_stack_utils.active_stack_item(context)
+    kind = str(getattr(item, "kind", "") or "")
+    has_item = item is not None
+    return [
+        {
+            "label": "詳細設定",
+            "operator": "bname.layer_stack_detail",
+            "icon": "PREFERENCES",
+            "enabled": has_item,
+        },
+        {
+            "label": "複製",
+            "operator": "bname.layer_stack_duplicate",
+            "icon": "DUPLICATE",
+            "enabled": has_item,
+        },
+        {
+            "label": "リンク複製",
+            "operator": "bname.effect_line_create_linked",
+            "icon": "LINKED",
+            "enabled": has_item and kind in {"effect", "effect_legacy"},
+        },
+        {
+            "label": "削除",
+            "operator": "bname.layer_stack_remove",
+            "icon": "TRASH",
+            "enabled": has_item,
+        },
+    ]
+
+
+def _draw_selection_command_items(layout, context) -> bool:
+    items = selection_command_items(context)
+    if not any(bool(item.get("enabled", False)) for item in items):
+        return False
+    for item in items:
+        label = str(item.get("label", ""))
+        op_id = str(item.get("operator", ""))
+        icon = str(item.get("icon", "NONE") or "NONE")
+        enabled = bool(item.get("enabled", False))
+        row = layout.row()
+        row.enabled = enabled
+        if not op_id:
+            row.label(text=label, icon=icon)
+            continue
+        if op_id == "bname.layer_stack_detail":
+            row.operator_context = "INVOKE_DEFAULT"
+            op = row.operator(op_id, text=label, icon=icon)
+            op.index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+            op.offset_from_selection = True
+        else:
+            row.operator_context = "INVOKE_DEFAULT"
+            row.operator(op_id, text=label, icon=icon)
+    return True
+
+
 def _draw_layer_commands(layout, context) -> None:
     """選択中レイヤー Object に対して詳細/複製/削除 等のコマンドを描画."""
     obj = _active_managed_object(context)
@@ -54,11 +115,8 @@ def _draw_layer_commands(layout, context) -> None:
         item = layer_stack_utils.active_stack_item(context)
         if item is not None:
             layout.label(text=str(getattr(item, "label", "") or getattr(item, "name", "") or "選択中レイヤー"), icon="RESTRICT_SELECT_OFF")
-            row = layout.row()
-            row.operator_context = "INVOKE_DEFAULT"
-            op = row.operator("bname.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
-            op.index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
-            op.offset_from_selection = True
+            layout.separator()
+            _draw_selection_command_items(layout, context)
             return
         layout.label(text="B-Name レイヤーを選択してください", icon="INFO")
         return
@@ -66,22 +124,21 @@ def _draw_layer_commands(layout, context) -> None:
     title = str(obj.get(on.PROP_TITLE, "") or obj.name)
     layout.label(text=title, icon="OBJECT_DATA")
     layout.separator()
-
-    detail_row = layout.row()
-    detail_row.operator_context = "INVOKE_DEFAULT"
-    detail_row.operator(
-        "bname.layer_detail_open", text="詳細設定", icon="PREFERENCES"
-    )
-
-    # 効果線の場合はリンク複製も
-    if kind in {"effect", "effect_legacy"}:
-        link_op = getattr(bpy.ops.bname, "effect_line_create_linked", None)
-        if link_op is not None:
-            layout.operator(
-                "bname.effect_line_create_linked",
-                text="リンク複製",
-                icon="LINKED",
-            )
+    if not _draw_selection_command_items(layout, context):
+        detail_row = layout.row()
+        detail_row.operator_context = "INVOKE_DEFAULT"
+        detail_row.operator(
+            "bname.layer_detail_open", text="詳細設定", icon="PREFERENCES"
+        )
+        # 効果線の場合はリンク複製も
+        if kind in {"effect", "effect_legacy"}:
+            link_op = getattr(bpy.ops.bname, "effect_line_create_linked", None)
+            if link_op is not None:
+                layout.operator(
+                    "bname.effect_line_create_linked",
+                    text="リンク複製",
+                    icon="LINKED",
+                )
 
     # Outliner D&D で親変更可能であることの案内
     layout.separator()

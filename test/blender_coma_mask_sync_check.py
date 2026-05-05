@@ -15,8 +15,9 @@
    ``resolve_active_target`` が ``("coma", "<page_id>:<coma_id>", page)`` を返す。
 6. paper_bg Material (``BName_PaperBackground``) と ``__papers__`` Collection
    visibility が coma_plane 操作前後で不変。
-7. 旧 ``__masks__`` Collection / ``page_mask_*`` / ``coma_mask_*`` は生成
-   されない (purge 済)。
+7. 旧 ``__masks__`` Collection / ``page_mask_*`` は生成されず、コマ内
+   ラスター用の非表示 ``coma_mask_*`` だけが参照オブジェクトとして
+   生成される。
 """
 
 from __future__ import annotations
@@ -186,11 +187,19 @@ def main() -> None:
             for c in paper_bg_obj_after.users_collection
         )
 
-        # 7. 旧 __masks__ Collection / page_mask_* / coma_mask_* が無いこと
+        # 7. 旧 __masks__ Collection / page_mask_* が無いこと。
+        # coma_mask_* は現在の Boolean 参照用の非表示実体なので存在が正しい。
         assert bpy.data.collections.get("__masks__") is None
         for obj in bpy.data.objects:
             assert not obj.name.startswith("page_mask_"), obj.name
-            assert not obj.name.startswith("coma_mask_"), obj.name
+        mask_obj = cp.find_coma_mask_object(page.id, coma.id)
+        assert mask_obj is not None, "coma_mask Object should exist as hidden Boolean reference"
+        assert mask_obj.hide_viewport is True
+        assert mask_obj.hide_render is True
+        assert mask_obj.hide_select is True
+        assert mask_obj.get(cp.PROP_COMA_MASK_KIND) == "coma_mask"
+        assert mask_obj.get(cp.PROP_COMA_MASK_OWNER_ID) == f"{page.id}:{coma.id}"
+        assert mask_obj.modifiers.get(cp.COMA_MASK_SOLIDIFY_NAME) is not None
 
         # ---- 8. 新規コマ追加で coma_plane が即時生成されること ----
         from bname_dev.operators import coma_op

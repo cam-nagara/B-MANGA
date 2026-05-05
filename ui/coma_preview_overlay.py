@@ -12,7 +12,13 @@ from gpu_extras.batch import batch_for_shader
 
 from ..utils import image_transparency
 from ..utils import coma_preview
+from ..utils import log
 from ..utils.geom import mm_to_m
+
+
+_logger = log.get_logger(__name__)
+_COMA_PREVIEW_SHADER = None
+_COMA_PREVIEW_SHADER_FAILED = False
 
 
 def draw_coma_preview(work, page, entry, ox_mm: float = 0.0, oy_mm: float = 0.0) -> bool:
@@ -62,7 +68,7 @@ def draw_coma_preview(work, page, entry, ox_mm: float = 0.0, oy_mm: float = 0.0)
     except Exception:  # noqa: BLE001
         return False
 
-    shader = gpu.shader.from_builtin("IMAGE")
+    shader = _get_coma_preview_shader() or gpu.shader.from_builtin("IMAGE")
     batch = batch_for_shader(
         shader,
         "TRIS",
@@ -76,11 +82,58 @@ def draw_coma_preview(work, page, entry, ox_mm: float = 0.0, oy_mm: float = 0.0)
     # handler より先に depth buffer に書き込むため、 thumb の depth_test が
     # 残っていると coma_plane に覆われて何も見えなくなる。
     prev_depth_test = gpu.state.depth_test_get()
-    gpu.state.depth_test_set("NONE")
-    gpu.state.blend_set("ALPHA")
-    batch.draw(shader)
-    gpu.state.depth_test_set(prev_depth_test)
+    prev_blend = gpu.state.blend_get()
+    try:
+        gpu.state.depth_test_set("NONE")
+        gpu.state.blend_set("ALPHA")
+        batch.draw(shader)
+    finally:
+        gpu.state.depth_test_set(prev_depth_test)
+        gpu.state.blend_set(prev_blend)
     return True
+
+
+def _get_coma_preview_shader():
+    """sRGB 画像をビューポート上の表示色として描くためのシェーダ."""
+    global _COMA_PREVIEW_SHADER, _COMA_PREVIEW_SHADER_FAILED
+    if _COMA_PREVIEW_SHADER_FAILED:
+        return None
+    if _COMA_PREVIEW_SHADER is not None:
+        return _COMA_PREVIEW_SHADER
+    vertex_src = """
+        void main()
+        {
+            gl_Position = ModelViewProjectionMatrix * vec4(pos, 1.0);
+            uvInterp = texCoord;
+        }
+    """
+    fragment_src = """
+        void main()
+        {
+            vec4 color = texture(image, uvInterp);
+            color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
+            fragColor = color;
+        }
+    """
+    try:
+        interface = gpu.types.GPUStageInterfaceInfo("bname_coma_preview_iface")
+        interface.smooth("VEC2", "uvInterp")
+        shader_info = gpu.types.GPUShaderCreateInfo()
+        shader_info.push_constant("MAT4", "ModelViewProjectionMatrix")
+        shader_info.sampler(0, "FLOAT_2D", "image")
+        shader_info.vertex_in(0, "VEC3", "pos")
+        shader_info.vertex_in(1, "VEC2", "texCoord")
+        shader_info.vertex_out(interface)
+        shader_info.fragment_out(0, "VEC4", "fragColor")
+        shader_info.vertex_source(vertex_src)
+        shader_info.fragment_source(fragment_src)
+        _COMA_PREVIEW_SHADER = gpu.shader.create_from_info(shader_info)
+        del shader_info
+    except Exception:  # noqa: BLE001
+        _COMA_PREVIEW_SHADER_FAILED = True
+        _logger.exception("coma preview shader compile failed")
+        return None
+    return _COMA_PREVIEW_SHADER
 
 
 def _display_source_for_panel(source: Path, entry) -> Path:
@@ -155,6 +208,7 @@ def _ensure_bpy_image_current(path: Path):
             if float(img.get("_bname_mtime", -1.0)) != mtime:
                 img.reload()
                 img["_bname_mtime"] = mtime
+            _set_image_display_colorspace(img)
             return img
         except Exception:  # noqa: BLE001
             continue
@@ -162,6 +216,14 @@ def _ensure_bpy_image_current(path: Path):
     try:
         img = bpy.data.images.load(abspath, check_existing=True)
         img["_bname_mtime"] = mtime
+        _set_image_display_colorspace(img)
         return img
     except Exception:  # noqa: BLE001
         return None
+
+
+def _set_image_display_colorspace(img) -> None:
+    try:
+        img.colorspace_settings.name = "sRGB"
+    except Exception:  # noqa: BLE001
+        pass
