@@ -34,7 +34,7 @@ def _pixel_for_mm(x_mm: float, y_mm: float, image_height: int, dpi: int) -> tupl
     return int(round(mm_to_px(x_mm, dpi))), image_height - int(round(mm_to_px(y_mm, dpi)))
 
 
-def _assert_current_coma_visible(image_path: Path, coma) -> None:
+def _assert_current_coma_background_transparent(image_path: Path, coma) -> None:
     from bname_dev_underlay.io import export_pipeline
     from bname_dev_underlay.utils.coma_camera_constants import DEFAULT_REF_DPI
 
@@ -43,9 +43,9 @@ def _assert_current_coma_visible(image_path: Path, coma) -> None:
     with Image.open(str(image_path)) as opened:
         img = opened.convert("RGBA")
         x_mm = float(coma.rect_x_mm) + float(coma.rect_width_mm) * 0.5
-        y_mm = float(coma.rect_y_mm) + float(coma.rect_height_mm) * 0.5
+        y_mm = float(coma.rect_y_mm) + float(coma.rect_height_mm) * 0.25
         px = _pixel_for_mm(x_mm, y_mm, img.height, DEFAULT_REF_DPI)
-        assert img.getpixel(px)[3] > 0, "current coma area was transparent in underlay"
+        assert img.getpixel(px)[3] == 0, "current coma background was not transparent in page image"
 
 
 def _assert_gp_stroke_rendered(image_path: Path, coma) -> None:
@@ -102,6 +102,45 @@ def _koma_reference_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
     return _koma_ref_path(reference_dir(work_dir), page_id, coma_id)
 
 
+def _page_image_background(context):
+    camera = getattr(context.scene, "camera", None)
+    data = getattr(camera, "data", None) if camera is not None else None
+    for bg in getattr(data, "background_images", []) or []:
+        img = getattr(bg, "image", None)
+        if img is not None and bool(img.get("bname_full_page_mask", False)):
+            return bg
+    return None
+
+
+def _assert_coma_render_resolution_matches_paper(context) -> None:
+    from bname_dev_underlay.utils.geom import mm_to_px
+
+    work = context.scene.bname_work
+    paper = work.paper
+    expected_x = int(round(mm_to_px(float(paper.canvas_width_mm), int(paper.dpi))))
+    expected_y = int(round(mm_to_px(float(paper.canvas_height_mm), int(paper.dpi))))
+    actual = (int(context.scene.render.resolution_x), int(context.scene.render.resolution_y))
+    expected = (expected_x, expected_y)
+    if actual != expected:
+        raise AssertionError(f"coma render resolution mismatch: actual={actual} expected={expected}")
+
+
+def _assert_page_image_controls(context) -> None:
+    settings = context.scene.bname_coma_camera_settings
+    bg = _page_image_background(context)
+    if bg is None:
+        raise AssertionError("page image background was not configured")
+    settings.name_bg_images_opacity = 0.33
+    if abs(float(bg.alpha) - 0.33) > 0.01:
+        raise AssertionError(f"page image opacity was not controlled: {bg.alpha}")
+    settings.koma_bg_images_opacity = 0.77
+    if abs(float(bg.alpha) - 0.33) > 0.01:
+        raise AssertionError("page image opacity was incorrectly controlled by coma opacity")
+    settings.bg_images_scale = 1.25
+    if abs(float(bg.scale) - 1.25) > 0.01:
+        raise AssertionError(f"page image scale was not controlled: {bg.scale}")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_underlay_"))
     mod = None
@@ -124,24 +163,26 @@ def main() -> None:
         assert refs, "underlay reference was not generated in work.blend"
         underlay = _koma_reference_path(work_dir, page.id, coma.coma_id)
         assert underlay.is_file(), underlay
-        _assert_current_coma_visible(underlay, coma)
+        _assert_current_coma_background_transparent(underlay, coma)
         _assert_gp_stroke_rendered(underlay, coma)
 
         result = bpy.ops.bname.enter_coma_mode()
         assert result == {"FINISHED"}, result
+        _assert_coma_render_resolution_matches_paper(bpy.context)
+        _assert_page_image_controls(bpy.context)
         work = bpy.context.scene.bname_work
         page_id = str(bpy.context.scene.bname_current_coma_page_id)
         coma_id = str(bpy.context.scene.bname_current_coma_id)
         underlay = _koma_reference_path(work_dir, page_id, coma_id)
         underlay.unlink(missing_ok=True)
-        pageclean = coma_camera_refs._page_ref_path(coma_camera_refs.reference_dir(work_dir), page_id)
+        pageclean = coma_camera_refs._page_coma_ref_path(coma_camera_refs.reference_dir(work_dir), page_id, coma_id)
         pageclean.unlink(missing_ok=True)
         refs = coma_camera_refs.ensure_reference_images(work, page_id, coma_id)
         assert refs, "underlay reference was not regenerated from work.blend"
         assert underlay.is_file(), underlay
         current_page = work.pages[0]
         current_coma = current_page.comas[0]
-        _assert_current_coma_visible(underlay, current_coma)
+        _assert_current_coma_background_transparent(underlay, current_coma)
         _assert_gp_stroke_rendered(underlay, current_coma)
 
         print("BNAME_COMA_UNDERLAY_REFERENCE_OK")

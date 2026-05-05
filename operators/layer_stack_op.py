@@ -1296,13 +1296,21 @@ class BNAME_OT_layer_stack_detail(Operator):
 
     def invoke(self, context, event):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        if stack is None or not (0 <= self.index < len(stack)):
+        index = int(self.index)
+        if stack is not None and not (0 <= index < len(stack)) and self.uid:
+            uid = str(self.uid)
+            for i, item in enumerate(stack):
+                if layer_stack_utils.stack_item_uid(item) == uid:
+                    index = i
+                    break
+        if stack is None or not (0 <= index < len(stack)):
             self.report({"ERROR"}, "詳細設定を開くレイヤーが見つかりません")
             return {"CANCELLED"}
         edge_state = self._capture_edge_selection(context)
-        self.uid = layer_stack_utils.stack_item_uid(stack[self.index])
-        layer_stack_utils.select_stack_index(context, self.index)
-        self._restore_edge_selection_if_needed(context, stack[self.index], edge_state)
+        self.index = index
+        self.uid = layer_stack_utils.stack_item_uid(stack[index])
+        layer_stack_utils.select_stack_index(context, index)
+        self._restore_edge_selection_if_needed(context, stack[index], edge_state)
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
         return context.window_manager.invoke_props_dialog(self, width=260)

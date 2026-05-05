@@ -27,7 +27,7 @@ def _update_all_bg_opacity(self, context) -> None:
 def _update_all_bg_scale(self, context) -> None:
     from ..utils import coma_camera
 
-    coma_camera.set_background_images_scale(context, float(self.bg_images_scale))
+    coma_camera.set_background_images_scale(context, float(self.bg_images_scale), kind_filter="name")
     coma_camera.update_render_border_from_current_coma(context)
 
 
@@ -35,7 +35,7 @@ def _update_name_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
 
     coma_camera.set_background_images_properties(
-        context, "ネーム", opacity=float(self.name_bg_images_opacity)
+        context, "ネーム", opacity=float(self.name_bg_images_opacity), kind_filter="name"
     )
 
 
@@ -43,7 +43,7 @@ def _update_koma_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
 
     coma_camera.set_background_images_properties(
-        context, "コマ", opacity=float(self.koma_bg_images_opacity)
+        context, "コマ", opacity=float(self.koma_bg_images_opacity), kind_filter="koma"
     )
 
 
@@ -139,7 +139,7 @@ class BNameComaCameraAngleItem(bpy.types.PropertyGroup):
     shift_y: FloatProperty(name="シフトY", default=0.0)  # type: ignore[valid-type]
     fisheye_layout_mode: BoolProperty(name="魚眼モード", default=False)  # type: ignore[valid-type]
     fisheye_fov: FloatProperty(name="魚眼FOV", default=3.1415927, min=1.7453293, max=6.2831855)  # type: ignore[valid-type]
-    bg_images_scale: FloatProperty(name="下絵スケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
+    bg_images_scale: FloatProperty(name="ページ画像スケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
 
 
 class BNameComaCameraResolutionSetting(bpy.types.PropertyGroup):
@@ -164,14 +164,14 @@ class BNameComaCameraSettings(bpy.types.PropertyGroup):
         update=_update_all_bg_opacity,
     )  # type: ignore[valid-type]
     bg_images_scale: FloatProperty(
-        name="下絵のスケール",
+        name="ページ画像のスケール",
         min=0.1,
         max=10.0,
         default=1.0,
         update=_update_all_bg_scale,
     )  # type: ignore[valid-type]
     name_bg_images_opacity: FloatProperty(
-        name="ネームの不透明度",
+        name="ページ画像の不透明度",
         min=0.0,
         max=1.0,
         default=0.5,
@@ -184,9 +184,9 @@ class BNameComaCameraSettings(bpy.types.PropertyGroup):
         default=1.0,
         update=_update_koma_bg_opacity,
     )  # type: ignore[valid-type]
-    name_visible: BoolProperty(name="ネーム下絵表示", default=True)  # type: ignore[valid-type]
+    name_visible: BoolProperty(name="ページ画像表示", default=True)  # type: ignore[valid-type]
     name_show_all_pages: BoolProperty(
-        name="全ページのネーム下絵を表示",
+        name="全ページのページ画像を表示",
         default=False,
         update=_update_name_show_all_pages,
     )  # type: ignore[valid-type]

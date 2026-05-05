@@ -166,6 +166,7 @@ def _draw_square_label(row, text: str = "", icon: str = "BLANK1") -> None:
 
 
 def _draw_visibility_slot(row, item, target, index: int) -> None:
+    row.alignment = "LEFT"
     if target is None:
         _draw_square_label(row)
     elif item.kind in {"page", "coma"} and hasattr(target, "visible"):
@@ -471,16 +472,10 @@ class BNAME_UL_layer_stack(UIList):
             layout.label(text=item.label, icon=_kind_icon(item.kind))
             return
         row = layout.row(align=True)
-        is_active = int(getattr(context.scene, "bname_active_layer_stack_index", -1)) == index
+        row.context_pointer_set("bname_layer_stack_item", item)
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         target = resolved.get("target") if resolved is not None else None
-        # マルチ選択は data 側の selected フラグで判定。アクティブ行は常に選択扱い。
-        try:
-            is_selected = is_active or layer_stack_utils.is_item_selected(context, item)
-        except Exception:  # noqa: BLE001
-            is_selected = is_active
         _draw_visibility_slot(row, item, target, index)
-        _draw_selection_slot(row, index, is_selected)
         _draw_hierarchy_slot(row, item, target, index)
         # 旧実装は ``row.split(factor=0.60)`` で右側に常に 40% を確保しており、
         # 右コントロール (3 ui-units) と左コンテンツの間に大きな空白が出ていた。
@@ -603,21 +598,34 @@ def _draw_layer_stack_box(layout, context) -> None:
         op.direction = "DOWN"
         op = col.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
-        _draw_layer_order_box(box)
 
 
-def _draw_layer_order_box(layout) -> None:
-    box = layout.box()
-    box.label(text="重なり順", icon="SORT_ASC")
-    row = box.row(align=True)
-    for direction, label, icon in (
-        ("FRONT", "最前面", "TRIA_UP_BAR"),
-        ("UP", "前面へ", "TRIA_UP"),
-        ("DOWN", "背面へ", "TRIA_DOWN"),
-        ("BACK", "最背面", "TRIA_DOWN_BAR"),
-    ):
-        op = row.operator("bname.layer_stack_move", text=label, icon=icon)
-        op.direction = direction
+def _draw_layer_stack_context_menu(self, context) -> None:
+    item = getattr(context, "bname_layer_stack_item", None)
+    stack = getattr(getattr(context, "scene", None), "bname_layer_stack", None)
+    if stack is None:
+        return
+    index = -1
+    if item is None:
+        index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        if 0 <= index < len(stack):
+            item = stack[index]
+    else:
+        for i, stack_item in enumerate(stack):
+            if layer_stack_utils.stack_item_uid(stack_item) == layer_stack_utils.stack_item_uid(item):
+                index = i
+                break
+    if item is None:
+        return
+    uid = layer_stack_utils.stack_item_uid(item)
+    if not uid:
+        return
+    layout = self.layout
+    layout.separator()
+    op = layout.operator("bname.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
+    op.index = index
+    op.uid = uid
+    op.offset_from_selection = True
 
 
 class BNAME_PT_layer_stack(Panel):
@@ -832,9 +840,17 @@ _CLASSES = (
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    try:
+        bpy.types.UI_MT_list_item_context_menu.append(_draw_layer_stack_context_menu)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def unregister() -> None:
+    try:
+        bpy.types.UI_MT_list_item_context_menu.remove(_draw_layer_stack_context_menu)
+    except Exception:  # noqa: BLE001
+        pass
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

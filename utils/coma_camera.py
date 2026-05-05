@@ -12,6 +12,7 @@ from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..io import export_pipeline
 from . import log, page_browser
+from .geom import mm_to_px
 from .coma_camera_constants import (
     DEFAULT_CAMERA_DISTANCE,
     DEFAULT_REF_DPI,
@@ -119,27 +120,26 @@ def ensure_coma_camera(scene):
 
 
 def configure_render_for_current_coma(scene, work, page_id: str, coma_id: str) -> None:
-    """ページ/見開き下絵の比率に合わせてカメラ出力解像度を設定する."""
-    _page_count, _render_side, width_mm, height_mm = _reference_frame_info(work, page_id, coma_id)
+    """ページ一覧ファイルの用紙設定に合わせてカメラ出力解像度を設定する."""
+    paper = getattr(work, "paper", None) if work is not None else None
+    width_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0) if paper is not None else 0.0
+    height_mm = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0) if paper is not None else 0.0
+    dpi = int(getattr(paper, "dpi", 0) or 0) if paper is not None else 0
+    if width_mm <= 0.0 or height_mm <= 0.0:
+        _page_count, _render_side, width_mm, height_mm = _reference_frame_info(work, page_id, coma_id)
     if width_mm <= 0.0 or height_mm <= 0.0:
         width_mm, height_mm = 16.0, 9.0
-    long_edge = 1920
-    if width_mm >= height_mm:
-        res_x = long_edge
-        res_y = max(1, round(long_edge * height_mm / width_mm))
-    else:
-        res_y = long_edge
-        res_x = max(1, round(long_edge * width_mm / height_mm))
+    if dpi <= 0:
+        dpi = DEFAULT_REF_DPI
+    res_x = max(1, int(round(mm_to_px(width_mm, dpi))))
+    res_y = max(1, int(round(mm_to_px(height_mm, dpi))))
     if hasattr(scene, "bname_coma_camera_original_resolution_x"):
         scene.bname_coma_camera_original_resolution_x = int(res_x)
     if hasattr(scene, "bname_coma_camera_original_resolution_y"):
         scene.bname_coma_camera_original_resolution_y = int(res_y)
-    if not (
-        bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False))
-        or bool(getattr(scene, "bname_coma_camera_reduction_mode", False))
-    ):
-        scene.render.resolution_x = int(res_x)
-        scene.render.resolution_y = int(res_y)
+    scene.render.resolution_percentage = 100
+    scene.render.resolution_x = int(res_x)
+    scene.render.resolution_y = int(res_y)
 
 
 def ensure_default_resolution_settings(scene) -> None:
@@ -185,13 +185,14 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
             pass
         bg = data.background_images.new()
         bg.image = img
-        alpha = koma_alpha if ref.kind == "koma" else name_alpha
-        if ref.kind == "koma":
+        is_page_image = _ref_is_page_image(ref)
+        alpha = name_alpha if is_page_image else koma_alpha
+        if ref.kind == "koma" and not is_page_image:
             visible = koma_visible and ref.visible
         else:
             visible = name_visible and (ref.visible or name_show_all_pages)
-        depth = "BACK" if ref.kind == "koma" and koma_depth_back else "FRONT"
-        bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale)
+        depth = "BACK" if ref.kind == "koma" and not is_page_image and koma_depth_back else "FRONT"
+        bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale if is_page_image else 1.0)
         _set_bg_attr(bg, "alpha", alpha)
         _set_bg_attr(bg, "scale", bg_scale)
         _set_bg_attr(bg, "rotation", 0.0)
@@ -333,13 +334,44 @@ def _background_scale_offset_for_image(img, base_scale: float) -> tuple[float, t
     return float(base_scale), (0.0, 0.0)
 
 
+def _ref_is_page_image(ref: ReferenceImage) -> bool:
+    return bool(ref.full_page_mask) or str(ref.kind or "") == "name"
+
+
+def _image_is_page_image(img) -> bool:
+    if img is None:
+        return False
+    try:
+        if bool(img.get("bname_full_page_mask", False)):
+            return True
+        if str(img.get("bname_kind", "") or "") == "name":
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return "ネーム" in getattr(img, "name", "")
+
+
+def _background_matches_kind(bg, kind: str) -> bool:
+    img = getattr(bg, "image", None)
+    if img is None:
+        return False
+    is_page_image = _image_is_page_image(img)
+    if kind == "name":
+        return is_page_image
+    if kind == "koma":
+        return not is_page_image and "コマ" in getattr(img, "name", "")
+    return False
+
+
 def set_background_images_opacity(context, opacity: float) -> None:
     for bg in _iter_camera_backgrounds(context):
         _set_bg_attr(bg, "alpha", opacity)
 
 
-def set_background_images_scale(context, scale: float) -> None:
+def set_background_images_scale(context, scale: float, *, kind_filter: str = "") -> None:
     for bg in _iter_camera_backgrounds(context):
+        if kind_filter and not _background_matches_kind(bg, kind_filter):
+            continue
         img = getattr(bg, "image", None)
         bg_scale, bg_offset = _background_scale_offset_for_image(img, float(scale))
         _set_bg_attr(bg, "scale", bg_scale)
@@ -381,10 +413,15 @@ def toggle_all_backgrounds(context) -> bool:
     return visible
 
 
-def set_background_images_properties(context, name_filter: str, *, opacity=None, scale=None) -> None:
+def set_background_images_properties(context, name_filter: str, *, opacity=None, scale=None, kind_filter: str = "") -> None:
     for bg in _iter_camera_backgrounds(context):
         img = getattr(bg, "image", None)
-        if img is None or name_filter not in getattr(img, "name", ""):
+        if img is None:
+            continue
+        if kind_filter:
+            if not _background_matches_kind(bg, kind_filter):
+                continue
+        elif name_filter not in getattr(img, "name", ""):
             continue
         if opacity is not None:
             _set_bg_attr(bg, "alpha", float(opacity))
@@ -411,8 +448,7 @@ def set_background_image_rotation(context, name_filter: str, rotation: float) ->
 def set_koma_background_depth(context, *, back: bool) -> None:
     depth = "BACK" if back else "FRONT"
     for bg in _iter_camera_backgrounds(context):
-        img = getattr(bg, "image", None)
-        if img is not None and "コマ" in getattr(img, "name", ""):
+        if _background_matches_kind(bg, "koma"):
             _set_bg_attr(bg, "display_depth", depth)
 
 
@@ -422,13 +458,13 @@ def toggle_backgrounds_by_kind(context, kind: str) -> bool:
         return False
     if kind == "name":
         settings.name_visible = not bool(settings.name_visible)
-        name_filter = "ネーム"
         visible = settings.name_visible
     else:
         settings.koma_visible = not bool(settings.koma_visible)
-        name_filter = "コマ"
         visible = settings.koma_visible
-    set_background_image_visibility(context, name_filter, visible)
+    for bg in _iter_camera_backgrounds(context):
+        if _background_matches_kind(bg, kind):
+            _set_bg_attr(bg, "show_background_image", bool(visible))
     return visible
 
 
@@ -438,7 +474,7 @@ def set_page_reference_visibility(context, *, show_all: bool) -> None:
     current_page_id = str(getattr(context.scene, "bname_current_coma_page_id", "") or "")
     for bg in _iter_camera_backgrounds(context):
         img = getattr(bg, "image", None)
-        if img is None or "ネーム" not in getattr(img, "name", ""):
+        if img is None or not _background_matches_kind(bg, "name"):
             continue
         page_id = ""
         try:
@@ -599,7 +635,7 @@ def apply_fisheye_mode(context) -> None:
             _restore_original_resolution(scene)
     settings = getattr(scene, "bname_coma_camera_settings", None)
     if settings is not None:
-        set_background_images_scale(context, float(settings.bg_images_scale))
+        set_background_images_scale(context, float(settings.bg_images_scale), kind_filter="name")
     update_render_border_from_current_coma(context)
 
 

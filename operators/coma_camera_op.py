@@ -124,7 +124,7 @@ class BNAME_OT_coma_camera_toggle_all_backgrounds(Operator):
 
 class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
     bl_idname = "bname.coma_camera_toggle_name_backgrounds"
-    bl_label = "ネーム下絵を表示/非表示"
+    bl_label = "ページ画像を表示/非表示"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -139,7 +139,7 @@ class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
                 context,
                 show_all=bool(getattr(settings, "name_show_all_pages", False)),
             )
-        self.report({"INFO"}, "ネーム下絵: 表示" if visible else "ネーム下絵: 非表示")
+        self.report({"INFO"}, "ページ画像: 表示" if visible else "ページ画像: 非表示")
         return {"FINISHED"}
 
 

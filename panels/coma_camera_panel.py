@@ -187,10 +187,10 @@ class BNAME_PT_coma_camera(Panel):
         box = layout.box()
         row = box.row()
         row.enabled = bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False))
-        row.prop(settings, "bg_images_scale", text="下絵のスケール")
+        row.prop(settings, "bg_images_scale", text="ページ画像のスケール")
         box.operator("bname.coma_camera_toggle_all_backgrounds", text="全下絵を表示/非表示")
 
-        _draw_background_section(layout, context, settings, "下絵_ネーム", "name", "name_bg_images_opacity")
+        _draw_background_section(layout, context, settings, "ページ画像", "name", "name_bg_images_opacity")
         _draw_background_section(layout, context, settings, "下絵_コマ", "koma", "koma_bg_images_opacity")
         layout.operator("bname.coma_camera_reload_backgrounds", text="すべての下絵を再読込")
 

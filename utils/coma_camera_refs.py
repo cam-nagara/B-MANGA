@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterable
 
@@ -57,7 +58,14 @@ def ensure_reference_images(work, current_page_id: str, coma_id: str) -> list[Re
     panel = _resolve_coma(work, current_page_id, coma_id)
     if page is not None and panel is not None:
         page_count, render_side, _width_mm, _height_mm = _reference_frame_info(work, current_page_id, coma_id)
-        current_page_ref = _ensure_page_reference(work, work_dir, page, ref_dir, include_work_blend_mtime)
+        current_page_ref = _ensure_page_reference(
+            work,
+            work_dir,
+            page,
+            ref_dir,
+            include_work_blend_mtime,
+            transparent_coma_id=coma_id,
+        )
         mate_page = _find_spread_mate_page(work, current_page_id)
         mate_page_ref = None
         if mate_page is not None:
@@ -130,6 +138,10 @@ def _page_ref_path(ref_dir: Path, page_id: str) -> Path:
     return ref_dir / f"{NAME_REF_PREFIX}_pageclean_{page_id}.png"
 
 
+def _page_coma_ref_path(ref_dir: Path, page_id: str, coma_id: str) -> Path:
+    return ref_dir / f"{NAME_REF_PREFIX}_pageclean_{page_id}_{coma_id}.png"
+
+
 def _koma_ref_path(ref_dir: Path, page_id: str, coma_id: str) -> Path:
     return ref_dir / f"{KOMA_REF_PREFIX}_{page_id}_{coma_id}_page.png"
 
@@ -159,13 +171,21 @@ def _spread_coma_side(panel, page_width_mm: float) -> str:
     return "left" if center_x < page_width_mm else "right"
 
 
-def _ensure_page_reference(work, work_dir: Path, page, ref_dir: Path, include_work_blend_mtime: bool) -> Path | None:
+def _ensure_page_reference(
+    work,
+    work_dir: Path,
+    page,
+    ref_dir: Path,
+    include_work_blend_mtime: bool,
+    *,
+    transparent_coma_id: str = "",
+) -> Path | None:
     page_id = str(getattr(page, "id", "") or "")
     if not page_id:
         return None
-    out = _page_ref_path(ref_dir, page_id)
+    out = _page_coma_ref_path(ref_dir, page_id, transparent_coma_id) if transparent_coma_id else _page_ref_path(ref_dir, page_id)
     if _reference_is_stale(work_dir, page, out, include_work_blend=include_work_blend_mtime):
-        _render_page_reference(work, page, out)
+        _render_page_reference(work, page, out, transparent_coma_id=transparent_coma_id)
     return out if out.is_file() else None
 
 
@@ -205,16 +225,16 @@ def _is_page_left_half(work, page_id: str) -> bool:
     return page_grid.is_left_half_page(page_index, start_side, read_direction)
 
 
-def _render_page_reference(work, page, out: Path) -> bool:
+def _render_page_reference(work, page, out: Path, *, transparent_coma_id: str = "") -> bool:
     work_dir = Path(str(getattr(work, "work_dir", "") or ""))
     page_id = str(getattr(page, "id", "") or "")
     if work_dir and page_id and not _current_mainfile_is(paths.work_blend_path(work_dir)):
-        if _render_page_reference_from_work_blend(work_dir, page_id, out):
+        if _render_page_reference_from_work_blend(work_dir, page_id, out, transparent_coma_id=transparent_coma_id):
             return True
-    return _render_page_reference_in_scene(work, page, out)
+    return _render_page_reference_in_scene(work, page, out, transparent_coma_id=transparent_coma_id)
 
 
-def _render_page_reference_in_scene(work, page, out: Path) -> bool:
+def _render_page_reference_in_scene(work, page, out: Path, *, transparent_coma_id: str = "") -> bool:
     try:
         options = export_pipeline.ExportOptions(
             format="png",
@@ -225,7 +245,12 @@ def _render_page_reference_in_scene(work, page, out: Path) -> bool:
             include_paper_color=True,
             include_coma_previews=False,
         )
-        img = export_pipeline.render_page(work, page, options)
+        img = _render_page_with_transparent_coma_background(
+            work,
+            page,
+            options,
+            transparent_coma_id,
+        )
         if img is None:
             return False
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +261,55 @@ def _render_page_reference_in_scene(work, page, out: Path) -> bool:
         return False
 
 
-def _render_page_reference_from_work_blend(work_dir: Path, page_id: str, out: Path) -> bool:
+def _render_page_with_transparent_coma_background(work, page, options, transparent_coma_id: str):
+    if not transparent_coma_id:
+        return export_pipeline.render_page(work, page, options)
+    panel = _resolve_coma(work, str(getattr(page, "id", "") or ""), transparent_coma_id)
+    if panel is None:
+        return export_pipeline.render_page(work, page, options)
+    try:
+        layers = export_pipeline.build_page_layers(work, page, options)
+        target_group = export_pipeline._coma_content_group_path(panel)
+        dpi = int(getattr(options, "dpi_override", 0) or getattr(getattr(work, "paper", None), "dpi", DEFAULT_REF_DPI))
+        prepared_layers = []
+        for layer in layers:
+            if layer.name == "background" and tuple(layer.group_path) == tuple(target_group):
+                continue
+            if layer.name == "paper":
+                layer = _layer_with_coma_background_hole(layer, panel, dpi)
+            prepared_layers.append(layer)
+        size = export_pipeline._page_canvas_size_px(work, page, options)
+        image = export_pipeline._flatten_layers(prepared_layers, size)
+        return export_pipeline._convert_flatten_mode(image, options)
+    except Exception:  # noqa: BLE001
+        _logger.exception("panel camera transparent page reference render failed")
+        return export_pipeline.render_page(work, page, options)
+
+
+def _layer_with_coma_background_hole(layer, panel, dpi: int):
+    Image = export_pipeline.Image
+    ImageDraw = export_pipeline.ImageDraw
+    if Image is None or ImageDraw is None:
+        return layer
+    points = _coma_points_px(panel, layer.image.height, dpi, 0)
+    if len(points) < 3:
+        return layer
+    image = layer.image.convert("RGBA").copy()
+    mask = Image.new("L", image.size, 0)
+    ImageDraw.Draw(mask).polygon(points, fill=255)
+    alpha = image.getchannel("A")
+    alpha.paste(0, mask=mask)
+    image.putalpha(alpha)
+    return replace(layer, image=image)
+
+
+def _render_page_reference_from_work_blend(
+    work_dir: Path,
+    page_id: str,
+    out: Path,
+    *,
+    transparent_coma_id: str = "",
+) -> bool:
     work_blend = paths.work_blend_path(Path(work_dir))
     if not work_blend.is_file():
         return False
@@ -259,11 +332,21 @@ def _render_page_reference_from_work_blend(work_dir: Path, page_id: str, out: Pa
             window.scene = scene
         try:
             with bpy.context.temp_override(scene=scene):
-                return _render_page_reference_in_scene(loaded_work, loaded_page, out)
+                return _render_page_reference_in_scene(
+                    loaded_work,
+                    loaded_page,
+                    out,
+                    transparent_coma_id=transparent_coma_id,
+                )
         except Exception:  # noqa: BLE001
             if window is not None:
                 window.scene = scene
-            return _render_page_reference_in_scene(loaded_work, loaded_page, out)
+            return _render_page_reference_in_scene(
+                loaded_work,
+                loaded_page,
+                out,
+                transparent_coma_id=transparent_coma_id,
+            )
     except Exception:  # noqa: BLE001
         _logger.exception("panel camera work.blend reference render failed: %s", page_id)
         return False
