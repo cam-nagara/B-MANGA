@@ -119,6 +119,40 @@ def _outline_points_for_entry(entry) -> list[tuple[float, float]]:
     return pts
 
 
+def _remove_balloon_object(obj: bpy.types.Object) -> None:
+    data = getattr(obj, "data", None)
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve object removal failed")
+        return
+    if data is None or getattr(data, "users", 0) != 0:
+        return
+    try:
+        if isinstance(data, bpy.types.Curve):
+            bpy.data.curves.remove(data)
+        elif isinstance(data, bpy.types.Mesh):
+            bpy.data.meshes.remove(data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _remove_duplicate_balloon_objects(
+    balloon_id: str,
+    keep_obj: Optional[bpy.types.Object],
+) -> None:
+    if not balloon_id:
+        return
+    for obj in list(bpy.data.objects):
+        if obj is keep_obj:
+            continue
+        if obj.get(on.PROP_KIND) != "balloon":
+            continue
+        if str(obj.get(on.PROP_ID, "") or "") != balloon_id:
+            continue
+        _remove_balloon_object(obj)
+
+
 def ensure_balloon_curve_object(
     *,
     scene: bpy.types.Scene,
@@ -152,14 +186,20 @@ def ensure_balloon_curve_object(
 
     # 2. Curve Object 生成 or 再利用
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
-    obj = bpy.data.objects.get(obj_name)
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is None:
+        obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, curve_data)
+    elif obj.type != "CURVE":
+        _remove_balloon_object(obj)
         obj = bpy.data.objects.new(obj_name, curve_data)
     else:
         # 既存 Object のデータを Curve に切替 (旧 Mesh balloon plane が
         # 残っているケースの自動移行)
         if obj.data is not curve_data:
             obj.data = curve_data
+    _remove_duplicate_balloon_objects(balloon_id, obj)
 
     # 3. ページローカル座標 mm → m
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
@@ -242,3 +282,31 @@ def find_balloon_entry(scene, balloon_id: str):
             if str(getattr(entry, "id", "") or "") == balloon_id:
                 return page, entry
     return None, None
+
+
+def on_balloon_entry_changed(entry) -> bool:
+    scene = bpy.context.scene if bpy.context is not None else None
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if scene is None or work is None or entry is None:
+        return False
+    try:
+        target_ptr = int(entry.as_pointer())
+    except Exception:  # noqa: BLE001
+        target_ptr = 0
+    target_id = str(getattr(entry, "id", "") or "")
+    for page in getattr(work, "pages", []) or []:
+        for candidate in getattr(page, "balloons", []) or []:
+            candidate_id = str(getattr(candidate, "id", "") or "")
+            try:
+                same_pointer = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+            except Exception:  # noqa: BLE001
+                same_pointer = False
+            same_id = bool(target_id) and candidate_id == target_id
+            if not same_pointer and not same_id:
+                continue
+            return ensure_balloon_curve_object(
+                scene=scene,
+                entry=candidate,
+                page=page,
+            ) is not None
+    return False

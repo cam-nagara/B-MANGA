@@ -107,6 +107,12 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
 
 def _on_balloon_visible_changed(_self, context) -> None:
     try:
+        from ..utils import balloon_curve_object
+
+        balloon_curve_object.on_balloon_entry_changed(_self)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         screen = getattr(context, "screen", None) if context is not None else None
         if screen is not None:
             for area in screen.areas:

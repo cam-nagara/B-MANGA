@@ -36,6 +36,15 @@ _CORNER_ITEMS = (
 )
 
 
+def _on_border_changed(self, _context) -> None:
+    try:
+        from ..utils import coma_border_object
+
+        coma_border_object.on_coma_border_changed(self)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNameBorderEdgeOverride(bpy.types.PropertyGroup):
     """枠線の辺ごとオーバーライド (4 辺それぞれに保持)."""
 
@@ -47,12 +56,14 @@ class BNameBorderEdgeOverride(bpy.types.PropertyGroup):
         name="線種",
         items=_LINE_STYLE_ITEMS,
         default="solid",
+        update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="線幅 (mm)",
         default=0.5,
         min=0.0,
         soft_max=10.0,
+        update=_on_border_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="線色",
@@ -61,6 +72,7 @@ class BNameBorderEdgeOverride(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0, 1.0),
         min=0.0,
         max=1.0,
+        update=_on_border_changed,
     )
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",
@@ -75,12 +87,14 @@ class BNameComaBorder(bpy.types.PropertyGroup):
         name="線種",
         items=_LINE_STYLE_ITEMS,
         default="solid",
+        update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="線幅 (mm)",
         default=0.5,
         min=0.0,
         soft_max=10.0,
+        update=_on_border_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="線色",
@@ -89,21 +103,25 @@ class BNameComaBorder(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0, 1.0),
         min=0.0,
         max=1.0,
+        update=_on_border_changed,
     )
     corner_type: EnumProperty(  # type: ignore[valid-type]
         name="角処理",
         items=_CORNER_ITEMS,
         default="square",
+        update=_on_border_changed,
     )
     corner_radius_mm: FloatProperty(  # type: ignore[valid-type]
         name="角半径 (mm)",
         default=0.0,
         min=0.0,
         soft_max=20.0,
+        update=_on_border_changed,
     )
     visible: BoolProperty(  # type: ignore[valid-type]
         name="枠線を表示",
         default=True,
+        update=_on_border_changed,
     )
 
     # 辺ごとオーバーライド

@@ -219,6 +219,14 @@ def draw_text_pixels(
             continue
         rect = Rect(entry.x_mm + ox_mm, entry.y_mm + oy_mm, entry.width_mm, entry.height_mm)
         editing_op = _editing_operator(context, page, entry)
+        if editing_op is None and _viewport_can_show_text_real_object(context):
+            try:
+                from ..utils import text_real_object
+
+                if text_real_object.has_visible_text_object(entry, page=page):
+                    continue
+            except Exception:  # noqa: BLE001
+                pass
         if editing_op is not None:
             cursor_index = int(getattr(editing_op, "_cursor_index", 0))
             selection_anchor = int(getattr(editing_op, "_selection_anchor", -1))
@@ -228,3 +236,13 @@ def draw_text_pixels(
                 selection_anchor,
             )
         draw_text_in_rect(context, rect, entry)
+
+
+def _viewport_can_show_text_real_object(context) -> bool:
+    space = getattr(context, "space_data", None) if context is not None else None
+    shading = getattr(space, "shading", None) if space is not None else None
+    if shading is None:
+        return False
+    shading_type = str(getattr(shading, "type", "") or "")
+    color_type = str(getattr(shading, "color_type", "") or "")
+    return shading_type in {"MATERIAL", "RENDERED"} or color_type == "TEXTURE"

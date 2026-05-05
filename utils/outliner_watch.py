@@ -19,6 +19,7 @@ from bpy.app.handlers import persistent
 from . import log
 from . import layer_object_sync as los
 from . import object_naming as on
+from . import outliner_model as om
 
 _logger = log.get_logger(__name__)
 
@@ -174,6 +175,13 @@ def _writeback_empty_layer_parent(
     bid = str(obj.get("bname_id", "") or "")
     if not bid:
         return False
+    if kind == "text":
+        parent_coll = om.find_managed_parent_collection(obj)
+        if parent_coll is not None and on.get_kind(parent_coll) == "text_root":
+            # テキスト Collection は実体の保存場所であり、ページ/コマ所属は
+            # entry 側の値が正。保存場所を親変更として書き戻さない。
+            los.update_snapshot(obj)
+            return False
     if kind == "image":
         entry = elo.find_image_entry(scene, bid)
         page = None

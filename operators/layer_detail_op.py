@@ -76,6 +76,14 @@ def _find_balloon_entry(scene, bid: str):
 
 
 def _find_text_entry(scene, bid: str):
+    try:
+        from ..utils import text_real_object
+
+        page, entry = text_real_object.find_text_entry(scene, bid)
+        if entry is not None:
+            return page, entry
+    except Exception:  # noqa: BLE001
+        pass
     work = getattr(scene, "bname_work", None)
     if work is None:
         return None, None

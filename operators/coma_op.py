@@ -374,6 +374,12 @@ def create_rect_coma(
         scene = bpy.context.scene if bpy.context is not None else None
         if scene is not None:
             _cp.ensure_coma_plane(scene, work, page, entry)
+            try:
+                from ..utils import coma_border_object as _cbo
+
+                _cbo.ensure_coma_border_object(scene, work, page, entry)
+            except Exception:  # noqa: BLE001
+                _logger.exception("create_rect_coma: ensure_coma_border failed")
     except Exception:  # noqa: BLE001
         _logger.exception("create_rect_coma: ensure_coma_plane failed")
     return entry

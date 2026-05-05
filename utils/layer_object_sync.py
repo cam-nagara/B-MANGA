@@ -69,6 +69,8 @@ _LAST_SNAPSHOT: dict[str, tuple] = {}
 def _snapshot_key(obj: bpy.types.Object) -> str:
     """snapshot のキー。bname_id 優先、無ければ obj.name fallback."""
     bid = str(obj.get(on.PROP_ID, "") or "")
+    if str(obj.get(on.PROP_KIND, "") or "") == "text" and bid:
+        return f"{bid}|{obj.get(on.PROP_PARENT_KEY, '')}"
     return bid if bid else f"@name:{obj.name}"
 
 
@@ -218,10 +220,11 @@ def assign_per_page_z_ranks(scene, work) -> int:
 # ---------- 作品全体の mirror 同期 (Phase 0 の中核) ----------
 
 
-def _mirror_image_text_empties(scene, work) -> None:
-    """全 BNameImageLayer / BNameTextEntry に対応する Empty Object を ensure."""
+def _mirror_image_text_objects(scene, work) -> None:
+    """全 BNameImageLayer / BNameTextEntry に対応する表示 Object を ensure."""
     try:
         from . import empty_layer_object as elo
+        from . import text_real_object as tro
 
         # 旧 Plane 方式の Object/Mesh/Material/Image を掃除 (Empty 化移行)
         try:
@@ -246,12 +249,10 @@ def _mirror_image_text_empties(scene, work) -> None:
                     continue
                 elo.ensure_image_empty_object(scene=scene, entry=entry, page=page)
 
-        # texts (page.texts)
-        for page in getattr(work, "pages", []):
-            for entry in getattr(page, "texts", []):
-                elo.ensure_text_empty_object(scene=scene, entry=entry, page=page)
+        # texts (page.texts): 空 Object ではなく、透明画像平面として実体化する。
+        tro.sync_all_text_real_objects(scene, work)
     except Exception:  # noqa: BLE001
-        _logger.exception("mirror image/text empties failed")
+        _logger.exception("mirror image/text objects failed")
 
 
 def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
@@ -299,8 +300,9 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                     continue
                 coma_title = str(getattr(coma, "title", "") or coma_id)
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
-        # 画像 / テキストの Empty Object を ensure (オーバーレイ描画と並列)
-        _mirror_image_text_empties(scene, work)
+        # 画像 / テキストの表示 Object を ensure。
+        # 画像は従来の軽量 Empty、テキストは実体化された画像平面。
+        _mirror_image_text_objects(scene, work)
 
         # フキダシ Curve Object を ensure (entry.parent_key に基づき該当 page/coma
         # Collection 配下に置く)。 これを呼ばないと viewport 上では overlay 描画
@@ -341,6 +343,14 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _cp.regenerate_all_coma_planes(scene, work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma planes failed")
+
+        # コマ枠線はオーバーレイだけに依存せず、カーブ Object として残す。
+        try:
+            from . import coma_border_object as _cbo
+
+            _cbo.regenerate_all_coma_borders(scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror coma borders failed")
 
         # 旧 __masks__ Collection (page_mask_*, coma_mask_* + __masks__ Coll
         # 自体) を強制 purge。 古い work.blend を開いた直後の自動 migration。

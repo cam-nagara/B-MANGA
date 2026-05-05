@@ -952,7 +952,18 @@ def _draw_comas(
                 loops = border_geom.stroke_loops_mm(path, base_width)
                 if loops is not None:
                     outer_loop, inner_loop = loops
-                    _draw_stroke_band_fill(outer_loop, inner_loop, base_color)
+                    real_border_visible = False
+                    try:
+                        from ..utils import coma_border_object as _cbo
+
+                        real_obj = bpy.data.objects.get(
+                            f"{_cbo.COMA_BORDER_NAME_PREFIX}{getattr(page, 'id', '')}_{getattr(entry, 'id', '')}"
+                        )
+                        real_border_visible = real_obj is not None and not real_obj.hide_viewport
+                    except Exception:  # noqa: BLE001
+                        real_border_visible = False
+                    if not real_border_visible:
+                        _draw_stroke_band_fill(outer_loop, inner_loop, base_color)
                     if is_active_coma:
                         segs = [
                             (poly[i], poly[(i + 1) % len(poly)])

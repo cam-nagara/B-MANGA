@@ -71,6 +71,12 @@ def _on_coma_background_color_changed(self, context) -> None:
 
 
 def _on_coma_visible_changed(_self, context) -> None:
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.on_coma_geometry_changed(_self)
+    except Exception:  # noqa: BLE001
+        pass
     _tag_view3d_redraw(context)
 
 

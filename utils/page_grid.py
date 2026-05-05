@@ -267,6 +267,8 @@ def apply_page_collection_transforms(context, work) -> int:
         ox_mm += add_x
         oy_mm += add_y
 
+        page_id_str = str(getattr(page_entry, "id", "") or "")
+
         # ページ内の entry ルックアップを 1 度だけ作る
         balloon_entries: dict[str, object] = {}
         text_entries: dict[str, object] = {}
@@ -278,10 +280,9 @@ def apply_page_collection_transforms(context, work) -> int:
             eid = str(getattr(entry, "id", "") or "")
             if eid:
                 text_entries[eid] = entry
+                text_entries[f"{page_id_str}:{eid}"] = entry
 
         direct_child_set = {id(o) for o in coll.objects}
-        page_id_str = str(getattr(page_entry, "id", "") or "")
-
         # サブコレクション (c01, c02, ... ) も含めた全 Object を走査。
         # Object が他ページの Collection にも link されているケースがあるため、
         # ``bname_parent_key`` で「自分はこのページに属している」と明示している
@@ -346,6 +347,12 @@ def apply_page_collection_transforms(context, work) -> int:
         _cp.update_coma_plane_locations(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_plane location update failed")
+    try:
+        from . import coma_border_object as _cbo
+
+        _cbo.update_coma_border_locations(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: coma_border location update failed")
     return updated
 
 

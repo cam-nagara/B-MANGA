@@ -136,6 +136,16 @@ class BNAME_OT_text_selection_style_popup(Operator):
             if active is not None:
                 active._selection_anchor = start
                 active._cursor_index = end
+        try:
+            from ..utils import text_real_object
+
+            text_real_object.ensure_text_real_object(
+                scene=context.scene,
+                entry=entry,
+                page=page,
+            )
+        except Exception:  # noqa: BLE001
+            pass
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 

@@ -2804,6 +2804,16 @@ def _apply_balloon_parenting(context, stack) -> None:
                 continue
             entry.parent_kind = "coma" if ":" in parent_key else "page"
             entry.parent_key = parent_key
+            try:
+                from . import text_real_object
+
+                text_real_object.ensure_text_real_object(
+                    scene=context.scene,
+                    entry=entry,
+                    page=page,
+                )
+            except Exception:  # noqa: BLE001
+                _logger.exception("apply text parenting real object sync failed")
 
 
 def _apply_text_parenting(context, stack) -> None:
@@ -3009,7 +3019,15 @@ def delete_stack_index(context, index: int) -> bool:
         else:
             if not (0 <= idx < len(target_page.texts)):
                 return False
+            text_id = str(getattr(target_page.texts[idx], "id", "") or "")
+            page_id = str(getattr(target_page, "id", "") or "")
             target_page.texts.remove(idx)
+            try:
+                from . import text_real_object
+
+                text_real_object.remove_text_real_object(page_id, text_id)
+            except Exception:  # noqa: BLE001
+                _logger.exception("delete text real object from layer stack failed")
             target_page.active_text_index = min(idx, len(target_page.texts) - 1) if len(target_page.texts) else -1
     elif kind == "effect":
         obj = resolved.get("object")

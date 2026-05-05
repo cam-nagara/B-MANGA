@@ -644,6 +644,12 @@ def remove_coma_plane(page_id: str, coma_id: str) -> bool:
     """
     # coma_mask も同時に削除
     remove_coma_mask(page_id, coma_id)
+    try:
+        from . import coma_border_object as _cbo
+
+        _cbo.remove_coma_border(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
     if not page_id or not coma_id:
         return False
     obj_name = f"{COMA_PLANE_NAME_PREFIX}{page_id}_{coma_id}"
@@ -702,6 +708,12 @@ def on_coma_geometry_changed(coma) -> None:
     if page is None:
         return
     update_coma_plane_geometry(scene, work, page, coma)
+    try:
+        from . import coma_border_object as _cbo
+
+        _cbo.update_coma_border_geometry(scene, work, page, coma)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma border geometry update failed")
 
 
 def on_coma_background_color_changed(coma) -> None:
@@ -733,6 +745,12 @@ def on_vertex_changed(vertex) -> None:
     if page is None or coma is None:
         return
     update_coma_plane_geometry(scene, work, page, coma)
+    try:
+        from . import coma_border_object as _cbo
+
+        _cbo.update_coma_border_geometry(scene, work, page, coma)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma border vertex update failed")
 
 
 def register() -> None:

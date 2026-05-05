@@ -1,9 +1,4 @@
-"""フキダシ Curve + 画像 / テキスト Empty Object 化 operators.
-
-画像とテキストはオーバーレイ描画方式に統一し、Outliner 上は軽量な Empty
-Object のみ置く (D&D / 親子変更 / マスク Modifier の対象になりつつ、
-画像生成や典 Pillow 転写を回避してメモリ・応答性を改善)。
-"""
+"""フキダシ Curve + 画像 / テキスト表示 Object 化 operators."""
 
 from __future__ import annotations
 
@@ -12,6 +7,7 @@ import bpy
 from ..utils import balloon_curve_object as bco
 from ..utils import empty_layer_object as elo
 from ..utils import log
+from ..utils import text_real_object as tro
 
 _logger = log.get_logger(__name__)
 
@@ -92,15 +88,13 @@ class BNAME_OT_images_to_empty_all(bpy.types.Operator):
 
 
 class BNAME_OT_texts_to_empty_all(bpy.types.Operator):
-    """テキストレイヤーを Empty Object として Outliner に登録 (描画はオーバーレイ)."""
+    """テキストレイヤーを実体付き表示 Object として登録."""
 
     bl_idname = "bname.texts_to_empty_all"
     bl_label = "全テキストを再登録"
     bl_description = (
-        "テキストを Outliner 上の Empty Object として登録します。実際の文字は "
-        "B-Name 独自オーバーレイで描画され、export pipeline は PropertyGroup "
-        "から typography で直接 Pillow 合成するためレンダリング結果は変わり"
-        "ません。"
+        "テキストを透明画像付きの平面として登録します。"
+        "編集用のカーソルや選択範囲は B-Name のオーバーレイで表示します。"
     )
     bl_options = {"REGISTER", "UNDO"}
 
@@ -119,19 +113,19 @@ class BNAME_OT_texts_to_empty_all(bpy.types.Operator):
         n = 0
         for page in getattr(work, "pages", []):
             for entry in getattr(page, "texts", []):
-                if elo.ensure_text_empty_object(scene=scene, entry=entry, page=page):
+                if tro.ensure_text_real_object(scene=scene, entry=entry, page=page):
                     n += 1
-        self.report({"INFO"}, f"{n} 件のテキスト Empty を登録")
+        self.report({"INFO"}, f"{n} 件のテキスト表示 Object を登録")
         return {"FINISHED"}
 
 
-# 後方互換: 旧 op 名 bname.texts_to_plane_all を Empty 版にエイリアス。
+# 後方互換: 旧 op 名 bname.texts_to_plane_all を新しい実体版にエイリアス。
 # Blender 5.x では Operator サブクラスが親の bl_rna を継承すると
 # 「unable to get Python class for RNA struct」警告が連発するため、
 # 継承ではなく独立クラスとして定義し、execute は再実装してロジックを共有する。
 class BNAME_OT_texts_to_plane_all(bpy.types.Operator):
     bl_idname = "bname.texts_to_plane_all"
-    bl_label = "全テキストを Empty として登録 (旧名)"
+    bl_label = "全テキストを再登録 (旧名)"
     bl_description = BNAME_OT_texts_to_empty_all.bl_description
     bl_options = {"REGISTER", "UNDO"}
 
@@ -147,9 +141,9 @@ class BNAME_OT_texts_to_plane_all(bpy.types.Operator):
         n = 0
         for page in getattr(work, "pages", []):
             for entry in getattr(page, "texts", []):
-                if elo.ensure_text_empty_object(scene=scene, entry=entry, page=page):
+                if tro.ensure_text_real_object(scene=scene, entry=entry, page=page):
                     n += 1
-        self.report({"INFO"}, f"{n} 件のテキスト Empty を登録")
+        self.report({"INFO"}, f"{n} 件のテキスト表示 Object を登録")
         return {"FINISHED"}
 
 

@@ -135,11 +135,16 @@ def _managed_object_for_key(context, key: str):
         page = _page_for_image_entry(work, entry) if entry is not None else None
         return empty_layer_object.ensure_image_empty_object(scene=scene, entry=entry, page=page)
     if kind == "text":
-        obj = on.find_object_by_bname_id(item_id, kind="text")
+        from ..utils import text_real_object
+
+        obj = on.find_object_by_bname_id(
+            text_real_object.text_object_bname_id_for_values(page_id, item_id),
+            kind="text",
+        )
         if obj is not None:
             return obj
         _page_index, page, _idx, entry = find_text_by_key(work, page_id, item_id)
-        return empty_layer_object.ensure_text_empty_object(scene=scene, entry=entry, page=page)
+        return text_real_object.ensure_text_real_object(scene=scene, entry=entry, page=page)
     if kind == "balloon":
         obj = on.find_object_by_bname_id(item_id, kind="balloon")
         if obj is not None:

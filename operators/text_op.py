@@ -227,6 +227,7 @@ def _create_text_entry(
     page.active_text_index = len(page.texts) - 1
     if hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "text"
+    _sync_text_real_object(context, page, entry)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     return entry, missing_parent
 
@@ -256,6 +257,7 @@ def _remove_text_by_id(context, page_id: str, text_id: str) -> None:
     if idx < 0:
         return
     page.texts.remove(idx)
+    _remove_text_real_object(page_id, text_id)
     page.active_text_index = min(idx, len(page.texts) - 1) if len(page.texts) else -1
     if len(page.texts) == 0 and hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "gp"
@@ -409,6 +411,30 @@ def _set_text_rect(entry, x: float, y: float, width: float, height: float) -> No
     entry.height_mm = max(_TEXT_MIN_SIZE_MM, float(height))
 
 
+def _sync_text_real_object(context, page, entry) -> None:
+    if context is None or page is None or entry is None:
+        return
+    try:
+        from ..utils import text_real_object
+
+        text_real_object.ensure_text_real_object(
+            scene=context.scene,
+            entry=entry,
+            page=page,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("text real object sync failed")
+
+
+def _remove_text_real_object(page_id: str, text_id: str) -> None:
+    try:
+        from ..utils import text_real_object
+
+        text_real_object.remove_text_real_object(page_id, text_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception("text real object removal failed")
+
+
 def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
     left = min(float(x0), float(x1))
     right = max(float(x0), float(x1))
@@ -522,7 +548,9 @@ class BNAME_OT_text_remove(Operator):
         if not (0 <= idx < len(page.texts)):
             return {"CANCELLED"}
         tid = page.texts[idx].id
+        page_id = str(getattr(page, "id", "") or "")
         page.texts.remove(idx)
+        _remove_text_real_object(page_id, tid)
         if len(page.texts) == 0:
             page.active_text_index = -1
         elif idx >= len(page.texts):
@@ -568,6 +596,7 @@ class BNAME_OT_text_attach_to_balloon(Operator):
         target_id = self.balloon_id.strip()
         if not target_id:
             txt.parent_balloon_id = ""
+            _sync_text_real_object(context, page, txt)
             layer_stack_utils.sync_layer_stack_after_data_change(context)
             self.report({"INFO"}, "テキストを独立化しました")
             return {"FINISHED"}
@@ -578,6 +607,7 @@ class BNAME_OT_text_attach_to_balloon(Operator):
                 # 位置を当該フキダシの中央に合わせる
                 txt.x_mm = b.x_mm + (b.width_mm - txt.width_mm) / 2.0
                 txt.y_mm = b.y_mm + (b.height_mm - txt.height_mm) / 2.0
+                _sync_text_real_object(context, page, txt)
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
                 self.report({"INFO"}, f"テキストを紐付け: {target_id}")
                 return {"FINISHED"}
@@ -620,6 +650,7 @@ class BNAME_OT_text_apply_font_to_selection(Operator):
             return {"CANCELLED"}
         if not text_style.apply_font_span(entry, start, end, font):
             return {"CANCELLED"}
+        _sync_text_real_object(context, page, entry)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         layer_stack_utils.tag_view3d_redraw(context)
         self.report({"INFO"}, "選択範囲のフォントを更新しました")
@@ -1060,6 +1091,7 @@ class BNAME_OT_text_tool(Operator):
                     return {"RUNNING_MODAL"}
                 if moved:
                     self._push_undo_step("B-Name: テキスト作成")
+                    _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
                 self._start_editing_created(context, page, entry)
             else:
@@ -1067,6 +1099,7 @@ class BNAME_OT_text_tool(Operator):
                 if moved:
                     self._clear_click_state()
                     self._push_undo_step("B-Name: テキスト移動/リサイズ")
+                    _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
                 else:
                     layer_stack_utils.tag_view3d_redraw(context)
@@ -1272,6 +1305,7 @@ class BNAME_OT_text_tool(Operator):
         page.active_text_index = idx
         if hasattr(context.scene, "bname_active_layer_kind"):
             context.scene.bname_active_layer_kind = "text"
+        _sync_text_real_object(context, page, entry)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
     def _insert_current_text(self, context, text: str):

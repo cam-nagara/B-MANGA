@@ -128,6 +128,7 @@ def main() -> None:
         from bname_dev.utils import layer_stack as layer_stack_utils
         from bname_dev.utils import object_naming as on
         from bname_dev.utils import object_selection
+        from bname_dev.utils import text_real_object
         from bname_dev.utils.geom import Rect
         from bname_dev.utils.layer_hierarchy import coma_stack_key
         from bname_dev.operators import effect_line_gen, object_tool_selection
@@ -179,7 +180,16 @@ def main() -> None:
                 raise AssertionError(f"アウトライナー選択が同期しません: {key}")
             kind, _page_id, item_id = object_selection.parse_key(key)
             if kind in {"image", "raster", "balloon", "text"}:
-                if not on.is_managed(active_obj) or on.get_kind(active_obj) != kind or on.get_bname_id(active_obj) != item_id:
+                expected_id = item_id
+                if kind == "text":
+                    expected_id = text_real_object.text_object_bname_id_for_values(
+                        page.id, item_id
+                    )
+                if (
+                    not on.is_managed(active_obj)
+                    or on.get_kind(active_obj) != kind
+                    or on.get_bname_id(active_obj) != expected_id
+                ):
                     raise AssertionError(f"対象オブジェクトが一致しません: {key}")
 
         page_key = object_selection.page_key(page)

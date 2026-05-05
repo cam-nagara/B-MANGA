@@ -181,43 +181,19 @@ def ensure_text_empty_object(
     page,
     folder_id: str = "",
 ) -> Optional[bpy.types.Object]:
-    """``BNameTextEntry`` に対応する Empty Object を生成・更新する."""
-    if scene is None or entry is None or page is None:
+    """後方互換 API。現在はテキストを実体付き表示 Object として同期する."""
+    try:
+        from . import text_real_object
+
+        return text_real_object.ensure_text_real_object(
+            scene=scene,
+            entry=entry,
+            page=page,
+            folder_id=folder_id,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("ensure_text_real_object compatibility call failed")
         return None
-    text_id = str(getattr(entry, "id", "") or "")
-    if not text_id:
-        return None
-    obj_name = f"{TEXT_EMPTY_NAME_PREFIX}{text_id}"
-    obj = _ensure_empty_object(obj_name)
-    # ページローカル座標 (mm) + page_grid オフセット (mm) を world 座標に
-    ox_mm, oy_mm = _resolve_page_offset(scene, page)
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
-    stamp_kind, stamp_key, stamp_folder = _resolve_parent_for_entry(
-        entry, page, folder_id
-    )
-    TEXT_Z_BASE = 2000
-    z_index = TEXT_Z_BASE
-    texts = getattr(page, "texts", None)
-    if texts is not None:
-        for i, e in enumerate(texts):
-            if str(getattr(e, "id", "") or "") == text_id:
-                z_index = TEXT_Z_BASE + (i + 1) * 10
-                break
-    _stamp_and_link(
-        obj,
-        kind="text",
-        bname_id=text_id,
-        title=str(getattr(entry, "body", "") or text_id)[:40],
-        z_index=z_index,
-        parent_kind=stamp_kind,
-        parent_key=stamp_key,
-        folder_id=stamp_folder,
-        scene=scene,
-    )
-    obj.hide_viewport = not bool(getattr(entry, "visible", True))
-    obj.hide_render = not bool(getattr(entry, "visible", True))
-    return obj
 
 
 def cleanup_legacy_plane_objects() -> int:
@@ -286,6 +262,14 @@ def find_image_entry(scene, image_id: str):
 
 
 def find_text_entry(scene, text_id: str):
+    try:
+        from . import text_real_object
+
+        page, entry = text_real_object.find_text_entry(scene, text_id)
+        if entry is not None:
+            return page, entry
+    except Exception:  # noqa: BLE001
+        pass
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if work is None:
         return None, None
@@ -321,9 +305,12 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         if entry is None:
             return False
     else:  # text
-        _page, entry = find_text_entry(scene, bname_id)
+        page, entry = find_text_entry(scene, bname_id)
         if entry is None:
             return False
+        ox_mm, oy_mm = _resolve_page_offset(scene, page)
+        new_x_mm -= ox_mm
+        new_y_mm -= oy_mm
 
     cur_x = float(getattr(entry, "x_mm", 0.0) or 0.0)
     cur_y = float(getattr(entry, "y_mm", 0.0) or 0.0)
