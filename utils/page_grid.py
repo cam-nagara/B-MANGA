@@ -298,6 +298,16 @@ def apply_page_collection_transforms(context, work) -> int:
             if owner_page_id and owner_page_id != page_id_str:
                 continue
 
+            if str(obj.get("bname_balloon_fill_kind", "") or "") == "balloon_fill":
+                entry = balloon_entries.get(str(obj.get("bname_balloon_fill_owner_id", "") or ""))
+                if entry is not None:
+                    _set_xy(
+                        obj,
+                        mm_to_m(ox_mm + float(getattr(entry, "x_mm", 0.0) or 0.0) + sub_x),
+                        mm_to_m(oy_mm + float(getattr(entry, "y_mm", 0.0) or 0.0) + sub_y),
+                    )
+                continue
+
             if kind in full_canvas_kinds and managed:
                 _set_xy(
                     obj,
@@ -319,6 +329,9 @@ def apply_page_collection_transforms(context, work) -> int:
                     continue
                 ex_mm = float(getattr(entry, "x_mm", 0.0) or 0.0)
                 ey_mm = float(getattr(entry, "y_mm", 0.0) or 0.0)
+                if kind == "image":
+                    ex_mm += float(getattr(entry, "width_mm", 0.0) or 0.0) * 0.5
+                    ey_mm += float(getattr(entry, "height_mm", 0.0) or 0.0) * 0.5
                 _set_xy(
                     obj,
                     mm_to_m(ox_mm + ex_mm + sub_x),
@@ -353,6 +366,12 @@ def apply_page_collection_transforms(context, work) -> int:
         _cbo.update_coma_border_locations(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_border location update failed")
+    try:
+        from . import paper_guide_object as _pgo
+
+        _pgo.regenerate_all_paper_guides(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: paper guide update failed")
     return updated
 
 

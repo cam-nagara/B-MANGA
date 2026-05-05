@@ -55,6 +55,16 @@ def _tag_view3d_redraw(context) -> None:
 
 
 def _on_paper_visual_changed(_self, context) -> None:
+    try:
+        from ..core.work import get_work
+        from ..utils import paper_guide_object
+
+        work = get_work(context)
+        scene = getattr(context, "scene", None) if context is not None else None
+        if scene is not None and work is not None and work.loaded:
+            paper_guide_object.regenerate_all_paper_guides(scene, work)
+    except Exception:  # noqa: BLE001
+        pass
     _tag_view3d_redraw(context)
 
 
@@ -85,11 +95,15 @@ def _on_paper_color_changed(self, context) -> None:
 def _on_paper_layout_changed(_self, context) -> None:
     try:
         from ..core.work import get_work
-        from ..utils import page_grid
+        from ..utils import page_grid, paper_bg_object, paper_guide_object
 
         work = get_work(context)
         if work is not None and work.loaded:
             page_grid.apply_page_collection_transforms(context, work)
+            scene = getattr(context, "scene", None) if context is not None else None
+            if scene is not None:
+                paper_bg_object.regenerate_all_paper_bgs(scene, work)
+                paper_guide_object.regenerate_all_paper_guides(scene, work)
     except Exception:  # noqa: BLE001
         pass
     _tag_view3d_redraw(context)
@@ -108,6 +122,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=257.00,
         min=1.0,
         soft_max=1000.0,
+        update=_on_paper_layout_changed,
     )
     canvas_height_mm: FloatProperty(  # type: ignore[valid-type]
         name="高さ",
@@ -115,6 +130,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=364.00,
         min=1.0,
         soft_max=1000.0,
+        update=_on_paper_layout_changed,
     )
     dpi: IntProperty(  # type: ignore[valid-type]
         name="解像度 (dpi)",
@@ -137,6 +153,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=221.81,
         min=1.0,
         soft_max=1000.0,
+        update=_on_paper_layout_changed,
     )
     finish_height_mm: FloatProperty(  # type: ignore[valid-type]
         name="高さ",
@@ -144,6 +161,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=328.78,
         min=1.0,
         soft_max=1000.0,
+        update=_on_paper_layout_changed,
     )
     bleed_mm: FloatProperty(  # type: ignore[valid-type]
         name="裁ち落とし幅",
@@ -151,6 +169,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=7.00,
         min=0.0,
         soft_max=50.0,
+        update=_on_paper_layout_changed,
     )
 
     # --- 基本枠 (内枠) ---
@@ -160,6 +179,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=180.00,
         min=1.0,
         soft_max=500.0,
+        update=_on_paper_layout_changed,
     )
     inner_frame_height_mm: FloatProperty(  # type: ignore[valid-type]
         name="高さ",
@@ -167,18 +187,21 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=270.00,
         min=1.0,
         soft_max=500.0,
+        update=_on_paper_layout_changed,
     )
     inner_frame_offset_x_mm: FloatProperty(  # type: ignore[valid-type]
         name="横オフセット",
         default=0.00,
         soft_min=-100.0,
         soft_max=100.0,
+        update=_on_paper_layout_changed,
     )
     inner_frame_offset_y_mm: FloatProperty(  # type: ignore[valid-type]
         name="縦オフセット",
         default=0.00,
         soft_min=-100.0,
         soft_max=100.0,
+        update=_on_paper_layout_changed,
     )
 
     # --- セーフライン (天/地/ノド/小口) ---
@@ -187,12 +210,14 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=17.49,
         min=0.0,
         soft_max=100.0,
+        update=_on_paper_visual_changed,
     )
     safe_bottom_mm: FloatProperty(  # type: ignore[valid-type]
         name="地",
         default=17.49,
         min=0.0,
         soft_max=100.0,
+        update=_on_paper_visual_changed,
     )
     safe_gutter_mm: FloatProperty(  # type: ignore[valid-type]
         name="ノド",
@@ -200,6 +225,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=20.90,
         min=0.0,
         soft_max=100.0,
+        update=_on_paper_visual_changed,
     )
     safe_fore_edge_mm: FloatProperty(  # type: ignore[valid-type]
         name="小口",
@@ -207,6 +233,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=17.23,
         min=0.0,
         soft_max=100.0,
+        update=_on_paper_visual_changed,
     )
 
     # --- 色・線数 ---

@@ -224,6 +224,7 @@ def _mirror_image_text_objects(scene, work) -> None:
     """全 BNameImageLayer / BNameTextEntry に対応する表示 Object を ensure."""
     try:
         from . import empty_layer_object as elo
+        from . import image_real_object as iro
         from . import text_real_object as tro
 
         # 旧 Plane 方式の Object/Mesh/Material/Image を掃除 (Empty 化移行)
@@ -232,22 +233,8 @@ def _mirror_image_text_objects(scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("legacy plane cleanup failed")
 
-        # image_layers (scene 直下)
-        coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
-        if coll is not None:
-            for entry in coll:
-                parent_key = str(getattr(entry, "parent_key", "") or "")
-                page_id = parent_key.split(":", 1)[0] if parent_key else ""
-                page = None
-                for p in getattr(work, "pages", []):
-                    if str(getattr(p, "id", "") or "") == page_id:
-                        page = p
-                        break
-                if page is None and len(work.pages) > 0:
-                    page = work.pages[0]
-                if page is None:
-                    continue
-                elo.ensure_image_empty_object(scene=scene, entry=entry, page=page)
+        # image_layers (scene 直下): Empty ではなく、透明画像付き平面として実体化する。
+        iro.sync_all_image_real_objects(scene, work)
 
         # texts (page.texts): 空 Object ではなく、透明画像平面として実体化する。
         tro.sync_all_text_real_objects(scene, work)
@@ -301,7 +288,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                 coma_title = str(getattr(coma, "title", "") or coma_id)
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
         # 画像 / テキストの表示 Object を ensure。
-        # 画像は従来の軽量 Empty、テキストは実体化された画像平面。
+        # どちらも透明画像付き平面として実体化する。
         _mirror_image_text_objects(scene, work)
 
         # フキダシ Curve Object を ensure (entry.parent_key に基づき該当 page/coma
@@ -322,6 +309,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                             "mirror balloon curve failed: %s",
                             getattr(entry, "id", ""),
                         )
+            _bco.cleanup_orphan_balloon_objects(scene)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror balloon curve top-level failed")
 
@@ -389,6 +377,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             assign_per_page_z_ranks(scene, work)
         except Exception:  # noqa: BLE001
             _logger.exception("assign_per_page_z_ranks failed")
+
+        # 用紙ガイド線群とセーフライン外塗りは、作品要素の実体が並んだ後に
+        # z を決める。ガイド線は最前面、セーフライン外塗りはテキストより下。
+        try:
+            from . import paper_guide_object as _pgo
+
+            _pgo.regenerate_all_paper_guides(scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror paper guides failed")
 
         # 既存 raster Object の Boolean Intersect modifier の target を最新の
         # coma_mask Object に同期 (2026-05-04 案 1。 file ロード直後や

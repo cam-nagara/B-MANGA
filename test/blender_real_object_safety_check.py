@@ -37,6 +37,19 @@ def _image_from_text_object(obj):
     return None
 
 
+def _make_source_png(path: Path) -> None:
+    img = bpy.data.images.new("bname_real_object_source", width=2, height=2, alpha=True)
+    img.pixels.foreach_set([
+        1.0, 0.0, 0.0, 1.0,
+        0.0, 1.0, 0.0, 1.0,
+        0.0, 0.0, 1.0, 1.0,
+        1.0, 1.0, 1.0, 1.0,
+    ])
+    img.filepath_raw = str(path)
+    img.file_format = "PNG"
+    img.save()
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_real_object_safety_"))
     mod = None
@@ -50,9 +63,11 @@ def main() -> None:
         from bname_dev.operators import balloon_op, text_op
         from bname_dev.utils import balloon_curve_object
         from bname_dev.utils import coma_border_object
+        from bname_dev.utils import image_real_object
         from bname_dev.utils import layer_object_sync
         from bname_dev.utils import object_naming as on
         from bname_dev.utils import outliner_model
+        from bname_dev.utils import paper_guide_object
         from bname_dev.utils import text_real_object
         from bname_dev.utils.layer_hierarchy import page_stack_key
 
@@ -89,6 +104,22 @@ def main() -> None:
             parent_kind="page",
             parent_key=page_key,
         )
+        source_png = temp_root / "source.png"
+        _make_source_png(source_png)
+        image_entry = scene.bname_image_layers.add()
+        image_entry.id = "image_real_0001"
+        image_entry.title = "実体画像"
+        image_entry.filepath = str(source_png)
+        image_entry.x_mm = 12.0
+        image_entry.y_mm = 16.0
+        image_entry.width_mm = 20.0
+        image_entry.height_mm = 12.0
+        image_entry.opacity = 0.75
+        image_entry.parent_kind = "page"
+        image_entry.parent_key = page_key
+        coma.white_margin.enabled = True
+        coma.white_margin.width_mm = 1.5
+        coma.border.style = "dashed"
 
         layer_object_sync.mirror_work_to_outliner(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)
@@ -123,11 +154,32 @@ def main() -> None:
         old_empty = bpy.data.objects.get(f"text_{text.id}")
         assert old_empty is None or old_empty.type != "EMPTY", "legacy text Empty still exists"
 
+        image_obj = on.find_object_by_bname_id(image_entry.id, kind="image")
+        assert image_obj is not None, "image real object was not created"
+        assert image_obj.type == "MESH", f"image should be a mesh plane, got {image_obj.type}"
+        assert image_obj.active_material is not None, "image real object has no material"
+        assert image_obj.data.uv_layers.active is not None, "image real object has no UV"
+        legacy_image_empty = bpy.data.objects.get(f"image_{image_entry.id}")
+        assert legacy_image_empty is None or legacy_image_empty.type != "EMPTY", "legacy image Empty still exists"
+
+        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}_safe")
+        assert guide_obj is not None, "paper guide object was not created"
+        assert guide_obj.type == "CURVE", f"paper guide should be a curve, got {guide_obj.type}"
+        safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+        assert safe_fill_obj is not None, "safe area fill object was not created"
+        assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
+
         border_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{page.id}_{coma.id}"
         )
         assert border_obj is not None, "coma border curve was not created"
         assert border_obj.type == "CURVE", f"coma border should be a curve, got {border_obj.type}"
+        assert len(border_obj.data.splines) > 1, "dashed coma border did not create multiple real strokes"
+        white_margin_obj = bpy.data.objects.get(
+            f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"
+        )
+        assert white_margin_obj is not None, "coma white margin object was not created"
+        assert white_margin_obj.type == "MESH", f"coma white margin should be a mesh, got {white_margin_obj.type}"
         assert not border_obj.hide_viewport, "coma border should be visible"
         coma.border.visible = False
         assert border_obj.hide_viewport and border_obj.hide_render, "coma border visibility was not synced"
@@ -142,10 +194,15 @@ def main() -> None:
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
         assert balloon_obj is not None, "balloon curve was not created"
         assert balloon_obj.type == "CURVE", f"balloon should be a curve, got {balloon_obj.type}"
+        balloon_fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}")
+        assert balloon_fill_obj is not None, "balloon fill object was not created"
+        assert balloon_fill_obj.type == "CURVE", f"balloon fill should be a curve, got {balloon_fill_obj.type}"
         balloon.visible = False
         assert balloon_obj.hide_viewport and balloon_obj.hide_render, "balloon visibility was not synced"
+        assert balloon_fill_obj.hide_viewport and balloon_fill_obj.hide_render, "balloon fill visibility was not synced"
         balloon.visible = True
         assert not balloon_obj.hide_viewport and not balloon_obj.hide_render, "balloon visibility restore failed"
+        assert not balloon_fill_obj.hide_viewport and not balloon_fill_obj.hide_render, "balloon fill visibility restore failed"
         tail = balloon.tails.add()
         tail.type = "straight"
         tail.direction_deg = 270.0
@@ -167,19 +224,34 @@ def main() -> None:
         text_name = text_obj.name
         image_name = image.name
         border_name = border_obj.name
+        image_obj_name = image_obj.name
+        guide_name = guide_obj.name
+        safe_fill_name = safe_fill_obj.name
+        white_margin_name = white_margin_obj.name
         balloon_name = balloon_obj.name
+        balloon_fill_name = balloon_fill_obj.name
         reopen_path = temp_root / "real_object_safety_reopen.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
         mod.unregister()
         mod = None
 
         assert bpy.data.objects.get(text_name) is not None, "text object disappeared after unregister"
+        assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after unregister"
         assert bpy.data.objects.get(border_name) is not None, "coma border disappeared after unregister"
+        assert bpy.data.objects.get(guide_name) is not None, "paper guide disappeared after unregister"
+        assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after unregister"
+        assert bpy.data.objects.get(white_margin_name) is not None, "coma white margin disappeared after unregister"
         assert bpy.data.objects.get(balloon_name) is not None, "balloon disappeared after unregister"
+        assert bpy.data.objects.get(balloon_fill_name) is not None, "balloon fill disappeared after unregister"
         bpy.ops.wm.open_mainfile(filepath=str(reopen_path))
         assert bpy.data.objects.get(text_name) is not None, "text object disappeared after reopen"
+        assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after reopen"
         assert bpy.data.objects.get(border_name) is not None, "coma border disappeared after reopen"
+        assert bpy.data.objects.get(guide_name) is not None, "paper guide disappeared after reopen"
+        assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after reopen"
+        assert bpy.data.objects.get(white_margin_name) is not None, "coma white margin disappeared after reopen"
         assert bpy.data.objects.get(balloon_name) is not None, "balloon disappeared after reopen"
+        assert bpy.data.objects.get(balloon_fill_name) is not None, "balloon fill disappeared after reopen"
         reopened_image = bpy.data.images.get(image_name)
         assert reopened_image is not None, "text texture image disappeared after reopen"
         assert reopened_image.size[0] > 0 and reopened_image.size[1] > 0

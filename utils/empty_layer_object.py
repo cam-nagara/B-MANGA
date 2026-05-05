@@ -1,18 +1,13 @@
-"""画像 / テキスト レイヤーの Outliner 用 Empty Object ヘルパ.
+"""画像 / テキスト レイヤーの表示 Object 互換ヘルパ.
 
-設計方針 (テキストと画像はオーバーレイ描画方式に統一):
-    - Outliner 上は **軽量な Empty Object** だけを置き、Object 化のメリット
-      (D&D / 親子変更 / 表示 ON/OFF / Modifier ベースのマスク) を享受する。
-    - 実際の絵柄描画は既存 GPU オーバーレイ (`ui/overlay_image.py` /
-      `ui/overlay_text.py`) が担当する。
-    - Pillow 経由の画像生成や Image データブロック大量生成を回避し、編集
-      応答とメモリ消費を改善。
+現在の画像 / テキストは透明画像付き Mesh 平面として Blender データに残す。
+このモジュールは旧 Empty API からの呼び出しを新しい実体同期へ橋渡しする。
 
 export pipeline (`io/export_pipeline.py`) は **PropertyGroup (BNameImageLayer
 / BNameTextEntry) を直接読んで Pillow 合成** しているため、Empty 化しても
 PNG / PSD 出力結果には影響しない。
 
-Empty Object の役割:
+旧 Empty Object の役割:
     - `bname_kind` / `bname_id` / `bname_managed` / `bname_parent_key` /
       `bname_z_index` / `bname_title` を保持
     - location は entry の x_mm / y_mm から mm→m 換算で同期
@@ -135,43 +130,19 @@ def ensure_image_empty_object(
     page,
     folder_id: str = "",
 ) -> Optional[bpy.types.Object]:
-    """``BNameImageLayer`` entry に対応する Empty Object を生成・更新する."""
-    if scene is None or entry is None or page is None:
+    """後方互換 API。現在は画像を実体付き表示 Object として同期する."""
+    try:
+        from . import image_real_object
+
+        return image_real_object.ensure_image_real_object(
+            scene=scene,
+            entry=entry,
+            page=page,
+            folder_id=folder_id,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("ensure_image_real_object compatibility call failed")
         return None
-    image_id = str(getattr(entry, "id", "") or "")
-    if not image_id:
-        return None
-    obj_name = f"{IMAGE_EMPTY_NAME_PREFIX}{image_id}"
-    obj = _ensure_empty_object(obj_name)
-    # ページローカル座標 (mm) + page_grid オフセット (mm) を world 座標に
-    ox_mm, oy_mm = _resolve_page_offset(scene, page)
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
-    stamp_kind, stamp_key, stamp_folder = _resolve_parent_for_entry(
-        entry, page, folder_id
-    )
-    # z_index は image_layers 配列 index ベース
-    z_index = 0
-    coll = getattr(scene, "bname_image_layers", None)
-    if coll is not None:
-        for i, e in enumerate(coll):
-            if str(getattr(e, "id", "") or "") == image_id:
-                z_index = (i + 1) * 10
-                break
-    _stamp_and_link(
-        obj,
-        kind="image",
-        bname_id=image_id,
-        title=str(getattr(entry, "title", "") or image_id),
-        z_index=z_index,
-        parent_kind=stamp_kind,
-        parent_key=stamp_key,
-        folder_id=stamp_folder,
-        scene=scene,
-    )
-    obj.hide_viewport = not bool(getattr(entry, "visible", True))
-    obj.hide_render = not bool(getattr(entry, "visible", True))
-    return obj
 
 
 def ensure_text_empty_object(
@@ -304,6 +275,22 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         entry = find_image_entry(scene, bname_id)
         if entry is None:
             return False
+        page = None
+        try:
+            work = getattr(scene, "bname_work", None)
+            parent_key = str(getattr(entry, "parent_key", "") or "")
+            page_id = parent_key.split(":", 1)[0] if parent_key else ""
+            for candidate in getattr(work, "pages", []) or []:
+                if str(getattr(candidate, "id", "") or "") == page_id:
+                    page = candidate
+                    break
+            if page is None and len(getattr(work, "pages", []) or []) > 0:
+                page = work.pages[0]
+            ox_mm, oy_mm = _resolve_page_offset(scene, page)
+            new_x_mm -= ox_mm + float(getattr(entry, "width_mm", 0.0) or 0.0) * 0.5
+            new_y_mm -= oy_mm + float(getattr(entry, "height_mm", 0.0) or 0.0) * 0.5
+        except Exception:  # noqa: BLE001
+            pass
     else:  # text
         page, entry = find_text_entry(scene, bname_id)
         if entry is None:

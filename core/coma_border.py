@@ -51,6 +51,7 @@ class BNameBorderEdgeOverride(bpy.types.PropertyGroup):
     use_override: BoolProperty(  # type: ignore[valid-type]
         name="この辺を個別設定",
         default=False,
+        update=_on_border_changed,
     )
     style: EnumProperty(  # type: ignore[valid-type]
         name="線種",
@@ -77,6 +78,7 @@ class BNameBorderEdgeOverride(bpy.types.PropertyGroup):
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",
         default=True,
+        update=_on_border_changed,
     )
 
 
@@ -134,9 +136,9 @@ class BNameComaBorder(bpy.types.PropertyGroup):
 class BNameWhiteMarginEdgeOverride(bpy.types.PropertyGroup):
     """白フチの辺ごとオーバーライド."""
 
-    use_override: BoolProperty(name="この辺を個別設定", default=False)  # type: ignore[valid-type]
-    enabled: BoolProperty(name="白フチ", default=False)  # type: ignore[valid-type]
-    width_mm: FloatProperty(name="幅 (mm)", default=0.37, min=0.0, soft_max=5.0)  # type: ignore[valid-type]
+    use_override: BoolProperty(name="この辺を個別設定", default=False, update=_on_border_changed)  # type: ignore[valid-type]
+    enabled: BoolProperty(name="白フチ", default=False, update=_on_border_changed)  # type: ignore[valid-type]
+    width_mm: FloatProperty(name="幅 (mm)", default=0.37, min=0.0, soft_max=5.0, update=_on_border_changed)  # type: ignore[valid-type]
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
         subtype="COLOR",
@@ -144,6 +146,7 @@ class BNameWhiteMarginEdgeOverride(bpy.types.PropertyGroup):
         default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
+        update=_on_border_changed,
     )
 
 
@@ -153,12 +156,14 @@ class BNameComaWhiteMargin(bpy.types.PropertyGroup):
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="白フチ",
         default=False,
+        update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="幅 (mm)",
         default=0.37,
         min=0.0,
         soft_max=5.0,
+        update=_on_border_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",
@@ -167,6 +172,7 @@ class BNameComaWhiteMargin(bpy.types.PropertyGroup):
         default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
+        update=_on_border_changed,
     )
     edge_top: PointerProperty(type=BNameWhiteMarginEdgeOverride)  # type: ignore[valid-type]
     edge_right: PointerProperty(type=BNameWhiteMarginEdgeOverride)  # type: ignore[valid-type]

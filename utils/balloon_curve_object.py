@@ -24,14 +24,21 @@ from .geom import mm_to_m
 _logger = log.get_logger(__name__)
 
 BALLOON_CURVE_NAME_PREFIX = "balloon_"
+BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
 BALLOON_CURVE_DATA_PREFIX = "balloon_curve_"
+BALLOON_FILL_DATA_PREFIX = "balloon_fill_curve_"
 BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
+BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
+PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
+PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 
 
 def _ensure_balloon_curve_data(
     name: str,
     points_mm: Sequence[tuple[float, float]],
     tail_polygons_mm: Sequence[Sequence[tuple[float, float]]] | None = None,
+    *,
+    fill: bool = False,
 ) -> bpy.types.Curve:
     """点列 (mm) から Bezier Curve データブロックを ensure (再構築)."""
     curve = bpy.data.curves.get(name)
@@ -50,9 +57,8 @@ def _ensure_balloon_curve_data(
     for tail_points in tail_polygons_mm or ():
         if len(tail_points) >= 3:
             _append_poly_loop(curve, tail_points)
-    # 実体の安全性を優先し、白い用紙上でも残存が分かる輪郭線として持つ。
     try:
-        curve.fill_mode = "NONE"
+        curve.fill_mode = "BOTH" if fill else "NONE"
     except Exception:  # noqa: BLE001
         pass
     # 線幅 (ベベル) は呼出側で設定。data 側のデフォルトは 0。
@@ -99,6 +105,20 @@ def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
         return (0.0, 0.0, 0.0, opacity)
 
 
+def _entry_fill_rgba(entry) -> tuple[float, float, float, float]:
+    color = getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0))
+    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    try:
+        return (
+            float(color[0]),
+            float(color[1]),
+            float(color[2]),
+            float(color[3]) * opacity,
+        )
+    except Exception:  # noqa: BLE001
+        return (1.0, 1.0, 1.0, opacity)
+
+
 def _ensure_balloon_curve_material(
     curve: bpy.types.Curve,
     *,
@@ -143,6 +163,34 @@ def _ensure_balloon_curve_material(
         curve.materials.append(mat)
     elif curve.materials[0] is not mat:
         curve.materials[0] = mat
+    return mat
+
+
+def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
+    mat = bpy.data.materials.get(material_name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=material_name)
+    fill = _entry_fill_rgba(entry)
+    try:
+        mat.diffuse_color = fill
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = True
+    except Exception:  # noqa: BLE001
+        pass
+    mat.use_nodes = True
+    try:
+        nt = mat.node_tree
+        for n in list(nt.nodes):
+            nt.nodes.remove(n)
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        out.location = (200, 0)
+        principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
+        principled.location = (-100, 0)
+        principled.inputs["Base Color"].default_value = fill
+        principled.inputs["Alpha"].default_value = fill[3]
+        nt.links.new(principled.outputs["BSDF"], out.inputs["Surface"])
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon fill material setup failed")
     return mat
 
 
@@ -254,6 +302,86 @@ def _remove_duplicate_balloon_objects(
         if str(obj.get(on.PROP_ID, "") or "") != balloon_id:
             continue
         _remove_balloon_object(obj)
+
+
+def _ensure_balloon_fill_object(
+    *,
+    scene: bpy.types.Scene,
+    entry,
+    page,
+    points_mm: Sequence[tuple[float, float]],
+    tail_polygons_mm: Sequence[Sequence[tuple[float, float]]],
+    parent_kind: str,
+    parent_key: str,
+    folder_id: str,
+) -> Optional[bpy.types.Object]:
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+    fill_data = _ensure_balloon_curve_data(
+        f"{BALLOON_FILL_DATA_PREFIX}{balloon_id}",
+        points_mm,
+        tail_polygons_mm,
+        fill=True,
+    )
+    try:
+        fill_data.bevel_depth = 0.0
+    except Exception:  # noqa: BLE001
+        pass
+    mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry)
+    if not fill_data.materials:
+        fill_data.materials.append(mat)
+    elif fill_data.materials[0] is not mat:
+        fill_data.materials[0] = mat
+
+    obj_name = f"{BALLOON_FILL_NAME_PREFIX}{balloon_id}"
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None and obj.type != "CURVE":
+        _remove_balloon_object(obj)
+        obj = None
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, fill_data)
+    elif obj.data is not fill_data:
+        obj.data = fill_data
+    obj[PROP_BALLOON_FILL_KIND] = "balloon_fill"
+    obj[PROP_BALLOON_FILL_OWNER_ID] = balloon_id
+    obj[on.PROP_MANAGED] = False
+    obj.hide_select = True
+    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
+    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    obj.location.z = 0.0
+    try:
+        from . import page_grid as _pg
+
+        work = getattr(scene, "bname_work", None)
+        page_idx = -1
+        if work is not None:
+            target_id = str(getattr(page, "id", "") or "")
+            for i, p in enumerate(getattr(work, "pages", [])):
+                if str(getattr(p, "id", "") or "") == target_id:
+                    page_idx = i
+                    break
+        if page_idx >= 0:
+            ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
+            obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
+            obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon fill: page world offset failed")
+    obj.hide_viewport = not bool(getattr(entry, "visible", True))
+    obj.hide_render = not bool(getattr(entry, "visible", True))
+    try:
+        from . import outliner_model as _om
+
+        _om.link_object_to_parent(
+            scene,
+            obj,
+            parent_kind=parent_kind,
+            parent_key=parent_key,
+            folder_id=folder_id,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon fill link failed")
+    return obj
 
 
 def ensure_balloon_curve_object(
@@ -381,6 +509,20 @@ def ensure_balloon_curve_object(
         _logger.exception("balloon: page world offset 加算失敗")
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
+    fill_obj = _ensure_balloon_fill_object(
+        scene=scene,
+        entry=entry,
+        page=page,
+        points_mm=points_mm,
+        tail_polygons_mm=tail_polygons_mm,
+        parent_kind=stamp_kind,
+        parent_key=stamp_key,
+        folder_id=stamp_folder,
+    )
+    if fill_obj is not None:
+        fill_obj.location.z = max(0.0, float(obj.location.z) - 0.001)
+        fill_obj.hide_viewport = obj.hide_viewport
+        fill_obj.hide_render = obj.hide_render
     return obj
 
 
@@ -394,6 +536,32 @@ def find_balloon_entry(scene, balloon_id: str):
             if str(getattr(entry, "id", "") or "") == balloon_id:
                 return page, entry
     return None, None
+
+
+def cleanup_orphan_balloon_objects(scene) -> int:
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if work is None:
+        return 0
+    valid: set[str] = set()
+    for page in getattr(work, "pages", []) or []:
+        for entry in getattr(page, "balloons", []) or []:
+            entry_id = str(getattr(entry, "id", "") or "")
+            if entry_id:
+                valid.add(entry_id)
+    removed = 0
+    for obj in list(bpy.data.objects):
+        if obj.get(on.PROP_KIND) == "balloon":
+            balloon_id = str(obj.get(on.PROP_ID, "") or "")
+            if balloon_id and balloon_id not in valid:
+                _remove_balloon_object(obj)
+                removed += 1
+            continue
+        if obj.get(PROP_BALLOON_FILL_KIND) == "balloon_fill":
+            owner_id = str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "")
+            if owner_id and owner_id not in valid:
+                _remove_balloon_object(obj)
+                removed += 1
+    return removed
 
 
 def on_balloon_entry_changed(entry) -> bool:

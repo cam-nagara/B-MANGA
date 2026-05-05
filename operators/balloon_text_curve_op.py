@@ -40,16 +40,11 @@ class BNAME_OT_balloons_to_curve_all(bpy.types.Operator):
 
 
 class BNAME_OT_images_to_empty_all(bpy.types.Operator):
-    """画像レイヤーを Empty Object として Outliner に登録 (描画はオーバーレイ)."""
+    """画像レイヤーを実画像平面として登録する互換 Operator."""
 
     bl_idname = "bname.images_to_empty_all"
     bl_label = "全画像レイヤーを再登録"
-    bl_description = (
-        "画像レイヤーを Outliner 上の Empty Object として登録します。"
-        "実際の絵柄は B-Name 独自オーバーレイで描画され、export pipeline は "
-        "PropertyGroup から直接 Pillow 合成するためレンダリング結果は変わり"
-        "ません。"
-    )
+    bl_description = "画像レイヤーを透明画像付きの平面として登録します。"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod

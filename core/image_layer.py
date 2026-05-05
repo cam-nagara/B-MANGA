@@ -1,9 +1,8 @@
 """画像レイヤー (ビットマップ) の PropertyGroup.
 
 計画書 3.1.1 参照。スキャンラフ取り込み・写真参照・実写背景用途。
-draw_handler_add + gpu モジュールでオーバーレイ描画 (3.4.3a)。
-
-書き出し時は io/export_pipeline.py が Pillow で合成する。
+画像そのものは透明テクスチャ付き平面として同期し、書き出し時は
+io/export_pipeline.py が Pillow で合成する。
 """
 
 from __future__ import annotations
@@ -31,6 +30,12 @@ _BLEND_MODE_ITEMS = (
 
 
 def _on_image_layer_changed(_self, context) -> None:
+    try:
+        from ..utils import image_real_object
+
+        image_real_object.on_image_entry_changed(_self)
+    except Exception:  # noqa: BLE001
+        pass
     screen = getattr(context, "screen", None) if context is not None else None
     if screen is None:
         return

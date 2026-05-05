@@ -1,0 +1,428 @@
+"""画像レイヤーの実画像平面同期.
+
+画像レイヤーは編集補助だけを 3D ビューポート表示に残し、画像そのものは
+透明テクスチャ付き Mesh 平面として Blender データに保持する。
+"""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+from typing import Optional
+
+import bpy
+
+from . import layer_object_sync as los
+from . import log
+from . import object_naming as on
+from .geom import mm_to_m
+
+_logger = log.get_logger(__name__)
+
+IMAGE_OBJECT_NAME_PREFIX = "image_"
+IMAGE_MESH_NAME_PREFIX = "image_mesh_"
+IMAGE_DATA_NAME_PREFIX = "bname_image_layer_"
+IMAGE_MATERIAL_NAME_PREFIX = "BName_Image_"
+IMAGE_Z_BASE = 300
+
+
+def _safe_token(value: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in str(value or ""))
+
+
+def _object_name(image_id: str) -> str:
+    return f"{IMAGE_OBJECT_NAME_PREFIX}{_safe_token(image_id)}"
+
+
+def _mesh_name(image_id: str) -> str:
+    return f"{IMAGE_MESH_NAME_PREFIX}{_safe_token(image_id)}"
+
+
+def _image_name(image_id: str) -> str:
+    return f"{IMAGE_DATA_NAME_PREFIX}{_safe_token(image_id)}"
+
+
+def _material_name(image_id: str) -> str:
+    return f"{IMAGE_MATERIAL_NAME_PREFIX}{_safe_token(image_id)}"
+
+
+def _resolve_parent_for_entry(entry, page, folder_id: str) -> tuple[str, str, str]:
+    parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    entry_folder = folder_id or str(getattr(entry, "folder_key", "") or "")
+    if parent_kind in {"none", "outside"}:
+        return "outside", "", ""
+    if parent_kind == "coma" and parent_key:
+        return "coma", parent_key, entry_folder
+    if parent_kind == "folder" and entry_folder:
+        return "folder", entry_folder, entry_folder
+    return "page", parent_key or str(getattr(page, "id", "") or ""), entry_folder
+
+
+def _page_offset_mm(scene, work, page) -> tuple[float, float]:
+    if scene is None or work is None or page is None:
+        return 0.0, 0.0
+    page_id = str(getattr(page, "id", "") or "")
+    page_index = -1
+    for i, candidate in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(candidate, "id", "") or "") == page_id:
+            page_index = i
+            break
+    if page_index < 0:
+        return 0.0, 0.0
+    try:
+        from . import page_grid
+
+        return page_grid.page_total_offset_mm(work, scene, page_index)
+    except Exception:  # noqa: BLE001
+        _logger.exception("image real object: page offset failed")
+        return 0.0, 0.0
+
+
+def _image_z_index(scene, image_id: str) -> int:
+    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    if coll is not None:
+        for i, entry in enumerate(coll):
+            if str(getattr(entry, "id", "") or "") == image_id:
+                return IMAGE_Z_BASE + (i + 1) * 10
+    return IMAGE_Z_BASE
+
+
+def _needs_pixel_adjustment(entry) -> bool:
+    eps = 1e-6
+    try:
+        opacity = float(getattr(entry, "opacity", 1.0))
+    except Exception:  # noqa: BLE001
+        opacity = 1.0
+    tint = getattr(entry, "tint_color", (1.0, 1.0, 1.0, 1.0))
+    try:
+        tint_rgba = (
+            float(tint[0]) if len(tint) > 0 else 1.0,
+            float(tint[1]) if len(tint) > 1 else 1.0,
+            float(tint[2]) if len(tint) > 2 else 1.0,
+            float(tint[3]) if len(tint) > 3 else 1.0,
+        )
+    except Exception:  # noqa: BLE001
+        tint_rgba = (1.0, 1.0, 1.0, 1.0)
+    return (
+        abs(float(getattr(entry, "brightness", 0.0) or 0.0)) > eps
+        or abs(float(getattr(entry, "contrast", 0.0) or 0.0)) > eps
+        or abs(opacity - 1.0) > eps
+        or any(abs(channel - 1.0) > eps for channel in tint_rgba)
+        or bool(getattr(entry, "binarize_enabled", False))
+    )
+
+
+def _load_adjusted_pillow(entry):
+    filepath = str(getattr(entry, "filepath", "") or "")
+    if not filepath:
+        return None
+    abs_path = Path(bpy.path.abspath(filepath))
+    if not abs_path.is_file():
+        return None
+    try:
+        from . import python_deps
+
+        python_deps.ensure_bundled_wheels_on_path()
+        from PIL import Image  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        image = Image.open(abs_path).convert("RGBA")
+    except Exception:  # noqa: BLE001
+        return None
+
+    brightness = max(-1.0, min(1.0, float(getattr(entry, "brightness", 0.0) or 0.0)))
+    contrast = max(-1.0, min(1.0, float(getattr(entry, "contrast", 0.0) or 0.0)))
+    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    tint = getattr(entry, "tint_color", (1.0, 1.0, 1.0, 1.0))
+    tint_rgba = (
+        float(tint[0]) if len(tint) > 0 else 1.0,
+        float(tint[1]) if len(tint) > 1 else 1.0,
+        float(tint[2]) if len(tint) > 2 else 1.0,
+        float(tint[3]) if len(tint) > 3 else 1.0,
+    )
+    binarize = bool(getattr(entry, "binarize_enabled", False))
+    threshold = max(0.0, min(1.0, float(getattr(entry, "binarize_threshold", 0.5) or 0.5)))
+
+    out = []
+    contrast_scale = 1.0 + contrast
+    for r, g, b, a in image.getdata():
+        rf = max(0.0, min(1.0, ((r / 255.0) - 0.5) * contrast_scale + 0.5 + brightness))
+        gf = max(0.0, min(1.0, ((g / 255.0) - 0.5) * contrast_scale + 0.5 + brightness))
+        bf = max(0.0, min(1.0, ((b / 255.0) - 0.5) * contrast_scale + 0.5 + brightness))
+        if binarize:
+            lum = rf * 0.299 + gf * 0.587 + bf * 0.114
+            rf = gf = bf = 1.0 if lum >= threshold else 0.0
+        rf = max(0.0, min(1.0, rf * tint_rgba[0]))
+        gf = max(0.0, min(1.0, gf * tint_rgba[1]))
+        bf = max(0.0, min(1.0, bf * tint_rgba[2]))
+        af = max(0.0, min(1.0, (a / 255.0) * tint_rgba[3] * opacity))
+        out.append((
+            int(round(rf * 255.0)),
+            int(round(gf * 255.0)),
+            int(round(bf * 255.0)),
+            int(round(af * 255.0)),
+        ))
+    image.putdata(out)
+    return image
+
+
+def _ensure_image_data_from_pillow(name: str, pil_image) -> Optional[bpy.types.Image]:
+    if pil_image is None:
+        return None
+    width, height = pil_image.size
+    image = bpy.data.images.get(name)
+    if image is None:
+        image = bpy.data.images.new(name, width=width, height=height, alpha=True)
+    elif tuple(image.size) != (width, height):
+        try:
+            bpy.data.images.remove(image)
+        except Exception:  # noqa: BLE001
+            pass
+        image = bpy.data.images.new(name, width=width, height=height, alpha=True)
+    try:
+        image.colorspace_settings.name = "sRGB"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from PIL import Image as PILImage  # type: ignore
+
+        transpose = getattr(PILImage, "Transpose", PILImage)
+        flipped = pil_image.transpose(getattr(transpose, "FLIP_TOP_BOTTOM"))
+    except Exception:  # noqa: BLE001
+        flipped = pil_image
+    rgba = flipped.convert("RGBA")
+    pixels = [channel / 255.0 for pixel in rgba.getdata() for channel in pixel]
+    try:
+        image.pixels.foreach_set(pixels)
+        image.update()
+    except Exception:  # noqa: BLE001
+        _logger.exception("image real object: pixel upload failed")
+    return image
+
+
+def _ensure_image_data(entry, image_id: str) -> Optional[bpy.types.Image]:
+    filepath = str(getattr(entry, "filepath", "") or "")
+    if not filepath:
+        return None
+    if _needs_pixel_adjustment(entry):
+        pil_image = _load_adjusted_pillow(entry)
+        if pil_image is not None:
+            return _ensure_image_data_from_pillow(_image_name(image_id), pil_image)
+    try:
+        image = bpy.data.images.load(bpy.path.abspath(filepath), check_existing=True)
+        try:
+            image.colorspace_settings.name = "sRGB"
+        except Exception:  # noqa: BLE001
+            pass
+        return image
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _ensure_material(name: str, image: Optional[bpy.types.Image]) -> bpy.types.Material:
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    try:
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = True
+    except Exception:  # noqa: BLE001
+        pass
+    nt = mat.node_tree
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    out.location = (300, 0)
+    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    bsdf.location = (80, 0)
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.location = (-180, 40)
+    tex.image = image
+    try:
+        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+        nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    except Exception:  # noqa: BLE001
+        _logger.exception("image real object: material link failed")
+    try:
+        mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    except Exception:  # noqa: BLE001
+        pass
+    return mat
+
+
+def _rebuild_mesh(mesh: bpy.types.Mesh, entry) -> None:
+    width_m = mm_to_m(max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1)))
+    height_m = mm_to_m(max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1)))
+    half_w = width_m * 0.5
+    half_h = height_m * 0.5
+    verts = [
+        (-half_w, -half_h, 0.0),
+        (half_w, -half_h, 0.0),
+        (half_w, half_h, 0.0),
+        (-half_w, half_h, 0.0),
+    ]
+    mesh.clear_geometry()
+    mesh.from_pydata(verts, [], [(0, 1, 2, 3)])
+    mesh.update()
+    uv_layer = mesh.uv_layers.active or mesh.uv_layers.new(name="UVMap")
+    u0, u1 = (1.0, 0.0) if bool(getattr(entry, "flip_x", False)) else (0.0, 1.0)
+    v0, v1 = (1.0, 0.0) if bool(getattr(entry, "flip_y", False)) else (0.0, 1.0)
+    uvs = ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
+    for loop_index, uv in zip(mesh.polygons[0].loop_indices, uvs, strict=False):
+        uv_layer.data[loop_index].uv = uv
+
+
+def _remove_object(obj: bpy.types.Object) -> None:
+    data = getattr(obj, "data", None)
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:  # noqa: BLE001
+        _logger.exception("image real object: object removal failed")
+        return
+    if data is not None and getattr(data, "users", 0) == 0:
+        try:
+            if isinstance(data, bpy.types.Mesh):
+                bpy.data.meshes.remove(data)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def ensure_image_real_object(
+    *,
+    scene: bpy.types.Scene,
+    entry,
+    page,
+    folder_id: str = "",
+) -> Optional[bpy.types.Object]:
+    if scene is None or entry is None or page is None:
+        return None
+    image_id = str(getattr(entry, "id", "") or "")
+    if not image_id:
+        return None
+
+    image = _ensure_image_data(entry, image_id)
+    mat = _ensure_material(_material_name(image_id), image)
+
+    mesh = bpy.data.meshes.get(_mesh_name(image_id))
+    if mesh is None:
+        mesh = bpy.data.meshes.new(_mesh_name(image_id))
+    _rebuild_mesh(mesh, entry)
+    if not mesh.materials:
+        mesh.materials.append(mat)
+    elif mesh.materials[0] is not mat:
+        mesh.materials[0] = mat
+
+    obj_name = _object_name(image_id)
+    obj = on.find_object_by_bname_id(image_id, kind="image")
+    if obj is None:
+        obj = bpy.data.objects.get(obj_name)
+    if obj is not None and obj.type != "MESH":
+        _remove_object(obj)
+        obj = None
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    elif obj.data is not mesh:
+        obj.data = mesh
+
+    work = getattr(scene, "bname_work", None)
+    ox_mm, oy_mm = _page_offset_mm(scene, work, page)
+    width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
+    height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
+    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + width_mm * 0.5 + ox_mm)
+    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + height_mm * 0.5 + oy_mm)
+    obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+
+    parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
+    los.stamp_layer_object(
+        obj,
+        kind="image",
+        bname_id=image_id,
+        title=str(getattr(entry, "title", "") or image_id),
+        z_index=_image_z_index(scene, image_id),
+        parent_kind=parent_kind,
+        parent_key=parent_key,
+        folder_id=stamp_folder,
+        scene=scene,
+        apply_page_offset=False,
+    )
+    obj.hide_viewport = not bool(getattr(entry, "visible", True))
+    obj.hide_render = not bool(getattr(entry, "visible", True))
+    obj.hide_select = False
+    return obj
+
+
+def find_image_entry(scene, image_id: str):
+    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    if coll is None:
+        return None
+    for entry in coll:
+        if str(getattr(entry, "id", "") or "") == image_id:
+            return entry
+    return None
+
+
+def cleanup_orphan_image_objects(scene: bpy.types.Scene) -> int:
+    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    valid = {str(getattr(entry, "id", "") or "") for entry in coll or []}
+    removed = 0
+    for obj in list(bpy.data.objects):
+        if obj.get(on.PROP_KIND) != "image":
+            continue
+        bid = str(obj.get(on.PROP_ID, "") or "")
+        if bid in valid:
+            continue
+        _remove_object(obj)
+        removed += 1
+    return removed
+
+
+def sync_all_image_real_objects(scene: bpy.types.Scene, work) -> int:
+    if scene is None or work is None:
+        return 0
+    coll = getattr(scene, "bname_image_layers", None)
+    if coll is None:
+        return 0
+    count = 0
+    for entry in coll:
+        parent_key = str(getattr(entry, "parent_key", "") or "")
+        page_id = parent_key.split(":", 1)[0] if parent_key else ""
+        page = None
+        for candidate in getattr(work, "pages", []) or []:
+            if str(getattr(candidate, "id", "") or "") == page_id:
+                page = candidate
+                break
+        if page is None and len(getattr(work, "pages", []) or []) > 0:
+            page = work.pages[0]
+        if page is None:
+            continue
+        if ensure_image_real_object(scene=scene, entry=entry, page=page) is not None:
+            count += 1
+    cleanup_orphan_image_objects(scene)
+    return count
+
+
+def on_image_entry_changed(entry) -> bool:
+    scene = bpy.context.scene if bpy.context is not None else None
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if scene is None or work is None or entry is None:
+        return False
+    image_id = str(getattr(entry, "id", "") or "")
+    target_ptr = 0
+    try:
+        target_ptr = int(entry.as_pointer())
+    except Exception:  # noqa: BLE001
+        pass
+    coll = getattr(scene, "bname_image_layers", None) or []
+    for candidate in coll:
+        same_id = bool(image_id) and str(getattr(candidate, "id", "") or "") == image_id
+        try:
+            same_ptr = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+        except Exception:  # noqa: BLE001
+            same_ptr = False
+        if same_id or same_ptr:
+            return sync_all_image_real_objects(scene, work) > 0
+    return False
