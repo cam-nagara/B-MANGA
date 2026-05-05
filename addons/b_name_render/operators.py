@@ -38,8 +38,8 @@ def _draw_command(layout, command) -> None:
         layout.prop(command, "text_value")
     elif kind == "SET_OUTPUT_FOLDER":
         layout.prop(command, "folder_path")
-    elif kind in {"RENDER", "RENDER_LAYER"}:
-        if kind == "RENDER_LAYER":
+    elif kind in {"RENDER", "RENDER_LAYER", "FISHEYE_RENDER_IMAGE_OR_LAYER", "FISHEYE_RENDER_FACES_OR_LAYER", "FISHEYE_ASSEMBLE_OR_LAYER"}:
+        if kind != "RENDER":
             layout.prop(command, "node_group_name")
             layout.prop(command, "label_contains")
         layout.prop(command, "engine")

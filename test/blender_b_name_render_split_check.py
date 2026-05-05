@@ -36,17 +36,24 @@ def main() -> None:
         assert getattr(bpy.types, "BNAME_OT_export_page", None) is None
         assert getattr(bpy.types, "BNAME_OT_export_all_pages", None) is None
         assert getattr(bpy.types, "BNAME_OT_export_pdf", None) is None
+        assert "bname_dev.operators.io_op" not in sys.modules
+        assert "bname_dev.panels.export_panel" not in sys.modules
 
         render = _load_package("bname_render_dev", ROOT / "addons" / "b_name_render")
         assert getattr(bpy.types, "BNAME_RENDER_PT_main", None) is not None
         assert getattr(bpy.types.Scene, "bname_render_state", None) is not None
+        assert getattr(bpy.types.Scene, "fisheye_layout_mode", None) is not None
+        assert getattr(bpy.types.Scene, "my_tool", None) is not None
 
         result = bpy.ops.bname_render.load_builtin_presets(reset=True)
         assert result == {"FINISHED"}, result
         state = bpy.context.scene.bname_render_state
         preset_names = {item.name for item in state.presets}
-        for required in ("キャラ", "背景", "背景pen合成", "画像ノード再読み込み"):
+        for required in ("すべて", "効果", "ページ", "キャラ", "背景", "背景pen合成", "画像ノード再読み込み"):
             assert required in preset_names, required
+        for preset in state.presets:
+            for command in preset.commands:
+                assert not command.name.startswith("未設定"), (preset.name, command.name)
 
         state.active_preset_index = 0
         preset = state.presets[0]

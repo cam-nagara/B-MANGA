@@ -7,7 +7,6 @@ import bpy
 from . import (
     balloon_panel as _legacy_balloon_panel,
     effect_line_panel as _legacy_effect_line_panel,
-    export_panel as _legacy_export_panel,
     gpencil_panel,
     layer_panel as _legacy_layer_panel,
     page_panel as _legacy_page_panel,
@@ -90,10 +89,6 @@ def _unregister_legacy_tool_panels() -> None:
 
 def _unregister_legacy_export_panel() -> None:
     """B-Name-Render 分離前の「書き出し」パネルを確実に外す."""
-    try:
-        _legacy_export_panel.unregister()
-    except Exception:
-        pass
     cls = getattr(bpy.types, "BNAME_PT_export", None)
     if cls is not None:
         try:

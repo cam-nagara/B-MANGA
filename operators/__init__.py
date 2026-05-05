@@ -17,7 +17,6 @@ from . import (
     gp_layer_op,
     gpencil_op,
     image_layer_op,
-    io_op as _legacy_io_op,
     layer_detail_op,
     layer_move_op,
     mask_object_op,
@@ -93,10 +92,6 @@ _MODULES = (
 
 def _unregister_legacy_output_operators() -> None:
     """B-Name-Render 分離前の書き出し Operator を確実に外す."""
-    try:
-        _legacy_io_op.unregister()
-    except Exception:
-        pass
     for class_name in (
         "BNAME_OT_export_page",
         "BNAME_OT_export_all_pages",

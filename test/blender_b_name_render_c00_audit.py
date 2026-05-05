@@ -139,6 +139,7 @@ def main() -> None:
 
     bpy.ops.wm.open_mainfile(filepath=str(blend_path))
     render = _load_render_package()
+    render.register()
     required = _required_from_presets(render.preset_library)
 
     scene = bpy.context.scene
@@ -146,7 +147,7 @@ def main() -> None:
     _collection_names(scene.collection, collections)
 
     nodes = []
-    scene_node_tree = getattr(scene, "node_tree", None)
+    scene_node_tree = getattr(scene, "node_tree", None) or getattr(scene, "compositing_node_group", None)
     if scene_node_tree is not None:
         _walk_nodes(scene_node_tree, nodes)
     for node_group in bpy.data.node_groups:
@@ -208,6 +209,11 @@ def main() -> None:
             "my_tool": hasattr(scene, "my_tool"),
             "eeVR": hasattr(scene, "eeVR"),
         },
+        "placeholder_presets": sorted(
+            preset_name
+            for preset_name, commands in render.preset_library.BUILTIN_PRESETS.items()
+            if any(str(command.get("name", "")).startswith("未設定") for command in commands)
+        ),
         "counts": {
             "view_layers": len(view_layer_names),
             "collections": len(collections),
@@ -251,6 +257,17 @@ def main() -> None:
     print("BNAME_RENDER_C00_AUDIT_JSON_START")
     print(json.dumps(audit, ensure_ascii=False, indent=2, sort_keys=True))
     print("BNAME_RENDER_C00_AUDIT_JSON_END")
+    render.unregister()
+
+    blocking_missing = {
+        key: audit["missing"][key]
+        for key in ("view_layers", "collections", "node_names", "node_groups", "output_labels")
+        if audit["missing"][key]
+    }
+    assert not blocking_missing, blocking_missing
+    assert not audit["placeholder_presets"], audit["placeholder_presets"]
+    for prop_name in ("fisheye_layout_mode", "reduction_mode", "preview_scale_percentage", "my_tool"):
+        assert audit["has_rna_props"][prop_name] is True, prop_name
 
 
 if __name__ == "__main__":

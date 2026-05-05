@@ -70,6 +70,17 @@ def _render_layer(group: str, label: str, samples: int = 1, engine: str = "CYCLE
     )
 
 
+def _fisheye_or_layer(command_type: str, group: str, label: str, samples: int = 1, engine: str = "CYCLES") -> dict:
+    return _cmd(
+        command_type,
+        f"魚眼/通常出力: {group} / {label}",
+        node_group_name=group,
+        label_contains=label,
+        sample_count=samples,
+        engine=engine,
+    )
+
+
 def _simple_layer(view_layer: str, node_name: str, output_group: str, samples: int = 1) -> list[dict]:
     return [_begin(), _vl(view_layer), _node(node_name), _node(output_group), _render(samples), _end()]
 
@@ -120,11 +131,64 @@ def _background_effect_collection(label: str, show_collection: str, hide_collect
     ]
 
 
+def _rough_layer() -> list[dict]:
+    return [_begin(), _vl("レイアウト"), _exclude("アタリ", False, "レイアウト"), _node("アタリ"), _node("出力_アタリ"), _render(1), _end()]
+
+
+def _effect_pass() -> list[dict]:
+    return [
+        *_simple_output("効果", "効果", "出力_効果", "効果", 64),
+        *_simple_output("効果アルファ", "効果アルファ", "出力_効果アルファ", "効果", 64),
+    ]
+
+
+def _page_output() -> list[dict]:
+    return [
+        _begin(),
+        _node("コマ"),
+        _cmd("RELOAD_IMAGES", "画像ノード再読み込み"),
+        _render(1),
+        _end(),
+        _begin(),
+        _node("全コマ統合"),
+        _node("ページ"),
+        _cmd("RELOAD_IMAGES", "画像ノード再読み込み"),
+        _render(1),
+        _end(),
+    ]
+
+
+def _all_output() -> list[dict]:
+    return [
+        _begin(),
+        _node("コマ"),
+        _node("全コマ統合"),
+        _node("ページ"),
+        _cmd("RELOAD_IMAGES", "画像ノード再読み込み"),
+        _render(1),
+        _end(),
+    ]
+
+
+def _pen_output(target: str, output_group: str, output_label: str, aov_target: str, command_type: str = "FISHEYE_RENDER_IMAGE_OR_LAYER") -> list[dict]:
+    return [
+        _aov(aov_target, "落ち影切替", 1),
+        _begin(),
+        _vl(target),
+        _exclude("コマ枠", True),
+        _node(f"{target}線画Pencil+4"),
+        _node(output_group),
+        _fisheye_or_layer(command_type, output_group, output_label, 1),
+        _exclude("コマ枠", False),
+        _end(),
+    ]
+
+
 BUILTIN_PRESETS: dict[str, list[dict]] = {
     "レイアウト": _simple_layer("レイアウト", "レイアウト", "出力_レイアウト", 1),
-    "アタリ": _simple_layer("アタリ", "アタリ", "出力_アタリ", 1),
-    "すべて": [_cmd("OPERATOR", "未設定: すべて", operator_idname="")],
-    "効果": [_cmd("OPERATOR", "未設定: 効果", operator_idname="")],
+    "アタリ": _rough_layer(),
+    "すべて": _all_output(),
+    "効果": _effect_pass(),
     "キャラ": [
         _aov("キャラ", "落ち影切替", 1),
         *_simple_output("キャラ", "キャラ", "出力_キャラ", "パス", 64),
@@ -152,12 +216,34 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
         *_simple_output("キャラアルファ", "キャラアルファ", "出力_キャラアルファ", "キャラアルファ", 64),
         _aov("キャラ", "落ち影切替", 0),
     ],
-    "キャラAOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_AOV＋出力_背景"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
-    "キャラpen": [_aov("キャラ", "落ち影切替", 1), _begin(), _vl("キャラ"), _exclude("コマ枠", True), _node("キャラ線画Pencil+4"), _node("出力_キャラ線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _exclude("コマ枠", False), _end(), _aov("キャラ", "落ち影切替", 0)],
-    "背景pen": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _exclude("コマ枠", True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー"), _exclude("コマ枠", False), _end(), _aov("背景MH", "落ち影切替", 0)],
-    "背景pen方向": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _exclude("コマ枠", True), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_RENDER_FACES", "eeVR方向画像レンダー"), _exclude("コマ枠", False), _end(), _aov("背景MH", "落ち影切替", 0)],
-    "背景pen合成": [_aov("背景MH", "落ち影切替", 1), _begin(), _vl("背景"), _node("背景線画Pencil+4"), _node("出力_背景線画Pencil+4"), _cmd("EEVR_SETUP", "eeVR設定"), _cmd("EEVR_ASSEMBLE", "eeVRパノラマ合成"), _end(), _aov("背景MH", "落ち影切替", 0)],
-    "背景": [_aov("背景MH", "落ち影切替", 1), *_simple_output("背景", "背景", "出力_背景", "パス", 64), _aov("背景MH", "落ち影切替", 0), *_simple_layer("背景", "C_線画抽出_背景", "背景線画", 1), *_simple_layer("背景", "C_AOV＋出力_背景", "背景統合", 1)],
+    "キャラAOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_背景調整"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
+    "キャラpen": [
+        *_pen_output("キャラ", "出力_キャラ線画Pencil+4", "キャラ線画_Pencil+4", "キャラ"),
+        _begin(),
+        _vl("キャラ"),
+        _node("キャラ"),
+        _render_layer("出力_キャラ線画Pencil+4", "キャラAO", 1),
+        _end(),
+        _aov("キャラ", "落ち影切替", 0),
+    ],
+    "背景pen": [
+        *_pen_output("背景", "出力_背景線画Pencil+4", "背景線画_Pencil+4", "背景MH"),
+        _begin(),
+        _vl("背景"),
+        _node("背景"),
+        _render_layer("出力_背景線画Pencil+4", "背景マテリアルAO", 1),
+        _end(),
+        _aov("背景MH", "落ち影切替", 0),
+    ],
+    "背景pen方向": [
+        *_pen_output("背景", "出力_背景線画Pencil+4", "背景線画_Pencil+4", "背景MH", "FISHEYE_RENDER_FACES_OR_LAYER"),
+        _aov("背景MH", "落ち影切替", 0),
+    ],
+    "背景pen合成": [
+        *_pen_output("背景", "出力_背景線画Pencil+4", "背景線画_Pencil+4", "背景MH", "FISHEYE_ASSEMBLE_OR_LAYER"),
+        _aov("背景MH", "落ち影切替", 0),
+    ],
+    "背景": [_aov("背景MH", "落ち影切替", 1), *_simple_output("背景", "背景", "出力_背景", "パス", 64), _aov("背景MH", "落ち影切替", 0), *_simple_layer("背景", "C_線画抽出_背景", "背景線画", 1), *_simple_layer("背景", "C_背景調整", "背景統合", 1)],
     "背景_低速": [*_background_pass("Dライト", 64), *_background_pass("Gライト", 64), *_background_pass("AO", 64), *_background_pass("線画用", 1), *_background_pass("ベース", 1), *_background_pass("ベタ影", 1), *_background_pass("パース", 1, "Zパース", "Xパース", "Yパース"), *_background_gradation()],
     "背景D": _background_pass("Dライト", 64),
     "背景G": _background_pass("Gライト", 64),
@@ -171,13 +257,13 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
     "背景フォグ": _background_effect_collection("フォグ", "フォグ", "エフェクト"),
     "背景雲": [_begin(), _vl("空"), _node("空"), _node("出力_背景"), _exclude("雲", False, "空"), _render_layer("出力_背景", "雲", 64), _end()],
     "背景空": [_begin(), _vl("空"), _node("空"), _node("出力_背景"), _exclude("雲", True, "空"), _render_layer("出力_背景", "空", 1), _exclude("雲", False, "空"), _end()],
-    "背景AOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_AOV＋出力_背景"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
-    "効果統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_AOV_効果"), _node("効果統合"), _render(1), _end()],
+    "背景AOV": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_背景調整"), _node("出力_背景AOV"), _group("出力_背景AOV", "パス", False), _render(1), _end()],
+    "効果統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_効果"), _node("効果統合"), _render(1), _end()],
     "キャラ統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_キャラ"), _node("C_AOV_キャラ"), _node("キャラ統合"), _render(1), _end()],
     "キャラ線画": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_キャラ"), _node("キャラ線画"), _render(1), _end()],
     "背景線画": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("背景線画"), _render(1), _end()],
-    "背景統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_AOV＋出力_背景"), _node("背景統合"), _render(1), _end()],
-    "ページ": [_cmd("OPERATOR", "未設定: ページ", operator_idname="")],
+    "背景統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_背景調整"), _node("背景統合"), _render(1), _end()],
+    "ページ": _page_output(),
     "画像ノード再読み込み": [_cmd("RELOAD_IMAGES", "画像ノード再読み込み")],
 }
 

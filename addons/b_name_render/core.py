@@ -27,6 +27,9 @@ COMMAND_TYPE_ITEMS = (
     ("RELOAD_IMAGES", "画像ノード再読み込み", ""),
     ("RENDER", "レンダー", ""),
     ("RENDER_LAYER", "フレーム出力レンダー", ""),
+    ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", ""),
+    ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", ""),
+    ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", ""),
     ("EEVR_SETUP", "eeVR設定", ""),
     ("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー", ""),
     ("EEVR_RENDER_FACES", "eeVR方向画像レンダー", ""),
@@ -39,6 +42,10 @@ ENGINE_ITEMS = (
     ("BLENDER_EEVEE_NEXT", "EEVEE Next", ""),
     ("BLENDER_WORKBENCH", "Workbench", ""),
 )
+
+
+class BNameRenderToolSettings(bpy.types.PropertyGroup):
+    bg_images_scale: FloatProperty(name="下絵のスケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
 
 
 class BNameRenderCommand(bpy.types.PropertyGroup):
@@ -82,10 +89,13 @@ class BNameRenderState(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
+    BNameRenderToolSettings,
     BNameRenderCommand,
     BNameRenderPreset,
     BNameRenderState,
 )
+
+_REGISTERED_SCENE_PROPS: list[str] = []
 
 
 def get_state(context) -> BNameRenderState | None:
@@ -115,9 +125,11 @@ def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.bname_render_state = PointerProperty(type=BNameRenderState)
+    _register_scene_props()
 
 
 def unregister() -> None:
+    _unregister_scene_props()
     if hasattr(bpy.types.Scene, "bname_render_state"):
         del bpy.types.Scene.bname_render_state
     for cls in reversed(_CLASSES):
@@ -125,3 +137,30 @@ def unregister() -> None:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+
+
+def _register_scene_prop(name: str, prop) -> None:
+    if hasattr(bpy.types.Scene, name):
+        return
+    setattr(bpy.types.Scene, name, prop)
+    _REGISTERED_SCENE_PROPS.append(name)
+
+
+def _register_scene_props() -> None:
+    _register_scene_prop("my_tool", PointerProperty(type=BNameRenderToolSettings))
+    _register_scene_prop("fisheye_layout_mode", BoolProperty(name="魚眼モード", default=False))
+    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False))
+    _register_scene_prop("original_resolution_x", IntProperty(name="元解像度X", default=0, min=0))
+    _register_scene_prop("original_resolution_y", IntProperty(name="元解像度Y", default=0, min=0))
+    _register_scene_prop(
+        "preview_scale_percentage",
+        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE"),
+    )
+    _register_scene_prop("comic_frame_mode", BoolProperty(name="コマプレビューとして出力", default=False))
+
+
+def _unregister_scene_props() -> None:
+    while _REGISTERED_SCENE_PROPS:
+        name = _REGISTERED_SCENE_PROPS.pop()
+        if hasattr(bpy.types.Scene, name):
+            delattr(bpy.types.Scene, name)

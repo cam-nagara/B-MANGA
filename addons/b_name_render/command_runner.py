@@ -21,10 +21,18 @@ _SESSION: _RenderSession | None = None
 
 
 def _iter_node_trees(scene):
-    if getattr(scene, "node_tree", None) is not None:
-        yield scene.node_tree
+    seen: set[int] = set()
+    for attr in ("node_tree", "compositing_node_group"):
+        tree = getattr(scene, attr, None)
+        if tree is None:
+            continue
+        key = _node_tree_key(tree)
+        if key not in seen:
+            seen.add(key)
+            yield tree
     for node_group in bpy.data.node_groups:
-        if node_group is not None:
+        if node_group is not None and _node_tree_key(node_group) not in seen:
+            seen.add(_node_tree_key(node_group))
             yield node_group
 
 
@@ -224,9 +232,44 @@ def _configure_render(scene, engine: str, sample_count: int) -> None:
             scene.eevee.taa_render_samples = max(1, int(sample_count))
 
 
+def _ensure_renderable_view_layers(scene) -> None:
+    layers = [layer for layer in scene.view_layers if hasattr(layer, "use")]
+    if layers and not any(bool(layer.use) for layer in layers):
+        for layer in layers:
+            layer.use = True
+
+
 def _render(scene, engine: str, sample_count: int) -> None:
     _configure_render(scene, engine, sample_count)
+    _ensure_renderable_view_layers(scene)
     bpy.ops.render.render()
+
+
+def _is_fisheye_enabled(scene) -> bool:
+    return bool(
+        getattr(scene, "fisheye_layout_mode", False)
+        or getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)
+    )
+
+
+def _render_layer(scene, group_name: str, label: str, engine: str, sample_count: int) -> None:
+    _set_output_group(group_name, "", True)
+    _set_output_group(group_name, label, False)
+    _render(scene, engine, sample_count)
+
+
+def _run_fisheye_or_layer(scene, command, mode: str) -> None:
+    if not _is_fisheye_enabled(scene):
+        _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
+        return
+    if not eevr_bridge.setup(scene, getattr(scene, "camera", None)):
+        raise RuntimeError("eeVR設定が見つかりません")
+    if mode == "IMAGE":
+        eevr_bridge.render_image()
+    elif mode == "FACES":
+        eevr_bridge.render_faces()
+    elif mode == "ASSEMBLE":
+        eevr_bridge.assemble_images()
 
 
 def _run_command(context, command) -> None:
@@ -255,11 +298,16 @@ def _run_command(context, command) -> None:
     elif kind == "RENDER":
         _render(scene, command.engine, command.sample_count)
     elif kind == "RENDER_LAYER":
-        _set_output_group(command.node_group_name, "", True)
-        _set_output_group(command.node_group_name, command.label_contains, False)
-        _render(scene, command.engine, command.sample_count)
+        _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
+    elif kind == "FISHEYE_RENDER_IMAGE_OR_LAYER":
+        _run_fisheye_or_layer(scene, command, "IMAGE")
+    elif kind == "FISHEYE_RENDER_FACES_OR_LAYER":
+        _run_fisheye_or_layer(scene, command, "FACES")
+    elif kind == "FISHEYE_ASSEMBLE_OR_LAYER":
+        _run_fisheye_or_layer(scene, command, "ASSEMBLE")
     elif kind == "EEVR_SETUP":
-        eevr_bridge.setup(scene, getattr(scene, "camera", None))
+        if not eevr_bridge.setup(scene, getattr(scene, "camera", None)):
+            raise RuntimeError("eeVR設定が見つかりません")
     elif kind == "EEVR_RENDER_IMAGE":
         eevr_bridge.render_image()
     elif kind == "EEVR_RENDER_FACES":

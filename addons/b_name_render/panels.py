@@ -35,6 +35,17 @@ class BNAME_RENDER_PT_main(Panel):
             op.reset = True
             return
 
+        fish = layout.box()
+        fish.label(text="魚眼出力", icon="CAMERA_DATA")
+        fish.prop(context.scene, "fisheye_layout_mode", text="魚眼モード")
+        row = fish.row(align=True)
+        row.prop(context.scene, "reduction_mode", text="縮小モード")
+        sub = row.row(align=True)
+        sub.enabled = bool(context.scene.reduction_mode)
+        sub.prop(context.scene, "preview_scale_percentage", text="縮小率")
+        if not hasattr(context.scene, "eeVR"):
+            fish.label(text="eeVRアドオン未登録", icon="INFO")
+
         row = layout.row()
         row.template_list(
             "BNAME_RENDER_UL_presets",
