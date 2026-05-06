@@ -36,8 +36,10 @@ class CaptureLayout:
         self.props: list[str] = []
         self.labels: list[str] = []
         self.operators: list[str] = []
+        self.operator_contexts: list[tuple[str, str]] = []
         self.templates: list[str] = []
         self.enabled = True
+        self.operator_context = "EXEC_DEFAULT"
 
     def prop(self, obj, attr: str, *args, **kwargs):
         label = str(kwargs.get("text", "") or attr)
@@ -50,6 +52,7 @@ class CaptureLayout:
 
     def operator(self, operator_id: str, *args, **kwargs):
         self.operators.append(operator_id)
+        self.operator_contexts.append((operator_id, str(self.operator_context)))
         return SimpleNamespace()
 
     def template_list(self, *args, **kwargs):
@@ -155,11 +158,14 @@ def _assert_panel_access(mod) -> dict:
     assert "BNAME_RENDER_UL_presets" in capture.templates
     for required_op in (
         "bname_render.preset_run",
+        "bname_render.preset_settings",
         "bname_render.command_add",
         "bname_render.command_remove",
         "bname_render.command_move",
+        "bname_render.command_card_click",
     ):
         assert required_op in capture.operators, required_op
+    assert ("bname_render.command_card_click", "INVOKE_DEFAULT") in capture.operator_contexts
     assert any(item.startswith("sound_enabled:") for item in capture.props)
     return {
         "entry_points": ["3Dビュー > サイドバー > B-Name-Render", "ノードエディター > サイドバー > B-Name-Render"],

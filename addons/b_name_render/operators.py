@@ -68,6 +68,32 @@ class BNAME_RENDER_OT_preset_remove(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_preset_settings(Operator):
+    bl_idname = "bname_render.preset_settings"
+    bl_label = "プリセット設定"
+
+    @classmethod
+    def poll(cls, context):
+        return core.active_preset(context) is not None
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
+    def draw(self, context):
+        layout = self.layout
+        preset = core.active_preset(context)
+        if preset is None:
+            layout.label(text="プリセットが選択されていません", icon="INFO")
+            return
+        box = layout.box()
+        box.label(text="プリセット", icon="PRESET")
+        box.prop(preset, "name", text="名前")
+        box.label(text=f"カード数: {len(preset.commands)}")
+
+    def execute(self, context):
+        return {"FINISHED"} if core.active_preset(context) is not None else {"CANCELLED"}
+
+
 class BNAME_RENDER_OT_preset_run(Operator):
     bl_idname = "bname_render.preset_run"
     bl_label = "プリセットを実行"
@@ -190,6 +216,7 @@ _CLASSES = (
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
     BNAME_RENDER_OT_preset_remove,
+    BNAME_RENDER_OT_preset_settings,
     BNAME_RENDER_OT_preset_run,
     BNAME_RENDER_OT_command_add,
     BNAME_RENDER_OT_command_remove,

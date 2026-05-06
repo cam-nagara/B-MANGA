@@ -97,6 +97,7 @@ def _draw_preset_list(layout, state) -> None:
     tools_preset = row.column(align=True)
     tools_preset.operator("bname_render.preset_add", text="", icon="ADD")
     tools_preset.operator("bname_render.preset_remove", text="", icon="REMOVE")
+    tools_preset.operator("bname_render.preset_settings", text="", icon="PREFERENCES")
     op = tools_preset.operator("bname_render.load_builtin_presets", text="", icon="FILE_REFRESH")
     op.reset = True
 
@@ -122,6 +123,7 @@ def _draw_command_list(layout, preset) -> None:
         icon = "CHECKBOX_HLT" if command.enabled else "CHECKBOX_DEHLT"
         selected = index == int(preset.active_command_index)
         label = f"{index + 1:02d}. {command.name}"
+        row.operator_context = "INVOKE_DEFAULT"
         op = row.operator("bname_render.command_card_click", text=label, icon=icon, depress=selected)
         op.index = index
         row.label(text=command_ui.command_type_label(command.command_type))
