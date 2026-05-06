@@ -178,7 +178,7 @@ class BNAME_RENDER_OT_command_card_click(Operator):
         preset = core.active_preset(context)
         if preset is None or not preset.commands:
             return
-        command_ui.draw_command(self.layout, preset.commands[preset.active_command_index])
+        command_ui.draw_command(self.layout, preset.commands[preset.active_command_index], context)
 
     def execute(self, context):
         if self._select_card(context)[0] is None:

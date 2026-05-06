@@ -18,6 +18,7 @@ from bpy.props import (
 )
 
 from ..utils import log
+from ..utils.geom import pt_to_q, q_to_pt
 
 _logger = log.get_logger(__name__)
 
@@ -36,6 +37,14 @@ _SPEAKER_TYPE_ITEMS = (
     ("sfx", "擬音", ""),
     ("custom", "カスタム", ""),
 )
+
+_FONT_SIZE_UNIT_ITEMS = (
+    ("q", "Q", "Q 数"),
+    ("pt", "pt", "ポイント"),
+)
+
+_font_size_sync_depth = 0
+
 
 class BNameRubySpan(bpy.types.PropertyGroup):
     """親文字範囲とルビ (フリガナ) を対応付ける."""
@@ -96,6 +105,44 @@ def _on_text_entry_changed(self, context) -> None:
         pass
 
 
+def _on_text_font_size_q_changed(self, context) -> None:
+    global _font_size_sync_depth
+    if _font_size_sync_depth > 0:
+        return
+    _font_size_sync_depth += 1
+    try:
+        self.font_size_pt = max(0.1, float(q_to_pt(float(getattr(self, "font_size_q", 20.0) or 20.0))))
+    finally:
+        _font_size_sync_depth -= 1
+    _on_text_entry_changed(self, context)
+
+
+def _on_text_font_size_pt_changed(self, context) -> None:
+    global _font_size_sync_depth
+    if _font_size_sync_depth > 0:
+        return
+    _font_size_sync_depth += 1
+    try:
+        self.font_size_q = max(0.1, float(pt_to_q(float(getattr(self, "font_size_pt", 9.0) or 9.0))))
+    finally:
+        _font_size_sync_depth -= 1
+    _on_text_entry_changed(self, context)
+
+
+def _get_text_font_size_value(self) -> float:
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        return float(getattr(self, "font_size_pt", q_to_pt(float(getattr(self, "font_size_q", 20.0)))) or 0.0)
+    return float(getattr(self, "font_size_q", 20.0) or 0.0)
+
+
+def _set_text_font_size_value(self, value: float) -> None:
+    size = max(0.1, float(value or 0.0))
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        self.font_size_pt = size
+    else:
+        self.font_size_q = size
+
+
 class BNameTextEntry(bpy.types.PropertyGroup):
     """1 つのテキストオブジェクト.
 
@@ -148,10 +195,32 @@ class BNameTextEntry(bpy.types.PropertyGroup):
         default=20.0,
         min=1.0,
         soft_max=200.0,
-        update=_on_text_entry_changed,
+        update=_on_text_font_size_q_changed,
     )
-    # 旧データ互換用。UI/保存/組版は font_size_q を使う。
-    font_size_pt: FloatProperty(name="サイズ (pt)", default=9.0, min=1.0, soft_max=72.0)  # type: ignore[valid-type]
+    font_size_pt: FloatProperty(  # type: ignore[valid-type]
+        name="サイズ (pt)",
+        description="文字サイズを pt で指定",
+        default=q_to_pt(20.0),
+        min=0.1,
+        soft_max=200.0,
+        update=_on_text_font_size_pt_changed,
+    )
+    font_size_unit: EnumProperty(  # type: ignore[valid-type]
+        name="サイズ単位",
+        description="テキストサイズの表示・入力単位",
+        items=_FONT_SIZE_UNIT_ITEMS,
+        default="q",
+    )
+    font_size_value: FloatProperty(  # type: ignore[valid-type]
+        name="サイズ",
+        description="現在のサイズ単位で表示・入力する文字サイズ",
+        default=20.0,
+        min=0.1,
+        soft_max=200.0,
+        precision=3,
+        get=_get_text_font_size_value,
+        set=_set_text_font_size_value,
+    )
     # Meldex の fontBold / fontItalic 相当
     font_bold: BoolProperty(name="太字", default=False, update=_on_text_entry_changed)  # type: ignore[valid-type]
     font_italic: BoolProperty(name="斜体", default=False, update=_on_text_entry_changed)  # type: ignore[valid-type]

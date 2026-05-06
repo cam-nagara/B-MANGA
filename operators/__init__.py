@@ -43,8 +43,10 @@ from . import (
     spread_op,
     text_selection_style_op,
     text_op,
+    text_meta_op,
     thumbnail_op,
     view_op,
+    work_meta_op,
     work_op,
 )
 
@@ -66,6 +68,7 @@ _MODULES = (
     balloon_text_curve_op,
     text_selection_style_op,
     text_op,
+    text_meta_op,
     effect_line_op,
     effect_line_object_op,
     effect_line_link_op,
@@ -91,6 +94,7 @@ _MODULES = (
     gp_layer_op,
     view_op,
     shortcut_op,
+    work_meta_op,
 )
 
 

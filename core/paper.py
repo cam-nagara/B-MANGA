@@ -109,6 +109,47 @@ def _on_paper_layout_changed(_self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _paper_dpi(self) -> int:
+    try:
+        return max(1, int(getattr(self, "dpi", 600) or 600))
+    except Exception:  # noqa: BLE001
+        return 600
+
+
+def _mm_to_display_unit(self, mm: float) -> float:
+    unit = str(getattr(self, "unit", "mm") or "mm")
+    value = float(mm or 0.0)
+    if unit == "px":
+        return value / 25.4 * _paper_dpi(self)
+    if unit == "inch":
+        return value / 25.4
+    return value
+
+
+def _display_unit_to_mm(self, value: float) -> float:
+    unit = str(getattr(self, "unit", "mm") or "mm")
+    raw = float(value or 0.0)
+    if unit == "px":
+        return raw / _paper_dpi(self) * 25.4
+    if unit == "inch":
+        return raw * 25.4
+    return raw
+
+
+def _display_getter(mm_attr: str):
+    def _get(self) -> float:
+        return _mm_to_display_unit(self, getattr(self, mm_attr, 0.0))
+
+    return _get
+
+
+def _display_setter(mm_attr: str):
+    def _set(self, value: float) -> None:
+        setattr(self, mm_attr, _display_unit_to_mm(self, value))
+
+    return _set
+
+
 class BNamePaperSettings(bpy.types.PropertyGroup):
     """用紙寸法・解像度・基本枠・セーフライン設定."""
 
@@ -138,12 +179,34 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=600,
         min=72,
         soft_max=1200,
+        update=_on_paper_layout_changed,
     )
     unit: EnumProperty(  # type: ignore[valid-type]
         name="単位",
         description="UI 表示上の単位",
         items=_UNIT_ITEMS,
         default="mm",
+        update=_on_paper_visual_changed,
+    )
+    canvas_width_value: FloatProperty(  # type: ignore[valid-type]
+        name="幅",
+        description="現在の単位で表示・入力する原稿用紙の幅",
+        default=257.00,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("canvas_width_mm"),
+        set=_display_setter("canvas_width_mm"),
+    )
+    canvas_height_value: FloatProperty(  # type: ignore[valid-type]
+        name="高さ",
+        description="現在の単位で表示・入力する原稿用紙の高さ",
+        default=364.00,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("canvas_height_mm"),
+        set=_display_setter("canvas_height_mm"),
     )
 
     # --- 仕上がり (製本) ---
@@ -163,6 +226,26 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         soft_max=1000.0,
         update=_on_paper_layout_changed,
     )
+    finish_width_value: FloatProperty(  # type: ignore[valid-type]
+        name="幅",
+        description="現在の単位で表示・入力する仕上がり幅",
+        default=221.81,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("finish_width_mm"),
+        set=_display_setter("finish_width_mm"),
+    )
+    finish_height_value: FloatProperty(  # type: ignore[valid-type]
+        name="高さ",
+        description="現在の単位で表示・入力する仕上がり高さ",
+        default=328.78,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("finish_height_mm"),
+        set=_display_setter("finish_height_mm"),
+    )
     bleed_mm: FloatProperty(  # type: ignore[valid-type]
         name="裁ち落とし幅",
         description="仕上がり枠の外側に確保する塗り足し (mm)",
@@ -170,6 +253,16 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         min=0.0,
         soft_max=50.0,
         update=_on_paper_layout_changed,
+    )
+    bleed_value: FloatProperty(  # type: ignore[valid-type]
+        name="裁ち落とし幅",
+        description="現在の単位で表示・入力する裁ち落とし幅",
+        default=7.00,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("bleed_mm"),
+        set=_display_setter("bleed_mm"),
     )
 
     # --- 基本枠 (内枠) ---
@@ -203,6 +296,46 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         soft_max=100.0,
         update=_on_paper_layout_changed,
     )
+    inner_frame_width_value: FloatProperty(  # type: ignore[valid-type]
+        name="幅",
+        description="現在の単位で表示・入力する基本枠の幅",
+        default=180.00,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("inner_frame_width_mm"),
+        set=_display_setter("inner_frame_width_mm"),
+    )
+    inner_frame_height_value: FloatProperty(  # type: ignore[valid-type]
+        name="高さ",
+        description="現在の単位で表示・入力する基本枠の高さ",
+        default=270.00,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("inner_frame_height_mm"),
+        set=_display_setter("inner_frame_height_mm"),
+    )
+    inner_frame_offset_x_value: FloatProperty(  # type: ignore[valid-type]
+        name="横オフセット",
+        description="現在の単位で表示・入力する基本枠の横オフセット",
+        default=0.00,
+        soft_min=-10000.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("inner_frame_offset_x_mm"),
+        set=_display_setter("inner_frame_offset_x_mm"),
+    )
+    inner_frame_offset_y_value: FloatProperty(  # type: ignore[valid-type]
+        name="縦オフセット",
+        description="現在の単位で表示・入力する基本枠の縦オフセット",
+        default=0.00,
+        soft_min=-10000.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("inner_frame_offset_y_mm"),
+        set=_display_setter("inner_frame_offset_y_mm"),
+    )
 
     # --- セーフライン (天/地/ノド/小口) ---
     safe_top_mm: FloatProperty(  # type: ignore[valid-type]
@@ -234,6 +367,46 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         min=0.0,
         soft_max=100.0,
         update=_on_paper_visual_changed,
+    )
+    safe_top_value: FloatProperty(  # type: ignore[valid-type]
+        name="天",
+        description="現在の単位で表示・入力する天のセーフライン",
+        default=17.49,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("safe_top_mm"),
+        set=_display_setter("safe_top_mm"),
+    )
+    safe_bottom_value: FloatProperty(  # type: ignore[valid-type]
+        name="地",
+        description="現在の単位で表示・入力する地のセーフライン",
+        default=17.49,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("safe_bottom_mm"),
+        set=_display_setter("safe_bottom_mm"),
+    )
+    safe_gutter_value: FloatProperty(  # type: ignore[valid-type]
+        name="ノド",
+        description="現在の単位で表示・入力するノドのセーフライン",
+        default=20.90,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("safe_gutter_mm"),
+        set=_display_setter("safe_gutter_mm"),
+    )
+    safe_fore_edge_value: FloatProperty(  # type: ignore[valid-type]
+        name="小口",
+        description="現在の単位で表示・入力する小口のセーフライン",
+        default=17.23,
+        min=0.0,
+        soft_max=10000.0,
+        precision=3,
+        get=_display_getter("safe_fore_edge_mm"),
+        set=_display_setter("safe_fore_edge_mm"),
     )
 
     # --- 色・線数 ---

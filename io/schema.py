@@ -131,6 +131,8 @@ def display_item_to_dict(item) -> dict[str, Any]:
         "enabled": bool(item.enabled),
         "position": item.position,
         "fontSizeQ": round(item.font_size_q, 2),
+        "fontSizePt": round(float(getattr(item, "font_size_pt", 0.0) or 0.0), 2),
+        "fontSizeUnit": str(getattr(item, "font_size_unit", "q") or "q"),
         "color": color_to_hex(item.color),
     }
 
@@ -148,14 +150,28 @@ def display_item_from_dict(item, data: dict[str, Any]) -> None:
     item.enabled = bool(data.get("enabled", False))
     pos = data.get("position", "bottom-left")
     item.position = _DISPLAY_POSITION_MIGRATE.get(pos, pos)
+    unit = str(data.get("fontSizeUnit", "q") or "q")
     # フォントサイズ: Q 数優先 (新)、旧 fontSizePt があれば pt → Q に変換
-    if "fontSizeQ" in data:
+    if unit == "pt" and "fontSizePt" in data and hasattr(item, "font_size_pt"):
+        item.font_size_pt = float(data["fontSizePt"])
+    elif "fontSizeQ" in data:
         item.font_size_q = float(data["fontSizeQ"])
+        if hasattr(item, "font_size_pt"):
+            from ..utils.geom import q_to_pt
+            item.font_size_pt = float(q_to_pt(float(item.font_size_q)))
     elif "fontSizePt" in data:
         from ..utils.geom import pt_to_q
-        item.font_size_q = float(pt_to_q(float(data["fontSizePt"])))
+        if hasattr(item, "font_size_pt"):
+            item.font_size_pt = float(data["fontSizePt"])
+        else:
+            item.font_size_q = float(pt_to_q(float(data["fontSizePt"])))
     else:
         item.font_size_q = 20.0
+        if hasattr(item, "font_size_pt"):
+            from ..utils.geom import q_to_pt
+            item.font_size_pt = float(q_to_pt(float(item.font_size_q)))
+    if hasattr(item, "font_size_unit"):
+        item.font_size_unit = unit
     item.color = hex_to_rgba(data.get("color", "#000000"))
 
 
@@ -894,6 +910,8 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "speakerName": entry.speaker_name,
         "font": entry.font,
         "fontSizeQ": round(font_size_q, 3),
+        "fontSizePt": round(float(getattr(entry, "font_size_pt", 0.0) or 0.0), 3),
+        "fontSizeUnit": str(getattr(entry, "font_size_unit", "q") or "q"),
         "color": color_to_hex(entry.color),
         "colorAlpha": round(entry.color[3], 3),
         "writingMode": entry.writing_mode,
@@ -946,13 +964,19 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.speaker_type = data.get("speakerType", "normal")
     entry.speaker_name = data.get("speakerName", "")
     entry.font = data.get("font", "")
-    if "fontSizeQ" in data:
+    unit = str(data.get("fontSizeUnit", "q") or "q")
+    if unit == "pt" and "fontSizePt" in data and hasattr(entry, "font_size_pt"):
+        entry.font_size_pt = float(data["fontSizePt"])
+    elif "fontSizeQ" in data:
         entry.font_size_q = float(data["fontSizeQ"])
     elif "fontSizePt" in data:
         entry.font_size_q = float(pt_to_q(float(data["fontSizePt"])))
     else:
         entry.font_size_q = 20.0
-    entry.font_size_pt = float(q_to_pt(float(entry.font_size_q)))
+    if unit != "pt" or not hasattr(entry, "font_size_pt"):
+        entry.font_size_pt = float(q_to_pt(float(entry.font_size_q)))
+    if hasattr(entry, "font_size_unit"):
+        entry.font_size_unit = unit
     alpha = float(data.get("colorAlpha", 1.0))
     entry.color = hex_to_rgba(data.get("color", "#000000"), alpha)
     entry.writing_mode = data.get("writingMode", "vertical")

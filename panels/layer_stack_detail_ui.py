@@ -230,7 +230,9 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     type_box.label(text="組版", icon="FONT_DATA")
     type_box.prop(entry, "writing_mode")
     type_box.prop(entry, "font", text="基本フォント")
-    type_box.prop(entry, "font_size_q")
+    row = type_box.row(align=True)
+    row.prop(entry, "font_size_unit", text="")
+    row.prop(entry, "font_size_value", text="サイズ")
     row = type_box.row(align=True)
     row.prop(entry, "font_bold", toggle=True)
     row.prop(entry, "font_italic", toggle=True)
@@ -249,6 +251,7 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     parent_box = box.box()
     parent_box.label(text="親フキダシ", icon="LINKED")
     parent_box.prop(entry, "parent_balloon_id", text="ID")
+    parent_box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
     if page is not None and len(page.balloons) > 0:
         row = parent_box.row(align=True)
         row.label(text="紐付け:")

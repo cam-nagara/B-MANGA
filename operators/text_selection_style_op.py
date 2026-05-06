@@ -9,7 +9,50 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import text_style
+from ..utils.geom import pt_to_q, q_to_pt
 from . import coma_modal_state
+
+_FONT_SIZE_UNIT_ITEMS = (
+    ("q", "Q", "Q 数"),
+    ("pt", "pt", "ポイント"),
+)
+_font_size_sync_depth = 0
+
+
+def _on_font_size_q_changed(self, _context) -> None:
+    global _font_size_sync_depth
+    if _font_size_sync_depth > 0:
+        return
+    _font_size_sync_depth += 1
+    try:
+        self.font_size_pt = max(0.1, float(q_to_pt(float(getattr(self, "font_size_q", 20.0) or 20.0))))
+    finally:
+        _font_size_sync_depth -= 1
+
+
+def _on_font_size_pt_changed(self, _context) -> None:
+    global _font_size_sync_depth
+    if _font_size_sync_depth > 0:
+        return
+    _font_size_sync_depth += 1
+    try:
+        self.font_size_q = max(0.1, float(pt_to_q(float(getattr(self, "font_size_pt", 9.0) or 9.0))))
+    finally:
+        _font_size_sync_depth -= 1
+
+
+def _get_font_size_value(self) -> float:
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        return float(getattr(self, "font_size_pt", q_to_pt(float(getattr(self, "font_size_q", 20.0)))) or 0.0)
+    return float(getattr(self, "font_size_q", 20.0) or 0.0)
+
+
+def _set_font_size_value(self, value: float) -> None:
+    size = max(0.1, float(value or 0.0))
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        self.font_size_pt = size
+    else:
+        self.font_size_q = size
 
 
 def _find_page_by_id(context, page_id: str):
@@ -63,7 +106,10 @@ class BNAME_OT_text_selection_style_popup(Operator):
     )
     font_bold: BoolProperty(name="太字", default=False)  # type: ignore[valid-type]
     font_italic: BoolProperty(name="斜体", default=False)  # type: ignore[valid-type]
-    font_size_q: FloatProperty(name="サイズ (Q)", default=20.0, min=1.0, soft_max=200.0)  # type: ignore[valid-type]
+    font_size_q: FloatProperty(name="サイズ (Q)", default=20.0, min=1.0, soft_max=200.0, update=_on_font_size_q_changed)  # type: ignore[valid-type]
+    font_size_pt: FloatProperty(name="サイズ (pt)", default=q_to_pt(20.0), min=0.1, soft_max=200.0, update=_on_font_size_pt_changed)  # type: ignore[valid-type]
+    font_size_unit: EnumProperty(name="サイズ単位", items=_FONT_SIZE_UNIT_ITEMS, default="q")  # type: ignore[valid-type]
+    font_size_value: FloatProperty(name="サイズ", default=20.0, min=0.1, soft_max=200.0, precision=3, get=_get_font_size_value, set=_set_font_size_value)  # type: ignore[valid-type]
     font_choice: EnumProperty(name="フォント", items=text_style.font_dropdown_items)  # type: ignore[valid-type]
 
     @classmethod
@@ -84,6 +130,7 @@ class BNAME_OT_text_selection_style_popup(Operator):
         style = text_style.style_for_index(entry, start)
         self.font_choice = text_style.dropdown_choice_for_font_path(style[0])
         self.font_size_q = float(style[1])
+        self.font_size_pt = float(q_to_pt(float(style[1])))
         self.color = style[2]
         self.font_bold = bool(style[3])
         self.font_italic = bool(style[4])
@@ -95,7 +142,9 @@ class BNAME_OT_text_selection_style_popup(Operator):
         row = layout.row(align=True)
         row.prop(self, "font_bold", toggle=True)
         row.prop(self, "font_italic", toggle=True)
-        layout.prop(self, "font_size_q")
+        row = layout.row(align=True)
+        row.prop(self, "font_size_unit", text="")
+        row.prop(self, "font_size_value", text="サイズ")
         layout.prop(self, "font_choice")
 
     def check(self, context):

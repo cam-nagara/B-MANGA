@@ -44,7 +44,28 @@ def command_summary(command) -> str:
     return ""
 
 
-def draw_command(layout, command) -> None:
+def _is_fisheye_enabled(context) -> bool:
+    scene = getattr(context, "scene", None) if context is not None else None
+    return bool(
+        scene is not None
+        and (
+            getattr(scene, "fisheye_layout_mode", False)
+            or getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)
+        )
+    )
+
+
+def _draw_fisheye_output_fields(layout, command, context) -> None:
+    fish = _is_fisheye_enabled(context)
+    col = layout.column(align=True)
+    col.enabled = fish
+    col.prop(command, "folder_path", text="魚眼出力フォルダ")
+    col.prop(command, "text_value", text="魚眼出力画像名")
+    if not fish:
+        layout.label(text="魚眼モード時のみ使用", icon="INFO")
+
+
+def draw_command(layout, command, context=None) -> None:
     layout.prop(command, "enabled")
     layout.prop(command, "name")
     layout.prop(command, "command_type")
@@ -78,13 +99,10 @@ def draw_command(layout, command) -> None:
         layout.prop(command, "engine")
         layout.prop(command, "sample_count")
         if kind.startswith("FISHEYE_"):
-            layout.prop(command, "folder_path", text="魚眼出力フォルダ")
-            layout.prop(command, "text_value", text="魚眼出力画像名")
+            _draw_fisheye_output_fields(layout, command, context)
     elif kind == "EEVR_SETUP":
-        layout.prop(command, "folder_path", text="eeVR出力フォルダ")
-        layout.prop(command, "text_value", text="eeVR出力画像名")
+        _draw_fisheye_output_fields(layout, command, context)
     elif kind in {"EEVR_RENDER_IMAGE", "EEVR_RENDER_FACES", "EEVR_ASSEMBLE"}:
-        layout.prop(command, "folder_path", text="eeVR出力フォルダ")
-        layout.prop(command, "text_value", text="eeVR出力画像名")
+        _draw_fisheye_output_fields(layout, command, context)
     elif kind == "OPERATOR":
         layout.prop(command, "operator_idname")

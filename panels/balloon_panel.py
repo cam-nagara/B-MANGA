@@ -228,7 +228,9 @@ class BNAME_PT_texts(Panel):
         box.label(text="組版", icon="FONT_DATA")
         box.prop(entry, "writing_mode")
         box.prop(entry, "font", text="基本フォント")
-        box.prop(entry, "font_size_q")
+        row = box.row(align=True)
+        row.prop(entry, "font_size_unit", text="")
+        row.prop(entry, "font_size_value", text="サイズ")
         # Meldex fontBold/fontItalic 相当
         row = box.row(align=True)
         row.prop(entry, "font_bold", toggle=True)
@@ -251,6 +253,7 @@ class BNAME_PT_texts(Panel):
         box.label(text="親フキダシ", icon="LINKED")
         row = box.row(align=True)
         row.prop(entry, "parent_balloon_id", text="ID")
+        box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
         # 既存フキダシ一覧からのクイック選択
         if len(page.balloons) > 0:
             row = box.row(align=True)

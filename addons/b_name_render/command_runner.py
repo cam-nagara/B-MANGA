@@ -278,7 +278,7 @@ def _setup_eevr_from_command(scene, command) -> None:
         output_dir=str(getattr(command, "folder_path", "") or ""),
         output_name=str(getattr(command, "text_value", "") or ""),
     ):
-        raise RuntimeError("eeVR設定が見つかりません")
+        raise RuntimeError("魚眼設定が見つかりません")
 
 
 def _run_command(context, command) -> None:

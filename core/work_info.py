@@ -18,9 +18,16 @@ from bpy.props import (
 )
 
 from ..utils import log
+from ..utils.geom import pt_to_q, q_to_pt
 
 _logger = log.get_logger(__name__)
 _page_range_update_depth = 0
+_display_font_size_sync_depth = 0
+
+_FONT_SIZE_UNIT_ITEMS = (
+    ("q", "Q", "Q 数"),
+    ("pt", "pt", "ポイント"),
+)
 
 
 class suppress_page_number_range_update:
@@ -76,6 +83,42 @@ _POSITION_ITEMS = (
 )
 
 
+def _on_display_font_size_q_changed(self, _context) -> None:
+    global _display_font_size_sync_depth
+    if _display_font_size_sync_depth > 0:
+        return
+    _display_font_size_sync_depth += 1
+    try:
+        self.font_size_pt = max(0.1, float(q_to_pt(float(getattr(self, "font_size_q", 20.0) or 20.0))))
+    finally:
+        _display_font_size_sync_depth -= 1
+
+
+def _on_display_font_size_pt_changed(self, _context) -> None:
+    global _display_font_size_sync_depth
+    if _display_font_size_sync_depth > 0:
+        return
+    _display_font_size_sync_depth += 1
+    try:
+        self.font_size_q = max(0.1, float(pt_to_q(float(getattr(self, "font_size_pt", 9.0) or 9.0))))
+    finally:
+        _display_font_size_sync_depth -= 1
+
+
+def _get_display_font_size_value(self) -> float:
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        return float(getattr(self, "font_size_pt", q_to_pt(float(getattr(self, "font_size_q", 20.0)))) or 0.0)
+    return float(getattr(self, "font_size_q", 20.0) or 0.0)
+
+
+def _set_display_font_size_value(self, value: float) -> None:
+    size = max(0.1, float(value or 0.0))
+    if str(getattr(self, "font_size_unit", "q") or "q") == "pt":
+        self.font_size_pt = size
+    else:
+        self.font_size_q = size
+
+
 class BNameDisplayItem(bpy.types.PropertyGroup):
     """原稿上に焼き込む 1 項目 (作品名/話数/サブタイトル/作者名) の表示設定."""
 
@@ -97,6 +140,31 @@ class BNameDisplayItem(bpy.types.PropertyGroup):
         default=20.0,
         min=1.0,
         soft_max=200.0,
+        update=_on_display_font_size_q_changed,
+    )
+    font_size_pt: FloatProperty(  # type: ignore[valid-type]
+        name="フォントサイズ (pt)",
+        description="文字サイズを pt で指定",
+        default=q_to_pt(20.0),
+        min=0.1,
+        soft_max=200.0,
+        update=_on_display_font_size_pt_changed,
+    )
+    font_size_unit: EnumProperty(  # type: ignore[valid-type]
+        name="サイズ単位",
+        description="原稿上の表示サイズの表示・入力単位",
+        items=_FONT_SIZE_UNIT_ITEMS,
+        default="q",
+    )
+    font_size_value: FloatProperty(  # type: ignore[valid-type]
+        name="サイズ",
+        description="現在のサイズ単位で表示・入力する文字サイズ",
+        default=20.0,
+        min=0.1,
+        soft_max=200.0,
+        precision=3,
+        get=_get_display_font_size_value,
+        set=_set_display_font_size_value,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
         name="色",

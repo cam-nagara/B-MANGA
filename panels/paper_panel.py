@@ -11,6 +11,15 @@ from ..core.work import get_work
 B_NAME_CATEGORY = "B-Name"
 
 
+def _paper_unit_label(paper) -> str:
+    unit = str(getattr(paper, "unit", "mm") or "mm")
+    if unit == "px":
+        return "px"
+    if unit == "inch":
+        return "inch"
+    return "mm"
+
+
 class BNAME_PT_paper(Panel):
     bl_idname = "BNAME_PT_paper"
     bl_label = "用紙"
@@ -31,6 +40,7 @@ class BNAME_PT_paper(Panel):
         if work is None:
             return
         p = work.paper
+        unit_label = _paper_unit_label(p)
 
         # プリセット操作 (ドロップダウンから選択 → 即時適用)
         row = layout.row(align=True)
@@ -42,8 +52,8 @@ class BNAME_PT_paper(Panel):
         box = layout.box()
         box.label(text="キャンバス")
         row = box.row(align=True)
-        row.prop(p, "canvas_width_mm")
-        row.prop(p, "canvas_height_mm")
+        row.prop(p, "canvas_width_value", text=f"幅 ({unit_label})")
+        row.prop(p, "canvas_height_value", text=f"高さ ({unit_label})")
         row = box.row(align=True)
         row.prop(p, "dpi")
         row.prop(p, "unit", text="")
@@ -51,27 +61,27 @@ class BNAME_PT_paper(Panel):
         box = layout.box()
         box.label(text="仕上がり / 裁ち落とし")
         row = box.row(align=True)
-        row.prop(p, "finish_width_mm")
-        row.prop(p, "finish_height_mm")
-        box.prop(p, "bleed_mm")
+        row.prop(p, "finish_width_value", text=f"幅 ({unit_label})")
+        row.prop(p, "finish_height_value", text=f"高さ ({unit_label})")
+        box.prop(p, "bleed_value", text=f"裁ち落とし幅 ({unit_label})")
 
         box = layout.box()
         box.label(text="基本枠")
         row = box.row(align=True)
-        row.prop(p, "inner_frame_width_mm")
-        row.prop(p, "inner_frame_height_mm")
+        row.prop(p, "inner_frame_width_value", text=f"幅 ({unit_label})")
+        row.prop(p, "inner_frame_height_value", text=f"高さ ({unit_label})")
         row = box.row(align=True)
-        row.prop(p, "inner_frame_offset_x_mm")
-        row.prop(p, "inner_frame_offset_y_mm")
+        row.prop(p, "inner_frame_offset_x_value", text=f"横オフセット ({unit_label})")
+        row.prop(p, "inner_frame_offset_y_value", text=f"縦オフセット ({unit_label})")
 
         box = layout.box()
         box.label(text="セーフライン")
         row = box.row(align=True)
-        row.prop(p, "safe_top_mm")
-        row.prop(p, "safe_bottom_mm")
+        row.prop(p, "safe_top_value", text=f"天 ({unit_label})")
+        row.prop(p, "safe_bottom_value", text=f"地 ({unit_label})")
         row = box.row(align=True)
-        row.prop(p, "safe_gutter_mm")
-        row.prop(p, "safe_fore_edge_mm")
+        row.prop(p, "safe_gutter_value", text=f"ノド ({unit_label})")
+        row.prop(p, "safe_fore_edge_value", text=f"小口 ({unit_label})")
         # セーフライン外塗り (旧「セーフライン外オーバーレイ」パネル) を統合
         sa = work.safe_area_overlay
         row = box.row(align=True)
@@ -104,6 +114,7 @@ class BNAME_PT_paper(Panel):
 
         box = layout.box()
         box.label(text="原稿上の表示")
+        box.operator("bname.work_meta_dialog", text="メタ情報を編集", icon="INFO")
         info = work.work_info
         _draw_display_item(box, "作品名", info.display_work_name)
         _draw_display_item(box, "話数", info.display_episode)
@@ -122,10 +133,11 @@ class BNAME_PT_paper(Panel):
 def _draw_display_item(layout, label: str, item) -> None:
     row = layout.row(align=True)
     row.prop(item, "enabled", text=label)
-    sub = row.row(align=True)
+    sub = layout.row(align=True)
     sub.enabled = item.enabled
     sub.prop(item, "position", text="")
-    sub.prop(item, "font_size_q", text="")
+    sub.prop(item, "font_size_unit", text="")
+    sub.prop(item, "font_size_value", text="サイズ")
 
 
 _CLASSES = (

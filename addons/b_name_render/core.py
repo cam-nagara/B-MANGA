@@ -30,10 +30,10 @@ COMMAND_TYPE_ITEMS = (
     ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", ""),
     ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", ""),
     ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", ""),
-    ("EEVR_SETUP", "eeVR設定", ""),
-    ("EEVR_RENDER_IMAGE", "eeVR魚眼レンダー", ""),
-    ("EEVR_RENDER_FACES", "eeVR方向画像レンダー", ""),
-    ("EEVR_ASSEMBLE", "eeVRパノラマ合成", ""),
+    ("EEVR_SETUP", "魚眼設定", ""),
+    ("EEVR_RENDER_IMAGE", "魚眼レンダー", ""),
+    ("EEVR_RENDER_FACES", "方向画像レンダー", ""),
+    ("EEVR_ASSEMBLE", "魚眼合成", ""),
     ("OPERATOR", "Blenderオペレータ", ""),
 )
 
@@ -45,7 +45,7 @@ ENGINE_ITEMS = (
 
 
 class BNameRenderToolSettings(bpy.types.PropertyGroup):
-    bg_images_scale: FloatProperty(name="下絵のスケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
+    bg_images_scale: FloatProperty(name="ページ画像のスケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
 
 
 class BNameRenderCommand(bpy.types.PropertyGroup):
@@ -117,6 +117,11 @@ def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
         return
     try:
         camera_data.type = "PANO" if enabled else "PERSP"
+        if enabled:
+            if hasattr(camera_data, "panorama_type"):
+                camera_data.panorama_type = "FISHEYE_EQUIDISTANT"
+            if hasattr(camera_data, "fisheye_fov"):
+                camera_data.fisheye_fov = float(getattr(scene, "fisheye_fov", 3.1415927) or 3.1415927)
     except Exception:  # noqa: BLE001
         pass
 
@@ -203,6 +208,18 @@ def _register_scene_prop(name: str, prop) -> None:
 def _register_scene_props() -> None:
     _register_scene_prop("my_tool", PointerProperty(type=BNameRenderToolSettings))
     _register_scene_prop("fisheye_layout_mode", BoolProperty(name="魚眼モード", default=False, update=_on_output_mode_changed))
+    _register_scene_prop(
+        "fisheye_fov",
+        FloatProperty(
+            name="魚眼FOV",
+            description="魚眼モード時の視野角",
+            default=3.1415927,
+            min=1.7453293,
+            max=6.2831855,
+            subtype="ANGLE",
+            update=_on_output_mode_changed,
+        ),
+    )
     _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False, update=_on_output_mode_changed))
     _register_scene_prop("original_resolution_x", IntProperty(name="元解像度X", default=0, min=0))
     _register_scene_prop("original_resolution_y", IntProperty(name="元解像度Y", default=0, min=0))

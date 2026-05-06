@@ -229,8 +229,8 @@ def _draw_text_detail(layout, entry) -> None:
     box.label(text="フォント・組版")
     box.prop(entry, "font")
     row = box.row(align=True)
-    row.prop(entry, "font_size_q")
-    row.prop(entry, "font_size_pt")
+    row.prop(entry, "font_size_unit", text="")
+    row.prop(entry, "font_size_value", text="サイズ")
     row = box.row(align=True)
     row.prop(entry, "font_bold")
     row.prop(entry, "font_italic")
@@ -264,6 +264,7 @@ def _draw_text_detail(layout, entry) -> None:
     box.prop(entry, "parent_kind")
     box.prop(entry, "parent_key")
     box.prop(entry, "folder_key")
+    box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
 
 
 def _draw_gp_detail(layout, obj) -> None:
@@ -272,8 +273,8 @@ def _draw_gp_detail(layout, obj) -> None:
     box.label(text="基本")
     box.prop(obj, '["bname_title"]', text="表示名")
     box.prop(obj, '["bname_z_index"]', text="z_index")
-    box.prop(obj, "hide_viewport", text="表示 (viewport)")
-    box.prop(obj, "hide_render", text="表示 (render)")
+    box.prop(obj, "hide_viewport", text="非表示 (ビューポート)")
+    box.prop(obj, "hide_render", text="非表示 (レンダー)")
 
     gp_data = getattr(obj, "data", None)
     layers = getattr(gp_data, "layers", None) if gp_data is not None else None

@@ -59,7 +59,7 @@ def draw_main_panel(layout, context) -> None:
     row = layout.row(align=True)
     row.operator("bname_render.preset_run", text="プリセットを実行", icon="RENDER_STILL")
     _draw_command_list(layout, preset)
-    _draw_active_command_detail(layout, preset)
+    _draw_active_command_detail(layout, preset, context)
 
 
 def _draw_fisheye_box(layout, context, state) -> None:
@@ -72,11 +72,14 @@ def _draw_fisheye_box(layout, context, state) -> None:
     sub = fish.row(align=True)
     sub.enabled = bool(scene.reduction_mode)
     sub.prop(scene, "preview_scale_percentage", text="縮小率")
+    fish_only = fish.column(align=True)
+    fish_only.enabled = bool(getattr(scene, "fisheye_layout_mode", False))
+    fish_only.prop(scene, "fisheye_fov", text="魚眼FOV")
+    if hasattr(scene, "my_tool"):
+        fish_only.prop(scene.my_tool, "bg_images_scale", text="ページ画像のスケール")
     fish.label(text=f"現在の出力解像度: {scene.render.resolution_x} x {scene.render.resolution_y}")
     if int(getattr(scene, "original_resolution_x", 0)) and int(getattr(scene, "original_resolution_y", 0)):
         fish.label(text=f"元解像度: {scene.original_resolution_x} x {scene.original_resolution_y}")
-    if not hasattr(scene, "eeVR"):
-        fish.label(text="eeVRアドオン未登録", icon="INFO")
     fish.prop(state, "sound_enabled", text="出力完了アラーム")
 
 
@@ -127,13 +130,13 @@ def _draw_command_list(layout, preset) -> None:
             box.label(text=summary)
 
 
-def _draw_active_command_detail(layout, preset) -> None:
+def _draw_active_command_detail(layout, preset, context) -> None:
     if not preset.commands:
         return
     command = preset.commands[preset.active_command_index]
     box = layout.box()
     box.label(text="選択カード設定", icon="PREFERENCES")
-    command_ui.draw_command(box, command)
+    command_ui.draw_command(box, command, context)
 
 
 _CLASSES = (BNAME_RENDER_UL_presets, BNAME_RENDER_PT_main, BNAME_RENDER_PT_node)
