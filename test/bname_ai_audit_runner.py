@@ -56,6 +56,7 @@ class AuditCase:
 def _audit_cases() -> list[AuditCase]:
     return [
         AuditCase("bname_ui_inventory", "B-Name UI項目棚卸し", "test/blender_bname_ui_inventory_visual_audit.py", "B-Name", ("standard", "visual"), "BNAME_UI_INVENTORY_OUT"),
+        AuditCase("bname_ui_micro_behavior", "B-Name UI微細挙動マトリクス", "test/blender_ui_micro_behavior_matrix_check.py", "B-Name", ("standard", "regression"), "BNAME_UI_MICRO_OUT"),
         AuditCase("bname_detail_matrix", "B-Name 詳細設定マトリクス", "test/blender_bname_full_visual_audit.py", "B-Name", ("standard", "visual"), "BNAME_FULL_VISUAL_OUT"),
         AuditCase("bname_partial_completion", "B-Name 主要操作状態監査", "test/blender_bname_partial_completion_check.py", "B-Name", ("standard", "visual"), "BNAME_PARTIAL_VISUAL_OUT"),
         AuditCase("bname_mask_matrix", "B-Name ページ/コママスク目視監査", "test/blender_mask_visual_matrix_check.py", "B-Name", ("standard", "visual"), "BNAME_MASK_VISUAL_OUT"),

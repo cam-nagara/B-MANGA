@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-09 — v0.5.17 UI微細挙動監査を追加
+
+### 症状
+AI監査の13項目だけでは、右クリックメニュー、詳細設定のチェック項目、コマ用blendファイルのB-Nameパネル項目を、項目単位かつ複数状況で実際に操作できているか確認しきれなかった。また、コマ詳細で「自動くり抜き」を直接切り替える項目が表示されていなかった。
+
+### 原因
+既存の監査はUI項目の棚卸しと主要な詳細設定の代表チェックが中心で、右クリックメニューのコピー/貼り付け/複製/リンク複製/しっぽ操作、コマ用blendファイル上のページ画像・下絵・魚眼・縮小などの状態変化をまとめて検証する実機テストが不足していた。
+
+### 修正
+- 右クリックメニュー、詳細設定チェック項目、コマ用blendファイルのB-Nameパネルを項目単位で操作する微細挙動監査を追加した。
+- 通常のAI監査に微細挙動監査を組み込み、次回以降も同じ範囲を再実行できるようにした。
+- コマ詳細に「自動くり抜き」を表示し、詳細設定から直接切り替えられるようにした。
+- B-Name 本体バージョンを `0.5.16` から `0.5.17` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_ui_micro_behavior_matrix_check.py`
+- `test/blender_layer_clipboard_check.py`
+- `python test/bname_ai_audit_runner.py --profile standard --only bname_ui_micro_behavior --out-dir .codex\ai_audit\ui_micro_check --keep-going --timeout 600`
+- `python test/bname_ai_audit_runner.py --profile standard --out-dir .codex\ai_audit\ui_micro_standard_20260509 --keep-going --timeout 900`
+
 ## 2026-05-09 — AI監査ワンワード実行を追加
 
 ### 症状

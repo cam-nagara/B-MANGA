@@ -52,6 +52,7 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
     row.prop(entry, "coma_gap_vertical_mm", text="上下 (個別)")
     row.prop(entry, "coma_gap_horizontal_mm", text="左右 (個別)")
     layout.label(text="(負値は作品共通ルールを継承)", icon="INFO")
+    layout.prop(entry, "overlap_clipping")
 
 
 def draw_coma_border_settings(layout, context, entry) -> None:
