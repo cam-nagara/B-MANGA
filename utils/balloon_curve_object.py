@@ -27,10 +27,76 @@ BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
 BALLOON_CURVE_DATA_PREFIX = "balloon_curve_"
 BALLOON_FILL_DATA_PREFIX = "balloon_fill_curve_"
+BALLOON_MESH_DATA_PREFIX = "balloon_mesh_"
+BALLOON_FILL_MESH_DATA_PREFIX = "balloon_fill_mesh_"
 BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
+
+
+def _remove_unused_data_block(data) -> None:
+    if data is None or getattr(data, "users", 0) != 0:
+        return
+    try:
+        if isinstance(data, bpy.types.Curve):
+            bpy.data.curves.remove(data)
+        elif isinstance(data, bpy.types.Mesh):
+            bpy.data.meshes.remove(data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _curve_to_mesh_data(
+    *,
+    scene: bpy.types.Scene,
+    curve_data: bpy.types.Curve,
+    mesh_name: str,
+) -> Optional[bpy.types.Mesh]:
+    if scene is None or curve_data is None:
+        return None
+    tmp = bpy.data.objects.new("__bname_balloon_curve_to_mesh__", curve_data)
+    try:
+        scene.collection.objects.link(tmp)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve mesh temp link failed")
+        return None
+    mesh = None
+    try:
+        view_layer = bpy.context.view_layer
+        if view_layer is not None:
+            view_layer.update()
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        evaluated = tmp.evaluated_get(depsgraph)
+        mesh = bpy.data.meshes.new_from_object(evaluated, depsgraph=depsgraph)
+        mesh.name = mesh_name
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve to mesh failed")
+        mesh = None
+    finally:
+        try:
+            bpy.data.objects.remove(tmp, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+    return mesh
+
+
+def _replace_object_with_mesh(
+    *,
+    obj: Optional[bpy.types.Object],
+    obj_name: str,
+    mesh: bpy.types.Mesh,
+) -> bpy.types.Object:
+    if obj is not None and obj.type != "MESH":
+        _remove_balloon_object(obj)
+        obj = None
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    else:
+        old_data = getattr(obj, "data", None)
+        obj.data = mesh
+        _remove_unused_data_block(old_data)
+    return obj
 
 
 def _ensure_balloon_curve_data(
@@ -247,11 +313,28 @@ def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
         bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
         mid_x = (base_x + tip_x) * 0.5 + nx * bend
         mid_y = (base_y + tip_y) * 0.5 + ny * bend
+        if tw > 0.0:
+            mw = max(0.0, (rw + tw) * 0.5)
+            return [
+                (base_x + nx * rw, base_y + ny * rw),
+                (mid_x + nx * mw, mid_y + ny * mw),
+                (tip_x + nx * tw, tip_y + ny * tw),
+                (tip_x - nx * tw, tip_y - ny * tw),
+                (mid_x - nx * mw, mid_y - ny * mw),
+                (base_x - nx * rw, base_y - ny * rw),
+            ]
         return [
             (base_x + nx * rw, base_y + ny * rw),
             (mid_x, mid_y),
             (tip_x, tip_y),
             (mid_x, mid_y),
+            (base_x - nx * rw, base_y - ny * rw),
+        ]
+    if tw > 0.0:
+        return [
+            (base_x + nx * rw, base_y + ny * rw),
+            (tip_x + nx * tw, tip_y + ny * tw),
+            (tip_x - nx * tw, tip_y - ny * tw),
             (base_x - nx * rw, base_y - ny * rw),
         ]
     return [
@@ -277,15 +360,7 @@ def _remove_balloon_object(obj: bpy.types.Object) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("balloon curve object removal failed")
         return
-    if data is None or getattr(data, "users", 0) != 0:
-        return
-    try:
-        if isinstance(data, bpy.types.Curve):
-            bpy.data.curves.remove(data)
-        elif isinstance(data, bpy.types.Mesh):
-            bpy.data.meshes.remove(data)
-    except Exception:  # noqa: BLE001
-        pass
+    _remove_unused_data_block(data)
 
 
 def _remove_duplicate_balloon_objects(
@@ -333,16 +408,18 @@ def _ensure_balloon_fill_object(
         fill_data.materials.append(mat)
     elif fill_data.materials[0] is not mat:
         fill_data.materials[0] = mat
+    fill_mesh = _curve_to_mesh_data(
+        scene=scene,
+        curve_data=fill_data,
+        mesh_name=f"{BALLOON_FILL_MESH_DATA_PREFIX}{balloon_id}",
+    )
+    if fill_mesh is None:
+        return None
+    _remove_unused_data_block(fill_data)
 
     obj_name = f"{BALLOON_FILL_NAME_PREFIX}{balloon_id}"
     obj = bpy.data.objects.get(obj_name)
-    if obj is not None and obj.type != "CURVE":
-        _remove_balloon_object(obj)
-        obj = None
-    if obj is None:
-        obj = bpy.data.objects.new(obj_name, fill_data)
-    elif obj.data is not fill_data:
-        obj.data = fill_data
+    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=fill_mesh)
     obj[PROP_BALLOON_FILL_KIND] = "balloon_fill"
     obj[PROP_BALLOON_FILL_OWNER_ID] = balloon_id
     obj[on.PROP_MANAGED] = False
@@ -381,6 +458,12 @@ def _ensure_balloon_fill_object(
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon fill link failed")
+    try:
+        from . import mask_apply
+
+        mask_apply.apply_mask_to_object_for_parent(obj, parent_key)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon fill mask apply failed")
     return obj
 
 
@@ -423,22 +506,21 @@ def ensure_balloon_curve_object(
         curve_data.bevel_resolution = 0
     except Exception:  # noqa: BLE001
         pass
+    mesh_data = _curve_to_mesh_data(
+        scene=scene,
+        curve_data=curve_data,
+        mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
+    )
+    if mesh_data is None:
+        return None
 
-    # 2. Curve Object 生成 or 再利用
+    # 2. Mesh Object 生成 or 再利用
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
     obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
-    if obj is None:
-        obj = bpy.data.objects.new(obj_name, curve_data)
-    elif obj.type != "CURVE":
-        _remove_balloon_object(obj)
-        obj = bpy.data.objects.new(obj_name, curve_data)
-    else:
-        # 既存 Object のデータを Curve に切替 (旧 Mesh balloon plane が
-        # 残っているケースの自動移行)
-        if obj.data is not curve_data:
-            obj.data = curve_data
+    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=mesh_data)
+    _remove_unused_data_block(curve_data)
     _remove_duplicate_balloon_objects(balloon_id, obj)
 
     # 3. ページローカル座標 mm → m

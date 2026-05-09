@@ -755,7 +755,7 @@ class BNAME_OT_text_tool(Operator):
             return {"RUNNING_MODAL"}
         if (
             event.value == "PRESS"
-            and event.type in {"O", "P", "F", "G", "K"}
+            and event.type in {"O", "P", "F", "K"}
             and not event.ctrl
             and not event.alt
         ):

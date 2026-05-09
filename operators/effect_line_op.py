@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 import json
+import math
 import bpy
 from bpy.types import Operator
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid
-from ..utils.geom import m_to_mm
+from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import coma_modal_state, coma_picker, effect_line_link_op, selection_context_menu, view_event_region
 
@@ -23,6 +24,7 @@ _EFFECT_META_PROP = "bname_effect_line_meta"
 _PARAM_SYNCING = False
 _EFFECT_MIN_SIZE_MM = 2.0
 _EFFECT_HANDLE_HIT_MM = 2.5
+_EFFECT_STROKE_HIT_MM = 2.5
 _EFFECT_DRAG_EPS_MM = 0.05
 
 
@@ -658,23 +660,24 @@ def _event_local_xy_for_effect_obj(context, event, obj) -> tuple[float | None, f
     world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
     if world_x_mm is None or world_y_mm is None:
         return None, None
-    try:
-        from ..utils import object_naming as on
-
-        parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
-        work = get_work(context)
-        if work is not None and parent_key:
-            page_id = parent_key.split(":", 1)[0]
-            for i, page in enumerate(getattr(work, "pages", []) or []):
-                if str(getattr(page, "id", "") or "") == page_id:
-                    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, i)
-                    return world_x_mm - ox_mm, world_y_mm - oy_mm
-    except Exception:  # noqa: BLE001
-        pass
-    return world_x_mm, world_y_mm
+    return _world_local_xy_for_effect_obj(context, obj, world_x_mm, world_y_mm)
 
 
 def _world_local_xy_for_effect_obj(context, obj, x_mm: float, y_mm: float) -> tuple[float, float]:
+    try:
+        loc = getattr(obj, "location", None)
+        if loc is not None:
+            return float(x_mm) - m_to_mm(float(loc.x)), float(y_mm) - m_to_mm(float(loc.y))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from mathutils import Vector
+
+        inv = obj.matrix_world.inverted()
+        local = inv @ Vector((mm_to_m(float(x_mm)), mm_to_m(float(y_mm)), 0.0))
+        return m_to_mm(float(local.x)), m_to_mm(float(local.y))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from ..utils import object_naming as on
 
@@ -872,6 +875,49 @@ def _effect_hit_part(bounds: tuple[float, float, float, float], x_mm: float, y_m
     return ""
 
 
+def _distance_to_segment_mm(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> float:
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1.0e-12:
+        return math.hypot(point[0] - start[0], point[1] - start[1])
+    t = max(0.0, min(1.0, ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_sq))
+    nearest = (start[0] + dx * t, start[1] + dy * t)
+    return math.hypot(point[0] - nearest[0], point[1] - nearest[1])
+
+
+def _layer_stroke_hit_part(layer, x_mm: float, y_mm: float, tolerance_mm: float = _EFFECT_STROKE_HIT_MM) -> str:
+    point = (float(x_mm), float(y_mm))
+    tolerance = max(0.1, float(tolerance_mm))
+    for frame in getattr(layer, "frames", []) or []:
+        drawing = getattr(frame, "drawing", None)
+        for stroke in getattr(drawing, "strokes", []) or []:
+            pts: list[tuple[float, float]] = []
+            for gp_point in getattr(stroke, "points", []) or []:
+                pos = getattr(gp_point, "position", None)
+                if pos is None:
+                    continue
+                try:
+                    pts.append((m_to_mm(float(pos[0])), m_to_mm(float(pos[1]))))
+                except Exception:  # noqa: BLE001
+                    continue
+            if len(pts) == 1 and math.hypot(point[0] - pts[0][0], point[1] - pts[0][1]) <= tolerance:
+                return "body"
+            if len(pts) < 2:
+                continue
+            for i in range(len(pts) - 1):
+                if _distance_to_segment_mm(point, pts[i], pts[i + 1]) <= tolerance:
+                    return "body"
+            if bool(getattr(stroke, "cyclic", False)) and len(pts) > 2:
+                if _distance_to_segment_mm(point, pts[-1], pts[0]) <= tolerance:
+                    return "body"
+    return ""
+
+
 def _hit_effect_layer(context, x_mm: float, y_mm: float):
     """全 effect GP Object をスキャンし、 (obj, layer, bounds, part) を返す.
 
@@ -913,6 +959,8 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             if bounds is None:
                 continue
             part = _effect_hit_part(bounds, local_x, local_y)
+            if not part:
+                part = _layer_stroke_hit_part(layer, local_x, local_y)
             if part:
                 return obj, layer, bounds, part
     return (candidates[0] if candidates else None), None, None, ""
@@ -1077,7 +1125,7 @@ class BNAME_OT_effect_line_tool(Operator):
     def _should_leave_for_tool_key(self, event) -> bool:
         return (
             event.value == "PRESS"
-            and event.type in {"O", "P", "F", "G", "K", "T"}
+            and event.type in {"O", "P", "F", "K", "T"}
             and not event.ctrl
             and not event.alt
         )

@@ -109,6 +109,16 @@ def _on_balloon_tail_changed(_self, context) -> None:
                 _sync_balloon_curve(entry)
                 _tag_balloon_redraw(context)
                 return
+    for entry in getattr(work, "shared_balloons", []) or []:
+        for tail in getattr(entry, "tails", []) or []:
+            try:
+                if int(tail.as_pointer()) != target_ptr:
+                    continue
+            except Exception:  # noqa: BLE001
+                continue
+            _sync_balloon_curve(entry)
+            _tag_balloon_redraw(context)
+            return
     _tag_balloon_redraw(context)
 
 
@@ -132,6 +142,15 @@ def _on_balloon_shape_params_changed(_self, context) -> None:
             _sync_balloon_curve(entry)
             _tag_balloon_redraw(context)
             return
+    for entry in getattr(work, "shared_balloons", []) or []:
+        try:
+            if int(getattr(entry, "shape_params").as_pointer()) != target_ptr:
+                continue
+        except Exception:  # noqa: BLE001
+            continue
+        _sync_balloon_curve(entry)
+        _tag_balloon_redraw(context)
+        return
     _tag_balloon_redraw(context)
 
 

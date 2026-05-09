@@ -277,9 +277,8 @@ class KeymapState:
         _add("bname.toggle_lasso_tool", "L")
         _add("bname.gp_cut_to_new_layer", "X", ctrl=True)
         _add("bname.gp_paste_to_new_layer", "V", ctrl=True)
-        # F/G/T → B-Name ツール (GP モードでも先取り)
+        # F/T → B-Name ツール (GP モードでも先取り)
         _add("bname.coma_knife_cut", "F")
-        _add("bname.coma_edge_move", "G")
         _add("bname.text_tool", "T")
 
     def _populate_image_paint_overrides(self, km) -> None:
@@ -413,7 +412,7 @@ class KeymapState:
             except Exception as exc:  # noqa: BLE001
                 print(f"[B-Name][KEYMAP] window override {label}+{nav_key} failed: {exc!r}")
 
-        # Z/X → Undo/Redo、E → 消しゴム切替、F/G/K/T → B-Name ツール (Window kc に登録して
+        # Z/X → Undo/Redo、E → 消しゴム切替、F/K/T → B-Name ツール (Window kc に登録して
         # 他アドオンに先取りさせる)。
         # 注: exit_coma_mode の Esc は 3D View kc のみに限定し、Window kc には
         # 登録しない。Window kc に Esc を載せると Outliner / Image Editor 等の
@@ -424,7 +423,6 @@ class KeymapState:
             ("bname.redo", "X"),
             ("bname.toggle_eraser_brush", "E"),
             ("bname.coma_knife_cut", "F"),
-            ("bname.coma_edge_move", "G"),
             ("bname.layer_move_tool", "K"),
             ("bname.text_tool", "T"),
         ):
@@ -491,8 +489,6 @@ class KeymapState:
 
         # F → 枠線カットツール (CSP 互換)
         _add("bname.coma_knife_cut", "F")
-        # G → 枠線選択ツール
-        _add("bname.coma_edge_move", "G")
         # K → レイヤー移動ツール
         _add("bname.layer_move_tool", "K")
         # T → テキストツール
@@ -500,6 +496,12 @@ class KeymapState:
         # Z / X → Undo / Redo (B-Name work が開かれている時だけ実行)
         _add("bname.undo", "Z")
         _add("bname.redo", "X")
+        # Ctrl+C / Ctrl+V → B-Name レイヤーのコピー / 貼り付け
+        _add("bname.layer_clipboard_copy", "C", ctrl=True)
+        _add("bname.layer_clipboard_paste", "V", ctrl=True)
+        # Ctrl+Shift+C / Ctrl+Shift+V → フキダシしっぽのコピー / 貼り付け
+        _add("bname.balloon_tail_clipboard_copy", "C", ctrl=True, shift=True)
+        _add("bname.balloon_tail_clipboard_paste", "V", ctrl=True, shift=True)
         # E → Eraser Hard / Eraser Stroke 切替 (GP描画中のみ実行)
         _add("bname.toggle_eraser_brush", "E")
         # Esc → コマ編集モードを抜けて全ページ一覧 (work.blend) に戻る
@@ -577,7 +579,7 @@ class KeymapState:
     # ---------- 衝突キー無効化 (他アドオン対策) ----------
 
     # B-Name が単独修飾なしで予約するキー (他アドオンに奪われる対象)
-    _BNAME_RESERVED_SINGLE_KEYS: tuple[str, ...] = ("F", "G", "K", "T")
+    _BNAME_RESERVED_SINGLE_KEYS: tuple[str, ...] = ("F", "K", "T")
 
     def disable_conflicting_keys(self) -> int:
         """他アドオンが addon kc に登録した B-Name 予約単独キー kmi を無効化.
@@ -600,7 +602,6 @@ class KeymapState:
             return 0
         bname_idnames = {
             "bname.coma_knife_cut",
-            "bname.coma_edge_move",
             "bname.layer_move_tool",
             "bname.text_tool",
             "bname.exit_coma_mode",

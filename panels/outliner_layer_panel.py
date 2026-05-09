@@ -38,49 +38,6 @@ class BNAME_PT_outliner_layers(Panel):
         row.operator("bname.outliner_apply_view", text="B-Name 表示へ", icon="VIS_SEL_11")
         row.operator("bname.outliner_restore_view", text="復元", icon="LOOP_BACK")
 
-        # 新規レイヤー作成
-        box = layout.box()
-        box.label(text="新規レイヤー作成", icon="ADD")
-        col = box.column(align=True)
-        col.operator(
-            "bname.gp_layer_create_per_object",
-            text="GP レイヤー",
-            icon="GREASEPENCIL",
-        )
-        # ラスターは invoke_props_dialog で DPI 選択ダイアログを開く
-        rast_row = col.row(align=True)
-        rast_row.operator_context = "INVOKE_DEFAULT"
-        rast_row.operator(
-            "bname.raster_layer_add",
-            text="ラスターレイヤー",
-            icon="TEXTURE",
-        )
-        col.operator(
-            "bname.effect_line_create_object",
-            text="効果線レイヤー",
-            icon="LIGHT",
-        )
-        col.operator(
-            "bname.balloons_to_curve_all",
-            text="フキダシ (全件再生成)",
-            icon="MESH_CIRCLE",
-        )
-        col.operator(
-            "bname.images_to_empty_all",
-            text="画像レイヤー (全件再登録)",
-            icon="IMAGE_DATA",
-        )
-        col.operator(
-            "bname.texts_to_empty_all",
-            text="テキスト (全件再登録)",
-            icon="FONT_DATA",
-        )
-
-        # アクティブレイヤーの詳細設定
-        box = layout.box()
-        box.label(text="アクティブレイヤー", icon="OBJECT_DATA")
-        box.operator("bname.layer_detail_open", text="詳細設定を開く", icon="PREFERENCES")
-
         # オーバーレイ表示切替 (Phase 3c)
         box = layout.box()
         scene = context.scene

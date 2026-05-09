@@ -783,7 +783,7 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
         if mode == "PAINT_GREASE_PENCIL":
             return "描画ツールに切り替えます"
         if mode == "EDIT":
-            return "線編集ツールに切り替えます"
+            return "グリースペンシル編集モードに切り替えます"
         return "B-Nameツールを切り替えます"
 
     def execute(self, context):

@@ -176,6 +176,17 @@ def hit_object_at_event(context, event) -> dict | None:
     if view is None:
         return None
     area, region, rv3d, mx, my = view
+    for resolver in (
+        _hit_text_at_event,
+        _hit_balloon_at_event,
+        _hit_effect_at_event,
+        _hit_image_at_event,
+        _hit_gp_at_event,
+        _hit_raster_at_event,
+    ):
+        hit = resolver(context, event)
+        if hit is not None:
+            return hit
     edge_hit = coma_edge_move_op._pick_edge_or_vertex(work, region, rv3d, int(mx), int(my))
     if edge_hit is not None and not _edge_hit_close_in_world(work, edge_hit, region, rv3d, mx, my):
         edge_hit = None
@@ -193,12 +204,6 @@ def hit_object_at_event(context, event) -> dict | None:
         })
         return hit
     for resolver in (
-        _hit_text_at_event,
-        _hit_balloon_at_event,
-        _hit_effect_at_event,
-        _hit_image_at_event,
-        _hit_gp_at_event,
-        _hit_raster_at_event,
         _hit_coma_at_event,
         _hit_page_at_event,
     ):
@@ -524,7 +529,7 @@ class BNAME_OT_object_tool(Operator):
         if event.type == "ESC" and event.value == "PRESS":
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED"}
-        if event.value == "PRESS" and event.type in {"P", "F", "G", "K", "T"} and not event.ctrl and not event.alt:
+        if event.value == "PRESS" and event.type in {"P", "F", "K", "T"} and not event.ctrl and not event.alt:
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
         if event.value == "PRESS" and event.type in {"Z", "Y"} and event.ctrl:

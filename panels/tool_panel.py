@@ -101,15 +101,6 @@ class BNAME_PT_tools(Panel):
             depress=(not modal_tool_active and active_mode == "TEXTURE_PAINT"),
         )
         raster_draw.mode = "TEXTURE_PAINT"
-        edit_slot = row.row(align=True)
-        op = edit_slot.operator(
-            "bname.gpencil_master_mode_set",
-            text="",
-            icon="EDITMODE_HLT",
-            depress=(not modal_tool_active and gp_layer_active and mode == "EDIT"),
-        )
-        op.mode = "EDIT"
-
         row.separator()
         row.operator_context = "INVOKE_DEFAULT"
         row.operator(
@@ -117,12 +108,6 @@ class BNAME_PT_tools(Panel):
             text="",
             icon="SCULPTMODE_HLT",
             depress=coma_modal_state.is_active("knife_cut"),
-        )
-        row.operator(
-            "bname.coma_edge_move",
-            text="",
-            icon="EMPTY_ARROWS",
-            depress=coma_modal_state.is_active("edge_move"),
         )
         row.operator(
             "bname.layer_move_tool",

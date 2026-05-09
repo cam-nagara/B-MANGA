@@ -74,8 +74,6 @@ class BNAME_PT_balloons(Panel):
         col = row.column(align=True)
         col.operator("bname.balloon_add", text="", icon="ADD")
         col.operator("bname.balloon_remove", text="", icon="REMOVE")
-        col.separator()
-        col.operator("bname.balloon_tail_add", text="", icon="PARTICLE_POINT")
         if sum(1 for balloon in page.balloons if getattr(balloon, "selected", False)) >= 2:
             layout.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
 
@@ -156,18 +154,28 @@ class BNAME_PT_balloons(Panel):
 
         # 尻尾
         box = layout.box()
-        box.label(text=f"尻尾 ({len(entry.tails)})")
+        row = box.row(align=True)
+        row.label(text=f"尻尾 ({len(entry.tails)})")
+        add_op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
+        add_op.page_id = str(getattr(page, "id", "") or "")
+        add_op.balloon_id = str(getattr(entry, "id", "") or "")
         for i, tail in enumerate(entry.tails):
             sub = box.box()
-            sub.label(text=f"尻尾 {i + 1}")
-            sub.prop(tail, "type")
-            sub.prop(tail, "direction_deg")
-            sub.prop(tail, "length_mm")
+            header = sub.row(align=True)
+            header.label(text=f"尻尾 {i + 1}")
+            remove_op = header.operator("bname.balloon_tail_remove", text="", icon="X")
+            remove_op.page_id = str(getattr(page, "id", "") or "")
+            remove_op.balloon_id = str(getattr(entry, "id", "") or "")
+            remove_op.tail_index = i
+            sub.prop(tail, "type", text="種類")
+            sub.prop(tail, "direction_deg", text="方向")
+            sub.prop(tail, "length_mm", text="長さ")
             row = sub.row(align=True)
-            row.prop(tail, "root_width_mm")
-            row.prop(tail, "tip_width_mm")
-            if tail.type == "curve":
-                sub.prop(tail, "curve_bend")
+            row.prop(tail, "root_width_mm", text="根元幅")
+            row.prop(tail, "tip_width_mm", text="先端幅")
+            bend = sub.row()
+            bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
+            bend.prop(tail, "curve_bend", text="曲げ")
 
 
 class BNAME_PT_texts(Panel):

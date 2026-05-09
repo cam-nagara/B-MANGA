@@ -508,6 +508,12 @@ def stamp_layer_object(
         om.link_object_to_parent(
             scene, obj, parent_kind=parent_kind, parent_key=parent_key, folder_id=folder_id
         )
+        try:
+            from . import mask_apply
+
+            mask_apply.apply_mask_to_layer_object(obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("stamp_layer_object: mask apply failed")
     update_snapshot(obj)
 
 

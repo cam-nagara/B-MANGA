@@ -406,19 +406,38 @@ def _draw_balloon_tail(
         bend = float(tail.curve_bend) * tail.length_mm * 0.4
         mid_x = (base_x + tip_x) * 0.5 + nx * bend
         mid_y = (base_y + tip_y) * 0.5 + ny * bend
-        pts = [
-            (base_x + nx * rw, base_y + ny * rw),
-            (mid_x, mid_y),
-            (tip_x, tip_y),
-            (mid_x, mid_y),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
+        if tw > 0:
+            mw = max(0.0, (rw + tw) * 0.5)
+            pts = [
+                (base_x + nx * rw, base_y + ny * rw),
+                (mid_x + nx * mw, mid_y + ny * mw),
+                (tip_x + nx * tw, tip_y + ny * tw),
+                (tip_x - nx * tw, tip_y - ny * tw),
+                (mid_x - nx * mw, mid_y - ny * mw),
+                (base_x - nx * rw, base_y - ny * rw),
+            ]
+        else:
+            pts = [
+                (base_x + nx * rw, base_y + ny * rw),
+                (mid_x, mid_y),
+                (tip_x, tip_y),
+                (mid_x, mid_y),
+                (base_x - nx * rw, base_y - ny * rw),
+            ]
     else:
-        pts = [
-            (base_x + nx * rw, base_y + ny * rw),
-            (tip_x, tip_y),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
+        if tw > 0:
+            pts = [
+                (base_x + nx * rw, base_y + ny * rw),
+                (tip_x + nx * tw, tip_y + ny * tw),
+                (tip_x - nx * tw, tip_y - ny * tw),
+                (base_x - nx * rw, base_y - ny * rw),
+            ]
+        else:
+            pts = [
+                (base_x + nx * rw, base_y + ny * rw),
+                (tip_x, tip_y),
+                (base_x - nx * rw, base_y - ny * rw),
+            ]
     if clip_polygon and len(clip_polygon) >= 3:
         pts_clipped = _clip_polygon_sutherland_hodgman(pts, clip_polygon)
     else:

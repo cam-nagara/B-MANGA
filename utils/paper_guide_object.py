@@ -30,6 +30,7 @@ def _material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.M
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
+    alpha = max(0.0, min(1.0, float(rgba[3]) if len(rgba) > 3 else 1.0))
     try:
         mat.diffuse_color = rgba
     except Exception:  # noqa: BLE001
@@ -40,17 +41,31 @@ def _material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.M
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.surface_render_method = "BLENDED"
+    except (AttributeError, TypeError):
+        pass
     nt = mat.node_tree
     for node in list(nt.nodes):
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (180, 0)
+    out.location = (360, 0)
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.name = "BName_Transparent"
+    transparent.location = (-280, -90)
     emission = nt.nodes.new("ShaderNodeEmission")
-    emission.location = (-80, 0)
+    emission.name = "BName_Emission"
+    emission.location = (-280, 90)
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.name = "BName_AlphaMix"
+    mix.location = (60, 0)
     try:
-        emission.inputs["Color"].default_value = rgba
+        emission.inputs["Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
         emission.inputs["Strength"].default_value = 1.0
-        nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+        mix.inputs[0].default_value = alpha
+        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+        nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide material setup failed")
     return mat
@@ -175,6 +190,10 @@ def _ensure_curve_object(
     obj[PROP_GUIDE_OWNER_ID] = page_id
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
+    try:
+        obj.show_transparent = True
+    except Exception:  # noqa: BLE001
+        pass
     obj.hide_viewport = not visible
     obj.hide_render = True
     obj.location.z = z_m
@@ -238,6 +257,10 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj[PROP_GUIDE_OWNER_ID] = page_id
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
+    try:
+        obj.show_transparent = True
+    except Exception:  # noqa: BLE001
+        pass
     obj.hide_render = True
     obj.hide_viewport = not (
         bool(getattr(page, "in_page_range", True))

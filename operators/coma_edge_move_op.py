@@ -1,4 +1,4 @@
-"""枠線選択ツール: 枠線の辺/頂点を選択 → ドラッグ移動 + 個別スタイル編集.
+"""コマ枠編集の内部処理: 枠線の辺/頂点選択 → ドラッグ移動 + 個別スタイル編集.
 
 CLIP STUDIO PAINT の「枠線分割ツール (移動モード)」相当の操作感:
 - LMB シングルクリック: クリック地点の最寄りの **辺** を選択 (ページに依存しない)
@@ -111,7 +111,7 @@ def _world_mm_to_region(region, rv3d, x_mm, y_mm) -> tuple[float, float] | None:
 
 
 def _focus_active_coma(work, page_index: int, coma_index: int) -> None:
-    """枠線選択ツールでコマを選択したら active 階層にも反映 (薄い委譲)."""
+    """コマ枠編集でコマを選択したら active 階層にも反映 (薄い委譲)."""
     from ..utils import active_target as _at
 
     scene = bpy.context.scene if bpy.context is not None else None
@@ -708,7 +708,7 @@ def find_selected_handle_at_event(context, event) -> dict | None:
 
     解決の優先順位:
     1. WM の ``bname_edge_select_*`` (kind: edge / border / vertex)
-    2. ``page.active_coma_index`` (枠線選択ツールを通っていなくても、
+    2. ``page.active_coma_index`` (専用ツールを通っていなくても、
        オブジェクトツールやアウトライナーでコマがアクティブなら ▲ を反応させる)
 
     どの kind でも hit テストは ``_iter_panel_edge_refs_for_handles`` を経由
@@ -780,14 +780,14 @@ def find_selected_handle_at_event(context, event) -> dict | None:
 
 
 class BNAME_OT_coma_edge_move(Operator):
-    """枠線選択ツール: 辺/頂点を選択 → ドラッグ移動 + 色/太さ編集.
+    """コマ枠編集の内部オペレーター: 辺/頂点を選択 → ドラッグ移動 + 色/太さ編集.
 
     シングルクリックで辺、ダブルクリックで枠線全体を選択する。
     """
 
     bl_idname = "bname.coma_edge_move"
-    bl_label = "枠線選択ツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_label = "コマ枠編集（内部）"
+    bl_options = {"REGISTER", "UNDO", "INTERNAL"}
 
     @classmethod
     def poll(cls, context):
@@ -975,17 +975,6 @@ class BNAME_OT_coma_edge_move(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("edge_move: failed to switch to knife_cut")
             return {"FINISHED"}
-
-        if (
-            event.value == "PRESS"
-            and event.type == "G"
-            and not event.ctrl
-            and not event.alt
-            and not event.shift
-        ):
-            if not self._is_inside_region(event):
-                return {"PASS_THROUGH"}
-            return {"RUNNING_MODAL"}
 
         if (
             event.value == "PRESS"
@@ -1202,14 +1191,14 @@ class BNAME_OT_coma_edge_move(Operator):
             if not self._dragging and selection_context_menu.open_for_coma_edge_tool(self, context, event):
                 return {"RUNNING_MODAL"}
             self.finish_from_external(context, keep_selection=True)
-            self.report({"INFO"}, "枠線選択ツール終了")
+            self.report({"INFO"}, "コマ枠編集を終了")
             return {"FINISHED"}
 
         if event.type in {"ESC", "RET", "NUMPAD_ENTER"} and event.value == "PRESS":
             if not self._is_inside_region(event):
                 return {"PASS_THROUGH"}
             self.finish_from_external(context, keep_selection=True)
-            self.report({"INFO"}, "枠線選択ツール終了")
+            self.report({"INFO"}, "コマ枠編集を終了")
             return {"FINISHED"}
         return {"PASS_THROUGH"}
 

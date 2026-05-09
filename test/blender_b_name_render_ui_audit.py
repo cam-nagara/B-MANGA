@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import html
 import json
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,10 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / ".codex" / "visual" / "bname_render_ui_audit"
+OUT_DIR = Path(
+    os.environ.get("BNAME_RENDER_UI_AUDIT_OUT", "")
+    or (ROOT / ".codex" / "visual" / "bname_render_ui_audit")
+)
 
 
 def _load_render_package():

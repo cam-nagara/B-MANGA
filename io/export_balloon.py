@@ -202,11 +202,28 @@ def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
         bend = float(getattr(tail, "curve_bend", 0.0)) * float(getattr(tail, "length_mm", 0.0)) * 0.4
         mid_x = (base_x + tip_x) * 0.5 + nx * bend
         mid_y = (base_y + tip_y) * 0.5 + ny * bend
+        if tip_half > 0.0:
+            mid_half = max(0.0, (root_half + tip_half) * 0.5)
+            return [
+                (base_x + nx * root_half, base_y + ny * root_half),
+                (mid_x + nx * mid_half, mid_y + ny * mid_half),
+                (tip_x + nx * tip_half, tip_y + ny * tip_half),
+                (tip_x - nx * tip_half, tip_y - ny * tip_half),
+                (mid_x - nx * mid_half, mid_y - ny * mid_half),
+                (base_x - nx * root_half, base_y - ny * root_half),
+            ]
         return [
             (base_x + nx * root_half, base_y + ny * root_half),
             (mid_x, mid_y),
             (tip_x, tip_y),
             (mid_x, mid_y),
+            (base_x - nx * root_half, base_y - ny * root_half),
+        ]
+    if tip_half > 0.0:
+        return [
+            (base_x + nx * root_half, base_y + ny * root_half),
+            (tip_x + nx * tip_half, tip_y + ny * tip_half),
+            (tip_x - nx * tip_half, tip_y - ny * tip_half),
             (base_x - nx * root_half, base_y - ny * root_half),
         ]
     return [

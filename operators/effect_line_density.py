@@ -137,6 +137,139 @@ def density_compensation_strength(params) -> float:
     return 0.0
 
 
+def _outline_points(outline: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    return [(float(x), float(y)) for x, y in outline]
+
+
+def _angle(center: tuple[float, float], point: tuple[float, float]) -> float:
+    return math.atan2(float(point[1]) - center[1], float(point[0]) - center[0])
+
+
+def _unwrapped_next(prev_angle: float, next_angle: float) -> float:
+    delta = math.atan2(math.sin(next_angle - prev_angle), math.cos(next_angle - prev_angle))
+    return prev_angle + delta
+
+
+def _outline_flatness(outline: Sequence[tuple[float, float]]) -> float:
+    points = _outline_points(outline)
+    if len(points) < 2:
+        return 0.0
+    width = max(x for x, _y in points) - min(x for x, _y in points)
+    height = max(y for _x, y in points) - min(y for _x, y in points)
+    long_side = max(width, height)
+    if long_side <= 1.0e-9:
+        return 0.0
+    return 1.0 - max(0.0, min(width, height)) / long_side
+
+
+def _cross(ax: float, ay: float, bx: float, by: float) -> float:
+    return ax * by - ay * bx
+
+
+def _ray_outline_distance(
+    center: tuple[float, float],
+    outline: Sequence[tuple[float, float]],
+    angle: float,
+) -> float | None:
+    points = _outline_points(outline)
+    if len(points) < 2:
+        return None
+    cx, cy = center
+    dx = math.cos(angle)
+    dy = math.sin(angle)
+    best_t: float | None = None
+    for index, a in enumerate(points):
+        b = points[(index + 1) % len(points)]
+        sx = b[0] - a[0]
+        sy = b[1] - a[1]
+        denom = _cross(dx, dy, sx, sy)
+        if abs(denom) <= 1.0e-9:
+            continue
+        qx = a[0] - cx
+        qy = a[1] - cy
+        t = _cross(qx, qy, sx, sy) / denom
+        u = _cross(qx, qy, dx, dy) / denom
+        if t >= -1.0e-6 and -1.0e-6 <= u <= 1.0 + 1.0e-6:
+            if best_t is None or t < best_t:
+                best_t = t
+    return max(0.0, best_t) if best_t is not None else None
+
+
+def _sample_closed_outline(
+    outline: Sequence[tuple[float, float]],
+    *,
+    samples_per_edge: int = 10,
+) -> list[tuple[float, float]]:
+    points = _outline_points(outline)
+    if len(points) < 2:
+        return points
+    samples: list[tuple[float, float]] = [points[0]]
+    steps = max(1, int(samples_per_edge))
+    for index, start in enumerate(points):
+        end = points[(index + 1) % len(points)]
+        for step in range(1, steps + 1):
+            t = step / steps
+            samples.append((start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t))
+    return samples
+
+
+def compensated_frame_angle(
+    center: tuple[float, float],
+    start_outline: Sequence[tuple[float, float]],
+    end_outline: Sequence[tuple[float, float]],
+    fraction: float,
+    strength: float,
+) -> float | None:
+    """Return a frame angle corrected by radial visual density.
+
+    ``strength`` 0 keeps equal distance on the chosen frame basis. Stronger
+    values blend toward equal angular coverage, with extra weight from the
+    endpoint outline when it is very flat.
+    """
+    amount = _clamp01(strength)
+    if amount <= 0.0:
+        point = outline_point_at_fraction(start_outline, fraction)
+        return None if point is None else _angle(center, point)
+    samples = _sample_closed_outline(start_outline)
+    if len(samples) < 2:
+        return None
+    radii = [math.hypot(point[0] - center[0], point[1] - center[1]) for point in samples]
+    mean_radius = max(0.001, sum(radii) / max(1, len(radii)))
+    end_flatness = _outline_flatness(end_outline)
+    first_angle = _angle(center, samples[0])
+    prev_angle = first_angle
+    cumulative = [0.0]
+    unwrapped_angles = [first_angle]
+    total = 0.0
+    for index in range(1, len(samples)):
+        prev_point = samples[index - 1]
+        point = samples[index]
+        raw_angle = _angle(center, point)
+        unwrapped = _unwrapped_next(prev_angle, raw_angle)
+        dtheta = abs(unwrapped - prev_angle)
+        ds_start = math.hypot(point[0] - prev_point[0], point[1] - prev_point[1])
+        mid_angle = (prev_angle + unwrapped) * 0.5
+        end_radius = _ray_outline_distance(center, end_outline, mid_angle)
+        end_metric = (end_radius if end_radius is not None else mean_radius) * dtheta
+        angular_metric = mean_radius * dtheta
+        visual_metric = angular_metric * (1.0 - end_flatness) + end_metric * end_flatness
+        total += max(0.0, ds_start * (1.0 - amount) + visual_metric * amount)
+        cumulative.append(total)
+        unwrapped_angles.append(unwrapped)
+        prev_angle = unwrapped
+    if total <= 1.0e-9:
+        point = outline_point_at_fraction(start_outline, fraction)
+        return None if point is None else _angle(center, point)
+    target = (float(fraction) % 1.0) * total
+    for index in range(1, len(cumulative)):
+        if cumulative[index] < target:
+            continue
+        span = cumulative[index] - cumulative[index - 1]
+        t = 0.0 if span <= 1.0e-9 else (target - cumulative[index - 1]) / span
+        return unwrapped_angles[index - 1] + (unwrapped_angles[index] - unwrapped_angles[index - 1]) * t
+    return unwrapped_angles[-1]
+
+
 def blend_angles(base: float, target: float, amount: float) -> float:
     amount = _clamp01(amount)
     if amount <= 0.0:

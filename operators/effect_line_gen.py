@@ -422,6 +422,16 @@ def generate_focus_strokes(
             if density_point is None:
                 continue
             angle = math.atan2(density_point[1] - cy, density_point[0] - cx)
+            if density_strength > 0.0:
+                compensated = effect_line_density.compensated_frame_angle(
+                    center_xy_mm,
+                    density_start_outline,
+                    end_outline,
+                    t,
+                    density_strength,
+                )
+                if compensated is not None:
+                    angle = compensated
             frame_point = _ray_outline_point(center_xy_mm, start_outline, angle)
             if frame_point is None:
                 frame_point = density_point

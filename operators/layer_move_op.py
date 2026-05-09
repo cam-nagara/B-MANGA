@@ -223,19 +223,6 @@ class BNAME_OT_layer_move_tool(Operator):
             return {"FINISHED"}
         if (
             event.value == "PRESS"
-            and event.type == "G"
-            and not event.ctrl
-            and not event.alt
-            and not event.shift
-        ):
-            self.finish_from_external(context, keep_selection=True)
-            try:
-                bpy.ops.bname.coma_edge_move("INVOKE_DEFAULT")
-            except Exception:  # noqa: BLE001
-                pass
-            return {"FINISHED"}
-        if (
-            event.value == "PRESS"
             and event.type == "T"
             and not event.ctrl
             and not event.alt

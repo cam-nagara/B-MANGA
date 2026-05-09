@@ -166,6 +166,7 @@ def main() -> None:
         coma.white_margin.enabled = True
         coma.white_margin.width_mm = 1.5
         coma.border.style = "dashed"
+        work.safe_area_overlay.opacity = 0.17
 
         layer_object_sync.mirror_work_to_outliner(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)
@@ -245,6 +246,16 @@ def main() -> None:
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
+        assert bool(getattr(safe_fill_obj, "show_transparent", False)), "safe area fill is not transparent in viewport"
+        safe_mat = safe_fill_obj.active_material
+        assert safe_mat is not None, "safe area fill has no material"
+        assert getattr(safe_mat, "use_nodes", False), "safe area fill material does not use nodes"
+        assert abs(float(safe_mat.diffuse_color[3]) - 0.17) < 1.0e-4
+        mix = safe_mat.node_tree.nodes.get("BName_AlphaMix")
+        transparent = safe_mat.node_tree.nodes.get("BName_Transparent")
+        assert mix is not None, "safe area fill has no alpha mix node"
+        assert transparent is not None, "safe area fill has no transparent shader"
+        assert abs(float(mix.inputs[0].default_value) - 0.17) < 1.0e-4
 
         border_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{page.id}_{coma.id}"
@@ -269,11 +280,13 @@ def main() -> None:
 
         _ = balloon_curve_object.BALLOON_CURVE_NAME_PREFIX
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
-        assert balloon_obj is not None, "balloon curve was not created"
-        assert balloon_obj.type == "CURVE", f"balloon should be a curve, got {balloon_obj.type}"
+        assert balloon_obj is not None, "balloon mesh was not created"
+        assert balloon_obj.type == "MESH", f"balloon should be a mesh, got {balloon_obj.type}"
+        assert len(balloon_obj.data.polygons) > 0, "balloon mesh has no polygons"
         balloon_fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}")
         assert balloon_fill_obj is not None, "balloon fill object was not created"
-        assert balloon_fill_obj.type == "CURVE", f"balloon fill should be a curve, got {balloon_fill_obj.type}"
+        assert balloon_fill_obj.type == "MESH", f"balloon fill should be a mesh, got {balloon_fill_obj.type}"
+        assert len(balloon_fill_obj.data.polygons) > 0, "balloon fill mesh has no polygons"
         balloon.visible = False
         assert balloon_obj.hide_viewport and balloon_obj.hide_render, "balloon visibility was not synced"
         assert balloon_fill_obj.hide_viewport and balloon_fill_obj.hide_render, "balloon fill visibility was not synced"
@@ -287,10 +300,13 @@ def main() -> None:
         tail.root_width_mm = 5.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail sync failed"
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
-        assert balloon_obj is not None and balloon_obj.type == "CURVE"
-        assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to real curve"
+        assert balloon_obj is not None and balloon_obj.type == "MESH"
+        tail_poly_count = len(balloon_obj.data.polygons)
+        assert tail_poly_count > 0, "balloon tail was not added to real mesh"
         tail.length_mm = 14.0
-        assert len(balloon_obj.data.splines) >= 2, "balloon tail update removed real curve tail"
+        assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail update sync failed"
+        balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
+        assert balloon_obj is not None and len(balloon_obj.data.polygons) > 0, "balloon tail update removed real mesh"
         balloon_real_objects = [
             obj
             for obj in bpy.data.objects

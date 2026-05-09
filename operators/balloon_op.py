@@ -702,7 +702,7 @@ class BNAME_OT_balloon_tool(Operator):
     def _should_leave_for_tool_key(self, event) -> bool:
         return (
             event.value == "PRESS"
-            and event.type in {"O", "P", "F", "G", "K", "T"}
+            and event.type in {"O", "P", "F", "K", "T"}
             and not event.ctrl
             and not event.alt
         )

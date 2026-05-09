@@ -1036,13 +1036,30 @@ def _draw_canvas_fill_only(paper, rects, ox_mm: float, oy_mm: float) -> None:
         1.0,
     )
     try:
+        previous_depth = gpu.state.depth_test_get()
+    except Exception:  # noqa: BLE001
+        previous_depth = "NONE"
+    try:
         gpu.state.depth_test_set("LESS_EQUAL")
         _draw_rect_fill(canvas_r, canvas_color)
     finally:
         try:
-            gpu.state.depth_test_set("NONE")
+            gpu.state.depth_test_set(previous_depth)
         except Exception:  # noqa: BLE001
             pass
+
+
+def _paint_mode_hides_paper_bg(context) -> bool:
+    mode = str(getattr(context, "mode", "") or "")
+    return mode in {
+        "TEXTURE_PAINT",
+        "PAINT_TEXTURE",
+        "PAINT_GREASE_PENCIL",
+        "EDIT_GREASE_PENCIL",
+        "SCULPT_GREASE_PENCIL",
+        "VERTEX_GREASE_PENCIL",
+        "WEIGHT_GREASE_PENCIL",
+    }
 
 
 def _draw_page_overlay(
@@ -1079,9 +1096,11 @@ def _draw_page_overlay(
     safe_r = _translate_rect(rects.safe, ox_mm, oy_mm)
     bleed_r = _translate_rect(rects.bleed, ox_mm, oy_mm)
 
-    # 用紙白背景は paper_bg_object.py の opaque な Mesh が表示するため、
-    # ここでは GPU 塗りを描かない。GPU で描くと BLENDED ラスター paint を
-    # 上から覆い隠す問題があった (旧バグ)。
+    # 通常時の用紙白背景は paper_bg_object.py の opaque な Mesh が表示する。
+    # 描画モード中だけ paper_bg を raycast 回避で隠すため、同じ見た目を保つ
+    # 代替として深度つきの GPU 塗りを入れる。
+    if _paint_mode_hides_paper_bg(context):
+        _draw_canvas_fill_only(paper, rects, ox_mm, oy_mm)
 
     safe_overlay_drawn = False
 
@@ -1622,6 +1641,10 @@ def _draw_callback(phase: str = "post") -> None:
                 ox_mm=ox, oy_mm=oy, draw_image_layers=True,
                 is_left_half=left_half, phase=phase,
             )
+        try:
+            gpu.state.depth_test_set("NONE")
+        except Exception:  # noqa: BLE001
+            pass
         overlay_effect_line.draw_active_effect_line_bounds(
             context,
             draw_rect_fill=_draw_rect_fill,

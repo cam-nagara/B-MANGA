@@ -30,6 +30,10 @@ _logger = log.get_logger(__name__)
 
 MOD_NAME_COMA_MASK = "BName Coma Mask"
 MOD_NAME_PAGE_MASK = "BName Page Mask"
+MOD_NAME_PAGE_MASK_VOLUME = "BName Page Mask Volume"
+PAGE_MASK_VOLUME_NAME_PREFIX = "page_mask_volume_"
+PROP_PAGE_MASK_VOLUME_KIND = "bname_page_mask_volume_kind"
+PROP_PAGE_MASK_VOLUME_OWNER_ID = "bname_page_mask_volume_owner_id"
 
 
 def _resolve_coma_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
@@ -56,7 +60,139 @@ def _resolve_page_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
     page_id = parent_key.split(":", 1)[0] if parent_key else ""
     if not page_id:
         return None
-    return bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page_id}")
+    obj = bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page_id}")
+    _remove_modifier_if_present(obj, MOD_NAME_PAGE_MASK_VOLUME)
+    return _ensure_page_mask_volume_object(page_id, obj)
+
+
+def _ensure_page_mask_volume_object(
+    page_id: str,
+    source: Optional[bpy.types.Object],
+) -> Optional[bpy.types.Object]:
+    """表示用の用紙背景とは別に、非表示のページマスク volume を用意する."""
+    if not page_id or source is None or getattr(source, "type", "") != "MESH":
+        return None
+    obj_name = f"{PAGE_MASK_VOLUME_NAME_PREFIX}{page_id}"
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, source.data)
+    else:
+        obj.data = source.data
+    obj[PROP_PAGE_MASK_VOLUME_KIND] = "page"
+    obj[PROP_PAGE_MASK_VOLUME_OWNER_ID] = page_id
+    obj[on.PROP_MANAGED] = False
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.hide_select = True
+    try:
+        obj.display_type = "WIRE"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.location = source.location.copy()
+        obj.rotation_euler = source.rotation_euler.copy()
+        obj.scale = source.scale.copy()
+    except Exception:  # noqa: BLE001
+        pass
+    target_colls = list(getattr(source, "users_collection", []) or [])
+    if not target_colls and bpy.context is not None and bpy.context.scene is not None:
+        target_colls = [bpy.context.scene.collection]
+    for coll in target_colls:
+        if not any(existing is obj for existing in coll.objects):
+            try:
+                coll.objects.link(obj)
+            except Exception:  # noqa: BLE001
+                _logger.exception("page mask volume link failed")
+    for coll in tuple(getattr(obj, "users_collection", []) or []):
+        if coll in target_colls:
+            continue
+        try:
+            coll.objects.unlink(obj)
+        except Exception:  # noqa: BLE001
+            pass
+    _ensure_mask_volume(obj, MOD_NAME_PAGE_MASK_VOLUME)
+    return obj
+
+
+def _cleanup_visible_page_bg_mask_volumes() -> int:
+    """表示用の用紙背景へ誤って入ったページマスク volume を取り除く."""
+    count = 0
+    for obj in bpy.data.objects:
+        if not str(getattr(obj, "name", "") or "").startswith(pbg.PAPER_BG_NAME_PREFIX):
+            continue
+        mod = obj.modifiers.get(MOD_NAME_PAGE_MASK_VOLUME)
+        if mod is None:
+            continue
+        try:
+            obj.modifiers.remove(mod)
+            count += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return count
+
+
+def _semantic_mask_parent_key(obj: bpy.types.Object, parent_key: str) -> str:
+    """フォルダ所属を実際のページ/コマ所属キーへ解決する."""
+    parent_key = str(parent_key or "")
+    if not parent_key:
+        return ""
+    if ":" in parent_key:
+        return parent_key
+    if bpy.context is None:
+        return parent_key
+    scene = getattr(bpy.context, "scene", None)
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if work is None:
+        return parent_key
+    try:
+        from . import layer_folder
+        from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+        if layer_folder.folder_exists(work, parent_key):
+            semantic = layer_folder.semantic_parent_key_for_folder(work, parent_key)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return semantic
+            return ""
+    except Exception:  # noqa: BLE001
+        _logger.exception("mask_apply: folder semantic parent resolve failed")
+    folder_id = str(obj.get(on.PROP_FOLDER_ID, "") or "") if obj is not None else ""
+    if folder_id:
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, folder_id)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return semantic
+        except Exception:  # noqa: BLE001
+            _logger.exception("mask_apply: folder id semantic parent resolve failed")
+    return parent_key
+
+
+def _ensure_mask_volume(obj: Optional[bpy.types.Object], mod_name: str) -> None:
+    """Boolean 参照用に平面マスクへ厚みを与える.
+
+    レイヤー側は薄い Mesh なので、参照マスクが完全な平面のままだと
+    Blender の Boolean が空結果になる場合がある。表示上は上面の見た目を
+    変えず、厚みだけを持つ volume として評価させる。
+    """
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        return
+    mod = obj.modifiers.get(mod_name)
+    if mod is None:
+        try:
+            mod = obj.modifiers.new(name=mod_name, type="SOLIDIFY")
+        except Exception:  # noqa: BLE001
+            _logger.exception("mask_apply: mask volume create failed")
+            return
+    try:
+        mod.thickness = 10.0
+        mod.offset = 0.0
+        mod.use_quality_normals = True
+        mod.show_render = False
+        mod.show_viewport = True
+    except Exception:  # noqa: BLE001
+        _logger.exception("mask_apply: mask volume setup failed")
 
 
 def _ensure_boolean_intersect_modifier(
@@ -114,7 +250,10 @@ _GP_MASK_LAYER_NAME = "__bname_mask"
 
 
 def _build_polygon_strokes_from_mesh(
-    drawing, mesh_obj: bpy.types.Object, material_index: int = 0
+    drawing,
+    mesh_obj: bpy.types.Object,
+    material_index: int = 0,
+    owner_obj: Optional[bpy.types.Object] = None,
 ) -> None:
     """``mesh_obj`` の各 Face を GP drawing に閉じ stroke として描き込む.
 
@@ -126,8 +265,18 @@ def _build_polygon_strokes_from_mesh(
     mesh = getattr(mesh_obj, "data", None)
     if mesh is None or len(mesh.vertices) == 0:
         return
-    # mesh ローカル座標 → GP world 座標 (mesh_obj の transform を考慮)
-    matrix_world = mesh_obj.matrix_world
+    try:
+        view_layer = bpy.context.view_layer
+        if view_layer is not None:
+            view_layer.update()
+    except Exception:  # noqa: BLE001
+        pass
+    # mesh ローカル座標 → GP Object ローカル座標。
+    # hidden な Boolean 参照用 Object は matrix_world が更新されない場合がある
+    # ため、B-Name のマスク Object が使う location + local vertex で明示的に
+    # 座標を組み立てる。
+    mesh_loc = getattr(mesh_obj, "location", None)
+    owner_loc = getattr(owner_obj, "location", None) if owner_obj is not None else None
     # 既存 strokes をクリア (再生成のたびに前回 stroke を捨てる)
     try:
         if hasattr(drawing, "strokes"):
@@ -144,7 +293,18 @@ def _build_polygon_strokes_from_mesh(
         from . import gpencil as gp_utils
 
         for face in mesh.polygons:
-            verts = [matrix_world @ mesh.vertices[v].co for v in face.vertices]
+            verts = []
+            for v in face.vertices:
+                co = mesh.vertices[v].co.copy()
+                if mesh_loc is not None:
+                    co.x += float(mesh_loc.x)
+                    co.y += float(mesh_loc.y)
+                    co.z += float(mesh_loc.z)
+                if owner_loc is not None:
+                    co.x -= float(owner_loc.x)
+                    co.y -= float(owner_loc.y)
+                    co.z -= float(owner_loc.z)
+                verts.append(co)
             # 閉じ stroke にするため最初の点を末尾にも追加
             points = [(v.x, v.y, v.z) for v in verts]
             if len(points) < 3:
@@ -174,11 +334,16 @@ def _ensure_gp_fill_material(obj) -> int:
             bpy.data.materials.create_gpencil_data(mat)
         except (AttributeError, RuntimeError):
             pass
+    try:
+        mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    except Exception:  # noqa: BLE001
+        pass
     gp_style = getattr(mat, "grease_pencil", None)
     if gp_style is not None:
         try:
             gp_style.show_stroke = False
             gp_style.show_fill = True
+            gp_style.color = (1.0, 1.0, 1.0, 1.0)
             gp_style.fill_color = (1.0, 1.0, 1.0, 1.0)
         except Exception:  # noqa: BLE001
             pass
@@ -245,7 +410,12 @@ def _ensure_gp_internal_mask(
         frame = mask_layer.frames[0] if len(mask_layer.frames) else None
         drawing = getattr(frame, "drawing", None) if frame else None
         if drawing is not None:
-            _build_polygon_strokes_from_mesh(drawing, target, material_index=mat_index)
+            _build_polygon_strokes_from_mesh(
+                drawing,
+                target,
+                material_index=mat_index,
+                owner_obj=obj,
+            )
     except Exception:  # noqa: BLE001
         _logger.exception("GP mask drawing build failed")
 
@@ -304,12 +474,61 @@ def _ensure_gp_internal_mask(
                     except Exception:  # noqa: BLE001
                         pass
                 if not added:
+                    added = _add_gp_mask_reference_with_operator(obj, gp_data, layer)
+                if added:
+                    try:
+                        layer.use_masks = True
+                    except Exception:  # noqa: BLE001
+                        pass
+                else:
                     _logger.debug(
                         "GP mask_layers add: API mismatch — skipping mask setup for layer %s",
                         getattr(layer, "name", "?"),
                     )
         except Exception:  # noqa: BLE001
             _logger.exception("GP layer mask setup failed")
+
+
+def _add_gp_mask_reference_with_operator(obj, gp_data, layer) -> bool:
+    """Blender 5.1 の operator 経由で GP マスク参照を追加する."""
+    if obj is None or gp_data is None or layer is None:
+        return False
+    view_layer = getattr(bpy.context, "view_layer", None)
+    if view_layer is None:
+        return False
+    prev_active_obj = getattr(view_layer.objects, "active", None)
+    prev_selected = [o for o in getattr(bpy.context, "selected_objects", []) or []]
+    prev_active_layer = getattr(getattr(gp_data, "layers", None), "active", None)
+    try:
+        try:
+            for o in prev_selected:
+                o.select_set(False)
+        except Exception:  # noqa: BLE001
+            pass
+        obj.select_set(True)
+        view_layer.objects.active = obj
+        gp_data.layers.active = layer
+        op = getattr(getattr(bpy.ops, "grease_pencil", None), "layer_mask_add", None)
+        if op is None or not op.poll():
+            return False
+        result = op(name=_GP_MASK_LAYER_NAME)
+        return "FINISHED" in result
+    except Exception:  # noqa: BLE001
+        _logger.exception("GP mask operator add failed")
+        return False
+    finally:
+        try:
+            gp_data.layers.active = prev_active_layer
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            for o in getattr(bpy.context, "selected_objects", []) or []:
+                o.select_set(False)
+            for o in prev_selected:
+                o.select_set(True)
+            view_layer.objects.active = prev_active_obj
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
@@ -339,6 +558,10 @@ def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
                     mask_coll.remove(ml)
                 except Exception:  # noqa: BLE001
                     pass
+            try:
+                layer.use_masks = False
+            except Exception:  # noqa: BLE001
+                pass
         except Exception:  # noqa: BLE001
             pass
     # __bname_mask layer 自体を削除
@@ -396,11 +619,23 @@ def apply_mask_to_layer_object(obj: bpy.types.Object) -> None:
     """
     if obj is None or not on.is_managed(obj):
         return
-    parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
+    parent_key = _semantic_mask_parent_key(obj, str(obj.get(on.PROP_PARENT_KEY, "") or ""))
+    apply_mask_to_object_for_parent(obj, parent_key)
+
+
+def apply_mask_to_object_for_parent(obj: bpy.types.Object, parent_key: str) -> None:
+    """管理外補助 Object を含め、指定親キーのマスクを直接適用する."""
+    if obj is None:
+        return
+    parent_key = _semantic_mask_parent_key(obj, str(parent_key or ""))
+    obj_type = getattr(obj, "type", "")
+    if obj_type == "GREASEPENCIL" and str(obj.get(on.PROP_KIND, "") or "") == "effect":
+        _cleanup_visible_page_bg_mask_volumes()
+        _ensure_gp_mask_modifier(obj, MOD_NAME_COMA_MASK, None)
+        return
     coma_target = _resolve_coma_mask_object(parent_key)
     page_target = _resolve_page_mask_object(parent_key)
 
-    obj_type = getattr(obj, "type", "")
     if obj_type == "MESH":
         # 2026-05-04: raster を含む全 Mesh レイヤーで Boolean Intersect を使う。
         # raster の Boolean target は専用の coma_mask Object (Solidify 厚み 10m,
@@ -426,15 +661,19 @@ def apply_mask_to_layer_object(obj: bpy.types.Object) -> None:
             _remove_modifier_if_present(obj, MOD_NAME_COMA_MASK)
             _remove_modifier_if_present(obj, MOD_NAME_PAGE_MASK)
     elif obj_type == "GREASEPENCIL":
-        # GP は Phase 5d で実装。現状は modifier クリーンアップのみ。
-        _ensure_gp_mask_modifier(obj, MOD_NAME_COMA_MASK, coma_target)
-        _ensure_gp_mask_modifier(obj, MOD_NAME_PAGE_MASK, page_target)
+        if ":" in parent_key:
+            _ensure_gp_mask_modifier(obj, MOD_NAME_COMA_MASK, coma_target)
+        elif parent_key:
+            _ensure_gp_mask_modifier(obj, MOD_NAME_PAGE_MASK, page_target)
+        else:
+            _ensure_gp_mask_modifier(obj, MOD_NAME_COMA_MASK, None)
 
 
 def apply_masks_to_all_managed(scene: bpy.types.Scene) -> int:
     """全 B-Name 管理 Object にマスクを適用する。適用件数を返す."""
     if scene is None:
         return 0
+    _cleanup_visible_page_bg_mask_volumes()
     n = 0
     for obj in on.iter_managed_objects():
         apply_mask_to_layer_object(obj)

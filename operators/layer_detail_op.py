@@ -72,6 +72,9 @@ def _find_balloon_entry(scene, bid: str):
         for e in getattr(page, "balloons", []):
             if str(getattr(e, "id", "") or "") == bid:
                 return page, e
+    for e in getattr(work, "shared_balloons", []):
+        if str(getattr(e, "id", "") or "") == bid:
+            return None, e
     return None, None
 
 
@@ -146,7 +149,33 @@ def _draw_raster_detail(layout, entry) -> None:
     layout.prop(entry, "folder_key")
 
 
-def _draw_balloon_detail(layout, entry) -> None:
+def _draw_balloon_tails(layout, entry, page) -> None:
+    box = layout.box()
+    row = box.row(align=True)
+    row.label(text=f"しっぽ ({len(entry.tails)})")
+    add_op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
+    add_op.page_id = str(getattr(page, "id", "") or "")
+    add_op.balloon_id = str(getattr(entry, "id", "") or "")
+    for i, tail in enumerate(entry.tails):
+        sub = box.box()
+        header = sub.row(align=True)
+        header.label(text=f"しっぽ {i + 1}")
+        remove_op = header.operator("bname.balloon_tail_remove", text="", icon="X")
+        remove_op.page_id = str(getattr(page, "id", "") or "")
+        remove_op.balloon_id = str(getattr(entry, "id", "") or "")
+        remove_op.tail_index = i
+        sub.prop(tail, "type", text="種類")
+        sub.prop(tail, "direction_deg", text="方向")
+        sub.prop(tail, "length_mm", text="長さ")
+        row = sub.row(align=True)
+        row.prop(tail, "root_width_mm", text="根元幅")
+        row.prop(tail, "tip_width_mm", text="先端幅")
+        bend = sub.row()
+        bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
+        bend.prop(tail, "curve_bend", text="曲げ")
+
+
+def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
     box = layout.box()
@@ -198,6 +227,8 @@ def _draw_balloon_detail(layout, entry) -> None:
     box.prop(entry, "fill_color")
     box.prop(entry, "blend_mode")
     box.prop(entry, "opacity", slider=True)
+
+    _draw_balloon_tails(layout, entry, page)
 
     box = layout.box()
     box.label(text="表示・所属")
@@ -422,7 +453,7 @@ class BNAME_OT_layer_detail_open(Operator):
         elif kind == "raster":
             _draw_raster_detail(layout, entry)
         elif kind == "balloon":
-            _draw_balloon_detail(layout, entry)
+            _draw_balloon_detail(layout, entry, page)
         elif kind == "text":
             _draw_text_detail(layout, entry)
 

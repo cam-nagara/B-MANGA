@@ -111,16 +111,25 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert layer_stack_utils.select_stack_index(bpy.context, index)
     items = context_menu.selection_command_items(bpy.context)
     labels = [str(item.get("label", "")) for item in items]
-    assert labels == ["詳細設定", "複製", "リンク複製", "削除"], (kind, labels)
+    expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
+    if kind == "balloon":
+        expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
+    expected.append("削除")
+    assert labels == expected, (kind, labels)
     for item in items:
         op_id = str(item.get("operator", "") or "")
         namespace, name = op_id.split(".", 1)
         assert getattr(getattr(bpy.ops, namespace), name, None) is not None, (kind, op_id)
     enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
     assert enabled["詳細設定"]
+    assert enabled["コピー"] is (kind in {"gp", "effect", "raster", "balloon", "text"}), (kind, enabled)
+    assert enabled["貼り付け"] is False, (kind, enabled)
     assert enabled["複製"]
     assert enabled["削除"]
     assert enabled["リンク複製"] is (kind == "effect"), (kind, enabled)
+    if kind == "balloon":
+        assert enabled["しっぽをコピー"] is False, enabled
+        assert enabled["しっぽを貼り付け"] is False, enabled
 
 
 def main() -> None:

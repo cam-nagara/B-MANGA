@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import bpy
+
 from ..core.work import get_work
 from ..utils import (
     active_collection_sync,
@@ -470,6 +472,8 @@ def hit_raster_at_world(context, x_mm: float, y_mm: float) -> dict | None:
             continue
         part = hit_part_for_rect(rect, x_mm, y_mm)
         if part:
+            if part == "body" and _raster_alpha_at_world(context, work, entry, x_mm, y_mm) <= 0.01:
+                continue
             return {
                 "kind": "raster",
                 "index": index,
@@ -478,6 +482,41 @@ def hit_raster_at_world(context, x_mm: float, y_mm: float) -> dict | None:
                 "world": (float(x_mm), float(y_mm)),
             }
     return None
+
+
+def _raster_alpha_at_world(context, work, entry, x_mm: float, y_mm: float) -> float:
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    page_key = parent_key.split(":", 1)[0] if parent_key else ""
+    page_index, _page = page_index_for_key(work, page_key)
+    if page_index < 0:
+        page_index = int(getattr(work, "active_page_index", -1)) if work is not None else -1
+    if page_index < 0:
+        return 0.0
+    ox, oy = page_offset_mm(context, work, page_index)
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return 0.0
+    width_mm = max(1.0e-6, float(getattr(paper, "canvas_width_mm", 0.0) or 0.0))
+    height_mm = max(1.0e-6, float(getattr(paper, "canvas_height_mm", 0.0) or 0.0))
+    u = (float(x_mm) - ox) / width_mm
+    v = (float(y_mm) - oy) / height_mm
+    if not (0.0 <= u <= 1.0 and 0.0 <= v <= 1.0):
+        return 0.0
+    image_name = str(getattr(entry, "image_name", "") or "")
+    image = bpy.data.images.get(image_name) if image_name else None
+    if image is None:
+        return 0.0
+    img_w = int(getattr(image, "size", (0, 0))[0])
+    img_h = int(getattr(image, "size", (0, 0))[1])
+    if img_w <= 0 or img_h <= 0:
+        return 0.0
+    px = max(0, min(img_w - 1, int(round(u * float(img_w - 1)))))
+    py = max(0, min(img_h - 1, int(round(v * float(img_h - 1)))))
+    offset = (py * img_w + px) * 4 + 3
+    try:
+        return float(image.pixels[offset])
+    except Exception:  # noqa: BLE001
+        return 0.0
 
 
 def hit_image_at_event(context, event, event_world_xy: Callable) -> dict | None:

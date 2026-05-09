@@ -31,11 +31,6 @@ class BNAME_PT_coma_tools(Panel):
             text="枠線カットツール (F)",
             icon="SCULPTMODE_HLT",
         )
-        layout.operator(
-            "bname.coma_edge_move",
-            text="枠線選択ツール (G)",
-            icon="EMPTY_ARROWS",
-        )
         draw_selected_edge_style_box(layout, context)
 
 

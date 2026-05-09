@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -45,8 +46,22 @@ def _stroke_endpoint_mm(stroke, m_to_mm) -> tuple[float, float]:
     return (m_to_mm(stroke.points_xyz[1][0]), m_to_mm(stroke.points_xyz[1][1]))
 
 
+def _stroke_start_mm(stroke, m_to_mm) -> tuple[float, float]:
+    return (m_to_mm(stroke.points_xyz[0][0]), m_to_mm(stroke.points_xyz[0][1]))
+
+
 def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return ((float(a[0]) - float(b[0])) ** 2 + (float(a[1]) - float(b[1])) ** 2) ** 0.5
+
+
+def _angle_gap_spread(points: list[tuple[float, float]], center: tuple[float, float]) -> float:
+    angles = sorted(math.atan2(y - center[1], x - center[0]) for x, y in points)
+    gaps = [
+        angles[index + 1] - angles[index]
+        for index in range(len(angles) - 1)
+    ]
+    gaps.append((2.0 * math.pi) - angles[-1] + angles[0])
+    return max(gaps) - min(gaps)
 
 
 def main() -> None:
@@ -187,6 +202,47 @@ def main() -> None:
         if strong_error >= none_error * 0.25:
             raise AssertionError(
                 f"density compensation should follow end outline spacing: none={none_error}, strong={strong_error}"
+            )
+
+        frame_none = SimpleNamespace(**vars(fake))
+        frame_none.spacing_distance_mm = 8.0
+        frame_none.spacing_density_compensation = "none"
+        frame_none.start_frame_density_basis = "frame"
+        frame_none.rotation_deg = 0.0
+        frame_none.end_shape = "ellipse"
+        frame_strong = SimpleNamespace(**vars(frame_none))
+        frame_strong.spacing_density_compensation = "strong"
+        skewed_outline = [(0.0, 0.0), (160.0, 0.0), (130.0, 60.0), (0.0, 60.0)]
+        skewed_center = (110.0, 30.0)
+        frame_none_strokes = effect_line_gen.generate_focus_strokes(
+            frame_none,
+            center_xy_mm=skewed_center,
+            radius_x_mm=55.0,
+            radius_y_mm=8.0,
+            seed=0,
+            start_outline_mm=skewed_outline,
+        )
+        frame_strong_strokes = effect_line_gen.generate_focus_strokes(
+            frame_strong,
+            center_xy_mm=skewed_center,
+            radius_x_mm=55.0,
+            radius_y_mm=8.0,
+            seed=0,
+            start_outline_mm=skewed_outline,
+        )
+        assert len(frame_none_strokes) == len(frame_strong_strokes)
+        frame_none_spread = _angle_gap_spread(
+            [_stroke_start_mm(stroke, m_to_mm) for stroke in frame_none_strokes],
+            skewed_center,
+        )
+        frame_strong_spread = _angle_gap_spread(
+            [_stroke_start_mm(stroke, m_to_mm) for stroke in frame_strong_strokes],
+            skewed_center,
+        )
+        if frame_strong_spread >= frame_none_spread * 0.75:
+            raise AssertionError(
+                "frame density compensation should reduce radial gap spread: "
+                f"none={frame_none_spread}, strong={frame_strong_spread}"
             )
         linked_params = effect_line_link_op._copy_linked_shape_params(
             {

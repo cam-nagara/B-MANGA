@@ -638,23 +638,6 @@ class BNAME_OT_coma_knife_cut(Operator):
 
         if (
             event.value == "PRESS"
-            and event.type == "G"
-            and not event.ctrl
-            and not event.alt
-            and not event.shift
-        ):
-            if not self._is_inside_region(event):
-                return {"PASS_THROUGH"}
-            self.finish_from_external(context, keep_selection=False)
-            try:
-                with context.temp_override(area=self._area, region=self._region):
-                    bpy.ops.bname.coma_edge_move("INVOKE_DEFAULT")
-            except Exception:  # noqa: BLE001
-                _logger.exception("knife_cut: failed to switch to edge_move")
-            return {"FINISHED"}
-
-        if (
-            event.value == "PRESS"
             and event.type == "F"
             and not event.ctrl
             and not event.alt

@@ -147,6 +147,11 @@ def main() -> None:
         work = context.scene.bname_work
         page = work.pages[0]
         panel = page.comas[0]
+        panel.shape_type = "rect"
+        panel.rect_x_mm = 20.0
+        panel.rect_y_mm = 40.0
+        panel.rect_width_mm = 160.0
+        panel.rect_height_mm = 210.0
         coma_key = coma_stack_key(page, panel)
 
         gp_layer = _add_gp_layer(context, coma_key)
@@ -292,6 +297,80 @@ def main() -> None:
             raise AssertionError("効果線の選択枠が描画されません")
 
         params = context.scene.bname_effect_line_params
+        params.effect_type = "focus"
+        params.start_to_coma_frame = True
+        params.spacing_mode = "distance"
+        params.spacing_distance_mm = 8.0
+        params.max_line_count = 240
+        frame_effect_obj, frame_effect_layer = effect_line_op._create_effect_layer(
+            context,
+            (82.0, 92.0, 22.0, 18.0),
+            parent_key=coma_key,
+        )
+        frame_bounds = effect_line_op.effect_layer_bounds(frame_effect_obj, frame_effect_layer)
+        assert frame_bounds is not None
+        ox, oy = (
+            float(getattr(frame_effect_obj, "location", (0.0, 0.0, 0.0))[0]) * 1000.0,
+            float(getattr(frame_effect_obj, "location", (0.0, 0.0, 0.0))[1]) * 1000.0,
+        )
+        found_stroke_hit = False
+        direct_stroke_hit = False
+        checked_stroke_points = 0
+        outside_bounds_points = 0
+        first_debug = None
+        bx, by, bw, bh = frame_bounds
+        for frame in getattr(frame_effect_layer, "frames", []) or []:
+            drawing = getattr(frame, "drawing", None)
+            for stroke in getattr(drawing, "strokes", []) or []:
+                points = list(getattr(stroke, "points", []) or [])
+                for a, b in zip(points, points[1:]):
+                    checked_stroke_points += 1
+                    pa = getattr(a, "position", None)
+                    pb = getattr(b, "position", None)
+                    if pa is None or pb is None:
+                        continue
+                    local_x = (float(pa[0]) + float(pb[0])) * 500.0
+                    local_y = (float(pa[1]) + float(pb[1])) * 500.0
+                    if bx <= local_x <= bx + bw and by <= local_y <= by + bh:
+                        continue
+                    outside_bounds_points += 1
+                    if effect_line_op._layer_stroke_hit_part(frame_effect_layer, local_x, local_y):
+                        direct_stroke_hit = True
+                    hit_obj, hit_layer, _hit_bounds, hit_part = effect_line_op._hit_effect_layer(
+                        context,
+                        ox + local_x,
+                        oy + local_y,
+                    )
+                    if first_debug is None and direct_stroke_hit:
+                        first_debug = (
+                            getattr(frame_effect_obj, "name", ""),
+                            bool(getattr(frame_effect_obj, "hide_viewport", False)),
+                            getattr(hit_obj, "name", "") if hit_obj is not None else "",
+                            getattr(hit_layer, "name", "") if hit_layer is not None else "",
+                            str(hit_part),
+                            round(local_x, 3),
+                            round(local_y, 3),
+                            round(ox, 3),
+                            round(oy, 3),
+                        )
+                    if (
+                        hit_obj is frame_effect_obj
+                        and getattr(hit_layer, "name", "") == getattr(frame_effect_layer, "name", "")
+                        and hit_part
+                    ):
+                        found_stroke_hit = True
+                        break
+                if found_stroke_hit:
+                    break
+            if found_stroke_hit:
+                break
+        if not found_stroke_hit:
+            raise AssertionError(
+                "効果線の見えている線をクリック対象として拾えません: "
+                f"checked={checked_stroke_points} outside={outside_bounds_points} direct={direct_stroke_hit} "
+                f"debug={first_debug}"
+            )
+
         end_labels = [str(getattr(item, "name", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items]
         if any("（旧）" in label for label in end_labels):
             raise AssertionError(f"終点形状に旧表記が残っています: {end_labels}")

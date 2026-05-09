@@ -1035,6 +1035,10 @@ class BNAME_OT_layer_stack_duplicate(Operator):
             return self._duplicate_layer_folder(context, item)
         if item.kind == "image":
             return self._duplicate_image(context, item)
+        if item.kind == "raster":
+            from .layer_clipboard_op import duplicate_raster_item
+
+            return duplicate_raster_item(context, item)
         if item.kind == "balloon":
             return self._duplicate_balloon(context, item)
         if item.kind == "text":

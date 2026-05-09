@@ -47,6 +47,32 @@ def _active_managed_object(context):
     return None
 
 
+def _managed_object_matches_stack_item(obj, item) -> bool:
+    if obj is None or item is None:
+        return False
+    kind = str(getattr(item, "kind", "") or "")
+    key = str(getattr(item, "key", "") or "")
+    obj_kind = on.get_kind(obj)
+    obj_id = on.get_bname_id(obj)
+    if kind == "effect_legacy":
+        kind = "effect"
+    if obj_kind == "effect_legacy":
+        obj_kind = "effect"
+    if obj_kind != kind:
+        return False
+    if obj_id == key:
+        return True
+    child_id = key.split(":", 1)[1] if ":" in key else key
+    return bool(child_id and obj_id == child_id)
+
+
+def _active_managed_object_for_stack_item(context, item):
+    obj = _active_managed_object(context)
+    if _managed_object_matches_stack_item(obj, item):
+        return obj
+    return None
+
+
 def selection_command_items(context) -> list[dict]:
     """選択中レイヤー向け右クリックメニュー項目を返す.
 
@@ -55,12 +81,41 @@ def selection_command_items(context) -> list[dict]:
     item = layer_stack_utils.active_stack_item(context)
     kind = str(getattr(item, "kind", "") or "")
     has_item = item is not None
-    return [
+    normalized_kind = "effect" if kind == "effect_legacy" else kind
+    copyable_kinds = {"balloon", "text", "raster", "gp", "effect"}
+    has_layer_clipboard = False
+    has_tail_clipboard = False
+    balloon_has_tails = False
+    try:
+        from ..operators import layer_clipboard_op
+
+        has_layer_clipboard = layer_clipboard_op.has_layer_clipboard(context)
+        has_tail_clipboard = layer_clipboard_op.has_tail_clipboard(context)
+        balloon_has_tails = layer_clipboard_op.active_balloon_has_tails(context)
+    except Exception:  # noqa: BLE001
+        pass
+    detail_operator = "bname.layer_stack_detail"
+    if kind in {"image", "raster", "balloon", "text", "gp", "effect", "effect_legacy"}:
+        if _active_managed_object_for_stack_item(context, item) is not None:
+            detail_operator = "bname.layer_detail_open"
+    items = [
         {
             "label": "詳細設定",
-            "operator": "bname.layer_stack_detail",
+            "operator": detail_operator,
             "icon": "PREFERENCES",
             "enabled": has_item,
+        },
+        {
+            "label": "コピー",
+            "operator": "bname.layer_clipboard_copy",
+            "icon": "COPYDOWN",
+            "enabled": has_item and normalized_kind in copyable_kinds,
+        },
+        {
+            "label": "貼り付け",
+            "operator": "bname.layer_clipboard_paste",
+            "icon": "PASTEDOWN",
+            "enabled": has_layer_clipboard,
         },
         {
             "label": "複製",
@@ -74,13 +129,31 @@ def selection_command_items(context) -> list[dict]:
             "icon": "LINKED",
             "enabled": has_item and kind in {"effect", "effect_legacy"},
         },
+    ]
+    if normalized_kind == "balloon":
+        items.extend([
+            {
+                "label": "しっぽをコピー",
+                "operator": "bname.balloon_tail_clipboard_copy",
+                "icon": "COPYDOWN",
+                "enabled": balloon_has_tails,
+            },
+            {
+                "label": "しっぽを貼り付け",
+                "operator": "bname.balloon_tail_clipboard_paste",
+                "icon": "PASTEDOWN",
+                "enabled": has_tail_clipboard,
+            },
+        ])
+    items.append(
         {
             "label": "削除",
             "operator": "bname.layer_stack_delete",
             "icon": "TRASH",
             "enabled": has_item,
-        },
-    ]
+        }
+    )
+    return items
 
 
 def _draw_selection_command_items(layout, context) -> bool:
@@ -102,6 +175,9 @@ def _draw_selection_command_items(layout, context) -> bool:
             op = row.operator(op_id, text=label, icon=icon)
             op.index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
             op.offset_from_selection = True
+        elif op_id == "bname.layer_detail_open":
+            row.operator_context = "INVOKE_DEFAULT"
+            row.operator(op_id, text=label, icon=icon)
         else:
             row.operator_context = "INVOKE_DEFAULT"
             row.operator(op_id, text=label, icon=icon)

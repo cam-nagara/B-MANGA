@@ -200,18 +200,47 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     tail_box = box.box()
     row = tail_box.row(align=True)
     row.label(text=f"尻尾 ({len(entry.tails)})")
-    row.operator("bname.balloon_tail_add", text="", icon="ADD")
+    page = _page_for_balloon_entry(context, entry)
+    op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
+    op.page_id = str(getattr(page, "id", "") or "")
+    op.balloon_id = str(getattr(entry, "id", "") or "")
     for i, tail in enumerate(entry.tails):
         sub = tail_box.box()
-        sub.label(text=f"尻尾 {i + 1}")
-        sub.prop(tail, "type")
-        sub.prop(tail, "direction_deg")
-        sub.prop(tail, "length_mm")
+        header = sub.row(align=True)
+        header.label(text=f"尻尾 {i + 1}")
+        op = header.operator("bname.balloon_tail_remove", text="", icon="X")
+        op.page_id = str(getattr(page, "id", "") or "")
+        op.balloon_id = str(getattr(entry, "id", "") or "")
+        op.tail_index = i
+        sub.prop(tail, "type", text="種類")
+        sub.prop(tail, "direction_deg", text="方向")
+        sub.prop(tail, "length_mm", text="長さ")
         row = sub.row(align=True)
-        row.prop(tail, "root_width_mm")
-        row.prop(tail, "tip_width_mm")
-        if tail.type == "curve":
-            sub.prop(tail, "curve_bend")
+        row.prop(tail, "root_width_mm", text="根元幅")
+        row.prop(tail, "tip_width_mm", text="先端幅")
+        bend = sub.row()
+        bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
+        bend.prop(tail, "curve_bend", text="曲げ")
+
+
+def _page_for_balloon_entry(context, entry):
+    work = get_work(context)
+    if work is None or entry is None:
+        return None
+    entry_id = str(getattr(entry, "id", "") or "")
+    try:
+        entry_ptr = int(entry.as_pointer())
+    except Exception:  # noqa: BLE001
+        entry_ptr = 0
+    for page in getattr(work, "pages", []):
+        for candidate in getattr(page, "balloons", []):
+            try:
+                same_ptr = bool(entry_ptr) and int(candidate.as_pointer()) == entry_ptr
+            except Exception:  # noqa: BLE001
+                same_ptr = False
+            if same_ptr or (entry_id and str(getattr(candidate, "id", "") or "") == entry_id):
+                return page
+    return None
 
 
 def _draw_text_selected_settings(box, context, entry) -> None:

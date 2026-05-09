@@ -271,6 +271,7 @@ def _setup_scene(temp_root: Path):
 
     from bname_dev_tool_visual.operators import effect_line_op, raster_layer_op
     from bname_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
+    from bname_dev_tool_visual.utils.geom import mm_to_px
 
     context = bpy.context
     work = context.scene.bname_work
@@ -299,6 +300,16 @@ def _setup_scene(temp_root: Path):
     raster.parent_key = parent_key
     raster_image = raster_layer_op.ensure_raster_image(context, raster, create_missing=True)
     assert raster_image is not None
+    rx = int(round(mm_to_px(36.0, int(raster.dpi))))
+    ry = int(round(mm_to_px(232.0, int(raster.dpi))))
+    width, height = int(raster_image.size[0]), int(raster_image.size[1])
+    pixels = list(raster_image.pixels[:])
+    for yy in range(max(0, ry - 3), min(height, ry + 4)):
+        for xx in range(max(0, rx - 3), min(width, rx + 4)):
+            offset = (yy * width + xx) * 4
+            pixels[offset:offset + 4] = [0.0, 0.0, 0.0, 1.0]
+    raster_image.pixels[:] = pixels
+    raster_image.update()
 
     image_path = temp_root / "visual_image.png"
     _create_png(image_path)
@@ -367,7 +378,6 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         ("オブジェクトツール", "bname.set_mode_object", "O", False, False, False),
         ("描画ツール", "bname.set_mode_draw", "P", False, False, False),
         ("枠線カットツール", "bname.coma_knife_cut", "F", False, False, False),
-        ("枠線選択ツール", "bname.coma_edge_move", "G", False, False, False),
         ("レイヤー移動ツール", "bname.layer_move_tool", "K", False, False, False),
         ("テキストツール", "bname.text_tool", "T", False, False, False),
         ("ナビゲート", "bname.view_navigate", "SPACE", False, False, False),
@@ -411,7 +421,11 @@ def _assert_menu_items(context) -> bool:
         assert layer_stack_utils.select_stack_index(context, index)
         items = context_menu.selection_command_items(context)
         labels = [str(item.get("label", "")) for item in items]
-        assert labels == ["詳細設定", "複製", "リンク複製", "削除"], (kind, labels)
+        expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
+        if kind == "balloon":
+            expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
+        expected.append("削除")
+        assert labels == expected, (kind, labels)
         for menu_item in items:
             op_id = str(menu_item.get("operator", "") or "")
             namespace, name = op_id.split(".", 1)
@@ -591,10 +605,8 @@ def _run_tool_visuals(context, data) -> list[dict]:
     tool_specs = [
         ("オブジェクトツール", "bname.object_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
         ("GP描画", "bname.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "PAINT_GREASE_PENCIL"}, object_selection.gp_key(data["gp"])),
-        ("GP編集", "bname.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "EDIT"}, object_selection.gp_key(data["gp"])),
         ("ラスター描画", "bname.raster_layer_mode_set", "EXEC_DEFAULT", {"mode": "TEXTURE_PAINT"}, object_selection.raster_key(data["raster"])),
         ("枠線カットツール", "bname.coma_knife_cut", "INVOKE_DEFAULT", {}, object_selection.coma_key(data["page"], data["panel"])),
-        ("枠線選択ツール", "bname.coma_edge_move", "INVOKE_DEFAULT", {}, object_selection.coma_key(data["page"], data["panel"])),
         ("レイヤー移動ツール", "bname.layer_move_tool", "INVOKE_DEFAULT", {}, object_selection.image_key(data["image"])),
         ("フキダシツール", "bname.balloon_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
         ("テキストツール", "bname.text_tool", "INVOKE_DEFAULT", {}, object_selection.text_key(data["page"], data["text"])),
