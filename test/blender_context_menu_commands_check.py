@@ -103,15 +103,24 @@ def _stack_index_for_kind(kind: str) -> int:
     raise AssertionError(f"stack kind not found: {kind}")
 
 
+def _clear_layer_selection() -> None:
+    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bname_dev.utils import object_selection
+
+    object_selection.clear(bpy.context)
+    layer_stack_utils.clear_all_selection(bpy.context)
+
+
 def _assert_menu_for_kind(kind: str) -> None:
     from bname_dev.ui import context_menu
     from bname_dev.utils import layer_stack as layer_stack_utils
 
+    _clear_layer_selection()
     index = _stack_index_for_kind(kind)
     assert layer_stack_utils.select_stack_index(bpy.context, index)
     items = context_menu.selection_command_items(bpy.context)
     labels = [str(item.get("label", "")) for item in items]
-    expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
+    expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製", "選択レイヤーをリンク"]
     if kind == "balloon":
         expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
     expected.append("削除")
@@ -127,9 +136,129 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert enabled["複製"]
     assert enabled["削除"]
     assert enabled["リンク複製"] is (kind == "effect"), (kind, enabled)
+    assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
     if kind == "balloon":
         assert enabled["しっぽをコピー"] is False, enabled
         assert enabled["しっぽを貼り付け"] is False, enabled
+
+
+def _assert_link_selected_menu() -> None:
+    from bname_dev.ui import context_menu
+    from bname_dev.utils import layer_stack as layer_stack_utils
+
+    _clear_layer_selection()
+    stack = layer_stack_utils.sync_layer_stack(bpy.context)
+    assert stack is not None
+    selected = 0
+    for index, item in enumerate(stack):
+        if str(getattr(item, "kind", "") or "") not in {"balloon", "text"}:
+            continue
+        if selected == 0:
+            assert layer_stack_utils.select_stack_index(bpy.context, index)
+        else:
+            assert layer_stack_utils.set_item_selected(bpy.context, item, True)
+        selected += 1
+        if selected >= 2:
+            break
+    assert selected >= 2
+    items = context_menu.selection_command_items(bpy.context)
+    enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
+    assert enabled["選択レイヤーをリンク"] is True, enabled
+    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
+
+
+class _FakeLayout:
+    def __init__(self):
+        self.operator_context = "EXEC_DEFAULT"
+        self.enabled = True
+        self.ops = []
+
+    def row(self, align=False):
+        _ = align
+        return self
+
+    def label(self, **kwargs):
+        _ = kwargs
+
+    def separator(self):
+        pass
+
+    def operator(self, op_id, **kwargs):
+        self.ops.append((op_id, kwargs))
+        return type("_OpProps", (), {})()
+
+
+def _assert_menu_draw_does_not_resync() -> None:
+    from bname_dev.ui import context_menu
+    from bname_dev.utils import layer_stack as layer_stack_utils
+
+    _clear_layer_selection()
+    index = _stack_index_for_kind("effect")
+    assert layer_stack_utils.select_stack_index(bpy.context, index)
+    original_sync = layer_stack_utils.sync_layer_stack
+
+    def _forbidden_sync(*_args, **_kwargs):
+        raise AssertionError("menu draw must not resync layer stack")
+
+    try:
+        layer_stack_utils.sync_layer_stack = _forbidden_sync
+        layout = _FakeLayout()
+        context_menu._draw_layer_commands(layout, bpy.context)
+        labels = [op_id for op_id, _kwargs in layout.ops]
+        assert "bname.layer_stack_detail" in labels or "bname.layer_detail_open" in labels, labels
+        assert "bname.layer_clipboard_copy" in labels, labels
+        assert "bname.layer_stack_duplicate" in labels, labels
+        assert "bname.layer_stack_delete" in labels, labels
+    finally:
+        layer_stack_utils.sync_layer_stack = original_sync
+
+
+def _assert_viewport_tool_menu_paths(work) -> None:
+    from bname_dev.operators import object_tool_op, selection_context_menu
+    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bname_dev.utils import object_selection
+
+    class _Event:
+        ctrl = False
+        shift = False
+
+    page = work.pages[0]
+    text_key = object_selection.text_key(page, page.texts[0])
+    balloon_key = object_selection.balloon_key(page, page.balloons[0])
+
+    original_hit = object_tool_op.hit_object_at_event
+    original_activate = object_tool_op.activate_hit
+    original_call = selection_context_menu._call_selection_menu
+    calls = []
+    modes = []
+    try:
+        selection_context_menu._call_selection_menu = lambda _context: calls.append("menu") or True
+        object_tool_op.hit_object_at_event = lambda _context, _event: None
+        assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
+        assert calls == ["menu"], calls
+
+        object_selection.set_keys(bpy.context, [text_key, balloon_key])
+        object_tool_op.hit_object_at_event = lambda _context, _event: {"kind": "text", "key": text_key}
+        object_tool_op.activate_hit = lambda _context, _hit, *, mode: modes.append(mode)
+        assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
+        assert modes == ["add"], modes
+
+        _clear_layer_selection()
+        stack = layer_stack_utils.sync_layer_stack(bpy.context)
+        assert stack is not None
+        text_index = _stack_index_for_kind("text")
+        balloon_index = _stack_index_for_kind("balloon")
+        assert layer_stack_utils.select_stack_index(bpy.context, text_index)
+        assert layer_stack_utils.set_item_selected(bpy.context, stack[text_index], True)
+        assert layer_stack_utils.set_item_selected(bpy.context, stack[balloon_index], True)
+        modes.clear()
+        assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
+        assert modes == ["add"], modes
+    finally:
+        object_tool_op.hit_object_at_event = original_hit
+        object_tool_op.activate_hit = original_activate
+        selection_context_menu._call_selection_menu = original_call
 
 
 def main() -> None:
@@ -138,9 +267,12 @@ def main() -> None:
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        _create_work(temp_root / "Context_Menu.bname")
+        work = _create_work(temp_root / "Context_Menu.bname")
         for kind in ("page", "coma", "gp", "effect", "raster", "image", "balloon", "text"):
             _assert_menu_for_kind(kind)
+        _assert_link_selected_menu()
+        _assert_menu_draw_does_not_resync()
+        _assert_viewport_tool_menu_paths(work)
         print("BNAME_CONTEXT_MENU_COMMANDS_OK")
     finally:
         if mod is not None:

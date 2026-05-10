@@ -5,6 +5,12 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+_ANGLE_TABLE_CACHE_MAX = 32
+_ANGLE_TABLE_CACHE: dict[
+    tuple,
+    tuple[list[float], list[float], float],
+] = {}
+
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
@@ -150,27 +156,15 @@ def _unwrapped_next(prev_angle: float, next_angle: float) -> float:
     return prev_angle + delta
 
 
-def _outline_flatness(outline: Sequence[tuple[float, float]]) -> float:
-    points = _outline_points(outline)
-    if len(points) < 2:
-        return 0.0
-    width = max(x for x, _y in points) - min(x for x, _y in points)
-    height = max(y for _x, y in points) - min(y for _x, y in points)
-    long_side = max(width, height)
-    if long_side <= 1.0e-9:
-        return 0.0
-    return 1.0 - max(0.0, min(width, height)) / long_side
-
-
 def _cross(ax: float, ay: float, bx: float, by: float) -> float:
     return ax * by - ay * bx
 
 
-def _ray_outline_distance(
+def _ray_outline_point(
     center: tuple[float, float],
     outline: Sequence[tuple[float, float]],
     angle: float,
-) -> float | None:
+) -> tuple[float, float] | None:
     points = _outline_points(outline)
     if len(points) < 2:
         return None
@@ -192,21 +186,150 @@ def _ray_outline_distance(
         if t >= -1.0e-6 and -1.0e-6 <= u <= 1.0 + 1.0e-6:
             if best_t is None or t < best_t:
                 best_t = t
-    return max(0.0, best_t) if best_t is not None else None
+    if best_t is None:
+        return None
+    return cx + dx * max(0.0, best_t), cy + dy * max(0.0, best_t)
+
+
+def _mix_points(
+    a: tuple[float, float],
+    b: tuple[float, float],
+    amount: float,
+) -> tuple[float, float]:
+    return (
+        float(a[0]) + (float(b[0]) - float(a[0])) * float(amount),
+        float(a[1]) + (float(b[1]) - float(a[1])) * float(amount),
+    )
+
+
+def _segment_separation_metric(
+    center: tuple[float, float],
+    start_outline: Sequence[tuple[float, float]],
+    end_outline: Sequence[tuple[float, float]],
+    prev_angle: float,
+    angle: float,
+    fallback: float,
+) -> float:
+    prev_start = _ray_outline_point(center, start_outline, prev_angle)
+    start = _ray_outline_point(center, start_outline, angle)
+    prev_end = _ray_outline_point(center, end_outline, prev_angle)
+    end = _ray_outline_point(center, end_outline, angle)
+    if prev_start is None or start is None or prev_end is None or end is None:
+        return float(fallback)
+    # 線端だけを均すと途中に帯が出るため、見た目で目立つ中間域を主に見る。
+    gaps: list[float] = []
+    for pos in (
+        0.00,
+        0.20,
+        0.40,
+        0.60,
+        0.80,
+        1.00,
+    ):
+        a = _mix_points(prev_start, prev_end, pos)
+        b = _mix_points(start, end, pos)
+        gaps.append(max(0.001, math.hypot(b[0] - a[0], b[1] - a[1])))
+    if not gaps:
+        return float(fallback)
+    return min(gaps)
+
+
+def _outline_cache_key(outline: Sequence[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
+    return tuple((round(float(x), 5), round(float(y), 5)) for x, y in outline)
+
+
+def _cache_get(key: tuple) -> tuple[list[float], list[float], float] | None:
+    return _ANGLE_TABLE_CACHE.get(key)
+
+
+def _cache_put(key: tuple, value: tuple[list[float], list[float], float]) -> None:
+    if len(_ANGLE_TABLE_CACHE) >= _ANGLE_TABLE_CACHE_MAX:
+        _ANGLE_TABLE_CACHE.pop(next(iter(_ANGLE_TABLE_CACHE)))
+    _ANGLE_TABLE_CACHE[key] = value
+
+
+def _angular_metric_table(
+    center: tuple[float, float],
+    basis_outline: Sequence[tuple[float, float]],
+    start_outline: Sequence[tuple[float, float]],
+    end_outline: Sequence[tuple[float, float]],
+    amount: float,
+    *,
+    sample_count: int = 1440,
+) -> tuple[list[float], list[float], float]:
+    samples = max(360, int(sample_count))
+    key = (
+        round(float(center[0]), 5),
+        round(float(center[1]), 5),
+        _outline_cache_key(basis_outline),
+        _outline_cache_key(start_outline),
+        _outline_cache_key(end_outline),
+        round(float(amount), 5),
+        samples,
+    )
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached
+
+    angles = [(2.0 * math.pi * index) / samples for index in range(samples + 1)]
+    basis_radii = []
+    for angle in angles[:-1]:
+        point = _ray_outline_point(center, basis_outline, angle)
+        if point is not None:
+            basis_radii.append(math.hypot(point[0] - center[0], point[1] - center[1]))
+    mean_radius = max(0.001, sum(basis_radii) / max(1, len(basis_radii)))
+
+    cumulative = [0.0]
+    total = 0.0
+    prev_basis = _ray_outline_point(center, basis_outline, angles[0])
+    for index in range(1, len(angles)):
+        prev_angle = angles[index - 1]
+        angle = angles[index]
+        basis = _ray_outline_point(center, basis_outline, angle)
+        angular_fallback = mean_radius * (angle - prev_angle)
+        if prev_basis is None or basis is None:
+            basis_metric = angular_fallback
+        else:
+            basis_metric = math.hypot(basis[0] - prev_basis[0], basis[1] - prev_basis[1])
+        segment_metric = _segment_separation_metric(
+            center,
+            start_outline,
+            end_outline,
+            prev_angle,
+            angle,
+            angular_fallback,
+        )
+        total += max(0.0, basis_metric * (1.0 - amount) + segment_metric * amount)
+        cumulative.append(total)
+        prev_basis = basis
+
+    value = (angles, cumulative, total)
+    _cache_put(key, value)
+    return value
 
 
 def _sample_closed_outline(
     outline: Sequence[tuple[float, float]],
     *,
+    center: tuple[float, float] | None = None,
     samples_per_edge: int = 10,
+    max_step_mm: float = 1.0,
+    max_angle_step_rad: float = math.radians(0.5),
 ) -> list[tuple[float, float]]:
     points = _outline_points(outline)
     if len(points) < 2:
         return points
     samples: list[tuple[float, float]] = [points[0]]
-    steps = max(1, int(samples_per_edge))
     for index, start in enumerate(points):
         end = points[(index + 1) % len(points)]
+        length = math.hypot(end[0] - start[0], end[1] - start[1])
+        steps = max(1, int(samples_per_edge))
+        if max_step_mm > 0.0:
+            steps = max(steps, int(math.ceil(length / float(max_step_mm))))
+        if center is not None and max_angle_step_rad > 0.0:
+            start_angle = _angle(center, start)
+            end_angle = _unwrapped_next(start_angle, _angle(center, end))
+            steps = max(steps, int(math.ceil(abs(end_angle - start_angle) / float(max_angle_step_rad))))
         for step in range(1, steps + 1):
             t = step / steps
             samples.append((start[0] + (end[0] - start[0]) * t, start[1] + (end[1] - start[1]) * t))
@@ -219,44 +342,27 @@ def compensated_frame_angle(
     end_outline: Sequence[tuple[float, float]],
     fraction: float,
     strength: float,
+    *,
+    actual_start_outline: Sequence[tuple[float, float]] | None = None,
 ) -> float | None:
     """Return a frame angle corrected by radial visual density.
 
     ``strength`` 0 keeps equal distance on the chosen frame basis. Stronger
-    values blend toward equal angular coverage, with extra weight from the
-    endpoint outline when it is very flat.
+    values measure the actual generated line segments at several positions and
+    reduce slots where the line path becomes crowded.
     """
     amount = _clamp01(strength)
     if amount <= 0.0:
         point = outline_point_at_fraction(start_outline, fraction)
         return None if point is None else _angle(center, point)
-    samples = _sample_closed_outline(start_outline)
-    if len(samples) < 2:
-        return None
-    radii = [math.hypot(point[0] - center[0], point[1] - center[1]) for point in samples]
-    mean_radius = max(0.001, sum(radii) / max(1, len(radii)))
-    end_flatness = _outline_flatness(end_outline)
-    first_angle = _angle(center, samples[0])
-    prev_angle = first_angle
-    cumulative = [0.0]
-    unwrapped_angles = [first_angle]
-    total = 0.0
-    for index in range(1, len(samples)):
-        prev_point = samples[index - 1]
-        point = samples[index]
-        raw_angle = _angle(center, point)
-        unwrapped = _unwrapped_next(prev_angle, raw_angle)
-        dtheta = abs(unwrapped - prev_angle)
-        ds_start = math.hypot(point[0] - prev_point[0], point[1] - prev_point[1])
-        mid_angle = (prev_angle + unwrapped) * 0.5
-        end_radius = _ray_outline_distance(center, end_outline, mid_angle)
-        end_metric = (end_radius if end_radius is not None else mean_radius) * dtheta
-        angular_metric = mean_radius * dtheta
-        visual_metric = angular_metric * (1.0 - end_flatness) + end_metric * end_flatness
-        total += max(0.0, ds_start * (1.0 - amount) + visual_metric * amount)
-        cumulative.append(total)
-        unwrapped_angles.append(unwrapped)
-        prev_angle = unwrapped
+    line_start_outline = actual_start_outline or start_outline
+    angles, cumulative, total = _angular_metric_table(
+        center,
+        start_outline,
+        line_start_outline,
+        end_outline,
+        amount,
+    )
     if total <= 1.0e-9:
         point = outline_point_at_fraction(start_outline, fraction)
         return None if point is None else _angle(center, point)
@@ -266,8 +372,30 @@ def compensated_frame_angle(
             continue
         span = cumulative[index] - cumulative[index - 1]
         t = 0.0 if span <= 1.0e-9 else (target - cumulative[index - 1]) / span
-        return unwrapped_angles[index - 1] + (unwrapped_angles[index] - unwrapped_angles[index - 1]) * t
-    return unwrapped_angles[-1]
+        return angles[index - 1] + (angles[index] - angles[index - 1]) * t
+    return angles[-1]
+
+
+def compensated_frame_metric_total(
+    center: tuple[float, float],
+    start_outline: Sequence[tuple[float, float]],
+    end_outline: Sequence[tuple[float, float]],
+    strength: float,
+    *,
+    actual_start_outline: Sequence[tuple[float, float]] | None = None,
+) -> float:
+    amount = _clamp01(strength)
+    if amount <= 0.0:
+        return poly_perimeter_mm(start_outline)
+    line_start_outline = actual_start_outline or start_outline
+    _angles, _cumulative, total = _angular_metric_table(
+        center,
+        start_outline,
+        line_start_outline,
+        end_outline,
+        amount,
+    )
+    return total if total > 1.0e-9 else poly_perimeter_mm(start_outline)
 
 
 def blend_angles(base: float, target: float, amount: float) -> float:

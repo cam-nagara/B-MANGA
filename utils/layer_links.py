@@ -206,6 +206,10 @@ def linked_object_keys_for_key(context, key: str) -> list[str]:
     return out or [key]
 
 
+def object_key_for_item(context, item) -> str:
+    return _object_key_for_item(context, item)
+
+
 def _object_key_for_item(context, item) -> str:
     from . import layer_stack as layer_stack_utils
     from . import object_selection

@@ -73,12 +73,23 @@ def _active_managed_object_for_stack_item(context, item):
     return None
 
 
+def _active_stack_item_no_sync(context):
+    scene = getattr(context, "scene", None)
+    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    if stack is None:
+        return None
+    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    if 0 <= idx < len(stack):
+        return stack[idx]
+    return None
+
+
 def selection_command_items(context) -> list[dict]:
     """選択中レイヤー向け右クリックメニュー項目を返す.
 
     実際の Menu 描画と実機テストの両方で使い、項目の抜けを防ぐ。
     """
-    item = layer_stack_utils.active_stack_item(context)
+    item = _active_stack_item_no_sync(context)
     kind = str(getattr(item, "kind", "") or "")
     has_item = item is not None
     normalized_kind = "effect" if kind == "effect_legacy" else kind
@@ -88,12 +99,14 @@ def selection_command_items(context) -> list[dict]:
     balloon_has_tails = False
     try:
         from ..operators import layer_clipboard_op
+        from ..utils import layer_links
 
         has_layer_clipboard = layer_clipboard_op.has_layer_clipboard(context)
         has_tail_clipboard = layer_clipboard_op.has_tail_clipboard(context)
         balloon_has_tails = layer_clipboard_op.active_balloon_has_tails(context)
+        selected_linkable_count = layer_links.selected_linkable_count(context)
     except Exception:  # noqa: BLE001
-        pass
+        selected_linkable_count = 0
     detail_operator = "bname.layer_stack_detail"
     if kind in {"image", "raster", "balloon", "text", "gp", "effect", "effect_legacy"}:
         if _active_managed_object_for_stack_item(context, item) is not None:
@@ -128,6 +141,12 @@ def selection_command_items(context) -> list[dict]:
             "operator": "bname.effect_line_create_linked",
             "icon": "LINKED",
             "enabled": has_item and kind in {"effect", "effect_legacy"},
+        },
+        {
+            "label": "選択レイヤーをリンク",
+            "operator": "bname.layer_stack_link_selected",
+            "icon": "LINKED",
+            "enabled": has_item and selected_linkable_count >= 2,
         },
     ]
     if normalized_kind == "balloon":
@@ -188,7 +207,7 @@ def _draw_layer_commands(layout, context) -> None:
     """選択中レイヤー Object に対して詳細/複製/削除 等のコマンドを描画."""
     obj = _active_managed_object(context)
     if obj is None:
-        item = layer_stack_utils.active_stack_item(context)
+        item = _active_stack_item_no_sync(context)
         if item is not None:
             layout.label(text=str(getattr(item, "label", "") or getattr(item, "name", "") or "選択中レイヤー"), icon="RESTRICT_SELECT_OFF")
             layout.separator()

@@ -349,6 +349,10 @@ def _select_kind(kind: str, *, label_contains: str = ""):
     from bname_dev_ui_micro.utils import layer_stack
 
     index = _stack_index_for_kind(kind, label_contains=label_contains)
+    stack = layer_stack.sync_layer_stack(bpy.context, preserve_active_index=True)
+    assert stack is not None
+    layer_stack.clear_all_selection(bpy.context)
+    layer_stack.set_item_selected(bpy.context, stack[index], True)
     assert layer_stack.select_stack_index(bpy.context, index)
     return layer_stack.active_stack_item(bpy.context)
 
@@ -362,6 +366,8 @@ def _select_balloon_id(balloon_id: str):
         if str(getattr(item, "kind", "") or "") != "balloon":
             continue
         if str(balloon_id) in str(getattr(item, "key", "") or ""):
+            layer_stack.clear_all_selection(bpy.context)
+            layer_stack.set_item_selected(bpy.context, item, True)
             assert layer_stack.select_stack_index(bpy.context, index)
             return item
     raise AssertionError(f"フキダシが見つかりません: {balloon_id}")
@@ -395,23 +401,24 @@ def _select_effect_object(targets) -> None:
 def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     expected_labels = {
-        "page": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
-        "coma": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
-        "gp": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
-        "effect": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": True, "削除": True},
-        "raster": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
-        "image": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
+        "page": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
+        "coma": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
+        "gp": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
+        "effect": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": True, "選択レイヤーをリンク": False, "削除": True},
+        "raster": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
+        "image": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
         "balloon": {
             "詳細設定": True,
             "コピー": True,
             "貼り付け": False,
             "複製": True,
             "リンク複製": False,
+            "選択レイヤーをリンク": False,
             "しっぽをコピー": False,
             "しっぽを貼り付け": False,
             "削除": True,
         },
-        "text": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "削除": True},
+        "text": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
     }
     for kind, expected in expected_labels.items():
         _mark(f"right_click_state_{kind}")

@@ -421,7 +421,7 @@ def _assert_menu_items(context) -> bool:
         assert layer_stack_utils.select_stack_index(context, index)
         items = context_menu.selection_command_items(context)
         labels = [str(item.get("label", "")) for item in items]
-        expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
+        expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製", "選択レイヤーをリンク"]
         if kind == "balloon":
             expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
         expected.append("削除")

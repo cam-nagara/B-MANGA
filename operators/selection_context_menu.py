@@ -17,13 +17,47 @@ def _call_selection_menu(context) -> bool:
     return True
 
 
+def _right_click_selection_mode(context, hit: dict, event) -> str:
+    if bool(getattr(event, "ctrl", False)):
+        return "toggle"
+    if bool(getattr(event, "shift", False)):
+        return "add"
+    key = str(hit.get("key", "") or "")
+    selected = object_selection.get_keys(context)
+    if key and key in selected and len(selected) >= 2:
+        return "add"
+    if _hit_is_selected_in_layer_stack(context, key):
+        return "add"
+    return "single"
+
+
+def _hit_is_selected_in_layer_stack(context, key: str) -> bool:
+    if not key:
+        return False
+    try:
+        from ..utils import layer_links
+
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        selected_uids = set(layer_links.selected_linkable_uids(context, stack=stack, sync=False))
+        if len(selected_uids) < 2:
+            return False
+        for item in stack or ():
+            if layer_stack_utils.stack_item_uid(item) not in selected_uids:
+                continue
+            if layer_links.object_key_for_item(context, item) == key:
+                return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def open_for_viewport_object(context, event) -> bool:
     from . import object_tool_op
 
     hit = object_tool_op.hit_object_at_event(context, event)
     if hit is None:
-        return False
-    object_tool_op.activate_hit(context, hit, mode="single")
+        return _call_selection_menu(context)
+    object_tool_op.activate_hit(context, hit, mode=_right_click_selection_mode(context, hit, event))
     return _call_selection_menu(context)
 
 

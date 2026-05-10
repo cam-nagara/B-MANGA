@@ -68,7 +68,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 4
+EFFECT_PARAM_SCHEMA_VERSION = 5
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -214,6 +214,8 @@ def effect_params_from_dict(params, data: dict) -> None:
         data.setdefault("start_frame_density_basis", "rounded_frame")
         data.setdefault("start_frame_density_rounding_percent", 100.0)
         data.setdefault("spacing_density_compensation", "medium")
+    if schema_version < 5:
+        data["out_percent"] = 100.0
     for field in EFFECT_PARAM_FIELDS:
         if field not in data or not hasattr(params, field):
             continue
@@ -283,7 +285,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
 
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_percent: FloatProperty(name="抜き (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     opacity: FloatProperty(name="不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
