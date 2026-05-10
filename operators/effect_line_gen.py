@@ -16,8 +16,7 @@ from dataclasses import dataclass
 
 from ..utils import balloon_shapes, log
 from ..utils.geom import Rect, mm_to_m
-from . import effect_line_density
-
+from . import effect_line_radial_spacing
 _logger = log.get_logger(__name__)
 
 
@@ -31,7 +30,7 @@ class EffectLineStroke:
     role: str = "line"
     curve_type: str = "POLY"
     bezier_smooth: bool = False
-
+    density_end: float = 1.0
 
 def _jitter(base: float, amount: float, rng: random.Random) -> float:
     if amount <= 0.0:
@@ -171,20 +170,6 @@ def _length_jitter_factor(params, rng: random.Random) -> float:
     if amount <= 0.0:
         return 1.0
     return max(0.05, 1.0 - amount * rng.random())
-
-
-def _apply_length_jitter(
-    x0: float,
-    y0: float,
-    x1: float,
-    y1: float,
-    params,
-    rng: random.Random,
-) -> tuple[float, float]:
-    factor = _length_jitter_factor(params, rng)
-    if factor >= 0.999999:
-        return x1, y1
-    return x0 + (x1 - x0) * factor, y0 + (y1 - y0) * factor
 
 
 def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool = False) -> bool:
@@ -338,6 +323,35 @@ def _slot_fraction(slot: float, count: int, closed: bool) -> float:
     return max(0.0, min(1.0, float(slot) / float(count - 1)))
 
 
+def _append_focus_stroke(
+    out: list[EffectLineStroke],
+    params,
+    rng: random.Random,
+    start_xy_mm: tuple[float, float],
+    center_xy_mm: tuple[float, float],
+) -> None:
+    radius_mm = _jitter(
+        params.brush_size_mm,
+        params.brush_jitter_amount if params.brush_jitter_enabled else 0.0,
+        rng,
+    )
+    radius, radii = _stroke_radii(params, radius_mm, 2)
+    opacities = _stroke_opacities(params, 2)
+    x0, y0 = start_xy_mm
+    x1, y1 = center_xy_mm
+    out.append(
+        EffectLineStroke(
+            points_xyz=[
+                (mm_to_m(x0), mm_to_m(y0), 0.0),
+                (mm_to_m(x1), mm_to_m(y1), 0.0),
+            ],
+            radius=radius,
+            radii=radii,
+            opacities=opacities,
+        )
+    )
+
+
 def _stroke_radii(params, radius_mm: float, point_count: int = 2) -> tuple[float, list[float] | None]:
     base = mm_to_m(max(0.01, radius_mm) / 2.0)
     if getattr(params, "inout_apply", "brush_size") != "brush_size" or point_count < 2:
@@ -382,10 +396,8 @@ def generate_focus_strokes(
     """
     rng = random.Random(seed)
     out: list[EffectLineStroke] = []
-    cx, cy = center_xy_mm
-    end_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm, seed=seed + 23)
     if start_outline_mm is None:
+        cx, cy = center_xy_mm
         start_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 2.0)
         start_outline = _shape_outline(params, "start", start_rect, center_xy_mm, seed=seed + 11)
         start_extend = 0.0
@@ -397,17 +409,21 @@ def generate_focus_strokes(
         and str(getattr(params, "spacing_mode", "") or "") == "distance"
         and len(start_outline) >= 2
     )
-    density_start_outline = (
-        effect_line_density.frame_density_outline(params, start_outline)
-        if spacing_from_start_outline
-        else start_outline
-    )
-    density_strength = (
-        effect_line_density.density_compensation_strength(params)
-        if str(getattr(params, "spacing_mode", "") or "") == "distance"
-        else 0.0
-    )
-    count_outline = density_start_outline if spacing_from_start_outline else end_outline
+    if spacing_from_start_outline and bool(getattr(params, "spacing_density_compensation", False)):
+        for point in effect_line_radial_spacing.frame_points_for_perpendicular_spacing(
+            params,
+            center_xy_mm,
+            start_outline,
+            start_extend,
+            rng,
+            max_line_count=_max_line_count,
+            slot_positions=_slot_positions,
+            clamp01=_clamp01,
+        ):
+            _append_focus_stroke(out, params, rng, point, center_xy_mm)
+        return out
+
+    count_outline = start_outline
     count = _focus_slot_count_for_outline(params, count_outline, radius_x_mm, radius_y_mm)
     step_angle = (2.0 * math.pi) / max(1, count)
 
@@ -418,33 +434,13 @@ def generate_focus_strokes(
                 amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
                 slot_for_start += amount * (rng.random() * 2.0 - 1.0)
             t = _slot_fraction(slot_for_start, count, closed=True)
-            density_point = effect_line_density.outline_point_at_fraction(density_start_outline, t)
-            if density_point is None:
-                continue
-            angle = math.atan2(density_point[1] - cy, density_point[0] - cx)
-            if density_strength > 0.0:
-                compensated = effect_line_density.compensated_frame_angle(
-                    center_xy_mm,
-                    density_start_outline,
-                    end_outline,
-                    t,
-                    density_strength,
-                    actual_start_outline=start_outline,
-                )
-                if compensated is not None:
-                    angle = compensated
-            frame_point = _ray_outline_point(center_xy_mm, start_outline, angle)
+            frame_point = _outline_point_at_fraction(start_outline, t)
             if frame_point is None:
-                frame_point = density_point
+                continue
             x0, y0 = _extend_point_from_center(center_xy_mm, frame_point, start_extend)
         else:
             t = _slot_fraction(slot, count, closed=True)
             angle = 2.0 * math.pi * t + math.radians(float(params.rotation_deg))
-            if density_strength > 0.0:
-                density_point = effect_line_density.outline_point_at_fraction(end_outline, t)
-                if density_point is not None:
-                    density_angle = math.atan2(density_point[1] - cy, density_point[0] - cx)
-                    angle = effect_line_density.blend_angles(angle, density_angle, density_strength)
             if bool(getattr(params, "spacing_jitter_enabled", False)):
                 amount = _clamp01(getattr(params, "spacing_jitter_amount", 0.0))
                 angle += step_angle * amount * (rng.random() * 2.0 - 1.0)
@@ -456,34 +452,7 @@ def generate_focus_strokes(
                 angle,
                 extend_mm=start_extend,
             )
-        x1, y1 = _point_on_outline_or_ellipse(
-            center_xy_mm,
-            end_outline,
-            radius_x_mm,
-            radius_y_mm,
-            angle,
-        )
-        x1, y1 = _apply_length_jitter(x0, y0, x1, y1, params, rng)
-
-        radius_mm = _jitter(
-            params.brush_size_mm,
-            params.brush_jitter_amount if params.brush_jitter_enabled else 0.0,
-            rng,
-        )
-        radius, radii = _stroke_radii(params, radius_mm, 2)
-        opacities = _stroke_opacities(params, 2)
-
-        out.append(
-            EffectLineStroke(
-                points_xyz=[
-                    (mm_to_m(x0), mm_to_m(y0), 0.0),
-                    (mm_to_m(x1), mm_to_m(y1), 0.0),
-                ],
-                radius=radius,
-                radii=radii,
-                opacities=opacities,
-            )
-        )
+        _append_focus_stroke(out, params, rng, (x0, y0), center_xy_mm)
     return out
 
 

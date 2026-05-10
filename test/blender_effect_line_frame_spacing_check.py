@@ -1,5 +1,3 @@
-"""Blender実機用: 効果線のコマ枠始点間隔と抜き初期値の確認."""
-
 from __future__ import annotations
 
 import importlib.util
@@ -28,103 +26,116 @@ def _load_addon():
     return mod
 
 
-def _perimeter_pos(point: tuple[float, float]) -> float:
-    x, y = point
-    eps = 1.0e-4
-    if abs(y) <= eps:
-        return x
-    if abs(x - 100.0) <= eps:
-        return 100.0 + y
-    if abs(y - 50.0) <= eps:
-        return 150.0 + (100.0 - x)
-    if abs(x) <= eps:
-        return 250.0 + (50.0 - y)
-    raise AssertionError(f"point is not on frame outline: {point}")
-
-
-def _stroke_endpoint_mm(stroke, m_to_mm) -> tuple[float, float]:
-    return (m_to_mm(stroke.points_xyz[1][0]), m_to_mm(stroke.points_xyz[1][1]))
-
-
-def _stroke_start_mm(stroke, m_to_mm) -> tuple[float, float]:
-    return (m_to_mm(stroke.points_xyz[0][0]), m_to_mm(stroke.points_xyz[0][1]))
-
-
-def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
-    return ((float(a[0]) - float(b[0])) ** 2 + (float(a[1]) - float(b[1])) ** 2) ** 0.5
-
-
-def _angle_gap_spread(points: list[tuple[float, float]], center: tuple[float, float]) -> float:
-    angles = sorted(math.atan2(y - center[1], x - center[0]) for x, y in points)
-    gaps = [
-        angles[index + 1] - angles[index]
-        for index in range(len(angles) - 1)
-    ]
-    gaps.append((2.0 * math.pi) - angles[-1] + angles[0])
-    return max(gaps) - min(gaps)
-
-
-def _stroke_point_mm(stroke, m_to_mm, pos: float) -> tuple[float, float]:
-    start = _stroke_start_mm(stroke, m_to_mm)
-    end = _stroke_endpoint_mm(stroke, m_to_mm)
-    return (
-        start[0] + (end[0] - start[0]) * float(pos),
-        start[1] + (end[1] - start[1]) * float(pos),
+def _base_params() -> SimpleNamespace:
+    return SimpleNamespace(
+        spacing_mode="distance",
+        spacing_distance_mm=1.0,
+        spacing_angle_deg=5.0,
+        start_frame_density_basis="rounded_frame",
+        start_frame_density_rounding_percent=100.0,
+        spacing_density_compensation=True,
+        spacing_jitter_enabled=False,
+        spacing_jitter_amount=0.0,
+        max_line_count=1000,
+        bundle_enabled=False,
+        bundle_line_count=4,
+        bundle_jitter_amount=0.0,
+        bundle_gap_mm=0.0,
+        rotation_deg=0.0,
+        end_shape="ellipse",
+        base_shape="ellipse",
+        brush_size_mm=0.4,
+        brush_jitter_enabled=False,
+        brush_jitter_amount=0.0,
+        inout_apply="brush_size",
+        in_percent=100.0,
+        out_percent=0.0,
+        length_jitter_enabled=False,
+        length_jitter_amount=0.2,
     )
 
 
-def _path_gap_spread(strokes, m_to_mm, center: tuple[float, float]) -> float:
-    spreads: list[float] = []
-    for pos in (0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 0.96, 0.985):
-        points = [
-            _stroke_point_mm(stroke, m_to_mm, pos)
-            for stroke in strokes
-        ]
-        points.sort(key=lambda point: math.atan2(point[1] - center[1], point[0] - center[0]))
-        gaps = [
-            _distance(points[index], points[index + 1])
-            for index in range(len(points) - 1)
-        ]
-        gaps.append(_distance(points[-1], points[0]))
-        spreads.append(max(gaps) - min(gaps))
-    return sum(spreads) / max(1, len(spreads))
+def _stroke_points_mm(stroke, m_to_mm) -> list[tuple[float, float]]:
+    return [(m_to_mm(point[0]), m_to_mm(point[1])) for point in stroke.points_xyz]
 
 
-def _path_min_gap(strokes, m_to_mm, center: tuple[float, float]) -> float:
-    min_gap = float("inf")
-    for pos in (0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 0.96, 0.985):
-        points = [
-            _stroke_point_mm(stroke, m_to_mm, pos)
-            for stroke in strokes
-        ]
-        points.sort(key=lambda point: math.atan2(point[1] - center[1], point[0] - center[0]))
-        gaps = [
-            _distance(points[index], points[index + 1])
-            for index in range(len(points) - 1)
-        ]
-        gaps.append(_distance(points[-1], points[0]))
-        min_gap = min(min_gap, min(gaps))
-    return min_gap
+def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
+    return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
 
 
-def _sector_min_gap(strokes, m_to_mm, center: tuple[float, float], angle_min: float, angle_max: float) -> float:
-    min_gap = float("inf")
-    for pos in (0.0, 0.30, 0.60, 0.90, 0.96, 0.985):
-        points = []
-        for stroke in strokes:
-            point = _stroke_point_mm(stroke, m_to_mm, pos)
-            angle = math.atan2(point[1] - center[1], point[0] - center[0])
-            if angle_min <= angle <= angle_max:
-                points.append(point)
-        if len(points) < 2:
-            continue
-        points.sort(key=lambda point: math.atan2(point[1] - center[1], point[0] - center[0]))
-        gaps = [
-            _distance(points[index], points[index + 1])
-            for index in range(len(points) - 1)
-        ]
-        min_gap = min(min_gap, min(gaps))
-    return min_gap
+def _point_segment_distance(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> float:
+    vx = float(end[0]) - float(start[0])
+    vy = float(end[1]) - float(start[1])
+    length_sq = vx * vx + vy * vy
+    if length_sq <= 1.0e-9:
+        return _distance(point, start)
+    t = ((float(point[0]) - float(start[0])) * vx + (float(point[1]) - float(start[1])) * vy) / length_sq
+    t = max(0.0, min(1.0, t))
+    closest = (float(start[0]) + vx * t, float(start[1]) + vy * t)
+    return _distance(point, closest)
+
+
+def _assert_on_outline(point: tuple[float, float], outline: list[tuple[float, float]]) -> None:
+    distance = min(
+        _point_segment_distance(point, outline[index], outline[(index + 1) % len(outline)])
+        for index in range(len(outline))
+    )
+    if distance > 1.0e-4:
+        raise AssertionError(f"focus line start should stay on frame outline: point={point}, distance={distance}")
+
+
+def _assert_simple_radial_strokes(strokes, m_to_mm, center: tuple[float, float], *, outline=None) -> None:
+    if not strokes:
+        raise AssertionError("focus line generation returned no strokes")
+    for index, stroke in enumerate(strokes):
+        points = _stroke_points_mm(stroke, m_to_mm)
+        if len(points) != 2:
+            raise AssertionError(f"focus line should be one straight segment: index={index}, points={len(points)}")
+        if abs(float(getattr(stroke, "density_end", 1.0)) - 1.0) > 1.0e-9:
+            raise AssertionError(f"focus line should not be shortened: index={index}")
+        if _distance(points[-1], center) > 1.0e-4:
+            raise AssertionError(f"focus line should end at center point: index={index}, end={points[-1]}")
+        if outline is not None:
+            _assert_on_outline(points[0], outline)
+
+
+def _angle(center: tuple[float, float], point: tuple[float, float]) -> float:
+    return math.atan2(float(point[1]) - center[1], float(point[0]) - center[0])
+
+
+def _perpendicular_gaps(strokes, m_to_mm, center: tuple[float, float]) -> list[float]:
+    starts = [_stroke_points_mm(stroke, m_to_mm)[0] for stroke in strokes]
+    starts.sort(key=lambda point: _angle(center, point))
+    gaps: list[float] = []
+    for index, point in enumerate(starts):
+        next_point = starts[(index + 1) % len(starts)]
+        angle = _angle(center, point)
+        next_angle = _angle(center, next_point)
+        delta = next_angle - angle
+        if index == len(starts) - 1:
+            delta += 2.0 * math.pi
+        delta = max(0.0, delta)
+        radius = _distance(point, center)
+        gaps.append(radius * math.tan(delta))
+    return gaps
+
+
+def _assert_perpendicular_spacing(strokes, m_to_mm, center: tuple[float, float], expected_mm: float) -> None:
+    gaps = _perpendicular_gaps(strokes, m_to_mm, center)
+    average = sum(gaps) / max(1, len(gaps))
+    if abs(average - expected_mm) > max(0.02, expected_mm * 0.08):
+        raise AssertionError(
+            f"focus line spacing should follow perpendicular distance: avg={average}, expected={expected_mm}"
+        )
+    if min(gaps) <= expected_mm * 0.70 or max(gaps) >= expected_mm * 1.30:
+        raise AssertionError(
+            "focus line spacing should stay even by perpendicular distance: "
+            f"min={min(gaps)}, max={max(gaps)}, expected={expected_mm}"
+        )
 
 
 def main() -> None:
@@ -137,11 +148,7 @@ def main() -> None:
         assert params.spacing_density_compensation is True
 
         from bname_dev_effect_spacing.core import effect_line
-        from bname_dev_effect_spacing.operators import (
-            effect_line_density,
-            effect_line_gen,
-            effect_line_link_op,
-        )
+        from bname_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op
         from bname_dev_effect_spacing.utils.geom import m_to_mm
 
         params.start_frame_density_basis = "ellipse"
@@ -162,361 +169,68 @@ def main() -> None:
             {"schema_version": 5, "effect_type": "focus", "spacing_density_compensation": "strong"},
         )
         assert params.spacing_density_compensation is True
+        legacy_saved = effect_line.effect_params_to_dict(SimpleNamespace(spacing_density_compensation="medium"))
+        assert legacy_saved["spacing_density_compensation"] is True
 
-        fake = SimpleNamespace(
-            spacing_mode="distance",
-            spacing_distance_mm=10.0,
-            spacing_angle_deg=5.0,
-            start_frame_density_basis="frame",
-            start_frame_density_rounding_percent=100.0,
-            spacing_density_compensation=False,
-            spacing_jitter_enabled=False,
-            spacing_jitter_amount=0.0,
-            max_line_count=1000,
-            bundle_enabled=False,
-            bundle_line_count=4,
-            bundle_jitter_amount=0.0,
-            bundle_gap_mm=0.0,
-            rotation_deg=33.0,
-            end_shape="ellipse",
-            base_shape="ellipse",
-            brush_size_mm=0.4,
-            brush_jitter_enabled=False,
-            brush_jitter_amount=0.0,
-            inout_apply="brush_size",
-            in_percent=100.0,
-            out_percent=0.0,
-        )
-        outline = [(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)]
-        strokes = effect_line_gen.generate_focus_strokes(
-            fake,
-            center_xy_mm=(50.0, 25.0),
-            radius_x_mm=8.0,
-            radius_y_mm=8.0,
+        outline = [(38.5, 47.0), (218.5, 47.0), (218.5, 214.309), (38.5, 281.061)]
+        center = (175.0, 148.0)
+
+        frame_params = _base_params()
+        frame_params.spacing_distance_mm = 1.0
+        frame_strokes = effect_line_gen.generate_focus_strokes(
+            frame_params,
+            center_xy_mm=center,
+            radius_x_mm=20.0,
+            radius_y_mm=7.0,
             seed=0,
             start_outline_mm=outline,
-            start_extend_mm=0.0,
         )
-        assert len(strokes) == 30, len(strokes)
-        starts = [
-            (m_to_mm(stroke.points_xyz[0][0]), m_to_mm(stroke.points_xyz[0][1]))
-            for stroke in strokes
-        ]
-        distances = sorted(_perimeter_pos(point) for point in starts)
-        gaps = [
-            distances[(i + 1) % len(distances)] - distances[i]
-            if i < len(distances) - 1
-            else 300.0 - distances[i] + distances[0]
-            for i in range(len(distances))
-        ]
-        for gap in gaps:
-            if abs(gap - 10.0) > 1.0e-4:
-                raise AssertionError(f"frame spacing gap expected 10mm, got {gap}")
+        _assert_simple_radial_strokes(frame_strokes, m_to_mm, center, outline=outline)
+        _assert_perpendicular_spacing(frame_strokes, m_to_mm, center, 1.0)
 
-        rounded_fake = SimpleNamespace(**vars(fake))
-        rounded_fake.start_frame_density_basis = "rounded_frame"
-        rounded_fake.start_frame_density_rounding_percent = 100.0
-        rounded_strokes = effect_line_gen.generate_focus_strokes(
-            rounded_fake,
-            center_xy_mm=(50.0, 25.0),
-            radius_x_mm=8.0,
-            radius_y_mm=8.0,
+        dense_params = SimpleNamespace(**vars(frame_params))
+        dense_params.spacing_distance_mm = 0.3
+        dense_strokes = effect_line_gen.generate_focus_strokes(
+            dense_params,
+            center_xy_mm=center,
+            radius_x_mm=20.0,
+            radius_y_mm=7.0,
             seed=0,
             start_outline_mm=outline,
-            start_extend_mm=0.0,
         )
-        rounded_starts = [
-            (round(m_to_mm(stroke.points_xyz[0][0]), 4), round(m_to_mm(stroke.points_xyz[0][1]), 4))
-            for stroke in rounded_strokes
-        ]
-        corners = {(0.0, 0.0), (100.0, 0.0), (100.0, 50.0), (0.0, 50.0)}
-        if any(start in corners for start in rounded_starts):
-            raise AssertionError(f"rounded density basis should avoid exact frame corners: {rounded_starts}")
-        for point in rounded_starts:
-            _perimeter_pos(point)
-
-        stretched_none = SimpleNamespace(**vars(fake))
-        stretched_none.spacing_distance_mm = 8.0
-        stretched_none.spacing_density_compensation = False
-        stretched_none.rotation_deg = 0.0
-        stretched_none.end_shape = "ellipse"
-        stretched_strong = SimpleNamespace(**vars(stretched_none))
-        stretched_strong.spacing_density_compensation = True
-        stretched_none_strokes = effect_line_gen.generate_focus_strokes(
-            stretched_none,
-            center_xy_mm=(50.0, 25.0),
-            radius_x_mm=80.0,
-            radius_y_mm=8.0,
-            seed=0,
-        )
-        stretched_strong_strokes = effect_line_gen.generate_focus_strokes(
-            stretched_strong,
-            center_xy_mm=(50.0, 25.0),
-            radius_x_mm=80.0,
-            radius_y_mm=8.0,
-            seed=0,
-        )
-        assert len(stretched_none_strokes) == len(stretched_strong_strokes)
-        end_rect = effect_line_gen._scaled_rect(50.0, 25.0, 80.0, 8.0, 1.0)
-        end_outline = effect_line_gen._shape_outline(
-            stretched_strong,
-            "end",
-            end_rect,
-            (50.0, 25.0),
-            seed=23,
-        )
-        none_error = 0.0
-        strong_error = 0.0
-        count = len(stretched_strong_strokes)
-        for index in range(count):
-            expected = effect_line_density.outline_point_at_fraction(end_outline, index / count)
-            assert expected is not None
-            none_error += _distance(_stroke_endpoint_mm(stretched_none_strokes[index], m_to_mm), expected)
-            strong_error += _distance(_stroke_endpoint_mm(stretched_strong_strokes[index], m_to_mm), expected)
-        if strong_error >= none_error * 0.25:
+        _assert_simple_radial_strokes(dense_strokes, m_to_mm, center, outline=outline)
+        if len(dense_strokes) <= len(frame_strokes):
             raise AssertionError(
-                f"density compensation should follow end outline spacing: none={none_error}, strong={strong_error}"
+                f"smaller line spacing should increase focus line count: normal={len(frame_strokes)}, dense={len(dense_strokes)}"
             )
 
-        frame_none = SimpleNamespace(**vars(fake))
-        frame_none.spacing_distance_mm = 8.0
-        frame_none.spacing_density_compensation = False
-        frame_none.start_frame_density_basis = "frame"
-        frame_none.rotation_deg = 0.0
-        frame_none.end_shape = "ellipse"
-        frame_strong = SimpleNamespace(**vars(frame_none))
-        frame_strong.spacing_density_compensation = True
-        skewed_outline = [(0.0, 0.0), (160.0, 0.0), (130.0, 60.0), (0.0, 60.0)]
-        skewed_center = (110.0, 30.0)
-        frame_none_strokes = effect_line_gen.generate_focus_strokes(
-            frame_none,
-            center_xy_mm=skewed_center,
-            radius_x_mm=55.0,
-            radius_y_mm=8.0,
+        no_density_params = SimpleNamespace(**vars(frame_params))
+        no_density_params.spacing_density_compensation = False
+        no_density_strokes = effect_line_gen.generate_focus_strokes(
+            no_density_params,
+            center_xy_mm=center,
+            radius_x_mm=20.0,
+            radius_y_mm=7.0,
             seed=0,
-            start_outline_mm=skewed_outline,
+            start_outline_mm=outline,
         )
-        frame_strong_strokes = effect_line_gen.generate_focus_strokes(
-            frame_strong,
-            center_xy_mm=skewed_center,
-            radius_x_mm=55.0,
-            radius_y_mm=8.0,
-            seed=0,
-            start_outline_mm=skewed_outline,
-        )
-        if len(frame_strong_strokes) != len(frame_none_strokes):
+        _assert_simple_radial_strokes(no_density_strokes, m_to_mm, center, outline=outline)
+        if len(no_density_strokes) <= 0:
             raise AssertionError(
-                "density compensation should not change the requested frame line count: "
-                f"none={len(frame_none_strokes)}, strong={len(frame_strong_strokes)}"
-            )
-        frame_none_min_gap = _path_min_gap(frame_none_strokes, m_to_mm, skewed_center)
-        frame_strong_min_gap = _path_min_gap(frame_strong_strokes, m_to_mm, skewed_center)
-        if frame_strong_min_gap <= frame_none_min_gap * 1.5:
-            raise AssertionError(
-                "frame density compensation should redistribute over-dense drawn-path spacing without thinning: "
-                f"none_min_gap={frame_none_min_gap}, strong_min_gap={frame_strong_min_gap}"
+                f"density toggle off should keep simple focus lines: off={len(no_density_strokes)}"
             )
 
-        flat_none = SimpleNamespace(**vars(fake))
-        flat_none.spacing_distance_mm = 0.4
-        flat_none.spacing_density_compensation = False
-        flat_none.start_frame_density_basis = "rounded_frame"
-        flat_none.start_frame_density_rounding_percent = 100.0
-        flat_none.end_shape = "ellipse"
-        flat_strong = SimpleNamespace(**vars(flat_none))
-        flat_strong.spacing_density_compensation = True
-        flat_outline = [(0.0, 0.0), (260.0, 0.0), (260.0, 75.0), (0.0, 75.0)]
-        flat_center = (185.0, 37.5)
-        flat_none_strokes = effect_line_gen.generate_focus_strokes(
-            flat_none,
-            center_xy_mm=flat_center,
-            radius_x_mm=40.0,
-            radius_y_mm=14.0,
+        ellipse_params = _base_params()
+        ellipse_params.spacing_distance_mm = 2.0
+        ellipse_strokes = effect_line_gen.generate_focus_strokes(
+            ellipse_params,
+            center_xy_mm=center,
+            radius_x_mm=30.0,
+            radius_y_mm=12.0,
             seed=0,
-            start_outline_mm=flat_outline,
         )
-        flat_strong_strokes = effect_line_gen.generate_focus_strokes(
-            flat_strong,
-            center_xy_mm=flat_center,
-            radius_x_mm=40.0,
-            radius_y_mm=14.0,
-            seed=0,
-            start_outline_mm=flat_outline,
-        )
-        flat_none_min_gap = _path_min_gap(flat_none_strokes, m_to_mm, flat_center)
-        flat_strong_min_gap = _path_min_gap(flat_strong_strokes, m_to_mm, flat_center)
-        if len(flat_strong_strokes) != len(flat_none_strokes):
-            raise AssertionError(
-                "density compensation should keep wide-frame line count controlled by line interval: "
-                f"none={len(flat_none_strokes)}, strong={len(flat_strong_strokes)}"
-            )
-        if flat_strong_min_gap <= flat_none_min_gap * 1.5:
-            raise AssertionError(
-                "density compensation should redistribute over-dense wide-frame spacing without thinning: "
-                f"none_min_gap={flat_none_min_gap}, strong_min_gap={flat_strong_min_gap}"
-            )
+        _assert_simple_radial_strokes(ellipse_strokes, m_to_mm, center)
 
-        user_shape_none = SimpleNamespace(**vars(fake))
-        user_shape_none.spacing_distance_mm = 1.0
-        user_shape_none.spacing_density_compensation = False
-        user_shape_none.start_frame_density_basis = "frame"
-        user_shape_none.rotation_deg = 0.0
-        user_shape_none.end_shape = "ellipse"
-        user_shape_none.length_jitter_enabled = True
-        user_shape_none.length_jitter_amount = 0.2
-        user_shape_strong = SimpleNamespace(**vars(user_shape_none))
-        user_shape_strong.spacing_density_compensation = True
-        user_shape_outline = [(38.5, 47.0), (218.5, 47.0), (218.5, 214.309), (38.5, 281.061)]
-        user_shape_center = (175.0, 148.0)
-        user_shape_none_strokes = effect_line_gen.generate_focus_strokes(
-            user_shape_none,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        user_shape_strong_strokes = effect_line_gen.generate_focus_strokes(
-            user_shape_strong,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        if len(user_shape_strong_strokes) != len(user_shape_none_strokes):
-            raise AssertionError(
-                "density compensation should not lower the actual slanted-frame line count: "
-                f"none={len(user_shape_none_strokes)}, strong={len(user_shape_strong_strokes)}"
-            )
-        user_shape_none_min_gap = _path_min_gap(user_shape_none_strokes, m_to_mm, user_shape_center)
-        user_shape_strong_min_gap = _path_min_gap(user_shape_strong_strokes, m_to_mm, user_shape_center)
-        if user_shape_strong_min_gap <= user_shape_none_min_gap * 1.5:
-            raise AssertionError(
-                "density compensation should redistribute over-dense slanted-frame spacing without thinning: "
-                f"none_min_gap={user_shape_none_min_gap}, strong_min_gap={user_shape_strong_min_gap}"
-            )
-        user_shape_dense_none = SimpleNamespace(**vars(user_shape_none))
-        user_shape_dense_none.spacing_distance_mm = 0.3
-        user_shape_dense_none.spacing_density_compensation = False
-        user_shape_dense_none.start_frame_density_basis = "rounded_frame"
-        user_shape_dense_none.start_frame_density_rounding_percent = 100.0
-        user_shape_dense_none.length_jitter_enabled = False
-        user_shape_dense_none_strokes = effect_line_gen.generate_focus_strokes(
-            user_shape_dense_none,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        user_shape_dense = SimpleNamespace(**vars(user_shape_none))
-        user_shape_dense.spacing_distance_mm = 0.3
-        user_shape_dense.spacing_density_compensation = True
-        user_shape_dense.start_frame_density_basis = "rounded_frame"
-        user_shape_dense.start_frame_density_rounding_percent = 100.0
-        user_shape_dense.length_jitter_enabled = False
-        user_shape_dense_strokes = effect_line_gen.generate_focus_strokes(
-            user_shape_dense,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        user_shape_dense_none_min_gap = _path_min_gap(user_shape_dense_none_strokes, m_to_mm, user_shape_center)
-        user_shape_dense_min_gap = _path_min_gap(user_shape_dense_strokes, m_to_mm, user_shape_center)
-        if len(user_shape_dense_strokes) <= len(user_shape_strong_strokes) * 1.25:
-            raise AssertionError(
-                "strong density compensation should still let dense 0.30mm spacing increase line count: "
-                f"strong_1mm={len(user_shape_strong_strokes)}, strong_dense={len(user_shape_dense_strokes)}"
-            )
-        if len(user_shape_dense_strokes) != len(user_shape_dense_none_strokes):
-            raise AssertionError(
-                "density compensation should not thin dense 0.30mm spacing: "
-                f"none_dense={len(user_shape_dense_none_strokes)}, strong_dense={len(user_shape_dense_strokes)}"
-            )
-        if user_shape_dense_min_gap <= user_shape_dense_none_min_gap * 1.5:
-            raise AssertionError(
-                "density compensation should improve dense 0.30mm spacing without reducing count: "
-                f"none_min_gap={user_shape_dense_none_min_gap}, strong_min_gap={user_shape_dense_min_gap}"
-            )
-        user_shape_min = SimpleNamespace(**vars(user_shape_none))
-        user_shape_min.spacing_distance_mm = 0.01
-        user_shape_min.spacing_density_compensation = True
-        user_shape_min_strokes = effect_line_gen.generate_focus_strokes(
-            user_shape_min,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        if len(user_shape_min_strokes) < int(user_shape_min.max_line_count):
-            raise AssertionError(
-                "minimum line interval should not be widened by density compensation: "
-                f"count={len(user_shape_min_strokes)}, max={user_shape_min.max_line_count}"
-            )
-        screenshot_none = SimpleNamespace(**vars(user_shape_none))
-        screenshot_none.spacing_distance_mm = 0.40
-        screenshot_none.spacing_density_compensation = False
-        screenshot_none.start_frame_density_basis = "rounded_frame"
-        screenshot_none.start_frame_density_rounding_percent = 100.0
-        screenshot_none.length_jitter_enabled = False
-        screenshot_none_strokes = effect_line_gen.generate_focus_strokes(
-            screenshot_none,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        screenshot_shape = SimpleNamespace(**vars(user_shape_none))
-        screenshot_shape.spacing_distance_mm = 0.40
-        screenshot_shape.spacing_density_compensation = True
-        screenshot_shape.start_frame_density_basis = "rounded_frame"
-        screenshot_shape.start_frame_density_rounding_percent = 100.0
-        screenshot_shape.length_jitter_enabled = False
-        screenshot_strokes = effect_line_gen.generate_focus_strokes(
-            screenshot_shape,
-            center_xy_mm=user_shape_center,
-            radius_x_mm=20.0,
-            radius_y_mm=7.0,
-            seed=0,
-            start_outline_mm=user_shape_outline,
-        )
-        if len(screenshot_strokes) != len(screenshot_none_strokes):
-            raise AssertionError(
-                "density compensation should keep screenshot-equivalent line count: "
-                f"none={len(screenshot_none_strokes)}, strong={len(screenshot_strokes)}"
-            )
-        screenshot_none_min_gap = _path_min_gap(screenshot_none_strokes, m_to_mm, user_shape_center)
-        screenshot_none_lower_right_min_gap = _sector_min_gap(
-            screenshot_none_strokes,
-            m_to_mm,
-            user_shape_center,
-            0.0,
-            1.35,
-        )
-        screenshot_min_gap = _path_min_gap(screenshot_strokes, m_to_mm, user_shape_center)
-        screenshot_lower_right_min_gap = _sector_min_gap(
-            screenshot_strokes,
-            m_to_mm,
-            user_shape_center,
-            0.0,
-            1.35,
-        )
-        if screenshot_min_gap <= screenshot_none_min_gap * 1.5:
-            raise AssertionError(
-                "density compensation should improve screenshot-equivalent spacing without thinning: "
-                f"none_min_gap={screenshot_none_min_gap}, strong_min_gap={screenshot_min_gap}, count={len(screenshot_strokes)}"
-            )
-        if screenshot_lower_right_min_gap <= screenshot_none_lower_right_min_gap * 1.25:
-            raise AssertionError(
-                "density compensation should improve lower-right spacing without thinning: "
-                f"none_lower_right_min_gap={screenshot_none_lower_right_min_gap}, "
-                f"strong_lower_right_min_gap={screenshot_lower_right_min_gap}, count={len(screenshot_strokes)}"
-            )
         linked_params = effect_line_link_op._copy_linked_shape_params(
             {
                 "start_frame_density_basis": "ellipse",

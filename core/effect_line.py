@@ -171,7 +171,9 @@ def effect_params_to_dict(params) -> dict:
         if not hasattr(params, field):
             continue
         value = getattr(params, field)
-        if field in {"line_color", "fill_color"}:
+        if field == "spacing_density_compensation":
+            data[field] = _density_compensation_enabled(value)
+        elif field in {"line_color", "fill_color"}:
             data[field] = _color_value(value)
         elif field == "inout_apply":
             data[field] = str(value) if str(value) in {"brush_size", "opacity"} else "brush_size"
@@ -212,6 +214,7 @@ def effect_params_from_dict(params, data: dict) -> None:
     if schema_version < 4:
         data.setdefault("start_frame_density_basis", "rounded_frame")
         data.setdefault("start_frame_density_rounding_percent", 100.0)
+    if schema_version < EFFECT_PARAM_SCHEMA_VERSION:
         data.setdefault("spacing_density_compensation", True)
     if "spacing_density_compensation" in data:
         data["spacing_density_compensation"] = _density_compensation_enabled(data["spacing_density_compensation"])
