@@ -343,7 +343,7 @@ def _stroke_radii(params, radius_mm: float, point_count: int = 2) -> tuple[float
     if getattr(params, "inout_apply", "brush_size") != "brush_size" or point_count < 2:
         return base, None
     start = base * (_clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0))
-    end = base * (_clamp01(float(getattr(params, "out_percent", 100.0)) / 100.0))
+    end = base * (_clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0))
     if point_count == 2:
         return base, [start, end]
     radii = []
@@ -357,7 +357,7 @@ def _stroke_opacities(params, point_count: int = 2) -> list[float] | None:
     if getattr(params, "inout_apply", "brush_size") != "opacity" or point_count < 2:
         return None
     start = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
-    end = _clamp01(float(getattr(params, "out_percent", 100.0)) / 100.0)
+    end = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
     if point_count == 2:
         return [start, end]
     opacities = []
@@ -365,83 +365,6 @@ def _stroke_opacities(params, point_count: int = 2) -> list[float] | None:
         t = i / max(1, point_count - 1)
         opacities.append(start + (end - start) * t)
     return opacities
-
-
-def _stroke_point_mm(stroke: EffectLineStroke, pos: float) -> tuple[float, float]:
-    start = stroke.points_xyz[0]
-    end = stroke.points_xyz[-1]
-    return (
-        (float(start[0]) + (float(end[0]) - float(start[0])) * float(pos)) * 1000.0,
-        (float(start[1]) + (float(end[1]) - float(start[1])) * float(pos)) * 1000.0,
-    )
-
-
-def _generated_stroke_gap_metric_mm(prev: EffectLineStroke, current: EffectLineStroke) -> float:
-    gaps: list[float] = []
-    for pos in (
-        0.00,
-        0.20,
-        0.40,
-        0.60,
-        0.80,
-        1.00,
-    ):
-        a = _stroke_point_mm(prev, pos)
-        b = _stroke_point_mm(current, pos)
-        gaps.append(max(0.001, math.hypot(b[0] - a[0], b[1] - a[1])))
-    return min(gaps) if gaps else 0.0
-
-
-def _closed_gap_metrics_mm(strokes: list[EffectLineStroke]) -> list[float]:
-    return [
-        _generated_stroke_gap_metric_mm(strokes[index], strokes[(index + 1) % len(strokes)])
-        for index in range(len(strokes))
-    ]
-
-
-def _stroke_index_at_cumulative_gap(
-    cumulative: list[float],
-    target: float,
-) -> int:
-    for index in range(1, len(cumulative)):
-        if cumulative[index] >= target:
-            return max(0, index - 1)
-    return max(0, len(cumulative) - 2)
-
-
-def _resample_uniform_focus_strokes(
-    params,
-    strokes: list[EffectLineStroke],
-    spacing_mm: float,
-    density_strength: float,
-) -> list[EffectLineStroke]:
-    if density_strength <= 0.0 or len(strokes) <= 3:
-        return strokes
-    if bool(getattr(params, "bundle_enabled", False)):
-        return strokes
-    gaps = _closed_gap_metrics_mm(strokes)
-    total = sum(gaps)
-    if total <= 1.0e-9:
-        return strokes
-    target_count = int(round(total / max(0.001, float(spacing_mm))))
-    target_count = max(3, min(len(strokes), _max_line_count(params), target_count))
-    if target_count >= len(strokes):
-        return strokes
-    cumulative = [0.0]
-    for gap in gaps:
-        cumulative.append(cumulative[-1] + max(0.0, gap))
-    selected: list[EffectLineStroke] = []
-    selected_indices: set[int] = set()
-    for index in range(target_count):
-        target = total * index / target_count
-        source_index = _stroke_index_at_cumulative_gap(cumulative, target)
-        while source_index in selected_indices and len(selected_indices) < len(strokes):
-            source_index = (source_index + 1) % len(strokes)
-        if source_index in selected_indices:
-            break
-        selected_indices.add(source_index)
-        selected.append(strokes[source_index])
-    return selected if len(selected) >= 3 else strokes
 
 
 def generate_focus_strokes(
@@ -484,19 +407,8 @@ def generate_focus_strokes(
         if str(getattr(params, "spacing_mode", "") or "") == "distance"
         else 0.0
     )
-    compensated_metric_total = 0.0
     count_outline = density_start_outline if spacing_from_start_outline else end_outline
     count = _focus_slot_count_for_outline(params, count_outline, radius_x_mm, radius_y_mm)
-    if spacing_from_start_outline and density_strength > 0.0:
-        step_mm = max(0.01, float(getattr(params, "spacing_distance_mm", 1.0)))
-        compensated_metric_total = effect_line_density.compensated_frame_metric_total(
-            center_xy_mm,
-            density_start_outline,
-            end_outline,
-            density_strength,
-            actual_start_outline=start_outline,
-        )
-        count = min(max(8, int(round(compensated_metric_total / step_mm))), _max_line_count(params))
     step_angle = (2.0 * math.pi) / max(1, count)
 
     for slot in _slot_positions(count, params, rng):
@@ -572,9 +484,6 @@ def generate_focus_strokes(
                 opacities=opacities,
             )
         )
-    if spacing_from_start_outline and density_strength > 0.0:
-        step_mm = max(0.01, float(getattr(params, "spacing_distance_mm", 1.0)))
-        out = _resample_uniform_focus_strokes(params, out, step_mm, density_strength)
     return out
 
 

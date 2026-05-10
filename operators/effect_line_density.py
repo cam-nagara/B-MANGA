@@ -133,14 +133,16 @@ def frame_density_outline(params, actual_outline: Sequence[tuple[float, float]])
 
 
 def density_compensation_strength(params) -> float:
-    mode = str(getattr(params, "spacing_density_compensation", "none") or "none")
-    if mode == "weak":
-        return 0.35
-    if mode == "medium":
-        return 0.65
-    if mode == "strong":
-        return 1.0
-    return 0.0
+    value = getattr(params, "spacing_density_compensation", False)
+    if isinstance(value, str):
+        enabled = value.strip().lower() not in {"", "0", "false", "off", "none", "なし"}
+    else:
+        enabled = bool(value)
+    return 1.0 if enabled else 0.0
+
+
+def visible_gap_sample_positions() -> tuple[float, ...]:
+    return (0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 0.96, 0.985)
 
 
 def _outline_points(outline: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
@@ -216,16 +218,9 @@ def _segment_separation_metric(
     end = _ray_outline_point(center, end_outline, angle)
     if prev_start is None or start is None or prev_end is None or end is None:
         return float(fallback)
-    # 線端だけを均すと途中に帯が出るため、見た目で目立つ中間域を主に見る。
+    # 終点そのものは集中して当然なので、見える途中の密度を主に見る。
     gaps: list[float] = []
-    for pos in (
-        0.00,
-        0.20,
-        0.40,
-        0.60,
-        0.80,
-        1.00,
-    ):
+    for pos in visible_gap_sample_positions():
         a = _mix_points(prev_start, prev_end, pos)
         b = _mix_points(start, end, pos)
         gaps.append(max(0.001, math.hypot(b[0] - a[0], b[1] - a[1])))
@@ -374,28 +369,6 @@ def compensated_frame_angle(
         t = 0.0 if span <= 1.0e-9 else (target - cumulative[index - 1]) / span
         return angles[index - 1] + (angles[index] - angles[index - 1]) * t
     return angles[-1]
-
-
-def compensated_frame_metric_total(
-    center: tuple[float, float],
-    start_outline: Sequence[tuple[float, float]],
-    end_outline: Sequence[tuple[float, float]],
-    strength: float,
-    *,
-    actual_start_outline: Sequence[tuple[float, float]] | None = None,
-) -> float:
-    amount = _clamp01(strength)
-    if amount <= 0.0:
-        return poly_perimeter_mm(start_outline)
-    line_start_outline = actual_start_outline or start_outline
-    _angles, _cumulative, total = _angular_metric_table(
-        center,
-        start_outline,
-        line_start_outline,
-        end_outline,
-        amount,
-    )
-    return total if total > 1.0e-9 else poly_perimeter_mm(start_outline)
 
 
 def blend_angles(base: float, target: float, amount: float) -> float:

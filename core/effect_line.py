@@ -50,13 +50,6 @@ _FRAME_DENSITY_BASIS_ITEMS = (
     ("ellipse", "楕円", "コマ枠を包む楕円を密度基準にします"),
 )
 
-_DENSITY_COMPENSATION_ITEMS = (
-    ("none", "なし", ""),
-    ("weak", "弱", ""),
-    ("medium", "中", ""),
-    ("strong", "強", ""),
-)
-
 _INOUT_APPLY_ITEMS = (
     ("brush_size", "ブラシサイズ", ""),
     ("opacity", "不透明度", ""),
@@ -68,7 +61,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 5
+EFFECT_PARAM_SCHEMA_VERSION = 6
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -165,6 +158,12 @@ def _color_value(value) -> list[float]:
         return [0.0, 0.0, 0.0, 1.0]
 
 
+def _density_compensation_enabled(value) -> bool:
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "off", "none", "なし"}
+    return bool(value)
+
+
 def effect_params_to_dict(params) -> dict:
     """BNameEffectLineParams をレイヤーメタデータ保存用 dict に変換する。"""
     data = {"schema_version": EFFECT_PARAM_SCHEMA_VERSION}
@@ -213,9 +212,9 @@ def effect_params_from_dict(params, data: dict) -> None:
     if schema_version < 4:
         data.setdefault("start_frame_density_basis", "rounded_frame")
         data.setdefault("start_frame_density_rounding_percent", 100.0)
-        data.setdefault("spacing_density_compensation", "medium")
-    if schema_version < 5:
-        data["out_percent"] = 100.0
+        data.setdefault("spacing_density_compensation", True)
+    if "spacing_density_compensation" in data:
+        data["spacing_density_compensation"] = _density_compensation_enabled(data["spacing_density_compensation"])
     for field in EFFECT_PARAM_FIELDS:
         if field not in data or not hasattr(params, field):
             continue
@@ -273,7 +272,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
     spacing_distance_mm: FloatProperty(name="線の間隔 (距離)", default=0.40, min=0.01, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
-    spacing_density_compensation: EnumProperty(name="密度補正", items=_DENSITY_COMPENSATION_ITEMS, default="medium", update=_on_params_changed)  # type: ignore[valid-type]
+    spacing_density_compensation: BoolProperty(name="密度補正", default=True, update=_on_params_changed)  # type: ignore[valid-type]
     spacing_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     spacing_jitter_amount: FloatProperty(name="間隔乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     max_line_count: IntProperty(name="最大本数", default=_DEFAULT_MAX_LINE_COUNT, min=1, soft_max=2000, update=_on_params_changed)  # type: ignore[valid-type]
@@ -285,7 +284,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
 
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    out_percent: FloatProperty(name="抜き (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     opacity: FloatProperty(name="不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
