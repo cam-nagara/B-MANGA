@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import bpy
+from bpy.props import BoolProperty, StringProperty
 from bpy.types import Operator
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode, set_mode
@@ -91,6 +92,20 @@ class BNAME_OT_enter_coma_mode(Operator):
     bl_label = "コマ編集モードへ"
     bl_options = {"REGISTER"}
 
+    filepath: StringProperty(  # type: ignore[valid-type]
+        name="コマ用blendファイル",
+        subtype="FILE_PATH",
+        default="",
+    )
+    filter_glob: StringProperty(  # type: ignore[valid-type]
+        default="*.blend",
+        options={"HIDDEN"},
+    )
+    prompt_template_if_missing: BoolProperty(  # type: ignore[valid-type]
+        default=True,
+        options={"HIDDEN"},
+    )
+
     @classmethod
     def poll(cls, context):
         work = get_work(context)
@@ -159,6 +174,17 @@ class BNAME_OT_enter_coma_mode(Operator):
         work_dir = Path(work.work_dir)
 
         try:
+            if self._should_prompt_coma_template(context, work_dir, page_id, stem, entry):
+                self._prime_template_dialog_path(work, work_dir)
+                context.window_manager.fileselect_add(self)
+                return {"RUNNING_MODAL"}
+            if not blend_io.coma_blend_exists(work_dir, page_id, stem) and self.filepath:
+                selected_template = self._selected_template_path()
+                if selected_template is None:
+                    return {"CANCELLED"}
+                entry.coma_blend_template_path = str(selected_template)
+                page_io.save_page_json(work_dir, page)
+
             # work.blend を開く前後の load_post は work.json を正として再同期する。
             # 用紙色や開始ページを UI で変えた直後に cNN.blend へ入っても
             # 古い JSON で巻き戻らないよう、mainfile 切替前に必ず保存する。
@@ -187,7 +213,7 @@ class BNAME_OT_enter_coma_mode(Operator):
                 from ..utils import coma_scene
 
                 template_path, template_error = coma_scene.resolve_coma_blend_template_path(
-                    work, work_dir
+                    work, work_dir, entry
                 )
                 if template_error:
                     self.report({"ERROR"}, template_error)
@@ -273,6 +299,43 @@ class BNAME_OT_enter_coma_mode(Operator):
             _logger.exception("enter_coma_mode: B-Name sidebar open failed")
         self.report({"INFO"}, f"コマ編集モード: {stem}")
         return {"FINISHED"}
+
+    def _should_prompt_coma_template(self, context, work_dir: Path, page_id: str, stem: str, entry) -> bool:
+        if bpy.app.background:
+            return False
+        if not bool(getattr(self, "prompt_template_if_missing", True)):
+            return False
+        if str(getattr(self, "filepath", "") or "").strip():
+            return False
+        if blend_io.coma_blend_exists(work_dir, page_id, stem):
+            return False
+        return not str(getattr(entry, "coma_blend_template_path", "") or "").strip()
+
+    def _prime_template_dialog_path(self, work, work_dir: Path) -> None:
+        if str(getattr(self, "filepath", "") or "").strip():
+            return
+        try:
+            from ..utils import coma_scene
+
+            fallback, _error = coma_scene.resolve_coma_blend_template_path(work, work_dir, None)
+        except Exception:  # noqa: BLE001
+            fallback = None
+        if fallback is not None:
+            self.filepath = str(fallback)
+
+    def _selected_template_path(self) -> Path | None:
+        raw = str(getattr(self, "filepath", "") or "").strip()
+        if not raw:
+            self.report({"WARNING"}, "コマ用blendファイルが選択されていません")
+            return None
+        path = Path(raw)
+        if path.suffix.lower() != ".blend":
+            self.report({"ERROR"}, "コマ用blendファイルは .blend を指定してください")
+            return None
+        if not path.is_file():
+            self.report({"ERROR"}, f"コマ用blendファイルが見つかりません: {path}")
+            return None
+        return path.resolve()
 
 
 class BNAME_OT_exit_coma_mode(Operator):

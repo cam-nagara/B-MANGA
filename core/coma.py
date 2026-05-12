@@ -142,6 +142,15 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         description="cNN (ファイル名のベース)",
         default="",
     )
+    coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
+        name="コマ用blendファイル",
+        description=(
+            "このコマの新規コマ用blendファイル作成時に初回コピーする .blend。"
+            "空なら作品またはプリファレンスの設定を使う"
+        ),
+        default="",
+        subtype="FILE_PATH",
+    )
 
     # --- 形状 ---
     shape_type: EnumProperty(  # type: ignore[valid-type]

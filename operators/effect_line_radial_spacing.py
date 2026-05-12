@@ -103,7 +103,7 @@ def _radial_angle_at_metric(
     return (start_angle + (end_angle - start_angle) * local) % (2.0 * math.pi)
 
 
-def frame_points_for_perpendicular_spacing(
+def outline_points_for_perpendicular_spacing(
     params,
     center_xy_mm: tuple[float, float],
     outline: Sequence[tuple[float, float]],

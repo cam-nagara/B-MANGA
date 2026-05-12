@@ -24,18 +24,26 @@ _PAGE_HELPER_DATA_RE = re.compile(
 )
 
 
-def resolve_coma_blend_template_path(work, work_dir: Path) -> tuple[Path | None, str]:
+def resolve_coma_blend_template_path(
+    work,
+    work_dir: Path,
+    coma_entry=None,
+) -> tuple[Path | None, str]:
     """コマ用blendファイルのパスを実ファイルへ解決する.
 
     優先順位:
-        1. 作品情報パネルの ``work.coma_blend_template_path`` (作品ごとの個別指定)
-        2. アドオンプリファレンスの ``coma_blend_template_path`` (全作品共通)
+        1. コマ詳細の ``coma_entry.coma_blend_template_path`` (このコマのみ)
+        2. 作品情報パネルの ``work.coma_blend_template_path`` (この作品のみ)
+        3. アドオンプリファレンスの ``coma_blend_template_path`` (全作品共通)
 
     戻り値は ``(path, error_message)``。どちらも未設定なら ``(None, "")``。
     相対パスと ``//`` パスは作品ルート基準で扱う。
     """
-    raw = str(getattr(work, "coma_blend_template_path", "") or "").strip()
-    source = "work"
+    raw = str(getattr(coma_entry, "coma_blend_template_path", "") or "").strip()
+    source = "coma"
+    if not raw:
+        raw = str(getattr(work, "coma_blend_template_path", "") or "").strip()
+        source = "work"
     if not raw:
         try:
             from ..preferences import get_preferences
@@ -51,12 +59,20 @@ def resolve_coma_blend_template_path(work, work_dir: Path) -> tuple[Path | None,
         return None, ""
     path = _template_path_from_raw(raw, Path(work_dir))
     if path.suffix.lower() != ".blend":
-        label = "作品" if source == "work" else "プリファレンス"
+        label = _template_source_label(source)
         return None, f"コマ用blendファイル ({label}) は .blend を指定してください: {raw}"
     if not path.is_file():
-        label = "作品" if source == "work" else "プリファレンス"
+        label = _template_source_label(source)
         return None, f"コマ用blendファイル ({label}) が見つかりません: {path}"
     return path.resolve(), ""
+
+
+def _template_source_label(source: str) -> str:
+    if source == "coma":
+        return "このコマのみ"
+    if source == "work":
+        return "この作品のみ"
+    return "プリファレンス"
 
 
 def bootstrap_new_coma_blend(

@@ -1742,7 +1742,25 @@ def translate_effect_layers_for_parent_keys(context, parent_keys: set[str], dx_m
     for obj, layer in _effect_layer_pairs_for_parent_keys(keys):
         if is_page_move and str(obj.get(on.PROP_KIND, "") or "") == "effect":
             continue
-        gp_parent.translate_layer(layer, dx_mm, dy_mm)
+        try:
+            from ..operators import effect_line_op
+
+            bounds = effect_line_op.effect_layer_bounds(obj, layer)
+            center = effect_line_op.effect_layer_center(obj, layer, bounds)
+            if bounds is not None:
+                x, y, w, h = bounds
+                new_center = None if center is None else (center[0] + dx_mm, center[1] + dy_mm)
+                effect_line_op._write_effect_strokes(
+                    context,
+                    obj,
+                    layer,
+                    (x + dx_mm, y + dy_mm, w, h),
+                    center_xy_mm=new_center,
+                )
+            else:
+                gp_parent.translate_layer(layer, dx_mm, dy_mm)
+        except Exception:  # noqa: BLE001
+            gp_parent.translate_layer(layer, dx_mm, dy_mm)
         moved += 1
     if moved:
         tag_view3d_redraw(context)
@@ -1754,10 +1772,40 @@ def capture_gp_layers_for_parent_keys(context, parent_keys: set[str]):
 
 
 def capture_effect_layers_for_parent_keys(context, parent_keys: set[str]):
-    return gp_parent.capture_layers(effect_layers_for_parent_keys(context, parent_keys))
+    keys = {str(key or "") for key in parent_keys if str(key or "")}
+    pairs = _effect_layer_pairs_for_parent_keys(keys)
+    points = gp_parent.capture_layers([layer for _obj, layer in pairs])
+    meta = []
+    try:
+        from ..operators import effect_line_op
+
+        for obj, layer in pairs:
+            key = effect_line_op._layer_meta_key(layer)
+            data = effect_line_op._effect_meta(obj).get(key)
+            meta.append((obj, key, dict(data) if isinstance(data, dict) else None))
+    except Exception:  # noqa: BLE001
+        meta = []
+    return {"points": points, "effect_meta": meta}
 
 
 def restore_gp_layer_snapshots(snapshot) -> None:
+    if isinstance(snapshot, dict):
+        gp_parent.restore_layers(snapshot.get("points", []))
+        meta_snapshot = snapshot.get("effect_meta", [])
+        if meta_snapshot:
+            try:
+                from ..operators import effect_line_op
+
+                for obj, key, entry in meta_snapshot:
+                    meta = effect_line_op._effect_meta(obj)
+                    if entry is None:
+                        meta.pop(str(key), None)
+                    else:
+                        meta[str(key)] = dict(entry)
+                    effect_line_op._write_effect_meta(obj, meta)
+            except Exception:  # noqa: BLE001
+                pass
+        return
     gp_parent.restore_layers(snapshot)
 
 

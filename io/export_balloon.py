@@ -251,13 +251,13 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     bbox = ep._points_bbox(all_pts)
     if bbox is None:
         return None
-    pad_mm = max(2.0, float(getattr(entry, "line_width_mm", 0.6)) * 4.0)
+    pad_mm = max(2.0, float(getattr(entry, "line_width_mm", 0.3)) * 4.0)
     canvas = ep._canvas_for_bbox(bbox, canvas_height_px, dpi, pad_mm=pad_mm)
     if canvas is None:
         return None
     fill_color = ep._rgb255(entry.fill_color, alpha=float(getattr(entry, "opacity", 1.0)))
     line_color = ep._rgb255(entry.line_color, alpha=float(getattr(entry, "opacity", 1.0)))
-    line_width_px = max(1, int(round(mm_to_px(float(getattr(entry, "line_width_mm", 0.6)), dpi))))
+    line_width_px = max(1, int(round(mm_to_px(float(getattr(entry, "line_width_mm", 0.3)), dpi))))
     draw = ep.ImageDraw.Draw(canvas.image)
     outline_px = canvas.points_px(outline)
     if len(outline_px) >= 3:

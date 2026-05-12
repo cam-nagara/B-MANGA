@@ -11,6 +11,8 @@ DrawRectFill = Callable[[Rect, tuple[float, float, float, float]], None]
 DrawRectOutline = Callable[..., None]
 
 _HANDLE_SIZE_MM = 2.0
+_CENTER_CROSS_SIZE_MM = 8.0
+_CENTER_CROSS_WIDTH_MM = 0.6
 
 
 def _handle_rects(rect: Rect) -> list[Rect]:
@@ -51,7 +53,14 @@ def draw_active_effect_line_bounds(
     if active_effect and bounds is not None:
         world_bounds = effect_line_op.effect_layer_world_bounds(context, obj, layer, bounds)
         if world_bounds is not None:
-            _draw_bounds(world_bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
+            center = effect_line_op.effect_layer_center(obj, layer, bounds)
+            world_center = effect_line_op.effect_layer_world_point(context, obj, center, layer)
+            _draw_bounds(
+                world_bounds,
+                center_xy=world_center,
+                draw_rect_fill=draw_rect_fill,
+                draw_rect_outline=draw_rect_outline,
+            )
         if layer is not None:
             drawn.add(str(getattr(layer, "name", "") or ""))
             drawn.add(object_selection.parse_key(object_selection.effect_key(layer))[2])
@@ -71,17 +80,53 @@ def draw_active_effect_line_bounds(
                     selected_bounds,
                 )
                 if world_bounds is not None:
-                    _draw_bounds(world_bounds, draw_rect_fill=draw_rect_fill, draw_rect_outline=draw_rect_outline)
+                    center = effect_line_op.effect_layer_center(obj, selected_layer, selected_bounds)
+                    world_center = effect_line_op.effect_layer_world_point(context, obj, center, selected_layer)
+                    _draw_bounds(
+                        world_bounds,
+                        center_xy=world_center,
+                        draw_rect_fill=draw_rect_fill,
+                        draw_rect_outline=draw_rect_outline,
+                    )
 
 
 def _draw_bounds(
     bounds,
     *,
+    center_xy=None,
     draw_rect_fill: DrawRectFill,
     draw_rect_outline: DrawRectOutline,
 ) -> None:
     rect = Rect(float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3]))
     draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
+    _draw_center_cross(
+        rect,
+        center_xy=center_xy,
+        draw_rect_fill=draw_rect_fill,
+        draw_rect_outline=draw_rect_outline,
+    )
     for handle in _handle_rects(rect):
         draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
         draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
+
+
+def _draw_center_cross(
+    rect: Rect,
+    *,
+    center_xy=None,
+    draw_rect_fill: DrawRectFill,
+    draw_rect_outline: DrawRectOutline,
+) -> None:
+    if center_xy is None:
+        cx = rect.x + rect.width * 0.5
+        cy = rect.y + rect.height * 0.5
+    else:
+        cx = float(center_xy[0])
+        cy = float(center_xy[1])
+    half = _CENTER_CROSS_SIZE_MM * 0.5
+    bar = max(0.2, _CENTER_CROSS_WIDTH_MM)
+    horizontal = Rect(cx - half, cy - bar * 0.5, _CENTER_CROSS_SIZE_MM, bar)
+    vertical = Rect(cx - bar * 0.5, cy - half, bar, _CENTER_CROSS_SIZE_MM)
+    for marker in (horizontal, vertical):
+        draw_rect_fill(marker, viewport_colors.SELECTION_STRONG)
+        draw_rect_outline(marker, viewport_colors.HANDLE_OUTLINE, width_mm=0.12)

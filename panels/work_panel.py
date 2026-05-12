@@ -92,7 +92,8 @@ class BNAME_PT_work(Panel):
         box.prop(work, "coma_blend_template_path", text="")
         sub = box.column(align=True)
         sub.scale_y = 0.85
-        sub.label(text="空のときはプリファレンスの共通設定が使われる", icon="INFO")
+        sub.label(text="コマごとの設定が空のときに使われる", icon="INFO")
+        sub.label(text="さらに空のときはプリファレンスの共通設定が使われる")
 
 
 class BNAME_PT_coma_return(Panel):

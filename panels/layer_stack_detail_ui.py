@@ -376,8 +376,11 @@ def _draw_effect_interval_settings(box, params) -> None:
     sub.enabled = params.bundle_enabled
     row = sub.row(align=True)
     row.prop(params, "bundle_line_count")
-    row.prop(params, "bundle_gap_mm")
+    row.prop(params, "bundle_line_count_jitter", text="乱れ")
     sub.prop(params, "bundle_jitter_amount")
+    row = sub.row(align=True)
+    row.prop(params, "bundle_gap_mm")
+    row.prop(params, "bundle_gap_jitter_amount", text="乱れ")
     interval_box.prop(params, "max_line_count")
 
 
@@ -486,6 +489,14 @@ def _draw_coma_selected_settings(box, context, entry) -> None:
     settings.prop(entry, "title", text="表示名")
     if hasattr(entry, "visible"):
         settings.prop(entry, "visible", text="表示")
+
+    blend_box = box.box()
+    blend_box.label(text="コマ用blendファイル (このコマのみ)", icon="FILE_BLEND")
+    blend_box.prop(entry, "coma_blend_template_path", text="")
+    sub = blend_box.column(align=True)
+    sub.scale_y = 0.85
+    sub.label(text="空のときは作品/プリファレンスの設定が使われる", icon="INFO")
+
     box.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
 
     from . import coma_detail_panel

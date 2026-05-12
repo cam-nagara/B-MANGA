@@ -76,6 +76,7 @@ def _set_layer_bounds(
     *,
     seed: int | None = None,
     params_data: dict | None = None,
+    center_xy_mm: tuple[float, float] | None = None,
 ) -> None:
     x, y, w, h = bounds
     meta = _effect_meta(obj)
@@ -94,6 +95,13 @@ def _set_layer_bounds(
         "h": max(_EFFECT_MIN_SIZE_MM, float(h)),
         "seed": int(seed or 0),
     })
+    if center_xy_mm is None:
+        try:
+            center_xy_mm = (float(prev["center_x"]), float(prev["center_y"]))
+        except Exception:  # noqa: BLE001
+            center_xy_mm = (float(x) + entry["w"] * 0.5, float(y) + entry["h"] * 0.5)
+    entry["center_x"] = float(center_xy_mm[0])
+    entry["center_y"] = float(center_xy_mm[1])
     if params_data is not None:
         entry["params"] = params_data
     meta[key] = entry
@@ -170,6 +178,26 @@ def effect_layer_bounds(obj, layer) -> tuple[float, float, float, float] | None:
     return _stroke_bounds(layer)
 
 
+def _bounds_center(bounds: tuple[float, float, float, float]) -> tuple[float, float]:
+    return float(bounds[0]) + float(bounds[2]) * 0.5, float(bounds[1]) + float(bounds[3]) * 0.5
+
+
+def effect_layer_center(obj, layer, bounds=None) -> tuple[float, float] | None:
+    if obj is None or layer is None:
+        return None
+    if bounds is None:
+        bounds = effect_layer_bounds(obj, layer)
+    if bounds is None:
+        return None
+    stored = _effect_meta(obj).get(_layer_meta_key(layer))
+    if isinstance(stored, dict):
+        try:
+            return float(stored["center_x"]), float(stored["center_y"])
+        except Exception:  # noqa: BLE001
+            pass
+    return _bounds_center(bounds)
+
+
 def _page_world_offset_for_parent_key(context, parent_key: str) -> tuple[float, float] | None:
     parent_key = str(parent_key or "")
     if not parent_key:
@@ -206,6 +234,23 @@ def effect_layer_world_bounds(context, obj, layer, bounds=None) -> tuple[float, 
             offset = (0.0, 0.0)
     ox, oy = offset if offset is not None else (0.0, 0.0)
     return float(x) + ox, float(y) + oy, float(w), float(h)
+
+
+def effect_layer_world_point(context, obj, xy_mm: tuple[float, float] | None, layer=None) -> tuple[float, float] | None:
+    if obj is None or xy_mm is None:
+        return None
+    from ..utils import object_naming as on
+
+    parent_key = gp_parent.parent_key(layer) if layer is not None else ""
+    parent_key = parent_key or str(obj.get(on.PROP_PARENT_KEY, "") or "")
+    offset = _page_world_offset_for_parent_key(context, parent_key)
+    if offset is None and str(obj.get(on.PROP_KIND, "") or "") == "effect":
+        try:
+            offset = (m_to_mm(float(obj.location.x)), m_to_mm(float(obj.location.y)))
+        except Exception:  # noqa: BLE001
+            offset = (0.0, 0.0)
+    ox, oy = offset if offset is not None else (0.0, 0.0)
+    return float(xy_mm[0]) + ox, float(xy_mm[1]) + oy
 
 
 def active_effect_layer_bounds(context=None):
@@ -504,6 +549,7 @@ def _write_effect_strokes(
     seed: int | None = None,
     params_override=None,
     propagate_link: bool = True,
+    center_xy_mm: tuple[float, float] | None = None,
 ) -> int:
     from ..utils import gpencil
     from ..core import effect_line
@@ -515,8 +561,10 @@ def _write_effect_strokes(
     x, y, w, h = bounds
     w = max(_EFFECT_MIN_SIZE_MM, float(w))
     h = max(_EFFECT_MIN_SIZE_MM, float(h))
-    cx = float(x) + w * 0.5
-    cy = float(y) + h * 0.5
+    shape_center_xy = (float(x) + w * 0.5, float(y) + h * 0.5)
+    focus_center_xy = center_xy_mm if center_xy_mm is not None else effect_layer_center(obj, layer, (float(x), float(y), w, h))
+    if focus_center_xy is None:
+        focus_center_xy = shape_center_xy
     seed_value = _seed_for_layer(obj, layer) if seed is None else int(seed)
     drawing = _frame_drawing(layer)
     if drawing is None:
@@ -547,22 +595,24 @@ def _write_effect_strokes(
         (0.0, 0.75, 1.0, opacity),
     )
     _clear_drawing(drawing)
-    start_outline, start_extend = _start_frame_outline_for_bounds(context, params, (cx, cy))
+    start_outline, start_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
     strokes = effect_line_gen.generate_strokes(
         params,
-        center_xy_mm=(cx, cy),
+        center_xy_mm=focus_center_xy,
         radius_xy_mm=(w * 0.5, h * 0.5),
         seed=seed_value,
         start_outline_mm=start_outline,
         start_extend_mm=start_extend,
+        end_center_xy_mm=shape_center_xy,
     )
     guide_strokes = effect_line_gen.generate_shape_guide_strokes(
         params,
-        center_xy_mm=(cx, cy),
+        center_xy_mm=focus_center_xy,
         radius_xy_mm=(w * 0.5, h * 0.5),
         start_outline_mm=start_outline,
         start_extend_mm=start_extend,
         seed=seed_value,
+        end_center_xy_mm=shape_center_xy,
     )
     line_added = 0
     for stroke in strokes:
@@ -604,6 +654,7 @@ def _write_effect_strokes(
         (float(x), float(y), w, h),
         seed=seed_value,
         params_data=params_data,
+        center_xy_mm=focus_center_xy,
     )
     if propagate_link:
         effect_line_link_op.propagate_linked_effect_strokes(
@@ -612,6 +663,7 @@ def _write_effect_strokes(
             layer,
             (float(x), float(y), w, h),
             params_data,
+            focus_center_xy,
         )
     return line_added
 
@@ -839,37 +891,48 @@ def _event_in_view3d_window(context, event) -> bool:
     return view_event_region.is_view3d_window_event(context, event)
 
 
-def _effect_hit_part(bounds: tuple[float, float, float, float], x_mm: float, y_mm: float) -> str:
+def _effect_hit_part(
+    bounds: tuple[float, float, float, float],
+    x_mm: float,
+    y_mm: float,
+    *,
+    center_xy_mm: tuple[float, float] | None = None,
+) -> str:
     x, y, w, h = bounds
     left, bottom, right, top = x, y, x + w, y + h
     threshold = min(_EFFECT_HANDLE_HIT_MM, max(0.35, min(w, h) * 0.25))
-    if not (
+    in_expanded_bounds = (
         left - threshold <= x_mm <= right + threshold
         and bottom - threshold <= y_mm <= top + threshold
-    ):
-        return ""
+    )
     near_left = abs(x_mm - left) <= threshold
     near_right = abs(x_mm - right) <= threshold
     near_bottom = abs(y_mm - bottom) <= threshold
     near_top = abs(y_mm - top) <= threshold
     inside_x = left <= x_mm <= right
     inside_y = bottom <= y_mm <= top
-    if near_left and near_top:
+    if in_expanded_bounds and near_left and near_top:
         return "top_left"
-    if near_right and near_top:
+    if in_expanded_bounds and near_right and near_top:
         return "top_right"
-    if near_left and near_bottom:
+    if in_expanded_bounds and near_left and near_bottom:
         return "bottom_left"
-    if near_right and near_bottom:
+    if in_expanded_bounds and near_right and near_bottom:
         return "bottom_right"
-    if near_left and inside_y:
+    if in_expanded_bounds and near_left and inside_y:
         return "left"
-    if near_right and inside_y:
+    if in_expanded_bounds and near_right and inside_y:
         return "right"
-    if near_top and inside_x:
+    if in_expanded_bounds and near_top and inside_x:
         return "top"
-    if near_bottom and inside_x:
+    if in_expanded_bounds and near_bottom and inside_x:
         return "bottom"
+    center_threshold = max(threshold, _EFFECT_HANDLE_HIT_MM)
+    cx, cy = center_xy_mm if center_xy_mm is not None else (left + w * 0.5, bottom + h * 0.5)
+    if math.hypot(float(x_mm) - float(cx), float(y_mm) - float(cy)) <= center_threshold:
+        return "center"
+    if not in_expanded_bounds:
+        return ""
     if inside_x and inside_y:
         return "body"
     return ""
@@ -958,7 +1021,12 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             bounds = effect_layer_bounds(obj, layer)
             if bounds is None:
                 continue
-            part = _effect_hit_part(bounds, local_x, local_y)
+            part = _effect_hit_part(
+                bounds,
+                local_x,
+                local_y,
+                center_xy_mm=effect_layer_center(obj, layer, bounds),
+            )
             if not part:
                 part = _layer_stroke_hit_part(layer, local_x, local_y)
             if part:
@@ -1012,6 +1080,8 @@ class BNAME_OT_effect_line_tool(Operator):
     _drag_orig_y: float
     _drag_orig_w: float
     _drag_orig_h: float
+    _drag_orig_center_x: float
+    _drag_orig_center_y: float
     _drag_moved: bool
 
     @classmethod
@@ -1149,6 +1219,9 @@ class BNAME_OT_effect_line_tool(Operator):
         self._drag_orig_y = float(bounds[1])
         self._drag_orig_w = float(bounds[2])
         self._drag_orig_h = float(bounds[3])
+        center = effect_layer_center(obj, layer, bounds) or _bounds_center(bounds)
+        self._drag_orig_center_x = float(center[0])
+        self._drag_orig_center_y = float(center[1])
         self._drag_moved = False
 
     def _clear_drag_state(self) -> None:
@@ -1162,6 +1235,8 @@ class BNAME_OT_effect_line_tool(Operator):
         self._drag_orig_y = 0.0
         self._drag_orig_w = 0.0
         self._drag_orig_h = 0.0
+        self._drag_orig_center_x = 0.0
+        self._drag_orig_center_y = 0.0
         self._drag_moved = False
 
     def _modal_dragging(self, context, event):
@@ -1211,7 +1286,8 @@ class BNAME_OT_effect_line_tool(Operator):
         if abs(dx) > _EFFECT_DRAG_EPS_MM or abs(dy) > _EFFECT_DRAG_EPS_MM:
             self._drag_moved = True
         bounds = self._drag_result_bounds(dx, dy)
-        _write_effect_strokes(context, obj, layer, bounds)
+        center = self._drag_result_center(bounds, dx, dy)
+        _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=center)
         _select_effect_layer(context, obj, layer)
 
     def _drag_result_bounds(self, dx: float, dy: float) -> tuple[float, float, float, float]:
@@ -1222,6 +1298,8 @@ class BNAME_OT_effect_line_tool(Operator):
         h = float(self._drag_orig_h)
         if action == "create":
             return _rect_from_points(self._drag_start_x, self._drag_start_y, self._drag_start_x + dx, self._drag_start_y + dy)
+        if action == "center":
+            return x, y, w, h
         if action == "move":
             return x + dx, y + dy, w, h
         right = x + w
@@ -1239,6 +1317,19 @@ class BNAME_OT_effect_line_tool(Operator):
         if "top" in action:
             new_top = max(y + _EFFECT_MIN_SIZE_MM, top + dy)
         return new_left, new_bottom, new_right - new_left, new_top - new_bottom
+
+    def _drag_result_center(
+        self,
+        bounds: tuple[float, float, float, float],
+        dx: float,
+        dy: float,
+    ) -> tuple[float, float]:
+        action = str(getattr(self, "_drag_action", "") or "")
+        if action == "create":
+            return _bounds_center(bounds)
+        if action in {"move", "center"}:
+            return self._drag_orig_center_x + dx, self._drag_orig_center_y + dy
+        return self._drag_orig_center_x, self._drag_orig_center_y
 
     def _finish_drag(self, context) -> None:
         obj, layer = self._drag_target(context)
@@ -1265,7 +1356,13 @@ class BNAME_OT_effect_line_tool(Operator):
                     self._drag_orig_w,
                     self._drag_orig_h,
                 )
-                _write_effect_strokes(context, obj, layer, bounds)
+                _write_effect_strokes(
+                    context,
+                    obj,
+                    layer,
+                    bounds,
+                    center_xy_mm=(self._drag_orig_center_x, self._drag_orig_center_y),
+                )
                 _select_effect_layer(context, obj, layer)
         self._clear_drag_state()
 

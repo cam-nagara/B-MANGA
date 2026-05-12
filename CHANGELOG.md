@@ -3,6 +3,107 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-12 — v0.5.39 コマ初回オープン時のblendファイル選択を追加
+
+### 症状
+コマごとのコマ用blendファイルを指定できるようになっても、未設定のコマを初めて開くときに、その場でコマ用blendファイルを選べなかった。
+
+### 原因
+新規コマ用blendファイル作成時の流れが、保存済みの設定を読むだけで、未設定コマに対してファイル選択を挟む分岐を持っていなかった。
+
+### 修正
+- コマ用blendファイルがまだ作成されておらず、「このコマのみ」の指定が空のコマを開くとき、ファイル選択ダイアログを表示するようにした。
+- ダイアログで選んだファイルを、そのコマの「コマ用blendファイル (このコマのみ)」として保存してから開くようにした。
+- 2回目以降は保存済みのコマ用blendファイルを使うため、同じコマではダイアログを再表示しない。
+- B-Name 本体バージョンを `0.5.38` から `0.5.39` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `python -m py_compile operators\mode_op.py operators\object_tool_op.py test\blender_coma_template_check.py core\coma.py io\schema.py utils\coma_scene.py panels\layer_stack_detail_ui.py panels\work_panel.py`
+- `test/blender_coma_template_check.py`
+- `test/blender_detail_settings_runtime_check.py`
+- `test/blender_restructure_e2e.py`
+- `test/blender_object_tool_selection_check.py`
+
+## 2026-05-12 — v0.5.38 コマごとのコマ用blendファイル指定を追加
+
+### 症状
+コマ用blendファイルは「この作品のみ」とプリファレンス共通の指定だけで、同じ作品内のコマごとに別のコマ用blendファイルを使い分けられなかった。
+
+### 原因
+コマ情報に個別のコマ用blendファイル欄を保存しておらず、新規コマ用blendファイル作成時の参照順も「この作品のみ」→プリファレンス共通だけだった。
+
+### 修正
+- コマ詳細に「コマ用blendファイル (このコマのみ)」を追加した。
+- 新規コマ用blendファイル作成時は、「このコマのみ」→「この作品のみ」→プリファレンス共通の順に使うようにした。
+- コマ情報の保存・読込で、このコマのみの指定を保持するようにした。
+- B-Name 本体バージョンを `0.5.37` から `0.5.38` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `python -m py_compile core\coma.py io\schema.py utils\coma_scene.py operators\mode_op.py panels\layer_stack_detail_ui.py panels\work_panel.py test\blender_coma_template_check.py`
+- `test/blender_coma_template_check.py`
+- `test/blender_detail_settings_runtime_check.py`
+
+## 2026-05-11 — v0.5.37 効果線の中心点独立化と線幅設定整理
+
+### 症状
+効果線とフキダシの形状候補に旧タイプが残っていた。効果線の中心点は終点形状の中央と一体化しており、終点形状だけ残したまま中心点だけを動かせなかった。また、効果線の線幅表示が「ブラシサイズ」のままで、まとまりの数や間隔には乱れを付けられなかった。フキダシと効果線の初期線幅も揃っていなかった。
+
+### 原因
+旧形状候補を互換用の読込・描画処理だけでなく、詳細設定の候補にも残していた。効果線の保存情報が終点形状の外枠だけを持ち、集中線の放射中心を別座標として保存していなかった。線幅とまとまり設定の表示名・初期値も旧仕様のままだった。
+
+### 修正
+- 「終点形状」とフキダシの「形状」から旧タイプを削除し、旧保存値は現在の形状へ読み替えるようにした。
+- 効果線の中心点を終点形状とは別に保存し、十字をドラッグすると中心点だけ移動するようにした。
+- 集中線は中心点へ向かう直線を維持したまま、終点形状との交差位置まで描画するようにした。
+- 効果線の「ブラシサイズ」を「線幅」に改名し、効果線・フキダシの初期線幅を 0.3 にした。
+- まとまりに「数の乱れ」と「まとまり間隔の乱れ」を追加した。
+- B-Name 本体バージョンを `0.5.36` から `0.5.37` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `python -m py_compile core\balloon.py core\effect_line.py operators\effect_line_gen.py operators\effect_line_link_op.py operators\effect_line_op.py operators\object_tool_op.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py ui\overlay_balloon.py ui\overlay_effect_line.py utils\balloon_curve_object.py utils\balloon_shapes.py utils\layer_stack.py io\schema.py io\export_balloon.py test\blender_effect_line_frame_spacing_check.py test\blender_object_tool_selection_check.py`
+- `test/blender_effect_line_frame_spacing_check.py`
+- `test/blender_object_tool_selection_check.py`
+- `test/blender_detail_settings_runtime_check.py`
+
+## 2026-05-11 — v0.5.36 効果線の終点描画と中心点操作を修正
+
+### 症状
+集中線の実線が「終点形状」ではなく中心点まで描画されていたため、「抜き (%)」を 0.00 にしても、ユーザーが見ている終点形状上で太さ 0% にならなかった。また、中心点が画面上で明示されず、中心点を直接ドラッグして移動できなかった。
+
+### 原因
+集中線の終点を中心点固定として扱い、終点形状はガイド表示だけに使っていた。選択表示も外枠とリサイズハンドルだけで、中心点専用の表示とヒット判定を持っていなかった。
+
+### 修正
+- 集中線の実線を、始点から終点形状との交点まで描画するようにした。
+- 「抜き (%)」0.00 のとき、実際に描画される終点で線幅が 0% になるようにした。
+- 効果線の中心点を十字で表示し、十字上のドラッグで中心点位置を移動できるようにした。
+- B-Name 本体バージョンを `0.5.35` から `0.5.36` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `python -m py_compile core\effect_line.py operators\effect_line_density.py operators\effect_line_radial_spacing.py operators\effect_line_gen.py operators\effect_line_op.py operators\object_tool_op.py ui\overlay_effect_line.py test\blender_effect_line_frame_spacing_check.py`
+- `test/blender_effect_line_frame_spacing_check.py`
+- `test/blender_detail_settings_runtime_check.py`
+- `test/blender_object_tool_selection_check.py`
+
+## 2026-05-11 — v0.5.35 効果線の密度補正対象と長さ乱れを修正
+
+### 症状
+「始点をコマ枠に設定」がオフの通常の始点形状では、「密度補正」をオンにしても垂直距離基準の線間隔になっていなかった。また、集中線の「長さ乱れ」をオンにしても線の長さが変わらない状態になっていた。
+
+### 原因
+密度補正の新しい線間隔計算を、コマ枠を始点にした場合だけに限定していた。さらに、集中線を中心点へ向かう直線に戻した際、長さ乱れによる終点側の短縮処理を外していた。
+
+### 修正
+- 「始点をコマ枠に設定」がオフでも、「密度補正」オン時は集中線に垂直な方向で隣の集中線まで測った距離を「線の間隔 (距離)」として扱うようにした。
+- 「密度補正」オフ時の通常の始点形状配置は従来通り維持した。
+- 「長さ乱れ」オン時は、集中線が中心点の方向を保ったまま、線ごとに中心点手前で止まるようにした。
+- B-Name 本体バージョンを `0.5.34` から `0.5.35` へ更新。
+
+### 検証 (Blender 5.1.1 実機)
+- `python -m py_compile core\effect_line.py operators\effect_line_density.py operators\effect_line_radial_spacing.py operators\effect_line_gen.py test\blender_effect_line_frame_spacing_check.py`
+- `test/blender_effect_line_frame_spacing_check.py`
+- `test/blender_detail_settings_runtime_check.py`
+
 ## 2026-05-11 — v0.5.34 効果線を中心点直線と垂直距離間隔へ修正
 
 ### 症状

@@ -436,7 +436,7 @@ def enter_coma_from_hit(context, hit: dict) -> bool:
         result = bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
     except Exception:  # noqa: BLE001
         return False
-    return result == {"FINISHED"}
+    return result in ({"FINISHED"}, {"RUNNING_MODAL"})
 
 
 def _rect_resize_result(
@@ -757,10 +757,15 @@ class BNAME_OT_object_tool(Operator):
                 bounds = effect_line_op.effect_layer_bounds(obj, layer)
                 if layer is None or bounds is None:
                     continue
+                center = effect_line_op.effect_layer_center(obj, layer, bounds) or (
+                    float(bounds[0]) + float(bounds[2]) * 0.5,
+                    float(bounds[1]) + float(bounds[3]) * 0.5,
+                )
                 snapshots.append({
                     "kind": "effect",
                     "item_id": item_id,
                     "rect": (float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3])),
+                    "center": (float(center[0]), float(center[1])),
                 })
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, item_id)
@@ -917,8 +922,16 @@ class BNAME_OT_object_tool(Operator):
                 obj, layer = _find_effect_layer(snapshot["item_id"])
                 if layer is None:
                     continue
-                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
-                effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh))
+                if self._drag_action == "center":
+                    nx, ny, nw, nh = x, y, w, h
+                else:
+                    nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
+                cx, cy = snapshot.get("center", (x + w * 0.5, y + h * 0.5))
+                if self._drag_action in {"move", "center"}:
+                    center = (float(cx) + dx, float(cy) + dy)
+                else:
+                    center = (float(cx), float(cy))
+                effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh), center_xy_mm=center)
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, snapshot["item_id"])
                 if entry is None:

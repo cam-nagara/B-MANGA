@@ -707,6 +707,7 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "id": entry.id,
         "title": entry.title,
         "comaId": entry.coma_id,
+        "comaBlendTemplatePath": str(getattr(entry, "coma_blend_template_path", "") or ""),
         "shape": {
             "type": entry.shape_type,
             "rect": {
@@ -747,6 +748,8 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.id = data.get("id", "")
     entry.title = data.get("title", "")
     entry.coma_id = data.get("comaId", "")
+    if hasattr(entry, "coma_blend_template_path"):
+        entry.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
     shape = data.get("shape", {})
     entry.shape_type = shape.get("type", "rect")
     rect = shape.get("rect", {})
@@ -853,7 +856,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
     entry.line_style = data.get("lineStyle", "solid")
-    entry.line_width_mm = float(data.get("lineWidthMm", 0.6))
+    entry.line_width_mm = float(data.get("lineWidthMm", 0.3))
     alpha = float(data.get("lineColorAlpha", 1.0))
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)
     alpha = float(data.get("fillColorAlpha", 1.0))

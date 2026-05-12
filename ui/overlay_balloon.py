@@ -176,7 +176,7 @@ def draw_balloons(
                 line,
                 line_width=line_width,
                 style=line_style,
-                width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.6))),
+                width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
             )
 
         for tail in getattr(entry, "tails", []):
@@ -189,7 +189,7 @@ def draw_balloons(
                 draw_polygon_fill=draw_polygon_fill,
                 draw_polyline_loop=draw_polyline_loop,
                 line_style=line_style,
-                line_width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.6))),
+                line_width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
                 clip_polygon=coma_poly,
             )
 
@@ -377,7 +377,7 @@ def _draw_balloon_tail(
     draw_polygon_fill: DrawPolygonFill,
     draw_polyline_loop: DrawPolylineLoop,
     line_style: str = "solid",
-    line_width_mm: float = 0.6,
+    line_width_mm: float = 0.3,
     clip_polygon: list[tuple[float, float]] | None = None,
 ) -> None:
     cx = (rect.x + rect.x2) * 0.5

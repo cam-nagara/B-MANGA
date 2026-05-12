@@ -298,12 +298,22 @@ def _slot_positions(count: int, params, rng: random.Random) -> list[float]:
     count = max(1, int(count))
     if not bool(getattr(params, "bundle_enabled", False)):
         return [float(i) for i in range(count)]
-    bundle_size = max(1, int(getattr(params, "bundle_line_count", 4)))
-    gap_slots = _bundle_gap_slots(params)
+    base_bundle_size = max(1, int(getattr(params, "bundle_line_count", 4)))
+    base_gap_slots = _bundle_gap_slots(params)
     bundle_jitter = _clamp01(getattr(params, "bundle_jitter_amount", 0.0))
+    count_jitter = _clamp01(getattr(params, "bundle_line_count_jitter", 0.0))
+    gap_jitter = _clamp01(getattr(params, "bundle_gap_jitter_amount", 0.0))
     out: list[float] = []
     slot = 0
     while slot < count:
+        bundle_size = base_bundle_size
+        if count_jitter > 0.0:
+            factor = 1.0 + (rng.random() * 2.0 - 1.0) * count_jitter
+            bundle_size = max(1, int(round(base_bundle_size * factor)))
+        gap_slots = base_gap_slots
+        if gap_jitter > 0.0 and base_gap_slots > 0:
+            factor = 1.0 + (rng.random() * 2.0 - 1.0) * gap_jitter
+            gap_slots = max(0, int(round(base_gap_slots * factor)))
         for i in range(bundle_size):
             pos = float(slot + i)
             if pos >= count:
@@ -328,7 +338,7 @@ def _append_focus_stroke(
     params,
     rng: random.Random,
     start_xy_mm: tuple[float, float],
-    center_xy_mm: tuple[float, float],
+    end_xy_mm: tuple[float, float],
 ) -> None:
     radius_mm = _jitter(
         params.brush_size_mm,
@@ -338,7 +348,9 @@ def _append_focus_stroke(
     radius, radii = _stroke_radii(params, radius_mm, 2)
     opacities = _stroke_opacities(params, 2)
     x0, y0 = start_xy_mm
-    x1, y1 = center_xy_mm
+    factor = _length_jitter_factor(params, rng)
+    x1 = x0 + (end_xy_mm[0] - x0) * factor
+    y1 = y0 + (end_xy_mm[1] - y0) * factor
     out.append(
         EffectLineStroke(
             points_xyz=[
@@ -350,6 +362,17 @@ def _append_focus_stroke(
             opacities=opacities,
         )
     )
+
+
+def _focus_end_point(
+    center_xy_mm: tuple[float, float],
+    end_outline: Sequence[tuple[float, float]],
+    start_xy_mm: tuple[float, float],
+) -> tuple[float, float]:
+    cx, cy = center_xy_mm
+    angle = math.atan2(float(start_xy_mm[1]) - cy, float(start_xy_mm[0]) - cx)
+    point = _ray_outline_point(center_xy_mm, end_outline, angle)
+    return point if point is not None else center_xy_mm
 
 
 def _stroke_radii(params, radius_mm: float, point_count: int = 2) -> tuple[float, list[float] | None]:
@@ -389,28 +412,28 @@ def generate_focus_strokes(
     seed: int = 0,
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
+    end_center_xy_mm: tuple[float, float] | None = None,
 ) -> list[EffectLineStroke]:
     """集中線 (focus) のストローク生成.
 
-    始点形状から終点形状へ線を引く。終点形状が CSP の「内側」に相当する。
+    始点形状から終点形状へ線を引く。中心点は放射方向の基準として扱う。
     """
     rng = random.Random(seed)
     out: list[EffectLineStroke] = []
+    shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if start_outline_mm is None:
-        cx, cy = center_xy_mm
+        cx, cy = shape_center_xy_mm
         start_rect = _scaled_rect(cx, cy, radius_x_mm, radius_y_mm, 2.0)
-        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm, seed=seed + 11)
+        start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_extend = 0.0
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
         start_extend = max(0.0, float(start_extend_mm))
-    spacing_from_start_outline = (
-        start_outline_mm is not None
-        and str(getattr(params, "spacing_mode", "") or "") == "distance"
-        and len(start_outline) >= 2
-    )
-    if spacing_from_start_outline and bool(getattr(params, "spacing_density_compensation", False)):
-        for point in effect_line_radial_spacing.frame_points_for_perpendicular_spacing(
+    end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
+    end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+    distance_outline_available = str(getattr(params, "spacing_mode", "") or "") == "distance" and len(start_outline) >= 2
+    if distance_outline_available and bool(getattr(params, "spacing_density_compensation", False)):
+        for point in effect_line_radial_spacing.outline_points_for_perpendicular_spacing(
             params,
             center_xy_mm,
             start_outline,
@@ -420,9 +443,11 @@ def generate_focus_strokes(
             slot_positions=_slot_positions,
             clamp01=_clamp01,
         ):
-            _append_focus_stroke(out, params, rng, point, center_xy_mm)
+            end_point = _focus_end_point(center_xy_mm, end_outline, point)
+            _append_focus_stroke(out, params, rng, point, end_point)
         return out
 
+    spacing_from_start_outline = start_outline_mm is not None and distance_outline_available
     count_outline = start_outline
     count = _focus_slot_count_for_outline(params, count_outline, radius_x_mm, radius_y_mm)
     step_angle = (2.0 * math.pi) / max(1, count)
@@ -452,7 +477,8 @@ def generate_focus_strokes(
                 angle,
                 extend_mm=start_extend,
             )
-        _append_focus_stroke(out, params, rng, (x0, y0), center_xy_mm)
+        end_point = _focus_end_point(center_xy_mm, end_outline, (x0, y0))
+        _append_focus_stroke(out, params, rng, (x0, y0), end_point)
     return out
 
 
@@ -547,7 +573,7 @@ def generate_speed_guide_strokes(
 ) -> list[EffectLineStroke]:
     """流線の始点線/終点線を、閉じていないベジェ曲線として返す。"""
     rx, ry = radius_xy_mm
-    radius = mm_to_m(max(0.05, min(0.25, float(getattr(params, "brush_size_mm", 0.4)) * 0.4)) / 2.0)
+    radius = mm_to_m(max(0.05, min(0.25, float(getattr(params, "brush_size_mm", 0.3)) * 0.4)) / 2.0)
     angle_deg = float(getattr(params, "speed_angle_deg", 0.0))
     start_points = _speed_guide_curve_points(center_xy_mm, rx, ry, angle_deg, -1.0)
     end_points = _speed_guide_curve_points(center_xy_mm, rx, ry, angle_deg, 1.0)
@@ -854,22 +880,24 @@ def generate_strokes(
     seed=0,
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
+    end_center_xy_mm: tuple[float, float] | None = None,
 ):
     etype = params.effect_type
     rx, ry = radius_xy_mm
+    shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if etype == "speed":
         return generate_speed_strokes(
             params,
-            origin_xy_mm=center_xy_mm,
+            origin_xy_mm=shape_center_xy_mm,
             region_width_mm=rx * 2.0,
             region_height_mm=ry * 2.0,
             fixed_span_mm=rx * 2.0,
             seed=seed,
         )
     if etype == "beta_flash":
-        return generate_beta_flash_strokes(params, center_xy_mm, rx, ry, seed=seed)
+        return generate_beta_flash_strokes(params, shape_center_xy_mm, rx, ry, seed=seed)
     if etype == "white_outline":
-        return generate_white_outline_strokes(params, center_xy_mm, rx, ry, seed=seed)
+        return generate_white_outline_strokes(params, shape_center_xy_mm, rx, ry, seed=seed)
     focus_strokes = generate_focus_strokes(
         params,
         center_xy_mm,
@@ -878,6 +906,7 @@ def generate_strokes(
         seed=seed,
         start_outline_mm=start_outline_mm,
         start_extend_mm=start_extend_mm,
+        end_center_xy_mm=shape_center_xy_mm,
     )
     if etype == "uni_flash":
         return _apply_uni_flash_jag(focus_strokes, center_xy_mm)
@@ -891,20 +920,22 @@ def generate_shape_guide_strokes(
     start_outline_mm: Sequence[tuple[float, float]] | None = None,
     start_extend_mm: float = 0.0,
     seed: int = 0,
+    end_center_xy_mm: tuple[float, float] | None = None,
 ) -> list[EffectLineStroke]:
     """始点/終点の形状ラインをガイドストロークとして返す。"""
     etype = getattr(params, "effect_type", "")
+    shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if etype == "white_outline":
         return []
     if etype == "speed":
-        return generate_speed_guide_strokes(params, center_xy_mm, radius_xy_mm)
+        return generate_speed_guide_strokes(params, shape_center_xy_mm, radius_xy_mm)
     rx, ry = radius_xy_mm
-    cx, cy = center_xy_mm
+    cx, cy = shape_center_xy_mm
     end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
-    end_outline = _shape_outline(params, "end", end_rect, center_xy_mm, seed=seed + 23)
+    end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
     if start_outline_mm is None:
         start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
-        start_outline = _shape_outline(params, "start", start_rect, center_xy_mm, seed=seed + 11)
+        start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
         start_smooth = _shape_guide_uses_smooth_bezier(params, "start")
     else:
         start_outline = _actual_outline_by_rays(
@@ -913,7 +944,7 @@ def generate_shape_guide_strokes(
             extend_mm=max(0.0, float(start_extend_mm)),
         )
         start_smooth = _shape_guide_uses_smooth_bezier(params, "start", frame_outline=True)
-    radius = mm_to_m(max(0.05, min(0.25, float(getattr(params, "brush_size_mm", 0.4)) * 0.4)) / 2.0)
+    radius = mm_to_m(max(0.05, min(0.25, float(getattr(params, "brush_size_mm", 0.3)) * 0.4)) / 2.0)
     guides: list[EffectLineStroke] = []
     if len(start_outline) >= 2:
         guides.append(

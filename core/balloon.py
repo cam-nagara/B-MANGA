@@ -33,13 +33,6 @@ _SHAPE_ITEMS = (
     ("thorn", "トゲ（直線）", "Meldex ボードカードと同じ直線トゲ形"),
     ("thorn-curve", "トゲ（曲線）", "Meldex ボードカードと同じ曲線トゲ形"),
     ("octagon", "八角形", "Meldex ボードカードと同じ八角形"),
-    # Legacy B-Name values kept so existing files keep rendering.
-    ("pill", "ピル（旧）", "旧 B-Name 互換のピル形"),
-    ("hexagon", "六角形（旧）", "旧 B-Name 互換の六角形"),
-    ("diamond", "ひし形（旧）", "旧 B-Name 互換のひし形"),
-    ("star", "星（旧）", "旧 B-Name 互換の星形"),
-    ("spike_straight", "トゲ（直線・旧）", "旧 B-Name 互換。Meldex のトゲ（直線）として描画"),
-    ("spike_curve", "トゲ（曲線・旧）", "旧 B-Name 互換。Meldex のトゲ（曲線）として描画"),
     ("custom", "カスタム", "カスタム形状プリセット参照"),
     ("none", "本体なし", "テキスト単体 (擬音/ナレーション用)"),
 )
@@ -228,7 +221,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
 
     # 線・塗り
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    line_width_mm: FloatProperty(name="線幅", default=0.6, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_width_mm: FloatProperty(name="線幅", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     blend_mode: EnumProperty(name="合成モード", items=_BLEND_MODE_ITEMS, default="normal", update=_on_balloon_entry_changed)  # type: ignore[valid-type]

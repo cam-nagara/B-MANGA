@@ -33,6 +33,16 @@ def _clean_effect_shape_label(label: str) -> str:
     return str(label or "").replace("（旧）", "").replace("・旧", "")
 
 
+_LEGACY_SHAPE_TO_CURRENT = {
+    "polygon": "octagon",
+    "pill": "ellipse",
+    "hexagon": "octagon",
+    "diamond": "octagon",
+    "star": "thorn",
+    "spike_straight": "thorn",
+    "spike_curve": "thorn-curve",
+}
+
 _EFFECT_SHAPE_ITEMS = tuple(
     (item[0], _clean_effect_shape_label(item[1]), item[2])
     for item in balloon._SHAPE_ITEMS
@@ -51,7 +61,7 @@ _FRAME_DENSITY_BASIS_ITEMS = (
 )
 
 _INOUT_APPLY_ITEMS = (
-    ("brush_size", "ブラシサイズ", ""),
+    ("brush_size", "線幅", ""),
     ("opacity", "不透明度", ""),
 )
 
@@ -61,7 +71,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 6
+EFFECT_PARAM_SCHEMA_VERSION = 7
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -111,8 +121,10 @@ EFFECT_PARAM_FIELDS = (
     "max_line_count",
     "bundle_enabled",
     "bundle_line_count",
+    "bundle_line_count_jitter",
     "bundle_jitter_amount",
     "bundle_gap_mm",
+    "bundle_gap_jitter_amount",
     "inout_apply",
     "in_percent",
     "out_percent",
@@ -197,6 +209,9 @@ def effect_params_from_dict(params, data: dict) -> None:
         schema_version = 1
     if "end_shape" not in data and "base_shape" in data:
         data["end_shape"] = _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE.get(str(data["base_shape"]), "rect")
+    for shape_field in ("start_shape", "end_shape"):
+        if shape_field in data:
+            data[shape_field] = _LEGACY_SHAPE_TO_CURRENT.get(str(data[shape_field]), data[shape_field])
     if str(data.get("inout_apply", "")) == "length":
         data["inout_apply"] = "brush_size"
     if (
@@ -266,7 +281,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
-    brush_size_mm: FloatProperty(name="ブラシサイズ", default=0.40, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
+    brush_size_mm: FloatProperty(name="線幅", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     length_jitter_enabled: BoolProperty(name="線の長さ 乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
@@ -282,8 +297,10 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
 
     bundle_enabled: BoolProperty(name="まとまり", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     bundle_line_count: IntProperty(name="数", default=4, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_line_count_jitter: FloatProperty(name="数の乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     bundle_jitter_amount: FloatProperty(name="まとまりの乱れ", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     bundle_gap_mm: FloatProperty(name="まとまり間隔", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]

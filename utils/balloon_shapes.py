@@ -13,6 +13,11 @@ MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curv
 DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
 
 _LEGACY_SHAPE_ALIASES = {
+    "polygon": "octagon",
+    "pill": "ellipse",
+    "hexagon": "octagon",
+    "diamond": "octagon",
+    "star": "thorn",
     "spike_straight": "thorn",
     "spike_curve": "thorn-curve",
     "thorn_curve": "thorn-curve",

@@ -500,7 +500,7 @@ def ensure_balloon_curve_object(
         entry=entry,
     )
     # ベベルでフキダシの線幅を再現 (entry.line_width_mm)
-    line_width_mm = float(getattr(entry, "line_width_mm", 0.6) or 0.6)
+    line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
     try:
         curve_data.bevel_depth = mm_to_m(line_width_mm) * 0.5
         curve_data.bevel_resolution = 0

@@ -101,6 +101,7 @@ def propagate_linked_effect_strokes(
     source_layer,
     bounds: tuple[float, float, float, float],
     source_params_data: dict,
+    center_xy_mm: tuple[float, float] | None = None,
 ) -> None:
     from . import effect_line_op
 
@@ -133,6 +134,7 @@ def propagate_linked_effect_strokes(
             seed=effect_line_op._seed_for_layer(obj, peer_layer),
             params_override=params_proxy,
             propagate_link=False,
+            center_xy_mm=center_xy_mm,
         )
 
 

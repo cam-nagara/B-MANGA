@@ -39,12 +39,14 @@ def _base_params() -> SimpleNamespace:
         max_line_count=1000,
         bundle_enabled=False,
         bundle_line_count=4,
+        bundle_line_count_jitter=0.0,
         bundle_jitter_amount=0.0,
         bundle_gap_mm=0.0,
+        bundle_gap_jitter_amount=0.0,
         rotation_deg=0.0,
         end_shape="ellipse",
         base_shape="ellipse",
-        brush_size_mm=0.4,
+        brush_size_mm=0.3,
         brush_jitter_enabled=False,
         brush_jitter_amount=0.0,
         inout_apply="brush_size",
@@ -88,7 +90,52 @@ def _assert_on_outline(point: tuple[float, float], outline: list[tuple[float, fl
         raise AssertionError(f"focus line start should stay on frame outline: point={point}, distance={distance}")
 
 
-def _assert_simple_radial_strokes(strokes, m_to_mm, center: tuple[float, float], *, outline=None) -> None:
+def _assert_on_ellipse(
+    point: tuple[float, float],
+    center: tuple[float, float],
+    radius_xy: tuple[float, float],
+) -> None:
+    rx = max(1.0e-6, float(radius_xy[0]))
+    ry = max(1.0e-6, float(radius_xy[1]))
+    value = ((float(point[0]) - center[0]) / rx) ** 2 + ((float(point[1]) - center[1]) / ry) ** 2
+    if abs(value - 1.0) > 0.04:
+        raise AssertionError(f"focus line end should stay on end shape: point={point}, ellipse_value={value}")
+
+
+def _assert_points_collinear_to_center(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    center: tuple[float, float],
+    *,
+    label: str,
+) -> None:
+    full_length = _distance(start, center)
+    dx = center[0] - start[0]
+    dy = center[1] - start[1]
+    ex = end[0] - start[0]
+    ey = end[1] - start[1]
+    cross = abs(dx * ey - dy * ex)
+    if cross > max(1.0e-4, full_length * 1.0e-5):
+        raise AssertionError(f"{label} should point toward center: cross={cross}")
+
+
+def _assert_zero_out_radius(stroke, *, label: str) -> None:
+    radii = getattr(stroke, "radii", None)
+    if radii is None or len(radii) < 2:
+        raise AssertionError(f"{label} should have per-point radii")
+    if abs(float(radii[-1])) > 1.0e-9:
+        raise AssertionError(f"{label} should taper to zero at the stroke end: radius={radii[-1]}")
+
+
+def _assert_simple_radial_strokes(
+    strokes,
+    m_to_mm,
+    center: tuple[float, float],
+    *,
+    outline=None,
+    end_radius_xy: tuple[float, float] | None = None,
+    end_center: tuple[float, float] | None = None,
+) -> None:
     if not strokes:
         raise AssertionError("focus line generation returned no strokes")
     for index, stroke in enumerate(strokes):
@@ -97,8 +144,12 @@ def _assert_simple_radial_strokes(strokes, m_to_mm, center: tuple[float, float],
             raise AssertionError(f"focus line should be one straight segment: index={index}, points={len(points)}")
         if abs(float(getattr(stroke, "density_end", 1.0)) - 1.0) > 1.0e-9:
             raise AssertionError(f"focus line should not be shortened: index={index}")
-        if _distance(points[-1], center) > 1.0e-4:
-            raise AssertionError(f"focus line should end at center point: index={index}, end={points[-1]}")
+        _assert_points_collinear_to_center(points[0], points[-1], center, label=f"focus line {index}")
+        if _distance(points[-1], center) <= 1.0e-4:
+            raise AssertionError(f"focus line should end at the end shape, not at the center point: index={index}")
+        if end_radius_xy is not None:
+            _assert_on_ellipse(points[-1], end_center or center, end_radius_xy)
+        _assert_zero_out_radius(stroke, label=f"focus line {index}")
         if outline is not None:
             _assert_on_outline(points[0], outline)
 
@@ -138,18 +189,78 @@ def _assert_perpendicular_spacing(strokes, m_to_mm, center: tuple[float, float],
         )
 
 
+def _ellipse_radius_at_angle(radius_xy: tuple[float, float], angle: float) -> float:
+    rx = max(1.0e-6, float(radius_xy[0]))
+    ry = max(1.0e-6, float(radius_xy[1]))
+    c = math.cos(angle)
+    s = math.sin(angle)
+    return 1.0 / math.sqrt((c / rx) ** 2 + (s / ry) ** 2)
+
+
+def _assert_length_jitter_shortens_lines(
+    strokes,
+    m_to_mm,
+    center: tuple[float, float],
+    end_radius_xy: tuple[float, float],
+) -> None:
+    shortened = 0
+    for index, stroke in enumerate(strokes):
+        points = _stroke_points_mm(stroke, m_to_mm)
+        if len(points) != 2:
+            raise AssertionError(f"jittered focus line should be one straight segment: index={index}")
+        start, end = points
+        full_length = _distance(start, center)
+        end_to_center = _distance(end, center)
+        if end_to_center > full_length + 1.0e-4:
+            raise AssertionError(f"jittered focus line should not pass beyond center: index={index}")
+        angle = _angle(center, start)
+        normal_end_distance = _ellipse_radius_at_angle(end_radius_xy, angle)
+        if end_to_center > normal_end_distance + 0.05:
+            shortened += 1
+        _assert_points_collinear_to_center(start, end, center, label=f"jittered focus line {index}")
+        _assert_zero_out_radius(stroke, label=f"jittered focus line {index}")
+    if shortened <= 0:
+        raise AssertionError("length jitter should shorten at least one focus line")
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
         params = bpy.context.scene.bname_effect_line_params
+        assert abs(float(params.brush_size_mm) - 0.3) <= 1.0e-6
+        assert params.bl_rna.properties["brush_size_mm"].name == "線幅"
         assert abs(float(params.out_percent) - 0.0) <= 1.0e-6
         assert params.start_frame_density_basis == "rounded_frame"
         assert params.spacing_density_compensation is True
 
-        from bname_dev_effect_spacing.core import effect_line
-        from bname_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op
+        from bname_dev_effect_spacing.core import balloon, effect_line
+        from bname_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op, effect_line_op
+        from bname_dev_effect_spacing.ui import overlay_effect_line
+        from bname_dev_effect_spacing.utils import balloon_shapes
         from bname_dev_effect_spacing.utils.geom import m_to_mm
+
+        old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
+        effect_shape_ids = {
+            str(getattr(item, "identifier", "") or "")
+            for item in params.bl_rna.properties["end_shape"].enum_items
+        }
+        balloon_shape_ids = {item[0] for item in balloon._SHAPE_ITEMS}
+        if effect_shape_ids & old_shapes or balloon_shape_ids & old_shapes:
+            raise AssertionError(f"旧タイプが形状候補に残っています: effect={effect_shape_ids}, balloon={balloon_shape_ids}")
+        effect_shape_labels = {
+            str(getattr(item, "name", "") or "")
+            for item in params.bl_rna.properties["end_shape"].enum_items
+        }
+        balloon_shape_labels = {item[1] for item in balloon._SHAPE_ITEMS}
+        if any("旧" in label for label in effect_shape_labels | balloon_shape_labels):
+            raise AssertionError("形状候補に旧表記が残っています")
+        if balloon_shapes.normalize_shape("pill") != "ellipse":
+            raise AssertionError("旧フキダシ形状の読み替えが機能していません")
+        if balloon_shapes.normalize_shape("spike_curve") != "thorn-curve":
+            raise AssertionError("旧トゲ形状の読み替えが機能していません")
+        assert params.bl_rna.properties["bundle_line_count_jitter"].name == "数の乱れ"
+        assert params.bl_rna.properties["bundle_gap_jitter_amount"].name == "まとまり間隔の乱れ"
 
         params.start_frame_density_basis = "ellipse"
         params.start_frame_density_rounding_percent = 25.0
@@ -185,7 +296,7 @@ def main() -> None:
             seed=0,
             start_outline_mm=outline,
         )
-        _assert_simple_radial_strokes(frame_strokes, m_to_mm, center, outline=outline)
+        _assert_simple_radial_strokes(frame_strokes, m_to_mm, center, outline=outline, end_radius_xy=(20.0, 7.0))
         _assert_perpendicular_spacing(frame_strokes, m_to_mm, center, 1.0)
 
         dense_params = SimpleNamespace(**vars(frame_params))
@@ -198,7 +309,7 @@ def main() -> None:
             seed=0,
             start_outline_mm=outline,
         )
-        _assert_simple_radial_strokes(dense_strokes, m_to_mm, center, outline=outline)
+        _assert_simple_radial_strokes(dense_strokes, m_to_mm, center, outline=outline, end_radius_xy=(20.0, 7.0))
         if len(dense_strokes) <= len(frame_strokes):
             raise AssertionError(
                 f"smaller line spacing should increase focus line count: normal={len(frame_strokes)}, dense={len(dense_strokes)}"
@@ -214,7 +325,7 @@ def main() -> None:
             seed=0,
             start_outline_mm=outline,
         )
-        _assert_simple_radial_strokes(no_density_strokes, m_to_mm, center, outline=outline)
+        _assert_simple_radial_strokes(no_density_strokes, m_to_mm, center, outline=outline, end_radius_xy=(20.0, 7.0))
         if len(no_density_strokes) <= 0:
             raise AssertionError(
                 f"density toggle off should keep simple focus lines: off={len(no_density_strokes)}"
@@ -229,7 +340,122 @@ def main() -> None:
             radius_y_mm=12.0,
             seed=0,
         )
-        _assert_simple_radial_strokes(ellipse_strokes, m_to_mm, center)
+        _assert_simple_radial_strokes(ellipse_strokes, m_to_mm, center, end_radius_xy=(30.0, 12.0))
+        _assert_perpendicular_spacing(ellipse_strokes, m_to_mm, center, 2.0)
+
+        shifted_center = (160.0, 145.0)
+        end_center = (175.0, 148.0)
+        shifted_strokes = effect_line_gen.generate_focus_strokes(
+            ellipse_params,
+            center_xy_mm=shifted_center,
+            radius_x_mm=30.0,
+            radius_y_mm=12.0,
+            seed=0,
+            end_center_xy_mm=end_center,
+        )
+        _assert_simple_radial_strokes(
+            shifted_strokes,
+            m_to_mm,
+            shifted_center,
+            end_radius_xy=(30.0, 12.0),
+            end_center=end_center,
+        )
+
+        shape_params = _base_params()
+        shape_params.start_shape = "rect"
+        shape_params.base_shape = "rect"
+        shape_params.spacing_distance_mm = 2.0
+        shape_strokes = effect_line_gen.generate_focus_strokes(
+            shape_params,
+            center_xy_mm=center,
+            radius_x_mm=30.0,
+            radius_y_mm=12.0,
+            seed=0,
+        )
+        _assert_simple_radial_strokes(shape_strokes, m_to_mm, center, end_radius_xy=(30.0, 12.0))
+        _assert_perpendicular_spacing(shape_strokes, m_to_mm, center, 2.0)
+
+        length_jitter_params = SimpleNamespace(**vars(frame_params))
+        length_jitter_params.length_jitter_enabled = True
+        length_jitter_params.length_jitter_amount = 0.45
+        length_jitter_strokes = effect_line_gen.generate_focus_strokes(
+            length_jitter_params,
+            center_xy_mm=center,
+            radius_x_mm=20.0,
+            radius_y_mm=7.0,
+            seed=12,
+            start_outline_mm=outline,
+        )
+        _assert_length_jitter_shortens_lines(length_jitter_strokes, m_to_mm, center, (20.0, 7.0))
+
+        bundle_params = _base_params()
+        bundle_params.bundle_enabled = True
+        bundle_params.bundle_line_count = 4
+        bundle_params.bundle_line_count_jitter = 1.0
+        bundle_params.bundle_gap_mm = 2.0
+        bundle_params.bundle_gap_jitter_amount = 1.0
+        plain_bundle_params = SimpleNamespace(**vars(bundle_params))
+        plain_bundle_params.bundle_line_count_jitter = 0.0
+        plain_bundle_params.bundle_gap_jitter_amount = 0.0
+        rng_mod = __import__("random")
+        jitter_slots = effect_line_gen._slot_positions(80, bundle_params, rng_mod.Random(8))
+        plain_slots = effect_line_gen._slot_positions(80, plain_bundle_params, rng_mod.Random(8))
+        if jitter_slots == plain_slots or not jitter_slots:
+            raise AssertionError("まとまりの数の乱れ・まとまり間隔の乱れが配置に反映されていません")
+
+        if effect_line_op._effect_hit_part((10.0, 20.0, 40.0, 24.0), 30.0, 32.0) != "center":
+            raise AssertionError("effect center cross should be draggable as a center hit")
+        if effect_line_op._effect_hit_part(
+            (10.0, 20.0, 40.0, 24.0),
+            46.0,
+            48.0,
+            center_xy_mm=(46.0, 48.0),
+        ) != "center":
+            raise AssertionError("effect center cross should be draggable away from the end shape")
+        if effect_line_op._effect_hit_part(
+            (10.0, 20.0, 40.0, 24.0),
+            30.0,
+            32.0,
+            center_xy_mm=(46.0, 48.0),
+        ) == "center":
+            raise AssertionError("effect center hit should follow the stored center, not the end shape center")
+        if effect_line_op._effect_hit_part((10.0, 20.0, 40.0, 24.0), 10.0, 44.0) != "top_left":
+            raise AssertionError("effect corner handles should keep priority over the center hit")
+        drag = SimpleNamespace(
+            _drag_action="center",
+            _drag_orig_x=10.0,
+            _drag_orig_y=20.0,
+            _drag_orig_w=40.0,
+            _drag_orig_h=24.0,
+            _drag_orig_center_x=46.0,
+            _drag_orig_center_y=48.0,
+        )
+        drag_bounds = effect_line_op.BNAME_OT_effect_line_tool._drag_result_bounds(drag, 5.0, -3.0)
+        drag_center = effect_line_op.BNAME_OT_effect_line_tool._drag_result_center(drag, drag_bounds, 5.0, -3.0)
+        if drag_bounds != (10.0, 20.0, 40.0, 24.0) or drag_center != (51.0, 45.0):
+            raise AssertionError(f"中心点ドラッグで終点形状が動いています: bounds={drag_bounds}, center={drag_center}")
+        fills = []
+        outlines = []
+
+        def _fill(rect, color):
+            fills.append((rect, color))
+
+        def _outline(rect, *args, **kwargs):
+            outlines.append((rect, args, kwargs))
+
+        overlay_effect_line._draw_bounds(
+            (10.0, 20.0, 40.0, 24.0),
+            center_xy=(46.0, 48.0),
+            draw_rect_fill=_fill,
+            draw_rect_outline=_outline,
+        )
+        center_fills = [
+            rect for rect, _color in fills
+            if abs((rect.x + rect.width * 0.5) - 46.0) < 0.01
+            and abs((rect.y + rect.height * 0.5) - 48.0) < 0.01
+        ]
+        if len(center_fills) < 2:
+            raise AssertionError("effect center cross should draw horizontal and vertical bars")
 
         linked_params = effect_line_link_op._copy_linked_shape_params(
             {

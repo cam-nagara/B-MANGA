@@ -220,6 +220,10 @@ def main() -> None:
             if not snapshots:
                 raise AssertionError(f"オブジェクトツール編集の準備ができません: {key}")
             before = object_tool_selection.selection_bounds_for_key(context, key)
+            before_center = None
+            if kind == "effect":
+                obj, layer = object_tool_selection.find_effect_layer(item_id)
+                before_center = effect_line_op.effect_layer_center(obj, layer)
             fake_op._snapshots = snapshots
             object_tool_op.BNAME_OT_object_tool._apply_snapshots(fake_op, context, 4.0, 3.0)
             if kind == "raster":
@@ -230,6 +234,11 @@ def main() -> None:
             after = object_tool_selection.selection_bounds_for_key(context, key)
             if before is None or after is None or abs(float(after.x) - float(before.x)) < 0.5:
                 raise AssertionError(f"オブジェクトツール編集で位置が変わりません: {key}")
+            if kind == "effect" and before_center is not None:
+                obj, layer = object_tool_selection.find_effect_layer(item_id)
+                after_center = effect_line_op.effect_layer_center(obj, layer)
+                if after_center is None or abs(after_center[0] - before_center[0] - 4.0) > 0.01:
+                    raise AssertionError("効果線の中心点がオブジェクト移動に追従しません")
 
         page_key = object_selection.page_key(page)
         page_bounds = object_tool_selection.selection_bounds_for_key(context, page_key)
@@ -374,6 +383,16 @@ def main() -> None:
         end_labels = [str(getattr(item, "name", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items]
         if any("（旧）" in label for label in end_labels):
             raise AssertionError(f"終点形状に旧表記が残っています: {end_labels}")
+        old_shape_ids = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
+        end_ids = {str(getattr(item, "identifier", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items}
+        balloon_ids = {str(getattr(item, "identifier", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
+        if (end_ids | balloon_ids) & old_shape_ids:
+            raise AssertionError(f"旧タイプが形状候補に残っています: effect={end_ids}, balloon={balloon_ids}")
+        balloon_labels = {str(getattr(item, "name", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
+        if any("旧" in label for label in end_labels + list(balloon_labels)):
+            raise AssertionError("終点形状または形状に旧表記が残っています")
+        if abs(float(params.brush_size_mm) - 0.3) > 1.0e-6 or abs(float(balloon.line_width_mm) - 0.3) > 1.0e-6:
+            raise AssertionError("効果線またはフキダシの線幅初期値が0.3ではありません")
         params.effect_type = "focus"
         params.start_shape = "ellipse"
         params.end_shape = "ellipse"
