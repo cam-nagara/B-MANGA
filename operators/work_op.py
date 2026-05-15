@@ -378,6 +378,98 @@ class BNAME_OT_work_open(Operator, ImportHelper):
         return {"FINISHED"}
 
 
+class BNAME_OT_work_make_coma_file(Operator):
+    """現在開いている .blend を、親作品を持たない単独のコマファイルにする.
+
+    ページ一覧ファイルでもコマファイルでもない .blend を開いたときに、
+    この .blend を「単独コマファイル」として扱えるようにする。作品
+    (.bname) には属さないため、ページ一覧側のコマ一覧には現れない。
+    """
+
+    bl_idname = "bname.work_make_coma_file"
+    bl_label = "コマファイル化"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        work = get_work(context)
+        # 作品 (ページ一覧) が開かれているときは対象外。未認識の .blend
+        # を開いた状態 (= 作品が開かれていない) でのみ実行できる。
+        return not (work and work.loaded)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(
+            self,
+            event,
+            title="コマファイル化",
+            message=(
+                "この .blend を単独のコマファイルにします。"
+                "作品 (ページ一覧) には属しません。"
+            ),
+            confirm_text="コマファイル化",
+        )
+
+    def execute(self, context):
+        scene = context.scene
+        if scene is None:
+            self.report({"ERROR"}, "シーンが見つかりません")
+            return {"CANCELLED"}
+
+        from ..core import mode as _mode
+
+        inferred = _mode._infer_mode_from_filepath(scene)
+        if inferred is not None:
+            inferred_mode = inferred[0]
+            if inferred_mode == MODE_PAGE:
+                self.report(
+                    {"ERROR"},
+                    "ページ一覧ファイルはコマファイル化できません",
+                )
+                return {"CANCELLED"}
+            if inferred_mode == MODE_COMA:
+                self.report({"INFO"}, "既にコマファイルです")
+                return {"CANCELLED"}
+
+        try:
+            from ..utils import coma_scene, coma_camera, display_settings
+
+            coma_scene.prepare_coma_blend_scene(context, purge_orphans=False)
+
+            set_mode(MODE_COMA, context)
+            scene.bname_current_coma_id = ""
+            scene.bname_current_coma_page_id = ""
+            if hasattr(scene, "bname_overview_mode"):
+                scene.bname_overview_mode = False
+            if hasattr(scene, "bname_active_layer_kind"):
+                scene.bname_active_layer_kind = "coma"
+
+            display_settings.apply_standard_color_management(scene)
+            coma_camera.ensure_coma_camera_scene(
+                context,
+                work=None,
+                generate_references=False,
+            )
+
+            from ..ui import overlay as _overlay
+
+            _overlay.reset_viewport_background_to_theme(context)
+            _overlay.apply_bname_shading_mode(context)
+            coma_camera.schedule_coma_view_camera()
+            try:
+                from ..ui import sidebar as _sidebar
+
+                _sidebar.schedule_open_bname_sidebar()
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_make_coma_file: sidebar open failed")
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("work_make_coma_file failed")
+            self.report({"ERROR"}, f"コマファイル化に失敗しました: {exc}")
+            return {"CANCELLED"}
+
+        self.report({"INFO"}, "単独のコマファイルにしました")
+        return {"FINISHED"}
+
+
 class BNAME_OT_work_save(Operator):
     """現在の作品データを保存 (work.json / pages.json + 現在の mainfile .blend)."""
 
@@ -508,6 +600,7 @@ class BNAME_OT_work_close(Operator):
 _CLASSES = (
     BNAME_OT_work_new,
     BNAME_OT_work_open,
+    BNAME_OT_work_make_coma_file,
     BNAME_OT_work_save,
     BNAME_OT_work_close,
 )

@@ -62,6 +62,16 @@ class BNAME_PT_work(Panel):
 
         if work is None or not work.loaded:
             layout.label(text="作品が開かれていません", icon="INFO")
+            box = layout.box()
+            box.label(
+                text="ページ一覧でもコマでもない場合",
+                icon="QUESTION",
+            )
+            box.operator(
+                "bname.work_make_coma_file",
+                text="このファイルをコマファイルにする",
+                icon="FILE_BLEND",
+            )
             return
 
         mode = get_mode(context)
