@@ -92,6 +92,9 @@ class BNAME_PT_comas(Panel):
         row = box.row(align=True)
         if mode == MODE_PAGE:
             row.label(text="紙面編集モード", icon="FILE_IMAGE")
+            # INVOKE だとマウス直下のコマ逆引きに失敗してボタンが無反応に
+            # なるため、選択中コマを対象に execute する EXEC_DEFAULT で呼ぶ。
+            row.operator_context = "EXEC_DEFAULT"
             row.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
         else:
             stem = getattr(context.scene, "bname_current_coma_id", "")

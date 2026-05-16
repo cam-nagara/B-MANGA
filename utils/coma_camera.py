@@ -72,12 +72,9 @@ def ensure_coma_camera_scene(
 
     camera = ensure_coma_camera(scene)
     scene.camera = camera
-    try:
-        from . import display_settings
-
-        display_settings.apply_standard_color_management(scene)
-    except Exception:  # noqa: BLE001
-        pass
+    # コマ用blendファイルの色管理 (ビュー変換/露出/ルック) はユーザーに
+    # 委ねる。以前はここで毎回 Standard へ戻していたため、コマで設定した
+    # 色管理が開く/閉じるたびに失われていた。
     configure_render_for_current_coma(scene, work, page_id, coma_id)
     ensure_default_resolution_settings(scene)
     sync_world_background_color(context, work=work, page_id=page_id, coma_id=coma_id)
@@ -98,22 +95,37 @@ def ensure_coma_camera(scene):
     if cam_obj is None or getattr(cam_obj, "type", "") != "CAMERA":
         cam_obj = bpy.data.objects.get(PANEL_CAMERA_NAME)
     if cam_obj is None or getattr(cam_obj, "type", "") != "CAMERA":
+        # 名前を変更されていても識別できるよう custom property で探す
+        # (見つからないと毎回新規カメラを作って重複する)。
+        cam_obj = next(
+            (
+                o
+                for o in getattr(scene, "objects", [])
+                if getattr(o, "type", "") == "CAMERA" and o.get("bname_coma_camera")
+            ),
+            None,
+        )
+    if cam_obj is None or getattr(cam_obj, "type", "") != "CAMERA":
         cam_data = bpy.data.cameras.new(PANEL_CAMERA_NAME)
         cam_obj = bpy.data.objects.new(PANEL_CAMERA_NAME, cam_data)
         scene.collection.objects.link(cam_obj)
         created = True
-    cam_obj.name = PANEL_CAMERA_NAME
     cam_obj["bname_coma_camera"] = True
+    cam_data = cam_obj.data
     if created:
+        cam_obj.name = PANEL_CAMERA_NAME
         try:
             cam_obj.location = (0.0, -DEFAULT_CAMERA_DISTANCE, 0.0)
             cam_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
         except Exception:  # noqa: BLE001
             pass
-    cam_data = cam_obj.data
-    if getattr(cam_data, "clip_start", 0.0) <= 0.0:
         cam_data.clip_start = 0.01
-    cam_data.clip_end = max(float(getattr(cam_data, "clip_end", 100.0)), 1000.0)
+        cam_data.clip_end = max(float(getattr(cam_data, "clip_end", 100.0)), 1000.0)
+    else:
+        # 既存カメラの名前/クリップ範囲はユーザー設定を尊重する。
+        # ただし clip_start が 0 以下だと描画されないため、不正値のみ補正。
+        if getattr(cam_data, "clip_start", 0.0) <= 0.0:
+            cam_data.clip_start = 0.01
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
     return cam_obj

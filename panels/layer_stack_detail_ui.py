@@ -497,7 +497,11 @@ def _draw_coma_selected_settings(box, context, entry) -> None:
     sub.scale_y = 0.85
     sub.label(text="空のときは作品/プリファレンスの設定が使われる", icon="INFO")
 
-    box.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
+    # INVOKE だとマウス直下のコマ逆引きに失敗してボタンが無反応になるため、
+    # 選択中コマを対象に execute する EXEC_DEFAULT で呼ぶ (専用 row でスコープ)。
+    enter_row = box.row(align=True)
+    enter_row.operator_context = "EXEC_DEFAULT"
+    enter_row.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
 
     from . import coma_detail_panel
 

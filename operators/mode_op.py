@@ -101,8 +101,12 @@ class BNAME_OT_enter_coma_mode(Operator):
         default="*.blend",
         options={"HIDDEN"},
     )
+    # 既定で False: コマ用blendファイル未作成でもテンプレート選択窓を
+    # 出さず、共通テンプレート/空のコマから確実に開く。ファイル選択窓は
+    # ウィンドウ/モーダル無しの呼び出し文脈では機能せず「コマが開かない」
+    # 原因になっていた (ダブルクリック/各ボタン共通)。
     prompt_template_if_missing: BoolProperty(  # type: ignore[valid-type]
-        default=True,
+        default=False,
         options={"HIDDEN"},
     )
 
@@ -309,7 +313,7 @@ class BNAME_OT_enter_coma_mode(Operator):
     def _should_prompt_coma_template(self, context, work_dir: Path, page_id: str, stem: str, entry) -> bool:
         if bpy.app.background:
             return False
-        if not bool(getattr(self, "prompt_template_if_missing", True)):
+        if not bool(getattr(self, "prompt_template_if_missing", False)):
             return False
         if str(getattr(self, "filepath", "") or "").strip():
             return False

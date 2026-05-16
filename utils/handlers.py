@@ -271,7 +271,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
         _sync_active_from_blend_path(scene, work, work_dir, blend_path)
         from . import display_settings
 
-        display_settings.apply_standard_color_management(scene)
+        # 色管理の標準化はページ一覧 (work.blend) のみに適用する。
+        # コマ用blendファイルはユーザーの 3D 作業領域であり、ここで
+        # 毎回 Standard へ戻すと、ユーザーが設定したビュー変換/露出/
+        # ルックが開く/閉じるたびに失われる (保存直前にも走るため
+        # 保存値ごと初期化されていた)。work.blend かどうかは下の
+        # 分岐で判定するため、ここでは一律適用しない。
         try:
             from ..operators import preset_op
 
@@ -311,6 +316,8 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
             rel = blend_path.resolve().relative_to(work_dir.resolve())
             if len(rel.parts) == 1 and rel.parts[0] == paths.WORK_BLEND_NAME:
                 _reconcile_gpencil_collections(bpy.context, work)
+                # ページ一覧は常にフラットな印刷物の見た目 (Standard)。
+                display_settings.apply_standard_color_management(scene)
                 try:
                     from ..ui import overlay as _overlay
 
@@ -333,7 +340,8 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                 from ..ui import overlay as _overlay
 
                 coma_scene.prepare_coma_blend_scene(bpy.context)
-                display_settings.apply_standard_color_management(scene)
+                # コマ用blendファイルの色管理はユーザーに委ねる
+                # (ここで Standard に戻さない)。
                 coma_camera.ensure_coma_camera_scene(
                     bpy.context,
                     work=work,
