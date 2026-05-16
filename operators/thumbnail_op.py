@@ -201,96 +201,100 @@ def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
 
     import tempfile as _tempfile
 
-    shot_dir = Path(_tempfile.mkdtemp())
-    shot = shot_dir / "screen.png"
-    geom: dict = {}
-    try:
+    # 一時フォルダはコンテキストマネージャで必ず後始末する
+    # (フルウィンドウ PNG が毎回のプレビュー生成で溜まらないように)。
+    with _tempfile.TemporaryDirectory() as _td:
+        shot = Path(_td) / "screen.png"
+        geom: dict = {}
         try:
-            overlay.show_overlays = False
-            space.show_gizmo = False
-            for _flag in _region_flags:
-                if hasattr(space, _flag):
-                    setattr(space, _flag, False)
-        except Exception:  # noqa: BLE001
-            pass
-        with context.temp_override(window=win, area=area, region=region):
-            # パネル非表示 / オーバーレイ非表示を画面へ反映してから
-            # キャプチャする (これらの切替は UI のみで、重なり表示なら
-            # 3D 領域はリサイズされず Cycles 表示は再計算されない)。
             try:
-                bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+                overlay.show_overlays = False
+                space.show_gizmo = False
+                for _flag in _region_flags:
+                    if hasattr(space, _flag):
+                        setattr(space, _flag, False)
             except Exception:  # noqa: BLE001
                 pass
-            # カメラ枠 (出力範囲) と region/window 座標は、パネル非表示の
-            # 状態 (= スクショと同じ状態) で確定させる。view_frame の投影は
-            # カメラ視点のとき魚眼/パノラマでも出力矩形と一致する。
+            with context.temp_override(window=win, area=area, region=region):
+                # パネル非表示 / オーバーレイ非表示を画面へ反映してから
+                # キャプチャする (これらの切替は UI のみで、重なり表示なら
+                # 3D 領域はリサイズされず Cycles 表示は再計算されない)。
+                try:
+                    bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+                except Exception:  # noqa: BLE001
+                    pass
+                # カメラ枠 (出力範囲) と region/window 座標は、パネル非表示
+                # の状態 (= スクショと同じ状態) で確定させる。view_frame の
+                # 投影はカメラ視点のとき魚眼/パノラマでも出力矩形と一致する。
+                try:
+                    mat = cam.matrix_world.normalized()
+                    corners = cam.data.view_frame(scene=scene)
+                    pts = [
+                        location_3d_to_region_2d(region, r3d, mat @ v)
+                        for v in corners
+                    ]
+                    if not any(p is None for p in pts):
+                        xs = [p.x for p in pts]
+                        ys = [p.y for p in pts]
+                        geom = {
+                            "bx1": min(xs), "by1": min(ys),
+                            "bx2": max(xs), "by2": max(ys),
+                            "rx": region.x, "ry": region.y,
+                            "ww": int(win.width), "wh": int(win.height),
+                        }
+                except Exception:  # noqa: BLE001
+                    geom = {}
+                try:
+                    bpy.ops.screen.screenshot(filepath=str(shot))
+                except Exception as exc:  # noqa: BLE001
+                    _logger.warning(
+                        "screen.screenshot failed: %s", exc, exc_info=True
+                    )
+                    return False
+        finally:
             try:
-                mat = cam.matrix_world.normalized()
-                corners = cam.data.view_frame(scene=scene)
-                pts = [
-                    location_3d_to_region_2d(region, r3d, mat @ v)
-                    for v in corners
-                ]
-                if not any(p is None for p in pts):
-                    xs = [p.x for p in pts]
-                    ys = [p.y for p in pts]
-                    geom = {
-                        "bx1": min(xs), "by1": min(ys),
-                        "bx2": max(xs), "by2": max(ys),
-                        "rx": region.x, "ry": region.y,
-                        "ww": int(win.width), "wh": int(win.height),
-                    }
+                overlay.show_overlays = prev_state["overlays"]
+                space.show_gizmo = prev_state["gizmo"]
+                for _flag in _region_flags:
+                    if _flag in prev_state:
+                        setattr(space, _flag, prev_state[_flag])
             except Exception:  # noqa: BLE001
-                geom = {}
-            try:
-                bpy.ops.screen.screenshot(filepath=str(shot))
-            except Exception as exc:  # noqa: BLE001
-                _logger.warning("screen.screenshot failed: %s", exc, exc_info=True)
-                return False
-    finally:
+                pass
+        if not shot.is_file() or not geom:
+            return False
+
+        bx1, by1, bx2, by2 = geom["bx1"], geom["by1"], geom["bx2"], geom["by2"]
+
+        from ..io import export_pipeline
+
+        Image = export_pipeline.Image
+        if Image is None:
+            return False
         try:
-            overlay.show_overlays = prev_state["overlays"]
-            space.show_gizmo = prev_state["gizmo"]
-            for _flag in _region_flags:
-                if _flag in prev_state:
-                    setattr(space, _flag, prev_state[_flag])
+            with Image.open(str(shot)) as opened:
+                img = opened.convert("RGBA")
         except Exception:  # noqa: BLE001
-            pass
-    if not shot.is_file() or not geom:
-        return False
-
-    bx1, by1, bx2, by2 = geom["bx1"], geom["by1"], geom["bx2"], geom["by2"]
-
-    from ..io import export_pipeline
-
-    Image = export_pipeline.Image
-    if Image is None:
-        return False
-    try:
-        with Image.open(str(shot)) as opened:
-            img = opened.convert("RGBA")
-    except Exception:  # noqa: BLE001
-        return False
-    sx = img.width / max(1, geom["ww"])
-    sy = img.height / max(1, geom["wh"])
-    # region 座標 (原点=左下) → ウィンドウ → 画像座標 (原点=左上)
-    wx1 = geom["rx"] + bx1
-    wx2 = geom["rx"] + bx2
-    wy1 = geom["ry"] + by1
-    wy2 = geom["ry"] + by2
-    ix1 = int(round(wx1 * sx))
-    ix2 = int(round(wx2 * sx))
-    iy1 = int(round((geom["wh"] - wy2) * sy))
-    iy2 = int(round((geom["wh"] - wy1) * sy))
-    ix1 = max(0, min(img.width - 1, ix1))
-    ix2 = max(ix1 + 1, min(img.width, ix2))
-    iy1 = max(0, min(img.height - 1, iy1))
-    iy2 = max(iy1 + 1, min(img.height, iy2))
-    try:
-        img.crop((ix1, iy1, ix2, iy2)).save(str(target))
-    except Exception:  # noqa: BLE001
-        return False
-    return target.is_file()
+            return False
+        sx = img.width / max(1, geom["ww"])
+        sy = img.height / max(1, geom["wh"])
+        # region 座標 (原点=左下) → ウィンドウ → 画像座標 (原点=左上)
+        wx1 = geom["rx"] + bx1
+        wx2 = geom["rx"] + bx2
+        wy1 = geom["ry"] + by1
+        wy2 = geom["ry"] + by2
+        ix1 = int(round(wx1 * sx))
+        ix2 = int(round(wx2 * sx))
+        iy1 = int(round((geom["wh"] - wy2) * sy))
+        iy2 = int(round((geom["wh"] - wy1) * sy))
+        ix1 = max(0, min(img.width - 1, ix1))
+        ix2 = max(ix1 + 1, min(img.width, ix2))
+        iy1 = max(0, min(img.height - 1, iy1))
+        iy2 = max(iy1 + 1, min(img.height, iy2))
+        try:
+            img.crop((ix1, iy1, ix2, iy2)).save(str(target))
+        except Exception:  # noqa: BLE001
+            return False
+        return target.is_file()
 
 
 def _render_camera_image(context, scene) -> bool:
