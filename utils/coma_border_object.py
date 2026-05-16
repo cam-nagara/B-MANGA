@@ -109,11 +109,17 @@ def _ensure_color_material(name: str, rgba: tuple[float, float, float, float]) -
     return mat
 
 
-def _ensure_soft_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+def _ensure_soft_material(
+    name: str,
+    rgba: tuple[float, float, float, float],
+    *,
+    dither: bool = False,
+) -> bpy.types.Material:
     """半透明のソフトマテリアル (ボカシブラシのハロー用).
 
     Emission を Transparent と Mix し、Solid 表示でもレンダーでも alpha が
-    効くようにする。``rgba[3]`` を不透明度として扱う。
+    効くようにする。``rgba[3]`` を不透明度として扱う。 ``dither=True`` で
+    半透明を網点状のディザ (ハッシュ) で解決する。
     """
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -124,6 +130,9 @@ def _ensure_soft_material(name: str, rgba: tuple[float, float, float, float]) ->
     try:
         mat.blend_method = "BLEND"
         mat.show_transparent_back = False
+        # EEVEE Next: 半透明の解決方法。 DITHERED = 網点状ハッシュ、
+        # BLENDED = 通常のアルファ合成。
+        mat.surface_render_method = "DITHERED" if dither else "BLENDED"
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree
@@ -578,7 +587,12 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         if style_name == "brush_core":
             mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_brushcore", color)
         elif style_name == "brush_halo":
-            mat = _ensure_soft_material(f"{_material_name(page_id, coma_id)}_brushhalo_{group_index:02d}", color)
+            dither = bool(getattr(border, "blur_dither", False))
+            mat = _ensure_soft_material(
+                f"{_material_name(page_id, coma_id)}_brushhalo_{group_index:02d}",
+                color,
+                dither=dither,
+            )
         elif group_index == 0:
             mat = _ensure_material(page_id, coma_id, coma)
             if mat.diffuse_color != color:

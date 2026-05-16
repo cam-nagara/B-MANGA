@@ -69,6 +69,7 @@ def draw_coma_border_settings(layout, context, entry) -> None:
     content.prop(b, "style")
     if b.style == "brush":
         content.prop(b, "blur_amount", slider=True)
+        content.prop(b, "blur_dither")
     content.prop(b, "width_mm")
     content.prop(b, "color")
     row = content.row(align=True)

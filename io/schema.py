@@ -650,6 +650,7 @@ def coma_border_to_dict(border) -> dict[str, Any]:
             "radiusMm": round(border.corner_radius_mm, 3),
         },
         "blurAmount": round(float(getattr(border, "blur_amount", 0.5)), 3),
+        "blurDither": bool(getattr(border, "blur_dither", False)),
         "visible": bool(border.visible),
         "perEdge": {
             "top": _edge_override_to_dict(border.edge_top),
@@ -670,6 +671,8 @@ def coma_border_from_dict(border, data: dict[str, Any]) -> None:
     border.corner_radius_mm = float(corner.get("radiusMm", 0.0))
     if "blurAmount" in data:
         border.blur_amount = float(data["blurAmount"])
+    if "blurDither" in data:
+        border.blur_dither = bool(data["blurDither"])
     border.visible = bool(data.get("visible", True))
     per = data.get("perEdge", {})
     _edge_override_from_dict(border.edge_top, per.get("top", {}))

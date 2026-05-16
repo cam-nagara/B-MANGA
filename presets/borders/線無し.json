@@ -1,16 +1,16 @@
 {
   "schemaVersion": 1,
   "presetType": "border",
-  "presetName": "ボカシブラシ",
-  "description": "輪郭をぼかした筆風 0.6mm 黒",
+  "presetName": "線無し",
+  "description": "枠線なし・白フチなし",
   "border": {
-    "style": "brush",
-    "widthMm": 0.6,
+    "style": "solid",
+    "widthMm": 0.5,
     "color": "#000000",
     "corner": { "type": "square", "radiusMm": 0.0 },
-    "blurAmount": 0.6,
+    "blurAmount": 0.5,
     "blurDither": false,
-    "visible": true,
+    "visible": false,
     "perEdge": {
       "top": { "useOverride": false },
       "right": { "useOverride": false },

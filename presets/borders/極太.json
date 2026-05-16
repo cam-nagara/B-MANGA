@@ -9,6 +9,7 @@
     "color": "#000000",
     "corner": { "type": "square", "radiusMm": 0.0 },
     "blurAmount": 0.5,
+    "blurDither": false,
     "visible": true,
     "perEdge": {
       "top": { "useOverride": false },

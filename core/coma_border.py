@@ -130,6 +130,12 @@ class BNameComaBorder(bpy.types.PropertyGroup):
         subtype="FACTOR",
         update=_on_border_changed,
     )
+    blur_dither: BoolProperty(  # type: ignore[valid-type]
+        name="ディザ化",
+        description="ボカシブラシのボケを網点状のディザで表現する",
+        default=False,
+        update=_on_border_changed,
+    )
     visible: BoolProperty(  # type: ignore[valid-type]
         name="枠線を表示",
         default=True,
