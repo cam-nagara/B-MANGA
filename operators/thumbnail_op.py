@@ -181,25 +181,67 @@ def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
     if getattr(r3d, "view_perspective", "") != "CAMERA":
         return False
     overlay = space.overlay
-    prev_overlays = getattr(overlay, "show_overlays", True)
-    prev_gizmo = getattr(space, "show_gizmo", True)
+    # サイドパネル / ツールバー / ヘッダーは「重なり表示」が既定なので、
+    # 一時的に隠しても 3D WINDOW 領域はリサイズされず、Cycles 表示は
+    # 収束したまま再計算されない。これでカメラ枠がパネルに重なっていても
+    # パネルを画面に焼き込まずクリーンに撮れる (撮影後に元へ戻す)。
+    _region_flags = (
+        "show_region_ui",
+        "show_region_toolbar",
+        "show_region_header",
+        "show_region_tool_header",
+        "show_region_asset_shelf",
+    )
+    prev_state = {"overlays": getattr(overlay, "show_overlays", True),
+                  "gizmo": getattr(space, "show_gizmo", True)}
+    for _flag in _region_flags:
+        if hasattr(space, _flag):
+            prev_state[_flag] = getattr(space, _flag)
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+
     import tempfile as _tempfile
 
     shot_dir = Path(_tempfile.mkdtemp())
     shot = shot_dir / "screen.png"
+    geom: dict = {}
     try:
         try:
             overlay.show_overlays = False
             space.show_gizmo = False
+            for _flag in _region_flags:
+                if hasattr(space, _flag):
+                    setattr(space, _flag, False)
         except Exception:  # noqa: BLE001
             pass
         with context.temp_override(window=win, area=area, region=region):
-            # オーバーレイ非表示を画面へ反映してからキャプチャする。
-            # (overlay 切替は UI のみで Cycles 表示は再計算されない)
+            # パネル非表示 / オーバーレイ非表示を画面へ反映してから
+            # キャプチャする (これらの切替は UI のみで、重なり表示なら
+            # 3D 領域はリサイズされず Cycles 表示は再計算されない)。
             try:
                 bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
             except Exception:  # noqa: BLE001
                 pass
+            # カメラ枠 (出力範囲) と region/window 座標は、パネル非表示の
+            # 状態 (= スクショと同じ状態) で確定させる。view_frame の投影は
+            # カメラ視点のとき魚眼/パノラマでも出力矩形と一致する。
+            try:
+                mat = cam.matrix_world.normalized()
+                corners = cam.data.view_frame(scene=scene)
+                pts = [
+                    location_3d_to_region_2d(region, r3d, mat @ v)
+                    for v in corners
+                ]
+                if not any(p is None for p in pts):
+                    xs = [p.x for p in pts]
+                    ys = [p.y for p in pts]
+                    geom = {
+                        "bx1": min(xs), "by1": min(ys),
+                        "bx2": max(xs), "by2": max(ys),
+                        "rx": region.x, "ry": region.y,
+                        "ww": int(win.width), "wh": int(win.height),
+                    }
+            except Exception:  # noqa: BLE001
+                geom = {}
             try:
                 bpy.ops.screen.screenshot(filepath=str(shot))
             except Exception as exc:  # noqa: BLE001
@@ -207,28 +249,17 @@ def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
                 return False
     finally:
         try:
-            overlay.show_overlays = prev_overlays
-            space.show_gizmo = prev_gizmo
+            overlay.show_overlays = prev_state["overlays"]
+            space.show_gizmo = prev_state["gizmo"]
+            for _flag in _region_flags:
+                if _flag in prev_state:
+                    setattr(space, _flag, prev_state[_flag])
         except Exception:  # noqa: BLE001
             pass
-    if not shot.is_file():
+    if not shot.is_file() or not geom:
         return False
 
-    # カメラ枠 (出力範囲) を region ピクセルで求める。view_frame を投影する
-    # 方式は、カメラ視点のとき魚眼/パノラマでも出力矩形と一致する。
-    from bpy_extras.view3d_utils import location_3d_to_region_2d
-
-    mat = cam.matrix_world.normalized()
-    try:
-        corners = cam.data.view_frame(scene=scene)
-    except Exception:  # noqa: BLE001
-        return False
-    pts = [location_3d_to_region_2d(region, r3d, mat @ v) for v in corners]
-    if any(p is None for p in pts):
-        return False
-    xs = [p.x for p in pts]
-    ys = [p.y for p in pts]
-    bx1, by1, bx2, by2 = min(xs), min(ys), max(xs), max(ys)
+    bx1, by1, bx2, by2 = geom["bx1"], geom["by1"], geom["bx2"], geom["by2"]
 
     from ..io import export_pipeline
 
@@ -240,17 +271,17 @@ def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
             img = opened.convert("RGBA")
     except Exception:  # noqa: BLE001
         return False
-    sx = img.width / max(1, int(win.width))
-    sy = img.height / max(1, int(win.height))
+    sx = img.width / max(1, geom["ww"])
+    sy = img.height / max(1, geom["wh"])
     # region 座標 (原点=左下) → ウィンドウ → 画像座標 (原点=左上)
-    wx1 = region.x + bx1
-    wx2 = region.x + bx2
-    wy1 = region.y + by1
-    wy2 = region.y + by2
+    wx1 = geom["rx"] + bx1
+    wx2 = geom["rx"] + bx2
+    wy1 = geom["ry"] + by1
+    wy2 = geom["ry"] + by2
     ix1 = int(round(wx1 * sx))
     ix2 = int(round(wx2 * sx))
-    iy1 = int(round((win.height - wy2) * sy))
-    iy2 = int(round((win.height - wy1) * sy))
+    iy1 = int(round((geom["wh"] - wy2) * sy))
+    iy2 = int(round((geom["wh"] - wy1) * sy))
     ix1 = max(0, min(img.width - 1, ix1))
     ix2 = max(ix1 + 1, min(img.width, ix2))
     iy1 = max(0, min(img.height - 1, iy1))
