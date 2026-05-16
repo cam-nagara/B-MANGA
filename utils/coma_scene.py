@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 from pathlib import Path
 
 import bpy
@@ -11,6 +13,7 @@ from ..core.mode import MODE_COMA, set_mode
 from ..core.work import find_page_by_id, get_work
 from . import gpencil as gp_utils
 from . import log
+from . import paths
 
 _logger = log.get_logger(__name__)
 
@@ -83,9 +86,19 @@ def bootstrap_new_coma_blend(
     *,
     template_path: Path | None = None,
 ) -> bool:
-    """空の current mainfile を cNN.blend 用 scene として初期化する."""
+    """空の current mainfile を cNN.blend 用 scene として初期化する.
+
+    コマ用blendファイルが指定されている場合、その指定ファイルを直接開かず、
+    作品フォルダ内 (このコマの cNN.blend) へコピーしてから、コピー側を開く。
+    元の指定ファイルには一切触れない。
+    """
     if template_path is not None:
-        if not _open_coma_template_blend(Path(template_path)):
+        copied = _copy_template_into_coma(
+            Path(template_path), Path(work_dir), page_id, coma_id
+        )
+        if copied is None:
+            return False
+        if not _open_coma_template_blend(copied):
             return False
         active_context = bpy.context
     else:
@@ -125,6 +138,52 @@ def _template_path_from_raw(raw: str, work_dir: Path) -> Path:
     if path.is_absolute():
         return path
     return work_dir / path
+
+
+def _copy_template_into_coma(
+    template_path: Path, work_dir: Path, page_id: str, coma_id: str
+) -> Path | None:
+    """指定テンプレート .blend を作品フォルダ内のコマ位置へコピーする.
+
+    コピー先はこのコマの ``cNN.blend``。元ファイルはそのまま残し、以降は
+    コピー側だけを開いて編集する。コピー先が指定ファイルと同一の場合は
+    コピーせずそのまま使う。
+    """
+    try:
+        dest = paths.coma_blend_path(work_dir, page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception(
+            "copy coma template: invalid coma path %s/%s", page_id, coma_id
+        )
+        return None
+    try:
+        src_resolved = Path(template_path).resolve()
+        dest_resolved = dest.resolve()
+    except OSError:
+        src_resolved = Path(template_path)
+        dest_resolved = dest
+    if src_resolved == dest_resolved:
+        return dest
+    # 一時ファイルへコピーしてからアトミックに置き換える。コピー途中で
+    # 失敗しても中途半端な cNN.blend を残さない (残すと次回以降それを
+    # 正常な既存コマファイルとして開いてしまう)。
+    tmp = dest.with_name(dest.name + ".copytmp")
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(template_path), str(tmp))
+        os.replace(str(tmp), str(dest))
+        _logger.info("coma template copied into work: %s -> %s", template_path, dest)
+        return dest
+    except Exception as exc:  # noqa: BLE001
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            _logger.warning("copy coma template: temp cleanup failed: %s", tmp)
+        _logger.exception(
+            "copy coma template failed: %s -> %s (%s)", template_path, dest, exc
+        )
+        return None
 
 
 def _open_coma_template_blend(template_path: Path) -> bool:
