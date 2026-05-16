@@ -11,6 +11,7 @@ from . import (  # noqa: E402,F401
     active_target,
     balloon_curve_object,
     coma_plane,
+    cross_addon_settings_sync,
     effect_line_object,
     empty_layer_object,
     gp_object_layer,
@@ -26,6 +27,7 @@ def register() -> None:
     handlers.register()
     outliner_watch.register()
     active_collection_sync.register()
+    cross_addon_settings_sync.register()
     paper_bg_object.register()
     coma_plane.register()
 
@@ -33,6 +35,7 @@ def register() -> None:
 def unregister() -> None:
     coma_plane.unregister()
     paper_bg_object.unregister()
+    cross_addon_settings_sync.unregister()
     active_collection_sync.unregister()
     outliner_watch.unregister()
     handlers.unregister()
