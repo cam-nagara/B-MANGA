@@ -166,8 +166,12 @@ def active_preset(context) -> BNameRenderPreset | None:
     state = get_state(context)
     if state is None or not state.presets:
         return None
+    # 読み取り専用アクセサ。描画中 / poll 中に呼ばれるため、ここで
+    # state.active_preset_index へ書き戻すと Blender 5.1 が
+    # "Writing to ID classes in this context is not allowed" 例外を投げ、
+    # パネル描画がプリセット一覧の直後で中断してしまう。クランプは
+    # ローカル変数だけで行い、ID へは書き込まない。
     idx = max(0, min(int(state.active_preset_index), len(state.presets) - 1))
-    state.active_preset_index = idx
     return state.presets[idx]
 
 
@@ -175,8 +179,8 @@ def active_command(context) -> BNameRenderCommand | None:
     preset = active_preset(context)
     if preset is None or not preset.commands:
         return None
+    # active_preset と同じ理由で読み取り専用 (描画中の ID 書き込み禁止)。
     idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
-    preset.active_command_index = idx
     return preset.commands[idx]
 
 

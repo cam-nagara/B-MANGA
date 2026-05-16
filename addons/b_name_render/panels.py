@@ -135,7 +135,11 @@ def _draw_command_list(layout, preset) -> None:
 def _draw_active_command_detail(layout, preset, context) -> None:
     if not preset.commands:
         return
-    command = preset.commands[preset.active_command_index]
+    # active_command_index は描画中に書き戻せない (ID 書き込み禁止) ため
+    # 範囲外のまま残ることがある。直接添字すると IndexError でパネル描画が
+    # 中断するので、ここでローカルにクランプして安全に取り出す。
+    idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
+    command = preset.commands[idx]
     box = layout.box()
     box.label(text="選択カード設定", icon="PREFERENCES")
     command_ui.draw_command(box, command, context)
