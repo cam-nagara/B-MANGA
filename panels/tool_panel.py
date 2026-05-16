@@ -19,6 +19,7 @@ _MODAL_TOOL_NAMES = (
     "text_tool",
     "effect_line_tool",
     "coma_vertex_edit",
+    "coma_create",
 )
 
 
@@ -104,6 +105,12 @@ class BNAME_PT_tools(Panel):
         row.separator()
         row.operator_context = "INVOKE_DEFAULT"
         row.operator(
+            "bname.coma_create_tool",
+            text="",
+            icon="MESH_PLANE",
+            depress=coma_modal_state.is_active("coma_create"),
+        )
+        row.operator(
             "bname.coma_knife_cut",
             text="",
             icon="SCULPTMODE_HLT",
@@ -133,6 +140,12 @@ class BNAME_PT_tools(Panel):
             icon="STROKE",
             depress=coma_modal_state.is_active("effect_line_tool"),
         )
+
+        wm = getattr(context, "window_manager", None)
+        if wm is not None and hasattr(wm, "bname_border_preset_selector"):
+            prow = layout.row(align=True)
+            prow.label(text="コマ作成の枠線", icon="MESH_PLANE")
+            prow.prop(wm, "bname_border_preset_selector", text="")
 
 
 _CLASSES = (BNAME_PT_tools,)

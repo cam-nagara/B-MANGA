@@ -8,8 +8,9 @@ import bpy
 from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
-from ..core.work import get_work
-from ..io import presets, work_io
+from ..core.work import get_active_page, get_work
+from ..io import border_presets, page_io, presets, work_io
+from ..io import coma_io
 from ..utils import log
 
 _logger = log.get_logger(__name__)
@@ -169,9 +170,171 @@ class BNAME_OT_paper_preset_save_local(Operator):
         return {"FINISHED"}
 
 
+# ---------- 枠線プリセット (枠線 + 白フチ) ----------
+
+_BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
+_SUPPRESS_BORDER_SELECTOR_UPDATE = False
+
+
+def _border_preset_enum_items(_self, context):
+    global _BORDER_PRESET_ENUM_CACHE
+    work = get_work(context)
+    work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
+    cache: list[tuple[str, str, str]] = []
+    for p in border_presets.list_all_presets(work_dir):
+        label = p.name if p.source == "global" else f"{p.name} (作品)"
+        cache.append((p.name, label, p.description))
+    if not cache:
+        cache.append(("", "(プリセットなし)", ""))
+    _BORDER_PRESET_ENUM_CACHE = cache
+    return _BORDER_PRESET_ENUM_CACHE
+
+
+def _resolve_selected_coma(context):
+    """枠線プリセットの対象コマを解決.
+
+    枠線/辺の選択 (``bname_edge_select_*``) を優先し、無ければアクティブ
+    ページのアクティブコマ。戻り値: (work, page, page_index, coma) or None。
+    """
+    work = get_work(context)
+    if work is None or not work.loaded:
+        return None
+    wm = context.window_manager
+    if getattr(wm, "bname_edge_select_kind", "none") != "none":
+        pi = int(getattr(wm, "bname_edge_select_page", -1))
+        ci = int(getattr(wm, "bname_edge_select_coma", -1))
+        if 0 <= pi < len(work.pages):
+            page = work.pages[pi]
+            if 0 <= ci < len(page.comas):
+                return work, page, pi, page.comas[ci]
+    page = get_active_page(context)
+    if page is None:
+        return None
+    ci = int(getattr(page, "active_coma_index", -1))
+    if not (0 <= ci < len(page.comas)):
+        return None
+    pi = int(getattr(work, "active_page_index", -1))
+    return work, page, pi, page.comas[ci]
+
+
+def _persist_and_refresh_coma_border(context, work, page, coma) -> None:
+    work_dir = Path(work.work_dir)
+    try:
+        coma_io.save_coma_meta(work_dir, page.id, coma)
+        page_io.save_page_json(work_dir, page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("border preset: save coma meta failed")
+    try:
+        from ..utils import coma_border_object as _cbo
+
+        scene = context.scene
+        if scene is not None:
+            _cbo.ensure_coma_border_object(scene, work, page, coma)
+    except Exception:  # noqa: BLE001
+        _logger.exception("border preset: refresh border object failed")
+
+
+def _on_border_preset_selector_change(self, context):
+    global _SUPPRESS_BORDER_SELECTOR_UPDATE
+    if _SUPPRESS_BORDER_SELECTOR_UPDATE:
+        return
+    name = getattr(self, "bname_border_preset_selector", "")
+    if not name:
+        return
+    resolved = _resolve_selected_coma(context)
+    if resolved is None:
+        return
+    work, page, _pi, coma = resolved
+    work_dir = Path(work.work_dir) if work.work_dir else None
+    preset = border_presets.load_preset_by_name(name, work_dir)
+    if preset is None:
+        return
+    border_presets.apply_preset_to_coma(preset, coma)
+    _persist_and_refresh_coma_border(context, work, page, coma)
+    _logger.info("border preset applied via selector: %s", preset.name)
+
+
+class BNAME_OT_border_preset_apply(Operator):
+    """選択した枠線プリセットを選択中のコマへ適用 (枠線 + 白フチ)."""
+
+    bl_idname = "bname.border_preset_apply"
+    bl_label = "枠線プリセットを適用"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: EnumProperty(  # type: ignore[valid-type]
+        name="プリセット",
+        items=_border_preset_enum_items,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return _resolve_selected_coma(context) is not None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        resolved = _resolve_selected_coma(context)
+        if resolved is None:
+            self.report({"ERROR"}, "対象のコマが選択されていません")
+            return {"CANCELLED"}
+        work, page, _pi, coma = resolved
+        work_dir = Path(work.work_dir) if work.work_dir else None
+        preset = border_presets.load_preset_by_name(self.preset_name, work_dir)
+        if preset is None:
+            self.report({"ERROR"}, f"プリセットが見つかりません: {self.preset_name}")
+            return {"CANCELLED"}
+        border_presets.apply_preset_to_coma(preset, coma)
+        _persist_and_refresh_coma_border(context, work, page, coma)
+        self.report({"INFO"}, f"枠線プリセット適用: {preset.name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_border_preset_save_local(Operator):
+    """選択中コマの枠線・白フチ設定を作品ローカルプリセットとして保存."""
+
+    bl_idname = "bname.border_preset_save_local"
+    bl_label = "枠線プリセットとして保存"
+    bl_options = {"REGISTER"}
+
+    preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
+    description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        w = get_work(context)
+        return bool(w and w.loaded and w.work_dir) and _resolve_selected_coma(context) is not None
+
+    def invoke(self, context, event):
+        self.preset_name = "新規枠線プリセット"
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        if not self.preset_name.strip():
+            self.report({"ERROR"}, "プリセット名が空です")
+            return {"CANCELLED"}
+        resolved = _resolve_selected_coma(context)
+        if resolved is None:
+            self.report({"ERROR"}, "対象のコマが選択されていません")
+            return {"CANCELLED"}
+        work, _page, _pi, coma = resolved
+        try:
+            out = border_presets.save_local_preset(
+                Path(work.work_dir), coma, self.preset_name, self.description
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("border_preset_save_local failed")
+            self.report({"ERROR"}, f"保存失敗: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"枠線プリセット保存: {out.name}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BNAME_OT_paper_preset_apply,
     BNAME_OT_paper_preset_save_local,
+    BNAME_OT_border_preset_apply,
+    BNAME_OT_border_preset_save_local,
 )
 
 
@@ -184,11 +347,21 @@ def register() -> None:
         items=_preset_enum_items,
         update=_on_paper_preset_selector_change,
     )
+    bpy.types.WindowManager.bname_border_preset_selector = EnumProperty(
+        name="枠線プリセット",
+        description="枠線プリセットを選択して選択中のコマへ即時適用",
+        items=_border_preset_enum_items,
+        update=_on_border_preset_selector_change,
+    )
 
 
 def unregister() -> None:
     try:
         del bpy.types.WindowManager.bname_paper_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bname_border_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

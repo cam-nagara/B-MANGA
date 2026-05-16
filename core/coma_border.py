@@ -27,6 +27,7 @@ _LINE_STYLE_ITEMS = (
     ("dashed", "破線", ""),
     ("dotted", "点線", ""),
     ("double", "二重線", ""),
+    ("brush", "ボカシブラシ", "輪郭をぼかした筆風の枠線"),
 )
 
 _CORNER_ITEMS = (
@@ -118,6 +119,15 @@ class BNameComaBorder(bpy.types.PropertyGroup):
         default=0.0,
         min=0.0,
         soft_max=20.0,
+        update=_on_border_changed,
+    )
+    blur_amount: FloatProperty(  # type: ignore[valid-type]
+        name="ボカシ量",
+        description="ボカシブラシ線種のときの輪郭のボケ具合",
+        default=0.5,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
         update=_on_border_changed,
     )
     visible: BoolProperty(  # type: ignore[valid-type]

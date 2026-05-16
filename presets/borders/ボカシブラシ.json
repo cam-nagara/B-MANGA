@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "presetType": "border",
+  "presetName": "ボカシブラシ",
+  "description": "輪郭をぼかした筆風 0.6mm 黒",
+  "border": {
+    "style": "brush",
+    "widthMm": 0.6,
+    "color": "#000000",
+    "corner": { "type": "square", "radiusMm": 0.0 },
+    "blurAmount": 0.6,
+    "visible": true,
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  },
+  "whiteMargin": {
+    "enabled": false,
+    "widthMm": 0.37,
+    "color": "#FFFFFF",
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  }
+}

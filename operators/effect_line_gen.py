@@ -404,6 +404,122 @@ def _stroke_opacities(params, point_count: int = 2) -> list[float] | None:
     return opacities
 
 
+def _inout_profile(params, length_m: float):
+    """入り抜きのプロファイル関数 p(s) を返す (s: 始点からの距離 m, 戻り 0..1).
+
+    入り = 始点から ``D_in`` の区間で in_percent → 100% へ。
+    抜き = 終点から ``D_out`` の区間で 100% → out_percent へ。
+    両者の min を取る。範囲が 100%(percent) のときは従来の線形変化と一致。
+    """
+    in_frac = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
+    out_frac = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
+    mode = str(getattr(params, "inout_range_mode", "percent") or "percent")
+    if mode == "length":
+        d_in = max(0.0, min(length_m, mm_to_m(float(getattr(params, "in_range_mm", 10.0)))))
+        d_out = max(0.0, min(length_m, mm_to_m(float(getattr(params, "out_range_mm", 10.0)))))
+    else:
+        d_in = _clamp01(float(getattr(params, "in_range_percent", 100.0)) / 100.0) * length_m
+        d_out = _clamp01(float(getattr(params, "out_range_percent", 100.0)) / 100.0) * length_m
+
+    def profile(s: float) -> float:
+        vi = 1.0 if d_in <= 1.0e-9 else in_frac + (1.0 - in_frac) * _clamp01(s / d_in)
+        vo = (
+            1.0
+            if d_out <= 1.0e-9
+            else out_frac + (1.0 - out_frac) * _clamp01((length_m - s) / d_out)
+        )
+        return min(vi, vo)
+
+    return profile, d_in, d_out
+
+
+def _polyline_cumulative(points_xyz):
+    dists = [0.0]
+    for i in range(1, len(points_xyz)):
+        ax, ay, az = points_xyz[i - 1]
+        bx, by, bz = points_xyz[i]
+        dists.append(dists[-1] + math.sqrt((bx - ax) ** 2 + (by - ay) ** 2 + (bz - az) ** 2))
+    return dists
+
+
+def _point_at_distance(points_xyz, cum, target: float):
+    if target <= cum[0]:
+        return points_xyz[0]
+    if target >= cum[-1]:
+        return points_xyz[-1]
+    for i in range(1, len(cum)):
+        if cum[i] >= target:
+            seg = cum[i] - cum[i - 1]
+            t = 0.0 if seg <= 1.0e-12 else (target - cum[i - 1]) / seg
+            ax, ay, az = points_xyz[i - 1]
+            bx, by, bz = points_xyz[i]
+            return (ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t)
+    return points_xyz[-1]
+
+
+def _apply_inout_profile(strokes, params):
+    """role=='line' の非閉路ストロークに入り抜き範囲プロファイルを適用する."""
+    apply = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
+    if apply not in {"brush_size", "opacity"}:
+        return strokes
+    out: list[EffectLineStroke] = []
+    for stroke in strokes:
+        pts = list(stroke.points_xyz)
+        if stroke.role != "line" or stroke.cyclic or len(pts) < 2:
+            out.append(stroke)
+            continue
+        cum = _polyline_cumulative(pts)
+        total = cum[-1]
+        if total <= 1.0e-9:
+            out.append(stroke)
+            continue
+        profile, d_in, d_out = _inout_profile(params, total)
+        breakpoints = set(cum)
+        if 0.0 < d_in < total:
+            breakpoints.add(d_in)
+        if 0.0 < (total - d_out) < total:
+            breakpoints.add(total - d_out)
+        # 入り区間と抜き区間が重なる場合の交点 (vi==vo) を解析的に追加
+        if d_in > 1.0e-9 and d_out > 1.0e-9 and d_in > (total - d_out):
+            in_frac = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
+            out_frac = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
+            a = (1.0 - in_frac) / d_in + (1.0 - out_frac) / d_out
+            if abs(a) > 1.0e-12:
+                s_cross = (1.0 - out_frac) * total / d_out / a
+                if 0.0 < s_cross < total:
+                    breakpoints.add(s_cross)
+        ordered = sorted(breakpoints)
+        new_pts: list[tuple[float, float, float]] = []
+        radii: list[float] = []
+        opac: list[float] = []
+        prev = None
+        for d in ordered:
+            if prev is not None and (d - prev) <= 1.0e-9:
+                continue
+            prev = d
+            new_pts.append(_point_at_distance(pts, cum, d))
+            val = profile(d)
+            radii.append(max(0.0, stroke.radius * val))
+            opac.append(_clamp01(val))
+        if len(new_pts) < 2:
+            out.append(stroke)
+            continue
+        out.append(
+            EffectLineStroke(
+                points_xyz=new_pts,
+                radius=stroke.radius,
+                cyclic=stroke.cyclic,
+                radii=radii if apply == "brush_size" else None,
+                opacities=opac if apply == "opacity" else None,
+                role=stroke.role,
+                curve_type=stroke.curve_type,
+                bezier_smooth=stroke.bezier_smooth,
+                density_end=stroke.density_end,
+            )
+        )
+    return out
+
+
 def generate_focus_strokes(
     params,
     center_xy_mm: tuple[float, float] = (110.0, 160.0),
@@ -886,13 +1002,16 @@ def generate_strokes(
     rx, ry = radius_xy_mm
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
     if etype == "speed":
-        return generate_speed_strokes(
+        return _apply_inout_profile(
+            generate_speed_strokes(
+                params,
+                origin_xy_mm=shape_center_xy_mm,
+                region_width_mm=rx * 2.0,
+                region_height_mm=ry * 2.0,
+                fixed_span_mm=rx * 2.0,
+                seed=seed,
+            ),
             params,
-            origin_xy_mm=shape_center_xy_mm,
-            region_width_mm=rx * 2.0,
-            region_height_mm=ry * 2.0,
-            fixed_span_mm=rx * 2.0,
-            seed=seed,
         )
     if etype == "beta_flash":
         return generate_beta_flash_strokes(params, shape_center_xy_mm, rx, ry, seed=seed)
@@ -909,8 +1028,8 @@ def generate_strokes(
         end_center_xy_mm=shape_center_xy_mm,
     )
     if etype == "uni_flash":
-        return _apply_uni_flash_jag(focus_strokes, center_xy_mm)
-    return focus_strokes
+        focus_strokes = _apply_uni_flash_jag(focus_strokes, center_xy_mm)
+    return _apply_inout_profile(focus_strokes, params)
 
 
 def generate_shape_guide_strokes(

@@ -149,6 +149,14 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     row = box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
+    box.prop(params, "inout_range_mode")
+    row = box.row(align=True)
+    if params.inout_range_mode == "length":
+        row.prop(params, "in_range_mm")
+        row.prop(params, "out_range_mm")
+    else:
+        row.prop(params, "in_range_percent")
+        row.prop(params, "out_range_percent")
 
     box = layout.box()
     box.label(text="色")

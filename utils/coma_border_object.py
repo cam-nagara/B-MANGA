@@ -109,6 +109,76 @@ def _ensure_color_material(name: str, rgba: tuple[float, float, float, float]) -
     return mat
 
 
+def _ensure_soft_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    """半透明のソフトマテリアル (ボカシブラシのハロー用).
+
+    Emission を Transparent と Mix し、Solid 表示でもレンダーでも alpha が
+    効くようにする。``rgba[3]`` を不透明度として扱う。
+    """
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    r, g, b, a = (float(rgba[0]), float(rgba[1]), float(rgba[2]), float(rgba[3]))
+    mat.diffuse_color = (r, g, b, a)
+    mat.use_nodes = True
+    try:
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = False
+    except Exception:  # noqa: BLE001
+        pass
+    nt = mat.node_tree
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    out.location = (300, 0)
+    emission = nt.nodes.new("ShaderNodeEmission")
+    emission.location = (0, 120)
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (0, -120)
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.location = (150, 0)
+    try:
+        emission.inputs["Color"].default_value = (r, g, b, 1.0)
+        emission.inputs["Strength"].default_value = 1.0
+        # fac=0 → 1番目(Transparent)、fac=1 → 2番目(Emission)。alpha をそのまま使う。
+        mix.inputs["Fac"].default_value = max(0.0, min(1.0, a))
+        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+        nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma border soft material setup failed")
+    return mat
+
+
+def _brush_halo_groups(
+    path: list[tuple[float, float]],
+    base_width_mm: float,
+    color: tuple[float, float, float, float],
+    blur_amount: float,
+) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
+    """ボカシブラシ: 芯 + 外側に広がる半透明ハローのグループ列を返す."""
+    blur = max(0.0, min(1.0, float(blur_amount)))
+    base_w = max(0.0, float(base_width_mm))
+    r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
+    groups: list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]] = []
+    # 芯 (不透明・通常幅)
+    groups.append(([list(path)], base_w, (r, g, b, a), "brush_core"))
+    if base_w <= 0.0 or blur <= 0.0:
+        return groups
+    layers = 3 + int(round(blur * 4.0))  # 3..7
+    max_extra = base_w * (0.6 + 4.0 * blur)
+    for i in range(1, layers + 1):
+        f = i / float(layers)
+        width_i = base_w + max_extra * f
+        alpha_i = a * ((1.0 - f) ** 1.5) * 0.45
+        if alpha_i <= 0.003:
+            continue
+        groups.append(([list(path)], width_i, (r, g, b, alpha_i), "brush_halo"))
+    # 外側 (幅広・薄い) を先に描き、芯を最後に描く
+    groups.reverse()
+    return groups
+
+
 def _rect_points(coma) -> list[tuple[float, float]]:
     w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
     h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
@@ -286,6 +356,10 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
     if no_edge_override and base_style == "solid":
         path = _outline_points(coma)
         return [([path], base_width, _rgba_from_border(coma), "solid_closed")]
+    if no_edge_override and base_style == "brush":
+        path = _outline_points(coma)
+        blur = float(getattr(border, "blur_amount", 0.5) or 0.0)
+        return _brush_halo_groups(path, base_width, _rgba_from_border(coma), blur)
     grouped: list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]] = []
     for i in range(len(base)):
         visible, style, width, color = _edge_settings(coma, i, len(base))
@@ -434,10 +508,23 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         curve = bpy.data.curves.get(curve_name)
         if curve is None:
             curve = bpy.data.curves.new(curve_name, type="CURVE")
-        _rebuild_curve(curve, paths, width_mm, cyclic=(style_name == "solid_closed"))
-        mat = _ensure_material(page_id, coma_id, coma) if group_index == 0 else _ensure_color_material(f"{_material_name(page_id, coma_id)}_{group_index:02d}", color)
-        if group_index == 0 and mat.diffuse_color != color:
-            mat = _ensure_color_material(_material_name(page_id, coma_id), color)
+        is_brush = style_name in {"brush_core", "brush_halo"}
+        _rebuild_curve(
+            curve,
+            paths,
+            width_mm,
+            cyclic=(style_name in {"solid_closed", "brush_core", "brush_halo"}),
+        )
+        if style_name == "brush_core":
+            mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_brushcore", color)
+        elif style_name == "brush_halo":
+            mat = _ensure_soft_material(f"{_material_name(page_id, coma_id)}_brushhalo_{group_index:02d}", color)
+        elif group_index == 0:
+            mat = _ensure_material(page_id, coma_id, coma)
+            if mat.diffuse_color != color:
+                mat = _ensure_color_material(_material_name(page_id, coma_id), color)
+        else:
+            mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_{group_index:02d}", color)
         if not curve.materials:
             curve.materials.append(mat)
         elif curve.materials[0] is not mat:
@@ -458,6 +545,10 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         obj.hide_viewport = not visible
         obj.hide_render = not visible
         _set_location(obj, scene, work, page, coma)
+        if is_brush:
+            # 芯 (group_index 最大) を最前面、外側ハローを背面に並べて
+            # z-fight を避けつつ輪郭が外へボケて見えるようにする。
+            obj.location.z = COMA_BORDER_Z_M + group_index * 1.0e-5
         if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
             try:
                 coma_coll.objects.link(obj)

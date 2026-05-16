@@ -48,6 +48,7 @@
 - **paper_bg は実 Mesh Object** (ラスター paint のジラジラノイズ解消) + 範囲外 paper_bg は viewport hide
 - **start_side 切替時、コマ配下レイヤーも page_grid offset に追従** (2026-05-01 修正、 サブコレクション再帰走査)
 - **Z リフトは 0.1 刻みのページ毎 per-page rank 方式**
+- **(完了 / 2026-05-17 Claude Code, v0.5.46)** 枠線ボカシブラシ線種 + 枠線プリセット (枠線+白フチ) + コマ作成ツール (矩形/折れ線 自動判別) + 効果線入り抜きの「範囲」(%/長さmm)。 ヘッドレス実機テスト PASS (`test/blender_border_preset_coma_tool_check.py`)。 画面目視は要対話 Blender (本ブランチ読込時)。 計画: [`docs/border_preset_coma_tool_plan_2026-05-16.md`](docs/border_preset_coma_tool_plan_2026-05-16.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 

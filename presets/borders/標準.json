@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "presetType": "border",
+  "presetName": "標準",
+  "description": "実線 0.5mm 黒・白フチなし",
+  "border": {
+    "style": "solid",
+    "widthMm": 0.5,
+    "color": "#000000",
+    "corner": { "type": "square", "radiusMm": 0.0 },
+    "blurAmount": 0.5,
+    "visible": true,
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  },
+  "whiteMargin": {
+    "enabled": false,
+    "widthMm": 0.37,
+    "color": "#FFFFFF",
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  }
+}

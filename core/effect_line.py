@@ -65,6 +65,11 @@ _INOUT_APPLY_ITEMS = (
     ("opacity", "不透明度", ""),
 )
 
+_INOUT_RANGE_MODE_ITEMS = (
+    ("percent", "％指定", "線全体に対する割合で入り抜きの範囲を指定"),
+    ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
+)
+
 _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "rect": "rect",
     "ellipse": "ellipse",
@@ -128,6 +133,11 @@ EFFECT_PARAM_FIELDS = (
     "inout_apply",
     "in_percent",
     "out_percent",
+    "inout_range_mode",
+    "in_range_percent",
+    "out_range_percent",
+    "in_range_mm",
+    "out_range_mm",
     "opacity",
     "line_color",
     "fill_color",
@@ -305,6 +315,11 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    inout_range_mode: EnumProperty(name="範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
+    in_range_percent: FloatProperty(name="入りの範囲 (%)", description="始点からこの割合の長さを入りの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_range_percent: FloatProperty(name="抜きの範囲 (%)", description="終点からこの割合の長さを抜きの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    in_range_mm: FloatProperty(name="入りの範囲 (mm)", description="始点からこの長さを入りの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="終点からこの長さを抜きの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     opacity: FloatProperty(name="不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]

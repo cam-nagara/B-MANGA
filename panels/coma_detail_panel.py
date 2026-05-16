@@ -57,10 +57,18 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
 
 def draw_coma_border_settings(layout, context, entry) -> None:
     b = entry.border
+    wm = getattr(context, "window_manager", None)
+    if wm is not None and hasattr(wm, "bname_border_preset_selector"):
+        row = layout.row(align=True)
+        row.label(text="プリセット", icon="PRESET")
+        row.prop(wm, "bname_border_preset_selector", text="")
+        row.operator("bname.border_preset_save_local", text="", icon="FILE_TICK")
     layout.prop(b, "visible", text="枠線を表示")
     content = layout.column()
     content.active = b.visible
     content.prop(b, "style")
+    if b.style == "brush":
+        content.prop(b, "blur_amount", slider=True)
     content.prop(b, "width_mm")
     content.prop(b, "color")
     row = content.row(align=True)

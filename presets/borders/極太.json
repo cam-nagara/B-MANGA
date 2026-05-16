@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "presetType": "border",
+  "presetName": "極太",
+  "description": "実線 1.2mm 黒・白フチ 0.4mm",
+  "border": {
+    "style": "solid",
+    "widthMm": 1.2,
+    "color": "#000000",
+    "corner": { "type": "square", "radiusMm": 0.0 },
+    "blurAmount": 0.5,
+    "visible": true,
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  },
+  "whiteMargin": {
+    "enabled": true,
+    "widthMm": 0.4,
+    "color": "#FFFFFF",
+    "perEdge": {
+      "top": { "useOverride": false },
+      "right": { "useOverride": false },
+      "bottom": { "useOverride": false },
+      "left": { "useOverride": false }
+    }
+  }
+}
