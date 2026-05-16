@@ -162,65 +162,126 @@ def _find_preview_view3d(context):
     return win, best, space, region
 
 
-def _render_camera_image(context, scene) -> bool:
-    """カメラ基準の画像を「レンダーモード表示」で撮影して保存する.
+def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
+    """画面に表示中のコマ 3D ビューをそのまま撮影し、カメラ枠で切り出す.
 
-    コマプレビューはレンダー結果の見た目とする方針。``render.render`` は
-    別オペレータ実行中 (コマ編集モード終了処理など) の文脈では実レンダー
-    が走らず空フレームのまま FINISHED を返し、プレビューが生成されない。
-    そのため 3D ビューを「レンダーモード表示」+ カメラ視点 + オーバーレイ
-    OFF にして OpenGL でレンダーモード表示のまま撮影する。エンジンは確実
-    に描画される EEVEE を一時使用する (撮影後に元へ戻す)。書き出し成否は
-    実ファイルの有無で判定し、3D ビューが取れない場合のみソリッド撮影へ
-    フォールバックする。
+    最終レンダーは行わない。コマ編集モードの 3D ビューは既にレンダーモード
+    表示 (Cycles 等) で画面に描かれているので、その画面ピクセルを
+    ``screen.screenshot`` で取得し、カメラ枠 (出力範囲) の矩形だけを切り出す
+    ことで「画面で見えているレンダーの見た目」をそのままプレビューにする。
+    魚眼/カラー/ラインも画面に出ているものがそのまま反映される。
+    """
+    win, area, space, region = _find_preview_view3d(context)
+    if win is None or area is None or space is None or region is None:
+        return False
+    r3d = getattr(space, "region_3d", None)
+    cam = getattr(scene, "camera", None)
+    if r3d is None or cam is None:
+        return False
+    if getattr(r3d, "view_perspective", "") != "CAMERA":
+        return False
+    overlay = space.overlay
+    prev_overlays = getattr(overlay, "show_overlays", True)
+    prev_gizmo = getattr(space, "show_gizmo", True)
+    import tempfile as _tempfile
+
+    shot_dir = Path(_tempfile.mkdtemp())
+    shot = shot_dir / "screen.png"
+    try:
+        try:
+            overlay.show_overlays = False
+            space.show_gizmo = False
+        except Exception:  # noqa: BLE001
+            pass
+        with context.temp_override(window=win, area=area, region=region):
+            # オーバーレイ非表示を画面へ反映してからキャプチャする。
+            # (overlay 切替は UI のみで Cycles 表示は再計算されない)
+            try:
+                bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=1)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                bpy.ops.screen.screenshot(filepath=str(shot))
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning("screen.screenshot failed: %s", exc, exc_info=True)
+                return False
+    finally:
+        try:
+            overlay.show_overlays = prev_overlays
+            space.show_gizmo = prev_gizmo
+        except Exception:  # noqa: BLE001
+            pass
+    if not shot.is_file():
+        return False
+
+    # カメラ枠 (出力範囲) を region ピクセルで求める。view_frame を投影する
+    # 方式は、カメラ視点のとき魚眼/パノラマでも出力矩形と一致する。
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+
+    mat = cam.matrix_world.normalized()
+    try:
+        corners = cam.data.view_frame(scene=scene)
+    except Exception:  # noqa: BLE001
+        return False
+    pts = [location_3d_to_region_2d(region, r3d, mat @ v) for v in corners]
+    if any(p is None for p in pts):
+        return False
+    xs = [p.x for p in pts]
+    ys = [p.y for p in pts]
+    bx1, by1, bx2, by2 = min(xs), min(ys), max(xs), max(ys)
+
+    from ..io import export_pipeline
+
+    Image = export_pipeline.Image
+    if Image is None:
+        return False
+    try:
+        with Image.open(str(shot)) as opened:
+            img = opened.convert("RGBA")
+    except Exception:  # noqa: BLE001
+        return False
+    sx = img.width / max(1, int(win.width))
+    sy = img.height / max(1, int(win.height))
+    # region 座標 (原点=左下) → ウィンドウ → 画像座標 (原点=左上)
+    wx1 = region.x + bx1
+    wx2 = region.x + bx2
+    wy1 = region.y + by1
+    wy2 = region.y + by2
+    ix1 = int(round(wx1 * sx))
+    ix2 = int(round(wx2 * sx))
+    iy1 = int(round((win.height - wy2) * sy))
+    iy2 = int(round((win.height - wy1) * sy))
+    ix1 = max(0, min(img.width - 1, ix1))
+    ix2 = max(ix1 + 1, min(img.width, ix2))
+    iy1 = max(0, min(img.height - 1, iy1))
+    iy2 = max(iy1 + 1, min(img.height, iy2))
+    try:
+        img.crop((ix1, iy1, ix2, iy2)).save(str(target))
+    except Exception:  # noqa: BLE001
+        return False
+    return target.is_file()
+
+
+def _render_camera_image(context, scene) -> bool:
+    """コマプレビュー用の「カメラ枠の画像」を ``scene.render.filepath`` に書く.
+
+    方針: 最終レンダーはしない。コマ編集中の 3D ビューは画面に既に
+    レンダーモード表示で描かれているので、その画面をそのまま撮って
+    カメラ枠で切り出す (魚眼/カラー/ライン も画面どおり)。画面取得が
+    できない異常時のみ、ソリッドの OpenGL 撮影へフォールバックする。
     """
     target = Path(bpy.path.abspath(scene.render.filepath))
 
     def _written() -> bool:
-        # render.opengl は何も描けなくても FINISHED を返すため、
-        # 実ファイルが書き出されたかで成否を判定する。
         return _resolve_render_output_path(target) is not None
 
-    win, area, space, region = _find_preview_view3d(context)
-    prev_engine = scene.render.engine
-    if area is not None and space is not None and region is not None:
-        shading = space.shading
-        overlay = space.overlay
-        r3d = space.region_3d
-        prev_shading = getattr(shading, "type", None)
-        prev_overlays = getattr(overlay, "show_overlays", True)
-        prev_persp = getattr(r3d, "view_perspective", None)
-        try:
-            scene.render.engine = "BLENDER_EEVEE"
-            try:
-                shading.type = "RENDERED"
-                overlay.show_overlays = False
-                r3d.view_perspective = "CAMERA"
-            except Exception:  # noqa: BLE001
-                pass
-            try:
-                with context.temp_override(
-                    window=win, area=area, region=region, scene=scene
-                ):
-                    bpy.ops.render.opengl(write_still=True, view_context=True)
-            except Exception as exc:  # noqa: BLE001
-                _logger.warning(
-                    "rendered viewport capture failed: %s", exc, exc_info=True
-                )
-            if _written():
-                return True
-        finally:
-            try:
-                if prev_shading is not None:
-                    shading.type = prev_shading
-                overlay.show_overlays = prev_overlays
-                if prev_persp is not None:
-                    r3d.view_perspective = prev_persp
-            except Exception:  # noqa: BLE001
-                pass
-            scene.render.engine = prev_engine
+    try:
+        if _capture_screen_camera_frame(context, scene, target):
+            return True
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("screen camera-frame capture failed: %s", exc, exc_info=True)
 
-    # 3D ビューが取れない等の異常時のみ: カメラ基準のソリッド撮影。
+    # 異常時のみ: カメラ基準のソリッド OpenGL 撮影 (見た目は簡易)。
     try:
         with context.temp_override(scene=scene):
             bpy.ops.render.opengl(write_still=True, view_context=False)
