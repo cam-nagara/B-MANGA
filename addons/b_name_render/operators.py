@@ -8,7 +8,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
-from . import command_runner, command_ui, core, preset_library
+from . import command_runner, command_ui, core, defaults_store, preset_library
 
 
 def _play_completion_sound() -> None:
@@ -212,6 +212,74 @@ class BNAME_RENDER_OT_command_card_click(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_preset_defaults_register(Operator):
+    bl_idname = "bname_render.preset_defaults_register"
+    bl_label = "初期設定に登録"
+    bl_description = "選択中プリセットの現在のカード構成を、ユーザー共通の初期設定として保存"
+
+    @classmethod
+    def poll(cls, context):
+        return core.active_preset(context) is not None
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_confirm(
+            self, _event,
+            title="初期設定に登録",
+            message="このプリセットの現在のカード構成を初期設定として保存します。",
+            confirm_text="登録",
+        )
+
+    def execute(self, context):
+        preset = core.active_preset(context)
+        if preset is None:
+            return {"CANCELLED"}
+        try:
+            defaults_store.save_preset_default(preset.name, preset)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"保存失敗: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"初期設定に登録: {preset.name}")
+        return {"FINISHED"}
+
+
+class BNAME_RENDER_OT_preset_defaults_restore(Operator):
+    bl_idname = "bname_render.preset_defaults_restore"
+    bl_label = "初期設定に戻す"
+    bl_description = "選択中プリセットのカード構成を、登録済みの初期設定（無ければ組み込み既定）へ戻す"
+
+    @classmethod
+    def poll(cls, context):
+        return core.active_preset(context) is not None
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_confirm(
+            self, _event,
+            title="初期設定に戻す",
+            message="このプリセットのカード構成を初期設定へ戻します。現在の内容は失われます。",
+            confirm_text="戻す",
+        )
+
+    def execute(self, context):
+        preset = core.active_preset(context)
+        if preset is None:
+            return {"CANCELLED"}
+        cmds = defaults_store.get_preset_default(preset.name)
+        source = "登録済み初期設定"
+        if cmds is None:
+            cmds = preset_library.BUILTIN_PRESETS.get(preset.name)
+            source = "組み込み既定"
+        if cmds is None:
+            self.report({"WARNING"}, "このプリセットの初期設定がありません")
+            return {"CANCELLED"}
+        try:
+            defaults_store.apply_commands(preset, list(cmds))
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"復元失敗: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"{source}に戻しました: {preset.name}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
@@ -222,6 +290,8 @@ _CLASSES = (
     BNAME_RENDER_OT_command_remove,
     BNAME_RENDER_OT_command_move,
     BNAME_RENDER_OT_command_card_click,
+    BNAME_RENDER_OT_preset_defaults_register,
+    BNAME_RENDER_OT_preset_defaults_restore,
 )
 
 

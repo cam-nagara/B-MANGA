@@ -112,6 +112,9 @@ def _draw_command_list(layout, preset) -> None:
     up.direction = "UP"
     down = tools.operator("bname_render.command_move", text="", icon="TRIA_DOWN")
     down.direction = "DOWN"
+    tools.separator()
+    tools.operator("bname_render.preset_defaults_restore", text="", icon="LOOP_BACK")
+    tools.operator("bname_render.preset_defaults_register", text="", icon="PINNED")
 
     if not preset.commands:
         cards.label(text="カードがありません")
@@ -120,16 +123,15 @@ def _draw_command_list(layout, preset) -> None:
     for index, command in enumerate(preset.commands):
         box = cards.box()
         row = box.row(align=True)
-        icon = "CHECKBOX_HLT" if command.enabled else "CHECKBOX_DEHLT"
         selected = index == int(preset.active_command_index)
-        label = f"{index + 1:02d}. {command.name}"
+        row.prop(command, "enabled", text="")
         row.operator_context = "INVOKE_DEFAULT"
-        op = row.operator("bname_render.command_card_click", text=label, icon=icon, depress=selected)
+        op = row.operator(
+            "bname_render.command_card_click",
+            text=command_ui.display_name(command),
+            depress=selected,
+        )
         op.index = index
-        row.label(text=command_ui.command_type_label(command.command_type))
-        summary = command_ui.command_summary(command)
-        if summary:
-            box.label(text=summary)
 
 
 def _draw_active_command_detail(layout, preset, context) -> None:

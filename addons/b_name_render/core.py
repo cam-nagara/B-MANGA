@@ -50,6 +50,7 @@ class BNameRenderToolSettings(bpy.types.PropertyGroup):
 
 class BNameRenderCommand(bpy.types.PropertyGroup):
     name: StringProperty(name="カード名", default="レンダー")  # type: ignore[valid-type]
+    name_auto: BoolProperty(name="名前を自動生成", default=True)  # type: ignore[valid-type]
     command_type: EnumProperty(name="種類", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
     enabled: BoolProperty(name="有効", default=True)  # type: ignore[valid-type]
 
