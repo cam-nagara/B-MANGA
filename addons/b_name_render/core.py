@@ -75,6 +75,23 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
     operator_idname: StringProperty(name="オペレータ", default="")  # type: ignore[valid-type]
 
 
+PRESET_CATEGORY_ITEMS = (
+    ("ALL", "すべて", "すべてのプリセットを表示"),
+    ("CHARA", "キャラ", "キャラ系プリセットのみ表示"),
+    ("BG", "背景", "背景系プリセットのみ表示"),
+    ("OTHER", "その他", "キャラ・背景以外のプリセットを表示"),
+)
+
+
+def preset_category_of(name: str) -> str:
+    n = str(name or "")
+    if n.startswith("キャラ"):
+        return "CHARA"
+    if n.startswith("背景"):
+        return "BG"
+    return "OTHER"
+
+
 class BNameRenderPreset(bpy.types.PropertyGroup):
     name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
     commands: CollectionProperty(type=BNameRenderCommand)  # type: ignore[valid-type]
@@ -84,6 +101,7 @@ class BNameRenderPreset(bpy.types.PropertyGroup):
 class BNameRenderState(bpy.types.PropertyGroup):
     presets: CollectionProperty(type=BNameRenderPreset)  # type: ignore[valid-type]
     active_preset_index: IntProperty(name="プリセット", default=0, min=0)  # type: ignore[valid-type]
+    preset_category: EnumProperty(name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL")  # type: ignore[valid-type]
     last_card_click_index: IntProperty(name="前回カード", default=-1)  # type: ignore[valid-type]
     last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
     sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]

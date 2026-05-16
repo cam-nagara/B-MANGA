@@ -16,6 +16,20 @@ class BNAME_RENDER_UL_presets(UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.label(text=item.name, icon="PRESET")
 
+    def filter_items(self, _context, data, propname):
+        items = getattr(data, propname)
+        flags = [self.bitflag_filter_item] * len(items)
+        if self.filter_name:
+            flags = bpy.types.UI_UL_list.filter_items_by_name(
+                self.filter_name, self.bitflag_filter_item, items, "name"
+            )
+        category = str(getattr(data, "preset_category", "ALL") or "ALL")
+        if category != "ALL":
+            for i, item in enumerate(items):
+                if core.preset_category_of(item.name) != category:
+                    flags[i] &= ~self.bitflag_filter_item
+        return flags, []
+
 
 class BNAME_RENDER_PT_main(Panel):
     bl_idname = "BNAME_RENDER_PT_main"
@@ -57,11 +71,12 @@ def draw_main_panel(layout, context) -> None:
     preset = core.active_preset(context)
     if preset is None:
         return
-    layout.prop(preset, "name", text="名前")
-    row = layout.row(align=True)
-    row.operator("bname_render.preset_run", text="プリセットを実行", icon="RENDER_STILL")
     _draw_command_list(layout, preset)
     _draw_active_command_detail(layout, preset, context)
+    layout.separator()
+    layout.operator(
+        "bname_render.preset_run", text="プリセットを実行", icon="RENDER_STILL"
+    )
 
 
 def _draw_fisheye_box(layout, context, state) -> None:
@@ -93,6 +108,8 @@ def _draw_fisheye_box(layout, context, state) -> None:
 
 
 def _draw_preset_list(layout, state) -> None:
+    cat = layout.row(align=True)
+    cat.prop(state, "preset_category", expand=True)
     row = layout.row()
     row.template_list(
         "BNAME_RENDER_UL_presets",
@@ -112,9 +129,7 @@ def _draw_preset_list(layout, state) -> None:
 
 
 def _draw_command_list(layout, preset) -> None:
-    split = layout.split(factor=0.88)
-    cards = split.column(align=True)
-    tools = split.column(align=True)
+    tools = layout.row(align=True)
     tools.operator("bname_render.command_add", text="", icon="ADD")
     tools.operator("bname_render.command_remove", text="", icon="REMOVE")
     up = tools.operator("bname_render.command_move", text="", icon="TRIA_UP")
@@ -126,12 +141,12 @@ def _draw_command_list(layout, preset) -> None:
     tools.operator("bname_render.preset_defaults_register", text="", icon="PINNED")
 
     if not preset.commands:
-        cards.label(text="カードがありません")
+        layout.label(text="カードがありません")
         return
 
+    col = layout.column(align=True)
     for index, command in enumerate(preset.commands):
-        box = cards.box()
-        row = box.row(align=True)
+        row = col.box().row(align=True)
         selected = index == int(preset.active_command_index)
         row.prop(command, "enabled", text="")
         row.operator_context = "INVOKE_DEFAULT"
