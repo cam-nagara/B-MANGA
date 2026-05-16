@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import bpy
 from bpy.types import Panel, UIList
 
@@ -66,17 +68,24 @@ def _draw_fisheye_box(layout, context, state) -> None:
     scene = context.scene
     fish = layout.box()
     fish.label(text="魚眼出力", icon="CAMERA_DATA")
+    # 魚眼モード / 魚眼FOV は B-Name のコマファイル側で調節する。
+    # B-Name-Render は単体運用を想定しないため、ここでは編集させず、
+    # 出力に使われる値を読み取り専用で表示する (B-Name と自動同期)。
+    fisheye_on = bool(getattr(scene, "fisheye_layout_mode", False))
+    info = fish.column(align=True)
+    info.label(
+        text=f"魚眼モード: {'オン' if fisheye_on else 'オフ'}（B-Name側で調節）",
+    )
+    if fisheye_on:
+        fov_deg = round(
+            math.degrees(float(getattr(scene, "fisheye_fov", 0.0) or 0.0))
+        )
+        info.label(text=f"魚眼FOV: {fov_deg}°")
     row = fish.row(align=True)
-    row.prop(scene, "fisheye_layout_mode", text="魚眼モード")
     row.prop(scene, "reduction_mode", text="縮小モード")
     sub = fish.row(align=True)
     sub.enabled = bool(scene.reduction_mode)
     sub.prop(scene, "preview_scale_percentage", text="縮小率")
-    fish_only = fish.column(align=True)
-    fish_only.enabled = bool(getattr(scene, "fisheye_layout_mode", False))
-    fish_only.prop(scene, "fisheye_fov", text="魚眼FOV")
-    if hasattr(scene, "my_tool"):
-        fish_only.prop(scene.my_tool, "bg_images_scale", text="ページ画像のスケール")
     fish.label(text=f"現在の出力解像度: {scene.render.resolution_x} x {scene.render.resolution_y}")
     if int(getattr(scene, "original_resolution_x", 0)) and int(getattr(scene, "original_resolution_y", 0)):
         fish.label(text=f"元解像度: {scene.original_resolution_x} x {scene.original_resolution_y}")
