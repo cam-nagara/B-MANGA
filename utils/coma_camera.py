@@ -223,7 +223,18 @@ def sync_world_background_color(context, *, panel=None, work=None, page_id: str 
         return
     if scene.world is None:
         scene.world = bpy.data.worlds.new("World")
+        try:
+            scene.world["bname_managed"] = True
+        except Exception:  # noqa: BLE001
+            pass
     world = scene.world
+    # ユーザーが用意したワールド (空 HDRI など) は B-Name が作った
+    # 管理用ワールドではないので、ノードツリーを作り直して上書きしない。
+    # これをしないと、コマ用blendファイルでワールドを編集して保存しても、
+    # 次にコマを開く/閉じる際にここで強度や接続が初期化され、編集が
+    # 毎回失われてしまう (保存はされているが保存前にここで戻される)。
+    if world is not None and world.get("bname_managed") is not True:
+        return
     settings = getattr(scene, "bname_coma_camera_settings", None)
     camera_only = bool(getattr(settings, "world_background_camera_only", False))
     rgba = (
@@ -240,6 +251,12 @@ def sync_world_background_color(context, *, panel=None, work=None, page_id: str 
 
 
 def _configure_world_background_nodes(world, rgba, camera_only: bool) -> None:
+    try:
+        # ここで作り直すワールドは B-Name 管理用と明示しておく
+        # (次回以降の sync で再構築対象だと判定できるように)。
+        world["bname_managed"] = True
+    except Exception:  # noqa: BLE001
+        pass
     try:
         world.use_nodes = True
     except Exception:  # noqa: BLE001
@@ -748,12 +765,10 @@ def _configure_coma_camera_view(space, scene=None) -> None:
     shading = getattr(space, "shading", None)
     if shading is None:
         return
+    # コマ用blendファイルはレンダーモード表示で開く (ユーザー要望)。
+    # この関数はコマ編集モードでのみ呼ばれるため常に RENDERED でよい。
     try:
-        shading.type = "SOLID"
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        shading.light = "STUDIO"
+        shading.type = "RENDERED"
     except Exception:  # noqa: BLE001
         pass
     _apply_coma_solid_background(space, scene)

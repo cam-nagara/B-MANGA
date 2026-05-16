@@ -1,9 +1,11 @@
 """コマのレンダーカメラサムネイル/高品質プレビュー生成 Operator.
 
 計画書 3.4.3 / 8.8 参照。コマ編集モード終了時に cNN_thumb.png を
-カメラ基準の「レンダーモードのレンダリング」のコマ領域切り出しで更新。
-ユーザー手動で cNN_preview.png を高解像度レンダー画像として生成。
-ソリッド (OpenGL) ではなくシーンのレンダーエンジンでレンダリングする。
+カメラ基準の「レンダーモード表示」のコマ領域切り出しで更新。
+ユーザー手動で cNN_preview.png を高解像度プレビュー画像として生成。
+``render.render`` は別オペレータ実行中の文脈では空フレームのまま
+完了扱いになりプレビューが生成されないため、3D ビューをレンダー
+モード表示 + カメラ視点にした OpenGL 撮影で確実に書き出す。
 """
 
 from __future__ import annotations
@@ -134,31 +136,98 @@ def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: i
         scene.render.border_max_y = prev_border[3]
 
 
-def _render_camera_image(context, scene) -> bool:
-    """カメラ基準の画像をシーンのレンダーエンジンでレンダリングする (F12 相当).
+def _find_preview_view3d(context):
+    """プレビュー撮影に使う VIEW_3D エリアを 1 つ返す.
 
-    コマプレビューは「レンダーモードのスクショ」とする方針のため、
-    ソリッド (OpenGL) ではなくシーンに設定されたレンダーエンジンで
-    レンダリングする。レンダーに失敗したときだけ OpenGL ソリッドへ
-    フォールバックして、プレビュー更新が完全に途絶えないようにする。
+    Returns ``(window, area, space, region)``。見つからなければ area=None。
     """
-    try:
-        with context.temp_override(scene=scene):
-            bpy.ops.render.render(write_still=True)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning(
-            "render-mode preview failed, falling back to OpenGL: %s",
-            exc,
-            exc_info=True,
-        )
+    win = getattr(context, "window", None)
+    if win is None:
+        wm = getattr(context, "window_manager", None)
+        windows = list(getattr(wm, "windows", []) or [])
+        win = windows[0] if windows else None
+    screen = getattr(win, "screen", None)
+    if win is None or screen is None:
+        return win, None, None, None
+    best = None
+    for area in screen.areas:
+        if area.type != "VIEW_3D":
+            continue
+        if best is None or area.width * area.height > best.width * best.height:
+            best = area
+    if best is None:
+        return win, None, None, None
+    space = best.spaces.active
+    region = next((r for r in best.regions if r.type == "WINDOW"), None)
+    return win, best, space, region
+
+
+def _render_camera_image(context, scene) -> bool:
+    """カメラ基準の画像を「レンダーモード表示」で撮影して保存する.
+
+    コマプレビューはレンダー結果の見た目とする方針。``render.render`` は
+    別オペレータ実行中 (コマ編集モード終了処理など) の文脈では実レンダー
+    が走らず空フレームのまま FINISHED を返し、プレビューが生成されない。
+    そのため 3D ビューを「レンダーモード表示」+ カメラ視点 + オーバーレイ
+    OFF にして OpenGL でレンダーモード表示のまま撮影する。エンジンは確実
+    に描画される EEVEE を一時使用する (撮影後に元へ戻す)。書き出し成否は
+    実ファイルの有無で判定し、3D ビューが取れない場合のみソリッド撮影へ
+    フォールバックする。
+    """
+    target = Path(bpy.path.abspath(scene.render.filepath))
+
+    def _written() -> bool:
+        # render.opengl は何も描けなくても FINISHED を返すため、
+        # 実ファイルが書き出されたかで成否を判定する。
+        return _resolve_render_output_path(target) is not None
+
+    win, area, space, region = _find_preview_view3d(context)
+    prev_engine = scene.render.engine
+    if area is not None and space is not None and region is not None:
+        shading = space.shading
+        overlay = space.overlay
+        r3d = space.region_3d
+        prev_shading = getattr(shading, "type", None)
+        prev_overlays = getattr(overlay, "show_overlays", True)
+        prev_persp = getattr(r3d, "view_perspective", None)
+        try:
+            scene.render.engine = "BLENDER_EEVEE"
+            try:
+                shading.type = "RENDERED"
+                overlay.show_overlays = False
+                r3d.view_perspective = "CAMERA"
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                with context.temp_override(
+                    window=win, area=area, region=region, scene=scene
+                ):
+                    bpy.ops.render.opengl(write_still=True, view_context=True)
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "rendered viewport capture failed: %s", exc, exc_info=True
+                )
+            if _written():
+                return True
+        finally:
+            try:
+                if prev_shading is not None:
+                    shading.type = prev_shading
+                overlay.show_overlays = prev_overlays
+                if prev_persp is not None:
+                    r3d.view_perspective = prev_persp
+            except Exception:  # noqa: BLE001
+                pass
+            scene.render.engine = prev_engine
+
+    # 3D ビューが取れない等の異常時のみ: カメラ基準のソリッド撮影。
     try:
         with context.temp_override(scene=scene):
             bpy.ops.render.opengl(write_still=True, view_context=False)
-        return True
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("OpenGL fallback preview failed: %s", exc, exc_info=True)
+        _logger.warning("solid opengl fallback failed: %s", exc, exc_info=True)
         return False
+    return _written()
 
 
 def _resolve_coma_entry(context, work):

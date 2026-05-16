@@ -143,6 +143,12 @@ class BNAME_OT_enter_coma_mode(Operator):
 
         work.active_page_index = page_idx
         page.active_coma_index = coma_idx
+        # ダブルクリックは確実にコマを開く。未作成コマでテンプレート選択
+        # ダイアログ (fileselect_add) を出すと「ダブルクリックしたのに
+        # コマが開かずファイル選択窓が出る」状態になるため、プロンプトを
+        # 抑止し既存 cNN.blend / 解決済みテンプレート / 空シーンから開く
+        # (オブジェクトツール経路と同じ挙動に揃える)。
+        self.prompt_template_if_missing = False
         return self.execute(context)
 
     def execute(self, context):

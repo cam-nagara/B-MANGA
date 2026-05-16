@@ -1665,18 +1665,19 @@ def apply_bname_shading_mode(context=None) -> int:
     B-Name 作品 UI の見え方を統一する目的:
     - 紙の白マテリアルが MatCap や Studio 光源で立体的に陰になるのを防ぎ、
       フラットな印刷物のように描画する
-    - 紙面編集: shading.type = "SOLID", shading.light = "FLAT"
-    - コマ編集: shading.type = "SOLID", shading.light = "STUDIO"
-    - shading.color_type = "TEXTURE": コマプレビューをコマ平面メッシュの
-      画像テクスチャとして表示するため (旧: 毎フレーム GPU オーバーレイ)。
-      プレビューの無いコマはマテリアル色 (背景色) で表示される。
+    - 紙面編集 (ページ一覧): shading.type = "SOLID", shading.light = "FLAT",
+      shading.color_type = "TEXTURE"。コマプレビューをコマ平面メッシュの
+      画像テクスチャとして表示するため。プレビューの無いコマはマテリアル
+      色 (背景色) で表示される。
+    - コマ編集: shading.type = "RENDERED"。コマ用blendファイルを開いたとき
+      レンダー結果の見た目で 3D を確認できるようにする (ユーザー要望)。
     work_new / work_open / load_post から呼ぶ。戻り値は変更したエリア数。
     """
     ctx = context or bpy.context
     wm = ctx.window_manager
     if wm is None:
         return 0
-    target_light = "STUDIO" if get_mode(ctx) == MODE_COMA else "FLAT"
+    is_coma = get_mode(ctx) == MODE_COMA
     count = 0
     for window in wm.windows:
         screen = getattr(window, "screen", None)
@@ -1695,15 +1696,23 @@ def apply_bname_shading_mode(context=None) -> int:
             if shading is None:
                 continue
             try:
-                if getattr(shading, "type", None) != "SOLID":
-                    shading.type = "SOLID"
-                    count += 1
-                if getattr(shading, "light", None) != target_light:
-                    shading.light = target_light
-                    count += 1
-                if getattr(shading, "color_type", None) != "TEXTURE":
-                    shading.color_type = "TEXTURE"
-                    count += 1
+                if is_coma:
+                    # コマ編集モード: レンダーモード表示
+                    if getattr(shading, "type", None) != "RENDERED":
+                        shading.type = "RENDERED"
+                        count += 1
+                else:
+                    # 紙面編集 (ページ一覧): コマプレビュー画像を貼った
+                    # コマ平面メッシュをフラットに表示
+                    if getattr(shading, "type", None) != "SOLID":
+                        shading.type = "SOLID"
+                        count += 1
+                    if getattr(shading, "light", None) != "FLAT":
+                        shading.light = "FLAT"
+                        count += 1
+                    if getattr(shading, "color_type", None) != "TEXTURE":
+                        shading.color_type = "TEXTURE"
+                        count += 1
             except Exception:  # noqa: BLE001
                 _logger.exception("apply_bname_shading_mode: set failed")
     return count
