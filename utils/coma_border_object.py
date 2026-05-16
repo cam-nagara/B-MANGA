@@ -183,6 +183,24 @@ def _brush_halo_groups(
     return groups
 
 
+def _white_margin_ring(
+    inner_pts: list[tuple[float, float]],
+    outer_pts: list[tuple[float, float]],
+) -> Optional[tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]]:
+    """内側/外側の閉ループから一定幅のリング Mesh (頂点/面) を作る.
+
+    内外を同じ角分割数の角処理輪郭で生成すれば点数が 1:1 対応するため、
+    対応点同士を四角形で帯状に繋いで丸角の白フチを作る。
+    """
+    n = len(inner_pts)
+    if n < 3 or len(outer_pts) != n:
+        return None
+    verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in inner_pts]
+    verts += [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in outer_pts]
+    faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+    return verts, faces
+
+
 def _rect_points(coma) -> list[tuple[float, float]]:
     w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
     h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
@@ -412,9 +430,47 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
         mesh = bpy.data.meshes.new(mesh_name)
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, int, int, int]] = []
-    if visible:
+    border = getattr(coma, "border", None)
+    corner_type = str(getattr(border, "corner_type", "square") or "square")
+    corner_r = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
+    is_rect = str(getattr(coma, "shape_type", "rect") or "rect") == "rect"
+    # 等幅 (辺ごとの個別設定なし) かつ丸角/面取りのときは、枠線と同心の
+    # 丸角リングとして白フチを生成し、四隅のはみ出しをなくす。
+    use_round_ring = (
+        visible
+        and is_rect
+        and corner_type in ("rounded", "bevel")
+        and corner_r > 0.0
+        and not any_override
+        and enabled_global
+        and base_width > 0.0
+    )
+    if use_round_ring:
+        w_mm = float(getattr(coma, "rect_width_mm", 0.0) or 0.0)
+        h_mm = float(getattr(coma, "rect_height_mm", 0.0) or 0.0)
+        mw = base_width
+        try:
+            inner = border_geom.styled_closed_path_mm(
+                [(0.0, 0.0), (w_mm, 0.0), (w_mm, h_mm), (0.0, h_mm)],
+                corner_type,
+                corner_r,
+            )
+            outer = border_geom.styled_closed_path_mm(
+                [(-mw, -mw), (w_mm + mw, -mw), (w_mm + mw, h_mm + mw), (-mw, h_mm + mw)],
+                corner_type,
+                corner_r + mw,
+            )
+            ring = _white_margin_ring(inner, outer)
+        except Exception:  # noqa: BLE001
+            _logger.exception("white margin rounded ring failed")
+            ring = None
+        if ring is not None:
+            verts, faces = ring
+        else:
+            use_round_ring = False
+    if visible and not use_round_ring:
         poly = _base_poly(coma)
-        if str(getattr(coma, "shape_type", "rect") or "rect") == "rect":
+        if is_rect:
             rect = Rect(0.0, 0.0, float(getattr(coma, "rect_width_mm", 0.0) or 0.0), float(getattr(coma, "rect_height_mm", 0.0) or 0.0))
             widths = [base_width] * 4
             enabled = [enabled_global] * 4
