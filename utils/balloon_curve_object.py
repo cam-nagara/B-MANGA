@@ -105,6 +105,7 @@ def _ensure_balloon_curve_data(
     tail_polygons_mm: Sequence[Sequence[tuple[float, float]]] | None = None,
     *,
     fill: bool = False,
+    corner_indices: Sequence[int] | None = None,
 ) -> bpy.types.Curve:
     """点列 (mm) から Bezier Curve データブロックを ensure (再構築)."""
     curve = bpy.data.curves.get(name)
@@ -119,7 +120,7 @@ def _ensure_balloon_curve_data(
             break
     if not points_mm or len(points_mm) < 3:
         return curve
-    _append_bezier_loop(curve, points_mm)
+    _append_bezier_loop(curve, points_mm, corner_indices)
     for tail_points in tail_polygons_mm or ():
         if len(tail_points) >= 3:
             _append_poly_loop(curve, tail_points)
@@ -134,15 +135,22 @@ def _ensure_balloon_curve_data(
 def _append_bezier_loop(
     curve: bpy.types.Curve,
     points_mm: Sequence[tuple[float, float]],
+    corner_indices: Sequence[int] | None = None,
 ) -> None:
     spline = curve.splines.new(type="BEZIER")
     spline.bezier_points.add(len(points_mm) - 1)
+    corners = {int(i) for i in (corner_indices or ())}
     for i, (x_mm, y_mm) in enumerate(points_mm):
         bp = spline.bezier_points[i]
         bp.co = (mm_to_m(x_mm), mm_to_m(y_mm), 0.0)
-        # ハンドルを AUTO にして自然な曲線
-        bp.handle_left_type = "AUTO"
-        bp.handle_right_type = "AUTO"
+        if i in corners:
+            # 雲の谷・トゲ先端など本来鋭角の頂点は VECTOR で角を残す
+            bp.handle_left_type = "VECTOR"
+            bp.handle_right_type = "VECTOR"
+        else:
+            # それ以外は AUTO にして自然な曲線
+            bp.handle_left_type = "AUTO"
+            bp.handle_right_type = "AUTO"
     spline.use_cyclic_u = True
 
 
@@ -260,13 +268,14 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
     return mat
 
 
-def _outline_points_for_entry(entry) -> list[tuple[float, float]]:
-    """entry から輪郭点列 (mm, ローカル左下 origin) を取得."""
+def _outline_points_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]]:
+    """entry から輪郭点列 (mm, ローカル左下 origin) と鋭角頂点 index を取得."""
     width = float(getattr(entry, "width_mm", 40.0) or 40.0)
     height = float(getattr(entry, "height_mm", 20.0) or 20.0)
     rect = bs.Rect(0.0, 0.0, width, height)
+    corners: list[int] = []
     try:
-        pts = bs.outline_for_entry(entry, rect)
+        pts, corners = bs.outline_with_corners_for_entry(entry, rect)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon outline_for_entry failed")
         pts = []
@@ -278,7 +287,8 @@ def _outline_points_for_entry(entry) -> list[tuple[float, float]]:
             (width, height),
             (0.0, height),
         ]
-    return pts
+        corners = [0, 1, 2, 3]
+    return pts, corners
 
 
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
@@ -389,6 +399,7 @@ def _ensure_balloon_fill_object(
     parent_kind: str,
     parent_key: str,
     folder_id: str,
+    corner_indices: Sequence[int] | None = None,
 ) -> Optional[bpy.types.Object]:
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
@@ -398,6 +409,7 @@ def _ensure_balloon_fill_object(
         points_mm,
         tail_polygons_mm,
         fill=True,
+        corner_indices=corner_indices,
     )
     try:
         fill_data.bevel_depth = 0.0
@@ -486,13 +498,14 @@ def ensure_balloon_curve_object(
         return None
 
     # 1. Curve データ生成
-    points_mm = _outline_points_for_entry(entry)
+    points_mm, corner_indices = _outline_points_for_entry(entry)
     tail_polygons_mm = _tail_polygons_for_entry(entry)
     curve_data_name = f"{BALLOON_CURVE_DATA_PREFIX}{balloon_id}"
     curve_data = _ensure_balloon_curve_data(
         curve_data_name,
         points_mm,
         tail_polygons_mm,
+        corner_indices=corner_indices,
     )
     _ensure_balloon_curve_material(
         curve_data,
@@ -597,6 +610,7 @@ def ensure_balloon_curve_object(
         page=page,
         points_mm=points_mm,
         tail_polygons_mm=tail_polygons_mm,
+        corner_indices=corner_indices,
         parent_kind=stamp_kind,
         parent_key=stamp_key,
         folder_id=stamp_folder,

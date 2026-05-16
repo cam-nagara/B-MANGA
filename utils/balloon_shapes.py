@@ -58,6 +58,38 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
     )
 
 
+def outline_with_corners_for_entry(
+    entry, rect: Rect
+) -> tuple[list[tuple[float, float]], list[int]]:
+    """輪郭点列と「鋭角に残す頂点 index」のセットを返す.
+
+    雲・トゲ・トゲ(曲線) のように本来角ばっている頂点を、曲線化したときに
+    丸めず鋭角のまま描くために使う。それ以外の形状は corners 空。
+    """
+    sp = getattr(entry, "shape_params", None)
+    shape = normalize_shape(getattr(entry, "shape", "rect"))
+    if shape == "custom":
+        custom = _custom_outline_for_entry(entry, rect)
+        if custom is not None:
+            return custom, []
+    return outline_with_corners_for_shape(
+        shape,
+        rect,
+        rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
+        rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
+        cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
+        cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),
+        cloud_bump_height_jitter=float(getattr(sp, "cloud_bump_height_jitter", 0.0)),
+        cloud_offset=float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0,
+        cloud_sub_width_ratio=float(getattr(sp, "cloud_sub_width_ratio", 0.0)),
+        cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
+        cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
+        cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
+        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
+    )
+
+
 def _custom_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
     preset_name = str(getattr(entry, "custom_preset_name", "") or "").strip()
     if not preset_name:
@@ -133,6 +165,41 @@ def outline_for_shape(
     cloud_sub_height_jitter: float = 0.0,
     jitter_seed: int = 0,
 ) -> list[tuple[float, float]]:
+    return outline_with_corners_for_shape(
+        shape,
+        rect,
+        rounded_corner_enabled=rounded_corner_enabled,
+        rounded_corner_radius_mm=rounded_corner_radius_mm,
+        cloud_bump_width_mm=cloud_bump_width_mm,
+        cloud_bump_width_jitter=cloud_bump_width_jitter,
+        cloud_bump_height_mm=cloud_bump_height_mm,
+        cloud_bump_height_jitter=cloud_bump_height_jitter,
+        cloud_offset=cloud_offset,
+        cloud_sub_width_ratio=cloud_sub_width_ratio,
+        cloud_sub_width_jitter=cloud_sub_width_jitter,
+        cloud_sub_height_ratio=cloud_sub_height_ratio,
+        cloud_sub_height_jitter=cloud_sub_height_jitter,
+        jitter_seed=jitter_seed,
+    )[0]
+
+
+def outline_with_corners_for_shape(
+    shape: str | None,
+    rect: Rect,
+    *,
+    rounded_corner_enabled: bool = False,
+    rounded_corner_radius_mm: float = 0.0,
+    cloud_bump_width_mm: float = 10.0,
+    cloud_bump_width_jitter: float = 0.0,
+    cloud_bump_height_mm: float = 4.0,
+    cloud_bump_height_jitter: float = 0.0,
+    cloud_offset: float = 0.5,
+    cloud_sub_width_ratio: float = 0.0,
+    cloud_sub_width_jitter: float = 0.0,
+    cloud_sub_height_ratio: float = 0.0,
+    cloud_sub_height_jitter: float = 0.0,
+    jitter_seed: int = 0,
+) -> tuple[list[tuple[float, float]], list[int]]:
     s = normalize_shape(shape)
     opts = _DynamicOpts(
         bump_w=max(2.0, float(cloud_bump_width_mm)),
@@ -148,31 +215,31 @@ def outline_for_shape(
     )
     if s == "rect":
         if rounded_corner_enabled and rounded_corner_radius_mm > 0.0:
-            return _outline_rounded_rect(rect, rounded_corner_radius_mm)
-        return _outline_rect(rect)
+            return _outline_rounded_rect(rect, rounded_corner_radius_mm), []
+        return _outline_rect(rect), [0, 1, 2, 3]
     if s == "ellipse":
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
     if s == "cloud":
-        return _outline_cloud(rect, opts)
+        return _outline_cloud_with_corners(rect, opts)
     if s == "fluffy":
-        return _outline_fluffy(rect, opts)
+        return _outline_fluffy(rect, opts), []
     if s == "thorn":
-        return _outline_thorn(rect, opts)
+        return _outline_thorn_with_corners(rect, opts)
     if s == "thorn-curve":
-        return _outline_thorn_curve(rect, opts)
+        return _outline_thorn_curve_with_corners(rect, opts)
     if s == "octagon":
-        return _outline_octagon(rect)
+        return _outline_octagon(rect), list(range(8))
 
     # Legacy B-Name shapes kept for existing files.
     if s == "pill":
-        return _outline_pill(rect)
+        return _outline_pill(rect), []
     if s == "diamond":
-        return _outline_diamond(rect)
+        return _outline_diamond(rect), [0, 1, 2, 3]
     if s == "hexagon":
-        return _outline_hexagon(rect)
+        return _outline_hexagon(rect), list(range(6))
     if s == "star":
-        return _outline_star(rect)
-    return _outline_rect(rect)
+        return _outline_star(rect), list(range(10))
+    return _outline_rect(rect), [0, 1, 2, 3]
 
 
 class _DynamicOpts:
@@ -385,18 +452,26 @@ def _sample_cubic(
 
 
 def _outline_cloud(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
+    return _outline_cloud_with_corners(rect, opts)[0]
+
+
+def _outline_cloud_with_corners(
+    rect: Rect, opts: _DynamicOpts
+) -> tuple[list[tuple[float, float]], list[int]]:
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
     cx, cy, rx, ry, eff_h = base
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
 
     def ellipse_point(t: float) -> tuple[float, float]:
         return (cx + rx * math.cos(t), cy + ry * math.sin(t))
 
     pts = [ellipse_point(angle)]
+    # 各こぶの境目 (谷) は鋭角に残す。
+    corners = [0]
     for _is_sub, bump_angle, h_mul in segments:
         start_angle = angle
         end_angle = angle + bump_angle
@@ -419,17 +494,24 @@ def _outline_cloud(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
         off_x = m_len * perp_x
         off_y = m_len * perp_y
         pts.extend(_sample_cubic(v_start, (v_start[0] + off_x, v_start[1] + off_y), (v_end[0] + off_x, v_end[1] + off_y), v_end))
-    return _local_to_rect(rect, pts)
+        corners.append(len(pts) - 1)
+    return _local_to_rect(rect, pts), corners
 
 
 def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
+    return _outline_thorn_with_corners(rect, opts)[0]
+
+
+def _outline_thorn_with_corners(
+    rect: Rect, opts: _DynamicOpts
+) -> tuple[list[tuple[float, float]], list[int]]:
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
     cx, cy, rx, ry, eff_h = base
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
 
     def ellipse_point(t: float) -> tuple[float, float]:
         return (cx + rx * math.cos(t), cy + ry * math.sin(t))
@@ -443,17 +525,25 @@ def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
         angle += bump_angle
         pts.append(peak_at(mid_angle, h_mul))
         pts.append(ellipse_point(angle))
-    return _local_to_rect(rect, pts)
+    # トゲは全頂点 (先端・谷) が鋭角の多角形。
+    corners = list(range(len(pts)))
+    return _local_to_rect(rect, pts), corners
 
 
 def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
+    return _outline_thorn_curve_with_corners(rect, opts)[0]
+
+
+def _outline_thorn_curve_with_corners(
+    rect: Rect, opts: _DynamicOpts
+) -> tuple[list[tuple[float, float]], list[int]]:
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
     cx, cy, rx, ry, eff_h = base
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
     tpull = 0.33
     depth_ratio = 0.9
 
@@ -466,9 +556,11 @@ def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, fl
         angle += bump_angle
         peaks.append(peak_at(mid_angle, h_mul))
     if not peaks:
-        return _outline_ellipse(rect)
+        return _outline_ellipse(rect), []
 
     pts = [peaks[0]]
+    # トゲ先端 (各 peak) は鋭角に残し、谷側だけ曲線でへこませる。
+    corners = [0]
     for i, p0 in enumerate(peaks):
         p1 = peaks[(i + 1) % len(peaks)]
         mx = (p0[0] + p1[0]) * 0.5
@@ -482,7 +574,8 @@ def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, fl
         c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
         c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
         pts.extend(_sample_cubic(p0, c1, c2, p1))
-    return _local_to_rect(rect, pts)
+        corners.append(len(pts) - 1)
+    return _local_to_rect(rect, pts), corners
 
 
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
