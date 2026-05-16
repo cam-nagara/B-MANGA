@@ -433,7 +433,14 @@ def enter_coma_from_hit(context, hit: dict) -> bool:
         return False
     activate_hit(context, hit, mode="single")
     try:
-        result = bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+        # ダブルクリックは EXEC_DEFAULT 呼び出し (ウィンドウ/モーダル無し)。
+        # 未作成コマのテンプレート選択ダイアログ (fileselect_add) は
+        # この文脈では機能せず RUNNING_MODAL のまま何も開かない。
+        # ダブルクリックでは確実にコマを開くため、プロンプトは抑止し
+        # 既存 cNN.blend / 解決済みテンプレート / 空シーンから開く。
+        result = bpy.ops.bname.enter_coma_mode(
+            "EXEC_DEFAULT", prompt_template_if_missing=False
+        )
     except Exception:  # noqa: BLE001
         return False
     return result in ({"FINISHED"}, {"RUNNING_MODAL"})
