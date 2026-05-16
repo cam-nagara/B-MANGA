@@ -46,7 +46,6 @@ from . import overlay_coma_selection
 from . import overlay_shared
 from . import overlay_text
 from . import overlay_visibility
-from . import coma_preview_overlay
 
 _logger = log.get_logger(__name__)
 
@@ -861,10 +860,9 @@ def _draw_comas(
                 poly,
                 (float(bg[0]), float(bg[1]), float(bg[2]), float(bg[3])),
             )
-        if getattr(entry, "coma_id", "") != skip_preview_stem:
-            coma_preview_overlay.draw_coma_preview(
-                work, page, entry, ox_mm=ox_mm, oy_mm=oy_mm
-            )
+        # コマプレビューはコマ平面メッシュの画像テクスチャとして描画する
+        # (utils/coma_plane.py)。毎フレーム GPU オーバーレイで描いていた
+        # 旧方式は、重い上に枠線の上に重なって線幅を隠していたため廃止。
         # 白フチ (枠線の外側)
         wm = entry.white_margin
         wm_has_visible_width = float(getattr(wm, "width_mm", 0.0)) > 0.0 or any(
@@ -1669,7 +1667,9 @@ def apply_bname_shading_mode(context=None) -> int:
       フラットな印刷物のように描画する
     - 紙面編集: shading.type = "SOLID", shading.light = "FLAT"
     - コマ編集: shading.type = "SOLID", shading.light = "STUDIO"
-    - shading.color_type は変更しない (ユーザー設定維持)
+    - shading.color_type = "TEXTURE": コマプレビューをコマ平面メッシュの
+      画像テクスチャとして表示するため (旧: 毎フレーム GPU オーバーレイ)。
+      プレビューの無いコマはマテリアル色 (背景色) で表示される。
     work_new / work_open / load_post から呼ぶ。戻り値は変更したエリア数。
     """
     ctx = context or bpy.context
@@ -1700,6 +1700,9 @@ def apply_bname_shading_mode(context=None) -> int:
                     count += 1
                 if getattr(shading, "light", None) != target_light:
                     shading.light = target_light
+                    count += 1
+                if getattr(shading, "color_type", None) != "TEXTURE":
+                    shading.color_type = "TEXTURE"
                     count += 1
             except Exception:  # noqa: BLE001
                 _logger.exception("apply_bname_shading_mode: set failed")

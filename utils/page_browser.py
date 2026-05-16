@@ -130,6 +130,13 @@ def apply_page_browser_view_settings(area) -> None:
             except Exception:  # noqa: BLE001
                 pass
             try:
+                # コマプレビューはコマ平面メッシュの画像テクスチャとして
+                # 表示するため、ページ一覧ビューでもカラー=テクスチャに揃える
+                # (これが無いとこのビューでプレビューが表示されない)。
+                shading.color_type = "TEXTURE"
+            except Exception:  # noqa: BLE001
+                pass
+            try:
                 shading.background_type = "THEME"
             except Exception:  # noqa: BLE001
                 pass

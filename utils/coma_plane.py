@@ -23,6 +23,7 @@ from typing import Optional
 
 import bpy
 
+from . import coma_preview
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
@@ -33,6 +34,7 @@ _logger = log.get_logger(__name__)
 COMA_PLANE_NAME_PREFIX = "coma_plane_"
 COMA_PLANE_MESH_PREFIX = "coma_plane_mesh_"
 COMA_PLANE_MATERIAL_PREFIX = "BName_ComaPlane_"
+COMA_PLANE_UV_NAME = "BNameComaUV"
 
 # coma_mask: raster Mesh 用 Boolean Intersect の参照専用 Object.
 # coma_plane (背景色表示用、 OPAQUE) とは別 Object として持つ理由:
@@ -74,12 +76,112 @@ def _coma_plane_material_name(page_id: str, coma_id: str) -> str:
     return f"{COMA_PLANE_MATERIAL_PREFIX}{page_id}_{coma_id}"
 
 
-def _apply_color_to_material(mat: bpy.types.Material, color_rgba) -> None:
-    """Material の Emission Color と diffuse_color を ``color_rgba`` に揃える.
+def _existing_material_image(mat: bpy.types.Material):
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return None
+    for node in nt.nodes:
+        if node.bl_idname == "ShaderNodeTexImage" and node.image is not None:
+            return node.image
+    return None
 
-    color_rgba は ``coma.background_color`` (scene-linear, alpha 含む) のまま。
-    ``alpha == 0`` でも opaque 扱いとして RGB だけを反映する (mask 用 Mesh
-    としては必ず opaque depth を書く必要があるため)。
+
+def _resolve_preview_image(work, page, coma):
+    """コマのプレビュー/サムネ画像を bpy.Image として返す (無ければ None).
+
+    更新後のサムネを反映するため mtime で reload する。コマプレビューを
+    コマ平面メッシュのテクスチャとして表示するための画像。
+    """
+    from pathlib import Path
+
+    if work is None or page is None or not getattr(work, "work_dir", ""):
+        return None
+    try:
+        src = coma_preview.coma_preview_source_path(
+            Path(work.work_dir), getattr(page, "id", ""), coma
+        )
+    except Exception:  # noqa: BLE001
+        src = None
+    if src is None:
+        return None
+    try:
+        abspath = str(Path(src).resolve())
+        mtime = Path(src).stat().st_mtime
+    except OSError:
+        return None
+    img = None
+    for cand in bpy.data.images:
+        try:
+            if str(Path(bpy.path.abspath(cand.filepath)).resolve()) == abspath:
+                img = cand
+                break
+        except Exception:  # noqa: BLE001
+            continue
+    if img is None:
+        try:
+            img = bpy.data.images.load(abspath, check_existing=True)
+        except Exception:  # noqa: BLE001
+            return None
+    else:
+        try:
+            if float(img.get("_bname_mtime", -1.0)) != mtime:
+                img.reload()
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        img["_bname_mtime"] = mtime
+        img.colorspace_settings.name = "sRGB"
+    except Exception:  # noqa: BLE001
+        pass
+    return img
+
+
+def _ensure_uv(mesh: bpy.types.Mesh) -> None:
+    """コマ形状メッシュに、外接矩形 → [0,1] の UV を割り当てる.
+
+    Solid (カラー=テクスチャ) でプレビュー画像がコマ形状に正しく貼られる
+    ようにするため。rect/polygon どちらの形状でも mesh ローカル座標から
+    一律に算出する。
+    """
+    if mesh is None or len(mesh.vertices) == 0 or len(mesh.loops) == 0:
+        return
+    xs = [v.co.x for v in mesh.vertices]
+    ys = [v.co.y for v in mesh.vertices]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    w = max_x - min_x
+    h = max_y - min_y
+    if w <= 0.0 or h <= 0.0:
+        return
+    uv_layer = mesh.uv_layers.get(COMA_PLANE_UV_NAME)
+    if uv_layer is None:
+        uv_layer = mesh.uv_layers.new(name=COMA_PLANE_UV_NAME)
+    try:
+        for loop in mesh.loops:
+            co = mesh.vertices[loop.vertex_index].co
+            uv_layer.data[loop.index].uv = (
+                (co.x - min_x) / w,
+                (co.y - min_y) / h,
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_plane: UV assign failed")
+
+
+def _apply_material(
+    mat: bpy.types.Material,
+    color_rgba,
+    image=None,
+    *,
+    keep_existing_image: bool = True,
+) -> None:
+    """Material を「プレビュー画像 (あれば) / 無ければ背景色」で構築する.
+
+    - 画像があれば Image Texture → Emission → Output。Solid のカラー=
+      テクスチャでコマ形状に画像が貼られる。
+    - 画像が無ければ従来どおり背景色の Emission。
+    - ``mat.diffuse_color`` は常に背景色に揃える (プレビュー無しコマや
+      テクスチャ非対応表示でのフォールバック)。
+    - mask 用 Mesh としては opaque depth が必要なので blend は OPAQUE 維持。
     """
     try:
         r = float(color_rgba[0])
@@ -89,17 +191,35 @@ def _apply_color_to_material(mat: bpy.types.Material, color_rgba) -> None:
         r = g = b = 1.0
     rgba = (r, g, b, 1.0)
     nt = mat.node_tree
+    if image is None and keep_existing_image:
+        image = _existing_material_image(mat)
     for node in list(nt.nodes):
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (200, 0)
+    out.location = (300, 0)
     emission = nt.nodes.new("ShaderNodeEmission")
-    emission.location = (-100, 0)
+    emission.location = (60, 0)
     try:
-        emission.inputs["Color"].default_value = rgba
         emission.inputs["Strength"].default_value = 1.0
     except Exception:  # noqa: BLE001
         pass
+    if image is not None:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.location = (-300, 0)
+        tex.image = image
+        try:
+            tex.extension = "EXTEND"
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        try:
+            emission.inputs["Color"].default_value = rgba
+        except Exception:  # noqa: BLE001
+            pass
     nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     try:
         mat.diffuse_color = rgba
@@ -107,7 +227,9 @@ def _apply_color_to_material(mat: bpy.types.Material, color_rgba) -> None:
         pass
 
 
-def _ensure_coma_plane_material(page_id: str, coma_id: str, coma) -> bpy.types.Material:
+def _ensure_coma_plane_material(
+    page_id: str, coma_id: str, coma, work=None, page=None
+) -> bpy.types.Material:
     name = _coma_plane_material_name(page_id, coma_id)
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -124,7 +246,8 @@ def _ensure_coma_plane_material(page_id: str, coma_id: str, coma) -> bpy.types.M
             color = tuple(float(c) for c in coma.background_color[:4])
         except Exception:  # noqa: BLE001
             pass
-    _apply_color_to_material(mat, color)
+    image = _resolve_preview_image(work, page, coma)
+    _apply_material(mat, color, image)
     return mat
 
 
@@ -156,6 +279,7 @@ def _build_mesh_geometry(mesh: bpy.types.Mesh, coma) -> None:
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], faces)
     mesh.update()
+    _ensure_uv(mesh)
 
 
 def _resolve_page_index(work, page) -> int:
@@ -443,7 +567,7 @@ def ensure_coma_plane(
         mesh = bpy.data.meshes.new(mesh_name)
     _build_mesh_geometry(mesh, coma)
 
-    mat = _ensure_coma_plane_material(page_id, coma_id, coma)
+    mat = _ensure_coma_plane_material(page_id, coma_id, coma, work, page)
 
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
@@ -543,7 +667,7 @@ def update_coma_plane_color(page, coma) -> bool:
         color = tuple(float(c) for c in coma.background_color[:4])
     except Exception:  # noqa: BLE001
         pass
-    _apply_color_to_material(mat, color)
+    _apply_material(mat, color)
     try:
         mat.update_tag()
     except Exception:  # noqa: BLE001
