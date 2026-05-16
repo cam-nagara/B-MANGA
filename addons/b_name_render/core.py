@@ -92,6 +92,26 @@ def preset_category_of(name: str) -> str:
     return "OTHER"
 
 
+def _on_preset_category_update(self, _context) -> None:
+    """種類フィルタ変更時、選択中プリセットも表示中の種類へ追従させる.
+
+    追従しないと、選択中 (= カード/「プリセットを実行」の対象) が一覧で
+    非表示のまま残り、別種類の隠れたプリセットを誤実行しかねない。
+    update コールバックは書き込み許可コンテキストなので index を更新できる。
+    """
+    category = str(getattr(self, "preset_category", "ALL") or "ALL")
+    presets = getattr(self, "presets", None)
+    if category == "ALL" or not presets:
+        return
+    cur = max(0, min(int(self.active_preset_index), len(presets) - 1))
+    if preset_category_of(presets[cur].name) == category:
+        return
+    for i, preset in enumerate(presets):
+        if preset_category_of(preset.name) == category:
+            self.active_preset_index = i
+            return
+
+
 class BNameRenderPreset(bpy.types.PropertyGroup):
     name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
     commands: CollectionProperty(type=BNameRenderCommand)  # type: ignore[valid-type]
@@ -101,7 +121,7 @@ class BNameRenderPreset(bpy.types.PropertyGroup):
 class BNameRenderState(bpy.types.PropertyGroup):
     presets: CollectionProperty(type=BNameRenderPreset)  # type: ignore[valid-type]
     active_preset_index: IntProperty(name="プリセット", default=0, min=0)  # type: ignore[valid-type]
-    preset_category: EnumProperty(name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL")  # type: ignore[valid-type]
+    preset_category: EnumProperty(name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL", update=_on_preset_category_update)  # type: ignore[valid-type]
     last_card_click_index: IntProperty(name="前回カード", default=-1)  # type: ignore[valid-type]
     last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
     sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]
