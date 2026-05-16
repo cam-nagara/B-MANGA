@@ -1,8 +1,9 @@
-"""コマのソリッドカメラサムネイル/高品質プレビュー生成 Operator.
+"""コマのレンダーカメラサムネイル/高品質プレビュー生成 Operator.
 
 計画書 3.4.3 / 8.8 参照。コマ編集モード終了時に cNN_thumb.png を
-カメラ基準のソリッド表示のコマ領域切り出しで更新。ユーザー手動で
-cNN_preview.png を高解像度ソリッド画像として生成。
+カメラ基準の「レンダーモードのレンダリング」のコマ領域切り出しで更新。
+ユーザー手動で cNN_preview.png を高解像度レンダー画像として生成。
+ソリッド (OpenGL) ではなくシーンのレンダーエンジンでレンダリングする。
 """
 
 from __future__ import annotations
@@ -26,11 +27,12 @@ def _is_coma_mode(context) -> bool:
 
 
 def take_area_screenshot(context, out_path: Path) -> bool:
-    """選択コマのソリッドカメラ画像をページ座標で切り出して保存する.
+    """選択コマのレンダーカメラ画像をページ座標で切り出して保存する.
 
-    UI込みの VIEW_3D スクリーンショットではなく、カメラからページ全体の
-    OpenGL/Workbench ソリッド画像を出し、対象コマbboxだけを切る。
-    これによりビューポート操作状態に依存せず、紙面座標と一致する。
+    UI込みの VIEW_3D スクリーンショットでもソリッド(OpenGL)でもなく、
+    カメラからシーンのレンダーエンジンでレンダリングした画像を出し、
+    対象コマbboxだけを切る。これによりビューポート操作状態に依存せず、
+    紙面座標と一致し、見た目はレンダー結果になる。
     """
     return render_coma_camera_crop(context, out_path, resolution_percentage=100)
 
@@ -63,19 +65,6 @@ def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: i
         float(getattr(scene.render, "border_max_x", 1.0)),
         float(getattr(scene.render, "border_min_y", 0.0)),
         float(getattr(scene.render, "border_max_y", 1.0)),
-    )
-    shading = getattr(getattr(scene, "display", None), "shading", None)
-    shading_state = _capture_attr_state(
-        shading,
-        (
-            "type",
-            "light",
-            "color_type",
-            "background_type",
-            "background_color",
-            "show_cavity",
-            "show_shadows",
-        ),
     )
     try:
         from ..utils import coma_camera
@@ -110,8 +99,7 @@ def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: i
             scene.render.use_border = False
             if hasattr(scene.render, "use_crop_to_border"):
                 scene.render.use_crop_to_border = False
-            _configure_scene_solid_shading(scene)
-            if not _write_solid_camera_image(context, scene):
+            if not _render_camera_image(context, scene):
                 return False
             source = _resolve_render_output_path(full_path)
             if source is None:
@@ -144,70 +132,33 @@ def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: i
         scene.render.border_max_x = prev_border[1]
         scene.render.border_min_y = prev_border[2]
         scene.render.border_max_y = prev_border[3]
-        _restore_attr_state(shading, shading_state)
 
 
-def _write_solid_camera_image(context, scene) -> bool:
-    """Write a camera-aligned solid-mode image to scene.render.filepath."""
+def _render_camera_image(context, scene) -> bool:
+    """カメラ基準の画像をシーンのレンダーエンジンでレンダリングする (F12 相当).
+
+    コマプレビューは「レンダーモードのスクショ」とする方針のため、
+    ソリッド (OpenGL) ではなくシーンに設定されたレンダーエンジンで
+    レンダリングする。レンダーに失敗したときだけ OpenGL ソリッドへ
+    フォールバックして、プレビュー更新が完全に途絶えないようにする。
+    """
+    try:
+        with context.temp_override(scene=scene):
+            bpy.ops.render.render(write_still=True)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "render-mode preview failed, falling back to OpenGL: %s",
+            exc,
+            exc_info=True,
+        )
     try:
         with context.temp_override(scene=scene):
             bpy.ops.render.opengl(write_still=True, view_context=False)
         return True
     except Exception as exc:  # noqa: BLE001
-        _logger.warning("OpenGL solid preview failed, falling back to Workbench render: %s", exc)
-    try:
-        scene.render.engine = "BLENDER_WORKBENCH"
-        with context.temp_override(scene=scene):
-            bpy.ops.render.render(write_still=True)
-        return True
-    except Exception as exc:  # noqa: BLE001
-        _logger.warning("Workbench solid preview failed: %s", exc, exc_info=True)
+        _logger.warning("OpenGL fallback preview failed: %s", exc, exc_info=True)
         return False
-
-
-def _configure_scene_solid_shading(scene) -> None:
-    shading = getattr(getattr(scene, "display", None), "shading", None)
-    if shading is None:
-        return
-    _set_attr_safe(shading, "type", "SOLID")
-    _set_attr_safe(shading, "light", "STUDIO")
-    _set_attr_safe(shading, "color_type", "MATERIAL")
-    _set_attr_safe(shading, "show_cavity", False)
-    _set_attr_safe(shading, "show_shadows", False)
-    settings = getattr(scene, "bname_coma_camera_settings", None)
-    if settings is not None and bool(getattr(settings, "use_solid_background_color", False)):
-        _set_attr_safe(shading, "background_type", "VIEWPORT")
-        color = getattr(settings, "solid_background_color", (0.05, 0.05, 0.05))
-        _set_attr_safe(shading, "background_color", (float(color[0]), float(color[1]), float(color[2])))
-
-
-def _capture_attr_state(obj, attrs: tuple[str, ...]) -> dict[str, object]:
-    state: dict[str, object] = {}
-    if obj is None:
-        return state
-    for attr in attrs:
-        try:
-            value = getattr(obj, attr)
-            if attr == "background_color":
-                value = tuple(value)
-            state[attr] = value
-        except Exception:  # noqa: BLE001
-            pass
-    return state
-
-
-def _restore_attr_state(obj, state: dict[str, object]) -> None:
-    if obj is None:
-        return
-    for attr, value in state.items():
-        _set_attr_safe(obj, attr, value)
-
-
-def _set_attr_safe(obj, attr: str, value) -> None:
-    try:
-        setattr(obj, attr, value)
-    except Exception:  # noqa: BLE001
-        pass
 
 
 def _resolve_coma_entry(context, work):
