@@ -23,6 +23,7 @@ from typing import Optional
 
 import bpy
 
+from . import border_geom
 from . import coma_preview
 from . import log
 from . import object_naming as on
@@ -254,18 +255,35 @@ def _ensure_coma_plane_material(
 # ---------------- Geometry ----------------
 
 
+def _corner_outline_mm(coma, base_pts_mm: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """枠線の角処理 (丸角/面取り) をコマ形状にも反映した輪郭点を返す.
+
+    枠線カーブは角処理した輪郭を芯線にするため、コマ平面の Mesh が直角の
+    ままだと丸角の四隅でコマ内容が枠線からはみ出す。枠線と同じ
+    ``styled_closed_path_mm`` を Mesh にも適用して四隅を一致させる。
+    """
+    border = getattr(coma, "border", None)
+    corner_type = str(getattr(border, "corner_type", "square") or "square")
+    radius_mm = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
+    if corner_type == "square" or radius_mm <= 0.0 or len(base_pts_mm) < 3:
+        return base_pts_mm
+    try:
+        styled = border_geom.styled_closed_path_mm(base_pts_mm, corner_type, radius_mm)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_plane: styled corner outline failed")
+        return base_pts_mm
+    return styled if len(styled) >= 3 else base_pts_mm
+
+
 def _build_mesh_geometry(mesh: bpy.types.Mesh, coma) -> None:
     shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
     if shape_type == "rect":
         w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
         h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
-        verts = [
-            (0.0, 0.0, 0.0),
-            (mm_to_m(w), 0.0, 0.0),
-            (mm_to_m(w), mm_to_m(h), 0.0),
-            (0.0, mm_to_m(h), 0.0),
-        ]
-        faces = [(0, 1, 2, 3)]
+        base_pts = [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
+        pts = _corner_outline_mm(coma, base_pts)
+        verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in pts]
+        faces = [tuple(range(len(verts)))]
     else:
         vertices = list(getattr(coma, "vertices", []) or [])
         if len(vertices) < 3:
@@ -274,7 +292,9 @@ def _build_mesh_geometry(mesh: bpy.types.Mesh, coma) -> None:
             verts = [(0.0, 0.0, 0.0), (0.001, 0.0, 0.0), (0.0, 0.001, 0.0)]
             faces = [(0, 1, 2)]
         else:
-            verts = [(mm_to_m(float(v.x_mm)), mm_to_m(float(v.y_mm)), 0.0) for v in vertices]
+            base_pts = [(float(v.x_mm), float(v.y_mm)) for v in vertices]
+            pts = _corner_outline_mm(coma, base_pts)
+            verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in pts]
             faces = [tuple(range(len(verts)))]
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], faces)

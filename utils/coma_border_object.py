@@ -165,7 +165,11 @@ def _brush_halo_groups(
     groups.append(([list(path)], base_w, (r, g, b, a), "brush_core"))
     if base_w <= 0.0 or blur <= 0.0:
         return groups
-    layers = 3 + int(round(blur * 4.0))  # 3..7
+    # 線幅が太いほどボケ幅も広がるため、グラデーションの段差が目立たない
+    # よう段階数を線幅に連動して細かくする (0.5mm を基準、上限 40 段)。
+    base_layers = 3 + int(round(blur * 4.0))  # 3..7
+    width_layers = int(round(max(0.0, base_w - 0.5) * 3.0))
+    layers = min(40, base_layers + width_layers)
     max_extra = base_w * (0.6 + 4.0 * blur)
     for i in range(1, layers + 1):
         f = i / float(layers)
@@ -688,6 +692,14 @@ def on_coma_border_changed(border) -> None:
             if not _coma_owns_border_pointer(coma, target_ptr):
                 continue
             update_coma_border_geometry(scene, work, page, coma)
+            # 角処理 (丸角/面取り) 変更時はコマ平面 Mesh も枠線形状へ追従させ、
+            # 四隅でコマ内容が枠線からはみ出さないようにする。
+            try:
+                from . import coma_plane as _cp
+
+                _cp.update_coma_plane_geometry(scene, work, page, coma)
+            except Exception:  # noqa: BLE001
+                _logger.exception("coma plane geometry update on border change failed")
             return
 
 

@@ -180,8 +180,12 @@ def _border_preset_enum_items(_self, context):
     global _BORDER_PRESET_ENUM_CACHE
     work = get_work(context)
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
+    preset_list = list(border_presets.list_all_presets(work_dir))
+    # 「標準」を先頭に固定し、新規ウィンドウでの初期選択を「標準」にする
+    # (動的 EnumProperty は items の先頭要素が既定値になるため)
+    preset_list.sort(key=lambda p: 0 if p.name == "標準" else 1)
     cache: list[tuple[str, str, str]] = []
-    for p in border_presets.list_all_presets(work_dir):
+    for p in preset_list:
         label = p.name if p.source == "global" else f"{p.name} (作品)"
         cache.append((p.name, label, p.description))
     if not cache:
