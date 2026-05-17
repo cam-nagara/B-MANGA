@@ -51,6 +51,15 @@ def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
     layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
 
 
+def _assert_visible_object(obj, label: str) -> None:
+    if obj is None:
+        raise AssertionError(f"{label}: object missing")
+    if getattr(obj, "hide_viewport", False):
+        raise AssertionError(f"{label}: object hidden")
+    if not list(getattr(obj, "users_collection", []) or []):
+        raise AssertionError(f"{label}: object is not linked")
+
+
 def _add_balloon(page, bid: str, parent_key: str):
     entry = page.balloons.add()
     entry.id = bid
@@ -178,6 +187,31 @@ def main() -> None:
         _move_uid_below_parent(context, moved_text_uid, outside_uid)
         assert not any(getattr(t, "id", "") == moved_text_id for t in page2.texts)
         assert any(getattr(t, "id", "") == moved_text_id for t in work.shared_texts)
+        from bname_dev.operators import object_tool_selection
+        from bname_dev.utils import object_naming as on
+        from bname_dev.utils import object_selection
+        from bname_dev.utils import text_real_object
+
+        shared_text = next(t for t in work.shared_texts if t.id == moved_text_id)
+        shared_text_bname_id = text_real_object.text_object_bname_id_for_values(
+            text_real_object.OUTSIDE_PAGE_ID,
+            moved_text_id,
+        )
+        shared_text_obj = on.find_object_by_bname_id(shared_text_bname_id, kind="text")
+        _assert_visible_object(shared_text_obj, "shared text after layer-stack D&D")
+        shared_key = object_selection.text_key(None, shared_text)
+        shared_rect = object_tool_selection.selection_bounds_for_key(context, shared_key)
+        assert shared_rect is not None
+        assert abs(shared_rect.x - float(shared_text.x_mm)) <= 1.0e-4
+        hit = object_tool_selection.hit_shared_text_at_world(
+            context,
+            float(shared_text.x_mm) + 1.0,
+            float(shared_text.y_mm) + 1.0,
+        )
+        assert hit is not None and hit["key"] == shared_key
+        object_selection.set_keys(context, [shared_key])
+        object_tool_selection.sync_outliner_selection_for_keys(context, [shared_key])
+        assert shared_text_obj.select_get()
         shared_text_uid = layer_stack_utils.target_uid("text", outside_child_key(moved_text_id))
         _move_uid_below_parent(context, shared_text_uid, page2_uid)
         assert not any(getattr(t, "id", "") == moved_text_id for t in work.shared_texts)

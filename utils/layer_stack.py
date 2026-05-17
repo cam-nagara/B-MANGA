@@ -1404,6 +1404,20 @@ def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
     return True
 
 
+def _sync_real_objects_after_stack_order(context) -> None:
+    """レイヤー一覧 D&D 後の実体オブジェクトを最新化する."""
+    scene = getattr(context, "scene", None)
+    work = get_work(context)
+    if scene is None or work is None:
+        return
+    try:
+        from . import layer_object_sync
+
+        layer_object_sync.mirror_work_to_outliner(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("layer stack real object sync failed")
+
+
 def sync_layer_stack_after_data_change(
     context,
     *,
@@ -2138,7 +2152,7 @@ def clear_all_selection(context) -> int:
 
 
 def active_stack_item(context):
-    stack = sync_layer_stack(context)
+    stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None:
         return None
     idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
@@ -2853,15 +2867,15 @@ def _apply_balloon_parenting(context, stack) -> None:
             entry.parent_kind = "coma" if ":" in parent_key else "page"
             entry.parent_key = parent_key
             try:
-                from . import text_real_object
+                from . import balloon_curve_object
 
-                text_real_object.ensure_text_real_object(
+                balloon_curve_object.ensure_balloon_curve_object(
                     scene=context.scene,
                     entry=entry,
                     page=page,
                 )
             except Exception:  # noqa: BLE001
-                _logger.exception("apply text parenting real object sync failed")
+                _logger.exception("apply balloon parenting real object sync failed")
 
 
 def _apply_text_parenting(context, stack) -> None:
@@ -2954,6 +2968,7 @@ def apply_stack_order(context) -> None:
     _apply_raster_parenting(context, stack)
     _apply_balloon_parenting(context, stack)
     _apply_text_parenting(context, stack)
+    _sync_real_objects_after_stack_order(context)
     tag_view3d_redraw(context)
 
 

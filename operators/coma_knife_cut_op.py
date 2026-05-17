@@ -781,6 +781,8 @@ class BNAME_OT_coma_knife_cut(Operator):
             self._rv3d,
             int(mx),
             int(my),
+            context=context,
+            area=self._area,
         )
         if hit is None:
             return False

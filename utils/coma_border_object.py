@@ -15,6 +15,8 @@ from .geom import Rect, mm_to_m
 
 _logger = log.get_logger(__name__)
 
+_BRUSH_OVERRIDE_NORMALIZE_DEPTH = 0
+
 COMA_BORDER_NAME_PREFIX = "coma_border_"
 COMA_BORDER_CURVE_PREFIX = "coma_border_curve_"
 COMA_BORDER_MATERIAL_PREFIX = "BName_ComaBorder_"
@@ -427,6 +429,30 @@ def _has_edge_override(coma) -> bool:
     )
 
 
+def _normalize_brush_edge_overrides(coma) -> bool:
+    """ボカシブラシは全周テクスチャで描くため、辺ごとの設定を解除する."""
+    global _BRUSH_OVERRIDE_NORMALIZE_DEPTH
+    border = getattr(coma, "border", None)
+    if border is None or str(getattr(border, "style", "solid") or "solid") != "brush":
+        return False
+    if _BRUSH_OVERRIDE_NORMALIZE_DEPTH > 0:
+        return False
+    changed = False
+    _BRUSH_OVERRIDE_NORMALIZE_DEPTH += 1
+    try:
+        edge_styles = getattr(coma, "edge_styles", None)
+        if edge_styles is not None and len(edge_styles) > 0:
+            edge_styles.clear()
+            changed = True
+        for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left):
+            if bool(getattr(edge, "use_override", False)):
+                edge.use_override = False
+                changed = True
+    finally:
+        _BRUSH_OVERRIDE_NORMALIZE_DEPTH = max(0, _BRUSH_OVERRIDE_NORMALIZE_DEPTH - 1)
+    return changed
+
+
 def _uses_brush_texture(coma) -> bool:
     border = getattr(coma, "border", None)
     if border is None or _has_edge_override(coma):
@@ -638,6 +664,7 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
     if not page_id or not coma_id:
         return None
     border = getattr(coma, "border", None)
+    _normalize_brush_edge_overrides(coma)
     if _uses_brush_texture(coma):
         return _ensure_brush_texture_border(scene, work, page, coma, page_id, coma_id)
     groups = _border_paths_by_material(coma)

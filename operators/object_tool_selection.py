@@ -20,6 +20,7 @@ from ..utils import (
     page_range,
 )
 from ..utils.geom import Rect
+from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
 from . import effect_line_op
 
 
@@ -64,6 +65,33 @@ def find_text_by_key(work, page_id: str, item_id: str):
         if str(getattr(entry, "id", "") or "") == str(item_id or ""):
             return page_index, page, i, entry
     return page_index, page, -1, None
+
+
+def find_shared_coma_by_key(work, item_id: str):
+    if work is None:
+        return -1, None
+    for i, panel in enumerate(getattr(work, "shared_comas", []) or []):
+        if coma_identity(panel) == str(item_id or "") or str(getattr(panel, "id", "") or "") == str(item_id or ""):
+            return i, panel
+    return -1, None
+
+
+def find_shared_balloon_by_key(work, item_id: str):
+    if work is None:
+        return -1, None
+    for i, entry in enumerate(getattr(work, "shared_balloons", []) or []):
+        if str(getattr(entry, "id", "") or "") == str(item_id or ""):
+            return i, entry
+    return -1, None
+
+
+def find_shared_text_by_key(work, item_id: str):
+    if work is None:
+        return -1, None
+    for i, entry in enumerate(getattr(work, "shared_texts", []) or []):
+        if str(getattr(entry, "id", "") or "") == str(item_id or ""):
+            return i, entry
+    return -1, None
 
 
 def find_image_by_key(context, item_id: str):
@@ -139,19 +167,32 @@ def _managed_object_for_key(context, key: str):
     if kind == "text":
         from ..utils import text_real_object
 
+        bname_page_id = (
+            text_real_object.OUTSIDE_PAGE_ID
+            if page_id == OUTSIDE_STACK_KEY
+            else page_id
+        )
         obj = on.find_object_by_bname_id(
-            text_real_object.text_object_bname_id_for_values(page_id, item_id),
+            text_real_object.text_object_bname_id_for_values(bname_page_id, item_id),
             kind="text",
         )
         if obj is not None:
             return obj
-        _page_index, page, _idx, entry = find_text_by_key(work, page_id, item_id)
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_text_by_key(work, item_id)
+            page = None
+        else:
+            _page_index, page, _idx, entry = find_text_by_key(work, page_id, item_id)
         return text_real_object.ensure_text_real_object(scene=scene, entry=entry, page=page)
     if kind == "balloon":
         obj = on.find_object_by_bname_id(item_id, kind="balloon")
         if obj is not None:
             return obj
-        _page_index, page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_balloon_by_key(work, item_id)
+            page = None
+        else:
+            _page_index, page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
         return balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
     if kind == "raster":
         obj = on.find_object_by_bname_id(item_id, kind="raster")
@@ -201,6 +242,19 @@ def sync_outliner_selection_for_keys(context, keys) -> None:
             active_collection_sync.request_active_coma(context, item_id, "")
             continue
         if kind == "coma":
+            if page_id == OUTSIDE_STACK_KEY:
+                try:
+                    from ..utils import coma_plane
+
+                    obj = coma_plane.find_coma_plane_object(
+                        coma_plane.OUTSIDE_PAGE_ID,
+                        item_id,
+                    )
+                except Exception:  # noqa: BLE001
+                    obj = None
+                if _select_managed_object(context, obj):
+                    active_obj = obj
+                continue
             active_collection_sync.request_active_coma(context, page_id, item_id)
             continue
         obj = _managed_object_for_key(context, key)
@@ -484,6 +538,56 @@ def hit_raster_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     return None
 
 
+def hit_shared_text_at_world(context, x_mm: float, y_mm: float) -> dict | None:
+    work = get_work(context)
+    if work is None:
+        return None
+    coll = getattr(work, "shared_texts", None)
+    if coll is None:
+        return None
+    for index in reversed(range(len(coll))):
+        entry = coll[index]
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
+            continue
+        rect = world_rect_for_page_entry(context, work, -1, entry, use_parent=False)
+        part = hit_part_for_rect(rect, x_mm, y_mm)
+        if part:
+            return {
+                "kind": "text",
+                "page_id": OUTSIDE_STACK_KEY,
+                "index": index,
+                "part": "move" if part == "body" else part,
+                "key": object_selection.text_key(None, entry),
+                "world": (float(x_mm), float(y_mm)),
+            }
+    return None
+
+
+def hit_shared_balloon_at_world(context, x_mm: float, y_mm: float) -> dict | None:
+    work = get_work(context)
+    if work is None:
+        return None
+    coll = getattr(work, "shared_balloons", None)
+    if coll is None:
+        return None
+    for index in reversed(range(len(coll))):
+        entry = coll[index]
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
+            continue
+        rect = world_rect_for_page_entry(context, work, -1, entry, use_parent=False)
+        part = hit_part_for_rect(rect, x_mm, y_mm)
+        if part:
+            return {
+                "kind": "balloon",
+                "page_id": OUTSIDE_STACK_KEY,
+                "index": index,
+                "part": "move" if part == "body" else part,
+                "key": object_selection.balloon_key(None, entry),
+                "world": (float(x_mm), float(y_mm)),
+            }
+    return None
+
+
 def _raster_alpha_at_world(context, work, entry, x_mm: float, y_mm: float) -> float:
     parent_key = str(getattr(entry, "parent_key", "") or "")
     page_key = parent_key.split(":", 1)[0] if parent_key else ""
@@ -526,6 +630,20 @@ def hit_image_at_event(context, event, event_world_xy: Callable) -> dict | None:
     return hit_image_at_world(context, x_mm, y_mm)
 
 
+def hit_shared_text_at_event(context, event, event_world_xy: Callable) -> dict | None:
+    x_mm, y_mm = event_world_xy(context, event)
+    if x_mm is None or y_mm is None:
+        return None
+    return hit_shared_text_at_world(context, x_mm, y_mm)
+
+
+def hit_shared_balloon_at_event(context, event, event_world_xy: Callable) -> dict | None:
+    x_mm, y_mm = event_world_xy(context, event)
+    if x_mm is None or y_mm is None:
+        return None
+    return hit_shared_balloon_at_world(context, x_mm, y_mm)
+
+
 def hit_gp_at_event(context, event, event_world_xy: Callable) -> dict | None:
     x_mm, y_mm = event_world_xy(context, event)
     if x_mm is None or y_mm is None:
@@ -549,12 +667,21 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
         page_index, _page = page_index_for_key(work, item_id)
         return page_world_rect(context, work, page_index)
     if kind == "coma":
+        if page_id == OUTSIDE_STACK_KEY:
+            _coma_index, panel = find_shared_coma_by_key(work, item_id)
+            return coma_world_rect(context, work, -1, panel) if panel is not None else None
         page_index, _page, _coma_index, panel = find_coma_by_key(work, page_id, item_id)
         return coma_world_rect(context, work, page_index, panel) if panel is not None else None
     if kind == "balloon":
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_balloon_by_key(work, item_id)
+            return world_rect_for_page_entry(context, work, -1, entry, use_parent=False) if entry is not None else None
         page_index, _page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
         return world_rect_for_page_entry(context, work, page_index, entry, use_parent=False) if entry is not None else None
     if kind == "text":
+        if page_id == OUTSIDE_STACK_KEY:
+            _idx, entry = find_shared_text_by_key(work, item_id)
+            return world_rect_for_page_entry(context, work, -1, entry, use_parent=False) if entry is not None else None
         page_index, _page, _idx, entry = find_text_by_key(work, page_id, item_id)
         return world_rect_for_page_entry(context, work, page_index, entry, use_parent=False) if entry is not None else None
     if kind == "effect":
@@ -643,6 +770,38 @@ def _iter_rect_select_candidates(context):
                     "key": key,
                 },
             }
+    for text_index, entry in enumerate(reversed(list(getattr(work, "shared_texts", []) or []))):
+        actual_index = len(work.shared_texts) - 1 - text_index
+        if not bool(getattr(entry, "visible", True)):
+            continue
+        key = object_selection.text_key(None, entry)
+        yield {
+            "key": key,
+            "rect": world_rect_for_page_entry(context, work, -1, entry, use_parent=False),
+            "hit": {
+                "kind": "text",
+                "page_id": OUTSIDE_STACK_KEY,
+                "index": actual_index,
+                "part": "move",
+                "key": key,
+            },
+        }
+    for balloon_index, entry in enumerate(reversed(list(getattr(work, "shared_balloons", []) or []))):
+        actual_index = len(work.shared_balloons) - 1 - balloon_index
+        if not bool(getattr(entry, "visible", True)):
+            continue
+        key = object_selection.balloon_key(None, entry)
+        yield {
+            "key": key,
+            "rect": world_rect_for_page_entry(context, work, -1, entry, use_parent=False),
+            "hit": {
+                "kind": "balloon",
+                "page_id": OUTSIDE_STACK_KEY,
+                "index": actual_index,
+                "part": "move",
+                "key": key,
+            },
+        }
     for layer in _iter_effect_layers_for_selection():
         key = object_selection.effect_key(layer)
         rect = selection_bounds_for_key(context, key)
@@ -710,6 +869,22 @@ def _iter_rect_select_candidates(context):
                     "key": key,
                 },
             }
+    for coma_index, panel in enumerate(reversed(list(getattr(work, "shared_comas", []) or []))):
+        actual_index = len(work.shared_comas) - 1 - coma_index
+        if not bool(getattr(panel, "visible", True)):
+            continue
+        key = object_selection.coma_key(None, panel)
+        yield {
+            "key": key,
+            "rect": coma_world_rect(context, work, -1, panel),
+            "hit": {
+                "kind": "coma",
+                "page": -1,
+                "coma": actual_index,
+                "part": "body",
+                "key": key,
+            },
+        }
 
 
 def select_keys_in_world_rect(
@@ -771,13 +946,13 @@ def active_selection_key(context) -> str:
         return object_selection.effect_key(target)
     if kind == "balloon":
         page = resolved.get("page")
-        return object_selection.balloon_key(page, target) if page is not None else ""
+        return object_selection.balloon_key(page, target)
     if kind == "text":
         page = resolved.get("page")
-        return object_selection.text_key(page, target) if page is not None else ""
+        return object_selection.text_key(page, target)
     if kind == "coma":
         page = resolved.get("page")
-        return object_selection.coma_key(page, target) if page is not None else ""
+        return object_selection.coma_key(page, target)
     if kind == "page":
         return object_selection.page_key(target)
     return ""

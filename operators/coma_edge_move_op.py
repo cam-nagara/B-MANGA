@@ -302,12 +302,17 @@ def _is_valid_coma_polygon(
 # ---------- 隣接 panel との連動 ----------
 
 
-def _all_coma_edges_world(work) -> list[tuple[int, int, int, tuple[float, float], tuple[float, float]]]:
+def _all_coma_edges_world(
+    work,
+    *,
+    context=None,
+    area=None,
+) -> list[tuple[int, int, int, tuple[float, float], tuple[float, float]]]:
     """全ページの全 panel の全 edge を world (mm) 座標で返す.
 
     返値: [(page_idx, coma_idx, edge_idx, (x1,y1), (x2,y2)), ...]
     """
-    scene = bpy.context.scene
+    scene = getattr(context, "scene", None) or bpy.context.scene
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
     gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
     cw = work.paper.canvas_width_mm
@@ -319,12 +324,15 @@ def _all_coma_edges_world(work) -> list[tuple[int, int, int, tuple[float, float]
     for pi, page in enumerate(work.pages):
         if not page_range.page_in_range(page):
             continue
-        ox, oy = page_grid.page_grid_offset_mm(
-            pi, cols, gap, cw, ch, start_side, read_direction
-        )
-        add_x, add_y = page_grid.page_manual_offset_mm(page)
-        ox += add_x
-        oy += add_y
+        if area is not None:
+            ox, oy = _page_offset_for_area(context or bpy.context, work, area, pi)
+        else:
+            ox, oy = page_grid.page_grid_offset_mm(
+                pi, cols, gap, cw, ch, start_side, read_direction
+            )
+            add_x, add_y = page_grid.page_manual_offset_mm(page)
+            ox += add_x
+            oy += add_y
         for panel_i, panel in enumerate(page.comas):
             poly = _coma_polygon(panel)
             if len(poly) < 2:
@@ -523,7 +531,7 @@ def _snap_vertex_delta_to_incident_edge(
 
 
 def _pick_edge_or_vertex(
-    work, region, rv3d, mx: int, my: int,
+    work, region, rv3d, mx: int, my: int, *, context=None, area=None,
 ) -> Optional[dict]:
     """画面 (mx, my) 直下の最寄り辺 or 頂点を返す.
 
@@ -536,7 +544,7 @@ def _pick_edge_or_vertex(
     best_dist = float("inf")
 
     # 頂点を優先 (辺より priority 高く判定)
-    for entry in _all_coma_edges_world(work):
+    for entry in _all_coma_edges_world(work, context=context, area=area):
         pi, panel_i, ei, a, b = entry
         # 各 edge の始点を vertex として
         ap = _world_mm_to_region(region, rv3d, a[0], a[1])
@@ -554,7 +562,7 @@ def _pick_edge_or_vertex(
         return best
 
     # 辺
-    for entry in _all_coma_edges_world(work):
+    for entry in _all_coma_edges_world(work, context=context, area=area):
         pi, panel_i, ei, a, b = entry
         ap = _world_mm_to_region(region, rv3d, a[0], a[1])
         bp = _world_mm_to_region(region, rv3d, b[0], b[1])
@@ -1072,7 +1080,15 @@ class BNAME_OT_coma_edge_move(Operator):
                     self._tag_redraw()
                     return {"RUNNING_MODAL"}
                 # 新規ピック
-                hit = _pick_edge_or_vertex(self._work, self._region, self._rv3d, mx, my)
+                hit = _pick_edge_or_vertex(
+                    self._work,
+                    self._region,
+                    self._rv3d,
+                    mx,
+                    my,
+                    context=context,
+                    area=self._area,
+                )
                 now = time.time()
                 if hit is None:
                     self._selection = None
@@ -1213,7 +1229,7 @@ class BNAME_OT_coma_edge_move(Operator):
         if len(poly) < 2:
             return None
         ei = sel["edge"]
-        ox, oy = _page_offset(self._work, sel["page"])
+        ox, oy = _page_offset_for_area(bpy.context, self._work, self._area, sel["page"])
         a = (poly[ei][0] + ox, poly[ei][1] + oy)
         b = (poly[(ei + 1) % len(poly)][0] + ox, poly[(ei + 1) % len(poly)][1] + oy)
         return a, b
@@ -1841,7 +1857,7 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         poly = _coma_polygon(panel)
         if len(poly) < 2:
             return
-        ox, oy = _page_offset(work, sel["page"])
+        ox, oy = _page_offset_for_area(bpy.context, work, op._area, sel["page"])
         try:
             gpu.state.line_width_set(4.0)
         except Exception:  # noqa: BLE001
@@ -1933,7 +1949,7 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
             panel = page.comas[sel["coma"]]
             poly = _coma_polygon(panel)
             if len(poly) >= 2:
-                ox, oy = _page_offset(work, sel["page"])
+                ox, oy = _page_offset_for_area(bpy.context, work, op._area, sel["page"])
                 sel_edge_idx = int(sel.get("edge", -1))
                 for ei in range(len(poly)):
                     if ei == sel_edge_idx:
@@ -1964,7 +1980,7 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         poly = _coma_polygon(panel)
         if len(poly) <= sel["vertex"]:
             return
-        ox, oy = _page_offset(work, sel["page"])
+        ox, oy = _page_offset_for_area(bpy.context, work, op._area, sel["page"])
         v = poly[sel["vertex"]]
         vp = _world_mm_to_region(region, rv3d, v[0] + ox, v[1] + oy)
         if vp is None:

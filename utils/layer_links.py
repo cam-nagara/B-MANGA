@@ -231,8 +231,11 @@ def _object_key_for_item(context, item) -> str:
         return object_selection.raster_key(target)
     if kind == "balloon":
         page = resolved.get("page")
-        return object_selection.balloon_key(page, target) if page is not None else ""
+        return object_selection.balloon_key(page, target)
     if kind == "text":
         page = resolved.get("page")
-        return object_selection.text_key(page, target) if page is not None else ""
+        return object_selection.text_key(page, target)
+    if kind == "coma":
+        page = resolved.get("page")
+        return object_selection.coma_key(page, target)
     return ""

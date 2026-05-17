@@ -151,9 +151,23 @@ def main() -> None:
         _assert_visible_object(shared_balloon_obj, "shared balloon")
         _assert_close(shared_balloon_obj.location.x, shared_balloon.x_mm * 0.001, "shared balloon object x")
         assert balloon_curve_object.find_balloon_entry(scene, shared_balloon.id)[1] is not None
+        from bname_dev.operators import object_tool_selection
+        from bname_dev.utils import object_selection
+
+        shared_balloon_key = object_selection.balloon_key(None, shared_balloon)
+        shared_balloon_rect = object_tool_selection.selection_bounds_for_key(context, shared_balloon_key)
+        assert shared_balloon_rect is not None
+        hit_balloon = object_tool_selection.hit_shared_balloon_at_world(
+            context,
+            float(shared_balloon.x_mm) + 1.0,
+            float(shared_balloon.y_mm) + 1.0,
+        )
+        assert hit_balloon is not None and hit_balloon["key"] == shared_balloon_key
 
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         _idx, shared_balloon_item = _stack_item(context, "balloon", outside_child_key(shared_balloon.id))
+        assert layer_stack_utils.select_stack_index(context, _idx)
+        assert object_tool_selection.active_selection_key(context) == shared_balloon_key
         assert shared_balloon_item.parent_key == OUTSIDE_STACK_KEY
         assert layer_reparent.reparent_stack_item(
             context,
@@ -191,6 +205,18 @@ def main() -> None:
         shared_text_obj = on.find_object_by_bname_id(shared_text_id, kind="text")
         _assert_visible_object(shared_text_obj, "shared text")
         _assert_close(shared_text_obj.location.x, shared_text.x_mm * 0.001, "shared text object x")
+        shared_text_key = object_selection.text_key(None, shared_text)
+        shared_text_rect = object_tool_selection.selection_bounds_for_key(context, shared_text_key)
+        assert shared_text_rect is not None
+        hit_text = object_tool_selection.hit_shared_text_at_world(
+            context,
+            float(shared_text.x_mm) + 1.0,
+            float(shared_text.y_mm) + 1.0,
+        )
+        assert hit_text is not None and hit_text["key"] == shared_text_key
+        object_selection.set_keys(context, [shared_text_key])
+        object_tool_selection.sync_outliner_selection_for_keys(context, [shared_text_key])
+        assert shared_text_obj.select_get()
 
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         _idx, coma_item = _stack_item(context, "coma", coma2_key)
@@ -220,6 +246,12 @@ def main() -> None:
             f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{coma_border_object.OUTSIDE_PAGE_ID}_{shared_coma.id}"
         )
         _assert_visible_object(shared_border, "shared coma border")
+        shared_coma_key = object_selection.coma_key(None, shared_coma)
+        shared_coma_rect = object_tool_selection.selection_bounds_for_key(context, shared_coma_key)
+        assert shared_coma_rect is not None
+        _idx, shared_coma_item = _stack_item(context, "coma", outside_child_key(shared_coma.id))
+        assert layer_stack_utils.select_stack_index(context, _idx)
+        assert object_tool_selection.active_selection_key(context) == shared_coma_key
 
         image = scene.bname_image_layers.add()
         image.id = "outside_image"

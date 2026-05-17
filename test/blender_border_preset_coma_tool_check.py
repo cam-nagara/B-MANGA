@@ -153,11 +153,16 @@ def main() -> None:
     if pre is None:
         failures.append("ボカシブラシ プリセットを load 出来ない")
     else:
+        edge_style = coma.edge_styles.add()
+        edge_style.edge_index = 0
+        edge_style.width_mm = 3.0
         border_presets.apply_preset_to_coma(pre, coma)
         if coma.border.style != "brush":
             failures.append(f"プリセット適用後 style != brush ({coma.border.style})")
         if abs(coma.border.blur_amount - 0.6) > 1e-3:
             failures.append(f"プリセット適用後 blur_amount != 0.6 ({coma.border.blur_amount})")
+        if len(coma.edge_styles) != 0:
+            failures.append("プリセット適用後に辺ごとの個別設定が残っている")
 
     if failures:
         print("=== CHECK FAILURES ===")

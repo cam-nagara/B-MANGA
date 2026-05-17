@@ -16,6 +16,7 @@ from ..utils import (
     object_selection,
 )
 from ..utils.geom import Rect
+from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key
 from .alt_reparent_op import (
     _DRAG_THRESHOLD_PX as _REPARENT_DRAG_PX,
     _has_selected_targets as _reparent_has_targets,
@@ -143,7 +144,7 @@ def _edge_pick_world_tolerance_mm(region, rv3d, mx: float, my: float, px_toleran
     )
 
 
-def _edge_hit_close_in_world(work, edge_hit: dict, region, rv3d, mx: float, my: float) -> bool:
+def _edge_hit_close_in_world(context, work, edge_hit: dict, area, region, rv3d, mx: float, my: float) -> bool:
     point = coma_edge_move_op._region_to_world_mm(region, rv3d, mx, my)
     if point is None:
         return True
@@ -157,7 +158,7 @@ def _edge_hit_close_in_world(work, edge_hit: dict, region, rv3d, mx: float, my: 
     poly = coma_edge_move_op._coma_polygon(page.comas[coma_index])
     if len(poly) < 2:
         return False
-    ox, oy = coma_edge_move_op._page_offset(work, page_index)
+    ox, oy = coma_edge_move_op._page_offset_for_area(context, work, area, page_index)
     world_poly = [(float(x) + ox, float(y) + oy) for x, y in poly]
     if edge_hit.get("type") == "vertex":
         vertex_index = int(edge_hit.get("vertex", -1))
@@ -188,7 +189,9 @@ def hit_object_at_event(context, event) -> dict | None:
     area, region, rv3d, mx, my = view
     for resolver in (
         _hit_text_at_event,
+        _hit_shared_text_at_event,
         _hit_balloon_at_event,
+        _hit_shared_balloon_at_event,
         _hit_effect_at_event,
         _hit_image_at_event,
         _hit_gp_at_event,
@@ -197,8 +200,16 @@ def hit_object_at_event(context, event) -> dict | None:
         hit = resolver(context, event)
         if hit is not None:
             return hit
-    edge_hit = coma_edge_move_op._pick_edge_or_vertex(work, region, rv3d, int(mx), int(my))
-    if edge_hit is not None and not _edge_hit_close_in_world(work, edge_hit, region, rv3d, mx, my):
+    edge_hit = coma_edge_move_op._pick_edge_or_vertex(
+        work,
+        region,
+        rv3d,
+        int(mx),
+        int(my),
+        context=context,
+        area=area,
+    )
+    if edge_hit is not None and not _edge_hit_close_in_world(context, work, edge_hit, area, region, rv3d, mx, my):
         edge_hit = None
     if edge_hit is not None:
         page = work.pages[int(edge_hit["page"])]
@@ -239,6 +250,10 @@ def _hit_text_at_event(context, event) -> dict | None:
     }
 
 
+def _hit_shared_text_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_shared_text_at_event(context, event, _event_world_xy_mm)
+
+
 def _hit_balloon_at_event(context, event) -> dict | None:
     work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
     if work is None or page is None or lx is None or ly is None:
@@ -254,6 +269,10 @@ def _hit_balloon_at_event(context, event) -> dict | None:
         "key": object_selection.balloon_key(page, hit_entry),
         "local": (float(lx), float(ly)),
     }
+
+
+def _hit_shared_balloon_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_shared_balloon_at_event(context, event, _event_world_xy_mm)
 
 
 def _hit_effect_at_event(context, event) -> dict | None:
@@ -352,6 +371,15 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
     elif kind in {"coma", "coma_edge", "coma_vertex"}:
         page_index = int(hit["page"])
         coma_index = int(hit["coma"])
+        if page_index < 0:
+            _select_stack_target(context, "coma", outside_child_key(object_selection.parse_key(key)[2]))
+            edge_selection.clear_selection(context)
+            object_selection.select_key(context, key, mode=mode)
+            object_tool_selection.sync_outliner_selection_for_keys(
+                context,
+                object_selection.get_keys(context),
+            )
+            return
         page = work.pages[page_index]
         # 新規レイヤー追加 (resolve_active_target) もこのコマを active として
         # 扱えるよう、active_page_index / active_coma_index に加えて
@@ -384,7 +412,9 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
             )
     elif kind == "balloon":
         page_index, page = _find_page_by_id(work, hit.get("page_id", ""))
-        if page is not None:
+        if page is None and hit.get("page_id", "") == OUTSIDE_STACK_KEY:
+            _select_stack_target(context, "balloon", outside_child_key(object_selection.parse_key(key)[2]))
+        elif page is not None:
             balloon_op._select_balloon_index(
                 context,
                 work,
@@ -396,7 +426,9 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         edge_selection.clear_selection(context)
     elif kind == "text":
         _page_index, page = _find_page_by_id(work, hit.get("page_id", ""))
-        if page is not None:
+        if page is None and hit.get("page_id", "") == OUTSIDE_STACK_KEY:
+            _select_stack_target(context, "text", outside_child_key(object_selection.parse_key(key)[2]))
+        elif page is not None:
             text_op._select_text_index(context, work, page, int(hit.get("index", -1)))
         edge_selection.clear_selection(context)
     elif kind == "effect":
@@ -430,7 +462,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                     pass
                 context.scene.bname_active_layer_kind = "gp"
         edge_selection.clear_selection(context)
-    if kind != "balloon":
+    if kind != "balloon" or hit.get("page_id", "") == OUTSIDE_STACK_KEY:
         object_selection.select_key(context, key, mode=mode)
     object_tool_selection.sync_outliner_selection_for_keys(
         context,

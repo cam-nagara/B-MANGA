@@ -50,10 +50,16 @@ def main() -> None:
     coma.border.blur_amount = 0.8
     coma.border.color = (0.0, 0.0, 0.0, 1.0)
 
+    edge_style = coma.edge_styles.add()
+    edge_style.edge_index = 0
+    edge_style.width_mm = 0.6
+    coma.border.edge_top.use_override = True
     coma.border.blur_dither = False
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     assert obj is not None, "ボカシブラシ枠線オブジェクトが生成されません"
     assert obj.type == "MESH", f"ボカシブラシが Mesh ではありません: {obj.type}"
+    assert len(coma.edge_styles) == 0, "ボカシブラシ切替後に辺ごとの個別設定が残っています"
+    assert not bool(coma.border.edge_top.use_override), "ボカシブラシ切替後に辺ごとの設定が残っています"
     image = bpy.data.images.get(coma_border_texture.image_name(page.id, coma.id))
     assert image is not None, "ボカシブラシのアルファ画像が生成されません"
     alpha = _alpha_values(image)

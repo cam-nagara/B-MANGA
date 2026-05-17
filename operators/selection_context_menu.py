@@ -82,7 +82,15 @@ def open_for_coma_edge_tool(op, context, event) -> bool:
     from . import coma_edge_move_op
 
     mx, my = op._to_window(event)
-    hit = coma_edge_move_op._pick_edge_or_vertex(op._work, op._region, op._rv3d, mx, my)
+    hit = coma_edge_move_op._pick_edge_or_vertex(
+        op._work,
+        op._region,
+        op._rv3d,
+        mx,
+        my,
+        context=context,
+        area=getattr(op, "_area", None),
+    )
     if hit is not None:
         op._selection = hit
         op._update_wm_selection(context)

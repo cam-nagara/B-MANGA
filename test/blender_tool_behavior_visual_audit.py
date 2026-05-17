@@ -438,7 +438,8 @@ def _assert_menu_items(context) -> bool:
 
 
 def _assert_click_and_edit(context, data) -> bool:
-    from bname_dev_tool_visual.operators import object_tool_op, object_tool_selection
+    from bname_dev_tool_visual.operators import object_tool_op, object_tool_selection, view_op
+    from bname_dev_tool_visual.operators import coma_edge_drag_session
     from bname_dev_tool_visual.utils import object_selection, page_browser, page_grid
     from bname_dev_tool_visual.utils.geom import Rect
 
@@ -547,6 +548,94 @@ def _assert_click_and_edit(context, data) -> bool:
         if keys[kind] not in object_selection.get_keys(context):
             raise AssertionError(f"クリック選択キーが入っていません: {kind}")
 
+    while len(work.pages) < 3:
+        page_extra = work.pages.add()
+        index = len(work.pages)
+        page_extra.id = f"p{index:04d}"
+        page_extra.title = f"{index}ページ"
+        page_extra.in_page_range = True
+        coma_extra = page_extra.comas.add()
+        coma_extra.id = "c01"
+        coma_extra.coma_id = "c01"
+        coma_extra.title = "コマ1"
+        coma_extra.shape_type = "rect"
+        coma_extra.rect_x_mm = 24.0
+        coma_extra.rect_y_mm = 48.0
+        coma_extra.rect_width_mm = 120.0
+        coma_extra.rect_height_mm = 160.0
+    context.scene.bname_overview_cols = 1
+    context.scene.bname_page_browser_fit = True
+    page_browser.mark_workspace(context.workspace, "LEFT")
+    browser_bbox = page_browser.layout_bbox_mm(work, context.scene, area)
+    if browser_bbox is None:
+        raise AssertionError("ページ一覧の表示範囲を計算できません")
+    with _view3d_override():
+        _window, _screen, fit_area, fit_region, _fit_rv3d = _view3d_context()
+        view_op._fit_view_to_rect_mm(bpy.context, fit_area, fit_region, *browser_bbox)
+        try:
+            bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=2)
+        except Exception:
+            pass
+    browser_page_index = 2
+    browser_page = work.pages[browser_page_index]
+    browser_coma = browser_page.comas[0]
+    box, boy = page_browser.page_offset_mm(work, context.scene, area, browser_page_index)
+    vertex_world = (box + browser_coma.rect_x_mm, boy + browser_coma.rect_y_mm)
+    vertex_event = _screen_event_for_world(vertex_world[0], vertex_world[1])
+    vertex_hit = object_tool_op.hit_object_at_event(context, vertex_event)
+    if vertex_hit is None or str(vertex_hit.get("kind", "")) != "coma_vertex":
+        view = object_tool_op.view_event_region.view3d_window_under_event(context, vertex_event)
+        direct_edge = None
+        event_world = object_tool_op.coma_picker._event_world_mm(context, vertex_event)
+        if view is not None:
+            dbg_area, dbg_region, dbg_rv3d, dbg_mx, dbg_my = view
+            direct_edge = object_tool_op.coma_edge_move_op._pick_edge_or_vertex(
+                work,
+                dbg_region,
+                dbg_rv3d,
+                int(dbg_mx),
+                int(dbg_my),
+                context=context,
+                area=dbg_area,
+            )
+        raise AssertionError(
+            "ページ一覧の頂点をドラッグ対象として拾えません: "
+            f"hit={vertex_hit} direct={direct_edge} event=({vertex_event.mouse_x},{vertex_event.mouse_y}) "
+            f"world={None if event_world is None else (round(event_world[0], 2), round(event_world[1], 2))} "
+            f"target={(round(vertex_world[0], 2), round(vertex_world[1], 2))} "
+            f"bbox={tuple(round(float(v), 2) for v in browser_bbox)} "
+            f"area={None if view is None else (dbg_region.width, dbg_region.height, round(dbg_mx, 2), round(dbg_my, 2))}"
+        )
+    view = object_tool_op.view_event_region.view3d_window_under_event(context, vertex_event)
+    if view is None:
+        raise AssertionError("ページ一覧のドラッグ開始位置が3Dビュー内にありません")
+    drag_area, drag_region, drag_rv3d, _mx, _my = view
+    selection = {
+        "type": "vertex",
+        "page": int(vertex_hit["page"]),
+        "coma": int(vertex_hit["coma"]),
+        "vertex": int(vertex_hit["vertex"]),
+    }
+    session = coma_edge_drag_session.ComaEdgeDragSession(
+        context,
+        work,
+        drag_area,
+        drag_region,
+        drag_rv3d,
+        selection,
+        vertex_world,
+    )
+    move_event = _screen_event_for_world(vertex_world[0] + 6.0, vertex_world[1] + 4.0, event_type="MOUSEMOVE")
+    session.apply(move_event)
+    session.finish("B-Name: 枠線移動")
+    if str(getattr(browser_coma, "shape_type", "")) != "polygon" or len(browser_coma.vertices) < 1:
+        raise AssertionError("ページ一覧の頂点ドラッグがコマ形状に反映されません")
+    moved_v = browser_coma.vertices[int(selection["vertex"])]
+    if abs(float(moved_v.x_mm) - (24.0 + 6.0)) > 0.5 or abs(float(moved_v.y_mm) - (48.0 + 4.0)) > 0.5:
+        raise AssertionError(
+            f"ページ一覧の頂点ドラッグ量が不正です: {(float(moved_v.x_mm), float(moved_v.y_mm))}"
+        )
+
     selected = set(
         object_tool_selection.select_keys_in_world_rect(
             context,
@@ -598,6 +687,28 @@ def _invoke_tool(label: str, op_id: str, operator_context: str, props: dict | No
     return {"label": label, "result": sorted(result), "ok": True}
 
 
+def _select_stack_for_key(context, key: str) -> bool:
+    from bname_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
+    from bname_dev_tool_visual.utils import object_selection
+
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if kind == "page":
+        stack_key = item_id
+    elif kind in {"coma", "balloon", "text"}:
+        stack_key = f"{page_id}:{item_id}"
+    elif page_id == layer_hierarchy.OUTSIDE_STACK_KEY:
+        stack_key = layer_hierarchy.outside_child_key(item_id)
+    else:
+        stack_key = item_id
+    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        return False
+    for stack_index, item in enumerate(stack):
+        if str(getattr(item, "kind", "")) == kind and str(getattr(item, "key", "")) == stack_key:
+            return layer_stack_utils.select_stack_index(context, stack_index)
+    return False
+
+
 def _run_tool_visuals(context, data) -> list[dict]:
     from bname_dev_tool_visual.utils import layer_stack as layer_stack_utils
     from bname_dev_tool_visual.utils import object_selection
@@ -614,8 +725,10 @@ def _run_tool_visuals(context, data) -> list[dict]:
     ]
     items = []
     for index, (label, op_id, op_context, props, select_key) in enumerate(tool_specs):
-        object_selection.set_keys(context, [select_key])
         layer_stack_utils.sync_layer_stack_after_data_change(context)
+        if not _select_stack_for_key(context, select_key):
+            raise AssertionError(f"{label} の対象をレイヤー一覧で選択できません")
+        object_selection.set_keys(context, [select_key])
         select_kind, _page_id, _item_id = object_selection.parse_key(select_key)
         if select_kind == "raster":
             context.scene.bname_active_layer_kind = "raster"

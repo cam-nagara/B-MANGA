@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+from .layer_hierarchy import OUTSIDE_STACK_KEY
+
 
 SELECTION_PROP = "bname_object_selection_keys"
 
@@ -20,15 +22,15 @@ def parse_key(key: str) -> tuple[str, str, str]:
 
 
 def coma_key(page, panel) -> str:
-    return make_key("coma", getattr(page, "id", ""), _coma_id(panel))
+    return make_key("coma", _page_id(page), _coma_id(panel))
 
 
 def balloon_key(page, entry) -> str:
-    return make_key("balloon", getattr(page, "id", ""), getattr(entry, "id", ""))
+    return make_key("balloon", _page_id(page), getattr(entry, "id", ""))
 
 
 def text_key(page, entry) -> str:
-    return make_key("text", getattr(page, "id", ""), getattr(entry, "id", ""))
+    return make_key("text", _page_id(page), getattr(entry, "id", ""))
 
 
 def effect_key(layer) -> str:
@@ -63,6 +65,12 @@ def raster_key(entry) -> str:
 
 def _coma_id(panel) -> str:
     return str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
+
+
+def _page_id(page) -> str:
+    if page is None:
+        return OUTSIDE_STACK_KEY
+    return str(getattr(page, "id", "") or "")
 
 
 def _wm(context):
@@ -240,6 +248,15 @@ def _sync_balloon_flags(context, keys: list[str]) -> None:
             for text in getattr(page, "texts", []) or []:
                 if hasattr(text, "selected"):
                     text.selected = make_key("text", page_id, getattr(text, "id", "")) in key_set
+        for panel in getattr(work, "shared_comas", []) or []:
+            if hasattr(panel, "selected"):
+                panel.selected = make_key("coma", OUTSIDE_STACK_KEY, _coma_id(panel)) in key_set
+        for balloon in getattr(work, "shared_balloons", []) or []:
+            if hasattr(balloon, "selected"):
+                balloon.selected = make_key("balloon", OUTSIDE_STACK_KEY, getattr(balloon, "id", "")) in key_set
+        for text in getattr(work, "shared_texts", []) or []:
+            if hasattr(text, "selected"):
+                text.selected = make_key("text", OUTSIDE_STACK_KEY, getattr(text, "id", "")) in key_set
     # シーン直下に置かれる image / raster コレクションも同期
     if scene is not None:
         for entry in getattr(scene, "bname_image_layers", []) or []:
