@@ -604,6 +604,25 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         elif curve.materials[0] is not mat:
             curve.materials[0] = mat
         obj = bpy.data.objects.get(object_name)
+        if obj is not None and obj.type != "CURVE":
+            # 旧版 (ボカシ平面メッシュ) で保存されたファイルでは枠線
+            # オブジェクトが MESH 型で残っている。Object のデータ型は
+            # 変更できないため作り直す (放置すると obj.data=curve で
+            # 例外になり枠線が壊れる/古いメッシュが残る)。
+            old_data = obj.data
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+            if old_data is not None and getattr(old_data, "users", 0) == 0:
+                try:
+                    if isinstance(old_data, bpy.types.Mesh):
+                        bpy.data.meshes.remove(old_data)
+                    elif isinstance(old_data, bpy.types.Curve):
+                        bpy.data.curves.remove(old_data)
+                except Exception:  # noqa: BLE001
+                    pass
+            obj = None
         if obj is None:
             obj = bpy.data.objects.new(object_name, curve)
         elif obj.data is not curve:
