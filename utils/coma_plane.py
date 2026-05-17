@@ -98,7 +98,21 @@ def _existing_material_image(mat: bpy.types.Material):
     if nt is None:
         return None
     for node in nt.nodes:
-        if node.bl_idname == "ShaderNodeTexImage" and node.image is not None:
+        if (
+            node.bl_idname == "ShaderNodeTexImage"
+            and node.name != "BName_ComaAlphaMask"
+            and node.image is not None
+        ):
+            return node.image
+    return None
+
+
+def _existing_alpha_mask_image(mat: bpy.types.Material):
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return None
+    for node in nt.nodes:
+        if node.bl_idname == "ShaderNodeTexImage" and node.name == "BName_ComaAlphaMask":
             return node.image
     return None
 
@@ -153,6 +167,48 @@ def _resolve_preview_image(work, page, coma):
     return img
 
 
+def _outline_points_mm(coma) -> list[tuple[float, float]]:
+    shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
+    if shape_type == "rect":
+        w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
+        h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
+        return _corner_outline_mm(coma, [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)])
+    vertices = list(getattr(coma, "vertices", []) or [])
+    if len(vertices) < 3:
+        return []
+    return _corner_outline_mm(coma, [(float(v.x_mm), float(v.y_mm)) for v in vertices])
+
+
+def _resolve_alpha_mask_image(page_id: str, coma_id: str, coma):
+    border = getattr(coma, "border", None)
+    if border is None:
+        return None
+    if not bool(getattr(border, "visible", True)):
+        return None
+    if str(getattr(border, "style", "solid") or "solid") != "brush":
+        return None
+    width_mm = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
+    if width_mm <= 0.0:
+        return None
+    outline = _outline_points_mm(coma)
+    if len(outline) < 3:
+        return None
+    try:
+        from . import coma_border_texture
+
+        return coma_border_texture.ensure_coma_plane_alpha_image(
+            page_id,
+            coma_id,
+            outline,
+            width_mm,
+            float(getattr(border, "blur_amount", 0.5) or 0.0),
+            dither=bool(getattr(border, "blur_dither", False)),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_plane: alpha mask image failed")
+        return None
+
+
 def _ensure_uv(mesh: bpy.types.Mesh) -> None:
     """コマ形状メッシュに、外接矩形 → [0,1] の UV を割り当てる.
 
@@ -190,15 +246,21 @@ def _apply_material(
     image=None,
     *,
     keep_existing_image: bool = True,
+    alpha_mask_image=None,
+    keep_existing_mask: bool = True,
+    dither: bool = False,
 ) -> None:
     """Material を「プレビュー画像 (あれば) / 無ければ背景色」で構築する.
 
-    - 画像があれば Image Texture → Emission → Output。Solid のカラー=
-      テクスチャでコマ形状に画像が貼られる。
+    - 画像があれば Image Texture → Emission。Solid のカラー=テクスチャで
+      コマ形状に画像が貼られる。
+    - ボカシブラシ時は同じコマ面素材に透明マスクを掛け、コマ画像自体の
+      輪郭を透明にする。
     - 画像が無ければ従来どおり背景色の Emission。
     - ``mat.diffuse_color`` は常に背景色に揃える (プレビュー無しコマや
       テクスチャ非対応表示でのフォールバック)。
-    - mask 用 Mesh としては opaque depth が必要なので blend は OPAQUE 維持。
+    - Boolean 用マスクは別 Object が担当するため、表示用の coma_plane は
+      透明表示へ切り替えられる。
     """
     try:
         r = float(color_rgba[0])
@@ -210,6 +272,8 @@ def _apply_material(
     nt = mat.node_tree
     if image is None and keep_existing_image:
         image = _existing_material_image(mat)
+    if alpha_mask_image is None and keep_existing_mask:
+        alpha_mask_image = _existing_alpha_mask_image(mat)
     for node in list(nt.nodes):
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -222,6 +286,7 @@ def _apply_material(
         pass
     if image is not None:
         tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.name = "BName_ComaPreview"
         tex.location = (-300, 0)
         tex.image = image
         try:
@@ -237,9 +302,44 @@ def _apply_material(
             emission.inputs["Color"].default_value = rgba
         except Exception:  # noqa: BLE001
             pass
-    nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+    if alpha_mask_image is not None:
+        alpha_tex = nt.nodes.new("ShaderNodeTexImage")
+        alpha_tex.name = "BName_ComaAlphaMask"
+        alpha_tex.location = (-300, -220)
+        alpha_tex.image = alpha_mask_image
+        try:
+            alpha_tex.extension = "EXTEND"
+        except Exception:  # noqa: BLE001
+            pass
+        transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+        transparent.location = (60, -180)
+        mix = nt.nodes.new("ShaderNodeMixShader")
+        mix.location = (300, 0)
+        alpha_output = alpha_tex.outputs["Alpha"]
+        if image is not None:
+            alpha_math = nt.nodes.new("ShaderNodeMath")
+            alpha_math.operation = "MULTIPLY"
+            alpha_math.location = (-40, -180)
+            try:
+                nt.links.new(tex.outputs["Alpha"], alpha_math.inputs[0])
+                nt.links.new(alpha_tex.outputs["Alpha"], alpha_math.inputs[1])
+                alpha_output = alpha_math.outputs[0]
+            except Exception:  # noqa: BLE001
+                alpha_output = alpha_tex.outputs["Alpha"]
+        try:
+            nt.links.new(alpha_output, mix.inputs[0])
+            nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+            nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+            nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_plane: alpha material link failed")
+    else:
+        nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     try:
         mat.diffuse_color = rgba
+        mat.blend_method = "BLEND" if alpha_mask_image is not None else "OPAQUE"
+        mat.show_transparent_back = True
+        mat.surface_render_method = "DITHERED" if alpha_mask_image is not None and dither else ("BLENDED" if alpha_mask_image is not None else "DITHERED")
     except Exception:  # noqa: BLE001
         pass
 
@@ -252,11 +352,6 @@ def _ensure_coma_plane_material(
     if mat is None:
         mat = bpy.data.materials.new(name)
     mat.use_nodes = True
-    try:
-        mat.blend_method = "OPAQUE"
-        mat.surface_render_method = "DITHERED"  # opaque-equivalent
-    except (AttributeError, TypeError):
-        pass
     color = (1.0, 1.0, 1.0, 1.0)
     if coma is not None:
         try:
@@ -264,7 +359,23 @@ def _ensure_coma_plane_material(
         except Exception:  # noqa: BLE001
             pass
     image = _resolve_preview_image(work, page, coma)
-    _apply_material(mat, color, image)
+    alpha_mask = _resolve_alpha_mask_image(page_id, coma_id, coma)
+    dither = bool(getattr(getattr(coma, "border", None), "blur_dither", False))
+    _apply_material(
+        mat,
+        color,
+        image,
+        alpha_mask_image=alpha_mask,
+        keep_existing_mask=False,
+        dither=dither,
+    )
+    if alpha_mask is None:
+        try:
+            from . import coma_border_texture
+
+            coma_border_texture.cleanup_plane_alpha_assets(page_id, coma_id)
+        except Exception:  # noqa: BLE001
+            pass
     return mat
 
 
@@ -635,6 +746,7 @@ def ensure_coma_plane(
     obj.hide_select = True  # ユーザー誤操作防止
     try:
         obj.display_type = "TEXTURED"
+        obj.show_transparent = True
     except Exception:  # noqa: BLE001
         pass
 
@@ -691,6 +803,11 @@ def update_coma_plane_geometry(
     except Exception:  # noqa: BLE001
         _logger.exception("update_coma_plane_geometry: mesh rebuild failed (%s)", mesh_name)
         return False
+    mat = _ensure_coma_plane_material(page_id, coma_id, coma, work, page)
+    if not mesh.materials:
+        mesh.materials.append(mat)
+    elif mesh.materials[0] is not mat:
+        mesh.materials[0] = mat
     if scene is not None and work is not None:
         _set_obj_location(obj, scene, work, page, coma)
     # coma_mask (Boolean reference 専用) の geometry も同期更新
@@ -715,7 +832,7 @@ def update_coma_plane_color(page, coma) -> bool:
         color = tuple(float(c) for c in coma.background_color[:4])
     except Exception:  # noqa: BLE001
         pass
-    _apply_material(mat, color)
+    _apply_material(mat, color, keep_existing_mask=True)
     try:
         mat.update_tag()
     except Exception:  # noqa: BLE001

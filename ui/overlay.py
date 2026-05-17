@@ -1808,10 +1808,8 @@ def _draw_callback_pixel() -> None:
                     oy_mm=oy,
                     entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                     draw_text_in_rect=_draw_text_in_rect,
-                )
+            )
             _draw_page_header_number_pixel(context, paper, i, ox, oy)
-            _draw_work_info_texts_pixel(context, work, inner, page_index=i,
-                                         ox_mm=ox, oy_mm=oy)
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
@@ -1839,8 +1837,6 @@ def _draw_callback_pixel() -> None:
                 draw_text_in_rect=_draw_text_in_rect,
             )
             _draw_page_header_number_pixel(context, paper, idx, ox, oy)
-            _draw_work_info_texts_pixel(context, work, inner, page_index=idx,
-                                         ox_mm=ox, oy_mm=oy)
     region, rv3d = _resolve_active_region(context)
     overlay_coma_selection.draw(context, work, region, rv3d)
 

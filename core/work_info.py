@@ -68,6 +68,7 @@ def _on_page_number_range_changed(self, context) -> None:
             page_range.ensure_pages_for_number_range(context)
         except Exception:  # noqa: BLE001
             _logger.exception("page number range sync failed")
+        _sync_work_info_text_objects(context)
     finally:
         _page_range_update_depth -= 1
 
@@ -90,6 +91,7 @@ def _on_display_font_size_q_changed(self, _context) -> None:
     _display_font_size_sync_depth += 1
     try:
         self.font_size_pt = max(0.1, float(q_to_pt(float(getattr(self, "font_size_q", 20.0) or 20.0))))
+        _sync_work_info_text_objects(_context)
     finally:
         _display_font_size_sync_depth -= 1
 
@@ -101,8 +103,26 @@ def _on_display_font_size_pt_changed(self, _context) -> None:
     _display_font_size_sync_depth += 1
     try:
         self.font_size_q = max(0.1, float(pt_to_q(float(getattr(self, "font_size_pt", 9.0) or 9.0))))
+        _sync_work_info_text_objects(_context)
     finally:
         _display_font_size_sync_depth -= 1
+
+
+def _sync_work_info_text_objects(context) -> None:
+    try:
+        scene = getattr(context, "scene", None)
+        work = getattr(scene, "bname_work", None) if scene is not None else None
+        if work is None or not bool(getattr(work, "loaded", False)):
+            return
+        from ..utils import work_info_text_object
+
+        work_info_text_object.regenerate_all_work_info_texts(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("work info text object sync failed")
+
+
+def _on_work_info_changed(self, context) -> None:
+    _sync_work_info_text_objects(context)
 
 
 def _get_display_font_size_value(self) -> float:
@@ -125,11 +145,13 @@ class BNameDisplayItem(bpy.types.PropertyGroup):
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="表示",
         default=False,
+        update=_on_work_info_changed,
     )
     position: EnumProperty(  # type: ignore[valid-type]
         name="位置",
         items=_POSITION_ITEMS,
         default="bottom-left",
+        update=_on_work_info_changed,
     )
     # フォントサイズは Q 数 (写植単位、1 Q = 0.25 mm) で保持。
     # 既定値 10 Q (= 2.5 mm ≈ 7.087 pt) はマンガの作品情報・ノンブルでよく使われる
@@ -173,6 +195,7 @@ class BNameDisplayItem(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0, 1.0),
         min=0.0,
         max=1.0,
+        update=_on_work_info_changed,
     )
 
 
@@ -182,20 +205,24 @@ class BNameWorkInfo(bpy.types.PropertyGroup):
     work_name: StringProperty(  # type: ignore[valid-type]
         name="作品名",
         default="",
+        update=_on_work_info_changed,
     )
     episode_number: IntProperty(  # type: ignore[valid-type]
         name="話数",
         default=1,
         min=0,
         soft_max=9999,
+        update=_on_work_info_changed,
     )
     subtitle: StringProperty(  # type: ignore[valid-type]
         name="サブタイトル",
         default="",
+        update=_on_work_info_changed,
     )
     author: StringProperty(  # type: ignore[valid-type]
         name="作者名",
         default="",
+        update=_on_work_info_changed,
     )
 
     display_work_name: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]

@@ -20,6 +20,7 @@ from ..io import page_io, work_io
 from ..utils import gpencil as gp_utils
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import edge_selection, log, page_browser, page_grid, page_range, paths
+from ..utils import shortcut_visibility
 
 _logger = log.get_logger(__name__)
 
@@ -388,9 +389,12 @@ class BNAME_OT_page_pick_viewport(Operator):
             and work.loaded
             and (get_mode(context) == MODE_PAGE or in_page_browser)
             and getattr(context, "mode", "") == "OBJECT"
+            and shortcut_visibility.shortcuts_allowed(context)
         )
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if (
             event.value != "PRESS"
             or bool(getattr(event, "alt", False))

@@ -212,12 +212,6 @@ class KeymapState:
             f" items={len(self.bname_items)} kc_name={kc.name!r}"
         )
         _logger.info("bname keymap created (items=%d)", len(self.bname_items))
-        # 他アドオン (Fluent 等) が addon kc に登録した F/G の単独キー kmi を
-        # 無効化して、B-Name のショートカットが優先発火するようにする
-        try:
-            self.disable_conflicting_keys()
-        except Exception:  # noqa: BLE001
-            _logger.exception("disable_conflicting_keys failed")
         return km
 
     def _populate_gp_paint_overrides(self, km, km_name: str) -> None:
@@ -757,47 +751,15 @@ def get_state() -> Optional[KeymapState]:
 def _any_bname_tab_active() -> bool:
     """いずれかの VIEW_3D の N パネルで B-Name タブがアクティブか判定.
 
-    Blender 5.x で ``region.active_panel_category`` の値の取り方が変わった
-    影響で、安定して「B-Name タブが active か」を判定するのは難しい。
-    現行では ``keymap_enabled`` が True のとき常に True を返し、
-    B-Name ショートカットを常時有効化する運用に変更している (下記
-    ``_watch_bname_tab`` 参照)。この関数は将来のタブ連動復活用に残す。
+    ショートカットを B-Name タブ表示中に限定するための薄い wrapper。
     """
-    wm = bpy.context.window_manager
-    if wm is None:
-        return False
-    for window in wm.windows:
-        screen = getattr(window, "screen", None)
-        if screen is None:
-            continue
-        for area in screen.areas:
-            if area.type != "VIEW_3D":
-                continue
-            space = area.spaces.active
-            if space is None or not getattr(space, "show_region_ui", False):
-                continue
-            for region in area.regions:
-                if region.type != "UI":
-                    continue
-                category = getattr(region, "active_panel_category", None)
-                if category == _BNAME_TAB_CATEGORY:
-                    return True
-    return False
+    from ..utils import shortcut_visibility
+
+    return shortcut_visibility.bname_panel_visible(bpy.context)
 
 
 def _watch_bname_tab() -> Optional[float]:
-    """タイマー: B-Name キーマップを常時有効化 (Phase 3+ 新挙動).
-
-    旧挙動は「B-Name タブ active 時のみ B-Name ショートカット有効」だったが、
-    Blender 5.x でタブ active 判定 API (``region.active_panel_category``) が
-    安定せずショートカットが効かなくなる不具合があった。Phase 3+ では
-    preferences.keymap_enabled=True なら常に B-Name キーマップ + 既定
-    キーマップ退避を有効化し、keymap_enabled=False なら全て復元する。
-
-    これにより:
-    - addon 有効かつ keymap_enabled ON → B-Name ショートカットが常時効く
-      (Space がツールパイメニューを出さない、等)
-    - 無効化したいユーザーは preferences から keymap_enabled を OFF に
+    """タイマー: B-Name タブ表示中だけ B-Name キーマップを有効化する.
 
     override_defaults / restore_defaults / set_bname_items_active は
     冪等で、毎ティック呼んでも追加コストは微小 (状態の早期 return あり)。
@@ -815,10 +777,7 @@ def _watch_bname_tab() -> Optional[float]:
 
         prefs = get_preferences()
         keymap_pref_enabled = True if prefs is None else bool(prefs.keymap_enabled)
-        # ツール切替やナビゲートは、B-Nameタブを開いていない瞬間にも
-        # 作画操作から即座に使える必要がある。サイドバー状態には連動させず、
-        # preferences.keymap_enabled だけを有効/無効の基準にする。
-        enabled = bool(keymap_pref_enabled)
+        enabled = bool(keymap_pref_enabled and _any_bname_tab_active())
 
         # キーマップ未作成 (register 時に wm/addon keyconfig が None だった等) なら再試行
         if not state.bname_items:
@@ -829,16 +788,7 @@ def _watch_bname_tab() -> Optional[float]:
                     len(state.bname_items),
                 )
 
-        if enabled:
-            state.set_bname_items_active(True)
-            if not state.enabled and state.bname_items:
-                state.override_defaults()
-        elif state.enabled:
-            state.restore_defaults()
-            state.set_bname_items_active(False)
-        else:
-            # state.enabled は既に False。kmi も False を維持させる。
-            state.set_bname_items_active(False)
+        _apply_visibility_state(state, enabled)
     except Exception:  # noqa: BLE001
         _logger.exception("watch_bname_tab failed")
     return _WATCH_INTERVAL
@@ -848,37 +798,29 @@ def _bname_tab_is_active() -> bool:
     """N パネル sidebar で B-Name タブが現在アクティブな area が 1 つでもあるか.
 
     ``Region.active_panel_category`` を使う (Blender 5.x では実装済)。
-    region が見つからない / 未対応 Blender なら True を返して挙動を維持
-    (アドオン全有効化と同等) し、ユーザーの作業を妨げない。
     """
+    return _any_bname_tab_active()
+
+
+def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
+    """B-Name タブ表示状態に合わせて自前キーと競合退避を切り替える."""
+    if enabled:
+        state.set_bname_items_active(True)
+        if state.bname_items:
+            try:
+                state.disable_conflicting_keys()
+            except Exception:  # noqa: BLE001
+                _logger.exception("disable_conflicting_keys failed")
+        if not state.enabled and state.bname_items:
+            state.override_defaults()
+        return
     try:
-        wm = bpy.context.window_manager
-        if wm is None:
-            return True
-        for window in wm.windows:
-            screen = getattr(window, "screen", None)
-            if screen is None:
-                continue
-            for area in screen.areas:
-                if area.type != "VIEW_3D":
-                    continue
-                space = area.spaces.active
-                # sidebar 自体が閉じているなら B-Name タブは表示されていない
-                if not bool(getattr(space, "show_region_ui", False)):
-                    continue
-                for region in area.regions:
-                    if region.type != "UI":
-                        continue
-                    cat = getattr(region, "active_panel_category", None)
-                    if cat is None:
-                        # Blender が active_panel_category を返さない環境では
-                        # sidebar が開いているなら有効と判断
-                        return True
-                    if str(cat) == "B-Name":
-                        return True
+        state.restore_conflicting_keys()
     except Exception:  # noqa: BLE001
-        return True
-    return False
+        _logger.exception("restore_conflicting_keys failed")
+    if state.enabled:
+        state.restore_defaults()
+    state.set_bname_items_active(False)
 
 
 def _register_watcher() -> None:
@@ -926,17 +868,9 @@ def register() -> None:
             " watcher will retry every %.1fs",
             _WATCH_INTERVAL,
         )
-    # B-Name キーマップを **register 時点で即時 active 化**.
-    # 旧実装は watcher 起動を待っていたが、Blender 5.x で watcher が
-    # 効くまでに UI 操作が走るとショートカットが反応しないため、最初から
-    # 有効化しておく。Disable は preferences.keymap_enabled を OFF に切替
-    # した時のみ watcher が反映する。
-    if keymap_enabled:
-        _state.set_bname_items_active(True)
-        if _state.bname_items:
-            _state.override_defaults()
-    else:
-        _state.set_bname_items_active(False)
+    # register 時点でもサイドバー状態を見て active を合わせる。
+    # B-Name タブが表示されていない間は Blender 標準キーへ戻す。
+    _apply_visibility_state(_state, bool(keymap_enabled and _any_bname_tab_active()))
     # watcher は preferences.keymap_enabled の動的トグルへの追従専用
     _register_watcher()
     _logger.info(
@@ -992,10 +926,7 @@ def rebuild_keymap_from_prefs() -> None:
         state.create_bname_keymap()
         from ..preferences import get_preferences
         prefs = get_preferences()
-        enabled = True if prefs is None else bool(prefs.keymap_enabled)
-        if enabled:
-            state.set_bname_items_active(True)
-        else:
-            state.set_bname_items_active(False)
+        keymap_enabled = True if prefs is None else bool(prefs.keymap_enabled)
+        _apply_visibility_state(state, bool(keymap_enabled and _any_bname_tab_active()))
     except Exception:  # noqa: BLE001
         _logger.exception("rebuild: create_bname_keymap failed")

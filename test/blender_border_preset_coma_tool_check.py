@@ -47,7 +47,7 @@ def main() -> None:
     from bname_dev.io import border_presets
 
     gp = {p.name for p in border_presets.list_global_presets()}
-    for need in ("標準", "極太", "ボカシブラシ"):
+    for need in ("線無し", "標準", "極太", "ボカシブラシ"):
         if need not in gp:
             failures.append(f"同梱枠線プリセット {need} が見つからない (見つかった={sorted(gp)})")
     for opid in ("border_preset_apply", "border_preset_save_local"):
@@ -163,6 +163,16 @@ def main() -> None:
             failures.append(f"プリセット適用後 blur_amount != 0.6 ({coma.border.blur_amount})")
         if len(coma.edge_styles) != 0:
             failures.append("プリセット適用後に辺ごとの個別設定が残っている")
+
+    no_line = border_presets.load_preset_by_name("線無し", None)
+    if no_line is None:
+        failures.append("線無し プリセットを load 出来ない")
+    else:
+        border_presets.apply_preset_to_coma(no_line, coma)
+        if bool(coma.border.visible):
+            failures.append("線無し プリセット適用後に枠線が表示のまま")
+        if bool(coma.white_margin.enabled):
+            failures.append("線無し プリセット適用後に白フチが有効のまま")
 
     if failures:
         print("=== CHECK FAILURES ===")

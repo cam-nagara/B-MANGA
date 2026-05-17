@@ -7,6 +7,7 @@ from typing import Sequence
 
 import bpy
 
+from . import border_geom
 from . import log
 from . import object_naming as on
 from .geom import mm_to_m
@@ -16,14 +17,16 @@ _logger = log.get_logger(__name__)
 COMA_BORDER_TEXTURE_MESH_PREFIX = "coma_border_texture_mesh_"
 COMA_BORDER_TEXTURE_MATERIAL_PREFIX = "BName_ComaBorderTexture_"
 COMA_BORDER_TEXTURE_IMAGE_PREFIX = "BName_ComaBorderAlpha_"
+COMA_PLANE_ALPHA_IMAGE_PREFIX = "BName_ComaPlaneAlpha_"
 COMA_BORDER_TEXTURE_UV_NAME = "BNameComaBorderTextureUV"
 
 PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
 PROP_COMA_BORDER_OWNER_ID = "bname_coma_border_owner_id"
 
-_PX_PER_MM = 6.0
+_PX_PER_MM = 3.0
 _MIN_IMAGE_SIZE = 64
-_MAX_IMAGE_SIZE = 1536
+_MAX_IMAGE_SIZE = 1024
+_SIGNATURE_PROP = "bname_border_alpha_signature"
 _BAYER_8X8 = (
     (0, 48, 12, 60, 3, 51, 15, 63),
     (32, 16, 44, 28, 35, 19, 47, 31),
@@ -52,6 +55,86 @@ def image_name(page_id: str, coma_id: str) -> str:
     return f"{COMA_BORDER_TEXTURE_IMAGE_PREFIX}{page_id}_{coma_id}"
 
 
+def plane_alpha_image_name(page_id: str, coma_id: str) -> str:
+    return f"{COMA_PLANE_ALPHA_IMAGE_PREFIX}{page_id}_{coma_id}"
+
+
+def ensure_coma_plane_alpha_image(
+    page_id: str,
+    coma_id: str,
+    outline_mm: Sequence[tuple[float, float]],
+    width_mm: float,
+    blur_amount: float,
+    *,
+    dither: bool = False,
+) -> bpy.types.Image | None:
+    pts = [(float(x), float(y)) for x, y in outline_mm]
+    if len(pts) < 3 or width_mm <= 0.0:
+        return None
+    bounds = _bounds(pts)
+    if bounds is None:
+        return None
+    min_x, min_y, max_x, max_y = bounds
+    width_px = _texture_size(max_x - min_x)
+    height_px = _texture_size(max_y - min_y)
+    name = plane_alpha_image_name(page_id, coma_id)
+    image = bpy.data.images.get(name)
+    if image is None or image.size[0] != width_px or image.size[1] != height_px:
+        if image is not None:
+            try:
+                bpy.data.images.remove(image)
+            except Exception:  # noqa: BLE001
+                pass
+        image = bpy.data.images.new(name, width=width_px, height=height_px, alpha=True, float_buffer=False)
+    try:
+        image.colorspace_settings.name = "Non-Color"
+    except Exception:  # noqa: BLE001
+        pass
+    signature = _plane_alpha_signature(
+        pts,
+        bounds,
+        width_px,
+        height_px,
+        width_mm,
+        blur_amount,
+        dither=dither,
+    )
+    if str(image.get(_SIGNATURE_PROP, "") or "") == signature and _plane_cache_sample_ok(
+        image,
+        pts,
+        bounds,
+        width_mm,
+        blur_amount,
+        dither=dither,
+    ):
+        return image
+    pixels = _plane_alpha_pixels(
+        pts,
+        bounds,
+        width_px,
+        height_px,
+        width_mm,
+        blur_amount,
+        dither=dither,
+    )
+    try:
+        image.pixels.foreach_set(pixels)
+        image.update()
+        image[_SIGNATURE_PROP] = signature
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma plane alpha image update failed")
+    return image
+
+
+def cleanup_plane_alpha_assets(page_id: str, coma_id: str) -> None:
+    image = bpy.data.images.get(plane_alpha_image_name(page_id, coma_id))
+    if image is not None and image.users == 0:
+        try:
+            bpy.data.images.remove(image)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def ensure_brush_border_mesh(
     page_id: str,
     coma_id: str,
@@ -62,6 +145,7 @@ def ensure_brush_border_mesh(
     blur_amount: float,
     *,
     dither: bool = False,
+    background: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> bpy.types.Object | None:
     pts = [(float(x), float(y)) for x, y in outline_mm]
     if len(pts) < 3 or width_mm <= 0.0:
@@ -69,8 +153,19 @@ def ensure_brush_border_mesh(
     bounds = _bounds(pts)
     if bounds is None:
         return None
-    mesh = _ensure_mesh(page_id, coma_id, pts, bounds)
-    image = _ensure_alpha_image(page_id, coma_id, pts, bounds, width_mm, color, blur_amount, dither=dither)
+    total_mm = _brush_total_width_mm(width_mm, blur_amount)
+    mesh = _ensure_mesh(page_id, coma_id, pts, bounds, total_mm)
+    image = _ensure_alpha_image(
+        page_id,
+        coma_id,
+        pts,
+        bounds,
+        width_mm,
+        color,
+        blur_amount,
+        dither=dither,
+        background=background,
+    )
     mat = _ensure_material(page_id, coma_id, color, image, dither=dither)
     if not mesh.materials:
         mesh.materials.append(mat)
@@ -97,6 +192,10 @@ def ensure_brush_border_mesh(
     obj.hide_select = True
     try:
         obj.display_type = "TEXTURED"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.show_transparent = True
     except Exception:  # noqa: BLE001
         pass
     return obj
@@ -143,16 +242,46 @@ def _ensure_mesh(
     coma_id: str,
     points: Sequence[tuple[float, float]],
     bounds: tuple[float, float, float, float],
+    total_width_mm: float,
 ) -> bpy.types.Mesh:
     mesh = bpy.data.meshes.get(mesh_name(page_id, coma_id))
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name(page_id, coma_id))
-    verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in points]
+    mesh_points, faces = _ring_mesh_points(points, total_width_mm)
+    if not mesh_points or not faces:
+        mesh_points = [(float(x), float(y)) for x, y in points]
+        faces = [tuple(range(len(mesh_points)))]
+    verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in mesh_points]
     mesh.clear_geometry()
-    mesh.from_pydata(verts, [], [tuple(range(len(verts)))])
+    mesh.from_pydata(verts, [], faces)
     mesh.update()
-    _ensure_uv(mesh, points, bounds)
+    _ensure_uv(mesh, mesh_points, bounds)
     return mesh
+
+
+def _ring_mesh_points(
+    points: Sequence[tuple[float, float]],
+    total_width_mm: float,
+) -> tuple[list[tuple[float, float]], list[tuple[int, int, int, int]]]:
+    """輪郭から内側へ消える画像帯だけをメッシュ化する."""
+    width = max(0.0, float(total_width_mm))
+    if width <= 1.0e-6 or len(points) < 3:
+        return [], []
+    try:
+        loops = border_geom.stroke_loops_mm(points, width * 2.0)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma border texture ring loop failed")
+        loops = None
+    if loops is None:
+        return [], []
+    _outer_unused, inner = loops
+    outer = [(float(x), float(y)) for x, y in points]
+    if len(inner) != len(outer) or len(outer) < 3:
+        return [], []
+    n = len(outer)
+    mesh_points = outer + [(float(x), float(y)) for x, y in inner]
+    faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
+    return mesh_points, faces
 
 
 def _ensure_uv(
@@ -184,6 +313,7 @@ def _ensure_alpha_image(
     blur_amount: float,
     *,
     dither: bool,
+    background: tuple[float, float, float],
 ) -> bpy.types.Image:
     min_x, min_y, max_x, max_y = bounds
     box_w = max_x - min_x
@@ -203,10 +333,42 @@ def _ensure_alpha_image(
         image.colorspace_settings.name = "sRGB"
     except Exception:  # noqa: BLE001
         pass
-    pixels = _alpha_pixels(points, bounds, width_px, height_px, width_mm, color, blur_amount, dither=dither)
+    signature = _image_signature(
+        points,
+        bounds,
+        width_px,
+        height_px,
+        width_mm,
+        color,
+        blur_amount,
+        dither=dither,
+        background=background,
+    )
+    if str(image.get(_SIGNATURE_PROP, "") or "") == signature and _cache_sample_ok(
+        image,
+        points,
+        bounds,
+        width_mm,
+        color,
+        blur_amount,
+        dither=dither,
+    ):
+        return image
+    pixels = _alpha_pixels(
+        points,
+        bounds,
+        width_px,
+        height_px,
+        width_mm,
+        color,
+        blur_amount,
+        dither=dither,
+        background=background,
+    )
     try:
         image.pixels.foreach_set(pixels)
         image.update()
+        image[_SIGNATURE_PROP] = signature
     except Exception:  # noqa: BLE001
         _logger.exception("coma border alpha image update failed")
     return image
@@ -227,6 +389,7 @@ def _alpha_pixels(
     blur_amount: float,
     *,
     dither: bool,
+    background: tuple[float, float, float],
 ) -> list[float]:
     min_x, min_y, max_x, max_y = bounds
     box_w = max(max_x - min_x, 1.0e-6)
@@ -234,32 +397,281 @@ def _alpha_pixels(
     blur = max(0.0, min(1.0, float(blur_amount)))
     line_w = max(0.0, float(width_mm))
     color_alpha = max(0.0, min(1.0, float(color[3])))
+    core_mm, fade_mm, total_mm = _brush_width_parts(line_w, blur)
+    r, g, b = float(color[0]), float(color[1]), float(color[2])
+    br, bg, bb = _background_rgb(background)
+    pixels: list[float] = [0.0] * (width_px * height_px * 4)
+    for offset in range(0, len(pixels), 4):
+        pixels[offset] = br
+        pixels[offset + 1] = bg
+        pixels[offset + 2] = bb
+    for y_px in range(height_px):
+        y = min_y + ((y_px + 0.5) / height_px) * box_h
+        for x_px in range(width_px):
+            x = min_x + ((x_px + 0.5) / width_px) * box_w
+            alpha = _alpha_at_point(
+                x,
+                y,
+                points,
+                core_mm,
+                fade_mm,
+                total_mm,
+                color_alpha,
+                dither=dither,
+                x_px=x_px,
+                y_px=y_px,
+            )
+            offset = (y_px * width_px + x_px) * 4
+            display_alpha = alpha / max(color_alpha, 1.0e-6)
+            pixels[offset] = br + (r - br) * display_alpha
+            pixels[offset + 1] = bg + (g - bg) * display_alpha
+            pixels[offset + 2] = bb + (b - bb) * display_alpha
+            pixels[offset + 3] = alpha
+    return pixels
+
+
+def _plane_alpha_pixels(
+    points: Sequence[tuple[float, float]],
+    bounds: tuple[float, float, float, float],
+    width_px: int,
+    height_px: int,
+    width_mm: float,
+    blur_amount: float,
+    *,
+    dither: bool,
+) -> list[float]:
+    min_x, min_y, max_x, max_y = bounds
+    box_w = max(max_x - min_x, 1.0e-6)
+    box_h = max(max_y - min_y, 1.0e-6)
+    core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), max(0.0, min(1.0, float(blur_amount))))
+    fade_total = max(1.0e-6, core_mm + fade_mm if total_mm > 0.0 else float(width_mm))
+    pixels: list[float] = [0.0] * (width_px * height_px * 4)
+    for y_px in range(height_px):
+        y = min_y + (y_px / max(1, height_px - 1)) * box_h
+        for x_px in range(width_px):
+            x = min_x + (x_px / max(1, width_px - 1)) * box_w
+            alpha = _plane_alpha_at_point(
+                x,
+                y,
+                points,
+                fade_total,
+                dither=dither,
+                x_px=x_px,
+                y_px=y_px,
+            )
+            offset = (y_px * width_px + x_px) * 4
+            pixels[offset] = 1.0
+            pixels[offset + 1] = 1.0
+            pixels[offset + 2] = 1.0
+            pixels[offset + 3] = alpha
+    return pixels
+
+
+def _cache_sample_ok(
+    image: bpy.types.Image,
+    points: Sequence[tuple[float, float]],
+    bounds: tuple[float, float, float, float],
+    width_mm: float,
+    color: tuple[float, float, float, float],
+    blur_amount: float,
+    *,
+    dither: bool,
+) -> bool:
+    try:
+        width_px = int(image.size[0])
+        height_px = int(image.size[1])
+        if width_px <= 0 or height_px <= 0:
+            return False
+        x_px = width_px // 2
+        y_px = height_px // 2
+        min_x, min_y, max_x, max_y = bounds
+        x = min_x + (x_px / max(1, width_px - 1)) * max(max_x - min_x, 1.0e-6)
+        y = min_y + (y_px / max(1, height_px - 1)) * max(max_y - min_y, 1.0e-6)
+        blur = max(0.0, min(1.0, float(blur_amount)))
+        core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), blur)
+        color_alpha = max(0.0, min(1.0, float(color[3])))
+        expected = _alpha_at_point(
+            x,
+            y,
+            points,
+            core_mm,
+            fade_mm,
+            total_mm,
+            color_alpha,
+            dither=dither,
+            x_px=x_px,
+            y_px=y_px,
+        )
+        actual = float(image.pixels[(y_px * width_px + x_px) * 4 + 3])
+    except Exception:  # noqa: BLE001
+        return False
+    return abs(actual - expected) <= 1.0e-4
+
+
+def _plane_cache_sample_ok(
+    image: bpy.types.Image,
+    points: Sequence[tuple[float, float]],
+    bounds: tuple[float, float, float, float],
+    width_mm: float,
+    blur_amount: float,
+    *,
+    dither: bool,
+) -> bool:
+    try:
+        width_px = int(image.size[0])
+        height_px = int(image.size[1])
+        if width_px <= 0 or height_px <= 0:
+            return False
+        samples = ((width_px // 2, height_px // 2), (0, height_px // 2))
+        min_x, min_y, max_x, max_y = bounds
+        core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), max(0.0, min(1.0, float(blur_amount))))
+        fade_total = max(1.0e-6, core_mm + fade_mm if total_mm > 0.0 else float(width_mm))
+        for x_px, y_px in samples:
+            x = min_x + (x_px / max(1, width_px - 1)) * max(max_x - min_x, 1.0e-6)
+            y = min_y + (y_px / max(1, height_px - 1)) * max(max_y - min_y, 1.0e-6)
+            expected = _plane_alpha_at_point(
+                x,
+                y,
+                points,
+                fade_total,
+                dither=dither,
+                x_px=x_px,
+                y_px=y_px,
+            )
+            actual = float(image.pixels[(y_px * width_px + x_px) * 4 + 3])
+            if abs(actual - expected) > 1.0e-4:
+                return False
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
+def _alpha_at_point(
+    x: float,
+    y: float,
+    points: Sequence[tuple[float, float]],
+    core_mm: float,
+    fade_mm: float,
+    total_mm: float,
+    color_alpha: float,
+    *,
+    dither: bool,
+    x_px: int,
+    y_px: int,
+) -> float:
+    if not _point_in_polygon(x, y, points):
+        return 0.0
+    dist = _distance_to_edges(x, y, points)
+    alpha = _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
+    if dither and 0.0 < alpha < color_alpha:
+        threshold = (_BAYER_8X8[y_px & 7][x_px & 7] + 0.5) / 64.0
+        alpha = color_alpha if alpha / max(color_alpha, 1.0e-6) >= threshold else 0.0
+    return alpha
+
+
+def _plane_alpha_at_point(
+    x: float,
+    y: float,
+    points: Sequence[tuple[float, float]],
+    fade_total_mm: float,
+    *,
+    dither: bool,
+    x_px: int,
+    y_px: int,
+) -> float:
+    if not _point_in_polygon(x, y, points):
+        return 0.0
+    dist = _distance_to_edges(x, y, points)
+    t = max(0.0, min(1.0, dist / max(1.0e-6, float(fade_total_mm))))
+    alpha = t * t * (3.0 - 2.0 * t)
+    if dither and 0.0 < alpha < 1.0:
+        threshold = (_BAYER_8X8[y_px & 7][x_px & 7] + 0.5) / 64.0
+        alpha = 1.0 if alpha >= threshold else 0.0
+    return alpha
+
+
+def _brush_width_parts(line_w: float, blur: float) -> tuple[float, float, float]:
     if blur <= 0.0:
         core_mm = line_w
         fade_mm = 0.0
     else:
         core_mm = line_w * 0.35
         fade_mm = max(0.15, line_w * (0.65 + 3.35 * blur))
-    total_mm = core_mm + fade_mm
-    r, g, b = float(color[0]), float(color[1]), float(color[2])
-    pixels: list[float] = [0.0] * (width_px * height_px * 4)
-    for y_px in range(height_px):
-        y = min_y + ((y_px + 0.5) / height_px) * box_h
-        for x_px in range(width_px):
-            x = min_x + ((x_px + 0.5) / width_px) * box_w
-            alpha = 0.0
-            if _point_in_polygon(x, y, points):
-                dist = _distance_to_edges(x, y, points)
-                alpha = _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
-                if dither and 0.0 < alpha < color_alpha:
-                    threshold = (_BAYER_8X8[y_px & 7][x_px & 7] + 0.5) / 64.0
-                    alpha = color_alpha if alpha / max(color_alpha, 1.0e-6) >= threshold else 0.0
-            offset = (y_px * width_px + x_px) * 4
-            pixels[offset] = r
-            pixels[offset + 1] = g
-            pixels[offset + 2] = b
-            pixels[offset + 3] = alpha
-    return pixels
+    return core_mm, fade_mm, core_mm + fade_mm
+
+
+def _brush_total_width_mm(line_w: float, blur_amount: float) -> float:
+    blur = max(0.0, min(1.0, float(blur_amount)))
+    _core, _fade, total = _brush_width_parts(max(0.0, float(line_w)), blur)
+    return total
+
+
+def _background_rgb(background: tuple[float, float, float]) -> tuple[float, float, float]:
+    try:
+        return (
+            max(0.0, min(1.0, float(background[0]))),
+            max(0.0, min(1.0, float(background[1]))),
+            max(0.0, min(1.0, float(background[2]))),
+        )
+    except Exception:  # noqa: BLE001
+        return (1.0, 1.0, 1.0)
+
+
+def _image_signature(
+    points: Sequence[tuple[float, float]],
+    bounds: tuple[float, float, float, float],
+    width_px: int,
+    height_px: int,
+    width_mm: float,
+    color: tuple[float, float, float, float],
+    blur_amount: float,
+    *,
+    dither: bool,
+    background: tuple[float, float, float],
+) -> str:
+    rounded_points = tuple((round(float(x), 4), round(float(y), 4)) for x, y in points)
+    rounded_bounds = tuple(round(float(v), 4) for v in bounds)
+    rounded_color = tuple(round(float(v), 5) for v in color)
+    rounded_bg = tuple(round(float(v), 5) for v in _background_rgb(background))
+    return repr(
+        (
+            rounded_points,
+            rounded_bounds,
+            int(width_px),
+            int(height_px),
+            round(float(width_mm), 4),
+            rounded_color,
+            round(float(blur_amount), 5),
+            bool(dither),
+            rounded_bg,
+        )
+    )
+
+
+def _plane_alpha_signature(
+    points: Sequence[tuple[float, float]],
+    bounds: tuple[float, float, float, float],
+    width_px: int,
+    height_px: int,
+    width_mm: float,
+    blur_amount: float,
+    *,
+    dither: bool,
+) -> str:
+    rounded_points = tuple((round(float(x), 4), round(float(y), 4)) for x, y in points)
+    rounded_bounds = tuple(round(float(v), 4) for v in bounds)
+    return repr(
+        (
+            "plane-alpha-v2",
+            rounded_points,
+            rounded_bounds,
+            int(width_px),
+            int(height_px),
+            round(float(width_mm), 4),
+            round(float(blur_amount), 5),
+            bool(dither),
+        )
+    )
 
 
 def _edge_alpha(dist: float, core_mm: float, fade_mm: float, total_mm: float, color_alpha: float) -> float:

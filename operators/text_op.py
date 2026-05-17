@@ -17,7 +17,14 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
-from ..utils import layer_stack as layer_stack_utils, log, object_selection, page_range, text_style
+from ..utils import (
+    layer_stack as layer_stack_utils,
+    log,
+    object_selection,
+    page_range,
+    shortcut_visibility,
+    text_style,
+)
 from ..utils.layer_hierarchy import page_stack_key
 from . import coma_modal_state, selection_context_menu, text_edit_runtime, view_event_region
 
@@ -698,9 +705,16 @@ class BNAME_OT_text_tool(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded and get_active_page(context) is not None
+        return (
+            work is not None
+            and work.loaded
+            and get_active_page(context) is not None
+            and shortcut_visibility.shortcuts_allowed(context)
+        )
 
     def invoke(self, context, _event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if coma_modal_state.get_active("text_tool") is not None:
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)

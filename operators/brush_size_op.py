@@ -10,6 +10,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_work
+from ..utils import shortcut_visibility
 
 _GP_PAINT_ATTRS = ("grease_pencil_paint", "gpencil_paint", "gpencil_v3_paint")
 _CIRCLE_SEGMENTS = 96
@@ -200,10 +201,13 @@ class BNAME_OT_brush_size_drag(Operator):
         return bool(
             work
             and work.loaded
+            and shortcut_visibility.shortcuts_allowed(context)
             and (_is_gp_paint_context(context) or _is_texture_paint_context(context))
         )
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if (
             event.type != "LEFTMOUSE"
             or event.value != "PRESS"

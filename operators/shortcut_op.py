@@ -20,6 +20,7 @@ from ..core.work import get_work
 from ..utils import gpencil as gp_utils
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log, page_range
+from ..utils import shortcut_visibility
 from ..utils.geom import mm_to_m
 from ..utils.page_grid import (
     _resolve_overview_params,
@@ -40,6 +41,10 @@ _GP_ERASER_STROKE_ASSET = (
 def _bname_work_loaded(context) -> bool:
     work = get_work(context)
     return bool(work is not None and work.loaded)
+
+
+def _shortcuts_allowed(context) -> bool:
+    return shortcut_visibility.shortcuts_allowed(context)
 
 
 def _active_gp_paint_brush(context):
@@ -103,7 +108,7 @@ class BNAME_OT_set_mode_object(Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.view_layer is not None
+        return context.view_layer is not None and _shortcuts_allowed(context)
 
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
@@ -138,7 +143,7 @@ class BNAME_OT_set_mode_draw(Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.view_layer is not None
+        return context.view_layer is not None and _shortcuts_allowed(context)
 
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
@@ -222,6 +227,7 @@ class BNAME_OT_page_next(Operator):
             and work.loaded
             and len(work.pages) > 0
             and get_mode(context) == MODE_PAGE
+            and _shortcuts_allowed(context)
         )
 
     def execute(self, context):
@@ -258,6 +264,7 @@ class BNAME_OT_page_prev(Operator):
             and work.loaded
             and len(work.pages) > 0
             and get_mode(context) == MODE_PAGE
+            and _shortcuts_allowed(context)
         )
 
     def execute(self, context):
@@ -298,6 +305,8 @@ class BNAME_OT_undo(Operator):
         return {"FINISHED"} if "FINISHED" in result else {"CANCELLED"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if not _bname_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
@@ -327,6 +336,8 @@ class BNAME_OT_redo(Operator):
         return {"FINISHED"} if "FINISHED" in result else {"CANCELLED"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if not _bname_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
@@ -366,6 +377,8 @@ class BNAME_OT_toggle_eraser_brush(Operator):
         return {"FINISHED"} if "FINISHED" in result else {"CANCELLED"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if not _bname_work_loaded(context):
             return {"PASS_THROUGH"}
         brush = _active_gp_paint_brush(context)
@@ -391,6 +404,8 @@ class BNAME_OT_toggle_lasso_tool(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         work = get_work(context)
         if work is None or not work.loaded:
             return {"PASS_THROUGH"}
@@ -489,6 +504,8 @@ class BNAME_OT_gp_cut_to_new_layer(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         work = get_work(context)
         if work is None or not work.loaded:
             return {"PASS_THROUGH"}
@@ -518,6 +535,8 @@ class BNAME_OT_gp_paste_to_new_layer(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         work = get_work(context)
         if work is None or not work.loaded:
             return {"PASS_THROUGH"}
@@ -627,6 +646,8 @@ class BNAME_OT_toggle_asset_shelf(Operator):
         return area, region
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         shelf_name = self._shelf_name_from_context(context)
         area, region = self._find_view3d_area_region(context)
         if shelf_name and area is not None and region is not None:

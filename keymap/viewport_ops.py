@@ -30,7 +30,8 @@ from bpy.props import EnumProperty
 from bpy.types import Operator
 from mathutils import Quaternion, Vector
 
-from ..utils import log
+from ..utils import camera_view_navigation, log
+from ..utils import shortcut_visibility
 
 _logger = log.get_logger(__name__)
 
@@ -65,6 +66,10 @@ def _find_view3d_window_region(context):
     if rv3d is None:
         return None, None, None
     return area, region, rv3d
+
+
+def _shortcuts_allowed(context) -> bool:
+    return shortcut_visibility.shortcuts_allowed(context)
 
 
 def _region_to_world(region, rv3d, mx: float, my: float) -> Vector:
@@ -157,6 +162,8 @@ class BNAME_OT_view_navigate(Operator):
     _ZOOM_CLICK_STEP = 1.4
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(
             f"[B-Name][OP] view_navigate.invoke shift={event.shift} ctrl={event.ctrl}"
         )
@@ -181,6 +188,7 @@ class BNAME_OT_view_navigate(Operator):
         self._zoom_start_mx = 0.0
         self._zoom_start_my = 0.0
         self._zoom_start_distance = float(rv3d.view_distance)
+        self._zoom_start_camera_zoom = float(getattr(rv3d, "view_camera_zoom", 0.0) or 0.0)
         self._zoom_start_view_location = rv3d.view_location.copy()
         self._zoom_start_world_pivot = rv3d.view_location.copy()
         # 自前ダブルクリック判定用 (modal 中は Blender の DOUBLE_CLICK が
@@ -308,14 +316,7 @@ class BNAME_OT_view_navigate(Operator):
         elif self._mode == _NAV_MODE_ZOOM:
             self._zoom_start_mx = mx
             self._zoom_start_my = my
-            self._zoom_start_distance = float(self._rv3d.view_distance)
-            self._zoom_start_view_location = self._rv3d.view_location.copy()
-            try:
-                self._zoom_start_world_pivot = _region_to_world(
-                    self._region, self._rv3d, mx, my
-                ).copy()
-            except Exception:  # noqa: BLE001
-                self._zoom_start_world_pivot = self._rv3d.view_location.copy()
+            self._record_zoom_start(mx, my)
 
     def _begin_drag(self, event) -> None:
         mx, my = _to_region_local(self._region, event.mouse_x, event.mouse_y)
@@ -326,19 +327,30 @@ class BNAME_OT_view_navigate(Operator):
         elif self._mode == _NAV_MODE_ZOOM:
             self._zoom_start_mx = mx
             self._zoom_start_my = my
-            self._zoom_start_distance = float(self._rv3d.view_distance)
-            self._zoom_start_view_location = self._rv3d.view_location.copy()
-            try:
-                self._zoom_start_world_pivot = _region_to_world(
-                    self._region, self._rv3d, mx, my
-                ).copy()
-            except Exception:  # noqa: BLE001
-                self._zoom_start_world_pivot = self._rv3d.view_location.copy()
+            self._record_zoom_start(mx, my)
         self._dragging = True
+
+    def _record_zoom_start(self, mx: float, my: float) -> None:
+        self._zoom_start_camera_zoom = float(getattr(self._rv3d, "view_camera_zoom", 0.0) or 0.0)
+        self._zoom_start_distance = float(self._rv3d.view_distance)
+        self._zoom_start_view_location = self._rv3d.view_location.copy()
+        if camera_view_navigation.is_camera_view(self._rv3d):
+            self._zoom_start_world_pivot = self._rv3d.view_location.copy()
+            return
+        try:
+            self._zoom_start_world_pivot = _region_to_world(
+                self._region, self._rv3d, mx, my
+            ).copy()
+        except Exception:  # noqa: BLE001
+            self._zoom_start_world_pivot = self._rv3d.view_location.copy()
 
     # ---------- パン ----------
 
     def _apply_pan(self, mx: float, my: float) -> None:
+        if camera_view_navigation.pan(
+            self._rv3d, self._region, mx - self._prev_mx, my - self._prev_my
+        ):
+            return
         try:
             w_prev = _region_to_world(self._region, self._rv3d, self._prev_mx, self._prev_my)
             w_curr = _region_to_world(self._region, self._rv3d, mx, my)
@@ -349,6 +361,9 @@ class BNAME_OT_view_navigate(Operator):
     def _reset_view(self, context) -> None:
         print("[B-Name][OP] view_navigate._reset_view called")
         rv3d = self._rv3d
+        if camera_view_navigation.reset_view(rv3d):
+            self._region.tag_redraw()
+            return
         rv3d.view_location = Vector((0.0, 0.0, 0.0))
         fit_ok = False
         try:
@@ -383,6 +398,8 @@ class BNAME_OT_view_navigate(Operator):
             # マウスの動きと回転方向を一致させるため符号反転.
             # (旧実装は world Z 軸正方向で回していたため、画面上の動きと
             # 逆方向に回って見えていた。)
+            if camera_view_navigation.rotate_overview_camera(self._rv3d, -delta_angle):
+                return
             rot = Quaternion((0.0, 0.0, 1.0), -delta_angle)
             self._rv3d.view_rotation = rot @ self._rv3d.view_rotation
         except Exception:  # noqa: BLE001
@@ -391,6 +408,9 @@ class BNAME_OT_view_navigate(Operator):
     def _reset_rotation(self, context) -> None:
         print("[B-Name][OP] view_navigate._reset_rotation called")
         rv3d = self._rv3d
+        if camera_view_navigation.reset_overview_camera_rotation(rv3d):
+            self._region.tag_redraw()
+            return
         try:
             with bpy.context.temp_override(
                 window=context.window, area=self._area, region=self._region
@@ -416,6 +436,8 @@ class BNAME_OT_view_navigate(Operator):
           ごとに小さくずれてブレに見える。
         """
         dx = mx - self._zoom_start_mx
+        if camera_view_navigation.zoom_absolute(self._rv3d, self._zoom_start_camera_zoom, dx):
+            return
         if abs(dx) < self._ZOOM_DEADZONE_PX:
             # 起点状態を維持 (差分 0 と等価)
             try:
@@ -461,6 +483,8 @@ class BNAME_OT_view_navigate(Operator):
         """
         rv3d = self._rv3d
         region = self._region
+        if camera_view_navigation.step_zoom(rv3d, direction):
+            return
         factor = self._ZOOM_CLICK_STEP if direction == "IN" else 1.0 / self._ZOOM_CLICK_STEP
         try:
             pivot_world = _region_to_world(
@@ -502,6 +526,8 @@ class BNAME_OT_view_pan(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(f"[B-Name][OP] view_pan.invoke event.type={event.type} value={event.value}")
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None:
@@ -601,6 +627,8 @@ class BNAME_OT_view_zoom_drag(Operator):
     _SENSITIVITY = 0.006
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(f"[B-Name][OP] view_zoom_drag.invoke event.type={event.type} value={event.value}"
               f" shift={event.shift} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
@@ -712,6 +740,8 @@ class BNAME_OT_view_rotate(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(f"[B-Name][OP] view_rotate.invoke event.type={event.type} value={event.value}"
               f" shift={event.shift} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
@@ -820,6 +850,8 @@ class BNAME_OT_view_zoom_step(Operator):
     )
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(f"[B-Name][OP] view_zoom_step.invoke direction={self.direction}"
               f" event.type={event.type} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
@@ -831,6 +863,9 @@ class BNAME_OT_view_zoom_step(Operator):
         # 1 ステップ倍率
         factor = 1.15 if self.direction == "IN" else 1.0 / 1.15
         try:
+            if camera_view_navigation.step_zoom(rv3d, self.direction):
+                region.tag_redraw()
+                return {"FINISHED"}
             pivot_world = _region_to_world(region, rv3d, mx, my).copy()
             rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
             new_pivot_world = _region_to_world(region, rv3d, mx, my)
@@ -849,6 +884,9 @@ class BNAME_OT_view_zoom_step(Operator):
             return {"CANCELLED"}
         factor = 1.15 if self.direction == "IN" else 1.0 / 1.15
         try:
+            if camera_view_navigation.step_zoom(rv3d, self.direction):
+                region.tag_redraw()
+                return {"FINISHED"}
             rv3d.view_distance = max(1e-4, rv3d.view_distance / factor)
         except Exception:  # noqa: BLE001
             return {"CANCELLED"}
@@ -875,6 +913,8 @@ class BNAME_OT_view_layer_pick(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         print(f"[B-Name][OP] view_layer_pick.invoke event.type={event.type}"
               f" shift={event.shift} ctrl={event.ctrl}")
         from ..core.work import get_active_page, get_work
@@ -1010,6 +1050,8 @@ class BNAME_OT_view_eyedropper(Operator):
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         area, region, _ = _find_view3d_window_region(context)
         if area is None:
             return {"CANCELLED"}

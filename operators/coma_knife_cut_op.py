@@ -35,6 +35,7 @@ from ..utils import (
     object_selection,
     page_grid,
     page_range,
+    shortcut_visibility,
 )
 
 _logger = log.get_logger(__name__)
@@ -493,9 +494,11 @@ class BNAME_OT_coma_knife_cut(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded
+        return work is not None and work.loaded and shortcut_visibility.shortcuts_allowed(context)
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         target = _find_view3d(context)
         if target is None:
             return {"PASS_THROUGH"}

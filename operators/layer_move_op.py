@@ -7,7 +7,13 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_COMA, MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
-from ..utils import geom, gp_layer_parenting as gp_parent, layer_stack as layer_stack_utils, page_grid
+from ..utils import (
+    geom,
+    gp_layer_parenting as gp_parent,
+    layer_stack as layer_stack_utils,
+    page_grid,
+    shortcut_visibility,
+)
 from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
 from . import coma_modal_state, coma_picker, view_event_region
 
@@ -173,9 +179,16 @@ class BNAME_OT_layer_move_tool(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return bool(work and work.loaded and getattr(context.scene, "bname_layer_stack", None) is not None)
+        return bool(
+            work
+            and work.loaded
+            and getattr(context.scene, "bname_layer_stack", None) is not None
+            and shortcut_visibility.shortcuts_allowed(context)
+        )
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         active = coma_modal_state.get_active("layer_move")
         if active is not None:
             active.finish_from_external(context, keep_selection=True)

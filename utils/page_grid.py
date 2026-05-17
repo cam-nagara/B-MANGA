@@ -392,6 +392,18 @@ def apply_page_collection_transforms(context, work) -> int:
         _pgo.regenerate_all_paper_guides(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: paper guide update failed")
+    try:
+        from . import overview_camera as _overview_camera
+
+        _overview_camera.ensure_overview_camera(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: overview camera update failed")
+    try:
+        from . import work_info_text_object as _work_info_text
+
+        _work_info_text.regenerate_all_work_info_texts(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: work info text update failed")
     return updated
 
 

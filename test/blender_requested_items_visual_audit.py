@@ -71,6 +71,29 @@ def _screenshot(name: str) -> str:
     return str(path)
 
 
+def _write_preview_image(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    width = 360
+    height = 240
+    image = bpy.data.images.new(f"BName_VisualPreview_{path.stem}", width=width, height=height, alpha=True)
+    pixels = [0.0] * (width * height * 4)
+    for y in range(height):
+        for x in range(width):
+            u = x / max(1, width - 1)
+            v = y / max(1, height - 1)
+            stripe = 0.25 if (x // 28) % 2 == 0 else 0.0
+            off = (y * width + x) * 4
+            pixels[off] = 0.95 - 0.55 * v
+            pixels[off + 1] = 0.15 + 0.75 * u
+            pixels[off + 2] = 0.75 - stripe
+            pixels[off + 3] = 1.0
+    image.pixels.foreach_set(pixels)
+    image.update()
+    image.filepath_raw = str(path)
+    image.file_format = "PNG"
+    image.save()
+
+
 def _dismiss_splash() -> None:
     try:
         bpy.context.preferences.view.show_splash = False
@@ -150,6 +173,7 @@ def _configure_scene(temp_root: Path):
         layer_stack,
         paper_guide_object,
         page_grid,
+        paths,
     )
 
     context = bpy.context
@@ -179,9 +203,15 @@ def _configure_scene(temp_root: Path):
     border_presets.apply_preset_to_coma(line_none, work.pages[0].comas[0])
     border_presets.apply_preset_to_coma(blur, work.pages[1].comas[0])
     work.pages[1].comas[0].border.blur_amount = 1.0
+    _write_preview_image(
+        paths.coma_preview_path(Path(work.work_dir), work.pages[1].id, work.pages[1].comas[0].coma_id)
+    )
     border_presets.apply_preset_to_coma(blur, work.pages[2].comas[0])
     work.pages[2].comas[0].border.blur_amount = 1.0
     work.pages[2].comas[0].border.blur_dither = True
+    _write_preview_image(
+        paths.coma_preview_path(Path(work.work_dir), work.pages[2].id, work.pages[2].comas[0].coma_id)
+    )
 
     page = work.pages[3]
     page_key = layer_hierarchy.page_stack_key(page)
@@ -249,11 +279,21 @@ def _assert_requested_state(work) -> dict[str, object]:
 
     dither_mats = [
         mat for mat in bpy.data.materials
-        if mat.name.startswith("BName_ComaBorderTexture_")
+        if mat.name.startswith("BName_ComaPlane_")
         and getattr(mat, "surface_render_method", "") == "DITHERED"
     ]
     if not dither_mats:
-        raise AssertionError("ディザ化したボカシブラシのアルファ素材が見つかりません")
+        raise AssertionError("ディザ化したコマ面の透明素材が見つかりません")
+
+    brush_border_objects = [
+        obj for obj in bpy.data.objects
+        if obj.name.startswith("coma_border_")
+        and not bool(getattr(obj, "hide_viewport", False))
+    ]
+    for obj in brush_border_objects:
+        owner = str(obj.get(coma_border_object.PROP_COMA_BORDER_OWNER_ID, "") or "")
+        if owner in {f"{work.pages[1].id}:{work.pages[1].comas[0].id}", f"{work.pages[2].id}:{work.pages[2].comas[0].id}"}:
+            raise AssertionError(f"ボカシブラシが別体の枠線オブジェクトとして残っています: {obj.name}")
 
     page = work.pages[3]
     cloud = page.balloons[0]
@@ -283,6 +323,66 @@ def _assert_requested_state(work) -> dict[str, object]:
     if not guide_objects or any(obj.type != "GREASEPENCIL" for obj in guide_objects) or not guide_radii or min(guide_radii) <= 0.0:
         raise AssertionError("実体ガイドのグリースペンシル線に一定太さが設定されていません")
 
+    window, screen, area, region, rv3d = _view3d_context()
+    camera = scene.camera
+    camera_data = getattr(camera, "data", None) if camera is not None else None
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    object_bounds = [None, None, None, None]
+    bound_sources = []
+    for obj in bpy.data.objects:
+        if obj.hide_get() or bool(getattr(obj, "hide_viewport", False)):
+            continue
+        if getattr(obj, "type", "") == "CAMERA":
+            continue
+        name = str(getattr(obj, "name", "") or "")
+        if not (
+            name.startswith(("page_", "coma_", "B-Name"))
+            or bool(obj.get("bname_paper_guide_page_id"))
+            or bool(obj.get("bname_coma_border_owner_id"))
+        ):
+            continue
+        try:
+            eval_obj = obj.evaluated_get(depsgraph)
+            corners = [eval_obj.matrix_world @ Vector(corner) for corner in eval_obj.bound_box]
+        except Exception:
+            continue
+        local_bounds = [None, None, None, None]
+        for corner in corners:
+            x = float(corner.x)
+            y = float(corner.y)
+            local_bounds[0] = x if local_bounds[0] is None else min(local_bounds[0], x)
+            local_bounds[1] = y if local_bounds[1] is None else min(local_bounds[1], y)
+            local_bounds[2] = x if local_bounds[2] is None else max(local_bounds[2], x)
+            local_bounds[3] = y if local_bounds[3] is None else max(local_bounds[3], y)
+            object_bounds[0] = x if object_bounds[0] is None else min(object_bounds[0], x)
+            object_bounds[1] = y if object_bounds[1] is None else min(object_bounds[1], y)
+            object_bounds[2] = x if object_bounds[2] is None else max(object_bounds[2], x)
+            object_bounds[3] = y if object_bounds[3] is None else max(object_bounds[3], y)
+        if local_bounds[0] is not None:
+            bound_sources.append((name, getattr(obj, "type", ""), local_bounds))
+    camera_state = {
+        "name": getattr(camera, "name", None),
+        "type": getattr(camera, "type", None),
+        "ortho_scale": float(getattr(camera_data, "ortho_scale", 0.0) or 0.0),
+        "location": [
+            float(getattr(getattr(camera, "location", None), axis, 0.0) or 0.0)
+            for axis in ("x", "y", "z")
+        ] if camera is not None else None,
+        "view": str(getattr(rv3d, "view_perspective", "")),
+        "view_camera_zoom": float(getattr(rv3d, "view_camera_zoom", 0.0) or 0.0),
+        "view_camera_offset": [
+            float(value)
+            for value in (getattr(rv3d, "view_camera_offset", (0.0, 0.0)) or (0.0, 0.0))
+        ],
+        "region_size": [int(getattr(region, "width", 0)), int(getattr(region, "height", 0))],
+        "object_bounds": object_bounds,
+        "bound_sources": sorted(
+            bound_sources,
+            key=lambda item: (item[2][2] - item[2][0]) * (item[2][3] - item[2][1]),
+            reverse=True,
+        )[:12],
+    }
+
     return {
         "line_none_visible_borders": len(none_objects),
         "dither_materials": len(dither_mats),
@@ -290,6 +390,16 @@ def _assert_requested_state(work) -> dict[str, object]:
         "thorn_curve_corners": len(thorn_corners),
         "guide_grease_pencils": len(guide_objects),
         "overview_mode": bool(scene.bname_overview_mode),
+        "coma_border_values": [
+            {
+                "page": i,
+                "style": str(getattr(getattr(page.comas[0], "border", None), "style", "")) if len(page.comas) else "",
+                "width": float(getattr(getattr(page.comas[0], "border", None), "width_mm", 0.0) or 0.0) if len(page.comas) else 0.0,
+                "blur": float(getattr(getattr(page.comas[0], "border", None), "blur_amount", 0.0) or 0.0) if len(page.comas) else 0.0,
+            }
+            for i, page in enumerate(work.pages)
+        ],
+        "camera": camera_state,
     }
 
 
@@ -335,6 +445,7 @@ def _run_visual_audit() -> None:
             work.active_page_index = 1
             bpy.context.scene.bname_overview_mode = False
             bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            bpy.context.space_data.shading.type = "MATERIAL"
             rv3d = bpy.context.space_data.region_3d
             rv3d.view_distance = max(0.01, float(rv3d.view_distance) * 0.36)
         shots.append(_screenshot("02_blur_brush_zoom.png"))
@@ -348,7 +459,7 @@ def _run_visual_audit() -> None:
         shots.append(_screenshot("03_balloon_shapes_zoom.png"))
 
         with _view3d_override():
-            bpy.context.space_data.region_3d.view_perspective = "CAMERA"
+            bpy.ops.view3d.view_camera("EXEC_DEFAULT")
             from bname_dev_requested_visual.utils import camera_overview_sync
 
             camera_overview_sync._apply()

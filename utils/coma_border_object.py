@@ -487,42 +487,25 @@ def _remove_related_border_objects(page_id: str, coma_id: str, keep_names: set[s
 
 
 def _ensure_brush_texture_border(scene, work, page, coma, page_id: str, coma_id: str) -> Optional[bpy.types.Object]:
-    from . import coma_border_texture
+    plane_obj = None
+    try:
+        from . import coma_plane as _cp
 
-    border = getattr(coma, "border", None)
-    outline = _outline_points(coma)
-    owner_id = _owner_id(page_id, coma_id)
-    obj = coma_border_texture.ensure_brush_border_mesh(
-        page_id,
-        coma_id,
-        owner_id,
-        outline,
-        max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0)),
-        _rgba_from_border(coma),
-        float(getattr(border, "blur_amount", 0.5) or 0.0),
-        dither=bool(getattr(border, "blur_dither", False)),
-    )
-    keep_names = {obj.name} if obj is not None else set()
-    if obj is not None:
-        visible = bool(getattr(coma, "visible", True)) and bool(getattr(border, "visible", True))
-        obj.hide_viewport = not visible
-        obj.hide_render = not visible
-        _set_location(obj, scene, work, page, coma)
-        obj.location.z = COMA_BORDER_Z_M
-        coma_coll = _coma_collection(scene, page, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
-        if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
-            try:
-                coma_coll.objects.link(obj)
-            except Exception:  # noqa: BLE001
-                _logger.exception("link coma border texture failed")
-        for coll in tuple(obj.users_collection):
-            if coll is coma_coll:
-                continue
-            coll.objects.unlink(obj)
-    _remove_related_border_objects(page_id, coma_id, keep_names)
-    coma_border_texture.cleanup_orphan_assets(page_id, coma_id)
+        plane_obj = _cp.ensure_coma_plane(scene, work, page, coma)
+        if plane_obj is None:
+            _cp.update_coma_plane_geometry(scene, work, page, coma)
+            plane_obj = _cp.find_coma_plane_object(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception("brush border: coma plane alpha update failed")
+    _remove_related_border_objects(page_id, coma_id, set())
+    try:
+        from . import coma_border_texture
+
+        coma_border_texture.cleanup_orphan_assets(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
     _ensure_white_margin_object(scene, work, page, coma, page_id, coma_id)
-    return obj
+    return plane_obj
 
 
 def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: str) -> Optional[bpy.types.Object]:

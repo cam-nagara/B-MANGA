@@ -10,6 +10,7 @@ from bpy.types import Panel
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import paths as _paths
+from ..utils import shortcut_visibility
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -52,6 +53,7 @@ class BNAME_PT_work(Panel):
         return get_mode(context) != MODE_COMA
 
     def draw(self, context):
+        shortcut_visibility.mark_bname_panel_drawn()
         layout = self.layout
         work = get_work(context)
 
@@ -125,6 +127,7 @@ class BNAME_PT_coma_return(Panel):
         return _current_blend_is_coma_blend()
 
     def draw(self, context):
+        shortcut_visibility.mark_bname_panel_drawn()
         layout = self.layout
         layout.operator(
             "bname.exit_coma_mode_safe",

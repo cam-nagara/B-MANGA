@@ -21,6 +21,7 @@ from ..ui import reparent_overlay
 from ..utils import layer_reparent
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log
+from ..utils import shortcut_visibility
 from ..utils.layer_hierarchy import (
     COMA_KIND,
     PAGE_KIND,
@@ -131,9 +132,11 @@ class BNAME_OT_alt_reparent_into(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _has_selected_targets(context)
+        return shortcut_visibility.shortcuts_allowed(context) and _has_selected_targets(context)
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         target = layer_reparent.find_click_target(context, event)
         if target.kind == "outside":
             self.report({"INFO"}, "クリック位置にコンテナがありません")
@@ -162,9 +165,11 @@ class BNAME_OT_alt_reparent_out(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _has_selected_targets(context)
+        return shortcut_visibility.shortcuts_allowed(context) and _has_selected_targets(context)
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         click_target = layer_reparent.find_click_target(context, event)
         # 選択中の各レイヤーごとに「1 段浅い親」を計算し、最初の有効ターゲットを採用
         scene = context.scene
@@ -219,9 +224,11 @@ class BNAME_OT_alt_reparent_drag(Operator):
 
     @classmethod
     def poll(cls, context):
-        return _has_selected_targets(context)
+        return shortcut_visibility.shortcuts_allowed(context) and _has_selected_targets(context)
 
     def invoke(self, context, event):
+        if not shortcut_visibility.shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
         if event.type != "LEFTMOUSE" or event.value != "PRESS":
             return {"CANCELLED"}
         if not bool(getattr(event, "alt", False)):

@@ -11,8 +11,6 @@ msgbus の notify 内で直接ビュー操作はできないため、bpy.app.tim
 
 from __future__ import annotations
 
-import time
-
 import bpy
 from bpy.app.handlers import persistent
 
@@ -26,16 +24,13 @@ _OWNER = object()
 # 自動で一覧 ON にした際の「元の overview 状態」。None=自動介入していない
 _PREV_OVERVIEW: bool | None = None
 _PENDING = False
-# 一覧フィットは内部的に ORTHO へ切り替わり view_perspective が再度変化する。
-# その自己誘発イベントで即「元に戻す」が走らないよう一定時間無視する。
-_SUPPRESS_UNTIL = 0.0
-_SUPPRESS_SEC = 0.7
 
 
-def _active_view3d():
+def _view3d_items():
     wm = getattr(bpy.context, "window_manager", None)
     if wm is None:
-        return None
+        return []
+    items = []
     for win in wm.windows:
         scr = win.screen
         if scr is None:
@@ -48,41 +43,63 @@ def _active_view3d():
                     space = area.spaces.active
                     rv3d = getattr(space, "region_3d", None)
                     if rv3d is not None:
-                        return win, area, region, rv3d
-    return None
+                        items.append((win, area, region, rv3d))
+    return items
 
 
 def _apply() -> None:
-    global _PREV_OVERVIEW, _PENDING, _SUPPRESS_UNTIL
+    global _PREV_OVERVIEW, _PENDING
     _PENDING = False
-    if time.monotonic() < _SUPPRESS_UNTIL:
-        return
     ctx = bpy.context
     work = get_work(ctx)
     if work is None or not getattr(work, "loaded", False):
         return
     if get_mode(ctx) != MODE_PAGE:
         return
-    found = _active_view3d()
-    if found is None:
+    view_items = _view3d_items()
+    if not view_items:
         return
-    win, area, region, rv3d = found
     scene = ctx.scene
     if scene is None:
         return
-    is_camera = str(getattr(rv3d, "view_perspective", "")) == "CAMERA"
+    camera_items = [
+        (win, area, region, rv3d)
+        for win, area, region, rv3d in view_items
+        if str(getattr(rv3d, "view_perspective", "")) == "CAMERA"
+    ]
     cur_overview = bool(getattr(scene, "bname_overview_mode", False))
-    if is_camera:
+    if camera_items:
         if _PREV_OVERVIEW is None:
             _PREV_OVERVIEW = cur_overview
-        # フィットは ORTHO へ切り替わり再度 msgbus が走るため、その間の
-        # 自己誘発イベントを無視する抑制ウィンドウを張る。
-        _SUPPRESS_UNTIL = time.monotonic() + _SUPPRESS_SEC
         try:
-            with ctx.temp_override(window=win, area=area, region=region):
-                bpy.ops.bname.view_fit_all()
+            from . import overview_camera
+
+            camera = overview_camera.ensure_overview_camera(scene, work)
+            if camera is not None:
+                scene.camera = camera
+            for win, area, region, rv3d in camera_items:
+                try:
+                    rv3d.view_camera_offset = (0.0, 0.0)
+                    rv3d.view_perspective = "CAMERA"
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    with ctx.temp_override(window=win, screen=getattr(win, "screen", None), area=area, region=region):
+                        bpy.ops.view3d.view_center_camera()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    # view_center_camera は Blender 側の判断で view_camera_zoom を
+                    # 拡大側へ戻すことがあるため、最後にカメラ枠全体が見える倍率へ
+                    # 固定する。
+                    rv3d.view_camera_zoom = -30
+                    rv3d.view_camera_offset = (0.0, 0.0)
+                except Exception:  # noqa: BLE001
+                    pass
+                area.tag_redraw()
+            scene.bname_overview_mode = True
         except Exception:  # noqa: BLE001
-            _logger.exception("camera-overview: view_fit_all failed")
+            _logger.exception("camera-overview: overview camera update failed")
         return
     # カメラビュー以外へ切替: 自動介入していたら元の状態へ戻す
     if _PREV_OVERVIEW is not None:
@@ -91,9 +108,8 @@ def _apply() -> None:
         except Exception:  # noqa: BLE001
             pass
         _PREV_OVERVIEW = None
-        for a in (getattr(getattr(win, "screen", None), "areas", []) or []):
-            if a.type == "VIEW_3D":
-                a.tag_redraw()
+        for _win, area, _region, _rv3d in view_items:
+            area.tag_redraw()
 
 
 def _schedule() -> None:
