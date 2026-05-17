@@ -137,14 +137,14 @@ def _assert_text_collection(context) -> None:
             raise AssertionError(f"text object is outside text collection: {obj.name}")
 
 
-def _assert_paper_draw_order(context, work, page) -> list[str]:
+def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     from bname_dev.core.mode import MODE_PAGE
     from bname_dev.ui import overlay
     from bname_dev.ui import overlay_text
     from bname_dev.ui import overlay_image
+    from bname_dev.utils import paper_guide_object
 
     calls: list[str] = []
-    safe_colors: list[tuple[float, float, float, float]] = []
     original = {
         "draw_rect_outline": overlay._draw_rect_outline,
         "draw_trim_marks": overlay._draw_trim_marks,
@@ -168,7 +168,6 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
 
     def safe_overlay(_outer, _inner, color):
         calls.append("safe_overlay")
-        safe_colors.append(tuple(float(v) for v in color))
 
     try:
         overlay._draw_rect_outline = mark("paper")
@@ -202,30 +201,30 @@ def _assert_paper_draw_order(context, work, page) -> list[str]:
         overlay.gpu.state.depth_test_set = original["depth_test_set"]
         overlay.gpu.state.blend_set = original["blend_set"]
 
-    try:
-        text_index = calls.index("text")
-    except ValueError as exc:
-        raise AssertionError(f"text draw marker missing: {calls}") from exc
-    try:
-        balloon_index = calls.index("balloon")
-        safe_index = calls.index("safe_overlay")
-    except ValueError as exc:
-        raise AssertionError(f"draw order marker missing: {calls}") from exc
-    if not (balloon_index < safe_index < text_index):
-        raise AssertionError(f"safe area overlay must be below text and above balloons: {calls}")
-    front_paper_indices = [
-        i for i, name in enumerate(calls)
-        if i > text_index and name == "paper"
+    for required in ("image", "shared", "coma", "balloon", "text"):
+        if required not in calls:
+            raise AssertionError(f"{required} draw marker missing: {calls}")
+    if "paper" in calls:
+        raise AssertionError(f"paper guides must not be drawn by overlay: {calls}")
+    if "safe_overlay" in calls:
+        raise AssertionError(f"safe area fill must not be drawn by overlay: {calls}")
+
+    page_id = str(getattr(page, "id", "") or "")
+    guide_objs = [
+        obj
+        for obj in bpy.data.objects
+        if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
     ]
-    if not front_paper_indices:
-        raise AssertionError(f"paper guides were not redrawn after text: {calls}")
-    if not any(name == "depth:NONE" for name in calls[text_index:]):
-        raise AssertionError(f"front paper redraw did not disable depth: {calls}")
-    if not safe_colors:
-        raise AssertionError(f"safe area overlay was not drawn: {calls}")
-    r, g, b, a = safe_colors[0]
-    if (r, g, b) != (0.0, 0.0, 0.0) or abs(a - 0.30) > 1.0e-4:
-        raise AssertionError(f"safe area overlay must be black 30% opacity: {safe_colors[0]}")
+    guide_kinds = {str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") for obj in guide_objs}
+    expected = {"dim", "light", "inner", "safe", "safe_fill"}
+    if not expected.issubset(guide_kinds):
+        raise AssertionError(f"missing paper guide objects: expected={expected}, actual={guide_kinds}")
+    for obj in guide_objs:
+        if obj.type != "CURVE":
+            continue
+        depth_value = float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
+        if depth_value <= 0.0:
+            raise AssertionError(f"paper guide curve has no viewport thickness: {obj.name}")
     return calls
 
 
@@ -293,7 +292,7 @@ def _write_visual_report(state: dict) -> Path:
     draw.line((70, 102, 390, 102), fill=(235, 35, 145), width=3)
     draw.line((100, 72, 100, 526), fill=(235, 35, 145), width=3)
     draw.rectangle((84, 88, 376, 510), outline=(235, 35, 145), width=3)
-    draw.text((68, 544), "magenta paper guides are drawn last", fill=(0, 0, 0), font=font)
+    draw.text((68, 544), "paper guides are real viewport objects", fill=(0, 0, 0), font=font)
     draw.text((470, 76), "Verified state", fill=(0, 0, 0), font=font)
     y = 112
     for item in state.get("checks", []):
@@ -462,17 +461,17 @@ def main() -> None:
         assert len(work.shared_balloons) >= 1
         assert work.shared_balloons[-1].parent_kind == "none"
 
-        draw_calls = _assert_paper_draw_order(context, work, page2)
+        draw_calls = _assert_paper_guides_use_real_objects(context, work, page2)
         brush_state = _assert_brush_size_texture_paint(context)
 
         visual_path = _write_visual_report(
             {
                 "checks": [
-                    "用紙ガイド: コマ/フキダシ/テキスト後に再描画",
+                    "用紙ガイド: 実体オブジェクトで表示",
                     "作成所属: 2ページ目のコマ内/ページ直下を確認",
                     "テキスト: ドラッグ範囲作成を確認",
                     "テキスト: B-Name直下の「テキスト」に集約",
-                    "セーフライン外: 黒30%不透明度で描画",
+                    "セーフライン外: 実体オブジェクトで黒30%表示",
                     "レイヤーリスト: 選択ページだけを表示",
                     "Alt階層移動: GP/効果線/フキダシを確認",
                     "ラスター中ブラシサイズ: Texture Paintブラシを確認",

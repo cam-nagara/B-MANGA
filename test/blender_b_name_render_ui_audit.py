@@ -63,6 +63,9 @@ class CaptureLayout:
         self.templates.append(str(args[0]) if args else "")
         return None
 
+    def separator(self, *args, **kwargs):
+        return None
+
     def box(self):
         return self
 
@@ -115,6 +118,7 @@ def _assert_command_ui(mod) -> dict:
         command = preset.commands.add()
         command.command_type = identifier
         command.name = identifier
+        command.name_auto = False
         command.node_group_name = "出力_背景"
         command.label_contains = "パス"
         command.folder_path = str(OUT_DIR)

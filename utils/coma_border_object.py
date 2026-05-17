@@ -174,17 +174,17 @@ def _brush_halo_groups(
     groups.append(([list(path)], base_w, (r, g, b, a), "brush_core"))
     if base_w <= 0.0 or blur <= 0.0:
         return groups
-    # 線幅が太いほどボケ幅も広がるため、グラデーションの段差が目立たない
-    # よう段階数を線幅に連動して細かくする (0.5mm を基準、上限 40 段)。
-    base_layers = 3 + int(round(blur * 4.0))  # 3..7
-    width_layers = int(round(max(0.0, base_w - 0.5) * 3.0))
-    layers = min(40, base_layers + width_layers)
+    # 外周の最後の帯が濃いと、ボケ終端に細いグレー線として見える。
+    # 段階数を増やし、外側ほど急速に薄くして終端の段差を目視上消す。
+    base_layers = 8 + int(round(blur * 12.0))  # 8..20
+    width_layers = int(round(max(0.0, base_w - 0.5) * 6.0))
+    layers = min(48, base_layers + width_layers)
     max_extra = base_w * (0.6 + 4.0 * blur)
     for i in range(1, layers + 1):
         f = i / float(layers)
         width_i = base_w + max_extra * f
-        alpha_i = a * ((1.0 - f) ** 1.5) * 0.45
-        if alpha_i <= 0.003:
+        alpha_i = a * ((1.0 - f) ** 2.2) * 0.50
+        if alpha_i <= 0.00035:
             continue
         groups.append(([list(path)], width_i, (r, g, b, alpha_i), "brush_halo"))
     # 外側 (幅広・薄い) を先に描き、芯を最後に描く

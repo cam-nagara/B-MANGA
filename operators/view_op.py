@@ -24,7 +24,7 @@ _PAGE_BROWSER_AREA_SIZES: dict[int, tuple[int, int]] = {}
 
 # view_selected 後にこの倍率で view_distance を詰めて、3D ビューポート
 # 枠内の四方向余白を縮める (1.0=従来, 小さいほど画面いっぱい)。
-_FIT_TIGHTEN = 0.82
+_FIT_TIGHTEN = 0.78
 
 
 # ---------- 共通ヘルパ ----------

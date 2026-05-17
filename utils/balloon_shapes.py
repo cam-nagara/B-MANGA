@@ -466,18 +466,23 @@ def _outline_cloud_with_corners(
     if not segments:
         return _outline_ellipse(rect), []
 
-    def ellipse_point(t: float) -> tuple[float, float]:
-        return (cx + rx * math.cos(t), cy + ry * math.sin(t))
+    def valley_point(t: float) -> tuple[float, float]:
+        # 谷を基準楕円より内側へ少し入れ、丸いこぶ同士の境目を
+        # 見た目にも鋭いV字にする。
+        cos_t = math.cos(t)
+        sin_t = math.sin(t)
+        notch = eff_h * 0.42
+        return (cx + (rx - notch) * cos_t, cy + (ry - notch) * sin_t)
 
-    pts = [ellipse_point(angle)]
+    pts = [valley_point(angle)]
     # 各こぶの境目 (谷) は鋭角に残す。
     corners = [0]
     for _is_sub, bump_angle, h_mul in segments:
         start_angle = angle
         end_angle = angle + bump_angle
         angle = end_angle
-        v_start = ellipse_point(start_angle)
-        v_end = ellipse_point(end_angle)
+        v_start = valley_point(start_angle)
+        v_end = valley_point(end_angle)
         mx = (v_start[0] + v_end[0]) * 0.5
         my = (v_start[1] + v_end[1]) * 0.5
         chord_x = v_end[0] - v_start[0]
@@ -544,8 +549,8 @@ def _outline_thorn_curve_with_corners(
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return _outline_ellipse(rect), []
-    tpull = 0.33
-    depth_ratio = 0.9
+    tpull = 0.18
+    depth_ratio = 1.12
 
     def peak_at(t: float, h_mul: float) -> tuple[float, float]:
         return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))

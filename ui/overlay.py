@@ -1088,11 +1088,6 @@ def _draw_page_overlay(
     # is_left_half が True の場合は per-page で rects を再計算 (左右反転対応)
     if is_left_half:
         rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
-    canvas_r = _translate_rect(rects.canvas, ox_mm, oy_mm)
-    finish_r = _translate_rect(rects.finish, ox_mm, oy_mm)
-    inner_r = _translate_rect(rects.inner_frame, ox_mm, oy_mm)
-    safe_r = _translate_rect(rects.safe, ox_mm, oy_mm)
-    bleed_r = _translate_rect(rects.bleed, ox_mm, oy_mm)
 
     # 通常時の用紙白背景は paper_bg_object.py の opaque な Mesh が表示する。
     # 描画モード中だけ paper_bg を raycast 回避で隠すため、同じ見た目を保つ
@@ -1100,26 +1095,9 @@ def _draw_page_overlay(
     if _paint_mode_hides_paper_bg(context):
         _draw_canvas_fill_only(paper, rects, ox_mm, oy_mm)
 
-    safe_overlay_drawn = False
-
-    def _draw_safe_area_overlay_once() -> None:
-        nonlocal safe_overlay_drawn
-        if safe_overlay_drawn:
-            return
-        # セーフライン外オーバーレイ (全ページに表示)
-        # 乗算合成が Blender 5.x の GPU 描画で安定しないため、仕様上の代替として
-        # 黒固定 + 不透明度で表示する。既定値は 30%。
-        sa = work.safe_area_overlay
-        if sa.enabled:
-            gpu.state.blend_set("ALPHA")
-            alpha = max(0.0, min(1.0, float(getattr(sa, "opacity", 0.30))))
-            color = (0.0, 0.0, 0.0, alpha)
-            _draw_frame_with_hole(canvas_r, safe_r, color)
-        safe_overlay_drawn = True
-
-    # 用紙の基本枠 / 仕上がり・裁ち落とし枠 / セーフライン / トンボは
-    # paper_guide_object.py の実体カーブが描画するため、オーバーレイ側の
-    # 二重描画はしない (実体側はビュー上で一定の太さに保たれる)。
+    # 用紙の基本枠 / 仕上がり・裁ち落とし枠 / セーフライン / トンボ /
+    # セーフライン外の暗い表示は実体オブジェクトが描画するため、
+    # オーバーレイ側では二重描画しない。
 
     # 画像レイヤー (アクティブページのみ — 全ページ一覧時は負荷とレイヤーの per-scene 制約で省略)
     if mode == MODE_PAGE and draw_image_layers:
@@ -1133,7 +1111,6 @@ def _draw_page_overlay(
             skip_stem = getattr(context.scene, "bname_current_coma_id", "")
         _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm, skip_preview_stem=skip_stem)
         _draw_balloons(page, ox_mm=ox_mm, oy_mm=oy_mm)
-        _draw_safe_area_overlay_once()
         active_text_guides = False
         if getattr(context.scene, "bname_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))
@@ -1154,30 +1131,6 @@ def _draw_page_overlay(
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
         )
-    else:
-        _draw_safe_area_overlay_once()
-
-    # 用紙ガイドは作画要素の後に深度無視で再描画し、コマやテキストに隠れない
-    # 最前面の参照線として扱う。
-    try:
-        gpu.state.depth_test_set("NONE")
-        if getattr(paper, "show_canvas_frame", True):
-            _draw_rect_outline(canvas_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-        if paper.bleed_mm > 0.0 and getattr(paper, "show_bleed_frame", True):
-            _draw_rect_outline(bleed_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-        if getattr(paper, "show_finish_frame", True):
-            _draw_rect_outline(finish_r, viewport_colors.PAPER_GUIDE_LIGHT, line_width=1.0)
-        if getattr(paper, "show_inner_frame", True):
-            _draw_rect_outline(inner_r, viewport_colors.PAPER_GUIDE, line_width=1.0)
-        if getattr(paper, "show_safe_line", True):
-            _draw_rect_outline(safe_r, viewport_colors.SAFE_LINE, line_width=1.0)
-        if paper.bleed_mm > 0.0 and getattr(paper, "show_trim_marks", True):
-            _draw_trim_marks(finish_r, bleed_r)
-    finally:
-        try:
-            gpu.state.depth_test_set("LESS_EQUAL")
-        except Exception:  # noqa: BLE001
-            pass
 
     # NOTE: 作品情報の blf 描画は POST_VIEW では効かないため _draw_callback_pixel
     # (POST_PIXEL handler) で別途実行する。ここでは呼ばない。
