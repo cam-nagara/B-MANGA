@@ -835,9 +835,13 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "shapeParams": {
             "cloudBumpWidthMm": round(entry.shape_params.cloud_bump_width_mm, 3),
             "cloudBumpHeightMm": round(entry.shape_params.cloud_bump_height_mm, 3),
+            "cloudBumpWidthJitter": round(entry.shape_params.cloud_bump_width_jitter, 3),
+            "cloudBumpHeightJitter": round(entry.shape_params.cloud_bump_height_jitter, 3),
             "cloudOffset": round(entry.shape_params.cloud_offset_percent / 100.0, 3),
             "cloudSubWidthRatio": round(entry.shape_params.cloud_sub_width_ratio, 3),
             "cloudSubHeightRatio": round(entry.shape_params.cloud_sub_height_ratio, 3),
+            "cloudSubWidthJitter": round(entry.shape_params.cloud_sub_width_jitter, 3),
+            "cloudSubHeightJitter": round(entry.shape_params.cloud_sub_height_jitter, 3),
             "cloudWaveCount": int(entry.shape_params.cloud_wave_count),
             "cloudWaveAmplitudeMm": round(entry.shape_params.cloud_wave_amplitude_mm, 3),
             "spikeCount": int(entry.shape_params.spike_count),
@@ -885,6 +889,10 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     sp = data.get("shapeParams", {})
     entry.shape_params.cloud_bump_width_mm = float(sp.get("cloudBumpWidthMm", 10.0))
     entry.shape_params.cloud_bump_height_mm = float(sp.get("cloudBumpHeightMm", 4.0))
+    entry.shape_params.cloud_bump_width_jitter = float(sp.get("cloudBumpWidthJitter", 0.0))
+    entry.shape_params.cloud_bump_height_jitter = float(sp.get("cloudBumpHeightJitter", 0.0))
+    entry.shape_params.cloud_sub_width_jitter = float(sp.get("cloudSubWidthJitter", 0.0))
+    entry.shape_params.cloud_sub_height_jitter = float(sp.get("cloudSubHeightJitter", 0.0))
     if "cloudOffsetPercent" in sp:
         entry.shape_params.cloud_offset_percent = float(sp.get("cloudOffsetPercent", 50.0))
     else:

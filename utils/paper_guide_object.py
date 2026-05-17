@@ -523,7 +523,10 @@ def apply_view_constant_thickness() -> None:
     if _last_mpp > 0.0 and abs(mpp - _last_mpp) <= _last_mpp * 0.03:
         return
     _last_mpp = mpp
+    # 異常な視点 (極端なズーム/パース) で bevel が暴れないようクランプ。
+    # 0.005mm 〜 3mm 相当の線幅に収める。
     half = GUIDE_SCREEN_PX * mpp * 0.5
+    half = max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
     for curve in bpy.data.curves:
         if not curve.name.startswith(PAPER_GUIDE_CURVE_PREFIX):
             continue
