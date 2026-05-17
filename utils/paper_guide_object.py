@@ -25,6 +25,11 @@ PAPER_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
 PROP_GUIDE_KIND = "bname_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
 
+# 実体ガイド線をビュー上で一定の太さ (おおよそこのピクセル幅) に保つ。
+GUIDE_SCREEN_PX = 1.6
+_GUIDE_THICKNESS_INTERVAL = 0.12
+_last_mpp: float = -1.0
+
 
 def _material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
@@ -464,3 +469,89 @@ def regenerate_all_paper_guides(scene, work) -> int:
             except Exception:  # noqa: BLE001
                 pass
     return count
+
+
+# ---------- ビュー上で一定太さに保つ ----------
+
+
+def _active_view3d_region():
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is None:
+        return None
+    for win in wm.windows:
+        scr = getattr(win, "screen", None)
+        if scr is None:
+            continue
+        for area in scr.areas:
+            if area.type != "VIEW_3D":
+                continue
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None)
+            if rv3d is None:
+                continue
+            for region in area.regions:
+                if region.type == "WINDOW" and region.width > 0 and region.height > 0:
+                    return region, rv3d
+    return None
+
+
+def _meters_per_pixel(region, rv3d) -> Optional[float]:
+    try:
+        from bpy_extras import view3d_utils
+    except Exception:  # noqa: BLE001
+        return None
+    cx = region.width * 0.5
+    cy = region.height * 0.5
+    p0 = view3d_utils.region_2d_to_location_3d(region, rv3d, (cx, cy), (0.0, 0.0, 0.0))
+    p1 = view3d_utils.region_2d_to_location_3d(region, rv3d, (cx + 1.0, cy), (0.0, 0.0, 0.0))
+    if p0 is None or p1 is None:
+        return None
+    d = (p1 - p0).length
+    return d if d > 1.0e-9 else None
+
+
+def apply_view_constant_thickness() -> None:
+    """全用紙ガイドカーブの bevel をビュー倍率に合わせ、画面上で一定太さに保つ."""
+    global _last_mpp
+    found = _active_view3d_region()
+    if found is None:
+        return
+    region, rv3d = found
+    mpp = _meters_per_pixel(region, rv3d)
+    if mpp is None:
+        return
+    if _last_mpp > 0.0 and abs(mpp - _last_mpp) <= _last_mpp * 0.03:
+        return
+    _last_mpp = mpp
+    half = GUIDE_SCREEN_PX * mpp * 0.5
+    for curve in bpy.data.curves:
+        if not curve.name.startswith(PAPER_GUIDE_CURVE_PREFIX):
+            continue
+        try:
+            if abs(float(curve.bevel_depth) - half) > half * 0.02:
+                curve.bevel_depth = half
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def _thickness_timer():
+    try:
+        apply_view_constant_thickness()
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper guide thickness update failed")
+    return _GUIDE_THICKNESS_INTERVAL
+
+
+def register() -> None:
+    if not bpy.app.timers.is_registered(_thickness_timer):
+        bpy.app.timers.register(_thickness_timer, first_interval=_GUIDE_THICKNESS_INTERVAL)
+
+
+def unregister() -> None:
+    global _last_mpp
+    _last_mpp = -1.0
+    try:
+        if bpy.app.timers.is_registered(_thickness_timer):
+            bpy.app.timers.unregister(_thickness_timer)
+    except Exception:  # noqa: BLE001
+        pass

@@ -22,6 +22,10 @@ _logger = log.get_logger(__name__)
 _PAGE_BROWSER_DEFAULT_RATIO = 0.28
 _PAGE_BROWSER_AREA_SIZES: dict[int, tuple[int, int]] = {}
 
+# view_selected 後にこの倍率で view_distance を詰めて、3D ビューポート
+# 枠内の四方向余白を縮める (1.0=従来, 小さいほど画面いっぱい)。
+_FIT_TIGHTEN = 0.82
+
 
 # ---------- 共通ヘルパ ----------
 
@@ -245,6 +249,12 @@ def _fit_view_to_rect_mm(
             if rv3d.view_perspective != "ORTHO":
                 rv3d.view_perspective = "ORTHO"
             bpy.ops.view3d.view_selected(use_all_regions=False)
+            # view_selected は四方向に大きめの余白を残すため、少しズーム
+            # インして 3D ビューポート枠内によりフィットさせる。
+            try:
+                rv3d.view_distance = float(rv3d.view_distance) * _FIT_TIGHTEN
+            except Exception:  # noqa: BLE001
+                pass
         return True
     finally:
         for e in empties:

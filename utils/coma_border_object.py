@@ -402,6 +402,46 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
     return grouped
 
 
+def _remove_border_data(data) -> None:
+    """枠線オブジェクトのデータ (Curve / Mesh どちらも) を未使用なら削除."""
+    if data is None or getattr(data, "users", 0) != 0:
+        return
+    for coll in (getattr(bpy.data, "curves", None), getattr(bpy.data, "meshes", None)):
+        if coll is None:
+            continue
+        try:
+            coll.remove(data)
+            return
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def _brush_ribbon_mesh(name: str, path: list[tuple[float, float]], width_mm: float):
+    """ボカシブラシ用の平面リボン Mesh を作る (3D チューブのベベルだと
+    半透明描画で側面が細いグレーの輪郭線として残るため、白フチと同じ
+    平面リング方式にする)。凸でない輪郭などで作れない場合は None。"""
+    if width_mm <= 0.0 or len(path) < 3:
+        return None
+    try:
+        loops = border_geom.stroke_loops_mm(path, width_mm)
+    except Exception:  # noqa: BLE001
+        loops = None
+    if loops is None:
+        return None
+    outer, inner = loops
+    ring = _white_margin_ring(inner, outer)
+    if ring is None:
+        return None
+    verts, faces = ring
+    mesh = bpy.data.meshes.get(name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(name)
+    mesh.clear_geometry()
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return mesh
+
+
 def _remove_related_border_objects(page_id: str, coma_id: str, keep_names: set[str]) -> None:
     prefix = _object_name(page_id, coma_id)
     for obj in list(bpy.data.objects):
@@ -414,11 +454,7 @@ def _remove_related_border_objects(page_id: str, coma_id: str, keep_names: set[s
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
             pass
-        if data is not None and getattr(data, "users", 0) == 0:
-            try:
-                bpy.data.curves.remove(data)
-            except Exception:  # noqa: BLE001
-                pass
+        _remove_border_data(data)
 
 
 def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: str) -> Optional[bpy.types.Object]:
@@ -574,16 +610,21 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         suffix = "" if group_index == 0 else f"_{group_index:02d}"
         curve_name = _curve_name(page_id, coma_id) if group_index == 0 else f"{_curve_name(page_id, coma_id)}_{group_index:02d}"
         object_name = _object_name(page_id, coma_id) if group_index == 0 else f"{_object_name(page_id, coma_id)}_{group_index:02d}"
-        curve = bpy.data.curves.get(curve_name)
-        if curve is None:
-            curve = bpy.data.curves.new(curve_name, type="CURVE")
         is_brush = style_name in {"brush_core", "brush_halo"}
-        _rebuild_curve(
-            curve,
-            paths,
-            width_mm,
-            cyclic=(style_name in {"solid_closed", "brush_core", "brush_halo"}),
-        )
+        data = None
+        if is_brush and paths and len(paths[0]) >= 3:
+            data = _brush_ribbon_mesh(curve_name, list(paths[0]), width_mm)
+        if data is None:
+            curve = bpy.data.curves.get(curve_name)
+            if curve is None:
+                curve = bpy.data.curves.new(curve_name, type="CURVE")
+            _rebuild_curve(
+                curve,
+                paths,
+                width_mm,
+                cyclic=(style_name in {"solid_closed", "brush_core", "brush_halo"}),
+            )
+            data = curve
         if style_name == "brush_core":
             mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_brushcore", color)
         elif style_name == "brush_halo":
@@ -599,15 +640,29 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
                 mat = _ensure_color_material(_material_name(page_id, coma_id), color)
         else:
             mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_{group_index:02d}", color)
-        if not curve.materials:
-            curve.materials.append(mat)
-        elif curve.materials[0] is not mat:
-            curve.materials[0] = mat
+        if not data.materials:
+            data.materials.append(mat)
+        elif data.materials[0] is not mat:
+            data.materials[0] = mat
+        want_type = "MESH" if isinstance(data, bpy.types.Mesh) else "CURVE"
         obj = bpy.data.objects.get(object_name)
+        if obj is not None and obj.type != want_type:
+            # solid<->brush 切替で Curve<->Mesh が入れ替わる際、Object の
+            # データ型は変更できないため、旧 Object を作り直す。
+            old_data = obj.data
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+            _remove_border_data(old_data)
+            obj = None
         if obj is None:
-            obj = bpy.data.objects.new(object_name, curve)
-        elif obj.data is not curve:
-            obj.data = curve
+            obj = bpy.data.objects.new(object_name, data)
+        elif obj.data is not data:
+            old_data = obj.data
+            obj.data = data
+            if old_data is not data:
+                _remove_border_data(old_data)
         keep_names.add(obj.name)
         if primary_obj is None:
             primary_obj = obj
@@ -692,11 +747,7 @@ def regenerate_all_coma_borders(scene, work) -> int:
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
             pass
-        if data is not None and getattr(data, "users", 0) == 0:
-            try:
-                bpy.data.curves.remove(data)
-            except Exception:  # noqa: BLE001
-                pass
+        _remove_border_data(data)
     for obj in list(bpy.data.objects):
         if obj.get(PROP_COMA_WHITE_MARGIN_KIND) != "coma_white_margin":
             continue
@@ -727,11 +778,7 @@ def remove_coma_border(page_id: str, coma_id: str) -> bool:
             removed = True
         except Exception:  # noqa: BLE001
             continue
-        if data is not None and getattr(data, "users", 0) == 0:
-            try:
-                bpy.data.curves.remove(data)
-            except Exception:  # noqa: BLE001
-                pass
+        _remove_border_data(data)
     wm_obj = bpy.data.objects.get(f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}")
     if wm_obj is not None:
         data = wm_obj.data

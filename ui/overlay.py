@@ -1117,21 +1117,9 @@ def _draw_page_overlay(
             _draw_frame_with_hole(canvas_r, safe_r, color)
         safe_overlay_drawn = True
 
-    # 枠線群はビューポート上で常に 1px 表示にする。
-    if getattr(paper, "show_canvas_frame", True):
-        _draw_rect_outline(canvas_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-    # 裁ち落とし枠 (= 仕上がり枠 + 裁ち落とし幅)
-    if paper.bleed_mm > 0.0 and getattr(paper, "show_bleed_frame", True):
-        _draw_rect_outline(bleed_r, viewport_colors.PAPER_GUIDE_DIM, line_width=1.0)
-    if getattr(paper, "show_finish_frame", True):
-        _draw_rect_outline(finish_r, viewport_colors.PAPER_GUIDE_LIGHT, line_width=1.0)
-    if getattr(paper, "show_inner_frame", True):
-        _draw_rect_outline(inner_r, viewport_colors.PAPER_GUIDE, line_width=1.0)
-    if getattr(paper, "show_safe_line", True):
-        _draw_rect_outline(safe_r, viewport_colors.SAFE_LINE, line_width=1.0)
-    # トンボ (四隅 + 各辺中央センタートンボ) を仕上がり枠 / 裁ち落とし枠基準で描画
-    if paper.bleed_mm > 0.0 and getattr(paper, "show_trim_marks", True):
-        _draw_trim_marks(finish_r, bleed_r)
+    # 用紙の基本枠 / 仕上がり・裁ち落とし枠 / セーフライン / トンボは
+    # paper_guide_object.py の実体カーブが描画するため、オーバーレイ側の
+    # 二重描画はしない (実体側はビュー上で一定の太さに保たれる)。
 
     # 画像レイヤー (アクティブページのみ — 全ページ一覧時は負荷とレイヤーの per-scene 制約で省略)
     if mode == MODE_PAGE and draw_image_layers:

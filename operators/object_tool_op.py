@@ -7,13 +7,23 @@ from bpy.props import StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_work
+from ..ui import reparent_overlay
 from ..utils import (
     edge_selection,
     gp_layer_parenting as gp_parent,
+    layer_reparent,
     layer_stack as layer_stack_utils,
     object_selection,
 )
 from ..utils.geom import Rect
+from .alt_reparent_op import (
+    _DRAG_THRESHOLD_PX as _REPARENT_DRAG_PX,
+    _has_selected_targets as _reparent_has_targets,
+    _selected_count as _reparent_count,
+    _set_confirm_for_target as _reparent_set_confirm,
+    _set_error_for_target as _reparent_set_error,
+    _set_overlay_for_target as _reparent_set_overlay,
+)
 from . import (
     balloon_op,
     effect_line_op,
@@ -560,6 +570,20 @@ class BNAME_OT_object_tool(Operator):
             and coma_edge_move_op.extend_selected_handle_at_event(context, event)
         ):
             return {"RUNNING_MODAL"}
+        # Alt+ドラッグ: 選択レイヤーを別コマ/ページへ移動 (Ctrl 併用はブラシ
+        # サイズ用なので除外)。オブジェクトツールが常駐モーダルとして左
+        # クリックを専有するため、ここで Alt を解釈する必要がある。
+        if (
+            event.value == "PRESS"
+            and bool(getattr(event, "alt", False))
+            and not bool(getattr(event, "ctrl", False))
+            and _reparent_has_targets(context)
+        ):
+            if bool(getattr(event, "shift", False)):
+                self._do_reparent_out(context, event)
+                return {"RUNNING_MODAL"}
+            if self._start_reparent_drag(context, event):
+                return {"RUNNING_MODAL"}
         hit = self._hit_object(context, event)
         if hit is None:
             if mode == "single" and self._try_start_layer_drag(context, event):
@@ -672,6 +696,82 @@ class BNAME_OT_object_tool(Operator):
         self._snapshots = []
         self._drag_moved = False
         return True
+
+    # ---------- Alt+ドラッグ: 別コマ/ページへ移動 (reparent) ----------
+
+    def _start_reparent_drag(self, context, event) -> bool:
+        target = layer_reparent.find_target_for_drop(context, event)
+        self._dragging = True
+        self._drag_action = "reparent"
+        self._drag_keys = []
+        self._snapshots = []
+        self._drag_moved = False
+        self._reparent_start_px = (float(event.mouse_x), float(event.mouse_y))
+        self._reparent_target = target
+        _reparent_set_overlay(target)
+        if target.world_xy_mm is not None:
+            reparent_overlay.set_preview(
+                world_xy_mm=target.world_xy_mm,
+                count=_reparent_count(context),
+            )
+        return True
+
+    def _do_reparent_out(self, context, event) -> None:
+        click_target = layer_reparent.find_click_target(context, event)
+        scene = context.scene
+        stack = getattr(scene, "bname_layer_stack", None)
+        if stack is None:
+            return
+        active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        candidates = []
+        if 0 <= active_idx < len(stack):
+            candidates.append(stack[active_idx])
+        for item in stack:
+            if layer_stack_utils.is_item_selected(context, item) and not any(
+                layer_stack_utils.stack_item_uid(c) == layer_stack_utils.stack_item_uid(item)
+                for c in candidates
+            ):
+                candidates.append(item)
+        target = None
+        for item in candidates:
+            t = layer_reparent.shallower_target_for_item(context, item, click_target)
+            if t is not None:
+                target = t
+                break
+        if target is None:
+            reparent_overlay.flash_error("page", duration=0.3)
+            return
+        changed = layer_reparent.reparent_selected(context, target)
+        if changed > 0:
+            _reparent_set_confirm(target)
+            try:
+                bpy.ops.ed.undo_push(message="B-Name: Alt+Shift で外へ移動")
+            except Exception:  # noqa: BLE001
+                pass
+            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        else:
+            _reparent_set_error(target)
+
+    def _finish_reparent(self, context) -> None:
+        target = getattr(self, "_reparent_target", None)
+        reparent_overlay.clear_hover()
+        reparent_overlay.clear_preview()
+        if target is None:
+            return
+        moved = bool(getattr(self, "_drag_moved", False))
+        new_xy = target.world_xy_mm if moved else None
+        changed = layer_reparent.reparent_selected(
+            context, target, new_world_xy_mm=new_xy
+        )
+        if changed > 0:
+            _reparent_set_confirm(target)
+            try:
+                bpy.ops.ed.undo_push(message="B-Name: Alt+ドラッグで移動")
+            except Exception:  # noqa: BLE001
+                pass
+            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        else:
+            _reparent_set_error(target)
 
     def _start_object_drag(self, context, hit: dict, x_mm: float, y_mm: float) -> None:
         action = str(hit.get("part", "move") or "move")
@@ -872,6 +972,23 @@ class BNAME_OT_object_tool(Operator):
             if self._layer_drag is not None and self._layer_drag.apply(context, event):
                 self._drag_moved = True
             return
+        if self._drag_action == "reparent":
+            target = layer_reparent.find_target_for_drop(context, event)
+            self._reparent_target = target
+            _reparent_set_overlay(target)
+            if target.world_xy_mm is not None:
+                reparent_overlay.set_preview(
+                    world_xy_mm=target.world_xy_mm,
+                    count=_reparent_count(context),
+                )
+            sx, sy = getattr(self, "_reparent_start_px", (0.0, 0.0))
+            if (
+                abs(float(event.mouse_x) - sx) >= _REPARENT_DRAG_PX
+                or abs(float(event.mouse_y) - sy) >= _REPARENT_DRAG_PX
+            ):
+                self._drag_moved = True
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         x_mm, y_mm = _event_world_xy_mm(context, event)
         if x_mm is None or y_mm is None:
             return
@@ -1013,6 +1130,11 @@ class BNAME_OT_object_tool(Operator):
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
+        if self._drag_action == "reparent":
+            self._finish_reparent(context)
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         moved = bool(getattr(self, "_drag_moved", False))
         changed = moved
         edge_session = self._drag_action == "coma_edge"
@@ -1054,6 +1176,12 @@ class BNAME_OT_object_tool(Operator):
         )
 
     def _cancel_drag(self, context) -> None:
+        if self._drag_action == "reparent":
+            reparent_overlay.clear_hover()
+            reparent_overlay.clear_preview()
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "layer_move" and self._layer_drag is not None:
             self._layer_drag.cancel(context)
         elif self._drag_action == "coma_edge" and self._edge_drag is not None:
@@ -1078,6 +1206,8 @@ class BNAME_OT_object_tool(Operator):
         self._marquee_start_y = 0.0
         self._marquee_current_x = 0.0
         self._marquee_current_y = 0.0
+        self._reparent_start_px = (0.0, 0.0)
+        self._reparent_target = None
 
     def _cleanup(self, context) -> None:
         if getattr(self, "_cursor_modal_set", False):
@@ -1087,6 +1217,9 @@ class BNAME_OT_object_tool(Operator):
             self._edge_drag.cancel()
         elif getattr(self, "_drag_action", "") == "layer_move" and self._layer_drag is not None:
             self._layer_drag.cancel(context)
+        elif getattr(self, "_drag_action", "") == "reparent":
+            reparent_overlay.clear_hover()
+            reparent_overlay.clear_preview()
         self._clear_drag_state()
 
     def finish_from_external(self, context, *, keep_selection: bool) -> None:
