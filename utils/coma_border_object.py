@@ -23,6 +23,7 @@ COMA_WHITE_MARGIN_MESH_PREFIX = "coma_white_margin_mesh_"
 COMA_WHITE_MARGIN_MATERIAL_PREFIX = "BName_ComaWhiteMargin_"
 COMA_WHITE_MARGIN_Z_M = 0.018
 COMA_BORDER_Z_M = 0.024
+OUTSIDE_PAGE_ID = "outside"
 
 PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
 PROP_COMA_BORDER_OWNER_ID = "bname_coma_border_owner_id"
@@ -32,6 +33,17 @@ PROP_COMA_WHITE_MARGIN_OWNER_ID = "bname_coma_white_margin_owner_id"
 
 def _owner_id(page_id: str, coma_id: str) -> str:
     return f"{page_id}:{coma_id}"
+
+
+def _page_id_for_coma(page) -> str:
+    page_id = str(getattr(page, "id", "") or "") if page is not None else ""
+    return page_id or OUTSIDE_PAGE_ID
+
+
+def _coma_collection(scene, page, page_id: str, coma_id: str, title: str):
+    if page is None or page_id == OUTSIDE_PAGE_ID:
+        return om.ensure_outside_collection(scene)
+    return om.ensure_coma_collection(scene, page_id, coma_id, title)
 
 
 def _curve_name(page_id: str, coma_id: str) -> str:
@@ -402,6 +414,30 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
     return grouped
 
 
+def _has_edge_override(coma) -> bool:
+    border = getattr(coma, "border", None)
+    if border is None:
+        return False
+    return (
+        len(getattr(coma, "edge_styles", []) or []) > 0
+        or any(
+            getattr(edge, "use_override", False)
+            for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left)
+        )
+    )
+
+
+def _uses_brush_texture(coma) -> bool:
+    border = getattr(coma, "border", None)
+    if border is None or _has_edge_override(coma):
+        return False
+    return (
+        bool(getattr(border, "visible", True))
+        and str(getattr(border, "style", "solid") or "solid") == "brush"
+        and max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) > 0.0
+    )
+
+
 def _remove_related_border_objects(page_id: str, coma_id: str, keep_names: set[str]) -> None:
     prefix = _object_name(page_id, coma_id)
     for obj in list(bpy.data.objects):
@@ -416,9 +452,51 @@ def _remove_related_border_objects(page_id: str, coma_id: str, keep_names: set[s
             pass
         if data is not None and getattr(data, "users", 0) == 0:
             try:
-                bpy.data.curves.remove(data)
+                if isinstance(data, bpy.types.Mesh):
+                    bpy.data.meshes.remove(data)
+                elif isinstance(data, bpy.types.Curve):
+                    bpy.data.curves.remove(data)
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _ensure_brush_texture_border(scene, work, page, coma, page_id: str, coma_id: str) -> Optional[bpy.types.Object]:
+    from . import coma_border_texture
+
+    border = getattr(coma, "border", None)
+    outline = _outline_points(coma)
+    owner_id = _owner_id(page_id, coma_id)
+    obj = coma_border_texture.ensure_brush_border_mesh(
+        page_id,
+        coma_id,
+        owner_id,
+        outline,
+        max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0)),
+        _rgba_from_border(coma),
+        float(getattr(border, "blur_amount", 0.5) or 0.0),
+        dither=bool(getattr(border, "blur_dither", False)),
+    )
+    keep_names = {obj.name} if obj is not None else set()
+    if obj is not None:
+        visible = bool(getattr(coma, "visible", True)) and bool(getattr(border, "visible", True))
+        obj.hide_viewport = not visible
+        obj.hide_render = not visible
+        _set_location(obj, scene, work, page, coma)
+        obj.location.z = COMA_BORDER_Z_M
+        coma_coll = _coma_collection(scene, page, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
+        if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
+            try:
+                coma_coll.objects.link(obj)
+            except Exception:  # noqa: BLE001
+                _logger.exception("link coma border texture failed")
+        for coll in tuple(obj.users_collection):
+            if coll is coma_coll:
+                continue
+            coll.objects.unlink(obj)
+    _remove_related_border_objects(page_id, coma_id, keep_names)
+    coma_border_texture.cleanup_orphan_assets(page_id, coma_id)
+    _ensure_white_margin_object(scene, work, page, coma, page_id, coma_id)
+    return obj
 
 
 def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: str) -> Optional[bpy.types.Object]:
@@ -542,9 +620,7 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
     obj.hide_render = not visible
     _set_location(obj, scene, work, page, coma)
     obj.location.z = COMA_WHITE_MARGIN_Z_M
-    coma_coll = on.find_collection_by_bname_id(_owner_id(page_id, coma_id), kind="coma")
-    if coma_coll is None:
-        coma_coll = om.ensure_coma_collection(scene, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
+    coma_coll = _coma_collection(scene, page, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
     if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
         coma_coll.objects.link(obj)
     for coll in tuple(obj.users_collection):
@@ -555,21 +631,21 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
 
 
 def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Object]:
-    if scene is None or work is None or page is None or coma is None:
+    if scene is None or work is None or coma is None:
         return None
-    page_id = str(getattr(page, "id", "") or "")
+    page_id = _page_id_for_coma(page)
     coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
     if not page_id or not coma_id:
         return None
     border = getattr(coma, "border", None)
+    if _uses_brush_texture(coma):
+        return _ensure_brush_texture_border(scene, work, page, coma, page_id, coma_id)
     groups = _border_paths_by_material(coma)
     if not groups:
         groups = [([], max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0)), _rgba_from_border(coma), "solid")]
     keep_names: set[str] = set()
     primary_obj: Optional[bpy.types.Object] = None
-    coma_coll = on.find_collection_by_bname_id(_owner_id(page_id, coma_id), kind="coma")
-    if coma_coll is None:
-        coma_coll = om.ensure_coma_collection(scene, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
+    coma_coll = _coma_collection(scene, page, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
     for group_index, (paths, width_mm, color, style_name) in enumerate(groups):
         suffix = "" if group_index == 0 else f"_{group_index:02d}"
         curve_name = _curve_name(page_id, coma_id) if group_index == 0 else f"{_curve_name(page_id, coma_id)}_{group_index:02d}"
@@ -655,6 +731,12 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
             except Exception:  # noqa: BLE001
                 pass
     _remove_related_border_objects(page_id, coma_id, keep_names)
+    try:
+        from . import coma_border_texture
+
+        coma_border_texture.cleanup_orphan_assets(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
     _ensure_white_margin_object(scene, work, page, coma, page_id, coma_id)
     obj = primary_obj
     if obj is None:
@@ -684,6 +766,19 @@ def update_coma_border_locations(scene, work) -> int:
                 _set_location(wm_obj, scene, work, page, coma)
                 wm_obj.location.z = COMA_WHITE_MARGIN_Z_M
                 count += 1
+    for coma in getattr(work, "shared_comas", []) or []:
+        page_id = OUTSIDE_PAGE_ID
+        coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+        prefix = _object_name(page_id, coma_id)
+        for candidate in list(bpy.data.objects):
+            if candidate.name.startswith(prefix):
+                _set_location(candidate, scene, work, None, coma)
+                count += 1
+        wm_obj = bpy.data.objects.get(f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}")
+        if wm_obj is not None:
+            _set_location(wm_obj, scene, work, None, coma)
+            wm_obj.location.z = COMA_WHITE_MARGIN_Z_M
+            count += 1
     return count
 
 
@@ -701,6 +796,14 @@ def regenerate_all_coma_borders(scene, work) -> int:
             valid.add(_owner_id(page_id, coma_id))
             if ensure_coma_border_object(scene, work, page, coma) is not None:
                 count += 1
+    for coma in getattr(work, "shared_comas", []) or []:
+        page_id = OUTSIDE_PAGE_ID
+        coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+        if not coma_id:
+            continue
+        valid.add(_owner_id(page_id, coma_id))
+        if ensure_coma_border_object(scene, work, None, coma) is not None:
+            count += 1
     for obj in list(bpy.data.objects):
         if obj.get(PROP_COMA_BORDER_KIND) != "coma_border":
             continue
@@ -713,7 +816,10 @@ def regenerate_all_coma_borders(scene, work) -> int:
             pass
         if data is not None and getattr(data, "users", 0) == 0:
             try:
-                bpy.data.curves.remove(data)
+                if isinstance(data, bpy.types.Mesh):
+                    bpy.data.meshes.remove(data)
+                elif isinstance(data, bpy.types.Curve):
+                    bpy.data.curves.remove(data)
             except Exception:  # noqa: BLE001
                 pass
     for obj in list(bpy.data.objects):
@@ -748,9 +854,18 @@ def remove_coma_border(page_id: str, coma_id: str) -> bool:
             continue
         if data is not None and getattr(data, "users", 0) == 0:
             try:
-                bpy.data.curves.remove(data)
+                if isinstance(data, bpy.types.Mesh):
+                    bpy.data.meshes.remove(data)
+                elif isinstance(data, bpy.types.Curve):
+                    bpy.data.curves.remove(data)
             except Exception:  # noqa: BLE001
                 pass
+    try:
+        from . import coma_border_texture
+
+        coma_border_texture.cleanup_orphan_assets(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
     wm_obj = bpy.data.objects.get(f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}")
     if wm_obj is not None:
         data = wm_obj.data
@@ -790,6 +905,17 @@ def on_coma_border_changed(border) -> None:
             except Exception:  # noqa: BLE001
                 _logger.exception("coma plane geometry update on border change failed")
             return
+    for coma in getattr(work, "shared_comas", []) or []:
+        if not _coma_owns_border_pointer(coma, target_ptr):
+            continue
+        update_coma_border_geometry(scene, work, None, coma)
+        try:
+            from . import coma_plane as _cp
+
+            _cp.update_coma_plane_geometry(scene, work, None, coma)
+        except Exception:  # noqa: BLE001
+            _logger.exception("shared coma plane geometry update on border change failed")
+        return
 
 
 def _coma_owns_border_pointer(coma, target_ptr: int) -> bool:

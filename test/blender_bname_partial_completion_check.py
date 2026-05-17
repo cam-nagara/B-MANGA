@@ -216,16 +216,114 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
     ]
     guide_kinds = {str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") for obj in guide_objs}
-    expected = {"dim", "light", "inner", "safe", "safe_fill"}
+    expected = {"guides", "safe_fill"}
     if not expected.issubset(guide_kinds):
         raise AssertionError(f"missing paper guide objects: expected={expected}, actual={guide_kinds}")
+    guide_line_objs = [
+        obj for obj in guide_objs
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "guides"
+    ]
+    if len(guide_line_objs) != 1:
+        raise AssertionError(f"paper guide lines must be one grease pencil object: {guide_line_objs}")
     for obj in guide_objs:
-        if obj.type != "CURVE":
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") != "guides":
             continue
-        depth_value = float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
-        if depth_value <= 0.0:
-            raise AssertionError(f"paper guide curve has no viewport thickness: {obj.name}")
+        if obj.type != "GREASEPENCIL":
+            raise AssertionError(f"paper guide lines should be grease pencil: {obj.name} ({obj.type})")
+        radii = [
+            float(point.radius)
+            for layer in obj.data.layers
+            for frame in layer.frames
+            for stroke in frame.drawing.strokes
+            for point in stroke.points
+        ]
+        if not radii or min(radii) <= 0.0:
+            raise AssertionError(f"paper guide grease pencil has no viewport thickness: {obj.name}")
     return calls
+
+
+def _assert_coma_overlay_cleanup(context, work, page) -> None:
+    from bname_dev.operators import object_tool_op
+    from bname_dev.ui import overlay
+    from bname_dev.ui import overlay_balloon
+    from bname_dev.ui import overlay_text
+    from bname_dev.utils import object_selection
+
+    if len(page.comas) == 0:
+        raise AssertionError("coma overlay cleanup needs a coma")
+    coma = page.comas[0]
+    coma_key = object_selection.coma_key(page, coma)
+    calls: list[str] = []
+    original = {
+        "get_keys": object_selection.get_keys,
+        "active_selection_key": object_tool_op.active_selection_key,
+        "selection_bounds_for_key": object_tool_op.selection_bounds_for_key,
+        "draw_rect_outline": overlay._draw_rect_outline,
+        "draw_rect_fill": overlay._draw_rect_fill,
+        "draw_polygon_fill": overlay._draw_polygon_fill,
+        "draw_polyline_loop": overlay._draw_polyline_loop,
+        "draw_balloons": overlay_balloon.draw_balloons,
+        "draw_text_guides": overlay_text.draw_text_guides,
+    }
+
+    def mark(name):
+        def _inner(*_args, **_kwargs):
+            calls.append(name)
+        return _inner
+
+    old_border_visible = bool(coma.border.visible)
+    old_white_margin_enabled = bool(coma.white_margin.enabled)
+    old_background = tuple(coma.background_color)
+    shared_index = -1
+    try:
+        object_selection.get_keys = lambda _context: [coma_key]
+        object_tool_op.active_selection_key = lambda _context: coma_key
+        object_tool_op.selection_bounds_for_key = lambda _context, _key: overlay.Rect(0.0, 0.0, 10.0, 10.0)
+        overlay._draw_rect_outline = mark("selection_outline")
+        overlay._draw_rect_fill = mark("selection_handle")
+        overlay._draw_object_tool_layer_bounds(context)
+        if calls:
+            raise AssertionError(f"coma selection handles should not be drawn: {calls}")
+
+        coma.border.visible = False
+        coma.white_margin.enabled = False
+        coma.background_color = (0.2, 0.4, 0.8, 1.0)
+        overlay._draw_polygon_fill = mark("coma_background")
+        overlay._draw_comas(work, page)
+        if "coma_background" in calls:
+            raise AssertionError(f"coma background overlay should not be drawn: {calls}")
+
+        shared = work.shared_comas.add()
+        shared_index = len(work.shared_comas) - 1
+        shared.id = "overlay_cleanup_shared"
+        shared.coma_id = "overlay_cleanup_shared"
+        shared.shape_type = "rect"
+        shared.rect_x_mm = 300.0
+        shared.rect_y_mm = 30.0
+        shared.rect_width_mm = 40.0
+        shared.rect_height_mm = 30.0
+        shared.background_color = (1.0, 0.0, 0.0, 1.0)
+        overlay._draw_polyline_loop = mark("shared_outline")
+        overlay_balloon.draw_balloons = lambda *_args, **_kwargs: None
+        overlay_text.draw_text_guides = lambda *_args, **_kwargs: None
+        overlay._draw_shared_layers(work)
+        if "coma_background" in calls:
+            raise AssertionError(f"shared coma background overlay should not be drawn: {calls}")
+    finally:
+        object_selection.get_keys = original["get_keys"]
+        object_tool_op.active_selection_key = original["active_selection_key"]
+        object_tool_op.selection_bounds_for_key = original["selection_bounds_for_key"]
+        overlay._draw_rect_outline = original["draw_rect_outline"]
+        overlay._draw_rect_fill = original["draw_rect_fill"]
+        overlay._draw_polygon_fill = original["draw_polygon_fill"]
+        overlay._draw_polyline_loop = original["draw_polyline_loop"]
+        overlay_balloon.draw_balloons = original["draw_balloons"]
+        overlay_text.draw_text_guides = original["draw_text_guides"]
+        coma.border.visible = old_border_visible
+        coma.white_margin.enabled = old_white_margin_enabled
+        coma.background_color = old_background
+        if shared_index >= 0 and shared_index < len(work.shared_comas):
+            work.shared_comas.remove(shared_index)
 
 
 def _assert_brush_size_texture_paint(context) -> dict:
@@ -460,8 +558,13 @@ def main() -> None:
         )
         assert len(work.shared_balloons) >= 1
         assert work.shared_balloons[-1].parent_kind == "none"
+        layer_object_sync.mirror_work_to_outliner(scene, work)
+        shared_balloon_obj = on.find_object_by_bname_id(work.shared_balloons[-1].id, kind="balloon")
+        if shared_balloon_obj is None or shared_balloon_obj.hide_viewport:
+            raise AssertionError("page-outside balloon object is not visible")
 
         draw_calls = _assert_paper_guides_use_real_objects(context, work, page2)
+        _assert_coma_overlay_cleanup(context, work, page2)
         brush_state = _assert_brush_size_texture_paint(context)
 
         visual_path = _write_visual_report(
@@ -474,6 +577,7 @@ def main() -> None:
                     "セーフライン外: 実体オブジェクトで黒30%表示",
                     "レイヤーリスト: 選択ページだけを表示",
                     "Alt階層移動: GP/効果線/フキダシを確認",
+                    "コマ表示: 選択ハンドルと背景オーバーレイ削除を確認",
                     "ラスター中ブラシサイズ: Texture Paintブラシを確認",
                 ],
                 "visible_stack_count": len(page2_visible),

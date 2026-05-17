@@ -240,9 +240,19 @@ def main() -> None:
         assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
         assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
 
-        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}_safe")
+        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
         assert guide_obj is not None, "paper guide object was not created"
-        assert guide_obj.type == "CURVE", f"paper guide should be a curve, got {guide_obj.type}"
+        assert guide_obj.type == "GREASEPENCIL", f"paper guide should be a grease pencil, got {guide_obj.type}"
+        guide_strokes = [
+            stroke
+            for layer in guide_obj.data.layers
+            for frame in layer.frames
+            for stroke in frame.drawing.strokes
+        ]
+        assert guide_strokes, "paper guide grease pencil has no strokes"
+        assert all(point.radius > 0.0 for stroke in guide_strokes for point in stroke.points), (
+            "paper guide grease pencil strokes have no viewport thickness"
+        )
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"

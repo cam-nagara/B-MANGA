@@ -18,12 +18,15 @@ _logger = log.get_logger(__name__)
 PAPER_GUIDE_PREFIX = "page_paper_guide_"
 PAPER_SAFE_FILL_PREFIX = "page_safe_area_fill_"
 PAPER_GUIDE_CURVE_PREFIX = "paper_guide_curve_"
+PAPER_GUIDE_GP_DATA_PREFIX = "paper_guide_gp_"
 PAPER_SAFE_FILL_MESH_PREFIX = "paper_safe_area_mesh_"
 PAPER_GUIDE_MATERIAL_PREFIX = "BName_PaperGuide_"
 PAPER_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
 
 PROP_GUIDE_KIND = "bname_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
+GUIDE_KIND_LINES = "guides"
+_OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 
 # 実体ガイド線をビュー上で一定の太さ (おおよそこのピクセル幅) に保つ。
 GUIDE_SCREEN_PX = 1.6
@@ -74,6 +77,45 @@ def _material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.M
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide material setup failed")
     return mat
+
+
+def _gp_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
+    try:
+        mat.diffuse_color = rgba
+    except Exception:  # noqa: BLE001
+        pass
+    if getattr(mat, "grease_pencil", None) is None:
+        try:
+            bpy.data.materials.create_gpencil_data(mat)
+        except (AttributeError, RuntimeError):
+            pass
+    gp_style = getattr(mat, "grease_pencil", None)
+    if gp_style is not None:
+        try:
+            gp_style.show_stroke = True
+            gp_style.show_fill = False
+            gp_style.color = rgba
+        except Exception:  # noqa: BLE001
+            pass
+    return mat
+
+
+def _material_slot_index(obj: bpy.types.Object, mat: bpy.types.Material) -> int:
+    mats = getattr(getattr(obj, "data", None), "materials", None)
+    if mats is None:
+        return -1
+    for i, existing in enumerate(mats):
+        if existing is mat or getattr(existing, "name", None) == mat.name:
+            return i
+    try:
+        mats.append(mat)
+        return len(mats) - 1
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper guide GP material slot append failed")
+        return -1
 
 
 def _rect_loop(rect: Rect) -> list[tuple[float, float]]:
@@ -152,6 +194,141 @@ def _append_segment(curve: bpy.types.Curve, start: tuple[float, float], end: tup
     spline.points[0].co = (mm_to_m(start[0]), mm_to_m(start[1]), 0.0, 1.0)
     spline.points[1].co = (mm_to_m(end[0]), mm_to_m(end[1]), 0.0, 1.0)
     spline.use_cyclic_u = False
+
+
+def _guide_radius_m() -> float:
+    if _last_mpp > 0.0:
+        half = GUIDE_SCREEN_PX * _last_mpp * 0.5
+        return max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
+    return mm_to_m(0.12) * 0.5
+
+
+def _gp_data_blocks():
+    blocks = getattr(bpy.data, "grease_pencils_v3", None)
+    if blocks is not None:
+        return blocks
+    blocks = getattr(bpy.data, "grease_pencils", None)
+    if blocks is not None:
+        return blocks
+    return None
+
+
+def _remove_data_block(data) -> None:
+    if data is None or getattr(data, "users", 0) > 0:
+        return
+    try:
+        if isinstance(data, bpy.types.Mesh):
+            bpy.data.meshes.remove(data)
+            return
+        if isinstance(data, bpy.types.Curve):
+            bpy.data.curves.remove(data)
+            return
+    except Exception:  # noqa: BLE001
+        return
+    blocks = _gp_data_blocks()
+    if blocks is None:
+        return
+    try:
+        blocks.remove(data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _remove_object(obj: bpy.types.Object) -> None:
+    data = getattr(obj, "data", None)
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:  # noqa: BLE001
+        pass
+    _remove_data_block(data)
+
+
+def _remove_old_line_objects(page_id: str, keep_name: str) -> None:
+    for obj in list(bpy.data.objects):
+        owner = str(obj.get(PROP_GUIDE_OWNER_ID, "") or "")
+        if owner != page_id or obj.name == keep_name:
+            continue
+        kind = str(obj.get(PROP_GUIDE_KIND, "") or "")
+        if kind in _OLD_LINE_KINDS or obj.name.startswith(f"{PAPER_GUIDE_PREFIX}{page_id}_"):
+            _remove_object(obj)
+
+
+def _new_gp_data(data_name: str):
+    blocks = _gp_data_blocks()
+    if blocks is None:
+        raise RuntimeError("Grease Pencil data-blocks are not available")
+    old = blocks.get(data_name)
+    if old is not None and getattr(old, "users", 0) == 0:
+        try:
+            blocks.remove(old)
+        except Exception:  # noqa: BLE001
+            pass
+    return blocks.new(data_name)
+
+
+def _append_gp_stroke(drawing, points: Iterable[tuple[float, float]], *, radius: float, cyclic: bool, material_index: int) -> bool:
+    from . import gpencil as gp_utils
+
+    pts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in points]
+    if len(pts) < 2:
+        return False
+    return gp_utils.add_stroke_to_drawing(
+        drawing,
+        pts,
+        radius=radius,
+        cyclic=cyclic,
+        material_index=material_index,
+    )
+
+
+def _ensure_gp_guide_object(
+    scene,
+    page,
+    page_coll,
+    guide_sets: list[tuple[str, list[list[tuple[float, float]]], list[tuple[tuple[float, float], tuple[float, float]]], bpy.types.Material]],
+    *,
+    z_m: float,
+    visible: bool,
+) -> bpy.types.Object:
+    from . import gpencil as gp_utils
+
+    page_id = str(getattr(page, "id", "") or "")
+    obj_name = f"{PAPER_GUIDE_PREFIX}{page_id}"
+    data_name = f"{PAPER_GUIDE_GP_DATA_PREFIX}{page_id}"
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None:
+        _remove_object(obj)
+    gp_data = _new_gp_data(data_name)
+    obj = bpy.data.objects.new(obj_name, gp_data)
+    obj[PROP_GUIDE_KIND] = GUIDE_KIND_LINES
+    obj[PROP_GUIDE_OWNER_ID] = page_id
+    obj[on.PROP_MANAGED] = False
+    obj.hide_select = True
+    obj.hide_render = True
+    try:
+        obj.show_in_front = True
+    except Exception:  # noqa: BLE001
+        pass
+    layer = gp_utils.ensure_layer(gp_data, "ガイド")
+    frame = gp_utils.ensure_active_frame(layer, frame_number=1)
+    drawing = getattr(frame, "drawing", None) if frame is not None else None
+    has_stroke = False
+    radius = _guide_radius_m()
+    if drawing is not None:
+        for _label, loops, segments, mat in guide_sets:
+            material_index = _material_slot_index(obj, mat)
+            for loop in loops:
+                if _append_gp_stroke(drawing, loop, radius=radius, cyclic=len(loop) >= 3, material_index=material_index):
+                    has_stroke = True
+            for start, end in segments:
+                if _append_gp_stroke(drawing, [start, end], radius=radius, cyclic=False, material_index=material_index):
+                    has_stroke = True
+    obj.hide_viewport = not (visible and has_stroke)
+    obj.location.z = z_m
+    _set_page_location(scene, obj, page)
+    _link_to_page_collection(obj, page_coll)
+    _remove_old_line_objects(page_id, obj.name)
+    return obj
 
 
 def _ensure_curve_object(
@@ -382,60 +559,43 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     in_range = bool(getattr(page, "in_page_range", True))
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
 
-    mat_dim = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Dim", viewport_colors.PAPER_GUIDE_DIM)
-    mat_light = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Light", viewport_colors.PAPER_GUIDE_LIGHT)
-    mat_guide = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Guide", viewport_colors.PAPER_GUIDE)
-    mat_safe = _material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Safe", viewport_colors.SAFE_LINE)
-    objects = [
-        _ensure_curve_object(
-            scene,
-            page,
-            page_coll,
-            suffix="dim",
-            points=[
+    mat_dim = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Dim", viewport_colors.PAPER_GUIDE_DIM)
+    mat_light = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Light", viewport_colors.PAPER_GUIDE_LIGHT)
+    mat_guide = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Guide", viewport_colors.PAPER_GUIDE)
+    mat_safe = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Safe", viewport_colors.SAFE_LINE)
+    guide_sets = [
+        (
+            "dim",
+            [
                 _rect_loop(rects.canvas) if getattr(paper, "show_canvas_frame", True) else [],
                 _rect_loop(rects.bleed) if float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_bleed_frame", True) else [],
             ],
-            segments=[],
-            material=mat_dim,
-            z_m=guide_z,
-            visible=in_range,
+            [],
+            mat_dim,
         ),
-        _ensure_curve_object(
-            scene,
-            page,
-            page_coll,
-            suffix="light",
-            points=[_rect_loop(rects.finish) if getattr(paper, "show_finish_frame", True) else []],
-            segments=_trim_segments(rects.finish, rects.bleed)
+        (
+            "light",
+            [_rect_loop(rects.finish) if getattr(paper, "show_finish_frame", True) else []],
+            _trim_segments(rects.finish, rects.bleed)
             if float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_trim_marks", True)
             else [],
-            material=mat_light,
-            z_m=guide_z + 0.001,
-            visible=in_range,
+            mat_light,
         ),
-        _ensure_curve_object(
-            scene,
-            page,
-            page_coll,
-            suffix="inner",
-            points=[_rect_loop(rects.inner_frame) if getattr(paper, "show_inner_frame", True) else []],
-            segments=[],
-            material=mat_guide,
-            z_m=guide_z + 0.002,
-            visible=in_range,
+        (
+            "inner",
+            [_rect_loop(rects.inner_frame) if getattr(paper, "show_inner_frame", True) else []],
+            [],
+            mat_guide,
         ),
-        _ensure_curve_object(
-            scene,
-            page,
-            page_coll,
-            suffix="safe",
-            points=[_rect_loop(rects.safe) if getattr(paper, "show_safe_line", True) else []],
-            segments=[],
-            material=mat_safe,
-            z_m=guide_z + 0.003,
-            visible=in_range,
+        (
+            "safe",
+            [_rect_loop(rects.safe) if getattr(paper, "show_safe_line", True) else []],
+            [],
+            mat_safe,
         ),
+    ]
+    objects = [
+        _ensure_gp_guide_object(scene, page, page_coll, guide_sets, z_m=guide_z, visible=in_range),
         _ensure_safe_fill_object(scene, work, page, page_coll, rects.canvas, rects.safe, safe_z),
     ]
     return objects
@@ -460,14 +620,7 @@ def regenerate_all_paper_guides(scene, work) -> int:
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
             pass
-        if data is not None and getattr(data, "users", 0) == 0:
-            try:
-                if isinstance(data, bpy.types.Mesh):
-                    bpy.data.meshes.remove(data)
-                elif isinstance(data, bpy.types.Curve):
-                    bpy.data.curves.remove(data)
-            except Exception:  # noqa: BLE001
-                pass
+        _remove_data_block(data)
     return count
 
 
@@ -511,7 +664,7 @@ def _meters_per_pixel(region, rv3d) -> Optional[float]:
 
 
 def apply_view_constant_thickness() -> None:
-    """全用紙ガイドカーブの bevel をビュー倍率に合わせ、画面上で一定太さに保つ."""
+    """全用紙ガイド線の太さをビュー倍率に合わせ、画面上で一定太さに保つ."""
     global _last_mpp
     found = _active_view3d_region()
     if found is None:
@@ -535,6 +688,31 @@ def apply_view_constant_thickness() -> None:
                 curve.bevel_depth = half
         except Exception:  # noqa: BLE001
             continue
+    for obj in bpy.data.objects:
+        if obj.get(PROP_GUIDE_KIND) != GUIDE_KIND_LINES or getattr(obj, "type", "") != "GREASEPENCIL":
+            continue
+        _set_gp_stroke_radius(obj, half)
+
+
+def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
+    layers = getattr(getattr(obj, "data", None), "layers", None)
+    if layers is None:
+        return
+    for layer in layers:
+        for frame in getattr(layer, "frames", []) or []:
+            drawing = getattr(frame, "drawing", None)
+            strokes = getattr(drawing, "strokes", None)
+            if strokes is None:
+                continue
+            for stroke in strokes:
+                points = getattr(stroke, "points", None)
+                if points is None:
+                    continue
+                for point in points:
+                    try:
+                        point.radius = radius
+                    except Exception:  # noqa: BLE001
+                        pass
 
 
 def _thickness_timer():

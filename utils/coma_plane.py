@@ -68,6 +68,22 @@ PROP_COMA_MASK_OWNER_ID = "bname_coma_mask_owner_id"
 # 2026-05-04: BNAME_Z_STEP_M を 0.1 → 0.01 に縮小したのに合わせて 0.1 → 0.01
 # に変更。
 COMA_PLANE_Z_M = 0.01
+OUTSIDE_PAGE_ID = "outside"
+
+
+def _page_id_for_coma(page) -> str:
+    page_id = str(getattr(page, "id", "") or "") if page is not None else ""
+    return page_id or OUTSIDE_PAGE_ID
+
+
+def _owner_id(page_id: str, coma_id: str) -> str:
+    return f"{page_id}:{coma_id}"
+
+
+def _coma_collection(scene: bpy.types.Scene, page, page_id: str, coma_id: str, title: str):
+    if page is None or page_id == OUTSIDE_PAGE_ID:
+        return om.ensure_outside_collection(scene)
+    return om.ensure_coma_collection(scene, page_id, coma_id, title)
 
 
 # ---------------- Material ----------------
@@ -540,6 +556,12 @@ def _find_page_and_coma(work, target_coma):
                     return page, c
             except Exception:  # noqa: BLE001
                 continue
+    for c in getattr(work, "shared_comas", []) or []:
+        try:
+            if int(c.as_pointer()) == target_ptr:
+                return None, c
+        except Exception:  # noqa: BLE001
+            continue
     return None, None
 
 
@@ -559,6 +581,13 @@ def _find_page_and_coma_for_vertex(work, target_vertex):
                         return page, coma
                 except Exception:  # noqa: BLE001
                     continue
+    for coma in getattr(work, "shared_comas", []) or []:
+        for v in getattr(coma, "vertices", []) or []:
+            try:
+                if int(v.as_pointer()) == target_ptr:
+                    return None, coma
+            except Exception:  # noqa: BLE001
+                continue
     return None, None
 
 
@@ -572,13 +601,13 @@ def ensure_coma_plane(
     coma,
 ) -> Optional[bpy.types.Object]:
     """1 コマ分の coma_plane Mesh Object を ensure (フル生成 / 復旧用)."""
-    if scene is None or work is None or page is None or coma is None:
+    if scene is None or work is None or coma is None:
         return None
-    page_id = str(getattr(page, "id", "") or "")
+    page_id = _page_id_for_coma(page)
     coma_id = str(getattr(coma, "id", "") or "")
     if not page_id or not coma_id:
         return None
-    owner_id = f"{page_id}:{coma_id}"
+    owner_id = _owner_id(page_id, coma_id)
     mesh_name = f"{COMA_PLANE_MESH_PREFIX}{page_id}_{coma_id}"
     obj_name = f"{COMA_PLANE_NAME_PREFIX}{page_id}_{coma_id}"
 
@@ -613,9 +642,7 @@ def ensure_coma_plane(
 
     # コマ Collection 直下に置く
     coma_title = str(getattr(coma, "title", "") or coma_id)
-    coma_coll = on.find_collection_by_bname_id(owner_id, kind="coma")
-    if coma_coll is None:
-        coma_coll = om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
+    coma_coll = _coma_collection(scene, page, page_id, coma_id, coma_title)
     if coma_coll is not None and not any(o is obj for o in coma_coll.objects):
         try:
             coma_coll.objects.link(obj)
@@ -647,9 +674,9 @@ def update_coma_plane_geometry(
     - 同コマ配下の raster material の shader マスク bbox も同期更新する
       (Boolean Modifier 廃止に伴う代替経路)
     """
-    if page is None or coma is None:
+    if coma is None:
         return False
-    page_id = str(getattr(page, "id", "") or "")
+    page_id = _page_id_for_coma(page)
     coma_id = str(getattr(coma, "id", "") or "")
     if not page_id or not coma_id:
         return False
@@ -667,15 +694,16 @@ def update_coma_plane_geometry(
     if scene is not None and work is not None:
         _set_obj_location(obj, scene, work, page, coma)
     # coma_mask (Boolean reference 専用) の geometry も同期更新
-    update_coma_mask_geometry(scene, work, page, coma)
+    if page is not None:
+        update_coma_mask_geometry(scene, work, page, coma)
     return True
 
 
 def update_coma_plane_color(page, coma) -> bool:
     """coma.background_color 変更を coma_plane Material に反映."""
-    if page is None or coma is None:
+    if coma is None:
         return False
-    page_id = str(getattr(page, "id", "") or "")
+    page_id = _page_id_for_coma(page)
     coma_id = str(getattr(coma, "id", "") or "")
     if not page_id or not coma_id:
         return False
@@ -714,6 +742,15 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
                 continue
             _set_obj_location(obj, scene, work, page, coma)
             n += 1
+    for coma in getattr(work, "shared_comas", []) or []:
+        if not getattr(coma, "id", ""):
+            continue
+        obj_name = f"{COMA_PLANE_NAME_PREFIX}{OUTSIDE_PAGE_ID}_{coma.id}"
+        obj = bpy.data.objects.get(obj_name)
+        if obj is None:
+            continue
+        _set_obj_location(obj, scene, work, None, coma)
+        n += 1
     return n
 
 
@@ -731,12 +768,19 @@ def regenerate_all_coma_planes(scene: bpy.types.Scene, work) -> int:
         for coma in getattr(page, "comas", []) or []:
             if not getattr(coma, "id", "") or not getattr(page, "id", ""):
                 continue
-            owner_id = f"{page.id}:{coma.id}"
+            owner_id = _owner_id(str(page.id), str(coma.id))
             if ensure_coma_plane(scene, work, page, coma) is not None:
                 n += 1
                 valid_owner_ids.add(owner_id)
             # coma_mask (Boolean 用) も並行 ensure
             ensure_coma_mask(scene, work, page, coma)
+    for coma in getattr(work, "shared_comas", []) or []:
+        if not getattr(coma, "id", ""):
+            continue
+        owner_id = _owner_id(OUTSIDE_PAGE_ID, str(coma.id))
+        if ensure_coma_plane(scene, work, None, coma) is not None:
+            n += 1
+            valid_owner_ids.add(owner_id)
     # orphan 掃除 (coma_plane)
     for obj in list(bpy.data.objects):
         if obj.get(PROP_COMA_PLANE_KIND) != "coma_plane":
@@ -848,10 +892,10 @@ def on_coma_geometry_changed(coma) -> None:
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if work is None or not getattr(work, "loaded", False):
         return
-    page, _ = _find_page_and_coma(work, coma)
-    if page is None:
+    page, resolved_coma = _find_page_and_coma(work, coma)
+    if resolved_coma is None:
         return
-    update_coma_plane_geometry(scene, work, page, coma)
+    update_coma_plane_geometry(scene, work, page, resolved_coma)
     try:
         from . import coma_border_object as _cbo
 
@@ -868,10 +912,10 @@ def on_coma_background_color_changed(coma) -> None:
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if work is None or not getattr(work, "loaded", False):
         return
-    page, _ = _find_page_and_coma(work, coma)
-    if page is None:
+    page, resolved_coma = _find_page_and_coma(work, coma)
+    if resolved_coma is None:
         return
-    update_coma_plane_color(page, coma)
+    update_coma_plane_color(page, resolved_coma)
 
 
 def on_vertex_changed(vertex) -> None:
@@ -886,7 +930,7 @@ def on_vertex_changed(vertex) -> None:
     if work is None or not getattr(work, "loaded", False):
         return
     page, coma = _find_page_and_coma_for_vertex(work, vertex)
-    if page is None or coma is None:
+    if coma is None:
         return
     update_coma_plane_geometry(scene, work, page, coma)
     try:

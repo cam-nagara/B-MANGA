@@ -325,6 +325,16 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                             "mirror balloon curve failed: %s",
                             getattr(entry, "id", ""),
                         )
+            for entry in getattr(work, "shared_balloons", []):
+                try:
+                    _bco.ensure_balloon_curve_object(
+                        scene=scene, entry=entry, page=None,
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.exception(
+                        "mirror shared balloon curve failed: %s",
+                        getattr(entry, "id", ""),
+                    )
             _bco.cleanup_orphan_balloon_objects(scene)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror balloon curve top-level failed")

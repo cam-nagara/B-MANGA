@@ -26,6 +26,7 @@ TEXT_MATERIAL_NAME_PREFIX = "BName_Text_"
 TEXT_REAL_DPI = 300
 TEXT_RENDER_PAD_MM = 1.5
 TEXT_Z_BASE = 2000
+OUTSIDE_PAGE_ID = "outside"
 
 
 def text_object_bname_id_for_values(page_id: str, text_id: str) -> str:
@@ -38,7 +39,7 @@ def text_object_bname_id_for_values(page_id: str, text_id: str) -> str:
 
 def text_object_bname_id(page, entry) -> str:
     return text_object_bname_id_for_values(
-        str(getattr(page, "id", "") or ""),
+        _page_id_for_entry(page, entry),
         str(getattr(entry, "id", "") or ""),
     )
 
@@ -56,12 +57,21 @@ def find_text_entry(scene, bname_id: str):
     if work is None:
         return None, None
     page_id, text_id = split_text_object_bname_id(bname_id)
+    if _is_outside_page_id(page_id):
+        for entry in getattr(work, "shared_texts", []):
+            if str(getattr(entry, "id", "") or "") == text_id:
+                return None, entry
+        return None, None
     for page in getattr(work, "pages", []):
         if page_id and str(getattr(page, "id", "") or "") != page_id:
             continue
         for entry in getattr(page, "texts", []):
             if str(getattr(entry, "id", "") or "") == text_id:
                 return page, entry
+    if not page_id:
+        for entry in getattr(work, "shared_texts", []):
+            if str(getattr(entry, "id", "") or "") == text_id:
+                return None, entry
     return None, None
 
 
@@ -70,6 +80,13 @@ def find_text_object(page_id: str, text_id: str) -> Optional[bpy.types.Object]:
     obj = on.find_object_by_bname_id(full_id, kind="text")
     if obj is not None:
         return obj
+    if not str(page_id or ""):
+        obj = on.find_object_by_bname_id(
+            text_object_bname_id_for_values(OUTSIDE_PAGE_ID, text_id),
+            kind="text",
+        )
+        if obj is not None:
+            return obj
     # 旧バージョンの単独 ID オブジェクト。ensure 時に置き換える。
     return on.find_object_by_bname_id(text_id, kind="text")
 
@@ -78,7 +95,7 @@ def has_visible_text_object(entry, page=None) -> bool:
     text_id = str(getattr(entry, "id", "") or "")
     if not text_id:
         return False
-    page_id = str(getattr(page, "id", "") or "") if page is not None else ""
+    page_id = _page_id_for_entry(page, entry)
     obj = find_text_object(page_id, text_id)
     if obj is None or obj.type != "MESH":
         return False
@@ -110,6 +127,20 @@ def _image_name(page_id: str, text_id: str) -> str:
 
 def _material_name(page_id: str, text_id: str) -> str:
     return f"{TEXT_MATERIAL_NAME_PREFIX}{_asset_suffix(page_id, text_id)}"
+
+
+def _is_outside_page_id(page_id: str) -> bool:
+    return str(page_id or "") in {OUTSIDE_PAGE_ID, "__outside__"}
+
+
+def _page_id_for_entry(page, entry) -> str:
+    page_id = str(getattr(page, "id", "") or "") if page is not None else ""
+    if page_id:
+        return page_id
+    parent_kind = str(getattr(entry, "parent_kind", "") or "")
+    if parent_kind in {"none", "outside"}:
+        return OUTSIDE_PAGE_ID
+    return ""
 
 
 def _page_offset_mm(scene, work, page) -> tuple[float, float]:
@@ -288,7 +319,8 @@ def _rebuild_mesh(mesh: bpy.types.Mesh, width_mm: float, height_mm: float, pad_m
 
 
 def _resolve_parent_for_entry(entry, page, folder_id: str) -> tuple[str, str, str]:
-    parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+    default_kind = "outside" if page is None else "page"
+    parent_kind = str(getattr(entry, "parent_kind", "") or default_kind)
     parent_key = str(getattr(entry, "parent_key", "") or "")
     entry_folder = folder_id or str(getattr(entry, "folder_key", "") or "")
     if parent_kind in {"none", "outside"}:
@@ -358,10 +390,10 @@ def ensure_text_real_object(
     page,
     folder_id: str = "",
 ) -> Optional[bpy.types.Object]:
-    if scene is None or entry is None or page is None:
+    if scene is None or entry is None:
         return None
     text_id = str(getattr(entry, "id", "") or "")
-    page_id = str(getattr(page, "id", "") or "")
+    page_id = _page_id_for_entry(page, entry)
     if not text_id or not page_id:
         return None
 
@@ -436,6 +468,9 @@ def sync_all_text_real_objects(scene: bpy.types.Scene, work) -> int:
         for entry in getattr(page, "texts", []):
             if ensure_text_real_object(scene=scene, entry=entry, page=page) is not None:
                 count += 1
+    for entry in getattr(work, "shared_texts", []):
+        if ensure_text_real_object(scene=scene, entry=entry, page=None) is not None:
+            count += 1
     cleanup_orphan_text_objects(scene, work)
     return count
 
@@ -461,6 +496,16 @@ def on_text_entry_changed(entry) -> bool:
             if not same_pointer and not same_id:
                 continue
             return ensure_text_real_object(scene=scene, entry=candidate, page=page) is not None
+    for candidate in getattr(work, "shared_texts", []) or []:
+        candidate_id = str(getattr(candidate, "id", "") or "")
+        try:
+            same_pointer = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+        except Exception:  # noqa: BLE001
+            same_pointer = False
+        same_id = bool(target_id) and candidate_id == target_id
+        if not same_pointer and not same_id:
+            continue
+        return ensure_text_real_object(scene=scene, entry=candidate, page=None) is not None
     return False
 
 
@@ -496,6 +541,9 @@ def cleanup_orphan_text_objects(scene: bpy.types.Scene, work) -> int:
         for entry in getattr(page, "texts", []):
             valid.add(text_object_bname_id(page, entry))
             valid_simple.add(str(getattr(entry, "id", "") or ""))
+    for entry in getattr(work, "shared_texts", []) if work is not None else []:
+        valid.add(text_object_bname_id_for_values(OUTSIDE_PAGE_ID, str(getattr(entry, "id", "") or "")))
+        valid_simple.add(str(getattr(entry, "id", "") or ""))
     removed = 0
     for obj in list(bpy.data.objects):
         if obj.get(on.PROP_KIND) != "text":

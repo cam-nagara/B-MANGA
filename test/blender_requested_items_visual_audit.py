@@ -144,6 +144,7 @@ def _configure_scene(temp_root: Path):
     from bname_dev_requested_visual.utils import (
         balloon_curve_object,
         coma_border_object,
+        layer_object_sync,
         layer_hierarchy,
         layer_reparent,
         layer_stack,
@@ -221,6 +222,7 @@ def _configure_scene(temp_root: Path):
     assert abs(float(shared.x_mm) + float(shared.width_mm) * 0.5 - 335.0) < 0.05
     assert abs(float(shared.y_mm) + float(shared.height_mm) * 0.5 - 80.0) < 0.05
 
+    layer_object_sync.mirror_work_to_outliner(scene, work)
     coma_border_object.regenerate_all_coma_borders(scene, work)
     paper_guide_object.regenerate_all_paper_guides(scene, work)
     paper_guide_object.apply_view_constant_thickness()
@@ -247,10 +249,11 @@ def _assert_requested_state(work) -> dict[str, object]:
 
     dither_mats = [
         mat for mat in bpy.data.materials
-        if "_brushhalo_" in mat.name and getattr(mat, "surface_render_method", "") == "DITHERED"
+        if mat.name.startswith("BName_ComaBorderTexture_")
+        and getattr(mat, "surface_render_method", "") == "DITHERED"
     ]
     if not dither_mats:
-        raise AssertionError("ディザ化したボカシブラシ素材が見つかりません")
+        raise AssertionError("ディザ化したボカシブラシのアルファ素材が見つかりません")
 
     page = work.pages[3]
     cloud = page.balloons[0]
@@ -264,19 +267,28 @@ def _assert_requested_state(work) -> dict[str, object]:
     if not cloud_pts or not cloud_corners or not thorn_pts or not thorn_corners:
         raise AssertionError("雲/トゲ（曲線）の鋭角点が検出できません")
 
-    guide_curves = [
+    guide_objects = [
         obj for obj in bpy.data.objects
-        if obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID) and obj.type == "CURVE"
+        if obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID)
+        and obj.get(paper_guide_object.PROP_GUIDE_KIND) == paper_guide_object.GUIDE_KIND_LINES
     ]
-    if not guide_curves or any(float(obj.data.bevel_depth) <= 0.0 for obj in guide_curves):
-        raise AssertionError("実体ガイドの一定太さが設定されていません")
+    guide_radii = [
+        float(point.radius)
+        for obj in guide_objects
+        for layer in obj.data.layers
+        for frame in layer.frames
+        for stroke in frame.drawing.strokes
+        for point in stroke.points
+    ]
+    if not guide_objects or any(obj.type != "GREASEPENCIL" for obj in guide_objects) or not guide_radii or min(guide_radii) <= 0.0:
+        raise AssertionError("実体ガイドのグリースペンシル線に一定太さが設定されていません")
 
     return {
         "line_none_visible_borders": len(none_objects),
         "dither_materials": len(dither_mats),
         "cloud_corners": len(cloud_corners),
         "thorn_curve_corners": len(thorn_corners),
-        "guide_curves": len(guide_curves),
+        "guide_grease_pencils": len(guide_objects),
         "overview_mode": bool(scene.bname_overview_mode),
     }
 

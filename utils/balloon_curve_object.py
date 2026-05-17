@@ -444,7 +444,7 @@ def _ensure_balloon_fill_object(
 
         work = getattr(scene, "bname_work", None)
         page_idx = -1
-        if work is not None:
+        if work is not None and page is not None:
             target_id = str(getattr(page, "id", "") or "")
             for i, p in enumerate(getattr(work, "pages", [])):
                 if str(getattr(p, "id", "") or "") == target_id:
@@ -491,7 +491,7 @@ def ensure_balloon_curve_object(
     rect/ellipse/cloud/fluffy/thorn 等の Meldex 共通形状と尻尾を Curve として
     描画する。
     """
-    if scene is None or entry is None or page is None:
+    if scene is None or entry is None:
         return None
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
@@ -541,7 +541,8 @@ def ensure_balloon_curve_object(
     obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
 
     # 4. parent 解決 (balloon_text_plane と同方針)
-    entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+    default_parent_kind = "outside" if page is None else "page"
+    entry_parent_kind = str(getattr(entry, "parent_kind", "") or default_parent_kind)
     entry_parent_key = str(getattr(entry, "parent_key", "") or "")
     entry_folder_id = folder_id or str(getattr(entry, "folder_key", "") or "")
     if entry_parent_kind in {"none", "outside"}:
@@ -558,7 +559,8 @@ def ensure_balloon_curve_object(
     # 5. z_index は page.balloons 配列 index に基づく (kind 別 base offset)
     BALLOON_Z_BASE = 1000
     z_index = BALLOON_Z_BASE
-    balloons = getattr(page, "balloons", None)
+    work = getattr(scene, "bname_work", None)
+    balloons = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
     if balloons is not None:
         for i, e in enumerate(balloons):
             if str(getattr(e, "id", "") or "") == balloon_id:
@@ -584,9 +586,8 @@ def ensure_balloon_curve_object(
         from . import page_grid as _pg
         from .geom import mm_to_m as _mm_to_m
 
-        work = getattr(scene, "bname_work", None)
         page_idx = -1
-        if work is not None:
+        if work is not None and page is not None:
             target_id = str(getattr(page, "id", "") or "")
             for i, p in enumerate(getattr(work, "pages", [])):
                 if str(getattr(p, "id", "") or "") == target_id:
@@ -631,6 +632,9 @@ def find_balloon_entry(scene, balloon_id: str):
         for entry in getattr(page, "balloons", []):
             if str(getattr(entry, "id", "") or "") == balloon_id:
                 return page, entry
+    for entry in getattr(work, "shared_balloons", []):
+        if str(getattr(entry, "id", "") or "") == balloon_id:
+            return None, entry
     return None, None
 
 
@@ -644,6 +648,10 @@ def cleanup_orphan_balloon_objects(scene) -> int:
             entry_id = str(getattr(entry, "id", "") or "")
             if entry_id:
                 valid.add(entry_id)
+    for entry in getattr(work, "shared_balloons", []) or []:
+        entry_id = str(getattr(entry, "id", "") or "")
+        if entry_id:
+            valid.add(entry_id)
     removed = 0
     for obj in list(bpy.data.objects):
         if obj.get(on.PROP_KIND) == "balloon":
@@ -685,4 +693,18 @@ def on_balloon_entry_changed(entry) -> bool:
                 entry=candidate,
                 page=page,
             ) is not None
+    for candidate in getattr(work, "shared_balloons", []) or []:
+        candidate_id = str(getattr(candidate, "id", "") or "")
+        try:
+            same_pointer = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+        except Exception:  # noqa: BLE001
+            same_pointer = False
+        same_id = bool(target_id) and candidate_id == target_id
+        if not same_pointer and not same_id:
+            continue
+        return ensure_balloon_curve_object(
+            scene=scene,
+            entry=candidate,
+            page=None,
+        ) is not None
     return False

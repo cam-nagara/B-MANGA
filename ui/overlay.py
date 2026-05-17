@@ -234,6 +234,8 @@ def _draw_object_tool_layer_bounds(context) -> None:
         kind = object_selection.parse_key(key)[0]
         if kind not in {"page", "coma", "balloon", "text", "effect", "image", "raster", "gp"}:
             continue
+        if kind == "coma":
+            continue
         rect = object_tool_op.selection_bounds_for_key(context, key)
         if rect is None:
             continue
@@ -526,9 +528,6 @@ def _draw_shared_layers(work) -> None:
         poly = _shared_coma_polygon(entry)
         if len(poly) < 3:
             continue
-        bg = getattr(entry, "background_color", None)
-        if bg is not None and len(bg) >= 4 and float(bg[3]) > 0.0:
-            _draw_polygon_fill(poly, (float(bg[0]), float(bg[1]), float(bg[2]), float(bg[3])))
         _draw_polyline_loop(poly, viewport_colors.PAPER_GUIDE, line_width=2.0, width_mm=0.5)
 
     proxy = _SharedLayerProxy(work)
@@ -854,12 +853,6 @@ def _draw_comas(
         # ページオフセットを加算
         if ox_mm != 0.0 or oy_mm != 0.0:
             poly = [(x + ox_mm, y + oy_mm) for x, y in poly]
-        bg = getattr(entry, "background_color", None)
-        if bg is not None and len(bg) >= 4 and float(bg[3]) > 0.0:
-            _draw_polygon_fill(
-                poly,
-                (float(bg[0]), float(bg[1]), float(bg[2]), float(bg[3])),
-            )
         # コマプレビューはコマ平面メッシュの画像テクスチャとして描画する
         # (utils/coma_plane.py)。毎フレーム GPU オーバーレイで描いていた
         # 旧方式は、重い上に枠線の上に重なって線幅を隠していたため廃止。

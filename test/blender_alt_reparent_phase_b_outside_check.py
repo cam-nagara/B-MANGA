@@ -45,6 +45,21 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
+def _mirror(context, work) -> None:
+    from bname_dev.utils import layer_object_sync
+
+    layer_object_sync.mirror_work_to_outliner(context.scene, work)
+
+
+def _assert_visible_object(obj, label: str) -> None:
+    if obj is None:
+        raise AssertionError(f"{label}: object missing")
+    if getattr(obj, "hide_viewport", False):
+        raise AssertionError(f"{label}: object hidden")
+    if not list(getattr(obj, "users_collection", []) or []):
+        raise AssertionError(f"{label}: object is not linked")
+
+
 def _add_balloon(page, bid: str, parent_key: str):
     entry = page.balloons.add()
     entry.id = bid
@@ -128,6 +143,14 @@ def main() -> None:
         assert shared_child.parent_balloon_id == shared_balloon.id
         _assert_close(shared_balloon.x_mm, 10.0 + src_off[0], "shared balloon x")
         _assert_close(shared_child.x_mm, child_x + src_off[0], "shared child x")
+        _mirror(context, work)
+        from bname_dev.utils import balloon_curve_object
+        from bname_dev.utils import object_naming as on
+
+        shared_balloon_obj = on.find_object_by_bname_id(shared_balloon.id, kind="balloon")
+        _assert_visible_object(shared_balloon_obj, "shared balloon")
+        _assert_close(shared_balloon_obj.location.x, shared_balloon.x_mm * 0.001, "shared balloon object x")
+        assert balloon_curve_object.find_balloon_entry(scene, shared_balloon.id)[1] is not None
 
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         _idx, shared_balloon_item = _stack_item(context, "balloon", outside_child_key(shared_balloon.id))
@@ -158,6 +181,16 @@ def main() -> None:
         assert len(work.shared_texts) == 1
         shared_text = work.shared_texts[0]
         assert shared_text.parent_kind == "none" and shared_text.parent_key == ""
+        _mirror(context, work)
+        from bname_dev.utils import text_real_object
+
+        shared_text_id = text_real_object.text_object_bname_id_for_values(
+            text_real_object.OUTSIDE_PAGE_ID,
+            shared_text.id,
+        )
+        shared_text_obj = on.find_object_by_bname_id(shared_text_id, kind="text")
+        _assert_visible_object(shared_text_obj, "shared text")
+        _assert_close(shared_text_obj.location.x, shared_text.x_mm * 0.001, "shared text object x")
 
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         _idx, coma_item = _stack_item(context, "coma", coma2_key)
@@ -172,6 +205,21 @@ def main() -> None:
         assert len(work.shared_balloons) == 1
         assert len(work.shared_texts) == 2
         assert work.shared_balloons[0].parent_kind == "none"
+        _mirror(context, work)
+        from bname_dev.utils import coma_border_object
+        from bname_dev.utils import coma_plane
+
+        shared_coma = work.shared_comas[0]
+        shared_coma_owner = f"{coma_plane.OUTSIDE_PAGE_ID}:{shared_coma.id}"
+        shared_coma_plane = bpy.data.objects.get(
+            f"{coma_plane.COMA_PLANE_NAME_PREFIX}{coma_plane.OUTSIDE_PAGE_ID}_{shared_coma.id}"
+        )
+        _assert_visible_object(shared_coma_plane, "shared coma plane")
+        assert str(shared_coma_plane.get(coma_plane.PROP_COMA_PLANE_OWNER_ID, "") or "") == shared_coma_owner
+        shared_border = bpy.data.objects.get(
+            f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{coma_border_object.OUTSIDE_PAGE_ID}_{shared_coma.id}"
+        )
+        _assert_visible_object(shared_border, "shared coma border")
 
         image = scene.bname_image_layers.add()
         image.id = "outside_image"
