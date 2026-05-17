@@ -159,312 +159,37 @@ def _ensure_soft_material(
     return mat
 
 
-COMA_BRUSH_HALO_SUFFIX = "_brushhalo"
-COMA_BRUSH_HALO_MESH_PREFIX = "coma_border_brushhalo_mesh_"
-COMA_BRUSH_HALO_VCOL = "BNameHaloA"
-
-
-def _ensure_halo_gradient_material(
-    name: str, rgb: tuple[float, float, float], *, dither: bool
-) -> bpy.types.Material:
-    """頂点カラーのアルファを不透明度に使う半透明エミッション素材.
-
-    ボケメッシュは頂点アルファが外周で 0 まで連続減衰するため、ハードな
-    輪郭 (細いグレー線) が出ない。
-    """
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name)
-    r, g, b = float(rgb[0]), float(rgb[1]), float(rgb[2])
-    mat.diffuse_color = (r, g, b, 1.0)
-    mat.use_nodes = True
-    try:
-        mat.blend_method = "BLEND"
-        mat.show_transparent_back = False
-        mat.surface_render_method = "DITHERED" if dither else "BLENDED"
-    except Exception:  # noqa: BLE001
-        pass
-    nt = mat.node_tree
-    for node in list(nt.nodes):
-        nt.nodes.remove(node)
-    out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (400, 0)
-    vcol = nt.nodes.new("ShaderNodeVertexColor")
-    vcol.layer_name = COMA_BRUSH_HALO_VCOL
-    vcol.location = (-200, -150)
-    emission = nt.nodes.new("ShaderNodeEmission")
-    emission.location = (60, 120)
-    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-    transparent.location = (60, -120)
-    mix = nt.nodes.new("ShaderNodeMixShader")
-    mix.location = (240, 0)
-    try:
-        emission.inputs["Color"].default_value = (r, g, b, 1.0)
-        emission.inputs["Strength"].default_value = 1.0
-        nt.links.new(vcol.outputs["Alpha"], mix.inputs["Fac"])
-        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
-        nt.links.new(emission.outputs["Emission"], mix.inputs[2])
-        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    except Exception:  # noqa: BLE001
-        _logger.exception("coma halo gradient material setup failed")
-    return mat
-
-
-def _ensure_brush_halo_object(
-    scene, work, page, coma, page_id: str, coma_id: str, coma_coll
-) -> Optional[bpy.types.Object]:
-    """ボカシブラシのボケを頂点アルファ連続グラデーションの 1 メッシュで生成."""
-    border = getattr(coma, "border", None)
-    obj_name = f"{_object_name(page_id, coma_id)}{COMA_BRUSH_HALO_SUFFIX}"
-    mesh_name = f"{COMA_BRUSH_HALO_MESH_PREFIX}{page_id}_{coma_id}"
-    style = str(getattr(border, "style", "solid") or "solid")
-    no_edge_override = (
-        len(getattr(coma, "edge_styles", []) or []) == 0
-        and not any(
-            getattr(edge, "use_override", False)
-            for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left)
-        )
-    )
-    base_w = max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0))
-    blur = float(getattr(border, "blur_amount", 0.5) or 0.0)
-    visible = (
-        bool(getattr(coma, "visible", True))
-        and bool(getattr(border, "visible", True))
-        and style == "brush"
-        and no_edge_override
-        and base_w > 0.0
-        and blur > 0.0
-    )
-    built = None
-    if visible:
-        try:
-            built = _build_brush_halo_mesh(_outline_points(coma), base_w, blur)
-        except Exception:  # noqa: BLE001
-            _logger.exception("brush halo mesh build failed")
-            built = None
-    if built is None:
-        # 非対象: 既存ハローを除去
-        ex = bpy.data.objects.get(obj_name)
-        if ex is not None:
-            d = ex.data
-            try:
-                bpy.data.objects.remove(ex, do_unlink=True)
-            except Exception:  # noqa: BLE001
-                pass
-            if isinstance(d, bpy.types.Mesh) and getattr(d, "users", 0) == 0:
-                try:
-                    bpy.data.meshes.remove(d)
-                except Exception:  # noqa: BLE001
-                    pass
-        return None
-    verts, faces, alphas = built
-    mesh = bpy.data.meshes.get(mesh_name)
-    if mesh is None:
-        mesh = bpy.data.meshes.new(mesh_name)
-    mesh.clear_geometry()
-    mesh.from_pydata(verts, [], faces)
-    mesh.update()
-    rgba = _rgba_from_border(coma)
-    r, g, b = float(rgba[0]), float(rgba[1]), float(rgba[2])
-    ca = mesh.color_attributes.get(COMA_BRUSH_HALO_VCOL)
-    if ca is None or ca.domain != "POINT" or ca.data_type != "FLOAT_COLOR":
-        if ca is not None:
-            try:
-                mesh.color_attributes.remove(ca)
-            except Exception:  # noqa: BLE001
-                pass
-        ca = mesh.color_attributes.new(COMA_BRUSH_HALO_VCOL, "FLOAT_COLOR", "POINT")
-    for i, av in enumerate(alphas):
-        if i < len(ca.data):
-            ca.data[i].color = (r, g, b, max(0.0, min(1.0, float(av))))
-    try:
-        mesh.color_attributes.active_color = ca
-        mesh.attributes.active_color = ca
-    except Exception:  # noqa: BLE001
-        pass
-    dither = bool(getattr(border, "blur_dither", False))
-    mat = _ensure_halo_gradient_material(
-        f"{_material_name(page_id, coma_id)}_halograd", (r, g, b), dither=dither
-    )
-    if not mesh.materials:
-        mesh.materials.append(mat)
-    elif mesh.materials[0] is not mat:
-        mesh.materials[0] = mat
-    obj = bpy.data.objects.get(obj_name)
-    if obj is not None and obj.type != "MESH":
-        od = obj.data
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            pass
-        if od is not None and getattr(od, "users", 0) == 0:
-            try:
-                if isinstance(od, bpy.types.Mesh):
-                    bpy.data.meshes.remove(od)
-                elif isinstance(od, bpy.types.Curve):
-                    bpy.data.curves.remove(od)
-            except Exception:  # noqa: BLE001
-                pass
-        obj = None
-    if obj is None:
-        obj = bpy.data.objects.new(obj_name, mesh)
-    elif obj.data is not mesh:
-        obj.data = mesh
-    obj[PROP_COMA_BORDER_KIND] = "coma_border"
-    obj[PROP_COMA_BORDER_OWNER_ID] = _owner_id(page_id, coma_id)
-    obj[on.PROP_MANAGED] = False
-    obj.hide_select = True
-    obj.hide_viewport = not visible
-    obj.hide_render = not visible
-    _set_location(obj, scene, work, page, coma)
-    # 芯 (COMA_BORDER_Z_M) より僅かに背面に置き、芯の不透明線が前面に出る
-    obj.location.z = COMA_BORDER_Z_M - 2.0e-5
-    if coma_coll is not None and not any(e is obj for e in coma_coll.objects):
-        try:
-            coma_coll.objects.link(obj)
-        except Exception:  # noqa: BLE001
-            pass
-    for coll in tuple(obj.users_collection):
-        if coll is coma_coll:
-            continue
-        try:
-            coll.objects.unlink(obj)
-        except Exception:  # noqa: BLE001
-            pass
-    return obj
-
-
 def _brush_halo_groups(
     path: list[tuple[float, float]],
     base_width_mm: float,
     color: tuple[float, float, float, float],
     blur_amount: float,
 ) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
-    """ボカシブラシ: 芯 (不透明カーブ) のみを返す.
-
-    ボケは ``_build_brush_halo_mesh`` の頂点アルファ連続グラデーション
-    メッシュで別途生成する (帯の重ね描きをやめ、最外周アルファを厳密に
-    0 にすることで外周のハードエッジ=細いグレー線を消す)。
-    """
-    base_w = max(0.0, float(base_width_mm))
-    r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
-    return [([list(path)], base_w, (r, g, b, a), "brush_core")]
-
-
-def _closed_dedupe(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    out: list[tuple[float, float]] = []
-    for p in pts:
-        if out:
-            dx = out[-1][0] - p[0]
-            dy = out[-1][1] - p[1]
-            if (dx * dx + dy * dy) <= 1.0e-12:
-                continue
-        out.append((float(p[0]), float(p[1])))
-    if len(out) >= 2:
-        dx = out[0][0] - out[-1][0]
-        dy = out[0][1] - out[-1][1]
-        if (dx * dx + dy * dy) <= 1.0e-12:
-            out.pop()
-    return out
-
-
-def _outward_normals(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """閉ポリゴン各頂点の外向き単位法線 (向きは符号付き面積で判定)."""
-    n = len(pts)
-    area = 0.0
-    for i in range(n):
-        x0, y0 = pts[i]
-        x1, y1 = pts[(i + 1) % n]
-        area += x0 * y1 - x1 * y0
-    ccw = area > 0.0
-    normals: list[tuple[float, float]] = []
-    for i in range(n):
-        px, py = pts[i - 1]
-        cx, cy = pts[i]
-        nx2, ny2 = pts[(i + 1) % n]
-        e1 = (cx - px, cy - py)
-        e2 = (nx2 - cx, ny2 - cy)
-
-        def _edge_normal(e):
-            ex, ey = e
-            ln = math.hypot(ex, ey)
-            if ln <= 1.0e-9:
-                return None
-            ex, ey = ex / ln, ey / ln
-            # CCW のとき外向きは (dy, -dx)
-            return (ey, -ex) if ccw else (-ey, ex)
-
-        a1 = _edge_normal(e1)
-        a2 = _edge_normal(e2)
-        if a1 is None and a2 is None:
-            normals.append((0.0, 0.0))
-            continue
-        if a1 is None:
-            nv = a2
-        elif a2 is None:
-            nv = a1
-        else:
-            nv = (a1[0] + a2[0], a1[1] + a2[1])
-        ln = math.hypot(nv[0], nv[1])
-        normals.append((nv[0] / ln, nv[1] / ln) if ln > 1.0e-9 else (0.0, 0.0))
-    return normals
-
-
-def _build_brush_halo_mesh(
-    path: list[tuple[float, float]],
-    base_width_mm: float,
-    blur_amount: float,
-) -> Optional[tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]], list[float]]]:
-    """芯線を中心に内外へ広がるボケを 1 枚のメッシュで作る.
-
-    各頂点のアルファは芯の幅内で最大、外周/内周で 0 へ ``(1-f)^1.5`` で
-    連続減衰。最外周/最内周のアルファは厳密に 0 のためエッジ (細いグレー
-    線) が生じない。戻り値 = (verts(m), faces, 頂点アルファ[0..1])。
-    """
+    """ボカシブラシ: 芯 + 外側に広がる半透明ハローのグループ列を返す."""
     blur = max(0.0, min(1.0, float(blur_amount)))
     base_w = max(0.0, float(base_width_mm))
+    r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
+    groups: list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]] = []
+    # 芯 (不透明・通常幅)
+    groups.append(([list(path)], base_w, (r, g, b, a), "brush_core"))
     if base_w <= 0.0 or blur <= 0.0:
-        return None
-    pts = _closed_dedupe(path)
-    if len(pts) < 3:
-        return None
-    normals = _outward_normals(pts)
-    half = base_w * 0.5
+        return groups
+    # 線幅が太いほどボケ幅も広がるため、グラデーションの段差が目立たない
+    # よう段階数を線幅に連動して細かくする (0.5mm を基準、上限 40 段)。
+    base_layers = 3 + int(round(blur * 4.0))  # 3..7
+    width_layers = int(round(max(0.0, base_w - 0.5) * 3.0))
+    layers = min(40, base_layers + width_layers)
     max_extra = base_w * (0.6 + 4.0 * blur)
-    # 片側のグラデーション分割数 (線幅/ボケが大きいほど細かく、上限あり)
-    steps = max(6, min(28, int(round(6 + blur * 10.0 + base_w * 2.0))))
-    # 符号付きオフセット列: 内端(-(half+extra)) .. 0 .. 外端(+(half+extra))
-    offsets: list[float] = []
-    alphas: list[float] = []
-    for k in range(steps, 0, -1):  # 内側ボケ (alpha 0 -> ほぼ1)
-        f = k / float(steps)
-        offsets.append(-(half + max_extra * f))
-        alphas.append((1.0 - f) ** 1.5)
-    offsets.append(-half); alphas.append(1.0)
-    offsets.append(half); alphas.append(1.0)
-    for k in range(1, steps + 1):  # 外側ボケ (ほぼ1 -> alpha 0)
-        f = k / float(steps)
-        offsets.append(half + max_extra * f)
-        alphas.append((1.0 - f) ** 1.5)
-    n = len(pts)
-    loops = len(offsets)
-    verts: list[tuple[float, float, float]] = []
-    vcol_a: list[float] = []
-    for li, off in enumerate(offsets):
-        a_loop = max(0.0, min(1.0, alphas[li]))
-        for i in range(n):
-            bx, by = pts[i]
-            nx, ny = normals[i]
-            verts.append((mm_to_m(bx + nx * off), mm_to_m(by + ny * off), 0.0))
-            vcol_a.append(a_loop)
-    faces: list[tuple[int, int, int, int]] = []
-    for li in range(loops - 1):
-        b0 = li * n
-        b1 = (li + 1) * n
-        for i in range(n):
-            j = (i + 1) % n
-            faces.append((b0 + i, b0 + j, b1 + j, b1 + i))
-    return verts, faces, vcol_a
+    for i in range(1, layers + 1):
+        f = i / float(layers)
+        width_i = base_w + max_extra * f
+        alpha_i = a * ((1.0 - f) ** 1.5) * 0.45
+        if alpha_i <= 0.003:
+            continue
+        groups.append(([list(path)], width_i, (r, g, b, alpha_i), "brush_halo"))
+    # 外側 (幅広・薄い) を先に描き、芯を最後に描く
+    groups.reverse()
+    return groups
 
 
 def _white_margin_ring(
@@ -929,11 +654,6 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
                 coll.objects.unlink(obj)
             except Exception:  # noqa: BLE001
                 pass
-    halo_obj = _ensure_brush_halo_object(
-        scene, work, page, coma, page_id, coma_id, coma_coll
-    )
-    if halo_obj is not None:
-        keep_names.add(halo_obj.name)
     _remove_related_border_objects(page_id, coma_id, keep_names)
     _ensure_white_margin_object(scene, work, page, coma, page_id, coma_id)
     obj = primary_obj
