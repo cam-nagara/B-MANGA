@@ -24,7 +24,6 @@ from bpy.props import (
 from ..utils import log
 from .coma_border import (
     BNameComaBorder,
-    BNameComaEdgeStyle,
     BNameComaWhiteMargin,
 )
 
@@ -75,6 +74,16 @@ def _on_coma_visible_changed(_self, context) -> None:
         from ..utils import coma_plane as _cp
 
         _cp.on_coma_geometry_changed(_self)
+    except Exception:  # noqa: BLE001
+        pass
+    _tag_view3d_redraw(context)
+
+
+def _on_coma_paper_visible_changed(_self, context) -> None:
+    try:
+        from ..utils import coma_plane as _cp
+
+        _cp.on_coma_paper_visible_changed(_self)
     except Exception:  # noqa: BLE001
         pass
     _tag_view3d_redraw(context)
@@ -191,6 +200,12 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         default=True,
         update=_on_coma_visible_changed,
     )
+    paper_visible: BoolProperty(  # type: ignore[valid-type]
+        name="用紙",
+        description="このコマの用紙面を表示する",
+        default=True,
+        update=_on_coma_paper_visible_changed,
+    )
     selected: BoolProperty(  # type: ignore[valid-type]
         name="マルチ選択",
         default=False,
@@ -210,8 +225,6 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     # --- 枠線・白フチ ---
     border: PointerProperty(type=BNameComaBorder)  # type: ignore[valid-type]
     white_margin: PointerProperty(type=BNameComaWhiteMargin)  # type: ignore[valid-type]
-    # 辺ごと (edge_index) の個別オーバーライド (枠線選択ツールで設定)
-    edge_styles: CollectionProperty(type=BNameComaEdgeStyle)  # type: ignore[valid-type]
 
     # --- 紐づけ ---
     layer_refs: CollectionProperty(type=BNameLayerRef)  # type: ignore[valid-type]

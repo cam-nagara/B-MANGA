@@ -68,6 +68,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
 
         from bname_dev.core.work import get_work
+        from bname_dev.io import export_pipeline
         from bname_dev.utils import active_target as _at
         from bname_dev.utils import coma_plane as cp
         from bname_dev.utils import paper_bg_object as pbg
@@ -89,6 +90,22 @@ def main() -> None:
         plane_obj = cp.find_coma_plane_object(page.id, coma.id)
         assert plane_obj is not None, "coma_plane Object should exist after work_new"
         assert plane_obj.data is not None
+        assert bool(getattr(coma, "paper_visible", True)), "コマ用紙の初期値はオンであるべき"
+        assert plane_obj.hide_viewport is False, "用紙オンのコマ面が表示されていません"
+        coma.paper_visible = False
+        assert plane_obj.hide_viewport is True, "用紙オフでコマ形状メッシュが非表示になっていません"
+        assert export_pipeline._draw_coma_background_layer(coma, 1000, 300) is None, (
+            "用紙オフのコマ背景が書き出し対象に残っています"
+        )
+        mask_while_hidden = cp.find_coma_mask_object(page.id, coma.id) or cp.ensure_coma_mask(scene, work, page, coma)
+        assert mask_while_hidden is not None and mask_while_hidden.hide_viewport is True, (
+            "用紙オフでマスク参照が壊れています"
+        )
+        coma.paper_visible = True
+        assert plane_obj.hide_viewport is False, "用紙オンへ戻してもコマ形状メッシュが表示されません"
+        assert export_pipeline._draw_coma_background_layer(coma, 1000, 300) is not None, (
+            "用紙オンのコマ背景が書き出し対象に戻りません"
+        )
         # コマ Collection 直下にいるか
         coma_coll_name = None
         for c in plane_obj.users_collection:

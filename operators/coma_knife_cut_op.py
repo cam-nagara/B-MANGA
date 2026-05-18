@@ -349,8 +349,6 @@ def _apply_cut_to_coma(
 
     # 元コマを左側に書き換え
     _set_coma_polygon(panel, left_poly)
-    # カットで edge_index が変わるため edge_styles 個別オーバーライドはクリア
-    panel.edge_styles.clear()
     # 新規コマ (右側) を追加
     new_stem = coma_io.allocate_new_coma_id(work_dir, page.id)
     try:
@@ -365,7 +363,6 @@ def _apply_cut_to_coma(
     new_entry.id = new_stem
     new_entry.title = f"{panel.title} (分割)"
     _set_coma_polygon(new_entry, right_poly)
-    new_entry.edge_styles.clear()  # 元コマから複製された個別設定もクリア
     z_max = max((p.z_order for p in page.comas), default=0)
     new_entry.z_order = z_max + 1
     try:

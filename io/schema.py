@@ -607,39 +607,6 @@ def pages_to_dict(work, *, last_modified: str = "") -> dict[str, Any]:
 # ---------- Coma (border/white_margin/entry) ----------
 
 
-def _edge_override_to_dict(edge) -> dict[str, Any]:
-    if not edge.use_override:
-        return {"useOverride": False}
-    out: dict[str, Any] = {"useOverride": True}
-    # border edge / white margin edge で持つフィールドが違うため hasattr で判定
-    if hasattr(edge, "style"):
-        out["style"] = edge.style
-    if hasattr(edge, "width_mm"):
-        out["widthMm"] = round(edge.width_mm, 3)
-    if hasattr(edge, "color"):
-        out["color"] = color_to_hex(edge.color)
-    if hasattr(edge, "visible"):
-        out["visible"] = bool(edge.visible)
-    if hasattr(edge, "enabled"):
-        out["enabled"] = bool(edge.enabled)
-    return out
-
-
-def _edge_override_from_dict(edge, data: dict[str, Any]) -> None:
-    data = data or {}
-    edge.use_override = bool(data.get("useOverride", False))
-    if "style" in data and hasattr(edge, "style"):
-        edge.style = data["style"]
-    if "widthMm" in data and hasattr(edge, "width_mm"):
-        edge.width_mm = float(data["widthMm"])
-    if "color" in data and hasattr(edge, "color"):
-        edge.color = hex_to_rgba(data["color"])
-    if "visible" in data and hasattr(edge, "visible"):
-        edge.visible = bool(data["visible"])
-    if "enabled" in data and hasattr(edge, "enabled"):
-        edge.enabled = bool(data["enabled"])
-
-
 def coma_border_to_dict(border) -> dict[str, Any]:
     return {
         "style": border.style,
@@ -652,12 +619,6 @@ def coma_border_to_dict(border) -> dict[str, Any]:
         "blurAmount": round(float(getattr(border, "blur_amount", 0.5)), 3),
         "blurDither": bool(getattr(border, "blur_dither", False)),
         "visible": bool(border.visible),
-        "perEdge": {
-            "top": _edge_override_to_dict(border.edge_top),
-            "right": _edge_override_to_dict(border.edge_right),
-            "bottom": _edge_override_to_dict(border.edge_bottom),
-            "left": _edge_override_to_dict(border.edge_left),
-        },
     }
 
 
@@ -674,11 +635,6 @@ def coma_border_from_dict(border, data: dict[str, Any]) -> None:
     if "blurDither" in data:
         border.blur_dither = bool(data["blurDither"])
     border.visible = bool(data.get("visible", True))
-    per = data.get("perEdge", {})
-    _edge_override_from_dict(border.edge_top, per.get("top", {}))
-    _edge_override_from_dict(border.edge_right, per.get("right", {}))
-    _edge_override_from_dict(border.edge_bottom, per.get("bottom", {}))
-    _edge_override_from_dict(border.edge_left, per.get("left", {}))
 
 
 def coma_white_margin_to_dict(wm) -> dict[str, Any]:
@@ -686,12 +642,6 @@ def coma_white_margin_to_dict(wm) -> dict[str, Any]:
         "enabled": bool(wm.enabled),
         "widthMm": round(wm.width_mm, 3),
         "color": color_to_hex(wm.color),
-        "perEdge": {
-            "top": _edge_override_to_dict(wm.edge_top),
-            "right": _edge_override_to_dict(wm.edge_right),
-            "bottom": _edge_override_to_dict(wm.edge_bottom),
-            "left": _edge_override_to_dict(wm.edge_left),
-        },
     }
 
 
@@ -700,11 +650,6 @@ def coma_white_margin_from_dict(wm, data: dict[str, Any]) -> None:
     wm.enabled = bool(data.get("enabled", False))
     wm.width_mm = float(data.get("widthMm", 0.37))
     wm.color = hex_to_rgba(data.get("color", "#FFFFFF"))
-    per = data.get("perEdge", {})
-    _edge_override_from_dict(wm.edge_top, per.get("top", {}))
-    _edge_override_from_dict(wm.edge_right, per.get("right", {}))
-    _edge_override_from_dict(wm.edge_bottom, per.get("bottom", {}))
-    _edge_override_from_dict(wm.edge_left, per.get("left", {}))
 
 
 def coma_entry_to_dict(entry) -> dict[str, Any]:
@@ -727,19 +672,11 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "zOrder": int(entry.z_order),
         "overlapClipping": bool(entry.overlap_clipping),
         "visible": bool(getattr(entry, "visible", True)),
+        "paperVisible": bool(getattr(entry, "paper_visible", True)),
         "backgroundColor": color_to_hex(entry.background_color),
         "backgroundColorAlpha": round(entry.background_color[3], 3),
         "border": coma_border_to_dict(entry.border),
         "whiteMargin": coma_white_margin_to_dict(entry.white_margin),
-        "edgeStyles": [
-            {
-                "edgeIndex": int(s.edge_index),
-                "widthMm": round(s.width_mm, 3),
-                "color": color_to_hex(s.color),
-                "colorAlpha": round(s.color[3], 3),
-            }
-            for s in entry.edge_styles
-        ],
         "layerRefs": [r.layer_id for r in entry.layer_refs],
         "comaGap": {
             "verticalMm": round(entry.coma_gap_vertical_mm, 3),
@@ -772,19 +709,14 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.overlap_clipping = bool(data.get("overlapClipping", True))
     if hasattr(entry, "visible"):
         entry.visible = bool(data.get("visible", True))
+    if hasattr(entry, "paper_visible"):
+        entry.paper_visible = bool(data.get("paperVisible", True))
     # 既定値を opaque (1.0) に変更 (2026-05-02 リアーキ: コマ平面 Mesh が
     # 背景色 + マスク Boolean reference を兼ねるため、 alpha=0 だと意味が無い)
     bg_alpha = float(data.get("backgroundColorAlpha", 1.0))
     entry.background_color = hex_to_rgba(data.get("backgroundColor", "#FFFFFF"), bg_alpha)
     coma_border_from_dict(entry.border, data.get("border", {}))
     coma_white_margin_from_dict(entry.white_margin, data.get("whiteMargin", {}))
-    entry.edge_styles.clear()
-    for st in data.get("edgeStyles", []) or []:
-        es = entry.edge_styles.add()
-        es.edge_index = int(st.get("edgeIndex", 0))
-        es.width_mm = float(st.get("widthMm", 0.5))
-        alpha = float(st.get("colorAlpha", 1.0))
-        es.color = hex_to_rgba(st.get("color", "#000000"), alpha)
     entry.layer_refs.clear()
     for lid in data.get("layerRefs", []):
         ref = entry.layer_refs.add()

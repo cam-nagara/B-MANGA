@@ -259,23 +259,7 @@ def _check_detail_toggles(context, targets) -> list[dict]:
     _toggle_check(results, "コマ / 表示", coma, "visible")
     _toggle_check(results, "コマ / 自動くり抜き", coma, "overlap_clipping")
     _toggle_check(results, "コマ枠 / 枠線を表示", coma.border, "visible")
-    for edge_label, edge in (
-        ("上", coma.border.edge_top),
-        ("右", coma.border.edge_right),
-        ("下", coma.border.edge_bottom),
-        ("左", coma.border.edge_left),
-    ):
-        _toggle_check(results, f"コマ枠 / {edge_label} 個別設定", edge, "use_override")
-        _toggle_check(results, f"コマ枠 / {edge_label} 表示", edge, "visible")
     _toggle_check(results, "白フチ / 白フチを表示", coma.white_margin, "enabled")
-    for edge_label, edge in (
-        ("上", coma.white_margin.edge_top),
-        ("右", coma.white_margin.edge_right),
-        ("下", coma.white_margin.edge_bottom),
-        ("左", coma.white_margin.edge_left),
-    ):
-        _toggle_check(results, f"白フチ / {edge_label} 個別設定", edge, "use_override")
-        _toggle_check(results, f"白フチ / {edge_label} ON", edge, "enabled")
 
     _toggle_check(results, "GP / 表示 viewport", gp_obj, "hide_viewport")
     _toggle_check(results, "GP / 表示 render", gp_obj, "hide_render")

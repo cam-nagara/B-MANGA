@@ -44,7 +44,7 @@ def main() -> None:
     # 2. 枠線プリセット WM セレクタ + 同梱プリセット
     if not hasattr(bpy.types.WindowManager, "bname_border_preset_selector"):
         failures.append("WindowManager.bname_border_preset_selector が無い")
-    from bname_dev.io import border_presets
+    from bname_dev.io import border_presets, schema
 
     gp = {p.name for p in border_presets.list_global_presets()}
     for need in ("線無し", "標準", "極太", "ボカシブラシ"):
@@ -153,16 +153,14 @@ def main() -> None:
     if pre is None:
         failures.append("ボカシブラシ プリセットを load 出来ない")
     else:
-        edge_style = coma.edge_styles.add()
-        edge_style.edge_index = 0
-        edge_style.width_mm = 3.0
         border_presets.apply_preset_to_coma(pre, coma)
         if coma.border.style != "brush":
             failures.append(f"プリセット適用後 style != brush ({coma.border.style})")
         if abs(coma.border.blur_amount - 0.6) > 1e-3:
             failures.append(f"プリセット適用後 blur_amount != 0.6 ({coma.border.blur_amount})")
-        if len(coma.edge_styles) != 0:
-            failures.append("プリセット適用後に辺ごとの個別設定が残っている")
+        saved = schema.coma_border_to_dict(coma.border)
+        if "perEdge" in saved:
+            failures.append("枠線プリセット保存データに辺別設定が残っている")
 
     no_line = border_presets.load_preset_by_name("線無し", None)
     if no_line is None:

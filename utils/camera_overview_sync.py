@@ -98,6 +98,12 @@ def _apply() -> None:
                     pass
                 area.tag_redraw()
             scene.bname_overview_mode = True
+            try:
+                from ..ui import overlay as _overlay
+
+                _overlay.apply_bname_shading_mode(ctx)
+            except Exception:  # noqa: BLE001
+                pass
         except Exception:  # noqa: BLE001
             _logger.exception("camera-overview: overview camera update failed")
         return

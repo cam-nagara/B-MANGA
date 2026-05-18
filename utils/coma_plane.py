@@ -254,8 +254,9 @@ def _apply_material(
 
     - 画像があれば Image Texture → Emission。Solid のカラー=テクスチャで
       コマ形状に画像が貼られる。
-    - ボカシブラシ時は同じコマ面素材に透明マスクを掛け、コマ画像自体の
-      輪郭を透明にする。
+    - ボカシブラシ時は同じコマ面素材にマスクを掛け、コマ画像を背景色へ
+      合成して輪郭をぼかす。材質自体は不透明のままにして、重なった下の
+      コマが透けないようにする。
     - 画像が無ければ従来どおり背景色の Emission。
     - ``mat.diffuse_color`` は常に背景色に揃える (プレビュー無しコマや
       テクスチャ非対応表示でのフォールバック)。
@@ -270,6 +271,8 @@ def _apply_material(
         r = g = b = 1.0
     rgba = (r, g, b, 1.0)
     nt = mat.node_tree
+    preview_node = None
+    alpha_node = None
     if image is None and keep_existing_image:
         image = _existing_material_image(mat)
     if alpha_mask_image is None and keep_existing_mask:
@@ -289,14 +292,16 @@ def _apply_material(
         tex.name = "BName_ComaPreview"
         tex.location = (-300, 0)
         tex.image = image
+        preview_node = tex
         try:
             tex.extension = "EXTEND"
         except Exception:  # noqa: BLE001
             pass
-        try:
-            nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-        except Exception:  # noqa: BLE001
-            pass
+        if alpha_mask_image is None:
+            try:
+                nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+            except Exception:  # noqa: BLE001
+                pass
     else:
         try:
             emission.inputs["Color"].default_value = rgba
@@ -307,39 +312,51 @@ def _apply_material(
         alpha_tex.name = "BName_ComaAlphaMask"
         alpha_tex.location = (-300, -220)
         alpha_tex.image = alpha_mask_image
+        alpha_node = alpha_tex
         try:
             alpha_tex.extension = "EXTEND"
         except Exception:  # noqa: BLE001
             pass
-        transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-        transparent.location = (60, -180)
-        mix = nt.nodes.new("ShaderNodeMixShader")
-        mix.location = (300, 0)
-        alpha_output = alpha_tex.outputs["Alpha"]
         if image is not None:
-            alpha_math = nt.nodes.new("ShaderNodeMath")
-            alpha_math.operation = "MULTIPLY"
-            alpha_math.location = (-40, -180)
+            preview_mix = nt.nodes.new("ShaderNodeMixRGB")
+            preview_mix.location = (-70, 40)
+            edge_mix = nt.nodes.new("ShaderNodeMixRGB")
+            edge_mix.location = (120, -60)
             try:
-                nt.links.new(tex.outputs["Alpha"], alpha_math.inputs[0])
-                nt.links.new(alpha_tex.outputs["Alpha"], alpha_math.inputs[1])
-                alpha_output = alpha_math.outputs[0]
+                preview_mix.blend_type = "MIX"
+                preview_mix.inputs["Color1"].default_value = rgba
+                nt.links.new(tex.outputs["Alpha"], preview_mix.inputs["Factor"])
+                nt.links.new(tex.outputs["Color"], preview_mix.inputs["Color2"])
+                edge_mix.blend_type = "MIX"
+                edge_mix.inputs["Color1"].default_value = rgba
+                nt.links.new(alpha_tex.outputs["Alpha"], edge_mix.inputs["Factor"])
+                nt.links.new(preview_mix.outputs["Color"], edge_mix.inputs["Color2"])
+                nt.links.new(edge_mix.outputs["Color"], emission.inputs["Color"])
             except Exception:  # noqa: BLE001
-                alpha_output = alpha_tex.outputs["Alpha"]
+                _logger.exception("coma_plane: masked color link failed")
         try:
-            nt.links.new(alpha_output, mix.inputs[0])
-            nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
-            nt.links.new(emission.outputs["Emission"], mix.inputs[2])
-            nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+            nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
         except Exception:  # noqa: BLE001
-            _logger.exception("coma_plane: alpha material link failed")
+            _logger.exception("coma_plane: masked material link failed")
     else:
         nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     try:
+        for node in nt.nodes:
+            node.select = False
+        if preview_node is not None:
+            preview_node.select = True
+            nt.nodes.active = preview_node
+        elif alpha_node is not None:
+            nt.nodes.active = out
+        else:
+            nt.nodes.active = emission
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         mat.diffuse_color = rgba
-        mat.blend_method = "BLEND" if alpha_mask_image is not None else "OPAQUE"
-        mat.show_transparent_back = True
-        mat.surface_render_method = "DITHERED" if alpha_mask_image is not None and dither else ("BLENDED" if alpha_mask_image is not None else "DITHERED")
+        mat.blend_method = "OPAQUE"
+        mat.show_transparent_back = False
+        mat.surface_render_method = "DITHERED"
     except Exception:  # noqa: BLE001
         pass
 
@@ -473,6 +490,20 @@ def _set_obj_location(
         obj.location.z = COMA_PLANE_Z_M
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: location set failed")
+
+
+def _set_plane_visibility(obj: bpy.types.Object, coma) -> None:
+    visible = bool(getattr(coma, "visible", True)) and bool(
+        getattr(coma, "paper_visible", True)
+    )
+    try:
+        obj.hide_viewport = not visible
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.hide_render = True
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ---------------- Lookups ----------------
@@ -742,8 +773,8 @@ def ensure_coma_plane(
     obj[PROP_COMA_PLANE_KIND] = "coma_plane"
     obj[PROP_COMA_PLANE_OWNER_ID] = owner_id
     obj[on.PROP_MANAGED] = False  # B-Name Outliner mirror 対象外
-    obj.hide_render = True  # render は別 path
     obj.hide_select = True  # ユーザー誤操作防止
+    _set_plane_visibility(obj, coma)
     try:
         obj.display_type = "TEXTURED"
         obj.show_transparent = True
@@ -810,6 +841,7 @@ def update_coma_plane_geometry(
         mesh.materials[0] = mat
     if scene is not None and work is not None:
         _set_obj_location(obj, scene, work, page, coma)
+    _set_plane_visibility(obj, coma)
     # coma_mask (Boolean reference 専用) の geometry も同期更新
     if page is not None:
         update_coma_mask_geometry(scene, work, page, coma)
@@ -858,6 +890,7 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
             if obj is None:
                 continue
             _set_obj_location(obj, scene, work, page, coma)
+            _set_plane_visibility(obj, coma)
             n += 1
     for coma in getattr(work, "shared_comas", []) or []:
         if not getattr(coma, "id", ""):
@@ -867,6 +900,7 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
         if obj is None:
             continue
         _set_obj_location(obj, scene, work, None, coma)
+        _set_plane_visibility(obj, coma)
         n += 1
     return n
 
@@ -1033,6 +1067,24 @@ def on_coma_background_color_changed(coma) -> None:
     if resolved_coma is None:
         return
     update_coma_plane_color(page, resolved_coma)
+
+
+def on_coma_paper_visible_changed(coma) -> None:
+    """``coma.paper_visible`` 変更時に表示用のコマ面だけを切り替える."""
+    if coma is None:
+        return
+    scene = bpy.context.scene if bpy.context is not None else None
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if work is None or not getattr(work, "loaded", False):
+        return
+    page, resolved_coma = _find_page_and_coma(work, coma)
+    if resolved_coma is None:
+        return
+    page_id = _page_id_for_coma(page)
+    coma_id = str(getattr(resolved_coma, "id", "") or "")
+    obj = find_coma_plane_object(page_id, coma_id)
+    if obj is not None:
+        _set_plane_visibility(obj, resolved_coma)
 
 
 def on_vertex_changed(vertex) -> None:

@@ -6,7 +6,6 @@ import bpy
 from bpy.types import Panel
 
 from ..core.work import get_active_page
-from .edge_style_ui import draw_selected_edge_style_box
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -31,7 +30,6 @@ class BNAME_PT_coma_tools(Panel):
             text="枠線カットツール (F)",
             icon="SCULPTMODE_HLT",
         )
-        draw_selected_edge_style_box(layout, context)
 
 
 _CLASSES = (

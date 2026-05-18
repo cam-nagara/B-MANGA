@@ -283,7 +283,7 @@ def _assert_requested_state(work) -> dict[str, object]:
         and getattr(mat, "surface_render_method", "") == "DITHERED"
     ]
     if not dither_mats:
-        raise AssertionError("ディザ化したコマ面の透明素材が見つかりません")
+        raise AssertionError("ディザ化したコマ面のボカシ素材が見つかりません")
 
     brush_border_objects = [
         obj for obj in bpy.data.objects
@@ -439,13 +439,16 @@ def _run_visual_audit() -> None:
         shots: list[str] = []
         with _view3d_override():
             bpy.ops.bname.view_fit_all("EXEC_DEFAULT")
+            if bpy.context.space_data.shading.type != "MATERIAL":
+                raise AssertionError("ボカシブラシ使用時にマテリアルプレビューへ切り替わっていません")
         shots.append(_screenshot("01_all_pages_fit.png"))
 
         with _view3d_override():
             work.active_page_index = 1
             bpy.context.scene.bname_overview_mode = False
             bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
-            bpy.context.space_data.shading.type = "MATERIAL"
+            if bpy.context.space_data.shading.type != "MATERIAL":
+                raise AssertionError("ページに合わせる後にマテリアルプレビューへ切り替わっていません")
             rv3d = bpy.context.space_data.region_3d
             rv3d.view_distance = max(0.01, float(rv3d.view_distance) * 0.36)
         shots.append(_screenshot("02_blur_brush_zoom.png"))

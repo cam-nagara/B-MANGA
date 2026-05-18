@@ -10,23 +10,11 @@
     "corner": { "type": "square", "radiusMm": 0.0 },
     "blurAmount": 0.5,
     "blurDither": false,
-    "visible": false,
-    "perEdge": {
-      "top": { "useOverride": false },
-      "right": { "useOverride": false },
-      "bottom": { "useOverride": false },
-      "left": { "useOverride": false }
-    }
+    "visible": false
   },
   "whiteMargin": {
     "enabled": false,
     "widthMm": 0.37,
-    "color": "#FFFFFF",
-    "perEdge": {
-      "top": { "useOverride": false },
-      "right": { "useOverride": false },
-      "bottom": { "useOverride": false },
-      "left": { "useOverride": false }
-    }
+    "color": "#FFFFFF"
   }
 }

@@ -27,16 +27,6 @@ _PX_PER_MM = 3.0
 _MIN_IMAGE_SIZE = 64
 _MAX_IMAGE_SIZE = 1024
 _SIGNATURE_PROP = "bname_border_alpha_signature"
-_BAYER_8X8 = (
-    (0, 48, 12, 60, 3, 51, 15, 63),
-    (32, 16, 44, 28, 35, 19, 47, 31),
-    (8, 56, 4, 52, 11, 59, 7, 55),
-    (40, 24, 36, 20, 43, 27, 39, 23),
-    (2, 50, 14, 62, 1, 49, 13, 61),
-    (34, 18, 46, 30, 33, 17, 45, 29),
-    (10, 58, 6, 54, 9, 57, 5, 53),
-    (42, 26, 38, 22, 41, 25, 37, 21),
-)
 
 
 def object_name(page_id: str, coma_id: str) -> str:
@@ -79,6 +69,12 @@ def ensure_coma_plane_alpha_image(
     height_px = _texture_size(max_y - min_y)
     name = plane_alpha_image_name(page_id, coma_id)
     image = bpy.data.images.get(name)
+    if image is not None and str(getattr(image, "source", "") or "") != "GENERATED":
+        try:
+            bpy.data.images.remove(image)
+        except Exception:  # noqa: BLE001
+            pass
+        image = None
     if image is None or image.size[0] != width_px or image.size[1] != height_px:
         if image is not None:
             try:
@@ -88,6 +84,7 @@ def ensure_coma_plane_alpha_image(
         image = bpy.data.images.new(name, width=width_px, height=height_px, alpha=True, float_buffer=False)
     try:
         image.colorspace_settings.name = "Non-Color"
+        image.generated_color = (1.0, 1.0, 1.0, 0.0)
     except Exception:  # noqa: BLE001
         pass
     signature = _plane_alpha_signature(
@@ -400,16 +397,13 @@ def _alpha_pixels(
     core_mm, fade_mm, total_mm = _brush_width_parts(line_w, blur)
     r, g, b = float(color[0]), float(color[1]), float(color[2])
     br, bg, bb = _background_rgb(background)
+    alpha_values: list[float] = [0.0] * (width_px * height_px)
     pixels: list[float] = [0.0] * (width_px * height_px * 4)
-    for offset in range(0, len(pixels), 4):
-        pixels[offset] = br
-        pixels[offset + 1] = bg
-        pixels[offset + 2] = bb
     for y_px in range(height_px):
         y = min_y + ((y_px + 0.5) / height_px) * box_h
         for x_px in range(width_px):
             x = min_x + ((x_px + 0.5) / width_px) * box_w
-            alpha = _alpha_at_point(
+            alpha_values[y_px * width_px + x_px] = _alpha_at_point(
                 x,
                 y,
                 points,
@@ -417,10 +411,12 @@ def _alpha_pixels(
                 fade_mm,
                 total_mm,
                 color_alpha,
-                dither=dither,
-                x_px=x_px,
-                y_px=y_px,
             )
+    if dither:
+        alpha_values = _error_diffuse_alpha(alpha_values, width_px, height_px, color_alpha)
+    for y_px in range(height_px):
+        for x_px in range(width_px):
+            alpha = alpha_values[y_px * width_px + x_px]
             offset = (y_px * width_px + x_px) * 4
             display_alpha = alpha / max(color_alpha, 1.0e-6)
             pixels[offset] = br + (r - br) * display_alpha
@@ -445,20 +441,23 @@ def _plane_alpha_pixels(
     box_h = max(max_y - min_y, 1.0e-6)
     core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), max(0.0, min(1.0, float(blur_amount))))
     fade_total = max(1.0e-6, core_mm + fade_mm if total_mm > 0.0 else float(width_mm))
+    alpha_values: list[float] = [0.0] * (width_px * height_px)
     pixels: list[float] = [0.0] * (width_px * height_px * 4)
     for y_px in range(height_px):
         y = min_y + (y_px / max(1, height_px - 1)) * box_h
         for x_px in range(width_px):
             x = min_x + (x_px / max(1, width_px - 1)) * box_w
-            alpha = _plane_alpha_at_point(
+            alpha_values[y_px * width_px + x_px] = _plane_alpha_at_point(
                 x,
                 y,
                 points,
                 fade_total,
-                dither=dither,
-                x_px=x_px,
-                y_px=y_px,
             )
+    if dither:
+        alpha_values = _error_diffuse_alpha(alpha_values, width_px, height_px, 1.0)
+    for y_px in range(height_px):
+        for x_px in range(width_px):
+            alpha = alpha_values[y_px * width_px + x_px]
             offset = (y_px * width_px + x_px) * 4
             pixels[offset] = 1.0
             pixels[offset + 1] = 1.0
@@ -498,10 +497,9 @@ def _cache_sample_ok(
             fade_mm,
             total_mm,
             color_alpha,
-            dither=dither,
-            x_px=x_px,
-            y_px=y_px,
         )
+        if dither:
+            expected = color_alpha if expected >= color_alpha * 0.5 else 0.0
         actual = float(image.pixels[(y_px * width_px + x_px) * 4 + 3])
     except Exception:  # noqa: BLE001
         return False
@@ -534,11 +532,17 @@ def _plane_cache_sample_ok(
                 y,
                 points,
                 fade_total,
-                dither=dither,
-                x_px=x_px,
-                y_px=y_px,
             )
+            if dither:
+                expected = 1.0 if expected >= 0.5 else 0.0
             actual = float(image.pixels[(y_px * width_px + x_px) * 4 + 3])
+            base = (y_px * width_px + x_px) * 4
+            if (
+                float(image.pixels[base]) < 0.95
+                or float(image.pixels[base + 1]) < 0.95
+                or float(image.pixels[base + 2]) < 0.95
+            ):
+                return False
             if abs(actual - expected) > 1.0e-4:
                 return False
     except Exception:  # noqa: BLE001
@@ -554,19 +558,11 @@ def _alpha_at_point(
     fade_mm: float,
     total_mm: float,
     color_alpha: float,
-    *,
-    dither: bool,
-    x_px: int,
-    y_px: int,
 ) -> float:
     if not _point_in_polygon(x, y, points):
         return 0.0
     dist = _distance_to_edges(x, y, points)
-    alpha = _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
-    if dither and 0.0 < alpha < color_alpha:
-        threshold = (_BAYER_8X8[y_px & 7][x_px & 7] + 0.5) / 64.0
-        alpha = color_alpha if alpha / max(color_alpha, 1.0e-6) >= threshold else 0.0
-    return alpha
+    return _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
 
 
 def _plane_alpha_at_point(
@@ -574,20 +570,55 @@ def _plane_alpha_at_point(
     y: float,
     points: Sequence[tuple[float, float]],
     fade_total_mm: float,
-    *,
-    dither: bool,
-    x_px: int,
-    y_px: int,
 ) -> float:
     if not _point_in_polygon(x, y, points):
         return 0.0
     dist = _distance_to_edges(x, y, points)
     t = max(0.0, min(1.0, dist / max(1.0e-6, float(fade_total_mm))))
-    alpha = t * t * (3.0 - 2.0 * t)
-    if dither and 0.0 < alpha < 1.0:
-        threshold = (_BAYER_8X8[y_px & 7][x_px & 7] + 0.5) / 64.0
-        alpha = 1.0 if alpha >= threshold else 0.0
-    return alpha
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _error_diffuse_alpha(
+    values: Sequence[float],
+    width_px: int,
+    height_px: int,
+    max_alpha: float,
+) -> list[float]:
+    """Floyd-Steinberg 誤差拡散で中間アルファを二値化する."""
+    width = max(0, int(width_px))
+    height = max(0, int(height_px))
+    upper = max(0.0, min(1.0, float(max_alpha)))
+    if width <= 0 or height <= 0 or upper <= 0.0:
+        return [0.0] * (width * height)
+    data = [max(0.0, min(upper, float(v))) for v in values]
+    if len(data) < width * height:
+        data.extend([0.0] * (width * height - len(data)))
+    threshold = upper * 0.5
+
+    def add_error(x: int, y: int, error: float, weight: float) -> None:
+        if x < 0 or x >= width or y < 0 or y >= height:
+            return
+        idx = y * width + x
+        data[idx] = max(0.0, min(upper, data[idx] + error * weight))
+
+    for y in range(height):
+        if y & 1:
+            x_iter = range(width - 1, -1, -1)
+            forward = -1
+        else:
+            x_iter = range(width)
+            forward = 1
+        for x in x_iter:
+            idx = y * width + x
+            old = max(0.0, min(upper, data[idx]))
+            new = upper if old >= threshold else 0.0
+            error = old - new
+            data[idx] = new
+            add_error(x + forward, y, error, 7.0 / 16.0)
+            add_error(x - forward, y + 1, error, 3.0 / 16.0)
+            add_error(x, y + 1, error, 5.0 / 16.0)
+            add_error(x + forward, y + 1, error, 1.0 / 16.0)
+    return data[: width * height]
 
 
 def _brush_width_parts(line_w: float, blur: float) -> tuple[float, float, float]:
@@ -635,6 +666,7 @@ def _image_signature(
     rounded_bg = tuple(round(float(v), 5) for v in _background_rgb(background))
     return repr(
         (
+            "border-alpha-v2",
             rounded_points,
             rounded_bounds,
             int(width_px),
@@ -662,7 +694,7 @@ def _plane_alpha_signature(
     rounded_bounds = tuple(round(float(v), 4) for v in bounds)
     return repr(
         (
-            "plane-alpha-v2",
+            "plane-alpha-v4",
             rounded_points,
             rounded_bounds,
             int(width_px),

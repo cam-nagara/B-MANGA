@@ -57,6 +57,15 @@ def _find_view3d_region(context):
     return area, region, rv3d
 
 
+def _refresh_bname_shading(context) -> None:
+    try:
+        from ..ui import overlay as _overlay
+
+        _overlay.apply_bname_shading_mode(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("view: shading refresh failed")
+
+
 def _find_window_region(area):
     if area is None:
         return None
@@ -378,6 +387,7 @@ class BNAME_OT_view_fit_page(Operator):
         if not ok:
             self.report({"ERROR"}, "フィットに失敗しました")
             return {"CANCELLED"}
+        _refresh_bname_shading(context)
         # 画面リドロー
         for a in context.screen.areas:
             if a.type == "VIEW_3D":
@@ -423,6 +433,7 @@ class BNAME_OT_view_fit_all(Operator):
         if not ok:
             self.report({"ERROR"}, "フィットに失敗しました")
             return {"CANCELLED"}
+        _refresh_bname_shading(context)
         for a in context.screen.areas:
             if a.type == "VIEW_3D":
                 a.tag_redraw()

@@ -4,8 +4,7 @@
 - グローバル: アドオン同梱の ``presets/borders/``
 - 作品ローカル: ``MyWork.bname/assets/borders/``
 
-プリセットには ``BNameComaBorder`` と ``BNameComaWhiteMargin`` の内容
-(辺ごとオーバーライド含む) を ``io/schema.py`` の dict 変換を介して保存する。
+プリセットには枠線と白フチの全体設定を ``io/schema.py`` の dict 変換を介して保存する。
 """
 
 from __future__ import annotations
@@ -87,9 +86,6 @@ def apply_preset_to_coma(preset: BorderPreset, coma) -> None:
     """プリセットの枠線・白フチ設定を 1 つのコマへ適用."""
     schema.coma_border_from_dict(coma.border, preset.data.get("border", {}))
     schema.coma_white_margin_from_dict(coma.white_margin, preset.data.get("whiteMargin", {}))
-    edge_styles = getattr(coma, "edge_styles", None)
-    if edge_styles is not None:
-        edge_styles.clear()
 
 
 def preset_dict_from_coma(coma, name: str, description: str = "") -> dict[str, Any]:

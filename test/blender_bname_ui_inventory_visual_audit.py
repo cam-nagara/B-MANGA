@@ -595,7 +595,7 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "流線",
         "レイヤーフォルダ",
         "現在のページを書き出し",
-        "全ページを一括書き出し",
+        "指定範囲を書き出し",
         "PDF 結合書き出し",
     )
     return [label for label in required if label not in texts]

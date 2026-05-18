@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
-from . import export_psd, export_raster
+from . import export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
 from ..utils import border_geom, log, coma_preview
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
@@ -20,7 +20,7 @@ from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 _logger = log.get_logger(__name__)
 
 try:
-    from PIL import Image, ImageChops, ImageCms, ImageDraw, ImageEnhance, ImageFont  # type: ignore
+    from PIL import Image, ImageChops, ImageCms, ImageDraw, ImageEnhance, ImageFilter, ImageFont  # type: ignore
 
     _HAS_PIL = True
 except ImportError:  # pragma: no cover
@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover
     ImageCms = None  # type: ignore
     ImageDraw = None  # type: ignore
     ImageEnhance = None  # type: ignore
+    ImageFilter = None  # type: ignore
     ImageFont = None  # type: ignore
     _HAS_PIL = False
 
@@ -378,7 +379,7 @@ def _intersects_mm(a: tuple[float, float, float, float], b: tuple[float, float, 
     return not (a[2] <= b[0] or a[0] >= b[2] or a[3] <= b[1] or a[1] >= b[3])
 
 
-def _coma_polygon_mm(entry) -> list[tuple[float, float]]:
+def _coma_base_polygon_mm(entry) -> list[tuple[float, float]]:
     if entry.shape_type == "rect":
         return [
             (float(entry.rect_x_mm), float(entry.rect_y_mm)),
@@ -389,6 +390,23 @@ def _coma_polygon_mm(entry) -> list[tuple[float, float]]:
     if entry.shape_type == "polygon" and len(entry.vertices) >= 3:
         return [(float(v.x_mm), float(v.y_mm)) for v in entry.vertices]
     return []
+
+
+def _coma_polygon_mm(entry) -> list[tuple[float, float]]:
+    pts = _coma_base_polygon_mm(entry)
+    if len(pts) < 3:
+        return pts
+    border = getattr(entry, "border", None)
+    corner_type = str(getattr(border, "corner_type", "square") or "square")
+    radius_mm = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
+    if corner_type == "square" or radius_mm <= 0.0:
+        return pts
+    try:
+        styled = border_geom.styled_closed_path_mm(pts, corner_type, radius_mm)
+    except Exception:  # noqa: BLE001
+        _logger.exception("export: styled coma polygon failed")
+        return pts
+    return styled if len(styled) >= 3 else pts
 
 
 def _coma_group_name(entry) -> str:
@@ -519,6 +537,8 @@ def _draw_styled_loop(
 
 
 def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | None:
+    if export_soft_mask.brush_edge_enabled(entry):
+        return None
     poly_mm = _coma_polygon_mm(entry)
     bbox = _points_bbox(poly_mm)
     if bbox is None:
@@ -530,21 +550,10 @@ def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLay
     draw = ImageDraw.Draw(canvas.image)
     base_color = _rgb255(border.color)
     base_width = max(1, int(round(mm_to_px(float(border.width_mm), dpi))))
-    override_map = {int(style.edge_index): style for style in entry.edge_styles}
-    edge_overrides = []
-    if entry.shape_type == "rect":
-        edge_overrides = [border.edge_bottom, border.edge_right, border.edge_top, border.edge_left]
-    rect_edge_override = any(getattr(ov, "use_override", False) for ov in edge_overrides)
     if (
-        len(entry.edge_styles) == 0
-        and not rect_edge_override
-        and getattr(border, "style", "solid") == "solid"
+        getattr(border, "style", "solid") == "solid"
     ):
-        path_mm = border_geom.styled_closed_path_mm(
-            poly_mm,
-            getattr(border, "corner_type", "square"),
-            float(getattr(border, "corner_radius_mm", 0.0)),
-        )
+        path_mm = poly_mm
         loops = border_geom.stroke_loops_mm(path_mm, float(border.width_mm))
         if loops is not None:
             outer_px = canvas.points_px(loops[0])
@@ -562,18 +571,6 @@ def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLay
         style_name = getattr(border, "style", "solid")
         color = base_color
         width = base_width
-        if i in override_map:
-            ov = override_map[i]
-            color = _rgb255(ov.color)
-            width = max(1, int(round(mm_to_px(float(ov.width_mm), dpi))))
-        elif i < len(edge_overrides):
-            ov = edge_overrides[i]
-            if getattr(ov, "use_override", False):
-                if not getattr(ov, "visible", True):
-                    continue
-                style_name = getattr(ov, "style", style_name)
-                color = _rgb255(ov.color)
-                width = max(1, int(round(mm_to_px(float(ov.width_mm), dpi))))
         _draw_styled_segment(
             draw,
             poly_px[i],
@@ -591,58 +588,42 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
     if bbox is None:
         return None
     wm = entry.white_margin
-    if entry.shape_type != "rect":
-        canvas = _canvas_for_bbox(
-            (bbox[0] - wm.width_mm, bbox[1] - wm.width_mm, bbox[2] + wm.width_mm, bbox[3] + wm.width_mm),
-            canvas_height_px,
-            dpi,
-        )
-        if canvas is None:
-            return None
-        color = _rgb255(wm.color)
-        ImageDraw.Draw(canvas.image).rectangle((0, 0, canvas.image.width, canvas.image.height), fill=color)
-        return ExportLayer("white_margin", canvas.image, canvas.left, canvas.top)
+    if getattr(entry.border, "style", "solid") == "brush":
+        return None
+    base_width = max(0.0, float(getattr(wm, "width_mm", 0.0) or 0.0))
+    if not bool(getattr(wm, "enabled", False)) or base_width <= 0.0:
+        return None
 
-    rect = Rect(float(entry.rect_x_mm), float(entry.rect_y_mm), float(entry.rect_width_mm), float(entry.rect_height_mm))
-    widths = [float(wm.width_mm)] * 4
-    enabled = [bool(wm.enabled)] * 4
-    edge_overrides = [wm.edge_bottom, wm.edge_right, wm.edge_top, wm.edge_left]
-    for idx, edge in enumerate(edge_overrides):
-        if getattr(edge, "use_override", False):
-            widths[idx] = float(edge.width_mm)
-            enabled[idx] = bool(getattr(edge, "enabled", False))
-    left_w = widths[3] if enabled[3] else 0.0
-    bottom_w = widths[0] if enabled[0] else 0.0
-    right_w = widths[1] if enabled[1] else 0.0
-    top_w = widths[2] if enabled[2] else 0.0
-    bbox_wm = (rect.x - left_w, rect.y - bottom_w, rect.x2 + right_w, rect.y2 + top_w)
-    canvas = _canvas_for_bbox(bbox_wm, canvas_height_px, dpi)
+    path_mm = poly_mm
+    loops = border_geom.stroke_loops_mm(path_mm, base_width * 2.0)
+    if loops is None:
+        return None
+    outer_mm = loops[0]
+    ring_bbox = _points_bbox([*path_mm, *outer_mm])
+    if ring_bbox is None:
+        return None
+    canvas = _canvas_for_bbox(ring_bbox, canvas_height_px, dpi)
     if canvas is None:
         return None
-    draw = ImageDraw.Draw(canvas.image)
     color = _rgb255(wm.color)
-    x0, y0 = canvas.point_px(rect.x, rect.y)
-    x1, y1 = canvas.point_px(rect.x2, rect.y2)
-    left_px = min(x0, x1)
-    right_px = max(x0, x1)
-    top_px = min(y0, y1)
-    bottom_px = max(y0, y1)
-    top_w_px = max(0, int(round(mm_to_px(top_w, dpi))))
-    bottom_w_px = max(0, int(round(mm_to_px(bottom_w, dpi))))
-    left_w_px = max(0, int(round(mm_to_px(left_w, dpi))))
-    right_w_px = max(0, int(round(mm_to_px(right_w, dpi))))
-    if top_w_px > 0:
-        draw.rectangle((left_px - left_w_px, top_px - top_w_px, right_px + right_w_px, top_px), fill=color)
-    if bottom_w_px > 0:
-        draw.rectangle((left_px - left_w_px, bottom_px, right_px + right_w_px, bottom_px + bottom_w_px), fill=color)
-    if left_w_px > 0:
-        draw.rectangle((left_px - left_w_px, top_px, left_px, bottom_px), fill=color)
-    if right_w_px > 0:
-        draw.rectangle((right_px, top_px, right_px + right_w_px, bottom_px), fill=color)
+    draw = ImageDraw.Draw(canvas.image)
+    inner_px = canvas.points_px(path_mm)
+    outer_px = canvas.points_px(outer_mm)
+    for i in range(len(outer_px)):
+        j = (i + 1) % len(outer_px)
+        draw.polygon([inner_px[i], inner_px[j], outer_px[j], outer_px[i]], fill=color)
     return ExportLayer("white_margin", canvas.image, canvas.left, canvas.top)
 
 
-def _draw_coma_background_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | None:
+def _draw_coma_background_layer(
+    entry,
+    canvas_height_px: int,
+    dpi: int,
+    *,
+    include_brush_edge: bool = True,
+) -> ExportLayer | None:
+    if not bool(getattr(entry, "paper_visible", True)):
+        return None
     color_src = getattr(entry, "background_color", (1.0, 1.0, 1.0, 0.0))
     color = _rgb255(color_src)
     if color[3] <= 0:
@@ -651,14 +632,42 @@ def _draw_coma_background_layer(entry, canvas_height_px: int, dpi: int) -> Expor
     bbox = _points_bbox(poly_mm)
     if bbox is None or len(poly_mm) < 3:
         return None
-    canvas = _canvas_for_bbox(bbox, canvas_height_px, dpi)
+    mask_bbox = bbox
+    if include_brush_edge and export_soft_mask.brush_edge_enabled(entry):
+        mask_bbox = export_soft_mask.expand_bbox(bbox, export_soft_mask.brush_soft_width_mm(entry))
+    canvas = _canvas_for_bbox(mask_bbox, canvas_height_px, dpi)
     if canvas is None:
         return None
-    ImageDraw.Draw(canvas.image).polygon(canvas.points_px(poly_mm), fill=color)
+    if include_brush_edge and export_soft_mask.brush_edge_enabled(entry):
+        mask = export_soft_mask.coma_soft_edge_mask(
+            Image,
+            ImageChops,
+            ImageDraw,
+            ImageFilter,
+            entry,
+            poly_mm,
+            mask_bbox,
+            canvas.image.size,
+            dpi,
+        )
+        image = export_soft_mask.apply_mask_alpha(Image, Image.new("RGBA", canvas.image.size, color), mask, color[3])
+        return ExportLayer("background", image, canvas.left, canvas.top)
+    else:
+        ImageDraw.Draw(canvas.image).polygon(canvas.points_px(poly_mm), fill=color)
     return ExportLayer("background", canvas.image, canvas.left, canvas.top)
 
 
-def _render_coma_preview_layer(work, page, entry, canvas_size: tuple[int, int], dpi: int) -> ExportLayer | None:
+def _render_coma_preview_layer(
+    work,
+    page,
+    entry,
+    canvas_size: tuple[int, int],
+    dpi: int,
+    *,
+    include_brush_edge: bool = True,
+) -> ExportLayer | None:
+    if not bool(getattr(entry, "paper_visible", True)):
+        return None
     poly_mm = _coma_polygon_mm(entry)
     bbox = _points_bbox(poly_mm)
     if bbox is None or not work.work_dir:
@@ -669,16 +678,44 @@ def _render_coma_preview_layer(work, page, entry, canvas_size: tuple[int, int], 
     source = _safe_load_image(source_path)
     if source is None:
         return None
-    canvas = _canvas_for_bbox(bbox, canvas_size[1], dpi)
+    mask_bbox = bbox
+    if include_brush_edge and export_soft_mask.brush_edge_enabled(entry):
+        mask_bbox = export_soft_mask.expand_bbox(bbox, export_soft_mask.brush_soft_width_mm(entry))
+    canvas = _canvas_for_bbox(mask_bbox, canvas_size[1], dpi)
     if canvas is None:
         return None
-    source = source.resize(canvas.image.size, Image.LANCZOS)
-    if entry.shape_type == "polygon" and len(poly_mm) >= 3:
-        mask = Image.new("L", canvas.image.size, 0)
-        ImageDraw.Draw(mask).polygon(canvas.points_px(poly_mm), fill=255)
+    if include_brush_edge and export_soft_mask.brush_edge_enabled(entry):
+        left, top, right, bottom = export_soft_mask.local_box_px(bbox, mask_bbox, canvas.image.size)
+        target_size = (max(1, right - left), max(1, bottom - top))
+        source = source.resize(target_size, Image.LANCZOS)
+        content = _empty_rgba(canvas.image.size)
+        content.alpha_composite(source, dest=(left, top))
+        source_alpha = Image.new("L", canvas.image.size, 0)
+        source_alpha.paste(source.getchannel("A"), (left, top))
+        mask = export_soft_mask.coma_soft_edge_mask(
+            Image,
+            ImageChops,
+            ImageDraw,
+            ImageFilter,
+            entry,
+            poly_mm,
+            mask_bbox,
+            canvas.image.size,
+            dpi,
+        )
+        try:
+            mask = ImageChops.multiply(mask, source_alpha)
+        except Exception:  # noqa: BLE001
+            pass
+        canvas.image.paste(content, (0, 0), mask)
+    elif len(poly_mm) >= 3:
+        source = source.resize(canvas.image.size, Image.LANCZOS)
+        mask = export_soft_mask.coma_shape_mask(Image, ImageDraw, poly_mm, bbox, canvas.image.size)
+        try:
+            mask = ImageChops.multiply(mask, source.getchannel("A"))
+        except Exception:  # noqa: BLE001
+            pass
         canvas.image.paste(source, (0, 0), mask)
-    else:
-        canvas.image.paste(source, (0, 0), source)
     return ExportLayer("render", canvas.image, canvas.left, canvas.top)
 
 
@@ -692,7 +729,7 @@ def _render_coma_mask(entry, canvas_height_px: int, dpi: int) -> ExportMask | No
         return None
     mask = Image.new("L", canvas.image.size, 0)
     draw = ImageDraw.Draw(mask)
-    draw.polygon(canvas.points_px(poly_mm), fill=255)
+    draw.polygon(export_soft_mask.local_points_px(poly_mm, bbox, canvas.image.size), fill=255)
     return ExportMask(mask, canvas.left, canvas.top)
 
 
@@ -1359,11 +1396,23 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             wm_layer = _draw_coma_white_margin_layer(panel, canvas_size[1], dpi)
             if wm_layer is not None:
                 layers.append(replace(wm_layer, group_path=coma_group))
-        bg_layer = _draw_coma_background_layer(panel, canvas_size[1], dpi)
+        bg_layer = _draw_coma_background_layer(
+            panel,
+            canvas_size[1],
+            dpi,
+            include_brush_edge=bool(options.include_border),
+        )
         if bg_layer is not None:
             layers.append(replace(bg_layer, group_path=content_group))
         if options.include_coma_previews:
-            render_layer = _render_coma_preview_layer(work, page, panel, canvas_size, dpi)
+            render_layer = _render_coma_preview_layer(
+                work,
+                page,
+                panel,
+                canvas_size,
+                dpi,
+                include_brush_edge=bool(options.include_border),
+            )
             if render_layer is not None:
                 layers.append(replace(render_layer, group_path=content_group))
         if options.include_border and getattr(panel.border, "visible", False):
@@ -1558,6 +1607,10 @@ def render_page(work, page, options: ExportOptions) -> Any:
 def merge_pdf(page_image_paths: list[Path], out_path: Path) -> bool:
     if not _HAS_PIL or not page_image_paths:
         return False
+    try:
+        Image.init()
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("pdf: failed to initialize Pillow image plugins: %s", exc)
     images = []
     for path in page_image_paths:
         try:

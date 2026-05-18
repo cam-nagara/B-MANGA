@@ -261,6 +261,10 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         "draw_rect_outline": overlay._draw_rect_outline,
         "draw_rect_fill": overlay._draw_rect_fill,
         "draw_polygon_fill": overlay._draw_polygon_fill,
+        "draw_stroke_band_fill": overlay._draw_stroke_band_fill,
+        "draw_segments_mm": overlay._draw_segments_mm,
+        "draw_styled_segment_mm": overlay._draw_styled_segment_mm,
+        "draw_frame_with_hole": overlay._draw_frame_with_hole,
         "draw_polyline_loop": overlay._draw_polyline_loop,
         "draw_balloons": overlay_balloon.draw_balloons,
         "draw_text_guides": overlay_text.draw_text_guides,
@@ -285,6 +289,28 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         if calls:
             raise AssertionError(f"coma selection handles should not be drawn: {calls}")
 
+        calls.clear()
+        coma.border.visible = True
+        coma.border.style = "brush"
+        coma.border.width_mm = 3.0
+        coma.white_margin.enabled = True
+        coma.white_margin.width_mm = 2.0
+        overlay._draw_rect_fill = mark("coma_white_margin_rect")
+        overlay._draw_stroke_band_fill = mark("coma_stroke_band")
+        overlay._draw_segments_mm = mark("coma_selection_or_border")
+        overlay._draw_styled_segment_mm = mark("coma_styled_border")
+        overlay._draw_frame_with_hole = mark("coma_white_margin_frame")
+        overlay._draw_comas(work, page)
+        forbidden = {
+            "coma_white_margin_rect",
+            "coma_stroke_band",
+            "coma_styled_border",
+            "coma_white_margin_frame",
+        }
+        if any(name in forbidden for name in calls):
+            raise AssertionError(f"coma border/white margin overlay should not be drawn: {calls}")
+
+        calls.clear()
         coma.border.visible = False
         coma.white_margin.enabled = False
         coma.background_color = (0.2, 0.4, 0.8, 1.0)
@@ -316,6 +342,10 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         overlay._draw_rect_outline = original["draw_rect_outline"]
         overlay._draw_rect_fill = original["draw_rect_fill"]
         overlay._draw_polygon_fill = original["draw_polygon_fill"]
+        overlay._draw_stroke_band_fill = original["draw_stroke_band_fill"]
+        overlay._draw_segments_mm = original["draw_segments_mm"]
+        overlay._draw_styled_segment_mm = original["draw_styled_segment_mm"]
+        overlay._draw_frame_with_hole = original["draw_frame_with_hole"]
         overlay._draw_polyline_loop = original["draw_polyline_loop"]
         overlay_balloon.draw_balloons = original["draw_balloons"]
         overlay_text.draw_text_guides = original["draw_text_guides"]

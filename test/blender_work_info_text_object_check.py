@@ -35,7 +35,11 @@ def _work_info_objects(work_info_text):
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
+    from bname_dev_work_info_text.ui import overlay
     from bname_dev_work_info_text.utils import page_grid, work_info_text_object
+
+    assert not hasattr(overlay, "_draw_work_info_texts"), "作品情報の古いオーバーレイ描画が残っています"
+    assert not hasattr(overlay, "_draw_work_info_texts_pixel"), "作品情報の古いオーバーレイ描画が残っています"
 
     scene = bpy.context.scene
     work = scene.bname_work

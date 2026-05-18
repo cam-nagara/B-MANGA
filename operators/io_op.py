@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from ..core.mode import MODE_PAGE, get_mode
@@ -63,6 +63,7 @@ _FORMAT_ITEMS = (
 _FLAT_FORMAT_ITEMS = (
     ("png", "PNG", ""),
     ("jpeg", "JPEG", ""),
+    ("tiff", "TIFF", ""),
 )
 
 _OUTPUT_MODE_ITEMS = (
@@ -94,6 +95,7 @@ def _resolve_filename(
         template
         .replace("{workName}", info.work_name or "work")
         .replace("{episode}", f"{info.episode_number:02d}")
+        .replace("{pageStart}", f"{index:04d}")
         .replace("{page}", f"{index:04d}")
         .replace("{pageEnd}", f"{(page_end if page_end is not None else index):04d}")
         .replace("{side}", side)
@@ -131,6 +133,29 @@ def _unique_path(path: Path) -> Path:
         if not candidate.exists():
             return candidate
     raise FileExistsError(f"出力ファイル名が重複しています: {path.name}")
+
+
+def _same_page(left, right) -> bool:
+    if left == right:
+        return True
+    left_id = str(getattr(left, "id", "") or "")
+    right_id = str(getattr(right, "id", "") or "")
+    return bool(left_id and left_id == right_id)
+
+
+def _page_number_for_page(work, page) -> tuple[int, int | None]:
+    current_number = int(getattr(work.work_info, "page_number_start", 1))
+    for _page_index, candidate in page_range.iter_in_range_pages(work):
+        is_spread = bool(getattr(candidate, "spread", False))
+        page_end = current_number + 1 if is_spread else None
+        if _same_page(candidate, page):
+            return current_number, page_end
+        current_number += 2 if is_spread else 1
+    try:
+        fallback = int(getattr(work, "active_page_index", 0)) + int(getattr(work.work_info, "page_number_start", 1))
+    except Exception:  # noqa: BLE001
+        fallback = int(getattr(work.work_info, "page_number_start", 1))
+    return fallback, None
 
 
 def _default_export_dir(work) -> Path:
@@ -203,10 +228,21 @@ def _selected_export_units(
     return units
 
 
-def _scaled_dpi(work, scale_percent: int) -> int:
+def _scaled_dpi(work, scale_percent: float) -> int:
     base = int(getattr(work.paper, "dpi", 600))
-    scale = max(1, int(scale_percent)) / 100.0
+    scale = max(1.0, float(scale_percent)) / 100.0
     return max(1, int(round(base * scale)))
+
+
+def _include_flags(operator) -> dict[str, bool]:
+    return {
+        "include_border": bool(getattr(operator, "include_border", True)),
+        "include_white_margin": bool(getattr(operator, "include_white_margin", True)),
+        "include_nombre": bool(getattr(operator, "include_nombre", True)),
+        "include_work_info": bool(getattr(operator, "include_work_info", True)),
+        "include_tombo": bool(getattr(operator, "include_tombo", False)),
+        "include_paper_color": bool(getattr(operator, "include_paper_color", True)),
+    }
 
 
 def _export_all_page_unit(
@@ -265,16 +301,13 @@ def _export_all_page_units(
 
 def _export_all_output_settings(operator, work) -> tuple[str, ExportOptions]:
     output_format = "psd" if operator.output_mode == "layered" else operator.flat_format
-    dpi_override = (
-        _scaled_dpi(work, operator.flat_scale_percent)
-        if operator.output_mode == "flat"
-        else 0
-    )
+    dpi_override = _scaled_dpi(work, float(getattr(operator, "flat_scale_percent", 100.0) or 100.0))
     return output_format, ExportOptions(
         color_mode=operator.color_mode,
         format=output_format,
         area=operator.area,
         dpi_override=dpi_override,
+        **_include_flags(operator),
     )
 
 
@@ -288,10 +321,19 @@ class BNAME_OT_export_page(Operator):
     format: EnumProperty(name="形式", items=_FORMAT_ITEMS, default="png")  # type: ignore[valid-type]
     color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
     area: EnumProperty(name="範囲", items=_AREA_ITEMS, default="finish")  # type: ignore[valid-type]
+    scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="出力サイズ",
+        default=100.0,
+        min=1.0,
+        soft_max=400.0,
+        subtype="PERCENTAGE",
+    )
     dpi_override: IntProperty(name="DPI 上書き (0 で既定)", default=0, min=0, soft_max=1200)  # type: ignore[valid-type]
     include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
     include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
     include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
+    include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
+    include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
     include_paper_color: BoolProperty(name="用紙色", default=True)  # type: ignore[valid-type]
 
     @classmethod
@@ -306,6 +348,20 @@ class BNAME_OT_export_page(Operator):
             return {"CANCELLED"}
         return context.window_manager.invoke_props_dialog(self)
 
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "format")
+        layout.prop(self, "color_mode")
+        layout.prop(self, "area")
+        layout.prop(self, "scale_percent")
+        box = layout.box()
+        box.prop(self, "include_border")
+        box.prop(self, "include_white_margin")
+        box.prop(self, "include_nombre")
+        box.prop(self, "include_work_info")
+        box.prop(self, "include_tombo")
+        box.prop(self, "include_paper_color")
+
     def execute(self, context):
         work = get_work(context)
         page = get_active_page(context)
@@ -318,19 +374,20 @@ class BNAME_OT_export_page(Operator):
             color_mode=self.color_mode,
             format=self.format,
             area=self.area,
-            dpi_override=self.dpi_override,
+            dpi_override=int(self.dpi_override) if int(self.dpi_override) > 0 else _scaled_dpi(work, self.scale_percent),
             include_border=self.include_border,
             include_white_margin=self.include_white_margin,
             include_nombre=self.include_nombre,
+            include_work_info=self.include_work_info,
+            include_tombo=self.include_tombo,
             include_paper_color=self.include_paper_color,
         )
         try:
             work_dir = Path(work.work_dir)
             out_dir = paths.exports_dir(work_dir) / datetime.now().strftime("%Y-%m-%d_%H%M%S")
             out_dir.mkdir(parents=True, exist_ok=True)
-            idx_text = page.id.split("-", 1)[0].lstrip("p") if page.id else "1"
-            idx = int(idx_text)
-            name = _resolve_filename("{workName}_{episode}_{page}", work, page, idx)
+            page_number, page_end = _page_number_for_page(work, page)
+            name = _resolve_filename("{workName}_{episode}_{page}", work, page, page_number, page_end=page_end)
             ext = self.format.replace("jpeg", "jpg")
             out = out_dir / f"{name}.{ext}"
             if self.format == "psd":
@@ -349,10 +406,10 @@ class BNAME_OT_export_page(Operator):
 
 
 class BNAME_OT_export_all_pages(Operator):
-    """全ページを一括書き出し."""
+    """指定範囲のページを書き出し."""
 
     bl_idname = "bname.export_all_pages"
-    bl_label = "全ページを一括書き出し"
+    bl_label = "指定範囲を書き出し"
     bl_options = {"REGISTER"}
 
     filepath: StringProperty(name="保存先", subtype="DIR_PATH", default="")  # type: ignore[valid-type]
@@ -361,15 +418,21 @@ class BNAME_OT_export_all_pages(Operator):
     split_spreads: BoolProperty(name="見開きを分ける", default=False)  # type: ignore[valid-type]
     output_mode: EnumProperty(name="出力", items=_OUTPUT_MODE_ITEMS, default="flat")  # type: ignore[valid-type]
     flat_format: EnumProperty(name="統合画像形式", items=_FLAT_FORMAT_ITEMS, default="png")  # type: ignore[valid-type]
-    flat_scale_percent: IntProperty(  # type: ignore[valid-type]
-        name="統合画像倍率",
-        default=25,
-        min=1,
-        soft_max=400,
+    flat_scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="出力サイズ",
+        default=100.0,
+        min=1.0,
+        soft_max=400.0,
         subtype="PERCENTAGE",
     )
     color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
     area: EnumProperty(name="範囲", items=_AREA_ITEMS, default="finish")  # type: ignore[valid-type]
+    include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
+    include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
+    include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
+    include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
+    include_paper_color: BoolProperty(name="用紙色", default=True)  # type: ignore[valid-type]
     filename_template: StringProperty(  # type: ignore[valid-type]
         name="ファイル名",
         default="{workName}_{episode}_{page}",
@@ -405,15 +468,22 @@ class BNAME_OT_export_all_pages(Operator):
         row.prop(self, "output_end")
         layout.prop(self, "split_spreads")
         layout.prop(self, "output_mode", expand=True)
+        layout.prop(self, "flat_scale_percent")
         if self.output_mode == "flat":
             box = layout.box()
             box.prop(self, "flat_format")
-            box.prop(self, "flat_scale_percent")
         else:
             if not export_pipeline.can_write_layered_psd():
                 layout.label(text="PSD レイヤー出力を利用できません", icon="ERROR")
         layout.prop(self, "color_mode")
         layout.prop(self, "area")
+        box = layout.box()
+        box.prop(self, "include_border")
+        box.prop(self, "include_white_margin")
+        box.prop(self, "include_nombre")
+        box.prop(self, "include_work_info")
+        box.prop(self, "include_tombo")
+        box.prop(self, "include_paper_color")
         layout.prop(self, "filename_template")
 
     def execute(self, context):
@@ -472,6 +542,22 @@ class BNAME_OT_export_pdf(Operator):
 
     area: EnumProperty(name="範囲", items=_AREA_ITEMS, default="finish")  # type: ignore[valid-type]
     color_mode: EnumProperty(name="カラーモード", items=_COLOR_MODE_ITEMS, default="rgb")  # type: ignore[valid-type]
+    output_start: IntProperty(name="開始ページ", default=1, min=0, soft_max=9999)  # type: ignore[valid-type]
+    output_end: IntProperty(name="終了ページ", default=1, min=0, soft_max=9999)  # type: ignore[valid-type]
+    split_spreads: BoolProperty(name="見開きを分ける", default=False)  # type: ignore[valid-type]
+    scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="出力サイズ",
+        default=100.0,
+        min=1.0,
+        soft_max=400.0,
+        subtype="PERCENTAGE",
+    )
+    include_border: BoolProperty(name="コマ枠線", default=True)  # type: ignore[valid-type]
+    include_white_margin: BoolProperty(name="白フチ", default=True)  # type: ignore[valid-type]
+    include_nombre: BoolProperty(name="ノンブル", default=True)  # type: ignore[valid-type]
+    include_work_info: BoolProperty(name="作品情報", default=True)  # type: ignore[valid-type]
+    include_tombo: BoolProperty(name="トンボ", default=False)  # type: ignore[valid-type]
+    include_paper_color: BoolProperty(name="用紙色", default=True)  # type: ignore[valid-type]
 
     @classmethod
     def poll(cls, context):
@@ -484,11 +570,35 @@ class BNAME_OT_export_pdf(Operator):
         )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
+        work = get_work(context)
+        if work is not None:
+            self.output_start = int(getattr(work.work_info, "page_number_start", 1))
+            self.output_end = int(getattr(work.work_info, "page_number_end", self.output_start))
+        return context.window_manager.invoke_props_dialog(self, width=420)
+
+    def draw(self, _context):
+        layout = self.layout
+        row = layout.row(align=True)
+        row.prop(self, "output_start")
+        row.prop(self, "output_end")
+        layout.prop(self, "split_spreads")
+        layout.prop(self, "scale_percent")
+        layout.prop(self, "area")
+        layout.prop(self, "color_mode")
+        box = layout.box()
+        box.prop(self, "include_border")
+        box.prop(self, "include_white_margin")
+        box.prop(self, "include_nombre")
+        box.prop(self, "include_work_info")
+        box.prop(self, "include_tombo")
+        box.prop(self, "include_paper_color")
 
     def execute(self, context):
         work = get_work(context)
         if work is None or not work.loaded:
+            return {"CANCELLED"}
+        if self.output_start > self.output_end:
+            self.report({"ERROR"}, "ページ範囲の開始が終了より後になっています")
             return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         out_dir = paths.exports_dir(work_dir) / datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -497,21 +607,32 @@ class BNAME_OT_export_pdf(Operator):
             color_mode=self.color_mode,
             format="png",  # 中間画像は PNG、最終 PDF へ結合
             area=self.area,
+            dpi_override=_scaled_dpi(work, self.scale_percent),
+            **_include_flags(self),
         )
-        export_pages = list(page_range.iter_in_range_pages(work))
+        export_units = _selected_export_units(
+            work,
+            int(self.output_start),
+            int(self.output_end),
+            split_spreads=bool(self.split_spreads),
+        )
         tmp_images: list[Path] = []
-        for _page_index, page in export_pages:
-            i = int(getattr(work.work_info, "page_number_start", 1)) + _page_index
+        for unit in export_units:
             try:
-                img = export_pipeline.render_page(work, page, options)
+                img = export_page_regions.render_page_region(
+                    work,
+                    unit.page,
+                    options,
+                    spread_side=unit.spread_side,
+                )
                 if img is None:
                     continue
-                name = _resolve_filename("{workName}_{episode}_{page}", work, page, i)
+                name = _unit_filename("{workName}_{episode}_{page}", work, unit)
                 tmp = out_dir / f"_tmp_{name}.png"
                 _save_image(img, tmp, "png")
                 tmp_images.append(tmp)
             except Exception:  # noqa: BLE001
-                _logger.exception("pdf intermediate render failed for %s", page.id)
+                _logger.exception("pdf intermediate render failed for %s", getattr(unit.page, "id", "?"))
         if not tmp_images:
             self.report({"ERROR"}, "書き出せるページがありません")
             return {"CANCELLED"}

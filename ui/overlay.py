@@ -1,10 +1,7 @@
 """ビューポート上の原稿オーバーレイ描画 (draw_handler_add + gpu).
 
 計画書 3.4.3a に従い、以下を gpu + blf でオーバーレイ描画する:
-- キャンバス (用紙) 枠
-- 仕上がり枠 / 基本枠 / セーフライン枠
-- セーフライン外側オーバーレイ (乗算)
-- ノンブル / 作品情報 (blf)
+- 作画中の補助表示
 - 各ページ上部のページ識別番号 (001 形式、ビューポート用ガイド)
 
 書き出し結果には焼き込まれない (書き出し時は export_renderer が同じ
@@ -58,9 +55,6 @@ _handle_pixel: Optional[object] = None
 # しないため、POST_VIEW で塗ると raster Mesh が用紙背景に隠される)。
 _handle_pre: Optional[object] = None
 
-# 作品情報描画の診断ログ用 tick (60 フレーム毎に 1 回出力)
-_WORK_INFO_DEBUG_TICK = 0
-
 # 日本語対応フォントの font_id キャッシュ (起動時 1 回ロード).
 # blf.draw で font_id=0 を使うと ASCII しか描けず日本語が文字化けるため、
 # OS のシステムフォントから日本語対応フォントを load しておく。
@@ -73,6 +67,31 @@ _PAGE_HEADER_GAP_MM = 6.0
 _PAGE_HEADER_FONT_SIZE_PX = 34
 _PAGE_HEADER_COLOR = (0.0, 0.0, 0.0, 0.95)
 _PAGE_HEADER_OUTLINE_COLOR = (1.0, 1.0, 1.0, 0.9)
+
+
+def _coma_needs_material_preview_blur(coma) -> bool:
+    border = getattr(coma, "border", None)
+    if border is None:
+        return False
+    return (
+        bool(getattr(coma, "visible", True))
+        and bool(getattr(border, "visible", True))
+        and str(getattr(border, "style", "solid") or "solid") == "brush"
+        and max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) > 0.0
+    )
+
+
+def _work_needs_material_preview_blur(work) -> bool:
+    if work is None:
+        return False
+    for page in getattr(work, "pages", []) or []:
+        for coma in getattr(page, "comas", []) or []:
+            if _coma_needs_material_preview_blur(coma):
+                return True
+    for coma in getattr(work, "shared_comas", []) or []:
+        if _coma_needs_material_preview_blur(coma):
+            return True
+    return False
 
 
 def _get_jp_font_id() -> int:
@@ -853,145 +872,13 @@ def _draw_comas(
         # ページオフセットを加算
         if ox_mm != 0.0 or oy_mm != 0.0:
             poly = [(x + ox_mm, y + oy_mm) for x, y in poly]
-        # コマプレビューはコマ平面メッシュの画像テクスチャとして描画する
-        # (utils/coma_plane.py)。毎フレーム GPU オーバーレイで描いていた
-        # 旧方式は、重い上に枠線の上に重なって線幅を隠していたため廃止。
-        # 白フチ (枠線の外側)
-        wm = entry.white_margin
-        wm_has_visible_width = float(getattr(wm, "width_mm", 0.0)) > 0.0 or any(
-            getattr(edge, "use_override", False)
-            and getattr(edge, "enabled", False)
-            and float(getattr(edge, "width_mm", 0.0)) > 0.0
-            for edge in (wm.edge_bottom, wm.edge_right, wm.edge_top, wm.edge_left)
-        )
-        if wm.enabled and wm_has_visible_width:
-            xs = [p[0] for p in poly]
-            ys = [p[1] for p in poly]
-            base_color = (
-                float(wm.color[0]), float(wm.color[1]),
-                float(wm.color[2]), float(wm.color[3]),
-            )
-            if entry.shape_type == "rect":
-                rect = Rect(
-                    float(entry.rect_x_mm) + ox_mm,
-                    float(entry.rect_y_mm) + oy_mm,
-                    float(entry.rect_width_mm),
-                    float(entry.rect_height_mm),
-                )
-                widths = [float(wm.width_mm)] * 4
-                enabled = [True] * 4
-                colors = [base_color] * 4
-                edge_overrides = [wm.edge_bottom, wm.edge_right, wm.edge_top, wm.edge_left]
-                for idx, edge in enumerate(edge_overrides):
-                    if getattr(edge, "use_override", False):
-                        widths[idx] = max(0.0, float(getattr(edge, "width_mm", 0.0)))
-                        enabled[idx] = bool(getattr(edge, "enabled", False))
-                        edge_color = getattr(edge, "color", wm.color)
-                        colors[idx] = (
-                            float(edge_color[0]), float(edge_color[1]),
-                            float(edge_color[2]), float(edge_color[3]),
-                        )
-                bottom_w = widths[0] if enabled[0] else 0.0
-                right_w = widths[1] if enabled[1] else 0.0
-                top_w = widths[2] if enabled[2] else 0.0
-                left_w = widths[3] if enabled[3] else 0.0
-                if bottom_w > 0.0:
-                    _draw_rect_fill(Rect(rect.x - left_w, rect.y - bottom_w, rect.width + left_w + right_w, bottom_w), colors[0])
-                if right_w > 0.0:
-                    _draw_rect_fill(Rect(rect.x2, rect.y, right_w, rect.height), colors[1])
-                if top_w > 0.0:
-                    _draw_rect_fill(Rect(rect.x - left_w, rect.y2, rect.width + left_w + right_w, top_w), colors[2])
-                if left_w > 0.0:
-                    _draw_rect_fill(Rect(rect.x - left_w, rect.y, left_w, rect.height), colors[3])
-            else:
-                outer = Rect(
-                    min(xs) - wm.width_mm, min(ys) - wm.width_mm,
-                    (max(xs) - min(xs)) + 2 * wm.width_mm,
-                    (max(ys) - min(ys)) + 2 * wm.width_mm,
-                )
-                inner = Rect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-                _draw_frame_with_hole(outer, inner, base_color)
+        # コマの背景・枠線・白フチは実体オブジェクト側で表示する。
+        # オーバーレイ側は選択中コマの補助線だけを描き、実体表示と二重に
+        # ならないようにする。
         is_active_coma = (
             bool(active_stem)
             and str(getattr(entry, "coma_id", "") or "") == active_stem
         )
-        # 枠線 (mm 単位の太さ = ズーム連動、紙に追従)
-        # 辺ごとに描画 (edge_styles に個別 override があればそれを優先)
-        b = entry.border
-        if b.visible:
-            base_color = (
-                float(b.color[0]), float(b.color[1]),
-                float(b.color[2]), float(b.color[3]),
-            )
-            base_width = max(0.1, float(b.width_mm))
-            rect_edge_override = (
-                getattr(b.edge_top, "use_override", False)
-                or getattr(b.edge_right, "use_override", False)
-                or getattr(b.edge_bottom, "use_override", False)
-                or getattr(b.edge_left, "use_override", False)
-            )
-            if (
-                len(entry.edge_styles) == 0
-                and not rect_edge_override
-                and getattr(b, "style", "solid") == "solid"
-            ):
-                path = border_geom.styled_closed_path_mm(
-                    poly,
-                    getattr(b, "corner_type", "square"),
-                    float(getattr(b, "corner_radius_mm", 0.0)),
-                )
-                loops = border_geom.stroke_loops_mm(path, base_width)
-                if loops is not None:
-                    outer_loop, inner_loop = loops
-                    real_border_visible = False
-                    try:
-                        from ..utils import coma_border_object as _cbo
-
-                        real_obj = bpy.data.objects.get(
-                            f"{_cbo.COMA_BORDER_NAME_PREFIX}{getattr(page, 'id', '')}_{getattr(entry, 'id', '')}"
-                        )
-                        real_border_visible = real_obj is not None and not real_obj.hide_viewport
-                    except Exception:  # noqa: BLE001
-                        real_border_visible = False
-                    if not real_border_visible:
-                        _draw_stroke_band_fill(outer_loop, inner_loop, base_color)
-                    if is_active_coma:
-                        segs = [
-                            (poly[i], poly[(i + 1) % len(poly)])
-                            for i in range(len(poly))
-                        ]
-                        _draw_segments_mm(segs, viewport_colors.SELECTION_STRONG, width_mm=1.20)
-                    continue
-            # edge_styles を index 辞書化
-            override_map = {int(s.edge_index): s for s in entry.edge_styles}
-            rect_edge_overrides = []
-            if entry.shape_type == "rect":
-                rect_edge_overrides = [b.edge_bottom, b.edge_right, b.edge_top, b.edge_left]
-            n = len(poly)
-            for i in range(n):
-                seg = (poly[i], poly[(i + 1) % n])
-                style_name = getattr(b, "style", "solid")
-                edge_style = override_map.get(i)
-                if edge_style is not None:
-                    color = (
-                        float(edge_style.color[0]), float(edge_style.color[1]),
-                        float(edge_style.color[2]), float(edge_style.color[3]),
-                    )
-                    w = max(0.1, float(edge_style.width_mm))
-                elif i < len(rect_edge_overrides) and getattr(rect_edge_overrides[i], "use_override", False):
-                    edge = rect_edge_overrides[i]
-                    if not getattr(edge, "visible", True):
-                        continue
-                    color = (
-                        float(edge.color[0]), float(edge.color[1]),
-                        float(edge.color[2]), float(edge.color[3]),
-                    )
-                    w = max(0.1, float(edge.width_mm))
-                    style_name = getattr(edge, "style", style_name)
-                else:
-                    color = base_color
-                    w = base_width
-                _draw_styled_segment_mm(seg[0], seg[1], color, width_mm=w, style=style_name)
         if is_active_coma:
             segs = [
                 (poly[i], poly[(i + 1) % len(poly)])
@@ -1125,8 +1012,7 @@ def _draw_page_overlay(
             draw_rect_outline=_draw_rect_outline,
         )
 
-    # NOTE: 作品情報の blf 描画は POST_VIEW では効かないため _draw_callback_pixel
-    # (POST_PIXEL handler) で別途実行する。ここでは呼ばない。
+    # 作品情報とページ番号は実体のテキストオブジェクトで表示する。
 
 
 def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
@@ -1193,152 +1079,6 @@ def _page_overview_offset(
 
     ox, oy = _pg_offset(page_index, cols, gap, cw, ch, start_side, read_direction)
     return _with_page_manual_offset(work, page_index, ox, oy)
-
-
-def _draw_work_info_texts(
-    context, work, rects, page_index: int, ox_mm: float, oy_mm: float,
-) -> None:
-    """作品情報・ページ番号を blf で原稿上 (基本枠基準) に描画.
-
-    描画項目: 作品名 / 話数 / サブタイトル / 作者名 / ページ番号。
-    各項目は ``BNameDisplayItem.position`` の 9 通り (top-left 等) に配置し、
-    キャンバス枠ではなく **基本枠 (inner_frame)** を基準に内側 2mm の余白で
-    アンカーする。これによりセーフライン内に収まりやすくなる。
-    """
-    info = getattr(work, "work_info", None)
-    if info is None:
-        return
-    inner = _translate_rect(rects.inner_frame, ox_mm, oy_mm)
-
-    # ページ番号文字列の組み立て (開始番号 + page_index、4 桁ゼロ埋め "ページNNNN")
-    page_text = ""
-    if 0 <= page_index < len(work.pages):
-        try:
-            start = int(info.page_number_start)
-        except Exception:  # noqa: BLE001
-            start = 1
-        page_text = f"ページ{start + page_index:04d}"
-
-    items = [
-        (info.display_work_name, info.work_name),
-        (info.display_episode,
-         f"第{info.episode_number}話" if info.episode_number else ""),
-        (info.display_subtitle, info.subtitle),
-        (info.display_author, info.author),
-        (info.display_page_number, page_text),
-    ]
-    for item, text in items:
-        if item is None or not item.enabled or not text:
-            continue
-        _draw_text_at_position(context, inner, item, text)
-
-
-def _draw_text_at_position(context, anchor_rect, item, text: str) -> None:
-    """``anchor_rect`` (mm, 裁ち落とし枠) の position に ``text`` を **枠外** に blf 描画.
-
-    6 通りの position に対し、文字を裁ち落とし枠の外側に押し出す:
-      - top-*    : 裁ち落とし枠の上、内側に文字下端が貼り付く
-      - bottom-* : 裁ち落とし枠の下、内側に文字上端が貼り付く
-
-    Blender の blf は screen pixel 座標を要求するため、まず world 座標
-    (Blender unit, mm の 0.001 倍) に換算し、``location_3d_to_region_2d`` で
-    ピクセル座標化する。region/rv3d が取れない場合は黙って no-op。
-    """
-    from bpy_extras.view3d_utils import location_3d_to_region_2d
-    from mathutils import Vector
-
-    region, rv3d = _resolve_active_region(context)
-    if region is None or rv3d is None:
-        return
-
-    pad = 2.0  # 仕上がり枠と文字の隙間 (mm)
-    pos = item.position
-
-    # X 方向のアンカー (mm)
-    if pos == "middle-left":
-        x_mm = anchor_rect.x - pad
-    elif pos == "middle-right":
-        x_mm = anchor_rect.x2 + pad
-    elif pos.endswith("left"):
-        x_mm = anchor_rect.x
-    elif pos.endswith("right"):
-        x_mm = anchor_rect.x2
-    else:
-        x_mm = (anchor_rect.x + anchor_rect.x2) * 0.5
-
-    # Y 方向のアンカー (mm)
-    if pos.startswith("top"):
-        y_mm = anchor_rect.y2 + pad
-    elif pos.startswith("bottom"):
-        y_mm = anchor_rect.y - pad
-    else:
-        y_mm = (anchor_rect.y + anchor_rect.y2) * 0.5
-
-    world = Vector((mm_to_m(x_mm), mm_to_m(y_mm), 0.0))
-    coord = location_3d_to_region_2d(region, rv3d, world)
-    if coord is None:
-        return
-    # 画面外なら描画スキップ (blf を呼んでも見えないだけだが、無駄なので)
-    if not (-200 < coord.x < region.width + 200
-            and -200 < coord.y < region.height + 200):
-        return
-
-    # フォントサイズ (Q 数 = 0.25mm 単位) → 画面 px。ズームに連動するよう
-    # 現在のビューポートで「1 mm が画面で何 px か」を実測してかける。
-    from ..utils.geom import q_to_mm
-    o0 = location_3d_to_region_2d(region, rv3d, Vector((0.0, 0.0, 0.0)))
-    o1 = location_3d_to_region_2d(region, rv3d, Vector((mm_to_m(1.0), 0.0, 0.0)))
-    if o0 is not None and o1 is not None:
-        px_per_mm = abs(float(o1.x) - float(o0.x))
-    else:
-        px_per_mm = 3.78  # 96dpi 相当の概算 fallback
-    size_mm = q_to_mm(float(item.font_size_q))
-    size_px = max(6, int(size_mm * max(px_per_mm, 0.1)))
-    font_id = _get_jp_font_id()
-    try:
-        blf.size(font_id, size_px)
-    except Exception:  # noqa: BLE001
-        pass
-    color = (
-        float(item.color[0]),
-        float(item.color[1]),
-        float(item.color[2]),
-        float(item.color[3]),
-    )
-    try:
-        blf.color(font_id, *color)
-    except Exception:  # noqa: BLE001
-        pass
-
-    try:
-        tw, th = blf.dimensions(font_id, text)
-    except Exception:  # noqa: BLE001
-        tw, th = 0.0, 0.0
-    sx, sy = float(coord.x), float(coord.y)
-
-    # 水平アライメント (text のどの位置を anchor x に合わせるか)
-    if pos == "middle-left":
-        # text 右端を anchor x に揃える (枠の左に張り出す)
-        sx -= tw
-    elif pos == "middle-right":
-        # text 左端を anchor x に揃える (枠の右に張り出す) → sx そのまま
-        pass
-    elif pos.endswith("right"):
-        sx -= tw
-    elif pos.endswith("center"):
-        sx -= tw * 0.5
-    # top-left / bottom-left は sx そのまま (text 左端 = anchor x)
-
-    # 垂直アライメント (text のどの位置を anchor y に合わせるか)
-    if pos.startswith("bottom"):
-        # 仕上がり枠の下に置くため、text 上端を anchor y に揃える
-        sy -= th
-    elif pos.startswith("middle"):
-        sy -= th * 0.5
-    # top-* は baseline = anchor y (text は上方向に伸びる)
-
-    blf.position(font_id, sx, sy, 0.0)
-    blf.draw(font_id, text)
 
 
 def _format_page_header_number(page_index: int, work=None) -> str:
@@ -1599,10 +1339,11 @@ def apply_bname_shading_mode(context=None) -> int:
     B-Name 作品 UI の見え方を統一する目的:
     - 紙の白マテリアルが MatCap や Studio 光源で立体的に陰になるのを防ぎ、
       フラットな印刷物のように描画する
-    - 紙面編集 (ページ一覧): shading.type = "SOLID", shading.light = "FLAT",
-      shading.color_type = "TEXTURE"。コマプレビューをコマ平面メッシュの
-      画像テクスチャとして表示するため。プレビューの無いコマはマテリアル
-      色 (背景色) で表示される。
+    - 紙面編集 (ページ一覧): 通常は shading.type = "SOLID",
+      shading.light = "FLAT", shading.color_type = "TEXTURE"。コマプレビューを
+      コマ平面メッシュの画像テクスチャとして表示するため。
+      「ボカシブラシ」がある場合だけ shading.type = "MATERIAL" に切り替え、
+      コマ平面メッシュのボカシ合成が見えるようにする。
     - コマ編集: shading.type = "RENDERED"。コマ用blendファイルを開いたとき
       レンダー結果の見た目で 3D を確認できるようにする (ユーザー要望)。
     work_new / work_open / load_post から呼ぶ。戻り値は変更したエリア数。
@@ -1612,6 +1353,8 @@ def apply_bname_shading_mode(context=None) -> int:
     if wm is None:
         return 0
     is_coma = get_mode(ctx) == MODE_COMA
+    work = get_work(ctx)
+    needs_material_preview = (not is_coma) and _work_needs_material_preview_blur(work)
     count = 0
     for window in wm.windows:
         screen = getattr(window, "screen", None)
@@ -1634,6 +1377,12 @@ def apply_bname_shading_mode(context=None) -> int:
                     # コマ編集モード: レンダーモード表示
                     if getattr(shading, "type", None) != "RENDERED":
                         shading.type = "RENDERED"
+                        count += 1
+                elif needs_material_preview:
+                    # 画像マスクの輪郭ボカシは Solid 表示では反映されない。
+                    # Material Preview では Emission 素材なので紙面はフラットに見える。
+                    if getattr(shading, "type", None) != "MATERIAL":
+                        shading.type = "MATERIAL"
                         count += 1
                 else:
                     # 紙面編集 (ページ一覧): コマプレビュー画像を貼った
@@ -1749,7 +1498,7 @@ def reset_viewport_background_to_theme(context=None) -> int:
 
 
 def _draw_callback_pixel() -> None:
-    """POST_PIXEL: blf テキスト描画 (作品情報・ページ番号・テキスト本文).
+    """POST_PIXEL: blf テキスト描画 (ページ識別番号・テキスト本文).
 
     blf は POST_VIEW では view/projection matrix の影響で screen 座標が
     world 座標扱いになり画面外に飛ぶ。POST_PIXEL では Blender が pixel
@@ -1839,38 +1588,6 @@ def _draw_callback_pixel() -> None:
             _draw_page_header_number_pixel(context, paper, idx, ox, oy)
     region, rv3d = _resolve_active_region(context)
     overlay_coma_selection.draw(context, work, region, rv3d)
-
-
-def _draw_work_info_texts_pixel(context, work, inner_rect, page_index: int,
-                                 ox_mm: float, oy_mm: float) -> None:
-    """POST_PIXEL 版の作品情報描画 (blf のみ)."""
-    info = getattr(work, "work_info", None)
-    if info is None:
-        return
-    inner = _translate_rect(inner_rect, ox_mm, oy_mm)
-
-    page_text = ""
-    if 0 <= page_index < len(work.pages):
-        try:
-            start = int(info.page_number_start)
-        except Exception:  # noqa: BLE001
-            start = 1
-        page_text = f"ページ{start + page_index:04d}"
-
-    items = [
-        (info.display_work_name, info.work_name),
-        (info.display_episode,
-         f"第{info.episode_number}話" if info.episode_number else ""),
-        (info.display_subtitle, info.subtitle),
-        (info.display_author, info.author),
-        (info.display_page_number, page_text),
-    ]
-    for item, text in items:
-        if item is None or not item.enabled or not text:
-            continue
-        _draw_text_at_position(context, inner, item, text)
-
-
 def register() -> None:
     global _handle, _handle_pixel, _handle_pre
     _handle_pre = None  # PRE_VIEW は使用しない (EEVEE Next で視認できないため)

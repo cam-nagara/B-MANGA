@@ -3,19 +3,6 @@
 from __future__ import annotations
 
 from ..utils import object_selection
-from .edge_style_ui import draw_selected_edge_style_box, get_selected_coma_entry
-
-
-def _same_coma_entry(left, right) -> bool:
-    if left is None or right is None:
-        return False
-    try:
-        return int(left.as_pointer()) == int(right.as_pointer())
-    except Exception:  # noqa: BLE001
-        pass
-    left_key = str(getattr(left, "coma_id", "") or getattr(left, "id", "") or "")
-    right_key = str(getattr(right, "coma_id", "") or getattr(right, "id", "") or "")
-    return bool(left_key and left_key == right_key)
 
 
 def draw_coma_shape_settings(layout, context, entry) -> None:
@@ -47,7 +34,9 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
     if object_selection.selected_coma_count(context) >= 2:
         layout.operator("bname.coma_merge_selected", text="コマ結合", icon="AUTOMERGE_ON")
 
-    layout.prop(entry, "background_color")
+    row = layout.row(align=True)
+    row.prop(entry, "paper_visible", text="用紙")
+    row.prop(entry, "background_color", text="用紙色")
     row = layout.row(align=True)
     row.prop(entry, "coma_gap_vertical_mm", text="上下 (個別)")
     row.prop(entry, "coma_gap_horizontal_mm", text="左右 (個別)")
@@ -78,17 +67,6 @@ def draw_coma_border_settings(layout, context, entry) -> None:
     sub.enabled = b.corner_type != "square"
     sub.prop(b, "corner_radius_mm", text="半径")
 
-    box = content.box()
-    box.label(text="辺ごとオーバーライド")
-    _draw_border_edge(box, "上", b.edge_top)
-    _draw_border_edge(box, "右", b.edge_right)
-    _draw_border_edge(box, "下", b.edge_bottom)
-    _draw_border_edge(box, "左", b.edge_left)
-
-    selected_coma = get_selected_coma_entry(context)
-    if _same_coma_entry(selected_coma, entry):
-        draw_selected_edge_style_box(layout, context)
-
 
 def draw_coma_white_margin_settings(layout, entry) -> None:
     wm = entry.white_margin
@@ -97,31 +75,6 @@ def draw_coma_white_margin_settings(layout, entry) -> None:
     content.active = wm.enabled
     content.prop(wm, "width_mm")
     content.prop(wm, "color")
-    box = content.box()
-    box.label(text="辺ごとオーバーライド")
-    _draw_white_margin_edge(box, "上", wm.edge_top)
-    _draw_white_margin_edge(box, "右", wm.edge_right)
-    _draw_white_margin_edge(box, "下", wm.edge_bottom)
-    _draw_white_margin_edge(box, "左", wm.edge_left)
-
-
-def _draw_border_edge(layout, label: str, edge) -> None:
-    row = layout.row(align=True)
-    row.prop(edge, "use_override", text=label)
-    sub = row.row(align=True)
-    sub.enabled = edge.use_override
-    sub.prop(edge, "style", text="")
-    sub.prop(edge, "width_mm", text="w")
-    sub.prop(edge, "visible", text="", icon="HIDE_OFF" if edge.visible else "HIDE_ON")
-
-
-def _draw_white_margin_edge(layout, label: str, edge) -> None:
-    row = layout.row(align=True)
-    row.prop(edge, "use_override", text=label)
-    sub = row.row(align=True)
-    sub.enabled = edge.use_override
-    sub.prop(edge, "enabled", text="ON")
-    sub.prop(edge, "width_mm", text="w")
 
 
 def register() -> None:

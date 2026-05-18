@@ -777,7 +777,6 @@ class BNAME_OT_coma_merge_selected(Operator):
         )
         try:
             _set_coma_polygon(survivor, merged)
-            survivor.edge_styles.clear()
             survivor.title = getattr(survivor, "title", "") or "結合コマ"
             survivor.z_order = max((int(getattr(panel, "z_order", 0)) for _pi, _page, _idx, panel in refs), default=survivor.z_order)
             for idx in remove_indices:
@@ -953,7 +952,6 @@ class BNAME_OT_coma_split_template(Operator):
                         entry.rect_height_mm = cell_h
                     else:
                         _set_coma_polygon(entry, split_grid[c][r])
-                        entry.edge_styles.clear()
                     entry.z_order = insert_z_base + r * cols + c
                     coma_io.save_coma_meta(work_dir, page.id, entry)
             page.active_coma_index = first_new_index if len(page.comas) > first_new_index else -1

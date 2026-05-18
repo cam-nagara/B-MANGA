@@ -11,11 +11,9 @@ from . import border_geom
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
-from .geom import Rect, mm_to_m
+from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
-
-_BRUSH_OVERRIDE_NORMALIZE_DEPTH = 0
 
 COMA_BORDER_NAME_PREFIX = "coma_border_"
 COMA_BORDER_CURVE_PREFIX = "coma_border_curve_"
@@ -320,26 +318,6 @@ def _edge_settings(coma, edge_index: int, point_count: int):
     width = max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0))
     style = str(getattr(border, "style", "solid") or "solid")
     visible = bool(getattr(border, "visible", True))
-    override_map = {int(getattr(s, "edge_index", -1)): s for s in getattr(coma, "edge_styles", []) or []}
-    edge_style = override_map.get(edge_index)
-    if edge_style is not None:
-        try:
-            color = tuple(float(c) for c in edge_style.color[:4])
-        except Exception:  # noqa: BLE001
-            pass
-        width = max(0.0, float(getattr(edge_style, "width_mm", width) or width))
-    if str(getattr(coma, "shape_type", "rect") or "rect") == "rect" and point_count == 4:
-        rect_edges = [border.edge_bottom, border.edge_right, border.edge_top, border.edge_left]
-        if edge_index < len(rect_edges):
-            edge = rect_edges[edge_index]
-            if getattr(edge, "use_override", False):
-                visible = bool(getattr(edge, "visible", True))
-                style = str(getattr(edge, "style", style) or style)
-                width = max(0.0, float(getattr(edge, "width_mm", width) or width))
-                try:
-                    color = tuple(float(c) for c in edge.color[:4])
-                except Exception:  # noqa: BLE001
-                    pass
     return visible, style, width, color
 
 
@@ -389,19 +367,12 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
     base = _base_poly(coma)
     if len(base) < 2:
         return []
-    no_edge_override = (
-        len(getattr(coma, "edge_styles", []) or []) == 0
-        and not any(
-            getattr(edge, "use_override", False)
-            for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left)
-        )
-    )
     base_style = str(getattr(border, "style", "solid") or "solid")
     base_width = max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0))
-    if no_edge_override and base_style == "solid":
+    if base_style == "solid":
         path = _outline_points(coma)
         return [([path], base_width, _rgba_from_border(coma), "solid_closed")]
-    if no_edge_override and base_style == "brush":
+    if base_style == "brush":
         path = _outline_points(coma)
         blur = float(getattr(border, "blur_amount", 0.5) or 0.0)
         return _brush_halo_groups(path, base_width, _rgba_from_border(coma), blur)
@@ -417,40 +388,7 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
 
 
 def _has_edge_override(coma) -> bool:
-    border = getattr(coma, "border", None)
-    if border is None:
-        return False
-    return (
-        len(getattr(coma, "edge_styles", []) or []) > 0
-        or any(
-            getattr(edge, "use_override", False)
-            for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left)
-        )
-    )
-
-
-def _normalize_brush_edge_overrides(coma) -> bool:
-    """ボカシブラシは全周テクスチャで描くため、辺ごとの設定を解除する."""
-    global _BRUSH_OVERRIDE_NORMALIZE_DEPTH
-    border = getattr(coma, "border", None)
-    if border is None or str(getattr(border, "style", "solid") or "solid") != "brush":
-        return False
-    if _BRUSH_OVERRIDE_NORMALIZE_DEPTH > 0:
-        return False
-    changed = False
-    _BRUSH_OVERRIDE_NORMALIZE_DEPTH += 1
-    try:
-        edge_styles = getattr(coma, "edge_styles", None)
-        if edge_styles is not None and len(edge_styles) > 0:
-            edge_styles.clear()
-            changed = True
-        for edge in (border.edge_bottom, border.edge_right, border.edge_top, border.edge_left):
-            if bool(getattr(edge, "use_override", False)):
-                edge.use_override = False
-                changed = True
-    finally:
-        _BRUSH_OVERRIDE_NORMALIZE_DEPTH = max(0, _BRUSH_OVERRIDE_NORMALIZE_DEPTH - 1)
-    return changed
+    return False
 
 
 def _uses_brush_texture(coma) -> bool:
@@ -514,11 +452,10 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
         return None
     enabled_global = bool(getattr(wm, "enabled", False))
     base_width = max(0.0, float(getattr(wm, "width_mm", 0.0) or 0.0))
-    any_override = any(
-        getattr(edge, "use_override", False) and getattr(edge, "enabled", False) and float(getattr(edge, "width_mm", 0.0) or 0.0) > 0.0
-        for edge in (wm.edge_bottom, wm.edge_right, wm.edge_top, wm.edge_left)
-    )
-    visible = bool(getattr(coma, "visible", True)) and (enabled_global and base_width > 0.0 or any_override)
+    visible = bool(getattr(coma, "visible", True)) and enabled_global and base_width > 0.0
+    border = getattr(coma, "border", None)
+    if str(getattr(border, "style", "solid") or "solid") == "brush":
+        visible = False
     obj_name = f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}"
     mesh_name = f"{COMA_WHITE_MARGIN_MESH_PREFIX}{page_id}_{coma_id}"
     mesh = bpy.data.meshes.get(mesh_name)
@@ -526,90 +463,24 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
         mesh = bpy.data.meshes.new(mesh_name)
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, int, int, int]] = []
-    border = getattr(coma, "border", None)
-    corner_type = str(getattr(border, "corner_type", "square") or "square")
-    corner_r = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
-    is_rect = str(getattr(coma, "shape_type", "rect") or "rect") == "rect"
-    # 等幅 (辺ごとの個別設定なし) かつ丸角/面取りのときは、枠線と同心の
-    # 丸角リングとして白フチを生成し、四隅のはみ出しをなくす。
-    use_round_ring = (
-        visible
-        and is_rect
-        and corner_type in ("rounded", "bevel")
-        and corner_r > 0.0
-        and not any_override
-        and enabled_global
-        and base_width > 0.0
-    )
-    if use_round_ring:
-        w_mm = float(getattr(coma, "rect_width_mm", 0.0) or 0.0)
-        h_mm = float(getattr(coma, "rect_height_mm", 0.0) or 0.0)
-        mw = base_width
+    if visible and enabled_global and base_width > 0.0:
         try:
-            inner = border_geom.styled_closed_path_mm(
-                [(0.0, 0.0), (w_mm, 0.0), (w_mm, h_mm), (0.0, h_mm)],
-                corner_type,
-                corner_r,
-            )
-            outer = border_geom.styled_closed_path_mm(
-                [(-mw, -mw), (w_mm + mw, -mw), (w_mm + mw, h_mm + mw), (-mw, h_mm + mw)],
-                corner_type,
-                corner_r + mw,
-            )
-            ring = _white_margin_ring(inner, outer)
+            inner = _outline_points(coma)
+            loops = border_geom.stroke_loops_mm(inner, base_width * 2.0)
+            ring = _white_margin_ring(inner, loops[0]) if loops is not None else None
         except Exception:  # noqa: BLE001
-            _logger.exception("white margin rounded ring failed")
+            _logger.exception("white margin shape ring failed")
             ring = None
         if ring is not None:
             verts, faces = ring
         else:
-            use_round_ring = False
-    if visible and not use_round_ring:
-        poly = _base_poly(coma)
-        if is_rect:
-            rect = Rect(0.0, 0.0, float(getattr(coma, "rect_width_mm", 0.0) or 0.0), float(getattr(coma, "rect_height_mm", 0.0) or 0.0))
-            widths = [base_width] * 4
-            enabled = [enabled_global] * 4
-            for idx, edge in enumerate((wm.edge_bottom, wm.edge_right, wm.edge_top, wm.edge_left)):
-                if getattr(edge, "use_override", False):
-                    widths[idx] = max(0.0, float(getattr(edge, "width_mm", 0.0) or 0.0))
-                    enabled[idx] = bool(getattr(edge, "enabled", False))
-            bottom_w = widths[0] if enabled[0] else 0.0
-            right_w = widths[1] if enabled[1] else 0.0
-            top_w = widths[2] if enabled[2] else 0.0
-            left_w = widths[3] if enabled[3] else 0.0
-            rects = [
-                Rect(rect.x - left_w, rect.y - bottom_w, rect.width + left_w + right_w, bottom_w),
-                Rect(rect.x2, rect.y, right_w, rect.height),
-                Rect(rect.x - left_w, rect.y2, rect.width + left_w + right_w, top_w),
-                Rect(rect.x - left_w, rect.y, left_w, rect.height),
-            ]
-        else:
-            xs = [p[0] for p in poly]
-            ys = [p[1] for p in poly]
-            outer = Rect(min(xs) - base_width, min(ys) - base_width, max(xs) - min(xs) + 2 * base_width, max(ys) - min(ys) + 2 * base_width)
-            inner = Rect(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-            rects = [
-                Rect(outer.x, inner.y2, outer.width, outer.y2 - inner.y2),
-                Rect(outer.x, outer.y, outer.width, inner.y - outer.y),
-                Rect(outer.x, inner.y, inner.x - outer.x, inner.height),
-                Rect(inner.x2, inner.y, outer.x2 - inner.x2, inner.height),
-            ]
-        for rect in rects:
-            if rect.width <= 0.0 or rect.height <= 0.0:
-                continue
-            start = len(verts)
-            verts.extend([
-                (mm_to_m(rect.x), mm_to_m(rect.y), 0.0),
-                (mm_to_m(rect.x2), mm_to_m(rect.y), 0.0),
-                (mm_to_m(rect.x2), mm_to_m(rect.y2), 0.0),
-                (mm_to_m(rect.x), mm_to_m(rect.y2), 0.0),
-            ])
-            faces.append((start, start + 1, start + 2, start + 3))
+            visible = False
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
     mesh.update()
+    if not verts or not faces:
+        visible = False
     color = tuple(float(c) for c in getattr(wm, "color", (1.0, 1.0, 1.0, 1.0))[:4])
     mat = _ensure_color_material(f"{COMA_WHITE_MARGIN_MATERIAL_PREFIX}{page_id}_{coma_id}", color)
     if not mesh.materials:
@@ -647,7 +518,6 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
     if not page_id or not coma_id:
         return None
     border = getattr(coma, "border", None)
-    _normalize_brush_edge_overrides(coma)
     if _uses_brush_texture(coma):
         return _ensure_brush_texture_border(scene, work, page, coma, page_id, coma_id)
     groups = _border_paths_by_material(coma)
@@ -897,6 +767,15 @@ def on_coma_border_changed(border) -> None:
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if scene is None or work is None or border is None:
         return
+
+    def _refresh_shading() -> None:
+        try:
+            from ..ui import overlay as _overlay
+
+            _overlay.apply_bname_shading_mode(bpy.context)
+        except Exception:  # noqa: BLE001
+            pass
+
     try:
         target_ptr = int(border.as_pointer())
     except Exception:  # noqa: BLE001
@@ -914,6 +793,7 @@ def on_coma_border_changed(border) -> None:
                 _cp.update_coma_plane_geometry(scene, work, page, coma)
             except Exception:  # noqa: BLE001
                 _logger.exception("coma plane geometry update on border change failed")
+            _refresh_shading()
             return
     for coma in getattr(work, "shared_comas", []) or []:
         if not _coma_owns_border_pointer(coma, target_ptr):
@@ -925,6 +805,7 @@ def on_coma_border_changed(border) -> None:
             _cp.update_coma_plane_geometry(scene, work, None, coma)
         except Exception:  # noqa: BLE001
             _logger.exception("shared coma plane geometry update on border change failed")
+        _refresh_shading()
         return
 
 
@@ -932,12 +813,12 @@ def _coma_owns_border_pointer(coma, target_ptr: int) -> bool:
     candidates = []
     try:
         b = getattr(coma, "border")
-        candidates.extend([b, b.edge_top, b.edge_right, b.edge_bottom, b.edge_left])
+        candidates.append(b)
     except Exception:  # noqa: BLE001
         pass
     try:
         wm = getattr(coma, "white_margin")
-        candidates.extend([wm, wm.edge_top, wm.edge_right, wm.edge_bottom, wm.edge_left])
+        candidates.append(wm)
     except Exception:  # noqa: BLE001
         pass
     for candidate in candidates:
