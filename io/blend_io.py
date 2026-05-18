@@ -21,6 +21,15 @@ from ..utils import log, paths
 _logger = log.get_logger(__name__)
 
 
+def _suspend_keymap_visibility_updates(seconds: float = 4.0) -> None:
+    try:
+        from ..keymap import keymap as _keymap
+
+        _keymap.suspend_visibility_updates(seconds, reason="blend io")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def save_current_as(blend_path: Path) -> bool:
     """現在の mainfile を指定パスに save_as_mainfile で保存する.
 
@@ -48,7 +57,9 @@ def open_mainfile(blend_path: Path) -> bool:
         _logger.warning("blend file missing: %s", blend_path)
         return False
     try:
+        _suspend_keymap_visibility_updates()
         bpy.ops.wm.open_mainfile(filepath=str(blend_path.resolve()))
+        _suspend_keymap_visibility_updates()
         _logger.info("mainfile opened: %s", blend_path)
         return True
     except Exception as exc:  # noqa: BLE001
@@ -59,7 +70,9 @@ def open_mainfile(blend_path: Path) -> bool:
 def read_homefile() -> bool:
     """空の mainfile 状態に戻す (factory startup でなく user startup)."""
     try:
+        _suspend_keymap_visibility_updates()
         bpy.ops.wm.read_homefile()
+        _suspend_keymap_visibility_updates()
         _logger.info("mainfile reset to homefile")
         return True
     except Exception as exc:  # noqa: BLE001

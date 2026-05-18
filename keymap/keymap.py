@@ -22,6 +22,7 @@ Phase 0 ではキーマップの **基盤** のみ用意する。実際のオペ
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional
 
@@ -547,8 +548,11 @@ class KeymapState:
         # Alt+Shift+クリック → 選択中レイヤーを 1 段浅い親へ (位置維持)
         # operator 内でドラッグ判定をしないため、PRESS 即発火扱い.
         _add("bname.alt_reparent_out", "LEFTMOUSE", alt=True, shift=True, head=True)
-        # ダブルクリック → コマ編集モードへ (固定)
-        _add("bname.enter_coma_mode", "LEFTMOUSE", value="DOUBLE_CLICK")
+        # ダブルクリック → コマ編集モードへ (固定)。ファイル選択用の
+        # プロパティを持つ本体 operator を keymap から直接呼ぶと、
+        # mainfile 切替後の keymap 再構築で Blender 本体が落ちる場合が
+        # あるため、keymap にはプロパティを持たない中継 operator を載せる。
+        _add("bname.enter_coma_mode_from_viewport", "LEFTMOUSE", value="DOUBLE_CLICK")
 
         # preferences 設定可能なショートカット
         s, c, a = _mods("mod_set_mode_object")
@@ -834,10 +838,27 @@ _state: Optional[KeymapState] = None
 _WATCH_INTERVAL = 0.15
 # B-Name タブの bl_category 名
 _BNAME_TAB_CATEGORY = "B-Name"
+_SUSPEND_UNTIL = 0.0
+_SUSPEND_REASON = ""
 
 
 def get_state() -> Optional[KeymapState]:
     return _state
+
+
+def suspend_visibility_updates(seconds: float = 3.0, *, reason: str = "") -> None:
+    """mainfile 切替直後の不安定なタイミングでは keymap を触らない."""
+    global _SUSPEND_UNTIL, _SUSPEND_REASON
+    try:
+        seconds = max(0.0, float(seconds))
+    except (TypeError, ValueError):
+        seconds = 3.0
+    _SUSPEND_UNTIL = max(_SUSPEND_UNTIL, time.monotonic() + seconds)
+    _SUSPEND_REASON = str(reason or "")
+
+
+def is_visibility_update_suspended() -> bool:
+    return time.monotonic() < _SUSPEND_UNTIL
 
 
 def _any_bname_tab_active() -> bool:
@@ -864,6 +885,8 @@ def _watch_bname_tab() -> Optional[float]:
     state = _state
     if state is None:
         return None  # タイマー停止
+    if is_visibility_update_suspended():
+        return _WATCH_INTERVAL
     try:
         from ..preferences import get_preferences
 
@@ -999,6 +1022,9 @@ def rebuild_keymap_from_prefs() -> None:
     """
     state = _state
     if state is None:
+        return
+    if is_visibility_update_suspended():
+        _logger.info("rebuild_keymap_from_prefs deferred during keymap suspend: %s", _SUSPEND_REASON)
         return
     print("[B-Name][KEYMAP] rebuild_keymap_from_prefs() triggered")
     try:

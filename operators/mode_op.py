@@ -24,6 +24,15 @@ _logger = log.get_logger(__name__)
 _PENDING_ENTER_COMA: tuple[int, int, bool] | None = None
 
 
+def _suspend_keymap_visibility_updates(seconds: float = 4.0) -> None:
+    try:
+        from ..keymap import keymap as _keymap
+
+        _keymap.suspend_visibility_updates(seconds, reason="blend switch")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _save_current_work_metadata(work, page) -> None:
     """mainfile 切替前に JSON 側へ現在の用紙/ページ状態を反映する."""
     if work is None or not getattr(work, "work_dir", ""):
@@ -98,6 +107,7 @@ def schedule_enter_coma_mode(
         coma_index,
         bool(prompt_template_if_missing),
     )
+    _suspend_keymap_visibility_updates()
     if not bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
         bpy.app.timers.register(_run_deferred_enter_coma_mode, first_interval=0.15)
     return True
@@ -149,9 +159,8 @@ class BNAME_OT_enter_coma_mode(Operator):
     work.blend を保存し、cNN.blend を開く。未作成なら空の scene から
     cNN.blend を初期化する。
 
-    invoke(event) ではマウス直下のコマを優先的に逆引きして active を更新
-    (キーマップのダブルクリックや UI 操作から呼び出される)。execute のみ
-    の場合は現在の active をそのまま使う。
+    invoke(event) ではマウス直下のコマを優先的に逆引きして active を更新。
+    execute のみの場合は現在の active をそのまま使う。
     """
 
     bl_idname = "bname.enter_coma_mode"
@@ -253,6 +262,7 @@ class BNAME_OT_enter_coma_mode(Operator):
                 pass
         page_id = page.id
         work_dir = Path(work.work_dir)
+        _suspend_keymap_visibility_updates()
 
         try:
             if self._should_prompt_coma_template(context, work_dir, page_id, stem, entry):
@@ -286,7 +296,9 @@ class BNAME_OT_enter_coma_mode(Operator):
 
             # 2) cNN.blend を開く。未作成なら現シーンを新規保存して遷移。
             if blend_io.coma_blend_exists(work_dir, page_id, stem):
+                _suspend_keymap_visibility_updates()
                 ok = blend_io.open_coma_blend(work_dir, page_id, stem)
+                _suspend_keymap_visibility_updates()
                 if not ok:
                     self.report({"ERROR"}, "cNN.blend を開けませんでした")
                     return {"CANCELLED"}
@@ -299,9 +311,12 @@ class BNAME_OT_enter_coma_mode(Operator):
                 if template_error:
                     self.report({"ERROR"}, template_error)
                     return {"CANCELLED"}
+                if template_path is None:
+                    _suspend_keymap_visibility_updates()
                 if template_path is None and not blend_io.read_homefile():
                     self.report({"ERROR"}, "cNN.blend の初期化に失敗")
                     return {"CANCELLED"}
+                _suspend_keymap_visibility_updates()
                 ok = coma_scene.bootstrap_new_coma_blend(
                     bpy.context,
                     work_dir,
@@ -312,7 +327,9 @@ class BNAME_OT_enter_coma_mode(Operator):
                 if not ok:
                     self.report({"ERROR"}, "cNN.blend の新規作成に失敗")
                     try:
+                        _suspend_keymap_visibility_updates()
                         blend_io.open_work_blend(work_dir)
+                        _suspend_keymap_visibility_updates()
                     except Exception:  # noqa: BLE001
                         _logger.exception("enter_coma_mode: failed to restore work.blend")
                     return {"CANCELLED"}
@@ -331,7 +348,9 @@ class BNAME_OT_enter_coma_mode(Operator):
                 if not ok:
                     self.report({"ERROR"}, "cNN.blend の新規保存に失敗")
                     try:
+                        _suspend_keymap_visibility_updates()
                         blend_io.open_work_blend(work_dir)
+                        _suspend_keymap_visibility_updates()
                     except Exception:  # noqa: BLE001
                         _logger.exception("enter_coma_mode: failed to restore work.blend")
                     return {"CANCELLED"}
@@ -419,6 +438,58 @@ class BNAME_OT_enter_coma_mode(Operator):
         return path.resolve()
 
 
+class BNAME_OT_enter_coma_mode_from_viewport(Operator):
+    """3D ビューのダブルクリックからコマ用 blend ファイルを開く."""
+
+    bl_idname = "bname.enter_coma_mode_from_viewport"
+    bl_label = "コマ用blendファイルを開く"
+
+    @classmethod
+    def poll(cls, context):
+        return BNAME_OT_enter_coma_mode.poll(context)
+
+    def invoke(self, context, event):
+        cur_mode = getattr(context, "mode", "")
+        if cur_mode != "OBJECT":
+            return {"PASS_THROUGH"}
+        hit = _resolve_coma_at_event(context, event)
+        if hit is None:
+            return {"PASS_THROUGH"}
+        page_idx, coma_idx = hit
+        work = get_work(context)
+        if work is None or not (0 <= page_idx < len(work.pages)):
+            return {"PASS_THROUGH"}
+        page = work.pages[page_idx]
+        if not (0 <= coma_idx < len(page.comas)):
+            return {"PASS_THROUGH"}
+        work.active_page_index = page_idx
+        page.active_coma_index = coma_idx
+        if schedule_enter_coma_mode(
+            page_idx,
+            coma_idx,
+            prompt_template_if_missing=False,
+        ):
+            return {"FINISHED"}
+        return {"CANCELLED"}
+
+    def execute(self, context):
+        work = get_work(context)
+        page = get_active_page(context)
+        if (
+            work is None
+            or page is None
+            or not (0 <= page.active_coma_index < len(page.comas))
+        ):
+            return {"CANCELLED"}
+        if schedule_enter_coma_mode(
+            int(work.active_page_index),
+            int(page.active_coma_index),
+            prompt_template_if_missing=False,
+        ):
+            return {"FINISHED"}
+        return {"CANCELLED"}
+
+
 class BNAME_OT_exit_coma_mode(Operator):
     """コマ編集モードを抜けて overview モード (work.blend) へ戻る.
 
@@ -476,7 +547,9 @@ class BNAME_OT_exit_coma_mode(Operator):
                 # 3D データが work.blend に紛れ込むため、その fallback は
                 # 行わず、エラー報告だけして現状維持する。
                 if blend_io.work_blend_exists(work_dir):
+                    _suspend_keymap_visibility_updates()
                     blend_io.open_work_blend(work_dir)
+                    _suspend_keymap_visibility_updates()
                 else:
                     _logger.error(
                         "exit_coma_mode: work.blend not found at %s",
@@ -583,7 +656,9 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
                     f"work.blend が見つかりません: {paths.work_blend_path(work_dir)}",
                 )
                 return {"CANCELLED"}
+            _suspend_keymap_visibility_updates()
             blend_io.open_work_blend(work_dir)
+            _suspend_keymap_visibility_updates()
             # load_post が走るので mode/state は自動で同期される。
             # 念のため現在 scene にも反映 (load_post 前に UI 更新が走る場合)。
             try:
@@ -603,6 +678,7 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
 
 _CLASSES = (
     BNAME_OT_enter_coma_mode,
+    BNAME_OT_enter_coma_mode_from_viewport,
     BNAME_OT_exit_coma_mode,
     BNAME_OT_exit_coma_mode_safe,
 )

@@ -33,8 +33,15 @@ def _start_check(temp_root: Path) -> Path:
     result = bpy.ops.bname.work_new(filepath=str(temp_root / "DeferredOpen.bname"))
     assert result == {"FINISHED"}, result
 
+    from bname_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
     from bname_dev_deferred_coma_open_ui.operators import object_tool_op
     from bname_dev_deferred_coma_open_ui.utils import object_selection
+
+    state = keymap_mod.get_state()
+    assert state is not None
+    item_ids = {str(getattr(kmi, "idname", "") or "") for kmi in state.bname_items}
+    assert "bname.enter_coma_mode_from_viewport" in item_ids
+    assert "bname.enter_coma_mode" not in item_ids
 
     work = bpy.context.scene.bname_work
     page = work.pages[0]
@@ -71,6 +78,7 @@ def _start_check(temp_root: Path) -> Path:
     }
     assert fake_tool._try_enter_coma_from_hit(bpy.context, hit)
     assert fake_tool.finished and fake_tool.keep_selection
+    assert keymap_mod.is_visibility_update_suspended()
     assert Path(bpy.data.filepath).resolve() == work_path, "イベント中にコマファイルを開いています"
     return temp_root / "DeferredOpen.bname" / "p0001" / "c04" / "c04.blend"
 
@@ -116,15 +124,19 @@ def main() -> None:
             def _stability_timer():
                 stable_attempts["count"] += 1
                 try:
+                    from bname_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
+
                     _assert_opened(expected)
+                    keymap_mod._watch_bname_tab()
                     for window in getattr(bpy.context.window_manager, "windows", []):
                         screen = getattr(window, "screen", None)
                         if screen is None:
                             continue
                         for area in getattr(screen, "areas", []):
                             area.tag_redraw()
-                    if stable_attempts["count"] < 20:
+                    if stable_attempts["count"] < 50:
                         return 0.1
+                    assert not keymap_mod.is_visibility_update_suspended()
                 except Exception:  # noqa: BLE001
                     traceback.print_exc()
                     os._exit(1)
