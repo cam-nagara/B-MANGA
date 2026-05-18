@@ -53,7 +53,7 @@ class BNAME_PT_work(Panel):
         return get_mode(context) != MODE_COMA
 
     def draw(self, context):
-        shortcut_visibility.mark_bname_panel_drawn()
+        shortcut_visibility.mark_bname_panel_drawn(context)
         layout = self.layout
         work = get_work(context)
 
@@ -127,7 +127,7 @@ class BNAME_PT_coma_return(Panel):
         return _current_blend_is_coma_blend()
 
     def draw(self, context):
-        shortcut_visibility.mark_bname_panel_drawn()
+        shortcut_visibility.mark_bname_panel_drawn(context)
         layout = self.layout
         layout.operator(
             "bname.exit_coma_mode_safe",

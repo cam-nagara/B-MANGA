@@ -118,10 +118,8 @@ class BNAME_OT_set_mode_object(Operator):
             except Exception:  # noqa: BLE001
                 pass
         obj = context.view_layer.objects.active
-        if obj is None:
-            return {"CANCELLED"}
         try:
-            if obj.mode != "OBJECT":
+            if obj is not None and obj.mode != "OBJECT":
                 bpy.ops.object.mode_set(mode="OBJECT")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("set_mode_object failed")

@@ -11,6 +11,15 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class _PtrNamespace(SimpleNamespace):
+    def __init__(self, ptr: int, **kwargs):
+        super().__init__(**kwargs)
+        self._ptr = ptr
+
+    def as_pointer(self):
+        return self._ptr
+
+
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
         "bname_dev_shortcut_visibility", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
@@ -56,11 +65,36 @@ def main() -> None:
                 SimpleNamespace(type="UI", width=260, height=900, active_panel_category="Tool")
             ],
         )
+        fake_unknown_area = _PtrNamespace(
+            1001,
+            type="VIEW_3D",
+            spaces=SimpleNamespace(active=SimpleNamespace(show_region_ui=True)),
+            regions=[
+                SimpleNamespace(type="UI", width=260, height=900)
+            ],
+        )
+        fake_unknown_screen = _PtrNamespace(2001, areas=[fake_unknown_area])
         assert shortcut_visibility._area_has_bname_panel_category(fake_bname_area), (
             "B-Nameタブのエリア判定が有効になりません"
         )
         assert not shortcut_visibility._area_has_bname_panel_category(fake_other_area), (
             "別タブのエリア判定でB-Nameショートカットが有効になります"
+        )
+        shortcut_visibility._last_bname_panel_draw = 0.0
+        assert not shortcut_visibility._area_has_bname_panel_category(fake_unknown_area), (
+            "タブ情報が取れないだけでB-Nameショートカットが有効になります"
+        )
+        shortcut_visibility.mark_bname_panel_drawn(
+            SimpleNamespace(area=fake_unknown_area, screen=fake_unknown_screen)
+        )
+        assert shortcut_visibility._area_has_bname_panel_category(fake_unknown_area), (
+            "B-Nameパネル描画後の代替判定が有効になりません"
+        )
+        assert not shortcut_visibility._area_has_bname_panel_category(fake_other_area), (
+            "明示的に別タブと分かる場合にB-Nameショートカットが有効になります"
+        )
+        assert shortcut_visibility._area_bname_status(fake_other_area) == "other", (
+            "別タブが明示されている状態を判定できません"
         )
 
         kc = bpy.context.window_manager.keyconfigs.addon
@@ -91,6 +125,12 @@ def main() -> None:
 
         shortcut_visibility.shortcuts_allowed = lambda _context=None: False
         assert not viewport_ops._shortcuts_allowed(bpy.context), "B-Nameタブ非表示扱いでナビゲート判定が有効です"
+
+        shortcut_visibility.shortcuts_allowed = lambda _context=None: True
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.context.view_layer.objects.active = None
+        result = bpy.ops.bname.set_mode_object("EXEC_DEFAULT")
+        assert "FINISHED" in result, "オブジェクトが未選択の状態でオブジェクトツールへ切り替わりません"
     finally:
         shortcut_visibility.bname_panel_visible = original_panel_visible
         shortcut_visibility.any_bname_panel_visible = original_any_panel_visible

@@ -2,39 +2,97 @@
 
 from __future__ import annotations
 
+import time
+
 import bpy
 
 BNAME_PANEL_CATEGORY = "B-Name"
 _last_bname_panel_draw = 0.0
+_last_bname_panel_area_ptr: int | None = None
+_last_bname_panel_screen_ptr: int | None = None
 
 
-def mark_bname_panel_drawn() -> None:
+def mark_bname_panel_drawn(context=None) -> None:
     """B-Name タブのパネルが実際に描画された時刻を記録する."""
-    global _last_bname_panel_draw
-    # 旧版はこの時刻をサイドバー状態取得に失敗した時の代替判定に使っていた。
-    # Blender 側の通常操作を奪う原因になるため、現在はデバッグ用の記録だけにする。
-    import time
-
+    global _last_bname_panel_draw, _last_bname_panel_area_ptr, _last_bname_panel_screen_ptr
     _last_bname_panel_draw = time.monotonic()
+    ctx = context or bpy.context
+    area = getattr(ctx, "area", None)
+    screen = getattr(ctx, "screen", None)
+    _last_bname_panel_area_ptr = _as_pointer(area)
+    _last_bname_panel_screen_ptr = _as_pointer(screen)
 
 
-def _recent_bname_panel_drawn() -> bool:
-    return False
+def _as_pointer(value) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value.as_pointer())
+    except Exception:  # noqa: BLE001
+        return None
 
 
-def _area_has_bname_panel_category(area) -> bool:
-    if area is None or getattr(area, "type", "") != "VIEW_3D":
+def _recent_bname_panel_drawn(area=None, screen=None) -> bool:
+    if _last_bname_panel_draw <= 0.0:
         return False
+    area_ptr = _as_pointer(area)
+    screen_ptr = _as_pointer(screen)
+    if area_ptr is not None and _last_bname_panel_area_ptr not in {None, area_ptr}:
+        return False
+    if screen_ptr is not None and _last_bname_panel_screen_ptr not in {None, screen_ptr}:
+        return False
+    return True
+
+
+def _visible_ui_regions(area):
+    if area is None or getattr(area, "type", "") != "VIEW_3D":
+        return []
     space = getattr(getattr(area, "spaces", None), "active", None)
     if space is None or not bool(getattr(space, "show_region_ui", False)):
-        return False
+        return []
+    regions = []
     for region in getattr(area, "regions", []) or []:
         if getattr(region, "type", "") != "UI":
             continue
         if getattr(region, "width", 0) <= 1 or getattr(region, "height", 0) <= 1:
             continue
-        if str(getattr(region, "active_panel_category", "") or "") == BNAME_PANEL_CATEGORY:
-            return True
+        regions.append(region)
+    return regions
+
+
+def _category_for_region(region) -> tuple[bool, str]:
+    sentinel = object()
+    value = getattr(region, "active_panel_category", sentinel)
+    if value is sentinel:
+        return False, ""
+    return True, str(value or "")
+
+
+def _area_bname_status(area) -> str:
+    """VIEW_3D サイドバーの B-Name タブ状態を返す.
+
+    戻り値は ``bname`` / ``other`` / ``unknown`` / ``hidden``。
+    ``unknown`` は Blender 側から現在タブ名を取得できないが、UI 領域は
+    表示されている状態を表す。
+    """
+    regions = _visible_ui_regions(area)
+    if not regions:
+        return "hidden"
+    for region in regions:
+        _has_category, category = _category_for_region(region)
+        if category == BNAME_PANEL_CATEGORY:
+            return "bname"
+        if category:
+            return "other"
+    return "unknown"
+
+
+def _area_has_bname_panel_category(area, screen=None) -> bool:
+    status = _area_bname_status(area)
+    if status == "bname":
+        return True
+    if status == "unknown":
+        return _recent_bname_panel_drawn(area, screen)
     return False
 
 
@@ -51,7 +109,7 @@ def any_bname_panel_visible(context=None) -> bool:
         if screen is None:
             continue
         for area in getattr(screen, "areas", []) or []:
-            if _area_has_bname_panel_category(area):
+            if _area_has_bname_panel_category(area, screen):
                 return True
     return False
 
@@ -63,7 +121,7 @@ def bname_panel_visible(context=None) -> bool:
     ctx = context or bpy.context
     area = getattr(ctx, "area", None)
     if area is not None:
-        return _area_has_bname_panel_category(area)
+        return _area_has_bname_panel_category(area, getattr(ctx, "screen", None))
     return False
 
 
