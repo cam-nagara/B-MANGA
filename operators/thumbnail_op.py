@@ -385,7 +385,10 @@ def _page_preview_scale_percentage(work) -> float:
 def _resize_for_page_preview(image, percentage: float | None):
     if image is None or percentage is None:
         return image
-    scale = max(1.0, min(100.0, float(percentage))) / 100.0
+    try:
+        scale = max(1.0, min(100.0, float(percentage))) / 100.0
+    except (TypeError, ValueError):
+        scale = 0.1
     if scale >= 0.9999:
         return image
     width = max(1, int(round(image.width * scale)))
@@ -529,7 +532,6 @@ class BNAME_OT_coma_generate_preview(Operator):
                 context,
                 out,
                 resolution_percentage=100,
-                output_scale_percentage=_page_preview_scale_percentage(work),
             ):
                 raise RuntimeError("カメラプレビューの生成に失敗しました")
         except Exception as exc:  # noqa: BLE001

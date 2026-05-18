@@ -447,6 +447,14 @@ def layer_folder_from_dict(entry, data: dict[str, Any]) -> None:
 # ---------- WorkData (root) ----------
 
 
+def _page_preview_scale_percentage_from_data(value: object) -> float:
+    try:
+        percentage = float(value or 10.0)
+    except (TypeError, ValueError):
+        percentage = 10.0
+    return max(1.0, min(100.0, percentage))
+
+
 def work_to_dict(work) -> dict[str, Any]:
     """BNameWorkData → work.json dict."""
     scene = _scene_from_work(work)
@@ -460,7 +468,9 @@ def work_to_dict(work) -> dict[str, Any]:
         "comaGap": coma_gap_to_dict(work.coma_gap),
         "comaBlendTemplatePath": str(getattr(work, "coma_blend_template_path", "") or ""),
         "pagePreviewScalePercentage": round(
-            float(getattr(work, "page_preview_scale_percentage", 10.0) or 10.0),
+            _page_preview_scale_percentage_from_data(
+                getattr(work, "page_preview_scale_percentage", 10.0)
+            ),
             3,
         ),
         "safeAreaOverlay": safe_area_to_dict(work.safe_area_overlay),
@@ -505,9 +515,8 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     if hasattr(work, "coma_blend_template_path"):
         work.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
     if hasattr(work, "page_preview_scale_percentage"):
-        work.page_preview_scale_percentage = max(
-            1.0,
-            min(100.0, float(data.get("pagePreviewScalePercentage", 10.0) or 10.0)),
+        work.page_preview_scale_percentage = _page_preview_scale_percentage_from_data(
+            data.get("pagePreviewScalePercentage", 10.0)
         )
     safe_area_from_dict(work.safe_area_overlay, data.get("safeAreaOverlay", {}))
     scene = _scene_from_work(work)
