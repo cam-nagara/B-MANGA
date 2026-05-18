@@ -3,6 +3,33 @@
 from __future__ import annotations
 
 
+def _parse_vertex_indices(value: str) -> set[int]:
+    out: set[int] = set()
+    for part in str(value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            idx = int(part)
+        except ValueError:
+            continue
+        if idx >= 0:
+            out.add(idx)
+    return out
+
+
+def _format_vertex_indices(indices) -> str:
+    values: set[int] = set()
+    for value in indices or ():
+        try:
+            idx = int(value)
+        except (TypeError, ValueError):
+            continue
+        if idx >= 0:
+            values.add(idx)
+    return ",".join(str(v) for v in sorted(values))
+
+
 def tag_view3d_redraw(context) -> None:
     screen = getattr(context, "screen", None)
     if screen is None:
@@ -47,6 +74,7 @@ def set_selection(
     coma_index: int = -1,
     edge_index: int = -1,
     vertex_index: int = -1,
+    vertex_indices=None,
     sync_style: bool = True,
 ) -> bool:
     """アクティブなコマ辺選択を WindowManager プロパティに保存する."""
@@ -57,12 +85,24 @@ def set_selection(
         kind = "none"
     if kind == "none":
         page_index = coma_index = edge_index = vertex_index = -1
+        vertex_indices = ()
+    elif kind == "vertex":
+        if vertex_indices is None:
+            vertex_indices = (vertex_index,) if int(vertex_index) >= 0 else ()
+        vertex_set = _parse_vertex_indices(_format_vertex_indices(vertex_indices))
+        if int(vertex_index) >= 0:
+            vertex_set.add(int(vertex_index))
+        vertex_indices = vertex_set
+    else:
+        vertex_indices = ()
     try:
         wm.bname_edge_select_kind = kind
         wm.bname_edge_select_page = int(page_index)
         wm.bname_edge_select_coma = int(coma_index)
         wm.bname_edge_select_edge = int(edge_index) if kind == "edge" else -1
         wm.bname_edge_select_vertex = int(vertex_index) if kind == "vertex" else -1
+        if hasattr(wm, "bname_edge_select_vertices"):
+            wm.bname_edge_select_vertices = _format_vertex_indices(vertex_indices)
     except Exception:  # noqa: BLE001
         return False
     if kind != "none":
@@ -91,6 +131,61 @@ def set_selection(
 
 def clear_selection(context) -> bool:
     return set_selection(context, "none")
+
+
+def selected_vertices(context, *, page_index: int = -1, coma_index: int = -1) -> set[int]:
+    wm = getattr(context, "window_manager", None) if context is not None else None
+    if wm is None:
+        return set()
+    if str(getattr(wm, "bname_edge_select_kind", "none") or "none") != "vertex":
+        return set()
+    if page_index >= 0 and int(getattr(wm, "bname_edge_select_page", -1)) != int(page_index):
+        return set()
+    if coma_index >= 0 and int(getattr(wm, "bname_edge_select_coma", -1)) != int(coma_index):
+        return set()
+    values = _parse_vertex_indices(str(getattr(wm, "bname_edge_select_vertices", "") or ""))
+    active = int(getattr(wm, "bname_edge_select_vertex", -1))
+    if active >= 0:
+        values.add(active)
+    return values
+
+
+def set_vertex_selection(
+    context,
+    *,
+    page_index: int,
+    coma_index: int,
+    vertex_index: int,
+    mode: str = "single",
+) -> set[int]:
+    try:
+        vertex_index = int(vertex_index)
+    except (TypeError, ValueError):
+        set_selection(context, "none")
+        return set()
+    current = selected_vertices(context, page_index=page_index, coma_index=coma_index)
+    if mode == "add":
+        current.add(vertex_index)
+    elif mode == "toggle":
+        if vertex_index in current:
+            current.remove(vertex_index)
+        else:
+            current.add(vertex_index)
+    else:
+        current = {vertex_index}
+    if not current:
+        set_selection(context, "none")
+        return set()
+    active = vertex_index if vertex_index in current else min(current)
+    set_selection(
+        context,
+        "vertex",
+        page_index=page_index,
+        coma_index=coma_index,
+        vertex_index=active,
+        vertex_indices=current,
+    )
+    return set(current)
 
 
 def update_overlay_pointer(context, region, event) -> None:

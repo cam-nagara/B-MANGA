@@ -396,12 +396,13 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                 edge_index=int(hit.get("edge", -1)),
             )
         elif kind == "coma_vertex":
-            edge_selection.set_selection(
+            vertex_mode = "toggle" if mode == "toggle" else "add" if mode == "add" else "single"
+            edge_selection.set_vertex_selection(
                 context,
-                "vertex",
                 page_index=page_index,
                 coma_index=coma_index,
                 vertex_index=int(hit.get("vertex", -1)),
+                mode=vertex_mode,
             )
         else:
             edge_selection.set_selection(
@@ -687,6 +688,13 @@ class BNAME_OT_object_tool(Operator):
         }
         if selection["type"] == "vertex":
             selection["vertex"] = int(hit.get("vertex", -1))
+            selected_vertices = edge_selection.selected_vertices(
+                context,
+                page_index=selection["page"],
+                coma_index=selection["coma"],
+            )
+            if selection["vertex"] in selected_vertices and len(selected_vertices) > 1:
+                selection["vertices"] = sorted(selected_vertices)
         else:
             selection["edge"] = int(hit.get("edge", -1))
         view = view_event_region.view3d_window_under_event(context, event)

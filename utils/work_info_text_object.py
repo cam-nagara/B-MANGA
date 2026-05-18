@@ -15,6 +15,11 @@ WORK_INFO_MATERIAL_PREFIX = "BName_WorkInfoText_"
 PROP_WORK_INFO_KIND = "bname_work_info_text_kind"
 PROP_WORK_INFO_OWNER_ID = "bname_work_info_text_owner_id"
 TEXT_Z_M = 0.032
+# Blender の FONT オブジェクトの ``size`` は文字の外枠そのものではなく
+# フォント内部の em サイズとして扱われる。Yu Gothic など日本語フォントでは
+# 20Q(5mm) をそのまま入れると見える字面が約 2.8mm になり小さすぎるため、
+# 作品情報の実体テキストでは UI 上の Q 数が原稿上の見た目に近くなるよう補正する。
+TEXT_OBJECT_Q_VISIBLE_HEIGHT_COMPENSATION = 1.78
 
 
 def _material(owner_id: str, color) -> bpy.types.Material:
@@ -122,7 +127,8 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
     if curve is None:
         curve = bpy.data.curves.new(data_name, type="FONT")
     curve.body = text
-    curve.size = mm_to_m(q_to_mm(float(getattr(item, "font_size_q", 20.0) or 20.0)))
+    q_size = max(0.1, float(getattr(item, "font_size_q", 20.0) or 20.0))
+    curve.size = mm_to_m(q_to_mm(q_size) * TEXT_OBJECT_Q_VISIBLE_HEIGHT_COMPENSATION)
     _assign_default_font(curve)
     obj = bpy.data.objects.get(obj_name)
     if obj is not None and obj.type != "FONT":

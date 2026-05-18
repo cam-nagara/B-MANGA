@@ -34,6 +34,7 @@ from ..utils import (
     page_grid,
     page_range,
     coma_edge_adjacency,
+    coma_vertex_edit,
     object_selection,
     polygon_geom,
     viewport_colors,
@@ -57,6 +58,8 @@ COLOR_SELECTED_VERTEX = viewport_colors.HANDLE_OUTLINE
 COLOR_HANDLE = viewport_colors.HANDLE_FILL
 # hover 中の ▲ ハンドルは黄色寄りに明るく強調 (alpha=1)
 COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
+COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
+COLOR_VERTEX_ACTIVE = viewport_colors.SELECTION_STRONG
 
 
 def _find_view3d(context):
@@ -184,7 +187,6 @@ def _line_intersect(
 # drag 中のスナップしきい値 (mm)
 DRAG_SNAP_TOL_MM = 1.5
 VERTEX_DIRECTION_SNAP_TOL_MM = 4.0
-VERTEX_DIRECTION_SNAP_MIN_MM = 0.2
 MIN_PANEL_AREA_MM2 = 0.01
 
 
@@ -488,43 +490,6 @@ def _find_overlapping_coma_edges(
                 continue
             overlaps.append((panel_i2, ei2))
     return overlaps
-
-
-def _snap_vertex_delta_to_incident_edge(
-    poly: list[tuple[float, float]],
-    vertex_idx: int,
-    dx: float,
-    dy: float,
-) -> tuple[float, float]:
-    """頂点ドラッグ量を、元頂点から伸びる2辺方向へ近距離だけ吸着する."""
-    n = len(poly)
-    if n < 3:
-        return dx, dy
-    move_len = math.hypot(dx, dy)
-    if move_len < VERTEX_DIRECTION_SNAP_MIN_MM:
-        return dx, dy
-    origin = poly[vertex_idx]
-    candidates: list[tuple[float, float, float]] = []
-    for neighbor_idx in ((vertex_idx - 1) % n, (vertex_idx + 1) % n):
-        neighbor = poly[neighbor_idx]
-        ex = neighbor[0] - origin[0]
-        ey = neighbor[1] - origin[1]
-        edge_len = math.hypot(ex, ey)
-        if edge_len < 1e-6:
-            continue
-        ux = ex / edge_len
-        uy = ey / edge_len
-        along = dx * ux + dy * uy
-        snapped_dx = ux * along
-        snapped_dy = uy * along
-        off = math.hypot(dx - snapped_dx, dy - snapped_dy)
-        candidates.append((off, snapped_dx, snapped_dy))
-    if not candidates:
-        return dx, dy
-    off, snapped_dx, snapped_dy = min(candidates, key=lambda item: item[0])
-    if off <= VERTEX_DIRECTION_SNAP_TOL_MM:
-        return snapped_dx, snapped_dy
-    return dx, dy
 
 
 # ---------- ピック ----------
@@ -878,6 +843,7 @@ class BNAME_OT_coma_edge_move(Operator):
                 page_index=page_index,
                 coma_index=coma_index,
                 vertex_index=int(sel.get("vertex", -1)),
+                vertex_indices=sel.get("vertices"),
             )
         else:
             edge_selection.clear_selection(context)
@@ -1158,8 +1124,49 @@ class BNAME_OT_coma_edge_move(Operator):
                     # vertex
                     page_for_hit = self._work.pages[int(hit["page"])]
                     panel_for_hit = page_for_hit.comas[int(hit["coma"])]
-                    self._selection = hit
-                    self._dragging = not (event.ctrl or event.shift)
+                    same_vertex_scope = (
+                        isinstance(self._selection, dict)
+                        and self._selection.get("type") == "vertex"
+                        and int(self._selection.get("page", -1)) == int(hit["page"])
+                        and int(self._selection.get("coma", -1)) == int(hit["coma"])
+                    )
+                    if event.ctrl or event.shift:
+                        current = set(self._selection.get("vertices", [])) if same_vertex_scope else set()
+                        vi = int(hit.get("vertex", -1))
+                        if event.ctrl:
+                            if vi in current:
+                                current.remove(vi)
+                            else:
+                                current.add(vi)
+                        else:
+                            current.add(vi)
+                        if not current:
+                            self._selection = None
+                            self._dragging = False
+                        else:
+                            self._selection = {
+                                "type": "vertex",
+                                "page": int(hit["page"]),
+                                "coma": int(hit["coma"]),
+                                "vertex": vi if vi in current else min(current),
+                                "vertices": sorted(current),
+                            }
+                            self._dragging = False
+                    else:
+                        current = set(self._selection.get("vertices", [])) if same_vertex_scope else set()
+                        vi = int(hit.get("vertex", -1))
+                        if vi in current and len(current) > 1:
+                            vertices = sorted(current)
+                        else:
+                            vertices = [vi]
+                        self._selection = {
+                            "type": "vertex",
+                            "page": int(hit["page"]),
+                            "coma": int(hit["coma"]),
+                            "vertex": vi,
+                            "vertices": vertices,
+                        }
+                        self._dragging = True
                     self._drag_moved = False
                     if self._dragging:
                         self._drag_start_world = _region_to_world_mm(
@@ -1167,10 +1174,11 @@ class BNAME_OT_coma_edge_move(Operator):
                         )
                         self._capture_original_geometry()
                     mode = "toggle" if event.ctrl else "add" if event.shift else "single"
+                    object_mode = "add" if (mode in {"toggle", "add"} and same_vertex_scope) else mode
                     object_selection.select_key(
                         context,
                         object_selection.coma_key(page_for_hit, panel_for_hit),
-                        mode=mode,
+                        mode=object_mode,
                     )
                     if mode == "single":
                         _focus_active_coma(
@@ -1257,13 +1265,13 @@ class BNAME_OT_coma_edge_move(Operator):
             snapshot["adjacent_edges"] = adj_states
         elif sel["type"] == "vertex":
             # 頂点を共有する隣接 panel (位置一致 ± tolerance) を集める
-            ox, oy = _page_offset(self._work, sel["page"])
-            vi = sel["vertex"]
             poly = _coma_polygon(panel)
-            v_world = (poly[vi][0] + ox, poly[vi][1] + oy)
-            snapshot["v_world"] = v_world
-            snapshot["vertex_adjacent_edges"] = (
-                coma_edge_adjacency.capture_vertex_adjacent_edge_states(
+            vertex_indices = coma_vertex_edit.selection_vertex_indices(sel, len(poly))
+            snapshot["vertex_indices"] = vertex_indices
+            vertex_adjacent_edges: list[dict] = []
+            seen_edges: set[tuple[int, int, int, int]] = set()
+            for vi in vertex_indices:
+                captured = coma_edge_adjacency.capture_vertex_adjacent_edge_states(
                     self._work,
                     sel["page"],
                     sel["coma"],
@@ -1276,8 +1284,40 @@ class BNAME_OT_coma_edge_move(Operator):
                     adjacency_gap_tolerance_mm=ADJACENCY_GAP_TOLERANCE_MM,
                     adjacency_overlap_ratio=ADJACENCY_OVERLAP_RATIO,
                 )
-            )
+                for state in captured:
+                    key = (
+                        int(state.get("selected_edge", -1)),
+                        int(state.get("page", -1)),
+                        int(state.get("coma", -1)),
+                        int(state.get("edge", -1)),
+                    )
+                    if key in seen_edges:
+                        continue
+                    seen_edges.add(key)
+                    vertex_adjacent_edges.append(state)
+                vertex_adjacent_edges.extend(
+                    coma_vertex_edit.capture_extended_vertex_edge_states(
+                        self._work,
+                        sel["page"],
+                        sel["coma"],
+                        vi,
+                        poly,
+                        seen_edges,
+                        page_offset_fn=_page_offset,
+                        coma_polygon_fn=_coma_polygon,
+                        all_edges_world_fn=_all_coma_edges_world,
+                        edge_projection_params_fn=coma_edge_adjacency.edge_projection_params,
+                        gap_tolerance_mm=ADJACENCY_GAP_TOLERANCE_MM,
+                    )
+                )
+            snapshot["vertex_adjacent_edges"] = vertex_adjacent_edges
             shared = []
+            seen_shared: set[tuple[int, int, int]] = set()
+            selected_self = {(sel["page"], sel["coma"], vi) for vi in vertex_indices}
+            selected_world = []
+            ox, oy = _page_offset(self._work, sel["page"])
+            for vi in vertex_indices:
+                selected_world.append((vi, (poly[vi][0] + ox, poly[vi][1] + oy)))
             for pi, page2 in enumerate(self._work.pages):
                 if not page_range.page_in_range(page2):
                     continue
@@ -1285,14 +1325,21 @@ class BNAME_OT_coma_edge_move(Operator):
                 for panel_i, p in enumerate(page2.comas):
                     poly2 = _coma_polygon(p)
                     for vi2 in range(len(poly2)):
-                        wp = (poly2[vi2][0] + ox2, poly2[vi2][1] + oy2)
-                        if (pi, panel_i, vi2) == (sel["page"], sel["coma"], vi):
+                        if (pi, panel_i, vi2) in selected_self:
                             continue
-                        if math.hypot(wp[0] - v_world[0], wp[1] - v_world[1]) < ADJACENCY_GAP_TOLERANCE_MM * 5:
-                            shared.append({
-                                "page": pi, "coma": panel_i, "vertex": vi2,
-                                "poly": poly2,
-                            })
+                        wp = (poly2[vi2][0] + ox2, poly2[vi2][1] + oy2)
+                        for source_vi, v_world in selected_world:
+                            if math.hypot(wp[0] - v_world[0], wp[1] - v_world[1]) < ADJACENCY_GAP_TOLERANCE_MM * 5:
+                                key = (pi, panel_i, vi2)
+                                if key in seen_shared:
+                                    continue
+                                seen_shared.add(key)
+                                shared.append({
+                                    "page": pi, "coma": panel_i, "vertex": vi2,
+                                    "source_vertex": source_vi,
+                                    "poly": poly2,
+                                })
+                                break
             snapshot["shared_vertices"] = shared
         self._original_geometry = snapshot
 
@@ -1377,10 +1424,29 @@ class BNAME_OT_coma_edge_move(Operator):
 
         elif sel["type"] == "vertex":
             orig_poly = self._original_geometry["poly"]
-            vi = sel["vertex"]
-            dx, dy = _snap_vertex_delta_to_incident_edge(orig_poly, vi, dx, dy)
+            vi = int(sel.get("vertex", -1))
+            moving_vertices = set(
+                coma_vertex_edit.selection_vertex_indices(
+                    {"vertex": vi, "vertices": self._original_geometry.get("vertex_indices", sel.get("vertices"))},
+                    len(orig_poly),
+                )
+            )
+            dx, dy = coma_vertex_edit.snap_vertex_delta_to_guides(
+                orig_poly,
+                moving_vertices,
+                vi,
+                dx,
+                dy,
+                self._original_geometry.get("vertex_adjacent_edges", []),
+                snap_tolerance_mm=DRAG_SNAP_TOL_MM,
+                direction_snap_tolerance_mm=VERTEX_DIRECTION_SNAP_TOL_MM,
+            )
             new_poly = list(orig_poly)
-            new_poly[vi] = (orig_poly[vi][0] + dx, orig_poly[vi][1] + dy)
+            for moving_vi in moving_vertices:
+                new_poly[moving_vi] = (
+                    orig_poly[moving_vi][0] + dx,
+                    orig_poly[moving_vi][1] + dy,
+                )
             if not _is_valid_coma_polygon(new_poly, reference_poly=orig_poly):
                 return
             panel_updates: dict[tuple[int, int], list[tuple[float, float]]] = {}
@@ -1840,6 +1906,20 @@ def _is_handle_hovered_modal(handle_px, pointer) -> bool:
     return (dx * dx + dy * dy) <= (HANDLE_HIT_RADIUS_PX * HANDLE_HIT_RADIUS_PX)
 
 
+def _is_vertex_hovered_modal(vertex_px, pointer) -> bool:
+    if pointer is None or vertex_px is None:
+        return False
+    dx = vertex_px[0] - pointer[0]
+    dy = vertex_px[1] - pointer[1]
+    return (dx * dx + dy * dy) <= (VERTEX_PICK_TOLERANCE_PX * VERTEX_PICK_TOLERANCE_PX)
+
+
+def _vertex_marker_color(point, pointer, *, selected: bool) -> tuple[float, float, float, float]:
+    if _is_vertex_hovered_modal(point, pointer):
+        return COLOR_VERTEX_HIGHLIGHT
+    return COLOR_VERTEX_ACTIVE if selected else COLOR_SELECTED_VERTEX
+
+
 def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
     sel = op._selection
     if sel is None:
@@ -1885,8 +1965,8 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         except Exception:  # noqa: BLE001
             pass
         for ap, bp in screen_edges:
-            _draw_square_marker(shader, ap, COLOR_SELECTED_VERTEX)
-            _draw_square_marker(shader, bp, COLOR_SELECTED_VERTEX)
+            _draw_square_marker(shader, ap, _vertex_marker_color(ap, pointer, selected=False))
+            _draw_square_marker(shader, bp, _vertex_marker_color(bp, pointer, selected=False))
             h1 = h2 = None
             # screen_edges はすでに画面座標なので、描画用の中心計算だけ直接行う。
             mx = (ap[0] + bp[0]) * 0.5
@@ -1926,8 +2006,8 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         shader.bind()
         shader.uniform_float("color", COLOR_SELECTED_EDGE)
         batch.draw(shader)
-        _draw_square_marker(shader, ap, COLOR_SELECTED_VERTEX)
-        _draw_square_marker(shader, bp, COLOR_SELECTED_VERTEX)
+        _draw_square_marker(shader, ap, _vertex_marker_color(ap, pointer, selected=False))
+        _draw_square_marker(shader, bp, _vertex_marker_color(bp, pointer, selected=False))
         try:
             gpu.state.line_width_set(1.0)
         except Exception:  # noqa: BLE001
@@ -1978,14 +2058,21 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         page = work.pages[sel["page"]]
         panel = page.comas[sel["coma"]]
         poly = _coma_polygon(panel)
-        if len(poly) <= sel["vertex"]:
+        selected_vertices = coma_vertex_edit.selection_vertex_indices(sel, len(poly))
+        if not selected_vertices:
             return
         ox, oy = _page_offset_for_area(bpy.context, work, op._area, sel["page"])
-        v = poly[sel["vertex"]]
-        vp = _world_mm_to_region(region, rv3d, v[0] + ox, v[1] + oy)
-        if vp is None:
-            return
-        _draw_square_marker(shader, vp, COLOR_SELECTED_VERTEX)
+        for vertex_index in selected_vertices:
+            v = poly[vertex_index]
+            vp = _world_mm_to_region(region, rv3d, v[0] + ox, v[1] + oy)
+            if vp is None:
+                continue
+            _draw_square_marker(
+                shader,
+                vp,
+                _vertex_marker_color(vp, pointer, selected=True),
+                size_px=7.5,
+            )
 
 
 def _draw_triangle_handle(

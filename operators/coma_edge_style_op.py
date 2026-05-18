@@ -11,7 +11,7 @@ def sync_selected_style_props(_context) -> None:
 
 
 def register() -> None:
-    from bpy.props import EnumProperty, IntProperty
+    from bpy.props import EnumProperty, IntProperty, StringProperty
 
     bpy.types.WindowManager.bname_edge_select_kind = EnumProperty(
         name="選択種別",
@@ -27,6 +27,7 @@ def register() -> None:
     bpy.types.WindowManager.bname_edge_select_coma = IntProperty(default=-1)
     bpy.types.WindowManager.bname_edge_select_edge = IntProperty(default=-1)
     bpy.types.WindowManager.bname_edge_select_vertex = IntProperty(default=-1)
+    bpy.types.WindowManager.bname_edge_select_vertices = StringProperty(default="")
     bpy.types.WindowManager.bname_overlay_pointer_x = IntProperty(default=-1)
     bpy.types.WindowManager.bname_overlay_pointer_y = IntProperty(default=-1)
     bpy.types.WindowManager.bname_overlay_pointer_valid = bpy.props.BoolProperty(default=False)
@@ -39,6 +40,7 @@ def unregister() -> None:
         "bname_edge_select_coma",
         "bname_edge_select_edge",
         "bname_edge_select_vertex",
+        "bname_edge_select_vertices",
         "bname_overlay_pointer_x",
         "bname_overlay_pointer_y",
         "bname_overlay_pointer_valid",

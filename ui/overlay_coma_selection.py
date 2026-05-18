@@ -17,9 +17,12 @@ _HANDLE_SIZE_PX = 20.0
 _HANDLE_OFFSET_PX = 21.0
 # hover 中の ▲ 用ハイライト色 (黄色寄り)
 _COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
+_COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
+_COLOR_VERTEX_SELECTED = viewport_colors.SELECTION_STRONG
 # hover 判定半径 (px)。 coma_edge_move_op.HANDLE_HIT_RADIUS_PX (28.0) と同じに
 # 揃えてクリック判定との一貫性を保つ
 _HOVER_RADIUS_PX = 28.0
+_VERTEX_HOVER_RADIUS_PX = 14.0
 
 
 def draw(context, work, region, rv3d) -> None:
@@ -95,7 +98,15 @@ def draw(context, work, region, rv3d) -> None:
             _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
     elif kind == "vertex":
         vertex_index = int(getattr(wm, "bname_edge_select_vertex", -1))
-        _draw_vertex(shader, region, rv3d, world_poly, vertex_index)
+        selected_vertices = edge_selection.selected_vertices(
+            context,
+            page_index=page_index,
+            coma_index=coma_index,
+        )
+        if not selected_vertices and vertex_index >= 0:
+            selected_vertices = {vertex_index}
+        for vi in sorted(selected_vertices):
+            _draw_vertex(shader, region, rv3d, world_poly, vi, pointer=pointer)
         # vertex 選択中も全辺の ▲ を表示 (連続 ▲ クリック対応)
         for edge_index in range(len(world_poly)):
             _draw_edge_handles_only(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
@@ -153,6 +164,14 @@ def _is_handle_hovered(handle_px: tuple[float, float], pointer: tuple[int, int] 
     return (dx * dx + dy * dy) <= (_HOVER_RADIUS_PX * _HOVER_RADIUS_PX)
 
 
+def _is_vertex_hovered(vertex_px: tuple[float, float], pointer: tuple[int, int] | None) -> bool:
+    if pointer is None or vertex_px is None:
+        return False
+    dx = vertex_px[0] - pointer[0]
+    dy = vertex_px[1] - pointer[1]
+    return (dx * dx + dy * dy) <= (_VERTEX_HOVER_RADIUS_PX * _VERTEX_HOVER_RADIUS_PX)
+
+
 def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index: int, *, pointer=None) -> None:
     if len(poly) < 2 or not (0 <= edge_index < len(poly)):
         return
@@ -173,8 +192,16 @@ def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index
             gpu.state.line_width_set(1.0)
         except Exception:  # noqa: BLE001
             pass
-    _draw_square_marker(shader, ap)
-    _draw_square_marker(shader, bp)
+    _draw_square_marker(
+        shader,
+        ap,
+        color=_COLOR_VERTEX_HIGHLIGHT if _is_vertex_hovered(ap, pointer) else viewport_colors.HANDLE_OUTLINE,
+    )
+    _draw_square_marker(
+        shader,
+        bp,
+        color=_COLOR_VERTEX_HIGHLIGHT if _is_vertex_hovered(bp, pointer) else viewport_colors.HANDLE_OUTLINE,
+    )
     for handle, direction_idx in _handle_centers(ap, bp):
         _draw_triangle_handle(
             shader, handle, ap, bp, direction_idx,
@@ -207,12 +234,21 @@ def _draw_edge_handles_only(
         )
 
 
-def _draw_vertex(shader, region, rv3d, poly: list[tuple[float, float]], vertex_index: int) -> None:
+def _draw_vertex(
+    shader,
+    region,
+    rv3d,
+    poly: list[tuple[float, float]],
+    vertex_index: int,
+    *,
+    pointer=None,
+) -> None:
     if len(poly) < 2 or not (0 <= vertex_index < len(poly)):
         return
     coord = _world_to_region(region, rv3d, poly[vertex_index])
     if coord is not None:
-        _draw_square_marker(shader, coord)
+        color = _COLOR_VERTEX_HIGHLIGHT if _is_vertex_hovered(coord, pointer) else _COLOR_VERTEX_SELECTED
+        _draw_square_marker(shader, coord, color=color, size_px=_VERTEX_MARKER_SIZE_PX + 1.5)
 
 
 def _handle_centers(
@@ -270,9 +306,15 @@ def _draw_triangle_handle(
     batch.draw(shader)
 
 
-def _draw_square_marker(shader, center: tuple[float, float]) -> None:
+def _draw_square_marker(
+    shader,
+    center: tuple[float, float],
+    *,
+    color=viewport_colors.HANDLE_OUTLINE,
+    size_px: float = _VERTEX_MARKER_SIZE_PX,
+) -> None:
     cx, cy = center
-    size = _VERTEX_MARKER_SIZE_PX
+    size = size_px
     verts = [
         (cx - size, cy - size),
         (cx + size, cy - size),
@@ -281,5 +323,5 @@ def _draw_square_marker(shader, center: tuple[float, float]) -> None:
     ]
     batch = batch_for_shader(shader, "TRIS", {"pos": verts}, indices=[(0, 1, 2), (0, 2, 3)])
     shader.bind()
-    shader.uniform_float("color", viewport_colors.HANDLE_OUTLINE)
+    shader.uniform_float("color", color)
     batch.draw(shader)
