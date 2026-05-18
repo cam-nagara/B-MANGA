@@ -248,16 +248,24 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     safe_fill = safe_fill_objs[0]
     if safe_fill.type != "MESH":
         raise AssertionError(f"safe area fill should be mesh: {safe_fill.name} ({safe_fill.type})")
+    if getattr(safe_fill, "display_type", "") != "SOLID":
+        raise AssertionError("safe area fill should display as solid")
     if not bool(getattr(safe_fill, "show_in_front", False)):
         raise AssertionError("safe area fill should use viewport in-front display")
-    if safe_fill.active_material is not None or len(getattr(safe_fill.data, "materials", [])) != 0:
-        raise AssertionError("safe area fill should not use a material")
+    if safe_fill.active_material is None or len(getattr(safe_fill.data, "materials", [])) != 1:
+        raise AssertionError("safe area fill should have one viewport material")
     expected_color = tuple(float(v) for v in getattr(work.safe_area_overlay, "color", (0.0, 0.0, 0.0))) + (
         float(getattr(work.safe_area_overlay, "opacity", 0.30)),
     )
     for actual, expected in zip(tuple(safe_fill.color), expected_color, strict=False):
         if abs(float(actual) - expected) > 1.0e-4:
             raise AssertionError(f"safe area fill viewport color mismatch: {tuple(safe_fill.color)} != {expected_color}")
+    for actual, expected in zip(tuple(safe_fill.active_material.diffuse_color), expected_color, strict=False):
+        if abs(float(actual) - expected) > 1.0e-4:
+            raise AssertionError(
+                f"safe area fill viewport material color mismatch: "
+                f"{tuple(safe_fill.active_material.diffuse_color)} != {expected_color}"
+            )
     return calls
 
 

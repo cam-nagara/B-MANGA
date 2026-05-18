@@ -263,14 +263,19 @@ def main() -> None:
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
+        assert getattr(safe_fill_obj, "display_type", "") == "SOLID", "safe area fill should display as solid"
         assert bool(getattr(safe_fill_obj, "show_in_front", False)), "safe area fill is not in front in viewport"
         assert bool(getattr(safe_fill_obj, "show_transparent", False)), "safe area fill is not transparent in viewport"
-        assert safe_fill_obj.active_material is None, "safe area fill should not use a material"
-        assert len(getattr(safe_fill_obj.data, "materials", [])) == 0, "safe area fill material slot was not cleared"
+        safe_mat = safe_fill_obj.active_material
+        assert safe_mat is not None, "safe area fill needs a viewport material in texture shading"
+        assert safe_mat.name.startswith(paper_guide_object.PAPER_SAFE_FILL_VIEW_MATERIAL), safe_mat.name
+        assert len(getattr(safe_fill_obj.data, "materials", [])) == 1, "safe area fill material slot count is wrong"
         assert bpy.data.materials.get("BName_SafeAreaFill") is None, "old safe area fill material was not removed"
         expected_safe_color = (0.25, 0.50, 0.75, 0.17)
         for actual, expected in zip(safe_fill_obj.color, expected_safe_color, strict=False):
             assert abs(float(actual) - expected) < 1.0e-4, (tuple(safe_fill_obj.color), expected_safe_color)
+        for actual, expected in zip(safe_mat.diffuse_color, expected_safe_color, strict=False):
+            assert abs(float(actual) - expected) < 1.0e-4, (tuple(safe_mat.diffuse_color), expected_safe_color)
 
         border_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{page.id}_{coma.id}"

@@ -22,6 +22,7 @@ PAPER_GUIDE_GP_DATA_PREFIX = "paper_guide_gp_"
 PAPER_SAFE_FILL_MESH_PREFIX = "paper_safe_area_mesh_"
 PAPER_GUIDE_MATERIAL_PREFIX = "BName_PaperGuide_"
 _OLD_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
+PAPER_SAFE_FILL_VIEW_MATERIAL = "BName_SafeAreaFill_View"
 
 PROP_GUIDE_KIND = "bname_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
@@ -380,6 +381,30 @@ def _remove_old_safe_fill_material_if_unused() -> None:
         pass
 
 
+def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    mat = bpy.data.materials.get(PAPER_SAFE_FILL_VIEW_MATERIAL)
+    if mat is None:
+        mat = bpy.data.materials.new(PAPER_SAFE_FILL_VIEW_MATERIAL)
+    try:
+        mat.diffuse_color = rgba
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.use_nodes = False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.surface_render_method = "BLENDED"
+    except (AttributeError, TypeError):
+        pass
+    return mat
+
+
 def _safe_fill_faces(canvas: Rect, safe: Rect) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
     rects = [
         Rect(canvas.x, safe.y2, canvas.width, canvas.y2 - safe.y2),
@@ -416,7 +441,6 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
         mesh.from_pydata(verts, [], faces)
     mesh.update()
     _clear_material_slots(mesh)
-    _remove_old_safe_fill_material_if_unused()
 
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
@@ -428,6 +452,14 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
     obj.color = _safe_fill_view_color(work)
+    mesh.materials.append(_safe_fill_view_material(tuple(obj.color)))
+    _remove_old_safe_fill_material_if_unused()
+    try:
+        # B-Name のページ一覧ビューはコマプレビュー表示のためテクスチャ表示にする。
+        # この面だけはビュー表示カラーを使うので、オブジェクト側をソリッド表示へ固定する。
+        obj.display_type = "SOLID"
+    except Exception:  # noqa: BLE001
+        pass
     try:
         obj.show_in_front = True
     except Exception:  # noqa: BLE001
