@@ -637,6 +637,10 @@ def _brush_total_width_mm(line_w: float, blur_amount: float) -> float:
     return total
 
 
+def brush_total_width_mm(line_w: float, blur_amount: float) -> float:
+    return _brush_total_width_mm(line_w, blur_amount)
+
+
 def _background_rgb(background: tuple[float, float, float]) -> tuple[float, float, float]:
     try:
         return (

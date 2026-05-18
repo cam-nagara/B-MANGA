@@ -238,6 +238,18 @@ def _persist_and_refresh_coma_border(context, work, page, coma) -> None:
         _logger.exception("border preset: refresh border object failed")
 
 
+def _prepare_border_detail_curve(coma) -> None:
+    border = getattr(coma, "border", None)
+    if str(getattr(border, "style", "solid") or "solid") != "brush":
+        return
+    try:
+        from ..utils import coma_blur_curve
+
+        coma_blur_curve.ensure_ui_curve_node(border)
+    except Exception:  # noqa: BLE001
+        _logger.exception("border preset: prepare blur curve UI failed")
+
+
 def _on_border_preset_selector_change(self, context):
     global _SUPPRESS_BORDER_SELECTOR_UPDATE
     if _SUPPRESS_BORDER_SELECTOR_UPDATE:
@@ -255,6 +267,7 @@ def _on_border_preset_selector_change(self, context):
         return
     border_presets.apply_preset_to_coma(preset, coma)
     _persist_and_refresh_coma_border(context, work, page, coma)
+    _prepare_border_detail_curve(coma)
     _logger.info("border preset applied via selector: %s", preset.name)
 
 
@@ -290,6 +303,7 @@ class BNAME_OT_border_preset_apply(Operator):
             return {"CANCELLED"}
         border_presets.apply_preset_to_coma(preset, coma)
         _persist_and_refresh_coma_border(context, work, page, coma)
+        _prepare_border_detail_curve(coma)
         self.report({"INFO"}, f"枠線プリセット適用: {preset.name}")
         return {"FINISHED"}
 

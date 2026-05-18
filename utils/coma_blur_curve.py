@@ -15,8 +15,14 @@ UI_MATERIAL_NAME = "BName_ComaBlurCurve_UI"
 UI_NODE_NAME = "BName_ComaBlurCurve_UINode"
 UI_CURVE_SOURCE_PROP = "bname_blur_curve_ui_source"
 UI_OWNER_PROP = "bname_blur_curve_ui_owner"
-DEFAULT_CURVE_TEXT = "0.0000,0.0000;1.0000,1.0000"
-DEFAULT_POINTS: tuple[tuple[float, float], ...] = ((0.0, 0.0), (1.0, 1.0))
+DEFAULT_CURVE_TEXT = "0.0000,0.0000;0.2500,0.0950;0.5000,0.5000;0.7500,0.9050;1.0000,1.0000"
+DEFAULT_POINTS: tuple[tuple[float, float], ...] = (
+    (0.0, 0.0),
+    (0.25, 0.095),
+    (0.5, 0.5),
+    (0.75, 0.905),
+    (1.0, 1.0),
+)
 
 
 def parse_points(value: object) -> tuple[tuple[float, float], ...]:
@@ -154,6 +160,22 @@ def ensure_ui_curve_node(border) -> bpy.types.Node | None:
     )
     if owner:
         mat[UI_OWNER_PROP] = owner
+    return node
+
+
+def ui_curve_node_for_border(border) -> bpy.types.Node | None:
+    if bpy is None or border is None:
+        return None
+    mat = bpy.data.materials.get(UI_MATERIAL_NAME)
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return None
+    owner = _owner_key_for_border(border)
+    if owner and str(mat.get(UI_OWNER_PROP, "") or "") != owner:
+        return None
+    node = nt.nodes.get(UI_NODE_NAME)
+    if node is None or node.bl_idname != "ShaderNodeFloatCurve":
+        return None
     return node
 
 

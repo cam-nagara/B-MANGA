@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
@@ -45,6 +47,8 @@ from . import (
 _DRAG_EPS_MM = 0.05
 _EDGE_PICK_WORLD_TOLERANCE_MIN_MM = 3.0
 _EDGE_PICK_WORLD_TOLERANCE_MAX_MM = 12.0
+_DOUBLE_CLICK_INTERVAL_SEC = 0.4
+_DOUBLE_CLICK_DISTANCE_PX = 8.0
 
 
 def _find_page_by_id(work, page_id: str):
@@ -555,6 +559,7 @@ class BNAME_OT_object_tool(Operator):
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "DEFAULT")
         self._clear_drag_state()
+        self._clear_click_state()
         object_tool_balloon_tail.clear_pending(self)
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("object_tool", self, context)
@@ -597,8 +602,11 @@ class BNAME_OT_object_tool(Operator):
 
     def _handle_left_press(self, context, event):
         mode = _selection_mode(event)
+        if mode != "single":
+            self._clear_click_state()
         if event.value == "DOUBLE_CLICK" and mode == "single":
-            coma_hit = _hit_coma_at_event(context, event)
+            hit = self._hit_object(context, event)
+            coma_hit = self._coma_open_hit_from_hit(hit)
             if coma_hit is not None and self._try_enter_coma_from_hit(context, coma_hit):
                 return {"FINISHED"}
         if (
@@ -606,6 +614,7 @@ class BNAME_OT_object_tool(Operator):
             and mode == "single"
             and coma_edge_move_op.extend_selected_handle_at_event(context, event)
         ):
+            self._clear_click_state()
             return {"RUNNING_MODAL"}
         # Alt+ドラッグ: 選択レイヤーを別コマ/ページへ移動 (Ctrl 併用はブラシ
         # サイズ用なので除外)。オブジェクトツールが常駐モーダルとして左
@@ -616,6 +625,7 @@ class BNAME_OT_object_tool(Operator):
             and not bool(getattr(event, "ctrl", False))
             and _reparent_has_targets(context)
         ):
+            self._clear_click_state()
             if bool(getattr(event, "shift", False)):
                 self._do_reparent_out(context, event)
                 return {"RUNNING_MODAL"}
@@ -623,10 +633,18 @@ class BNAME_OT_object_tool(Operator):
                 return {"RUNNING_MODAL"}
         if event.value == "PRESS" and bool(getattr(event, "ctrl", False)):
             if object_tool_balloon_tail.handle_ctrl_press(self, context, event):
+                self._clear_click_state()
                 return {"RUNNING_MODAL"}
         if event.value == "PRESS" and not bool(getattr(event, "ctrl", False)):
             object_tool_balloon_tail.clear_pending(self)
         hit = self._hit_object(context, event)
+        if event.value == "PRESS" and mode == "single":
+            coma_hit = self._coma_open_hit_from_hit(hit)
+            if self._is_manual_coma_double_click(event, coma_hit):
+                self._clear_click_state()
+                if self._try_enter_coma_from_hit(context, coma_hit):
+                    return {"FINISHED"}
+            self._remember_coma_click(event, coma_hit)
         if hit is None:
             if mode == "single" and self._try_start_layer_drag(context, event):
                 return {"RUNNING_MODAL"}
@@ -636,6 +654,7 @@ class BNAME_OT_object_tool(Operator):
                 object_selection.clear(context)
                 object_tool_selection.sync_outliner_selection_for_keys(context, [])
                 edge_selection.clear_selection(context)
+                self._clear_click_state()
             return {"RUNNING_MODAL"}
         if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
             return {"FINISHED"}
@@ -650,6 +669,51 @@ class BNAME_OT_object_tool(Operator):
         else:
             self._start_object_drag(context, hit, x_mm, y_mm)
         return {"RUNNING_MODAL"}
+
+    def _is_manual_coma_double_click(self, event, hit: dict | None) -> bool:
+        if hit is None:
+            return False
+        key = str(hit.get("key", "") or "")
+        if not key or key != str(getattr(self, "_last_click_key", "") or ""):
+            return False
+        now = time.time()
+        if now - float(getattr(self, "_last_click_time", 0.0) or 0.0) > _DOUBLE_CLICK_INTERVAL_SEC:
+            return False
+        last_x, last_y = getattr(self, "_last_click_xy", (-1.0e9, -1.0e9))
+        dx = float(getattr(event, "mouse_x", 0.0)) - float(last_x)
+        dy = float(getattr(event, "mouse_y", 0.0)) - float(last_y)
+        return (dx * dx + dy * dy) ** 0.5 <= _DOUBLE_CLICK_DISTANCE_PX
+
+    def _remember_coma_click(self, event, hit: dict | None) -> None:
+        if hit is None:
+            self._clear_click_state()
+            return
+        self._last_click_time = time.time()
+        self._last_click_xy = (
+            float(getattr(event, "mouse_x", 0.0)),
+            float(getattr(event, "mouse_y", 0.0)),
+        )
+        self._last_click_key = str(hit.get("key", "") or "")
+
+    def _clear_click_state(self) -> None:
+        self._last_click_time = 0.0
+        self._last_click_xy = (-1.0e9, -1.0e9)
+        self._last_click_key = ""
+
+    def _coma_open_hit_from_hit(self, hit: dict | None) -> dict | None:
+        if hit is None or str(hit.get("kind", "") or "") not in {"coma", "coma_edge", "coma_vertex"}:
+            return None
+        page_index = int(hit.get("page", -1))
+        coma_index = int(hit.get("coma", -1))
+        if page_index < 0 or coma_index < 0:
+            return None
+        return {
+            "kind": "coma",
+            "page": page_index,
+            "coma": coma_index,
+            "part": "body",
+            "key": str(hit.get("key", "") or ""),
+        }
 
     def _try_enter_coma_from_hit(self, context, hit: dict) -> bool:
         return enter_coma_from_hit(context, hit)
@@ -1192,22 +1256,26 @@ class BNAME_OT_object_tool(Operator):
     def _finish_drag(self, context) -> None:
         if self._drag_action == "marquee":
             self._finish_marquee_select(context)
+            self._clear_click_state()
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
         if self._drag_action == "reparent":
             self._finish_reparent(context)
+            self._clear_click_state()
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
         if self._drag_action == "balloon_tail_create":
             object_tool_balloon_tail.finish_create_drag(self, context)
+            self._clear_click_state()
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
         if self._drag_action == "balloon_tail_point":
             moved = bool(getattr(self, "_drag_moved", False))
             if moved:
+                self._clear_click_state()
                 try:
                     bpy.ops.ed.undo_push(message="B-Name: しっぽ制御点移動")
                 except Exception:  # noqa: BLE001
@@ -1218,6 +1286,8 @@ class BNAME_OT_object_tool(Operator):
             self._clear_drag_state()
             return
         moved = bool(getattr(self, "_drag_moved", False))
+        if moved:
+            self._clear_click_state()
         changed = moved
         edge_session = self._drag_action == "coma_edge"
         layer_session = self._drag_action == "layer_move"

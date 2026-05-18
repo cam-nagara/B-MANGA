@@ -6,7 +6,7 @@ import importlib.util
 import sys
 import tempfile
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 
 import bpy
 
@@ -153,6 +153,53 @@ def main() -> None:
         panel.rect_width_mm = 160.0
         panel.rect_height_mm = 210.0
         coma_key = coma_stack_key(page, panel)
+        object_key = object_selection.coma_key(page, panel)
+
+        tool = SimpleNamespace()
+        for method_name in (
+            "_clear_drag_state",
+            "_clear_click_state",
+            "_handle_left_press",
+            "_is_manual_coma_double_click",
+            "_remember_coma_click",
+            "_coma_open_hit_from_hit",
+        ):
+            setattr(
+                tool,
+                method_name,
+                MethodType(getattr(object_tool_op.BNAME_OT_object_tool, method_name), tool),
+            )
+        tool._clear_drag_state()
+        tool._clear_click_state()
+        opened_hits = []
+        original_hit_coma = object_tool_op._hit_coma_at_event
+        original_extend = object_tool_op.coma_edge_move_op.extend_selected_handle_at_event
+        object_tool_op._hit_coma_at_event = lambda _ctx, _event: {
+            "kind": "coma",
+            "page": 0,
+            "coma": 0,
+            "part": "body",
+            "key": object_key,
+        }
+        object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = lambda _ctx, _event: False
+        tool._hit_object = object_tool_op._hit_coma_at_event
+        tool._start_marquee_select = lambda _ctx, _event, _mode: True
+        tool._activate_hit = lambda _ctx, _hit, *, mode: None
+        tool._start_point_for_hit = lambda _ctx, _event, _hit: (10.0, 10.0)
+        tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
+        tool._try_enter_coma_from_hit = lambda _ctx, hit: opened_hits.append(hit) or True
+        try:
+            event1 = SimpleNamespace(type="LEFTMOUSE", value="PRESS", mouse_x=120, mouse_y=130)
+            event2 = SimpleNamespace(type="LEFTMOUSE", value="PRESS", mouse_x=123, mouse_y=132)
+            assert tool._handle_left_press(context, event1) == {"RUNNING_MODAL"}
+            assert not opened_hits, "1回目のクリックでコマファイルを開こうとしています"
+            assert tool._handle_left_press(context, event2) == {"FINISHED"}
+            assert opened_hits and opened_hits[-1]["key"] == object_key, (
+                "オブジェクトツールの連続クリックでコマファイルを開けません"
+            )
+        finally:
+            object_tool_op._hit_coma_at_event = original_hit_coma
+            object_tool_op.coma_edge_move_op.extend_selected_handle_at_event = original_extend
 
         gp_layer = _add_gp_layer(context, coma_key)
         effect_obj, effect_layer = effect_line_op._create_effect_layer(

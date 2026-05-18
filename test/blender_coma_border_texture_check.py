@@ -119,6 +119,13 @@ def main() -> None:
     assert not coma_blur_curve.sync_ui_curve_to_border(coma.border), (
         "未表示のぼかしカーブ編集UIが枠線設定を書き換えています"
     )
+    material_names_before = {mat.name for mat in bpy.data.materials}
+    assert coma_blur_curve.ui_curve_node_for_border(coma.border) is None, (
+        "未準備のぼかしカーブ編集UIが描画参照だけで作成されています"
+    )
+    assert {mat.name for mat in bpy.data.materials} == material_names_before, (
+        "ぼかしカーブ編集UIの描画参照だけで素材が追加されています"
+    )
     ui_node = coma_blur_curve.ensure_ui_curve_node(coma.border)
     assert ui_node is not None, "ぼかしカーブ編集UIのノードが作成されていません"
     assert ui_node.id_data is not curve_node.id_data, (
@@ -152,7 +159,12 @@ def main() -> None:
         "別のコマを開いたとき、未反映のぼかしカーブ編集が誤ってコピーされています"
     )
     guard_points = coma_blur_curve.read_node_points(guard_node)
-    assert len(guard_points) == 2, f"別コマのぼかしカーブ初期表示が不正です: {guard_points}"
+    assert len(guard_points) == len(coma_blur_curve.DEFAULT_POINTS), (
+        f"別コマのぼかしカーブ初期表示が不正です: {guard_points}"
+    )
+    for actual, expected in zip(guard_points, coma_blur_curve.DEFAULT_POINTS, strict=False):
+        assert abs(float(actual[0]) - float(expected[0])) < 1.0e-4
+        assert abs(float(actual[1]) - float(expected[1])) < 1.0e-4
     preview_probe = bpy.data.images.new("BName_TestPreviewAlphaProbe", width=2, height=2, alpha=True)
     preview_probe.pixels.foreach_set([
         1.0, 0.0, 0.0, 0.0,

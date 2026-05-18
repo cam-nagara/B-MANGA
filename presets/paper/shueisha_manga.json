@@ -23,6 +23,7 @@
     "defaultLineCount": 60.00,
     "paperColor": "#FFFFFF",
     "paperColorAlpha": 1.0,
+    "showGuides": true,
     "showCanvasFrame": true,
     "showBleedFrame": true,
     "showFinishFrame": true,

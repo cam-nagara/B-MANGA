@@ -76,6 +76,7 @@ def paper_to_dict(paper) -> dict[str, Any]:
         "defaultLineCount": round(paper.default_line_count, 2),
         "paperColor": color_to_hex(paper.paper_color),
         "paperColorAlpha": round(paper.paper_color[3], 3),
+        "showGuides": bool(getattr(paper, "show_guides", True)),
         "showCanvasFrame": bool(getattr(paper, "show_canvas_frame", True)),
         "showBleedFrame": bool(getattr(paper, "show_bleed_frame", True)),
         "showFinishFrame": bool(getattr(paper, "show_finish_frame", True)),
@@ -111,6 +112,7 @@ def paper_from_dict(paper, data: dict[str, Any]) -> None:
     hex_code = data.get("paperColor", "#FFFFFF")
     alpha = float(data.get("paperColorAlpha", 1.0))
     paper.paper_color = hex_to_rgba(hex_code, alpha)
+    paper.show_guides = bool(data.get("showGuides", True))
     paper.show_canvas_frame = bool(data.get("showCanvasFrame", True))
     paper.show_bleed_frame = bool(data.get("showBleedFrame", True))
     paper.show_finish_frame = bool(data.get("showFinishFrame", True))

@@ -580,33 +580,34 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     mat_light = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Light", viewport_colors.PAPER_GUIDE_LIGHT)
     mat_guide = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Guide", viewport_colors.PAPER_GUIDE)
     mat_safe = _gp_material(f"{PAPER_GUIDE_MATERIAL_PREFIX}Safe", viewport_colors.SAFE_LINE)
+    guides_visible = bool(getattr(paper, "show_guides", True))
     guide_sets = [
         (
             "dim",
             [
-                _rect_loop(rects.canvas) if getattr(paper, "show_canvas_frame", True) else [],
-                _rect_loop(rects.bleed) if float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_bleed_frame", True) else [],
+                _rect_loop(rects.canvas) if guides_visible and getattr(paper, "show_canvas_frame", True) else [],
+                _rect_loop(rects.bleed) if guides_visible and float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_bleed_frame", True) else [],
             ],
             [],
             mat_dim,
         ),
         (
             "light",
-            [_rect_loop(rects.finish) if getattr(paper, "show_finish_frame", True) else []],
+            [_rect_loop(rects.finish) if guides_visible and getattr(paper, "show_finish_frame", True) else []],
             _trim_segments(rects.finish, rects.bleed)
-            if float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_trim_marks", True)
+            if guides_visible and float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0 and getattr(paper, "show_trim_marks", True)
             else [],
             mat_light,
         ),
         (
             "inner",
-            [_rect_loop(rects.inner_frame) if getattr(paper, "show_inner_frame", True) else []],
+            [_rect_loop(rects.inner_frame) if guides_visible and getattr(paper, "show_inner_frame", True) else []],
             [],
             mat_guide,
         ),
         (
             "safe",
-            [_rect_loop(rects.safe) if getattr(paper, "show_safe_line", True) else []],
+            [_rect_loop(rects.safe) if guides_visible and getattr(paper, "show_safe_line", True) else []],
             [],
             mat_safe,
         ),

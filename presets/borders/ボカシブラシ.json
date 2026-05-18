@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "presetType": "border",
   "presetName": "輪郭ぼかし",
-  "description": "輪郭をぼかした 0.6mm 黒",
+  "description": "輪郭をぼかした 35mm 黒",
   "border": {
     "style": "brush",
-    "widthMm": 0.6,
+    "widthMm": 35.0,
     "color": "#000000",
     "corner": { "type": "square", "radiusMm": 0.0 },
-    "blurAmount": 0.6,
-    "blurCurve": [[0.0, 0.0], [1.0, 1.0]],
+    "blurAmount": 1.0,
+    "blurCurve": [[0.0, 0.0], [0.25, 0.095], [0.5, 0.5], [0.75, 0.905], [1.0, 1.0]],
     "blurDither": false,
     "visible": true
   },

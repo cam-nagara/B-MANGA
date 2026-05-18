@@ -83,7 +83,7 @@ class BNameComaBorder(bpy.types.PropertyGroup):
     )
     blur_curve_points: StringProperty(  # type: ignore[valid-type]
         name="ぼかしカーブ",
-        default="0.0000,0.0000;1.0000,1.0000",
+        default="0.0000,0.0000;0.2500,0.0950;0.5000,0.5000;0.7500,0.9050;1.0000,1.0000",
         options={"HIDDEN"},
         update=_on_border_changed,
     )

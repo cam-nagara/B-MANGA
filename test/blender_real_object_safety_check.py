@@ -261,6 +261,28 @@ def main() -> None:
         assert all(point.radius > 0.0 for stroke in guide_strokes for point in stroke.points), (
             "paper guide grease pencil strokes have no viewport thickness"
         )
+        work.paper.show_guides = False
+        paper_guide_object.regenerate_all_paper_guides(scene, work)
+        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
+        assert guide_obj is not None, "paper guide object disappeared after hiding guides"
+        hidden_guide_strokes = [
+            stroke
+            for layer in guide_obj.data.layers
+            for frame in layer.frames
+            for stroke in frame.drawing.strokes
+        ]
+        assert not hidden_guide_strokes, "用紙ガイドをオフにしてもガイド線が残っています"
+        work.paper.show_guides = True
+        paper_guide_object.regenerate_all_paper_guides(scene, work)
+        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
+        assert guide_obj is not None, "paper guide object disappeared after showing guides"
+        guide_strokes = [
+            stroke
+            for layer in guide_obj.data.layers
+            for frame in layer.frames
+            for stroke in frame.drawing.strokes
+        ]
+        assert guide_strokes, "用紙ガイドをオンに戻してもガイド線が復元されません"
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"

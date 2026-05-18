@@ -1404,6 +1404,9 @@ class BNAME_OT_layer_stack_detail(Operator):
             from ..utils import coma_blur_curve
 
             coma_blur_curve.sync_active_coma_curve_to_border(coma)
+            border = getattr(coma, "border", None)
+            if str(getattr(border, "style", "solid") or "solid") == "brush":
+                coma_blur_curve.ensure_ui_curve_node(border)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1436,9 +1439,10 @@ class BNAME_OT_layer_stack_detail(Operator):
             return
         try:
             from ..core.work import get_work
-            from ..utils import coma_border_object
+            from ..utils import coma_blur_curve, coma_border_object
 
             coma_border_object.ensure_coma_border_object(context.scene, get_work(context), page, coma)
+            coma_blur_curve.ensure_ui_curve_node(coma.border)
         except Exception:  # noqa: BLE001
             pass
 

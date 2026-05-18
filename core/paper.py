@@ -445,6 +445,12 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         default=True,
         update=_on_paper_visual_changed,
     )
+    show_guides: BoolProperty(  # type: ignore[valid-type]
+        name="用紙ガイド",
+        description="用紙のガイド線をまとめて表示",
+        default=True,
+        update=_on_paper_visual_changed,
+    )
     show_bleed_frame: BoolProperty(  # type: ignore[valid-type]
         name="裁ち落とし枠",
         description="裁ち落とし枠のガイド線を表示",
