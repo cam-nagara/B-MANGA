@@ -49,80 +49,6 @@ def plane_alpha_image_name(page_id: str, coma_id: str) -> str:
     return f"{COMA_PLANE_ALPHA_IMAGE_PREFIX}{page_id}_{coma_id}"
 
 
-def ensure_coma_plane_alpha_image(
-    page_id: str,
-    coma_id: str,
-    outline_mm: Sequence[tuple[float, float]],
-    width_mm: float,
-    blur_amount: float,
-    *,
-    dither: bool = False,
-) -> bpy.types.Image | None:
-    pts = [(float(x), float(y)) for x, y in outline_mm]
-    if len(pts) < 3 or width_mm <= 0.0:
-        return None
-    bounds = _bounds(pts)
-    if bounds is None:
-        return None
-    min_x, min_y, max_x, max_y = bounds
-    width_px = _texture_size(max_x - min_x)
-    height_px = _texture_size(max_y - min_y)
-    name = plane_alpha_image_name(page_id, coma_id)
-    image = bpy.data.images.get(name)
-    if image is not None and str(getattr(image, "source", "") or "") != "GENERATED":
-        try:
-            bpy.data.images.remove(image)
-        except Exception:  # noqa: BLE001
-            pass
-        image = None
-    if image is None or image.size[0] != width_px or image.size[1] != height_px:
-        if image is not None:
-            try:
-                bpy.data.images.remove(image)
-            except Exception:  # noqa: BLE001
-                pass
-        image = bpy.data.images.new(name, width=width_px, height=height_px, alpha=True, float_buffer=False)
-    try:
-        image.colorspace_settings.name = "Non-Color"
-        image.generated_color = (1.0, 1.0, 1.0, 0.0)
-    except Exception:  # noqa: BLE001
-        pass
-    signature = _plane_alpha_signature(
-        pts,
-        bounds,
-        width_px,
-        height_px,
-        width_mm,
-        blur_amount,
-        dither=dither,
-    )
-    if str(image.get(_SIGNATURE_PROP, "") or "") == signature and _plane_cache_sample_ok(
-        image,
-        pts,
-        bounds,
-        width_mm,
-        blur_amount,
-        dither=dither,
-    ):
-        return image
-    pixels = _plane_alpha_pixels(
-        pts,
-        bounds,
-        width_px,
-        height_px,
-        width_mm,
-        blur_amount,
-        dither=dither,
-    )
-    try:
-        image.pixels.foreach_set(pixels)
-        image.update()
-        image[_SIGNATURE_PROP] = signature
-    except Exception:  # noqa: BLE001
-        _logger.exception("coma plane alpha image update failed")
-    return image
-
-
 def cleanup_plane_alpha_assets(page_id: str, coma_id: str) -> None:
     image = bpy.data.images.get(plane_alpha_image_name(page_id, coma_id))
     if image is not None and image.users == 0:
@@ -426,46 +352,6 @@ def _alpha_pixels(
     return pixels
 
 
-def _plane_alpha_pixels(
-    points: Sequence[tuple[float, float]],
-    bounds: tuple[float, float, float, float],
-    width_px: int,
-    height_px: int,
-    width_mm: float,
-    blur_amount: float,
-    *,
-    dither: bool,
-) -> list[float]:
-    min_x, min_y, max_x, max_y = bounds
-    box_w = max(max_x - min_x, 1.0e-6)
-    box_h = max(max_y - min_y, 1.0e-6)
-    core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), max(0.0, min(1.0, float(blur_amount))))
-    fade_total = max(1.0e-6, core_mm + fade_mm if total_mm > 0.0 else float(width_mm))
-    alpha_values: list[float] = [0.0] * (width_px * height_px)
-    pixels: list[float] = [0.0] * (width_px * height_px * 4)
-    for y_px in range(height_px):
-        y = min_y + (y_px / max(1, height_px - 1)) * box_h
-        for x_px in range(width_px):
-            x = min_x + (x_px / max(1, width_px - 1)) * box_w
-            alpha_values[y_px * width_px + x_px] = _plane_alpha_at_point(
-                x,
-                y,
-                points,
-                fade_total,
-            )
-    if dither:
-        alpha_values = _error_diffuse_alpha(alpha_values, width_px, height_px, 1.0)
-    for y_px in range(height_px):
-        for x_px in range(width_px):
-            alpha = alpha_values[y_px * width_px + x_px]
-            offset = (y_px * width_px + x_px) * 4
-            pixels[offset] = 1.0
-            pixels[offset + 1] = 1.0
-            pixels[offset + 2] = 1.0
-            pixels[offset + 3] = alpha
-    return pixels
-
-
 def _cache_sample_ok(
     image: bpy.types.Image,
     points: Sequence[tuple[float, float]],
@@ -506,50 +392,6 @@ def _cache_sample_ok(
     return abs(actual - expected) <= 1.0e-4
 
 
-def _plane_cache_sample_ok(
-    image: bpy.types.Image,
-    points: Sequence[tuple[float, float]],
-    bounds: tuple[float, float, float, float],
-    width_mm: float,
-    blur_amount: float,
-    *,
-    dither: bool,
-) -> bool:
-    try:
-        width_px = int(image.size[0])
-        height_px = int(image.size[1])
-        if width_px <= 0 or height_px <= 0:
-            return False
-        samples = ((width_px // 2, height_px // 2), (0, height_px // 2))
-        min_x, min_y, max_x, max_y = bounds
-        core_mm, fade_mm, total_mm = _brush_width_parts(max(0.0, float(width_mm)), max(0.0, min(1.0, float(blur_amount))))
-        fade_total = max(1.0e-6, core_mm + fade_mm if total_mm > 0.0 else float(width_mm))
-        for x_px, y_px in samples:
-            x = min_x + (x_px / max(1, width_px - 1)) * max(max_x - min_x, 1.0e-6)
-            y = min_y + (y_px / max(1, height_px - 1)) * max(max_y - min_y, 1.0e-6)
-            expected = _plane_alpha_at_point(
-                x,
-                y,
-                points,
-                fade_total,
-            )
-            if dither:
-                expected = 1.0 if expected >= 0.5 else 0.0
-            actual = float(image.pixels[(y_px * width_px + x_px) * 4 + 3])
-            base = (y_px * width_px + x_px) * 4
-            if (
-                float(image.pixels[base]) < 0.95
-                or float(image.pixels[base + 1]) < 0.95
-                or float(image.pixels[base + 2]) < 0.95
-            ):
-                return False
-            if abs(actual - expected) > 1.0e-4:
-                return False
-    except Exception:  # noqa: BLE001
-        return False
-    return True
-
-
 def _alpha_at_point(
     x: float,
     y: float,
@@ -563,19 +405,6 @@ def _alpha_at_point(
         return 0.0
     dist = _distance_to_edges(x, y, points)
     return _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
-
-
-def _plane_alpha_at_point(
-    x: float,
-    y: float,
-    points: Sequence[tuple[float, float]],
-    fade_total_mm: float,
-) -> float:
-    if not _point_in_polygon(x, y, points):
-        return 0.0
-    dist = _distance_to_edges(x, y, points)
-    t = max(0.0, min(1.0, dist / max(1.0e-6, float(fade_total_mm))))
-    return t * t * (3.0 - 2.0 * t)
 
 
 def _error_diffuse_alpha(
@@ -622,19 +451,15 @@ def _error_diffuse_alpha(
 
 
 def _brush_width_parts(line_w: float, blur: float) -> tuple[float, float, float]:
-    if blur <= 0.0:
-        core_mm = line_w
-        fade_mm = 0.0
-    else:
-        core_mm = line_w * 0.35
-        fade_mm = max(0.15, line_w * (0.65 + 3.35 * blur))
-    return core_mm, fade_mm, core_mm + fade_mm
+    line = max(0.0, float(line_w))
+    blur = max(0.0, min(1.0, float(blur)))
+    fade_mm = line * 0.5 * blur
+    core_mm = max(0.0, line - fade_mm)
+    return core_mm, fade_mm, line
 
 
 def _brush_total_width_mm(line_w: float, blur_amount: float) -> float:
-    blur = max(0.0, min(1.0, float(blur_amount)))
-    _core, _fade, total = _brush_width_parts(max(0.0, float(line_w)), blur)
-    return total
+    return max(0.0, float(line_w))
 
 
 def brush_total_width_mm(line_w: float, blur_amount: float) -> float:
@@ -680,32 +505,6 @@ def _image_signature(
             round(float(blur_amount), 5),
             bool(dither),
             rounded_bg,
-        )
-    )
-
-
-def _plane_alpha_signature(
-    points: Sequence[tuple[float, float]],
-    bounds: tuple[float, float, float, float],
-    width_px: int,
-    height_px: int,
-    width_mm: float,
-    blur_amount: float,
-    *,
-    dither: bool,
-) -> str:
-    rounded_points = tuple((round(float(x), 4), round(float(y), 4)) for x, y in points)
-    rounded_bounds = tuple(round(float(v), 4) for v in bounds)
-    return repr(
-        (
-            "plane-alpha-v4",
-            rounded_points,
-            rounded_bounds,
-            int(width_px),
-            int(height_px),
-            round(float(width_mm), 4),
-            round(float(blur_amount), 5),
-            bool(dither),
         )
     )
 

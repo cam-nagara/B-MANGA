@@ -1,4 +1,4 @@
-"""Blender 実機(背景)用: 輪郭ぼかし透明画像の目視確認PNGを生成."""
+"""Blender 実機(背景)用: 輪郭ぼかしが透明画像なしで構成されることを確認."""
 
 from __future__ import annotations
 
@@ -108,17 +108,20 @@ def main() -> None:
     plane = coma_plane.find_coma_plane_object(page.id, coma.id)
     assert obj is plane and plane is not None, "輪郭ぼかしがコマ面に適用されません"
     plane.hide_render = False
-    image = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
-    assert image is not None, "コマ面の透明マスク画像が生成されません"
+    leaked = [
+        image.name for image in bpy.data.images
+        if image.name.startswith(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
+    ]
+    assert not leaked, f"コマ面の透明マスク画像が生成されています: {leaked}"
+    attr = plane.data.attributes.get(coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
+    assert attr is not None, "コマ面メッシュに輪郭ぼかし濃度がありません"
+    mat = plane.data.materials[0]
+    assert mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+        "コマ面素材に輪郭ぼかし濃度ノードがありません"
+    )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    image.filepath_raw = str(OUT_PATH)
-    image.file_format = "PNG"
-    image.save()
-    source = bpy.data.images.get("BName_TestPreview_Texture")
-    assert source is not None, "プレビュー画像が読み込まれていません"
-    _save_composited_preview(source, image, RENDER_PATH)
-    print(f"BNAME_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK alpha={OUT_PATH} render={RENDER_PATH}")
+    print("BNAME_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK")
 
 
 main()

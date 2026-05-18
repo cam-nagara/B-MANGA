@@ -105,6 +105,7 @@ def main() -> None:
 
         page.comas.clear()
         brush_total = coma_border_texture.brush_total_width_mm(width_mm, 1.0)
+        _assert_close(brush_total, width_mm, "輪郭ぼかしは線幅を超えない")
         brush_panel = _add_panel(
             page,
             "brush",

@@ -1,4 +1,4 @@
-"""Blender 実機(背景)用: 輪郭ぼかしを内側アルファテクスチャで生成する確認."""
+"""Blender 実機(背景)用: 輪郭ぼかしをコマ面メッシュ属性 + 素材ノードで生成する確認."""
 
 from __future__ import annotations
 
@@ -23,16 +23,16 @@ def _load_addon():
     return mod
 
 
-def _alpha_values(image):
-    pixels = list(image.pixels[:])
-    return pixels[3::4]
+def _soft_mask_values(mesh, attr_name: str) -> list[float]:
+    attr = mesh.attributes.get(attr_name)
+    assert attr is not None, "コマ面メッシュに輪郭ぼかし濃度がありません"
+    assert attr.domain == "POINT", "輪郭ぼかし濃度が頂点単位ではありません"
+    return [float(item.value) for item in attr.data]
 
 
-def _rgba_at(image, x: int, y: int) -> tuple[float, float, float, float]:
-    pixels = list(image.pixels[:])
-    width = int(image.size[0])
-    offset = (y * width + x) * 4
-    return tuple(float(v) for v in pixels[offset:offset + 4])
+def _assert_no_plane_alpha_images(prefix: str) -> None:
+    leaked = [image.name for image in bpy.data.images if image.name.startswith(prefix)]
+    assert not leaked, f"コマ面の透明マスク画像が残っています: {leaked}"
 
 
 def main() -> None:
@@ -76,29 +76,14 @@ def main() -> None:
     assert bpy.data.objects.get(coma_border_texture.object_name(page.id, coma.id)) is None, (
         "別体のボカシ枠線オブジェクトが残っています"
     )
-    image = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
-    assert image is not None, "コマ面の透明マスク画像が生成されません"
-    signature_before = image.get("bname_border_alpha_signature")
-    alpha = _alpha_values(image)
-    assert max(alpha) > 0.9, "輪郭側のアルファが十分に濃くありません"
-    assert min(alpha) < 0.05, "輪郭側の透明部分がありません"
-    assert any(0.05 < value < 0.95 for value in alpha), "ボカシの中間アルファがありません"
-    center_rgba = _rgba_at(image, int(image.size[0]) // 2, int(image.size[1]) // 2)
-    assert center_rgba[3] > 0.95, "コマ内側が不透明になっていません"
-    edge_rgba = _rgba_at(image, 0, int(image.size[1]) // 2)
-    assert edge_rgba[3] < 0.05, "コマ輪郭が透明になっていません"
-    corrupt = [0.0] * (int(image.size[0]) * int(image.size[1]) * 4)
-    image.pixels.foreach_set(corrupt)
-    image.update()
-    image["bname_border_alpha_signature"] = signature_before
-    obj_corrupt = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
-    image_corrupt = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
-    assert obj_corrupt is obj and image_corrupt is image, "壊れた透明マスク画像の再生成で別オブジェクト化しています"
-    center_rgba = _rgba_at(image_corrupt, int(image_corrupt.size[0]) // 2, int(image_corrupt.size[1]) // 2)
-    assert center_rgba[0] > 0.95 and center_rgba[1] > 0.95 and center_rgba[2] > 0.95, (
-        "壊れた透明マスク画像の色チャンネルが再生成されていません"
+    _assert_no_plane_alpha_images(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
+    values = _soft_mask_values(plane.data, coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
+    assert min(values) == 0.0 and max(values) == 1.0, "輪郭ぼかし濃度の範囲が不正です"
+    assert len(plane.data.vertices) > 4, "輪郭ぼかしが線幅内の帯メッシュになっていません"
+    assert len(plane.data.polygons) >= 5, "輪郭ぼかしの内側面が作られていません"
+    assert abs(coma_border_texture.brush_total_width_mm(coma.border.width_mm, 1.0) - coma.border.width_mm) < 1.0e-6, (
+        "輪郭ぼかしの見かけ幅が線幅を超えています"
     )
-    assert center_rgba[3] > 0.95, "壊れた透明マスク画像のアルファが再生成されていません"
     mat = plane.data.materials[0]
     assert getattr(mat, "blend_method", "") != "BLEND", "コマ面素材が半透明ブレンド表示になっています"
     assert not bool(getattr(mat, "show_transparent_back", True)), "コマ面素材の裏面透明表示が残っています"
@@ -106,10 +91,15 @@ def main() -> None:
         node.bl_idname == "ShaderNodeBsdfTransparent"
         for node in mat.node_tree.nodes
     ), "コマ面素材に透明シェーダーが残っています"
-    assert any(
-        node.name == "BName_ComaAlphaMask" and node.image is image
+    assert not any(
+        node.name == "BName_ComaAlphaMask"
         for node in mat.node_tree.nodes
-    ), "コマ面素材に透明マスク画像が接続されていません"
+    ), "コマ面素材に透明マスク画像が接続されています"
+    attr_node = mat.node_tree.nodes.get("BName_ComaSoftMask")
+    assert attr_node is not None, "コマ面素材に輪郭ぼかし濃度ノードがありません"
+    assert attr_node.attribute_name == coma_plane.COMA_PLANE_SOFT_MASK_ATTR, (
+        "コマ面素材がメッシュ側の輪郭ぼかし濃度を参照していません"
+    )
     curve_node = coma_blur_curve.find_curve_node(mat)
     assert curve_node is not None, "コマ面素材にぼかしカーブノードがありません"
     curve_points = coma_blur_curve.read_node_points(curve_node)
@@ -180,10 +170,9 @@ def main() -> None:
         (1.0, 1.0, 1.0, 1.0),
         preview_probe,
         keep_existing_image=False,
-        alpha_mask_image=image,
-        keep_existing_mask=False,
         dither=True,
         blur_curve_points=coma.border.blur_curve_points,
+        use_soft_mask=True,
     )
     assert getattr(probe_mat, "blend_method", "") != "BLEND", "画像付きボカシ素材が半透明化しています"
     assert not any(
@@ -195,27 +184,24 @@ def main() -> None:
     assert probe_mat.node_tree.nodes.get("BName_ComaDither") is not None, (
         "ディザが素材ノードで生成されていません"
     )
+    assert probe_mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+        "画像付きボカシ素材がメッシュ側の輪郭ぼかし濃度を参照していません"
+    )
     bpy.data.materials.remove(probe_mat)
     bpy.data.images.remove(preview_probe)
+    vertex_count_before = len(plane.data.vertices)
     obj_again = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
-    image_again = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
-    assert obj_again is obj and image_again is image, "同じ設定でボカシ画像が再作成されています"
-    assert image_again.get("bname_border_alpha_signature") == signature_before, "ボカシ画像のキャッシュ署名が維持されていません"
+    assert obj_again is obj, "同じ設定で輪郭ぼかしのコマ面が別オブジェクト化しています"
+    assert len(plane.data.vertices) == vertex_count_before, "同じ設定で輪郭ぼかしメッシュが不要に変化しています"
+    _assert_no_plane_alpha_images(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
 
     coma.border.blur_dither = True
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     mat = plane.data.materials[0]
     assert getattr(mat, "blend_method", "") != "BLEND", "ディザ時にコマ面素材が半透明化しています"
-    image = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
-    assert image.get("bname_border_alpha_signature") == signature_before, (
-        "ディザ切替で距離マスク画像が再生成されています"
-    )
-    alpha = _alpha_values(image)
-    assert max(alpha) > 0.9 and min(alpha) == 0.0, "距離マスク画像の濃淡範囲が不正です"
-    rounded_alpha = {round(float(value), 4) for value in alpha}
-    assert any(0.05 < value < 0.95 for value in alpha), (
-        "ディザ切替で距離マスク画像の中間アルファが失われています"
-    )
+    _assert_no_plane_alpha_images(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
+    values = _soft_mask_values(plane.data, coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
+    assert min(values) == 0.0 and max(values) == 1.0, "輪郭ぼかし濃度の範囲が不正です"
     assert mat.node_tree.nodes.get("BName_ComaDither") is not None, (
         "ディザ用の素材ノードがありません"
     )
@@ -232,7 +218,9 @@ def main() -> None:
             assert float(noise_node.inputs["Scale"].default_value) >= 500.0, (
                 "ディザの細かさが不足しています"
             )
-    assert len(rounded_alpha) > 2, "距離マスク画像が二値化されています"
+    assert mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+        "ディザ切替後に輪郭ぼかし濃度ノードがありません"
+    )
     front = page.comas.add()
     front.id = "c02"
     front.coma_id = "c02"

@@ -180,8 +180,8 @@ def main() -> None:
         border_presets.apply_preset_to_coma(pre, coma)
         if coma.border.style != "brush":
             failures.append(f"プリセット適用後 style != brush ({coma.border.style})")
-        if abs(coma.border.blur_amount - 0.6) > 1e-3:
-            failures.append(f"プリセット適用後 blur_amount != 0.6 ({coma.border.blur_amount})")
+        if abs(coma.border.blur_amount - 1.0) > 1e-3:
+            failures.append(f"プリセット適用後 blur_amount != 1.0 ({coma.border.blur_amount})")
         saved = schema.coma_border_to_dict(coma.border)
         if "perEdge" in saved:
             failures.append("枠線プリセット保存データに辺別設定が残っている")

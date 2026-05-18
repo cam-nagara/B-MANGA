@@ -38,6 +38,7 @@ COMA_PLANE_NAME_PREFIX = "coma_plane_"
 COMA_PLANE_MESH_PREFIX = "coma_plane_mesh_"
 COMA_PLANE_MATERIAL_PREFIX = "BName_ComaPlane_"
 COMA_PLANE_UV_NAME = "BNameComaUV"
+COMA_PLANE_SOFT_MASK_ATTR = "BNameComaSoftMask"
 
 # coma_mask: raster Mesh 用 Boolean Intersect の参照専用 Object.
 # coma_plane (背景色表示用、 OPAQUE) とは別 Object として持つ理由:
@@ -108,15 +109,25 @@ def _existing_material_image(mat: bpy.types.Material):
             return node.image
     return None
 
+def _uses_soft_mask(coma) -> bool:
+    border = getattr(coma, "border", None)
+    if border is None:
+        return False
+    return (
+        bool(getattr(border, "visible", True))
+        and str(getattr(border, "style", "solid") or "solid") == "brush"
+        and max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) > 0.0
+        and max(0.0, float(getattr(border, "blur_amount", 0.0) or 0.0)) > 0.0
+    )
 
-def _existing_alpha_mask_image(mat: bpy.types.Material):
-    nt = getattr(mat, "node_tree", None)
-    if nt is None:
-        return None
-    for node in nt.nodes:
-        if node.bl_idname == "ShaderNodeTexImage" and node.name == "BName_ComaAlphaMask":
-            return node.image
-    return None
+
+def _soft_mask_distance_mm(coma) -> float:
+    border = getattr(coma, "border", None)
+    if border is None:
+        return 0.0
+    line_w = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
+    blur = max(0.0, min(1.0, float(getattr(border, "blur_amount", 0.0) or 0.0)))
+    return line_w * 0.5 * blur
 
 
 def _resolve_preview_image(work, page, coma):
@@ -180,37 +191,6 @@ def _outline_points_mm(coma) -> list[tuple[float, float]]:
         return []
     return _corner_outline_mm(coma, [(float(v.x_mm), float(v.y_mm)) for v in vertices])
 
-
-def _resolve_alpha_mask_image(page_id: str, coma_id: str, coma):
-    border = getattr(coma, "border", None)
-    if border is None:
-        return None
-    if not bool(getattr(border, "visible", True)):
-        return None
-    if str(getattr(border, "style", "solid") or "solid") != "brush":
-        return None
-    width_mm = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
-    if width_mm <= 0.0:
-        return None
-    outline = _outline_points_mm(coma)
-    if len(outline) < 3:
-        return None
-    try:
-        from . import coma_border_texture
-
-        return coma_border_texture.ensure_coma_plane_alpha_image(
-            page_id,
-            coma_id,
-            outline,
-            width_mm,
-            float(getattr(border, "blur_amount", 0.5) or 0.0),
-            dither=False,
-        )
-    except Exception:  # noqa: BLE001
-        _logger.exception("coma_plane: alpha mask image failed")
-        return None
-
-
 def _ensure_uv(mesh: bpy.types.Mesh) -> None:
     """コマ形状メッシュに、外接矩形 → [0,1] の UV を割り当てる.
 
@@ -248,10 +228,9 @@ def _apply_material(
     image=None,
     *,
     keep_existing_image: bool = True,
-    alpha_mask_image=None,
-    keep_existing_mask: bool = True,
     dither: bool = False,
     blur_curve_points=None,
+    use_soft_mask: bool = False,
 ) -> None:
     """Material を「プレビュー画像 (あれば) / 無ければ背景色」で構築する.
 
@@ -278,8 +257,6 @@ def _apply_material(
     alpha_node = None
     if image is None and keep_existing_image:
         image = _existing_material_image(mat)
-    if alpha_mask_image is None and keep_existing_mask:
-        alpha_mask_image = _existing_alpha_mask_image(mat)
     for node in list(nt.nodes):
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -300,7 +277,7 @@ def _apply_material(
             tex.extension = "EXTEND"
         except Exception:  # noqa: BLE001
             pass
-        if alpha_mask_image is None:
+        if not use_soft_mask:
             try:
                 nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
             except Exception:  # noqa: BLE001
@@ -310,27 +287,24 @@ def _apply_material(
             emission.inputs["Color"].default_value = rgba
         except Exception:  # noqa: BLE001
             pass
-    if alpha_mask_image is not None:
-        alpha_tex = nt.nodes.new("ShaderNodeTexImage")
-        alpha_tex.name = "BName_ComaAlphaMask"
-        alpha_tex.location = (-300, -220)
-        alpha_tex.image = alpha_mask_image
-        alpha_node = alpha_tex
-        try:
-            alpha_tex.extension = "EXTEND"
-            alpha_tex.interpolation = "Linear"
-        except Exception:  # noqa: BLE001
-            pass
+    if use_soft_mask:
+        alpha_attr = nt.nodes.new("ShaderNodeAttribute")
+        alpha_attr.name = "BName_ComaSoftMask"
+        alpha_attr.label = "輪郭ぼかし"
+        alpha_attr.location = (-300, -220)
+        alpha_attr.attribute_name = COMA_PLANE_SOFT_MASK_ATTR
+        alpha_node = alpha_attr
         curve_node = coma_blur_curve.ensure_curve_node(
             nt,
             stored_points=blur_curve_points,
             material=mat,
         )
+        attr_output = alpha_attr.outputs.get("Fac") or alpha_attr.outputs.get("Alpha")
         try:
-            nt.links.new(alpha_tex.outputs["Alpha"], curve_node.inputs["Value"])
+            nt.links.new(attr_output, curve_node.inputs["Value"])
             edge_factor = curve_node.outputs["Value"]
         except Exception:  # noqa: BLE001
-            edge_factor = alpha_tex.outputs["Alpha"]
+            edge_factor = attr_output
         if dither:
             noise_value = _create_dither_value_nodes(nt)
             compare = nt.nodes.new("ShaderNodeMath")
@@ -445,26 +419,24 @@ def _ensure_coma_plane_material(
         except Exception:  # noqa: BLE001
             pass
     image = _resolve_preview_image(work, page, coma)
-    alpha_mask = _resolve_alpha_mask_image(page_id, coma_id, coma)
     border = getattr(coma, "border", None)
     dither = bool(getattr(border, "blur_dither", False))
     blur_curve_points = getattr(border, "blur_curve_points", None)
+    use_soft_mask = _uses_soft_mask(coma)
     _apply_material(
         mat,
         color,
         image,
-        alpha_mask_image=alpha_mask,
-        keep_existing_mask=False,
         dither=dither,
         blur_curve_points=blur_curve_points,
+        use_soft_mask=use_soft_mask,
     )
-    if alpha_mask is None:
-        try:
-            from . import coma_border_texture
+    try:
+        from . import coma_border_texture
 
-            coma_border_texture.cleanup_plane_alpha_assets(page_id, coma_id)
-        except Exception:  # noqa: BLE001
-            pass
+        coma_border_texture.cleanup_plane_alpha_assets(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -491,30 +463,88 @@ def _corner_outline_mm(coma, base_pts_mm: list[tuple[float, float]]) -> list[tup
     return styled if len(styled) >= 3 else base_pts_mm
 
 
-def _build_mesh_geometry(mesh: bpy.types.Mesh, coma) -> None:
+def _set_soft_mask_attribute(mesh: bpy.types.Mesh, values: list[float] | None) -> None:
+    attr = mesh.attributes.get(COMA_PLANE_SOFT_MASK_ATTR)
+    if values is None:
+        if attr is not None:
+            try:
+                mesh.attributes.remove(attr)
+            except Exception:  # noqa: BLE001
+                pass
+        return
+    if attr is None or attr.domain != "POINT" or attr.data_type != "FLOAT":
+        if attr is not None:
+            try:
+                mesh.attributes.remove(attr)
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            attr = mesh.attributes.new(COMA_PLANE_SOFT_MASK_ATTR, "FLOAT", "POINT")
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_plane: soft mask attribute create failed")
+            return
+    try:
+        for i, value in enumerate(values[: len(attr.data)]):
+            attr.data[i].value = max(0.0, min(1.0, float(value)))
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_plane: soft mask attribute assign failed")
+
+
+def _build_soft_mask_mesh(
+    points_mm: list[tuple[float, float]],
+    distance_mm: float,
+) -> tuple[list[tuple[float, float, float]], list[tuple[int, ...]], list[float]] | None:
+    if len(points_mm) < 3 or distance_mm <= 1.0e-6:
+        return None
+    try:
+        loops = border_geom.stroke_loops_mm(points_mm, distance_mm * 2.0)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma_plane: soft mask inner loop failed")
+        loops = None
+    if loops is None:
+        return None
+    _outer_unused, inner = loops
+    if len(inner) != len(points_mm):
+        return None
+    n = len(points_mm)
+    verts_mm = points_mm + [(float(x), float(y)) for x, y in inner]
+    verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in verts_mm]
+    faces: list[tuple[int, ...]] = [
+        (i, (i + 1) % n, n + (i + 1) % n, n + i)
+        for i in range(n)
+    ]
+    faces.append(tuple(range(n, n * 2)))
+    values = [0.0] * n + [1.0] * n
+    return verts, faces, values
+
+
+def _build_mesh_geometry(mesh: bpy.types.Mesh, coma, *, soft_mask: bool = False) -> None:
     shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
     if shape_type == "rect":
         w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
         h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
         base_pts = [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
         pts = _corner_outline_mm(coma, base_pts)
-        verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in pts]
-        faces = [tuple(range(len(verts)))]
     else:
         vertices = list(getattr(coma, "vertices", []) or [])
         if len(vertices) < 3:
             # 不正な polygon は座標軸付近の小さな三角形を置いておく (depsgraph
             # 安全策。 後で形状が確定したら再生成される)
-            verts = [(0.0, 0.0, 0.0), (0.001, 0.0, 0.0), (0.0, 0.001, 0.0)]
-            faces = [(0, 1, 2)]
+            pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         else:
             base_pts = [(float(v.x_mm), float(v.y_mm)) for v in vertices]
             pts = _corner_outline_mm(coma, base_pts)
-            verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in pts]
-            faces = [tuple(range(len(verts)))]
+    attr_values = None
+    soft = _build_soft_mask_mesh(pts, _soft_mask_distance_mm(coma)) if soft_mask else None
+    if soft is not None:
+        verts, faces, attr_values = soft
+    else:
+        verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in pts]
+        faces = [tuple(range(len(verts)))]
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], faces)
     mesh.update()
+    _set_soft_mask_attribute(mesh, attr_values)
     _ensure_uv(mesh)
 
 
@@ -641,7 +671,7 @@ def ensure_coma_mask(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _build_mesh_geometry(mesh, coma)
+    _build_mesh_geometry(mesh, coma, soft_mask=False)
 
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
@@ -706,7 +736,7 @@ def update_coma_mask_geometry(
     if mesh is None or obj is None:
         return False
     try:
-        _build_mesh_geometry(mesh, coma)
+        _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
     except Exception:  # noqa: BLE001
         _logger.exception("update_coma_mask_geometry: mesh rebuild failed (%s)", mesh_name)
         return False
@@ -828,7 +858,7 @@ def ensure_coma_plane(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _build_mesh_geometry(mesh, coma)
+    _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
 
     mat = _ensure_coma_plane_material(page_id, coma_id, coma, work, page)
 
@@ -902,7 +932,7 @@ def update_coma_plane_geometry(
     if mesh is None or obj is None:
         return False
     try:
-        _build_mesh_geometry(mesh, coma)
+        _build_mesh_geometry(mesh, coma, soft_mask=False)
     except Exception:  # noqa: BLE001
         _logger.exception("update_coma_plane_geometry: mesh rebuild failed (%s)", mesh_name)
         return False
@@ -936,7 +966,15 @@ def update_coma_plane_color(page, coma) -> bool:
         color = tuple(float(c) for c in coma.background_color[:4])
     except Exception:  # noqa: BLE001
         pass
-    _apply_material(mat, color, keep_existing_mask=True)
+    border = getattr(coma, "border", None)
+    _apply_material(
+        mat,
+        color,
+        keep_existing_image=True,
+        dither=bool(getattr(border, "blur_dither", False)),
+        blur_curve_points=getattr(border, "blur_curve_points", None),
+        use_soft_mask=_uses_soft_mask(coma),
+    )
     try:
         mat.update_tag()
     except Exception:  # noqa: BLE001

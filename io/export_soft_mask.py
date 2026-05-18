@@ -27,11 +27,7 @@ def brush_soft_width_mm(entry) -> float:
     blur = max(0.0, min(1.0, float(getattr(border, "blur_amount", 0.0) or 0.0)))
     if line_w <= 0.0:
         return 0.0
-    if blur <= 0.0:
-        return line_w
-    core_mm = line_w * 0.35
-    fade_mm = max(0.15, line_w * (0.65 + 3.35 * blur))
-    return core_mm + fade_mm
+    return line_w * 0.5 * blur
 
 
 def local_points_px(
@@ -100,7 +96,10 @@ def coma_soft_edge_mask(Image, ImageChops, ImageDraw, ImageFilter, entry, points
     hard = coma_shape_mask(Image, ImageDraw, points_mm, bbox_mm, size)
     if not brush_edge_enabled(entry):
         return hard
-    radius_px = max(1, int(round(mm_to_px(brush_soft_width_mm(entry), dpi) * 0.35)))
+    soft_width = brush_soft_width_mm(entry)
+    if soft_width <= 0.0:
+        return hard
+    radius_px = max(1, int(round(mm_to_px(soft_width, dpi) * 0.35)))
     soft = hard.filter(ImageFilter.GaussianBlur(radius=radius_px))
     soft = ImageChops.multiply(soft, hard)
     if bool(getattr(getattr(entry, "border", None), "blur_dither", False)):
