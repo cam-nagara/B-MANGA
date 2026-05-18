@@ -11,6 +11,7 @@ from .geom import Rect
 
 MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
 DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
+UNI_FLASH_SHAPE = "uni_flash"
 
 _LEGACY_SHAPE_ALIASES = {
     "polygon": "octagon",
@@ -31,6 +32,10 @@ def normalize_shape(shape: str | None) -> str:
 
 def is_dynamic_meldex_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in DYNAMIC_MELDEX_SHAPES
+
+
+def is_uni_flash_shape(shape: str | None) -> bool:
+    return normalize_shape(shape) == UNI_FLASH_SHAPE
 
 
 def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
@@ -229,6 +234,8 @@ def outline_with_corners_for_shape(
         return _outline_thorn_curve_with_corners(rect, opts)
     if s == "octagon":
         return _outline_octagon(rect), list(range(8))
+    if s == UNI_FLASH_SHAPE:
+        return _outline_ellipse(rect), []
 
     # Legacy B-Name shapes kept for existing files.
     if s == "pill":
@@ -379,15 +386,12 @@ def _dynamic_base(width: float, height: float, opts: _DynamicOpts, *, fluffy: bo
         return None
     cx = width * 0.5
     cy = height * 0.5
-    eff_h = min(opts.bump_h, min(cx, cy) - 2.0)
+    eff_h = float(opts.bump_h)
     if eff_h < 0.5:
         return None
-    if fluffy:
-        rx = cx - eff_h * 0.5
-        ry = cy - eff_h * 0.5
-    else:
-        rx = cx - eff_h
-        ry = cy - eff_h
+    base_margin = min(max(1.0, min(width, height) * (0.05 if fluffy else 0.08)), max(1.0, min(cx, cy) - 1.0))
+    rx = cx - base_margin
+    ry = cy - base_margin
     if rx <= 1.0 or ry <= 1.0:
         return None
     return cx, cy, rx, ry, eff_h
@@ -471,7 +475,7 @@ def _outline_cloud_with_corners(
         # 見た目にも鋭いV字にする。
         cos_t = math.cos(t)
         sin_t = math.sin(t)
-        notch = eff_h * 0.42
+        notch = min(max(0.2, min(rect.width, rect.height) * 0.02), max(0.0, min(rx, ry) - 0.1))
         return (cx + (rx - notch) * cos_t, cy + (ry - notch) * sin_t)
 
     pts = [valley_point(angle)]
@@ -575,7 +579,7 @@ def _outline_thorn_curve_with_corners(
         length = math.hypot(dcx, dcy)
         in_x = dcx / length if length > 0.001 else 0.0
         in_y = dcy / length if length > 0.001 else 0.0
-        depth = eff_h * depth_ratio
+        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
         c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
         c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
         pts.extend(_sample_cubic(p0, c1, c2, p1))

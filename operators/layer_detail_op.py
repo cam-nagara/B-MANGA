@@ -15,6 +15,7 @@ from bpy.types import Operator
 
 from ..utils import log
 from ..utils import object_naming as on
+from ..utils import balloon_shapes
 
 _logger = log.get_logger(__name__)
 
@@ -173,6 +174,15 @@ def _draw_balloon_tails(layout, entry, page) -> None:
         bend = sub.row()
         bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
         bend.prop(tail, "curve_bend", text="曲げ")
+        sub.prop(tail, "custom_points_enabled")
+        point_box = sub.column(align=True)
+        point_box.enabled = bool(getattr(tail, "custom_points_enabled", False))
+        row = point_box.row(align=True)
+        row.prop(tail, "start_x_mm")
+        row.prop(tail, "start_y_mm")
+        row = point_box.row(align=True)
+        row.prop(tail, "end_x_mm")
+        row.prop(tail, "end_y_mm")
 
 
 def _draw_balloon_detail(layout, entry, page=None) -> None:
@@ -188,6 +198,15 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
     sub.prop(entry, "rounded_corner_radius_mm")
     sp = getattr(entry, "shape_params", None)
+    if sp is not None and balloon_shapes.is_uni_flash_shape(getattr(entry, "shape", "")):
+        shape_box = layout.box()
+        shape_box.label(text="ウニフラッシュ")
+        shape_box.prop(sp, "uni_flash_spacing_mm")
+        shape_box.prop(sp, "uni_flash_fill_scale_percent")
+        row = shape_box.row(align=True)
+        row.prop(sp, "uni_flash_line_density_compensation")
+        row.prop(sp, "uni_flash_fill_density_compensation")
+        shape_box.prop(sp, "uni_flash_max_line_count")
     if sp is not None and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}:
         shape_box = layout.box()
         shape_box.label(text="形状パラメータ")
@@ -225,6 +244,26 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     box.prop(entry, "line_width_mm")
     box.prop(entry, "line_color")
     box.prop(entry, "fill_color")
+    box.prop(entry, "fill_opacity", slider=True)
+    box.prop_search(entry, "fill_material_name", bpy.data, "materials")
+    box.prop(entry, "fill_blur_amount", slider=True)
+    box.prop(entry, "fill_blur_dither")
+    box.prop(entry, "fill_gradient_enabled")
+    sub = box.column(align=True)
+    sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
+    sub.prop(entry, "fill_gradient_start_color")
+    sub.prop(entry, "fill_gradient_end_color")
+    sub.prop(entry, "fill_gradient_angle_deg")
+    box.prop(entry, "outer_white_margin_enabled")
+    sub = box.column(align=True)
+    sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+    sub.prop(entry, "outer_white_margin_width_mm")
+    sub.prop(entry, "outer_white_margin_color")
+    box.prop(entry, "inner_white_margin_enabled")
+    sub = box.column(align=True)
+    sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+    sub.prop(entry, "inner_white_margin_width_mm")
+    sub.prop(entry, "inner_white_margin_color")
     box.prop(entry, "blend_mode")
     box.prop(entry, "opacity", slider=True)
 

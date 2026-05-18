@@ -27,6 +27,7 @@ from .alt_reparent_op import (
 )
 from . import (
     balloon_op,
+    object_tool_balloon_tail,
     effect_line_op,
     layer_move_session,
     coma_edge_drag_session,
@@ -554,6 +555,7 @@ class BNAME_OT_object_tool(Operator):
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "DEFAULT")
         self._clear_drag_state()
+        object_tool_balloon_tail.clear_pending(self)
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("object_tool", self, context)
         self.report({"INFO"}, "オブジェクトツール: クリックで選択、ドラッグで移動/リサイズ")
@@ -572,6 +574,8 @@ class BNAME_OT_object_tool(Operator):
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
         if event.type == "RIGHTMOUSE" and event.value == "PRESS":
+            if object_tool_balloon_tail.open_point_menu(context, event):
+                return {"RUNNING_MODAL"}
             if selection_context_menu.open_for_object_tool(self, context, event):
                 return {"RUNNING_MODAL"}
             self.finish_from_external(context, keep_selection=True)
@@ -617,6 +621,11 @@ class BNAME_OT_object_tool(Operator):
                 return {"RUNNING_MODAL"}
             if self._start_reparent_drag(context, event):
                 return {"RUNNING_MODAL"}
+        if event.value == "PRESS" and bool(getattr(event, "ctrl", False)):
+            if object_tool_balloon_tail.handle_ctrl_press(self, context, event):
+                return {"RUNNING_MODAL"}
+        if event.value == "PRESS" and not bool(getattr(event, "ctrl", False)):
+            object_tool_balloon_tail.clear_pending(self)
         hit = self._hit_object(context, event)
         if hit is None:
             if mode == "single" and self._try_start_layer_drag(context, event):
@@ -1029,6 +1038,8 @@ class BNAME_OT_object_tool(Operator):
                 self._drag_moved = True
             layer_stack_utils.tag_view3d_redraw(context)
             return
+        if object_tool_balloon_tail.update_drag(self, context, event):
+            return
         x_mm, y_mm = _event_world_xy_mm(context, event)
         if x_mm is None or y_mm is None:
             return
@@ -1175,6 +1186,23 @@ class BNAME_OT_object_tool(Operator):
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
+        if self._drag_action == "balloon_tail_create":
+            object_tool_balloon_tail.finish_create_drag(self, context)
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
+        if self._drag_action == "balloon_tail_point":
+            moved = bool(getattr(self, "_drag_moved", False))
+            if moved:
+                try:
+                    bpy.ops.ed.undo_push(message="B-Name: しっぽ制御点移動")
+                except Exception:  # noqa: BLE001
+                    pass
+                layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            else:
+                layer_stack_utils.tag_view3d_redraw(context)
+            self._clear_drag_state()
+            return
         moved = bool(getattr(self, "_drag_moved", False))
         changed = moved
         edge_session = self._drag_action == "coma_edge"
@@ -1226,6 +1254,10 @@ class BNAME_OT_object_tool(Operator):
             self._layer_drag.cancel(context)
         elif self._drag_action == "coma_edge" and self._edge_drag is not None:
             self._edge_drag.cancel()
+        elif object_tool_balloon_tail.cancel_point_drag(self, context):
+            pass
+        elif self._drag_action == "balloon_tail_create":
+            pass
         elif self._drag_action != "coma_edge":
             self._apply_snapshots(context, 0.0, 0.0)
         self._clear_drag_state()
@@ -1241,6 +1273,12 @@ class BNAME_OT_object_tool(Operator):
         self._drag_moved = False
         self._edge_drag = None
         self._layer_drag = None
+        self._drag_page_id = ""
+        self._drag_balloon_id = ""
+        self._tail_drag_tail_index = -1
+        self._tail_drag_point_index = -1
+        self._tail_drag_points = []
+        self._last_tail_xy = (0.0, 0.0)
         self._marquee_mode = "single"
         self._marquee_start_x = 0.0
         self._marquee_start_y = 0.0
@@ -1261,6 +1299,7 @@ class BNAME_OT_object_tool(Operator):
             reparent_overlay.clear_hover()
             reparent_overlay.clear_preview()
         self._clear_drag_state()
+        object_tool_balloon_tail.clear_pending(self)
 
     def finish_from_external(self, context, *, keep_selection: bool) -> None:
         if getattr(self, "_externally_finished", False):

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from ..utils import balloon_shapes
+from ..utils import balloon_shapes, balloon_tail_geom, balloon_uni_flash
 from ..utils.geom import Rect, mm_to_px
 
 
@@ -174,63 +174,102 @@ def _apply_balloon_transforms(
 
 
 def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
-    cx = (rect.x + rect.x2) * 0.5
-    cy = (rect.y + rect.y2) * 0.5
-    rx = rect.width * 0.5
-    ry = rect.height * 0.5
-    angle = math.radians(float(getattr(tail, "direction_deg", 270.0)))
-    dx = math.cos(angle)
-    dy = math.sin(angle)
-    denom = math.hypot(dx / max(rx, 0.01), dy / max(ry, 0.01))
-    base_x = cx + (dx / denom) if denom > 0.0 else cx
-    base_y = cy + (dy / denom) if denom > 0.0 else cy
-    tip_x = base_x + dx * float(getattr(tail, "length_mm", 0.0))
-    tip_y = base_y + dy * float(getattr(tail, "length_mm", 0.0))
-    nx = -dy
-    ny = dx
-    root_half = float(getattr(tail, "root_width_mm", 0.0)) * 0.5
-    tip_half = float(getattr(tail, "tip_width_mm", 0.0)) * 0.5
-    tail_type = getattr(tail, "type", "straight")
-    if tail_type == "sticky":
-        return [
-            (base_x + nx * root_half, base_y + ny * root_half),
-            (tip_x + nx * tip_half if tip_half > 0.0 else tip_x, tip_y + ny * tip_half if tip_half > 0.0 else tip_y),
-            (tip_x - nx * tip_half if tip_half > 0.0 else tip_x, tip_y - ny * tip_half if tip_half > 0.0 else tip_y),
-            (base_x - nx * root_half, base_y - ny * root_half),
-        ]
-    if tail_type == "curve":
-        bend = float(getattr(tail, "curve_bend", 0.0)) * float(getattr(tail, "length_mm", 0.0)) * 0.4
-        mid_x = (base_x + tip_x) * 0.5 + nx * bend
-        mid_y = (base_y + tip_y) * 0.5 + ny * bend
-        if tip_half > 0.0:
-            mid_half = max(0.0, (root_half + tip_half) * 0.5)
-            return [
-                (base_x + nx * root_half, base_y + ny * root_half),
-                (mid_x + nx * mid_half, mid_y + ny * mid_half),
-                (tip_x + nx * tip_half, tip_y + ny * tip_half),
-                (tip_x - nx * tip_half, tip_y - ny * tip_half),
-                (mid_x - nx * mid_half, mid_y - ny * mid_half),
-                (base_x - nx * root_half, base_y - ny * root_half),
-            ]
-        return [
-            (base_x + nx * root_half, base_y + ny * root_half),
-            (mid_x, mid_y),
-            (tip_x, tip_y),
-            (mid_x, mid_y),
-            (base_x - nx * root_half, base_y - ny * root_half),
-        ]
-    if tip_half > 0.0:
-        return [
-            (base_x + nx * root_half, base_y + ny * root_half),
-            (tip_x + nx * tip_half, tip_y + ny * tip_half),
-            (tip_x - nx * tip_half, tip_y - ny * tip_half),
-            (base_x - nx * root_half, base_y - ny * root_half),
-        ]
-    return [
-        (base_x + nx * root_half, base_y + ny * root_half),
-        (tip_x, tip_y),
-        (base_x - nx * root_half, base_y - ny * root_half),
-    ]
+    return balloon_tail_geom.polygon_for_tail(rect, tail)
+
+
+def _entry_opacity(entry) -> float:
+    return max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+
+
+def _fill_opacity(entry) -> float:
+    return _entry_opacity(entry) * max(0.0, min(1.0, float(getattr(entry, "fill_opacity", 1.0) or 0.0)))
+
+
+def _fill_source_image(size: tuple[int, int], entry):
+    ep = _ep()
+    if not bool(getattr(entry, "fill_gradient_enabled", False)):
+        color = ep._rgb255(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)), alpha=1.0)
+        return ep.Image.new("RGBA", size, color)
+    start = ep._rgb255(getattr(entry, "fill_gradient_start_color", getattr(entry, "fill_color", (1, 1, 1, 1))), alpha=1.0)
+    end = ep._rgb255(getattr(entry, "fill_gradient_end_color", getattr(entry, "fill_color", (1, 1, 1, 1))), alpha=1.0)
+    width, height = size
+    image = ep.Image.new("RGBA", size, start)
+    if width <= 0 or height <= 0:
+        return image
+    angle = math.radians(float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0))
+    ux = math.cos(angle)
+    uy = -math.sin(angle)
+    corners = [(0.0, 0.0), (float(width - 1), 0.0), (0.0, float(height - 1)), (float(width - 1), float(height - 1))]
+    dots = [x * ux + y * uy for x, y in corners]
+    mn = min(dots)
+    span = max(1.0e-6, max(dots) - mn)
+    pixels = []
+    for y in range(height):
+        for x in range(width):
+            t = max(0.0, min(1.0, ((x * ux + y * uy) - mn) / span))
+            pixels.append(tuple(int(round(start[i] + (end[i] - start[i]) * t)) for i in range(4)))
+    image.putdata(pixels)
+    return image
+
+
+def _fill_mask(canvas, polygons_px: list[list[tuple[int, int]]]):
+    ep = _ep()
+    if ep.Image is None or ep.ImageDraw is None:
+        return None
+    mask = ep.Image.new("L", canvas.image.size, 0)
+    draw_mask = ep.ImageDraw.Draw(mask)
+    for pts in polygons_px:
+        if len(pts) >= 3:
+            draw_mask.polygon(pts, fill=255)
+    return mask
+
+
+def _draw_fill_layer(canvas, entry, polygons_px: list[list[tuple[int, int]]], dpi: int):
+    ep = _ep()
+    if ep.Image is None or ep.ImageDraw is None:
+        return None
+    hard = _fill_mask(canvas, polygons_px)
+    if hard is None:
+        return None
+    mask = hard
+    blur = max(0.0, min(1.0, float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)))
+    if blur > 0.0 and ep.ImageFilter is not None and ep.ImageChops is not None:
+        line_w = max(0.3, float(getattr(entry, "line_width_mm", 0.3) or 0.3))
+        radius_px = max(1, int(round(mm_to_px(max(0.15, line_w * (0.65 + 3.35 * blur)), dpi) * 0.35)))
+        mask = hard.filter(ep.ImageFilter.GaussianBlur(radius=radius_px))
+        mask = ep.ImageChops.multiply(mask, hard)
+        if bool(getattr(entry, "fill_blur_dither", False)):
+            mask = mask.convert("1", dither=ep.Image.FLOYDSTEINBERG).convert("L")
+    fill_alpha = float(getattr(entry, "fill_color", (1, 1, 1, 1))[3])
+    alpha_scale = max(0, min(255, int(round(255.0 * _fill_opacity(entry) * fill_alpha))))
+    if alpha_scale < 255:
+        mask = mask.point(lambda px: int(round(px * (alpha_scale / 255.0))))
+    fill_image = _fill_source_image(canvas.image.size, entry)
+    fill_image.putalpha(mask)
+    canvas.image.alpha_composite(fill_image)
+    return hard
+
+
+def _draw_white_loop(draw, pts, color, width_px: int, style: str) -> None:
+    if width_px <= 0 or len(pts) < 2:
+        return
+    _ep()._draw_styled_loop(draw, pts, color, width_px, style)
+
+
+def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: str) -> None:
+    ep = _ep()
+    if clip_mask is None or ep.Image is None or ep.ImageDraw is None:
+        return
+    temp = ep.Image.new("RGBA", canvas.image.size, (0, 0, 0, 0))
+    draw = ep.ImageDraw.Draw(temp)
+    _draw_white_loop(draw, pts, color, width_px, style)
+    alpha = temp.getchannel("A")
+    if ep.ImageChops is not None:
+        alpha = ep.ImageChops.multiply(alpha, clip_mask)
+    else:
+        alpha = alpha.point(lambda px: px)
+    temp.putalpha(alpha)
+    canvas.image.alpha_composite(temp)
 
 
 def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
@@ -238,36 +277,99 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         return None
     ep = _ep()
     rect = Rect(float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
-    outline = _apply_balloon_transforms(
-        _balloon_outline_mm(entry, rect),
-        rect,
-        bool(getattr(entry, "flip_h", False)),
-        bool(getattr(entry, "flip_v", False)),
-        float(getattr(entry, "rotation_deg", 0.0)),
-    )
+    flip_h = bool(getattr(entry, "flip_h", False))
+    flip_v = bool(getattr(entry, "flip_v", False))
+    rotation_deg = float(getattr(entry, "rotation_deg", 0.0))
+    is_uni_flash = balloon_uni_flash.is_uni_flash_entry(entry)
+    line_segments = []
+    if is_uni_flash:
+        geometry = balloon_uni_flash.geometry_for_entry(entry, rect)
+        outline = geometry.fill_outline_mm
+        line_segments = geometry.line_segments_mm
+    else:
+        outline = _balloon_outline_mm(entry, rect)
+    outline = _apply_balloon_transforms(outline, rect, flip_h, flip_v, rotation_deg)
+    if line_segments:
+        line_segments = [
+            (
+                _apply_balloon_transforms([start], rect, flip_h, flip_v, rotation_deg)[0],
+                _apply_balloon_transforms([end], rect, flip_h, flip_v, rotation_deg)[0],
+            )
+            for start, end in line_segments
+        ]
     all_pts = list(outline)
+    for start, end in line_segments:
+        all_pts.append(start)
+        all_pts.append(end)
     for tail in entry.tails:
         all_pts.extend(_balloon_tail_polygon(rect, tail))
     bbox = ep._points_bbox(all_pts)
     if bbox is None:
         return None
-    pad_mm = max(2.0, float(getattr(entry, "line_width_mm", 0.3)) * 4.0)
+    line_w_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+    outer_w_mm = float(getattr(entry, "outer_white_margin_width_mm", 0.0) or 0.0) if bool(getattr(entry, "outer_white_margin_enabled", False)) else 0.0
+    blur = max(0.0, min(1.0, float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)))
+    blur_pad = line_w_mm * (0.65 + 3.35 * blur) if blur > 0.0 else 0.0
+    pad_mm = max(2.0, line_w_mm * 4.0 + outer_w_mm * 2.0 + blur_pad)
     canvas = ep._canvas_for_bbox(bbox, canvas_height_px, dpi, pad_mm=pad_mm)
     if canvas is None:
         return None
-    fill_color = ep._rgb255(entry.fill_color, alpha=float(getattr(entry, "opacity", 1.0)))
-    line_color = ep._rgb255(entry.line_color, alpha=float(getattr(entry, "opacity", 1.0)))
+    line_color = ep._rgb255(entry.line_color, alpha=_entry_opacity(entry))
+    outer_color = ep._rgb255(getattr(entry, "outer_white_margin_color", (1.0, 1.0, 1.0, 1.0)), alpha=_entry_opacity(entry))
+    inner_color = ep._rgb255(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0)), alpha=_entry_opacity(entry))
     line_width_px = max(1, int(round(mm_to_px(float(getattr(entry, "line_width_mm", 0.3)), dpi))))
+    outer_width_px = int(round(mm_to_px(float(getattr(entry, "outer_white_margin_width_mm", 0.0)), dpi)))
+    inner_width_px = int(round(mm_to_px(float(getattr(entry, "inner_white_margin_width_mm", 0.0)), dpi)))
+    line_style = getattr(entry, "line_style", "solid")
     draw = ep.ImageDraw.Draw(canvas.image)
     outline_px = canvas.points_px(outline)
+    fill_clip_mask = None
     if len(outline_px) >= 3:
-        draw.polygon(outline_px, fill=fill_color)
-    ep._draw_styled_loop(draw, outline_px, line_color, line_width_px, getattr(entry, "line_style", "solid"))
+        fill_polygons = [outline_px]
+        fill_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
+        fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
+    if bool(getattr(entry, "outer_white_margin_enabled", False)):
+        _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, line_style)
+    if bool(getattr(entry, "inner_white_margin_enabled", False)):
+        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), line_style)
+    if is_uni_flash:
+        for start, end in line_segments:
+            if bool(getattr(entry, "outer_white_margin_enabled", False)):
+                ep._draw_styled_segment(
+                    draw,
+                    canvas.point_px(*start),
+                    canvas.point_px(*end),
+                    outer_color,
+                    line_width_px + outer_width_px * 2,
+                    line_style,
+                )
+            if bool(getattr(entry, "inner_white_margin_enabled", False)):
+                ep._draw_styled_segment(
+                    draw,
+                    canvas.point_px(*start),
+                    canvas.point_px(*end),
+                    inner_color,
+                    max(1, inner_width_px * 2),
+                    line_style,
+                )
+            ep._draw_styled_segment(
+                draw,
+                canvas.point_px(*start),
+                canvas.point_px(*end),
+                line_color,
+                line_width_px,
+                line_style,
+            )
+    else:
+        ep._draw_styled_loop(draw, outline_px, line_color, line_width_px, line_style)
     for tail in entry.tails:
         tail_px = canvas.points_px(_balloon_tail_polygon(rect, tail))
         if len(tail_px) >= 3:
-            draw.polygon(tail_px, fill=fill_color)
-            ep._draw_styled_loop(draw, tail_px, line_color, line_width_px, getattr(entry, "line_style", "solid"))
+            if bool(getattr(entry, "outer_white_margin_enabled", False)):
+                _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, line_style)
+            if bool(getattr(entry, "inner_white_margin_enabled", False)):
+                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), line_style)
+            ep._draw_styled_loop(draw, tail_px, line_color, line_width_px, line_style)
     return ep.ExportLayer(
         str(getattr(entry, "id", "") or "balloon"),
         canvas.image,

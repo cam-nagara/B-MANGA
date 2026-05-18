@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import bpy
+
 from ..core.work import get_active_page, get_work
 from ..utils import balloon_shapes
 from ..utils import gpencil as gp_utils
@@ -166,8 +168,37 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     line_box.prop(entry, "line_width_mm")
     line_box.prop(entry, "line_color")
     line_box.prop(entry, "fill_color")
+    line_box.prop(entry, "fill_opacity", slider=True)
+    line_box.prop_search(entry, "fill_material_name", bpy.data, "materials")
+    line_box.prop(entry, "fill_blur_amount", slider=True)
+    line_box.prop(entry, "fill_blur_dither")
+    line_box.prop(entry, "fill_gradient_enabled")
+    sub = line_box.column(align=True)
+    sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
+    sub.prop(entry, "fill_gradient_start_color")
+    sub.prop(entry, "fill_gradient_end_color")
+    sub.prop(entry, "fill_gradient_angle_deg")
+    line_box.prop(entry, "outer_white_margin_enabled")
+    sub = line_box.column(align=True)
+    sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+    sub.prop(entry, "outer_white_margin_width_mm")
+    sub.prop(entry, "outer_white_margin_color")
+    line_box.prop(entry, "inner_white_margin_enabled")
+    sub = line_box.column(align=True)
+    sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+    sub.prop(entry, "inner_white_margin_width_mm")
+    sub.prop(entry, "inner_white_margin_color")
 
     sp = entry.shape_params
+    if balloon_shapes.is_uni_flash_shape(entry.shape):
+        flash_box = box.box()
+        flash_box.label(text="ウニフラッシュ")
+        flash_box.prop(sp, "uni_flash_spacing_mm")
+        flash_box.prop(sp, "uni_flash_fill_scale_percent")
+        row = flash_box.row(align=True)
+        row.prop(sp, "uni_flash_line_density_compensation")
+        row.prop(sp, "uni_flash_fill_density_compensation")
+        flash_box.prop(sp, "uni_flash_max_line_count")
     if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
         shape_box.label(text="Meldex形状パラメータ")
@@ -221,6 +252,15 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         bend = sub.row()
         bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
         bend.prop(tail, "curve_bend", text="曲げ")
+        sub.prop(tail, "custom_points_enabled")
+        point_box = sub.column(align=True)
+        point_box.enabled = bool(getattr(tail, "custom_points_enabled", False))
+        row = point_box.row(align=True)
+        row.prop(tail, "start_x_mm")
+        row.prop(tail, "start_y_mm")
+        row = point_box.row(align=True)
+        row.prop(tail, "end_x_mm")
+        row.prop(tail, "end_y_mm")
 
 
 def _page_for_balloon_entry(context, entry):

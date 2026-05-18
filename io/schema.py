@@ -755,6 +755,24 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineColorAlpha": round(entry.line_color[3], 3),
         "fillColor": color_to_hex(entry.fill_color),
         "fillColorAlpha": round(entry.fill_color[3], 3),
+        "fillOpacity": round(float(getattr(entry, "fill_opacity", 1.0)), 3),
+        "fillMaterialName": str(getattr(entry, "fill_material_name", "") or ""),
+        "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
+        "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
+        "fillGradientEnabled": bool(getattr(entry, "fill_gradient_enabled", False)),
+        "fillGradientStartColor": color_to_hex(getattr(entry, "fill_gradient_start_color", entry.fill_color)),
+        "fillGradientStartColorAlpha": round(float(getattr(entry, "fill_gradient_start_color", entry.fill_color)[3]), 3),
+        "fillGradientEndColor": color_to_hex(getattr(entry, "fill_gradient_end_color", entry.fill_color)),
+        "fillGradientEndColorAlpha": round(float(getattr(entry, "fill_gradient_end_color", entry.fill_color)[3]), 3),
+        "fillGradientAngleDeg": round(float(getattr(entry, "fill_gradient_angle_deg", 90.0)), 3),
+        "outerWhiteMarginEnabled": bool(getattr(entry, "outer_white_margin_enabled", False)),
+        "outerWhiteMarginWidthMm": round(float(getattr(entry, "outer_white_margin_width_mm", 1.0)), 3),
+        "outerWhiteMarginColor": color_to_hex(getattr(entry, "outer_white_margin_color", (1.0, 1.0, 1.0, 1.0))),
+        "outerWhiteMarginColorAlpha": round(float(getattr(entry, "outer_white_margin_color", (1.0, 1.0, 1.0, 1.0))[3]), 3),
+        "innerWhiteMarginEnabled": bool(getattr(entry, "inner_white_margin_enabled", False)),
+        "innerWhiteMarginWidthMm": round(float(getattr(entry, "inner_white_margin_width_mm", 1.0)), 3),
+        "innerWhiteMarginColor": color_to_hex(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0))),
+        "innerWhiteMarginColorAlpha": round(float(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0))[3]), 3),
         "blendMode": getattr(entry, "blend_mode", "normal"),
         "mergeGroupId": getattr(entry, "merge_group_id", ""),
         "parentKind": getattr(entry, "parent_kind", "page"),
@@ -768,6 +786,19 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
                 "rootWidthMm": round(t.root_width_mm, 3),
                 "tipWidthMm": round(t.tip_width_mm, 3),
                 "curveBend": round(t.curve_bend, 3),
+                "customPointsEnabled": bool(getattr(t, "custom_points_enabled", False)),
+                "startXMm": round(float(getattr(t, "start_x_mm", 0.0)), 3),
+                "startYMm": round(float(getattr(t, "start_y_mm", 0.0)), 3),
+                "endXMm": round(float(getattr(t, "end_x_mm", 0.0)), 3),
+                "endYMm": round(float(getattr(t, "end_y_mm", 0.0)), 3),
+                "points": [
+                    {
+                        "xMm": round(float(getattr(point, "x_mm", 0.0)), 3),
+                        "yMm": round(float(getattr(point, "y_mm", 0.0)), 3),
+                        "cornerType": str(getattr(point, "corner_type", "line") or "line"),
+                    }
+                    for point in getattr(t, "points", [])
+                ],
             }
             for t in entry.tails
         ],
@@ -786,6 +817,11 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "spikeCount": int(entry.shape_params.spike_count),
             "spikeDepthMm": round(entry.shape_params.spike_depth_mm, 3),
             "spikeJitter": round(entry.shape_params.spike_jitter, 3),
+            "uniFlashSpacingMm": round(entry.shape_params.uni_flash_spacing_mm, 3),
+            "uniFlashFillScalePercent": round(entry.shape_params.uni_flash_fill_scale_percent, 3),
+            "uniFlashLineDensityCompensation": bool(entry.shape_params.uni_flash_line_density_compensation),
+            "uniFlashFillDensityCompensation": bool(entry.shape_params.uni_flash_fill_density_compensation),
+            "uniFlashMaxLineCount": int(entry.shape_params.uni_flash_max_line_count),
         },
         "textId": entry.text_id,
     }
@@ -810,6 +846,24 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)
     alpha = float(data.get("fillColorAlpha", 1.0))
     entry.fill_color = hex_to_rgba(data.get("fillColor", "#FFFFFF"), alpha)
+    entry.fill_opacity = float(data.get("fillOpacity", 1.0))
+    entry.fill_material_name = str(data.get("fillMaterialName", "") or "")
+    entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
+    entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
+    entry.fill_gradient_enabled = bool(data.get("fillGradientEnabled", False))
+    alpha = float(data.get("fillGradientStartColorAlpha", 1.0))
+    entry.fill_gradient_start_color = hex_to_rgba(data.get("fillGradientStartColor", data.get("fillColor", "#FFFFFF")), alpha)
+    alpha = float(data.get("fillGradientEndColorAlpha", 1.0))
+    entry.fill_gradient_end_color = hex_to_rgba(data.get("fillGradientEndColor", data.get("fillColor", "#FFFFFF")), alpha)
+    entry.fill_gradient_angle_deg = float(data.get("fillGradientAngleDeg", 90.0))
+    entry.outer_white_margin_enabled = bool(data.get("outerWhiteMarginEnabled", False))
+    entry.outer_white_margin_width_mm = float(data.get("outerWhiteMarginWidthMm", 1.0))
+    alpha = float(data.get("outerWhiteMarginColorAlpha", 1.0))
+    entry.outer_white_margin_color = hex_to_rgba(data.get("outerWhiteMarginColor", "#FFFFFF"), alpha)
+    entry.inner_white_margin_enabled = bool(data.get("innerWhiteMarginEnabled", False))
+    entry.inner_white_margin_width_mm = float(data.get("innerWhiteMarginWidthMm", 1.0))
+    alpha = float(data.get("innerWhiteMarginColorAlpha", 1.0))
+    entry.inner_white_margin_color = hex_to_rgba(data.get("innerWhiteMarginColor", "#FFFFFF"), alpha)
     entry.blend_mode = data.get("blendMode", "normal")
     entry.merge_group_id = data.get("mergeGroupId", "")
     entry.parent_kind = data.get("parentKind", data.get("parent_kind", "page"))
@@ -825,6 +879,26 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
         tail.root_width_mm = float(td.get("rootWidthMm", 3.0))
         tail.tip_width_mm = float(td.get("tipWidthMm", 0.0))
         tail.curve_bend = float(td.get("curveBend", 0.0))
+        tail.custom_points_enabled = bool(td.get("customPointsEnabled", False))
+        tail.start_x_mm = float(td.get("startXMm", 0.0))
+        tail.start_y_mm = float(td.get("startYMm", 0.0))
+        tail.end_x_mm = float(td.get("endXMm", 0.0))
+        tail.end_y_mm = float(td.get("endYMm", 0.0))
+        tail.points.clear()
+        for pd in td.get("points", []):
+            point = tail.points.add()
+            point.x_mm = float(pd.get("xMm", 0.0))
+            point.y_mm = float(pd.get("yMm", 0.0))
+            point.corner_type = str(pd.get("cornerType", "line") or "line")
+        if len(tail.points) < 2 and bool(getattr(tail, "custom_points_enabled", False)):
+            point = tail.points.add()
+            point.x_mm = float(getattr(tail, "start_x_mm", 0.0))
+            point.y_mm = float(getattr(tail, "start_y_mm", 0.0))
+            point.corner_type = "line"
+            point = tail.points.add()
+            point.x_mm = float(getattr(tail, "end_x_mm", 0.0))
+            point.y_mm = float(getattr(tail, "end_y_mm", 0.0))
+            point.corner_type = "line"
     sp = data.get("shapeParams", {})
     entry.shape_params.cloud_bump_width_mm = float(sp.get("cloudBumpWidthMm", 10.0))
     entry.shape_params.cloud_bump_height_mm = float(sp.get("cloudBumpHeightMm", 4.0))
@@ -848,6 +922,15 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.shape_params.spike_count = int(sp.get("spikeCount", 24))
     entry.shape_params.spike_depth_mm = float(sp.get("spikeDepthMm", 6.0))
     entry.shape_params.spike_jitter = float(sp.get("spikeJitter", 0.2))
+    entry.shape_params.uni_flash_spacing_mm = float(sp.get("uniFlashSpacingMm", 0.4))
+    entry.shape_params.uni_flash_fill_scale_percent = float(sp.get("uniFlashFillScalePercent", 70.0))
+    entry.shape_params.uni_flash_line_density_compensation = bool(
+        sp.get("uniFlashLineDensityCompensation", True)
+    )
+    entry.shape_params.uni_flash_fill_density_compensation = bool(
+        sp.get("uniFlashFillDensityCompensation", True)
+    )
+    entry.shape_params.uni_flash_max_line_count = int(sp.get("uniFlashMaxLineCount", 1000))
     entry.text_id = data.get("textId", "")
 
 

@@ -18,7 +18,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import balloon_presets
-from ..utils import layer_stack as layer_stack_utils, log, object_selection
+from ..utils import balloon_tail_geom, layer_stack as layer_stack_utils, log, object_selection
 from ..utils import active_target as _active_target
 
 
@@ -28,7 +28,7 @@ def _focus_creation_target(context, work, page, parent_kind: str, parent_key: st
     except Exception:  # noqa: BLE001
         pass
 from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key, page_stack_key
-from . import coma_modal_state, selection_context_menu, view_event_region
+from . import balloon_tail_op, coma_modal_state, selection_context_menu, view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -37,6 +37,7 @@ _BALLOON_MIN_SIZE_MM = 2.0
 _BALLOON_HANDLE_HIT_MM = 2.5
 _BALLOON_DRAG_EPS_MM = 0.05
 _BALLOON_TAIL_MIN_LENGTH_MM = 2.0
+_BALLOON_TAIL_POINT_HIT_MM = 2.5
 
 _SHAPE_FOR_ADD = (
     ("rect", "矩形", ""),
@@ -46,6 +47,7 @@ _SHAPE_FOR_ADD = (
     ("thorn", "トゲ（直線）", ""),
     ("thorn-curve", "トゲ（曲線）", ""),
     ("octagon", "八角形", ""),
+    ("uni_flash", "ウニフラッシュ", ""),
     ("none", "本体なし (テキスト単体)", ""),
 )
 
@@ -237,10 +239,68 @@ def _hit_balloon_entry(page, x_mm: float, y_mm: float):
         entry = page.balloons[idx]
         if getattr(entry, "shape", "rect") == "none":
             continue
+        part = _balloon_tail_hit_part(entry, x_mm, y_mm)
+        if part:
+            return idx, entry, part
         part = _balloon_hit_part(entry, x_mm, y_mm)
         if part:
             return idx, entry, part
     return -1, None, ""
+
+
+def _balloon_tail_hit_part(entry, x_mm: float, y_mm: float) -> str:
+    rect = _tail_rect_for_entry(entry)
+    local_x = float(x_mm) - rect.x
+    local_y = float(y_mm) - rect.y
+    threshold = _BALLOON_TAIL_POINT_HIT_MM
+    for tail_index, tail in enumerate(getattr(entry, "tails", []) or []):
+        points = balloon_tail_geom.tail_local_points(tail)
+        if len(points) < 2:
+            points = [(x - rect.x, y - rect.y) for x, y in balloon_tail_geom.tail_world_points(rect, tail)]
+        for point_index, (px, py) in enumerate(points):
+            if math.hypot(local_x - px, local_y - py) <= threshold:
+                return f"tail_point:{tail_index}:{point_index}"
+        segment_hit = _hit_tail_segment(points, local_x, local_y, threshold)
+        if segment_hit >= 0:
+            return f"tail_segment:{tail_index}:{segment_hit + 1}"
+    return ""
+
+
+def _hit_tail_segment(points: list[tuple[float, float]], x_mm: float, y_mm: float, threshold: float) -> int:
+    best_index = -1
+    best_distance = threshold
+    for index, (p0, p1) in enumerate(zip(points, points[1:])):
+        distance = _distance_to_segment((x_mm, y_mm), p0, p1)
+        if distance <= best_distance:
+            best_distance = distance
+            best_index = index
+    return best_index
+
+
+def _distance_to_segment(point, p0, p1) -> float:
+    px, py = point
+    x0, y0 = p0
+    x1, y1 = p1
+    dx = x1 - x0
+    dy = y1 - y0
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1.0e-9:
+        return math.hypot(px - x0, py - y0)
+    t = max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / length_sq))
+    cx = x0 + dx * t
+    cy = y0 + dy * t
+    return math.hypot(px - cx, py - cy)
+
+
+def _tail_rect_for_entry(entry):
+    from ..utils.balloon_shapes import Rect
+
+    return Rect(
+        float(getattr(entry, "x_mm", 0.0) or 0.0),
+        float(getattr(entry, "y_mm", 0.0) or 0.0),
+        float(getattr(entry, "width_mm", 0.0) or 0.0),
+        float(getattr(entry, "height_mm", 0.0) or 0.0),
+    )
 
 
 def _clear_balloon_selection(page) -> None:
@@ -439,6 +499,47 @@ def _add_tail_to_point(entry, tip_x: float, tip_y: float) -> bool:
     tail.root_width_mm = max(3.0, min(10.0, min(rx, ry) * 0.35))
     tail.tip_width_mm = 0.0
     return True
+
+
+def _add_tail_polyline(entry, points_page: list[tuple[float, float]]) -> int:
+    if len(points_page) < 2:
+        return -1
+    local = _page_points_to_tail_local(entry, points_page)
+    if math.hypot(local[-1][0] - local[0][0], local[-1][1] - local[0][1]) <= _BALLOON_TAIL_MIN_LENGTH_MM:
+        return -1
+    tail = entry.tails.add()
+    tail.type = "straight"
+    left, bottom, right, top = _balloon_rect(entry)
+    tail.root_width_mm = max(3.0, min(10.0, min(right - left, top - bottom) * 0.18))
+    tail.tip_width_mm = 0.0
+    balloon_tail_geom.write_polyline_points(tail, local)
+    return len(entry.tails) - 1
+
+
+def _page_points_to_tail_local(entry, points_page: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    ox = float(getattr(entry, "x_mm", 0.0) or 0.0)
+    oy = float(getattr(entry, "y_mm", 0.0) or 0.0)
+    return [(float(x) - ox, float(y) - oy) for x, y in points_page]
+
+
+def _insert_tail_point_page(entry, tail_index: int, insert_index: int, x_mm: float, y_mm: float) -> int:
+    if not (0 <= int(tail_index) < len(entry.tails)):
+        return -1
+    tail = entry.tails[int(tail_index)]
+    if len(balloon_tail_geom.tail_local_points(tail)) < 2:
+        balloon_tail_geom.write_polyline_points(tail, list(balloon_tail_geom.local_axis_points(entry, tail)))
+    local = (float(x_mm) - float(getattr(entry, "x_mm", 0.0) or 0.0), float(y_mm) - float(getattr(entry, "y_mm", 0.0) or 0.0))
+    return balloon_tail_geom.add_polyline_point(tail, local, insert_index=int(insert_index))
+
+
+def _append_tail_point_page(entry, tail_index: int, x_mm: float, y_mm: float) -> int:
+    if not (0 <= int(tail_index) < len(entry.tails)):
+        return -1
+    tail = entry.tails[int(tail_index)]
+    if len(balloon_tail_geom.tail_local_points(tail)) < 2:
+        balloon_tail_geom.write_polyline_points(tail, list(balloon_tail_geom.local_axis_points(entry, tail)))
+    local = (float(x_mm) - float(getattr(entry, "x_mm", 0.0) or 0.0), float(y_mm) - float(getattr(entry, "y_mm", 0.0) or 0.0))
+    return balloon_tail_geom.add_polyline_point(tail, local, insert_index=len(tail.points))
 
 
 def _event_in_view3d_window(context, event) -> bool:
@@ -669,6 +770,7 @@ class BNAME_OT_balloon_tool(Operator):
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         self._clear_drag_state()
+        self._clear_tail_polyline_state()
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("balloon_tool", self, context)
         self.report({"INFO"}, "フキダシツール: ドラッグで作成")
@@ -685,6 +787,8 @@ class BNAME_OT_balloon_tool(Operator):
         if not _event_in_view3d_window(context, event):
             return {"PASS_THROUGH"}
         if event.type == "RIGHTMOUSE" and event.value == "PRESS":
+            if self._open_tail_point_menu(context, event):
+                return {"RUNNING_MODAL"}
             if selection_context_menu.open_for_balloon_tool(context, event):
                 return {"RUNNING_MODAL"}
             self.finish_from_external(context, keep_selection=True)
@@ -712,6 +816,9 @@ class BNAME_OT_balloon_tool(Operator):
         if work is None or page is None or lx is None or ly is None:
             return {"PASS_THROUGH"}
         hit_index, hit_entry, hit_part = _hit_balloon_entry(page, lx, ly)
+        if event.ctrl:
+            return self._handle_ctrl_left_press(context, work, page, lx, ly, hit_index, hit_entry, hit_part)
+        self._clear_tail_polyline_state()
         if hit_entry is not None and hit_index >= 0:
             mode = "toggle" if event.ctrl else "add" if event.shift else "single"
             if (
@@ -752,6 +859,45 @@ class BNAME_OT_balloon_tool(Operator):
         self._start_create_drag(page, entry, lx, ly)
         return {"RUNNING_MODAL"}
 
+    def _handle_ctrl_left_press(self, context, work, page, lx: float, ly: float, hit_index: int, hit_entry, hit_part: str):
+        if hit_entry is not None and hit_index >= 0:
+            _select_balloon_index(context, work, page, hit_index, mode="single")
+            if hit_part == "body":
+                self._start_tail_drag(page, hit_entry, lx, ly, start_at_pointer=True)
+                return {"RUNNING_MODAL"}
+            if hit_part.startswith("tail_segment:"):
+                _prefix, tail_index, insert_index = hit_part.split(":")
+                if _insert_tail_point_page(hit_entry, int(tail_index), int(insert_index), lx, ly) >= 0:
+                    self._push_undo_step("B-Name: しっぽ制御点追加")
+                    layer_stack_utils.sync_layer_stack_after_data_change(context)
+                return {"RUNNING_MODAL"}
+            if hit_part.startswith("tail_point:"):
+                _prefix, tail_index, point_index = hit_part.split(":")
+                self._start_tail_point_drag(page, hit_entry, int(tail_index), int(point_index), lx, ly)
+                return {"RUNNING_MODAL"}
+        if self._append_pending_tail_click(context, page, lx, ly):
+            return {"RUNNING_MODAL"}
+        return {"RUNNING_MODAL"}
+
+    def _open_tail_point_menu(self, context, event) -> bool:
+        work, page, lx, ly = _resolve_page_from_event(context, event)
+        if work is None or page is None or lx is None or ly is None:
+            return False
+        hit_index, entry, part = _hit_balloon_entry(page, lx, ly)
+        if entry is None or hit_index < 0 or not str(part).startswith("tail_point:"):
+            return False
+        _prefix, tail_index, point_index = str(part).split(":")
+        tail = entry.tails[int(tail_index)]
+        if len(balloon_tail_geom.tail_local_points(tail)) < 2:
+            balloon_tail_geom.write_polyline_points(tail, list(balloon_tail_geom.local_axis_points(entry, tail)))
+        return balloon_tail_op.open_tail_point_context_menu(
+            context,
+            str(getattr(page, "id", "") or ""),
+            str(getattr(entry, "id", "") or ""),
+            int(tail_index),
+            int(point_index),
+        )
+
     def _start_create_drag(self, page, entry, x_mm: float, y_mm: float) -> None:
         self._dragging = True
         self._drag_action = "create"
@@ -762,13 +908,32 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_moved = False
         self._snapshots = [(entry.id, entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)]
 
-    def _start_tail_drag(self, page, entry, x_mm: float, y_mm: float) -> None:
+    def _start_tail_drag(self, page, entry, x_mm: float, y_mm: float, *, start_at_pointer: bool = False) -> None:
         self._dragging = True
         self._drag_action = "tail"
         self._drag_page_id = getattr(page, "id", "")
         self._drag_balloon_id = getattr(entry, "id", "")
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
+        self._tail_start_at_pointer = bool(start_at_pointer)
+        self._drag_moved = False
+        self._snapshots = []
+
+    def _start_tail_point_drag(self, page, entry, tail_index: int, point_index: int, x_mm: float, y_mm: float) -> None:
+        self._dragging = True
+        self._drag_action = "tail_point"
+        self._drag_page_id = getattr(page, "id", "")
+        self._drag_balloon_id = getattr(entry, "id", "")
+        self._drag_start_x = float(x_mm)
+        self._drag_start_y = float(y_mm)
+        self._tail_drag_tail_index = int(tail_index)
+        self._tail_drag_point_index = int(point_index)
+        tail = entry.tails[int(tail_index)]
+        points = balloon_tail_geom.tail_local_points(tail)
+        if len(points) < 2:
+            points = list(balloon_tail_geom.local_axis_points(entry, tail))
+            balloon_tail_geom.write_polyline_points(tail, points)
+        self._tail_drag_points = points
         self._drag_moved = False
         self._snapshots = []
 
@@ -801,8 +966,50 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_balloon_id = ""
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
+        self._tail_start_at_pointer = False
+        self._tail_drag_tail_index = -1
+        self._tail_drag_point_index = -1
+        self._tail_drag_points = []
         self._drag_moved = False
         self._snapshots = []
+
+    def _clear_tail_polyline_state(self) -> None:
+        self._pending_tail_page_id = ""
+        self._pending_tail_balloon_id = ""
+        self._pending_tail_points = []
+        self._pending_tail_index = -1
+
+    def _append_pending_tail_click(self, context, page, x_mm: float, y_mm: float) -> bool:
+        page_id = str(getattr(page, "id", "") or "")
+        balloon_id = str(getattr(self, "_pending_tail_balloon_id", "") or "")
+        if not page_id or not balloon_id or page_id != str(getattr(self, "_pending_tail_page_id", "") or ""):
+            return False
+        idx = _find_balloon_index(page, balloon_id)
+        if idx < 0:
+            self._clear_tail_polyline_state()
+            return False
+        entry = page.balloons[idx]
+        points = list(getattr(self, "_pending_tail_points", []) or [])
+        points.append((float(x_mm), float(y_mm)))
+        tail_index = int(getattr(self, "_pending_tail_index", -1))
+        if tail_index < 0:
+            tail_index = _add_tail_polyline(entry, points)
+            if tail_index < 0:
+                return False
+            self._pending_tail_index = tail_index
+            self._pending_tail_points = points
+            self._push_undo_step("B-Name: しっぽ作成")
+        else:
+            appended = _append_tail_point_page(entry, tail_index, x_mm, y_mm)
+            if appended < 0:
+                return False
+            self._pending_tail_points = [
+                (float(getattr(point, "x_mm", 0.0) or 0.0) + float(entry.x_mm), float(getattr(point, "y_mm", 0.0) or 0.0) + float(entry.y_mm))
+                for point in entry.tails[tail_index].points
+            ]
+            self._push_undo_step("B-Name: しっぽ制御点追加")
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        return True
 
     def _modal_dragging(self, context, event):
         if event.type == "MOUSEMOVE":
@@ -843,6 +1050,15 @@ class BNAME_OT_balloon_tool(Operator):
         if self._drag_action == "tail":
             layer_stack_utils.tag_view3d_redraw(context)
             return
+        if self._drag_action == "tail_point":
+            tail_index = int(getattr(self, "_tail_drag_tail_index", -1))
+            point_index = int(getattr(self, "_tail_drag_point_index", -1))
+            points = list(getattr(self, "_tail_drag_points", []) or [])
+            if 0 <= tail_index < len(entry.tails) and 0 <= point_index < len(points):
+                new_point = (points[point_index][0] + dx, points[point_index][1] + dy)
+                balloon_tail_geom.set_point(entry.tails[tail_index], point_index, new_point)
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "create":
             x, y, w, h = _rect_from_points(self._drag_start_x, self._drag_start_y, lx, ly)
             if _creation_violates_layer_scope(context, page, x, y, w, h):
@@ -870,6 +1086,11 @@ class BNAME_OT_balloon_tool(Operator):
             _delete_balloon_by_id(context, self._drag_page_id, self._drag_balloon_id)
         elif action == "tail" and moved and page is not None and entry is not None:
             self._finish_tail_drag(context, event, page, entry)
+        elif action == "tail" and page is not None and entry is not None and bool(getattr(self, "_tail_start_at_pointer", False)):
+            self._start_pending_tail_click(context, page, entry, self._drag_start_x, self._drag_start_y)
+        elif action == "tail_point" and moved:
+            self._push_undo_step("B-Name: しっぽ制御点移動")
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
         elif moved:
             self._push_undo_step("B-Name: フキダシ編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
@@ -881,11 +1102,27 @@ class BNAME_OT_balloon_tool(Operator):
         _work, _page, lx, ly = _resolve_local_xy_for_page_from_event(
             context, event, getattr(page, "id", "")
         )
-        if lx is None or ly is None or _point_in_balloon_rect(entry, lx, ly):
+        if lx is None or ly is None:
+            return
+        if bool(getattr(self, "_tail_start_at_pointer", False)):
+            tail_index = _add_tail_polyline(entry, [(self._drag_start_x, self._drag_start_y), (float(lx), float(ly))])
+            if tail_index >= 0:
+                self._clear_tail_polyline_state()
+                self._push_undo_step("B-Name: しっぽ作成")
+                layer_stack_utils.sync_layer_stack_after_data_change(context)
+            return
+        if _point_in_balloon_rect(entry, lx, ly):
             return
         if _add_tail_to_point(entry, lx, ly):
             self._push_undo_step("B-Name: フキダシしっぽ作成")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
+
+    def _start_pending_tail_click(self, context, page, entry, x_mm: float, y_mm: float) -> None:
+        self._pending_tail_page_id = str(getattr(page, "id", "") or "")
+        self._pending_tail_balloon_id = str(getattr(entry, "id", "") or "")
+        self._pending_tail_points = [(float(x_mm), float(y_mm))]
+        self._pending_tail_index = -1
+        layer_stack_utils.tag_view3d_redraw(context)
 
     def _apply_move_snapshots(self, page, dx: float, dy: float) -> None:
         for balloon_id, x, y, _w, _h in self._snapshots:
@@ -919,8 +1156,13 @@ class BNAME_OT_balloon_tool(Operator):
         return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
     def _cancel_drag(self, context) -> None:
-        page, _entry = self._drag_page_and_entry(context)
-        if page is not None:
+        page, entry = self._drag_page_and_entry(context)
+        if self._drag_action == "tail_point" and page is not None and entry is not None:
+            tail_index = int(getattr(self, "_tail_drag_tail_index", -1))
+            points = list(getattr(self, "_tail_drag_points", []) or [])
+            if 0 <= tail_index < len(entry.tails) and len(points) >= 2:
+                balloon_tail_geom.write_polyline_points(entry.tails[tail_index], points)
+        elif page is not None:
             for balloon_id, x, y, w, h in self._snapshots:
                 idx = _find_balloon_index(page, balloon_id)
                 if 0 <= idx < len(page.balloons):
@@ -939,6 +1181,7 @@ class BNAME_OT_balloon_tool(Operator):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
         self._clear_drag_state()
+        self._clear_tail_polyline_state()
 
     def finish_from_external(self, context, *, keep_selection: bool) -> None:
         _ = keep_selection

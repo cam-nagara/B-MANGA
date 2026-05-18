@@ -6,11 +6,12 @@ import math
 from collections.abc import Callable
 
 from ..utils.geom import Rect
-from ..utils import balloon_shapes, object_selection, viewport_colors
+from ..utils import balloon_shapes, balloon_tail_geom, balloon_uni_flash, object_selection, viewport_colors
 
 DrawRectOutline = Callable[..., None]
 DrawPolygonFill = Callable[[list[tuple[float, float]], tuple[float, float, float, float]], None]
 DrawPolylineLoop = Callable[..., None]
+DrawLineSegments = Callable[..., None]
 EntryVisiblePredicate = Callable[[object], bool]
 ComaPolygonResolver = Callable[[object], list[tuple[float, float]] | None]
 _BALLOON_HANDLE_SIZE_MM = 2.0
@@ -103,6 +104,7 @@ def draw_balloons(
     draw_rect_outline: DrawRectOutline,
     draw_polygon_fill: DrawPolygonFill,
     draw_polyline_loop: DrawPolylineLoop,
+    draw_line_segments: DrawLineSegments | None = None,
     is_entry_visible: EntryVisiblePredicate | None = None,
     coma_polygon_resolver: ComaPolygonResolver | None = None,
     active: bool = False,
@@ -130,7 +132,7 @@ def draw_balloons(
             float(entry.fill_color[0]),
             float(entry.fill_color[1]),
             float(entry.fill_color[2]),
-            float(entry.fill_color[3]) * op,
+            float(entry.fill_color[3]) * op * max(0.0, min(1.0, float(getattr(entry, "fill_opacity", 1.0) or 0.0))),
         )
         line = (
             float(entry.line_color[0]),
@@ -138,20 +140,42 @@ def draw_balloons(
             float(entry.line_color[2]),
             float(entry.line_color[3]) * op,
         )
+        outer_white = tuple(float(v) for v in getattr(entry, "outer_white_margin_color", (1.0, 1.0, 1.0, 1.0)))
+        outer_white = (outer_white[0], outer_white[1], outer_white[2], outer_white[3] * op)
+        inner_white = tuple(float(v) for v in getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0)))
+        inner_white = (inner_white[0], inner_white[1], inner_white[2], inner_white[3] * op)
         line_width = max(1.0, float(entry.line_width_mm) * 2.0)
+        outer_width = float(getattr(entry, "outer_white_margin_width_mm", 0.0) or 0.0) * 2.0
+        inner_width = float(getattr(entry, "inner_white_margin_width_mm", 0.0) or 0.0) * 2.0
         line_style = str(getattr(entry, "line_style", "solid") or "solid")
 
-        try:
-            outline = _balloon_outline_mm(entry, rect)
-        except Exception:  # noqa: BLE001
-            outline = _outline_rect(rect)
-        outline = _apply_balloon_transforms(
-            outline,
-            rect,
-            bool(getattr(entry, "flip_h", False)),
-            bool(getattr(entry, "flip_v", False)),
-            float(getattr(entry, "rotation_deg", 0.0)),
-        )
+        is_uni_flash = balloon_uni_flash.is_uni_flash_entry(entry)
+        if is_uni_flash:
+            try:
+                geometry = balloon_uni_flash.geometry_for_entry(entry, rect)
+                outline = geometry.fill_outline_mm
+                line_segments = geometry.line_segments_mm
+            except Exception:  # noqa: BLE001
+                outline = _outline_ellipse(rect)
+                line_segments = []
+        else:
+            try:
+                outline = _balloon_outline_mm(entry, rect)
+            except Exception:  # noqa: BLE001
+                outline = _outline_rect(rect)
+            line_segments = []
+        flip_h = bool(getattr(entry, "flip_h", False))
+        flip_v = bool(getattr(entry, "flip_v", False))
+        rotation_deg = float(getattr(entry, "rotation_deg", 0.0))
+        outline = _apply_balloon_transforms(outline, rect, flip_h, flip_v, rotation_deg)
+        if line_segments:
+            line_segments = [
+                (
+                    _apply_balloon_transforms([start], rect, flip_h, flip_v, rotation_deg)[0],
+                    _apply_balloon_transforms([end], rect, flip_h, flip_v, rotation_deg)[0],
+                )
+                for start, end in line_segments
+            ]
 
         # parent_kind="coma" なら親コマ polygon でクリップ (Sutherland-Hodgman)。
         # tail も同 polygon でクリップする (吹出し本体と同じコマ範囲に収める)。
@@ -171,13 +195,54 @@ def draw_balloons(
 
         if outline_clipped and len(outline_clipped) >= 3:
             draw_polygon_fill(outline_clipped, fill)
-            draw_polyline_loop(
-                outline_clipped,
-                line,
-                line_width=line_width,
-                style=line_style,
-                width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
-            )
+            if bool(getattr(entry, "outer_white_margin_enabled", False)):
+                draw_polyline_loop(
+                    outline_clipped,
+                    outer_white,
+                    line_width=line_width + outer_width * 2.0,
+                    style=line_style,
+                    width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3)) + float(getattr(entry, "outer_white_margin_width_mm", 0.0)) * 2.0),
+                )
+            if bool(getattr(entry, "inner_white_margin_enabled", False)):
+                draw_polyline_loop(
+                    outline_clipped,
+                    inner_white,
+                    line_width=max(1.0, inner_width * 2.0),
+                    style=line_style,
+                    width_mm=max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0),
+                )
+            if is_uni_flash and draw_line_segments is not None:
+                if coma_poly:
+                    line_segments = [
+                        clipped
+                        for start, end in line_segments
+                        if (clipped := _clip_segment_to_convex_polygon(start, end, coma_poly)) is not None
+                    ]
+                if bool(getattr(entry, "outer_white_margin_enabled", False)):
+                    draw_line_segments(
+                        line_segments,
+                        outer_white,
+                        width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3)) + float(getattr(entry, "outer_white_margin_width_mm", 0.0)) * 2.0),
+                    )
+                if bool(getattr(entry, "inner_white_margin_enabled", False)):
+                    draw_line_segments(
+                        line_segments,
+                        inner_white,
+                        width_mm=max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0),
+                    )
+                draw_line_segments(
+                    line_segments,
+                    line,
+                    width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
+                )
+            else:
+                draw_polyline_loop(
+                    outline_clipped,
+                    line,
+                    line_width=line_width,
+                    style=line_style,
+                    width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
+                )
 
         for tail in getattr(entry, "tails", []):
             _draw_balloon_tail(
@@ -191,6 +256,12 @@ def draw_balloons(
                 line_style=line_style,
                 line_width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
                 clip_polygon=coma_poly,
+                outer_white=outer_white if bool(getattr(entry, "outer_white_margin_enabled", False)) else None,
+                outer_line_width=line_width + outer_width * 2.0,
+                outer_width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3)) + float(getattr(entry, "outer_white_margin_width_mm", 0.0)) * 2.0),
+                inner_white=inner_white if bool(getattr(entry, "inner_white_margin_enabled", False)) else None,
+                inner_line_width=max(1.0, inner_width * 2.0),
+                inner_width_mm=max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0),
             )
 
         selected = (
@@ -240,6 +311,45 @@ def _outline_ellipse(rect: Rect, segments: int = 64) -> list[tuple[float, float]
          cy + ry * math.sin(2 * math.pi * i / segments))
         for i in range(segments)
     ]
+
+
+def _clip_segment_to_convex_polygon(
+    start: tuple[float, float],
+    end: tuple[float, float],
+    clip: list[tuple[float, float]],
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    if len(clip) < 3:
+        return (start, end)
+    area = 0.0
+    for i, point in enumerate(clip):
+        nxt = clip[(i + 1) % len(clip)]
+        area += point[0] * nxt[1] - nxt[0] * point[1]
+    sign = 1.0 if area > 0.0 else -1.0
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    t0 = 0.0
+    t1 = 1.0
+    for i, a in enumerate(clip):
+        b = clip[(i + 1) % len(clip)]
+        ex = b[0] - a[0]
+        ey = b[1] - a[1]
+        f0 = sign * (ex * (start[1] - a[1]) - ey * (start[0] - a[0]))
+        fd = sign * (ex * dy - ey * dx)
+        if abs(fd) <= 1.0e-12:
+            if f0 < 0.0:
+                return None
+            continue
+        t = -f0 / fd
+        if fd > 0.0:
+            t0 = max(t0, t)
+        else:
+            t1 = min(t1, t)
+        if t0 > t1:
+            return None
+    return (
+        (start[0] + dx * t0, start[1] + dy * t0),
+        (start[0] + dx * t1, start[1] + dy * t1),
+    )
 
 
 def _outline_cloud(rect: Rect, wave_count: int, amplitude_mm: float,
@@ -379,71 +489,36 @@ def _draw_balloon_tail(
     line_style: str = "solid",
     line_width_mm: float = 0.3,
     clip_polygon: list[tuple[float, float]] | None = None,
+    outer_white=None,
+    outer_line_width: float = 1.0,
+    outer_width_mm: float = 0.3,
+    inner_white=None,
+    inner_line_width: float = 1.0,
+    inner_width_mm: float = 0.3,
 ) -> None:
-    cx = (rect.x + rect.x2) * 0.5
-    cy = (rect.y + rect.y2) * 0.5
-    rx = rect.width * 0.5
-    ry = rect.height * 0.5
-    angle = math.radians(float(tail.direction_deg))
-    dx, dy = math.cos(angle), math.sin(angle)
-    denom = math.hypot(dx / max(rx, 0.01), dy / max(ry, 0.01))
-    base_x = cx + (dx / denom) if denom > 0 else cx
-    base_y = cy + (dy / denom) if denom > 0 else cy
-    tip_x = base_x + dx * tail.length_mm
-    tip_y = base_y + dy * tail.length_mm
-    nx, ny = -dy, dx
-    rw = float(tail.root_width_mm) * 0.5
-    tw = float(tail.tip_width_mm) * 0.5
-
-    if tail.type == "sticky":
-        pts = [
-            (base_x + nx * rw, base_y + ny * rw),
-            (tip_x + nx * tw if tw > 0 else tip_x, tip_y + ny * tw if tw > 0 else tip_y),
-            (tip_x - nx * tw if tw > 0 else tip_x, tip_y - ny * tw if tw > 0 else tip_y),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
-    elif tail.type == "curve":
-        bend = float(tail.curve_bend) * tail.length_mm * 0.4
-        mid_x = (base_x + tip_x) * 0.5 + nx * bend
-        mid_y = (base_y + tip_y) * 0.5 + ny * bend
-        if tw > 0:
-            mw = max(0.0, (rw + tw) * 0.5)
-            pts = [
-                (base_x + nx * rw, base_y + ny * rw),
-                (mid_x + nx * mw, mid_y + ny * mw),
-                (tip_x + nx * tw, tip_y + ny * tw),
-                (tip_x - nx * tw, tip_y - ny * tw),
-                (mid_x - nx * mw, mid_y - ny * mw),
-                (base_x - nx * rw, base_y - ny * rw),
-            ]
-        else:
-            pts = [
-                (base_x + nx * rw, base_y + ny * rw),
-                (mid_x, mid_y),
-                (tip_x, tip_y),
-                (mid_x, mid_y),
-                (base_x - nx * rw, base_y - ny * rw),
-            ]
-    else:
-        if tw > 0:
-            pts = [
-                (base_x + nx * rw, base_y + ny * rw),
-                (tip_x + nx * tw, tip_y + ny * tw),
-                (tip_x - nx * tw, tip_y - ny * tw),
-                (base_x - nx * rw, base_y - ny * rw),
-            ]
-        else:
-            pts = [
-                (base_x + nx * rw, base_y + ny * rw),
-                (tip_x, tip_y),
-                (base_x - nx * rw, base_y - ny * rw),
-            ]
+    pts = balloon_tail_geom.polygon_for_tail(rect, tail)
     if clip_polygon and len(clip_polygon) >= 3:
         pts_clipped = _clip_polygon_sutherland_hodgman(pts, clip_polygon)
     else:
         pts_clipped = pts
     if pts_clipped and len(pts_clipped) >= 3:
         draw_polygon_fill(pts_clipped, fill_color)
+        if outer_white is not None:
+            draw_polyline_loop(
+                pts_clipped,
+                outer_white,
+                line_width=outer_line_width,
+                style=line_style,
+                width_mm=max(0.001, float(outer_width_mm)),
+            )
+        if inner_white is not None:
+            draw_polyline_loop(
+                pts_clipped,
+                inner_white,
+                line_width=inner_line_width,
+                style=line_style,
+                width_mm=max(0.001, float(inner_width_mm)),
+            )
         draw_polyline_loop(
             pts_clipped,
             line_color,

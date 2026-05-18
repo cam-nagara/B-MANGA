@@ -16,6 +16,8 @@ from typing import Optional, Sequence
 import bpy
 
 from . import balloon_shapes as bs
+from . import balloon_tail_geom
+from . import balloon_uni_flash
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
@@ -33,6 +35,7 @@ BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
+PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 
 
 def _remove_unused_data_block(data) -> None:
@@ -165,6 +168,45 @@ def _append_poly_loop(
     spline.use_cyclic_u = True
 
 
+def _append_polyline(
+    curve: bpy.types.Curve,
+    points_mm: Sequence[tuple[float, float]],
+) -> None:
+    if len(points_mm) < 2:
+        return
+    spline = curve.splines.new(type="POLY")
+    spline.points.add(len(points_mm) - 1)
+    for point, (x_mm, y_mm) in zip(spline.points, points_mm, strict=False):
+        point.co = (mm_to_m(x_mm), mm_to_m(y_mm), 0.0, 1.0)
+    spline.use_cyclic_u = False
+
+
+def _ensure_balloon_line_curve_data(
+    name: str,
+    segments_mm: Sequence[tuple[tuple[float, float], tuple[float, float]]],
+    tail_polygons_mm: Sequence[Sequence[tuple[float, float]]] | None = None,
+) -> bpy.types.Curve:
+    curve = bpy.data.curves.get(name)
+    if curve is None:
+        curve = bpy.data.curves.new(name, type="CURVE")
+    curve.dimensions = "2D"
+    while len(curve.splines):
+        try:
+            curve.splines.remove(curve.splines[0])
+        except Exception:  # noqa: BLE001
+            break
+    for start, end in segments_mm:
+        _append_polyline(curve, (start, end))
+    for tail_points in tail_polygons_mm or ():
+        if len(tail_points) >= 3:
+            _append_poly_loop(curve, tail_points)
+    try:
+        curve.fill_mode = "NONE"
+    except Exception:  # noqa: BLE001
+        pass
+    return curve
+
+
 def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
     color = getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))
     opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
@@ -182,12 +224,13 @@ def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
 def _entry_fill_rgba(entry) -> tuple[float, float, float, float]:
     color = getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0))
     opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    fill_opacity = max(0.0, min(1.0, float(getattr(entry, "fill_opacity", 1.0) or 0.0)))
     try:
         return (
             float(color[0]),
             float(color[1]),
             float(color[2]),
-            float(color[3]) * opacity,
+            float(color[3]) * opacity * fill_opacity,
         )
     except Exception:  # noqa: BLE001
         return (1.0, 1.0, 1.0, opacity)
@@ -240,17 +283,54 @@ def _ensure_balloon_curve_material(
     return mat
 
 
-def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
-    mat = bpy.data.materials.get(material_name)
+def _fill_material_for_entry(material_name: str, entry=None) -> tuple[bpy.types.Material, bool]:
+    chosen_name = str(getattr(entry, "fill_material_name", "") or "").strip() if entry is not None else ""
+    source = bpy.data.materials.get(chosen_name) if chosen_name else None
+    if source is not None and not bool(source.get(PROP_BALLOON_FILL_KIND, False)):
+        copy_name = f"{material_name}__{chosen_name}"
+        mat = bpy.data.materials.get(copy_name)
+        if mat is None:
+            mat = source.copy()
+            mat.name = copy_name
+        mat[PROP_BALLOON_FILL_KIND] = "copy"
+        mat[PROP_BALLOON_FILL_OWNER_ID] = str(getattr(entry, "id", "") or "")
+        mat[PROP_BALLOON_FILL_SOURCE_MATERIAL] = chosen_name
+        return mat, True
+
+    mat = bpy.data.materials.get(chosen_name or material_name)
     if mat is None:
-        mat = bpy.data.materials.new(name=material_name)
-    fill = _entry_fill_rgba(entry)
+        mat = bpy.data.materials.new(name=chosen_name or material_name)
+    mat[PROP_BALLOON_FILL_KIND] = "generated"
+    mat[PROP_BALLOON_FILL_OWNER_ID] = str(getattr(entry, "id", "") or "")
+    return mat, False
+
+
+def _apply_fill_material_basics(mat: bpy.types.Material, fill: tuple[float, float, float, float], entry=None) -> None:
     try:
         mat.diffuse_color = fill
         mat.blend_method = "BLEND"
+        if bool(getattr(entry, "fill_blur_dither", False)):
+            mat.surface_render_method = "DITHERED"
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
         pass
+    if not getattr(mat, "use_nodes", False) or mat.node_tree is None:
+        return
+    try:
+        for node in mat.node_tree.nodes:
+            if node.bl_idname == "ShaderNodeBsdfPrincipled":
+                if "Alpha" in node.inputs:
+                    node.inputs["Alpha"].default_value = fill[3]
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
+    mat, copied_user_material = _fill_material_for_entry(material_name, entry)
+    fill = _entry_fill_rgba(entry)
+    _apply_fill_material_basics(mat, fill, entry)
+    if copied_user_material and not bool(getattr(entry, "fill_gradient_enabled", False)):
+        return mat
     mat.use_nodes = True
     try:
         nt = mat.node_tree
@@ -260,7 +340,31 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
         out.location = (200, 0)
         principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
         principled.location = (-100, 0)
-        principled.inputs["Base Color"].default_value = fill
+        if bool(getattr(entry, "fill_gradient_enabled", False)):
+            start = tuple(float(v) for v in getattr(entry, "fill_gradient_start_color", fill))
+            end = tuple(float(v) for v in getattr(entry, "fill_gradient_end_color", fill))
+            coord = nt.nodes.new("ShaderNodeTexCoord")
+            coord.location = (-760, 0)
+            mapping = nt.nodes.new("ShaderNodeMapping")
+            mapping.location = (-560, 0)
+            gradient = nt.nodes.new("ShaderNodeTexGradient")
+            gradient.location = (-360, 0)
+            ramp = nt.nodes.new("ShaderNodeValToRGB")
+            ramp.location = (-160, 60)
+            ramp.color_ramp.elements[0].position = 0.0
+            ramp.color_ramp.elements[0].color = start
+            ramp.color_ramp.elements[1].position = 1.0
+            ramp.color_ramp.elements[1].color = end
+            try:
+                mapping.inputs["Rotation"].default_value[2] = math.radians(float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0))
+            except Exception:  # noqa: BLE001
+                pass
+            nt.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
+            nt.links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
+            nt.links.new(gradient.outputs["Fac"], ramp.inputs["Fac"])
+            nt.links.new(ramp.outputs["Color"], principled.inputs["Base Color"])
+        else:
+            principled.inputs["Base Color"].default_value = fill
         principled.inputs["Alpha"].default_value = fill[3]
         nt.links.new(principled.outputs["BSDF"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
@@ -291,67 +395,19 @@ def _outline_points_for_entry(entry) -> tuple[list[tuple[float, float]], list[in
     return pts, corners
 
 
+def _uni_flash_geometry_for_entry(entry) -> balloon_uni_flash.UniFlashGeometry:
+    width = float(getattr(entry, "width_mm", 40.0) or 40.0)
+    height = float(getattr(entry, "height_mm", 20.0) or 20.0)
+    return balloon_uni_flash.geometry_for_entry(
+        entry,
+        bs.Rect(0.0, 0.0, width, height),
+    )
+
+
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
     width = max(0.1, float(getattr(entry, "width_mm", 40.0) or 40.0))
     height = max(0.1, float(getattr(entry, "height_mm", 20.0) or 20.0))
-    cx = width * 0.5
-    cy = height * 0.5
-    rx = max(width * 0.5, 0.01)
-    ry = max(height * 0.5, 0.01)
-    angle = math.radians(float(getattr(tail, "direction_deg", 270.0) or 270.0))
-    dx, dy = math.cos(angle), math.sin(angle)
-    denom = math.hypot(dx / rx, dy / ry)
-    base_x = cx + (dx / denom) if denom > 0 else cx
-    base_y = cy + (dy / denom) if denom > 0 else cy
-    length = max(0.0, float(getattr(tail, "length_mm", 0.0) or 0.0))
-    if length <= 0.001:
-        return []
-    tip_x = base_x + dx * length
-    tip_y = base_y + dy * length
-    nx, ny = -dy, dx
-    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
-    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
-    tail_type = str(getattr(tail, "type", "straight") or "straight")
-    if tail_type == "sticky":
-        return [
-            (base_x + nx * rw, base_y + ny * rw),
-            (tip_x + nx * tw if tw > 0 else tip_x, tip_y + ny * tw if tw > 0 else tip_y),
-            (tip_x - nx * tw if tw > 0 else tip_x, tip_y - ny * tw if tw > 0 else tip_y),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
-    if tail_type == "curve":
-        bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
-        mid_x = (base_x + tip_x) * 0.5 + nx * bend
-        mid_y = (base_y + tip_y) * 0.5 + ny * bend
-        if tw > 0.0:
-            mw = max(0.0, (rw + tw) * 0.5)
-            return [
-                (base_x + nx * rw, base_y + ny * rw),
-                (mid_x + nx * mw, mid_y + ny * mw),
-                (tip_x + nx * tw, tip_y + ny * tw),
-                (tip_x - nx * tw, tip_y - ny * tw),
-                (mid_x - nx * mw, mid_y - ny * mw),
-                (base_x - nx * rw, base_y - ny * rw),
-            ]
-        return [
-            (base_x + nx * rw, base_y + ny * rw),
-            (mid_x, mid_y),
-            (tip_x, tip_y),
-            (mid_x, mid_y),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
-    if tw > 0.0:
-        return [
-            (base_x + nx * rw, base_y + ny * rw),
-            (tip_x + nx * tw, tip_y + ny * tw),
-            (tip_x - nx * tw, tip_y - ny * tw),
-            (base_x - nx * rw, base_y - ny * rw),
-        ]
-    return [
-        (base_x + nx * rw, base_y + ny * rw),
-        (tip_x, tip_y),
-        (base_x - nx * rw, base_y - ny * rw),
-    ]
+    return balloon_tail_geom.polygon_for_tail(bs.Rect(0.0, 0.0, width, height), tail)
 
 
 def _tail_polygons_for_entry(entry) -> list[list[tuple[float, float]]]:
@@ -498,15 +554,30 @@ def ensure_balloon_curve_object(
         return None
 
     # 1. Curve データ生成
-    points_mm, corner_indices = _outline_points_for_entry(entry)
+    is_uni_flash = balloon_uni_flash.is_uni_flash_entry(entry)
+    line_segments_mm: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    if is_uni_flash:
+        geometry = _uni_flash_geometry_for_entry(entry)
+        points_mm = geometry.fill_outline_mm
+        corner_indices = list(range(len(points_mm)))
+        line_segments_mm = geometry.line_segments_mm
+    else:
+        points_mm, corner_indices = _outline_points_for_entry(entry)
     tail_polygons_mm = _tail_polygons_for_entry(entry)
     curve_data_name = f"{BALLOON_CURVE_DATA_PREFIX}{balloon_id}"
-    curve_data = _ensure_balloon_curve_data(
-        curve_data_name,
-        points_mm,
-        tail_polygons_mm,
-        corner_indices=corner_indices,
-    )
+    if is_uni_flash:
+        curve_data = _ensure_balloon_line_curve_data(
+            curve_data_name,
+            line_segments_mm,
+            tail_polygons_mm,
+        )
+    else:
+        curve_data = _ensure_balloon_curve_data(
+            curve_data_name,
+            points_mm,
+            tail_polygons_mm,
+            corner_indices=corner_indices,
+        )
     _ensure_balloon_curve_material(
         curve_data,
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",

@@ -56,6 +56,9 @@ class _FakeLayout:
             raise AssertionError(f"missing prop: {prop_name}")
         self.props.append(prop_name)
 
+    def prop_search(self, data, prop_name: str, _search_data, _search_prop: str, **_kwargs):
+        self.prop(data, prop_name)
+
     def operator(self, op_id: str, **_kwargs):
         self.ops.append(op_id)
         return _FakeOp()
@@ -85,9 +88,9 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_tail_ui.operators import layer_detail_op
-        from bname_dev_tail_ui.utils import balloon_curve_object
+        from bname_dev_tail_ui.utils import balloon_curve_object, balloon_shapes, balloon_tail_geom
         from bname_dev_tail_ui.utils.geom import Rect
-        from bname_dev_tail_ui.io import export_balloon
+        from bname_dev_tail_ui.io import export_balloon, schema
 
         context = bpy.context
         work = context.scene.bname_work
@@ -111,17 +114,111 @@ def main() -> None:
         rect = Rect(entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)
         assert len(export_balloon._balloon_tail_polygon(rect, tail)) == 4
 
+        shape_rect = Rect(0.0, 0.0, 40.0, 20.0)
+        low = balloon_shapes.outline_for_shape("cloud", shape_rect, cloud_bump_width_mm=8.0, cloud_bump_height_mm=3.0)
+        high = balloon_shapes.outline_for_shape("cloud", shape_rect, cloud_bump_width_mm=8.0, cloud_bump_height_mm=8.0)
+        cx = shape_rect.x + shape_rect.width * 0.5
+        cy = shape_rect.y + shape_rect.height * 0.5
+        low_min = min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in low)
+        high_min = min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in high)
+        low_max = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in low)
+        high_max = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in high)
+        assert len(low) == len(high), "山の高さ変更で山の見かけ幅が変わっています"
+        assert high_min >= low_min - 0.5, "山の高さ変更で谷が中心へ伸びています"
+        assert high_max > low_max + 1.0, "山の高さ変更で山が外側へ高くなっていません"
+        sub_low = balloon_shapes.outline_for_shape(
+            "cloud",
+            shape_rect,
+            cloud_bump_width_mm=8.0,
+            cloud_bump_height_mm=4.0,
+            cloud_sub_width_ratio=35.0,
+            cloud_sub_height_ratio=20.0,
+        )
+        sub_high = balloon_shapes.outline_for_shape(
+            "cloud",
+            shape_rect,
+            cloud_bump_width_mm=8.0,
+            cloud_bump_height_mm=4.0,
+            cloud_sub_width_ratio=35.0,
+            cloud_sub_height_ratio=80.0,
+        )
+        assert len(sub_low) == len(sub_high), "小山高の変更で山の見かけ幅が変わっています"
+        thorn_low = balloon_shapes.outline_for_shape("thorn-curve", shape_rect, cloud_bump_width_mm=8.0, cloud_bump_height_mm=3.0)
+        thorn_high = balloon_shapes.outline_for_shape("thorn-curve", shape_rect, cloud_bump_width_mm=8.0, cloud_bump_height_mm=8.0)
+        thorn_low_min = min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in thorn_low)
+        thorn_high_min = min(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in thorn_high)
+        thorn_low_max = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in thorn_low)
+        thorn_high_max = max(((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 for x, y in thorn_high)
+        assert len(thorn_low) == len(thorn_high), "トゲの高さ変更で山の見かけ幅が変わっています"
+        assert thorn_high_min >= thorn_low_min - 0.5, "トゲの高さ変更で谷が中心へ伸びています"
+        assert thorn_high_max > thorn_low_max + 1.0, "トゲの高さ変更で山が外側へ高くなっていません"
+
         tail.type = "curve"
         tail.curve_bend = 0.4
         assert len(balloon_curve_object._tail_polygon_for_entry(entry, tail)) == 6
         assert len(export_balloon._balloon_tail_polygon(rect, tail)) == 6
+        balloon_tail_geom.write_polyline_points(tail, [(25.0, 12.0), (34.0, 4.0), (46.0, -8.0)])
+        tail.points[1].corner_type = "curve"
+        assert len(tail.points) == 3
+        assert len(balloon_curve_object._tail_polygon_for_entry(entry, tail)) > 6
+        inserted = balloon_tail_geom.add_polyline_point(tail, (40.0, -2.0), insert_index=2)
+        assert inserted == 2 and len(tail.points) == 4
+        assert balloon_tail_geom.set_point(tail, 2, (41.0, -3.0))
+        data = schema.balloon_entry_to_dict(entry)
+        restored = page.balloons.add()
+        schema.balloon_entry_from_dict(restored, data)
+        assert len(restored.tails) == 1 and len(restored.tails[0].points) == 4
+        assert restored.tails[0].points[1].corner_type == "curve"
+        result = bpy.ops.bname.balloon_tail_point_toggle_corner(
+            "EXEC_DEFAULT",
+            page_id=page.id,
+            balloon_id=entry.id,
+            tail_index=0,
+            point_index=1,
+        )
+        assert "FINISHED" in result and entry.tails[0].points[1].corner_type == "line"
+        result = bpy.ops.bname.balloon_tail_point_delete(
+            "EXEC_DEFAULT",
+            page_id=page.id,
+            balloon_id=entry.id,
+            tail_index=0,
+            point_index=2,
+        )
+        assert "FINISHED" in result and len(entry.tails[0].points) == 3
 
+        entry.fill_opacity = 0.42
+        entry.fill_gradient_enabled = True
+        entry.fill_gradient_start_color = (1.0, 0.0, 0.0, 1.0)
+        entry.fill_gradient_end_color = (0.0, 0.0, 1.0, 1.0)
+        entry.fill_blur_amount = 1.0
+        entry.fill_blur_dither = True
+        entry.outer_white_margin_enabled = True
+        entry.outer_white_margin_width_mm = 1.5
+        entry.inner_white_margin_enabled = True
+        entry.inner_white_margin_width_mm = 0.8
+        layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=600)
+        assert layer is not None and layer.image.size[0] > 0
+        alpha_values = set(layer.image.getchannel("A").getdata())
+        expected_fill_alpha = int(round(255 * entry.fill_opacity))
+        assert alpha_values.issubset({0, expected_fill_alpha, 255}), "ディザ化した塗り輪郭のalphaが2値化されていません"
+
+        source_mat = bpy.data.materials.new("TailUI_SourceMaterial")
+        source_mat.use_nodes = True
+        source_nodes = [node.name for node in source_mat.node_tree.nodes]
+        entry.fill_material_name = source_mat.name
+        entry.fill_gradient_enabled = False
         obj = balloon_curve_object.ensure_balloon_curve_object(
             scene=context.scene,
             entry=entry,
             page=page,
         )
         assert obj is not None and obj.type == "MESH"
+        fill_obj = bpy.data.objects.get(f"balloon_fill_{entry.id}")
+        assert fill_obj is not None and fill_obj.data.materials
+        used_mat = fill_obj.data.materials[0]
+        assert used_mat is not source_mat
+        assert used_mat.get("bname_balloon_fill_source_material") == source_mat.name
+        assert [node.name for node in source_mat.node_tree.nodes] == source_nodes
 
         layout = _FakeLayout()
         layer_detail_op._draw_balloon_detail(layout, entry, page)
@@ -134,6 +231,14 @@ def main() -> None:
             "root_width_mm",
             "tip_width_mm",
             "curve_bend",
+            "custom_points_enabled",
+            "fill_opacity",
+            "fill_material_name",
+            "fill_blur_amount",
+            "fill_blur_dither",
+            "fill_gradient_enabled",
+            "outer_white_margin_enabled",
+            "inner_white_margin_enabled",
         }:
             assert prop_name in layout.props, prop_name
 

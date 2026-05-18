@@ -33,6 +33,7 @@ _SHAPE_ITEMS = (
     ("thorn", "トゲ（直線）", "Meldex ボードカードと同じ直線トゲ形"),
     ("thorn-curve", "トゲ（曲線）", "Meldex ボードカードと同じ曲線トゲ形"),
     ("octagon", "八角形", "Meldex ボードカードと同じ八角形"),
+    ("uni_flash", "ウニフラッシュ", "集中線状の線と下地を持つフキダシ"),
     ("custom", "カスタム", "カスタム形状プリセット参照"),
     ("none", "本体なし", "テキスト単体 (擬音/ナレーション用)"),
 )
@@ -41,6 +42,11 @@ _TAIL_TYPE_ITEMS = (
     ("straight", "直線", "三角形の直線状尻尾"),
     ("curve", "曲線", "ベジェで膨らませた曲線状尻尾"),
     ("sticky", "付箋", "矩形タブ状の尻尾"),
+)
+
+_TAIL_POINT_CORNER_ITEMS = (
+    ("line", "直線", "角を直線でつなぐ"),
+    ("curve", "曲線", "角を曲線でつなぐ"),
 )
 
 _LINE_STYLE_ITEMS = (
@@ -115,6 +121,45 @@ def _on_balloon_tail_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
+def _on_balloon_tail_point_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if work is None:
+        _tag_balloon_redraw(context)
+        return
+    try:
+        target_ptr = int(_self.as_pointer())
+    except Exception:  # noqa: BLE001
+        target_ptr = 0
+    if not target_ptr:
+        _tag_balloon_redraw(context)
+        return
+
+    def _tail_has_point(tail) -> bool:
+        for point in getattr(tail, "points", []) or []:
+            try:
+                if int(point.as_pointer()) == target_ptr:
+                    return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    for page in getattr(work, "pages", []) or []:
+        for entry in getattr(page, "balloons", []) or []:
+            for tail in getattr(entry, "tails", []) or []:
+                if _tail_has_point(tail):
+                    _sync_balloon_curve(entry)
+                    _tag_balloon_redraw(context)
+                    return
+    for entry in getattr(work, "shared_balloons", []) or []:
+        for tail in getattr(entry, "tails", []) or []:
+            if _tail_has_point(tail):
+                _sync_balloon_curve(entry)
+                _tag_balloon_redraw(context)
+                return
+    _tag_balloon_redraw(context)
+
+
 def _on_balloon_shape_params_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     work = getattr(scene, "bname_work", None) if scene is not None else None
@@ -147,6 +192,12 @@ def _on_balloon_shape_params_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
+class BNameBalloonTailPoint(bpy.types.PropertyGroup):
+    x_mm: FloatProperty(name="X", default=0.0, update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
+    y_mm: FloatProperty(name="Y", default=0.0, update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
+    corner_type: EnumProperty(name="角のタイプ", items=_TAIL_POINT_CORNER_ITEMS, default="line", update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
+
+
 class BNameBalloonTail(bpy.types.PropertyGroup):
     type: EnumProperty(items=_TAIL_TYPE_ITEMS, default="straight", update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     direction_deg: FloatProperty(name="方向 (度)", default=270.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
@@ -161,6 +212,12 @@ class BNameBalloonTail(bpy.types.PropertyGroup):
         soft_max=1.0,
         update=_on_balloon_tail_changed,
     )
+    custom_points_enabled: BoolProperty(name="始点・終点を固定", default=False, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    start_x_mm: FloatProperty(name="始点 X", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    start_y_mm: FloatProperty(name="始点 Y", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    end_x_mm: FloatProperty(name="終点 X", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    end_y_mm: FloatProperty(name="終点 Y", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    points: CollectionProperty(type=BNameBalloonTailPoint)  # type: ignore[valid-type]
 
 
 class BNameBalloonShapeParams(bpy.types.PropertyGroup):
@@ -189,6 +246,11 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
         max=1.0,
         update=_on_balloon_shape_params_changed,
     )
+    uni_flash_spacing_mm: FloatProperty(name="線の間隔", default=0.4, min=0.01, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_fill_scale_percent: FloatProperty(name="下地サイズ (%)", default=70.0, min=20.0, max=95.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_line_density_compensation: BoolProperty(name="線の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_fill_density_compensation: BoolProperty(name="下地の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_max_line_count: IntProperty(name="最大本数", default=1000, min=8, soft_max=2000, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
 
 
 class BNameBalloonEntry(bpy.types.PropertyGroup):
@@ -224,6 +286,20 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     line_width_mm: FloatProperty(name="線幅", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_opacity: FloatProperty(name="塗り不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_material_name: StringProperty(name="塗りマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_gradient_enabled: BoolProperty(name="塗りグラデーション", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_gradient_start_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_gradient_end_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.82, 0.82, 0.82, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_gradient_angle_deg: FloatProperty(name="グラデーション角度", default=90.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_enabled: BoolProperty(name="外側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_width_mm: FloatProperty(name="外側白フチ幅", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_enabled: BoolProperty(name="内側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_width_mm: FloatProperty(name="内側白フチ幅", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     blend_mode: EnumProperty(name="合成モード", items=_BLEND_MODE_ITEMS, default="normal", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     merge_group_id: StringProperty(name="結合フォルダ ID", default="")  # type: ignore[valid-type]
     parent_kind: StringProperty(name="親種別", default="page", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -252,6 +328,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
+    BNameBalloonTailPoint,
     BNameBalloonTail,
     BNameBalloonShapeParams,
     BNameBalloonEntry,

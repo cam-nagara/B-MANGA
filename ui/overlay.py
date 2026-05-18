@@ -243,6 +243,7 @@ def _selection_handle_rects(rect: Rect, size_mm: float = 2.0) -> list[Rect]:
 def _draw_object_tool_layer_bounds(context) -> None:
     try:
         from ..operators import object_tool_op
+        from ..utils import balloon_tail_geom
     except Exception:  # noqa: BLE001
         return
     keys = set(object_selection.get_keys(context))
@@ -262,6 +263,26 @@ def _draw_object_tool_layer_bounds(context) -> None:
         for handle in _selection_handle_rects(rect):
             _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
             _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
+        if kind == "balloon":
+            _kind, page_id, item_id = object_selection.parse_key(key)
+            try:
+                work = getattr(context.scene, "bname_work", None)
+                _page_index, _page, _idx, entry = object_tool_op._find_balloon_by_key(work, page_id, item_id)
+            except Exception:  # noqa: BLE001
+                entry = None
+            if entry is not None:
+                for tail in getattr(entry, "tails", []) or []:
+                    tail_points = balloon_tail_geom.tail_world_points(rect, tail)
+                    if len(tail_points) < 2:
+                        continue
+                    for px, py in (tail_points[0], tail_points[-1]):
+                        handle = Rect(px - 1.0, py - 1.0, 2.0, 2.0)
+                        _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
+                        _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
+                    for px, py in tail_points[1:-1]:
+                        handle = Rect(px - 0.8, py - 0.8, 1.6, 1.6)
+                        _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
+                        _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.20)
 
 
 def _draw_segments_mm(
@@ -344,9 +365,13 @@ def _draw_line_segments(
     segs: list[tuple[tuple[float, float], tuple[float, float]]],
     color: tuple[float, float, float, float],
     line_width: float = 1.0,
+    width_mm: float | None = None,
 ) -> None:
     """複数の独立した線分 ((x1,y1)-(x2,y2) の集合、mm 単位) を一括描画."""
     if not segs:
+        return
+    if width_mm is not None:
+        _draw_segments_mm(segs, color, width_mm=max(0.001, float(width_mm)))
         return
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
     verts: list[tuple[float, float, float]] = []
@@ -510,6 +535,7 @@ def _draw_balloons(page, ox_mm: float = 0.0, oy_mm: float = 0.0) -> None:
         draw_rect_outline=_draw_rect_outline,
         draw_polygon_fill=_draw_polygon_fill,
         draw_polyline_loop=_draw_polyline_loop,
+        draw_line_segments=_draw_line_segments,
         is_entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
         coma_polygon_resolver=_resolve_coma_polygon_for_entry,
         active=active_guides,
@@ -558,6 +584,7 @@ def _draw_shared_layers(work) -> None:
         draw_rect_outline=_draw_rect_outline,
         draw_polygon_fill=_draw_polygon_fill,
         draw_polyline_loop=_draw_polyline_loop,
+        draw_line_segments=_draw_line_segments,
         is_entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
         active=getattr(bpy.context.scene, "bname_active_layer_kind", "") == "balloon",
     )

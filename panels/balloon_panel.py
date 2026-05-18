@@ -132,9 +132,38 @@ class BNAME_PT_balloons(Panel):
         box.prop(entry, "line_width_mm")
         box.prop(entry, "line_color")
         box.prop(entry, "fill_color")
+        box.prop(entry, "fill_opacity", slider=True)
+        box.prop_search(entry, "fill_material_name", bpy.data, "materials")
+        box.prop(entry, "fill_blur_amount", slider=True)
+        box.prop(entry, "fill_blur_dither")
+        box.prop(entry, "fill_gradient_enabled")
+        sub = box.column(align=True)
+        sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
+        sub.prop(entry, "fill_gradient_start_color")
+        sub.prop(entry, "fill_gradient_end_color")
+        sub.prop(entry, "fill_gradient_angle_deg")
+        box.prop(entry, "outer_white_margin_enabled")
+        sub = box.column(align=True)
+        sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+        sub.prop(entry, "outer_white_margin_width_mm")
+        sub.prop(entry, "outer_white_margin_color")
+        box.prop(entry, "inner_white_margin_enabled")
+        sub = box.column(align=True)
+        sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+        sub.prop(entry, "inner_white_margin_width_mm")
+        sub.prop(entry, "inner_white_margin_color")
 
         # 形状別パラメータ
         sp = entry.shape_params
+        if balloon_shapes.is_uni_flash_shape(entry.shape):
+            box = layout.box()
+            box.label(text="ウニフラッシュ")
+            box.prop(sp, "uni_flash_spacing_mm")
+            box.prop(sp, "uni_flash_fill_scale_percent")
+            row = box.row(align=True)
+            row.prop(sp, "uni_flash_line_density_compensation")
+            row.prop(sp, "uni_flash_fill_density_compensation")
+            box.prop(sp, "uni_flash_max_line_count")
         if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
             box = layout.box()
             box.label(text="Meldex形状パラメータ")
@@ -176,6 +205,15 @@ class BNAME_PT_balloons(Panel):
             bend = sub.row()
             bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
             bend.prop(tail, "curve_bend", text="曲げ")
+            sub.prop(tail, "custom_points_enabled")
+            point_box = sub.column(align=True)
+            point_box.enabled = bool(getattr(tail, "custom_points_enabled", False))
+            row = point_box.row(align=True)
+            row.prop(tail, "start_x_mm")
+            row.prop(tail, "start_y_mm")
+            row = point_box.row(align=True)
+            row.prop(tail, "end_x_mm")
+            row.prop(tail, "end_y_mm")
 
 
 class BNAME_PT_texts(Panel):
