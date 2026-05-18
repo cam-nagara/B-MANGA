@@ -239,6 +239,25 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         ]
         if not radii or min(radii) <= 0.0:
             raise AssertionError(f"paper guide grease pencil has no viewport thickness: {obj.name}")
+    safe_fill_objs = [
+        obj for obj in guide_objs
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "safe_fill"
+    ]
+    if len(safe_fill_objs) != 1:
+        raise AssertionError(f"safe area fill should be one mesh object: {safe_fill_objs}")
+    safe_fill = safe_fill_objs[0]
+    if safe_fill.type != "MESH":
+        raise AssertionError(f"safe area fill should be mesh: {safe_fill.name} ({safe_fill.type})")
+    if not bool(getattr(safe_fill, "show_in_front", False)):
+        raise AssertionError("safe area fill should use viewport in-front display")
+    if safe_fill.active_material is not None or len(getattr(safe_fill.data, "materials", [])) != 0:
+        raise AssertionError("safe area fill should not use a material")
+    expected_color = tuple(float(v) for v in getattr(work.safe_area_overlay, "color", (0.0, 0.0, 0.0))) + (
+        float(getattr(work.safe_area_overlay, "opacity", 0.30)),
+    )
+    for actual, expected in zip(tuple(safe_fill.color), expected_color, strict=False):
+        if abs(float(actual) - expected) > 1.0e-4:
+            raise AssertionError(f"safe area fill viewport color mismatch: {tuple(safe_fill.color)} != {expected_color}")
     return calls
 
 
@@ -472,6 +491,7 @@ def main() -> None:
         work = scene.bname_work
         assert bool(work.safe_area_overlay.enabled)
         assert abs(float(work.safe_area_overlay.opacity) - 0.30) <= 1.0e-4
+        work.safe_area_overlay.color = (0.10, 0.20, 0.30)
         page1 = work.pages[0]
         page2 = work.pages[1]
         panel2 = page2.comas[0]
@@ -604,7 +624,7 @@ def main() -> None:
                     "作成所属: 2ページ目のコマ内/ページ直下を確認",
                     "テキスト: ドラッグ範囲作成を確認",
                     "テキスト: B-Name直下の「テキスト」に集約",
-                    "セーフライン外: 実体オブジェクトで黒30%表示",
+                    "セーフライン外: 実体オブジェクトの色と不透明度を確認",
                     "レイヤーリスト: 選択ページだけを表示",
                     "Alt階層移動: GP/効果線/フキダシを確認",
                     "コマ表示: 選択ハンドルと背景オーバーレイ削除を確認",

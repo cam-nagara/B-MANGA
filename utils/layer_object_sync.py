@@ -383,7 +383,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _logger.exception("assign_per_page_z_ranks failed")
 
         # 用紙ガイド線群とセーフライン外塗りは、作品要素の実体が並んだ後に
-        # z を決める。ガイド線は最前面、セーフライン外塗りはテキストより下。
+        # z を決める。どちらもビュー上では最前面表示を使う。
         try:
             from . import paper_guide_object as _pgo
 

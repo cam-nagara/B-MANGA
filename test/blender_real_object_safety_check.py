@@ -167,6 +167,13 @@ def main() -> None:
         coma.white_margin.width_mm = 1.5
         coma.border.style = "dashed"
         work.safe_area_overlay.opacity = 0.17
+        work.safe_area_overlay.color = (0.25, 0.50, 0.75)
+        old_safe_mat = bpy.data.materials.get("BName_SafeAreaFill") or bpy.data.materials.new("BName_SafeAreaFill")
+        old_safe_mesh = bpy.data.meshes.get(f"{paper_guide_object.PAPER_SAFE_FILL_MESH_PREFIX}{page.id}")
+        if old_safe_mesh is None:
+            old_safe_mesh = bpy.data.meshes.new(f"{paper_guide_object.PAPER_SAFE_FILL_MESH_PREFIX}{page.id}")
+        if len(old_safe_mesh.materials) == 0:
+            old_safe_mesh.materials.append(old_safe_mat)
 
         layer_object_sync.mirror_work_to_outliner(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)
@@ -256,22 +263,21 @@ def main() -> None:
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
+        assert bool(getattr(safe_fill_obj, "show_in_front", False)), "safe area fill is not in front in viewport"
         assert bool(getattr(safe_fill_obj, "show_transparent", False)), "safe area fill is not transparent in viewport"
-        safe_mat = safe_fill_obj.active_material
-        assert safe_mat is not None, "safe area fill has no material"
-        assert getattr(safe_mat, "use_nodes", False), "safe area fill material does not use nodes"
-        assert abs(float(safe_mat.diffuse_color[3]) - 0.17) < 1.0e-4
-        mix = safe_mat.node_tree.nodes.get("BName_AlphaMix")
-        transparent = safe_mat.node_tree.nodes.get("BName_Transparent")
-        assert mix is not None, "safe area fill has no alpha mix node"
-        assert transparent is not None, "safe area fill has no transparent shader"
-        assert abs(float(mix.inputs[0].default_value) - 0.17) < 1.0e-4
+        assert safe_fill_obj.active_material is None, "safe area fill should not use a material"
+        assert len(getattr(safe_fill_obj.data, "materials", [])) == 0, "safe area fill material slot was not cleared"
+        assert bpy.data.materials.get("BName_SafeAreaFill") is None, "old safe area fill material was not removed"
+        expected_safe_color = (0.25, 0.50, 0.75, 0.17)
+        for actual, expected in zip(safe_fill_obj.color, expected_safe_color, strict=False):
+            assert abs(float(actual) - expected) < 1.0e-4, (tuple(safe_fill_obj.color), expected_safe_color)
 
         border_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{page.id}_{coma.id}"
         )
         assert border_obj is not None, "coma border curve was not created"
         assert border_obj.type == "CURVE", f"coma border should be a curve, got {border_obj.type}"
+        assert safe_fill_obj.location.z > border_obj.location.z, "safe area fill should be above coma objects"
         assert len(border_obj.data.splines) > 1, "dashed coma border did not create multiple real strokes"
         white_margin_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"

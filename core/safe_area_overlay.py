@@ -4,8 +4,8 @@
 ここではデータモデルと既定値のみ保持する。
 
 仕様:
-- セーフライン外の塗りはテキストより下、フキダシ / 効果線 / コマより上に配置する
-- GPU の乗算合成が安定しないため、黒固定 + 不透明度で暗くする
+- セーフライン外の塗りは全コマより上に配置し、ビュー表示の「最前面」で見えるようにする
+- 塗り色と不透明度は、実体オブジェクトのビュー表示カラーで指定する
 - 初期不透明度は 30%
 - 表示専用 — 書き出しには含めない
 """
@@ -41,7 +41,7 @@ def _on_safe_area_changed(_self, context) -> None:
 
 
 class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
-    """セーフライン外側を黒固定の不透明度で暗くするビューポート専用オーバーレイ."""
+    """セーフライン外側を実体オブジェクトのビュー表示カラーで塗る設定."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="セーフライン",
@@ -51,7 +51,7 @@ class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
     )
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
-        description="セーフライン外の黒塗り不透明度",
+        description="セーフライン外の塗りの不透明度",
         default=_DEFAULT_OPACITY,
         min=0.0,
         max=1.0,
@@ -59,14 +59,14 @@ class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
         update=_on_safe_area_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]
-        name="旧塗り色",
-        description="旧バージョン互換用。現在の表示は黒固定 + 不透明度で行う",
+        name="色",
+        description="セーフライン外の塗り色",
         subtype="COLOR",
         size=3,
         default=(0.0, 0.0, 0.0),
         min=0.0,
         max=1.0,
-        options={"HIDDEN"},
+        update=_on_safe_area_changed,
     )
 
 

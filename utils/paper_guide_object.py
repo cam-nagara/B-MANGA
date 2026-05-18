@@ -21,7 +21,7 @@ PAPER_GUIDE_CURVE_PREFIX = "paper_guide_curve_"
 PAPER_GUIDE_GP_DATA_PREFIX = "paper_guide_gp_"
 PAPER_SAFE_FILL_MESH_PREFIX = "paper_safe_area_mesh_"
 PAPER_GUIDE_MATERIAL_PREFIX = "BName_PaperGuide_"
-PAPER_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
+_OLD_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
 
 PROP_GUIDE_KIND = "bname_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
@@ -32,51 +32,6 @@ _OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 GUIDE_SCREEN_PX = 1.6
 _GUIDE_THICKNESS_INTERVAL = 0.12
 _last_mpp: float = -1.0
-
-
-def _material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name)
-    alpha = max(0.0, min(1.0, float(rgba[3]) if len(rgba) > 3 else 1.0))
-    try:
-        mat.diffuse_color = rgba
-    except Exception:  # noqa: BLE001
-        pass
-    mat.use_nodes = True
-    try:
-        mat.blend_method = "BLEND"
-        mat.show_transparent_back = True
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        mat.surface_render_method = "BLENDED"
-    except (AttributeError, TypeError):
-        pass
-    nt = mat.node_tree
-    for node in list(nt.nodes):
-        nt.nodes.remove(node)
-    out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (360, 0)
-    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-    transparent.name = "BName_Transparent"
-    transparent.location = (-280, -90)
-    emission = nt.nodes.new("ShaderNodeEmission")
-    emission.name = "BName_Emission"
-    emission.location = (-280, 90)
-    mix = nt.nodes.new("ShaderNodeMixShader")
-    mix.name = "BName_AlphaMix"
-    mix.location = (60, 0)
-    try:
-        emission.inputs["Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
-        emission.inputs["Strength"].default_value = 1.0
-        mix.inputs[0].default_value = alpha
-        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
-        nt.links.new(emission.outputs["Emission"], mix.inputs[2])
-        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    except Exception:  # noqa: BLE001
-        _logger.exception("paper guide material setup failed")
-    return mat
 
 
 def _gp_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
@@ -384,9 +339,45 @@ def _ensure_curve_object(
     return obj
 
 
-def _safe_fill_material(opacity: float) -> bpy.types.Material:
-    alpha = max(0.0, min(1.0, float(opacity)))
-    return _material(PAPER_SAFE_FILL_MATERIAL, (0.0, 0.0, 0.0, alpha))
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _safe_fill_view_color(work) -> tuple[float, float, float, float]:
+    overlay = getattr(work, "safe_area_overlay", None)
+    color = getattr(overlay, "color", (0.0, 0.0, 0.0)) if overlay is not None else (0.0, 0.0, 0.0)
+    opacity = getattr(overlay, "opacity", 0.30) if overlay is not None else 0.30
+    try:
+        r, g, b = float(color[0]), float(color[1]), float(color[2])
+    except Exception:  # noqa: BLE001
+        r, g, b = 0.0, 0.0, 0.0
+    return (_clamp01(r), _clamp01(g), _clamp01(b), _clamp01(float(opacity or 0.0)))
+
+
+def _clear_material_slots(data) -> None:
+    mats = getattr(data, "materials", None)
+    if mats is None or len(mats) == 0:
+        return
+    try:
+        mats.clear()
+        return
+    except Exception:  # noqa: BLE001
+        pass
+    while len(mats) > 0:
+        try:
+            mats.pop(index=len(mats) - 1)
+        except Exception:  # noqa: BLE001
+            break
+
+
+def _remove_old_safe_fill_material_if_unused() -> None:
+    mat = bpy.data.materials.get(_OLD_SAFE_FILL_MATERIAL)
+    if mat is None or getattr(mat, "users", 0) > 0:
+        return
+    try:
+        bpy.data.materials.remove(mat)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _safe_fill_faces(canvas: Rect, safe: Rect) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
@@ -424,11 +415,8 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
     mesh.update()
-    mat = _safe_fill_material(float(getattr(work.safe_area_overlay, "opacity", 0.30) or 0.30))
-    if not mesh.materials:
-        mesh.materials.append(mat)
-    elif mesh.materials[0] is not mat:
-        mesh.materials[0] = mat
+    _clear_material_slots(mesh)
+    _remove_old_safe_fill_material_if_unused()
 
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
@@ -439,6 +427,11 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj[PROP_GUIDE_OWNER_ID] = page_id
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
+    obj.color = _safe_fill_view_color(work)
+    try:
+        obj.show_in_front = True
+    except Exception:  # noqa: BLE001
+        pass
     try:
         obj.show_transparent = True
     except Exception:  # noqa: BLE001
@@ -447,7 +440,7 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj.hide_viewport = not (
         bool(getattr(page, "in_page_range", True))
         and bool(getattr(work.safe_area_overlay, "enabled", True))
-        and float(getattr(work.safe_area_overlay, "opacity", 0.30) or 0.30) > 0.0
+        and obj.color[3] > 0.0
     )
     obj.location.z = z_m
     _set_page_location(scene, obj, page)
@@ -514,8 +507,6 @@ def _object_page_id(obj: bpy.types.Object, work) -> str:
 
 def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
     max_all = 0.02
-    max_non_text = 0.02
-    min_text = 0.0
     for obj in bpy.data.objects:
         if obj.get(PROP_GUIDE_OWNER_ID):
             continue
@@ -523,13 +514,7 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
-        if str(obj.get(on.PROP_KIND, "") or "") == "text":
-            min_text = z if min_text <= 0.0 else min(min_text, z)
-        else:
-            max_non_text = max(max_non_text, z)
-    safe_z = max_non_text + 0.003
-    if min_text > 0.0:
-        safe_z = min(safe_z, max(0.001, min_text - 0.002))
+    safe_z = max_all + 0.003
     guide_z = max(max_all, safe_z) + 0.01
     return safe_z, guide_z, max_all
 
