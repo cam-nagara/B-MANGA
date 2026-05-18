@@ -864,11 +864,12 @@ def is_visibility_update_suspended() -> bool:
 def _any_bname_tab_active() -> bool:
     """いずれかの VIEW_3D の N パネルで B-Name タブがアクティブか判定.
 
-    ショートカットを B-Name タブ表示中に限定するための薄い wrapper。
+    ショートカットをページ一覧ファイルかつ B-Name タブ表示中に限定するための
+    薄い wrapper。
     """
     from ..utils import shortcut_visibility
 
-    return shortcut_visibility.any_bname_panel_visible(bpy.context)
+    return shortcut_visibility.any_shortcuts_allowed(bpy.context)
 
 
 def _watch_bname_tab() -> Optional[float]:

@@ -152,6 +152,13 @@ def _run_visual_check() -> None:
         assert safe_obj is not None, "セーフライン外の塗り実体がありません"
         assert getattr(safe_obj, "display_type", "") == "SOLID", "表示方法がソリッドではありません"
         assert bool(getattr(safe_obj, "show_in_front", False)), "最前面がオンではありません"
+        mat = safe_obj.data.materials[0] if safe_obj.data.materials else None
+        assert mat is not None and getattr(mat, "blend_method", "") == "BLEND", (
+            "セーフライン外の塗り素材が透明表示になっていません"
+        )
+        assert any(node.bl_idname == "ShaderNodeBsdfTransparent" for node in mat.node_tree.nodes), (
+            "セーフライン外の塗り素材に透明シェーダーがありません"
+        )
         area, region, rv3d = _view3d_context()
         _ = area
         point = _screen_point_for_mm(region, rv3d, sample_x, sample_y)

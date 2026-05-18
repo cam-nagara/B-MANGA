@@ -46,6 +46,11 @@ def main() -> None:
     from bname_dev_shortcut_visibility.keymap import viewport_ops
     from bname_dev_shortcut_visibility.utils import shortcut_visibility
 
+    work = bpy.context.scene.bname_work
+    work.loaded = True
+    work.work_dir = str(ROOT / "_shortcut_visibility_test.bname")
+    bpy.context.scene.bname_mode = "PAGE"
+
     original_panel_visible = shortcut_visibility.bname_panel_visible
     original_any_panel_visible = shortcut_visibility.any_bname_panel_visible
     original_allowed = shortcut_visibility.shortcuts_allowed
@@ -134,6 +139,19 @@ def main() -> None:
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) > 0, "B-Nameタブ表示扱いでショートカットが有効になりません"
         assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
+
+        bpy.context.scene.bname_mode = "COMA"
+        keymap_mod._watch_bname_tab()
+        assert _active_bname_items(keymap_mod) == 0, "コマ用blendファイル扱いでB-Nameキーが有効です"
+        assert bool(conflict_kmi.active), "コマ用blendファイル扱いで他のショートカットが退避されています"
+        assert not shortcut_visibility.shortcuts_allowed(bpy.context), (
+            "コマ用blendファイル扱いでB-Nameショートカットの実行判定が有効です"
+        )
+
+        bpy.context.scene.bname_mode = "PAGE"
+        keymap_mod._watch_bname_tab()
+        assert _active_bname_items(keymap_mod) > 0, "ページ一覧ファイル扱いへ戻してもB-Nameキーが有効になりません"
+        assert not bool(conflict_kmi.active), "ページ一覧ファイル扱いへ戻しても競合ショートカットが退避されません"
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bname_panel_visible = lambda _context=None: False

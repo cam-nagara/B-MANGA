@@ -136,6 +136,21 @@ def any_bname_panel_visible(context=None) -> bool:
     return False
 
 
+def shortcut_file_scope_allowed(context=None) -> bool:
+    """ショートカットを実行してよい B-Name ファイル状態か返す."""
+    try:
+        from ..core.mode import MODE_PAGE, get_mode
+        from ..core.work import get_work
+
+        ctx = context or bpy.context
+        work = get_work(ctx)
+        if work is None or not bool(getattr(work, "loaded", False)):
+            return False
+        return get_mode(ctx) == MODE_PAGE
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def bname_panel_visible(context=None) -> bool:
     """現在操作中の 3D ビューで B-Name タブが表示されているか返す."""
     if bool(getattr(bpy.app, "background", False)):
@@ -145,6 +160,11 @@ def bname_panel_visible(context=None) -> bool:
     if area is not None:
         return _area_has_bname_panel_category(area, getattr(ctx, "screen", None))
     return False
+
+
+def any_shortcuts_allowed(context=None) -> bool:
+    """いずれかの 3D ビューで B-Name ショートカットを有効化してよいか返す."""
+    return shortcut_file_scope_allowed(context) and any_bname_panel_visible(context)
 
 
 def shortcuts_allowed(context=None) -> bool:
@@ -157,4 +177,4 @@ def shortcuts_allowed(context=None) -> bool:
             return False
     except Exception:  # noqa: BLE001
         pass
-    return bname_panel_visible(context)
+    return shortcut_file_scope_allowed(context) and bname_panel_visible(context)

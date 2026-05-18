@@ -387,6 +387,12 @@ def _border_width_for_panel(panel) -> float:
         return 0.0
 
 
+def _finish_outer_offset_for_panel(panel) -> float:
+    # 枠線は輪郭線を中心に描かれるため、仕上がり枠から線幅分外へ出すには
+    # 中心線を半分だけ外へ置く。
+    return _border_width_for_panel(panel) * 0.5
+
+
 def _find_adjacent_edges(
     work, page_idx: int, coma_idx: int, edge_idx: int,
 ) -> list[tuple[int, int, int]]:
@@ -1558,6 +1564,7 @@ class BNAME_OT_coma_edge_move(Operator):
         fr = finish_rect(paper)
         ifr = inner_frame_rect(paper)
         border_width_mm = _border_width_for_panel(panel)
+        finish_offset_mm = _finish_outer_offset_for_panel(panel)
 
         # 候補となる「線」のリスト (page-local 座標) と種別を保持。
         # 種別: "finish_outer" (仕上がり枠の **枠線幅分外側**) / "inner" (基本枠) /
@@ -1570,10 +1577,10 @@ class BNAME_OT_coma_edge_move(Operator):
         ] = []
         # 仕上がり枠の 4 辺 (枠線幅分外側位置)
         candidate_lines.extend([
-            ((fr.x - border_width_mm, fr.y - border_width_mm), (fr.x2 + border_width_mm, fr.y - border_width_mm), "finish_outer"),
-            ((fr.x2 + border_width_mm, fr.y - border_width_mm), (fr.x2 + border_width_mm, fr.y2 + border_width_mm), "finish_outer"),
-            ((fr.x2 + border_width_mm, fr.y2 + border_width_mm), (fr.x - border_width_mm, fr.y2 + border_width_mm), "finish_outer"),
-            ((fr.x - border_width_mm, fr.y2 + border_width_mm), (fr.x - border_width_mm, fr.y - border_width_mm), "finish_outer"),
+            ((fr.x - finish_offset_mm, fr.y - finish_offset_mm), (fr.x2 + finish_offset_mm, fr.y - finish_offset_mm), "finish_outer"),
+            ((fr.x2 + finish_offset_mm, fr.y - finish_offset_mm), (fr.x2 + finish_offset_mm, fr.y2 + finish_offset_mm), "finish_outer"),
+            ((fr.x2 + finish_offset_mm, fr.y2 + finish_offset_mm), (fr.x - finish_offset_mm, fr.y2 + finish_offset_mm), "finish_outer"),
+            ((fr.x - finish_offset_mm, fr.y2 + finish_offset_mm), (fr.x - finish_offset_mm, fr.y - finish_offset_mm), "finish_outer"),
         ])
         # 基本枠の 4 辺
         candidate_lines.extend([

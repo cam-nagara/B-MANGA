@@ -73,10 +73,10 @@ def ensure_brush_border_mesh(
     pts = [(float(x), float(y)) for x, y in outline_mm]
     if len(pts) < 3 or width_mm <= 0.0:
         return None
-    bounds = _bounds(pts)
+    total_mm = _brush_total_width_mm(width_mm, blur_amount)
+    bounds = _bounds(pts, padding_mm=total_mm * 0.5)
     if bounds is None:
         return None
-    total_mm = _brush_total_width_mm(width_mm, blur_amount)
     mesh = _ensure_mesh(page_id, coma_id, pts, bounds, total_mm)
     image = _ensure_alpha_image(
         page_id,
@@ -150,11 +150,16 @@ def cleanup_orphan_assets(page_id: str, coma_id: str) -> None:
             pass
 
 
-def _bounds(points: Sequence[tuple[float, float]]) -> tuple[float, float, float, float] | None:
+def _bounds(
+    points: Sequence[tuple[float, float]],
+    *,
+    padding_mm: float = 0.0,
+) -> tuple[float, float, float, float] | None:
     xs = [p[0] for p in points]
     ys = [p[1] for p in points]
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
+    pad = max(0.0, float(padding_mm))
+    min_x, max_x = min(xs) - pad, max(xs) + pad
+    min_y, max_y = min(ys) - pad, max(ys) + pad
     if max_x - min_x <= 1.0e-6 or max_y - min_y <= 1.0e-6:
         return None
     return min_x, min_y, max_x, max_y
@@ -186,19 +191,19 @@ def _ring_mesh_points(
     points: Sequence[tuple[float, float]],
     total_width_mm: float,
 ) -> tuple[list[tuple[float, float]], list[tuple[int, int, int, int]]]:
-    """輪郭から内側へ消える画像帯だけをメッシュ化する."""
+    """輪郭線を中心に、線幅内の画像帯だけをメッシュ化する."""
     width = max(0.0, float(total_width_mm))
     if width <= 1.0e-6 or len(points) < 3:
         return [], []
     try:
-        loops = border_geom.stroke_loops_mm(points, width * 2.0)
+        loops = border_geom.stroke_loops_mm(points, width)
     except Exception:  # noqa: BLE001
         _logger.exception("coma border texture ring loop failed")
         loops = None
     if loops is None:
         return [], []
-    _outer_unused, inner = loops
-    outer = [(float(x), float(y)) for x, y in points]
+    outer, inner = loops
+    outer = [(float(x), float(y)) for x, y in outer]
     if len(inner) != len(outer) or len(outer) < 3:
         return [], []
     n = len(outer)
@@ -401,8 +406,6 @@ def _alpha_at_point(
     total_mm: float,
     color_alpha: float,
 ) -> float:
-    if not _point_in_polygon(x, y, points):
-        return 0.0
     dist = _distance_to_edges(x, y, points)
     return _edge_alpha(dist, core_mm, fade_mm, total_mm, color_alpha)
 
@@ -453,9 +456,10 @@ def _error_diffuse_alpha(
 def _brush_width_parts(line_w: float, blur: float) -> tuple[float, float, float]:
     line = max(0.0, float(line_w))
     blur = max(0.0, min(1.0, float(blur)))
-    fade_mm = line * 0.5 * blur
-    core_mm = max(0.0, line - fade_mm)
-    return core_mm, fade_mm, line
+    half = line * 0.5
+    fade_mm = half * blur
+    core_mm = max(0.0, half - fade_mm)
+    return core_mm, fade_mm, half
 
 
 def _brush_total_width_mm(line_w: float, blur_amount: float) -> float:

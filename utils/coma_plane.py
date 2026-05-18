@@ -236,9 +236,10 @@ def _apply_material(
 
     - 画像があれば Image Texture → Emission。Solid のカラー=テクスチャで
       コマ形状に画像が貼られる。
-    - 輪郭ぼかし時は同じコマ面素材にマスクを掛け、コマ画像を背景色へ
-      合成して輪郭をぼかす。材質自体は不透明のままにして、重なった下の
-      コマが透けないようにする。
+    - 画像のアルファは透明として扱う。ページ一覧用コマ画像の透明部分を
+      灰色や背景色で塗りつぶさない。
+    - 輪郭ぼかし時はコマ面 Mesh の濃度属性を画像アルファへ掛け合わせ、
+      線幅内でコマ内容を透明へフェードさせる。
     - 画像が無ければ従来どおり背景色の Emission。
     - ``mat.diffuse_color`` は常に背景色に揃える (プレビュー無しコマや
       テクスチャ非対応表示でのフォールバック)。
@@ -249,9 +250,12 @@ def _apply_material(
         r = float(color_rgba[0])
         g = float(color_rgba[1])
         b = float(color_rgba[2])
+        a = float(color_rgba[3]) if len(color_rgba) >= 4 else 1.0
     except Exception:  # noqa: BLE001
         r = g = b = 1.0
-    rgba = (r, g, b, 1.0)
+        a = 1.0
+    a = max(0.0, min(1.0, a))
+    rgba = (r, g, b, a)
     nt = mat.node_tree
     preview_node = None
     alpha_node = None
@@ -267,6 +271,50 @@ def _apply_material(
         emission.inputs["Strength"].default_value = 1.0
     except Exception:  # noqa: BLE001
         pass
+
+    def _link_opaque_surface() -> None:
+        try:
+            nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_plane: material link failed")
+
+    def _alpha_value_socket(value: float):
+        node = nt.nodes.new("ShaderNodeValue")
+        node.name = "BName_ComaAlphaValue"
+        node.location = (-130, -180)
+        try:
+            node.outputs["Value"].default_value = max(0.0, min(1.0, float(value)))
+        except Exception:  # noqa: BLE001
+            pass
+        return node.outputs["Value"]
+
+    def _multiply_alpha(left_socket, right_socket, *, name: str, y: int):
+        node = nt.nodes.new("ShaderNodeMath")
+        node.name = name
+        node.operation = "MULTIPLY"
+        node.location = (90, y)
+        try:
+            nt.links.new(left_socket, node.inputs[0])
+            nt.links.new(right_socket, node.inputs[1])
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_plane: alpha multiply link failed")
+        return node.outputs["Value"]
+
+    def _link_alpha_surface(alpha_socket) -> None:
+        transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+        transparent.name = "BName_ComaTransparent"
+        transparent.location = (90, -170)
+        mix = nt.nodes.new("ShaderNodeMixShader")
+        mix.name = "BName_ComaAlphaMix"
+        mix.location = (250, -30)
+        try:
+            nt.links.new(alpha_socket, mix.inputs["Fac"])
+            nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+            nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+            nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma_plane: transparent material link failed")
+
     if image is not None:
         tex = nt.nodes.new("ShaderNodeTexImage")
         tex.name = "BName_ComaPreview"
@@ -277,11 +325,10 @@ def _apply_material(
             tex.extension = "EXTEND"
         except Exception:  # noqa: BLE001
             pass
-        if not use_soft_mask:
-            try:
-                nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-            except Exception:  # noqa: BLE001
-                pass
+        try:
+            nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        except Exception:  # noqa: BLE001
+            pass
     else:
         try:
             emission.inputs["Color"].default_value = rgba
@@ -318,29 +365,29 @@ def _apply_material(
                 edge_factor = compare.outputs["Value"]
             except Exception:  # noqa: BLE001
                 _logger.exception("coma_plane: dither node setup failed")
+        alpha_factor = edge_factor
         if image is not None:
-            preview_mix = nt.nodes.new("ShaderNodeMixRGB")
-            preview_mix.location = (-70, 40)
-            edge_mix = nt.nodes.new("ShaderNodeMixRGB")
-            edge_mix.location = (120, -60)
-            try:
-                preview_mix.blend_type = "MIX"
-                preview_mix.inputs["Color1"].default_value = rgba
-                nt.links.new(tex.outputs["Alpha"], preview_mix.inputs["Factor"])
-                nt.links.new(tex.outputs["Color"], preview_mix.inputs["Color2"])
-                edge_mix.blend_type = "MIX"
-                edge_mix.inputs["Color1"].default_value = rgba
-                nt.links.new(edge_factor, edge_mix.inputs["Factor"])
-                nt.links.new(preview_mix.outputs["Color"], edge_mix.inputs["Color2"])
-                nt.links.new(edge_mix.outputs["Color"], emission.inputs["Color"])
-            except Exception:  # noqa: BLE001
-                _logger.exception("coma_plane: masked color link failed")
-        try:
-            nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
-        except Exception:  # noqa: BLE001
-            _logger.exception("coma_plane: masked material link failed")
+            alpha_factor = _multiply_alpha(
+                tex.outputs["Alpha"],
+                edge_factor,
+                name="BName_ComaPreviewAlphaMask",
+                y=-120,
+            )
+        elif a < 0.9999:
+            alpha_factor = _multiply_alpha(
+                _alpha_value_socket(a),
+                edge_factor,
+                name="BName_ComaColorAlphaMask",
+                y=-120,
+            )
+        _link_alpha_surface(alpha_factor)
     else:
-        nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+        if image is not None:
+            _link_alpha_surface(tex.outputs["Alpha"])
+        elif a < 0.9999:
+            _link_alpha_surface(_alpha_value_socket(a))
+        else:
+            _link_opaque_surface()
     try:
         for node in nt.nodes:
             node.select = False
@@ -355,9 +402,9 @@ def _apply_material(
         pass
     try:
         mat.diffuse_color = rgba
-        mat.blend_method = "OPAQUE"
+        mat.blend_method = "BLEND" if (image is not None or use_soft_mask or a < 0.9999) else "OPAQUE"
         mat.show_transparent_back = False
-        mat.surface_render_method = "DITHERED"
+        mat.surface_render_method = "DITHERED" if dither else "BLENDED"
     except Exception:  # noqa: BLE001
         pass
 

@@ -106,6 +106,11 @@ def main() -> None:
     from bname_dev_shortcut_conflict.keymap import keymap as keymap_mod
     from bname_dev_shortcut_conflict.utils import shortcut_visibility
 
+    work = bpy.context.scene.bname_work
+    work.loaded = True
+    work.work_dir = str(ROOT / "_shortcut_conflict_test.bname")
+    bpy.context.scene.bname_mode = "PAGE"
+
     original_panel_visible = shortcut_visibility.bname_panel_visible
     original_any_panel_visible = shortcut_visibility.any_bname_panel_visible
     created = []

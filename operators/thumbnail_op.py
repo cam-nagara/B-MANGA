@@ -3,9 +3,8 @@
 計画書 3.4.3 / 8.8 参照。コマ編集モード終了時に cNN_thumb.png を
 カメラ基準の「レンダーモード表示」のコマ領域切り出しで更新。
 ユーザー手動で cNN_preview.png を高解像度プレビュー画像として生成。
-``render.render`` は別オペレータ実行中の文脈では空フレームのまま
-完了扱いになりプレビューが生成されないため、3D ビューをレンダー
-モード表示 + カメラ視点にした OpenGL 撮影で確実に書き出す。
+まずカメラから通常レンダーを出し、透明背景のアルファを保持する。
+通常レンダーが失敗した場合だけ、画面撮影や OpenGL 撮影へ戻す。
 """
 
 from __future__ import annotations
@@ -71,6 +70,7 @@ def render_coma_camera_crop(
     prev_percent = int(scene.render.resolution_percentage)
     prev_engine = scene.render.engine
     prev_format = scene.render.image_settings.file_format
+    prev_color_mode = scene.render.image_settings.color_mode
     prev_film_transparent = bool(getattr(scene.render, "film_transparent", False))
     prev_use_border = bool(getattr(scene.render, "use_border", False))
     prev_use_crop = bool(getattr(scene.render, "use_crop_to_border", False))
@@ -108,6 +108,7 @@ def render_coma_camera_crop(
             full_path = Path(td) / "coma_full.png"
             scene.render.filepath = str(full_path)
             scene.render.image_settings.file_format = "PNG"
+            scene.render.image_settings.color_mode = "RGBA"
             scene.render.resolution_percentage = max(1, min(100, int(resolution_percentage)))
             scene.render.film_transparent = image_transparency.coma_background_is_transparent(entry)
             scene.render.use_border = False
@@ -145,6 +146,7 @@ def render_coma_camera_crop(
         scene.render.resolution_percentage = prev_percent
         scene.render.engine = prev_engine
         scene.render.image_settings.file_format = prev_format
+        scene.render.image_settings.color_mode = prev_color_mode
         scene.render.film_transparent = prev_film_transparent
         scene.render.use_border = prev_use_border
         if hasattr(scene.render, "use_crop_to_border"):
@@ -319,15 +321,22 @@ def _capture_screen_camera_frame(context, scene, target: Path) -> bool:
 def _render_camera_image(context, scene) -> bool:
     """コマプレビュー用の「カメラ枠の画像」を ``scene.render.filepath`` に書く.
 
-    方針: 最終レンダーはしない。コマ編集中の 3D ビューは画面に既に
-    レンダーモード表示で描かれているので、その画面をそのまま撮って
-    カメラ枠で切り出す (魚眼/カラー/ライン も画面どおり)。画面取得が
-    できない異常時のみ、ソリッドの OpenGL 撮影へフォールバックする。
+    方針: まずカメラから通常レンダーを書き出し、透明背景のアルファを
+    保持する。失敗した場合だけ、画面撮影や OpenGL 撮影へフォールバック
+    する。
     """
     target = Path(bpy.path.abspath(scene.render.filepath))
 
     def _written() -> bool:
         return _resolve_render_output_path(target) is not None
+
+    try:
+        with context.temp_override(scene=scene):
+            bpy.ops.render.render(write_still=True)
+        if _written():
+            return True
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("camera render failed: %s", exc, exc_info=True)
 
     try:
         if _capture_screen_camera_frame(context, scene, target):

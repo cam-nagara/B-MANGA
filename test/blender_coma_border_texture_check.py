@@ -35,6 +35,11 @@ def _assert_no_plane_alpha_images(prefix: str) -> None:
     assert not leaked, f"コマ面の透明マスク画像が残っています: {leaked}"
 
 
+def _material_transparent_enabled(mat) -> bool:
+    method = str(getattr(mat, "surface_render_method", "") or "")
+    return getattr(mat, "blend_method", "") == "BLEND" or method in {"BLENDED", "DITHERED"}
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
@@ -85,12 +90,12 @@ def main() -> None:
         "輪郭ぼかしの見かけ幅が線幅を超えています"
     )
     mat = plane.data.materials[0]
-    assert getattr(mat, "blend_method", "") != "BLEND", "コマ面素材が半透明ブレンド表示になっています"
+    assert _material_transparent_enabled(mat), "コマ面素材が透明表示になっていません"
     assert not bool(getattr(mat, "show_transparent_back", True)), "コマ面素材の裏面透明表示が残っています"
-    assert not any(
+    assert any(
         node.bl_idname == "ShaderNodeBsdfTransparent"
         for node in mat.node_tree.nodes
-    ), "コマ面素材に透明シェーダーが残っています"
+    ), "コマ面素材に透明シェーダーがありません"
     assert not any(
         node.name == "BName_ComaAlphaMask"
         for node in mat.node_tree.nodes
@@ -174,13 +179,14 @@ def main() -> None:
         blur_curve_points=coma.border.blur_curve_points,
         use_soft_mask=True,
     )
-    assert getattr(probe_mat, "blend_method", "") != "BLEND", "画像付きボカシ素材が半透明化しています"
-    assert not any(
+    assert _material_transparent_enabled(probe_mat), "画像付きボカシ素材が透明表示になっていません"
+    assert any(
         node.bl_idname == "ShaderNodeBsdfTransparent"
         for node in probe_mat.node_tree.nodes
-    ), "画像付きボカシ素材に透明シェーダーが残っています"
-    mix_nodes = [node for node in probe_mat.node_tree.nodes if node.bl_idname == "ShaderNodeMixRGB"]
-    assert len(mix_nodes) >= 2, "画像アルファと輪郭ボカシが背景色へ合成されていません"
+    ), "画像付きボカシ素材に透明シェーダーがありません"
+    assert probe_mat.node_tree.nodes.get("BName_ComaPreviewAlphaMask") is not None, (
+        "画像アルファと輪郭ぼかし濃度が合成されていません"
+    )
     assert probe_mat.node_tree.nodes.get("BName_ComaDither") is not None, (
         "ディザが素材ノードで生成されていません"
     )
@@ -198,7 +204,7 @@ def main() -> None:
     coma.border.blur_dither = True
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     mat = plane.data.materials[0]
-    assert getattr(mat, "blend_method", "") != "BLEND", "ディザ時にコマ面素材が半透明化しています"
+    assert _material_transparent_enabled(mat), "ディザ時にコマ面素材が透明表示になっていません"
     _assert_no_plane_alpha_images(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
     values = _soft_mask_values(plane.data, coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
     assert min(values) == 0.0 and max(values) == 1.0, "輪郭ぼかし濃度の範囲が不正です"

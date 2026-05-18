@@ -385,15 +385,18 @@ def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.typ
     mat = bpy.data.materials.get(PAPER_SAFE_FILL_VIEW_MATERIAL)
     if mat is None:
         mat = bpy.data.materials.new(PAPER_SAFE_FILL_VIEW_MATERIAL)
+    r, g, b, a = (
+        _clamp01(float(rgba[0])),
+        _clamp01(float(rgba[1])),
+        _clamp01(float(rgba[2])),
+        _clamp01(float(rgba[3])),
+    )
     try:
-        mat.diffuse_color = rgba
+        mat.diffuse_color = (r, g, b, a)
     except Exception:  # noqa: BLE001
         pass
     try:
-        mat.use_nodes = False
-    except Exception:  # noqa: BLE001
-        pass
-    try:
+        mat.use_nodes = True
         mat.blend_method = "BLEND"
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
@@ -402,6 +405,27 @@ def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.typ
         mat.surface_render_method = "BLENDED"
     except (AttributeError, TypeError):
         pass
+    nt = mat.node_tree
+    if nt is not None:
+        for node in list(nt.nodes):
+            nt.nodes.remove(node)
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        out.location = (320, 0)
+        emission = nt.nodes.new("ShaderNodeEmission")
+        emission.location = (0, 110)
+        transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+        transparent.location = (0, -110)
+        mix = nt.nodes.new("ShaderNodeMixShader")
+        mix.location = (160, 0)
+        try:
+            emission.inputs["Color"].default_value = (r, g, b, 1.0)
+            emission.inputs["Strength"].default_value = 1.0
+            mix.inputs["Fac"].default_value = a
+            nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+            nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+            nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+        except Exception:  # noqa: BLE001
+            _logger.exception("safe area fill material setup failed")
     return mat
 
 

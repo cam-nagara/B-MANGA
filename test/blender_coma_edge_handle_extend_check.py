@@ -91,7 +91,7 @@ def main() -> None:
             2,
         )
         top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(panel))
-        _assert_close(top_y, fr.y2 + width_mm, "基本枠から仕上がり枠外への拡張")
+        _assert_close(top_y, fr.y2 + width_mm * 0.5, "基本枠から仕上がり枠外への拡張")
 
         page.comas.clear()
         left = _add_panel(page, "left", [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)], width_mm)
@@ -122,7 +122,7 @@ def main() -> None:
                 2,
             )
             brush_top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(brush_panel))
-            _assert_close(brush_top_y, fr.y2 + width_mm, "輪郭ぼかしの拡張量")
+            _assert_close(brush_top_y, fr.y2 + width_mm * 0.5, "輪郭ぼかしの拡張量")
         finally:
             coma_border_texture.brush_total_width_mm = original_brush_total
 
