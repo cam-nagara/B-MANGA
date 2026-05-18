@@ -106,6 +106,8 @@ def main() -> None:
         page.comas.clear()
         brush_total = coma_border_texture.brush_total_width_mm(width_mm, 1.0)
         _assert_close(brush_total, width_mm, "輪郭ぼかしは線幅を超えない")
+        original_brush_total = coma_border_texture.brush_total_width_mm
+        coma_border_texture.brush_total_width_mm = lambda _width, _blur: width_mm * 3.0
         brush_panel = _add_panel(
             page,
             "brush",
@@ -114,14 +116,18 @@ def main() -> None:
             style="brush",
             blur_amount=1.0,
         )
-        coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
-            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 2}),
-            2,
-        )
-        brush_top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(brush_panel))
-        _assert_close(brush_top_y, fr.y2 + brush_total, "輪郭ぼかしの拡張量")
+        try:
+            coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+                _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 2}),
+                2,
+            )
+            brush_top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(brush_panel))
+            _assert_close(brush_top_y, fr.y2 + width_mm, "輪郭ぼかしの拡張量")
+        finally:
+            coma_border_texture.brush_total_width_mm = original_brush_total
 
         page.comas.clear()
+        coma_border_texture.brush_total_width_mm = lambda _width, _blur: width_mm * 3.0
         brush_left = _add_panel(
             page,
             "brush_left",
@@ -131,12 +137,15 @@ def main() -> None:
             blur_amount=1.0,
         )
         _add_panel(page, "brush_right", [(50.0, 10.0), (90.0, 10.0), (90.0, 50.0), (50.0, 50.0)], width_mm)
-        coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
-            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
-            2,
-        )
-        brush_right_x = max(x for x, _y in coma_edge_move_op._coma_polygon(brush_left))
-        _assert_close(brush_right_x, 50.0 + brush_total, "輪郭ぼかしの隣接コマ内側拡張量")
+        try:
+            coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+                _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
+                2,
+            )
+            brush_right_x = max(x for x, _y in coma_edge_move_op._coma_polygon(brush_left))
+            _assert_close(brush_right_x, 50.0 + width_mm, "輪郭ぼかしの隣接コマ内側拡張量")
+        finally:
+            coma_border_texture.brush_total_width_mm = original_brush_total
         print("BNAME_COMA_EDGE_HANDLE_EXTEND_OK")
     finally:
         mod.unregister()

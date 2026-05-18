@@ -382,15 +382,7 @@ def _gap_for_edge(work, panel, edge: tuple[tuple[float, float], tuple[float, flo
 def _border_width_for_panel(panel) -> float:
     border = getattr(panel, "border", None)
     try:
-        width = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
-        if str(getattr(border, "style", "solid") or "solid") == "brush":
-            from ..utils import coma_border_texture
-
-            return coma_border_texture.brush_total_width_mm(
-                width,
-                float(getattr(border, "blur_amount", 0.0) or 0.0),
-            )
-        return width
+        return max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
     except Exception:  # noqa: BLE001
         return 0.0
 
