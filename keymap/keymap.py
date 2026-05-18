@@ -56,6 +56,7 @@ _BNAME_EXCLUSIVE_COMBOS: tuple = (
 
 @dataclass
 class _SavedItem:
+    keyconfig_name: str
     keymap_name: str
     idname: str
     key_type: str
@@ -584,80 +585,158 @@ class KeymapState:
 
     # ---------- 衝突キー無効化 (他アドオン対策) ----------
 
-    # B-Name が単独修飾なしで予約するキー (他アドオンに奪われる対象)
+    # B-Name が単独修飾なしで予約するキー (他アドオンや標準機能に奪われる対象)
     _BNAME_RESERVED_SINGLE_KEYS: tuple[str, ...] = ("O", "F", "K", "T")
+    _BNAME_EXCLUSIVE_IDNAMES: tuple[str, ...] = (
+        "bname.set_mode_object",
+        "bname.coma_knife_cut",
+        "bname.layer_move_tool",
+        "bname.text_tool",
+    )
+
+    @staticmethod
+    def _ptr(value) -> int | None:
+        try:
+            return int(value.as_pointer())
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _combo_for_kmi(kmi) -> tuple[str, bool, bool, bool, bool]:
+        return (
+            str(getattr(kmi, "type", "")),
+            bool(getattr(kmi, "shift", False)),
+            bool(getattr(kmi, "ctrl", False)),
+            bool(getattr(kmi, "alt", False)),
+            bool(getattr(kmi, "oskey", False)),
+        )
+
+    @staticmethod
+    def _keymap_can_steal_view3d_shortcut(km) -> bool:
+        """B-Name の 3Dビュー操作を奪い得るキーマップだけを対象にする."""
+        name = str(getattr(km, "name", "") or "")
+        space_type = str(getattr(km, "space_type", "") or "")
+        if space_type == "VIEW_3D":
+            return True
+        if name in {
+            "Window",
+            "3D View",
+            "Object Mode",
+            "Mesh",
+            "Grease Pencil",
+            "Grease Pencil Paint Mode",
+            "Grease Pencil Edit Mode",
+            "Image Paint",
+        }:
+            return True
+        return any(token in name for token in ("3D View", "Object", "Mesh", "Grease Pencil", "Image Paint"))
+
+    def _exclusive_conflict_combos(self) -> set[tuple[str, bool, bool, bool, bool]]:
+        """現在の B-Name キー設定から退避すべきキー組み合わせを作る."""
+        target_idnames = set(self._BNAME_EXCLUSIVE_IDNAMES)
+        combos: set[tuple[str, bool, bool, bool, bool]] = set()
+        for kmi in list(self.bname_items):
+            try:
+                if str(kmi.idname) not in target_idnames:
+                    continue
+                if str(getattr(kmi, "value", "PRESS")) != "PRESS":
+                    continue
+                combos.add(self._combo_for_kmi(kmi))
+            except (ReferenceError, AttributeError):
+                continue
+        for key in self._BNAME_RESERVED_SINGLE_KEYS:
+            combos.add((key, False, False, False, False))
+        return combos
 
     def disable_conflicting_keys(self) -> int:
-        """他アドオンが addon kc に登録した B-Name 予約単独キー kmi を無効化.
+        """B-Name パネル表示中に同じキーを奪う kmi を一時的に無効化.
 
-        Fluent 等の addon が同じキーを別 keymap (例: "Mesh", "Object Mode") に
-        登録している場合、Blender はその kmi を B-Name の "3D View" / "Window"
-        kmi より先に評価し、B-Name のショートカットが発火しない。
-        ここで addon kc 全体を走査し、B-Name 以外で予約キーかつ修飾なしの
-        active な kmi を無効化する。退避情報は ``self.saved_conflicts`` に保存し、
-        unregister 時に元の active 状態へ復元する。
-
-        default kc には触れない (default kc 書換は EXCEPTION_ACCESS_VIOLATION の
-        過去事例があるため)。
+        標準のプロポーショナル変形や Fluent のパイメニューなど、B-Name の
+        "O" / "F" より先に評価される同一キーを退避する。対象は 3Dビュー操作を
+        奪い得るキーマップに限定し、B-Name パネルを閉じたら元の active 状態へ戻す。
         """
         wm = bpy.context.window_manager
         if wm is None:
             return 0
-        kc_addon = wm.keyconfigs.addon
-        if kc_addon is None:
+        keyconfigs = []
+        seen_keyconfigs: set[int] = set()
+        # 標準操作は active keyconfig 経由で見える。default keyconfig を直接
+        # 書き換える方式は Blender 終了時に不安定化した過去があるため触らない。
+        for attr in ("addon", "user", "active"):
+            kc = getattr(wm.keyconfigs, attr, None)
+            if kc is None:
+                continue
+            ptr = self._ptr(kc)
+            if ptr is not None and ptr in seen_keyconfigs:
+                continue
+            if ptr is not None:
+                seen_keyconfigs.add(ptr)
+            keyconfigs.append((attr, kc))
+        if not keyconfigs:
             return 0
-        bname_idnames = {
-            "bname.set_mode_object",
-            "bname.coma_knife_cut",
-            "bname.layer_move_tool",
-            "bname.text_tool",
-            "bname.exit_coma_mode",
-            "bname.exit_coma_mode_safe",
+        target_combos = self._exclusive_conflict_combos()
+        bname_ptrs = {ptr for ptr in (self._ptr(kmi) for kmi in self.bname_items) if ptr is not None}
+        saved_ptrs = {
+            ptr for ptr in (self._ptr(s.item_ref) for s in self.saved_conflicts) if ptr is not None
         }
-        target_keys = set(self._BNAME_RESERVED_SINGLE_KEYS)
         disabled = 0
-        # iterator 内で modify すると C ref が破綻するため、まず list 化
-        keymaps = list(kc_addon.keymaps)
-        for km in keymaps:
+        for kc_name, kc in keyconfigs:
+            # iterator 内で modify すると C ref が破綻するため、まず list 化
             try:
-                kmis = list(km.keymap_items)
+                keymaps = list(kc.keymaps)
             except Exception:  # noqa: BLE001
                 continue
-            for kmi in kmis:
-                try:
-                    if kmi.idname in bname_idnames:
-                        continue
-                    if kmi.type not in target_keys:
-                        continue
-                    if kmi.shift or kmi.ctrl or kmi.alt or getattr(kmi, "oskey", False):
-                        continue
-                    if kmi.value != "PRESS":
-                        continue
-                    if not kmi.active:
-                        continue
-                    # 退避してから無効化 (独立リスト saved_conflicts を使用、
-                    # restore_defaults による saved クリアの影響を受けない)
-                    self.saved_conflicts.append(_SavedItem(
-                        keymap_name=km.name,
-                        idname=kmi.idname,
-                        key_type=kmi.type,
-                        shift=bool(kmi.shift),
-                        ctrl=bool(kmi.ctrl),
-                        alt=bool(kmi.alt),
-                        oskey=bool(getattr(kmi, "oskey", False)),
-                        prev_active=True,
-                        item_ref=kmi,
-                    ))
-                    kmi.active = False
-                    disabled += 1
-                    print(
-                        f"[B-Name][KEYMAP] disabled conflict: "
-                        f"km={km.name!r} idname={kmi.idname!r} key={kmi.type}"
-                    )
-                except (ReferenceError, AttributeError):
+            for km in keymaps:
+                if not self._keymap_can_steal_view3d_shortcut(km):
                     continue
+                try:
+                    kmis = list(km.keymap_items)
+                except Exception:  # noqa: BLE001
+                    continue
+                for kmi in kmis:
+                    try:
+                        idname = str(getattr(kmi, "idname", "") or "")
+                        if idname.startswith("bname."):
+                            continue
+                        item_ptr = self._ptr(kmi)
+                        if item_ptr is not None and item_ptr in bname_ptrs:
+                            continue
+                        if item_ptr is not None and item_ptr in saved_ptrs:
+                            if bool(getattr(kmi, "active", False)):
+                                kmi.active = False
+                            continue
+                        if str(getattr(kmi, "value", "PRESS")) != "PRESS":
+                            continue
+                        if self._combo_for_kmi(kmi) not in target_combos:
+                            continue
+                        if not bool(getattr(kmi, "active", False)):
+                            continue
+                        # 退避してから無効化 (独立リスト saved_conflicts を使用、
+                        # restore_defaults による saved クリアの影響を受けない)
+                        self.saved_conflicts.append(_SavedItem(
+                            keyconfig_name=kc_name,
+                            keymap_name=km.name,
+                            idname=idname,
+                            key_type=kmi.type,
+                            shift=bool(kmi.shift),
+                            ctrl=bool(kmi.ctrl),
+                            alt=bool(kmi.alt),
+                            oskey=bool(getattr(kmi, "oskey", False)),
+                            prev_active=True,
+                            item_ref=kmi,
+                        ))
+                        if item_ptr is not None:
+                            saved_ptrs.add(item_ptr)
+                        kmi.active = False
+                        disabled += 1
+                        print(
+                            f"[B-Name][KEYMAP] disabled conflict: "
+                            f"kc={kc_name!r} km={km.name!r} idname={idname!r} key={kmi.type}"
+                        )
+                    except (ReferenceError, AttributeError):
+                        continue
         if disabled > 0:
-            _logger.info("disabled %d conflicting addon kc kmis", disabled)
+            _logger.info("disabled %d conflicting kmis", disabled)
         return disabled
 
     def restore_conflicting_keys(self) -> None:
@@ -818,13 +897,13 @@ def _bname_tab_is_active() -> bool:
 def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
     """B-Name タブ表示状態に合わせて自前キーと競合退避を切り替える."""
     if enabled:
-        try:
-            state.restore_conflicting_keys()
-        except Exception:  # noqa: BLE001
-            _logger.exception("restore_conflicting_keys failed")
         state.set_bname_items_active(True)
         if not state.enabled and state.bname_items:
             state.override_defaults()
+        try:
+            state.disable_conflicting_keys()
+        except Exception:  # noqa: BLE001
+            _logger.exception("disable_conflicting_keys failed")
         return
     try:
         state.restore_conflicting_keys()

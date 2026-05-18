@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
     os.environ.get("BNAME_TOOL_VISUAL_OUT", "")
     or tempfile.mkdtemp(prefix="bname_tool_visual_audit_")
-)
+).resolve()
 
 
 def _load_addon():
@@ -141,9 +141,16 @@ def _screenshot(name: str) -> str:
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=4)
     except Exception:
         pass
-    result = bpy.ops.screen.screenshot("EXEC_DEFAULT", filepath=str(path), check_existing=False)
+    scene = bpy.context.scene
+    old_filepath = scene.render.filepath
+    scene.render.filepath = str(path)
+    try:
+        with _view3d_override():
+            result = bpy.ops.render.opengl("EXEC_DEFAULT", view_context=True, write_still=True)
+    finally:
+        scene.render.filepath = old_filepath
     if "FINISHED" not in result:
-        raise RuntimeError(f"screenshot failed: {result}")
+        raise RuntimeError(f"viewport capture failed: {result}")
     return str(path)
 
 
@@ -779,7 +786,7 @@ def _run_tool_visuals(context, data) -> list[dict]:
         elif select_kind == "gp":
             context.scene.bname_active_layer_kind = "gp"
         result = _invoke_tool(label, op_id, op_context, props)
-        shot = _screenshot(f"tool_{index:02d}_{label}.png")
+        shot = _screenshot(f"tool_{index:02d}.png")
         items.append({
             "label": label,
             "result": ",".join(result["result"]),

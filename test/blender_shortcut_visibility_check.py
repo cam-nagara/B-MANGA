@@ -119,7 +119,7 @@ def main() -> None:
         )
 
         kc = bpy.context.window_manager.keyconfigs.addon
-        conflict_km = kc.keymaps.new(name="B-Name Test Conflict", space_type="EMPTY", region_type="WINDOW")
+        conflict_km = kc.keymaps.new(name="B-Name Test Object Conflict", space_type="EMPTY", region_type="WINDOW")
         conflict_kmi = conflict_km.keymap_items.new("wm.call_menu", "F", "PRESS")
         assert bool(conflict_kmi.active), "競合確認用キーが作成直後に無効です"
 
@@ -133,7 +133,7 @@ def main() -> None:
         shortcut_visibility.any_bname_panel_visible = lambda _context=None: True
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) > 0, "B-Nameタブ表示扱いでショートカットが有効になりません"
-        assert bool(conflict_kmi.active), "B-Nameタブ表示中に他のショートカットが無効化されています"
+        assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
@@ -152,6 +152,17 @@ def main() -> None:
         bpy.context.view_layer.objects.active = None
         result = bpy.ops.bname.set_mode_object("EXEC_DEFAULT")
         assert "FINISHED" in result, "オブジェクトが未選択の状態でオブジェクトツールへ切り替わりません"
+
+        shortcut_visibility._last_bname_panel_draw = 0.0
+        shortcut_visibility.mark_bname_panel_drawn(
+            SimpleNamespace(area=fake_unknown_area, screen=fake_unknown_screen)
+        )
+        shortcut_visibility._last_bname_panel_draw -= (
+            shortcut_visibility.PANEL_DRAW_GRACE_SECONDS + 0.1
+        )
+        assert shortcut_visibility._area_has_bname_panel_category(fake_unknown_area), (
+            "タブ名が取得できない同一エリアで、B-Nameパネル表示判定が時間切れになります"
+        )
     finally:
         shortcut_visibility.bname_panel_visible = original_panel_visible
         shortcut_visibility.any_bname_panel_visible = original_any_panel_visible

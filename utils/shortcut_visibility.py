@@ -49,6 +49,21 @@ def _recent_bname_panel_drawn(area=None, screen=None) -> bool:
     return True
 
 
+def _known_bname_panel_area(area=None, screen=None) -> bool:
+    """タブ名を取得できない環境でも、同じUI領域なら表示中として扱う."""
+    if _last_bname_panel_draw <= 0.0:
+        return False
+    area_ptr = _as_pointer(area)
+    screen_ptr = _as_pointer(screen)
+    if area_ptr is None or _last_bname_panel_area_ptr is None:
+        return False
+    if area_ptr != _last_bname_panel_area_ptr:
+        return False
+    if screen_ptr is not None and _last_bname_panel_screen_ptr not in {None, screen_ptr}:
+        return False
+    return True
+
+
 def _visible_ui_regions(area):
     if area is None or getattr(area, "type", "") != "VIEW_3D":
         return []
@@ -96,7 +111,9 @@ def _area_has_bname_panel_category(area, screen=None) -> bool:
     status = _area_bname_status(area)
     if status == "bname":
         return True
-    if status in {"unknown", "other"}:
+    if status == "unknown":
+        return _recent_bname_panel_drawn(area, screen) or _known_bname_panel_area(area, screen)
+    if status == "other":
         return _recent_bname_panel_drawn(area, screen)
     return False
 
