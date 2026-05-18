@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_name"
-version = "0.8.0"
+version = "0.6.3"
 name = "B-Name"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-Name Project"
@@ -30,7 +30,7 @@ wheels = [
 platforms = ["windows-x64"]
 
 # Extensions Platform permissions
-# Blender 5.1.1 (schema_version 1.0.0) は permissions を **string array** 形式
-# でのみ受け付ける。inline table やテーブルセクション形式は
-# "Unable to parse the manifest" を引き起こすため使用しない。
-permissions = ["network", "files"]
+# Blender 5.1.1 (schema_version 1.0.0) validates permissions as a table of strings.
+[permissions]
+network = "同期・外部連携でネットワーク接続を使用するため"
+files = "作品ファイル、画像、コマ用blendファイルを読み書きするため"

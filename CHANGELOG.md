@@ -3,7 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
-## 2026-05-18 — v0.8.0 フキダシを単一オブジェクト化
+## 2026-05-18 — バージョン表記を0.6.000台へ補正
+
+### 症状
+- 直近の変更で、B-Name本体のバージョン表記が `v0.6.000` 台から `v0.7.0`、`v0.7.1`、`v0.8.0` へ上がっていた。
+- 今後の運用ルールでも、新機能や構造変更時に右端以外の桁を上げる余地が残っていた。
+
+### 原因
+- 従来のSemVer寄りの運用ルールが残っており、ユーザー指定がない場合も新機能や構造変更で中央の桁を上げる解釈になっていた。
+- Blender拡張機能のメタデータは `0.6.000` のようなゼロ埋め表記を受け付けないため、ユーザー向け表記と内部メタデータ表記の使い分けが明文化されていなかった。
+
+### 修正
+- B-Name本体の現在バージョンを、ユーザー向け表記では `v0.6.003`、Blender拡張機能メタデータでは `0.6.3` に補正した。
+- 直近のCHANGELOG見出しを `v0.6.000`、`v0.6.001`、`v0.6.002`、`v0.6.003` へ補正した。
+- 今後はユーザーが明示しない限り `0.Y.ZZZ` の右端3桁だけを進めるよう、開発ルールを更新した。
+- Blender拡張機能の検証で弾かれていた権限表記も、Blender 5.1.1 が受け付ける形式へ補正した。
+
+### 検証 (Blender 5.1.1 実機)
+- Blender拡張機能メタデータ検証で、現在のメタデータが読み込めることを確認。
+- Python構文確認と差分チェックが通ることを確認。
+- バージョン表記の検索で、直近の見出しとメタデータに `v0.7.0`、`v0.7.1`、`v0.8.0` 表記が残っていないことを確認。
+
+## 2026-05-18 — v0.6.003 フキダシを単一オブジェクト化
 
 ### 症状
 - フキダシが輪郭と塗りで別々のオブジェクトになり、アウトライナー上でフキダシ1つに対して複数の実体が見えていた。
@@ -27,7 +48,7 @@ Blender 5.1.1 を対象としています。
 - `test/blender_object_tool_selection_check.py` / `test/blender_ui_micro_behavior_matrix_check.py` / `test/blender_tool_behavior_visual_audit.py`: 選択、詳細操作、主要ツール表示が維持されることを確認。
 - `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
 
-## 2026-05-18 — v0.7.1 B-Nameパネル上のツール切り替えを修正
+## 2026-05-18 — v0.6.002 B-Nameパネル上のツール切り替えを修正
 
 ### 症状
 - B-Nameパネルが開いていても、サイドバー側にフォーカスがあると `O` でオブジェクトツールへ切り替わらない場合があった。
@@ -51,7 +72,7 @@ Blender 5.1.1 を対象としています。
 - `test/blender_effect_line_frame_spacing_check.py` / `test/blender_balloon_tail_ui_check.py` / `test/blender_balloon_uni_flash_check.py` / `test/blender_coma_edge_handle_extend_check.py` / `test/blender_outliner_collection_order_check.py` / `test/blender_work_info_text_object_check.py` / `test/blender_context_menu_commands_check.py` / `test/blender_object_tool_selection_check.py` / `test/blender_ui_micro_behavior_matrix_check.py`: 直前変更の代表操作が維持されることを確認。
 - `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
 
-## 2026-05-18 — v0.7.0 効果線・コマ枠拡張・アウトライナー構成を更新
+## 2026-05-18 — v0.6.001 効果線・コマ枠拡張・アウトライナー構成を更新
 
 ### 症状
 - 距離指定の集中線で「密度補正」を切れてしまい、線間隔が場所によって荒れやすかった。
@@ -92,7 +113,7 @@ Blender 5.1.1 を対象としています。
 - `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
 - 全スクリプト278ファイル・81,428行を走査した。
 
-## 2026-05-18 — v0.6.0 フキダシ形状・しっぽ編集・塗り設定を拡張
+## 2026-05-18 — v0.6.000 フキダシ形状・しっぽ編集・塗り設定を拡張
 
 ### 症状
 - フキダシ形状として、集中線状の「ウニフラッシュ」を選べなかった。
