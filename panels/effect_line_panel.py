@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel
 
-from ..utils import balloon_shapes
+from ..utils import balloon_shapes, effect_inout_curve
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -110,10 +110,15 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
     row = box.row(align=True)
-    row.prop(params, "length_jitter_enabled", text="長さ乱れ")
+    row.prop(params, "length_jitter_enabled", text="始点乱れ")
     sub = row.row()
     sub.enabled = params.length_jitter_enabled
     sub.prop(params, "length_jitter_amount", text="")
+    row = box.row(align=True)
+    row.prop(params, "end_length_jitter_enabled", text="終点乱れ")
+    sub = row.row()
+    sub.enabled = params.end_length_jitter_enabled
+    sub.prop(params, "end_length_jitter_amount", text="")
 
     if params.effect_type != "beta_flash":
         box.prop(params, "spacing_mode")
@@ -121,8 +126,6 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
             box.prop(params, "spacing_angle_deg")
         else:
             box.prop(params, "spacing_distance_mm")
-            if params.effect_type != "speed":
-                box.prop(params, "spacing_density_compensation")
         row = box.row(align=True)
         row.prop(params, "spacing_jitter_enabled", text="間隔乱れ")
         sub = row.row()
@@ -149,14 +152,17 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     row = box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
-    box.prop(params, "inout_range_mode")
     row = box.row(align=True)
-    if params.inout_range_mode == "length":
-        row.prop(params, "in_range_mm")
-        row.prop(params, "out_range_mm")
-    else:
-        row.prop(params, "in_range_percent")
-        row.prop(params, "out_range_percent")
+    row.prop(params, "in_start_percent")
+    row.prop(params, "out_start_percent")
+    effect_inout_curve.sync_ui_nodes_to_params(params)
+    in_node, out_node = effect_inout_curve.ensure_ui_nodes(params)
+    if in_node is not None:
+        box.label(text="入りカーブ")
+        box.template_curve_mapping(in_node, "mapping", type="NONE")
+    if out_node is not None:
+        box.label(text="抜きカーブ")
+        box.template_curve_mapping(out_node, "mapping", type="NONE")
 
     box = layout.box()
     box.label(text="色")

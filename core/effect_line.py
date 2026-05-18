@@ -76,7 +76,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 7
+EFFECT_PARAM_SCHEMA_VERSION = 8
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -117,6 +117,8 @@ EFFECT_PARAM_FIELDS = (
     "brush_jitter_amount",
     "length_jitter_enabled",
     "length_jitter_amount",
+    "end_length_jitter_enabled",
+    "end_length_jitter_amount",
     "spacing_mode",
     "spacing_angle_deg",
     "spacing_distance_mm",
@@ -133,6 +135,10 @@ EFFECT_PARAM_FIELDS = (
     "inout_apply",
     "in_percent",
     "out_percent",
+    "in_start_percent",
+    "out_start_percent",
+    "in_easing_curve",
+    "out_easing_curve",
     "inout_range_mode",
     "in_range_percent",
     "out_range_percent",
@@ -173,6 +179,18 @@ def _on_params_changed(self, context) -> None:
         _logger.exception("effect_line params update failed")
 
 
+def _on_in_start_changed(self, context) -> None:
+    if float(getattr(self, "in_start_percent", 50.0)) + float(getattr(self, "out_start_percent", 50.0)) > 100.0:
+        self.out_start_percent = max(0.0, 100.0 - float(getattr(self, "in_start_percent", 50.0)))
+    _on_params_changed(self, context)
+
+
+def _on_out_start_changed(self, context) -> None:
+    if float(getattr(self, "in_start_percent", 50.0)) + float(getattr(self, "out_start_percent", 50.0)) > 100.0:
+        self.in_start_percent = max(0.0, 100.0 - float(getattr(self, "out_start_percent", 50.0)))
+    _on_params_changed(self, context)
+
+
 def _color_value(value) -> list[float]:
     try:
         return [float(value[i]) for i in range(4)]
@@ -186,6 +204,26 @@ def _density_compensation_enabled(value) -> bool:
     return bool(value)
 
 
+def _normalize_start_percent_pair(data: dict) -> None:
+    if "in_start_percent" not in data and "out_start_percent" not in data:
+        return
+    try:
+        in_value = max(0.0, min(100.0, float(data.get("in_start_percent", 50.0))))
+    except Exception:  # noqa: BLE001
+        in_value = 50.0
+    try:
+        out_value = max(0.0, min(100.0, float(data.get("out_start_percent", 50.0))))
+    except Exception:  # noqa: BLE001
+        out_value = 50.0
+    total = in_value + out_value
+    if total > 100.0:
+        scale = 100.0 / max(total, 1.0e-9)
+        in_value *= scale
+        out_value *= scale
+    data["in_start_percent"] = in_value
+    data["out_start_percent"] = out_value
+
+
 def effect_params_to_dict(params) -> dict:
     """BNameEffectLineParams をレイヤーメタデータ保存用 dict に変換する。"""
     data = {"schema_version": EFFECT_PARAM_SCHEMA_VERSION}
@@ -194,7 +232,8 @@ def effect_params_to_dict(params) -> dict:
             continue
         value = getattr(params, field)
         if field == "spacing_density_compensation":
-            data[field] = _density_compensation_enabled(value)
+            spacing_mode = str(getattr(params, "spacing_mode", "") or "")
+            data[field] = True if spacing_mode == "distance" else _density_compensation_enabled(value)
         elif field in {"line_color", "fill_color"}:
             data[field] = _color_value(value)
         elif field == "inout_apply":
@@ -241,6 +280,14 @@ def effect_params_from_dict(params, data: dict) -> None:
         data.setdefault("start_frame_density_rounding_percent", 100.0)
     if schema_version < EFFECT_PARAM_SCHEMA_VERSION:
         data.setdefault("spacing_density_compensation", True)
+        if schema_version < 8:
+            if "in_start_percent" not in data and "in_range_percent" in data:
+                data["in_start_percent"] = data["in_range_percent"]
+            if "out_start_percent" not in data and "out_range_percent" in data:
+                data["out_start_percent"] = data["out_range_percent"]
+    _normalize_start_percent_pair(data)
+    if str(data.get("spacing_mode", getattr(params, "spacing_mode", "")) or "") == "distance":
+        data["spacing_density_compensation"] = True
     if "spacing_density_compensation" in data:
         data["spacing_density_compensation"] = _density_compensation_enabled(data["spacing_density_compensation"])
     for field in EFFECT_PARAM_FIELDS:
@@ -294,8 +341,10 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     brush_size_mm: FloatProperty(name="線幅", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_enabled: BoolProperty(name="線の長さ 乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_amount: FloatProperty(name="長さ乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="始点乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_amount: FloatProperty(name="終点乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -315,6 +364,10 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=50.0, min=0.0, max=100.0, update=_on_in_start_changed)  # type: ignore[valid-type]
+    out_start_percent: FloatProperty(name="抜き始点 (%)", description="線の終点側から、抜きが始まる長さを指定します", default=50.0, min=0.0, max=100.0, update=_on_out_start_changed)  # type: ignore[valid-type]
+    in_easing_curve: bpy.props.StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
+    out_easing_curve: bpy.props.StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
     inout_range_mode: EnumProperty(name="範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
     in_range_percent: FloatProperty(name="入りの範囲 (%)", description="始点からこの割合の長さを入りの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_range_percent: FloatProperty(name="抜きの範囲 (%)", description="終点からこの割合の長さを抜きの変化区間にする", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]

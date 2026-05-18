@@ -185,7 +185,8 @@ def main() -> None:
         text_full_id = text_real_object.text_object_bname_id(page, text)
         assert text_obj is not None, "text real object was not created"
         assert text_obj.type == "MESH", f"text should be a mesh plane, got {text_obj.type}"
-        assert list(text_obj.users_collection) == [text_coll], "text object is not in テキスト collection"
+        assert text_coll.name == "text"
+        assert list(text_obj.users_collection) == [text_coll], "text object is not in text collection"
         image = _image_from_text_object(text_obj)
         assert image is not None, "text object has no texture image"
         assert image.size[0] > 0 and image.size[1] > 0

@@ -275,6 +275,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         om.ensure_outside_collection(scene)
         # 全テキストレイヤー集約用 Collection (B-Name 直下、最上位 z_index)
         om.ensure_text_collection(scene)
+        om.ensure_work_info_collection(scene)
         for page in getattr(work, "pages", []):
             page_id = str(getattr(page, "id", "") or "")
             if not page_id:
@@ -287,6 +288,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                     continue
                 coma_title = str(getattr(coma, "title", "") or coma_id)
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
+        om.order_root_collections(scene)
         for folder in getattr(work, "layer_folders", []):
             folder_id = str(getattr(folder, "id", "") or "")
             if not folder_id:

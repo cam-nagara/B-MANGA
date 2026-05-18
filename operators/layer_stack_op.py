@@ -1342,11 +1342,13 @@ class BNAME_OT_layer_stack_detail(Operator):
 
     def execute(self, context):
         self._sync_coma_detail_curve(context)
+        self._sync_effect_detail_curve(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"FINISHED"}
 
     def check(self, context):
         self._sync_coma_detail_curve(context)
+        self._sync_effect_detail_curve(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 
@@ -1402,6 +1404,25 @@ class BNAME_OT_layer_stack_detail(Operator):
             from ..utils import coma_blur_curve
 
             coma_blur_curve.sync_active_coma_curve_to_border(coma)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _sync_effect_detail_curve(self, context) -> None:
+        stack = getattr(context.scene, "bname_layer_stack", None)
+        if stack is None:
+            return
+        item = self._resolve_item(stack)
+        if item is None or item.kind not in {"effect", "effect_legacy"}:
+            return
+        params = getattr(context.scene, "bname_effect_line_params", None)
+        if params is None:
+            return
+        try:
+            from ..operators import effect_line_op
+            from ..utils import effect_inout_curve
+
+            if effect_inout_curve.sync_ui_nodes_to_params(params):
+                effect_line_op.on_effect_params_changed(context, params)
         except Exception:  # noqa: BLE001
             pass
 

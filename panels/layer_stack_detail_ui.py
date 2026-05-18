@@ -195,9 +195,6 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         flash_box.label(text="ウニフラッシュ")
         flash_box.prop(sp, "uni_flash_spacing_mm")
         flash_box.prop(sp, "uni_flash_fill_scale_percent")
-        row = flash_box.row(align=True)
-        row.prop(sp, "uni_flash_line_density_compensation")
-        row.prop(sp, "uni_flash_fill_density_compensation")
         flash_box.prop(sp, "uni_flash_max_line_count")
     if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
@@ -390,10 +387,15 @@ def _draw_effect_line_settings(box, params) -> None:
     sub.enabled = params.brush_jitter_enabled
     sub.prop(params, "brush_jitter_amount", text="")
     row = line_box.row(align=True)
-    row.prop(params, "length_jitter_enabled", text="長さ乱れ")
+    row.prop(params, "length_jitter_enabled", text="始点乱れ")
     sub = row.row()
     sub.enabled = params.length_jitter_enabled
     sub.prop(params, "length_jitter_amount", text="")
+    row = line_box.row(align=True)
+    row.prop(params, "end_length_jitter_enabled", text="終点乱れ")
+    sub = row.row()
+    sub.enabled = params.end_length_jitter_enabled
+    sub.prop(params, "end_length_jitter_amount", text="")
 
 
 def _draw_effect_interval_settings(box, params) -> None:
@@ -404,8 +406,6 @@ def _draw_effect_interval_settings(box, params) -> None:
         interval_box.prop(params, "spacing_angle_deg")
     else:
         interval_box.prop(params, "spacing_distance_mm")
-        if params.effect_type != "speed":
-            interval_box.prop(params, "spacing_density_compensation")
     row = interval_box.row(align=True)
     row.prop(params, "spacing_jitter_enabled", text="乱れ")
     sub = row.row()
@@ -437,6 +437,22 @@ def _draw_effect_tail_settings(box, params) -> None:
     row = inout_box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")
+    row = inout_box.row(align=True)
+    row.prop(params, "in_start_percent")
+    row.prop(params, "out_start_percent")
+    try:
+        from ..utils import effect_inout_curve
+
+        effect_inout_curve.sync_ui_nodes_to_params(params)
+        in_node, out_node = effect_inout_curve.ensure_ui_nodes(params)
+    except Exception:  # noqa: BLE001
+        in_node = out_node = None
+    if in_node is not None:
+        inout_box.label(text="入りカーブ")
+        inout_box.template_curve_mapping(in_node, "mapping", type="NONE")
+    if out_node is not None:
+        inout_box.label(text="抜きカーブ")
+        inout_box.template_curve_mapping(out_node, "mapping", type="NONE")
 
     color_box = box.box()
     color_box.label(text="色")

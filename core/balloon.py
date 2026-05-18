@@ -276,6 +276,8 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     width_mm: FloatProperty(name="幅", default=40.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     height_mm: FloatProperty(name="高さ", default=20.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rotation_deg: FloatProperty(name="回転", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    center_offset_x_mm: FloatProperty(name="中心点 X", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    center_offset_y_mm: FloatProperty(name="中心点 Y", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 角丸 (全形状共通オプション、計画書 3.1.4.2a)
     rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

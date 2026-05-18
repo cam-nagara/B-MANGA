@@ -509,6 +509,12 @@ def _params_for_write(context, obj, layer, params_override=None):
     scene_params = getattr(context.scene, "bname_effect_line_params", None)
     if scene_params is None:
         return None
+    try:
+        from ..utils import effect_inout_curve
+
+        effect_inout_curve.sync_ui_nodes_to_params(scene_params)
+    except Exception:  # noqa: BLE001
+        pass
     data = _layer_params_data(obj, layer)
     if data:
         if "opacity" not in data and hasattr(layer, "opacity"):
@@ -832,6 +838,16 @@ def _create_effect_layer(
     _select_effect_layer(context, obj, layer)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     return obj, layer
+
+
+def reset_effect_center_to_bounds(context) -> bool:
+    obj, layer, bounds = active_effect_layer_bounds(context)
+    if obj is None or layer is None or bounds is None:
+        return False
+    _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=_bounds_center(bounds))
+    _select_effect_layer(context, obj, layer)
+    layer_stack_utils.sync_layer_stack_after_data_change(context)
+    return True
 
 
 def _delete_effect_layer(context, obj, layer) -> None:
@@ -1172,6 +1188,14 @@ class BNAME_OT_effect_line_tool(Operator):
                     )
         except Exception:  # noqa: BLE001
             pass
+        if ":" in str(parent_key_for_create or ""):
+            params = getattr(context.scene, "bname_effect_line_params", None)
+            if params is not None and str(getattr(params, "effect_type", "") or "") != "speed":
+                _set_scene_params_syncing(context.scene, True)
+                try:
+                    params.start_to_coma_frame = True
+                finally:
+                    _set_scene_params_syncing(context.scene, False)
         obj, layer = _create_effect_layer(
             context,
             (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
@@ -1329,7 +1353,15 @@ class BNAME_OT_effect_line_tool(Operator):
             return _bounds_center(bounds)
         if action in {"move", "center"}:
             return self._drag_orig_center_x + dx, self._drag_orig_center_y + dy
-        return self._drag_orig_center_x, self._drag_orig_center_y
+        orig_bounds_center = (
+            self._drag_orig_x + self._drag_orig_w * 0.5,
+            self._drag_orig_y + self._drag_orig_h * 0.5,
+        )
+        new_bounds_center = _bounds_center(bounds)
+        return (
+            self._drag_orig_center_x + new_bounds_center[0] - orig_bounds_center[0],
+            self._drag_orig_center_y + new_bounds_center[1] - orig_bounds_center[1],
+        )
 
     def _finish_drag(self, context) -> None:
         obj, layer = self._drag_target(context)

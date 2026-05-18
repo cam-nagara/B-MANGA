@@ -747,6 +747,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "widthMm": round(entry.width_mm, 3),
         "heightMm": round(entry.height_mm, 3),
         "rotationDeg": round(entry.rotation_deg, 3),
+        "centerOffsetXMm": round(float(getattr(entry, "center_offset_x_mm", 0.0)), 3),
+        "centerOffsetYMm": round(float(getattr(entry, "center_offset_y_mm", 0.0)), 3),
         "roundedCornerEnabled": bool(entry.rounded_corner_enabled),
         "roundedCornerRadiusMm": round(entry.rounded_corner_radius_mm, 3),
         "lineStyle": entry.line_style,
@@ -819,8 +821,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "spikeJitter": round(entry.shape_params.spike_jitter, 3),
             "uniFlashSpacingMm": round(entry.shape_params.uni_flash_spacing_mm, 3),
             "uniFlashFillScalePercent": round(entry.shape_params.uni_flash_fill_scale_percent, 3),
-            "uniFlashLineDensityCompensation": bool(entry.shape_params.uni_flash_line_density_compensation),
-            "uniFlashFillDensityCompensation": bool(entry.shape_params.uni_flash_fill_density_compensation),
+            "uniFlashLineDensityCompensation": True,
+            "uniFlashFillDensityCompensation": True,
             "uniFlashMaxLineCount": int(entry.shape_params.uni_flash_max_line_count),
         },
         "textId": entry.text_id,
@@ -838,6 +840,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.width_mm = float(data.get("widthMm", 40.0))
     entry.height_mm = float(data.get("heightMm", 20.0))
     entry.rotation_deg = float(data.get("rotationDeg", 0.0))
+    entry.center_offset_x_mm = float(data.get("centerOffsetXMm", 0.0))
+    entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
     entry.line_style = data.get("lineStyle", "solid")
@@ -924,12 +928,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.shape_params.spike_jitter = float(sp.get("spikeJitter", 0.2))
     entry.shape_params.uni_flash_spacing_mm = float(sp.get("uniFlashSpacingMm", 0.4))
     entry.shape_params.uni_flash_fill_scale_percent = float(sp.get("uniFlashFillScalePercent", 70.0))
-    entry.shape_params.uni_flash_line_density_compensation = bool(
-        sp.get("uniFlashLineDensityCompensation", True)
-    )
-    entry.shape_params.uni_flash_fill_density_compensation = bool(
-        sp.get("uniFlashFillDensityCompensation", True)
-    )
+    entry.shape_params.uni_flash_line_density_compensation = True
+    entry.shape_params.uni_flash_fill_density_compensation = True
     entry.shape_params.uni_flash_max_line_count = int(sp.get("uniFlashMaxLineCount", 1000))
     entry.text_id = data.get("textId", "")
 

@@ -149,6 +149,16 @@ def selection_command_items(context) -> list[dict]:
             "enabled": has_item and selected_linkable_count >= 2,
         },
     ]
+    if normalized_kind in {"balloon", "effect"}:
+        items.insert(
+            5,
+            {
+                "label": "中心点を中心へ戻す",
+                "operator": "bname.reset_center_point",
+                "icon": "PIVOT_BOUNDBOX",
+                "enabled": has_item,
+            },
+        )
     if normalized_kind == "balloon":
         items.extend([
             {

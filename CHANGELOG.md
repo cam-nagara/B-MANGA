@@ -3,6 +3,47 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-18 — v0.7.0 効果線・コマ枠拡張・アウトライナー構成を更新
+
+### 症状
+- 距離指定の集中線で「密度補正」を切れてしまい、線間隔が場所によって荒れやすかった。
+- コマ内で効果線をドラッグ作成しても、「始点をコマ枠に設定」が自動で有効にならなかった。
+- 効果線の「長さ乱れ」が始点側だけを扱う名前になっておらず、終点側の乱れを別指定できなかった。
+- 効果線やフキダシの中心点を動かしたあと、ハンドルでサイズ変更すると中心点が枠に追従しなかった。
+- コマ枠の三角ハンドル拡張が固定 1mm 基準で、太い枠線では仕上がり枠の外へ確実に出ない場合があった。
+- アウトライナー上で `outside`、テキスト、作品情報の配置が整理されておらず、基本枠由来のコマ名にも「基本枠」が残りやすかった。
+
+### 原因
+- 距離指定の集中線でも、旧来の密度補正チェック値を保存値として参照していた。
+- 効果線作成時に、作成位置がコマ内かどうかを初期設定へ反映していなかった。
+- 入り抜き、中心点、始点・終点乱れの情報が、詳細設定・保存・再生成の各経路で不足していた。
+- 三角ハンドル拡張の外側候補が、仕上がり枠と枠線幅ではなく固定距離で計算されていた。
+- アウトライナーの主要コレクション順と、作品情報テキストの格納先が専用化されていなかった。
+
+### 修正
+- 距離指定では密度補正を常時有効にし、「密度補正」チェックボックスを詳細設定から削除した。
+- コマ内で効果線をドラッグ作成した場合、「始点をコマ枠に設定」を自動で有効にした。
+- 「長さ乱れ」を「始点乱れ」へ改名し、「終点乱れ」を追加した。
+- 効果線の入り抜きに「入り始点」「抜き始点」とカーブ編集を追加した。
+- 効果線とフキダシの中心点ドラッグ、サイズ変更時の中心点追従、右クリックの「中心点を中心へ戻す」を追加した。
+- コマ枠の三角ハンドル拡張を、仕上がり枠または隣接コマ辺から枠線幅分外側へ出すようにした。
+- アウトライナーで `text`、`outside`、ページ、`workinfo` の順に主要コレクションを整えた。
+- 作品情報関連のテキストオブジェクトを `workinfo` コレクションへまとめるようにした。
+- 「テキスト」コレクションを `text` に改名し、旧コレクションも再利用して改名するようにした。
+- レイヤーリスト上のコマ名から、基本枠由来の不要な「基本枠」表記を除去した。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_effect_line_frame_spacing_check.py`: 距離指定の密度補正常時有効、始点乱れ・終点乱れ、中心点ヒット、コマ枠始点、保存互換を確認。
+- `test/blender_coma_edge_handle_extend_check.py`: 三角ハンドル拡張が仕上がり枠と隣接コマ辺から枠線幅分外側へ出ることを確認。
+- `test/blender_outliner_collection_order_check.py`: `text`、`outside`、`p0001` の順、`workinfo`、レイヤーリストのコマ名を確認。
+- `test/blender_work_info_text_object_check.py`: 作品情報テキストが `workinfo` コレクションへまとまることを確認。
+- `test/blender_balloon_uni_flash_check.py`: ウニフラッシュの密度補正常時有効、保存復元、表示、書き出しを確認。
+- `test/blender_context_menu_commands_check.py` / `test/blender_ui_micro_behavior_matrix_check.py`: 右クリックメニューと中心点リセットを確認。
+- `test/blender_layer_stack_ui_behavior_check.py` / `test/blender_real_object_safety_check.py` / `test/blender_object_tool_selection_check.py`: レイヤーリスト、実体表示、オブジェクトツール選択の既存挙動を確認。
+- `test/blender_border_preset_coma_tool_check.py` / `test/blender_bname_partial_completion_check.py` / `test/blender_page_export_range_scale_check.py` / `test/blender_tool_behavior_visual_audit.py`: 代表E2Eと表示監査を確認。
+- `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
+- 全スクリプト278ファイル・81,428行を走査した。
+
 ## 2026-05-18 — v0.6.0 フキダシ形状・しっぽ編集・塗り設定を拡張
 
 ### 症状

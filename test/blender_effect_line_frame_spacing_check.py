@@ -54,6 +54,12 @@ def _base_params() -> SimpleNamespace:
         out_percent=0.0,
         length_jitter_enabled=False,
         length_jitter_amount=0.2,
+        end_length_jitter_enabled=False,
+        end_length_jitter_amount=0.2,
+        in_start_percent=50.0,
+        out_start_percent=50.0,
+        in_easing_curve="0.0000,0.0000;1.0000,1.0000",
+        out_easing_curve="0.0000,0.0000;1.0000,1.0000",
     )
 
 
@@ -220,7 +226,25 @@ def _assert_length_jitter_shortens_lines(
         _assert_points_collinear_to_center(start, end, center, label=f"jittered focus line {index}")
         _assert_zero_out_radius(stroke, label=f"jittered focus line {index}")
     if shortened <= 0:
-        raise AssertionError("length jitter should shorten at least one focus line")
+        raise AssertionError("end jitter should shorten at least one focus line")
+
+
+def _assert_start_jitter_moves_starts_inward(strokes, m_to_mm, center, outline) -> None:
+    moved = 0
+    for index, stroke in enumerate(strokes):
+        points = _stroke_points_mm(stroke, m_to_mm)
+        if len(points) != 2:
+            raise AssertionError(f"start jittered focus line should be one straight segment: index={index}")
+        start, end = points
+        _assert_points_collinear_to_center(start, end, center, label=f"start jittered focus line {index}")
+        distance = min(
+            _point_segment_distance(start, outline[i], outline[(i + 1) % len(outline)])
+            for i in range(len(outline))
+        )
+        if distance > 0.05:
+            moved += 1
+    if moved <= 0:
+        raise AssertionError("start jitter should move at least one start point inward")
 
 
 def main() -> None:
@@ -272,7 +296,12 @@ def main() -> None:
 
         effect_line.effect_params_from_dict(
             params,
-            {"schema_version": 5, "effect_type": "focus", "spacing_density_compensation": "none"},
+            {"schema_version": 5, "effect_type": "focus", "spacing_mode": "distance", "spacing_density_compensation": "none"},
+        )
+        assert params.spacing_density_compensation is True
+        effect_line.effect_params_from_dict(
+            params,
+            {"schema_version": 5, "effect_type": "focus", "spacing_mode": "angle", "spacing_density_compensation": "none"},
         )
         assert params.spacing_density_compensation is False
         effect_line.effect_params_from_dict(
@@ -315,21 +344,18 @@ def main() -> None:
                 f"smaller line spacing should increase focus line count: normal={len(frame_strokes)}, dense={len(dense_strokes)}"
             )
 
-        no_density_params = SimpleNamespace(**vars(frame_params))
-        no_density_params.spacing_density_compensation = False
-        no_density_strokes = effect_line_gen.generate_focus_strokes(
-            no_density_params,
+        forced_density_params = SimpleNamespace(**vars(frame_params))
+        forced_density_params.spacing_density_compensation = False
+        forced_density_strokes = effect_line_gen.generate_focus_strokes(
+            forced_density_params,
             center_xy_mm=center,
             radius_x_mm=20.0,
             radius_y_mm=7.0,
             seed=0,
             start_outline_mm=outline,
         )
-        _assert_simple_radial_strokes(no_density_strokes, m_to_mm, center, outline=outline, end_radius_xy=(20.0, 7.0))
-        if len(no_density_strokes) <= 0:
-            raise AssertionError(
-                f"density toggle off should keep simple focus lines: off={len(no_density_strokes)}"
-            )
+        _assert_simple_radial_strokes(forced_density_strokes, m_to_mm, center, outline=outline, end_radius_xy=(20.0, 7.0))
+        _assert_perpendicular_spacing(forced_density_strokes, m_to_mm, center, 1.0)
 
         ellipse_params = _base_params()
         ellipse_params.spacing_distance_mm = 2.0
@@ -386,7 +412,20 @@ def main() -> None:
             seed=12,
             start_outline_mm=outline,
         )
-        _assert_length_jitter_shortens_lines(length_jitter_strokes, m_to_mm, center, (20.0, 7.0))
+        _assert_start_jitter_moves_starts_inward(length_jitter_strokes, m_to_mm, center, outline)
+
+        end_jitter_params = SimpleNamespace(**vars(frame_params))
+        end_jitter_params.end_length_jitter_enabled = True
+        end_jitter_params.end_length_jitter_amount = 0.45
+        end_jitter_strokes = effect_line_gen.generate_focus_strokes(
+            end_jitter_params,
+            center_xy_mm=center,
+            radius_x_mm=20.0,
+            radius_y_mm=7.0,
+            seed=12,
+            start_outline_mm=outline,
+        )
+        _assert_length_jitter_shortens_lines(end_jitter_strokes, m_to_mm, center, (20.0, 7.0))
 
         bundle_params = _base_params()
         bundle_params.bundle_enabled = True

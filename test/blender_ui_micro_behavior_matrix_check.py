@@ -404,7 +404,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
         "page": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
         "coma": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
         "gp": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
-        "effect": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": True, "選択レイヤーをリンク": False, "削除": True},
+        "effect": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": True, "中心点を中心へ戻す": True, "選択レイヤーをリンク": False, "削除": True},
         "raster": {"詳細設定": True, "コピー": True, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
         "image": {"詳細設定": True, "コピー": False, "貼り付け": False, "複製": True, "リンク複製": False, "選択レイヤーをリンク": False, "削除": True},
         "balloon": {
@@ -413,6 +413,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
             "貼り付け": False,
             "複製": True,
             "リンク複製": False,
+            "中心点を中心へ戻す": True,
             "選択レイヤーをリンク": False,
             "しっぽをコピー": False,
             "しっぽを貼り付け": False,

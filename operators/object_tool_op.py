@@ -897,6 +897,10 @@ class BNAME_OT_object_tool(Operator):
                     "page_id": page_id,
                     "item_id": item_id,
                     "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
+                    "center_offset": (
+                        float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+                        float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+                    ),
                 })
             elif kind == "text":
                 _page_index, _page, _idx, entry = _find_text_by_key(work, page_id, item_id)
@@ -1081,6 +1085,13 @@ class BNAME_OT_object_tool(Operator):
                 )
                 if entry is None or page is None:
                     continue
+                if self._drag_action == "center":
+                    cx, cy = snapshot.get("center_offset", (0.0, 0.0))
+                    if hasattr(entry, "center_offset_x_mm"):
+                        entry.center_offset_x_mm = float(cx) + dx
+                    if hasattr(entry, "center_offset_y_mm"):
+                        entry.center_offset_y_mm = float(cy) + dy
+                    continue
                 nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 balloon_op._set_balloon_rect(page, entry, nx, ny, nw, nh)
             elif kind == "text":
@@ -1105,7 +1116,10 @@ class BNAME_OT_object_tool(Operator):
                 if self._drag_action in {"move", "center"}:
                     center = (float(cx) + dx, float(cy) + dy)
                 else:
-                    center = (float(cx), float(cy))
+                    center = (
+                        float(cx) + (float(nx) + float(nw) * 0.5) - (float(x) + float(w) * 0.5),
+                        float(cy) + (float(ny) + float(nh) * 0.5) - (float(y) + float(h) * 0.5),
+                    )
                 effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh), center_xy_mm=center)
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, snapshot["item_id"])

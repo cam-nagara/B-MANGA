@@ -71,6 +71,10 @@ def main() -> None:
         "out_range_percent",
         "in_range_mm",
         "out_range_mm",
+        "in_start_percent",
+        "out_start_percent",
+        "in_easing_curve",
+        "out_easing_curve",
     ):
         if need not in props:
             failures.append(f"効果線パラメータ {need} が無い")
@@ -126,6 +130,26 @@ def main() -> None:
         failures.append(f"長さ指定 d_in 不一致: {di} (期待 0.02)")
     if not (abs(pl(0.0)) < 1e-6 and abs(pl(0.02) - 1.0) < 1e-6 and abs(pl(L) - 1.0) < 1e-6):
         failures.append(f"長さ指定プロファイル不一致: {pl(0.0)},{pl(0.02)},{pl(L)}")
+
+    p_new = SimpleNamespace(
+        inout_apply="brush_size",
+        in_percent=0.0,
+        out_percent=0.0,
+        inout_range_mode="percent",
+        in_range_percent=100.0,
+        out_range_percent=100.0,
+        in_range_mm=10.0,
+        out_range_mm=10.0,
+        in_start_percent=50.0,
+        out_start_percent=30.0,
+        in_easing_curve="0.0000,0.0000;0.5000,0.2500;1.0000,1.0000",
+        out_easing_curve="0.0000,0.0000;0.5000,0.2500;1.0000,1.0000",
+    )
+    pn, dni, dno = elg._inout_profile(p_new, L)
+    if abs(dni - L * 0.5) > 1e-6 or abs(dno - L * 0.3) > 1e-6:
+        failures.append(f"入り始点/抜き始点の距離不一致: {dni},{dno}")
+    if not (abs(pn(0.0)) < 1e-6 and abs(pn(L * 0.5) - 1.0) < 1e-6 and abs(pn(L * 0.7) - 1.0) < 1e-6 and abs(pn(L)) < 1e-6):
+        failures.append(f"新入り抜きプロファイル不一致: {pn(0.0)},{pn(L*0.5)},{pn(L*0.7)},{pn(L)}")
 
     # 4d. _apply_inout_profile が 2点線にブレークポイントを挿入する
     from bname_dev.operators.effect_line_gen import EffectLineStroke

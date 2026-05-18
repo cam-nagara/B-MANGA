@@ -120,7 +120,10 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert layer_stack_utils.select_stack_index(bpy.context, index)
     items = context_menu.selection_command_items(bpy.context)
     labels = [str(item.get("label", "")) for item in items]
-    expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製", "選択レイヤーをリンク"]
+    expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
+    if kind in {"balloon", "effect"}:
+        expected.append("中心点を中心へ戻す")
+    expected.append("選択レイヤーをリンク")
     if kind == "balloon":
         expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
     expected.append("削除")
@@ -136,6 +139,8 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert enabled["複製"]
     assert enabled["削除"]
     assert enabled["リンク複製"] is (kind == "effect"), (kind, enabled)
+    if kind in {"balloon", "effect"}:
+        assert enabled["中心点を中心へ戻す"] is True, (kind, enabled)
     assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
     if kind == "balloon":
         assert enabled["しっぽをコピー"] is False, enabled

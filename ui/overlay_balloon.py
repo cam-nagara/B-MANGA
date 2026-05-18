@@ -15,6 +15,8 @@ DrawLineSegments = Callable[..., None]
 EntryVisiblePredicate = Callable[[object], bool]
 ComaPolygonResolver = Callable[[object], list[tuple[float, float]] | None]
 _BALLOON_HANDLE_SIZE_MM = 2.0
+_CENTER_CROSS_SIZE_MM = 8.0
+_CENTER_CROSS_WIDTH_MM = 0.6
 
 
 def _clip_polygon_sutherland_hodgman(
@@ -270,12 +272,40 @@ def draw_balloons(
         )
         if selected:
             draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
+            _draw_center_cross(
+                (
+                    rect.x + rect.width * 0.5 + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+                    rect.y + rect.height * 0.5 + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+                ),
+                draw_polygon_fill=draw_polygon_fill,
+                draw_rect_outline=draw_rect_outline,
+            )
             for handle in _handle_rects(rect):
                 draw_polygon_fill(
                     [(handle.x, handle.y), (handle.x2, handle.y), (handle.x2, handle.y2), (handle.x, handle.y2)],
                     viewport_colors.HANDLE_FILL,
                 )
                 draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
+
+
+def _draw_center_cross(
+    center_xy: tuple[float, float],
+    *,
+    draw_polygon_fill: DrawPolygonFill,
+    draw_rect_outline: DrawRectOutline,
+) -> None:
+    cx, cy = center_xy
+    half = _CENTER_CROSS_SIZE_MM * 0.5
+    bar = max(0.2, _CENTER_CROSS_WIDTH_MM)
+    for marker in (
+        Rect(cx - half, cy - bar * 0.5, _CENTER_CROSS_SIZE_MM, bar),
+        Rect(cx - bar * 0.5, cy - half, bar, _CENTER_CROSS_SIZE_MM),
+    ):
+        draw_polygon_fill(
+            [(marker.x, marker.y), (marker.x2, marker.y), (marker.x2, marker.y2), (marker.x, marker.y2)],
+            viewport_colors.SELECTION_STRONG,
+        )
+        draw_rect_outline(marker, viewport_colors.HANDLE_OUTLINE, width_mm=0.12)
 
 
 def _outline_rect(rect: Rect) -> list[tuple[float, float]]:

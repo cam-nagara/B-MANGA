@@ -160,9 +160,6 @@ class BNAME_PT_balloons(Panel):
             box.label(text="ウニフラッシュ")
             box.prop(sp, "uni_flash_spacing_mm")
             box.prop(sp, "uni_flash_fill_scale_percent")
-            row = box.row(align=True)
-            row.prop(sp, "uni_flash_line_density_compensation")
-            row.prop(sp, "uni_flash_fill_density_compensation")
             box.prop(sp, "uni_flash_max_line_count")
         if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
             box = layout.box()

@@ -40,7 +40,13 @@ OUTSIDE_BNAME_ID = "__outside__"
 # テキスト集約用 Collection の安定 ID と既定名。 全テキストレイヤーは
 # parent_kind / parent_key に関わらずこの Collection 直下に集約する (ユーザー仕様)。
 TEXT_COLLECTION_BNAME_ID = "__texts__"
-TEXT_COLLECTION_NAME = "テキスト"
+TEXT_COLLECTION_NAME = "text"
+LEGACY_TEXT_COLLECTION_NAMES = ("テキスト",)
+
+# 作品情報集約用 Collection。ページ番号や作品名などの実体テキストは
+# ページ Collection ではなくここへまとめる。
+WORK_INFO_COLLECTION_BNAME_ID = "__workinfo__"
+WORK_INFO_COLLECTION_NAME = "workinfo"
 
 # ページ / コマ Collection の color_tag (Blender 標準の COLOR_01..08)
 # 紫 = COLOR_06、水色 (青) = COLOR_05
@@ -98,6 +104,65 @@ def _move_child_collection_to_top(parent: bpy.types.Collection, child: bpy.types
         pass
 
 
+def _set_child_collection_order(
+    parent: bpy.types.Collection,
+    ordered_children: list[bpy.types.Collection],
+) -> None:
+    """parent.children を ordered_children の順に寄せ、残りは現順を維持する."""
+    current = list(parent.children)
+    if not current:
+        return
+    desired: list[bpy.types.Collection] = []
+    seen: set[int] = set()
+    for coll in ordered_children:
+        if coll in current and id(coll) not in seen:
+            desired.append(coll)
+            seen.add(id(coll))
+    desired.extend(coll for coll in current if id(coll) not in seen)
+    if desired == current:
+        return
+    try:
+        for target_index, coll in enumerate(desired):
+            snapshot = list(parent.children)
+            try:
+                current_index = snapshot.index(coll)
+            except ValueError:
+                continue
+            if current_index != target_index:
+                parent.children.move(current_index, target_index)
+        if list(parent.children) == desired:
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        for coll in current:
+            parent.children.unlink(coll)
+        for coll in desired:
+            parent.children.link(coll)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def order_root_collections(scene: bpy.types.Scene) -> None:
+    """B-Name 直下の主要 Collection を UI で読みやすい順に整える."""
+    root = ensure_root_collection(scene)
+    text = on.find_collection_by_bname_id(TEXT_COLLECTION_BNAME_ID, kind="text_root")
+    outside = on.find_collection_by_bname_id(OUTSIDE_BNAME_ID, kind="outside")
+    workinfo = on.find_collection_by_bname_id(WORK_INFO_COLLECTION_BNAME_ID, kind="workinfo_root")
+    pages = sorted(
+        [
+            coll for coll in root.children
+            if on.get_kind(coll) == "page" and on.get_bname_id(coll)
+        ],
+        key=lambda coll: on.page_id_to_z_number(on.get_bname_id(coll)),
+    )
+    ordered = [coll for coll in (text, outside) if coll is not None]
+    ordered.extend(pages)
+    if workinfo is not None:
+        ordered.append(workinfo)
+    _set_child_collection_order(root, ordered)
+
+
 ROOT_BNAME_ID = "__root__"
 
 
@@ -147,6 +212,7 @@ def ensure_outside_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     _normalize_collection_parent(existing, root, scene)
     # シンプル名: "outside" (alpha sort で o は p の前に来る)
     _set_collection_name_safe(existing, "outside")
+    order_root_collections(scene)
     return existing
 
 
@@ -162,6 +228,11 @@ def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     if coll is None:
         coll = bpy.data.collections.get(TEXT_COLLECTION_NAME)
         if coll is None:
+            for legacy_name in LEGACY_TEXT_COLLECTION_NAMES:
+                coll = bpy.data.collections.get(legacy_name)
+                if coll is not None:
+                    break
+        if coll is None:
             coll = bpy.data.collections.new(TEXT_COLLECTION_NAME)
     on.stamp_identity(
         coll,
@@ -174,7 +245,28 @@ def ensure_text_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
     )
     _normalize_collection_parent(coll, root, scene)
     _set_collection_name_safe(coll, TEXT_COLLECTION_NAME)
-    _move_child_collection_to_top(root, coll)
+    order_root_collections(scene)
+    return coll
+
+
+def ensure_work_info_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
+    """作品情報の実体オブジェクトをまとめる Collection を確保する."""
+    root = ensure_root_collection(scene)
+    coll = on.find_collection_by_bname_id(WORK_INFO_COLLECTION_BNAME_ID, kind="workinfo_root")
+    if coll is None:
+        coll = bpy.data.collections.get(WORK_INFO_COLLECTION_NAME)
+        if coll is None:
+            coll = bpy.data.collections.new(WORK_INFO_COLLECTION_NAME)
+    on.stamp_identity(
+        coll,
+        kind="workinfo_root",
+        bname_id=WORK_INFO_COLLECTION_BNAME_ID,
+        title=WORK_INFO_COLLECTION_NAME,
+        z_index=99998,
+    )
+    _normalize_collection_parent(coll, root, scene)
+    _set_collection_name_safe(coll, WORK_INFO_COLLECTION_NAME)
+    order_root_collections(scene)
     return coll
 
 
@@ -203,6 +295,7 @@ def ensure_page_collection(
     # シンプル名 (page_id 直接) + 紫カラータグ
     _set_collection_name_safe(coll, page_id)
     _set_collection_color_tag(coll, PAGE_COLOR_TAG)
+    order_root_collections(scene)
     return coll
 
 

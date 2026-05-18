@@ -38,7 +38,7 @@ def main() -> None:
     mod = _load_addon()
     try:
         from bname_dev_work_info_text.ui import overlay
-        from bname_dev_work_info_text.utils import page_grid, work_info_text_object
+        from bname_dev_work_info_text.utils import outliner_model, page_grid, work_info_text_object
         from bname_dev_work_info_text.utils.geom import m_to_mm, q_to_mm
 
         assert not hasattr(overlay, "_draw_work_info_texts"), "作品情報の古いオーバーレイ描画が残っています"
@@ -67,8 +67,13 @@ def main() -> None:
 
         page_grid.apply_page_collection_transforms(bpy.context, work)
         objs = _work_info_objects(work_info_text_object)
+        workinfo_coll = outliner_model.ensure_work_info_collection(scene)
         assert len(objs) == 6, f"作品情報テキスト数が不正です: {len(objs)}"
         assert all(obj.type == "FONT" for obj in objs), "作品情報がテキストオブジェクトではありません"
+        assert workinfo_coll.name == "workinfo"
+        for obj in objs:
+            if list(obj.users_collection) != [workinfo_coll]:
+                raise AssertionError(f"作品情報が workinfo コレクション外にあります: {obj.name}")
         bodies = sorted(str(obj.data.body) for obj in objs)
         assert "作品テスト" in bodies
         assert "作者" in bodies

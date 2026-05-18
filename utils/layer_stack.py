@@ -351,6 +351,12 @@ def _retarget_root_subtree_to_outside(targets: list[LayerTarget]) -> list[LayerT
     return out
 
 
+def _coma_label(panel, fallback: str) -> str:
+    label = str(getattr(panel, "title", "") or "").replace("基本枠", "").strip()
+    label = label.strip(" -_　")
+    return label or str(fallback or "")
+
+
 def _collect_outside_layer_targets(
     work,
     scene,
@@ -369,7 +375,7 @@ def _collect_outside_layer_targets(
         stem = str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
         if not stem:
             continue
-        label = str(getattr(panel, "title", "") or stem)
+        label = _coma_label(panel, stem)
         targets.append(LayerTarget(COMA_KIND, outside_child_key(stem), label, OUTSIDE_STACK_KEY, 1))
 
     raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
@@ -713,7 +719,7 @@ def collect_targets(context) -> list[LayerTarget]:
             for panel in panels:
                 key = coma_stack_key(page, panel)
                 panels_by_key[key] = panel
-                panel_label = getattr(panel, "title", "") or getattr(panel, "coma_id", "") or key
+                panel_label = _coma_label(panel, getattr(panel, "coma_id", "") or key)
                 targets.append(LayerTarget(COMA_KIND, key, panel_label, page_key, 1))
                 targets.extend(gp_targets_by_parent.get(key, []))
                 targets.extend(effect_targets_by_parent.get(key, []))

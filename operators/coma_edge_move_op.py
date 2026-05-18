@@ -379,6 +379,14 @@ def _gap_for_edge(work, panel, edge: tuple[tuple[float, float], tuple[float, flo
     return gap_h
 
 
+def _border_width_for_panel(panel) -> float:
+    border = getattr(panel, "border", None)
+    try:
+        return max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
 def _find_adjacent_edges(
     work, page_idx: int, coma_idx: int, edge_idx: int,
 ) -> list[tuple[int, int, int]]:
@@ -1511,11 +1519,11 @@ class BNAME_OT_coma_edge_move(Operator):
         """選択辺を direction (1=正側、2=負側) 方向に拡張.
 
         スナップ仕様:
-        - 拡張先候補は同ページの他コマ辺 / 基本枠 / 裁ち落とし枠
+        - 拡張先候補は同ページの他コマ辺 / 基本枠 / 仕上がり枠外
         - **辺の角度は維持したまま**、平行移動で候補 line に重ねる
         - 共有頂点は prev/next 辺の line と新 line の交点で補正 (= 隣接辺の角度維持)
         - スナップ位置のオフセット:
-          - bleed: 1mm 外側
+          - 仕上がり枠外: 枠線の線幅分外側
           - 他コマ辺: ピッタリ重ねる (gap=0)
           - 基本枠: ピッタリ
         - **特殊ケース** (ピッタリ重なり状態 → 離れる方向▲): 法線方向と無関係に
@@ -1544,27 +1552,28 @@ class BNAME_OT_coma_edge_move(Operator):
         # direction 1: 法線正方向に拡張、direction 2: 法線負方向に拡張
         sign = 1.0 if direction == 1 else -1.0
 
-        # 拡張先候補: 裁ち落とし枠 (bleed_rect) / 基本枠 / 他 panel の辺
-        from ..utils.geom import bleed_rect, inner_frame_rect
+        # 拡張先候補: 仕上がり枠外 / 基本枠 / 他 panel の辺
+        from ..utils.geom import finish_rect, inner_frame_rect
         paper = self._work.paper
-        br = bleed_rect(paper)
+        fr = finish_rect(paper)
         ifr = inner_frame_rect(paper)
+        border_width_mm = _border_width_for_panel(panel)
 
         # 候補となる「線」のリスト (page-local 座標) と種別を保持。
-        # 種別: "bleed" (裁ち落とし枠の **1mm 外側**) / "inner" (基本枠) /
+        # 種別: "finish_outer" (仕上がり枠の **枠線幅分外側**) / "inner" (基本枠) /
         #       "coma" (他コマ辺)
-        # bleed は最初から「1mm 外側位置」を candidate に登録することで、
-        # 後段の offset 計算が不要になり、edge が既に bleed 1mm 外側にいる場合の
+        # finish_outer は最初から線幅分外側位置を candidate に登録することで、
+        # 後段の offset 計算が不要になり、edge が既に線幅分外側にいる場合の
         # 誤スナップを防ぐ。
         candidate_lines: list[
             tuple[tuple[float, float], tuple[float, float], str]
         ] = []
-        # 裁ち落とし枠の 4 辺 (1mm 外側位置)
+        # 仕上がり枠の 4 辺 (枠線幅分外側位置)
         candidate_lines.extend([
-            ((br.x - 1.0, br.y - 1.0), (br.x2 + 1.0, br.y - 1.0), "bleed"),
-            ((br.x2 + 1.0, br.y - 1.0), (br.x2 + 1.0, br.y2 + 1.0), "bleed"),
-            ((br.x2 + 1.0, br.y2 + 1.0), (br.x - 1.0, br.y2 + 1.0), "bleed"),
-            ((br.x - 1.0, br.y2 + 1.0), (br.x - 1.0, br.y - 1.0), "bleed"),
+            ((fr.x - border_width_mm, fr.y - border_width_mm), (fr.x2 + border_width_mm, fr.y - border_width_mm), "finish_outer"),
+            ((fr.x2 + border_width_mm, fr.y - border_width_mm), (fr.x2 + border_width_mm, fr.y2 + border_width_mm), "finish_outer"),
+            ((fr.x2 + border_width_mm, fr.y2 + border_width_mm), (fr.x - border_width_mm, fr.y2 + border_width_mm), "finish_outer"),
+            ((fr.x - border_width_mm, fr.y2 + border_width_mm), (fr.x - border_width_mm, fr.y - border_width_mm), "finish_outer"),
         ])
         # 基本枠の 4 辺
         candidate_lines.extend([
@@ -1607,6 +1616,7 @@ class BNAME_OT_coma_edge_move(Operator):
         # かつ ▲sign 方向が「その panel から離れる方向」の場合 → gap を空ける =====
         # 「近くに平行な線がある」だけでは発火させず、十分な重なり率を持つ
         # 実際の隣接枠線だけを対象にする。
+        overlap_move_width = False
         has_panel_overlap_opposite = False
         overlapping_edges = _find_overlapping_coma_edges(
             page,
@@ -1623,6 +1633,9 @@ class BNAME_OT_coma_edge_move(Operator):
             cx_avg = sum(v[0] for v in poly2) / len(poly2)
             cy_avg = sum(v[1] for v in poly2) / len(poly2)
             d_center = (cx_avg - a[0]) * nx + (cy_avg - a[1]) * ny
+            if sign * d_center > 0:
+                overlap_move_width = True
+                break
             # panel 中心が -sign 側にあるとき only (= ▲sign が「離れる方向」)
             if -sign * d_center <= 0:
                 continue
@@ -1631,7 +1644,23 @@ class BNAME_OT_coma_edge_move(Operator):
 
         has_panel_overlap = has_panel_overlap_opposite
 
-        if has_panel_overlap:
+        if overlap_move_width:
+            total_shift = border_width_mm
+            if total_shift < 0.001:
+                self.report({"INFO"}, "枠線の線幅が 0 のため移動できません")
+                return
+            sx_ext = sign * total_shift * nx
+            sy_ext = sign * total_shift * ny
+            a_new_line = (a[0] + sx_ext, a[1] + sy_ext)
+            b_new_line = (b[0] + sx_ext, b[1] + sy_ext)
+            new_poly = _build_shifted_edge_polygon(poly, ei, a_new_line, b_new_line)
+            if new_poly is None or not _is_valid_coma_polygon(
+                new_poly, reference_poly=poly
+            ):
+                self.report({"WARNING"}, "拡張するとコマ形状が破綻するため中止しました")
+                return
+            kind_label = "隣接コマ辺から線幅分外側"
+        elif has_panel_overlap:
             # ピッタリ重なっている隣接コマ辺がある → ▲sign 方向に gap 分平行移動
             # (角度は元のまま維持、スナップ先 line に合わせる必要なし)
             total_shift = target_gap_axis
@@ -1693,7 +1722,7 @@ class BNAME_OT_coma_edge_move(Operator):
                 b_new_line = test_b_line
                 new_poly = test_poly
                 kind_label = {
-                    "bleed": "裁ち落とし枠の 1mm 外側",
+                    "finish_outer": "仕上がり枠の線幅分外側",
                     "inner": "基本枠",
                     "coma": "隣接コマ辺にピッタリ",
                 }.get(kind, "拡張先")

@@ -333,7 +333,7 @@ def _apply_cut_to_coma(
     カット線の角度に応じて補間して適用する。
     戻り値: 分割が発生したか。
     """
-    from .coma_op import _copy_coma_entry
+    from .coma_op import _copy_coma_entry, derived_coma_title
 
     if not (0 <= coma_idx < len(page.comas)):
         return False
@@ -361,7 +361,7 @@ def _apply_cut_to_coma(
     _copy_coma_entry(panel, new_entry)
     new_entry.coma_id = new_stem
     new_entry.id = new_stem
-    new_entry.title = f"{panel.title} (分割)"
+    new_entry.title = derived_coma_title(panel.title, new_stem, "分割")
     _set_coma_polygon(new_entry, right_poly)
     z_max = max((p.z_order for p in page.comas), default=0)
     new_entry.z_order = z_max + 1

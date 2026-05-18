@@ -125,7 +125,7 @@ def _assert_text_collection(context) -> None:
 
     text_coll = outliner_model.ensure_text_collection(context.scene)
     root_coll = outliner_model.ensure_root_collection(context.scene)
-    assert text_coll.name == "テキスト"
+    assert text_coll.name == "text"
     assert len(root_coll.children) > 0 and root_coll.children[0] == text_coll
     text_objects = [
         obj for obj in bpy.data.objects

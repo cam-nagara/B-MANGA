@@ -39,9 +39,13 @@ def geometry_for_entry(entry, rect: Rect) -> UniFlashGeometry:
         0.95,
     )
     max_count = max(8, int(getattr(sp, "uni_flash_max_line_count", 1000) or 1000))
-    center = rect.center
+    rcx, rcy = rect.center
+    center = (
+        rcx + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+        rcy + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+    )
     outer = _outline_rect(rect)
-    fill_rect = _scaled_center_rect(rect, fill_scale)
+    fill_rect = _scaled_center_rect(rect, fill_scale, center=center)
     inner = _outline_ellipse(fill_rect)
     seed = _stable_seed(str(getattr(entry, "id", "") or SHAPE_ID))
     line_segments = _focus_segments(
@@ -50,7 +54,7 @@ def geometry_for_entry(entry, rect: Rect) -> UniFlashGeometry:
         inner,
         spacing,
         max_count,
-        bool(getattr(sp, "uni_flash_line_density_compensation", True)),
+        True,
         seed,
     )
     fill_segments = _focus_segments(
@@ -59,7 +63,7 @@ def geometry_for_entry(entry, rect: Rect) -> UniFlashGeometry:
         inner,
         spacing,
         max_count,
-        bool(getattr(sp, "uni_flash_fill_density_compensation", True)),
+        True,
         seed,
     )
     fill_outline = [segment[1] for segment in fill_segments]
@@ -108,10 +112,10 @@ def _focus_segments(
     return out
 
 
-def _scaled_center_rect(rect: Rect, scale: float) -> Rect:
+def _scaled_center_rect(rect: Rect, scale: float, *, center: Point | None = None) -> Rect:
     w = max(0.1, rect.width * scale)
     h = max(0.1, rect.height * scale)
-    cx, cy = rect.center
+    cx, cy = center if center is not None else rect.center
     return Rect(cx - w * 0.5, cy - h * 0.5, w, h)
 
 

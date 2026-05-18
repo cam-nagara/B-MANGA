@@ -104,9 +104,8 @@ def _set_page_location(obj: bpy.types.Object, scene, work, page_index: int, x_mm
     obj.location = (mm_to_m(ox + x_mm), mm_to_m(oy + y_mm), TEXT_Z_M)
 
 
-def _link_to_page(obj: bpy.types.Object, scene, page) -> None:
-    page_id = str(getattr(page, "id", "") or "")
-    coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
+def _link_to_work_info_collection(obj: bpy.types.Object, scene) -> None:
+    coll = om.ensure_work_info_collection(scene)
     if coll is not None and not any(existing is obj for existing in coll.objects):
         coll.objects.link(obj)
     for user_coll in tuple(obj.users_collection):
@@ -160,7 +159,7 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
     obj.hide_viewport = False
     obj.hide_render = False
     _set_page_location(obj, scene, work, page_index, x_mm, y_mm)
-    _link_to_page(obj, scene, page)
+    _link_to_work_info_collection(obj, scene)
     return obj
 
 

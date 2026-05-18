@@ -133,6 +133,8 @@ def frame_density_outline(params, actual_outline: Sequence[tuple[float, float]])
 
 
 def density_compensation_strength(params) -> float:
+    if str(getattr(params, "spacing_mode", "") or "") == "distance":
+        return 1.0
     value = getattr(params, "spacing_density_compensation", False)
     if isinstance(value, str):
         enabled = value.strip().lower() not in {"", "0", "false", "off", "none", "なし"}

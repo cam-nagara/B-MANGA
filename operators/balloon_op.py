@@ -224,6 +224,10 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
         return "top"
     if near_bottom and inside_x:
         return "bottom"
+    cx = left + width * 0.5 + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+    cy = bottom + height * 0.5 + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+    if math.hypot(float(x_mm) - cx, float(y_mm) - cy) <= max(threshold, _BALLOON_HANDLE_HIT_MM):
+        return "center"
     if inside_x and inside_y:
         return "body"
     return ""
@@ -944,6 +948,8 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_balloon_id = getattr(entry, "id", "")
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
+        self._drag_orig_center_offset_x = float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        self._drag_orig_center_offset_y = float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
         self._drag_moved = False
         self._snapshots = self._make_snapshots(page, entry)
 
@@ -970,6 +976,8 @@ class BNAME_OT_balloon_tool(Operator):
         self._tail_drag_tail_index = -1
         self._tail_drag_point_index = -1
         self._tail_drag_points = []
+        self._drag_orig_center_offset_x = 0.0
+        self._drag_orig_center_offset_y = 0.0
         self._drag_moved = False
         self._snapshots = []
 
@@ -1064,6 +1072,11 @@ class BNAME_OT_balloon_tool(Operator):
             if _creation_violates_layer_scope(context, page, x, y, w, h):
                 return
             _set_balloon_rect(page, entry, x, y, w, h)
+        elif self._drag_action == "center":
+            if hasattr(entry, "center_offset_x_mm"):
+                entry.center_offset_x_mm = self._drag_orig_center_offset_x + dx
+            if hasattr(entry, "center_offset_y_mm"):
+                entry.center_offset_y_mm = self._drag_orig_center_offset_y + dy
         elif self._drag_action == "move":
             if self._move_violates_layer_scope(context, page, dx, dy):
                 return
@@ -1167,6 +1180,9 @@ class BNAME_OT_balloon_tool(Operator):
                 idx = _find_balloon_index(page, balloon_id)
                 if 0 <= idx < len(page.balloons):
                     _set_balloon_rect(page, page.balloons[idx], x, y, w, h)
+                    if self._drag_action == "center":
+                        page.balloons[idx].center_offset_x_mm = self._drag_orig_center_offset_x
+                        page.balloons[idx].center_offset_y_mm = self._drag_orig_center_offset_y
         self._clear_drag_state()
         layer_stack_utils.tag_view3d_redraw(context)
 

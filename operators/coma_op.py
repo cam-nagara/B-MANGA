@@ -45,6 +45,21 @@ def _sync_layer_stack_after_coma_change(context) -> None:
     )
 
 
+def clean_coma_title_for_display(title: str, fallback: str) -> str:
+    """基本枠由来のコマ名から不要な「基本枠」表記を取り除く."""
+    text = str(title or "").replace("基本枠", "").strip()
+    text = text.strip(" -_　")
+    return text or str(fallback or "")
+
+
+def derived_coma_title(title: str, fallback: str, suffix: str = "") -> str:
+    base = clean_coma_title_for_display(title, "")
+    if not base:
+        return str(fallback or suffix or "")
+    suffix = str(suffix or "").strip()
+    return f"{base} ({suffix})" if suffix else base
+
+
 def _selected_edge_coma_target(context):
     wm = context.window_manager
     if getattr(wm, "bname_edge_select_kind", "none") == "none":
@@ -398,7 +413,6 @@ def create_basic_frame_coma(work, page, work_dir: Path):
         y_mm,
         p.inner_frame_width_mm,
         p.inner_frame_height_mm,
-        title="基本枠",
     )
 
 
@@ -891,7 +905,7 @@ class BNAME_OT_coma_split_template(Operator):
         gap_v = work.coma_gap.vertical_mm
         gap_h = work.coma_gap.horizontal_mm
         rows, cols = self.rows, self.cols
-        src_title = src.title
+        src_title = clean_coma_title_for_display(src.title, "")
         src_z = int(src.z_order)
         src_template = schema.coma_entry_to_dict(src)
         insert_z_base = src_z if self.clear_existing else (
@@ -940,7 +954,8 @@ class BNAME_OT_coma_split_template(Operator):
                     schema.coma_entry_from_dict(entry, src_template)
                     entry.coma_id = stem
                     entry.id = stem
-                    entry.title = f"{src_title} {r + 1}-{c + 1}"
+                    split_suffix = f"{r + 1}-{c + 1}"
+                    entry.title = f"{src_title} {split_suffix}".strip() if src_title else stem
                     if split_grid is None:
                         entry.shape_type = "rect"
                         entry.vertices.clear()

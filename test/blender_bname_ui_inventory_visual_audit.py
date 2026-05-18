@@ -590,7 +590,6 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "終点形状",
         "密度基準",
         "角丸率 (%)",
-        "密度補正",
         "白抜き線",
         "流線",
         "レイヤーフォルダ",

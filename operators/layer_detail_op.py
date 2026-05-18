@@ -203,9 +203,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         shape_box.label(text="ウニフラッシュ")
         shape_box.prop(sp, "uni_flash_spacing_mm")
         shape_box.prop(sp, "uni_flash_fill_scale_percent")
-        row = shape_box.row(align=True)
-        row.prop(sp, "uni_flash_line_density_compensation")
-        row.prop(sp, "uni_flash_fill_density_compensation")
         shape_box.prop(sp, "uni_flash_max_line_count")
     if sp is not None and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}:
         shape_box = layout.box()

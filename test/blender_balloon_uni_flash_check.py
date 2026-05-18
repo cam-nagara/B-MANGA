@@ -83,29 +83,21 @@ def main() -> None:
         entry.shape_params.uni_flash_line_density_compensation = False
         entry.shape_params.uni_flash_fill_density_compensation = False
         geom_plain = balloon_uni_flash.geometry_for_entry(entry, rect)
-        assert geom_plain.line_segments_mm, "密度補正OFFでも線が消えています"
-        assert geom_plain.fill_outline_mm, "密度補正OFFでも下地が消えています"
-        assert (
-            len(geom_density.line_segments_mm) != len(geom_plain.line_segments_mm)
-            or geom_density.line_segments_mm[:10] != geom_plain.line_segments_mm[:10]
-        ), "線の密度補正が配置に反映されていません"
-        assert (
-            len(geom_density.fill_outline_mm) != len(geom_plain.fill_outline_mm)
-            or geom_density.fill_outline_mm[:10] != geom_plain.fill_outline_mm[:10]
-        ), "下地の密度補正が配置に反映されていません"
+        assert geom_plain.line_segments_mm == geom_density.line_segments_mm, "距離指定では線の密度補正が常時ONになっていません"
+        assert geom_plain.fill_outline_mm == geom_density.fill_outline_mm, "距離指定では下地の密度補正が常時ONになっていません"
 
-        entry.shape_params.uni_flash_line_density_compensation = True
+        entry.shape_params.uni_flash_line_density_compensation = False
         entry.shape_params.uni_flash_fill_density_compensation = False
         saved = schema.balloon_entry_to_dict(entry)
         assert saved["shape"] == "uni_flash"
         params = saved["shapeParams"]
         assert params["uniFlashLineDensityCompensation"] is True
-        assert params["uniFlashFillDensityCompensation"] is False
+        assert params["uniFlashFillDensityCompensation"] is True
         restored = page.balloons.add()
         schema.balloon_entry_from_dict(restored, saved)
         assert restored.shape == "uni_flash"
         assert restored.shape_params.uni_flash_line_density_compensation is True
-        assert restored.shape_params.uni_flash_fill_density_compensation is False
+        assert restored.shape_params.uni_flash_fill_density_compensation is True
         assert abs(restored.shape_params.uni_flash_spacing_mm - 1.2) < 1.0e-6
         page.balloons.remove(len(page.balloons) - 1)
 

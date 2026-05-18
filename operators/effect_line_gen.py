@@ -14,7 +14,7 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..utils import balloon_shapes, log
+from ..utils import balloon_shapes, effect_inout_curve, log
 from ..utils.geom import Rect, mm_to_m
 from . import effect_line_radial_spacing
 _logger = log.get_logger(__name__)
@@ -163,13 +163,36 @@ def _shape_outline(
     return _rotate_points(points, center_xy_mm, getattr(params, "rotation_deg", 0.0))
 
 
-def _length_jitter_factor(params, rng: random.Random) -> float:
-    if not bool(getattr(params, "length_jitter_enabled", False)):
-        return 1.0
-    amount = _clamp01(float(getattr(params, "length_jitter_amount", 0.0)))
+def _jitter_trim_fraction(params, enabled_attr: str, amount_attr: str, rng: random.Random) -> float:
+    if not bool(getattr(params, enabled_attr, False)):
+        return 0.0
+    amount = _clamp01(float(getattr(params, amount_attr, 0.0)))
     if amount <= 0.0:
-        return 1.0
-    return max(0.05, 1.0 - amount * rng.random())
+        return 0.0
+    return amount * rng.random()
+
+
+def _trimmed_segment_points(
+    params,
+    rng: random.Random,
+    start_xy_mm: tuple[float, float],
+    end_xy_mm: tuple[float, float],
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    sx, sy = start_xy_mm
+    ex, ey = end_xy_mm
+    start_trim = _jitter_trim_fraction(params, "length_jitter_enabled", "length_jitter_amount", rng)
+    end_trim = _jitter_trim_fraction(params, "end_length_jitter_enabled", "end_length_jitter_amount", rng)
+    total_trim = start_trim + end_trim
+    if total_trim > 0.95:
+        scale = 0.95 / max(total_trim, 1.0e-9)
+        start_trim *= scale
+        end_trim *= scale
+    dx = ex - sx
+    dy = ey - sy
+    return (
+        (sx + dx * start_trim, sy + dy * start_trim),
+        (sx + dx * (1.0 - end_trim), sy + dy * (1.0 - end_trim)),
+    )
 
 
 def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool = False) -> bool:
@@ -283,6 +306,10 @@ def _focus_slot_count_for_outline(
     return min(raw_count, _max_line_count(params))
 
 
+def _spacing_density_compensation_enabled(params) -> bool:
+    return str(getattr(params, "spacing_mode", "") or "") == "distance"
+
+
 def _bundle_gap_slots(params) -> int:
     if not bool(getattr(params, "bundle_enabled", False)):
         return 0
@@ -347,10 +374,7 @@ def _append_focus_stroke(
     )
     radius, radii = _stroke_radii(params, radius_mm, 2)
     opacities = _stroke_opacities(params, 2)
-    x0, y0 = start_xy_mm
-    factor = _length_jitter_factor(params, rng)
-    x1 = x0 + (end_xy_mm[0] - x0) * factor
-    y1 = y0 + (end_xy_mm[1] - y0) * factor
+    (x0, y0), (x1, y1) = _trimmed_segment_points(params, rng, start_xy_mm, end_xy_mm)
     out.append(
         EffectLineStroke(
             points_xyz=[
@@ -414,20 +438,35 @@ def _inout_profile(params, length_m: float):
     in_frac = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
     out_frac = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
     mode = str(getattr(params, "inout_range_mode", "percent") or "percent")
-    if mode == "length":
+    has_new_start_controls = hasattr(params, "in_start_percent") or hasattr(params, "out_start_percent")
+    if has_new_start_controls:
+        d_in = _clamp01(float(getattr(params, "in_start_percent", 50.0)) / 100.0) * length_m
+        d_out = _clamp01(float(getattr(params, "out_start_percent", 50.0)) / 100.0) * length_m
+    elif mode == "length":
         d_in = max(0.0, min(length_m, mm_to_m(float(getattr(params, "in_range_mm", 10.0)))))
         d_out = max(0.0, min(length_m, mm_to_m(float(getattr(params, "out_range_mm", 10.0)))))
     else:
         d_in = _clamp01(float(getattr(params, "in_range_percent", 100.0)) / 100.0) * length_m
         d_out = _clamp01(float(getattr(params, "out_range_percent", 100.0)) / 100.0) * length_m
+    if d_in + d_out > length_m:
+        excess = d_in + d_out - length_m
+        if d_in >= d_out:
+            d_in = max(0.0, d_in - excess)
+        else:
+            d_out = max(0.0, d_out - excess)
+    in_curve = effect_inout_curve.parse_points(getattr(params, "in_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT))
+    out_curve = effect_inout_curve.parse_points(getattr(params, "out_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT))
 
     def profile(s: float) -> float:
-        vi = 1.0 if d_in <= 1.0e-9 else in_frac + (1.0 - in_frac) * _clamp01(s / d_in)
-        vo = (
-            1.0
-            if d_out <= 1.0e-9
-            else out_frac + (1.0 - out_frac) * _clamp01((length_m - s) / d_out)
-        )
+        if d_in <= 1.0e-9:
+            vi = 1.0
+        else:
+            vi = in_frac + (1.0 - in_frac) * effect_inout_curve.evaluate(in_curve, s / d_in)
+        if d_out <= 1.0e-9:
+            vo = 1.0
+        else:
+            out_t = _clamp01((length_m - s) / d_out)
+            vo = out_frac + (1.0 - out_frac) * effect_inout_curve.evaluate(out_curve, out_t)
         return min(vi, vo)
 
     return profile, d_in, d_out
@@ -479,8 +518,15 @@ def _apply_inout_profile(strokes, params):
             breakpoints.add(d_in)
         if 0.0 < (total - d_out) < total:
             breakpoints.add(total - d_out)
-        # 入り区間と抜き区間が重なる場合の交点 (vi==vo) を解析的に追加
-        if d_in > 1.0e-9 and d_out > 1.0e-9 and d_in > (total - d_out):
+        if hasattr(params, "in_start_percent") or hasattr(params, "out_start_percent"):
+            in_points = effect_inout_curve.parse_points(getattr(params, "in_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT))
+            out_points = effect_inout_curve.parse_points(getattr(params, "out_easing_curve", effect_inout_curve.DEFAULT_CURVE_TEXT))
+            if d_in > 1.0e-9:
+                breakpoints.update(d_in * x for x, _y in in_points if 0.0 < x < 1.0)
+            if d_out > 1.0e-9:
+                breakpoints.update(total - d_out * x for x, _y in out_points if 0.0 < x < 1.0)
+        # 旧データの範囲指定が重なる場合は交点を追加して細りの折れを保つ。
+        if not (hasattr(params, "in_start_percent") or hasattr(params, "out_start_percent")) and d_in > 1.0e-9 and d_out > 1.0e-9 and d_in > (total - d_out):
             in_frac = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
             out_frac = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
             a = (1.0 - in_frac) / d_in + (1.0 - out_frac) / d_out
@@ -548,7 +594,7 @@ def generate_focus_strokes(
     end_rect = _scaled_rect(shape_center_xy_mm[0], shape_center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
     end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
     distance_outline_available = str(getattr(params, "spacing_mode", "") or "") == "distance" and len(start_outline) >= 2
-    if distance_outline_available and bool(getattr(params, "spacing_density_compensation", False)):
+    if distance_outline_available and _spacing_density_compensation_enabled(params):
         for point in effect_line_radial_spacing.outline_points_for_perpendicular_spacing(
             params,
             center_xy_mm,
@@ -633,11 +679,11 @@ def generate_speed_strokes(
             offset += spacing_step * amount * (rng.random() * 2.0 - 1.0)
         mid_x = cx + nx * offset
         mid_y = cy + ny * offset
-        line_span = span * _length_jitter_factor(params, rng)
-        sx = mid_x - dx * line_span * 0.5
-        sy = mid_y - dy * line_span * 0.5
-        ex = mid_x + dx * line_span * 0.5
-        ey = mid_y + dy * line_span * 0.5
+        sx = mid_x - dx * span * 0.5
+        sy = mid_y - dy * span * 0.5
+        ex = mid_x + dx * span * 0.5
+        ey = mid_y + dy * span * 0.5
+        (sx, sy), (ex, ey) = _trimmed_segment_points(params, rng, (sx, sy), (ex, ey))
         radius_mm = _jitter(
             params.brush_size_mm,
             params.brush_jitter_amount if params.brush_jitter_enabled else 0.0,
