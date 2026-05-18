@@ -99,7 +99,7 @@ def schedule_enter_coma_mode(
         bool(prompt_template_if_missing),
     )
     if not bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
-        bpy.app.timers.register(_run_deferred_enter_coma_mode, first_interval=0.01)
+        bpy.app.timers.register(_run_deferred_enter_coma_mode, first_interval=0.15)
     return True
 
 
@@ -156,7 +156,6 @@ class BNAME_OT_enter_coma_mode(Operator):
 
     bl_idname = "bname.enter_coma_mode"
     bl_label = "コマ編集モードへ"
-    bl_options = {"REGISTER"}
 
     filepath: StringProperty(  # type: ignore[valid-type]
         name="コマ用blendファイル",
@@ -428,7 +427,6 @@ class BNAME_OT_exit_coma_mode(Operator):
 
     bl_idname = "bname.exit_coma_mode"
     bl_label = "紙面編集モードへ戻る"
-    bl_options = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):
@@ -548,7 +546,6 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
 
     bl_idname = "bname.exit_coma_mode_safe"
     bl_label = "ページ一覧に戻る"
-    bl_options = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):

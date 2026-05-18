@@ -110,9 +110,30 @@ def main() -> None:
             except Exception:  # noqa: BLE001
                 traceback.print_exc()
                 os._exit(1)
-            print("BNAME_OBJECT_TOOL_COMA_OPEN_DEFERRED_UI_CHECK_OK")
-            sys.stdout.flush()
-            os._exit(0)
+
+            stable_attempts = {"count": 0}
+
+            def _stability_timer():
+                stable_attempts["count"] += 1
+                try:
+                    _assert_opened(expected)
+                    for window in getattr(bpy.context.window_manager, "windows", []):
+                        screen = getattr(window, "screen", None)
+                        if screen is None:
+                            continue
+                        for area in getattr(screen, "areas", []):
+                            area.tag_redraw()
+                    if stable_attempts["count"] < 20:
+                        return 0.1
+                except Exception:  # noqa: BLE001
+                    traceback.print_exc()
+                    os._exit(1)
+                print("BNAME_OBJECT_TOOL_COMA_OPEN_DEFERRED_UI_CHECK_OK")
+                sys.stdout.flush()
+                os._exit(0)
+                return None
+
+            bpy.app.timers.register(_stability_timer, first_interval=0.1, persistent=True)
             return None
 
         bpy.app.timers.register(_assert_timer, first_interval=0.1, persistent=True)
