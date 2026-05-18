@@ -82,10 +82,27 @@ def ensure_coma_camera_scene(
     refs: list[ReferenceImage] = []
     if generate_references and work is not None and getattr(work, "work_dir", ""):
         refs = ensure_reference_images(work, page_id, coma_id)
+    _restore_scene_camera(scene, camera)
     configure_camera_backgrounds(scene, camera, refs, page_id, coma_id)
+    _restore_scene_camera(scene, camera)
     update_render_border_from_current_coma(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
+
+
+def _restore_scene_camera(scene, camera) -> None:
+    if scene is None or camera is None or getattr(camera, "type", "") != "CAMERA":
+        return
+    try:
+        if camera.name not in scene.objects:
+            scene.collection.objects.link(camera)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        if scene.camera != camera:
+            scene.camera = camera
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def ensure_coma_camera(scene):
