@@ -1,4 +1,4 @@
-"""Blender 実機(背景)用: ボカシブラシを内側アルファテクスチャで生成する確認."""
+"""Blender 実機(背景)用: 輪郭ぼかしを内側アルファテクスチャで生成する確認."""
 
 from __future__ import annotations
 
@@ -39,7 +39,13 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
     from bname_dev_border_texture.io import export_pipeline
-    from bname_dev_border_texture.utils import coma_border_object, coma_border_texture, coma_plane
+    from bname_dev_border_texture.utils import (
+        coma_border_object,
+        coma_border_texture,
+        coma_blur_curve,
+        coma_plane,
+        coma_z_order,
+    )
     from bname_dev_border_texture.utils.geom import mm_to_m
 
     scene = bpy.context.scene
@@ -57,6 +63,7 @@ def main() -> None:
     coma.border.style = "brush"
     coma.border.width_mm = 1.2
     coma.border.blur_amount = 0.8
+    coma.border.blur_curve_points = "0.0000,0.0000;0.5000,0.2500;1.0000,1.0000"
     coma.border.color = (0.0, 0.0, 0.0, 1.0)
     assert not hasattr(coma, "edge_styles"), "コマに辺別線設定が残っています"
     assert not hasattr(coma.border, "edge_top"), "枠線に辺別設定が残っています"
@@ -65,7 +72,7 @@ def main() -> None:
     coma.border.blur_dither = False
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     plane = coma_plane.find_coma_plane_object(page.id, coma.id)
-    assert obj is plane and plane is not None, "ボカシブラシがコマ面に適用されていません"
+    assert obj is plane and plane is not None, "輪郭ぼかしがコマ面に適用されていません"
     assert bpy.data.objects.get(coma_border_texture.object_name(page.id, coma.id)) is None, (
         "別体のボカシ枠線オブジェクトが残っています"
     )
@@ -103,6 +110,12 @@ def main() -> None:
         node.name == "BName_ComaAlphaMask" and node.image is image
         for node in mat.node_tree.nodes
     ), "コマ面素材に透明マスク画像が接続されていません"
+    curve_node = coma_blur_curve.find_curve_node(mat)
+    assert curve_node is not None, "コマ面素材にぼかしカーブノードがありません"
+    curve_points = coma_blur_curve.read_node_points(curve_node)
+    assert len(curve_points) == 3 and abs(curve_points[1][1] - 0.25) < 1.0e-3, (
+        f"ぼかしカーブが素材へ反映されていません: {curve_points}"
+    )
     preview_probe = bpy.data.images.new("BName_TestPreviewAlphaProbe", width=2, height=2, alpha=True)
     preview_probe.pixels.foreach_set([
         1.0, 0.0, 0.0, 0.0,
@@ -121,6 +134,7 @@ def main() -> None:
         alpha_mask_image=image,
         keep_existing_mask=False,
         dither=True,
+        blur_curve_points=coma.border.blur_curve_points,
     )
     assert getattr(probe_mat, "blend_method", "") != "BLEND", "画像付きボカシ素材が半透明化しています"
     assert not any(
@@ -129,6 +143,9 @@ def main() -> None:
     ), "画像付きボカシ素材に透明シェーダーが残っています"
     mix_nodes = [node for node in probe_mat.node_tree.nodes if node.bl_idname == "ShaderNodeMixRGB"]
     assert len(mix_nodes) >= 2, "画像アルファと輪郭ボカシが背景色へ合成されていません"
+    assert probe_mat.node_tree.nodes.get("BName_ComaDither") is not None, (
+        "ディザが素材ノードで生成されていません"
+    )
     bpy.data.materials.remove(probe_mat)
     bpy.data.images.remove(preview_probe)
     obj_again = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
@@ -141,19 +158,65 @@ def main() -> None:
     mat = plane.data.materials[0]
     assert getattr(mat, "blend_method", "") != "BLEND", "ディザ時にコマ面素材が半透明化しています"
     image = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
+    assert image.get("bname_border_alpha_signature") == signature_before, (
+        "ディザ切替で距離マスク画像が再生成されています"
+    )
     alpha = _alpha_values(image)
-    assert max(alpha) > 0.9 and min(alpha) == 0.0, "ディザ画像の濃淡範囲が不正です"
+    assert max(alpha) > 0.9 and min(alpha) == 0.0, "距離マスク画像の濃淡範囲が不正です"
     rounded_alpha = {round(float(value), 4) for value in alpha}
-    assert rounded_alpha <= {0.0, 1.0}, "ディザ画像が誤差拡散の二値アルファになっていません"
+    assert any(0.05 < value < 0.95 for value in alpha), (
+        "ディザ切替で距離マスク画像の中間アルファが失われています"
+    )
+    assert mat.node_tree.nodes.get("BName_ComaDither") is not None, (
+        "ディザ用の素材ノードがありません"
+    )
+    assert mat.node_tree.nodes.get("BName_ComaDitherThreshold") is not None, (
+        "ディザのしきい値ノードがありません"
+    )
+    scale_node = mat.node_tree.nodes.get("BName_ComaDitherScale")
+    if scale_node is not None and "Scale" in scale_node.inputs:
+        scale = tuple(float(v) for v in scale_node.inputs["Scale"].default_value[:2])
+        assert min(scale) >= 500.0, f"ディザの細かさが不足しています: {scale}"
+    else:
+        noise_node = mat.node_tree.nodes.get("BName_ComaDither")
+        if noise_node is not None and "Scale" in noise_node.inputs:
+            assert float(noise_node.inputs["Scale"].default_value) >= 500.0, (
+                "ディザの細かさが不足しています"
+            )
+    assert len(rounded_alpha) > 2, "距離マスク画像が二値化されています"
+    front = page.comas.add()
+    front.id = "c02"
+    front.coma_id = "c02"
+    front.title = "前面コマ"
+    front.rect_x_mm = 10.0
+    front.rect_y_mm = 10.0
+    front.rect_width_mm = 80.0
+    front.rect_height_mm = 60.0
+    front.border.style = "solid"
+    front.border.width_mm = 0.6
+    coma.z_order = 0
+    front.z_order = 1
+    back_plane = coma_plane.ensure_coma_plane(scene, work, page, coma)
+    front_plane = coma_plane.ensure_coma_plane(scene, work, page, front)
+    front_border = coma_border_object.ensure_coma_border_object(scene, work, page, front)
+    assert back_plane is not None and front_plane is not None and front_border is not None
+    assert abs(back_plane.location.z - coma_z_order.plane_z(coma)) < 1.0e-7
+    assert abs(front_plane.location.z - coma_z_order.plane_z(front)) < 1.0e-7
+    assert front_plane.location.z > back_plane.location.z, (
+        "コマ面の高さが重なり順に追従していません"
+    )
+    assert front_plane.location.z > coma_z_order.border_z(coma), (
+        "背面コマの輪郭ぼかしが前面コマより上に出る高さです"
+    )
     coma.white_margin.enabled = True
     coma.white_margin.width_mm = 4.0
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     white_obj = bpy.data.objects.get(
         f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"
     )
-    assert white_obj is not None and white_obj.hide_viewport, "ボカシブラシ時は白フチを表示しないべきです"
+    assert white_obj is not None and white_obj.hide_viewport, "輪郭ぼかし時は白フチを表示しないべきです"
     assert export_pipeline._draw_coma_white_margin_layer(coma, 1000, 300) is None, (
-        "ボカシブラシ時は書き出し用の白フチも生成しないべきです"
+        "輪郭ぼかし時は書き出し用の白フチも生成しないべきです"
     )
 
     coma.border.style = "solid"

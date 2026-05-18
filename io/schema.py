@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils import balloon_shapes, color_space
+from ..utils import balloon_shapes, color_space, coma_blur_curve
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
 WORK_SCHEMA_VERSION = 4
@@ -617,6 +617,9 @@ def coma_border_to_dict(border) -> dict[str, Any]:
             "radiusMm": round(border.corner_radius_mm, 3),
         },
         "blurAmount": round(float(getattr(border, "blur_amount", 0.5)), 3),
+        "blurCurve": coma_blur_curve.points_to_json(
+            coma_blur_curve.parse_points(getattr(border, "blur_curve_points", ""))
+        ),
         "blurDither": bool(getattr(border, "blur_dither", False)),
         "visible": bool(border.visible),
     }
@@ -632,6 +635,10 @@ def coma_border_from_dict(border, data: dict[str, Any]) -> None:
     border.corner_radius_mm = float(corner.get("radiusMm", 0.0))
     if "blurAmount" in data:
         border.blur_amount = float(data["blurAmount"])
+    if "blurCurve" in data:
+        border.blur_curve_points = coma_blur_curve.points_to_text(
+            coma_blur_curve.parse_points(data["blurCurve"])
+        )
     if "blurDither" in data:
         border.blur_dither = bool(data["blurDither"])
     border.visible = bool(data.get("visible", True))

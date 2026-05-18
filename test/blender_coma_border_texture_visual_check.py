@@ -1,4 +1,4 @@
-"""Blender 実機(背景)用: ボカシブラシ透明画像の目視確認PNGを生成."""
+"""Blender 実機(背景)用: 輪郭ぼかし透明画像の目視確認PNGを生成."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def main() -> None:
 
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     plane = coma_plane.find_coma_plane_object(page.id, coma.id)
-    assert obj is plane and plane is not None, "ボカシブラシがコマ面に適用されません"
+    assert obj is plane and plane is not None, "輪郭ぼかしがコマ面に適用されません"
     plane.hide_render = False
     image = bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id))
     assert image is not None, "コマ面の透明マスク画像が生成されません"

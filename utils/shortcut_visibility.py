@@ -2,58 +2,68 @@
 
 from __future__ import annotations
 
-import time
-
 import bpy
 
 BNAME_PANEL_CATEGORY = "B-Name"
-_PANEL_DRAW_GRACE_SEC = 0.75
 _last_bname_panel_draw = 0.0
 
 
 def mark_bname_panel_drawn() -> None:
     """B-Name タブのパネルが実際に描画された時刻を記録する."""
     global _last_bname_panel_draw
+    # 旧版はこの時刻をサイドバー状態取得に失敗した時の代替判定に使っていた。
+    # Blender 側の通常操作を奪う原因になるため、現在はデバッグ用の記録だけにする。
+    import time
+
     _last_bname_panel_draw = time.monotonic()
 
 
 def _recent_bname_panel_drawn() -> bool:
-    if _last_bname_panel_draw <= 0.0:
+    return False
+
+
+def _area_has_bname_panel_category(area) -> bool:
+    if area is None or getattr(area, "type", "") != "VIEW_3D":
         return False
-    return (time.monotonic() - _last_bname_panel_draw) <= _PANEL_DRAW_GRACE_SEC
+    space = getattr(getattr(area, "spaces", None), "active", None)
+    if space is None or not bool(getattr(space, "show_region_ui", False)):
+        return False
+    for region in getattr(area, "regions", []) or []:
+        if getattr(region, "type", "") != "UI":
+            continue
+        if getattr(region, "width", 0) <= 1 or getattr(region, "height", 0) <= 1:
+            continue
+        if str(getattr(region, "active_panel_category", "") or "") == BNAME_PANEL_CATEGORY:
+            return True
+    return False
 
 
-def bname_panel_visible(context=None) -> bool:
-    """3Dビューのサイドバーで B-Name タブが表示されているか返す."""
+def any_bname_panel_visible(context=None) -> bool:
+    """開いている 3D ビューのどこかで B-Name タブが表示されているか返す."""
     if bool(getattr(bpy.app, "background", False)):
         return True
     ctx = context or bpy.context
     wm = getattr(ctx, "window_manager", None)
     if wm is None:
         return False
-    category_available = False
     for window in getattr(wm, "windows", []) or []:
         screen = getattr(window, "screen", None)
         if screen is None:
             continue
         for area in getattr(screen, "areas", []) or []:
-            if getattr(area, "type", "") != "VIEW_3D":
-                continue
-            space = getattr(area.spaces, "active", None)
-            if space is None or not bool(getattr(space, "show_region_ui", False)):
-                continue
-            for region in getattr(area, "regions", []) or []:
-                if getattr(region, "type", "") != "UI":
-                    continue
-                if getattr(region, "width", 0) <= 1 or getattr(region, "height", 0) <= 1:
-                    continue
-                category = getattr(region, "active_panel_category", None)
-                if category is not None:
-                    category_available = True
-                if str(category or "") == BNAME_PANEL_CATEGORY:
-                    return True
-    if not category_available:
-        return _recent_bname_panel_drawn()
+            if _area_has_bname_panel_category(area):
+                return True
+    return False
+
+
+def bname_panel_visible(context=None) -> bool:
+    """現在操作中の 3D ビューで B-Name タブが表示されているか返す."""
+    if bool(getattr(bpy.app, "background", False)):
+        return True
+    ctx = context or bpy.context
+    area = getattr(ctx, "area", None)
+    if area is not None:
+        return _area_has_bname_panel_category(area)
     return False
 
 

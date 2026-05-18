@@ -1335,15 +1335,18 @@ class BNAME_OT_layer_stack_detail(Operator):
         self.uid = layer_stack_utils.stack_item_uid(stack[index])
         layer_stack_utils.select_stack_index(context, index)
         self._restore_edge_selection_if_needed(context, stack[index], edge_state)
+        self._ensure_coma_detail_material(context, stack[index])
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
-        return context.window_manager.invoke_props_dialog(self, width=260)
+        return context.window_manager.invoke_props_dialog(self, width=360)
 
     def execute(self, context):
+        self._sync_coma_detail_curve(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"FINISHED"}
 
     def check(self, context):
+        self._sync_coma_detail_curve(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 
@@ -1383,6 +1386,40 @@ class BNAME_OT_layer_stack_detail(Operator):
         if 0 <= self.index < len(stack):
             return stack[self.index]
         return None
+
+    def _sync_coma_detail_curve(self, context) -> None:
+        stack = getattr(context.scene, "bname_layer_stack", None)
+        if stack is None:
+            return
+        item = self._resolve_item(stack)
+        if item is None or item.kind != COMA_KIND:
+            return
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        coma = resolved.get("target") if resolved else None
+        if coma is None:
+            return
+        try:
+            from ..utils import coma_blur_curve
+
+            coma_blur_curve.sync_active_coma_curve_to_border(coma)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _ensure_coma_detail_material(self, context, item) -> None:
+        if item is None or item.kind != COMA_KIND:
+            return
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        coma = resolved.get("target") if resolved else None
+        page = resolved.get("page") if resolved else None
+        if coma is None or str(getattr(getattr(coma, "border", None), "style", "solid") or "solid") != "brush":
+            return
+        try:
+            from ..core.work import get_work
+            from ..utils import coma_border_object
+
+            coma_border_object.ensure_coma_border_object(context.scene, get_work(context), page, coma)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _capture_edge_selection(self, context) -> tuple[str, int, int, int, int]:
         wm = getattr(context, "window_manager", None)

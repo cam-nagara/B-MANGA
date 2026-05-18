@@ -185,7 +185,7 @@ def _configure_scene(temp_root: Path):
     work.paper.read_direction = "left"
 
     line_none = border_presets.load_preset_by_name("線無し", None)
-    blur = border_presets.load_preset_by_name("ボカシブラシ", None)
+    blur = border_presets.load_preset_by_name("輪郭ぼかし", None)
     assert line_none is not None
     assert blur is not None
 
@@ -293,7 +293,7 @@ def _assert_requested_state(work) -> dict[str, object]:
     for obj in brush_border_objects:
         owner = str(obj.get(coma_border_object.PROP_COMA_BORDER_OWNER_ID, "") or "")
         if owner in {f"{work.pages[1].id}:{work.pages[1].comas[0].id}", f"{work.pages[2].id}:{work.pages[2].comas[0].id}"}:
-            raise AssertionError(f"ボカシブラシが別体の枠線オブジェクトとして残っています: {obj.name}")
+            raise AssertionError(f"輪郭ぼかしが別体の枠線オブジェクトとして残っています: {obj.name}")
 
     page = work.pages[3]
     cloud = page.balloons[0]
@@ -440,7 +440,7 @@ def _run_visual_audit() -> None:
         with _view3d_override():
             bpy.ops.bname.view_fit_all("EXEC_DEFAULT")
             if bpy.context.space_data.shading.type != "MATERIAL":
-                raise AssertionError("ボカシブラシ使用時にマテリアルプレビューへ切り替わっていません")
+                raise AssertionError("輪郭ぼかし使用時にマテリアルプレビューへ切り替わっていません")
         shots.append(_screenshot("01_all_pages_fit.png"))
 
         with _view3d_override():

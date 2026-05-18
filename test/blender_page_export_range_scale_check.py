@@ -155,7 +155,7 @@ def _assert_latest_coma_export(work, export_pipeline) -> None:
     coma.border.blur_amount = 1.0
     coma.border.blur_dither = False
     assert export_pipeline._draw_coma_border_layer(coma, 1000, 100) is None, (
-        "ボカシブラシが別の枠線として書き出されています"
+        "輪郭ぼかしが別の枠線として書き出されています"
     )
     soft = export_pipeline._draw_coma_background_layer(coma, 1000, 100, include_brush_edge=True)
     hard = export_pipeline._draw_coma_background_layer(coma, 1000, 100, include_brush_edge=False)
@@ -167,7 +167,7 @@ def _assert_latest_coma_export(work, export_pipeline) -> None:
     hard_center_alpha = hard.image.getpixel((hard.image.width // 2, hard.image.height // 2))[3]
     max_alpha = max(pixel[3] for pixel in soft.image.getdata())
     assert max_alpha > 80 and edge_alpha < max_alpha, (
-        f"ボカシブラシの内側フェードが出ていません: edge={edge_alpha}, center={center_alpha}"
+        f"輪郭ぼかしの内側フェードが出ていません: edge={edge_alpha}, center={center_alpha}"
     )
     assert hard_center_alpha > 240, "枠線を出力しない時のコマ面が不必要にボケています"
 

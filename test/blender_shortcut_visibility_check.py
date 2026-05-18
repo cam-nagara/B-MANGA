@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,25 +38,50 @@ def main() -> None:
     from bname_dev_shortcut_visibility.utils import shortcut_visibility
 
     original_panel_visible = shortcut_visibility.bname_panel_visible
+    original_any_panel_visible = shortcut_visibility.any_bname_panel_visible
     original_allowed = shortcut_visibility.shortcuts_allowed
     conflict_km = None
     try:
+        fake_bname_area = SimpleNamespace(
+            type="VIEW_3D",
+            spaces=SimpleNamespace(active=SimpleNamespace(show_region_ui=True)),
+            regions=[
+                SimpleNamespace(type="UI", width=260, height=900, active_panel_category="B-Name")
+            ],
+        )
+        fake_other_area = SimpleNamespace(
+            type="VIEW_3D",
+            spaces=SimpleNamespace(active=SimpleNamespace(show_region_ui=True)),
+            regions=[
+                SimpleNamespace(type="UI", width=260, height=900, active_panel_category="Tool")
+            ],
+        )
+        assert shortcut_visibility._area_has_bname_panel_category(fake_bname_area), (
+            "B-Nameタブのエリア判定が有効になりません"
+        )
+        assert not shortcut_visibility._area_has_bname_panel_category(fake_other_area), (
+            "別タブのエリア判定でB-Nameショートカットが有効になります"
+        )
+
         kc = bpy.context.window_manager.keyconfigs.addon
         conflict_km = kc.keymaps.new(name="B-Name Test Conflict", space_type="EMPTY", region_type="WINDOW")
         conflict_kmi = conflict_km.keymap_items.new("wm.call_menu", "F", "PRESS")
         assert bool(conflict_kmi.active), "競合確認用キーが作成直後に無効です"
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: False
+        shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) == 0, "B-Nameタブ非表示扱いでショートカットが有効です"
         assert bool(conflict_kmi.active), "B-Nameタブ非表示扱いで他のショートカットが無効化されています"
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: True
+        shortcut_visibility.any_bname_panel_visible = lambda _context=None: True
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) > 0, "B-Nameタブ表示扱いでショートカットが有効になりません"
-        assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
+        assert bool(conflict_kmi.active), "B-Nameタブ表示中に他のショートカットが無効化されています"
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: False
+        shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) == 0, "B-Nameタブ非表示へ戻した後もショートカットが有効です"
         assert bool(conflict_kmi.active), "B-Nameタブ非表示へ戻した後も他のショートカットが退避されたままです"
@@ -67,6 +93,7 @@ def main() -> None:
         assert not viewport_ops._shortcuts_allowed(bpy.context), "B-Nameタブ非表示扱いでナビゲート判定が有効です"
     finally:
         shortcut_visibility.bname_panel_visible = original_panel_visible
+        shortcut_visibility.any_bname_panel_visible = original_any_panel_visible
         shortcut_visibility.shortcuts_allowed = original_allowed
         mod.unregister()
         if conflict_km is not None:

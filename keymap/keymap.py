@@ -739,7 +739,7 @@ def _match_filter(kmi: object, filt: dict) -> bool:
 _state: Optional[KeymapState] = None
 
 # タイマー監視間隔 (秒)
-_WATCH_INTERVAL = 0.5
+_WATCH_INTERVAL = 0.15
 # B-Name タブの bl_category 名
 _BNAME_TAB_CATEGORY = "B-Name"
 
@@ -755,7 +755,7 @@ def _any_bname_tab_active() -> bool:
     """
     from ..utils import shortcut_visibility
 
-    return shortcut_visibility.bname_panel_visible(bpy.context)
+    return shortcut_visibility.any_bname_panel_visible(bpy.context)
 
 
 def _watch_bname_tab() -> Optional[float]:
@@ -805,12 +805,11 @@ def _bname_tab_is_active() -> bool:
 def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
     """B-Name タブ表示状態に合わせて自前キーと競合退避を切り替える."""
     if enabled:
+        try:
+            state.restore_conflicting_keys()
+        except Exception:  # noqa: BLE001
+            _logger.exception("restore_conflicting_keys failed")
         state.set_bname_items_active(True)
-        if state.bname_items:
-            try:
-                state.disable_conflicting_keys()
-            except Exception:  # noqa: BLE001
-                _logger.exception("disable_conflicting_keys failed")
         if not state.enabled and state.bname_items:
             state.override_defaults()
         return
@@ -922,7 +921,7 @@ def rebuild_keymap_from_prefs() -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("rebuild: remove_bname_keymaps failed")
     try:
-        # create_bname_keymap が内部で disable_conflicting_keys を再実行する
+        # B-Name タブ状態に合わせて自前キーだけを切り替える
         state.create_bname_keymap()
         from ..preferences import get_preferences
         prefs = get_preferences()

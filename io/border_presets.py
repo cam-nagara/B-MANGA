@@ -22,6 +22,9 @@ _ADDON_ROOT = Path(__file__).resolve().parent.parent
 GLOBAL_BORDERS_DIR = _ADDON_ROOT / "presets" / "borders"
 
 PRESET_SUFFIX = ".json"
+LEGACY_BORDER_PRESET_ALIASES = {
+    "ボカシブラシ": "輪郭ぼかし",
+}
 
 
 @dataclass(frozen=True)
@@ -76,8 +79,9 @@ def list_all_presets(work_dir: Path | None) -> list[BorderPreset]:
 
 
 def load_preset_by_name(name: str, work_dir: Path | None) -> BorderPreset | None:
+    alias = LEGACY_BORDER_PRESET_ALIASES.get(name, name)
     for preset in list_all_presets(work_dir):
-        if preset.name == name:
+        if preset.name == name or preset.name == alias:
             return preset
     return None
 

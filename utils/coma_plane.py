@@ -24,7 +24,9 @@ from typing import Optional
 import bpy
 
 from . import border_geom
+from . import coma_blur_curve
 from . import coma_preview
+from . import coma_z_order
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
@@ -67,7 +69,7 @@ PROP_COMA_MASK_OWNER_ID = "bname_coma_mask_owner_id"
 # z-fighting しない。 paper_bg (Z=0) はその下に独立して敷かれる。
 # 2026-05-04: BNAME_Z_STEP_M を 0.1 → 0.01 に縮小したのに合わせて 0.1 → 0.01
 # に変更。
-COMA_PLANE_Z_M = 0.01
+COMA_PLANE_Z_M = coma_z_order.COMA_PLANE_BASE_Z_M
 OUTSIDE_PAGE_ID = "outside"
 
 
@@ -202,7 +204,7 @@ def _resolve_alpha_mask_image(page_id: str, coma_id: str, coma):
             outline,
             width_mm,
             float(getattr(border, "blur_amount", 0.5) or 0.0),
-            dither=bool(getattr(border, "blur_dither", False)),
+            dither=False,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: alpha mask image failed")
@@ -249,12 +251,13 @@ def _apply_material(
     alpha_mask_image=None,
     keep_existing_mask: bool = True,
     dither: bool = False,
+    blur_curve_points=None,
 ) -> None:
     """Material を「プレビュー画像 (あれば) / 無ければ背景色」で構築する.
 
     - 画像があれば Image Texture → Emission。Solid のカラー=テクスチャで
       コマ形状に画像が貼られる。
-    - ボカシブラシ時は同じコマ面素材にマスクを掛け、コマ画像を背景色へ
+    - 輪郭ぼかし時は同じコマ面素材にマスクを掛け、コマ画像を背景色へ
       合成して輪郭をぼかす。材質自体は不透明のままにして、重なった下の
       コマが透けないようにする。
     - 画像が無ければ従来どおり背景色の Emission。
@@ -315,8 +318,32 @@ def _apply_material(
         alpha_node = alpha_tex
         try:
             alpha_tex.extension = "EXTEND"
+            alpha_tex.interpolation = "Linear"
         except Exception:  # noqa: BLE001
             pass
+        curve_node = coma_blur_curve.ensure_curve_node(
+            nt,
+            stored_points=blur_curve_points,
+            material=mat,
+        )
+        try:
+            nt.links.new(alpha_tex.outputs["Alpha"], curve_node.inputs["Value"])
+            edge_factor = curve_node.outputs["Value"]
+        except Exception:  # noqa: BLE001
+            edge_factor = alpha_tex.outputs["Alpha"]
+        if dither:
+            noise_value = _create_dither_value_nodes(nt)
+            compare = nt.nodes.new("ShaderNodeMath")
+            compare.name = "BName_ComaDitherThreshold"
+            compare.label = "ディザ判定"
+            compare.operation = "GREATER_THAN"
+            compare.location = (120, -320)
+            try:
+                nt.links.new(edge_factor, compare.inputs[0])
+                nt.links.new(noise_value, compare.inputs[1])
+                edge_factor = compare.outputs["Value"]
+            except Exception:  # noqa: BLE001
+                _logger.exception("coma_plane: dither node setup failed")
         if image is not None:
             preview_mix = nt.nodes.new("ShaderNodeMixRGB")
             preview_mix.location = (-70, 40)
@@ -329,7 +356,7 @@ def _apply_material(
                 nt.links.new(tex.outputs["Color"], preview_mix.inputs["Color2"])
                 edge_mix.blend_type = "MIX"
                 edge_mix.inputs["Color1"].default_value = rgba
-                nt.links.new(alpha_tex.outputs["Alpha"], edge_mix.inputs["Factor"])
+                nt.links.new(edge_factor, edge_mix.inputs["Factor"])
                 nt.links.new(preview_mix.outputs["Color"], edge_mix.inputs["Color2"])
                 nt.links.new(edge_mix.outputs["Color"], emission.inputs["Color"])
             except Exception:  # noqa: BLE001
@@ -361,6 +388,48 @@ def _apply_material(
         pass
 
 
+def _create_dither_value_nodes(nt: bpy.types.NodeTree):
+    created = []
+    try:
+        noise = nt.nodes.new("ShaderNodeTexWhiteNoise")
+        created.append(noise)
+        noise.name = "BName_ComaDither"
+        noise.label = "ディザ"
+        noise.location = (-300, -470)
+        texcoord = nt.nodes.new("ShaderNodeTexCoord")
+        created.append(texcoord)
+        texcoord.name = "BName_ComaDitherCoord"
+        texcoord.location = (-760, -470)
+        mapping = nt.nodes.new("ShaderNodeMapping")
+        created.append(mapping)
+        mapping.name = "BName_ComaDitherScale"
+        mapping.location = (-530, -470)
+        try:
+            mapping.inputs["Scale"].default_value = (520.0, 520.0, 1.0)
+        except Exception:  # noqa: BLE001
+            pass
+        nt.links.new(texcoord.outputs["UV"], mapping.inputs["Vector"])
+        nt.links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
+        return noise.outputs["Value"]
+    except Exception:  # noqa: BLE001
+        for node in reversed(created):
+            try:
+                nt.nodes.remove(node)
+            except Exception:  # noqa: BLE001
+                pass
+        noise = nt.nodes.new("ShaderNodeTexNoise")
+        noise.name = "BName_ComaDither"
+        noise.label = "ディザ"
+        noise.location = (-300, -470)
+        try:
+            noise.inputs["Scale"].default_value = 520.0
+            noise.inputs["Detail"].default_value = 0.0
+            noise.inputs["Roughness"].default_value = 0.5
+        except Exception:  # noqa: BLE001
+            pass
+        return noise.outputs["Fac"]
+
+
 def _ensure_coma_plane_material(
     page_id: str, coma_id: str, coma, work=None, page=None
 ) -> bpy.types.Material:
@@ -377,7 +446,9 @@ def _ensure_coma_plane_material(
             pass
     image = _resolve_preview_image(work, page, coma)
     alpha_mask = _resolve_alpha_mask_image(page_id, coma_id, coma)
-    dither = bool(getattr(getattr(coma, "border", None), "blur_dither", False))
+    border = getattr(coma, "border", None)
+    dither = bool(getattr(border, "blur_dither", False))
+    blur_curve_points = getattr(border, "blur_curve_points", None)
     _apply_material(
         mat,
         color,
@@ -385,6 +456,7 @@ def _ensure_coma_plane_material(
         alpha_mask_image=alpha_mask,
         keep_existing_mask=False,
         dither=dither,
+        blur_curve_points=blur_curve_points,
     )
     if alpha_mask is None:
         try:
@@ -487,7 +559,7 @@ def _set_obj_location(
     try:
         obj.location.x = mm_to_m(page_ox_mm + local_x_mm)
         obj.location.y = mm_to_m(page_oy_mm + local_y_mm)
-        obj.location.z = COMA_PLANE_Z_M
+        obj.location.z = coma_z_order.plane_z(coma)
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: location set failed")
 

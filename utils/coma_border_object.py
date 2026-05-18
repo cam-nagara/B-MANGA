@@ -8,6 +8,7 @@ from typing import Optional, Sequence
 import bpy
 
 from . import border_geom
+from . import coma_z_order
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
@@ -21,8 +22,10 @@ COMA_BORDER_MATERIAL_PREFIX = "BName_ComaBorder_"
 COMA_WHITE_MARGIN_NAME_PREFIX = "coma_white_margin_"
 COMA_WHITE_MARGIN_MESH_PREFIX = "coma_white_margin_mesh_"
 COMA_WHITE_MARGIN_MATERIAL_PREFIX = "BName_ComaWhiteMargin_"
-COMA_WHITE_MARGIN_Z_M = 0.018
-COMA_BORDER_Z_M = 0.024
+COMA_WHITE_MARGIN_Z_M = (
+    coma_z_order.COMA_PLANE_BASE_Z_M + coma_z_order.COMA_WHITE_MARGIN_OFFSET_Z_M
+)
+COMA_BORDER_Z_M = coma_z_order.COMA_PLANE_BASE_Z_M + coma_z_order.COMA_BORDER_OFFSET_Z_M
 OUTSIDE_PAGE_ID = "outside"
 
 PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
@@ -127,7 +130,7 @@ def _ensure_soft_material(
     *,
     dither: bool = False,
 ) -> bpy.types.Material:
-    """半透明のソフトマテリアル (ボカシブラシのハロー用).
+    """半透明のソフトマテリアル (旧方式の輪郭ぼかしハロー用).
 
     Emission を Transparent と Mix し、Solid 表示でもレンダーでも alpha が
     効くようにする。``rgba[3]`` を不透明度として扱う。 ``dither=True`` で
@@ -177,7 +180,7 @@ def _brush_halo_groups(
     color: tuple[float, float, float, float],
     blur_amount: float,
 ) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
-    """ボカシブラシ: 芯 + 外側に広がる半透明ハローのグループ列を返す."""
+    """旧方式の輪郭ぼかし: 芯 + 外側に広がる半透明ハローのグループ列を返す."""
     blur = max(0.0, min(1.0, float(blur_amount)))
     base_w = max(0.0, float(base_width_mm))
     r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
@@ -303,7 +306,7 @@ def _set_location(obj: bpy.types.Object, scene, work, page, coma) -> None:
         local_y = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
     obj.location.x = mm_to_m(page_ox + local_x)
     obj.location.y = mm_to_m(page_oy + local_y)
-    obj.location.z = COMA_BORDER_Z_M
+    obj.location.z = coma_z_order.border_z(coma)
 
 
 def _base_poly(coma) -> list[tuple[float, float]]:
@@ -499,7 +502,7 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
     obj.hide_viewport = not visible
     obj.hide_render = not visible
     _set_location(obj, scene, work, page, coma)
-    obj.location.z = COMA_WHITE_MARGIN_Z_M
+    obj.location.z = coma_z_order.white_margin_z(coma)
     coma_coll = _coma_collection(scene, page, page_id, coma_id, str(getattr(coma, "title", "") or coma_id))
     if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
         coma_coll.objects.link(obj)
@@ -597,7 +600,7 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
         if is_brush:
             # 芯 (group_index 最大) を最前面、外側ハローを背面に並べて
             # z-fight を避けつつ輪郭が外へボケて見えるようにする。
-            obj.location.z = COMA_BORDER_Z_M + group_index * 1.0e-5
+            obj.location.z = coma_z_order.border_z(coma) + group_index * 1.0e-5
         if coma_coll is not None and not any(existing is obj for existing in coma_coll.objects):
             try:
                 coma_coll.objects.link(obj)
@@ -644,7 +647,7 @@ def update_coma_border_locations(scene, work) -> int:
             wm_obj = bpy.data.objects.get(f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}")
             if wm_obj is not None:
                 _set_location(wm_obj, scene, work, page, coma)
-                wm_obj.location.z = COMA_WHITE_MARGIN_Z_M
+                wm_obj.location.z = coma_z_order.white_margin_z(coma)
                 count += 1
     for coma in getattr(work, "shared_comas", []) or []:
         page_id = OUTSIDE_PAGE_ID
@@ -657,7 +660,7 @@ def update_coma_border_locations(scene, work) -> int:
         wm_obj = bpy.data.objects.get(f"{COMA_WHITE_MARGIN_NAME_PREFIX}{page_id}_{coma_id}")
         if wm_obj is not None:
             _set_location(wm_obj, scene, work, None, coma)
-            wm_obj.location.z = COMA_WHITE_MARGIN_Z_M
+            wm_obj.location.z = coma_z_order.white_margin_z(coma)
             count += 1
     return count
 

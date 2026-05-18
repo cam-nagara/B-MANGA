@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, FloatVectorProperty, StringProperty
 
 from ..utils import log
 
@@ -15,7 +15,7 @@ _LINE_STYLE_ITEMS = (
     ("dashed", "破線", ""),
     ("dotted", "点線", ""),
     ("double", "二重線", ""),
-    ("brush", "ボカシブラシ", "輪郭をぼかした筆風の枠線"),
+    ("brush", "輪郭ぼかし", "輪郭をぼかした枠線"),
 )
 
 _CORNER_ITEMS = (
@@ -74,16 +74,22 @@ class BNameComaBorder(bpy.types.PropertyGroup):
     )
     blur_amount: FloatProperty(  # type: ignore[valid-type]
         name="ボカシ量",
-        description="ボカシブラシ線種のときの輪郭のボケ具合",
+        description="輪郭ぼかし線種のときの輪郭のボケ具合",
         default=0.5,
         min=0.0,
         max=1.0,
         subtype="FACTOR",
         update=_on_border_changed,
     )
+    blur_curve_points: StringProperty(  # type: ignore[valid-type]
+        name="ぼかしカーブ",
+        default="0.0000,0.0000;1.0000,1.0000",
+        options={"HIDDEN"},
+        update=_on_border_changed,
+    )
     blur_dither: BoolProperty(  # type: ignore[valid-type]
         name="ディザ化",
-        description="ボカシブラシのボケを網点状のディザで表現する",
+        description="輪郭ぼかしのボケをディザで表現する",
         default=False,
         update=_on_border_changed,
     )

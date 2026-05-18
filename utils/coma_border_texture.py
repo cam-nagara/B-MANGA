@@ -1,4 +1,4 @@
-"""コマ枠線のボカシブラシ用アルファテクスチャ Mesh."""
+"""コマ枠線の輪郭ぼかし用アルファテクスチャ Mesh."""
 
 from __future__ import annotations
 

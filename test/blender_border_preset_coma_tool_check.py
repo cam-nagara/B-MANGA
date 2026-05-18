@@ -30,7 +30,7 @@ def main() -> None:
     _load_addon()
     failures: list[str] = []
 
-    # 1. ボカシブラシ線種 + blur_amount
+    # 1. 輪郭ぼかし線種 + blur_amount
     from bname_dev.core import coma_border
 
     styles = {s[0] for s in coma_border._LINE_STYLE_ITEMS}
@@ -47,7 +47,7 @@ def main() -> None:
     from bname_dev.io import border_presets, schema
 
     gp = {p.name for p in border_presets.list_global_presets()}
-    for need in ("線無し", "標準", "極太", "ボカシブラシ"):
+    for need in ("線無し", "標準", "極太", "輪郭ぼかし"):
         if need not in gp:
             failures.append(f"同梱枠線プリセット {need} が見つからない (見つかった={sorted(gp)})")
     for opid in ("border_preset_apply", "border_preset_save_local"):
@@ -144,14 +144,14 @@ def main() -> None:
         if abs(rad[0]) > 1e-6 or abs(rad[mid_i] - base_r) > 1e-6:
             failures.append(f"半径プロファイル不正: {rad}")
 
-    # 5. プリセット往復: 標準/ボカシブラシ を coma に適用して値確認
+    # 5. プリセット往復: 標準/輪郭ぼかし を coma に適用して値確認
     bpy.context.scene.bname_work  # noqa: B018  -- 存在確認
     work = bpy.context.scene.bname_work
     page = work.pages.add()
     coma = page.comas.add()
-    pre = border_presets.load_preset_by_name("ボカシブラシ", None)
+    pre = border_presets.load_preset_by_name("輪郭ぼかし", None)
     if pre is None:
-        failures.append("ボカシブラシ プリセットを load 出来ない")
+        failures.append("輪郭ぼかし プリセットを load 出来ない")
     else:
         border_presets.apply_preset_to_coma(pre, coma)
         if coma.border.style != "brush":
@@ -161,6 +161,9 @@ def main() -> None:
         saved = schema.coma_border_to_dict(coma.border)
         if "perEdge" in saved:
             failures.append("枠線プリセット保存データに辺別設定が残っている")
+    legacy = border_presets.load_preset_by_name("ボカシブラシ", None)
+    if legacy is None or legacy.name != "輪郭ぼかし":
+        failures.append("旧名 ボカシブラシ から輪郭ぼかしプリセットを参照できない")
 
     no_line = border_presets.load_preset_by_name("線無し", None)
     if no_line is None:
