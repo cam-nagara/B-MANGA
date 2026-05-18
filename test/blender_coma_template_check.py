@@ -75,11 +75,13 @@ def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_template_"))
     template_path = temp_root / "template.blend"
     coma_template_path = temp_root / "coma_template.blend"
+    replacement_template_path = temp_root / "replacement_template.blend"
     work_dir = temp_root / "Template_Test.bname"
     mod = None
     try:
         _create_template(template_path)
         _create_template(coma_template_path, "COMA")
+        _create_template(replacement_template_path, "REPLACE")
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
@@ -150,6 +152,43 @@ def main() -> None:
         page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
         stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
         assert stored_coma["comaBlendTemplatePath"] == str(coma_template_path)
+        assert stored_coma["comaBlendTemplateNeedsApply"] is False
+
+        work = bpy.context.scene.bname_work
+        work.active_page_index = 0
+        page = work.pages[0]
+        page.active_coma_index = coma_index
+        page.comas[coma_index].coma_blend_template_path = str(replacement_template_path)
+        assert page.comas[coma_index].coma_blend_template_needs_apply is True
+        result = bpy.ops.bname.enter_coma_mode()
+        assert result == {"FINISHED"}, result
+        assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
+        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
+        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_COMA") is None
+
+        result = bpy.ops.bname.exit_coma_mode()
+        assert result == {"FINISHED"}, result
+        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
+        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
+        assert stored_coma["comaBlendTemplatePath"] == str(replacement_template_path)
+        assert stored_coma["comaBlendTemplateNeedsApply"] is False
+
+        work = bpy.context.scene.bname_work
+        work.active_page_index = 0
+        page = work.pages[0]
+        page.active_coma_index = coma_index
+        page.comas[coma_index].coma_blend_template_path = ""
+        assert page.comas[coma_index].coma_blend_template_needs_apply is True
+        result = bpy.ops.bname.enter_coma_mode()
+        assert result == {"FINISHED"}, result
+        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
+
+        result = bpy.ops.bname.exit_coma_mode()
+        assert result == {"FINISHED"}, result
+        page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
+        stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
+        assert stored_coma["comaBlendTemplatePath"] == ""
+        assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
         work = bpy.context.scene.bname_work
         work.active_page_index = 0

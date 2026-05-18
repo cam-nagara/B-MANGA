@@ -246,10 +246,7 @@ def _render(scene, engine: str, sample_count: int) -> None:
 
 
 def _is_fisheye_enabled(scene) -> bool:
-    return bool(
-        getattr(scene, "fisheye_layout_mode", False)
-        or getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)
-    )
+    return core.fisheye_enabled(scene)
 
 
 def _render_layer(scene, group_name: str, label: str, engine: str, sample_count: int) -> None:

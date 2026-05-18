@@ -186,6 +186,13 @@ def _copy_template_into_coma(
         return None
 
 
+def copy_template_into_coma(
+    template_path: Path, work_dir: Path, page_id: str, coma_id: str
+) -> Path | None:
+    """指定 .blend をこのコマの cNN.blend としてコピーする."""
+    return _copy_template_into_coma(template_path, work_dir, page_id, coma_id)
+
+
 def _open_coma_template_blend(template_path: Path) -> bool:
     try:
         bpy.ops.wm.open_mainfile(filepath=str(template_path.resolve()))

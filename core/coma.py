@@ -89,6 +89,13 @@ def _on_coma_paper_visible_changed(_self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _on_coma_blend_template_path_changed(self, _context) -> None:
+    try:
+        self.coma_blend_template_needs_apply = True
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _on_coma_geometry_changed(self, context) -> None:
     """``rect_*_mm`` 変更で coma_plane Mesh を即時更新.
 
@@ -154,11 +161,17 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
         name="コマ用blendファイル",
         description=(
-            "このコマの新規コマ用blendファイル作成時に初回コピーする .blend。"
-            "空なら作品またはプリファレンスの設定を使う"
+            "このコマに使う .blend。変更後は次に開く時にこのコマへコピーする。"
+            "空なら未作成コマで作品またはプリファレンスの設定を使う"
         ),
         default="",
         subtype="FILE_PATH",
+        update=_on_coma_blend_template_path_changed,
+    )
+    coma_blend_template_needs_apply: BoolProperty(  # type: ignore[valid-type]
+        name="コマ用blendファイル変更未適用",
+        default=False,
+        options={"HIDDEN"},
     )
 
     # --- 形状 ---

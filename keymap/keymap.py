@@ -846,7 +846,12 @@ def get_state() -> Optional[KeymapState]:
     return _state
 
 
-def suspend_visibility_updates(seconds: float = 3.0, *, reason: str = "") -> None:
+def suspend_visibility_updates(
+    seconds: float = 3.0,
+    *,
+    reason: str = "",
+    disable_now: bool = True,
+) -> None:
     """mainfile 切替直後の不安定なタイミングでは keymap を触らない."""
     global _SUSPEND_UNTIL, _SUSPEND_REASON
     try:
@@ -855,6 +860,22 @@ def suspend_visibility_updates(seconds: float = 3.0, *, reason: str = "") -> Non
         seconds = 3.0
     _SUSPEND_UNTIL = max(_SUSPEND_UNTIL, time.monotonic() + seconds)
     _SUSPEND_REASON = str(reason or "")
+    if disable_now:
+        force_shortcuts_disabled()
+
+
+def force_shortcuts_disabled() -> None:
+    """現在登録済みの B-Name キーを即時に無効化する."""
+    state = _state
+    if state is None:
+        return
+    try:
+        state.restore_conflicting_keys()
+    except Exception:  # noqa: BLE001
+        _logger.exception("restore_conflicting_keys failed")
+    if state.enabled:
+        state.restore_defaults()
+    state.set_bname_items_active(False)
 
 
 def is_visibility_update_suspended() -> bool:

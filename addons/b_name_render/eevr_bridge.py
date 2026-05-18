@@ -45,6 +45,8 @@ def setup(scene, camera=None, *, output_dir: str = "", output_name: str = "") ->
 def _fisheye_fov(scene, camera) -> float:
     camera_data = getattr(camera, "data", None)
     value = getattr(camera_data, "fisheye_fov", None)
+    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+        value = getattr(scene, "bname_coma_camera_fisheye_fov", value)
     if value is None:
         value = getattr(scene, "fisheye_fov", radians(180))
     return min(max(float(value or radians(180)), radians(1)), radians(360))

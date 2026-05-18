@@ -86,14 +86,14 @@ def _draw_fisheye_box(layout, context, state) -> None:
     # 魚眼モード / 魚眼FOV は B-Name のコマファイル側で調節する。
     # B-Name-Render は単体運用を想定しないため、ここでは編集させず、
     # 出力に使われる値を読み取り専用で表示する (B-Name と自動同期)。
-    fisheye_on = bool(getattr(scene, "fisheye_layout_mode", False))
+    fisheye_on = core.fisheye_enabled(scene)
     info = fish.column(align=True)
     info.label(
         text=f"魚眼モード: {'オン' if fisheye_on else 'オフ'}（B-Name側で調節）",
     )
     if fisheye_on:
         fov_deg = round(
-            math.degrees(float(getattr(scene, "fisheye_fov", 0.0) or 0.0))
+            math.degrees(float(core.fisheye_fov(scene)))
         )
         info.label(text=f"魚眼FOV: {fov_deg}°")
     row = fish.row(align=True)

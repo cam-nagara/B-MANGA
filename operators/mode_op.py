@@ -274,6 +274,8 @@ class BNAME_OT_enter_coma_mode(Operator):
                 if selected_template is None:
                     return {"CANCELLED"}
                 entry.coma_blend_template_path = str(selected_template)
+                if hasattr(entry, "coma_blend_template_needs_apply"):
+                    entry.coma_blend_template_needs_apply = False
                 page_io.save_page_json(work_dir, page)
 
             # work.blend を開く前後の load_post は work.json を正として再同期する。
@@ -296,6 +298,24 @@ class BNAME_OT_enter_coma_mode(Operator):
 
             # 2) cNN.blend を開く。未作成なら現シーンを新規保存して遷移。
             if blend_io.coma_blend_exists(work_dir, page_id, stem):
+                changed_template = self._pending_coma_template_path(work, work_dir, page, entry)
+                if changed_template is False:
+                    return {"CANCELLED"}
+                if changed_template is not None:
+                    from ..utils import coma_scene
+
+                    copied = coma_scene.copy_template_into_coma(
+                        changed_template,
+                        work_dir,
+                        page_id,
+                        stem,
+                    )
+                    if copied is None:
+                        self.report({"ERROR"}, "コマ用blendファイルをこのコマへコピーできませんでした")
+                        return {"CANCELLED"}
+                    if hasattr(entry, "coma_blend_template_needs_apply"):
+                        entry.coma_blend_template_needs_apply = False
+                    page_io.save_page_json(work_dir, page)
                 _suspend_keymap_visibility_updates()
                 ok = blend_io.open_coma_blend(work_dir, page_id, stem)
                 _suspend_keymap_visibility_updates()
@@ -311,6 +331,9 @@ class BNAME_OT_enter_coma_mode(Operator):
                 if template_error:
                     self.report({"ERROR"}, template_error)
                     return {"CANCELLED"}
+                if template_path is not None and hasattr(entry, "coma_blend_template_needs_apply"):
+                    entry.coma_blend_template_needs_apply = False
+                    page_io.save_page_json(work_dir, page)
                 if template_path is None:
                     _suspend_keymap_visibility_updates()
                 if template_path is None and not blend_io.read_homefile():
@@ -437,6 +460,31 @@ class BNAME_OT_enter_coma_mode(Operator):
             return None
         return path.resolve()
 
+    def _pending_coma_template_path(self, work, work_dir: Path, page, entry):
+        if not bool(getattr(entry, "coma_blend_template_needs_apply", False)):
+            return None
+        raw = str(getattr(entry, "coma_blend_template_path", "") or "").strip()
+        if not raw:
+            try:
+                entry.coma_blend_template_needs_apply = False
+            except Exception:  # noqa: BLE001
+                pass
+            page_io.save_page_json(work_dir, page)
+            return None
+        from ..utils import coma_scene
+
+        template_path, template_error = coma_scene.resolve_coma_blend_template_path(
+            work,
+            work_dir,
+            entry,
+        )
+        if template_error:
+            self.report({"ERROR"}, template_error)
+            return False
+        if template_path is None:
+            return None
+        return template_path
+
 
 class BNAME_OT_enter_coma_mode_from_viewport(Operator):
     """3D ビューのダブルクリックからコマ用 blend ファイルを開く."""
@@ -510,7 +558,8 @@ class BNAME_OT_exit_coma_mode(Operator):
         page = get_active_page(context)
         stem = getattr(context.scene, "bname_current_coma_id", "")
         if (
-            work is not None
+            not bpy.app.background
+            and work is not None
             and work.loaded
             and stem
             and paths.is_valid_coma_id(stem)

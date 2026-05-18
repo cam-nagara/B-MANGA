@@ -46,6 +46,26 @@ def main() -> None:
         assert getattr(bpy.types.Scene, "bname_render_state", None) is not None
         assert getattr(bpy.types.Scene, "fisheye_layout_mode", None) is not None
         assert getattr(bpy.types.Scene, "my_tool", None) is not None
+        from bname_render_dev import core, eevr_bridge
+
+        scene = bpy.context.scene
+        cam_data = bpy.data.cameras.new("BNameRenderFisheyeCamera")
+        cam = bpy.data.objects.new("BNameRenderFisheyeCamera", cam_data)
+        scene.collection.objects.link(cam)
+        scene.camera = cam
+        scene.render.resolution_x = 800
+        scene.render.resolution_y = 600
+        scene.original_resolution_x = 800
+        scene.original_resolution_y = 600
+        scene.fisheye_layout_mode = False
+        scene.bname_coma_camera_fisheye_layout_mode = True
+        scene.bname_coma_camera_fisheye_fov = 2.4
+        core._apply_output_resolution_mode(scene)
+        assert core.fisheye_enabled(scene), "B-Name側の魚眼モードをB-Name-Renderが認識していません"
+        assert scene.render.resolution_x == 800 and scene.render.resolution_y == 800
+        assert cam.data.type == "PANO"
+        assert abs(float(cam.data.fisheye_fov) - 2.4) < 1.0e-6
+        assert abs(eevr_bridge._fisheye_fov(scene, cam) - 2.4) < 1.0e-6
 
         result = bpy.ops.bname_render.load_builtin_presets(reset=True)
         assert result == {"FINISHED"}, result

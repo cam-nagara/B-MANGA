@@ -140,6 +140,14 @@ def main() -> None:
         assert _active_bname_items(keymap_mod) > 0, "B-Nameタブ表示扱いでショートカットが有効になりません"
         assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
 
+        keymap_mod.suspend_visibility_updates(seconds=1.0, reason="test blend switch")
+        assert _active_bname_items(keymap_mod) == 0, "blend切替待機中にB-Nameキーが有効です"
+        assert bool(conflict_kmi.active), "blend切替待機中に他のショートカットが退避されています"
+        keymap_mod._SUSPEND_UNTIL = 0.0
+        keymap_mod._watch_bname_tab()
+        assert _active_bname_items(keymap_mod) > 0, "blend切替待機後にB-Nameキーが有効になりません"
+        assert not bool(conflict_kmi.active), "blend切替待機後に競合ショートカットが退避されません"
+
         bpy.context.scene.bname_mode = "COMA"
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) == 0, "コマ用blendファイル扱いでB-Nameキーが有効です"

@@ -686,6 +686,7 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "title": entry.title,
         "comaId": entry.coma_id,
         "comaBlendTemplatePath": str(getattr(entry, "coma_blend_template_path", "") or ""),
+        "comaBlendTemplateNeedsApply": bool(getattr(entry, "coma_blend_template_needs_apply", False)),
         "shape": {
             "type": entry.shape_type,
             "rect": {
@@ -720,6 +721,8 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.coma_id = data.get("comaId", "")
     if hasattr(entry, "coma_blend_template_path"):
         entry.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
+    if hasattr(entry, "coma_blend_template_needs_apply"):
+        entry.coma_blend_template_needs_apply = bool(data.get("comaBlendTemplateNeedsApply", False))
     shape = data.get("shape", {})
     entry.shape_type = shape.get("type", "rect")
     rect = shape.get("rect", {})

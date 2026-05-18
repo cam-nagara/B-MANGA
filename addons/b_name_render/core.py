@@ -149,6 +149,23 @@ def _ensure_original_resolution(scene) -> tuple[int, int]:
     return original_x, original_y
 
 
+def fisheye_enabled(scene) -> bool:
+    if scene is None:
+        return False
+    return bool(
+        getattr(scene, "fisheye_layout_mode", False)
+        or getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)
+    )
+
+
+def fisheye_fov(scene) -> float:
+    if scene is None:
+        return 3.1415927
+    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+        return float(getattr(scene, "bname_coma_camera_fisheye_fov", 3.1415927) or 3.1415927)
+    return float(getattr(scene, "fisheye_fov", 3.1415927) or 3.1415927)
+
+
 def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
     camera = getattr(scene, "camera", None)
     camera_data = getattr(camera, "data", None)
@@ -160,7 +177,7 @@ def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
             if hasattr(camera_data, "panorama_type"):
                 camera_data.panorama_type = "FISHEYE_EQUIDISTANT"
             if hasattr(camera_data, "fisheye_fov"):
-                camera_data.fisheye_fov = float(getattr(scene, "fisheye_fov", 3.1415927) or 3.1415927)
+                camera_data.fisheye_fov = fisheye_fov(scene)
     except Exception:  # noqa: BLE001
         pass
 
@@ -170,7 +187,7 @@ def _apply_output_resolution_mode(scene) -> None:
         return
     original_x, original_y = _ensure_original_resolution(scene)
     scale = max(0.01, min(1.0, float(getattr(scene, "preview_scale_percentage", 100.0) or 100.0) / 100.0))
-    fisheye = bool(getattr(scene, "fisheye_layout_mode", False))
+    fisheye = fisheye_enabled(scene)
     reduction = bool(getattr(scene, "reduction_mode", False))
     _set_camera_projection_for_fisheye(scene, fisheye)
     if fisheye:
