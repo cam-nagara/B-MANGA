@@ -182,7 +182,8 @@ def _create_balloon(context, page, parent_kind: str, parent_key: str, index: int
     entry.parent_key = parent_key
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
     fill = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{entry.id}")
-    return obj, fill
+    assert fill is None, "フキダシの塗りが別オブジェクトとして残っています"
+    return obj
 
 
 def _create_gp(context, parent_kind: str, parent_key: str, index: int):
@@ -300,7 +301,7 @@ def main() -> None:
             ("画像", lambda pk, key, i: _create_image(context, page, pk, key, i, image_path), "mesh"),
             ("ラスター", lambda pk, key, i: _create_raster(context, pk, key, i), "mesh"),
             ("テキスト", lambda pk, key, i: _create_text(context, page, pk, key, i), "mesh"),
-            ("フキダシ", lambda pk, key, i: _create_balloon(context, page, pk, key, i), "balloon"),
+            ("フキダシ", lambda pk, key, i: _create_balloon(context, page, pk, key, i), "mesh"),
             ("GP", lambda pk, key, i: _create_gp(context, pk, key, i), "gp"),
             ("効果線", lambda pk, key, i: _create_effect(context, pk, key, i), "effect"),
         ]
@@ -317,12 +318,6 @@ def main() -> None:
                     ok, state = _gp_mask_state(created, expected, page_bounds, coma_bounds)
                 elif check_kind == "effect":
                     ok, state = _effect_mask_state(created)
-                else:
-                    outline, fill = created
-                    ok1, state1 = _mesh_mask_state(outline, expected, mask_apply)
-                    ok2, state2 = _mesh_mask_state(fill, expected, mask_apply)
-                    ok = ok1 and ok2
-                    state = f"線:{state1} 塗:{state2}"
                 rows.append({
                     "layer": layer_name,
                     "scope": scope_name,

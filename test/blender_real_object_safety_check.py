@@ -305,16 +305,16 @@ def main() -> None:
         assert balloon_obj is not None, "balloon mesh was not created"
         assert balloon_obj.type == "MESH", f"balloon should be a mesh, got {balloon_obj.type}"
         assert len(balloon_obj.data.polygons) > 0, "balloon mesh has no polygons"
+        assert len(balloon_obj.data.materials) >= 2, "balloon should contain line and fill materials"
+        assert any(poly.material_index == 1 for poly in balloon_obj.data.polygons), (
+            "balloon fill polygons should be inside the balloon mesh"
+        )
         balloon_fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}")
-        assert balloon_fill_obj is not None, "balloon fill object was not created"
-        assert balloon_fill_obj.type == "MESH", f"balloon fill should be a mesh, got {balloon_fill_obj.type}"
-        assert len(balloon_fill_obj.data.polygons) > 0, "balloon fill mesh has no polygons"
+        assert balloon_fill_obj is None, "balloon fill object should not be separate"
         balloon.visible = False
         assert balloon_obj.hide_viewport and balloon_obj.hide_render, "balloon visibility was not synced"
-        assert balloon_fill_obj.hide_viewport and balloon_fill_obj.hide_render, "balloon fill visibility was not synced"
         balloon.visible = True
         assert not balloon_obj.hide_viewport and not balloon_obj.hide_render, "balloon visibility restore failed"
-        assert not balloon_fill_obj.hide_viewport and not balloon_fill_obj.hide_render, "balloon fill visibility restore failed"
         tail = balloon.tails.add()
         tail.type = "straight"
         tail.direction_deg = 270.0
@@ -347,7 +347,7 @@ def main() -> None:
         safe_fill_name = safe_fill_obj.name
         white_margin_name = white_margin_obj.name
         balloon_name = balloon_obj.name
-        balloon_fill_name = balloon_fill_obj.name
+        balloon_fill_name = f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}"
         reopen_path = temp_root / "real_object_safety_reopen.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
         mod.unregister()
@@ -363,7 +363,7 @@ def main() -> None:
         assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after unregister"
         assert bpy.data.objects.get(white_margin_name) is not None, "coma white margin disappeared after unregister"
         assert bpy.data.objects.get(balloon_name) is not None, "balloon disappeared after unregister"
-        assert bpy.data.objects.get(balloon_fill_name) is not None, "balloon fill disappeared after unregister"
+        assert bpy.data.objects.get(balloon_fill_name) is None, "balloon fill object reappeared after unregister"
         bpy.ops.wm.open_mainfile(filepath=str(reopen_path))
         assert bpy.data.objects.get(text_name) is not None, "text object disappeared after reopen"
         assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after reopen"
@@ -375,7 +375,7 @@ def main() -> None:
         assert bpy.data.objects.get(safe_fill_name) is not None, "safe area fill disappeared after reopen"
         assert bpy.data.objects.get(white_margin_name) is not None, "coma white margin disappeared after reopen"
         assert bpy.data.objects.get(balloon_name) is not None, "balloon disappeared after reopen"
-        assert bpy.data.objects.get(balloon_fill_name) is not None, "balloon fill disappeared after reopen"
+        assert bpy.data.objects.get(balloon_fill_name) is None, "balloon fill object reappeared after reopen"
         reopened_image = bpy.data.images.get(image_name)
         assert reopened_image is not None, "text texture image disappeared after reopen"
         assert reopened_image.size[0] > 0 and reopened_image.size[1] > 0

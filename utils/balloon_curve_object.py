@@ -36,6 +36,7 @@ BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
+FILL_LOCAL_Z_OFFSET_M = -0.001
 
 
 def _remove_unused_data_block(data) -> None:
@@ -445,21 +446,30 @@ def _remove_duplicate_balloon_objects(
         _remove_balloon_object(obj)
 
 
-def _ensure_balloon_fill_object(
+def _remove_legacy_balloon_fill_objects(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    legacy_name = f"{BALLOON_FILL_NAME_PREFIX}{balloon_id}"
+    for obj in list(bpy.data.objects):
+        if obj.name != legacy_name and not (
+            obj.get(PROP_BALLOON_FILL_KIND) == "balloon_fill"
+            and str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "") == balloon_id
+        ):
+            continue
+        _remove_balloon_object(obj)
+
+
+def _ensure_balloon_fill_mesh_data(
     *,
     scene: bpy.types.Scene,
     entry,
-    page,
     points_mm: Sequence[tuple[float, float]],
     tail_polygons_mm: Sequence[Sequence[tuple[float, float]]],
-    parent_kind: str,
-    parent_key: str,
-    folder_id: str,
     corner_indices: Sequence[int] | None = None,
-) -> Optional[bpy.types.Object]:
+) -> tuple[Optional[bpy.types.Mesh], Optional[bpy.types.Material]]:
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
-        return None
+        return None, None
     fill_data = _ensure_balloon_curve_data(
         f"{BALLOON_FILL_DATA_PREFIX}{balloon_id}",
         points_mm,
@@ -481,58 +491,64 @@ def _ensure_balloon_fill_object(
         curve_data=fill_data,
         mesh_name=f"{BALLOON_FILL_MESH_DATA_PREFIX}{balloon_id}",
     )
-    if fill_mesh is None:
-        return None
     _remove_unused_data_block(fill_data)
+    return fill_mesh, mat
 
-    obj_name = f"{BALLOON_FILL_NAME_PREFIX}{balloon_id}"
-    obj = bpy.data.objects.get(obj_name)
-    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=fill_mesh)
-    obj[PROP_BALLOON_FILL_KIND] = "balloon_fill"
-    obj[PROP_BALLOON_FILL_OWNER_ID] = balloon_id
-    obj[on.PROP_MANAGED] = False
-    obj.hide_select = True
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
-    obj.location.z = 0.0
-    try:
-        from . import page_grid as _pg
 
-        work = getattr(scene, "bname_work", None)
-        page_idx = -1
-        if work is not None and page is not None:
-            target_id = str(getattr(page, "id", "") or "")
-            for i, p in enumerate(getattr(work, "pages", [])):
-                if str(getattr(p, "id", "") or "") == target_id:
-                    page_idx = i
-                    break
-        if page_idx >= 0:
-            ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
-            obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
-            obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon fill: page world offset failed")
-    obj.hide_viewport = not bool(getattr(entry, "visible", True))
-    obj.hide_render = not bool(getattr(entry, "visible", True))
-    try:
-        from . import outliner_model as _om
+def _append_mesh_faces(
+    *,
+    source: bpy.types.Mesh,
+    verts: list[tuple[float, float, float]],
+    faces: list[list[int]],
+    material_indices: list[int],
+    material_index: int,
+    z_offset: float = 0.0,
+) -> None:
+    base = len(verts)
+    for vertex in getattr(source, "vertices", []) or []:
+        co = vertex.co
+        verts.append((float(co.x), float(co.y), float(co.z) + z_offset))
+    for poly in getattr(source, "polygons", []) or []:
+        faces.append([base + int(i) for i in poly.vertices])
+        material_indices.append(material_index)
 
-        _om.link_object_to_parent(
-            scene,
-            obj,
-            parent_kind=parent_kind,
-            parent_key=parent_key,
-            folder_id=folder_id,
+
+def _combine_balloon_mesh_data(
+    *,
+    mesh_name: str,
+    line_mesh: bpy.types.Mesh,
+    fill_mesh: Optional[bpy.types.Mesh],
+    line_material: bpy.types.Material,
+    fill_material: Optional[bpy.types.Material],
+) -> bpy.types.Mesh:
+    verts: list[tuple[float, float, float]] = []
+    faces: list[list[int]] = []
+    material_indices: list[int] = []
+    if fill_mesh is not None:
+        _append_mesh_faces(
+            source=fill_mesh,
+            verts=verts,
+            faces=faces,
+            material_indices=material_indices,
+            material_index=1,
+            z_offset=FILL_LOCAL_Z_OFFSET_M,
         )
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon fill link failed")
-    try:
-        from . import mask_apply
-
-        mask_apply.apply_mask_to_object_for_parent(obj, parent_key)
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon fill mask apply failed")
-    return obj
+    _append_mesh_faces(
+        source=line_mesh,
+        verts=verts,
+        faces=faces,
+        material_indices=material_indices,
+        material_index=0,
+    )
+    mesh = bpy.data.meshes.new(mesh_name)
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.materials.append(line_material)
+    if fill_material is not None:
+        mesh.materials.append(fill_material)
+    for poly, material_index in zip(mesh.polygons, material_indices, strict=False):
+        poly.material_index = material_index
+    return mesh
 
 
 def ensure_balloon_curve_object(
@@ -578,7 +594,7 @@ def ensure_balloon_curve_object(
             tail_polygons_mm,
             corner_indices=corner_indices,
         )
-    _ensure_balloon_curve_material(
+    line_mat = _ensure_balloon_curve_material(
         curve_data,
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
         entry=entry,
@@ -597,15 +613,32 @@ def ensure_balloon_curve_object(
     )
     if mesh_data is None:
         return None
+    fill_mesh, fill_mat = _ensure_balloon_fill_mesh_data(
+        scene=scene,
+        entry=entry,
+        points_mm=points_mm,
+        tail_polygons_mm=tail_polygons_mm,
+        corner_indices=corner_indices,
+    )
+    combined_mesh = _combine_balloon_mesh_data(
+        mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
+        line_mesh=mesh_data,
+        fill_mesh=fill_mesh,
+        line_material=line_mat,
+        fill_material=fill_mat,
+    )
+    _remove_unused_data_block(mesh_data)
+    _remove_unused_data_block(fill_mesh)
 
     # 2. Mesh Object 生成 or 再利用
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
     obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
-    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=mesh_data)
+    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=combined_mesh)
     _remove_unused_data_block(curve_data)
     _remove_duplicate_balloon_objects(balloon_id, obj)
+    _remove_legacy_balloon_fill_objects(balloon_id)
 
     # 3. ページローカル座標 mm → m
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
@@ -676,21 +709,6 @@ def ensure_balloon_curve_object(
         _logger.exception("balloon: page world offset 加算失敗")
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
-    fill_obj = _ensure_balloon_fill_object(
-        scene=scene,
-        entry=entry,
-        page=page,
-        points_mm=points_mm,
-        tail_polygons_mm=tail_polygons_mm,
-        corner_indices=corner_indices,
-        parent_kind=stamp_kind,
-        parent_key=stamp_key,
-        folder_id=stamp_folder,
-    )
-    if fill_obj is not None:
-        fill_obj.location.z = max(0.0, float(obj.location.z) - 0.001)
-        fill_obj.hide_viewport = obj.hide_viewport
-        fill_obj.hide_render = obj.hide_render
     return obj
 
 

@@ -214,8 +214,9 @@ def main() -> None:
         )
         assert obj is not None and obj.type == "MESH"
         fill_obj = bpy.data.objects.get(f"balloon_fill_{entry.id}")
-        assert fill_obj is not None and fill_obj.data.materials
-        used_mat = fill_obj.data.materials[0]
+        assert fill_obj is None, "フキダシの塗りが別オブジェクトとして残っています"
+        assert len(obj.data.materials) >= 2
+        used_mat = obj.data.materials[1]
         assert used_mat is not source_mat
         assert used_mat.get("bname_balloon_fill_source_material") == source_mat.name
         assert [node.name for node in source_mat.node_tree.nodes] == source_nodes

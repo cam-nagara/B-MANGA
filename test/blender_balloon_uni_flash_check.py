@@ -102,11 +102,14 @@ def main() -> None:
         page.balloons.remove(len(page.balloons) - 1)
 
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        assert obj is not None and obj.type == "MESH", "ウニフラッシュの線オブジェクトが作成されていません"
-        assert len(obj.data.polygons) > 0, "ウニフラッシュの線メッシュが空です"
+        assert obj is not None and obj.type == "MESH", "ウニフラッシュのオブジェクトが作成されていません"
+        assert len(obj.data.polygons) > 0, "ウニフラッシュのメッシュが空です"
+        assert len(obj.data.materials) >= 2, "ウニフラッシュの線と下地のマテリアルがまとまっていません"
+        assert any(poly.material_index == 1 for poly in obj.data.polygons), (
+            "ウニフラッシュの下地が同じオブジェクト内にありません"
+        )
         fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{entry.id}")
-        assert fill_obj is not None and fill_obj.type == "MESH", "ウニフラッシュの下地が作成されていません"
-        assert len(fill_obj.data.polygons) > 0, "ウニフラッシュの下地メッシュが空です"
+        assert fill_obj is None, "ウニフラッシュの下地が別オブジェクトとして残っています"
 
         fills = []
         lines = []

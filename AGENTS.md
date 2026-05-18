@@ -49,6 +49,7 @@
 - **start_side 切替時、コマ配下レイヤーも page_grid offset に追従** (2026-05-01 修正、 サブコレクション再帰走査)
 - **Z リフトは 0.1 刻みのページ毎 per-page rank 方式**
 - **(完了 / 2026-05-17 Claude Code, v0.5.46)** 枠線ボカシブラシ線種 + 枠線プリセット (枠線+白フチ) + コマ作成ツール (矩形/折れ線 自動判別) + 効果線入り抜きの「範囲」(%/長さmm)。 ヘッドレス実機テスト PASS (`test/blender_border_preset_coma_tool_check.py`)。 画面目視は要対話 Blender (本ブランチ読込時)。 計画: [`docs/border_preset_coma_tool_plan_2026-05-16.md`](docs/border_preset_coma_tool_plan_2026-05-16.md)
+- **(完了 / 2026-05-18 Codex, v0.8.0)** フキダシ実体を単一 Mesh Object 化。輪郭と塗りは同一オブジェクト内の別マテリアルとして保持し、旧 `balloon_fill_*` 実体は再同期時に削除する。
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 

@@ -236,7 +236,8 @@ def main() -> None:
         balloon_fill_obj = bpy.data.objects.get(
             f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}"
         )
-        assert balloon_fill_obj is not None
+        assert balloon_fill_obj is None
+        assert len(balloon_obj.data.materials) >= 2
 
         page_text, _missing = text_op._create_text_entry(
             context,
@@ -272,7 +273,8 @@ def main() -> None:
         page_balloon_fill_obj = bpy.data.objects.get(
             f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{page_balloon.id}"
         )
-        assert page_balloon_fill_obj is not None
+        assert page_balloon_fill_obj is None
+        assert len(page_balloon_obj.data.materials) >= 2
 
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
@@ -283,10 +285,8 @@ def main() -> None:
         _assert_mesh_mask(image_obj, mask_apply.MOD_NAME_COMA_MASK)
         _assert_mesh_mask(text_obj, mask_apply.MOD_NAME_COMA_MASK)
         _assert_mesh_mask(balloon_obj, mask_apply.MOD_NAME_COMA_MASK)
-        _assert_mesh_mask(balloon_fill_obj, mask_apply.MOD_NAME_COMA_MASK)
         _assert_mesh_mask(page_text_obj, mask_apply.MOD_NAME_PAGE_MASK)
         _assert_mesh_mask(page_balloon_obj, mask_apply.MOD_NAME_PAGE_MASK)
-        _assert_mesh_mask(page_balloon_fill_obj, mask_apply.MOD_NAME_PAGE_MASK)
 
         effect_key = layer_stack_utils._node_stack_key(effect_layer)
         _assert_detail_menu(context, "effect", effect_key, object_selection.effect_key(effect_layer))

@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-18 — v0.8.0 フキダシを単一オブジェクト化
+
+### 症状
+- フキダシが輪郭と塗りで別々のオブジェクトになり、アウトライナー上でフキダシ1つに対して複数の実体が見えていた。
+- 表示/非表示、マスク、保存再読込、ページ配置の各処理で、輪郭と塗りを別々に同期する必要があった。
+
+### 原因
+- フキダシの輪郭メッシュと塗りメッシュを別オブジェクトとして生成していた。
+- 塗りマテリアル、グラデーション、ウニフラッシュ下地、しっぽ形状を塗り専用オブジェクト側で保持していた。
+
+### 修正
+- フキダシの輪郭と塗りを1つのメッシュオブジェクトにまとめた。
+- 輪郭と塗りは同じオブジェクト内の別マテリアルとして保持し、塗りマテリアル・グラデーション・不透明度・ウニフラッシュ下地を同じオブジェクト内で維持するようにした。
+- 既存の塗り専用オブジェクトは、フキダシ再同期時に削除するようにした。
+- フキダシの表示/非表示、マスク、選択、保存再読込の検証を単一オブジェクト前提へ更新した。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_balloon_tail_ui_check.py`: しっぽ編集、塗りマテリアル、フキダシ単一オブジェクト化を確認。
+- `test/blender_balloon_uni_flash_check.py`: ウニフラッシュの線と下地が同じオブジェクト内に生成されることを確認。
+- `test/blender_real_object_safety_check.py`: フキダシが単一オブジェクトとして保存、アドオン無効化、再読込後も残ることを確認。
+- `test/blender_layer_detail_and_mask_check.py` / `test/blender_mask_visual_matrix_check.py`: フキダシ単一オブジェクトへマスクが適用されることを確認。
+- `test/blender_object_tool_selection_check.py` / `test/blender_ui_micro_behavior_matrix_check.py` / `test/blender_tool_behavior_visual_audit.py`: 選択、詳細操作、主要ツール表示が維持されることを確認。
+- `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
+
 ## 2026-05-18 — v0.7.1 B-Nameパネル上のツール切り替えを修正
 
 ### 症状
