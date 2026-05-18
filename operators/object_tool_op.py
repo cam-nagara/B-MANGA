@@ -716,7 +716,30 @@ class BNAME_OT_object_tool(Operator):
         }
 
     def _try_enter_coma_from_hit(self, context, hit: dict) -> bool:
-        return enter_coma_from_hit(context, hit)
+        if str(hit.get("kind", "") or "") != "coma":
+            return False
+        try:
+            page_index = int(hit.get("page", -1))
+            coma_index = int(hit.get("coma", -1))
+        except (TypeError, ValueError):
+            return False
+        if page_index < 0 or coma_index < 0:
+            return False
+        activate_hit(context, hit, mode="single")
+        try:
+            from . import mode_op
+
+            scheduled = mode_op.schedule_enter_coma_mode(
+                page_index,
+                coma_index,
+                prompt_template_if_missing=False,
+            )
+        except Exception:  # noqa: BLE001
+            return False
+        if not scheduled:
+            return False
+        self.finish_from_external(context, keep_selection=True)
+        return True
 
     def _hit_object(self, context, event) -> dict | None:
         return hit_object_at_event(context, event)

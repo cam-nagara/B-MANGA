@@ -21,6 +21,7 @@ from ..utils import geom, log, paths
 from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
+_PENDING_ENTER_COMA: tuple[int, int, bool] | None = None
 
 
 def _save_current_work_metadata(work, page) -> None:
@@ -75,6 +76,71 @@ def _resolve_coma_at_event(context, event) -> tuple[int, int] | None:
             y_mm = geom.m_to_mm(loc.y)
             return coma_picker.find_coma_at_world_mm(work, x_mm, y_mm)
     return None
+
+
+def schedule_enter_coma_mode(
+    page_index: int,
+    coma_index: int,
+    *,
+    prompt_template_if_missing: bool = False,
+) -> bool:
+    """ダブルクリックイベント終了後にコマ編集モードへ入る."""
+    global _PENDING_ENTER_COMA
+    try:
+        page_index = int(page_index)
+        coma_index = int(coma_index)
+    except (TypeError, ValueError):
+        return False
+    if page_index < 0 or coma_index < 0:
+        return False
+    _PENDING_ENTER_COMA = (
+        page_index,
+        coma_index,
+        bool(prompt_template_if_missing),
+    )
+    if not bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
+        bpy.app.timers.register(_run_deferred_enter_coma_mode, first_interval=0.01)
+    return True
+
+
+def _run_deferred_enter_coma_mode() -> None:
+    global _PENDING_ENTER_COMA
+    pending = _PENDING_ENTER_COMA
+    _PENDING_ENTER_COMA = None
+    if pending is None:
+        return None
+    page_index, coma_index, prompt_template_if_missing = pending
+    context = bpy.context
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False):
+        return None
+    if get_mode(context) != MODE_PAGE:
+        return None
+    if not (0 <= page_index < len(work.pages)):
+        return None
+    page = work.pages[page_index]
+    if not (0 <= coma_index < len(page.comas)):
+        return None
+    work.active_page_index = page_index
+    page.active_coma_index = coma_index
+    try:
+        bpy.ops.bname.enter_coma_mode(
+            "EXEC_DEFAULT",
+            prompt_template_if_missing=prompt_template_if_missing,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("deferred enter_coma_mode failed")
+    return None
+
+
+def _clear_deferred_enter_coma_mode() -> None:
+    global _PENDING_ENTER_COMA
+    _PENDING_ENTER_COMA = None
+    if bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
+        try:
+            bpy.app.timers.unregister(_run_deferred_enter_coma_mode)
+        except ValueError:
+            pass
 
 
 class BNAME_OT_enter_coma_mode(Operator):
@@ -153,7 +219,13 @@ class BNAME_OT_enter_coma_mode(Operator):
         # 抑止し既存 cNN.blend / 解決済みテンプレート / 空シーンから開く
         # (オブジェクトツール経路と同じ挙動に揃える)。
         self.prompt_template_if_missing = False
-        return self.execute(context)
+        if schedule_enter_coma_mode(
+            page_idx,
+            coma_idx,
+            prompt_template_if_missing=False,
+        ):
+            return {"FINISHED"}
+        return {"CANCELLED"}
 
     def execute(self, context):
         coma_modal_state.finish_all(context)
@@ -545,6 +617,7 @@ def register() -> None:
 
 
 def unregister() -> None:
+    _clear_deferred_enter_coma_mode()
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)
