@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-18 — v0.7.1 B-Nameパネル上のツール切り替えを修正
+
+### 症状
+- B-Nameパネルが開いていても、サイドバー側にフォーカスがあると `O` でオブジェクトツールへ切り替わらない場合があった。
+- B-Nameパネル表示中の判定が一部の画面状態で落ち、`F` の枠線カットツール起動も届かない経路があった。
+- UI実機監査の終了時に、ページ一覧ビューの表示状態を戻す処理でBlenderがクラッシュする場合があった。
+
+### 原因
+- オブジェクトツールの `O` が3Dビュー側にだけ登録され、サイドバー上でも拾える共通キーとして登録されていなかった。
+- B-Nameパネルが直前に描画されていても、Blender側のタブ名取得がずれた場合に表示中として扱えなかった。
+- アドオン終了時にもページ一覧ビューのサイドバー表示状態を復元しており、Blenderの終了処理中に不安定なUIプロパティへ触れていた。
+
+### 修正
+- `O` をサイドバー上でも使えるツール切り替えキーとして登録し、設定変更時のキー・修飾キーにも追従するようにした。
+- B-Nameパネルが同じエリアで直近に描画されている場合は、短時間だけB-Nameパネル表示中として扱う補助判定を追加した。
+- アドオン終了時はページ一覧ビューの表示状態復元からサイドバー表示状態だけを外し、通常のビュー切り替え時の復元は維持した。
+- UI実機監査で、B-Nameパネル表示状態の `O` 登録と主要ツール切り替えを確認するようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_tool_behavior_visual_audit.py`: B-Nameパネル表示中の `O` / `F` を含む主要ツール切り替え、右クリックメニュー、選択編集、画面表示を確認。
+- `test/blender_shortcut_visibility_check.py`: B-Nameパネル表示判定、表示/非表示時のショートカット有効状態、キー再構築を確認。
+- `test/blender_effect_line_frame_spacing_check.py` / `test/blender_balloon_tail_ui_check.py` / `test/blender_balloon_uni_flash_check.py` / `test/blender_coma_edge_handle_extend_check.py` / `test/blender_outliner_collection_order_check.py` / `test/blender_work_info_text_object_check.py` / `test/blender_context_menu_commands_check.py` / `test/blender_object_tool_selection_check.py` / `test/blender_ui_micro_behavior_matrix_check.py`: 直前変更の代表操作が維持されることを確認。
+- `python -m compileall core operators panels ui utils io test`、`git diff --check` が通ることを確認。
+
 ## 2026-05-18 — v0.7.0 効果線・コマ枠拡張・アウトライナー構成を更新
 
 ### 症状

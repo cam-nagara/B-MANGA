@@ -7,6 +7,7 @@ import time
 import bpy
 
 BNAME_PANEL_CATEGORY = "B-Name"
+PANEL_DRAW_GRACE_SECONDS = 2.0
 _last_bname_panel_draw = 0.0
 _last_bname_panel_area_ptr: int | None = None
 _last_bname_panel_screen_ptr: int | None = None
@@ -35,8 +36,12 @@ def _as_pointer(value) -> int | None:
 def _recent_bname_panel_drawn(area=None, screen=None) -> bool:
     if _last_bname_panel_draw <= 0.0:
         return False
+    if time.monotonic() - _last_bname_panel_draw > PANEL_DRAW_GRACE_SECONDS:
+        return False
     area_ptr = _as_pointer(area)
     screen_ptr = _as_pointer(screen)
+    if area_ptr is None and _last_bname_panel_area_ptr is not None:
+        return False
     if area_ptr is not None and _last_bname_panel_area_ptr not in {None, area_ptr}:
         return False
     if screen_ptr is not None and _last_bname_panel_screen_ptr not in {None, screen_ptr}:
@@ -91,7 +96,7 @@ def _area_has_bname_panel_category(area, screen=None) -> bool:
     status = _area_bname_status(area)
     if status == "bname":
         return True
-    if status == "unknown":
+    if status in {"unknown", "other"}:
         return _recent_bname_panel_drawn(area, screen)
     return False
 

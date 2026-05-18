@@ -717,7 +717,7 @@ def unregister() -> None:
         except ValueError:
             pass
     _PAGE_BROWSER_AREA_SIZES.clear()
-    page_browser.restore_all_view_settings()
+    page_browser.restore_all_view_settings(restore_region_visibility=False)
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

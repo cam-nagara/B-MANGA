@@ -96,6 +96,27 @@ def main() -> None:
         assert shortcut_visibility._area_bname_status(fake_other_area) == "other", (
             "別タブが明示されている状態を判定できません"
         )
+        fake_reported_other_area = _PtrNamespace(
+            1002,
+            type="VIEW_3D",
+            spaces=SimpleNamespace(active=SimpleNamespace(show_region_ui=True)),
+            regions=[
+                SimpleNamespace(type="UI", width=260, height=900, active_panel_category="Tool")
+            ],
+        )
+        fake_reported_other_screen = _PtrNamespace(2002, areas=[fake_reported_other_area])
+        shortcut_visibility.mark_bname_panel_drawn(
+            SimpleNamespace(area=fake_reported_other_area, screen=fake_reported_other_screen)
+        )
+        assert shortcut_visibility._area_has_bname_panel_category(fake_reported_other_area), (
+            "B-Nameパネル描画直後の補助判定が有効になりません"
+        )
+        shortcut_visibility._last_bname_panel_draw -= (
+            shortcut_visibility.PANEL_DRAW_GRACE_SECONDS + 0.1
+        )
+        assert not shortcut_visibility._area_has_bname_panel_category(fake_reported_other_area), (
+            "B-Nameパネル描画の補助判定が時間切れ後も有効です"
+        )
 
         kc = bpy.context.window_manager.keyconfigs.addon
         conflict_km = kc.keymaps.new(name="B-Name Test Conflict", space_type="EMPTY", region_type="WINDOW")

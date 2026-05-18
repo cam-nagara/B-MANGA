@@ -146,7 +146,7 @@ def apply_page_browser_view_settings(area) -> None:
         pass
 
 
-def restore_page_browser_view_settings(area) -> None:
+def restore_page_browser_view_settings(area, *, restore_region_visibility: bool = True) -> None:
     if area is None or getattr(area, "type", "") != "VIEW_3D":
         return
     for space in getattr(area, "spaces", []):
@@ -156,13 +156,14 @@ def restore_page_browser_view_settings(area) -> None:
         state = _SPACE_VIEW_STATES.pop(key, None) if key else None
         if not state:
             continue
-        for prop in _SPACE_BOOL_PROPS:
-            if prop not in state or not hasattr(space, prop):
-                continue
-            try:
-                setattr(space, prop, bool(state[prop]))
-            except Exception:  # noqa: BLE001
-                pass
+        if restore_region_visibility:
+            for prop in _SPACE_BOOL_PROPS:
+                if prop not in state or not hasattr(space, prop):
+                    continue
+                try:
+                    setattr(space, prop, bool(state[prop]))
+                except Exception:  # noqa: BLE001
+                    pass
         overlay = getattr(space, "overlay", None)
         if overlay is not None and "overlay.show_overlays" in state:
             try:
@@ -204,7 +205,7 @@ def _area_has_remembered_space(area) -> bool:
     return False
 
 
-def restore_all_view_settings() -> None:
+def restore_all_view_settings(*, restore_region_visibility: bool = True) -> None:
     wm = getattr(bpy.context, "window_manager", None)
     windows = getattr(wm, "windows", ()) if wm is not None else ()
     for window in windows:
@@ -213,7 +214,10 @@ def restore_all_view_settings() -> None:
             continue
         for area in getattr(screen, "areas", []):
             if _area_has_remembered_space(area):
-                restore_page_browser_view_settings(area)
+                restore_page_browser_view_settings(
+                    area,
+                    restore_region_visibility=restore_region_visibility,
+                )
     _SPACE_VIEW_STATES.clear()
     _PAGE_BROWSER_AREAS.clear()
 

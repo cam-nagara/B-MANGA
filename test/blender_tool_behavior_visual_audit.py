@@ -360,9 +360,17 @@ def _setup_scene(temp_root: Path):
 
 def _assert_shortcuts() -> tuple[bool, list[str]]:
     from bname_dev_tool_visual.keymap import keymap as keymap_mod
+    from bname_dev_tool_visual.ui import sidebar
+    from bname_dev_tool_visual.utils import shortcut_visibility
 
     state = keymap_mod.get_state()
     assert state is not None
+    sidebar.open_bname_sidebar(bpy.context)
+    shortcut_visibility.mark_bname_panel_drawn(bpy.context)
+    try:
+        keymap_mod._apply_visibility_state(state, True)
+    except Exception:
+        pass
     actual = [
         (
             str(getattr(kmi, "idname", "")),
@@ -374,6 +382,21 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         )
         for kmi in getattr(state, "bname_items", []) or []
     ]
+    window_actual = []
+    for km in getattr(state, "bname_keymaps", []) or []:
+        if str(getattr(km, "name", "") or "") != "Window":
+            continue
+        for kmi in getattr(km, "keymap_items", []) or []:
+            window_actual.append(
+                (
+                    str(getattr(kmi, "idname", "")),
+                    str(getattr(kmi, "type", "")),
+                    bool(getattr(kmi, "shift", False)),
+                    bool(getattr(kmi, "ctrl", False)),
+                    bool(getattr(kmi, "alt", False)),
+                    bool(getattr(kmi, "active", False)),
+                )
+            )
     expected = [
         ("オブジェクトツール", "bname.set_mode_object", "O", False, False, False),
         ("描画ツール", "bname.set_mode_draw", "P", False, False, False),
@@ -403,6 +426,16 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
             raise AssertionError(f"ショートカット不足: {label} {key}")
         mods = "+".join(part for part, enabled in (("Shift", shift), ("Ctrl", ctrl), ("Alt", alt)) if enabled)
         lines.append(f"{label}: {mods + '+' if mods else ''}{key}")
+    if not any(
+        item[0] == "bname.set_mode_object"
+        and item[1] == "O"
+        and not item[2]
+        and not item[3]
+        and not item[4]
+        and item[5]
+        for item in window_actual
+    ):
+        raise AssertionError("B-Nameパネル上で使うオブジェクトツールショートカットがWindow側にありません")
     return True, lines
 
 
@@ -680,6 +713,14 @@ def _invoke_tool(label: str, op_id: str, operator_context: str, props: dict | No
     namespace, name = op_id.split(".", 1)
     op = getattr(getattr(bpy.ops, namespace), name)
     with _view3d_override():
+        try:
+            from bname_dev_tool_visual.ui import sidebar
+            from bname_dev_tool_visual.utils import shortcut_visibility
+
+            sidebar.open_bname_sidebar(bpy.context)
+            shortcut_visibility.mark_bname_panel_drawn(bpy.context)
+        except Exception:
+            pass
         try:
             result = op(operator_context, **props)
         except TypeError:

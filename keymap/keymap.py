@@ -376,7 +376,7 @@ class KeymapState:
                 print(f"[B-Name][KEYMAP] {km_name} alt_reparent_out failed: {exc!r}")
 
     def _populate_window_overrides(self, km) -> None:
-        """Window キーマップに 修飾+ナビゲートキー / 枠線カット F を先取り登録.
+        """Window キーマップに修飾キー操作と主要ツールキーを先取り登録.
 
         Blender のキーマップ評価は Window kc (空間非依存) が area kc より先に
         走るため、ここに登録すると他のアドオンが area kc に登録した同キーを
@@ -390,28 +390,48 @@ class KeymapState:
             if not nav_key:
                 nav_key = "SPACE"
         except Exception:  # noqa: BLE001
+            prefs = None
             nav_key = "SPACE"
 
-        for shift, ctrl, label in ((True, False, "shift"), (False, True, "ctrl")):
+        def _key(attr, default):
+            if prefs is None:
+                return default
+            value = getattr(prefs, attr, default)
+            return value if value else default
+
+        def _mods(prefix):
+            if prefs is None:
+                return False, False, False
+            return (
+                bool(getattr(prefs, f"{prefix}_shift", False)),
+                bool(getattr(prefs, f"{prefix}_ctrl", False)),
+                bool(getattr(prefs, f"{prefix}_alt", False)),
+            )
+
+        def _add_window(op_id, key, **mods):
             try:
-                kmi = km.keymap_items.new(
-                    "bname.view_navigate", nav_key, "PRESS",
-                    shift=shift, ctrl=ctrl,
-                )
+                kmi = km.keymap_items.new(op_id, key, "PRESS", **mods)
                 self.bname_items.append(kmi)
                 print(
-                    f"[B-Name][KEYMAP] + bname.view_navigate (Window) {label}+{nav_key}"
+                    f"[B-Name][KEYMAP] + {op_id} (Window) {key}"
+                    f" shift={kmi.shift} ctrl={kmi.ctrl} alt={kmi.alt}"
                     f" active={kmi.active}"
                 )
             except Exception as exc:  # noqa: BLE001
-                print(f"[B-Name][KEYMAP] window override {label}+{nav_key} failed: {exc!r}")
+                print(f"[B-Name][KEYMAP] window override {key} failed: {exc!r}")
 
-        # Z/X → Undo/Redo、E → 消しゴム切替、F/K/T → B-Name ツール (Window kc に登録して
-        # 他アドオンに先取りさせる)。
+        for shift, ctrl, label in ((True, False, "shift"), (False, True, "ctrl")):
+            _add_window("bname.view_navigate", nav_key, shift=shift, ctrl=ctrl)
+
+        # O → オブジェクトツール、F/K/T → B-Name ツール、Z/X/E → 補助操作。
+        # Window kc に登録し、サイドバーの B-Name パネル上でも先取りさせる。
         # 注: exit_coma_mode の Esc は 3D View kc のみに限定し、Window kc には
         # 登録しない。Window kc に Esc を載せると Outliner / Image Editor 等の
         # area で MODE_COMA 中に Esc を押した際、本来期待される area 固有の
         # cancel 動作 (検索キャンセル等) を奪ってしまうため。
+        s, c, a = _mods("mod_set_mode_object")
+        _add_window("bname.set_mode_object", _key("key_set_mode_object", "O"), shift=s, ctrl=c, alt=a)
+
         for op_id, key in (
             ("bname.undo", "Z"),
             ("bname.redo", "X"),
@@ -420,15 +440,7 @@ class KeymapState:
             ("bname.layer_move_tool", "K"),
             ("bname.text_tool", "T"),
         ):
-            try:
-                kmi = km.keymap_items.new(op_id, key, "PRESS")
-                self.bname_items.append(kmi)
-                print(
-                    f"[B-Name][KEYMAP] + {op_id} (Window) {key}"
-                    f" active={kmi.active}"
-                )
-            except Exception as exc:  # noqa: BLE001
-                print(f"[B-Name][KEYMAP] window override {key} failed: {exc!r}")
+            _add_window(op_id, key)
 
     def _populate_keymap_items(self, km) -> None:
         """B-Name 専用のキーマップエントリを追加.
@@ -573,7 +585,7 @@ class KeymapState:
     # ---------- 衝突キー無効化 (他アドオン対策) ----------
 
     # B-Name が単独修飾なしで予約するキー (他アドオンに奪われる対象)
-    _BNAME_RESERVED_SINGLE_KEYS: tuple[str, ...] = ("F", "K", "T")
+    _BNAME_RESERVED_SINGLE_KEYS: tuple[str, ...] = ("O", "F", "K", "T")
 
     def disable_conflicting_keys(self) -> int:
         """他アドオンが addon kc に登録した B-Name 予約単独キー kmi を無効化.
@@ -595,6 +607,7 @@ class KeymapState:
         if kc_addon is None:
             return 0
         bname_idnames = {
+            "bname.set_mode_object",
             "bname.coma_knife_cut",
             "bname.layer_move_tool",
             "bname.text_tool",
