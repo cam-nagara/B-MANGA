@@ -459,6 +459,10 @@ def work_to_dict(work) -> dict[str, Any]:
         "paper": paper_to_dict(work.paper),
         "comaGap": coma_gap_to_dict(work.coma_gap),
         "comaBlendTemplatePath": str(getattr(work, "coma_blend_template_path", "") or ""),
+        "pagePreviewScalePercentage": round(
+            float(getattr(work, "page_preview_scale_percentage", 10.0) or 10.0),
+            3,
+        ),
         "safeAreaOverlay": safe_area_to_dict(work.safe_area_overlay),
         "raster_layers": [
             raster_layer_to_dict(entry)
@@ -500,6 +504,11 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     coma_gap_from_dict(work.coma_gap, data.get("comaGap", {}))
     if hasattr(work, "coma_blend_template_path"):
         work.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
+    if hasattr(work, "page_preview_scale_percentage"):
+        work.page_preview_scale_percentage = max(
+            1.0,
+            min(100.0, float(data.get("pagePreviewScalePercentage", 10.0) or 10.0)),
+        )
     safe_area_from_dict(work.safe_area_overlay, data.get("safeAreaOverlay", {}))
     scene = _scene_from_work(work)
     raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None

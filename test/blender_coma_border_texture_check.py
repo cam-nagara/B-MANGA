@@ -116,6 +116,43 @@ def main() -> None:
     assert len(curve_points) == 3 and abs(curve_points[1][1] - 0.25) < 1.0e-3, (
         f"ぼかしカーブが素材へ反映されていません: {curve_points}"
     )
+    assert not coma_blur_curve.sync_ui_curve_to_border(coma.border), (
+        "未表示のぼかしカーブ編集UIが枠線設定を書き換えています"
+    )
+    ui_node = coma_blur_curve.ensure_ui_curve_node(coma.border)
+    assert ui_node is not None, "ぼかしカーブ編集UIのノードが作成されていません"
+    assert ui_node.id_data is not curve_node.id_data, (
+        "ぼかしカーブ編集UIが表示用素材のノードを直接編集しています"
+    )
+    coma_blur_curve.apply_points_to_node(ui_node, ((0.0, 0.0), (0.25, 0.75), (1.0, 1.0)))
+    assert coma_blur_curve.sync_ui_curve_to_border(coma.border), (
+        "ぼかしカーブ編集UIの変更が枠線設定へ反映されていません"
+    )
+    assert "0.2500,0.7500" in coma.border.blur_curve_points, (
+        f"ぼかしカーブ編集結果が保存されていません: {coma.border.blur_curve_points}"
+    )
+    obj_after_curve = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
+    assert obj_after_curve is obj, "ぼかしカーブ反映後にコマ面が別オブジェクト化しています"
+    curve_node_after = coma_blur_curve.find_curve_node(plane.data.materials[0])
+    assert curve_node_after is not None and curve_node_after.id_data is not ui_node.id_data, (
+        "ぼかしカーブ反映後も編集UIと表示用素材が分離されていません"
+    )
+    guard = page.comas.add()
+    guard.id = "c_guard"
+    guard.coma_id = "c_guard"
+    guard.title = "同期防止確認"
+    guard.border.style = "brush"
+    guard.border.blur_curve_points = coma_blur_curve.DEFAULT_CURVE_TEXT
+    ui_node = coma_blur_curve.ensure_ui_curve_node(coma.border)
+    assert ui_node is not None
+    coma_blur_curve.apply_points_to_node(ui_node, ((0.0, 0.0), (0.35, 0.85), (1.0, 1.0)))
+    guard_node = coma_blur_curve.ensure_ui_curve_node(guard.border)
+    assert guard_node is not None
+    assert guard.border.blur_curve_points == coma_blur_curve.DEFAULT_CURVE_TEXT, (
+        "別のコマを開いたとき、未反映のぼかしカーブ編集が誤ってコピーされています"
+    )
+    guard_points = coma_blur_curve.read_node_points(guard_node)
+    assert len(guard_points) == 2, f"別コマのぼかしカーブ初期表示が不正です: {guard_points}"
     preview_probe = bpy.data.images.new("BName_TestPreviewAlphaProbe", width=2, height=2, alpha=True)
     preview_probe.pixels.foreach_set([
         1.0, 0.0, 0.0, 0.0,

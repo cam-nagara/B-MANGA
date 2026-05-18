@@ -97,6 +97,10 @@ class BNAME_PT_work(Panel):
         sub.enabled = mode == MODE_PAGE
         sub.prop(work.paper, "start_side", text="開始ページ")
         sub.prop(work.paper, "read_direction", text="読む方向")
+        box.label(text="ページ一覧プレビュー")
+        preview = box.column(align=True)
+        preview.enabled = mode == MODE_PAGE
+        preview.prop(work, "page_preview_scale_percentage", text="コマ画像縮小率")
 
         box = layout.box()
         box.label(text="コマ用blendファイル (この作品のみ)", icon="FILE_BLEND")

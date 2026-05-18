@@ -77,6 +77,14 @@ class BNameWorkData(bpy.types.PropertyGroup):
         default="",
         subtype="FILE_PATH",
     )
+    page_preview_scale_percentage: FloatProperty(  # type: ignore[valid-type]
+        name="ページ一覧用コマ画像縮小率",
+        description="ページ一覧に表示するコマ画像PNGの縮小率",
+        default=10.0,
+        min=1.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+    )
 
     # --- 各セクション ---
     work_info: PointerProperty(type=BNameWorkInfo)  # type: ignore[valid-type]

@@ -11,6 +11,10 @@ except ModuleNotFoundError:  # pragma: no cover - Blender外のJSON処理用
 
 CURVE_NODE_NAME = "BName_ComaBlurCurve"
 CURVE_MATERIAL_PROP = "bname_blur_curve_source"
+UI_MATERIAL_NAME = "BName_ComaBlurCurve_UI"
+UI_NODE_NAME = "BName_ComaBlurCurve_UINode"
+UI_CURVE_SOURCE_PROP = "bname_blur_curve_ui_source"
+UI_OWNER_PROP = "bname_blur_curve_ui_owner"
 DEFAULT_CURVE_TEXT = "0.0000,0.0000;1.0000,1.0000"
 DEFAULT_POINTS: tuple[tuple[float, float], ...] = ((0.0, 0.0), (1.0, 1.0))
 
@@ -117,24 +121,96 @@ def ensure_curve_node(
     stored_points: object,
     material: bpy.types.Material | None = None,
 ) -> bpy.types.Node:
-    existing = nt.nodes.get(CURVE_NODE_NAME)
+    return _ensure_curve_node(
+        nt,
+        node_name=CURVE_NODE_NAME,
+        label="輪郭ぼかし",
+        stored_points=stored_points,
+        material=material,
+        source_prop=CURVE_MATERIAL_PROP,
+        location=(-80, -250),
+    )
+
+
+def ensure_ui_curve_node(border) -> bpy.types.Node | None:
+    if bpy is None or border is None:
+        return None
+    mat = bpy.data.materials.get(UI_MATERIAL_NAME) or bpy.data.materials.new(UI_MATERIAL_NAME)
+    mat.use_nodes = True
+    nt = mat.node_tree
+    if nt is None:
+        return None
+    owner = _owner_key_for_border(border)
+    if owner and str(mat.get(UI_OWNER_PROP, "") or "") != owner:
+        mat[UI_CURVE_SOURCE_PROP] = ""
+    node = _ensure_curve_node(
+        nt,
+        node_name=UI_NODE_NAME,
+        label="ぼかしカーブ",
+        stored_points=getattr(border, "blur_curve_points", DEFAULT_CURVE_TEXT),
+        material=mat,
+        source_prop=UI_CURVE_SOURCE_PROP,
+        location=(0, 0),
+    )
+    if owner:
+        mat[UI_OWNER_PROP] = owner
+    return node
+
+
+def sync_ui_curve_to_border(border) -> bool:
+    if bpy is None or border is None or not hasattr(border, "blur_curve_points"):
+        return False
+    mat = bpy.data.materials.get(UI_MATERIAL_NAME)
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return False
+    owner = _owner_key_for_border(border)
+    if owner and str(mat.get(UI_OWNER_PROP, "") or "") != owner:
+        return False
+    node = nt.nodes.get(UI_NODE_NAME)
+    if node is None or node.bl_idname != "ShaderNodeFloatCurve":
+        return False
+    text = points_to_text(read_node_points(node))
+    source = str(mat.get(UI_CURVE_SOURCE_PROP, "") or "")
+    if source and text == source:
+        return False
+    if str(getattr(border, "blur_curve_points", "") or "") != text:
+        border.blur_curve_points = text
+        changed = True
+    else:
+        changed = False
+    mat[UI_CURVE_SOURCE_PROP] = text
+    return changed
+
+
+def _ensure_curve_node(
+    nt: bpy.types.NodeTree,
+    *,
+    node_name: str,
+    label: str,
+    stored_points: object,
+    material: bpy.types.Material | None,
+    source_prop: str,
+    location: tuple[float, float],
+) -> bpy.types.Node:
+    existing = nt.nodes.get(node_name)
     if existing is not None and existing.bl_idname != "ShaderNodeFloatCurve":
         nt.nodes.remove(existing)
         existing = None
     node = existing or nt.nodes.new("ShaderNodeFloatCurve")
-    node.name = CURVE_NODE_NAME
-    node.label = "輪郭ぼかし"
-    node.location = (-80, -250)
+    node.name = node_name
+    node.label = label
+    node.location = location
 
     stored_text = points_to_text(parse_points(stored_points))
-    last_source = str(material.get(CURVE_MATERIAL_PROP, "") or "") if material is not None else ""
+    last_source = str(material.get(source_prop, "") or "") if material is not None else ""
     if existing is not None and last_source == stored_text:
         points = read_node_points(existing)
     else:
         points = parse_points(stored_text)
     apply_points_to_node(node, points)
     if material is not None:
-        material[CURVE_MATERIAL_PROP] = stored_text
+        material[source_prop] = stored_text
     return node
 
 
@@ -225,7 +301,14 @@ def _owner_id_for_coma(coma) -> str:
 
 
 def sync_active_coma_curve_to_border(coma) -> bool:
-    return sync_material_curve_to_border(getattr(coma, "border", None), active_curve_material_for_coma(coma))
+    return sync_ui_curve_to_border(getattr(coma, "border", None))
+
+
+def _owner_key_for_border(border) -> str:
+    try:
+        return str(int(border.as_pointer()))
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _clamp01(value: float) -> float:

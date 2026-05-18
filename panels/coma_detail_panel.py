@@ -59,7 +59,8 @@ def draw_coma_border_settings(layout, context, entry) -> None:
     content.prop(b, "style")
     if b.style == "brush":
         content.prop(b, "blur_amount", slider=True)
-        curve_node = coma_blur_curve.active_curve_node_for_coma(entry)
+        coma_blur_curve.sync_ui_curve_to_border(b)
+        curve_node = coma_blur_curve.ensure_ui_curve_node(b)
         if curve_node is not None:
             content.label(text="ぼかしカーブ")
             content.template_curve_mapping(curve_node, "mapping", type="NONE")

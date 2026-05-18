@@ -36,10 +36,22 @@ def take_area_screenshot(context, out_path: Path) -> bool:
     対象コマbboxだけを切る。これによりビューポート操作状態に依存せず、
     紙面座標と一致し、見た目はレンダー結果になる。
     """
-    return render_coma_camera_crop(context, out_path, resolution_percentage=100)
+    work = get_work(context)
+    return render_coma_camera_crop(
+        context,
+        out_path,
+        resolution_percentage=100,
+        output_scale_percentage=_page_preview_scale_percentage(work),
+    )
 
 
-def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: int = 100) -> bool:
+def render_coma_camera_crop(
+    context,
+    out_path: Path,
+    *,
+    resolution_percentage: int = 100,
+    output_scale_percentage: float | None = None,
+) -> bool:
     if not _is_coma_mode(context):
         return False
     work = get_work(context)
@@ -106,7 +118,14 @@ def render_coma_camera_crop(context, out_path: Path, *, resolution_percentage: i
             source = _resolve_render_output_path(full_path)
             if source is None:
                 return False
-            if not _crop_render_to_panel(source, out_path, work, page, entry):
+            if not _crop_render_to_panel(
+                source,
+                out_path,
+                work,
+                page,
+                entry,
+                output_scale_percentage=output_scale_percentage,
+            ):
                 return False
             return True
     except Exception as exc:  # noqa: BLE001
@@ -353,7 +372,43 @@ def _resolve_render_output_path(path: Path) -> Path | None:
     return matches[-1] if matches else None
 
 
-def _crop_render_to_panel(source: Path, out_path: Path, work, page, entry) -> bool:
+def _page_preview_scale_percentage(work) -> float:
+    if work is None:
+        return 10.0
+    try:
+        value = float(getattr(work, "page_preview_scale_percentage", 10.0) or 10.0)
+    except (TypeError, ValueError):
+        value = 10.0
+    return max(1.0, min(100.0, value))
+
+
+def _resize_for_page_preview(image, percentage: float | None):
+    if image is None or percentage is None:
+        return image
+    scale = max(1.0, min(100.0, float(percentage))) / 100.0
+    if scale >= 0.9999:
+        return image
+    width = max(1, int(round(image.width * scale)))
+    height = max(1, int(round(image.height * scale)))
+    try:
+        from PIL import Image as PILImage
+
+        resampling = getattr(PILImage, "Resampling", PILImage)
+        resample = getattr(resampling, "LANCZOS", 1)
+    except Exception:  # noqa: BLE001
+        resample = 1
+    return image.resize((width, height), resample=resample)
+
+
+def _crop_render_to_panel(
+    source: Path,
+    out_path: Path,
+    work,
+    page,
+    entry,
+    *,
+    output_scale_percentage: float | None = None,
+) -> bool:
     from ..io import export_pipeline
 
     Image = export_pipeline.Image
@@ -383,6 +438,7 @@ def _crop_render_to_panel(source: Path, out_path: Path, work, page, entry) -> bo
     cropped = image.crop((left, top, right, bottom))
     if image_transparency.coma_background_is_transparent(entry):
         cropped = image_transparency.make_background_transparent(cropped)
+    cropped = _resize_for_page_preview(cropped, output_scale_percentage)
     cropped.save(str(out_path))
     return True
 
@@ -469,7 +525,12 @@ class BNAME_OT_coma_generate_preview(Operator):
         prev_filepath = scene.render.filepath
         prev_percent = scene.render.resolution_percentage
         try:
-            if not render_coma_camera_crop(context, out, resolution_percentage=100):
+            if not render_coma_camera_crop(
+                context,
+                out,
+                resolution_percentage=100,
+                output_scale_percentage=_page_preview_scale_percentage(work),
+            ):
                 raise RuntimeError("カメラプレビューの生成に失敗しました")
         except Exception as exc:  # noqa: BLE001
             _logger.exception("coma_generate_preview failed")
