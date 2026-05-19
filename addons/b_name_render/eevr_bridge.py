@@ -136,14 +136,34 @@ def _native_render(scene, suffix: str = "") -> set[str]:
     setup(scene, getattr(scene, "camera", None))
     previous_path = str(getattr(scene.render, "filepath", "") or "")
     previous_format = str(getattr(scene.render.image_settings, "file_format", "") or "")
+    previous_use_nodes = bool(getattr(scene, "use_nodes", False)) if hasattr(scene, "use_nodes") else None
+    previous_compositing_node_group = getattr(scene, "compositing_node_group", None) if hasattr(scene, "compositing_node_group") else None
+    previous_combined_passes = []
     try:
         scene.render.filepath = _output_base(scene, suffix)
         scene.render.image_settings.file_format = "PNG"
+        if previous_use_nodes is not None:
+            scene.use_nodes = False
+        if hasattr(scene, "compositing_node_group"):
+            scene.compositing_node_group = None
+        for view_layer in scene.view_layers:
+            if hasattr(view_layer, "use_pass_combined"):
+                previous_combined_passes.append((view_layer, bool(view_layer.use_pass_combined)))
+                view_layer.use_pass_combined = True
         bpy.ops.render.render(write_still=True)
     finally:
         scene.render.filepath = previous_path
         if previous_format:
             scene.render.image_settings.file_format = previous_format
+        if previous_use_nodes is not None:
+            scene.use_nodes = previous_use_nodes
+        if hasattr(scene, "compositing_node_group"):
+            scene.compositing_node_group = previous_compositing_node_group
+        for view_layer, use_pass_combined in previous_combined_passes:
+            try:
+                view_layer.use_pass_combined = use_pass_combined
+            except ReferenceError:
+                pass
     return {"FINISHED"}
 
 

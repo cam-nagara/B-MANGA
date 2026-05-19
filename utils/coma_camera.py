@@ -573,6 +573,9 @@ def update_render_border_from_current_coma(context) -> None:
         _set_render_border_source(scene, "")
         return
     _set_render_border_source(scene, getattr(target.image, "name", ""))
+    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+        _disable_render_border(scene)
+        return
     try:
         if bool(target.image.get("bname_full_page_mask", False)):
             _apply_page_side_render_border(scene, target.image)
@@ -636,6 +639,10 @@ def _disable_render_border(scene) -> None:
     scene.render.use_border = False
     if hasattr(scene.render, "use_crop_to_border"):
         scene.render.use_crop_to_border = False
+    scene.render.border_min_x = 0.0
+    scene.render.border_max_x = 1.0
+    scene.render.border_min_y = 0.0
+    scene.render.border_max_y = 1.0
 
 
 def _apply_page_side_render_border(scene, image) -> None:

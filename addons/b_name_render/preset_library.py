@@ -78,6 +78,7 @@ def _fisheye_or_layer(command_type: str, group: str, label: str, samples: int = 
         label_contains=label,
         sample_count=samples,
         engine=engine,
+        text_value=label,
     )
 
 

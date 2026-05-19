@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+import re
 import sys
 
 import bpy
@@ -272,6 +274,7 @@ def _set_output_name(scene, name: str) -> None:
 
 def _set_output_folder(scene, folder: str) -> None:
     folder = bname_context.default_output_folder(scene, folder)
+    scene["bname_render_output_folder"] = folder
     for node in _iter_all_nodes(scene):
         if getattr(node, "type", "") == "OUTPUT_FILE":
             _set_output_node_directory(node, folder)
@@ -308,7 +311,134 @@ def _set_output_node_file_name(node, name: str) -> None:
                 slot.path = name
 
 
+_IMAGE_VARIANT_PATTERN = re.compile(r"(?:_?(image|assembled|front|right|back|left|top|bottom))$", re.IGNORECASE)
+_IMAGE_VARIANT_PRIORITY = {
+    "": 0,
+    "assembled": 1,
+    "image": 2,
+    "front": 3,
+    "right": 3,
+    "back": 3,
+    "left": 3,
+    "top": 3,
+    "bottom": 3,
+}
+
+
+def _image_stem(value: str) -> str:
+    name = str(value or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if ".png" in name.lower():
+        return re.split(r"\.png", name, flags=re.IGNORECASE)[0]
+    return Path(name).stem
+
+
+def _image_variant(value: str) -> str:
+    match = _IMAGE_VARIANT_PATTERN.search(_image_stem(value))
+    return match.group(1).lower() if match else ""
+
+
+def _normalized_image_key(value: str, *, strip_variant: bool = True) -> str:
+    name = _image_stem(value)
+    name = re.sub(r"^c\d{2,}_", "", name, flags=re.IGNORECASE)
+    if strip_variant:
+        name = _IMAGE_VARIANT_PATTERN.sub("", name)
+    name = re.sub(r"0{3,5}_?$", "", name)
+    name = re.sub(r"[\s_]+", "", name)
+    return name.lower()
+
+
+def _prefer_image_path(current: Path | None, candidate: Path) -> Path:
+    if current is None:
+        return candidate
+    current_rank = (_IMAGE_VARIANT_PRIORITY.get(_image_variant(current.name), 9), str(current))
+    candidate_rank = (_IMAGE_VARIANT_PRIORITY.get(_image_variant(candidate.name), 9), str(candidate))
+    return candidate if candidate_rank < current_rank else current
+
+
+def _iter_png_files(*folders: str) -> tuple[dict[str, Path], dict[str, Path]]:
+    exact: dict[str, Path] = {}
+    loose: dict[str, Path] = {}
+    for folder in folders:
+        if not folder:
+            continue
+        directory = Path(bpy.path.abspath(str(folder))).resolve()
+        if not directory.exists():
+            continue
+        for path in sorted(directory.rglob("*.png")):
+            exact_key = _normalized_image_key(path.name, strip_variant=False)
+            loose_key = _normalized_image_key(path.name, strip_variant=True)
+            if exact_key and exact_key not in exact:
+                exact[exact_key] = path
+            if loose_key:
+                loose[loose_key] = _prefer_image_path(loose.get(loose_key), path)
+    return exact, loose
+
+
+def _image_node_keys(node, *, strip_variant: bool = True, include_image: bool = True) -> list[str]:
+    image = getattr(node, "image", None)
+    values = [
+        str(getattr(node, "name", "") or ""),
+        str(getattr(node, "label", "") or ""),
+    ]
+    if include_image and image is not None:
+        values.extend(
+            [
+                str(getattr(image, "name", "") or ""),
+                str(getattr(image, "filepath", "") or ""),
+            ]
+        )
+    keys = []
+    seen = set()
+    for value in values:
+        key = _normalized_image_key(value, strip_variant=strip_variant)
+        if key and key not in seen:
+            keys.append(key)
+            seen.add(key)
+    return keys
+
+
+def _assign_image_node(node, path: Path) -> bool:
+    image = getattr(node, "image", None)
+    try:
+        if image is None:
+            image = bpy.data.images.load(str(path), check_existing=True)
+            node.image = image
+        else:
+            image.filepath = str(path)
+        image.reload()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _sync_generated_images(scene) -> tuple[int, int]:
+    output_folder = str(scene.get("bname_render_output_folder", "") or "")
+    fisheye_folder = str(scene.get("bname_render_fisheye_output_dir", "") or "")
+    default_folder = bname_context.default_output_folder(scene, "")
+    exact_png_by_key, loose_png_by_key = _iter_png_files(output_folder, fisheye_folder, default_folder)
+    matched = 0
+    for node in _iter_all_nodes(scene):
+        if getattr(node, "type", "") != "IMAGE":
+            continue
+        key_groups = (
+            (exact_png_by_key, _image_node_keys(node, strip_variant=False, include_image=False)),
+            (loose_png_by_key, _image_node_keys(node, strip_variant=True, include_image=False)),
+            (exact_png_by_key, _image_node_keys(node, strip_variant=False, include_image=True)),
+            (loose_png_by_key, _image_node_keys(node, strip_variant=True, include_image=True)),
+        )
+        for png_by_key, keys in key_groups:
+            path = next((png_by_key[key] for key in keys if key in png_by_key), None)
+            if path is not None and _assign_image_node(node, path):
+                matched += 1
+                break
+    scene["bname_render_reload_candidate_count"] = len(exact_png_by_key)
+    scene["bname_render_reload_match_count"] = matched
+    return matched, len(exact_png_by_key)
+
+
 def _reload_images() -> int:
+    scene = bpy.context.scene
+    _sync_generated_images(scene)
     count = 0
     for image in bpy.data.images:
         try:
@@ -316,6 +446,7 @@ def _reload_images() -> int:
             count += 1
         except Exception:  # noqa: BLE001
             pass
+    scene["bname_render_reload_image_count"] = count
     return count
 
 

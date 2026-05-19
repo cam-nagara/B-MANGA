@@ -58,8 +58,12 @@ def default_output_folder(scene, requested: str = "") -> str:
 def default_output_name(scene, requested: str = "", preset_name: str = "") -> str:
     requested = str(requested or "").strip()
     context = scene_context(scene)
-    if requested and not (context.is_bname_coma and requested in LEGACY_DEFAULT_OUTPUT_NAMES):
+    if requested and not context.is_bname_coma:
         return requested
+    if requested and context.is_bname_coma and requested not in LEGACY_DEFAULT_OUTPUT_NAMES:
+        safe_requested = _safe_name(requested)
+        prefix = f"{context.coma_id}_"
+        return safe_requested if safe_requested.startswith(prefix) else f"{prefix}{safe_requested}"
     prefix = context.coma_id or "render"
     suffix = _safe_name(preset_name or "fisheye")
     return f"{prefix}_{suffix}"
