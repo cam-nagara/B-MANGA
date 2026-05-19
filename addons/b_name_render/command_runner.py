@@ -14,6 +14,7 @@ class _RenderSession:
     film_transparent: bool = False
     engine: str = ""
     view_layers: dict[str, bool] = field(default_factory=dict)
+    collection_excludes: list[tuple[object, bool]] = field(default_factory=list)
     node_mutes: list[tuple[object, bool]] = field(default_factory=list)
 
 
@@ -68,6 +69,11 @@ def _begin_session(scene) -> None:
         if hasattr(layer, "use"):
             session.view_layers[layer.name] = bool(layer.use)
             layer.use = False
+        layer_collection = getattr(layer, "layer_collection", None)
+        if layer_collection is not None:
+            for item in _iter_layer_collections(layer_collection):
+                if hasattr(item, "exclude"):
+                    session.collection_excludes.append((item, bool(item.exclude)))
     for tree in _iter_node_trees(scene):
         for node in _iter_nodes_recursive(tree):
             if hasattr(node, "mute"):
@@ -89,6 +95,11 @@ def _restore_session(scene) -> None:
     for layer in scene.view_layers:
         if hasattr(layer, "use") and layer.name in session.view_layers:
             layer.use = session.view_layers[layer.name]
+    for layer_collection, exclude in session.collection_excludes:
+        try:
+            layer_collection.exclude = exclude
+        except ReferenceError:
+            pass
     for node, mute in session.node_mutes:
         try:
             node.mute = mute
@@ -111,6 +122,12 @@ def _find_layer_collection(layer_collection, collection_name: str):
         if found is not None:
             return found
     return None
+
+
+def _iter_layer_collections(layer_collection):
+    yield layer_collection
+    for child in getattr(layer_collection, "children", []):
+        yield from _iter_layer_collections(child)
 
 
 def _set_collection_exclude(scene, collection_name: str, exclude: bool, view_layer_name: str = "") -> None:
@@ -164,9 +181,30 @@ def _set_input_in_node_tree(node_tree, input_name: str, value: float) -> int:
     for node in _iter_nodes_recursive(node_tree):
         for socket in getattr(node, "inputs", []):
             if getattr(socket, "name", "") == input_name and hasattr(socket, "default_value"):
-                socket.default_value = value
-                count += 1
+                if _set_socket_value(socket, value):
+                    count += 1
     return count
+
+
+def _set_socket_value(socket, value: float) -> bool:
+    current = getattr(socket, "default_value", None)
+    candidates = []
+    if isinstance(current, bool):
+        candidates.append(bool(round(float(value))))
+    elif isinstance(current, int):
+        candidates.append(int(round(float(value))))
+    elif isinstance(current, float):
+        candidates.append(float(value))
+    else:
+        candidates.append(value)
+    candidates.extend((int(round(float(value))), float(value), bool(round(float(value)))))
+    for candidate in candidates:
+        try:
+            socket.default_value = candidate
+            return True
+        except (TypeError, ValueError):
+            continue
+    return False
 
 
 def _set_aov_input(target_name: str, input_name: str, value: float) -> int:
@@ -330,6 +368,7 @@ def run_active_preset(context) -> int:
         return 0
     count = 0
     try:
+        core._apply_output_resolution_mode(context.scene)
         for command in preset.commands:
             if not command.enabled:
                 continue

@@ -42,7 +42,8 @@ def scene_context(scene) -> BNameComaContext:
 
 def default_output_folder(scene, requested: str = "") -> str:
     requested = str(requested or "").strip()
-    if requested and requested != "//passes/":
+    normalized = requested.replace("\\", "/").rstrip("/")
+    if requested and normalized != "//passes":
         return requested
     context = scene_context(scene)
     if context.passes_dir is not None:

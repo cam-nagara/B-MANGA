@@ -232,9 +232,37 @@ def _apply_output_resolution_mode(scene) -> None:
     scene.render.resolution_y = original_y
 
 
+def _mirror_render_setting_to_bname(scene, render_name: str, bname_name: str) -> None:
+    if hasattr(scene, render_name) and hasattr(scene, bname_name):
+        try:
+            setattr(scene, bname_name, getattr(scene, render_name))
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _on_output_mode_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else None
     try:
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_reduction_mode_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        if scene is not None:
+            _mirror_render_setting_to_bname(scene, "reduction_mode", "bname_coma_camera_reduction_mode")
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_preview_scale_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        if scene is not None:
+            _mirror_render_setting_to_bname(scene, "preview_scale_percentage", "bname_coma_camera_preview_scale_percentage")
         _apply_output_resolution_mode(scene)
     except Exception:  # noqa: BLE001
         pass
@@ -307,12 +335,12 @@ def _register_scene_props() -> None:
             update=_on_output_mode_changed,
         ),
     )
-    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False, update=_on_output_mode_changed))
+    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False, update=_on_reduction_mode_changed))
     _register_scene_prop("original_resolution_x", IntProperty(name="元解像度X", default=0, min=0))
     _register_scene_prop("original_resolution_y", IntProperty(name="元解像度Y", default=0, min=0))
     _register_scene_prop(
         "preview_scale_percentage",
-        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE", update=_on_output_mode_changed),
+        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE", update=_on_preview_scale_changed),
     )
 
 

@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -79,6 +80,38 @@ def _run_fisheye_preset_without_render(context, render_mod) -> None:
     assert calls == ["方向画像レンダー"], calls
 
 
+class _TypedSocket:
+    def __init__(self, name: str, kind: type) -> None:
+        self.name = name
+        self.kind = kind
+        self._value = kind()
+
+    @property
+    def default_value(self):
+        return self._value
+
+    @default_value.setter
+    def default_value(self, value) -> None:
+        if type(value) is not self.kind:
+            raise TypeError(f"expected {self.kind.__name__}")
+        self._value = value
+
+
+def _assert_aov_socket_coercion(render_mod) -> None:
+    sockets = [
+        _TypedSocket("落ち影切替", int),
+        _TypedSocket("透過切替", bool),
+        _TypedSocket("濃度", float),
+    ]
+    tree = SimpleNamespace(nodes=[SimpleNamespace(type="VALUE", inputs=sockets)])
+    assert render_mod.command_runner._set_input_in_node_tree(tree, "落ち影切替", 1.0) == 1
+    assert render_mod.command_runner._set_input_in_node_tree(tree, "透過切替", 1.0) == 1
+    assert render_mod.command_runner._set_input_in_node_tree(tree, "濃度", 0.5) == 1
+    assert sockets[0].default_value == 1 and type(sockets[0].default_value) is int
+    assert sockets[1].default_value is True
+    assert abs(sockets[2].default_value - 0.5) < 1.0e-6
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_render_align_"))
     work_dir = temp_root / "RenderAlign.bname"
@@ -116,6 +149,17 @@ def main() -> None:
         assert scene.camera.data.type == "PANO"
         assert scene.camera.data.panorama_type == "FISHEYE_EQUISOLID"
         assert abs(float(scene.camera.data.fisheye_fov) - 4.0) < 1.0e-6
+        _assert_aov_socket_coercion(render)
+
+        scene.reduction_mode = True
+        scene.preview_scale_percentage = 25.0
+        assert scene.bname_coma_camera_reduction_mode is True
+        assert abs(float(scene.bname_coma_camera_preview_scale_percentage) - 25.0) < 1.0e-6
+        scene.reduction_mode = False
+        assert scene.bname_coma_camera_reduction_mode is False
+        scene.reduction_mode = True
+        scene.preview_scale_percentage = 50.0
+        render.core._apply_output_resolution_mode(scene)
 
         from bname_render_bname_align import bname_context
 
@@ -124,14 +168,17 @@ def main() -> None:
         assert context.passes_dir == work_dir / "p0001" / "c01" / "passes"
         assert "ページ画像_現在" in context.managed_page_images
 
+        scene.render.resolution_x = 1200
+        scene.render.resolution_y = 900
         _run_fisheye_preset_without_render(bpy.context, render)
+        assert scene.render.resolution_x == 600 and scene.render.resolution_y == 600
         assert scene["bname_render_fisheye_output_dir"] == str(work_dir / "p0001" / "c01" / "passes")
         assert str(scene["bname_render_fisheye_output_name"]).startswith("c01_")
         assert scene.bname_coma_camera_fisheye_layout_mode is True
         assert abs(float(scene.bname_coma_camera_fisheye_fov) - 4.0) < 1.0e-6
         assert scene.camera.data.panorama_type == "FISHEYE_EQUISOLID"
 
-        scene["bname_render_fisheye_output_dir"] = "//passes/"
+        scene["bname_render_fisheye_output_dir"] = "//passes\\"
         scene["bname_render_fisheye_output_name"] = "fisheye"
         assert render.eevr_bridge.setup(scene, scene.camera)
         assert scene["bname_render_fisheye_output_dir"] == str(work_dir / "p0001" / "c01" / "passes")

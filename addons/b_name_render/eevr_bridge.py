@@ -15,6 +15,9 @@ from mathutils import Vector
 from . import bname_context
 
 
+_ANGLE_EPS = 1.0e-6
+
+
 def setup(scene, camera=None, *, output_dir: str = "", output_name: str = "") -> bool:
     props = getattr(scene, "eeVR", None)
     camera = camera or getattr(scene, "camera", None)
@@ -82,10 +85,10 @@ def _configure_native_fisheye(scene, camera, fov: float) -> None:
 def _set_eevr_fov(props, fov: float) -> None:
     fov = min(max(float(fov), radians(1)), radians(360))
     try:
-        if fov <= radians(180):
+        if fov <= radians(180) + _ANGLE_EPS:
             props.fovModeEnum = "180"
             props.HFOV180 = fov
-        elif fov >= radians(359.999):
+        elif fov >= radians(360) - _ANGLE_EPS:
             props.fovModeEnum = "360"
             props.HFOV360 = fov
         else:

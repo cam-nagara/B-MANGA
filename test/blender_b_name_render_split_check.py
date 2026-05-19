@@ -46,7 +46,7 @@ def main() -> None:
         assert getattr(bpy.types.Scene, "bname_render_state", None) is not None
         assert getattr(bpy.types.Scene, "fisheye_layout_mode", None) is not None
         assert getattr(bpy.types.Scene, "my_tool", None) is not None
-        from bname_render_dev import core, eevr_bridge
+        from bname_render_dev import command_runner, core, eevr_bridge
 
         scene = bpy.context.scene
         cam_data = bpy.data.cameras.new("BNameRenderFisheyeCamera")
@@ -110,6 +110,24 @@ def main() -> None:
         result = bpy.ops.bname_render.preset_run()
         assert result == {"FINISHED"}, result
         assert bpy.context.scene.render.film_transparent is False
+
+        coll = bpy.data.collections.new("復元確認")
+        scene.collection.children.link(coll)
+        bpy.context.view_layer.update()
+        layer_coll = command_runner._find_layer_collection(scene.view_layers[0].layer_collection, "復元確認")
+        assert layer_coll is not None and layer_coll.exclude is False
+        restore_collection = state.presets.add()
+        restore_collection.name = "表示復元"
+        state.active_preset_index = len(state.presets) - 1
+        restore_collection.commands.add().command_type = "STATE_BEGIN"
+        command = restore_collection.commands.add()
+        command.command_type = "SET_COLLECTION_EXCLUDE"
+        command.collection_name = "復元確認"
+        command.exclude_collection = True
+        restore_collection.commands.add().command_type = "STATE_END"
+        result = bpy.ops.bname_render.preset_run()
+        assert result == {"FINISHED"}, result
+        assert layer_coll.exclude is False
 
         print("BNAME_RENDER_SPLIT_OK")
     finally:
