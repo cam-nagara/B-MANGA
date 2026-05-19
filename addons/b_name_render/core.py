@@ -13,7 +13,6 @@ from bpy.props import (
     StringProperty,
 )
 
-
 COMMAND_TYPE_ITEMS = (
     ("STATE_BEGIN", "出力状態を退避して初期化", ""),
     ("STATE_END", "出力状態を復元", ""),
@@ -79,12 +78,15 @@ PRESET_CATEGORY_ITEMS = (
     ("ALL", "すべて", "すべてのプリセットを表示"),
     ("CHARA", "キャラ", "キャラ系プリセットのみ表示"),
     ("BG", "背景", "背景系プリセットのみ表示"),
+    ("LEGACY", "旧出力シーン互換", "旧出力シーン互換プリセットのみ表示"),
     ("OTHER", "その他", "キャラ・背景以外のプリセットを表示"),
 )
 
 
 def preset_category_of(name: str) -> str:
     n = str(name or "")
+    if n.startswith("旧出力シーン互換"):
+        return "LEGACY"
     if n.startswith("キャラ"):
         return "CHARA"
     if n.startswith("背景"):
@@ -166,6 +168,33 @@ def fisheye_fov(scene) -> float:
     return float(getattr(scene, "fisheye_fov", 3.1415927) or 3.1415927)
 
 
+def reduction_enabled(scene) -> bool:
+    if scene is None:
+        return False
+    return bool(
+        getattr(scene, "reduction_mode", False)
+        or getattr(scene, "bname_coma_camera_reduction_mode", False)
+    )
+
+
+def preview_scale_percentage(scene) -> float:
+    if scene is None:
+        return 100.0
+    if bool(getattr(scene, "bname_coma_camera_reduction_mode", False)):
+        return float(getattr(scene, "bname_coma_camera_preview_scale_percentage", 100.0) or 100.0)
+    return float(getattr(scene, "preview_scale_percentage", 100.0) or 100.0)
+
+
+def original_resolution(scene) -> tuple[int, int]:
+    if scene is None or getattr(scene, "render", None) is None:
+        return 1, 1
+    bname_x = int(getattr(scene, "bname_coma_camera_original_resolution_x", 0) or 0)
+    bname_y = int(getattr(scene, "bname_coma_camera_original_resolution_y", 0) or 0)
+    if bname_x > 0 and bname_y > 0:
+        return bname_x, bname_y
+    return _ensure_original_resolution(scene)
+
+
 def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
     camera = getattr(scene, "camera", None)
     camera_data = getattr(camera, "data", None)
@@ -174,8 +203,6 @@ def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
     try:
         camera_data.type = "PANO" if enabled else "PERSP"
         if enabled:
-            if hasattr(camera_data, "panorama_type"):
-                camera_data.panorama_type = "FISHEYE_EQUIDISTANT"
             if hasattr(camera_data, "fisheye_fov"):
                 camera_data.fisheye_fov = fisheye_fov(scene)
     except Exception:  # noqa: BLE001
@@ -185,10 +212,10 @@ def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
 def _apply_output_resolution_mode(scene) -> None:
     if scene is None or getattr(scene, "render", None) is None:
         return
-    original_x, original_y = _ensure_original_resolution(scene)
-    scale = max(0.01, min(1.0, float(getattr(scene, "preview_scale_percentage", 100.0) or 100.0) / 100.0))
+    original_x, original_y = original_resolution(scene)
+    scale = max(0.01, min(1.0, preview_scale_percentage(scene) / 100.0))
     fisheye = fisheye_enabled(scene)
-    reduction = bool(getattr(scene, "reduction_mode", False))
+    reduction = reduction_enabled(scene)
     _set_camera_projection_for_fisheye(scene, fisheye)
     if fisheye:
         edge = max(original_x, original_y)
@@ -287,7 +314,6 @@ def _register_scene_props() -> None:
         "preview_scale_percentage",
         FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE", update=_on_output_mode_changed),
     )
-    _register_scene_prop("comic_frame_mode", BoolProperty(name="コマプレビューとして出力", default=False))
 
 
 def _unregister_scene_props() -> None:

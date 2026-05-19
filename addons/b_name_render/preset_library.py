@@ -175,11 +175,9 @@ def _pen_output(target: str, output_group: str, output_label: str, aov_target: s
         _aov(aov_target, "落ち影切替", 1),
         _begin(),
         _vl(target),
-        _exclude("コマ枠", True),
         _node(f"{target}線画Pencil+4"),
         _node(output_group),
         _fisheye_or_layer(command_type, output_group, output_label, 1),
-        _exclude("コマ枠", False),
         _end(),
     ]
 
@@ -187,7 +185,6 @@ def _pen_output(target: str, output_group: str, output_label: str, aov_target: s
 BUILTIN_PRESETS: dict[str, list[dict]] = {
     "レイアウト": _simple_layer("レイアウト", "レイアウト", "出力_レイアウト", 1),
     "アタリ": _rough_layer(),
-    "すべて": _all_output(),
     "効果": _effect_pass(),
     "キャラ": [
         _aov("キャラ", "落ち影切替", 1),
@@ -271,8 +268,9 @@ BUILTIN_PRESETS: dict[str, list[dict]] = {
     "キャラ線画": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_キャラ"), _node("キャラ線画"), _render(1), _end()],
     "背景線画": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("背景線画"), _render(1), _end()],
     "背景統合": [_begin(), _cmd("RELOAD_IMAGES", "画像ノード再読み込み"), _node("C_線画抽出_背景"), _node("C_背景調整"), _node("背景統合"), _render(1), _end()],
-    "ページ": _page_output(),
     "画像ノード再読み込み": [_cmd("RELOAD_IMAGES", "画像ノード再読み込み")],
+    "旧出力シーン互換: すべて": _all_output(),
+    "旧出力シーン互換: ページ": _page_output(),
 }
 
 

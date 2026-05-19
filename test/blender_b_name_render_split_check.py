@@ -50,6 +50,7 @@ def main() -> None:
 
         scene = bpy.context.scene
         cam_data = bpy.data.cameras.new("BNameRenderFisheyeCamera")
+        cam_data.panorama_type = "FISHEYE_EQUISOLID"
         cam = bpy.data.objects.new("BNameRenderFisheyeCamera", cam_data)
         scene.collection.objects.link(cam)
         scene.camera = cam
@@ -64,6 +65,7 @@ def main() -> None:
         assert core.fisheye_enabled(scene), "B-Name側の魚眼モードをB-Name-Renderが認識していません"
         assert scene.render.resolution_x == 800 and scene.render.resolution_y == 800
         assert cam.data.type == "PANO"
+        assert cam.data.panorama_type == "FISHEYE_EQUISOLID"
         assert abs(float(cam.data.fisheye_fov) - 2.4) < 1.0e-6
         assert abs(eevr_bridge._fisheye_fov(scene, cam) - 2.4) < 1.0e-6
 
@@ -71,11 +73,18 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         state = bpy.context.scene.bname_render_state
         preset_names = {item.name for item in state.presets}
-        for required in ("すべて", "効果", "ページ", "キャラ", "キャラpen方向", "キャラpen合成", "背景", "背景pen合成", "画像ノード再読み込み"):
+        for required in ("効果", "キャラ", "キャラpen方向", "キャラpen合成", "背景", "背景pen合成", "画像ノード再読み込み"):
             assert required in preset_names, required
+        assert "ページ" not in preset_names
+        assert "すべて" not in preset_names
+        assert "旧出力シーン互換: ページ" in preset_names
+        assert "旧出力シーン互換: すべて" in preset_names
         for preset in state.presets:
             for command in preset.commands:
                 assert not command.name.startswith("未設定"), (preset.name, command.name)
+                if not preset.name.startswith("旧出力シーン互換"):
+                    assert getattr(command, "collection_name", "") != "コマ枠"
+                    assert getattr(command, "node_name", "") not in {"ページ", "全コマ統合"}
 
         state.active_preset_index = 0
         preset = state.presets[0]

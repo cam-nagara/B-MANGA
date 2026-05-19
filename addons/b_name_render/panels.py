@@ -99,11 +99,12 @@ def _draw_fisheye_box(layout, context, state) -> None:
     row = fish.row(align=True)
     row.prop(scene, "reduction_mode", text="縮小モード")
     sub = fish.row(align=True)
-    sub.enabled = bool(scene.reduction_mode)
+    sub.enabled = core.reduction_enabled(scene)
     sub.prop(scene, "preview_scale_percentage", text="縮小率")
     fish.label(text=f"現在の出力解像度: {scene.render.resolution_x} x {scene.render.resolution_y}")
-    if int(getattr(scene, "original_resolution_x", 0)) and int(getattr(scene, "original_resolution_y", 0)):
-        fish.label(text=f"元解像度: {scene.original_resolution_x} x {scene.original_resolution_y}")
+    original_x, original_y = core.original_resolution(scene)
+    if original_x > 0 and original_y > 0:
+        fish.label(text=f"元解像度: {original_x} x {original_y}")
     fish.prop(state, "sound_enabled", text="出力完了アラーム")
 
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import bpy
 
-from . import core, eevr_bridge
+from . import bname_context, core, eevr_bridge
 
 
 @dataclass
@@ -192,8 +192,7 @@ def _set_aov_input(target_name: str, input_name: str, value: float) -> int:
 
 
 def _set_output_name(scene, name: str) -> None:
-    if not name:
-        return
+    name = bname_context.default_output_name(scene, name)
     scene.render.filepath = name
     for tree in _iter_node_trees(scene):
         for node in _iter_nodes_recursive(tree):
@@ -204,8 +203,7 @@ def _set_output_name(scene, name: str) -> None:
 
 
 def _set_output_folder(scene, folder: str) -> None:
-    if not folder:
-        return
+    folder = bname_context.default_output_folder(scene, folder)
     for tree in _iter_node_trees(scene):
         for node in _iter_nodes_recursive(tree):
             if getattr(node, "type", "") == "OUTPUT_FILE":
@@ -255,11 +253,11 @@ def _render_layer(scene, group_name: str, label: str, engine: str, sample_count:
     _render(scene, engine, sample_count)
 
 
-def _run_fisheye_or_layer(scene, command, mode: str) -> None:
+def _run_fisheye_or_layer(scene, command, mode: str, preset_name: str = "") -> None:
     if not _is_fisheye_enabled(scene):
         _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
         return
-    _setup_eevr_from_command(scene, command)
+    _setup_eevr_from_command(scene, command, preset_name)
     if mode == "IMAGE":
         eevr_bridge.render_image()
     elif mode == "FACES":
@@ -268,17 +266,17 @@ def _run_fisheye_or_layer(scene, command, mode: str) -> None:
         eevr_bridge.assemble_images()
 
 
-def _setup_eevr_from_command(scene, command) -> None:
+def _setup_eevr_from_command(scene, command, preset_name: str = "") -> None:
     if not eevr_bridge.setup(
         scene,
         getattr(scene, "camera", None),
-        output_dir=str(getattr(command, "folder_path", "") or ""),
-        output_name=str(getattr(command, "text_value", "") or ""),
+        output_dir=bname_context.default_output_folder(scene, str(getattr(command, "folder_path", "") or "")),
+        output_name=bname_context.default_output_name(scene, str(getattr(command, "text_value", "") or ""), preset_name),
     ):
-        raise RuntimeError("魚眼設定が見つかりません")
+        raise RuntimeError("魚眼設定を現在のカメラに合わせられません")
 
 
-def _run_command(context, command) -> None:
+def _run_command(context, command, preset_name: str = "") -> None:
     scene = context.scene
     kind = command.command_type
     if kind == "STATE_BEGIN":
@@ -306,21 +304,21 @@ def _run_command(context, command) -> None:
     elif kind == "RENDER_LAYER":
         _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
     elif kind == "FISHEYE_RENDER_IMAGE_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "IMAGE")
+        _run_fisheye_or_layer(scene, command, "IMAGE", preset_name)
     elif kind == "FISHEYE_RENDER_FACES_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "FACES")
+        _run_fisheye_or_layer(scene, command, "FACES", preset_name)
     elif kind == "FISHEYE_ASSEMBLE_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "ASSEMBLE")
+        _run_fisheye_or_layer(scene, command, "ASSEMBLE", preset_name)
     elif kind == "EEVR_SETUP":
-        _setup_eevr_from_command(scene, command)
+        _setup_eevr_from_command(scene, command, preset_name)
     elif kind == "EEVR_RENDER_IMAGE":
-        _setup_eevr_from_command(scene, command)
+        _setup_eevr_from_command(scene, command, preset_name)
         eevr_bridge.render_image()
     elif kind == "EEVR_RENDER_FACES":
-        _setup_eevr_from_command(scene, command)
+        _setup_eevr_from_command(scene, command, preset_name)
         eevr_bridge.render_faces()
     elif kind == "EEVR_ASSEMBLE":
-        _setup_eevr_from_command(scene, command)
+        _setup_eevr_from_command(scene, command, preset_name)
         eevr_bridge.assemble_images()
     elif kind == "OPERATOR" and command.operator_idname:
         eevr_bridge.run_operator(command.operator_idname)
@@ -335,7 +333,7 @@ def run_active_preset(context) -> int:
         for command in preset.commands:
             if not command.enabled:
                 continue
-            _run_command(context, command)
+            _run_command(context, command, preset.name)
             count += 1
     finally:
         _restore_session(context.scene)

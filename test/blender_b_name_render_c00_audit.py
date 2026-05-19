@@ -70,9 +70,9 @@ def _walk_nodes(node_tree, out, seen=None):
             _walk_nodes(getattr(node, "node_tree", None), out, seen)
 
 
-def _required_from_presets(preset_library):
+def _required_from_presets(preset_library, core, *, include_legacy: bool = False, legacy_only: bool = False):
     required = {
-        "presets": set(preset_library.BUILTIN_PRESETS.keys()),
+        "presets": set(),
         "view_layers": set(),
         "collections": set(),
         "node_names": set(),
@@ -82,7 +82,13 @@ def _required_from_presets(preset_library):
         "operators": set(),
         "output_labels": set(),
     }
-    for commands in preset_library.BUILTIN_PRESETS.values():
+    for preset_name, commands in preset_library.BUILTIN_PRESETS.items():
+        is_legacy = core.preset_category_of(preset_name) == "LEGACY"
+        if legacy_only and not is_legacy:
+            continue
+        if not include_legacy and is_legacy:
+            continue
+        required["presets"].add(preset_name)
         for command in commands:
             kind = command.get("command_type", "")
             if kind == "SET_VIEW_LAYER":
@@ -154,7 +160,8 @@ def main() -> None:
     bpy.ops.wm.open_mainfile(filepath=str(blend_path))
     render = _load_render_package()
     render.register()
-    required = _required_from_presets(render.preset_library)
+    required = _required_from_presets(render.preset_library, render.core)
+    legacy_required = _required_from_presets(render.preset_library, render.core, include_legacy=True, legacy_only=True)
 
     scene = bpy.context.scene
     collections = set()
@@ -235,6 +242,7 @@ def main() -> None:
             "nodes": len(nodes),
         },
         "required": required,
+        "legacy_required": legacy_required,
         "existing": {
             "view_layers": sorted(view_layer_names),
             "collections": sorted(collections),

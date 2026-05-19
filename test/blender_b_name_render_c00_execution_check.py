@@ -142,6 +142,8 @@ def _assert_eevr_bridge(context, temp_root: Path) -> dict:
     try:
         scene = context.scene
         scene.fisheye_layout_mode = True
+        if scene.camera is not None and hasattr(scene.camera.data, "panorama_type"):
+            scene.camera.data.panorama_type = "FISHEYE_EQUISOLID"
         command = SimpleNamespace(
             command_type="FISHEYE_RENDER_IMAGE_OR_LAYER",
             node_group_name="出力_背景線画Pencil+4",
@@ -154,7 +156,7 @@ def _assert_eevr_bridge(context, temp_root: Path) -> dict:
         command_runner._run_command(context, command)
         props = scene.eeVR
         assert props.renderModeEnum == "DOME"
-        assert props.domeMethodEnum == "1"
+        assert props.domeMethodEnum == "2"
         assert props.fovModeEnum == "180"
         assert bool(props.save_images_to_directory)
         assert props.images_save_directory == str(temp_root / "eevr_out")

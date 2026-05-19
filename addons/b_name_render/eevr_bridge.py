@@ -12,20 +12,34 @@ from math import radians
 import bpy
 from mathutils import Vector
 
+from . import bname_context
+
 
 def setup(scene, camera=None, *, output_dir: str = "", output_name: str = "") -> bool:
     props = getattr(scene, "eeVR", None)
     camera = camera or getattr(scene, "camera", None)
     fov = _fisheye_fov(scene, camera)
-    stored_dir = output_dir or str(scene.get("bname_render_fisheye_output_dir", "//passes/") or "//passes/")
-    stored_name = output_name or str(scene.get("bname_render_fisheye_output_name", "fisheye") or "fisheye")
+    stored_dir = bname_context.default_output_folder(
+        scene,
+        output_dir or str(scene.get("bname_render_fisheye_output_dir", "") or ""),
+    )
+    stored_name = bname_context.default_output_name(
+        scene,
+        output_name or str(scene.get("bname_render_fisheye_output_name", "") or ""),
+    )
+    projection = bname_context.camera_fisheye_projection(camera)
+    dome_method = bname_context.eevr_dome_method_for_projection(projection)
     if props is not None:
+        if not dome_method:
+            if bname_context.scene_context(scene).is_bname_coma:
+                scene["bname_render_fisheye_warning"] = "対応する魚眼投影方式が見つかりません"
+                return False
+            dome_method = "2"
         setattr(props, "renderModeEnum", "DOME")
-        setattr(props, "domeMethodEnum", "1")
-        setattr(props, "fovModeEnum", "180")
+        setattr(props, "domeMethodEnum", dome_method)
+        _set_eevr_fov(props, fov)
         try:
-            props.HFOV180 = min(max(float(fov), radians(1)), radians(180))
-            props.VFOV = radians(180)
+            props.VFOV = min(max(float(fov), radians(1)), radians(360))
         except Exception:  # noqa: BLE001
             pass
         if hasattr(props, "save_images_to_directory"):
@@ -59,10 +73,24 @@ def _configure_native_fisheye(scene, camera, fov: float) -> None:
         return
     try:
         camera_data.type = "PANO"
-        if hasattr(camera_data, "panorama_type"):
-            camera_data.panorama_type = "FISHEYE_EQUIDISTANT"
         if hasattr(camera_data, "fisheye_fov"):
             camera_data.fisheye_fov = float(fov)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _set_eevr_fov(props, fov: float) -> None:
+    fov = min(max(float(fov), radians(1)), radians(360))
+    try:
+        if fov <= radians(180):
+            props.fovModeEnum = "180"
+            props.HFOV180 = fov
+        elif fov >= radians(359.999):
+            props.fovModeEnum = "360"
+            props.HFOV360 = fov
+        else:
+            props.fovModeEnum = "ANY"
+            props.HFOV360 = fov
     except Exception:  # noqa: BLE001
         pass
 
@@ -87,8 +115,14 @@ def _try_external_operator(idname: str) -> set[str] | None:
 
 
 def _output_base(scene, suffix: str) -> str:
-    folder = str(scene.get("bname_render_fisheye_output_dir", "//passes/") or "//passes/")
-    name = str(scene.get("bname_render_fisheye_output_name", "fisheye") or "fisheye")
+    folder = bname_context.default_output_folder(
+        scene,
+        str(scene.get("bname_render_fisheye_output_dir", "") or ""),
+    )
+    name = bname_context.default_output_name(
+        scene,
+        str(scene.get("bname_render_fisheye_output_name", "") or ""),
+    )
     directory = bpy.path.abspath(folder)
     os.makedirs(directory, exist_ok=True)
     safe_suffix = f"_{suffix}" if suffix else ""
