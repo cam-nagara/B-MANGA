@@ -3,6 +3,33 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-20 — v0.6.018 / B-Name-Render v0.1.018 c00完全連動を補強
+
+### 症状
+- B-Name-Renderの一部プリセットが、c00テンプレート内の実際の出力フレーム名と合わず、意図したパスが有効にならない可能性があった。
+- Blender 5.1のファイル出力ノードで、保存先フォルダーや画像名の差し替えが旧形式だけを見ていて効かない場合があった。
+- c00由来の古い「コマ」下絵が残っていると、B-Nameが生成した現在コマ下絵ではなく古い下絵で出力範囲が決まる可能性があった。
+
+### 原因
+- 出力ノードの照合がノード名・ラベル・親フレーム名中心で、Blender 5.1の入力名やファイル出力項目を見ていなかった。
+- Blender 5.1ではファイル出力ノードの保存先が `directory`、画像名が `file_name` へ移っているが、旧 `base_path` / スロット形式だけを変更していた。
+- コマ下絵の探索が「コマ」を含む画像名の先頭一致に寄っており、B-Name管理下絵かどうかを優先していなかった。
+
+### 修正
+- c00実ノードに合わせて、キャラ陰影とPencil+4関連のプリセット指定を補正した。
+- ファイル出力ノードの照合対象に、入力名とファイル出力項目名を追加した。
+- Blender 5.1の `directory` / `file_name` に対応し、出力状態の退避・復元にも保存先と画像名を含めた。
+- B-Name側の出力範囲計算は、B-Name管理の現在コマ下絵を最優先し、未管理の古いc00下絵を範囲計算に使わないようにした。
+- コマ用blendファイル読み込み時とB-Name-Render実行直前に、魚眼・縮小・出力範囲を再同期するようにした。
+- c00完全連動、出力範囲往復、AI目視用レンダー一覧の実機テストを追加・拡張した。
+
+### 検証 (Blender 5.1.1 実機)
+- 正本c00テンプレートで、現行プリセットの出力ノード不一致が0件であることを確認。
+- `マテリアル方舟` を貼った検証メッシュで、AOV切替、出力先差し替え、代表パス生成、統合系プリセットの実行が通ることを確認。
+- 古いc00下絵が残る状態でも、出力範囲計算がB-Name管理の現在コマ下絵を使うことを確認。
+- AI目視用シートで、全39プリセットがエラーなし、レンダー欠落なしで一覧化されることを確認。
+- `test/blender_b_name_render_c00_audit.py`、`test/blender_b_name_render_c00_full_flow_check.py`、`test/blender_b_name_render_c00_output_range_roundtrip_check.py`、`test/blender_b_name_render_c00_execution_check.py`、`test/blender_b_name_render_visual_presets.py`、`test/blender_b_name_render_bname_alignment_check.py`、`test/blender_b_name_render_split_check.py` が通ることを確認。
+
 ## 2026-05-20 — v0.6.017 / B-Name-Render v0.1.017 徹底チェック修正
 
 ### 症状

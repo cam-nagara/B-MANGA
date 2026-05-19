@@ -85,7 +85,7 @@ def ensure_coma_camera_scene(
     _restore_scene_camera(scene, camera)
     configure_camera_backgrounds(scene, camera, refs, page_id, coma_id)
     _restore_scene_camera(scene, camera)
-    update_render_border_from_current_coma(context)
+    resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
 
@@ -567,15 +567,12 @@ def update_render_border_from_current_coma(context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     if scene is None or scene.camera is None:
         return
-    target = None
-    for bg in _iter_camera_backgrounds(context):
-        img = getattr(bg, "image", None)
-        if img is not None and "コマ" in getattr(img, "name", ""):
-            target = bg
-            break
+    target = _find_render_border_background(context, scene)
     if target is None or target.image is None:
         _disable_render_border(scene)
+        _set_render_border_source(scene, "")
         return
+    _set_render_border_source(scene, getattr(target.image, "name", ""))
     try:
         if bool(target.image.get("bname_full_page_mask", False)):
             _apply_page_side_render_border(scene, target.image)
@@ -604,6 +601,35 @@ def update_render_border_from_current_coma(context) -> None:
     scene.render.border_max_x = scene.render.border_min_x + border_width
     scene.render.border_min_y = (1.0 - border_height) * 0.5
     scene.render.border_max_y = scene.render.border_min_y + border_height
+
+
+def _find_render_border_background(context, scene):
+    backgrounds = _iter_camera_backgrounds(context)
+    current_page_id = str(getattr(scene, "bname_current_coma_page_id", "") or "")
+    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    managed_koma = [bg for bg in backgrounds if _is_managed_background(bg) and _background_matches_kind(bg, "koma")]
+    for bg in managed_koma:
+        img = getattr(bg, "image", None)
+        if img is None:
+            continue
+        try:
+            page_id = str(img.get("bname_page_id", "") or "")
+            coma_id = str(img.get("bname_coma_id", "") or "")
+        except Exception:  # noqa: BLE001
+            page_id = ""
+            coma_id = ""
+        if (not current_page_id or page_id == current_page_id) and (not current_coma_id or coma_id == current_coma_id):
+            return bg
+    if managed_koma:
+        return managed_koma[0]
+    return None
+
+
+def _set_render_border_source(scene, name: str) -> None:
+    try:
+        scene["bname_coma_camera_render_border_source"] = str(name or "")
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _disable_render_border(scene) -> None:
@@ -709,7 +735,20 @@ def apply_reduction_mode(context) -> None:
             _apply_fisheye_layout(scene)
         else:
             _restore_original_resolution(scene)
+    update_render_border_from_current_coma(context)
     update_view(context)
+
+
+def resync_coma_camera_output_layout(context) -> None:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return
+    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+        apply_fisheye_mode(context)
+    elif bool(getattr(scene, "bname_coma_camera_reduction_mode", False)):
+        apply_reduction_mode(context)
+    else:
+        update_render_border_from_current_coma(context)
 
 
 def view_camera_in_viewports(context) -> None:

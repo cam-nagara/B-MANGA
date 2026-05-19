@@ -69,9 +69,21 @@ def _font(ImageFont, *, size: int):
 
 
 def _ensure_pillow_path() -> None:
-    wheel = ROOT / "wheels" / "pillow-12.2.0-cp311-cp311-win_amd64.whl"
-    if wheel.exists() and str(wheel) not in sys.path:
-        sys.path.insert(0, str(wheel))
+    tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    candidates = [
+        ROOT / "wheels" / "_installed" / f"pillow-12.2.0-{tag}-{tag}-win_amd64",
+        ROOT / "wheels" / f"pillow-12.2.0-{tag}-{tag}-win_amd64.whl",
+        ROOT / "wheels" / "_installed" / "pillow-12.2.0-cp313-cp313-win_amd64",
+        ROOT / "wheels" / "pillow-12.2.0-cp313-cp313-win_amd64.whl",
+        ROOT / "wheels" / "_installed" / "pillow-12.2.0-cp312-cp312-win_amd64",
+        ROOT / "wheels" / "pillow-12.2.0-cp312-cp312-win_amd64.whl",
+        ROOT / "wheels" / "_installed" / "pillow-12.2.0-cp311-cp311-win_amd64",
+        ROOT / "wheels" / "pillow-12.2.0-cp311-cp311-win_amd64.whl",
+    ]
+    for wheel in candidates:
+        if wheel.exists() and str(wheel) not in sys.path:
+            sys.path.insert(0, str(wheel))
+            return
 
 
 def _iter_node_trees(scene):
@@ -106,13 +118,11 @@ def _walk_nodes(node_tree, seen=None):
 
 
 def _redirect_file_outputs(scene) -> None:
+    from bname_render_visual import command_runner
+
     node_out = OUT_DIR / "node_outputs"
     node_out.mkdir(parents=True, exist_ok=True)
-    for tree in _iter_node_trees(scene):
-        for node in _walk_nodes(tree):
-            if getattr(node, "type", "") == "OUTPUT_FILE":
-                if hasattr(node, "base_path"):
-                    node.base_path = str(node_out)
+    command_runner._set_output_folder(scene, str(node_out))
 
 
 def _ensure_camera(scene) -> None:
@@ -493,6 +503,7 @@ def main() -> None:
     bpy.ops.wm.open_mainfile(filepath=str(blend_path))
     render = _load_render_package()
     try:
+        render.command_runner._reload_images = lambda: 0
         proxy_scene = _create_proxy_scene(render.preset_library)
         _configure_scene(proxy_scene)
         _ensure_visual_proxies(proxy_scene)

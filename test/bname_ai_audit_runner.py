@@ -68,6 +68,8 @@ def _audit_cases() -> list[AuditCase]:
         AuditCase("render_ui", "B-Name-Render UI/カード設定監査", "test/blender_b_name_render_ui_audit.py", "B-Name-Render", ("standard", "visual"), "BNAME_RENDER_UI_AUDIT_OUT"),
         AuditCase("render_c00_audit", "B-Name-Render c00連動構造監査", "test/blender_b_name_render_c00_audit.py", "B-Name-Render", ("full", "c00"), requires_c00=True),
         AuditCase("render_c00_execution", "B-Name-Render c00全プリセット実行準備監査", "test/blender_b_name_render_c00_execution_check.py", "B-Name-Render", ("full", "c00"), requires_c00=True, requires_eevr=True),
+        AuditCase("render_c00_full_flow", "B-Name-Render c00完全連動監査", "test/blender_b_name_render_c00_full_flow_check.py", "B-Name-Render", ("full", "c00"), "BNAME_RENDER_FULL_FLOW_OUT", requires_c00=True),
+        AuditCase("render_c00_output_range", "B-Name-Render c00出力範囲往復監査", "test/blender_b_name_render_c00_output_range_roundtrip_check.py", "B-Name-Render", ("full", "c00"), requires_c00=True),
         AuditCase("render_visual_presets", "B-Name-Render 全プリセット実レンダー目視監査", "test/blender_b_name_render_visual_presets.py", "B-Name-Render", ("full", "visual", "slow"), "BNAME_RENDER_VISUAL_OUT", requires_c00=True, slow=True),
     ]
 

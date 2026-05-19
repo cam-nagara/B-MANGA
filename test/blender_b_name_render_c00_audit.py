@@ -63,6 +63,12 @@ def _walk_nodes(node_tree, out, seen=None):
                 "inputs": [socket.name for socket in getattr(node, "inputs", [])],
                 "outputs": [socket.name for socket in getattr(node, "outputs", [])],
                 "slots": [slot.path for slot in getattr(node, "file_slots", [])],
+                "directory": getattr(node, "directory", ""),
+                "file_name": getattr(node, "file_name", ""),
+                "file_output_items": [
+                    getattr(item, "name", "")
+                    for item in getattr(node, "file_output_items", [])
+                ],
                 "base_path": getattr(node, "base_path", ""),
             }
         )
@@ -114,6 +120,28 @@ def _required_from_presets(preset_library, core, *, include_legacy: bool = False
     return {key: sorted(value for value in values if value) for key, values in required.items()}
 
 
+def _required_output_pairs(preset_library, core) -> list[dict[str, str]]:
+    pairs: list[dict[str, str]] = []
+    output_kinds = {
+        "SET_OUTPUT_GROUP",
+        "RENDER_LAYER",
+        "FISHEYE_RENDER_IMAGE_OR_LAYER",
+        "FISHEYE_RENDER_FACES_OR_LAYER",
+        "FISHEYE_ASSEMBLE_OR_LAYER",
+    }
+    for preset_name, commands in preset_library.BUILTIN_PRESETS.items():
+        if core.preset_category_of(preset_name) == "LEGACY":
+            continue
+        for command in commands:
+            if command.get("command_type", "") not in output_kinds:
+                continue
+            group = str(command.get("node_group_name", "") or "")
+            label = str(command.get("label_contains", "") or "")
+            if group:
+                pairs.append({"preset": preset_name, "group": group, "label": label})
+    return pairs
+
+
 def _count_named_input(node_tree, input_name: str) -> int:
     count = 0
     nodes = []
@@ -162,6 +190,7 @@ def main() -> None:
     render.register()
     required = _required_from_presets(render.preset_library, render.core)
     legacy_required = _required_from_presets(render.preset_library, render.core, include_legacy=True, legacy_only=True)
+    output_pairs = _required_output_pairs(render.preset_library, render.core)
 
     scene = bpy.context.scene
     collections = set()
@@ -185,7 +214,22 @@ def main() -> None:
         if item["type"] != "OUTPUT_FILE":
             continue
         output_labels.update({item["name"], item["label"], item["parent"]})
+        output_labels.update(item["inputs"])
+        output_labels.update(item["file_output_items"])
     view_layer_names = {layer.name for layer in scene.view_layers}
+    output_pair_counts = {}
+    output_pair_missing = []
+    for pair in output_pairs:
+        group = bpy.data.node_groups.get(pair["group"])
+        count = 0
+        if group is not None:
+            for node in render.command_runner._iter_nodes_recursive(group):
+                if getattr(node, "type", "") == "OUTPUT_FILE" and render.command_runner._node_matches_label(node, pair["label"]):
+                    count += 1
+        key = f"{pair['preset']} / {pair['group']} / {pair['label']}"
+        output_pair_counts[key] = count
+        if count <= 0:
+            output_pair_missing.append(pair)
 
     camera = scene.camera
     camera_data = camera.data if camera is not None and camera.type == "CAMERA" else None
@@ -265,7 +309,9 @@ def main() -> None:
                 for label in required["output_labels"]
                 if not any(label in existing for existing in output_labels)
             ),
+            "output_pairs": output_pair_missing,
         },
+        "output_pair_match_counts": output_pair_counts,
         "aov_target_socket_counts": {
             f"{target}/{input_name}": _count_aov_target(target, input_name)
             for target in required["aov_targets"]
@@ -287,7 +333,7 @@ def main() -> None:
 
     blocking_missing = {
         key: audit["missing"][key]
-        for key in ("view_layers", "collections", "node_names", "node_groups", "output_labels")
+        for key in ("view_layers", "collections", "node_names", "node_groups", "output_labels", "output_pairs")
         if audit["missing"][key]
     }
     assert not blocking_missing, blocking_missing

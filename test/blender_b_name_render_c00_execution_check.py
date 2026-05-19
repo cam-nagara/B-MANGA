@@ -84,11 +84,13 @@ def _patch_rendering(command_runner, eevr_bridge):
 
     originals = SimpleNamespace(
         render=command_runner._render,
+        reload_images=command_runner._reload_images,
         render_image=eevr_bridge.render_image,
         render_faces=eevr_bridge.render_faces,
         assemble_images=eevr_bridge.assemble_images,
     )
     command_runner._render = fake_render
+    command_runner._reload_images = lambda: 0
     eevr_bridge.render_image = fake_eevr("eeVR魚眼レンダー")
     eevr_bridge.render_faces = fake_eevr("eeVR方向画像レンダー")
     eevr_bridge.assemble_images = fake_eevr("eeVRパノラマ合成")
@@ -97,6 +99,7 @@ def _patch_rendering(command_runner, eevr_bridge):
 
 def _restore_rendering(command_runner, eevr_bridge, originals) -> None:
     command_runner._render = originals.render
+    command_runner._reload_images = originals.reload_images
     eevr_bridge.render_image = originals.render_image
     eevr_bridge.render_faces = originals.render_faces
     eevr_bridge.assemble_images = originals.assemble_images

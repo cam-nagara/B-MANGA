@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import sys
 
 import bpy
 
@@ -16,6 +17,7 @@ class _RenderSession:
     view_layers: dict[str, bool] = field(default_factory=dict)
     collection_excludes: list[tuple[object, bool]] = field(default_factory=list)
     node_mutes: list[tuple[object, bool]] = field(default_factory=list)
+    output_nodes: list[tuple[object, str, str]] = field(default_factory=list)
 
 
 _SESSION: _RenderSession | None = None
@@ -58,6 +60,12 @@ def _iter_nodes_recursive(node_tree, seen=None):
             yield from _iter_nodes_recursive(getattr(node, "node_tree", None), seen)
 
 
+def _iter_all_nodes(scene):
+    seen: set[int] = set()
+    for tree in _iter_node_trees(scene):
+        yield from _iter_nodes_recursive(tree, seen)
+
+
 def _begin_session(scene) -> None:
     global _SESSION
     if _SESSION is not None:
@@ -74,12 +82,19 @@ def _begin_session(scene) -> None:
             for item in _iter_layer_collections(layer_collection):
                 if hasattr(item, "exclude"):
                     session.collection_excludes.append((item, bool(item.exclude)))
-    for tree in _iter_node_trees(scene):
-        for node in _iter_nodes_recursive(tree):
-            if hasattr(node, "mute"):
-                session.node_mutes.append((node, bool(node.mute)))
-                if getattr(node, "type", "") == "OUTPUT_FILE":
-                    node.mute = True
+    for node in _iter_all_nodes(scene):
+        if hasattr(node, "mute"):
+            session.node_mutes.append((node, bool(node.mute)))
+            if getattr(node, "type", "") == "OUTPUT_FILE":
+                node.mute = True
+        if getattr(node, "type", "") == "OUTPUT_FILE":
+            session.output_nodes.append(
+                (
+                    node,
+                    str(_get_output_node_directory(node)),
+                    str(_get_output_node_file_name(node)),
+                )
+            )
     scene.render.film_transparent = True
     _SESSION = session
 
@@ -103,6 +118,12 @@ def _restore_session(scene) -> None:
     for node, mute in session.node_mutes:
         try:
             node.mute = mute
+        except ReferenceError:
+            pass
+    for node, directory, file_name in session.output_nodes:
+        try:
+            _set_output_node_directory(node, directory)
+            _set_output_node_file_name(node, file_name)
         except ReferenceError:
             pass
     _SESSION = None
@@ -142,26 +163,37 @@ def _set_collection_exclude(scene, collection_name: str, exclude: bool, view_lay
 
 def _set_node_mute(scene, node_name: str, mute: bool) -> int:
     count = 0
-    for tree in _iter_node_trees(scene):
-        for node in _iter_nodes_recursive(tree):
-            if getattr(node, "name", "") == node_name or getattr(node, "label", "") == node_name:
-                if hasattr(node, "mute"):
-                    node.mute = mute
-                    count += 1
+    for node in _iter_all_nodes(scene):
+        if getattr(node, "name", "") == node_name or getattr(node, "label", "") == node_name:
+            if hasattr(node, "mute"):
+                node.mute = mute
+                count += 1
     return count
 
 
 def _node_matches_label(node, label: str) -> bool:
     if not label:
         return True
-    parent = getattr(node, "parent", None)
-    values = (
-        getattr(node, "name", ""),
-        getattr(node, "label", ""),
-        getattr(parent, "name", "") if parent is not None else "",
-        getattr(parent, "label", "") if parent is not None else "",
-    )
+    values = _output_match_values(node)
     return any(label in str(value) for value in values)
+
+
+def _output_match_values(node) -> tuple[str, ...]:
+    parent = getattr(node, "parent", None)
+    values: list[str] = [
+        str(getattr(node, "name", "") or ""),
+        str(getattr(node, "label", "") or ""),
+        str(getattr(parent, "name", "") or "") if parent is not None else "",
+        str(getattr(parent, "label", "") or "") if parent is not None else "",
+    ]
+    for socket in getattr(node, "inputs", []) or []:
+        values.append(str(getattr(socket, "name", "") or ""))
+    for collection_name in ("file_output_items", "file_slots", "layer_slots"):
+        for item in getattr(node, collection_name, []) or []:
+            values.append(str(getattr(item, "name", "") or ""))
+            values.append(str(getattr(item, "path", "") or ""))
+            values.append(str(getattr(item, "file_name", "") or ""))
+    return tuple(values)
 
 
 def _set_output_group(group_name: str, label: str, mute: bool) -> int:
@@ -232,20 +264,48 @@ def _set_aov_input(target_name: str, input_name: str, value: float) -> int:
 def _set_output_name(scene, name: str) -> None:
     name = bname_context.default_output_name(scene, name)
     scene.render.filepath = name
-    for tree in _iter_node_trees(scene):
-        for node in _iter_nodes_recursive(tree):
-            if getattr(node, "type", "") != "OUTPUT_FILE":
-                continue
-            for slot in getattr(node, "file_slots", []):
-                slot.path = name
+    for node in _iter_all_nodes(scene):
+        if getattr(node, "type", "") != "OUTPUT_FILE":
+            continue
+        _set_output_node_file_name(node, name)
 
 
 def _set_output_folder(scene, folder: str) -> None:
     folder = bname_context.default_output_folder(scene, folder)
-    for tree in _iter_node_trees(scene):
-        for node in _iter_nodes_recursive(tree):
-            if getattr(node, "type", "") == "OUTPUT_FILE":
-                node.base_path = folder
+    for node in _iter_all_nodes(scene):
+        if getattr(node, "type", "") == "OUTPUT_FILE":
+            _set_output_node_directory(node, folder)
+
+
+def _get_output_node_directory(node) -> str:
+    if hasattr(node, "directory"):
+        return str(getattr(node, "directory", "") or "")
+    return str(getattr(node, "base_path", "") or "")
+
+
+def _set_output_node_directory(node, folder: str) -> None:
+    if hasattr(node, "directory"):
+        node.directory = folder
+    if hasattr(node, "base_path"):
+        node.base_path = folder
+
+
+def _get_output_node_file_name(node) -> str:
+    if hasattr(node, "file_name"):
+        return str(getattr(node, "file_name", "") or "")
+    slots = list(getattr(node, "file_slots", []) or [])
+    if slots:
+        return str(getattr(slots[0], "path", "") or "")
+    return ""
+
+
+def _set_output_node_file_name(node, name: str) -> None:
+    if hasattr(node, "file_name"):
+        node.file_name = name
+    for collection_name in ("file_slots", "layer_slots"):
+        for slot in getattr(node, collection_name, []) or []:
+            if hasattr(slot, "path"):
+                slot.path = name
 
 
 def _reload_images() -> int:
@@ -362,6 +422,24 @@ def _run_command(context, command, preset_name: str = "") -> None:
         eevr_bridge.run_operator(command.operator_idname)
 
 
+def _sync_bname_coma_output_layout(context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    if scene is None:
+        return
+    for module in tuple(sys.modules.values()):
+        name = str(getattr(module, "__name__", "") or "")
+        if not name.endswith(".utils.coma_camera"):
+            continue
+        func = getattr(module, "resync_coma_camera_output_layout", None)
+        if callable(func):
+            func(context)
+            return
+        func = getattr(module, "update_render_border_from_current_coma", None)
+        if callable(func):
+            func(context)
+            return
+
+
 def run_active_preset(context) -> int:
     preset = core.active_preset(context)
     if preset is None:
@@ -369,6 +447,7 @@ def run_active_preset(context) -> int:
     count = 0
     try:
         core._apply_output_resolution_mode(context.scene)
+        _sync_bname_coma_output_layout(context)
         for command in preset.commands:
             if not command.enabled:
                 continue
