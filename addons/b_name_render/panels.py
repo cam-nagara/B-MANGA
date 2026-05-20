@@ -31,6 +31,20 @@ class BNAME_RENDER_UL_presets(UIList):
         return flags, []
 
 
+class BNAME_RENDER_UL_commands(UIList):
+    bl_idname = "BNAME_RENDER_UL_commands"
+
+    def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
+        if self.layout_type in {"DEFAULT", "COMPACT"}:
+            row = layout.row(align=True)
+            row.prop(item, "enabled", text="")
+            icon = "CHECKBOX_HLT" if bool(getattr(item, "enabled", False)) else "CHECKBOX_DEHLT"
+            row.label(text=command_ui.display_name(item), icon=icon)
+        elif self.layout_type == "GRID":
+            layout.alignment = "CENTER"
+            layout.label(text="", icon="RENDER_STILL")
+
+
 class BNAME_RENDER_PT_main(Panel):
     bl_idname = "BNAME_RENDER_PT_main"
     bl_label = "B-Name-Render"
@@ -130,33 +144,37 @@ def _draw_preset_list(layout, state) -> None:
 
 
 def _draw_command_list(layout, preset) -> None:
-    tools = layout.row(align=True)
+    box = layout.box()
+    box.label(text="カード一覧", icon="SEQ_STRIP_DUPLICATE")
+    row = box.row()
+    row.template_list(
+        "BNAME_RENDER_UL_commands",
+        "",
+        preset,
+        "commands",
+        preset,
+        "active_command_index",
+        rows=max(3, min(8, len(preset.commands))),
+    )
+    tools = row.column(align=True)
     tools.operator("bname_render.command_add", text="", icon="ADD")
-    tools.operator("bname_render.command_remove", text="", icon="REMOVE")
-    up = tools.operator("bname_render.command_move", text="", icon="TRIA_UP")
+
+    edit_tools = tools.column(align=True)
+    edit_tools.enabled = bool(preset.commands)
+    edit_tools.operator("bname_render.command_remove", text="", icon="REMOVE")
+
+    move_tools = tools.column(align=True)
+    move_tools.enabled = len(preset.commands) > 1
+    up = move_tools.operator("bname_render.command_move", text="", icon="TRIA_UP")
     up.direction = "UP"
-    down = tools.operator("bname_render.command_move", text="", icon="TRIA_DOWN")
+    down = move_tools.operator("bname_render.command_move", text="", icon="TRIA_DOWN")
     down.direction = "DOWN"
     tools.separator()
     tools.operator("bname_render.preset_defaults_restore", text="", icon="LOOP_BACK")
     tools.operator("bname_render.preset_defaults_register", text="", icon="PINNED")
 
     if not preset.commands:
-        layout.label(text="カードがありません")
-        return
-
-    col = layout.column(align=True)
-    for index, command in enumerate(preset.commands):
-        row = col.box().row(align=True)
-        selected = index == int(preset.active_command_index)
-        row.prop(command, "enabled", text="")
-        row.operator_context = "INVOKE_DEFAULT"
-        op = row.operator(
-            "bname_render.command_card_click",
-            text=command_ui.display_name(command),
-            depress=selected,
-        )
-        op.index = index
+        box.label(text="カードがありません")
 
 
 def _draw_active_command_detail(layout, preset, context) -> None:
@@ -172,7 +190,7 @@ def _draw_active_command_detail(layout, preset, context) -> None:
     command_ui.draw_command(box, command, context)
 
 
-_CLASSES = (BNAME_RENDER_UL_presets, BNAME_RENDER_PT_main, BNAME_RENDER_PT_node)
+_CLASSES = (BNAME_RENDER_UL_presets, BNAME_RENDER_UL_commands, BNAME_RENDER_PT_main, BNAME_RENDER_PT_node)
 
 
 def register() -> None:

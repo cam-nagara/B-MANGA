@@ -43,6 +43,7 @@ class CaptureLayout:
         self.operator_contexts: list[tuple[str, str]] = []
         self.templates: list[str] = []
         self.enabled = True
+        self.alignment = ""
         self.operator_context = "EXEC_DEFAULT"
 
     def prop(self, obj, attr: str, *args, **kwargs):
@@ -164,16 +165,15 @@ def _assert_panel_access(mod) -> dict:
     capture = CaptureLayout()
     mod.panels.draw_main_panel(capture, bpy.context)
     assert "BNAME_RENDER_UL_presets" in capture.templates
+    assert "BNAME_RENDER_UL_commands" in capture.templates
     for required_op in (
         "bname_render.preset_run",
         "bname_render.preset_settings",
         "bname_render.command_add",
         "bname_render.command_remove",
         "bname_render.command_move",
-        "bname_render.command_card_click",
     ):
         assert required_op in capture.operators, required_op
-    assert ("bname_render.command_card_click", "INVOKE_DEFAULT") in capture.operator_contexts
     assert any(item.startswith("sound_enabled:") for item in capture.props)
     return {
         "entry_points": ["3Dビュー > サイドバー > B-Name-Render", "ノードエディター > サイドバー > B-Name-Render"],
@@ -229,7 +229,7 @@ def _make_visual_sheet(access: dict, command_results: dict, resolution: dict) ->
     y += 28
     text(24, y, f"プリセット: {access['preset_count']} / カード総数: {access['command_count']} / 解像度復元: {resolution['current']}", 17, "500", "#000")
     y += 30
-    text(24, y, "選択カード設定はパネル内で直接編集可能。カードはクリック選択、ダブルクリックでも設定ダイアログを開く。", 13, "400", "#333")
+    text(24, y, "カード内容はリストで選択し、追加・削除・並び替えなどの操作はリスト右側のボタンから行う。", 13, "400", "#333")
     y += 34
     lines.append(f'<line x1="24" y1="{y - 20}" x2="{width - 24}" y2="{y - 20}" stroke="#d7d7d7"/>')
     text(24, y, "コマンド種類", 17, "700", "#000")
