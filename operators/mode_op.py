@@ -553,6 +553,12 @@ class BNAME_OT_exit_coma_mode(Operator):
 
     def execute(self, context):
         coma_modal_state.finish_all(context)
+        try:
+            from ..utils import coma_camera
+
+            coma_camera.capture_camera_runtime_settings(context)
+        except Exception:  # noqa: BLE001
+            _logger.exception("exit_coma_mode: camera runtime sync failed")
         # 1) サムネイル生成 (cNN.blend 切替前に現在の描画を記録)
         work = get_work(context)
         page = get_active_page(context)
@@ -690,6 +696,12 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
             self.report({"ERROR"}, "コマファイル (cNN.blend) ではありません")
             return {"CANCELLED"}
         try:
+            try:
+                from ..utils import coma_camera
+
+                coma_camera.capture_camera_runtime_settings(context)
+            except Exception:  # noqa: BLE001
+                _logger.exception("exit_coma_mode_safe: camera runtime sync failed")
             # 念のため現在の cNN.blend に save (上書き保存)
             try:
                 cur = blend_io.current_mainfile_path()

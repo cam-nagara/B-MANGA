@@ -110,6 +110,12 @@ def _update_fisheye_mode(self, context) -> None:
     coma_camera.apply_fisheye_mode(context)
 
 
+def _update_fisheye_fov(self, context) -> None:
+    from ..utils import coma_camera
+
+    coma_camera.apply_fisheye_fov(context)
+
+
 def _update_reduction_mode(self, context) -> None:
     from ..utils import coma_camera
 
@@ -299,6 +305,8 @@ def register() -> None:
         default=3.1415927,
         min=1.7453293,
         max=6.2831855,
+        subtype="ANGLE",
+        update=_update_fisheye_fov,
     )
     _logger.debug("coma_camera registered")
 

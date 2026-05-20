@@ -37,7 +37,7 @@ def _draw_camera_settings(layout, context, cam) -> None:
     if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
         split = layout.split(factor=0.4)
         split.label(text="魚眼FOV")
-        split.prop(cam.data, "fisheye_fov", text="")
+        split.prop(scene, "bname_coma_camera_fisheye_fov", text="")
     else:
         split = layout.split(factor=0.4)
         split.label(text="焦点距離")

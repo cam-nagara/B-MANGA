@@ -368,6 +368,12 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
     """通常の .blend 保存前に B-Name の JSON メタデータも同期する."""
     try:
         try:
+            from . import coma_camera
+
+            coma_camera.capture_camera_runtime_settings(bpy.context)
+        except Exception:  # noqa: BLE001
+            _logger.exception("B-Name coma camera save_pre sync failed")
+        try:
             from ..operators import raster_layer_op
 
             raster_layer_op.save_dirty_raster_layers(bpy.context)

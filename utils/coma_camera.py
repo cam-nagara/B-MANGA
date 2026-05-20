@@ -77,6 +77,7 @@ def ensure_coma_camera_scene(
     # 色管理が開く/閉じるたびに失われていた。
     configure_render_for_current_coma(scene, work, page_id, coma_id)
     ensure_default_resolution_settings(scene)
+    capture_camera_runtime_settings(context, prefer_camera_fisheye=False)
     sync_world_background_color(context, work=work, page_id=page_id, coma_id=coma_id)
 
     refs: list[ReferenceImage] = []
@@ -148,8 +149,55 @@ def ensure_coma_camera(scene):
     return cam_obj
 
 
+def capture_camera_runtime_settings(context, *, prefer_camera_fisheye: bool = True) -> None:
+    """カメラ本体だけで変更された値を、保存用の Scene 設定へ反映する."""
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    if scene is None:
+        return
+    cam = getattr(scene, "camera", None)
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return
+    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+        if hasattr(cam_data, "fisheye_fov") and hasattr(scene, "bname_coma_camera_fisheye_fov"):
+            camera_value = max(math.radians(100.0), min(math.radians(360.0), float(cam_data.fisheye_fov)))
+            scene_value = float(getattr(scene, "bname_coma_camera_fisheye_fov", math.pi))
+            scene_is_default = abs(scene_value - math.pi) <= 1.0e-6
+            if prefer_camera_fisheye or scene_is_default:
+                if abs(scene_value - camera_value) > 1.0e-6:
+                    scene.bname_coma_camera_fisheye_fov = camera_value
+            else:
+                cam_data.fisheye_fov = scene_value
+        return
+    if hasattr(cam_data, "lens") and hasattr(scene, "bname_coma_camera_lens"):
+        try:
+            scene.bname_coma_camera_lens = float(cam_data.lens)
+        except (TypeError, ValueError):
+            pass
+
+
+def apply_fisheye_fov(context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    if scene is None:
+        return
+    cam = getattr(scene, "camera", None)
+    if cam is None or getattr(cam, "type", "") != "CAMERA":
+        cam = ensure_coma_camera(scene)
+        scene.camera = cam
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None or not hasattr(cam_data, "fisheye_fov"):
+        return
+    cam_data.fisheye_fov = float(getattr(scene, "bname_coma_camera_fisheye_fov", math.pi))
+
+
 def configure_render_for_current_coma(scene, work, page_id: str, coma_id: str) -> None:
     """ページ一覧ファイルの用紙設定に合わせてカメラ出力解像度を設定する."""
+    has_saved_resolution = (
+        int(getattr(scene, "bname_coma_camera_original_resolution_x", 0) or 0) > 0
+        and int(getattr(scene, "bname_coma_camera_original_resolution_y", 0) or 0) > 0
+    )
+    if has_saved_resolution:
+        return
     paper = getattr(work, "paper", None) if work is not None else None
     width_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0) if paper is not None else 0.0
     height_mm = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0) if paper is not None else 0.0

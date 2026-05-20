@@ -119,6 +119,15 @@ def render_coma_camera_crop(
             source = _resolve_render_output_path(full_path)
             if source is None:
                 return False
+            if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+                if not _save_full_frame_preview(
+                    source,
+                    out_path,
+                    entry,
+                    output_scale_percentage=output_scale_percentage,
+                ):
+                    return False
+                return True
             if not _crop_render_to_panel(
                 source,
                 out_path,
@@ -410,6 +419,33 @@ def _resize_for_page_preview(image, percentage: float | None):
     except Exception:  # noqa: BLE001
         resample = 1
     return image.resize((width, height), resample=resample)
+
+
+def _save_full_frame_preview(
+    source: Path,
+    out_path: Path,
+    entry,
+    *,
+    output_scale_percentage: float | None = None,
+) -> bool:
+    from ..io import export_pipeline
+
+    Image = export_pipeline.Image
+    if Image is None:
+        return False
+    try:
+        with Image.open(str(source)) as opened:
+            image = opened.convert("RGBA")
+    except Exception:  # noqa: BLE001
+        return False
+    if image_transparency.coma_background_is_transparent(entry):
+        image = image_transparency.make_background_transparent(image)
+    image = _resize_for_page_preview(image, output_scale_percentage)
+    try:
+        image.save(str(out_path))
+    except Exception:  # noqa: BLE001
+        return False
+    return out_path.is_file()
 
 
 def _crop_render_to_panel(
