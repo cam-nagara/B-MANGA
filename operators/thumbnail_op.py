@@ -337,7 +337,7 @@ def _render_camera_image(context, scene) -> bool:
     target = Path(bpy.path.abspath(scene.render.filepath))
 
     def _written() -> bool:
-        return _resolve_render_output_path(target) is not None
+        return _render_output_has_visible_content(target)
 
     try:
         with context.temp_override(scene=scene):
@@ -361,6 +361,23 @@ def _render_camera_image(context, scene) -> bool:
         _logger.warning("solid opengl fallback failed: %s", exc, exc_info=True)
         return False
     return _written()
+
+
+def _render_output_has_visible_content(target: Path) -> bool:
+    source = _resolve_render_output_path(target)
+    if source is None:
+        return False
+    try:
+        from ..io import export_pipeline
+
+        Image = export_pipeline.Image
+        if Image is None:
+            return True
+        with Image.open(str(source)) as opened:
+            rgba = opened.convert("RGBA")
+            return rgba.getchannel("A").getbbox() is not None
+    except Exception:  # noqa: BLE001
+        return True
 
 
 def _resolve_coma_entry(context, work):

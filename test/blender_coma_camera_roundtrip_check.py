@@ -215,6 +215,40 @@ def _generate_preview(thumbnail_op, paths, work, page, entry) -> tuple[Path, dic
     return preview_path, evidence
 
 
+def _assert_transparent_render_fallback(thumbnail_op) -> None:
+    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+
+    Image = export_pipeline.Image
+    assert Image is not None
+    scene = bpy.data.scenes.new("BNameTransparentPreviewFallback")
+    cam_data = bpy.data.cameras.new("BNameTransparentPreviewFallbackCamera")
+    cam = bpy.data.objects.new("BNameTransparentPreviewFallbackCamera", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    out = OUT_DIR / "transparent_render_fallback.png"
+    scene.render.filepath = str(out)
+    scene.render.resolution_x = 32
+    scene.render.resolution_y = 32
+    scene.render.film_transparent = True
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.image_settings.color_mode = "RGBA"
+    original_capture = thumbnail_op._capture_screen_camera_frame
+
+    def _fake_capture(_context, _scene, target: Path) -> bool:
+        Image.new("RGBA", (32, 32), (255, 80, 20, 255)).save(target)
+        return True
+
+    try:
+        thumbnail_op._capture_screen_camera_frame = _fake_capture
+        assert thumbnail_op._render_camera_image(bpy.context, scene)
+        assert _image_evidence(out)["alpha_bbox"] is not None
+    finally:
+        thumbnail_op._capture_screen_camera_frame = original_capture
+        bpy.data.objects.remove(cam, do_unlink=True)
+        bpy.data.cameras.remove(cam_data, do_unlink=True)
+        bpy.data.scenes.remove(scene, do_unlink=True)
+
+
 def _save_and_reopen_coma() -> None:
     coma_path = Path(bpy.data.filepath).resolve()
     result = bpy.ops.bname.work_save()
@@ -298,6 +332,7 @@ def main() -> None:
         from bname_dev_coma_camera_roundtrip.operators import thumbnail_op
         from bname_dev_coma_camera_roundtrip.utils import coma_camera, coma_plane, paths
 
+        _assert_transparent_render_fallback(thumbnail_op)
         _create_roundtrip_work(temp_root, get_work)
         work, page, entry = _enter_configured_coma(get_mode, get_work, coma_camera)
         preview_path, preview_evidence = _generate_preview(thumbnail_op, paths, work, page, entry)

@@ -96,30 +96,12 @@ def main() -> None:
         with Image.open(full_out) as opened:
             assert opened.size == (300, 400), opened.size
 
-        render_scene = bpy.data.scenes.new("BName_TestComaPreviewTransparentRender")
-        render_camera_data = bpy.data.cameras.new("BName_TestComaPreviewTransparentCamera")
-        render_camera = bpy.data.objects.new("BName_TestComaPreviewTransparentCamera", render_camera_data)
-        render_scene.collection.objects.link(render_camera)
-        render_scene.camera = render_camera
-        render_scene.render.filepath = str(temp_root / "transparent_render.png")
-        render_scene.render.resolution_x = 16
-        render_scene.render.resolution_y = 16
-        render_scene.render.resolution_percentage = 100
-        render_scene.render.image_settings.file_format = "PNG"
-        render_scene.render.image_settings.color_mode = "RGBA"
-        render_scene.render.film_transparent = True
-        try:
-            assert thumbnail_op._render_camera_image(bpy.context, render_scene), (
-                "ページ一覧コマ画像用のRGBAレンダーが生成されません"
-            )
-            with Image.open(temp_root / "transparent_render.png") as opened:
-                assert opened.convert("RGBA").getpixel((0, 0))[3] == 0, (
-                    "ページ一覧コマ画像の空部分が透明になっていません"
-                )
-        finally:
-            bpy.data.objects.remove(render_camera, do_unlink=True)
-            bpy.data.cameras.remove(render_camera_data, do_unlink=True)
-            bpy.data.scenes.remove(render_scene)
+        transparent_render = temp_root / "transparent_render.png"
+        visible_render = temp_root / "visible_render.png"
+        Image.new("RGBA", (16, 16), (0, 0, 0, 0)).save(transparent_render)
+        Image.new("RGBA", (16, 16), (0, 120, 255, 255)).save(visible_render)
+        assert not thumbnail_op._render_output_has_visible_content(transparent_render)
+        assert thumbnail_op._render_output_has_visible_content(visible_render)
 
         preview_probe = bpy.data.images.new("BName_TestComaPreviewTransparent", width=2, height=2, alpha=True)
         preview_probe.pixels.foreach_set([
