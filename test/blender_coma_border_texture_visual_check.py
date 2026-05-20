@@ -102,7 +102,7 @@ def main() -> None:
     coma.border.blur_amount = 1.0
     coma.border.blur_dither = False
     coma.border.color = (0.0, 0.0, 0.0, 1.0)
-    _write_preview_image(paths.coma_preview_path(work_dir, page.id, coma.coma_id))
+    _write_preview_image(paths.coma_thumb_path(work_dir, page.id, coma.coma_id))
 
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
     plane = coma_plane.find_coma_plane_object(page.id, coma.id)

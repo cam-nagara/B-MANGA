@@ -1,4 +1,4 @@
-"""コマファイル (cNN/cNN.blend / cNN/cNN.json / _thumb.png / _preview.png) の I/O.
+"""コマファイル (cNN/cNN.blend / cNN/cNN.json / thumb.png) の I/O.
 
 計画書 4.4 / 3.3.3 参照。ファイル名採番・重複時リネーム・他ページへの
 移動・複製を担当。cNN.blend の実ロード/セーブは operators/ 層で
@@ -62,11 +62,12 @@ def load_coma_meta(work_dir: Path, page_id: str, coma_id: str, entry) -> dict:
 
 
 def _coma_artifact_files(work_dir: Path, page_id: str, coma_id: str) -> list[Path]:
-    """cNN に関連する主要ファイル (.blend/.json/_thumb.png/_preview.png) を列挙."""
+    """cNN に関連する主要ファイル (.blend/.json/thumb.png) を列挙."""
     pd = paths.coma_dir(Path(work_dir), page_id, coma_id)
     candidates = [
         pd / f"{coma_id}.blend",
         pd / f"{coma_id}.json",
+        pd / "thumb.png",
         pd / f"{coma_id}_thumb.png",
         pd / f"{coma_id}_preview.png",
     ]
@@ -75,6 +76,9 @@ def _coma_artifact_files(work_dir: Path, page_id: str, coma_id: str) -> list[Pat
 
 def _rename_coma_artifacts(coma_path: Path, old_id: str, new_id: str) -> list[Path]:
     renamed: list[Path] = []
+    thumb = coma_path / "thumb.png"
+    if thumb.exists():
+        renamed.append(thumb)
     for suffix in (".blend", ".json", "_thumb.png", "_preview.png"):
         src = coma_path / f"{old_id}{suffix}"
         if not src.exists():

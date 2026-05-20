@@ -286,7 +286,7 @@ def ensure_page_collection(
         coll,
         kind="page",
         bname_id=page_id,
-        title=title or page_id,
+        title=title,
         z_index=on.page_id_to_z_number(page_id),
     )
     # 既に scene.collection 直下や別の Collection 配下に置かれている場合も
@@ -322,7 +322,7 @@ def ensure_coma_collection(
         coll,
         kind="coma",
         bname_id=coma_bname_id,
-        title=title or coma_id,
+        title=title,
         z_index=on.coma_id_to_z_number(coma_id) * 10,
         parent_key=page_id,
     )

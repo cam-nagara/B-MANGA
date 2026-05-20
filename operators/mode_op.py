@@ -559,28 +559,9 @@ class BNAME_OT_exit_coma_mode(Operator):
             coma_camera.capture_camera_runtime_settings(context)
         except Exception:  # noqa: BLE001
             _logger.exception("exit_coma_mode: camera runtime sync failed")
-        # 1) サムネイル生成 (cNN.blend 切替前に現在の描画を記録)
+        # 1) 現在の cNN.blend を保存 → work.blend を開く
         work = get_work(context)
-        page = get_active_page(context)
         stem = getattr(context.scene, "bname_current_coma_id", "")
-        if (
-            not bpy.app.background
-            and work is not None
-            and work.loaded
-            and stem
-            and paths.is_valid_coma_id(stem)
-        ):
-            try:
-                from . import thumbnail_op
-
-                page_id = getattr(context.scene, "bname_current_coma_page_id", "")
-                if paths.is_valid_page_id(page_id):
-                    out = paths.coma_thumb_path(Path(work.work_dir), page_id, stem)
-                    thumbnail_op.take_area_screenshot(context, out)
-            except Exception:  # noqa: BLE001
-                _logger.exception("auto thumbnail failed on exit_coma_mode")
-
-        # 2) 現在の cNN.blend を保存 → work.blend を開く
         if (
             work is not None
             and work.loaded

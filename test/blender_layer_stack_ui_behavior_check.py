@@ -121,6 +121,19 @@ def _add_test_balloon(page, balloon_id: str, parent_key: str):
     return entry
 
 
+def _add_order_coma(page, coma_id: str, x_mm: float):
+    entry = page.comas.add()
+    entry.id = coma_id
+    entry.coma_id = coma_id
+    entry.title = coma_id
+    entry.shape_type = "rect"
+    entry.rect_x_mm = x_mm
+    entry.rect_y_mm = 12.0
+    entry.rect_width_mm = 32.0
+    entry.rect_height_mm = 28.0
+    return entry
+
+
 def _stack(context):
     from bname_dev.utils import layer_stack as layer_stack_utils
 
@@ -168,6 +181,38 @@ def _assert_parent(context, uid: str, parent_key: str) -> None:
     actual = str(getattr(item, "parent_key", "") or "")
     if actual != parent_key:
         raise AssertionError(f"{uid} parent: expected {parent_key}, got {actual}")
+
+
+def _assert_coma_order_buttons(context, page) -> None:
+    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bname_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
+
+    target = _add_order_coma(page, "c_order_a", 15.0)
+    _add_order_coma(page, "c_order_b", 28.0)
+    page.coma_count = len(page.comas)
+    target_id = str(target.coma_id)
+    uid = layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, target))
+
+    index, _item = _find_stack_item(context, uid)
+    layer_stack_utils.set_active_stack_index_silently(context, index)
+    assert "FINISHED" in bpy.ops.bname.layer_stack_move("EXEC_DEFAULT", direction="BACK")
+    target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
+    if int(target.z_order) != 0:
+        order = [
+            (getattr(coma, "coma_id", ""), int(getattr(coma, "z_order", -1)))
+            for coma in page.comas
+        ]
+        raise AssertionError(f"最背面後のz_orderが0ではありません: {target.z_order}; order={order}")
+
+    index, _item = _find_stack_item(context, uid)
+    layer_stack_utils.set_active_stack_index_silently(context, index)
+    assert "FINISHED" in bpy.ops.bname.layer_stack_move("EXEC_DEFAULT", direction="FRONT")
+    target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
+    max_z = max(int(getattr(coma, "z_order", -1)) for coma in page.comas)
+    if int(target.z_order) != max_z:
+        raise AssertionError(f"最前面後のz_orderが最大ではありません: {target.z_order}/{max_z}")
+    if sum(1 for coma in page.comas if int(getattr(coma, "z_order", -1)) == max_z) != 1:
+        raise AssertionError("最前面のコマが複数あります")
 
 
 def _assert_pixel_alpha(image, x: int, y: int, expected: float, label: str) -> None:
@@ -464,6 +509,7 @@ def main() -> None:
             1.0,
             "page move raster pixel not shifted",
         )
+        _assert_coma_order_buttons(context, page)
 
         stack_rows = [
             {

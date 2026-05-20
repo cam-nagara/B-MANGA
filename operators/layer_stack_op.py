@@ -561,7 +561,7 @@ class BNAME_OT_layer_stack_drag(Operator):
         # 移動後の位置を選択
         for i, item in enumerate(context.scene.bname_layer_stack):
             if layer_stack_utils.stack_item_uid(item) == moved_uid:
-                layer_stack_utils.select_stack_index(context, i)
+                layer_stack_utils.set_active_stack_index_silently(context, i)
                 break
 
         layer_stack_utils.remember_layer_stack_signature(context)

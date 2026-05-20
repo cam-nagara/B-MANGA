@@ -126,6 +126,12 @@ def bootstrap_new_coma_blend(
         )
     except Exception:  # noqa: BLE001
         _logger.exception("bootstrap_new_coma_blend: panel camera setup failed")
+    try:
+        from . import coma_thumb_output
+
+        coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
+    except Exception:  # noqa: BLE001
+        _logger.exception("bootstrap_new_coma_blend: thumb output setup failed")
     return True
 
 

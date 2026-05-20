@@ -214,6 +214,7 @@ def draw_balloons(
                     width_mm=max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0),
                 )
             if is_uni_flash and draw_line_segments is not None:
+                line_in, line_out = balloon_uni_flash.line_width_factors(entry)
                 if coma_poly:
                     line_segments = [
                         clipped
@@ -221,21 +222,30 @@ def draw_balloons(
                         if (clipped := _clip_segment_to_convex_polygon(start, end, coma_poly)) is not None
                     ]
                 if bool(getattr(entry, "outer_white_margin_enabled", False)):
+                    base_width = max(0.001, float(getattr(entry, "line_width_mm", 0.3)) + float(getattr(entry, "outer_white_margin_width_mm", 0.0)) * 2.0)
                     draw_line_segments(
                         line_segments,
                         outer_white,
-                        width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3)) + float(getattr(entry, "outer_white_margin_width_mm", 0.0)) * 2.0),
+                        width_mm=base_width,
+                        start_width_mm=base_width * line_in,
+                        end_width_mm=base_width * line_out,
                     )
                 if bool(getattr(entry, "inner_white_margin_enabled", False)):
+                    base_width = max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0)
                     draw_line_segments(
                         line_segments,
                         inner_white,
-                        width_mm=max(0.001, float(getattr(entry, "inner_white_margin_width_mm", 0.0)) * 2.0),
+                        width_mm=base_width,
+                        start_width_mm=base_width * line_in,
+                        end_width_mm=base_width * line_out,
                     )
+                base_width = max(0.001, float(getattr(entry, "line_width_mm", 0.3)))
                 draw_line_segments(
                     line_segments,
                     line,
-                    width_mm=max(0.001, float(getattr(entry, "line_width_mm", 0.3))),
+                    width_mm=base_width,
+                    start_width_mm=base_width * line_in,
+                    end_width_mm=base_width * line_out,
                 )
             else:
                 draw_polyline_loop(

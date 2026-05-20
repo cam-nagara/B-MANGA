@@ -45,19 +45,9 @@ def _sync_layer_stack_after_coma_change(context) -> None:
     )
 
 
-def clean_coma_title_for_display(title: str, fallback: str) -> str:
-    """基本枠由来のコマ名から不要な「基本枠」表記を取り除く."""
-    text = str(title or "").replace("基本枠", "").strip()
-    text = text.strip(" -_　")
-    return text or str(fallback or "")
-
-
-def derived_coma_title(title: str, fallback: str, suffix: str = "") -> str:
-    base = clean_coma_title_for_display(title, "")
-    if not base:
-        return str(fallback or suffix or "")
-    suffix = str(suffix or "").strip()
-    return f"{base} ({suffix})" if suffix else base
+def blank_generated_coma_title() -> str:
+    """自動生成コマの表示名はユーザー入力があるまで空にする."""
+    return ""
 
 
 def _selected_edge_coma_target(context):
@@ -364,7 +354,7 @@ def create_rect_coma(
     entry = page.comas.add()
     entry.coma_id = stem
     entry.id = stem
-    entry.title = title if title is not None else stem
+    entry.title = str(title) if title is not None else blank_generated_coma_title()
     entry.shape_type = "rect"
     entry.rect_x_mm = x_mm
     entry.rect_y_mm = y_mm
@@ -536,7 +526,7 @@ class BNAME_OT_coma_duplicate(Operator):
             _copy_coma_entry(src, new_entry)
             new_entry.coma_id = new_stem
             new_entry.id = new_stem
-            new_entry.title = f"{src.title} (複製)"
+            new_entry.title = blank_generated_coma_title()
             new_entry.rect_x_mm = src.rect_x_mm + 5.0
             new_entry.rect_y_mm = src.rect_y_mm - 5.0
             new_entry.z_order = max((p.z_order for p in page.comas), default=0) + 1
@@ -791,7 +781,7 @@ class BNAME_OT_coma_merge_selected(Operator):
         )
         try:
             _set_coma_polygon(survivor, merged)
-            survivor.title = getattr(survivor, "title", "") or "結合コマ"
+            survivor.title = str(getattr(survivor, "title", "") or "")
             survivor.z_order = max((int(getattr(panel, "z_order", 0)) for _pi, _page, _idx, panel in refs), default=survivor.z_order)
             for idx in remove_indices:
                 if not (0 <= idx < len(page.comas)):
@@ -905,7 +895,6 @@ class BNAME_OT_coma_split_template(Operator):
         gap_v = work.coma_gap.vertical_mm
         gap_h = work.coma_gap.horizontal_mm
         rows, cols = self.rows, self.cols
-        src_title = clean_coma_title_for_display(src.title, "")
         src_z = int(src.z_order)
         src_template = schema.coma_entry_to_dict(src)
         insert_z_base = src_z if self.clear_existing else (
@@ -954,8 +943,7 @@ class BNAME_OT_coma_split_template(Operator):
                     schema.coma_entry_from_dict(entry, src_template)
                     entry.coma_id = stem
                     entry.id = stem
-                    split_suffix = f"{r + 1}-{c + 1}"
-                    entry.title = f"{src_title} {split_suffix}".strip() if src_title else stem
+                    entry.title = blank_generated_coma_title()
                     if split_grid is None:
                         entry.shape_type = "rect"
                         entry.vertices.clear()

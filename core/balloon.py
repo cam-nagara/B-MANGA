@@ -251,6 +251,8 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     uni_flash_line_density_compensation: BoolProperty(name="線の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     uni_flash_fill_density_compensation: BoolProperty(name="下地の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     uni_flash_max_line_count: IntProperty(name="最大本数", default=1000, min=8, soft_max=2000, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_line_in_percent: FloatProperty(name="線の入り (%)", default=100.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    uni_flash_line_out_percent: FloatProperty(name="線の抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
 
 
 class BNameBalloonEntry(bpy.types.PropertyGroup):

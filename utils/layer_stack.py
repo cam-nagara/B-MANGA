@@ -1107,7 +1107,29 @@ def _target_index_for_stack_move(
         return -1
     if not (0 <= target_pos < len(siblings)):
         return -1
-    return siblings[target_pos]
+    sibling_index = siblings[target_pos]
+    if direction in {"BACK", "DOWN"} and sibling_index > from_index:
+        return _stack_subtree_end_index(stack, sibling_index)
+    return sibling_index
+
+
+def _stack_subtree_end_index(stack, index: int) -> int:
+    if stack is None or not (0 <= index < len(stack)):
+        return index
+    try:
+        base_depth = int(getattr(stack[index], "depth", 0))
+    except Exception:  # noqa: BLE001
+        base_depth = 0
+    end = index
+    for i in range(index + 1, len(stack)):
+        try:
+            depth = int(getattr(stack[i], "depth", 0))
+        except Exception:  # noqa: BLE001
+            depth = 0
+        if depth <= base_depth:
+            break
+        end = i
+    return end
 
 
 def _parent_item_allows_child(parent, child_kind: str) -> bool:
@@ -2432,12 +2454,12 @@ def move_stack_item(
     stack.move(from_index, target_index)
     moved_index = _find_stack_index_by_uid(stack, moved_uid)
     if moved_index >= 0:
-        context.scene.bname_active_layer_stack_index = moved_index
+        set_active_stack_index_silently(context, moved_index)
     apply_stack_order(context)
     sync_layer_stack(context, preserve_active_index=True)
     for i, item in enumerate(context.scene.bname_layer_stack):
         if stack_item_uid(item) == moved_uid:
-            select_stack_index(context, i)
+            set_active_stack_index_silently(context, i)
             break
     remember_layer_stack_signature(context)
     return True

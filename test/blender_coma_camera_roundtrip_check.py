@@ -41,37 +41,6 @@ def _assert_close(actual: float, expected: float, label: str) -> None:
     assert abs(float(actual) - float(expected)) < 1.0e-5, f"{label}: {actual} != {expected}"
 
 
-def _make_fake_renderer(image_size: int = 320):
-    from bname_dev_coma_camera_roundtrip.io import export_pipeline
-
-    Image = export_pipeline.Image
-    ImageDraw = export_pipeline.ImageDraw
-    assert Image is not None and ImageDraw is not None
-
-    def _render(_context, scene) -> bool:
-        path = Path(bpy.path.abspath(scene.render.filepath))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        size = max(32, min(image_size, int(scene.render.resolution_x), int(scene.render.resolution_y)))
-        image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((0, 0, size - 1, size - 1), outline=(40, 40, 40, 255), width=3)
-        draw.ellipse((size * 0.08, size * 0.08, size * 0.92, size * 0.92), fill=(40, 180, 230, 210))
-        draw.polygon(
-            [
-                (size * 0.20, size * 0.72),
-                (size * 0.48, size * 0.22),
-                (size * 0.80, size * 0.76),
-            ],
-            fill=(255, 120, 40, 255),
-        )
-        draw.line((0, size * 0.5, size, size * 0.5), fill=(255, 255, 255, 255), width=2)
-        draw.line((size * 0.5, 0, size * 0.5, size), fill=(255, 255, 255, 255), width=2)
-        image.save(path)
-        return True
-
-    return _render
-
-
 def _image_evidence(path: Path) -> dict:
     from bname_dev_coma_camera_roundtrip.io import export_pipeline
 
@@ -201,52 +170,90 @@ def _enter_configured_coma(get_mode, get_work, coma_camera):
     return work, page, entry
 
 
-def _generate_preview(thumbnail_op, paths, work, page, entry) -> tuple[Path, dict]:
+def _write_thumb(paths, work, page, entry) -> tuple[Path, dict]:
+    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+
+    Image = export_pipeline.Image
+    ImageDraw = export_pipeline.ImageDraw
+    assert Image is not None and ImageDraw is not None
     preview_path = paths.coma_thumb_path(Path(work.work_dir), page.id, entry.coma_id)
-    original_render = thumbnail_op._render_camera_image
-    thumbnail_op._render_camera_image = _make_fake_renderer()
-    try:
-        assert thumbnail_op.take_area_screenshot(bpy.context, preview_path)
-    finally:
-        thumbnail_op._render_camera_image = original_render
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGBA", (73, 19), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 72, 18), outline=(40, 40, 40, 255), width=2)
+    draw.ellipse((4, 2, 42, 18), fill=(40, 180, 230, 210))
+    draw.polygon([(18, 17), (36, 2), (68, 17)], fill=(255, 120, 40, 255))
+    draw.line((6, 15, 66, 3), fill=(255, 255, 255, 180), width=1)
+    image.save(preview_path)
     evidence = _image_evidence(preview_path)
     assert evidence["alpha_bbox"] is not None, evidence
     assert evidence["unique_colors"] > 4, evidence
     return preview_path, evidence
 
 
-def _assert_transparent_render_fallback(thumbnail_op) -> None:
-    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+def _assert_thumb_output_node(coma_thumb_output) -> None:
+    scene = bpy.context.scene
+    before = (
+        scene.render.engine,
+        int(scene.render.resolution_x),
+        int(scene.render.resolution_y),
+        int(scene.render.resolution_percentage),
+        str(scene.render.filepath),
+    )
+    assert coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
+    after = (
+        scene.render.engine,
+        int(scene.render.resolution_x),
+        int(scene.render.resolution_y),
+        int(scene.render.resolution_percentage),
+        str(scene.render.filepath),
+    )
+    assert after == before, (before, after)
+    tree = scene.compositing_node_group
+    assert tree is not None
+    nodes = [
+        node for node in tree.nodes
+        if node.bl_idname == "CompositorNodeOutputFile" and node.name == "thumb.png"
+    ]
+    assert len(nodes) == 1
+    node = nodes[0]
+    assert node.label == "thumb.png"
+    assert node.directory == "//"
+    assert node.file_name == ""
+    assert node.format.media_type == "IMAGE"
+    assert node.format.file_format == "PNG"
+    assert node.inputs.get("thumb") is not None
+    assert any(link.to_node == node and link.to_socket == node.inputs["thumb"] for link in tree.links)
 
-    Image = export_pipeline.Image
-    assert Image is not None
-    scene = bpy.data.scenes.new("BNameTransparentPreviewFallback")
-    cam_data = bpy.data.cameras.new("BNameTransparentPreviewFallbackCamera")
-    cam = bpy.data.objects.new("BNameTransparentPreviewFallbackCamera", cam_data)
-    scene.collection.objects.link(cam)
-    scene.camera = cam
-    out = OUT_DIR / "transparent_render_fallback.png"
-    scene.render.filepath = str(out)
-    scene.render.resolution_x = 32
-    scene.render.resolution_y = 32
-    scene.render.film_transparent = True
-    scene.render.image_settings.file_format = "PNG"
-    scene.render.image_settings.color_mode = "RGBA"
-    original_capture = thumbnail_op._capture_screen_camera_frame
 
-    def _fake_capture(_context, _scene, target: Path) -> bool:
-        Image.new("RGBA", (32, 32), (255, 80, 20, 255)).save(target)
-        return True
-
+def _assert_thumb_output_renders(paths, work, page, entry) -> None:
+    scene = bpy.context.scene
+    thumb = paths.coma_thumb_path(Path(work.work_dir), page.id, entry.coma_id)
+    if thumb.exists():
+        thumb.unlink()
+    before = (
+        scene.render.engine,
+        int(scene.render.resolution_x),
+        int(scene.render.resolution_y),
+        int(scene.render.resolution_percentage),
+        str(scene.render.filepath),
+    )
     try:
-        thumbnail_op._capture_screen_camera_frame = _fake_capture
-        assert thumbnail_op._render_camera_image(bpy.context, scene)
-        assert _image_evidence(out)["alpha_bbox"] is not None
+        scene.render.resolution_x = 16
+        scene.render.resolution_y = 16
+        scene.render.resolution_percentage = 100
+        bpy.ops.render.render(write_still=False)
+        assert thumb.is_file(), f"thumb.png was not rendered: {thumb}"
+        evidence = _image_evidence(thumb)
+        assert evidence["size"] == [16, 16], evidence
     finally:
-        thumbnail_op._capture_screen_camera_frame = original_capture
-        bpy.data.objects.remove(cam, do_unlink=True)
-        bpy.data.cameras.remove(cam_data, do_unlink=True)
-        bpy.data.scenes.remove(scene, do_unlink=True)
+        (
+            scene.render.engine,
+            scene.render.resolution_x,
+            scene.render.resolution_y,
+            scene.render.resolution_percentage,
+            scene.render.filepath,
+        ) = before
 
 
 def _save_and_reopen_coma() -> None:
@@ -329,13 +336,18 @@ def main() -> None:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         from bname_dev_coma_camera_roundtrip.core.mode import get_mode
         from bname_dev_coma_camera_roundtrip.core.work import get_work
-        from bname_dev_coma_camera_roundtrip.operators import thumbnail_op
-        from bname_dev_coma_camera_roundtrip.utils import coma_camera, coma_plane, paths
+        from bname_dev_coma_camera_roundtrip.utils import (
+            coma_camera,
+            coma_plane,
+            coma_thumb_output,
+            paths,
+        )
 
-        _assert_transparent_render_fallback(thumbnail_op)
         _create_roundtrip_work(temp_root, get_work)
         work, page, entry = _enter_configured_coma(get_mode, get_work, coma_camera)
-        preview_path, preview_evidence = _generate_preview(thumbnail_op, paths, work, page, entry)
+        _assert_thumb_output_node(coma_thumb_output)
+        _assert_thumb_output_renders(paths, work, page, entry)
+        preview_path, preview_evidence = _write_thumb(paths, work, page, entry)
         _save_and_reopen_coma()
         checks = _collect_reopened_checks(preview_evidence)
         _assert_reopened_checks(checks)

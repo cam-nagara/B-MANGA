@@ -208,6 +208,75 @@ def _ensure_balloon_line_curve_data(
     return curve
 
 
+def _ensure_uni_flash_line_mesh_data(
+    name: str,
+    segments_mm: Sequence[tuple[tuple[float, float], tuple[float, float]]],
+    entry,
+) -> bpy.types.Mesh:
+    old = bpy.data.meshes.get(name)
+    if old is not None and getattr(old, "users", 0) == 0:
+        try:
+            bpy.data.meshes.remove(old)
+        except Exception:  # noqa: BLE001
+            pass
+    mesh = bpy.data.meshes.new(name)
+    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    start_factor, end_factor = balloon_uni_flash.line_width_factors(entry)
+    start_half_m = mm_to_m(line_width_mm * start_factor * 0.5)
+    end_half_m = mm_to_m(line_width_mm * end_factor * 0.5)
+    eps = 1.0e-9
+    verts: list[tuple[float, float, float]] = []
+    faces: list[list[int]] = []
+    for start, end in segments_mm:
+        sx, sy = start
+        ex, ey = end
+        dx = float(ex) - float(sx)
+        dy = float(ey) - float(sy)
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-9:
+            continue
+        nx = -dy / length
+        ny = dx / length
+        sx_m = mm_to_m(float(sx))
+        sy_m = mm_to_m(float(sy))
+        ex_m = mm_to_m(float(ex))
+        ey_m = mm_to_m(float(ey))
+        base = len(verts)
+        if start_half_m <= eps and end_half_m <= eps:
+            continue
+        if start_half_m <= eps:
+            verts.extend(
+                [
+                    (sx_m, sy_m, 0.0),
+                    (ex_m + nx * end_half_m, ey_m + ny * end_half_m, 0.0),
+                    (ex_m - nx * end_half_m, ey_m - ny * end_half_m, 0.0),
+                ]
+            )
+            faces.append([base, base + 1, base + 2])
+        elif end_half_m <= eps:
+            verts.extend(
+                [
+                    (sx_m + nx * start_half_m, sy_m + ny * start_half_m, 0.0),
+                    (sx_m - nx * start_half_m, sy_m - ny * start_half_m, 0.0),
+                    (ex_m, ey_m, 0.0),
+                ]
+            )
+            faces.append([base, base + 1, base + 2])
+        else:
+            verts.extend(
+                [
+                    (sx_m + nx * start_half_m, sy_m + ny * start_half_m, 0.0),
+                    (sx_m - nx * start_half_m, sy_m - ny * start_half_m, 0.0),
+                    (ex_m - nx * end_half_m, ey_m - ny * end_half_m, 0.0),
+                    (ex_m + nx * end_half_m, ey_m + ny * end_half_m, 0.0),
+                ]
+            )
+            faces.append([base, base + 1, base + 2, base + 3])
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return mesh
+
+
 def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
     color = getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))
     opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
@@ -238,7 +307,7 @@ def _entry_fill_rgba(entry) -> tuple[float, float, float, float]:
 
 
 def _ensure_balloon_curve_material(
-    curve: bpy.types.Curve,
+    curve: Optional[bpy.types.Curve],
     *,
     material_name: str,
     entry=None,
@@ -260,27 +329,28 @@ def _ensure_balloon_curve_material(
             nt.nodes.remove(n)
         out = nt.nodes.new("ShaderNodeOutputMaterial")
         out.location = (200, 0)
-        principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
-        principled.location = (-100, 0)
+        emission = nt.nodes.new("ShaderNodeEmission")
+        emission.location = (-100, 0)
         try:
-            principled.inputs["Base Color"].default_value = line
+            emission.inputs["Color"].default_value = line
         except Exception:  # noqa: BLE001
             pass
         try:
-            principled.inputs["Alpha"].default_value = line[3]
+            emission.inputs["Strength"].default_value = 1.0
         except Exception:  # noqa: BLE001
             pass
-        nt.links.new(principled.outputs["BSDF"], out.inputs["Surface"])
+        nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
         try:
             mat.blend_method = "BLEND"
         except (AttributeError, TypeError):
             pass
     except Exception:  # noqa: BLE001
         _logger.exception("balloon curve material setup failed")
-    if not curve.materials:
-        curve.materials.append(mat)
-    elif curve.materials[0] is not mat:
-        curve.materials[0] = mat
+    if curve is not None:
+        if not curve.materials:
+            curve.materials.append(mat)
+        elif curve.materials[0] is not mat:
+            curve.materials[0] = mat
     return mat
 
 
@@ -582,11 +652,7 @@ def ensure_balloon_curve_object(
     tail_polygons_mm = _tail_polygons_for_entry(entry)
     curve_data_name = f"{BALLOON_CURVE_DATA_PREFIX}{balloon_id}"
     if is_uni_flash:
-        curve_data = _ensure_balloon_line_curve_data(
-            curve_data_name,
-            line_segments_mm,
-            tail_polygons_mm,
-        )
+        curve_data = None
     else:
         curve_data = _ensure_balloon_curve_data(
             curve_data_name,
@@ -601,16 +667,23 @@ def ensure_balloon_curve_object(
     )
     # ベベルでフキダシの線幅を再現 (entry.line_width_mm)
     line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
-    try:
-        curve_data.bevel_depth = mm_to_m(line_width_mm) * 0.5
-        curve_data.bevel_resolution = 0
-    except Exception:  # noqa: BLE001
-        pass
-    mesh_data = _curve_to_mesh_data(
-        scene=scene,
-        curve_data=curve_data,
-        mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
-    )
+    if is_uni_flash:
+        mesh_data = _ensure_uni_flash_line_mesh_data(
+            f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}_lines",
+            line_segments_mm,
+            entry,
+        )
+    else:
+        try:
+            curve_data.bevel_depth = mm_to_m(line_width_mm) * 0.5
+            curve_data.bevel_resolution = 0
+        except Exception:  # noqa: BLE001
+            pass
+        mesh_data = _curve_to_mesh_data(
+            scene=scene,
+            curve_data=curve_data,
+            mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
+        )
     if mesh_data is None:
         return None
     fill_mesh, fill_mat = _ensure_balloon_fill_mesh_data(
@@ -636,7 +709,8 @@ def ensure_balloon_curve_object(
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
     obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=combined_mesh)
-    _remove_unused_data_block(curve_data)
+    if curve_data is not None:
+        _remove_unused_data_block(curve_data)
     _remove_duplicate_balloon_objects(balloon_id, obj)
     _remove_legacy_balloon_fill_objects(balloon_id)
 

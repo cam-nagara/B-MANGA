@@ -656,7 +656,7 @@ class BNAME_OT_pages_merge_spread(Operator):
             work.pages.remove(left + 1)
             merged = work.pages[left]
             merged.id = spread_id
-            merged.title = f"{head_a}-{head_b}"
+            merged.title = ""
             merged.dir_rel = f"{spread_id}/"
             merged.spread = True
             merged.tombo_aligned = self.tombo_aligned
@@ -746,14 +746,14 @@ class BNAME_OT_pages_split_spread(Operator):
 
             right_half = work.pages.add()
             right_half.id = reading_first_id
-            right_half.title = reading_first_id
+            right_half.title = ""
             right_half.dir_rel = f"{reading_first_id}/"
             right_half.spread = False
             work.pages.move(len(work.pages) - 1, idx)
 
             left_half = work.pages.add()
             left_half.id = reading_second_id
-            left_half.title = reading_second_id
+            left_half.title = ""
             left_half.dir_rel = f"{reading_second_id}/"
             left_half.spread = False
             work.pages.move(len(work.pages) - 1, idx + 1)

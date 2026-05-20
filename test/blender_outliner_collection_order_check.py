@@ -30,6 +30,7 @@ def main() -> None:
     mod = _load_addon()
     try:
         from bname_dev_outliner_order.core.work import get_work
+        from bname_dev_outliner_order.io import schema
         from bname_dev_outliner_order.utils import layer_object_sync, layer_stack, outliner_model
 
         context = bpy.context
@@ -66,6 +67,26 @@ def main() -> None:
             raise AssertionError("コマ行がレイヤーリストに作られていません")
         if any("基本枠" in label for label in coma_labels):
             raise AssertionError(f"レイヤーリストのコマ名に基本枠が残っています: {coma_labels}")
+
+        loaded_page = work.pages.add()
+        schema.page_from_dict(
+            loaded_page,
+            {
+                "id": "p9999",
+                "title": "p9999",
+                "comas": [
+                    {
+                        "id": "c01",
+                        "comaId": "c01",
+                        "title": "c01 (分割)",
+                    }
+                ],
+            },
+        )
+        if loaded_page.title != "":
+            raise AssertionError(f"自動ページ名が空になっていません: {loaded_page.title!r}")
+        if loaded_page.comas[0].title != "":
+            raise AssertionError(f"自動コマ名が空になっていません: {loaded_page.comas[0].title!r}")
         print("BNAME_OUTLINER_COLLECTION_ORDER_OK")
     finally:
         mod.unregister()

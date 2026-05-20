@@ -70,6 +70,8 @@ def main() -> None:
         entry.shape_params.uni_flash_line_density_compensation = True
         entry.shape_params.uni_flash_fill_density_compensation = True
         entry.shape_params.uni_flash_max_line_count = 400
+        entry.shape_params.uni_flash_line_in_percent = 100.0
+        entry.shape_params.uni_flash_line_out_percent = 0.0
 
         balloon_shape_ids = _enum_ids(entry.bl_rna.properties["shape"])
         assert "uni_flash" in balloon_shape_ids, "フキダシ形状にウニフラッシュがありません"
@@ -93,12 +95,16 @@ def main() -> None:
         params = saved["shapeParams"]
         assert params["uniFlashLineDensityCompensation"] is True
         assert params["uniFlashFillDensityCompensation"] is True
+        assert abs(params["uniFlashLineInPercent"] - 100.0) < 1.0e-6
+        assert abs(params["uniFlashLineOutPercent"] - 0.0) < 1.0e-6
         restored = page.balloons.add()
         schema.balloon_entry_from_dict(restored, saved)
         assert restored.shape == "uni_flash"
         assert restored.shape_params.uni_flash_line_density_compensation is True
         assert restored.shape_params.uni_flash_fill_density_compensation is True
         assert abs(restored.shape_params.uni_flash_spacing_mm - 1.2) < 1.0e-6
+        assert abs(restored.shape_params.uni_flash_line_in_percent - 100.0) < 1.0e-6
+        assert abs(restored.shape_params.uni_flash_line_out_percent - 0.0) < 1.0e-6
         page.balloons.remove(len(page.balloons) - 1)
 
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
@@ -107,6 +113,9 @@ def main() -> None:
         assert len(obj.data.materials) >= 2, "ウニフラッシュの線と下地のマテリアルがまとまっていません"
         assert any(poly.material_index == 1 for poly in obj.data.polygons), (
             "ウニフラッシュの下地が同じオブジェクト内にありません"
+        )
+        assert any(poly.material_index == 0 and len(poly.vertices) == 3 for poly in obj.data.polygons), (
+            "ウニフラッシュ線の抜きが三角形メッシュになっていません"
         )
         fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{entry.id}")
         assert fill_obj is None, "ウニフラッシュの下地が別オブジェクトとして残っています"
@@ -126,6 +135,8 @@ def main() -> None:
 
         def _draw_line_segments(segments, _color, **_kwargs):
             assert "width_mm" in _kwargs, "ウニフラッシュ線の太さがmm指定で渡されていません"
+            assert "start_width_mm" in _kwargs, "ウニフラッシュ線の入り幅が渡されていません"
+            assert "end_width_mm" in _kwargs, "ウニフラッシュ線の抜き幅が渡されていません"
             line_width_args.append(_kwargs["width_mm"])
             lines.extend(segments)
 

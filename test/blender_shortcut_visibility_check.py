@@ -44,7 +44,7 @@ def main() -> None:
     mod = _load_addon()
     from bname_dev_shortcut_visibility.keymap import keymap as keymap_mod
     from bname_dev_shortcut_visibility.keymap import viewport_ops
-    from bname_dev_shortcut_visibility.utils import shortcut_visibility
+    from bname_dev_shortcut_visibility.utils import page_browser, shortcut_visibility
 
     work = bpy.context.scene.bname_work
     work.loaded = True
@@ -100,6 +100,24 @@ def main() -> None:
         )
         assert shortcut_visibility._area_bname_status(fake_other_area) == "other", (
             "別タブが明示されている状態を判定できません"
+        )
+        page_browser_space = SimpleNamespace(
+            type="VIEW_3D",
+            show_region_toolbar=True,
+            show_region_ui=True,
+            show_gizmo=True,
+            overlay=SimpleNamespace(show_overlays=True),
+            region_3d=SimpleNamespace(view_perspective="PERSP"),
+            shading=SimpleNamespace(type="MATERIAL", light="STUDIO", background_type="THEME"),
+        )
+        page_browser.apply_page_browser_view_settings(
+            SimpleNamespace(type="VIEW_3D", spaces=[page_browser_space])
+        )
+        assert page_browser_space.show_region_ui is True, (
+            "ページ一覧ビュー設定でサイドバー開閉状態を上書きしています"
+        )
+        assert page_browser_space.region_3d.view_perspective == "PERSP", (
+            "ページ一覧ビュー設定でビュー回転状態を上書きしています"
         )
         fake_reported_other_area = _PtrNamespace(
             1002,

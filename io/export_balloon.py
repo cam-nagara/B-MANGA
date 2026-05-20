@@ -272,6 +272,52 @@ def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: 
     canvas.image.alpha_composite(temp)
 
 
+def _draw_tapered_segment(draw, p0, p1, color, start_width_px: float, end_width_px: float) -> None:
+    import math
+
+    sx, sy = p0
+    ex, ey = p1
+    dx = float(ex) - float(sx)
+    dy = float(ey) - float(sy)
+    length = math.hypot(dx, dy)
+    if length <= 1.0e-9:
+        return
+    start_half = max(0.0, float(start_width_px)) * 0.5
+    end_half = max(0.0, float(end_width_px)) * 0.5
+    if start_half <= 0.0 and end_half <= 0.0:
+        return
+    nx, ny = -dy / length, dx / length
+    if start_half <= 0.0:
+        pts = [
+            (sx, sy),
+            (ex + nx * end_half, ey + ny * end_half),
+            (ex - nx * end_half, ey - ny * end_half),
+        ]
+    elif end_half <= 0.0:
+        pts = [
+            (sx + nx * start_half, sy + ny * start_half),
+            (sx - nx * start_half, sy - ny * start_half),
+            (ex, ey),
+        ]
+    else:
+        pts = [
+            (sx + nx * start_half, sy + ny * start_half),
+            (sx - nx * start_half, sy - ny * start_half),
+            (ex - nx * end_half, ey - ny * end_half),
+            (ex + nx * end_half, ey + ny * end_half),
+        ]
+    draw.polygon(pts, fill=color)
+
+
+def _draw_uni_flash_segment(draw, canvas, start, end, color, width_px: int, style: str, start_factor: float, end_factor: float) -> None:
+    p0 = canvas.point_px(*start)
+    p1 = canvas.point_px(*end)
+    if str(style or "solid") == "solid":
+        _draw_tapered_segment(draw, p0, p1, color, width_px * start_factor, width_px * end_factor)
+        return
+    _ep()._draw_styled_segment(draw, p0, p1, color, width_px, style)
+
+
 def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     if getattr(entry, "shape", "rect") == "none":
         return None
@@ -333,32 +379,42 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     if bool(getattr(entry, "inner_white_margin_enabled", False)):
         _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), line_style)
     if is_uni_flash:
+        line_in, line_out = balloon_uni_flash.line_width_factors(entry)
         for start, end in line_segments:
             if bool(getattr(entry, "outer_white_margin_enabled", False)):
-                ep._draw_styled_segment(
+                _draw_uni_flash_segment(
                     draw,
-                    canvas.point_px(*start),
-                    canvas.point_px(*end),
+                    canvas,
+                    start,
+                    end,
                     outer_color,
                     line_width_px + outer_width_px * 2,
                     line_style,
+                    line_in,
+                    line_out,
                 )
             if bool(getattr(entry, "inner_white_margin_enabled", False)):
-                ep._draw_styled_segment(
+                _draw_uni_flash_segment(
                     draw,
-                    canvas.point_px(*start),
-                    canvas.point_px(*end),
+                    canvas,
+                    start,
+                    end,
                     inner_color,
                     max(1, inner_width_px * 2),
                     line_style,
+                    line_in,
+                    line_out,
                 )
-            ep._draw_styled_segment(
+            _draw_uni_flash_segment(
                 draw,
-                canvas.point_px(*start),
-                canvas.point_px(*end),
+                canvas,
+                start,
+                end,
                 line_color,
                 line_width_px,
                 line_style,
+                line_in,
+                line_out,
             )
     else:
         ep._draw_styled_loop(draw, outline_px, line_color, line_width_px, line_style)

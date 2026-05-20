@@ -161,6 +161,8 @@ class BNAME_PT_balloons(Panel):
             box.prop(sp, "uni_flash_spacing_mm")
             box.prop(sp, "uni_flash_fill_scale_percent")
             box.prop(sp, "uni_flash_max_line_count")
+            box.prop(sp, "uni_flash_line_in_percent")
+            box.prop(sp, "uni_flash_line_out_percent")
         if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
             box = layout.box()
             box.label(text="Meldex形状パラメータ")

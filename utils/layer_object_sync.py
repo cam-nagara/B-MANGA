@@ -280,13 +280,13 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             page_id = str(getattr(page, "id", "") or "")
             if not page_id:
                 continue
-            title = str(getattr(page, "title", "") or page_id)
+            title = str(getattr(page, "title", "") or "")
             om.ensure_page_collection(scene, page_id, title)
             for coma in getattr(page, "comas", []):
                 coma_id = str(getattr(coma, "id", "") or "")
                 if not coma_id:
                     continue
-                coma_title = str(getattr(coma, "title", "") or coma_id)
+                coma_title = str(getattr(coma, "title", "") or "")
                 om.ensure_coma_collection(scene, page_id, coma_id, coma_title)
         om.order_root_collections(scene)
         for folder in getattr(work, "layer_folders", []):

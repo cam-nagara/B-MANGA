@@ -21,7 +21,6 @@ _PAGE_BROWSER_AREAS: set[int] = set()
 _SPACE_VIEW_STATES: dict[int, dict[str, object]] = {}
 _SPACE_BOOL_PROPS = (
     "show_region_toolbar",
-    "show_region_ui",
     "show_region_tool_header",
     "show_region_asset_shelf",
     "show_region_hud",
@@ -111,12 +110,6 @@ def apply_page_browser_view_settings(area) -> None:
         if hasattr(space, "lock_camera"):
             try:
                 space.lock_camera = False
-            except Exception:  # noqa: BLE001
-                pass
-        rv3d = getattr(space, "region_3d", None)
-        if rv3d is not None:
-            try:
-                rv3d.view_perspective = "ORTHO"
             except Exception:  # noqa: BLE001
                 pass
         shading = getattr(space, "shading", None)

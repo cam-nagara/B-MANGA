@@ -50,7 +50,7 @@ def test_new_layout_paths():
     assert paths.coma_dir(root, "p0001", "c01") == root / "p0001" / "c01"
     assert paths.coma_blend_path(root, "p0001", "c01") == root / "p0001" / "c01" / "c01.blend"
     assert paths.coma_json_path(root, "p0001", "c01") == root / "p0001" / "c01" / "c01.json"
-    assert paths.coma_thumb_path(root, "p0001", "c01") == root / "p0001" / "c01" / "c01_thumb.png"
+    assert paths.coma_thumb_path(root, "p0001", "c01") == root / "p0001" / "c01" / "thumb.png"
     assert paths.coma_preview_path(root, "p0001", "c01") == root / "p0001" / "c01" / "c01_preview.png"
     assert paths.coma_passes_dir(root, "p0001", "c01") == root / "p0001" / "c01" / "passes"
     assert paths.coma_passes_cube_dir(root, "p0001", "c01") == root / "p0001" / "c01" / "passes" / "cube"

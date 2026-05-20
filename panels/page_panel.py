@@ -100,7 +100,8 @@ class BNAME_PT_pages(Panel):
         if 0 <= idx < len(work.pages):
             entry = work.pages[idx]
             box = layout.box()
-            box.label(text=f"選択: {entry.id}  コマ数: {entry.coma_count}")
+            box.label(text=f"選択: {entry.id}")
+            box.prop(entry, "coma_count", text="コマ数")
             if entry.spread:
                 box.label(text=f"見開き: 間隔 {entry.tombo_gap_mm:.2f}mm")
 

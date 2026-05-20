@@ -333,6 +333,65 @@ def _draw_segments_mm(
     batch.draw(shader)
 
 
+def _draw_tapered_segments_mm(
+    segs: list[tuple[tuple[float, float], tuple[float, float]]],
+    color: tuple[float, float, float, float],
+    start_width_mm: float,
+    end_width_mm: float,
+) -> None:
+    if not segs:
+        return
+    import math as _math
+
+    start_half = max(0.0, float(start_width_mm)) * 0.5
+    end_half = max(0.0, float(end_width_mm)) * 0.5
+    if start_half <= 0.0 and end_half <= 0.0:
+        return
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    verts: list[tuple[float, float, float]] = []
+    indices: list[tuple[int, int, int]] = []
+    for (x1, y1), (x2, y2) in segs:
+        dx = x2 - x1
+        dy = y2 - y1
+        length = _math.hypot(dx, dy)
+        if length <= 0.0:
+            continue
+        nx, ny = -dy / length, dx / length
+        base = len(verts)
+        if start_half <= 0.0:
+            for px, py in (
+                (x1, y1),
+                (x2 + nx * end_half, y2 + ny * end_half),
+                (x2 - nx * end_half, y2 - ny * end_half),
+            ):
+                verts.append((mm_to_m(px), mm_to_m(py), 0.0))
+            indices.append((base, base + 1, base + 2))
+        elif end_half <= 0.0:
+            for px, py in (
+                (x1 + nx * start_half, y1 + ny * start_half),
+                (x1 - nx * start_half, y1 - ny * start_half),
+                (x2, y2),
+            ):
+                verts.append((mm_to_m(px), mm_to_m(py), 0.0))
+            indices.append((base, base + 1, base + 2))
+        else:
+            for px, py in (
+                (x1 + nx * start_half, y1 + ny * start_half),
+                (x1 - nx * start_half, y1 - ny * start_half),
+                (x2 - nx * end_half, y2 - ny * end_half),
+                (x2 + nx * end_half, y2 + ny * end_half),
+            ):
+                verts.append((mm_to_m(px), mm_to_m(py), 0.0))
+            indices.append((base, base + 1, base + 2))
+            indices.append((base, base + 2, base + 3))
+    if not verts:
+        return
+    batch = batch_for_shader(shader, "TRIS", {"pos": verts}, indices=indices)
+    shader.bind()
+    shader.uniform_float("color", color)
+    batch.draw(shader)
+
+
 def _draw_styled_segment_mm(
     p0: tuple[float, float],
     p1: tuple[float, float],
@@ -366,9 +425,20 @@ def _draw_line_segments(
     color: tuple[float, float, float, float],
     line_width: float = 1.0,
     width_mm: float | None = None,
+    start_width_mm: float | None = None,
+    end_width_mm: float | None = None,
 ) -> None:
     """複数の独立した線分 ((x1,y1)-(x2,y2) の集合、mm 単位) を一括描画."""
     if not segs:
+        return
+    if start_width_mm is not None or end_width_mm is not None:
+        base = max(0.001, float(width_mm if width_mm is not None else 0.3))
+        _draw_tapered_segments_mm(
+            segs,
+            color,
+            start_width_mm=base if start_width_mm is None else float(start_width_mm),
+            end_width_mm=base if end_width_mm is None else float(end_width_mm),
+        )
         return
     if width_mm is not None:
         _draw_segments_mm(segs, color, width_mm=max(0.001, float(width_mm)))

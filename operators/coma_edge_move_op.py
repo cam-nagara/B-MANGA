@@ -1525,11 +1525,11 @@ class BNAME_OT_coma_edge_move(Operator):
         """選択辺を direction (1=正側、2=負側) 方向に拡張.
 
         スナップ仕様:
-        - 拡張先候補は同ページの他コマ辺 / 基本枠 / 仕上がり枠外
+        - 拡張先候補は同ページの他コマ辺 / 基本枠 / 裁ち落とし枠外
         - **辺の角度は維持したまま**、平行移動で候補 line に重ねる
         - 共有頂点は prev/next 辺の line と新 line の交点で補正 (= 隣接辺の角度維持)
         - スナップ位置のオフセット:
-          - 仕上がり枠外: 枠線の線幅分外側
+          - 裁ち落とし枠外: 枠線の線幅分外側
           - 他コマ辺: ピッタリ重ねる (gap=0)
           - 基本枠: ピッタリ
         - **特殊ケース** (ピッタリ重なり状態 → 離れる方向▲): 法線方向と無関係に
@@ -1558,29 +1558,29 @@ class BNAME_OT_coma_edge_move(Operator):
         # direction 1: 法線正方向に拡張、direction 2: 法線負方向に拡張
         sign = 1.0 if direction == 1 else -1.0
 
-        # 拡張先候補: 仕上がり枠外 / 基本枠 / 他 panel の辺
-        from ..utils.geom import finish_rect, inner_frame_rect
+        # 拡張先候補: 裁ち落とし枠外 / 基本枠 / 他 panel の辺
+        from ..utils.geom import bleed_rect, inner_frame_rect
         paper = self._work.paper
-        fr = finish_rect(paper)
+        br = bleed_rect(paper)
         ifr = inner_frame_rect(paper)
         border_width_mm = _border_width_for_panel(panel)
         finish_offset_mm = _finish_outer_offset_for_panel(panel)
 
         # 候補となる「線」のリスト (page-local 座標) と種別を保持。
-        # 種別: "finish_outer" (仕上がり枠の **枠線幅分外側**) / "inner" (基本枠) /
+        # 種別: "bleed_outer" (裁ち落とし枠の **枠線幅分外側**) / "inner" (基本枠) /
         #       "coma" (他コマ辺)
-        # finish_outer は最初から線幅分外側位置を candidate に登録することで、
+        # bleed_outer は最初から線幅分外側位置を candidate に登録することで、
         # 後段の offset 計算が不要になり、edge が既に線幅分外側にいる場合の
         # 誤スナップを防ぐ。
         candidate_lines: list[
             tuple[tuple[float, float], tuple[float, float], str]
         ] = []
-        # 仕上がり枠の 4 辺 (枠線幅分外側位置)
+        # 裁ち落とし枠の 4 辺 (枠線幅分外側位置)
         candidate_lines.extend([
-            ((fr.x - finish_offset_mm, fr.y - finish_offset_mm), (fr.x2 + finish_offset_mm, fr.y - finish_offset_mm), "finish_outer"),
-            ((fr.x2 + finish_offset_mm, fr.y - finish_offset_mm), (fr.x2 + finish_offset_mm, fr.y2 + finish_offset_mm), "finish_outer"),
-            ((fr.x2 + finish_offset_mm, fr.y2 + finish_offset_mm), (fr.x - finish_offset_mm, fr.y2 + finish_offset_mm), "finish_outer"),
-            ((fr.x - finish_offset_mm, fr.y2 + finish_offset_mm), (fr.x - finish_offset_mm, fr.y - finish_offset_mm), "finish_outer"),
+            ((br.x - finish_offset_mm, br.y - finish_offset_mm), (br.x2 + finish_offset_mm, br.y - finish_offset_mm), "bleed_outer"),
+            ((br.x2 + finish_offset_mm, br.y - finish_offset_mm), (br.x2 + finish_offset_mm, br.y2 + finish_offset_mm), "bleed_outer"),
+            ((br.x2 + finish_offset_mm, br.y2 + finish_offset_mm), (br.x - finish_offset_mm, br.y2 + finish_offset_mm), "bleed_outer"),
+            ((br.x - finish_offset_mm, br.y2 + finish_offset_mm), (br.x - finish_offset_mm, br.y - finish_offset_mm), "bleed_outer"),
         ])
         # 基本枠の 4 辺
         candidate_lines.extend([
@@ -1729,7 +1729,7 @@ class BNAME_OT_coma_edge_move(Operator):
                 b_new_line = test_b_line
                 new_poly = test_poly
                 kind_label = {
-                    "finish_outer": "仕上がり枠の線幅分外側",
+                    "bleed_outer": "裁ち落とし枠の線幅分外側",
                     "inner": "基本枠",
                     "coma": "隣接コマ辺にピッタリ",
                 }.get(kind, "拡張先")

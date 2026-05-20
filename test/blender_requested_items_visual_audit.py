@@ -204,13 +204,13 @@ def _configure_scene(temp_root: Path):
     border_presets.apply_preset_to_coma(blur, work.pages[1].comas[0])
     work.pages[1].comas[0].border.blur_amount = 1.0
     _write_preview_image(
-        paths.coma_preview_path(Path(work.work_dir), work.pages[1].id, work.pages[1].comas[0].coma_id)
+        paths.coma_thumb_path(Path(work.work_dir), work.pages[1].id, work.pages[1].comas[0].coma_id)
     )
     border_presets.apply_preset_to_coma(blur, work.pages[2].comas[0])
     work.pages[2].comas[0].border.blur_amount = 1.0
     work.pages[2].comas[0].border.blur_dither = True
     _write_preview_image(
-        paths.coma_preview_path(Path(work.work_dir), work.pages[2].id, work.pages[2].comas[0].coma_id)
+        paths.coma_thumb_path(Path(work.work_dir), work.pages[2].id, work.pages[2].comas[0].coma_id)
     )
 
     page = work.pages[3]

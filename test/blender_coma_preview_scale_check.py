@@ -1,4 +1,4 @@
-"""Blender runtime check: page list coma preview scale setting."""
+"""Blender runtime check: page list coma thumb loading and fitting."""
 
 from __future__ import annotations
 
@@ -36,8 +36,7 @@ def main() -> None:
 
         from bname_dev_coma_preview_scale.core.work import get_work
         from bname_dev_coma_preview_scale.io import export_pipeline, schema
-        from bname_dev_coma_preview_scale.operators import thumbnail_op
-        from bname_dev_coma_preview_scale.utils import coma_plane
+        from bname_dev_coma_preview_scale.utils import coma_plane, coma_preview, paths
 
         work = get_work(bpy.context)
         assert work is not None
@@ -67,41 +66,28 @@ def main() -> None:
         entry.rect_height_mm = 40.0
         entry.background_color = (1.0, 1.0, 1.0, 0.0)
 
-        source = temp_root / "source.png"
-        out = temp_root / "out.png"
-        image = Image.new("RGBA", (1000, 1000), (255, 255, 255, 255))
-        image.save(source)
-        ok = thumbnail_op._crop_render_to_panel(
-            source,
-            out,
-            work,
-            page,
-            entry,
-            output_scale_percentage=10.0,
-        )
-        assert ok and out.is_file()
-        with Image.open(out) as opened:
-            assert opened.size == (30, 40), opened.size
-            assert opened.convert("RGBA").getpixel((0, 0))[3] == 0
-        full_out = temp_root / "full.png"
-        ok = thumbnail_op._crop_render_to_panel(
-            source,
-            full_out,
-            work,
-            page,
-            entry,
-            output_scale_percentage=None,
-        )
-        assert ok and full_out.is_file()
-        with Image.open(full_out) as opened:
-            assert opened.size == (300, 400), opened.size
+        work_dir = Path(work.work_dir)
+        thumb = paths.coma_thumb_path(work_dir, page.id, entry.coma_id)
+        old_preview = paths.coma_preview_path(work_dir, page.id, entry.coma_id)
+        old_preview.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGBA", (1024, 512), (255, 0, 0, 255)).save(old_preview)
+        assert coma_preview.coma_preview_source_path(work_dir, page.id, entry) is None
+        Image.new("RGBA", (73, 19), (0, 120, 255, 255)).save(thumb)
+        assert coma_preview.coma_preview_source_path(work_dir, page.id, entry) == thumb
 
-        transparent_render = temp_root / "transparent_render.png"
-        visible_render = temp_root / "visible_render.png"
-        Image.new("RGBA", (16, 16), (0, 0, 0, 0)).save(transparent_render)
-        Image.new("RGBA", (16, 16), (0, 120, 255, 255)).save(visible_render)
-        assert not thumbnail_op._render_output_has_visible_content(transparent_render)
-        assert thumbnail_op._render_output_has_visible_content(visible_render)
+        resolved = coma_plane._resolve_preview_image(work, page, entry)  # noqa: SLF001
+        assert resolved is not None
+        assert tuple(int(v) for v in resolved.size) == (73, 19)
+
+        mesh = bpy.data.meshes.new("BName_TestComaPreviewFitMesh")
+        coma_plane._build_mesh_geometry(mesh, entry)  # noqa: SLF001
+        uv_layer = mesh.uv_layers.get(coma_plane.COMA_PLANE_UV_NAME)
+        assert uv_layer is not None
+        xs = [float(loop.uv.x) for loop in uv_layer.data]
+        ys = [float(loop.uv.y) for loop in uv_layer.data]
+        assert min(xs) == 0.0 and max(xs) == 1.0
+        assert min(ys) == 0.0 and max(ys) == 1.0
+        bpy.data.meshes.remove(mesh)
 
         preview_probe = bpy.data.images.new("BName_TestComaPreviewTransparent", width=2, height=2, alpha=True)
         preview_probe.pixels.foreach_set([

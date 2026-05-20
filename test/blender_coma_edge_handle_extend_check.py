@@ -1,4 +1,4 @@
-"""Blender 実機(背景)用: コマ枠三角ハンドルの線幅分拡張を確認."""
+"""Blender 実機(背景)用: コマ枠三角ハンドルの裁ち落とし枠外拡張を確認."""
 
 from __future__ import annotations
 
@@ -70,6 +70,7 @@ def main() -> None:
         paper.canvas_height_mm = 120.0
         paper.finish_width_mm = 80.0
         paper.finish_height_mm = 100.0
+        paper.bleed_mm = 5.0
         paper.inner_frame_width_mm = 40.0
         paper.inner_frame_height_mm = 60.0
         paper.inner_frame_offset_x_mm = 0.0
@@ -77,7 +78,7 @@ def main() -> None:
 
         page = work.pages.add()
         page.id = "p1"
-        fr = geom.finish_rect(paper)
+        br = geom.bleed_rect(paper)
         ir = geom.inner_frame_rect(paper)
         width_mm = 4.0
         panel = _add_panel(
@@ -91,7 +92,7 @@ def main() -> None:
             2,
         )
         top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(panel))
-        _assert_close(top_y, fr.y2 + width_mm * 0.5, "基本枠から仕上がり枠外への拡張")
+        _assert_close(top_y, br.y2 + width_mm * 0.5, "基本枠から裁ち落とし枠外への拡張")
 
         page.comas.clear()
         left = _add_panel(page, "left", [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)], width_mm)
@@ -122,7 +123,7 @@ def main() -> None:
                 2,
             )
             brush_top_y = max(y for _x, y in coma_edge_move_op._coma_polygon(brush_panel))
-            _assert_close(brush_top_y, fr.y2 + width_mm * 0.5, "輪郭ぼかしの拡張量")
+            _assert_close(brush_top_y, br.y2 + width_mm * 0.5, "輪郭ぼかしの拡張量")
         finally:
             coma_border_texture.brush_total_width_mm = original_brush_total
 

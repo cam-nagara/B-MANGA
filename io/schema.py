@@ -23,6 +23,43 @@ COMA_SCHEMA_VERSION = 1
 # ---------- 共通変換 ----------
 
 
+def _normalize_generated_page_title(title: object, page_id: object) -> str:
+    text = str(title or "").strip()
+    pid = str(page_id or "").strip()
+    if not text:
+        return ""
+    if pid and text == pid:
+        return ""
+    return text
+
+
+def _normalize_generated_coma_title(
+    title: object,
+    entry_id: object,
+    coma_id: object,
+) -> str:
+    text = str(title or "").strip()
+    ids = {str(entry_id or "").strip(), str(coma_id or "").strip()}
+    ids.discard("")
+    if not text:
+        return ""
+    if text in ids:
+        return ""
+    if text.startswith("基本枠"):
+        return ""
+    for suffix in ("(複製)", "（複製）", "(分割)", "（分割）"):
+        if text.endswith(suffix):
+            base = text[: -len(suffix)].strip()
+            if not base or base in ids:
+                return ""
+    parts = text.rsplit(" ", 1)
+    if len(parts) == 2 and parts[1].count("-") == 1:
+        left, right = parts[1].split("-", 1)
+        if left.isdigit() and right.isdigit() and (not parts[0].strip() or parts[0].strip() in ids):
+            return ""
+    return text
+
+
 def color_to_hex(rgba: tuple[float, float, float, float]) -> str:
     """(r,g,b,a) 浮動小数 → "#RRGGBB" (alpha は別管理)."""
     r, g, b = rgba[0], rgba[1], rgba[2]
@@ -570,7 +607,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
 def page_entry_to_dict(entry) -> dict[str, Any]:
     d: dict[str, Any] = {
         "id": entry.id,
-        "title": entry.title,
+        "title": _normalize_generated_page_title(entry.title, entry.id),
         "dir": entry.dir_rel,
         "spread": bool(entry.spread),
         "visible": bool(getattr(entry, "visible", True)),
@@ -594,7 +631,7 @@ def page_entry_to_dict(entry) -> dict[str, Any]:
 def page_entry_from_dict(entry, data: dict[str, Any]) -> None:
     data = data or {}
     entry.id = data.get("id", "")
-    entry.title = data.get("title", "")
+    entry.title = _normalize_generated_page_title(data.get("title", ""), entry.id)
     entry.dir_rel = data.get("dir", "")
     entry.spread = bool(data.get("spread", False))
     if hasattr(entry, "visible"):
@@ -680,10 +717,15 @@ def coma_white_margin_from_dict(wm, data: dict[str, Any]) -> None:
 
 
 def coma_entry_to_dict(entry) -> dict[str, Any]:
+    title = _normalize_generated_coma_title(
+        entry.title,
+        entry.id,
+        entry.coma_id,
+    )
     d: dict[str, Any] = {
         "schemaVersion": COMA_SCHEMA_VERSION,
         "id": entry.id,
-        "title": entry.title,
+        "title": title,
         "comaId": entry.coma_id,
         "comaBlendTemplatePath": str(getattr(entry, "coma_blend_template_path", "") or ""),
         "comaBlendTemplateNeedsApply": bool(getattr(entry, "coma_blend_template_needs_apply", False)),
@@ -717,8 +759,12 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
 def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
     data = data or {}
     entry.id = data.get("id", "")
-    entry.title = data.get("title", "")
     entry.coma_id = data.get("comaId", "")
+    entry.title = _normalize_generated_coma_title(
+        data.get("title", ""),
+        entry.id,
+        entry.coma_id,
+    )
     if hasattr(entry, "coma_blend_template_path"):
         entry.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
     if hasattr(entry, "coma_blend_template_needs_apply"):
@@ -847,6 +893,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "uniFlashLineDensityCompensation": True,
             "uniFlashFillDensityCompensation": True,
             "uniFlashMaxLineCount": int(entry.shape_params.uni_flash_max_line_count),
+            "uniFlashLineInPercent": round(float(getattr(entry.shape_params, "uni_flash_line_in_percent", 100.0)), 3),
+            "uniFlashLineOutPercent": round(float(getattr(entry.shape_params, "uni_flash_line_out_percent", 0.0)), 3),
         },
         "textId": entry.text_id,
     }
@@ -954,6 +1002,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.shape_params.uni_flash_line_density_compensation = True
     entry.shape_params.uni_flash_fill_density_compensation = True
     entry.shape_params.uni_flash_max_line_count = int(sp.get("uniFlashMaxLineCount", 1000))
+    entry.shape_params.uni_flash_line_in_percent = float(sp.get("uniFlashLineInPercent", 100.0))
+    entry.shape_params.uni_flash_line_out_percent = float(sp.get("uniFlashLineOutPercent", 0.0))
     entry.text_id = data.get("textId", "")
 
 
@@ -1089,7 +1139,7 @@ def page_to_dict(page_entry) -> dict[str, Any]:
     return {
         "schemaVersion": PAGE_SCHEMA_VERSION,
         "id": page_entry.id,
-        "title": page_entry.title,
+        "title": _normalize_generated_page_title(page_entry.title, page_entry.id),
         "spread": bool(page_entry.spread),
         "offsetXMm": round(float(getattr(page_entry, "offset_x_mm", 0.0)), 3),
         "offsetYMm": round(float(getattr(page_entry, "offset_y_mm", 0.0)), 3),
@@ -1106,7 +1156,7 @@ def page_from_dict(page_entry, data: dict[str, Any]) -> None:
     data = data or {}
     page_entry.id = data.get("id", page_entry.id)
     if "title" in data:
-        page_entry.title = data["title"]
+        page_entry.title = _normalize_generated_page_title(data["title"], page_entry.id)
     page_entry.offset_x_mm = float(data.get("offsetXMm", getattr(page_entry, "offset_x_mm", 0.0)))
     page_entry.offset_y_mm = float(data.get("offsetYMm", getattr(page_entry, "offset_y_mm", 0.0)))
     page_entry.comas.clear()

@@ -198,7 +198,7 @@ class BNAME_OT_page_duplicate(Operator):
             page_io.copy_page_dir(work_dir, src.id, new_id)
             new_entry = work.pages.add()
             new_entry.id = new_id
-            new_entry.title = f"{src.title} (複製)"
+            new_entry.title = ""
             new_entry.dir_rel = f"{new_id}/"
             new_entry.spread = src.spread
             new_entry.tombo_aligned = src.tombo_aligned
@@ -208,7 +208,7 @@ class BNAME_OT_page_duplicate(Operator):
                 ref_new.page_id = ref.page_id
             page_io.load_page_json(work_dir, new_entry)
             new_entry.id = new_id
-            new_entry.title = f"{src.title} (複製)"
+            new_entry.title = ""
             new_entry.dir_rel = f"{new_id}/"
             new_entry.spread = src.spread
             new_entry.tombo_aligned = src.tombo_aligned

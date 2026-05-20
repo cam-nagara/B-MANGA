@@ -21,21 +21,14 @@ def _zero_based_layer_name(prefix: str, value: str, width: int) -> str:
 
 
 def page_layer_name(target, work=None) -> str:
-    if work is not None and target is not None:
-        try:
-            start = int(getattr(work.work_info, "page_number_start", 1))
-        except Exception:  # noqa: BLE001
-            start = 1
-        target_id = str(getattr(target, "id", "") or "")
-        for i, page in enumerate(getattr(work, "pages", [])):
-            if str(getattr(page, "id", "") or "") == target_id:
-                return f"p{max(0, start + i):03d}"
-    return _zero_based_layer_name("p", str(getattr(target, "id", "") or ""), 3)
+    _ = work
+    target_id = str(getattr(target, "id", "") or "")
+    return target_id or _zero_based_layer_name("p", "", 3)
 
 
 def coma_layer_name(target) -> str:
     stem = str(getattr(target, "coma_id", "") or getattr(target, "id", "") or "")
-    return _zero_based_layer_name("c", stem, 2)
+    return stem or _zero_based_layer_name("c", "", 2)
 
 
 def _draw_gp_selected_settings(box, obj, active_layer) -> None:
@@ -196,6 +189,8 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         flash_box.prop(sp, "uni_flash_spacing_mm")
         flash_box.prop(sp, "uni_flash_fill_scale_percent")
         flash_box.prop(sp, "uni_flash_max_line_count")
+        flash_box.prop(sp, "uni_flash_line_in_percent")
+        flash_box.prop(sp, "uni_flash_line_out_percent")
     if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
         shape_box.label(text="Meldex形状パラメータ")
@@ -532,6 +527,7 @@ def _draw_page_selected_settings(box, context, entry) -> None:
         icon="FILE_BLANK",
     )
     settings.prop(entry, "title", text="表示名")
+    settings.prop(entry, "coma_count", text="コマ数")
     if hasattr(entry, "visible"):
         settings.prop(entry, "visible", text="表示")
     row = settings.row(align=True)

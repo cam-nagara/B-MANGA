@@ -297,13 +297,6 @@ class BNAME_MT_object_context(Menu):
         op_record = getattr(bpy.ops.bname, "record_asset_link", None)
         if op_record is not None:
             layout.operator("bname.record_asset_link", icon="LINKED")
-        op_thumb = getattr(bpy.ops.bname, "coma_update_thumb", None)
-        if op_thumb is not None:
-            layout.separator()
-            layout.operator("bname.coma_update_thumb", icon="IMAGE")
-        op_prev = getattr(bpy.ops.bname, "coma_generate_preview", None)
-        if op_prev is not None:
-            layout.operator("bname.coma_generate_preview", icon="RESTRICT_RENDER_OFF")
 
 
 def _draw_in_object_context(self, context):

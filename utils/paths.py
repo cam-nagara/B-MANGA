@@ -116,7 +116,8 @@ def coma_json_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
 
 
 def coma_thumb_path(work_dir: Path, page_id: str, coma_id: str) -> Path:
-    return coma_dir(work_dir, page_id, coma_id) / f"{validate_coma_id(coma_id)}_thumb.png"
+    validate_coma_id(coma_id)
+    return coma_dir(work_dir, page_id, coma_id) / "thumb.png"
 
 
 def coma_preview_path(work_dir: Path, page_id: str, coma_id: str) -> Path:

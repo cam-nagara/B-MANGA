@@ -57,16 +57,7 @@ def geometry_for_entry(entry, rect: Rect) -> UniFlashGeometry:
         True,
         seed,
     )
-    fill_segments = _focus_segments(
-        center,
-        outer,
-        inner,
-        spacing,
-        max_count,
-        True,
-        seed,
-    )
-    fill_outline = [segment[1] for segment in fill_segments]
+    fill_outline = [segment[1] for segment in line_segments]
     if len(fill_outline) < 3:
         fill_outline = inner
     return UniFlashGeometry(
@@ -74,6 +65,21 @@ def geometry_for_entry(entry, rect: Rect) -> UniFlashGeometry:
         line_segments_mm=line_segments,
         outer_outline_mm=outer,
     )
+
+
+def line_width_factors(entry) -> tuple[float, float]:
+    sp = getattr(entry, "shape_params", None)
+    start = _clamp(
+        float(getattr(sp, "uni_flash_line_in_percent", 100.0) or 0.0) / 100.0,
+        0.0,
+        1.0,
+    )
+    end = _clamp(
+        float(getattr(sp, "uni_flash_line_out_percent", 0.0) or 0.0) / 100.0,
+        0.0,
+        1.0,
+    )
+    return start, end
 
 
 def _focus_segments(

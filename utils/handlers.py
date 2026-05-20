@@ -347,6 +347,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     work=work,
                     generate_references=True,
                 )
+                try:
+                    from . import coma_thumb_output
+
+                    coma_thumb_output.ensure_thumb_output_node(scene)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: thumb output setup failed")
                 _overlay.reset_viewport_background_to_theme(bpy.context)
                 _overlay.apply_bname_shading_mode(bpy.context)
                 coma_camera.schedule_coma_view_camera()
@@ -373,6 +379,22 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
             coma_camera.capture_camera_runtime_settings(bpy.context)
         except Exception:  # noqa: BLE001
             _logger.exception("B-Name coma camera save_pre sync failed")
+        try:
+            blend_path = Path(bpy.data.filepath)
+            work_dir = _find_work_root(blend_path) if str(blend_path) else None
+            if work_dir is not None:
+                rel = blend_path.resolve().relative_to(work_dir.resolve())
+                if (
+                    len(rel.parts) == 3
+                    and paths.is_valid_page_id(rel.parts[0])
+                    and paths.is_valid_coma_id(rel.parts[1])
+                    and rel.parts[2] == f"{rel.parts[1]}.blend"
+                ):
+                    from . import coma_thumb_output
+
+                    coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
+        except Exception:  # noqa: BLE001
+            _logger.exception("B-Name thumb output save_pre sync failed")
         try:
             from ..operators import raster_layer_op
 

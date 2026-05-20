@@ -208,6 +208,10 @@ class BNAME_OT_view_navigate(Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
+        if event.type in {"ESC", "RIGHTMOUSE", "WINDOW_DEACTIVATE"}:
+            return self._finish(context)
+        if not _shortcuts_allowed(context):
+            return self._finish(context)
         # Space リリースで終了 (修飾キーリリースでは終了しない — 動的切替のため)
         if event.type == "SPACE" and event.value == "RELEASE":
             return self._finish(context)
@@ -282,7 +286,7 @@ class BNAME_OT_view_navigate(Operator):
             self._region.tag_redraw()
             return {"RUNNING_MODAL"}
 
-        return {"RUNNING_MODAL"}
+        return {"PASS_THROUGH"}
 
     # ---------- リセット振り分け ----------
 
