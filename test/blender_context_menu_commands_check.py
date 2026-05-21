@@ -275,6 +275,7 @@ def main() -> None:
         work = _create_work(temp_root / "Context_Menu.bname")
         for kind in ("page", "coma", "gp", "effect", "raster", "image", "balloon", "text"):
             _assert_menu_for_kind(kind)
+        assert hasattr(bpy.types, "BNAME_OT_view_context_menu")
         _assert_link_selected_menu()
         _assert_menu_draw_does_not_resync()
         _assert_viewport_tool_menu_paths(work)

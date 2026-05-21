@@ -68,6 +68,17 @@ def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
             raise AssertionError(f"用紙ガイド線がセーフライン外塗りより奥にあります: {obj.name}")
 
 
+def _assert_guide_below_coma_planes(guide_objects, page, coma_z_order) -> None:
+    if len(getattr(page, "comas", []) or []) == 0:
+        return
+    lowest_plane_z = min(float(coma_z_order.plane_z(coma)) for coma in page.comas)
+    for obj in guide_objects:
+        if not (float(obj.location.z) < lowest_plane_z):
+            raise AssertionError(
+                f"用紙ガイド線がコマプレビュー面より手前にあります: guide={obj.location.z}, plane={lowest_plane_z}"
+            )
+
+
 def _assert_constant_thickness(paper_guide_object, guide_objects) -> None:
     if abs(float(paper_guide_object.GUIDE_SCREEN_PX) - 1.0) > 1.0e-6:
         raise AssertionError(f"用紙ガイド線の画面太さが1pxではありません: {paper_guide_object.GUIDE_SCREEN_PX}")
@@ -126,7 +137,7 @@ def main() -> None:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
         from bname_dev_paper_guide_visibility.core.work import get_work
-        from bname_dev_paper_guide_visibility.utils import paper_guide_object
+        from bname_dev_paper_guide_visibility.utils import coma_z_order, paper_guide_object
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -146,6 +157,7 @@ def main() -> None:
 
         _assert_guide_materials_are_opaque(guide_objects)
         _assert_stable_viewport_order(guide_objects, safe_fill)
+        _assert_guide_below_coma_planes(guide_objects, page, coma_z_order)
         _assert_constant_thickness(paper_guide_object, guide_objects)
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         if paper_guide_object.repair_loaded_work_paper_guides(scene, work):

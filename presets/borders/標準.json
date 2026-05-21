@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "presetType": "border",
   "presetName": "標準",
-  "description": "実線 0.5mm 黒・白フチなし",
+  "description": "実線 0.5mm 黒・白フチ 0.5mm",
   "border": {
     "style": "solid",
     "widthMm": 0.5,
@@ -13,8 +13,8 @@
     "visible": true
   },
   "whiteMargin": {
-    "enabled": false,
-    "widthMm": 0.37,
+    "enabled": true,
+    "widthMm": 0.5,
     "color": "#FFFFFF"
   }
 }

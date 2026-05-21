@@ -1208,6 +1208,15 @@ class BNAME_OT_layer_stack_toggle_visibility(Operator):
             target.visible = not bool(target.visible)
         elif item.kind in {"gp", "gp_folder", "effect"} and hasattr(target, "hide"):
             target.hide = not bool(target.hide)
+            if item.kind == "effect":
+                try:
+                    from ..utils import effect_line_object as _elo
+
+                    display = _elo.find_effect_display_object(resolved.get("object"))
+                    if display is not None:
+                        display.hide_viewport = bool(target.hide)
+                except Exception:  # noqa: BLE001
+                    pass
         else:
             return {"CANCELLED"}
         layer_stack_utils.tag_view3d_redraw(context)

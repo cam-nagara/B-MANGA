@@ -164,6 +164,13 @@ def main() -> None:
         shortcut_visibility.any_bname_panel_visible = lambda _context=None: True
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) > 0, "B-Nameタブ表示扱いでショートカットが有効になりません"
+        state = keymap_mod.get_state()
+        has_context_menu_key = any(
+            str(getattr(kmi, "idname", "") or "") == "bname.view_context_menu"
+            and str(getattr(kmi, "type", "") or "") == "RIGHTMOUSE"
+            for kmi in getattr(state, "bname_items", []) or []
+        )
+        assert has_context_menu_key, "B-Name右クリックメニューのキーマップがありません"
         assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
 
         keymap_mod.suspend_visibility_updates(seconds=1.0, reason="test blend switch")

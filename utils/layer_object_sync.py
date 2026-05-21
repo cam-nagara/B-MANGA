@@ -232,14 +232,112 @@ def _coma_lookup(work) -> dict[str, object]:
 
 
 def _set_object_z(obj: bpy.types.Object, new_z: float) -> bool:
+    changed = False
     try:
         loc = obj.location
         if abs(float(loc.z) - float(new_z)) > 1e-6:
             obj.location = (loc.x, loc.y, float(new_z))
-            return True
+            changed = True
     except Exception:  # noqa: BLE001
         pass
-    return False
+    if str(obj.get(on.PROP_KIND, "") or "") == "effect":
+        try:
+            from . import effect_line_object as _elo
+
+            _elo.sync_effect_display_transform(obj)
+        except Exception:  # noqa: BLE001
+            pass
+    return changed
+
+
+def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
+    kind = str(obj.get(on.PROP_KIND, "") or "")
+    bname_id = str(obj.get(on.PROP_ID, "") or "")
+    if not kind or not bname_id:
+        return ""
+    try:
+        from . import layer_stack as ls
+
+        if kind in {"balloon", "text"}:
+            return ls.target_uid(kind, f"{page_id}:{bname_id}")
+        if kind in {"image", "raster"}:
+            return ls.target_uid(kind, bname_id)
+        if kind == "effect":
+            layers = getattr(getattr(obj, "data", None), "layers", None)
+            if layers is None or len(layers) == 0:
+                return ""
+            return ls.target_uid("effect", ls._node_stack_key(layers[0]))
+        if kind in {"gp", "gp_folder"}:
+            return ls.target_uid(kind, bname_id)
+    except Exception:  # noqa: BLE001
+        return ""
+    return ""
+
+
+def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
+    try:
+        from . import layer_stack as ls
+
+        stack = getattr(scene, "bname_layer_stack", None)
+        if stack is None:
+            return [], ""
+        preview_uid = ls.target_uid(ls.COMA_PREVIEW_KIND, ls.coma_preview_key(coma_key))
+        order = [
+            ls.stack_item_uid(item)
+            for item in stack
+            if str(getattr(item, "parent_key", "") or "") == coma_key
+            and str(getattr(item, "kind", "") or "") in ls.COMA_REORDER_KINDS
+        ]
+        return order, preview_uid
+    except Exception:  # noqa: BLE001
+        return [], ""
+
+
+def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int, bpy.types.Object]]) -> int:
+    page_id = coma_key.split(":", 1)[0]
+    order, preview_uid = _coma_stack_order(scene, coma_key)
+    if not order or preview_uid not in order:
+        items.sort(key=lambda x: (x[0], x[1].name))
+        count = len(items)
+        updated = 0
+        for rank, (_zi, obj) in enumerate(items, start=1):
+            if _set_object_z(obj, coma_z_order.content_z(coma, rank, count)):
+                updated += 1
+        return updated
+
+    index_by_uid = {uid: i for i, uid in enumerate(order)}
+    preview_index = index_by_uid[preview_uid]
+    front: list[tuple[int, int, bpy.types.Object]] = []
+    back: list[tuple[int, int, bpy.types.Object]] = []
+    fallback: list[tuple[int, int, bpy.types.Object]] = []
+    for z_index, obj in items:
+        uid = _stack_uid_for_coma_object(obj, page_id)
+        stack_index = index_by_uid.get(uid)
+        if stack_index is None:
+            # レイヤーリストに現れない互換 Object は、従来どおり z_index が
+            # 大きいものほど前面として扱う。リスト上の実アイテムより後ろの
+            # グループに置きつつ、fallback 同士では降順に並べる。
+            fallback.append((10_000, -z_index, obj))
+        elif stack_index < preview_index:
+            front.append((stack_index, z_index, obj))
+        elif stack_index > preview_index:
+            back.append((stack_index, z_index, obj))
+        else:
+            fallback.append((stack_index, z_index, obj))
+    front.extend(fallback)
+    front.sort(key=lambda x: (x[0], x[1], x[2].name))
+    back.sort(key=lambda x: (x[0], x[1], x[2].name))
+    updated = 0
+    front_count = len(front)
+    for i, (_stack_index, _zi, obj) in enumerate(front):
+        rank = front_count - i
+        if _set_object_z(obj, coma_z_order.content_z(coma, rank, front_count)):
+            updated += 1
+    back_count = len(back)
+    for i, (_stack_index, _zi, obj) in enumerate(back, start=1):
+        if _set_object_z(obj, coma_z_order.content_behind_plane_z(coma, i, back_count)):
+            updated += 1
+    return updated
 
 
 def assign_per_page_z_ranks(scene, work) -> int:
@@ -282,11 +380,7 @@ def assign_per_page_z_ranks(scene, work) -> int:
         coma = comas_by_key.get(coma_key)
         if coma is None:
             continue
-        items.sort(key=lambda x: (x[0], x[1].name))
-        count = len(items)
-        for rank, (_zi, obj) in enumerate(items, start=1):
-            if _set_object_z(obj, coma_z_order.content_z(coma, rank, count)):
-                updated += 1
+        updated += _assign_coma_item_z(scene, work, coma_key, coma, items)
     return updated
 
 

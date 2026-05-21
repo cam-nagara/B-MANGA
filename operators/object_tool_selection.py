@@ -219,6 +219,14 @@ def _managed_object_for_key(context, key: str):
                 obj.data.layers.active = layer
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                from ..utils import effect_line_object as _elo
+
+                display = _elo.find_effect_display_object(obj)
+                if display is not None:
+                    return display
+            except Exception:  # noqa: BLE001
+                pass
         return obj
     return None
 

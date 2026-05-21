@@ -291,6 +291,17 @@ def _set_active_effect_layer(context, obj, layer) -> None:
 
 def _select_effect_layer(context, obj, layer) -> None:
     _set_active_effect_layer(context, obj, layer)
+    try:
+        from ..utils import effect_line_object as _elo
+
+        display = _elo.find_effect_display_object(obj)
+        if display is not None:
+            for candidate in context.view_layer.objects:
+                candidate.select_set(False)
+            display.select_set(True)
+            context.view_layer.objects.active = display
+    except Exception:  # noqa: BLE001
+        pass
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
     if stack is not None:
@@ -733,12 +744,29 @@ def _write_effect_strokes(
     )
     try:
         from ..utils import geometry_nodes_bridge as _gn
+        from ..utils import effect_line_object as _elo
 
-        _gn.ensure_modifier(
-            obj,
-            "effect_line",
-            _gn.effect_values(params, (float(x), float(y), w, h), seed_value),
+        values = _gn.effect_values(params, (float(x), float(y), w, h), seed_value)
+        display = _elo.ensure_effect_display_object(
+            scene=context.scene,
+            controller_obj=obj,
+            values=values,
         )
+        if display is not None:
+            try:
+                display.hide_viewport = bool(getattr(layer, "hide", False))
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                obj.hide_viewport = True
+            except Exception:  # noqa: BLE001
+                pass
+        modifier = obj.modifiers.get(_gn.MODIFIER_NAME)
+        if modifier is not None:
+            try:
+                obj.modifiers.remove(modifier)
+            except Exception:  # noqa: BLE001
+                pass
     except Exception:  # noqa: BLE001
         _logger.exception("effect_line: Geometry Nodes sync failed")
     if propagate_link:
@@ -949,6 +977,12 @@ def _delete_effect_layer(context, obj, layer) -> None:
     if is_new_effect_obj:
         # 新設計: 1 effect = 1 GP Object → obj 全体を削除
         try:
+            try:
+                from ..utils import effect_line_object as _elo
+
+                _elo.delete_effect_display_object(obj)
+            except Exception:  # noqa: BLE001
+                pass
             data = obj.data
             bpy.data.objects.remove(obj, do_unlink=True)
             try:
@@ -1091,7 +1125,14 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
     for o in bpy.data.objects:
         if str(o.get(on.PROP_KIND, "") or "") != "effect":
             continue
-        if o.hide_viewport:
+        display = None
+        try:
+            from ..utils import effect_line_object as _elo
+
+            display = _elo.find_effect_display_object(o)
+        except Exception:  # noqa: BLE001
+            display = None
+        if o.hide_viewport and (display is None or display.hide_viewport):
             continue
         candidates.append(o)
     candidates.sort(key=lambda o: int(o.get(on.PROP_Z_INDEX, 0) or 0), reverse=True)

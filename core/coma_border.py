@@ -105,12 +105,12 @@ class BNameComaWhiteMargin(bpy.types.PropertyGroup):
 
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="白フチ",
-        default=False,
+        default=True,
         update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]
         name="幅 (mm)",
-        default=0.37,
+        default=0.5,
         min=0.0,
         soft_max=5.0,
         update=_on_border_changed,

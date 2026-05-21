@@ -512,6 +512,9 @@ class KeymapState:
         _add("bname.balloon_tail_clipboard_paste", "V", ctrl=True, shift=True)
         # E → Eraser Hard / Eraser Stroke 切替 (GP描画中のみ実行)
         _add("bname.toggle_eraser_brush", "E")
+        # 右クリック → B-Name 選択メニュー。ツールの modal が動いていない
+        # 通常選択状態でも同じメニューを出せるよう keymap 側でも拾う。
+        _add("bname.view_context_menu", "RIGHTMOUSE")
         # Esc → コマ編集モードを抜けて全ページ一覧 (work.blend) に戻る
         # poll が MODE_COMA または「現在の .blend が cNN.blend」を要求する
         # (堅牢版: load_post 失敗等で bname_mode が同期されていなくても帰れる)。

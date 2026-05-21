@@ -81,6 +81,7 @@ def main() -> None:
         from bname_dev_coma_content_z.utils import balloon_curve_object
         from bname_dev_coma_content_z.utils import effect_line_object
         from bname_dev_coma_content_z.utils import layer_object_sync
+        from bname_dev_coma_content_z.utils import layer_stack as layer_stack_utils
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -156,6 +157,33 @@ def main() -> None:
                 raise AssertionError(
                     f"コマ枠線が{label}より奥にあります: border={border.location.z}, content={obj.location.z}"
                 )
+
+        stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
+        preview_uid = layer_stack_utils.target_uid(
+            layer_stack_utils.COMA_PREVIEW_KIND,
+            layer_stack_utils.coma_preview_key(parent_key),
+        )
+        balloon_uid = layer_stack_utils.target_uid("balloon", f"{page.id}:{balloon.id}")
+        effect_uid = layer_stack_utils.target_uid(
+            "effect",
+            layer_stack_utils._node_stack_key(effect_obj.data.layers[0]),
+        )
+
+        def _move_after(uid: str, anchor_uid: str) -> None:
+            from_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
+            anchor_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == anchor_uid)
+            stack.move(from_idx, anchor_idx if from_idx < anchor_idx else anchor_idx + 1)
+
+        _move_after(balloon_uid, preview_uid)
+        _move_after(effect_uid, preview_uid)
+        layer_stack_utils.apply_stack_order(bpy.context)
+        layer_object_sync.assign_per_page_z_ranks(scene, work)
+        if not (balloon_obj.location.z < plane_z):
+            raise AssertionError(f"コマプレビュー背面へ移したフキダシが手前に残っています: {balloon_obj.location.z}")
+        if not (effect_obj.location.z < plane_z):
+            raise AssertionError(f"コマプレビュー背面へ移した効果線が手前に残っています: {effect_obj.location.z}")
+        if not (safe_back_z := min(balloon_obj.location.z, effect_obj.location.z)) > 0.0:
+            raise AssertionError(f"コマプレビュー背面の表示物が用紙より奥にあります: {safe_back_z}")
 
         print("BNAME_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:

@@ -78,14 +78,14 @@ def _get_prefs():
 
 
 def _indent(row, depth: int) -> None:
-    """階層インデント。1 階層あたり約 1 文字分 (factor 2.0) ずらす.
+    """階層インデント。1 階層あたり約 1.5 文字分ずらす.
 
     `row.separator(factor=N)` は ``N * 0.5 ui-unit`` の幅を空けるため、factor=2.0
-    でおよそ 1 文字分。旧実装は 1.25 で半文字弱しかインデントせず、階層が
-    視認しづらかった。
+    でおよそ 1 文字分。コマ内レイヤーがコマの中にあると分かるよう、現在は
+    1 階層あたり factor=3.0 で表示する。
     """
     if depth > 0:
-        row.separator(factor=2.0 * depth)
+        row.separator(factor=3.0 * depth)
 
 
 def _kind_icon(kind: str) -> str:
@@ -93,6 +93,7 @@ def _kind_icon(kind: str) -> str:
         "page": "FILE_BLANK",
         "outside_group": "FILE_FOLDER",
         "coma": "MOD_WIREFRAME",
+        "coma_preview": "IMAGE_DATA",
         "gp": "OUTLINER_OB_GREASEPENCIL",
         "gp_folder": "FILE_FOLDER",
         "layer_folder": "FILE_FOLDER",
@@ -391,6 +392,10 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     if item.kind == "outside_group":
         _select_icon(row, index, _kind_icon(item.kind))
         _select_name(row, index, item.label or "(ページ外)")
+        return
+    if item.kind == "coma_preview":
+        _draw_type_icon(row, index, _kind_icon(item.kind))
+        _select_name(row, index, item.label or "コマプレビュー")
         return
     if target is None:
         _draw_type_icon(row, index, _kind_icon(item.kind))

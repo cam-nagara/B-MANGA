@@ -29,6 +29,14 @@ def content_z(coma, rank: int, count: int) -> float:
     return plane_z(coma) + offset
 
 
+def content_behind_plane_z(coma, rank: int, count: int) -> float:
+    count = max(1, int(count))
+    rank = max(1, min(int(rank), count))
+    span = max(0.0, COMA_CONTENT_MAX_OFFSET_Z_M - COMA_CONTENT_MIN_OFFSET_Z_M)
+    offset = COMA_CONTENT_MIN_OFFSET_Z_M + span * (rank / (count + 1))
+    return plane_z(coma) - offset
+
+
 def white_margin_z(coma) -> float:
     return plane_z(coma) + COMA_WHITE_MARGIN_OFFSET_Z_M
 

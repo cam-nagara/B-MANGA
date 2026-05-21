@@ -1043,6 +1043,35 @@ class BNAME_OT_view_layer_pick(Operator):
         return {"CANCELLED"}
 
 
+class BNAME_OT_view_context_menu(Operator):
+    """通常選択状態で B-Name の右クリックメニューを開く."""
+
+    bl_idname = "bname.view_context_menu"
+    bl_label = "B-Name 右クリックメニュー"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        return _shortcuts_allowed(context)
+
+    def invoke(self, context, event):
+        if not _shortcuts_allowed(context):
+            return {"PASS_THROUGH"}
+        area, region, _rv3d = _find_view3d_window_region(context)
+        if area is None or region is None:
+            return {"PASS_THROUGH"}
+        if not _in_region(region, event.mouse_x, event.mouse_y):
+            return {"PASS_THROUGH"}
+        try:
+            from ..operators import selection_context_menu
+
+            if selection_context_menu.open_for_viewport_object(context, event):
+                return {"FINISHED"}
+        except Exception:  # noqa: BLE001
+            _logger.exception("view_context_menu failed")
+        return {"PASS_THROUGH"}
+
+
 # ---------- スポイト ----------
 
 
@@ -1076,6 +1105,7 @@ _CLASSES = (
     BNAME_OT_view_zoom_drag,
     BNAME_OT_view_zoom_step,
     BNAME_OT_view_layer_pick,
+    BNAME_OT_view_context_menu,
     BNAME_OT_view_eyedropper,
 )
 

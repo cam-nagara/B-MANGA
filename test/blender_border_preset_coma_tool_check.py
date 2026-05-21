@@ -173,6 +173,19 @@ def main() -> None:
     work = bpy.context.scene.bname_work
     page = work.pages.add()
     coma = page.comas.add()
+    if not bool(coma.white_margin.enabled):
+        failures.append("新規コマの白フチ初期値がオンではない")
+    if abs(float(coma.white_margin.width_mm) - 0.5) > 1e-6:
+        failures.append(f"新規コマの白フチ幅初期値が0.5mmではない: {coma.white_margin.width_mm}")
+    std = border_presets.load_preset_by_name("標準", None)
+    if std is None:
+        failures.append("標準 プリセットを load 出来ない")
+    else:
+        border_presets.apply_preset_to_coma(std, coma)
+        if not bool(coma.white_margin.enabled):
+            failures.append("標準 プリセット適用後に白フチがオンではない")
+        if abs(float(coma.white_margin.width_mm) - 0.5) > 1e-6:
+            failures.append(f"標準 プリセット適用後の白フチ幅が0.5mmではない: {coma.white_margin.width_mm}")
     pre = border_presets.load_preset_by_name("輪郭ぼかし", None)
     if pre is None:
         failures.append("輪郭ぼかし プリセットを load 出来ない")

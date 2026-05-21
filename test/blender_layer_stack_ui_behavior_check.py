@@ -171,7 +171,10 @@ def _move_uid_before(context, uid: str, before_uid: str) -> None:
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
     before_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == before_uid)
-    stack.move(from_index, before_index)
+    if from_index == before_index or from_index == before_index - 1:
+        return
+    target_index = before_index - 1 if from_index < before_index else before_index
+    stack.move(from_index, target_index)
     layer_stack_utils.apply_stack_order_if_ui_changed(context, moved_uid=uid)
     layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
 
@@ -338,6 +341,10 @@ def main() -> None:
         coma_key = coma_stack_key(page, panel)
         page_uid = layer_stack_utils.target_uid(PAGE_KIND, page_key)
         coma_uid = layer_stack_utils.target_uid(COMA_KIND, coma_key)
+        coma_preview_uid = layer_stack_utils.target_uid(
+            layer_stack_utils.COMA_PREVIEW_KIND,
+            layer_stack_utils.coma_preview_key(coma_key),
+        )
 
         _gp_obj, gp_layer = _add_test_gp_layer(context, page_key)
         _eff_obj, effect_layer = effect_line_op._create_effect_layer(
@@ -422,6 +429,21 @@ def main() -> None:
         for uid in (gp_uid, effect_uid, raster_uid, balloon_uid, text_a_uid, text_b_uid):
             _move_uid_below_parent(context, uid, coma_uid)
             _assert_parent(context, uid, coma_key)
+        _stack(context)
+        preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
+        if preview_index < 0 or preview_item is None:
+            raise AssertionError("コマプレビュー行がレイヤーリストにありません")
+        if int(getattr(preview_item, "depth", 0)) < 2:
+            raise AssertionError(f"コマプレビュー行がコマ内階層に表示されていません: depth={preview_item.depth}")
+        for uid in (effect_uid, balloon_uid):
+            _move_uid_before(context, uid, coma_preview_uid)
+            stack_uids = [layer_stack_utils.stack_item_uid(item) for item in _stack(context)]
+            if stack_uids.index(uid) > stack_uids.index(coma_preview_uid):
+                raise AssertionError(f"{uid} をコマプレビューの前面へ移動できません")
+            _move_uid_before(context, coma_preview_uid, uid)
+            stack_uids = [layer_stack_utils.stack_item_uid(item) for item in _stack(context)]
+            if stack_uids.index(uid) < stack_uids.index(coma_preview_uid):
+                raise AssertionError(f"{uid} をコマプレビューの背面へ移動できません")
 
         if gp_parent.parent_key(gp_layer) != coma_key:
             raise AssertionError("GP layer parent was not applied")

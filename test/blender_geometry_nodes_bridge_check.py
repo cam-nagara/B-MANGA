@@ -117,8 +117,11 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_gn_bridge.core.work import get_work
+        from bname_dev_gn_bridge.core import effect_line as effect_core
         from bname_dev_gn_bridge.operators import balloon_op, effect_line_op
         from bname_dev_gn_bridge.utils import balloon_curve_object
+        from bname_dev_gn_bridge.utils import effect_line_object
+        from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn_bridge
         from bname_dev_gn_bridge.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
@@ -145,8 +148,11 @@ def main() -> None:
             (15.0, 20.0, 64.0, 48.0),
             seed=123,
         )
+        effect_display = effect_line_object.find_effect_display_object(effect_obj)
+        assert effect_display is not None, "効果線のGeometry Nodes表示実体がありません"
+        assert effect_obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
         effect_modifier = _assert_nodes(
-            effect_obj,
+            effect_display,
             kind="effect_line",
             group_name="BName_GN_EffectLine",
         )
@@ -154,8 +160,19 @@ def main() -> None:
         _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 0.63, "効果線 不透明度")
         assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
         assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
+        _assert_close(_modifier_socket_value(effect_modifier, "位置 X"), 15.0, "効果線 位置 X")
+        _assert_close(_modifier_socket_value(effect_modifier, "位置 Y"), 20.0, "効果線 位置 Y")
         _assert_close(_modifier_socket_value(effect_modifier, "幅"), 64.0, "効果線 幅")
         _assert_close(_modifier_socket_value(effect_modifier, "高さ"), 48.0, "効果線 高さ")
+        effect_socket_names = gn_bridge.effect_field_socket_names()
+        missing = [
+            field
+            for field in effect_core.EFFECT_PARAM_FIELDS
+            if field not in effect_socket_names
+            or _modifier_socket_value(effect_modifier, effect_socket_names[field]) is None
+        ]
+        assert not missing, f"効果線の詳細設定がGeometry Nodes入力へ移植されていません: {missing}"
+        assert _evaluated_polygon_count(effect_display) > 0, "効果線のGeometry Nodes表示結果が空です"
 
         balloon = balloon_op._create_balloon_entry(
             context,
@@ -170,6 +187,22 @@ def main() -> None:
         )
         balloon.line_width_mm = 0.55
         balloon.fill_opacity = 0.44
+        tail1 = balloon.tails.add()
+        tail1.type = "straight"
+        tail1.direction_deg = 45.0
+        tail1.length_mm = 8.0
+        tail2 = balloon.tails.add()
+        tail2.type = "curve"
+        tail2.direction_deg = 135.0
+        tail2.length_mm = 12.0
+        tail2.root_width_mm = 4.0
+        tail2.tip_width_mm = 1.0
+        tail2.curve_bend = 0.35
+        tail2.custom_points_enabled = True
+        tail2.start_x_mm = -3.0
+        tail2.start_y_mm = 2.0
+        tail2.end_x_mm = 7.0
+        tail2.end_y_mm = -5.0
         balloon_obj = balloon_curve_object.ensure_balloon_curve_object(
             scene=context.scene,
             entry=balloon,
@@ -186,6 +219,35 @@ def main() -> None:
         _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 42.0, "フキダシ 幅")
         _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 23.0, "フキダシ 高さ")
         assert int(_modifier_socket_value(balloon_modifier, "形状")) == 2
+        for socket_name in (
+            "X",
+            "Y",
+            "回転",
+            "角丸",
+            "線種",
+            "線色",
+            "塗り色",
+            "塗り輪郭ぼかし",
+            "塗りグラデーション",
+            "外側白フチ",
+            "内側白フチ",
+            "合成モード",
+            "しっぽ数",
+        ):
+            _modifier_socket_value(balloon_modifier, socket_name)
+        assert int(_modifier_socket_value(balloon_modifier, "しっぽ数")) == 2
+        assert int(_modifier_socket_value(balloon_modifier, "しっぽ 種類")) == 1
+        assert int(_modifier_socket_value(balloon_modifier, "しっぽ2 種類")) == 2
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 方向"), 135.0, "フキダシ しっぽ2 方向")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 長さ"), 12.0, "フキダシ しっぽ2 長さ")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 根元幅"), 4.0, "フキダシ しっぽ2 根元幅")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 先端幅"), 1.0, "フキダシ しっぽ2 先端幅")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 曲げ"), 0.35, "フキダシ しっぽ2 曲げ")
+        assert bool(_modifier_socket_value(balloon_modifier, "しっぽ2 始点・終点を固定"))
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 X"), -3.0, "フキダシ しっぽ2 始点 X")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 Y"), 2.0, "フキダシ しっぽ2 始点 Y")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 X"), 7.0, "フキダシ しっぽ2 終点 X")
+        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 Y"), -5.0, "フキダシ しっぽ2 終点 Y")
         assert _modifier_socket_value(balloon_modifier, "参照形状") is not None
         assert len(balloon_obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
         assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシのGeometry Nodes表示結果が空です"

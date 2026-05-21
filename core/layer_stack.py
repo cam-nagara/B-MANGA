@@ -14,6 +14,7 @@ LAYER_KIND_ITEMS = (
     ("page", "ページ", ""),
     ("outside_group", "ページ外", ""),
     ("coma", "コマ", ""),
+    ("coma_preview", "コマプレビュー", ""),
     ("gp", "グリースペンシル", ""),
     ("gp_folder", "フォルダ", ""),
     ("layer_folder", "汎用フォルダ", ""),

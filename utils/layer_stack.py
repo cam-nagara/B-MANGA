@@ -31,6 +31,8 @@ _logger = log.get_logger(__name__)
 
 EFFECT_GP_OBJECT_NAME = "BName_EffectLines"
 PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "balloon", "text"}
+COMA_PREVIEW_KIND = "coma_preview"
+COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS | {COMA_PREVIEW_KIND}
 LAYER_FOLDER_KIND = layer_folder_utils.LAYER_FOLDER_KIND
 _sync_scheduled = False
 _sync_should_apply_order = False
@@ -90,6 +92,10 @@ class LayerTarget:
 
 def target_uid(kind: str, key: str) -> str:
     return f"{kind}:{key}"
+
+
+def coma_preview_key(coma_key: str) -> str:
+    return f"{coma_key}:__preview__"
 
 
 def stack_item_uid(item) -> str:
@@ -728,6 +734,15 @@ def collect_targets(context) -> list[LayerTarget]:
                         page, {key: panel}, include_page_children=False
                     )
                 )
+                targets.append(
+                    LayerTarget(
+                        COMA_PREVIEW_KIND,
+                        coma_preview_key(key),
+                        "コマプレビュー",
+                        key,
+                        2,
+                    )
+                )
             # コマ外のページ直下レイヤーは、すべてのコマ行の後にまとめて表示する。
             all_page_layers = _collect_page_layer_targets(page, panels_by_key)
             visible_parent_keys = {page_key}
@@ -1038,6 +1053,12 @@ def _same_move_scope(a, b) -> bool:
     """右側の順序ボタンで同じ移動単位として扱える行かを返す."""
     a_kind = getattr(a, "kind", "")
     b_kind = getattr(b, "kind", "")
+    a_parent = str(getattr(a, "parent_key", "") or "")
+    b_parent = str(getattr(b, "parent_key", "") or "")
+    a_coma_child = a_kind in COMA_REORDER_KINDS and ":" in a_parent
+    b_coma_child = b_kind in COMA_REORDER_KINDS and ":" in b_parent
+    if a_coma_child or b_coma_child:
+        return a_coma_child and b_coma_child and a_parent == b_parent
     if a_kind == PAGE_KIND or b_kind == PAGE_KIND:
         return a_kind == b_kind == PAGE_KIND
     if a_kind == COMA_KIND or b_kind == COMA_KIND:
@@ -1061,8 +1082,7 @@ def _same_move_scope(a, b) -> bool:
         )
     return (
         a_kind == b_kind
-        and str(getattr(a, "parent_key", "") or "")
-        == str(getattr(b, "parent_key", "") or "")
+        and a_parent == b_parent
     )
 
 
@@ -1153,6 +1173,8 @@ def _parent_key_exists_for_child(context, child_kind: str, parent_key: str) -> b
         return True
     if parent_key == OUTSIDE_STACK_KEY:
         return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, "gp_folder", LAYER_FOLDER_KIND}
+    if child_kind == COMA_PREVIEW_KIND:
+        return False
     if layer_folder_utils.is_folder_key(context, parent_key):
         return child_kind in layer_folder_utils.FOLDER_CONTAINER_CHILD_KINDS
     if child_kind == COMA_KIND:
@@ -1236,7 +1258,7 @@ def _stack_item_page_key(item, context=None) -> str:
     parent_key = str(getattr(item, "parent_key", "") or "")
     if key == OUTSIDE_STACK_KEY or parent_key == OUTSIDE_STACK_KEY:
         return ""
-    if kind in {COMA_KIND, "balloon", "balloon_group", "text"}:
+    if kind in {COMA_KIND, COMA_PREVIEW_KIND, "balloon", "balloon_group", "text"}:
         page_key, _ = split_child_key(key)
         if page_key == OUTSIDE_STACK_KEY:
             return ""
@@ -1276,6 +1298,8 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
         return False
     item = stack[moved_index]
     kind = getattr(item, "kind", "")
+    if kind == COMA_PREVIEW_KIND:
+        return False
     if kind not in {COMA_KIND, "gp", "gp_folder", "effect", "raster", "image", "balloon", "text", LAYER_FOLDER_KIND}:
         return False
     parent_key = _drop_parent_from_nesting_delta(stack, item, moved_index, nesting_delta)
@@ -1983,6 +2007,36 @@ def resolve_stack_item(context, item):
                 }
         return {"kind": kind, "target": None, "object": None, "index": -1,
                 "page": target_page, "page_index": page_idx}
+    if kind == COMA_PREVIEW_KIND:
+        if work is None:
+            return None
+        coma_key = str(key or "")
+        marker = ":__preview__"
+        if coma_key.endswith(marker):
+            coma_key = coma_key[: -len(marker)]
+        page_id, stem = split_child_key(coma_key)
+        page_idx, target_page = _find_by_id(work.pages, page_id)
+        if target_page is None:
+            return None
+        for coma_idx, panel in enumerate(target_page.comas):
+            if getattr(panel, "coma_id", "") == stem or getattr(panel, "id", "") == stem:
+                obj = None
+                try:
+                    from . import coma_plane
+
+                    obj = coma_plane.find_coma_plane_object(page_id, stem)
+                except Exception:  # noqa: BLE001
+                    obj = None
+                return {
+                    "kind": kind,
+                    "target": panel,
+                    "object": obj,
+                    "index": coma_idx,
+                    "page": target_page,
+                    "page_index": page_idx,
+                }
+        return {"kind": kind, "target": None, "object": None, "index": -1,
+                "page": target_page, "page_index": page_idx}
     if kind == "gp":
         obj = gp_utils.get_master_gpencil()
         layer = getattr(getattr(obj, "data", None), "layers", None)
@@ -2287,6 +2341,19 @@ def select_stack_index(context, index: int) -> bool:
             page_index=page_idx,
             coma_index=coma_idx,
         )
+    elif kind == COMA_PREVIEW_KIND:
+        work = get_work(context)
+        page_idx = int(resolved.get("page_index", -1))
+        coma_idx = int(resolved.get("index", -1))
+        target_page = resolved.get("page")
+        if work is not None and target_page is not None and 0 <= page_idx < len(work.pages):
+            work.active_page_index = page_idx
+            if 0 <= coma_idx < len(target_page.comas):
+                target_page.active_coma_index = coma_idx
+        _set_active_object(context, resolved.get("object"))
+        scene.bname_active_gp_folder_key = ""
+        scene.bname_active_layer_kind = COMA_KIND
+        edge_selection.clear_selection(context)
     elif kind == "gp":
         obj = resolved.get("object")
         layer = resolved.get("target")
@@ -2410,7 +2477,16 @@ def select_stack_index(context, index: int) -> bool:
     elif kind == "effect":
         obj = resolved.get("object")
         layer = resolved.get("target")
-        _set_active_object(context, obj)
+        active_obj = obj
+        try:
+            from . import effect_line_object as _elo
+
+            display = _elo.find_effect_display_object(obj)
+            if display is not None:
+                active_obj = display
+        except Exception:  # noqa: BLE001
+            active_obj = obj
+        _set_active_object(context, active_obj)
         try:
             obj.data.layers.active = layer
         except Exception:  # noqa: BLE001

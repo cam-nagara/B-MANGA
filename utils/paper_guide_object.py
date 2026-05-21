@@ -623,7 +623,19 @@ def _object_page_id(obj: bpy.types.Object, work) -> str:
 
 
 def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
-    max_all = 0.02
+    max_all = 0.0
+    min_coma_plane = 0.01
+    try:
+        from . import coma_z_order
+
+        for page in getattr(work, "pages", []) or []:
+            if str(getattr(page, "id", "") or "") != str(page_id):
+                continue
+            for coma in getattr(page, "comas", []) or []:
+                min_coma_plane = min(min_coma_plane, float(coma_z_order.plane_z(coma)))
+            break
+    except Exception:  # noqa: BLE001
+        pass
     for obj in bpy.data.objects:
         if obj.get(PROP_GUIDE_OWNER_ID):
             continue
@@ -631,8 +643,8 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
-    safe_z = max_all + (_GUIDE_Z_CLEARANCE_M * 0.5)
-    guide_z = safe_z + _GUIDE_Z_CLEARANCE_M
+    guide_z = max(0.001, min_coma_plane - 0.0015)
+    safe_z = max(0.0005, guide_z - 0.0005)
     return safe_z, guide_z, max_all
 
 
