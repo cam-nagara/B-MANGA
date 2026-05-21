@@ -783,6 +783,16 @@ def ensure_balloon_curve_object(
         _logger.exception("balloon: page world offset 加算失敗")
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
+    try:
+        from . import geometry_nodes_bridge as _gn
+
+        _gn.ensure_modifier(
+            obj,
+            "uni_flash" if is_uni_flash else "balloon",
+            _gn.balloon_values(entry, uni_flash=is_uni_flash),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: Geometry Nodes 同期失敗")
     return obj
 
 

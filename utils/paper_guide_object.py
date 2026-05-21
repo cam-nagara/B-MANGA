@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Iterable, Optional
 
 import bpy
@@ -35,7 +36,9 @@ GUIDE_SCREEN_PX = 1.0
 # 実機スクリーンショットで 1px に見える係数へ補正する。
 _GUIDE_GP_RADIUS_SCALE = 0.1
 _GUIDE_THICKNESS_INTERVAL = 0.12
+_GUIDE_REPAIR_INTERVAL = 1.0
 _last_mpp: float = -1.0
+_last_repair_time: float = 0.0
 
 
 def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
@@ -767,6 +770,111 @@ def apply_view_constant_thickness() -> None:
         _set_gp_stroke_radius(obj, half)
 
 
+def _guide_strokes(obj: bpy.types.Object):
+    layers = getattr(getattr(obj, "data", None), "layers", None)
+    if layers is None:
+        return []
+    strokes = []
+    for layer in layers:
+        for frame in getattr(layer, "frames", []) or []:
+            drawing = getattr(frame, "drawing", None)
+            for stroke in getattr(drawing, "strokes", []) or []:
+                strokes.append(stroke)
+    return strokes
+
+
+def _materials_are_current(obj: bpy.types.Object) -> bool:
+    expected = {
+        f"{PAPER_GUIDE_MATERIAL_PREFIX}Dim": _opaque_rgba(viewport_colors.PAPER_GUIDE_DIM),
+        f"{PAPER_GUIDE_MATERIAL_PREFIX}Light": _opaque_rgba(viewport_colors.PAPER_GUIDE_LIGHT),
+        f"{PAPER_GUIDE_MATERIAL_PREFIX}Guide": _opaque_rgba(viewport_colors.PAPER_GUIDE),
+        f"{PAPER_GUIDE_MATERIAL_PREFIX}Safe": _opaque_rgba(viewport_colors.SAFE_LINE),
+    }
+    materials = list(getattr(getattr(obj, "data", None), "materials", []) or [])
+    if len(materials) < len(expected):
+        return False
+    material_names = {str(getattr(mat, "name", "") or "") for mat in materials}
+    for name, rgba in expected.items():
+        if name not in material_names:
+            return False
+        mat = bpy.data.materials.get(name)
+        if mat is None:
+            return False
+        try:
+            diffuse = tuple(float(c) for c in mat.diffuse_color[:4])
+            if any(abs(diffuse[i] - rgba[i]) > 1.0e-4 for i in range(4)):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+        gp_style = getattr(mat, "grease_pencil", None)
+        if gp_style is None:
+            return False
+        try:
+            stroke_color = tuple(float(c) for c in gp_style.color[:4])
+            if any(abs(stroke_color[i] - rgba[i]) > 1.0e-4 for i in range(4)):
+                return False
+        except Exception:  # noqa: BLE001
+            return False
+    return True
+
+
+def _paper_guide_needs_repair(work, page) -> bool:
+    page_id = str(getattr(page, "id", "") or "")
+    if not page_id:
+        return False
+    obj = bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
+    if obj is None or getattr(obj, "type", "") != "GREASEPENCIL":
+        return True
+    paper = getattr(work, "paper", None)
+    guides_visible = bool(getattr(paper, "show_guides", True)) if paper is not None else True
+    in_range = bool(getattr(page, "in_page_range", True))
+    strokes = _guide_strokes(obj)
+    if guides_visible and in_range:
+        if bool(getattr(obj, "hide_viewport", False)) or not strokes:
+            return True
+        if not _materials_are_current(obj):
+            return True
+        for stroke in strokes:
+            points = getattr(stroke, "points", None)
+            if points is None:
+                continue
+            for point in points:
+                try:
+                    if float(point.radius) <= 0.0:
+                        return True
+                except Exception:  # noqa: BLE001
+                    return True
+                if hasattr(point, "opacity"):
+                    try:
+                        if abs(float(point.opacity) - 1.0) > 1.0e-4:
+                            return True
+                    except Exception:  # noqa: BLE001
+                        return True
+    elif strokes:
+        return True
+    return False
+
+
+def repair_loaded_work_paper_guides(scene=None, work=None) -> bool:
+    """既存ファイルに残った古い用紙ガイド線を、現在仕様へ軽量修復する."""
+    scene = scene or getattr(bpy.context, "scene", None)
+    if scene is None:
+        return False
+    work = work or getattr(scene, "bname_work", None)
+    if work is None or not bool(getattr(work, "loaded", False)):
+        return False
+    needs_rebuild = False
+    for page in getattr(work, "pages", []) or []:
+        if _paper_guide_needs_repair(work, page):
+            needs_rebuild = True
+            break
+    if not needs_rebuild:
+        return False
+    regenerate_all_paper_guides(scene, work)
+    apply_view_constant_thickness()
+    return True
+
+
 def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
     layers = getattr(getattr(obj, "data", None), "layers", None)
     if layers is None:
@@ -789,7 +897,12 @@ def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
 
 
 def _thickness_timer():
+    global _last_repair_time
     try:
+        now = time.monotonic()
+        if now - _last_repair_time >= _GUIDE_REPAIR_INTERVAL:
+            _last_repair_time = now
+            repair_loaded_work_paper_guides()
         apply_view_constant_thickness()
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide thickness update failed")

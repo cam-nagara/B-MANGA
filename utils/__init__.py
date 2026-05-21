@@ -15,6 +15,7 @@ from . import (  # noqa: E402,F401
     cross_addon_settings_sync,
     effect_line_object,
     empty_layer_object,
+    geometry_nodes_bridge,
     gp_object_layer,
     mask_apply,
     mask_object,

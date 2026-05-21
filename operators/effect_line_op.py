@@ -662,6 +662,16 @@ def _write_effect_strokes(
         params_data=params_data,
         center_xy_mm=focus_center_xy,
     )
+    try:
+        from ..utils import geometry_nodes_bridge as _gn
+
+        _gn.ensure_modifier(
+            obj,
+            "effect_line",
+            _gn.effect_values(params, (float(x), float(y), w, h), seed_value),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect_line: Geometry Nodes sync failed")
     if propagate_link:
         effect_line_link_op.propagate_linked_effect_strokes(
             context,

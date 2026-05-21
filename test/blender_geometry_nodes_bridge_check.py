@@ -1,0 +1,190 @@
+"""Blender 実機用: 効果線・フキダシの Geometry Nodes 同期を確認."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_addon():
+    spec = importlib.util.spec_from_file_location(
+        "bname_dev_gn_bridge",
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bname_dev_gn_bridge"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
+def _modifier_socket_value(modifier, name: str):
+    group = modifier.node_group
+    assert group is not None, "Geometry Nodes グループがありません"
+    for item in group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") != name:
+            continue
+        identifier = str(getattr(item, "identifier", "") or "")
+        assert identifier, f"{name} の入力IDがありません"
+        return modifier[identifier]
+    raise AssertionError(f"Geometry Nodes 入力がありません: {name}")
+
+
+def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-5) -> None:
+    if abs(float(actual) - float(expected)) > eps:
+        raise AssertionError(f"{label}: expected {expected}, got {actual}")
+
+
+def _assert_nodes(obj, *, kind: str, group_name: str):
+    from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn
+
+    modifier = obj.modifiers.get(gn.MODIFIER_NAME)
+    assert modifier is not None, f"{getattr(obj, 'name', '')} に Geometry Nodes がありません"
+    assert getattr(modifier, "type", "") == "NODES"
+    assert modifier.node_group is not None
+    assert modifier.node_group.name == group_name
+    assert str(obj.get(gn.PROP_GN_KIND, "") or "") == kind
+    return modifier
+
+
+def main() -> None:
+    temp_root = Path(tempfile.mkdtemp(prefix="bname_gn_bridge_"))
+    mod = None
+    try:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_addon()
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "GeometryNodes.bname"))
+        assert "FINISHED" in result, result
+
+        from bname_dev_gn_bridge.core.work import get_work
+        from bname_dev_gn_bridge.operators import balloon_op, effect_line_op
+        from bname_dev_gn_bridge.utils import balloon_curve_object
+        from bname_dev_gn_bridge.utils.layer_hierarchy import page_stack_key
+
+        context = bpy.context
+        work = get_work(context)
+        assert work is not None and work.loaded
+        page = work.pages[0]
+        page_key = page_stack_key(page)
+
+        params = context.scene.bname_effect_line_params
+        params.effect_type = "focus"
+        params.brush_size_mm = 0.72
+        params.opacity = 0.63
+        params.max_line_count = 77
+        effect_obj, effect_layer = effect_line_op._create_effect_layer(
+            context,
+            (15.0, 20.0, 64.0, 48.0),
+            parent_key=page_key,
+        )
+        assert effect_obj is not None and effect_layer is not None
+        effect_line_op._write_effect_strokes(
+            context,
+            effect_obj,
+            effect_layer,
+            (15.0, 20.0, 64.0, 48.0),
+            seed=123,
+        )
+        effect_modifier = _assert_nodes(
+            effect_obj,
+            kind="effect_line",
+            group_name="BName_GN_EffectLine",
+        )
+        _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 0.72, "効果線 線幅")
+        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 0.63, "効果線 不透明度")
+        assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
+        assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
+        _assert_close(_modifier_socket_value(effect_modifier, "幅"), 64.0, "効果線 幅")
+        _assert_close(_modifier_socket_value(effect_modifier, "高さ"), 48.0, "効果線 高さ")
+
+        balloon = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="ellipse",
+            x=30.0,
+            y=50.0,
+            w=42.0,
+            h=23.0,
+            parent_kind="page",
+            parent_key=page_key,
+        )
+        balloon.line_width_mm = 0.55
+        balloon.fill_opacity = 0.44
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(
+            scene=context.scene,
+            entry=balloon,
+            page=page,
+        )
+        assert balloon_obj is not None
+        balloon_modifier = _assert_nodes(
+            balloon_obj,
+            kind="balloon",
+            group_name="BName_GN_Balloon",
+        )
+        _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.55, "フキダシ 線幅")
+        _assert_close(_modifier_socket_value(balloon_modifier, "塗り不透明度"), 0.44, "フキダシ 塗り")
+        _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 42.0, "フキダシ 幅")
+        _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 23.0, "フキダシ 高さ")
+        assert int(_modifier_socket_value(balloon_modifier, "形状")) == 2
+
+        balloon.line_width_mm = 0.91
+        balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")
+        _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.91, "フキダシ 線幅 更新")
+
+        flash = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="uni_flash",
+            x=88.0,
+            y=66.0,
+            w=58.0,
+            h=36.0,
+            parent_kind="page",
+            parent_key=page_key,
+        )
+        flash.line_width_mm = 0.38
+        flash.shape_params.uni_flash_spacing_mm = 1.7
+        flash.shape_params.uni_flash_max_line_count = 333
+        flash_obj = balloon_curve_object.ensure_balloon_curve_object(
+            scene=context.scene,
+            entry=flash,
+            page=page,
+        )
+        assert flash_obj is not None
+        flash_modifier = _assert_nodes(
+            flash_obj,
+            kind="uni_flash",
+            group_name="BName_GN_UniFlash",
+        )
+        _assert_close(_modifier_socket_value(flash_modifier, "線幅"), 0.38, "ウニフラッシュ 線幅")
+        _assert_close(_modifier_socket_value(flash_modifier, "線の間隔"), 1.7, "ウニフラッシュ 線の間隔")
+        assert int(_modifier_socket_value(flash_modifier, "最大本数")) == 333
+
+        flash.shape_params.uni_flash_spacing_mm = 2.4
+        flash_modifier = _assert_nodes(flash_obj, kind="uni_flash", group_name="BName_GN_UniFlash")
+        _assert_close(_modifier_socket_value(flash_modifier, "線の間隔"), 2.4, "ウニフラッシュ 線の間隔 更新")
+
+        print("BNAME_GEOMETRY_NODES_BRIDGE_OK")
+    finally:
+        if mod is not None:
+            try:
+                mod.unregister()
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    main()
