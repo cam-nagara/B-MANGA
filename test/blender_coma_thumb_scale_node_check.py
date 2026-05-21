@@ -106,13 +106,25 @@ def main() -> int:
         f"scale input should come from RLayers, got {scale_incoming[0].from_node.name}"
     print("[ok] Scale input ← RLayers")
 
-    # Step 4: idempotent — calling again doesn't duplicate
+    # Step 4: idempotent — calling again doesn't duplicate, AND keeps the
+    # scale→thumb link intact (= 保存時の save_pre 再実行で断線しない)。
+    # bpy_struct の identity は再アクセスごとに別 Python obj になり得るため、
+    # ``link.from_node is scale_node`` 比較が壊れて再呼び出しで誤って既存
+    # リンクを除去する回帰があった。 ここで明示的に保持を検証する。
     n_before = len(tree.nodes)
     cto.ensure_thumb_output_node(scene)
     cto.ensure_thumb_output_node(scene)
     n_after = len(tree.nodes)
     assert n_before == n_after, f"node count changed: {n_before} → {n_after}"
     print(f"[ok] idempotent: {n_after} nodes")
+    incoming = [l for l in tree.links if l.to_socket == thumb_sock]
+    assert len(incoming) == 1, (
+        f"thumb socket should still have exactly 1 incoming link, got {len(incoming)}"
+    )
+    assert incoming[0].from_node.name == scale.name, (
+        f"thumb socket should still be from Scale node, got {incoming[0].from_node.name}"
+    )
+    print("[ok] thumb socket ← Scale node still intact after re-call")
 
     # Step 5: user manually changes source to a non-RLayers node — preserved through Scale
     # Add a BrightContrast node (Image output) as user's custom source

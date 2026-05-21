@@ -247,11 +247,16 @@ def _ensure_link(tree, render_layers, socket, scale_node=None) -> None:
             return
 
         # 1) ``thumb`` ソケット直前を必ず Scale ノードからにする。
+        # Blender の bpy_struct は再アクセスごとに別の Python オブジェクトを
+        # 返すことがあり、 ``is`` 比較は同じノードでも False になり得る。
+        # 名前比較で安定して判定する。
+        scale_node_name = getattr(scale_node, "name", None)
         thumb_already_from_scale = False
         existing_to_thumb = None
         for link in list(tree.links):
             if link.to_socket == socket:
-                if link.from_node is scale_node:
+                from_node_name = getattr(link.from_node, "name", None)
+                if scale_node_name is not None and from_node_name == scale_node_name:
                     thumb_already_from_scale = True
                 else:
                     existing_to_thumb = link
