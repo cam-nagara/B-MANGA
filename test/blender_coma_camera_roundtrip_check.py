@@ -237,8 +237,18 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
         int(scene.render.resolution_y),
         int(scene.render.resolution_percentage),
         str(scene.render.filepath),
+        float(work.page_preview_scale_percentage),
     )
     try:
+        # v0.6.32 で thumb.png は ``page_preview_scale_percentage`` (既定 10%)
+        # で Scale ノード経由に縮小される。 ここではノード結線とレンダー成否
+        # を検証したいだけなので、 100% に固定して縮尺の影響を外す。
+        work.page_preview_scale_percentage = 100.0
+        # コマ用 blend の Scale ノード値を最新に同期するため、 ensure を
+        # 明示的に呼び直す (通常は save_pre / load_post で更新される)。
+        from bname_dev_coma_camera_roundtrip.utils import coma_thumb_output as _cto
+
+        _cto.ensure_thumb_output_node(scene)
         scene.render.resolution_x = 16
         scene.render.resolution_y = 16
         scene.render.resolution_percentage = 100
@@ -253,6 +263,7 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
             scene.render.resolution_y,
             scene.render.resolution_percentage,
             scene.render.filepath,
+            work.page_preview_scale_percentage,
         ) = before
 
 

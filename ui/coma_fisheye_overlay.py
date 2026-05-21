@@ -47,6 +47,15 @@ def _is_coma_blend_file() -> bool:
 
 
 def _draw_callback() -> None:
+    try:
+        _draw_callback_impl()
+    except Exception:  # noqa: BLE001
+        # ビューポート描画 callback で例外が外に漏れると Blender の描画ループが
+        # 壊れるため、 必ず内部で握り潰してログのみ残す。
+        _logger.exception("coma fisheye overlay draw callback failed")
+
+
+def _draw_callback_impl() -> None:
     context = bpy.context
     scene = getattr(context, "scene", None)
     if scene is None:
@@ -83,34 +92,36 @@ def _draw_callback() -> None:
     if paper_w_mm <= 0.0 or paper_h_mm <= 0.0:
         return
 
-    # カメラフレームのスクリーン座標を取得.
-    # ``camera.data.view_frame`` は焦点距離平面上の 4 角 (camera-local) を返す。
-    # PANO 魚眼でも近似的に視野矩形が取れる。
-    try:
-        from bpy_extras.view3d_utils import location_3d_to_region_2d
-    except Exception:  # noqa: BLE001
+    # カメラフレームのスクリーン座標を、 region 寸法とレンダーアスペクトから
+    # 直接計算する。 ``camera.data.view_frame()`` は PANO カメラだと内部 PERSP
+    # フォーマットの矩形 (50mm 既定レンズ) を返してしまい、 魚眼モードで実際
+    # に表示される正方形フレームと一致しない。 代わりにレンダーアスペクト
+    # (= ``scene.render.resolution_x / resolution_y``、 魚眼レイアウトでは 1.0)
+    # で region に内接する矩形をカメラフレームとして扱う。 これは
+    # ``view_camera_zoom`` を考慮しないので非既定ズームでは多少ずれるが、
+    # Blender 既定の camera view ではほぼ一致する。
+    res_x = float(getattr(scene.render, "resolution_x", 0) or 0)
+    res_y = float(getattr(scene.render, "resolution_y", 0) or 0)
+    if res_x <= 0.0 or res_y <= 0.0:
         return
-
-    try:
-        local_corners = camera.data.view_frame(scene=scene)
-    except Exception:  # noqa: BLE001
+    render_aspect = res_x / res_y
+    region_w_f = float(region.width)
+    region_h_f = float(region.height)
+    if region_w_f <= 1.0 or region_h_f <= 1.0:
         return
-    mat = camera.matrix_world
-    world_corners = [mat @ c for c in local_corners]
-    screen_corners = []
-    for wc in world_corners:
-        p2 = location_3d_to_region_2d(region, rv3d, wc)
-        if p2 is None:
-            return
-        screen_corners.append((float(p2[0]), float(p2[1])))
-    if len(screen_corners) < 4:
-        return
-    xs = [c[0] for c in screen_corners]
-    ys = [c[1] for c in screen_corners]
-    cam_min_x = min(xs)
-    cam_max_x = max(xs)
-    cam_min_y = min(ys)
-    cam_max_y = max(ys)
+    region_aspect = region_w_f / region_h_f
+    if region_aspect > render_aspect:
+        # region がカメラフレームより横長 → 高さフィット
+        frame_h = region_h_f
+        frame_w = frame_h * render_aspect
+    else:
+        # region がカメラフレームより縦長 → 幅フィット
+        frame_w = region_w_f
+        frame_h = frame_w / render_aspect
+    cam_min_x = (region_w_f - frame_w) * 0.5
+    cam_max_x = cam_min_x + frame_w
+    cam_min_y = (region_h_f - frame_h) * 0.5
+    cam_max_y = cam_min_y + frame_h
     cam_w = cam_max_x - cam_min_x
     cam_h = cam_max_y - cam_min_y
     if cam_w <= 1.0 or cam_h <= 1.0:

@@ -249,18 +249,31 @@ def _ensure_link(tree, render_layers, socket, scale_node=None) -> None:
         # 1) ``thumb`` ソケット直前を必ず Scale ノードからにする。
         # Blender の bpy_struct は再アクセスごとに別の Python オブジェクトを
         # 返すことがあり、 ``is`` 比較は同じノードでも False になり得る。
-        # 名前比較で安定して判定する。
-        scale_node_name = getattr(scale_node, "name", None)
+        # 名前比較で安定して判定する。 空名はマッチさせない (誤マッチ回避)。
+        scale_node_name = getattr(scale_node, "name", None) or ""
         thumb_already_from_scale = False
         existing_to_thumb = None
         for link in list(tree.links):
             if link.to_socket == socket:
-                from_node_name = getattr(link.from_node, "name", None)
-                if scale_node_name is not None and from_node_name == scale_node_name:
+                from_node_name = getattr(link.from_node, "name", None) or ""
+                if scale_node_name and from_node_name == scale_node_name:
                     thumb_already_from_scale = True
                 else:
                     existing_to_thumb = link
                 break
+
+        # 1.5) ユーザーが ``Scale → 中間ノード → thumb`` のチェーンを組んでいる
+        # 場合、 thumb 直前は別ノードだが Scale はチェーンの途中で既に使われて
+        # いる。 この状態で「thumb 直前のソースを Scale 入力に移す」とすると
+        # ``Scale 出力 → 中間ノード → Scale 入力`` の循環依存ができてレンダー
+        # 結果が壊れる。 Scale 出力が他のリンクで既に使われていれば、 ユーザー
+        # のカスタム経路を尊重して再ルーティングをスキップする。
+        if existing_to_thumb is not None:
+            scale_out_used_externally = any(
+                link.from_socket == scale_out for link in tree.links
+            )
+            if scale_out_used_externally:
+                return
 
         # 2) Scale ノードの入力ソースを決める。
         #    - ユーザーが ``thumb`` に何か繋いでいたら、そのソースを Scale 入力に移す。

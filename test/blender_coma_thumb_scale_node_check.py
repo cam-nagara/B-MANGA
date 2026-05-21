@@ -148,6 +148,37 @@ def main() -> int:
     assert scale_incoming[0].from_node.name == user_src.name
     print("[ok] user's source preserved as Scale input")
 
+    # Step 6: ユーザーが Scale → 中間ノード → thumb のチェーンを組んでいた
+    # 場合、 ensure 再呼び出しでサイクル (Scale → 中間 → Scale) を作って
+    # しまわないこと。 thumb 直前のソースを Scale 入力に押し戻すと循環依存
+    # になるため、 Scale 出力がチェーン内で既に使われていれば再ルーティング
+    # をスキップする。
+    # 現状 user_src → Scale → thumb なので、 そこに中間ノードを挟む。
+    intermediate = tree.nodes.new("CompositorNodeBrightContrast")
+    intermediate.location = (60, -100)
+    # Scale → thumb のリンクを削除して、 Scale → intermediate → thumb にする
+    for l in list(tree.links):
+        if l.from_socket == scale.outputs[0] and l.to_socket == thumb_sock:
+            tree.links.remove(l)
+    tree.links.new(scale.outputs[0], intermediate.inputs[0])
+    tree.links.new(intermediate.outputs[0], thumb_sock)
+    # ensure 呼び出し: サイクルを作らずユーザー経路を温存
+    cto.ensure_thumb_output_node(scene)
+    # thumb への接続が intermediate のままで、 サイクル (intermediate → Scale)
+    # が作られていないこと
+    incoming = [l for l in tree.links if l.to_socket == thumb_sock]
+    assert len(incoming) == 1
+    assert incoming[0].from_node.name == intermediate.name, (
+        f"thumb should still be from intermediate, got {incoming[0].from_node.name}"
+    )
+    scale_in_links = [l for l in tree.links if l.to_socket == scale_in]
+    assert len(scale_in_links) == 1
+    assert scale_in_links[0].from_node.name == user_src.name, (
+        f"Scale input should still be from user_src (no cycle), got "
+        f"{scale_in_links[0].from_node.name}"
+    )
+    print("[ok] user's Scale → 中間 → thumb chain preserved (no cycle)")
+
     print("\nALL PASS")
     return 0
 
