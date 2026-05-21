@@ -21,6 +21,7 @@ from typing import Optional
 
 import bpy
 
+from . import coma_z_order
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
@@ -179,12 +180,74 @@ def _resolve_page_id_for_object(obj: bpy.types.Object) -> str:
     return ""
 
 
-def assign_per_page_z_ranks(scene, work) -> int:
-    """各ページごとにレイヤーの ``location.z`` を rank * 0.1 でリセット.
+def _semantic_parent_key_for_object(work, obj: bpy.types.Object) -> str:
+    parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
+    if not parent_key:
+        return ""
+    if ":" in parent_key:
+        return parent_key
+    if parent_key.startswith(("p", "P")):
+        return parent_key
+    try:
+        from . import layer_folder
+        from .layer_hierarchy import OUTSIDE_STACK_KEY
 
-    重なり順 (z_index 昇順) でページ内 rank=1,2,3,... を振り、 z=0.1, 0.2,
-    0.3, ... を割当てる。 用紙 (paper_bg z=0) を最下段とし、 ページ間で
-    Z は独立 (page 1 と page 2 のレイヤーは Z=0.1 から共に始まる)。
+        if layer_folder.folder_exists(work, parent_key):
+            semantic = layer_folder.semantic_parent_key_for_folder(work, parent_key)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return str(semantic)
+            return ""
+    except Exception:  # noqa: BLE001
+        pass
+    folder_id = str(obj.get(on.PROP_FOLDER_ID, "") or "")
+    if folder_id:
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, folder_id)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return str(semantic)
+        except Exception:  # noqa: BLE001
+            pass
+    return parent_key
+
+
+def _resolve_coma_key_for_object(work, obj: bpy.types.Object) -> str:
+    semantic = _semantic_parent_key_for_object(work, obj)
+    return semantic if ":" in semantic else ""
+
+
+def _coma_lookup(work) -> dict[str, object]:
+    lookup: dict[str, object] = {}
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id:
+            continue
+        for coma in getattr(page, "comas", []) or []:
+            coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+            if coma_id:
+                lookup[f"{page_id}:{coma_id}"] = coma
+    return lookup
+
+
+def _set_object_z(obj: bpy.types.Object, new_z: float) -> bool:
+    try:
+        loc = obj.location
+        if abs(float(loc.z) - float(new_z)) > 1e-6:
+            obj.location = (loc.x, loc.y, float(new_z))
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def assign_per_page_z_ranks(scene, work) -> int:
+    """各ページごとにレイヤーの ``location.z`` を表示順へリセット.
+
+    ページ直下のレイヤーは従来どおりページ内 rank で並べる。コマ配下の
+    レイヤーは、同じコマの用紙面と枠線の間に収め、コマ内容が枠線を
+    手前から隠さないようにする。
 
     旧実装の z_index*0.1 では z_index=1010 のフキダシが z=101m に飛んで
     view_all 時に用紙が消える問題があったため、 per-page rank に変更。
@@ -193,6 +256,8 @@ def assign_per_page_z_ranks(scene, work) -> int:
         return 0
 
     page_groups: dict[str, list] = {}
+    coma_items: dict[str, list] = {}
+    comas_by_key = _coma_lookup(work)
     for obj in bpy.data.objects:
         if not bool(obj.get(on.PROP_MANAGED, False)):
             continue
@@ -200,6 +265,10 @@ def assign_per_page_z_ranks(scene, work) -> int:
         if not page_id:
             continue
         z_index = int(obj.get(on.PROP_Z_INDEX, 0) or 0)
+        coma_key = _resolve_coma_key_for_object(work, obj)
+        if coma_key in comas_by_key:
+            coma_items.setdefault(coma_key, []).append((z_index, obj))
+            continue
         page_groups.setdefault(page_id, []).append((z_index, obj))
 
     updated = 0
@@ -207,13 +276,17 @@ def assign_per_page_z_ranks(scene, work) -> int:
         items.sort(key=lambda x: (x[0], x[1].name))  # z_index 昇順, tie は name
         for rank, (_zi, obj) in enumerate(items, start=1):
             new_z = rank * BNAME_Z_STEP_M
-            try:
-                loc = obj.location
-                if abs(loc.z - new_z) > 1e-6:
-                    obj.location = (loc.x, loc.y, new_z)
-                    updated += 1
-            except Exception:  # noqa: BLE001
-                pass
+            if _set_object_z(obj, new_z):
+                updated += 1
+    for coma_key, items in coma_items.items():
+        coma = comas_by_key.get(coma_key)
+        if coma is None:
+            continue
+        items.sort(key=lambda x: (x[0], x[1].name))
+        count = len(items)
+        for rank, (_zi, obj) in enumerate(items, start=1):
+            if _set_object_z(obj, coma_z_order.content_z(coma, rank, count)):
+                updated += 1
     return updated
 
 

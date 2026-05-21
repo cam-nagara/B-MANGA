@@ -1529,7 +1529,7 @@ class BNAME_OT_coma_edge_move(Operator):
         - **辺の角度は維持したまま**、平行移動で候補 line に重ねる
         - 共有頂点は prev/next 辺の line と新 line の交点で補正 (= 隣接辺の角度維持)
         - スナップ位置のオフセット:
-          - 裁ち落とし枠外: 枠線の線幅分外側
+          - 裁ち落とし枠外: 枠線の半幅分外側
           - 他コマ辺: ピッタリ重ねる (gap=0)
           - 基本枠: ピッタリ
         - **特殊ケース** (ピッタリ重なり状態 → 離れる方向▲): 法線方向と無関係に
@@ -1656,7 +1656,7 @@ class BNAME_OT_coma_edge_move(Operator):
         has_panel_overlap = has_panel_overlap_opposite
 
         if overlap_move_width:
-            total_shift = border_width_mm
+            total_shift = border_width_mm * 0.5
             if total_shift < 0.001:
                 self.report({"INFO"}, "枠線の線幅が 0 のため移動できません")
                 return
@@ -1670,7 +1670,7 @@ class BNAME_OT_coma_edge_move(Operator):
             ):
                 self.report({"WARNING"}, "拡張するとコマ形状が破綻するため中止しました")
                 return
-            kind_label = "隣接コマ辺から線幅分外側"
+            kind_label = "隣接コマ辺から線幅の半分だけ外側"
         elif has_panel_overlap:
             # ピッタリ重なっている隣接コマ辺がある → ▲sign 方向に gap 分平行移動
             # (角度は元のまま維持、スナップ先 line に合わせる必要なし)

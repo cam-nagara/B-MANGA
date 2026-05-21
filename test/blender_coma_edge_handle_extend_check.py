@@ -102,9 +102,9 @@ def main() -> None:
             2,
         )
         right_x = max(x for x, _y in coma_edge_move_op._coma_polygon(left))
-        _assert_close(right_x, 50.0 + width_mm, "隣接コマ内側方向への線幅分拡張")
+        _assert_close(right_x, 50.0 + width_mm * 0.5, "隣接コマ内側方向への半線幅拡張")
 
-        # 軽微な数値ズレ (0.1mm) があっても「ピッタリ重なり」扱いで線幅分だけ
+        # 軽微な数値ズレ (0.1mm) があっても「ピッタリ重なり」扱いで半線幅だけ
         # 拡張する。 ここが厳しすぎると、 通常分岐で隣接コマの遠い辺にスナップ
         # してコマ幅分の大きな拡張が起きてしまう。
         page.comas.clear()
@@ -125,8 +125,8 @@ def main() -> None:
         )
         right_x_gap = max(x for x, _y in coma_edge_move_op._coma_polygon(left_gap))
         _assert_close(
-            right_x_gap, 50.0 + gap + width_mm,
-            "0.1mm の数値ズレでも線幅分だけ拡張",
+            right_x_gap, 50.0 + gap + width_mm * 0.5,
+            "0.1mm の数値ズレでも半線幅だけ拡張",
         )
 
         page.comas.clear()
@@ -169,7 +169,7 @@ def main() -> None:
                 2,
             )
             brush_right_x = max(x for x, _y in coma_edge_move_op._coma_polygon(brush_left))
-            _assert_close(brush_right_x, 50.0 + width_mm, "輪郭ぼかしの隣接コマ内側拡張量")
+            _assert_close(brush_right_x, 50.0 + width_mm * 0.5, "輪郭ぼかしの隣接コマ内側拡張量")
         finally:
             coma_border_texture.brush_total_width_mm = original_brush_total
         print("BNAME_COMA_EDGE_HANDLE_EXTEND_OK")
