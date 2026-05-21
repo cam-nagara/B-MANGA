@@ -1617,7 +1617,11 @@ class BNAME_OT_coma_edge_move(Operator):
         target_gap_axis = gap_v if abs(ny) >= abs(nx) else gap_h
 
         OVERLAP_TOL_MM = 0.5  # 拡張候補から除外するしきい値 (snap 後の最小距離)
-        OVERLAP_NEAR_TOL_MM = 0.05  # case B (gap 空け) 発火用の「ピッタリ重なり」判定
+        # 「辺がほぼ重なっている」判定。 0.05mm では浮動小数誤差や軽微な手操作
+        # ズレで外れて通常分岐の「遠い辺へスナップ」が走り、 線幅分どころか
+        # コマ幅分だけ拡張してしまうため、 OVERLAP_TOL_MM と同じ 0.5mm まで
+        # 緩めて視覚的に重なっているケースを確実に拾う。
+        OVERLAP_NEAR_TOL_MM = 0.5
 
         # ===== 特殊ケース: 現在の継ぎ目を実際に共有している隣接コマがあり、
         # かつ ▲sign 方向が「その panel から離れる方向」の場合 → gap を空ける =====
