@@ -314,13 +314,12 @@ def _assert_requested_state(work) -> dict[str, object]:
         if obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID)
         and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
     ]
-    if not guide_objects or any(obj.type != "GREASEPENCIL" for obj in guide_objects):
-        raise AssertionError("実体ガイドがページごとのGrease Pencilになっていません")
+    if not guide_objects or any(obj.type != "CURVE" for obj in guide_objects):
+        raise AssertionError("実体ガイドがページごとのカーブになっていません")
     guide_radii = []
     for obj in guide_objects:
-        for stroke in paper_guide_object._guide_strokes(obj):
-            for point in getattr(stroke, "points", []) or []:
-                guide_radii.append(float(getattr(point, "radius", 0.0) or 0.0))
+        if len(getattr(getattr(obj, "data", None), "splines", []) or []) > 0:
+            guide_radii.append(float(getattr(obj.data, "bevel_depth", 0.0) or 0.0))
     if not guide_radii or min(guide_radii) <= 0.0:
         raise AssertionError("実体ガイドの線に一定太さが設定されていません")
 
@@ -389,7 +388,7 @@ def _assert_requested_state(work) -> dict[str, object]:
         "dither_materials": len(dither_mats),
         "cloud_corners": len(cloud_corners),
         "thorn_curve_corners": len(thorn_corners),
-        "guide_grease_pencils": len(guide_objects),
+        "guide_curve_objects": len(guide_objects),
         "overview_mode": bool(scene.bname_overview_mode),
         "coma_border_values": [
             {

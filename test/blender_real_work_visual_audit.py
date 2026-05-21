@@ -145,13 +145,12 @@ def _collect_report() -> dict:
         for obj in bpy.data.objects
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "")
     ]
-    guide_stroke_radii = [
-        float(getattr(point, "radius", 0.0) or 0.0)
+    guide_curve_radii = [
+        float(getattr(getattr(obj, "data", None), "bevel_depth", 0.0) or 0.0)
         for obj in guide_objs
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
-        and obj.type == "GREASEPENCIL"
-        for stroke in paper_guide_object._guide_strokes(obj)
-        for point in getattr(stroke, "points", []) or []
+        and obj.type == "CURVE"
+        and len(getattr(getattr(obj, "data", None), "splines", []) or []) > 0
     ]
     border_objs = [
         obj
@@ -186,7 +185,7 @@ def _collect_report() -> dict:
         "overview_mode": bool(getattr(scene, "bname_overview_mode", False)),
         "bname_overlay_enabled": bool(getattr(scene, "bname_overlay_enabled", True)),
         "guide_object_count": len(guide_objs),
-        "guide_stroke_radii": guide_stroke_radii[:12],
+        "guide_curve_radii": guide_curve_radii[:12],
         "visible_guide_count": sum(1 for obj in guide_objs if not bool(getattr(obj, "hide_viewport", False))),
         "border_object_count": len(border_objs),
         "brush_like_object_count": len(brush_objs),

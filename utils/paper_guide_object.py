@@ -40,18 +40,12 @@ _GUIDE_THICKNESS_INTERVAL = runtime_activity.GUIDE_ACTIVE_INTERVAL
 _GUIDE_IDLE_INTERVAL = runtime_activity.GUIDE_IDLE_INTERVAL
 _GUIDE_REPAIR_INTERVAL = 1.0
 _GUIDE_Z_CLEARANCE_M = 0.012
-_GUIDE_KIND_Z_OFFSETS_M = {
-    "dim": 0.0000,
-    "light": 0.0007,
-    "inner": 0.0014,
-    "safe": 0.0021,
-}
 _last_mpp: float = -1.0
 _last_repair_time: float = 0.0
 
 
 def _live_guide_updates_allowed() -> bool:
-    return runtime_activity.live_view_updates_allowed(bpy.context)
+    return runtime_activity.work_loaded(bpy.context) and runtime_activity.live_view_updates_allowed(bpy.context)
 
 
 def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
@@ -151,21 +145,6 @@ def _guide_material_is_translucent(mat: bpy.types.Material) -> bool:
     return False
 
 
-def _material_slot_index(obj: bpy.types.Object, mat: bpy.types.Material) -> int:
-    mats = getattr(getattr(obj, "data", None), "materials", None)
-    if mats is None:
-        return -1
-    for i, existing in enumerate(mats):
-        if existing is mat or getattr(existing, "name", None) == mat.name:
-            return i
-    try:
-        mats.append(mat)
-        return len(mats) - 1
-    except Exception:  # noqa: BLE001
-        _logger.exception("paper guide GP material slot append failed")
-        return -1
-
-
 def _rect_loop(rect: Rect) -> list[tuple[float, float]]:
     return [
         (rect.x, rect.y),
@@ -225,7 +204,12 @@ def _trim_segments(
     return segs
 
 
-def _append_loop(curve: bpy.types.Curve, points: Iterable[tuple[float, float]]) -> None:
+def _append_loop(
+    curve: bpy.types.Curve,
+    points: Iterable[tuple[float, float]],
+    *,
+    material_index: int = 0,
+) -> None:
     pts = list(points)
     if len(pts) < 2:
         return
@@ -234,19 +218,33 @@ def _append_loop(curve: bpy.types.Curve, points: Iterable[tuple[float, float]]) 
     for point, (x_mm, y_mm) in zip(spline.points, pts, strict=False):
         point.co = (mm_to_m(x_mm), mm_to_m(y_mm), 0.0, 1.0)
     spline.use_cyclic_u = len(pts) >= 3
+    try:
+        spline.material_index = max(0, int(material_index))
+    except Exception:  # noqa: BLE001
+        pass
 
 
-def _append_segment(curve: bpy.types.Curve, start: tuple[float, float], end: tuple[float, float]) -> None:
+def _append_segment(
+    curve: bpy.types.Curve,
+    start: tuple[float, float],
+    end: tuple[float, float],
+    *,
+    material_index: int = 0,
+) -> None:
     spline = curve.splines.new(type="POLY")
     spline.points.add(1)
     spline.points[0].co = (mm_to_m(start[0]), mm_to_m(start[1]), 0.0, 1.0)
     spline.points[1].co = (mm_to_m(end[0]), mm_to_m(end[1]), 0.0, 1.0)
     spline.use_cyclic_u = False
+    try:
+        spline.material_index = max(0, int(material_index))
+    except Exception:  # noqa: BLE001
+        pass
 
 
-def _guide_radius_m() -> float:
+def _guide_curve_radius_m() -> float:
     if _last_mpp > 0.0:
-        half = GUIDE_SCREEN_PX * _last_mpp * 0.5 * _GUIDE_GP_RADIUS_SCALE
+        half = GUIDE_SCREEN_PX * _last_mpp * 0.5 * _GUIDE_CURVE_RADIUS_SCALE
         return max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
     return mm_to_m(0.12) * 0.5
 
@@ -301,100 +299,6 @@ def _remove_old_line_objects(page_id: str, keep_names: set[str]) -> None:
             _remove_object(obj)
 
 
-def _new_gp_data(data_name: str):
-    blocks = _gp_data_blocks()
-    if blocks is None:
-        raise RuntimeError("Grease Pencil data-blocks are not available")
-    old = blocks.get(data_name)
-    if old is not None and getattr(old, "users", 0) == 0:
-        try:
-            blocks.remove(old)
-        except Exception:  # noqa: BLE001
-            pass
-    return blocks.new(data_name)
-
-
-def _append_gp_stroke(drawing, points: Iterable[tuple[float, float]], *, radius: float, cyclic: bool, material_index: int) -> bool:
-    from . import gpencil as gp_utils
-
-    pts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in points]
-    if len(pts) < 2:
-        return False
-    return gp_utils.add_stroke_to_drawing(
-        drawing,
-        pts,
-        radius=radius,
-        cyclic=cyclic,
-        material_index=material_index,
-    )
-
-
-def _ensure_gp_guide_object(
-    scene,
-    page,
-    page_coll,
-    guide_sets: list[tuple[str, list[list[tuple[float, float]]], list[tuple[tuple[float, float], tuple[float, float]]], bpy.types.Material]],
-    *,
-    z_m: float,
-    visible: bool,
-) -> bpy.types.Object:
-    from . import gpencil as gp_utils
-
-    page_id = str(getattr(page, "id", "") or "")
-    obj_name = f"{PAPER_GUIDE_PREFIX}{page_id}"
-    data_name = f"{PAPER_GUIDE_GP_DATA_PREFIX}{page_id}"
-    obj = bpy.data.objects.get(obj_name)
-    if obj is not None:
-        _remove_object(obj)
-    gp_data = _new_gp_data(data_name)
-    obj = bpy.data.objects.new(obj_name, gp_data)
-    obj[PROP_GUIDE_KIND] = GUIDE_KIND_LINES
-    obj[PROP_GUIDE_OWNER_ID] = page_id
-    obj[on.PROP_MANAGED] = False
-    obj.hide_select = True
-    obj.hide_render = True
-    try:
-        obj.show_in_front = False
-    except Exception:  # noqa: BLE001
-        pass
-    layer = gp_utils.ensure_layer(gp_data, "ガイド")
-    frame = gp_utils.ensure_active_frame(layer, frame_number=1)
-    drawing = getattr(frame, "drawing", None) if frame is not None else None
-    has_stroke = False
-    radius = _guide_radius_m()
-    if drawing is not None:
-        for _label, loops, segments, mat in guide_sets:
-            material_index = _material_slot_index(obj, mat)
-            for loop in loops:
-                if _append_gp_stroke(drawing, loop, radius=radius, cyclic=len(loop) >= 3, material_index=material_index):
-                    has_stroke = True
-            for start, end in segments:
-                if _append_gp_stroke(drawing, [start, end], radius=radius, cyclic=False, material_index=material_index):
-                    has_stroke = True
-    obj.hide_viewport = not (visible and has_stroke)
-    obj.location.z = z_m
-    _set_page_location(scene, obj, page)
-    _link_to_page_collection(obj, page_coll)
-    _remove_old_line_objects(page_id, {obj.name})
-    return obj
-
-
-def _ensure_curve_data(curve_name: str, material: bpy.types.Material) -> bpy.types.Curve:
-    curve = bpy.data.curves.get(curve_name)
-    if curve is None:
-        curve = bpy.data.curves.new(curve_name, type="CURVE")
-    curve.dimensions = "3D"
-    while len(curve.splines):
-        curve.splines.remove(curve.splines[0])
-    curve.bevel_depth = mm_to_m(0.12) * 0.5
-    curve.bevel_resolution = 0
-    if not curve.materials:
-        curve.materials.append(material)
-    elif curve.materials[0] is not material:
-        curve.materials[0] = material
-    return curve
-
-
 def _ensure_curve_object_data(obj_name: str, curve: bpy.types.Curve) -> bpy.types.Object:
     obj = bpy.data.objects.get(obj_name)
     if obj is not None and getattr(obj, "type", "") != "CURVE":
@@ -407,40 +311,76 @@ def _ensure_curve_object_data(obj_name: str, curve: bpy.types.Curve) -> bpy.type
     return obj
 
 
-def _populate_guide_curve(
-    curve: bpy.types.Curve,
-    points: list[list[tuple[float, float]]],
-    segments: list[tuple[tuple[float, float], tuple[float, float]]] | None,
-) -> None:
-    for loop in points:
-        _append_loop(curve, loop)
-    for start, end in segments or []:
-        _append_segment(curve, start, end)
+def _curve_material_index(curve: bpy.types.Curve, material: bpy.types.Material) -> int:
+    mats = getattr(curve, "materials", None)
+    if mats is None:
+        return 0
+    for i, existing in enumerate(mats):
+        if existing is material or getattr(existing, "name", None) == material.name:
+            return i
+    try:
+        mats.append(material)
+        return len(mats) - 1
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper guide curve material append failed")
+        return 0
 
 
-def _ensure_curve_object(
+def _guide_sets_have_geometry(guide_sets) -> bool:
+    for _label, loops, segments, _mat in guide_sets:
+        if any(bool(loop) for loop in loops):
+            return True
+        if bool(segments):
+            return True
+    return False
+
+
+def _ensure_single_curve_guide_object(
     scene,
     page,
     page_coll,
+    guide_sets,
     *,
-    suffix: str,
-    points: list[list[tuple[float, float]]],
-    segments: list[tuple[tuple[float, float], tuple[float, float]]] | None,
-    material: bpy.types.Material,
     z_m: float,
     visible: bool,
 ) -> bpy.types.Object:
     page_id = str(getattr(page, "id", "") or "")
-    curve_name = f"{PAPER_GUIDE_CURVE_PREFIX}{page_id}_{suffix}"
-    obj_name = f"{PAPER_GUIDE_PREFIX}{page_id}" if suffix == "dim" else f"{PAPER_GUIDE_PREFIX}{page_id}_{suffix}"
-    curve = _ensure_curve_data(curve_name, material)
-    _populate_guide_curve(curve, points, segments)
+    obj_name = f"{PAPER_GUIDE_PREFIX}{page_id}"
+    curve_name = f"{PAPER_GUIDE_CURVE_PREFIX}{page_id}_lines"
+
+    curve = bpy.data.curves.get(curve_name)
+    if curve is None:
+        curve = bpy.data.curves.new(curve_name, type="CURVE")
+    curve.dimensions = "3D"
+    try:
+        curve.fill_mode = "FULL"
+    except Exception:  # noqa: BLE001
+        pass
+    curve.bevel_depth = _guide_curve_radius_m()
+    curve.bevel_resolution = 0
+    curve.resolution_u = 1
+    while len(curve.splines):
+        curve.splines.remove(curve.splines[0])
+    _clear_material_slots(curve)
+
+    has_geometry = False
+    for _label, loops, segments, mat in guide_sets:
+        material_index = _curve_material_index(curve, mat)
+        for loop in loops:
+            if not loop:
+                continue
+            _append_loop(curve, loop, material_index=material_index)
+            has_geometry = True
+        for start, end in segments:
+            _append_segment(curve, start, end, material_index=material_index)
+            has_geometry = True
 
     obj = _ensure_curve_object_data(obj_name, curve)
-    obj[PROP_GUIDE_KIND] = suffix
+    obj[PROP_GUIDE_KIND] = GUIDE_KIND_LINES
     obj[PROP_GUIDE_OWNER_ID] = page_id
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
+    obj.hide_render = True
     try:
         obj.show_in_front = False
     except Exception:  # noqa: BLE001
@@ -453,11 +393,11 @@ def _ensure_curve_object(
         obj.display_type = "TEXTURED"
     except Exception:  # noqa: BLE001
         pass
-    obj.hide_viewport = not (visible and (bool(points) or bool(segments)))
-    obj.hide_render = True
+    obj.hide_viewport = not (visible and has_geometry)
     obj.location.z = z_m
     _set_page_location(scene, obj, page)
     _link_to_page_collection(obj, page_coll)
+    _remove_old_line_objects(page_id, {obj.name})
     return obj
 
 
@@ -766,7 +706,7 @@ def _ensure_curve_guides(
     guide_z: float,
     visible: bool,
 ) -> list[bpy.types.Object]:
-    obj = _ensure_gp_guide_object(
+    obj = _ensure_single_curve_guide_object(
         scene,
         page,
         page_coll,
@@ -980,13 +920,28 @@ def _curve_display_needs_rebuild(obj: bpy.types.Object) -> bool:
     return False
 
 
-def _curve_z_levels_are_staggered(objects: list[bpy.types.Object]) -> bool:
-    visible = [
-        round(float(getattr(obj.location, "z", 0.0) or 0.0), 6)
-        for obj in objects
-        if _curve_has_visible_geometry(obj)
-    ]
-    return len(visible) <= 1 or len(set(visible)) == len(visible)
+def _line_guide_object(page_id: str) -> Optional[bpy.types.Object]:
+    return bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
+
+
+def _line_guide_should_have_geometry(work, page) -> bool:
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return False
+    if not bool(getattr(paper, "show_guides", True)):
+        return False
+    if not bool(getattr(page, "in_page_range", True)):
+        return False
+    target_id = str(getattr(page, "id", "") or "")
+    page_index = -1
+    for i, candidate in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(candidate, "id", "") or "") == target_id:
+            page_index = i
+            break
+    if page_index < 0:
+        return False
+    rects = overlay_shared.compute_paper_rects(paper, is_left_half=_is_left_page(paper, page_index))
+    return _guide_sets_have_geometry(_paper_guide_sets(paper, rects))
 
 
 def _guide_curve_objects(page_id: str) -> list[bpy.types.Object]:
@@ -1003,27 +958,25 @@ def _paper_guide_needs_repair(work, page) -> bool:
     page_id = str(getattr(page, "id", "") or "")
     if not page_id:
         return False
-    paper = getattr(work, "paper", None)
-    guides_visible = bool(getattr(paper, "show_guides", True)) if paper is not None else True
-    in_range = bool(getattr(page, "in_page_range", True))
     curve_objects = _guide_curve_objects(page_id)
-    gp_obj = bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
+    line_obj = _line_guide_object(page_id)
+    should_have_geometry = _line_guide_should_have_geometry(work, page)
     if curve_objects:
         return True
-    if guides_visible and in_range:
-        if gp_obj is None or getattr(gp_obj, "type", "") != "GREASEPENCIL":
-            return True
-        if bool(getattr(gp_obj, "hide_viewport", False)) or not _guide_strokes(gp_obj):
-            return True
-        if bool(getattr(gp_obj, "show_in_front", False)) or bool(getattr(gp_obj, "show_transparent", False)):
-            return True
-        if not _materials_are_current(gp_obj):
-            return True
-        for mat in list(getattr(getattr(gp_obj, "data", None), "materials", []) or []):
-            if _guide_material_is_translucent(mat):
-                return True
-    elif gp_obj is not None and _guide_strokes(gp_obj):
+    if line_obj is not None and getattr(line_obj, "type", "") != "CURVE":
         return True
+    if should_have_geometry:
+        if line_obj is None:
+            return True
+        if bool(getattr(line_obj, "hide_viewport", False)) or not _curve_has_visible_geometry(line_obj):
+            return True
+        if _curve_display_needs_rebuild(line_obj):
+            return True
+        if not _materials_are_current(line_obj):
+            return True
+    elif line_obj is not None:
+        if _curve_has_visible_geometry(line_obj) or not bool(getattr(line_obj, "hide_viewport", False)):
+            return True
     return False
 
 

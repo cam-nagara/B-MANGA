@@ -264,14 +264,14 @@ def main() -> None:
                 for obj in bpy.data.objects
                 if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page.id
                 and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
-                and obj.type == "GREASEPENCIL"
+                and obj.type == "CURVE"
             ]
 
         guide_objects = _guide_objects()
         assert guide_objects, "paper guide objects were not created"
-        assert len(guide_objects) == 1, "paper guides should be one Grease Pencil object per page"
-        assert any(paper_guide_object._guide_strokes(obj) for obj in guide_objects), (
-            "paper guide strokes were not created"
+        assert len(guide_objects) == 1, "paper guides should be one curve object per page"
+        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
+            "paper guide splines were not created"
         )
         assert not any(bool(getattr(obj, "show_in_front", False)) for obj in guide_objects), (
             "paper guide should not rely on viewport in-front wire display"
@@ -280,14 +280,14 @@ def main() -> None:
         paper_guide_object.regenerate_all_paper_guides(scene, work)
         hidden_guide_objects = _guide_objects()
         assert hidden_guide_objects, "paper guide objects disappeared after hiding guides"
-        assert not any(paper_guide_object._guide_strokes(obj) for obj in hidden_guide_objects), (
+        assert not any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in hidden_guide_objects), (
             "用紙ガイドをオフにしてもガイド線が残っています"
         )
         work.paper.show_guides = True
         paper_guide_object.regenerate_all_paper_guides(scene, work)
         guide_objects = _guide_objects()
         assert guide_objects, "paper guide objects disappeared after showing guides"
-        assert any(paper_guide_object._guide_strokes(obj) for obj in guide_objects), (
+        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
             "用紙ガイドをオンに戻してもガイド線が復元されません"
         )
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")

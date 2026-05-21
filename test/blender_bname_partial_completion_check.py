@@ -223,12 +223,12 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
     ]
     if len(guide_line_objs) != 1:
-        raise AssertionError(f"paper guide lines must be one Grease Pencil object: {guide_line_objs}")
+        raise AssertionError(f"paper guide lines must be one curve object: {guide_line_objs}")
     for obj in guide_line_objs:
-        if obj.type != "GREASEPENCIL":
-            raise AssertionError(f"paper guide lines should be Grease Pencil: {obj.name} ({obj.type})")
-        if not paper_guide_object._guide_strokes(obj):
-            raise AssertionError(f"paper guide has no strokes: {obj.name}")
+        if obj.type != "CURVE":
+            raise AssertionError(f"paper guide lines should be Curve: {obj.name} ({obj.type})")
+        if len(getattr(getattr(obj, "data", None), "splines", []) or []) == 0:
+            raise AssertionError(f"paper guide has no splines: {obj.name}")
         if bool(getattr(obj, "show_in_front", False)) or bool(getattr(obj, "show_transparent", False)):
             raise AssertionError(f"paper guide should not rely on in-front transparent wire display: {obj.name}")
     safe_fill_objs = [
