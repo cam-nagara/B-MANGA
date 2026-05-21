@@ -130,6 +130,22 @@ def _soft_mask_distance_mm(coma) -> float:
     return line_w * 0.5 * blur
 
 
+def _soft_mask_corner_treatment_would_wrap(coma) -> bool:
+    """輪郭ぼかしの内側オフセットが角丸半径を超えて反対側に巻き戻るか判定."""
+    border = getattr(coma, "border", None)
+    if border is None:
+        return False
+    corner_type = str(getattr(border, "corner_type", "square") or "square")
+    if corner_type not in ("rounded", "bevel"):
+        return False
+    radius = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
+    if radius <= 0.0:
+        return False
+    distance = _soft_mask_distance_mm(coma)
+    # 角丸半径と同等以下のオフセットなら破綻しない (安全マージン 5% を見ておく)
+    return distance > radius * 0.95
+
+
 def _resolve_preview_image(work, page, coma):
     """コマのプレビュー/サムネ画像を bpy.Image として返す (無ければ None).
 
@@ -704,16 +720,24 @@ def _build_mesh_geometry(mesh: bpy.types.Mesh, coma, *, soft_mask: bool = False)
         w = max(0.001, float(getattr(coma, "rect_width_mm", 50.0) or 50.0))
         h = max(0.001, float(getattr(coma, "rect_height_mm", 50.0) or 50.0))
         base_pts = [(0.0, 0.0), (w, 0.0), (w, h), (0.0, h)]
-        pts = _corner_outline_mm(coma, base_pts)
     else:
         vertices = list(getattr(coma, "vertices", []) or [])
         if len(vertices) < 3:
             # 不正な polygon は座標軸付近の小さな三角形を置いておく (depsgraph
             # 安全策。 後で形状が確定したら再生成される)
-            pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
+            base_pts = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]
         else:
             base_pts = [(float(v.x_mm), float(v.y_mm)) for v in vertices]
-            pts = _corner_outline_mm(coma, base_pts)
+    # 輪郭ぼかし (soft_mask) で「丸角・面取り + 大きいぼかし幅」 の組み合わせは、
+    # オフセット幅が角丸半径を超えた瞬間に内側ループが角丸の中心を超えて反対側
+    # に巻き戻り、 隣接するクアッドが交差してコマ枠外側へスパイクが出る。
+    # ぼかし幅が角丸半径以下なら角処理を適用しても破綻しないので維持し、
+    # 半径を超える場合のみ角処理を外してシャープな多角形を採用する。
+    # 実線スタイル (soft_mask=False) では従来どおり常に角処理を適用する。
+    if soft_mask and _soft_mask_corner_treatment_would_wrap(coma):
+        pts = list(base_pts)
+    else:
+        pts = _corner_outline_mm(coma, base_pts)
     attr_values = None
     soft = _build_soft_mask_mesh(pts, _soft_mask_distance_mm(coma)) if soft_mask else None
     if soft is not None:
