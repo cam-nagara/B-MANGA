@@ -835,7 +835,7 @@ def _match_filter(kmi: object, filt: dict) -> bool:
 _state: Optional[KeymapState] = None
 
 # タイマー監視間隔 (秒)
-_WATCH_INTERVAL = 0.15
+_WATCH_INTERVAL = 0.5
 # B-Name タブの bl_category 名
 _BNAME_TAB_CATEGORY = "B-Name"
 _SUSPEND_UNTIL = 0.0

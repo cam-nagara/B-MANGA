@@ -11,7 +11,6 @@ from .geom import Rect
 
 MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
 DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
-UNI_FLASH_SHAPE = "uni_flash"
 
 _LEGACY_SHAPE_ALIASES = {
     "polygon": "octagon",
@@ -22,6 +21,7 @@ _LEGACY_SHAPE_ALIASES = {
     "spike_straight": "thorn",
     "spike_curve": "thorn-curve",
     "thorn_curve": "thorn-curve",
+    "uni_flash": "ellipse",
 }
 
 
@@ -32,10 +32,6 @@ def normalize_shape(shape: str | None) -> str:
 
 def is_dynamic_meldex_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in DYNAMIC_MELDEX_SHAPES
-
-
-def is_uni_flash_shape(shape: str | None) -> bool:
-    return normalize_shape(shape) == UNI_FLASH_SHAPE
 
 
 def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
@@ -234,9 +230,6 @@ def outline_with_corners_for_shape(
         return _outline_thorn_curve_with_corners(rect, opts)
     if s == "octagon":
         return _outline_octagon(rect), list(range(8))
-    if s == UNI_FLASH_SHAPE:
-        return _outline_ellipse(rect), []
-
     # Legacy B-Name shapes kept for existing files.
     if s == "pill":
         return _outline_pill(rect), []
@@ -443,7 +436,7 @@ def _sample_cubic(
     c2: tuple[float, float],
     p1: tuple[float, float],
     *,
-    steps: int = 5,
+    steps: int = 12,
 ) -> list[tuple[float, float]]:
     out: list[tuple[float, float]] = []
     for step in range(1, steps + 1):
@@ -479,8 +472,7 @@ def _outline_cloud_with_corners(
         return (cx + (rx - notch) * cos_t, cy + (ry - notch) * sin_t)
 
     pts = [valley_point(angle)]
-    # 各こぶの境目 (谷) は鋭角に残す。
-    corners = [0]
+    corners: list[int] = []
     for _is_sub, bump_angle, h_mul in segments:
         start_angle = angle
         end_angle = angle + bump_angle
@@ -503,7 +495,6 @@ def _outline_cloud_with_corners(
         off_x = m_len * perp_x
         off_y = m_len * perp_y
         pts.extend(_sample_cubic(v_start, (v_start[0] + off_x, v_start[1] + off_y), (v_end[0] + off_x, v_end[1] + off_y), v_end))
-        corners.append(len(pts) - 1)
     return _local_to_rect(rect, pts), corners
 
 
@@ -568,8 +559,7 @@ def _outline_thorn_curve_with_corners(
         return _outline_ellipse(rect), []
 
     pts = [peaks[0]]
-    # トゲ先端 (各 peak) は鋭角に残し、谷側だけ曲線でへこませる。
-    corners = [0]
+    corners: list[int] = []
     for i, p0 in enumerate(peaks):
         p1 = peaks[(i + 1) % len(peaks)]
         mx = (p0[0] + p1[0]) * 0.5
@@ -583,7 +573,6 @@ def _outline_thorn_curve_with_corners(
         c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
         c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
         pts.extend(_sample_cubic(p0, c1, c2, p1))
-        corners.append(len(pts) - 1)
     return _local_to_rect(rect, pts), corners
 
 
@@ -599,7 +588,7 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
     num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
     period = (2.0 * math.pi) / num_bumps
     base_angle = -math.pi * 0.5 + opts.offset * period
-    steps = num_bumps * 6
+    steps = num_bumps * 10
     sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
     sub_width_factor = _jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5)
     sub_freq = max(1, round(num_bumps * 2.0 / sub_width_factor)) if sub_enabled else 0
@@ -634,5 +623,5 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
         p3 = raw[(i + 2) % n]
         c1 = (p1[0] + (p2[0] - p0[0]) / 6.0, p1[1] + (p2[1] - p0[1]) / 6.0)
         c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
-        pts.extend(_sample_cubic(p1, c1, c2, p2, steps=2))
+        pts.extend(_sample_cubic(p1, c1, c2, p2, steps=4))
     return _local_to_rect(rect, pts)

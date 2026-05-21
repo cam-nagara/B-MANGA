@@ -11,6 +11,7 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..ui import reparent_overlay
 from ..utils import (
+    balloon_curve_object,
     edge_selection,
     gp_layer_parenting as gp_parent,
     layer_reparent,
@@ -1174,10 +1175,14 @@ class BNAME_OT_object_tool(Operator):
                     continue
                 if self._drag_action == "center":
                     cx, cy = snapshot.get("center_offset", (0.0, 0.0))
-                    if hasattr(entry, "center_offset_x_mm"):
-                        entry.center_offset_x_mm = float(cx) + dx
-                    if hasattr(entry, "center_offset_y_mm"):
-                        entry.center_offset_y_mm = float(cy) + dy
+                    with balloon_curve_object.suspend_auto_sync():
+                        if hasattr(entry, "center_offset_x_mm"):
+                            entry.center_offset_x_mm = float(cx) + dx
+                        if hasattr(entry, "center_offset_y_mm"):
+                            entry.center_offset_y_mm = float(cy) + dy
+                    continue
+                if self._drag_action == "move":
+                    balloon_op._move_balloon_with_texts(page, entry, x + dx, y + dy)
                     continue
                 nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 balloon_op._set_balloon_rect(page, entry, nx, ny, nw, nh)

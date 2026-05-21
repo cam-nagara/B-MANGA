@@ -183,14 +183,6 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     sub.prop(entry, "inner_white_margin_color")
 
     sp = entry.shape_params
-    if balloon_shapes.is_uni_flash_shape(entry.shape):
-        flash_box = box.box()
-        flash_box.label(text="ウニフラッシュ")
-        flash_box.prop(sp, "uni_flash_spacing_mm")
-        flash_box.prop(sp, "uni_flash_fill_scale_percent")
-        flash_box.prop(sp, "uni_flash_max_line_count")
-        flash_box.prop(sp, "uni_flash_line_in_percent")
-        flash_box.prop(sp, "uni_flash_line_out_percent")
     if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
         shape_box.label(text="Meldex形状パラメータ")
@@ -452,7 +444,7 @@ def _draw_effect_tail_settings(box, params) -> None:
     color_box = box.box()
     color_box.label(text="色")
     color_box.prop(params, "line_color")
-    if params.effect_type == "beta_flash":
+    if params.effect_type not in {"speed", "white_outline"}:
         color_box.prop(params, "fill_color")
         color_box.prop(params, "fill_opacity")
         color_box.prop(params, "fill_base_shape")

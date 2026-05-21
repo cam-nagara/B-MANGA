@@ -304,20 +304,25 @@ def _assert_requested_state(work) -> dict[str, object]:
     thorn_pts, thorn_corners = balloon_shapes.outline_with_corners_for_entry(
         thorn, Rect(thorn.x_mm, thorn.y_mm, thorn.width_mm, thorn.height_mm)
     )
-    if not cloud_pts or not cloud_corners or not thorn_pts or not thorn_corners:
-        raise AssertionError("雲/トゲ（曲線）の鋭角点が検出できません")
+    if len(cloud_pts) < 48 or len(thorn_pts) < 48:
+        raise AssertionError("雲/トゲ（曲線）の曲線点が不足しています")
+    if cloud_corners or thorn_corners:
+        raise AssertionError("雲/トゲ（曲線）に角張る点が残っています")
 
     guide_objects = [
         obj for obj in bpy.data.objects
         if obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID)
-        and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
+        and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
     ]
-    guide_radii = [
-        float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
-        for obj in guide_objects
-    ]
-    if not guide_objects or any(obj.type != "CURVE" for obj in guide_objects) or not guide_radii or min(guide_radii) <= 0.0:
-        raise AssertionError("実体ガイドのカーブ線に一定太さが設定されていません")
+    if not guide_objects or any(obj.type != "GREASEPENCIL" for obj in guide_objects):
+        raise AssertionError("実体ガイドがページごとのGrease Pencilになっていません")
+    guide_radii = []
+    for obj in guide_objects:
+        for stroke in paper_guide_object._guide_strokes(obj):
+            for point in getattr(stroke, "points", []) or []:
+                guide_radii.append(float(getattr(point, "radius", 0.0) or 0.0))
+    if not guide_radii or min(guide_radii) <= 0.0:
+        raise AssertionError("実体ガイドの線に一定太さが設定されていません")
 
     window, screen, area, region, rv3d = _view3d_context()
     camera = scene.camera

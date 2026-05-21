@@ -198,14 +198,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
     sub.prop(entry, "rounded_corner_radius_mm")
     sp = getattr(entry, "shape_params", None)
-    if sp is not None and balloon_shapes.is_uni_flash_shape(getattr(entry, "shape", "")):
-        shape_box = layout.box()
-        shape_box.label(text="ウニフラッシュ")
-        shape_box.prop(sp, "uni_flash_spacing_mm")
-        shape_box.prop(sp, "uni_flash_fill_scale_percent")
-        shape_box.prop(sp, "uni_flash_max_line_count")
-        shape_box.prop(sp, "uni_flash_line_in_percent")
-        shape_box.prop(sp, "uni_flash_line_out_percent")
     if sp is not None and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}:
         shape_box = layout.box()
         shape_box.label(text="形状パラメータ")

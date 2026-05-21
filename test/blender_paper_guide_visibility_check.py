@@ -28,14 +28,14 @@ def _load_addon():
     return mod
 
 
-def _guide_curve_objects(paper_guide_object, page):
+def _guide_objects(paper_guide_object, page):
     page_id = str(getattr(page, "id", "") or "")
     return [
         obj
         for obj in bpy.data.objects
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
-        and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
-        and obj.type == "CURVE"
+        and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
+        and obj.type == "GREASEPENCIL"
     ]
 
 
@@ -55,11 +55,7 @@ def _assert_guide_materials_are_opaque(guide_objects) -> None:
 
 
 def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
-    visible_guides = [obj for obj in guide_objects if len(getattr(obj.data, "splines", []) or []) > 0]
-    z_values = [round(float(obj.location.z), 6) for obj in visible_guides]
-    if len(set(z_values)) != len(z_values):
-        raise AssertionError(f"用紙ガイド線の奥行きが重なっています: {z_values}")
-    for obj in visible_guides:
+    for obj in guide_objects:
         if bool(getattr(obj, "show_in_front", False)):
             raise AssertionError(f"用紙ガイド線が最前面ワイヤ表示に依存しています: {obj.name}")
         if bool(getattr(obj, "show_transparent", False)):
@@ -84,15 +80,38 @@ def _assert_constant_thickness(paper_guide_object, guide_objects) -> None:
             paper_guide_object.GUIDE_SCREEN_PX
             * mpp
             * 0.5
-            * paper_guide_object._GUIDE_CURVE_RADIUS_SCALE
+            * paper_guide_object._GUIDE_GP_RADIUS_SCALE
         )
         for obj in guide_objects:
-            radius = float(obj.data.bevel_depth)
-            if abs(radius - expected_radius) > 1.0e-9:
-                raise AssertionError(f"用紙ガイド線の太さが1px相当ではありません: {radius} != {expected_radius}")
+            for stroke in paper_guide_object._guide_strokes(obj):
+                for point in getattr(stroke, "points", []) or []:
+                    radius = float(getattr(point, "radius", 0.0) or 0.0)
+                    if abs(radius - expected_radius) > 1.0e-9:
+                        raise AssertionError(f"用紙ガイド線の太さが1px相当ではありません: {radius} != {expected_radius}")
     finally:
         paper_guide_object._active_view3d_region = original_region
         paper_guide_object._meters_per_pixel = original_mpp
+        paper_guide_object._last_mpp = -1.0
+
+
+def _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects) -> None:
+    sample = next((obj for obj in guide_objects if paper_guide_object._guide_strokes(obj)), None)
+    if sample is None:
+        raise AssertionError("用紙ガイド線の太さ監視確認対象がありません")
+    sample_point = getattr(paper_guide_object._guide_strokes(sample)[0], "points", [])[0]
+    original_allowed = paper_guide_object._live_guide_updates_allowed
+    original_depth = float(sample_point.radius)
+    manual_depth = original_depth * 3.0 + 0.001
+    try:
+        sample_point.radius = manual_depth
+        paper_guide_object._live_guide_updates_allowed = lambda: False
+        paper_guide_object._last_mpp = -1.0
+        paper_guide_object._thickness_timer()
+        if abs(float(sample_point.radius) - manual_depth) > 1.0e-9:
+            raise AssertionError("B-Nameタブ非表示扱いでも用紙ガイド線の太さが戻されています")
+    finally:
+        sample_point.radius = original_depth
+        paper_guide_object._live_guide_updates_allowed = original_allowed
         paper_guide_object._last_mpp = -1.0
 
 
@@ -113,10 +132,12 @@ def main() -> None:
         if work is None or not work.loaded:
             raise AssertionError("作品データが読み込まれていません")
         page = work.pages[0]
-        guide_objects = _guide_curve_objects(paper_guide_object, page)
+        guide_objects = _guide_objects(paper_guide_object, page)
         if not guide_objects:
             raise AssertionError("用紙ガイド線の実体がありません")
-        if not any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects):
+        if len(guide_objects) != 1:
+            raise AssertionError(f"用紙ガイド線はページごとに1オブジェクトである必要があります: {guide_objects}")
+        if not any(paper_guide_object._guide_strokes(obj) for obj in guide_objects):
             raise AssertionError("用紙ガイド線が作られていません")
         safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         if safe_fill is None:
@@ -125,6 +146,7 @@ def main() -> None:
         _assert_guide_materials_are_opaque(guide_objects)
         _assert_stable_viewport_order(guide_objects, safe_fill)
         _assert_constant_thickness(paper_guide_object, guide_objects)
+        _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         if paper_guide_object.repair_loaded_work_paper_guides(scene, work):
             raise AssertionError("用紙ガイド線の修復が不要な状態で再実行されています")
 

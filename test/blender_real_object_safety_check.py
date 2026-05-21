@@ -258,46 +258,36 @@ def main() -> None:
         assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
         assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
 
-        def _guide_curve_objects():
+        def _guide_objects():
             return [
                 obj
                 for obj in bpy.data.objects
                 if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page.id
-                and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
-                and obj.type == "CURVE"
+                and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
+                and obj.type == "GREASEPENCIL"
             ]
 
-        guide_objects = _guide_curve_objects()
+        guide_objects = _guide_objects()
         assert guide_objects, "paper guide objects were not created"
-        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
-            "paper guide curves have no splines"
-        )
-        assert all(float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) > 0.0 for obj in guide_objects), (
-            "paper guide curves have no viewport thickness"
-        )
-        visible_guide_z = [
-            round(float(obj.location.z), 6)
-            for obj in guide_objects
-            if len(getattr(obj.data, "splines", []) or []) > 0
-        ]
-        assert len(set(visible_guide_z)) == len(visible_guide_z), (
-            "paper guide curves should not share the same viewport depth"
+        assert len(guide_objects) == 1, "paper guides should be one Grease Pencil object per page"
+        assert any(paper_guide_object._guide_strokes(obj) for obj in guide_objects), (
+            "paper guide strokes were not created"
         )
         assert not any(bool(getattr(obj, "show_in_front", False)) for obj in guide_objects), (
-            "paper guide curves should not rely on viewport in-front wire display"
+            "paper guide should not rely on viewport in-front wire display"
         )
         work.paper.show_guides = False
         paper_guide_object.regenerate_all_paper_guides(scene, work)
-        hidden_guide_objects = _guide_curve_objects()
+        hidden_guide_objects = _guide_objects()
         assert hidden_guide_objects, "paper guide objects disappeared after hiding guides"
-        assert not any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in hidden_guide_objects), (
+        assert not any(paper_guide_object._guide_strokes(obj) for obj in hidden_guide_objects), (
             "用紙ガイドをオフにしてもガイド線が残っています"
         )
         work.paper.show_guides = True
         paper_guide_object.regenerate_all_paper_guides(scene, work)
-        guide_objects = _guide_curve_objects()
+        guide_objects = _guide_objects()
         assert guide_objects, "paper guide objects disappeared after showing guides"
-        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
+        assert any(paper_guide_object._guide_strokes(obj) for obj in guide_objects), (
             "用紙ガイドをオンに戻してもガイド線が復元されません"
         )
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")

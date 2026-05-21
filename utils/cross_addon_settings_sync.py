@@ -25,7 +25,7 @@ from . import log
 
 _logger = log.get_logger(__name__)
 
-_TICK = 0.25  # 秒。設定値の同期なのでこの程度の遅延で十分。
+_TICK = 1.0  # 秒。共通設定同期は即時性より通常操作を妨げない軽さを優先する。
 _FLOAT_EPS = 1e-6
 _BUSY = False
 

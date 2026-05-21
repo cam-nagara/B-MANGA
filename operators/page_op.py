@@ -23,6 +23,7 @@ from ..utils import edge_selection, log, page_browser, page_grid, page_range, pa
 from ..utils import shortcut_visibility
 
 _logger = log.get_logger(__name__)
+_PAGE_PICK_LAYER_KINDS = {"text", "balloon", "effect", "image", "gp", "raster"}
 
 
 def _require_loaded(op: Operator, work) -> bool:
@@ -50,6 +51,19 @@ def _set_page_layer_active(context) -> None:
     if hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "page"
     edge_selection.clear_selection(context)
+
+
+def _pick_object_layer_at_event(context, event) -> tuple[dict | None, object | None]:
+    try:
+        from . import object_tool_op
+
+        hit = object_tool_op.hit_object_at_event(context, event)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page pick: object layer hit failed")
+        return None, None
+    if hit is None or str(hit.get("kind", "") or "") not in _PAGE_PICK_LAYER_KINDS:
+        return None, None
+    return hit, object_tool_op
 
 
 class BNAME_OT_page_add(Operator):
@@ -422,6 +436,11 @@ class BNAME_OT_page_pick_viewport(Operator):
 
             if is_browser:
                 context.scene.bname_overview_mode = True
+            layer_hit, object_tool_op = _pick_object_layer_at_event(context, event)
+            if layer_hit is not None and object_tool_op is not None:
+                object_tool_op.activate_hit(context, layer_hit, mode=multi_mode)
+                _tag_screen_redraw(context)
+                return {"FINISHED"}
             if multi_mode == "single" and coma_edge_move_op.extend_selected_handle_at_event(context, event):
                 return {"FINISHED"}
             edge_hit = coma_picker.find_coma_edge_at_event(context, event)

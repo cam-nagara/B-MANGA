@@ -63,7 +63,6 @@ def _assert_generated_group(group, *, kind: str) -> None:
     required = {
         "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh"},
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
-        "uni_flash": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
     }[kind]
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
     direct_links = [
@@ -75,7 +74,7 @@ def _assert_generated_group(group, *, kind: str) -> None:
         and link.to_socket.name == "Geometry"
     ]
     assert not direct_links, f"{kind} が入力形状をそのまま出力しています"
-    if kind in {"effect_line", "uni_flash"}:
+    if kind == "effect_line":
         input_geometry_links = [
             link
             for link in group.links
@@ -200,7 +199,13 @@ def main() -> None:
         balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.91, "フキダシ 線幅 更新")
 
-        flash = balloon_op._create_balloon_entry(
+        balloon_shape_ids = {
+            str(getattr(item, "identifier", "") or "")
+            for item in balloon.bl_rna.properties["shape"].enum_items
+        }
+        assert "uni_flash" not in balloon_shape_ids, "フキダシ形状にウニフラッシュが残っています"
+
+        legacy = balloon_op._create_balloon_entry(
             context,
             page,
             shape="uni_flash",
@@ -211,27 +216,17 @@ def main() -> None:
             parent_kind="page",
             parent_key=page_key,
         )
-        flash.line_width_mm = 0.38
-        flash.shape_params.uni_flash_spacing_mm = 1.7
-        flash.shape_params.uni_flash_max_line_count = 333
-        flash_obj = balloon_curve_object.ensure_balloon_curve_object(
+        legacy.line_width_mm = 0.38
+        legacy_obj = balloon_curve_object.ensure_balloon_curve_object(
             scene=context.scene,
-            entry=flash,
+            entry=legacy,
             page=page,
         )
-        assert flash_obj is not None
-        flash_modifier = _assert_nodes(
-            flash_obj,
-            kind="uni_flash",
-            group_name="BName_GN_UniFlash",
-        )
-        _assert_close(_modifier_socket_value(flash_modifier, "線幅"), 0.38, "ウニフラッシュ 線幅")
-        _assert_close(_modifier_socket_value(flash_modifier, "線の間隔"), 1.7, "ウニフラッシュ 線の間隔")
-        assert int(_modifier_socket_value(flash_modifier, "最大本数")) == 333
-
-        flash.shape_params.uni_flash_spacing_mm = 2.4
-        flash_modifier = _assert_nodes(flash_obj, kind="uni_flash", group_name="BName_GN_UniFlash")
-        _assert_close(_modifier_socket_value(flash_modifier, "線の間隔"), 2.4, "ウニフラッシュ 線の間隔 更新")
+        assert legacy_obj is not None
+        legacy_modifier = _assert_nodes(legacy_obj, kind="balloon", group_name="BName_GN_Balloon")
+        _assert_close(_modifier_socket_value(legacy_modifier, "線幅"), 0.38, "旧フキダシ 線幅")
+        assert int(_modifier_socket_value(legacy_modifier, "形状")) == 2
+        assert legacy_modifier.node_group.name != "BName_GN_UniFlash"
 
         print("BNAME_GEOMETRY_NODES_BRIDGE_OK")
     finally:

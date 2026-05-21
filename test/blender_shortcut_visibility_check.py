@@ -204,8 +204,8 @@ def main() -> None:
         shortcut_visibility._last_bname_panel_draw -= (
             shortcut_visibility.PANEL_DRAW_GRACE_SECONDS + 0.1
         )
-        assert shortcut_visibility._area_has_bname_panel_category(fake_unknown_area), (
-            "タブ名が取得できない同一エリアで、B-Nameパネル表示判定が時間切れになります"
+        assert not shortcut_visibility._area_has_bname_panel_category(fake_unknown_area), (
+            "タブ名が取得できない同一エリアで、B-Nameパネル表示判定が時間切れ後も残ります"
         )
     finally:
         shortcut_visibility.bname_panel_visible = original_panel_visible

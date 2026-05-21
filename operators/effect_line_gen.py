@@ -779,8 +779,35 @@ def generate_beta_flash_strokes(
             cyclic=True,
             radii=radii,
             opacities=opacities,
+            curve_type="BEZIER",
+            bezier_smooth=_shape_guide_uses_smooth_bezier(params, "end"),
         )
     ]
+
+
+def generate_end_shape_fill_stroke(
+    params,
+    center_xy_mm: tuple[float, float],
+    radius_x_mm: float,
+    radius_y_mm: float,
+    *,
+    seed: int = 0,
+) -> EffectLineStroke | None:
+    """終点形状を下地として塗るための閉じたストロークを返す。"""
+    if str(getattr(params, "effect_type", "") or "") in {"speed", "white_outline"}:
+        return None
+    rect = _scaled_rect(center_xy_mm[0], center_xy_mm[1], radius_x_mm, radius_y_mm, 1.0)
+    outline = _shape_outline(params, "end", rect, center_xy_mm, seed=seed + 23)
+    if len(outline) < 3:
+        return None
+    return EffectLineStroke(
+        points_xyz=[(mm_to_m(x), mm_to_m(y), 0.0) for x, y in outline],
+        radius=mm_to_m(0.01),
+        cyclic=True,
+        role="end_fill",
+        curve_type="BEZIER",
+        bezier_smooth=_shape_guide_uses_smooth_bezier(params, "end"),
+    )
 
 
 def _value_between_min_percent(base: float, min_percent: float, enabled: bool, rng: random.Random) -> float:

@@ -888,13 +888,6 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "spikeCount": int(entry.shape_params.spike_count),
             "spikeDepthMm": round(entry.shape_params.spike_depth_mm, 3),
             "spikeJitter": round(entry.shape_params.spike_jitter, 3),
-            "uniFlashSpacingMm": round(entry.shape_params.uni_flash_spacing_mm, 3),
-            "uniFlashFillScalePercent": round(entry.shape_params.uni_flash_fill_scale_percent, 3),
-            "uniFlashLineDensityCompensation": True,
-            "uniFlashFillDensityCompensation": True,
-            "uniFlashMaxLineCount": int(entry.shape_params.uni_flash_max_line_count),
-            "uniFlashLineInPercent": round(float(getattr(entry.shape_params, "uni_flash_line_in_percent", 100.0)), 3),
-            "uniFlashLineOutPercent": round(float(getattr(entry.shape_params, "uni_flash_line_out_percent", 0.0)), 3),
         },
         "textId": entry.text_id,
     }
@@ -997,13 +990,6 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.shape_params.spike_count = int(sp.get("spikeCount", 24))
     entry.shape_params.spike_depth_mm = float(sp.get("spikeDepthMm", 6.0))
     entry.shape_params.spike_jitter = float(sp.get("spikeJitter", 0.2))
-    entry.shape_params.uni_flash_spacing_mm = float(sp.get("uniFlashSpacingMm", 0.4))
-    entry.shape_params.uni_flash_fill_scale_percent = float(sp.get("uniFlashFillScalePercent", 70.0))
-    entry.shape_params.uni_flash_line_density_compensation = True
-    entry.shape_params.uni_flash_fill_density_compensation = True
-    entry.shape_params.uni_flash_max_line_count = int(sp.get("uniFlashMaxLineCount", 1000))
-    entry.shape_params.uni_flash_line_in_percent = float(sp.get("uniFlashLineInPercent", 100.0))
-    entry.shape_params.uni_flash_line_out_percent = float(sp.get("uniFlashLineOutPercent", 0.0))
     entry.text_id = data.get("textId", "")
 
 

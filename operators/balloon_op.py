@@ -18,7 +18,14 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import balloon_presets
-from ..utils import balloon_tail_geom, layer_stack as layer_stack_utils, log, object_selection
+from ..utils import (
+    balloon_curve_object,
+    balloon_shapes,
+    balloon_tail_geom,
+    layer_stack as layer_stack_utils,
+    log,
+    object_selection,
+)
 from ..utils import active_target as _active_target
 
 
@@ -47,7 +54,6 @@ _SHAPE_FOR_ADD = (
     ("thorn", "トゲ（直線）", ""),
     ("thorn-curve", "トゲ（曲線）", ""),
     ("octagon", "八角形", ""),
-    ("uni_flash", "ウニフラッシュ", ""),
     ("none", "本体なし (テキスト単体)", ""),
 )
 
@@ -370,8 +376,9 @@ def _sync_active_balloon_stack_item(context, page, entry) -> None:
 def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
     dx = float(x_mm) - float(getattr(entry, "x_mm", 0.0))
     dy = float(y_mm) - float(getattr(entry, "y_mm", 0.0))
-    entry.x_mm = float(x_mm)
-    entry.y_mm = float(y_mm)
+    with balloon_curve_object.suspend_auto_sync():
+        entry.x_mm = float(x_mm)
+        entry.y_mm = float(y_mm)
     if abs(dx) <= 1.0e-9 and abs(dy) <= 1.0e-9:
         return
     bid = str(getattr(entry, "id", "") or "")
@@ -408,12 +415,12 @@ def _create_balloon_entry(
 ):
     entry = page.balloons.add()
     entry.id = _allocate_balloon_id(page)
-    entry.shape = shape
+    entry.shape = balloon_shapes.normalize_shape(shape)
     entry.x_mm = float(x)
     entry.y_mm = float(y)
     entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))
     entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(h))
-    entry.rounded_corner_enabled = (shape == "rect")
+    entry.rounded_corner_enabled = (entry.shape == "rect")
     entry.parent_kind = str(parent_kind or "page")
     entry.parent_key = str(parent_key or page_stack_key(page))
     page.active_balloon_index = len(page.balloons) - 1
@@ -1073,10 +1080,11 @@ class BNAME_OT_balloon_tool(Operator):
                 return
             _set_balloon_rect(page, entry, x, y, w, h)
         elif self._drag_action == "center":
-            if hasattr(entry, "center_offset_x_mm"):
-                entry.center_offset_x_mm = self._drag_orig_center_offset_x + dx
-            if hasattr(entry, "center_offset_y_mm"):
-                entry.center_offset_y_mm = self._drag_orig_center_offset_y + dy
+            with balloon_curve_object.suspend_auto_sync():
+                if hasattr(entry, "center_offset_x_mm"):
+                    entry.center_offset_x_mm = self._drag_orig_center_offset_x + dx
+                if hasattr(entry, "center_offset_y_mm"):
+                    entry.center_offset_y_mm = self._drag_orig_center_offset_y + dy
         elif self._drag_action == "move":
             if self._move_violates_layer_scope(context, page, dx, dy):
                 return

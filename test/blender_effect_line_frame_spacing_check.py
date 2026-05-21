@@ -264,7 +264,7 @@ def main() -> None:
         from bname_dev_effect_spacing.utils import balloon_shapes
         from bname_dev_effect_spacing.utils.geom import m_to_mm
 
-        old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
+        old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve", "uni_flash"}
         effect_shape_ids = {
             str(getattr(item, "identifier", "") or "")
             for item in params.bl_rna.properties["end_shape"].enum_items
@@ -283,6 +283,8 @@ def main() -> None:
             raise AssertionError("旧フキダシ形状の読み替えが機能していません")
         if balloon_shapes.normalize_shape("spike_curve") != "thorn-curve":
             raise AssertionError("旧トゲ形状の読み替えが機能していません")
+        if balloon_shapes.normalize_shape("uni_flash") != "ellipse":
+            raise AssertionError("旧フキダシのウニフラッシュが楕円へ読み替えられていません")
         assert params.bl_rna.properties["bundle_line_count_jitter"].name == "数の乱れ"
         assert params.bl_rna.properties["bundle_gap_jitter_amount"].name == "まとまり間隔の乱れ"
 

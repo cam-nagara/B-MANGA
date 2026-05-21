@@ -168,7 +168,7 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     box.label(text="色")
     box.prop(params, "opacity", slider=True)
     box.prop(params, "line_color")
-    if params.effect_type == "beta_flash":
+    if params.effect_type not in {"speed", "white_outline"}:
         box.prop(params, "fill_color")
         box.prop(params, "fill_opacity")
         box.prop(params, "fill_base_shape")

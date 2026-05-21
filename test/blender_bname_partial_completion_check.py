@@ -215,29 +215,22 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
     ]
     guide_kinds = {str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") for obj in guide_objs}
-    expected = {"dim", "light", "inner", "safe", "safe_fill"}
+    expected = {paper_guide_object.GUIDE_KIND_LINES, "safe_fill"}
     if not expected.issubset(guide_kinds):
         raise AssertionError(f"missing paper guide objects: expected={expected}, actual={guide_kinds}")
     guide_line_objs = [
         obj for obj in guide_objs
-        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
     ]
-    if len(guide_line_objs) < 4:
-        raise AssertionError(f"paper guide lines must be curve objects: {guide_line_objs}")
+    if len(guide_line_objs) != 1:
+        raise AssertionError(f"paper guide lines must be one Grease Pencil object: {guide_line_objs}")
     for obj in guide_line_objs:
-        if obj.type != "CURVE":
-            raise AssertionError(f"paper guide lines should be curve: {obj.name} ({obj.type})")
-        if float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) <= 0.0:
-            raise AssertionError(f"paper guide curve has no viewport thickness: {obj.name}")
+        if obj.type != "GREASEPENCIL":
+            raise AssertionError(f"paper guide lines should be Grease Pencil: {obj.name} ({obj.type})")
+        if not paper_guide_object._guide_strokes(obj):
+            raise AssertionError(f"paper guide has no strokes: {obj.name}")
         if bool(getattr(obj, "show_in_front", False)) or bool(getattr(obj, "show_transparent", False)):
-            raise AssertionError(f"paper guide curve should not rely on in-front transparent wire display: {obj.name}")
-    visible_z = [
-        round(float(obj.location.z), 6)
-        for obj in guide_line_objs
-        if len(getattr(obj.data, "splines", []) or []) > 0
-    ]
-    if len(set(visible_z)) != len(visible_z):
-        raise AssertionError(f"paper guide line z levels should be staggered: {visible_z}")
+            raise AssertionError(f"paper guide should not rely on in-front transparent wire display: {obj.name}")
     safe_fill_objs = [
         obj for obj in guide_objs
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "safe_fill"

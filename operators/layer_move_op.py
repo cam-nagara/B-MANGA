@@ -8,6 +8,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
+    balloon_curve_object,
     geom,
     gp_layer_parenting as gp_parent,
     layer_stack as layer_stack_utils,
@@ -29,8 +30,9 @@ def _move_panel(panel, dx_mm: float, dy_mm: float) -> None:
 
 
 def _move_balloon(page, balloon, dx_mm: float, dy_mm: float) -> None:
-    balloon.x_mm += dx_mm
-    balloon.y_mm += dy_mm
+    with balloon_curve_object.suspend_auto_sync():
+        balloon.x_mm += dx_mm
+        balloon.y_mm += dy_mm
     bid = str(getattr(balloon, "id", "") or "")
     if not bid:
         return

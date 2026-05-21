@@ -44,14 +44,6 @@ _GROUP_SOCKETS: dict[str, tuple[SocketSpec, ...]] = {
         SocketSpec("高さ", "NodeSocketFloat", 0.0),
         SocketSpec("形状", "NodeSocketInt", 0),
     ),
-    "uni_flash": (
-        SocketSpec("線幅", "NodeSocketFloat", 0.3),
-        SocketSpec("塗り不透明度", "NodeSocketFloat", 1.0),
-        SocketSpec("幅", "NodeSocketFloat", 0.0),
-        SocketSpec("高さ", "NodeSocketFloat", 0.0),
-        SocketSpec("線の間隔", "NodeSocketFloat", 0.4),
-        SocketSpec("最大本数", "NodeSocketInt", 1000),
-    ),
 }
 
 _SHAPE_CODES = {
@@ -60,7 +52,6 @@ _SHAPE_CODES = {
     "cloud": 3,
     "fluffy": 4,
     "thorn": 5,
-    "uni_flash": 6,
 }
 
 _EFFECT_CODES = {
@@ -76,7 +67,6 @@ def _group_name(kind: str) -> str:
     suffix = {
         "effect_line": "EffectLine",
         "balloon": "Balloon",
-        "uni_flash": "UniFlash",
     }.get(kind, kind)
     return f"{GROUP_PREFIX}{suffix}"
 
@@ -391,47 +381,6 @@ def _radial_line_geometry(
     return join.outputs["Geometry"]
 
 
-def _build_uni_flash_nodes(group) -> None:
-    _clear_nodes(group)
-    input_node, output_node = _group_input_output(group)
-    width_half_m = _math_multiply(
-        group,
-        input_node.outputs["幅"],
-        0.0005,
-        label="幅 mm → 半幅 m",
-        location=(-800, -80),
-    )
-    height_half_m = _math_multiply(
-        group,
-        input_node.outputs["高さ"],
-        0.0005,
-        label="高さ mm → 半高 m",
-        location=(-800, -240),
-    )
-    line_half_m = _math_multiply(
-        group,
-        input_node.outputs["線幅"],
-        0.0005,
-        label="線幅 mm → 半径 m",
-        location=(-800, -400),
-    )
-    fill = _ellipse_fill(group, input_node, width_half_m, height_half_m, z=-0.001)
-    lines = _radial_line_geometry(
-        group,
-        width_half_m,
-        height_half_m,
-        line_half_m,
-        inner_scale=0.38,
-        line_count=24,
-        label="ウニフラッシュ線生成",
-    )
-    join = _node(group, "GeometryNodeJoinGeometry", label="ウニフラッシュ生成", location=(1520, 80))
-    _link(group, fill, join.inputs["Geometry"])
-    _link(group, lines, join.inputs["Geometry"])
-    _link(group, join.outputs["Geometry"], output_node.inputs["Geometry"])
-    group[PROP_GROUP_VERSION] = _GROUP_VERSION
-
-
 def _build_effect_line_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
@@ -472,8 +421,6 @@ def _build_effect_line_nodes(group) -> None:
 def _build_generator_nodes(group, kind: str) -> None:
     if kind == "effect_line":
         _build_effect_line_nodes(group)
-    elif kind == "uni_flash":
-        _build_uni_flash_nodes(group)
     else:
         _build_balloon_nodes(group)
 
@@ -487,7 +434,6 @@ def _group_needs_rebuild(group, kind: str) -> bool:
     generator_types = {
         "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh"},
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
-        "uni_flash": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
     }.get(kind, set())
     existing = {node.bl_idname for node in group.nodes}
     return not generator_types.issubset(existing)
@@ -610,8 +556,10 @@ def effect_values(params, bounds: tuple[float, float, float, float] | None, seed
     }
 
 
-def balloon_values(entry, *, uni_flash: bool = False) -> dict[str, Any]:
-    shape = str(getattr(entry, "shape", "") or "")
+def balloon_values(entry) -> dict[str, Any]:
+    from . import balloon_shapes
+
+    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     values = {
         "線幅": float(getattr(entry, "line_width_mm", 0.3) or 0.3),
         "塗り不透明度": float(getattr(entry, "fill_opacity", 1.0) or 1.0),
@@ -619,10 +567,4 @@ def balloon_values(entry, *, uni_flash: bool = False) -> dict[str, Any]:
         "高さ": float(getattr(entry, "height_mm", 0.0) or 0.0),
         "形状": _SHAPE_CODES.get(shape, 0),
     }
-    if uni_flash:
-        params = getattr(entry, "shape_params", None)
-        values.update({
-            "線の間隔": float(getattr(params, "uni_flash_spacing_mm", 0.4) or 0.4),
-            "最大本数": int(getattr(params, "uni_flash_max_line_count", 1000) or 1000),
-        })
     return values

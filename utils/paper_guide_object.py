@@ -37,6 +37,7 @@ GUIDE_SCREEN_PX = 1.0
 _GUIDE_GP_RADIUS_SCALE = 0.1
 _GUIDE_CURVE_RADIUS_SCALE = 1.0
 _GUIDE_THICKNESS_INTERVAL = 0.12
+_GUIDE_IDLE_INTERVAL = 1.0
 _GUIDE_REPAIR_INTERVAL = 1.0
 _GUIDE_Z_CLEARANCE_M = 0.012
 _GUIDE_KIND_Z_OFFSETS_M = {
@@ -47,6 +48,17 @@ _GUIDE_KIND_Z_OFFSETS_M = {
 }
 _last_mpp: float = -1.0
 _last_repair_time: float = 0.0
+
+
+def _live_guide_updates_allowed() -> bool:
+    if bool(getattr(bpy.app, "background", False)):
+        return True
+    try:
+        from . import shortcut_visibility
+
+        return shortcut_visibility.any_bname_panel_visible(bpy.context)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
@@ -761,24 +773,15 @@ def _ensure_curve_guides(
     guide_z: float,
     visible: bool,
 ) -> list[bpy.types.Object]:
-    objects = []
-    keep_names: set[str] = set()
-    for label, loops, segments, mat in guide_sets:
-        obj = _ensure_curve_object(
-            scene,
-            page,
-            page_coll,
-            suffix=label,
-            points=loops,
-            segments=segments,
-            material=mat,
-            z_m=guide_z + _GUIDE_KIND_Z_OFFSETS_M.get(str(label), 0.0),
-            visible=visible,
-        )
-        objects.append(obj)
-        keep_names.add(obj.name)
-    _remove_old_line_objects(str(getattr(page, "id", "") or ""), keep_names)
-    return objects
+    obj = _ensure_gp_guide_object(
+        scene,
+        page,
+        page_coll,
+        guide_sets,
+        z_m=guide_z,
+        visible=visible,
+    )
+    return [obj]
 
 
 def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types.Object]:
@@ -1011,30 +1014,22 @@ def _paper_guide_needs_repair(work, page) -> bool:
     guides_visible = bool(getattr(paper, "show_guides", True)) if paper is not None else True
     in_range = bool(getattr(page, "in_page_range", True))
     curve_objects = _guide_curve_objects(page_id)
-    old_gp_obj = bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
-    if old_gp_obj is not None and getattr(old_gp_obj, "type", "") == "GREASEPENCIL":
+    gp_obj = bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
+    if curve_objects:
         return True
     if guides_visible and in_range:
-        if not curve_objects:
+        if gp_obj is None or getattr(gp_obj, "type", "") != "GREASEPENCIL":
             return True
-        has_visible_curve = any(
-            _curve_has_visible_geometry(obj) and not bool(getattr(obj, "hide_viewport", False))
-            for obj in curve_objects
-        )
-        if not has_visible_curve:
+        if bool(getattr(gp_obj, "hide_viewport", False)) or not _guide_strokes(gp_obj):
             return True
-        for obj in curve_objects:
-            if _curve_display_needs_rebuild(obj):
+        if bool(getattr(gp_obj, "show_in_front", False)) or bool(getattr(gp_obj, "show_transparent", False)):
+            return True
+        if not _materials_are_current(gp_obj):
+            return True
+        for mat in list(getattr(getattr(gp_obj, "data", None), "materials", []) or []):
+            if _guide_material_is_translucent(mat):
                 return True
-            mats = list(getattr(getattr(obj, "data", None), "materials", []) or [])
-            if not mats:
-                return True
-            for mat in mats:
-                if _guide_material_is_translucent(mat):
-                    return True
-        if not _curve_z_levels_are_staggered(curve_objects):
-            return True
-    elif any(_curve_has_visible_geometry(obj) for obj in curve_objects):
+    elif gp_obj is not None and _guide_strokes(gp_obj):
         return True
     return False
 
@@ -1081,8 +1076,11 @@ def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
 
 
 def _thickness_timer():
-    global _last_repair_time
+    global _last_mpp, _last_repair_time
     try:
+        if not _live_guide_updates_allowed():
+            _last_mpp = -1.0
+            return _GUIDE_IDLE_INTERVAL
         now = time.monotonic()
         if now - _last_repair_time >= _GUIDE_REPAIR_INTERVAL:
             _last_repair_time = now

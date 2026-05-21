@@ -286,7 +286,7 @@ def _check_detail_toggles(context, targets) -> list[dict]:
         ("brush_jitter_enabled", "線 乱れ"),
         ("spacing_jitter_enabled", "描画間隔 乱れ"),
         ("bundle_enabled", "まとまり"),
-        ("fill_base_shape", "下地を塗る"),
+        ("fill_base_shape", "終点形状を下地として塗る"),
         ("white_outline_width_jitter_enabled", "太さ乱れ"),
         ("white_outline_length_jitter_enabled", "長さ乱れ"),
     ):

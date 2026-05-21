@@ -396,6 +396,24 @@ def _rgba_with_opacity(color, opacity: float) -> tuple[float, float, float, floa
     )
 
 
+def _effect_fill_rgba(params) -> tuple[float, float, float, float]:
+    opacity = _effect_opacity(params)
+    try:
+        fill = [float(c) for c in params.fill_color[:4]]
+    except Exception:  # noqa: BLE001
+        fill = [1.0, 1.0, 1.0, 1.0]
+    try:
+        fill_alpha = float(getattr(params, "fill_opacity", 1.0))
+    except Exception:  # noqa: BLE001
+        fill_alpha = 1.0
+    return (
+        max(0.0, min(1.0, fill[0])),
+        max(0.0, min(1.0, fill[1])),
+        max(0.0, min(1.0, fill[2])),
+        max(0.0, min(1.0, fill[3] * fill_alpha * opacity)),
+    )
+
+
 def _effect_role_material_name(layer, role: str) -> str:
     base = str(getattr(layer, "name", "") or "Layer")
     safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in base)
@@ -418,6 +436,31 @@ def _ensure_effect_material(obj, name: str, color: tuple[float, float, float, fl
             gp_style.show_stroke = True
             gp_style.show_fill = False
             gp_style.color = color
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        mat.diffuse_color = color
+    except Exception:  # noqa: BLE001
+        pass
+    return _material_slot_index(obj, mat)
+
+
+def _ensure_effect_fill_material(obj, name: str, color: tuple[float, float, float, float]) -> int:
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=name)
+    if getattr(mat, "grease_pencil", None) is None:
+        try:
+            bpy.data.materials.create_gpencil_data(mat)
+        except (AttributeError, RuntimeError):
+            pass
+    gp_style = getattr(mat, "grease_pencil", None)
+    if gp_style is not None:
+        try:
+            gp_style.show_stroke = False
+            gp_style.show_fill = True
+            gp_style.color = (color[0], color[1], color[2], 0.0)
+            gp_style.fill_color = color
         except Exception:  # noqa: BLE001
             pass
     try:
@@ -460,7 +503,7 @@ def _apply_material_settings(obj, layer, params) -> int:
     except Exception:  # noqa: BLE001
         pass
     try:
-        gp_style.show_fill = bool(params.effect_type == "beta_flash" and params.fill_base_shape)
+        gp_style.show_fill = False
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -600,8 +643,34 @@ def _write_effect_strokes(
         _effect_role_material_name(layer, "EndShape_Cyan"),
         (0.0, 0.75, 1.0, opacity),
     )
+    end_fill_material_index = -1
+    if bool(getattr(params, "fill_base_shape", False)):
+        end_fill_material_index = _ensure_effect_fill_material(
+            obj,
+            _effect_role_material_name(layer, "EndShape_Fill"),
+            _effect_fill_rgba(params),
+        )
     _clear_drawing(drawing)
     start_outline, start_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
+    fill_stroke = None
+    if end_fill_material_index >= 0:
+        fill_stroke = effect_line_gen.generate_end_shape_fill_stroke(
+            params,
+            shape_center_xy,
+            w * 0.5,
+            h * 0.5,
+            seed=seed_value,
+        )
+    if fill_stroke is not None:
+        gpencil.add_stroke_to_drawing(
+            drawing,
+            fill_stroke.points_xyz,
+            radius=fill_stroke.radius,
+            cyclic=fill_stroke.cyclic,
+            material_index=end_fill_material_index,
+            curve_type=getattr(fill_stroke, "curve_type", "POLY"),
+            bezier_smooth=bool(getattr(fill_stroke, "bezier_smooth", False)),
+        )
     strokes = effect_line_gen.generate_strokes(
         params,
         center_xy_mm=focus_center_xy,

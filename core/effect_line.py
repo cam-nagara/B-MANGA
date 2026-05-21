@@ -378,7 +378,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=1.0, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    fill_base_shape: BoolProperty(name="下地を塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]

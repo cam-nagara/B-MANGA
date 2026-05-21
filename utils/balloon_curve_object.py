@@ -11,13 +11,13 @@ Object 内の複数スプラインとして同期する。
 from __future__ import annotations
 
 import math
+from contextlib import contextmanager
 from typing import Optional, Sequence
 
 import bpy
 
 from . import balloon_shapes as bs
 from . import balloon_tail_geom
-from . import balloon_uni_flash
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
@@ -41,6 +41,22 @@ PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
 PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 FILL_LOCAL_Z_OFFSET_M = -0.001
+_AUTO_SYNC_SUSPEND_COUNT = 0
+
+
+@contextmanager
+def suspend_auto_sync():
+    """Temporarily skip expensive mesh rebuilds from property update callbacks."""
+    global _AUTO_SYNC_SUSPEND_COUNT
+    _AUTO_SYNC_SUSPEND_COUNT += 1
+    try:
+        yield
+    finally:
+        _AUTO_SYNC_SUSPEND_COUNT = max(0, _AUTO_SYNC_SUSPEND_COUNT - 1)
+
+
+def _auto_sync_suspended() -> bool:
+    return _AUTO_SYNC_SUSPEND_COUNT > 0
 
 
 def _remove_unused_data_block(data) -> None:
@@ -210,75 +226,6 @@ def _ensure_balloon_line_curve_data(
     except Exception:  # noqa: BLE001
         pass
     return curve
-
-
-def _ensure_uni_flash_line_mesh_data(
-    name: str,
-    segments_mm: Sequence[tuple[tuple[float, float], tuple[float, float]]],
-    entry,
-) -> bpy.types.Mesh:
-    old = bpy.data.meshes.get(name)
-    if old is not None and getattr(old, "users", 0) == 0:
-        try:
-            bpy.data.meshes.remove(old)
-        except Exception:  # noqa: BLE001
-            pass
-    mesh = bpy.data.meshes.new(name)
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    start_factor, end_factor = balloon_uni_flash.line_width_factors(entry)
-    start_half_m = mm_to_m(line_width_mm * start_factor * 0.5)
-    end_half_m = mm_to_m(line_width_mm * end_factor * 0.5)
-    eps = 1.0e-9
-    verts: list[tuple[float, float, float]] = []
-    faces: list[list[int]] = []
-    for start, end in segments_mm:
-        sx, sy = start
-        ex, ey = end
-        dx = float(ex) - float(sx)
-        dy = float(ey) - float(sy)
-        length = math.hypot(dx, dy)
-        if length <= 1.0e-9:
-            continue
-        nx = -dy / length
-        ny = dx / length
-        sx_m = mm_to_m(float(sx))
-        sy_m = mm_to_m(float(sy))
-        ex_m = mm_to_m(float(ex))
-        ey_m = mm_to_m(float(ey))
-        base = len(verts)
-        if start_half_m <= eps and end_half_m <= eps:
-            continue
-        if start_half_m <= eps:
-            verts.extend(
-                [
-                    (sx_m, sy_m, 0.0),
-                    (ex_m + nx * end_half_m, ey_m + ny * end_half_m, 0.0),
-                    (ex_m - nx * end_half_m, ey_m - ny * end_half_m, 0.0),
-                ]
-            )
-            faces.append([base, base + 1, base + 2])
-        elif end_half_m <= eps:
-            verts.extend(
-                [
-                    (sx_m + nx * start_half_m, sy_m + ny * start_half_m, 0.0),
-                    (sx_m - nx * start_half_m, sy_m - ny * start_half_m, 0.0),
-                    (ex_m, ey_m, 0.0),
-                ]
-            )
-            faces.append([base, base + 1, base + 2])
-        else:
-            verts.extend(
-                [
-                    (sx_m + nx * start_half_m, sy_m + ny * start_half_m, 0.0),
-                    (sx_m - nx * start_half_m, sy_m - ny * start_half_m, 0.0),
-                    (ex_m - nx * end_half_m, ey_m - ny * end_half_m, 0.0),
-                    (ex_m + nx * end_half_m, ey_m + ny * end_half_m, 0.0),
-                ]
-            )
-            faces.append([base, base + 1, base + 2, base + 3])
-    mesh.from_pydata(verts, [], faces)
-    mesh.update()
-    return mesh
 
 
 def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
@@ -470,15 +417,6 @@ def _outline_points_for_entry(entry) -> tuple[list[tuple[float, float]], list[in
     return pts, corners
 
 
-def _uni_flash_geometry_for_entry(entry) -> balloon_uni_flash.UniFlashGeometry:
-    width = float(getattr(entry, "width_mm", 40.0) or 40.0)
-    height = float(getattr(entry, "height_mm", 20.0) or 20.0)
-    return balloon_uni_flash.geometry_for_entry(
-        entry,
-        bs.Rect(0.0, 0.0, width, height),
-    )
-
-
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
     width = max(0.1, float(getattr(entry, "width_mm", 40.0) or 40.0))
     height = max(0.1, float(getattr(entry, "height_mm", 20.0) or 20.0))
@@ -644,26 +582,15 @@ def ensure_balloon_curve_object(
         return None
 
     # 1. Curve データ生成
-    is_uni_flash = balloon_uni_flash.is_uni_flash_entry(entry)
-    line_segments_mm: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    if is_uni_flash:
-        geometry = _uni_flash_geometry_for_entry(entry)
-        points_mm = geometry.fill_outline_mm
-        corner_indices = list(range(len(points_mm)))
-        line_segments_mm = geometry.line_segments_mm
-    else:
-        points_mm, corner_indices = _outline_points_for_entry(entry)
+    points_mm, corner_indices = _outline_points_for_entry(entry)
     tail_polygons_mm = _tail_polygons_for_entry(entry)
     curve_data_name = f"{BALLOON_CURVE_DATA_PREFIX}{balloon_id}"
-    if is_uni_flash:
-        curve_data = None
-    else:
-        curve_data = _ensure_balloon_curve_data(
-            curve_data_name,
-            points_mm,
-            tail_polygons_mm,
-            corner_indices=corner_indices,
-        )
+    curve_data = _ensure_balloon_curve_data(
+        curve_data_name,
+        points_mm,
+        tail_polygons_mm,
+        corner_indices=corner_indices,
+    )
     line_mat = _ensure_balloon_curve_material(
         curve_data,
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
@@ -671,23 +598,16 @@ def ensure_balloon_curve_object(
     )
     # ベベルでフキダシの線幅を再現 (entry.line_width_mm)
     line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
-    if is_uni_flash:
-        mesh_data = _ensure_uni_flash_line_mesh_data(
-            f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}_lines",
-            line_segments_mm,
-            entry,
-        )
-    else:
-        try:
-            curve_data.bevel_depth = mm_to_m(line_width_mm) * 0.5
-            curve_data.bevel_resolution = 0
-        except Exception:  # noqa: BLE001
-            pass
-        mesh_data = _curve_to_mesh_data(
-            scene=scene,
-            curve_data=curve_data,
-            mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
-        )
+    try:
+        curve_data.bevel_depth = mm_to_m(line_width_mm) * 0.5
+        curve_data.bevel_resolution = 0
+    except Exception:  # noqa: BLE001
+        pass
+    mesh_data = _curve_to_mesh_data(
+        scene=scene,
+        curve_data=curve_data,
+        mesh_name=f"{BALLOON_MESH_DATA_PREFIX}{balloon_id}",
+    )
     if mesh_data is None:
         return None
     fill_mesh, fill_mat = _ensure_balloon_fill_mesh_data(
@@ -803,8 +723,8 @@ def ensure_balloon_curve_object(
 
         _gn.ensure_modifier(
             obj,
-            "uni_flash" if is_uni_flash else "balloon",
-            _gn.balloon_values(entry, uni_flash=is_uni_flash) | {"参照形状": source_obj},
+            "balloon",
+            _gn.balloon_values(entry) | {"参照形状": source_obj},
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: Geometry Nodes 同期失敗")
@@ -867,6 +787,58 @@ def _ensure_balloon_source_object(
     except Exception:  # noqa: BLE001
         pass
     return obj
+
+
+def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
+    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
+    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    try:
+        from . import page_grid as _pg
+        from .geom import mm_to_m as _mm_to_m
+
+        page_idx = -1
+        if work is not None and page is not None:
+            target_id = str(getattr(page, "id", "") or "")
+            for i, p in enumerate(getattr(work, "pages", [])):
+                if str(getattr(p, "id", "") or "") == target_id:
+                    page_idx = i
+                    break
+        if page_idx >= 0:
+            ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
+            obj.location.x = _mm_to_m(
+                float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm
+            )
+            obj.location.y = _mm_to_m(
+                float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: page world offset 加算失敗")
+
+
+def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return False
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is None:
+        obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
+    if obj is None:
+        return ensure_balloon_curve_object(scene=scene, entry=entry, page=page) is not None
+    _apply_balloon_object_transform(scene, work, page, entry, obj)
+    obj.hide_viewport = not bool(getattr(entry, "visible", True))
+    obj.hide_render = not bool(getattr(entry, "visible", True))
+    try:
+        from . import geometry_nodes_bridge as _gn
+
+        source_obj = bpy.data.objects.get(f"{BALLOON_SOURCE_NAME_PREFIX}{balloon_id}")
+        _gn.ensure_modifier(
+            obj,
+            "balloon",
+            _gn.balloon_values(entry) | {"参照形状": source_obj},
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: lightweight Geometry Nodes sync failed")
+    return True
 
 
 def find_balloon_entry(scene, balloon_id: str):
@@ -940,6 +912,8 @@ def on_balloon_entry_changed(entry) -> bool:
             same_id = bool(target_id) and candidate_id == target_id
             if not same_pointer and not same_id:
                 continue
+            if _auto_sync_suspended():
+                return _sync_existing_balloon_object_lightweight(scene, work, page, candidate)
             return ensure_balloon_curve_object(
                 scene=scene,
                 entry=candidate,
@@ -954,6 +928,8 @@ def on_balloon_entry_changed(entry) -> bool:
         same_id = bool(target_id) and candidate_id == target_id
         if not same_pointer and not same_id:
             continue
+        if _auto_sync_suspended():
+            return _sync_existing_balloon_object_lightweight(scene, work, None, candidate)
         return ensure_balloon_curve_object(
             scene=scene,
             entry=candidate,

@@ -62,6 +62,19 @@ def _add_balloon(page, parent_key: str):
     return entry
 
 
+def _add_page_balloon(page, parent_key: str):
+    entry = page.balloons.add()
+    entry.id = "object_tool_page_balloon"
+    entry.shape = "ellipse"
+    entry.x_mm = 6.0
+    entry.y_mm = 8.0
+    entry.width_mm = 20.0
+    entry.height_mm = 14.0
+    entry.parent_kind = "page"
+    entry.parent_key = parent_key
+    return entry
+
+
 def _add_text(page, parent_key: str):
     entry = page.texts.add()
     entry.id = "object_tool_text"
@@ -140,8 +153,8 @@ def main() -> None:
         from bname_dev.utils import object_selection
         from bname_dev.utils import text_real_object
         from bname_dev.utils.geom import Rect
-        from bname_dev.utils.layer_hierarchy import coma_stack_key
-        from bname_dev.operators import effect_line_gen, object_tool_op, object_tool_selection
+        from bname_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
+        from bname_dev.operators import effect_line_gen, object_tool_op, object_tool_selection, page_op
 
         context = bpy.context
         work = context.scene.bname_work
@@ -210,6 +223,7 @@ def main() -> None:
         raster = _add_raster(context, coma_key)
         image = _add_image(context, coma_key)
         balloon = _add_balloon(page, coma_key)
+        page_balloon = _add_page_balloon(page, page_stack_key(page))
         text = _add_text(page, coma_key)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
@@ -224,12 +238,57 @@ def main() -> None:
         if not overlay_visibility.entry_in_visible_coma(page, text):
             raise AssertionError("テキストが表示対象になっていません")
 
+        page_balloon_key = object_selection.balloon_key(page, page_balloon)
+        original_pick_layer = page_op._pick_object_layer_at_event
+        original_shortcuts_allowed = page_op.shortcut_visibility.shortcuts_allowed
+        original_is_browser = page_op.page_browser.is_page_browser_area
+        fake_area = SimpleNamespace(type="VIEW_3D")
+        fake_context = SimpleNamespace(
+            scene=context.scene,
+            area=fake_area,
+            mode="OBJECT",
+            window_manager=context.window_manager,
+            view_layer=context.view_layer,
+            screen=getattr(context, "screen", None),
+        )
+        page_balloon_hit = {
+            "kind": "balloon",
+            "page_id": getattr(page, "id", ""),
+            "index": len(page.balloons) - 1,
+            "part": "move",
+            "key": page_balloon_key,
+        }
+        try:
+            page_op.shortcut_visibility.shortcuts_allowed = lambda _ctx: True
+            page_op.page_browser.is_page_browser_area = lambda _ctx: False
+            page_op._pick_object_layer_at_event = lambda _ctx, _event: (page_balloon_hit, object_tool_op)
+            event = SimpleNamespace(
+                value="PRESS",
+                alt=False,
+                oskey=False,
+                ctrl=False,
+                shift=False,
+            )
+            object_selection.clear(context)
+            result = page_op.BNAME_OT_page_pick_viewport.invoke(SimpleNamespace(), fake_context, event)
+            if result != {"FINISHED"}:
+                raise AssertionError(f"コマ外フキダシのクリック選択が処理されません: {result}")
+            if object_selection.get_keys(context) != [page_balloon_key]:
+                raise AssertionError("コマ外フキダシのクリックがページ選択に奪われています")
+            if getattr(context.scene, "bname_active_layer_kind", "") != "balloon":
+                raise AssertionError("コマ外フキダシのクリック後、フキダシがアクティブになっていません")
+        finally:
+            page_op._pick_object_layer_at_event = original_pick_layer
+            page_op.shortcut_visibility.shortcuts_allowed = original_shortcuts_allowed
+            page_op.page_browser.is_page_browser_area = original_is_browser
+
         keys = [
             object_selection.gp_key(gp_layer),
             object_selection.effect_key(effect_layer),
             object_selection.raster_key(raster),
             object_selection.image_key(image),
             object_selection.balloon_key(page, balloon),
+            page_balloon_key,
             object_selection.text_key(page, text),
         ]
         for key in keys:
@@ -430,7 +489,7 @@ def main() -> None:
         end_labels = [str(getattr(item, "name", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items]
         if any("（旧）" in label for label in end_labels):
             raise AssertionError(f"終点形状に旧表記が残っています: {end_labels}")
-        old_shape_ids = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
+        old_shape_ids = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve", "uni_flash"}
         end_ids = {str(getattr(item, "identifier", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items}
         balloon_ids = {str(getattr(item, "identifier", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
         if (end_ids | balloon_ids) & old_shape_ids:

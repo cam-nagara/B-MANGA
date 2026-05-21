@@ -33,7 +33,6 @@ _SHAPE_ITEMS = (
     ("thorn", "トゲ（直線）", "Meldex ボードカードと同じ直線トゲ形"),
     ("thorn-curve", "トゲ（曲線）", "Meldex ボードカードと同じ曲線トゲ形"),
     ("octagon", "八角形", "Meldex ボードカードと同じ八角形"),
-    ("uni_flash", "ウニフラッシュ", "集中線状の線と下地を持つフキダシ"),
     ("custom", "カスタム", "カスタム形状プリセット参照"),
     ("none", "本体なし", "テキスト単体 (擬音/ナレーション用)"),
 )
@@ -246,14 +245,6 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
         max=1.0,
         update=_on_balloon_shape_params_changed,
     )
-    uni_flash_spacing_mm: FloatProperty(name="線の間隔", default=0.4, min=0.01, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_fill_scale_percent: FloatProperty(name="下地サイズ (%)", default=70.0, min=20.0, max=95.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_line_density_compensation: BoolProperty(name="線の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_fill_density_compensation: BoolProperty(name="下地の密度補正", default=True, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_max_line_count: IntProperty(name="最大本数", default=1000, min=8, soft_max=2000, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_line_in_percent: FloatProperty(name="線の入り (%)", default=100.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    uni_flash_line_out_percent: FloatProperty(name="線の抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-
 
 class BNameBalloonEntry(bpy.types.PropertyGroup):
     """フキダシ 1 件."""
