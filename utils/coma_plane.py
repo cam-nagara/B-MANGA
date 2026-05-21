@@ -291,11 +291,13 @@ def _bbox_from_mesh(mesh: bpy.types.Mesh) -> tuple[float, float, float, float] |
 
 
 def _bbox_from_coma_m(coma) -> tuple[float, float, float, float] | None:
-    """コマデータからメートル単位の bbox を計算する.
+    """コマデータからメートル単位のコマ多角形 bbox を計算する.
 
-    レンダリング時のカメラ枠と一致する真の bbox は B-Name データ側にある。
-    メッシュの一時フォールバック (3 頂点 1mm) を踏まないため、 アンカー更新
-    にはこちらを優先する。
+    UV アンカーの第一候補は ``_page_anchor_m(work, coma)`` (ページ全体を
+    基準にした正しい貼り付け) で、 これは ``work`` 取得経路がある呼び出し側
+    でのみ計算できる。 本関数はフォールバック用で、 ``work`` が無い場合や
+    旧データに対しても妥当な動きをするため、 メッシュの一時フォールバック
+    (3 頂点 1mm) を踏まないためのコマ多角形 bbox を返す。
     """
     if coma is None:
         return None
@@ -323,12 +325,52 @@ def _bbox_from_coma_m(coma) -> tuple[float, float, float, float] | None:
     return (mm_to_m(min_x), mm_to_m(min_y), mm_to_m(w), mm_to_m(h))
 
 
-def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None) -> None:
+def _page_anchor_m(work, coma) -> tuple[float, float, float, float] | None:
+    """thumb.png (= ページ全体レンダー) に合わせた UV アンカーを返す.
+
+    ``thumb.png`` は ``scene.render.resolution`` = ページ × DPI でレンダー
+    されており、 ページ全域を覆っている。 UV アンカーはこのページ全体に
+    合わせ、 メッシュ上の位置をそのままページ内の位置として UV に変換する。
+
+    - polygon コマ: mesh ローカル座標がそのままページ座標なので、
+      アンカーは ``(0, 0, page_w, page_h)``。
+    - rect コマ: mesh ローカルは ``(0, 0)`` 原点で ``obj.location`` が
+      ``(rect_x, rect_y)`` だけずれているので、 mesh ローカルをページ座標へ
+      引き戻すように ``(-rect_x, -rect_y, page_w, page_h)`` を使う。
+
+    こうすることで、 ユーザーがコマ枠を編集してもメッシュ上の各頂点の UV は
+    その「ページ内位置」のまま変わらず、 ``thumb.png`` 上の対応ピクセルへ
+    確実に貼り付く。 コマ枠を再レンダリングしない限り `thumb.png` 自体が
+    動かないため、 ページ一覧プレビューとコマ用 blend の描画が常に一致する。
+    """
+    if coma is None or work is None:
+        return None
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return None
+    page_w_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
+    page_h_mm = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0)
+    if page_w_mm <= 0.0 or page_h_mm <= 0.0:
+        return None
+    shape = str(getattr(coma, "shape_type", "rect") or "rect")
+    if shape == "rect":
+        rect_x_mm = float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
+        rect_y_mm = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
+        return (
+            mm_to_m(-rect_x_mm),
+            mm_to_m(-rect_y_mm),
+            mm_to_m(page_w_mm),
+            mm_to_m(page_h_mm),
+        )
+    return (mm_to_m(0.0), mm_to_m(0.0), mm_to_m(page_w_mm), mm_to_m(page_h_mm))
+
+
+def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None, work=None) -> None:
     """画像 mtime が UV アンカー保存時より新しければアンカーを張り替える.
 
-    新しいレンダリングで ``thumb.png`` が上書きされた直後だけアンカーが
-    現在のコマ枠外接矩形に合わせて再ロックされる。 通常の枠線編集中は
-    画像 mtime が変わらないのでアンカーは変動せず、 プレビューは変形しない。
+    アンカーは原則として ``_page_anchor_m(work, coma)`` (ページ全体基準) を
+    使い、 ``thumb.png`` 上の正しい位置がコマ枠へ貼られる。 ``work`` が
+    無い場合はコマ多角形 bbox を使う旧フォールバックを採用する。
     """
     if mesh is None or image is None or len(mesh.vertices) == 0:
         return
@@ -346,8 +388,11 @@ def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None) -> None
     # mtime 一致でも強制的に張り替える。
     anchor_invalid = not _has_valid_uv_anchor(mesh)
     if not anchor_invalid and img_mtime <= stored_mtime + 1.0e-3:
+        # ページ基準アンカーがすでにセットされていればそのまま採用。
+        # (旧版で多角形 bbox にロックされていても、 ensure_coma_plane /
+        # update_coma_plane_geometry 経由で都度ページ基準へ上書きされる。)
         return
-    bbox = _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
+    bbox = _page_anchor_m(work, coma) or _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
     if bbox is None:
         return
     _x, _y, w, h = bbox
@@ -459,7 +504,11 @@ def _apply_material(
         tex.image = image
         preview_node = tex
         try:
-            tex.extension = "EXTEND"
+            # UV アンカー範囲 (0,1) を超えた部分は CLIP=(0,0,0,0) に倒す。
+            # コマ枠を再レンダリング前に広げた等で UV が外れた領域は、
+            # 端ピクセルを引き伸ばさず透明にしてユーザーに「ここはまだ
+            # 撮り直しが必要」 と明示する。
+            tex.extension = "CLIP"
         except Exception:  # noqa: BLE001
             pass
         try:
@@ -624,7 +673,7 @@ def _ensure_coma_plane_material(
         mesh_name = f"{COMA_PLANE_MESH_PREFIX}{page_id}_{coma_id}"
         mesh_obj = bpy.data.meshes.get(mesh_name)
         if mesh_obj is not None and image is not None:
-            _refresh_uv_anchor_for_image(mesh_obj, image, coma=coma)
+            _refresh_uv_anchor_for_image(mesh_obj, image, coma=coma, work=work)
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: UV anchor refresh failed")
     try:
@@ -1062,6 +1111,12 @@ def ensure_coma_plane(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
+    # UV アンカーをページ基準で固定。 メッシュをビルドする前に書き込んでおけば
+    # ``_ensure_uv`` がこれを使う。 コマ枠を編集してもアンカーは変わらず、
+    # ``thumb.png`` (= ページ全体レンダー) の正しい位置がコマ枠に貼り付く。
+    page_anchor = _page_anchor_m(work, coma)
+    if page_anchor is not None:
+        mesh["bname_uv_ref"] = list(page_anchor)
     _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
 
     mat = _ensure_coma_plane_material(page_id, coma_id, coma, work, page)
@@ -1135,8 +1190,13 @@ def update_coma_plane_geometry(
     obj = bpy.data.objects.get(obj_name)
     if mesh is None or obj is None:
         return False
+    # アンカーをページ基準に張り替えてからメッシュを組み直す (コマ形状変更時
+    # も ``thumb.png`` 上の正しい位置と対応する UV が貼られる)。
+    page_anchor = _page_anchor_m(work, coma)
+    if page_anchor is not None:
+        mesh["bname_uv_ref"] = list(page_anchor)
     try:
-        _build_mesh_geometry(mesh, coma, soft_mask=False)
+        _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
     except Exception:  # noqa: BLE001
         _logger.exception("update_coma_plane_geometry: mesh rebuild failed (%s)", mesh_name)
         return False
