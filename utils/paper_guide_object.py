@@ -30,12 +30,28 @@ GUIDE_KIND_LINES = "guides"
 _OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 
 # 実体ガイド線をビュー上で一定の太さ (おおよそこのピクセル幅) に保つ。
-GUIDE_SCREEN_PX = 1.6
+GUIDE_SCREEN_PX = 1.0
+# Grease Pencil v3 の point.radius はビューポート上で指定 world 半径より太く出るため、
+# 実機スクリーンショットで 1px に見える係数へ補正する。
+_GUIDE_GP_RADIUS_SCALE = 0.1
 _GUIDE_THICKNESS_INTERVAL = 0.12
 _last_mpp: float = -1.0
 
 
+def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    try:
+        return (
+            max(0.0, min(1.0, float(rgba[0]))),
+            max(0.0, min(1.0, float(rgba[1]))),
+            max(0.0, min(1.0, float(rgba[2]))),
+            1.0,
+        )
+    except Exception:  # noqa: BLE001
+        return (0.0, 0.82, 1.0, 1.0)
+
+
 def _gp_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    rgba = _opaque_rgba(rgba)
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -154,7 +170,7 @@ def _append_segment(curve: bpy.types.Curve, start: tuple[float, float], end: tup
 
 def _guide_radius_m() -> float:
     if _last_mpp > 0.0:
-        half = GUIDE_SCREEN_PX * _last_mpp * 0.5
+        half = GUIDE_SCREEN_PX * _last_mpp * 0.5 * _GUIDE_GP_RADIUS_SCALE
         return max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
     return mm_to_m(0.12) * 0.5
 
@@ -695,6 +711,21 @@ def _meters_per_pixel(region, rv3d) -> Optional[float]:
         from bpy_extras import view3d_utils
     except Exception:  # noqa: BLE001
         return None
+    sample_m = mm_to_m(10.0)
+    try:
+        p0 = view3d_utils.location_3d_to_region_2d(region, rv3d, (0.0, 0.0, 0.0))
+        px = view3d_utils.location_3d_to_region_2d(region, rv3d, (sample_m, 0.0, 0.0))
+        py = view3d_utils.location_3d_to_region_2d(region, rv3d, (0.0, sample_m, 0.0))
+        distances = []
+        if p0 is not None and px is not None:
+            distances.append((px - p0).length)
+        if p0 is not None and py is not None:
+            distances.append((py - p0).length)
+        valid = [dist for dist in distances if dist > 1.0e-6]
+        if valid:
+            return sample_m / (sum(valid) / len(valid))
+    except Exception:  # noqa: BLE001
+        pass
     cx = region.width * 0.5
     cy = region.height * 0.5
     p0 = view3d_utils.region_2d_to_location_3d(region, rv3d, (cx, cy), (0.0, 0.0, 0.0))
@@ -720,7 +751,7 @@ def apply_view_constant_thickness() -> None:
     _last_mpp = mpp
     # 異常な視点 (極端なズーム/パース) で bevel が暴れないようクランプ。
     # 0.005mm 〜 3mm 相当の線幅に収める。
-    half = GUIDE_SCREEN_PX * mpp * 0.5
+    half = GUIDE_SCREEN_PX * mpp * 0.5 * _GUIDE_GP_RADIUS_SCALE
     half = max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
     for curve in bpy.data.curves:
         if not curve.name.startswith(PAPER_GUIDE_CURVE_PREFIX):
