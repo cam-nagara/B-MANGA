@@ -144,15 +144,40 @@ def _legacy_thumb_socket(node):
 
 
 def _ensure_link(tree, render_layers, socket) -> None:
+    """``thumb`` ソケットへ既定の接続を確保する.
+
+    ユーザーが手動で別ソースへ繋ぎ替えている場合は触らない。 何も繋がっていない
+    時だけ、 最初の Render Layers ノードの画像出力へ規定値として接続する。
+    """
     try:
-        image_socket = render_layers.outputs.get("Image")
-        if image_socket is None:
-            return
         for link in tree.links:
             if link.to_socket == socket:
-                if link.from_socket == image_socket:
-                    return
-                tree.links.remove(link)
+                # 既にユーザー or 過去の設定で何か繋がっている。 触らない。
+                return
+        image_socket = _find_image_output(render_layers)
+        if image_socket is None:
+            return
         tree.links.new(image_socket, socket)
     except Exception:  # noqa: BLE001
         _logger.exception("thumb output: link setup failed")
+
+
+def _find_image_output(render_layers):
+    """Render Layers ノードの画像出力ソケットを返す.
+
+    多言語化された Blender では ``name`` が "画像" 等になるため、
+    ``identifier`` (常に "Image") 優先で探し、 見つからなければ最初の
+    RGBA/COLOR 出力にフォールバックする。
+    """
+    if render_layers is None:
+        return None
+    for sock in render_layers.outputs:
+        if getattr(sock, "identifier", "") == "Image":
+            return sock
+    for sock in render_layers.outputs:
+        if getattr(sock, "name", "") == "Image":
+            return sock
+    for sock in render_layers.outputs:
+        if getattr(sock, "type", "") in {"RGBA", "COLOR"}:
+            return sock
+    return None
