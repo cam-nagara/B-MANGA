@@ -28,7 +28,7 @@ from typing import Iterable, List, Optional
 
 import bpy
 
-from ..utils import log
+from ..utils import log, runtime_activity
 
 _logger = log.get_logger(__name__)
 
@@ -835,7 +835,7 @@ def _match_filter(kmi: object, filt: dict) -> bool:
 _state: Optional[KeymapState] = None
 
 # タイマー監視間隔 (秒)
-_WATCH_INTERVAL = 0.5
+_WATCH_INTERVAL = runtime_activity.KEYMAP_WATCH_INTERVAL
 # B-Name タブの bl_category 名
 _BNAME_TAB_CATEGORY = "B-Name"
 _SUSPEND_UNTIL = 0.0

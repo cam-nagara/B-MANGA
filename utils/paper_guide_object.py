@@ -8,7 +8,7 @@ from typing import Iterable, Optional
 import bpy
 
 from ..ui import overlay_shared
-from . import log
+from . import log, runtime_activity
 from . import object_naming as on
 from . import outliner_model as om
 from . import viewport_colors
@@ -36,8 +36,8 @@ GUIDE_SCREEN_PX = 1.0
 # 実機スクリーンショットで 1px に見える係数へ補正する。
 _GUIDE_GP_RADIUS_SCALE = 0.1
 _GUIDE_CURVE_RADIUS_SCALE = 1.0
-_GUIDE_THICKNESS_INTERVAL = 0.12
-_GUIDE_IDLE_INTERVAL = 1.0
+_GUIDE_THICKNESS_INTERVAL = runtime_activity.GUIDE_ACTIVE_INTERVAL
+_GUIDE_IDLE_INTERVAL = runtime_activity.GUIDE_IDLE_INTERVAL
 _GUIDE_REPAIR_INTERVAL = 1.0
 _GUIDE_Z_CLEARANCE_M = 0.012
 _GUIDE_KIND_Z_OFFSETS_M = {
@@ -51,14 +51,7 @@ _last_repair_time: float = 0.0
 
 
 def _live_guide_updates_allowed() -> bool:
-    if bool(getattr(bpy.app, "background", False)):
-        return True
-    try:
-        from . import shortcut_visibility
-
-        return shortcut_visibility.any_bname_panel_visible(bpy.context)
-    except Exception:  # noqa: BLE001
-        return False
+    return runtime_activity.live_view_updates_allowed(bpy.context)
 
 
 def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:

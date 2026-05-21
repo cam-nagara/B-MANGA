@@ -21,11 +21,11 @@ from __future__ import annotations
 import bpy
 from bpy.app.handlers import persistent
 
-from . import log
+from . import log, runtime_activity
 
 _logger = log.get_logger(__name__)
 
-_TICK = 1.0  # 秒。共通設定同期は即時性より通常操作を妨げない軽さを優先する。
+_TICK = runtime_activity.SETTINGS_SYNC_INTERVAL  # 秒。通常操作を妨げない軽さを優先する。
 _FLOAT_EPS = 1e-6
 _BUSY = False
 

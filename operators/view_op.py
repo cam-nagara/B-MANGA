@@ -15,7 +15,7 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_PAGE, get_mode
 from ..core.work import get_work
-from ..utils import geom, log, page_browser
+from ..utils import geom, log, page_browser, runtime_activity
 
 _logger = log.get_logger(__name__)
 
@@ -611,20 +611,25 @@ def _on_page_browser_fit_changed(_self, context) -> None:
 
 
 def _page_browser_fit_watcher():
+    interval = runtime_activity.interval_for_loaded_work(
+        bpy.context,
+        active=0.5,
+        idle=runtime_activity.LOADED_WORK_IDLE_INTERVAL,
+    )
     try:
         context = bpy.context
         scene = getattr(context, "scene", None)
         if scene is None:
             _PAGE_BROWSER_AREA_SIZES.clear()
-            return 0.5
+            return interval
         work = get_work(context)
         if work is None or not work.loaded:
-            return 0.5
+            return interval
         for area in page_browser.iter_page_browser_areas(context):
             page_browser.apply_page_browser_view_settings(area)
         if not page_browser.fit_enabled(scene):
             _PAGE_BROWSER_AREA_SIZES.clear()
-            return 0.5
+            return interval
         for area in page_browser.iter_page_browser_areas(context):
             key = page_browser.area_key(area)
             size = (int(getattr(area, "width", 0)), int(getattr(area, "height", 0)))
@@ -633,7 +638,7 @@ def _page_browser_fit_watcher():
                 _fit_page_browser_area(context, area)
     except Exception:  # noqa: BLE001
         _logger.exception("page browser fit watcher failed")
-    return 0.5
+    return interval
 
 
 def _on_overview_cols_changed(self, context) -> None:

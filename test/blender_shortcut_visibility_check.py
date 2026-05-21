@@ -44,12 +44,20 @@ def main() -> None:
     mod = _load_addon()
     from bname_dev_shortcut_visibility.keymap import keymap as keymap_mod
     from bname_dev_shortcut_visibility.keymap import viewport_ops
-    from bname_dev_shortcut_visibility.utils import page_browser, shortcut_visibility
+    from bname_dev_shortcut_visibility.utils import page_browser, runtime_activity, shortcut_visibility
 
     work = bpy.context.scene.bname_work
     work.loaded = True
     work.work_dir = str(ROOT / "_shortcut_visibility_test.bname")
     bpy.context.scene.bname_mode = "PAGE"
+    assert runtime_activity.interval_for_loaded_work(bpy.context, active=0.5, idle=2.0) == 0.5, (
+        "作品読込中の監視間隔がアクティブ扱いになりません"
+    )
+    work.loaded = False
+    assert runtime_activity.interval_for_loaded_work(bpy.context, active=0.5, idle=2.0) == 2.0, (
+        "作品未読込時の監視間隔が低頻度扱いになりません"
+    )
+    work.loaded = True
 
     original_panel_visible = shortcut_visibility.bname_panel_visible
     original_any_panel_visible = shortcut_visibility.any_bname_panel_visible
