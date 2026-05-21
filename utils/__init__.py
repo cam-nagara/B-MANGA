@@ -34,11 +34,13 @@ def register() -> None:
     camera_overview_sync.register()
     paper_bg_object.register()
     paper_guide_object.register()
+    geometry_nodes_bridge.register()
     coma_plane.register()
 
 
 def unregister() -> None:
     coma_plane.unregister()
+    geometry_nodes_bridge.unregister()
     paper_guide_object.unregister()
     paper_bg_object.unregister()
     camera_overview_sync.unregister()

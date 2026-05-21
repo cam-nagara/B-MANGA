@@ -48,6 +48,32 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
+def _assert_generated_group(group, *, kind: str) -> None:
+    nodes = {node.bl_idname for node in group.nodes}
+    required = {
+        "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh"},
+        "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
+        "uni_flash": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
+    }[kind]
+    assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
+    direct_links = [
+        link
+        for link in group.links
+        if link.from_node.bl_idname == "NodeGroupInput"
+        and link.to_node.bl_idname == "NodeGroupOutput"
+        and link.from_socket.name == "Geometry"
+        and link.to_socket.name == "Geometry"
+    ]
+    assert not direct_links, f"{kind} が入力形状をそのまま出力しています"
+    if kind in {"effect_line", "uni_flash"}:
+        input_geometry_links = [
+            link
+            for link in group.links
+            if link.from_node.bl_idname == "NodeGroupInput" and link.from_socket.name == "Geometry"
+        ]
+        assert not input_geometry_links, f"{kind} が入力形状に依存しています"
+
+
 def _assert_nodes(obj, *, kind: str, group_name: str):
     from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn
 
@@ -57,7 +83,17 @@ def _assert_nodes(obj, *, kind: str, group_name: str):
     assert modifier.node_group is not None
     assert modifier.node_group.name == group_name
     assert str(obj.get(gn.PROP_GN_KIND, "") or "") == kind
+    _assert_generated_group(modifier.node_group, kind=kind)
     return modifier
+
+
+def _create_legacy_passthrough_group() -> None:
+    group = bpy.data.node_groups.new("BName_GN_Balloon", "GeometryNodeTree")
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    input_node = group.nodes.new("NodeGroupInput")
+    output_node = group.nodes.new("NodeGroupOutput")
+    group.links.new(input_node.outputs["Geometry"], output_node.inputs["Geometry"])
 
 
 def main() -> None:
@@ -65,7 +101,9 @@ def main() -> None:
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
+        _create_legacy_passthrough_group()
         mod = _load_addon()
+        _assert_generated_group(bpy.data.node_groups["BName_GN_Balloon"], kind="balloon")
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "GeometryNodes.bname"))
         assert "FINISHED" in result, result
 

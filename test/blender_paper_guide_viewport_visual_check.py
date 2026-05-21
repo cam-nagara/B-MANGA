@@ -129,7 +129,6 @@ def _run_visual_check() -> None:
         paper.show_safe_line = True
         paper.show_trim_marks = True
         overlay.apply_bname_shading_mode(context)
-        paper_guide_object.regenerate_all_paper_guides(context.scene, work)
 
         with _view3d_override():
             bpy.ops.view3d.view_axis(type="TOP", align_active=False)

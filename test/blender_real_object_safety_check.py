@@ -248,41 +248,37 @@ def main() -> None:
         assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
         assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
 
-        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
-        assert guide_obj is not None, "paper guide object was not created"
-        assert guide_obj.type == "GREASEPENCIL", f"paper guide should be a grease pencil, got {guide_obj.type}"
-        guide_strokes = [
-            stroke
-            for layer in guide_obj.data.layers
-            for frame in layer.frames
-            for stroke in frame.drawing.strokes
-        ]
-        assert guide_strokes, "paper guide grease pencil has no strokes"
-        assert all(point.radius > 0.0 for stroke in guide_strokes for point in stroke.points), (
-            "paper guide grease pencil strokes have no viewport thickness"
+        def _guide_curve_objects():
+            return [
+                obj
+                for obj in bpy.data.objects
+                if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page.id
+                and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
+                and obj.type == "CURVE"
+            ]
+
+        guide_objects = _guide_curve_objects()
+        assert guide_objects, "paper guide objects were not created"
+        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
+            "paper guide curves have no splines"
+        )
+        assert all(float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) > 0.0 for obj in guide_objects), (
+            "paper guide curves have no viewport thickness"
         )
         work.paper.show_guides = False
         paper_guide_object.regenerate_all_paper_guides(scene, work)
-        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
-        assert guide_obj is not None, "paper guide object disappeared after hiding guides"
-        hidden_guide_strokes = [
-            stroke
-            for layer in guide_obj.data.layers
-            for frame in layer.frames
-            for stroke in frame.drawing.strokes
-        ]
-        assert not hidden_guide_strokes, "用紙ガイドをオフにしてもガイド線が残っています"
+        hidden_guide_objects = _guide_curve_objects()
+        assert hidden_guide_objects, "paper guide objects disappeared after hiding guides"
+        assert not any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in hidden_guide_objects), (
+            "用紙ガイドをオフにしてもガイド線が残っています"
+        )
         work.paper.show_guides = True
         paper_guide_object.regenerate_all_paper_guides(scene, work)
-        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{page.id}")
-        assert guide_obj is not None, "paper guide object disappeared after showing guides"
-        guide_strokes = [
-            stroke
-            for layer in guide_obj.data.layers
-            for frame in layer.frames
-            for stroke in frame.drawing.strokes
-        ]
-        assert guide_strokes, "用紙ガイドをオンに戻してもガイド線が復元されません"
+        guide_objects = _guide_curve_objects()
+        assert guide_objects, "paper guide objects disappeared after showing guides"
+        assert any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects), (
+            "用紙ガイドをオンに戻してもガイド線が復元されません"
+        )
         safe_fill_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
@@ -365,7 +361,7 @@ def main() -> None:
         folder_image_obj_name = folder_image_obj.name
         outside_image_obj_name = outside_image_obj.name
         outside_folder_image_obj_name = outside_folder_image_obj.name
-        guide_name = guide_obj.name
+        guide_name = guide_objects[0].name
         safe_fill_name = safe_fill_obj.name
         white_margin_name = white_margin_obj.name
         balloon_name = balloon_obj.name

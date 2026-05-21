@@ -146,13 +146,10 @@ def _collect_report() -> dict:
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "")
     ]
     guide_stroke_radii = [
-        float(point.radius)
+        float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
         for obj in guide_objs
-        if obj.get(paper_guide_object.PROP_GUIDE_KIND) == paper_guide_object.GUIDE_KIND_LINES
-        for layer in obj.data.layers
-        for frame in layer.frames
-        for stroke in frame.drawing.strokes
-        for point in stroke.points
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
+        and obj.type == "CURVE"
     ]
     border_objs = [
         obj

@@ -216,29 +216,20 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
     ]
     guide_kinds = {str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") for obj in guide_objs}
-    expected = {"guides", "safe_fill"}
+    expected = {"dim", "light", "inner", "safe", "safe_fill"}
     if not expected.issubset(guide_kinds):
         raise AssertionError(f"missing paper guide objects: expected={expected}, actual={guide_kinds}")
     guide_line_objs = [
         obj for obj in guide_objs
-        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "guides"
+        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
     ]
-    if len(guide_line_objs) != 1:
-        raise AssertionError(f"paper guide lines must be one grease pencil object: {guide_line_objs}")
-    for obj in guide_objs:
-        if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") != "guides":
-            continue
-        if obj.type != "GREASEPENCIL":
-            raise AssertionError(f"paper guide lines should be grease pencil: {obj.name} ({obj.type})")
-        radii = [
-            float(point.radius)
-            for layer in obj.data.layers
-            for frame in layer.frames
-            for stroke in frame.drawing.strokes
-            for point in stroke.points
-        ]
-        if not radii or min(radii) <= 0.0:
-            raise AssertionError(f"paper guide grease pencil has no viewport thickness: {obj.name}")
+    if len(guide_line_objs) < 4:
+        raise AssertionError(f"paper guide lines must be curve objects: {guide_line_objs}")
+    for obj in guide_line_objs:
+        if obj.type != "CURVE":
+            raise AssertionError(f"paper guide lines should be curve: {obj.name} ({obj.type})")
+        if float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) <= 0.0:
+            raise AssertionError(f"paper guide curve has no viewport thickness: {obj.name}")
     safe_fill_objs = [
         obj for obj in guide_objs
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "safe_fill"

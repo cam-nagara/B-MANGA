@@ -3,6 +3,34 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-21 — v0.6.040 用紙ガイド線の実表示とノード内部生成を修正
+
+### 症状
+- 新規作成した作品でも、「用紙ガイド」にチェックが入っているのに用紙ガイド線が見えない場合があった。
+- 効果線、フキダシ、ウニフラッシュの Geometry Nodes が、ほぼ入力と出力だけの状態に見え、ノード内部で生成しているか確認できなかった。
+
+### 原因
+- 用紙ガイド線は実体自体は作られていたが、画面表示方式が実際の 3D ビューで消える経路に依存していた。
+- Geometry Nodes は B-Name パネルの値を受け取るだけで、古いノードグループが残っている場合の作り直しや、ノード内部での代表形状生成が不足していた。
+
+### 修正
+- 用紙ガイド線を画面上で見えるカーブ実体へ切り替え、不透明100%、常に画面上1px相当の太さで表示するようにした。
+- 既存作品を開いた時に古い用紙ガイド線実体が残っていれば、現在仕様の用紙ガイド線へ自動修復するようにした。
+- 効果線とウニフラッシュは、入力形状に依存せず Geometry Nodes 内で線群を生成するようにした。
+- フキダシは段階移行方針に沿い、楕円フキダシを Geometry Nodes 内部生成へ移した。複雑形状は互換表示を保つため、当面は既存形状を参照する。
+- 古い空に近い Geometry Nodes グループを開いた時も、現在仕様の生成ノードへ作り直すようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_geometry_nodes_bridge_check.py`: 古い空に近いノードグループが作り直され、効果線・ウニフラッシュが入力形状に依存しないこと、フキダシのパネル値が反映されることを確認。PASS。
+- `test/blender_paper_guide_visibility_check.py`: 新規作品で用紙ガイド線がカーブ実体として作られ、不透明100%、画面上1px相当の太さになることを確認。PASS。
+- `test/blender_paper_guide_viewport_visual_check.py`: 実際の 3D ビュー画像で用紙ガイド線とセーフラインが見えることを確認。PASS。
+- `test/blender_balloon_uni_flash_check.py`: フキダシ・ウニフラッシュの既存操作と書き出しが破綻していないことを確認。PASS。
+- `test/blender_effect_line_mask_visibility_check.py`: 効果線作成時にコマ表示やマスク関連が破綻していないことを確認。PASS。
+- `test/blender_real_object_safety_check.py`: 実体表示の保存・再読込が破綻していないことを確認。PASS。
+- `test/blender_bname_partial_completion_check.py`: ページ追加、用紙ガイド線、主要実体表示の部分完了チェックが破綻していないことを確認。PASS。
+- `test/blender_requested_items_visual_audit.py`: 代表的なページ一覧表示、フキダシ、用紙ガイド線の目視監査画像を生成し、破綻がないことを確認。PASS。
+- `test/blender_real_work_visual_audit.py`: 既存の実作品ファイルで用紙ガイド線が修復・表示されることを確認。PASS。
+
 ## 2026-05-21 — v0.6.039 用紙ガイド線の既存ファイル修復と Geometry Nodes 同期を追加
 
 ### 症状

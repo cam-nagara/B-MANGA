@@ -310,18 +310,14 @@ def _assert_requested_state(work) -> dict[str, object]:
     guide_objects = [
         obj for obj in bpy.data.objects
         if obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID)
-        and obj.get(paper_guide_object.PROP_GUIDE_KIND) == paper_guide_object.GUIDE_KIND_LINES
+        and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in {"dim", "light", "inner", "safe"}
     ]
     guide_radii = [
-        float(point.radius)
+        float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
         for obj in guide_objects
-        for layer in obj.data.layers
-        for frame in layer.frames
-        for stroke in frame.drawing.strokes
-        for point in stroke.points
     ]
-    if not guide_objects or any(obj.type != "GREASEPENCIL" for obj in guide_objects) or not guide_radii or min(guide_radii) <= 0.0:
-        raise AssertionError("実体ガイドのグリースペンシル線に一定太さが設定されていません")
+    if not guide_objects or any(obj.type != "CURVE" for obj in guide_objects) or not guide_radii or min(guide_radii) <= 0.0:
+        raise AssertionError("実体ガイドのカーブ線に一定太さが設定されていません")
 
     window, screen, area, region, rv3d = _view3d_context()
     camera = scene.camera
