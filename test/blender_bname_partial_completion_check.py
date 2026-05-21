@@ -150,7 +150,6 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         "draw_trim_marks": overlay._draw_trim_marks,
         "draw_frame_with_hole": overlay._draw_frame_with_hole,
         "draw_comas": overlay._draw_comas,
-        "draw_balloons": overlay._draw_balloons,
         "draw_text_guides": overlay_text.draw_text_guides,
         "draw_image_layers": overlay_image.draw_image_layers,
         "draw_shared_layers": overlay._draw_shared_layers,
@@ -174,7 +173,6 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         overlay._draw_trim_marks = mark("paper")
         overlay._draw_frame_with_hole = safe_overlay
         overlay._draw_comas = mark("coma")
-        overlay._draw_balloons = mark("balloon")
         overlay_text.draw_text_guides = mark("text")
         overlay_image.draw_image_layers = mark("image")
         overlay._draw_shared_layers = mark("shared")
@@ -194,16 +192,17 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         overlay._draw_trim_marks = original["draw_trim_marks"]
         overlay._draw_frame_with_hole = original["draw_frame_with_hole"]
         overlay._draw_comas = original["draw_comas"]
-        overlay._draw_balloons = original["draw_balloons"]
         overlay_text.draw_text_guides = original["draw_text_guides"]
         overlay_image.draw_image_layers = original["draw_image_layers"]
         overlay._draw_shared_layers = original["draw_shared_layers"]
         overlay.gpu.state.depth_test_set = original["depth_test_set"]
         overlay.gpu.state.blend_set = original["blend_set"]
 
-    for required in ("image", "shared", "coma", "balloon", "text"):
+    for required in ("image", "shared", "coma", "text"):
         if required not in calls:
             raise AssertionError(f"{required} draw marker missing: {calls}")
+    if "balloon" in calls:
+        raise AssertionError(f"balloons must not be drawn by overlay: {calls}")
     if "paper" in calls:
         raise AssertionError(f"paper guides must not be drawn by overlay: {calls}")
     if "safe_overlay" in calls:
@@ -230,6 +229,15 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
             raise AssertionError(f"paper guide lines should be curve: {obj.name} ({obj.type})")
         if float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) <= 0.0:
             raise AssertionError(f"paper guide curve has no viewport thickness: {obj.name}")
+        if bool(getattr(obj, "show_in_front", False)) or bool(getattr(obj, "show_transparent", False)):
+            raise AssertionError(f"paper guide curve should not rely on in-front transparent wire display: {obj.name}")
+    visible_z = [
+        round(float(obj.location.z), 6)
+        for obj in guide_line_objs
+        if len(getattr(obj.data, "splines", []) or []) > 0
+    ]
+    if len(set(visible_z)) != len(visible_z):
+        raise AssertionError(f"paper guide line z levels should be staggered: {visible_z}")
     safe_fill_objs = [
         obj for obj in guide_objs
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == "safe_fill"
@@ -263,7 +271,6 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
 def _assert_coma_overlay_cleanup(context, work, page) -> None:
     from bname_dev.operators import object_tool_op
     from bname_dev.ui import overlay
-    from bname_dev.ui import overlay_balloon
     from bname_dev.ui import overlay_text
     from bname_dev.utils import object_selection
 
@@ -284,7 +291,6 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         "draw_styled_segment_mm": overlay._draw_styled_segment_mm,
         "draw_frame_with_hole": overlay._draw_frame_with_hole,
         "draw_polyline_loop": overlay._draw_polyline_loop,
-        "draw_balloons": overlay_balloon.draw_balloons,
         "draw_text_guides": overlay_text.draw_text_guides,
     }
 
@@ -348,7 +354,6 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         shared.rect_height_mm = 30.0
         shared.background_color = (1.0, 0.0, 0.0, 1.0)
         overlay._draw_polyline_loop = mark("shared_outline")
-        overlay_balloon.draw_balloons = lambda *_args, **_kwargs: None
         overlay_text.draw_text_guides = lambda *_args, **_kwargs: None
         overlay._draw_shared_layers(work)
         if "coma_background" in calls:
@@ -365,7 +370,6 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         overlay._draw_styled_segment_mm = original["draw_styled_segment_mm"]
         overlay._draw_frame_with_hole = original["draw_frame_with_hole"]
         overlay._draw_polyline_loop = original["draw_polyline_loop"]
-        overlay_balloon.draw_balloons = original["draw_balloons"]
         overlay_text.draw_text_guides = original["draw_text_guides"]
         coma.border.visible = old_border_visible
         coma.white_margin.enabled = old_white_margin_enabled

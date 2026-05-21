@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 3
+_GROUP_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,7 @@ _GROUP_SOCKETS: dict[str, tuple[SocketSpec, ...]] = {
         SocketSpec("高さ", "NodeSocketFloat", 0.0),
     ),
     "balloon": (
+        SocketSpec("参照形状", "NodeSocketObject", None),
         SocketSpec("線幅", "NodeSocketFloat", 0.3),
         SocketSpec("塗り不透明度", "NodeSocketFloat", 1.0),
         SocketSpec("幅", "NodeSocketFloat", 0.0),
@@ -273,6 +274,12 @@ def _balloon_ellipse_geometry(group, input_node, width_half_m, height_half_m, li
 def _build_balloon_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
+    ref_info = _node(group, "GeometryNodeObjectInfo", label="参照形状を取得", location=(120, 420))
+    _link(group, input_node.outputs["参照形状"], ref_info.inputs["Object"])
+    try:
+        _set_default(ref_info.inputs["As Instance"], False)
+    except Exception:  # noqa: BLE001
+        pass
     width_half_m = _math_multiply(
         group,
         input_node.outputs["幅"],
@@ -303,7 +310,7 @@ def _build_balloon_nodes(group) -> None:
     switch = _node(group, "GeometryNodeSwitch", label="複雑形状は互換形状", location=(570, 90))
     switch.input_type = "GEOMETRY"
     _link(group, compare.outputs["Result"], switch.inputs["Switch"])
-    _link(group, input_node.outputs["Geometry"], switch.inputs["False"])
+    _link(group, ref_info.outputs["Geometry"], switch.inputs["False"])
     _link(group, generated, switch.inputs["True"])
     _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
     group[PROP_GROUP_VERSION] = _GROUP_VERSION
@@ -531,7 +538,9 @@ def _set_modifier_value(modifier, identifier: str, spec: SocketSpec, value: Any)
     if not identifier:
         return
     try:
-        if spec.socket_type == "NodeSocketInt":
+        if spec.socket_type == "NodeSocketObject":
+            modifier[identifier] = value
+        elif spec.socket_type == "NodeSocketInt":
             modifier[identifier] = int(round(float(value or 0)))
         else:
             modifier[identifier] = float(value or 0.0)

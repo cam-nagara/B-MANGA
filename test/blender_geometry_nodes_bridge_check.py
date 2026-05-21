@@ -48,6 +48,16 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _assert_generated_group(group, *, kind: str) -> None:
     nodes = {node.bl_idname for node in group.nodes}
     required = {
@@ -177,6 +187,14 @@ def main() -> None:
         _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 42.0, "フキダシ 幅")
         _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 23.0, "フキダシ 高さ")
         assert int(_modifier_socket_value(balloon_modifier, "形状")) == 2
+        assert _modifier_socket_value(balloon_modifier, "参照形状") is not None
+        assert len(balloon_obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
+        assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシのGeometry Nodes表示結果が空です"
+        source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
+        assert source_obj is not None, "フキダシの参照形状がありません"
+        assert source_obj.hide_viewport and source_obj.hide_render and source_obj.hide_select, (
+            "フキダシの参照形状が画面表示対象になっています"
+        )
 
         balloon.line_width_mm = 0.91
         balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")

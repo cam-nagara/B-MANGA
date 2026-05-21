@@ -38,6 +38,13 @@ _GUIDE_GP_RADIUS_SCALE = 0.1
 _GUIDE_CURVE_RADIUS_SCALE = 1.0
 _GUIDE_THICKNESS_INTERVAL = 0.12
 _GUIDE_REPAIR_INTERVAL = 1.0
+_GUIDE_Z_CLEARANCE_M = 0.012
+_GUIDE_KIND_Z_OFFSETS_M = {
+    "dim": 0.0000,
+    "light": 0.0007,
+    "inner": 0.0014,
+    "safe": 0.0021,
+}
 _last_mpp: float = -1.0
 _last_repair_time: float = 0.0
 
@@ -76,7 +83,67 @@ def _gp_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.type
             gp_style.color = rgba
         except Exception:  # noqa: BLE001
             pass
+    _setup_guide_view_material(mat, rgba)
     return mat
+
+
+def _setup_guide_view_material(mat: bpy.types.Material, rgba: tuple[float, float, float, float]) -> None:
+    _set_material_opaque(mat, rgba)
+    try:
+        mat.use_nodes = True
+    except Exception:  # noqa: BLE001
+        return
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    out.location = (220, 0)
+    emission = nt.nodes.new("ShaderNodeEmission")
+    emission.location = (0, 0)
+    emission.inputs["Color"].default_value = rgba
+    emission.inputs["Strength"].default_value = 1.0
+    nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
+    _set_material_opaque(mat, rgba)
+
+
+def _set_material_opaque(mat: bpy.types.Material, rgba: tuple[float, float, float, float]) -> None:
+    try:
+        mat.blend_method = "OPAQUE"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.surface_render_method = "DITHERED"
+    except (AttributeError, TypeError, ValueError):
+        pass
+    try:
+        mat.show_transparent_back = False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.diffuse_color = rgba
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _guide_material_is_translucent(mat: bpy.types.Material) -> bool:
+    try:
+        if float(mat.diffuse_color[3]) < 0.999:
+            return True
+    except Exception:  # noqa: BLE001
+        return True
+    try:
+        if str(getattr(mat, "blend_method", "")) == "BLEND":
+            return True
+    except Exception:  # noqa: BLE001
+        return True
+    try:
+        if str(getattr(mat, "surface_render_method", "")) == "BLENDED":
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
 
 
 def _material_slot_index(obj: bpy.types.Object, mat: bpy.types.Material) -> int:
@@ -282,7 +349,7 @@ def _ensure_gp_guide_object(
     obj.hide_select = True
     obj.hide_render = True
     try:
-        obj.show_in_front = True
+        obj.show_in_front = False
     except Exception:  # noqa: BLE001
         pass
     layer = gp_utils.ensure_layer(gp_data, "ガイド")
@@ -370,11 +437,15 @@ def _ensure_curve_object(
     obj[on.PROP_MANAGED] = False
     obj.hide_select = True
     try:
-        obj.show_in_front = True
+        obj.show_in_front = False
     except Exception:  # noqa: BLE001
         pass
     try:
-        obj.show_transparent = True
+        obj.show_transparent = False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.display_type = "TEXTURED"
     except Exception:  # noqa: BLE001
         pass
     obj.hide_viewport = not (visible and (bool(points) or bool(segments)))
@@ -615,8 +686,8 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
-    safe_z = max_all + 0.003
-    guide_z = max(max_all, safe_z) + 0.01
+    safe_z = max_all + (_GUIDE_Z_CLEARANCE_M * 0.5)
+    guide_z = safe_z + _GUIDE_Z_CLEARANCE_M
     return safe_z, guide_z, max_all
 
 
@@ -701,7 +772,7 @@ def _ensure_curve_guides(
             points=loops,
             segments=segments,
             material=mat,
-            z_m=guide_z,
+            z_m=guide_z + _GUIDE_KIND_Z_OFFSETS_M.get(str(label), 0.0),
             visible=visible,
         )
         objects.append(obj)
@@ -904,6 +975,24 @@ def _curve_has_visible_geometry(obj: bpy.types.Object) -> bool:
     return len(getattr(curve, "splines", []) or []) > 0
 
 
+def _curve_display_needs_rebuild(obj: bpy.types.Object) -> bool:
+    if bool(getattr(obj, "show_in_front", False)) or bool(getattr(obj, "show_transparent", False)):
+        return True
+    for mat in list(getattr(getattr(obj, "data", None), "materials", []) or []):
+        if _guide_material_is_translucent(mat):
+            return True
+    return False
+
+
+def _curve_z_levels_are_staggered(objects: list[bpy.types.Object]) -> bool:
+    visible = [
+        round(float(getattr(obj.location, "z", 0.0) or 0.0), 6)
+        for obj in objects
+        if _curve_has_visible_geometry(obj)
+    ]
+    return len(visible) <= 1 or len(set(visible)) == len(visible)
+
+
 def _guide_curve_objects(page_id: str) -> list[bpy.types.Object]:
     objects = []
     for obj in bpy.data.objects:
@@ -935,15 +1024,16 @@ def _paper_guide_needs_repair(work, page) -> bool:
         if not has_visible_curve:
             return True
         for obj in curve_objects:
+            if _curve_display_needs_rebuild(obj):
+                return True
             mats = list(getattr(getattr(obj, "data", None), "materials", []) or [])
             if not mats:
                 return True
             for mat in mats:
-                try:
-                    if abs(float(mat.diffuse_color[3]) - 1.0) > 1.0e-4:
-                        return True
-                except Exception:  # noqa: BLE001
+                if _guide_material_is_translucent(mat):
                     return True
+        if not _curve_z_levels_are_staggered(curve_objects):
+            return True
     elif any(_curve_has_visible_geometry(obj) for obj in curve_objects):
         return True
     return False

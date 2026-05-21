@@ -13,6 +13,16 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
         "bname_dev_balloon_uni_flash",
@@ -43,7 +53,6 @@ def main() -> None:
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
         from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.ui import overlay_balloon
         from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_uni_flash
         from bname_dev_balloon_uni_flash.utils.geom import Rect
         from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
@@ -109,48 +118,23 @@ def main() -> None:
 
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         assert obj is not None and obj.type == "MESH", "ウニフラッシュのオブジェクトが作成されていません"
-        assert len(obj.data.polygons) > 0, "ウニフラッシュのメッシュが空です"
+        assert len(obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
         assert len(obj.data.materials) >= 2, "ウニフラッシュの線と下地のマテリアルがまとまっていません"
-        assert any(poly.material_index == 1 for poly in obj.data.polygons), (
-            "ウニフラッシュの下地が同じオブジェクト内にありません"
-        )
-        assert any(poly.material_index == 0 and len(poly.vertices) == 3 for poly in obj.data.polygons), (
-            "ウニフラッシュ線の抜きが三角形メッシュになっていません"
+        assert _evaluated_polygon_count(obj) > 0, "Geometry Nodesの表示結果が空です"
+        modifier = obj.modifiers.get("B-Name Geometry Nodes")
+        assert modifier is not None, "フキダシにGeometry Nodesモディファイアがありません"
+        modifier.show_viewport = False
+        bpy.context.view_layer.update()
+        assert _evaluated_polygon_count(obj) == 0, "Geometry Nodesを非表示にしてもB-Name側の表示が残っています"
+        modifier.show_viewport = True
+        bpy.context.view_layer.update()
+        source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{entry.id}")
+        assert source_obj is not None, "ウニフラッシュの参照形状がありません"
+        assert source_obj.hide_viewport and source_obj.hide_render and source_obj.hide_select, (
+            "ウニフラッシュの参照形状が画面表示対象になっています"
         )
         fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{entry.id}")
         assert fill_obj is None, "ウニフラッシュの下地が別オブジェクトとして残っています"
-
-        fills = []
-        lines = []
-        line_width_args = []
-
-        def _draw_rect_outline(*_args, **_kwargs):
-            return None
-
-        def _draw_polygon_fill(points, _color):
-            fills.append(points)
-
-        def _draw_polyline_loop(*_args, **_kwargs):
-            raise AssertionError("ウニフラッシュは通常の輪郭線ループで描画しません")
-
-        def _draw_line_segments(segments, _color, **_kwargs):
-            assert "width_mm" in _kwargs, "ウニフラッシュ線の太さがmm指定で渡されていません"
-            assert "start_width_mm" in _kwargs, "ウニフラッシュ線の入り幅が渡されていません"
-            assert "end_width_mm" in _kwargs, "ウニフラッシュ線の抜き幅が渡されていません"
-            line_width_args.append(_kwargs["width_mm"])
-            lines.extend(segments)
-
-        overlay_balloon.draw_balloons(
-            page,
-            draw_rect_outline=_draw_rect_outline,
-            draw_polygon_fill=_draw_polygon_fill,
-            draw_polyline_loop=_draw_polyline_loop,
-            draw_line_segments=_draw_line_segments,
-            is_entry_visible=lambda _entry: True,
-        )
-        assert fills, "オーバーレイの下地が描画されていません"
-        assert lines, "オーバーレイの線が描画されていません"
-        assert all(width > 0 for width in line_width_args)
 
         layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
         assert layer is not None, "ウニフラッシュを書き出せません"

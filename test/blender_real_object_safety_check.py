@@ -27,6 +27,16 @@ def _load_addon():
     return mod
 
 
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _image_from_text_object(obj):
     mat = obj.active_material
     assert mat is not None, "text object has no material"
@@ -265,6 +275,17 @@ def main() -> None:
         assert all(float(getattr(obj.data, "bevel_depth", 0.0) or 0.0) > 0.0 for obj in guide_objects), (
             "paper guide curves have no viewport thickness"
         )
+        visible_guide_z = [
+            round(float(obj.location.z), 6)
+            for obj in guide_objects
+            if len(getattr(obj.data, "splines", []) or []) > 0
+        ]
+        assert len(set(visible_guide_z)) == len(visible_guide_z), (
+            "paper guide curves should not share the same viewport depth"
+        )
+        assert not any(bool(getattr(obj, "show_in_front", False)) for obj in guide_objects), (
+            "paper guide curves should not rely on viewport in-front wire display"
+        )
         work.paper.show_guides = False
         paper_guide_object.regenerate_all_paper_guides(scene, work)
         hidden_guide_objects = _guide_curve_objects()
@@ -322,10 +343,20 @@ def main() -> None:
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
         assert balloon_obj is not None, "balloon mesh was not created"
         assert balloon_obj.type == "MESH", f"balloon should be a mesh, got {balloon_obj.type}"
-        assert len(balloon_obj.data.polygons) > 0, "balloon mesh has no polygons"
+        assert len(balloon_obj.data.polygons) == 0, "balloon should not keep B-Name generated display mesh"
         assert len(balloon_obj.data.materials) >= 2, "balloon should contain line and fill materials"
-        assert any(poly.material_index == 1 for poly in balloon_obj.data.polygons), (
-            "balloon fill polygons should be inside the balloon mesh"
+        assert _evaluated_polygon_count(balloon_obj) > 0, "balloon Geometry Nodes result has no polygons"
+        modifier = balloon_obj.modifiers.get("B-Name Geometry Nodes")
+        assert modifier is not None, "balloon should have Geometry Nodes modifier"
+        modifier.show_viewport = False
+        bpy.context.view_layer.update()
+        assert _evaluated_polygon_count(balloon_obj) == 0, "balloon fallback mesh remains when Geometry Nodes is hidden"
+        modifier.show_viewport = True
+        bpy.context.view_layer.update()
+        source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
+        assert source_obj is not None, "balloon reference shape was not created"
+        assert source_obj.hide_viewport and source_obj.hide_render and source_obj.hide_select, (
+            "balloon reference shape should not be visible"
         )
         balloon_fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}")
         assert balloon_fill_obj is None, "balloon fill object should not be separate"
@@ -341,12 +372,12 @@ def main() -> None:
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail sync failed"
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
         assert balloon_obj is not None and balloon_obj.type == "MESH"
-        tail_poly_count = len(balloon_obj.data.polygons)
+        tail_poly_count = _evaluated_polygon_count(balloon_obj)
         assert tail_poly_count > 0, "balloon tail was not added to real mesh"
         tail.length_mm = 14.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail update sync failed"
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
-        assert balloon_obj is not None and len(balloon_obj.data.polygons) > 0, "balloon tail update removed real mesh"
+        assert balloon_obj is not None and _evaluated_polygon_count(balloon_obj) > 0, "balloon tail update removed real mesh"
         balloon_real_objects = [
             obj
             for obj in bpy.data.objects

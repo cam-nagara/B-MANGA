@@ -78,6 +78,8 @@ def main() -> None:
         from bname_dev_coma_content_z.utils import coma_border_object
         from bname_dev_coma_content_z.utils import coma_plane
         from bname_dev_coma_content_z.utils import coma_z_order
+        from bname_dev_coma_content_z.utils import balloon_curve_object
+        from bname_dev_coma_content_z.utils import effect_line_object
         from bname_dev_coma_content_z.utils import layer_object_sync
 
         scene = bpy.context.scene
@@ -113,6 +115,29 @@ def main() -> None:
             parent_key=parent_key,
             scene=scene,
         )
+        balloon = page.balloons.add()
+        balloon.id = "content_balloon"
+        balloon.shape = "ellipse"
+        balloon.parent_kind = "coma"
+        balloon.parent_key = parent_key
+        balloon.x_mm = 28.0
+        balloon.y_mm = 40.0
+        balloon.width_mm = 30.0
+        balloon.height_mm = 18.0
+        balloon.line_width_mm = 2.1
+        balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=balloon, page=page)
+        if balloon_obj is None:
+            raise AssertionError("フキダシの実体がありません")
+        effect_obj = effect_line_object.create_effect_line_object(
+            scene=scene,
+            bname_id="content_effect",
+            title="content_effect",
+            z_index=2000,
+            parent_kind="coma",
+            parent_key=parent_key,
+        )
+        if effect_obj is None:
+            raise AssertionError("効果線の実体がありません")
         layer_object_sync.assign_per_page_z_ranks(scene, work)
 
         plane_z = coma_z_order.plane_z(coma)
@@ -125,6 +150,12 @@ def main() -> None:
             raise AssertionError(
                 f"コマ枠線がコマ内表示物より奥にあります: border={border.location.z}, content={front.location.z}"
             )
+        for label, obj in (("フキダシ", balloon_obj), ("効果線", effect_obj)):
+            _assert_between(obj.location.z, plane_z, white_z, label)
+            if not (border.location.z > obj.location.z):
+                raise AssertionError(
+                    f"コマ枠線が{label}より奥にあります: border={border.location.z}, content={obj.location.z}"
+                )
 
         print("BNAME_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:

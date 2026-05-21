@@ -36,7 +36,6 @@ from ..utils import (
     viewport_colors,
 )
 from ..utils.geom import Rect, bleed_rect, mm_to_m
-from . import overlay_balloon
 from . import overlay_effect_line
 from . import overlay_image
 from . import overlay_coma_selection
@@ -566,52 +565,6 @@ def _draw_frame_with_hole(outer: Rect, inner: Rect, color: tuple[float, float, f
 # ---------- draw_handler 本体 ----------
 
 
-def _draw_balloons(page, ox_mm: float = 0.0, oy_mm: float = 0.0) -> None:
-    """ページ内のフキダシをオーバーレイ描画する."""
-    context = bpy.context
-    work = get_work(context)
-    active_guides = False
-    if work is not None and getattr(context.scene, "bname_active_layer_kind", "") == "balloon":
-        active_idx = int(getattr(work, "active_page_index", -1))
-        if 0 <= active_idx < len(work.pages):
-            active_page = work.pages[active_idx]
-            active_guides = (
-                active_page == page
-                or str(getattr(active_page, "id", "") or "")
-                == str(getattr(page, "id", "") or "")
-            )
-    def _resolve_coma_polygon_for_entry(entry):
-        """entry.parent_kind="coma" の場合だけ親コマ polygon を返す.
-
-        page 直下や outside の entry は None を返してクリップ無効化する
-        (= page 全体に描画される従来の挙動を維持)。
-        """
-        parent_kind = str(getattr(entry, "parent_kind", "") or "")
-        parent_key = str(getattr(entry, "parent_key", "") or "")
-        if parent_kind != "coma" or ":" not in parent_key:
-            return None
-        coma_id = parent_key.split(":", 1)[1]
-        for coma in getattr(page, "comas", []) or []:
-            if not overlay_visibility._coma_matches_parent_key(page, coma, coma_id):
-                continue
-            return _shared_coma_polygon(coma)
-        return None
-
-    overlay_balloon.draw_balloons(
-        page,
-        ox_mm=ox_mm,
-        oy_mm=oy_mm,
-        context=context,
-        draw_rect_outline=_draw_rect_outline,
-        draw_polygon_fill=_draw_polygon_fill,
-        draw_polyline_loop=_draw_polyline_loop,
-        draw_line_segments=_draw_line_segments,
-        is_entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
-        coma_polygon_resolver=_resolve_coma_polygon_for_entry,
-        active=active_guides,
-    )
-
-
 class _SharedLayerProxy:
     def __init__(self, work):
         self.id = "__outside__"
@@ -646,18 +599,6 @@ def _draw_shared_layers(work) -> None:
         _draw_polyline_loop(poly, viewport_colors.PAPER_GUIDE, line_width=2.0, width_mm=0.5)
 
     proxy = _SharedLayerProxy(work)
-    overlay_balloon.draw_balloons(
-        proxy,
-        ox_mm=0.0,
-        oy_mm=0.0,
-        context=bpy.context,
-        draw_rect_outline=_draw_rect_outline,
-        draw_polygon_fill=_draw_polygon_fill,
-        draw_polyline_loop=_draw_polyline_loop,
-        draw_line_segments=_draw_line_segments,
-        is_entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
-        active=getattr(bpy.context.scene, "bname_active_layer_kind", "") == "balloon",
-    )
     overlay_text.draw_text_guides(
         proxy,
         context=bpy.context,
@@ -1087,7 +1028,6 @@ def _draw_page_overlay(
         if mode == MODE_COMA:
             skip_stem = getattr(context.scene, "bname_current_coma_id", "")
         _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm, skip_preview_stem=skip_stem)
-        _draw_balloons(page, ox_mm=ox_mm, oy_mm=oy_mm)
         active_text_guides = False
         if getattr(context.scene, "bname_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))

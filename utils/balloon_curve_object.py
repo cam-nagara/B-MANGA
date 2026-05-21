@@ -28,6 +28,8 @@ _logger = log.get_logger(__name__)
 BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
 BALLOON_CURVE_DATA_PREFIX = "balloon_curve_"
+BALLOON_CARRIER_MESH_DATA_PREFIX = "balloon_carrier_mesh_"
+BALLOON_SOURCE_NAME_PREFIX = "balloon_source_"
 BALLOON_FILL_DATA_PREFIX = "balloon_fill_curve_"
 BALLOON_MESH_DATA_PREFIX = "balloon_mesh_"
 BALLOON_FILL_MESH_DATA_PREFIX = "balloon_fill_mesh_"
@@ -36,6 +38,8 @@ BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
+PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
+PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 FILL_LOCAL_Z_OFFSET_M = -0.001
 
 
@@ -702,13 +706,19 @@ def ensure_balloon_curve_object(
     )
     _remove_unused_data_block(mesh_data)
     _remove_unused_data_block(fill_mesh)
+    source_obj = _ensure_balloon_source_object(
+        scene=scene,
+        balloon_id=balloon_id,
+        mesh=combined_mesh,
+    )
 
     # 2. Mesh Object 生成 or 再利用
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
     obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
-    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=combined_mesh)
+    carrier_mesh = _ensure_balloon_carrier_mesh(balloon_id, line_mat, fill_mat)
+    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=carrier_mesh)
     if curve_data is not None:
         _remove_unused_data_block(curve_data)
     _remove_duplicate_balloon_objects(balloon_id, obj)
@@ -784,15 +794,78 @@ def ensure_balloon_curve_object(
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     try:
+        if work is not None:
+            los.assign_per_page_z_ranks(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: z order sync failed")
+    try:
         from . import geometry_nodes_bridge as _gn
 
         _gn.ensure_modifier(
             obj,
             "uni_flash" if is_uni_flash else "balloon",
-            _gn.balloon_values(entry, uni_flash=is_uni_flash),
+            _gn.balloon_values(entry, uni_flash=is_uni_flash) | {"参照形状": source_obj},
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: Geometry Nodes 同期失敗")
+    return obj
+
+
+def _set_mesh_materials(mesh: bpy.types.Mesh, materials: Sequence[bpy.types.Material | None]) -> None:
+    try:
+        mesh.materials.clear()
+    except Exception:  # noqa: BLE001
+        while len(mesh.materials) > 0:
+            mesh.materials.pop(index=len(mesh.materials) - 1)
+    for mat in materials:
+        if mat is not None:
+            mesh.materials.append(mat)
+
+
+def _ensure_balloon_carrier_mesh(
+    balloon_id: str,
+    line_material: bpy.types.Material,
+    fill_material: Optional[bpy.types.Material],
+) -> bpy.types.Mesh:
+    mesh_name = f"{BALLOON_CARRIER_MESH_DATA_PREFIX}{balloon_id}"
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    mesh.clear_geometry()
+    mesh.update()
+    _set_mesh_materials(mesh, (line_material, fill_material))
+    return mesh
+
+
+def _ensure_balloon_source_object(
+    *,
+    scene: bpy.types.Scene,
+    balloon_id: str,
+    mesh: bpy.types.Mesh,
+) -> bpy.types.Object:
+    obj_name = f"{BALLOON_SOURCE_NAME_PREFIX}{balloon_id}"
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None and obj.type != "MESH":
+        _remove_balloon_object(obj)
+        obj = None
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    else:
+        old_data = getattr(obj, "data", None)
+        obj.data = mesh
+        _remove_unused_data_block(old_data)
+    obj[PROP_BALLOON_SOURCE_KIND] = "geometry_source"
+    obj[PROP_BALLOON_SOURCE_OWNER_ID] = balloon_id
+    obj.hide_select = True
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.location = (0.0, 0.0, 0.0)
+    if scene is not None and not obj.users_collection:
+        scene.collection.objects.link(obj)
+    try:
+        obj.hide_set(True)
+    except Exception:  # noqa: BLE001
+        pass
     return obj
 
 
@@ -835,6 +908,12 @@ def cleanup_orphan_balloon_objects(scene) -> int:
             continue
         if obj.get(PROP_BALLOON_FILL_KIND) == "balloon_fill":
             owner_id = str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "")
+            if owner_id and owner_id not in valid:
+                _remove_balloon_object(obj)
+                removed += 1
+            continue
+        if obj.get(PROP_BALLOON_SOURCE_KIND) == "geometry_source":
+            owner_id = str(obj.get(PROP_BALLOON_SOURCE_OWNER_ID, "") or "")
             if owner_id and owner_id not in valid:
                 _remove_balloon_object(obj)
                 removed += 1

@@ -78,6 +78,12 @@ def create_effect_line_object(
     if target_ref:
         obj[PROP_EFFECT_TARGET] = target_ref
     try:
+        work = getattr(scene, "bname_work", None)
+        if work is not None:
+            los.assign_per_page_z_ranks(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("create_effect_line_object: z order sync failed")
+    try:
         gp_utils.ensure_default_stroke_material(obj)
     except Exception:  # noqa: BLE001
         _logger.exception("create_effect_line_object: default material failed")

@@ -48,6 +48,24 @@ def _assert_guide_materials_are_opaque(guide_objects) -> None:
             alpha = float(mat.diffuse_color[3])
             if abs(alpha - 1.0) > 1.0e-6:
                 raise AssertionError(f"用紙ガイド線の素材が不透明ではありません: {mat.name} alpha={alpha}")
+            if str(getattr(mat, "blend_method", "")) == "BLEND":
+                raise AssertionError(f"用紙ガイド線の素材が半透明表示方式です: {mat.name}")
+            if str(getattr(mat, "surface_render_method", "")) == "BLENDED":
+                raise AssertionError(f"用紙ガイド線の素材が半透明表示方式です: {mat.name}")
+
+
+def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
+    visible_guides = [obj for obj in guide_objects if len(getattr(obj.data, "splines", []) or []) > 0]
+    z_values = [round(float(obj.location.z), 6) for obj in visible_guides]
+    if len(set(z_values)) != len(z_values):
+        raise AssertionError(f"用紙ガイド線の奥行きが重なっています: {z_values}")
+    for obj in visible_guides:
+        if bool(getattr(obj, "show_in_front", False)):
+            raise AssertionError(f"用紙ガイド線が最前面ワイヤ表示に依存しています: {obj.name}")
+        if bool(getattr(obj, "show_transparent", False)):
+            raise AssertionError(f"用紙ガイド線が透明表示になっています: {obj.name}")
+        if float(obj.location.z) <= float(safe_fill.location.z):
+            raise AssertionError(f"用紙ガイド線がセーフライン外塗りより奥にあります: {obj.name}")
 
 
 def _assert_constant_thickness(paper_guide_object, guide_objects) -> None:
@@ -100,9 +118,15 @@ def main() -> None:
             raise AssertionError("用紙ガイド線の実体がありません")
         if not any(len(getattr(obj.data, "splines", []) or []) > 0 for obj in guide_objects):
             raise AssertionError("用紙ガイド線が作られていません")
+        safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+        if safe_fill is None:
+            raise AssertionError("セーフライン外塗りが作られていません")
 
         _assert_guide_materials_are_opaque(guide_objects)
+        _assert_stable_viewport_order(guide_objects, safe_fill)
         _assert_constant_thickness(paper_guide_object, guide_objects)
+        if paper_guide_object.repair_loaded_work_paper_guides(scene, work):
+            raise AssertionError("用紙ガイド線の修復が不要な状態で再実行されています")
 
         print("BNAME_PAPER_GUIDE_VISIBILITY_OK", flush=True)
     finally:
