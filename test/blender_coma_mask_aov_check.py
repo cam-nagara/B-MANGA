@@ -154,6 +154,46 @@ def main() -> int:
     assert not ok
     print("[ok] non-matching page/coma is a no-op")
 
+    # Test 5: 角処理 (丸角) 反映 — マスクメッシュ頂点が増える
+    work_rect_round = types.SimpleNamespace(pages=[types.SimpleNamespace(
+        id="p0001", comas=[types.SimpleNamespace(
+            coma_id="c01", shape_type="rect",
+            rect_x_mm=0.0, rect_y_mm=0.0,
+            rect_width_mm=80.0, rect_height_mm=60.0,
+            vertices=[],
+            border=types.SimpleNamespace(
+                corner_type="rounded",
+                corner_radius_mm=5.0,
+            ),
+        )]
+    )])
+    ok = cmo.ensure_coma_mask_mesh(scene, work_rect_round, "p0001", "c01")
+    assert ok
+    obj = bpy.data.objects.get(cmo.MASK_OBJECT_NAME)
+    rounded_verts = len(obj.data.vertices)
+    assert rounded_verts > 4, f"rounded mask should have >4 verts, got {rounded_verts}"
+    print(f"[ok] rounded corners reflected: {rounded_verts} verts (>4)")
+
+    # Test 6: 面取り (bevel) もマスクへ反映
+    work_rect_bevel = types.SimpleNamespace(pages=[types.SimpleNamespace(
+        id="p0001", comas=[types.SimpleNamespace(
+            coma_id="c01", shape_type="rect",
+            rect_x_mm=0.0, rect_y_mm=0.0,
+            rect_width_mm=80.0, rect_height_mm=60.0,
+            vertices=[],
+            border=types.SimpleNamespace(
+                corner_type="bevel",
+                corner_radius_mm=5.0,
+            ),
+        )]
+    )])
+    ok = cmo.ensure_coma_mask_mesh(scene, work_rect_bevel, "p0001", "c01")
+    assert ok
+    obj = bpy.data.objects.get(cmo.MASK_OBJECT_NAME)
+    bevel_verts = len(obj.data.vertices)
+    assert bevel_verts == 8, f"bevel mask should have 8 verts, got {bevel_verts}"
+    print(f"[ok] bevel corners reflected: {bevel_verts} verts (== 8)")
+
     print("\nALL PASS")
     return 0
 

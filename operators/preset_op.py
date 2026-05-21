@@ -309,13 +309,22 @@ class BNAME_OT_border_preset_apply(Operator):
 
 
 class BNAME_OT_border_preset_save_local(Operator):
-    """選択中コマの枠線・白フチ設定を作品ローカルプリセットとして保存."""
+    """選択中コマの枠線・白フチ設定を作品ローカルプリセットとして保存.
+
+    詳細設定ダイアログ (``invoke_props_dialog``) の内側から起動される場合、
+    Blender は入れ子の ``invoke_props_dialog`` を許さず ``invoke`` を素通り
+    して直接 ``execute`` を呼ぶ。 そのため ``preset_name`` の既定値を
+    StringProperty 宣言時に非空にしておき、 invoke が呼ばれた場合だけ
+    既存プリセット名と重複しない一意な名前へ更新する。
+    """
 
     bl_idname = "bname.border_preset_save_local"
     bl_label = "枠線プリセットとして保存"
     bl_options = {"REGISTER"}
 
-    preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
+    preset_name: StringProperty(  # type: ignore[valid-type]
+        name="プリセット名", default="新規枠線プリセット"
+    )
     description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
 
     @classmethod
@@ -324,13 +333,14 @@ class BNAME_OT_border_preset_save_local(Operator):
         return bool(w and w.loaded and w.work_dir) and _resolve_selected_coma(context) is not None
 
     def invoke(self, context, event):
-        self.preset_name = "新規枠線プリセット"
+        self.preset_name = _unique_border_preset_name(context, "新規枠線プリセット")
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        if not self.preset_name.strip():
-            self.report({"ERROR"}, "プリセット名が空です")
-            return {"CANCELLED"}
+        name = self.preset_name.strip() or "新規枠線プリセット"
+        # invoke がスキップされる経路 (詳細設定ダイアログ内など) では
+        # 既存と重複しない名前を自動採番する。
+        name = _unique_border_preset_name(context, name)
         resolved = _resolve_selected_coma(context)
         if resolved is None:
             self.report({"ERROR"}, "対象のコマが選択されていません")
@@ -338,7 +348,7 @@ class BNAME_OT_border_preset_save_local(Operator):
         work, _page, _pi, coma = resolved
         try:
             out = border_presets.save_local_preset(
-                Path(work.work_dir), coma, self.preset_name, self.description
+                Path(work.work_dir), coma, name, self.description
             )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("border_preset_save_local failed")
@@ -346,6 +356,27 @@ class BNAME_OT_border_preset_save_local(Operator):
             return {"CANCELLED"}
         self.report({"INFO"}, f"枠線プリセット保存: {out.name}")
         return {"FINISHED"}
+
+
+def _unique_border_preset_name(context, base: str) -> str:
+    """同一作品内で既存プリセット名と被らない名前を返す."""
+    work = get_work(context)
+    if work is None or not getattr(work, "work_dir", ""):
+        return base
+    try:
+        existing = {
+            str(getattr(p, "name", "") or "")
+            for p in border_presets.list_all_presets(Path(work.work_dir))
+        }
+    except Exception:  # noqa: BLE001
+        return base
+    if base not in existing:
+        return base
+    for i in range(2, 1000):
+        candidate = f"{base} {i:03d}"
+        if candidate not in existing:
+            return candidate
+    return base
 
 
 _CLASSES = (

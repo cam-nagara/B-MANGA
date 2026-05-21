@@ -46,9 +46,16 @@ def _resolve_coma(work, page_id: str, coma_id: str):
 
 
 def _coma_polygon_mm(panel) -> list[tuple[float, float]]:
-    """コマ多角形を mm 座標で返す (rect / polygon 両対応)."""
+    """コマ多角形を mm 座標で返す (rect / polygon + 角処理 反映)."""
     if panel is None:
         return []
+    base = _coma_base_polygon_mm(panel)
+    if not base:
+        return []
+    return _apply_corner_treatment(panel, base)
+
+
+def _coma_base_polygon_mm(panel) -> list[tuple[float, float]]:
     shape = str(getattr(panel, "shape_type", "rect") or "rect")
     if shape == "rect":
         x = float(getattr(panel, "rect_x_mm", 0.0) or 0.0)
@@ -62,6 +69,30 @@ def _coma_polygon_mm(panel) -> list[tuple[float, float]]:
     if verts is None or len(verts) < 3:
         return []
     return [(float(v.x_mm), float(v.y_mm)) for v in verts]
+
+
+def _apply_corner_treatment(panel, base_pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """コマ枠線の角処理 (丸角 / 面取り) をマスク用にも反映する.
+
+    コマ平面メッシュ (``utils/coma_plane.py``) と同じ処理を経由させて、
+    マスク AOV と画面表示の形が一致するようにする。
+    """
+    border = getattr(panel, "border", None)
+    if border is None:
+        return base_pts
+    corner_type = str(getattr(border, "corner_type", "square") or "square")
+    radius_mm = float(getattr(border, "corner_radius_mm", 0.0) or 0.0)
+    if corner_type == "square" or radius_mm <= 0.0 or len(base_pts) < 3:
+        return base_pts
+    try:
+        from . import border_geom
+
+        styled = border_geom.styled_closed_path_mm(base_pts, corner_type, radius_mm)
+        if len(styled) >= 3:
+            return styled
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma mask corner treatment failed")
+    return base_pts
 
 
 def _centered_polygon_meters(points_mm: Iterable[tuple[float, float]]):
