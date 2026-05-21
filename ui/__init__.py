@@ -6,6 +6,7 @@ Phase 1-E: overlay (draw_handler_add) と overlay_shared (Pillow 共用ロジッ
 from __future__ import annotations
 
 from . import (  # noqa: F401
+    coma_fisheye_overlay,
     coma_return_header,
     context_menu,
     overlay,
@@ -14,7 +15,7 @@ from . import (  # noqa: F401
     sidebar,
 )
 
-_MODULES = (overlay, reparent_overlay, context_menu, coma_return_header)
+_MODULES = (overlay, reparent_overlay, context_menu, coma_return_header, coma_fisheye_overlay)
 
 
 def register() -> None:
