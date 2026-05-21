@@ -103,6 +103,30 @@ def finish_all(context, *, except_tool: str = "") -> bool:
     return changed
 
 
+def mark_all_externally_finished() -> int:
+    """全アクティブモーダルへ終了フラグだけ立て、参照を解放する.
+
+    ``finish_from_external`` は scene/PropertyGroup を触るため、ファイル切替
+    直後 (load_post) では参照が古くクラッシュする恐れがある。 ここでは
+    ``_externally_finished`` フラグを立てるだけで scene には触らない。 各
+    モーダル側は次の event で ``FINISHED`` を返して自然終了する。
+    """
+    count = 0
+    for tool_name in tuple(_ACTIVE_REFS.keys()):
+        ref = _ACTIVE_REFS.get(tool_name)
+        if ref is None:
+            continue
+        op = ref()
+        if op is not None:
+            try:
+                op._externally_finished = True
+            except Exception:  # noqa: BLE001
+                pass
+            count += 1
+        _ACTIVE_REFS[tool_name] = None
+    return count
+
+
 def set_modal_cursor(context, cursor: str) -> bool:
     window = getattr(context, "window", None) if context is not None else None
     if window is None:

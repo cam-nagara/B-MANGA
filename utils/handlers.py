@@ -249,6 +249,16 @@ def _reconcile_gpencil_collections(context, work) -> None:
 def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """.blend ロード直後に B-Name 作品のメタ情報を再同期."""
     try:
+        # ファイル切替前のツール modal が残っているとイベントを奪ったままになる
+        # (例: 枠線ツール起動中にページ一覧へ戻ると、マウスホイールドラッグや N
+        # キーが効かなくなる)。 ロードされた scene は新しいので、 旧 modal の
+        # 参照は無効化済み。 ここでは外部終了フラグだけ立てて、 各 modal の
+        # 次回 event で自然終了させる。
+        try:
+            from ..operators import coma_modal_state as _modal_state
+            _modal_state.mark_all_externally_finished()
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: mark_all_externally_finished failed")
         # 遅延 import: サブシステムの初期化順を回避
         scene = bpy.context.scene
         if scene is None:
