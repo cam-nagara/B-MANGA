@@ -191,26 +191,35 @@ def _outline_points_mm(coma) -> list[tuple[float, float]]:
         return []
     return _corner_outline_mm(coma, [(float(v.x_mm), float(v.y_mm)) for v in vertices])
 
-def _ensure_uv(mesh: bpy.types.Mesh) -> None:
+_UV_ANCHOR_MIN_SIZE_M = 0.005  # 5mm 未満の bbox はフォールバック状態とみなしてアンカーに採用しない
+
+
+def _ensure_uv(mesh: bpy.types.Mesh, coma=None) -> None:
     """コマ形状メッシュに UV を割り当てる.
 
     UV のアンカー (基準矩形) は ``mesh["bname_uv_ref"]`` に保存され、
     一度ロックすると以降のジオメトリ変更では再計算しない (プレビュー画像が
     コマ枠拡張に追従して変形しないようにするため)。 アンカーは
     ``_refresh_uv_anchor_for_image`` が画像 mtime の更新を検知した時にのみ
-    現在の外接矩形へ張り替える。 初回はアンカーが無いので現在の外接矩形を
-    そのまま採用する。
+    現在のコマデータの外接矩形へ張り替える。
+
+    フォールバック状態 (頂点が一時的に空で 1mm の三角形が置かれている等) を
+    検知して採用しないため、 ``coma`` を渡せばコマデータから真の bbox を
+    取得する。 渡されなかった場合はメッシュの bbox を使うが、 ``5mm`` 未満
+    なら採用しない。
     """
     if mesh is None or len(mesh.vertices) == 0 or len(mesh.loops) == 0:
         return
-    ref = _get_uv_anchor(mesh) or _bbox_from_mesh(mesh)
+    ref = _get_uv_anchor(mesh)
+    if ref is None:
+        ref = _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
     if ref is None:
         return
     min_x, min_y, w, h = ref
     if w <= 0.0 or h <= 0.0:
         return
-    # 初回 (アンカー未保存) なら現在の bbox を保存
-    if not mesh.get("bname_uv_ref"):
+    # 初回 (アンカー未保存) かつ採用に値する大きさなら保存
+    if not _has_valid_uv_anchor(mesh) and _is_reasonable_bbox_m(w, h):
         mesh["bname_uv_ref"] = [min_x, min_y, w, h]
     uv_layer = mesh.uv_layers.get(COMA_PLANE_UV_NAME)
     if uv_layer is None:
@@ -224,6 +233,18 @@ def _ensure_uv(mesh: bpy.types.Mesh) -> None:
             )
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: UV assign failed")
+
+
+def _is_reasonable_bbox_m(w: float, h: float) -> bool:
+    return w >= _UV_ANCHOR_MIN_SIZE_M and h >= _UV_ANCHOR_MIN_SIZE_M
+
+
+def _has_valid_uv_anchor(mesh: bpy.types.Mesh) -> bool:
+    ref = _get_uv_anchor(mesh)
+    if ref is None:
+        return False
+    _x, _y, w, h = ref
+    return _is_reasonable_bbox_m(w, h)
 
 
 def _get_uv_anchor(mesh: bpy.types.Mesh) -> tuple[float, float, float, float] | None:
@@ -253,7 +274,40 @@ def _bbox_from_mesh(mesh: bpy.types.Mesh) -> tuple[float, float, float, float] |
     return (min_x, min_y, max_x - min_x, max_y - min_y)
 
 
-def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image) -> None:
+def _bbox_from_coma_m(coma) -> tuple[float, float, float, float] | None:
+    """コマデータからメートル単位の bbox を計算する.
+
+    レンダリング時のカメラ枠と一致する真の bbox は B-Name データ側にある。
+    メッシュの一時フォールバック (3 頂点 1mm) を踏まないため、 アンカー更新
+    にはこちらを優先する。
+    """
+    if coma is None:
+        return None
+    shape = str(getattr(coma, "shape_type", "rect") or "rect")
+    if shape == "rect":
+        w_mm = float(getattr(coma, "rect_width_mm", 0.0) or 0.0)
+        h_mm = float(getattr(coma, "rect_height_mm", 0.0) or 0.0)
+        if w_mm <= 0.0 or h_mm <= 0.0:
+            return None
+        # rect の mesh ローカル原点は (0, 0) で頂点が (0..w, 0..h) に展開される
+        return (mm_to_m(0.0), mm_to_m(0.0), mm_to_m(w_mm), mm_to_m(h_mm))
+    verts = getattr(coma, "vertices", None) or []
+    if len(verts) < 3:
+        return None
+    pts = [(float(v.x_mm), float(v.y_mm)) for v in verts]
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    min_x, max_x = min(xs), max(xs)
+    min_y, max_y = min(ys), max(ys)
+    w = max_x - min_x
+    h = max_y - min_y
+    if w <= 0.0 or h <= 0.0:
+        return None
+    # メッシュは頂点を原点センター化していないので min_x/min_y もそのまま採用
+    return (mm_to_m(min_x), mm_to_m(min_y), mm_to_m(w), mm_to_m(h))
+
+
+def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None) -> None:
     """画像 mtime が UV アンカー保存時より新しければアンカーを張り替える.
 
     新しいレンダリングで ``thumb.png`` が上書きされた直後だけアンカーが
@@ -272,14 +326,21 @@ def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image) -> None:
         stored_mtime = float(mesh.get("bname_uv_ref_mtime", -1.0) or -1.0)
     except (TypeError, ValueError):
         stored_mtime = -1.0
-    if img_mtime <= stored_mtime + 1.0e-3:
+    # 既存アンカーが不正サイズ (フォールバックでロックされてしまった) の時は
+    # mtime 一致でも強制的に張り替える。
+    anchor_invalid = not _has_valid_uv_anchor(mesh)
+    if not anchor_invalid and img_mtime <= stored_mtime + 1.0e-3:
         return
-    bbox = _bbox_from_mesh(mesh)
+    bbox = _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
     if bbox is None:
+        return
+    _x, _y, w, h = bbox
+    if not _is_reasonable_bbox_m(w, h):
+        # フォールバック (1mm 三角形 等) のまま採用しない
         return
     mesh["bname_uv_ref"] = list(bbox)
     mesh["bname_uv_ref_mtime"] = img_mtime
-    _ensure_uv(mesh)
+    _ensure_uv(mesh, coma=coma)
 
 
 def _apply_material(
@@ -540,12 +601,14 @@ def _ensure_coma_plane_material(
     )
     # プレビュー画像が新しく上書きされた直後だけ、 コマ平面メッシュの UV
     # アンカーを現在の bbox に張り替える (枠線編集時の変形を防ぎつつ、
-    # 再レンダリング時には新しい画像へ正しく追従させる)。
+    # 再レンダリング時には新しい画像へ正しく追従させる)。 メッシュが一時的に
+    # フォールバック状態 (1mm 三角形) でも、 コマデータ側の bbox を使うため
+    # 誤ったアンカー固定は起きない。
     try:
         mesh_name = f"{COMA_PLANE_MESH_PREFIX}{page_id}_{coma_id}"
         mesh_obj = bpy.data.meshes.get(mesh_name)
         if mesh_obj is not None and image is not None:
-            _refresh_uv_anchor_for_image(mesh_obj, image)
+            _refresh_uv_anchor_for_image(mesh_obj, image, coma=coma)
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: UV anchor refresh failed")
     try:
@@ -662,7 +725,7 @@ def _build_mesh_geometry(mesh: bpy.types.Mesh, coma, *, soft_mask: bool = False)
     mesh.from_pydata(verts, [], faces)
     mesh.update()
     _set_soft_mask_attribute(mesh, attr_values)
-    _ensure_uv(mesh)
+    _ensure_uv(mesh, coma=coma)
 
 
 def _resolve_page_index(work, page) -> int:

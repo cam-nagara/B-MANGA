@@ -143,6 +143,37 @@ def main():
     assert abs(ref5[2] - 0.3) < 1e-5, f"expected w≈0.3 (re-rendered), got {ref5[2]}"
     print(f"[ok] anchor follows re-render: {ref5}")
 
+    # Test 6: Degenerate fallback bbox (1mm triangle) should NOT be locked as anchor
+    fallback_mesh = bpy.data.meshes.new("test_fallback_anchor")
+    fallback_mesh.from_pydata([(0, 0, 0), (0.001, 0, 0), (0, 0.001, 0)], [], [(0, 1, 2)])
+    fallback_mesh.update()
+    coma = types.SimpleNamespace(
+        shape_type="rect", rect_x_mm=10, rect_y_mm=20,
+        rect_width_mm=80, rect_height_mm=60, vertices=[],
+        border=types.SimpleNamespace(corner_type="square", corner_radius_mm=0),
+    )
+    img2 = types.SimpleNamespace(_data={"_bname_mtime": 50.0})
+    img2.get = lambda k, d=None: img2._data.get(k, d)
+    mod._refresh_uv_anchor_for_image(fallback_mesh, img2, coma=coma)
+    ref6 = list(fallback_mesh.get("bname_uv_ref", []))
+    assert ref6 and abs(ref6[2] - 0.08) < 1e-4, \
+        f"fallback mesh should use coma bbox (0.08m), got {ref6[2] if ref6 else None}"
+    print(f"[ok] fallback mesh → anchor uses coma data: {ref6}")
+
+    # Test 7: Existing degenerate anchor (locked at 1mm) should be auto-corrected
+    full_mesh = bpy.data.meshes.new("test_recover")
+    full_mesh.from_pydata([(0, 0, 0), (0.08, 0, 0), (0.08, 0.06, 0), (0, 0.06, 0)], [], [(0, 1, 2, 3)])
+    full_mesh.update()
+    full_mesh["bname_uv_ref"] = [0, 0, 0.001, 0.001]  # bad legacy state
+    full_mesh["bname_uv_ref_mtime"] = 100.0
+    img3 = types.SimpleNamespace(_data={"_bname_mtime": 100.0})  # SAME mtime
+    img3.get = lambda k, d=None: img3._data.get(k, d)
+    mod._refresh_uv_anchor_for_image(full_mesh, img3, coma=coma)
+    ref7 = list(full_mesh["bname_uv_ref"])
+    assert abs(ref7[2] - 0.08) < 1e-4, \
+        f"degenerate stored anchor should be force-corrected; got w={ref7[2]}"
+    print(f"[ok] degenerate stored anchor auto-corrected: {ref7}")
+
     print("\nALL PASS")
     return 0
 
