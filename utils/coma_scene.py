@@ -132,6 +132,14 @@ def bootstrap_new_coma_blend(
         coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
     except Exception:  # noqa: BLE001
         _logger.exception("bootstrap_new_coma_blend: thumb output setup failed")
+    try:
+        from . import coma_mask_object
+
+        coma_mask_object.ensure_coma_mask_mesh(
+            bpy.context.scene, work, page_id, coma_id
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("bootstrap_new_coma_blend: coma mask mesh setup failed")
     return True
 
 

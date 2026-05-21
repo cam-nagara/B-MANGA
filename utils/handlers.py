@@ -363,6 +363,14 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     coma_thumb_output.ensure_thumb_output_node(scene)
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: thumb output setup failed")
+                try:
+                    from . import coma_mask_object
+
+                    coma_mask_object.ensure_coma_mask_mesh(
+                        scene, work, str(rel.parts[0]), str(rel.parts[1])
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: coma mask mesh sync failed")
                 _overlay.reset_viewport_background_to_theme(bpy.context)
                 _overlay.apply_bname_shading_mode(bpy.context)
                 coma_camera.schedule_coma_view_camera()
@@ -403,6 +411,18 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
                     from . import coma_thumb_output
 
                     coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
+                    try:
+                        from . import coma_mask_object
+                        from ..core.work import get_work as _get_work
+
+                        coma_mask_object.ensure_coma_mask_mesh(
+                            bpy.context.scene,
+                            _get_work(bpy.context),
+                            str(rel.parts[0]),
+                            str(rel.parts[1]),
+                        )
+                    except Exception:  # noqa: BLE001
+                        _logger.exception("save_pre: coma mask mesh sync failed")
         except Exception:  # noqa: BLE001
             _logger.exception("B-Name thumb output save_pre sync failed")
         try:
