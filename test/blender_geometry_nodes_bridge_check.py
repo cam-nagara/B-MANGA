@@ -100,7 +100,19 @@ def _assert_generated_group(group, *, kind: str) -> None:
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }[kind]
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
-    assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
+    if kind == "effect_line":
+        object_info_nodes = [node for node in group.nodes if node.bl_idname == "GeometryNodeObjectInfo"]
+        assert len(object_info_nodes) == 1, f"{kind} のコマ枠参照ノード数が不正です: {len(object_info_nodes)}"
+        assert "GeometryNodeRaycast" in nodes, f"{kind} がコマ枠までの距離をノード内で測っていません"
+        frame_links = [
+            link
+            for link in group.links
+            if link.from_node.bl_idname == "NodeGroupInput"
+            and link.to_node.name == object_info_nodes[0].name
+        ]
+        assert frame_links, f"{kind} のコマ枠参照が入力ノードから接続されていません"
+    else:
+        assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
     direct_links = [
         link
         for link in group.links
@@ -133,7 +145,7 @@ def _assert_all_setting_inputs_linked(group, gn, *, kind: str) -> None:
         links = [link for link in group.links if link.from_socket == source]
         if not links:
             missing.append(spec.name)
-        if spec.socket_type == "NodeSocketMaterial":
+        if spec.socket_type in {"NodeSocketMaterial", "NodeSocketObject"}:
             continue
         audit_name = f"{gn._SETTING_OUTPUT_PREFIX}{spec.name}"  # noqa: SLF001
         target = output_node.inputs.get(audit_name)

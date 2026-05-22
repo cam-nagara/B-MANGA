@@ -150,6 +150,7 @@ def main() -> None:
         from bname_dev.utils import balloon_shapes
         from bname_dev.utils import layer_stack as layer_stack_utils
         from bname_dev.utils import object_naming as on
+        from bname_dev.utils import effect_line_object
         from bname_dev.utils import object_selection
         from bname_dev.utils import text_real_object
         from bname_dev.utils.geom import Rect
@@ -434,22 +435,24 @@ def main() -> None:
         outside_bounds_points = 0
         first_debug = None
         bx, by, bw, bh = frame_bounds
-        for frame in getattr(frame_effect_layer, "frames", []) or []:
-            drawing = getattr(frame, "drawing", None)
-            for stroke in getattr(drawing, "strokes", []) or []:
-                points = list(getattr(stroke, "points", []) or [])
-                for a, b in zip(points, points[1:]):
-                    checked_stroke_points += 1
-                    pa = getattr(a, "position", None)
-                    pb = getattr(b, "position", None)
-                    if pa is None or pb is None:
+        display = effect_line_object.find_effect_display_object(frame_effect_obj)
+        if display is not None:
+            depsgraph = context.evaluated_depsgraph_get()
+            evaluated = display.evaluated_get(depsgraph)
+            mesh = evaluated.to_mesh()
+            try:
+                verts = [(float(v.co.x) * 1000.0, float(v.co.y) * 1000.0) for v in mesh.vertices]
+                for poly in mesh.polygons:
+                    poly_points = [verts[i] for i in poly.vertices if 0 <= i < len(verts)]
+                    if not poly_points:
                         continue
-                    local_x = (float(pa[0]) + float(pb[0])) * 500.0
-                    local_y = (float(pa[1]) + float(pb[1])) * 500.0
+                    checked_stroke_points += 1
+                    local_x = sum(p[0] for p in poly_points) / len(poly_points)
+                    local_y = sum(p[1] for p in poly_points) / len(poly_points)
                     if bx <= local_x <= bx + bw and by <= local_y <= by + bh:
                         continue
                     outside_bounds_points += 1
-                    if effect_line_op._layer_stroke_hit_part(frame_effect_layer, local_x, local_y):
+                    if effect_line_op._display_mesh_hit_part(context, frame_effect_obj, local_x, local_y):
                         direct_stroke_hit = True
                     hit_obj, hit_layer, _hit_bounds, hit_part = effect_line_op._hit_effect_layer(
                         context,
@@ -475,10 +478,8 @@ def main() -> None:
                     ):
                         found_stroke_hit = True
                         break
-                if found_stroke_hit:
-                    break
-            if found_stroke_hit:
-                break
+            finally:
+                evaluated.to_mesh_clear()
         if not found_stroke_hit:
             raise AssertionError(
                 "効果線の見えている線をクリック対象として拾えません: "

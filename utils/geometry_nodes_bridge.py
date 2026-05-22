@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 12
+_GROUP_VERSION = 14
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 
@@ -151,6 +151,7 @@ _EFFECT_POSITION_SOCKETS = (
     SocketSpec("幅", "NodeSocketFloat", 0.0),
     SocketSpec("高さ", "NodeSocketFloat", 0.0),
     SocketSpec("乱数", "NodeSocketInt", 0),
+    SocketSpec("始点コマ枠オブジェクト", "NodeSocketObject", None),
 )
 
 _MATERIAL_SOCKETS = (
@@ -316,7 +317,7 @@ def _setting_output_name(socket_name: str) -> str:
 
 def _ensure_setting_output_sockets(group, kind: str) -> None:
     for spec in _GROUP_SOCKETS.get(kind, ()):
-        if spec.socket_type == "NodeSocketMaterial":
+        if spec.socket_type in {"NodeSocketMaterial", "NodeSocketObject"}:
             continue
         _ensure_socket(
             group,
@@ -329,7 +330,7 @@ def _prune_setting_output_sockets(group, kind: str) -> None:
     allowed = {"Geometry"} | {
         _setting_output_name(spec.name)
         for spec in _GROUP_SOCKETS.get(kind, ())
-        if spec.socket_type != "NodeSocketMaterial"
+        if spec.socket_type not in {"NodeSocketMaterial", "NodeSocketObject"}
     }
     for item in list(group.interface.items_tree):
         if getattr(item, "item_type", "") != "SOCKET":
@@ -1424,6 +1425,60 @@ def _tapered_line_mesh_x(
     return join.outputs["Geometry"]
 
 
+def _frame_raycast_distance(
+    group,
+    input_node,
+    center_x_socket,
+    center_y_socket,
+    angle_socket,
+    fallback_distance_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    object_info = _node(group, "GeometryNodeObjectInfo", label=f"{label} 参照", location=location)
+    try:
+        object_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, input_node.outputs["始点コマ枠オブジェクト"], object_info.inputs["Object"])
+    if "As Instance" in object_info.inputs:
+        _set_default(object_info.inputs["As Instance"], False)
+
+    source = _combine_xyz(
+        group,
+        center_x_socket,
+        center_y_socket,
+        z=0.0,
+        label=f"{label} 中心",
+        location=(location[0] + 220, location[1] + 180),
+    )
+    ray_x = _math_binary(group, "COSINE", angle_socket, label=f"{label} X方向", location=(location[0] + 220, location[1] - 20))
+    ray_y = _math_binary(group, "SINE", angle_socket, label=f"{label} Y方向", location=(location[0] + 220, location[1] - 180))
+    direction = _combine_xyz(
+        group,
+        ray_x,
+        ray_y,
+        z=0.0,
+        label=f"{label} 方向",
+        location=(location[0] + 440, location[1] - 100),
+    )
+
+    raycast = _node(group, "GeometryNodeRaycast", label=label, location=(location[0] + 680, location[1]))
+    _link(group, object_info.outputs["Geometry"], raycast.inputs["Target Geometry"])
+    _link(group, source, raycast.inputs["Source Position"])
+    _link(group, direction, raycast.inputs["Ray Direction"])
+    _set_default(raycast.inputs["Ray Length"], 100.0)
+    return _switch_float(
+        group,
+        raycast.outputs["Is Hit"],
+        fallback_distance_socket,
+        raycast.outputs["Hit Distance"],
+        label=f"{label} 結果",
+        location=(location[0] + 900, location[1]),
+    )
+
+
 def _instanced_radial_line_geometry(
     group,
     input_node,
@@ -1652,6 +1707,8 @@ def _instanced_radial_line_geometry(
     axis_angle = _node(group, "FunctionNodeAxisAngleToRotation", label="線を回転", location=(280, -720))
     _set_default(axis_angle.inputs["Axis"], (0.0, 0.0, 1.0))
     _link(group, angle_with_rotation, axis_angle.inputs["Angle"])
+    center_x = _math_add(group, origin_x_m, width_half_m, label="中心 X", location=(760, -260))
+    center_y = _math_add(group, origin_y_m, height_half_m, label="中心 Y", location=(760, -420))
 
     radius_sum = _math_add(
         group,
@@ -1737,7 +1794,24 @@ def _instanced_radial_line_geometry(
     )
     end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
     radius = _math_binary(group, "SUBTRACT", radius, end_trim, label="終点乱れ半径", location=(1480, -1740))
-    frame_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
+    frame_fallback_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
+    frame_hit_radius = _frame_raycast_distance(
+        group,
+        input_node,
+        center_x,
+        center_y,
+        angle_with_rotation,
+        frame_fallback_radius,
+        label="コマ枠始点",
+        location=(80, -2440),
+    )
+    frame_radius = _math_add(
+        group,
+        frame_hit_radius,
+        _math_binary(group, "MULTIPLY", line_half_m, b_value=2.0, label="始点外側線幅", location=(1080, -2440)),
+        label="コマ枠始点外側",
+        location=(1280, -2440),
+    )
     radius = _switch_float(group, input_node.outputs["始点をコマ枠に設定"], radius, frame_radius, label="コマ枠始点切替", location=(280, -1880))
     width_wave = _math_binary(
         group,
@@ -1765,25 +1839,44 @@ def _instanced_radial_line_geometry(
     is_uni = _compare_int_socket(group, input_node.outputs["種類"], 2, label="ウニフラか", location=(480, -1400))
     end_radius = _switch_float(group, is_uni, radius, uni_radius, label="終点半径", location=(680, -1240))
 
+    base_start = _constant_float(group, 0.0, label="線原型始点", location=(80, -1080))
+    base_end = _constant_float(group, 1.0, label="線原型終点", location=(80, -1240))
     material = _tapered_line_mesh_x(
         group,
         input_node,
-        inner_radius,
-        end_radius,
+        base_start,
+        base_end,
         line_half_m,
         line_material,
         label="線素材",
         location=(280, -1080),
     )
+    line_length = _math_binary(group, "SUBTRACT", end_radius, inner_radius, label="線の実長", location=(760, -1560))
+    line_length = _math_binary(group, "MAXIMUM", line_length, b_value=0.000001, label="線の実長下限", location=(980, -1560))
+    ray_x = _math_binary(group, "COSINE", angle_with_rotation, label="線X方向", location=(560, -1880))
+    ray_y = _math_binary(group, "SINE", angle_with_rotation, label="線Y方向", location=(560, -2040))
+    point_x = _math_binary(group, "MULTIPLY", ray_x, inner_radius, label="始点X", location=(760, -1880))
+    point_y = _math_binary(group, "MULTIPLY", ray_y, inner_radius, label="始点Y", location=(760, -2040))
+    point_pos = _combine_xyz(group, point_x, point_y, z=0.0, label="線始点位置", location=(980, -1960))
+    placed_points = _node(group, "GeometryNodeSetPosition", label="線始点を配置", location=(760, -840))
+    _link(group, points.outputs["Mesh"], placed_points.inputs["Geometry"])
+    _link(group, point_pos, placed_points.inputs["Position"])
+    scale_vec = _combine_xyz(
+        group,
+        line_length,
+        _constant_float(group, 1.0, label="線幅倍率", location=(980, -1720)),
+        z=1.0,
+        label="線ごとの長さ",
+        location=(1180, -1640),
+    )
 
     instance = _node(group, "GeometryNodeInstanceOnPoints", label="線を繰り返し配置", location=(760, -640))
-    _link(group, points.outputs["Mesh"], instance.inputs["Points"])
+    _link(group, placed_points.outputs["Geometry"], instance.inputs["Points"])
     _link(group, material, instance.inputs["Instance"])
     _link(group, axis_angle.outputs["Rotation"], instance.inputs["Rotation"])
+    _link(group, scale_vec, instance.inputs["Scale"])
     realize = _node(group, "GeometryNodeRealizeInstances", label="線を実体化", location=(980, -640))
     _link(group, instance.outputs["Instances"], realize.inputs["Geometry"])
-    center_x = _math_add(group, origin_x_m, width_half_m, label="中心 X", location=(760, -260))
-    center_y = _math_add(group, origin_y_m, height_half_m, label="中心 Y", location=(760, -420))
     translation = _combine_xyz(group, center_x, center_y, z=0.0, label="表示位置", location=(980, -360))
     transform = _node(group, "GeometryNodeTransform", label="効果線を配置", location=(1180, -640))
     _link(group, realize.outputs["Geometry"], transform.inputs["Geometry"])
@@ -1984,7 +2077,13 @@ def _socket_value_for_spec(field: str, spec: SocketSpec, value: Any):
         return float(spec.default or 0.0)
 
 
-def effect_values(params, bounds: tuple[float, float, float, float] | None, seed: int) -> dict[str, Any]:
+def effect_values(
+    params,
+    bounds: tuple[float, float, float, float] | None,
+    seed: int,
+    *,
+    start_frame_object: bpy.types.Object | None = None,
+) -> dict[str, Any]:
     if bounds is None:
         x = y = width = height = 0.0
     else:
@@ -1996,6 +2095,7 @@ def effect_values(params, bounds: tuple[float, float, float, float] | None, seed
         "位置 Y": float(y or 0.0),
         "幅": float(width or 0.0),
         "高さ": float(height or 0.0),
+        "始点コマ枠オブジェクト": start_frame_object,
     }
     for field, spec in _EFFECT_FIELD_SPECS.items():
         raw = getattr(params, field, spec.default) if params is not None else spec.default

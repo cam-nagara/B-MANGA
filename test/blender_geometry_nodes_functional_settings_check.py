@@ -110,6 +110,18 @@ def main() -> None:
         assert work is not None and work.loaded
         page = work.pages[0]
         page_key = page_stack_key(page)
+        if len(page.comas) == 0:
+            coma = page.comas.add()
+            coma.id = "c01"
+            coma.coma_id = "c01"
+            coma.title = "c01"
+        else:
+            coma = page.comas[0]
+        coma.shape_type = "rect"
+        coma.rect_x_mm = 5.0
+        coma.rect_y_mm = 10.0
+        coma.rect_width_mm = 150.0
+        coma.rect_height_mm = 120.0
 
         balloon = balloon_op._create_balloon_entry(
             context,
@@ -222,6 +234,25 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         distance_density_basis = _mesh_stats(display)
         _assert_changed(distance_dense, distance_density_basis, "効果線 距離指定の密度基準")
+
+        params.start_to_coma_frame = True
+        params.spacing_mode = "angle"
+        params.spacing_angle_deg = 30.0
+        params.effect_type = "focus"
+        params.brush_size_mm = 5.0
+        params.fill_base_shape = False
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        frame_source = effect_line_object.find_effect_frame_source_object(effect_obj)
+        if frame_source is None:
+            raise AssertionError("効果線 始点をコマ枠に設定しても参照用のコマ枠が作られていません")
+        frame_input = _modifier_input_value(display, "B-Name Geometry Nodes", "始点コマ枠オブジェクト")
+        if frame_input is not frame_source:
+            raise AssertionError("効果線 始点コマ枠がGeometry Nodes入力へ接続されていません")
+        frame_start = _mesh_stats(display)
+        if frame_start["bounds"][2] < 0.158 or frame_start["bounds"][0] > 0.002 or frame_start["bounds"][3] < 0.133:
+            raise AssertionError(f"効果線 始点形状がコマ枠の外側まで届いていません: {frame_start['bounds']}")
+        params.start_to_coma_frame = False
+        params.brush_size_mm = 0.5
 
         params.fill_base_shape = True
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)

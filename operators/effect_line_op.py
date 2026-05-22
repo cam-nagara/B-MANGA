@@ -640,7 +640,22 @@ def _write_effect_strokes(
         from ..utils import geometry_nodes_bridge as _gn
         from ..utils import effect_line_object as _elo
 
-        values = _gn.effect_values(params, (float(x), float(y), w, h), seed_value)
+        start_frame_outline, _start_frame_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
+        start_frame_source = None
+        if start_frame_outline:
+            start_frame_source = _elo.ensure_effect_frame_source_object(
+                scene=context.scene,
+                controller_obj=obj,
+                outline_mm=start_frame_outline,
+            )
+        else:
+            _elo.delete_effect_frame_source_object(obj)
+        values = _gn.effect_values(
+            params,
+            (float(x), float(y), w, h),
+            seed_value,
+            start_frame_object=start_frame_source,
+        )
         display = _elo.ensure_effect_display_object(
             scene=context.scene,
             controller_obj=obj,
@@ -1004,6 +1019,63 @@ def _layer_stroke_hit_part(layer, x_mm: float, y_mm: float, tolerance_mm: float 
     return ""
 
 
+def _point_in_polygon_2d(point: tuple[float, float], vertices: list[tuple[float, float]]) -> bool:
+    if len(vertices) < 3:
+        return False
+    x, y = point
+    inside = False
+    prev_x, prev_y = vertices[-1]
+    for curr_x, curr_y in vertices:
+        crosses = (curr_y > y) != (prev_y > y)
+        if crosses:
+            denom = prev_y - curr_y
+            if abs(denom) > 1.0e-12:
+                hit_x = (prev_x - curr_x) * (y - curr_y) / denom + curr_x
+                if x < hit_x:
+                    inside = not inside
+        prev_x, prev_y = curr_x, curr_y
+    return inside
+
+
+def _display_mesh_hit_part(
+    context,
+    obj,
+    x_mm: float,
+    y_mm: float,
+    tolerance_mm: float = _EFFECT_STROKE_HIT_MM,
+) -> str:
+    try:
+        from ..utils import effect_line_object as _elo
+
+        display = _elo.find_effect_display_object(obj)
+    except Exception:  # noqa: BLE001
+        display = None
+    if display is None or bool(getattr(display, "hide_viewport", False)):
+        return ""
+    point = (float(x_mm), float(y_mm))
+    tolerance = max(0.1, float(tolerance_mm))
+    depsgraph = context.evaluated_depsgraph_get()
+    evaluated = display.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        verts = [(m_to_mm(float(v.co.x)), m_to_mm(float(v.co.y))) for v in mesh.vertices]
+        for polygon in mesh.polygons:
+            poly_points = [verts[i] for i in polygon.vertices if 0 <= i < len(verts)]
+            if _point_in_polygon_2d(point, poly_points):
+                return "body"
+        for edge in mesh.edges:
+            try:
+                start = verts[int(edge.vertices[0])]
+                end = verts[int(edge.vertices[1])]
+            except Exception:  # noqa: BLE001
+                continue
+            if _distance_to_segment_mm(point, start, end) <= tolerance:
+                return "body"
+    finally:
+        evaluated.to_mesh_clear()
+    return ""
+
+
 def _hit_effect_layer(context, x_mm: float, y_mm: float):
     """全 effect GP Object をスキャンし、 (obj, layer, bounds, part) を返す.
 
@@ -1059,6 +1131,8 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             )
             if not part:
                 part = _layer_stroke_hit_part(layer, local_x, local_y)
+            if not part:
+                part = _display_mesh_hit_part(context, obj, local_x, local_y)
             if part:
                 return obj, layer, bounds, part
     return (candidates[0] if candidates else None), None, None, ""

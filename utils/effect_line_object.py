@@ -13,6 +13,7 @@ from . import gpencil as gp_utils
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
 
@@ -20,6 +21,9 @@ PER_LAYER_EFFECT_DATA_PREFIX = "BName_EffectGP_"
 EFFECT_DISPLAY_DATA_PREFIX = "BName_EffectDisplay_"
 EFFECT_DISPLAY_ID_PREFIX = "effect_display_"
 EFFECT_DISPLAY_KIND = "effect_display"
+EFFECT_FRAME_SOURCE_DATA_PREFIX = "BName_EffectFrameSource_"
+EFFECT_FRAME_SOURCE_ID_PREFIX = "effect_frame_source_"
+EFFECT_FRAME_SOURCE_KIND = "effect_frame_source"
 PROP_EFFECT_TARGET = "bname_effect_target"
 PROP_EFFECT_CONTROLLER_ID = "bname_effect_controller_id"
 
@@ -60,6 +64,15 @@ def _display_bname_id(controller_obj: bpy.types.Object | None) -> str:
     return f"{EFFECT_DISPLAY_ID_PREFIX}{base}" if base else ""
 
 
+def _frame_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
+    if controller_obj is None:
+        return ""
+    base = str(controller_obj.get(on.PROP_ID, "") or "")
+    if not base:
+        base = str(getattr(controller_obj, "name", "") or "")
+    return f"{EFFECT_FRAME_SOURCE_ID_PREFIX}{base}" if base else ""
+
+
 def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
     """効果線の実表示用 Mesh Object を返す。"""
     display_id = _display_bname_id(controller_obj)
@@ -76,7 +89,39 @@ def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optio
     return None
 
 
+def find_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
+    source_id = _frame_source_bname_id(controller_obj)
+    if source_id:
+        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_FRAME_SOURCE_KIND)
+        if obj is not None:
+            return obj
+    controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
+    if not controller_id:
+        return None
+    for obj in bpy.data.objects:
+        if str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_FRAME_SOURCE_KIND:
+            return obj
+    return None
+
+
+def delete_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> None:
+    obj = find_effect_frame_source_object(controller_obj)
+    if obj is None:
+        return
+    data = getattr(obj, "data", None)
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        if data is not None and data.users == 0:
+            bpy.data.meshes.remove(data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def delete_effect_display_object(controller_obj: bpy.types.Object | None) -> None:
+    delete_effect_frame_source_object(controller_obj)
     obj = find_effect_display_object(controller_obj)
     if obj is None:
         return
@@ -108,6 +153,91 @@ def _link_display_to_controller_collections(display: bpy.types.Object, controlle
                 coll.objects.unlink(display)
             except Exception:  # noqa: BLE001
                 pass
+
+
+def _rebuild_frame_source_mesh(mesh: bpy.types.Mesh, outline_mm) -> None:
+    points: list[tuple[float, float]] = []
+    for raw in outline_mm or ():
+        try:
+            x, y = raw
+            pt = (mm_to_m(float(x)), mm_to_m(float(y)))
+        except Exception:  # noqa: BLE001
+            continue
+        if points and abs(points[-1][0] - pt[0]) < 1.0e-9 and abs(points[-1][1] - pt[1]) < 1.0e-9:
+            continue
+        points.append(pt)
+    if len(points) > 2 and abs(points[0][0] - points[-1][0]) < 1.0e-9 and abs(points[0][1] - points[-1][1]) < 1.0e-9:
+        points.pop()
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    half_z = 0.05
+    for x, y in points:
+        verts.append((x, y, -half_z))
+        verts.append((x, y, half_z))
+    count = len(points)
+    if count >= 2:
+        for i in range(count):
+            j = (i + 1) % count
+            faces.append((i * 2, j * 2, j * 2 + 1, i * 2 + 1))
+    mesh.clear_geometry()
+    if verts and faces:
+        mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+
+def ensure_effect_frame_source_object(
+    *,
+    scene: bpy.types.Scene,
+    controller_obj: bpy.types.Object,
+    outline_mm,
+) -> Optional[bpy.types.Object]:
+    if scene is None or controller_obj is None or not outline_mm:
+        delete_effect_frame_source_object(controller_obj)
+        return None
+    source_id = _frame_source_bname_id(controller_obj)
+    if not source_id:
+        return None
+    obj = find_effect_frame_source_object(controller_obj)
+    mesh = getattr(obj, "data", None) if obj is not None and getattr(obj, "type", "") == "MESH" else None
+    if mesh is None:
+        mesh = bpy.data.meshes.new(f"{EFFECT_FRAME_SOURCE_DATA_PREFIX}{source_id}")
+    _rebuild_frame_source_mesh(mesh, outline_mm)
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        obj = bpy.data.objects.new(f"{controller_obj.name}_始点コマ枠", mesh)
+    elif obj.data is not mesh:
+        old_data = obj.data
+        obj.data = mesh
+        try:
+            if old_data is not None and old_data.users == 0:
+                bpy.data.meshes.remove(old_data)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        title = str(controller_obj.get(on.PROP_TITLE, "") or controller_obj.name)
+        on.stamp_identity(
+            obj,
+            kind=EFFECT_FRAME_SOURCE_KIND,
+            bname_id=source_id,
+            title=f"{title}_始点コマ枠",
+            z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
+            parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
+            folder_id=str(controller_obj.get(on.PROP_FOLDER_ID, "") or ""),
+            managed=False,
+        )
+        obj[PROP_EFFECT_CONTROLLER_ID] = str(controller_obj.get(on.PROP_ID, "") or "")
+    except Exception:  # noqa: BLE001
+        pass
+    _link_display_to_controller_collections(obj, controller_obj)
+    try:
+        obj.location = tuple(controller_obj.location)
+        obj.rotation_euler = tuple(controller_obj.rotation_euler)
+        obj.scale = tuple(controller_obj.scale)
+    except Exception:  # noqa: BLE001
+        pass
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.hide_select = True
+    return obj
 
 
 def _ensure_display_material(
@@ -243,22 +373,35 @@ def ensure_effect_display_object(
 
 
 def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> None:
-    display = find_effect_display_object(controller_obj)
-    if display is None or controller_obj is None:
+    if controller_obj is None:
         return
-    _link_display_to_controller_collections(display, controller_obj)
-    try:
-        display[on.PROP_PARENT_KEY] = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
-        display[on.PROP_FOLDER_ID] = str(controller_obj.get(on.PROP_FOLDER_ID, "") or "")
-        display[on.PROP_Z_INDEX] = int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        display.location = tuple(controller_obj.location)
-        display.rotation_euler = tuple(controller_obj.rotation_euler)
-        display.scale = tuple(controller_obj.scale)
-    except Exception:  # noqa: BLE001
-        pass
+    display = find_effect_display_object(controller_obj)
+    source = find_effect_frame_source_object(controller_obj)
+    if display is not None:
+        _link_display_to_controller_collections(display, controller_obj)
+        try:
+            display[on.PROP_PARENT_KEY] = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
+            display[on.PROP_FOLDER_ID] = str(controller_obj.get(on.PROP_FOLDER_ID, "") or "")
+            display[on.PROP_Z_INDEX] = int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            display.location = tuple(controller_obj.location)
+            display.rotation_euler = tuple(controller_obj.rotation_euler)
+            display.scale = tuple(controller_obj.scale)
+        except Exception:  # noqa: BLE001
+            pass
+    if source is not None:
+        _link_display_to_controller_collections(source, controller_obj)
+        try:
+            source[on.PROP_PARENT_KEY] = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
+            source[on.PROP_FOLDER_ID] = str(controller_obj.get(on.PROP_FOLDER_ID, "") or "")
+            source[on.PROP_Z_INDEX] = int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0)
+            source.location = tuple(controller_obj.location)
+            source.rotation_euler = tuple(controller_obj.rotation_euler)
+            source.scale = tuple(controller_obj.scale)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def create_effect_line_object(

@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-22 — v0.6.051 効果線のコマ枠始点と選択判定を修正
+
+### 症状
+- 効果線の「始点をコマ枠に設定」をオンにしても、始点形状が実際のコマ枠に沿わず、以前の挙動から外れていた。
+- コマ外や選択範囲外まで見えている効果線をクリックしても、表示されている線ではなくページ側が選択される場合があった。
+- 「始点をコマ枠に設定」では、コマ枠ぴったりではなく線幅ぶん外側へ出す設計意図まで固定できていなかった。
+
+### 原因
+- 効果線のジオメトリノード移行後、実際のコマ枠形状をノード側へ渡す経路が切れており、始点位置が効果線自身の矩形範囲からの近似計算になっていた。
+- 表示はジオメトリノードで作られているのに、クリック判定が旧ストローク中心のままで、評価後の表示メッシュを拾えていなかった。
+- コマ枠までの距離は復旧していたが、線幅ぶん外側へ伸ばす指定がノード内計算に入っていなかった。
+
+### 修正
+- 「始点をコマ枠に設定」時、実際のコマ枠形状を参照してノード内で各線の始点距離を測るようにした。
+- 効果線の始点を、コマ枠から線幅ぶん外側まで届く位置に戻した。
+- 効果線のクリック判定で、ジオメトリノードの評価後メッシュも対象にし、見えている線を選択できるようにした。
+- 参照用のコマ枠は非表示・選択不可の実体として管理し、効果線の移動、変形、削除に追従するようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_geometry_nodes_functional_settings_check.py`: 「始点をコマ枠に設定」が実コマ枠入力へ接続され、コマ枠の外側まで表示が届くことを確認。PASS。
+- `test/blender_geometry_nodes_bridge_check.py`: 効果線のコマ枠参照、ノード内距離計算、全設定入力の接続を確認。PASS。
+- `test/blender_object_tool_selection_check.py`: 見えている効果線をクリック対象として拾えることを確認。PASS。
+- `test/blender_effect_line_end_fill_check.py` / `test/blender_effect_line_mask_visibility_check.py` / `test/blender_balloon_uni_flash_check.py` / `test/blender_coma_content_z_order_check.py` / `test/blender_effect_line_frame_spacing_check.py` / `test/blender_ui_micro_behavior_matrix_check.py`: 関連回帰確認。PASS。
+- `python test/bname_ai_audit_runner.py --profile standard --keep-going`: 標準 AI 監査 16 件 PASS、failed=0。代表画像を目視確認。
+- `python -m compileall -q .` / `python -m pytest --rootdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py` / `git diff --check`: 構文、単体テスト、差分を確認。PASS。
+
 ## 2026-05-22 — v0.6.050 効果線ノード計算の漏れを修正
 
 ### 症状
