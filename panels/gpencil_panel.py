@@ -329,6 +329,8 @@ def _draw_right_aux_coma_enter(row, index: int) -> None:
 
 
 def _draw_right_controls(row, controls, index: int) -> None:
+    if not controls.get("gp_style") and not controls.get("aux"):
+        return
     slots = row.row(align=True)
     slots.alignment = "RIGHT"
     slots.ui_units_x = 3.0
@@ -492,15 +494,8 @@ class BNAME_UL_layer_stack(UIList):
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
-        # 旧実装は ``row.split(factor=0.60)`` で右側に常に 40% を確保しており、
-        # 右コントロール (3 ui-units) と左コンテンツの間に大きな空白が出ていた。
-        # 右側を ``ui_units_x=3.0`` の固定幅にすることで、左 (型アイコン + 名前)
-        # が残り全幅へ拡張され、レイヤー名の表示領域が広がる。
         left = row.row(align=True)
         left.alignment = "LEFT"
-        right = row.row(align=True)
-        right.alignment = "RIGHT"
-        right.ui_units_x = 3.0
         controls = {}
         if item.kind == "outside_group":
             _draw_stack_data_row(left, controls, item, resolved, index)
@@ -512,7 +507,11 @@ class BNAME_UL_layer_stack(UIList):
             _draw_stack_gp_row(left, controls, item, resolved, index)
         else:
             _draw_stack_data_row(left, controls, item, resolved, index)
-        _draw_right_controls(right, controls, index)
+        if controls.get("gp_style") or controls.get("aux"):
+            right = row.row(align=True)
+            right.alignment = "RIGHT"
+            right.ui_units_x = 3.0
+            _draw_right_controls(right, controls, index)
 
 
 def draw_stack_item_detail(layout, context, item, resolved) -> bool:

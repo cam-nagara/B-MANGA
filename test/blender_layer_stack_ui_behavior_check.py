@@ -313,6 +313,30 @@ def _write_visual_report(state: dict) -> None:
     draw.text((500, 492), "gray=before / magenta=after; nested layers moved with coma", fill=(0, 0, 0), font=font)
     image.save(OUT_DIR / "layer_stack_ui_behavior.png")
 
+    focus = Image.new("RGB", (760, 360), "white")
+    focus_draw = ImageDraw.Draw(focus)
+    focus_draw.text((24, 18), "Layer stack preview spacing sample", fill=(0, 0, 0), font=font)
+    focus_draw.text((24, 40), "Expected: effect row / coma preview row / balloon row with no blank rows", fill=(0, 0, 0), font=font)
+    y = 78
+    for row in state.get("preview_focus_rows", []):
+        depth = int(row.get("depth", 0))
+        kind = str(row.get("kind", ""))
+        label = str(row.get("label", ""))
+        is_preview = kind == "coma_preview"
+        fill = (255, 246, 220) if is_preview else (238, 248, 255)
+        x = 44 + depth * 26
+        focus_draw.rectangle((x, y, 680, y + 30), fill=fill, outline=(70, 70, 70), width=2 if is_preview else 1)
+        focus_draw.text((x + 10, y + 9), f"{kind}: {label}", fill=(0, 0, 0), font=font)
+        y += 36
+    status_color = (0, 120, 0) if not state.get("blank_visible_rows") else (180, 0, 0)
+    focus_draw.text(
+        (24, y + 16),
+        "blank visible rows: " + str(state.get("blank_visible_rows", [])),
+        fill=status_color,
+        font=font,
+    )
+    focus.save(OUT_DIR / "layer_stack_preview_spacing.png")
+
 
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_layer_stack_"))
@@ -445,6 +469,46 @@ def main() -> None:
             if stack_uids.index(uid) < stack_uids.index(coma_preview_uid):
                 raise AssertionError(f"{uid} をコマプレビューの背面へ移動できません")
 
+        _move_uid_before(context, effect_uid, coma_preview_uid)
+        _move_uid_before(context, coma_preview_uid, balloon_uid)
+        stack = _stack(context)
+        stack_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
+        effect_index = stack_uids.index(effect_uid)
+        preview_index = stack_uids.index(coma_preview_uid)
+        balloon_index = stack_uids.index(balloon_uid)
+        if not (effect_index < preview_index < balloon_index):
+            raise AssertionError(
+                "コマプレビューの前後にレイヤーを置いたサンプルを作成できません: "
+                f"effect={effect_index}, preview={preview_index}, balloon={balloon_index}"
+            )
+
+        from bname_dev.panels import gpencil_panel
+
+        fake_ui = SimpleNamespace(bitflag_filter_item=1)
+        flags, _order = gpencil_panel.BNAME_UL_layer_stack.filter_items(
+            fake_ui,
+            context,
+            context.scene,
+            "bname_layer_stack",
+        )
+        visible_rows = [
+            item for item, flag in zip(stack, flags, strict=False)
+            if flag
+        ]
+        blank_visible_rows = []
+        for visible_index, item in enumerate(visible_rows):
+            label = str(getattr(item, "label", "") or getattr(item, "name", "") or "")
+            if not label.strip():
+                blank_visible_rows.append(
+                    {
+                        "visible_index": visible_index,
+                        "kind": str(getattr(item, "kind", "")),
+                        "key": str(getattr(item, "key", "")),
+                    }
+                )
+        if blank_visible_rows:
+            raise AssertionError(f"レイヤー一覧に表示名のない行があります: {blank_visible_rows}")
+
         if gp_parent.parent_key(gp_layer) != coma_key:
             raise AssertionError("GP layer parent was not applied")
         if gp_parent.parent_key(effect_layer) != coma_key:
@@ -462,7 +526,8 @@ def main() -> None:
         before_balloon = (float(balloon.x_mm), float(balloon.y_mm))
         before_text = (float(text_a.x_mm), float(text_a.y_mm))
         before_gp = tuple(float(v) for v in _first_gp_point(gp_layer).position)
-        before_effect = tuple(float(v) for v in _first_gp_point(effect_layer).position)
+        before_effect_bounds = effect_line_op.effect_layer_bounds(_eff_obj, effect_layer)
+        assert before_effect_bounds is not None
 
         _assert_pixel_alpha(raster_image, raster_pixel[0], raster_pixel[1], 1.0, "raster source alpha before")
         raster_slice_index = (raster_pixel[1] * int(raster_image.size[0]) + raster_pixel[0]) * 4 + 3
@@ -479,11 +544,12 @@ def main() -> None:
         _assert_close(text_a.x_mm, before_text[0] + dx_mm, "text x")
         _assert_close(text_a.y_mm, before_text[1] + dy_mm, "text y")
         after_gp = tuple(float(v) for v in _first_gp_point(gp_layer).position)
-        after_effect = tuple(float(v) for v in _first_gp_point(effect_layer).position)
+        after_effect_bounds = effect_line_op.effect_layer_bounds(_eff_obj, effect_layer)
+        assert after_effect_bounds is not None
         _assert_close(m_to_mm(after_gp[0] - before_gp[0]), dx_mm, "gp dx")
         _assert_close(m_to_mm(after_gp[1] - before_gp[1]), dy_mm, "gp dy")
-        _assert_close(m_to_mm(after_effect[0] - before_effect[0]), dx_mm, "effect dx")
-        _assert_close(m_to_mm(after_effect[1] - before_effect[1]), dy_mm, "effect dy")
+        _assert_close(after_effect_bounds[0] - before_effect_bounds[0], dx_mm, "effect dx")
+        _assert_close(after_effect_bounds[1] - before_effect_bounds[1], dy_mm, "effect dy")
         _assert_pixel_alpha(raster_image, raster_pixel[0], raster_pixel[1], 0.0, "raster source alpha after")
         try:
             _assert_pixel_alpha(
@@ -500,7 +566,8 @@ def main() -> None:
 
         before_page_offset = (float(page.offset_x_mm), float(page.offset_y_mm))
         before_page_gp_world = _gp_point_world_mm(_gp_obj, _first_gp_point(gp_layer))
-        before_page_effect_world = _gp_point_world_mm(_eff_obj, _first_gp_point(effect_layer))
+        before_page_effect_world = effect_line_op.effect_layer_world_bounds(context, _eff_obj, effect_layer)
+        assert before_page_effect_world is not None
         raster_obj = on.find_object_by_bname_id(raster.id, kind="raster")
         assert raster_obj is not None
         before_raster_object = tuple(float(v) for v in raster_obj.location)
@@ -513,7 +580,8 @@ def main() -> None:
         _assert_close(page.offset_x_mm, before_page_offset[0] + page_dx_mm, "page x")
         _assert_close(page.offset_y_mm, before_page_offset[1] + page_dy_mm, "page y")
         after_page_gp_world = _gp_point_world_mm(_gp_obj, _first_gp_point(gp_layer))
-        after_page_effect_world = _gp_point_world_mm(_eff_obj, _first_gp_point(effect_layer))
+        after_page_effect_world = effect_line_op.effect_layer_world_bounds(context, _eff_obj, effect_layer)
+        assert after_page_effect_world is not None
         _assert_close(after_page_gp_world[0] - before_page_gp_world[0], page_dx_mm, "page move gp world dx")
         _assert_close(after_page_gp_world[1] - before_page_gp_world[1], page_dy_mm, "page move gp world dy")
         _assert_close(after_page_effect_world[0] - before_page_effect_world[0], page_dx_mm, "page move effect world dx")
@@ -533,6 +601,16 @@ def main() -> None:
         )
         _assert_coma_order_buttons(context, page)
 
+        stack = _stack(context)
+        stack_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
+        effect_index = stack_uids.index(effect_uid)
+        preview_index = stack_uids.index(coma_preview_uid)
+        balloon_index = stack_uids.index(balloon_uid)
+        if not (effect_index < preview_index < balloon_index):
+            raise AssertionError(
+                "コマプレビュー前後のサンプル順が後続処理で崩れました: "
+                f"effect={effect_index}, preview={preview_index}, balloon={balloon_index}"
+            )
         stack_rows = [
             {
                 "kind": str(getattr(item, "kind", "")),
@@ -540,7 +618,18 @@ def main() -> None:
                 "depth": int(getattr(item, "depth", 0)),
                 "parent_key": str(getattr(item, "parent_key", "") or ""),
             }
-            for item in _stack(context)
+            for item in stack
+        ]
+        focus_from = max(0, effect_index - 1)
+        focus_to = min(len(stack), balloon_index + 2)
+        preview_focus_rows = [
+            {
+                "kind": str(getattr(item, "kind", "")),
+                "label": str(getattr(item, "label", "") or getattr(item, "name", "")),
+                "depth": int(getattr(item, "depth", 0)),
+                "parent_key": str(getattr(item, "parent_key", "") or ""),
+            }
+            for item in stack[focus_from:focus_to]
         ]
         state = {
             "page_uid": page_uid,
@@ -554,6 +643,8 @@ def main() -> None:
             ),
             "raster_shift_px": [dx_px, dy_px],
             "stack_rows": stack_rows,
+            "preview_focus_rows": preview_focus_rows,
+            "blank_visible_rows": blank_visible_rows,
         }
         _write_visual_report(state)
         print(f"BNAME_LAYER_STACK_UI_BEHAVIOR_OK visual={OUT_DIR}")
