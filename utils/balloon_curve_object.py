@@ -441,6 +441,20 @@ def _ensure_balloon_carrier_mesh(
     return mesh
 
 
+def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
+    """フキダシ内ローカル座標で、しっぽの輪郭点列を返す。"""
+    from . import balloon_tail_geom
+    from .geom import Rect
+
+    rect = Rect(
+        0.0,
+        0.0,
+        float(getattr(entry, "width_mm", 0.0) or 0.0),
+        float(getattr(entry, "height_mm", 0.0) or 0.0),
+    )
+    return balloon_tail_geom.polygon_for_tail(rect, tail)
+
+
 def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
     obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))

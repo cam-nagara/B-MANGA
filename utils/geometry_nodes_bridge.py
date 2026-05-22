@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 8
+_GROUP_VERSION = 11
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 
@@ -154,6 +154,11 @@ _EFFECT_POSITION_SOCKETS = (
     SocketSpec("乱数", "NodeSocketInt", 0),
 )
 
+_MATERIAL_SOCKETS = (
+    SocketSpec("線素材", "NodeSocketMaterial", None),
+    SocketSpec("塗り素材", "NodeSocketMaterial", None),
+)
+
 
 def _balloon_tail_socket_specs(index: int) -> tuple[SocketSpec, ...]:
     prefix = f"しっぽ{index}"
@@ -241,8 +246,8 @@ _BALLOON_EXTRA_SOCKETS = (
 ) + _BALLOON_TAIL_SOCKETS
 
 _GROUP_SOCKETS: dict[str, tuple[SocketSpec, ...]] = {
-    "effect_line": tuple(_EFFECT_FIELD_SPECS.values()) + _EFFECT_POSITION_SOCKETS,
-    "balloon": _BALLOON_EXTRA_SOCKETS,
+    "effect_line": tuple(_EFFECT_FIELD_SPECS.values()) + _EFFECT_POSITION_SOCKETS + _MATERIAL_SOCKETS,
+    "balloon": _BALLOON_EXTRA_SOCKETS + _MATERIAL_SOCKETS,
 }
 
 
@@ -284,7 +289,7 @@ def _ensure_socket(group, spec: SocketSpec, *, in_out: str = "INPUT"):
             item.default_value = tuple(spec.default or (0.0, 0.0, 0.0, 1.0))
         elif spec.socket_type == "NodeSocketString":
             item.default_value = str(spec.default or "")
-        elif spec.socket_type != "NodeSocketObject":
+        elif spec.socket_type not in {"NodeSocketObject", "NodeSocketMaterial"}:
             item.default_value = float(spec.default or 0.0)
     except Exception:  # noqa: BLE001
         pass
@@ -312,6 +317,8 @@ def _setting_output_name(socket_name: str) -> str:
 
 def _ensure_setting_output_sockets(group, kind: str) -> None:
     for spec in _GROUP_SOCKETS.get(kind, ()):
+        if spec.socket_type == "NodeSocketMaterial":
+            continue
         _ensure_socket(
             group,
             SocketSpec(_setting_output_name(spec.name), spec.socket_type, spec.default),
@@ -321,7 +328,9 @@ def _ensure_setting_output_sockets(group, kind: str) -> None:
 
 def _prune_setting_output_sockets(group, kind: str) -> None:
     allowed = {"Geometry"} | {
-        _setting_output_name(spec.name) for spec in _GROUP_SOCKETS.get(kind, ())
+        _setting_output_name(spec.name)
+        for spec in _GROUP_SOCKETS.get(kind, ())
+        if spec.socket_type != "NodeSocketMaterial"
     }
     for item in list(group.interface.items_tree):
         if getattr(item, "item_type", "") != "SOCKET":
@@ -341,6 +350,8 @@ def _prune_setting_output_sockets(group, kind: str) -> None:
 
 def _link_settings_to_audit_outputs(group, input_node, output_node, kind: str) -> None:
     for spec in _GROUP_SOCKETS.get(kind, ()):
+        if spec.socket_type == "NodeSocketMaterial":
+            continue
         source = input_node.outputs.get(spec.name)
         target = output_node.inputs.get(_setting_output_name(spec.name))
         if source is None or target is None:
@@ -444,8 +455,20 @@ def _combine_xyz(
 
 def _set_material_index(group, geometry_socket, index: int, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeSetMaterialIndex", label=label, location=location)
+    if "Selection" in node.inputs:
+        _set_default(node.inputs["Selection"], True)
     _set_default(node.inputs["Material Index"], int(index))
     _link(group, geometry_socket, node.inputs["Geometry"])
+    return node.outputs["Geometry"]
+
+
+def _set_material(group, geometry_socket, material_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeSetMaterial", label=label, location=location)
+    if "Selection" in node.inputs:
+        _set_default(node.inputs["Selection"], True)
+    _link(group, geometry_socket, node.inputs["Geometry"])
+    if material_socket is not None:
+        _link(group, material_socket, node.inputs["Material"])
     return node.outputs["Geometry"]
 
 
@@ -586,11 +609,58 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
     )
     one = _constant_float(group, 1.0, label="通常形状", location=(-560, 180))
 
+    radius_mm = _math_binary(
+        group,
+        "MULTIPLY",
+        radius_avg,
+        b_value=1000.0,
+        label="平均半径 m → mm",
+        location=(-760, 620),
+    )
+    cloud_perimeter = _math_binary(
+        group,
+        "MULTIPLY",
+        radius_mm,
+        b_value=math.tau,
+        label="雲の周長",
+        location=(-560, 620),
+    )
+    cloud_wave_count = _math_binary(
+        group,
+        "DIVIDE",
+        cloud_perimeter,
+        input_node.outputs["山の幅"],
+        label="山の幅から山数",
+        location=(-360, 620),
+    )
+    cloud_wave_count = _math_binary(
+        group,
+        "MAXIMUM",
+        cloud_wave_count,
+        b_value=3.0,
+        label="山数下限",
+        location=(-160, 620),
+    )
+    cloud_phase = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["ズラし量 (%)"],
+        b_value=math.tau / 100.0,
+        label="山のズラし",
+        location=(-160, 460),
+    )
+    cloud_angle = _math_add(
+        group,
+        angle,
+        cloud_phase,
+        label="ズラし済み角度",
+        location=(40, 460),
+    )
     cloud_wave = _math_binary(
         group,
         "MULTIPLY",
-        angle,
-        input_node.outputs["雲の波数"],
+        cloud_angle,
+        cloud_wave_count,
         label="雲の波",
         location=(-560, 560),
     )
@@ -604,7 +674,7 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
     cloud_amp_m = _math_binary(
         group,
         "MULTIPLY",
-        input_node.outputs["波の振幅"],
+        input_node.outputs["山の高さ"],
         b_value=0.001,
         label="雲の振幅 mm → m",
         location=(-560, 430),
@@ -627,11 +697,34 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
     )
     cloud_factor = _math_add(group, one, cloud_delta, label="雲形状", location=(40, 520))
 
+    thorn_wave_count = _math_binary(
+        group,
+        "DIVIDE",
+        cloud_perimeter,
+        input_node.outputs["山の幅"],
+        label="トゲ幅から山数",
+        location=(-560, 880),
+    )
+    thorn_wave_count = _math_binary(
+        group,
+        "MAXIMUM",
+        thorn_wave_count,
+        b_value=3.0,
+        label="トゲ山数下限",
+        location=(-360, 880),
+    )
+    thorn_angle = _math_add(
+        group,
+        angle,
+        cloud_phase,
+        label="トゲズラし角度",
+        location=(-160, 880),
+    )
     thorn_wave = _math_binary(
         group,
         "MULTIPLY",
-        angle,
-        input_node.outputs["トゲ数"],
+        thorn_angle,
+        thorn_wave_count,
         label="トゲの波",
         location=(-560, 760),
     )
@@ -652,7 +745,7 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
     thorn_depth_m = _math_binary(
         group,
         "MULTIPLY",
-        input_node.outputs["トゲの深さ"],
+        input_node.outputs["山の高さ"],
         b_value=0.001,
         label="トゲ深さ mm → m",
         location=(-360, 640),
@@ -733,7 +826,7 @@ def _deform_balloon_mesh(
     return set_pos.outputs["Geometry"]
 
 
-def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, line_half_m):
+def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, line_half_m, line_material=None, fill_material=None):
     fill_circle = _node(group, "GeometryNodeMeshCircle", label="塗り元円", location=(-520, 120))
     fill_circle.fill_type = "TRIANGLE_FAN"
     _set_default(fill_circle.inputs["Vertices"], 192)
@@ -748,7 +841,7 @@ def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, 
         label="塗り形状を生成",
         location=(-240, 120),
     )
-    fill = _set_material_index(group, fill, 1, label="塗り素材", location=(620, 120))
+    fill = _set_material(group, fill, fill_material, label="塗り素材", location=(620, 120))
 
     outline_circle = _node(group, "GeometryNodeMeshCircle", label="輪郭元円", location=(-520, -760))
     outline_circle.fill_type = "NONE"
@@ -773,7 +866,7 @@ def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, 
     _set_default(outline.inputs["Fill Caps"], True)
     _link(group, mesh_to_curve.outputs["Curve"], outline.inputs["Curve"])
     _link(group, profile.outputs["Curve"], outline.inputs["Profile Curve"])
-    outline = _set_material_index(group, outline.outputs["Mesh"], 0, label="線素材", location=(1060, -760))
+    outline = _set_material(group, outline.outputs["Mesh"], line_material, label="線素材", location=(1060, -760))
 
     join = _node(group, "GeometryNodeJoinGeometry", label="フキダシ生成", location=(1280, -260))
     _link(group, fill, join.inputs["Geometry"])
@@ -782,33 +875,9 @@ def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, 
 
 
 def _build_balloon_nodes(group) -> None:
-    _clear_nodes(group)
-    input_node, output_node = _group_input_output(group)
-    _link_settings_to_audit_outputs(group, input_node, output_node, "balloon")
-    width_half_m = _math_multiply(
-        group,
-        input_node.outputs["幅"],
-        0.0005,
-        label="幅 mm → 半幅 m",
-        location=(-800, -80),
-    )
-    height_half_m = _math_multiply(
-        group,
-        input_node.outputs["高さ"],
-        0.0005,
-        label="高さ mm → 半高 m",
-        location=(-800, -240),
-    )
-    line_half_m = _math_multiply(
-        group,
-        input_node.outputs["線幅"],
-        0.0005,
-        label="線幅 mm → 半径 m",
-        location=(-800, -400),
-    )
-    generated = _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, line_half_m)
-    _link(group, generated, output_node.inputs["Geometry"])
-    group[PROP_GROUP_VERSION] = _GROUP_VERSION
+    from . import geometry_nodes_functional
+
+    geometry_nodes_functional.build_balloon_nodes(group, __import__(__name__, fromlist=[""]))
 
 
 def _radial_line_points(
@@ -902,6 +971,7 @@ def _instanced_radial_line_geometry(
     width_half_m,
     height_half_m,
     line_half_m,
+    line_material=None,
 ):
     """本数入力から Geometry Nodes 側で放射線を繰り返し生成する."""
     import math
@@ -983,10 +1053,10 @@ def _instanced_radial_line_geometry(
     _set_default(mesh.inputs["Fill Caps"], True)
     _link(group, line.outputs["Curve"], mesh.inputs["Curve"])
     _link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
-    material = _set_material_index(
+    material = _set_material(
         group,
         mesh.outputs["Mesh"],
-        0,
+        line_material,
         label="線素材",
         location=(760, -1080),
     )
@@ -1006,7 +1076,7 @@ def _instanced_radial_line_geometry(
     return transform.outputs["Geometry"]
 
 
-def _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_half_m):
+def _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_half_m, fill_material=None):
     fill = _node(group, "GeometryNodeMeshCircle", label="終点形状下地", location=(780, 120))
     fill.fill_type = "TRIANGLE_FAN"
     _set_default(fill.inputs["Vertices"], 192)
@@ -1019,68 +1089,13 @@ def _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_ha
     _link(group, fill.outputs["Mesh"], transform.inputs["Geometry"])
     _link(group, scale, transform.inputs["Scale"])
     _link(group, translation, transform.inputs["Translation"])
-    return _set_material_index(group, transform.outputs["Geometry"], 1, label="下地素材", location=(1380, 120))
+    return _set_material(group, transform.outputs["Geometry"], fill_material, label="下地素材", location=(1380, 120))
 
 
 def _build_effect_line_nodes(group) -> None:
-    _clear_nodes(group)
-    input_node, output_node = _group_input_output(group)
-    _link_settings_to_audit_outputs(group, input_node, output_node, "effect_line")
-    origin_x_m = _math_multiply(
-        group,
-        input_node.outputs["位置 X"],
-        0.001,
-        label="位置 X mm → m",
-        location=(-800, 260),
-    )
-    origin_y_m = _math_multiply(
-        group,
-        input_node.outputs["位置 Y"],
-        0.001,
-        label="位置 Y mm → m",
-        location=(-800, 110),
-    )
-    width_half_m = _math_multiply(
-        group,
-        input_node.outputs["幅"],
-        0.0005,
-        label="幅 mm → 半幅 m",
-        location=(-800, -40),
-    )
-    height_half_m = _math_multiply(
-        group,
-        input_node.outputs["高さ"],
-        0.0005,
-        label="高さ mm → 半高 m",
-        location=(-800, -190),
-    )
-    line_half_m = _math_multiply(
-        group,
-        input_node.outputs["線幅"],
-        0.0005,
-        label="線幅 mm → 半径 m",
-        location=(-800, -340),
-    )
-    lines = _instanced_radial_line_geometry(
-        group,
-        input_node,
-        origin_x_m,
-        origin_y_m,
-        width_half_m,
-        height_half_m,
-        line_half_m,
-    )
-    fill = _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_half_m)
-    join = _node(group, "GeometryNodeJoinGeometry", label="効果線と下地", location=(1460, -420))
-    _link(group, fill, join.inputs["Geometry"])
-    _link(group, lines, join.inputs["Geometry"])
-    switch = _node(group, "GeometryNodeSwitch", label="下地塗り表示", location=(1660, -420))
-    switch.input_type = "GEOMETRY"
-    _link(group, input_node.outputs["終点形状を下地として塗る"], switch.inputs["Switch"])
-    _link(group, lines, switch.inputs["False"])
-    _link(group, join.outputs["Geometry"], switch.inputs["True"])
-    _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
-    group[PROP_GROUP_VERSION] = _GROUP_VERSION
+    from . import geometry_nodes_functional
+
+    geometry_nodes_functional.build_effect_line_nodes(group, __import__(__name__, fromlist=[""]))
 
 
 def _build_generator_nodes(group, kind: str) -> None:
@@ -1097,8 +1112,8 @@ def _group_needs_rebuild(group, kind: str) -> bool:
     except Exception:  # noqa: BLE001
         return True
     generator_types = {
-        "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh"},
-        "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
+        "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
+        "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }.get(kind, set())
     existing = {node.bl_idname for node in group.nodes}
     return not generator_types.issubset(existing)
@@ -1152,7 +1167,7 @@ def _set_modifier_value(modifier, identifier: str, spec: SocketSpec, value: Any)
     if not identifier:
         return
     try:
-        if spec.socket_type == "NodeSocketObject":
+        if spec.socket_type in {"NodeSocketObject", "NodeSocketMaterial"}:
             modifier[identifier] = value
         elif spec.socket_type == "NodeSocketBool":
             modifier[identifier] = bool(value)
@@ -1188,6 +1203,19 @@ def ensure_modifier(obj: bpy.types.Object | None, kind: str, values: Mapping[str
         if socket:
             ident, spec = socket
             _set_modifier_value(modifier, ident, spec, value)
+    material_slots = getattr(getattr(obj, "data", None), "materials", None)
+    for name, slot_index in (("線素材", 0), ("塗り素材", 1)):
+        socket = identifiers.get(name)
+        if not socket:
+            continue
+        material = None
+        try:
+            if material_slots is not None and len(material_slots) > slot_index:
+                material = material_slots[slot_index]
+        except Exception:  # noqa: BLE001
+            material = None
+        ident, spec = socket
+        _set_modifier_value(modifier, ident, spec, material)
     try:
         obj.update_tag()
     except Exception:  # noqa: BLE001
@@ -1241,6 +1269,28 @@ def _socket_value_for_spec(field: str, spec: SocketSpec, value: Any):
         return float(spec.default or 0.0)
 
 
+def _effect_focus_line_count(params, bounds: tuple[float, float, float, float] | None) -> int:
+    import math
+
+    max_count = max(1, int(getattr(params, "max_line_count", 1000) or 1))
+    if bounds is None:
+        width = height = 40.0
+    else:
+        width = max(0.001, float(bounds[2] or 0.001))
+        height = max(0.001, float(bounds[3] or 0.001))
+    if str(getattr(params, "spacing_mode", "distance") or "distance") == "angle":
+        step = max(0.1, float(getattr(params, "spacing_angle_deg", 5.0) or 5.0))
+        raw = max(3, int(round(360.0 / step)))
+    else:
+        step = max(0.01, float(getattr(params, "spacing_distance_mm", 0.4) or 0.4))
+        rx = width * 0.5
+        ry = height * 0.5
+        h = ((rx - ry) ** 2) / max((rx + ry) ** 2, 1.0e-9)
+        perimeter = math.pi * (rx + ry) * (1.0 + (3.0 * h) / max(10.0 + math.sqrt(max(0.0, 4.0 - 3.0 * h)), 1.0e-9))
+        raw = max(3, int(round(perimeter / step)))
+    return min(raw, max_count)
+
+
 def effect_values(params, bounds: tuple[float, float, float, float] | None, seed: int) -> dict[str, Any]:
     if bounds is None:
         x = y = width = height = 0.0
@@ -1252,7 +1302,7 @@ def effect_values(params, bounds: tuple[float, float, float, float] | None, seed
     elif effect_type == "white_outline":
         line_count = int(getattr(params, "white_outline_count", 0) or 0)
     else:
-        line_count = int(getattr(params, "max_line_count", 0) or 0)
+        line_count = _effect_focus_line_count(params, bounds)
     values = {
         "乱数": int(seed),
         "位置 X": float(x or 0.0),

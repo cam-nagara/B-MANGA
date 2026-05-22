@@ -97,7 +97,7 @@ def _assert_generated_group(group, *, kind: str) -> None:
             "GeometryNodeMeshLine",
             "GeometryNodeInstanceOnPoints",
         },
-        "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
+        "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }[kind]
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
     assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
@@ -133,6 +133,8 @@ def _assert_all_setting_inputs_linked(group, gn, *, kind: str) -> None:
         links = [link for link in group.links if link.from_socket == source]
         if not links:
             missing.append(spec.name)
+        if spec.socket_type == "NodeSocketMaterial":
+            continue
         audit_name = f"{gn._SETTING_OUTPUT_PREFIX}{spec.name}"  # noqa: SLF001
         target = output_node.inputs.get(audit_name)
         if target is None or not any(link.from_socket == source and link.to_socket == target for link in group.links):
