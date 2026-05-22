@@ -849,6 +849,45 @@ def get_state() -> Optional[KeymapState]:
     return _state
 
 
+def ensure_standard_view_toggles_enabled() -> int:
+    """標準の N サイドバー開閉キーが無効化されたままにならないよう自己修復する.
+
+    B-Name は N (サイドバー開閉) を奪わず Blender 標準の挙動に任せるが、
+    過去のバージョンや別経路で user keyconfig の "3D View Generic" にある
+    ``wm.context_toggle (space_data.show_region_ui)`` が ``active=False`` に
+    なったまま userpref.blend に保存され、再起動後も N が一切効かなくなる
+    事象が確認された。アドオン読込ごとに該当 kmi を有効へ戻して修復する。
+    """
+    wm = bpy.context.window_manager
+    if wm is None:
+        return 0
+    kc = getattr(wm.keyconfigs, "user", None)
+    if kc is None:
+        return 0
+    km = kc.keymaps.get("3D View Generic")
+    if km is None:
+        return 0
+    repaired = 0
+    for kmi in km.keymap_items:
+        try:
+            if (
+                kmi.idname == "wm.context_toggle"
+                and getattr(kmi.properties, "data_path", "") == "space_data.show_region_ui"
+                and not bool(kmi.active)
+            ):
+                kmi.active = True
+                repaired += 1
+                print(
+                    "[B-Name][KEYMAP] re-enabled standard sidebar toggle"
+                    f" (key={kmi.type})"
+                )
+        except (ReferenceError, AttributeError):
+            continue
+    if repaired:
+        _logger.info("re-enabled %d standard sidebar toggle kmi", repaired)
+    return repaired
+
+
 def suspend_visibility_updates(
     seconds: float = 3.0,
     *,
@@ -923,6 +962,7 @@ def _watch_bname_tab() -> Optional[float]:
         if not state.bname_items:
             km = state.create_bname_keymap()
             if km is not None:
+                ensure_standard_view_toggles_enabled()
                 _logger.info(
                     "bname keymap recreated by watcher (items=%d)",
                     len(state.bname_items),
@@ -1007,6 +1047,8 @@ def register() -> None:
             " watcher will retry every %.1fs",
             _WATCH_INTERVAL,
         )
+    # 標準の N サイドバー開閉キーが過去の保存状態で無効化されていれば修復する。
+    ensure_standard_view_toggles_enabled()
     # register 時点でもサイドバー状態を見て active を合わせる。
     # B-Name タブが表示されていない間は Blender 標準キーへ戻す。
     _apply_visibility_state(_state, bool(keymap_enabled and _any_bname_tab_active()))
@@ -1066,6 +1108,7 @@ def rebuild_keymap_from_prefs() -> None:
     try:
         # B-Name タブ状態に合わせて自前キーだけを切り替える
         state.create_bname_keymap()
+        ensure_standard_view_toggles_enabled()
         from ..preferences import get_preferences
         prefs = get_preferences()
         keymap_enabled = True if prefs is None else bool(prefs.keymap_enabled)
