@@ -91,7 +91,23 @@ def test_modal_navigation_passthrough_stays_active_until_release():
     assert not operator._navigation_drag_passthrough
 
 
+def test_unmodified_n_toggles_modal_sidebar():
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    space = context.screen.areas[0].spaces.active
+    space.type = "VIEW_3D"
+    space.show_region_ui = False
+    event = _event("N", region.x + 20, region.y + 20)
+    assert region_mod.toggle_modal_sidebar_if_requested(context, event)
+    assert space.show_region_ui
+    shifted = _event("N", region.x + 20, region.y + 20)
+    shifted.shift = True
+    assert not region_mod.toggle_modal_sidebar_if_requested(context, shifted)
+    assert space.show_region_ui
+
+
 if __name__ == "__main__":
     test_navigation_ui_hitbox_matches_top_right_viewport_controls()
     test_navigation_ui_respects_blender_visibility_settings()
     test_modal_navigation_passthrough_stays_active_until_release()
+    test_unmodified_n_toggles_modal_sidebar()

@@ -389,9 +389,12 @@ def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
 
 
 def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float) -> None:
-    _move_balloon_with_texts(page, entry, x, y)
-    entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(width))
-    entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(height))
+    with balloon_curve_object.defer_auto_sync():
+        _move_balloon_with_texts(page, entry, x, y)
+        entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(width))
+        entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(height))
+    with balloon_curve_object.suspend_auto_sync():
+        balloon_curve_object.on_balloon_entry_changed(entry)
 
 
 def _parent_for_creation_point(page, x_mm: float, y_mm: float) -> tuple[str, str]:
@@ -791,6 +794,8 @@ class BNAME_OT_balloon_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("balloon_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -1094,9 +1099,6 @@ class BNAME_OT_balloon_tool(Operator):
             if _creation_violates_layer_scope(context, page, x, y, w, h):
                 return
             _set_balloon_rect(page, entry, x, y, w, h)
-        idx = _find_balloon_index(page, getattr(entry, "id", ""))
-        if idx >= 0:
-            _select_balloon_index(context, work, page, idx, mode="add")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _finish_drag(self, context, event) -> None:

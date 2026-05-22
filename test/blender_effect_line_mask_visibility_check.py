@@ -86,6 +86,30 @@ def _evaluated_polygon_count(obj) -> int:
         evaluated.to_mesh_clear()
 
 
+def _evaluated_world_bounds(obj):
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        coords = [evaluated.matrix_world @ vertex.co for vertex in getattr(mesh, "vertices", []) or []]
+        assert coords, f"評価後メッシュが空です: {getattr(obj, 'name', '')}"
+        return (
+            min(coord.x for coord in coords),
+            min(coord.y for coord in coords),
+            max(coord.x for coord in coords),
+            max(coord.y for coord in coords),
+        )
+    finally:
+        evaluated.to_mesh_clear()
+
+
+def _assert_bounds_inside(inner, outer, label: str, eps: float = 1.0e-5) -> None:
+    assert inner[0] >= outer[0] - eps, f"{label} が左にはみ出しています: {inner} outside {outer}"
+    assert inner[1] >= outer[1] - eps, f"{label} が下にはみ出しています: {inner} outside {outer}"
+    assert inner[2] <= outer[2] + eps, f"{label} が右にはみ出しています: {inner} outside {outer}"
+    assert inner[3] <= outer[3] + eps, f"{label} が上にはみ出しています: {inner} outside {outer}"
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_effect_mask_visibility_"))
     mod = None
@@ -146,8 +170,21 @@ def main() -> None:
         assert obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
         assert not display.hide_viewport, "効果線の表示実体が非表示です"
         assert display.modifiers.get("B-Name Geometry Nodes") is not None, "効果線の表示実体にGeometry Nodesがありません"
+        display_mask = display.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
+        assert display_mask is not None, "コマ内の効果線表示実体にコマ範囲が付いていません"
+        assert getattr(display_mask, "object", None) is not None, "効果線表示実体のコマ範囲参照が空です"
+        assert display.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK) is None, "コマ内の効果線表示実体にページ範囲が残っています"
+        modifier_names = [mod.name for mod in display.modifiers]
+        assert modifier_names.index(mask_apply.MOD_NAME_COMA_MASK) > modifier_names.index("B-Name Geometry Nodes"), (
+            "効果線表示実体のコマ範囲が生成結果より前に実行されています"
+        )
         assert len(display.data.polygons) == 0, "効果線の表示実体にB-Name生成メッシュが残っています"
         assert _evaluated_polygon_count(display) > 0, "効果線のGeometry Nodes表示結果が空です"
+        _assert_bounds_inside(
+            _evaluated_world_bounds(display),
+            _evaluated_world_bounds(display_mask.object),
+            "コマ内の効果線",
+        )
         effect_line_op.layer_stack_utils.sync_layer_stack_after_data_change(context)
         _assert_coma_objects_visible(page)
         _assert_page_background_not_promoted(page)

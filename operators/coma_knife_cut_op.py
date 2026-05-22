@@ -624,6 +624,8 @@ class BNAME_OT_coma_knife_cut(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("knife_cut", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if getattr(self, "_edge_drag", None) is not None:
             return self._modal_edge_drag(context, event)
         if getattr(self, "_navigation_drag_passthrough", False):

@@ -1216,6 +1216,8 @@ class BNAME_OT_effect_line_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("effect_line_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -1398,8 +1400,8 @@ class BNAME_OT_effect_line_tool(Operator):
             self._drag_moved = True
         bounds = self._drag_result_bounds(dx, dy)
         center = self._drag_result_center(bounds, dx, dy)
-        _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=center)
-        _select_effect_layer(context, obj, layer)
+        _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=center, propagate_link=False)
+        layer_stack_utils.tag_view3d_redraw(context)
 
     def _drag_result_bounds(self, dx: float, dy: float) -> tuple[float, float, float, float]:
         action = str(getattr(self, "_drag_action", "") or "")
@@ -1457,6 +1459,15 @@ class BNAME_OT_effect_line_tool(Operator):
         if action == "create" and not moved:
             _delete_effect_layer(context, obj, layer)
         elif moved:
+            bounds = effect_layer_bounds(obj, layer)
+            if bounds is not None:
+                _write_effect_strokes(
+                    context,
+                    obj,
+                    layer,
+                    bounds,
+                    center_xy_mm=effect_layer_center(obj, layer, bounds),
+                )
             self._push_undo_step("B-Name: 効果線編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
         else:

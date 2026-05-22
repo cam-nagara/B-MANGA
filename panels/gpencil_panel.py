@@ -176,6 +176,8 @@ def _draw_visibility_slot(row, item, target, index: int) -> None:
     row.alignment = "LEFT"
     if target is None:
         _draw_square_label(row)
+    elif item.kind == "coma_preview" and hasattr(target, "paper_visible"):
+        _visibility_button(row, index, not bool(target.paper_visible))
     elif item.kind in {"page", "coma"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
     elif item.kind in {"image", "raster"} and hasattr(target, "visible"):

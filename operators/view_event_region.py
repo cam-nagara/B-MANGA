@@ -124,3 +124,66 @@ def modal_navigation_ui_passthrough(modal_operator, context, event) -> bool:
     if event_type == "LEFTMOUSE" and event_value == "PRESS":
         setattr(modal_operator, "_navigation_drag_passthrough", True)
     return True
+
+
+def _unmodified_key_press(event, key_type: str) -> bool:
+    return (
+        str(getattr(event, "type", "") or "") == key_type
+        and str(getattr(event, "value", "") or "") == "PRESS"
+        and not bool(getattr(event, "shift", False))
+        and not bool(getattr(event, "ctrl", False))
+        and not bool(getattr(event, "alt", False))
+        and not bool(getattr(event, "oskey", False))
+    )
+
+
+def _view3d_area_for_keyboard_event(context, event):
+    area = getattr(context, "area", None)
+    if area is not None and getattr(area, "type", "") == "VIEW_3D":
+        return area
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return None
+    mouse_x = int(getattr(event, "mouse_x", -10_000_000))
+    mouse_y = int(getattr(event, "mouse_y", -10_000_000))
+    first_view3d = None
+    for candidate in getattr(screen, "areas", []) or []:
+        if getattr(candidate, "type", "") != "VIEW_3D":
+            continue
+        if first_view3d is None:
+            first_view3d = candidate
+        if _contains(candidate, mouse_x, mouse_y):
+            return candidate
+    return first_view3d
+
+
+def toggle_modal_sidebar_if_requested(context, event) -> bool:
+    """Handle the standard N sidebar key while a B-Name modal tool is active."""
+    if not _unmodified_key_press(event, "N"):
+        return False
+    area = _view3d_area_for_keyboard_event(context, event)
+    if area is None:
+        return False
+    spaces = getattr(area, "spaces", None)
+    active_space = getattr(spaces, "active", None)
+    target_space = active_space if getattr(active_space, "type", "") == "VIEW_3D" else None
+    if target_space is None:
+        try:
+            space_iter = list(spaces) if spaces is not None else []
+        except TypeError:
+            space_iter = []
+        for space in space_iter:
+            if getattr(space, "type", "") == "VIEW_3D":
+                target_space = space
+                break
+    if target_space is None:
+        return False
+    try:
+        target_space.show_region_ui = not bool(getattr(target_space, "show_region_ui", False))
+    except Exception:  # noqa: BLE001
+        return False
+    try:
+        area.tag_redraw()
+    except Exception:  # noqa: BLE001
+        pass
+    return True

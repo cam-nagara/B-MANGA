@@ -104,6 +104,11 @@ def _assert_generated_group(group, *, kind: str) -> None:
         object_info_nodes = [node for node in group.nodes if node.bl_idname == "GeometryNodeObjectInfo"]
         assert len(object_info_nodes) == 1, f"{kind} のコマ枠参照ノード数が不正です: {len(object_info_nodes)}"
         assert "GeometryNodeRaycast" in nodes, f"{kind} がコマ枠までの距離をノード内で測っていません"
+        labels = {str(getattr(node, "label", "") or getattr(node, "name", "")) for node in group.nodes}
+        required_labels = {"距離指定密度角", "密度補正角度", "始点形状半径", "終点形状半径"}
+        missing_labels = sorted(required_labels - labels)
+        assert not missing_labels, f"{kind} の効果線計算ノードが不足しています: {missing_labels}"
+        assert any("縦横比反映" in label for label in labels), f"{kind} が始点/終点形状の縦横比を反映していません"
         frame_links = [
             link
             for link in group.links

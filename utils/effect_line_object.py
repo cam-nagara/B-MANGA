@@ -26,6 +26,7 @@ EFFECT_FRAME_SOURCE_ID_PREFIX = "effect_frame_source_"
 EFFECT_FRAME_SOURCE_KIND = "effect_frame_source"
 PROP_EFFECT_TARGET = "bname_effect_target"
 PROP_EFFECT_CONTROLLER_ID = "bname_effect_controller_id"
+PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
 
 
 def _resolve_unique_data_name(base: str) -> str:
@@ -301,6 +302,59 @@ def _ensure_display_material(
             pass
 
 
+def _move_display_mask_after_geometry_nodes(display: bpy.types.Object) -> None:
+    try:
+        from . import geometry_nodes_bridge as _gn
+        from . import mask_apply
+
+        names = [mod.name for mod in display.modifiers]
+        gn_index = names.index(_gn.MODIFIER_NAME)
+        mask_names = {mask_apply.MOD_NAME_COMA_MASK, mask_apply.MOD_NAME_PAGE_MASK}
+        for mask_name in mask_names:
+            if mask_name not in names:
+                continue
+            mask_index = names.index(mask_name)
+            if mask_index < gn_index:
+                display.modifiers.move(mask_index, gn_index)
+                names = [mod.name for mod in display.modifiers]
+                gn_index = names.index(_gn.MODIFIER_NAME)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _display_mask_is_current(display: bpy.types.Object, parent_key: str) -> bool:
+    try:
+        from . import mask_apply
+
+        current_parent = str(display.get(PROP_EFFECT_DISPLAY_MASK_PARENT, "") or "")
+        if current_parent != str(parent_key or ""):
+            return False
+        coma_mod = display.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
+        page_mod = display.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
+        if ":" in parent_key:
+            return coma_mod is not None and getattr(coma_mod, "object", None) is not None and page_mod is None
+        if parent_key:
+            return page_mod is not None and getattr(page_mod, "object", None) is not None and coma_mod is None
+        return coma_mod is None and page_mod is None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _sync_display_mask(display: bpy.types.Object, parent_key: str) -> None:
+    parent_key = str(parent_key or "")
+    if _display_mask_is_current(display, parent_key):
+        _move_display_mask_after_geometry_nodes(display)
+        return
+    try:
+        from . import mask_apply
+
+        mask_apply.apply_mask_to_object_for_parent(display, parent_key)
+        display[PROP_EFFECT_DISPLAY_MASK_PARENT] = parent_key
+        _move_display_mask_after_geometry_nodes(display)
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect display mask sync failed")
+
+
 def ensure_effect_display_object(
     *,
     scene: bpy.types.Scene,
@@ -367,6 +421,7 @@ def ensure_effect_display_object(
         from . import geometry_nodes_bridge as _gn
 
         _gn.ensure_modifier(display, "effect_line", values or {})
+        _sync_display_mask(display, parent_key)
     except Exception:  # noqa: BLE001
         _logger.exception("effect display Geometry Nodes sync failed")
     return display
@@ -383,6 +438,7 @@ def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> No
             display[on.PROP_PARENT_KEY] = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
             display[on.PROP_FOLDER_ID] = str(controller_obj.get(on.PROP_FOLDER_ID, "") or "")
             display[on.PROP_Z_INDEX] = int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0)
+            _sync_display_mask(display, str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""))
         except Exception:  # noqa: BLE001
             pass
         try:

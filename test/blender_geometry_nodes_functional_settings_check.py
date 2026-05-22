@@ -65,6 +65,11 @@ def _assert_changed(before: dict, after: dict, label: str) -> None:
         raise AssertionError(f"{label} が表示結果に反映されていません")
 
 
+def _bounds_size(stats: dict) -> tuple[float, float]:
+    left, bottom, right, top = stats["bounds"]
+    return float(right) - float(left), float(top) - float(bottom)
+
+
 def _assert_material_alpha(obj, slot: int, expected: float, label: str, eps: float = 1.0e-4) -> None:
     mat = obj.data.materials[slot]
     actual = float(mat.diffuse_color[3])
@@ -234,6 +239,15 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         distance_density_basis = _mesh_stats(display)
         _assert_changed(distance_dense, distance_density_basis, "効果線 距離指定の密度基準")
+        params.spacing_mode = "distance"
+        params.spacing_distance_mm = 3.0
+        params.start_shape = "ellipse"
+        params.end_shape = "ellipse"
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 24.0, 96.0), seed=8, params_override=params)
+        tall_focus = _mesh_stats(display)
+        tall_w, tall_h = _bounds_size(tall_focus)
+        if not (tall_h > tall_w * 2.0):
+            raise AssertionError(f"効果線がハンドルの縦横比に従っていません: bounds={tall_focus['bounds']}")
 
         params.start_to_coma_frame = True
         params.spacing_mode = "angle"

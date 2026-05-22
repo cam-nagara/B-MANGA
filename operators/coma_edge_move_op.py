@@ -938,6 +938,8 @@ class BNAME_OT_coma_edge_move(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("edge_move", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if getattr(self, "_navigation_drag_passthrough", False):
             if event.type == "LEFTMOUSE" and event.value == "RELEASE":
                 self._navigation_drag_passthrough = False

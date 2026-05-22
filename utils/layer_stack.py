@@ -90,6 +90,15 @@ class LayerTarget:
         return target_uid(self.kind, self.key)
 
 
+def _target_has_stack_row(target: LayerTarget) -> bool:
+    kind = str(target.kind or "").strip()
+    if not kind:
+        return False
+    if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND, COMA_PREVIEW_KIND}:
+        return True
+    return bool(str(target.label or "").strip())
+
+
 def target_uid(kind: str, key: str) -> str:
     return f"{kind}:{key}"
 
@@ -770,6 +779,8 @@ def collect_targets(context) -> list[LayerTarget]:
     seen: set[str] = set()
     deduped: list[LayerTarget] = []
     for t in targets:
+        if not _target_has_stack_row(t):
+            continue
         if t.uid in seen:
             continue
         seen.add(t.uid)
@@ -798,6 +809,8 @@ def _find_insert_index_for_target(stack, target: LayerTarget) -> int:
                 last_child_idx = max(last_child_idx, i)
             elif getattr(item, "parent_key", "") == target.parent_key:
                 last_child_idx = i
+        if parent_idx >= 0 and target.kind != COMA_PREVIEW_KIND and target.kind in (PAGE_COMA_CHILD_KINDS | {LAYER_FOLDER_KIND}):
+            return parent_idx + 1
         if last_child_idx >= 0:
             return last_child_idx + 1
         if parent_idx >= 0:

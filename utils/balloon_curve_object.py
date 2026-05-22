@@ -27,6 +27,7 @@ PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
 PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 _AUTO_SYNC_SUSPEND_COUNT = 0
+_AUTO_SYNC_DEFER_COUNT = 0
 
 
 @contextmanager
@@ -42,6 +43,21 @@ def suspend_auto_sync():
 
 def _auto_sync_suspended() -> bool:
     return _AUTO_SYNC_SUSPEND_COUNT > 0
+
+
+@contextmanager
+def defer_auto_sync():
+    """Temporarily batch balloon entry updates before one explicit sync."""
+    global _AUTO_SYNC_DEFER_COUNT
+    _AUTO_SYNC_DEFER_COUNT += 1
+    try:
+        yield
+    finally:
+        _AUTO_SYNC_DEFER_COUNT = max(0, _AUTO_SYNC_DEFER_COUNT - 1)
+
+
+def _auto_sync_deferred() -> bool:
+    return _AUTO_SYNC_DEFER_COUNT > 0
 
 
 def _remove_unused_data_block(data) -> None:
@@ -578,6 +594,8 @@ def on_balloon_entry_changed(entry) -> bool:
             same_id = bool(target_id) and candidate_id == target_id
             if not same_pointer and not same_id:
                 continue
+            if _auto_sync_deferred():
+                return True
             if _auto_sync_suspended():
                 return _sync_existing_balloon_object_lightweight(scene, work, page, candidate)
             return ensure_balloon_curve_object(
@@ -594,6 +612,8 @@ def on_balloon_entry_changed(entry) -> bool:
         same_id = bool(target_id) and candidate_id == target_id
         if not same_pointer and not same_id:
             continue
+        if _auto_sync_deferred():
+            return True
         if _auto_sync_suspended():
             return _sync_existing_balloon_object_lightweight(scene, work, None, candidate)
         return ensure_balloon_curve_object(

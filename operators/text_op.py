@@ -749,6 +749,8 @@ class BNAME_OT_text_tool(Operator):
             return {"FINISHED", "PASS_THROUGH"}
         if getattr(self, "_editing", False):
             return self._modal_editing(context, event)
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if getattr(self, "_dragging", False):
             return self._modal_dragging(context, event)
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):

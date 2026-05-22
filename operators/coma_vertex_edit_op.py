@@ -298,6 +298,9 @@ class BNAME_OT_coma_edit_vertices(Operator):
             self._cleanup(context)
             return {"CANCELLED"}
 
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
+
         # 起動リージョンが UI リージョンの場合 mouse_region_x/y は誤った座標
         # になるため、絶対座標 (event.mouse_x/y) から WINDOW リージョンの
         # 原点を引いて正規化する。

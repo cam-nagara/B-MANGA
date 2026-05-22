@@ -218,6 +218,8 @@ class BNAME_OT_coma_create_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("coma_create", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        if view_event_region.toggle_modal_sidebar_if_requested(context, event):
+            return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
 

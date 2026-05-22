@@ -179,6 +179,39 @@ def main() -> None:
             "effect",
             layer_stack_utils._node_stack_key(effect_obj.data.layers[0]),
         )
+        initial_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
+        empty_rows = [
+            (i, getattr(item, "kind", ""), getattr(item, "label", ""))
+            for i, item in enumerate(stack)
+            if str(getattr(item, "kind", "") or "")
+            and str(getattr(item, "kind", "") or "") not in {"page", "coma", layer_stack_utils.COMA_PREVIEW_KIND}
+            and not str(getattr(item, "label", "") or "").strip()
+        ]
+        if empty_rows:
+            raise AssertionError(f"レイヤーリストに空行が残っています: {empty_rows}")
+        initial_preview_idx = initial_uids.index(preview_uid)
+        initial_balloon_idx = initial_uids.index(balloon_uid)
+        initial_effect_idx = initial_uids.index(effect_uid)
+        if not (initial_balloon_idx < initial_preview_idx and initial_effect_idx < initial_preview_idx):
+            raise AssertionError(
+                "コマ内で新規作成したフキダシ/効果線がコマプレビューより前面に作成されていません"
+            )
+
+        preview_item = stack[initial_preview_idx]
+        preview_resolved = layer_stack_utils.resolve_stack_item(bpy.context, preview_item)
+        preview_obj = preview_resolved.get("object") if preview_resolved is not None else None
+        if preview_obj is None:
+            raise AssertionError("コマプレビューの表示実体が見つかりません")
+        bpy.ops.bname.layer_stack_toggle_visibility(index=initial_preview_idx)
+        if bool(getattr(coma, "paper_visible", True)):
+            raise AssertionError("コマプレビューの瞳アイコンで非表示にできません")
+        if not bool(getattr(preview_obj, "hide_viewport", False)):
+            raise AssertionError("コマプレビューの非表示が表示実体へ反映されていません")
+        bpy.ops.bname.layer_stack_toggle_visibility(index=initial_preview_idx)
+        if not bool(getattr(coma, "paper_visible", True)):
+            raise AssertionError("コマプレビューの瞳アイコンで再表示できません")
+        if bool(getattr(preview_obj, "hide_viewport", False)):
+            raise AssertionError("コマプレビューの再表示が表示実体へ反映されていません")
 
         def _move_after(uid: str, anchor_uid: str) -> None:
             from_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
