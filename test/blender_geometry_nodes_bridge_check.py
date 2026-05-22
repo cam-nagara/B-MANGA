@@ -308,13 +308,21 @@ def main() -> None:
         _assert_close(effect_material.diffuse_color[2], 0.36, "効果線 素材色 B")
         _assert_close(effect_material.diffuse_color[3], 0.63, "効果線 素材不透明度")
         effect_socket_names = gn_bridge.effect_field_socket_names()
+        internal_legacy_fields = {"spacing_density_compensation"}
         missing = [
             field
             for field in effect_core.EFFECT_PARAM_FIELDS
-            if field not in effect_socket_names
+            if field not in internal_legacy_fields
+            and (field not in effect_socket_names
             or _modifier_socket_value(effect_modifier, effect_socket_names[field]) is None
+            )
         ]
         assert not missing, f"効果線の詳細設定がGeometry Nodes入力へ移植されていません: {missing}"
+        assert all(
+            getattr(item, "name", "") != "密度補正"
+            for item in effect_modifier.node_group.interface.items_tree
+            if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
+        ), "密度補正が独立した設定欄として残っています"
         _assert_modifier_values(
             effect_modifier,
             gn_bridge.effect_values(params, (15.0, 20.0, 64.0, 48.0), 123),
@@ -338,7 +346,8 @@ def main() -> None:
         _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 1.11, "効果線 線幅 更新")
         _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 0.41, "効果線 不透明度 更新")
         assert int(_modifier_socket_value(effect_modifier, "種類")) == 4
-        assert int(_modifier_socket_value(effect_modifier, "本数")) == 33
+        assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
+        assert int(_modifier_socket_value(effect_modifier, "流線の本数上限")) == 33
         assert bool(_modifier_socket_value(effect_modifier, "終点形状を下地として塗る"))
         effect_material = updated_display.data.materials[0]
         _assert_close(effect_material.diffuse_color[0], 0.7, "効果線 素材色 R 更新")

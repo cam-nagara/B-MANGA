@@ -203,6 +203,25 @@ def main() -> None:
         focus_dense = _mesh_stats(display)
         if focus_dense["polys"] <= focus_sparse["polys"]:
             raise AssertionError("効果線 線の間隔が本数へ反映されていません")
+        if _modifier_input_value(display, "B-Name Geometry Nodes", "密度補正") is not None:
+            raise AssertionError("効果線 密度補正が独立した設定欄として残っています")
+
+        params.spacing_mode = "distance"
+        params.spacing_distance_mm = 6.0
+        params.start_frame_density_basis = "frame"
+        params.start_frame_density_rounding_percent = 0.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        distance_sparse = _mesh_stats(display)
+        params.spacing_distance_mm = 1.5
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        distance_dense = _mesh_stats(display)
+        if distance_dense["polys"] <= distance_sparse["polys"]:
+            raise AssertionError("効果線 距離指定の線間隔がノード内本数計算へ反映されていません")
+        params.start_frame_density_basis = "ellipse"
+        params.start_frame_density_rounding_percent = 100.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        distance_density_basis = _mesh_stats(display)
+        _assert_changed(distance_dense, distance_density_basis, "効果線 距離指定の密度基準")
 
         params.fill_base_shape = True
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
@@ -238,6 +257,25 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         speed_35 = _mesh_stats(display)
         _assert_changed(speed_0, speed_35, "効果線 流線の角度")
+        params.inout_apply = "brush_size"
+        params.in_percent = 100.0
+        params.out_percent = 100.0
+        params.in_start_percent = 50.0
+        params.out_start_percent = 50.0
+        params.inout_range_mode = "percent"
+        params.in_range_percent = 100.0
+        params.out_range_percent = 100.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        speed_full_width = _mesh_stats(display)
+        params.in_percent = 15.0
+        params.out_percent = 20.0
+        params.in_start_percent = 35.0
+        params.out_start_percent = 30.0
+        params.in_range_percent = 50.0
+        params.out_range_percent = 55.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        speed_tapered = _mesh_stats(display)
+        _assert_changed(speed_full_width, speed_tapered, "効果線 入り抜き")
 
         params.effect_type = "beta_flash"
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
@@ -259,6 +297,21 @@ def main() -> None:
             raise AssertionError("効果線 白抜き線の本数が表示結果へ反映されていません")
         if _material_name_count(white_9, "_Line_") <= 0 or _material_name_count(white_9, "_Fill_") <= 0:
             raise AssertionError("効果線 白抜き線の黒線/白線が両方表示されていません")
+        params.white_outline_spacing_mm = 3.0
+        params.white_outline_width_mm = 18.0
+        params.white_outline_width_jitter_enabled = True
+        params.white_outline_width_min_percent = 35.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        white_width_spacing = _mesh_stats(display)
+        _assert_changed(white_9, white_width_spacing, "効果線 白抜き線の間隔と太さ")
+        params.white_outline_length_jitter_enabled = True
+        params.white_outline_length_min_percent = 45.0
+        params.white_outline_white_ratio_percent = 70.0
+        params.white_outline_white_attenuation = 4.0
+        params.white_outline_black_attenuation = -3.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        white_detail = _mesh_stats(display)
+        _assert_changed(white_width_spacing, white_detail, "効果線 白抜き線の長さ・割合・減衰")
 
         print("BNAME_GEOMETRY_NODES_FUNCTIONAL_SETTINGS_OK")
     finally:

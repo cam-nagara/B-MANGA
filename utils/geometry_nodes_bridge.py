@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 11
+_GROUP_VERSION = 12
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 
@@ -102,7 +102,6 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "spacing_mode": SocketSpec("線の間隔", "NodeSocketInt", 2),
     "spacing_angle_deg": SocketSpec("線の間隔 (角度)", "NodeSocketFloat", 5.0),
     "spacing_distance_mm": SocketSpec("線の間隔 (距離)", "NodeSocketFloat", 0.4),
-    "spacing_density_compensation": SocketSpec("密度補正", "NodeSocketBool", True),
     "spacing_jitter_enabled": SocketSpec("間隔 乱れ", "NodeSocketBool", False),
     "spacing_jitter_amount": SocketSpec("間隔乱れ量", "NodeSocketFloat", 0.2),
     "max_line_count": SocketSpec("本数", "NodeSocketInt", 1000),
@@ -487,9 +486,44 @@ def _shape_compare(group, input_node, shape_code: int, *, label: str, location: 
     return compare.outputs["Result"]
 
 
+def _compare_int_socket(group, source_socket, value: int, *, label: str, location: tuple[float, float]):
+    compare = _node(group, "FunctionNodeCompare", label=label, location=location)
+    compare.data_type = "INT"
+    compare.operation = "EQUAL"
+    _set_default(_socket_by_identifier(compare.inputs, "B_INT"), int(value))
+    _link(group, source_socket, _socket_by_identifier(compare.inputs, "A_INT"))
+    return compare.outputs["Result"]
+
+
+def _compare_float_socket(
+    group,
+    source_socket,
+    value: float,
+    *,
+    operation: str = "EQUAL",
+    label: str,
+    location: tuple[float, float],
+):
+    compare = _node(group, "FunctionNodeCompare", label=label, location=location)
+    compare.data_type = "FLOAT"
+    compare.operation = operation
+    _set_default(_socket_by_identifier(compare.inputs, "B"), float(value))
+    _link(group, source_socket, _socket_by_identifier(compare.inputs, "A"))
+    return compare.outputs["Result"]
+
+
 def _switch_float(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeSwitch", label=label, location=location)
     node.input_type = "FLOAT"
+    _link(group, switch_socket, node.inputs["Switch"])
+    _link(group, false_socket, node.inputs["False"])
+    _link(group, true_socket, node.inputs["True"])
+    return node.outputs["Output"]
+
+
+def _switch_int(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeSwitch", label=label, location=location)
+    node.input_type = "INT"
     _link(group, switch_socket, node.inputs["Switch"])
     _link(group, false_socket, node.inputs["False"])
     _link(group, true_socket, node.inputs["True"])
@@ -500,6 +534,21 @@ def _constant_float(group, value: float, *, label: str, location: tuple[float, f
     node = _node(group, "ShaderNodeValue", label=label, location=location)
     _set_default(node.outputs["Value"], float(value))
     return node.outputs["Value"]
+
+
+def _float_to_int(group, source_socket, *, label: str, location: tuple[float, float], mode: str = "ROUND"):
+    node = _node(group, "FunctionNodeFloatToInt", label=label, location=location)
+    node.rounding_mode = mode
+    _link(group, source_socket, node.inputs["Float"])
+    return node.outputs["Integer"]
+
+
+def _boolean_or(group, a_socket, b_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "FunctionNodeBooleanMath", label=label, location=location)
+    node.operation = "OR"
+    _link(group, a_socket, node.inputs[0])
+    _link(group, b_socket, node.inputs[1])
+    return node.outputs["Boolean"]
 
 
 def _ellipse_fill(group, input_node, width_half_m, height_half_m, *, z: float):
@@ -963,6 +1012,418 @@ def _radial_line_geometry(
     return join.outputs["Geometry"]
 
 
+def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
+    """集中線の本数を Geometry Nodes 内で算出する。"""
+    import math
+
+    is_angle = _compare_int_socket(group, input_node.outputs["線の間隔"], 1, label="角度指定か", location=(-760, -240))
+    angle_step = _math_binary(
+        group,
+        "MAXIMUM",
+        input_node.outputs["線の間隔 (角度)"],
+        b_value=0.1,
+        label="角度間隔下限",
+        location=(-560, -240),
+    )
+    angle_count = _math_binary(
+        group,
+        "DIVIDE",
+        _constant_float(group, 360.0, label="360度", location=(-560, -390)),
+        angle_step,
+        label="角度から本数",
+        location=(-360, -240),
+    )
+
+    rx = _math_binary(group, "MAXIMUM", width_half_m, b_value=0.000001, label="横半径下限", location=(-760, -560))
+    ry = _math_binary(group, "MAXIMUM", height_half_m, b_value=0.000001, label="縦半径下限", location=(-760, -720))
+    rect_perimeter = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_add(group, rx, ry, label="矩形半径和", location=(-560, -620)),
+        b_value=4.0,
+        label="矩形周長",
+        location=(-360, -620),
+    )
+    ellipse_perimeter = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_add(group, rx, ry, label="楕円半径和", location=(-560, -780)),
+        b_value=math.pi,
+        label="楕円周長近似",
+        location=(-360, -780),
+    )
+    basis_is_ellipse = _compare_int_socket(group, input_node.outputs["密度基準"], 3, label="密度基準 楕円", location=(-160, -840))
+    basis_is_round = _compare_int_socket(group, input_node.outputs["密度基準"], 2, label="密度基準 角丸", location=(-160, -700))
+    round_amount = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["角丸率 (%)"],
+        b_value=0.01,
+        label="角丸率",
+        location=(-160, -560),
+    )
+    round_delta = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "SUBTRACT", ellipse_perimeter, rect_perimeter, label="周長差", location=(40, -720)),
+        round_amount,
+        label="角丸周長差",
+        location=(240, -640),
+    )
+    rounded_perimeter = _math_add(group, rect_perimeter, round_delta, label="角丸周長", location=(440, -640))
+    basis_perimeter = _switch_float(
+        group,
+        basis_is_round,
+        rect_perimeter,
+        rounded_perimeter,
+        label="角丸密度基準",
+        location=(640, -640),
+    )
+    basis_perimeter = _switch_float(
+        group,
+        basis_is_ellipse,
+        basis_perimeter,
+        ellipse_perimeter,
+        label="楕円密度基準",
+        location=(840, -640),
+    )
+    distance_step = _math_binary(
+        group,
+        "MAXIMUM",
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["線の間隔 (距離)"],
+            b_value=0.001,
+            label="距離間隔 mm→m",
+            location=(-160, -980),
+        ),
+        b_value=0.00001,
+        label="距離間隔下限",
+        location=(40, -980),
+    )
+    distance_count = _math_binary(
+        group,
+        "DIVIDE",
+        basis_perimeter,
+        distance_step,
+        label="距離から本数（密度補正込み）",
+        location=(1240, -780),
+    )
+    raw_count = _switch_float(group, is_angle, distance_count, angle_count, label="間隔方式で本数", location=(1440, -620))
+    clamped = _math_binary(group, "MINIMUM", raw_count, input_node.outputs["本数"], label="最大本数", location=(1640, -620))
+    clamped = _math_binary(group, "MAXIMUM", clamped, b_value=3.0, label="本数下限", location=(1840, -620))
+    return _float_to_int(group, clamped, label="集中線本数", location=(2040, -620))
+
+
+def _effect_taper_lengths(group, input_node, line_length_socket, *, label: str, location: tuple[float, float]):
+    in_percent_len = _math_binary(
+        group,
+        "MULTIPLY",
+        line_length_socket,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["入り始点 (%)"],
+            b_value=0.01,
+            label=f"{label} 入り始点率",
+            location=(location[0], location[1] + 240),
+        ),
+        label=f"{label} 入り始点長",
+        location=(location[0] + 220, location[1] + 240),
+    )
+    out_percent_len = _math_binary(
+        group,
+        "MULTIPLY",
+        line_length_socket,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["抜き始点 (%)"],
+            b_value=0.01,
+            label=f"{label} 抜き始点率",
+            location=(location[0], location[1] + 80),
+        ),
+        label=f"{label} 抜き始点長",
+        location=(location[0] + 220, location[1] + 80),
+    )
+    in_range_percent = _math_binary(
+        group,
+        "MULTIPLY",
+        line_length_socket,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["入りの範囲 (%)"],
+            b_value=0.01,
+            label=f"{label} 入り範囲率",
+            location=(location[0], location[1] - 80),
+        ),
+        label=f"{label} 入り範囲長",
+        location=(location[0] + 220, location[1] - 80),
+    )
+    out_range_percent = _math_binary(
+        group,
+        "MULTIPLY",
+        line_length_socket,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["抜きの範囲 (%)"],
+            b_value=0.01,
+            label=f"{label} 抜き範囲率",
+            location=(location[0], location[1] - 240),
+        ),
+        label=f"{label} 抜き範囲長",
+        location=(location[0] + 220, location[1] - 240),
+    )
+    in_range_mm = _math_binary(group, "MULTIPLY", input_node.outputs["入りの範囲 (mm)"], b_value=0.001, label=f"{label} 入り範囲mm", location=(location[0], location[1] - 400))
+    out_range_mm = _math_binary(group, "MULTIPLY", input_node.outputs["抜きの範囲 (mm)"], b_value=0.001, label=f"{label} 抜き範囲mm", location=(location[0], location[1] - 560))
+    is_length = _compare_int_socket(group, input_node.outputs["範囲"], 2, label=f"{label} 長さ指定", location=(location[0] + 220, location[1] - 440))
+    in_range = _switch_float(group, is_length, in_range_percent, in_range_mm, label=f"{label} 入り範囲方式", location=(location[0] + 440, location[1] - 160))
+    out_range = _switch_float(group, is_length, out_range_percent, out_range_mm, label=f"{label} 抜き範囲方式", location=(location[0] + 440, location[1] - 320))
+    in_len = _math_binary(group, "MINIMUM", in_percent_len, in_range, label=f"{label} 入り長", location=(location[0] + 660, location[1] + 40))
+    out_len = _math_binary(group, "MINIMUM", out_percent_len, out_range, label=f"{label} 抜き長", location=(location[0] + 660, location[1] - 120))
+    return in_len, out_len
+
+
+def _effect_shape_factor(
+    group,
+    input_node,
+    shape_socket,
+    angle_socket,
+    width_half_m,
+    height_half_m,
+    *,
+    prefix: str,
+    label: str,
+    location: tuple[float, float],
+):
+    import math
+
+    one = _constant_float(group, 1.0, label=f"{label} 通常", location=(location[0], location[1]))
+    radius_sum = _math_add(group, width_half_m, height_half_m, label=f"{label} 半径合計", location=(location[0], location[1] - 160))
+    radius_avg = _math_binary(group, "MULTIPLY", radius_sum, b_value=0.5, label=f"{label} 平均半径", location=(location[0] + 200, location[1] - 160))
+    radius_mm = _math_binary(group, "MULTIPLY", radius_avg, b_value=1000.0, label=f"{label} 半径mm", location=(location[0] + 400, location[1] - 160))
+    perimeter = _math_binary(group, "MULTIPLY", radius_mm, b_value=math.tau, label=f"{label} 周長", location=(location[0] + 600, location[1] - 160))
+    width_name = f"{prefix} 山の幅"
+    height_name = f"{prefix} 山の高さ"
+    width_jitter_name = f"{prefix} 山の幅 乱れ"
+    height_jitter_name = f"{prefix} 山の高さ 乱れ"
+    sub_width_name = f"{prefix} 小山幅 (%)"
+    sub_width_jitter_name = f"{prefix} 小山幅 乱れ"
+    sub_height_name = f"{prefix} 小山高 (%)"
+    sub_height_jitter_name = f"{prefix} 小山高 乱れ"
+    offset_name = f"{prefix} ズラし量 (%)"
+    width_wave = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=3.0, label=f"{label} 幅乱れ角", location=(location[0] + 560, location[1] - 360)),
+        label=f"{label} 幅乱れ波",
+        location=(location[0] + 760, location[1] - 360),
+    )
+    width_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", width_wave, input_node.outputs[width_jitter_name], label=f"{label} 幅乱れ量", location=(location[0] + 960, location[1] - 360)),
+        label=f"{label} 幅乱れ係数",
+        location=(location[0] + 1160, location[1] - 360),
+    )
+    width_eff = _math_binary(group, "MULTIPLY", input_node.outputs[width_name], width_factor, label=f"{label} 有効山幅", location=(location[0] + 1360, location[1] - 360))
+    width_eff = _math_binary(group, "MAXIMUM", width_eff, b_value=0.001, label=f"{label} 山幅下限", location=(location[0] + 1560, location[1] - 360))
+    wave_count = _math_binary(group, "DIVIDE", perimeter, width_eff, label=f"{label} 山数", location=(location[0] + 800, location[1] - 160))
+    wave_count = _math_binary(group, "MAXIMUM", wave_count, b_value=3.0, label=f"{label} 山数下限", location=(location[0] + 1000, location[1] - 160))
+    phase = _math_binary(group, "MULTIPLY", input_node.outputs[offset_name], b_value=math.tau / 100.0, label=f"{label} 位相", location=(location[0] + 800, location[1] + 40))
+    wave_angle = _math_add(group, angle_socket, phase, label=f"{label} 角度", location=(location[0] + 1000, location[1] + 40))
+    wave = _math_binary(group, "SINE", _math_binary(group, "MULTIPLY", wave_angle, wave_count, label=f"{label} 波数", location=(location[0] + 1200, location[1] - 60)), label=f"{label} 波", location=(location[0] + 1400, location[1] - 60))
+    height_wave = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=5.0, label=f"{label} 高さ乱れ角", location=(location[0] + 1000, location[1] - 520)),
+        label=f"{label} 高さ乱れ波",
+        location=(location[0] + 1200, location[1] - 520),
+    )
+    height_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", height_wave, input_node.outputs[height_jitter_name], label=f"{label} 高さ乱れ量", location=(location[0] + 1400, location[1] - 520)),
+        label=f"{label} 高さ乱れ係数",
+        location=(location[0] + 1600, location[1] - 520),
+    )
+    height_eff = _math_binary(group, "MULTIPLY", input_node.outputs[height_name], height_factor, label=f"{label} 有効高さ", location=(location[0] + 1800, location[1] - 520))
+    amp = _math_binary(
+        group,
+        "DIVIDE",
+        _math_binary(group, "MULTIPLY", height_eff, b_value=0.001, label=f"{label} 高さm", location=(location[0] + 1200, location[1] - 260)),
+        radius_avg,
+        label=f"{label} 高さ率",
+        location=(location[0] + 1400, location[1] - 260),
+    )
+    sub_wave_count = _math_binary(
+        group,
+        "MULTIPLY",
+        wave_count,
+        _math_add(
+            group,
+            _constant_float(group, 2.0, label=f"{label} 小山基準", location=(location[0] + 1600, location[1] + 420)),
+            _math_binary(group, "MULTIPLY", input_node.outputs[sub_width_name], b_value=0.01, label=f"{label} 小山幅率", location=(location[0] + 1800, location[1] + 420)),
+            label=f"{label} 小山幅",
+            location=(location[0] + 2000, location[1] + 420),
+        ),
+        label=f"{label} 小山波数",
+        location=(location[0] + 2200, location[1] + 420),
+    )
+    sub_wave = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", wave_angle, sub_wave_count, label=f"{label} 小山角", location=(location[0] + 2400, location[1] + 420)),
+        label=f"{label} 小山波",
+        location=(location[0] + 2600, location[1] + 420),
+    )
+    sub_amp = _math_binary(
+        group,
+        "MULTIPLY",
+        amp,
+        _math_add(
+            group,
+            _math_binary(group, "MULTIPLY", input_node.outputs[sub_height_name], b_value=0.01, label=f"{label} 小山高率", location=(location[0] + 2400, location[1] + 260)),
+            _math_binary(group, "MULTIPLY", input_node.outputs[sub_height_jitter_name], sub_wave, label=f"{label} 小山高乱れ", location=(location[0] + 2600, location[1] + 260)),
+            label=f"{label} 小山高",
+            location=(location[0] + 2800, location[1] + 260),
+        ),
+        label=f"{label} 小山振幅",
+        location=(location[0] + 3000, location[1] + 260),
+    )
+    sub_delta = _math_binary(
+        group,
+        "MULTIPLY",
+        sub_wave,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            sub_amp,
+            _math_add(group, one, input_node.outputs[sub_width_jitter_name], label=f"{label} 小山幅乱れ", location=(location[0] + 2800, location[1] + 420)),
+            label=f"{label} 小山乱れ振幅",
+            location=(location[0] + 3200, location[1] + 420),
+        ),
+        label=f"{label} 小山変化",
+        location=(location[0] + 3400, location[1] + 420),
+    )
+    cloud_delta = _math_add(
+        group,
+        _math_binary(group, "MULTIPLY", wave, amp, label=f"{label} 雲変化", location=(location[0] + 1600, location[1] - 60)),
+        sub_delta,
+        label=f"{label} 雲合成",
+        location=(location[0] + 3600, location[1] + 140),
+    )
+    cloud_factor = _math_add(group, one, cloud_delta, label=f"{label} 雲", location=(location[0] + 3800, location[1] + 140))
+    thorn_factor = _math_add(
+        group,
+        one,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            _math_binary(group, "ABSOLUTE", wave, label=f"{label} トゲ波", location=(location[0] + 1600, location[1] - 260)),
+            amp,
+            label=f"{label} トゲ変化",
+            location=(location[0] + 1800, location[1] - 260),
+        ),
+        label=f"{label} トゲ",
+        location=(location[0] + 2000, location[1] - 260),
+    )
+    is_cloud = _compare_int_socket(group, shape_socket, 3, label=f"{label} 雲", location=(location[0] + 1800, location[1] + 140))
+    is_fluffy = _compare_int_socket(group, shape_socket, 4, label=f"{label} もやもや", location=(location[0] + 1800, location[1] + 280))
+    cloud_like = _boolean_or(group, is_cloud, is_fluffy, label=f"{label} 雲系", location=(location[0] + 2000, location[1] + 210))
+    after_cloud = _switch_float(group, cloud_like, one, cloud_factor, label=f"{label} 雲系切替", location=(location[0] + 2200, location[1] + 40))
+    is_thorn = _compare_int_socket(group, shape_socket, 5, label=f"{label} トゲ", location=(location[0] + 2200, location[1] - 420))
+    is_thorn_curve = _compare_int_socket(group, shape_socket, 6, label=f"{label} トゲ曲線", location=(location[0] + 2200, location[1] - 560))
+    thorn_like = _boolean_or(group, is_thorn, is_thorn_curve, label=f"{label} トゲ系", location=(location[0] + 2400, location[1] - 490))
+    shaped = _switch_float(group, thorn_like, after_cloud, thorn_factor, label=f"{label} 形状切替", location=(location[0] + 2600, location[1] - 160))
+    round_name = f"{prefix} 角丸"
+    radius_name = f"{prefix} 角半径"
+    round_factor = _math_binary(
+        group,
+        "SUBTRACT",
+        one,
+        _math_binary(
+            group,
+            "MULTIPLY",
+            _math_binary(group, "DIVIDE", _math_binary(group, "MULTIPLY", input_node.outputs[radius_name], b_value=0.001, label=f"{label} 角半径m", location=(location[0] + 2400, location[1] - 760)), radius_avg, label=f"{label} 角半径率", location=(location[0] + 2600, location[1] - 760)),
+            b_value=0.05,
+            label=f"{label} 角丸補正量",
+            location=(location[0] + 2800, location[1] - 760),
+        ),
+        label=f"{label} 角丸補正",
+        location=(location[0] + 3000, location[1] - 760),
+    )
+    rounded = _math_binary(group, "MULTIPLY", shaped, round_factor, label=f"{label} 角丸形状", location=(location[0] + 3200, location[1] - 460))
+    return _switch_float(group, input_node.outputs[round_name], shaped, rounded, label=f"{label} 角丸切替", location=(location[0] + 3400, location[1] - 160))
+
+
+def _effect_taper_half_widths(group, input_node, line_half_m, *, label: str, location: tuple[float, float]):
+    is_width = _compare_int_socket(group, input_node.outputs["適用先"], 1, label=f"{label} 線幅適用", location=location)
+    in_scale = _math_binary(group, "MULTIPLY", input_node.outputs["入り (%)"], b_value=0.01, label=f"{label} 入り率", location=(location[0] + 200, location[1] + 120))
+    out_scale = _math_binary(group, "MULTIPLY", input_node.outputs["抜き (%)"], b_value=0.01, label=f"{label} 抜き率", location=(location[0] + 200, location[1] - 40))
+    start_raw = _math_binary(group, "MULTIPLY", line_half_m, in_scale, label=f"{label} 入り線幅", location=(location[0] + 400, location[1] + 120))
+    end_raw = _math_binary(group, "MULTIPLY", line_half_m, out_scale, label=f"{label} 抜き線幅", location=(location[0] + 400, location[1] - 40))
+    start_half = _switch_float(group, is_width, line_half_m, start_raw, label=f"{label} 入り線幅切替", location=(location[0] + 600, location[1] + 120))
+    end_half = _switch_float(group, is_width, line_half_m, end_raw, label=f"{label} 抜き線幅切替", location=(location[0] + 600, location[1] - 40))
+    return start_half, end_half
+
+
+def _line_quad_mesh_x(
+    group,
+    x0_socket,
+    x1_socket,
+    half0_socket,
+    half1_socket,
+    material_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    p1 = _combine_xyz(group, x0_socket, half0_socket, z=0.0, label=f"{label} 左上", location=(location[0], location[1] + 220))
+    p2 = _combine_xyz(group, x1_socket, half1_socket, z=0.0, label=f"{label} 右上", location=(location[0], location[1] + 60))
+    neg1 = _math_binary(group, "MULTIPLY", half1_socket, b_value=-1.0, label=f"{label} 右下幅", location=(location[0], location[1] - 100))
+    neg0 = _math_binary(group, "MULTIPLY", half0_socket, b_value=-1.0, label=f"{label} 左下幅", location=(location[0], location[1] - 260))
+    p3 = _combine_xyz(group, x1_socket, neg1, z=0.0, label=f"{label} 右下", location=(location[0] + 220, location[1] - 20))
+    p4 = _combine_xyz(group, x0_socket, neg0, z=0.0, label=f"{label} 左下", location=(location[0] + 220, location[1] - 180))
+    quad = _node(group, "GeometryNodeCurvePrimitiveQuadrilateral", label=label, location=(location[0] + 440, location[1]))
+    quad.mode = "POINTS"
+    for name, socket in (("Point 1", p1), ("Point 2", p2), ("Point 3", p3), ("Point 4", p4)):
+        _link(group, socket, quad.inputs[name])
+    fill = _node(group, "GeometryNodeFillCurve", label=f"{label} メッシュ", location=(location[0] + 660, location[1]))
+    _link(group, quad.outputs["Curve"], fill.inputs["Curve"])
+    return _set_material(group, fill.outputs["Mesh"], material_socket, label=f"{label} 素材", location=(location[0] + 880, location[1]))
+
+
+def _tapered_line_mesh_x(
+    group,
+    input_node,
+    x0_socket,
+    x1_socket,
+    line_half_m,
+    material_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    start_half, end_half = _effect_taper_half_widths(group, input_node, line_half_m, label=label, location=location)
+    length = _math_binary(group, "SUBTRACT", x1_socket, x0_socket, label=f"{label} 長さ", location=(location[0] + 820, location[1] + 360))
+    length = _math_binary(group, "MAXIMUM", length, b_value=0.000001, label=f"{label} 長さ下限", location=(location[0] + 1020, location[1] + 360))
+    in_len, out_len = _effect_taper_lengths(group, input_node, length, label=label, location=(location[0] + 1020, location[1] + 80))
+    x_in = _math_add(group, x0_socket, in_len, label=f"{label} 入り終点", location=(location[0] + 1900, location[1] + 240))
+    x_out = _math_binary(group, "SUBTRACT", x1_socket, out_len, label=f"{label} 抜き始点", location=(location[0] + 1900, location[1] + 80))
+    join = _node(group, "GeometryNodeJoinGeometry", label=f"{label} 入り抜き線", location=(location[0] + 3020, location[1]))
+    seg_in = _line_quad_mesh_x(group, x0_socket, x_in, start_half, line_half_m, material_socket, label=f"{label} 入り", location=(location[0] + 2100, location[1] + 260))
+    seg_mid = _line_quad_mesh_x(group, x_in, x_out, line_half_m, line_half_m, material_socket, label=f"{label} 中間", location=(location[0] + 2100, location[1] - 240))
+    seg_out = _line_quad_mesh_x(group, x_out, x1_socket, line_half_m, end_half, material_socket, label=f"{label} 抜き", location=(location[0] + 2100, location[1] - 740))
+    _link(group, seg_in, join.inputs["Geometry"])
+    _link(group, seg_mid, join.inputs["Geometry"])
+    _link(group, seg_out, join.inputs["Geometry"])
+    return join.outputs["Geometry"]
+
+
 def _instanced_radial_line_geometry(
     group,
     input_node,
@@ -976,8 +1437,9 @@ def _instanced_radial_line_geometry(
     """本数入力から Geometry Nodes 側で放射線を繰り返し生成する."""
     import math
 
+    count_socket = _focus_line_count_socket(group, input_node, width_half_m, height_half_m)
     points = _node(group, "GeometryNodeMeshLine", label="線の本数", location=(-520, -520))
-    _link(group, input_node.outputs["本数"], points.inputs["Count"])
+    _link(group, count_socket, points.inputs["Count"])
     _set_default(points.inputs["Start Location"], (0.0, 0.0, 0.0))
     _set_default(points.inputs["Offset"], (0.0, 0.0, 0.0))
 
@@ -986,7 +1448,7 @@ def _instanced_radial_line_geometry(
         group,
         "DIVIDE",
         index.outputs["Index"],
-        input_node.outputs["本数"],
+        count_socket,
         label="線番号 / 本数",
         location=(-320, -720),
     )
@@ -998,6 +1460,180 @@ def _instanced_radial_line_geometry(
         label="角度",
         location=(-120, -720),
     )
+    step_angle = _math_binary(
+        group,
+        "DIVIDE",
+        _constant_float(group, math.tau, label="一周", location=(-320, -520)),
+        count_socket,
+        label="一線分の角度",
+        location=(-120, -520),
+    )
+    seed_float = _math_add(group, index.outputs["Index"], input_node.outputs["乱数"], label="乱数種", location=(-320, -360))
+    spacing_wave = _math_binary(group, "SINE", seed_float, label="間隔乱れ波", location=(-120, -360))
+    spacing_jitter = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(
+            group,
+            "MULTIPLY",
+            step_angle,
+            input_node.outputs["間隔乱れ量"],
+            label="間隔乱れ量",
+            location=(80, -520),
+        ),
+        spacing_wave,
+        label="間隔乱れ角",
+        location=(280, -520),
+    )
+    zero_jitter = _constant_float(group, 0.0, label="乱れなし", location=(80, -360))
+    spacing_jitter = _switch_float(
+        group,
+        input_node.outputs["間隔 乱れ"],
+        zero_jitter,
+        spacing_jitter,
+        label="間隔乱れ切替",
+        location=(480, -520),
+    )
+    bundle_count_wave = _math_binary(
+        group,
+        "ABSOLUTE",
+        _math_binary(
+            group,
+            "SINE",
+            _math_add(
+                group,
+                seed_float,
+                _constant_float(group, 5.77, label="まとまり数乱れ位相", location=(-120, -1180)),
+                label="まとまり数乱れ種",
+                location=(80, -1180),
+            ),
+            label="まとまり数乱れ波",
+            location=(280, -1180),
+        ),
+        label="まとまり数乱れ正",
+        location=(480, -1180),
+    )
+    bundle_count_factor = _math_add(
+        group,
+        _constant_float(group, 1.0, label="まとまり数基準", location=(-120, -1340)),
+        _math_binary(
+            group,
+            "MULTIPLY",
+            bundle_count_wave,
+            input_node.outputs["まとまり 数の乱れ"],
+            label="まとまり数乱れ量",
+            location=(80, -1340),
+        ),
+        label="まとまり数係数",
+        location=(280, -1340),
+    )
+    bundle_count_effective = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["まとまり 数"],
+        bundle_count_factor,
+        label="有効まとまり数",
+        location=(480, -1340),
+    )
+    bundle_size = _math_binary(
+        group,
+        "MAXIMUM",
+        bundle_count_effective,
+        b_value=1.0,
+        label="まとまり数下限",
+        location=(80, -1080),
+    )
+    bundle_index = _math_binary(
+        group,
+        "FLOOR",
+        _math_binary(group, "DIVIDE", index.outputs["Index"], bundle_size, label="まとまり番号", location=(280, -1080)),
+        label="まとまり番号整数",
+        location=(480, -1080),
+    )
+    bundle_gap_wave = _math_binary(
+        group,
+        "SINE",
+        _math_add(
+            group,
+            seed_float,
+            _constant_float(group, 9.41, label="まとまり間隔乱れ位相", location=(80, -760)),
+            label="まとまり間隔乱れ種",
+            location=(280, -760),
+        ),
+        label="まとまり間隔乱れ波",
+        location=(480, -760),
+    )
+    bundle_gap_factor = _math_add(
+        group,
+        _constant_float(group, 1.0, label="まとまり間隔基準", location=(280, -600)),
+        _math_binary(
+            group,
+            "MULTIPLY",
+            bundle_gap_wave,
+            input_node.outputs["まとまり間隔の乱れ"],
+            label="まとまり間隔乱れ量",
+            location=(480, -600),
+        ),
+        label="まとまり間隔係数",
+        location=(680, -600),
+    )
+    bundle_gap_m = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(
+            group,
+            "MULTIPLY",
+            input_node.outputs["まとまり間隔"],
+            bundle_gap_factor,
+            label="有効まとまり間隔",
+            location=(80, -900),
+        ),
+        b_value=0.001,
+        label="まとまり間隔m",
+        location=(280, -900),
+    )
+    bundle_gap_angle = _math_binary(
+        group,
+        "DIVIDE",
+        bundle_gap_m,
+        _math_binary(group, "MAXIMUM", width_half_m, b_value=0.000001, label="まとまり半径", location=(480, -900)),
+        label="まとまり間隔角",
+        location=(680, -900),
+    )
+    bundle_angle = _math_binary(
+        group,
+        "MULTIPLY",
+        bundle_index,
+        bundle_gap_angle,
+        label="まとまり角",
+        location=(880, -900),
+    )
+    bundle_jitter = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(
+            group,
+            "MULTIPLY",
+            step_angle,
+            input_node.outputs["まとまりの乱れ"],
+            label="まとまり乱れ量",
+            location=(880, -740),
+        ),
+        spacing_wave,
+        label="まとまり乱れ角",
+        location=(1080, -740),
+    )
+    bundle_angle = _math_add(group, bundle_angle, bundle_jitter, label="まとまり乱れ済み角", location=(1280, -740))
+    bundle_angle = _switch_float(
+        group,
+        input_node.outputs["まとまり"],
+        zero_jitter,
+        bundle_angle,
+        label="まとまり切替",
+        location=(1080, -900),
+    )
+    angle = _math_add(group, angle, spacing_jitter, label="間隔乱れ済み角", location=(680, -520))
+    angle = _math_add(group, angle, bundle_angle, label="まとまり済み角", location=(1280, -900))
     rotation_rad = _math_binary(
         group,
         "MULTIPLY",
@@ -1032,6 +1668,18 @@ def _instanced_radial_line_geometry(
         label="平均半径",
         location=(-320, -1080),
     )
+    end_shape_factor = _effect_shape_factor(
+        group,
+        input_node,
+        input_node.outputs["終点形状"],
+        angle_with_rotation,
+        width_half_m,
+        height_half_m,
+        prefix="終点",
+        label="終点形状",
+        location=(-320, -2260),
+    )
+    radius = _math_binary(group, "MULTIPLY", radius, end_shape_factor, label="終点形状半径", location=(3280, -2260))
     inner_radius = _math_binary(
         group,
         "MULTIPLY",
@@ -1040,25 +1688,92 @@ def _instanced_radial_line_geometry(
         label="始点半径",
         location=(-120, -1080),
     )
-    start_vec = _combine_xyz(group, inner_radius, None, z=0.0, label="線始点", location=(80, -1080))
-    end_vec = _combine_xyz(group, radius, None, z=0.0, label="線終点", location=(80, -1240))
-
-    line = _node(group, "GeometryNodeCurvePrimitiveLine", label="線の原型", location=(280, -1080))
-    _link(group, start_vec, line.inputs["Start"])
-    _link(group, end_vec, line.inputs["End"])
-    profile = _node(group, "GeometryNodeCurvePrimitiveCircle", label="線幅", location=(280, -1320))
-    _set_default(profile.inputs["Resolution"], 8)
-    _link(group, line_half_m, profile.inputs["Radius"])
-    mesh = _node(group, "GeometryNodeCurveToMesh", label="線をメッシュ化", location=(520, -1080))
-    _set_default(mesh.inputs["Fill Caps"], True)
-    _link(group, line.outputs["Curve"], mesh.inputs["Curve"])
-    _link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
-    material = _set_material(
+    start_shape_factor = _effect_shape_factor(
         group,
-        mesh.outputs["Mesh"],
+        input_node,
+        input_node.outputs["始点形状"],
+        angle_with_rotation,
+        width_half_m,
+        height_half_m,
+        prefix="始点",
+        label="始点形状",
+        location=(-320, -3220),
+    )
+    inner_radius = _math_binary(group, "MULTIPLY", inner_radius, start_shape_factor, label="始点形状半径", location=(3280, -3220))
+    length_wave = _math_binary(
+        group,
+        "SINE",
+        _math_add(group, seed_float, _constant_float(group, 3.17, label="線長乱れ位相", location=(-120, -1560)), label="線長乱れ種", location=(80, -1560)),
+        label="線長乱れ波",
+        location=(280, -1560),
+    )
+    length_wave = _math_binary(group, "ABSOLUTE", length_wave, label="線長乱れ正", location=(480, -1560))
+    line_span = _math_binary(group, "SUBTRACT", radius, inner_radius, label="線長", location=(680, -1560))
+    start_trim = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "MULTIPLY", line_span, input_node.outputs["始点乱れ量"], label="始点乱れ量", location=(880, -1560)),
+        length_wave,
+        label="始点乱れ長",
+        location=(1080, -1560),
+    )
+    start_trim = _switch_float(group, input_node.outputs["始点乱れ"], zero_jitter, start_trim, label="始点乱れ切替", location=(1280, -1560))
+    inner_radius = _math_add(group, inner_radius, start_trim, label="始点乱れ半径", location=(1480, -1560))
+    end_wave = _math_binary(
+        group,
+        "SINE",
+        _math_add(group, seed_float, _constant_float(group, 7.31, label="終点乱れ位相", location=(-120, -1740)), label="終点乱れ種", location=(80, -1740)),
+        label="終点乱れ波",
+        location=(280, -1740),
+    )
+    end_wave = _math_binary(group, "ABSOLUTE", end_wave, label="終点乱れ正", location=(480, -1740))
+    end_trim = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "MULTIPLY", line_span, input_node.outputs["終点乱れ量"], label="終点乱れ量", location=(880, -1740)),
+        end_wave,
+        label="終点乱れ長",
+        location=(1080, -1740),
+    )
+    end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
+    radius = _math_binary(group, "SUBTRACT", radius, end_trim, label="終点乱れ半径", location=(1480, -1740))
+    frame_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
+    radius = _switch_float(group, input_node.outputs["始点をコマ枠に設定"], radius, frame_radius, label="コマ枠始点切替", location=(280, -1880))
+    width_wave = _math_binary(
+        group,
+        "SINE",
+        _math_add(group, seed_float, _constant_float(group, 11.13, label="線幅乱れ位相", location=(80, -2040)), label="線幅乱れ種", location=(280, -2040)),
+        label="線幅乱れ波",
+        location=(480, -2040),
+    )
+    width_delta = _math_binary(
+        group,
+        "MULTIPLY",
+        width_wave,
+        input_node.outputs["線幅 乱れ量"],
+        label="線幅乱れ率",
+        location=(680, -2040),
+    )
+    width_factor = _math_add(group, _constant_float(group, 1.0, label="線幅基準", location=(680, -2200)), width_delta, label="線幅乱れ係数", location=(880, -2040))
+    jittered_half = _math_binary(group, "MULTIPLY", line_half_m, width_factor, label="乱れ線幅", location=(1080, -2040))
+    line_half_m = _switch_float(group, input_node.outputs["線幅 乱れ"], line_half_m, jittered_half, label="線幅乱れ切替", location=(1280, -2040))
+    index_mod = _math_binary(group, "MODULO", index.outputs["Index"], b_value=2.0, label="偶奇", location=(-120, -1240))
+    is_even = _compare_float_socket(group, index_mod, 0.0, label="偶数線", location=(80, -1400))
+    uni_short = _math_binary(group, "MULTIPLY", radius, b_value=0.84, label="ウニ短線", location=(80, -1240))
+    uni_long = _math_binary(group, "MULTIPLY", radius, b_value=1.10, label="ウニ長線", location=(280, -1240))
+    uni_radius = _switch_float(group, is_even, uni_long, uni_short, label="ウニ線長", location=(480, -1240))
+    is_uni = _compare_int_socket(group, input_node.outputs["種類"], 2, label="ウニフラか", location=(480, -1400))
+    end_radius = _switch_float(group, is_uni, radius, uni_radius, label="終点半径", location=(680, -1240))
+
+    material = _tapered_line_mesh_x(
+        group,
+        input_node,
+        inner_radius,
+        end_radius,
+        line_half_m,
         line_material,
         label="線素材",
-        location=(760, -1080),
+        location=(280, -1080),
     )
 
     instance = _node(group, "GeometryNodeInstanceOnPoints", label="線を繰り返し配置", location=(760, -640))
@@ -1269,40 +1984,12 @@ def _socket_value_for_spec(field: str, spec: SocketSpec, value: Any):
         return float(spec.default or 0.0)
 
 
-def _effect_focus_line_count(params, bounds: tuple[float, float, float, float] | None) -> int:
-    import math
-
-    max_count = max(1, int(getattr(params, "max_line_count", 1000) or 1))
-    if bounds is None:
-        width = height = 40.0
-    else:
-        width = max(0.001, float(bounds[2] or 0.001))
-        height = max(0.001, float(bounds[3] or 0.001))
-    if str(getattr(params, "spacing_mode", "distance") or "distance") == "angle":
-        step = max(0.1, float(getattr(params, "spacing_angle_deg", 5.0) or 5.0))
-        raw = max(3, int(round(360.0 / step)))
-    else:
-        step = max(0.01, float(getattr(params, "spacing_distance_mm", 0.4) or 0.4))
-        rx = width * 0.5
-        ry = height * 0.5
-        h = ((rx - ry) ** 2) / max((rx + ry) ** 2, 1.0e-9)
-        perimeter = math.pi * (rx + ry) * (1.0 + (3.0 * h) / max(10.0 + math.sqrt(max(0.0, 4.0 - 3.0 * h)), 1.0e-9))
-        raw = max(3, int(round(perimeter / step)))
-    return min(raw, max_count)
-
-
 def effect_values(params, bounds: tuple[float, float, float, float] | None, seed: int) -> dict[str, Any]:
     if bounds is None:
         x = y = width = height = 0.0
     else:
         x, y, width, height = bounds
     effect_type = str(getattr(params, "effect_type", "") or "")
-    if effect_type == "speed":
-        line_count = int(getattr(params, "speed_line_count", 0) or 0)
-    elif effect_type == "white_outline":
-        line_count = int(getattr(params, "white_outline_count", 0) or 0)
-    else:
-        line_count = _effect_focus_line_count(params, bounds)
     values = {
         "乱数": int(seed),
         "位置 X": float(x or 0.0),
@@ -1314,7 +2001,6 @@ def effect_values(params, bounds: tuple[float, float, float, float] | None, seed
         raw = getattr(params, field, spec.default) if params is not None else spec.default
         values[spec.name] = _socket_value_for_spec(field, spec, raw)
     values["種類"] = _EFFECT_CODES.get(effect_type, 0)
-    values["本数"] = line_count
     return values
 
 
