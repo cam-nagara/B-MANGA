@@ -332,10 +332,6 @@ def _draw_effect_shape_settings(box, params, prefix: str, label: str, *, frame_t
     shape_box.label(text=label)
     if frame_toggle:
         shape_box.prop(params, "start_to_coma_frame")
-        if bool(params.start_to_coma_frame):
-            shape_box.prop(params, "start_frame_density_basis")
-            if params.start_frame_density_basis == "rounded_frame":
-                shape_box.prop(params, "start_frame_density_rounding_percent")
     content = shape_box.column(align=True)
     if frame_toggle:
         content.enabled = not bool(params.start_to_coma_frame)

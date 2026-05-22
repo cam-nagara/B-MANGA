@@ -54,12 +54,6 @@ _SPACING_MODE_ITEMS = (
     ("distance", "距離指定", ""),
 )
 
-_FRAME_DENSITY_BASIS_ITEMS = (
-    ("frame", "コマ枠", "実際のコマ枠を密度基準にします"),
-    ("rounded_frame", "角丸コマ枠", "角を丸めた仮想コマ枠を密度基準にします"),
-    ("ellipse", "楕円", "コマ枠を包む楕円を密度基準にします"),
-)
-
 _INOUT_APPLY_ITEMS = (
     ("brush_size", "線幅", ""),
     ("opacity", "不透明度", ""),
@@ -76,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 9
+EFFECT_PARAM_SCHEMA_VERSION = 10
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -89,8 +83,6 @@ EFFECT_PARAM_FIELDS = (
     "rotation_deg",
     "start_shape",
     "start_to_coma_frame",
-    "start_frame_density_basis",
-    "start_frame_density_rounding_percent",
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
     "start_cloud_bump_width_mm",
@@ -287,9 +279,6 @@ def effect_params_from_dict(params, data: dict) -> None:
         == _LEGACY_DEFAULT_SPEED_LINE_COUNT
     ):
         data["speed_line_count"] = _DEFAULT_SPEED_LINE_COUNT
-    if schema_version < 4:
-        data.setdefault("start_frame_density_basis", "rounded_frame")
-        data.setdefault("start_frame_density_rounding_percent", 100.0)
     if schema_version < EFFECT_PARAM_SCHEMA_VERSION:
         data.setdefault("spacing_density_compensation", True)
         if schema_version < 8:
@@ -334,8 +323,6 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
 
     start_shape: EnumProperty(name="始点形状", items=_EFFECT_SHAPE_ITEMS, default="rect", update=_on_params_changed)  # type: ignore[valid-type]
     start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    start_frame_density_basis: EnumProperty(name="密度基準", items=_FRAME_DENSITY_BASIS_ITEMS, default="rounded_frame", update=_on_params_changed)  # type: ignore[valid-type]
-    start_frame_density_rounding_percent: FloatProperty(name="角丸率 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_mm: FloatProperty(name="角半径", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]

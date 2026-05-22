@@ -31,8 +31,6 @@ def _base_params() -> SimpleNamespace:
         spacing_mode="distance",
         spacing_distance_mm=1.0,
         spacing_angle_deg=5.0,
-        start_frame_density_basis="rounded_frame",
-        start_frame_density_rounding_percent=100.0,
         spacing_density_compensation=True,
         spacing_jitter_enabled=False,
         spacing_jitter_amount=0.0,
@@ -228,6 +226,19 @@ def _assert_length_jitter_shortens_lines(
         raise AssertionError("end jitter should shorten at least one focus line")
 
 
+def _assert_full_end_jitter_can_collapse_line(effect_line_gen) -> None:
+    class MaxRandom:
+        def random(self) -> float:
+            return 1.0
+
+    params = _base_params()
+    params.end_length_jitter_enabled = True
+    params.end_length_jitter_amount = 100.0
+    start, end = effect_line_gen._trimmed_segment_points(params, MaxRandom(), (0.0, 0.0), (10.0, 0.0))
+    if _distance(start, end) > 1.0e-9:
+        raise AssertionError(f"終点乱れ100%で線がゼロ長まで短くなりません: start={start}, end={end}")
+
+
 def _assert_start_jitter_moves_starts_inward(strokes, m_to_mm, center, outline) -> None:
     moved = 0
     for index, stroke in enumerate(strokes):
@@ -254,7 +265,10 @@ def main() -> None:
         assert abs(float(params.brush_size_mm) - 0.3) <= 1.0e-6
         assert params.bl_rna.properties["brush_size_mm"].name == "線幅"
         assert abs(float(params.out_percent) - 0.0) <= 1.0e-6
-        assert params.start_frame_density_basis == "rounded_frame"
+        if "start_frame_density_basis" in params.bl_rna.properties:
+            raise AssertionError("密度基準が効果線設定に残っています")
+        if "start_frame_density_rounding_percent" in params.bl_rna.properties:
+            raise AssertionError("角丸率が効果線設定に残っています")
         assert params.spacing_density_compensation is True
 
         from bname_dev_effect_spacing.core import balloon, effect_line
@@ -287,12 +301,8 @@ def main() -> None:
         assert params.bl_rna.properties["bundle_line_count_jitter"].name == "数の乱れ"
         assert params.bl_rna.properties["bundle_gap_jitter_amount"].name == "まとまり間隔の乱れ"
 
-        params.start_frame_density_basis = "ellipse"
-        params.start_frame_density_rounding_percent = 25.0
         params.spacing_density_compensation = False
         effect_line.effect_params_from_dict(params, {"schema_version": 3, "effect_type": "focus"})
-        assert params.start_frame_density_basis == "rounded_frame"
-        assert abs(float(params.start_frame_density_rounding_percent) - 100.0) <= 1.0e-6
         assert params.spacing_density_compensation is True
 
         effect_line.effect_params_from_dict(
@@ -427,6 +437,7 @@ def main() -> None:
             start_outline_mm=outline,
         )
         _assert_length_jitter_shortens_lines(end_jitter_strokes, m_to_mm, center, (20.0, 7.0))
+        _assert_full_end_jitter_can_collapse_line(effect_line_gen)
 
         bundle_params = _base_params()
         bundle_params.bundle_enabled = True
@@ -499,18 +510,14 @@ def main() -> None:
 
         linked_params = effect_line_link_op._copy_linked_shape_params(
             {
-                "start_frame_density_basis": "ellipse",
-                "start_frame_density_rounding_percent": 75.0,
                 "spacing_density_compensation": True,
             },
             {
-                "start_frame_density_basis": "frame",
-                "start_frame_density_rounding_percent": 0.0,
                 "spacing_density_compensation": False,
             },
         )
-        assert linked_params["start_frame_density_basis"] == "ellipse"
-        assert linked_params["start_frame_density_rounding_percent"] == 75.0
+        if "start_frame_density_basis" in linked_params or "start_frame_density_rounding_percent" in linked_params:
+            raise AssertionError("リンク効果線に密度基準の同期項目が残っています")
         assert linked_params["spacing_density_compensation"] is True
         print("BNAME_EFFECT_LINE_FRAME_SPACING_OK")
     finally:

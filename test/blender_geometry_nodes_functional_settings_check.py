@@ -251,8 +251,6 @@ def main() -> None:
         params.spacing_mode = "distance"
         params.start_to_coma_frame = True
         params.spacing_distance_mm = 6.0
-        params.start_frame_density_basis = "frame"
-        params.start_frame_density_rounding_percent = 0.0
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         distance_sparse = _mesh_stats(display)
         params.spacing_distance_mm = 1.5
@@ -260,11 +258,10 @@ def main() -> None:
         distance_dense = _mesh_stats(display)
         if distance_dense["polys"] <= distance_sparse["polys"]:
             raise AssertionError("効果線 距離指定の線間隔がノード内本数計算へ反映されていません")
-        params.start_frame_density_basis = "ellipse"
-        params.start_frame_density_rounding_percent = 100.0
-        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
-        distance_density_basis = _mesh_stats(display)
-        _assert_changed(distance_dense, distance_density_basis, "効果線 距離指定の密度基準")
+        if _modifier_input_value(display, "B-Name Geometry Nodes", "密度基準") is not None:
+            raise AssertionError("効果線 密度基準が設定欄に残っています")
+        if _modifier_input_value(display, "B-Name Geometry Nodes", "角丸率 (%)") is not None:
+            raise AssertionError("効果線 角丸率が設定欄に残っています")
         params.start_to_coma_frame = False
         params.spacing_mode = "distance"
         params.spacing_distance_mm = 3.0

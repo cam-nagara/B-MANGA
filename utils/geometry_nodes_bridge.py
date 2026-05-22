@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 25
+_GROUP_VERSION = 27
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -55,7 +55,6 @@ _ENUM_CODES = {
     "start_shape": _SHAPE_CODES,
     "end_shape": _SHAPE_CODES,
     "spacing_mode": {"angle": 1, "distance": 2},
-    "start_frame_density_basis": {"frame": 1, "rounded_frame": 2, "ellipse": 3},
     "inout_apply": {"brush_size": 1, "opacity": 2},
     "inout_range_mode": {"percent": 1, "length": 2},
     "line_style": {"solid": 1, "dashed": 2, "dotted": 3, "double": 4},
@@ -69,8 +68,6 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "rotation_deg": SocketSpec("全体回転", "NodeSocketFloat", 0.0),
     "start_shape": SocketSpec("始点形状", "NodeSocketInt", 1),
     "start_to_coma_frame": SocketSpec("始点をコマ枠に設定", "NodeSocketBool", False),
-    "start_frame_density_basis": SocketSpec("密度基準", "NodeSocketInt", 2),
-    "start_frame_density_rounding_percent": SocketSpec("角丸率 (%)", "NodeSocketFloat", 100.0),
     "start_rounded_corner_enabled": SocketSpec("始点 角丸", "NodeSocketBool", False),
     "start_rounded_corner_radius_mm": SocketSpec("始点 角半径", "NodeSocketFloat", 3.0),
     "start_cloud_bump_width_mm": SocketSpec("始点 山の幅", "NodeSocketFloat", 10.0),
@@ -459,6 +456,65 @@ def _math_binary(
     elif b_value is not None:
         _set_default(node.inputs[1], float(b_value))
     return node.outputs[0]
+
+
+def _hash01_socket(group, seed_socket, *, salt: float, label: str, location: tuple[float, float]):
+    mixed = _math_binary(
+        group,
+        "MULTIPLY",
+        seed_socket,
+        b_value=12.9898,
+        label=f"{label} 混合",
+        location=location,
+    )
+    mixed = _math_binary(
+        group,
+        "ADD",
+        mixed,
+        b_value=float(salt),
+        label=f"{label} 塩",
+        location=(location[0] + 180, location[1]),
+    )
+    wave = _math_binary(group, "SINE", mixed, label=f"{label} 波", location=(location[0] + 360, location[1]))
+    scaled = _math_binary(
+        group,
+        "MULTIPLY",
+        wave,
+        b_value=43758.5453,
+        label=f"{label} 拡散",
+        location=(location[0] + 540, location[1]),
+    )
+    floor = _math_binary(group, "FLOOR", scaled, label=f"{label} 整数部", location=(location[0] + 720, location[1] - 80))
+    raw = _math_binary(
+        group,
+        "SUBTRACT",
+        scaled,
+        floor,
+        label=f"{label} 原値",
+        location=(location[0] + 900, location[1]),
+    )
+    stepped = _math_binary(
+        group,
+        "FLOOR",
+        _math_binary(
+            group,
+            "MULTIPLY",
+            raw,
+            b_value=101.0,
+            label=f"{label} 100段階",
+            location=(location[0] + 1080, location[1]),
+        ),
+        label=f"{label} 段階",
+        location=(location[0] + 1260, location[1]),
+    )
+    return _math_binary(
+        group,
+        "DIVIDE",
+        stepped,
+        b_value=100.0,
+        label=label,
+        location=(location[0] + 1440, location[1]),
+    )
 
 
 def _combine_xyz(
@@ -1214,57 +1270,8 @@ def _radial_rect_metric_socket(group, rx, ry, *, location: tuple[float, float]):
     )
 
 
-def _radial_ellipse_metric_socket(group, rx, ry, *, location: tuple[float, float]):
-    """楕円密度基準の半径積算長を、ノードだけで軽量近似する。"""
-    import math
-
-    product = _math_binary(group, "MULTIPLY", rx, ry, label="楕円密度 半径積", location=location)
-    product = _math_binary(group, "MAXIMUM", product, b_value=0.000000000001, label="楕円密度 半径積下限", location=(location[0] + 200, location[1]))
-    geom_mean = _math_binary(group, "SQRT", product, label="楕円密度 幾何平均", location=(location[0] + 400, location[1]))
-    base = _math_binary(
-        group,
-        "MULTIPLY",
-        geom_mean,
-        b_value=math.tau,
-        label="楕円密度 基準積算",
-        location=(location[0] + 600, location[1]),
-    )
-    radius_sum = _math_add(group, rx, ry, label="楕円密度 半径和", location=(location[0] + 200, location[1] - 180))
-    radius_sum = _math_binary(group, "MAXIMUM", radius_sum, b_value=0.000001, label="楕円密度 半径和下限", location=(location[0] + 400, location[1] - 180))
-    radius_diff = _math_binary(
-        group,
-        "ABSOLUTE",
-        _math_binary(group, "SUBTRACT", rx, ry, label="楕円密度 半径差", location=(location[0] + 200, location[1] - 360)),
-        label="楕円密度 半径差絶対",
-        location=(location[0] + 400, location[1] - 360),
-    )
-    aspect = _math_binary(group, "DIVIDE", radius_diff, radius_sum, label="楕円密度 縦横差率", location=(location[0] + 600, location[1] - 260))
-    aspect2 = _math_binary(group, "MULTIPLY", aspect, aspect, label="楕円密度 縦横差率二乗", location=(location[0] + 800, location[1] - 260))
-    aspect4 = _math_binary(group, "MULTIPLY", aspect2, aspect2, label="楕円密度 縦横差率四乗", location=(location[0] + 1000, location[1] - 260))
-    factor = _math_binary(
-        group,
-        "SUBTRACT",
-        _constant_float(group, 1.0, label="楕円密度 補正基準", location=(location[0] + 800, location[1] - 520)),
-        _math_binary(group, "MULTIPLY", aspect2, b_value=0.23, label="楕円密度 二乗補正", location=(location[0] + 1000, location[1] - 420)),
-        label="楕円密度 補正一段",
-        location=(location[0] + 1200, location[1] - 420),
-    )
-    factor = _math_binary(
-        group,
-        "SUBTRACT",
-        factor,
-        _math_binary(group, "MULTIPLY", aspect4, b_value=0.20, label="楕円密度 四乗補正", location=(location[0] + 1200, location[1] - 600)),
-        label="楕円密度 補正",
-        location=(location[0] + 1400, location[1] - 500),
-    )
-    factor = _math_binary(group, "MAXIMUM", factor, b_value=0.2, label="楕円密度 補正下限", location=(location[0] + 1600, location[1] - 500))
-    return _math_binary(group, "MULTIPLY", base, factor, label="楕円密度 半径積算", location=(location[0] + 1800, location[1] - 120))
-
-
 def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
     """集中線の本数を Geometry Nodes 内で算出する。"""
-    import math
-
     is_angle = _compare_int_socket(group, input_node.outputs["線の間隔"], 1, label="角度指定か", location=(-760, -240))
     angle_step = _math_binary(
         group,
@@ -1285,43 +1292,7 @@ def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
 
     rx = _math_binary(group, "MAXIMUM", width_half_m, b_value=0.000001, label="横半径下限", location=(-760, -560))
     ry = _math_binary(group, "MAXIMUM", height_half_m, b_value=0.000001, label="縦半径下限", location=(-760, -720))
-    rect_perimeter = _radial_rect_metric_socket(group, rx, ry, location=(-560, -620))
-    ellipse_perimeter = _radial_ellipse_metric_socket(group, rx, ry, location=(-560, -1160))
-    basis_is_ellipse = _compare_int_socket(group, input_node.outputs["密度基準"], 3, label="密度基準 楕円", location=(-160, -840))
-    basis_is_round = _compare_int_socket(group, input_node.outputs["密度基準"], 2, label="密度基準 角丸", location=(-160, -700))
-    round_amount = _math_binary(
-        group,
-        "MULTIPLY",
-        input_node.outputs["角丸率 (%)"],
-        b_value=0.01,
-        label="角丸率",
-        location=(-160, -560),
-    )
-    round_delta = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_binary(group, "SUBTRACT", ellipse_perimeter, rect_perimeter, label="周長差", location=(40, -720)),
-        round_amount,
-        label="角丸周長差",
-        location=(240, -640),
-    )
-    rounded_perimeter = _math_add(group, rect_perimeter, round_delta, label="角丸周長", location=(440, -640))
-    basis_perimeter = _switch_float(
-        group,
-        basis_is_round,
-        rect_perimeter,
-        rounded_perimeter,
-        label="角丸密度基準",
-        location=(640, -640),
-    )
-    basis_perimeter = _switch_float(
-        group,
-        basis_is_ellipse,
-        basis_perimeter,
-        ellipse_perimeter,
-        label="楕円密度基準",
-        location=(840, -640),
-    )
+    basis_perimeter = _radial_rect_metric_socket(group, rx, ry, location=(-560, -620))
     distance_step = _math_binary(
         group,
         "MAXIMUM",
@@ -1349,44 +1320,6 @@ def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
     clamped = _math_binary(group, "MINIMUM", raw_count, input_node.outputs["本数"], label="最大本数", location=(1640, -620))
     clamped = _math_binary(group, "MAXIMUM", clamped, b_value=3.0, label="本数下限", location=(1840, -620))
     return _float_to_int(group, clamped, label="集中線本数", location=(2040, -620))
-
-
-def _blend_float(group, a_socket, b_socket, factor_socket, *, label: str, location: tuple[float, float]):
-    delta = _math_binary(
-        group,
-        "SUBTRACT",
-        b_socket,
-        a_socket,
-        label=f"{label} 差分",
-        location=(location[0], location[1] + 120),
-    )
-    scaled = _math_binary(
-        group,
-        "MULTIPLY",
-        delta,
-        factor_socket,
-        label=f"{label} 率",
-        location=(location[0] + 180, location[1] + 120),
-    )
-    return _math_add(group, a_socket, scaled, label=label, location=(location[0] + 360, location[1]))
-
-
-def _density_ellipse_point(group, frac, rx, ry, *, label: str, location: tuple[float, float]):
-    import math
-
-    angle = _math_binary(
-        group,
-        "MULTIPLY",
-        frac,
-        b_value=math.tau,
-        label=f"{label} 周回",
-        location=location,
-    )
-    cos_socket = _math_binary(group, "COSINE", angle, label=f"{label} cos", location=(location[0] + 180, location[1] + 80))
-    sin_socket = _math_binary(group, "SINE", angle, label=f"{label} sin", location=(location[0] + 180, location[1] - 80))
-    x_socket = _math_binary(group, "MULTIPLY", cos_socket, rx, label=f"{label} X", location=(location[0] + 380, location[1] + 80))
-    y_socket = _math_binary(group, "MULTIPLY", sin_socket, ry, label=f"{label} Y", location=(location[0] + 380, location[1] - 80))
-    return x_socket, y_socket
 
 
 def _density_rect_point(group, frac, rx, ry, *, label: str, location: tuple[float, float]):
@@ -1446,28 +1379,9 @@ def _density_rect_point(group, frac, rx, ry, *, label: str, location: tuple[floa
 
 def _focus_density_angle(group, input_node, frac, rx, ry, uniform_angle, *, location: tuple[float, float]):
     is_distance = _compare_int_socket(group, input_node.outputs["線の間隔"], 2, label="距離指定か", location=location)
-    rect_x, rect_y = _density_rect_point(group, frac, rx, ry, label="密度基準枠", location=(location[0], location[1] - 260))
-    ellipse_x, ellipse_y = _density_ellipse_point(group, frac, rx, ry, label="密度基準楕円", location=(location[0], location[1] - 1320))
-    round_amount = _math_binary(
-        group,
-        "MULTIPLY",
-        input_node.outputs["角丸率 (%)"],
-        b_value=0.01,
-        label="密度角丸率",
-        location=(location[0] + 420, location[1] - 1520),
-    )
-    round_amount = _math_binary(group, "MINIMUM", round_amount, b_value=1.0, label="密度角丸率上限", location=(location[0] + 620, location[1] - 1520))
-    round_amount = _math_binary(group, "MAXIMUM", round_amount, b_value=0.0, label="密度角丸率下限", location=(location[0] + 820, location[1] - 1520))
-    rounded_x = _blend_float(group, rect_x, ellipse_x, round_amount, label="角丸密度X", location=(location[0] + 2260, location[1] - 720))
-    rounded_y = _blend_float(group, rect_y, ellipse_y, round_amount, label="角丸密度Y", location=(location[0] + 2260, location[1] - 920))
-    basis_is_round = _compare_int_socket(group, input_node.outputs["密度基準"], 2, label="密度角度 角丸", location=(location[0] + 2640, location[1] - 520))
-    basis_is_ellipse = _compare_int_socket(group, input_node.outputs["密度基準"], 3, label="密度角度 楕円", location=(location[0] + 2640, location[1] - 1120))
-    basis_x = _switch_float(group, basis_is_round, rect_x, rounded_x, label="密度角度X 角丸", location=(location[0] + 2840, location[1] - 640))
-    basis_y = _switch_float(group, basis_is_round, rect_y, rounded_y, label="密度角度Y 角丸", location=(location[0] + 2840, location[1] - 840))
-    basis_x = _switch_float(group, basis_is_ellipse, basis_x, ellipse_x, label="密度角度X 楕円", location=(location[0] + 3040, location[1] - 760))
-    basis_y = _switch_float(group, basis_is_ellipse, basis_y, ellipse_y, label="密度角度Y 楕円", location=(location[0] + 3040, location[1] - 960))
-    density_angle = _math_binary(group, "ARCTAN2", basis_y, basis_x, label="距離指定密度角", location=(location[0] + 3240, location[1] - 860))
-    return _switch_float(group, is_distance, uniform_angle, density_angle, label="密度補正角度", location=(location[0] + 3440, location[1] - 700))
+    rect_x, rect_y = _density_rect_point(group, frac, rx, ry, label="距離指定枠", location=(location[0], location[1] - 260))
+    density_angle = _math_binary(group, "ARCTAN2", rect_y, rect_x, label="距離指定密度角", location=(location[0] + 2240, location[1] - 520))
+    return _switch_float(group, is_distance, uniform_angle, density_angle, label="密度補正角度", location=(location[0] + 2440, location[1] - 360))
 
 
 def _effect_taper_lengths(group, input_node, line_length_socket, *, label: str, location: tuple[float, float]):
@@ -2202,59 +2116,6 @@ def _instanced_radial_line_geometry(
     )
     inner_radius = _math_binary(group, "MULTIPLY", base_radius, end_shape_factor, label="終点形状半径", location=(3280, -3220))
     inner_radius_base = inner_radius
-    length_wave = _math_binary(
-        group,
-        "SINE",
-        _math_add(group, seed_float, _constant_float(group, 3.17, label="線長乱れ位相", location=(-120, -1560)), label="線長乱れ種", location=(80, -1560)),
-        label="線長乱れ波",
-        location=(280, -1560),
-    )
-    length_wave = _math_binary(group, "ABSOLUTE", length_wave, label="線長乱れ正", location=(480, -1560))
-    line_span = _math_binary(group, "SUBTRACT", start_radius_base, inner_radius_base, label="線長", location=(680, -1560))
-    start_jitter_rate = _math_binary(
-        group,
-        "DIVIDE",
-        input_node.outputs["始点乱れ (%)"],
-        b_value=100.0,
-        label="始点乱れ率",
-        location=(680, -1400),
-    )
-    start_trim = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_binary(group, "MULTIPLY", line_span, start_jitter_rate, label="始点乱れ量", location=(880, -1560)),
-        length_wave,
-        label="始点乱れ長",
-        location=(1080, -1560),
-    )
-    start_trim = _switch_float(group, input_node.outputs["始点乱れ"], zero_jitter, start_trim, label="始点乱れ切替", location=(1280, -1560))
-    radius = _math_binary(group, "SUBTRACT", start_radius_base, start_trim, label="始点乱れ半径", location=(1480, -1560))
-    end_wave = _math_binary(
-        group,
-        "SINE",
-        _math_add(group, seed_float, _constant_float(group, 7.31, label="終点乱れ位相", location=(-120, -1740)), label="終点乱れ種", location=(80, -1740)),
-        label="終点乱れ波",
-        location=(280, -1740),
-    )
-    end_wave = _math_binary(group, "ABSOLUTE", end_wave, label="終点乱れ正", location=(480, -1740))
-    end_jitter_rate = _math_binary(
-        group,
-        "DIVIDE",
-        input_node.outputs["終点乱れ (%)"],
-        b_value=100.0,
-        label="終点乱れ率",
-        location=(680, -1880),
-    )
-    end_trim = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_binary(group, "MULTIPLY", line_span, end_jitter_rate, label="終点乱れ量", location=(880, -1740)),
-        end_wave,
-        label="終点乱れ長",
-        location=(1080, -1740),
-    )
-    end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
-    inner_radius = _math_add(group, inner_radius_base, end_trim, label="終点乱れ半径", location=(1480, -1740))
     base_line_half_m = line_half_m
     width_wave = _math_binary(
         group,
@@ -2307,7 +2168,7 @@ def _instanced_radial_line_geometry(
         label="始点形状外側",
         location=(1280, -2440),
     )
-    radius = _math_binary(group, "SUBTRACT", radius, start_trim, label="始点乱れ反映", location=(1480, -2440))
+    start_radius_actual = radius
     end_hit_radius = _object_raycast_distance(
         group,
         input_node.outputs["終点形状オブジェクト"],
@@ -2318,7 +2179,72 @@ def _instanced_radial_line_geometry(
         label="終点形状",
         location=(80, -3080),
     )
-    inner_radius = _math_add(group, end_hit_radius, end_trim, label="終点乱れ反映", location=(1280, -3080))
+    actual_line_span = _math_binary(
+        group,
+        "MAXIMUM",
+        _math_binary(group, "SUBTRACT", start_radius_actual, end_hit_radius, label="線ごとの長さ", location=(1280, -2920)),
+        b_value=0.0,
+        label="線ごとの長さ下限",
+        location=(1480, -2920),
+    )
+    length_wave = _hash01_socket(group, seed_float, salt=31.17, label="始点乱れ乱数", location=(-120, -1560))
+    start_jitter_rate = _math_binary(
+        group,
+        "DIVIDE",
+        input_node.outputs["始点乱れ (%)"],
+        b_value=100.0,
+        label="始点乱れ率",
+        location=(680, -1400),
+    )
+    start_trim = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "MULTIPLY", actual_line_span, start_jitter_rate, label="始点乱れ量", location=(880, -1560)),
+        length_wave,
+        label="始点乱れ長",
+        location=(1080, -1560),
+    )
+    start_trim = _switch_float(group, input_node.outputs["始点乱れ"], zero_jitter, start_trim, label="始点乱れ切替", location=(1280, -1560))
+    end_wave = _hash01_socket(group, seed_float, salt=73.31, label="終点乱れ乱数", location=(-120, -1740))
+    end_jitter_rate = _math_binary(
+        group,
+        "DIVIDE",
+        input_node.outputs["終点乱れ (%)"],
+        b_value=100.0,
+        label="終点乱れ率",
+        location=(680, -1880),
+    )
+    end_trim = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "MULTIPLY", actual_line_span, end_jitter_rate, label="終点乱れ量", location=(880, -1740)),
+        end_wave,
+        label="終点乱れ長",
+        location=(1080, -1740),
+    )
+    end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
+    total_trim = _math_add(group, start_trim, end_trim, label="乱れ合計", location=(1480, -1660))
+    trim_over = _compare_float_sockets(group, total_trim, actual_line_span, operation="GREATER_THAN", label="乱れ過多", location=(1680, -1660))
+    trim_scale = _math_binary(
+        group,
+        "DIVIDE",
+        actual_line_span,
+        _math_binary(group, "MAXIMUM", total_trim, b_value=0.000000001, label="乱れ合計下限", location=(1680, -1820)),
+        label="乱れ上限率",
+        location=(1880, -1740),
+    )
+    trim_scale = _switch_float(
+        group,
+        trim_over,
+        _constant_float(group, 1.0, label="乱れ通常率", location=(1880, -1560)),
+        trim_scale,
+        label="乱れ上限切替",
+        location=(2080, -1660),
+    )
+    start_trim = _math_binary(group, "MULTIPLY", start_trim, trim_scale, label="始点乱れ上限後", location=(2280, -1560))
+    end_trim = _math_binary(group, "MULTIPLY", end_trim, trim_scale, label="終点乱れ上限後", location=(2280, -1740))
+    radius = _math_binary(group, "SUBTRACT", start_radius_actual, start_trim, label="始点乱れ反映", location=(2480, -1560))
+    inner_radius = _math_add(group, end_hit_radius, end_trim, label="終点乱れ反映", location=(2480, -1740))
     index_mod = _math_binary(group, "MODULO", index.outputs["Index"], b_value=2.0, label="偶奇", location=(-120, -1240))
     is_even = _compare_float_socket(group, index_mod, 0.0, label="偶数線", location=(80, -1400))
     uni_short = _math_binary(group, "MULTIPLY", radius, b_value=0.84, label="ウニ短線", location=(80, -1240))
@@ -2340,7 +2266,9 @@ def _instanced_radial_line_geometry(
         location=(280, -1080),
     )
     line_length = _math_binary(group, "SUBTRACT", end_radius, inner_radius, label="線の実長", location=(760, -1560))
-    line_length = _math_binary(group, "MAXIMUM", line_length, b_value=0.000001, label="線の実長下限", location=(980, -1560))
+    line_length = _math_binary(group, "MAXIMUM", line_length, b_value=0.0, label="線の実長下限", location=(980, -1560))
+    visible_line = _compare_float_socket(group, line_length, 0.000000001, operation="GREATER_THAN", label="線表示", location=(980, -1400))
+    visible_width_scale = _switch_float(group, visible_line, zero_jitter, width_scale, label="線幅表示", location=(1180, -1400))
     ray_x = _math_binary(group, "COSINE", angle_with_rotation, label="線X方向", location=(560, -1880))
     ray_y = _math_binary(group, "SINE", angle_with_rotation, label="線Y方向", location=(560, -2040))
     point_x = _math_binary(group, "MULTIPLY", ray_x, inner_radius, label="始点X", location=(760, -1880))
@@ -2352,7 +2280,7 @@ def _instanced_radial_line_geometry(
     scale_vec = _combine_xyz(
         group,
         line_length,
-        width_scale,
+        visible_width_scale,
         z=1.0,
         label="線ごとの長さ",
         location=(1180, -1640),

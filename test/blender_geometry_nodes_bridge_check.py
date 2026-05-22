@@ -215,8 +215,6 @@ def main() -> None:
         params.rotation_deg = 17.5
         params.start_shape = "cloud"
         params.start_to_coma_frame = False
-        params.start_frame_density_basis = "ellipse"
-        params.start_frame_density_rounding_percent = 62.5
         params.start_rounded_corner_enabled = True
         params.start_rounded_corner_radius_mm = 2.2
         params.start_cloud_bump_width_mm = 8.1
@@ -338,11 +336,19 @@ def main() -> None:
             )
         ]
         assert not missing, f"効果線の詳細設定がGeometry Nodes入力へ移植されていません: {missing}"
+        removed_socket_names = {"密度補正", "密度基準", "角丸率 (%)"}
         assert all(
-            getattr(item, "name", "") != "密度補正"
+            getattr(item, "name", "") not in removed_socket_names
             for item in effect_modifier.node_group.interface.items_tree
             if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
-        ), "密度補正が独立した設定欄として残っています"
+        ), "削除済みの効果線設定欄が残っています"
+        effect_node_labels = {str(getattr(node, "label", "") or "") for node in effect_modifier.node_group.nodes}
+        if "始点乱れ乱数" not in effect_node_labels or "終点乱れ乱数" not in effect_node_labels:
+            raise AssertionError("始点乱れ/終点乱れがランダム化されたノード構成になっていません")
+        if "始点乱れ乱数 100段階" not in effect_node_labels or "終点乱れ乱数 100段階" not in effect_node_labels:
+            raise AssertionError("始点乱れ/終点乱れが0%/100%も取り得る乱数構成になっていません")
+        if "始点乱れ波" in effect_node_labels or "終点乱れ波" in effect_node_labels:
+            raise AssertionError("始点乱れ/終点乱れに周期的な波形ノードが残っています")
         start_source = effect_line_object.find_effect_shape_source_object(effect_obj, "start")
         end_source = effect_line_object.find_effect_shape_source_object(effect_obj, "end")
         assert start_source is not None, "効果線の始点形状参照実体がありません"

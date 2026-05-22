@@ -609,7 +609,6 @@ def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> No
         )
         if effect_type == "focus":
             params.start_to_coma_frame = True
-            params.start_frame_density_basis = "rounded_frame"
             _collect_draw_props(
                 records,
                 "レイヤー詳細 / 効果線 / focus / コマ枠始点",

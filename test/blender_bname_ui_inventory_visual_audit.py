@@ -482,7 +482,6 @@ def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = True
-        params.start_frame_density_basis = "rounded_frame"
         params.spacing_mode = "distance"
         params.start_shape = "cloud"
         params.end_shape = "cloud"
@@ -524,7 +523,6 @@ def _collect_right_click_details(records: list[dict[str, Any]], context, targets
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = True
-        params.start_frame_density_basis = "rounded_frame"
         params.spacing_mode = "distance"
         _collect_draw(
             records,
@@ -588,8 +586,6 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "親フキダシ",
         "始点形状",
         "終点形状",
-        "密度基準",
-        "角丸率 (%)",
         "白抜き線",
         "流線",
         "レイヤーフォルダ",

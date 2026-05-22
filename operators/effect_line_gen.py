@@ -185,8 +185,8 @@ def _trimmed_segment_points(
     start_trim = _jitter_trim_fraction(params, "length_jitter_enabled", "length_jitter_amount", rng)
     end_trim = _jitter_trim_fraction(params, "end_length_jitter_enabled", "end_length_jitter_amount", rng)
     total_trim = start_trim + end_trim
-    if total_trim > 0.95:
-        scale = 0.95 / max(total_trim, 1.0e-9)
+    if total_trim > 1.0:
+        scale = 1.0 / max(total_trim, 1.0e-9)
         start_trim *= scale
         end_trim *= scale
     dx = ex - sx

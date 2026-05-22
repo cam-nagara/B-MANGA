@@ -53,82 +53,8 @@ def outline_point_at_fraction(
     return (float(point[0]), float(point[1]))
 
 
-def _rounded_corner_points(
-    prev_pt: tuple[float, float],
-    corner: tuple[float, float],
-    next_pt: tuple[float, float],
-    amount: float,
-    samples: int,
-) -> list[tuple[float, float]]:
-    px, py = prev_pt
-    cx, cy = corner
-    nx, ny = next_pt
-    len_prev = math.hypot(px - cx, py - cy)
-    len_next = math.hypot(nx - cx, ny - cy)
-    if len_prev <= 1.0e-9 or len_next <= 1.0e-9 or amount <= 0.0:
-        return [(cx, cy)]
-    cut = min(len_prev, len_next) * min(0.5, amount * 0.5)
-    start = (cx + (px - cx) * (cut / len_prev), cy + (py - cy) * (cut / len_prev))
-    end = (cx + (nx - cx) * (cut / len_next), cy + (ny - cy) * (cut / len_next))
-    out: list[tuple[float, float]] = []
-    steps = max(2, int(samples))
-    for index in range(steps + 1):
-        t = index / steps
-        mt = 1.0 - t
-        x = mt * mt * start[0] + 2.0 * mt * t * cx + t * t * end[0]
-        y = mt * mt * start[1] + 2.0 * mt * t * cy + t * t * end[1]
-        out.append((x, y))
-    return out
-
-
-def rounded_outline(
-    outline: Sequence[tuple[float, float]],
-    rounding_percent: float,
-    *,
-    samples_per_corner: int = 12,
-) -> list[tuple[float, float]]:
-    points = [(float(x), float(y)) for x, y in outline]
-    if len(points) < 3:
-        return points
-    amount = _clamp01(float(rounding_percent) / 100.0)
-    if amount <= 0.0:
-        return points
-    out: list[tuple[float, float]] = []
-    for index, corner in enumerate(points):
-        prev_pt = points[index - 1]
-        next_pt = points[(index + 1) % len(points)]
-        out.extend(_rounded_corner_points(prev_pt, corner, next_pt, amount, samples_per_corner))
-    return out
-
-
-def ellipse_outline_from_bounds(
-    outline: Sequence[tuple[float, float]],
-    *,
-    samples: int = 192,
-) -> list[tuple[float, float]]:
-    points = [(float(x), float(y)) for x, y in outline]
-    if len(points) < 2:
-        return points
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    cx = (min(xs) + max(xs)) * 0.5
-    cy = (min(ys) + max(ys)) * 0.5
-    rx = max(0.001, (max(xs) - min(xs)) * 0.5)
-    ry = max(0.001, (max(ys) - min(ys)) * 0.5)
-    count = max(24, int(samples))
-    return [
-        (cx + math.cos(2.0 * math.pi * i / count) * rx, cy + math.sin(2.0 * math.pi * i / count) * ry)
-        for i in range(count)
-    ]
-
-
 def frame_density_outline(params, actual_outline: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
-    mode = str(getattr(params, "start_frame_density_basis", "frame") or "frame")
-    if mode == "ellipse":
-        return ellipse_outline_from_bounds(actual_outline)
-    if mode == "rounded_frame":
-        percent = float(getattr(params, "start_frame_density_rounding_percent", 100.0))
-        return rounded_outline(actual_outline, percent)
+    _ = params
     return [(float(x), float(y)) for x, y in actual_outline]
 
 

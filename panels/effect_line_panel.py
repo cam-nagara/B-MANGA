@@ -15,10 +15,6 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
     box.label(text=label)
     if frame_toggle:
         box.prop(params, "start_to_coma_frame")
-        if bool(params.start_to_coma_frame):
-            box.prop(params, "start_frame_density_basis")
-            if params.start_frame_density_basis == "rounded_frame":
-                box.prop(params, "start_frame_density_rounding_percent")
     content = box.column(align=True)
     if frame_toggle:
         content.enabled = not bool(params.start_to_coma_frame)
