@@ -99,6 +99,26 @@ def _target_has_stack_row(target: LayerTarget) -> bool:
     return bool(str(target.label or "").strip())
 
 
+def _stack_has_placeholder_rows(stack) -> bool:
+    """保存済みの古いレイヤー一覧に残った空行を検出する。"""
+    seen: set[str] = set()
+    for item in stack or []:
+        kind = str(getattr(item, "kind", "") or "").strip()
+        key = str(getattr(item, "key", "") or "").strip()
+        label = str(
+            getattr(item, "label", "")
+            or getattr(item, "name", "")
+            or ""
+        ).strip()
+        if not kind or not key or not label:
+            return True
+        uid = stack_item_uid(item)
+        if uid in seen:
+            return True
+        seen.add(uid)
+    return False
+
+
 def target_uid(kind: str, key: str) -> str:
     return f"{kind}:{key}"
 
@@ -1506,25 +1526,30 @@ def sync_layer_stack_after_data_change(
         _logger.exception("layer stack sync after data change failed")
 
 
-def schedule_layer_stack_draw_maintenance(context) -> None:
+def schedule_layer_stack_draw_maintenance(context) -> bool:
     """Panel.draw 中に Scene を書き換えず、必要な同期だけをタイマー予約する."""
     scene = getattr(context, "scene", None)
     if scene is None:
-        return
+        return False
     stack = getattr(scene, "bname_layer_stack", None)
     if stack is None:
-        return
+        return False
     try:
         scene_key = int(scene.as_pointer())
     except Exception:  # noqa: BLE001
         scene_key = id(scene)
     signature = _stack_signature(scene)
+    if _stack_has_placeholder_rows(stack):
+        _draw_stack_signatures[scene_key] = signature
+        schedule_layer_stack_sync()
+        return True
     previous = _draw_stack_signatures.get(scene_key)
     if previous is None:
         _draw_stack_signatures[scene_key] = signature
         if not signature:
             schedule_layer_stack_sync()
-        return
+            return True
+        return False
     if previous != signature:
         _draw_stack_signatures[scene_key] = signature
         apply_order = set(previous) == set(signature)
@@ -1534,8 +1559,11 @@ def schedule_layer_stack_draw_maintenance(context) -> None:
             if not moved_uid:
                 moved_uid = _infer_moved_uid(previous, signature)
         schedule_layer_stack_sync(apply_order=apply_order, moved_uid=moved_uid)
+        return True
     elif not signature:
         schedule_layer_stack_sync()
+        return True
+    return False
 
 
 def _active_key_from_scene(context) -> tuple[str, str] | None:

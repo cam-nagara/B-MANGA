@@ -214,6 +214,33 @@ def main() -> None:
                     if not label.strip():
                         raise AssertionError("コマプレビュー前後に空白行があります")
 
+            blank = stack.add()
+            blank.kind = "gp"
+            blank.key = ""
+            blank.label = ""
+            blank.name = ""
+            stack.move(len(stack) - 1, max(0, preview_index))
+            if not layer_stack_utils._stack_has_placeholder_rows(stack):
+                raise AssertionError("保存済みの空白行を検出できません")
+            if not layer_stack_utils.schedule_layer_stack_draw_maintenance(context):
+                raise AssertionError("レイヤー一覧の空白行修復が予約されません")
+            stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+            empty_rows = [
+                (i, getattr(item, "kind", ""), getattr(item, "label", ""))
+                for i, item in enumerate(stack)
+                if not str(getattr(item, "kind", "") or "").strip()
+                or not str(getattr(item, "label", "") or getattr(item, "name", "") or "").strip()
+            ]
+            if empty_rows:
+                raise AssertionError(f"同期後もレイヤーリストに空白行が残っています: {empty_rows}")
+            uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
+            preview_index = uids.index(preview_uid)
+            for neighbor in (preview_index - 1, preview_index + 1):
+                if 0 <= neighbor < len(stack):
+                    label = str(getattr(stack[neighbor], "label", "") or getattr(stack[neighbor], "name", "") or "")
+                    if not label.strip():
+                        raise AssertionError("同期後もコマプレビュー前後に空白行があります")
+
             world_bounds = (
                 float(created.x_mm) + page_ox,
                 float(created.y_mm) + page_oy,
