@@ -3,6 +3,33 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-22 — v0.6.056 効果線の中心点・始点・終点形状のずれを修正
+
+### 症状
+- v0.6.055 でも、効果線の終点形状がハンドル位置とずれ、始点形状・終点形状ガイドと実際の効果線が一致しない場合があった。
+- 「始点をコマ枠に設定」をオンにした効果線で、線端がコマ枠や終点形状に安定して揃わない場合があった。
+- コマ内の効果線が、コマ範囲からわずかにはみ出す回帰が残っていた。
+
+### 原因
+- 効果線の生成側が、保存された中心点ではなく作成範囲の中心を使って放射方向を決めていた。
+- 始点形状と終点形状の実際の線端を決める参照が Geometry Nodes 側に渡っておらず、ハンドルやガイドの見た目と生成結果が別計算になっていた。
+- 効果線の生成結果に後段で掛けるコマ範囲が、薄い線メッシュに対して不安定に評価されるケースがあった。
+
+### 修正
+- 効果線の保存済み中心点を Geometry Nodes 入力へ渡し、放射方向の基準を画面上の中心点と一致させた。
+- 始点形状と終点形状の参照を Geometry Nodes に渡し、線端を実際の形状ガイドに合わせて決めるようにした。
+- 「始点をコマ枠に設定」では、効果線の線幅分だけコマ枠の外側へ届くようにした。
+- コマ内の効果線表示は、Geometry Nodes の後段でコマ範囲が確実に効くようにした。
+- 回帰テストを更新し、中心点、終点形状、始点/終点参照、コマ内のはみ出しを検出できるようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_geometry_nodes_functional_settings_check.py`: 中心点、終点形状の縦横比、距離指定、始点をコマ枠に設定、下地塗りを確認。PASS。
+- `test/blender_geometry_nodes_bridge_check.py`: 効果線の全設定入力、中心点、始点/終点参照、表示実体の重複なしを確認。PASS。
+- `test/blender_effect_line_mask_visibility_check.py`: コマ内の効果線がコマ範囲からはみ出さないことを確認。PASS。
+- `test/blender_geometry_nodes_migration_coverage_check.py`: 効果線・フキダシの入力欠落なし、共通形状グループ利用を確認。PASS。
+- `test/blender_creation_tool_drag_behavior_check.py` / `test/blender_object_tool_selection_check.py` / `test/blender_effect_line_frame_spacing_check.py` / `test/blender_effect_line_end_fill_check.py` / `test/blender_coma_content_z_order_check.py` / `test/blender_effect_line_shape_overlay_visual_check.py`: 作成、選択、間隔、下地塗り、重なり順、形状ガイドの回帰確認。PASS。
+- `python -m py_compile` / `git diff --check`: 構文と差分検査。PASS。
+
 ## 2026-05-22 — v0.6.055 フキダシ・効果線の共通形状ノードとドラッグ作成を整理
 
 ### 症状

@@ -268,7 +268,15 @@ def main() -> None:
         params.spacing_distance_mm = 3.0
         params.start_shape = "ellipse"
         params.end_shape = "ellipse"
-        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 24.0, 96.0), seed=8, params_override=params)
+        effect_line_op._write_effect_strokes(
+            context,
+            effect_obj,
+            effect_layer,
+            (20.0, 40.0, 24.0, 96.0),
+            seed=8,
+            params_override=params,
+            center_xy_mm=(32.0, 88.0),
+        )
         tall_focus = _mesh_stats(display)
         tall_w, tall_h = _bounds_size(tall_focus)
         if not (tall_h > tall_w * 2.0):
@@ -303,7 +311,13 @@ def main() -> None:
         params.brush_jitter_amount = 1.0
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         frame_jitter = _mesh_stats(display)
-        if frame_jitter["bounds"][2] <= frame_start["bounds"][2] + 0.001:
+        frame_expanded = (
+            frame_jitter["bounds"][2] > frame_start["bounds"][2] + 0.0005
+            or frame_jitter["bounds"][3] > frame_start["bounds"][3] + 0.0005
+            or frame_jitter["bounds"][0] < frame_start["bounds"][0] - 0.0005
+            or frame_jitter["bounds"][1] < frame_start["bounds"][1] - 0.0005
+        )
+        if not frame_expanded:
             raise AssertionError(
                 f"効果線 始点外側量が線幅乱れ後の実線幅に追従していません: base={frame_start['bounds']} jitter={frame_jitter['bounds']}"
             )

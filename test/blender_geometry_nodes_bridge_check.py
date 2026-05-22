@@ -102,20 +102,20 @@ def _assert_generated_group(group, *, kind: str) -> None:
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
     if kind == "effect_line":
         object_info_nodes = [node for node in group.nodes if node.bl_idname == "GeometryNodeObjectInfo"]
-        assert len(object_info_nodes) == 1, f"{kind} のコマ枠参照ノード数が不正です: {len(object_info_nodes)}"
+        assert len(object_info_nodes) == 2, f"{kind} の始点/終点参照ノード数が不正です: {len(object_info_nodes)}"
         assert "GeometryNodeRaycast" in nodes, f"{kind} がコマ枠までの距離をノード内で測っていません"
         labels = {str(getattr(node, "label", "") or getattr(node, "name", "")) for node in group.nodes}
         required_labels = {"距離指定密度角", "密度補正角度", "始点形状半径", "終点形状半径"}
         missing_labels = sorted(required_labels - labels)
         assert not missing_labels, f"{kind} の効果線計算ノードが不足しています: {missing_labels}"
         assert any("縦横比反映" in label for label in labels), f"{kind} が始点/終点形状の縦横比を反映していません"
-        frame_links = [
-            link
+        linked_object_info_nodes = {
+            link.to_node.name
             for link in group.links
             if link.from_node.bl_idname == "NodeGroupInput"
-            and link.to_node.name == object_info_nodes[0].name
-        ]
-        assert frame_links, f"{kind} のコマ枠参照が入力ノードから接続されていません"
+            and link.to_node.bl_idname == "GeometryNodeObjectInfo"
+        }
+        assert len(linked_object_info_nodes) == 2, f"{kind} の始点/終点参照が入力ノードから接続されていません"
     else:
         assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
     direct_links = [
@@ -317,6 +317,8 @@ def main() -> None:
         assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
         _assert_close(_modifier_socket_value(effect_modifier, "位置 X"), 15.0, "効果線 位置 X")
         _assert_close(_modifier_socket_value(effect_modifier, "位置 Y"), 20.0, "効果線 位置 Y")
+        _assert_close(_modifier_socket_value(effect_modifier, "中心 X"), 47.0, "効果線 中心 X")
+        _assert_close(_modifier_socket_value(effect_modifier, "中心 Y"), 44.0, "効果線 中心 Y")
         _assert_close(_modifier_socket_value(effect_modifier, "幅"), 64.0, "効果線 幅")
         _assert_close(_modifier_socket_value(effect_modifier, "高さ"), 48.0, "効果線 高さ")
         effect_material = effect_display.data.materials[0]
@@ -340,9 +342,20 @@ def main() -> None:
             for item in effect_modifier.node_group.interface.items_tree
             if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
         ), "密度補正が独立した設定欄として残っています"
+        start_source = effect_line_object.find_effect_shape_source_object(effect_obj, "start")
+        end_source = effect_line_object.find_effect_shape_source_object(effect_obj, "end")
+        assert start_source is not None, "効果線の始点形状参照実体がありません"
+        assert end_source is not None, "効果線の終点形状参照実体がありません"
         _assert_modifier_values(
             effect_modifier,
-            gn_bridge.effect_values(params, (15.0, 20.0, 64.0, 48.0), 123),
+            gn_bridge.effect_values(
+                params,
+                (15.0, 20.0, 64.0, 48.0),
+                123,
+                start_frame_object=start_source,
+                end_shape_object=end_source,
+                center_xy_mm=(47.0, 44.0),
+            ),
             label="効果線",
         )
         assert _evaluated_polygon_count(effect_display) > 0, "効果線のGeometry Nodes表示結果が空です"
@@ -376,6 +389,7 @@ def main() -> None:
             for obj in bpy.data.objects
             if str(obj.get(effect_line_object.PROP_EFFECT_CONTROLLER_ID, "") or "")
             == str(effect_obj.get("bname_id", "") or "")
+            and str(obj.get("bname_kind", "") or "") == effect_line_object.EFFECT_DISPLAY_KIND
         )
         assert display_count == 1, f"効果線の表示実体が重複しています: {display_count}"
 

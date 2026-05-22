@@ -1161,3 +1161,25 @@ def generate_shape_guide_strokes(
             )
         )
     return guides
+
+
+def generate_shape_source_outlines(
+    params,
+    center_xy_mm=(110.0, 160.0),
+    radius_xy_mm=(40.0, 50.0),
+    start_outline_mm: Sequence[tuple[float, float]] | None = None,
+    seed: int = 0,
+    end_center_xy_mm: tuple[float, float] | None = None,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """Geometry Nodes が線端を決めるための始点/終点アウトラインを返す。"""
+    rx, ry = radius_xy_mm
+    shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
+    cx, cy = shape_center_xy_mm
+    end_rect = _scaled_rect(cx, cy, rx, ry, 1.0)
+    end_outline = _shape_outline(params, "end", end_rect, shape_center_xy_mm, seed=seed + 23)
+    if start_outline_mm is None:
+        start_rect = _scaled_rect(cx, cy, rx, ry, 2.0)
+        start_outline = _shape_outline(params, "start", start_rect, shape_center_xy_mm, seed=seed + 11)
+    else:
+        start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
+    return start_outline, end_outline

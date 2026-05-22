@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 21
+_GROUP_VERSION = 22
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -150,10 +150,13 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
 _EFFECT_POSITION_SOCKETS = (
     SocketSpec("位置 X", "NodeSocketFloat", 0.0),
     SocketSpec("位置 Y", "NodeSocketFloat", 0.0),
+    SocketSpec("中心 X", "NodeSocketFloat", 0.0),
+    SocketSpec("中心 Y", "NodeSocketFloat", 0.0),
     SocketSpec("幅", "NodeSocketFloat", 0.0),
     SocketSpec("高さ", "NodeSocketFloat", 0.0),
     SocketSpec("乱数", "NodeSocketInt", 0),
     SocketSpec("始点コマ枠オブジェクト", "NodeSocketObject", None),
+    SocketSpec("終点形状オブジェクト", "NodeSocketObject", None),
 )
 
 _MATERIAL_SOCKETS = (
@@ -1786,6 +1789,60 @@ def _frame_raycast_distance(
     )
 
 
+def _object_raycast_distance(
+    group,
+    object_socket,
+    center_x_socket,
+    center_y_socket,
+    angle_socket,
+    fallback_distance_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    object_info = _node(group, "GeometryNodeObjectInfo", label=f"{label} 参照", location=location)
+    try:
+        object_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, object_socket, object_info.inputs["Object"])
+    if "As Instance" in object_info.inputs:
+        _set_default(object_info.inputs["As Instance"], False)
+
+    source = _combine_xyz(
+        group,
+        center_x_socket,
+        center_y_socket,
+        z=0.0,
+        label=f"{label} 中心",
+        location=(location[0] + 220, location[1] + 180),
+    )
+    ray_x = _math_binary(group, "COSINE", angle_socket, label=f"{label} X方向", location=(location[0] + 220, location[1] - 20))
+    ray_y = _math_binary(group, "SINE", angle_socket, label=f"{label} Y方向", location=(location[0] + 220, location[1] - 180))
+    direction = _combine_xyz(
+        group,
+        ray_x,
+        ray_y,
+        z=0.0,
+        label=f"{label} 方向",
+        location=(location[0] + 440, location[1] - 100),
+    )
+
+    raycast = _node(group, "GeometryNodeRaycast", label=label, location=(location[0] + 680, location[1]))
+    _link(group, object_info.outputs["Geometry"], raycast.inputs["Target Geometry"])
+    _link(group, source, raycast.inputs["Source Position"])
+    _link(group, direction, raycast.inputs["Ray Direction"])
+    _set_default(raycast.inputs["Ray Length"], 100.0)
+    return _switch_float(
+        group,
+        raycast.outputs["Is Hit"],
+        fallback_distance_socket,
+        raycast.outputs["Hit Distance"],
+        label=f"{label} 結果",
+        location=(location[0] + 900, location[1]),
+    )
+
+
 def _instanced_radial_line_geometry(
     group,
     input_node,
@@ -2023,8 +2080,8 @@ def _instanced_radial_line_geometry(
     axis_angle = _node(group, "FunctionNodeAxisAngleToRotation", label="線を回転", location=(280, -720))
     _set_default(axis_angle.inputs["Axis"], (0.0, 0.0, 1.0))
     _link(group, angle_with_rotation, axis_angle.inputs["Angle"])
-    center_x = _math_add(group, origin_x_m, width_half_m, label="中心 X", location=(760, -260))
-    center_y = _math_add(group, origin_y_m, height_half_m, label="中心 Y", location=(760, -420))
+    center_x = _math_binary(group, "MULTIPLY", input_node.outputs["中心 X"], b_value=0.001, label="中心 X", location=(760, -260))
+    center_y = _math_binary(group, "MULTIPLY", input_node.outputs["中心 Y"], b_value=0.001, label="中心 Y", location=(760, -420))
 
     radius_sum = _math_add(
         group,
@@ -2077,6 +2134,7 @@ def _instanced_radial_line_geometry(
         location=(-320, -2260),
     )
     radius = _math_binary(group, "MULTIPLY", start_base_radius, start_shape_factor, label="始点形状半径", location=(3280, -2260))
+    start_radius_base = radius
     end_shape_factor = _effect_shape_factor(
         group,
         input_node,
@@ -2089,6 +2147,7 @@ def _instanced_radial_line_geometry(
         location=(-320, -3220),
     )
     inner_radius = _math_binary(group, "MULTIPLY", base_radius, end_shape_factor, label="終点形状半径", location=(3280, -3220))
+    inner_radius_base = inner_radius
     length_wave = _math_binary(
         group,
         "SINE",
@@ -2097,7 +2156,7 @@ def _instanced_radial_line_geometry(
         location=(280, -1560),
     )
     length_wave = _math_binary(group, "ABSOLUTE", length_wave, label="線長乱れ正", location=(480, -1560))
-    line_span = _math_binary(group, "SUBTRACT", radius, inner_radius, label="線長", location=(680, -1560))
+    line_span = _math_binary(group, "SUBTRACT", start_radius_base, inner_radius_base, label="線長", location=(680, -1560))
     start_trim = _math_binary(
         group,
         "MULTIPLY",
@@ -2107,7 +2166,7 @@ def _instanced_radial_line_geometry(
         location=(1080, -1560),
     )
     start_trim = _switch_float(group, input_node.outputs["始点乱れ"], zero_jitter, start_trim, label="始点乱れ切替", location=(1280, -1560))
-    radius = _math_binary(group, "SUBTRACT", radius, start_trim, label="始点乱れ半径", location=(1480, -1560))
+    radius = _math_binary(group, "SUBTRACT", start_radius_base, start_trim, label="始点乱れ半径", location=(1480, -1560))
     end_wave = _math_binary(
         group,
         "SINE",
@@ -2125,7 +2184,7 @@ def _instanced_radial_line_geometry(
         location=(1080, -1740),
     )
     end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
-    inner_radius = _math_add(group, inner_radius, end_trim, label="終点乱れ半径", location=(1480, -1740))
+    inner_radius = _math_add(group, inner_radius_base, end_trim, label="終点乱れ半径", location=(1480, -1740))
     base_line_half_m = line_half_m
     width_wave = _math_binary(
         group,
@@ -2153,25 +2212,43 @@ def _instanced_radial_line_geometry(
         label="線幅倍率",
         location=(1480, -2040),
     )
-    frame_fallback_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
-    frame_hit_radius = _frame_raycast_distance(
+    start_hit_radius = _object_raycast_distance(
         group,
-        input_node,
+        input_node.outputs["始点コマ枠オブジェクト"],
         center_x,
         center_y,
         angle_with_rotation,
-        frame_fallback_radius,
-        label="コマ枠始点",
+        start_radius_base,
+        label="始点形状",
         location=(80, -2440),
     )
-    frame_radius = _math_add(
+    start_extension = _switch_float(
         group,
-        frame_hit_radius,
+        input_node.outputs["始点をコマ枠に設定"],
+        _constant_float(group, 0.0, label="始点外側なし", location=(1080, -2600)),
         _math_binary(group, "MULTIPLY", actual_line_half_m, b_value=2.0, label="始点外側実線幅", location=(1080, -2440)),
-        label="コマ枠始点外側",
+        label="始点外側切替",
+        location=(1280, -2600),
+    )
+    radius = _math_add(
+        group,
+        start_hit_radius,
+        start_extension,
+        label="始点形状外側",
         location=(1280, -2440),
     )
-    radius = _switch_float(group, input_node.outputs["始点をコマ枠に設定"], radius, frame_radius, label="コマ枠始点切替", location=(280, -1880))
+    radius = _math_binary(group, "SUBTRACT", radius, start_trim, label="始点乱れ反映", location=(1480, -2440))
+    end_hit_radius = _object_raycast_distance(
+        group,
+        input_node.outputs["終点形状オブジェクト"],
+        center_x,
+        center_y,
+        angle_with_rotation,
+        inner_radius_base,
+        label="終点形状",
+        location=(80, -3080),
+    )
+    inner_radius = _math_add(group, end_hit_radius, end_trim, label="終点乱れ反映", location=(1280, -3080))
     index_mod = _math_binary(group, "MODULO", index.outputs["Index"], b_value=2.0, label="偶奇", location=(-120, -1240))
     is_even = _compare_float_socket(group, index_mod, 0.0, label="偶数線", location=(80, -1400))
     uni_short = _math_binary(group, "MULTIPLY", radius, b_value=0.84, label="ウニ短線", location=(80, -1240))
@@ -2424,6 +2501,8 @@ def effect_values(
     seed: int,
     *,
     start_frame_object: bpy.types.Object | None = None,
+    end_shape_object: bpy.types.Object | None = None,
+    center_xy_mm: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     if bounds is None:
         x = y = width = height = 0.0
@@ -2434,9 +2513,12 @@ def effect_values(
         "乱数": int(seed),
         "位置 X": float(x or 0.0),
         "位置 Y": float(y or 0.0),
+        "中心 X": float(center_xy_mm[0] if center_xy_mm is not None else (float(x or 0.0) + float(width or 0.0) * 0.5)),
+        "中心 Y": float(center_xy_mm[1] if center_xy_mm is not None else (float(y or 0.0) + float(height or 0.0) * 0.5)),
         "幅": float(width or 0.0),
         "高さ": float(height or 0.0),
         "始点コマ枠オブジェクト": start_frame_object,
+        "終点形状オブジェクト": end_shape_object,
     }
     for field, spec in _EFFECT_FIELD_SPECS.items():
         raw = getattr(params, field, spec.default) if params is not None else spec.default

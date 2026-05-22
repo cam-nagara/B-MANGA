@@ -17,7 +17,7 @@ from ..ui import overlay_creation_range
 from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
-from . import coma_modal_state, coma_picker, effect_line_link_op, selection_context_menu, view_event_region
+from . import coma_modal_state, coma_picker, effect_line_gen, effect_line_link_op, selection_context_menu, view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -642,20 +642,49 @@ def _write_effect_strokes(
         from ..utils import effect_line_object as _elo
 
         start_frame_outline, _start_frame_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
-        start_frame_source = None
+        start_source = None
         if start_frame_outline:
-            start_frame_source = _elo.ensure_effect_frame_source_object(
+            start_source = _elo.ensure_effect_frame_source_object(
                 scene=context.scene,
                 controller_obj=obj,
                 outline_mm=start_frame_outline,
             )
         else:
             _elo.delete_effect_frame_source_object(obj)
+        try:
+            start_outline, end_outline = effect_line_gen.generate_shape_source_outlines(
+                params,
+                center_xy_mm=focus_center_xy,
+                radius_xy_mm=(w * 0.5, h * 0.5),
+                start_outline_mm=start_frame_outline,
+                seed=seed_value,
+                end_center_xy_mm=shape_center_xy,
+            )
+            if start_source is None and start_outline:
+                start_source = _elo.ensure_effect_shape_source_object(
+                    scene=context.scene,
+                    controller_obj=obj,
+                    role="start",
+                    outline_mm=start_outline,
+                )
+            else:
+                _elo.delete_effect_shape_source_object(obj, "start")
+            end_source = _elo.ensure_effect_shape_source_object(
+                scene=context.scene,
+                controller_obj=obj,
+                role="end",
+                outline_mm=end_outline,
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect_line: shape source sync failed")
+            end_source = None
         values = _gn.effect_values(
             params,
             (float(x), float(y), w, h),
             seed_value,
-            start_frame_object=start_frame_source,
+            start_frame_object=start_source,
+            end_shape_object=end_source,
+            center_xy_mm=focus_center_xy,
         )
         display = _elo.ensure_effect_display_object(
             scene=context.scene,

@@ -24,9 +24,13 @@ EFFECT_DISPLAY_KIND = "effect_display"
 EFFECT_FRAME_SOURCE_DATA_PREFIX = "BName_EffectFrameSource_"
 EFFECT_FRAME_SOURCE_ID_PREFIX = "effect_frame_source_"
 EFFECT_FRAME_SOURCE_KIND = "effect_frame_source"
+EFFECT_SHAPE_SOURCE_DATA_PREFIX = "BName_EffectShapeSource_"
+EFFECT_SHAPE_SOURCE_ID_PREFIX = "effect_shape_source_"
+EFFECT_SHAPE_SOURCE_KIND = "effect_shape_source"
 PROP_EFFECT_TARGET = "bname_effect_target"
 PROP_EFFECT_CONTROLLER_ID = "bname_effect_controller_id"
 PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
+PROP_EFFECT_SOURCE_ROLE = "bname_effect_source_role"
 
 
 def _resolve_unique_data_name(base: str) -> str:
@@ -74,6 +78,16 @@ def _frame_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
     return f"{EFFECT_FRAME_SOURCE_ID_PREFIX}{base}" if base else ""
 
 
+def _shape_source_bname_id(controller_obj: bpy.types.Object | None, role: str) -> str:
+    if controller_obj is None:
+        return ""
+    base = str(controller_obj.get(on.PROP_ID, "") or "")
+    if not base:
+        base = str(getattr(controller_obj, "name", "") or "")
+    role = str(role or "").strip()
+    return f"{EFFECT_SHAPE_SOURCE_ID_PREFIX}{role}_{base}" if role and base else ""
+
+
 def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
     """効果線の実表示用 Mesh Object を返す。"""
     display_id = _display_bname_id(controller_obj)
@@ -105,8 +119,30 @@ def find_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> 
     return None
 
 
-def delete_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> None:
-    obj = find_effect_frame_source_object(controller_obj)
+def find_effect_shape_source_object(
+    controller_obj: bpy.types.Object | None,
+    role: str,
+) -> Optional[bpy.types.Object]:
+    source_id = _shape_source_bname_id(controller_obj, role)
+    if source_id:
+        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_SHAPE_SOURCE_KIND)
+        if obj is not None:
+            return obj
+    controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
+    if not controller_id:
+        return None
+    role = str(role or "")
+    for obj in bpy.data.objects:
+        if (
+            str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id
+            and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_SHAPE_SOURCE_KIND
+            and str(obj.get(PROP_EFFECT_SOURCE_ROLE, "") or "") == role
+        ):
+            return obj
+    return None
+
+
+def _delete_source_object(obj: bpy.types.Object | None) -> None:
     if obj is None:
         return
     data = getattr(obj, "data", None)
@@ -116,13 +152,26 @@ def delete_effect_frame_source_object(controller_obj: bpy.types.Object | None) -
         return
     try:
         if data is not None and data.users == 0:
-            bpy.data.meshes.remove(data)
+            if getattr(data, "bl_rna", None) is not None and data.bl_rna.identifier == "Mesh":
+                bpy.data.meshes.remove(data)
+            elif getattr(data, "bl_rna", None) is not None and data.bl_rna.identifier == "Curve":
+                bpy.data.curves.remove(data)
     except Exception:  # noqa: BLE001
         pass
 
 
+def delete_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> None:
+    _delete_source_object(find_effect_frame_source_object(controller_obj))
+
+
+def delete_effect_shape_source_object(controller_obj: bpy.types.Object | None, role: str) -> None:
+    _delete_source_object(find_effect_shape_source_object(controller_obj, role))
+
+
 def delete_effect_display_object(controller_obj: bpy.types.Object | None) -> None:
     delete_effect_frame_source_object(controller_obj)
+    delete_effect_shape_source_object(controller_obj, "start")
+    delete_effect_shape_source_object(controller_obj, "end")
     obj = find_effect_display_object(controller_obj)
     if obj is None:
         return
@@ -241,6 +290,65 @@ def ensure_effect_frame_source_object(
     return obj
 
 
+def ensure_effect_shape_source_object(
+    *,
+    scene: bpy.types.Scene,
+    controller_obj: bpy.types.Object,
+    role: str,
+    outline_mm,
+) -> Optional[bpy.types.Object]:
+    if scene is None or controller_obj is None or not outline_mm:
+        delete_effect_shape_source_object(controller_obj, role)
+        return None
+    source_id = _shape_source_bname_id(controller_obj, role)
+    if not source_id:
+        return None
+    obj = find_effect_shape_source_object(controller_obj, role)
+    mesh = getattr(obj, "data", None) if obj is not None and getattr(obj, "type", "") == "MESH" else None
+    if mesh is None:
+        mesh = bpy.data.meshes.new(f"{EFFECT_SHAPE_SOURCE_DATA_PREFIX}{source_id}")
+    _rebuild_frame_source_mesh(mesh, outline_mm)
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        suffix = "始点形状" if str(role) == "start" else "終点形状"
+        obj = bpy.data.objects.new(f"{controller_obj.name}_{suffix}", mesh)
+    elif obj.data is not mesh:
+        old_data = obj.data
+        obj.data = mesh
+        try:
+            if old_data is not None and old_data.users == 0:
+                bpy.data.meshes.remove(old_data)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        title = str(controller_obj.get(on.PROP_TITLE, "") or controller_obj.name)
+        suffix = "始点形状" if str(role) == "start" else "終点形状"
+        on.stamp_identity(
+            obj,
+            kind=EFFECT_SHAPE_SOURCE_KIND,
+            bname_id=source_id,
+            title=f"{title}_{suffix}",
+            z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
+            parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
+            folder_id=str(controller_obj.get(on.PROP_FOLDER_ID, "") or ""),
+            managed=False,
+        )
+        obj[PROP_EFFECT_CONTROLLER_ID] = str(controller_obj.get(on.PROP_ID, "") or "")
+        obj[PROP_EFFECT_SOURCE_ROLE] = str(role or "")
+    except Exception:  # noqa: BLE001
+        pass
+    _link_display_to_controller_collections(obj, controller_obj)
+    try:
+        obj.location = tuple(controller_obj.location)
+        obj.rotation_euler = tuple(controller_obj.rotation_euler)
+        obj.scale = tuple(controller_obj.scale)
+    except Exception:  # noqa: BLE001
+        pass
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.hide_select = True
+    return obj
+
+
 def _ensure_display_material(
     display: bpy.types.Object,
     color=(0.0, 0.0, 0.0, 1.0),
@@ -344,6 +452,7 @@ def _sync_display_mask(display: bpy.types.Object, parent_key: str) -> None:
     parent_key = str(parent_key or "")
     if _display_mask_is_current(display, parent_key):
         _move_display_mask_after_geometry_nodes(display)
+        _prefer_exact_boolean_for_effect_mask(display)
         return
     try:
         from . import mask_apply
@@ -351,8 +460,25 @@ def _sync_display_mask(display: bpy.types.Object, parent_key: str) -> None:
         mask_apply.apply_mask_to_object_for_parent(display, parent_key)
         display[PROP_EFFECT_DISPLAY_MASK_PARENT] = parent_key
         _move_display_mask_after_geometry_nodes(display)
+        _prefer_exact_boolean_for_effect_mask(display)
     except Exception:  # noqa: BLE001
         _logger.exception("effect display mask sync failed")
+
+
+def _prefer_exact_boolean_for_effect_mask(display: bpy.types.Object) -> None:
+    try:
+        from . import mask_apply
+
+        for name in (mask_apply.MOD_NAME_COMA_MASK, mask_apply.MOD_NAME_PAGE_MASK):
+            mod = display.modifiers.get(name)
+            if mod is None or getattr(mod, "type", "") != "BOOLEAN":
+                continue
+            try:
+                mod.solver = "EXACT"
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def ensure_effect_display_object(
