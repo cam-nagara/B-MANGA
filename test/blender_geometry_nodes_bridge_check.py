@@ -102,10 +102,10 @@ def _assert_generated_group(group, *, kind: str) -> None:
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
     if kind == "effect_line":
         object_info_nodes = [node for node in group.nodes if node.bl_idname == "GeometryNodeObjectInfo"]
-        assert len(object_info_nodes) == 2, f"{kind} の始点/終点参照ノード数が不正です: {len(object_info_nodes)}"
+        assert len(object_info_nodes) == 3, f"{kind} の始点/終点/距離密度参照ノード数が不正です: {len(object_info_nodes)}"
         assert "GeometryNodeRaycast" in nodes, f"{kind} がコマ枠までの距離をノード内で測っていません"
         labels = {str(getattr(node, "label", "") or getattr(node, "name", "")) for node in group.nodes}
-        required_labels = {"距離指定密度角", "密度補正角度", "始点形状半径", "終点形状半径"}
+        required_labels = {"距離指定密度角", "密度補正角度", "距離密度点角", "始点形状半径", "終点形状半径"}
         missing_labels = sorted(required_labels - labels)
         assert not missing_labels, f"{kind} の効果線計算ノードが不足しています: {missing_labels}"
         assert any("縦横比反映" in label for label in labels), f"{kind} が始点/終点形状の縦横比を反映していません"
@@ -115,7 +115,7 @@ def _assert_generated_group(group, *, kind: str) -> None:
             if link.from_node.bl_idname == "NodeGroupInput"
             and link.to_node.bl_idname == "GeometryNodeObjectInfo"
         }
-        assert len(linked_object_info_nodes) == 2, f"{kind} の始点/終点参照が入力ノードから接続されていません"
+        assert len(linked_object_info_nodes) == 3, f"{kind} の始点/終点/距離密度参照が入力ノードから接続されていません"
     else:
         assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
     direct_links = [
@@ -209,6 +209,8 @@ def main() -> None:
         page_key = page_stack_key(page)
 
         params = context.scene.bname_effect_line_params
+        _assert_close(params.in_start_percent, 0.0, "効果線 入り始点 初期値")
+        _assert_close(params.out_start_percent, 100.0, "効果線 抜き始点 初期値")
         params.effect_type = "focus"
         params.rotation_deg = 17.5
         params.start_shape = "cloud"

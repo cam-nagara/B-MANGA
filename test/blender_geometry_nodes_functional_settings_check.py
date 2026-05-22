@@ -249,6 +249,7 @@ def main() -> None:
             raise AssertionError("効果線 密度補正が独立した設定欄として残っています")
 
         params.spacing_mode = "distance"
+        params.start_to_coma_frame = True
         params.spacing_distance_mm = 6.0
         params.start_frame_density_basis = "frame"
         params.start_frame_density_rounding_percent = 0.0
@@ -264,6 +265,7 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         distance_density_basis = _mesh_stats(display)
         _assert_changed(distance_dense, distance_density_basis, "効果線 距離指定の密度基準")
+        params.start_to_coma_frame = False
         params.spacing_mode = "distance"
         params.spacing_distance_mm = 3.0
         params.start_shape = "ellipse"

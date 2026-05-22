@@ -81,6 +81,8 @@ _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
 _DEFAULT_SPEED_LINE_COUNT = 300
+_DEFAULT_IN_START_PERCENT = 0.0
+_DEFAULT_OUT_START_PERCENT = 100.0
 
 EFFECT_PARAM_FIELDS = (
     "effect_type",
@@ -180,14 +182,18 @@ def _on_params_changed(self, context) -> None:
 
 
 def _on_in_start_changed(self, context) -> None:
-    if float(getattr(self, "in_start_percent", 50.0)) + float(getattr(self, "out_start_percent", 50.0)) > 100.0:
-        self.out_start_percent = max(0.0, 100.0 - float(getattr(self, "in_start_percent", 50.0)))
+    in_start = float(getattr(self, "in_start_percent", _DEFAULT_IN_START_PERCENT))
+    out_start = float(getattr(self, "out_start_percent", _DEFAULT_OUT_START_PERCENT))
+    if in_start + out_start > 100.0:
+        self.out_start_percent = max(0.0, 100.0 - in_start)
     _on_params_changed(self, context)
 
 
 def _on_out_start_changed(self, context) -> None:
-    if float(getattr(self, "in_start_percent", 50.0)) + float(getattr(self, "out_start_percent", 50.0)) > 100.0:
-        self.in_start_percent = max(0.0, 100.0 - float(getattr(self, "out_start_percent", 50.0)))
+    in_start = float(getattr(self, "in_start_percent", _DEFAULT_IN_START_PERCENT))
+    out_start = float(getattr(self, "out_start_percent", _DEFAULT_OUT_START_PERCENT))
+    if in_start + out_start > 100.0:
+        self.in_start_percent = max(0.0, 100.0 - out_start)
     _on_params_changed(self, context)
 
 
@@ -205,21 +211,28 @@ def _density_compensation_enabled(value) -> bool:
 
 
 def _normalize_start_percent_pair(data: dict) -> None:
-    if "in_start_percent" not in data and "out_start_percent" not in data:
+    has_in = "in_start_percent" in data
+    has_out = "out_start_percent" in data
+    if not has_in and not has_out:
         return
     try:
-        in_value = max(0.0, min(100.0, float(data.get("in_start_percent", 50.0))))
+        in_value = max(0.0, min(100.0, float(data.get("in_start_percent", _DEFAULT_IN_START_PERCENT))))
     except Exception:  # noqa: BLE001
-        in_value = 50.0
+        in_value = _DEFAULT_IN_START_PERCENT
     try:
-        out_value = max(0.0, min(100.0, float(data.get("out_start_percent", 50.0))))
+        out_value = max(0.0, min(100.0, float(data.get("out_start_percent", _DEFAULT_OUT_START_PERCENT))))
     except Exception:  # noqa: BLE001
-        out_value = 50.0
+        out_value = _DEFAULT_OUT_START_PERCENT
     total = in_value + out_value
     if total > 100.0:
-        scale = 100.0 / max(total, 1.0e-9)
-        in_value *= scale
-        out_value *= scale
+        if has_in and not has_out:
+            out_value = max(0.0, 100.0 - in_value)
+        elif has_out and not has_in:
+            in_value = max(0.0, 100.0 - out_value)
+        else:
+            scale = 100.0 / max(total, 1.0e-9)
+            in_value *= scale
+            out_value *= scale
     data["in_start_percent"] = in_value
     data["out_start_percent"] = out_value
 
@@ -364,8 +377,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
-    in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=50.0, min=0.0, max=100.0, update=_on_in_start_changed)  # type: ignore[valid-type]
-    out_start_percent: FloatProperty(name="抜き始点 (%)", description="線の終点側から、抜きが始まる長さを指定します", default=50.0, min=0.0, max=100.0, update=_on_out_start_changed)  # type: ignore[valid-type]
+    in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=_DEFAULT_IN_START_PERCENT, min=0.0, max=100.0, update=_on_in_start_changed)  # type: ignore[valid-type]
+    out_start_percent: FloatProperty(name="抜き始点 (%)", description="線の終点側から、抜きが始まる長さを指定します", default=_DEFAULT_OUT_START_PERCENT, min=0.0, max=100.0, update=_on_out_start_changed)  # type: ignore[valid-type]
     in_easing_curve: bpy.props.StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
     out_easing_curve: bpy.props.StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_params_changed)  # type: ignore[valid-type]
     inout_range_mode: EnumProperty(name="範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]

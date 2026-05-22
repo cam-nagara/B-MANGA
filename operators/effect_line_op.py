@@ -17,7 +17,15 @@ from ..ui import overlay_creation_range
 from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
-from . import coma_modal_state, coma_picker, effect_line_gen, effect_line_link_op, selection_context_menu, view_event_region
+from . import (
+    coma_modal_state,
+    coma_picker,
+    effect_line_density,
+    effect_line_gen,
+    effect_line_link_op,
+    selection_context_menu,
+    view_event_region,
+)
 
 _logger = log.get_logger(__name__)
 
@@ -651,6 +659,9 @@ def _write_effect_strokes(
             )
         else:
             _elo.delete_effect_frame_source_object(obj)
+        start_outline: list[tuple[float, float]] = []
+        end_outline: list[tuple[float, float]] = []
+        end_source = None
         try:
             start_outline, end_outline = effect_line_gen.generate_shape_source_outlines(
                 params,
@@ -678,12 +689,35 @@ def _write_effect_strokes(
         except Exception:  # noqa: BLE001
             _logger.exception("effect_line: shape source sync failed")
             end_source = None
+        density_source = None
+        try:
+            if str(getattr(params, "spacing_mode", "") or "") == "distance" and start_outline:
+                density_outline = start_outline
+                if start_frame_outline:
+                    density_outline = effect_line_density.frame_density_outline(params, start_frame_outline)
+                density_points = effect_line_gen.generate_focus_density_points(
+                    params,
+                    focus_center_xy,
+                    density_outline,
+                    seed=seed_value,
+                )
+                density_source = _elo.ensure_effect_density_source_object(
+                    scene=context.scene,
+                    controller_obj=obj,
+                    points_mm=density_points,
+                )
+            else:
+                _elo.delete_effect_density_source_object(obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect_line: density source sync failed")
+            _elo.delete_effect_density_source_object(obj)
         values = _gn.effect_values(
             params,
             (float(x), float(y), w, h),
             seed_value,
             start_frame_object=start_source,
             end_shape_object=end_source,
+            density_object=density_source,
             center_xy_mm=focus_center_xy,
         )
         display = _elo.ensure_effect_display_object(

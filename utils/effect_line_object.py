@@ -27,6 +27,9 @@ EFFECT_FRAME_SOURCE_KIND = "effect_frame_source"
 EFFECT_SHAPE_SOURCE_DATA_PREFIX = "BName_EffectShapeSource_"
 EFFECT_SHAPE_SOURCE_ID_PREFIX = "effect_shape_source_"
 EFFECT_SHAPE_SOURCE_KIND = "effect_shape_source"
+EFFECT_DENSITY_SOURCE_DATA_PREFIX = "BName_EffectDensitySource_"
+EFFECT_DENSITY_SOURCE_ID_PREFIX = "effect_density_source_"
+EFFECT_DENSITY_SOURCE_KIND = "effect_density_source"
 PROP_EFFECT_TARGET = "bname_effect_target"
 PROP_EFFECT_CONTROLLER_ID = "bname_effect_controller_id"
 PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
@@ -88,6 +91,15 @@ def _shape_source_bname_id(controller_obj: bpy.types.Object | None, role: str) -
     return f"{EFFECT_SHAPE_SOURCE_ID_PREFIX}{role}_{base}" if role and base else ""
 
 
+def _density_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
+    if controller_obj is None:
+        return ""
+    base = str(controller_obj.get(on.PROP_ID, "") or "")
+    if not base:
+        base = str(getattr(controller_obj, "name", "") or "")
+    return f"{EFFECT_DENSITY_SOURCE_ID_PREFIX}{base}" if base else ""
+
+
 def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
     """効果線の実表示用 Mesh Object を返す。"""
     display_id = _display_bname_id(controller_obj)
@@ -142,6 +154,21 @@ def find_effect_shape_source_object(
     return None
 
 
+def find_effect_density_source_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
+    source_id = _density_source_bname_id(controller_obj)
+    if source_id:
+        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_DENSITY_SOURCE_KIND)
+        if obj is not None:
+            return obj
+    controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
+    if not controller_id:
+        return None
+    for obj in bpy.data.objects:
+        if str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_DENSITY_SOURCE_KIND:
+            return obj
+    return None
+
+
 def _delete_source_object(obj: bpy.types.Object | None) -> None:
     if obj is None:
         return
@@ -168,10 +195,15 @@ def delete_effect_shape_source_object(controller_obj: bpy.types.Object | None, r
     _delete_source_object(find_effect_shape_source_object(controller_obj, role))
 
 
+def delete_effect_density_source_object(controller_obj: bpy.types.Object | None) -> None:
+    _delete_source_object(find_effect_density_source_object(controller_obj))
+
+
 def delete_effect_display_object(controller_obj: bpy.types.Object | None) -> None:
     delete_effect_frame_source_object(controller_obj)
     delete_effect_shape_source_object(controller_obj, "start")
     delete_effect_shape_source_object(controller_obj, "end")
+    delete_effect_density_source_object(controller_obj)
     obj = find_effect_display_object(controller_obj)
     if obj is None:
         return
@@ -232,6 +264,20 @@ def _rebuild_frame_source_mesh(mesh: bpy.types.Mesh, outline_mm) -> None:
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+
+def _rebuild_density_source_mesh(mesh: bpy.types.Mesh, points_mm) -> None:
+    verts: list[tuple[float, float, float]] = []
+    for raw in points_mm or ():
+        try:
+            x, y = raw
+            verts.append((mm_to_m(float(x)), mm_to_m(float(y)), 0.0))
+        except Exception:  # noqa: BLE001
+            continue
+    mesh.clear_geometry()
+    if verts:
+        mesh.from_pydata(verts, [], [])
     mesh.update()
 
 
@@ -334,6 +380,61 @@ def ensure_effect_shape_source_object(
         )
         obj[PROP_EFFECT_CONTROLLER_ID] = str(controller_obj.get(on.PROP_ID, "") or "")
         obj[PROP_EFFECT_SOURCE_ROLE] = str(role or "")
+    except Exception:  # noqa: BLE001
+        pass
+    _link_display_to_controller_collections(obj, controller_obj)
+    try:
+        obj.location = tuple(controller_obj.location)
+        obj.rotation_euler = tuple(controller_obj.rotation_euler)
+        obj.scale = tuple(controller_obj.scale)
+    except Exception:  # noqa: BLE001
+        pass
+    obj.hide_viewport = True
+    obj.hide_render = True
+    obj.hide_select = True
+    return obj
+
+
+def ensure_effect_density_source_object(
+    *,
+    scene: bpy.types.Scene,
+    controller_obj: bpy.types.Object,
+    points_mm,
+) -> Optional[bpy.types.Object]:
+    if scene is None or controller_obj is None or not points_mm:
+        delete_effect_density_source_object(controller_obj)
+        return None
+    source_id = _density_source_bname_id(controller_obj)
+    if not source_id:
+        return None
+    obj = find_effect_density_source_object(controller_obj)
+    mesh = getattr(obj, "data", None) if obj is not None and getattr(obj, "type", "") == "MESH" else None
+    if mesh is None:
+        mesh = bpy.data.meshes.new(f"{EFFECT_DENSITY_SOURCE_DATA_PREFIX}{source_id}")
+    _rebuild_density_source_mesh(mesh, points_mm)
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        obj = bpy.data.objects.new(f"{controller_obj.name}_距離密度", mesh)
+    elif obj.data is not mesh:
+        old_data = obj.data
+        obj.data = mesh
+        try:
+            if old_data is not None and old_data.users == 0:
+                bpy.data.meshes.remove(old_data)
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        title = str(controller_obj.get(on.PROP_TITLE, "") or controller_obj.name)
+        on.stamp_identity(
+            obj,
+            kind=EFFECT_DENSITY_SOURCE_KIND,
+            bname_id=source_id,
+            title=f"{title}_距離密度",
+            z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
+            parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
+            folder_id=str(controller_obj.get(on.PROP_FOLDER_ID, "") or ""),
+            managed=False,
+        )
+        obj[PROP_EFFECT_CONTROLLER_ID] = str(controller_obj.get(on.PROP_ID, "") or "")
     except Exception:  # noqa: BLE001
         pass
     _link_display_to_controller_collections(obj, controller_obj)
@@ -558,6 +659,7 @@ def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> No
         return
     display = find_effect_display_object(controller_obj)
     source = find_effect_frame_source_object(controller_obj)
+    density_source = find_effect_density_source_object(controller_obj)
     if display is not None:
         _link_display_to_controller_collections(display, controller_obj)
         try:
@@ -582,6 +684,17 @@ def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> No
             source.location = tuple(controller_obj.location)
             source.rotation_euler = tuple(controller_obj.rotation_euler)
             source.scale = tuple(controller_obj.scale)
+        except Exception:  # noqa: BLE001
+            pass
+    if density_source is not None:
+        _link_display_to_controller_collections(density_source, controller_obj)
+        try:
+            density_source[on.PROP_PARENT_KEY] = str(controller_obj.get(on.PROP_PARENT_KEY, "") or "")
+            density_source[on.PROP_FOLDER_ID] = str(controller_obj.get(on.PROP_FOLDER_ID, "") or "")
+            density_source[on.PROP_Z_INDEX] = int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0)
+            density_source.location = tuple(controller_obj.location)
+            density_source.rotation_euler = tuple(controller_obj.rotation_euler)
+            density_source.scale = tuple(controller_obj.scale)
         except Exception:  # noqa: BLE001
             pass
 

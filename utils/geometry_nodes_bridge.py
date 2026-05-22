@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 22
+_GROUP_VERSION = 23
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -116,8 +116,8 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "inout_apply": SocketSpec("適用先", "NodeSocketInt", 1),
     "in_percent": SocketSpec("入り (%)", "NodeSocketFloat", 100.0),
     "out_percent": SocketSpec("抜き (%)", "NodeSocketFloat", 0.0),
-    "in_start_percent": SocketSpec("入り始点 (%)", "NodeSocketFloat", 50.0),
-    "out_start_percent": SocketSpec("抜き始点 (%)", "NodeSocketFloat", 50.0),
+    "in_start_percent": SocketSpec("入り始点 (%)", "NodeSocketFloat", 0.0),
+    "out_start_percent": SocketSpec("抜き始点 (%)", "NodeSocketFloat", 100.0),
     "in_easing_curve": SocketSpec("入りカーブ", "NodeSocketString", "0.0000,0.0000;1.0000,1.0000"),
     "out_easing_curve": SocketSpec("抜きカーブ", "NodeSocketString", "0.0000,0.0000;1.0000,1.0000"),
     "inout_range_mode": SocketSpec("範囲", "NodeSocketInt", 1),
@@ -157,6 +157,7 @@ _EFFECT_POSITION_SOCKETS = (
     SocketSpec("乱数", "NodeSocketInt", 0),
     SocketSpec("始点コマ枠オブジェクト", "NodeSocketObject", None),
     SocketSpec("終点形状オブジェクト", "NodeSocketObject", None),
+    SocketSpec("距離密度オブジェクト", "NodeSocketObject", None),
 )
 
 _MATERIAL_SOCKETS = (
@@ -568,6 +569,15 @@ def _switch_float(group, switch_socket, false_socket, true_socket, *, label: str
 def _switch_int(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeSwitch", label=label, location=location)
     node.input_type = "INT"
+    _link(group, switch_socket, node.inputs["Switch"])
+    _link(group, false_socket, node.inputs["False"])
+    _link(group, true_socket, node.inputs["True"])
+    return node.outputs["Output"]
+
+
+def _switch_geometry(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeSwitch", label=label, location=location)
+    node.input_type = "GEOMETRY"
     _link(group, switch_socket, node.inputs["Switch"])
     _link(group, false_socket, node.inputs["False"])
     _link(group, true_socket, node.inputs["True"])
@@ -1857,10 +1867,29 @@ def _instanced_radial_line_geometry(
     import math
 
     count_socket = _focus_line_count_socket(group, input_node, width_half_m, height_half_m)
+    is_distance = _compare_int_socket(group, input_node.outputs["線の間隔"], 2, label="距離指定か", location=(-760, -80))
+    center_x = _math_binary(group, "MULTIPLY", input_node.outputs["中心 X"], b_value=0.001, label="中心 X", location=(-760, 120))
+    center_y = _math_binary(group, "MULTIPLY", input_node.outputs["中心 Y"], b_value=0.001, label="中心 Y", location=(-760, -40))
     points = _node(group, "GeometryNodeMeshLine", label="線の本数", location=(-520, -520))
     _link(group, count_socket, points.inputs["Count"])
     _set_default(points.inputs["Start Location"], (0.0, 0.0, 0.0))
     _set_default(points.inputs["Offset"], (0.0, 0.0, 0.0))
+    density_info = _node(group, "GeometryNodeObjectInfo", label="距離密度点 参照", location=(-520, -120))
+    try:
+        density_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, input_node.outputs["距離密度オブジェクト"], density_info.inputs["Object"])
+    if "As Instance" in density_info.inputs:
+        _set_default(density_info.inputs["As Instance"], False)
+    active_points = _switch_geometry(
+        group,
+        is_distance,
+        points.outputs["Mesh"],
+        density_info.outputs["Geometry"],
+        label="距離指定の密度点",
+        location=(-300, -120),
+    )
 
     index = _node(group, "GeometryNodeInputIndex", label="線番号", location=(-520, -720))
     frac = _math_binary(
@@ -1888,6 +1917,12 @@ def _instanced_radial_line_geometry(
         angle,
         location=(-1020, -2600),
     )
+    density_position = _node(group, "GeometryNodeInputPosition", label="距離密度点位置", location=(-520, -260))
+    density_sep = _separate_xyz(group, density_position.outputs["Position"], label="距離密度点XY", location=(-320, -260))
+    density_dx = _math_binary(group, "SUBTRACT", density_sep.outputs["X"], center_x, label="距離密度点X差", location=(-120, -200))
+    density_dy = _math_binary(group, "SUBTRACT", density_sep.outputs["Y"], center_y, label="距離密度点Y差", location=(-120, -360))
+    density_angle = _math_binary(group, "ARCTAN2", density_dy, density_dx, label="距離密度点角", location=(80, -280))
+    angle = _switch_float(group, is_distance, angle, density_angle, label="距離密度点で角度", location=(280, -280))
     step_angle = _math_binary(
         group,
         "DIVIDE",
@@ -1921,6 +1956,14 @@ def _instanced_radial_line_geometry(
         spacing_jitter,
         label="間隔乱れ切替",
         location=(480, -520),
+    )
+    spacing_jitter = _switch_float(
+        group,
+        is_distance,
+        spacing_jitter,
+        zero_jitter,
+        label="距離指定の間隔乱れは密度点へ反映済み",
+        location=(680, -360),
     )
     bundle_count_wave = _math_binary(
         group,
@@ -2060,6 +2103,14 @@ def _instanced_radial_line_geometry(
         label="まとまり切替",
         location=(1080, -900),
     )
+    bundle_angle = _switch_float(
+        group,
+        is_distance,
+        bundle_angle,
+        zero_jitter,
+        label="距離指定のまとまりは密度点へ反映済み",
+        location=(1280, -1060),
+    )
     angle = _math_add(group, angle, spacing_jitter, label="間隔乱れ済み角", location=(680, -520))
     angle = _math_add(group, angle, bundle_angle, label="まとまり済み角", location=(1280, -900))
     rotation_rad = _math_binary(
@@ -2070,6 +2121,14 @@ def _instanced_radial_line_geometry(
         label="全体回転をラジアンへ",
         location=(-120, -900),
     )
+    rotation_rad = _switch_float(
+        group,
+        is_distance,
+        rotation_rad,
+        zero_jitter,
+        label="距離指定は密度点の角度を使う",
+        location=(80, -1040),
+    )
     angle_with_rotation = _math_add(
         group,
         angle,
@@ -2077,12 +2136,24 @@ def _instanced_radial_line_geometry(
         label="回転済み角度",
         location=(80, -720),
     )
+    angle_capture = _node(group, "GeometryNodeCaptureAttribute", label="線角度を固定", location=(80, -620))
+    try:
+        angle_capture.domain = "POINT"
+        if len(getattr(angle_capture, "capture_items", []) or []) == 0:
+            angle_capture.capture_items.new("FLOAT", "角度")
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, active_points, angle_capture.inputs["Geometry"])
+    try:
+        _link(group, angle_with_rotation, angle_capture.inputs["角度"])
+        angle_with_rotation = angle_capture.outputs["角度"]
+    except Exception:  # noqa: BLE001
+        _link(group, angle_with_rotation, _socket_by_identifier(angle_capture.inputs, "Value"))
+        angle_with_rotation = _socket_by_identifier(angle_capture.outputs, "Attribute")
+    active_points = angle_capture.outputs["Geometry"]
     axis_angle = _node(group, "FunctionNodeAxisAngleToRotation", label="線を回転", location=(280, -720))
     _set_default(axis_angle.inputs["Axis"], (0.0, 0.0, 1.0))
     _link(group, angle_with_rotation, axis_angle.inputs["Angle"])
-    center_x = _math_binary(group, "MULTIPLY", input_node.outputs["中心 X"], b_value=0.001, label="中心 X", location=(760, -260))
-    center_y = _math_binary(group, "MULTIPLY", input_node.outputs["中心 Y"], b_value=0.001, label="中心 Y", location=(760, -420))
-
     radius_sum = _math_add(
         group,
         width_half_m,
@@ -2277,7 +2348,7 @@ def _instanced_radial_line_geometry(
     point_y = _math_binary(group, "MULTIPLY", ray_y, inner_radius, label="始点Y", location=(760, -2040))
     point_pos = _combine_xyz(group, point_x, point_y, z=0.0, label="線始点位置", location=(980, -1960))
     placed_points = _node(group, "GeometryNodeSetPosition", label="線始点を配置", location=(760, -840))
-    _link(group, points.outputs["Mesh"], placed_points.inputs["Geometry"])
+    _link(group, active_points, placed_points.inputs["Geometry"])
     _link(group, point_pos, placed_points.inputs["Position"])
     scale_vec = _combine_xyz(
         group,
@@ -2502,6 +2573,7 @@ def effect_values(
     *,
     start_frame_object: bpy.types.Object | None = None,
     end_shape_object: bpy.types.Object | None = None,
+    density_object: bpy.types.Object | None = None,
     center_xy_mm: tuple[float, float] | None = None,
 ) -> dict[str, Any]:
     if bounds is None:
@@ -2519,6 +2591,7 @@ def effect_values(
         "高さ": float(height or 0.0),
         "始点コマ枠オブジェクト": start_frame_object,
         "終点形状オブジェクト": end_shape_object,
+        "距離密度オブジェクト": density_object,
     }
     for field, spec in _EFFECT_FIELD_SPECS.items():
         raw = getattr(params, field, spec.default) if params is not None else spec.default

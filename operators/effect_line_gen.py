@@ -18,6 +18,8 @@ from ..utils import balloon_shapes, effect_inout_curve, log
 from ..utils.geom import Rect, mm_to_m
 from . import effect_line_radial_spacing
 _logger = log.get_logger(__name__)
+_DEFAULT_IN_START_PERCENT = 0.0
+_DEFAULT_OUT_START_PERCENT = 100.0
 
 
 @dataclass(frozen=True)
@@ -440,8 +442,8 @@ def _inout_profile(params, length_m: float):
     mode = str(getattr(params, "inout_range_mode", "percent") or "percent")
     has_new_start_controls = hasattr(params, "in_start_percent") or hasattr(params, "out_start_percent")
     if has_new_start_controls:
-        d_in = _clamp01(float(getattr(params, "in_start_percent", 50.0)) / 100.0) * length_m
-        d_out = _clamp01(float(getattr(params, "out_start_percent", 50.0)) / 100.0) * length_m
+        d_in = _clamp01(float(getattr(params, "in_start_percent", _DEFAULT_IN_START_PERCENT)) / 100.0) * length_m
+        d_out = _clamp01(float(getattr(params, "out_start_percent", _DEFAULT_OUT_START_PERCENT)) / 100.0) * length_m
     elif mode == "length":
         d_in = max(0.0, min(length_m, mm_to_m(float(getattr(params, "in_range_mm", 10.0)))))
         d_out = max(0.0, min(length_m, mm_to_m(float(getattr(params, "out_range_mm", 10.0)))))
@@ -1183,3 +1185,25 @@ def generate_shape_source_outlines(
     else:
         start_outline = [(float(x), float(y)) for x, y in start_outline_mm]
     return start_outline, end_outline
+
+
+def generate_focus_density_points(
+    params,
+    center_xy_mm: tuple[float, float],
+    density_outline_mm: Sequence[tuple[float, float]],
+    *,
+    start_extend_mm: float = 0.0,
+    seed: int = 0,
+) -> list[tuple[float, float]]:
+    """距離指定の線間隔を旧方式と同じ半径方向の距離で点列化する。"""
+    rng = random.Random(seed)
+    return effect_line_radial_spacing.outline_points_for_perpendicular_spacing(
+        params,
+        center_xy_mm,
+        density_outline_mm,
+        start_extend_mm,
+        rng,
+        max_line_count=_max_line_count,
+        slot_positions=_slot_positions,
+        clamp01=_clamp01,
+    )
