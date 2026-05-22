@@ -14,7 +14,7 @@ from typing import Any, Sequence
 
 from . import export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, log, coma_preview
+from ..utils import border_geom, log, coma_preview, percentage
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -266,7 +266,13 @@ def _normalize_opacity(value: Any) -> int:
         return 0
     if f <= 1.0:
         return int(round(f * 255))
+    if f <= 100.0:
+        return int(round((f / 100.0) * 255))
     return int(round(max(0.0, min(255.0, f))))
+
+
+def _percent_opacity_to_alpha(value: Any, default: float = 100.0) -> int:
+    return int(round(percentage.percent_to_factor(value, default) * 255))
 
 
 def _blend_mode_name(value: Any) -> str:
@@ -757,7 +763,7 @@ def _apply_image_adjustments(img, entry) -> Any:
             tinted.append(band.point(lambda px, k=float(factor): int(round(px * max(0.0, min(1.0, k))))))
         if len(tinted) == 4:
             out = Image.merge("RGBA", tuple(tinted))
-    opacity = _normalize_opacity(getattr(entry, "opacity", 1.0))
+    opacity = _percent_opacity_to_alpha(getattr(entry, "opacity", 100.0), 100.0)
     if opacity < 255:
         out = _scale_alpha(out, opacity)
     rotation = float(getattr(entry, "rotation_deg", 0.0))

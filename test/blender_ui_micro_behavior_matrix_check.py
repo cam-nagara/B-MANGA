@@ -817,10 +817,10 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     })
 
     _mark("coma_camera_opacity")
-    settings.name_bg_images_opacity = 0.32
+    settings.name_bg_images_opacity = 32.0
     page_alphas = [round(float(bg.alpha), 2) for bg in _page_backgrounds(context)]
     koma_alphas_before = [round(float(bg.alpha), 2) for bg in _koma_backgrounds(context)]
-    settings.koma_bg_images_opacity = 0.74
+    settings.koma_bg_images_opacity = 74.0
     koma_alphas_after = [round(float(bg.alpha), 2) for bg in _koma_backgrounds(context)]
     results.append({
         "group": "コマ編集B-Nameパネル",

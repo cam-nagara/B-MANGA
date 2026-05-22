@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils import balloon_shapes, color_space, coma_blur_curve
+from ..utils import balloon_shapes, color_space, coma_blur_curve, percentage
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
-WORK_SCHEMA_VERSION = 4
+WORK_SCHEMA_VERSION = 5
 PAGES_SCHEMA_VERSION = 1
-PAGE_SCHEMA_VERSION = 1
-COMA_SCHEMA_VERSION = 1
+PAGE_SCHEMA_VERSION = 2
+COMA_SCHEMA_VERSION = 2
 
 # ---------- 共通変換 ----------
 
@@ -87,6 +87,35 @@ def hex_to_rgba(code: str, alpha: float = 1.0) -> tuple[float, float, float, flo
         a = int(code[6:8], 16) / 255.0
         return (r, g, b, a)
     raise ValueError(f"invalid color hex: {code}")
+
+
+def _data_schema_version(data: dict[str, Any], default: int = 1) -> int:
+    try:
+        return int(data.get("schemaVersion", default) or default)
+    except Exception:  # noqa: BLE001
+        return default
+
+
+def _opacity_unit_is_percent(data: dict[str, Any]) -> bool:
+    return str(data.get("opacityUnit", "") or "").lower() == "percent"
+
+
+def _opacity_to_data(value: object, default: float = 100.0) -> float:
+    return round(percentage.clamp_percent(value, default), 4)
+
+
+def _opacity_from_data(
+    data: dict[str, Any],
+    key: str,
+    default: float = 100.0,
+    *,
+    percent_schema: bool = False,
+) -> float:
+    if key not in data:
+        return percentage.clamp_percent(default)
+    if percent_schema or _opacity_unit_is_percent(data):
+        return percentage.clamp_percent(data.get(key), default)
+    return percentage.legacy_factor_to_percent(data.get(key), default)
 
 
 # ---------- PaperSettings ----------
@@ -292,7 +321,6 @@ def nombre_from_dict(n, data: dict[str, Any]) -> None:
 
 
 def safe_area_to_dict(sa) -> dict[str, Any]:
-    # opacity / blend_mode は仕様変更で常に 1.0 / multiply 固定 (PG から削除)
     raw_color = tuple(float(c) for c in sa.color[:3])
     color = color_space.linear_to_srgb_rgb(raw_color)
     if all(abs(c - 0.7) < 1e-4 for c in raw_color):
@@ -306,6 +334,8 @@ def safe_area_to_dict(sa) -> dict[str, Any]:
     return {
         "enabled": bool(sa.enabled),
         "color": color_hex,
+        "opacity": _opacity_to_data(getattr(sa, "opacity", 30.0), 30.0),
+        "opacityUnit": "percent",
     }
 
 
@@ -332,7 +362,9 @@ def safe_area_from_dict(sa, data: dict[str, Any]) -> None:
             sa.color = color_space.srgb_to_linear_rgb(rgba[:3])
     else:
         sa.color = color_space.srgb_to_linear_rgb((0.7, 0.7, 0.7))
-    # 旧 opacity / blendMode フィールドが残っていても無視 (互換読込)
+    if hasattr(sa, "opacity"):
+        sa.opacity = _opacity_from_data(data, "opacity", 30.0)
+    # 旧 blendMode フィールドが残っていても無視 (互換読込)
 
 
 # ---------- ComaGap ----------
@@ -370,7 +402,8 @@ def raster_layer_to_dict(entry) -> dict[str, Any]:
         "bit_depth": entry.bit_depth,
         "line_color": color_to_hex((*rgb, 1.0)),
         "line_color_alpha": round(float(entry.line_color[3]), 3),
-        "opacity": round(float(entry.opacity), 4),
+        "opacity": _opacity_to_data(entry.opacity),
+        "opacityUnit": "percent",
         "visible": bool(entry.visible),
         "locked": bool(entry.locked),
         "scope": entry.scope,
@@ -380,7 +413,7 @@ def raster_layer_to_dict(entry) -> dict[str, Any]:
     }
 
 
-def raster_layer_from_dict(entry, data: dict[str, Any]) -> None:
+def raster_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
     data = data or {}
     raster_id = str(data.get("id", "") or "")
     entry.id = raster_id
@@ -392,7 +425,7 @@ def raster_layer_from_dict(entry, data: dict[str, Any]) -> None:
     alpha = float(data.get("line_color_alpha", 1.0))
     rgba = hex_to_rgba(str(data.get("line_color", "#000000")), alpha)
     entry.line_color = (*color_space.srgb_to_linear_rgb(rgba[:3]), rgba[3])
-    entry.opacity = float(data.get("opacity", 1.0))
+    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))
     entry.scope = data.get("scope", "page")
@@ -420,7 +453,8 @@ def image_layer_to_dict(entry) -> dict[str, Any]:
         "flipY": bool(entry.flip_y),
         "visible": bool(entry.visible),
         "locked": bool(entry.locked),
-        "opacity": round(float(entry.opacity), 4),
+        "opacity": _opacity_to_data(entry.opacity),
+        "opacityUnit": "percent",
         "blendMode": entry.blend_mode,
         "brightness": round(float(entry.brightness), 4),
         "contrast": round(float(entry.contrast), 4),
@@ -434,7 +468,7 @@ def image_layer_to_dict(entry) -> dict[str, Any]:
     }
 
 
-def image_layer_from_dict(entry, data: dict[str, Any]) -> None:
+def image_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
     data = data or {}
     entry.id = str(data.get("id", "") or "")
     entry.title = str(data.get("title", "") or "")
@@ -448,7 +482,7 @@ def image_layer_from_dict(entry, data: dict[str, Any]) -> None:
     entry.flip_y = bool(data.get("flipY", data.get("flip_y", False)))
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))
-    entry.opacity = float(data.get("opacity", 1.0))
+    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.blend_mode = str(data.get("blendMode", data.get("blend_mode", "normal")) or "normal")
     entry.brightness = float(data.get("brightness", 0.0))
     entry.contrast = float(data.get("contrast", 0.0))
@@ -546,6 +580,8 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     schemaVersion が将来上がった場合はここでマイグレーションを挟む。
     """
     data = data or {}
+    work_schema_version = _data_schema_version(data, 1)
+    opacity_percent_schema = work_schema_version >= 5
     # 現状は v1 のみ対応。未知バージョンは読み込もうとするが警告は呼出側で。
     work_info_from_dict(work.work_info, data.get("workInfo", {}))
     nombre_from_dict(work.nombre, data.get("nombre", {}))
@@ -564,7 +600,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
         raster_layers.clear()
         for item in data.get("raster_layers", []) or []:
             entry = raster_layers.add()
-            raster_layer_from_dict(entry, item)
+            raster_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bname_active_raster_layer_index"):
             scene.bname_active_raster_layer_index = 0 if len(raster_layers) else -1
     image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
@@ -572,14 +608,14 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
         image_layers.clear()
         for item in data.get("image_layers", []) or []:
             entry = image_layers.add()
-            image_layer_from_dict(entry, item)
+            image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bname_active_image_layer_index"):
             scene.bname_active_image_layer_index = 0 if len(image_layers) else -1
     if hasattr(work, "shared_balloons"):
         work.shared_balloons.clear()
         for item in data.get("shared_balloons", data.get("sharedBalloons", [])) or []:
             entry = work.shared_balloons.add()
-            balloon_entry_from_dict(entry, item)
+            balloon_entry_from_dict(entry, item, opacity_percent=opacity_percent_schema)
             entry.parent_kind = "none"
             entry.parent_key = ""
     if hasattr(work, "shared_texts"):
@@ -818,6 +854,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "rotationDeg": round(entry.rotation_deg, 3),
         "centerOffsetXMm": round(float(getattr(entry, "center_offset_x_mm", 0.0)), 3),
         "centerOffsetYMm": round(float(getattr(entry, "center_offset_y_mm", 0.0)), 3),
+        "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
+        "opacityUnit": "percent",
         "roundedCornerEnabled": bool(entry.rounded_corner_enabled),
         "roundedCornerRadiusMm": round(entry.rounded_corner_radius_mm, 3),
         "lineStyle": entry.line_style,
@@ -826,7 +864,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineColorAlpha": round(entry.line_color[3], 3),
         "fillColor": color_to_hex(entry.fill_color),
         "fillColorAlpha": round(entry.fill_color[3], 3),
-        "fillOpacity": round(float(getattr(entry, "fill_opacity", 1.0)), 3),
+        "fillOpacity": _opacity_to_data(getattr(entry, "fill_opacity", 100.0)),
         "fillMaterialName": str(getattr(entry, "fill_material_name", "") or ""),
         "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
         "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
@@ -893,7 +931,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
     }
 
 
-def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
+def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
     data = data or {}
     entry.id = data.get("id", entry.id)
     entry.visible = bool(data.get("visible", True))
@@ -906,6 +944,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.rotation_deg = float(data.get("rotationDeg", 0.0))
     entry.center_offset_x_mm = float(data.get("centerOffsetXMm", 0.0))
     entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
+    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
     entry.line_style = data.get("lineStyle", "solid")
@@ -914,7 +953,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)
     alpha = float(data.get("fillColorAlpha", 1.0))
     entry.fill_color = hex_to_rgba(data.get("fillColor", "#FFFFFF"), alpha)
-    entry.fill_opacity = float(data.get("fillOpacity", 1.0))
+    entry.fill_opacity = _opacity_from_data(data, "fillOpacity", 100.0, percent_schema=opacity_percent)
     entry.fill_material_name = str(data.get("fillMaterialName", "") or "")
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
@@ -1140,6 +1179,8 @@ def page_to_dict(page_entry) -> dict[str, Any]:
 
 def page_from_dict(page_entry, data: dict[str, Any]) -> None:
     data = data or {}
+    page_schema_version = _data_schema_version(data, 1)
+    opacity_percent_schema = page_schema_version >= 2
     page_entry.id = data.get("id", page_entry.id)
     if "title" in data:
         page_entry.title = _normalize_generated_page_title(data["title"], page_entry.id)
@@ -1152,7 +1193,7 @@ def page_from_dict(page_entry, data: dict[str, Any]) -> None:
     page_entry.balloons.clear()
     for b_data in data.get("balloons", []):
         entry = page_entry.balloons.add()
-        balloon_entry_from_dict(entry, b_data)
+        balloon_entry_from_dict(entry, b_data, opacity_percent=opacity_percent_schema)
     page_entry.texts.clear()
     for t_data in data.get("texts", []):
         entry = page_entry.texts.add()

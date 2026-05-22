@@ -88,7 +88,7 @@ def main() -> None:
         params.end_shape = "cloud"
         params.fill_base_shape = True
         params.fill_color = (1.0, 0.0, 0.0, 1.0)
-        params.fill_opacity = 0.5
+        params.fill_opacity = 50.0
 
         obj, layer = effect_line_op._create_effect_layer(
             context,

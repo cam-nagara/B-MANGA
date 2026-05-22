@@ -15,6 +15,7 @@ import bpy
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import percentage
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -147,7 +148,7 @@ def _image_z_index(scene, image_id: str) -> int:
 def _needs_pixel_adjustment(entry) -> bool:
     eps = 1e-6
     try:
-        opacity = float(getattr(entry, "opacity", 1.0))
+        opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
     except Exception:  # noqa: BLE001
         opacity = 1.0
     tint = getattr(entry, "tint_color", (1.0, 1.0, 1.0, 1.0))
@@ -190,7 +191,7 @@ def _load_adjusted_pillow(entry):
 
     brightness = max(-1.0, min(1.0, float(getattr(entry, "brightness", 0.0) or 0.0)))
     contrast = max(-1.0, min(1.0, float(getattr(entry, "contrast", 0.0) or 0.0)))
-    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
     tint = getattr(entry, "tint_color", (1.0, 1.0, 1.0, 1.0))
     tint_rgba = (
         float(tint[0]) if len(tint) > 0 else 1.0,

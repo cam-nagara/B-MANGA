@@ -19,7 +19,7 @@ from ..utils import log
 
 _logger = log.get_logger(__name__)
 
-_DEFAULT_OPACITY = 0.30
+_DEFAULT_OPACITY = 30.0
 
 
 def _on_safe_area_changed(_self, context) -> None:
@@ -54,8 +54,8 @@ class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
         description="セーフライン外の塗りの不透明度",
         default=_DEFAULT_OPACITY,
         min=0.0,
-        max=1.0,
-        subtype="FACTOR",
+        max=100.0,
+        subtype="PERCENTAGE",
         update=_on_safe_area_changed,
     )
     color: FloatVectorProperty(  # type: ignore[valid-type]

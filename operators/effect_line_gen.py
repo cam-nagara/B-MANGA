@@ -168,7 +168,7 @@ def _shape_outline(
 def _jitter_trim_fraction(params, enabled_attr: str, amount_attr: str, rng: random.Random) -> float:
     if not bool(getattr(params, enabled_attr, False)):
         return 0.0
-    amount = _clamp01(float(getattr(params, amount_attr, 0.0)))
+    amount = _clamp01(float(getattr(params, amount_attr, 0.0)) / 100.0)
     if amount <= 0.0:
         return 0.0
     return amount * rng.random()
@@ -327,9 +327,8 @@ def _slot_positions(count: int, params, rng: random.Random) -> list[float]:
     count = max(1, int(count))
     if not bool(getattr(params, "bundle_enabled", False)):
         return [float(i) for i in range(count)]
-    base_bundle_size = max(1, int(getattr(params, "bundle_line_count", 4)))
+    base_bundle_size = max(1, int(getattr(params, "bundle_line_count", 5)))
     base_gap_slots = _bundle_gap_slots(params)
-    bundle_jitter = _clamp01(getattr(params, "bundle_jitter_amount", 0.0))
     count_jitter = _clamp01(getattr(params, "bundle_line_count_jitter", 0.0))
     gap_jitter = _clamp01(getattr(params, "bundle_gap_jitter_amount", 0.0))
     out: list[float] = []
@@ -347,8 +346,6 @@ def _slot_positions(count: int, params, rng: random.Random) -> list[float]:
             pos = float(slot + i)
             if pos >= count:
                 break
-            if bundle_jitter > 0.0:
-                pos += (rng.random() * 2.0 - 1.0) * 0.35 * bundle_jitter
             out.append(pos)
         slot += bundle_size + gap_slots
     return out

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from ..utils import balloon_shapes, balloon_tail_geom
+from ..utils import balloon_shapes, balloon_tail_geom, percentage
 from ..utils.geom import Rect, mm_to_px
 
 
@@ -178,11 +178,11 @@ def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
 
 
 def _entry_opacity(entry) -> float:
-    return max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    return percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
 
 
 def _fill_opacity(entry) -> float:
-    return _entry_opacity(entry) * max(0.0, min(1.0, float(getattr(entry, "fill_opacity", 1.0) or 0.0)))
+    return _entry_opacity(entry) * percentage.percent_to_factor(getattr(entry, "fill_opacity", 100.0), 100.0)
 
 
 def _fill_source_image(size: tuple[int, int], entry):

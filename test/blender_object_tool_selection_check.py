@@ -514,7 +514,7 @@ def main() -> None:
         params.length_jitter_enabled = False
         base_strokes = effect_line_gen.generate_focus_strokes(params, seed=37)
         params.length_jitter_enabled = True
-        params.length_jitter_amount = 1.0
+        params.length_jitter_amount = 100.0
         jitter_strokes = effect_line_gen.generate_focus_strokes(params, seed=37)
 
         def _stroke_len(stroke):

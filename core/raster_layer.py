@@ -75,10 +75,10 @@ class BNameRasterLayer(bpy.types.PropertyGroup):
     )
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
-        default=1.0,
+        default=100.0,
         min=0.0,
-        max=1.0,
-        subtype="FACTOR",
+        max=100.0,
+        subtype="PERCENTAGE",
         update=_on_raster_runtime_display_changed,
     )
     visible: BoolProperty(name="表示", default=True, update=_on_raster_runtime_display_changed)  # type: ignore[valid-type]

@@ -130,10 +130,10 @@ def _assert_page_image_controls(context) -> None:
     bg = _page_image_background(context)
     if bg is None:
         raise AssertionError("page image background was not configured")
-    settings.name_bg_images_opacity = 0.33
+    settings.name_bg_images_opacity = 33.0
     if abs(float(bg.alpha) - 0.33) > 0.01:
         raise AssertionError(f"page image opacity was not controlled: {bg.alpha}")
-    settings.koma_bg_images_opacity = 0.77
+    settings.koma_bg_images_opacity = 77.0
     if abs(float(bg.alpha) - 0.33) > 0.01:
         raise AssertionError("page image opacity was incorrectly controlled by coma opacity")
     settings.bg_images_scale = 1.25

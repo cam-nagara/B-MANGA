@@ -220,8 +220,8 @@ def main() -> None:
         _assert_changed(tail_sticky_stats, rotated_stats, "フキダシ 回転")
 
         balloon.line_color = (0.2, 0.4, 0.6, 1.0)
-        balloon.fill_opacity = 0.35
-        balloon.opacity = 0.8
+        balloon.fill_opacity = 35.0
+        balloon.opacity = 80.0
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
         _assert_material_alpha(balloon_obj, 0, 0.8, "フキダシ 線の不透明度")
         _assert_material_alpha(balloon_obj, 1, 0.28, "フキダシ 塗りの不透明度")

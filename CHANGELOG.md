@@ -3,6 +3,31 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-22 — v0.6.058 効果線の乱れ量と不透明度の単位を％指定へ統一
+
+### 症状
+- 効果線の「始点乱れ」「終点乱れ」が、UI上の％指定ではなく旧来の係数扱いに近い状態で残っていた。
+- 「まとまりの乱れ」が残っており、不要な設定項目として表示・保存される余地があった。
+- フキダシ、効果線、ラスター、画像、下絵、セーフライン外塗りの不透明度が、一部で0〜1の内部値として扱われ、UI表示値・保存値・実描画の間でずれる可能性があった。
+
+### 原因
+- Geometry Nodes 化とUI値の整理後も、旧0〜1値からBlender UI上の％値へ変換する経路が一部に残っていた。
+- 既存作品やコマ用blendファイルに保存済みの不透明度について、読み込み時の互換変換が不足していた。
+
+### 修正
+- 「始点乱れ」「終点乱れ」を線全体の長さに対する％指定として扱い、「終点乱れ」は初期オン、初期値50%にした。
+- 「まとまりの乱れ」を削除し、まとまりの「数」を5、「数の乱れ」を0.5、「まとまり間隔」を3.00、「まとまり間隔の乱れ」を0.5に揃えた。
+- フキダシ、効果線、ラスター、画像、下絵、セーフライン外塗りの不透明度をUI上の％指定へ統一し、描画・素材・書き出し時だけ内部の0〜1値へ変換するようにした。
+- 旧データの0〜1不透明度は読み込み時に％へ変換し、コマ用blendファイル内に直接保存される下絵不透明度も一度だけ％値へ移行するようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_effect_line_frame_spacing_check.py`: 距離指定の密度補正と始点/終点乱れの生成を確認。PASS。
+- `test/blender_geometry_nodes_bridge_check.py`: 効果線・フキダシのGeometry Nodes入力、％指定の不透明度、削除済み項目が残っていないことを確認。PASS。
+- `test/blender_geometry_nodes_functional_settings_check.py`: 距離指定、密度補正、塗り、素材不透明度の実反映を確認。PASS。
+- `test/blender_coma_camera_roundtrip_check.py`: コマ用blendファイルの下絵不透明度の旧値移行、保存、再読込を確認。PASS。
+- `test/blender_raster_layer_paint_check.py` / `test/blender_balloon_tail_ui_check.py` / `test/blender_effect_line_end_fill_check.py` / `test/blender_real_object_safety_check.py` / `test/blender_detail_settings_runtime_check.py` / `test/blender_bname_partial_completion_check.py`: ラスター、フキダシ、効果線、画像、セーフライン外塗り、詳細設定の不透明度反映を確認。PASS。
+- `python -m py_compile` / `git diff --check`: 構文と差分検査。PASS。
+
 ## 2026-05-22 — v0.6.057 効果線の距離指定密度補正と入り抜き初期値を修正
 
 ### 症状

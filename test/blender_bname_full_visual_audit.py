@@ -230,7 +230,7 @@ def _check_detail_toggles(context, targets) -> list[dict]:
 
     _toggle_check(results, "ラスター / 表示", raster, "visible", verifier=raster_visible)
     _toggle_check(results, "ラスター / ロック", raster, "locked")
-    raster.opacity = 0.31
+    raster.opacity = 31.0
     raster.line_color = (0.8, 0.1, 0.1, 0.5)
     mat = bpy.data.materials.get(raster_layer_op.raster_material_name(raster.id))
     assert mat is not None

@@ -404,7 +404,6 @@ def _draw_effect_interval_settings(box, params) -> None:
     row = sub.row(align=True)
     row.prop(params, "bundle_line_count")
     row.prop(params, "bundle_line_count_jitter", text="乱れ")
-    sub.prop(params, "bundle_jitter_amount")
     row = sub.row(align=True)
     row.prop(params, "bundle_gap_mm")
     row.prop(params, "bundle_gap_jitter_amount", text="乱れ")

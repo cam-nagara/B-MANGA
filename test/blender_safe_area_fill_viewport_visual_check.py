@@ -147,7 +147,7 @@ def _run_visual_check() -> None:
         sample_x = ox + (rects.canvas.x + rects.canvas.x2) * 0.5
         sample_y = oy + (rects.safe.y2 + rects.canvas.y2) * 0.5
 
-        _apply_safe_area(work, 1.0)
+        _apply_safe_area(work, 100.0)
         safe_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_obj is not None, "セーフライン外の塗り実体がありません"
         assert getattr(safe_obj, "display_type", "") == "SOLID", "表示方法がソリッドではありません"
@@ -175,7 +175,7 @@ def _run_visual_check() -> None:
         if not (full_rgb[0] > 180.0 and full_rgb[1] < 100.0 and full_rgb[2] > 130.0):
             raise AssertionError(f"セーフライン外の色が画面に出ていません: RGB={full_rgb}")
 
-        _apply_safe_area(work, 0.25)
+        _apply_safe_area(work, 25.0)
         quarter_path = _screenshot("safe_area_opacity_025.png")
         quarter_rgb = _sample_rgb(quarter_path, px, py)
         if not (quarter_rgb[1] > full_rgb[1] + 45.0 and quarter_rgb[2] > full_rgb[2]):

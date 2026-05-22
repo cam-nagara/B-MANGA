@@ -63,7 +63,7 @@ def _apply_phase1_defaults(work) -> None:
     # 「前の作品で変えた不透明度」が新規作品へ漏れる。プリセット適用後に置き直して、
     # 今後プリセット側が拡張されても新規作品の既定を固定する。
     work.safe_area_overlay.enabled = True
-    work.safe_area_overlay.opacity = 0.30
+    work.safe_area_overlay.opacity = 30.0
     work.safe_area_overlay.color = (0.0, 0.0, 0.0)
 
 

@@ -14,7 +14,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import log, paths
+from ..utils import log, paths, percentage
 from ..utils.geom import mm_to_m, mm_to_px
 
 _logger = log.get_logger(__name__)
@@ -340,7 +340,7 @@ def ensure_raster_material(entry, image):
     alpha_scale = nodes["alpha_scale"]
     try:
         alpha_scale.outputs[0].default_value = (
-            max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0))))
+            percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
             * max(0.0, min(1.0, float(line_color[3]) if len(line_color) > 3 else 1.0))
         )
     except Exception:  # noqa: BLE001

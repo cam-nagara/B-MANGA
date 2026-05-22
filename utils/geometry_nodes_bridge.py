@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 23
+_GROUP_VERSION = 25
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -98,9 +98,9 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "brush_jitter_enabled": SocketSpec("線幅 乱れ", "NodeSocketBool", False),
     "brush_jitter_amount": SocketSpec("線幅 乱れ量", "NodeSocketFloat", 0.2),
     "length_jitter_enabled": SocketSpec("始点乱れ", "NodeSocketBool", False),
-    "length_jitter_amount": SocketSpec("始点乱れ量", "NodeSocketFloat", 0.2),
-    "end_length_jitter_enabled": SocketSpec("終点乱れ", "NodeSocketBool", False),
-    "end_length_jitter_amount": SocketSpec("終点乱れ量", "NodeSocketFloat", 0.2),
+    "length_jitter_amount": SocketSpec("始点乱れ (%)", "NodeSocketFloat", 50.0),
+    "end_length_jitter_enabled": SocketSpec("終点乱れ", "NodeSocketBool", True),
+    "end_length_jitter_amount": SocketSpec("終点乱れ (%)", "NodeSocketFloat", 50.0),
     "spacing_mode": SocketSpec("線の間隔", "NodeSocketInt", 2),
     "spacing_angle_deg": SocketSpec("線の間隔 (角度)", "NodeSocketFloat", 5.0),
     "spacing_distance_mm": SocketSpec("線の間隔 (距離)", "NodeSocketFloat", 0.4),
@@ -108,11 +108,10 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "spacing_jitter_amount": SocketSpec("間隔乱れ量", "NodeSocketFloat", 0.2),
     "max_line_count": SocketSpec("本数", "NodeSocketInt", 1000),
     "bundle_enabled": SocketSpec("まとまり", "NodeSocketBool", False),
-    "bundle_line_count": SocketSpec("まとまり 数", "NodeSocketInt", 4),
-    "bundle_line_count_jitter": SocketSpec("まとまり 数の乱れ", "NodeSocketFloat", 0.0),
-    "bundle_jitter_amount": SocketSpec("まとまりの乱れ", "NodeSocketFloat", 0.2),
-    "bundle_gap_mm": SocketSpec("まとまり間隔", "NodeSocketFloat", 0.2),
-    "bundle_gap_jitter_amount": SocketSpec("まとまり間隔の乱れ", "NodeSocketFloat", 0.0),
+    "bundle_line_count": SocketSpec("まとまり 数", "NodeSocketInt", 5),
+    "bundle_line_count_jitter": SocketSpec("まとまり 数の乱れ", "NodeSocketFloat", 0.5),
+    "bundle_gap_mm": SocketSpec("まとまり間隔", "NodeSocketFloat", 3.0),
+    "bundle_gap_jitter_amount": SocketSpec("まとまり間隔の乱れ", "NodeSocketFloat", 0.5),
     "inout_apply": SocketSpec("適用先", "NodeSocketInt", 1),
     "in_percent": SocketSpec("入り (%)", "NodeSocketFloat", 100.0),
     "out_percent": SocketSpec("抜き (%)", "NodeSocketFloat", 0.0),
@@ -125,10 +124,10 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "out_range_percent": SocketSpec("抜きの範囲 (%)", "NodeSocketFloat", 100.0),
     "in_range_mm": SocketSpec("入りの範囲 (mm)", "NodeSocketFloat", 10.0),
     "out_range_mm": SocketSpec("抜きの範囲 (mm)", "NodeSocketFloat", 10.0),
-    "opacity": SocketSpec("不透明度", "NodeSocketFloat", 1.0),
+    "opacity": SocketSpec("不透明度", "NodeSocketFloat", 100.0),
     "line_color": SocketSpec("線色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
     "fill_color": SocketSpec("塗り色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
-    "fill_opacity": SocketSpec("塗り不透明度", "NodeSocketFloat", 1.0),
+    "fill_opacity": SocketSpec("塗り不透明度", "NodeSocketFloat", 100.0),
     "fill_base_shape": SocketSpec("終点形状を下地として塗る", "NodeSocketBool", False),
     "speed_angle_deg": SocketSpec("流線の角度", "NodeSocketFloat", 0.0),
     "speed_line_count": SocketSpec("流線の本数上限", "NodeSocketInt", 300),
@@ -205,7 +204,7 @@ _BALLOON_EXTRA_SOCKETS = (
     SocketSpec("線幅", "NodeSocketFloat", 0.3),
     SocketSpec("線色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
     SocketSpec("塗り色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
-    SocketSpec("塗り不透明度", "NodeSocketFloat", 1.0),
+    SocketSpec("塗り不透明度", "NodeSocketFloat", 100.0),
     SocketSpec("塗りマテリアル", "NodeSocketString", ""),
     SocketSpec("塗り輪郭ぼかし", "NodeSocketFloat", 0.0),
     SocketSpec("塗りぼかしをディザ化", "NodeSocketBool", False),
@@ -222,7 +221,7 @@ _BALLOON_EXTRA_SOCKETS = (
     SocketSpec("合成モード", "NodeSocketInt", 1),
     SocketSpec("水平反転", "NodeSocketBool", False),
     SocketSpec("垂直反転", "NodeSocketBool", False),
-    SocketSpec("不透明度", "NodeSocketFloat", 1.0),
+    SocketSpec("不透明度", "NodeSocketFloat", 100.0),
     SocketSpec("山の幅", "NodeSocketFloat", 10.0),
     SocketSpec("山の幅 乱れ", "NodeSocketFloat", 0.0),
     SocketSpec("山の高さ", "NodeSocketFloat", 4.0),
@@ -2079,22 +2078,6 @@ def _instanced_radial_line_geometry(
         label="まとまり角",
         location=(880, -900),
     )
-    bundle_jitter = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_binary(
-            group,
-            "MULTIPLY",
-            step_angle,
-            input_node.outputs["まとまりの乱れ"],
-            label="まとまり乱れ量",
-            location=(880, -740),
-        ),
-        spacing_wave,
-        label="まとまり乱れ角",
-        location=(1080, -740),
-    )
-    bundle_angle = _math_add(group, bundle_angle, bundle_jitter, label="まとまり乱れ済み角", location=(1280, -740))
     bundle_angle = _switch_float(
         group,
         input_node.outputs["まとまり"],
@@ -2228,10 +2211,18 @@ def _instanced_radial_line_geometry(
     )
     length_wave = _math_binary(group, "ABSOLUTE", length_wave, label="線長乱れ正", location=(480, -1560))
     line_span = _math_binary(group, "SUBTRACT", start_radius_base, inner_radius_base, label="線長", location=(680, -1560))
+    start_jitter_rate = _math_binary(
+        group,
+        "DIVIDE",
+        input_node.outputs["始点乱れ (%)"],
+        b_value=100.0,
+        label="始点乱れ率",
+        location=(680, -1400),
+    )
     start_trim = _math_binary(
         group,
         "MULTIPLY",
-        _math_binary(group, "MULTIPLY", line_span, input_node.outputs["始点乱れ量"], label="始点乱れ量", location=(880, -1560)),
+        _math_binary(group, "MULTIPLY", line_span, start_jitter_rate, label="始点乱れ量", location=(880, -1560)),
         length_wave,
         label="始点乱れ長",
         location=(1080, -1560),
@@ -2246,10 +2237,18 @@ def _instanced_radial_line_geometry(
         location=(280, -1740),
     )
     end_wave = _math_binary(group, "ABSOLUTE", end_wave, label="終点乱れ正", location=(480, -1740))
+    end_jitter_rate = _math_binary(
+        group,
+        "DIVIDE",
+        input_node.outputs["終点乱れ (%)"],
+        b_value=100.0,
+        label="終点乱れ率",
+        location=(680, -1880),
+    )
     end_trim = _math_binary(
         group,
         "MULTIPLY",
-        _math_binary(group, "MULTIPLY", line_span, input_node.outputs["終点乱れ量"], label="終点乱れ量", location=(880, -1740)),
+        _math_binary(group, "MULTIPLY", line_span, end_jitter_rate, label="終点乱れ量", location=(880, -1740)),
         end_wave,
         label="終点乱れ長",
         location=(1080, -1740),
@@ -2629,7 +2628,7 @@ def balloon_values(entry) -> dict[str, Any]:
         tail = tails[0]
     values = {
         "線幅": float(getattr(entry, "line_width_mm", 0.3) or 0.3),
-        "塗り不透明度": float(getattr(entry, "fill_opacity", 1.0) or 1.0),
+        "塗り不透明度": float(getattr(entry, "fill_opacity", 100.0)),
         "幅": float(getattr(entry, "width_mm", 0.0) or 0.0),
         "高さ": float(getattr(entry, "height_mm", 0.0) or 0.0),
         "形状": _SHAPE_CODES.get(shape, 0),
@@ -2660,7 +2659,7 @@ def balloon_values(entry) -> dict[str, Any]:
         "合成モード": _enum_code("blend_mode", getattr(entry, "blend_mode", "")),
         "水平反転": bool(getattr(entry, "flip_h", False)),
         "垂直反転": bool(getattr(entry, "flip_v", False)),
-        "不透明度": float(getattr(entry, "opacity", 1.0) or 1.0),
+        "不透明度": float(getattr(entry, "opacity", 100.0)),
         "山の幅": float(getattr(params, "cloud_bump_width_mm", 10.0) or 0.0),
         "山の幅 乱れ": float(getattr(params, "cloud_bump_width_jitter", 0.0) or 0.0),
         "山の高さ": float(getattr(params, "cloud_bump_height_mm", 4.0) or 0.0),

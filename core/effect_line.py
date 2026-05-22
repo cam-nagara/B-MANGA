@@ -76,7 +76,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 8
+EFFECT_PARAM_SCHEMA_VERSION = 9
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -131,7 +131,6 @@ EFFECT_PARAM_FIELDS = (
     "bundle_enabled",
     "bundle_line_count",
     "bundle_line_count_jitter",
-    "bundle_jitter_amount",
     "bundle_gap_mm",
     "bundle_gap_jitter_amount",
     "inout_apply",
@@ -298,6 +297,17 @@ def effect_params_from_dict(params, data: dict) -> None:
                 data["in_start_percent"] = data["in_range_percent"]
             if "out_start_percent" not in data and "out_range_percent" in data:
                 data["out_start_percent"] = data["out_range_percent"]
+        if schema_version < 9:
+            from ..utils import percentage
+
+            for percent_field in (
+                "length_jitter_amount",
+                "end_length_jitter_amount",
+                "opacity",
+                "fill_opacity",
+            ):
+                if percent_field in data:
+                    data[percent_field] = percentage.legacy_factor_to_percent(data[percent_field])
     _normalize_start_percent_pair(data)
     if str(data.get("spacing_mode", getattr(params, "spacing_mode", "")) or "") == "distance":
         data["spacing_density_compensation"] = True
@@ -355,9 +365,9 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_amount: FloatProperty(name="始点乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
-    end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    end_length_jitter_amount: FloatProperty(name="終点乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="始点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_amount: FloatProperty(name="終点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -368,11 +378,10 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     max_line_count: IntProperty(name="最大本数", default=_DEFAULT_MAX_LINE_COUNT, min=1, soft_max=2000, update=_on_params_changed)  # type: ignore[valid-type]
 
     bundle_enabled: BoolProperty(name="まとまり", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    bundle_line_count: IntProperty(name="数", default=4, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
-    bundle_line_count_jitter: FloatProperty(name="数の乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
-    bundle_jitter_amount: FloatProperty(name="まとまりの乱れ", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    bundle_gap_mm: FloatProperty(name="まとまり間隔", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
-    bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_line_count: IntProperty(name="数", default=5, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_line_count_jitter: FloatProperty(name="数の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_gap_mm: FloatProperty(name="まとまり間隔", default=3.0, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -387,10 +396,10 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     in_range_mm: FloatProperty(name="入りの範囲 (mm)", description="始点からこの長さを入りの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="終点からこの長さを抜きの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
 
-    opacity: FloatProperty(name="不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    opacity: FloatProperty(name="不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    fill_opacity: FloatProperty(name="塗り不透明度", default=1.0, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有

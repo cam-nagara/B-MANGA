@@ -120,7 +120,7 @@ def _setup_scene(temp_root: Path):
     params.max_line_count = 300
     params.brush_size_mm = 0.3
     params.fill_base_shape = False
-    params.opacity = 1.0
+    params.opacity = 100.0
 
     bounds = (72.0, 120.0, 92.0, 54.0)
     obj, layer = effect_line_op._create_effect_layer(context, bounds, parent_key=page_stack_key(page))

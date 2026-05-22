@@ -247,7 +247,7 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     if safe_fill.active_material is None or len(getattr(safe_fill.data, "materials", [])) != 1:
         raise AssertionError("safe area fill should have one viewport material")
     expected_color = tuple(float(v) for v in getattr(work.safe_area_overlay, "color", (0.0, 0.0, 0.0))) + (
-        float(getattr(work.safe_area_overlay, "opacity", 0.30)),
+        float(getattr(work.safe_area_overlay, "opacity", 30.0)) / 100.0,
     )
     for actual, expected in zip(tuple(safe_fill.color), expected_color, strict=False):
         if abs(float(actual) - expected) > 1.0e-4:
@@ -486,7 +486,7 @@ def main() -> None:
         scene = context.scene
         work = scene.bname_work
         assert bool(work.safe_area_overlay.enabled)
-        assert abs(float(work.safe_area_overlay.opacity) - 0.30) <= 1.0e-4
+        assert abs(float(work.safe_area_overlay.opacity) - 30.0) <= 1.0e-4
         work.safe_area_overlay.color = (0.10, 0.20, 0.30)
         page1 = work.pages[0]
         page2 = work.pages[1]

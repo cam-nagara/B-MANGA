@@ -153,8 +153,18 @@ def _enter_configured_coma(get_mode, get_work, coma_camera):
     cam.data.clip_end = 10000.0
     cam.rotation_euler[1] = math.radians(8.881)
     settings.bg_images_scale = 0.28
+    migration_prop = getattr(coma_camera, "_OPACITY_PERCENT_MIGRATION_PROP")
+    if migration_prop in scene:
+        del scene[migration_prop]
+    settings.bg_images_opacity = 0.5
     settings.name_bg_images_opacity = 0.37
     settings.koma_bg_images_opacity = 0.82
+    coma_camera.ensure_opacity_percent_units(scene)
+    _assert_close(settings.bg_images_opacity, 50.0, "下絵不透明度の旧値移行")
+    _assert_close(settings.name_bg_images_opacity, 37.0, "ページ画像不透明度の旧値移行")
+    _assert_close(settings.koma_bg_images_opacity, 82.0, "コマ下絵不透明度の旧値移行")
+    settings.name_bg_images_opacity = 37.0
+    settings.koma_bg_images_opacity = 82.0
     settings.name_visible = True
     settings.koma_visible = True
     settings.hatching_visible = True
@@ -318,8 +328,8 @@ def _assert_reopened_checks(checks: dict) -> None:
     _assert_close(checks["camera_rotation_y_deg"], 8.881, "再読込後カメラ回転")
     assert checks["clip"] == [0.001, 10000.0], checks
     _assert_close(checks["background_scale"], 0.28, "再読込後下絵スケール")
-    _assert_close(checks["name_opacity"], 0.37, "再読込後ページ画像不透明度")
-    _assert_close(checks["koma_opacity"], 0.82, "再読込後コマ下絵不透明度")
+    _assert_close(checks["name_opacity"], 37.0, "再読込後ページ画像不透明度")
+    _assert_close(checks["koma_opacity"], 82.0, "再読込後コマ下絵不透明度")
     assert checks["hatching_visible"] is True, checks
     _assert_close(checks["hatching_rotation"], 0.125, "再読込後ハッチング回転")
     assert checks["koma_depth"] is True, checks

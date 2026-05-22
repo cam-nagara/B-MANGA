@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..utils import color_space, log
+from ..utils import color_space, log, percentage
 
 _logger = log.get_logger(__name__)
 
@@ -50,7 +50,7 @@ def _render_raster_entry(Image, entry, work, canvas_size: tuple[int, int]):
     if str(getattr(entry, "bit_depth", "") or "gray8") == "gray1":
         ink = ink.point(lambda value: 255 if value >= 128 else 0)
     line_rgba = _srgb255_from_linear_color(getattr(entry, "line_color", (0, 0, 0, 1)))
-    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0))))
+    opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
     mask = Image.eval(alpha, lambda value: int(value * opacity * (line_rgba[3] / 255.0)))
     # グレー値は線色の濃度として使い、アルファは描画済みピクセルの形状として維持する。
     density_rgb = Image.merge(

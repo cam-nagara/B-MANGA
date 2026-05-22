@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - 古い Blender
     _HAS_GPU_TEXTURE = False
 
 from ..utils import log
+from ..utils import percentage
 from ..utils.geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -169,7 +170,7 @@ def _bind_image_adjustment_uniforms(shader, entry) -> None:
             float(tint[3]) if len(tint) > 3 else 1.0,
         ),
     )
-    shader.uniform_float("opacity", max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0)))))
+    shader.uniform_float("opacity", percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0))
     shader.uniform_float("brightness", max(-1.0, min(1.0, float(getattr(entry, "brightness", 0.0)))))
     shader.uniform_float("contrast", max(-1.0, min(1.0, float(getattr(entry, "contrast", 0.0)))))
     shader.uniform_float("binarize_enabled", 1.0 if getattr(entry, "binarize_enabled", False) else 0.0)

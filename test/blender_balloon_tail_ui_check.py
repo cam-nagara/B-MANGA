@@ -186,7 +186,7 @@ def main() -> None:
         )
         assert "FINISHED" in result and len(entry.tails[0].points) == 3
 
-        entry.fill_opacity = 0.42
+        entry.fill_opacity = 42.0
         entry.fill_gradient_enabled = True
         entry.fill_gradient_start_color = (1.0, 0.0, 0.0, 1.0)
         entry.fill_gradient_end_color = (0.0, 0.0, 1.0, 1.0)
@@ -199,7 +199,7 @@ def main() -> None:
         layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=600)
         assert layer is not None and layer.image.size[0] > 0
         alpha_values = set(layer.image.getchannel("A").getdata())
-        expected_fill_alpha = int(round(255 * entry.fill_opacity))
+        expected_fill_alpha = int(round(255 * (entry.fill_opacity / 100.0)))
         assert alpha_values.issubset({0, expected_fill_alpha, 255}), "ディザ化した塗り輪郭のalphaが2値化されていません"
 
         source_mat = bpy.data.materials.new("TailUI_SourceMaterial")

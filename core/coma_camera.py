@@ -20,8 +20,9 @@ _logger = log.get_logger(__name__)
 
 def _update_all_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
+    from ..utils import percentage
 
-    coma_camera.set_background_images_opacity(context, float(self.bg_images_opacity))
+    coma_camera.set_background_images_opacity(context, percentage.percent_to_factor(self.bg_images_opacity, 50.0))
 
 
 def _update_all_bg_scale(self, context) -> None:
@@ -33,17 +34,19 @@ def _update_all_bg_scale(self, context) -> None:
 
 def _update_name_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
+    from ..utils import percentage
 
     coma_camera.set_background_images_properties(
-        context, "ネーム", opacity=float(self.name_bg_images_opacity), kind_filter="name"
+        context, "ネーム", opacity=percentage.percent_to_factor(self.name_bg_images_opacity, 50.0), kind_filter="name"
     )
 
 
 def _update_koma_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
+    from ..utils import percentage
 
     coma_camera.set_background_images_properties(
-        context, "コマ", opacity=float(self.koma_bg_images_opacity), kind_filter="koma"
+        context, "コマ", opacity=percentage.percent_to_factor(self.koma_bg_images_opacity, 100.0), kind_filter="koma"
     )
 
 
@@ -165,8 +168,9 @@ class BNameComaCameraSettings(bpy.types.PropertyGroup):
     bg_images_opacity: FloatProperty(
         name="下絵の不透明度",
         min=0.0,
-        max=1.0,
-        default=0.5,
+        max=100.0,
+        default=50.0,
+        subtype="PERCENTAGE",
         update=_update_all_bg_opacity,
     )  # type: ignore[valid-type]
     bg_images_scale: FloatProperty(
@@ -179,15 +183,17 @@ class BNameComaCameraSettings(bpy.types.PropertyGroup):
     name_bg_images_opacity: FloatProperty(
         name="ページ画像の不透明度",
         min=0.0,
-        max=1.0,
-        default=0.5,
+        max=100.0,
+        default=50.0,
+        subtype="PERCENTAGE",
         update=_update_name_bg_opacity,
     )  # type: ignore[valid-type]
     koma_bg_images_opacity: FloatProperty(
         name="コマの不透明度",
         min=0.0,
-        max=1.0,
-        default=1.0,
+        max=100.0,
+        default=100.0,
+        subtype="PERCENTAGE",
         update=_update_koma_bg_opacity,
     )  # type: ignore[valid-type]
     name_visible: BoolProperty(name="ページ画像表示", default=True)  # type: ignore[valid-type]

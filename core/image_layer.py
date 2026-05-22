@@ -91,10 +91,10 @@ class BNameImageLayer(bpy.types.PropertyGroup):
     locked: BoolProperty(name="ロック", default=False)  # type: ignore[valid-type]
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
-        default=1.0,
+        default=100.0,
         min=0.0,
-        max=1.0,
-        subtype="FACTOR",
+        max=100.0,
+        subtype="PERCENTAGE",
         update=_on_image_layer_changed,
     )
     blend_mode: EnumProperty(  # type: ignore[valid-type]

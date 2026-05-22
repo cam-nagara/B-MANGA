@@ -128,7 +128,7 @@ def main() -> None:
         image_entry.y_mm = 16.0
         image_entry.width_mm = 20.0
         image_entry.height_mm = 12.0
-        image_entry.opacity = 0.75
+        image_entry.opacity = 75.0
         image_entry.parent_kind = "page"
         image_entry.parent_key = page_key
         folder = work.layer_folders.add()
@@ -176,7 +176,7 @@ def main() -> None:
         coma.white_margin.enabled = True
         coma.white_margin.width_mm = 1.5
         coma.border.style = "dashed"
-        work.safe_area_overlay.opacity = 0.17
+        work.safe_area_overlay.opacity = 17.0
         work.safe_area_overlay.color = (0.25, 0.50, 0.75)
         old_safe_mat = bpy.data.materials.get("BName_SafeAreaFill") or bpy.data.materials.new("BName_SafeAreaFill")
         old_safe_mesh = bpy.data.meshes.get(f"{paper_guide_object.PAPER_SAFE_FILL_MESH_PREFIX}{page.id}")

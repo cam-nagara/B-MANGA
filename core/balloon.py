@@ -281,7 +281,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     line_width_mm: FloatProperty(name="線幅", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    fill_opacity: FloatProperty(name="塗り不透明度", default=1.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_material_name: StringProperty(name="塗りマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -307,10 +307,10 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     flip_v: BoolProperty(name="垂直反転", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     opacity: FloatProperty(  # type: ignore[valid-type]
         name="不透明度",
-        default=1.0,
+        default=100.0,
         min=0.0,
-        max=1.0,
-        subtype="FACTOR",
+        max=100.0,
+        subtype="PERCENTAGE",
         update=_on_balloon_entry_changed,
     )
 

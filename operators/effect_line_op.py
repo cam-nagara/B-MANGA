@@ -14,7 +14,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..ui import overlay_creation_range
-from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid
+from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import (
@@ -375,7 +375,7 @@ def _load_layer_params_to_scene(context, obj, layer) -> None:
         _set_scene_params_syncing(scene, True)
         effect_line.effect_params_from_dict(params, data)
         if "opacity" not in data and hasattr(layer, "opacity") and hasattr(params, "opacity"):
-            params.opacity = float(getattr(layer, "opacity", 1.0))
+            params.opacity = percentage.legacy_factor_to_percent(getattr(layer, "opacity", 1.0))
     finally:
         _set_scene_params_syncing(scene, False)
 
@@ -397,7 +397,7 @@ def _material_slot_index(obj, mat) -> int:
 
 def _effect_opacity(params) -> float:
     try:
-        return max(0.0, min(1.0, float(getattr(params, "opacity", 1.0))))
+        return percentage.percent_to_factor(getattr(params, "opacity", 100.0), 100.0)
     except Exception:  # noqa: BLE001
         return 1.0
 
@@ -423,7 +423,7 @@ def _effect_fill_rgba(params) -> tuple[float, float, float, float]:
     except Exception:  # noqa: BLE001
         fill = [1.0, 1.0, 1.0, 1.0]
     try:
-        fill_alpha = float(getattr(params, "fill_opacity", 1.0))
+        fill_alpha = percentage.percent_to_factor(getattr(params, "fill_opacity", 100.0), 100.0)
     except Exception:  # noqa: BLE001
         fill_alpha = 1.0
     return (
@@ -518,7 +518,7 @@ def _apply_material_settings(obj, layer, params) -> int:
         pass
     try:
         fill = [float(c) for c in params.fill_color[:4]]
-        fill[3] = max(0.0, min(1.0, fill[3] * float(params.fill_opacity) * opacity))
+        fill[3] = max(0.0, min(1.0, fill[3] * percentage.percent_to_factor(params.fill_opacity, 100.0) * opacity))
         gp_style.fill_color = tuple(fill)
     except Exception:  # noqa: BLE001
         pass
@@ -583,9 +583,9 @@ def _params_for_write(context, obj, layer, params_override=None):
         if "opacity" not in data and hasattr(layer, "opacity"):
             data = dict(data)
             try:
-                data["opacity"] = float(getattr(layer, "opacity", 1.0))
+                data["opacity"] = percentage.legacy_factor_to_percent(getattr(layer, "opacity", 1.0))
             except Exception:  # noqa: BLE001
-                data["opacity"] = 1.0
+                data["opacity"] = 100.0
         return _EffectParamProxy(scene_params, data)
     return scene_params
 

@@ -69,7 +69,7 @@ def main() -> None:
         assert obj.hide_viewport is False
         assert obj.hide_render is False
 
-        entry.opacity = 0.25
+        entry.opacity = 25.0
         entry.line_color = (0.8, 0.1, 0.1, 0.5)
         mat = bpy.data.materials.get(raster_layer_op.raster_material_name(entry.id))
         assert mat is not None

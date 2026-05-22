@@ -11,6 +11,7 @@ import bpy
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import percentage
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -92,7 +93,7 @@ def _replace_object_with_mesh(
 
 def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
     color = getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))
-    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
+    opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
     try:
         return (
             float(color[0]),
@@ -106,8 +107,8 @@ def _entry_line_rgba(entry) -> tuple[float, float, float, float]:
 
 def _entry_fill_rgba(entry) -> tuple[float, float, float, float]:
     color = getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0))
-    opacity = max(0.0, min(1.0, float(getattr(entry, "opacity", 1.0) or 0.0)))
-    fill_opacity = max(0.0, min(1.0, float(getattr(entry, "fill_opacity", 1.0) or 0.0)))
+    opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
+    fill_opacity = percentage.percent_to_factor(getattr(entry, "fill_opacity", 100.0), 100.0)
     try:
         return (
             float(color[0]),

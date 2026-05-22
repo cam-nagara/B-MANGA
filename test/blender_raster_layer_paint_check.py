@@ -111,7 +111,7 @@ def main() -> None:
         )
         node_ptrs = sorted(node.as_pointer() for node in mat.node_tree.nodes)
 
-        entry.opacity = 0.5
+        entry.opacity = 50.0
         entry.line_color = (0.2, 0.2, 0.2, 0.75)
         mat_after = bpy.data.materials.get(
             raster_layer_op.raster_material_name(entry.id)
@@ -143,7 +143,7 @@ def main() -> None:
             0.0,
         )
 
-        entry.opacity = 0.25
+        entry.opacity = 25.0
         entry.line_color = (0.4, 0.4, 0.4, 1.0)
         assert bpy.context.object is obj
         assert obj.mode == "TEXTURE_PAINT"

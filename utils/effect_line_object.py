@@ -13,6 +13,7 @@ from . import gpencil as gp_utils
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import percentage
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -634,9 +635,9 @@ def ensure_effect_display_object(
     display.hide_render = False
     display.hide_select = False
     line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
-    line_opacity = float((values or {}).get("不透明度", 1.0) or 0.0)
+    line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
     fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
-    fill_opacity = float((values or {}).get("塗り不透明度", 1.0) or 0.0)
+    fill_opacity = percentage.percent_to_factor((values or {}).get("塗り不透明度", 100.0), 100.0)
     _ensure_display_material(
         display,
         line_color,

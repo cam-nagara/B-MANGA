@@ -11,6 +11,7 @@ from ..ui import overlay_shared
 from . import log, runtime_activity
 from . import object_naming as on
 from . import outliner_model as om
+from . import percentage
 from . import viewport_colors
 from .geom import Rect, mm_to_m
 
@@ -408,7 +409,10 @@ def _clamp01(value: float) -> float:
 def _safe_fill_view_color(work) -> tuple[float, float, float, float]:
     overlay = getattr(work, "safe_area_overlay", None)
     color = getattr(overlay, "color", (0.0, 0.0, 0.0)) if overlay is not None else (0.0, 0.0, 0.0)
-    opacity = getattr(overlay, "opacity", 0.30) if overlay is not None else 0.30
+    opacity = percentage.percent_to_factor(
+        getattr(overlay, "opacity", 30.0) if overlay is not None else 30.0,
+        30.0,
+    )
     try:
         r, g, b = float(color[0]), float(color[1]), float(color[2])
     except Exception:  # noqa: BLE001

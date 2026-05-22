@@ -40,7 +40,6 @@ def _base_params() -> SimpleNamespace:
         bundle_enabled=False,
         bundle_line_count=4,
         bundle_line_count_jitter=0.0,
-        bundle_jitter_amount=0.0,
         bundle_gap_mm=0.0,
         bundle_gap_jitter_amount=0.0,
         rotation_deg=0.0,
@@ -53,9 +52,9 @@ def _base_params() -> SimpleNamespace:
         in_percent=100.0,
         out_percent=0.0,
         length_jitter_enabled=False,
-        length_jitter_amount=0.2,
+        length_jitter_amount=50.0,
         end_length_jitter_enabled=False,
-        end_length_jitter_amount=0.2,
+        end_length_jitter_amount=50.0,
         in_start_percent=50.0,
         out_start_percent=50.0,
         in_easing_curve="0.0000,0.0000;1.0000,1.0000",
@@ -405,7 +404,7 @@ def main() -> None:
 
         length_jitter_params = SimpleNamespace(**vars(frame_params))
         length_jitter_params.length_jitter_enabled = True
-        length_jitter_params.length_jitter_amount = 0.45
+        length_jitter_params.length_jitter_amount = 45.0
         length_jitter_strokes = effect_line_gen.generate_focus_strokes(
             length_jitter_params,
             center_xy_mm=center,
@@ -418,7 +417,7 @@ def main() -> None:
 
         end_jitter_params = SimpleNamespace(**vars(frame_params))
         end_jitter_params.end_length_jitter_enabled = True
-        end_jitter_params.end_length_jitter_amount = 0.45
+        end_jitter_params.end_length_jitter_amount = 45.0
         end_jitter_strokes = effect_line_gen.generate_focus_strokes(
             end_jitter_params,
             center_xy_mm=center,

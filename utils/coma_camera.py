@@ -11,7 +11,7 @@ import bpy
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..io import export_pipeline
-from . import log, page_browser
+from . import log, page_browser, percentage
 from .geom import mm_to_px
 from .coma_camera_constants import (
     DEFAULT_CAMERA_DISTANCE,
@@ -49,6 +49,39 @@ from .coma_camera_refs import (
 )
 
 _logger = log.get_logger(__name__)
+_OPACITY_PERCENT_MIGRATION_PROP = "bname_coma_camera_opacity_percent_units_v1"
+
+
+def ensure_opacity_percent_units(scene) -> None:
+    """旧ファイルの下絵不透明度 0..1 値を UI の % 値へ一度だけ移行する。"""
+    if scene is None:
+        return
+    try:
+        if bool(scene.get(_OPACITY_PERCENT_MIGRATION_PROP, False)):
+            return
+    except Exception:  # noqa: BLE001
+        return
+    settings = getattr(scene, "bname_coma_camera_settings", None)
+    if settings is None:
+        return
+    for attr in (
+        "bg_images_opacity",
+        "name_bg_images_opacity",
+        "koma_bg_images_opacity",
+    ):
+        try:
+            value = float(getattr(settings, attr))
+        except Exception:  # noqa: BLE001
+            continue
+        if 0.0 <= value <= 1.0:
+            try:
+                setattr(settings, attr, value * 100.0)
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        scene[_OPACITY_PERCENT_MIGRATION_PROP] = True
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def ensure_coma_camera_scene(
@@ -72,6 +105,7 @@ def ensure_coma_camera_scene(
 
     camera = ensure_coma_camera(scene)
     scene.camera = camera
+    ensure_opacity_percent_units(scene)
     # コマ用blendファイルの色管理 (ビュー変換/露出/ルック) はユーザーに
     # 委ねる。以前はここで毎回 Standard へ戻していたため、コマで設定した
     # 色管理が開く/閉じるたびに失われていた。
@@ -230,6 +264,7 @@ def ensure_default_resolution_settings(scene) -> None:
 
 
 def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], page_id: str, coma_id: str) -> None:
+    ensure_opacity_percent_units(scene)
     ref_list = list(refs)
     if not ref_list:
         # 下絵生成に失敗した場合でも、既存のカメラ下絵を消さない。
@@ -238,8 +273,8 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
     name_visible = bool(getattr(settings, "name_visible", False))
     name_show_all_pages = bool(getattr(settings, "name_show_all_pages", False))
     koma_visible = bool(getattr(settings, "koma_visible", True))
-    name_alpha = float(getattr(settings, "name_bg_images_opacity", 0.5))
-    koma_alpha = float(getattr(settings, "koma_bg_images_opacity", 1.0))
+    name_alpha = percentage.percent_to_factor(getattr(settings, "name_bg_images_opacity", 50.0), 50.0)
+    koma_alpha = percentage.percent_to_factor(getattr(settings, "koma_bg_images_opacity", 100.0), 100.0)
     scale = float(getattr(settings, "bg_images_scale", 1.0))
     koma_depth_back = bool(getattr(settings, "koma_depth", False))
 

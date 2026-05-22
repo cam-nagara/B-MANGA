@@ -244,21 +244,20 @@ def main() -> None:
         params.brush_jitter_enabled = True
         params.brush_jitter_amount = 0.31
         params.length_jitter_enabled = True
-        params.length_jitter_amount = 0.27
+        params.length_jitter_amount = 27.0
         params.end_length_jitter_enabled = True
-        params.end_length_jitter_amount = 0.29
+        params.end_length_jitter_amount = 29.0
         params.spacing_mode = "angle"
         params.spacing_angle_deg = 4.5
         params.spacing_distance_mm = 0.52
         params.spacing_density_compensation = False
         params.spacing_jitter_enabled = True
         params.spacing_jitter_amount = 0.19
-        params.opacity = 0.63
+        params.opacity = 63.0
         params.max_line_count = 77
         params.bundle_enabled = True
         params.bundle_line_count = 5
         params.bundle_line_count_jitter = 0.11
-        params.bundle_jitter_amount = 0.17
         params.bundle_gap_mm = 0.9
         params.bundle_gap_jitter_amount = 0.14
         params.inout_apply = "opacity"
@@ -275,7 +274,7 @@ def main() -> None:
         params.out_range_mm = 9.75
         params.line_color = (0.18, 0.24, 0.36, 1.0)
         params.fill_color = (0.33, 0.22, 0.11, 1.0)
-        params.fill_opacity = 0.58
+        params.fill_opacity = 58.0
         params.fill_base_shape = True
         params.speed_angle_deg = 21.0
         params.speed_line_count = 144
@@ -314,7 +313,7 @@ def main() -> None:
             group_name="BName_GN_EffectLine",
         )
         _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 0.72, "効果線 線幅")
-        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 0.63, "効果線 不透明度")
+        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 63.0, "効果線 不透明度")
         assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
         assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
         _assert_close(_modifier_socket_value(effect_modifier, "位置 X"), 15.0, "効果線 位置 X")
@@ -363,7 +362,7 @@ def main() -> None:
         assert _evaluated_polygon_count(effect_display) > 0, "効果線のGeometry Nodes表示結果が空です"
         effect_line_op._select_effect_layer(context, effect_obj, effect_layer)
         params.brush_size_mm = 1.11
-        params.opacity = 0.41
+        params.opacity = 41.0
         params.effect_type = "speed"
         params.speed_line_count = 33
         params.fill_base_shape = True
@@ -376,7 +375,7 @@ def main() -> None:
             group_name="BName_GN_EffectLine",
         )
         _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 1.11, "効果線 線幅 更新")
-        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 0.41, "効果線 不透明度 更新")
+        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 41.0, "効果線 不透明度 更新")
         assert int(_modifier_socket_value(effect_modifier, "種類")) == 4
         assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
         assert int(_modifier_socket_value(effect_modifier, "流線の本数上限")) == 33
@@ -421,7 +420,7 @@ def main() -> None:
         balloon.line_width_mm = 0.55
         balloon.line_color = (0.14, 0.21, 0.34, 1.0)
         balloon.fill_color = (0.72, 0.62, 0.52, 1.0)
-        balloon.fill_opacity = 0.44
+        balloon.fill_opacity = 44.0
         balloon.fill_material_name = "MaterialCheck"
         balloon.fill_blur_amount = 0.18
         balloon.fill_blur_dither = True
@@ -438,7 +437,7 @@ def main() -> None:
         balloon.blend_mode = "lighten"
         balloon.flip_h = True
         balloon.flip_v = True
-        balloon.opacity = 0.77
+        balloon.opacity = 77.0
         sp = balloon.shape_params
         sp.cloud_bump_width_mm = 9.1
         sp.cloud_bump_width_jitter = 0.15
@@ -480,7 +479,7 @@ def main() -> None:
             group_name="BName_GN_Balloon",
         )
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.55, "フキダシ 線幅")
-        _assert_close(_modifier_socket_value(balloon_modifier, "塗り不透明度"), 0.44, "フキダシ 塗り")
+        _assert_close(_modifier_socket_value(balloon_modifier, "塗り不透明度"), 44.0, "フキダシ 塗り")
         _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 43.0, "フキダシ 幅")
         _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 24.5, "フキダシ 高さ")
         assert int(_modifier_socket_value(balloon_modifier, "形状")) == 3
