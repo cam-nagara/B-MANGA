@@ -118,6 +118,29 @@ def _assert_generated_group(group, *, kind: str) -> None:
     assert not input_geometry_links, f"{kind} が入力形状に依存しています"
 
 
+def _assert_all_setting_inputs_linked(group, gn, *, kind: str) -> None:
+    input_node = next((node for node in group.nodes if node.bl_idname == "NodeGroupInput"), None)
+    assert input_node is not None, f"{kind} の入力ノードがありません"
+    output_node = next((node for node in group.nodes if node.bl_idname == "NodeGroupOutput"), None)
+    assert output_node is not None, f"{kind} の出力ノードがありません"
+    missing: list[str] = []
+    missing_audit: list[str] = []
+    for spec in gn._GROUP_SOCKETS[kind]:  # noqa: SLF001 - 実機監査で内部契約を固定する
+        source = input_node.outputs.get(spec.name)
+        if source is None:
+            missing.append(spec.name)
+            continue
+        links = [link for link in group.links if link.from_socket == source]
+        if not links:
+            missing.append(spec.name)
+        audit_name = f"{gn._SETTING_OUTPUT_PREFIX}{spec.name}"  # noqa: SLF001
+        target = output_node.inputs.get(audit_name)
+        if target is None or not any(link.from_socket == source and link.to_socket == target for link in group.links):
+            missing_audit.append(spec.name)
+    assert not missing, f"{kind} の未接続入力があります: {missing}"
+    assert not missing_audit, f"{kind} の設定接続確認に未接続があります: {missing_audit}"
+
+
 def _assert_nodes(obj, *, kind: str, group_name: str):
     from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn
 
@@ -128,6 +151,7 @@ def _assert_nodes(obj, *, kind: str, group_name: str):
     assert modifier.node_group.name == group_name
     assert str(obj.get(gn.PROP_GN_KIND, "") or "") == kind
     _assert_generated_group(modifier.node_group, kind=kind)
+    _assert_all_setting_inputs_linked(modifier.node_group, gn, kind=kind)
     return modifier
 
 

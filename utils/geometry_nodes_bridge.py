@@ -16,8 +16,9 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 7
+_GROUP_VERSION = 8
 _BALLOON_TAIL_SOCKET_COUNT = 8
+_SETTING_OUTPUT_PREFIX = "設定接続確認: "
 
 
 @dataclass(frozen=True)
@@ -303,6 +304,48 @@ def _prune_input_sockets(group, kind: str) -> None:
             group.interface.remove(item)
         except Exception:  # noqa: BLE001
             pass
+
+
+def _setting_output_name(socket_name: str) -> str:
+    return f"{_SETTING_OUTPUT_PREFIX}{socket_name}"
+
+
+def _ensure_setting_output_sockets(group, kind: str) -> None:
+    for spec in _GROUP_SOCKETS.get(kind, ()):
+        _ensure_socket(
+            group,
+            SocketSpec(_setting_output_name(spec.name), spec.socket_type, spec.default),
+            in_out="OUTPUT",
+        )
+
+
+def _prune_setting_output_sockets(group, kind: str) -> None:
+    allowed = {"Geometry"} | {
+        _setting_output_name(spec.name) for spec in _GROUP_SOCKETS.get(kind, ())
+    }
+    for item in list(group.interface.items_tree):
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "in_out", "") != "OUTPUT":
+            continue
+        name = str(getattr(item, "name", "") or "")
+        if name in allowed:
+            continue
+        if not name.startswith(_SETTING_OUTPUT_PREFIX):
+            continue
+        try:
+            group.interface.remove(item)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _link_settings_to_audit_outputs(group, input_node, output_node, kind: str) -> None:
+    for spec in _GROUP_SOCKETS.get(kind, ()):
+        source = input_node.outputs.get(spec.name)
+        target = output_node.inputs.get(_setting_output_name(spec.name))
+        if source is None or target is None:
+            continue
+        _link(group, source, target)
 
 
 def _clear_nodes(group) -> None:
@@ -741,6 +784,7 @@ def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, 
 def _build_balloon_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
+    _link_settings_to_audit_outputs(group, input_node, output_node, "balloon")
     width_half_m = _math_multiply(
         group,
         input_node.outputs["幅"],
@@ -981,6 +1025,7 @@ def _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_ha
 def _build_effect_line_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
+    _link_settings_to_audit_outputs(group, input_node, output_node, "effect_line")
     origin_x_m = _math_multiply(
         group,
         input_node.outputs["位置 X"],
@@ -1072,6 +1117,8 @@ def ensure_node_group(kind: str) -> bpy.types.NodeTree:
     for spec in _GROUP_SOCKETS.get(kind, ()):
         _ensure_socket(group, spec)
     _prune_input_sockets(group, kind)
+    _ensure_setting_output_sockets(group, kind)
+    _prune_setting_output_sockets(group, kind)
     if len(group.nodes) == 0 or _group_needs_rebuild(group, kind):
         _build_generator_nodes(group, kind)
     else:
