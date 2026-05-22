@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 14
+_GROUP_VERSION = 15
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 
@@ -1794,25 +1794,7 @@ def _instanced_radial_line_geometry(
     )
     end_trim = _switch_float(group, input_node.outputs["終点乱れ"], zero_jitter, end_trim, label="終点乱れ切替", location=(1280, -1740))
     radius = _math_binary(group, "SUBTRACT", radius, end_trim, label="終点乱れ半径", location=(1480, -1740))
-    frame_fallback_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
-    frame_hit_radius = _frame_raycast_distance(
-        group,
-        input_node,
-        center_x,
-        center_y,
-        angle_with_rotation,
-        frame_fallback_radius,
-        label="コマ枠始点",
-        location=(80, -2440),
-    )
-    frame_radius = _math_add(
-        group,
-        frame_hit_radius,
-        _math_binary(group, "MULTIPLY", line_half_m, b_value=2.0, label="始点外側線幅", location=(1080, -2440)),
-        label="コマ枠始点外側",
-        location=(1280, -2440),
-    )
-    radius = _switch_float(group, input_node.outputs["始点をコマ枠に設定"], radius, frame_radius, label="コマ枠始点切替", location=(280, -1880))
+    base_line_half_m = line_half_m
     width_wave = _math_binary(
         group,
         "SINE",
@@ -1829,8 +1811,35 @@ def _instanced_radial_line_geometry(
         location=(680, -2040),
     )
     width_factor = _math_add(group, _constant_float(group, 1.0, label="線幅基準", location=(680, -2200)), width_delta, label="線幅乱れ係数", location=(880, -2040))
-    jittered_half = _math_binary(group, "MULTIPLY", line_half_m, width_factor, label="乱れ線幅", location=(1080, -2040))
-    line_half_m = _switch_float(group, input_node.outputs["線幅 乱れ"], line_half_m, jittered_half, label="線幅乱れ切替", location=(1280, -2040))
+    jittered_half = _math_binary(group, "MULTIPLY", base_line_half_m, width_factor, label="乱れ線幅", location=(1080, -2040))
+    actual_line_half_m = _switch_float(group, input_node.outputs["線幅 乱れ"], base_line_half_m, jittered_half, label="線幅乱れ切替", location=(1280, -2040))
+    width_scale = _math_binary(
+        group,
+        "DIVIDE",
+        actual_line_half_m,
+        _math_binary(group, "MAXIMUM", base_line_half_m, b_value=0.000001, label="線幅倍率基準", location=(1280, -2200)),
+        label="線幅倍率",
+        location=(1480, -2040),
+    )
+    frame_fallback_radius = _math_binary(group, "MULTIPLY", radius, b_value=1.25, label="コマ枠始点半径", location=(80, -1880))
+    frame_hit_radius = _frame_raycast_distance(
+        group,
+        input_node,
+        center_x,
+        center_y,
+        angle_with_rotation,
+        frame_fallback_radius,
+        label="コマ枠始点",
+        location=(80, -2440),
+    )
+    frame_radius = _math_add(
+        group,
+        frame_hit_radius,
+        _math_binary(group, "MULTIPLY", actual_line_half_m, b_value=2.0, label="始点外側実線幅", location=(1080, -2440)),
+        label="コマ枠始点外側",
+        location=(1280, -2440),
+    )
+    radius = _switch_float(group, input_node.outputs["始点をコマ枠に設定"], radius, frame_radius, label="コマ枠始点切替", location=(280, -1880))
     index_mod = _math_binary(group, "MODULO", index.outputs["Index"], b_value=2.0, label="偶奇", location=(-120, -1240))
     is_even = _compare_float_socket(group, index_mod, 0.0, label="偶数線", location=(80, -1400))
     uni_short = _math_binary(group, "MULTIPLY", radius, b_value=0.84, label="ウニ短線", location=(80, -1240))
@@ -1846,7 +1855,7 @@ def _instanced_radial_line_geometry(
         input_node,
         base_start,
         base_end,
-        line_half_m,
+        base_line_half_m,
         line_material,
         label="線素材",
         location=(280, -1080),
@@ -1864,7 +1873,7 @@ def _instanced_radial_line_geometry(
     scale_vec = _combine_xyz(
         group,
         line_length,
-        _constant_float(group, 1.0, label="線幅倍率", location=(980, -1720)),
+        width_scale,
         z=1.0,
         label="線ごとの長さ",
         location=(1180, -1640),
