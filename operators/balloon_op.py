@@ -18,6 +18,7 @@ from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
 from ..io import balloon_presets
+from ..ui import overlay_creation_range
 from ..utils import (
     balloon_curve_object,
     balloon_shapes,
@@ -34,7 +35,7 @@ def _focus_creation_target(context, work, page, parent_kind: str, parent_key: st
         _active_target.focus_creation_target(context, work, page, parent_kind, parent_key)
     except Exception:  # noqa: BLE001
         pass
-from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key, page_stack_key
+from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY, coma_containing_point, coma_stack_key, page_stack_key
 from . import balloon_tail_op, coma_modal_state, selection_context_menu, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -58,14 +59,18 @@ _SHAPE_FOR_ADD = (
 )
 
 
-def _allocate_balloon_id(page) -> str:
-    used = {b.id for b in page.balloons}
+def _allocate_balloon_id_from_collection(collection, prefix: str = "balloon") -> str:
+    used = {str(getattr(b, "id", "") or "") for b in collection or []}
     i = 1
     while True:
-        candidate = f"balloon_{i:04d}"
+        candidate = f"{prefix}_{i:04d}"
         if candidate not in used:
             return candidate
         i += 1
+
+
+def _allocate_balloon_id(page) -> str:
+    return _allocate_balloon_id_from_collection(page.balloons, "balloon")
 
 
 def _resolve_page_from_event(context, event):
@@ -136,6 +141,37 @@ def _event_world_xy_mm(context, event) -> tuple[float | None, float | None]:
     if loc is None:
         return None, None
     return geom.m_to_mm(loc.x), geom.m_to_mm(loc.y)
+
+
+def _creation_context_from_event(context, event):
+    from ..utils import page_grid
+
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False):
+        return None
+    world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
+    if world_x_mm is None or world_y_mm is None:
+        return None
+    scene = context.scene
+    page_idx = page_grid.page_index_at_world_mm(work, scene, world_x_mm, world_y_mm)
+    if page_idx is not None and 0 <= page_idx < len(work.pages):
+        page = work.pages[page_idx]
+        work.active_page_index = page_idx
+        ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_idx)
+        local_x = float(world_x_mm) - ox_mm
+        local_y = float(world_y_mm) - oy_mm
+        parent_kind, parent_key = _parent_for_creation_point(page, local_x, local_y)
+        return work, page, local_x, local_y, float(world_x_mm), float(world_y_mm), parent_kind, parent_key
+    return (
+        work,
+        None,
+        float(world_x_mm),
+        float(world_y_mm),
+        float(world_x_mm),
+        float(world_y_mm),
+        "outside",
+        OUTSIDE_STACK_KEY,
+    )
 
 
 def _resolve_local_xy_for_page_from_event(context, event, page_id: str):
@@ -360,9 +396,10 @@ def _select_balloon_index(context, work, page, index: int, *, mode: str = "singl
 
 def _sync_active_balloon_stack_item(context, page, entry) -> None:
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    page_key = OUTSIDE_STACK_KEY if page is None else page_stack_key(page)
     uid = layer_stack_utils.target_uid(
         "balloon",
-        f"{page_stack_key(page)}:{getattr(entry, 'id', '')}",
+        f"{page_key}:{getattr(entry, 'id', '')}",
     )
     if stack is not None:
         for i, item in enumerate(stack):
@@ -416,22 +453,44 @@ def _create_balloon_entry(
     parent_kind: str = "",
     parent_key: str = "",
 ):
-    entry = page.balloons.add()
-    entry.id = _allocate_balloon_id(page)
+    work = get_work(context)
+    if page is None:
+        if work is None:
+            return None
+        collection = getattr(work, "shared_balloons", None)
+        if collection is None:
+            return None
+        entry = collection.add()
+        entry.id = _allocate_balloon_id_from_collection(collection, "shared_balloon")
+        default_parent_kind = "outside"
+        default_parent_key = ""
+    else:
+        collection = page.balloons
+        entry = collection.add()
+        entry.id = _allocate_balloon_id(page)
+        default_parent_kind = "page"
+        default_parent_key = page_stack_key(page)
     entry.shape = balloon_shapes.normalize_shape(shape)
     entry.x_mm = float(x)
     entry.y_mm = float(y)
     entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))
     entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(h))
     entry.rounded_corner_enabled = (entry.shape == "rect")
-    entry.parent_kind = str(parent_kind or "page")
-    entry.parent_key = str(parent_key or page_stack_key(page))
-    page.active_balloon_index = len(page.balloons) - 1
-    _clear_balloon_selection(page)
+    entry.parent_kind = str(parent_kind or default_parent_kind)
+    entry.parent_key = "" if entry.parent_kind in {"outside", "none"} else str(parent_key or default_parent_key)
+    if page is not None:
+        page.active_balloon_index = len(page.balloons) - 1
+        _clear_balloon_selection(page)
     entry.selected = True
     if hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "balloon"
+    object_selection.select_key(
+        context,
+        object_selection.balloon_key(page, entry),
+        mode="single",
+    )
     layer_stack_utils.sync_layer_stack_after_data_change(context)
+    _sync_active_balloon_stack_item(context, page, entry)
     return entry
 
 
@@ -763,6 +822,12 @@ class BNAME_OT_balloon_tool(Operator):
     _drag_balloon_id: str
     _drag_start_x: float
     _drag_start_y: float
+    _drag_start_world_x: float
+    _drag_start_world_y: float
+    _drag_last_x: float
+    _drag_last_y: float
+    _drag_parent_kind: str
+    _drag_parent_key: str
     _drag_moved: bool
     _snapshots: list[tuple[str, float, float, float, float]]
 
@@ -829,10 +894,14 @@ class BNAME_OT_balloon_tool(Operator):
 
     def _handle_left_press(self, context, event):
         work, page, lx, ly = _resolve_page_from_event(context, event)
-        if work is None or page is None or lx is None or ly is None:
+        if work is None:
             return {"PASS_THROUGH"}
-        hit_index, hit_entry, hit_part = _hit_balloon_entry(page, lx, ly)
+        hit_index, hit_entry, hit_part = (-1, None, "")
+        if page is not None and lx is not None and ly is not None:
+            hit_index, hit_entry, hit_part = _hit_balloon_entry(page, lx, ly)
         if event.ctrl:
+            if page is None or lx is None or ly is None:
+                return {"RUNNING_MODAL"}
             return self._handle_ctrl_left_press(context, work, page, lx, ly, hit_index, hit_entry, hit_part)
         self._clear_tail_polyline_state()
         if hit_entry is not None and hit_index >= 0:
@@ -852,27 +921,28 @@ class BNAME_OT_balloon_tool(Operator):
             return {"RUNNING_MODAL"}
         if event.alt or event.ctrl or event.shift:
             return {"RUNNING_MODAL"}
-        if _creation_violates_layer_scope(
+        create_ctx = _creation_context_from_event(context, event)
+        if create_ctx is None:
+            return {"PASS_THROUGH"}
+        work, page, lx, ly, wx, wy, parent_kind, parent_key = create_ctx
+        if page is not None and _creation_violates_layer_scope(
             context, page, lx, ly, _BALLOON_MIN_SIZE_MM, _BALLOON_MIN_SIZE_MM
         ):
             self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
             return {"RUNNING_MODAL"}
-        parent_kind, parent_key = _parent_for_creation_point(page, lx, ly)
         # 作成位置のコマ (またはページ直下) を active 階層にも反映し、
         # Outliner Collection ハイライトを同期する
-        _focus_creation_target(context, work, page, parent_kind, parent_key)
-        entry = _create_balloon_entry(
-            context,
+        if page is not None:
+            _focus_creation_target(context, work, page, parent_kind, parent_key)
+        self._start_create_preview(
             page,
-            shape=_BALLOON_DEFAULT_SHAPE,
-            x=lx,
-            y=ly,
-            w=_BALLOON_MIN_SIZE_MM,
-            h=_BALLOON_MIN_SIZE_MM,
-            parent_kind=parent_kind,
-            parent_key=parent_key,
+            lx,
+            ly,
+            wx,
+            wy,
+            parent_kind,
+            parent_key,
         )
-        self._start_create_drag(page, entry, lx, ly)
         return {"RUNNING_MODAL"}
 
     def _handle_ctrl_left_press(self, context, work, page, lx: float, ly: float, hit_index: int, hit_entry, hit_part: str):
@@ -914,15 +984,33 @@ class BNAME_OT_balloon_tool(Operator):
             int(point_index),
         )
 
-    def _start_create_drag(self, page, entry, x_mm: float, y_mm: float) -> None:
+    def _start_create_preview(
+        self,
+        page,
+        local_x_mm: float,
+        local_y_mm: float,
+        world_x_mm: float,
+        world_y_mm: float,
+        parent_kind: str,
+        parent_key: str,
+    ) -> None:
         self._dragging = True
-        self._drag_action = "create"
-        self._drag_page_id = getattr(page, "id", "")
-        self._drag_balloon_id = getattr(entry, "id", "")
-        self._drag_start_x = float(x_mm)
-        self._drag_start_y = float(y_mm)
+        self._drag_action = "create_preview"
+        self._drag_page_id = getattr(page, "id", "") if page is not None else OUTSIDE_STACK_KEY
+        self._drag_balloon_id = ""
+        self._drag_start_x = float(local_x_mm)
+        self._drag_start_y = float(local_y_mm)
+        self._drag_start_world_x = float(world_x_mm)
+        self._drag_start_world_y = float(world_y_mm)
+        self._drag_last_x = float(local_x_mm)
+        self._drag_last_y = float(local_y_mm)
+        self._drag_parent_kind = str(parent_kind or "")
+        self._drag_parent_key = str(parent_key or "")
         self._drag_moved = False
-        self._snapshots = [(entry.id, entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)]
+        self._snapshots = []
+        overlay_creation_range.set_bounds(
+            (world_x_mm, world_y_mm, _BALLOON_MIN_SIZE_MM, _BALLOON_MIN_SIZE_MM)
+        )
 
     def _start_tail_drag(self, page, entry, x_mm: float, y_mm: float, *, start_at_pointer: bool = False) -> None:
         self._dragging = True
@@ -984,6 +1072,12 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_balloon_id = ""
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
+        self._drag_start_world_x = 0.0
+        self._drag_start_world_y = 0.0
+        self._drag_last_x = 0.0
+        self._drag_last_y = 0.0
+        self._drag_parent_kind = ""
+        self._drag_parent_key = ""
         self._tail_start_at_pointer = False
         self._tail_drag_tail_index = -1
         self._tail_drag_point_index = -1
@@ -992,6 +1086,7 @@ class BNAME_OT_balloon_tool(Operator):
         self._drag_orig_center_offset_y = 0.0
         self._drag_moved = False
         self._snapshots = []
+        overlay_creation_range.clear()
 
     def _clear_tail_polyline_state(self) -> None:
         self._pending_tail_page_id = ""
@@ -1054,6 +1149,9 @@ class BNAME_OT_balloon_tool(Operator):
         return page, entry
 
     def _update_drag(self, context, event) -> None:
+        if self._drag_action == "create_preview":
+            self._update_create_preview(context, event)
+            return
         page, entry = self._drag_page_and_entry(context)
         if entry is None or page is None:
             self._clear_drag_state()
@@ -1101,7 +1199,55 @@ class BNAME_OT_balloon_tool(Operator):
             _set_balloon_rect(page, entry, x, y, w, h)
         layer_stack_utils.tag_view3d_redraw(context)
 
+    def _update_create_preview(self, context, event) -> None:
+        world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
+        if world_x_mm is None or world_y_mm is None:
+            return
+        page = self._drag_page_for_create(context)
+        if page is None:
+            lx, ly = float(world_x_mm), float(world_y_mm)
+        else:
+            lx, ly = self._local_xy_for_page(context, page, world_x_mm, world_y_mm)
+        dx = float(lx) - self._drag_start_x
+        dy = float(ly) - self._drag_start_y
+        if abs(dx) > _BALLOON_DRAG_EPS_MM or abs(dy) > _BALLOON_DRAG_EPS_MM:
+            self._drag_moved = True
+        self._drag_last_x = float(lx)
+        self._drag_last_y = float(ly)
+        overlay_creation_range.set_bounds(
+            _rect_from_points(
+                self._drag_start_world_x,
+                self._drag_start_world_y,
+                float(world_x_mm),
+                float(world_y_mm),
+            )
+        )
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _drag_page_for_create(self, context):
+        if str(getattr(self, "_drag_page_id", "") or "") == OUTSIDE_STACK_KEY:
+            return None
+        work = get_work(context)
+        _page_index, page = _find_page_with_index_by_id(work, self._drag_page_id)
+        return page
+
+    def _local_xy_for_page(self, context, page, world_x_mm: float, world_y_mm: float) -> tuple[float, float]:
+        from ..utils import page_grid
+
+        work = get_work(context)
+        if work is None or page is None:
+            return float(world_x_mm), float(world_y_mm)
+        page_id = str(getattr(page, "id", "") or "")
+        for index, candidate in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(candidate, "id", "") or "") == page_id:
+                ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, index)
+                return float(world_x_mm) - ox_mm, float(world_y_mm) - oy_mm
+        return float(world_x_mm), float(world_y_mm)
+
     def _finish_drag(self, context, event) -> None:
+        if self._drag_action == "create_preview":
+            self._finish_create_preview(context)
+            return
         page, entry = self._drag_page_and_entry(context)
         moved = bool(getattr(self, "_drag_moved", False))
         action = self._drag_action
@@ -1179,6 +1325,10 @@ class BNAME_OT_balloon_tool(Operator):
         return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
     def _cancel_drag(self, context) -> None:
+        if self._drag_action == "create_preview":
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         page, entry = self._drag_page_and_entry(context)
         if self._drag_action == "tail_point" and page is not None and entry is not None:
             tail_index = int(getattr(self, "_tail_drag_tail_index", -1))
@@ -1206,6 +1356,36 @@ class BNAME_OT_balloon_tool(Operator):
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False
+        self._clear_drag_state()
+
+    def _finish_create_preview(self, context) -> None:
+        moved = bool(getattr(self, "_drag_moved", False))
+        if moved:
+            page = self._drag_page_for_create(context)
+            x, y, w, h = _rect_from_points(
+                self._drag_start_x,
+                self._drag_start_y,
+                self._drag_last_x,
+                self._drag_last_y,
+            )
+            if page is not None and _creation_violates_layer_scope(context, page, x, y, w, h):
+                self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
+            else:
+                entry = _create_balloon_entry(
+                    context,
+                    page,
+                    shape=_BALLOON_DEFAULT_SHAPE,
+                    x=x,
+                    y=y,
+                    w=w,
+                    h=h,
+                    parent_kind=str(getattr(self, "_drag_parent_kind", "") or ("outside" if page is None else "page")),
+                    parent_key=str(getattr(self, "_drag_parent_key", "") or ""),
+                )
+                if entry is not None:
+                    self._push_undo_step("B-Name: フキダシ作成")
+        else:
+            layer_stack_utils.tag_view3d_redraw(context)
         self._clear_drag_state()
         self._clear_tail_polyline_state()
 

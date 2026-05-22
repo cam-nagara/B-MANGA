@@ -16,9 +16,11 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 18
+_GROUP_VERSION = 21
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
+_COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
+_COMMON_SHAPE_OUTPUT_NAME = "形状係数"
 
 
 @dataclass(frozen=True)
@@ -249,6 +251,27 @@ _GROUP_SOCKETS: dict[str, tuple[SocketSpec, ...]] = {
     "effect_line": tuple(_EFFECT_FIELD_SPECS.values()) + _EFFECT_POSITION_SOCKETS + _MATERIAL_SOCKETS,
     "balloon": _BALLOON_EXTRA_SOCKETS + _MATERIAL_SOCKETS,
 }
+
+_COMMON_SHAPE_INPUT_SOCKETS = (
+    SocketSpec("形状", "NodeSocketInt", 2),
+    SocketSpec("角度", "NodeSocketFloat", 0.0),
+    SocketSpec("平均半径", "NodeSocketFloat", 0.01),
+    SocketSpec("周長", "NodeSocketFloat", 60.0),
+    SocketSpec("山の幅", "NodeSocketFloat", 10.0),
+    SocketSpec("山の幅 乱れ", "NodeSocketFloat", 0.0),
+    SocketSpec("山の高さ", "NodeSocketFloat", 4.0),
+    SocketSpec("山の高さ 乱れ", "NodeSocketFloat", 0.0),
+    SocketSpec("ズラし量 (%)", "NodeSocketFloat", 50.0),
+    SocketSpec("小山幅 (%)", "NodeSocketFloat", 0.0),
+    SocketSpec("小山幅 乱れ", "NodeSocketFloat", 0.0),
+    SocketSpec("小山高 (%)", "NodeSocketFloat", 0.0),
+    SocketSpec("小山高 乱れ", "NodeSocketFloat", 0.0),
+    SocketSpec("雲の波数", "NodeSocketInt", 12),
+    SocketSpec("波の振幅", "NodeSocketFloat", 3.0),
+    SocketSpec("トゲ数", "NodeSocketInt", 24),
+    SocketSpec("トゲの深さ", "NodeSocketFloat", 6.0),
+    SocketSpec("トゲのばらつき", "NodeSocketFloat", 0.2),
+)
 
 
 def _group_name(kind: str) -> str:
@@ -569,6 +592,249 @@ def _boolean_or(group, a_socket, b_socket, *, label: str, location: tuple[float,
     return node.outputs["Boolean"]
 
 
+def _build_common_shape_group(group) -> None:
+    import math
+
+    _clear_nodes(group)
+    input_node, output_node = _group_input_output(group)
+    shape_socket = input_node.outputs["形状"]
+    angle_socket = input_node.outputs["角度"]
+    radius = _math_binary(group, "MAXIMUM", input_node.outputs["平均半径"], b_value=0.000001, label="平均半径下限", location=(-760, 240))
+    perimeter = _math_binary(group, "MAXIMUM", input_node.outputs["周長"], b_value=0.001, label="周長下限", location=(-760, 80))
+    one = _constant_float(group, 1.0, label="通常形状", location=(-760, -80))
+
+    width_noise = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=3.0, label="山幅乱れ角", location=(-760, -260)),
+        label="山幅乱れ波",
+        location=(-560, -260),
+    )
+    width_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", width_noise, input_node.outputs["山の幅 乱れ"], label="山幅乱れ量", location=(-360, -260)),
+        label="山幅係数",
+        location=(-160, -260),
+    )
+    width_factor = _math_binary(group, "MAXIMUM", width_factor, b_value=0.05, label="山幅係数下限", location=(40, -260))
+    effective_width = _math_binary(group, "MULTIPLY", input_node.outputs["山の幅"], width_factor, label="有効山幅", location=(-560, 80))
+    effective_width = _math_binary(group, "MAXIMUM", effective_width, b_value=0.001, label="山幅下限", location=(-360, 80))
+    cloud_count = _math_binary(group, "DIVIDE", perimeter, effective_width, label="山幅から山数", location=(-160, 80))
+    cloud_count = _math_binary(group, "MAXIMUM", cloud_count, b_value=3.0, label="山数下限", location=(40, 80))
+
+    fluffy_count = _math_binary(group, "MAXIMUM", input_node.outputs["雲の波数"], b_value=3.0, label="もやもや波数下限", location=(-160, -80))
+    is_fluffy = _compare_int_socket(group, shape_socket, 4, label="もやもやか", location=(40, -80))
+    wave_count = _switch_float(group, is_fluffy, cloud_count, fluffy_count, label="山数選択", location=(240, 20))
+    cloud_height = _switch_float(group, is_fluffy, input_node.outputs["山の高さ"], input_node.outputs["波の振幅"], label="高さ選択", location=(240, -140))
+
+    phase = _math_binary(group, "MULTIPLY", input_node.outputs["ズラし量 (%)"], b_value=math.tau / 100.0, label="ズラし量", location=(-160, 300))
+    phased_angle = _math_add(group, angle_socket, phase, label="位相付き角度", location=(40, 300))
+    wave = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", phased_angle, wave_count, label="山角度", location=(240, 300)),
+        label="山波",
+        location=(440, 300),
+    )
+
+    height_noise = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=5.0, label="山高乱れ角", location=(240, -320)),
+        label="山高乱れ波",
+        location=(440, -320),
+    )
+    height_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", height_noise, input_node.outputs["山の高さ 乱れ"], label="山高乱れ量", location=(640, -320)),
+        label="山高係数",
+        location=(840, -320),
+    )
+    height_factor = _math_binary(group, "MAXIMUM", height_factor, b_value=0.0, label="山高係数下限", location=(1040, -320))
+    effective_height = _math_binary(group, "MULTIPLY", cloud_height, height_factor, label="有効山高", location=(440, -140))
+    amp = _math_binary(
+        group,
+        "DIVIDE",
+        _math_binary(group, "MULTIPLY", effective_height, b_value=0.001, label="山高m", location=(640, -140)),
+        radius,
+        label="山高率",
+        location=(840, -140),
+    )
+
+    sub_width_noise = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=11.0, label="小山幅乱れ角", location=(440, -520)),
+        label="小山幅乱れ波",
+        location=(640, -520),
+    )
+    sub_width_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", sub_width_noise, input_node.outputs["小山幅 乱れ"], label="小山幅乱れ量", location=(840, -520)),
+        label="小山幅係数",
+        location=(1040, -520),
+    )
+    sub_width_base = _math_add(
+        group,
+        _constant_float(group, 2.0, label="小山基準", location=(640, -700)),
+        _math_binary(group, "MULTIPLY", input_node.outputs["小山幅 (%)"], b_value=0.01, label="小山幅率", location=(840, -700)),
+        label="小山幅",
+        location=(1040, -700),
+    )
+    sub_count = _math_binary(group, "MULTIPLY", wave_count, _math_binary(group, "MULTIPLY", sub_width_base, sub_width_factor, label="小山幅反映", location=(1240, -620)), label="小山数", location=(1440, -620))
+    sub_wave = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", phased_angle, sub_count, label="小山角度", location=(1640, -620)),
+        label="小山波",
+        location=(1840, -620),
+    )
+    sub_height_noise = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=7.0, label="小山高乱れ角", location=(1440, -820)),
+        label="小山高乱れ波",
+        location=(1640, -820),
+    )
+    sub_height_ratio = _math_binary(group, "MULTIPLY", input_node.outputs["小山高 (%)"], b_value=0.01, label="小山高率", location=(1840, -820))
+    sub_height_factor = _math_add(
+        group,
+        sub_height_ratio,
+        _math_binary(group, "MULTIPLY", sub_height_noise, input_node.outputs["小山高 乱れ"], label="小山高乱れ量", location=(2040, -820)),
+        label="小山高係数",
+        location=(2240, -820),
+    )
+    sub_amp = _math_binary(group, "MULTIPLY", amp, sub_height_factor, label="小山高", location=(2040, -620))
+    cloud_delta = _math_add(
+        group,
+        _math_binary(group, "MULTIPLY", wave, amp, label="雲変化", location=(1040, 140)),
+        _math_binary(group, "MULTIPLY", sub_wave, sub_amp, label="小山変化", location=(2240, -620)),
+        label="雲合成",
+        location=(2440, 0),
+    )
+    cloud_factor = _math_add(group, one, cloud_delta, label="雲形状", location=(2640, 0))
+
+    spike_count = _math_binary(group, "MAXIMUM", input_node.outputs["トゲ数"], b_value=3.0, label="トゲ数下限", location=(840, 500))
+    spike_wave_angle = _math_binary(group, "MULTIPLY", phased_angle, spike_count, label="トゲ角度", location=(1040, 500))
+    spike_wave = _math_binary(group, "ABSOLUTE", _math_binary(group, "SINE", spike_wave_angle, label="トゲ波", location=(1240, 500)), label="直線トゲ波", location=(1440, 500))
+    spike_curve_wave = _math_add(
+        group,
+        _math_binary(group, "MULTIPLY", _math_binary(group, "COSINE", spike_wave_angle, label="曲線トゲcos", location=(1240, 660)), b_value=-0.5, label="曲線トゲ反転", location=(1440, 660)),
+        _constant_float(group, 0.5, label="曲線トゲ基準", location=(1440, 800)),
+        label="曲線トゲ波",
+        location=(1640, 660),
+    )
+    is_thorn_curve = _compare_int_socket(group, shape_socket, 6, label="トゲ曲線か", location=(1840, 660))
+    thorn_wave = _switch_float(group, is_thorn_curve, spike_wave, spike_curve_wave, label="トゲ波選択", location=(2040, 560))
+    spike_noise = _math_binary(
+        group,
+        "SINE",
+        _math_binary(group, "MULTIPLY", angle_socket, b_value=17.0, label="トゲ乱れ角", location=(1440, 300)),
+        label="トゲ乱れ波",
+        location=(1640, 300),
+    )
+    spike_jitter = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", spike_noise, input_node.outputs["トゲのばらつき"], label="トゲ乱れ量", location=(1840, 300)),
+        label="トゲ乱れ係数",
+        location=(2040, 300),
+    )
+    spike_jitter = _math_binary(group, "MAXIMUM", spike_jitter, b_value=0.0, label="トゲ乱れ下限", location=(2240, 300))
+    spike_amp = _math_binary(
+        group,
+        "DIVIDE",
+        _math_binary(group, "MULTIPLY", input_node.outputs["トゲの深さ"], b_value=0.001, label="トゲ深さm", location=(2040, 500)),
+        radius,
+        label="トゲ深さ率",
+        location=(2240, 500),
+    )
+    thorn_factor = _math_add(
+        group,
+        one,
+        _math_binary(group, "MULTIPLY", thorn_wave, _math_binary(group, "MULTIPLY", spike_amp, spike_jitter, label="トゲ深さ反映", location=(2440, 420)), label="トゲ変化", location=(2640, 420)),
+        label="トゲ形状",
+        location=(2840, 420),
+    )
+
+    is_cloud = _compare_int_socket(group, shape_socket, 3, label="雲か", location=(2840, -180))
+    cloud_like = _boolean_or(group, is_cloud, is_fluffy, label="雲系", location=(3040, -80))
+    after_cloud = _switch_float(group, cloud_like, one, cloud_factor, label="雲系切替", location=(3240, -80))
+    is_thorn = _compare_int_socket(group, shape_socket, 5, label="トゲか", location=(3040, 320))
+    thorn_like = _boolean_or(group, is_thorn, is_thorn_curve, label="トゲ系", location=(3240, 420))
+    factor = _switch_float(group, thorn_like, after_cloud, thorn_factor, label="形状切替", location=(3440, 120))
+    factor = _math_binary(group, "MAXIMUM", factor, b_value=0.001, label="形状下限", location=(3640, 120))
+    _link(group, factor, output_node.inputs[_COMMON_SHAPE_OUTPUT_NAME])
+    group[PROP_GROUP_VERSION] = _GROUP_VERSION
+
+
+def _ensure_common_shape_group():
+    group = bpy.data.node_groups.get(_COMMON_SHAPE_GROUP_NAME)
+    if group is None:
+        group = bpy.data.node_groups.new(_COMMON_SHAPE_GROUP_NAME, "GeometryNodeTree")
+    for spec in _COMMON_SHAPE_INPUT_SOCKETS:
+        _ensure_socket(group, spec)
+    _ensure_socket(group, SocketSpec(_COMMON_SHAPE_OUTPUT_NAME, "NodeSocketFloat", 1.0), in_out="OUTPUT")
+    if int(group.get(PROP_GROUP_VERSION, -1)) != _GROUP_VERSION or not group.nodes:
+        _build_common_shape_group(group)
+    return group
+
+
+def _common_shape_factor(
+    group,
+    *,
+    shape_socket,
+    angle_socket,
+    radius_socket,
+    perimeter_socket,
+    width_socket,
+    width_jitter_socket,
+    height_socket,
+    height_jitter_socket,
+    offset_socket,
+    sub_width_socket,
+    sub_width_jitter_socket,
+    sub_height_socket,
+    sub_height_jitter_socket,
+    fluffy_count_socket,
+    fluffy_amplitude_socket,
+    spike_count_socket,
+    spike_depth_socket,
+    spike_jitter_socket,
+    label: str,
+    location: tuple[float, float],
+):
+    node = _node(group, "GeometryNodeGroup", label=label, location=location)
+    node.node_tree = _ensure_common_shape_group()
+    links = {
+        "形状": shape_socket,
+        "角度": angle_socket,
+        "平均半径": radius_socket,
+        "周長": perimeter_socket,
+        "山の幅": width_socket,
+        "山の幅 乱れ": width_jitter_socket,
+        "山の高さ": height_socket,
+        "山の高さ 乱れ": height_jitter_socket,
+        "ズラし量 (%)": offset_socket,
+        "小山幅 (%)": sub_width_socket,
+        "小山幅 乱れ": sub_width_jitter_socket,
+        "小山高 (%)": sub_height_socket,
+        "小山高 乱れ": sub_height_jitter_socket,
+        "雲の波数": fluffy_count_socket,
+        "波の振幅": fluffy_amplitude_socket,
+        "トゲ数": spike_count_socket,
+        "トゲの深さ": spike_depth_socket,
+        "トゲのばらつき": spike_jitter_socket,
+    }
+    for name, socket in links.items():
+        if socket is not None and name in node.inputs:
+            _link(group, socket, node.inputs[name])
+    return node.outputs[_COMMON_SHAPE_OUTPUT_NAME]
+
+
 def _ellipse_fill(group, input_node, width_half_m, height_half_m, *, z: float):
     circle = _node(group, "GeometryNodeMeshCircle", label="塗りを生成", location=(-520, 170))
     circle.fill_type = "TRIANGLE_FAN"
@@ -674,8 +940,6 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
         label="平均半径",
         location=(-560, 340),
     )
-    one = _constant_float(group, 1.0, label="通常形状", location=(-560, 180))
-
     radius_mm = _math_binary(
         group,
         "MULTIPLY",
@@ -692,177 +956,28 @@ def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_
         label="雲の周長",
         location=(-560, 620),
     )
-    cloud_wave_count = _math_binary(
+    return _common_shape_factor(
         group,
-        "DIVIDE",
-        cloud_perimeter,
-        input_node.outputs["山の幅"],
-        label="山の幅から山数",
-        location=(-360, 620),
-    )
-    cloud_wave_count = _math_binary(
-        group,
-        "MAXIMUM",
-        cloud_wave_count,
-        b_value=3.0,
-        label="山数下限",
-        location=(-160, 620),
-    )
-    cloud_phase = _math_binary(
-        group,
-        "MULTIPLY",
-        input_node.outputs["ズラし量 (%)"],
-        b_value=math.tau / 100.0,
-        label="山のズラし",
-        location=(-160, 460),
-    )
-    cloud_angle = _math_add(
-        group,
-        angle,
-        cloud_phase,
-        label="ズラし済み角度",
-        location=(40, 460),
-    )
-    cloud_wave = _math_binary(
-        group,
-        "MULTIPLY",
-        cloud_angle,
-        cloud_wave_count,
-        label="雲の波",
-        location=(-560, 560),
-    )
-    cloud_sin = _math_binary(
-        group,
-        "SINE",
-        cloud_wave,
-        label="雲の丸み",
-        location=(-360, 560),
-    )
-    cloud_amp_m = _math_binary(
-        group,
-        "MULTIPLY",
-        input_node.outputs["山の高さ"],
-        b_value=0.001,
-        label="雲の振幅 mm → m",
-        location=(-560, 430),
-    )
-    cloud_amp = _math_binary(
-        group,
-        "DIVIDE",
-        cloud_amp_m,
-        radius_avg,
-        label="雲の振幅率",
-        location=(-360, 430),
-    )
-    cloud_delta = _math_binary(
-        group,
-        "MULTIPLY",
-        cloud_sin,
-        cloud_amp,
-        label="雲の半径変化",
+        shape_socket=input_node.outputs["形状"],
+        angle_socket=angle,
+        radius_socket=radius_avg,
+        perimeter_socket=cloud_perimeter,
+        width_socket=input_node.outputs["山の幅"],
+        width_jitter_socket=input_node.outputs["山の幅 乱れ"],
+        height_socket=input_node.outputs["山の高さ"],
+        height_jitter_socket=input_node.outputs["山の高さ 乱れ"],
+        offset_socket=input_node.outputs["ズラし量 (%)"],
+        sub_width_socket=input_node.outputs["小山幅 (%)"],
+        sub_width_jitter_socket=input_node.outputs["小山幅 乱れ"],
+        sub_height_socket=input_node.outputs["小山高 (%)"],
+        sub_height_jitter_socket=input_node.outputs["小山高 乱れ"],
+        fluffy_count_socket=input_node.outputs["雲の波数"],
+        fluffy_amplitude_socket=input_node.outputs["波の振幅"],
+        spike_count_socket=input_node.outputs["トゲ数"],
+        spike_depth_socket=input_node.outputs["トゲの深さ"],
+        spike_jitter_socket=input_node.outputs["トゲのばらつき"],
+        label="共通 雲・もやもや・トゲ形状",
         location=(-160, 520),
-    )
-    cloud_factor = _math_add(group, one, cloud_delta, label="雲形状", location=(40, 520))
-
-    thorn_wave_count = _math_binary(
-        group,
-        "DIVIDE",
-        cloud_perimeter,
-        input_node.outputs["山の幅"],
-        label="トゲ幅から山数",
-        location=(-560, 880),
-    )
-    thorn_wave_count = _math_binary(
-        group,
-        "MAXIMUM",
-        thorn_wave_count,
-        b_value=3.0,
-        label="トゲ山数下限",
-        location=(-360, 880),
-    )
-    thorn_angle = _math_add(
-        group,
-        angle,
-        cloud_phase,
-        label="トゲズラし角度",
-        location=(-160, 880),
-    )
-    thorn_wave = _math_binary(
-        group,
-        "MULTIPLY",
-        thorn_angle,
-        thorn_wave_count,
-        label="トゲの波",
-        location=(-560, 760),
-    )
-    thorn_sin = _math_binary(
-        group,
-        "SINE",
-        thorn_wave,
-        label="トゲの山",
-        location=(-360, 760),
-    )
-    thorn_abs = _math_binary(
-        group,
-        "ABSOLUTE",
-        thorn_sin,
-        label="トゲを外向きにする",
-        location=(-160, 760),
-    )
-    thorn_depth_m = _math_binary(
-        group,
-        "MULTIPLY",
-        input_node.outputs["山の高さ"],
-        b_value=0.001,
-        label="トゲ深さ mm → m",
-        location=(-360, 640),
-    )
-    thorn_depth = _math_binary(
-        group,
-        "DIVIDE",
-        thorn_depth_m,
-        radius_avg,
-        label="トゲ深さ率",
-        location=(-160, 640),
-    )
-    thorn_delta = _math_binary(
-        group,
-        "MULTIPLY",
-        thorn_abs,
-        thorn_depth,
-        label="トゲ半径変化",
-        location=(40, 700),
-    )
-    thorn_factor = _math_add(group, one, thorn_delta, label="トゲ形状", location=(240, 700))
-
-    is_cloud = _shape_compare(group, input_node, 3, label="雲か", location=(40, 360))
-    is_fluffy = _shape_compare(group, input_node, 4, label="もやもやか", location=(40, 240))
-    cloud_or_fluffy = _node(group, "FunctionNodeBooleanMath", label="雲/もやもや", location=(240, 300))
-    cloud_or_fluffy.operation = "OR"
-    _link(group, is_cloud, cloud_or_fluffy.inputs[0])
-    _link(group, is_fluffy, cloud_or_fluffy.inputs[1])
-    factor_after_cloud = _switch_float(
-        group,
-        cloud_or_fluffy.outputs["Boolean"],
-        one,
-        cloud_factor,
-        label="雲系を適用",
-        location=(440, 420),
-    )
-
-    is_thorn = _shape_compare(group, input_node, 5, label="トゲか", location=(240, 120))
-    is_thorn_curve = _shape_compare(group, input_node, 6, label="トゲ曲線か", location=(240, 0))
-    thorn_or_curve = _node(group, "FunctionNodeBooleanMath", label="トゲ系", location=(440, 60))
-    thorn_or_curve.operation = "OR"
-    _link(group, is_thorn, thorn_or_curve.inputs[0])
-    _link(group, is_thorn_curve, thorn_or_curve.inputs[1])
-    return _switch_float(
-        group,
-        thorn_or_curve.outputs["Boolean"],
-        factor_after_cloud,
-        thorn_factor,
-        label="トゲ系を適用",
-        location=(640, 360),
     )
 
 
@@ -1030,6 +1145,110 @@ def _radial_line_geometry(
     return join.outputs["Geometry"]
 
 
+def _radial_rect_metric_socket(group, rx, ry, *, location: tuple[float, float]):
+    """旧B-Nameの距離指定に近い矩形枠の半径積算長をノード内で算出する。"""
+    import math
+
+    rx2 = _math_binary(group, "MULTIPLY", rx, rx, label="矩形密度 横二乗", location=location)
+    ry2 = _math_binary(group, "MULTIPLY", ry, ry, label="矩形密度 縦二乗", location=(location[0], location[1] - 140))
+    diag = _math_binary(
+        group,
+        "SQRT",
+        _math_add(group, rx2, ry2, label="矩形密度 対角二乗", location=(location[0] + 200, location[1] - 70)),
+        label="矩形密度 対角",
+        location=(location[0] + 400, location[1] - 70),
+    )
+    ratio_x = _math_binary(
+        group,
+        "DIVIDE",
+        _math_add(group, diag, ry, label="矩形密度 横対数分子", location=(location[0] + 600, location[1] + 80)),
+        rx,
+        label="矩形密度 横対数比",
+        location=(location[0] + 800, location[1] + 80),
+    )
+    ratio_y = _math_binary(
+        group,
+        "DIVIDE",
+        _math_add(group, diag, rx, label="矩形密度 縦対数分子", location=(location[0] + 600, location[1] - 220)),
+        ry,
+        label="矩形密度 縦対数比",
+        location=(location[0] + 800, location[1] - 220),
+    )
+    log_x = _math_binary(
+        group,
+        "LOGARITHM",
+        ratio_x,
+        b_value=math.e,
+        label="矩形密度 横対数",
+        location=(location[0] + 1000, location[1] + 80),
+    )
+    log_y = _math_binary(
+        group,
+        "LOGARITHM",
+        ratio_y,
+        b_value=math.e,
+        label="矩形密度 縦対数",
+        location=(location[0] + 1000, location[1] - 220),
+    )
+    part_x = _math_binary(group, "MULTIPLY", rx, log_x, label="矩形密度 横成分", location=(location[0] + 1200, location[1] + 80))
+    part_y = _math_binary(group, "MULTIPLY", ry, log_y, label="矩形密度 縦成分", location=(location[0] + 1200, location[1] - 220))
+    return _math_binary(
+        group,
+        "MULTIPLY",
+        _math_add(group, part_x, part_y, label="矩形密度 四半周", location=(location[0] + 1400, location[1] - 70)),
+        b_value=4.0,
+        label="矩形密度 半径積算",
+        location=(location[0] + 1600, location[1] - 70),
+    )
+
+
+def _radial_ellipse_metric_socket(group, rx, ry, *, location: tuple[float, float]):
+    """楕円密度基準の半径積算長を、ノードだけで軽量近似する。"""
+    import math
+
+    product = _math_binary(group, "MULTIPLY", rx, ry, label="楕円密度 半径積", location=location)
+    product = _math_binary(group, "MAXIMUM", product, b_value=0.000000000001, label="楕円密度 半径積下限", location=(location[0] + 200, location[1]))
+    geom_mean = _math_binary(group, "SQRT", product, label="楕円密度 幾何平均", location=(location[0] + 400, location[1]))
+    base = _math_binary(
+        group,
+        "MULTIPLY",
+        geom_mean,
+        b_value=math.tau,
+        label="楕円密度 基準積算",
+        location=(location[0] + 600, location[1]),
+    )
+    radius_sum = _math_add(group, rx, ry, label="楕円密度 半径和", location=(location[0] + 200, location[1] - 180))
+    radius_sum = _math_binary(group, "MAXIMUM", radius_sum, b_value=0.000001, label="楕円密度 半径和下限", location=(location[0] + 400, location[1] - 180))
+    radius_diff = _math_binary(
+        group,
+        "ABSOLUTE",
+        _math_binary(group, "SUBTRACT", rx, ry, label="楕円密度 半径差", location=(location[0] + 200, location[1] - 360)),
+        label="楕円密度 半径差絶対",
+        location=(location[0] + 400, location[1] - 360),
+    )
+    aspect = _math_binary(group, "DIVIDE", radius_diff, radius_sum, label="楕円密度 縦横差率", location=(location[0] + 600, location[1] - 260))
+    aspect2 = _math_binary(group, "MULTIPLY", aspect, aspect, label="楕円密度 縦横差率二乗", location=(location[0] + 800, location[1] - 260))
+    aspect4 = _math_binary(group, "MULTIPLY", aspect2, aspect2, label="楕円密度 縦横差率四乗", location=(location[0] + 1000, location[1] - 260))
+    factor = _math_binary(
+        group,
+        "SUBTRACT",
+        _constant_float(group, 1.0, label="楕円密度 補正基準", location=(location[0] + 800, location[1] - 520)),
+        _math_binary(group, "MULTIPLY", aspect2, b_value=0.23, label="楕円密度 二乗補正", location=(location[0] + 1000, location[1] - 420)),
+        label="楕円密度 補正一段",
+        location=(location[0] + 1200, location[1] - 420),
+    )
+    factor = _math_binary(
+        group,
+        "SUBTRACT",
+        factor,
+        _math_binary(group, "MULTIPLY", aspect4, b_value=0.20, label="楕円密度 四乗補正", location=(location[0] + 1200, location[1] - 600)),
+        label="楕円密度 補正",
+        location=(location[0] + 1400, location[1] - 500),
+    )
+    factor = _math_binary(group, "MAXIMUM", factor, b_value=0.2, label="楕円密度 補正下限", location=(location[0] + 1600, location[1] - 500))
+    return _math_binary(group, "MULTIPLY", base, factor, label="楕円密度 半径積算", location=(location[0] + 1800, location[1] - 120))
+
+
 def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
     """集中線の本数を Geometry Nodes 内で算出する。"""
     import math
@@ -1054,22 +1273,8 @@ def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
 
     rx = _math_binary(group, "MAXIMUM", width_half_m, b_value=0.000001, label="横半径下限", location=(-760, -560))
     ry = _math_binary(group, "MAXIMUM", height_half_m, b_value=0.000001, label="縦半径下限", location=(-760, -720))
-    rect_perimeter = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_add(group, rx, ry, label="矩形半径和", location=(-560, -620)),
-        b_value=4.0,
-        label="矩形周長",
-        location=(-360, -620),
-    )
-    ellipse_perimeter = _math_binary(
-        group,
-        "MULTIPLY",
-        _math_add(group, rx, ry, label="楕円半径和", location=(-560, -780)),
-        b_value=math.pi,
-        label="楕円周長近似",
-        location=(-360, -780),
-    )
+    rect_perimeter = _radial_rect_metric_socket(group, rx, ry, location=(-560, -620))
+    ellipse_perimeter = _radial_ellipse_metric_socket(group, rx, ry, location=(-560, -1160))
     basis_is_ellipse = _compare_int_socket(group, input_node.outputs["密度基準"], 3, label="密度基準 楕円", location=(-160, -840))
     basis_is_round = _compare_int_socket(group, input_node.outputs["密度基準"], 2, label="密度基準 角丸", location=(-160, -700))
     round_amount = _math_binary(
@@ -1414,131 +1619,34 @@ def _effect_shape_factor(
     sub_height_name = f"{prefix} 小山高 (%)"
     sub_height_jitter_name = f"{prefix} 小山高 乱れ"
     offset_name = f"{prefix} ズラし量 (%)"
-    width_wave = _math_binary(
+    plain_width = _math_binary(group, "MAXIMUM", input_node.outputs[width_name], b_value=0.001, label=f"{label} 山幅下限", location=(location[0] + 800, location[1] + 40))
+    derived_count = _math_binary(group, "DIVIDE", perimeter, plain_width, label=f"{label} 山数", location=(location[0] + 1000, location[1] + 40))
+    derived_count = _math_binary(group, "MAXIMUM", derived_count, b_value=3.0, label=f"{label} 山数下限", location=(location[0] + 1200, location[1] + 40))
+    derived_count_int = _float_to_int(group, derived_count, label=f"{label} 山数整数", location=(location[0] + 1400, location[1] + 40))
+    shared_shape = _common_shape_factor(
         group,
-        "SINE",
-        _math_binary(group, "MULTIPLY", angle_socket, b_value=3.0, label=f"{label} 幅乱れ角", location=(location[0] + 560, location[1] - 360)),
-        label=f"{label} 幅乱れ波",
-        location=(location[0] + 760, location[1] - 360),
+        shape_socket=shape_socket,
+        angle_socket=angle_socket,
+        radius_socket=radius_avg,
+        perimeter_socket=perimeter,
+        width_socket=input_node.outputs[width_name],
+        width_jitter_socket=input_node.outputs[width_jitter_name],
+        height_socket=input_node.outputs[height_name],
+        height_jitter_socket=input_node.outputs[height_jitter_name],
+        offset_socket=input_node.outputs[offset_name],
+        sub_width_socket=input_node.outputs[sub_width_name],
+        sub_width_jitter_socket=input_node.outputs[sub_width_jitter_name],
+        sub_height_socket=input_node.outputs[sub_height_name],
+        sub_height_jitter_socket=input_node.outputs[sub_height_jitter_name],
+        fluffy_count_socket=derived_count_int,
+        fluffy_amplitude_socket=input_node.outputs[height_name],
+        spike_count_socket=derived_count_int,
+        spike_depth_socket=input_node.outputs[height_name],
+        spike_jitter_socket=input_node.outputs[height_jitter_name],
+        label=f"{label} 共通 雲・もやもや・トゲ形状",
+        location=(location[0] + 1600, location[1] - 80),
     )
-    width_factor = _math_add(
-        group,
-        one,
-        _math_binary(group, "MULTIPLY", width_wave, input_node.outputs[width_jitter_name], label=f"{label} 幅乱れ量", location=(location[0] + 960, location[1] - 360)),
-        label=f"{label} 幅乱れ係数",
-        location=(location[0] + 1160, location[1] - 360),
-    )
-    width_eff = _math_binary(group, "MULTIPLY", input_node.outputs[width_name], width_factor, label=f"{label} 有効山幅", location=(location[0] + 1360, location[1] - 360))
-    width_eff = _math_binary(group, "MAXIMUM", width_eff, b_value=0.001, label=f"{label} 山幅下限", location=(location[0] + 1560, location[1] - 360))
-    wave_count = _math_binary(group, "DIVIDE", perimeter, width_eff, label=f"{label} 山数", location=(location[0] + 800, location[1] - 160))
-    wave_count = _math_binary(group, "MAXIMUM", wave_count, b_value=3.0, label=f"{label} 山数下限", location=(location[0] + 1000, location[1] - 160))
-    phase = _math_binary(group, "MULTIPLY", input_node.outputs[offset_name], b_value=math.tau / 100.0, label=f"{label} 位相", location=(location[0] + 800, location[1] + 40))
-    wave_angle = _math_add(group, angle_socket, phase, label=f"{label} 角度", location=(location[0] + 1000, location[1] + 40))
-    wave = _math_binary(group, "SINE", _math_binary(group, "MULTIPLY", wave_angle, wave_count, label=f"{label} 波数", location=(location[0] + 1200, location[1] - 60)), label=f"{label} 波", location=(location[0] + 1400, location[1] - 60))
-    height_wave = _math_binary(
-        group,
-        "SINE",
-        _math_binary(group, "MULTIPLY", angle_socket, b_value=5.0, label=f"{label} 高さ乱れ角", location=(location[0] + 1000, location[1] - 520)),
-        label=f"{label} 高さ乱れ波",
-        location=(location[0] + 1200, location[1] - 520),
-    )
-    height_factor = _math_add(
-        group,
-        one,
-        _math_binary(group, "MULTIPLY", height_wave, input_node.outputs[height_jitter_name], label=f"{label} 高さ乱れ量", location=(location[0] + 1400, location[1] - 520)),
-        label=f"{label} 高さ乱れ係数",
-        location=(location[0] + 1600, location[1] - 520),
-    )
-    height_eff = _math_binary(group, "MULTIPLY", input_node.outputs[height_name], height_factor, label=f"{label} 有効高さ", location=(location[0] + 1800, location[1] - 520))
-    amp = _math_binary(
-        group,
-        "DIVIDE",
-        _math_binary(group, "MULTIPLY", height_eff, b_value=0.001, label=f"{label} 高さm", location=(location[0] + 1200, location[1] - 260)),
-        radius_avg,
-        label=f"{label} 高さ率",
-        location=(location[0] + 1400, location[1] - 260),
-    )
-    sub_wave_count = _math_binary(
-        group,
-        "MULTIPLY",
-        wave_count,
-        _math_add(
-            group,
-            _constant_float(group, 2.0, label=f"{label} 小山基準", location=(location[0] + 1600, location[1] + 420)),
-            _math_binary(group, "MULTIPLY", input_node.outputs[sub_width_name], b_value=0.01, label=f"{label} 小山幅率", location=(location[0] + 1800, location[1] + 420)),
-            label=f"{label} 小山幅",
-            location=(location[0] + 2000, location[1] + 420),
-        ),
-        label=f"{label} 小山波数",
-        location=(location[0] + 2200, location[1] + 420),
-    )
-    sub_wave = _math_binary(
-        group,
-        "SINE",
-        _math_binary(group, "MULTIPLY", wave_angle, sub_wave_count, label=f"{label} 小山角", location=(location[0] + 2400, location[1] + 420)),
-        label=f"{label} 小山波",
-        location=(location[0] + 2600, location[1] + 420),
-    )
-    sub_amp = _math_binary(
-        group,
-        "MULTIPLY",
-        amp,
-        _math_add(
-            group,
-            _math_binary(group, "MULTIPLY", input_node.outputs[sub_height_name], b_value=0.01, label=f"{label} 小山高率", location=(location[0] + 2400, location[1] + 260)),
-            _math_binary(group, "MULTIPLY", input_node.outputs[sub_height_jitter_name], sub_wave, label=f"{label} 小山高乱れ", location=(location[0] + 2600, location[1] + 260)),
-            label=f"{label} 小山高",
-            location=(location[0] + 2800, location[1] + 260),
-        ),
-        label=f"{label} 小山振幅",
-        location=(location[0] + 3000, location[1] + 260),
-    )
-    sub_delta = _math_binary(
-        group,
-        "MULTIPLY",
-        sub_wave,
-        _math_binary(
-            group,
-            "MULTIPLY",
-            sub_amp,
-            _math_add(group, one, input_node.outputs[sub_width_jitter_name], label=f"{label} 小山幅乱れ", location=(location[0] + 2800, location[1] + 420)),
-            label=f"{label} 小山乱れ振幅",
-            location=(location[0] + 3200, location[1] + 420),
-        ),
-        label=f"{label} 小山変化",
-        location=(location[0] + 3400, location[1] + 420),
-    )
-    cloud_delta = _math_add(
-        group,
-        _math_binary(group, "MULTIPLY", wave, amp, label=f"{label} 雲変化", location=(location[0] + 1600, location[1] - 60)),
-        sub_delta,
-        label=f"{label} 雲合成",
-        location=(location[0] + 3600, location[1] + 140),
-    )
-    cloud_factor = _math_add(group, one, cloud_delta, label=f"{label} 雲", location=(location[0] + 3800, location[1] + 140))
-    thorn_factor = _math_add(
-        group,
-        one,
-        _math_binary(
-            group,
-            "MULTIPLY",
-            _math_binary(group, "ABSOLUTE", wave, label=f"{label} トゲ波", location=(location[0] + 1600, location[1] - 260)),
-            amp,
-            label=f"{label} トゲ変化",
-            location=(location[0] + 1800, location[1] - 260),
-        ),
-        label=f"{label} トゲ",
-        location=(location[0] + 2000, location[1] - 260),
-    )
-    is_cloud = _compare_int_socket(group, shape_socket, 3, label=f"{label} 雲", location=(location[0] + 1800, location[1] + 140))
-    is_fluffy = _compare_int_socket(group, shape_socket, 4, label=f"{label} もやもや", location=(location[0] + 1800, location[1] + 280))
-    cloud_like = _boolean_or(group, is_cloud, is_fluffy, label=f"{label} 雲系", location=(location[0] + 2000, location[1] + 210))
-    after_cloud = _switch_float(group, cloud_like, one, cloud_factor, label=f"{label} 雲系切替", location=(location[0] + 2200, location[1] + 40))
-    is_thorn = _compare_int_socket(group, shape_socket, 5, label=f"{label} トゲ", location=(location[0] + 2200, location[1] - 420))
-    is_thorn_curve = _compare_int_socket(group, shape_socket, 6, label=f"{label} トゲ曲線", location=(location[0] + 2200, location[1] - 560))
-    thorn_like = _boolean_or(group, is_thorn, is_thorn_curve, label=f"{label} トゲ系", location=(location[0] + 2400, location[1] - 490))
-    shaped = _switch_float(group, thorn_like, after_cloud, thorn_factor, label=f"{label} 形状切替", location=(location[0] + 2600, location[1] - 160))
-    shaped = _math_binary(group, "MULTIPLY", shaped, base_factor, label=f"{label} 縦横比反映", location=(location[0] + 2800, location[1] - 40))
+    shaped = _math_binary(group, "MULTIPLY", shared_shape, base_factor, label=f"{label} 縦横比反映", location=(location[0] + 2800, location[1] - 40))
     round_name = f"{prefix} 角丸"
     radius_name = f"{prefix} 角半径"
     round_factor = _math_binary(
@@ -1925,7 +2033,7 @@ def _instanced_radial_line_geometry(
         label="半径合計",
         location=(-520, -1080),
     )
-    radius = _math_binary(
+    base_radius = _math_binary(
         group,
         "MULTIPLY",
         radius_sum,
@@ -1933,26 +2041,42 @@ def _instanced_radial_line_geometry(
         label="平均半径",
         location=(-320, -1080),
     )
+    start_width_half_m = _math_binary(
+        group,
+        "MULTIPLY",
+        width_half_m,
+        b_value=2.0,
+        label="始点形状 半幅",
+        location=(-520, -2260),
+    )
+    start_height_half_m = _math_binary(
+        group,
+        "MULTIPLY",
+        height_half_m,
+        b_value=2.0,
+        label="始点形状 半高",
+        location=(-520, -2420),
+    )
+    start_base_radius = _math_binary(
+        group,
+        "MULTIPLY",
+        base_radius,
+        b_value=2.0,
+        label="始点基準半径",
+        location=(-120, -1080),
+    )
     start_shape_factor = _effect_shape_factor(
         group,
         input_node,
         input_node.outputs["始点形状"],
         angle_with_rotation,
-        width_half_m,
-        height_half_m,
+        start_width_half_m,
+        start_height_half_m,
         prefix="始点",
         label="始点形状",
         location=(-320, -2260),
     )
-    radius = _math_binary(group, "MULTIPLY", radius, start_shape_factor, label="始点形状半径", location=(3280, -2260))
-    inner_radius = _math_binary(
-        group,
-        "MULTIPLY",
-        radius,
-        b_value=0.12,
-        label="始点半径",
-        location=(-120, -1080),
-    )
+    radius = _math_binary(group, "MULTIPLY", start_base_radius, start_shape_factor, label="始点形状半径", location=(3280, -2260))
     end_shape_factor = _effect_shape_factor(
         group,
         input_node,
@@ -1964,7 +2088,7 @@ def _instanced_radial_line_geometry(
         label="終点形状",
         location=(-320, -3220),
     )
-    inner_radius = _math_binary(group, "MULTIPLY", inner_radius, end_shape_factor, label="終点形状半径", location=(3280, -3220))
+    inner_radius = _math_binary(group, "MULTIPLY", base_radius, end_shape_factor, label="終点形状半径", location=(3280, -3220))
     length_wave = _math_binary(
         group,
         "SINE",

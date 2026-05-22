@@ -67,7 +67,7 @@
 
 - **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
 - **作品要素の実体化 (進行中 / 2026-05-05 Codex)**。 アドオン無効時に枠線やテキストが消えたように見える不安を避けるため、 画面描画だけに依存していた要素を Blender 実オブジェクトへ同期する。 第一段階はテキスト画像平面とコマ枠線カーブ。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
-- **効果線・フキダシ Geometry Nodes 化 (進行中 / 2026-05-21 Codex, v0.6.041)**。 Phase 1 の B-Name パネル値同期に加え、効果線・ウニフラッシュと楕円フキダシは Geometry Nodes 内部生成へ移行済み。フキダシの見える本体から直接表示用の形状を取り除き、Geometry Nodes を非表示にした時に下敷き表示が残らない状態へ更新済み。複雑フキダシ形状は互換のため非表示の参照形状を Geometry Nodes へ渡しつつ、段階的にノード内部生成へ移行する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)
+- **効果線・フキダシ Geometry Nodes 化 (進行中 / 2026-05-22 Codex, v0.6.055)**。 Phase 1 の B-Name パネル値同期に加え、効果線・フキダシの見える本体は Geometry Nodes 出力へ寄せた。雲、もやもや、トゲ系の形状係数は共通グループ化し、フキダシ本体、効果線の始点形状、効果線の終点形状で同じ計算を使う。ドラッグ作成中は範囲表示だけを出し、クリックだけでは作成しない。移植棚卸しテストでノード入力欠落と共通グループ利用を監査する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)
 - PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))
 - 魚眼 F1+F2 ([`docs/B-Name-fisheye-plan-2026-04-28.md`](docs/B-Name-fisheye-plan-2026-04-28.md))

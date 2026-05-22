@@ -13,6 +13,7 @@ from bpy.types import Operator
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
+from ..ui import overlay_creation_range
 from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
@@ -712,7 +713,7 @@ def _creation_context_for_world_point(context, x_mm: float, y_mm: float):
         return None
     page_index = coma_picker.find_page_at_world_mm(work, x_mm, y_mm)
     if page_index is None or not (0 <= page_index < len(work.pages)):
-        return None
+        return work, None, -1, float(x_mm), float(y_mm), layer_hierarchy.OUTSIDE_STACK_KEY
     page = work.pages[page_index]
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
     local_x = float(x_mm) - ox_mm
@@ -790,18 +791,23 @@ def _create_effect_layer(
     suffix = getattr(params, "effect_type", "effect") if params is not None else "effect"
 
     # parent_kind / parent_key を解決
+    requested_parent_key = str(parent_key or "")
+    outside_parent = requested_parent_key == layer_hierarchy.OUTSIDE_STACK_KEY
     parent_kind = "page"
-    if parent_key and ":" in parent_key:
+    object_parent_key = "" if outside_parent else requested_parent_key
+    if outside_parent:
+        parent_kind = "outside"
+    elif object_parent_key and ":" in object_parent_key:
         parent_kind = "coma"
-    elif not parent_key:
+    elif not object_parent_key:
         # parent_key が空ならアクティブ page/coma から導出
         page_id, coma_id = elop._resolve_active_coma(context)
         if coma_id:
             parent_kind = "coma"
-            parent_key = f"{page_id}:{coma_id}"
+            object_parent_key = f"{page_id}:{coma_id}"
         elif page_id:
             parent_kind = "page"
-            parent_key = page_id
+            object_parent_key = page_id
 
     bname_id = elop._make_effect_bname_id()
     title = f"効果線_{suffix}"
@@ -811,7 +817,7 @@ def _create_effect_layer(
     for o in bpy.data.objects:
         if str(o.get(on.PROP_KIND, "") or "") != "effect":
             continue
-        if str(o.get(on.PROP_PARENT_KEY, "") or "") != parent_key:
+        if str(o.get(on.PROP_PARENT_KEY, "") or "") != object_parent_key:
             continue
         try:
             z = int(o.get(on.PROP_Z_INDEX, 0) or 0)
@@ -827,7 +833,7 @@ def _create_effect_layer(
         title=title,
         z_index=z_index,
         parent_kind=parent_kind,
-        parent_key=parent_key,
+        parent_key=object_parent_key,
     )
     if obj is None or obj.data is None:
         return None, None
@@ -842,9 +848,9 @@ def _create_effect_layer(
             pass
     gp_data.layers.active = layer
     # GP layer 側の parent_key も保持 (overlay / export pipeline が参照する)
-    if parent_key:
+    if object_parent_key:
         try:
-            gp_parent.set_parent_key(layer, parent_key)
+            gp_parent.set_parent_key(layer, object_parent_key)
         except Exception:  # noqa: BLE001
             pass
     seed = _seed_for_new_layer(obj)
@@ -1179,12 +1185,17 @@ class BNAME_OT_effect_line_tool(Operator):
     _drag_layer_name: str
     _drag_start_x: float
     _drag_start_y: float
+    _drag_start_world_x: float
+    _drag_start_world_y: float
+    _drag_last_x: float
+    _drag_last_y: float
     _drag_orig_x: float
     _drag_orig_y: float
     _drag_orig_w: float
     _drag_orig_h: float
     _drag_orig_center_x: float
     _drag_orig_center_y: float
+    _drag_parent_key: str
     _drag_moved: bool
 
     @classmethod
@@ -1285,23 +1296,12 @@ class BNAME_OT_effect_line_tool(Operator):
                     params.start_to_coma_frame = True
                 finally:
                     _set_scene_params_syncing(context.scene, False)
-        obj, layer = _create_effect_layer(
-            context,
-            (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
-            parent_key=parent_key_for_create,
-        )
-        object_selection.select_key(
-            context,
-            object_selection.effect_key(layer),
-            mode="single",
-        )
-        self._start_drag(
-            obj,
-            layer,
-            "create",
+        self._start_create_preview(
             local_x,
             local_y,
-            (local_x, local_y, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM),
+            x_mm,
+            y_mm,
+            parent_key_for_create,
         )
         return {"RUNNING_MODAL"}
 
@@ -1335,7 +1335,39 @@ class BNAME_OT_effect_line_tool(Operator):
         center = effect_layer_center(obj, layer, bounds) or _bounds_center(bounds)
         self._drag_orig_center_x = float(center[0])
         self._drag_orig_center_y = float(center[1])
+        self._drag_last_x = float(x_mm)
+        self._drag_last_y = float(y_mm)
         self._drag_moved = False
+
+    def _start_create_preview(
+        self,
+        local_x_mm: float,
+        local_y_mm: float,
+        world_x_mm: float,
+        world_y_mm: float,
+        parent_key: str,
+    ) -> None:
+        self._dragging = True
+        self._drag_action = "create_preview"
+        self._drag_obj_name = ""
+        self._drag_layer_name = ""
+        self._drag_start_x = float(local_x_mm)
+        self._drag_start_y = float(local_y_mm)
+        self._drag_start_world_x = float(world_x_mm)
+        self._drag_start_world_y = float(world_y_mm)
+        self._drag_last_x = float(local_x_mm)
+        self._drag_last_y = float(local_y_mm)
+        self._drag_orig_x = float(local_x_mm)
+        self._drag_orig_y = float(local_y_mm)
+        self._drag_orig_w = _EFFECT_MIN_SIZE_MM
+        self._drag_orig_h = _EFFECT_MIN_SIZE_MM
+        self._drag_orig_center_x = float(local_x_mm)
+        self._drag_orig_center_y = float(local_y_mm)
+        self._drag_parent_key = str(parent_key or "")
+        self._drag_moved = False
+        overlay_creation_range.set_bounds(
+            (world_x_mm, world_y_mm, _EFFECT_MIN_SIZE_MM, _EFFECT_MIN_SIZE_MM)
+        )
 
     def _clear_drag_state(self) -> None:
         self._dragging = False
@@ -1344,13 +1376,19 @@ class BNAME_OT_effect_line_tool(Operator):
         self._drag_layer_name = ""
         self._drag_start_x = 0.0
         self._drag_start_y = 0.0
+        self._drag_start_world_x = 0.0
+        self._drag_start_world_y = 0.0
+        self._drag_last_x = 0.0
+        self._drag_last_y = 0.0
         self._drag_orig_x = 0.0
         self._drag_orig_y = 0.0
         self._drag_orig_w = 0.0
         self._drag_orig_h = 0.0
         self._drag_orig_center_x = 0.0
         self._drag_orig_center_y = 0.0
+        self._drag_parent_key = ""
         self._drag_moved = False
+        overlay_creation_range.clear()
 
     def _modal_dragging(self, context, event):
         if not _event_in_view3d_window(context, event):
@@ -1387,6 +1425,31 @@ class BNAME_OT_effect_line_tool(Operator):
         return obj, None
 
     def _update_drag(self, context, event) -> None:
+        if str(getattr(self, "_drag_action", "") or "") == "create_preview":
+            world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
+            if world_x_mm is None or world_y_mm is None:
+                return
+            parent_key = str(getattr(self, "_drag_parent_key", "") or "")
+            if parent_key == layer_hierarchy.OUTSIDE_STACK_KEY:
+                x_mm, y_mm = float(world_x_mm), float(world_y_mm)
+            else:
+                x_mm, y_mm = self._local_xy_for_parent_key(context, parent_key, world_x_mm, world_y_mm)
+            dx = float(x_mm) - self._drag_start_x
+            dy = float(y_mm) - self._drag_start_y
+            if abs(dx) > _EFFECT_DRAG_EPS_MM or abs(dy) > _EFFECT_DRAG_EPS_MM:
+                self._drag_moved = True
+            self._drag_last_x = float(x_mm)
+            self._drag_last_y = float(y_mm)
+            overlay_creation_range.set_bounds(
+                _rect_from_points(
+                    self._drag_start_world_x,
+                    self._drag_start_world_y,
+                    float(world_x_mm),
+                    float(world_y_mm),
+                )
+            )
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         obj, layer = self._drag_target(context)
         if obj is None or layer is None:
             self._clear_drag_state()
@@ -1402,6 +1465,25 @@ class BNAME_OT_effect_line_tool(Operator):
         center = self._drag_result_center(bounds, dx, dy)
         _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=center, propagate_link=False)
         layer_stack_utils.tag_view3d_redraw(context)
+
+    def _local_xy_for_parent_key(
+        self,
+        context,
+        parent_key: str,
+        world_x_mm: float,
+        world_y_mm: float,
+    ) -> tuple[float, float]:
+        if not parent_key or parent_key == layer_hierarchy.OUTSIDE_STACK_KEY:
+            return float(world_x_mm), float(world_y_mm)
+        work = get_work(context)
+        if work is None:
+            return float(world_x_mm), float(world_y_mm)
+        page_id = parent_key.split(":", 1)[0]
+        for index, page in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(page, "id", "") or "") == page_id:
+                ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, index)
+                return float(world_x_mm) - ox_mm, float(world_y_mm) - oy_mm
+        return float(world_x_mm), float(world_y_mm)
 
     def _drag_result_bounds(self, dx: float, dy: float) -> tuple[float, float, float, float]:
         action = str(getattr(self, "_drag_action", "") or "")
@@ -1453,6 +1535,32 @@ class BNAME_OT_effect_line_tool(Operator):
         )
 
     def _finish_drag(self, context) -> None:
+        if self._drag_action == "create_preview":
+            moved = bool(getattr(self, "_drag_moved", False))
+            if moved:
+                bounds = _rect_from_points(
+                    self._drag_start_x,
+                    self._drag_start_y,
+                    self._drag_last_x,
+                    self._drag_last_y,
+                )
+                obj, layer = _create_effect_layer(
+                    context,
+                    bounds,
+                    parent_key=str(getattr(self, "_drag_parent_key", "") or ""),
+                )
+                if obj is not None and layer is not None:
+                    object_selection.select_key(
+                        context,
+                        object_selection.effect_key(layer),
+                        mode="single",
+                    )
+                    self._push_undo_step("B-Name: 効果線作成")
+                    layer_stack_utils.sync_layer_stack_after_data_change(context)
+            else:
+                layer_stack_utils.tag_view3d_redraw(context)
+            self._clear_drag_state()
+            return
         obj, layer = self._drag_target(context)
         moved = bool(getattr(self, "_drag_moved", False))
         action = self._drag_action
@@ -1475,6 +1583,10 @@ class BNAME_OT_effect_line_tool(Operator):
         self._clear_drag_state()
 
     def _cancel_drag(self, context) -> None:
+        if self._drag_action == "create_preview":
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         obj, layer = self._drag_target(context)
         if obj is not None and layer is not None:
             if self._drag_action == "create":

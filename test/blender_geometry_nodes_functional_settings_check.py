@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -68,6 +69,30 @@ def _assert_changed(before: dict, after: dict, label: str) -> None:
 def _bounds_size(stats: dict) -> tuple[float, float]:
     left, bottom, right, top = stats["bounds"]
     return float(right) - float(left), float(top) - float(bottom)
+
+
+def _ellipse_norm_range(
+    obj,
+    *,
+    center_mm: tuple[float, float],
+    radius_mm: tuple[float, float],
+) -> tuple[float, float]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        cx, cy = center_mm
+        rx = max(0.001, float(radius_mm[0]))
+        ry = max(0.001, float(radius_mm[1]))
+        values = [
+            math.sqrt(((float(v.co.x) * 1000.0 - cx) / rx) ** 2 + ((float(v.co.y) * 1000.0 - cy) / ry) ** 2)
+            for v in mesh.vertices
+        ]
+        if not values:
+            return 0.0, 0.0
+        return min(values), max(values)
+    finally:
+        evaluated.to_mesh_clear()
 
 
 def _assert_material_alpha(obj, slot: int, expected: float, label: str, eps: float = 1.0e-4) -> None:
@@ -248,6 +273,15 @@ def main() -> None:
         tall_w, tall_h = _bounds_size(tall_focus)
         if not (tall_h > tall_w * 2.0):
             raise AssertionError(f"効果線がハンドルの縦横比に従っていません: bounds={tall_focus['bounds']}")
+        norm_min, norm_max = _ellipse_norm_range(
+            display,
+            center_mm=(32.0, 88.0),
+            radius_mm=(12.0, 48.0),
+        )
+        if norm_min < 0.65:
+            raise AssertionError(f"効果線の終点形状がハンドルより内側に縮んでいます: norm_min={norm_min:.3f}")
+        if norm_max < 1.75:
+            raise AssertionError(f"効果線の始点形状が終点形状の外側まで届いていません: norm_max={norm_max:.3f}")
 
         params.start_to_coma_frame = True
         params.spacing_mode = "angle"

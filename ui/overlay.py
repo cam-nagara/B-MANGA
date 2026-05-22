@@ -39,6 +39,7 @@ from ..utils.geom import Rect, bleed_rect, mm_to_m
 from . import overlay_effect_line
 from . import overlay_image
 from . import overlay_coma_selection
+from . import overlay_creation_range
 from . import overlay_shared
 from . import overlay_text
 from . import overlay_visibility
@@ -1358,7 +1359,12 @@ def _draw_callback(phase: str = "post") -> None:
             context,
             draw_rect_fill=_draw_rect_fill,
             draw_rect_outline=_draw_rect_outline,
+            draw_segments_mm=_draw_segments_mm,
             logger=_logger,
+        )
+        overlay_creation_range.draw(
+            draw_rect_fill=_draw_rect_fill,
+            draw_rect_outline=_draw_rect_outline,
         )
         _draw_object_tool_layer_bounds(context)
     finally:

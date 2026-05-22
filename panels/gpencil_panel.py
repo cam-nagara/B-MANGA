@@ -354,10 +354,12 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label)
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
         return
     _draw_type_icon(row, index, _kind_icon(item.kind))
     name = item.label if item.kind == "effect" and item.label else target.name
+    if not str(name or "").strip():
+        name = item.label or item.name or item.key or "レイヤー"
     _select_name(row, index, name)
     if item.kind == "gp":
         controls["gp_style"] = _gp_color_style(target)
@@ -401,7 +403,7 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         return
     if target is None:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label)
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
         return
     if item.kind == "layer_folder":
         _draw_type_icon(row, index, "FILE_FOLDER")
@@ -420,7 +422,7 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         controls["lock_prop"] = "locked"
     elif item.kind == "balloon":
         _draw_type_icon(row, index, "MOD_FLUID")
-        _select_name(row, index, target.id)
+        _select_name(row, index, getattr(target, "id", "") or item.label or item.name or "フキダシ")
         row.label(text=getattr(target, "shape", ""))
     elif item.kind == "text":
         _draw_type_icon(row, index, "FONT_DATA")
@@ -429,7 +431,7 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         _draw_stack_gp_row(row, controls, item, resolved, index)
     else:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label)
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
 
 
 class BNAME_UL_layer_stack(UIList):

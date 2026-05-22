@@ -734,6 +734,23 @@ def collect_targets(context) -> list[LayerTarget]:
             for panel in panels:
                 key = coma_stack_key(page, panel)
                 panels_by_key[key] = panel
+
+            # コマ外のページ直下レイヤーは、ページ内のどのコマよりも前面に置く。
+            all_page_layers = _collect_page_layer_targets(page, panels_by_key)
+            visible_parent_keys = {page_key}
+            for target in gp_targets_by_parent.get(page_key, []):
+                targets.append(target)
+                visible_parent_keys.add(target.key)
+            for target in effect_targets_by_parent.get(page_key, []):
+                targets.append(target)
+                visible_parent_keys.add(target.key)
+            for target in all_page_layers:
+                if target.parent_key in visible_parent_keys:
+                    targets.append(target)
+                    visible_parent_keys.add(target.key)
+
+            for panel in panels:
+                key = coma_stack_key(page, panel)
                 panel_label = _coma_label(panel, getattr(panel, "coma_id", "") or key)
                 targets.append(LayerTarget(COMA_KIND, key, panel_label, page_key, 1))
                 targets.extend(gp_targets_by_parent.get(key, []))
@@ -752,19 +769,6 @@ def collect_targets(context) -> list[LayerTarget]:
                         2,
                     )
                 )
-            # コマ外のページ直下レイヤーは、すべてのコマ行の後にまとめて表示する。
-            all_page_layers = _collect_page_layer_targets(page, panels_by_key)
-            visible_parent_keys = {page_key}
-            for target in gp_targets_by_parent.get(page_key, []):
-                targets.append(target)
-                visible_parent_keys.add(target.key)
-            for target in effect_targets_by_parent.get(page_key, []):
-                targets.append(target)
-                visible_parent_keys.add(target.key)
-            for target in all_page_layers:
-                if target.parent_key in visible_parent_keys:
-                    targets.append(target)
-                    visible_parent_keys.add(target.key)
 
     elif gp_root_targets or effect_root_targets:
         targets.extend(effect_root_targets)

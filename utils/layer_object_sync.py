@@ -369,11 +369,24 @@ def assign_per_page_z_ranks(scene, work) -> int:
             continue
         page_groups.setdefault(page_id, []).append((z_index, obj))
 
+    page_front_base: dict[str, float] = {}
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id:
+            continue
+        front_z = 0.0
+        for coma in getattr(page, "comas", []) or []:
+            try:
+                front_z = max(front_z, coma_z_order.border_z(coma))
+            except Exception:  # noqa: BLE001
+                pass
+        page_front_base[page_id] = front_z
+
     updated = 0
     for page_id, items in page_groups.items():
         items.sort(key=lambda x: (x[0], x[1].name))  # z_index 昇順, tie は name
         for rank, (_zi, obj) in enumerate(items, start=1):
-            new_z = rank * BNAME_Z_STEP_M
+            new_z = page_front_base.get(page_id, 0.0) + rank * BNAME_Z_STEP_M
             if _set_object_z(obj, new_z):
                 updated += 1
     for coma_key, items in coma_items.items():

@@ -404,13 +404,21 @@ def main() -> None:
         def _outline(rect, *args, **kwargs):
             drawn.append(("outline", rect, args, kwargs))
 
+        guide_drawn = []
+
+        def _segments(segments, color, width_mm):
+            guide_drawn.append((segments, color, width_mm))
+
         overlay_effect_line.draw_active_effect_line_bounds(
             context,
             draw_rect_fill=_fill,
             draw_rect_outline=_outline,
+            draw_segments_mm=_segments,
         )
         if not drawn:
             raise AssertionError("効果線の選択枠が描画されません")
+        if len(guide_drawn) < 2:
+            raise AssertionError("効果線の始点形状・終点形状ガイドが描画されません")
 
         params = context.scene.bname_effect_line_params
         params.effect_type = "focus"
