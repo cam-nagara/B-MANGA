@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 6
+_GROUP_VERSION = 7
 _BALLOON_TAIL_SOCKET_COUNT = 8
 
 
@@ -178,7 +178,6 @@ _BALLOON_TAIL_SOCKETS = tuple(
 )
 
 _BALLOON_EXTRA_SOCKETS = (
-    SocketSpec("参照形状", "NodeSocketObject", None),
     SocketSpec("形状", "NodeSocketInt", 0),
     SocketSpec("カスタム形状名", "NodeSocketString", ""),
     SocketSpec("X", "NodeSocketFloat", 0.0),
@@ -291,6 +290,21 @@ def _ensure_socket(group, spec: SocketSpec, *, in_out: str = "INPUT"):
     return item
 
 
+def _prune_input_sockets(group, kind: str) -> None:
+    allowed = {"Geometry"} | {spec.name for spec in _GROUP_SOCKETS.get(kind, ())}
+    for item in list(group.interface.items_tree):
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "in_out", "") != "INPUT":
+            continue
+        if str(getattr(item, "name", "") or "") in allowed:
+            continue
+        try:
+            group.interface.remove(item)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _clear_nodes(group) -> None:
     for node in list(group.nodes):
         group.nodes.remove(node)
@@ -347,6 +361,26 @@ def _math_add(group, a_socket, b_socket, *, label: str, location: tuple[float, f
     return node.outputs[0]
 
 
+def _math_binary(
+    group,
+    operation: str,
+    a_socket,
+    b_socket=None,
+    *,
+    b_value: float | None = None,
+    label: str,
+    location: tuple[float, float],
+):
+    node = _node(group, "ShaderNodeMath", label=label, location=location)
+    node.operation = operation
+    _link(group, a_socket, node.inputs[0])
+    if b_socket is not None:
+        _link(group, b_socket, node.inputs[1])
+    elif b_value is not None:
+        _set_default(node.inputs[1], float(b_value))
+    return node.outputs[0]
+
+
 def _combine_xyz(
     group,
     x_socket=None,
@@ -370,6 +404,36 @@ def _set_material_index(group, geometry_socket, index: int, *, label: str, locat
     _set_default(node.inputs["Material Index"], int(index))
     _link(group, geometry_socket, node.inputs["Geometry"])
     return node.outputs["Geometry"]
+
+
+def _separate_xyz(group, vector_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "ShaderNodeSeparateXYZ", label=label, location=location)
+    _link(group, vector_socket, node.inputs["Vector"])
+    return node
+
+
+def _shape_compare(group, input_node, shape_code: int, *, label: str, location: tuple[float, float]):
+    compare = _node(group, "FunctionNodeCompare", label=label, location=location)
+    compare.data_type = "INT"
+    compare.operation = "EQUAL"
+    _set_default(_socket_by_identifier(compare.inputs, "B_INT"), int(shape_code))
+    _link(group, input_node.outputs["形状"], _socket_by_identifier(compare.inputs, "A_INT"))
+    return compare.outputs["Result"]
+
+
+def _switch_float(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeSwitch", label=label, location=location)
+    node.input_type = "FLOAT"
+    _link(group, switch_socket, node.inputs["Switch"])
+    _link(group, false_socket, node.inputs["False"])
+    _link(group, true_socket, node.inputs["True"])
+    return node.outputs["Output"]
+
+
+def _constant_float(group, value: float, *, label: str, location: tuple[float, float]):
+    node = _node(group, "ShaderNodeValue", label=label, location=location)
+    _set_default(node.outputs["Value"], float(value))
+    return node.outputs["Value"]
 
 
 def _ellipse_fill(group, input_node, width_half_m, height_half_m, *, z: float):
@@ -457,15 +521,226 @@ def _balloon_ellipse_geometry(group, input_node, width_half_m, height_half_m, li
     return join.outputs["Geometry"]
 
 
+def _balloon_shape_factor(group, input_node, pos_x, pos_y, width_half_m, height_half_m):
+    import math
+
+    angle = _math_binary(
+        group,
+        "ARCTAN2",
+        pos_y,
+        pos_x,
+        label="輪郭角度",
+        location=(-760, 500),
+    )
+    radius_sum = _math_add(group, width_half_m, height_half_m, label="半径合計", location=(-760, 340))
+    radius_avg = _math_binary(
+        group,
+        "MULTIPLY",
+        radius_sum,
+        b_value=0.5,
+        label="平均半径",
+        location=(-560, 340),
+    )
+    one = _constant_float(group, 1.0, label="通常形状", location=(-560, 180))
+
+    cloud_wave = _math_binary(
+        group,
+        "MULTIPLY",
+        angle,
+        input_node.outputs["雲の波数"],
+        label="雲の波",
+        location=(-560, 560),
+    )
+    cloud_sin = _math_binary(
+        group,
+        "SINE",
+        cloud_wave,
+        label="雲の丸み",
+        location=(-360, 560),
+    )
+    cloud_amp_m = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["波の振幅"],
+        b_value=0.001,
+        label="雲の振幅 mm → m",
+        location=(-560, 430),
+    )
+    cloud_amp = _math_binary(
+        group,
+        "DIVIDE",
+        cloud_amp_m,
+        radius_avg,
+        label="雲の振幅率",
+        location=(-360, 430),
+    )
+    cloud_delta = _math_binary(
+        group,
+        "MULTIPLY",
+        cloud_sin,
+        cloud_amp,
+        label="雲の半径変化",
+        location=(-160, 520),
+    )
+    cloud_factor = _math_add(group, one, cloud_delta, label="雲形状", location=(40, 520))
+
+    thorn_wave = _math_binary(
+        group,
+        "MULTIPLY",
+        angle,
+        input_node.outputs["トゲ数"],
+        label="トゲの波",
+        location=(-560, 760),
+    )
+    thorn_sin = _math_binary(
+        group,
+        "SINE",
+        thorn_wave,
+        label="トゲの山",
+        location=(-360, 760),
+    )
+    thorn_abs = _math_binary(
+        group,
+        "ABSOLUTE",
+        thorn_sin,
+        label="トゲを外向きにする",
+        location=(-160, 760),
+    )
+    thorn_depth_m = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["トゲの深さ"],
+        b_value=0.001,
+        label="トゲ深さ mm → m",
+        location=(-360, 640),
+    )
+    thorn_depth = _math_binary(
+        group,
+        "DIVIDE",
+        thorn_depth_m,
+        radius_avg,
+        label="トゲ深さ率",
+        location=(-160, 640),
+    )
+    thorn_delta = _math_binary(
+        group,
+        "MULTIPLY",
+        thorn_abs,
+        thorn_depth,
+        label="トゲ半径変化",
+        location=(40, 700),
+    )
+    thorn_factor = _math_add(group, one, thorn_delta, label="トゲ形状", location=(240, 700))
+
+    is_cloud = _shape_compare(group, input_node, 3, label="雲か", location=(40, 360))
+    is_fluffy = _shape_compare(group, input_node, 4, label="もやもやか", location=(40, 240))
+    cloud_or_fluffy = _node(group, "FunctionNodeBooleanMath", label="雲/もやもや", location=(240, 300))
+    cloud_or_fluffy.operation = "OR"
+    _link(group, is_cloud, cloud_or_fluffy.inputs[0])
+    _link(group, is_fluffy, cloud_or_fluffy.inputs[1])
+    factor_after_cloud = _switch_float(
+        group,
+        cloud_or_fluffy.outputs["Boolean"],
+        one,
+        cloud_factor,
+        label="雲系を適用",
+        location=(440, 420),
+    )
+
+    is_thorn = _shape_compare(group, input_node, 5, label="トゲか", location=(240, 120))
+    is_thorn_curve = _shape_compare(group, input_node, 6, label="トゲ曲線か", location=(240, 0))
+    thorn_or_curve = _node(group, "FunctionNodeBooleanMath", label="トゲ系", location=(440, 60))
+    thorn_or_curve.operation = "OR"
+    _link(group, is_thorn, thorn_or_curve.inputs[0])
+    _link(group, is_thorn_curve, thorn_or_curve.inputs[1])
+    return _switch_float(
+        group,
+        thorn_or_curve.outputs["Boolean"],
+        factor_after_cloud,
+        thorn_factor,
+        label="トゲ系を適用",
+        location=(640, 360),
+    )
+
+
+def _deform_balloon_mesh(
+    group,
+    input_node,
+    mesh_socket,
+    width_half_m,
+    height_half_m,
+    *,
+    z: float,
+    label: str,
+    location: tuple[float, float],
+):
+    position = _node(group, "GeometryNodeInputPosition", label=f"{label} 元位置", location=(location[0] - 560, location[1] + 180))
+    sep = _separate_xyz(group, position.outputs["Position"], label=f"{label} 位置分解", location=(location[0] - 360, location[1] + 180))
+    factor = _balloon_shape_factor(group, input_node, sep.outputs["X"], sep.outputs["Y"], width_half_m, height_half_m)
+    sx = _math_binary(group, "MULTIPLY", sep.outputs["X"], width_half_m, label=f"{label} X拡大", location=(location[0] - 160, location[1]))
+    sx = _math_binary(group, "MULTIPLY", sx, factor, label=f"{label} X形状", location=(location[0] + 40, location[1]))
+    sy = _math_binary(group, "MULTIPLY", sep.outputs["Y"], height_half_m, label=f"{label} Y拡大", location=(location[0] - 160, location[1] - 160))
+    sy = _math_binary(group, "MULTIPLY", sy, factor, label=f"{label} Y形状", location=(location[0] + 40, location[1] - 160))
+    px = _math_add(group, width_half_m, sx, label=f"{label} X配置", location=(location[0] + 240, location[1]))
+    py = _math_add(group, height_half_m, sy, label=f"{label} Y配置", location=(location[0] + 240, location[1] - 160))
+    vector = _combine_xyz(group, px, py, z=z, label=f"{label} 座標", location=(location[0] + 440, location[1] - 80))
+    set_pos = _node(group, "GeometryNodeSetPosition", label=label, location=(location[0] + 640, location[1] - 80))
+    _link(group, mesh_socket, set_pos.inputs["Geometry"])
+    _link(group, vector, set_pos.inputs["Position"])
+    return set_pos.outputs["Geometry"]
+
+
+def _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, line_half_m):
+    fill_circle = _node(group, "GeometryNodeMeshCircle", label="塗り元円", location=(-520, 120))
+    fill_circle.fill_type = "TRIANGLE_FAN"
+    _set_default(fill_circle.inputs["Vertices"], 192)
+    _set_default(fill_circle.inputs["Radius"], 1.0)
+    fill = _deform_balloon_mesh(
+        group,
+        input_node,
+        fill_circle.outputs["Mesh"],
+        width_half_m,
+        height_half_m,
+        z=-0.001,
+        label="塗り形状を生成",
+        location=(-240, 120),
+    )
+    fill = _set_material_index(group, fill, 1, label="塗り素材", location=(620, 120))
+
+    outline_circle = _node(group, "GeometryNodeMeshCircle", label="輪郭元円", location=(-520, -760))
+    outline_circle.fill_type = "NONE"
+    _set_default(outline_circle.inputs["Vertices"], 192)
+    _set_default(outline_circle.inputs["Radius"], 1.0)
+    outline_mesh = _deform_balloon_mesh(
+        group,
+        input_node,
+        outline_circle.outputs["Mesh"],
+        width_half_m,
+        height_half_m,
+        z=0.0,
+        label="輪郭形状を生成",
+        location=(-240, -760),
+    )
+    mesh_to_curve = _node(group, "GeometryNodeMeshToCurve", label="輪郭を曲線化", location=(620, -760))
+    _link(group, outline_mesh, mesh_to_curve.inputs["Mesh"])
+    profile = _node(group, "GeometryNodeCurvePrimitiveCircle", label="線幅を生成", location=(620, -1020))
+    _set_default(profile.inputs["Resolution"], 8)
+    _link(group, line_half_m, profile.inputs["Radius"])
+    outline = _node(group, "GeometryNodeCurveToMesh", label="輪郭をメッシュ化", location=(840, -760))
+    _set_default(outline.inputs["Fill Caps"], True)
+    _link(group, mesh_to_curve.outputs["Curve"], outline.inputs["Curve"])
+    _link(group, profile.outputs["Curve"], outline.inputs["Profile Curve"])
+    outline = _set_material_index(group, outline.outputs["Mesh"], 0, label="線素材", location=(1060, -760))
+
+    join = _node(group, "GeometryNodeJoinGeometry", label="フキダシ生成", location=(1280, -260))
+    _link(group, fill, join.inputs["Geometry"])
+    _link(group, outline, join.inputs["Geometry"])
+    return join.outputs["Geometry"]
+
+
 def _build_balloon_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
-    ref_info = _node(group, "GeometryNodeObjectInfo", label="参照形状を取得", location=(120, 420))
-    _link(group, input_node.outputs["参照形状"], ref_info.inputs["Object"])
-    try:
-        _set_default(ref_info.inputs["As Instance"], False)
-    except Exception:  # noqa: BLE001
-        pass
     width_half_m = _math_multiply(
         group,
         input_node.outputs["幅"],
@@ -487,18 +762,8 @@ def _build_balloon_nodes(group) -> None:
         label="線幅 mm → 半径 m",
         location=(-800, -400),
     )
-    generated = _balloon_ellipse_geometry(group, input_node, width_half_m, height_half_m, line_half_m)
-    compare = _node(group, "FunctionNodeCompare", label="楕円ならノード生成", location=(340, 220))
-    compare.data_type = "INT"
-    compare.operation = "EQUAL"
-    _set_default(_socket_by_identifier(compare.inputs, "B_INT"), 2)
-    _link(group, input_node.outputs["形状"], _socket_by_identifier(compare.inputs, "A_INT"))
-    switch = _node(group, "GeometryNodeSwitch", label="複雑形状は互換形状", location=(570, 90))
-    switch.input_type = "GEOMETRY"
-    _link(group, compare.outputs["Result"], switch.inputs["Switch"])
-    _link(group, ref_info.outputs["Geometry"], switch.inputs["False"])
-    _link(group, generated, switch.inputs["True"])
-    _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
+    generated = _balloon_generated_geometry(group, input_node, width_half_m, height_half_m, line_half_m)
+    _link(group, generated, output_node.inputs["Geometry"])
     group[PROP_GROUP_VERSION] = _GROUP_VERSION
 
 
@@ -585,6 +850,134 @@ def _radial_line_geometry(
     return join.outputs["Geometry"]
 
 
+def _instanced_radial_line_geometry(
+    group,
+    input_node,
+    origin_x_m,
+    origin_y_m,
+    width_half_m,
+    height_half_m,
+    line_half_m,
+):
+    """本数入力から Geometry Nodes 側で放射線を繰り返し生成する."""
+    import math
+
+    points = _node(group, "GeometryNodeMeshLine", label="線の本数", location=(-520, -520))
+    _link(group, input_node.outputs["本数"], points.inputs["Count"])
+    _set_default(points.inputs["Start Location"], (0.0, 0.0, 0.0))
+    _set_default(points.inputs["Offset"], (0.0, 0.0, 0.0))
+
+    index = _node(group, "GeometryNodeInputIndex", label="線番号", location=(-520, -720))
+    frac = _math_binary(
+        group,
+        "DIVIDE",
+        index.outputs["Index"],
+        input_node.outputs["本数"],
+        label="線番号 / 本数",
+        location=(-320, -720),
+    )
+    angle = _math_binary(
+        group,
+        "MULTIPLY",
+        frac,
+        b_value=math.tau,
+        label="角度",
+        location=(-120, -720),
+    )
+    rotation_rad = _math_binary(
+        group,
+        "MULTIPLY",
+        input_node.outputs["全体回転"],
+        b_value=math.pi / 180.0,
+        label="全体回転をラジアンへ",
+        location=(-120, -900),
+    )
+    angle_with_rotation = _math_add(
+        group,
+        angle,
+        rotation_rad,
+        label="回転済み角度",
+        location=(80, -720),
+    )
+    axis_angle = _node(group, "FunctionNodeAxisAngleToRotation", label="線を回転", location=(280, -720))
+    _set_default(axis_angle.inputs["Axis"], (0.0, 0.0, 1.0))
+    _link(group, angle_with_rotation, axis_angle.inputs["Angle"])
+
+    radius_sum = _math_add(
+        group,
+        width_half_m,
+        height_half_m,
+        label="半径合計",
+        location=(-520, -1080),
+    )
+    radius = _math_binary(
+        group,
+        "MULTIPLY",
+        radius_sum,
+        b_value=0.5,
+        label="平均半径",
+        location=(-320, -1080),
+    )
+    inner_radius = _math_binary(
+        group,
+        "MULTIPLY",
+        radius,
+        b_value=0.12,
+        label="始点半径",
+        location=(-120, -1080),
+    )
+    start_vec = _combine_xyz(group, inner_radius, None, z=0.0, label="線始点", location=(80, -1080))
+    end_vec = _combine_xyz(group, radius, None, z=0.0, label="線終点", location=(80, -1240))
+
+    line = _node(group, "GeometryNodeCurvePrimitiveLine", label="線の原型", location=(280, -1080))
+    _link(group, start_vec, line.inputs["Start"])
+    _link(group, end_vec, line.inputs["End"])
+    profile = _node(group, "GeometryNodeCurvePrimitiveCircle", label="線幅", location=(280, -1320))
+    _set_default(profile.inputs["Resolution"], 8)
+    _link(group, line_half_m, profile.inputs["Radius"])
+    mesh = _node(group, "GeometryNodeCurveToMesh", label="線をメッシュ化", location=(520, -1080))
+    _set_default(mesh.inputs["Fill Caps"], True)
+    _link(group, line.outputs["Curve"], mesh.inputs["Curve"])
+    _link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
+    material = _set_material_index(
+        group,
+        mesh.outputs["Mesh"],
+        0,
+        label="線素材",
+        location=(760, -1080),
+    )
+
+    instance = _node(group, "GeometryNodeInstanceOnPoints", label="線を繰り返し配置", location=(760, -640))
+    _link(group, points.outputs["Mesh"], instance.inputs["Points"])
+    _link(group, material, instance.inputs["Instance"])
+    _link(group, axis_angle.outputs["Rotation"], instance.inputs["Rotation"])
+    realize = _node(group, "GeometryNodeRealizeInstances", label="線を実体化", location=(980, -640))
+    _link(group, instance.outputs["Instances"], realize.inputs["Geometry"])
+    center_x = _math_add(group, origin_x_m, width_half_m, label="中心 X", location=(760, -260))
+    center_y = _math_add(group, origin_y_m, height_half_m, label="中心 Y", location=(760, -420))
+    translation = _combine_xyz(group, center_x, center_y, z=0.0, label="表示位置", location=(980, -360))
+    transform = _node(group, "GeometryNodeTransform", label="効果線を配置", location=(1180, -640))
+    _link(group, realize.outputs["Geometry"], transform.inputs["Geometry"])
+    _link(group, translation, transform.inputs["Translation"])
+    return transform.outputs["Geometry"]
+
+
+def _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_half_m):
+    fill = _node(group, "GeometryNodeMeshCircle", label="終点形状下地", location=(780, 120))
+    fill.fill_type = "TRIANGLE_FAN"
+    _set_default(fill.inputs["Vertices"], 192)
+    _set_default(fill.inputs["Radius"], 1.0)
+    scale = _combine_xyz(group, width_half_m, height_half_m, z=1.0, label="下地サイズ", location=(980, 120))
+    cx = _math_add(group, origin_x_m, width_half_m, label="下地中心 X", location=(980, -80))
+    cy = _math_add(group, origin_y_m, height_half_m, label="下地中心 Y", location=(980, -240))
+    translation = _combine_xyz(group, cx, cy, z=-0.001, label="下地位置", location=(1180, -160))
+    transform = _node(group, "GeometryNodeTransform", label="下地を配置", location=(1180, 120))
+    _link(group, fill.outputs["Mesh"], transform.inputs["Geometry"])
+    _link(group, scale, transform.inputs["Scale"])
+    _link(group, translation, transform.inputs["Translation"])
+    return _set_material_index(group, transform.outputs["Geometry"], 1, label="下地素材", location=(1380, 120))
+
+
 def _build_effect_line_nodes(group) -> None:
     _clear_nodes(group)
     input_node, output_node = _group_input_output(group)
@@ -623,18 +1016,25 @@ def _build_effect_line_nodes(group) -> None:
         label="線幅 mm → 半径 m",
         location=(-800, -340),
     )
-    lines = _radial_line_geometry(
+    lines = _instanced_radial_line_geometry(
         group,
+        input_node,
         origin_x_m,
         origin_y_m,
         width_half_m,
         height_half_m,
         line_half_m,
-        inner_scale=0.12,
-        line_count=16,
-        label="効果線生成",
     )
-    _link(group, lines, output_node.inputs["Geometry"])
+    fill = _effect_fill_geometry(group, origin_x_m, origin_y_m, width_half_m, height_half_m)
+    join = _node(group, "GeometryNodeJoinGeometry", label="効果線と下地", location=(1460, -420))
+    _link(group, fill, join.inputs["Geometry"])
+    _link(group, lines, join.inputs["Geometry"])
+    switch = _node(group, "GeometryNodeSwitch", label="下地塗り表示", location=(1660, -420))
+    switch.input_type = "GEOMETRY"
+    _link(group, input_node.outputs["終点形状を下地として塗る"], switch.inputs["Switch"])
+    _link(group, lines, switch.inputs["False"])
+    _link(group, join.outputs["Geometry"], switch.inputs["True"])
+    _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
     group[PROP_GROUP_VERSION] = _GROUP_VERSION
 
 
@@ -671,6 +1071,7 @@ def ensure_node_group(kind: str) -> bpy.types.NodeTree:
         group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     for spec in _GROUP_SOCKETS.get(kind, ()):
         _ensure_socket(group, spec)
+    _prune_input_sockets(group, kind)
     if len(group.nodes) == 0 or _group_needs_rebuild(group, kind):
         _build_generator_nodes(group, kind)
     else:

@@ -611,9 +611,7 @@ def _write_effect_strokes(
     propagate_link: bool = True,
     center_xy_mm: tuple[float, float] | None = None,
 ) -> int:
-    from ..utils import gpencil
     from ..core import effect_line
-    from . import effect_line_gen
 
     params = _params_for_write(context, obj, layer, params_override=params_override)
     if params is None:
@@ -627,112 +625,8 @@ def _write_effect_strokes(
         focus_center_xy = shape_center_xy
     seed_value = _seed_for_layer(obj, layer) if seed is None else int(seed)
     drawing = _frame_drawing(layer)
-    if drawing is None:
-        return 0
-    line_material_index = _apply_material_settings(obj, layer, params)
-    white_outline_black_material_index = line_material_index
-    white_outline_white_material_index = line_material_index
-    opacity = _effect_opacity(params)
-    if getattr(params, "effect_type", "") == "white_outline":
-        white_outline_black_material_index = _ensure_effect_material(
-            obj,
-            _effect_role_material_name(layer, "WhiteOutline_Black"),
-            (0.0, 0.0, 0.0, opacity),
-        )
-        white_outline_white_material_index = _ensure_effect_material(
-            obj,
-            _effect_role_material_name(layer, "WhiteOutline_White"),
-            (1.0, 1.0, 1.0, opacity),
-        )
-    start_guide_material_index = _ensure_effect_material(
-        obj,
-        _effect_role_material_name(layer, "StartShape_Purple"),
-        (0.55, 0.12, 1.0, opacity),
-    )
-    end_guide_material_index = _ensure_effect_material(
-        obj,
-        _effect_role_material_name(layer, "EndShape_Cyan"),
-        (0.0, 0.75, 1.0, opacity),
-    )
-    end_fill_material_index = -1
-    if bool(getattr(params, "fill_base_shape", False)):
-        end_fill_material_index = _ensure_effect_fill_material(
-            obj,
-            _effect_role_material_name(layer, "EndShape_Fill"),
-            _effect_fill_rgba(params),
-        )
-    _clear_drawing(drawing)
-    start_outline, start_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
-    fill_stroke = None
-    if end_fill_material_index >= 0:
-        fill_stroke = effect_line_gen.generate_end_shape_fill_stroke(
-            params,
-            shape_center_xy,
-            w * 0.5,
-            h * 0.5,
-            seed=seed_value,
-        )
-    if fill_stroke is not None:
-        gpencil.add_stroke_to_drawing(
-            drawing,
-            fill_stroke.points_xyz,
-            radius=fill_stroke.radius,
-            cyclic=fill_stroke.cyclic,
-            material_index=end_fill_material_index,
-            curve_type=getattr(fill_stroke, "curve_type", "POLY"),
-            bezier_smooth=bool(getattr(fill_stroke, "bezier_smooth", False)),
-        )
-    strokes = effect_line_gen.generate_strokes(
-        params,
-        center_xy_mm=focus_center_xy,
-        radius_xy_mm=(w * 0.5, h * 0.5),
-        seed=seed_value,
-        start_outline_mm=start_outline,
-        start_extend_mm=start_extend,
-        end_center_xy_mm=shape_center_xy,
-    )
-    guide_strokes = effect_line_gen.generate_shape_guide_strokes(
-        params,
-        center_xy_mm=focus_center_xy,
-        radius_xy_mm=(w * 0.5, h * 0.5),
-        start_outline_mm=start_outline,
-        start_extend_mm=start_extend,
-        seed=seed_value,
-        end_center_xy_mm=shape_center_xy,
-    )
-    line_added = 0
-    for stroke in strokes:
-        material_index = line_material_index
-        if stroke.role == "white_outline_black":
-            material_index = white_outline_black_material_index
-        elif stroke.role == "white_outline_white":
-            material_index = white_outline_white_material_index
-        if gpencil.add_stroke_to_drawing(
-            drawing,
-            stroke.points_xyz,
-            radius=stroke.radius,
-            radii=getattr(stroke, "radii", None),
-            opacities=getattr(stroke, "opacities", None),
-            cyclic=stroke.cyclic,
-            material_index=material_index,
-            curve_type=getattr(stroke, "curve_type", "POLY"),
-            bezier_smooth=bool(getattr(stroke, "bezier_smooth", False)),
-        ):
-            line_added += 1
-    for stroke in guide_strokes:
-        material_index = start_guide_material_index if stroke.role == "start_guide" else end_guide_material_index
-        gpencil.add_stroke_to_drawing(
-            drawing,
-            stroke.points_xyz,
-            radius=stroke.radius,
-            radii=getattr(stroke, "radii", None),
-            opacities=getattr(stroke, "opacities", None),
-            cyclic=stroke.cyclic,
-            material_index=material_index,
-            curve_type=getattr(stroke, "curve_type", "POLY"),
-            bezier_smooth=bool(getattr(stroke, "bezier_smooth", False)),
-        )
-    gpencil.ensure_layer_material(obj, layer, activate=True, assign_existing=False)
+    if drawing is not None:
+        _clear_drawing(drawing)
     params_data = effect_line.effect_params_to_dict(params)
     _set_layer_bounds(
         obj,
@@ -778,7 +672,7 @@ def _write_effect_strokes(
             params_data,
             focus_center_xy,
         )
-    return line_added
+    return 1
 
 
 def on_effect_params_changed(context, _params) -> None:
@@ -1180,7 +1074,7 @@ def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float
 
 class BNAME_OT_effect_line_generate(Operator):
     bl_idname = "bname.effect_line_generate"
-    bl_label = "効果線を生成"
+    bl_label = "効果線を追加"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -1189,13 +1083,12 @@ class BNAME_OT_effect_line_generate(Operator):
 
     def execute(self, context):
         try:
-            _obj, layer = _create_effect_layer(context)
-            added = len(getattr(_frame_drawing(layer), "strokes", []) or [])
+            _create_effect_layer(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("effect_line_generate failed")
-            self.report({"ERROR"}, f"効果線生成失敗: {exc}")
+            self.report({"ERROR"}, f"効果線追加失敗: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"効果線生成: {added} ストローク")
+        self.report({"INFO"}, "効果線を追加しました")
         return {"FINISHED"}
 
 

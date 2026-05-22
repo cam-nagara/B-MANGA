@@ -73,7 +73,17 @@ def _assert_effect_not_masked(obj) -> None:
         for frame in getattr(layer, "frames", []) or []:
             drawing = getattr(frame, "drawing", None)
             stroke_count += len(getattr(drawing, "strokes", []) or []) if drawing is not None else 0
-    assert stroke_count > 0, "効果線本体の線がありません"
+    assert stroke_count == 0, "効果線の制御用レイヤーにB-Name生成ストロークが残っています"
+
+
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
 
 
 def main() -> None:
@@ -136,6 +146,8 @@ def main() -> None:
         assert obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
         assert not display.hide_viewport, "効果線の表示実体が非表示です"
         assert display.modifiers.get("B-Name Geometry Nodes") is not None, "効果線の表示実体にGeometry Nodesがありません"
+        assert len(display.data.polygons) == 0, "効果線の表示実体にB-Name生成メッシュが残っています"
+        assert _evaluated_polygon_count(display) > 0, "効果線のGeometry Nodes表示結果が空です"
         effect_line_op.layer_stack_utils.sync_layer_stack_after_data_change(context)
         _assert_coma_objects_visible(page)
         _assert_page_background_not_promoted(page)

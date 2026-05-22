@@ -56,6 +56,8 @@ COLOR_SELECTED_EDGE = viewport_colors.SELECTION_STRONG
 COLOR_SELECTED_BORDER = viewport_colors.SELECTION
 COLOR_SELECTED_VERTEX = viewport_colors.HANDLE_OUTLINE
 COLOR_HANDLE = viewport_colors.HANDLE_FILL
+COLOR_SELECTED_EDGE_FILL = (1.0, 0.0, 0.68, 0.42)
+EDGE_SELECTED_BAND_WIDTH_PX = 10.0
 # hover 中の ▲ ハンドルは黄色寄りに明るく強調 (alpha=1)
 COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
@@ -1995,6 +1997,14 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
             verts.append(ap)
             verts.append(bp)
             screen_edges.append((ap, bp))
+        for ap, bp in screen_edges:
+            _draw_screen_segment_band(
+                shader,
+                ap,
+                bp,
+                color=COLOR_SELECTED_EDGE_FILL,
+                width_px=EDGE_SELECTED_BAND_WIDTH_PX,
+            )
         if verts:
             batch = batch_for_shader(shader, "LINES", {"pos": verts})
             shader.bind()
@@ -2038,6 +2048,13 @@ def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
         if ap is None or bp is None:
             return
         # 選択辺ハイライト
+        _draw_screen_segment_band(
+            shader,
+            ap,
+            bp,
+            color=COLOR_SELECTED_EDGE_FILL,
+            width_px=EDGE_SELECTED_BAND_WIDTH_PX,
+        )
         try:
             gpu.state.line_width_set(4.0)
         except Exception:  # noqa: BLE001
@@ -2158,6 +2175,39 @@ def _draw_triangle_handle(
         "color",
         COLOR_HANDLE_HIGHLIGHT if highlighted else COLOR_HANDLE,
     )
+    batch.draw(shader)
+
+
+def _draw_screen_segment_band(
+    shader,
+    a: tuple[float, float],
+    b: tuple[float, float],
+    *,
+    color: tuple[float, float, float, float],
+    width_px: float,
+) -> None:
+    dx = float(b[0]) - float(a[0])
+    dy = float(b[1]) - float(a[1])
+    length = math.hypot(dx, dy)
+    if length < 1.0e-6:
+        return
+    half = max(1.0, float(width_px) * 0.5)
+    nx = -dy / length * half
+    ny = dx / length * half
+    verts = [
+        (a[0] + nx, a[1] + ny),
+        (b[0] + nx, b[1] + ny),
+        (b[0] - nx, b[1] - ny),
+        (a[0] - nx, a[1] - ny),
+    ]
+    batch = batch_for_shader(
+        shader,
+        "TRIS",
+        {"pos": verts},
+        indices=[(0, 1, 2), (0, 2, 3)],
+    )
+    shader.bind()
+    shader.uniform_float("color", color)
     batch.draw(shader)
 
 

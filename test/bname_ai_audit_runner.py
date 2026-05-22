@@ -65,6 +65,7 @@ def _audit_cases() -> list[AuditCase]:
         AuditCase("bname_effect_end_fill", "B-Name 効果線下地塗り監査", "test/blender_effect_line_end_fill_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_effect_frame_spacing", "B-Name 効果線間隔監査", "test/blender_effect_line_frame_spacing_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_balloon_uni_flash", "B-Name フキダシ形状監査", "test/blender_balloon_uni_flash_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_coma_edge_highlight", "B-Name コマ枠辺ハイライト監査", "test/blender_coma_edge_highlight_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_layer_detail_mask", "B-Name 詳細設定/マスク契約監査", "test/blender_layer_detail_and_mask_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_real_object_safety", "B-Name 実オブジェクト安全監査", "test/blender_real_object_safety_check.py", "B-Name", ("standard", "persistence")),
         AuditCase("bname_tool_behavior", "B-Name ツール操作AI目視監査", "test/blender_tool_behavior_visual_audit.py", "B-Name", ("full", "visual"), "BNAME_TOOL_VISUAL_OUT", background=False, requires_ui=True),

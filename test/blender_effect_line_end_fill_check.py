@@ -32,17 +32,37 @@ def _drawing(layer):
     return getattr(frame, "drawing", None)
 
 
-def _material_index(obj, name_part: str) -> int:
-    for index, mat in enumerate(getattr(obj.data, "materials", []) or []):
-        if name_part in str(getattr(mat, "name", "") or ""):
-            return index
-    raise AssertionError(f"素材がありません: {name_part}")
-
-
-def _count_strokes_with_material(layer, material_index: int) -> int:
+def _stroke_count(layer) -> int:
     drawing = _drawing(layer)
-    assert drawing is not None
-    return sum(1 for stroke in getattr(drawing, "strokes", []) if int(getattr(stroke, "material_index", -1)) == material_index)
+    if drawing is None:
+        return 0
+    return len(getattr(drawing, "strokes", []) or [])
+
+
+def _modifier_socket_value(modifier, name: str):
+    group = modifier.node_group
+    assert group is not None, "Geometry Nodes グループがありません"
+    for item in group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") != name:
+            continue
+        identifier = str(getattr(item, "identifier", "") or "")
+        assert identifier, f"{name} の入力IDがありません"
+        return modifier[identifier]
+    raise AssertionError(f"Geometry Nodes 入力がありません: {name}")
+
+
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
 
 
 def main() -> None:
@@ -55,7 +75,8 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_effect_end_fill.core.work import get_work
-        from bname_dev_effect_end_fill.operators import effect_line_gen, effect_line_op
+        from bname_dev_effect_end_fill.operators import effect_line_op
+        from bname_dev_effect_end_fill.utils import effect_line_object
         from bname_dev_effect_end_fill.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
@@ -69,33 +90,23 @@ def main() -> None:
         params.fill_color = (1.0, 0.0, 0.0, 1.0)
         params.fill_opacity = 0.5
 
-        fill_stroke = effect_line_gen.generate_end_shape_fill_stroke(
-            params,
-            (90.0, 120.0),
-            32.0,
-            24.0,
-            seed=11,
-        )
-        assert fill_stroke is not None, "終点形状の下地ストロークが生成されていません"
-        assert fill_stroke.role == "end_fill"
-        assert fill_stroke.cyclic
-        assert fill_stroke.curve_type == "BEZIER"
-        assert fill_stroke.bezier_smooth
-        assert len(fill_stroke.points_xyz) >= 24, "終点形状の下地が粗すぎます"
-
         obj, layer = effect_line_op._create_effect_layer(
             context,
             (40.0, 60.0, 80.0, 60.0),
             parent_key=page_stack_key(page),
         )
         assert obj is not None and layer is not None
-        fill_index = _material_index(obj, "EndShape_Fill")
-        fill_mat = obj.data.materials[fill_index]
-        gp_style = getattr(fill_mat, "grease_pencil", None)
-        assert gp_style is not None
-        assert bool(getattr(gp_style, "show_fill", False)), "終点形状の下地素材で塗りが有効になっていません"
-        assert not bool(getattr(gp_style, "show_stroke", True)), "終点形状の下地素材で線が有効になっています"
-        assert _count_strokes_with_material(layer, fill_index) == 1, "終点形状の下地ストローク数が不正です"
+        assert _stroke_count(layer) == 0, "効果線の制御用レイヤーにB-Name生成ストロークが残っています"
+        display = effect_line_object.find_effect_display_object(obj)
+        assert display is not None, "効果線の表示実体がありません"
+        assert len(display.data.polygons) == 0, "効果線の表示実体にB-Name生成メッシュが残っています"
+        assert len(display.data.materials) >= 2, "効果線の表示実体に線と塗りの素材がありません"
+        modifier = display.modifiers.get("B-Name Geometry Nodes")
+        assert modifier is not None, "効果線の表示実体にGeometry Nodesがありません"
+        assert bool(_modifier_socket_value(modifier, "終点形状を下地として塗る")), (
+            "終点形状の下地塗りがGeometry Nodes入力へ反映されていません"
+        )
+        assert _evaluated_polygon_count(display) > 0, "効果線のGeometry Nodes表示結果が空です"
 
         params.fill_base_shape = False
         effect_line_op._write_effect_strokes(
@@ -105,7 +116,12 @@ def main() -> None:
             (40.0, 60.0, 80.0, 60.0),
             params_override=params,
         )
-        assert _count_strokes_with_material(layer, fill_index) == 0, "設定OFFでも終点形状の下地が残っています"
+        modifier = display.modifiers.get("B-Name Geometry Nodes")
+        assert modifier is not None
+        assert not bool(_modifier_socket_value(modifier, "終点形状を下地として塗る")), (
+            "設定OFFでも終点形状の下地塗りがGeometry Nodes入力に残っています"
+        )
+        assert _stroke_count(layer) == 0, "設定OFF後にB-Name生成ストロークが作られています"
 
         params.effect_type = "uni_flash"
         params.fill_base_shape = True
@@ -116,7 +132,12 @@ def main() -> None:
             (40.0, 60.0, 80.0, 60.0),
             params_override=params,
         )
-        assert _count_strokes_with_material(layer, fill_index) == 1, "ウニフラ効果線で終点形状の下地が生成されていません"
+        modifier = display.modifiers.get("B-Name Geometry Nodes")
+        assert modifier is not None
+        assert bool(_modifier_socket_value(modifier, "終点形状を下地として塗る")), (
+            "ウニフラ効果線で終点形状の下地塗りがGeometry Nodes入力へ反映されていません"
+        )
+        assert _stroke_count(layer) == 0, "ウニフラ効果線でB-Name生成ストロークが作られています"
         print("BNAME_EFFECT_LINE_END_FILL_OK")
     finally:
         if mod is not None:

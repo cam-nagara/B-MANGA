@@ -78,7 +78,7 @@ def _draw_white_outline_settings(layout, params) -> None:
 def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
-    ``with_generate_button=True`` で末尾に「効果線を生成」 ボタンを追加。
+    ``with_generate_button=True`` で末尾に「効果線を追加」 ボタンを追加。
     ``params`` は ``scene.bname_effect_line_params`` (BNameEffectLineParams)。
     """
     if params is None:

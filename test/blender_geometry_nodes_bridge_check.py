@@ -91,10 +91,16 @@ def _evaluated_polygon_count(obj) -> int:
 def _assert_generated_group(group, *, kind: str) -> None:
     nodes = {node.bl_idname for node in group.nodes}
     required = {
-        "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh"},
+        "effect_line": {
+            "GeometryNodeCurvePrimitiveLine",
+            "GeometryNodeCurveToMesh",
+            "GeometryNodeMeshLine",
+            "GeometryNodeInstanceOnPoints",
+        },
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterialIndex"},
     }[kind]
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
+    assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
     direct_links = [
         link
         for link in group.links
@@ -104,13 +110,12 @@ def _assert_generated_group(group, *, kind: str) -> None:
         and link.to_socket.name == "Geometry"
     ]
     assert not direct_links, f"{kind} が入力形状をそのまま出力しています"
-    if kind == "effect_line":
-        input_geometry_links = [
-            link
-            for link in group.links
-            if link.from_node.bl_idname == "NodeGroupInput" and link.from_socket.name == "Geometry"
-        ]
-        assert not input_geometry_links, f"{kind} が入力形状に依存しています"
+    input_geometry_links = [
+        link
+        for link in group.links
+        if link.from_node.bl_idname == "NodeGroupInput" and link.from_socket.name == "Geometry"
+    ]
+    assert not input_geometry_links, f"{kind} が入力形状に依存しています"
 
 
 def _assert_nodes(obj, *, kind: str, group_name: str):
@@ -414,7 +419,6 @@ def main() -> None:
         _assert_modifier_values(
             balloon_modifier,
             gn_bridge.balloon_values(balloon),
-            skip={"参照形状"},
             label="フキダシ",
         )
         assert int(_modifier_socket_value(balloon_modifier, "しっぽ数")) == 8
@@ -430,14 +434,10 @@ def main() -> None:
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 Y"), 3.0, "フキダシ しっぽ2 始点 Y")
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 X"), 8.0, "フキダシ しっぽ2 終点 X")
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 Y"), -6.0, "フキダシ しっぽ2 終点 Y")
-        assert _modifier_socket_value(balloon_modifier, "参照形状") is not None
         assert len(balloon_obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
         assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシのGeometry Nodes表示結果が空です"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
-        assert source_obj is not None, "フキダシの参照形状がありません"
-        assert source_obj.hide_viewport and source_obj.hide_render and source_obj.hide_select, (
-            "フキダシの参照形状が画面表示対象になっています"
-        )
+        assert source_obj is None, "フキダシにB-Name生成の参照形状が残っています"
 
         balloon.line_width_mm = 0.91
         balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")

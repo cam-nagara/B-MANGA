@@ -115,21 +115,35 @@ def _ensure_display_material(
     color=(0.0, 0.0, 0.0, 1.0),
     *,
     opacity: float = 1.0,
+    fill_color=(1.0, 1.0, 1.0, 1.0),
+    fill_opacity: float = 1.0,
 ) -> None:
     display_id = str(display.get(on.PROP_ID, "") or display.name)
     mat_name = f"BName_Effect_Display_Line_{display_id}"
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(mat_name)
+    fill_mat_name = f"BName_Effect_Display_Fill_{display_id}"
+    fill_mat = bpy.data.materials.get(fill_mat_name)
+    if fill_mat is None:
+        fill_mat = bpy.data.materials.new(fill_mat_name)
     try:
         alpha = max(0.0, min(1.0, float(color[3]) * float(opacity)))
         rgba = (float(color[0]), float(color[1]), float(color[2]), alpha)
     except Exception:  # noqa: BLE001
         rgba = (0.0, 0.0, 0.0, max(0.0, min(1.0, float(opacity or 0.0))))
+    try:
+        fill_alpha = max(0.0, min(1.0, float(fill_color[3]) * float(fill_opacity) * float(opacity)))
+        fill_rgba = (float(fill_color[0]), float(fill_color[1]), float(fill_color[2]), fill_alpha)
+    except Exception:  # noqa: BLE001
+        fill_rgba = (1.0, 1.0, 1.0, max(0.0, min(1.0, float(fill_opacity or 0.0) * float(opacity or 0.0))))
     mat.diffuse_color = rgba
+    fill_mat.diffuse_color = fill_rgba
     try:
         mat.use_nodes = False
         mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
+        fill_mat.use_nodes = False
+        fill_mat.blend_method = "BLEND" if fill_rgba[3] < 1.0 else "OPAQUE"
     except Exception:  # noqa: BLE001
         pass
     mats = getattr(getattr(display, "data", None), "materials", None)
@@ -143,6 +157,16 @@ def _ensure_display_material(
     elif mats[0] is not mat:
         try:
             mats[0] = mat
+        except Exception:  # noqa: BLE001
+            pass
+    if len(mats) < 2:
+        try:
+            mats.append(fill_mat)
+        except Exception:  # noqa: BLE001
+            pass
+    elif mats[1] is not fill_mat:
+        try:
+            mats[1] = fill_mat
         except Exception:  # noqa: BLE001
             pass
 
@@ -200,7 +224,15 @@ def ensure_effect_display_object(
     display.hide_select = False
     line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
     line_opacity = float((values or {}).get("不透明度", 1.0) or 0.0)
-    _ensure_display_material(display, line_color, opacity=line_opacity)
+    fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
+    fill_opacity = float((values or {}).get("塗り不透明度", 1.0) or 0.0)
+    _ensure_display_material(
+        display,
+        line_color,
+        opacity=line_opacity,
+        fill_color=fill_color,
+        fill_opacity=fill_opacity,
+    )
     try:
         from . import geometry_nodes_bridge as _gn
 

@@ -19,6 +19,8 @@ _HANDLE_OFFSET_PX = 21.0
 _COLOR_HANDLE_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 _COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 _COLOR_VERTEX_SELECTED = viewport_colors.SELECTION_STRONG
+_COLOR_EDGE_SELECTED_FILL = (1.0, 0.0, 0.68, 0.42)
+_EDGE_BAND_WIDTH_PX = 10.0
 # hover 判定半径 (px)。 coma_edge_move_op.HANDLE_HIT_RADIUS_PX (28.0) と同じに
 # 揃えてクリック判定との一貫性を保つ
 _HOVER_RADIUS_PX = 28.0
@@ -181,6 +183,7 @@ def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index
     bp = _world_to_region(region, rv3d, b)
     if ap is None or bp is None:
         return
+    _draw_screen_segment_band(shader, ap, bp, color=_COLOR_EDGE_SELECTED_FILL, width_px=_EDGE_BAND_WIDTH_PX)
     try:
         gpu.state.line_width_set(_LINE_WIDTH_PX)
         batch = batch_for_shader(shader, "LINES", {"pos": [ap, bp]})
@@ -207,6 +210,34 @@ def _draw_edge(shader, region, rv3d, poly: list[tuple[float, float]], edge_index
             shader, handle, ap, bp, direction_idx,
             highlighted=_is_handle_hovered(handle, pointer),
         )
+
+
+def _draw_screen_segment_band(
+    shader,
+    a: tuple[float, float],
+    b: tuple[float, float],
+    *,
+    color: tuple[float, float, float, float],
+    width_px: float,
+) -> None:
+    dx = float(b[0]) - float(a[0])
+    dy = float(b[1]) - float(a[1])
+    length = math.hypot(dx, dy)
+    if length < 1.0e-6:
+        return
+    half = max(1.0, float(width_px) * 0.5)
+    nx = -dy / length * half
+    ny = dx / length * half
+    verts = [
+        (a[0] + nx, a[1] + ny),
+        (b[0] + nx, b[1] + ny),
+        (b[0] - nx, b[1] - ny),
+        (a[0] - nx, a[1] - ny),
+    ]
+    batch = batch_for_shader(shader, "TRIS", {"pos": verts}, indices=[(0, 1, 2), (0, 2, 3)])
+    shader.bind()
+    shader.uniform_float("color", color)
+    batch.draw(shader)
 
 
 def _draw_edge_handles_only(
