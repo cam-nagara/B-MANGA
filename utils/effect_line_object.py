@@ -110,21 +110,39 @@ def _link_display_to_controller_collections(display: bpy.types.Object, controlle
                 pass
 
 
-def _ensure_display_material(display: bpy.types.Object, color=(0.0, 0.0, 0.0, 1.0)) -> None:
-    mat_name = "BName_Effect_Display_Line"
+def _ensure_display_material(
+    display: bpy.types.Object,
+    color=(0.0, 0.0, 0.0, 1.0),
+    *,
+    opacity: float = 1.0,
+) -> None:
+    display_id = str(display.get(on.PROP_ID, "") or display.name)
+    mat_name = f"BName_Effect_Display_Line_{display_id}"
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(mat_name)
     try:
-        mat.diffuse_color = tuple(color)
+        alpha = max(0.0, min(1.0, float(color[3]) * float(opacity)))
+        rgba = (float(color[0]), float(color[1]), float(color[2]), alpha)
+    except Exception:  # noqa: BLE001
+        rgba = (0.0, 0.0, 0.0, max(0.0, min(1.0, float(opacity or 0.0))))
+    mat.diffuse_color = rgba
+    try:
+        mat.use_nodes = False
+        mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
     except Exception:  # noqa: BLE001
         pass
     mats = getattr(getattr(display, "data", None), "materials", None)
     if mats is None:
         return
-    if not any(existing is mat or getattr(existing, "name", "") == mat.name for existing in mats):
+    if len(mats) == 0:
         try:
             mats.append(mat)
+        except Exception:  # noqa: BLE001
+            pass
+    elif mats[0] is not mat:
+        try:
+            mats[0] = mat
         except Exception:  # noqa: BLE001
             pass
 
@@ -180,7 +198,9 @@ def ensure_effect_display_object(
     display.hide_viewport = False
     display.hide_render = False
     display.hide_select = False
-    _ensure_display_material(display)
+    line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
+    line_opacity = float((values or {}).get("不透明度", 1.0) or 0.0)
+    _ensure_display_material(display, line_color, opacity=line_opacity)
     try:
         from . import geometry_nodes_bridge as _gn
 

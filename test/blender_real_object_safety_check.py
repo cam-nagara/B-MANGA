@@ -312,7 +312,15 @@ def main() -> None:
         )
         assert border_obj is not None, "coma border curve was not created"
         assert border_obj.type == "CURVE", f"coma border should be a curve, got {border_obj.type}"
-        assert safe_fill_obj.location.z > border_obj.location.z, "safe area fill should be above coma objects"
+        assert safe_fill_obj.location.z < border_obj.location.z, (
+            "safe area fill should stay behind coma objects to avoid viewport flicker"
+        )
+        assert all(obj.location.z > safe_fill_obj.location.z for obj in guide_objects), (
+            "paper guide lines should be above safe area fill"
+        )
+        assert all(obj.location.z < border_obj.location.z for obj in guide_objects), (
+            "paper guide lines should stay behind coma objects to avoid viewport flicker"
+        )
         assert len(border_obj.data.splines) > 1, "dashed coma border did not create multiple real strokes"
         white_margin_obj = bpy.data.objects.get(
             f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"

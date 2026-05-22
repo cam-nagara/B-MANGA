@@ -61,6 +61,10 @@ def _audit_cases() -> list[AuditCase]:
         AuditCase("bname_partial_completion", "B-Name 主要操作状態監査", "test/blender_bname_partial_completion_check.py", "B-Name", ("standard", "visual"), "BNAME_PARTIAL_VISUAL_OUT"),
         AuditCase("bname_mask_matrix", "B-Name ページ/コママスク目視監査", "test/blender_mask_visual_matrix_check.py", "B-Name", ("standard", "visual"), "BNAME_MASK_VISUAL_OUT"),
         AuditCase("bname_effect_visibility", "B-Name 効果線/コマ表示回帰監査", "test/blender_effect_line_mask_visibility_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_geometry_nodes_bridge", "B-Name ジオメトリノード入力監査", "test/blender_geometry_nodes_bridge_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_effect_end_fill", "B-Name 効果線下地塗り監査", "test/blender_effect_line_end_fill_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_effect_frame_spacing", "B-Name 効果線間隔監査", "test/blender_effect_line_frame_spacing_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_balloon_uni_flash", "B-Name フキダシ形状監査", "test/blender_balloon_uni_flash_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_layer_detail_mask", "B-Name 詳細設定/マスク契約監査", "test/blender_layer_detail_and_mask_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_real_object_safety", "B-Name 実オブジェクト安全監査", "test/blender_real_object_safety_check.py", "B-Name", ("standard", "persistence")),
         AuditCase("bname_tool_behavior", "B-Name ツール操作AI目視監査", "test/blender_tool_behavior_visual_audit.py", "B-Name", ("full", "visual"), "BNAME_TOOL_VISUAL_OUT", background=False, requires_ui=True),
@@ -249,6 +253,20 @@ def _skip_reason(case: AuditCase, args: argparse.Namespace) -> str:
     return ""
 
 
+def _output_failure_reason(stdout: str, stderr: str) -> str:
+    combined = f"{stdout}\n{stderr}"
+    failure_markers = (
+        "Traceback (most recent call last):",
+        "AssertionError:",
+        "RuntimeError:",
+        "Error: Python:",
+    )
+    for marker in failure_markers:
+        if marker in combined:
+            return f"Blender exited without a failing return code but output contains {marker}"
+    return ""
+
+
 def _run_case(case: AuditCase, args: argparse.Namespace, out_dir: Path) -> dict[str, Any]:
     case_dir = out_dir / "cases" / case.key
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -288,16 +306,21 @@ def _run_case(case: AuditCase, args: argparse.Namespace, out_dir: Path) -> dict[
     elapsed = round(time.perf_counter() - started, 3)
     (case_dir / "stdout.txt").write_text(completed.stdout or "", encoding="utf-8", errors="replace")
     (case_dir / "stderr.txt").write_text(completed.stderr or "", encoding="utf-8", errors="replace")
-    return {
+    output_failure = _output_failure_reason(completed.stdout or "", completed.stderr or "")
+    status = "passed" if completed.returncode == 0 and not output_failure else "failed"
+    result = {
         "key": case.key,
         "title": case.title,
         "target": case.target,
-        "status": "passed" if completed.returncode == 0 else "failed",
+        "status": status,
         "returncode": completed.returncode,
         "seconds": elapsed,
         "command": cmd,
         "case_dir": _relative(case_dir),
     }
+    if output_failure:
+        result["reason"] = output_failure
+    return result
 
 
 def _collect_artifacts(out_dir: Path) -> list[str]:

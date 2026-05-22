@@ -65,6 +65,14 @@ def _assert_between(value: float, low: float, high: float, label: str) -> None:
         raise AssertionError(f"{label}: {value} is not between {low} and {high}")
 
 
+def _assert_content_safe_z(obj, *, low: float, high: float, border_z: float, label: str) -> None:
+    _assert_between(obj.location.z, low, high, label)
+    if not (border_z > obj.location.z):
+        raise AssertionError(
+            f"コマ枠線が{label}より奥にあります: border={border_z}, content={obj.location.z}"
+        )
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_content_z_"))
     mod = None
@@ -82,6 +90,7 @@ def main() -> None:
         from bname_dev_coma_content_z.utils import effect_line_object
         from bname_dev_coma_content_z.utils import layer_object_sync
         from bname_dev_coma_content_z.utils import layer_stack as layer_stack_utils
+        from bname_dev_coma_content_z.operators import effect_line_op
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -129,16 +138,22 @@ def main() -> None:
         balloon_obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=balloon, page=page)
         if balloon_obj is None:
             raise AssertionError("フキダシの実体がありません")
-        effect_obj = effect_line_object.create_effect_line_object(
-            scene=scene,
-            bname_id="content_effect",
-            title="content_effect",
-            z_index=2000,
-            parent_kind="coma",
+        effect_obj, effect_layer = effect_line_op._create_effect_layer(
+            bpy.context,
+            (30.0, 45.0, 25.0, 18.0),
             parent_key=parent_key,
         )
-        if effect_obj is None:
+        if effect_obj is None or effect_layer is None:
             raise AssertionError("効果線の実体がありません")
+        effect_line_op._write_effect_strokes(
+            bpy.context,
+            effect_obj,
+            effect_layer,
+            (30.0, 45.0, 25.0, 18.0),
+        )
+        effect_display = effect_line_object.find_effect_display_object(effect_obj)
+        if effect_display is None:
+            raise AssertionError("効果線の表示実体がありません")
         layer_object_sync.assign_per_page_z_ranks(scene, work)
 
         plane_z = coma_z_order.plane_z(coma)
@@ -151,12 +166,8 @@ def main() -> None:
             raise AssertionError(
                 f"コマ枠線がコマ内表示物より奥にあります: border={border.location.z}, content={front.location.z}"
             )
-        for label, obj in (("フキダシ", balloon_obj), ("効果線", effect_obj)):
-            _assert_between(obj.location.z, plane_z, white_z, label)
-            if not (border.location.z > obj.location.z):
-                raise AssertionError(
-                    f"コマ枠線が{label}より奥にあります: border={border.location.z}, content={obj.location.z}"
-                )
+        for label, obj in (("フキダシ", balloon_obj), ("効果線", effect_obj), ("効果線の表示実体", effect_display)):
+            _assert_content_safe_z(obj, low=0.0, high=white_z, border_z=border.location.z, label=label)
 
         stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
         preview_uid = layer_stack_utils.target_uid(
@@ -174,6 +185,21 @@ def main() -> None:
             anchor_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == anchor_uid)
             stack.move(from_idx, anchor_idx if from_idx < anchor_idx else anchor_idx + 1)
 
+        def _move_before(uid: str, anchor_uid: str) -> None:
+            from_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
+            anchor_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == anchor_uid)
+            if from_idx < anchor_idx:
+                anchor_idx -= 1
+            stack.move(from_idx, anchor_idx)
+
+        _move_before(balloon_uid, preview_uid)
+        _move_before(effect_uid, preview_uid)
+        layer_stack_utils.apply_stack_order(bpy.context)
+        layer_object_sync.assign_per_page_z_ranks(scene, work)
+        _assert_between(balloon_obj.location.z, plane_z, white_z, "コマプレビュー前面のフキダシ")
+        _assert_between(effect_obj.location.z, plane_z, white_z, "コマプレビュー前面の効果線")
+        _assert_between(effect_display.location.z, plane_z, white_z, "コマプレビュー前面の効果線の表示実体")
+
         _move_after(balloon_uid, preview_uid)
         _move_after(effect_uid, preview_uid)
         layer_stack_utils.apply_stack_order(bpy.context)
@@ -182,7 +208,11 @@ def main() -> None:
             raise AssertionError(f"コマプレビュー背面へ移したフキダシが手前に残っています: {balloon_obj.location.z}")
         if not (effect_obj.location.z < plane_z):
             raise AssertionError(f"コマプレビュー背面へ移した効果線が手前に残っています: {effect_obj.location.z}")
-        if not (safe_back_z := min(balloon_obj.location.z, effect_obj.location.z)) > 0.0:
+        if not (effect_display.location.z < plane_z):
+            raise AssertionError(
+                f"コマプレビュー背面へ移した効果線の表示実体が手前に残っています: {effect_display.location.z}"
+            )
+        if not (safe_back_z := min(balloon_obj.location.z, effect_obj.location.z, effect_display.location.z)) > 0.0:
             raise AssertionError(f"コマプレビュー背面の表示物が用紙より奥にあります: {safe_back_z}")
 
         print("BNAME_COMA_CONTENT_Z_ORDER_OK", flush=True)

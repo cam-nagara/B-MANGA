@@ -87,6 +87,7 @@ def main() -> None:
 
         from bname_dev_effect_mask_visibility.operators import coma_op, effect_line_op
         from bname_dev_effect_mask_visibility.utils import coma_border_object, coma_plane
+        from bname_dev_effect_mask_visibility.utils import effect_line_object
         from bname_dev_effect_mask_visibility.utils.layer_hierarchy import coma_stack_key
 
         context = bpy.context
@@ -130,6 +131,11 @@ def main() -> None:
         )
         assert obj is not None and layer is not None
         effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 70.0, 55.0, 45.0))
+        display = effect_line_object.find_effect_display_object(obj)
+        assert display is not None, "効果線の表示実体がありません"
+        assert obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
+        assert not display.hide_viewport, "効果線の表示実体が非表示です"
+        assert display.modifiers.get("B-Name Geometry Nodes") is not None, "効果線の表示実体にGeometry Nodesがありません"
         effect_line_op.layer_stack_utils.sync_layer_stack_after_data_change(context)
         _assert_coma_objects_visible(page)
         _assert_page_background_not_promoted(page)
