@@ -53,7 +53,7 @@ def main() -> None:
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
         from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, geometry_nodes_bridge
+        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_curve_render_nodes
         from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
@@ -101,16 +101,16 @@ def main() -> None:
         page.balloons.remove(len(page.balloons) - 1)
 
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        assert obj is not None and obj.type == "MESH", "フキダシのオブジェクトが作成されていません"
-        assert len(obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
-        assert _evaluated_polygon_count(obj) > 0, "Geometry Nodesの表示結果が空です"
+        assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
+        assert len(obj.data.splines) >= 1, "フキダシの輪郭カーブがありません"
+        assert _evaluated_polygon_count(obj) > 0, "フキダシの表示結果が空です"
         modifier = obj.modifiers.get("B-Name Geometry Nodes")
-        assert modifier is not None, "フキダシにGeometry Nodesモディファイアがありません"
-        assert modifier.node_group is not None and modifier.node_group.name == "BName_GN_Balloon"
-        assert obj.get(geometry_nodes_bridge.PROP_GN_KIND) == "balloon", "フキダシがウニフラッシュ用ノードを使っています"
+        assert modifier is not None, "フキダシに軽量表示補助がありません"
+        assert modifier.node_group is not None and modifier.node_group.name == balloon_curve_render_nodes.GROUP_NAME
+        assert obj.get(balloon_curve_render_nodes.PROP_GN_KIND) == balloon_curve_render_nodes.KIND, "フキダシが旧ウニフラッシュ用ノードを使っています"
         modifier.show_viewport = False
         bpy.context.view_layer.update()
-        assert _evaluated_polygon_count(obj) == 0, "Geometry Nodesを非表示にしてもB-Name側の表示が残っています"
+        assert _evaluated_polygon_count(obj) > 0, "表示補助を非表示にするとフキダシ実体まで消えています"
         modifier.show_viewport = True
         bpy.context.view_layer.update()
 

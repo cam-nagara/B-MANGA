@@ -2,23 +2,26 @@
 
 from __future__ import annotations
 
+import json
 import math
 from contextlib import contextmanager
 from typing import Optional, Sequence
 
 import bpy
 
+from . import balloon_curve_render_nodes
+from . import balloon_curve_source_state
+from . import balloon_shapes
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
 from . import percentage
-from .geom import mm_to_m
+from .geom import Rect, mm_to_m
 
 _logger = log.get_logger(__name__)
 
 BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
-BALLOON_CARRIER_MESH_DATA_PREFIX = "balloon_carrier_mesh_"
 BALLOON_SOURCE_NAME_PREFIX = "balloon_source_"
 BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
@@ -27,6 +30,7 @@ PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
 PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
+PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -73,21 +77,20 @@ def _remove_unused_data_block(data) -> None:
         pass
 
 
-def _replace_object_with_mesh(
+def _replace_object_with_curve(
     *,
     obj: Optional[bpy.types.Object],
     obj_name: str,
-    mesh: bpy.types.Mesh,
+    curve: bpy.types.Curve,
 ) -> bpy.types.Object:
-    if obj is not None and obj.type != "MESH":
+    if obj is not None and obj.type != "CURVE":
         _remove_balloon_object(obj)
         obj = None
     if obj is None:
-        obj = bpy.data.objects.new(obj_name, mesh)
+        obj = bpy.data.objects.new(obj_name, curve)
     else:
-        old_data = getattr(obj, "data", None)
-        obj.data = mesh
-        _remove_unused_data_block(old_data)
+        if getattr(obj, "data", None) is None:
+            obj.data = curve
     return obj
 
 
@@ -309,12 +312,151 @@ def _remove_balloon_source_object(balloon_id: str) -> None:
         _remove_balloon_object(obj)
 
 
+def _tag_curve_object_updated(obj: bpy.types.Object | None) -> None:
+    if obj is None:
+        return
+    try:
+        obj.data.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _ensure_curve_object_for_entry(
+    balloon_id: str,
+    line_mat: bpy.types.Material,
+    fill_mat: Optional[bpy.types.Material],
+) -> bpy.types.Object:
+    obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is None:
+        obj = bpy.data.objects.get(obj_name)
+    curve_data = _ensure_balloon_curve_data(balloon_id, line_mat, fill_mat)
+    obj = _replace_object_with_curve(obj=obj, obj_name=obj_name, curve=curve_data)
+    _prepare_balloon_curve_data(obj.data, line_mat, fill_mat)
+    if obj.data is not curve_data:
+        _remove_unused_data_block(curve_data)
+    _remove_duplicate_balloon_objects(balloon_id, obj)
+    _remove_legacy_balloon_fill_objects(balloon_id)
+    _remove_balloon_source_object(balloon_id)
+    return obj
+
+
+def _sync_generated_shape_if_needed(
+    obj: bpy.types.Object,
+    entry,
+    *,
+    force_regenerate: bool,
+    preserve_manual_delta: bool,
+) -> None:
+    geometry_key = _geometry_key_for_entry(entry)
+    previous_key = str(obj.get(PROP_BALLOON_GEOMETRY_KEY, "") or "")
+    source_state = balloon_curve_source_state.detect_state(obj)
+    should_rebuild = force_regenerate or previous_key != geometry_key or not obj.data.splines
+    if not should_rebuild:
+        return
+    can_rebuild = (
+        force_regenerate
+        or source_state == balloon_curve_source_state.STATE_GENERATED
+        or (source_state == balloon_curve_source_state.STATE_MANUAL and preserve_manual_delta)
+    )
+    if not can_rebuild:
+        return
+    delta = None
+    if preserve_manual_delta and source_state == balloon_curve_source_state.STATE_MANUAL:
+        delta = balloon_curve_source_state.manual_delta(obj)
+    _sync_curve_geometry(obj, entry)
+    if delta is not None:
+        balloon_curve_source_state.apply_delta(obj, delta)
+    obj[PROP_BALLOON_GEOMETRY_KEY] = geometry_key
+    balloon_curve_source_state.mark_generated(obj)
+    _tag_curve_object_updated(obj)
+
+
+def _apply_entry_transform(entry, obj: bpy.types.Object) -> None:
+    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
+    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+    obj.scale.x = -1.0 if bool(getattr(entry, "flip_h", False)) else 1.0
+    obj.scale.y = -1.0 if bool(getattr(entry, "flip_v", False)) else 1.0
+    obj.scale.z = 1.0
+
+
+def _stamp_values_for_entry(entry, page, folder_id: str) -> tuple[str, str, str]:
+    default_parent_kind = "outside" if page is None else "page"
+    entry_parent_kind = str(getattr(entry, "parent_kind", "") or default_parent_kind)
+    entry_parent_key = str(getattr(entry, "parent_key", "") or "")
+    entry_folder_id = folder_id or str(getattr(entry, "folder_key", "") or "")
+    if entry_parent_kind in {"none", "outside"}:
+        return "outside", "", ""
+    if entry_parent_kind == "coma" and entry_parent_key:
+        return "coma", entry_parent_key, entry_folder_id
+    if entry_parent_kind == "folder" and entry_folder_id:
+        return "folder", entry_folder_id, entry_folder_id
+    return "page", entry_parent_key or str(getattr(page, "id", "") or ""), entry_folder_id
+
+
+def _balloon_z_index(scene: bpy.types.Scene, page, balloon_id: str) -> int:
+    z_base = 1000
+    work = getattr(scene, "bname_work", None)
+    balloons = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
+    if balloons is None:
+        return z_base
+    for i, entry in enumerate(balloons):
+        if str(getattr(entry, "id", "") or "") == balloon_id:
+            return z_base + (i + 1) * 10
+    return z_base
+
+
+def _apply_page_world_offset(scene: bpy.types.Scene, work, page, entry, obj: bpy.types.Object) -> None:
+    try:
+        from . import page_grid as _pg
+        from .geom import mm_to_m as _mm_to_m
+
+        page_idx = -1
+        if work is not None and page is not None:
+            target_id = str(getattr(page, "id", "") or "")
+            for i, page_entry in enumerate(getattr(work, "pages", [])):
+                if str(getattr(page_entry, "id", "") or "") == target_id:
+                    page_idx = i
+                    break
+        if page_idx < 0:
+            return
+        ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
+        obj.location.x = _mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
+        obj.location.y = _mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: page world offset 加算失敗")
+
+
+def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, entry, obj: bpy.types.Object) -> None:
+    obj.hide_viewport = not bool(getattr(entry, "visible", True))
+    obj.hide_render = not bool(getattr(entry, "visible", True))
+    try:
+        if work is not None:
+            los.assign_per_page_z_ranks(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: z order sync failed")
+    try:
+        balloon_curve_render_nodes.ensure_modifier(
+            obj,
+            line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: lightweight render node sync failed")
+
+
 def ensure_balloon_curve_object(
     *,
     scene: bpy.types.Scene,
     entry,
     page,
     folder_id: str = "",
+    force_regenerate: bool = False,
+    preserve_manual_delta: bool = False,
 ) -> Optional[bpy.types.Object]:
     """``BNameBalloonEntry`` から balloon Curve Object を生成・更新する.
 
@@ -334,54 +476,23 @@ def ensure_balloon_curve_object(
     )
     fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry)
 
-    # 1. Mesh Object 生成 or 再利用。表示形状は Geometry Nodes が入力値から生成する。
-    obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
-    if obj is None:
-        obj = bpy.data.objects.get(obj_name)
-    carrier_mesh = _ensure_balloon_carrier_mesh(balloon_id, line_mat, fill_mat)
-    obj = _replace_object_with_mesh(obj=obj, obj_name=obj_name, mesh=carrier_mesh)
-    _remove_duplicate_balloon_objects(balloon_id, obj)
-    _remove_legacy_balloon_fill_objects(balloon_id)
-    _remove_balloon_source_object(balloon_id)
-
-    # 2. ページローカル座標 mm → m
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
-
-    # 3. parent 解決 (balloon_text_plane と同方針)
-    default_parent_kind = "outside" if page is None else "page"
-    entry_parent_kind = str(getattr(entry, "parent_kind", "") or default_parent_kind)
-    entry_parent_key = str(getattr(entry, "parent_key", "") or "")
-    entry_folder_id = folder_id or str(getattr(entry, "folder_key", "") or "")
-    if entry_parent_kind in {"none", "outside"}:
-        stamp_kind, stamp_key, stamp_folder = "outside", "", ""
-    elif entry_parent_kind == "coma" and entry_parent_key:
-        stamp_kind, stamp_key, stamp_folder = "coma", entry_parent_key, entry_folder_id
-    elif entry_parent_kind == "folder" and entry_folder_id:
-        stamp_kind, stamp_key, stamp_folder = "folder", entry_folder_id, entry_folder_id
-    else:
-        stamp_kind = "page"
-        stamp_key = entry_parent_key or str(getattr(page, "id", "") or "")
-        stamp_folder = entry_folder_id
-
-    # 4. z_index は page.balloons 配列 index に基づく (kind 別 base offset)
-    BALLOON_Z_BASE = 1000
-    z_index = BALLOON_Z_BASE
     work = getattr(scene, "bname_work", None)
-    balloons = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
-    if balloons is not None:
-        for i, e in enumerate(balloons):
-            if str(getattr(e, "id", "") or "") == balloon_id:
-                z_index = BALLOON_Z_BASE + (i + 1) * 10
-                break
+    obj = _ensure_curve_object_for_entry(balloon_id, line_mat, fill_mat)
+    _sync_generated_shape_if_needed(
+        obj,
+        entry,
+        force_regenerate=force_regenerate,
+        preserve_manual_delta=preserve_manual_delta,
+    )
+    _apply_entry_transform(entry, obj)
+    stamp_kind, stamp_key, stamp_folder = _stamp_values_for_entry(entry, page, folder_id)
 
     los.stamp_layer_object(
         obj,
         kind="balloon",
         bname_id=balloon_id,
         title=str(getattr(entry, "title", "") or balloon_id),
-        z_index=z_index,
+        z_index=_balloon_z_index(scene, page, balloon_id),
         parent_kind=stamp_kind,
         parent_key=stamp_key,
         folder_id=stamp_folder,
@@ -390,72 +501,174 @@ def ensure_balloon_curve_object(
         # page_grid のオフセットを加算して world 座標とする。
         apply_page_offset=False,
     )
-    # ページオフセットを entry.x_mm/y_mm に加算して world 位置を決定
-    try:
-        from . import page_grid as _pg
-        from .geom import mm_to_m as _mm_to_m
-
-        page_idx = -1
-        if work is not None and page is not None:
-            target_id = str(getattr(page, "id", "") or "")
-            for i, p in enumerate(getattr(work, "pages", [])):
-                if str(getattr(p, "id", "") or "") == target_id:
-                    page_idx = i
-                    break
-        if page_idx >= 0:
-            ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
-            obj.location.x = _mm_to_m(
-                float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm
-            )
-            obj.location.y = _mm_to_m(
-                float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm
-            )
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon: page world offset 加算失敗")
-    obj.hide_viewport = not bool(getattr(entry, "visible", True))
-    obj.hide_render = not bool(getattr(entry, "visible", True))
-    try:
-        if work is not None:
-            los.assign_per_page_z_ranks(scene, work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon: z order sync failed")
-    try:
-        from . import geometry_nodes_bridge as _gn
-
-        _gn.ensure_modifier(
-            obj,
-            "balloon",
-            _gn.balloon_values(entry),
-        )
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon: Geometry Nodes 同期失敗")
+    _apply_page_world_offset(scene, work, page, entry, obj)
+    _sync_visibility_and_modifier(scene, work, entry, obj)
     return obj
 
 
-def _set_mesh_materials(mesh: bpy.types.Mesh, materials: Sequence[bpy.types.Material | None]) -> None:
+def _set_data_materials(data, materials: Sequence[bpy.types.Material | None]) -> None:
     try:
-        mesh.materials.clear()
+        data.materials.clear()
     except Exception:  # noqa: BLE001
-        while len(mesh.materials) > 0:
-            mesh.materials.pop(index=len(mesh.materials) - 1)
+        while len(data.materials) > 0:
+            data.materials.pop(index=len(data.materials) - 1)
     for mat in materials:
         if mat is not None:
-            mesh.materials.append(mat)
+            data.materials.append(mat)
 
 
-def _ensure_balloon_carrier_mesh(
+def _ensure_balloon_curve_data(
     balloon_id: str,
     line_material: bpy.types.Material,
     fill_material: Optional[bpy.types.Material],
-) -> bpy.types.Mesh:
-    mesh_name = f"{BALLOON_CARRIER_MESH_DATA_PREFIX}{balloon_id}"
-    mesh = bpy.data.meshes.get(mesh_name)
-    if mesh is None:
-        mesh = bpy.data.meshes.new(mesh_name)
-    mesh.clear_geometry()
-    mesh.update()
-    _set_mesh_materials(mesh, (line_material, fill_material))
-    return mesh
+) -> bpy.types.Curve:
+    curve_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}_curve"
+    curve = bpy.data.curves.get(curve_name)
+    if curve is None:
+        curve = bpy.data.curves.new(curve_name, "CURVE")
+    _prepare_balloon_curve_data(curve, line_material, fill_material)
+    return curve
+
+
+def _prepare_balloon_curve_data(
+    curve: bpy.types.Curve,
+    line_material: bpy.types.Material,
+    fill_material: Optional[bpy.types.Material],
+) -> None:
+    curve.dimensions = "2D"
+    curve.resolution_u = 16
+    curve.bevel_depth = 0.0
+    curve.bevel_resolution = 0
+    try:
+        curve.fill_mode = "BOTH"
+        curve.use_fill_caps = True
+    except Exception:  # noqa: BLE001
+        pass
+    _set_data_materials(curve, (line_material, fill_material))
+
+
+def _clear_curve_splines(curve: bpy.types.Curve) -> None:
+    while len(curve.splines) > 0:
+        curve.splines.remove(curve.splines[0])
+
+
+def _entry_center_offset(entry) -> tuple[float, float]:
+    return (
+        float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+        float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+    )
+
+
+def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
+    return (
+        mm_to_m(float(point[0]) + offset[0]),
+        mm_to_m(float(point[1]) + offset[1]),
+        0.0,
+    )
+
+
+def _add_bezier_loop(
+    curve: bpy.types.Curve,
+    points: Sequence[tuple[float, float]],
+    *,
+    sharp_indices: set[int],
+    offset: tuple[float, float],
+) -> None:
+    if len(points) < 3:
+        return
+    spline = curve.splines.new("BEZIER")
+    spline.bezier_points.add(len(points) - 1)
+    spline.use_cyclic_u = True
+    for index, point in enumerate(points):
+        bp = spline.bezier_points[index]
+        bp.co = _point_to_curve_xyz(point, offset)
+        is_sharp = index in sharp_indices
+        handle_type = "VECTOR" if is_sharp else "AUTO"
+        bp.handle_left_type = handle_type
+        bp.handle_right_type = handle_type
+        bp.radius = 1.0
+
+
+def _body_outline_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]]:
+    rect = Rect(
+        0.0,
+        0.0,
+        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    return balloon_shapes.outline_with_corners_for_entry(entry, rect)
+
+
+def _geometry_key_for_entry(entry) -> str:
+    sp = getattr(entry, "shape_params", None)
+    shape_params = {
+        "cloud_bump_width_mm": float(getattr(sp, "cloud_bump_width_mm", 10.0) or 10.0),
+        "cloud_bump_width_jitter": float(getattr(sp, "cloud_bump_width_jitter", 0.0) or 0.0),
+        "cloud_bump_height_mm": float(getattr(sp, "cloud_bump_height_mm", 4.0) or 4.0),
+        "cloud_bump_height_jitter": float(getattr(sp, "cloud_bump_height_jitter", 0.0) or 0.0),
+        "cloud_offset_percent": float(getattr(sp, "cloud_offset_percent", 50.0) or 50.0),
+        "cloud_sub_width_ratio": float(getattr(sp, "cloud_sub_width_ratio", 0.0) or 0.0),
+        "cloud_sub_width_jitter": float(getattr(sp, "cloud_sub_width_jitter", 0.0) or 0.0),
+        "cloud_sub_height_ratio": float(getattr(sp, "cloud_sub_height_ratio", 0.0) or 0.0),
+        "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),
+    }
+    tails = []
+    for tail in getattr(entry, "tails", []) or []:
+        points = []
+        for point in getattr(tail, "points", []) or []:
+            points.append(
+                {
+                    "x": float(getattr(point, "x_mm", 0.0) or 0.0),
+                    "y": float(getattr(point, "y_mm", 0.0) or 0.0),
+                    "corner": str(getattr(point, "corner_type", "line") or "line"),
+                }
+            )
+        tails.append(
+            {
+                "type": str(getattr(tail, "type", "straight") or "straight"),
+                "direction": float(getattr(tail, "direction_deg", 270.0) or 270.0),
+                "length": float(getattr(tail, "length_mm", 0.0) or 0.0),
+                "root_width": float(getattr(tail, "root_width_mm", 0.0) or 0.0),
+                "tip_width": float(getattr(tail, "tip_width_mm", 0.0) or 0.0),
+                "bend": float(getattr(tail, "curve_bend", 0.0) or 0.0),
+                "custom": bool(getattr(tail, "custom_points_enabled", False)),
+                "start_x": float(getattr(tail, "start_x_mm", 0.0) or 0.0),
+                "start_y": float(getattr(tail, "start_y_mm", 0.0) or 0.0),
+                "end_x": float(getattr(tail, "end_x_mm", 0.0) or 0.0),
+                "end_y": float(getattr(tail, "end_y_mm", 0.0) or 0.0),
+                "points": points,
+            }
+        )
+    payload = {
+        "shape": balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")),
+        "custom": str(getattr(entry, "custom_preset_name", "") or ""),
+        "width": float(getattr(entry, "width_mm", 0.0) or 0.0),
+        "height": float(getattr(entry, "height_mm", 0.0) or 0.0),
+        "center": _entry_center_offset(entry),
+        "rounded": bool(getattr(entry, "rounded_corner_enabled", False)),
+        "rounded_radius": float(getattr(entry, "rounded_corner_radius_mm", 0.0) or 0.0),
+        "shape_params": shape_params,
+        "tails": tails,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
+    curve = obj.data
+    _clear_curve_splines(curve)
+    if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) == "none":
+        return
+    offset = _entry_center_offset(entry)
+    body_points, sharp = _body_outline_for_entry(entry)
+    _add_bezier_loop(curve, body_points, sharp_indices=set(sharp), offset=offset)
+    for tail in getattr(entry, "tails", []) or []:
+        tail_points = _tail_polygon_for_entry(entry, tail)
+        _add_bezier_loop(
+            curve,
+            tail_points,
+            sharp_indices=set(range(len(tail_points))),
+            offset=offset,
+        )
 
 
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
@@ -475,6 +688,10 @@ def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
 def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
     obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+    obj.scale.x = -1.0 if bool(getattr(entry, "flip_h", False)) else 1.0
+    obj.scale.y = -1.0 if bool(getattr(entry, "flip_v", False)) else 1.0
+    obj.scale.z = 1.0
     try:
         from . import page_grid as _pg
         from .geom import mm_to_m as _mm_to_m
@@ -507,20 +724,27 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
     if obj is None:
         return ensure_balloon_curve_object(scene=scene, entry=entry, page=page) is not None
+    if getattr(obj, "type", "") != "CURVE":
+        return ensure_balloon_curve_object(scene=scene, entry=entry, page=page) is not None
+    geometry_key = _geometry_key_for_entry(entry)
+    if str(obj.get(PROP_BALLOON_GEOMETRY_KEY, "") or "") != geometry_key:
+        state = balloon_curve_source_state.detect_state(obj)
+        if state == balloon_curve_source_state.STATE_GENERATED:
+            _sync_curve_geometry(obj, entry)
+            obj[PROP_BALLOON_GEOMETRY_KEY] = geometry_key
+            balloon_curve_source_state.mark_generated(obj)
+            _tag_curve_object_updated(obj)
     _apply_balloon_object_transform(scene, work, page, entry, obj)
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     try:
-        from . import geometry_nodes_bridge as _gn
-
         _remove_balloon_source_object(balloon_id)
-        _gn.ensure_modifier(
+        balloon_curve_render_nodes.ensure_modifier(
             obj,
-            "balloon",
-            _gn.balloon_values(entry),
+            line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
         )
     except Exception:  # noqa: BLE001
-        _logger.exception("balloon: lightweight Geometry Nodes sync failed")
+        _logger.exception("balloon: lightweight render node sync failed")
     return True
 
 
@@ -537,6 +761,23 @@ def find_balloon_entry(scene, balloon_id: str):
         if str(getattr(entry, "id", "") or "") == balloon_id:
             return None, entry
     return None, None
+
+
+def find_balloon_object(balloon_id: str) -> Optional[bpy.types.Object]:
+    if not balloon_id:
+        return None
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is None:
+        obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
+    return obj
+
+
+def source_state_for_entry(entry) -> str:
+    balloon_id = str(getattr(entry, "id", "") or "")
+    obj = find_balloon_object(balloon_id)
+    if obj is None:
+        return balloon_curve_source_state.STATE_GENERATED
+    return balloon_curve_source_state.detect_state(obj)
 
 
 def cleanup_orphan_balloon_objects(scene) -> int:

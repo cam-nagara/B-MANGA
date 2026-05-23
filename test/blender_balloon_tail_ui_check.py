@@ -212,7 +212,7 @@ def main() -> None:
             entry=entry,
             page=page,
         )
-        assert obj is not None and obj.type == "MESH"
+        assert obj is not None and obj.type == "CURVE"
         fill_obj = bpy.data.objects.get(f"balloon_fill_{entry.id}")
         assert fill_obj is None, "フキダシの塗りが別オブジェクトとして残っています"
         assert len(obj.data.materials) >= 2

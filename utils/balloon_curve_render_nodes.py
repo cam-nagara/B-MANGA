@@ -1,0 +1,281 @@
+"""フキダシカーブ用の軽量 Geometry Nodes 補助."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import bpy
+
+from . import log
+
+_logger = log.get_logger(__name__)
+
+MODIFIER_NAME = "B-Name Geometry Nodes"
+GROUP_NAME = "BName_GN_BalloonCurveRender"
+PROP_GN_KIND = "bname_geometry_nodes_kind"
+PROP_GROUP_VERSION = "bname_geometry_nodes_version"
+KIND = "balloon_curve"
+GROUP_VERSION = 4
+_MASK_UNSET = object()
+
+
+@dataclass(frozen=True)
+class _SocketSpec:
+    name: str
+    socket_type: str
+    default: Any = 0.0
+    hide_in_modifier: bool = False
+
+
+_SOCKETS = (
+    _SocketSpec("線幅 (mm)", "NodeSocketFloat", 0.3),
+    _SocketSpec("線素材", "NodeSocketMaterial", None, True),
+    _SocketSpec("塗り素材", "NodeSocketMaterial", None, True),
+    _SocketSpec("マスク使用", "NodeSocketBool", False, True),
+    _SocketSpec("マスク対象", "NodeSocketObject", None, True),
+)
+
+
+def _interface_socket(group, name: str, in_out: str):
+    for item in group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "name", "") == name and getattr(item, "in_out", "") == in_out:
+            return item
+    return None
+
+
+def _ensure_socket(group, spec: _SocketSpec, *, in_out: str = "INPUT"):
+    item = _interface_socket(group, spec.name, in_out)
+    if item is None:
+        item = group.interface.new_socket(name=spec.name, in_out=in_out, socket_type=spec.socket_type)
+    try:
+        if hasattr(item, "hide_in_modifier"):
+            item.hide_in_modifier = bool(spec.hide_in_modifier)
+        if spec.socket_type == "NodeSocketFloat":
+            item.default_value = float(spec.default or 0.0)
+        elif spec.socket_type == "NodeSocketBool":
+            item.default_value = bool(spec.default)
+    except Exception:  # noqa: BLE001
+        pass
+    return item
+
+
+def _prune_sockets(group) -> None:
+    allowed_inputs = {"Geometry"} | {spec.name for spec in _SOCKETS}
+    allowed_outputs = {"Geometry"}
+    for item in list(group.interface.items_tree):
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        in_out = str(getattr(item, "in_out", "") or "")
+        name = str(getattr(item, "name", "") or "")
+        if in_out == "INPUT" and name in allowed_inputs:
+            continue
+        if in_out == "OUTPUT" and name in allowed_outputs:
+            continue
+        try:
+            group.interface.remove(item)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _clear_nodes(group) -> None:
+    for node in list(group.nodes):
+        group.nodes.remove(node)
+
+
+def _node(group, node_type: str, *, label: str = "", location: tuple[float, float] = (0.0, 0.0)):
+    node = group.nodes.new(node_type)
+    if label:
+        node.label = label
+    node.location = location
+    return node
+
+
+def _link(group, output_socket, input_socket) -> None:
+    try:
+        group.links.new(output_socket, input_socket)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve render nodes: node link failed")
+
+
+def _set_default(socket, value) -> None:
+    try:
+        socket.default_value = value
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _set_material(group, geometry_socket, material_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeSetMaterial", label=label, location=location)
+    _link(group, geometry_socket, node.inputs["Geometry"])
+    _link(group, material_socket, node.inputs["Material"])
+    return node.outputs["Geometry"]
+
+
+def _build_nodes(group) -> None:
+    _clear_nodes(group)
+    input_node = _node(group, "NodeGroupInput", label="フキダシカーブ", location=(-420, 0))
+    output_node = _node(group, "NodeGroupOutput", label="表示結果", location=(620, 0))
+
+    mask_info = _node(group, "GeometryNodeObjectInfo", label="マスク対象", location=(-120, -240))
+    try:
+        mask_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    _set_default(mask_info.inputs["As Instance"], False)
+    _link(group, input_node.outputs["マスク対象"], mask_info.inputs["Object"])
+
+    masked = _node(group, "GeometryNodeMeshBoolean", label="マスクで切り抜き", location=(120, -80))
+    mesh_a = masked.inputs[0] if len(masked.inputs) > 0 else None
+    mesh_b = masked.inputs[1] if len(masked.inputs) > 1 else None
+    _link(group, input_node.outputs["Geometry"], mesh_a)
+    _link(group, mask_info.outputs["Geometry"], mesh_b)
+    try:
+        masked.operation = "INTERSECT"
+    except Exception:  # noqa: BLE001
+        pass
+
+    switch = _node(group, "GeometryNodeSwitch", label="マスク使用", location=(380, 80))
+    switch.input_type = "GEOMETRY"
+    _link(group, input_node.outputs["マスク使用"], switch.inputs["Switch"])
+    _link(group, input_node.outputs["Geometry"], switch.inputs["False"])
+    _link(group, masked.outputs["Mesh"], switch.inputs["True"])
+    _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
+    group[PROP_GROUP_VERSION] = GROUP_VERSION
+
+
+def ensure_node_group() -> bpy.types.NodeTree:
+    group = bpy.data.node_groups.get(GROUP_NAME)
+    if group is None:
+        group = bpy.data.node_groups.new(GROUP_NAME, "GeometryNodeTree")
+    group.use_fake_user = True
+    if _interface_socket(group, "Geometry", "INPUT") is None:
+        group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    if _interface_socket(group, "Geometry", "OUTPUT") is None:
+        group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    for spec in _SOCKETS:
+        _ensure_socket(group, spec)
+    _prune_sockets(group)
+    if int(group.get(PROP_GROUP_VERSION, 0) or 0) != GROUP_VERSION:
+        _build_nodes(group)
+    elif not any(node.bl_idname == "NodeGroupInput" for node in group.nodes):
+        _build_nodes(group)
+    elif not any(node.bl_idname == "NodeGroupOutput" for node in group.nodes):
+        _build_nodes(group)
+    return group
+
+
+def _socket_identifiers(group) -> dict[str, tuple[str, _SocketSpec]]:
+    specs = {spec.name: spec for spec in _SOCKETS}
+    out: dict[str, tuple[str, _SocketSpec]] = {}
+    for item in group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET":
+            continue
+        if getattr(item, "in_out", "") != "INPUT":
+            continue
+        name = str(getattr(item, "name", "") or "")
+        spec = specs.get(name)
+        if spec is not None:
+            out[name] = (str(getattr(item, "identifier", "") or ""), spec)
+    return out
+
+
+def _set_modifier_value(modifier, identifier: str, spec: _SocketSpec, value: Any) -> None:
+    if not identifier:
+        return
+    try:
+        if spec.socket_type in {"NodeSocketMaterial", "NodeSocketObject"}:
+            modifier[identifier] = value
+        elif spec.socket_type == "NodeSocketFloat":
+            modifier[identifier] = float(value or 0.0)
+        elif spec.socket_type == "NodeSocketBool":
+            modifier[identifier] = bool(value)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve render nodes: modifier input sync failed")
+
+
+def _set_modifier_values(obj: bpy.types.Object, modifier, *, line_width_mm: float, mask_object=_MASK_UNSET) -> None:
+    curve = getattr(obj, "data", None)
+    if curve is not None and getattr(obj, "type", "") == "CURVE":
+        try:
+            curve.bevel_depth = max(0.0, float(line_width_mm or 0.0)) * 0.0005
+            curve.bevel_resolution = 0
+        except Exception:  # noqa: BLE001
+            pass
+    identifiers = _socket_identifiers(modifier.node_group)
+    values = {
+        "線幅 (mm)": float(line_width_mm or 0.0),
+        "線素材": _material_at(obj, 0),
+        "塗り素材": _material_at(obj, 1),
+    }
+    if mask_object is not _MASK_UNSET:
+        values["マスク使用"] = mask_object is not None
+        values["マスク対象"] = mask_object
+    else:
+        mask_use_socket = identifiers.get("マスク使用")
+        if mask_use_socket:
+            mask_use_identifier, _spec = mask_use_socket
+            if mask_use_identifier and mask_use_identifier not in modifier:
+                values["マスク使用"] = False
+                values["マスク対象"] = None
+    for name, value in values.items():
+        socket = identifiers.get(name)
+        if not socket:
+            continue
+        ident, spec = socket
+        _set_modifier_value(modifier, ident, spec, value)
+
+
+def ensure_modifier(obj: bpy.types.Object | None, *, line_width_mm: float = 0.3, mask_object=_MASK_UNSET):
+    if obj is None:
+        return None
+    group = ensure_node_group()
+    modifier = obj.modifiers.get(MODIFIER_NAME)
+    if modifier is None or getattr(modifier, "type", "") != "NODES":
+        modifier = obj.modifiers.new(MODIFIER_NAME, "NODES")
+    try:
+        modifier.node_group = group
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon curve render nodes: assign node group failed")
+        return modifier
+    obj[PROP_GN_KIND] = KIND
+    _set_modifier_values(obj, modifier, line_width_mm=line_width_mm, mask_object=mask_object)
+    try:
+        obj.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
+    return modifier
+
+
+def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
+    if obj is None:
+        return
+    modifier = ensure_modifier(obj)
+    if modifier is None or modifier.node_group is None:
+        return
+    current_width = 0.3
+    for item in modifier.node_group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") != "線幅 (mm)":
+            continue
+        try:
+            current_width = float(modifier.get(item.identifier, current_width))
+        except Exception:  # noqa: BLE001
+            pass
+        break
+    _set_modifier_values(obj, modifier, line_width_mm=current_width, mask_object=mask_object)
+
+
+def _material_at(obj: bpy.types.Object, index: int):
+    materials = getattr(getattr(obj, "data", None), "materials", None)
+    if materials is None:
+        return None
+    try:
+        if len(materials) > index:
+            return materials[index]
+    except Exception:  # noqa: BLE001
+        return None
+    return None

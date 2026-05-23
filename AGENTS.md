@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-05-21 (Codex)
+最終更新: 2026-05-23 (Codex)
 
 ---
 
@@ -49,7 +49,7 @@
 - **start_side 切替時、コマ配下レイヤーも page_grid offset に追従** (2026-05-01 修正、 サブコレクション再帰走査)
 - **Z リフトは 0.1 刻みのページ毎 per-page rank 方式**
 - **(完了 / 2026-05-17 Claude Code, v0.5.46)** 枠線ボカシブラシ線種 + 枠線プリセット (枠線+白フチ) + コマ作成ツール (矩形/折れ線 自動判別) + 効果線入り抜きの「範囲」(%/長さmm)。 ヘッドレス実機テスト PASS (`test/blender_border_preset_coma_tool_check.py`)。 画面目視は要対話 Blender (本ブランチ読込時)。 計画: [`docs/border_preset_coma_tool_plan_2026-05-16.md`](docs/border_preset_coma_tool_plan_2026-05-16.md)
-- **(完了 / 2026-05-18 Codex, v0.6.003)** フキダシ実体を単一 Mesh Object 化。輪郭と塗りは同一オブジェクト内の別マテリアルとして保持し、旧 `balloon_fill_*` 実体は再同期時に削除する。
+- **(完了 / 2026-05-23 Codex, v0.6.063)** フキダシ実体を単一の編集可能カーブへ移行。B-Name は作成・詳細設定・明示再生成を担当し、表示とレンダリングは保存済み Blender 実体が担う。旧 `balloon_fill_*` / `balloon_source_*` 実体は再同期時に削除する。詳細: [`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 
@@ -67,7 +67,7 @@
 
 - **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
 - **作品要素の実体化 (進行中 / 2026-05-05 Codex)**。 アドオン無効時に枠線やテキストが消えたように見える不安を避けるため、 画面描画だけに依存していた要素を Blender 実オブジェクトへ同期する。 第一段階はテキスト画像平面とコマ枠線カーブ。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
-- **効果線・フキダシ Geometry Nodes 化 (進行中 / 2026-05-22 Codex, v0.6.055)**。 Phase 1 の B-Name パネル値同期に加え、効果線・フキダシの見える本体は Geometry Nodes 出力へ寄せた。雲、もやもや、トゲ系の形状係数は共通グループ化し、フキダシ本体、効果線の始点形状、効果線の終点形状で同じ計算を使う。ドラッグ作成中は範囲表示だけを出し、クリックだけでは作成しない。移植棚卸しテストでノード入力欠落と共通グループ利用を監査する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)
+- **効果線 Geometry Nodes 化 (進行中 / 2026-05-23 Codex, v0.6.063)**。効果線の本体生成と詳細設定同期は Geometry Nodes 側で継続する。フキダシは重い全面ノード生成から外し、編集可能カーブを正本にする方針へ切り替え済み。効果線の始点/終点形状にも同じ「編集可能形状を正本にする」方針を段階適用する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
 - PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))
 - 魚眼 F1+F2 ([`docs/B-Name-fisheye-plan-2026-04-28.md`](docs/B-Name-fisheye-plan-2026-04-28.md))

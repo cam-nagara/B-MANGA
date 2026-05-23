@@ -2579,6 +2579,10 @@ def ensure_modifier(obj: bpy.types.Object | None, kind: str, values: Mapping[str
 
 def register() -> None:
     for kind in _GROUP_SOCKETS:
+        if kind == "balloon":
+            # フキダシは編集可能なカーブ正本 + 軽量補助ノードへ移行したため、
+            # 起動時に旧フキダシ生成ノードを構築しない。
+            continue
         try:
             ensure_node_group(kind)
         except Exception:  # noqa: BLE001

@@ -16,8 +16,36 @@ from bpy.types import Operator
 from ..utils import log
 from ..utils import object_naming as on
 from ..utils import balloon_shapes
+from ..utils import balloon_curve_object
+from ..utils import balloon_curve_source_state
 
 _logger = log.get_logger(__name__)
+
+
+def _balloon_source_state_label(entry) -> tuple[str, str]:
+    try:
+        state = balloon_curve_object.source_state_for_entry(entry)
+    except Exception:  # noqa: BLE001
+        state = balloon_curve_source_state.STATE_GENERATED
+    if state == balloon_curve_source_state.STATE_MANUAL:
+        return state, "手編集あり"
+    if state == balloon_curve_source_state.STATE_FREEFORM:
+        return state, "自由形状"
+    return state, "生成形状"
+
+
+def _draw_balloon_regenerate_buttons(layout, entry, page) -> str:
+    state, label = _balloon_source_state_label(entry)
+    row = layout.row(align=True)
+    row.label(text=f"編集状態: {label}")
+    row = layout.row(align=True)
+    op = row.operator("bname.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
+    op.page_id = str(getattr(page, "id", "") or "")
+    op.balloon_id = str(getattr(entry, "id", "") or "")
+    op = row.operator("bname.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
+    op.page_id = str(getattr(page, "id", "") or "")
+    op.balloon_id = str(getattr(entry, "id", "") or "")
+    return state
 
 
 def _resolve_active_managed_object(context) -> Optional[bpy.types.Object]:
@@ -190,6 +218,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         layout.prop(entry, "title", text="表示名")
     box = layout.box()
     box.label(text="形状")
+    source_state = _draw_balloon_regenerate_buttons(box, entry, page)
     box.prop(entry, "shape")
     if str(getattr(entry, "shape", "")) == "custom":
         box.prop(entry, "custom_preset_name")
@@ -198,7 +227,11 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
     sub.prop(entry, "rounded_corner_radius_mm")
     sp = getattr(entry, "shape_params", None)
-    if sp is not None and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+    if (
+        sp is not None
+        and source_state != balloon_curve_source_state.STATE_FREEFORM
+        and str(getattr(entry, "shape", "")) in {"cloud", "fluffy", "thorn", "thorn-curve"}
+    ):
         shape_box = layout.box()
         shape_box.label(text="形状パラメータ")
         col = shape_box.column(align=True)

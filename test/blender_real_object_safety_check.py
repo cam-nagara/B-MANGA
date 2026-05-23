@@ -339,16 +339,16 @@ def main() -> None:
 
         _ = balloon_curve_object.BALLOON_CURVE_NAME_PREFIX
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
-        assert balloon_obj is not None, "balloon mesh was not created"
-        assert balloon_obj.type == "MESH", f"balloon should be a mesh, got {balloon_obj.type}"
-        assert len(balloon_obj.data.polygons) == 0, "balloon should not keep B-Name generated display mesh"
+        assert balloon_obj is not None, "balloon curve was not created"
+        assert balloon_obj.type == "CURVE", f"balloon should be a curve, got {balloon_obj.type}"
+        assert len(balloon_obj.data.splines) >= 1, "balloon should keep editable curve outline"
         assert len(balloon_obj.data.materials) >= 2, "balloon should contain line and fill materials"
-        assert _evaluated_polygon_count(balloon_obj) > 0, "balloon Geometry Nodes result has no polygons"
+        assert _evaluated_polygon_count(balloon_obj) > 0, "balloon display result has no polygons"
         modifier = balloon_obj.modifiers.get("B-Name Geometry Nodes")
-        assert modifier is not None, "balloon should have Geometry Nodes modifier"
+        assert modifier is not None, "balloon should have lightweight display helper"
         modifier.show_viewport = False
         bpy.context.view_layer.update()
-        assert _evaluated_polygon_count(balloon_obj) == 0, "balloon fallback mesh remains when Geometry Nodes is hidden"
+        assert _evaluated_polygon_count(balloon_obj) > 0, "balloon editable curve disappeared when helper is hidden"
         modifier.show_viewport = True
         bpy.context.view_layer.update()
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
@@ -366,7 +366,8 @@ def main() -> None:
         tail.root_width_mm = 5.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail sync failed"
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
-        assert balloon_obj is not None and balloon_obj.type == "MESH"
+        assert balloon_obj is not None and balloon_obj.type == "CURVE"
+        assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to editable curve"
         tail_poly_count = _evaluated_polygon_count(balloon_obj)
         assert tail_poly_count > 0, "balloon tail was not added to real mesh"
         tail.length_mm = 14.0

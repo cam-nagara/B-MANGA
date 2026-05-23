@@ -232,8 +232,8 @@ def main() -> None:
 
         balloon.rotation_deg = 31.0
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
-        rotated_stats = _mesh_stats(balloon_obj)
-        _assert_changed(tail_sticky_stats, rotated_stats, "フキダシ 回転")
+        if abs(float(balloon_obj.rotation_euler[2]) - math.radians(31.0)) > 1.0e-6:
+            raise AssertionError("フキダシ 回転が実体オブジェクトへ反映されていません")
 
         balloon.line_color = (0.2, 0.4, 0.6, 1.0)
         balloon.fill_opacity = 35.0

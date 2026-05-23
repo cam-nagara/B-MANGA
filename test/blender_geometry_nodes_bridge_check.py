@@ -149,6 +149,24 @@ def _assert_generated_group(group, *, kind: str) -> None:
     assert not input_geometry_links, f"{kind} が入力形状に依存しています"
 
 
+def _assert_balloon_curve_nodes(obj, render_nodes):
+    modifier = obj.modifiers.get(render_nodes.MODIFIER_NAME)
+    assert modifier is not None, "フキダシに軽量表示補助がありません"
+    assert getattr(modifier, "type", "") == "NODES"
+    assert modifier.node_group is not None
+    assert modifier.node_group.name == render_nodes.GROUP_NAME
+    assert str(obj.get(render_nodes.PROP_GN_KIND, "") or "") == render_nodes.KIND
+    input_names = {
+        str(getattr(item, "name", "") or "")
+        for item in modifier.node_group.interface.items_tree
+        if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
+    }
+    assert {"Geometry", "線幅 (mm)", "線素材", "塗り素材"}.issubset(input_names)
+    forbidden = {name for name in input_names if name.startswith("しっぽ") or "山の" in name or name in {"形状", "幅", "高さ"}}
+    assert not forbidden, f"フキダシ軽量表示補助に不要な設定欄が残っています: {sorted(forbidden)}"
+    return modifier
+
+
 def _assert_all_setting_inputs_linked(group, gn, *, kind: str) -> None:
     input_node = next((node for node in group.nodes if node.bl_idname == "NodeGroupInput"), None)
     assert input_node is not None, f"{kind} の入力ノードがありません"
@@ -202,9 +220,7 @@ def main() -> None:
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
-        _create_legacy_passthrough_group()
         mod = _load_addon()
-        _assert_generated_group(bpy.data.node_groups["BName_GN_Balloon"], kind="balloon")
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "GeometryNodes.bname"))
         assert "FINISHED" in result, result
 
@@ -212,6 +228,7 @@ def main() -> None:
         from bname_dev_gn_bridge.core import effect_line as effect_core
         from bname_dev_gn_bridge.operators import balloon_op, effect_line_op
         from bname_dev_gn_bridge.utils import balloon_curve_object
+        from bname_dev_gn_bridge.utils import balloon_curve_render_nodes
         from bname_dev_gn_bridge.utils import effect_line_object
         from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn_bridge
         from bname_dev_gn_bridge.utils.layer_hierarchy import page_stack_key
@@ -505,45 +522,18 @@ def main() -> None:
             page=page,
         )
         assert balloon_obj is not None
-        balloon_modifier = _assert_nodes(
-            balloon_obj,
-            kind="balloon",
-            group_name="BName_GN_Balloon",
-        )
+        assert balloon_obj.type == "CURVE", f"フキダシがカーブ実体ではありません: {balloon_obj.type}"
+        assert len(balloon_obj.data.splines) >= 1, "フキダシカーブに輪郭がありません"
+        assert len(balloon_obj.data.splines) >= 1 + len(balloon.tails), "フキダシしっぽがカーブ実体に入っていません"
+        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.55, "フキダシ 線幅")
-        _assert_close(_modifier_socket_value(balloon_modifier, "塗り不透明度"), 44.0, "フキダシ 塗り")
-        _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 43.0, "フキダシ 幅")
-        _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 24.5, "フキダシ 高さ")
-        assert int(_modifier_socket_value(balloon_modifier, "形状")) == 3
-        _assert_modifier_values(
-            balloon_modifier,
-            gn_bridge.balloon_values(balloon),
-            label="フキダシ",
-        )
-        assert int(_modifier_socket_value(balloon_modifier, "しっぽ数")) == 8
-        assert int(_modifier_socket_value(balloon_modifier, "しっぽ 種類")) == 1
-        assert int(_modifier_socket_value(balloon_modifier, "しっぽ2 種類")) == 2
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 方向"), 55.0, "フキダシ しっぽ2 方向")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 長さ"), 7.0, "フキダシ しっぽ2 長さ")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 根元幅"), 2.75, "フキダシ しっぽ2 根元幅")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 先端幅"), 0.6, "フキダシ しっぽ2 先端幅")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 曲げ"), -0.3, "フキダシ しっぽ2 曲げ")
-        assert bool(_modifier_socket_value(balloon_modifier, "しっぽ2 始点・終点を固定"))
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 X"), -2.0, "フキダシ しっぽ2 始点 X")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 Y"), 3.0, "フキダシ しっぽ2 始点 Y")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 X"), 8.0, "フキダシ しっぽ2 終点 X")
-        _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 Y"), -6.0, "フキダシ しっぽ2 終点 Y")
         _assert_socket_hidden_in_modifier(balloon_modifier, "線幅 (mm)", False)
-        _assert_socket_hidden_in_modifier(balloon_modifier, "山の幅", True)
-        _assert_socket_hidden_in_modifier(balloon_modifier, "塗りグラデーション", True)
-        _assert_socket_hidden_in_modifier(balloon_modifier, "しっぽ2 種類", True)
-        assert len(balloon_obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
-        assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシのGeometry Nodes表示結果が空です"
+        assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシの表示結果が空です"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
         assert source_obj is None, "フキダシにB-Name生成の参照形状が残っています"
 
         balloon.line_width_mm = 0.91
-        balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")
+        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.91, "フキダシ 線幅 更新")
 
         balloon_shape_ids = {
@@ -570,9 +560,9 @@ def main() -> None:
             page=page,
         )
         assert legacy_obj is not None
-        legacy_modifier = _assert_nodes(legacy_obj, kind="balloon", group_name="BName_GN_Balloon")
+        assert legacy_obj.type == "CURVE"
+        legacy_modifier = _assert_balloon_curve_nodes(legacy_obj, balloon_curve_render_nodes)
         _assert_close(_modifier_socket_value(legacy_modifier, "線幅 (mm)"), 0.38, "旧フキダシ 線幅")
-        assert int(_modifier_socket_value(legacy_modifier, "形状")) == 2
         assert legacy_modifier.node_group.name != "BName_GN_UniFlash"
 
         print("BNAME_GEOMETRY_NODES_BRIDGE_OK")

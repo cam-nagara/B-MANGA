@@ -79,6 +79,42 @@ def _assert_mesh_mask(obj, mod_name: str) -> None:
     assert str(getattr(mod, "operation", "")) == "INTERSECT", obj.name
 
 
+def _assert_curve_mask(obj) -> None:
+    from bname_dev_layer_mask.utils import balloon_curve_render_nodes
+
+    modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
+    assert modifier is not None and modifier.node_group is not None, f"フキダシ表示補助がありません: {obj.name}"
+    mask_enabled = None
+    mask_target = None
+    for item in modifier.node_group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") == "マスク使用":
+            mask_enabled = modifier.get(item.identifier)
+        elif getattr(item, "name", "") == "マスク対象":
+            mask_target = modifier.get(item.identifier)
+    assert bool(mask_enabled), f"フキダシのマスクが有効ではありません: {obj.name}"
+    assert mask_target is not None, f"フキダシのマスク対象が空です: {obj.name}"
+
+
+def _assert_curve_no_mask(obj) -> None:
+    from bname_dev_layer_mask.utils import balloon_curve_render_nodes
+
+    modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
+    assert modifier is not None and modifier.node_group is not None, f"フキダシ表示補助がありません: {obj.name}"
+    mask_enabled = None
+    mask_target = None
+    for item in modifier.node_group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") == "マスク使用":
+            mask_enabled = modifier.get(item.identifier)
+        elif getattr(item, "name", "") == "マスク対象":
+            mask_target = modifier.get(item.identifier)
+    assert not bool(mask_enabled), f"ページ上フキダシに不要なマスクがあります: {obj.name}"
+    assert mask_target is None, f"ページ上フキダシのマスク対象が残っています: {obj.name}"
+
+
 def _assert_gp_mask(obj) -> None:
     layers = getattr(getattr(obj, "data", None), "layers", None)
     assert layers is not None, f"GPレイヤーがありません: {obj.name}"
@@ -284,9 +320,9 @@ def main() -> None:
         _assert_mesh_mask(raster_obj, mask_apply.MOD_NAME_COMA_MASK)
         _assert_mesh_mask(image_obj, mask_apply.MOD_NAME_COMA_MASK)
         _assert_mesh_mask(text_obj, mask_apply.MOD_NAME_COMA_MASK)
-        _assert_mesh_mask(balloon_obj, mask_apply.MOD_NAME_COMA_MASK)
+        _assert_curve_mask(balloon_obj)
         _assert_mesh_mask(page_text_obj, mask_apply.MOD_NAME_PAGE_MASK)
-        _assert_mesh_mask(page_balloon_obj, mask_apply.MOD_NAME_PAGE_MASK)
+        _assert_curve_no_mask(page_balloon_obj)
 
         effect_key = layer_stack_utils._node_stack_key(effect_layer)
         _assert_detail_menu(context, "effect", effect_key, object_selection.effect_key(effect_layer))

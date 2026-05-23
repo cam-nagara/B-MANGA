@@ -47,6 +47,17 @@ def _active_managed_object(context):
     return None
 
 
+def _active_plain_curve_object(context):
+    obj = getattr(context, "active_object", None)
+    if obj is not None and getattr(obj, "type", "") == "CURVE" and not on.is_managed(obj):
+        return obj
+    selected = getattr(context, "selected_objects", None) or ()
+    for obj in selected:
+        if getattr(obj, "type", "") == "CURVE" and not on.is_managed(obj):
+            return obj
+    return None
+
+
 def _managed_object_matches_stack_item(obj, item) -> bool:
     if obj is None or item is None:
         return False
@@ -217,6 +228,11 @@ def _draw_layer_commands(layout, context) -> None:
     """選択中レイヤー Object に対して詳細/複製/削除 等のコマンドを描画."""
     obj = _active_managed_object(context)
     if obj is None:
+        plain_curve = _active_plain_curve_object(context)
+        if plain_curve is not None:
+            layout.label(text=str(getattr(plain_curve, "name", "") or "カーブ"), icon="CURVE_BEZCURVE")
+            layout.operator("bname.balloon_register_selected_curve", text="選択カーブをフキダシに登録", icon="MOD_CURVE")
+            return
         item = _active_stack_item_no_sync(context)
         if item is not None:
             layout.label(text=str(getattr(item, "label", "") or getattr(item, "name", "") or "選択中レイヤー"), icon="RESTRICT_SELECT_OFF")
@@ -302,7 +318,7 @@ class BNAME_MT_object_context(Menu):
 def _draw_in_object_context(self, context):
     """3D ビュー Object 右クリックメニューに B-Name サブメニューを差し込む."""
     obj = _active_managed_object(context)
-    if obj is None:
+    if obj is None and _active_plain_curve_object(context) is None:
         return
     self.layout.separator()
     self.layout.menu(

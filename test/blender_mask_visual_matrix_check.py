@@ -42,6 +42,25 @@ def _write_png(path: Path) -> None:
 
 
 def _mesh_mask_state(obj, expected: str, mask_apply) -> tuple[bool, str]:
+    if getattr(obj, "type", "") == "CURVE":
+        from bname_dev_mask_visual.utils import balloon_curve_render_nodes
+
+        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
+        target = None
+        enabled = None
+        if modifier is not None and modifier.node_group is not None:
+            for item in modifier.node_group.interface.items_tree:
+                if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+                    continue
+                if getattr(item, "name", "") == "マスク使用":
+                    enabled = bool(modifier.get(item.identifier))
+                elif getattr(item, "name", "") == "マスク対象":
+                    target = modifier.get(item.identifier)
+        if expected in {"coma", "page"}:
+            ok = bool(enabled) and target is not None
+            return ok, expected if ok else f"NG curve target={target}"
+        ok = not bool(enabled)
+        return ok, "なし" if ok else "NG curve maskあり"
     coma = obj.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
     page = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
     if expected == "coma":
@@ -309,13 +328,18 @@ def main() -> None:
         for layer_name, creator, check_kind in creators:
             for scope_name, parent_kind, parent_key, expected in scopes:
                 index += 1
+                actual_expected = expected
+                if layer_name == "フキダシ" and scope_name == "ページ":
+                    actual_expected = "none"
+                if layer_name == "効果線":
+                    actual_expected = "none"
                 created = creator(parent_kind, parent_key, index)
                 ok = False
                 state = "未確認"
                 if check_kind == "mesh":
-                    ok, state = _mesh_mask_state(created, expected, mask_apply)
+                    ok, state = _mesh_mask_state(created, actual_expected, mask_apply)
                 elif check_kind == "gp":
-                    ok, state = _gp_mask_state(created, expected, page_bounds, coma_bounds)
+                    ok, state = _gp_mask_state(created, actual_expected, page_bounds, coma_bounds)
                 elif check_kind == "effect":
                     ok, state = _effect_mask_state(created)
                 rows.append({
@@ -323,7 +347,7 @@ def main() -> None:
                     "scope": scope_name,
                     "ok": ok,
                     "state": state,
-                    "note": "期待=" + ("マスクなし" if expected == "none" else expected),
+                    "note": "期待=" + ("マスクなし" if actual_expected == "none" else actual_expected),
                 })
         output = OUT_DIR / "bname_mask_matrix.png"
         _draw_report(rows, output)

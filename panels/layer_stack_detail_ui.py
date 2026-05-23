@@ -7,6 +7,8 @@ import re
 import bpy
 
 from ..core.work import get_active_page, get_work
+from ..utils import balloon_curve_object
+from ..utils import balloon_curve_source_state
 from ..utils import balloon_shapes
 from ..utils import gpencil as gp_utils
 
@@ -129,6 +131,16 @@ def _draw_raster_selected_settings(box, entry) -> None:
 def _draw_balloon_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {entry.id} (フキダシ)")
+    source_state = _balloon_source_state(entry)
+    settings.label(text=f"編集状態: {_balloon_source_state_label(source_state)}")
+    page = _page_for_balloon_entry(context, entry)
+    row = settings.row(align=True)
+    op = row.operator("bname.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
+    op.page_id = str(getattr(page, "id", "") or "")
+    op.balloon_id = str(getattr(entry, "id", "") or "")
+    op = row.operator("bname.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
+    op.page_id = str(getattr(page, "id", "") or "")
+    op.balloon_id = str(getattr(entry, "id", "") or "")
     settings.prop(entry, "shape")
     if balloon_shapes.normalize_shape(entry.shape) == "custom":
         settings.prop(entry, "custom_preset_name")
@@ -183,7 +195,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     sub.prop(entry, "inner_white_margin_color")
 
     sp = entry.shape_params
-    if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
+    if source_state != balloon_curve_source_state.STATE_FREEFORM and balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
         shape_box.label(text="Meldex形状パラメータ")
         row = shape_box.row(align=True)
@@ -245,6 +257,21 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = point_box.row(align=True)
         row.prop(tail, "end_x_mm")
         row.prop(tail, "end_y_mm")
+
+
+def _balloon_source_state(entry) -> str:
+    try:
+        return balloon_curve_object.source_state_for_entry(entry)
+    except Exception:  # noqa: BLE001
+        return balloon_curve_source_state.STATE_GENERATED
+
+
+def _balloon_source_state_label(state: str) -> str:
+    if state == balloon_curve_source_state.STATE_MANUAL:
+        return "手編集あり"
+    if state == balloon_curve_source_state.STATE_FREEFORM:
+        return "自由形状"
+    return "生成形状"
 
 
 def _page_for_balloon_entry(context, entry):

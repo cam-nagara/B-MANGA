@@ -318,16 +318,6 @@ def apply_page_collection_transforms(context, work) -> int:
             if owner_page_id and owner_page_id != page_id_str:
                 continue
 
-            if str(obj.get("bname_balloon_fill_kind", "") or "") == "balloon_fill":
-                entry = balloon_entries.get(str(obj.get("bname_balloon_fill_owner_id", "") or ""))
-                if entry is not None:
-                    _set_xy(
-                        obj,
-                        mm_to_m(ox_mm + float(getattr(entry, "x_mm", 0.0) or 0.0) + sub_x),
-                        mm_to_m(oy_mm + float(getattr(entry, "y_mm", 0.0) or 0.0) + sub_y),
-                    )
-                continue
-
             if kind in full_canvas_kinds and managed:
                 _set_xy(
                     obj,
