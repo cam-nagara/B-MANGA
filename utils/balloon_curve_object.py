@@ -460,11 +460,29 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
         _logger.exception("balloon: z order sync failed")
     try:
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
+        line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
-            line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+            line_width_mm=line_width_mm,
             mask_object=mask_obj,
-            clip_needed=_balloon_curve_needs_coma_clip(scene, work, page, entry, obj, mask_obj),
+            clip_needed=_balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=line_width_mm * 0.5,
+            ),
+            fill_clip_needed=_balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=0.0,
+            ),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
@@ -619,6 +637,8 @@ def _balloon_curve_needs_coma_clip(
     entry,
     obj: bpy.types.Object,
     mask_obj: bpy.types.Object | None,
+    *,
+    margin_mm: float | None = None,
 ) -> bool:
     if mask_obj is None:
         return False
@@ -634,7 +654,11 @@ def _balloon_curve_needs_coma_clip(
         polygon = [(float(x_mm), float(y_mm)) for x_mm, y_mm in layer_hierarchy.coma_polygon(target_coma)]
         if len(polygon) < 3:
             return True
-        line_margin = max(0.0, float(getattr(entry, "line_width_mm", 0.0) or 0.0)) * 0.5
+        line_margin = (
+            max(0.0, float(getattr(entry, "line_width_mm", 0.0) or 0.0)) * 0.5
+            if margin_mm is None
+            else max(0.0, float(margin_mm))
+        )
         x0 = float(getattr(entry, "x_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0) - line_margin
         y0 = float(getattr(entry, "y_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0) - line_margin
         x1 = (
@@ -682,6 +706,21 @@ def _coma_mask_object_for_entry(scene, work, page, entry, obj: bpy.types.Object 
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: coma mask resolve failed")
     return None
+
+
+def _hide_balloon_clip_mask_object(mask_obj: bpy.types.Object) -> None:
+    mask_obj.hide_viewport = True
+    mask_obj.hide_render = True
+    mask_obj.hide_select = True
+    try:
+        mask_obj.hide_set(True)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mask_obj.display_type = "WIRE"
+        mask_obj.show_name = False
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _remove_balloon_clip_mask(balloon_id: str) -> None:
@@ -744,9 +783,7 @@ def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.typ
         mask_obj[PROP_BALLOON_CLIP_MASK_KIND] = "coma_clip"
         mask_obj[PROP_BALLOON_CLIP_MASK_OWNER_ID] = balloon_id
         mask_obj[on.PROP_MANAGED] = False
-        mask_obj.hide_viewport = True
-        mask_obj.hide_render = True
-        mask_obj.hide_select = True
+        _hide_balloon_clip_mask_object(mask_obj)
         target_collection = owner_obj.users_collection[0] if owner_obj.users_collection else bpy.context.collection
         if target_collection is not None and not any(o is mask_obj for o in target_collection.objects):
             target_collection.objects.link(mask_obj)
@@ -1037,11 +1074,29 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
     try:
         _remove_balloon_source_object(balloon_id)
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
+        line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
-            line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+            line_width_mm=line_width_mm,
             mask_object=mask_obj,
-            clip_needed=_balloon_curve_needs_coma_clip(scene, work, page, entry, obj, mask_obj),
+            clip_needed=_balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=line_width_mm * 0.5,
+            ),
+            fill_clip_needed=_balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=0.0,
+            ),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")

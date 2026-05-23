@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 15
+GROUP_VERSION = 17
 _MASK_UNSET = object()
 
 
@@ -34,6 +34,7 @@ _SOCKETS = (
     _SocketSpec("塗り素材", "NodeSocketMaterial", None, True),
     _SocketSpec("マスク使用", "NodeSocketBool", False, True),
     _SocketSpec("マスク対象", "NodeSocketObject", None, True),
+    _SocketSpec("塗り切り抜き必要", "NodeSocketBool", False, True),
     _SocketSpec("切り抜き必要", "NodeSocketBool", False, True),
 )
 
@@ -126,6 +127,34 @@ def _boolean_and(group, left_socket, right_socket, *, label: str, location: tupl
     return node.outputs[0]
 
 
+def _boolean_not(group, value_socket, *, label: str, location: tuple[float, float]):
+    node = _node(group, "FunctionNodeBooleanMath", label=label, location=location)
+    try:
+        node.operation = "NOT"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, value_socket, node.inputs[0])
+    return node.outputs[0]
+
+
+def _vector_add_constant(
+    group,
+    vector_socket,
+    value: tuple[float, float, float],
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    node = _node(group, "ShaderNodeVectorMath", label=label, location=location)
+    try:
+        node.operation = "ADD"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, vector_socket, node.inputs[0])
+    _set_default(node.inputs[1], value)
+    return node.outputs["Vector"]
+
+
 def _offset_geometry_z(group, geometry_socket, z_value: float, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeTransform", label=label, location=location)
     _link(group, geometry_socket, node.inputs["Geometry"])
@@ -152,50 +181,6 @@ def _set_curve_radius(group, curve_socket, radius: float, *, label: str, locatio
     return _socket_by_name(node.outputs, "Curve", "Geometry") or curve_socket
 
 
-def _mask_volume_geometry(group, geometry_socket, *, location: tuple[float, float]):
-    base = _offset_geometry_z(
-        group,
-        geometry_socket,
-        -5.0,
-        label="マスク厚み開始",
-        location=location,
-    )
-    extrude = _node(
-        group,
-        "GeometryNodeExtrudeMesh",
-        label="マスクに厚み",
-        location=(location[0] + 230, location[1]),
-    )
-    _link(group, base, extrude.inputs["Mesh"])
-    _set_default(extrude.inputs["Selection"], True)
-    _set_default(extrude.inputs["Offset"], (0.0, 0.0, 1.0))
-    _set_default(extrude.inputs["Offset Scale"], 10.0)
-    _set_default(extrude.inputs["Individual"], False)
-    return extrude.outputs["Mesh"]
-
-
-def _thin_volume_geometry(group, geometry_socket, *, label: str, location: tuple[float, float]):
-    base = _offset_geometry_z(
-        group,
-        geometry_socket,
-        -0.00005,
-        label=f"{label}厚み開始",
-        location=location,
-    )
-    extrude = _node(
-        group,
-        "GeometryNodeExtrudeMesh",
-        label=f"{label}に薄い厚み",
-        location=(location[0] + 230, location[1]),
-    )
-    _link(group, base, extrude.inputs["Mesh"])
-    _set_default(extrude.inputs["Selection"], True)
-    _set_default(extrude.inputs["Offset"], (0.0, 0.0, 1.0))
-    _set_default(extrude.inputs["Offset Scale"], 0.0001)
-    _set_default(extrude.inputs["Individual"], False)
-    return extrude.outputs["Mesh"]
-
-
 def _point_radius_scale(group, *, location: tuple[float, float]):
     node = _node(group, "GeometryNodeInputNamedAttribute", label="制御点ごとの線幅倍率", location=location)
     try:
@@ -215,27 +200,54 @@ def _masked_geometry(
     label: str,
     location: tuple[float, float],
 ):
-    boolean = _node(group, "GeometryNodeMeshBoolean", label=f"{label}を切り抜き", location=location)
-    mesh_a = boolean.inputs[0] if len(boolean.inputs) > 0 else None
-    mesh_b = boolean.inputs[1] if len(boolean.inputs) > 1 else None
-    _link(group, geometry_socket, mesh_a)
-    _link(group, mask_geometry_socket, mesh_b)
+    position = _node(
+        group,
+        "GeometryNodeInputPosition",
+        label=f"{label}位置",
+        location=(location[0] - 460, location[1] + 80),
+    )
+    source_position = _vector_add_constant(
+        group,
+        position.outputs["Position"],
+        (0.0, 0.0, 1.0),
+        label=f"{label}判定開始位置",
+        location=(location[0] - 250, location[1] + 80),
+    )
+    raycast = _node(group, "GeometryNodeRaycast", label=f"{label}をコマ内だけ残す", location=location)
+    _link(group, mask_geometry_socket, raycast.inputs["Target Geometry"])
+    _link(group, source_position, raycast.inputs["Source Position"])
+    _set_default(raycast.inputs["Ray Direction"], (0.0, 0.0, -1.0))
+    _set_default(raycast.inputs["Ray Length"], 2.0)
+    outside = _boolean_not(
+        group,
+        raycast.outputs["Is Hit"],
+        label=f"{label}のコマ外判定",
+        location=(location[0] + 220, location[1] - 120),
+    )
+    delete = _node(
+        group,
+        "GeometryNodeDeleteGeometry",
+        label=f"{label}のコマ外を消す",
+        location=(location[0] + 220, location[1] + 40),
+    )
     try:
-        boolean.operation = "INTERSECT"
-        boolean.solver = "EXACT"
+        delete.domain = "FACE"
+        delete.mode = "ALL"
     except Exception:  # noqa: BLE001
         pass
+    _link(group, geometry_socket, delete.inputs["Geometry"])
+    _link(group, outside, delete.inputs["Selection"])
 
     switch = _node(
         group,
         "GeometryNodeSwitch",
         label=f"{label}のマスク使用",
-        location=(location[0] + 220, location[1] + 40),
+        location=(location[0] + 480, location[1] + 40),
     )
     switch.input_type = "GEOMETRY"
     _link(group, use_mask_socket, switch.inputs["Switch"])
     _link(group, geometry_socket, switch.inputs["False"])
-    _link(group, boolean.outputs["Mesh"], switch.inputs["True"])
+    _link(group, delete.outputs["Geometry"], switch.inputs["True"])
     return switch.outputs["Output"]
 
 
@@ -272,24 +284,27 @@ def _build_nodes(group) -> None:
         pass
     _set_default(mask_info.inputs["As Instance"], False)
     _link(group, input_node.outputs["マスク対象"], mask_info.inputs["Object"])
-    clip_enabled = _boolean_and(
+    fill_clip_enabled = _boolean_and(
+        group,
+        input_node.outputs["マスク使用"],
+        input_node.outputs["塗り切り抜き必要"],
+        label="塗り切り抜きの有効判定",
+        location=(-730, -420),
+    )
+    line_clip_enabled = _boolean_and(
         group,
         input_node.outputs["マスク使用"],
         input_node.outputs["切り抜き必要"],
-        label="切り抜きの有効判定",
+        label="線切り抜きの有効判定",
         location=(-730, -520),
     )
-    mask_geometry = _mask_volume_geometry(
-        group,
-        mask_info.outputs["Geometry"],
-        location=(-500, -520),
-    )
+    mask_geometry = mask_info.outputs["Geometry"]
 
     fill_masked = _masked_geometry(
         group,
         fill_curve.outputs["Mesh"],
         mask_geometry,
-        clip_enabled,
+        fill_clip_enabled,
         label="塗り",
         location=(-250, 180),
     )
@@ -351,7 +366,7 @@ def _build_nodes(group) -> None:
         group,
         outline_mesh.outputs["Mesh"],
         mask_geometry,
-        clip_enabled,
+        line_clip_enabled,
         label="線",
         location=(250, -260),
     )
@@ -371,7 +386,7 @@ def _build_nodes(group) -> None:
     )
     line_switch = _node(group, "GeometryNodeSwitch", label="線の切り抜き切替", location=(850, -160))
     line_switch.input_type = "GEOMETRY"
-    _link(group, clip_enabled, line_switch.inputs["Switch"])
+    _link(group, line_clip_enabled, line_switch.inputs["Switch"])
     _link(group, outline_geometry, line_switch.inputs["False"])
     _link(group, clipped_line, line_switch.inputs["True"])
 
@@ -439,6 +454,7 @@ def _set_modifier_values(
     line_width_mm: float,
     mask_object=_MASK_UNSET,
     clip_needed: bool = False,
+    fill_clip_needed: bool = False,
 ) -> None:
     curve = getattr(obj, "data", None)
     if curve is not None and getattr(obj, "type", "") == "CURVE":
@@ -461,6 +477,7 @@ def _set_modifier_values(
     if mask_object is not _MASK_UNSET:
         values["マスク使用"] = mask_object is not None
         values["マスク対象"] = mask_object
+        values["塗り切り抜き必要"] = bool(mask_object is not None and fill_clip_needed)
         values["切り抜き必要"] = bool(mask_object is not None and clip_needed)
     else:
         mask_use_socket = identifiers.get("マスク使用")
@@ -483,6 +500,7 @@ def ensure_modifier(
     line_width_mm: float = 0.3,
     mask_object=_MASK_UNSET,
     clip_needed: bool = False,
+    fill_clip_needed: bool = False,
 ):
     if obj is None:
         return None
@@ -502,6 +520,7 @@ def ensure_modifier(
         line_width_mm=line_width_mm,
         mask_object=mask_object,
         clip_needed=clip_needed,
+        fill_clip_needed=fill_clip_needed,
     )
     try:
         obj.update_tag()
@@ -533,6 +552,7 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         line_width_mm=current_width,
         mask_object=mask_object,
         clip_needed=mask_object is not None,
+        fill_clip_needed=mask_object is not None,
     )
 
 
