@@ -272,6 +272,39 @@ def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: 
     canvas.image.alpha_composite(temp)
 
 
+def _entry_fill_rgb255(entry):
+    return _ep()._rgb255(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)), alpha=_fill_opacity(entry))
+
+
+def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
+    if width_px <= 0 or len(pts) < 2:
+        return
+    style = str(getattr(entry, "line_style", "solid") or "solid")
+    if style != "double":
+        _ep()._draw_styled_loop(draw, pts, color, width_px, style)
+        return
+
+    count = max(1, int(getattr(entry, "multi_line_count", 3) or 3))
+    spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
+    line_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0))
+    scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    fill_color = _entry_fill_rgb255(entry)
+    rings: list[tuple[int, int]] = []
+    inner_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.3)) * 0.5 + spacing_mm
+    for index in range(1, min(12, count)):
+        extra_width_mm = line_width_mm * (scale ** (index - 1))
+        if extra_width_mm <= 0.0:
+            continue
+        outer_mm = inner_mm + extra_width_mm
+        rings.append((max(1, int(round(mm_to_px(outer_mm * 2.0, dpi)))),
+                      max(1, int(round(mm_to_px(inner_mm * 2.0, dpi))))))
+        inner_mm = outer_mm + spacing_mm
+    for outer_width_px, inner_width_px in reversed(rings):
+        _ep()._draw_styled_loop(draw, pts, color, outer_width_px, "solid")
+        _ep()._draw_styled_loop(draw, pts, fill_color, inner_width_px, "solid")
+    _ep()._draw_styled_loop(draw, pts, color, width_px, "solid")
+
+
 def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     if getattr(entry, "shape", "rect") == "none":
         return None
@@ -312,20 +345,20 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
     draw_line = str(line_style or "") != "none" and line_width_px > 0
     if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
-        _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, line_style)
+        _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, "solid")
     if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), line_style)
+        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), "solid")
     if draw_line:
-        ep._draw_styled_loop(draw, outline_px, line_color, line_width_px, line_style)
+        _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi)
     for tail in entry.tails:
         tail_px = canvas.points_px(_balloon_tail_polygon(rect, tail))
         if len(tail_px) >= 3:
             if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
-                _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, line_style)
+                _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, "solid")
             if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), line_style)
+                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), "solid")
             if draw_line:
-                ep._draw_styled_loop(draw, tail_px, line_color, line_width_px, line_style)
+                _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi)
     return ep.ExportLayer(
         str(getattr(entry, "id", "") or "balloon"),
         canvas.image,

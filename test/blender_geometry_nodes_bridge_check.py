@@ -156,13 +156,19 @@ def _assert_balloon_curve_nodes(obj, render_nodes):
     assert modifier.node_group is not None
     assert modifier.node_group.name == render_nodes.GROUP_NAME
     assert str(obj.get(render_nodes.PROP_GN_KIND, "") or "") == render_nodes.KIND
-    input_names = {
-        str(getattr(item, "name", "") or "")
+    input_items = [
+        item
         for item in modifier.node_group.interface.items_tree
         if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
+    ]
+    input_names = {str(getattr(item, "name", "") or "") for item in input_items}
+    visible_input_names = {
+        str(getattr(item, "name", "") or "")
+        for item in input_items
+        if not bool(getattr(item, "hide_in_modifier", False))
     }
     assert {"Geometry", "線幅 (mm)", "線素材", "塗り素材"}.issubset(input_names)
-    forbidden = {name for name in input_names if name.startswith("しっぽ") or "山の" in name or name in {"形状", "幅", "高さ"}}
+    forbidden = {name for name in visible_input_names if name.startswith("しっぽ") or "山の" in name or name in {"形状", "幅", "高さ"}}
     assert not forbidden, f"フキダシ軽量表示補助に不要な設定欄が残っています: {sorted(forbidden)}"
     return modifier
 

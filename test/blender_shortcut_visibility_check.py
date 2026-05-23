@@ -139,14 +139,8 @@ def main() -> None:
         shortcut_visibility.mark_bname_panel_drawn(
             SimpleNamespace(area=fake_reported_other_area, screen=fake_reported_other_screen)
         )
-        assert shortcut_visibility._area_has_bname_panel_category(fake_reported_other_area), (
-            "B-Nameパネル描画直後の補助判定が有効になりません"
-        )
-        shortcut_visibility._last_bname_panel_draw -= (
-            shortcut_visibility.PANEL_DRAW_GRACE_SECONDS + 0.1
-        )
         assert not shortcut_visibility._area_has_bname_panel_category(fake_reported_other_area), (
-            "B-Nameパネル描画の補助判定が時間切れ後も有効です"
+            "B-Name以外のタブ表示中にB-Nameショートカットが有効です"
         )
 
         kc = bpy.context.window_manager.keyconfigs.addon

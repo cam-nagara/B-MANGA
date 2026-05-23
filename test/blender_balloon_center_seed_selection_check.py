@@ -119,6 +119,13 @@ def main() -> None:
         rect.rounded_corner_radius_mm = 5.0
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=rect, page=page)
         assert obj is not None and obj.type == "CURVE"
+        assert int(obj.data.resolution_u) == 64, f"フキダシのプレビュー解像度U初期値が64ではありません: {obj.data.resolution_u}"
+        assert int(obj.data.render_resolution_u) == 64, f"フキダシのレンダーU初期値が64ではありません: {obj.data.render_resolution_u}"
+        obj.data.resolution_u = 12
+        obj.data.render_resolution_u = 24
+        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=rect, page=page)
+        assert int(obj.data.resolution_u) == 12, "ユーザー変更後のプレビュー解像度UをB-Nameが上書きしています"
+        assert int(obj.data.render_resolution_u) == 24, "ユーザー変更後のレンダーUをB-Nameが上書きしています"
         page_ox, page_oy = page_grid.page_total_offset_mm(work, context.scene, 0)
         _assert_close(obj.location.x, (page_ox + 40.0) * 0.001, "中心原点 X")
         _assert_close(obj.location.y, (page_oy + 40.0) * 0.001, "中心原点 Y")

@@ -7,7 +7,7 @@ import time
 import bpy
 
 BNAME_PANEL_CATEGORY = "B-Name"
-PANEL_DRAW_GRACE_SECONDS = 2.0
+PANEL_DRAW_GRACE_SECONDS = 0.35
 _last_bname_panel_draw = 0.0
 _last_bname_panel_area_ptr: int | None = None
 _last_bname_panel_screen_ptr: int | None = None
@@ -97,8 +97,6 @@ def _area_has_bname_panel_category(area, screen=None) -> bool:
     if status == "bname":
         return True
     if status == "unknown":
-        return _recent_bname_panel_drawn(area, screen)
-    if status == "other":
         return _recent_bname_panel_drawn(area, screen)
     return False
 

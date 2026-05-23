@@ -1526,7 +1526,26 @@ class BNAME_OT_effect_line_tool(Operator):
             self._drag_moved = True
         bounds = self._drag_result_bounds(dx, dy)
         center = self._drag_result_center(bounds, dx, dy)
-        _write_effect_strokes(context, obj, layer, bounds, center_xy_mm=center, propagate_link=False)
+        params_data = _layer_params_data(obj, layer)
+        if not params_data:
+            params = _params_for_write(context, obj, layer)
+            if params is not None:
+                try:
+                    from ..core import effect_line
+
+                    params_data = effect_line.effect_params_to_dict(params)
+                except Exception:  # noqa: BLE001
+                    params_data = None
+        _set_layer_bounds(
+            obj,
+            layer,
+            bounds,
+            params_data=params_data,
+            center_xy_mm=center,
+        )
+        world_bounds = effect_layer_world_bounds(context, obj, layer, bounds)
+        if world_bounds is not None:
+            overlay_creation_range.set_bounds(world_bounds)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _local_xy_for_parent_key(

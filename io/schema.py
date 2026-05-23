@@ -867,6 +867,14 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "roundedCornerRadiusMm": round(entry.rounded_corner_radius_mm, 3),
         "lineStyle": entry.line_style,
         "lineWidthMm": round(entry.line_width_mm, 3),
+        "multiLineCount": int(getattr(entry, "multi_line_count", 3) or 3),
+        "multiLineWidthMm": round(float(getattr(entry, "multi_line_width_mm", 0.3)), 3),
+        "multiLineSpacingMm": round(float(getattr(entry, "multi_line_spacing_mm", 0.4)), 3),
+        "multiLineWidthScalePercent": round(float(getattr(entry, "multi_line_width_scale_percent", 100.0)), 3),
+        "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
+        "thornMultiLineValleyWidthMm": round(float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3)), 3),
+        "thornMultiLinePeakWidthMm": round(float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3)), 3),
+        "thornMultiLineLengthScalePercent": round(float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0)), 3),
         "lineColor": color_to_hex(entry.line_color),
         "lineColorAlpha": round(entry.line_color[3], 3),
         "fillColor": color_to_hex(entry.fill_color),
@@ -954,8 +962,17 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
-    entry.line_style = data.get("lineStyle", "solid")
+    line_style = str(data.get("lineStyle", "solid") or "solid")
+    entry.line_style = "double" if line_style == "multi" else line_style
     entry.line_width_mm = float(data.get("lineWidthMm", 0.3))
+    entry.multi_line_count = int(data.get("multiLineCount", 3))
+    entry.multi_line_width_mm = float(data.get("multiLineWidthMm", 0.3))
+    entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
+    entry.multi_line_width_scale_percent = float(data.get("multiLineWidthScalePercent", 100.0))
+    entry.multi_line_direction = data.get("multiLineDirection", "outside")
+    entry.thorn_multi_line_valley_width_mm = float(data.get("thornMultiLineValleyWidthMm", 0.3))
+    entry.thorn_multi_line_peak_width_mm = float(data.get("thornMultiLinePeakWidthMm", 0.3))
+    entry.thorn_multi_line_length_scale_percent = float(data.get("thornMultiLineLengthScalePercent", 100.0))
     alpha = float(data.get("lineColorAlpha", 1.0))
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)
     alpha = float(data.get("fillColorAlpha", 1.0))

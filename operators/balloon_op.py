@@ -475,12 +475,27 @@ def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
 
 
 def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float) -> None:
+    old_rect = (
+        float(getattr(entry, "x_mm", 0.0) or 0.0),
+        float(getattr(entry, "y_mm", 0.0) or 0.0),
+        max(_BALLOON_MIN_SIZE_MM, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(_BALLOON_MIN_SIZE_MM, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    new_rect = (
+        float(x),
+        float(y),
+        max(_BALLOON_MIN_SIZE_MM, float(width)),
+        max(_BALLOON_MIN_SIZE_MM, float(height)),
+    )
+    transformed_curve = balloon_curve_object.transform_manual_curve_to_rect(entry, old_rect, new_rect)
     with balloon_curve_object.defer_auto_sync():
-        _move_balloon_with_texts(page, entry, x, y)
-        entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(width))
-        entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(height))
+        _move_balloon_with_texts(page, entry, new_rect[0], new_rect[1])
+        entry.width_mm = new_rect[2]
+        entry.height_mm = new_rect[3]
     with balloon_curve_object.suspend_auto_sync():
         balloon_curve_object.on_balloon_entry_changed(entry)
+    if transformed_curve:
+        layer_stack_utils.tag_view3d_redraw(bpy.context)
 
 
 def _parent_for_creation_point(page, x_mm: float, y_mm: float) -> tuple[str, str]:

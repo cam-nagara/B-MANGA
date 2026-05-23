@@ -12,6 +12,7 @@ from mathutils import Vector
 
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
+from . import balloon_multiline_curve
 from . import balloon_shapes
 from . import layer_object_sync as los
 from . import log
@@ -27,6 +28,8 @@ BALLOON_SOURCE_NAME_PREFIX = "balloon_source_"
 BALLOON_CLIP_MASK_NAME_PREFIX = "balloon_clip_mask_"
 BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
+BALLOON_OUTER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Outer_Edge_"
+BALLOON_INNER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Inner_Edge_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
@@ -35,10 +38,11 @@ PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 PROP_BALLOON_CLIP_MASK_KIND = "bname_balloon_clip_mask_kind"
 PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
-CURVE_GEOMETRY_VERSION = 3
+PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
+DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
+CURVE_GEOMETRY_VERSION = 4
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
-
 
 @contextmanager
 def suspend_auto_sync():
@@ -54,7 +58,6 @@ def suspend_auto_sync():
 def _auto_sync_suspended() -> bool:
     return _AUTO_SYNC_SUSPEND_COUNT > 0
 
-
 @contextmanager
 def defer_auto_sync():
     """Temporarily batch balloon entry updates before one explicit sync."""
@@ -68,7 +71,6 @@ def defer_auto_sync():
 
 def _auto_sync_deferred() -> bool:
     return _AUTO_SYNC_DEFER_COUNT > 0
-
 
 def _remove_unused_data_block(data) -> None:
     if data is None or getattr(data, "users", 0) != 0:
@@ -126,6 +128,35 @@ def _entry_fill_rgba(entry) -> tuple[float, float, float, float]:
         )
     except Exception:  # noqa: BLE001
         return (1.0, 1.0, 1.0, opacity)
+
+
+def _entry_margin_rgba(entry, attr_name: str) -> tuple[float, float, float, float]:
+    color = getattr(entry, attr_name, (1.0, 1.0, 1.0, 1.0))
+    opacity = percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
+    try:
+        return (
+            float(color[0]),
+            float(color[1]),
+            float(color[2]),
+            float(color[3]) * opacity,
+        )
+    except Exception:  # noqa: BLE001
+        return (1.0, 1.0, 1.0, opacity)
+
+
+def _ensure_color_material(
+    material_name: str,
+    color: tuple[float, float, float, float],
+) -> bpy.types.Material:
+    mat = bpy.data.materials.get(material_name)
+    if mat is None:
+        mat = bpy.data.materials.new(name=material_name)
+    try:
+        mat.diffuse_color = color
+        _setup_emission_alpha_material(mat, color)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon color material setup failed")
+    return mat
 
 
 def _ensure_balloon_curve_material(
@@ -337,24 +368,91 @@ def _tag_curve_object_updated(obj: bpy.types.Object | None) -> None:
         obj.data.update_tag()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _mm_to_curve_local(value_mm: float) -> float:
+    return float(value_mm) * 0.001
+
+
+def _curve_local_to_mm(value_m: float) -> float:
+    return float(value_m) * 1000.0
+
+
+def _transform_curve_vector_between_rects(
+    vector,
+    old_rect: tuple[float, float, float, float],
+    new_rect: tuple[float, float, float, float],
+):
+    old_x, old_y, old_w, old_h = old_rect
+    new_x, new_y, new_w, new_h = new_rect
+    old_w = max(1.0e-9, float(old_w))
+    old_h = max(1.0e-9, float(old_h))
+    new_w = max(1.0e-9, float(new_w))
+    new_h = max(1.0e-9, float(new_h))
+    old_origin_x = float(old_x) + old_w * 0.5
+    old_origin_y = float(old_y) + old_h * 0.5
+    new_origin_x = float(new_x) + new_w * 0.5
+    new_origin_y = float(new_y) + new_h * 0.5
+    page_x = old_origin_x + _curve_local_to_mm(vector.x)
+    page_y = old_origin_y + _curve_local_to_mm(vector.y)
+    u = (page_x - float(old_x)) / old_w
+    v = (page_y - float(old_y)) / old_h
+    mapped_x = float(new_x) + u * new_w
+    mapped_y = float(new_y) + v * new_h
+    vector.x = _mm_to_curve_local(mapped_x - new_origin_x)
+    vector.y = _mm_to_curve_local(mapped_y - new_origin_y)
+
+
+def transform_manual_curve_to_rect(
+    entry,
+    old_rect: tuple[float, float, float, float],
+    new_rect: tuple[float, float, float, float],
+) -> bool:
+    """手編集済み/自由形状のフキダシを、B-Nameのハンドル変形に追従させる."""
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return False
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is None or getattr(obj, "type", "") != "CURVE":
+        return False
+    state = balloon_curve_source_state.detect_state(obj)
+    if state not in {balloon_curve_source_state.STATE_MANUAL, balloon_curve_source_state.STATE_FREEFORM}:
+        return False
     try:
-        obj.update_tag()
+        for spline in getattr(obj.data, "splines", []) or []:
+            if str(getattr(spline, "type", "") or "") == "BEZIER":
+                for point in getattr(spline, "bezier_points", []) or []:
+                    _transform_curve_vector_between_rects(point.co, old_rect, new_rect)
+                    _transform_curve_vector_between_rects(point.handle_left, old_rect, new_rect)
+                    _transform_curve_vector_between_rects(point.handle_right, old_rect, new_rect)
+            else:
+                for point in getattr(spline, "points", []) or []:
+                    co = getattr(point, "co", None)
+                    if co is None:
+                        continue
+                    _transform_curve_vector_between_rects(co, old_rect, new_rect)
+        balloon_curve_source_state.mark_freeform(obj)
+        _tag_curve_object_updated(obj)
+        return True
     except Exception:  # noqa: BLE001
-        pass
+        _logger.exception("balloon: manual/freeform curve transform failed")
+        return False
 
 
 def _ensure_curve_object_for_entry(
     balloon_id: str,
     line_mat: bpy.types.Material,
     fill_mat: Optional[bpy.types.Material],
+    outer_mat: Optional[bpy.types.Material] = None,
+    inner_mat: Optional[bpy.types.Material] = None,
 ) -> bpy.types.Object:
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
     obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
-    curve_data = _ensure_balloon_curve_data(balloon_id, line_mat, fill_mat)
+    curve_data = _ensure_balloon_curve_data(balloon_id, line_mat, fill_mat, outer_mat, inner_mat)
     obj = _replace_object_with_curve(obj=obj, obj_name=obj_name, curve=curve_data)
-    _prepare_balloon_curve_data(obj.data, line_mat, fill_mat)
+    _prepare_balloon_curve_data(obj.data, line_mat, fill_mat, outer_mat, inner_mat)
     if obj.data is not curve_data:
         _remove_unused_data_block(curve_data)
     _remove_duplicate_balloon_objects(balloon_id, obj)
@@ -463,9 +561,24 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
     try:
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
+            multi_line_enabled=str(getattr(entry, "line_style", "") or "") == "double",
+            multi_line_count=int(getattr(entry, "multi_line_count", 3) or 3),
+            multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
+            multi_line_spacing_mm=float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
+            multi_line_width_scale_percent=float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
+            multi_line_direction=str(getattr(entry, "multi_line_direction", "outside") or "outside"),
+            native_multi_line_rings_enabled=shape_name != "thorn",
+            thorn_multi_line_valley_width_mm=float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
+            thorn_multi_line_peak_width_mm=float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
+            thorn_multi_line_length_scale_percent=float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
+            outer_edge_enabled=bool(getattr(entry, "outer_white_margin_enabled", False)),
+            outer_edge_width_mm=float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
+            inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
+            inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
             mask_object=mask_obj,
             clip_needed=_balloon_curve_needs_coma_clip(
                 scene,
@@ -516,9 +629,17 @@ def ensure_balloon_curve_object(
         entry=entry,
     )
     fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry)
+    outer_mat = _ensure_color_material(
+        f"{BALLOON_OUTER_EDGE_MATERIAL_PREFIX}{balloon_id}",
+        _entry_margin_rgba(entry, "outer_white_margin_color"),
+    )
+    inner_mat = _ensure_color_material(
+        f"{BALLOON_INNER_EDGE_MATERIAL_PREFIX}{balloon_id}",
+        _entry_margin_rgba(entry, "inner_white_margin_color"),
+    )
 
     work = getattr(scene, "bname_work", None)
-    obj = _ensure_curve_object_for_entry(balloon_id, line_mat, fill_mat)
+    obj = _ensure_curve_object_for_entry(balloon_id, line_mat, fill_mat, outer_mat, inner_mat)
     _sync_generated_shape_if_needed(
         obj,
         entry,
@@ -602,6 +723,53 @@ def _point_in_polygon_xy(point: tuple[float, float], polygon: Sequence[tuple[flo
     return inside
 
 
+def _point_segment_distance_xy(
+    point: tuple[float, float],
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> float:
+    px, py = float(point[0]), float(point[1])
+    ax, ay = float(a[0]), float(a[1])
+    bx, by = float(b[0]), float(b[1])
+    dx = bx - ax
+    dy = by - ay
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1.0e-12:
+        return math.hypot(px - ax, py - ay)
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
+    qx = ax + dx * t
+    qy = ay + dy * t
+    return math.hypot(px - qx, py - qy)
+
+
+def _point_polygon_distance_xy(point: tuple[float, float], polygon: Sequence[tuple[float, float]]) -> float:
+    if len(polygon) < 2:
+        return float("inf")
+    best = float("inf")
+    prev = polygon[-1]
+    for cur in polygon:
+        best = min(best, _point_segment_distance_xy(point, prev, cur))
+        prev = cur
+    return best
+
+
+def _curve_sample_to_entry_page_xy(entry, local_pos: Vector) -> tuple[float, float]:
+    local_x_mm = float(local_pos.x) / 0.001
+    local_y_mm = float(local_pos.y) / 0.001
+    if bool(getattr(entry, "flip_h", False)):
+        local_x_mm = -local_x_mm
+    if bool(getattr(entry, "flip_v", False)):
+        local_y_mm = -local_y_mm
+    angle = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+    origin_x, origin_y = _entry_origin_xy(entry)
+    return (
+        origin_x + local_x_mm * cos_a - local_y_mm * sin_a,
+        origin_y + local_x_mm * sin_a + local_y_mm * cos_a,
+    )
+
+
 def _sample_cubic_vec(p0: Vector, h0: Vector, h1: Vector, p1: Vector, t: float) -> Vector:
     mt = 1.0 - t
     return (mt**3) * p0 + (3.0 * mt * mt * t) * h0 + (3.0 * mt * t * t) * h1 + (t**3) * p1
@@ -667,6 +835,20 @@ def _balloon_curve_needs_coma_clip(
             if margin_mm is None
             else max(0.0, float(margin_mm))
         )
+        if obj is not None:
+            try:
+                had_sample = False
+                for local_pos in _iter_curve_local_samples(obj, steps=12):
+                    had_sample = True
+                    xy = _curve_sample_to_entry_page_xy(entry, local_pos)
+                    if not _point_in_polygon_xy(xy, polygon, tolerance=0.1):
+                        return True
+                    if line_margin > 0.0 and _point_polygon_distance_xy(xy, polygon) <= line_margin + 0.1:
+                        return True
+                if had_sample:
+                    return False
+            except Exception:  # noqa: BLE001
+                _logger.exception("balloon: curve sample clip need check failed")
         x0 = float(getattr(entry, "x_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0) - line_margin
         y0 = float(getattr(entry, "y_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0) - line_margin
         x1 = (
@@ -767,20 +949,30 @@ def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.typ
                 break
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_idx if page_idx >= 0 else 0)
         inv = owner_obj.matrix_world.inverted_safe()
-        verts = []
+        top_verts = []
+        bottom_verts = []
+        depth_m = 0.02
         for x_mm, y_mm in layer_hierarchy.coma_polygon(coma):
             world = Vector((mm_to_m(float(x_mm) + ox_mm), mm_to_m(float(y_mm) + oy_mm), 0.0))
-            verts.append(tuple(inv @ world))
-        if len(verts) < 3:
+            local = inv @ world
+            top_verts.append((float(local.x), float(local.y), depth_m))
+            bottom_verts.append((float(local.x), float(local.y), -depth_m))
+        if len(top_verts) < 3:
             _remove_balloon_clip_mask(balloon_id)
             return None
+        verts = top_verts + bottom_verts
+        count = len(top_verts)
+        faces = [tuple(range(count)), tuple(range(count * 2 - 1, count - 1, -1))]
+        for index in range(count):
+            nxt = (index + 1) % count
+            faces.append((index, nxt, count + nxt, count + index))
         mesh_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}_mesh"
         obj_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}"
         mesh = bpy.data.meshes.get(mesh_name)
         if mesh is None:
             mesh = bpy.data.meshes.new(mesh_name)
         mesh.clear_geometry()
-        mesh.from_pydata(verts, [], [tuple(range(len(verts)))])
+        mesh.from_pydata(verts, [], faces)
         mesh.update()
         mask_obj = bpy.data.objects.get(obj_name)
         if mask_obj is None:
@@ -823,12 +1015,17 @@ def _ensure_balloon_curve_data(
     balloon_id: str,
     line_material: bpy.types.Material,
     fill_material: Optional[bpy.types.Material],
+    outer_material: Optional[bpy.types.Material] = None,
+    inner_material: Optional[bpy.types.Material] = None,
 ) -> bpy.types.Curve:
     curve_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}_curve"
     curve = bpy.data.curves.get(curve_name)
     if curve is None:
         curve = bpy.data.curves.new(curve_name, "CURVE")
-    _prepare_balloon_curve_data(curve, line_material, fill_material)
+        curve.resolution_u = DEFAULT_BALLOON_CURVE_RESOLUTION_U
+        curve.render_resolution_u = DEFAULT_BALLOON_CURVE_RESOLUTION_U
+        curve[PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED] = True
+    _prepare_balloon_curve_data(curve, line_material, fill_material, outer_material, inner_material)
     return curve
 
 
@@ -836,9 +1033,10 @@ def _prepare_balloon_curve_data(
     curve: bpy.types.Curve,
     line_material: bpy.types.Material,
     fill_material: Optional[bpy.types.Material],
+    outer_material: Optional[bpy.types.Material] = None,
+    inner_material: Optional[bpy.types.Material] = None,
 ) -> None:
     curve.dimensions = "2D"
-    curve.resolution_u = 16
     curve.bevel_depth = 0.0
     curve.bevel_resolution = 0
     try:
@@ -846,7 +1044,7 @@ def _prepare_balloon_curve_data(
         curve.use_fill_caps = False
     except Exception:  # noqa: BLE001
         pass
-    _set_data_materials(curve, (line_material, fill_material))
+    _set_data_materials(curve, (line_material, fill_material, outer_material, inner_material))
 
 
 def _clear_curve_splines(curve: bpy.types.Curve) -> None:
@@ -893,6 +1091,7 @@ def _add_bezier_loop(
     *,
     sharp_indices: set[int],
     offset: tuple[float, float],
+    point_radii: Sequence[float] | None = None,
 ) -> None:
     if len(points) < 3:
         return
@@ -907,7 +1106,10 @@ def _add_bezier_loop(
         handle_type = "VECTOR" if is_sharp else "AUTO"
         bp.handle_left_type = handle_type
         bp.handle_right_type = handle_type
-        bp.radius = 1.0
+        if point_radii is not None and index < len(point_radii):
+            bp.radius = max(0.0, float(point_radii[index]))
+        else:
+            bp.radius = 1.0
 
 
 def _add_bezier_anchor_loop(
@@ -932,16 +1134,6 @@ def _add_bezier_anchor_loop(
         bp.handle_left_type = str(anchor.handle_left_type or "FREE")
         bp.handle_right_type = str(anchor.handle_right_type or "FREE")
         bp.radius = 1.0
-
-
-def _body_outline_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]]:
-    rect = Rect(
-        0.0,
-        0.0,
-        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
-        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
-    )
-    return balloon_shapes.outline_with_corners_for_entry(entry, rect)
 
 
 def _body_bezier_for_entry(entry) -> list[balloon_shapes.BezierAnchor] | None:
@@ -1004,6 +1196,16 @@ def _geometry_key_for_entry(entry) -> str:
         "center": _entry_center_offset(entry),
         "rounded": bool(getattr(entry, "rounded_corner_enabled", False)),
         "rounded_radius": float(getattr(entry, "rounded_corner_radius_mm", 0.0) or 0.0),
+        "line_style": str(getattr(entry, "line_style", "") or ""),
+        "line_width": float(getattr(entry, "line_width_mm", 0.3) or 0.0),
+        "multi_line_count": int(getattr(entry, "multi_line_count", 3) or 3),
+        "multi_line_width": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
+        "multi_line_spacing": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
+        "multi_line_width_scale": float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
+        "multi_line_direction": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
+        "thorn_multi_line_valley_width": float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
+        "thorn_multi_line_peak_width": float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
+        "thorn_multi_line_length_scale": float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
         "shape_params": shape_params,
         "tails": tails,
     }
@@ -1019,9 +1221,20 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     body_anchors = _body_bezier_for_entry(entry)
     if body_anchors is not None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
+        body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
+        balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
     else:
-        body_points, sharp = _body_outline_for_entry(entry)
-        _add_bezier_loop(curve, body_points, sharp_indices=set(sharp), offset=offset)
+        body_points, sharp = balloon_multiline_curve.body_outline_for_entry(entry)
+        sharp_set = set(sharp)
+        _add_bezier_loop(
+            curve,
+            body_points,
+            sharp_indices=sharp_set,
+            offset=offset,
+            point_radii=balloon_multiline_curve.body_outline_point_radii(entry, body_points),
+        )
+        balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
+        balloon_multiline_curve.append_thorn_multi_line_segments(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
         tail_points = _tail_polygon_for_entry(entry, tail)
         _add_bezier_loop(
@@ -1085,6 +1298,21 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         return ensure_balloon_curve_object(scene=scene, entry=entry, page=page) is not None
     if getattr(obj, "type", "") != "CURVE":
         return ensure_balloon_curve_object(scene=scene, entry=entry, page=page) is not None
+    line_mat = _ensure_balloon_curve_material(
+        None,
+        material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
+        entry=entry,
+    )
+    fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry)
+    outer_mat = _ensure_color_material(
+        f"{BALLOON_OUTER_EDGE_MATERIAL_PREFIX}{balloon_id}",
+        _entry_margin_rgba(entry, "outer_white_margin_color"),
+    )
+    inner_mat = _ensure_color_material(
+        f"{BALLOON_INNER_EDGE_MATERIAL_PREFIX}{balloon_id}",
+        _entry_margin_rgba(entry, "inner_white_margin_color"),
+    )
+    _prepare_balloon_curve_data(obj.data, line_mat, fill_mat, outer_mat, inner_mat)
     geometry_key = _geometry_key_for_entry(entry)
     if str(obj.get(PROP_BALLOON_GEOMETRY_KEY, "") or "") != geometry_key:
         state = balloon_curve_source_state.detect_state(obj)
@@ -1100,9 +1328,24 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         _remove_balloon_source_object(balloon_id)
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
+            multi_line_enabled=str(getattr(entry, "line_style", "") or "") == "double",
+            multi_line_count=int(getattr(entry, "multi_line_count", 3) or 3),
+            multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
+            multi_line_spacing_mm=float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
+            multi_line_width_scale_percent=float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
+            multi_line_direction=str(getattr(entry, "multi_line_direction", "outside") or "outside"),
+            native_multi_line_rings_enabled=shape_name != "thorn",
+            thorn_multi_line_valley_width_mm=float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
+            thorn_multi_line_peak_width_mm=float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
+            thorn_multi_line_length_scale_percent=float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
+            outer_edge_enabled=bool(getattr(entry, "outer_white_margin_enabled", False)),
+            outer_edge_width_mm=float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
+            inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
+            inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
             mask_object=mask_obj,
             clip_needed=_balloon_curve_needs_coma_clip(
                 scene,

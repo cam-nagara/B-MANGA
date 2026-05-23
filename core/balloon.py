@@ -53,7 +53,13 @@ _LINE_STYLE_ITEMS = (
     ("solid", "実線", ""),
     ("dashed", "破線", ""),
     ("dotted", "点線", ""),
-    ("double", "二重線", ""),
+    ("double", "多重線", ""),
+)
+
+_MULTI_LINE_DIRECTION_ITEMS = (
+    ("outside", "外側", ""),
+    ("inside", "内側", ""),
+    ("both", "両方向", ""),
 )
 
 _BLEND_MODE_ITEMS = (
@@ -281,6 +287,14 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 線・塗り
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_width_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_count: IntProperty(name="線の本数", default=3, min=1, max=12, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_width_mm: FloatProperty(name="多重線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_width_scale_percent: FloatProperty(name="線幅変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_valley_width_mm: FloatProperty(name="谷の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_peak_width_mm: FloatProperty(name="山の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_length_scale_percent: FloatProperty(name="長さ変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -291,11 +305,11 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     fill_gradient_start_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_end_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.82, 0.82, 0.82, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_angle_deg: FloatProperty(name="グラデーション角度", default=90.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    outer_white_margin_enabled: BoolProperty(name="外側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    outer_white_margin_width_mm: FloatProperty(name="外側白フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_enabled: BoolProperty(name="外側フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_width_mm: FloatProperty(name="外側フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     outer_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    inner_white_margin_enabled: BoolProperty(name="内側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    inner_white_margin_width_mm: FloatProperty(name="内側白フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_enabled: BoolProperty(name="内側フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_width_mm: FloatProperty(name="内側フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     inner_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     blend_mode: EnumProperty(name="", items=_BLEND_MODE_ITEMS, default="normal", options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     merge_group_id: StringProperty(name="結合フォルダ ID", default="")  # type: ignore[valid-type]
