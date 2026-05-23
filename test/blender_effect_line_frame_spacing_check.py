@@ -263,7 +263,7 @@ def main() -> None:
     try:
         params = bpy.context.scene.bname_effect_line_params
         assert abs(float(params.brush_size_mm) - 0.3) <= 1.0e-6
-        assert params.bl_rna.properties["brush_size_mm"].name == "線幅"
+        assert params.bl_rna.properties["brush_size_mm"].name == "線幅 (mm)"
         assert abs(float(params.out_percent) - 0.0) <= 1.0e-6
         if "start_frame_density_basis" in params.bl_rna.properties:
             raise AssertionError("密度基準が効果線設定に残っています")

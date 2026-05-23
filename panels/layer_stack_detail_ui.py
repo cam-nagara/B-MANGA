@@ -229,10 +229,10 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         op.tail_index = i
         sub.prop(tail, "type", text="種類")
         sub.prop(tail, "direction_deg", text="方向")
-        sub.prop(tail, "length_mm", text="長さ")
+        sub.prop(tail, "length_mm", text="長さ (mm)")
         row = sub.row(align=True)
-        row.prop(tail, "root_width_mm", text="根元幅")
-        row.prop(tail, "tip_width_mm", text="先端幅")
+        row.prop(tail, "root_width_mm", text="根元幅 (mm)")
+        row.prop(tail, "tip_width_mm", text="先端幅 (mm)")
         bend = sub.row()
         bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
         bend.prop(tail, "curve_bend", text="曲げ")

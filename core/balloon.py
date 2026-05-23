@@ -200,9 +200,9 @@ class BNameBalloonTailPoint(bpy.types.PropertyGroup):
 class BNameBalloonTail(bpy.types.PropertyGroup):
     type: EnumProperty(items=_TAIL_TYPE_ITEMS, default="straight", update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     direction_deg: FloatProperty(name="方向 (度)", default=270.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
-    length_mm: FloatProperty(name="長さ", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
-    root_width_mm: FloatProperty(name="根元幅", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
-    tip_width_mm: FloatProperty(name="先端幅", default=0.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    length_mm: FloatProperty(name="長さ (mm)", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    root_width_mm: FloatProperty(name="根元幅 (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    tip_width_mm: FloatProperty(name="先端幅 (mm)", default=0.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     curve_bend: FloatProperty(  # type: ignore[valid-type]
         name="曲げ",
         description="曲線尻尾のみ: -1.0〜1.0 で曲がり具合",
@@ -222,9 +222,9 @@ class BNameBalloonTail(bpy.types.PropertyGroup):
 class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     """形状固有パラメータ."""
 
-    cloud_bump_width_mm: FloatProperty(name="山の幅", default=10.0, min=2.0, soft_max=50.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    cloud_bump_height_mm: FloatProperty(name="山の高さ", default=4.0, min=0.5, soft_max=25.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=25.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
@@ -234,9 +234,9 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
 
     # Legacy parameters kept for older B-Name files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", default=12, min=3, soft_max=60, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    cloud_wave_amplitude_mm: FloatProperty(name="波の振幅", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_wave_amplitude_mm: FloatProperty(name="波の振幅 (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     spike_count: IntProperty(name="トゲ数", default=24, min=3, soft_max=80, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
-    spike_depth_mm: FloatProperty(name="トゲの深さ", default=6.0, min=0.0, soft_max=30.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    spike_depth_mm: FloatProperty(name="トゲの深さ (mm)", default=6.0, min=0.0, soft_max=30.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     spike_jitter: FloatProperty(  # type: ignore[valid-type]
         name="トゲのばらつき",
         description="0.0-1.0 で形状不規則さ",
@@ -266,19 +266,19 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 配置 (mm)
     x_mm: FloatProperty(name="X", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     y_mm: FloatProperty(name="Y", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    width_mm: FloatProperty(name="幅", default=40.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    height_mm: FloatProperty(name="高さ", default=20.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    width_mm: FloatProperty(name="幅 (mm)", default=40.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    height_mm: FloatProperty(name="高さ (mm)", default=20.0, min=0.1, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rotation_deg: FloatProperty(name="回転", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     center_offset_x_mm: FloatProperty(name="中心点 X", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     center_offset_y_mm: FloatProperty(name="中心点 Y", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 角丸 (全形状共通オプション、計画書 3.1.4.2a)
     rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    rounded_corner_radius_mm: FloatProperty(name="角半径", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 線・塗り
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    line_width_mm: FloatProperty(name="線幅", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_width_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -290,10 +290,10 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     fill_gradient_end_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.82, 0.82, 0.82, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_angle_deg: FloatProperty(name="グラデーション角度", default=90.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     outer_white_margin_enabled: BoolProperty(name="外側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    outer_white_margin_width_mm: FloatProperty(name="外側白フチ幅", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    outer_white_margin_width_mm: FloatProperty(name="外側白フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     outer_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     inner_white_margin_enabled: BoolProperty(name="内側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    inner_white_margin_width_mm: FloatProperty(name="内側白フチ幅", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inner_white_margin_width_mm: FloatProperty(name="内側白フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     inner_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     blend_mode: EnumProperty(name="合成モード", items=_BLEND_MODE_ITEMS, default="normal", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     merge_group_id: StringProperty(name="結合フォルダ ID", default="")  # type: ignore[valid-type]

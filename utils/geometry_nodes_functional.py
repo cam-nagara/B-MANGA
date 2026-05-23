@@ -29,6 +29,15 @@ def _empty_geometry(gn, group, *, label: str, location: tuple[float, float]):
     return node.outputs["Mesh"]
 
 
+def _bool_to_int_socket(gn, group, bool_socket, *, false_value: int, true_value: int, label: str, location: tuple[float, float]):
+    node = gn._node(group, "GeometryNodeSwitch", label=label, location=location)
+    node.input_type = "INT"
+    gn._link(group, bool_socket, node.inputs["Switch"])
+    gn._set_default(node.inputs["False"], int(false_value))
+    gn._set_default(node.inputs["True"], int(true_value))
+    return node.outputs["Output"]
+
+
 def _float_to_int(gn, group, source_socket, *, label: str, location: tuple[float, float], mode: str = "ROUND"):
     node = gn._node(group, "FunctionNodeFloatToInt", label=label, location=location)
     node.rounding_mode = mode
@@ -131,8 +140,15 @@ def _tail_geometry(gn, group, input_node, width_half_m, height_half_m, line_half
         gn._link(group, socket, quad.inputs[name])
     geometry = _curve_fill_and_outline(gn, group, quad.outputs["Curve"], line_half_m, line_material, fill_material, label=prefix, location=(1860, row - 120))
     enabled = _compare_int(gn, group, input_node.outputs["しっぽ数"], index, operation="GREATER_EQUAL", label=f"{prefix} 有効", location=(1860, row + 260))
-    empty = _empty_geometry(gn, group, label=f"{prefix} なし", location=(1860, row + 420))
-    return _switch_geometry(gn, group, enabled, empty, geometry, label=f"{prefix} 表示", location=(2540, row - 40))
+    active_count = _bool_to_int_socket(gn, group, enabled, false_value=0, true_value=1, label=f"{prefix} 表示数", location=(1860, row + 420))
+    point = gn._node(group, "GeometryNodeMeshLine", label=f"{prefix} 配置点", location=(2080, row + 260))
+    gn._link(group, active_count, point.inputs["Count"])
+    instance = gn._node(group, "GeometryNodeInstanceOnPoints", label=f"{prefix} 配置", location=(2300, row - 40))
+    gn._link(group, point.outputs["Mesh"], instance.inputs["Points"])
+    gn._link(group, geometry, instance.inputs["Instance"])
+    realize = gn._node(group, "GeometryNodeRealizeInstances", label=f"{prefix} 実体化", location=(2540, row - 40))
+    gn._link(group, instance.outputs["Instances"], realize.inputs["Geometry"])
+    return realize.outputs["Geometry"]
 
 
 def _balloon_body_geometry(gn, group, input_node, width_half_m, height_half_m, line_half_m, line_material, fill_material):
@@ -165,7 +181,7 @@ def build_balloon_nodes(group, gn) -> None:
     gn._link_settings_to_audit_outputs(group, input_node, output_node, "balloon")
     width_half_m = gn._math_multiply(group, input_node.outputs["幅"], 0.0005, label="幅 mm → 半幅 m", location=(-800, -80))
     height_half_m = gn._math_multiply(group, input_node.outputs["高さ"], 0.0005, label="高さ mm → 半高 m", location=(-800, -240))
-    line_half_m = gn._math_multiply(group, input_node.outputs["線幅"], 0.0005, label="線幅 mm → 半径 m", location=(-800, -400))
+    line_half_m = gn._math_multiply(group, input_node.outputs[gn.LINE_WIDTH_MM_SOCKET], 0.0005, label="線幅 mm → 半径 m", location=(-800, -400))
 
     line_material = input_node.outputs["線素材"]
     fill_material = input_node.outputs["塗り素材"]
@@ -267,7 +283,8 @@ def _parallel_line_geometry(
         gn._set_default(mesh.inputs["Fill Caps"], True)
         gn._link(group, line.outputs["Curve"], mesh.inputs["Curve"])
         gn._link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
-        material = gn._set_material(group, mesh.outputs["Mesh"], material_socket, label=f"{label} 素材", location=(location[0] + 1720, location[1] - 240))
+        alpha_mesh = gn._store_alpha_constant(group, mesh.outputs["Mesh"], 1.0, label=f"{label} 不透明度属性", location=(location[0] + 1720, location[1] - 480))
+        material = gn._set_material(group, alpha_mesh, material_socket, label=f"{label} 素材", location=(location[0] + 1720, location[1] - 240))
     angle = gn._math_binary(group, "MULTIPLY", input_node.outputs[angle_socket_name], b_value=math.pi / 180.0, label=f"{label} 角度", location=(location[0] + 1500, location[1] + 180))
     rotation = gn._node(group, "FunctionNodeAxisAngleToRotation", label=f"{label} 回転", location=(location[0] + 1720, location[1] + 160))
     gn._set_default(rotation.inputs["Axis"], (0.0, 0.0, 1.0))
@@ -283,6 +300,347 @@ def _parallel_line_geometry(
     translation = gn._combine_xyz(group, cx, cy, z=0.0, label=f"{label} 表示位置", location=(location[0] + 2380, location[1] - 340))
     transform = gn._node(group, "GeometryNodeTransform", label=f"{label} 移動", location=(location[0] + 2600, location[1] - 40))
     gn._link(group, realize.outputs["Geometry"], transform.inputs["Geometry"])
+    gn._link(group, translation, transform.inputs["Translation"])
+    return transform.outputs["Geometry"]
+
+
+def _white_outline_region_geometry(
+    gn,
+    group,
+    input_node,
+    origin_x_m,
+    origin_y_m,
+    width_half_m,
+    height_half_m,
+    radius_socket,
+    *,
+    material_socket,
+    material_index: int,
+    band_width_socket,
+    band_spacing_socket,
+    region_center_socket,
+    region_width_socket,
+    attenuation_socket,
+    length_scale_socket,
+    label: str,
+    location: tuple[float, float],
+):
+    count = input_node.outputs["白抜き線 本数"]
+    brush_diameter = gn._math_binary(
+        group,
+        "MAXIMUM",
+        gn._math_binary(group, "MULTIPLY", radius_socket, b_value=2.0, label=f"{label} 線幅", location=(location[0], location[1] + 620)),
+        b_value=0.000001,
+        label=f"{label} 線幅下限",
+        location=(location[0] + 200, location[1] + 620),
+    )
+    line_float = gn._math_binary(
+        group,
+        "CEIL",
+        gn._math_binary(group, "DIVIDE", region_width_socket, brush_diameter, label=f"{label} 領域内本数", location=(location[0], location[1] + 460)),
+        label=f"{label} 領域内本数切上げ",
+        location=(location[0] + 200, location[1] + 460),
+    )
+    line_float = gn._math_binary(group, "MAXIMUM", line_float, b_value=1.0, label=f"{label} 領域内本数下限", location=(location[0] + 400, location[1] + 460))
+    total_count = _float_to_int(
+        gn,
+        group,
+        gn._math_binary(group, "MULTIPLY", count, line_float, label=f"{label} 総本数", location=(location[0] + 600, location[1] + 620)),
+        label=f"{label} 総本数整数",
+        location=(location[0] + 800, location[1] + 620),
+        mode="CEILING",
+    )
+
+    points = gn._node(group, "GeometryNodeMeshLine", label=f"{label} 点列", location=(location[0] + 1020, location[1] + 520))
+    gn._link(group, total_count, points.inputs["Count"])
+    zero = gn._constant_float(group, 0.0, label=f"{label} 0", location=(location[0] + 800, location[1] + 320))
+    zero_vector = gn._combine_xyz(group, zero, zero, z=0.0, label=f"{label} ゼロ位置", location=(location[0] + 1020, location[1] + 320))
+    gn._link(group, zero_vector, points.inputs["Start Location"])
+    gn._link(group, zero_vector, points.inputs["Offset"])
+
+    index = gn._node(group, "GeometryNodeInputIndex", label=f"{label} 線番号", location=(location[0] + 1020, location[1] + 120))
+    band_index = gn._math_binary(
+        group,
+        "FLOOR",
+        gn._math_binary(group, "DIVIDE", index.outputs["Index"], line_float, label=f"{label} 帯番号", location=(location[0] + 1220, location[1] + 200)),
+        label=f"{label} 帯番号整数",
+        location=(location[0] + 1420, location[1] + 200),
+    )
+    local_index = gn._math_binary(group, "MODULO", index.outputs["Index"], line_float, label=f"{label} 帯内番号", location=(location[0] + 1220, location[1] + 20))
+    band_step = gn._math_add(group, band_width_socket, band_spacing_socket, label=f"{label} 帯間隔", location=(location[0] + 1220, location[1] + 380))
+    count_minus = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "SUBTRACT", count, b_value=1.0, label=f"{label} 本数-1", location=(location[0] + 1220, location[1] + 560)), b_value=0.0, label=f"{label} 間隔数", location=(location[0] + 1420, location[1] + 560))
+    total_span = gn._math_add(
+        group,
+        gn._math_binary(group, "MULTIPLY", count, band_width_socket, label=f"{label} 帯幅合計", location=(location[0] + 1620, location[1] + 560)),
+        gn._math_binary(group, "MULTIPLY", count_minus, band_spacing_socket, label=f"{label} 帯間隔合計", location=(location[0] + 1620, location[1] + 400)),
+        label=f"{label} 全体幅",
+        location=(location[0] + 1820, location[1] + 480),
+    )
+    band_start = gn._math_binary(group, "MULTIPLY", total_span, b_value=-0.5, label=f"{label} 帯開始", location=(location[0] + 2020, location[1] + 480))
+    band_center = gn._math_add(
+        group,
+        gn._math_add(
+            group,
+            band_start,
+            gn._math_binary(group, "MULTIPLY", band_index, band_step, label=f"{label} 帯オフセット", location=(location[0] + 2020, location[1] + 300)),
+            label=f"{label} 帯左端",
+            location=(location[0] + 2220, location[1] + 380),
+        ),
+        gn._math_binary(group, "MULTIPLY", band_width_socket, b_value=0.5, label=f"{label} 帯半幅", location=(location[0] + 2220, location[1] + 220)),
+        label=f"{label} 帯中心",
+        location=(location[0] + 2420, location[1] + 300),
+    )
+
+    unit_width = gn._math_binary(group, "DIVIDE", region_width_socket, line_float, label=f"{label} 領域単位幅", location=(location[0] + 1420, location[1] - 180))
+    local_offset = gn._math_add(
+        group,
+        gn._math_binary(group, "MULTIPLY", region_width_socket, b_value=-0.5, label=f"{label} 領域開始", location=(location[0] + 1620, location[1] - 180)),
+        gn._math_binary(
+            group,
+            "MULTIPLY",
+            gn._math_add(group, local_index, gn._constant_float(group, 0.5, label=f"{label} 中央補正", location=(location[0] + 1420, location[1] - 340)), label=f"{label} 帯内中央", location=(location[0] + 1620, location[1] - 340)),
+            unit_width,
+            label=f"{label} 帯内位置",
+            location=(location[0] + 1820, location[1] - 260),
+        ),
+        label=f"{label} 領域内位置",
+        location=(location[0] + 2020, location[1] - 220),
+    )
+    offset_from_band_center = gn._math_add(group, region_center_socket, local_offset, label=f"{label} 帯中心からの距離", location=(location[0] + 2220, location[1] - 220))
+    y = gn._math_add(group, band_center, offset_from_band_center, label=f"{label} Y位置", location=(location[0] + 2620, location[1] + 40))
+    point_position = gn._combine_xyz(group, None, y, z=0.0, label=f"{label} 点位置", location=(location[0] + 2820, location[1] + 40))
+    set_pos = gn._node(group, "GeometryNodeSetPosition", label=f"{label} 点配置", location=(location[0] + 3040, location[1] + 320))
+    gn._link(group, points.outputs["Mesh"], set_pos.inputs["Geometry"])
+    gn._link(group, point_position, set_pos.inputs["Position"])
+
+    line = gn._node(group, "GeometryNodeCurvePrimitiveLine", label=f"{label} 原型", location=(location[0] + 3040, location[1] - 260))
+    line_start = gn._combine_xyz(group, gn._constant_float(group, -1.0, label=f"{label} 原型左", location=(location[0] + 2820, location[1] - 360)), zero, z=0.0, label=f"{label} 原型始点", location=(location[0] + 3040, location[1] - 520))
+    line_end = gn._combine_xyz(group, gn._constant_float(group, 1.0, label=f"{label} 原型右", location=(location[0] + 2820, location[1] - 700)), zero, z=0.0, label=f"{label} 原型終点", location=(location[0] + 3040, location[1] - 700))
+    gn._link(group, line_start, line.inputs["Start"])
+    gn._link(group, line_end, line.inputs["End"])
+    profile = gn._node(group, "GeometryNodeCurvePrimitiveCircle", label=f"{label} 線幅", location=(location[0] + 3260, location[1] - 520))
+    gn._set_default(profile.inputs["Resolution"], 8)
+    gn._link(group, radius_socket, profile.inputs["Radius"])
+    mesh = gn._node(group, "GeometryNodeCurveToMesh", label=f"{label} メッシュ化", location=(location[0] + 3480, location[1] - 320))
+    gn._set_default(mesh.inputs["Fill Caps"], True)
+    gn._link(group, line.outputs["Curve"], mesh.inputs["Curve"])
+    gn._link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
+    alpha_mesh = gn._store_alpha_constant(group, mesh.outputs["Mesh"], 1.0, label=f"{label} 不透明度属性", location=(location[0] + 3700, location[1] - 520))
+
+    band_half = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", band_width_socket, b_value=0.5, label=f"{label} 減衰半幅", location=(location[0] + 2420, location[1] - 360)), b_value=0.000001, label=f"{label} 減衰半幅下限", location=(location[0] + 2620, location[1] - 360))
+    norm = gn._math_binary(group, "DIVIDE", gn._math_binary(group, "ABSOLUTE", offset_from_band_center, label=f"{label} 減衰距離", location=(location[0] + 2420, location[1] - 560)), band_half, label=f"{label} 減衰率", location=(location[0] + 2820, location[1] - 460))
+    attenuation = gn._math_binary(group, "MULTIPLY", attenuation_socket, b_value=0.01, label=f"{label} 減衰入力", location=(location[0] + 2820, location[1] - 640))
+    attenuation_factor = gn._math_binary(
+        group,
+        "MAXIMUM",
+        gn._math_binary(group, "SUBTRACT", gn._constant_float(group, 1.0, label=f"{label} 長さ基準", location=(location[0] + 3020, location[1] - 820)), gn._math_binary(group, "MULTIPLY", attenuation, norm, label=f"{label} 減衰量", location=(location[0] + 3020, location[1] - 560)), label=f"{label} 減衰後", location=(location[0] + 3220, location[1] - 640)),
+        b_value=0.0,
+        label=f"{label} 減衰下限",
+        location=(location[0] + 3420, location[1] - 640),
+    )
+    half_length = gn._math_binary(
+        group,
+        "SQRT",
+        gn._math_add(
+            group,
+            gn._math_binary(group, "MULTIPLY", width_half_m, width_half_m, label=f"{label} 幅二乗", location=(location[0] + 6280, location[1] - 900)),
+            gn._math_binary(group, "MULTIPLY", height_half_m, height_half_m, label=f"{label} 高さ二乗", location=(location[0] + 6280, location[1] - 1060)),
+            label=f"{label} 対角二乗",
+            location=(location[0] + 6480, location[1] - 980),
+        ),
+        label=f"{label} 半長",
+        location=(location[0] + 6680, location[1] - 980),
+    )
+    length_scale = gn._math_binary(group, "MULTIPLY", half_length, gn._math_binary(group, "MULTIPLY", attenuation_factor, length_scale_socket, label=f"{label} 長さ係数", location=(location[0] + 6680, location[1] - 740)), label=f"{label} 長さ", location=(location[0] + 6880, location[1] - 820))
+    scale = gn._combine_xyz(group, length_scale, gn._constant_float(group, 1.0, label=f"{label} Y等倍", location=(location[0] + 6880, location[1] - 620)), z=1.0, label=f"{label} スケール", location=(location[0] + 7080, location[1] - 720))
+
+    angle = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 角度"], b_value=math.pi / 180.0, label=f"{label} 角度", location=(location[0] + 6680, location[1] - 420))
+    rotation = gn._node(group, "FunctionNodeAxisAngleToRotation", label=f"{label} 回転", location=(location[0] + 6900, location[1] - 420))
+    gn._set_default(rotation.inputs["Axis"], (0.0, 0.0, 1.0))
+    gn._link(group, angle, rotation.inputs["Angle"])
+    instance = gn._node(group, "GeometryNodeInstanceOnPoints", label=f"{label} 配置", location=(location[0] + 7300, location[1] + 120))
+    gn._link(group, set_pos.outputs["Geometry"], instance.inputs["Points"])
+    gn._link(group, alpha_mesh, instance.inputs["Instance"])
+    gn._link(group, rotation.outputs["Rotation"], instance.inputs["Rotation"])
+    gn._link(group, scale, instance.inputs["Scale"])
+    realize = gn._node(group, "GeometryNodeRealizeInstances", label=f"{label} 実体化", location=(location[0] + 7520, location[1] + 120))
+    gn._link(group, instance.outputs["Instances"], realize.inputs["Geometry"])
+    material = gn._set_material(group, realize.outputs["Geometry"], material_socket, label=f"{label} 素材", location=(location[0] + 7520, location[1] + 300))
+    material = gn._set_material_index(group, material, int(material_index), label=f"{label} 素材番号", location=(location[0] + 7740, location[1] + 300))
+    cx = gn._math_add(group, origin_x_m, width_half_m, label=f"{label} 中心X", location=(location[0] + 7520, location[1] - 100))
+    cy = gn._math_add(group, origin_y_m, height_half_m, label=f"{label} 中心Y", location=(location[0] + 7520, location[1] - 260))
+    translation = gn._combine_xyz(group, cx, cy, z=0.0, label=f"{label} 表示位置", location=(location[0] + 7740, location[1] - 180))
+    transform = gn._node(group, "GeometryNodeTransform", label=f"{label} 移動", location=(location[0] + 7960, location[1] + 120))
+    gn._link(group, material, transform.inputs["Geometry"])
+    gn._link(group, translation, transform.inputs["Translation"])
+    return transform.outputs["Geometry"]
+
+
+def _boolean_math(gn, group, operation: str, a_socket, b_socket=None, *, label: str, location: tuple[float, float]):
+    node = gn._node(group, "FunctionNodeBooleanMath", label=label, location=location)
+    node.operation = operation
+    gn._link(group, a_socket, node.inputs[0])
+    if b_socket is not None and len(node.inputs) > 1:
+        gn._link(group, b_socket, node.inputs[1])
+    return node.outputs["Boolean"]
+
+
+def _white_outline_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_material, fill_material):
+    location = (-320, 2600)
+    count = input_node.outputs["白抜き線 本数"]
+    width_min = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 最小太さ (%)"], b_value=0.01, label="白抜き線 最小太さ率", location=(location[0], location[1] + 620))
+    band_width = gn._math_binary(group, "MULTIPLY", input_node.outputs[gn.WHITE_OUTLINE_WIDTH_MM_SOCKET], b_value=0.001, label="白抜き線 太さm", location=(location[0] + 880, location[1] + 700))
+    spacing = gn._math_binary(group, "MULTIPLY", input_node.outputs[gn.WHITE_OUTLINE_SPACING_MM_SOCKET], b_value=0.001, label="白抜き線 間隔m", location=(location[0] + 880, location[1] + 520))
+
+    ratio = gn._math_binary(group, "MINIMUM", gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", input_node.outputs["白線割合 (%)"], b_value=0.01, label="白線割合", location=(location[0], location[1] + 1020)), b_value=0.0, label="白線割合下限", location=(location[0] + 220, location[1] + 1020)), b_value=1.0, label="白線割合上限", location=(location[0] + 440, location[1] + 1020))
+    white_width = gn._math_binary(group, "MULTIPLY", band_width, ratio, label="白抜き線 白領域幅", location=(location[0] + 660, location[1] + 1020))
+    black_width = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", gn._math_binary(group, "SUBTRACT", band_width, white_width, label="白抜き線 黒領域合計", location=(location[0] + 880, location[1] + 1020)), b_value=0.5, label="白抜き線 黒領域幅", location=(location[0] + 1100, location[1] + 1020)), b_value=0.0, label="白抜き線 黒領域幅下限", location=(location[0] + 1320, location[1] + 1020))
+    white_half = gn._math_binary(group, "MULTIPLY", white_width, b_value=0.5, label="白抜き線 白半幅", location=(location[0] + 1320, location[1] + 860))
+    black_half = gn._math_binary(group, "MULTIPLY", black_width, b_value=0.5, label="白抜き線 黒半幅", location=(location[0] + 1540, location[1] + 860))
+    black_left_center = gn._math_binary(group, "MULTIPLY", gn._math_add(group, white_half, black_half, label="白抜き線 黒左距離", location=(location[0] + 1760, location[1] + 860)), b_value=-1.0, label="白抜き線 黒左中心", location=(location[0] + 1980, location[1] + 860))
+    black_right_center = gn._math_add(group, white_half, black_half, label="白抜き線 黒右中心", location=(location[0] + 1980, location[1] + 1020))
+
+    black_diameter = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", input_node.outputs[gn.WHITE_OUTLINE_BLACK_BRUSH_MM_SOCKET], b_value=0.001, label="黒線太さm", location=(location[0] + 1320, location[1] + 620)), b_value=0.000001, label="黒線太さ下限", location=(location[0] + 1540, location[1] + 620))
+    white_diameter = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", input_node.outputs[gn.WHITE_OUTLINE_WHITE_BRUSH_MM_SOCKET], b_value=0.001, label="白線太さm", location=(location[0] + 1320, location[1] + 460)), b_value=0.000001, label="白線太さ下限", location=(location[0] + 1540, location[1] + 460))
+    black_line_count = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "CEIL", gn._math_binary(group, "DIVIDE", black_width, black_diameter, label="黒領域本数", location=(location[0] + 1760, location[1] + 620)), label="黒領域本数切上げ", location=(location[0] + 1980, location[1] + 620)), b_value=1.0, label="黒領域本数下限", location=(location[0] + 2200, location[1] + 620))
+    white_line_count = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "CEIL", gn._math_binary(group, "DIVIDE", white_width, white_diameter, label="白領域本数", location=(location[0] + 1760, location[1] + 460)), label="白領域本数切上げ", location=(location[0] + 1980, location[1] + 460)), b_value=1.0, label="白領域本数下限", location=(location[0] + 2200, location[1] + 460))
+    per_band_count = gn._math_add(group, gn._math_binary(group, "MULTIPLY", black_line_count, b_value=2.0, label="黒領域左右本数", location=(location[0] + 2420, location[1] + 620)), white_line_count, label="帯内本数", location=(location[0] + 2640, location[1] + 540))
+    raw_total_count = gn._math_binary(group, "MULTIPLY", count, per_band_count, label="白抜き線 総本数", location=(location[0] + 2860, location[1] + 540))
+    is_effect_white = _compare_int(gn, group, input_node.outputs["種類"], 5, label="白抜き線表示中", location=(location[0] + 2860, location[1] + 720))
+    active_total_count = gn._math_binary(
+        group,
+        "MULTIPLY",
+        raw_total_count,
+        gn._switch_float(
+            group,
+            is_effect_white,
+            gn._constant_float(group, 0.0, label="白抜き線 非表示数", location=(location[0] + 2860, location[1] + 900)),
+            gn._constant_float(group, 1.0, label="白抜き線 表示数", location=(location[0] + 2860, location[1] + 820)),
+            label="白抜き線 表示切替",
+            location=(location[0] + 3080, location[1] + 820),
+        ),
+        label="白抜き線 有効総本数",
+        location=(location[0] + 3300, location[1] + 720),
+    )
+    total_count = _float_to_int(gn, group, active_total_count, label="白抜き線 総本数整数", location=(location[0] + 3080, location[1] + 540), mode="CEILING")
+
+    points = gn._node(group, "GeometryNodeMeshLine", label="白抜き線 点列", location=(location[0] + 3300, location[1] + 540))
+    gn._link(group, total_count, points.inputs["Count"])
+    zero = gn._constant_float(group, 0.0, label="白抜き線 0", location=(location[0] + 3080, location[1] + 340))
+    zero_vector = gn._combine_xyz(group, zero, zero, z=0.0, label="白抜き線 ゼロ位置", location=(location[0] + 3300, location[1] + 340))
+    gn._link(group, zero_vector, points.inputs["Start Location"])
+    gn._link(group, zero_vector, points.inputs["Offset"])
+    index = gn._node(group, "GeometryNodeInputIndex", label="白抜き線 番号", location=(location[0] + 3300, location[1] + 140))
+    index_socket = index.outputs["Index"]
+    band_index = gn._math_binary(group, "FLOOR", gn._math_binary(group, "DIVIDE", index_socket, per_band_count, label="白抜き線 帯番号", location=(location[0] + 3520, location[1] + 260)), label="白抜き線 帯番号整数", location=(location[0] + 3740, location[1] + 260))
+    band_seed = gn._math_add(group, band_index, input_node.outputs["乱数"], label="白抜き線 帯乱数種", location=(location[0] + 3740, location[1] + 440))
+    width_wave = gn._hash01_socket(group, band_seed, salt=19.73, label="白抜き線 太さ乱れ乱数", location=(location[0] + 3960, location[1] + 500))
+    width_factor = gn._math_add(
+        group,
+        width_min,
+        gn._math_binary(
+            group,
+            "MULTIPLY",
+            gn._math_binary(group, "SUBTRACT", gn._constant_float(group, 1.0, label="白抜き線 太さ最大", location=(location[0] + 3960, location[1] + 680)), width_min, label="白抜き線 太さ乱れ幅", location=(location[0] + 4180, location[1] + 620)),
+            width_wave,
+            label="白抜き線 太さ乱れ量",
+            location=(location[0] + 4400, location[1] + 560),
+        ),
+        label="白抜き線 太さ乱れ係数",
+        location=(location[0] + 4620, location[1] + 560),
+    )
+    width_factor = gn._switch_float(group, input_node.outputs["白抜き線 太さ乱れ"], gn._constant_float(group, 1.0, label="白抜き線 太さ乱れなし", location=(location[0] + 4620, location[1] + 720)), width_factor, label="白抜き線 太さ乱れ切替", location=(location[0] + 4840, location[1] + 560))
+    local_index = gn._math_binary(group, "MODULO", index_socket, per_band_count, label="白抜き線 帯内番号", location=(location[0] + 3520, location[1] + 80))
+    left_done = gn._compare_float_sockets(group, local_index, black_line_count, operation="GREATER_EQUAL", label="白抜き線 左黒後", location=(location[0] + 3740, location[1] + 80))
+    white_done_at = gn._math_add(group, black_line_count, white_line_count, label="白抜き線 白領域終端", location=(location[0] + 3740, location[1] - 80))
+    white_done = gn._compare_float_sockets(group, local_index, white_done_at, operation="GREATER_EQUAL", label="白抜き線 白後", location=(location[0] + 3960, location[1] - 80))
+    is_white = _boolean_math(gn, group, "AND", left_done, _boolean_math(gn, group, "NOT", white_done, label="白抜き線 白後でない", location=(location[0] + 4180, location[1] - 80)), label="白抜き線 白線か", location=(location[0] + 4400, location[1]))
+
+    white_local = gn._math_binary(group, "SUBTRACT", local_index, black_line_count, label="白抜き線 白内番号", location=(location[0] + 3960, location[1] + 200))
+    right_local = gn._math_binary(group, "SUBTRACT", local_index, white_done_at, label="白抜き線 右黒内番号", location=(location[0] + 3960, location[1] + 360))
+    non_left_local = gn._switch_float(group, white_done, white_local, right_local, label="白抜き線 非左番号", location=(location[0] + 4180, location[1] + 280))
+    region_local = gn._switch_float(group, left_done, local_index, non_left_local, label="白抜き線 領域内番号", location=(location[0] + 4400, location[1] + 280))
+    non_left_width = gn._switch_float(group, white_done, white_width, black_width, label="白抜き線 非左幅", location=(location[0] + 4180, location[1] + 500))
+    region_width = gn._switch_float(group, left_done, black_width, non_left_width, label="白抜き線 領域幅", location=(location[0] + 4400, location[1] + 500))
+    non_left_count = gn._switch_float(group, white_done, white_line_count, black_line_count, label="白抜き線 非左本数", location=(location[0] + 4180, location[1] + 660))
+    region_count = gn._switch_float(group, left_done, black_line_count, non_left_count, label="白抜き線 領域本数", location=(location[0] + 4400, location[1] + 660))
+    non_left_center = gn._switch_float(group, white_done, zero, black_right_center, label="白抜き線 非左中心", location=(location[0] + 4180, location[1] + 820))
+    region_center = gn._switch_float(group, left_done, black_left_center, non_left_center, label="白抜き線 領域中心", location=(location[0] + 4400, location[1] + 820))
+
+    effective_region_width = gn._math_binary(group, "MULTIPLY", region_width, width_factor, label="白抜き線 有効領域幅", location=(location[0] + 4620, location[1] + 500))
+    effective_region_center = gn._math_binary(group, "MULTIPLY", region_center, width_factor, label="白抜き線 有効領域中心", location=(location[0] + 4620, location[1] + 820))
+    unit_width = gn._math_binary(group, "DIVIDE", effective_region_width, gn._math_binary(group, "MAXIMUM", region_count, b_value=1.0, label="白抜き線 領域本数下限", location=(location[0] + 4620, location[1] + 660)), label="白抜き線 領域単位幅", location=(location[0] + 4840, location[1] + 500))
+    local_offset = gn._math_add(group, gn._math_binary(group, "MULTIPLY", effective_region_width, b_value=-0.5, label="白抜き線 領域開始", location=(location[0] + 5060, location[1] + 500)), gn._math_binary(group, "MULTIPLY", gn._math_add(group, region_local, gn._constant_float(group, 0.5, label="白抜き線 中央補正", location=(location[0] + 4620, location[1] + 300)), label="白抜き線 中央番号", location=(location[0] + 4840, location[1] + 300)), unit_width, label="白抜き線 領域内位置", location=(location[0] + 5060, location[1] + 400)), label="白抜き線 ローカル位置", location=(location[0] + 5280, location[1] + 460))
+    offset_from_band_center = gn._math_add(group, effective_region_center, local_offset, label="白抜き線 帯中心距離", location=(location[0] + 5500, location[1] + 520))
+    band_step = gn._math_add(group, band_width, spacing, label="白抜き線 帯間隔", location=(location[0] + 3300, location[1] + 860))
+    count_minus = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "SUBTRACT", count, b_value=1.0, label="白抜き線 本数-1", location=(location[0] + 3300, location[1] + 1040)), b_value=0.0, label="白抜き線 間隔数", location=(location[0] + 3520, location[1] + 1040))
+    total_span = gn._math_add(group, gn._math_binary(group, "MULTIPLY", count, band_width, label="白抜き線 帯幅合計", location=(location[0] + 3740, location[1] + 1040)), gn._math_binary(group, "MULTIPLY", count_minus, spacing, label="白抜き線 帯間隔合計", location=(location[0] + 3740, location[1] + 880)), label="白抜き線 全体幅", location=(location[0] + 3960, location[1] + 960))
+    band_start = gn._math_binary(group, "MULTIPLY", total_span, b_value=-0.5, label="白抜き線 帯開始", location=(location[0] + 4180, location[1] + 960))
+    band_center = gn._math_add(group, gn._math_add(group, band_start, gn._math_binary(group, "MULTIPLY", band_index, band_step, label="白抜き線 帯オフセット", location=(location[0] + 4400, location[1] + 1040)), label="白抜き線 帯左端", location=(location[0] + 4620, location[1] + 960)), gn._math_binary(group, "MULTIPLY", band_width, b_value=0.5, label="白抜き線 帯半幅", location=(location[0] + 4620, location[1] + 820)), label="白抜き線 帯中心", location=(location[0] + 4840, location[1] + 900))
+    y = gn._math_add(group, band_center, offset_from_band_center, label="白抜き線 Y位置", location=(location[0] + 5720, location[1] + 700))
+    point_position = gn._combine_xyz(group, None, y, z=0.0, label="白抜き線 点位置", location=(location[0] + 5940, location[1] + 700))
+    set_pos = gn._node(group, "GeometryNodeSetPosition", label="白抜き線 点配置", location=(location[0] + 6160, location[1] + 540))
+    gn._link(group, points.outputs["Mesh"], set_pos.inputs["Geometry"])
+    gn._link(group, point_position, set_pos.inputs["Position"])
+
+    quad = gn._node(group, "GeometryNodeCurvePrimitiveQuadrilateral", label="白抜き線 原型", location=(location[0] + 6160, location[1] + 220))
+    quad.mode = "RECTANGLE"
+    gn._set_default(quad.inputs["Width"], 2.0)
+    gn._set_default(quad.inputs["Height"], 1.0)
+    fill = gn._node(group, "GeometryNodeFillCurve", label="白抜き線 原型塗り", location=(location[0] + 6380, location[1] + 220))
+    gn._link(group, quad.outputs["Curve"], fill.inputs["Curve"])
+    alpha_mesh = gn._store_alpha_constant(group, fill.outputs["Mesh"], 1.0, label="白抜き線 不透明度属性", location=(location[0] + 6600, location[1] + 220))
+
+    length_min = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 最小長さ (%)"], b_value=0.01, label="白抜き線 最小長さ率", location=(location[0] + 5500, location[1] - 40))
+    length_wave = gn._hash01_socket(group, band_seed, salt=61.91, label="白抜き線 長さ乱れ乱数", location=(location[0] + 5720, location[1] - 200))
+    length_factor = gn._math_add(
+        group,
+        length_min,
+        gn._math_binary(
+            group,
+            "MULTIPLY",
+            gn._math_binary(group, "SUBTRACT", gn._constant_float(group, 1.0, label="白抜き線 長さ最大", location=(location[0] + 5720, location[1] - 380)), length_min, label="白抜き線 長さ乱れ幅", location=(location[0] + 5940, location[1] - 300)),
+            length_wave,
+            label="白抜き線 長さ乱れ量",
+            location=(location[0] + 6160, location[1] - 240),
+        ),
+        label="白抜き線 長さ乱れ係数",
+        location=(location[0] + 6380, location[1] - 240),
+    )
+    length_factor = gn._switch_float(group, input_node.outputs["白抜き線 長さ乱れ"], gn._constant_float(group, 1.0, label="白抜き線 長さ乱れなし", location=(location[0] + 6380, location[1] - 400)), length_factor, label="白抜き線 長さ乱れ切替", location=(location[0] + 6600, location[1] - 240))
+    band_half = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", band_width, b_value=0.5, label="白抜き線 減衰半幅", location=(location[0] + 5500, location[1] - 440)), b_value=0.000001, label="白抜き線 減衰半幅下限", location=(location[0] + 5720, location[1] - 440))
+    norm = gn._math_binary(group, "DIVIDE", gn._math_binary(group, "ABSOLUTE", offset_from_band_center, label="白抜き線 減衰距離", location=(location[0] + 5940, location[1] - 440)), band_half, label="白抜き線 減衰率", location=(location[0] + 6160, location[1] - 440))
+    attenuation = gn._math_binary(group, "MULTIPLY", gn._switch_float(group, is_white, input_node.outputs["黒線減衰"], input_node.outputs["白線減衰"], label="白抜き線 減衰選択", location=(location[0] + 6160, location[1] - 620)), b_value=0.01, label="白抜き線 減衰入力", location=(location[0] + 6380, location[1] - 620))
+    attenuation_factor = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "SUBTRACT", gn._constant_float(group, 1.0, label="白抜き線 長さ通常", location=(location[0] + 6380, location[1] - 800)), gn._math_binary(group, "MULTIPLY", attenuation, norm, label="白抜き線 減衰量", location=(location[0] + 6600, location[1] - 620)), label="白抜き線 減衰後", location=(location[0] + 6820, location[1] - 700)), b_value=0.0, label="白抜き線 減衰下限", location=(location[0] + 7040, location[1] - 700))
+    half_length = gn._math_binary(group, "SQRT", gn._math_add(group, gn._math_binary(group, "MULTIPLY", width_half_m, width_half_m, label="白抜き線 幅二乗", location=(location[0] + 6820, location[1] - 980)), gn._math_binary(group, "MULTIPLY", height_half_m, height_half_m, label="白抜き線 高さ二乗", location=(location[0] + 6820, location[1] - 1140)), label="白抜き線 対角二乗", location=(location[0] + 7040, location[1] - 1060)), label="白抜き線 半長", location=(location[0] + 7260, location[1] - 1060))
+    length_scale = gn._math_binary(group, "MULTIPLY", half_length, gn._math_binary(group, "MULTIPLY", attenuation_factor, length_factor, label="白抜き線 長さ係数", location=(location[0] + 7260, location[1] - 860)), label="白抜き線 長さ", location=(location[0] + 7480, location[1] - 960))
+    brush_diameter = gn._switch_float(group, is_white, black_diameter, white_diameter, label="白抜き線 線幅選択", location=(location[0] + 7480, location[1] - 760))
+    scale = gn._combine_xyz(group, length_scale, brush_diameter, z=1.0, label="白抜き線 スケール", location=(location[0] + 7700, location[1] - 860))
+    angle = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 角度"], b_value=math.pi / 180.0, label="白抜き線 角度", location=(location[0] + 7480, location[1] - 520))
+    rotation = gn._node(group, "FunctionNodeAxisAngleToRotation", label="白抜き線 回転", location=(location[0] + 7700, location[1] - 520))
+    gn._set_default(rotation.inputs["Axis"], (0.0, 0.0, 1.0))
+    gn._link(group, angle, rotation.inputs["Angle"])
+    instance = gn._node(group, "GeometryNodeInstanceOnPoints", label="白抜き線 配置", location=(location[0] + 7920, location[1] + 220))
+    gn._link(group, set_pos.outputs["Geometry"], instance.inputs["Points"])
+    gn._link(group, alpha_mesh, instance.inputs["Instance"])
+    gn._link(group, rotation.outputs["Rotation"], instance.inputs["Rotation"])
+    gn._link(group, scale, instance.inputs["Scale"])
+    realize = gn._node(group, "GeometryNodeRealizeInstances", label="白抜き線 実体化", location=(location[0] + 8140, location[1] + 220))
+    gn._link(group, instance.outputs["Instances"], realize.inputs["Geometry"])
+
+    set_black = gn._node(group, "GeometryNodeSetMaterial", label="白抜き線 黒素材", location=(location[0] + 8360, location[1] + 220))
+    gn._link(group, realize.outputs["Geometry"], set_black.inputs["Geometry"])
+    gn._link(group, _boolean_math(gn, group, "NOT", is_white, label="白抜き線 黒線か", location=(location[0] + 8140, location[1] - 40)), set_black.inputs["Selection"])
+    gn._link(group, line_material, set_black.inputs["Material"])
+    set_white = gn._node(group, "GeometryNodeSetMaterial", label="白抜き線 白素材", location=(location[0] + 8580, location[1] + 220))
+    gn._link(group, set_black.outputs["Geometry"], set_white.inputs["Geometry"])
+    gn._link(group, is_white, set_white.inputs["Selection"])
+    gn._link(group, fill_material, set_white.inputs["Material"])
+    cx = gn._math_add(group, origin_x_m, width_half_m, label="白抜き線 中心X", location=(location[0] + 8580, location[1] - 20))
+    cy = gn._math_add(group, origin_y_m, height_half_m, label="白抜き線 中心Y", location=(location[0] + 8580, location[1] - 180))
+    translation = gn._combine_xyz(group, cx, cy, z=0.0, label="白抜き線 表示位置", location=(location[0] + 8800, location[1] - 100))
+    transform = gn._node(group, "GeometryNodeTransform", label="白抜き線 移動", location=(location[0] + 9020, location[1] + 220))
+    gn._link(group, set_white.outputs["Geometry"], transform.inputs["Geometry"])
     gn._link(group, translation, transform.inputs["Translation"])
     return transform.outputs["Geometry"]
 
@@ -345,7 +703,7 @@ def build_effect_line_nodes(group, gn) -> None:
     origin_y_m = gn._math_multiply(group, input_node.outputs["位置 Y"], 0.001, label="位置 Y mm → m", location=(-800, 110))
     width_half_m = gn._math_multiply(group, input_node.outputs["幅"], 0.0005, label="幅 mm → 半幅 m", location=(-800, -40))
     height_half_m = gn._math_multiply(group, input_node.outputs["高さ"], 0.0005, label="高さ mm → 半高 m", location=(-800, -190))
-    line_half_m = gn._math_multiply(group, input_node.outputs["線幅"], 0.0005, label="線幅 mm → 半径 m", location=(-800, -340))
+    line_half_m = gn._math_multiply(group, input_node.outputs[gn.LINE_WIDTH_MM_SOCKET], 0.0005, label="線幅 mm → 半径 m", location=(-800, -340))
     line_material = input_node.outputs["線素材"]
     fill_material = input_node.outputs["塗り素材"]
     radial = gn._instanced_radial_line_geometry(group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_half_m, line_material)
@@ -355,74 +713,12 @@ def build_effect_line_nodes(group, gn) -> None:
     gn._link(group, radial, focus_join.inputs["Geometry"])
     fill_switch = _switch_geometry(gn, group, input_node.outputs["終点形状を下地として塗る"], radial, focus_join.outputs["Geometry"], label="下地塗り表示", location=(1660, -420))
     speed = _parallel_line_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_half_m, line_material, count_socket_name="流線の本数上限", angle_socket_name="流線の角度", label="流線", location=(-520, 920), use_inout=True)
-    white_width_min = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 最小太さ (%)"], b_value=0.01, label="白抜き線 最小太さ率", location=(-820, 2300))
-    white_width_factor = gn._math_binary(
-        group,
-        "MULTIPLY",
-        gn._math_add(group, gn._constant_float(group, 1.0, label="白抜き線 太さ基準", location=(-820, 2460)), white_width_min, label="白抜き線 太さ平均", location=(-620, 2380)),
-        b_value=0.5,
-        label="白抜き線 太さ乱れ係数",
-        location=(-420, 2380),
-    )
-    white_width_factor = gn._switch_float(
-        group,
-        input_node.outputs["白抜き線 太さ乱れ"],
-        gn._constant_float(group, 1.0, label="白抜き線 太さ乱れなし", location=(-420, 2220)),
-        white_width_factor,
-        label="白抜き線 太さ乱れ切替",
-        location=(-220, 2380),
-    )
-    white_band_width = gn._math_binary(
-        group,
-        "MULTIPLY",
-        gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 太さ"], b_value=0.001, label="白抜き線 太さm", location=(-20, 2380)),
-        white_width_factor,
-        label="白抜き線 有効太さ",
-        location=(180, 2380),
-    )
-    white_spacing = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 間隔"], b_value=0.001, label="白抜き線 間隔m", location=(-20, 2220))
-    white_step = gn._math_add(group, white_band_width, white_spacing, label="白抜き線 帯間隔", location=(380, 2300))
-    white_count_minus = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "SUBTRACT", input_node.outputs["白抜き線 本数"], b_value=1.0, label="白抜き線 本数-1", location=(180, 2140)), b_value=0.0, label="白抜き線 間隔数", location=(380, 2140))
-    white_span = gn._math_add(
-        group,
-        gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 本数"], white_band_width, label="白抜き線 帯合計", location=(580, 2380)),
-        gn._math_binary(group, "MULTIPLY", white_count_minus, white_spacing, label="白抜き線 間隔合計", location=(580, 2140)),
-        label="白抜き線 全体幅",
-        location=(780, 2260),
-    )
-    white_length_min = gn._math_binary(group, "MULTIPLY", input_node.outputs["白抜き線 最小長さ (%)"], b_value=0.01, label="白抜き線 最小長さ率", location=(-820, 2020))
-    white_length_factor = gn._math_binary(
-        group,
-        "MULTIPLY",
-        gn._math_add(group, gn._constant_float(group, 1.0, label="白抜き線 長さ基準", location=(-820, 1860)), white_length_min, label="白抜き線 長さ平均", location=(-620, 1940)),
-        b_value=0.5,
-        label="白抜き線 長さ乱れ係数",
-        location=(-420, 1940),
-    )
-    white_length_factor = gn._switch_float(
-        group,
-        input_node.outputs["白抜き線 長さ乱れ"],
-        gn._constant_float(group, 1.0, label="白抜き線 長さ乱れなし", location=(-420, 1780)),
-        white_length_factor,
-        label="白抜き線 長さ乱れ切替",
-        location=(-220, 1940),
-    )
-    white_ratio = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "MULTIPLY", input_node.outputs["白線割合 (%)"], b_value=0.01, label="白線割合", location=(-820, 2740)), b_value=0.01, label="白線割合下限", location=(-620, 2740))
-    black_ratio = gn._math_binary(group, "MAXIMUM", gn._math_binary(group, "SUBTRACT", gn._constant_float(group, 1.0, label="黒線割合基準", location=(-820, 2900)), white_ratio, label="黒線割合", location=(-420, 2820)), b_value=0.01, label="黒線割合下限", location=(-220, 2820))
-    white_attenuation = gn._math_binary(group, "MAXIMUM", gn._math_add(group, gn._constant_float(group, 1.0, label="白線減衰基準", location=(-820, 3060)), gn._math_binary(group, "MULTIPLY", input_node.outputs["白線減衰"], b_value=0.05, label="白線減衰量", location=(-620, 3060)), label="白線減衰係数", location=(-420, 3060)), b_value=0.05, label="白線減衰下限", location=(-220, 3060))
-    black_attenuation = gn._math_binary(group, "MAXIMUM", gn._math_add(group, gn._constant_float(group, 1.0, label="黒線減衰基準", location=(-820, 3220)), gn._math_binary(group, "MULTIPLY", input_node.outputs["黒線減衰"], b_value=0.05, label="黒線減衰量", location=(-620, 3220)), label="黒線減衰係数", location=(-420, 3220)), b_value=0.05, label="黒線減衰下限", location=(-220, 3220))
-    white_black_radius = gn._math_binary(group, "MULTIPLY", gn._math_binary(group, "MULTIPLY", input_node.outputs["黒線太さ"], b_value=0.0005, label="黒線半径", location=(-520, 2600)), gn._math_binary(group, "MULTIPLY", black_ratio, black_attenuation, label="黒線有効係数", location=(-20, 2820)), label="黒線有効半径", location=(180, 2820))
-    white_radius = gn._math_binary(group, "MULTIPLY", gn._math_binary(group, "MULTIPLY", input_node.outputs["白線太さ"], b_value=0.0005, label="白線半径", location=(-520, 2440)), gn._math_binary(group, "MULTIPLY", white_ratio, white_attenuation, label="白線有効係数", location=(-20, 3060)), label="白線有効半径", location=(180, 3060))
-    white_black = _parallel_line_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, white_black_radius, line_material, count_socket_name="白抜き線 本数", angle_socket_name="白抜き線 角度", label="白抜き黒線", location=(-320, 2500), span_socket=white_span, step_socket=white_step, length_scale_socket=white_length_factor)
-    white_line = _parallel_line_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, white_radius, fill_material, count_socket_name="白抜き線 本数", angle_socket_name="白抜き線 角度", label="白抜き白線", location=(-320, 3700), span_socket=white_span, step_socket=white_step, length_scale_socket=white_length_factor)
-    white_join = gn._node(group, "GeometryNodeJoinGeometry", label="白抜き線", location=(2360, 3320))
-    gn._link(group, white_black, white_join.inputs["Geometry"])
-    gn._link(group, white_line, white_join.inputs["Geometry"])
+    white_geometry = _white_outline_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_material, fill_material)
     is_beta = _compare_int(gn, group, input_node.outputs["種類"], 3, label="ベタフラか", location=(1840, 160))
     is_speed = _compare_int(gn, group, input_node.outputs["種類"], 4, label="流線か", location=(1840, 20))
     is_white = _compare_int(gn, group, input_node.outputs["種類"], 5, label="白抜き線か", location=(1840, -120))
     selected = _switch_geometry(gn, group, is_beta, fill_switch, fill, label="ベタフラ切替", location=(2060, 160))
     selected = _switch_geometry(gn, group, is_speed, selected, speed, label="流線切替", location=(2280, 160))
-    selected = _switch_geometry(gn, group, is_white, selected, white_join.outputs["Geometry"], label="白抜き線切替", location=(2500, 160))
+    selected = _switch_geometry(gn, group, is_white, selected, white_geometry, label="白抜き線切替", location=(2500, 160))
     gn._link(group, selected, output_node.inputs["Geometry"])
     group[gn.PROP_GROUP_VERSION] = gn._GROUP_VERSION

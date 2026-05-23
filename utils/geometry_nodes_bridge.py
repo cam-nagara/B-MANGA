@@ -16,11 +16,19 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 27
+_GROUP_VERSION = 31
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
 _COMMON_SHAPE_OUTPUT_NAME = "形状係数"
+EFFECT_ALPHA_ATTR = "bname_effect_alpha"
+LINE_WIDTH_MM_SOCKET = "線幅 (mm)"
+EFFECT_SPACING_DISTANCE_MM_SOCKET = "線の間隔 (距離 mm)"
+BUNDLE_GAP_MM_SOCKET = "まとまり間隔 (mm)"
+WHITE_OUTLINE_SPACING_MM_SOCKET = "白抜き線 間隔 (mm)"
+WHITE_OUTLINE_WIDTH_MM_SOCKET = "白抜き線 太さ (mm)"
+WHITE_OUTLINE_WHITE_BRUSH_MM_SOCKET = "白線太さ (mm)"
+WHITE_OUTLINE_BLACK_BRUSH_MM_SOCKET = "黒線太さ (mm)"
 
 
 @dataclass(frozen=True)
@@ -28,6 +36,7 @@ class SocketSpec:
     name: str
     socket_type: str
     default: Any = 0.0
+    hide_in_modifier: bool = False
 
 
 _SHAPE_CODES = {
@@ -91,7 +100,7 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "end_cloud_sub_width_jitter": SocketSpec("終点 小山幅 乱れ", "NodeSocketFloat", 0.0),
     "end_cloud_sub_height_ratio": SocketSpec("終点 小山高 (%)", "NodeSocketFloat", 0.0),
     "end_cloud_sub_height_jitter": SocketSpec("終点 小山高 乱れ", "NodeSocketFloat", 0.0),
-    "brush_size_mm": SocketSpec("線幅", "NodeSocketFloat", 0.3),
+    "brush_size_mm": SocketSpec(LINE_WIDTH_MM_SOCKET, "NodeSocketFloat", 0.3),
     "brush_jitter_enabled": SocketSpec("線幅 乱れ", "NodeSocketBool", False),
     "brush_jitter_amount": SocketSpec("線幅 乱れ量", "NodeSocketFloat", 0.2),
     "length_jitter_enabled": SocketSpec("始点乱れ", "NodeSocketBool", False),
@@ -100,14 +109,14 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "end_length_jitter_amount": SocketSpec("終点乱れ (%)", "NodeSocketFloat", 50.0),
     "spacing_mode": SocketSpec("線の間隔", "NodeSocketInt", 2),
     "spacing_angle_deg": SocketSpec("線の間隔 (角度)", "NodeSocketFloat", 5.0),
-    "spacing_distance_mm": SocketSpec("線の間隔 (距離)", "NodeSocketFloat", 0.4),
+    "spacing_distance_mm": SocketSpec(EFFECT_SPACING_DISTANCE_MM_SOCKET, "NodeSocketFloat", 1.0),
     "spacing_jitter_enabled": SocketSpec("間隔 乱れ", "NodeSocketBool", False),
     "spacing_jitter_amount": SocketSpec("間隔乱れ量", "NodeSocketFloat", 0.2),
     "max_line_count": SocketSpec("本数", "NodeSocketInt", 1000),
     "bundle_enabled": SocketSpec("まとまり", "NodeSocketBool", False),
     "bundle_line_count": SocketSpec("まとまり 数", "NodeSocketInt", 5),
     "bundle_line_count_jitter": SocketSpec("まとまり 数の乱れ", "NodeSocketFloat", 0.5),
-    "bundle_gap_mm": SocketSpec("まとまり間隔", "NodeSocketFloat", 3.0),
+    "bundle_gap_mm": SocketSpec(BUNDLE_GAP_MM_SOCKET, "NodeSocketFloat", 5.0),
     "bundle_gap_jitter_amount": SocketSpec("まとまり間隔の乱れ", "NodeSocketFloat", 0.5),
     "inout_apply": SocketSpec("適用先", "NodeSocketInt", 1),
     "in_percent": SocketSpec("入り (%)", "NodeSocketFloat", 100.0),
@@ -129,16 +138,16 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "speed_angle_deg": SocketSpec("流線の角度", "NodeSocketFloat", 0.0),
     "speed_line_count": SocketSpec("流線の本数上限", "NodeSocketInt", 300),
     "white_outline_count": SocketSpec("白抜き線 本数", "NodeSocketInt", 5),
-    "white_outline_spacing_mm": SocketSpec("白抜き線 間隔", "NodeSocketFloat", 0.2),
-    "white_outline_width_mm": SocketSpec("白抜き線 太さ", "NodeSocketFloat", 10.0),
+    "white_outline_spacing_mm": SocketSpec(WHITE_OUTLINE_SPACING_MM_SOCKET, "NodeSocketFloat", 0.2),
+    "white_outline_width_mm": SocketSpec(WHITE_OUTLINE_WIDTH_MM_SOCKET, "NodeSocketFloat", 10.0),
     "white_outline_width_jitter_enabled": SocketSpec("白抜き線 太さ乱れ", "NodeSocketBool", False),
     "white_outline_width_min_percent": SocketSpec("白抜き線 最小太さ (%)", "NodeSocketFloat", 50.0),
     "white_outline_length_jitter_enabled": SocketSpec("白抜き線 長さ乱れ", "NodeSocketBool", False),
     "white_outline_length_min_percent": SocketSpec("白抜き線 最小長さ (%)", "NodeSocketFloat", 50.0),
     "white_outline_white_ratio_percent": SocketSpec("白線割合 (%)", "NodeSocketFloat", 30.0),
-    "white_outline_white_brush_mm": SocketSpec("白線太さ", "NodeSocketFloat", 0.3),
+    "white_outline_white_brush_mm": SocketSpec(WHITE_OUTLINE_WHITE_BRUSH_MM_SOCKET, "NodeSocketFloat", 0.3),
     "white_outline_white_attenuation": SocketSpec("白線減衰", "NodeSocketFloat", 0.0),
-    "white_outline_black_brush_mm": SocketSpec("黒線太さ", "NodeSocketFloat", 0.3),
+    "white_outline_black_brush_mm": SocketSpec(WHITE_OUTLINE_BLACK_BRUSH_MM_SOCKET, "NodeSocketFloat", 0.3),
     "white_outline_black_attenuation": SocketSpec("黒線減衰", "NodeSocketFloat", 0.0),
     "white_outline_angle_deg": SocketSpec("白抜き線 角度", "NodeSocketFloat", 0.0),
 }
@@ -198,7 +207,7 @@ _BALLOON_EXTRA_SOCKETS = (
     SocketSpec("角丸", "NodeSocketBool", False),
     SocketSpec("角半径", "NodeSocketFloat", 3.0),
     SocketSpec("線種", "NodeSocketInt", 1),
-    SocketSpec("線幅", "NodeSocketFloat", 0.3),
+    SocketSpec(LINE_WIDTH_MM_SOCKET, "NodeSocketFloat", 0.3),
     SocketSpec("線色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
     SocketSpec("塗り色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
     SocketSpec("塗り不透明度", "NodeSocketFloat", 100.0),
@@ -274,6 +283,51 @@ _COMMON_SHAPE_INPUT_SOCKETS = (
 )
 
 
+_HIDDEN_MODIFIER_SOCKET_NAMES = {
+    "始点コマ枠オブジェクト",
+    "終点形状オブジェクト",
+    "距離密度オブジェクト",
+    "線素材",
+    "塗り素材",
+    "カスタム形状名",
+    "塗りマテリアル",
+    "塗り輪郭ぼかし",
+    "塗りぼかしをディザ化",
+    "塗りグラデーション",
+    "グラデーション開始色",
+    "グラデーション終了色",
+    "グラデーション角度",
+    "外側白フチ",
+    "外側白フチ幅",
+    "外側白フチ色",
+    "内側白フチ",
+    "内側白フチ幅",
+    "内側白フチ色",
+    "山の幅",
+    "山の幅 乱れ",
+    "山の高さ",
+    "山の高さ 乱れ",
+    "ズラし量 (%)",
+    "小山幅 (%)",
+    "小山幅 乱れ",
+    "小山高 (%)",
+    "小山高 乱れ",
+    "雲の波数",
+    "波の振幅",
+    "トゲ数",
+    "トゲの深さ",
+    "トゲのばらつき",
+}
+
+
+def _hide_in_modifier_for_socket(name: str, spec: SocketSpec) -> bool:
+    if bool(getattr(spec, "hide_in_modifier", False)):
+        return True
+    if str(name or "").startswith("しっぽ"):
+        return True
+    return str(name or "") in _HIDDEN_MODIFIER_SOCKET_NAMES
+
+
 def _group_name(kind: str) -> str:
     suffix = {
         "effect_line": "EffectLine",
@@ -304,6 +358,10 @@ def _ensure_socket(group, spec: SocketSpec, *, in_out: str = "INPUT"):
             _logger.exception("geometry nodes bridge: socket create failed: %s", spec.name)
             return None
     try:
+        if hasattr(item, "hide_in_modifier"):
+            item.hide_in_modifier = _hide_in_modifier_for_socket(spec.name, spec)
+        if hasattr(item, "hide_value"):
+            item.hide_value = False
         if spec.socket_type == "NodeSocketBool":
             item.default_value = bool(spec.default)
         elif spec.socket_type == "NodeSocketInt":
@@ -552,6 +610,27 @@ def _set_material(group, geometry_socket, material_socket, *, label: str, locati
     if material_socket is not None:
         _link(group, material_socket, node.inputs["Material"])
     return node.outputs["Geometry"]
+
+
+def _store_float_attribute(group, geometry_socket, value_socket, *, name: str, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeStoreNamedAttribute", label=label, location=location)
+    try:
+        node.data_type = "FLOAT"
+        node.domain = "POINT"
+    except Exception:  # noqa: BLE001
+        pass
+    if "Selection" in node.inputs:
+        _set_default(node.inputs["Selection"], True)
+    if "Name" in node.inputs:
+        _set_default(node.inputs["Name"], name)
+    _link(group, geometry_socket, node.inputs["Geometry"])
+    _link(group, value_socket, node.inputs["Value"])
+    return node.outputs["Geometry"]
+
+
+def _store_alpha_constant(group, geometry_socket, value: float = 1.0, *, label: str, location: tuple[float, float]):
+    alpha = _constant_float(group, value, label=f"{label} 値", location=(location[0] - 200, location[1]))
+    return _store_float_attribute(group, geometry_socket, alpha, name=EFFECT_ALPHA_ATTR, label=label, location=location)
 
 
 def _separate_xyz(group, vector_socket, *, label: str, location: tuple[float, float]):
@@ -1299,7 +1378,7 @@ def _focus_line_count_socket(group, input_node, width_half_m, height_half_m):
         _math_binary(
             group,
             "MULTIPLY",
-            input_node.outputs["線の間隔 (距離)"],
+            input_node.outputs[EFFECT_SPACING_DISTANCE_MM_SOCKET],
             b_value=0.001,
             label="距離間隔 mm→m",
             location=(-160, -980),
@@ -1605,6 +1684,16 @@ def _effect_taper_half_widths(group, input_node, line_half_m, *, label: str, loc
     return inner_half, outer_half
 
 
+def _effect_taper_alphas(group, input_node, *, label: str, location: tuple[float, float]):
+    is_opacity = _compare_int_socket(group, input_node.outputs["適用先"], 2, label=f"{label} 不透明度適用", location=location)
+    one = _constant_float(group, 1.0, label=f"{label} 不透明度通常", location=(location[0] + 200, location[1] - 200))
+    in_scale = _math_binary(group, "MULTIPLY", input_node.outputs["入り (%)"], b_value=0.01, label=f"{label} 入り不透明度", location=(location[0] + 200, location[1] + 120))
+    out_scale = _math_binary(group, "MULTIPLY", input_node.outputs["抜き (%)"], b_value=0.01, label=f"{label} 抜き不透明度", location=(location[0] + 200, location[1] - 40))
+    outer_alpha = _switch_float(group, is_opacity, one, in_scale, label=f"{label} 入り不透明度切替", location=(location[0] + 420, location[1] + 120))
+    inner_alpha = _switch_float(group, is_opacity, one, out_scale, label=f"{label} 抜き不透明度切替", location=(location[0] + 420, location[1] - 40))
+    return inner_alpha, outer_alpha
+
+
 def _line_quad_mesh_x(
     group,
     x0_socket,
@@ -1613,6 +1702,8 @@ def _line_quad_mesh_x(
     half1_socket,
     material_socket,
     *,
+    alpha0_socket=None,
+    alpha1_socket=None,
     label: str,
     location: tuple[float, float],
 ):
@@ -1628,7 +1719,38 @@ def _line_quad_mesh_x(
         _link(group, socket, quad.inputs[name])
     fill = _node(group, "GeometryNodeFillCurve", label=f"{label} メッシュ", location=(location[0] + 660, location[1]))
     _link(group, quad.outputs["Curve"], fill.inputs["Curve"])
-    return _set_material(group, fill.outputs["Mesh"], material_socket, label=f"{label} 素材", location=(location[0] + 880, location[1]))
+    if alpha0_socket is None:
+        alpha0_socket = _constant_float(group, 1.0, label=f"{label} 不透明度始点", location=(location[0] + 660, location[1] - 220))
+    if alpha1_socket is None:
+        alpha1_socket = alpha0_socket
+    position = _node(group, "GeometryNodeInputPosition", label=f"{label} 不透明度位置", location=(location[0] + 660, location[1] - 420))
+    sep = _separate_xyz(group, position.outputs["Position"], label=f"{label} 不透明度X", location=(location[0] + 880, location[1] - 420))
+    span = _math_binary(
+        group,
+        "MAXIMUM",
+        _math_binary(group, "SUBTRACT", x1_socket, x0_socket, label=f"{label} 不透明度幅", location=(location[0] + 1080, location[1] - 500)),
+        b_value=0.000001,
+        label=f"{label} 不透明度幅下限",
+        location=(location[0] + 1280, location[1] - 500),
+    )
+    t = _math_binary(
+        group,
+        "DIVIDE",
+        _math_binary(group, "SUBTRACT", sep.outputs["X"], x0_socket, label=f"{label} 不透明度距離", location=(location[0] + 1080, location[1] - 340)),
+        span,
+        label=f"{label} 不透明度率",
+        location=(location[0] + 1480, location[1] - 420),
+    )
+    alpha_delta = _math_binary(group, "SUBTRACT", alpha1_socket, alpha0_socket, label=f"{label} 不透明度差", location=(location[0] + 1480, location[1] - 260))
+    alpha = _math_add(
+        group,
+        alpha0_socket,
+        _math_binary(group, "MULTIPLY", alpha_delta, t, label=f"{label} 不透明度変化", location=(location[0] + 1680, location[1] - 340)),
+        label=f"{label} 不透明度",
+        location=(location[0] + 1880, location[1] - 340),
+    )
+    alpha_geo = _store_float_attribute(group, fill.outputs["Mesh"], alpha, name=EFFECT_ALPHA_ATTR, label=f"{label} 不透明度属性", location=(location[0] + 2080, location[1] - 120))
+    return _set_material(group, alpha_geo, material_socket, label=f"{label} 素材", location=(location[0] + 2300, location[1]))
 
 
 def _tapered_line_mesh_x(
@@ -1643,16 +1765,18 @@ def _tapered_line_mesh_x(
     location: tuple[float, float],
 ):
     inner_half, outer_half = _effect_taper_half_widths(group, input_node, line_half_m, label=label, location=location)
+    inner_alpha, outer_alpha = _effect_taper_alphas(group, input_node, label=label, location=(location[0], location[1] - 360))
     length = _math_binary(group, "SUBTRACT", x1_socket, x0_socket, label=f"{label} 長さ", location=(location[0] + 820, location[1] + 360))
     length = _math_binary(group, "MAXIMUM", length, b_value=0.000001, label=f"{label} 長さ下限", location=(location[0] + 1020, location[1] + 360))
     in_len, out_len = _effect_taper_lengths(group, input_node, length, label=label, location=(location[0] + 1020, location[1] + 80))
     x_out = _math_add(group, x0_socket, out_len, label=f"{label} 抜き終点", location=(location[0] + 1900, location[1] + 80))
     x_in = _math_binary(group, "SUBTRACT", x1_socket, in_len, label=f"{label} 入り始点", location=(location[0] + 1900, location[1] + 240))
     join = _node(group, "GeometryNodeJoinGeometry", label=f"{label} 入り抜き線", location=(location[0] + 3020, location[1]))
-    seg_out = _line_quad_mesh_x(group, x0_socket, x_out, inner_half, line_half_m, material_socket, label=f"{label} 抜き", location=(location[0] + 2100, location[1] - 740))
+    one_alpha = _constant_float(group, 1.0, label=f"{label} 不透明度100%", location=(location[0] + 1900, location[1] - 80))
+    seg_out = _line_quad_mesh_x(group, x0_socket, x_out, inner_half, line_half_m, material_socket, alpha0_socket=inner_alpha, alpha1_socket=one_alpha, label=f"{label} 抜き", location=(location[0] + 2100, location[1] - 740))
     _link(group, seg_out, join.inputs["Geometry"])
-    seg_mid = _line_quad_mesh_x(group, x_out, x_in, line_half_m, line_half_m, material_socket, label=f"{label} 中間", location=(location[0] + 2100, location[1] - 240))
-    seg_in = _line_quad_mesh_x(group, x_in, x1_socket, line_half_m, outer_half, material_socket, label=f"{label} 入り", location=(location[0] + 2100, location[1] + 260))
+    seg_mid = _line_quad_mesh_x(group, x_out, x_in, line_half_m, line_half_m, material_socket, alpha0_socket=one_alpha, alpha1_socket=one_alpha, label=f"{label} 中間", location=(location[0] + 2100, location[1] - 240))
+    seg_in = _line_quad_mesh_x(group, x_in, x1_socket, line_half_m, outer_half, material_socket, alpha0_socket=one_alpha, alpha1_socket=outer_alpha, label=f"{label} 入り", location=(location[0] + 2100, location[1] + 260))
     _link(group, seg_mid, join.inputs["Geometry"])
     _link(group, seg_in, join.inputs["Geometry"])
     return join.outputs["Geometry"]
@@ -1967,7 +2091,7 @@ def _instanced_radial_line_geometry(
         _math_binary(
             group,
             "MULTIPLY",
-            input_node.outputs["まとまり間隔"],
+            input_node.outputs[BUNDLE_GAP_MM_SOCKET],
             bundle_gap_factor,
             label="有効まとまり間隔",
             location=(80, -900),
@@ -2340,7 +2464,13 @@ def _group_needs_rebuild(group, kind: str) -> bool:
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }.get(kind, set())
     existing = {node.bl_idname for node in group.nodes}
-    return not generator_types.issubset(existing)
+    if not generator_types.issubset(existing):
+        return True
+    if kind == "effect_line":
+        labels = {str(getattr(node, "label", "") or "") for node in group.nodes}
+        if "白抜き線 有効総本数" not in labels or "白抜き線 黒素材" not in labels:
+            return True
+    return False
 
 
 def ensure_node_group(kind: str) -> bpy.types.NodeTree:
@@ -2555,7 +2685,7 @@ def balloon_values(entry) -> dict[str, Any]:
     if tails is not None and len(tails) > 0:
         tail = tails[0]
     values = {
-        "線幅": float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+        LINE_WIDTH_MM_SOCKET: float(getattr(entry, "line_width_mm", 0.3) or 0.3),
         "塗り不透明度": float(getattr(entry, "fill_opacity", 100.0)),
         "幅": float(getattr(entry, "width_mm", 0.0) or 0.0),
         "高さ": float(getattr(entry, "height_mm", 0.0) or 0.0),

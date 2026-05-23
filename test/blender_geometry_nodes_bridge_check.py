@@ -30,6 +30,15 @@ def _load_addon():
 def _modifier_socket_value(modifier, name: str):
     group = modifier.node_group
     assert group is not None, "Geometry Nodes グループがありません"
+    item = _modifier_socket_item(modifier, name)
+    identifier = str(getattr(item, "identifier", "") or "")
+    assert identifier, f"{name} の入力IDがありません"
+    return modifier[identifier]
+
+
+def _modifier_socket_item(modifier, name: str):
+    group = modifier.node_group
+    assert group is not None, "Geometry Nodes グループがありません"
     for item in group.interface.items_tree:
         if getattr(item, "item_type", "") != "SOCKET":
             continue
@@ -37,10 +46,15 @@ def _modifier_socket_value(modifier, name: str):
             continue
         if getattr(item, "name", "") != name:
             continue
-        identifier = str(getattr(item, "identifier", "") or "")
-        assert identifier, f"{name} の入力IDがありません"
-        return modifier[identifier]
+        return item
     raise AssertionError(f"Geometry Nodes 入力がありません: {name}")
+
+
+def _assert_socket_hidden_in_modifier(modifier, name: str, expected: bool) -> None:
+    item = _modifier_socket_item(modifier, name)
+    actual = bool(getattr(item, "hide_in_modifier", False))
+    if actual != expected:
+        raise AssertionError(f"Geometry Nodes 設定欄の表示状態が不正です: {name} expected={expected}, got={actual}")
 
 
 def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-5) -> None:
@@ -92,10 +106,10 @@ def _assert_generated_group(group, *, kind: str) -> None:
     nodes = {node.bl_idname for node in group.nodes}
     required = {
         "effect_line": {
-            "GeometryNodeCurvePrimitiveLine",
-            "GeometryNodeCurveToMesh",
             "GeometryNodeMeshLine",
             "GeometryNodeInstanceOnPoints",
+            "GeometryNodeRealizeInstances",
+            "GeometryNodeSetMaterial",
         },
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }[kind]
@@ -211,84 +225,90 @@ def main() -> None:
         params = context.scene.bname_effect_line_params
         _assert_close(params.in_start_percent, 0.0, "効果線 入り始点 初期値")
         _assert_close(params.out_start_percent, 100.0, "効果線 抜き始点 初期値")
-        params.effect_type = "focus"
-        params.rotation_deg = 17.5
-        params.start_shape = "cloud"
-        params.start_to_coma_frame = False
-        params.start_rounded_corner_enabled = True
-        params.start_rounded_corner_radius_mm = 2.2
-        params.start_cloud_bump_width_mm = 8.1
-        params.start_cloud_bump_width_jitter = 0.12
-        params.start_cloud_bump_height_mm = 3.4
-        params.start_cloud_bump_height_jitter = 0.23
-        params.start_cloud_offset_percent = 41.0
-        params.start_cloud_sub_width_ratio = 15.0
-        params.start_cloud_sub_width_jitter = 0.07
-        params.start_cloud_sub_height_ratio = 22.0
-        params.start_cloud_sub_height_jitter = 0.09
-        params.end_shape = "thorn-curve"
-        params.end_rounded_corner_enabled = True
-        params.end_rounded_corner_radius_mm = 4.4
-        params.end_cloud_bump_width_mm = 11.2
-        params.end_cloud_bump_width_jitter = 0.21
-        params.end_cloud_bump_height_mm = 5.6
-        params.end_cloud_bump_height_jitter = 0.18
-        params.end_cloud_offset_percent = 37.0
-        params.end_cloud_sub_width_ratio = 18.0
-        params.end_cloud_sub_width_jitter = 0.13
-        params.end_cloud_sub_height_ratio = 25.0
-        params.end_cloud_sub_height_jitter = 0.16
-        params.brush_size_mm = 0.72
-        params.brush_jitter_enabled = True
-        params.brush_jitter_amount = 0.31
-        params.length_jitter_enabled = True
-        params.length_jitter_amount = 27.0
-        params.end_length_jitter_enabled = True
-        params.end_length_jitter_amount = 29.0
-        params.spacing_mode = "angle"
-        params.spacing_angle_deg = 4.5
-        params.spacing_distance_mm = 0.52
-        params.spacing_density_compensation = False
-        params.spacing_jitter_enabled = True
-        params.spacing_jitter_amount = 0.19
-        params.opacity = 63.0
-        params.max_line_count = 77
-        params.bundle_enabled = True
-        params.bundle_line_count = 5
-        params.bundle_line_count_jitter = 0.11
-        params.bundle_gap_mm = 0.9
-        params.bundle_gap_jitter_amount = 0.14
-        params.inout_apply = "opacity"
-        params.in_percent = 82.0
-        params.out_percent = 35.0
-        params.in_start_percent = 43.0
-        params.out_start_percent = 38.0
-        params.in_easing_curve = "0.0000,0.0000;0.2500,0.1000;1.0000,1.0000"
-        params.out_easing_curve = "0.0000,0.0000;0.7000,0.9000;1.0000,1.0000"
-        params.inout_range_mode = "length"
-        params.in_range_percent = 64.0
-        params.out_range_percent = 71.0
-        params.in_range_mm = 12.5
-        params.out_range_mm = 9.75
-        params.line_color = (0.18, 0.24, 0.36, 1.0)
-        params.fill_color = (0.33, 0.22, 0.11, 1.0)
-        params.fill_opacity = 58.0
-        params.fill_base_shape = True
-        params.speed_angle_deg = 21.0
-        params.speed_line_count = 144
-        params.white_outline_count = 6
-        params.white_outline_spacing_mm = 0.8
-        params.white_outline_width_mm = 12.0
-        params.white_outline_width_jitter_enabled = True
-        params.white_outline_width_min_percent = 44.0
-        params.white_outline_length_jitter_enabled = True
-        params.white_outline_length_min_percent = 55.0
-        params.white_outline_white_ratio_percent = 31.0
-        params.white_outline_white_brush_mm = 0.41
-        params.white_outline_white_attenuation = 3.0
-        params.white_outline_black_brush_mm = 0.63
-        params.white_outline_black_attenuation = -2.0
-        params.white_outline_angle_deg = 12.0
+        _assert_close(params.spacing_distance_mm, 1.0, "効果線 線の間隔（距離）初期値")
+        _assert_close(params.bundle_gap_mm, 5.0, "効果線 まとまり間隔 初期値")
+        effect_line_op._set_scene_params_syncing(context.scene, True)
+        try:
+            params.effect_type = "focus"
+            params.rotation_deg = 17.5
+            params.start_shape = "cloud"
+            params.start_to_coma_frame = False
+            params.start_rounded_corner_enabled = True
+            params.start_rounded_corner_radius_mm = 2.2
+            params.start_cloud_bump_width_mm = 8.1
+            params.start_cloud_bump_width_jitter = 0.12
+            params.start_cloud_bump_height_mm = 3.4
+            params.start_cloud_bump_height_jitter = 0.23
+            params.start_cloud_offset_percent = 41.0
+            params.start_cloud_sub_width_ratio = 15.0
+            params.start_cloud_sub_width_jitter = 0.07
+            params.start_cloud_sub_height_ratio = 22.0
+            params.start_cloud_sub_height_jitter = 0.09
+            params.end_shape = "thorn-curve"
+            params.end_rounded_corner_enabled = True
+            params.end_rounded_corner_radius_mm = 4.4
+            params.end_cloud_bump_width_mm = 11.2
+            params.end_cloud_bump_width_jitter = 0.21
+            params.end_cloud_bump_height_mm = 5.6
+            params.end_cloud_bump_height_jitter = 0.18
+            params.end_cloud_offset_percent = 37.0
+            params.end_cloud_sub_width_ratio = 18.0
+            params.end_cloud_sub_width_jitter = 0.13
+            params.end_cloud_sub_height_ratio = 25.0
+            params.end_cloud_sub_height_jitter = 0.16
+            params.brush_size_mm = 0.72
+            params.brush_jitter_enabled = True
+            params.brush_jitter_amount = 0.31
+            params.length_jitter_enabled = True
+            params.length_jitter_amount = 27.0
+            params.end_length_jitter_enabled = True
+            params.end_length_jitter_amount = 29.0
+            params.spacing_mode = "angle"
+            params.spacing_angle_deg = 4.5
+            params.spacing_distance_mm = 0.52
+            params.spacing_density_compensation = False
+            params.spacing_jitter_enabled = True
+            params.spacing_jitter_amount = 0.19
+            params.opacity = 63.0
+            params.max_line_count = 77
+            params.bundle_enabled = True
+            params.bundle_line_count = 5
+            params.bundle_line_count_jitter = 0.11
+            params.bundle_gap_mm = 0.9
+            params.bundle_gap_jitter_amount = 0.14
+            params.inout_apply = "opacity"
+            params.in_percent = 82.0
+            params.out_percent = 35.0
+            params.in_start_percent = 43.0
+            params.out_start_percent = 38.0
+            params.in_easing_curve = "0.0000,0.0000;0.2500,0.1000;1.0000,1.0000"
+            params.out_easing_curve = "0.0000,0.0000;0.7000,0.9000;1.0000,1.0000"
+            params.inout_range_mode = "length"
+            params.in_range_percent = 64.0
+            params.out_range_percent = 71.0
+            params.in_range_mm = 12.5
+            params.out_range_mm = 9.75
+            params.line_color = (0.18, 0.24, 0.36, 1.0)
+            params.fill_color = (0.33, 0.22, 0.11, 1.0)
+            params.fill_opacity = 58.0
+            params.fill_base_shape = True
+            params.speed_angle_deg = 21.0
+            params.speed_line_count = 144
+            params.white_outline_count = 6
+            params.white_outline_spacing_mm = 0.8
+            params.white_outline_width_mm = 12.0
+            params.white_outline_width_jitter_enabled = True
+            params.white_outline_width_min_percent = 44.0
+            params.white_outline_length_jitter_enabled = True
+            params.white_outline_length_min_percent = 55.0
+            params.white_outline_white_ratio_percent = 31.0
+            params.white_outline_white_brush_mm = 0.41
+            params.white_outline_white_attenuation = 3.0
+            params.white_outline_black_brush_mm = 0.63
+            params.white_outline_black_attenuation = -2.0
+            params.white_outline_angle_deg = 12.0
+        finally:
+            effect_line_op._set_scene_params_syncing(context.scene, False)
         effect_obj, effect_layer = effect_line_op._create_effect_layer(
             context,
             (15.0, 20.0, 64.0, 48.0),
@@ -310,7 +330,7 @@ def main() -> None:
             kind="effect_line",
             group_name="BName_GN_EffectLine",
         )
-        _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 0.72, "効果線 線幅")
+        _assert_close(_modifier_socket_value(effect_modifier, "線幅 (mm)"), 0.72, "効果線 線幅")
         _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 63.0, "効果線 不透明度")
         assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
         assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
@@ -367,12 +387,17 @@ def main() -> None:
         )
         assert _evaluated_polygon_count(effect_display) > 0, "効果線のGeometry Nodes表示結果が空です"
         effect_line_op._select_effect_layer(context, effect_obj, effect_layer)
-        params.brush_size_mm = 1.11
-        params.opacity = 41.0
-        params.effect_type = "speed"
-        params.speed_line_count = 33
-        params.fill_base_shape = True
-        params.line_color = (0.7, 0.11, 0.22, 1.0)
+        effect_line_op._set_scene_params_syncing(context.scene, True)
+        try:
+            params.brush_size_mm = 1.11
+            params.opacity = 41.0
+            params.effect_type = "speed"
+            params.speed_line_count = 33
+            params.fill_base_shape = True
+            params.line_color = (0.7, 0.11, 0.22, 1.0)
+        finally:
+            effect_line_op._set_scene_params_syncing(context.scene, False)
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (15.0, 20.0, 64.0, 48.0), params_override=params)
         updated_display = effect_line_object.find_effect_display_object(effect_obj)
         assert updated_display is effect_display, "詳細設定変更で効果線の表示実体が重複しました"
         effect_modifier = _assert_nodes(
@@ -380,7 +405,7 @@ def main() -> None:
             kind="effect_line",
             group_name="BName_GN_EffectLine",
         )
-        _assert_close(_modifier_socket_value(effect_modifier, "線幅"), 1.11, "効果線 線幅 更新")
+        _assert_close(_modifier_socket_value(effect_modifier, "線幅 (mm)"), 1.11, "効果線 線幅 更新")
         _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 41.0, "効果線 不透明度 更新")
         assert int(_modifier_socket_value(effect_modifier, "種類")) == 4
         assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
@@ -411,68 +436,69 @@ def main() -> None:
             parent_kind="page",
             parent_key=page_key,
         )
-        balloon.shape = "cloud"
-        balloon.custom_preset_name = "custom_name_check"
-        balloon.x_mm = 31.25
-        balloon.y_mm = 51.5
-        balloon.width_mm = 43.0
-        balloon.height_mm = 24.5
-        balloon.rotation_deg = 8.0
-        balloon.center_offset_x_mm = 1.5
-        balloon.center_offset_y_mm = -2.25
-        balloon.rounded_corner_enabled = True
-        balloon.rounded_corner_radius_mm = 3.75
-        balloon.line_style = "double"
-        balloon.line_width_mm = 0.55
-        balloon.line_color = (0.14, 0.21, 0.34, 1.0)
-        balloon.fill_color = (0.72, 0.62, 0.52, 1.0)
-        balloon.fill_opacity = 44.0
-        balloon.fill_material_name = "MaterialCheck"
-        balloon.fill_blur_amount = 0.18
-        balloon.fill_blur_dither = True
-        balloon.fill_gradient_enabled = True
-        balloon.fill_gradient_start_color = (0.9, 0.8, 0.7, 1.0)
-        balloon.fill_gradient_end_color = (0.2, 0.3, 0.4, 1.0)
-        balloon.fill_gradient_angle_deg = 32.0
-        balloon.outer_white_margin_enabled = True
-        balloon.outer_white_margin_width_mm = 1.25
-        balloon.outer_white_margin_color = (0.95, 0.96, 0.97, 1.0)
-        balloon.inner_white_margin_enabled = True
-        balloon.inner_white_margin_width_mm = 0.75
-        balloon.inner_white_margin_color = (0.82, 0.83, 0.84, 1.0)
-        balloon.blend_mode = "lighten"
-        balloon.flip_h = True
-        balloon.flip_v = True
-        balloon.opacity = 77.0
-        sp = balloon.shape_params
-        sp.cloud_bump_width_mm = 9.1
-        sp.cloud_bump_width_jitter = 0.15
-        sp.cloud_bump_height_mm = 4.2
-        sp.cloud_bump_height_jitter = 0.16
-        sp.cloud_offset_percent = 47.0
-        sp.cloud_sub_width_ratio = 21.0
-        sp.cloud_sub_width_jitter = 0.17
-        sp.cloud_sub_height_ratio = 24.0
-        sp.cloud_sub_height_jitter = 0.18
-        sp.cloud_wave_count = 17
-        sp.cloud_wave_amplitude_mm = 3.3
-        sp.spike_count = 29
-        sp.spike_depth_mm = 7.7
-        sp.spike_jitter = 0.26
-        tail_types = ("straight", "curve", "sticky", "straight", "curve", "sticky", "straight", "curve")
-        for index, tail_type in enumerate(tail_types):
-            tail = balloon.tails.add()
-            tail.type = tail_type
-            tail.direction_deg = 35.0 + index * 20.0
-            tail.length_mm = 6.0 + index
-            tail.root_width_mm = 2.5 + index * 0.25
-            tail.tip_width_mm = 0.5 + index * 0.1
-            tail.curve_bend = -0.4 + index * 0.1
-            tail.custom_points_enabled = index % 2 == 1
-            tail.start_x_mm = -3.0 + index
-            tail.start_y_mm = 2.0 + index
-            tail.end_x_mm = 7.0 + index
-            tail.end_y_mm = -5.0 - index
+        with balloon_curve_object.defer_auto_sync():
+            balloon.shape = "cloud"
+            balloon.custom_preset_name = "custom_name_check"
+            balloon.x_mm = 31.25
+            balloon.y_mm = 51.5
+            balloon.width_mm = 43.0
+            balloon.height_mm = 24.5
+            balloon.rotation_deg = 8.0
+            balloon.center_offset_x_mm = 1.5
+            balloon.center_offset_y_mm = -2.25
+            balloon.rounded_corner_enabled = True
+            balloon.rounded_corner_radius_mm = 3.75
+            balloon.line_style = "double"
+            balloon.line_width_mm = 0.55
+            balloon.line_color = (0.14, 0.21, 0.34, 1.0)
+            balloon.fill_color = (0.72, 0.62, 0.52, 1.0)
+            balloon.fill_opacity = 44.0
+            balloon.fill_material_name = "MaterialCheck"
+            balloon.fill_blur_amount = 0.18
+            balloon.fill_blur_dither = True
+            balloon.fill_gradient_enabled = True
+            balloon.fill_gradient_start_color = (0.9, 0.8, 0.7, 1.0)
+            balloon.fill_gradient_end_color = (0.2, 0.3, 0.4, 1.0)
+            balloon.fill_gradient_angle_deg = 32.0
+            balloon.outer_white_margin_enabled = True
+            balloon.outer_white_margin_width_mm = 1.25
+            balloon.outer_white_margin_color = (0.95, 0.96, 0.97, 1.0)
+            balloon.inner_white_margin_enabled = True
+            balloon.inner_white_margin_width_mm = 0.75
+            balloon.inner_white_margin_color = (0.82, 0.83, 0.84, 1.0)
+            balloon.blend_mode = "lighten"
+            balloon.flip_h = True
+            balloon.flip_v = True
+            balloon.opacity = 77.0
+            sp = balloon.shape_params
+            sp.cloud_bump_width_mm = 9.1
+            sp.cloud_bump_width_jitter = 0.15
+            sp.cloud_bump_height_mm = 4.2
+            sp.cloud_bump_height_jitter = 0.16
+            sp.cloud_offset_percent = 47.0
+            sp.cloud_sub_width_ratio = 21.0
+            sp.cloud_sub_width_jitter = 0.17
+            sp.cloud_sub_height_ratio = 24.0
+            sp.cloud_sub_height_jitter = 0.18
+            sp.cloud_wave_count = 17
+            sp.cloud_wave_amplitude_mm = 3.3
+            sp.spike_count = 29
+            sp.spike_depth_mm = 7.7
+            sp.spike_jitter = 0.26
+            tail_types = ("straight", "curve", "sticky", "straight", "curve", "sticky", "straight", "curve")
+            for index, tail_type in enumerate(tail_types):
+                tail = balloon.tails.add()
+                tail.type = tail_type
+                tail.direction_deg = 35.0 + index * 20.0
+                tail.length_mm = 6.0 + index
+                tail.root_width_mm = 2.5 + index * 0.25
+                tail.tip_width_mm = 0.5 + index * 0.1
+                tail.curve_bend = -0.4 + index * 0.1
+                tail.custom_points_enabled = index % 2 == 1
+                tail.start_x_mm = -3.0 + index
+                tail.start_y_mm = 2.0 + index
+                tail.end_x_mm = 7.0 + index
+                tail.end_y_mm = -5.0 - index
         balloon_obj = balloon_curve_object.ensure_balloon_curve_object(
             scene=context.scene,
             entry=balloon,
@@ -484,7 +510,7 @@ def main() -> None:
             kind="balloon",
             group_name="BName_GN_Balloon",
         )
-        _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.55, "フキダシ 線幅")
+        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.55, "フキダシ 線幅")
         _assert_close(_modifier_socket_value(balloon_modifier, "塗り不透明度"), 44.0, "フキダシ 塗り")
         _assert_close(_modifier_socket_value(balloon_modifier, "幅"), 43.0, "フキダシ 幅")
         _assert_close(_modifier_socket_value(balloon_modifier, "高さ"), 24.5, "フキダシ 高さ")
@@ -507,6 +533,10 @@ def main() -> None:
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 始点 Y"), 3.0, "フキダシ しっぽ2 始点 Y")
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 X"), 8.0, "フキダシ しっぽ2 終点 X")
         _assert_close(_modifier_socket_value(balloon_modifier, "しっぽ2 終点 Y"), -6.0, "フキダシ しっぽ2 終点 Y")
+        _assert_socket_hidden_in_modifier(balloon_modifier, "線幅 (mm)", False)
+        _assert_socket_hidden_in_modifier(balloon_modifier, "山の幅", True)
+        _assert_socket_hidden_in_modifier(balloon_modifier, "塗りグラデーション", True)
+        _assert_socket_hidden_in_modifier(balloon_modifier, "しっぽ2 種類", True)
         assert len(balloon_obj.data.polygons) == 0, "フキダシ本体にB-Name側の表示メッシュが残っています"
         assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシのGeometry Nodes表示結果が空です"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
@@ -514,7 +544,7 @@ def main() -> None:
 
         balloon.line_width_mm = 0.91
         balloon_modifier = _assert_nodes(balloon_obj, kind="balloon", group_name="BName_GN_Balloon")
-        _assert_close(_modifier_socket_value(balloon_modifier, "線幅"), 0.91, "フキダシ 線幅 更新")
+        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.91, "フキダシ 線幅 更新")
 
         balloon_shape_ids = {
             str(getattr(item, "identifier", "") or "")
@@ -541,7 +571,7 @@ def main() -> None:
         )
         assert legacy_obj is not None
         legacy_modifier = _assert_nodes(legacy_obj, kind="balloon", group_name="BName_GN_Balloon")
-        _assert_close(_modifier_socket_value(legacy_modifier, "線幅"), 0.38, "旧フキダシ 線幅")
+        _assert_close(_modifier_socket_value(legacy_modifier, "線幅 (mm)"), 0.38, "旧フキダシ 線幅")
         assert int(_modifier_socket_value(legacy_modifier, "形状")) == 2
         assert legacy_modifier.node_group.name != "BName_GN_UniFlash"
 

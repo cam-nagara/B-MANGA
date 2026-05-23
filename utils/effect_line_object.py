@@ -37,6 +37,37 @@ PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
 PROP_EFFECT_SOURCE_ROLE = "bname_effect_source_role"
 
 
+def _configure_line_material_nodes(mat: bpy.types.Material, rgba: tuple[float, float, float, float]) -> None:
+    from . import geometry_nodes_bridge
+
+    mat.diffuse_color = rgba
+    mat.use_nodes = True
+    mat.blend_method = "BLEND"
+    mat.show_transparent_back = False
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputMaterial")
+    output.location = (520, 0)
+    bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+    bsdf.location = (260, 0)
+    attr = nodes.new("ShaderNodeAttribute")
+    attr.location = (-260, -180)
+    attr.attribute_name = geometry_nodes_bridge.EFFECT_ALPHA_ATTR
+    mul = nodes.new("ShaderNodeMath")
+    mul.operation = "MULTIPLY"
+    mul.location = (0, -140)
+    try:
+        bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
+        mul.inputs[1].default_value = rgba[3]
+        links.new(attr.outputs["Fac"], mul.inputs[0])
+        links.new(mul.outputs["Value"], bsdf.inputs["Alpha"])
+        links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
+    except Exception:  # noqa: BLE001
+        mat.use_nodes = False
+        mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
+
+
 def _resolve_unique_data_name(base: str) -> str:
     coll = gp_utils._gp_data_blocks()
     if base not in coll:
@@ -478,11 +509,9 @@ def _ensure_display_material(
         fill_rgba = (float(fill_color[0]), float(fill_color[1]), float(fill_color[2]), fill_alpha)
     except Exception:  # noqa: BLE001
         fill_rgba = (1.0, 1.0, 1.0, max(0.0, min(1.0, float(fill_opacity or 0.0) * float(opacity or 0.0))))
-    mat.diffuse_color = rgba
     fill_mat.diffuse_color = fill_rgba
     try:
-        mat.use_nodes = False
-        mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
+        _configure_line_material_nodes(mat, rgba)
         fill_mat.use_nodes = False
         fill_mat.blend_method = "BLEND" if fill_rgba[3] < 1.0 else "OPAQUE"
     except Exception:  # noqa: BLE001
@@ -638,6 +667,9 @@ def ensure_effect_display_object(
     line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
     fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
     fill_opacity = percentage.percent_to_factor((values or {}).get("塗り不透明度", 100.0), 100.0)
+    if int((values or {}).get("種類", 0) or 0) == 5:
+        fill_color = (1.0, 1.0, 1.0, 1.0)
+        fill_opacity = 1.0
     _ensure_display_material(
         display,
         line_color,

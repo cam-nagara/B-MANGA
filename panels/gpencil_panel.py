@@ -333,23 +333,17 @@ def _draw_right_controls(row, controls, index: int) -> None:
         return
     slots = row.row(align=True)
     slots.alignment = "RIGHT"
-    slots.ui_units_x = 3.0
 
     gp_style = controls.get("gp_style")
     if gp_style is not None:
         _draw_square_color_prop(slots, gp_style, "color")
         _draw_square_color_prop(slots, gp_style, "fill_color")
-    else:
-        _draw_square_placeholder(slots)
-        _draw_square_placeholder(slots)
 
     aux = controls.get("aux")
     if aux == "coma_enter":
         _draw_right_aux_coma_enter(slots, index)
     elif aux == "lock":
         _draw_right_aux_lock(slots, controls.get("lock_target"), controls.get("lock_prop", "lock"))
-    else:
-        _draw_square_placeholder(slots)
 
 
 def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
@@ -365,7 +359,7 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     _select_name(row, index, name)
     if item.kind == "gp":
         controls["gp_style"] = _gp_color_style(target)
-    if hasattr(target, "lock"):
+    if item.kind == "gp" and hasattr(target, "lock"):
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "lock"
@@ -425,7 +419,6 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     elif item.kind == "balloon":
         _draw_type_icon(row, index, "MOD_FLUID")
         _select_name(row, index, getattr(target, "id", "") or item.label or item.name or "フキダシ")
-        row.label(text=getattr(target, "shape", ""))
     elif item.kind == "text":
         _draw_type_icon(row, index, "FONT_DATA")
         _select_name(row, index, getattr(target, "body", "") or item.label)
@@ -510,7 +503,6 @@ class BNAME_UL_layer_stack(UIList):
         if controls.get("gp_style") or controls.get("aux"):
             right = row.row(align=True)
             right.alignment = "RIGHT"
-            right.ui_units_x = 3.0
             _draw_right_controls(right, controls, index)
 
 

@@ -121,6 +121,22 @@ def _material_name_count(stats: dict, pattern: str) -> int:
     return sum(count for name, count in stats.get("material_names", {}).items() if pattern in name)
 
 
+def _float_attribute_range(obj, name: str) -> tuple[float, float]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        attr = mesh.attributes.get(name)
+        if attr is None:
+            raise AssertionError(f"表示結果に不透明度属性がありません: {name}")
+        values = [float(getattr(item, "value", 0.0)) for item in attr.data]
+        if not values:
+            raise AssertionError(f"表示結果の不透明度属性が空です: {name}")
+        return min(values), max(values)
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_gn_functional_"))
     mod = None
@@ -235,6 +251,7 @@ def main() -> None:
         params.fill_base_shape = False
         effect_obj, effect_layer = effect_line_op._create_effect_layer(context, (20.0, 40.0, 60.0, 48.0), parent_key=page_key)
         assert effect_obj is not None and effect_layer is not None
+        effect_line_op._set_scene_params_syncing(context.scene, True)
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         display = effect_line_object.find_effect_display_object(effect_obj)
         assert display is not None
@@ -378,6 +395,18 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         speed_tapered = _mesh_stats(display)
         _assert_changed(speed_full_width, speed_tapered, "効果線 入り抜き")
+        params.inout_apply = "opacity"
+        params.in_percent = 20.0
+        params.out_percent = 15.0
+        params.in_start_percent = 35.0
+        params.out_start_percent = 30.0
+        effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
+        alpha_min, alpha_max = _float_attribute_range(display, "bname_effect_alpha")
+        if not (alpha_min < 0.5 and alpha_max > 0.95):
+            raise AssertionError(f"効果線 入り抜きの不透明度が表示属性へ反映されていません: min={alpha_min}, max={alpha_max}")
+        line_material = display.data.materials[0]
+        if not bool(getattr(line_material, "use_nodes", False)):
+            raise AssertionError("効果線 入り抜きの不透明度を読む素材ノードが有効になっていません")
 
         params.effect_type = "beta_flash"
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
@@ -398,7 +427,21 @@ def main() -> None:
         if white_9["polys"] <= white_4["polys"]:
             raise AssertionError("効果線 白抜き線の本数が表示結果へ反映されていません")
         if _material_name_count(white_9, "_Line_") <= 0 or _material_name_count(white_9, "_Fill_") <= 0:
-            raise AssertionError("効果線 白抜き線の黒線/白線が両方表示されていません")
+            slots = [mat.name if mat is not None else "" for mat in getattr(display.data, "materials", [])]
+            line_input = _modifier_input_value(display, "B-Name Geometry Nodes", "線素材")
+            fill_input = _modifier_input_value(display, "B-Name Geometry Nodes", "塗り素材")
+            white_ratio_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白線割合 (%)")
+            white_width_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白抜き線 太さ (mm)")
+            white_brush_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白線太さ (mm)")
+            raise AssertionError(
+                "効果線 白抜き線の黒線/白線が両方表示されていません: "
+                f"stats={white_9}, slots={slots}, "
+                f"line={getattr(line_input, 'name', line_input)}, fill={getattr(fill_input, 'name', fill_input)}, "
+                f"white_ratio={white_ratio_input}, white_width={white_width_input}, white_brush={white_brush_input}"
+            )
+        fill_rgba = tuple(float(v) for v in display.data.materials[1].diffuse_color[:4])
+        if fill_rgba[0] < 0.99 or fill_rgba[1] < 0.99 or fill_rgba[2] < 0.99:
+            raise AssertionError(f"効果線 白抜き線の白線素材が白になっていません: {fill_rgba}")
         params.white_outline_spacing_mm = 3.0
         params.white_outline_width_mm = 18.0
         params.white_outline_width_jitter_enabled = True
