@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from .geom import Rect
@@ -23,6 +24,15 @@ _LEGACY_SHAPE_ALIASES = {
     "thorn_curve": "thorn-curve",
     "uni_flash": "ellipse",
 }
+
+
+@dataclass(frozen=True)
+class BezierAnchor:
+    co: tuple[float, float]
+    handle_left: tuple[float, float] | None = None
+    handle_right: tuple[float, float] | None = None
+    handle_left_type: str = "FREE"
+    handle_right_type: str = "FREE"
 
 
 def normalize_shape(shape: str | None) -> str:
@@ -74,6 +84,29 @@ def outline_with_corners_for_entry(
         if custom is not None:
             return custom, []
     return outline_with_corners_for_shape(
+        shape,
+        rect,
+        rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
+        rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
+        cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
+        cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),
+        cloud_bump_height_jitter=float(getattr(sp, "cloud_bump_height_jitter", 0.0)),
+        cloud_offset=float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0,
+        cloud_sub_width_ratio=float(getattr(sp, "cloud_sub_width_ratio", 0.0)),
+        cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
+        cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
+        cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
+        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
+    )
+
+
+def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
+    sp = getattr(entry, "shape_params", None)
+    shape = normalize_shape(getattr(entry, "shape", "rect"))
+    if shape == "custom":
+        return None
+    return bezier_loop_for_shape(
         shape,
         rect,
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
@@ -242,6 +275,51 @@ def outline_with_corners_for_shape(
     return _outline_rect(rect), [0, 1, 2, 3]
 
 
+def bezier_loop_for_shape(
+    shape: str | None,
+    rect: Rect,
+    *,
+    rounded_corner_enabled: bool = False,
+    rounded_corner_radius_mm: float = 0.0,
+    cloud_bump_width_mm: float = 10.0,
+    cloud_bump_width_jitter: float = 0.0,
+    cloud_bump_height_mm: float = 4.0,
+    cloud_bump_height_jitter: float = 0.0,
+    cloud_offset: float = 0.5,
+    cloud_sub_width_ratio: float = 0.0,
+    cloud_sub_width_jitter: float = 0.0,
+    cloud_sub_height_ratio: float = 0.0,
+    cloud_sub_height_jitter: float = 0.0,
+    jitter_seed: int = 0,
+) -> list[BezierAnchor] | None:
+    s = normalize_shape(shape)
+    opts = _DynamicOpts(
+        bump_w=max(2.0, float(cloud_bump_width_mm)),
+        bump_w_jitter=_clamp01(float(cloud_bump_width_jitter)),
+        bump_h=max(0.5, float(cloud_bump_height_mm)),
+        bump_h_jitter=_clamp01(float(cloud_bump_height_jitter)),
+        offset=max(0.0, min(1.0, float(cloud_offset))),
+        sub_w=max(0.0, min(100.0, float(cloud_sub_width_ratio))),
+        sub_w_jitter=_clamp01(float(cloud_sub_width_jitter)),
+        sub_h=max(0.0, min(100.0, float(cloud_sub_height_ratio))),
+        sub_h_jitter=_clamp01(float(cloud_sub_height_jitter)),
+        rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
+    )
+    if s == "ellipse":
+        return _bezier_ellipse(rect)
+    if s == "rect" and rounded_corner_enabled and rounded_corner_radius_mm > 0.0:
+        return _bezier_rounded_rect(rect, rounded_corner_radius_mm)
+    if s == "cloud":
+        return _bezier_cloud(rect, opts)
+    if s == "fluffy":
+        return _bezier_fluffy(rect, opts)
+    if s == "thorn-curve":
+        return _bezier_thorn_curve(rect, opts)
+    if s == "pill":
+        return _bezier_pill(rect)
+    return None
+
+
 class _DynamicOpts:
     def __init__(
         self,
@@ -321,6 +399,46 @@ def _outline_ellipse(rect: Rect, segments: int = 64) -> list[tuple[float, float]
     ]
 
 
+def _bezier_ellipse(rect: Rect) -> list[BezierAnchor]:
+    cx = (rect.x + rect.x2) * 0.5
+    cy = (rect.y + rect.y2) * 0.5
+    rx = rect.width * 0.5
+    ry = rect.height * 0.5
+    k = 0.5522847498307936
+    return [
+        BezierAnchor((cx + rx, cy), (cx + rx, cy - k * ry), (cx + rx, cy + k * ry)),
+        BezierAnchor((cx, cy + ry), (cx + k * rx, cy + ry), (cx - k * rx, cy + ry)),
+        BezierAnchor((cx - rx, cy), (cx - rx, cy + k * ry), (cx - rx, cy - k * ry)),
+        BezierAnchor((cx, cy - ry), (cx - k * rx, cy - ry), (cx + k * rx, cy - ry)),
+    ]
+
+
+def _bezier_rounded_rect(rect: Rect, radius_mm: float) -> list[BezierAnchor] | None:
+    radius = max(0.0, min(float(radius_mm), rect.width * 0.5, rect.height * 0.5))
+    if radius <= 0.0:
+        return None
+    k = 0.5522847498307936 * radius
+    x0, x1, x2, x3 = rect.x, rect.x + radius, rect.x2 - radius, rect.x2
+    y0, y1, y2, y3 = rect.y, rect.y + radius, rect.y2 - radius, rect.y2
+    return [
+        BezierAnchor((x2, y3), (x1, y3), (x3 - k, y3)),
+        BezierAnchor((x3, y2), (x3, y3 - k), (x3, y1)),
+        BezierAnchor((x3, y1), (x3, y2), (x3, y0 + k)),
+        BezierAnchor((x2, y0), (x3 - k, y0), (x1, y0)),
+        BezierAnchor((x1, y0), (x2, y0), (x0 + k, y0)),
+        BezierAnchor((x0, y1), (x0, y0 + k), (x0, y2)),
+        BezierAnchor((x0, y2), (x0, y1), (x0, y3 - k)),
+        BezierAnchor((x1, y3), (x0 + k, y3), (x2, y3)),
+    ]
+
+
+def _bezier_pill(rect: Rect) -> list[BezierAnchor]:
+    radius = min(rect.width, rect.height) * 0.5
+    if radius <= 0.0:
+        return []
+    return _bezier_rounded_rect(rect, radius) or []
+
+
 def _outline_polygon_pct(rect: Rect, pct_pts: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
     return [(rect.x + rect.width * (px / 100.0), rect.y + rect.height * ((100.0 - py) / 100.0)) for px, py in pct_pts]
 
@@ -365,6 +483,20 @@ def _outline_star(rect: Rect) -> list[tuple[float, float]]:
 
 def _local_to_rect(rect: Rect, pts: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
     return [(rect.x + x, rect.y2 - y) for x, y in pts]
+
+
+def _local_point_to_rect(rect: Rect, point: tuple[float, float]) -> tuple[float, float]:
+    return (rect.x + point[0], rect.y2 - point[1])
+
+
+def _local_anchor_to_rect(rect: Rect, anchor: BezierAnchor) -> BezierAnchor:
+    return BezierAnchor(
+        _local_point_to_rect(rect, anchor.co),
+        _local_point_to_rect(rect, anchor.handle_left or anchor.co),
+        _local_point_to_rect(rect, anchor.handle_right or anchor.co),
+        anchor.handle_left_type,
+        anchor.handle_right_type,
+    )
 
 
 def _ellipse_perimeter(rx: float, ry: float) -> float:
@@ -498,6 +630,51 @@ def _outline_cloud_with_corners(
     return _local_to_rect(rect, pts), corners
 
 
+def _bezier_cloud(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None:
+        return _bezier_ellipse(rect)
+    cx, cy, rx, ry, eff_h = base
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return _bezier_ellipse(rect)
+
+    def valley_point(t: float) -> tuple[float, float]:
+        notch = min(max(0.2, min(rect.width, rect.height) * 0.02), max(0.0, min(rx, ry) - 0.1))
+        return (cx + (rx - notch) * math.cos(t), cy + (ry - notch) * math.sin(t))
+
+    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    for _is_sub, bump_angle, h_mul in segments:
+        start_angle = angle
+        end_angle = angle + bump_angle
+        angle = end_angle
+        v_start = valley_point(start_angle)
+        v_end = valley_point(end_angle)
+        mx = (v_start[0] + v_end[0]) * 0.5
+        my = (v_start[1] + v_end[1]) * 0.5
+        chord_x = v_end[0] - v_start[0]
+        chord_y = v_end[1] - v_start[1]
+        chord_len = math.hypot(chord_x, chord_y)
+        if chord_len < 0.001:
+            continue
+        perp_x = -chord_y / chord_len
+        perp_y = chord_x / chord_len
+        if perp_x * (mx - cx) + perp_y * (my - cy) < 0.0:
+            perp_x = -perp_x
+            perp_y = -perp_y
+        m_len = (4.0 / 3.0) * eff_h * h_mul
+        c1 = (v_start[0] + m_len * perp_x, v_start[1] + m_len * perp_y)
+        c2 = (v_end[0] + m_len * perp_x, v_end[1] + m_len * perp_y)
+        cubics.append((v_start, c1, c2))
+    if len(cubics) < 3:
+        return _bezier_ellipse(rect)
+    anchors: list[BezierAnchor] = []
+    for i, (co, c1, _c2) in enumerate(cubics):
+        incoming_c2 = cubics[(i - 1) % len(cubics)][2]
+        anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, incoming_c2, c1)))
+    return anchors
+
+
 def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
     return _outline_thorn_with_corners(rect, opts)[0]
 
@@ -576,6 +753,48 @@ def _outline_thorn_curve_with_corners(
     return _local_to_rect(rect, pts), corners
 
 
+def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None:
+        return _bezier_ellipse(rect)
+    cx, cy, rx, ry, eff_h = base
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return _bezier_ellipse(rect)
+    tpull = 0.18
+    depth_ratio = 1.12
+
+    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
+        return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
+
+    peaks: list[tuple[float, float]] = []
+    for _is_sub, bump_angle, h_mul in segments:
+        mid_angle = angle + bump_angle * 0.5
+        angle += bump_angle
+        peaks.append(peak_at(mid_angle, h_mul))
+    if len(peaks) < 3:
+        return _bezier_ellipse(rect)
+
+    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    for i, p0 in enumerate(peaks):
+        p1 = peaks[(i + 1) % len(peaks)]
+        mx = (p0[0] + p1[0]) * 0.5
+        my = (p0[1] + p1[1]) * 0.5
+        dcx = cx - mx
+        dcy = cy - my
+        length = math.hypot(dcx, dcy)
+        in_x = dcx / length if length > 0.001 else 0.0
+        in_y = dcy / length if length > 0.001 else 0.0
+        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
+        c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
+        c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
+        cubics.append((p0, c1, c2))
+    return [
+        _local_anchor_to_rect(rect, BezierAnchor(co, cubics[(i - 1) % len(cubics)][2], c1))
+        for i, (co, c1, _c2) in enumerate(cubics)
+    ]
+
+
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
     base = _dynamic_base(rect.width, rect.height, opts, fluffy=True)
     if base is None:
@@ -625,3 +844,39 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
         c2 = (p2[0] - (p3[0] - p1[0]) / 6.0, p2[1] - (p3[1] - p1[1]) / 6.0)
         pts.extend(_sample_cubic(p1, c1, c2, p2, steps=4))
     return _local_to_rect(rect, pts)
+
+
+def _bezier_fluffy(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    base = _dynamic_base(rect.width, rect.height, opts, fluffy=True)
+    if base is None:
+        return _bezier_ellipse(rect)
+    cx, cy, rx_base, ry_base, eff_h = base
+    amp = eff_h * 0.5
+    r_min = min(rx_base, ry_base)
+    perimeter = _ellipse_perimeter(rx_base, ry_base)
+    width_factor = _jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5)
+    num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
+    steps = max(8, num_bumps * 2)
+    period = (2.0 * math.pi) / num_bumps
+    base_angle = -math.pi * 0.5 + opts.offset * period
+    main_height = [_jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) for _i in range(num_bumps)]
+    raw: list[tuple[float, float]] = []
+    for i in range(steps):
+        t = base_angle + (i / steps) * 2.0 * math.pi
+        phase = t - base_angle
+        main_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * num_bumps) % num_bumps
+        wave = math.cos(num_bumps * phase) * main_height[main_idx]
+        r_mul = 1.0 + (amp / r_min) * wave
+        raw.append((cx + rx_base * r_mul * math.cos(t), cy + ry_base * r_mul * math.sin(t)))
+    if len(raw) < 3:
+        return _bezier_ellipse(rect)
+    anchors: list[BezierAnchor] = []
+    n = len(raw)
+    for i, co in enumerate(raw):
+        prev_pt = raw[(i - 1) % n]
+        next_pt = raw[(i + 1) % n]
+        tangent = ((next_pt[0] - prev_pt[0]) / 6.0, (next_pt[1] - prev_pt[1]) / 6.0)
+        handle_left = (co[0] - tangent[0], co[1] - tangent[1])
+        handle_right = (co[0] + tangent[0], co[1] + tangent[1])
+        anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, handle_left, handle_right)))
+    return anchors

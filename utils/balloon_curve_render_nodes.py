@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 5
+GROUP_VERSION = 6
 _MASK_UNSET = object()
 
 
@@ -114,6 +114,41 @@ def _set_material(group, geometry_socket, material_socket, *, label: str, locati
     return node.outputs["Geometry"]
 
 
+def _masked_geometry(
+    group,
+    geometry_socket,
+    mask_geometry_socket,
+    use_mask_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    boolean = _node(group, "GeometryNodeMeshBoolean", label=f"{label}を切り抜き", location=location)
+    mesh_a = boolean.inputs[0] if len(boolean.inputs) > 0 else None
+    mesh_b = boolean.inputs[1] if len(boolean.inputs) > 1 else None
+    # 5.1 の Mesh Boolean は平面メッシュと厚み付きマスクの INTERSECT で
+    # Mesh 2 側の面を優先して残すため、表示したいフキダシ形状を Mesh 2 に
+    # 固定する。逆順だとコマ全体が表示結果へ混ざる。
+    _link(group, mask_geometry_socket, mesh_a)
+    _link(group, geometry_socket, mesh_b)
+    try:
+        boolean.operation = "INTERSECT"
+    except Exception:  # noqa: BLE001
+        pass
+
+    switch = _node(
+        group,
+        "GeometryNodeSwitch",
+        label=f"{label}のマスク使用",
+        location=(location[0] + 220, location[1] + 40),
+    )
+    switch.input_type = "GEOMETRY"
+    _link(group, use_mask_socket, switch.inputs["Switch"])
+    _link(group, geometry_socket, switch.inputs["False"])
+    _link(group, boolean.outputs["Mesh"], switch.inputs["True"])
+    return switch.outputs["Output"]
+
+
 def _socket_by_name(sockets, *names: str):
     for name in names:
         try:
@@ -133,12 +168,28 @@ def _build_nodes(group) -> None:
 
     fill_curve = _node(group, "GeometryNodeFillCurve", label="塗り面", location=(-500, 180))
     _link(group, input_node.outputs["Geometry"], fill_curve.inputs["Curve"])
-    fill_geometry = _set_material(
+    mask_info = _node(group, "GeometryNodeObjectInfo", label="マスク対象", location=(-500, -360))
+    try:
+        mask_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    _set_default(mask_info.inputs["As Instance"], False)
+    _link(group, input_node.outputs["マスク対象"], mask_info.inputs["Object"])
+
+    fill_masked = _masked_geometry(
         group,
         fill_curve.outputs["Mesh"],
+        mask_info.outputs["Geometry"],
+        input_node.outputs["マスク使用"],
+        label="塗り",
+        location=(-250, 180),
+    )
+    fill_geometry = _set_material(
+        group,
+        fill_masked,
         input_node.outputs["塗り素材"],
         label="塗り素材",
-        location=(-250, 180),
+        location=(190, 220),
     )
 
     radius = _node(group, "ShaderNodeMath", label="線幅を半径へ", location=(-500, -120))
@@ -159,42 +210,26 @@ def _build_nodes(group) -> None:
     fill_caps = _socket_by_name(outline_mesh.inputs, "Fill Caps")
     if fill_caps is not None:
         _set_default(fill_caps, True)
-    outline_geometry = _set_material(
+    outline_masked = _masked_geometry(
         group,
         outline_mesh.outputs["Mesh"],
-        input_node.outputs["線素材"],
-        label="線素材",
+        mask_info.outputs["Geometry"],
+        input_node.outputs["マスク使用"],
+        label="線",
         location=(250, -80),
     )
+    outline_geometry = _set_material(
+        group,
+        outline_masked,
+        input_node.outputs["線素材"],
+        label="線素材",
+        location=(690, -40),
+    )
 
-    joined = _node(group, "GeometryNodeJoinGeometry", label="塗りと線", location=(500, 40))
+    joined = _node(group, "GeometryNodeJoinGeometry", label="塗りと線", location=(850, 120))
     _link(group, fill_geometry, joined.inputs["Geometry"])
     _link(group, outline_geometry, joined.inputs["Geometry"])
-
-    mask_info = _node(group, "GeometryNodeObjectInfo", label="マスク対象", location=(250, -320))
-    try:
-        mask_info.transform_space = "RELATIVE"
-    except Exception:  # noqa: BLE001
-        pass
-    _set_default(mask_info.inputs["As Instance"], False)
-    _link(group, input_node.outputs["マスク対象"], mask_info.inputs["Object"])
-
-    masked = _node(group, "GeometryNodeMeshBoolean", label="マスクで切り抜き", location=(620, -180))
-    mesh_a = masked.inputs[0] if len(masked.inputs) > 0 else None
-    mesh_b = masked.inputs[1] if len(masked.inputs) > 1 else None
-    _link(group, joined.outputs["Geometry"], mesh_a)
-    _link(group, mask_info.outputs["Geometry"], mesh_b)
-    try:
-        masked.operation = "INTERSECT"
-    except Exception:  # noqa: BLE001
-        pass
-
-    switch = _node(group, "GeometryNodeSwitch", label="マスク使用", location=(820, 60))
-    switch.input_type = "GEOMETRY"
-    _link(group, input_node.outputs["マスク使用"], switch.inputs["Switch"])
-    _link(group, joined.outputs["Geometry"], switch.inputs["False"])
-    _link(group, masked.outputs["Mesh"], switch.inputs["True"])
-    _link(group, switch.outputs["Output"], output_node.inputs["Geometry"])
+    _link(group, joined.outputs["Geometry"], output_node.inputs["Geometry"])
     group[PROP_GROUP_VERSION] = GROUP_VERSION
 
 

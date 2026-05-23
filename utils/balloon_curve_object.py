@@ -31,6 +31,7 @@ PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
 PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
+CURVE_GEOMETRY_VERSION = 2
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -602,6 +603,29 @@ def _add_bezier_loop(
         bp.radius = 1.0
 
 
+def _add_bezier_anchor_loop(
+    curve: bpy.types.Curve,
+    anchors: Sequence[balloon_shapes.BezierAnchor],
+    *,
+    offset: tuple[float, float],
+) -> None:
+    if len(anchors) < 3:
+        return
+    spline = curve.splines.new("BEZIER")
+    spline.bezier_points.add(len(anchors) - 1)
+    spline.use_cyclic_u = True
+    for index, anchor in enumerate(anchors):
+        bp = spline.bezier_points[index]
+        bp.co = _point_to_curve_xyz(anchor.co, offset)
+        left = anchor.handle_left if anchor.handle_left is not None else anchor.co
+        right = anchor.handle_right if anchor.handle_right is not None else anchor.co
+        bp.handle_left = _point_to_curve_xyz(left, offset)
+        bp.handle_right = _point_to_curve_xyz(right, offset)
+        bp.handle_left_type = str(anchor.handle_left_type or "FREE")
+        bp.handle_right_type = str(anchor.handle_right_type or "FREE")
+        bp.radius = 1.0
+
+
 def _body_outline_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]]:
     rect = Rect(
         0.0,
@@ -610,6 +634,16 @@ def _body_outline_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
     return balloon_shapes.outline_with_corners_for_entry(entry, rect)
+
+
+def _body_bezier_for_entry(entry) -> list[balloon_shapes.BezierAnchor] | None:
+    rect = Rect(
+        0.0,
+        0.0,
+        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    return balloon_shapes.bezier_loop_for_entry(entry, rect)
 
 
 def _geometry_key_for_entry(entry) -> str:
@@ -653,6 +687,7 @@ def _geometry_key_for_entry(entry) -> str:
             }
         )
     payload = {
+        "curve_geometry_version": CURVE_GEOMETRY_VERSION,
         "shape": balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")),
         "custom": str(getattr(entry, "custom_preset_name", "") or ""),
         "width": float(getattr(entry, "width_mm", 0.0) or 0.0),
@@ -672,8 +707,12 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) == "none":
         return
     offset = _entry_center_offset(entry)
-    body_points, sharp = _body_outline_for_entry(entry)
-    _add_bezier_loop(curve, body_points, sharp_indices=set(sharp), offset=offset)
+    body_anchors = _body_bezier_for_entry(entry)
+    if body_anchors is not None:
+        _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
+    else:
+        body_points, sharp = _body_outline_for_entry(entry)
+        _add_bezier_loop(curve, body_points, sharp_indices=set(sharp), offset=offset)
     for tail in getattr(entry, "tails", []) or []:
         tail_points = _tail_polygon_for_entry(entry, tail)
         _add_bezier_loop(
