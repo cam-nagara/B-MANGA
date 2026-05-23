@@ -139,28 +139,7 @@ def _ensure_balloon_curve_material(
     except Exception:  # noqa: BLE001
         pass
     try:
-        mat.use_nodes = True
-        nt = mat.node_tree
-        # 既存ノード全削除して再構築
-        for n in list(nt.nodes):
-            nt.nodes.remove(n)
-        out = nt.nodes.new("ShaderNodeOutputMaterial")
-        out.location = (200, 0)
-        emission = nt.nodes.new("ShaderNodeEmission")
-        emission.location = (-100, 0)
-        try:
-            emission.inputs["Color"].default_value = line
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            emission.inputs["Strength"].default_value = 1.0
-        except Exception:  # noqa: BLE001
-            pass
-        nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
-        try:
-            mat.blend_method = "BLEND"
-        except (AttributeError, TypeError):
-            pass
+        _setup_emission_alpha_material(mat, line)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon curve material setup failed")
     if curve is not None:
@@ -213,48 +192,82 @@ def _apply_fill_material_basics(mat: bpy.types.Material, fill: tuple[float, floa
         pass
 
 
+def _clear_material_nodes(mat: bpy.types.Material):
+    mat.use_nodes = True
+    nt = mat.node_tree
+    for node in list(nt.nodes):
+        nt.nodes.remove(node)
+    return nt
+
+
+def _setup_emission_alpha_material(
+    mat: bpy.types.Material,
+    color: tuple[float, float, float, float],
+    *,
+    gradient: tuple[tuple[float, float, float, float], tuple[float, float, float, float], float] | None = None,
+) -> None:
+    nt = _clear_material_nodes(mat)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    out.location = (360, 0)
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (-180, -120)
+    emission = nt.nodes.new("ShaderNodeEmission")
+    emission.location = (-180, 80)
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.location = (120, 0)
+    emission.inputs["Strength"].default_value = 1.0
+    if gradient is None:
+        emission.inputs["Color"].default_value = color
+    else:
+        start, end, angle_deg = gradient
+        coord = nt.nodes.new("ShaderNodeTexCoord")
+        coord.location = (-980, 80)
+        mapping = nt.nodes.new("ShaderNodeMapping")
+        mapping.location = (-780, 80)
+        gradient_node = nt.nodes.new("ShaderNodeTexGradient")
+        gradient_node.location = (-560, 80)
+        ramp = nt.nodes.new("ShaderNodeValToRGB")
+        ramp.location = (-360, 80)
+        ramp.color_ramp.elements[0].position = 0.0
+        ramp.color_ramp.elements[0].color = start
+        ramp.color_ramp.elements[1].position = 1.0
+        ramp.color_ramp.elements[1].color = end
+        try:
+            mapping.inputs["Rotation"].default_value[2] = math.radians(float(angle_deg))
+        except Exception:  # noqa: BLE001
+            pass
+        nt.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
+        nt.links.new(mapping.outputs["Vector"], gradient_node.inputs["Vector"])
+        nt.links.new(gradient_node.outputs["Fac"], ramp.inputs["Fac"])
+        nt.links.new(ramp.outputs["Color"], emission.inputs["Color"])
+    mix.inputs["Fac"].default_value = max(0.0, min(1.0, float(color[3])))
+    nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+    nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    try:
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = True
+    except (AttributeError, TypeError):
+        pass
+
+
 def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
     mat, copied_user_material = _fill_material_for_entry(material_name, entry)
     fill = _entry_fill_rgba(entry)
     _apply_fill_material_basics(mat, fill, entry)
     if copied_user_material and not bool(getattr(entry, "fill_gradient_enabled", False)):
         return mat
-    mat.use_nodes = True
     try:
-        nt = mat.node_tree
-        for n in list(nt.nodes):
-            nt.nodes.remove(n)
-        out = nt.nodes.new("ShaderNodeOutputMaterial")
-        out.location = (200, 0)
-        principled = nt.nodes.new("ShaderNodeBsdfPrincipled")
-        principled.location = (-100, 0)
         if bool(getattr(entry, "fill_gradient_enabled", False)):
             start = tuple(float(v) for v in getattr(entry, "fill_gradient_start_color", fill))
             end = tuple(float(v) for v in getattr(entry, "fill_gradient_end_color", fill))
-            coord = nt.nodes.new("ShaderNodeTexCoord")
-            coord.location = (-760, 0)
-            mapping = nt.nodes.new("ShaderNodeMapping")
-            mapping.location = (-560, 0)
-            gradient = nt.nodes.new("ShaderNodeTexGradient")
-            gradient.location = (-360, 0)
-            ramp = nt.nodes.new("ShaderNodeValToRGB")
-            ramp.location = (-160, 60)
-            ramp.color_ramp.elements[0].position = 0.0
-            ramp.color_ramp.elements[0].color = start
-            ramp.color_ramp.elements[1].position = 1.0
-            ramp.color_ramp.elements[1].color = end
-            try:
-                mapping.inputs["Rotation"].default_value[2] = math.radians(float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0))
-            except Exception:  # noqa: BLE001
-                pass
-            nt.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
-            nt.links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
-            nt.links.new(gradient.outputs["Fac"], ramp.inputs["Fac"])
-            nt.links.new(ramp.outputs["Color"], principled.inputs["Base Color"])
+            _setup_emission_alpha_material(
+                mat,
+                fill,
+                gradient=(start, end, float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0)),
+            )
         else:
-            principled.inputs["Base Color"].default_value = fill
-        principled.inputs["Alpha"].default_value = fill[3]
-        nt.links.new(principled.outputs["BSDF"], out.inputs["Surface"])
+            _setup_emission_alpha_material(mat, fill)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon fill material setup failed")
     return mat
@@ -540,8 +553,8 @@ def _prepare_balloon_curve_data(
     curve.bevel_depth = 0.0
     curve.bevel_resolution = 0
     try:
-        curve.fill_mode = "BOTH"
-        curve.use_fill_caps = True
+        curve.fill_mode = "NONE"
+        curve.use_fill_caps = False
     except Exception:  # noqa: BLE001
         pass
     _set_data_materials(curve, (line_material, fill_material))

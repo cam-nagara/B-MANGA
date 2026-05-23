@@ -63,6 +63,7 @@ def _audit_cases() -> list[AuditCase]:
         AuditCase("bname_effect_visibility", "B-Name 効果線/コマ表示回帰監査", "test/blender_effect_line_mask_visibility_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_geometry_nodes_bridge", "B-Name ジオメトリノード入力監査", "test/blender_geometry_nodes_bridge_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_geometry_nodes_functional", "B-Name ジオメトリノード機能反映監査", "test/blender_geometry_nodes_functional_settings_check.py", "B-Name", ("standard", "regression")),
+        AuditCase("bname_balloon_curve_render_visual", "B-Name フキダシ塗り/輪郭表示監査", "test/blender_balloon_curve_render_visual_check.py", "B-Name", ("standard", "visual"), "BNAME_BALLOON_CURVE_RENDER_VISUAL_OUT"),
         AuditCase("bname_effect_end_fill", "B-Name 効果線下地塗り監査", "test/blender_effect_line_end_fill_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_effect_frame_spacing", "B-Name 効果線間隔監査", "test/blender_effect_line_frame_spacing_check.py", "B-Name", ("standard", "regression")),
         AuditCase("bname_balloon_uni_flash", "B-Name フキダシ形状監査", "test/blender_balloon_uni_flash_check.py", "B-Name", ("standard", "regression")),
