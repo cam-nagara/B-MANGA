@@ -668,15 +668,10 @@ def apply_mask_to_object_for_parent(obj: bpy.types.Object, parent_key: str) -> N
         else:
             _ensure_gp_mask_modifier(obj, MOD_NAME_COMA_MASK, None)
     elif obj_type == "CURVE" and str(obj.get(on.PROP_KIND, "") or "") == "balloon":
-        try:
-            from . import balloon_curve_render_nodes
-
-            if ":" in parent_key:
-                balloon_curve_render_nodes.set_mask_object(obj, coma_target)
-            else:
-                balloon_curve_render_nodes.set_mask_object(obj, None)
-        except Exception:  # noqa: BLE001
-            _logger.exception("mask_apply: balloon curve mask sync failed")
+        # フキダシカーブは表示補助側で、実際にはみ出す時だけ切り抜く。
+        # 汎用マスク再適用から一律に上書きすると、コマ内に収まるフキダシまで
+        # 切り抜き対象になり、コマ形状が表示結果へ混入する。
+        return
 
 
 def apply_masks_to_all_managed(scene: bpy.types.Scene) -> int:

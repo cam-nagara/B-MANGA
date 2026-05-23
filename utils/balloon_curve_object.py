@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Optional, Sequence
 
 import bpy
+from mathutils import Vector
 
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
@@ -23,6 +24,7 @@ _logger = log.get_logger(__name__)
 BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
 BALLOON_SOURCE_NAME_PREFIX = "balloon_source_"
+BALLOON_CLIP_MASK_NAME_PREFIX = "balloon_clip_mask_"
 BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
@@ -30,6 +32,8 @@ PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
 PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
 PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
+PROP_BALLOON_CLIP_MASK_KIND = "bname_balloon_clip_mask_kind"
+PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 CURVE_GEOMETRY_VERSION = 2
 _AUTO_SYNC_SUSPEND_COUNT = 0
@@ -176,7 +180,7 @@ def _fill_material_for_entry(material_name: str, entry=None) -> tuple[bpy.types.
 def _apply_fill_material_basics(mat: bpy.types.Material, fill: tuple[float, float, float, float], entry=None) -> None:
     try:
         mat.diffuse_color = fill
-        mat.blend_method = "BLEND"
+        mat.blend_method = "OPAQUE" if float(fill[3]) >= 0.999 else "BLEND"
         if bool(getattr(entry, "fill_blur_dither", False)):
             mat.surface_render_method = "DITHERED"
         mat.show_transparent_back = True
@@ -246,7 +250,7 @@ def _setup_emission_alpha_material(
     nt.links.new(emission.outputs["Emission"], mix.inputs[2])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     try:
-        mat.blend_method = "BLEND"
+        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 else "BLEND"
         mat.show_transparent_back = True
     except (AttributeError, TypeError):
         pass
@@ -446,7 +450,7 @@ def _apply_page_world_offset(scene: bpy.types.Scene, work, page, entry, obj: bpy
         _logger.exception("balloon: page world offset 加算失敗")
 
 
-def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, entry, obj: bpy.types.Object) -> None:
+def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj: bpy.types.Object) -> None:
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     try:
@@ -455,9 +459,12 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, entry, obj: bpy.
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: z order sync failed")
     try:
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+            mask_object=mask_obj,
+            clip_needed=_balloon_curve_needs_coma_clip(scene, work, page, entry, obj, mask_obj),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
@@ -516,8 +523,244 @@ def ensure_balloon_curve_object(
         apply_page_offset=False,
     )
     _apply_page_world_offset(scene, work, page, entry, obj)
-    _sync_visibility_and_modifier(scene, work, entry, obj)
+    _sync_visibility_and_modifier(scene, work, page, entry, obj)
     return obj
+
+
+def _split_coma_parent_key(page, parent_key: str) -> tuple[str, str]:
+    key = str(parent_key or "")
+    if ":" in key:
+        page_id, coma_id = key.split(":", 1)
+        return page_id, coma_id
+    return str(getattr(page, "id", "") or ""), key
+
+
+def _find_page_by_id(work, page_id: str):
+    if work is None or not page_id:
+        return None
+    for page in getattr(work, "pages", []) or []:
+        if str(getattr(page, "id", "") or "") == page_id:
+            return page
+    return None
+
+
+def _find_coma_by_id(page, coma_id: str):
+    if page is None or not coma_id:
+        return None
+    for coma in getattr(page, "comas", []) or []:
+        if str(getattr(coma, "id", "") or "") == coma_id:
+            return coma
+    return None
+
+
+def _point_in_polygon_xy(point: tuple[float, float], polygon: Sequence[tuple[float, float]], *, tolerance: float = 1.0e-9) -> bool:
+    x, y = float(point[0]), float(point[1])
+    inside = False
+    count = len(polygon)
+    if count < 3:
+        return False
+    prev_x, prev_y = polygon[-1]
+    for cur_x, cur_y in polygon:
+        dx = cur_x - prev_x
+        dy = cur_y - prev_y
+        cross = (x - prev_x) * dy - (y - prev_y) * dx
+        if abs(cross) <= tolerance:
+            dot = (x - prev_x) * (x - cur_x) + (y - prev_y) * (y - cur_y)
+            if dot <= tolerance:
+                return True
+        if (prev_y > y) != (cur_y > y):
+            ix = prev_x + (y - prev_y) * (cur_x - prev_x) / max(1.0e-12, (cur_y - prev_y))
+            if ix >= x - tolerance:
+                inside = not inside
+        prev_x, prev_y = cur_x, cur_y
+    return inside
+
+
+def _sample_cubic_vec(p0: Vector, h0: Vector, h1: Vector, p1: Vector, t: float) -> Vector:
+    mt = 1.0 - t
+    return (mt**3) * p0 + (3.0 * mt * mt * t) * h0 + (3.0 * mt * t * t) * h1 + (t**3) * p1
+
+
+def _iter_curve_local_samples(obj: bpy.types.Object, *, steps: int = 8):
+    curve = getattr(obj, "data", None)
+    if curve is None:
+        return
+    for spline in getattr(curve, "splines", []) or []:
+        if spline.type == "BEZIER":
+            points = list(getattr(spline, "bezier_points", []) or [])
+            count = len(points)
+            if count == 0:
+                continue
+            segment_count = count if getattr(spline, "use_cyclic_u", False) else max(0, count - 1)
+            for index in range(segment_count):
+                p0 = points[index]
+                p1 = points[(index + 1) % count]
+                for step in range(steps + 1):
+                    pos = _sample_cubic_vec(
+                        Vector(p0.co),
+                        Vector(p0.handle_right),
+                        Vector(p1.handle_left),
+                        Vector(p1.co),
+                        step / max(1, steps),
+                    )
+                    yield pos
+        else:
+            for point in getattr(spline, "points", []) or []:
+                co = getattr(point, "co", None)
+                if co is None:
+                    continue
+                yield Vector((float(co.x), float(co.y), float(co.z)))
+
+
+def _balloon_curve_needs_coma_clip(
+    scene,
+    work,
+    page,
+    entry,
+    obj: bpy.types.Object,
+    mask_obj: bpy.types.Object | None,
+) -> bool:
+    if mask_obj is None:
+        return False
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    page_id, coma_id = _split_coma_parent_key(page, parent_key)
+    target_page = page if str(getattr(page, "id", "") or "") == page_id else _find_page_by_id(work, page_id)
+    target_coma = _find_coma_by_id(target_page, coma_id)
+    if scene is None or work is None or target_page is None or target_coma is None:
+        return True
+    try:
+        from . import layer_hierarchy
+
+        polygon = [(float(x_mm), float(y_mm)) for x_mm, y_mm in layer_hierarchy.coma_polygon(target_coma)]
+        if len(polygon) < 3:
+            return True
+        line_margin = max(0.0, float(getattr(entry, "line_width_mm", 0.0) or 0.0)) * 0.5
+        x0 = float(getattr(entry, "x_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0) - line_margin
+        y0 = float(getattr(entry, "y_mm", 0.0) or 0.0) + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0) - line_margin
+        x1 = (
+            float(getattr(entry, "x_mm", 0.0) or 0.0)
+            + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+            + max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0))
+            + line_margin
+        )
+        y1 = (
+            float(getattr(entry, "y_mm", 0.0) or 0.0)
+            + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+            + max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0))
+            + line_margin
+        )
+        corners = ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
+        for xy in corners:
+            if not _point_in_polygon_xy(xy, polygon, tolerance=0.1):
+                return True
+        return False
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: clip need check failed")
+        return True
+
+
+def _coma_mask_object_for_entry(scene, work, page, entry, obj: bpy.types.Object | None = None):
+    if scene is None or work is None or entry is None:
+        return None
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    parent_kind = str(getattr(entry, "parent_kind", "") or "")
+    if parent_kind != "coma" and ":" not in parent_key:
+        return None
+    page_id, coma_id = _split_coma_parent_key(page, parent_key)
+    if not page_id or not coma_id:
+        return None
+    target_page = page if str(getattr(page, "id", "") or "") == page_id else _find_page_by_id(work, page_id)
+    target_coma = _find_coma_by_id(target_page, coma_id)
+    if obj is not None and target_page is not None and target_coma is not None:
+        return _ensure_balloon_clip_mask(scene, work, target_page, target_coma, entry, obj)
+    try:
+        from . import coma_plane
+
+        if target_page is not None and target_coma is not None:
+            return coma_plane.ensure_coma_mask(scene, work, target_page, target_coma)
+        return coma_plane.find_coma_mask_object(page_id, coma_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: coma mask resolve failed")
+    return None
+
+
+def _remove_balloon_clip_mask(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    mask_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}"
+    for obj in list(bpy.data.objects):
+        if obj.name != mask_name and not (
+            obj.get(PROP_BALLOON_CLIP_MASK_KIND) == "coma_clip"
+            and str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "") == balloon_id
+        ):
+            continue
+        data = getattr(obj, "data", None)
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+        _remove_unused_data_block(data)
+
+
+def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.types.Object):
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+    try:
+        from . import layer_hierarchy
+        from . import page_grid
+
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id:
+            return None
+        page_idx = -1
+        for i, page_entry in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(page_entry, "id", "") or "") == page_id:
+                page_idx = i
+                break
+        ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_idx if page_idx >= 0 else 0)
+        inv = owner_obj.matrix_world.inverted_safe()
+        verts = []
+        for x_mm, y_mm in layer_hierarchy.coma_polygon(coma):
+            world = Vector((mm_to_m(float(x_mm) + ox_mm), mm_to_m(float(y_mm) + oy_mm), 0.0))
+            verts.append(tuple(inv @ world))
+        if len(verts) < 3:
+            _remove_balloon_clip_mask(balloon_id)
+            return None
+        mesh_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}_mesh"
+        obj_name = f"{BALLOON_CLIP_MASK_NAME_PREFIX}{balloon_id}"
+        mesh = bpy.data.meshes.get(mesh_name)
+        if mesh is None:
+            mesh = bpy.data.meshes.new(mesh_name)
+        mesh.clear_geometry()
+        mesh.from_pydata(verts, [], [tuple(range(len(verts)))])
+        mesh.update()
+        mask_obj = bpy.data.objects.get(obj_name)
+        if mask_obj is None:
+            mask_obj = bpy.data.objects.new(obj_name, mesh)
+        elif mask_obj.data is not mesh:
+            mask_obj.data = mesh
+        mask_obj.matrix_world = owner_obj.matrix_world.copy()
+        mask_obj[PROP_BALLOON_CLIP_MASK_KIND] = "coma_clip"
+        mask_obj[PROP_BALLOON_CLIP_MASK_OWNER_ID] = balloon_id
+        mask_obj[on.PROP_MANAGED] = False
+        mask_obj.hide_viewport = True
+        mask_obj.hide_render = True
+        mask_obj.hide_select = True
+        target_collection = owner_obj.users_collection[0] if owner_obj.users_collection else bpy.context.collection
+        if target_collection is not None and not any(o is mask_obj for o in target_collection.objects):
+            target_collection.objects.link(mask_obj)
+        for collection in tuple(mask_obj.users_collection):
+            if collection is target_collection:
+                continue
+            try:
+                collection.objects.unlink(mask_obj)
+            except Exception:  # noqa: BLE001
+                pass
+        return mask_obj
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: clip mask create failed")
+        return None
 
 
 def _set_data_materials(data, materials: Sequence[bpy.types.Material | None]) -> None:
@@ -593,6 +836,7 @@ def _add_bezier_loop(
     spline = curve.splines.new("BEZIER")
     spline.bezier_points.add(len(points) - 1)
     spline.use_cyclic_u = True
+    spline.material_index = 0
     for index, point in enumerate(points):
         bp = spline.bezier_points[index]
         bp.co = _point_to_curve_xyz(point, offset)
@@ -614,6 +858,7 @@ def _add_bezier_anchor_loop(
     spline = curve.splines.new("BEZIER")
     spline.bezier_points.add(len(anchors) - 1)
     spline.use_cyclic_u = True
+    spline.material_index = 0
     for index, anchor in enumerate(anchors):
         bp = spline.bezier_points[index]
         bp.co = _point_to_curve_xyz(anchor.co, offset)
@@ -791,9 +1036,12 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
     obj.hide_render = not bool(getattr(entry, "visible", True))
     try:
         _remove_balloon_source_object(balloon_id)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=float(getattr(entry, "line_width_mm", 0.3) or 0.3),
+            mask_object=mask_obj,
+            clip_needed=_balloon_curve_needs_coma_clip(scene, work, page, entry, obj, mask_obj),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
@@ -864,6 +1112,17 @@ def cleanup_orphan_balloon_objects(scene) -> int:
             owner_id = str(obj.get(PROP_BALLOON_SOURCE_OWNER_ID, "") or "")
             if owner_id and owner_id not in valid:
                 _remove_balloon_object(obj)
+                removed += 1
+            continue
+        if obj.get(PROP_BALLOON_CLIP_MASK_KIND) == "coma_clip":
+            owner_id = str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "")
+            if owner_id and owner_id not in valid:
+                data = getattr(obj, "data", None)
+                try:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                except Exception:  # noqa: BLE001
+                    pass
+                _remove_unused_data_block(data)
                 removed += 1
     return removed
 

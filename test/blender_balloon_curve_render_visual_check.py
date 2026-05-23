@@ -120,6 +120,10 @@ def main() -> None:
         required = {"GeometryNodeFillCurve", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"}
         missing = required - node_types
         assert not missing, f"塗り/線の表示ノードが不足しています: {sorted(missing)}"
+        node_labels = {str(getattr(node, "label", "") or "") for node in modifier.node_group.nodes}
+        assert "塗りを背面へ" in node_labels and "線を前面へ" in node_labels, (
+            "フキダシの塗りと輪郭線の前後関係を固定するノードがありません"
+        )
         material_names = _evaluated_material_names(obj)
         assert any(name.startswith(balloon_curve_object.BALLOON_FILL_MATERIAL_PREFIX) for name in material_names), (
             f"表示結果に塗り素材がありません: {sorted(material_names)}"

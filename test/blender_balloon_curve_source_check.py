@@ -38,6 +38,18 @@ def _evaluated_polygon_count(obj) -> int:
         evaluated.to_mesh_clear()
 
 
+def _evaluated_width(obj) -> float:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        coords = [vertex.co for vertex in mesh.vertices]
+        assert coords, "表示結果の頂点がありません"
+        return max(co.x for co in coords) - min(co.x for co in coords)
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _input_socket_names(modifier) -> set[str]:
     group = modifier.node_group
     assert group is not None
@@ -97,6 +109,16 @@ def main() -> None:
         assert "塗り素材" in socket_names
         forbidden = {name for name in socket_names if name.startswith("しっぽ") or "山の" in name or name == "形状"}
         assert not forbidden, f"使わない形状設定が軽量表示補助に残っています: {sorted(forbidden)}"
+
+        entry.line_width_mm = 1.0
+        balloon_curve_object.on_balloon_entry_changed(entry)
+        bpy.context.view_layer.update()
+        base_width = _evaluated_width(obj)
+        widest_point = max(obj.data.splines[0].bezier_points, key=lambda point: float(point.co.x))
+        widest_point.radius = 3.0
+        bpy.context.view_layer.update()
+        wider_width = _evaluated_width(obj)
+        assert wider_width > base_width + 0.0003, "制御点ごとの線幅が表示結果へ反映されていません"
 
         first_point = obj.data.splines[0].bezier_points[0]
         original_x = float(first_point.co.x)
