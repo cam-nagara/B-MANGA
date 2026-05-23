@@ -243,12 +243,32 @@ def _ensure_uv(mesh: bpy.types.Mesh, coma=None) -> None:
     try:
         for loop in mesh.loops:
             co = mesh.vertices[loop.vertex_index].co
-            uv_layer.data[loop.index].uv = (
-                (co.x - min_x) / w,
-                (co.y - min_y) / h,
-            )
+            u = (co.x - min_x) / w
+            v = (co.y - min_y) / h
+            u, v = _fit_preview_uv(mesh, u, v, w, h)
+            uv_layer.data[loop.index].uv = (u, v)
     except Exception:  # noqa: BLE001
         _logger.exception("coma_plane: UV assign failed")
+
+
+def _fit_preview_uv(mesh: bpy.types.Mesh, u: float, v: float, w: float, h: float) -> tuple[float, float]:
+    mode = str(mesh.get("bname_uv_fit_mode", "") or "")
+    if mode != "cover":
+        return u, v
+    try:
+        image_aspect = float(mesh.get("bname_uv_image_aspect", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        image_aspect = 0.0
+    if image_aspect <= 0.0 or h <= 0.0:
+        return u, v
+    frame_aspect = w / h
+    if frame_aspect <= 0.0:
+        return u, v
+    if image_aspect > frame_aspect:
+        width = max(0.0, min(1.0, frame_aspect / image_aspect))
+        return 0.5 + (u - 0.5) * width, v
+    height = max(0.0, min(1.0, image_aspect / frame_aspect))
+    return u, 0.5 + (v - 0.5) * height
 
 
 def _is_reasonable_bbox_m(w: float, h: float) -> bool:
@@ -384,15 +404,31 @@ def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None, work=No
         stored_mtime = float(mesh.get("bname_uv_ref_mtime", -1.0) or -1.0)
     except (TypeError, ValueError):
         stored_mtime = -1.0
+    use_cover_fit = _preview_image_needs_aspect_fit(image, work)
+    expected_fit_mode = "cover" if use_cover_fit else "page"
     # 既存アンカーが不正サイズ (フォールバックでロックされてしまった) の時は
     # mtime 一致でも強制的に張り替える。
     anchor_invalid = not _has_valid_uv_anchor(mesh)
-    if not anchor_invalid and img_mtime <= stored_mtime + 1.0e-3:
+    fit_mode_stale = str(mesh.get("bname_uv_fit_mode", "") or "") != expected_fit_mode
+    if not anchor_invalid and not fit_mode_stale and img_mtime <= stored_mtime + 1.0e-3:
         # ページ基準アンカーがすでにセットされていればそのまま採用。
         # (旧版で多角形 bbox にロックされていても、 ensure_coma_plane /
         # update_coma_plane_geometry 経由で都度ページ基準へ上書きされる。)
         return
-    bbox = _page_anchor_m(work, coma) or _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
+    if use_cover_fit:
+        bbox = _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
+        try:
+            mesh["bname_uv_fit_mode"] = "cover"
+            mesh["bname_uv_image_aspect"] = _image_aspect(image)
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        bbox = _page_anchor_m(work, coma) or _bbox_from_coma_m(coma) or _bbox_from_mesh(mesh)
+        try:
+            mesh["bname_uv_fit_mode"] = "page"
+            mesh["bname_uv_image_aspect"] = 0.0
+        except Exception:  # noqa: BLE001
+            pass
     if bbox is None:
         return
     _x, _y, w, h = bbox
@@ -402,6 +438,33 @@ def _refresh_uv_anchor_for_image(mesh: bpy.types.Mesh, image, coma=None, work=No
     mesh["bname_uv_ref"] = list(bbox)
     mesh["bname_uv_ref_mtime"] = img_mtime
     _ensure_uv(mesh, coma=coma)
+
+
+def _image_aspect(image) -> float:
+    try:
+        width = max(1, int(image.size[0]))
+        height = max(1, int(image.size[1]))
+    except Exception:  # noqa: BLE001
+        return 0.0
+    return width / height
+
+
+def _preview_image_needs_aspect_fit(image, work) -> bool:
+    image_aspect = _image_aspect(image)
+    if image_aspect <= 0.0:
+        return False
+    paper = getattr(work, "paper", None) if work is not None else None
+    try:
+        page_w = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
+        page_h = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if page_w <= 0.0 or page_h <= 0.0:
+        return False
+    page_aspect = page_w / page_h
+    if page_aspect <= 0.0:
+        return False
+    return abs(image_aspect - page_aspect) / page_aspect > 0.02
 
 
 def _apply_material(
@@ -1117,6 +1180,8 @@ def ensure_coma_plane(
     page_anchor = _page_anchor_m(work, coma)
     if page_anchor is not None:
         mesh["bname_uv_ref"] = list(page_anchor)
+        mesh["bname_uv_fit_mode"] = "page"
+        mesh["bname_uv_image_aspect"] = 0.0
     _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
 
     mat = _ensure_coma_plane_material(page_id, coma_id, coma, work, page)
@@ -1195,6 +1260,8 @@ def update_coma_plane_geometry(
     page_anchor = _page_anchor_m(work, coma)
     if page_anchor is not None:
         mesh["bname_uv_ref"] = list(page_anchor)
+        mesh["bname_uv_fit_mode"] = "page"
+        mesh["bname_uv_image_aspect"] = 0.0
     try:
         _build_mesh_geometry(mesh, coma, soft_mask=_uses_soft_mask(coma))
     except Exception:  # noqa: BLE001

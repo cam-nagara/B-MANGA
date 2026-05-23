@@ -40,7 +40,7 @@ def main() -> None:
 
         work = get_work(bpy.context)
         assert work is not None
-        assert abs(float(work.page_preview_scale_percentage) - 10.0) < 0.001
+        assert abs(float(work.page_preview_scale_percentage) - 12.5) < 0.001
 
         work.page_preview_scale_percentage = 25.0
         data = schema.work_to_dict(work)
@@ -51,7 +51,7 @@ def main() -> None:
         schema.work_from_dict(work, {"pagePreviewScalePercentage": 999.0})
         assert abs(float(work.page_preview_scale_percentage) - 100.0) < 0.001
         schema.work_from_dict(work, {"pagePreviewScalePercentage": "invalid"})
-        assert abs(float(work.page_preview_scale_percentage) - 10.0) < 0.001
+        assert abs(float(work.page_preview_scale_percentage) - 12.5) < 0.001
 
         Image = export_pipeline.Image
         assert Image is not None

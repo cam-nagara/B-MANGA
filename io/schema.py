@@ -522,9 +522,9 @@ def layer_folder_from_dict(entry, data: dict[str, Any]) -> None:
 
 def _page_preview_scale_percentage_from_data(value: object) -> float:
     try:
-        percentage = float(value or 10.0)
+        percentage = float(value or 12.5)
     except (TypeError, ValueError):
-        percentage = 10.0
+        percentage = 12.5
     return max(1.0, min(100.0, percentage))
 
 
@@ -542,9 +542,12 @@ def work_to_dict(work) -> dict[str, Any]:
         "comaBlendTemplatePath": str(getattr(work, "coma_blend_template_path", "") or ""),
         "pagePreviewScalePercentage": round(
             _page_preview_scale_percentage_from_data(
-                getattr(work, "page_preview_scale_percentage", 10.0)
+                getattr(work, "page_preview_scale_percentage", 12.5)
             ),
             3,
+        ),
+        "autoRenderComaThumbOnReturn": bool(
+            getattr(work, "auto_render_coma_thumb_on_return", True)
         ),
         "safeAreaOverlay": safe_area_to_dict(work.safe_area_overlay),
         "raster_layers": [
@@ -591,7 +594,11 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
         work.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
     if hasattr(work, "page_preview_scale_percentage"):
         work.page_preview_scale_percentage = _page_preview_scale_percentage_from_data(
-            data.get("pagePreviewScalePercentage", 10.0)
+            data.get("pagePreviewScalePercentage", 12.5)
+        )
+    if hasattr(work, "auto_render_coma_thumb_on_return"):
+        work.auto_render_coma_thumb_on_return = bool(
+            data.get("autoRenderComaThumbOnReturn", True)
         )
     safe_area_from_dict(work.safe_area_overlay, data.get("safeAreaOverlay", {}))
     scene = _scene_from_work(work)
@@ -882,7 +889,6 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "innerWhiteMarginWidthMm": round(float(getattr(entry, "inner_white_margin_width_mm", 1.0)), 3),
         "innerWhiteMarginColor": color_to_hex(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0))),
         "innerWhiteMarginColorAlpha": round(float(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0))[3]), 3),
-        "blendMode": getattr(entry, "blend_mode", "normal"),
         "mergeGroupId": getattr(entry, "merge_group_id", ""),
         "parentKind": getattr(entry, "parent_kind", "page"),
         "parentKey": getattr(entry, "parent_key", ""),
@@ -917,6 +923,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "cloudBumpWidthJitter": round(entry.shape_params.cloud_bump_width_jitter, 3),
             "cloudBumpHeightJitter": round(entry.shape_params.cloud_bump_height_jitter, 3),
             "cloudOffset": round(entry.shape_params.cloud_offset_percent / 100.0, 3),
+            "shapeSeed": int(getattr(entry.shape_params, "shape_seed", 0) or 0),
             "cloudSubWidthRatio": round(entry.shape_params.cloud_sub_width_ratio, 3),
             "cloudSubHeightRatio": round(entry.shape_params.cloud_sub_height_ratio, 3),
             "cloudSubWidthJitter": round(entry.shape_params.cloud_sub_width_jitter, 3),
@@ -971,7 +978,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.inner_white_margin_width_mm = float(data.get("innerWhiteMarginWidthMm", 1.0))
     alpha = float(data.get("innerWhiteMarginColorAlpha", 1.0))
     entry.inner_white_margin_color = hex_to_rgba(data.get("innerWhiteMarginColor", "#FFFFFF"), alpha)
-    entry.blend_mode = data.get("blendMode", "normal")
+    if hasattr(entry, "blend_mode"):
+        entry.blend_mode = "normal"
     entry.merge_group_id = data.get("mergeGroupId", "")
     entry.parent_kind = data.get("parentKind", data.get("parent_kind", "page"))
     entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
@@ -1013,6 +1021,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.shape_params.cloud_bump_height_jitter = float(sp.get("cloudBumpHeightJitter", 0.0))
     entry.shape_params.cloud_sub_width_jitter = float(sp.get("cloudSubWidthJitter", 0.0))
     entry.shape_params.cloud_sub_height_jitter = float(sp.get("cloudSubHeightJitter", 0.0))
+    entry.shape_params.shape_seed = int(sp.get("shapeSeed", sp.get("seed", 0)) or 0)
     if "cloudOffsetPercent" in sp:
         entry.shape_params.cloud_offset_percent = float(sp.get("cloudOffsetPercent", 50.0))
     else:

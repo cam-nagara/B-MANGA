@@ -483,7 +483,6 @@ def main() -> None:
             balloon.inner_white_margin_enabled = True
             balloon.inner_white_margin_width_mm = 0.75
             balloon.inner_white_margin_color = (0.82, 0.83, 0.84, 1.0)
-            balloon.blend_mode = "lighten"
             balloon.flip_h = True
             balloon.flip_v = True
             balloon.opacity = 77.0
@@ -497,6 +496,7 @@ def main() -> None:
             sp.cloud_sub_width_jitter = 0.17
             sp.cloud_sub_height_ratio = 24.0
             sp.cloud_sub_height_jitter = 0.18
+            sp.shape_seed = 12
             sp.cloud_wave_count = 17
             sp.cloud_wave_amplitude_mm = 3.3
             sp.spike_count = 29
@@ -528,6 +528,12 @@ def main() -> None:
         balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.55, "フキダシ 線幅")
         _assert_socket_hidden_in_modifier(balloon_modifier, "線幅 (mm)", False)
+        balloon_inputs = {
+            str(getattr(item, "name", "") or "")
+            for item in balloon_modifier.node_group.interface.items_tree
+            if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
+        }
+        assert "合成モード" not in balloon_inputs, "フキダシに合成モード入力が残っています"
         assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシの表示結果が空です"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
         assert source_obj is None, "フキダシにB-Name生成の参照形状が残っています"
@@ -535,6 +541,10 @@ def main() -> None:
         balloon.line_width_mm = 0.91
         balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
         _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.91, "フキダシ 線幅 更新")
+
+        balloon.line_style = "none"
+        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
+        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.0, "フキダシ 線なし")
 
         balloon_shape_ids = {
             str(getattr(item, "identifier", "") or "")

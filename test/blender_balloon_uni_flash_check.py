@@ -110,7 +110,8 @@ def main() -> None:
         assert obj.get(balloon_curve_render_nodes.PROP_GN_KIND) == balloon_curve_render_nodes.KIND, "フキダシが旧ウニフラッシュ用ノードを使っています"
         modifier.show_viewport = False
         bpy.context.view_layer.update()
-        assert _evaluated_polygon_count(obj) > 0, "表示補助を非表示にするとフキダシ実体まで消えています"
+        assert len(obj.data.splines) >= 1, "表示補助を非表示にすると編集用カーブまで消えています"
+        assert _evaluated_polygon_count(obj) == 0, "表示補助を非表示にしても下敷きフキダシが残っています"
         modifier.show_viewport = True
         bpy.context.view_layer.update()
 

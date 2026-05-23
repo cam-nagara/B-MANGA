@@ -757,8 +757,10 @@ def apply_selected_resolution_setting(context) -> None:
     scene.render.resolution_y = int(item.resolution_y)
     if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
         _apply_fisheye_layout(scene)
-    if bool(getattr(scene, "bname_coma_camera_reduction_mode", False)):
+    elif bool(getattr(scene, "bname_coma_camera_reduction_mode", False)):
         _apply_reduction_layout(scene)
+    else:
+        scene.render.resolution_percentage = 100
 
 
 def apply_fisheye_mode(context) -> None:
@@ -956,8 +958,9 @@ def _apply_fisheye_layout(scene) -> None:
     oy = int(getattr(scene, "bname_coma_camera_original_resolution_y", 0)) or int(scene.render.resolution_y)
     edge = max(1, ox, oy)
     if bool(getattr(scene, "bname_coma_camera_reduction_mode", False)):
-        scale = float(getattr(scene, "bname_coma_camera_preview_scale_percentage", 100.0)) / 100.0
-        edge = max(1, int(edge * scale))
+        scene.render.resolution_percentage = _preview_resolution_percentage(scene)
+    else:
+        scene.render.resolution_percentage = 100
     scene.render.resolution_x = edge
     scene.render.resolution_y = edge
 
@@ -965,14 +968,23 @@ def _apply_fisheye_layout(scene) -> None:
 def _apply_reduction_layout(scene) -> None:
     ox = int(getattr(scene, "bname_coma_camera_original_resolution_x", 0)) or int(scene.render.resolution_x)
     oy = int(getattr(scene, "bname_coma_camera_original_resolution_y", 0)) or int(scene.render.resolution_y)
-    scale = float(getattr(scene, "bname_coma_camera_preview_scale_percentage", 100.0)) / 100.0
     if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
         edge = max(1, ox, oy)
-        scene.render.resolution_x = max(1, int(edge * scale))
-        scene.render.resolution_y = max(1, int(edge * scale))
+        scene.render.resolution_x = edge
+        scene.render.resolution_y = edge
     else:
-        scene.render.resolution_x = max(1, int(ox * scale))
-        scene.render.resolution_y = max(1, int(oy * scale))
+        scene.render.resolution_x = ox
+        scene.render.resolution_y = oy
+    scene.render.resolution_percentage = _preview_resolution_percentage(scene)
+
+
+def _preview_resolution_percentage(scene) -> int:
+    try:
+        percentage = float(getattr(scene, "bname_coma_camera_preview_scale_percentage", 100.0) or 100.0)
+    except (TypeError, ValueError):
+        percentage = 100.0
+    percentage = max(1.0, min(100.0, percentage))
+    return max(1, min(32767, int(math.floor(percentage + 0.5))))
 
 
 def _restore_original_resolution(scene) -> None:
@@ -981,6 +993,7 @@ def _restore_original_resolution(scene) -> None:
     if ox > 0 and oy > 0:
         scene.render.resolution_x = ox
         scene.render.resolution_y = oy
+    scene.render.resolution_percentage = 100
 
 
 def _iter_camera_backgrounds(context):

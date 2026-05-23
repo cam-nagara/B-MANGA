@@ -106,7 +106,6 @@ class BNAME_PT_balloons(Panel):
         row.prop(entry, "flip_h", toggle=True)
         row.prop(entry, "flip_v", toggle=True)
         box.prop(entry, "opacity", slider=True)
-        box.prop(entry, "blend_mode")
         if balloon_shapes.normalize_shape(entry.shape) == "rect":
             box.prop(entry, "rounded_corner_enabled")
             sub = box.row()
@@ -164,7 +163,9 @@ class BNAME_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_bump_height_mm")
             row.prop(sp, "cloud_bump_height_jitter", text="乱れ")
-            box.prop(sp, "cloud_offset_percent")
+            row = box.row(align=True)
+            row.prop(sp, "cloud_offset_percent")
+            row.prop(sp, "shape_seed")
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_width_ratio")
             row.prop(sp, "cloud_sub_width_jitter", text="乱れ")

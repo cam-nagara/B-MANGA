@@ -208,6 +208,8 @@ def _creation_violates_layer_scope(context, page, x_mm: float, y_mm: float, widt
     cx = x_mm + width_mm * 0.5
     cy = y_mm + height_mm * 0.5
     mode = get_mode(context)
+    if page is None:
+        return False
     if mode == MODE_PAGE:
         return False
     if mode == MODE_COMA:
@@ -275,14 +277,15 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
     return ""
 
 
-def _hit_balloon_entry(page, x_mm: float, y_mm: float):
-    active_idx = int(getattr(page, "active_balloon_index", -1))
+def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: float):
     indices: list[int] = []
-    if 0 <= active_idx < len(page.balloons):
+    if collection is None:
+        return -1, None, ""
+    if 0 <= active_idx < len(collection):
         indices.append(active_idx)
-    indices.extend(i for i in reversed(range(len(page.balloons))) if i != active_idx)
+    indices.extend(i for i in reversed(range(len(collection))) if i != active_idx)
     for idx in indices:
-        entry = page.balloons[idx]
+        entry = collection[idx]
         if getattr(entry, "shape", "rect") == "none":
             continue
         part = _balloon_tail_hit_part(entry, x_mm, y_mm)
@@ -292,6 +295,19 @@ def _hit_balloon_entry(page, x_mm: float, y_mm: float):
         if part:
             return idx, entry, part
     return -1, None, ""
+
+
+def _hit_balloon_entry(page, x_mm: float, y_mm: float):
+    return _hit_balloon_collection(
+        getattr(page, "balloons", None),
+        int(getattr(page, "active_balloon_index", -1)),
+        x_mm,
+        y_mm,
+    )
+
+
+def _hit_shared_balloon_entry(work, x_mm: float, y_mm: float):
+    return _hit_balloon_collection(getattr(work, "shared_balloons", None), -1, x_mm, y_mm)
 
 
 def _balloon_tail_hit_part(entry, x_mm: float, y_mm: float) -> str:
@@ -355,6 +371,34 @@ def _clear_balloon_selection(page) -> None:
             entry.selected = False
 
 
+def _clear_balloon_collection_selection(collection) -> None:
+    for entry in collection or []:
+        if hasattr(entry, "selected"):
+            entry.selected = False
+
+
+def _clear_all_balloon_selections(work) -> None:
+    if work is None:
+        return
+    for page in getattr(work, "pages", []) or []:
+        _clear_balloon_collection_selection(getattr(page, "balloons", None))
+    _clear_balloon_collection_selection(getattr(work, "shared_balloons", None))
+
+
+def _set_balloon_object_selection(context, page, entry, *, mode: str) -> None:
+    key = object_selection.balloon_key(page, entry)
+    current = object_selection.get_keys(context)
+    if mode == "toggle":
+        current = [item for item in current if item != key]
+        if bool(getattr(entry, "selected", False)):
+            current.append(key)
+    elif mode == "add":
+        current = current if key in current else [*current, key]
+    else:
+        current = [key]
+    object_selection.set_keys(context, current)
+
+
 def _selected_balloon_indices(page) -> list[int]:
     return [
         i for i, entry in enumerate(getattr(page, "balloons", []))
@@ -362,21 +406,30 @@ def _selected_balloon_indices(page) -> list[int]:
     ]
 
 
+def _selected_balloon_indices_in_collection(collection) -> list[int]:
+    return [
+        i for i, entry in enumerate(collection or [])
+        if bool(getattr(entry, "selected", False))
+    ]
+
+
 def _select_balloon_index(context, work, page, index: int, *, mode: str = "single") -> bool:
-    if page is None or not (0 <= index < len(page.balloons)):
+    collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
+    if collection is None or not (0 <= index < len(collection)):
         return False
-    entry = page.balloons[index]
+    entry = collection[index]
     if mode == "single":
-        _clear_balloon_selection(page)
+        _clear_all_balloon_selections(work)
         entry.selected = True
     elif mode == "toggle":
         entry.selected = not bool(getattr(entry, "selected", False))
-        if not _selected_balloon_indices(page):
+        if not _selected_balloon_indices_in_collection(collection):
             entry.selected = True
     elif mode == "add":
         entry.selected = True
-    page.active_balloon_index = index
-    if work is not None:
+    if page is not None:
+        page.active_balloon_index = index
+    if work is not None and page is not None:
         for page_index, candidate in enumerate(work.pages):
             if candidate == page or getattr(candidate, "id", "") == getattr(page, "id", ""):
                 work.active_page_index = page_index
@@ -386,11 +439,7 @@ def _select_balloon_index(context, work, page, index: int, *, mode: str = "singl
     if hasattr(context.scene, "bname_active_gp_folder_key"):
         context.scene.bname_active_gp_folder_key = ""
     _sync_active_balloon_stack_item(context, page, entry)
-    object_selection.select_key(
-        context,
-        object_selection.balloon_key(page, entry),
-        mode=mode,
-    )
+    _set_balloon_object_selection(context, page, entry, mode=mode)
     return True
 
 
@@ -480,15 +529,11 @@ def _create_balloon_entry(
     entry.parent_key = "" if entry.parent_kind in {"outside", "none"} else str(parent_key or default_parent_key)
     if page is not None:
         page.active_balloon_index = len(page.balloons) - 1
-        _clear_balloon_selection(page)
+    _clear_all_balloon_selections(work)
     entry.selected = True
     if hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "balloon"
-    object_selection.select_key(
-        context,
-        object_selection.balloon_key(page, entry),
-        mode="single",
-    )
+    object_selection.set_keys(context, [object_selection.balloon_key(page, entry)])
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     _sync_active_balloon_stack_item(context, page, entry)
     return entry
@@ -523,6 +568,13 @@ def _selected_balloon_entries(page) -> list[object]:
 
 def _find_balloon_index(page, balloon_id: str) -> int:
     for i, entry in enumerate(getattr(page, "balloons", [])):
+        if getattr(entry, "id", "") == balloon_id:
+            return i
+    return -1
+
+
+def _find_balloon_index_in_collection(collection, balloon_id: str) -> int:
+    for i, entry in enumerate(collection or []):
         if getattr(entry, "id", "") == balloon_id:
             return i
     return -1
@@ -795,7 +847,6 @@ class BNAME_OT_balloon_merge_selected(Operator):
         group_id = _allocate_merge_group_id(page)
         for entry in entries:
             entry.merge_group_id = group_id
-            entry.blend_mode = "lighten"
             entry.selected = True
         first_id = str(getattr(entries[0], "id", "") or "")
         page.active_balloon_index = next(
@@ -804,6 +855,12 @@ class BNAME_OT_balloon_merge_selected(Operator):
         )
         if hasattr(context.scene, "bname_active_layer_kind"):
             context.scene.bname_active_layer_kind = "balloon"
+        try:
+            from ..utils import balloon_merge_object
+
+            balloon_merge_object.sync_groups_for_page(context.scene, get_work(context), page)
+        except Exception:  # noqa: BLE001
+            _logger.exception("balloon merge display sync failed")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         self.report({"INFO"}, f"フキダシを結合: {group_id}")
         return {"FINISHED"}
@@ -899,6 +956,13 @@ class BNAME_OT_balloon_tool(Operator):
         hit_index, hit_entry, hit_part = (-1, None, "")
         if page is not None and lx is not None and ly is not None:
             hit_index, hit_entry, hit_part = _hit_balloon_entry(page, lx, ly)
+        elif lx is None or ly is None:
+            wx, wy = _event_world_xy_mm(context, event)
+            if wx is not None and wy is not None:
+                hit_index, hit_entry, hit_part = _hit_shared_balloon_entry(work, wx, wy)
+                if hit_entry is not None:
+                    page = None
+                    lx, ly = wx, wy
         if event.ctrl:
             if page is None or lx is None or ly is None:
                 return {"RUNNING_MODAL"}
@@ -1044,7 +1108,7 @@ class BNAME_OT_balloon_tool(Operator):
     def _start_balloon_drag(self, page, entry, part: str, x_mm: float, y_mm: float) -> None:
         self._dragging = True
         self._drag_action = "move" if part == "body" else part
-        self._drag_page_id = getattr(page, "id", "")
+        self._drag_page_id = getattr(page, "id", "") if page is not None else OUTSIDE_STACK_KEY
         self._drag_balloon_id = getattr(entry, "id", "")
         self._drag_start_x = float(x_mm)
         self._drag_start_y = float(y_mm)
@@ -1054,14 +1118,19 @@ class BNAME_OT_balloon_tool(Operator):
         self._snapshots = self._make_snapshots(page, entry)
 
     def _make_snapshots(self, page, entry) -> list[tuple[str, float, float, float, float]]:
+        work = get_work(bpy.context)
+        collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
         if bool(getattr(entry, "selected", False)) and self._drag_action == "move":
-            indices = _selected_balloon_indices(page)
+            indices = [
+                i for i, item in enumerate(collection or [])
+                if bool(getattr(item, "selected", False))
+            ]
         else:
-            indices = [_find_balloon_index(page, getattr(entry, "id", ""))]
+            indices = [_find_balloon_index_in_collection(collection, getattr(entry, "id", ""))]
         snapshots = []
         for idx in indices:
-            if 0 <= idx < len(page.balloons):
-                item = page.balloons[idx]
+            if collection is not None and 0 <= idx < len(collection):
+                item = collection[idx]
                 snapshots.append((item.id, item.x_mm, item.y_mm, item.width_mm, item.height_mm))
         return snapshots
 
@@ -1141,6 +1210,13 @@ class BNAME_OT_balloon_tool(Operator):
 
     def _drag_page_and_entry(self, context):
         work = get_work(context)
+        if str(getattr(self, "_drag_page_id", "") or "") == OUTSIDE_STACK_KEY:
+            idx = _find_balloon_index_in_collection(
+                getattr(work, "shared_balloons", None),
+                self._drag_balloon_id,
+            )
+            entry = work.shared_balloons[idx] if work is not None and 0 <= idx < len(work.shared_balloons) else None
+            return None, entry
         _page_index, page = _find_page_with_index_by_id(work, self._drag_page_id)
         if page is None:
             return None, None
@@ -1153,14 +1229,20 @@ class BNAME_OT_balloon_tool(Operator):
             self._update_create_preview(context, event)
             return
         page, entry = self._drag_page_and_entry(context)
-        if entry is None or page is None:
+        if entry is None:
             self._clear_drag_state()
             return
-        work, current_page, lx, ly = _resolve_local_xy_for_page_from_event(
-            context, event, getattr(page, "id", "")
-        )
-        if work is None or current_page is None or lx is None or ly is None:
-            return
+        if page is None:
+            work = get_work(context)
+            lx, ly = _event_world_xy_mm(context, event)
+            if work is None or lx is None or ly is None:
+                return
+        else:
+            work, current_page, lx, ly = _resolve_local_xy_for_page_from_event(
+                context, event, getattr(page, "id", "")
+            )
+            if work is None or current_page is None or lx is None or ly is None:
+                return
         dx = float(lx) - self._drag_start_x
         dy = float(ly) - self._drag_start_y
         if abs(dx) > _BALLOON_DRAG_EPS_MM or abs(dy) > _BALLOON_DRAG_EPS_MM:
@@ -1191,7 +1273,7 @@ class BNAME_OT_balloon_tool(Operator):
         elif self._drag_action == "move":
             if self._move_violates_layer_scope(context, page, dx, dy):
                 return
-            self._apply_move_snapshots(page, dx, dy)
+            self._apply_move_snapshots(context, page, dx, dy)
         else:
             x, y, w, h = self._resize_result_rect(entry, dx, dy)
             if _creation_violates_layer_scope(context, page, x, y, w, h):
@@ -1293,13 +1375,17 @@ class BNAME_OT_balloon_tool(Operator):
         self._pending_tail_index = -1
         layer_stack_utils.tag_view3d_redraw(context)
 
-    def _apply_move_snapshots(self, page, dx: float, dy: float) -> None:
+    def _apply_move_snapshots(self, context, page, dx: float, dy: float) -> None:
+        work = get_work(context)
+        collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
         for balloon_id, x, y, _w, _h in self._snapshots:
-            idx = _find_balloon_index(page, balloon_id)
-            if 0 <= idx < len(page.balloons):
-                _move_balloon_with_texts(page, page.balloons[idx], x + dx, y + dy)
+            idx = _find_balloon_index_in_collection(collection, balloon_id)
+            if collection is not None and 0 <= idx < len(collection):
+                _move_balloon_with_texts(page, collection[idx], x + dx, y + dy)
 
     def _move_violates_layer_scope(self, context, page, dx: float, dy: float) -> bool:
+        if page is None:
+            return False
         for _balloon_id, x, y, w, h in self._snapshots:
             if _creation_violates_layer_scope(context, page, x + dx, y + dy, w, h):
                 return True
@@ -1335,14 +1421,16 @@ class BNAME_OT_balloon_tool(Operator):
             points = list(getattr(self, "_tail_drag_points", []) or [])
             if 0 <= tail_index < len(entry.tails) and len(points) >= 2:
                 balloon_tail_geom.write_polyline_points(entry.tails[tail_index], points)
-        elif page is not None:
+        else:
+            work = get_work(context)
+            collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
             for balloon_id, x, y, w, h in self._snapshots:
-                idx = _find_balloon_index(page, balloon_id)
-                if 0 <= idx < len(page.balloons):
-                    _set_balloon_rect(page, page.balloons[idx], x, y, w, h)
+                idx = _find_balloon_index_in_collection(collection, balloon_id)
+                if collection is not None and 0 <= idx < len(collection):
+                    _set_balloon_rect(page, collection[idx], x, y, w, h)
                     if self._drag_action == "center":
-                        page.balloons[idx].center_offset_x_mm = self._drag_orig_center_offset_x
-                        page.balloons[idx].center_offset_y_mm = self._drag_orig_center_offset_y
+                        collection[idx].center_offset_x_mm = self._drag_orig_center_offset_x
+                        collection[idx].center_offset_y_mm = self._drag_orig_center_offset_y
         self._clear_drag_state()
         layer_stack_utils.tag_view3d_redraw(context)
 

@@ -49,6 +49,7 @@ _TAIL_POINT_CORNER_ITEMS = (
 )
 
 _LINE_STYLE_ITEMS = (
+    ("none", "線なし", ""),
     ("solid", "実線", ""),
     ("dashed", "破線", ""),
     ("dotted", "点線", ""),
@@ -227,6 +228,7 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=25.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    shape_seed: IntProperty(name="シード", default=0, min=0, soft_max=9999, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
@@ -295,7 +297,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     inner_white_margin_enabled: BoolProperty(name="内側白フチ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     inner_white_margin_width_mm: FloatProperty(name="内側白フチ幅 (mm)", default=1.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     inner_white_margin_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    blend_mode: EnumProperty(name="合成モード", items=_BLEND_MODE_ITEMS, default="normal", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    blend_mode: EnumProperty(name="", items=_BLEND_MODE_ITEMS, default="normal", options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     merge_group_id: StringProperty(name="結合フォルダ ID", default="")  # type: ignore[valid-type]
     parent_kind: StringProperty(name="親種別", default="page", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     parent_key: StringProperty(name="親キー", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]

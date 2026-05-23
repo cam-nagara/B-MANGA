@@ -155,7 +155,6 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     row.prop(entry, "flip_h", toggle=True)
     row.prop(entry, "flip_v", toggle=True)
     settings.prop(entry, "opacity", slider=True)
-    settings.prop(entry, "blend_mode")
     if getattr(entry, "merge_group_id", ""):
         settings.label(text=f"結合: {entry.merge_group_id}", icon="FILE_FOLDER")
     page = get_active_page(context)
@@ -204,7 +203,9 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_bump_height_mm")
         row.prop(sp, "cloud_bump_height_jitter", text="乱れ")
-        shape_box.prop(sp, "cloud_offset_percent")
+        row = shape_box.row(align=True)
+        row.prop(sp, "cloud_offset_percent")
+        row.prop(sp, "shape_seed")
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_sub_width_ratio")
         row.prop(sp, "cloud_sub_width_jitter", text="乱れ")

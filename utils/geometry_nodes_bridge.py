@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 31
+_GROUP_VERSION = 32
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -66,8 +66,7 @@ _ENUM_CODES = {
     "spacing_mode": {"angle": 1, "distance": 2},
     "inout_apply": {"brush_size": 1, "opacity": 2},
     "inout_range_mode": {"percent": 1, "length": 2},
-    "line_style": {"solid": 1, "dashed": 2, "dotted": 3, "double": 4},
-    "blend_mode": {"normal": 1, "lighten": 2},
+    "line_style": {"none": 0, "solid": 1, "dashed": 2, "dotted": 3, "double": 4},
 }
 
 _TAIL_TYPE_CODES = {"straight": 1, "curve": 2, "sticky": 3}
@@ -224,7 +223,6 @@ _BALLOON_EXTRA_SOCKETS = (
     SocketSpec("内側白フチ", "NodeSocketBool", False),
     SocketSpec("内側白フチ幅", "NodeSocketFloat", 1.0),
     SocketSpec("内側白フチ色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
-    SocketSpec("合成モード", "NodeSocketInt", 1),
     SocketSpec("水平反転", "NodeSocketBool", False),
     SocketSpec("垂直反転", "NodeSocketBool", False),
     SocketSpec("不透明度", "NodeSocketFloat", 100.0),
@@ -233,6 +231,7 @@ _BALLOON_EXTRA_SOCKETS = (
     SocketSpec("山の高さ", "NodeSocketFloat", 4.0),
     SocketSpec("山の高さ 乱れ", "NodeSocketFloat", 0.0),
     SocketSpec("ズラし量 (%)", "NodeSocketFloat", 50.0),
+    SocketSpec("シード", "NodeSocketInt", 0),
     SocketSpec("小山幅 (%)", "NodeSocketFloat", 0.0),
     SocketSpec("小山幅 乱れ", "NodeSocketFloat", 0.0),
     SocketSpec("小山高 (%)", "NodeSocketFloat", 0.0),
@@ -2718,7 +2717,6 @@ def balloon_values(entry) -> dict[str, Any]:
         "内側白フチ": bool(getattr(entry, "inner_white_margin_enabled", False)),
         "内側白フチ幅": float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
         "内側白フチ色": tuple(getattr(entry, "inner_white_margin_color", (1.0, 1.0, 1.0, 1.0))),
-        "合成モード": _enum_code("blend_mode", getattr(entry, "blend_mode", "")),
         "水平反転": bool(getattr(entry, "flip_h", False)),
         "垂直反転": bool(getattr(entry, "flip_v", False)),
         "不透明度": float(getattr(entry, "opacity", 100.0)),
@@ -2727,6 +2725,7 @@ def balloon_values(entry) -> dict[str, Any]:
         "山の高さ": float(getattr(params, "cloud_bump_height_mm", 4.0) or 0.0),
         "山の高さ 乱れ": float(getattr(params, "cloud_bump_height_jitter", 0.0) or 0.0),
         "ズラし量 (%)": float(getattr(params, "cloud_offset_percent", 50.0) or 0.0),
+        "シード": int(getattr(params, "shape_seed", 0) or 0),
         "小山幅 (%)": float(getattr(params, "cloud_sub_width_ratio", 0.0) or 0.0),
         "小山幅 乱れ": float(getattr(params, "cloud_sub_width_jitter", 0.0) or 0.0),
         "小山高 (%)": float(getattr(params, "cloud_sub_height_ratio", 0.0) or 0.0),

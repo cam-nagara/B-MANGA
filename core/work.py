@@ -80,10 +80,15 @@ class BNameWorkData(bpy.types.PropertyGroup):
     page_preview_scale_percentage: FloatProperty(  # type: ignore[valid-type]
         name="ページ一覧用コマ画像縮小率",
         description="ページ一覧に表示するコマ画像PNGの縮小率",
-        default=10.0,
+        default=12.5,
         min=1.0,
         max=100.0,
         subtype="PERCENTAGE",
+    )
+    auto_render_coma_thumb_on_return: BoolProperty(  # type: ignore[valid-type]
+        name="ページ一覧に戻る時にコマ画像を更新",
+        description="コマ用blendファイルからページ一覧に戻る時、表示用のコマ画像を自動レンダリングします",
+        default=True,
     )
 
     # --- 各セクション ---

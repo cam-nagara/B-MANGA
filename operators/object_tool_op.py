@@ -76,6 +76,13 @@ def _find_coma_by_key(work, page_id: str, coma_id: str):
 
 
 def _find_balloon_by_key(work, page_id: str, item_id: str):
+    if str(page_id or "") == OUTSIDE_STACK_KEY:
+        if work is None:
+            return -1, None, -1, None
+        for i, entry in enumerate(getattr(work, "shared_balloons", []) or []):
+            if str(getattr(entry, "id", "") or "") == str(item_id or ""):
+                return -1, None, i, entry
+        return -1, None, -1, None
     page_index, page = _find_page_by_id(work, page_id)
     if page is None:
         return -1, None, -1, None
@@ -421,6 +428,13 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         page_index, page = _find_page_by_id(work, hit.get("page_id", ""))
         if page is None and hit.get("page_id", "") == OUTSIDE_STACK_KEY:
             _select_stack_target(context, "balloon", outside_child_key(object_selection.parse_key(key)[2]))
+            balloon_op._select_balloon_index(
+                context,
+                work,
+                None,
+                int(hit.get("index", -1)),
+                mode=mode,
+            )
         elif page is not None:
             balloon_op._select_balloon_index(
                 context,
@@ -469,7 +483,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                     pass
                 context.scene.bname_active_layer_kind = "gp"
         edge_selection.clear_selection(context)
-    if kind != "balloon" or hit.get("page_id", "") == OUTSIDE_STACK_KEY:
+    if kind != "balloon":
         object_selection.select_key(context, key, mode=mode)
     object_tool_selection.sync_outliner_selection_for_keys(
         context,
@@ -1173,7 +1187,7 @@ class BNAME_OT_object_tool(Operator):
                     snapshot["page_id"],
                     snapshot["item_id"],
                 )
-                if entry is None or page is None:
+                if entry is None:
                     continue
                 if self._drag_action == "center":
                     cx, cy = snapshot.get("center_offset", (0.0, 0.0))

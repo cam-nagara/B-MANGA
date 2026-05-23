@@ -222,10 +222,11 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     box.prop(entry, "shape")
     if str(getattr(entry, "shape", "")) == "custom":
         box.prop(entry, "custom_preset_name")
-    box.prop(entry, "rounded_corner_enabled")
-    sub = box.row()
-    sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
-    sub.prop(entry, "rounded_corner_radius_mm")
+    if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) == "rect":
+        box.prop(entry, "rounded_corner_enabled")
+        sub = box.row()
+        sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
+        sub.prop(entry, "rounded_corner_radius_mm")
     sp = getattr(entry, "shape_params", None)
     if (
         sp is not None
@@ -241,7 +242,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row = col.row(align=True)
         row.prop(sp, "cloud_bump_height_mm")
         row.prop(sp, "cloud_bump_height_jitter", text="乱れ")
-        col.prop(sp, "cloud_offset_percent")
+        row = col.row(align=True)
+        row.prop(sp, "cloud_offset_percent")
+        row.prop(sp, "shape_seed")
         row = col.row(align=True)
         row.prop(sp, "cloud_sub_width_ratio")
         row.prop(sp, "cloud_sub_width_jitter", text="乱れ")
@@ -288,7 +291,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
     sub.prop(entry, "inner_white_margin_width_mm")
     sub.prop(entry, "inner_white_margin_color")
-    box.prop(entry, "blend_mode")
     box.prop(entry, "opacity", slider=True)
 
     _draw_balloon_tails(layout, entry, page)

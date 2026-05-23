@@ -65,7 +65,7 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
-        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
+        jitter_seed=_entry_jitter_seed(entry, sp),
     )
 
 
@@ -97,7 +97,7 @@ def outline_with_corners_for_entry(
         cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
-        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
+        jitter_seed=_entry_jitter_seed(entry, sp),
     )
 
 
@@ -120,7 +120,7 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         cloud_sub_width_jitter=float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
         cloud_sub_height_ratio=float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
-        jitter_seed=_stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or "")),
+        jitter_seed=_entry_jitter_seed(entry, sp),
     )
 
 
@@ -355,6 +355,12 @@ def _stable_seed(value: str) -> int:
     return seed
 
 
+def _entry_jitter_seed(entry, shape_params) -> int:
+    base = _stable_seed(str(getattr(entry, "id", "") or getattr(entry, "shape", "") or ""))
+    seed = int(getattr(shape_params, "shape_seed", 0) or 0) & 0xFFFFFFFF
+    return (base ^ ((seed + 0x9E3779B9) * 0x85EBCA6B)) & 0xFFFFFFFF
+
+
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
@@ -366,11 +372,15 @@ def _jitter_factor(amount: float, rng: random.Random, *, min_factor: float = 0.1
     return max(float(min_factor), 1.0 + (rng.random() * 2.0 - 1.0) * amount)
 
 
+def _height_factor_for_width(width_factor: float) -> float:
+    return max(0.35, min(1.8, 1.0 + (float(width_factor) - 1.0) * 0.35))
+
+
 def _outline_rect(rect: Rect) -> list[tuple[float, float]]:
     return [(rect.x, rect.y), (rect.x2, rect.y), (rect.x2, rect.y2), (rect.x, rect.y2)]
 
 
-def _outline_rounded_rect(rect: Rect, radius_mm: float, segments: int = 8) -> list[tuple[float, float]]:
+def _outline_rounded_rect(rect: Rect, radius_mm: float, segments: int = 24) -> list[tuple[float, float]]:
     radius = max(0.0, min(float(radius_mm), rect.width * 0.5, rect.height * 0.5))
     if radius <= 0.0:
         return _outline_rect(rect)
@@ -421,14 +431,14 @@ def _bezier_rounded_rect(rect: Rect, radius_mm: float) -> list[BezierAnchor] | N
     x0, x1, x2, x3 = rect.x, rect.x + radius, rect.x2 - radius, rect.x2
     y0, y1, y2, y3 = rect.y, rect.y + radius, rect.y2 - radius, rect.y2
     return [
-        BezierAnchor((x2, y3), (x1, y3), (x3 - k, y3)),
-        BezierAnchor((x3, y2), (x3, y3 - k), (x3, y1)),
-        BezierAnchor((x3, y1), (x3, y2), (x3, y0 + k)),
-        BezierAnchor((x2, y0), (x3 - k, y0), (x1, y0)),
-        BezierAnchor((x1, y0), (x2, y0), (x0 + k, y0)),
-        BezierAnchor((x0, y1), (x0, y0 + k), (x0, y2)),
-        BezierAnchor((x0, y2), (x0, y1), (x0, y3 - k)),
-        BezierAnchor((x1, y3), (x0 + k, y3), (x2, y3)),
+        BezierAnchor((x2, y3), (x2 - k, y3), (x2 + k, y3)),
+        BezierAnchor((x3, y2), (x3, y2 + k), (x3, y2 - k)),
+        BezierAnchor((x3, y1), (x3, y1 + k), (x3, y1 - k)),
+        BezierAnchor((x2, y0), (x2 + k, y0), (x2 - k, y0)),
+        BezierAnchor((x1, y0), (x1 + k, y0), (x1 - k, y0)),
+        BezierAnchor((x0, y1), (x0, y1 - k), (x0, y1 + k)),
+        BezierAnchor((x0, y2), (x0, y2 - k), (x0, y2 + k)),
+        BezierAnchor((x1, y3), (x1 - k, y3), (x1 + k, y3)),
     ]
 
 
@@ -551,9 +561,10 @@ def _bump_segments(rx: float, ry: float, opts: _DynamicOpts, *, min_slots: int):
         base_span = sub_angle if is_sub else main_angle
         width_jitter = opts.sub_w_jitter if is_sub else opts.bump_w_jitter
         height_jitter = opts.sub_h_jitter if is_sub else opts.bump_h_jitter
-        span = max(0.001, base_span * _jitter_factor(width_jitter, opts.rng))
+        width_factor = _jitter_factor(width_jitter, opts.rng)
+        span = max(0.001, base_span * width_factor)
         h_base = sub_h_ratio if is_sub else 1.0
-        h_mul = h_base * _jitter_factor(height_jitter, opts.rng)
+        h_mul = h_base * _jitter_factor(height_jitter, opts.rng) * _height_factor_for_width(width_factor)
         segments.append((is_sub, span, h_mul))
         total_span += span
     if total_span <= 1.0e-9:
@@ -812,13 +823,15 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
     sub_width_factor = _jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5)
     sub_freq = max(1, round(num_bumps * 2.0 / sub_width_factor)) if sub_enabled else 0
     sub_amp_ratio = ((opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0) * 0.4 if sub_enabled else 0.0
+    main_width = [_jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5) for _i in range(num_bumps)]
     main_height = [
-        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2)
-        for _i in range(num_bumps)
+        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(main_width[i])
+        for i in range(num_bumps)
     ]
+    sub_width = [_jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5) for _i in range(max(1, sub_freq))]
     sub_height = [
-        _jitter_factor(opts.sub_h_jitter, opts.rng, min_factor=0.2)
-        for _i in range(max(1, sub_freq))
+        _jitter_factor(opts.sub_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(sub_width[i])
+        for i in range(max(1, sub_freq))
     ]
 
     raw: list[tuple[float, float]] = []
@@ -859,7 +872,11 @@ def _bezier_fluffy(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
     steps = max(8, num_bumps * 2)
     period = (2.0 * math.pi) / num_bumps
     base_angle = -math.pi * 0.5 + opts.offset * period
-    main_height = [_jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) for _i in range(num_bumps)]
+    main_width = [_jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5) for _i in range(num_bumps)]
+    main_height = [
+        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(main_width[i])
+        for i in range(num_bumps)
+    ]
     raw: list[tuple[float, float]] = []
     for i in range(steps):
         t = base_angle + (i / steps) * 2.0 * math.pi

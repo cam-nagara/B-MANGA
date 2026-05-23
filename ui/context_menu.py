@@ -15,6 +15,18 @@ from ..utils import layer_stack as layer_stack_utils
 from ..utils import object_naming as on
 
 
+def _selected_balloon_count(context) -> int:
+    try:
+        from ..core.work import get_active_page
+
+        page = get_active_page(context)
+        if page is None:
+            return 0
+        return sum(1 for entry in page.balloons if bool(getattr(entry, "selected", False)))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def _active_managed_object(context):
     """B-Name 管理下のレイヤー Object を解決する.
 
@@ -171,6 +183,14 @@ def selection_command_items(context) -> list[dict]:
             },
         )
     if normalized_kind == "balloon":
+        items.append(
+            {
+                "label": "フキダシを結合",
+                "operator": "bname.balloon_merge_selected",
+                "icon": "FILE_FOLDER",
+                "enabled": _selected_balloon_count(context) >= 2,
+            }
+        )
         items.extend([
             {
                 "label": "しっぽをコピー",

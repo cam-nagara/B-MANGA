@@ -44,6 +44,17 @@ def _save_current_work_metadata(work, page) -> None:
         page_io.save_page_json(work_dir, page)
 
 
+def _auto_render_thumb_before_return(context, work) -> None:
+    if work is None or not bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
+        return
+    try:
+        from ..utils import coma_thumb_output
+
+        coma_thumb_output.render_thumb_png(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("exit_coma_mode: thumb auto render failed")
+
+
 def _resolve_coma_at_event(context, event) -> tuple[int, int] | None:
     """``event.mouse_x/y`` の位置から (page_index, coma_index) を逆引き.
 
@@ -575,6 +586,7 @@ class BNAME_OT_exit_coma_mode(Operator):
                     return {"CANCELLED"}
                 cur = blend_io.current_mainfile_path()
                 expected_panel = paths.coma_blend_path(work_dir, page_id, stem).resolve()
+                _auto_render_thumb_before_return(context, work)
                 if cur is not None and cur == expected_panel:
                     blend_io.save_current_as(expected_panel)
                 # work.blend を開く. 通常 work_new で必ず作られているはずで、
@@ -687,6 +699,7 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
             try:
                 cur = blend_io.current_mainfile_path()
                 expected_panel = paths.coma_blend_path(work_dir, page_id, coma_id).resolve()
+                _auto_render_thumb_before_return(context, get_work(context))
                 if cur is not None and cur == expected_panel:
                     blend_io.save_current_as(expected_panel)
             except Exception:  # noqa: BLE001

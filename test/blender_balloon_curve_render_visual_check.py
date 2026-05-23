@@ -64,8 +64,8 @@ def _evaluated_material_names(obj) -> set[str]:
 def _set_camera_for_object(obj, width_mm: float, height_mm: float) -> None:
     from bname_dev_balloon_curve_render_visual.utils.geom import mm_to_m
 
-    center_x = obj.location.x + mm_to_m(width_mm * 0.5)
-    center_y = obj.location.y + mm_to_m(height_mm * 0.5)
+    center_x = obj.location.x
+    center_y = obj.location.y
     camera_data = bpy.data.cameras.new("フキダシ確認カメラ")
     camera = bpy.data.objects.new("フキダシ確認カメラ", camera_data)
     bpy.context.collection.objects.link(camera)

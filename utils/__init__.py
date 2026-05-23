@@ -10,6 +10,7 @@ from . import (  # noqa: E402,F401
     active_collection_sync,
     active_target,
     balloon_curve_object,
+    balloon_merge_object,
     camera_overview_sync,
     coma_plane,
     cross_addon_settings_sync,

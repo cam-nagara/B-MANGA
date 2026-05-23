@@ -149,7 +149,11 @@ def main() -> None:
 
         shared_balloon_obj = on.find_object_by_bname_id(shared_balloon.id, kind="balloon")
         _assert_visible_object(shared_balloon_obj, "shared balloon")
-        _assert_close(shared_balloon_obj.location.x, shared_balloon.x_mm * 0.001, "shared balloon object x")
+        _assert_close(
+            shared_balloon_obj.location.x,
+            (shared_balloon.x_mm + shared_balloon.width_mm * 0.5) * 0.001,
+            "shared balloon object x",
+        )
         assert balloon_curve_object.find_balloon_entry(scene, shared_balloon.id)[1] is not None
         from bname_dev.operators import object_tool_selection
         from bname_dev.utils import object_selection

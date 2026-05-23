@@ -250,19 +250,16 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
         float(work.page_preview_scale_percentage),
     )
     try:
-        # v0.6.32 で thumb.png は ``page_preview_scale_percentage`` (既定 10%)
-        # で Scale ノード経由に縮小される。 ここではノード結線とレンダー成否
-        # を検証したいだけなので、 100% に固定して縮尺の影響を外す。
+        # thumb.png は「コマ画像縮小率」を Blender の解像度スケールとして
+        # 適用して出力する。ここではレンダー成否を検証したいだけなので、
+        # 100% に固定して縮尺の影響を外す。
         work.page_preview_scale_percentage = 100.0
-        # コマ用 blend の Scale ノード値を最新に同期するため、 ensure を
-        # 明示的に呼び直す (通常は save_pre / load_post で更新される)。
         from bname_dev_coma_camera_roundtrip.utils import coma_thumb_output as _cto
 
-        _cto.ensure_thumb_output_node(scene)
         scene.render.resolution_x = 16
         scene.render.resolution_y = 16
         scene.render.resolution_percentage = 100
-        bpy.ops.render.render(write_still=False)
+        assert _cto.render_thumb_png(bpy.context)
         assert thumb.is_file(), f"thumb.png was not rendered: {thumb}"
         evidence = _image_evidence(thumb)
         assert evidence["size"] == [16, 16], evidence
@@ -299,6 +296,7 @@ def _collect_reopened_checks(preview_evidence: dict) -> dict:
             int(scene.bname_coma_camera_original_resolution_y),
         ],
         "render_resolution": [int(scene.render.resolution_x), int(scene.render.resolution_y)],
+        "render_resolution_percentage": int(scene.render.resolution_percentage),
         "camera_shift": [round(float(cam.data.shift_x), 3), round(float(cam.data.shift_y), 3)],
         "camera_rotation_y_deg": round(math.degrees(float(cam.rotation_euler[1])), 3),
         "clip": [round(float(cam.data.clip_start), 3), round(float(cam.data.clip_end), 3)],
@@ -316,14 +314,14 @@ def _collect_reopened_checks(preview_evidence: dict) -> dict:
 
 
 def _assert_reopened_checks(checks: dict) -> None:
-    expected_res = int(max(1200, 900) * 0.28)
     assert checks["fisheye_layout_mode"] is True, checks
     assert checks["reduction_mode"] is True, checks
     _assert_close(checks["fisheye_fov_deg"], 360.0, "再読込後FOV")
     _assert_close(checks["camera_fov_deg"], 360.0, "再読込後カメラFOV")
     _assert_close(checks["preview_scale_percentage"], 28.0, "再読込後縮小率")
     assert checks["original_resolution"] == [1200, 900], checks
-    assert checks["render_resolution"] == [expected_res, expected_res], checks
+    assert checks["render_resolution"] == [1200, 1200], checks
+    assert checks["render_resolution_percentage"] == 28, checks
     assert checks["camera_shift"] == [0.019, 0.06], checks
     _assert_close(checks["camera_rotation_y_deg"], 8.881, "再読込後カメラ回転")
     assert checks["clip"] == [0.001, 10000.0], checks

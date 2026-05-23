@@ -61,6 +61,7 @@ class BNAME_PT_work(Panel):
         row = layout.row(align=True)
         row.operator("bname.work_new", text="新規", icon="FILE_NEW")
         row.operator("bname.work_open", text="開く", icon="FILE_FOLDER")
+        row.operator("bname.open_current_folder", text="", icon="FILEBROWSER")
 
         if work is None or not work.loaded:
             layout.label(text="作品が開かれていません", icon="INFO")
@@ -101,6 +102,7 @@ class BNAME_PT_work(Panel):
         preview = box.column(align=True)
         preview.enabled = mode == MODE_PAGE
         preview.prop(work, "page_preview_scale_percentage", text="コマ画像縮小率")
+        preview.prop(work, "auto_render_coma_thumb_on_return", text="戻る時に更新")
 
         box = layout.box()
         box.label(text="コマ用blendファイル (この作品のみ)", icon="FILE_BLEND")
@@ -138,6 +140,8 @@ class BNAME_PT_coma_return(Panel):
             text="ページ一覧に戻る",
             icon="BACK",
         )
+        op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
+        op.target = "COMA"
         layout.separator()
         layout.prop(context.scene, "bname_page_browser_position", text="ページ一覧位置")
         layout.prop(context.scene, "bname_page_browser_size", text="サイズ")

@@ -125,7 +125,7 @@ def _assert_menu_for_kind(kind: str) -> None:
         expected.append("中心点を中心へ戻す")
     expected.append("選択レイヤーをリンク")
     if kind == "balloon":
-        expected.extend(["しっぽをコピー", "しっぽを貼り付け"])
+        expected.extend(["フキダシを結合", "しっぽをコピー", "しっぽを貼り付け"])
     expected.append("削除")
     assert labels == expected, (kind, labels)
     for item in items:
@@ -143,6 +143,7 @@ def _assert_menu_for_kind(kind: str) -> None:
         assert enabled["中心点を中心へ戻す"] is True, (kind, enabled)
     assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
     if kind == "balloon":
+        assert enabled["フキダシを結合"] is False, enabled
         assert enabled["しっぽをコピー"] is False, enabled
         assert enabled["しっぽを貼り付け"] is False, enabled
 

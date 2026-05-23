@@ -35,7 +35,7 @@ PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
 PROP_BALLOON_CLIP_MASK_KIND = "bname_balloon_clip_mask_kind"
 PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
-CURVE_GEOMETRY_VERSION = 2
+CURVE_GEOMETRY_VERSION = 3
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -395,8 +395,9 @@ def _sync_generated_shape_if_needed(
 
 
 def _apply_entry_transform(entry, obj: bpy.types.Object) -> None:
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    origin_x, origin_y = _entry_origin_xy(entry)
+    obj.location.x = mm_to_m(origin_x)
+    obj.location.y = mm_to_m(origin_y)
     obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
     obj.scale.x = -1.0 if bool(getattr(entry, "flip_h", False)) else 1.0
     obj.scale.y = -1.0 if bool(getattr(entry, "flip_v", False)) else 1.0
@@ -444,8 +445,9 @@ def _apply_page_world_offset(scene: bpy.types.Scene, work, page, entry, obj: bpy
         if page_idx < 0:
             return
         ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
-        obj.location.x = _mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
-        obj.location.y = _mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
+        origin_x, origin_y = _entry_origin_xy(entry)
+        obj.location.x = _mm_to_m(origin_x + ox_mm)
+        obj.location.y = _mm_to_m(origin_y + oy_mm)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: page world offset 加算失敗")
 
@@ -460,7 +462,7 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
         _logger.exception("balloon: z order sync failed")
     try:
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
-        line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
@@ -542,6 +544,12 @@ def ensure_balloon_curve_object(
     )
     _apply_page_world_offset(scene, work, page, entry, obj)
     _sync_visibility_and_modifier(scene, work, page, entry, obj)
+    try:
+        from . import balloon_merge_object
+
+        balloon_merge_object.sync_groups_for_page(scene, work, page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: merge display sync failed")
     return obj
 
 
@@ -853,6 +861,24 @@ def _entry_center_offset(entry) -> tuple[float, float]:
     )
 
 
+def _entry_curve_offset(entry) -> tuple[float, float]:
+    return (
+        float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)) * 0.5,
+        float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)) * 0.5,
+    )
+
+
+def _entry_origin_xy(entry) -> tuple[float, float]:
+    return (
+        float(getattr(entry, "x_mm", 0.0) or 0.0)
+        + max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)) * 0.5,
+        float(getattr(entry, "y_mm", 0.0) or 0.0)
+        + max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)) * 0.5,
+    )
+
+
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
     return (
         mm_to_m(float(point[0]) + offset[0]),
@@ -940,6 +966,7 @@ def _geometry_key_for_entry(entry) -> str:
         "cloud_sub_width_jitter": float(getattr(sp, "cloud_sub_width_jitter", 0.0) or 0.0),
         "cloud_sub_height_ratio": float(getattr(sp, "cloud_sub_height_ratio", 0.0) or 0.0),
         "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),
+        "shape_seed": int(getattr(sp, "shape_seed", 0) or 0),
     }
     tails = []
     for tail in getattr(entry, "tails", []) or []:
@@ -988,7 +1015,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     _clear_curve_splines(curve)
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) == "none":
         return
-    offset = _entry_center_offset(entry)
+    offset = _entry_curve_offset(entry)
     body_anchors = _body_bezier_for_entry(entry)
     if body_anchors is not None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
@@ -1020,8 +1047,9 @@ def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
 
 
 def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
-    obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0))
-    obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0))
+    origin_x, origin_y = _entry_origin_xy(entry)
+    obj.location.x = mm_to_m(origin_x)
+    obj.location.y = mm_to_m(origin_y)
     obj.rotation_euler[2] = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
     obj.scale.x = -1.0 if bool(getattr(entry, "flip_h", False)) else 1.0
     obj.scale.y = -1.0 if bool(getattr(entry, "flip_v", False)) else 1.0
@@ -1039,12 +1067,9 @@ def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
                     break
         if page_idx >= 0:
             ox_mm, oy_mm = _pg.page_total_offset_mm(work, scene, page_idx)
-            obj.location.x = _mm_to_m(
-                float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm
-            )
-            obj.location.y = _mm_to_m(
-                float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm
-            )
+            origin_x, origin_y = _entry_origin_xy(entry)
+            obj.location.x = _mm_to_m(origin_x + ox_mm)
+            obj.location.y = _mm_to_m(origin_y + oy_mm)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: page world offset 加算失敗")
 
@@ -1074,7 +1099,7 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
     try:
         _remove_balloon_source_object(balloon_id)
         mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
-        line_width_mm = float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
