@@ -11,8 +11,10 @@ from typing import Optional
 import bpy
 
 from . import gpencil as gp_utils
+from . import coma_content_mask
 from . import layer_object_sync as los
 from . import log
+from . import material_opacity_mask
 from . import object_naming as on
 from . import percentage
 from .geom import mm_to_m
@@ -38,7 +40,12 @@ PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
 PROP_EFFECT_SOURCE_ROLE = "bname_effect_source_role"
 
 
-def _configure_line_material_nodes(mat: bpy.types.Material, rgba: tuple[float, float, float, float]) -> None:
+def _configure_line_material_nodes(
+    mat: bpy.types.Material,
+    rgba: tuple[float, float, float, float],
+    *,
+    mask_info=None,
+) -> None:
     from . import geometry_nodes_bridge
 
     mat.diffuse_color = rgba
@@ -62,7 +69,16 @@ def _configure_line_material_nodes(mat: bpy.types.Material, rgba: tuple[float, f
         bsdf.inputs["Base Color"].default_value = (rgba[0], rgba[1], rgba[2], 1.0)
         mul.inputs[1].default_value = rgba[3]
         links.new(attr.outputs["Fac"], mul.inputs[0])
-        links.new(mul.outputs["Value"], bsdf.inputs["Alpha"])
+        alpha = material_opacity_mask.multiply_alpha_by_mask(
+            mat.node_tree,
+            mul.outputs["Value"],
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+            location=(-560, -500),
+            label="コマ内容マスク不透明度",
+        )
+        _mat_alpha = alpha if alpha is not None else mul.outputs["Value"]
+        links.new(_mat_alpha, bsdf.inputs["Alpha"])
         links.new(bsdf.outputs["BSDF"], output.inputs["Surface"])
     except Exception:  # noqa: BLE001
         mat.use_nodes = False
@@ -683,6 +699,7 @@ def _ensure_display_material(
     fill_color=(1.0, 1.0, 1.0, 1.0),
     fill_opacity: float = 1.0,
     underlay_color=(1.0, 1.0, 1.0, 1.0),
+    mask_info=None,
 ) -> None:
     display_id = str(display.get(on.PROP_ID, "") or display.name)
     mat_name = f"BName_Effect_Display_Line_{display_id}"
@@ -715,11 +732,19 @@ def _ensure_display_material(
     fill_mat.diffuse_color = fill_rgba
     underlay_mat.diffuse_color = underlay_rgba
     try:
-        _configure_line_material_nodes(mat, rgba)
-        fill_mat.use_nodes = False
-        fill_mat.blend_method = "BLEND" if fill_rgba[3] < 1.0 else "OPAQUE"
-        underlay_mat.use_nodes = False
-        underlay_mat.blend_method = "BLEND" if underlay_rgba[3] < 1.0 else "OPAQUE"
+        _configure_line_material_nodes(mat, rgba, mask_info=mask_info)
+        material_opacity_mask.setup_flat_emission_material(
+            fill_mat,
+            fill_rgba,
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+        )
+        material_opacity_mask.setup_flat_emission_material(
+            underlay_mat,
+            underlay_rgba,
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+        )
     except Exception:  # noqa: BLE001
         pass
     mats = getattr(getattr(display, "data", None), "materials", None)
@@ -786,10 +811,6 @@ def _display_mask_is_current(display: bpy.types.Object, parent_key: str) -> bool
             return False
         coma_mod = display.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
         page_mod = display.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
-        if ":" in parent_key:
-            return coma_mod is not None and getattr(coma_mod, "object", None) is not None and page_mod is None
-        if parent_key:
-            return page_mod is not None and getattr(page_mod, "object", None) is not None and coma_mod is None
         return coma_mod is None and page_mod is None
     except Exception:  # noqa: BLE001
         return False
@@ -798,16 +819,16 @@ def _display_mask_is_current(display: bpy.types.Object, parent_key: str) -> bool
 def _sync_display_mask(display: bpy.types.Object, parent_key: str) -> None:
     parent_key = str(parent_key or "")
     if _display_mask_is_current(display, parent_key):
-        _move_display_mask_after_geometry_nodes(display)
-        _prefer_exact_boolean_for_effect_mask(display)
+        try:
+            display[PROP_EFFECT_DISPLAY_MASK_PARENT] = parent_key
+        except Exception:  # noqa: BLE001
+            pass
         return
     try:
         from . import mask_apply
 
-        mask_apply.apply_mask_to_object_for_parent(display, parent_key)
+        mask_apply.remove_mask_from_object(display)
         display[PROP_EFFECT_DISPLAY_MASK_PARENT] = parent_key
-        _move_display_mask_after_geometry_nodes(display)
-        _prefer_exact_boolean_for_effect_mask(display)
     except Exception:  # noqa: BLE001
         _logger.exception("effect display mask sync failed")
 
@@ -894,6 +915,11 @@ def ensure_effect_display_object(
         fill_color=fill_color,
         fill_opacity=fill_opacity,
         underlay_color=underlay_color,
+        mask_info=coma_content_mask.ensure_viewport_mask_for_parent(
+            scene,
+            getattr(scene, "bname_work", None),
+            parent_key,
+        ),
     )
     if strokes is not None:
         _remove_effect_display_gn_modifier(display)

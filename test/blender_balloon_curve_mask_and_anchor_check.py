@@ -179,6 +179,22 @@ def _modifier_mask_values(obj, nodes_mod):
     return enabled, target, clip_needed, fill_clip_needed
 
 
+def _assert_curve_uses_opacity_mask(obj) -> None:
+    from bname_dev_balloon_curve_mask_anchor.utils import mask_apply
+
+    assert obj.modifiers.get(mask_apply.MOD_NAME_COMA_MASK) is None, "フキダシに古いコマ切り抜きが残っています"
+    assert obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK) is None, "フキダシに古いページ切り抜きが残っています"
+    found = False
+    for mat in getattr(getattr(obj, "data", None), "materials", []) or []:
+        if mat is None or not getattr(mat, "use_nodes", False) or mat.node_tree is None:
+            continue
+        for node in mat.node_tree.nodes:
+            if getattr(node, "label", "") == "コマ内容マスク":
+                found = True
+                break
+    assert found, "フキダシにコマ内容マスクが接続されていません"
+
+
 def _modifier_socket_value(obj, nodes_mod, socket_name: str):
     modifier = obj.modifiers.get(nodes_mod.MODIFIER_NAME)
     assert modifier is not None and modifier.node_group is not None, "フキダシの表示補助がありません"
@@ -244,9 +260,10 @@ def main() -> None:
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
         assert obj is not None and obj.type == "CURVE", "フキダシ実体がカーブではありません"
         enabled, target, clip_needed, fill_clip_needed = _modifier_mask_values(obj, balloon_curve_render_nodes)
-        assert enabled and target is not None, "コマ内フキダシに作成直後からコママスクが設定されていません"
+        assert not enabled and target is None, "コマ内フキダシに古い切り抜きマスクが設定されています"
         assert not clip_needed, "コマ内に収まっているフキダシまで切り抜き対象になっています"
         assert not fill_clip_needed, "コマ内に収まっているフキダシの塗りまで切り抜き対象になっています"
+        _assert_curve_uses_opacity_mask(obj)
         mask_apply.apply_mask_to_layer_object(obj)
         bpy.context.view_layer.update()
 
@@ -277,22 +294,14 @@ def main() -> None:
         obj2 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry2, page=page)
         assert obj2 is not None and obj2.type == "CURVE", "はみ出し確認フキダシが作成されていません"
         enabled2, target2, clip_needed2, fill_clip_needed2 = _modifier_mask_values(obj2, balloon_curve_render_nodes)
-        assert enabled2 and target2 is not None, "はみ出し確認フキダシにコママスクが設定されていません"
-        assert clip_needed2, "コマ外へはみ出すフキダシが切り抜き対象になっていません"
-        assert fill_clip_needed2, "コマ外へはみ出すフキダシの塗りが切り抜き対象になっていません"
-        assert str(target2.name).startswith("balloon_clip_mask_"), f"専用のフキダシ用マスクではありません: {target2.name}"
-        assert target2.hide_viewport and target2.hide_render and target2.hide_select, "フキダシ用マスクが表示対象のままです"
-        assert target2.hide_get(), "フキダシ用マスクがビューポート上で隠れていません"
+        assert not enabled2 and target2 is None, "はみ出し確認フキダシに古い切り抜きマスクが設定されています"
+        assert not clip_needed2, "コマ外へはみ出すフキダシが古い切り抜き対象になっています"
+        assert not fill_clip_needed2, "コマ外へはみ出すフキダシの塗りが古い切り抜き対象になっています"
+        _assert_curve_uses_opacity_mask(obj2)
         bpy.context.view_layer.update()
-        _min_x, max_x, _min_y, _max_y = _evaluated_world_bounds(obj2)
-        ox_mm, _oy_mm = page_grid.page_total_offset_mm(work, scene, 0)
-        coma_right = geom.mm_to_m(float(ox_mm) + float(coma.rect_x_mm) + float(coma.rect_width_mm))
-        assert max_x <= coma_right + geom.mm_to_m(1.0), (
-            f"コマ内フキダシがコマ外へはみ出しています: max_x={max_x}, coma_right={coma_right}"
-        )
         width2_m, height2_m, _depth2_m = _evaluated_bounds(obj2)
-        assert width2_m < 0.07 and height2_m < 0.07, (
-            f"切り抜き後の表示にコマ全体が混入しています: width={width2_m}, height={height2_m}"
+        assert width2_m < 0.09 and height2_m < 0.09, (
+            f"透明度マスク後の表示にコマ全体が混入しています: width={width2_m}, height={height2_m}"
         )
 
         entry3 = page.balloons.add()
@@ -312,9 +321,10 @@ def main() -> None:
         obj3 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry3, page=page)
         assert obj3 is not None and obj3.type == "CURVE", "線だけ近接フキダシが作成されていません"
         enabled3, target3, clip_needed3, fill_clip_needed3 = _modifier_mask_values(obj3, balloon_curve_render_nodes)
-        assert enabled3 and target3 is not None, "線だけ近接フキダシにコママスクが設定されていません"
-        assert clip_needed3, "輪郭線がコマ枠へ近接するフキダシの線が切り抜き対象になっていません"
+        assert not enabled3 and target3 is None, "線だけ近接フキダシに古い切り抜きマスクが設定されています"
+        assert not clip_needed3, "輪郭線がコマ枠へ近接するフキダシの線が古い切り抜き対象になっています"
         assert not fill_clip_needed3, "輪郭線だけが近接するフキダシの塗りまで切り抜き対象になっています"
+        _assert_curve_uses_opacity_mask(obj3)
         bpy.context.view_layer.update()
         width3_m, height3_m, depth3_m = _evaluated_bounds(obj3)
         assert width3_m < 0.05, f"線だけ近接時にコマ全体が混入しています: width={width3_m}"

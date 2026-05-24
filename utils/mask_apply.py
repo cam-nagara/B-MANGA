@@ -605,6 +605,16 @@ def _remove_modifier_if_present(obj: bpy.types.Object, mod_name: str) -> None:
         pass
 
 
+def remove_mask_from_object(obj: bpy.types.Object) -> None:
+    """Remove B-Name clipping modifiers/internal GP masks from an object."""
+    if obj is None:
+        return
+    _remove_modifier_if_present(obj, MOD_NAME_COMA_MASK)
+    _remove_modifier_if_present(obj, MOD_NAME_PAGE_MASK)
+    if getattr(obj, "type", "") == "GREASEPENCIL":
+        _remove_gp_internal_mask(obj)
+
+
 def apply_mask_to_layer_object(obj: bpy.types.Object) -> None:
     """1 つのレイヤー Object にコマ/ページマスクを適用する.
 

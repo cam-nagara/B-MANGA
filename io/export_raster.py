@@ -61,7 +61,17 @@ def _render_raster_entry(Image, entry, work, canvas_size: tuple[int, int]):
     return color
 
 
-def page_raster_layers(scene, work, page, canvas_size, _dpi, export_layer_cls, Image) -> list:
+def page_raster_layers(
+    scene,
+    work,
+    page,
+    canvas_size,
+    _dpi,
+    export_layer_cls,
+    Image,
+    *,
+    group_path_for_parent=None,
+) -> list:
     coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
     if coll is None:
         return []
@@ -72,9 +82,13 @@ def page_raster_layers(scene, work, page, canvas_size, _dpi, export_layer_cls, I
             continue
         if str(getattr(entry, "scope", "") or "page") != "page":
             continue
-        if str(getattr(entry, "parent_kind", "") or "page") != "page":
+        parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+        parent_key = str(getattr(entry, "parent_key", "") or "")
+        if parent_kind not in {"page", "coma"}:
             continue
-        if str(getattr(entry, "parent_key", "") or "") != page_id:
+        if parent_kind == "page" and parent_key != page_id:
+            continue
+        if parent_kind == "coma" and parent_key.split(":", 1)[0] != page_id:
             continue
         image = _render_raster_entry(Image, entry, work, canvas_size)
         if image is None:
@@ -85,7 +99,11 @@ def page_raster_layers(scene, work, page, canvas_size, _dpi, export_layer_cls, I
                 image,
                 0,
                 0,
-                group_path=("raster",),
+                group_path=(
+                    group_path_for_parent(entry, ("raster",))
+                    if group_path_for_parent is not None
+                    else ("raster",)
+                ),
                 opacity=255,
                 blend_mode="normal",
             )

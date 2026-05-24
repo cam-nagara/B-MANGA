@@ -68,7 +68,7 @@
 - **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
 - **作品要素の実体化 (進行中 / 2026-05-05 Codex)**。 アドオン無効時に枠線やテキストが消えたように見える不安を避けるため、 画面描画だけに依存していた要素を Blender 実オブジェクトへ同期する。 第一段階はテキスト画像平面とコマ枠線カーブ。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
 - **効果線 Geometry Nodes 化 (進行中 / 2026-05-23 Codex, v0.6.063)**。効果線の本体生成と詳細設定同期は Geometry Nodes 側で継続する。フキダシは重い全面ノード生成から外し、編集可能カーブを正本にする方針へ切り替え済み。効果線の始点/終点形状にも同じ「編集可能形状を正本にする」方針を段階適用する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
-- **コマ内容の不透明度マスク方式 (進行中 / 2026-05-25 Codex)**。コマ内のフキダシ / 効果線 / GP / ラスター / 画像 / テキストを破壊的に切らず、ページ ID + 表示ページ番号 + コマ ID を含むコマ単位の不透明度マスクで見切る。PSD はコマフォルダのレイヤーマスクを正とし、個別レイヤーへ重複マスクを付けない。詳細: [`docs/coma_content_opacity_mask_plan_2026-05-25.md`](docs/coma_content_opacity_mask_plan_2026-05-25.md)
+- **コマ内容の不透明度マスク方式 (完了 / 2026-05-25 Codex, v0.6.075)**。コマ内のフキダシ / 効果線 / GP / ラスター / 画像 / テキストを破壊的に切らず、ページ ID + 表示ページ番号 + コマ ID を含むコマ単位の不透明度マスクで見切る。PSD はコマフォルダのレイヤーマスクを正とし、個別レイヤーへ重複マスクを付けない。詳細: [`docs/coma_content_opacity_mask_plan_2026-05-25.md`](docs/coma_content_opacity_mask_plan_2026-05-25.md)
 - PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))
 - 魚眼 F1+F2 ([`docs/B-Name-fisheye-plan-2026-04-28.md`](docs/B-Name-fisheye-plan-2026-04-28.md))

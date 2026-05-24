@@ -12,9 +12,9 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
-from . import export_psd, export_raster, export_soft_mask
+from . import export_group_masks, export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, log, coma_preview, percentage
+from ..utils import border_geom, log, coma_content_mask, coma_preview, percentage
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -98,6 +98,7 @@ class ExportMask:
     image: Any
     left: int
     top: int
+    name: str = ""
 
     @property
     def right(self) -> int:
@@ -427,6 +428,21 @@ def _coma_content_group_path(entry) -> tuple[str, ...]:
     return (*_coma_root_group_path(entry), "content")
 
 
+def _group_path_for_parent(
+    page,
+    parent_kind: str,
+    parent_key: str,
+    fallback: tuple[str, ...],
+) -> tuple[str, ...]:
+    return export_group_masks.group_path_for_parent(
+        page,
+        parent_kind,
+        parent_key,
+        fallback,
+        coma_content_group_path=_coma_content_group_path,
+    )
+
+
 def _coma_preview_source(work_dir: Path, page_id: str, entry) -> Path | None:
     return coma_preview.coma_preview_source_path(work_dir, page_id, entry)
 
@@ -725,18 +741,31 @@ def _render_coma_preview_layer(
     return ExportLayer("render", canvas.image, canvas.left, canvas.top)
 
 
-def _render_coma_mask(entry, canvas_height_px: int, dpi: int) -> ExportMask | None:
-    poly_mm = _coma_polygon_mm(entry)
-    bbox = _points_bbox(poly_mm)
+def _render_coma_mask(work, page, entry, canvas_height_px: int, dpi: int) -> ExportMask | None:
+    poly_mm = coma_content_mask.coma_polygon_mm(entry)
+    bbox = coma_content_mask.mask_bbox_mm(entry)
     if bbox is None or len(poly_mm) < 3:
         return None
     canvas = _canvas_for_bbox(bbox, canvas_height_px, dpi)
     if canvas is None:
         return None
-    mask = Image.new("L", canvas.image.size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.polygon(export_soft_mask.local_points_px(poly_mm, bbox, canvas.image.size), fill=255)
-    return ExportMask(mask, canvas.left, canvas.top)
+    mask = export_soft_mask.coma_soft_edge_mask(
+        Image,
+        ImageChops,
+        ImageDraw,
+        ImageFilter,
+        entry,
+        poly_mm,
+        bbox,
+        canvas.image.size,
+        dpi,
+    )
+    return ExportMask(
+        mask,
+        canvas.left,
+        canvas.top,
+        coma_content_mask.mask_image_name(work, page, entry, dpi),
+    )
 
 
 def _apply_image_adjustments(img, entry) -> Any:
@@ -772,7 +801,13 @@ def _apply_image_adjustments(img, entry) -> Any:
     return out
 
 
-def _render_image_layer(entry, canvas_size: tuple[int, int], dpi: int) -> ExportLayer | None:
+def _render_image_layer(
+    entry,
+    canvas_size: tuple[int, int],
+    dpi: int,
+    *,
+    group_path: tuple[str, ...] = ("image_layers",),
+) -> ExportLayer | None:
     path = Path(_abspath_maybe(getattr(entry, "filepath", "")))
     if not path.is_file():
         return None
@@ -792,7 +827,7 @@ def _render_image_layer(entry, canvas_size: tuple[int, int], dpi: int) -> Export
         source,
         left,
         top,
-        group_path=("image_layers",),
+        group_path=group_path,
         visible=bool(getattr(entry, "visible", True)),
         opacity=255,
         blend_mode=_blend_mode_name(getattr(entry, "blend_mode", "normal")),
@@ -1166,6 +1201,7 @@ def _render_gp_object_layers(
     layers = getattr(data, "layers", None)
     if layers is None:
         return out
+    object_parent_key = str(getattr(obj, "get", lambda *_: "")("bname_parent_key", "") or "")
     try:
         from ..utils import gpencil as gp_utils
         from ..utils import gp_layer_parenting as gp_parent
@@ -1177,8 +1213,9 @@ def _render_gp_object_layers(
         split_child_key = None
     current_page_key = page_stack_key(page) if page_stack_key is not None else ""
     for layer in layers:
+        parent_key = object_parent_key
         if gp_parent is not None:
-            parent_key = gp_parent.parent_key(layer)
+            parent_key = gp_parent.parent_key(layer) or parent_key
             if parent_key:
                 layer_page_key, _child_key = split_child_key(parent_key)
                 if layer_page_key != current_page_key:
@@ -1255,7 +1292,12 @@ def _render_gp_object_layers(
                 canvas.image,
                 canvas.left,
                 canvas.top,
-                group_path=("gp", group_root),
+                group_path=_group_path_for_parent(
+                    page,
+                    "coma" if ":" in parent_key else "page",
+                    parent_key,
+                    ("gp", group_root),
+                ),
                 visible=True,
                 opacity=_normalize_opacity(getattr(layer, "opacity", 1.0)),
                 blend_mode=_blend_mode_name(getattr(layer, "blend_mode", "normal")),
@@ -1376,7 +1418,17 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         for entry in image_layers:
             if not getattr(entry, "visible", True):
                 continue
-            layer = _render_image_layer(entry, canvas_size, dpi)
+            layer = _render_image_layer(
+                entry,
+                canvas_size,
+                dpi,
+                group_path=_group_path_for_parent(
+                    page,
+                    str(getattr(entry, "parent_kind", "") or "page"),
+                    str(getattr(entry, "parent_key", "") or ""),
+                    ("image_layers",),
+                ),
+            )
             if layer is not None:
                 layers.append(layer)
 
@@ -1389,6 +1441,12 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             dpi,
             ExportLayer,
             Image,
+            group_path_for_parent=lambda entry, fallback: _group_path_for_parent(
+                page,
+                str(getattr(entry, "parent_kind", "") or "page"),
+                str(getattr(entry, "parent_key", "") or ""),
+                fallback,
+            ),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("raster layer export failed")
@@ -1431,12 +1489,32 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     for balloon in getattr(page, "balloons", []):
         layer = _render_balloon_layer(balloon, canvas_size[1], dpi)
         if layer is not None:
-            layers.append(layer)
+            layers.append(
+                replace(
+                    layer,
+                    group_path=_group_path_for_parent(
+                        page,
+                        str(getattr(balloon, "parent_kind", "") or "page"),
+                        str(getattr(balloon, "parent_key", "") or ""),
+                        layer.group_path,
+                    ),
+                )
+            )
 
     for text in getattr(page, "texts", []):
         layer = _render_text_layer(text, canvas_size[1], dpi)
         if layer is not None:
-            layers.append(layer)
+            layers.append(
+                replace(
+                    layer,
+                    group_path=_group_path_for_parent(
+                        page,
+                        str(getattr(text, "parent_kind", "") or "page"),
+                        str(getattr(text, "parent_key", "") or ""),
+                        layer.group_path,
+                    ),
+                )
+            )
 
     if options.include_tombo:
         tombo = _tombo_layer(work, page, canvas_size, dpi)
@@ -1488,37 +1566,10 @@ def _coma_group_masks(work, page, options: ExportOptions) -> dict[tuple[str, ...
     canvas_size = _page_canvas_size_px(work, page, options)
     masks: dict[tuple[str, ...], ExportMask] = {}
     for panel in sorted(page.comas, key=lambda candidate: int(getattr(candidate, "z_order", 0))):
-        mask = _render_coma_mask(panel, canvas_size[1], dpi)
+        mask = _render_coma_mask(work, page, panel, canvas_size[1], dpi)
         if mask is not None:
             masks[_coma_content_group_path(panel)] = mask
     return masks
-
-
-def _crop_group_masks(
-    masks: dict[tuple[str, ...], ExportMask],
-    crop_box: tuple[int, int, int, int],
-) -> dict[tuple[str, ...], ExportMask]:
-    crop_left, crop_top, crop_right, crop_bottom = crop_box
-    out: dict[tuple[str, ...], ExportMask] = {}
-    for path, mask in masks.items():
-        inter_left = max(mask.left, crop_left)
-        inter_top = max(mask.top, crop_top)
-        inter_right = min(mask.right, crop_right)
-        inter_bottom = min(mask.bottom, crop_bottom)
-        if inter_right <= inter_left or inter_bottom <= inter_top:
-            continue
-        src_box = (
-            inter_left - mask.left,
-            inter_top - mask.top,
-            inter_right - mask.left,
-            inter_bottom - mask.top,
-        )
-        out[path] = ExportMask(
-            mask.image.crop(src_box),
-            inter_left - crop_left,
-            inter_top - crop_top,
-        )
-    return out
 
 
 def _convert_flatten_mode(img, options: ExportOptions):
@@ -1601,11 +1652,14 @@ def render_page(work, page, options: ExportOptions) -> Any:
         _logger.warning("render_page called without Pillow")
         return None
     layers = build_page_layers(work, page, options)
+    group_masks = _coma_group_masks(work, page, options)
     crop_box = _area_rect_px(work.paper, options, is_left_half=_is_left_half_page(work, page))
     if options.area != "canvas":
         layers, size = _crop_layers(layers, crop_box)
+        group_masks = export_group_masks.crop_group_masks(group_masks, crop_box, ExportMask)
     else:
         size = _page_canvas_size_px(work, page, options)
+    layers = export_group_masks.apply_group_masks_to_layers(layers, group_masks, Image, ImageChops)
     image = _flatten_layers(layers, size)
     return _convert_flatten_mode(image, options)
 
@@ -1650,7 +1704,7 @@ def save_page_as_psd(work, page, options: ExportOptions, out_path: Path) -> bool
     crop_box = _area_rect_px(work.paper, options, is_left_half=_is_left_half_page(work, page))
     if options.area != "canvas":
         layers, size = _crop_layers(layers, crop_box)
-        group_masks = _crop_group_masks(group_masks, crop_box)
+        group_masks = export_group_masks.crop_group_masks(group_masks, crop_box, ExportMask)
     else:
         size = _page_canvas_size_px(work, page, options)
     if not layers:

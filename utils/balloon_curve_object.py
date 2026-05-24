@@ -14,8 +14,10 @@ from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
 from . import balloon_multiline_curve
 from . import balloon_shapes
+from . import coma_content_mask
 from . import layer_object_sync as los
 from . import log
+from . import material_opacity_mask
 from . import object_naming as on
 from . import percentage
 from .geom import Rect, mm_to_m
@@ -148,13 +150,15 @@ def _entry_margin_rgba(entry, attr_name: str) -> tuple[float, float, float, floa
 def _ensure_color_material(
     material_name: str,
     color: tuple[float, float, float, float],
+    *,
+    mask_info=None,
 ) -> bpy.types.Material:
     mat = bpy.data.materials.get(material_name)
     if mat is None:
         mat = bpy.data.materials.new(name=material_name)
     try:
         mat.diffuse_color = color
-        _setup_emission_alpha_material(mat, color)
+        _setup_emission_alpha_material(mat, color, mask_info=mask_info)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon color material setup failed")
     return mat
@@ -165,6 +169,7 @@ def _ensure_balloon_curve_material(
     *,
     material_name: str,
     entry=None,
+    mask_info=None,
 ) -> bpy.types.Material:
     """フキダシ輪郭用の material を ensure."""
     mat = bpy.data.materials.get(material_name)
@@ -176,7 +181,7 @@ def _ensure_balloon_curve_material(
     except Exception:  # noqa: BLE001
         pass
     try:
-        _setup_emission_alpha_material(mat, line)
+        _setup_emission_alpha_material(mat, line, mask_info=mask_info)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon curve material setup failed")
     if curve is not None:
@@ -321,6 +326,7 @@ def _setup_emission_alpha_material(
     gradient: tuple[tuple[float, float, float, float], tuple[float, float, float, float], float] | None = None,
     fill_blur_alpha: bool = False,
     fill_blur_dither: bool = False,
+    mask_info=None,
 ) -> None:
     nt = _clear_material_nodes(mat)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -378,28 +384,37 @@ def _setup_emission_alpha_material(
                 label="塗り輪郭ぼかし不透明度",
                 location=(-120, -320),
             )
+    if mask_info is not None:
+        alpha_socket = material_opacity_mask.multiply_alpha_by_mask(
+            nt,
+            alpha_socket,
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+            location=(-820, -760),
+            label="コマ内容マスク不透明度",
+        )
     nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix.inputs[2])
     _mat_link(nt, alpha_socket, mix.inputs["Fac"])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     try:
-        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 and not fill_blur_alpha else "BLEND"
+        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 and not fill_blur_alpha and mask_info is None else "BLEND"
         if fill_blur_dither:
             mat.surface_render_method = "DITHERED"
-        elif fill_blur_alpha or float(color[3]) < 0.999:
+        elif fill_blur_alpha or float(color[3]) < 0.999 or mask_info is not None:
             mat.surface_render_method = "BLENDED"
         mat.show_transparent_back = True
     except (AttributeError, TypeError):
         pass
 
 
-def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
+def _ensure_fill_material(material_name: str, entry=None, *, mask_info=None) -> bpy.types.Material:
     mat, copied_user_material = _fill_material_for_entry(material_name, entry)
     fill = _entry_fill_rgba(entry)
     _apply_fill_material_basics(mat, fill, entry)
     fill_blur_enabled = float(getattr(entry, "fill_blur_amount", 0.0) or 0.0) > 1.0e-6
     fill_blur_dither = bool(getattr(entry, "fill_blur_dither", False))
-    if copied_user_material and not bool(getattr(entry, "fill_gradient_enabled", False)) and not fill_blur_enabled:
+    if copied_user_material and mask_info is None and not bool(getattr(entry, "fill_gradient_enabled", False)) and not fill_blur_enabled:
         return mat
     try:
         if bool(getattr(entry, "fill_gradient_enabled", False)):
@@ -411,6 +426,7 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
                 gradient=(start, end, float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0)),
                 fill_blur_alpha=fill_blur_enabled,
                 fill_blur_dither=fill_blur_dither,
+                mask_info=mask_info,
             )
         else:
             _setup_emission_alpha_material(
@@ -418,6 +434,7 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
                 fill,
                 fill_blur_alpha=fill_blur_enabled,
                 fill_blur_dither=fill_blur_dither,
+                mask_info=mask_info,
             )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon fill material setup failed")
@@ -676,26 +693,32 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
     try:
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
+        mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
+        mask_obj = None if mask_info is not None else _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-        clip_needed = _balloon_curve_needs_coma_clip(
-            scene,
-            work,
-            page,
-            entry,
-            obj,
-            mask_obj,
-            margin_mm=line_clip_margin_mm,
-        )
-        fill_clip_needed = _balloon_curve_needs_coma_clip(
-            scene,
-            work,
-            page,
-            entry,
-            obj,
-            mask_obj,
-            margin_mm=0.0,
-        )
+        if mask_info is not None:
+            clip_needed = False
+            fill_clip_needed = False
+            _remove_balloon_clip_mask(str(getattr(entry, "id", "") or ""))
+        else:
+            clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=line_clip_margin_mm,
+            )
+            fill_clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=0.0,
+            )
         _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
@@ -745,22 +768,26 @@ def ensure_balloon_curve_object(
     if not balloon_id:
         return None
 
+    work = getattr(scene, "bname_work", None)
+    mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
     line_mat = _ensure_balloon_curve_material(
         None,
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
         entry=entry,
+        mask_info=mask_info,
     )
-    fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry)
+    fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry, mask_info=mask_info)
     outer_mat = _ensure_color_material(
         f"{BALLOON_OUTER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "outer_white_margin_color"),
+        mask_info=mask_info,
     )
     inner_mat = _ensure_color_material(
         f"{BALLOON_INNER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "inner_white_margin_color"),
+        mask_info=mask_info,
     )
 
-    work = getattr(scene, "bname_work", None)
     obj = _ensure_curve_object_for_entry(balloon_id, line_mat, fill_mat, outer_mat, inner_mat)
     _sync_generated_shape_if_needed(
         obj,
