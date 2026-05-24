@@ -181,7 +181,6 @@ def main() -> None:
         from bname_dev_gn_migration.utils import geometry_nodes_bridge as bridge
 
         results = [
-            _coverage_for_group(bridge, "effect_line"),
             _coverage_for_group(bridge, "balloon"),
         ]
         common_usage = _common_shape_usage(bridge)
@@ -194,8 +193,6 @@ def main() -> None:
             bad_missing.append({"kind": "common_shape_usage", "missing": common_usage["missing_inputs"]})
         if int(common_usage["usage"].get("balloon", 0)) < 1:
             bad_missing.append({"kind": "common_shape_usage", "missing": ["フキダシの共通形状利用"]})
-        if int(common_usage["usage"].get("effect_line", 0)) < 2:
-            bad_missing.append({"kind": "common_shape_usage", "missing": ["効果線の始点/終点共通形状利用"]})
         if bad_missing:
             raise AssertionError(f"ノード入力が欠落しています: {bad_missing}")
         print(f"BNAME_GEOMETRY_NODES_MIGRATION_COVERAGE_OK {OUT_MD}", flush=True)

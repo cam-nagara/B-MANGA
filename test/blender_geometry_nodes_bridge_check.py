@@ -350,72 +350,20 @@ def main() -> None:
             seed=123,
         )
         effect_display = effect_line_object.find_effect_display_object(effect_obj)
-        assert effect_display is not None, "効果線のGeometry Nodes表示実体がありません"
+        assert effect_display is not None, "効果線の表示実体がありません"
         assert effect_obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
-        effect_modifier = _assert_nodes(
-            effect_display,
-            kind="effect_line",
-            group_name="BName_GN_EffectLine",
-        )
-        _assert_close(_modifier_socket_value(effect_modifier, "線幅 (mm)"), 0.72, "効果線 線幅")
-        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 63.0, "効果線 不透明度")
-        assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
-        assert int(_modifier_socket_value(effect_modifier, "乱数")) == 123
-        _assert_close(_modifier_socket_value(effect_modifier, "位置 X"), 15.0, "効果線 位置 X")
-        _assert_close(_modifier_socket_value(effect_modifier, "位置 Y"), 20.0, "効果線 位置 Y")
-        _assert_close(_modifier_socket_value(effect_modifier, "中心 X"), 47.0, "効果線 中心 X")
-        _assert_close(_modifier_socket_value(effect_modifier, "中心 Y"), 44.0, "効果線 中心 Y")
-        _assert_close(_modifier_socket_value(effect_modifier, "幅"), 64.0, "効果線 幅")
-        _assert_close(_modifier_socket_value(effect_modifier, "高さ"), 48.0, "効果線 高さ")
+        assert effect_display.modifiers.get(gn_bridge.MODIFIER_NAME) is None, "効果線の表示実体に重い生成ノードが残っています"
+        assert len(effect_display.data.polygons) > 0, "効果線の表示実体メッシュが空です"
         effect_material = effect_display.data.materials[0]
         _assert_close(effect_material.diffuse_color[0], 0.18, "効果線 素材色 R")
         _assert_close(effect_material.diffuse_color[1], 0.24, "効果線 素材色 G")
         _assert_close(effect_material.diffuse_color[2], 0.36, "効果線 素材色 B")
         _assert_close(effect_material.diffuse_color[3], 0.63, "効果線 素材不透明度")
-        effect_socket_names = gn_bridge.effect_field_socket_names()
-        internal_legacy_fields = {"spacing_density_compensation"}
-        missing = [
-            field
-            for field in effect_core.EFFECT_PARAM_FIELDS
-            if field not in internal_legacy_fields
-            and (field not in effect_socket_names
-            or _modifier_socket_value(effect_modifier, effect_socket_names[field]) is None
-            )
-        ]
-        assert not missing, f"効果線の詳細設定がGeometry Nodes入力へ移植されていません: {missing}"
-        removed_socket_names = {"密度補正", "密度基準", "角丸率 (%)"}
-        assert all(
-            getattr(item, "name", "") not in removed_socket_names
-            for item in effect_modifier.node_group.interface.items_tree
-            if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
-        ), "削除済みの効果線設定欄が残っています"
-        effect_node_labels = {str(getattr(node, "label", "") or "") for node in effect_modifier.node_group.nodes}
-        if "始点乱れ乱数" not in effect_node_labels or "終点乱れ乱数" not in effect_node_labels:
-            raise AssertionError("始点乱れ/終点乱れがランダム化されたノード構成になっていません")
-        if "始点乱れ乱数 100段階" not in effect_node_labels or "終点乱れ乱数 100段階" not in effect_node_labels:
-            raise AssertionError("始点乱れ/終点乱れが0%/100%も取り得る乱数構成になっていません")
-        if "始点乱れ波" in effect_node_labels or "終点乱れ波" in effect_node_labels:
-            raise AssertionError("始点乱れ/終点乱れに周期的な波形ノードが残っています")
-        for label in ("まとまり端から短縮", "ギザギザ後始点", "下地線ズラし", "下地線終点揃え"):
-            if label not in effect_node_labels:
-                raise AssertionError(f"効果線の新しい設定がノード内で使われていません: {label}")
         start_source = effect_line_object.find_effect_shape_source_object(effect_obj, "start")
         end_source = effect_line_object.find_effect_shape_source_object(effect_obj, "end")
         assert start_source is not None, "効果線の始点形状参照実体がありません"
         assert end_source is not None, "効果線の終点形状参照実体がありません"
-        _assert_modifier_values(
-            effect_modifier,
-            gn_bridge.effect_values(
-                params,
-                (15.0, 20.0, 64.0, 48.0),
-                123,
-                start_frame_object=start_source,
-                end_shape_object=end_source,
-                center_xy_mm=(47.0, 44.0),
-            ),
-            label="効果線",
-        )
-        assert _evaluated_polygon_count(effect_display) > 0, "効果線のGeometry Nodes表示結果が空です"
+        assert _evaluated_polygon_count(effect_display) > 0, "効果線の表示結果が空です"
         effect_line_op._select_effect_layer(context, effect_obj, effect_layer)
         effect_line_op._set_scene_params_syncing(context.scene, True)
         try:
@@ -430,17 +378,7 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (15.0, 20.0, 64.0, 48.0), params_override=params)
         updated_display = effect_line_object.find_effect_display_object(effect_obj)
         assert updated_display is effect_display, "詳細設定変更で効果線の表示実体が重複しました"
-        effect_modifier = _assert_nodes(
-            updated_display,
-            kind="effect_line",
-            group_name="BName_GN_EffectLine",
-        )
-        _assert_close(_modifier_socket_value(effect_modifier, "線幅 (mm)"), 1.11, "効果線 線幅 更新")
-        _assert_close(_modifier_socket_value(effect_modifier, "不透明度"), 41.0, "効果線 不透明度 更新")
-        assert int(_modifier_socket_value(effect_modifier, "種類")) == 4
-        assert int(_modifier_socket_value(effect_modifier, "本数")) == 77
-        assert int(_modifier_socket_value(effect_modifier, "流線の本数上限")) == 33
-        assert bool(_modifier_socket_value(effect_modifier, "終点形状を下地として塗る"))
+        assert updated_display.modifiers.get(gn_bridge.MODIFIER_NAME) is None, "更新後の効果線に重い生成ノードが残っています"
         effect_material = updated_display.data.materials[0]
         _assert_close(effect_material.diffuse_color[0], 0.7, "効果線 素材色 R 更新")
         _assert_close(effect_material.diffuse_color[1], 0.11, "効果線 素材色 G 更新")

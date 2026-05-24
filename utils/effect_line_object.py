@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import bpy
@@ -313,6 +314,180 @@ def _rebuild_density_source_mesh(mesh: bpy.types.Mesh, points_mm) -> None:
     mesh.update()
 
 
+def _remove_effect_display_gn_modifier(display: bpy.types.Object) -> None:
+    try:
+        from . import geometry_nodes_bridge as _gn
+
+        modifier = display.modifiers.get(_gn.MODIFIER_NAME)
+        if modifier is not None:
+            display.modifiers.remove(modifier)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _effect_alpha_attribute_name() -> str:
+    try:
+        from . import geometry_nodes_bridge as _gn
+
+        return str(_gn.EFFECT_ALPHA_ATTR)
+    except Exception:  # noqa: BLE001
+        return "bname_effect_alpha"
+
+
+def _stroke_role(stroke) -> str:
+    return str(getattr(stroke, "role", "") or "line")
+
+
+def _stroke_material_index(stroke) -> int:
+    role = _stroke_role(stroke)
+    if role in {"end_fill", "white_outline_white", "underlay"}:
+        return 1
+    return 0
+
+
+def _stroke_z_offset(stroke) -> float:
+    role = _stroke_role(stroke)
+    if role == "end_fill":
+        return -2.0e-5
+    if role == "underlay":
+        return -1.0e-5
+    return 0.0
+
+
+def _stroke_radius_at(stroke, index: int) -> float:
+    radii = getattr(stroke, "radii", None)
+    if radii is not None and 0 <= index < len(radii):
+        return max(0.0, float(radii[index]))
+    return max(0.0, float(getattr(stroke, "radius", 0.0) or 0.0))
+
+
+def _stroke_alpha_at(stroke, index: int) -> float:
+    opacities = getattr(stroke, "opacities", None)
+    if opacities is not None and 0 <= index < len(opacities):
+        return max(0.0, min(1.0, float(opacities[index])))
+    return 1.0
+
+
+def _append_line_segment_mesh(
+    *,
+    verts: list[tuple[float, float, float]],
+    faces: list[tuple[int, int, int, int]],
+    face_materials: list[int],
+    point_alphas: list[float],
+    stroke,
+    start_index: int,
+    end_index: int,
+) -> None:
+    points = getattr(stroke, "points_xyz", None) or []
+    try:
+        sx, sy, sz = points[start_index]
+        ex, ey, ez = points[end_index]
+    except Exception:  # noqa: BLE001
+        return
+    dx = float(ex) - float(sx)
+    dy = float(ey) - float(sy)
+    length = math.hypot(dx, dy)
+    if length <= 1.0e-12:
+        return
+    r0 = _stroke_radius_at(stroke, start_index)
+    r1 = _stroke_radius_at(stroke, end_index)
+    if r0 <= 1.0e-12 and r1 <= 1.0e-12:
+        return
+    nx = -dy / length
+    ny = dx / length
+    z0 = float(sz) + _stroke_z_offset(stroke)
+    z1 = float(ez) + _stroke_z_offset(stroke)
+    base = len(verts)
+    verts.extend(
+        [
+            (float(sx) + nx * r0, float(sy) + ny * r0, z0),
+            (float(sx) - nx * r0, float(sy) - ny * r0, z0),
+            (float(ex) - nx * r1, float(ey) - ny * r1, z1),
+            (float(ex) + nx * r1, float(ey) + ny * r1, z1),
+        ]
+    )
+    faces.append((base, base + 1, base + 2, base + 3))
+    face_materials.append(_stroke_material_index(stroke))
+    point_alphas.extend([_stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, end_index), _stroke_alpha_at(stroke, end_index)])
+
+
+def _append_stroke_mesh(
+    *,
+    verts: list[tuple[float, float, float]],
+    faces: list[tuple[int, ...]],
+    face_materials: list[int],
+    point_alphas: list[float],
+    stroke,
+) -> None:
+    points = list(getattr(stroke, "points_xyz", None) or [])
+    if not points:
+        return
+    if _stroke_role(stroke) == "end_fill" and len(points) >= 3:
+        base = len(verts)
+        z_offset = _stroke_z_offset(stroke)
+        for index, point in enumerate(points):
+            try:
+                x, y, z = point
+                verts.append((float(x), float(y), float(z) + z_offset))
+                point_alphas.append(_stroke_alpha_at(stroke, index))
+            except Exception:  # noqa: BLE001
+                verts.append((0.0, 0.0, z_offset))
+                point_alphas.append(1.0)
+        faces.append(tuple(range(base, base + len(points))))
+        face_materials.append(_stroke_material_index(stroke))
+        return
+    count = len(points)
+    if count < 2:
+        return
+    last = count if bool(getattr(stroke, "cyclic", False)) else count - 1
+    for index in range(last):
+        _append_line_segment_mesh(
+            verts=verts,
+            faces=faces,  # type: ignore[arg-type]
+            face_materials=face_materials,
+            point_alphas=point_alphas,
+            stroke=stroke,
+            start_index=index,
+            end_index=(index + 1) % count,
+        )
+
+
+def _rebuild_effect_display_mesh(mesh: bpy.types.Mesh, strokes) -> None:
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, ...]] = []
+    face_materials: list[int] = []
+    point_alphas: list[float] = []
+    for stroke in strokes or ():
+        _append_stroke_mesh(
+            verts=verts,
+            faces=faces,
+            face_materials=face_materials,
+            point_alphas=point_alphas,
+            stroke=stroke,
+        )
+    try:
+        attr = mesh.attributes.get(_effect_alpha_attribute_name())
+        if attr is not None:
+            mesh.attributes.remove(attr)
+    except Exception:  # noqa: BLE001
+        pass
+    mesh.clear_geometry()
+    if verts and faces:
+        mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    for index, material_index in enumerate(face_materials):
+        if index < len(mesh.polygons):
+            mesh.polygons[index].material_index = int(material_index)
+    try:
+        attr = mesh.attributes.new(_effect_alpha_attribute_name(), "FLOAT", "POINT")
+        for index, value in enumerate(point_alphas):
+            if index < len(attr.data):
+                attr.data[index].value = max(0.0, min(1.0, float(value)))
+    except Exception:  # noqa: BLE001
+        pass
+    mesh.update()
+
+
 def ensure_effect_frame_source_object(
     *,
     scene: bpy.types.Scene,
@@ -617,12 +792,12 @@ def ensure_effect_display_object(
     scene: bpy.types.Scene,
     controller_obj: bpy.types.Object,
     values: dict | None = None,
+    strokes=None,
 ) -> Optional[bpy.types.Object]:
-    """効果線を実際に表示する Mesh Object を Geometry Nodes で同期する。
+    """効果線を実際に表示する Mesh Object を同期する。
 
-    制御用の Grease Pencil に直接 Geometry Nodes を載せると Blender 5.1 では
-    表示結果が空になるため、選択・メタデータは既存レイヤーに残し、画面表示は
-    この Mesh Object に任せる。
+    選択・メタデータは既存レイヤーに残し、画面表示はこの Mesh Object に任せる。
+    strokes が渡された場合は、重いノード評価を使わず表示用メッシュへ焼き込む。
     """
     if scene is None or controller_obj is None:
         return None
@@ -677,6 +852,14 @@ def ensure_effect_display_object(
         fill_color=fill_color,
         fill_opacity=fill_opacity,
     )
+    if strokes is not None:
+        _remove_effect_display_gn_modifier(display)
+        try:
+            _rebuild_effect_display_mesh(display.data, strokes)
+            _sync_display_mask(display, parent_key)
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect display mesh sync failed")
+        return display
     try:
         from . import geometry_nodes_bridge as _gn
 

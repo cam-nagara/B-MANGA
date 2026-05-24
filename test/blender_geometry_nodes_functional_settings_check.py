@@ -318,7 +318,7 @@ def main() -> None:
         if frame_source is None:
             raise AssertionError("効果線 始点をコマ枠に設定しても参照用のコマ枠が作られていません")
         frame_input = _modifier_input_value(display, "B-Name Geometry Nodes", "始点コマ枠オブジェクト")
-        if frame_input is not frame_source:
+        if display.modifiers.get("B-Name Geometry Nodes") is not None and frame_input is not frame_source:
             raise AssertionError("効果線 始点コマ枠がGeometry Nodes入力へ接続されていません")
         frame_start = _mesh_stats(display)
         if frame_start["bounds"][2] < 0.158 or frame_start["bounds"][0] > 0.002 or frame_start["bounds"][3] < 0.133:

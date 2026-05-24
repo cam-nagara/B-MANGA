@@ -609,6 +609,15 @@ def _start_frame_outline_for_bounds(
     return outline, max(0.0, float(getattr(params, "brush_size_mm", 0.0)))
 
 
+def _effective_start_extend_mm(params, base_extend_mm: float) -> float:
+    extend = max(0.0, float(base_extend_mm))
+    if not bool(getattr(params, "brush_jitter_enabled", False)):
+        return extend
+    brush_mm = max(0.0, float(getattr(params, "brush_size_mm", 0.0)))
+    jitter = max(0.0, min(1.0, float(getattr(params, "brush_jitter_amount", 0.0))))
+    return extend + brush_mm * jitter
+
+
 def _write_effect_strokes(
     context,
     obj,
@@ -720,10 +729,30 @@ def _write_effect_strokes(
             density_object=density_source,
             center_xy_mm=focus_center_xy,
         )
+        strokes = effect_line_gen.generate_strokes(
+            params,
+            center_xy_mm=focus_center_xy,
+            radius_xy_mm=(w * 0.5, h * 0.5),
+            seed=seed_value,
+            start_outline_mm=start_frame_outline if start_frame_outline else None,
+            start_extend_mm=_effective_start_extend_mm(params, _start_frame_extend),
+            end_center_xy_mm=shape_center_xy,
+        )
+        if bool(getattr(params, "fill_base_shape", False)):
+            fill_stroke = effect_line_gen.generate_end_shape_fill_stroke(
+                params,
+                shape_center_xy,
+                w * 0.5,
+                h * 0.5,
+                seed=seed_value,
+            )
+            if fill_stroke is not None:
+                strokes = [fill_stroke] + list(strokes)
         display = _elo.ensure_effect_display_object(
             scene=context.scene,
             controller_obj=obj,
             values=values,
+            strokes=strokes,
         )
         if display is not None:
             try:

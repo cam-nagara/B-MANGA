@@ -169,17 +169,13 @@ def main() -> None:
         assert display is not None, "効果線の表示実体がありません"
         assert obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
         assert not display.hide_viewport, "効果線の表示実体が非表示です"
-        assert display.modifiers.get("B-Name Geometry Nodes") is not None, "効果線の表示実体にGeometry Nodesがありません"
+        assert display.modifiers.get("B-Name Geometry Nodes") is None, "効果線の表示実体に重い生成ノードが残っています"
         display_mask = display.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
         assert display_mask is not None, "コマ内の効果線表示実体にコマ範囲が付いていません"
         assert getattr(display_mask, "object", None) is not None, "効果線表示実体のコマ範囲参照が空です"
         assert display.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK) is None, "コマ内の効果線表示実体にページ範囲が残っています"
-        modifier_names = [mod.name for mod in display.modifiers]
-        assert modifier_names.index(mask_apply.MOD_NAME_COMA_MASK) > modifier_names.index("B-Name Geometry Nodes"), (
-            "効果線表示実体のコマ範囲が生成結果より前に実行されています"
-        )
-        assert len(display.data.polygons) == 0, "効果線の表示実体にB-Name生成メッシュが残っています"
-        assert _evaluated_polygon_count(display) > 0, "効果線のGeometry Nodes表示結果が空です"
+        assert len(display.data.polygons) > 0, "効果線の表示実体メッシュが空です"
+        assert _evaluated_polygon_count(display) > 0, "効果線の表示結果が空です"
         _assert_bounds_inside(
             _evaluated_world_bounds(display),
             _evaluated_world_bounds(display_mask.object),

@@ -257,6 +257,63 @@ def _assert_start_jitter_moves_starts_inward(strokes, m_to_mm, center, outline) 
         raise AssertionError("start jitter should move at least one start point inward")
 
 
+def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float], expected_count: int) -> None:
+    white = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_white"]
+    if not white:
+        raise AssertionError("白抜き線の白線が生成されていません")
+    buckets: set[int] = set()
+    for index, stroke in enumerate(white):
+        points = _stroke_points_mm(stroke, m_to_mm)
+        if len(points) != 2:
+            raise AssertionError(f"白抜き線は直線である必要があります: index={index}, points={len(points)}")
+        start, end = points
+        if _distance(start, center) <= _distance(end, center):
+            raise AssertionError(f"白抜き線が始点側から中心方向へ伸びていません: start={start}, end={end}")
+        _assert_points_collinear_to_center(start, end, center, label=f"white outline {index}")
+        angle = (math.degrees(_angle(center, start)) + 360.0) % 360.0
+        buckets.add(int(round(angle / (360.0 / expected_count))) % expected_count)
+    if len(buckets) != expected_count:
+        raise AssertionError(f"白抜き線が本数分の放射方向に配置されていません: buckets={sorted(buckets)}")
+
+
+def _assert_bundle_jagged_keeps_start(effect_line_gen, m_to_mm) -> None:
+    params = _base_params()
+    params.effect_type = "focus"
+    params.spacing_mode = "angle"
+    params.spacing_angle_deg = 20.0
+    params.bundle_enabled = True
+    params.bundle_line_count = 5
+    params.bundle_line_count_jitter = 0.0
+    params.bundle_gap_mm = 0.0
+    params.bundle_gap_jitter_amount = 0.0
+    params.bundle_jagged_enabled = False
+    params.bundle_jagged_height_percent = 100.0
+    center = (100.0, 100.0)
+    base = [
+        stroke for stroke in effect_line_gen.generate_strokes(params, center, (50.0, 30.0), seed=4)
+        if getattr(stroke, "role", "line") == "line"
+    ]
+    params.bundle_jagged_enabled = True
+    jagged = [
+        stroke for stroke in effect_line_gen.generate_strokes(params, center, (50.0, 30.0), seed=4)
+        if getattr(stroke, "role", "line") == "line"
+    ]
+    if len(base) != len(jagged) or not base:
+        raise AssertionError("まとまりギザギザの比較対象が生成されていません")
+    shortened = 0
+    for index, (before, after) in enumerate(zip(base, jagged)):
+        before_points = _stroke_points_mm(before, m_to_mm)
+        after_points = _stroke_points_mm(after, m_to_mm)
+        if _distance(before_points[0], after_points[0]) > 1.0e-5:
+            raise AssertionError(f"まとまりギザギザで始点が動いています: index={index}")
+        before_length = _distance(before_points[0], before_points[-1])
+        after_length = _distance(after_points[0], after_points[-1])
+        if after_length < before_length - 1.0e-5:
+            shortened += 1
+    if shortened <= 0:
+        raise AssertionError("まとまりギザギザで終点側が短くなっていません")
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
@@ -453,6 +510,23 @@ def main() -> None:
         plain_slots = effect_line_gen._slot_positions(80, plain_bundle_params, rng_mod.Random(8))
         if jitter_slots == plain_slots or not jitter_slots:
             raise AssertionError("まとまりの数の乱れ・まとまり間隔の乱れが配置に反映されていません")
+        _assert_bundle_jagged_keeps_start(effect_line_gen, m_to_mm)
+
+        white_params = _base_params()
+        white_params.effect_type = "white_outline"
+        white_params.white_outline_count = 6
+        white_params.white_outline_width_mm = 0.3
+        white_params.white_outline_white_ratio_percent = 100.0
+        white_params.white_outline_white_brush_mm = 0.3
+        white_params.white_outline_black_brush_mm = 0.3
+        white_params.white_outline_angle_deg = 0.0
+        white_strokes = effect_line_gen.generate_strokes(
+            white_params,
+            center_xy_mm=center,
+            radius_xy_mm=(30.0, 12.0),
+            seed=5,
+        )
+        _assert_white_outline_is_radial(white_strokes, m_to_mm, center, 6)
 
         if effect_line_op._effect_hit_part((10.0, 20.0, 40.0, 24.0), 30.0, 32.0) != "center":
             raise AssertionError("effect center cross should be draggable as a center hit")
