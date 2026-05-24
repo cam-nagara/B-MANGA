@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 33
+GROUP_VERSION = 34
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -774,7 +774,7 @@ def _build_nodes(group) -> None:
     fill_geometry = _offset_geometry_z(
         group,
         fill_geometry,
-        0.00001,
+        0.0,
         label="塗りを背面へ",
         location=(470, 220),
     )
@@ -801,7 +801,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="外側フチ",
-        z_value=0.0008,
+        z_value=0.010,
         location=(-250, -760),
     )
     outer_geometry = _switch_edge(
@@ -826,7 +826,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="内側フチ",
-        z_value=0.0015,
+        z_value=0.012,
         location=(-250, -1180),
     )
     inner_geometry = _switch_edge(
@@ -845,7 +845,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="輪郭線",
-        z_value=0.005,
+        z_value=0.030,
         location=(-250, -340),
     )
     thorn_multi_geometry = _outline_mesh_with_radius(
@@ -856,7 +856,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="多重線",
-        z_value=0.0035,
+        z_value=0.020,
         location=(150, -1540),
         use_point_radius=True,
         point_radius_offset=_MULTI_LINE_ROLE_RADIUS_OFFSET,

@@ -14,7 +14,8 @@ MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
 _EDGE_OVERLAP_RATIO = 0.1
-_THORN_EDGE_OVERLAP_RATIO = 0.7
+_THORN_EDGE_OVERLAP_RATIO = 1.0
+_THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 1.6
 
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
@@ -277,7 +278,7 @@ def append_closed_multi_line_paths(
             if ring_points is None:
                 continue
             if shape_name == "thorn":
-                ring_length_scale = base_length_scale ** max(1, ring_index)
+                ring_length_scale = base_length_scale ** (max(1, ring_index) * _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN)
                 ring_points, radius_scales = _thorn_multiline_length_points(
                     ring_points,
                     valley_width_mm=valley_width_mm,

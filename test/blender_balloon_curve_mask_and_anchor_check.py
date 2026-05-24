@@ -273,7 +273,7 @@ def main() -> None:
         width_m, height_m, depth_m = _evaluated_bounds(obj)
         assert width_m < 0.07, f"コマ形状がフキダシ表示に混入しています: width={width_m}"
         assert height_m < 0.06, f"コマ形状がフキダシ表示に混入しています: height={height_m}"
-        assert depth_m < 0.01, f"コママスクの厚みがフキダシ表示に混入しています: depth={depth_m}"
+        assert depth_m < 0.04, f"フキダシの表示レイヤーが想定以上に厚くなっています: depth={depth_m}"
         leaked = {name for name in _material_names(obj) if "ComaPlane" in name}
         assert not leaked, f"コマ用素材がフキダシ表示に混入しています: {sorted(leaked)}"
 
@@ -297,6 +297,21 @@ def main() -> None:
         assert not enabled2 and target2 is None, "はみ出し確認フキダシに古い切り抜きマスクが設定されています"
         assert not clip_needed2, "コマ外へはみ出すフキダシが古い切り抜き対象になっています"
         assert not fill_clip_needed2, "コマ外へはみ出すフキダシの塗りが古い切り抜き対象になっています"
+        _assert_curve_uses_opacity_mask(obj2)
+        stale_mesh = bpy.data.meshes.new("balloon_clip_mask_balloon_mask_clip_mesh")
+        stale_obj = bpy.data.objects.new("balloon_clip_mask_balloon_mask_clip", stale_mesh)
+        stale_obj[balloon_curve_object.PROP_BALLOON_CLIP_MASK_KIND] = "coma_clip"
+        stale_obj[balloon_curve_object.PROP_BALLOON_CLIP_MASK_OWNER_ID] = "balloon_mask_clip"
+        bpy.context.collection.objects.link(stale_obj)
+        with balloon_curve_object.suspend_auto_sync():
+            entry2.line_width_mm = 1.4
+            balloon_curve_object.on_balloon_entry_changed(entry2)
+        assert bpy.data.objects.get("balloon_clip_mask_balloon_mask_clip") is None, (
+            "軽量更新後も古い切り抜きマスクが残っています"
+        )
+        enabled2b, target2b, clip_needed2b, fill_clip_needed2b = _modifier_mask_values(obj2, balloon_curve_render_nodes)
+        assert not enabled2b and target2b is None, "軽量更新後に古い切り抜きマスクが再設定されています"
+        assert not clip_needed2b and not fill_clip_needed2b, "軽量更新後に古い切り抜きが有効です"
         _assert_curve_uses_opacity_mask(obj2)
         bpy.context.view_layer.update()
         width2_m, height2_m, _depth2_m = _evaluated_bounds(obj2)
@@ -329,7 +344,7 @@ def main() -> None:
         width3_m, height3_m, depth3_m = _evaluated_bounds(obj3)
         assert width3_m < 0.05, f"線だけ近接時にコマ全体が混入しています: width={width3_m}"
         assert height3_m < 0.05, f"線だけ近接時にコマ全体が混入しています: height={height3_m}"
-        assert depth3_m < 0.01, f"線だけ近接時にマスク厚みが混入しています: depth={depth3_m}"
+        assert depth3_m < 0.04, f"線だけ近接時の表示レイヤーが想定以上に厚くなっています: depth={depth3_m}"
 
         entry.shape = "ellipse"
         balloon_curve_object.ensure_balloon_curve_object(
