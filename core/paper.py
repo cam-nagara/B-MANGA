@@ -109,6 +109,33 @@ def _on_paper_layout_changed(_self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _on_coma_border_width_changed(self, context) -> None:
+    try:
+        from ..core.work import get_work
+        from ..utils import coma_border_object, coma_plane, paper_guide_object
+
+        work = get_work(context)
+        scene = getattr(context, "scene", None) if context is not None else None
+        if work is None or not work.loaded:
+            return
+        target_width = max(0.0, float(getattr(self, "coma_border_width_mm", 0.5) or 0.0))
+        for page in getattr(work, "pages", []) or []:
+            for coma in getattr(page, "comas", []) or []:
+                border = getattr(coma, "border", None)
+                if border is None:
+                    continue
+                if abs(float(getattr(border, "width_mm", 0.0) or 0.0) - target_width) > 1.0e-6:
+                    border.width_mm = target_width
+                if scene is not None:
+                    coma_plane.ensure_coma_plane(scene, work, page, coma)
+                    coma_border_object.ensure_coma_border_object(scene, work, page, coma)
+        if scene is not None:
+            paper_guide_object.regenerate_all_paper_guides(scene, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma border width update failed")
+    _tag_view3d_redraw(context)
+
+
 def _paper_dpi(self) -> int:
     try:
         return max(1, int(getattr(self, "dpi", 600) or 600))
@@ -335,6 +362,15 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
         precision=3,
         get=_display_getter("inner_frame_offset_y_mm"),
         set=_display_setter("inner_frame_offset_y_mm"),
+    )
+    coma_border_width_mm: FloatProperty(  # type: ignore[valid-type]
+        name="コマ枠線幅 (mm)",
+        description="新規コマと既存コマに使うコマ枠線の幅",
+        default=0.5,
+        min=0.0,
+        soft_max=10.0,
+        precision=3,
+        update=_on_coma_border_width_changed,
     )
 
     # --- セーフライン (天/地/ノド/小口) ---

@@ -59,6 +59,8 @@ def _assert_guide_materials_are_opaque(guide_objects) -> None:
 
 
 def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
+    if bool(getattr(safe_fill, "show_in_front", False)):
+        raise AssertionError(f"セーフライン外塗りが最前面ワイヤ表示に依存しています: {safe_fill.name}")
     for obj in guide_objects:
         if bool(getattr(obj, "show_in_front", False)):
             raise AssertionError(f"用紙ガイド線が最前面ワイヤ表示に依存しています: {obj.name}")
@@ -68,14 +70,18 @@ def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
             raise AssertionError(f"用紙ガイド線がセーフライン外塗りより奥にあります: {obj.name}")
 
 
-def _assert_guide_below_coma_planes(guide_objects, page, coma_z_order) -> None:
+def _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order) -> None:
     if len(getattr(page, "comas", []) or []) == 0:
         return
-    lowest_plane_z = min(float(coma_z_order.plane_z(coma)) for coma in page.comas)
+    highest_plane_z = max(float(coma_z_order.plane_z(coma)) for coma in page.comas)
+    if float(safe_fill.location.z) <= highest_plane_z:
+        raise AssertionError(
+            f"セーフライン外塗りがコマプレビュー面より奥にあります: fill={safe_fill.location.z}, plane={highest_plane_z}"
+        )
     for obj in guide_objects:
-        if not (float(obj.location.z) < lowest_plane_z):
+        if not (float(obj.location.z) > highest_plane_z):
             raise AssertionError(
-                f"用紙ガイド線がコマプレビュー面より手前にあります: guide={obj.location.z}, plane={lowest_plane_z}"
+                f"用紙ガイド線がコマプレビュー面より奥にあります: guide={obj.location.z}, plane={highest_plane_z}"
             )
 
 
@@ -144,6 +150,12 @@ def main() -> None:
         if work is None or not work.loaded:
             raise AssertionError("作品データが読み込まれていません")
         page = work.pages[0]
+        work.paper.coma_border_width_mm = 0.73
+        if not getattr(page, "comas", None):
+            raise AssertionError("コマ枠線幅の反映確認用コマがありません")
+        for coma in page.comas:
+            if abs(float(coma.border.width_mm) - 0.73) > 1.0e-6:
+                raise AssertionError(f"用紙セクションのコマ枠線幅がコマへ反映されていません: {coma.border.width_mm}")
         guide_objects = _guide_objects(paper_guide_object, page)
         if not guide_objects:
             raise AssertionError("用紙ガイド線の実体がありません")
@@ -157,7 +169,7 @@ def main() -> None:
 
         _assert_guide_materials_are_opaque(guide_objects)
         _assert_stable_viewport_order(guide_objects, safe_fill)
-        _assert_guide_below_coma_planes(guide_objects, page, coma_z_order)
+        _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
         _assert_constant_thickness(paper_guide_object, guide_objects)
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         if paper_guide_object.repair_loaded_work_paper_guides(scene, work):

@@ -134,6 +134,7 @@ def paper_to_dict(paper) -> dict[str, Any]:
         "innerFrameHeightMm": round(paper.inner_frame_height_mm, 3),
         "innerFrameOffsetXMm": round(paper.inner_frame_offset_x_mm, 3),
         "innerFrameOffsetYMm": round(paper.inner_frame_offset_y_mm, 3),
+        "comaBorderWidthMm": round(float(getattr(paper, "coma_border_width_mm", 0.5)), 3),
         "safeTopMm": round(paper.safe_top_mm, 3),
         "safeBottomMm": round(paper.safe_bottom_mm, 3),
         "safeGutterMm": round(paper.safe_gutter_mm, 3),
@@ -169,6 +170,7 @@ def paper_from_dict(paper, data: dict[str, Any]) -> None:
     paper.inner_frame_height_mm = float(data.get("innerFrameHeightMm", 270.00))
     paper.inner_frame_offset_x_mm = float(data.get("innerFrameOffsetXMm", 0.0))
     paper.inner_frame_offset_y_mm = float(data.get("innerFrameOffsetYMm", 0.0))
+    paper.coma_border_width_mm = float(data.get("comaBorderWidthMm", 0.5))
     paper.safe_top_mm = float(data.get("safeTopMm", 17.49))
     paper.safe_bottom_mm = float(data.get("safeBottomMm", 17.49))
     paper.safe_gutter_mm = float(data.get("safeGutterMm", 20.90))

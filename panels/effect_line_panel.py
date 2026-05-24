@@ -172,8 +172,12 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         box.prop(params, "fill_color")
         box.prop(params, "fill_opacity")
         box.prop(params, "fill_base_shape")
-        box.prop(params, "underlay_line_offset_percent")
-        box.prop(params, "underlay_line_align_endpoints")
+    if params.effect_type in {"focus", "uni_flash"}:
+        row = box.row(align=True)
+        row.prop(params, "white_underlay_enabled", toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = bool(params.white_underlay_enabled)
+        sub.prop(params, "white_underlay_width_percent", text="幅")
 
     if params.effect_type == "speed":
         box = layout.box()

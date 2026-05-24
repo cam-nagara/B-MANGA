@@ -57,6 +57,8 @@ def _base_params() -> SimpleNamespace:
         out_start_percent=50.0,
         in_easing_curve="0.0000,0.0000;1.0000,1.0000",
         out_easing_curve="0.0000,0.0000;1.0000,1.0000",
+        white_underlay_enabled=False,
+        white_underlay_width_percent=150.0,
     )
 
 
@@ -511,6 +513,62 @@ def main() -> None:
         if jitter_slots == plain_slots or not jitter_slots:
             raise AssertionError("まとまりの数の乱れ・まとまり間隔の乱れが配置に反映されていません")
         _assert_bundle_jagged_keeps_start(effect_line_gen, m_to_mm)
+
+        if "underlay_line_offset_percent" in params.bl_rna.properties:
+            raise AssertionError("旧下地線ズラし設定が効果線設定に残っています")
+        if "underlay_line_align_endpoints" in params.bl_rna.properties:
+            raise AssertionError("旧下地線の終点揃え設定が効果線設定に残っています")
+        assert params.white_underlay_enabled is False
+        assert abs(float(params.white_underlay_width_percent) - 150.0) <= 1.0e-6
+
+        underlay_params = _base_params()
+        underlay_params.effect_type = "focus"
+        no_underlay = effect_line_gen.generate_strokes(
+            underlay_params,
+            center_xy_mm=center,
+            radius_xy_mm=(30.0, 12.0),
+            seed=5,
+        )
+        if any(getattr(stroke, "role", "") == "underlay" for stroke in no_underlay):
+            raise AssertionError("白抜き線オフで白抜き線ストロークが生成されています")
+        underlay_params.white_underlay_enabled = True
+        underlay_params.white_underlay_width_percent = 150.0
+        right_underlay = effect_line_gen.generate_strokes(
+            underlay_params,
+            center_xy_mm=center,
+            radius_xy_mm=(30.0, 12.0),
+            seed=5,
+        )
+        line_strokes = [stroke for stroke in right_underlay if getattr(stroke, "role", "") == "line"]
+        underlay_strokes = [stroke for stroke in right_underlay if getattr(stroke, "role", "") == "underlay"]
+        if len(line_strokes) != len(underlay_strokes) or not underlay_strokes:
+            raise AssertionError("白抜き線オンで主線と同数の白抜き線が生成されていません")
+        if abs(float(underlay_strokes[0].radius) - float(line_strokes[0].radius) * 1.5) > 1.0e-9:
+            raise AssertionError("白抜き線幅が効果線の線幅比率で反映されていません")
+        line_points = _stroke_points_mm(line_strokes[0], m_to_mm)
+        right_points = _stroke_points_mm(underlay_strokes[0], m_to_mm)
+        right_offset = _point_segment_distance(right_points[0], line_points[0], line_points[-1])
+        if right_offset <= 0.0:
+            raise AssertionError("白抜き線が中心線から片側にずれていません")
+        underlay_params.white_underlay_width_percent = -150.0
+        left_underlay = [
+            stroke for stroke in effect_line_gen.generate_strokes(
+                underlay_params,
+                center_xy_mm=center,
+                radius_xy_mm=(30.0, 12.0),
+                seed=5,
+            )
+            if getattr(stroke, "role", "") == "underlay"
+        ]
+        left_points = _stroke_points_mm(left_underlay[0], m_to_mm)
+        base_dx = line_points[-1][0] - line_points[0][0]
+        base_dy = line_points[-1][1] - line_points[0][1]
+        right_vx = right_points[0][0] - line_points[0][0]
+        right_vy = right_points[0][1] - line_points[0][1]
+        left_vx = left_points[0][0] - line_points[0][0]
+        left_vy = left_points[0][1] - line_points[0][1]
+        if (base_dx * right_vy - base_dy * right_vx) * (base_dx * left_vy - base_dy * left_vx) >= 0.0:
+            raise AssertionError("白抜き線幅の正負で左右が切り替わっていません")
 
         white_params = _base_params()
         white_params.effect_type = "white_outline"

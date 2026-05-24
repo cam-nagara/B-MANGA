@@ -70,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 11
+EFFECT_PARAM_SCHEMA_VERSION = 12
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -144,8 +144,8 @@ EFFECT_PARAM_FIELDS = (
     "fill_color",
     "fill_opacity",
     "fill_base_shape",
-    "underlay_line_offset_percent",
-    "underlay_line_align_endpoints",
+    "white_underlay_enabled",
+    "white_underlay_width_percent",
     "speed_angle_deg",
     "speed_line_count",
     "white_outline_count",
@@ -394,8 +394,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    underlay_line_offset_percent: FloatProperty(name="下地線ズラし (%)", default=100.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    underlay_line_align_endpoints: BoolProperty(name="下地線の終点を揃える", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]

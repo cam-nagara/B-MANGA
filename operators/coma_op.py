@@ -360,6 +360,10 @@ def create_rect_coma(
     entry.rect_y_mm = y_mm
     entry.rect_width_mm = width_mm
     entry.rect_height_mm = height_mm
+    try:
+        entry.border.width_mm = max(0.0, float(getattr(work.paper, "coma_border_width_mm", entry.border.width_mm) or 0.0))
+    except Exception:  # noqa: BLE001
+        pass
     # 追加直後の entry を除いて max を取る (entry 自身は初期値 0)
     max_z = max(
         (pe.z_order for pe in page.comas if pe is not entry),

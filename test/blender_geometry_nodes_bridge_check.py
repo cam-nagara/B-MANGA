@@ -317,8 +317,8 @@ def main() -> None:
             params.fill_color = (0.33, 0.22, 0.11, 1.0)
             params.fill_opacity = 58.0
             params.fill_base_shape = True
-            params.underlay_line_offset_percent = -125.0
-            params.underlay_line_align_endpoints = False
+            params.white_underlay_enabled = True
+            params.white_underlay_width_percent = -125.0
             params.speed_angle_deg = 21.0
             params.speed_line_count = 144
             params.white_outline_count = 6

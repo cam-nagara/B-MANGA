@@ -237,11 +237,90 @@ def _clear_material_nodes(mat: bpy.types.Material):
     return nt
 
 
+def _mat_socket_by_name(sockets, *names: str):
+    for name in names:
+        try:
+            return sockets[name]
+        except Exception:  # noqa: BLE001
+            continue
+    for socket in sockets:
+        if getattr(socket, "name", "") in names:
+            return socket
+    return None
+
+
+def _mat_link(nt, output_socket, input_socket) -> None:
+    if output_socket is None or input_socket is None:
+        return
+    try:
+        nt.links.new(output_socket, input_socket)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon material node link failed")
+
+
+def _mat_value(nt, value: float, *, label: str, location: tuple[float, float]):
+    node = nt.nodes.new("ShaderNodeValue")
+    node.label = label
+    node.location = location
+    try:
+        node.outputs[0].default_value = float(value)
+    except Exception:  # noqa: BLE001
+        pass
+    return node.outputs[0]
+
+
+def _mat_math(nt, operation: str, left_socket, right_socket_or_value, *, label: str, location: tuple[float, float]):
+    node = nt.nodes.new("ShaderNodeMath")
+    node.label = label
+    node.location = location
+    try:
+        node.operation = operation
+    except Exception:  # noqa: BLE001
+        pass
+    _mat_link(nt, left_socket, node.inputs[0])
+    if hasattr(right_socket_or_value, "default_value"):
+        _mat_link(nt, right_socket_or_value, node.inputs[1])
+    else:
+        try:
+            node.inputs[1].default_value = float(right_socket_or_value)
+        except Exception:  # noqa: BLE001
+            pass
+    return node.outputs["Value"]
+
+
+def _mat_fill_blur_alpha_socket(nt, *, dither: bool, location: tuple[float, float]):
+    attr = nt.nodes.new("ShaderNodeAttribute")
+    attr.label = "塗り輪郭ぼかし"
+    attr.location = location
+    attr.attribute_name = balloon_curve_render_nodes.FILL_BLUR_ALPHA_ATTRIBUTE
+    alpha = _mat_socket_by_name(attr.outputs, "Fac", "Alpha", "Value")
+    if alpha is None:
+        return None
+    if not dither:
+        return alpha
+    try:
+        noise = nt.nodes.new("ShaderNodeTexWhiteNoise")
+    except Exception:  # noqa: BLE001
+        return alpha
+    noise.label = "塗りぼかしディザ"
+    noise.location = (location[0], location[1] - 220)
+    return _mat_math(
+        nt,
+        "GREATER_THAN",
+        alpha,
+        _mat_socket_by_name(noise.outputs, "Value"),
+        label="塗りぼかしディザ判定",
+        location=(location[0] + 230, location[1] - 120),
+    )
+
+
 def _setup_emission_alpha_material(
     mat: bpy.types.Material,
     color: tuple[float, float, float, float],
     *,
     gradient: tuple[tuple[float, float, float, float], tuple[float, float, float, float], float] | None = None,
+    fill_blur_alpha: bool = False,
+    fill_blur_dither: bool = False,
 ) -> None:
     nt = _clear_material_nodes(mat)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -253,6 +332,7 @@ def _setup_emission_alpha_material(
     mix = nt.nodes.new("ShaderNodeMixShader")
     mix.location = (120, 0)
     emission.inputs["Strength"].default_value = 1.0
+    alpha_socket = _mat_value(nt, float(color[3]), label="塗り不透明度", location=(-580, -240))
     if gradient is None:
         emission.inputs["Color"].default_value = color
     else:
@@ -277,12 +357,37 @@ def _setup_emission_alpha_material(
         nt.links.new(mapping.outputs["Vector"], gradient_node.inputs["Vector"])
         nt.links.new(gradient_node.outputs["Fac"], ramp.inputs["Fac"])
         nt.links.new(ramp.outputs["Color"], emission.inputs["Color"])
-    mix.inputs["Fac"].default_value = max(0.0, min(1.0, float(color[3])))
+        ramp_alpha = _mat_socket_by_name(ramp.outputs, "Alpha")
+        if ramp_alpha is not None:
+            alpha_socket = _mat_math(
+                nt,
+                "MULTIPLY",
+                alpha_socket,
+                ramp_alpha,
+                label="グラデーション不透明度",
+                location=(-340, -240),
+            )
+    if fill_blur_alpha:
+        blur_alpha = _mat_fill_blur_alpha_socket(nt, dither=fill_blur_dither, location=(-580, -520))
+        if blur_alpha is not None:
+            alpha_socket = _mat_math(
+                nt,
+                "MULTIPLY",
+                alpha_socket,
+                blur_alpha,
+                label="塗り輪郭ぼかし不透明度",
+                location=(-120, -320),
+            )
     nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+    _mat_link(nt, alpha_socket, mix.inputs["Fac"])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     try:
-        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 else "BLEND"
+        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 and not fill_blur_alpha else "BLEND"
+        if fill_blur_dither:
+            mat.surface_render_method = "DITHERED"
+        elif fill_blur_alpha or float(color[3]) < 0.999:
+            mat.surface_render_method = "BLENDED"
         mat.show_transparent_back = True
     except (AttributeError, TypeError):
         pass
@@ -292,7 +397,9 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
     mat, copied_user_material = _fill_material_for_entry(material_name, entry)
     fill = _entry_fill_rgba(entry)
     _apply_fill_material_basics(mat, fill, entry)
-    if copied_user_material and not bool(getattr(entry, "fill_gradient_enabled", False)):
+    fill_blur_enabled = float(getattr(entry, "fill_blur_amount", 0.0) or 0.0) > 1.0e-6
+    fill_blur_dither = bool(getattr(entry, "fill_blur_dither", False))
+    if copied_user_material and not bool(getattr(entry, "fill_gradient_enabled", False)) and not fill_blur_enabled:
         return mat
     try:
         if bool(getattr(entry, "fill_gradient_enabled", False)):
@@ -302,9 +409,16 @@ def _ensure_fill_material(material_name: str, entry=None) -> bpy.types.Material:
                 mat,
                 fill,
                 gradient=(start, end, float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0)),
+                fill_blur_alpha=fill_blur_enabled,
+                fill_blur_dither=fill_blur_dither,
             )
         else:
-            _setup_emission_alpha_material(mat, fill)
+            _setup_emission_alpha_material(
+                mat,
+                fill,
+                fill_blur_alpha=fill_blur_enabled,
+                fill_blur_dither=fill_blur_dither,
+            )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon fill material setup failed")
     return mat
@@ -562,7 +676,7 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
     try:
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=line_clip_margin_mm)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         clip_needed = _balloon_curve_needs_coma_clip(
             scene,
@@ -600,6 +714,8 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
             outer_edge_width_mm=float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
             inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
             inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
+            fill_blur_amount=float(getattr(entry, "fill_blur_amount", 0.0) or 0.0),
+            fill_blur_dither=bool(getattr(entry, "fill_blur_dither", False)),
             mask_object=mask_obj,
             clip_needed=clip_needed,
             fill_clip_needed=fill_clip_needed,
@@ -1621,7 +1737,7 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         _remove_balloon_source_object(balloon_id)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=line_clip_margin_mm)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         clip_needed = _balloon_curve_needs_coma_clip(
             scene,
@@ -1659,6 +1775,8 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
             outer_edge_width_mm=float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
             inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
             inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
+            fill_blur_amount=float(getattr(entry, "fill_blur_amount", 0.0) or 0.0),
+            fill_blur_dither=bool(getattr(entry, "fill_blur_dither", False)),
             mask_object=mask_obj,
             clip_needed=clip_needed,
             fill_clip_needed=fill_clip_needed,

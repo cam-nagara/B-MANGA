@@ -1232,10 +1232,9 @@ def _apply_bundle_jagged_start_fixed(strokes: list[EffectLineStroke], params) ->
     return out
 
 
-def _underlay_offset_points(
+def _white_underlay_offset_points(
     stroke: EffectLineStroke,
     offset_m: float,
-    align_endpoints: bool,
 ) -> list[tuple[float, float, float]] | None:
     if stroke.cyclic or len(stroke.points_xyz) < 2:
         return None
@@ -1248,30 +1247,45 @@ def _underlay_offset_points(
         return None
     nx = -dy / length
     ny = dx / length
-    pts = [(float(px) + nx * offset_m, float(py) + ny * offset_m, float(pz) - 1.0e-5) for px, py, pz in stroke.points_xyz]
-    if not align_endpoints:
-        extra = abs(offset_m)
-        ux = dx / length
-        uy = dy / length
-        px, py, pz = pts[-1]
-        pts[-1] = (px + ux * extra, py + uy * extra, pz)
-    return pts
+    return [(float(px) + nx * offset_m, float(py) + ny * offset_m, float(pz) - 1.0e-5) for px, py, pz in stroke.points_xyz]
 
 
-def _apply_underlay_strokes(strokes: list[EffectLineStroke], params) -> list[EffectLineStroke]:
+def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> list[EffectLineStroke]:
     if str(getattr(params, "effect_type", "") or "") in {"speed", "white_outline", "beta_flash"}:
         return strokes
-    offset_percent = float(getattr(params, "underlay_line_offset_percent", 100.0))
-    brush_mm = max(0.0, float(getattr(params, "brush_size_mm", 0.0)))
-    offset_m = mm_to_m(brush_mm * offset_percent / 100.0)
-    align = bool(getattr(params, "underlay_line_align_endpoints", True))
+    if not bool(getattr(params, "white_underlay_enabled", False)):
+        return strokes
+    try:
+        width_percent = max(-300.0, min(300.0, float(getattr(params, "white_underlay_width_percent", 150.0))))
+    except Exception:  # noqa: BLE001
+        width_percent = 150.0
+    if abs(width_percent) <= 1.0e-6:
+        return strokes
+    radius_scale = abs(width_percent) / 100.0
     underlays: list[EffectLineStroke] = []
     rest: list[EffectLineStroke] = []
     for stroke in strokes:
         if str(stroke.role or "line") == "line":
-            pts = _underlay_offset_points(stroke, offset_m, align)
+            underlay_radius = max(0.0, float(stroke.radius) * radius_scale)
+            offset_m = (1.0 if width_percent >= 0.0 else -1.0) * underlay_radius
+            pts = _white_underlay_offset_points(stroke, offset_m)
             if pts is not None:
-                underlays.append(_with_points(stroke, pts, role="underlay"))
+                radii = None
+                if stroke.radii is not None:
+                    radii = [max(0.0, float(radius) * radius_scale) for radius in stroke.radii]
+                underlays.append(
+                    EffectLineStroke(
+                        points_xyz=pts,
+                        radius=underlay_radius,
+                        cyclic=stroke.cyclic,
+                        radii=radii,
+                        opacities=stroke.opacities,
+                        role="underlay",
+                        curve_type=stroke.curve_type,
+                        bezier_smooth=stroke.bezier_smooth,
+                        density_end=stroke.density_end,
+                    )
+                )
         rest.append(stroke)
     return underlays + rest
 
@@ -1358,7 +1372,7 @@ def generate_strokes(
         focus_strokes = _apply_uni_flash_jag(focus_strokes, center_xy_mm)
     focus_strokes = _apply_bundle_jagged_start_fixed(focus_strokes, params)
     focus_strokes = _apply_inout_profile(focus_strokes, params)
-    return _apply_underlay_strokes(focus_strokes, params)
+    return _apply_white_underlay_strokes(focus_strokes, params)
 
 
 def generate_shape_guide_strokes(

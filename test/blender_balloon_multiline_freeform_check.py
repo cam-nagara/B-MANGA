@@ -98,6 +98,20 @@ def _spline_point_radius(spline, index: int) -> float:
     return float(spline.points[index].radius)
 
 
+def _visible_multiline_span(spline) -> float:
+    points = [_spline_point_co(spline, index) for index in range(len(getattr(spline, "points", []) or []))]
+    radii = [_spline_point_radius(spline, index) - 100.0 for index in range(len(points))]
+    if len(points) < 2:
+        return 0.0
+    best = 0.0
+    for index, point in enumerate(points):
+        next_index = (index + 1) % len(points)
+        if radii[index] <= 1.0e-6 or radii[next_index] <= 1.0e-6:
+            continue
+        best = max(best, (points[next_index] - point).length)
+    return best
+
+
 def _spline_bounds_xy(spline) -> tuple[float, float]:
     if str(getattr(spline, "type", "") or "") == "BEZIER":
         coords = [point.co for point in spline.bezier_points]
@@ -231,6 +245,11 @@ def main() -> None:
         helper_points = helper_splines[0].points
         assert len(helper_points) >= 8, "トゲの多重線に長さ変化用の頂点が不足しています"
         assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
+        first_ring_span = _visible_multiline_span(helper_splines[0])
+        second_ring_span = _visible_multiline_span(helper_splines[2])
+        assert 0.0 < second_ring_span < first_ring_span * 0.9, (
+            f"長さ変化が主線からの距離ごとに強くなっていません: first={first_ring_span}, second={second_ring_span}"
+        )
         _assert_close(_spline_point_radius(helper_splines[0], 0) - 100.0, 0.22 / 0.3, "トゲ多重線の谷側線幅")
         _assert_close(_spline_point_radius(helper_splines[0], 1) - 100.0, 0.46 / 0.3, "トゲ多重線の山側線幅")
         helper_radius_values = [_spline_point_radius(helper_splines[0], index) - 100.0 for index in range(len(helper_points))]

@@ -13,6 +13,7 @@ from .geom import Rect, mm_to_m
 MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
+_EDGE_OVERLAP_RATIO = 0.1
 
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
@@ -250,7 +251,7 @@ def append_closed_multi_line_paths(
     sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
     clockwise = _polygon_signed_area(body_points) < 0.0
     current_inner_mm = line_width_mm * 0.5 + spacing_mm
-    length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
+    base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     for ring_index in range(1, count):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
@@ -274,12 +275,13 @@ def append_closed_multi_line_paths(
             if ring_points is None:
                 continue
             if shape_name == "thorn":
+                ring_length_scale = base_length_scale ** max(1, ring_index)
                 ring_points, radius_scales = _thorn_multiline_length_points(
                     ring_points,
                     valley_width_mm=valley_width_mm,
                     peak_width_mm=peak_width_mm,
                     line_width_mm=line_width_mm,
-                    length_scale=length_scale,
+                    length_scale=ring_length_scale,
                 )
                 point_radius = [MULTI_LINE_ROLE_RADIUS_OFFSET + scale for scale in radius_scales]
             else:
@@ -367,7 +369,8 @@ def append_edge_paths(
         width_mm = max(0.0, float(getattr(entry, width_attr, 0.0) or 0.0))
         if width_mm <= 0.0:
             continue
-        distance_mm = max(0.0, line_width_mm * 0.5) + width_mm * 0.5
+        overlap_mm = min(max(0.0, line_width_mm), width_mm) * _EDGE_OVERLAP_RATIO
+        distance_mm = max(0.0, max(0.0, line_width_mm * 0.5) + width_mm * 0.5 - overlap_mm)
         edge_points = _offset_closed_outline(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
         if edge_points is None:
             continue

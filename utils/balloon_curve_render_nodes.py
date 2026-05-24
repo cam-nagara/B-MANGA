@@ -16,7 +16,8 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 30
+GROUP_VERSION = 32
+FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
 _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
@@ -53,6 +54,8 @@ _SOCKETS = (
     _SocketSpec("内側フチ", "NodeSocketBool", False, True),
     _SocketSpec("内側フチ幅 (mm)", "NodeSocketFloat", 1.0, True),
     _SocketSpec("内側フチ素材", "NodeSocketMaterial", None, True),
+    _SocketSpec("塗り輪郭ぼかし", "NodeSocketFloat", 0.0, True),
+    _SocketSpec("塗りぼかしをディザ化", "NodeSocketBool", False, True),
     _SocketSpec("マスク使用", "NodeSocketBool", False, True),
     _SocketSpec("マスク対象", "NodeSocketObject", None, True),
     _SocketSpec("塗り切り抜き必要", "NodeSocketBool", False, True),
@@ -375,7 +378,7 @@ def _clip_geometry_by_mask_hit(
         location=(location[0] + 220, location[1] + 40),
     )
     try:
-        delete.domain = "POINT"
+        delete.domain = "FACE"
         delete.mode = "ALL"
     except Exception:  # noqa: BLE001
         pass
@@ -462,6 +465,149 @@ def _radius_from_mm_socket(group, mm_socket, *, label: str, location: tuple[floa
     _link(group, mm_socket, radius.inputs[0])
     _set_default(radius.inputs[1], _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM)
     return radius.outputs["Value"]
+
+
+def _math_node(
+    group,
+    operation: str,
+    left_socket,
+    right_value_or_socket,
+    *,
+    label: str,
+    location: tuple[float, float],
+):
+    node = _node(group, "ShaderNodeMath", label=label, location=location)
+    try:
+        node.operation = operation
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, left_socket, node.inputs[0])
+    if hasattr(right_value_or_socket, "default_value"):
+        _link(group, right_value_or_socket, node.inputs[1])
+    else:
+        _set_default(node.inputs[1], float(right_value_or_socket))
+    return node.outputs["Value"]
+
+
+def _fill_blur_width_socket(group, line_width_socket, blur_socket, *, location: tuple[float, float]):
+    blur_part = _math_node(
+        group,
+        "MULTIPLY",
+        blur_socket,
+        3.35,
+        label="塗り輪郭ぼかし係数",
+        location=location,
+    )
+    blur_base = _math_node(
+        group,
+        "ADD",
+        blur_part,
+        0.65,
+        label="塗り輪郭ぼかし基準",
+        location=(location[0] + 220, location[1]),
+    )
+    blur_mm = _math_node(
+        group,
+        "MULTIPLY",
+        line_width_socket,
+        blur_base,
+        label="塗り輪郭ぼかし幅mm",
+        location=(location[0] + 440, location[1]),
+    )
+    blur_mm_min = _math_node(
+        group,
+        "MAXIMUM",
+        blur_mm,
+        0.15,
+        label="塗り輪郭ぼかし最小幅",
+        location=(location[0] + 660, location[1]),
+    )
+    return _math_node(
+        group,
+        "MULTIPLY",
+        blur_mm_min,
+        0.001,
+        label="塗り輪郭ぼかし幅",
+        location=(location[0] + 880, location[1]),
+    )
+
+
+def _store_fill_blur_alpha(
+    group,
+    fill_mesh_socket,
+    source_curve_socket,
+    line_width_socket,
+    blur_socket,
+    *,
+    location: tuple[float, float],
+):
+    proximity = _node(group, "GeometryNodeProximity", label="塗り輪郭ぼかし距離", location=location)
+    target_socket = _socket_by_name(proximity.inputs, "Target", "Target Geometry", "Geometry")
+    if target_socket is not None:
+        _link(group, source_curve_socket, target_socket)
+    blur_width = _fill_blur_width_socket(
+        group,
+        line_width_socket,
+        blur_socket,
+        location=(location[0] - 1040, location[1] - 170),
+    )
+    alpha = _math_node(
+        group,
+        "DIVIDE",
+        proximity.outputs["Distance"],
+        blur_width,
+        label="塗り輪郭ぼかし濃度",
+        location=(location[0] + 230, location[1]),
+    )
+    alpha = _math_node(
+        group,
+        "MINIMUM",
+        alpha,
+        1.0,
+        label="塗り輪郭ぼかし濃度上限",
+        location=(location[0] + 450, location[1]),
+    )
+    alpha = _math_node(
+        group,
+        "MAXIMUM",
+        alpha,
+        0.0,
+        label="塗り輪郭ぼかし濃度下限",
+        location=(location[0] + 670, location[1]),
+    )
+    blur_enabled = _compare_float_greater(
+        group,
+        blur_socket,
+        0.0001,
+        label="塗り輪郭ぼかし有効",
+        location=(location[0] + 670, location[1] - 140),
+    )
+    alpha_switch = _node(
+        group,
+        "GeometryNodeSwitch",
+        label="塗り輪郭ぼかし切り替え",
+        location=(location[0] + 900, location[1] - 80),
+    )
+    try:
+        alpha_switch.input_type = "FLOAT"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, blur_enabled, alpha_switch.inputs["Switch"])
+    _set_default(alpha_switch.inputs["False"], 1.0)
+    _link(group, alpha, alpha_switch.inputs["True"])
+    store = _node(group, "GeometryNodeStoreNamedAttribute", label="塗り輪郭ぼかしを保持", location=(location[0] + 900, location[1]))
+    try:
+        store.data_type = "FLOAT"
+        store.domain = "POINT"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, fill_mesh_socket, store.inputs["Geometry"])
+    _set_default(store.inputs["Name"], FILL_BLUR_ALPHA_ATTRIBUTE)
+    _link(group, alpha_switch.outputs["Output"], store.inputs["Value"])
+    selection = _socket_by_name(store.inputs, "Selection")
+    if selection is not None:
+        _set_default(selection, True)
+    return store.outputs["Geometry"]
 
 
 def _switch_edge(group, enabled_socket, geometry_socket, *, label: str, location: tuple[float, float]):
@@ -609,9 +755,17 @@ def _build_nodes(group) -> None:
     _link(group, fill_clipped_source, fill_source.inputs["True"])
     fill_curve = _node(group, "GeometryNodeFillCurve", label="塗り面", location=(-500, 180))
     _link(group, fill_source.outputs["Output"], fill_curve.inputs["Curve"])
-    fill_geometry = _set_material(
+    fill_mesh = _store_fill_blur_alpha(
         group,
         fill_curve.outputs["Mesh"],
+        fill_source.outputs["Output"],
+        input_node.outputs["線幅 (mm)"],
+        input_node.outputs["塗り輪郭ぼかし"],
+        location=(-260, 420),
+    )
+    fill_geometry = _set_material(
+        group,
+        fill_mesh,
         input_node.outputs["塗り素材"],
         label="塗り素材",
         location=(190, 220),
@@ -786,6 +940,8 @@ def _set_modifier_values(
     outer_edge_width_mm: float = 1.0,
     inner_edge_enabled: bool = False,
     inner_edge_width_mm: float = 1.0,
+    fill_blur_amount: float = 0.0,
+    fill_blur_dither: bool = False,
     mask_object=_MASK_UNSET,
     clip_needed: bool = False,
     fill_clip_needed: bool = False,
@@ -826,6 +982,8 @@ def _set_modifier_values(
         "内側フチ": bool(inner_edge_enabled),
         "内側フチ幅 (mm)": float(inner_edge_width_mm or 0.0),
         "内側フチ素材": _material_at(obj, 3),
+        "塗り輪郭ぼかし": max(0.0, min(1.0, float(fill_blur_amount or 0.0))),
+        "塗りぼかしをディザ化": bool(fill_blur_dither),
     }
     spacing_mm = max(0.0, float(multi_line_spacing_mm or 0.0))
     width_base_mm = max(0.0, float(multi_line_width_mm or 0.0))
@@ -884,6 +1042,8 @@ def ensure_modifier(
     outer_edge_width_mm: float = 1.0,
     inner_edge_enabled: bool = False,
     inner_edge_width_mm: float = 1.0,
+    fill_blur_amount: float = 0.0,
+    fill_blur_dither: bool = False,
     mask_object=_MASK_UNSET,
     clip_needed: bool = False,
     fill_clip_needed: bool = False,
@@ -918,6 +1078,8 @@ def ensure_modifier(
         outer_edge_width_mm=outer_edge_width_mm,
         inner_edge_enabled=inner_edge_enabled,
         inner_edge_width_mm=inner_edge_width_mm,
+        fill_blur_amount=fill_blur_amount,
+        fill_blur_dither=fill_blur_dither,
         mask_object=mask_object,
         clip_needed=clip_needed,
         fill_clip_needed=fill_clip_needed,
@@ -951,6 +1113,8 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
     current_outer_width = 1.0
     current_inner_enabled = False
     current_inner_width = 1.0
+    current_fill_blur = 0.0
+    current_fill_blur_dither = False
     for item in modifier.node_group.interface.items_tree:
         if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
             continue
@@ -985,6 +1149,10 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
                 current_inner_enabled = bool(modifier.get(item.identifier, current_inner_enabled))
             elif name == "内側フチ幅 (mm)":
                 current_inner_width = float(modifier.get(item.identifier, current_inner_width))
+            elif name == "塗り輪郭ぼかし":
+                current_fill_blur = float(modifier.get(item.identifier, current_fill_blur))
+            elif name == "塗りぼかしをディザ化":
+                current_fill_blur_dither = bool(modifier.get(item.identifier, current_fill_blur_dither))
         except Exception:  # noqa: BLE001
             pass
     _set_modifier_values(
@@ -1004,6 +1172,8 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         outer_edge_width_mm=current_outer_width,
         inner_edge_enabled=current_inner_enabled,
         inner_edge_width_mm=current_inner_width,
+        fill_blur_amount=current_fill_blur,
+        fill_blur_dither=current_fill_blur_dither,
         mask_object=mask_object,
         clip_needed=mask_object is not None,
         fill_clip_needed=mask_object is not None,

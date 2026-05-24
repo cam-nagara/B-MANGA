@@ -496,8 +496,12 @@ def _draw_effect_tail_settings(box, params) -> None:
         color_box.prop(params, "fill_color")
         color_box.prop(params, "fill_opacity")
         color_box.prop(params, "fill_base_shape")
-        color_box.prop(params, "underlay_line_offset_percent")
-        color_box.prop(params, "underlay_line_align_endpoints")
+    if params.effect_type in {"focus", "uni_flash"}:
+        row = color_box.row(align=True)
+        row.prop(params, "white_underlay_enabled", toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = bool(params.white_underlay_enabled)
+        sub.prop(params, "white_underlay_width_percent", text="幅")
 
 
 def _draw_effect_white_outline_settings(box, params) -> None:

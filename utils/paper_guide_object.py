@@ -550,7 +550,7 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     except Exception:  # noqa: BLE001
         pass
     try:
-        obj.show_in_front = True
+        obj.show_in_front = False
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -647,8 +647,9 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
-    guide_z = max(0.001, min_coma_plane - 0.0015)
-    safe_z = max(0.0005, guide_z - 0.0005)
+    top_z = max(max_all, min_coma_plane, 0.0)
+    safe_z = top_z + _GUIDE_Z_CLEARANCE_M
+    guide_z = safe_z + 0.001
     return safe_z, guide_z, max_all
 
 
@@ -940,6 +941,27 @@ def _line_guide_object(page_id: str) -> Optional[bpy.types.Object]:
     return bpy.data.objects.get(f"{PAPER_GUIDE_PREFIX}{page_id}")
 
 
+def _safe_fill_object(page_id: str) -> Optional[bpy.types.Object]:
+    return bpy.data.objects.get(f"{PAPER_SAFE_FILL_PREFIX}{page_id}")
+
+
+def _guide_front_order_needs_repair(work, page) -> bool:
+    page_id = str(getattr(page, "id", "") or "")
+    if not page_id:
+        return False
+    safe_z, guide_z, _ = _page_z_levels(work, page_id)
+    line_obj = _line_guide_object(page_id)
+    safe_obj = _safe_fill_object(page_id)
+    if line_obj is not None and abs(float(getattr(line_obj.location, "z", 0.0) or 0.0) - guide_z) > 1.0e-6:
+        return True
+    if safe_obj is not None:
+        if abs(float(getattr(safe_obj.location, "z", 0.0) or 0.0) - safe_z) > 1.0e-6:
+            return True
+        if bool(getattr(safe_obj, "show_in_front", False)):
+            return True
+    return False
+
+
 def _line_guide_should_have_geometry(work, page) -> bool:
     paper = getattr(work, "paper", None)
     if paper is None:
@@ -993,6 +1015,8 @@ def _paper_guide_needs_repair(work, page) -> bool:
     elif line_obj is not None:
         if _curve_has_visible_geometry(line_obj) or not bool(getattr(line_obj, "hide_viewport", False)):
             return True
+    if _guide_front_order_needs_repair(work, page):
+        return True
     return False
 
 

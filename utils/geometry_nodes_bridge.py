@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 34
+_GROUP_VERSION = 35
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -136,8 +136,8 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "fill_color": SocketSpec("塗り色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
     "fill_opacity": SocketSpec("塗り不透明度", "NodeSocketFloat", 100.0),
     "fill_base_shape": SocketSpec("終点形状を下地として塗る", "NodeSocketBool", False),
-    "underlay_line_offset_percent": SocketSpec("下地線ズラし (%)", "NodeSocketFloat", 100.0),
-    "underlay_line_align_endpoints": SocketSpec("下地線の終点を揃える", "NodeSocketBool", True),
+    "white_underlay_enabled": SocketSpec("白抜き線", "NodeSocketBool", False),
+    "white_underlay_width_percent": SocketSpec("白抜き線幅 (%)", "NodeSocketFloat", 150.0),
     "speed_angle_deg": SocketSpec("流線の角度", "NodeSocketFloat", 0.0),
     "speed_line_count": SocketSpec("流線の本数上限", "NodeSocketInt", 300),
     "white_outline_count": SocketSpec("白抜き線 本数", "NodeSocketInt", 5),
@@ -2422,37 +2422,53 @@ def _instanced_radial_line_geometry(
     visible_width_scale = _switch_float(group, visible_line, zero_jitter, width_scale, label="線幅表示", location=(1180, -1400))
     base_start = _constant_float(group, 0.0, label="線原型始点", location=(80, -1080))
     base_end = _constant_float(group, 1.0, label="線原型終点", location=(80, -1240))
-    underlay_offset = _math_binary(
+    white_underlay_rate = _math_binary(
+        group,
+        "ABSOLUTE",
+        _math_binary(group, "DIVIDE", input_node.outputs["白抜き線幅 (%)"], b_value=100.0, label="白抜き線幅率", location=(3280, -3760)),
+        label="白抜き線幅率絶対値",
+        location=(3480, -3760),
+    )
+    white_underlay_rate = _switch_float(
+        group,
+        input_node.outputs["白抜き線"],
+        _constant_float(group, 0.0, label="白抜き線オフ幅", location=(3480, -3920)),
+        white_underlay_rate,
+        label="白抜き線表示切替",
+        location=(3680, -3760),
+    )
+    white_underlay_width = _math_binary(
         group,
         "MULTIPLY",
-        _math_binary(group, "MULTIPLY", base_line_half_m, b_value=2.0, label="下地線基準幅", location=(3280, -3600)),
-        b_socket=_math_binary(group, "DIVIDE", input_node.outputs["下地線ズラし (%)"], b_value=100.0, label="下地線ズラし率", location=(3280, -3760)),
-        label="下地線ズラし量",
-        location=(3480, -3680),
+        _math_binary(group, "MULTIPLY", base_line_half_m, b_value=2.0, label="白抜き線基準幅", location=(3280, -3600)),
+        b_socket=white_underlay_rate,
+        label="白抜き線幅",
+        location=(3880, -3680),
     )
-    underlay_extra_rate = _math_binary(
+    white_underlay_half = _math_binary(group, "MULTIPLY", white_underlay_width, b_value=0.5, label="白抜き線半幅", location=(4080, -3680))
+    white_underlay_right = _compare_float_socket(
         group,
-        "DIVIDE",
-        underlay_offset,
-        _math_binary(group, "MAXIMUM", line_length, b_value=0.000001, label="下地線長さ基準", location=(3480, -3840)),
-        label="下地線終点差",
-        location=(3680, -3840),
+        input_node.outputs["白抜き線幅 (%)"],
+        0.0,
+        operation="GREATER_EQUAL",
+        label="白抜き線右側",
+        location=(3880, -3920),
     )
-    underlay_unaligned_end = _math_binary(
+    white_underlay_side = _switch_float(
         group,
-        "MAXIMUM",
-        _math_add(group, base_end, underlay_extra_rate, label="下地線ずらし終点", location=(3880, -3840)),
-        b_value=0.001,
-        label="下地線終点下限",
-        location=(4080, -3840),
+        white_underlay_right,
+        _constant_float(group, -1.0, label="白抜き線左方向", location=(4080, -4000)),
+        _constant_float(group, 1.0, label="白抜き線右方向", location=(4080, -3840)),
+        label="白抜き線方向",
+        location=(4280, -3920),
     )
-    underlay_end = _switch_float(
+    white_underlay_offset = _math_binary(
         group,
-        input_node.outputs["下地線の終点を揃える"],
-        underlay_unaligned_end,
-        base_end,
-        label="下地線終点揃え",
-        location=(4280, -3840),
+        "MULTIPLY",
+        white_underlay_half,
+        b_socket=white_underlay_side,
+        label="白抜き線片側位置",
+        location=(4480, -3760),
     )
     material = _tapered_line_mesh_x(
         group,
@@ -2468,16 +2484,16 @@ def _instanced_radial_line_geometry(
         group,
         input_node,
         base_start,
-        underlay_end,
-        base_line_half_m,
+        base_end,
+        white_underlay_half,
         fill_material,
-        label="下地線素材",
+        label="白抜き線素材",
         location=(280, -3600),
     )
-    underlay_transform = _node(group, "GeometryNodeTransform", label="下地線ズラし", location=(3680, -3600))
+    underlay_transform = _node(group, "GeometryNodeTransform", label="白抜き線片側配置", location=(4680, -3600))
     _link(group, underlay, underlay_transform.inputs["Geometry"])
-    _link(group, _combine_xyz(group, y_socket=underlay_offset, z=-0.00001, label="下地線ズラし方向", location=(3480, -3520)), underlay_transform.inputs["Translation"])
-    material_join = _node(group, "GeometryNodeJoinGeometry", label="主線と下地線", location=(3900, -3600))
+    _link(group, _combine_xyz(group, y_socket=white_underlay_offset, z=-0.00001, label="白抜き線方向", location=(4480, -3520)), underlay_transform.inputs["Translation"])
+    material_join = _node(group, "GeometryNodeJoinGeometry", label="主線と白抜き線", location=(4900, -3600))
     _link(group, underlay_transform.outputs["Geometry"], material_join.inputs["Geometry"])
     _link(group, material, material_join.inputs["Geometry"])
     material = material_join.outputs["Geometry"]

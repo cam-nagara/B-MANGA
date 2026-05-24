@@ -151,7 +151,7 @@ def _run_visual_check() -> None:
         safe_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_obj is not None, "セーフライン外の塗り実体がありません"
         assert getattr(safe_obj, "display_type", "") == "SOLID", "表示方法がソリッドではありません"
-        assert bool(getattr(safe_obj, "show_in_front", False)), "最前面がオンではありません"
+        assert not bool(getattr(safe_obj, "show_in_front", False)), "最前面ワイヤ表示に依存しています"
         mat = safe_obj.data.materials[0] if safe_obj.data.materials else None
         assert mat is not None and getattr(mat, "blend_method", "") == "BLEND", (
             "セーフライン外の塗り素材が透明表示になっていません"

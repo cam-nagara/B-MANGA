@@ -73,6 +73,7 @@ class BNAME_PT_paper(Panel):
         row = box.row(align=True)
         row.prop(p, "inner_frame_offset_x_value", text=f"横オフセット ({unit_label})")
         row.prop(p, "inner_frame_offset_y_value", text=f"縦オフセット ({unit_label})")
+        box.prop(p, "coma_border_width_mm")
 
         box = layout.box()
         box.label(text="セーフライン")
