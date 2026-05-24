@@ -40,7 +40,8 @@ PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
-CURVE_GEOMETRY_VERSION = 5
+CURVE_GEOMETRY_VERSION = 6
+CLIPPED_FILL_ROLE_RADIUS = 400.0
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -559,9 +560,29 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: z order sync failed")
     try:
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=line_clip_margin_mm)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+        clip_needed = _balloon_curve_needs_coma_clip(
+            scene,
+            work,
+            page,
+            entry,
+            obj,
+            mask_obj,
+            margin_mm=line_clip_margin_mm,
+        )
+        fill_clip_needed = _balloon_curve_needs_coma_clip(
+            scene,
+            work,
+            page,
+            entry,
+            obj,
+            mask_obj,
+            margin_mm=0.0,
+        )
+        _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
@@ -580,24 +601,8 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
             inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
             inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
             mask_object=mask_obj,
-            clip_needed=_balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm),
-            ),
-            fill_clip_needed=_balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-            ),
+            clip_needed=clip_needed,
+            fill_clip_needed=fill_clip_needed,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
@@ -698,6 +703,288 @@ def _find_coma_by_id(page, coma_id: str):
         if str(getattr(coma, "id", "") or "") == coma_id:
             return coma
     return None
+
+
+def _polygon_signed_area_xy(polygon: Sequence[tuple[float, float]]) -> float:
+    area = 0.0
+    if len(polygon) < 3:
+        return 0.0
+    prev_x, prev_y = polygon[-1]
+    for cur_x, cur_y in polygon:
+        area += prev_x * cur_y - cur_x * prev_y
+        prev_x, prev_y = cur_x, cur_y
+    return area * 0.5
+
+
+def _line_intersection_xy(
+    a0: tuple[float, float],
+    a1: tuple[float, float],
+    b0: tuple[float, float],
+    b1: tuple[float, float],
+) -> tuple[float, float] | None:
+    ax0, ay0 = a0
+    ax1, ay1 = a1
+    bx0, by0 = b0
+    bx1, by1 = b1
+    adx = ax1 - ax0
+    ady = ay1 - ay0
+    bdx = bx1 - bx0
+    bdy = by1 - by0
+    denom = adx * bdy - ady * bdx
+    if abs(denom) <= 1.0e-12:
+        return None
+    t = ((bx0 - ax0) * bdy - (by0 - ay0) * bdx) / denom
+    return (ax0 + adx * t, ay0 + ady * t)
+
+
+def _offset_convex_polygon_xy(
+    polygon: Sequence[tuple[float, float]],
+    margin: float,
+) -> list[tuple[float, float]]:
+    pts = [(float(x), float(y)) for x, y in polygon]
+    if len(pts) < 3 or margin <= 1.0e-9:
+        return pts
+    ccw = _polygon_signed_area_xy(pts) >= 0.0
+    offset_edges: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    normals: list[tuple[float, float]] = []
+    for index, p0 in enumerate(pts):
+        p1 = pts[(index + 1) % len(pts)]
+        dx = p1[0] - p0[0]
+        dy = p1[1] - p0[1]
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-9:
+            return pts
+        if ccw:
+            nx, ny = dy / length, -dx / length
+        else:
+            nx, ny = -dy / length, dx / length
+        normals.append((nx, ny))
+        offset_edges.append(
+            (
+                (p0[0] + nx * margin, p0[1] + ny * margin),
+                (p1[0] + nx * margin, p1[1] + ny * margin),
+            )
+        )
+    expanded: list[tuple[float, float]] = []
+    for index, point in enumerate(pts):
+        prev_edge = offset_edges[index - 1]
+        cur_edge = offset_edges[index]
+        inter = _line_intersection_xy(prev_edge[0], prev_edge[1], cur_edge[0], cur_edge[1])
+        if inter is None:
+            n0 = normals[index - 1]
+            n1 = normals[index]
+            nx = n0[0] + n1[0]
+            ny = n0[1] + n1[1]
+            length = math.hypot(nx, ny)
+            if length <= 1.0e-9:
+                nx, ny = n1
+            else:
+                nx, ny = nx / length, ny / length
+            inter = (point[0] + nx * margin, point[1] + ny * margin)
+        expanded.append(inter)
+    return expanded
+
+
+def _clip_polygon_convex_xy(
+    subject: Sequence[tuple[float, float]],
+    clip_polygon: Sequence[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    output = [(float(x), float(y)) for x, y in subject]
+    clip = [(float(x), float(y)) for x, y in clip_polygon]
+    if len(output) < 3 or len(clip) < 3:
+        return []
+    ccw = _polygon_signed_area_xy(clip) >= 0.0
+
+    def inside(point: tuple[float, float], a: tuple[float, float], b: tuple[float, float]) -> bool:
+        cross = (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
+        return cross >= -1.0e-9 if ccw else cross <= 1.0e-9
+
+    for index, edge_start in enumerate(clip):
+        edge_end = clip[(index + 1) % len(clip)]
+        input_pts = output
+        output = []
+        if not input_pts:
+            break
+        prev = input_pts[-1]
+        prev_inside = inside(prev, edge_start, edge_end)
+        for cur in input_pts:
+            cur_inside = inside(cur, edge_start, edge_end)
+            if cur_inside:
+                if not prev_inside:
+                    inter = _line_intersection_xy(prev, cur, edge_start, edge_end)
+                    if inter is not None:
+                        output.append(inter)
+                output.append(cur)
+            elif prev_inside:
+                inter = _line_intersection_xy(prev, cur, edge_start, edge_end)
+                if inter is not None:
+                    output.append(inter)
+            prev = cur
+            prev_inside = cur_inside
+    cleaned: list[tuple[float, float]] = []
+    for point in output:
+        if cleaned and math.hypot(cleaned[-1][0] - point[0], cleaned[-1][1] - point[1]) <= 1.0e-7:
+            continue
+        cleaned.append(point)
+    if len(cleaned) > 2 and math.hypot(cleaned[0][0] - cleaned[-1][0], cleaned[0][1] - cleaned[-1][1]) <= 1.0e-7:
+        cleaned.pop()
+    return cleaned if len(cleaned) >= 3 else []
+
+
+def _entry_curve_local_mm_to_page_xy(entry, point: tuple[float, float]) -> tuple[float, float]:
+    local_x = float(point[0])
+    local_y = float(point[1])
+    if bool(getattr(entry, "flip_h", False)):
+        local_x = -local_x
+    if bool(getattr(entry, "flip_v", False)):
+        local_y = -local_y
+    angle = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+    origin_x, origin_y = _entry_origin_xy(entry)
+    return (
+        origin_x + local_x * cos_a - local_y * sin_a,
+        origin_y + local_x * sin_a + local_y * cos_a,
+    )
+
+
+def _entry_page_xy_to_curve_local_mm(entry, point: tuple[float, float]) -> tuple[float, float]:
+    origin_x, origin_y = _entry_origin_xy(entry)
+    dx = float(point[0]) - origin_x
+    dy = float(point[1]) - origin_y
+    angle = math.radians(float(getattr(entry, "rotation_deg", 0.0) or 0.0))
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+    local_x = dx * cos_a + dy * sin_a
+    local_y = -dx * sin_a + dy * cos_a
+    if bool(getattr(entry, "flip_h", False)):
+        local_x = -local_x
+    if bool(getattr(entry, "flip_v", False)):
+        local_y = -local_y
+    return (local_x, local_y)
+
+
+def _spline_role_radius(spline) -> float | None:
+    if getattr(spline, "type", "") == "BEZIER":
+        points = getattr(spline, "bezier_points", []) or []
+    else:
+        points = getattr(spline, "points", []) or []
+    if not points:
+        return None
+    return float(getattr(points[0], "radius", 1.0) or 0.0)
+
+
+def _remove_clipped_fill_splines(curve: bpy.types.Curve) -> bool:
+    changed = False
+    for spline in reversed(list(getattr(curve, "splines", []) or [])):
+        role = _spline_role_radius(spline)
+        if role is None or abs(role - CLIPPED_FILL_ROLE_RADIUS) > 1.0e-6:
+            continue
+        try:
+            curve.splines.remove(spline)
+            changed = True
+        except Exception:  # noqa: BLE001
+            pass
+    return changed
+
+
+def _iter_body_spline_local_points(curve: bpy.types.Curve, *, steps: int = 24) -> list[tuple[float, float]]:
+    for spline in getattr(curve, "splines", []) or []:
+        role = _spline_role_radius(spline)
+        if role is not None and role > 50.0:
+            continue
+        if getattr(spline, "type", "") == "BEZIER":
+            points = list(getattr(spline, "bezier_points", []) or [])
+            count = len(points)
+            if count < 3:
+                continue
+            out: list[tuple[float, float]] = []
+            segment_count = count if getattr(spline, "use_cyclic_u", False) else max(0, count - 1)
+            for index in range(segment_count):
+                p0 = points[index]
+                p1 = points[(index + 1) % count]
+                for step in range(steps):
+                    pos = _sample_cubic_vec(
+                        Vector(p0.co),
+                        Vector(p0.handle_right),
+                        Vector(p1.handle_left),
+                        Vector(p1.co),
+                        step / max(1, steps),
+                    )
+                    out.append((float(pos.x) / 0.001, float(pos.y) / 0.001))
+            if len(out) >= 3:
+                return out
+        else:
+            out = []
+            for point in getattr(spline, "points", []) or []:
+                co = getattr(point, "co", None)
+                if co is not None:
+                    out.append((float(co[0]) / 0.001, float(co[1]) / 0.001))
+            if len(out) >= 3:
+                return out
+    return []
+
+
+def _add_clipped_fill_spline(curve: bpy.types.Curve, local_points_mm: Sequence[tuple[float, float]]) -> bool:
+    if len(local_points_mm) < 3:
+        return False
+    spline = curve.splines.new("POLY")
+    spline.points.add(len(local_points_mm) - 1)
+    spline.use_cyclic_u = True
+    spline.material_index = 1
+    for point, (x_mm, y_mm) in zip(spline.points, local_points_mm, strict=False):
+        point.co = (mm_to_m(float(x_mm)), mm_to_m(float(y_mm)), 0.0, 1.0)
+        try:
+            point.radius = CLIPPED_FILL_ROLE_RADIUS
+        except Exception:  # noqa: BLE001
+            pass
+    return True
+
+
+def _sync_clipped_fill_geometry(scene, work, page, entry, obj: bpy.types.Object, fill_clip_needed: bool) -> None:
+    curve = getattr(obj, "data", None)
+    if curve is None:
+        return
+    was_generated = balloon_curve_source_state.detect_state(obj) == balloon_curve_source_state.STATE_GENERATED
+    changed = _remove_clipped_fill_splines(curve)
+    if not fill_clip_needed:
+        if changed and was_generated:
+            balloon_curve_source_state.mark_generated(obj)
+            _tag_curve_object_updated(obj)
+        return
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    page_id, coma_id = _split_coma_parent_key(page, parent_key)
+    target_page = page if str(getattr(page, "id", "") or "") == page_id else _find_page_by_id(work, page_id)
+    target_coma = _find_coma_by_id(target_page, coma_id)
+    if scene is None or work is None or target_page is None or target_coma is None:
+        if changed and was_generated:
+            balloon_curve_source_state.mark_generated(obj)
+        return
+    try:
+        from . import layer_hierarchy
+
+        subject_local = _iter_body_spline_local_points(curve)
+        if len(subject_local) < 3:
+            if changed and was_generated:
+                balloon_curve_source_state.mark_generated(obj)
+            return
+        subject_page = [_entry_curve_local_mm_to_page_xy(entry, point) for point in subject_local]
+        clip_polygon = [(float(x_mm), float(y_mm)) for x_mm, y_mm in layer_hierarchy.coma_polygon(target_coma)]
+        clipped_page = _clip_polygon_convex_xy(subject_page, clip_polygon)
+        if len(clipped_page) < 3:
+            if changed and was_generated:
+                balloon_curve_source_state.mark_generated(obj)
+            return
+        clipped_local = [_entry_page_xy_to_curve_local_mm(entry, point) for point in clipped_page]
+        changed = _add_clipped_fill_spline(curve, clipped_local) or changed
+        if changed:
+            _tag_curve_object_updated(obj)
+            if was_generated:
+                balloon_curve_source_state.mark_generated(obj)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: clipped fill geometry sync failed")
+        if changed and was_generated:
+            balloon_curve_source_state.mark_generated(obj)
 
 
 def _point_in_polygon_xy(point: tuple[float, float], polygon: Sequence[tuple[float, float]], *, tolerance: float = 1.0e-9) -> bool:
@@ -873,7 +1160,7 @@ def _balloon_curve_needs_coma_clip(
         return True
 
 
-def _coma_mask_object_for_entry(scene, work, page, entry, obj: bpy.types.Object | None = None):
+def _coma_mask_object_for_entry(scene, work, page, entry, obj: bpy.types.Object | None = None, *, margin_mm: float = 0.0):
     if scene is None or work is None or entry is None:
         return None
     parent_key = str(getattr(entry, "parent_key", "") or "")
@@ -886,7 +1173,7 @@ def _coma_mask_object_for_entry(scene, work, page, entry, obj: bpy.types.Object 
     target_page = page if str(getattr(page, "id", "") or "") == page_id else _find_page_by_id(work, page_id)
     target_coma = _find_coma_by_id(target_page, coma_id)
     if obj is not None and target_page is not None and target_coma is not None:
-        return _ensure_balloon_clip_mask(scene, work, target_page, target_coma, entry, obj)
+        return _ensure_balloon_clip_mask(scene, work, target_page, target_coma, entry, obj, margin_mm=margin_mm)
     try:
         from . import coma_plane
 
@@ -931,7 +1218,7 @@ def _remove_balloon_clip_mask(balloon_id: str) -> None:
         _remove_unused_data_block(data)
 
 
-def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.types.Object):
+def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.types.Object, *, margin_mm: float = 0.0):
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
@@ -952,7 +1239,9 @@ def _ensure_balloon_clip_mask(scene, work, page, coma, entry, owner_obj: bpy.typ
         top_verts = []
         bottom_verts = []
         depth_m = 0.02
-        for x_mm, y_mm in layer_hierarchy.coma_polygon(coma):
+        polygon_mm = [(float(x_mm), float(y_mm)) for x_mm, y_mm in layer_hierarchy.coma_polygon(coma)]
+        expanded_polygon_mm = _offset_convex_polygon_xy(polygon_mm, max(0.0, float(margin_mm or 0.0)))
+        for x_mm, y_mm in expanded_polygon_mm:
             world = Vector((mm_to_m(float(x_mm) + ox_mm), mm_to_m(float(y_mm) + oy_mm), 0.0))
             local = inv @ world
             top_verts.append((float(local.x), float(local.y), depth_m))
@@ -1236,7 +1525,6 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             body_points,
             sharp_indices=sharp_set,
             offset=offset,
-            point_radii=balloon_multiline_curve.body_outline_point_radii(entry, body_points),
         )
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
@@ -1331,9 +1619,29 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
     obj.hide_render = not bool(getattr(entry, "visible", True))
     try:
         _remove_balloon_source_object(balloon_id)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+        line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=line_clip_margin_mm)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+        clip_needed = _balloon_curve_needs_coma_clip(
+            scene,
+            work,
+            page,
+            entry,
+            obj,
+            mask_obj,
+            margin_mm=line_clip_margin_mm,
+        )
+        fill_clip_needed = _balloon_curve_needs_coma_clip(
+            scene,
+            work,
+            page,
+            entry,
+            obj,
+            mask_obj,
+            margin_mm=0.0,
+        )
+        _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
@@ -1352,24 +1660,8 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
             inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
             inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
             mask_object=mask_obj,
-            clip_needed=_balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm),
-            ),
-            fill_clip_needed=_balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-            ),
+            clip_needed=clip_needed,
+            fill_clip_needed=fill_clip_needed,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")

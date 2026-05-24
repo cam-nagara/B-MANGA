@@ -107,6 +107,22 @@ def _spline_bounds_xy(spline) -> tuple[float, float]:
     return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
 
 
+def _evaluated_material_z_range(obj, material_index: int) -> tuple[float, float]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        values: list[float] = []
+        for polygon in mesh.polygons:
+            if int(getattr(polygon, "material_index", 0) or 0) != int(material_index):
+                continue
+            values.extend(float(mesh.vertices[index].co.z) for index in polygon.vertices)
+        assert values, f"material {material_index} の面が見つかりません"
+        return min(values), max(values)
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_freeform_"))
     mod = None
@@ -193,10 +209,9 @@ def main() -> None:
         _assert_close(_modifier_socket_value(modifier, "谷の線幅 (mm)"), 0.22, "谷の線幅")
         _assert_close(_modifier_socket_value(modifier, "山の線幅 (mm)"), 0.46, "山の線幅")
         _assert_close(_modifier_socket_value(modifier, "多重線長さ変化 (%)"), 75.0, "長さ変化")
-        radii = [float(point.radius) for point in obj.data.splines[0].bezier_points]
-        assert len(radii) >= 4
-        _assert_close(radii[0], 0.22 / 0.3, "トゲ谷の多重線幅")
-        _assert_close(radii[1], 0.46 / 0.3, "トゲ山の多重線幅")
+        body_radii = [float(point.radius) for point in obj.data.splines[0].bezier_points]
+        assert len(body_radii) >= 4
+        assert all(abs(radius - 1.0) <= 1.0e-6 for radius in body_radii), "トゲ本体の主線幅が多重線設定で変わっています"
         spline_summary = [
             (
                 str(getattr(spline, "type", "")),
@@ -214,10 +229,22 @@ def main() -> None:
         assert len(helper_splines) == 6, f"トゲの多重線が閉じた外周線として作成されていません: {spline_summary}"
         assert all(bool(spline.use_cyclic_u) for spline in helper_splines), "トゲの多重線が途切れた線になっています"
         helper_points = helper_splines[0].points
-        assert len(helper_points) >= 4, "トゲの多重線に頂点が不足しています"
+        assert len(helper_points) >= 8, "トゲの多重線に長さ変化用の頂点が不足しています"
         assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
         _assert_close(_spline_point_radius(helper_splines[0], 0) - 100.0, 0.22 / 0.3, "トゲ多重線の谷側線幅")
         _assert_close(_spline_point_radius(helper_splines[0], 1) - 100.0, 0.46 / 0.3, "トゲ多重線の山側線幅")
+        helper_radius_values = [_spline_point_radius(helper_splines[0], index) - 100.0 for index in range(len(helper_points))]
+        assert any(value <= 1.0e-6 for value in helper_radius_values), "多重線の長さ変化で非表示になる区間が作られていません"
+        assert any(value > 1.0e-3 for value in helper_radius_values), "多重線の長さ変化で表示される区間が残っていません"
+        entry.outer_white_margin_enabled = True
+        entry.outer_white_margin_width_mm = 1.2
+        obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+        bpy.context.view_layer.update()
+        line_z_min, _line_z_max = _evaluated_material_z_range(obj, 0)
+        _outer_z_min, outer_z_max = _evaluated_material_z_range(obj, 2)
+        assert line_z_min > outer_z_max, (
+            f"多重線/主線がフチより背面に生成されています: line_min={line_z_min}, outer_max={outer_z_max}"
+        )
 
         payload = schema.balloon_entry_to_dict(entry)
         roundtrip = page.balloons.add()

@@ -250,6 +250,7 @@ def append_closed_multi_line_paths(
     sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
     clockwise = _polygon_signed_area(body_points) < 0.0
     current_inner_mm = line_width_mm * 0.5 + spacing_mm
+    length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     for ring_index in range(1, count):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
@@ -263,13 +264,6 @@ def append_closed_multi_line_paths(
             current_inner_mm += spacing_mm
             continue
         distance_mm = current_inner_mm + ring_extent_width_mm * 0.5
-        if shape_name == "thorn":
-            point_radius = [
-                MULTI_LINE_ROLE_RADIUS_OFFSET + ((valley_width_mm if index % 2 == 0 else peak_width_mm) / line_width_mm)
-                for index in range(len(body_points) + 1)
-            ]
-        else:
-            point_radius = MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm)
         for side in sides:
             ring_points = _offset_closed_outline(
                 body_points,
@@ -279,6 +273,17 @@ def append_closed_multi_line_paths(
             )
             if ring_points is None:
                 continue
+            if shape_name == "thorn":
+                ring_points, radius_scales = _thorn_multiline_length_points(
+                    ring_points,
+                    valley_width_mm=valley_width_mm,
+                    peak_width_mm=peak_width_mm,
+                    line_width_mm=line_width_mm,
+                    length_scale=length_scale,
+                )
+                point_radius = [MULTI_LINE_ROLE_RADIUS_OFFSET + scale for scale in radius_scales]
+            else:
+                point_radius = MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm)
             _add_open_poly_path(
                 curve,
                 ring_points,
@@ -288,6 +293,58 @@ def append_closed_multi_line_paths(
                 material_index=1,
             )
         current_inner_mm += ring_extent_width_mm + spacing_mm
+
+
+def _thorn_multiline_length_points(
+    ring_points: Sequence[tuple[float, float]],
+    *,
+    valley_width_mm: float,
+    peak_width_mm: float,
+    line_width_mm: float,
+    length_scale: float,
+) -> tuple[list[tuple[float, float]], list[float]]:
+    if len(ring_points) < 4:
+        width_scale = max(0.0, float(peak_width_mm)) / max(1.0e-6, float(line_width_mm))
+        return list(ring_points), [width_scale] * len(ring_points)
+    valley_scale = max(0.0, float(valley_width_mm)) / max(1.0e-6, float(line_width_mm))
+    peak_scale = max(0.0, float(peak_width_mm)) / max(1.0e-6, float(line_width_mm))
+    if length_scale >= 0.999:
+        return (
+            list(ring_points),
+            [valley_scale if index % 2 == 0 else peak_scale for index in range(len(ring_points))],
+        )
+    path: list[tuple[float, float]] = []
+    radii: list[float] = []
+
+    def add(point: tuple[float, float], radius: float) -> None:
+        if path and math.hypot(path[-1][0] - point[0], path[-1][1] - point[1]) <= 1.0e-7 and abs(radii[-1] - radius) <= 1.0e-7:
+            return
+        path.append((float(point[0]), float(point[1])))
+        radii.append(max(0.0, float(radius)))
+
+    count = len(ring_points)
+    first_valley = ring_points[0]
+    add(first_valley, valley_scale)
+    for valley_index in range(0, count, 2):
+        valley = ring_points[valley_index % count]
+        peak = ring_points[(valley_index + 1) % count]
+        next_valley = ring_points[(valley_index + 2) % count]
+        if valley_index > 0:
+            add(valley, valley_scale)
+        left_end = (
+            valley[0] + (peak[0] - valley[0]) * length_scale,
+            valley[1] + (peak[1] - valley[1]) * length_scale,
+        )
+        right_end = (
+            next_valley[0] + (peak[0] - next_valley[0]) * length_scale,
+            next_valley[1] + (peak[1] - next_valley[1]) * length_scale,
+        )
+        add(left_end, peak_scale)
+        add(left_end, 0.0)
+        add(peak, 0.0)
+        add(right_end, 0.0)
+        add(right_end, peak_scale)
+    return path, radii
 
 
 def append_edge_paths(

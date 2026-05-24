@@ -45,6 +45,23 @@ def _evaluated_bounds(obj) -> tuple[float, float, float]:
         evaluated.to_mesh_clear()
 
 
+def _evaluated_faces_for_material(obj, material_index: int) -> list[list]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        coords = [vertex.co.copy() for vertex in mesh.vertices]
+        faces = []
+        for poly in mesh.polygons:
+            if int(getattr(poly, "material_index", 0) or 0) != int(material_index):
+                continue
+            faces.append([coords[index] for index in poly.vertices])
+        assert faces, f"線幅測定用の面がありません: material_index={material_index}"
+        return faces
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _spline_anchor_bounds(spline) -> tuple[float, float]:
     if getattr(spline, "type", "") == "BEZIER":
         coords = [point.co.copy() for point in spline.bezier_points]
@@ -56,6 +73,62 @@ def _spline_anchor_bounds(spline) -> tuple[float, float]:
     min_y = min(co.y for co in coords)
     max_y = max(co.y for co in coords)
     return max_x - min_x, max_y - min_y
+
+
+def _longest_bezier_anchor_segment(spline):
+    points = list(getattr(spline, "bezier_points", []) or [])
+    assert len(points) >= 2, "線幅測定用の制御点が不足しています"
+    segment_count = len(points) if bool(getattr(spline, "use_cyclic_u", False)) else len(points) - 1
+    best = (points[0].co, points[1 % len(points)].co)
+    best_length = -1.0
+    for index in range(segment_count):
+        start = points[index].co
+        end = points[(index + 1) % len(points)].co
+        length = (end - start).length
+        if length > best_length:
+            best = (start, end)
+            best_length = length
+    return best
+
+
+def _stroke_width_cross_section(obj, start, end, *, material_index: int = 0, distance_limit: float = 0.005) -> float:
+    ax, ay = float(start.x), float(start.y)
+    bx, by = float(end.x), float(end.y)
+    dx = bx - ax
+    dy = by - ay
+    length = (dx * dx + dy * dy) ** 0.5
+    assert length > 1.0e-9, "線幅測定用の線分が短すぎます"
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    sx = ax + dx * 0.5
+    sy = ay + dy * 0.5
+    intersections: list[float] = []
+    for face in _evaluated_faces_for_material(obj, material_index):
+        if len(face) < 2:
+            continue
+        prev = face[-1]
+        prev_t = (float(prev.x) - sx) * ux + (float(prev.y) - sy) * uy
+        prev_n = (float(prev.x) - sx) * nx + (float(prev.y) - sy) * ny
+        for cur in face:
+            cur_t = (float(cur.x) - sx) * ux + (float(cur.y) - sy) * uy
+            cur_n = (float(cur.x) - sx) * nx + (float(cur.y) - sy) * ny
+            if abs(cur_t - prev_t) > 1.0e-12 and (
+                (prev_t <= 0.0 <= cur_t) or (cur_t <= 0.0 <= prev_t)
+            ):
+                factor = -prev_t / (cur_t - prev_t)
+                if -1.0e-6 <= factor <= 1.0 + 1.0e-6:
+                    distance = prev_n + (cur_n - prev_n) * factor
+                    if abs(distance) <= distance_limit:
+                        intersections.append(distance)
+            prev_t = cur_t
+            prev_n = cur_n
+    unique: list[float] = []
+    for value in sorted(intersections):
+        if unique and abs(unique[-1] - value) <= 1.0e-7:
+            continue
+        unique.append(value)
+    assert len(unique) >= 2, f"線幅を測定できる交点が不足しています: {unique}"
+    return max(unique) - min(unique)
 
 
 def _evaluated_world_bounds(obj) -> tuple[float, float, float, float]:
@@ -106,6 +179,17 @@ def _modifier_mask_values(obj, nodes_mod):
     return enabled, target, clip_needed, fill_clip_needed
 
 
+def _modifier_socket_value(obj, nodes_mod, socket_name: str):
+    modifier = obj.modifiers.get(nodes_mod.MODIFIER_NAME)
+    assert modifier is not None and modifier.node_group is not None, "フキダシの表示補助がありません"
+    for item in modifier.node_group.interface.items_tree:
+        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+            continue
+        if getattr(item, "name", "") == socket_name:
+            return modifier.get(item.identifier)
+    raise AssertionError(f"フキダシの表示補助に {socket_name} がありません")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_curve_mask_anchor_"))
     mod = None
@@ -118,6 +202,7 @@ def main() -> None:
         from bname_dev_balloon_curve_mask_anchor.core.work import get_work
         from bname_dev_balloon_curve_mask_anchor.utils import balloon_curve_object
         from bname_dev_balloon_curve_mask_anchor.utils import balloon_curve_render_nodes
+        from bname_dev_balloon_curve_mask_anchor.utils import coma_border_object
         from bname_dev_balloon_curve_mask_anchor.utils import coma_plane
         from bname_dev_balloon_curve_mask_anchor.utils import geom
         from bname_dev_balloon_curve_mask_anchor.utils import mask_apply
@@ -258,13 +343,16 @@ def main() -> None:
         entry4.fill_color = (1.0, 1.0, 1.0, 1.0)
         entry4.fill_opacity = 100.0
         entry4.opacity = 100.0
-        entry4.line_width_mm = 2.0
+        entry4.line_width_mm = 0.3
         obj4 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry4, page=page)
         assert obj4 is not None and obj4.type == "CURVE", "線幅確認フキダシが作成されていません"
         bpy.context.view_layer.update()
-        width4_m, height4_m, _depth4_m = _evaluated_bounds(obj4)
-        assert 0.0418 <= width4_m <= 0.0422, f"矩形フキダシの線幅が設定値通りではありません: width={width4_m}"
-        assert 0.0318 <= height4_m <= 0.0322, f"矩形フキダシの線幅が設定値通りではありません: height={height4_m}"
+        rect_width = _stroke_width_cross_section(
+            obj4,
+            obj4.data.splines[0].bezier_points[0].co,
+            obj4.data.splines[0].bezier_points[1].co,
+        )
+        assert 0.00027 <= rect_width <= 0.00033, f"矩形フキダシの0.3mm線幅が設定値通りではありません: width={rect_width}"
 
         entry5 = page.balloons.add()
         entry5.id = "balloon_line_width_thorn"
@@ -279,20 +367,63 @@ def main() -> None:
         entry5.fill_color = (1.0, 1.0, 1.0, 1.0)
         entry5.fill_opacity = 100.0
         entry5.opacity = 100.0
-        entry5.line_width_mm = 2.0
+        entry5.line_width_mm = 0.3
         obj5 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry5, page=page)
         assert obj5 is not None and obj5.type == "CURVE", "トゲ線幅確認フキダシが作成されていません"
         bpy.context.view_layer.update()
-        width5_m, height5_m, _depth5_m = _evaluated_bounds(obj5)
-        body5_width_m, body5_height_m = _spline_anchor_bounds(obj5.data.splines[0])
-        width5_delta = width5_m - body5_width_m
-        height5_delta = height5_m - body5_height_m
-        assert 0.0018 <= width5_delta <= 0.0035, (
-            f"トゲフキダシの線幅が設定値通りではありません: body={body5_width_m}, width={width5_m}"
+        body5 = obj5.data.splines[0]
+        assert all(abs(float(point.radius) - 1.0) <= 1.0e-6 for point in body5.bezier_points), (
+            "トゲ（直線）本体の主線幅が制御点ごとに変化しています"
         )
-        assert 0.0018 <= height5_delta <= 0.0035, (
-            f"トゲフキダシの線幅が設定値通りではありません: body={body5_height_m}, height={height5_m}"
+        assert abs(float(_modifier_socket_value(obj5, balloon_curve_render_nodes, "線幅 (mm)") or 0.0) - 0.3) <= 1.0e-6, (
+            "トゲ（直線）フキダシの表示補助に0.3mmの線幅が渡っていません"
         )
+        thorn_start, thorn_end = _longest_bezier_anchor_segment(body5)
+        thorn_width = _stroke_width_cross_section(
+            obj5,
+            thorn_start,
+            thorn_end,
+        )
+        assert 0.00027 <= thorn_width <= 0.00036, (
+            f"トゲ（直線）フキダシの0.3mm線幅が鋭角接合部を考慮しても太すぎます: width={thorn_width}"
+        )
+
+        entry6 = page.balloons.add()
+        entry6.id = "balloon_line_width_ellipse_03"
+        entry6.title = "楕円線幅確認"
+        entry6.shape = "ellipse"
+        entry6.x_mm = 120.0
+        entry6.y_mm = 20.0
+        entry6.width_mm = 40.0
+        entry6.height_mm = 30.0
+        entry6.parent_kind = "page"
+        entry6.parent_key = page_stack_key(page)
+        entry6.fill_color = (1.0, 1.0, 1.0, 1.0)
+        entry6.fill_opacity = 100.0
+        entry6.opacity = 100.0
+        entry6.line_width_mm = 0.3
+        obj6 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry6, page=page)
+        assert obj6 is not None and obj6.type == "CURVE", "楕円線幅確認フキダシが作成されていません"
+        bpy.context.view_layer.update()
+        ellipse_width = _stroke_width_cross_section(
+            obj6,
+            obj6.data.splines[0].bezier_points[0].co,
+            obj6.data.splines[0].bezier_points[1].co,
+        )
+        assert 0.00027 <= ellipse_width <= 0.00033, f"楕円フキダシの0.3mm線幅が設定値通りではありません: width={ellipse_width}"
+
+        coma.border.width_mm = 0.3
+        coma.border.style = "solid"
+        coma.border.visible = True
+        border_obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
+        assert border_obj is not None, "コマ枠線が作成されていません"
+        bpy.context.view_layer.update()
+        border_width = _stroke_width_cross_section(
+            border_obj,
+            border_obj.data.splines[0].points[0].co.to_3d(),
+            border_obj.data.splines[0].points[1].co.to_3d(),
+        )
+        assert 0.00027 <= border_width <= 0.00033, f"コマ枠線の0.3mm線幅が設定値通りではありません: width={border_width}"
         print("BNAME_BALLOON_CURVE_MASK_ANCHOR_OK")
     finally:
         if mod is not None:

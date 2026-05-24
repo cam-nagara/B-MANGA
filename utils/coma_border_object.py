@@ -27,6 +27,7 @@ COMA_WHITE_MARGIN_Z_M = (
 )
 COMA_BORDER_Z_M = coma_z_order.COMA_PLANE_BASE_Z_M + coma_z_order.COMA_BORDER_OFFSET_Z_M
 OUTSIDE_PAGE_ID = "outside"
+_CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
 
 PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
 PROP_COMA_BORDER_OWNER_ID = "bname_coma_border_owner_id"
@@ -275,7 +276,7 @@ def _rebuild_curve(
         for point, (x_mm, y_mm) in zip(spline.points, points_mm, strict=False):
             point.co = (mm_to_m(x_mm), mm_to_m(y_mm), 0.0, 1.0)
         spline.use_cyclic_u = cyclic and len(points_mm) >= 3
-    curve.bevel_depth = mm_to_m(max(0.0, width_mm)) * 0.5
+    curve.bevel_depth = max(0.0, float(width_mm)) * _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM
     curve.bevel_resolution = 1
     curve.resolution_u = 1
 

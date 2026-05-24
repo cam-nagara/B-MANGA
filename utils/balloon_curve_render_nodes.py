@@ -16,13 +16,14 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 28
+GROUP_VERSION = 30
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
 _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
 _MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 _OUTER_EDGE_ROLE_RADIUS = 200.0
 _INNER_EDGE_ROLE_RADIUS = 300.0
+_CLIPPED_FILL_ROLE_RADIUS = 400.0
 
 
 @dataclass(frozen=True)
@@ -248,12 +249,12 @@ def _vector_add_constant(
 
 
 def _offset_geometry_z(group, geometry_socket, z_value: float, *, label: str, location: tuple[float, float]):
-    node = _node(group, "GeometryNodeTransform", label=label, location=location)
+    node = _node(group, "GeometryNodeSetPosition", label=label, location=location)
     _link(group, geometry_socket, node.inputs["Geometry"])
-    translation = _socket_by_name(node.inputs, "Translation")
-    if translation is not None:
-        _set_default(translation, (0.0, 0.0, float(z_value)))
-    return node.outputs["Geometry"]
+    offset = _socket_by_name(node.inputs, "Offset")
+    if offset is not None:
+        _set_default(offset, (0.0, 0.0, float(z_value)))
+    return _socket_by_name(node.outputs, "Geometry") or node.outputs[0]
 
 
 def _set_curve_radius(group, curve_socket, radius: float, *, label: str, location: tuple[float, float]):
@@ -488,6 +489,20 @@ def _build_nodes(group) -> None:
     input_node = _node(group, "NodeGroupInput", label="フキダシカーブ", location=(-760, 0))
     output_node = _node(group, "NodeGroupOutput", label="表示結果", location=(980, 0))
     role_radius = _point_radius_scale(group, location=(-1320, -40))
+    clipped_fill_selection = _compare_float_equal(
+        group,
+        role_radius,
+        _CLIPPED_FILL_ROLE_RADIUS,
+        label="見切れ塗りを分離",
+        location=(-1340, 220),
+    )
+    clipped_fill_curve, without_clipped_fill = _separate_geometry(
+        group,
+        input_node.outputs["Geometry"],
+        clipped_fill_selection,
+        label="見切れ塗り",
+        location=(-1120, 220),
+    )
     outer_selection = _compare_float_equal(
         group,
         role_radius,
@@ -497,7 +512,7 @@ def _build_nodes(group) -> None:
     )
     outer_curve, without_outer = _separate_geometry(
         group,
-        input_node.outputs["Geometry"],
+        without_clipped_fill,
         outer_selection,
         label="外側フチ",
         location=(-900, -240),
@@ -545,15 +560,6 @@ def _build_nodes(group) -> None:
         location=(-700, -80),
     )
 
-    fill_source = _set_curve_radius(
-        group,
-        body_curve,
-        0.0,
-        label="塗り用の線幅を消す",
-        location=(-700, 180),
-    )
-    fill_curve = _node(group, "GeometryNodeFillCurve", label="塗り面", location=(-500, 180))
-    _link(group, fill_source, fill_curve.inputs["Curve"])
     mask_info = _node(group, "GeometryNodeObjectInfo", label="マスク対象", location=(-500, -360))
     try:
         mask_info.transform_space = "RELATIVE"
@@ -577,17 +583,35 @@ def _build_nodes(group) -> None:
     )
     mask_geometry = mask_info.outputs["Geometry"]
 
-    fill_masked = _masked_geometry(
+    fill_body_source = _set_curve_radius(
         group,
-        fill_curve.outputs["Mesh"],
-        mask_geometry,
-        fill_clip_enabled,
-        label="塗り",
-        location=(-250, 180),
+        body_curve,
+        0.0,
+        label="塗り用の線幅を消す",
+        location=(-700, 180),
     )
+    fill_clipped_source = _set_curve_radius(
+        group,
+        clipped_fill_curve,
+        0.0,
+        label="見切れ塗り用の線幅を消す",
+        location=(-700, 360),
+    )
+    fill_source = _node(
+        group,
+        "GeometryNodeSwitch",
+        label="見切れ塗りへ切り替え",
+        location=(-500, 300),
+    )
+    fill_source.input_type = "GEOMETRY"
+    _link(group, fill_clip_enabled, fill_source.inputs["Switch"])
+    _link(group, fill_body_source, fill_source.inputs["False"])
+    _link(group, fill_clipped_source, fill_source.inputs["True"])
+    fill_curve = _node(group, "GeometryNodeFillCurve", label="塗り面", location=(-500, 180))
+    _link(group, fill_source.outputs["Output"], fill_curve.inputs["Curve"])
     fill_geometry = _set_material(
         group,
-        fill_masked,
+        fill_curve.outputs["Mesh"],
         input_node.outputs["塗り素材"],
         label="塗り素材",
         location=(190, 220),
@@ -622,7 +646,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="外側フチ",
-        z_value=0.00006,
+        z_value=0.0008,
         location=(-250, -760),
     )
     outer_geometry = _switch_edge(
@@ -647,7 +671,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="内側フチ",
-        z_value=0.00007,
+        z_value=0.0015,
         location=(-250, -1180),
     )
     inner_geometry = _switch_edge(
@@ -666,7 +690,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="輪郭線",
-        z_value=0.00009,
+        z_value=0.005,
         location=(-250, -340),
     )
     thorn_multi_geometry = _outline_mesh_with_radius(
@@ -677,7 +701,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="多重線",
-        z_value=0.00008,
+        z_value=0.0035,
         location=(150, -1540),
         use_point_radius=True,
         point_radius_offset=_MULTI_LINE_ROLE_RADIUS_OFFSET,
