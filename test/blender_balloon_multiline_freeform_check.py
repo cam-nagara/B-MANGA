@@ -98,6 +98,15 @@ def _spline_point_radius(spline, index: int) -> float:
     return float(spline.points[index].radius)
 
 
+def _spline_bounds_xy(spline) -> tuple[float, float]:
+    if str(getattr(spline, "type", "") or "") == "BEZIER":
+        coords = [point.co for point in spline.bezier_points]
+    else:
+        coords = [point.co.to_3d() for point in spline.points]
+    assert coords
+    return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_freeform_"))
     mod = None
@@ -188,14 +197,27 @@ def main() -> None:
         assert len(radii) >= 4
         _assert_close(radii[0], 0.22 / 0.3, "トゲ谷の多重線幅")
         _assert_close(radii[1], 0.46 / 0.3, "トゲ山の多重線幅")
-        helper_splines = [spline for spline in obj.data.splines if not bool(spline.use_cyclic_u)]
-        assert helper_splines, "トゲの多重線用補助線が作成されていません"
-        body_points = obj.data.splines[0].bezier_points
-        body_len = (body_points[1].co - body_points[0].co).length
-        helper_len = (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length
-        _assert_close(helper_len, body_len * 0.75, "トゲ多重線の長さ変化", eps=1.0e-4)
-        _assert_close(_spline_point_radius(helper_splines[0], 0), 0.22 / 0.3, "トゲ多重線の谷側線幅")
-        _assert_close(_spline_point_radius(helper_splines[0], 1), 0.46 / 0.3, "トゲ多重線の山側線幅")
+        spline_summary = [
+            (
+                str(getattr(spline, "type", "")),
+                bool(getattr(spline, "use_cyclic_u", False)),
+                int(getattr(spline, "material_index", 0)),
+                len(getattr(spline, "points", []) or getattr(spline, "bezier_points", [])),
+            )
+            for spline in obj.data.splines
+        ]
+        helper_splines = [
+            spline
+            for spline in obj.data.splines
+            if getattr(spline, "points", None) and float(spline.points[0].radius) > 50.0
+        ]
+        assert len(helper_splines) == 6, f"トゲの多重線が閉じた外周線として作成されていません: {spline_summary}"
+        assert all(bool(spline.use_cyclic_u) for spline in helper_splines), "トゲの多重線が途切れた線になっています"
+        helper_points = helper_splines[0].points
+        assert len(helper_points) >= 4, "トゲの多重線に頂点が不足しています"
+        assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
+        _assert_close(_spline_point_radius(helper_splines[0], 0) - 100.0, 0.22 / 0.3, "トゲ多重線の谷側線幅")
+        _assert_close(_spline_point_radius(helper_splines[0], 1) - 100.0, 0.46 / 0.3, "トゲ多重線の山側線幅")
 
         payload = schema.balloon_entry_to_dict(entry)
         roundtrip = page.balloons.add()
@@ -205,6 +227,40 @@ def main() -> None:
         _assert_close(roundtrip.multi_line_spacing_mm, 0.4, "保存読込: 多重線間隔")
         assert roundtrip.multi_line_direction == "both"
         _assert_close(roundtrip.thorn_multi_line_peak_width_mm, 0.46, "保存読込: 山の線幅")
+
+        edge_entry = balloon_op._create_balloon_entry(  # noqa: SLF001
+            context,
+            page,
+            shape="rect",
+            x=35.0,
+            y=82.0,
+            w=34.0,
+            h=24.0,
+        )
+        edge_entry.line_width_mm = 0.6
+        edge_entry.outer_white_margin_enabled = True
+        edge_entry.outer_white_margin_width_mm = 2.0
+        edge_entry.inner_white_margin_enabled = True
+        edge_entry.inner_white_margin_width_mm = 1.5
+        edge_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=edge_entry, page=page)
+        body_w, body_h = _spline_bounds_xy(edge_obj.data.splines[0])
+        outer_helpers = [
+            spline
+            for spline in edge_obj.data.splines
+            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 200.0) <= 0.001
+        ]
+        inner_helpers = [
+            spline
+            for spline in edge_obj.data.splines
+            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 300.0) <= 0.001
+        ]
+        assert len(outer_helpers) == 1, "外側フチ用の輪郭が分離されていません"
+        assert len(inner_helpers) == 1, "内側フチ用の輪郭が分離されていません"
+        assert outer_helpers[0].use_cyclic_u and inner_helpers[0].use_cyclic_u, "フチ用の輪郭が閉じていません"
+        outer_w, outer_h = _spline_bounds_xy(outer_helpers[0])
+        inner_w, inner_h = _spline_bounds_xy(inner_helpers[0])
+        assert outer_w > body_w and outer_h > body_h, "外側フチが外側の輪郭になっていません"
+        assert inner_w < body_w and inner_h < body_h, "内側フチが内側の輪郭になっていません"
 
         freeform = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,

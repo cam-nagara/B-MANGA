@@ -70,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 10
+EFFECT_PARAM_SCHEMA_VERSION = 11
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -125,6 +125,8 @@ EFFECT_PARAM_FIELDS = (
     "bundle_line_count_jitter",
     "bundle_gap_mm",
     "bundle_gap_jitter_amount",
+    "bundle_jagged_enabled",
+    "bundle_jagged_height_percent",
     "inout_apply",
     "in_percent",
     "out_percent",
@@ -142,6 +144,8 @@ EFFECT_PARAM_FIELDS = (
     "fill_color",
     "fill_opacity",
     "fill_base_shape",
+    "underlay_line_offset_percent",
+    "underlay_line_align_endpoints",
     "speed_angle_deg",
     "speed_line_count",
     "white_outline_count",
@@ -369,6 +373,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     bundle_line_count_jitter: FloatProperty(name="数の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     bundle_gap_mm: FloatProperty(name="まとまり間隔 (mm)", default=5.0, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
     bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_jagged_enabled: BoolProperty(name="ギザギザにする", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    bundle_jagged_height_percent: FloatProperty(name="ギザギザ高さ (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -388,6 +394,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    underlay_line_offset_percent: FloatProperty(name="下地線ズラし (%)", default=100.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    underlay_line_align_endpoints: BoolProperty(name="下地線の終点を揃える", default=True, update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]

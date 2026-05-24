@@ -40,7 +40,7 @@ PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
-CURVE_GEOMETRY_VERSION = 4
+CURVE_GEOMETRY_VERSION = 5
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -587,7 +587,7 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
                 entry,
                 obj,
                 mask_obj,
-                margin_mm=line_width_mm * 0.5,
+                margin_mm=balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm),
             ),
             fill_clip_needed=_balloon_curve_needs_coma_clip(
                 scene,
@@ -1206,6 +1206,10 @@ def _geometry_key_for_entry(entry) -> str:
         "thorn_multi_line_valley_width": float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
         "thorn_multi_line_peak_width": float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
         "thorn_multi_line_length_scale": float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
+        "outer_edge_enabled": bool(getattr(entry, "outer_white_margin_enabled", False)),
+        "outer_edge_width": float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
+        "inner_edge_enabled": bool(getattr(entry, "inner_white_margin_enabled", False)),
+        "inner_edge_width": float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
         "shape_params": shape_params,
         "tails": tails,
     }
@@ -1223,6 +1227,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
         body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
+        balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     else:
         body_points, sharp = balloon_multiline_curve.body_outline_for_entry(entry)
         sharp_set = set(sharp)
@@ -1234,7 +1239,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             point_radii=balloon_multiline_curve.body_outline_point_radii(entry, body_points),
         )
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
-        balloon_multiline_curve.append_thorn_multi_line_segments(curve, entry, body_points, offset=offset)
+        balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
         tail_points = _tail_polygon_for_entry(entry, tail)
         _add_bezier_loop(
@@ -1354,7 +1359,7 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
                 entry,
                 obj,
                 mask_obj,
-                margin_mm=line_width_mm * 0.5,
+                margin_mm=balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm),
             ),
             fill_clip_needed=_balloon_curve_needs_coma_clip(
                 scene,

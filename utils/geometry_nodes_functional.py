@@ -706,7 +706,7 @@ def build_effect_line_nodes(group, gn) -> None:
     line_half_m = gn._math_multiply(group, input_node.outputs[gn.LINE_WIDTH_MM_SOCKET], 0.0005, label="線幅 mm → 半径 m", location=(-800, -340))
     line_material = input_node.outputs["線素材"]
     fill_material = input_node.outputs["塗り素材"]
-    radial = gn._instanced_radial_line_geometry(group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_half_m, line_material)
+    radial = gn._instanced_radial_line_geometry(group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, line_half_m, line_material, fill_material)
     fill = _effect_end_fill_geometry(gn, group, input_node, origin_x_m, origin_y_m, width_half_m, height_half_m, fill_material)
     focus_join = gn._node(group, "GeometryNodeJoinGeometry", label="集中線と下地", location=(1460, -420))
     gn._link(group, fill, focus_join.inputs["Geometry"])

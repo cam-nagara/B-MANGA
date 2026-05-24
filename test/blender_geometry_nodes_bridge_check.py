@@ -299,6 +299,8 @@ def main() -> None:
             params.bundle_line_count_jitter = 0.11
             params.bundle_gap_mm = 0.9
             params.bundle_gap_jitter_amount = 0.14
+            params.bundle_jagged_enabled = True
+            params.bundle_jagged_height_percent = 76.0
             params.inout_apply = "opacity"
             params.in_percent = 82.0
             params.out_percent = 35.0
@@ -315,6 +317,8 @@ def main() -> None:
             params.fill_color = (0.33, 0.22, 0.11, 1.0)
             params.fill_opacity = 58.0
             params.fill_base_shape = True
+            params.underlay_line_offset_percent = -125.0
+            params.underlay_line_align_endpoints = False
             params.speed_angle_deg = 21.0
             params.speed_line_count = 144
             params.white_outline_count = 6
@@ -392,6 +396,9 @@ def main() -> None:
             raise AssertionError("始点乱れ/終点乱れが0%/100%も取り得る乱数構成になっていません")
         if "始点乱れ波" in effect_node_labels or "終点乱れ波" in effect_node_labels:
             raise AssertionError("始点乱れ/終点乱れに周期的な波形ノードが残っています")
+        for label in ("まとまり端から短縮", "ギザギザ後始点", "下地線ズラし", "下地線終点揃え"):
+            if label not in effect_node_labels:
+                raise AssertionError(f"効果線の新しい設定がノード内で使われていません: {label}")
         start_source = effect_line_object.find_effect_shape_source_object(effect_obj, "start")
         end_source = effect_line_object.find_effect_shape_source_object(effect_obj, "end")
         assert start_source is not None, "効果線の始点形状参照実体がありません"

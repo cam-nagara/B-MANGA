@@ -140,6 +140,11 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         row = sub.row(align=True)
         row.prop(params, "bundle_gap_mm")
         row.prop(params, "bundle_gap_jitter_amount", text="乱れ")
+        row = sub.row(align=True)
+        row.prop(params, "bundle_jagged_enabled")
+        jag = row.row()
+        jag.enabled = params.bundle_jagged_enabled
+        jag.prop(params, "bundle_jagged_height_percent", text="高さ")
 
     box = layout.box()
     box.label(text="入り抜き")
@@ -167,6 +172,8 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         box.prop(params, "fill_color")
         box.prop(params, "fill_opacity")
         box.prop(params, "fill_base_shape")
+        box.prop(params, "underlay_line_offset_percent")
+        box.prop(params, "underlay_line_align_endpoints")
 
     if params.effect_type == "speed":
         box = layout.box()

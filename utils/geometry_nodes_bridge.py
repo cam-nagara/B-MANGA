@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-Name Geometry Nodes"
 GROUP_PREFIX = "BName_GN_"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
-_GROUP_VERSION = 32
+_GROUP_VERSION = 34
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -117,6 +117,8 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "bundle_line_count_jitter": SocketSpec("まとまり 数の乱れ", "NodeSocketFloat", 0.5),
     "bundle_gap_mm": SocketSpec(BUNDLE_GAP_MM_SOCKET, "NodeSocketFloat", 5.0),
     "bundle_gap_jitter_amount": SocketSpec("まとまり間隔の乱れ", "NodeSocketFloat", 0.5),
+    "bundle_jagged_enabled": SocketSpec("ギザギザにする", "NodeSocketBool", False),
+    "bundle_jagged_height_percent": SocketSpec("ギザギザ高さ (%)", "NodeSocketFloat", 100.0),
     "inout_apply": SocketSpec("適用先", "NodeSocketInt", 1),
     "in_percent": SocketSpec("入り (%)", "NodeSocketFloat", 100.0),
     "out_percent": SocketSpec("抜き (%)", "NodeSocketFloat", 0.0),
@@ -134,6 +136,8 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "fill_color": SocketSpec("塗り色", "NodeSocketColor", (0.0, 0.0, 0.0, 1.0)),
     "fill_opacity": SocketSpec("塗り不透明度", "NodeSocketFloat", 100.0),
     "fill_base_shape": SocketSpec("終点形状を下地として塗る", "NodeSocketBool", False),
+    "underlay_line_offset_percent": SocketSpec("下地線ズラし (%)", "NodeSocketFloat", 100.0),
+    "underlay_line_align_endpoints": SocketSpec("下地線の終点を揃える", "NodeSocketBool", True),
     "speed_angle_deg": SocketSpec("流線の角度", "NodeSocketFloat", 0.0),
     "speed_line_count": SocketSpec("流線の本数上限", "NodeSocketInt", 300),
     "white_outline_count": SocketSpec("白抜き線 本数", "NodeSocketInt", 5),
@@ -1898,6 +1902,7 @@ def _instanced_radial_line_geometry(
     height_half_m,
     line_half_m,
     line_material=None,
+    fill_material=None,
 ):
     """本数入力から Geometry Nodes 側で放射線を繰り返し生成する."""
     import math
@@ -2368,6 +2373,41 @@ def _instanced_radial_line_geometry(
     end_trim = _math_binary(group, "MULTIPLY", end_trim, trim_scale, label="終点乱れ上限後", location=(2280, -1740))
     radius = _math_binary(group, "SUBTRACT", start_radius_actual, start_trim, label="始点乱れ反映", location=(2480, -1560))
     inner_radius = _math_add(group, end_hit_radius, end_trim, label="終点乱れ反映", location=(2480, -1740))
+    bundle_pos = _math_binary(group, "MODULO", index.outputs["Index"], b_socket=bundle_size, label="まとまり内位置", location=(1680, -1080))
+    bundle_span = _math_binary(group, "MAXIMUM", _math_binary(group, "SUBTRACT", bundle_size, b_value=1.0, label="まとまり幅", location=(1880, -1080)), b_value=1.0, label="まとまり幅下限", location=(2080, -1080))
+    bundle_t = _math_binary(group, "DIVIDE", bundle_pos, bundle_span, label="まとまり内率", location=(2280, -1080))
+    bundle_edge = _math_binary(
+        group,
+        "ABSOLUTE",
+        _math_binary(group, "SUBTRACT", _math_binary(group, "MULTIPLY", bundle_t, b_value=2.0, label="まとまり内率2倍", location=(2480, -1080)), b_value=1.0, label="まとまり端率", location=(2680, -1080)),
+        label="まとまり端から短縮",
+        location=(2880, -1080),
+    )
+    jagged_height = _math_binary(group, "DIVIDE", input_node.outputs["ギザギザ高さ (%)"], b_value=100.0, label="ギザギザ高さ率", location=(2480, -1240))
+    jagged_factor = _math_binary(
+        group,
+        "MAXIMUM",
+        _math_binary(
+            group,
+            "SUBTRACT",
+            _constant_float(group, 1.0, label="ギザギザ基準", location=(2680, -1240)),
+            b_socket=_math_binary(group, "MULTIPLY", bundle_edge, jagged_height, label="ギザギザ短縮率", location=(2880, -1240)),
+            label="ギザギザ長さ率",
+            location=(3080, -1240),
+        ),
+        b_value=0.0,
+        label="ギザギザ長さ下限",
+        location=(3280, -1240),
+    )
+    jagged_radius = _math_add(
+        group,
+        inner_radius,
+        _math_binary(group, "MULTIPLY", _math_binary(group, "SUBTRACT", radius, inner_radius, label="ギザギザ対象長", location=(3280, -1400)), jagged_factor, label="ギザギザ後長さ", location=(3480, -1400)),
+        label="ギザギザ後始点",
+        location=(3680, -1400),
+    )
+    jagged_candidate = _switch_float(group, input_node.outputs["ギザギザにする"], radius, jagged_radius, label="ギザギザ切替", location=(3880, -1240))
+    radius = _switch_float(group, input_node.outputs["まとまり"], radius, jagged_candidate, label="まとまりギザギザ有効", location=(4080, -1240))
     index_mod = _math_binary(group, "MODULO", index.outputs["Index"], b_value=2.0, label="偶奇", location=(-120, -1240))
     is_even = _compare_float_socket(group, index_mod, 0.0, label="偶数線", location=(80, -1400))
     uni_short = _math_binary(group, "MULTIPLY", radius, b_value=0.84, label="ウニ短線", location=(80, -1240))
@@ -2376,8 +2416,44 @@ def _instanced_radial_line_geometry(
     is_uni = _compare_int_socket(group, input_node.outputs["種類"], 2, label="ウニフラか", location=(480, -1400))
     end_radius = _switch_float(group, is_uni, radius, uni_radius, label="終点半径", location=(680, -1240))
 
+    line_length = _math_binary(group, "SUBTRACT", end_radius, inner_radius, label="線の実長", location=(760, -1560))
+    line_length = _math_binary(group, "MAXIMUM", line_length, b_value=0.0, label="線の実長下限", location=(980, -1560))
+    visible_line = _compare_float_socket(group, line_length, 0.000000001, operation="GREATER_THAN", label="線表示", location=(980, -1400))
+    visible_width_scale = _switch_float(group, visible_line, zero_jitter, width_scale, label="線幅表示", location=(1180, -1400))
     base_start = _constant_float(group, 0.0, label="線原型始点", location=(80, -1080))
     base_end = _constant_float(group, 1.0, label="線原型終点", location=(80, -1240))
+    underlay_offset = _math_binary(
+        group,
+        "MULTIPLY",
+        _math_binary(group, "MULTIPLY", base_line_half_m, b_value=2.0, label="下地線基準幅", location=(3280, -3600)),
+        b_socket=_math_binary(group, "DIVIDE", input_node.outputs["下地線ズラし (%)"], b_value=100.0, label="下地線ズラし率", location=(3280, -3760)),
+        label="下地線ズラし量",
+        location=(3480, -3680),
+    )
+    underlay_extra_rate = _math_binary(
+        group,
+        "DIVIDE",
+        underlay_offset,
+        _math_binary(group, "MAXIMUM", line_length, b_value=0.000001, label="下地線長さ基準", location=(3480, -3840)),
+        label="下地線終点差",
+        location=(3680, -3840),
+    )
+    underlay_unaligned_end = _math_binary(
+        group,
+        "MAXIMUM",
+        _math_add(group, base_end, underlay_extra_rate, label="下地線ずらし終点", location=(3880, -3840)),
+        b_value=0.001,
+        label="下地線終点下限",
+        location=(4080, -3840),
+    )
+    underlay_end = _switch_float(
+        group,
+        input_node.outputs["下地線の終点を揃える"],
+        underlay_unaligned_end,
+        base_end,
+        label="下地線終点揃え",
+        location=(4280, -3840),
+    )
     material = _tapered_line_mesh_x(
         group,
         input_node,
@@ -2388,10 +2464,23 @@ def _instanced_radial_line_geometry(
         label="線素材",
         location=(280, -1080),
     )
-    line_length = _math_binary(group, "SUBTRACT", end_radius, inner_radius, label="線の実長", location=(760, -1560))
-    line_length = _math_binary(group, "MAXIMUM", line_length, b_value=0.0, label="線の実長下限", location=(980, -1560))
-    visible_line = _compare_float_socket(group, line_length, 0.000000001, operation="GREATER_THAN", label="線表示", location=(980, -1400))
-    visible_width_scale = _switch_float(group, visible_line, zero_jitter, width_scale, label="線幅表示", location=(1180, -1400))
+    underlay = _tapered_line_mesh_x(
+        group,
+        input_node,
+        base_start,
+        underlay_end,
+        base_line_half_m,
+        fill_material,
+        label="下地線素材",
+        location=(280, -3600),
+    )
+    underlay_transform = _node(group, "GeometryNodeTransform", label="下地線ズラし", location=(3680, -3600))
+    _link(group, underlay, underlay_transform.inputs["Geometry"])
+    _link(group, _combine_xyz(group, y_socket=underlay_offset, z=-0.00001, label="下地線ズラし方向", location=(3480, -3520)), underlay_transform.inputs["Translation"])
+    material_join = _node(group, "GeometryNodeJoinGeometry", label="主線と下地線", location=(3900, -3600))
+    _link(group, underlay_transform.outputs["Geometry"], material_join.inputs["Geometry"])
+    _link(group, material, material_join.inputs["Geometry"])
+    material = material_join.outputs["Geometry"]
     ray_x = _math_binary(group, "COSINE", angle_with_rotation, label="線X方向", location=(560, -1880))
     ray_y = _math_binary(group, "SINE", angle_with_rotation, label="線Y方向", location=(560, -2040))
     point_x = _math_binary(group, "MULTIPLY", ray_x, inner_radius, label="始点X", location=(760, -1880))

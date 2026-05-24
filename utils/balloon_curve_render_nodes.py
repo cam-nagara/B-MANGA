@@ -16,9 +16,13 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 24
+GROUP_VERSION = 28
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
+_CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
+_MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
+_OUTER_EDGE_ROLE_RADIUS = 200.0
+_INNER_EDGE_ROLE_RADIUS = 300.0
 
 
 @dataclass(frozen=True)
@@ -191,6 +195,22 @@ def _compare_float_equal(group, value_socket, expected: float, *, label: str, lo
     return _socket_by_name(node.outputs, "Result") or node.outputs[0]
 
 
+def _compare_float_greater(group, value_socket, expected: float, *, label: str, location: tuple[float, float]):
+    node = _node(group, "FunctionNodeCompare", label=label, location=location)
+    try:
+        node.data_type = "FLOAT"
+        node.operation = "GREATER_THAN"
+    except Exception:  # noqa: BLE001
+        pass
+    a_socket = _socket_by_name(node.inputs, "A")
+    b_socket = _socket_by_name(node.inputs, "B")
+    if a_socket is not None:
+        _link(group, value_socket, a_socket)
+    if b_socket is not None:
+        _set_default(b_socket, float(expected))
+    return _socket_by_name(node.outputs, "Result") or node.outputs[0]
+
+
 def _switch_geometry(group, switch_socket, false_socket, true_socket, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeSwitch", label=label, location=location)
     node.input_type = "GEOMETRY"
@@ -253,14 +273,31 @@ def _set_curve_radius(group, curve_socket, radius: float, *, label: str, locatio
     return _socket_by_name(node.outputs, "Curve", "Geometry") or curve_socket
 
 
-def _point_radius_scale(group, *, location: tuple[float, float]):
+def _point_radius_scale(group, *, location: tuple[float, float], subtract_value: float = 0.0):
     node = _node(group, "GeometryNodeInputNamedAttribute", label="制御点ごとの線幅倍率", location=location)
     try:
         node.data_type = "FLOAT"
     except Exception:  # noqa: BLE001
         pass
     _set_default(node.inputs["Name"], "radius")
-    return node.outputs["Attribute"]
+    attr = node.outputs["Attribute"]
+    if abs(float(subtract_value)) <= 1.0e-9:
+        return attr
+    subtract = _node(group, "ShaderNodeMath", label="制御点線幅の目印を除外", location=(location[0] + 220, location[1]))
+    try:
+        subtract.operation = "SUBTRACT"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, attr, subtract.inputs[0])
+    _set_default(subtract.inputs[1], float(subtract_value))
+    clamp = _node(group, "ShaderNodeMath", label="制御点線幅下限", location=(location[0] + 440, location[1]))
+    try:
+        clamp.operation = "MAXIMUM"
+    except Exception:  # noqa: BLE001
+        pass
+    _link(group, subtract.outputs["Value"], clamp.inputs[0])
+    _set_default(clamp.inputs[1], 0.0)
+    return clamp.outputs["Value"]
 
 
 def _masked_geometry(
@@ -272,43 +309,14 @@ def _masked_geometry(
     label: str,
     location: tuple[float, float],
 ):
-    position = _node(
+    clipped = _clip_geometry_by_mask_hit(
         group,
-        "GeometryNodeInputPosition",
-        label=f"{label}位置",
-        location=(location[0] - 460, location[1] + 80),
-    )
-    source_position = _vector_add_constant(
-        group,
-        position.outputs["Position"],
-        (0.0, 0.0, 1.0),
-        label=f"{label}判定開始位置",
-        location=(location[0] - 250, location[1] + 80),
-    )
-    raycast = _node(group, "GeometryNodeRaycast", label=f"{label}をコマ内だけ残す", location=location)
-    _link(group, mask_geometry_socket, raycast.inputs["Target Geometry"])
-    _link(group, source_position, raycast.inputs["Source Position"])
-    _set_default(raycast.inputs["Ray Direction"], (0.0, 0.0, -1.0))
-    _set_default(raycast.inputs["Ray Length"], 2.0)
-    outside = _boolean_not(
-        group,
-        raycast.outputs["Is Hit"],
-        label=f"{label}のコマ外判定",
-        location=(location[0] + 220, location[1] - 120),
-    )
-    delete = _node(
-        group,
-        "GeometryNodeDeleteGeometry",
-        label=f"{label}のコマ外を消す",
+        geometry_socket,
+        mask_geometry_socket,
+        keep_inside=True,
+        label=label,
         location=(location[0] + 220, location[1] + 40),
     )
-    try:
-        delete.domain = "FACE"
-        delete.mode = "ALL"
-    except Exception:  # noqa: BLE001
-        pass
-    _link(group, geometry_socket, delete.inputs["Geometry"])
-    _link(group, outside, delete.inputs["Selection"])
 
     switch = _node(
         group,
@@ -319,7 +327,7 @@ def _masked_geometry(
     switch.input_type = "GEOMETRY"
     _link(group, use_mask_socket, switch.inputs["Switch"])
     _link(group, geometry_socket, switch.inputs["False"])
-    _link(group, delete.outputs["Geometry"], switch.inputs["True"])
+    _link(group, clipped, switch.inputs["True"])
     return switch.outputs["Output"]
 
 
@@ -366,7 +374,7 @@ def _clip_geometry_by_mask_hit(
         location=(location[0] + 220, location[1] + 40),
     )
     try:
-        delete.domain = "FACE"
+        delete.domain = "POINT"
         delete.mode = "ALL"
     except Exception:  # noqa: BLE001
         pass
@@ -387,16 +395,17 @@ def _outline_mesh_with_radius(
     z_value: float,
     location: tuple[float, float],
     use_point_radius: bool = False,
+    point_radius_offset: float = 0.0,
 ):
     profile = _node(group, "GeometryNodeCurvePrimitiveCircle", label=f"{label}断面", location=location)
-    _set_default(profile.inputs["Resolution"], 8)
+    _set_default(profile.inputs["Resolution"], 32)
     _link(group, radius_socket, profile.inputs["Radius"])
     mesh = _node(group, "GeometryNodeCurveToMesh", label=label, location=(location[0] + 250, location[1]))
     _link(group, curve_socket, mesh.inputs["Curve"])
     _link(group, profile.outputs["Curve"], mesh.inputs["Profile Curve"])
     scale_input = _socket_by_name(mesh.inputs, "Scale")
     if use_point_radius and scale_input is not None:
-        point_radius = _point_radius_scale(group, location=(location[0], location[1] - 180))
+        point_radius = _point_radius_scale(group, location=(location[0], location[1] - 180), subtract_value=point_radius_offset)
         _link(group, point_radius, scale_input)
     fill_caps = _socket_by_name(mesh.inputs, "Fill Caps")
     if fill_caps is not None:
@@ -432,7 +441,7 @@ def _edge_radius_socket(group, base_radius, width_mm_socket, *, label: str, loca
     except Exception:  # noqa: BLE001
         pass
     _link(group, width_mm_socket, edge_radius.inputs[0])
-    _set_default(edge_radius.inputs[1], 0.001)
+    _set_default(edge_radius.inputs[1], _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM)
     total = _node(group, "ShaderNodeMath", label=f"{label}半径", location=(location[0] + 220, location[1]))
     try:
         total.operation = "ADD"
@@ -450,7 +459,7 @@ def _radius_from_mm_socket(group, mm_socket, *, label: str, location: tuple[floa
     except Exception:  # noqa: BLE001
         pass
     _link(group, mm_socket, radius.inputs[0])
-    _set_default(radius.inputs[1], 0.001)
+    _set_default(radius.inputs[1], _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM)
     return radius.outputs["Value"]
 
 
@@ -478,18 +487,61 @@ def _build_nodes(group) -> None:
     _clear_nodes(group)
     input_node = _node(group, "NodeGroupInput", label="フキダシカーブ", location=(-760, 0))
     output_node = _node(group, "NodeGroupOutput", label="表示結果", location=(980, 0))
-    spline_cyclic = _node(group, "GeometryNodeInputSplineCyclic", label="閉じた輪郭", location=(-1140, -80))
-    thorn_multi_selection = _boolean_not(
+    role_radius = _point_radius_scale(group, location=(-1320, -40))
+    outer_selection = _compare_float_equal(
         group,
-        _socket_by_name(spline_cyclic.outputs, "Cyclic") or spline_cyclic.outputs[0],
-        label="トゲ多重線を分離",
-        location=(-920, -160),
+        role_radius,
+        _OUTER_EDGE_ROLE_RADIUS,
+        label="外側フチを分離",
+        location=(-1120, -240),
     )
-    thorn_multi_curve, body_curve = _separate_geometry(
+    outer_curve, without_outer = _separate_geometry(
         group,
         input_node.outputs["Geometry"],
-        thorn_multi_selection,
-        label="通常輪郭とトゲ多重線",
+        outer_selection,
+        label="外側フチ",
+        location=(-900, -240),
+    )
+    inner_selection = _compare_float_equal(
+        group,
+        role_radius,
+        _INNER_EDGE_ROLE_RADIUS,
+        label="内側フチを分離",
+        location=(-1120, -460),
+    )
+    inner_curve, without_edges = _separate_geometry(
+        group,
+        without_outer,
+        inner_selection,
+        label="内側フチ",
+        location=(-900, -460),
+    )
+    multi_by_role = _compare_float_greater(
+        group,
+        role_radius,
+        50.0,
+        label="多重線を分離",
+        location=(-1120, -20),
+    )
+    spline_cyclic = _node(group, "GeometryNodeInputSplineCyclic", label="閉じた輪郭", location=(-1140, -140))
+    legacy_multi_selection = _boolean_not(
+        group,
+        _socket_by_name(spline_cyclic.outputs, "Cyclic") or spline_cyclic.outputs[0],
+        label="旧多重線を分離",
+        location=(-920, -120),
+    )
+    multi_selection = _boolean_or(
+        group,
+        multi_by_role,
+        legacy_multi_selection,
+        label="多重線判定",
+        location=(-700, -80),
+    )
+    multi_curve, body_curve = _separate_geometry(
+        group,
+        without_edges,
+        multi_selection,
+        label="通常輪郭と多重線",
         location=(-700, -80),
     )
 
@@ -554,18 +606,17 @@ def _build_nodes(group) -> None:
     except Exception:  # noqa: BLE001
         pass
     _link(group, input_node.outputs["線幅 (mm)"], radius.inputs[0])
-    _set_default(radius.inputs[1], 0.0005)
+    _set_default(radius.inputs[1], _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM)
 
-    outer_radius = _edge_radius_socket(
+    outer_radius = _radius_from_mm_socket(
         group,
-        radius.outputs["Value"],
         input_node.outputs["外側フチ幅 (mm)"],
-        label="外側フチ",
+        label="外側フチ幅を半径へ",
         location=(-520, -760),
     )
     outer_geometry = _outline_mesh_with_radius(
         group,
-        body_curve,
+        outer_curve,
         outer_radius,
         input_node.outputs["外側フチ素材"],
         mask_geometry,
@@ -582,16 +633,15 @@ def _build_nodes(group) -> None:
         location=(880, -720),
     )
 
-    inner_radius = _edge_radius_socket(
+    inner_radius = _radius_from_mm_socket(
         group,
-        radius.outputs["Value"],
         input_node.outputs["内側フチ幅 (mm)"],
-        label="内側フチ",
+        label="内側フチ幅を半径へ",
         location=(-520, -1180),
     )
     inner_geometry = _outline_mesh_with_radius(
         group,
-        body_curve,
+        inner_curve,
         inner_radius,
         input_node.outputs["内側フチ素材"],
         mask_geometry,
@@ -621,7 +671,7 @@ def _build_nodes(group) -> None:
     )
     thorn_multi_geometry = _outline_mesh_with_radius(
         group,
-        thorn_multi_curve,
+        multi_curve,
         radius.outputs["Value"],
         input_node.outputs["線素材"],
         mask_geometry,
@@ -630,6 +680,7 @@ def _build_nodes(group) -> None:
         z_value=0.00008,
         location=(150, -1540),
         use_point_radius=True,
+        point_radius_offset=_MULTI_LINE_ROLE_RADIUS_OFFSET,
     )
 
     joined = _node(group, "GeometryNodeJoinGeometry", label="塗りと線", location=(880, 120))

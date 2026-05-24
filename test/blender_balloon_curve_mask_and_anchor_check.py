@@ -45,6 +45,19 @@ def _evaluated_bounds(obj) -> tuple[float, float, float]:
         evaluated.to_mesh_clear()
 
 
+def _spline_anchor_bounds(spline) -> tuple[float, float]:
+    if getattr(spline, "type", "") == "BEZIER":
+        coords = [point.co.copy() for point in spline.bezier_points]
+    else:
+        coords = [point.co.to_3d() for point in spline.points]
+    assert coords, "輪郭の制御点がありません"
+    min_x = min(co.x for co in coords)
+    max_x = max(co.x for co in coords)
+    min_y = min(co.y for co in coords)
+    max_y = max(co.y for co in coords)
+    return max_x - min_x, max_y - min_y
+
+
 def _evaluated_world_bounds(obj) -> tuple[float, float, float, float]:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
@@ -110,6 +123,7 @@ def main() -> None:
         from bname_dev_balloon_curve_mask_anchor.utils import mask_apply
         from bname_dev_balloon_curve_mask_anchor.utils import page_grid
         from bname_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import coma_stack_key
+        from bname_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         scene = context.scene
@@ -230,6 +244,55 @@ def main() -> None:
             force_regenerate=True,
         )
         assert len(obj.data.splines[0].bezier_points) == 4, "楕円フキダシが4点ベジェになっていません"
+
+        entry4 = page.balloons.add()
+        entry4.id = "balloon_line_width_rect"
+        entry4.title = "線幅確認"
+        entry4.shape = "rect"
+        entry4.x_mm = 20.0
+        entry4.y_mm = 20.0
+        entry4.width_mm = 40.0
+        entry4.height_mm = 30.0
+        entry4.parent_kind = "page"
+        entry4.parent_key = page_stack_key(page)
+        entry4.fill_color = (1.0, 1.0, 1.0, 1.0)
+        entry4.fill_opacity = 100.0
+        entry4.opacity = 100.0
+        entry4.line_width_mm = 2.0
+        obj4 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry4, page=page)
+        assert obj4 is not None and obj4.type == "CURVE", "線幅確認フキダシが作成されていません"
+        bpy.context.view_layer.update()
+        width4_m, height4_m, _depth4_m = _evaluated_bounds(obj4)
+        assert 0.0418 <= width4_m <= 0.0422, f"矩形フキダシの線幅が設定値通りではありません: width={width4_m}"
+        assert 0.0318 <= height4_m <= 0.0322, f"矩形フキダシの線幅が設定値通りではありません: height={height4_m}"
+
+        entry5 = page.balloons.add()
+        entry5.id = "balloon_line_width_thorn"
+        entry5.title = "トゲ線幅確認"
+        entry5.shape = "thorn"
+        entry5.x_mm = 70.0
+        entry5.y_mm = 20.0
+        entry5.width_mm = 40.0
+        entry5.height_mm = 30.0
+        entry5.parent_kind = "page"
+        entry5.parent_key = page_stack_key(page)
+        entry5.fill_color = (1.0, 1.0, 1.0, 1.0)
+        entry5.fill_opacity = 100.0
+        entry5.opacity = 100.0
+        entry5.line_width_mm = 2.0
+        obj5 = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry5, page=page)
+        assert obj5 is not None and obj5.type == "CURVE", "トゲ線幅確認フキダシが作成されていません"
+        bpy.context.view_layer.update()
+        width5_m, height5_m, _depth5_m = _evaluated_bounds(obj5)
+        body5_width_m, body5_height_m = _spline_anchor_bounds(obj5.data.splines[0])
+        width5_delta = width5_m - body5_width_m
+        height5_delta = height5_m - body5_height_m
+        assert 0.0018 <= width5_delta <= 0.0035, (
+            f"トゲフキダシの線幅が設定値通りではありません: body={body5_width_m}, width={width5_m}"
+        )
+        assert 0.0018 <= height5_delta <= 0.0035, (
+            f"トゲフキダシの線幅が設定値通りではありません: body={body5_height_m}, height={height5_m}"
+        )
         print("BNAME_BALLOON_CURVE_MASK_ANCHOR_OK")
     finally:
         if mod is not None:

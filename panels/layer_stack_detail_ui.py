@@ -451,6 +451,11 @@ def _draw_effect_interval_settings(box, params) -> None:
     row = sub.row(align=True)
     row.prop(params, "bundle_gap_mm")
     row.prop(params, "bundle_gap_jitter_amount", text="乱れ")
+    row = sub.row(align=True)
+    row.prop(params, "bundle_jagged_enabled")
+    jag = row.row()
+    jag.enabled = params.bundle_jagged_enabled
+    jag.prop(params, "bundle_jagged_height_percent", text="高さ")
     interval_box.prop(params, "max_line_count")
 
 
@@ -491,6 +496,8 @@ def _draw_effect_tail_settings(box, params) -> None:
         color_box.prop(params, "fill_color")
         color_box.prop(params, "fill_opacity")
         color_box.prop(params, "fill_base_shape")
+        color_box.prop(params, "underlay_line_offset_percent")
+        color_box.prop(params, "underlay_line_align_endpoints")
 
 
 def _draw_effect_white_outline_settings(box, params) -> None:

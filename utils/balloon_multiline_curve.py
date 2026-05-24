@@ -10,6 +10,10 @@ import bpy
 from . import balloon_shapes
 from .geom import Rect, mm_to_m
 
+MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
+OUTER_EDGE_ROLE_RADIUS = 200.0
+INNER_EDGE_ROLE_RADIUS = 300.0
+
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
     return (
@@ -64,7 +68,21 @@ def body_outline_for_entry(entry) -> tuple[list[tuple[float, float]], list[int]]
         max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
-    return balloon_shapes.outline_with_corners_for_entry(entry, rect)
+    points, corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
+    return _strip_duplicate_closure(points, corners)
+
+
+def _strip_duplicate_closure(
+    points: Sequence[tuple[float, float]],
+    corners: Sequence[int] | None = None,
+) -> tuple[list[tuple[float, float]], list[int]]:
+    path = [(float(x), float(y)) for x, y in points]
+    corner_list = [int(index) for index in (corners or [])]
+    if len(path) > 2 and math.hypot(path[0][0] - path[-1][0], path[0][1] - path[-1][1]) <= 1.0e-6:
+        removed_index = len(path) - 1
+        path.pop()
+        corner_list = [index for index in corner_list if index != removed_index]
+    return path, corner_list
 
 
 def body_outline_point_radii(entry, points: Sequence[tuple[float, float]]) -> list[float] | None:
@@ -95,47 +113,32 @@ def _set_poly_point(
         pass
 
 
-def _add_open_poly_segment(
-    curve: bpy.types.Curve,
-    start: tuple[float, float],
-    end: tuple[float, float],
-    *,
-    offset: tuple[float, float],
-    point_radius: float | tuple[float, float],
-) -> None:
-    spline = curve.splines.new("POLY")
-    spline.points.add(1)
-    spline.use_cyclic_u = False
-    spline.material_index = 0
-    if isinstance(point_radius, tuple):
-        radii = (float(point_radius[0]), float(point_radius[1]))
-    else:
-        radii = (float(point_radius), float(point_radius))
-    for index, point in enumerate((start, end)):
-        _set_poly_point(spline.points[index], point, offset=offset, point_radius=radii[index])
-
-
 def _add_open_poly_path(
     curve: bpy.types.Curve,
     points: Sequence[tuple[float, float]],
     *,
     offset: tuple[float, float],
-    point_radius: float,
+    point_radius: float | Sequence[float],
     close: bool = False,
+    material_index: int = 0,
 ) -> None:
     if len(points) < 2:
         return
     path = [(float(x), float(y)) for x, y in points]
-    if close and math.hypot(path[0][0] - path[-1][0], path[0][1] - path[-1][1]) > 1.0e-6:
-        path.append(path[0])
+    if close and len(path) > 2 and math.hypot(path[0][0] - path[-1][0], path[0][1] - path[-1][1]) <= 1.0e-6:
+        path.pop()
     if len(path) < 2:
         return
     spline = curve.splines.new("POLY")
     spline.points.add(len(path) - 1)
-    spline.use_cyclic_u = False
-    spline.material_index = 0
+    spline.use_cyclic_u = bool(close)
+    spline.material_index = int(material_index)
     for index, point in enumerate(path):
-        _set_poly_point(spline.points[index], point, offset=offset, point_radius=point_radius)
+        if isinstance(point_radius, (list, tuple)) and point_radius:
+            radius = float(point_radius[min(index, len(point_radius) - 1)])
+        else:
+            radius = float(point_radius)
+        _set_poly_point(spline.points[index], point, offset=offset, point_radius=radius)
 
 
 def _polygon_signed_area(points: Sequence[tuple[float, float]]) -> float:
@@ -187,24 +190,6 @@ def _segment_outward_normal(
     return (dy / length, -dx / length)
 
 
-def _offset_segment_for_side(
-    start: tuple[float, float],
-    end: tuple[float, float],
-    *,
-    distance_mm: float,
-    clockwise: bool,
-    side: str,
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    nx, ny = _segment_outward_normal(start, end, clockwise=clockwise)
-    if side == "inside":
-        nx = -nx
-        ny = -ny
-    return (
-        (float(start[0]) + nx * distance_mm, float(start[1]) + ny * distance_mm),
-        (float(end[0]) + nx * distance_mm, float(end[1]) + ny * distance_mm),
-    )
-
-
 def _offset_closed_outline(
     points: Sequence[tuple[float, float]],
     *,
@@ -212,6 +197,7 @@ def _offset_closed_outline(
     clockwise: bool,
     side: str,
 ) -> list[tuple[float, float]] | None:
+    points, _corners = _strip_duplicate_closure(points)
     if len(points) < 3:
         return None
     result: list[tuple[float, float]] = []
@@ -249,8 +235,6 @@ def append_closed_multi_line_paths(
     offset: tuple[float, float],
 ) -> None:
     shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    if shape_name == "thorn":
-        return
     if str(getattr(entry, "line_style", "") or "") != "double":
         return
     count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
@@ -268,11 +252,24 @@ def append_closed_multi_line_paths(
     current_inner_mm = line_width_mm * 0.5 + spacing_mm
     for ring_index in range(1, count):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
-        if ring_width_mm <= 0.0:
+        valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
+            width_scale ** max(0, ring_index - 1)
+        )
+        peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", ring_width_mm) or 0.0)) * (
+            width_scale ** max(0, ring_index - 1)
+        )
+        ring_extent_width_mm = max(ring_width_mm, valley_width_mm, peak_width_mm) if shape_name == "thorn" else ring_width_mm
+        if ring_extent_width_mm <= 0.0:
             current_inner_mm += spacing_mm
             continue
-        distance_mm = current_inner_mm + ring_width_mm * 0.5
-        point_radius = ring_width_mm / line_width_mm
+        distance_mm = current_inner_mm + ring_extent_width_mm * 0.5
+        if shape_name == "thorn":
+            point_radius = [
+                MULTI_LINE_ROLE_RADIUS_OFFSET + ((valley_width_mm if index % 2 == 0 else peak_width_mm) / line_width_mm)
+                for index in range(len(body_points) + 1)
+            ]
+        else:
+            point_radius = MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm)
         for side in sides:
             ring_points = _offset_closed_outline(
                 body_points,
@@ -288,74 +285,63 @@ def append_closed_multi_line_paths(
                 offset=offset,
                 point_radius=point_radius,
                 close=True,
+                material_index=1,
             )
-        current_inner_mm += ring_width_mm + spacing_mm
+        current_inner_mm += ring_extent_width_mm + spacing_mm
 
 
-def append_thorn_multi_line_segments(
+def append_edge_paths(
     curve: bpy.types.Curve,
     entry,
     body_points: Sequence[tuple[float, float]],
     *,
     offset: tuple[float, float],
 ) -> None:
-    if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) != "thorn":
+    if len(body_points) < 3:
         return
-    if str(getattr(entry, "line_style", "") or "") != "double":
-        return
-    if len(body_points) < 4:
-        return
-    count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
-    if count <= 1:
-        return
-    line_width_mm = max(1.0e-6, float(getattr(entry, "line_width_mm", 0.3) or 0.3))
-    multi_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0))
-    valley_base_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", multi_width_mm) or 0.0))
-    peak_base_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", multi_width_mm) or 0.0))
-    spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
-    width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
-    length_scale = max(0.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0)) / 100.0
-    if multi_width_mm <= 0.0 and valley_base_width_mm <= 0.0 and peak_base_width_mm <= 0.0:
-        return
-    direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
-    sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
+    line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
     clockwise = _polygon_signed_area(body_points) < 0.0
-    current_inner_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.3)) * 0.5 + spacing_mm
-    for ring_index in range(1, count):
-        ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
-        valley_width_mm = valley_base_width_mm * (width_scale ** max(0, ring_index - 1))
-        peak_width_mm = peak_base_width_mm * (width_scale ** max(0, ring_index - 1))
-        ring_extent_width_mm = max(ring_width_mm, valley_width_mm, peak_width_mm)
-        if ring_extent_width_mm <= 0.0:
-            current_inner_mm += spacing_mm
+    for enabled_attr, width_attr, side, material_index, role_radius in (
+        ("outer_white_margin_enabled", "outer_white_margin_width_mm", "outside", 2, OUTER_EDGE_ROLE_RADIUS),
+        ("inner_white_margin_enabled", "inner_white_margin_width_mm", "inside", 3, INNER_EDGE_ROLE_RADIUS),
+    ):
+        if not bool(getattr(entry, enabled_attr, False)):
             continue
-        center_distance_mm = current_inner_mm + ring_extent_width_mm * 0.5
-        point_radii = (valley_width_mm / line_width_mm, peak_width_mm / line_width_mm)
-        segment_factor = max(0.0, length_scale ** ring_index)
-        for peak_index in range(1, len(body_points), 2):
-            peak = body_points[peak_index]
-            previous_valley = body_points[(peak_index - 1) % len(body_points)]
-            next_valley = body_points[(peak_index + 1) % len(body_points)]
-            for valley in (previous_valley, next_valley):
-                for side in sides:
-                    start, full_end = _offset_segment_for_side(
-                        valley,
-                        peak,
-                        distance_mm=center_distance_mm,
-                        clockwise=clockwise,
-                        side=side,
+        width_mm = max(0.0, float(getattr(entry, width_attr, 0.0) or 0.0))
+        if width_mm <= 0.0:
+            continue
+        distance_mm = max(0.0, line_width_mm * 0.5) + width_mm * 0.5
+        edge_points = _offset_closed_outline(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
+        if edge_points is None:
+            continue
+        _add_open_poly_path(curve, edge_points, offset=offset, point_radius=role_radius, close=True, material_index=material_index)
+
+
+def outer_render_margin_mm(entry, line_width_mm: float) -> float:
+    margin = max(0.0, float(line_width_mm) * 0.5)
+    if bool(getattr(entry, "outer_white_margin_enabled", False)):
+        margin = max(margin, float(line_width_mm) * 0.5 + max(0.0, float(getattr(entry, "outer_white_margin_width_mm", 0.0) or 0.0)))
+    if str(getattr(entry, "line_style", "") or "") == "double":
+        shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+        count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
+        spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
+        width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0))
+        valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", width_mm) or 0.0))
+        peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", width_mm) or 0.0))
+        scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+        if str(getattr(entry, "multi_line_direction", "outside") or "outside") in {"outside", "both"}:
+            current = max(0.0, float(line_width_mm) * 0.5) + spacing_mm
+            for ring_index in range(1, count):
+                ring_width = width_mm * (scale ** max(0, ring_index - 1))
+                if shape_name == "thorn":
+                    ring_width = max(
+                        ring_width,
+                        valley_width_mm * (scale ** max(0, ring_index - 1)),
+                        peak_width_mm * (scale ** max(0, ring_index - 1)),
                     )
-                    end = (
-                        start[0] + (full_end[0] - start[0]) * segment_factor,
-                        start[1] + (full_end[1] - start[1]) * segment_factor,
-                    )
-                    if math.hypot(end[0] - start[0], end[1] - start[1]) <= 1.0e-6:
-                        continue
-                    _add_open_poly_segment(
-                        curve,
-                        start,
-                        end,
-                        offset=offset,
-                        point_radius=point_radii,
-                    )
-        current_inner_mm += ring_extent_width_mm + spacing_mm
+                if ring_width <= 0.0:
+                    current += spacing_mm
+                    continue
+                margin = max(margin, current + ring_width)
+                current += ring_width + spacing_mm
+    return margin
