@@ -208,6 +208,7 @@ def main() -> None:
             "thorn_multi_line_valley_width_mm",
             "thorn_multi_line_peak_width_mm",
             "thorn_multi_line_length_scale_percent",
+            "thorn_multi_line_cross_enabled",
         ):
             assert prop_name in props, f"多重線の設定が詳細設定に表示されていません: {prop_name}"
 
@@ -223,6 +224,7 @@ def main() -> None:
         _assert_close(_modifier_socket_value(modifier, "谷の線幅 (mm)"), 0.22, "谷の線幅")
         _assert_close(_modifier_socket_value(modifier, "山の線幅 (mm)"), 0.46, "山の線幅")
         _assert_close(_modifier_socket_value(modifier, "多重線長さ変化 (%)"), 75.0, "長さ変化")
+        assert not bool(_modifier_socket_value(modifier, "多重線を延ばして交差")), "交差設定の初期値がオンになっています"
         body_radii = [float(point.radius) for point in obj.data.splines[0].bezier_points]
         assert len(body_radii) >= 4
         assert all(abs(radius - 1.0) <= 1.0e-6 for radius in body_radii), "トゲ本体の主線幅が多重線設定で変わっています"
@@ -255,6 +257,25 @@ def main() -> None:
         helper_radius_values = [_spline_point_radius(helper_splines[0], index) - 100.0 for index in range(len(helper_points))]
         assert any(value <= 1.0e-6 for value in helper_radius_values), "多重線の長さ変化で非表示になる区間が作られていません"
         assert any(value > 1.0e-3 for value in helper_radius_values), "多重線の長さ変化で表示される区間が残っていません"
+        entry.thorn_multi_line_cross_enabled = True
+        obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
+        assert modifier is not None and bool(_modifier_socket_value(modifier, "多重線を延ばして交差")), "交差設定が表示ノードへ渡っていません"
+        cross_helpers = [
+            spline
+            for spline in obj.data.splines
+            if getattr(spline, "points", None) and float(spline.points[0].radius) > 50.0
+        ]
+        cross_radius_values = [
+            _spline_point_radius(cross_helpers[0], index) - 100.0
+            for index in range(len(cross_helpers[0].points))
+        ]
+        assert all(value > 1.0e-6 for value in cross_radius_values), "交差オンでも多重線が途切れています"
+        payload_cross = schema.balloon_entry_to_dict(entry)
+        cross_roundtrip = page.balloons.add()
+        schema.balloon_entry_from_dict(cross_roundtrip, payload_cross, opacity_percent=True)
+        assert bool(cross_roundtrip.thorn_multi_line_cross_enabled), "保存読込: 交差設定"
+        entry.thorn_multi_line_cross_enabled = False
         entry.outer_white_margin_enabled = True
         entry.outer_white_margin_width_mm = 1.2
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)

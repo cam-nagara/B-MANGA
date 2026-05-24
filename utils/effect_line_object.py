@@ -340,7 +340,9 @@ def _stroke_role(stroke) -> str:
 
 def _stroke_material_index(stroke) -> int:
     role = _stroke_role(stroke)
-    if role in {"end_fill", "white_outline_white", "underlay"}:
+    if role == "underlay":
+        return 2
+    if role in {"end_fill", "white_outline_white"}:
         return 1
     return 0
 
@@ -398,14 +400,30 @@ def _append_line_segment_mesh(
     z0 = float(sz) + _stroke_z_offset(stroke)
     z1 = float(ez) + _stroke_z_offset(stroke)
     base = len(verts)
-    verts.extend(
-        [
-            (float(sx) + nx * r0, float(sy) + ny * r0, z0),
-            (float(sx) - nx * r0, float(sy) - ny * r0, z0),
-            (float(ex) - nx * r1, float(ey) - ny * r1, z1),
-            (float(ex) + nx * r1, float(ey) + ny * r1, z1),
-        ]
-    )
+    side = 0.0
+    try:
+        side = float(getattr(stroke, "side", 0.0) or 0.0)
+    except Exception:  # noqa: BLE001
+        side = 0.0
+    if _stroke_role(stroke) == "underlay" and abs(side) > 1.0e-9:
+        sign = 1.0 if side >= 0.0 else -1.0
+        verts.extend(
+            [
+                (float(sx), float(sy), z0),
+                (float(sx) + nx * sign * r0, float(sy) + ny * sign * r0, z0),
+                (float(ex) + nx * sign * r1, float(ey) + ny * sign * r1, z1),
+                (float(ex), float(ey), z1),
+            ]
+        )
+    else:
+        verts.extend(
+            [
+                (float(sx) + nx * r0, float(sy) + ny * r0, z0),
+                (float(sx) - nx * r0, float(sy) - ny * r0, z0),
+                (float(ex) - nx * r1, float(ey) - ny * r1, z1),
+                (float(ex) + nx * r1, float(ey) + ny * r1, z1),
+            ]
+        )
     faces.append((base, base + 1, base + 2, base + 3))
     face_materials.append(_stroke_material_index(stroke))
     point_alphas.extend([_stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, end_index), _stroke_alpha_at(stroke, end_index)])
@@ -664,6 +682,7 @@ def _ensure_display_material(
     opacity: float = 1.0,
     fill_color=(1.0, 1.0, 1.0, 1.0),
     fill_opacity: float = 1.0,
+    underlay_color=(1.0, 1.0, 1.0, 1.0),
 ) -> None:
     display_id = str(display.get(on.PROP_ID, "") or display.name)
     mat_name = f"BName_Effect_Display_Line_{display_id}"
@@ -674,6 +693,10 @@ def _ensure_display_material(
     fill_mat = bpy.data.materials.get(fill_mat_name)
     if fill_mat is None:
         fill_mat = bpy.data.materials.new(fill_mat_name)
+    underlay_mat_name = f"BName_Effect_Display_Underlay_{display_id}"
+    underlay_mat = bpy.data.materials.get(underlay_mat_name)
+    if underlay_mat is None:
+        underlay_mat = bpy.data.materials.new(underlay_mat_name)
     try:
         alpha = max(0.0, min(1.0, float(color[3]) * float(opacity)))
         rgba = (float(color[0]), float(color[1]), float(color[2]), alpha)
@@ -684,11 +707,19 @@ def _ensure_display_material(
         fill_rgba = (float(fill_color[0]), float(fill_color[1]), float(fill_color[2]), fill_alpha)
     except Exception:  # noqa: BLE001
         fill_rgba = (1.0, 1.0, 1.0, max(0.0, min(1.0, float(fill_opacity or 0.0) * float(opacity or 0.0))))
+    try:
+        underlay_alpha = max(0.0, min(1.0, float(underlay_color[3]) * float(opacity)))
+        underlay_rgba = (float(underlay_color[0]), float(underlay_color[1]), float(underlay_color[2]), underlay_alpha)
+    except Exception:  # noqa: BLE001
+        underlay_rgba = (1.0, 1.0, 1.0, max(0.0, min(1.0, float(opacity or 0.0))))
     fill_mat.diffuse_color = fill_rgba
+    underlay_mat.diffuse_color = underlay_rgba
     try:
         _configure_line_material_nodes(mat, rgba)
         fill_mat.use_nodes = False
         fill_mat.blend_method = "BLEND" if fill_rgba[3] < 1.0 else "OPAQUE"
+        underlay_mat.use_nodes = False
+        underlay_mat.blend_method = "BLEND" if underlay_rgba[3] < 1.0 else "OPAQUE"
     except Exception:  # noqa: BLE001
         pass
     mats = getattr(getattr(display, "data", None), "materials", None)
@@ -712,6 +743,16 @@ def _ensure_display_material(
     elif mats[1] is not fill_mat:
         try:
             mats[1] = fill_mat
+        except Exception:  # noqa: BLE001
+            pass
+    if len(mats) < 3:
+        try:
+            mats.append(underlay_mat)
+        except Exception:  # noqa: BLE001
+            pass
+    elif mats[2] is not underlay_mat:
+        try:
+            mats[2] = underlay_mat
         except Exception:  # noqa: BLE001
             pass
 
@@ -842,6 +883,7 @@ def ensure_effect_display_object(
     line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
     fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
     fill_opacity = percentage.percent_to_factor((values or {}).get("塗り不透明度", 100.0), 100.0)
+    underlay_color = (values or {}).get("白抜き線色", (1.0, 1.0, 1.0, 1.0))
     if int((values or {}).get("種類", 0) or 0) == 5:
         fill_color = (1.0, 1.0, 1.0, 1.0)
         fill_opacity = 1.0
@@ -851,6 +893,7 @@ def ensure_effect_display_object(
         opacity=line_opacity,
         fill_color=fill_color,
         fill_opacity=fill_opacity,
+        underlay_color=underlay_color,
     )
     if strokes is not None:
         _remove_effect_display_gn_modifier(display)

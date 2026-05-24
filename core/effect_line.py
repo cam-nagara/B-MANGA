@@ -146,6 +146,7 @@ EFFECT_PARAM_FIELDS = (
     "fill_base_shape",
     "white_underlay_enabled",
     "white_underlay_width_percent",
+    "white_underlay_color",
     "speed_angle_deg",
     "speed_line_count",
     "white_outline_count",
@@ -242,7 +243,7 @@ def effect_params_to_dict(params) -> dict:
         if field == "spacing_density_compensation":
             spacing_mode = str(getattr(params, "spacing_mode", "") or "")
             data[field] = True if spacing_mode == "distance" else _density_compensation_enabled(value)
-        elif field in {"line_color", "fill_color"}:
+        elif field in {"line_color", "fill_color", "white_underlay_color"}:
             data[field] = _color_value(value)
         elif field == "inout_apply":
             data[field] = str(value) if str(value) in {"brush_size", "opacity"} else "brush_size"
@@ -311,7 +312,7 @@ def effect_params_from_dict(params, data: dict) -> None:
             continue
         value = data[field]
         try:
-            if field in {"line_color", "fill_color"}:
+            if field in {"line_color", "fill_color", "white_underlay_color"}:
                 setattr(params, field, tuple(float(v) for v in value[:4]))
             else:
                 setattr(params, field, value)
@@ -396,6 +397,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_color: FloatVectorProperty(name="白抜き線色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]

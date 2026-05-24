@@ -294,7 +294,9 @@ def main() -> None:
         assert safe_fill_obj is not None, "safe area fill object was not created"
         assert safe_fill_obj.type == "MESH", f"safe area fill should be a mesh, got {safe_fill_obj.type}"
         assert getattr(safe_fill_obj, "display_type", "") == "SOLID", "safe area fill should display as solid"
-        assert bool(getattr(safe_fill_obj, "show_in_front", False)), "safe area fill is not in front in viewport"
+        assert not bool(getattr(safe_fill_obj, "show_in_front", False)), (
+            "safe area fill should not rely on viewport in-front display"
+        )
         assert bool(getattr(safe_fill_obj, "show_transparent", False)), "safe area fill is not transparent in viewport"
         safe_mat = safe_fill_obj.active_material
         assert safe_mat is not None, "safe area fill needs a viewport material in texture shading"
@@ -312,14 +314,14 @@ def main() -> None:
         )
         assert border_obj is not None, "coma border curve was not created"
         assert border_obj.type == "CURVE", f"coma border should be a curve, got {border_obj.type}"
-        assert safe_fill_obj.location.z < border_obj.location.z, (
-            "safe area fill should stay behind coma objects to avoid viewport flicker"
+        assert safe_fill_obj.location.z > border_obj.location.z, (
+            "safe area fill should stay in front of coma objects without using viewport in-front display"
+        )
+        assert all(obj.location.z > border_obj.location.z for obj in guide_objects), (
+            "paper guide lines should stay in front of coma objects without using viewport in-front display"
         )
         assert all(obj.location.z > safe_fill_obj.location.z for obj in guide_objects), (
             "paper guide lines should be above safe area fill"
-        )
-        assert all(obj.location.z < border_obj.location.z for obj in guide_objects), (
-            "paper guide lines should stay behind coma objects to avoid viewport flicker"
         )
         assert len(border_obj.data.splines) > 1, "dashed coma border did not create multiple real strokes"
         white_margin_obj = bpy.data.objects.get(
@@ -348,7 +350,8 @@ def main() -> None:
         assert modifier is not None, "balloon should have lightweight display helper"
         modifier.show_viewport = False
         bpy.context.view_layer.update()
-        assert _evaluated_polygon_count(balloon_obj) > 0, "balloon editable curve disappeared when helper is hidden"
+        assert len(balloon_obj.data.splines) >= 1, "balloon editable curve disappeared when helper is hidden"
+        assert _evaluated_polygon_count(balloon_obj) == 0, "balloon should not keep a duplicate generated body under the helper"
         modifier.show_viewport = True
         bpy.context.view_layer.update()
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")

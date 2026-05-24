@@ -185,6 +185,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             row = line_box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_mm")
             row.prop(entry, "thorn_multi_line_peak_width_mm")
+            line_box.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
     row = line_box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")
@@ -502,6 +503,7 @@ def _draw_effect_tail_settings(box, params) -> None:
         sub = row.row(align=True)
         sub.enabled = bool(params.white_underlay_enabled)
         sub.prop(params, "white_underlay_width_percent", text="幅")
+        sub.prop(params, "white_underlay_color", text="")
 
 
 def _draw_effect_white_outline_settings(box, params) -> None:

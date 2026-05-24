@@ -178,6 +178,7 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         sub = row.row(align=True)
         sub.enabled = bool(params.white_underlay_enabled)
         sub.prop(params, "white_underlay_width_percent", text="幅")
+        sub.prop(params, "white_underlay_color", text="")
 
     if params.effect_type == "speed":
         box = layout.box()

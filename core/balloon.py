@@ -295,6 +295,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     thorn_multi_line_valley_width_mm: FloatProperty(name="谷の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_peak_width_mm: FloatProperty(name="山の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_length_scale_percent: FloatProperty(name="長さ変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_cross_enabled: BoolProperty(name="山谷を延ばして交差", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]

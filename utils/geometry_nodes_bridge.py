@@ -138,6 +138,7 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "fill_base_shape": SocketSpec("終点形状を下地として塗る", "NodeSocketBool", False),
     "white_underlay_enabled": SocketSpec("白抜き線", "NodeSocketBool", False),
     "white_underlay_width_percent": SocketSpec("白抜き線幅 (%)", "NodeSocketFloat", 150.0),
+    "white_underlay_color": SocketSpec("白抜き線色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
     "speed_angle_deg": SocketSpec("流線の角度", "NodeSocketFloat", 0.0),
     "speed_line_count": SocketSpec("流線の本数上限", "NodeSocketInt", 300),
     "white_outline_count": SocketSpec("白抜き線 本数", "NodeSocketInt", 5),
@@ -2429,13 +2430,21 @@ def _instanced_radial_line_geometry(
         label="白抜き線幅率絶対値",
         location=(3480, -3760),
     )
+    white_underlay_rate = _math_binary(
+        group,
+        "MINIMUM",
+        white_underlay_rate,
+        b_value=3.0,
+        label="白抜き線幅率上限",
+        location=(3680, -3920),
+    )
     white_underlay_rate = _switch_float(
         group,
         input_node.outputs["白抜き線"],
-        _constant_float(group, 0.0, label="白抜き線オフ幅", location=(3480, -3920)),
+        _constant_float(group, 0.0, label="白抜き線オフ幅", location=(3880, -4080)),
         white_underlay_rate,
         label="白抜き線表示切替",
-        location=(3680, -3760),
+        location=(3880, -3760),
     )
     white_underlay_width = _math_binary(
         group,

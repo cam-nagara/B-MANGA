@@ -242,8 +242,8 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         raise AssertionError(f"safe area fill should be mesh: {safe_fill.name} ({safe_fill.type})")
     if getattr(safe_fill, "display_type", "") != "SOLID":
         raise AssertionError("safe area fill should display as solid")
-    if not bool(getattr(safe_fill, "show_in_front", False)):
-        raise AssertionError("safe area fill should use viewport in-front display")
+    if bool(getattr(safe_fill, "show_in_front", False)):
+        raise AssertionError("safe area fill should not rely on viewport in-front display")
     if safe_fill.active_material is None or len(getattr(safe_fill.data, "materials", [])) != 1:
         raise AssertionError("safe area fill should have one viewport material")
     expected_color = tuple(float(v) for v in getattr(work.safe_area_overlay, "color", (0.0, 0.0, 0.0))) + (

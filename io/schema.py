@@ -877,6 +877,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "thornMultiLineValleyWidthMm": round(float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3)), 3),
         "thornMultiLinePeakWidthMm": round(float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3)), 3),
         "thornMultiLineLengthScalePercent": round(float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0)), 3),
+        "thornMultiLineCrossEnabled": bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
         "lineColor": color_to_hex(entry.line_color),
         "lineColorAlpha": round(entry.line_color[3], 3),
         "fillColor": color_to_hex(entry.fill_color),
@@ -975,6 +976,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.thorn_multi_line_valley_width_mm = float(data.get("thornMultiLineValleyWidthMm", 0.3))
     entry.thorn_multi_line_peak_width_mm = float(data.get("thornMultiLinePeakWidthMm", 0.3))
     entry.thorn_multi_line_length_scale_percent = float(data.get("thornMultiLineLengthScalePercent", 100.0))
+    entry.thorn_multi_line_cross_enabled = bool(data.get("thornMultiLineCrossEnabled", False))
     alpha = float(data.get("lineColorAlpha", 1.0))
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)
     alpha = float(data.get("fillColorAlpha", 1.0))

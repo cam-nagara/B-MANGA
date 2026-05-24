@@ -59,6 +59,7 @@ def _base_params() -> SimpleNamespace:
         out_easing_curve="0.0000,0.0000;1.0000,1.0000",
         white_underlay_enabled=False,
         white_underlay_width_percent=150.0,
+        white_underlay_color=(1.0, 1.0, 1.0, 1.0),
     )
 
 
@@ -333,7 +334,7 @@ def main() -> None:
         from bname_dev_effect_spacing.core import balloon, effect_line
         from bname_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op, effect_line_op
         from bname_dev_effect_spacing.ui import overlay_effect_line
-        from bname_dev_effect_spacing.utils import balloon_shapes
+        from bname_dev_effect_spacing.utils import balloon_shapes, effect_line_object
         from bname_dev_effect_spacing.utils.geom import m_to_mm
 
         old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve", "uni_flash"}
@@ -543,13 +544,14 @@ def main() -> None:
         underlay_strokes = [stroke for stroke in right_underlay if getattr(stroke, "role", "") == "underlay"]
         if len(line_strokes) != len(underlay_strokes) or not underlay_strokes:
             raise AssertionError("白抜き線オンで主線と同数の白抜き線が生成されていません")
-        if abs(float(underlay_strokes[0].radius) - float(line_strokes[0].radius) * 1.5) > 1.0e-9:
+        if abs(float(underlay_strokes[0].radius) - float(line_strokes[0].radius) * 3.0) > 1.0e-9:
             raise AssertionError("白抜き線幅が効果線の線幅比率で反映されていません")
         line_points = _stroke_points_mm(line_strokes[0], m_to_mm)
         right_points = _stroke_points_mm(underlay_strokes[0], m_to_mm)
-        right_offset = _point_segment_distance(right_points[0], line_points[0], line_points[-1])
-        if right_offset <= 0.0:
-            raise AssertionError("白抜き線が中心線から片側にずれていません")
+        if any(_distance(rp, lp) > 1.0e-6 for rp, lp in zip(right_points, line_points, strict=False)):
+            raise AssertionError("白抜き線の中心線が主線からずれています")
+        if float(getattr(underlay_strokes[0], "side", 0.0) or 0.0) <= 0.0:
+            raise AssertionError("白抜き線幅の正値が右側指定として記録されていません")
         underlay_params.white_underlay_width_percent = -150.0
         left_underlay = [
             stroke for stroke in effect_line_gen.generate_strokes(
@@ -560,15 +562,22 @@ def main() -> None:
             )
             if getattr(stroke, "role", "") == "underlay"
         ]
-        left_points = _stroke_points_mm(left_underlay[0], m_to_mm)
-        base_dx = line_points[-1][0] - line_points[0][0]
-        base_dy = line_points[-1][1] - line_points[0][1]
-        right_vx = right_points[0][0] - line_points[0][0]
-        right_vy = right_points[0][1] - line_points[0][1]
-        left_vx = left_points[0][0] - line_points[0][0]
-        left_vy = left_points[0][1] - line_points[0][1]
-        if (base_dx * right_vy - base_dy * right_vx) * (base_dx * left_vy - base_dy * left_vx) >= 0.0:
-            raise AssertionError("白抜き線幅の正負で左右が切り替わっていません")
+        if float(getattr(left_underlay[0], "side", 0.0) or 0.0) >= 0.0:
+            raise AssertionError("白抜き線幅の負値が左側指定として記録されていません")
+        mesh = bpy.data.meshes.new("underlay_material_test_mesh")
+        material_obj = bpy.data.objects.new("underlay_material_test", mesh)
+        effect_line_object._ensure_display_material(  # noqa: SLF001
+            material_obj,
+            (0.0, 0.0, 0.0, 1.0),
+            opacity=1.0,
+            underlay_color=(0.25, 0.5, 0.75, 0.6),
+        )
+        if len(material_obj.data.materials) < 3:
+            raise AssertionError("白抜き線用の素材スロットが作成されていません")
+        underlay_mat = material_obj.data.materials[2]
+        rgba = tuple(float(v) for v in underlay_mat.diffuse_color)
+        if any(abs(a - b) > 1.0e-6 for a, b in zip(rgba, (0.25, 0.5, 0.75, 0.6), strict=False)):
+            raise AssertionError(f"白抜き線色が素材に反映されていません: {rgba}")
 
         white_params = _base_params()
         white_params.effect_type = "white_outline"

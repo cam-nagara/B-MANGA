@@ -33,6 +33,7 @@ class EffectLineStroke:
     curve_type: str = "POLY"
     bezier_smooth: bool = False
     density_end: float = 1.0
+    side: float = 0.0
 
 def _jitter(base: float, amount: float, rng: random.Random) -> float:
     if amount <= 0.0:
@@ -1192,6 +1193,7 @@ def _with_points(stroke: EffectLineStroke, points: list[tuple[float, float, floa
         curve_type=stroke.curve_type,
         bezier_smooth=stroke.bezier_smooth,
         density_end=stroke.density_end,
+        side=stroke.side,
     )
 
 
@@ -1232,10 +1234,7 @@ def _apply_bundle_jagged_start_fixed(strokes: list[EffectLineStroke], params) ->
     return out
 
 
-def _white_underlay_offset_points(
-    stroke: EffectLineStroke,
-    offset_m: float,
-) -> list[tuple[float, float, float]] | None:
+def _white_underlay_points(stroke: EffectLineStroke) -> list[tuple[float, float, float]] | None:
     if stroke.cyclic or len(stroke.points_xyz) < 2:
         return None
     sx, sy, _sz = stroke.points_xyz[0]
@@ -1245,9 +1244,7 @@ def _white_underlay_offset_points(
     length = math.hypot(dx, dy)
     if length <= 1.0e-9:
         return None
-    nx = -dy / length
-    ny = dx / length
-    return [(float(px) + nx * offset_m, float(py) + ny * offset_m, float(pz) - 1.0e-5) for px, py, pz in stroke.points_xyz]
+    return [(float(px), float(py), float(pz) - 1.0e-5) for px, py, pz in stroke.points_xyz]
 
 
 def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> list[EffectLineStroke]:
@@ -1261,18 +1258,18 @@ def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> li
         width_percent = 150.0
     if abs(width_percent) <= 1.0e-6:
         return strokes
-    radius_scale = abs(width_percent) / 100.0
+    width_scale = abs(width_percent) / 100.0
+    side = 1.0 if width_percent >= 0.0 else -1.0
     underlays: list[EffectLineStroke] = []
     rest: list[EffectLineStroke] = []
     for stroke in strokes:
         if str(stroke.role or "line") == "line":
-            underlay_radius = max(0.0, float(stroke.radius) * radius_scale)
-            offset_m = (1.0 if width_percent >= 0.0 else -1.0) * underlay_radius
-            pts = _white_underlay_offset_points(stroke, offset_m)
+            underlay_radius = max(0.0, float(stroke.radius) * 2.0 * width_scale)
+            pts = _white_underlay_points(stroke)
             if pts is not None:
                 radii = None
                 if stroke.radii is not None:
-                    radii = [max(0.0, float(radius) * radius_scale) for radius in stroke.radii]
+                    radii = [max(0.0, float(radius) * 2.0 * width_scale) for radius in stroke.radii]
                 underlays.append(
                     EffectLineStroke(
                         points_xyz=pts,
@@ -1284,6 +1281,7 @@ def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> li
                         curve_type=stroke.curve_type,
                         bezier_smooth=stroke.bezier_smooth,
                         density_end=stroke.density_end,
+                        side=side,
                     )
                 )
         rest.append(stroke)

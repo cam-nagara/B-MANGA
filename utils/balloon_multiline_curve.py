@@ -14,6 +14,7 @@ MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
 _EDGE_OVERLAP_RATIO = 0.1
+_THORN_EDGE_OVERLAP_RATIO = 0.7
 
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
@@ -252,6 +253,7 @@ def append_closed_multi_line_paths(
     clockwise = _polygon_signed_area(body_points) < 0.0
     current_inner_mm = line_width_mm * 0.5 + spacing_mm
     base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
+    cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
     for ring_index in range(1, count):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
@@ -282,6 +284,7 @@ def append_closed_multi_line_paths(
                     peak_width_mm=peak_width_mm,
                     line_width_mm=line_width_mm,
                     length_scale=ring_length_scale,
+                    cross_enabled=cross_enabled,
                 )
                 point_radius = [MULTI_LINE_ROLE_RADIUS_OFFSET + scale for scale in radius_scales]
             else:
@@ -304,13 +307,14 @@ def _thorn_multiline_length_points(
     peak_width_mm: float,
     line_width_mm: float,
     length_scale: float,
+    cross_enabled: bool = False,
 ) -> tuple[list[tuple[float, float]], list[float]]:
     if len(ring_points) < 4:
         width_scale = max(0.0, float(peak_width_mm)) / max(1.0e-6, float(line_width_mm))
         return list(ring_points), [width_scale] * len(ring_points)
     valley_scale = max(0.0, float(valley_width_mm)) / max(1.0e-6, float(line_width_mm))
     peak_scale = max(0.0, float(peak_width_mm)) / max(1.0e-6, float(line_width_mm))
-    if length_scale >= 0.999:
+    if length_scale >= 0.999 and not cross_enabled:
         return (
             list(ring_points),
             [valley_scale if index % 2 == 0 else peak_scale for index in range(len(ring_points))],
@@ -324,6 +328,27 @@ def _thorn_multiline_length_points(
         path.append((float(point[0]), float(point[1])))
         radii.append(max(0.0, float(radius)))
 
+    def point_by_distance(start: tuple[float, float], end: tuple[float, float], distance: float) -> tuple[float, float]:
+        dx = float(end[0]) - float(start[0])
+        dy = float(end[1]) - float(start[1])
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-9:
+            return (float(start[0]), float(start[1]))
+        scale = float(distance) / length
+        return (float(start[0]) + dx * scale, float(start[1]) + dy * scale)
+
+    side_lengths: list[float] = []
+    for valley_index in range(0, len(ring_points), 2):
+        valley = ring_points[valley_index % len(ring_points)]
+        peak = ring_points[(valley_index + 1) % len(ring_points)]
+        next_valley = ring_points[(valley_index + 2) % len(ring_points)]
+        side_lengths.append(math.hypot(peak[0] - valley[0], peak[1] - valley[1]))
+        side_lengths.append(math.hypot(peak[0] - next_valley[0], peak[1] - next_valley[1]))
+    side_lengths = sorted(length for length in side_lengths if length > 1.0e-9)
+    reference_length = side_lengths[len(side_lengths) // 2] if side_lengths else 0.0
+    visible_length = max(0.0, reference_length * max(0.0, min(1.0, float(length_scale))))
+    cross_extension = max(0.0, reference_length * max(0.0, 1.0 - min(1.0, float(length_scale))))
+
     count = len(ring_points)
     first_valley = ring_points[0]
     add(first_valley, valley_scale)
@@ -333,19 +358,19 @@ def _thorn_multiline_length_points(
         next_valley = ring_points[(valley_index + 2) % count]
         if valley_index > 0:
             add(valley, valley_scale)
-        left_end = (
-            valley[0] + (peak[0] - valley[0]) * length_scale,
-            valley[1] + (peak[1] - valley[1]) * length_scale,
-        )
-        right_end = (
-            next_valley[0] + (peak[0] - next_valley[0]) * length_scale,
-            next_valley[1] + (peak[1] - next_valley[1]) * length_scale,
-        )
-        add(left_end, peak_scale)
-        add(left_end, 0.0)
-        add(peak, 0.0)
-        add(right_end, 0.0)
-        add(right_end, peak_scale)
+        if cross_enabled:
+            left_end = point_by_distance(peak, valley, -cross_extension)
+            right_end = point_by_distance(peak, next_valley, -cross_extension)
+            add(left_end, peak_scale)
+            add(right_end, peak_scale)
+        else:
+            left_end = point_by_distance(valley, peak, visible_length)
+            right_end = point_by_distance(next_valley, peak, visible_length)
+            add(left_end, peak_scale)
+            add(left_end, 0.0)
+            add(peak, 0.0)
+            add(right_end, 0.0)
+            add(right_end, peak_scale)
     return path, radii
 
 
@@ -359,6 +384,7 @@ def append_edge_paths(
     if len(body_points) < 3:
         return
     line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
+    shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     clockwise = _polygon_signed_area(body_points) < 0.0
     for enabled_attr, width_attr, side, material_index, role_radius in (
         ("outer_white_margin_enabled", "outer_white_margin_width_mm", "outside", 2, OUTER_EDGE_ROLE_RADIUS),
@@ -369,7 +395,8 @@ def append_edge_paths(
         width_mm = max(0.0, float(getattr(entry, width_attr, 0.0) or 0.0))
         if width_mm <= 0.0:
             continue
-        overlap_mm = min(max(0.0, line_width_mm), width_mm) * _EDGE_OVERLAP_RATIO
+        overlap_ratio = _THORN_EDGE_OVERLAP_RATIO if shape_name == "thorn" else _EDGE_OVERLAP_RATIO
+        overlap_mm = min(max(0.0, line_width_mm), width_mm) * overlap_ratio
         distance_mm = max(0.0, max(0.0, line_width_mm * 0.5) + width_mm * 0.5 - overlap_mm)
         edge_points = _offset_closed_outline(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
         if edge_points is None:

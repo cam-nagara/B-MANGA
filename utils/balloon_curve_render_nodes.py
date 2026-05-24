@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 32
+GROUP_VERSION = 33
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -48,6 +48,7 @@ _SOCKETS = (
     _SocketSpec("谷の線幅 (mm)", "NodeSocketFloat", 0.3, True),
     _SocketSpec("山の線幅 (mm)", "NodeSocketFloat", 0.3, True),
     _SocketSpec("多重線長さ変化 (%)", "NodeSocketFloat", 100.0, True),
+    _SocketSpec("多重線を延ばして交差", "NodeSocketBool", False, True),
     _SocketSpec("外側フチ", "NodeSocketBool", False, True),
     _SocketSpec("外側フチ幅 (mm)", "NodeSocketFloat", 1.0, True),
     _SocketSpec("外側フチ素材", "NodeSocketMaterial", None, True),
@@ -936,6 +937,7 @@ def _set_modifier_values(
     thorn_multi_line_valley_width_mm: float = 0.3,
     thorn_multi_line_peak_width_mm: float = 0.3,
     thorn_multi_line_length_scale_percent: float = 100.0,
+    thorn_multi_line_cross_enabled: bool = False,
     outer_edge_enabled: bool = False,
     outer_edge_width_mm: float = 1.0,
     inner_edge_enabled: bool = False,
@@ -976,6 +978,7 @@ def _set_modifier_values(
         "谷の線幅 (mm)": float(thorn_multi_line_valley_width_mm or 0.0),
         "山の線幅 (mm)": float(thorn_multi_line_peak_width_mm or 0.0),
         "多重線長さ変化 (%)": float(thorn_multi_line_length_scale_percent or 0.0),
+        "多重線を延ばして交差": bool(thorn_multi_line_cross_enabled),
         "外側フチ": bool(outer_edge_enabled),
         "外側フチ幅 (mm)": float(outer_edge_width_mm or 0.0),
         "外側フチ素材": _material_at(obj, 2),
@@ -1038,6 +1041,7 @@ def ensure_modifier(
     thorn_multi_line_valley_width_mm: float = 0.3,
     thorn_multi_line_peak_width_mm: float = 0.3,
     thorn_multi_line_length_scale_percent: float = 100.0,
+    thorn_multi_line_cross_enabled: bool = False,
     outer_edge_enabled: bool = False,
     outer_edge_width_mm: float = 1.0,
     inner_edge_enabled: bool = False,
@@ -1074,6 +1078,7 @@ def ensure_modifier(
         thorn_multi_line_valley_width_mm=thorn_multi_line_valley_width_mm,
         thorn_multi_line_peak_width_mm=thorn_multi_line_peak_width_mm,
         thorn_multi_line_length_scale_percent=thorn_multi_line_length_scale_percent,
+        thorn_multi_line_cross_enabled=thorn_multi_line_cross_enabled,
         outer_edge_enabled=outer_edge_enabled,
         outer_edge_width_mm=outer_edge_width_mm,
         inner_edge_enabled=inner_edge_enabled,
@@ -1109,6 +1114,7 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
     current_thorn_valley_width = 0.3
     current_thorn_peak_width = 0.3
     current_thorn_length_scale = 100.0
+    current_thorn_cross_enabled = False
     current_outer_enabled = False
     current_outer_width = 1.0
     current_inner_enabled = False
@@ -1141,6 +1147,8 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
                 current_thorn_peak_width = float(modifier.get(item.identifier, current_thorn_peak_width))
             elif name == "多重線長さ変化 (%)":
                 current_thorn_length_scale = float(modifier.get(item.identifier, current_thorn_length_scale))
+            elif name == "多重線を延ばして交差":
+                current_thorn_cross_enabled = bool(modifier.get(item.identifier, current_thorn_cross_enabled))
             elif name == "外側フチ":
                 current_outer_enabled = bool(modifier.get(item.identifier, current_outer_enabled))
             elif name == "外側フチ幅 (mm)":
@@ -1168,6 +1176,7 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         thorn_multi_line_valley_width_mm=current_thorn_valley_width,
         thorn_multi_line_peak_width_mm=current_thorn_peak_width,
         thorn_multi_line_length_scale_percent=current_thorn_length_scale,
+        thorn_multi_line_cross_enabled=current_thorn_cross_enabled,
         outer_edge_enabled=current_outer_enabled,
         outer_edge_width_mm=current_outer_width,
         inner_edge_enabled=current_inner_enabled,

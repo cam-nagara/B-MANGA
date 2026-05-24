@@ -284,6 +284,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row = box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_mm")
             row.prop(entry, "thorn_multi_line_peak_width_mm")
+            box.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
     row = box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")
