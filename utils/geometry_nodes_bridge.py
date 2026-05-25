@@ -2573,7 +2573,12 @@ def _group_needs_rebuild(group, kind: str) -> bool:
     except Exception:  # noqa: BLE001
         return True
     generator_types = {
-        "effect_line": {"GeometryNodeCurvePrimitiveLine", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
+        "effect_line": {
+            "GeometryNodeMeshLine",
+            "GeometryNodeCurvePrimitiveQuadrilateral",
+            "GeometryNodeFillCurve",
+            "GeometryNodeSetMaterial",
+        },
         "balloon": {"GeometryNodeMeshCircle", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"},
     }.get(kind, set())
     existing = {node.bl_idname for node in group.nodes}

@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 38
+GROUP_VERSION = 39
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -62,6 +62,7 @@ _SOCKETS = (
     _SocketSpec("内側フチ", "NodeSocketBool", False, True),
     _SocketSpec("内側フチ幅 (mm)", "NodeSocketFloat", 1.0, True),
     _SocketSpec("内側フチ素材", "NodeSocketMaterial", None, True),
+    _SocketSpec("線を面で生成", "NodeSocketBool", False, True),
     _SocketSpec("塗り輪郭ぼかし", "NodeSocketFloat", 0.0, True),
     _SocketSpec("塗りぼかしをディザ化", "NodeSocketBool", False, True),
     _SocketSpec("マスク使用", "NodeSocketBool", False, True),
@@ -464,6 +465,52 @@ def _outline_mesh_with_radius(
     )
 
 
+def _empty_geometry(group, *, label: str, location: tuple[float, float]):
+    node = _node(group, "GeometryNodeMeshLine", label=label, location=location)
+    try:
+        _set_default(node.inputs["Count"], 0)
+    except Exception:  # noqa: BLE001
+        pass
+    return node.outputs["Mesh"]
+
+
+def _filled_curve_geometry(
+    group,
+    curve_socket,
+    material_socket,
+    mask_geometry,
+    clip_enabled,
+    *,
+    label: str,
+    z_value: float,
+    location: tuple[float, float],
+):
+    fill = _node(group, "GeometryNodeFillCurve", label=f"{label}を面化", location=location)
+    _link(group, curve_socket, fill.inputs["Curve"])
+    masked = _masked_geometry(
+        group,
+        fill.outputs["Mesh"],
+        mask_geometry,
+        clip_enabled,
+        label=label,
+        location=(location[0] + 250, location[1] - 220),
+    )
+    material = _set_material(
+        group,
+        masked,
+        material_socket,
+        label=f"{label}素材",
+        location=(location[0] + 690, location[1]),
+    )
+    return _set_geometry_z(
+        group,
+        material,
+        z_value,
+        label=f"{label}を前面へ",
+        location=(location[0] + 900, location[1]),
+    )
+
+
 def _edge_radius_socket(group, base_radius, width_mm_socket, *, label: str, location: tuple[float, float]):
     edge_radius = _node(group, "ShaderNodeMath", label=f"{label}幅を半径へ", location=location)
     try:
@@ -832,7 +879,7 @@ def _build_nodes(group) -> None:
         label="外側フチ幅を半径へ",
         location=(-520, -760),
     )
-    outer_geometry = _outline_mesh_with_radius(
+    outer_legacy_geometry = _outline_mesh_with_radius(
         group,
         outer_curve,
         outer_radius,
@@ -842,6 +889,24 @@ def _build_nodes(group) -> None:
         label="外側フチ",
         z_value=_OUTER_EDGE_Z_M,
         location=(-250, -760),
+    )
+    outer_filled_geometry = _filled_curve_geometry(
+        group,
+        outer_curve,
+        input_node.outputs["外側フチ素材"],
+        mask_geometry,
+        line_clip_enabled,
+        label="外側フチ面",
+        z_value=_OUTER_EDGE_Z_M,
+        location=(-250, -980),
+    )
+    outer_geometry = _switch_geometry(
+        group,
+        input_node.outputs["線を面で生成"],
+        outer_legacy_geometry,
+        outer_filled_geometry,
+        label="外側フチの生成方式",
+        location=(690, -820),
     )
     outer_geometry = _switch_edge(
         group,
@@ -857,7 +922,7 @@ def _build_nodes(group) -> None:
         label="内側フチ幅を半径へ",
         location=(-520, -1180),
     )
-    inner_geometry = _outline_mesh_with_radius(
+    inner_legacy_geometry = _outline_mesh_with_radius(
         group,
         inner_curve,
         inner_radius,
@@ -868,6 +933,24 @@ def _build_nodes(group) -> None:
         z_value=_INNER_EDGE_Z_M,
         location=(-250, -1180),
     )
+    inner_filled_geometry = _filled_curve_geometry(
+        group,
+        inner_curve,
+        input_node.outputs["内側フチ素材"],
+        mask_geometry,
+        line_clip_enabled,
+        label="内側フチ面",
+        z_value=_INNER_EDGE_Z_M,
+        location=(-250, -1400),
+    )
+    inner_geometry = _switch_geometry(
+        group,
+        input_node.outputs["線を面で生成"],
+        inner_legacy_geometry,
+        inner_filled_geometry,
+        label="内側フチの生成方式",
+        location=(690, -1240),
+    )
     inner_geometry = _switch_edge(
         group,
         input_node.outputs["内側フチ"],
@@ -876,7 +959,7 @@ def _build_nodes(group) -> None:
         location=(880, -1140),
     )
 
-    line_geometry = _outline_mesh_with_radius(
+    line_legacy_geometry = _outline_mesh_with_radius(
         group,
         body_curve,
         radius.outputs["Value"],
@@ -887,23 +970,35 @@ def _build_nodes(group) -> None:
         z_value=_LINE_Z_M,
         location=(-250, -340),
     )
-    main_line_fill_mesh = _node(group, "GeometryNodeFillCurve", label="鋭角主線面", location=(150, -1060))
-    _link(group, main_line_fill_curve, main_line_fill_mesh.inputs["Curve"])
-    main_line_fill_geometry = _set_material(
+    line_empty_geometry = _empty_geometry(group, label="中心線方式を停止", location=(660, -540))
+    line_geometry = _switch_geometry(
         group,
-        main_line_fill_mesh.outputs["Mesh"],
+        input_node.outputs["線を面で生成"],
+        line_legacy_geometry,
+        line_empty_geometry,
+        label="輪郭線の生成方式",
+        location=(880, -440),
+    )
+    main_line_filled_geometry = _filled_curve_geometry(
+        group,
+        main_line_fill_curve,
         input_node.outputs["線素材"],
-        label="鋭角主線素材",
-        location=(430, -1060),
+        mask_geometry,
+        line_clip_enabled,
+        label="面としての輪郭線",
+        z_value=_LINE_Z_M,
+        location=(150, -1060),
     )
-    main_line_fill_geometry = _set_geometry_z(
+    main_line_empty_geometry = _empty_geometry(group, label="面の輪郭線なし", location=(680, -1320))
+    main_line_fill_geometry = _switch_geometry(
         group,
-        main_line_fill_geometry,
-        _SHARP_LINE_FILL_Z_M,
-        label="鋭角主線を前面へ",
-        location=(680, -1060),
+        input_node.outputs["線を面で生成"],
+        main_line_empty_geometry,
+        main_line_filled_geometry,
+        label="面の輪郭線を表示",
+        location=(930, -1120),
     )
-    thorn_multi_geometry = _outline_mesh_with_radius(
+    multi_legacy_geometry = _outline_mesh_with_radius(
         group,
         multi_curve,
         radius.outputs["Value"],
@@ -915,6 +1010,24 @@ def _build_nodes(group) -> None:
         location=(150, -1540),
         use_point_radius=True,
         point_radius_offset=_MULTI_LINE_ROLE_RADIUS_OFFSET,
+    )
+    multi_filled_geometry = _filled_curve_geometry(
+        group,
+        multi_curve,
+        input_node.outputs["線素材"],
+        mask_geometry,
+        line_clip_enabled,
+        label="多重線面",
+        z_value=_MULTI_LINE_Z_M,
+        location=(150, -1780),
+    )
+    thorn_multi_geometry = _switch_geometry(
+        group,
+        input_node.outputs["線を面で生成"],
+        multi_legacy_geometry,
+        multi_filled_geometry,
+        label="多重線の生成方式",
+        location=(900, -1600),
     )
 
     joined = _node(group, "GeometryNodeJoinGeometry", label="塗りと線", location=(880, 120))
@@ -983,6 +1096,7 @@ def _set_modifier_values(
     modifier,
     *,
     line_width_mm: float,
+    filled_line_enabled: bool = False,
     multi_line_enabled: bool = False,
     multi_line_count: int = 3,
     multi_line_width_mm: float = 0.3,
@@ -1041,6 +1155,7 @@ def _set_modifier_values(
         "内側フチ": bool(inner_edge_enabled),
         "内側フチ幅 (mm)": float(inner_edge_width_mm or 0.0),
         "内側フチ素材": _material_at(obj, 2),
+        "線を面で生成": bool(filled_line_enabled),
         "塗り輪郭ぼかし": max(0.0, min(1.0, float(fill_blur_amount or 0.0))),
         "塗りぼかしをディザ化": bool(fill_blur_dither),
     }
@@ -1088,6 +1203,7 @@ def ensure_modifier(
     obj: bpy.types.Object | None,
     *,
     line_width_mm: float = 0.3,
+    filled_line_enabled: bool = False,
     multi_line_enabled: bool = False,
     multi_line_count: int = 3,
     multi_line_width_mm: float = 0.3,
@@ -1125,6 +1241,7 @@ def ensure_modifier(
         obj,
         modifier,
         line_width_mm=line_width_mm,
+        filled_line_enabled=filled_line_enabled,
         multi_line_enabled=multi_line_enabled,
         multi_line_count=multi_line_count,
         multi_line_width_mm=multi_line_width_mm,
@@ -1162,6 +1279,7 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
     if modifier is None or modifier.node_group is None:
         return
     current_width = 0.3
+    current_filled_line_enabled = False
     current_multi_enabled = False
     current_multi_count = 3
     current_multi_width = 0.3
@@ -1185,6 +1303,8 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         try:
             if name == "線幅 (mm)":
                 current_width = float(modifier.get(item.identifier, current_width))
+            elif name == "線を面で生成":
+                current_filled_line_enabled = bool(modifier.get(item.identifier, current_filled_line_enabled))
             elif name == "多重線":
                 current_multi_enabled = bool(modifier.get(item.identifier, current_multi_enabled))
             elif name == "多重線本数":
@@ -1224,6 +1344,7 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         obj,
         modifier,
         line_width_mm=current_width,
+        filled_line_enabled=current_filled_line_enabled,
         multi_line_enabled=current_multi_enabled,
         multi_line_count=current_multi_count,
         multi_line_width_mm=current_multi_width,

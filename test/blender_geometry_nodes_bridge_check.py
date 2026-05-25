@@ -107,6 +107,8 @@ def _assert_generated_group(group, *, kind: str) -> None:
     required = {
         "effect_line": {
             "GeometryNodeMeshLine",
+            "GeometryNodeCurvePrimitiveQuadrilateral",
+            "GeometryNodeFillCurve",
             "GeometryNodeInstanceOnPoints",
             "GeometryNodeRealizeInstances",
             "GeometryNodeSetMaterial",
@@ -115,6 +117,7 @@ def _assert_generated_group(group, *, kind: str) -> None:
     }[kind]
     assert required.issubset(nodes), f"{kind} の Geometry Nodes が生成ノードを持っていません: {nodes}"
     if kind == "effect_line":
+        assert "GeometryNodeCurveToMesh" not in nodes, f"{kind} が旧来の線幅生成方式を使っています"
         object_info_nodes = [node for node in group.nodes if node.bl_idname == "GeometryNodeObjectInfo"]
         assert len(object_info_nodes) == 3, f"{kind} の始点/終点/距離密度参照ノード数が不正です: {len(object_info_nodes)}"
         assert "GeometryNodeRaycast" in nodes, f"{kind} がコマ枠までの距離をノード内で測っていません"

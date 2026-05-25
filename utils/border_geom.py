@@ -151,8 +151,6 @@ def stroke_loops_mm(
     pts = _dedupe_closed(centerline_points)
     if len(pts) < 3 or float(width_mm) <= _EPS:
         return None
-    if not is_convex_polygon(pts):
-        return None
 
     orient = polygon_area(pts)
     if abs(orient) <= _EPS:

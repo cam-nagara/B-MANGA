@@ -107,7 +107,6 @@ def _assert_cloud_has_no_stale_thorn_paths(obj) -> None:
         if not points:
             continue
         role = float(getattr(points[0], "radius", 0.0) or 0.0)
-        assert abs(role - 500.0) > 0.001, "雲の多重線にトゲ直線の主線面が混入しています"
         if role <= 50.0:
             continue
         assert bool(getattr(spline, "use_cyclic_u", False)), "雲の多重線に開いたトゲ状パスが混入しています"
@@ -129,10 +128,10 @@ def _poly_role_counts(obj) -> dict[int, int]:
     return counts
 
 
-def _assert_sharp_line_fill_role(obj, *, expected: bool) -> None:
+def _assert_main_line_fill_role(obj, *, expected: bool) -> None:
     counts = _poly_role_counts(obj)
     has_role = counts.get(500, 0) > 0
-    assert has_role == expected, f"トゲ直線の主線面の有無が不正です: expected={expected}, roles={counts}"
+    assert has_role == expected, f"面としての主線の有無が不正です: expected={expected}, roles={counts}"
 
 
 def main() -> None:
@@ -241,7 +240,7 @@ def main() -> None:
         switched_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=switched_cloud, page=page)
         assert switched_obj is not None and switched_obj.type == "CURVE"
         _assert_cloud_has_no_stale_thorn_paths(switched_obj)
-        _assert_sharp_line_fill_role(switched_obj, expected=False)
+        _assert_main_line_fill_role(switched_obj, expected=True)
         switched_obj.hide_render = True
         switched_obj.hide_viewport = True
 
@@ -271,9 +270,9 @@ def main() -> None:
             _assert_balloon_material_order(obj)
             if str(getattr(entry, "shape", "") or "") == "cloud":
                 _assert_cloud_has_no_stale_thorn_paths(obj)
-                _assert_sharp_line_fill_role(obj, expected=False)
+                _assert_main_line_fill_role(obj, expected=True)
             if str(getattr(entry, "shape", "") or "") == "thorn":
-                _assert_sharp_line_fill_role(obj, expected=True)
+                _assert_main_line_fill_role(obj, expected=True)
             objects_and_entries.append((obj, entry))
 
         _set_camera_for_entries(objects_and_entries)

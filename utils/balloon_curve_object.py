@@ -42,7 +42,7 @@ PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
-CURVE_GEOMETRY_VERSION = 8
+CURVE_GEOMETRY_VERSION = 9
 CLIPPED_FILL_ROLE_RADIUS = 400.0
 _MATERIAL_SLOT_FILL = 0
 _MATERIAL_SLOT_OUTER_EDGE = 1
@@ -723,6 +723,7 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
                 obj,
                 mask_obj,
                 margin_mm=0.0,
+                body_only=True,
             )
         else:
             clip_needed = _balloon_curve_needs_coma_clip(
@@ -742,13 +743,16 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
                 obj,
                 mask_obj,
                 margin_mm=0.0,
+                body_only=True,
             )
             if mask_obj is None:
                 _remove_balloon_clip_mask(str(getattr(entry, "id", "") or ""))
         _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
+        filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
+            filled_line_enabled=filled_line_enabled,
             multi_line_enabled=str(getattr(entry, "line_style", "") or "") == "double",
             multi_line_count=int(getattr(entry, "multi_line_count", 3) or 3),
             multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
@@ -1235,11 +1239,13 @@ def _sample_cubic_vec(p0: Vector, h0: Vector, h1: Vector, p1: Vector, t: float) 
     return (mt**3) * p0 + (3.0 * mt * mt * t) * h0 + (3.0 * mt * t * t) * h1 + (t**3) * p1
 
 
-def _iter_curve_local_samples(obj: bpy.types.Object, *, steps: int = 8):
+def _iter_curve_local_samples(obj: bpy.types.Object, *, steps: int = 8, body_only: bool = False):
     curve = getattr(obj, "data", None)
     if curve is None:
         return
     for spline in getattr(curve, "splines", []) or []:
+        if body_only and spline.type != "BEZIER":
+            continue
         if spline.type == "BEZIER":
             points = list(getattr(spline, "bezier_points", []) or [])
             count = len(points)
@@ -1275,6 +1281,7 @@ def _balloon_curve_needs_coma_clip(
     mask_obj: bpy.types.Object | None,
     *,
     margin_mm: float | None = None,
+    body_only: bool = False,
 ) -> bool:
     if mask_obj is None:
         return False
@@ -1298,7 +1305,7 @@ def _balloon_curve_needs_coma_clip(
         if obj is not None:
             try:
                 had_sample = False
-                for local_pos in _iter_curve_local_samples(obj, steps=12):
+                for local_pos in _iter_curve_local_samples(obj, steps=12, body_only=body_only):
                     had_sample = True
                     xy = _curve_sample_to_entry_page_xy(entry, local_pos)
                     if not _point_in_polygon_xy(xy, polygon, tolerance=0.1):
@@ -1689,6 +1696,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     if body_anchors is not None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
         body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
+        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     else:
@@ -1700,7 +1708,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             sharp_indices=sharp_set,
             offset=offset,
         )
-        balloon_multiline_curve.append_sharp_main_line_fill_paths(curve, entry, body_points, offset=offset)
+        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
@@ -1711,6 +1719,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             sharp_indices=set(range(len(tail_points))),
             offset=offset,
         )
+        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, tail_points, offset=offset)
 
 
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
@@ -1823,6 +1832,7 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
                 obj,
                 mask_obj,
                 margin_mm=0.0,
+                body_only=True,
             )
         else:
             clip_needed = _balloon_curve_needs_coma_clip(
@@ -1842,13 +1852,16 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
                 obj,
                 mask_obj,
                 margin_mm=0.0,
+                body_only=True,
             )
             if mask_obj is None:
                 _remove_balloon_clip_mask(balloon_id)
         _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
+        filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
             line_width_mm=line_width_mm,
+            filled_line_enabled=filled_line_enabled,
             multi_line_enabled=str(getattr(entry, "line_style", "") or "") == "double",
             multi_line_count=int(getattr(entry, "multi_line_count", 3) or 3),
             multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),

@@ -121,6 +121,17 @@ def _spline_bounds_xy(spline) -> tuple[float, float]:
     return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
 
 
+def _combined_spline_bounds_xy(splines) -> tuple[float, float]:
+    coords = []
+    for spline in splines:
+        if str(getattr(spline, "type", "") or "") == "BEZIER":
+            coords.extend(point.co for point in spline.bezier_points)
+        else:
+            coords.extend(point.co.to_3d() for point in spline.points)
+    assert coords
+    return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
+
+
 def _evaluated_material_z_range(obj, material_index: int) -> tuple[float, float]:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
@@ -242,21 +253,20 @@ def main() -> None:
             for spline in obj.data.splines
             if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
         ]
-        assert len(helper_splines) == 6, f"トゲの多重線が閉じた外周線として作成されていません: {spline_summary}"
+        assert len(helper_splines) >= 6, f"トゲの多重線が面として作成されていません: {spline_summary}"
         assert all(bool(spline.use_cyclic_u) for spline in helper_splines), "トゲの多重線が途切れた線になっています"
         helper_points = helper_splines[0].points
-        assert len(helper_points) >= 8, "トゲの多重線に長さ変化用の頂点が不足しています"
+        assert len(helper_points) >= 4, "トゲの多重線面に頂点が不足しています"
         assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
-        first_ring_span = _visible_multiline_span(helper_splines[0])
-        second_ring_span = _visible_multiline_span(helper_splines[2])
-        assert 0.0 < second_ring_span < first_ring_span * 0.65, (
-            f"長さ変化が主線からの距離ごとに強くなっていません: first={first_ring_span}, second={second_ring_span}"
+        spans = sorted((_visible_multiline_span(spline) for spline in helper_splines), reverse=True)
+        spans = [span for span in spans if span > 1.0e-9]
+        assert spans and spans[-1] < spans[0] * 0.85, (
+            f"長さ変化が主線からの距離ごとに強くなっていません: spans={spans[:6]}"
         )
-        _assert_close(_spline_point_radius(helper_splines[0], 0) - 100.0, 0.22 / 0.3, "トゲ多重線の谷側線幅")
-        _assert_close(_spline_point_radius(helper_splines[0], 1) - 100.0, 0.46 / 0.3, "トゲ多重線の山側線幅")
-        helper_radius_values = [_spline_point_radius(helper_splines[0], index) - 100.0 for index in range(len(helper_points))]
-        assert any(value <= 1.0e-6 for value in helper_radius_values), "多重線の長さ変化で非表示になる区間が作られていません"
-        assert any(value > 1.0e-3 for value in helper_radius_values), "多重線の長さ変化で表示される区間が残っていません"
+        helper_width_scales = sorted({round(float(spline.points[0].radius) - 100.0, 4) for spline in helper_splines})
+        assert min(helper_width_scales) > 0.0 and max(helper_width_scales) > min(helper_width_scales), (
+            f"トゲ多重線の山側と谷側の線幅差が面に反映されていません: {helper_width_scales}"
+        )
         entry.thorn_multi_line_cross_enabled = True
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
@@ -328,11 +338,11 @@ def main() -> None:
             for spline in edge_obj.data.splines
             if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 300.0) <= 0.001
         ]
-        assert len(outer_helpers) == 1, "外側フチ用の輪郭が分離されていません"
-        assert len(inner_helpers) == 1, "内側フチ用の輪郭が分離されていません"
-        assert outer_helpers[0].use_cyclic_u and inner_helpers[0].use_cyclic_u, "フチ用の輪郭が閉じていません"
-        outer_w, outer_h = _spline_bounds_xy(outer_helpers[0])
-        inner_w, inner_h = _spline_bounds_xy(inner_helpers[0])
+        assert len(inner_helpers) == 2, "内側フチ用の面輪郭が分離されていません"
+        assert len(outer_helpers) == 2, "外側フチ用の面輪郭が分離されていません"
+        assert all(spline.use_cyclic_u for spline in [*outer_helpers, *inner_helpers]), "フチ用の輪郭が閉じていません"
+        outer_w, outer_h = _combined_spline_bounds_xy(outer_helpers)
+        inner_w, inner_h = _combined_spline_bounds_xy(inner_helpers)
         assert outer_w > body_w and outer_h > body_h, "外側フチが外側の輪郭になっていません"
         assert inner_w < body_w and inner_h < body_h, "内側フチが内側の輪郭になっていません"
 

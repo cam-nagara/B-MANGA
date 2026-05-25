@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +46,7 @@ def _evaluated_bounds(obj) -> tuple[float, float, float]:
         evaluated.to_mesh_clear()
 
 
-def _evaluated_faces_for_material(obj, material_index: int) -> list[list]:
+def _evaluated_faces_for_material(obj, material_index: int | None, *, z_value: float | None = None) -> list[list]:
     depsgraph = bpy.context.evaluated_depsgraph_get()
     evaluated = obj.evaluated_get(depsgraph)
     mesh = evaluated.to_mesh()
@@ -53,13 +54,67 @@ def _evaluated_faces_for_material(obj, material_index: int) -> list[list]:
         coords = [vertex.co.copy() for vertex in mesh.vertices]
         faces = []
         for poly in mesh.polygons:
-            if int(getattr(poly, "material_index", 0) or 0) != int(material_index):
+            if material_index is not None and int(getattr(poly, "material_index", 0) or 0) != int(material_index):
                 continue
-            faces.append([coords[index] for index in poly.vertices])
-        assert faces, f"線幅測定用の面がありません: material_index={material_index}"
+            face = [coords[index] for index in poly.vertices]
+            if z_value is not None:
+                average_z = sum(float(co.z) for co in face) / max(1, len(face))
+                if abs(average_z - float(z_value)) > 1.0e-7:
+                    continue
+            faces.append(face)
+        label = f"material_index={material_index}, z_value={z_value}"
+        assert faces, f"線幅測定用の面がありません: {label}"
         return faces
     finally:
         evaluated.to_mesh_clear()
+
+
+def _stroke_width_cross_section(
+    obj,
+    start,
+    end,
+    *,
+    material_index: int | None = 0,
+    z_value: float | None = None,
+    distance_limit: float = 0.005,
+) -> float:
+    ax, ay = float(start.x), float(start.y)
+    bx, by = float(end.x), float(end.y)
+    dx = bx - ax
+    dy = by - ay
+    length = (dx * dx + dy * dy) ** 0.5
+    assert length > 1.0e-9, "線幅測定用の線分が短すぎます"
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    sx = ax + dx * 0.5
+    sy = ay + dy * 0.5
+    intersections: list[float] = []
+    for face in _evaluated_faces_for_material(obj, material_index, z_value=z_value):
+        if len(face) < 2:
+            continue
+        prev = face[-1]
+        prev_t = (float(prev.x) - sx) * ux + (float(prev.y) - sy) * uy
+        prev_n = (float(prev.x) - sx) * nx + (float(prev.y) - sy) * ny
+        for cur in face:
+            cur_t = (float(cur.x) - sx) * ux + (float(cur.y) - sy) * uy
+            cur_n = (float(cur.x) - sx) * nx + (float(cur.y) - sy) * ny
+            if abs(cur_t - prev_t) > 1.0e-12 and (
+                (prev_t <= 0.0 <= cur_t) or (cur_t <= 0.0 <= prev_t)
+            ):
+                factor = -prev_t / (cur_t - prev_t)
+                if -1.0e-6 <= factor <= 1.0 + 1.0e-6:
+                    distance = prev_n + (cur_n - prev_n) * factor
+                    if abs(distance) <= distance_limit:
+                        intersections.append(distance)
+            prev_t = cur_t
+            prev_n = cur_n
+    unique: list[float] = []
+    for value in sorted(intersections):
+        if unique and abs(unique[-1] - value) <= 1.0e-7:
+            continue
+        unique.append(value)
+    assert len(unique) >= 2, f"線幅を測定できる交点が不足しています: {unique}"
+    return max(unique) - min(unique)
 
 
 def _spline_anchor_bounds(spline) -> tuple[float, float]:
@@ -102,46 +157,6 @@ def _count_poly_splines_with_radius(obj, expected_radius: float) -> int:
         if all(abs(float(point.radius) - float(expected_radius)) <= 1.0e-6 for point in points):
             count += 1
     return count
-
-
-def _stroke_width_cross_section(obj, start, end, *, material_index: int = 0, distance_limit: float = 0.005) -> float:
-    ax, ay = float(start.x), float(start.y)
-    bx, by = float(end.x), float(end.y)
-    dx = bx - ax
-    dy = by - ay
-    length = (dx * dx + dy * dy) ** 0.5
-    assert length > 1.0e-9, "線幅測定用の線分が短すぎます"
-    ux, uy = dx / length, dy / length
-    nx, ny = -uy, ux
-    sx = ax + dx * 0.5
-    sy = ay + dy * 0.5
-    intersections: list[float] = []
-    for face in _evaluated_faces_for_material(obj, material_index):
-        if len(face) < 2:
-            continue
-        prev = face[-1]
-        prev_t = (float(prev.x) - sx) * ux + (float(prev.y) - sy) * uy
-        prev_n = (float(prev.x) - sx) * nx + (float(prev.y) - sy) * ny
-        for cur in face:
-            cur_t = (float(cur.x) - sx) * ux + (float(cur.y) - sy) * uy
-            cur_n = (float(cur.x) - sx) * nx + (float(cur.y) - sy) * ny
-            if abs(cur_t - prev_t) > 1.0e-12 and (
-                (prev_t <= 0.0 <= cur_t) or (cur_t <= 0.0 <= prev_t)
-            ):
-                factor = -prev_t / (cur_t - prev_t)
-                if -1.0e-6 <= factor <= 1.0 + 1.0e-6:
-                    distance = prev_n + (cur_n - prev_n) * factor
-                    if abs(distance) <= distance_limit:
-                        intersections.append(distance)
-            prev_t = cur_t
-            prev_n = cur_n
-    unique: list[float] = []
-    for value in sorted(intersections):
-        if unique and abs(unique[-1] - value) <= 1.0e-7:
-            continue
-        unique.append(value)
-    assert len(unique) >= 2, f"線幅を測定できる交点が不足しています: {unique}"
-    return max(unique) - min(unique)
 
 
 def _evaluated_world_bounds(obj) -> tuple[float, float, float, float]:
@@ -389,7 +404,8 @@ def main() -> None:
             obj4,
             obj4.data.splines[0].bezier_points[0].co,
             obj4.data.splines[0].bezier_points[1].co,
-            material_index=3,
+            material_index=None,
+            z_value=0.000012,
         )
         assert 0.00027 <= rect_width <= 0.00033, f"矩形フキダシの0.3mm線幅が設定値通りではありません: width={rect_width}"
 
@@ -417,8 +433,8 @@ def main() -> None:
         assert abs(float(_modifier_socket_value(obj5, balloon_curve_render_nodes, "線幅 (mm)") or 0.0) - 0.3) <= 1.0e-6, (
             "トゲ（直線）フキダシの表示補助に0.3mmの線幅が渡っていません"
         )
-        assert _count_poly_splines_with_radius(obj5, 500.0) >= len(body5.bezier_points), (
-            "トゲ（直線）フキダシの鋭角主線補強が作成されていません"
+        assert _count_poly_splines_with_radius(obj5, 500.0) >= 2, (
+            "トゲ（直線）フキダシの主線面が作成されていません"
         )
 
         entry6 = page.balloons.add()
@@ -440,9 +456,10 @@ def main() -> None:
         bpy.context.view_layer.update()
         ellipse_width = _stroke_width_cross_section(
             obj6,
-            obj6.data.splines[0].bezier_points[0].co,
-            obj6.data.splines[0].bezier_points[1].co,
-            material_index=3,
+            Vector((-0.012, 0.015, 0.0)),
+            Vector((0.012, 0.015, 0.0)),
+            material_index=None,
+            z_value=0.000012,
         )
         assert 0.00027 <= ellipse_width <= 0.00033, f"楕円フキダシの0.3mm線幅が設定値通りではありません: width={ellipse_width}"
 
@@ -454,8 +471,8 @@ def main() -> None:
         bpy.context.view_layer.update()
         border_width = _stroke_width_cross_section(
             border_obj,
-            border_obj.data.splines[0].points[0].co.to_3d(),
-            border_obj.data.splines[0].points[1].co.to_3d(),
+            Vector((0.0, 0.0, 0.0)),
+            Vector((0.12, 0.0, 0.0)),
         )
         assert 0.00027 <= border_width <= 0.00033, f"コマ枠線の0.3mm線幅が設定値通りではありません: width={border_width}"
 
@@ -465,8 +482,8 @@ def main() -> None:
         bpy.context.view_layer.update()
         border_width_05 = _stroke_width_cross_section(
             border_obj,
-            border_obj.data.splines[0].points[0].co.to_3d(),
-            border_obj.data.splines[0].points[1].co.to_3d(),
+            Vector((0.0, 0.0, 0.0)),
+            Vector((0.12, 0.0, 0.0)),
         )
         assert 0.00046 <= border_width_05 <= 0.00054, (
             f"コマ枠線の0.5mm線幅が設定値通りではありません: width={border_width_05}"

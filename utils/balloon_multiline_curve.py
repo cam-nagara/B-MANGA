@@ -168,6 +168,70 @@ def _add_closed_polygon(
     )
 
 
+def _orient_loop(points: Sequence[tuple[float, float]], *, ccw: bool) -> list[tuple[float, float]]:
+    path = [(float(x), float(y)) for x, y in points]
+    if len(path) < 3:
+        return path
+    is_ccw = _polygon_signed_area(path) > 0.0
+    if is_ccw != bool(ccw):
+        path.reverse()
+    return path
+
+
+def _add_filled_band(
+    curve: bpy.types.Curve,
+    outer: Sequence[tuple[float, float]],
+    inner: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+    role_radius: float,
+    material_index: int,
+) -> None:
+    """Fill Curve で穴あき帯になるよう、外周 CCW / 内周 CW の面線を追加する."""
+    if len(outer) < 3 or len(inner) < 3:
+        return
+    outer_loop = _orient_loop(outer, ccw=True)
+    inner_loop = _orient_loop(inner, ccw=False)
+    _add_closed_polygon(
+        curve,
+        outer_loop,
+        offset=offset,
+        point_radius=role_radius,
+        material_index=material_index,
+    )
+    _add_closed_polygon(
+        curve,
+        inner_loop,
+        offset=offset,
+        point_radius=role_radius,
+        material_index=material_index,
+    )
+
+
+def _band_loops_for_side(
+    body_points: Sequence[tuple[float, float]],
+    *,
+    center_distance_mm: float,
+    width_mm: float,
+    clockwise: bool,
+    side: str,
+    smooth: bool,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]] | None:
+    half = max(0.0, float(width_mm)) * 0.5
+    near_distance = max(0.0, float(center_distance_mm) - half)
+    far_distance = max(0.0, float(center_distance_mm) + half)
+    offset_fn = _offset_closed_outline_smooth if smooth else _offset_closed_outline
+    if side == "inside":
+        outer = offset_fn(body_points, distance_mm=near_distance, clockwise=clockwise, side="inside")
+        inner = offset_fn(body_points, distance_mm=far_distance, clockwise=clockwise, side="inside")
+    else:
+        outer = offset_fn(body_points, distance_mm=far_distance, clockwise=clockwise, side="outside")
+        inner = offset_fn(body_points, distance_mm=near_distance, clockwise=clockwise, side="outside")
+    if outer is None or inner is None:
+        return None
+    return outer, inner
+
+
 def _polygon_signed_area(points: Sequence[tuple[float, float]]) -> float:
     if len(points) < 3:
         return 0.0
@@ -334,17 +398,64 @@ def append_closed_multi_line_paths(
                     length_scale=ring_length_scale,
                     cross_enabled=cross_enabled,
                 )
-                point_radius = [MULTI_LINE_ROLE_RADIUS_OFFSET + scale for scale in radius_scales]
+                _append_polyline_segment_bands(
+                    curve,
+                    ring_points,
+                    radius_scales,
+                    line_width_mm=line_width_mm,
+                    offset=offset,
+                    role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET,
+                    material_index=_MATERIAL_SLOT_LINE,
+                )
             else:
-                point_radius = MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm)
-            _add_open_poly_path(
-                curve,
-                ring_points,
-                offset=offset,
-                point_radius=point_radius,
-                close=True,
-                material_index=_MATERIAL_SLOT_LINE,
-            )
+                band = _band_loops_for_side(
+                    body_points,
+                    center_distance_mm=distance_mm,
+                    width_mm=ring_width_mm,
+                    clockwise=clockwise,
+                    side=side,
+                    smooth=True,
+                )
+                if band is None:
+                    continue
+                outer, inner = band
+                _add_filled_band(
+                    curve,
+                    outer,
+                    inner,
+                    offset=offset,
+                    role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm),
+                    material_index=_MATERIAL_SLOT_LINE,
+                )
+
+
+def append_main_line_fill_paths(
+    curve: bpy.types.Curve,
+    entry,
+    body_points: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+) -> None:
+    """主線を、中心線ではなく線幅ぶんの面として追加する."""
+    if str(getattr(entry, "line_style", "") or "") == "none":
+        return
+    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    if line_width_mm <= 0.0 or len(body_points) < 3:
+        return
+    clockwise = _polygon_signed_area(body_points) < 0.0
+    half_width = line_width_mm * 0.5
+    outer = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
+    inner = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
+    if outer is None or inner is None:
+        return
+    _add_filled_band(
+        curve,
+        outer,
+        inner,
+        offset=offset,
+        role_radius=MAIN_LINE_FILL_ROLE_RADIUS,
+        material_index=_MATERIAL_SLOT_LINE,
+    )
 
 
 def append_sharp_main_line_fill_paths(
@@ -354,27 +465,51 @@ def append_sharp_main_line_fill_paths(
     *,
     offset: tuple[float, float],
 ) -> None:
-    """鋭角形状の主線を、中心線ではなく線幅ぶんの面として追加する."""
-    if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) != "thorn":
+    """互換用。現行は鋭角以外も主線を面として追加する."""
+    append_main_line_fill_paths(curve, entry, body_points, offset=offset)
+
+
+def _append_polyline_segment_bands(
+    curve: bpy.types.Curve,
+    points: Sequence[tuple[float, float]],
+    radius_scales: Sequence[float],
+    *,
+    line_width_mm: float,
+    offset: tuple[float, float],
+    role_radius: float,
+    material_index: int,
+) -> None:
+    if len(points) < 2:
         return
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    if line_width_mm <= 0.0 or len(body_points) < 3:
-        return
-    clockwise = _polygon_signed_area(body_points) < 0.0
-    half_width = line_width_mm * 0.5
-    outer = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
-    inner = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
-    if outer is None or inner is None or len(outer) != len(inner):
-        return
-    count = len(outer)
+    count = len(points)
     for index in range(count):
         next_index = (index + 1) % count
+        width_a = max(0.0, float(radius_scales[index % len(radius_scales)] if radius_scales else 1.0)) * line_width_mm
+        width_b = max(0.0, float(radius_scales[next_index % len(radius_scales)] if radius_scales else 1.0)) * line_width_mm
+        if width_a <= 1.0e-7 or width_b <= 1.0e-7:
+            continue
+        a = points[index]
+        b = points[next_index]
+        dx = float(b[0]) - float(a[0])
+        dy = float(b[1]) - float(a[1])
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-7:
+            continue
+        nx = -dy / length
+        ny = dx / length
+        ha = width_a * 0.5
+        hb = width_b * 0.5
         _add_closed_polygon(
             curve,
-            (outer[index], outer[next_index], inner[next_index], inner[index]),
+            (
+                (a[0] + nx * ha, a[1] + ny * ha),
+                (b[0] + nx * hb, b[1] + ny * hb),
+                (b[0] - nx * hb, b[1] - ny * hb),
+                (a[0] - nx * ha, a[1] - ny * ha),
+            ),
             offset=offset,
-            point_radius=MAIN_LINE_FILL_ROLE_RADIUS,
-            material_index=_MATERIAL_SLOT_LINE,
+            point_radius=role_radius + max(width_a, width_b) / max(1.0e-6, line_width_mm),
+            material_index=material_index,
         )
 
 
@@ -475,11 +610,40 @@ def append_edge_paths(
             continue
         overlap_ratio = _THORN_EDGE_OVERLAP_RATIO if shape_name == "thorn" else _EDGE_OVERLAP_RATIO
         overlap_mm = min(max(0.0, line_width_mm), width_mm) * overlap_ratio
-        distance_mm = max(0.0, max(0.0, line_width_mm * 0.5) + width_mm * 0.5 - overlap_mm)
-        edge_points = _offset_closed_outline(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
-        if edge_points is None:
+        near = max(0.0, max(0.0, line_width_mm * 0.5) - overlap_mm)
+        far = max(0.0, max(0.0, line_width_mm * 0.5) + width_mm)
+        offset_fn = _offset_closed_outline_smooth if shape_name not in {"rect", "octagon", "thorn"} else _offset_closed_outline
+        if side == "inside":
+            outer = offset_fn(body_points, distance_mm=near, clockwise=clockwise, side=side)
+            inner = offset_fn(body_points, distance_mm=far, clockwise=clockwise, side=side)
+        else:
+            outer = offset_fn(body_points, distance_mm=far, clockwise=clockwise, side=side)
+            inner = offset_fn(body_points, distance_mm=near, clockwise=clockwise, side=side)
+        if outer is None or inner is None:
             continue
-        _add_open_poly_path(curve, edge_points, offset=offset, point_radius=role_radius, close=True, material_index=material_index)
+        _add_filled_band(
+            curve,
+            outer,
+            inner,
+            offset=offset,
+            role_radius=role_radius,
+            material_index=material_index,
+        )
+
+
+def has_filled_line_paths(curve: bpy.types.Curve | None) -> bool:
+    if curve is None:
+        return False
+    for spline in getattr(curve, "splines", []) or []:
+        if str(getattr(spline, "type", "") or "") != "POLY":
+            continue
+        points = list(getattr(spline, "points", []) or [])
+        if not points:
+            continue
+        role = float(getattr(points[0], "radius", 0.0) or 0.0)
+        if role >= 50.0:
+            return True
+    return False
 
 
 def outer_render_margin_mm(entry, line_width_mm: float) -> float:

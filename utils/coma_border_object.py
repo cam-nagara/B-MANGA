@@ -18,6 +18,7 @@ _logger = log.get_logger(__name__)
 
 COMA_BORDER_NAME_PREFIX = "coma_border_"
 COMA_BORDER_CURVE_PREFIX = "coma_border_curve_"
+COMA_BORDER_MESH_PREFIX = "coma_border_mesh_"
 COMA_BORDER_MATERIAL_PREFIX = "BName_ComaBorder_"
 COMA_WHITE_MARGIN_NAME_PREFIX = "coma_white_margin_"
 COMA_WHITE_MARGIN_MESH_PREFIX = "coma_white_margin_mesh_"
@@ -52,6 +53,10 @@ def _coma_collection(scene, page, page_id: str, coma_id: str, title: str):
 
 def _curve_name(page_id: str, coma_id: str) -> str:
     return f"{COMA_BORDER_CURVE_PREFIX}{page_id}_{coma_id}"
+
+
+def _mesh_name(page_id: str, coma_id: str) -> str:
+    return f"{COMA_BORDER_MESH_PREFIX}{page_id}_{coma_id}"
 
 
 def _object_name(page_id: str, coma_id: str) -> str:
@@ -279,6 +284,31 @@ def _rebuild_curve(
     curve.bevel_depth = max(0.0, float(width_mm)) * _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM
     curve.bevel_resolution = 1
     curve.resolution_u = 1
+
+
+def _rebuild_mesh_band(
+    mesh: bpy.types.Mesh,
+    paths_mm: Sequence[Sequence[tuple[float, float]]],
+    width_mm: float,
+) -> None:
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    for points_mm in paths_mm:
+        loops = border_geom.stroke_loops_mm(points_mm, width_mm)
+        if loops is None:
+            continue
+        outer, inner = loops
+        if len(outer) < 3 or len(inner) != len(outer):
+            continue
+        base = len(verts)
+        verts.extend((mm_to_m(x), mm_to_m(y), 0.0) for x, y in outer)
+        verts.extend((mm_to_m(x), mm_to_m(y), 0.0) for x, y in inner)
+        count = len(outer)
+        faces.extend((base + i, base + (i + 1) % count, base + count + (i + 1) % count, base + count + i) for i in range(count))
+    mesh.clear_geometry()
+    if verts and faces:
+        mesh.from_pydata(verts, [], faces)
+    mesh.update()
 
 
 def _page_index(work, page) -> int:
@@ -533,17 +563,9 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
     for group_index, (paths, width_mm, color, style_name) in enumerate(groups):
         suffix = "" if group_index == 0 else f"_{group_index:02d}"
         curve_name = _curve_name(page_id, coma_id) if group_index == 0 else f"{_curve_name(page_id, coma_id)}_{group_index:02d}"
+        mesh_name = _mesh_name(page_id, coma_id) if group_index == 0 else f"{_mesh_name(page_id, coma_id)}_{group_index:02d}"
         object_name = _object_name(page_id, coma_id) if group_index == 0 else f"{_object_name(page_id, coma_id)}_{group_index:02d}"
-        curve = bpy.data.curves.get(curve_name)
-        if curve is None:
-            curve = bpy.data.curves.new(curve_name, type="CURVE")
         is_brush = style_name in {"brush_core", "brush_halo"}
-        _rebuild_curve(
-            curve,
-            paths,
-            width_mm,
-            cyclic=(style_name in {"solid_closed", "brush_core", "brush_halo"}),
-        )
         if style_name == "brush_core":
             mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_brushcore", color)
         elif style_name == "brush_halo":
@@ -559,34 +581,73 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
                 mat = _ensure_color_material(_material_name(page_id, coma_id), color)
         else:
             mat = _ensure_color_material(f"{_material_name(page_id, coma_id)}_{group_index:02d}", color)
-        if not curve.materials:
-            curve.materials.append(mat)
-        elif curve.materials[0] is not mat:
-            curve.materials[0] = mat
-        obj = bpy.data.objects.get(object_name)
-        if obj is not None and obj.type != "CURVE":
-            # 旧版 (ボカシ平面メッシュ) で保存されたファイルでは枠線
-            # オブジェクトが MESH 型で残っている。Object のデータ型は
-            # 変更できないため作り直す (放置すると obj.data=curve で
-            # 例外になり枠線が壊れる/古いメッシュが残る)。
-            old_data = obj.data
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except Exception:  # noqa: BLE001
-                pass
-            if old_data is not None and getattr(old_data, "users", 0) == 0:
+        if style_name == "solid_closed":
+            mesh = bpy.data.meshes.get(mesh_name)
+            if mesh is None:
+                mesh = bpy.data.meshes.new(mesh_name)
+            _rebuild_mesh_band(mesh, paths, width_mm)
+            if not mesh.materials:
+                mesh.materials.append(mat)
+            elif mesh.materials[0] is not mat:
+                mesh.materials[0] = mat
+            obj = bpy.data.objects.get(object_name)
+            if obj is not None and obj.type != "MESH":
+                old_data = obj.data
                 try:
-                    if isinstance(old_data, bpy.types.Mesh):
-                        bpy.data.meshes.remove(old_data)
-                    elif isinstance(old_data, bpy.types.Curve):
-                        bpy.data.curves.remove(old_data)
+                    bpy.data.objects.remove(obj, do_unlink=True)
                 except Exception:  # noqa: BLE001
                     pass
-            obj = None
-        if obj is None:
-            obj = bpy.data.objects.new(object_name, curve)
-        elif obj.data is not curve:
-            obj.data = curve
+                if old_data is not None and getattr(old_data, "users", 0) == 0:
+                    try:
+                        if isinstance(old_data, bpy.types.Mesh):
+                            bpy.data.meshes.remove(old_data)
+                        elif isinstance(old_data, bpy.types.Curve):
+                            bpy.data.curves.remove(old_data)
+                    except Exception:  # noqa: BLE001
+                        pass
+                obj = None
+            if obj is None:
+                obj = bpy.data.objects.new(object_name, mesh)
+            elif obj.data is not mesh:
+                obj.data = mesh
+        else:
+            curve = bpy.data.curves.get(curve_name)
+            if curve is None:
+                curve = bpy.data.curves.new(curve_name, type="CURVE")
+            _rebuild_curve(
+                curve,
+                paths,
+                width_mm,
+                cyclic=(style_name in {"brush_core", "brush_halo"}),
+            )
+            if not curve.materials:
+                curve.materials.append(mat)
+            elif curve.materials[0] is not mat:
+                curve.materials[0] = mat
+            obj = bpy.data.objects.get(object_name)
+            if obj is not None and obj.type != "CURVE":
+                # 旧版 (ボカシ平面メッシュ) で保存されたファイルでは枠線
+                # オブジェクトが MESH 型で残っている。Object のデータ型は
+                # 変更できないため作り直す (放置すると obj.data=curve で
+                # 例外になり枠線が壊れる/古いメッシュが残る)。
+                old_data = obj.data
+                try:
+                    bpy.data.objects.remove(obj, do_unlink=True)
+                except Exception:  # noqa: BLE001
+                    pass
+                if old_data is not None and getattr(old_data, "users", 0) == 0:
+                    try:
+                        if isinstance(old_data, bpy.types.Mesh):
+                            bpy.data.meshes.remove(old_data)
+                        elif isinstance(old_data, bpy.types.Curve):
+                            bpy.data.curves.remove(old_data)
+                    except Exception:  # noqa: BLE001
+                        pass
+                obj = None
+            if obj is None:
+                obj = bpy.data.objects.new(object_name, curve)
+            elif obj.data is not curve:
+                obj.data = curve
         keep_names.add(obj.name)
         if primary_obj is None:
             primary_obj = obj

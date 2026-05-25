@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-25 — v0.6.081 線生成を面方式へ統一
+
+### 症状
+- フキダシの主線、フチ、多重線や通常のコマ枠線が、角度や曲線形状によって太さの見え方が変わる余地があった。
+- 効果線の再生成判定が古い線幅生成方式を前提にしていた。
+
+### 原因
+- 一部の線が中心線に太さを付ける方式で生成され、角や曲率の影響を受けやすかった。
+- 効果線ノードの確認条件が、現在の面生成方式と一致していなかった。
+
+### 修正
+- フキダシの主線、外側フチ、内側フチ、多重線を、閉じた面として作る方式へ統一した。
+- 通常のコマ枠線も、線幅分の帯状メッシュとして生成するようにした。
+- 効果線の生成確認を、面として作る現在の構成に合わせた。
+- コマ内容マスクの判定ではフキダシ本体だけを見るようにし、追加した線用の面がマスク判定を乱さないようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_balloon_curve_mask_and_anchor_check.py`: フキダシ線幅、通常コマ枠線、マスク判定を確認。PASS。
+- `test/blender_balloon_multiline_freeform_check.py`: 主線、フチ、多重線が面として作られることを確認。PASS。
+- `test/blender_balloon_multiline_visual_check.py`: トゲ、雲、楕円、しっぽ付きフキダシを画像出力し、面としての線表示を確認。PASS。
+- `test/blender_balloon_soft_mask_fuchi_visual_check.py`: コマ内容マスクとフチ表示の前後関係を確認。PASS。
+- `test/blender_effect_line_frame_spacing_check.py`: 効果線の白抜き線・まとまり・距離指定関連の既存挙動を確認。PASS。
+- `test/blender_geometry_nodes_bridge_check.py`: 効果線が古い線幅生成方式を使わないことを確認。PASS。
+- `python -m py_compile`: 関連スクリプトの構文検査。PASS。
+- AI目視: `.codex/visual/balloon_face_line_visual.png` で、各フキダシの主線・フチ・多重線が面として安定して表示されることを確認。
+
 ## 2026-05-25 — v0.6.080 B-Name操作の終了条件を強化
 
 ### 症状
