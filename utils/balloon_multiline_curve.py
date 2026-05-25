@@ -13,6 +13,10 @@ from .geom import Rect, mm_to_m
 MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
+MAIN_LINE_FILL_ROLE_RADIUS = 500.0
+_MATERIAL_SLOT_OUTER_EDGE = 1
+_MATERIAL_SLOT_INNER_EDGE = 2
+_MATERIAL_SLOT_LINE = 3
 _EDGE_OVERLAP_RATIO = 0.06
 _THORN_EDGE_OVERLAP_RATIO = 0.06
 _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 5.0
@@ -144,6 +148,26 @@ def _add_open_poly_path(
         _set_poly_point(spline.points[index], point, offset=offset, point_radius=radius)
 
 
+def _add_closed_polygon(
+    curve: bpy.types.Curve,
+    points: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+    point_radius: float,
+    material_index: int = 0,
+) -> None:
+    if len(points) < 3:
+        return
+    _add_open_poly_path(
+        curve,
+        points,
+        offset=offset,
+        point_radius=point_radius,
+        close=True,
+        material_index=material_index,
+    )
+
+
 def _polygon_signed_area(points: Sequence[tuple[float, float]]) -> float:
     if len(points) < 3:
         return 0.0
@@ -230,6 +254,34 @@ def _offset_closed_outline(
     return result
 
 
+def _offset_closed_outline_smooth(
+    points: Sequence[tuple[float, float]],
+    *,
+    distance_mm: float,
+    clockwise: bool,
+    side: str,
+) -> list[tuple[float, float]] | None:
+    points, _corners = _strip_duplicate_closure(points)
+    if len(points) < 3:
+        return None
+    result: list[tuple[float, float]] = []
+    direction_sign = -1.0 if side == "inside" else 1.0
+    for index, current in enumerate(points):
+        previous = points[index - 1]
+        next_point = points[(index + 1) % len(points)]
+        n_prev = _segment_outward_normal(previous, current, clockwise=clockwise)
+        n_next = _segment_outward_normal(current, next_point, clockwise=clockwise)
+        n_prev = (n_prev[0] * direction_sign, n_prev[1] * direction_sign)
+        n_next = (n_next[0] * direction_sign, n_next[1] * direction_sign)
+        normal = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
+        if normal is None:
+            normal = n_next if math.hypot(n_next[0], n_next[1]) > 0.0 else n_prev
+        dot_prev = max(0.35, min(1.0, normal[0] * n_prev[0] + normal[1] * n_prev[1]))
+        offset = min(distance_mm / dot_prev, distance_mm * 2.0)
+        result.append((current[0] + normal[0] * offset, current[1] + normal[1] * offset))
+    return result
+
+
 def append_closed_multi_line_paths(
     curve: bpy.types.Curve,
     entry,
@@ -268,12 +320,8 @@ def append_closed_multi_line_paths(
             continue
         distance_mm = base_distance_mm + spacing_mm * ring_index
         for side in sides:
-            ring_points = _offset_closed_outline(
-                body_points,
-                distance_mm=distance_mm,
-                clockwise=clockwise,
-                side=side,
-            )
+            offset_fn = _offset_closed_outline if shape_name in {"rect", "octagon", "thorn"} else _offset_closed_outline_smooth
+            ring_points = offset_fn(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
             if ring_points is None:
                 continue
             if shape_name == "thorn":
@@ -295,8 +343,39 @@ def append_closed_multi_line_paths(
                 offset=offset,
                 point_radius=point_radius,
                 close=True,
-                material_index=1,
+                material_index=_MATERIAL_SLOT_LINE,
             )
+
+
+def append_sharp_main_line_fill_paths(
+    curve: bpy.types.Curve,
+    entry,
+    body_points: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+) -> None:
+    """鋭角形状の主線を、中心線ではなく線幅ぶんの面として追加する."""
+    if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) != "thorn":
+        return
+    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    if line_width_mm <= 0.0 or len(body_points) < 3:
+        return
+    clockwise = _polygon_signed_area(body_points) < 0.0
+    half_width = line_width_mm * 0.5
+    outer = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
+    inner = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
+    if outer is None or inner is None or len(outer) != len(inner):
+        return
+    count = len(outer)
+    for index in range(count):
+        next_index = (index + 1) % count
+        _add_closed_polygon(
+            curve,
+            (outer[index], outer[next_index], inner[next_index], inner[index]),
+            offset=offset,
+            point_radius=MAIN_LINE_FILL_ROLE_RADIUS,
+            material_index=_MATERIAL_SLOT_LINE,
+        )
 
 
 def _thorn_multiline_length_points(
@@ -386,8 +465,8 @@ def append_edge_paths(
     shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     clockwise = _polygon_signed_area(body_points) < 0.0
     for enabled_attr, width_attr, side, material_index, role_radius in (
-        ("outer_white_margin_enabled", "outer_white_margin_width_mm", "outside", 2, OUTER_EDGE_ROLE_RADIUS),
-        ("inner_white_margin_enabled", "inner_white_margin_width_mm", "inside", 3, INNER_EDGE_ROLE_RADIUS),
+        ("outer_white_margin_enabled", "outer_white_margin_width_mm", "outside", _MATERIAL_SLOT_OUTER_EDGE, OUTER_EDGE_ROLE_RADIUS),
+        ("inner_white_margin_enabled", "inner_white_margin_width_mm", "inside", _MATERIAL_SLOT_INNER_EDGE, INNER_EDGE_ROLE_RADIUS),
     ):
         if not bool(getattr(entry, enabled_attr, False)):
             continue

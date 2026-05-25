@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 36
+GROUP_VERSION = 38
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -25,11 +25,13 @@ _MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 _OUTER_EDGE_ROLE_RADIUS = 200.0
 _INNER_EDGE_ROLE_RADIUS = 300.0
 _CLIPPED_FILL_ROLE_RADIUS = 400.0
+_MAIN_LINE_FILL_ROLE_RADIUS = 500.0
 _FILL_Z_M = 0.0
-_OUTER_EDGE_Z_M = 0.000001
-_INNER_EDGE_Z_M = 0.0000015
-_MULTI_LINE_Z_M = 0.000002
-_LINE_Z_M = 0.000003
+_OUTER_EDGE_Z_M = 0.000004
+_INNER_EDGE_Z_M = 0.000006
+_MULTI_LINE_Z_M = 0.000008
+_LINE_Z_M = 0.000012
+_SHARP_LINE_FILL_Z_M = 0.000013
 
 
 @dataclass(frozen=True)
@@ -673,6 +675,20 @@ def _build_nodes(group) -> None:
         label="見切れ塗り",
         location=(-1120, 220),
     )
+    main_line_fill_selection = _compare_float_equal(
+        group,
+        role_radius,
+        _MAIN_LINE_FILL_ROLE_RADIUS,
+        label="鋭角主線を分離",
+        location=(-1120, 0),
+    )
+    main_line_fill_curve, without_main_line_fill = _separate_geometry(
+        group,
+        without_clipped_fill,
+        main_line_fill_selection,
+        label="鋭角主線",
+        location=(-900, 0),
+    )
     outer_selection = _compare_float_equal(
         group,
         role_radius,
@@ -682,7 +698,7 @@ def _build_nodes(group) -> None:
     )
     outer_curve, without_outer = _separate_geometry(
         group,
-        without_clipped_fill,
+        without_main_line_fill,
         outer_selection,
         label="外側フチ",
         location=(-900, -240),
@@ -871,6 +887,22 @@ def _build_nodes(group) -> None:
         z_value=_LINE_Z_M,
         location=(-250, -340),
     )
+    main_line_fill_mesh = _node(group, "GeometryNodeFillCurve", label="鋭角主線面", location=(150, -1060))
+    _link(group, main_line_fill_curve, main_line_fill_mesh.inputs["Curve"])
+    main_line_fill_geometry = _set_material(
+        group,
+        main_line_fill_mesh.outputs["Mesh"],
+        input_node.outputs["線素材"],
+        label="鋭角主線素材",
+        location=(430, -1060),
+    )
+    main_line_fill_geometry = _set_geometry_z(
+        group,
+        main_line_fill_geometry,
+        _SHARP_LINE_FILL_Z_M,
+        label="鋭角主線を前面へ",
+        location=(680, -1060),
+    )
     thorn_multi_geometry = _outline_mesh_with_radius(
         group,
         multi_curve,
@@ -891,6 +923,7 @@ def _build_nodes(group) -> None:
     _link(group, inner_geometry, joined.inputs["Geometry"])
     _link(group, thorn_multi_geometry, joined.inputs["Geometry"])
     _link(group, line_geometry, joined.inputs["Geometry"])
+    _link(group, main_line_fill_geometry, joined.inputs["Geometry"])
     _link(group, joined.outputs["Geometry"], output_node.inputs["Geometry"])
     group[PROP_GROUP_VERSION] = GROUP_VERSION
 
@@ -990,8 +1023,8 @@ def _set_modifier_values(
     )
     values = {
         "線幅 (mm)": float(line_width_mm or 0.0),
-        "線素材": _material_at(obj, 0),
-        "塗り素材": _material_at(obj, 1),
+        "線素材": _material_at(obj, 3),
+        "塗り素材": _material_at(obj, 0),
         "多重線": bool(multi_line_enabled),
         "多重線本数": float(multi_line_count or 1),
         "多重線幅 (mm)": float(multi_line_width_mm or 0.0),
@@ -1004,10 +1037,10 @@ def _set_modifier_values(
         "多重線を延ばして交差": bool(thorn_multi_line_cross_enabled),
         "外側フチ": bool(outer_edge_enabled),
         "外側フチ幅 (mm)": float(outer_edge_width_mm or 0.0),
-        "外側フチ素材": _material_at(obj, 2),
+        "外側フチ素材": _material_at(obj, 1),
         "内側フチ": bool(inner_edge_enabled),
         "内側フチ幅 (mm)": float(inner_edge_width_mm or 0.0),
-        "内側フチ素材": _material_at(obj, 3),
+        "内側フチ素材": _material_at(obj, 2),
         "塗り輪郭ぼかし": max(0.0, min(1.0, float(fill_blur_amount or 0.0))),
         "塗りぼかしをディザ化": bool(fill_blur_dither),
     }

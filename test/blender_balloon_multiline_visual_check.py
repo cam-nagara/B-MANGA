@@ -68,6 +68,73 @@ def _configure_multiline(entry, *, direction: str = "outside") -> None:
     entry.fill_opacity = 100.0
 
 
+def _material_slot_names(obj) -> list[str]:
+    data = getattr(obj, "data", None)
+    return [str(getattr(mat, "name", "") or "") for mat in getattr(data, "materials", []) or []]
+
+
+def _assert_balloon_material_order(obj) -> None:
+    names = _material_slot_names(obj)
+    assert len(names) >= 4, f"フキダシ素材スロットが不足しています: {names}"
+    assert "BName_Balloon_Fill_" in names[0], f"塗りが最背面スロットではありません: {names}"
+    assert "BName_Balloon_Outer_Edge_" in names[1], f"外側フチが塗りの直後ではありません: {names}"
+    assert "BName_Balloon_Inner_Edge_" in names[2], f"内側フチが外側フチの直後ではありません: {names}"
+    assert "BName_Balloon_Curve_" in names[3], f"主線が最前面スロットではありません: {names}"
+    for index in (0, 3):
+        material = obj.data.materials[index]
+        assert str(getattr(material, "blend_method", "") or "") in {"OPAQUE", "HASHED"}, (
+            f"不透明な塗り/主線が半透明描画になっています: {index}, "
+            f"{getattr(material, 'name', '')}, {getattr(material, 'blend_method', '')}"
+        )
+
+
+def _assert_cloud_has_no_stale_thorn_paths(obj) -> None:
+    data = getattr(obj, "data", None)
+    assert data is not None
+    for spline in getattr(data, "splines", []) or []:
+        if str(getattr(spline, "type", "") or "") == "BEZIER":
+            points = list(getattr(spline, "bezier_points", []) or [])
+            if len(points) >= 6 and all(
+                str(getattr(point, "handle_left_type", "") or "") == "VECTOR"
+                and str(getattr(point, "handle_right_type", "") or "") == "VECTOR"
+                for point in points
+            ):
+                raise AssertionError("雲の輪郭にトゲ直線の制御点が残っています")
+            continue
+        if str(getattr(spline, "type", "") or "") != "POLY":
+            continue
+        points = list(getattr(spline, "points", []) or [])
+        if not points:
+            continue
+        role = float(getattr(points[0], "radius", 0.0) or 0.0)
+        assert abs(role - 500.0) > 0.001, "雲の多重線にトゲ直線の主線面が混入しています"
+        if role <= 50.0:
+            continue
+        assert bool(getattr(spline, "use_cyclic_u", False)), "雲の多重線に開いたトゲ状パスが混入しています"
+
+
+def _poly_role_counts(obj) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    data = getattr(obj, "data", None)
+    if data is None:
+        return counts
+    for spline in getattr(data, "splines", []) or []:
+        if str(getattr(spline, "type", "") or "") != "POLY":
+            continue
+        points = list(getattr(spline, "points", []) or [])
+        if not points:
+            continue
+        role = int(round(float(getattr(points[0], "radius", 0.0) or 0.0)))
+        counts[role] = counts.get(role, 0) + 1
+    return counts
+
+
+def _assert_sharp_line_fill_role(obj, *, expected: bool) -> None:
+    counts = _poly_role_counts(obj)
+    has_role = counts.get(500, 0) > 0
+    assert has_role == expected, f"トゲ直線の主線面の有無が不正です: expected={expected}, roles={counts}"
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_visual_work_"))
     mod = None
@@ -115,10 +182,68 @@ def main() -> None:
             parent_key=parent_key,
         )
         _configure_multiline(thorn, direction="both")
+        thorn.line_width_mm = 3.0
         thorn.fill_color = (0.78, 1.0, 0.83, 1.0)
         thorn.thorn_multi_line_valley_width_mm = 0.18
         thorn.thorn_multi_line_peak_width_mm = 0.48
         thorn.thorn_multi_line_length_scale_percent = 72.0
+
+        behind_thorn = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="thorn",
+            x=120.0,
+            y=92.0,
+            w=54.0,
+            h=54.0,
+            parent_kind="page",
+            parent_key=parent_key,
+        )
+        _configure_multiline(behind_thorn, direction="outside")
+        behind_thorn.line_width_mm = 0.3
+        behind_thorn.multi_line_width_mm = 0.22
+        behind_thorn.multi_line_spacing_mm = 1.0
+        behind_thorn.fill_color = (0.96, 0.96, 0.96, 1.0)
+
+        cloud = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="cloud",
+            x=128.0,
+            y=98.0,
+            w=42.0,
+            h=42.0,
+            parent_kind="page",
+            parent_key=parent_key,
+        )
+        _configure_multiline(cloud, direction="outside")
+        cloud.line_width_mm = 0.3
+        cloud.multi_line_width_mm = 0.28
+        cloud.multi_line_spacing_mm = 0.7
+        cloud.fill_color = (1.0, 1.0, 1.0, 1.0)
+
+        switched_cloud = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="thorn",
+            x=170.0,
+            y=122.0,
+            w=32.0,
+            h=32.0,
+            parent_kind="page",
+            parent_key=parent_key,
+        )
+        _configure_multiline(switched_cloud, direction="outside")
+        switched_cloud.multi_line_width_mm = 0.24
+        switched_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=switched_cloud, page=page)
+        assert switched_obj is not None and switched_obj.type == "CURVE"
+        switched_cloud.shape = "cloud"
+        switched_obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=switched_cloud, page=page)
+        assert switched_obj is not None and switched_obj.type == "CURVE"
+        _assert_cloud_has_no_stale_thorn_paths(switched_obj)
+        _assert_sharp_line_fill_role(switched_obj, expected=False)
+        switched_obj.hide_render = True
+        switched_obj.hide_viewport = True
 
         freeform = balloon_op._create_balloon_entry(
             context,
@@ -140,9 +265,15 @@ def main() -> None:
         balloon_op._set_balloon_rect(page, freeform, 42.0, 92.0, 62.0, 40.0)
 
         objects_and_entries = []
-        for entry in (ellipse, thorn, freeform):
+        for entry in (ellipse, thorn, behind_thorn, cloud, freeform):
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE"
+            _assert_balloon_material_order(obj)
+            if str(getattr(entry, "shape", "") or "") == "cloud":
+                _assert_cloud_has_no_stale_thorn_paths(obj)
+                _assert_sharp_line_fill_role(obj, expected=False)
+            if str(getattr(entry, "shape", "") or "") == "thorn":
+                _assert_sharp_line_fill_role(obj, expected=True)
             objects_and_entries.append((obj, entry))
 
         _set_camera_for_entries(objects_and_entries)

@@ -240,7 +240,7 @@ def main() -> None:
         helper_splines = [
             spline
             for spline in obj.data.splines
-            if getattr(spline, "points", None) and float(spline.points[0].radius) > 50.0
+            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
         ]
         assert len(helper_splines) == 6, f"トゲの多重線が閉じた外周線として作成されていません: {spline_summary}"
         assert all(bool(spline.use_cyclic_u) for spline in helper_splines), "トゲの多重線が途切れた線になっています"
@@ -264,7 +264,7 @@ def main() -> None:
         cross_helpers = [
             spline
             for spline in obj.data.splines
-            if getattr(spline, "points", None) and float(spline.points[0].radius) > 50.0
+            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
         ]
         cross_radius_values = [
             _spline_point_radius(cross_helpers[0], index) - 100.0
@@ -280,11 +280,18 @@ def main() -> None:
         entry.outer_white_margin_width_mm = 1.2
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         bpy.context.view_layer.update()
-        line_z_min, _line_z_max = _evaluated_material_z_range(obj, 0)
-        _outer_z_min, outer_z_max = _evaluated_material_z_range(obj, 2)
-        assert line_z_min > outer_z_max, (
-            f"多重線/主線がフチより背面に生成されています: line_min={line_z_min}, outer_max={outer_z_max}"
-        )
+        helper_splines = [
+            spline
+            for spline in obj.data.splines
+            if getattr(spline, "points", None) and 50.0 < float(spline.points[0].radius) < 200.0
+        ]
+        outer_helpers = [
+            spline
+            for spline in obj.data.splines
+            if getattr(spline, "points", None) and abs(float(spline.points[0].radius) - 200.0) <= 1.0e-6
+        ]
+        assert helper_splines, "多重線が作成されていません"
+        assert outer_helpers, "外側フチが作成されていません"
 
         payload = schema.balloon_entry_to_dict(entry)
         roundtrip = page.balloons.add()

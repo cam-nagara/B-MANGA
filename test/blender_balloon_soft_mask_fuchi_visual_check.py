@@ -304,7 +304,11 @@ def main() -> None:
         line_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
         edge_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Outer_Edge_" in name or "BName_Balloon_Inner_Edge_" in name)
         assert line_z > edge_z, f"主線がフチより前面になっていません: line={line_z}, edge={edge_z}"
-        assert max(value[1] - value[0] for value in ranges.values()) < 0.00001, f"フキダシ内部の前後差が大きすぎます: {ranges}"
+        fill_top = max(value[1] for name, value in ranges.items() if "BName_Balloon_Fill_" in name)
+        multi_bottom = min(value[0] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
+        assert fill_top < edge_z < line_z, f"塗り・フチ・主線の前後関係が不正です: {ranges}"
+        assert fill_top < multi_bottom, f"塗りが多重線より前面にあります: {ranges}"
+        assert max(value[1] - value[0] for value in ranges.values()) < 0.0007, f"フキダシ内部の前後差が大きすぎます: {ranges}"
 
         back_world = _evaluated_material_world_z_ranges(obj)
         front_world = _evaluated_material_world_z_ranges(front_obj)

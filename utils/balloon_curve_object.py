@@ -42,8 +42,12 @@ PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
 PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
 PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
-CURVE_GEOMETRY_VERSION = 6
+CURVE_GEOMETRY_VERSION = 8
 CLIPPED_FILL_ROLE_RADIUS = 400.0
+_MATERIAL_SLOT_FILL = 0
+_MATERIAL_SLOT_OUTER_EDGE = 1
+_MATERIAL_SLOT_INNER_EDGE = 2
+_MATERIAL_SLOT_LINE = 3
 _LINE_AND_EDGE_MASK_POWER = 4.0
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
@@ -1100,7 +1104,7 @@ def _add_clipped_fill_spline(curve: bpy.types.Curve, local_points_mm: Sequence[t
     spline = curve.splines.new("POLY")
     spline.points.add(len(local_points_mm) - 1)
     spline.use_cyclic_u = True
-    spline.material_index = 1
+    spline.material_index = _MATERIAL_SLOT_FILL
     for point, (x_mm, y_mm) in zip(spline.points, local_points_mm, strict=False):
         point.co = (mm_to_m(float(x_mm)), mm_to_m(float(y_mm)), 0.0, 1.0)
         try:
@@ -1502,7 +1506,7 @@ def _prepare_balloon_curve_data(
         curve.use_fill_caps = False
     except Exception:  # noqa: BLE001
         pass
-    _set_data_materials(curve, (line_material, fill_material, outer_material, inner_material))
+    _set_data_materials(curve, (fill_material, outer_material, inner_material, line_material))
 
 
 def _clear_curve_splines(curve: bpy.types.Curve) -> None:
@@ -1556,7 +1560,7 @@ def _add_bezier_loop(
     spline = curve.splines.new("BEZIER")
     spline.bezier_points.add(len(points) - 1)
     spline.use_cyclic_u = True
-    spline.material_index = 0
+    spline.material_index = _MATERIAL_SLOT_LINE
     for index, point in enumerate(points):
         bp = spline.bezier_points[index]
         bp.co = _point_to_curve_xyz(point, offset)
@@ -1581,7 +1585,7 @@ def _add_bezier_anchor_loop(
     spline = curve.splines.new("BEZIER")
     spline.bezier_points.add(len(anchors) - 1)
     spline.use_cyclic_u = True
-    spline.material_index = 0
+    spline.material_index = _MATERIAL_SLOT_LINE
     for index, anchor in enumerate(anchors):
         bp = spline.bezier_points[index]
         bp.co = _point_to_curve_xyz(anchor.co, offset)
@@ -1696,6 +1700,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             sharp_indices=sharp_set,
             offset=offset,
         )
+        balloon_multiline_curve.append_sharp_main_line_fill_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:

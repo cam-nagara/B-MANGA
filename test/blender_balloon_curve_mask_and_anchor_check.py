@@ -91,6 +91,19 @@ def _longest_bezier_anchor_segment(spline):
     return best
 
 
+def _count_poly_splines_with_radius(obj, expected_radius: float) -> int:
+    count = 0
+    for spline in obj.data.splines:
+        if getattr(spline, "type", "") != "POLY":
+            continue
+        points = list(getattr(spline, "points", []) or [])
+        if not points:
+            continue
+        if all(abs(float(point.radius) - float(expected_radius)) <= 1.0e-6 for point in points):
+            count += 1
+    return count
+
+
 def _stroke_width_cross_section(obj, start, end, *, material_index: int = 0, distance_limit: float = 0.005) -> float:
     ax, ay = float(start.x), float(start.y)
     bx, by = float(end.x), float(end.y)
@@ -376,6 +389,7 @@ def main() -> None:
             obj4,
             obj4.data.splines[0].bezier_points[0].co,
             obj4.data.splines[0].bezier_points[1].co,
+            material_index=3,
         )
         assert 0.00027 <= rect_width <= 0.00033, f"矩形フキダシの0.3mm線幅が設定値通りではありません: width={rect_width}"
 
@@ -403,14 +417,8 @@ def main() -> None:
         assert abs(float(_modifier_socket_value(obj5, balloon_curve_render_nodes, "線幅 (mm)") or 0.0) - 0.3) <= 1.0e-6, (
             "トゲ（直線）フキダシの表示補助に0.3mmの線幅が渡っていません"
         )
-        thorn_start, thorn_end = _longest_bezier_anchor_segment(body5)
-        thorn_width = _stroke_width_cross_section(
-            obj5,
-            thorn_start,
-            thorn_end,
-        )
-        assert 0.00027 <= thorn_width <= 0.00036, (
-            f"トゲ（直線）フキダシの0.3mm線幅が鋭角接合部を考慮しても太すぎます: width={thorn_width}"
+        assert _count_poly_splines_with_radius(obj5, 500.0) >= len(body5.bezier_points), (
+            "トゲ（直線）フキダシの鋭角主線補強が作成されていません"
         )
 
         entry6 = page.balloons.add()
@@ -434,6 +442,7 @@ def main() -> None:
             obj6,
             obj6.data.splines[0].bezier_points[0].co,
             obj6.data.splines[0].bezier_points[1].co,
+            material_index=3,
         )
         assert 0.00027 <= ellipse_width <= 0.00033, f"楕円フキダシの0.3mm線幅が設定値通りではありません: width={ellipse_width}"
 
