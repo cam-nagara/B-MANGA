@@ -44,6 +44,7 @@ def main() -> None:
     mod = _load_addon()
     from bname_dev_shortcut_visibility.keymap import keymap as keymap_mod
     from bname_dev_shortcut_visibility.keymap import viewport_ops
+    from bname_dev_shortcut_visibility.operators import coma_modal_state
     from bname_dev_shortcut_visibility.utils import page_browser, runtime_activity, shortcut_visibility
 
     work = bpy.context.scene.bname_work
@@ -167,6 +168,30 @@ def main() -> None:
         assert has_context_menu_key, "B-Name右クリックメニューのキーマップがありません"
         assert not bool(conflict_kmi.active), "B-Nameタブ表示中に競合ショートカットが退避されません"
 
+        class _DummyModal:
+            def __init__(self):
+                self.finished = []
+
+            def finish_from_external(self, context, *, keep_selection: bool) -> None:
+                _ = context
+                self.finished.append(bool(keep_selection))
+                self._externally_finished = True
+
+        dummy = _DummyModal()
+        coma_modal_state.set_active("object_tool", dummy, bpy.context)
+        shortcut_visibility.bname_panel_visible = lambda _context=None: False
+        shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
+        keymap_mod._watch_bname_tab()
+        assert dummy.finished == [True], "B-Nameタブ非表示時に起動済み操作が終了しません"
+        assert not coma_modal_state.is_active("object_tool"), "B-Nameタブ非表示後も起動済み操作が残っています"
+
+        dummy_create = _DummyModal()
+        coma_modal_state.set_active("coma_create", dummy_create, bpy.context)
+        assert coma_modal_state.finish_all(bpy.context), "コマ作成中の操作をまとめて終了できません"
+        assert dummy_create.finished == [True], "コマ作成中の操作がまとめて終了対象に含まれていません"
+
+        shortcut_visibility.bname_panel_visible = lambda _context=None: True
+        shortcut_visibility.any_bname_panel_visible = lambda _context=None: True
         keymap_mod.suspend_visibility_updates(seconds=1.0, reason="test blend switch")
         assert _active_bname_items(keymap_mod) == 0, "blend切替待機中にB-Nameキーが有効です"
         assert bool(conflict_kmi.active), "blend切替待機中に他のショートカットが退避されています"
@@ -187,6 +212,16 @@ def main() -> None:
         keymap_mod._watch_bname_tab()
         assert _active_bname_items(keymap_mod) > 0, "ページ一覧ファイル扱いへ戻してもB-Nameキーが有効になりません"
         assert not bool(conflict_kmi.active), "ページ一覧ファイル扱いへ戻しても競合ショートカットが退避されません"
+
+        dummy_mode = _DummyModal()
+        coma_modal_state.set_active("balloon_tool", dummy_mode, bpy.context)
+        bpy.context.scene.bname_interaction_enabled = False
+        assert dummy_mode.finished == [True], "B-Name操作OFFで起動済み操作が終了しません"
+        assert not coma_modal_state.is_active("balloon_tool"), "B-Name操作OFF後も起動済み操作が残っています"
+        keymap_mod._watch_bname_tab()
+        assert _active_bname_items(keymap_mod) == 0, "B-Name操作OFFでショートカットが有効です"
+        assert not shortcut_visibility.any_shortcuts_allowed(bpy.context), "B-Name操作OFFで実行判定が有効です"
+        bpy.context.scene.bname_interaction_enabled = True
 
         shortcut_visibility.bname_panel_visible = lambda _context=None: False
         shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
@@ -217,6 +252,10 @@ def main() -> None:
             "タブ名が取得できない同一エリアで、B-Nameパネル表示判定が時間切れ後も残ります"
         )
     finally:
+        try:
+            bpy.context.scene.bname_interaction_enabled = True
+        except Exception:
+            pass
         shortcut_visibility.bname_panel_visible = original_panel_visible
         shortcut_visibility.any_bname_panel_visible = original_any_panel_visible
         shortcut_visibility.shortcuts_allowed = original_allowed

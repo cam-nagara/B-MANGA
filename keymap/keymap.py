@@ -912,6 +912,12 @@ def force_shortcuts_disabled() -> None:
     if state is None:
         return
     try:
+        from ..operators import coma_modal_state
+
+        coma_modal_state.finish_all(bpy.context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("finish B-Name modal tools failed")
+    try:
         state.restore_conflicting_keys()
     except Exception:  # noqa: BLE001
         _logger.exception("restore_conflicting_keys failed")
@@ -993,6 +999,12 @@ def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("disable_conflicting_keys failed")
         return
+    try:
+        from ..operators import coma_modal_state
+
+        coma_modal_state.finish_all(bpy.context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("finish B-Name modal tools failed")
     try:
         state.restore_conflicting_keys()
     except Exception:  # noqa: BLE001

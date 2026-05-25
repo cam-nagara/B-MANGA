@@ -106,8 +106,23 @@ def test_unmodified_n_toggles_modal_sidebar():
     assert space.show_region_ui
 
 
+def test_modal_sidebar_close_finishes_bname_tools():
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    space = context.screen.areas[0].spaces.active
+    space.type = "VIEW_3D"
+    space.show_region_ui = True
+    calls = []
+    region_mod._finish_modal_tools_for_sidebar_close = lambda ctx: calls.append(ctx)
+    event = _event("N", region.x + 20, region.y + 20)
+    assert region_mod.toggle_modal_sidebar_if_requested(context, event)
+    assert not space.show_region_ui
+    assert calls == [context]
+
+
 if __name__ == "__main__":
     test_navigation_ui_hitbox_matches_top_right_viewport_controls()
     test_navigation_ui_respects_blender_visibility_settings()
     test_modal_navigation_passthrough_stays_active_until_release()
     test_unmodified_n_toggles_modal_sidebar()
+    test_modal_sidebar_close_finishes_bname_tools()

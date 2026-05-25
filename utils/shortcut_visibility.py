@@ -134,6 +134,18 @@ def shortcut_file_scope_allowed(context=None) -> bool:
         return False
 
 
+def interaction_enabled(context=None) -> bool:
+    """ユーザーが B-Name のビューポート操作を有効にしているか返す."""
+    try:
+        ctx = context or bpy.context
+        scene = getattr(ctx, "scene", None)
+        if scene is None:
+            return True
+        return bool(getattr(scene, "bname_interaction_enabled", True))
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def bname_panel_visible(context=None) -> bool:
     """現在操作中の 3D ビューで B-Name タブが表示されているか返す."""
     if bool(getattr(bpy.app, "background", False)):
@@ -147,7 +159,11 @@ def bname_panel_visible(context=None) -> bool:
 
 def any_shortcuts_allowed(context=None) -> bool:
     """いずれかの 3D ビューで B-Name ショートカットを有効化してよいか返す."""
-    return shortcut_file_scope_allowed(context) and any_bname_panel_visible(context)
+    return (
+        interaction_enabled(context)
+        and shortcut_file_scope_allowed(context)
+        and any_bname_panel_visible(context)
+    )
 
 
 def shortcuts_allowed(context=None) -> bool:
@@ -160,4 +176,8 @@ def shortcuts_allowed(context=None) -> bool:
             return False
     except Exception:  # noqa: BLE001
         pass
-    return shortcut_file_scope_allowed(context) and bname_panel_visible(context)
+    return (
+        interaction_enabled(context)
+        and shortcut_file_scope_allowed(context)
+        and bname_panel_visible(context)
+    )

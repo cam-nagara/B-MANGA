@@ -157,6 +157,15 @@ def _view3d_area_for_keyboard_event(context, event):
     return first_view3d
 
 
+def _finish_modal_tools_for_sidebar_close(context) -> None:
+    try:
+        from . import coma_modal_state
+
+        coma_modal_state.finish_all(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def toggle_modal_sidebar_if_requested(context, event) -> bool:
     """Handle the standard N sidebar key while a B-Name modal tool is active."""
     if not _unmodified_key_press(event, "N"):
@@ -182,6 +191,8 @@ def toggle_modal_sidebar_if_requested(context, event) -> bool:
         target_space.show_region_ui = not bool(getattr(target_space, "show_region_ui", False))
     except Exception:  # noqa: BLE001
         return False
+    if not bool(getattr(target_space, "show_region_ui", False)):
+        _finish_modal_tools_for_sidebar_close(context)
     try:
         area.tag_redraw()
     except Exception:  # noqa: BLE001

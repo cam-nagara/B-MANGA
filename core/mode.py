@@ -13,7 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import bpy
-from bpy.props import EnumProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, StringProperty
 
 from ..utils import log, paths
 
@@ -28,11 +28,34 @@ _MODE_ITEMS = (
 )
 
 
+def _interaction_enabled_update(self, context) -> None:
+    if bool(getattr(self, "bname_interaction_enabled", True)):
+        return
+    try:
+        from ..operators import coma_modal_state
+
+        coma_modal_state.finish_all(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("failed to finish B-Name modal tools")
+    try:
+        from ..keymap import keymap
+
+        keymap.force_shortcuts_disabled()
+    except Exception:  # noqa: BLE001
+        _logger.exception("failed to disable B-Name shortcuts")
+
+
 def register() -> None:
     bpy.types.Scene.bname_mode = EnumProperty(
         name="B-Name モード",
         items=_MODE_ITEMS,
         default=MODE_PAGE,
+    )
+    bpy.types.Scene.bname_interaction_enabled = BoolProperty(
+        name="B-Name操作",
+        description="B-Nameのビューポート操作と専用ショートカットを有効にする",
+        default=True,
+        update=_interaction_enabled_update,
     )
     bpy.types.Scene.bname_current_coma_id = StringProperty(
         name="現在編集中のコマ ID",
@@ -46,6 +69,10 @@ def register() -> None:
 
 
 def unregister() -> None:
+    try:
+        del bpy.types.Scene.bname_interaction_enabled
+    except AttributeError:
+        pass
     try:
         del bpy.types.Scene.bname_mode
     except AttributeError:
