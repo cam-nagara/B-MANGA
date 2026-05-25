@@ -13,9 +13,9 @@ from .geom import Rect, mm_to_m
 MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
-_EDGE_OVERLAP_RATIO = 0.1
-_THORN_EDGE_OVERLAP_RATIO = 1.0
-_THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 1.6
+_EDGE_OVERLAP_RATIO = 0.06
+_THORN_EDGE_OVERLAP_RATIO = 0.06
+_THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 2.4
 
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
@@ -252,7 +252,7 @@ def append_closed_multi_line_paths(
     direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
     sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
     clockwise = _polygon_signed_area(body_points) < 0.0
-    current_inner_mm = line_width_mm * 0.5 + spacing_mm
+    base_distance_mm = line_width_mm * 0.5
     base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
     for ring_index in range(1, count):
@@ -265,9 +265,8 @@ def append_closed_multi_line_paths(
         )
         ring_extent_width_mm = max(ring_width_mm, valley_width_mm, peak_width_mm) if shape_name == "thorn" else ring_width_mm
         if ring_extent_width_mm <= 0.0:
-            current_inner_mm += spacing_mm
             continue
-        distance_mm = current_inner_mm + ring_extent_width_mm * 0.5
+        distance_mm = base_distance_mm + spacing_mm * ring_index
         for side in sides:
             ring_points = _offset_closed_outline(
                 body_points,
@@ -298,7 +297,6 @@ def append_closed_multi_line_paths(
                 close=True,
                 material_index=1,
             )
-        current_inner_mm += ring_extent_width_mm + spacing_mm
 
 
 def _thorn_multiline_length_points(

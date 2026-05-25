@@ -222,26 +222,26 @@ def main() -> None:
         )
         entry.title = "見切れ確認"
         entry.line_style = "double"
-        entry.line_width_mm = 0.3
+        entry.line_width_mm = 6.0
         entry.line_color = (0.0, 0.0, 0.0, 1.0)
-        entry.fill_color = (0.35, 1.0, 0.22, 1.0)
+        entry.fill_color = (1.0, 0.96, 0.35, 1.0)
         entry.fill_opacity = 100.0
         entry.opacity = 100.0
         entry.multi_line_count = 5
-        entry.multi_line_width_mm = 0.3
-        entry.multi_line_spacing_mm = 0.45
+        entry.multi_line_width_mm = 0.75
+        entry.multi_line_spacing_mm = 0.0
         entry.multi_line_width_scale_percent = 100.0
         entry.multi_line_direction = "outside"
         entry.thorn_multi_line_valley_width_mm = 0.3
         entry.thorn_multi_line_peak_width_mm = 0.3
-        entry.thorn_multi_line_length_scale_percent = 78.0
+        entry.thorn_multi_line_length_scale_percent = 82.0
         entry.thorn_multi_line_cross_enabled = False
         entry.outer_white_margin_enabled = True
         entry.outer_white_margin_width_mm = 1.0
-        entry.outer_white_margin_color = (0.35, 0.55, 1.0, 1.0)
+        entry.outer_white_margin_color = (0.35, 1.0, 0.22, 1.0)
         entry.inner_white_margin_enabled = True
         entry.inner_white_margin_width_mm = 1.0
-        entry.inner_white_margin_color = (1.0, 1.0, 0.2, 1.0)
+        entry.inner_white_margin_color = (0.35, 0.55, 1.0, 1.0)
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
         assert obj is not None and obj.type == "CURVE", "見切れ確認フキダシが作成されていません"
         _assert_material_masked(obj)
@@ -249,8 +249,10 @@ def main() -> None:
         with balloon_curve_object.suspend_auto_sync():
             entry.fill_opacity = 96.0
             balloon_curve_object.on_balloon_entry_changed(entry)
-        assert not [obj.name for obj in bpy.data.objects if obj.name.startswith("balloon_clip_mask_")], (
-            "古い切り抜き用オブジェクトが残っています"
+        clip_masks = [obj for obj in bpy.data.objects if obj.name.startswith("balloon_clip_mask_")]
+        assert clip_masks, "太い線とフチを見切るためのコマ形状マスクが作成されていません"
+        assert all(obj.hide_viewport and obj.hide_render and obj.hide_select for obj in clip_masks), (
+            f"コマ形状マスクが編集画面に出ています: {[obj.name for obj in clip_masks]}"
         )
 
         ranges = _evaluated_material_z_ranges(obj)
@@ -260,7 +262,7 @@ def main() -> None:
 
         lengths = _multi_line_visible_lengths(obj)
         assert len(lengths) >= 3, f"多重線の距離別検証に必要な線がありません: {lengths}"
-        assert lengths[0] > lengths[-1] * 1.35, f"主線から離れた多重線の長さ変化が弱すぎます: {lengths}"
+        assert lengths[0] > lengths[-1] * 1.8, f"主線から離れた多重線の長さ変化が弱すぎます: {lengths}"
 
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, 0)
         camera = _set_camera(geom.mm_to_m(ox_mm + 95.0), geom.mm_to_m(oy_mm + 115.0), geom.mm_to_m(190.0))
@@ -278,7 +280,7 @@ def main() -> None:
         assert "FINISHED" in render_result, render_result
 
         inside_world = Vector((geom.mm_to_m(ox_mm + 78.0), geom.mm_to_m(oy_mm + 92.0), 0.02))
-        outside_world = Vector((geom.mm_to_m(ox_mm + 24.0), geom.mm_to_m(oy_mm + 105.0), 0.02))
+        outside_world = Vector((geom.mm_to_m(ox_mm + 36.0), geom.mm_to_m(oy_mm + 105.0), 0.02))
         side_world = Vector((geom.mm_to_m(ox_mm + 154.0), geom.mm_to_m(oy_mm + 105.0), 0.02))
         ix, iy = _project_to_pixel(scene, camera, inside_world)
         ox, oy = _project_to_pixel(scene, camera, outside_world)
@@ -286,17 +288,17 @@ def main() -> None:
         inside = _sample_rgb(OUTPUT_PATH, ix, iy, radius=8)
         outside = _sample_rgb(OUTPUT_PATH, ox, oy, radius=8)
         side = _sample_rgb(OUTPUT_PATH, sx, sy, radius=8)
-        assert inside[1] > inside[0] + 35.0 and inside[1] > inside[2] + 35.0, (
+        assert inside[0] > 180.0 and inside[1] > 160.0 and inside[2] < 180.0, (
             f"コマ内フキダシの塗りが確認できません: rgb={inside}, out={OUTPUT_PATH}"
         )
         for label, color in (("コマ外", outside), ("隣接コマ", side)):
-            assert not (color[1] > color[0] + 35.0 and color[1] > color[2] + 35.0), (
+            assert not (color[0] > 170.0 and color[1] > 150.0 and color[2] < 150.0), (
                 f"{label}へフキダシの塗りがはみ出しています: rgb={color}, out={OUTPUT_PATH}"
             )
-            assert not (color[2] > color[0] + 30.0 and color[2] > color[1] + 30.0), (
+            assert not (color[1] > color[0] + 35.0 and color[1] > color[2] + 35.0), (
                 f"{label}へ外側フチがはみ出しています: rgb={color}, out={OUTPUT_PATH}"
             )
-            assert not (color[0] > color[1] + 30.0 and color[1] > color[2] + 30.0), (
+            assert not (color[2] > color[0] + 30.0 and color[2] > color[1] + 30.0), (
                 f"{label}へ内側フチがはみ出しています: rgb={color}, out={OUTPUT_PATH}"
             )
 

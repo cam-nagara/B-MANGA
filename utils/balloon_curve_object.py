@@ -44,6 +44,7 @@ PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_init
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
 CURVE_GEOMETRY_VERSION = 6
 CLIPPED_FILL_ROLE_RADIUS = 400.0
+_LINE_AND_EDGE_MASK_POWER = 4.0
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
 
@@ -152,13 +153,14 @@ def _ensure_color_material(
     color: tuple[float, float, float, float],
     *,
     mask_info=None,
+    mask_power: float = 1.0,
 ) -> bpy.types.Material:
     mat = bpy.data.materials.get(material_name)
     if mat is None:
         mat = bpy.data.materials.new(name=material_name)
     try:
         mat.diffuse_color = color
-        _setup_emission_alpha_material(mat, color, mask_info=mask_info)
+        _setup_emission_alpha_material(mat, color, mask_info=mask_info, mask_power=mask_power)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon color material setup failed")
     return mat
@@ -170,6 +172,7 @@ def _ensure_balloon_curve_material(
     material_name: str,
     entry=None,
     mask_info=None,
+    mask_power: float = 1.0,
 ) -> bpy.types.Material:
     """フキダシ輪郭用の material を ensure."""
     mat = bpy.data.materials.get(material_name)
@@ -181,7 +184,7 @@ def _ensure_balloon_curve_material(
     except Exception:  # noqa: BLE001
         pass
     try:
-        _setup_emission_alpha_material(mat, line, mask_info=mask_info)
+        _setup_emission_alpha_material(mat, line, mask_info=mask_info, mask_power=mask_power)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon curve material setup failed")
     if curve is not None:
@@ -327,6 +330,7 @@ def _setup_emission_alpha_material(
     fill_blur_alpha: bool = False,
     fill_blur_dither: bool = False,
     mask_info=None,
+    mask_power: float = 1.0,
 ) -> None:
     nt = _clear_material_nodes(mat)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
@@ -392,6 +396,7 @@ def _setup_emission_alpha_material(
             mask_image=getattr(mask_info, "image", None),
             location=(-820, -760),
             label="コマ内容マスク不透明度",
+            power=mask_power,
         )
     nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix.inputs[2])
@@ -694,12 +699,27 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
         mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
-        mask_obj = None if mask_info is not None else _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         if mask_info is not None:
-            clip_needed = False
-            fill_clip_needed = False
-            _remove_balloon_clip_mask(str(getattr(entry, "id", "") or ""))
+            clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=line_clip_margin_mm,
+            )
+            fill_clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=0.0,
+            )
         else:
             clip_needed = _balloon_curve_needs_coma_clip(
                 scene,
@@ -777,17 +797,20 @@ def ensure_balloon_curve_object(
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
         entry=entry,
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
     fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry, mask_info=mask_info)
     outer_mat = _ensure_color_material(
         f"{BALLOON_OUTER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "outer_white_margin_color"),
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
     inner_mat = _ensure_color_material(
         f"{BALLOON_INNER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "inner_white_margin_color"),
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
 
     obj = _ensure_curve_object_for_entry(balloon_id, line_mat, fill_mat, outer_mat, inner_mat)
@@ -1744,17 +1767,20 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         material_name=f"{BALLOON_CURVE_MATERIAL_PREFIX}{balloon_id}",
         entry=entry,
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
     fill_mat = _ensure_fill_material(f"{BALLOON_FILL_MATERIAL_PREFIX}{balloon_id}", entry, mask_info=mask_info)
     outer_mat = _ensure_color_material(
         f"{BALLOON_OUTER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "outer_white_margin_color"),
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
     inner_mat = _ensure_color_material(
         f"{BALLOON_INNER_EDGE_MATERIAL_PREFIX}{balloon_id}",
         _entry_margin_rgba(entry, "inner_white_margin_color"),
         mask_info=mask_info,
+        mask_power=_LINE_AND_EDGE_MASK_POWER,
     )
     _prepare_balloon_curve_data(obj.data, line_mat, fill_mat, outer_mat, inner_mat)
     geometry_key = _geometry_key_for_entry(entry)
@@ -1772,12 +1798,27 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         _remove_balloon_source_object(balloon_id)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
         line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
-        mask_obj = None if mask_info is not None else _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
+        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
         if mask_info is not None:
-            clip_needed = False
-            fill_clip_needed = False
-            _remove_balloon_clip_mask(balloon_id)
+            clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=line_clip_margin_mm,
+            )
+            fill_clip_needed = _balloon_curve_needs_coma_clip(
+                scene,
+                work,
+                page,
+                entry,
+                obj,
+                mask_obj,
+                margin_mm=0.0,
+            )
         else:
             clip_needed = _balloon_curve_needs_coma_clip(
                 scene,

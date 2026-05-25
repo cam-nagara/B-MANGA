@@ -78,6 +78,7 @@ def multiply_alpha_by_mask(
     mask_image: bpy.types.Image | None,
     location: tuple[float, float] = (-900.0, -520.0),
     label: str = "コマ内容マスク不透明度",
+    power: float = 1.0,
 ):
     """Multiply an existing alpha socket by the sampled coma content mask."""
     mask_alpha = mask_alpha_socket(
@@ -90,6 +91,21 @@ def multiply_alpha_by_mask(
         return mask_alpha
     if mask_alpha is None:
         return alpha_socket
+    power_value = max(0.01, float(power or 1.0))
+    if abs(power_value - 1.0) > 1.0e-6:
+        power_node = nt.nodes.new("ShaderNodeMath")
+        power_node.label = f"{label}の強さ"
+        power_node.location = (location[0] + 700.0, location[1] + 120.0)
+        try:
+            power_node.operation = "POWER"
+        except Exception:  # noqa: BLE001
+            pass
+        _link(nt, mask_alpha, power_node.inputs[0])
+        try:
+            power_node.inputs[1].default_value = power_value
+        except Exception:  # noqa: BLE001
+            pass
+        mask_alpha = power_node.outputs["Value"]
     node = nt.nodes.new("ShaderNodeMath")
     node.label = label
     node.location = (location[0] + 700.0, location[1])

@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 34
+GROUP_VERSION = 35
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -999,14 +999,15 @@ def _set_modifier_values(
         if multi_line_enabled and native_multi_line_rings_enabled
         else 0
     )
-    current_inner_mm = max(0.0, float(line_width_mm or 0.0)) * 0.5 + spacing_mm
+    base_distance_mm = max(0.0, float(line_width_mm or 0.0)) * 0.5
     for ring_index in range(1, _MAX_MULTI_LINE_RINGS):
         width_mm = width_base_mm * (scale ** max(0, ring_index - 1))
-        outer_mm = current_inner_mm + width_mm
+        center_mm = base_distance_mm + spacing_mm * ring_index
+        inner_mm = max(0.0, center_mm - width_mm * 0.5)
+        outer_mm = center_mm + width_mm * 0.5
         values[f"多重線{ring_index}表示"] = bool(ring_index <= extra_count and width_mm > 0.0)
         values[f"多重線{ring_index}外半径 (mm)"] = outer_mm
-        values[f"多重線{ring_index}内半径 (mm)"] = current_inner_mm
-        current_inner_mm = outer_mm + spacing_mm
+        values[f"多重線{ring_index}内半径 (mm)"] = inner_mm
     if mask_object is not _MASK_UNSET:
         values["マスク使用"] = mask_object is not None
         values["マスク対象"] = mask_object
