@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from ..utils import coma_blur_curve
 from ..utils.geom import mm_to_px
 
 
@@ -92,6 +93,35 @@ def coma_shape_mask(Image, ImageDraw, points_mm, bbox_mm, size) -> object:
     return mask
 
 
+def _blur_curve_points(entry) -> tuple[tuple[float, float], ...]:
+    border = getattr(entry, "border", None)
+    return coma_blur_curve.parse_points(getattr(border, "blur_curve_points", None))
+
+
+def _evaluate_blur_curve(points: Sequence[tuple[float, float]], value: float) -> float:
+    x = max(0.0, min(1.0, float(value)))
+    if not points:
+        return x
+    if x <= points[0][0]:
+        return max(0.0, min(1.0, points[0][1]))
+    previous = points[0]
+    for current in points[1:]:
+        if x <= current[0]:
+            span = max(1.0e-6, current[0] - previous[0])
+            factor = max(0.0, min(1.0, (x - previous[0]) / span))
+            factor = factor * factor * (3.0 - 2.0 * factor)
+            y = previous[1] + (current[1] - previous[1]) * factor
+            return max(0.0, min(1.0, y))
+        previous = current
+    return max(0.0, min(1.0, points[-1][1]))
+
+
+def apply_blur_curve_to_mask(mask, entry) -> object:
+    points = _blur_curve_points(entry)
+    lut = [int(round(_evaluate_blur_curve(points, value / 255.0) * 255.0)) for value in range(256)]
+    return mask.point(lut)
+
+
 def coma_soft_edge_mask(Image, ImageChops, ImageDraw, ImageFilter, entry, points_mm, bbox_mm, size, dpi: int) -> object:
     hard = coma_shape_mask(Image, ImageDraw, points_mm, bbox_mm, size)
     if not brush_edge_enabled(entry):
@@ -102,6 +132,7 @@ def coma_soft_edge_mask(Image, ImageChops, ImageDraw, ImageFilter, entry, points
     radius_px = max(1, int(round(mm_to_px(soft_width, dpi) * 0.35)))
     soft = hard.filter(ImageFilter.GaussianBlur(radius=radius_px))
     soft = ImageChops.multiply(soft, hard)
+    soft = apply_blur_curve_to_mask(soft, entry)
     if bool(getattr(getattr(entry, "border", None), "blur_dither", False)):
         soft = soft.convert("1", dither=Image.FLOYDSTEINBERG).convert("L")
     return soft

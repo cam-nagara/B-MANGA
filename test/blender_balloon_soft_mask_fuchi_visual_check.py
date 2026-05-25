@@ -142,6 +142,30 @@ def _evaluated_material_z_ranges(obj) -> dict[str, tuple[float, float]]:
         evaluated.to_mesh_clear()
 
 
+def _evaluated_material_world_z_ranges(obj) -> dict[str, tuple[float, float]]:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        materials = list(getattr(mesh, "materials", []) or [])
+        coords = [evaluated.matrix_world @ vertex.co for vertex in getattr(mesh, "vertices", []) or []]
+        ranges: dict[str, list[float]] = {}
+        for poly in getattr(mesh, "polygons", []) or []:
+            material_index = int(getattr(poly, "material_index", 0) or 0)
+            if not (0 <= material_index < len(materials)):
+                continue
+            mat = materials[material_index]
+            if mat is None:
+                continue
+            name = str(mat.name)
+            ranges.setdefault(name, [])
+            for vertex_index in poly.vertices:
+                ranges[name].append(float(coords[vertex_index].z))
+        return {name: (min(values), max(values)) for name, values in ranges.items() if values}
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def _multi_line_visible_lengths(obj) -> list[float]:
     lengths: list[float] = []
     for spline in getattr(obj.data, "splines", []) or []:
@@ -246,6 +270,27 @@ def main() -> None:
         assert obj is not None and obj.type == "CURVE", "見切れ確認フキダシが作成されていません"
         _assert_material_masked(obj)
 
+        front_entry = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="ellipse",
+            x=62.0,
+            y=72.0,
+            w=42.0,
+            h=36.0,
+            parent_kind="coma",
+            parent_key=coma_stack_key(page, main_coma),
+        )
+        front_entry.title = "前面確認"
+        front_entry.line_width_mm = 0.3
+        front_entry.line_color = (0.0, 0.0, 0.0, 1.0)
+        front_entry.fill_color = (1.0, 1.0, 1.0, 1.0)
+        front_entry.fill_opacity = 100.0
+        front_entry.opacity = 100.0
+        front_obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=front_entry, page=page)
+        assert front_obj is not None and front_obj.type == "CURVE", "前面確認フキダシが作成されていません"
+        _assert_material_masked(front_obj)
+
         with balloon_curve_object.suspend_auto_sync():
             entry.fill_opacity = 96.0
             balloon_curve_object.on_balloon_entry_changed(entry)
@@ -259,10 +304,20 @@ def main() -> None:
         line_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
         edge_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Outer_Edge_" in name or "BName_Balloon_Inner_Edge_" in name)
         assert line_z > edge_z, f"主線がフチより前面になっていません: line={line_z}, edge={edge_z}"
+        assert max(value[1] - value[0] for value in ranges.values()) < 0.00001, f"フキダシ内部の前後差が大きすぎます: {ranges}"
+
+        back_world = _evaluated_material_world_z_ranges(obj)
+        front_world = _evaluated_material_world_z_ranges(front_obj)
+        back_line_z = max(value[1] for name, value in back_world.items() if "BName_Balloon_Curve_" in name)
+        front_fill_z = min(value[0] for name, value in front_world.items() if "BName_Balloon_Fill_" in name)
+        assert front_fill_z > back_line_z, (
+            f"前面フキダシの塗りが背面フキダシの線を隠せる前後関係になっていません: "
+            f"front_fill={front_fill_z}, back_line={back_line_z}"
+        )
 
         lengths = _multi_line_visible_lengths(obj)
         assert len(lengths) >= 3, f"多重線の距離別検証に必要な線がありません: {lengths}"
-        assert lengths[0] > lengths[-1] * 1.8, f"主線から離れた多重線の長さ変化が弱すぎます: {lengths}"
+        assert lengths[0] > lengths[-1] * 3.0, f"主線から離れた多重線の長さ変化が弱すぎます: {lengths}"
 
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, 0)
         camera = _set_camera(geom.mm_to_m(ox_mm + 95.0), geom.mm_to_m(oy_mm + 115.0), geom.mm_to_m(190.0))
@@ -279,7 +334,7 @@ def main() -> None:
         render_result = bpy.ops.render.render(write_still=True)
         assert "FINISHED" in render_result, render_result
 
-        inside_world = Vector((geom.mm_to_m(ox_mm + 78.0), geom.mm_to_m(oy_mm + 92.0), 0.02))
+        inside_world = Vector((geom.mm_to_m(ox_mm + 52.0), geom.mm_to_m(oy_mm + 96.0), 0.02))
         outside_world = Vector((geom.mm_to_m(ox_mm + 36.0), geom.mm_to_m(oy_mm + 105.0), 0.02))
         side_world = Vector((geom.mm_to_m(ox_mm + 154.0), geom.mm_to_m(oy_mm + 105.0), 0.02))
         ix, iy = _project_to_pixel(scene, camera, inside_world)

@@ -66,8 +66,10 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_coma_content_mask.io import export_pipeline
+        from bname_dev_coma_content_mask.io import export_soft_mask
         from bname_dev_coma_content_mask.utils import balloon_curve_object, coma_content_mask
         from bname_dev_coma_content_mask.utils.layer_hierarchy import coma_stack_key
+        from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
         scene = bpy.context.scene
         work = scene.bname_work
@@ -83,7 +85,39 @@ def main() -> None:
         coma.border.style = "brush"
         coma.border.width_mm = 6.0
         coma.border.blur_amount = 0.85
+        coma.border.blur_curve_points = "0.0000,0.0000;1.0000,1.0000"
         parent_key = coma_stack_key(page, coma)
+
+        linear_mask_info = coma_content_mask.ensure_viewport_mask(scene, work, page, coma)
+        assert linear_mask_info is not None, "線形ぼかしカーブのコマ内容マスク画像が作成されていません"
+        linear_signature = str(linear_mask_info.image.get(coma_content_mask.PROP_MASK_SIGNATURE, "") or "")
+        steep_curve = "0.0000,0.0000;0.7500,0.0100;0.7600,0.9828;1.0000,1.0000"
+        coma.border.blur_curve_points = steep_curve
+        curved_mask_info = coma_content_mask.ensure_viewport_mask(scene, work, page, coma)
+        assert curved_mask_info is not None, "ぼかしカーブ反映後のコマ内容マスク画像が作成されていません"
+        curved_signature = str(curved_mask_info.image.get(coma_content_mask.PROP_MASK_SIGNATURE, "") or "")
+        assert curved_signature and curved_signature != linear_signature, "ぼかしカーブ変更でマスク画像が更新されていません"
+
+        bbox = coma_content_mask.mask_bbox_mm(coma)
+        assert bbox is not None, "マスク範囲が取得できません"
+        poly = coma_content_mask.coma_polygon_mm(coma)
+        size = (360, 360)
+        coma.border.blur_curve_points = "0.0000,0.0000;1.0000,1.0000"
+        linear_mask = export_soft_mask.coma_soft_edge_mask(
+            Image, ImageChops, ImageDraw, ImageFilter, coma, poly, bbox, size, 144
+        )
+        coma.border.blur_curve_points = steep_curve
+        curved_mask = export_soft_mask.coma_soft_edge_mask(
+            Image, ImageChops, ImageDraw, ImageFilter, coma, poly, bbox, size, 144
+        )
+        row = size[1] // 2
+        diffs = []
+        for x in range(size[0]):
+            base = int(linear_mask.getpixel((x, row)))
+            shaped = int(curved_mask.getpixel((x, row)))
+            if 20 < base < 235:
+                diffs.append(abs(base - shaped))
+        assert diffs and max(diffs) >= 20, "ぼかしカーブがマスク濃度に反映されていません"
 
         balloon = page.balloons.add()
         balloon.id = "balloon_export_mask"

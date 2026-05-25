@@ -449,6 +449,19 @@ def main() -> None:
             border_obj.data.splines[0].points[1].co.to_3d(),
         )
         assert 0.00027 <= border_width <= 0.00033, f"コマ枠線の0.3mm線幅が設定値通りではありません: width={border_width}"
+
+        coma.border.width_mm = 0.5
+        border_obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
+        assert border_obj is not None, "0.5mmコマ枠線が作成されていません"
+        bpy.context.view_layer.update()
+        border_width_05 = _stroke_width_cross_section(
+            border_obj,
+            border_obj.data.splines[0].points[0].co.to_3d(),
+            border_obj.data.splines[0].points[1].co.to_3d(),
+        )
+        assert 0.00046 <= border_width_05 <= 0.00054, (
+            f"コマ枠線の0.5mm線幅が設定値通りではありません: width={border_width_05}"
+        )
         print("BNAME_BALLOON_CURVE_MASK_ANCHOR_OK")
     finally:
         if mod is not None:

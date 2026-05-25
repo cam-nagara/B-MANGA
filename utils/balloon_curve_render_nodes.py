@@ -16,7 +16,7 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 35
+GROUP_VERSION = 36
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
@@ -25,6 +25,11 @@ _MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
 _OUTER_EDGE_ROLE_RADIUS = 200.0
 _INNER_EDGE_ROLE_RADIUS = 300.0
 _CLIPPED_FILL_ROLE_RADIUS = 400.0
+_FILL_Z_M = 0.0
+_OUTER_EDGE_Z_M = 0.000001
+_INNER_EDGE_Z_M = 0.0000015
+_MULTI_LINE_Z_M = 0.000002
+_LINE_Z_M = 0.000003
 
 
 @dataclass(frozen=True)
@@ -261,6 +266,24 @@ def _offset_geometry_z(group, geometry_socket, z_value: float, *, label: str, lo
     return _socket_by_name(node.outputs, "Geometry") or node.outputs[0]
 
 
+def _set_geometry_z(group, geometry_socket, z_value: float, *, label: str, location: tuple[float, float]):
+    set_position = _node(group, "GeometryNodeSetPosition", label=label, location=location)
+    _link(group, geometry_socket, set_position.inputs["Geometry"])
+    position_input = _socket_by_name(set_position.inputs, "Position")
+    if position_input is None:
+        return _offset_geometry_z(group, geometry_socket, z_value, label=label, location=location)
+
+    position = _node(group, "GeometryNodeInputPosition", label=f"{label}の現在位置", location=(location[0] - 660, location[1] - 120))
+    separate = _node(group, "ShaderNodeSeparateXYZ", label=f"{label}のXYを維持", location=(location[0] - 440, location[1] - 120))
+    combine = _node(group, "ShaderNodeCombineXYZ", label=f"{label}の前後位置", location=(location[0] - 220, location[1] - 120))
+    _link(group, position.outputs["Position"], separate.inputs["Vector"])
+    _link(group, separate.outputs["X"], combine.inputs["X"])
+    _link(group, separate.outputs["Y"], combine.inputs["Y"])
+    _set_default(combine.inputs["Z"], float(z_value))
+    _link(group, combine.outputs["Vector"], position_input)
+    return _socket_by_name(set_position.outputs, "Geometry") or set_position.outputs[0]
+
+
 def _set_curve_radius(group, curve_socket, radius: float, *, label: str, location: tuple[float, float]):
     try:
         node = _node(group, "GeometryNodeSetCurveRadius", label=label, location=location)
@@ -430,7 +453,7 @@ def _outline_mesh_with_radius(
         label=f"{label}素材",
         location=(location[0] + 690, location[1]),
     )
-    return _offset_geometry_z(
+    return _set_geometry_z(
         group,
         material,
         z_value,
@@ -771,10 +794,10 @@ def _build_nodes(group) -> None:
         label="塗り素材",
         location=(190, 220),
     )
-    fill_geometry = _offset_geometry_z(
+    fill_geometry = _set_geometry_z(
         group,
         fill_geometry,
-        0.0,
+        _FILL_Z_M,
         label="塗りを背面へ",
         location=(470, 220),
     )
@@ -801,7 +824,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="外側フチ",
-        z_value=0.010,
+        z_value=_OUTER_EDGE_Z_M,
         location=(-250, -760),
     )
     outer_geometry = _switch_edge(
@@ -826,7 +849,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="内側フチ",
-        z_value=0.012,
+        z_value=_INNER_EDGE_Z_M,
         location=(-250, -1180),
     )
     inner_geometry = _switch_edge(
@@ -845,7 +868,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="輪郭線",
-        z_value=0.030,
+        z_value=_LINE_Z_M,
         location=(-250, -340),
     )
     thorn_multi_geometry = _outline_mesh_with_radius(
@@ -856,7 +879,7 @@ def _build_nodes(group) -> None:
         mask_geometry,
         line_clip_enabled,
         label="多重線",
-        z_value=0.020,
+        z_value=_MULTI_LINE_Z_M,
         location=(150, -1540),
         use_point_radius=True,
         point_radius_offset=_MULTI_LINE_ROLE_RADIUS_OFFSET,

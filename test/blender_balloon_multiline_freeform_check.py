@@ -249,7 +249,7 @@ def main() -> None:
         assert (_spline_point_co(helper_splines[0], 1) - _spline_point_co(helper_splines[0], 0)).length > 0.001
         first_ring_span = _visible_multiline_span(helper_splines[0])
         second_ring_span = _visible_multiline_span(helper_splines[2])
-        assert 0.0 < second_ring_span < first_ring_span * 0.9, (
+        assert 0.0 < second_ring_span < first_ring_span * 0.65, (
             f"長さ変化が主線からの距離ごとに強くなっていません: first={first_ring_span}, second={second_ring_span}"
         )
         _assert_close(_spline_point_radius(helper_splines[0], 0) - 100.0, 0.22 / 0.3, "トゲ多重線の谷側線幅")

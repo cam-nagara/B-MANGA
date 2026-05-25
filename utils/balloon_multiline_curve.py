@@ -15,7 +15,7 @@ OUTER_EDGE_ROLE_RADIUS = 200.0
 INNER_EDGE_ROLE_RADIUS = 300.0
 _EDGE_OVERLAP_RATIO = 0.06
 _THORN_EDGE_OVERLAP_RATIO = 0.06
-_THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 2.4
+_THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 5.0
 
 
 def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:

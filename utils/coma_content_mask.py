@@ -185,6 +185,7 @@ def _image_signature(coma, bbox: tuple[float, float, float, float], size: tuple[
         "style": str(getattr(border, "style", "") or ""),
         "width": round(float(getattr(border, "width_mm", 0.0) or 0.0), 5),
         "blur": round(float(getattr(border, "blur_amount", 0.0) or 0.0), 5),
+        "curve": str(getattr(border, "blur_curve_points", "") or ""),
         "dither": bool(getattr(border, "blur_dither", False)),
     }
     return hashlib.sha1(repr(payload).encode("utf-8")).hexdigest()
