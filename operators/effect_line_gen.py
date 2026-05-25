@@ -1244,7 +1244,7 @@ def _white_underlay_points(stroke: EffectLineStroke) -> list[tuple[float, float,
     length = math.hypot(dx, dy)
     if length <= 1.0e-9:
         return None
-    return [(float(px), float(py), float(pz) - 1.0e-5) for px, py, pz in stroke.points_xyz]
+    return [(float(px), float(py), float(pz)) for px, py, pz in stroke.points_xyz]
 
 
 def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> list[EffectLineStroke]:

@@ -701,53 +701,13 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
         _logger.exception("balloon: z order sync failed")
     try:
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
-        line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
         mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
+        mask_obj = None
+        _remove_balloon_clip_mask(str(getattr(entry, "id", "") or ""))
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-        if mask_info is not None:
-            clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=line_clip_margin_mm,
-            )
-            fill_clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-                body_only=True,
-            )
-        else:
-            clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=line_clip_margin_mm,
-            )
-            fill_clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-                body_only=True,
-            )
-            if mask_obj is None:
-                _remove_balloon_clip_mask(str(getattr(entry, "id", "") or ""))
-        _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
+        clip_needed = False
+        fill_clip_needed = False
+        _sync_clipped_fill_geometry(scene, work, page, entry, obj, False)
         filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
         balloon_curve_render_nodes.ensure_modifier(
             obj,
@@ -1811,52 +1771,12 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
     try:
         _remove_balloon_source_object(balloon_id)
         line_width_mm = 0.0 if str(getattr(entry, "line_style", "") or "") == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3)
-        line_clip_margin_mm = balloon_multiline_curve.outer_render_margin_mm(entry, line_width_mm)
-        mask_obj = _coma_mask_object_for_entry(scene, work, page, entry, obj, margin_mm=0.0)
+        mask_obj = None
+        _remove_balloon_clip_mask(balloon_id)
         shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-        if mask_info is not None:
-            clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=line_clip_margin_mm,
-            )
-            fill_clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-                body_only=True,
-            )
-        else:
-            clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=line_clip_margin_mm,
-            )
-            fill_clip_needed = _balloon_curve_needs_coma_clip(
-                scene,
-                work,
-                page,
-                entry,
-                obj,
-                mask_obj,
-                margin_mm=0.0,
-                body_only=True,
-            )
-            if mask_obj is None:
-                _remove_balloon_clip_mask(balloon_id)
-        _sync_clipped_fill_geometry(scene, work, page, entry, obj, fill_clip_needed)
+        clip_needed = False
+        fill_clip_needed = False
+        _sync_clipped_fill_geometry(scene, work, page, entry, obj, False)
         filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
         balloon_curve_render_nodes.ensure_modifier(
             obj,

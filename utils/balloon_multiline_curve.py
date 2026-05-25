@@ -208,6 +208,111 @@ def _add_filled_band(
     )
 
 
+def _add_centered_capsule_line(
+    curve: bpy.types.Curve,
+    points: Sequence[tuple[float, float]],
+    *,
+    width_mm: float,
+    offset: tuple[float, float],
+    role_radius: float,
+    material_index: int,
+) -> None:
+    path, _corners = _strip_duplicate_closure(points)
+    if len(path) < 2:
+        return
+    radius = max(0.0, float(width_mm)) * 0.5
+    if radius <= 1.0e-7:
+        return
+    count = len(path)
+    for index in range(count):
+        a = path[index]
+        b = path[(index + 1) % count]
+        dx = b[0] - a[0]
+        dy = b[1] - a[1]
+        length = math.hypot(dx, dy)
+        if length <= 1.0e-7:
+            continue
+        nx = -dy / length
+        ny = dx / length
+        _add_closed_polygon(
+            curve,
+            (
+                (a[0] + nx * radius, a[1] + ny * radius),
+                (b[0] + nx * radius, b[1] + ny * radius),
+                (b[0] - nx * radius, b[1] - ny * radius),
+                (a[0] - nx * radius, a[1] - ny * radius),
+            ),
+            offset=offset,
+            point_radius=role_radius,
+            material_index=material_index,
+        )
+    cap_steps = 12
+    for center in path:
+        cap = [
+            (
+                center[0] + math.cos((math.tau * step) / cap_steps) * radius,
+                center[1] + math.sin((math.tau * step) / cap_steps) * radius,
+            )
+            for step in range(cap_steps)
+        ]
+        _add_closed_polygon(
+            curve,
+            cap,
+            offset=offset,
+            point_radius=role_radius,
+            material_index=material_index,
+        )
+
+
+def _orient_loop_with_radii(
+    points: Sequence[tuple[float, float]],
+    radii: Sequence[float],
+    *,
+    ccw: bool,
+) -> tuple[list[tuple[float, float]], list[float]]:
+    path = [(float(x), float(y)) for x, y in points]
+    radius_values = [float(value) for value in radii]
+    if len(path) < 3:
+        return path, radius_values
+    is_ccw = _polygon_signed_area(path) > 0.0
+    if is_ccw != bool(ccw):
+        path.reverse()
+        radius_values.reverse()
+    return path, radius_values
+
+
+def _add_filled_band_with_radii(
+    curve: bpy.types.Curve,
+    outer: Sequence[tuple[float, float]],
+    inner: Sequence[tuple[float, float]],
+    outer_radii: Sequence[float],
+    inner_radii: Sequence[float],
+    *,
+    offset: tuple[float, float],
+    material_index: int,
+) -> None:
+    if len(outer) < 3 or len(inner) < 3:
+        return
+    outer_loop, outer_radius_values = _orient_loop_with_radii(outer, outer_radii, ccw=True)
+    inner_loop, inner_radius_values = _orient_loop_with_radii(inner, inner_radii, ccw=False)
+    _add_open_poly_path(
+        curve,
+        outer_loop,
+        offset=offset,
+        point_radius=outer_radius_values,
+        close=True,
+        material_index=material_index,
+    )
+    _add_open_poly_path(
+        curve,
+        inner_loop,
+        offset=offset,
+        point_radius=inner_radius_values,
+        close=True,
+        material_index=material_index,
+    )
+
+
 def _band_loops_for_side(
     body_points: Sequence[tuple[float, float]],
     *,
@@ -346,6 +451,127 @@ def _offset_closed_outline_smooth(
     return result
 
 
+def _offset_closed_outline_variable_width(
+    points: Sequence[tuple[float, float]],
+    widths_mm: Sequence[float],
+    *,
+    clockwise: bool,
+    side: str,
+) -> list[tuple[float, float]] | None:
+    points, _corners = _strip_duplicate_closure(points)
+    if len(points) < 3:
+        return None
+    if not widths_mm:
+        return None
+    result: list[tuple[float, float]] = []
+    direction_sign = -1.0 if side == "inside" else 1.0
+    count = len(points)
+    for index, current in enumerate(points):
+        previous = points[index - 1]
+        next_point = points[(index + 1) % count]
+        d_prev = _normalize_2d((current[0] - previous[0], current[1] - previous[1]))
+        d_next = _normalize_2d((next_point[0] - current[0], next_point[1] - current[1]))
+        if d_prev is None or d_next is None:
+            return None
+        distance_mm = max(0.0, float(widths_mm[index % len(widths_mm)])) * 0.5
+        if distance_mm <= 1.0e-9:
+            result.append((float(current[0]), float(current[1])))
+            continue
+        n_prev = _segment_outward_normal(previous, current, clockwise=clockwise)
+        n_next = _segment_outward_normal(current, next_point, clockwise=clockwise)
+        n_prev = (n_prev[0] * direction_sign, n_prev[1] * direction_sign)
+        n_next = (n_next[0] * direction_sign, n_next[1] * direction_sign)
+        p1 = (current[0] + n_prev[0] * distance_mm, current[1] + n_prev[1] * distance_mm)
+        p2 = (current[0] + n_next[0] * distance_mm, current[1] + n_next[1] * distance_mm)
+        hit = _line_intersection_2d(p1, d_prev, p2, d_next)
+        if hit is not None and math.hypot(hit[0] - current[0], hit[1] - current[1]) <= max(distance_mm * 16.0, distance_mm + 1.0e-6):
+            result.append(hit)
+            continue
+        bis = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
+        if bis is None:
+            result.append(p1)
+        else:
+            result.append((current[0] + bis[0] * distance_mm, current[1] + bis[1] * distance_mm))
+    return result
+
+
+def _scaled_thorn_ring_points(
+    ring_points: Sequence[tuple[float, float]],
+    *,
+    length_scale: float,
+    cross_enabled: bool,
+) -> list[tuple[float, float]]:
+    points = [(float(x), float(y)) for x, y in ring_points]
+    if len(points) < 4:
+        return points
+    clamped = max(0.0, min(1.0, float(length_scale)))
+    factor = 1.18 + (1.0 - clamped) if cross_enabled else clamped
+    out = list(points)
+    count = len(points)
+    for index in range(1, count, 2):
+        valley_a = points[(index - 1) % count]
+        peak = points[index]
+        valley_b = points[(index + 1) % count]
+        base = ((valley_a[0] + valley_b[0]) * 0.5, (valley_a[1] + valley_b[1]) * 0.5)
+        out[index] = (
+            base[0] + (peak[0] - base[0]) * factor,
+            base[1] + (peak[1] - base[1]) * factor,
+        )
+    if not cross_enabled and clamped < 0.999:
+        center = (
+            sum(point[0] for point in points) / max(1, count),
+            sum(point[1] for point in points) / max(1, count),
+        )
+        whole_scale = max(0.02, clamped)
+        out = [
+            (
+                center[0] + (point[0] - center[0]) * whole_scale,
+                center[1] + (point[1] - center[1]) * whole_scale,
+            )
+            for point in out
+        ]
+    return out
+
+
+def _append_thorn_multiline_band(
+    curve: bpy.types.Curve,
+    ring_points: Sequence[tuple[float, float]],
+    *,
+    valley_width_mm: float,
+    peak_width_mm: float,
+    line_width_mm: float,
+    offset: tuple[float, float],
+    role_radius: float,
+    material_index: int,
+) -> None:
+    if len(ring_points) < 4:
+        return
+    widths = [
+        max(0.0, float(valley_width_mm)) if index % 2 == 0 else max(0.0, float(peak_width_mm))
+        for index in range(len(ring_points))
+    ]
+    if max(widths, default=0.0) <= 1.0e-7:
+        return
+    clockwise = _polygon_signed_area(ring_points) < 0.0
+    outer = _offset_closed_outline_variable_width(ring_points, widths, clockwise=clockwise, side="outside")
+    inner = _offset_closed_outline_variable_width(ring_points, widths, clockwise=clockwise, side="inside")
+    if outer is None or inner is None:
+        return
+    radius_values = [
+        role_radius + max(0.0, width) / max(1.0e-6, float(line_width_mm))
+        for width in widths
+    ]
+    _add_filled_band_with_radii(
+        curve,
+        outer,
+        inner,
+        radius_values,
+        radius_values,
+        offset=offset,
+        material_index=material_index,
+    )
+
+
 def append_closed_multi_line_paths(
     curve: bpy.types.Curve,
     entry,
@@ -390,18 +616,16 @@ def append_closed_multi_line_paths(
                 continue
             if shape_name == "thorn":
                 ring_length_scale = base_length_scale ** (max(1, ring_index) * _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN)
-                ring_points, radius_scales = _thorn_multiline_length_points(
+                ring_points = _scaled_thorn_ring_points(
                     ring_points,
-                    valley_width_mm=valley_width_mm,
-                    peak_width_mm=peak_width_mm,
-                    line_width_mm=line_width_mm,
                     length_scale=ring_length_scale,
                     cross_enabled=cross_enabled,
                 )
-                _append_polyline_segment_bands(
+                _append_thorn_multiline_band(
                     curve,
                     ring_points,
-                    radius_scales,
+                    valley_width_mm=valley_width_mm,
+                    peak_width_mm=peak_width_mm,
                     line_width_mm=line_width_mm,
                     offset=offset,
                     role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET,
@@ -442,10 +666,22 @@ def append_main_line_fill_paths(
     line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
     if line_width_mm <= 0.0 or len(body_points) < 3:
         return
+    shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     clockwise = _polygon_signed_area(body_points) < 0.0
     half_width = line_width_mm * 0.5
-    outer = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
-    inner = _offset_closed_outline(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
+    if shape_name not in {"rect", "octagon", "thorn"}:
+        _add_centered_capsule_line(
+            curve,
+            body_points,
+            width_mm=line_width_mm,
+            offset=offset,
+            role_radius=MAIN_LINE_FILL_ROLE_RADIUS,
+            material_index=_MATERIAL_SLOT_LINE,
+        )
+        return
+    offset_fn = _offset_closed_outline
+    outer = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
+    inner = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
     if outer is None or inner is None:
         return
     _add_filled_band(

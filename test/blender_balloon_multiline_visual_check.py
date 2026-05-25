@@ -128,10 +128,51 @@ def _poly_role_counts(obj) -> dict[int, int]:
     return counts
 
 
+def _role_bounds_xy(obj, role_value: int) -> tuple[float, float]:
+    coords = []
+    data = getattr(obj, "data", None)
+    assert data is not None
+    for spline in getattr(data, "splines", []) or []:
+        if str(getattr(spline, "type", "") or "") != "POLY":
+            continue
+        points = list(getattr(spline, "points", []) or [])
+        if not points:
+            continue
+        role = int(round(float(getattr(points[0], "radius", 0.0) or 0.0)))
+        if role != int(role_value):
+            continue
+        coords.extend(point.co.to_3d() for point in points)
+    assert coords, f"role {role_value} の面が見つかりません"
+    return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
+
+
+def _spline_bounds_xy(spline) -> tuple[float, float]:
+    coords = []
+    if str(getattr(spline, "type", "") or "") == "BEZIER":
+        for point in getattr(spline, "bezier_points", []) or []:
+            coords.append(point.co.to_3d())
+            coords.append(point.handle_left.to_3d())
+            coords.append(point.handle_right.to_3d())
+    elif str(getattr(spline, "type", "") or "") == "POLY":
+        coords.extend(point.co.to_3d() for point in getattr(spline, "points", []) or [])
+    assert coords, "輪郭の寸法を確認できません"
+    return max(co.x for co in coords) - min(co.x for co in coords), max(co.y for co in coords) - min(co.y for co in coords)
+
+
 def _assert_main_line_fill_role(obj, *, expected: bool) -> None:
     counts = _poly_role_counts(obj)
     has_role = counts.get(500, 0) > 0
     assert has_role == expected, f"面としての主線の有無が不正です: expected={expected}, roles={counts}"
+
+
+def _assert_smooth_shape_line_has_no_spikes(obj, entry) -> None:
+    body_w, body_h = _spline_bounds_xy(obj.data.splines[0])
+    line_w, line_h = _role_bounds_xy(obj, 500)
+    margin_m = float(getattr(entry, "line_width_mm", 0.3) or 0.3) * 0.001 * 1.8
+    assert line_w <= body_w + margin_m and line_h <= body_h + margin_m, (
+        "雲の太い主線が谷でトゲ状に伸びています: "
+        f"body=({body_w:.6f},{body_h:.6f}) line=({line_w:.6f},{line_h:.6f}) margin={margin_m:.6f}"
+    )
 
 
 def main() -> None:
@@ -221,6 +262,22 @@ def main() -> None:
         cloud.multi_line_spacing_mm = 0.7
         cloud.fill_color = (1.0, 1.0, 1.0, 1.0)
 
+        thick_cloud = balloon_op._create_balloon_entry(
+            context,
+            page,
+            shape="cloud",
+            x=172.0,
+            y=72.0,
+            w=38.0,
+            h=38.0,
+            parent_kind="page",
+            parent_key=parent_key,
+        )
+        _configure_multiline(thick_cloud, direction="outside")
+        thick_cloud.line_style = "solid"
+        thick_cloud.line_width_mm = 7.0
+        thick_cloud.fill_color = (1.0, 0.93, 0.98, 1.0)
+
         switched_cloud = balloon_op._create_balloon_entry(
             context,
             page,
@@ -264,13 +321,14 @@ def main() -> None:
         balloon_op._set_balloon_rect(page, freeform, 42.0, 92.0, 62.0, 40.0)
 
         objects_and_entries = []
-        for entry in (ellipse, thorn, behind_thorn, cloud, freeform):
+        for entry in (ellipse, thorn, behind_thorn, cloud, thick_cloud, freeform):
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE"
             _assert_balloon_material_order(obj)
             if str(getattr(entry, "shape", "") or "") == "cloud":
                 _assert_cloud_has_no_stale_thorn_paths(obj)
                 _assert_main_line_fill_role(obj, expected=True)
+                _assert_smooth_shape_line_has_no_spikes(obj, entry)
             if str(getattr(entry, "shape", "") or "") == "thorn":
                 _assert_main_line_fill_role(obj, expected=True)
             objects_and_entries.append((obj, entry))

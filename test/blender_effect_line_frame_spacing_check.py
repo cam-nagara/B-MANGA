@@ -550,6 +550,13 @@ def main() -> None:
         right_points = _stroke_points_mm(underlay_strokes[0], m_to_mm)
         if any(_distance(rp, lp) > 1.0e-6 for rp, lp in zip(right_points, line_points, strict=False)):
             raise AssertionError("白抜き線の中心線が主線からずれています")
+        if not effect_line_object._stroke_z_offset(underlay_strokes[0]) < effect_line_object._stroke_z_offset(line_strokes[0]):  # noqa: SLF001
+            raise AssertionError("白抜き線が主線より背面になる順序になっていません")
+        if any(
+            abs(float(up[2]) - float(lp[2])) > 1.0e-10
+            for up, lp in zip(underlay_strokes[0].points_xyz, line_strokes[0].points_xyz, strict=False)
+        ):
+            raise AssertionError("白抜き線の元ストローク座標が主線からずれています")
         if float(getattr(underlay_strokes[0], "side", 0.0) or 0.0) <= 0.0:
             raise AssertionError("白抜き線幅の正値が右側指定として記録されていません")
         underlay_params.white_underlay_width_percent = -150.0

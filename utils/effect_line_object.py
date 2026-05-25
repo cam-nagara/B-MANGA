@@ -366,9 +366,9 @@ def _stroke_material_index(stroke) -> int:
 def _stroke_z_offset(stroke) -> float:
     role = _stroke_role(stroke)
     if role == "end_fill":
-        return -2.0e-5
+        return -1.2e-4
     if role == "underlay":
-        return -1.0e-5
+        return -8.0e-5
     return 0.0
 
 

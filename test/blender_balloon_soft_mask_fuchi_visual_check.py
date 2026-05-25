@@ -295,10 +295,7 @@ def main() -> None:
             entry.fill_opacity = 96.0
             balloon_curve_object.on_balloon_entry_changed(entry)
         clip_masks = [obj for obj in bpy.data.objects if obj.name.startswith("balloon_clip_mask_")]
-        assert clip_masks, "太い線とフチを見切るためのコマ形状マスクが作成されていません"
-        assert all(obj.hide_viewport and obj.hide_render and obj.hide_select for obj in clip_masks), (
-            f"コマ形状マスクが編集画面に出ています: {[obj.name for obj in clip_masks]}"
-        )
+        assert not clip_masks, f"透明度マスク方式なのに古い切り抜きメッシュが残っています: {[obj.name for obj in clip_masks]}"
 
         ranges = _evaluated_material_z_ranges(obj)
         line_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
