@@ -209,6 +209,71 @@ def _add_filled_band(
     )
 
 
+def _add_bezier_closed_loop(
+    curve: bpy.types.Curve,
+    points: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+    point_radius: float,
+    material_index: int,
+) -> None:
+    """点列から AUTO ハンドルの閉じたベジエスプラインを追加する.
+
+    Fill Curve で面化したとき、点列を直線で結ぶ POLY と違って、
+    Blender のカーブ解像度に応じた滑らかな曲線として塗られる。
+    """
+    path = [(float(x), float(y)) for x, y in points]
+    if len(path) > 2 and math.hypot(path[0][0] - path[-1][0], path[0][1] - path[-1][1]) <= 1.0e-6:
+        path.pop()
+    if len(path) < 3:
+        return
+    spline = curve.splines.new("BEZIER")
+    spline.bezier_points.add(len(path) - 1)
+    spline.use_cyclic_u = True
+    spline.material_index = int(material_index)
+    for index, point in enumerate(path):
+        bp = spline.bezier_points[index]
+        x, y, z = _point_to_curve_xyz(point, offset)
+        bp.co = (x, y, z)
+        bp.handle_left_type = "AUTO"
+        bp.handle_right_type = "AUTO"
+        try:
+            bp.radius = max(0.0, float(point_radius))
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _add_filled_band_bezier(
+    curve: bpy.types.Curve,
+    outer: Sequence[tuple[float, float]],
+    inner: Sequence[tuple[float, float]],
+    *,
+    offset: tuple[float, float],
+    role_radius: float,
+    material_index: int,
+) -> None:
+    """B-Name 側で算出した外周/内周点列を、滑らかなベジエ閉ループ 2 本として
+    追加する。Fill Curve が「外周 - 内周」の穴あき面 (= 帯) として塗る。"""
+    if len(outer) < 3 or len(inner) < 3:
+        return
+    outer_loop = _orient_loop(outer, ccw=True)
+    inner_loop = _orient_loop(inner, ccw=False)
+    _add_bezier_closed_loop(
+        curve,
+        outer_loop,
+        offset=offset,
+        point_radius=role_radius,
+        material_index=material_index,
+    )
+    _add_bezier_closed_loop(
+        curve,
+        inner_loop,
+        offset=offset,
+        point_radius=role_radius,
+        material_index=material_index,
+    )
+
+
 def _add_centered_capsule_line(
     curve: bpy.types.Curve,
     points: Sequence[tuple[float, float]],
@@ -673,10 +738,17 @@ def append_main_line_fill_paths(
     if shape_name == "ellipse":
         return
     if shape_name not in {"rect", "octagon", "thorn"}:
-        _add_centered_capsule_line(
+        # 滑らか形状 (雲・モフモフ・トゲ曲線) は B-Name 側で外周/内周を算出し、
+        # 滑らかなベジエ閉ループ 2 本として追加する (Fill Curve が穴あき帯にする).
+        offset_fn = _offset_closed_outline_smooth
+        outer = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
+        inner = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
+        if outer is None or inner is None:
+            return
+        _add_filled_band_bezier(
             curve,
-            body_points,
-            width_mm=line_width_mm,
+            outer,
+            inner,
             offset=offset,
             role_radius=MAIN_LINE_FILL_ROLE_RADIUS,
             material_index=_MATERIAL_SLOT_LINE,
