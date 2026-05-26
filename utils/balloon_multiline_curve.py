@@ -495,16 +495,17 @@ def _offset_closed_outline_arc(
     distance_mm: float,
     clockwise: bool,
     side: str,
-    sharp_skip_deg: float = 60.0,
-    miter_limit: float = 2.0,
 ) -> list[tuple[float, float]] | None:
-    """点列の輪郭をオフセットする。鋭い角は制御点をスキップして、両隣の
-    オフセット点を BEZIER+AUTO で直接繋ぐ。緩やかな角は隣接オフセット線の
-    交点 (miter, clamp あり) で詰める。
+    """点列を、本体点から bisector 方向に「コサイン減衰」した距離でオフセット
+    する。緩やかな角では線幅 distance_mm がそのまま反映され、鋭い角に近づく
+    ほどオフセット距離が 0 に近づく。
 
-    BEZIER 閉ループに乗せると AUTO ハンドル補間で滑らかな丸みになる。
-    body の鋭い谷 (雲のバンプ間) でオフセットが深く突き出さず、線幅が一定
-    に近い帯になる。
+    結果として、雲のバンプ間のような鋭い谷では本体から離れた点が出来ず、
+    線が本体に張り付いたまま自然に細くなる。BEZIER 閉ループに AUTO ハンドル
+    で乗せると、線幅が緩やかにテーパーする滑らかな帯になる (谷の内側に深く
+    突き出す扇形 / 直角 / 多重重なりが発生しない)。
+
+    数学的には「真の平行曲線」ではなくなるが、絵としての見た目を優先する。
     """
     points, _corners = _strip_duplicate_closure(points)
     n = len(points)
@@ -515,7 +516,6 @@ def _offset_closed_outline_arc(
         return [(float(x), float(y)) for x, y in points]
 
     direction_sign = -1.0 if side == "inside" else 1.0
-    sharp_skip = math.radians(max(1.0, sharp_skip_deg))
     result: list[tuple[float, float]] = []
 
     for index, current in enumerate(points):
@@ -536,34 +536,23 @@ def _offset_closed_outline_arc(
         n_prev = (n_prev[0] * direction_sign, n_prev[1] * direction_sign)
         n_next = (n_next[0] * direction_sign, n_next[1] * direction_sign)
 
-        cross_n = n_prev[0] * n_next[1] - n_prev[1] * n_next[0]
-        dot_n = n_prev[0] * n_next[0] + n_prev[1] * n_next[1]
-        delta = math.atan2(cross_n, dot_n)
-
-        # 鋭角はオフセット点を 1 つ追加するとどちら向きでも深く突き出すので、
-        # この制御点はスキップして両隣のオフセット点を BEZIER で直接繋ぐ。
-        if abs(delta) >= sharp_skip:
+        sum_x = n_prev[0] + n_next[0]
+        sum_y = n_prev[1] + n_next[1]
+        sum_len = math.hypot(sum_x, sum_y)
+        if sum_len <= 1.0e-9:
+            # 折り返しに近い角 (delta ≈ ±π): 本体点に張り付ける (距離 0).
+            result.append((float(current[0]), float(current[1])))
             continue
 
-        if abs(delta) < math.radians(1.0):
-            mid = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
-            if mid is None:
-                continue
-            result.append((current[0] + mid[0] * distance, current[1] + mid[1] * distance))
-            continue
+        bis_x = sum_x / sum_len
+        bis_y = sum_y / sum_len
 
-        p1 = (current[0] + n_prev[0] * distance, current[1] + n_prev[1] * distance)
-        p2 = (current[0] + n_next[0] * distance, current[1] + n_next[1] * distance)
-        d_prev_dir = (d_prev_x / prev_len, d_prev_y / prev_len)
-        d_next_dir = (d_next_x / next_len, d_next_y / next_len)
-        hit = _line_intersection_2d(p1, d_prev_dir, p2, d_next_dir)
-        if hit is not None and math.hypot(hit[0] - current[0], hit[1] - current[1]) <= distance * miter_limit:
-            result.append(hit)
-        else:
-            mid = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
-            if mid is None:
-                continue
-            result.append((current[0] + mid[0] * distance, current[1] + mid[1] * distance))
+        # bisector と各セグメント法線の cos = sum_len / 2 (n_prev, n_next が単位ベクトル前提).
+        # これは cos(delta / 2) と等価。0 (180°折り返し) 〜 1 (直進) の範囲。
+        cos_half = max(0.0, min(1.0, sum_len * 0.5))
+        local_distance = distance * cos_half
+
+        result.append((current[0] + bis_x * local_distance, current[1] + bis_y * local_distance))
 
     return result
 
