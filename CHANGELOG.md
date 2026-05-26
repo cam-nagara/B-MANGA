@@ -3,6 +3,39 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-26 — v0.6.083 フキダシ描画経路を整理
+
+### 症状
+- フキダシの見切れ、塗り、外側フチ、内側フチ、多重線、主線の処理が複数箇所に分散し、修正のたびに別経路が残る余地があった。
+- コマ内で見切れるフキダシに、古い切り抜き用の形状が残る場合があった。
+- 楕円フキダシで、Blenderの制御点ごとの線幅編集が表示へ反映されにくくなっていた。
+- フキダシ結合表示で、補助的な線形状まで結合元として扱う余地があった。
+
+### 原因
+- フキダシの素材順、前後関係、表示補助へ渡す設定、見切れ処理の判定が各所で重複していた。
+- 透明度マスク方式へ移行した後も、旧来の形状切り抜き処理が同期経路に残っていた。
+- 楕円フキダシまで面生成の主線経路へ通していたため、カーブ本体の制御点ごとの線幅を使えなくなっていた。
+
+### 修正
+- フキダシ描画の共通ルールを一箇所に集約し、塗り、外側フチ、内側フチ、多重線、主線の順序を同じ設定から使うよう整理した。
+- コマ内フキダシの見切れは透明度マスクに一本化し、古い切り抜き用の形状と補助オブジェクトを同期時に破棄するようにした。
+- 楕円フキダシはBlenderの制御点ごとの線幅編集が反映される表示経路へ戻した。
+- フキダシ結合表示では、フキダシ本体の輪郭だけを結合元として使うようにした。
+
+### 検証 (Blender 5.1.1 実機)
+- `test/blender_balloon_curve_mask_and_anchor_check.py`: 透明度マスクと古い切り抜き形状の削除を確認。PASS。
+- `test/blender_balloon_curve_render_visual_check.py`: 塗りと主線の基本表示を画像出力で確認。PASS。
+- `test/blender_balloon_multiline_visual_check.py`: 楕円、矩形、雲、トゲ、しっぽ付きフキダシの表示を画像出力で確認。PASS。
+- `test/blender_balloon_soft_mask_fuchi_visual_check.py`: コマ内フキダシのぼかし境界、フチ、多重線の表示を確認。PASS。
+- `test/blender_balloon_curve_near_border_visual_check.py`: コマ枠付近で黒化しないことを確認。PASS。
+- `test/blender_balloon_multiline_freeform_check.py`: 多重線とトゲ形状の生成を確認。PASS。
+- `test/blender_balloon_center_seed_selection_check.py`: 原点、シード、選択の基本動作を確認。PASS。
+- `test/blender_balloon_tail_ui_check.py`: しっぽと塗り素材の同期を確認。PASS。
+- `test/blender_balloon_merge_display_check.py`: フキダシ結合表示が本体輪郭だけを使うことを確認。PASS。
+- `test/blender_balloon_curve_source_check.py`: カーブ元形状、表示項目、制御点ごとの線幅反映を確認。PASS。
+- `python -m py_compile`: 関連スクリプトの構文検査。PASS。
+- AI目視: 画像出力で、塗りと主線の基本表示、複数フキダシの表示、ぼかし境界での表示を確認。
+
 ## 2026-05-26 — v0.6.082 フキダシの見切れと雲の太線を修正
 
 ### 症状

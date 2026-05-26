@@ -50,13 +50,14 @@ def _evaluated_width(obj) -> float:
         evaluated.to_mesh_clear()
 
 
-def _input_socket_names(modifier) -> set[str]:
+def _input_socket_names(modifier, *, visible_only: bool = False) -> set[str]:
     group = modifier.node_group
     assert group is not None
     return {
         str(getattr(item, "name", "") or "")
         for item in group.interface.items_tree
         if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
+        and (not visible_only or not bool(getattr(item, "hide_in_modifier", False)))
     }
 
 
@@ -107,7 +108,12 @@ def main() -> None:
         assert "線幅 (mm)" in socket_names
         assert "線素材" in socket_names
         assert "塗り素材" in socket_names
-        forbidden = {name for name in socket_names if name.startswith("しっぽ") or "山の" in name or name == "形状"}
+        visible_socket_names = _input_socket_names(modifier, visible_only=True)
+        forbidden = {
+            name
+            for name in visible_socket_names
+            if name.startswith("しっぽ") or "山の" in name or name == "形状"
+        }
         assert not forbidden, f"使わない形状設定が軽量表示補助に残っています: {sorted(forbidden)}"
 
         entry.line_width_mm = 1.0

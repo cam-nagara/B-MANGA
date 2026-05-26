@@ -7,6 +7,7 @@ from typing import Any
 
 import bpy
 
+from . import balloon_render_contract as render_contract
 from . import log
 
 _logger = log.get_logger(__name__)
@@ -16,21 +17,21 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 40
+GROUP_VERSION = 42
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
 _MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
 _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
-_MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
-_OUTER_EDGE_ROLE_RADIUS = 200.0
-_INNER_EDGE_ROLE_RADIUS = 300.0
-_CLIPPED_FILL_ROLE_RADIUS = 400.0
-_MAIN_LINE_FILL_ROLE_RADIUS = 500.0
-_FILL_Z_M = 0.0
-_OUTER_EDGE_Z_M = 0.000020
-_INNER_EDGE_Z_M = 0.000040
-_MULTI_LINE_Z_M = 0.000080
-_LINE_Z_M = 0.000100
+_MULTI_LINE_ROLE_RADIUS_OFFSET = render_contract.MULTI_LINE_ROLE_RADIUS_OFFSET
+_OUTER_EDGE_ROLE_RADIUS = render_contract.OUTER_EDGE_ROLE_RADIUS
+_INNER_EDGE_ROLE_RADIUS = render_contract.INNER_EDGE_ROLE_RADIUS
+_CLIPPED_FILL_ROLE_RADIUS = render_contract.CLIPPED_FILL_ROLE_RADIUS
+_MAIN_LINE_FILL_ROLE_RADIUS = render_contract.MAIN_LINE_FILL_ROLE_RADIUS
+_FILL_Z_M = render_contract.FILL_Z_M
+_OUTER_EDGE_Z_M = render_contract.OUTER_EDGE_Z_M
+_INNER_EDGE_Z_M = render_contract.INNER_EDGE_Z_M
+_MULTI_LINE_Z_M = render_contract.MULTI_LINE_Z_M
+_LINE_Z_M = render_contract.LINE_Z_M
 
 
 @dataclass(frozen=True)
@@ -968,6 +969,7 @@ def _build_nodes(group) -> None:
         label="輪郭線",
         z_value=_LINE_Z_M,
         location=(-250, -340),
+        use_point_radius=True,
     )
     line_empty_geometry = _empty_geometry(group, label="中心線方式を停止", location=(660, -540))
     line_geometry = _switch_geometry(
@@ -1361,8 +1363,8 @@ def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
         fill_blur_amount=current_fill_blur,
         fill_blur_dither=current_fill_blur_dither,
         mask_object=mask_object,
-        clip_needed=mask_object is not None,
-        fill_clip_needed=mask_object is not None,
+        clip_needed=False,
+        fill_clip_needed=False,
     )
 
 

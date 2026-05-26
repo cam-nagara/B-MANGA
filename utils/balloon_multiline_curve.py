@@ -7,16 +7,17 @@ from typing import Sequence
 
 import bpy
 
+from . import balloon_render_contract as render_contract
 from . import balloon_shapes
 from .geom import Rect, mm_to_m
 
-MULTI_LINE_ROLE_RADIUS_OFFSET = 100.0
-OUTER_EDGE_ROLE_RADIUS = 200.0
-INNER_EDGE_ROLE_RADIUS = 300.0
-MAIN_LINE_FILL_ROLE_RADIUS = 500.0
-_MATERIAL_SLOT_OUTER_EDGE = 1
-_MATERIAL_SLOT_INNER_EDGE = 2
-_MATERIAL_SLOT_LINE = 3
+MULTI_LINE_ROLE_RADIUS_OFFSET = render_contract.MULTI_LINE_ROLE_RADIUS_OFFSET
+OUTER_EDGE_ROLE_RADIUS = render_contract.OUTER_EDGE_ROLE_RADIUS
+INNER_EDGE_ROLE_RADIUS = render_contract.INNER_EDGE_ROLE_RADIUS
+MAIN_LINE_FILL_ROLE_RADIUS = render_contract.MAIN_LINE_FILL_ROLE_RADIUS
+_MATERIAL_SLOT_OUTER_EDGE = render_contract.MATERIAL_SLOT_OUTER_EDGE
+_MATERIAL_SLOT_INNER_EDGE = render_contract.MATERIAL_SLOT_INNER_EDGE
+_MATERIAL_SLOT_LINE = render_contract.MATERIAL_SLOT_LINE
 _EDGE_OVERLAP_RATIO = 0.06
 _THORN_EDGE_OVERLAP_RATIO = 0.06
 _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN = 5.0
@@ -669,6 +670,8 @@ def append_main_line_fill_paths(
     shape_name = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     clockwise = _polygon_signed_area(body_points) < 0.0
     half_width = line_width_mm * 0.5
+    if shape_name == "ellipse":
+        return
     if shape_name not in {"rect", "octagon", "thorn"}:
         _add_centered_capsule_line(
             curve,

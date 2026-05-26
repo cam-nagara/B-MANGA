@@ -153,10 +153,28 @@ def _curve_world_polygons(obj: bpy.types.Object) -> list[list[tuple[float, float
         return []
     out: list[list[tuple[float, float]]] = []
     for spline in getattr(curve, "splines", []) or []:
+        role_radius = _spline_role_radius(spline)
+        if role_radius is not None and role_radius >= 50.0:
+            continue
         pts = _sample_spline_world(obj, spline)
         if len(pts) >= 3:
             out.append(_dedupe_polygon(pts))
     return [pts for pts in out if len(pts) >= 3 and abs(_area(pts)) > 1.0e-12]
+
+
+def _spline_role_radius(spline) -> float | None:
+    if getattr(spline, "type", "") == "BEZIER":
+        points = getattr(spline, "bezier_points", []) or []
+    else:
+        points = getattr(spline, "points", []) or []
+    for point in points:
+        try:
+            radius = float(getattr(point, "radius", 1.0))
+        except Exception:  # noqa: BLE001
+            continue
+        if radius >= 50.0:
+            return radius
+    return None
 
 
 def _sample_spline_world(obj: bpy.types.Object, spline) -> list[tuple[float, float]]:
@@ -183,7 +201,7 @@ def _sample_bezier_world(obj: bpy.types.Object, spline, steps: int = 10) -> list
         p0 = points[index]
         p1 = points[(index + 1) % count]
         for step in range(steps):
-            pos = bco._sample_cubic_vec(  # noqa: SLF001
+            pos = _sample_cubic_vec(
                 Vector(p0.co),
                 Vector(p0.handle_right),
                 Vector(p1.handle_left),
@@ -193,6 +211,11 @@ def _sample_bezier_world(obj: bpy.types.Object, spline, steps: int = 10) -> list
             world = obj.matrix_world @ pos
             pts.append((float(world.x), float(world.y)))
     return pts
+
+
+def _sample_cubic_vec(p0: Vector, h0: Vector, h1: Vector, p1: Vector, t: float) -> Vector:
+    mt = 1.0 - t
+    return (mt**3) * p0 + (3.0 * mt * mt * t) * h0 + (3.0 * mt * t * t) * h1 + (t**3) * p1
 
 
 def _build_union_mesh(group_id: str, polygons, style_entry) -> bpy.types.Mesh | None:

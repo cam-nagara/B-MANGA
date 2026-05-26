@@ -88,7 +88,12 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_tail_ui.operators import layer_detail_op
-        from bname_dev_tail_ui.utils import balloon_curve_object, balloon_shapes, balloon_tail_geom
+        from bname_dev_tail_ui.utils import (
+            balloon_curve_object,
+            balloon_render_contract,
+            balloon_shapes,
+            balloon_tail_geom,
+        )
         from bname_dev_tail_ui.utils.geom import Rect
         from bname_dev_tail_ui.io import export_balloon, schema
 
@@ -215,8 +220,9 @@ def main() -> None:
         assert obj is not None and obj.type == "CURVE"
         fill_obj = bpy.data.objects.get(f"balloon_fill_{entry.id}")
         assert fill_obj is None, "フキダシの塗りが別オブジェクトとして残っています"
-        assert len(obj.data.materials) >= 2
-        used_mat = obj.data.materials[1]
+        fill_slot = balloon_render_contract.MATERIAL_SLOT_FILL
+        assert len(obj.data.materials) > fill_slot
+        used_mat = obj.data.materials[fill_slot]
         assert used_mat is not source_mat
         assert used_mat.get("bname_balloon_fill_source_material") == source_mat.name
         assert [node.name for node in source_mat.node_tree.nodes] == source_nodes
