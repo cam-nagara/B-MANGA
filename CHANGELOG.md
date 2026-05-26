@@ -3,6 +3,25 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.104 フキダシ Mesh のコマ内マスクを画像マスク方式のみに統一
+
+### 症状
+- v0.6.099 (commit `3333492`) で導入した雲フキダシ主線 Mesh 用のジオメトリノードクリップ modifier (`BName_GN_BalloonLineMeshClip`) が、v0.6.103 で追加した外側フチ・内側フチ・多重線 Mesh にも適用されていた。
+- B-Name 全体のマスク方針 (コマ内に収めるマスクは material のアルファ画像マスク方式に統一) と整合しておらず、ソフトな画像マスクと hard なジオメトリ削除の二重適用になっていた。
+
+### 修正
+- フキダシ Mesh (主線・外側フチ・内側フチ・多重線) を `_attach_band_mesh_object` 経由で生成する際、メッシュくり抜き modifier を新規追加せず、もし既存の modifier が残っていれば撤去するようにした。
+- material 側のアルファ画像マスク (`material_opacity_mask.multiply_alpha_by_mask`) は引き続き有効で、コマ外への描画は material アルファ 0 で自然にカットされる。
+- 結果として、主線 Mesh も含めて画像マスク方式に一本化された。ジオメトリレベルのクリップは行わない。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 雲フキダシをコマ右端より大きくはみ出すように配置 (line/outer/inner/multi-line すべて有効) してレンダリング。
+- 4 種類すべての Mesh で modifier 一覧が空かつ material に「コマ内容マスク」ノードが接続済であることを assert で確認。
+- 画像マスクのみで、コマ外側の主線・フチ・多重線が完全に透過されることをレンダー画像で目視確認。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `_attach_band_mesh_object` 内のマスク処理を `_sync_mask_clip_modifier(obj, None)` (撤去呼び出し) に置き換え
+
 ## 2026-05-27 — v0.6.103 雲フキダシのフチ・多重線も Shapely buffer 方式に統一
 
 ### 症状 (v0.6.102 までに残っていた問題)

@@ -156,6 +156,18 @@ def main() -> None:
         _render_to(out, width_px=900, height_px=900)
         out_paths.append((case_name, out))
         print(f"[OUT] {case_name}: {out}")
+        # 各メッシュバンドオブジェクトの modifier 構成を dump
+        # (画像マスク方式に統一したため、メッシュくり抜き GN modifier は付いていてはいけない)
+        for o in bpy.data.objects:
+            if not (
+                o.name.startswith("balloon_line_mesh_")
+                or o.name.startswith("balloon_outer_edge_mesh_")
+                or o.name.startswith("balloon_inner_edge_mesh_")
+                or o.name.startswith("balloon_multi_line_mesh_")
+            ):
+                continue
+            mods = [m.name for m in getattr(o, "modifiers", []) or []]
+            print(f"  [MOD] {o.name}: {mods}")
 
     print(f"[DONE] 出力ディレクトリ: {_OUT_PATH}")
 

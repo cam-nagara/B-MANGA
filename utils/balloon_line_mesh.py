@@ -985,7 +985,12 @@ def _attach_band_mesh_object(
     visible: bool,
     mask_info=None,
 ) -> bpy.types.Object:
-    """Mesh をフキダシ本体に連結し、コレクション/親子/マスククリップを ensure する."""
+    """Mesh をフキダシ本体に連結し、コレクション/親子を ensure する.
+
+    コマ内マスクは material 側のアルファ画像マスク (画像マスク方式) に一本化し、
+    ジオメトリ側のメッシュくり抜き modifier は使わない方針。古いビルドから残った
+    クリップ modifier があれば撤去する。
+    """
     obj = bpy.data.objects.get(obj_name)
     if obj is not None and getattr(obj, "type", "") != "MESH":
         try:
@@ -1036,8 +1041,8 @@ def _attach_band_mesh_object(
     obj.hide_viewport = not visible
     obj.hide_render = not visible
 
-    mask_obj = getattr(mask_info, "space_object", None) if mask_info is not None else None
-    _sync_mask_clip_modifier(obj, mask_obj)
+    # 旧来のメッシュくり抜き modifier は画像マスク方式に切り替えたため撤去する
+    _sync_mask_clip_modifier(obj, None)
     return obj
 
 
