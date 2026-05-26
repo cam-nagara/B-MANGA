@@ -33,6 +33,11 @@ SHARP_THRESHOLD_RAD = math.radians(30.0)
 ARC_STEP_DEG = 12.0
 LINE_Z_OFFSET_M = 0.00010
 
+# コマ内マスク用 Geometry Nodes group
+MASK_CLIP_GROUP_NAME = "BName_GN_BalloonLineMeshClip"
+MASK_CLIP_GROUP_VERSION = 1
+PROP_GROUP_VERSION = "bname_group_version"
+
 # 本方式 (メッシュ直接構築) を使う形状。それ以外は既存のノードグループ経路。
 MESH_BAND_LINE_SHAPES = {"cloud", "fluffy", "thorn-curve"}
 
@@ -248,6 +253,7 @@ def ensure_balloon_line_mesh(
     entry,
     body_object: bpy.types.Object,
     line_material: bpy.types.Material,
+    mask_info=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ主線のメッシュバンドオブジェクトを生成・更新する.
 
@@ -290,7 +296,10 @@ def ensure_balloon_line_mesh(
         return None
 
     half_width_m = line_width_mm * 0.5 * 0.001
-    smooth_radius_m = max(half_width_m, 0.0001)
+    # smoothing 半径 R は必ず線の半幅 D より大きくする (R == D だと外周オフセットが
+    # 円弧中心 1 点に収束して四角形メッシュが扇形に折り重なる).
+    # R = 1.5 D で外周オフセット半径 = 0.5 D, 内周オフセット半径 = 2.5 D の安定値.
+    smooth_radius_m = max(half_width_m * 1.5, 0.0005)
     smoothed = _smooth_sharp_corners(
         samples,
         smooth_radius_m=smooth_radius_m,
@@ -362,7 +371,137 @@ def ensure_balloon_line_mesh(
     obj.hide_viewport = not visible
     obj.hide_render = not visible
 
+    # コマ内マスククリップ modifier を ensure する
+    mask_obj = getattr(mask_info, "space_object", None) if mask_info is not None else None
+    _sync_mask_clip_modifier(obj, mask_obj)
+
     return obj
+
+
+def _ensure_mask_clip_group() -> bpy.types.NodeTree:
+    """コマ内マスクで line mesh をクリップする Geometry Nodes group を ensure する.
+
+    入力: Geometry, Mask Object (None ならクリップ無し)
+    挙動: Mask Object のジオメトリへ +Z から -Z 方向にレイキャストし、ヒットした
+    face だけ残す (= マスク矩形の内側だけ残す)。本体カーブの
+    `_clip_geometry_by_mask_hit` と同じロジック。
+    """
+    group = bpy.data.node_groups.get(MASK_CLIP_GROUP_NAME)
+    if group is not None and int(group.get(PROP_GROUP_VERSION, 0) or 0) == MASK_CLIP_GROUP_VERSION:
+        return group
+    if group is None:
+        group = bpy.data.node_groups.new(MASK_CLIP_GROUP_NAME, "GeometryNodeTree")
+    group.use_fake_user = True
+    # Reset interface
+    try:
+        for item in list(group.interface.items_tree):
+            group.interface.remove(item)
+    except Exception:  # noqa: BLE001
+        pass
+    group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
+    group.interface.new_socket(name="マスク対象", in_out="INPUT", socket_type="NodeSocketObject")
+    # Clear nodes
+    for node in list(group.nodes):
+        group.nodes.remove(node)
+    input_node = group.nodes.new("NodeGroupInput")
+    input_node.location = (-700, 0)
+    output_node = group.nodes.new("NodeGroupOutput")
+    output_node.location = (700, 0)
+    obj_info = group.nodes.new("GeometryNodeObjectInfo")
+    obj_info.label = "マスク矩形"
+    obj_info.location = (-460, -180)
+    try:
+        obj_info.transform_space = "RELATIVE"
+    except Exception:  # noqa: BLE001
+        pass
+    group.links.new(input_node.outputs["マスク対象"], obj_info.inputs["Object"])
+    position = group.nodes.new("GeometryNodeInputPosition")
+    position.location = (-460, 200)
+    add = group.nodes.new("ShaderNodeVectorMath")
+    add.operation = "ADD"
+    add.location = (-260, 200)
+    try:
+        add.inputs[1].default_value = (0.0, 0.0, 1.0)
+    except Exception:  # noqa: BLE001
+        pass
+    group.links.new(position.outputs["Position"], add.inputs[0])
+    raycast = group.nodes.new("GeometryNodeRaycast")
+    raycast.label = "内外判定"
+    raycast.location = (-40, -80)
+    group.links.new(obj_info.outputs["Geometry"], raycast.inputs["Target Geometry"])
+    group.links.new(add.outputs["Vector"], raycast.inputs["Source Position"])
+    try:
+        raycast.inputs["Ray Direction"].default_value = (0.0, 0.0, -1.0)
+        raycast.inputs["Ray Length"].default_value = 2.0
+    except Exception:  # noqa: BLE001
+        pass
+    # マスク対象が無い場合は何もしないため、Object Info が valid かを Switch で判定する
+    delete = group.nodes.new("GeometryNodeDeleteGeometry")
+    delete.label = "マスク外を削除"
+    delete.location = (240, 60)
+    try:
+        delete.domain = "FACE"
+        delete.mode = "ALL"
+    except Exception:  # noqa: BLE001
+        pass
+    bnot = group.nodes.new("FunctionNodeBooleanMath")
+    bnot.operation = "NOT"
+    bnot.location = (120, -120)
+    group.links.new(raycast.outputs["Is Hit"], bnot.inputs[0])
+    group.links.new(input_node.outputs["Geometry"], delete.inputs["Geometry"])
+    group.links.new(bnot.outputs["Boolean"], delete.inputs["Selection"])
+    # If mask object is None, bypass clipping
+    bypass_switch = group.nodes.new("GeometryNodeSwitch")
+    bypass_switch.input_type = "GEOMETRY"
+    bypass_switch.label = "マスク有無で切替"
+    bypass_switch.location = (480, 0)
+    # When obj_info has no object, raycast Is Hit is False → bnot True → delete all faces (bad)
+    # So we need a way to detect mask object presence. Use a Compare node with Object Info's Location?
+    # Simpler: check raycast result; if mask object is None, raycast always returns False (no hit)
+    # In that case bnot is True for every face, delete removes everything. WRONG.
+    # We need to ALWAYS clip ONLY when mask is present. Use a Compare on obj_info to check if it's set.
+    # GeometryNodeObjectInfo outputs Geometry which is empty if no object. We can check by
+    # the geometry's domain size, but simpler: just don't add this modifier when mask is None.
+    # So no bypass needed; the caller decides whether to add this modifier.
+    # Remove the unused bypass_switch.
+    group.nodes.remove(bypass_switch)
+    group.links.new(delete.outputs["Geometry"], output_node.inputs["Geometry"])
+    group[PROP_GROUP_VERSION] = MASK_CLIP_GROUP_VERSION
+    return group
+
+
+def _sync_mask_clip_modifier(obj: bpy.types.Object, mask_object: Optional[bpy.types.Object]) -> None:
+    """line mesh にコマ内マスククリップの Geometry Nodes modifier を ensure する.
+
+    mask_object が None の場合は modifier を撤去する。
+    """
+    modifier_name = "BName コマ内マスククリップ"
+    existing = obj.modifiers.get(modifier_name)
+    if mask_object is None:
+        if existing is not None:
+            try:
+                obj.modifiers.remove(existing)
+            except Exception:  # noqa: BLE001
+                pass
+        return
+    group = _ensure_mask_clip_group()
+    if existing is None:
+        existing = obj.modifiers.new(modifier_name, "NODES")
+    existing.node_group = group
+    # Set mask_object input via interface identifier
+    target_identifier = None
+    for item in getattr(group.interface, "items_tree", []) or []:
+        if getattr(item, "in_out", "") != "INPUT":
+            continue
+        if str(getattr(item, "name", "") or "") == "マスク対象":
+            target_identifier = getattr(item, "identifier", None)
+            break
+    if target_identifier:
+        try:
+            existing[target_identifier] = mask_object
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def remove_balloon_line_mesh(balloon_id: str) -> None:

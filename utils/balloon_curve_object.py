@@ -721,8 +721,9 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
             los.assign_per_page_z_ranks(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: z order sync failed")
+    mask_info = None
     try:
-        coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
+        mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
         _sync_balloon_render_modifier(entry, obj)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
@@ -736,6 +737,7 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
                 entry=entry,
                 body_object=obj,
                 line_material=line_mat,
+                mask_info=mask_info,
             )
         else:
             balloon_line_mesh.remove_balloon_line_mesh(str(getattr(entry, "id", "") or ""))
@@ -1232,6 +1234,7 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
             entry=entry,
             body_object=obj,
             line_material=line_mat,
+            mask_info=mask_info,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight line mesh sync failed")
