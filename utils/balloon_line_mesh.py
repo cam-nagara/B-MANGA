@@ -59,23 +59,40 @@ MASK_CLIP_GROUP_NAME = "BName_GN_BalloonLineMeshClip"
 MASK_CLIP_GROUP_VERSION = 1
 PROP_GROUP_VERSION = "bname_group_version"
 
-# 本方式 (メッシュ直接構築) を使う形状。それ以外は既存のノードグループ経路。
-MESH_BAND_LINE_SHAPES = {"cloud", "fluffy", "thorn-curve"}
+# 主線・外側フチ・内側フチを Shapely buffer + earcut で外部 Mesh として描画する形状。
+# 全ての Meldex フキダシ形状で同じ方式に統一する。
+SHAPELY_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)
 
-# Shapely buffer + earcut でフチ・多重線も外部 Mesh として描画する形状。
-# (主線も Shapely 方式で描いている形状のサブセット。)
-SHAPELY_BAND_SHAPES = {"cloud"}
+# 後方互換 (Mesh 直接構築方式で主線が描画される形状)
+MESH_BAND_LINE_SHAPES = set(SHAPELY_LINE_SHAPES)
+
+# 多重線も Shapely buffer 方式で外部 Mesh として描画する形状。
+# トゲ (直線) は「長さ変化」「谷/山の線幅」など専用ロジックを持つため、
+# 現状は cloud のみ Shapely 多重線対応。それ以外は legacy curve 多重線が継続。
+SHAPELY_MULTI_LINE_SHAPES = {"cloud"}
 
 
 def is_mesh_band_shape(entry) -> bool:
+    """主線を Mesh 直接構築方式で描画する形状か."""
     shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     return shape in MESH_BAND_LINE_SHAPES
 
 
-def is_shapely_band_shape(entry) -> bool:
-    """フチ・多重線も Shapely buffer 方式で外部 Mesh 化する形状か."""
+def is_shapely_line_shape(entry) -> bool:
+    """主線・外側フチ・内側フチを Shapely buffer 方式で描画する形状か."""
     shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    return shape in SHAPELY_BAND_SHAPES
+    return shape in SHAPELY_LINE_SHAPES
+
+
+def is_shapely_multi_line_shape(entry) -> bool:
+    """多重線を Shapely buffer 方式で描画する形状か."""
+    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    return shape in SHAPELY_MULTI_LINE_SHAPES
+
+
+def is_shapely_band_shape(entry) -> bool:
+    """後方互換 alias. 主線・フチ・多重線のどれかが Shapely 化される形状か."""
+    return is_shapely_line_shape(entry) or is_shapely_multi_line_shape(entry)
 
 
 def _cubic_bezier_point(p0, p1, p2, p3, t):
@@ -1092,49 +1109,28 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
 
-    half_width_m = line_width_mm * 0.5 * 0.001
     line_width_m = line_width_mm * 0.001
 
-    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     mesh_name = _line_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
 
-    union_result: Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = None
-    if shape == "cloud":
-        # 雲: outside alignment + shapely UNION で自己交差を解決した clean outline を取る
-        samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
-        if len(samples) >= 3:
-            sp = getattr(entry, "shape_params", None)
-            valley_sharp = bool(getattr(sp, "cloud_valley_sharp", False))
-            union_result = _stroke_band_outside_union(
-                samples,
-                line_width_m=line_width_m,
-                valley_sharp=valley_sharp,
-            )
-    if union_result is not None:
-        outer_ring, holes = union_result
-        _build_band_mesh_from_union(mesh, outer_ring, holes, LINE_Z_OFFSET_M)
-    else:
-        # 雲以外 (fluffy, thorn-curve): 従来の中心線 ± offset + bisector 方式
-        samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
-        if len(samples) < 3:
-            remove_balloon_line_mesh(balloon_id)
-            return None
-        smooth_radius_m = max(half_width_m * 1.5, 0.0005)
-        smoothed = _smooth_sharp_corners(
-            samples,
-            smooth_radius_m=smooth_radius_m,
-            sharp_threshold_rad=SHARP_THRESHOLD_RAD,
-            arc_step_deg=ARC_STEP_DEG,
-        )
-        band = _band_loops(smoothed, half_width_m=half_width_m)
-        if band is None:
-            remove_balloon_line_mesh(balloon_id)
-            return None
-        outer, inner = band
-        _rebuild_band_mesh(mesh, outer, inner, LINE_Z_OFFSET_M)
+    # 主線は全形状で「外側アライメント + Shapely buffer + earcut」方式に統一。
+    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    if len(samples) < 3:
+        remove_balloon_line_mesh(balloon_id)
+        return None
+    union_result = _stroke_band_outside_union(
+        samples,
+        line_width_m=line_width_m,
+        valley_sharp=_valley_sharp_for_entry(entry),
+    )
+    if union_result is None:
+        remove_balloon_line_mesh(balloon_id)
+        return None
+    outer_ring, holes = union_result
+    _build_band_mesh_from_union(mesh, outer_ring, holes, LINE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_line_mesh_object_name(balloon_id),
@@ -1168,7 +1164,7 @@ def ensure_balloon_outer_edge_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
-    if not is_shapely_band_shape(entry):
+    if not is_shapely_line_shape(entry):
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
     if not bool(getattr(entry, "outer_white_margin_enabled", False)):
@@ -1240,7 +1236,7 @@ def ensure_balloon_inner_edge_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
-    if not is_shapely_band_shape(entry):
+    if not is_shapely_line_shape(entry):
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
     if not bool(getattr(entry, "inner_white_margin_enabled", False)):
@@ -1312,7 +1308,7 @@ def ensure_balloon_multi_line_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
-    if not is_shapely_band_shape(entry):
+    if not is_shapely_multi_line_shape(entry):
         remove_balloon_multi_line_mesh(balloon_id)
         return None
     if str(getattr(entry, "line_style", "") or "") != "double":
@@ -1352,14 +1348,15 @@ def ensure_balloon_multi_line_mesh(
         return None
 
     valley_sharp = _valley_sharp_for_entry(entry)
-    # 雲フキダシ主線は外側アライメント (body から +line_width まで外を太らせる)。
-    # 多重線も主線と整合させるため:
-    #   - "outside" は主線の外側 (body + line_width) から spacing おきにリングを並べる
-    #   - "inside" は body 境界の内側 (line は内側に張り出さない) から spacing おきに並べる
-    base_outside_mm = line_width_mm
+    # 多重線のリング中心は「主線中心からの距離 = spacing * ring_index」を満たすように配置する。
+    # これによりリング同士の中心間距離も、主線中心とリング1中心の距離も等しく spacing になる。
+    # 外側アライメント主線 (body 0 〜 +line_width) なので主線中心は body + line_width/2.
+    # 内側方向には主線が無いため、内側多重線は body 境界を基準にリング中心を spacing 刻みで並べる。
+    base_outside_mm = line_width_mm * 0.5
     base_inside_mm = 0.0
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
-    for ring_index in range(1, count):
+    # 「線の本数 N」は多重線として描かれるリング数を意味する (主線本体はカウント外)。
+    for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         if ring_width_mm <= 1.0e-6:
             continue

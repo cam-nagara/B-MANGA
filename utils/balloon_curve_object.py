@@ -766,15 +766,15 @@ def _sync_balloon_render_modifier(entry, obj: bpy.types.Object) -> None:
     if balloon_line_mesh.is_mesh_band_shape(entry):
         filled_line_enabled = True
     settings = render_contract.settings_from_entry(entry, filled_line_enabled=filled_line_enabled)
-    # Shapely buffer 方式ではフチ・多重線も別 Mesh オブジェクト側で描画する。
-    # ノードグループ側の同じ機能は完全に止める (二重描画 / Z-fight 回避)。
-    if balloon_line_mesh.is_shapely_band_shape(entry):
-        settings = dataclasses.replace(
-            settings,
-            multi_line_enabled=False,
-            outer_edge_enabled=False,
-            inner_edge_enabled=False,
-        )
+    # 外部 Mesh で描画する要素はノードグループ側を停止 (二重描画 / Z-fight 回避)。
+    override: dict = {}
+    if balloon_line_mesh.is_shapely_line_shape(entry):
+        override["outer_edge_enabled"] = False
+        override["inner_edge_enabled"] = False
+    if balloon_line_mesh.is_shapely_multi_line_shape(entry):
+        override["multi_line_enabled"] = False
+    if override:
+        settings = dataclasses.replace(settings, **override)
     balloon_curve_render_nodes.ensure_modifier(
         obj,
         **settings.as_modifier_kwargs(mask_object=None),
@@ -1157,20 +1157,21 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) == "none":
         return
     offset = _entry_curve_offset(entry)
-    # メッシュバンド方式の形状では main_line_fill_paths を追加しない
-    # (主線は別 Mesh オブジェクトで描画する)
+    # 主線が別 Mesh で描画される形状ではカーブ側に main_line_fill_paths を追加しない。
     use_mesh_band = balloon_line_mesh.is_mesh_band_shape(entry)
-    # Shapely buffer 方式の形状ではフチ・多重線も別 Mesh オブジェクトで描画するため
-    # カーブ側にはこれらの帯ジオメトリを追加しない
-    use_shapely_band = balloon_line_mesh.is_shapely_band_shape(entry)
+    # フチが別 Mesh で描画される形状ではカーブ側に edge_paths を追加しない。
+    use_shapely_line = balloon_line_mesh.is_shapely_line_shape(entry)
+    # 多重線が別 Mesh で描画される形状ではカーブ側に multi_line_paths を追加しない。
+    use_shapely_multi = balloon_line_mesh.is_shapely_multi_line_shape(entry)
     body_anchors = _body_bezier_for_entry(entry)
     if body_anchors is not None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
         body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
         if not use_mesh_band:
             balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
-        if not use_shapely_band:
+        if not use_shapely_multi:
             balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
+        if not use_shapely_line:
             balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     else:
         body_points, sharp = balloon_multiline_curve.body_outline_for_entry(entry)
@@ -1183,8 +1184,9 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
         )
         if not use_mesh_band:
             balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
-        if not use_shapely_band:
+        if not use_shapely_multi:
             balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
+        if not use_shapely_line:
             balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
         tail_points = _tail_polygon_for_entry(entry, tail)

@@ -728,10 +728,13 @@ def append_closed_multi_line_paths(
     direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
     sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
     clockwise = _polygon_signed_area(body_points) < 0.0
-    base_distance_mm = line_width_mm * 0.5
+    # 中央アライメント主線では body curve = 主線中心。「主線中心からリング1中心までの距離 = spacing」
+    # を満たすには base_distance_mm = 0 とし、リング k 中心 = spacing_mm * k にする。
+    base_distance_mm = 0.0
     base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
-    for ring_index in range(1, count):
+    # 「線の本数 N」は多重線として描かれるリング数 (主線本体はカウント外)。
+    for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
             width_scale ** max(0, ring_index - 1)
@@ -1039,8 +1042,9 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
         peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", width_mm) or 0.0))
         scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
         if str(getattr(entry, "multi_line_direction", "outside") or "outside") in {"outside", "both"}:
-            current = max(0.0, float(line_width_mm) * 0.5) + spacing_mm
-            for ring_index in range(1, count):
+            # 本体カーブ (主線中心) からリング N 中心までの距離 = spacing * N.
+            # リング N 外側端 = spacing * N + ring_width_N / 2.
+            for ring_index in range(1, count + 1):
                 ring_width = width_mm * (scale ** max(0, ring_index - 1))
                 if shape_name == "thorn":
                     ring_width = max(
@@ -1049,8 +1053,7 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
                         peak_width_mm * (scale ** max(0, ring_index - 1)),
                     )
                 if ring_width <= 0.0:
-                    current += spacing_mm
                     continue
-                margin = max(margin, current + ring_width)
-                current += ring_width + spacing_mm
+                ring_outer_from_curve = spacing_mm * ring_index + ring_width * 0.5
+                margin = max(margin, ring_outer_from_curve)
     return margin

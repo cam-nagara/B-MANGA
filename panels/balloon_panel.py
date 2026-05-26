@@ -139,8 +139,9 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "multi_line_spacing_mm")
             row = box.row(align=True)
             row.prop(entry, "multi_line_width_scale_percent")
-            row.prop(entry, "thorn_multi_line_length_scale_percent")
+            # 「長さ変化 (%)」「谷/山の線幅」はトゲ（直線）専用 (設計意図書 7.1.1)
             if str(getattr(entry, "shape", "") or "") == "thorn":
+                row.prop(entry, "thorn_multi_line_length_scale_percent")
                 row = box.row(align=True)
                 row.prop(entry, "thorn_multi_line_valley_width_mm")
                 row.prop(entry, "thorn_multi_line_peak_width_mm")

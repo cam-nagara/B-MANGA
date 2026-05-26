@@ -3,6 +3,36 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.105 全形状の主線・フチを Shapely buffer 方式に統一 + 多重線本数/間隔/長さ変化 UI を修正
+
+### 症状
+- v0.6.103/104 で雲フキダシだけ「主線・外側フチ・内側フチ」を Shapely buffer + mapbox-earcut 方式にしていたが、他の形状 (矩形・楕円・八角形・モフモフ・トゲ直線・トゲ曲線) は古いオフセット曲線方式のままで、太線時の自己交差が解消していなかった。
+- 「線の本数」を 3 に設定しても多重線が 2 本しか描画されない (内部で `range(1, count)` だったため)。
+- 主線と一番近い多重線の間隔が、多重線同士の間隔より広くなっていた (`base_distance = line_width/2` で計算されていたため、主線中心 → リング 1 中心 = `line_width/2 + spacing` になっていた)。
+- 「長さ変化 (%)」スライダーは設計意図書 (`docs/B-Name_設計意図.md` §7.1.1) で **トゲ（直線）専用** と定められているにもかかわらず、全形状の UI に常時表示されていた。
+
+### 修正
+- 主線・外側フチ・内側フチを **全形状で Shapely `Polygon.buffer` + mapbox-earcut 三角分割** 方式に統一。任意の線幅で自己交差なく描画できる。
+- 多重線のリング数を `range(1, count + 1)` に修正し、ユーザー指定の本数ぴったり描画されるようにした (Shapely 経路 / legacy curve 経路 / ノードグループ socket の 3 箇所いずれも修正)。
+- 多重線の基準距離を「主線中心 → リング 1 中心 = `spacing`」になるよう調整。外側方向は `line_width/2 + spacing × N` (外側アライメント主線の中心が `line_width/2`)、内側方向は `spacing × N` (内側に主線が無いため body 境界基準)。これで隣接ライン間距離が常に `spacing` で揃う。
+- 「長さ変化 (%)」「谷の線幅」「山の線幅」「多重線を延ばして交差」は **shape == "thorn"** のときだけ UI に表示するようにした。それ以外の形状では非表示。
+- `is_shapely_band_shape` を `is_shapely_line_shape` (主線・フチ用) と `is_shapely_multi_line_shape` (多重線用) に分離し、形状ごとに細かく Shapely 経路 / レガシー経路を切り替えられるようにした。
+- legacy curve 多重線も `base_distance_mm = 0` に変更し、Shapely 経路と同じ「主線中心 → リング 1 中心 = spacing」を実現。
+- `outer_render_margin_mm` (見切れマスク用の外周マージン計算) も新しい本数・基準距離に合わせて更新。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 全 7 形状 (rect / ellipse / octagon / cloud / fluffy / thorn / thorn-curve) で主線 + 外側フチ + 内側フチ + 多重線 (count=3 outside) を描画し、主線が Shapely buffer Mesh として生成されることを確認。
+- 全形状で line_width=1.0mm × count=3〜4 / direction=outside の多重線レンダーを行い、「主線 + N 本のリング」が正しく描画されることを目視確認。
+- cloud で line_width=5mm × 外側フチ / 内側フチ / 多重線 outside/inside/both / 谷を尖らせる の組合せが自己交差なく描画されることを再確認。
+- legacy curve 多重線の本数 +1 修正 / GN socket 多重線の本数 +1 修正 / `outer_render_margin_mm` の更新が全て揃って動作することを多重線レンダリングで確認。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `SHAPELY_LINE_SHAPES` を全 Meldex 形状へ拡張、`SHAPELY_MULTI_LINE_SHAPES` は cloud のみ、`is_shapely_line_shape` / `is_shapely_multi_line_shape` 述語を追加、多重線 base 距離・本数の調整
+- `utils/balloon_curve_object.py`: `_sync_curve_geometry` と `_sync_balloon_render_modifier` を新しい述語で分岐
+- `utils/balloon_multiline_curve.py`: legacy curve 多重線の `range(1, count + 1)` / `base_distance_mm = 0` / `outer_render_margin_mm` 修正
+- `utils/balloon_curve_render_nodes.py`: GN socket の `extra_count` と `base_distance_mm` を新ルールに合わせる
+- `panels/balloon_panel.py`: 「長さ変化 (%)」など thorn 専用パラメータを thorn 形状時のみ UI に表示
+
 ## 2026-05-27 — v0.6.104 フキダシ Mesh のコマ内マスクを画像マスク方式のみに統一
 
 ### 症状

@@ -1166,12 +1166,13 @@ def _set_modifier_values(
     extra_count = (
         min(
             _MAX_MULTI_LINE_RINGS - 1,
-            max(0, int(multi_line_count or 1) - 1),
+            max(0, int(multi_line_count or 1)),
         )
         if multi_line_enabled and native_multi_line_rings_enabled
         else 0
     )
-    base_distance_mm = max(0.0, float(line_width_mm or 0.0)) * 0.5
+    # リング N 中心 = 主線中心 (= body curve) から spacing_mm * N の位置。
+    base_distance_mm = 0.0
     for ring_index in range(1, _MAX_MULTI_LINE_RINGS):
         width_mm = width_base_mm * (scale ** max(0, ring_index - 1))
         center_mm = base_distance_mm + spacing_mm * ring_index
