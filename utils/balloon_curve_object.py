@@ -11,6 +11,7 @@ import bpy
 
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
+from . import balloon_line_mesh
 from . import balloon_multiline_curve
 from . import balloon_render_contract as render_contract
 from . import balloon_shapes
@@ -450,6 +451,11 @@ def _ensure_fill_material(material_name: str, entry=None, *, mask_info=None) -> 
 
 
 def _remove_balloon_object(obj: bpy.types.Object) -> None:
+    # フキダシ本体の場合は、付随するメッシュバンド主線も同時に撤去する
+    if obj.get(on.PROP_KIND) == "balloon":
+        balloon_id = str(obj.get(on.PROP_ID, "") or "")
+        if balloon_id:
+            balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -695,6 +701,11 @@ def _sync_balloon_render_modifier(entry, obj: bpy.types.Object) -> None:
     _remove_balloon_clip_mask(balloon_id)
     _discard_clipped_fill_geometry(obj)
     filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
+    # メッシュバンド方式を使う形状では、ノードグループ側で主線を描画させない
+    # (filled_line_enabled=True で legacy CurveToMesh を停止、かつ main_line_fill
+    # splines も追加していないので filled 経路も空)。主線は別 Mesh オブジェクト。
+    if balloon_line_mesh.is_mesh_band_shape(entry):
+        filled_line_enabled = True
     settings = render_contract.settings_from_entry(entry, filled_line_enabled=filled_line_enabled)
     balloon_curve_render_nodes.ensure_modifier(
         obj,
@@ -715,6 +726,21 @@ def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj
         _sync_balloon_render_modifier(entry, obj)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
+    try:
+        line_mat = obj.data.materials[_MATERIAL_SLOT_LINE] if obj.data.materials and len(obj.data.materials) > _MATERIAL_SLOT_LINE else None
+        if line_mat is not None:
+            balloon_line_mesh.ensure_balloon_line_mesh(
+                scene=scene,
+                work=work,
+                page=page,
+                entry=entry,
+                body_object=obj,
+                line_material=line_mat,
+            )
+        else:
+            balloon_line_mesh.remove_balloon_line_mesh(str(getattr(entry, "id", "") or ""))
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: line mesh sync failed")
 
 
 def ensure_balloon_curve_object(
@@ -1072,11 +1098,15 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")) == "none":
         return
     offset = _entry_curve_offset(entry)
+    # メッシュバンド方式の形状では main_line_fill_paths を追加しない
+    # (主線は別 Mesh オブジェクトで描画する)
+    use_mesh_band = balloon_line_mesh.is_mesh_band_shape(entry)
     body_anchors = _body_bezier_for_entry(entry)
     if body_anchors is not None:
         _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
         body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
-        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
+        if not use_mesh_band:
+            balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     else:
@@ -1088,7 +1118,8 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             sharp_indices=sharp_set,
             offset=offset,
         )
-        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
+        if not use_mesh_band:
+            balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_closed_multi_line_paths(curve, entry, body_points, offset=offset)
         balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
@@ -1193,6 +1224,17 @@ def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
         _sync_balloon_render_modifier(entry, obj)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon: lightweight render node sync failed")
+    try:
+        balloon_line_mesh.ensure_balloon_line_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            line_material=line_mat,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: lightweight line mesh sync failed")
     return True
 
 
@@ -1272,6 +1314,7 @@ def cleanup_orphan_balloon_objects(scene) -> int:
                     pass
                 _remove_unused_data_block(data)
                 removed += 1
+    removed += balloon_line_mesh.cleanup_orphan_line_meshes(valid)
     return removed
 
 
