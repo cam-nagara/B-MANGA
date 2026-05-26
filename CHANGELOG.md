@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.103 雲フキダシのフチ・多重線も Shapely buffer 方式に統一
+
+### 症状 (v0.6.102 までに残っていた問題)
+- v0.6.102 で雲フキダシの主線は Shapely buffer + mapbox-earcut 方式に統一済みだったが、外側フチ・内側フチ・多重線は旧来のオフセット曲線方式 (`_offset_closed_outline_smooth` / `_band_loops_for_side`) のままだった。
+- そのため線が太い場合や、フチ幅・多重線幅が広い場合に谷で自己交差が発生し、扇形のスパイクや重なりで濃く描画される箇所が出ていた。
+- 主線が外側アライメントに切り替わったため、フチ・多重線の基準距離 (主線中央前提) と主線の実位置がズレており、構造的にも噛み合っていなかった。
+
+### 修正
+- 雲フキダシ (`shape == "cloud"`) の外側フチ・内側フチ・多重線を、主線と同じ **Shapely `Polygon.buffer` + mapbox-earcut 三角分割** 方式で別 Mesh オブジェクトとして直接構築するように刷新した。
+- 共通の汎用 API `balloon_line_mesh.build_offset_band_polygon(signed_offset_m, band_width_m, valley_sharp)` を追加し、主線・フチ・多重線が同じ実装経路を共有する。
+- 雲フキダシ時はカーブ側の旧来パス (`append_edge_paths` / `append_closed_multi_line_paths`) と Geometry Nodes 側の多重線・フチ機能を完全に止め、Mesh ベースの新実装に一本化 (二重描画 / Z-fight を回避)。
+- 外側フチは主線外側に張り付くように `[line_width − overlap, line_width + edge_width]` の帯、内側フチは body 境界の内側へ `[+overlap, −edge_width]` の帯として配置。多重線も同様に主線の外側 / 本体の内側を基準に距離を取り直した。
+- 「**谷を尖らせる**」(`cloud_valley_sharp`) は主線・外側フチ・内側フチ・多重線すべてに同一の join_style として伝搬する。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 線幅 0.5mm / 5mm × オプション組合せ 8 種 (なし / 外側フチ / 内側フチ / 両方 / 多重線 outside / inside / both / 谷を尖らせる) でグリッドレンダリングし、自己交差・本体塗りの欠けが無いことを確認。
+- 太線 (5mm) + 各オプションの近接レンダーで、外側フチ / 内側フチが期待通り主線の外側 / 本体内側にクリーンに描画されることを目視確認。
+- `balloon_line_mesh_*` / `balloon_outer_edge_mesh_*` / `balloon_inner_edge_mesh_*` / `balloon_multi_line_mesh_*` の Mesh オブジェクト数が想定どおりに生成されることを確認。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: 汎用 `build_offset_band_polygon` / `ensure_balloon_outer_edge_mesh` / `ensure_balloon_inner_edge_mesh` / `ensure_balloon_multi_line_mesh` / 統合 cleanup を追加
+- `utils/balloon_curve_object.py`: `_sync_curve_geometry` で雲時はフチ・多重線のカーブ追加を skip、`_sync_balloon_render_modifier` で雲時はノードグループ側の多重線・フチを無効化、`_sync_balloon_band_meshes` でフチ・多重線 Mesh の同期を行う
+- `utils/balloon_multiline_curve.py`: 既存のフチ・多重線カーブ生成は雲以外 (rect/octagon/ellipse/thorn 等) で引き続き利用
+
 ## 2026-05-27 — v0.6.102 雲フキダシ主線を Shapely buffer 方式に刷新 (任意の線幅でも自己交差せず本体形状を保持)
 
 ### 症状 (v0.6.089 以降で残っていた問題)

@@ -31,13 +31,28 @@ from .geom import Rect, mm_to_m
 _logger = log.get_logger(__name__)
 
 BALLOON_LINE_MESH_NAME_PREFIX = "balloon_line_mesh_"
+BALLOON_OUTER_EDGE_MESH_NAME_PREFIX = "balloon_outer_edge_mesh_"
+BALLOON_INNER_EDGE_MESH_NAME_PREFIX = "balloon_inner_edge_mesh_"
+BALLOON_MULTI_LINE_MESH_NAME_PREFIX = "balloon_multi_line_mesh_"
 PROP_BALLOON_LINE_MESH_KIND = "bname_balloon_line_mesh_kind"
 PROP_BALLOON_LINE_MESH_OWNER_ID = "bname_balloon_line_mesh_owner_id"
+
+# kind タグ
+_KIND_LINE = "balloon_line_mesh"
+_KIND_OUTER_EDGE = "balloon_outer_edge_mesh"
+_KIND_INNER_EDGE = "balloon_inner_edge_mesh"
+_KIND_MULTI_LINE = "balloon_multi_line_mesh"
+_ALL_KINDS = {_KIND_LINE, _KIND_OUTER_EDGE, _KIND_INNER_EDGE, _KIND_MULTI_LINE}
 
 SAMPLES_PER_SEGMENT = 24
 SHARP_THRESHOLD_RAD = math.radians(30.0)
 ARC_STEP_DEG = 12.0
 LINE_Z_OFFSET_M = 0.00010
+OUTER_EDGE_Z_OFFSET_M = 0.000020
+INNER_EDGE_Z_OFFSET_M = 0.000040
+MULTI_LINE_Z_OFFSET_M = 0.000080
+
+_EDGE_OVERLAP_RATIO = 0.06
 
 # コマ内マスク用 Geometry Nodes group
 MASK_CLIP_GROUP_NAME = "BName_GN_BalloonLineMeshClip"
@@ -47,10 +62,20 @@ PROP_GROUP_VERSION = "bname_group_version"
 # 本方式 (メッシュ直接構築) を使う形状。それ以外は既存のノードグループ経路。
 MESH_BAND_LINE_SHAPES = {"cloud", "fluffy", "thorn-curve"}
 
+# Shapely buffer + earcut でフチ・多重線も外部 Mesh として描画する形状。
+# (主線も Shapely 方式で描いている形状のサブセット。)
+SHAPELY_BAND_SHAPES = {"cloud"}
+
 
 def is_mesh_band_shape(entry) -> bool:
     shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     return shape in MESH_BAND_LINE_SHAPES
+
+
+def is_shapely_band_shape(entry) -> bool:
+    """フチ・多重線も Shapely buffer 方式で外部 Mesh 化する形状か."""
+    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    return shape in SHAPELY_BAND_SHAPES
 
 
 def _cubic_bezier_point(p0, p1, p2, p3, t):
@@ -200,57 +225,70 @@ def _smooth_sharp_corners(
     return result
 
 
-def _stroke_band_outside_union(
-    samples: Sequence[tuple[float, float, float]],
-    *,
-    line_width_m: float,
-    valley_sharp: bool,
-    miter_limit: float = 2.5,
-) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
-    """Outside alignment の線バンドを shapely Polygon.buffer で構築する.
-
-    1. body 多角形を構築
-    2. body.buffer(line_width, join_style=round|mitre) で外側を太らせる
-    3. buffered - body で帯領域 (アニュラス) を計算
-    4. 結果ポリゴンの外側リング + ホール (= body) を返す
-
-    valley_sharp=False: round join (谷の外側は半径 W の円弧)
-    valley_sharp=True: mitre join (谷の外側に短い鋭角スパイク)
-    """
+def _build_body_polygon(samples):
+    """サンプル列を shapely Polygon に変換する (失敗時 None)."""
     python_deps.ensure_bundled_wheels_on_path()
     try:
         from shapely.geometry import Polygon  # type: ignore
     except Exception:  # noqa: BLE001
         return None
-
-    n = len(samples)
-    if n < 3 or line_width_m <= 1.0e-9:
+    if len(samples) < 3:
         return None
-
-    body_pts = [(s[0], s[1]) for s in samples]
+    body_pts = [(float(s[0]), float(s[1])) for s in samples]
     try:
         body_poly = Polygon(body_pts)
         if not body_poly.is_valid:
             body_poly = body_poly.buffer(0)
         if body_poly.is_empty or body_poly.area <= 0:
             return None
+        return body_poly
     except Exception:  # noqa: BLE001
         return None
 
+
+def build_offset_band_polygon(
+    body_samples: Sequence,
+    *,
+    signed_offset_m: float,
+    band_width_m: float,
+    valley_sharp: bool,
+    miter_limit: float = 2.5,
+    _body_poly=None,
+) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """本体多角形から signed_offset_m を中心に幅 band_width_m の帯を構築する.
+
+    signed_offset_m: 正=本体の外側へ、負=本体の内側へ。
+    band_width_m: 帯の幅 (常に正)。
+    valley_sharp=True で mitre join (谷で鋭角), False で round join (谷で丸み).
+
+    戻り値: (outer_ring, holes) の対。失敗時 None。
+    """
+    if band_width_m <= 1.0e-9:
+        return None
+    body_poly = _body_poly if _body_poly is not None else _build_body_polygon(body_samples)
+    if body_poly is None:
+        return None
+
     join = 2 if valley_sharp else 1  # 1=round, 2=mitre, 3=bevel
+    mitre = float(miter_limit) if valley_sharp else 5.0
+    half = band_width_m * 0.5
     try:
-        outer_poly = body_poly.buffer(
-            line_width_m,
+        outer_buf = body_poly.buffer(
+            signed_offset_m + half,
             join_style=join,
-            mitre_limit=float(miter_limit) if valley_sharp else 5.0,
+            mitre_limit=mitre,
         )
-        band = outer_poly.difference(body_poly)
+        inner_buf = body_poly.buffer(
+            signed_offset_m - half,
+            join_style=join,
+            mitre_limit=mitre,
+        )
+        band = outer_buf.difference(inner_buf)
     except Exception:  # noqa: BLE001
         return None
 
     if band.is_empty:
         return None
-    # band may be Polygon or MultiPolygon
     if band.geom_type == "Polygon":
         geoms = [band]
     elif band.geom_type == "MultiPolygon":
@@ -262,6 +300,23 @@ def _stroke_band_outside_union(
     outer_ring = list(main.exterior.coords)
     holes = [list(r.coords) for r in main.interiors]
     return outer_ring, holes
+
+
+def _stroke_band_outside_union(
+    samples: Sequence[tuple[float, float, float]],
+    *,
+    line_width_m: float,
+    valley_sharp: bool,
+    miter_limit: float = 2.5,
+) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """主線 (外側アライメント) の線バンドを Shapely buffer で構築する."""
+    return build_offset_band_polygon(
+        samples,
+        signed_offset_m=line_width_m * 0.5,
+        band_width_m=line_width_m,
+        valley_sharp=valley_sharp,
+        miter_limit=miter_limit,
+    )
 
 
 def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
@@ -449,57 +504,45 @@ def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
     return rings[0], holes_all
 
 
-def _build_band_mesh_from_union(
-    mesh: bpy.types.Mesh,
+def _open_ring(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    if len(ring) >= 2 and ring[0] == ring[-1]:
+        return list(ring[:-1])
+    return list(ring)
+
+
+def _ring_signed_area(ring: Sequence[tuple[float, float]]) -> float:
+    n = len(ring)
+    if n < 3:
+        return 0.0
+    a = 0.0
+    for i in range(n):
+        j = (i + 1) % n
+        a += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1]
+    return a * 0.5
+
+
+def _orient_ring(ring: list[tuple[float, float]], want_ccw: bool) -> list[tuple[float, float]]:
+    is_ccw = _ring_signed_area(ring) > 0
+    if is_ccw != want_ccw:
+        return list(reversed(ring))
+    return ring
+
+
+def _triangulate_polygon(
     outer_ring: Sequence[tuple[float, float]],
     holes: Sequence[Sequence[tuple[float, float]]],
-    z_m: float,
-) -> None:
-    """Outer ring (and optional holes) からポリゴンメッシュを構築する.
-
-    mapbox_earcut でポリゴン (ホール含む) を三角分割する。
-    Outer は CCW、Holes は CW に正規化する。
-    """
+) -> tuple[list[tuple[float, float]], list[tuple[int, int, int]]]:
+    """ホール付きポリゴンを earcut で三角分割し、(verts2d, triangles) を返す."""
     python_deps.ensure_bundled_wheels_on_path()
     try:
         import numpy as np  # type: ignore
         import mapbox_earcut as earcut  # type: ignore
     except Exception:  # noqa: BLE001
-        mesh.clear_geometry()
-        mesh.update()
-        return
-
-    def _open_ring(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
-        if len(ring) >= 2 and ring[0] == ring[-1]:
-            return list(ring[:-1])
-        return list(ring)
-
-    def _signed_area(ring: Sequence[tuple[float, float]]) -> float:
-        n = len(ring)
-        if n < 3:
-            return 0.0
-        a = 0.0
-        for i in range(n):
-            j = (i + 1) % n
-            a += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1]
-        return a * 0.5
-
-    def _orient(ring: list[tuple[float, float]], want_ccw: bool) -> list[tuple[float, float]]:
-        is_ccw = _signed_area(ring) > 0
-        if is_ccw != want_ccw:
-            return list(reversed(ring))
-        return ring
-
-    outer_open = _orient(_open_ring(outer_ring), want_ccw=True)
-    holes_open = [_orient(_open_ring(h), want_ccw=False) for h in holes if len(_open_ring(h)) >= 3]
+        return [], []
+    outer_open = _orient_ring(_open_ring(outer_ring), want_ccw=True)
+    holes_open = [_orient_ring(_open_ring(h), want_ccw=False) for h in holes if len(_open_ring(h)) >= 3]
     if len(outer_open) < 3:
-        mesh.clear_geometry()
-        mesh.update()
-        return
-
-    # Build flat (x,y) numpy array of vertices: outer first, then holes
-    # mapbox_earcut wants ring_end_indices = exclusive end of each ring;
-    # last value MUST equal total vertex count.
+        return [], []
     all_pts: list[tuple[float, float]] = list(outer_open)
     ring_ends: list[int] = [len(all_pts)]
     for h in holes_open:
@@ -507,28 +550,59 @@ def _build_band_mesh_from_union(
         ring_ends.append(len(all_pts))
     coords = np.array(all_pts, dtype=np.float64)
     ring_ends_arr = np.array(ring_ends, dtype=np.uint32)
-
     try:
         tris = earcut.triangulate_float64(coords, ring_ends_arr)
     except Exception:  # noqa: BLE001
-        mesh.clear_geometry()
-        mesh.update()
-        return
-
-    # tris is a flat array of vertex indices, every 3 = one triangle
-    verts: list[tuple[float, float, float]] = [(float(x), float(y), float(z_m)) for x, y in all_pts]
-    faces: list[tuple[int, int, int]] = []
+        return [], []
+    triangles: list[tuple[int, int, int]] = []
     for i in range(0, len(tris) - 2, 3):
         a = int(tris[i]); b = int(tris[i + 1]); c = int(tris[i + 2])
         if a == b or b == c or a == c:
             continue
-        faces.append((a, b, c))
+        triangles.append((a, b, c))
+    return all_pts, triangles
 
+
+def _build_band_mesh_from_union(
+    mesh: bpy.types.Mesh,
+    outer_ring: Sequence[tuple[float, float]],
+    holes: Sequence[Sequence[tuple[float, float]]],
+    z_m: float,
+) -> None:
+    """単一ポリゴン (ホール込み) を三角分割して mesh に流し込む."""
+    pts, faces = _triangulate_polygon(outer_ring, holes)
     mesh.clear_geometry()
-    if not faces or len(verts) < 3:
+    if not faces or len(pts) < 3:
         mesh.update()
         return
+    verts = [(float(x), float(y), float(z_m)) for x, y in pts]
     mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+
+def _build_band_mesh_from_polygons(
+    mesh: bpy.types.Mesh,
+    polygons: Sequence[tuple[Sequence[tuple[float, float]], Sequence[Sequence[tuple[float, float]]]]],
+    z_m: float,
+) -> None:
+    """複数のホール付きポリゴンを 1 つの mesh に統合して流し込む.
+
+    各ポリゴンを個別に三角分割し、頂点インデックスをオフセットして連結する。
+    """
+    all_verts: list[tuple[float, float, float]] = []
+    all_faces: list[tuple[int, int, int]] = []
+    for outer_ring, holes in polygons:
+        pts, faces = _triangulate_polygon(outer_ring, holes)
+        if not faces or len(pts) < 3:
+            continue
+        base = len(all_verts)
+        all_verts.extend((float(x), float(y), float(z_m)) for x, y in pts)
+        all_faces.extend((a + base, b + base, c + base) for a, b, c in faces)
+    mesh.clear_geometry()
+    if not all_faces or len(all_verts) < 3:
+        mesh.update()
+        return
+    mesh.from_pydata(all_verts, [], all_faces)
     mesh.update()
 
 
@@ -875,6 +949,111 @@ def _line_mesh_data_name(balloon_id: str) -> str:
     return f"{BALLOON_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
 
 
+def _outer_edge_mesh_object_name(balloon_id: str) -> str:
+    return f"{BALLOON_OUTER_EDGE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def _outer_edge_mesh_data_name(balloon_id: str) -> str:
+    return f"{BALLOON_OUTER_EDGE_MESH_NAME_PREFIX}{balloon_id}_mesh"
+
+
+def _inner_edge_mesh_object_name(balloon_id: str) -> str:
+    return f"{BALLOON_INNER_EDGE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def _inner_edge_mesh_data_name(balloon_id: str) -> str:
+    return f"{BALLOON_INNER_EDGE_MESH_NAME_PREFIX}{balloon_id}_mesh"
+
+
+def _multi_line_mesh_object_name(balloon_id: str) -> str:
+    return f"{BALLOON_MULTI_LINE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def _multi_line_mesh_data_name(balloon_id: str) -> str:
+    return f"{BALLOON_MULTI_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
+
+
+def _attach_band_mesh_object(
+    *,
+    obj_name: str,
+    mesh: bpy.types.Mesh,
+    material: bpy.types.Material,
+    body_object: bpy.types.Object,
+    scene,
+    kind: str,
+    balloon_id: str,
+    visible: bool,
+    mask_info=None,
+) -> bpy.types.Object:
+    """Mesh をフキダシ本体に連結し、コレクション/親子/マスククリップを ensure する."""
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None and getattr(obj, "type", "") != "MESH":
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+        obj = None
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    elif obj.data is not mesh:
+        obj.data = mesh
+
+    if material is not None:
+        if not mesh.materials:
+            mesh.materials.append(material)
+        elif mesh.materials[0] is not material:
+            mesh.materials[0] = material
+
+    obj[PROP_BALLOON_LINE_MESH_KIND] = kind
+    obj[PROP_BALLOON_LINE_MESH_OWNER_ID] = balloon_id
+    obj[on.PROP_MANAGED] = False
+    obj.hide_select = True
+
+    target_collections = list(getattr(body_object, "users_collection", []) or [])
+    if not target_collections:
+        target_collections = [scene.collection] if scene is not None else []
+    current_collections = set(getattr(obj, "users_collection", []) or [])
+    for coll in target_collections:
+        if coll not in current_collections:
+            try:
+                coll.objects.link(obj)
+            except Exception:  # noqa: BLE001
+                pass
+    for coll in list(current_collections):
+        if coll not in target_collections:
+            try:
+                coll.objects.unlink(obj)
+            except Exception:  # noqa: BLE001
+                pass
+
+    if obj.parent is not body_object:
+        obj.parent = body_object
+        obj.matrix_parent_inverse.identity()
+    obj.location = (0.0, 0.0, 0.0)
+    obj.rotation_euler = (0.0, 0.0, 0.0)
+    obj.scale = (1.0, 1.0, 1.0)
+
+    obj.hide_viewport = not visible
+    obj.hide_render = not visible
+
+    mask_obj = getattr(mask_info, "space_object", None) if mask_info is not None else None
+    _sync_mask_clip_modifier(obj, mask_obj)
+    return obj
+
+
+def _resolve_body_spline(body_object: bpy.types.Object | None):
+    """フキダシ本体カーブの閉じた Bezier spline を返す。無ければ None。"""
+    if body_object is None or getattr(body_object, "type", "") != "CURVE":
+        return None
+    body_curve = getattr(body_object, "data", None)
+    if body_curve is None:
+        return None
+    for spline in list(getattr(body_curve, "splines", []) or []):
+        if str(getattr(spline, "type", "") or "") == "BEZIER" and bool(getattr(spline, "use_cyclic_u", False)):
+            return spline
+    return None
+
+
 def ensure_balloon_line_mesh(
     *,
     scene,
@@ -903,19 +1082,7 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
 
-    if body_object is None or getattr(body_object, "type", "") != "CURVE":
-        remove_balloon_line_mesh(balloon_id)
-        return None
-    body_curve = getattr(body_object, "data", None)
-    if body_curve is None:
-        remove_balloon_line_mesh(balloon_id)
-        return None
-    splines = list(getattr(body_curve, "splines", []) or [])
-    body_spline = None
-    for spline in splines:
-        if str(getattr(spline, "type", "") or "") == "BEZIER" and bool(getattr(spline, "use_cyclic_u", False)):
-            body_spline = spline
-            break
+    body_spline = _resolve_body_spline(body_object)
     if body_spline is None:
         remove_balloon_line_mesh(balloon_id)
         return None
@@ -964,64 +1131,269 @@ def ensure_balloon_line_mesh(
         outer, inner = band
         _rebuild_band_mesh(mesh, outer, inner, LINE_Z_OFFSET_M)
 
-    obj_name = _line_mesh_object_name(balloon_id)
-    obj = bpy.data.objects.get(obj_name)
-    if obj is not None and getattr(obj, "type", "") != "MESH":
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            pass
-        obj = None
-    if obj is None:
-        obj = bpy.data.objects.new(obj_name, mesh)
-    elif obj.data is not mesh:
-        obj.data = mesh
+    return _attach_band_mesh_object(
+        obj_name=_line_mesh_object_name(balloon_id),
+        mesh=mesh,
+        material=line_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_LINE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
 
-    if not mesh.materials:
-        mesh.materials.append(line_material)
-    elif mesh.materials[0] is not line_material:
-        mesh.materials[0] = line_material
 
-    obj[PROP_BALLOON_LINE_MESH_KIND] = "balloon_line_mesh"
-    obj[PROP_BALLOON_LINE_MESH_OWNER_ID] = balloon_id
-    obj[on.PROP_MANAGED] = False
-    obj.hide_select = True
+def _valley_sharp_for_entry(entry) -> bool:
+    sp = getattr(entry, "shape_params", None)
+    return bool(getattr(sp, "cloud_valley_sharp", False))
 
-    # 本体オブジェクトのコレクションに同居させる
-    target_collections = list(getattr(body_object, "users_collection", []) or [])
-    if not target_collections:
-        target_collections = [scene.collection] if scene is not None else []
-    current_collections = set(getattr(obj, "users_collection", []) or [])
-    for coll in target_collections:
-        if coll not in current_collections:
-            try:
-                coll.objects.link(obj)
-            except Exception:  # noqa: BLE001
-                pass
-    for coll in list(current_collections):
-        if coll not in target_collections:
-            try:
-                coll.objects.unlink(obj)
-            except Exception:  # noqa: BLE001
-                pass
 
-    # 本体カーブにペアレントして transform を追従させる
-    if obj.parent is not body_object:
-        obj.parent = body_object
-        obj.matrix_parent_inverse.identity()
-    obj.location = (0.0, 0.0, 0.0)
-    obj.rotation_euler = (0.0, 0.0, 0.0)
-    obj.scale = (1.0, 1.0, 1.0)
+def ensure_balloon_outer_edge_mesh(
+    *,
+    scene,
+    work,
+    page,
+    entry,
+    body_object: bpy.types.Object,
+    outer_edge_material: bpy.types.Material,
+    mask_info=None,
+) -> Optional[bpy.types.Object]:
+    """フキダシ外側フチのメッシュバンドを Shapely buffer で生成する."""
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+    if not is_shapely_band_shape(entry):
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+    if not bool(getattr(entry, "outer_white_margin_enabled", False)):
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+    edge_width_mm = max(0.0, float(getattr(entry, "outer_white_margin_width_mm", 0.0) or 0.0))
+    if edge_width_mm <= 1.0e-6:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+    line_style = str(getattr(entry, "line_style", "") or "")
+    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    body_spline = _resolve_body_spline(body_object)
+    if body_spline is None:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    if len(samples) < 3:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
 
-    visible = bool(getattr(entry, "visible", True))
-    obj.hide_viewport = not visible
-    obj.hide_render = not visible
+    # 雲フキダシ主線は外側アライメント (body から +line_width まで body の外を太らせる)。
+    # 外側フチは主線の外側に沿って張り付くため、near=line_width-overlap, far=line_width+edge_width.
+    overlap_mm = min(line_width_mm, edge_width_mm) * _EDGE_OVERLAP_RATIO
+    near_mm = max(0.0, line_width_mm - overlap_mm)
+    far_mm = line_width_mm + edge_width_mm
+    center_mm = (near_mm + far_mm) * 0.5
+    band_mm = max(0.0, far_mm - near_mm)
+    band_polygon = build_offset_band_polygon(
+        samples,
+        signed_offset_m=center_mm * 0.001,
+        band_width_m=band_mm * 0.001,
+        valley_sharp=_valley_sharp_for_entry(entry),
+    )
+    if band_polygon is None:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+    outer_ring, holes = band_polygon
 
-    # コマ内マスククリップ modifier を ensure する
-    mask_obj = getattr(mask_info, "space_object", None) if mask_info is not None else None
-    _sync_mask_clip_modifier(obj, mask_obj)
+    mesh_name = _outer_edge_mesh_data_name(balloon_id)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    _build_band_mesh_from_union(mesh, outer_ring, holes, OUTER_EDGE_Z_OFFSET_M)
 
-    return obj
+    return _attach_band_mesh_object(
+        obj_name=_outer_edge_mesh_object_name(balloon_id),
+        mesh=mesh,
+        material=outer_edge_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_OUTER_EDGE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
+
+
+def ensure_balloon_inner_edge_mesh(
+    *,
+    scene,
+    work,
+    page,
+    entry,
+    body_object: bpy.types.Object,
+    inner_edge_material: bpy.types.Material,
+    mask_info=None,
+) -> Optional[bpy.types.Object]:
+    """フキダシ内側フチのメッシュバンドを Shapely buffer で生成する."""
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+    if not is_shapely_band_shape(entry):
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+    if not bool(getattr(entry, "inner_white_margin_enabled", False)):
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+    edge_width_mm = max(0.0, float(getattr(entry, "inner_white_margin_width_mm", 0.0) or 0.0))
+    if edge_width_mm <= 1.0e-6:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+    line_style = str(getattr(entry, "line_style", "") or "")
+    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    body_spline = _resolve_body_spline(body_object)
+    if body_spline is None:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    if len(samples) < 3:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+
+    # 雲フキダシ主線は外側アライメントなので body 内側には主線が無い。内側フチは
+    # body 境界 (+overlap だけ外向きにオーバーラップ) から内向きに edge_width 入った
+    # 領域を帯にする。
+    overlap_mm = min(line_width_mm, edge_width_mm) * _EDGE_OVERLAP_RATIO
+    # 帯は signed offset = +overlap から -edge_width まで → 中央 = (overlap - edge_width)/2.
+    center_mm = (overlap_mm - edge_width_mm) * 0.5
+    band_mm = overlap_mm + edge_width_mm
+    band_polygon = build_offset_band_polygon(
+        samples,
+        signed_offset_m=center_mm * 0.001,
+        band_width_m=band_mm * 0.001,
+        valley_sharp=_valley_sharp_for_entry(entry),
+    )
+    if band_polygon is None:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+    outer_ring, holes = band_polygon
+
+    mesh_name = _inner_edge_mesh_data_name(balloon_id)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    _build_band_mesh_from_union(mesh, outer_ring, holes, INNER_EDGE_Z_OFFSET_M)
+
+    return _attach_band_mesh_object(
+        obj_name=_inner_edge_mesh_object_name(balloon_id),
+        mesh=mesh,
+        material=inner_edge_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_INNER_EDGE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
+
+
+def ensure_balloon_multi_line_mesh(
+    *,
+    scene,
+    work,
+    page,
+    entry,
+    body_object: bpy.types.Object,
+    line_material: bpy.types.Material,
+    mask_info=None,
+) -> Optional[bpy.types.Object]:
+    """フキダシ多重線 (全リング統合) のメッシュを Shapely buffer で生成する."""
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+    if not is_shapely_band_shape(entry):
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+    if str(getattr(entry, "line_style", "") or "") != "double":
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+    count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
+    if count <= 1:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    multi_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.0) or 0.0))
+    spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.0) or 0.0))
+    width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    if multi_width_mm <= 1.0e-6:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+    direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
+    if direction == "both":
+        sides = ("inside", "outside")
+    elif direction == "inside":
+        sides = ("inside",)
+    else:
+        sides = ("outside",)
+
+    body_spline = _resolve_body_spline(body_object)
+    if body_spline is None:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    if len(samples) < 3:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+
+    body_poly = _build_body_polygon(samples)
+    if body_poly is None:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+
+    valley_sharp = _valley_sharp_for_entry(entry)
+    # 雲フキダシ主線は外側アライメント (body から +line_width まで外を太らせる)。
+    # 多重線も主線と整合させるため:
+    #   - "outside" は主線の外側 (body + line_width) から spacing おきにリングを並べる
+    #   - "inside" は body 境界の内側 (line は内側に張り出さない) から spacing おきに並べる
+    base_outside_mm = line_width_mm
+    base_inside_mm = 0.0
+    polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    for ring_index in range(1, count):
+        ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
+        if ring_width_mm <= 1.0e-6:
+            continue
+        for side in sides:
+            if side == "inside":
+                signed_offset_mm = -(base_inside_mm + spacing_mm * ring_index)
+            else:
+                signed_offset_mm = base_outside_mm + spacing_mm * ring_index
+            band = build_offset_band_polygon(
+                samples,
+                signed_offset_m=signed_offset_mm * 0.001,
+                band_width_m=ring_width_mm * 0.001,
+                valley_sharp=valley_sharp,
+                _body_poly=body_poly,
+            )
+            if band is None:
+                continue
+            polygons.append(band)
+    if not polygons:
+        remove_balloon_multi_line_mesh(balloon_id)
+        return None
+
+    mesh_name = _multi_line_mesh_data_name(balloon_id)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    _build_band_mesh_from_polygons(mesh, polygons, MULTI_LINE_Z_OFFSET_M)
+
+    return _attach_band_mesh_object(
+        obj_name=_multi_line_mesh_object_name(balloon_id),
+        mesh=mesh,
+        material=line_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_MULTI_LINE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
 
 
 def _ensure_mask_clip_group() -> bpy.types.NodeTree:
@@ -1150,10 +1522,7 @@ def _sync_mask_clip_modifier(obj: bpy.types.Object, mask_object: Optional[bpy.ty
             pass
 
 
-def remove_balloon_line_mesh(balloon_id: str) -> None:
-    if not balloon_id:
-        return
-    obj_name = _line_mesh_object_name(balloon_id)
+def _remove_named_band_mesh(obj_name: str) -> None:
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
         return
@@ -1161,7 +1530,7 @@ def remove_balloon_line_mesh(balloon_id: str) -> None:
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
     except Exception:  # noqa: BLE001
-        _logger.exception("balloon line mesh removal failed")
+        _logger.exception("balloon band mesh removal failed: %s", obj_name)
         return
     if data is not None and getattr(data, "users", 0) == 0:
         try:
@@ -1171,10 +1540,44 @@ def remove_balloon_line_mesh(balloon_id: str) -> None:
             pass
 
 
+def remove_balloon_line_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    _remove_named_band_mesh(_line_mesh_object_name(balloon_id))
+
+
+def remove_balloon_outer_edge_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    _remove_named_band_mesh(_outer_edge_mesh_object_name(balloon_id))
+
+
+def remove_balloon_inner_edge_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    _remove_named_band_mesh(_inner_edge_mesh_object_name(balloon_id))
+
+
+def remove_balloon_multi_line_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    _remove_named_band_mesh(_multi_line_mesh_object_name(balloon_id))
+
+
+def remove_all_balloon_band_meshes(balloon_id: str) -> None:
+    """主線・フチ・多重線の Mesh をまとめて撤去する."""
+    remove_balloon_line_mesh(balloon_id)
+    remove_balloon_outer_edge_mesh(balloon_id)
+    remove_balloon_inner_edge_mesh(balloon_id)
+    remove_balloon_multi_line_mesh(balloon_id)
+
+
 def cleanup_orphan_line_meshes(valid_balloon_ids: set[str]) -> int:
+    """主線・フチ・多重線の Mesh のうち、有効な balloon id を持たないものを撤去する."""
     removed = 0
     for obj in list(bpy.data.objects):
-        if obj.get(PROP_BALLOON_LINE_MESH_KIND) != "balloon_line_mesh":
+        kind = str(obj.get(PROP_BALLOON_LINE_MESH_KIND, "") or "")
+        if kind not in _ALL_KINDS:
             continue
         owner_id = str(obj.get(PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
         if owner_id and owner_id not in valid_balloon_ids:
