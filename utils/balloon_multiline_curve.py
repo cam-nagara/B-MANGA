@@ -489,6 +489,96 @@ def _offset_closed_outline(
     return result
 
 
+def _offset_closed_outline_arc(
+    points: Sequence[tuple[float, float]],
+    *,
+    distance_mm: float,
+    clockwise: bool,
+    side: str,
+    miter_limit: float = 6.0,
+    arc_step_deg: float = 10.0,
+    max_arc_steps: int = 36,
+) -> list[tuple[float, float]] | None:
+    """点列の輪郭をオフセットする。広がる側 (offset 側が body の凸側) は円弧で
+    丸める。狭まる側 (offset 側が body の凹側) は隣接オフセット線の交点で詰める。
+
+    雲・モフモフ・トゲ曲線のように、body のバンプ間で鋭い谷を持つ形状に対して
+    使う。BEZIER 閉ループに乗せると AUTO ハンドル補間で滑らかな丸みになる。
+    """
+    points, _corners = _strip_duplicate_closure(points)
+    n = len(points)
+    if n < 3:
+        return None
+    distance = float(distance_mm)
+    if distance <= 1.0e-9:
+        return [(float(x), float(y)) for x, y in points]
+
+    direction_sign = -1.0 if side == "inside" else 1.0
+    arc_step = math.radians(max(1.0, arc_step_deg))
+    result: list[tuple[float, float]] = []
+
+    for index, current in enumerate(points):
+        previous = points[index - 1]
+        nxt = points[(index + 1) % n]
+
+        d_prev_x = current[0] - previous[0]
+        d_prev_y = current[1] - previous[1]
+        d_next_x = nxt[0] - current[0]
+        d_next_y = nxt[1] - current[1]
+        prev_len = math.hypot(d_prev_x, d_prev_y)
+        next_len = math.hypot(d_next_x, d_next_y)
+        if prev_len <= 1.0e-9 or next_len <= 1.0e-9:
+            continue
+
+        cross_dir = d_prev_x * d_next_y - d_prev_y * d_next_x
+        body_convex_outward = (cross_dir > 0.0) != bool(clockwise)
+        offset_diverges = body_convex_outward if side == "outside" else not body_convex_outward
+
+        n_prev = _segment_outward_normal(previous, current, clockwise=clockwise)
+        n_next = _segment_outward_normal(current, nxt, clockwise=clockwise)
+        n_prev = (n_prev[0] * direction_sign, n_prev[1] * direction_sign)
+        n_next = (n_next[0] * direction_sign, n_next[1] * direction_sign)
+
+        cross_n = n_prev[0] * n_next[1] - n_prev[1] * n_next[0]
+        dot_n = n_prev[0] * n_next[0] + n_prev[1] * n_next[1]
+        delta = math.atan2(cross_n, dot_n)
+
+        if abs(delta) < math.radians(1.0):
+            mid = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
+            if mid is None:
+                continue
+            result.append((current[0] + mid[0] * distance, current[1] + mid[1] * distance))
+            continue
+
+        if offset_diverges:
+            steps = max(2, int(math.ceil(abs(delta) / arc_step)))
+            steps = min(steps, max_arc_steps)
+            for s in range(steps + 1):
+                t = s / steps
+                theta = delta * t
+                cos_t = math.cos(theta)
+                sin_t = math.sin(theta)
+                nx = n_prev[0] * cos_t - n_prev[1] * sin_t
+                ny = n_prev[0] * sin_t + n_prev[1] * cos_t
+                result.append((current[0] + nx * distance, current[1] + ny * distance))
+        else:
+            p1 = (current[0] + n_prev[0] * distance, current[1] + n_prev[1] * distance)
+            p2 = (current[0] + n_next[0] * distance, current[1] + n_next[1] * distance)
+            d_prev_dir = (d_prev_x / prev_len, d_prev_y / prev_len)
+            d_next_dir = (d_next_x / next_len, d_next_y / next_len)
+            hit = _line_intersection_2d(p1, d_prev_dir, p2, d_next_dir)
+            if hit is not None and math.hypot(hit[0] - current[0], hit[1] - current[1]) <= distance * miter_limit:
+                result.append(hit)
+            else:
+                bis = _normalize_2d((n_prev[0] + n_next[0], n_prev[1] + n_next[1]))
+                if bis is None:
+                    continue
+                clamp_d = distance * miter_limit
+                result.append((current[0] + bis[0] * clamp_d, current[1] + bis[1] * clamp_d))
+
+    return result
+
+
 def _offset_closed_outline_smooth(
     points: Sequence[tuple[float, float]],
     *,
@@ -740,9 +830,10 @@ def append_main_line_fill_paths(
     if shape_name not in {"rect", "octagon", "thorn"}:
         # 滑らか形状 (雲・モフモフ・トゲ曲線) は B-Name 側で外周/内周を算出し、
         # 滑らかなベジエ閉ループ 2 本として追加する (Fill Curve が穴あき帯にする).
-        offset_fn = _offset_closed_outline_smooth
-        outer = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
-        inner = offset_fn(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
+        # 鋭い谷を持つ body でも線幅が一定になるよう、広がる側は円弧で丸め、
+        # 狭まる側は隣接オフセット線の交点で詰める (右直角・自己交差を回避).
+        outer = _offset_closed_outline_arc(body_points, distance_mm=half_width, clockwise=clockwise, side="outside")
+        inner = _offset_closed_outline_arc(body_points, distance_mm=half_width, clockwise=clockwise, side="inside")
         if outer is None or inner is None:
             return
         _add_filled_band_bezier(
