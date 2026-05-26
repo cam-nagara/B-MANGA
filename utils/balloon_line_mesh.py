@@ -1,11 +1,15 @@
 """フキダシ主線をメッシュバンド方式で直接構築する.
 
-雲・モフモフ・トゲ曲線のような滑らか形状で、本体カーブの中心線サンプル点列から
-外周と内周の点ペアを算出し、四角形ストリップのメッシュを直接構築する。
+雲・モフモフ・トゲ曲線のような滑らか形状で、外周と内周の点ペアから
+四角形ストリップのメッシュを直接構築する。
 
-鋭い谷 (本体カーブの handles が連続しない anchor) のところでオフセットが
-深く突き出さないよう、サンプル点列の鋭角を半径 R の小さな円弧で事前に丸めて
-からオフセットする (本体カーブ自体は変更しない)。
+雲: 線形状を本体カーブと独立した滑らかな閉曲線として直接生成する。
+本体カーブが谷で鋭角を持っていても、線形状側は谷で楕円接線方向に
+handles を揃えるため、必ず滑らかにつながる (offset 方式で必ず生じる
+谷の重なりを根本回避)。
+
+モフモフ・トゲ曲線: 本体カーブの中心線サンプル点列から、谷の鋭角を半径 R の
+小さな円弧で事前に丸めてから外周/内周にオフセットする (offset 方式)。
 
 線幅は本体 Bezier の per-point radius を補間で反映する。
 コマ枠 (coma_border) と同じ作り方で、Curve+FillCurve ではなく Mesh 直接構築。
@@ -21,6 +25,8 @@ import bpy
 from . import balloon_shapes
 from . import log
 from . import object_naming as on
+from . import python_deps
+from .geom import Rect, mm_to_m
 
 _logger = log.get_logger(__name__)
 
@@ -53,6 +59,52 @@ def _cubic_bezier_point(p0, p1, p2, p3, t):
         u * u * u * p0[0] + 3.0 * u * u * t * p1[0] + 3.0 * u * t * t * p2[0] + t * t * t * p3[0],
         u * u * u * p0[1] + 3.0 * u * u * t * p1[1] + 3.0 * u * t * t * p2[1] + t * t * t * p3[1],
     )
+
+
+def _entry_local_offset_mm(entry) -> tuple[float, float]:
+    """entry の本体カーブ origin から見た rect ローカル原点のオフセット (mm).
+
+    balloon_curve_object._entry_curve_offset と同じ計算. rect 内ローカル mm 座標に
+    このオフセットを加えると balloon-local mm 座標になる.
+    """
+    return (
+        float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)) * 0.5,
+        float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)) * 0.5,
+    )
+
+
+def _body_per_anchor_radii(spline) -> list[float]:
+    """本体 Bezier の各 anchor の radius (per-point) を順に返す."""
+    pts = list(getattr(spline, "bezier_points", []) or [])
+    return [max(0.0, float(getattr(p, "radius", 1.0) or 0.0)) for p in pts]
+
+
+def _sample_anchor_loop_to_local_m(
+    anchors: Sequence[balloon_shapes.BezierAnchor],
+    offset_mm: tuple[float, float],
+    samples_per_segment: int,
+) -> list[tuple[float, float]]:
+    """閉じた BezierAnchor 列を samples_per_segment 段でサンプリングし、
+    rect-local mm → balloon-local m に変換した (x, y) 列を返す."""
+    n = len(anchors)
+    if n < 3:
+        return []
+    steps = max(4, int(samples_per_segment))
+    ox, oy = offset_mm
+    out: list[tuple[float, float]] = []
+    for index, anchor in enumerate(anchors):
+        nxt = anchors[(index + 1) % n]
+        p0 = anchor.co
+        p1 = anchor.handle_right if anchor.handle_right is not None else anchor.co
+        p2 = nxt.handle_left if nxt.handle_left is not None else nxt.co
+        p3 = nxt.co
+        for step in range(steps):
+            t = step / steps
+            x_mm, y_mm = _cubic_bezier_point(p0, p1, p2, p3, t)
+            out.append((mm_to_m(x_mm + ox), mm_to_m(y_mm + oy)))
+    return out
 
 
 def _sample_body_bezier(spline, samples_per_segment: int) -> list[tuple[float, float, float]]:
@@ -148,6 +200,546 @@ def _smooth_sharp_corners(
     return result
 
 
+def _stroke_band_outside_union(
+    samples: Sequence[tuple[float, float, float]],
+    *,
+    line_width_m: float,
+    valley_sharp: bool,
+    miter_limit: float = 2.5,
+) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """Outside alignment の線バンドを shapely Polygon.buffer で構築する.
+
+    1. body 多角形を構築
+    2. body.buffer(line_width, join_style=round|mitre) で外側を太らせる
+    3. buffered - body で帯領域 (アニュラス) を計算
+    4. 結果ポリゴンの外側リング + ホール (= body) を返す
+
+    valley_sharp=False: round join (谷の外側は半径 W の円弧)
+    valley_sharp=True: mitre join (谷の外側に短い鋭角スパイク)
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+
+    n = len(samples)
+    if n < 3 or line_width_m <= 1.0e-9:
+        return None
+
+    body_pts = [(s[0], s[1]) for s in samples]
+    try:
+        body_poly = Polygon(body_pts)
+        if not body_poly.is_valid:
+            body_poly = body_poly.buffer(0)
+        if body_poly.is_empty or body_poly.area <= 0:
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+
+    join = 2 if valley_sharp else 1  # 1=round, 2=mitre, 3=bevel
+    try:
+        outer_poly = body_poly.buffer(
+            line_width_m,
+            join_style=join,
+            mitre_limit=float(miter_limit) if valley_sharp else 5.0,
+        )
+        band = outer_poly.difference(body_poly)
+    except Exception:  # noqa: BLE001
+        return None
+
+    if band.is_empty:
+        return None
+    # band may be Polygon or MultiPolygon
+    if band.geom_type == "Polygon":
+        geoms = [band]
+    elif band.geom_type == "MultiPolygon":
+        geoms = list(band.geoms)
+    else:
+        return None
+    # 最大面積のポリゴンを採用 (通常は band 全体が単一)
+    main = max(geoms, key=lambda g: g.area)
+    outer_ring = list(main.exterior.coords)
+    holes = [list(r.coords) for r in main.interiors]
+    return outer_ring, holes
+
+
+def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
+    samples: Sequence[tuple[float, float, float]],
+    *,
+    line_width_m: float,
+    valley_sharp: bool,
+    cusp_threshold_rad: float = math.radians(100.0),
+    miter_factor: float = 2.5,
+    arc_samples_per_cusp: int = 12,
+) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """フキダシ主線を「カーブの外側へ太くする」(outside alignment) 方式で構築する.
+
+    手順:
+    1. 本体サンプル列に対し外向き垂直オフセット (line_width_m) で外周点列を作る
+    2. cusp (鋭角谷) では round join (円弧) または sharp (miter) で外周を繋ぐ
+    3. オフセットが自己交差する場合があっても、shapely で **クワッド群の UNION**
+       を計算してから外側の輪郭ポリゴンを抽出する
+    4. 戻り値は (outer_ring, hole_rings)。outer_ring は外側の閉ループ、
+       hole_rings は内側のホール (通常は本体カーブ = 0 個か 1 個)
+
+    self-intersection が幾何的に必要 (谷間が線幅より狭い) でもクリーンな輪郭が
+    得られる。三角分割は呼び出し側で行う。
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+
+    n = len(samples)
+    if n < 3 or line_width_m <= 1.0e-9:
+        return None
+    pts = [(s[0], s[1]) for s in samples]
+    area = _polygon_area(pts)
+    if abs(area) <= 1.0e-12:
+        return None
+    ccw = area > 0.0
+    cx = sum(p[0] for p in pts) / n
+    cy = sum(p[1] for p in pts) / n
+
+    W = line_width_m  # 外向きオフセット距離 = 線幅そのもの (band 全幅)
+
+    # 外周/内周点列を構築。inner = サンプル位置そのもの (本体カーブ)。
+    outer: list[tuple[float, float]] = []
+    inner: list[tuple[float, float]] = []
+    for i in range(n):
+        prev_s = samples[(i - 1) % n]
+        curr_s = samples[i]
+        next_s = samples[(i + 1) % n]
+        ax, ay = curr_s[0] - prev_s[0], curr_s[1] - prev_s[1]
+        bx, by = next_s[0] - curr_s[0], next_s[1] - curr_s[1]
+        la = math.hypot(ax, ay)
+        lb = math.hypot(bx, by)
+        if la <= 1.0e-9 or lb <= 1.0e-9:
+            continue
+        a_dx, a_dy = ax / la, ay / la
+        b_dx, b_dy = bx / lb, by / lb
+        cross = a_dx * b_dy - a_dy * b_dx
+        dot = a_dx * b_dx + a_dy * b_dy
+        bend = math.atan2(abs(cross), dot)
+        rs = max(0.0, float(curr_s[2]))
+        # 外向き法線 = CCW なら接線の右側
+        if ccw:
+            perp_a = (a_dy, -a_dx)
+            perp_b = (b_dy, -b_dx)
+        else:
+            perp_a = (-a_dy, a_dx)
+            perp_b = (-b_dy, b_dx)
+        if bend < cusp_threshold_rad:
+            # 通常 anchor: miter 二等分線オフセット
+            dot_pp = perp_a[0] * perp_b[0] + perp_a[1] * perp_b[1]
+            denom = 1.0 + dot_pp
+            if denom <= 1.0e-3:
+                continue
+            sx = perp_a[0] + perp_b[0]
+            sy = perp_a[1] + perp_b[1]
+            ox = sx * W * rs / denom
+            oy = sy * W * rs / denom
+            off_len = math.hypot(ox, oy)
+            if off_len > 3.0 * W and off_len > 0:
+                ox *= 3.0 * W / off_len
+                oy *= 3.0 * W / off_len
+            outer.append((curr_s[0] + ox, curr_s[1] + oy))
+            inner.append((curr_s[0], curr_s[1]))
+        else:
+            # cusp 処理
+            rad_x = curr_s[0] - cx
+            rad_y = curr_s[1] - cy
+            r_len = math.hypot(rad_x, rad_y)
+            if r_len <= 1.0e-9:
+                continue
+            r_out = (rad_x / r_len, rad_y / r_len)
+            if valley_sharp:
+                # miter: perp_a 端 → 外向き先端 → perp_b 端
+                miter_len = W * miter_factor
+                miter_out = (curr_s[0] + r_out[0] * miter_len, curr_s[1] + r_out[1] * miter_len)
+                outer.append((curr_s[0] + perp_a[0] * W * rs, curr_s[1] + perp_a[1] * W * rs))
+                outer.append(miter_out)
+                outer.append((curr_s[0] + perp_b[0] * W * rs, curr_s[1] + perp_b[1] * W * rs))
+                inner.append((curr_s[0], curr_s[1]))
+                inner.append((curr_s[0], curr_s[1]))
+                inner.append((curr_s[0], curr_s[1]))
+            else:
+                # round join: 半径 W の円弧で滑らかに繋ぐ
+                ang_a = math.atan2(perp_a[1], perp_a[0])
+                ang_b = math.atan2(perp_b[1], perp_b[0])
+                ang_mid = math.atan2(r_out[1], r_out[0])
+
+                def _norm_pi(x: float) -> float:
+                    while x > math.pi:
+                        x -= 2.0 * math.pi
+                    while x < -math.pi:
+                        x += 2.0 * math.pi
+                    return x
+
+                sweep_ccw = _norm_pi(ang_b - ang_a)
+                if sweep_ccw < 0:
+                    sweep_ccw += 2.0 * math.pi
+                pos_mid = _norm_pi(ang_mid - ang_a)
+                if pos_mid < 0:
+                    pos_mid += 2.0 * math.pi
+                use_ccw = 0.0 <= pos_mid <= sweep_ccw
+                steps = max(2, int(arc_samples_per_cusp))
+                for k in range(steps):
+                    t = k / (steps - 1)
+                    if use_ccw:
+                        a = ang_a + sweep_ccw * t
+                    else:
+                        sweep_cw = _norm_pi(ang_a - ang_b)
+                        if sweep_cw < 0:
+                            sweep_cw += 2.0 * math.pi
+                        a = ang_a - sweep_cw * t
+                    outer.append((curr_s[0] + math.cos(a) * W * rs, curr_s[1] + math.sin(a) * W * rs))
+                    inner.append((curr_s[0], curr_s[1]))
+
+    if len(outer) < 3 or len(inner) != len(outer):
+        return None
+
+    # クワッド群を shapely で UNION
+    polys = []
+    nq = len(outer)
+    for i in range(nq):
+        quad = [outer[i], outer[(i + 1) % nq], inner[(i + 1) % nq], inner[i]]
+        # Skip degenerate (zero area)
+        a = 0.0
+        prev = quad[-1]
+        for p in quad:
+            a += prev[0] * p[1] - p[0] * prev[1]
+            prev = p
+        if abs(a * 0.5) < 1.0e-12:
+            continue
+        try:
+            poly = Polygon(quad)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if poly.area > 0:
+                polys.append(poly)
+        except Exception:  # noqa: BLE001
+            continue
+    if not polys:
+        return None
+    try:
+        union = unary_union(polys)
+    except Exception:  # noqa: BLE001
+        return None
+    # 外側 outline + 内側 hole を抽出
+    rings: list[list[tuple[float, float]]] = []
+    holes_all: list[list[tuple[float, float]]] = []
+    if union.geom_type == "Polygon":
+        rings.append(list(union.exterior.coords))
+        for ring in union.interiors:
+            holes_all.append(list(ring.coords))
+    elif union.geom_type == "MultiPolygon":
+        # 最大面積のポリゴンを採用 (通常は band 全体が 1 つに繋がる)
+        biggest = max(union.geoms, key=lambda g: g.area)
+        rings.append(list(biggest.exterior.coords))
+        for ring in biggest.interiors:
+            holes_all.append(list(ring.coords))
+    else:
+        return None
+    if not rings:
+        return None
+    return rings[0], holes_all
+
+
+def _build_band_mesh_from_union(
+    mesh: bpy.types.Mesh,
+    outer_ring: Sequence[tuple[float, float]],
+    holes: Sequence[Sequence[tuple[float, float]]],
+    z_m: float,
+) -> None:
+    """Outer ring (and optional holes) からポリゴンメッシュを構築する.
+
+    mapbox_earcut でポリゴン (ホール含む) を三角分割する。
+    Outer は CCW、Holes は CW に正規化する。
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        import numpy as np  # type: ignore
+        import mapbox_earcut as earcut  # type: ignore
+    except Exception:  # noqa: BLE001
+        mesh.clear_geometry()
+        mesh.update()
+        return
+
+    def _open_ring(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+        if len(ring) >= 2 and ring[0] == ring[-1]:
+            return list(ring[:-1])
+        return list(ring)
+
+    def _signed_area(ring: Sequence[tuple[float, float]]) -> float:
+        n = len(ring)
+        if n < 3:
+            return 0.0
+        a = 0.0
+        for i in range(n):
+            j = (i + 1) % n
+            a += ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1]
+        return a * 0.5
+
+    def _orient(ring: list[tuple[float, float]], want_ccw: bool) -> list[tuple[float, float]]:
+        is_ccw = _signed_area(ring) > 0
+        if is_ccw != want_ccw:
+            return list(reversed(ring))
+        return ring
+
+    outer_open = _orient(_open_ring(outer_ring), want_ccw=True)
+    holes_open = [_orient(_open_ring(h), want_ccw=False) for h in holes if len(_open_ring(h)) >= 3]
+    if len(outer_open) < 3:
+        mesh.clear_geometry()
+        mesh.update()
+        return
+
+    # Build flat (x,y) numpy array of vertices: outer first, then holes
+    # mapbox_earcut wants ring_end_indices = exclusive end of each ring;
+    # last value MUST equal total vertex count.
+    all_pts: list[tuple[float, float]] = list(outer_open)
+    ring_ends: list[int] = [len(all_pts)]
+    for h in holes_open:
+        all_pts.extend(h)
+        ring_ends.append(len(all_pts))
+    coords = np.array(all_pts, dtype=np.float64)
+    ring_ends_arr = np.array(ring_ends, dtype=np.uint32)
+
+    try:
+        tris = earcut.triangulate_float64(coords, ring_ends_arr)
+    except Exception:  # noqa: BLE001
+        mesh.clear_geometry()
+        mesh.update()
+        return
+
+    # tris is a flat array of vertex indices, every 3 = one triangle
+    verts: list[tuple[float, float, float]] = [(float(x), float(y), float(z_m)) for x, y in all_pts]
+    faces: list[tuple[int, int, int]] = []
+    for i in range(0, len(tris) - 2, 3):
+        a = int(tris[i]); b = int(tris[i + 1]); c = int(tris[i + 2])
+        if a == b or b == c or a == c:
+            continue
+        faces.append((a, b, c))
+
+    mesh.clear_geometry()
+    if not faces or len(verts) < 3:
+        mesh.update()
+        return
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+
+
+def _stroke_band_body_centerline_round_join(
+    samples: Sequence[tuple[float, float, float]],
+    *,
+    half_width_m: float,
+    cusp_threshold_rad: float,
+    arc_samples_per_cusp: int,
+    valley_sharp: bool = False,
+) -> Optional[tuple[list[tuple[float, float]], list[tuple[float, float]]]]:
+    """本体カーブをそのまま中心線とし、垂直オフセットでメッシュバンドを構築する.
+
+    谷の cusp (近 180° 反転) の処理:
+    - valley_sharp=False (既定, round join): 外周/内周とも半径 d の半円弧で滑らかに繋ぐ
+    - valley_sharp=True (miter join): 隣接 cubic の外周を伸ばして交差点 (miter point) で
+      合流させ、谷を「曲線同士の交点としての自然な鋭角」にする。クランプして無限大化を防ぐ。
+    """
+    n = len(samples)
+    if n < 3 or half_width_m <= 1.0e-9:
+        return None
+    pts = [(s[0], s[1]) for s in samples]
+    area = _polygon_area(pts)
+    if abs(area) <= 1.0e-12:
+        return None
+    ccw = area > 0.0
+
+    # Estimate polygon centroid for outward direction at cusps
+    cx = sum(p[0] for p in pts) / n
+    cy = sum(p[1] for p in pts) / n
+
+    outer: list[tuple[float, float]] = []
+    inner: list[tuple[float, float]] = []
+    for i in range(n):
+        prev_s = samples[(i - 1) % n]
+        curr_s = samples[i]
+        next_s = samples[(i + 1) % n]
+        ax, ay = curr_s[0] - prev_s[0], curr_s[1] - prev_s[1]
+        bx, by = next_s[0] - curr_s[0], next_s[1] - curr_s[1]
+        la = math.hypot(ax, ay)
+        lb = math.hypot(bx, by)
+        if la <= 1.0e-9 or lb <= 1.0e-9:
+            continue
+        a_dx, a_dy = ax / la, ay / la
+        b_dx, b_dy = bx / lb, by / lb
+        cross = a_dx * b_dy - a_dy * b_dx
+        dot = a_dx * b_dx + a_dy * b_dy
+        bend = math.atan2(abs(cross), dot)  # 0 (straight) to π (full reversal)
+
+        radius_scale = max(0.0, float(curr_s[2]))
+        d = half_width_m * radius_scale
+
+        # 外向き法線 = CCW なら接線右側, CW なら左側
+        if ccw:
+            perp_a = (a_dy, -a_dx)
+            perp_b = (b_dy, -b_dx)
+        else:
+            perp_a = (-a_dy, a_dx)
+            perp_b = (-b_dy, b_dx)
+
+        if bend < cusp_threshold_rad:
+            # 通常 anchor: 両隣接接線の miter join (bisector 方向の perpendicular offset)
+            # offset_vec = (perp_a + perp_b) * d / (1 + perp_a·perp_b)
+            # = bisector_unit * (d / cos(bend/2))
+            # 鋭角 corner で miter が長くなり過ぎないよう、3*d を上限にする (miter limit).
+            dot_pp = perp_a[0] * perp_b[0] + perp_a[1] * perp_b[1]
+            denom = 1.0 + dot_pp
+            if denom <= 1.0e-3:
+                # bend が 90°以上なら cusp 扱いに回す (実質ここに来ない、threshold 100° なので)
+                continue
+            sx = perp_a[0] + perp_b[0]
+            sy = perp_a[1] + perp_b[1]
+            ox = sx * d / denom
+            oy = sy * d / denom
+            # miter limit: |offset| <= 3 * d
+            off_len = math.hypot(ox, oy)
+            if off_len > 3.0 * d and off_len > 0:
+                ox *= 3.0 * d / off_len
+                oy *= 3.0 * d / off_len
+            outer.append((curr_s[0] + ox, curr_s[1] + oy))
+            inner.append((curr_s[0] - ox, curr_s[1] - oy))
+        else:
+            # cusp: valley_sharp が True なら miter join (鋭角)、False なら round join
+            # 外向き radial (cloud 重心からの方向) を arc 中央方向にする
+            rad_x = curr_s[0] - cx
+            rad_y = curr_s[1] - cy
+            r_len = math.hypot(rad_x, rad_y)
+            if r_len <= 1.0e-9:
+                continue
+            r_out = (rad_x / r_len, rad_y / r_len)
+
+            if valley_sharp:
+                # 谷を尖らせる: 外周エッジのみ radial outward 方向に伸ばして
+                # 隣接 cubic の外周オフセット同士が交わる点 (miter tip) を作る。
+                # 飛び出し量は半幅 × 2.5 でクランプ。
+                # 内周は本体 cusp 頂点 (= curr_s) に置く (= 本体形状にぴったり追従、
+                # 内側にスパイクを出さない)。
+                miter_len = half_width_m * 2.5
+                miter_out = (curr_s[0] + r_out[0] * miter_len, curr_s[1] + r_out[1] * miter_len)
+                outer.append((curr_s[0] + perp_a[0] * d, curr_s[1] + perp_a[1] * d))
+                outer.append(miter_out)
+                outer.append((curr_s[0] + perp_b[0] * d, curr_s[1] + perp_b[1] * d))
+                inner.append((curr_s[0], curr_s[1]))
+                inner.append((curr_s[0], curr_s[1]))
+                inner.append((curr_s[0], curr_s[1]))
+                continue
+            # arc の開始/終了 angle (perp_a と perp_b の方向)
+            ang_a = math.atan2(perp_a[1], perp_a[0])
+            ang_b = math.atan2(perp_b[1], perp_b[0])
+            ang_mid = math.atan2(r_out[1], r_out[0])
+            # ang_a → ang_mid → ang_b の方向に並ぶよう調整 (短い方の弧)
+            # 範囲 [-π, π] に正規化したうえで、ang_a から ang_b へ ang_mid を通る向きに sweep する
+            def _norm_pi(x: float) -> float:
+                while x > math.pi:
+                    x -= 2.0 * math.pi
+                while x < -math.pi:
+                    x += 2.0 * math.pi
+                return x
+            # try CCW (increasing) and CW (decreasing) directions, pick the one passing near ang_mid
+            def _on_arc(start: float, end: float, mid: float, ccw_arc: bool) -> bool:
+                # arc from start to end going ccw (if ccw_arc) or cw, check if mid is on the arc
+                if ccw_arc:
+                    sweep = _norm_pi(end - start)
+                    if sweep < 0:
+                        sweep += 2.0 * math.pi
+                    pos = _norm_pi(mid - start)
+                    if pos < 0:
+                        pos += 2.0 * math.pi
+                    return 0.0 <= pos <= sweep
+                else:
+                    sweep = _norm_pi(start - end)
+                    if sweep < 0:
+                        sweep += 2.0 * math.pi
+                    pos = _norm_pi(start - mid)
+                    if pos < 0:
+                        pos += 2.0 * math.pi
+                    return 0.0 <= pos <= sweep
+            use_ccw = _on_arc(ang_a, ang_b, ang_mid, True)
+            if not use_ccw:
+                # fallback to CW arc
+                pass
+            steps = max(2, int(arc_samples_per_cusp))
+            for k in range(steps):
+                t = k / (steps - 1)
+                if use_ccw:
+                    sweep = _norm_pi(ang_b - ang_a)
+                    if sweep < 0:
+                        sweep += 2.0 * math.pi
+                    a = ang_a + sweep * t
+                else:
+                    sweep = _norm_pi(ang_a - ang_b)
+                    if sweep < 0:
+                        sweep += 2.0 * math.pi
+                    a = ang_a - sweep * t
+                # 外周: cusp 中心から半径 d の円弧
+                outer.append((curr_s[0] + math.cos(a) * d, curr_s[1] + math.sin(a) * d))
+                # 内周: cusp の内側へ半径 d 入った位置 (= 円弧の反対側)
+                # 線幅を cusp でも一定に保つため body 内へ d 入り込ませる (body 塗りで隠れる)
+                inner.append((curr_s[0] - math.cos(a) * d, curr_s[1] - math.sin(a) * d))
+    if len(outer) < 3 or len(inner) != len(outer):
+        return None
+    return outer, inner
+
+
+def _offset_perp_tangent(
+    samples: Sequence[tuple[float, float, float]],
+    *,
+    half_width_m: float,
+) -> Optional[tuple[list[tuple[float, float]], list[tuple[float, float]]]]:
+    """各サンプル点で「前後サンプルから求めた局所接線」に垂直な向きで ±half_width
+    オフセットする (per-point radius でスケール).
+
+    bisector 方式と違い、鋭角部でも offset 量が局所接線距離=半幅 ぴったりに
+    なるため line band の厚みが一定になる (入力が事前に smooth されていれば
+    self-intersection は起きない).
+    """
+    n = len(samples)
+    if n < 3 or half_width_m <= 1.0e-9:
+        return None
+    pts = [(s[0], s[1]) for s in samples]
+    area = _polygon_area(pts)
+    if abs(area) <= 1.0e-12:
+        return None
+    ccw = area > 0.0
+    outer: list[tuple[float, float]] = []
+    inner: list[tuple[float, float]] = []
+    for i in range(n):
+        prev_s = samples[(i - 1) % n]
+        next_s = samples[(i + 1) % n]
+        tx = next_s[0] - prev_s[0]
+        ty = next_s[1] - prev_s[1]
+        tlen = math.hypot(tx, ty)
+        if tlen <= 1.0e-9:
+            continue
+        tx /= tlen
+        ty /= tlen
+        # 外向き法線: CCW 周回なら接線を 90° 右回し (ty, -tx), CW なら逆
+        if ccw:
+            nx, ny = ty, -tx
+        else:
+            nx, ny = -ty, tx
+        radius_scale = max(0.0, float(samples[i][2]))
+        d = half_width_m * radius_scale
+        cx, cy = samples[i][0], samples[i][1]
+        outer.append((cx + nx * d, cy + ny * d))
+        inner.append((cx - nx * d, cy - ny * d))
+    if len(outer) < 3 or len(inner) != len(outer):
+        return None
+    return outer, inner
+
+
 def _polygon_area(points: Sequence[tuple[float, float]]) -> float:
     area = 0.0
     if not points:
@@ -212,6 +804,44 @@ def _band_loops(
     if len(outer) < 3 or len(inner) != len(outer):
         return None
     return outer, inner
+
+
+def _cloud_band_via_independent_line_loops(
+    entry,
+    body_spline,
+    line_width_mm: float,
+) -> Optional[tuple[list[tuple[float, float]], list[tuple[float, float]]]]:
+    """雲フキダシ用: 線形状を本体カーブと独立した滑らかな閉曲線として直接生成し、
+    外周/内周点列のペアを返す.
+
+    本体カーブの per-anchor radius を反映して valley ごとに線幅を伸縮する。
+    成功時 (outer, inner) を返し、形状非対応や生成失敗時は None を返す
+    (呼び出し側で従来のオフセット方式へ fallback)。
+    """
+    width_mm = max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0))
+    height_mm = max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0))
+    if width_mm <= 1.0e-3 or height_mm <= 1.0e-3:
+        return None
+    rect = Rect(0.0, 0.0, width_mm, height_mm)
+    body_radii = _body_per_anchor_radii(body_spline)
+    half_width_mm = line_width_mm * 0.5
+    loops = balloon_shapes.bezier_line_loops_for_entry(
+        entry,
+        rect,
+        half_width_mm,
+        body_radii=body_radii,
+    )
+    if loops is None:
+        return None
+    outer_anchors, inner_anchors = loops
+    if len(outer_anchors) < 3 or len(inner_anchors) != len(outer_anchors):
+        return None
+    offset_mm = _entry_local_offset_mm(entry)
+    outer_pts = _sample_anchor_loop_to_local_m(outer_anchors, offset_mm, SAMPLES_PER_SEGMENT)
+    inner_pts = _sample_anchor_loop_to_local_m(inner_anchors, offset_mm, SAMPLES_PER_SEGMENT)
+    if len(outer_pts) < 3 or len(inner_pts) != len(outer_pts):
+        return None
+    return outer_pts, inner_pts
 
 
 def _rebuild_band_mesh(
@@ -290,33 +920,49 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
 
-    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
-    if len(samples) < 3:
-        remove_balloon_line_mesh(balloon_id)
-        return None
-
     half_width_m = line_width_mm * 0.5 * 0.001
-    # smoothing 半径 R は必ず線の半幅 D より大きくする (R == D だと外周オフセットが
-    # 円弧中心 1 点に収束して四角形メッシュが扇形に折り重なる).
-    # R = 1.5 D で外周オフセット半径 = 0.5 D, 内周オフセット半径 = 2.5 D の安定値.
-    smooth_radius_m = max(half_width_m * 1.5, 0.0005)
-    smoothed = _smooth_sharp_corners(
-        samples,
-        smooth_radius_m=smooth_radius_m,
-        sharp_threshold_rad=SHARP_THRESHOLD_RAD,
-        arc_step_deg=ARC_STEP_DEG,
-    )
-    band = _band_loops(smoothed, half_width_m=half_width_m)
-    if band is None:
-        remove_balloon_line_mesh(balloon_id)
-        return None
-    outer, inner = band
+    line_width_m = line_width_mm * 0.001
 
+    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     mesh_name = _line_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _rebuild_band_mesh(mesh, outer, inner, LINE_Z_OFFSET_M)
+
+    union_result: Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = None
+    if shape == "cloud":
+        # 雲: outside alignment + shapely UNION で自己交差を解決した clean outline を取る
+        samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+        if len(samples) >= 3:
+            sp = getattr(entry, "shape_params", None)
+            valley_sharp = bool(getattr(sp, "cloud_valley_sharp", False))
+            union_result = _stroke_band_outside_union(
+                samples,
+                line_width_m=line_width_m,
+                valley_sharp=valley_sharp,
+            )
+    if union_result is not None:
+        outer_ring, holes = union_result
+        _build_band_mesh_from_union(mesh, outer_ring, holes, LINE_Z_OFFSET_M)
+    else:
+        # 雲以外 (fluffy, thorn-curve): 従来の中心線 ± offset + bisector 方式
+        samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+        if len(samples) < 3:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        smooth_radius_m = max(half_width_m * 1.5, 0.0005)
+        smoothed = _smooth_sharp_corners(
+            samples,
+            smooth_radius_m=smooth_radius_m,
+            sharp_threshold_rad=SHARP_THRESHOLD_RAD,
+            arc_step_deg=ARC_STEP_DEG,
+        )
+        band = _band_loops(smoothed, half_width_m=half_width_m)
+        if band is None:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        outer, inner = band
+        _rebuild_band_mesh(mesh, outer, inner, LINE_Z_OFFSET_M)
 
     obj_name = _line_mesh_object_name(balloon_id)
     obj = bpy.data.objects.get(obj_name)

@@ -13,6 +13,12 @@ from .geom import Rect
 MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
 DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
 
+# 雲フキダシ主線の谷で handle を radial 方向からどれだけ接線方向に傾けるか.
+# 0 = 完全な cusp (本体と同形, ただし radial offset で谷の線幅が 0 に潰れる).
+# 角度を大きくするほど谷が滑らかな U 字になり、線幅は谷でも一定に保たれるが、
+# 本体形状とのズレが大きくなる。
+_CLOUD_VALLEY_TILT_DEG = 35.0
+
 _LEGACY_SHAPE_ALIASES = {
     "polygon": "octagon",
     "pill": "ellipse",
@@ -122,6 +128,40 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         cloud_sub_height_jitter=float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
         jitter_seed=_entry_jitter_seed(entry, sp),
     )
+
+
+def bezier_line_loops_for_entry(
+    entry,
+    rect: Rect,
+    half_width_mm: float,
+    body_radii: Sequence[float] | None = None,
+) -> tuple[list[BezierAnchor], list[BezierAnchor]] | None:
+    """フキダシ主線の外周/内周を、本体形状と独立した滑らかな閉曲線として返す.
+
+    本体カーブが谷で鋭角を持っていても、線形状側は谷で楕円接線方向に handles
+    を揃えることで滑らかにつなぐ。これにより本体カーブから offset した
+    場合に必ず生じる谷での重なり/突き出しを根本回避する。
+
+    戻り値は rect 内ローカル座標 (mm) で (外周 anchors, 内周 anchors).
+    現状は雲のみ対応。それ以外の形状は None を返す (= 従来のオフセット方式に fallback)。
+    """
+    sp = getattr(entry, "shape_params", None)
+    shape = normalize_shape(getattr(entry, "shape", "rect"))
+    if shape != "cloud":
+        return None
+    opts = _DynamicOpts(
+        bump_w=max(2.0, float(getattr(sp, "cloud_bump_width_mm", 10.0))),
+        bump_w_jitter=_clamp01(float(getattr(sp, "cloud_bump_width_jitter", 0.0))),
+        bump_h=max(0.5, float(getattr(sp, "cloud_bump_height_mm", 4.0))),
+        bump_h_jitter=_clamp01(float(getattr(sp, "cloud_bump_height_jitter", 0.0))),
+        offset=max(0.0, min(1.0, float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0)),
+        sub_w=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_width_ratio", 0.0)))),
+        sub_w_jitter=_clamp01(float(getattr(sp, "cloud_sub_width_jitter", 0.0))),
+        sub_h=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_height_ratio", 0.0)))),
+        sub_h_jitter=_clamp01(float(getattr(sp, "cloud_sub_height_jitter", 0.0))),
+        rng=random.Random(_entry_jitter_seed(entry, sp)),
+    )
+    return _bezier_cloud_line_loops(rect, opts, float(half_width_mm), body_radii)
 
 
 def _custom_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
@@ -684,6 +724,196 @@ def _bezier_cloud(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
         incoming_c2 = cubics[(i - 1) % len(cubics)][2]
         anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, incoming_c2, c1)))
     return anchors
+
+
+def _bezier_cloud_line_loops(
+    rect: Rect,
+    opts: _DynamicOpts,
+    half_width_local: float,
+    body_radii: Sequence[float] | None,
+) -> tuple[list[BezierAnchor], list[BezierAnchor]] | None:
+    """雲フキダシ主線の外周/内周 BezierAnchor 列を生成する.
+
+    各 bump を 2 つの cubic で表す (valley→apex→次 valley)。
+    - 谷の handle は radial 方向だが少しだけ接線方向 (CCW/CW) に傾ける。
+      傾き角 _CLOUD_VALLEY_TILT_DEG が 0 なら本体と同じ鋭い V (cusp) になる。
+      0 より大きい場合、cusp が tight U-turn に丸まり、メッシュバンド (radial
+      offset) の谷でも線幅が 0 に潰れず一定厚みを保つ。
+    - 山頂の handle は両側 chord 方向に aligned → 山頂で滑らか。
+    - 山頂/谷の位置を本体から radial に半幅 ± offset するため、線は本体 bump の
+      位置・高さをほぼ踏襲する (谷の中央だけ少し外側に膨らむ)。
+    """
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None or half_width_local <= 1.0e-9:
+        return None
+    cx, cy, rx, ry, eff_h = base
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return None
+    notch = min(max(0.2, min(rect.width, rect.height) * 0.02), max(0.0, min(rx, ry) - 0.1))
+    rv_x = rx - notch
+    rv_y = ry - notch
+
+    def valley_point(t: float) -> tuple[float, float]:
+        return (cx + rv_x * math.cos(t), cy + rv_y * math.sin(t))
+
+    def radial_outward(t: float) -> tuple[float, float]:
+        gx = math.cos(t) / max(1.0e-9, rv_x)
+        gy = math.sin(t) / max(1.0e-9, rv_y)
+        L = math.hypot(gx, gy)
+        if L < 1.0e-9:
+            return (math.cos(t), math.sin(t))
+        return (gx / L, gy / L)
+
+    def tangent_ccw(t: float) -> tuple[float, float]:
+        tx = -rv_x * math.sin(t)
+        ty = rv_y * math.cos(t)
+        L = math.hypot(tx, ty)
+        if L < 1.0e-9:
+            return (1.0, 0.0)
+        return (tx / L, ty / L)
+
+    n_segments = len(segments)
+    valley_angles: list[float] = []
+    cur_angle = angle
+    for _is_sub, bump_angle, _h_mul in segments:
+        valley_angles.append(cur_angle)
+        cur_angle += bump_angle
+
+    def radius_scale_at(i: int) -> float:
+        if body_radii is None or len(body_radii) == 0:
+            return 1.0
+        if 0 <= i < len(body_radii):
+            return max(0.0, float(body_radii[i]))
+        return 1.0
+
+    # 各 bump の幾何情報 (外周用 / 内周用) を先に計算
+    outer_bumps: list[dict] = []
+    inner_bumps: list[dict] = []
+    for i, (_is_sub, bump_angle, h_mul) in enumerate(segments):
+        start_t = valley_angles[i]
+        end_t = valley_angles[(i + 1) % n_segments]
+        if end_t <= start_t:
+            end_t += 2.0 * math.pi
+        end_t_norm = end_t if end_t < 2.0 * math.pi else end_t - 2.0 * math.pi
+
+        rs_start = radius_scale_at(i)
+        rs_end = radius_scale_at((i + 1) % n_segments)
+        d_s = half_width_local * rs_start
+        d_e = half_width_local * rs_end
+        d_avg = (d_s + d_e) * 0.5
+
+        vs = valley_point(start_t)
+        ve = valley_point(end_t_norm)
+        r_s = radial_outward(start_t)
+        r_e = radial_outward(end_t_norm)
+        t_s = tangent_ccw(start_t)
+        t_e = tangent_ccw(end_t_norm)
+
+        # 本体 bump apex の位置 (本体 _bezier_cloud と同じ式)
+        chord_dx = ve[0] - vs[0]
+        chord_dy = ve[1] - vs[1]
+        chord_len = math.hypot(chord_dx, chord_dy)
+        if chord_len < 1.0e-3:
+            continue
+        mid_x = (vs[0] + ve[0]) * 0.5
+        mid_y = (vs[1] + ve[1]) * 0.5
+        perp_x = -chord_dy / chord_len
+        perp_y = chord_dx / chord_len
+        if perp_x * (mid_x - cx) + perp_y * (mid_y - cy) < 0.0:
+            perp_x = -perp_x
+            perp_y = -perp_y
+        body_apex_h = eff_h * h_mul
+        body_apex = (mid_x + perp_x * body_apex_h, mid_y + perp_y * body_apex_h)
+        chord_ux = chord_dx / chord_len
+        chord_uy = chord_dy / chord_len
+
+        # 外周/内周ともに本体 bump を radial 方向に半幅 ± offset したものを
+        # 取る (本体 valley と本体 apex を同時に同じ向きへずらす)。
+        # こうすると bump sagitta は本体と同一になり、本体形状を忠実に踏襲する。
+        vs_outer = (vs[0] + r_s[0] * d_s, vs[1] + r_s[1] * d_s)
+        ve_outer = (ve[0] + r_e[0] * d_e, ve[1] + r_e[1] * d_e)
+        apex_outer = (body_apex[0] + perp_x * d_avg, body_apex[1] + perp_y * d_avg)
+
+        vs_inner = (vs[0] - r_s[0] * d_s, vs[1] - r_s[1] * d_s)
+        ve_inner = (ve[0] - r_e[0] * d_e, ve[1] - r_e[1] * d_e)
+        apex_inner = (body_apex[0] - perp_x * d_avg, body_apex[1] - perp_y * d_avg)
+        outer_bumps.append({
+            "vs": vs_outer, "ve": ve_outer, "apex": apex_outer,
+            "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
+            "chord_u": (chord_ux, chord_uy),
+        })
+        inner_bumps.append({
+            "vs": vs_inner, "ve": ve_inner, "apex": apex_inner,
+            "r_s": r_s, "r_e": r_e, "t_s": t_s, "t_e": t_e,
+            "chord_u": (chord_ux, chord_uy),
+        })
+
+    if len(outer_bumps) < 3 or len(inner_bumps) != len(outer_bumps):
+        return None
+
+    def build_anchors_for_bumps(bumps: list[dict]) -> list[BezierAnchor]:
+        n = len(bumps)
+        # 谷の handle 方向は radial から少し接線方向に傾けて、cusp を tight U-turn
+        # に丸める。隣接 cubic が接線方向に互いに逆向きを使うことで、谷 anchor の
+        # 左右 handle は anti-parallel (aligned) になり 180° 滑らかになる。
+        # 結果: 谷は本体より僅かに外側へ膨らむが、メッシュバンドの厚みは一定。
+        tilt = math.radians(_CLOUD_VALLEY_TILT_DEG)
+        cos_t = math.cos(tilt)
+        sin_t = math.sin(tilt)
+        for bump in bumps:
+            chord_a_len = math.hypot(bump["apex"][0] - bump["vs"][0], bump["apex"][1] - bump["vs"][1])
+            chord_b_len = math.hypot(bump["ve"][0] - bump["apex"][0], bump["ve"][1] - bump["apex"][1])
+            L_va = chord_a_len / 3.0
+            L_ab = chord_b_len / 3.0
+            # Cubic A: vs → apex
+            # c1 方向 = radial * cos(tilt) + tangent_CCW * sin(tilt)
+            # (= radial 主体、CCW 接線方向に少し前進)
+            dir_vs = (
+                bump["r_s"][0] * cos_t + bump["t_s"][0] * sin_t,
+                bump["r_s"][1] * cos_t + bump["t_s"][1] * sin_t,
+            )
+            bump["c1_A"] = (bump["vs"][0] + dir_vs[0] * L_va, bump["vs"][1] + dir_vs[1] * L_va)
+            # c2 は山頂から chord 逆方向 (= 前の谷側) へ L_va 戻す
+            bump["c2_A"] = (bump["apex"][0] - bump["chord_u"][0] * L_va, bump["apex"][1] - bump["chord_u"][1] * L_va)
+            # Cubic B: apex → ve
+            # c1 は山頂から chord 方向 (= 次の谷側) へ L_ab 進む
+            bump["c1_B"] = (bump["apex"][0] + bump["chord_u"][0] * L_ab, bump["apex"][1] + bump["chord_u"][1] * L_ab)
+            # c2 方向 = radial * cos(tilt) - tangent_CCW * sin(tilt)
+            # (= 谷に着く側は CCW 接線の逆方向に少し戻す → 前の谷の c1 と anti-parallel)
+            dir_ve = (
+                bump["r_e"][0] * cos_t - bump["t_e"][0] * sin_t,
+                bump["r_e"][1] * cos_t - bump["t_e"][1] * sin_t,
+            )
+            bump["c2_B"] = (bump["ve"][0] + dir_ve[0] * L_ab, bump["ve"][1] + dir_ve[1] * L_ab)
+        anchors: list[BezierAnchor] = []
+        for i in range(n):
+            bump = bumps[i]
+            prev_bump = bumps[(i - 1) % n]
+            # valley anchor (= vs of bump i = ve of bump (i-1))
+            # handle_left と handle_right が同じ向き (radial 外向き) なので
+            # cusp 扱い → FREE 型
+            anchors.append(BezierAnchor(
+                bump["vs"],
+                prev_bump["c2_B"],
+                bump["c1_A"],
+                "FREE", "FREE",
+            ))
+            # apex anchor (= apex of bump i)
+            anchors.append(BezierAnchor(
+                bump["apex"],
+                bump["c2_A"],
+                bump["c1_B"],
+                "ALIGNED", "ALIGNED",
+            ))
+        return anchors
+
+    outer_anchors = build_anchors_for_bumps(outer_bumps)
+    inner_anchors = build_anchors_for_bumps(inner_bumps)
+    return (
+        [_local_anchor_to_rect(rect, a) for a in outer_anchors],
+        [_local_anchor_to_rect(rect, a) for a in inner_anchors],
+    )
 
 
 def _outline_thorn(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:

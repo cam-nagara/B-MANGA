@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_name"
-version = "0.6.89"
+version = "0.6.102"
 name = "B-Name"
 tagline = "Blender manga name/storyboard authoring addon"
 maintainer = "B-Name Project"
@@ -24,6 +24,12 @@ wheels = [
     "./wheels/pillow-12.2.0-cp311-cp311-win_amd64.whl",
     "./wheels/pillow-12.2.0-cp312-cp312-win_amd64.whl",
     "./wheels/pillow-12.2.0-cp313-cp313-win_amd64.whl",
+    "./wheels/shapely-2.1.2-cp311-cp311-win_amd64.whl",
+    "./wheels/shapely-2.1.2-cp312-cp312-win_amd64.whl",
+    "./wheels/shapely-2.1.2-cp313-cp313-win_amd64.whl",
+    "./wheels/mapbox_earcut-2.0.0-cp311-cp311-win_amd64.whl",
+    "./wheels/mapbox_earcut-2.0.0-cp312-cp312-win_amd64.whl",
+    "./wheels/mapbox_earcut-2.0.0-cp313-cp313-win_amd64.whl",
 ]
 
 # Platforms (optional, omit to allow all). Populate when wheels become platform-specific.

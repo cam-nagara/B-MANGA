@@ -251,6 +251,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row = col.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
+        if str(getattr(entry, "shape", "")) == "cloud":
+            row = col.row(align=True)
+            row.prop(sp, "cloud_valley_sharp")
 
     box = layout.box()
     box.label(text="配置 (mm)")

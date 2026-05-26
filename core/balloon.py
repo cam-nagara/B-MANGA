@@ -239,6 +239,12 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_valley_sharp: BoolProperty(  # type: ignore[valid-type]
+        name="谷を尖らせる",
+        description="雲フキダシ主線の谷を曲線同士の交点として鋭く尖らせる (OFF: 滑らかな丸み)",
+        default=False,
+        update=_on_balloon_shape_params_changed,
+    )
 
     # Legacy parameters kept for older B-Name files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", default=12, min=3, soft_max=60, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]

@@ -8,6 +8,8 @@ Extensions Platform で同梱する Python wheel 置き場。
 | ライブラリ | ライセンス | 追加フェーズ | 用途 |
 |---|---|---|---|
 | Pillow 12.2.0 (`cp311`/`cp312`/`cp313` Windows x64) | HPND | Phase 3 / Phase 6 | 書き出し時の画像合成・カラーモード変換 |
+| Shapely 2.1.2 (`cp311`/`cp312`/`cp313` Windows x64) | BSD-3-Clause | v0.6.102 | フキダシ主線/フチ/多重線の外側オフセット (buffer) と自己交差解決 |
+| mapbox-earcut 2.0.0 (`cp311`/`cp312`/`cp313` Windows x64) | ISC | v0.6.102 | ホール付きポリゴンを三角分割して Blender Mesh に流し込む |
 
 ## 同梱予定
 

@@ -192,6 +192,9 @@ class BNAME_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
             row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
+            if entry.shape == "cloud":
+                row = box.row(align=True)
+                row.prop(sp, "cloud_valley_sharp")
 
         # 尻尾
         box = layout.box()
