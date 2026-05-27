@@ -161,34 +161,13 @@ def main() -> int:
         if verts < 3:
             errors.append(f"{kind} メッシュの頂点数が少なすぎる ({verts})")
 
-    # 6. ノード側 modifier の outer/inner/multi が override で停止状態か確認
-    print("=== ノードモディファイア override 検証 ===")
+    # 6. Phase D 以降: ノードモディファイアは完全撤去されているため、存在しないことを確認
+    print("=== ノードモディファイア撤去検証 (Phase D 以降) ===")
     modifier = obj.modifiers.get("B-Name Geometry Nodes")
-    if modifier is None:
-        errors.append("ノードモディファイアが存在しない")
+    if modifier is not None:
+        errors.append(f"Phase D 以降は GN modifier が無いはずなのに存在する: {modifier.name}")
     else:
-        socket_values = {}
-        for item in modifier.node_group.interface.items_tree:
-            if getattr(item, "item_type", "") != "SOCKET":
-                continue
-            if getattr(item, "in_out", "") != "INPUT":
-                continue
-            name = str(getattr(item, "name", "") or "")
-            ident = getattr(item, "identifier", "")
-            if name in ("外側フチ", "内側フチ", "多重線", "線を面で生成"):
-                socket_values[name] = modifier.get(ident)
-        print(f"  socket values: {socket_values}")
-        # filled_line_enabled は True (= 中心線方式停止)、外側フチ・内側フチ・多重線は False (= Shapely 側で描画)
-        if socket_values.get("外側フチ") is not False:
-            errors.append(f"外側フチ socket が False ではない: {socket_values.get('外側フチ')}")
-        if socket_values.get("内側フチ") is not False:
-            errors.append(f"内側フチ socket が False ではない: {socket_values.get('内側フチ')}")
-        if socket_values.get("多重線") is not False:
-            errors.append(f"多重線 socket が False ではない: {socket_values.get('多重線')}")
-        if socket_values.get("線を面で生成") is not True:
-            errors.append(f"線を面で生成 socket が True ではない: {socket_values.get('線を面で生成')}")
-        if not any(e for e in errors if "socket" in e):
-            print("  ✓ ノード側の outer/inner/multi/line_legacy 経路はすべて停止状態")
+        print("  ✓ ノードモディファイアは存在しない (Phase D 撤去済み)")
 
     # 7. レンダリングが落ちないことを確認
     print("=== レンダーテスト ===")

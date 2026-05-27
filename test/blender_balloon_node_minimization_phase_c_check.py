@@ -69,27 +69,14 @@ def main() -> int:
     page = work.pages[0]
     parent_key = page_stack_key(page)
 
-    print("=== Phase C-A: ノードグループから body Fill Curve が削除されたか ===")
-    group = bcrn.ensure_node_group()
-    fill_curve_labels = []
-    for node in group.nodes:
-        if node.bl_idname == "GeometryNodeFillCurve":
-            fill_curve_labels.append(str(node.label or ""))
-    print(f"  FillCurve ノードのラベル一覧: {fill_curve_labels}")
-    # 「塗り面」というラベルの FillCurve が消えていることを期待。
-    # 「面としての輪郭線」(尾用 main_line_fill) は残る。
-    body_fill_labels = [l for l in fill_curve_labels if "塗り面" in l]
-    if body_fill_labels:
-        errors.append(f"body 用 FillCurve ('塗り面') が残っている: {body_fill_labels}")
+    print("=== Phase C-A: Phase D 以降は GN グループ自体が存在しない ===")
+    group = bpy.data.node_groups.get(bcrn.GROUP_NAME)
+    if group is None:
+        print(f"  ✓ ノードグループ {bcrn.GROUP_NAME} は完全撤去済み (Phase D)")
+    elif group.users == 0:
+        print(f"  ✓ ノードグループ {bcrn.GROUP_NAME} は使用件数 0")
     else:
-        print("  ✓ body 用 FillCurve は削除済み")
-
-    # ノードに GeometryNodeProximity (= blur 距離計算) が残っていないことも確認
-    proximity_count = sum(1 for n in group.nodes if n.bl_idname == "GeometryNodeProximity")
-    if proximity_count > 0:
-        errors.append(f"GeometryNodeProximity ({proximity_count} 個) が残っている")
-    else:
-        print("  ✓ GeometryNodeProximity は削除済み")
+        errors.append(f"ノードグループ {bcrn.GROUP_NAME} がまだ使用中: users={group.users}")
 
     print("=== Phase C-B: 全形状で fill mesh が生成されるか ===")
     for idx, shape in enumerate(SHAPES):

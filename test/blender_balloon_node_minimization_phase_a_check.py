@@ -65,41 +65,17 @@ EXPECTED_SHAPES = (
 
 
 def _check_node_group_layout() -> list[str]:
-    """ノードグループの構造を検証し、残骸があれば文字列で返す."""
+    """Phase D 以降: ノードグループ自体が存在しないこと (= 完全撤去済み) を検証."""
     from bname_dev_phase_a.utils import balloon_curve_render_nodes as bcrn
+    import bpy
 
     errors: list[str] = []
-    group = bcrn.ensure_node_group()
+    group = bpy.data.node_groups.get(bcrn.GROUP_NAME)
     if group is None:
-        errors.append("ノードグループ生成失敗")
         return errors
-
-    # ソケット検査
-    socket_names = []
-    for item in getattr(group.interface, "items_tree", []):
-        if getattr(item, "item_type", "") != "SOCKET":
-            continue
-        if getattr(item, "in_out", "") != "INPUT":
-            continue
-        socket_names.append(str(getattr(item, "name", "") or ""))
-    for forbidden in REMOVED_SOCKETS:
-        if forbidden in socket_names:
-            errors.append(f"削除されたはずのソケットが残っている: {forbidden}")
-
-    # ノード検査 (bl_idname)
-    node_idnames = [getattr(n, "bl_idname", "") for n in group.nodes]
-    for keyword in FORBIDDEN_NODE_KEYWORDS:
-        for idname in node_idnames:
-            if keyword in idname:
-                errors.append(f"削除されたはずのノード種別が残っている: {keyword}")
-                break
-
-    # マスク関連の Switch ラベルが残っていないか
-    for node in group.nodes:
-        label = str(getattr(node, "label", "") or "")
-        if "マスク" in label or "見切れ塗り" in label:
-            errors.append(f"マスク関連ラベルのノードが残っている: {label}")
-
+    # 存在する場合は使用件数 0 (= 旧データだが modifier に紐付かない) ことを確認
+    if group.users > 0:
+        errors.append(f"旧ノードグループ {bcrn.GROUP_NAME} がまだ {group.users} 個の modifier に紐付いている")
     return errors
 
 
@@ -159,18 +135,11 @@ def _add_balloon_of_shape(shape: str) -> bool:
     if obj is None:
         print(f"  ! ensure_balloon_curve_object が None を返した ({shape})")
         return False
+    # Phase D 以降: 旧 GN modifier は完全撤去されているため、存在しないこと
     modifier = obj.modifiers.get("B-Name Geometry Nodes")
-    if modifier is None:
-        print(f"  ! ジオメトリノードモディファイア未生成 ({shape})")
+    if modifier is not None:
+        print(f"  ! Phase D 以降は GN modifier が無いはずなのに存在する ({shape})")
         return False
-    # 検証: マスク関連 socket が modifier に残っていないこと
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET":
-            continue
-        name = str(getattr(item, "name", "") or "")
-        if name in REMOVED_SOCKETS:
-            print(f"  ! モディファイアに削除されたソケットが残っている ({shape}): {name}")
-            return False
     return True
 
 

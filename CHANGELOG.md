@@ -3,6 +3,55 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.132 フキダシのジオメトリノードグループ自体を撤去、しっぽも Python メッシュ化 (Phase D)
+
+### 症状
+- Phase A〜C で本体カーブの塗り面・主線・フチ・多重線がすべて Python (Shapely + earcut) のバンドメッシュに置き換わったが、 ジオメトリノードグループ `BName_GN_BalloonCurveRender` 自体は残っていた。
+- 唯一稼働していたしっぽの主線フチ (role=500 `main_line_fill`) もノード側で処理されており、 本体カーブから geometry node modifier を撤去できなかった。
+
+### 原因
+- しっぽの主線フチが、ノード側で `GeometryNodeFillCurve` によって role=500 のスプラインから生成されていた。 これがあるために modifier を撤去できなかった。
+
+### 修正
+- 新規 `ensure_balloon_tail_main_line_mesh` を `utils/balloon_line_mesh.py` に追加。 各しっぽの polygon を Shapely buffer で band 化し、 `balloon_tail_main_line_mesh_<id>` という独立 Mesh オブジェクトとして焼き込む (本体主線と同じ手法)。
+- `_sync_balloon_band_meshes` に tail_main_line_mesh sync 呼び出しを追加。
+- `_sync_curve_geometry` で各しっぽに対する `append_main_line_fill_paths` 呼び出しを削除 (もうノード側で使わないため)。
+- `utils/balloon_curve_render_nodes.py` を全面スタブ化 (875 行 → 78 行):
+  - ノードグループ構築コードを完全削除
+  - `ensure_modifier(obj, **kwargs)` は引数を全て無視して、 旧 modifier + 旧ノードグループを撤去するだけのスタブに
+  - `remove_modifier` / `remove_node_group` を追加 (旧 .blend 互換用)
+  - `FILL_BLUR_ALPHA_ATTRIBUTE` 定数のみ残す
+- `utils/balloon_render_contract.py` から `BalloonRenderSettings` クラスと `settings_from_entry` 関数を削除 (もう不要)。 MATERIAL_SLOT / ROLE_RADIUS / Z_M 定数だけを残す。
+- `_sync_balloon_render_modifier` を簡素化: 旧 modifier 撤去 + 旧 POLY スプライン (旧ノード経路用) 撤去のみ。
+- `_remove_clipped_fill_splines` を「非 BEZIER スプライン全削除」に変更 (旧 .blend に残った役割番号付き帯スプラインを掃除)。
+
+### 結果として
+- フキダシの全描画責務が Python メッシュで完結:
+  - `balloon_fill_mesh_<id>` (本体+しっぽの union 塗り面)
+  - `balloon_line_mesh_<id>` (本体主線)
+  - `balloon_outer_edge_mesh_<id>` (外側フチ)
+  - `balloon_inner_edge_mesh_<id>` (内側フチ)
+  - `balloon_multi_line_mesh_<id>` (多重線)
+  - `balloon_tail_main_line_mesh_<id>` (しっぽ主線フチ, 新規)
+- 本体カーブには **ジオメトリノード modifier が一切付かない**。 ユーザーがカーブの制御点を編集するための「編集用カーブ」として機能するのみ。
+- ノードグループ `BName_GN_BalloonCurveRender` は新規 .blend では生成されない。 旧 .blend から開いたものは load_post で削除される。
+- 移動・サイズ変更・詳細設定変更でノードグループ評価コストがゼロに。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `ensure_balloon_tail_main_line_mesh` / `remove_balloon_tail_main_line_mesh` 追加、`_KIND_TAIL_MAIN_LINE` を `_ALL_KINDS` に登録
+- `utils/balloon_curve_object.py`: tail main_line_fill spline 追加をスキップ、 _sync_balloon_band_meshes に tail mesh sync 追加、 `_remove_clipped_fill_splines` を非 BEZIER 全削除化、`_sync_balloon_render_modifier` を簡素化
+- `utils/balloon_curve_render_nodes.py`: 全面スタブ化
+- `utils/balloon_render_contract.py`: `BalloonRenderSettings` と `settings_from_entry` を削除
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- `test/blender_balloon_node_minimization_phase_d_check.py` 新規追加: 全 7 形状でフキダシ本体カーブに modifier が付かないこと、ノードグループが撤去されていること、 しっぽ付きで tail_main_line_mesh が生成されることを確認。
+- `test/blender_balloon_node_minimization_phase_d_tail_visual_check.py` 新規追加: 4 方向のしっぽを持つフキダシをレンダーし、 union 塗り面 + tail 主線フチが正しく描画されることを目視確認。
+- 既存 `test/blender_balloon_all_shapes_shapely_check.py`: 7 形状 + フチ + 多重線で目視差分なし。
+- Phase A / B / C 各テストも Phase D の API に追従した上で再実行 PASS。
+
+### 関連計画書
+- `docs/balloon_node_minimization_plan_2026-05-27.md` の Phase D に相当 (進行中) — ジオメトリノードグループ撤去完了。
+
 ## 2026-05-27 — v0.6.131 フキダシ塗り面を Python earcut で焼き込み、ノードから Fill Curve を撤去 (Phase C)
 
 ### 症状

@@ -1,16 +1,16 @@
 """フキダシ描画の共通契約.
 
-フキダシは、塗り、外側フチ、内側フチ、多重線、主線を同じ基準形状
-から作る。素材スロット、役割番号、前後関係はこのモジュールだけを
-正にして、個別モジュールで重複定義しない。
+フキダシは、塗り、外側フチ、内側フチ、多重線、主線を同じ基準形状から作る。
+素材スロット、役割番号、前後関係はこのモジュールだけを正にして、個別モジュール
+で重複定義しない。
+
+Phase D 以降、Geometry Nodes 経由の描画は撤去され、Python メッシュ
+(balloon_fill_mesh / balloon_line_mesh) で全描画責務を担う。 役割番号
+(`*_ROLE_RADIUS`) は旧データ (古い .blend のスプライン) のクリーンアップで
+引き続き参照される。
 """
 
 from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Any
-
-from . import balloon_shapes
 
 MATERIAL_SLOT_FILL = 0
 MATERIAL_SLOT_OUTER_EDGE = 1
@@ -30,85 +30,3 @@ OUTER_EDGE_Z_M = 0.000020
 INNER_EDGE_Z_M = 0.000040
 MULTI_LINE_Z_M = 0.000080
 LINE_Z_M = 0.000100
-
-
-@dataclass(frozen=True)
-class BalloonRenderSettings:
-    shape_name: str
-    line_style: str
-    line_width_mm: float
-    filled_line_enabled: bool
-    multi_line_enabled: bool
-    multi_line_count: int
-    multi_line_width_mm: float
-    multi_line_spacing_mm: float
-    multi_line_width_scale_percent: float
-    multi_line_spacing_scale_percent: float
-    multi_line_direction: str
-    thorn_multi_line_valley_width_pct: float
-    thorn_multi_line_peak_width_pct: float
-    thorn_multi_line_length_scale_percent: float
-    thorn_multi_line_cross_enabled: bool
-    outer_edge_enabled: bool
-    outer_edge_width_mm: float
-    inner_edge_enabled: bool
-    inner_edge_width_mm: float
-    fill_blur_amount: float
-    fill_blur_dither: bool
-
-    @property
-    def native_multi_line_rings_enabled(self) -> bool:
-        return self.shape_name != "thorn"
-
-    def as_modifier_kwargs(self) -> dict[str, Any]:
-        return {
-            "line_width_mm": self.line_width_mm,
-            "filled_line_enabled": self.filled_line_enabled,
-            "multi_line_enabled": self.multi_line_enabled,
-            "multi_line_count": self.multi_line_count,
-            "multi_line_width_mm": self.multi_line_width_mm,
-            "multi_line_spacing_mm": self.multi_line_spacing_mm,
-            "multi_line_width_scale_percent": self.multi_line_width_scale_percent,
-            "multi_line_spacing_scale_percent": self.multi_line_spacing_scale_percent,
-            "multi_line_direction": self.multi_line_direction,
-            "native_multi_line_rings_enabled": self.native_multi_line_rings_enabled,
-            "thorn_multi_line_valley_width_pct": self.thorn_multi_line_valley_width_pct,
-            "thorn_multi_line_peak_width_pct": self.thorn_multi_line_peak_width_pct,
-            "thorn_multi_line_length_scale_percent": self.thorn_multi_line_length_scale_percent,
-            "thorn_multi_line_cross_enabled": self.thorn_multi_line_cross_enabled,
-            "outer_edge_enabled": self.outer_edge_enabled,
-            "outer_edge_width_mm": self.outer_edge_width_mm,
-            "inner_edge_enabled": self.inner_edge_enabled,
-            "inner_edge_width_mm": self.inner_edge_width_mm,
-            "fill_blur_amount": self.fill_blur_amount,
-            "fill_blur_dither": self.fill_blur_dither,
-        }
-
-
-def settings_from_entry(entry, *, filled_line_enabled: bool = False) -> BalloonRenderSettings:
-    line_style = str(getattr(entry, "line_style", "") or "")
-    return BalloonRenderSettings(
-        shape_name=balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect")),
-        line_style=line_style,
-        line_width_mm=0.0 if line_style == "none" else float(getattr(entry, "line_width_mm", 0.3) or 0.3),
-        filled_line_enabled=bool(filled_line_enabled),
-        multi_line_enabled=line_style == "double",
-        multi_line_count=int(getattr(entry, "multi_line_count", 3) or 3),
-        multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
-        multi_line_spacing_mm=float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
-        multi_line_width_scale_percent=float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
-        multi_line_spacing_scale_percent=float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0),
-        multi_line_direction=str(getattr(entry, "multi_line_direction", "outside") or "outside"),
-        thorn_multi_line_valley_width_pct=float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0),
-        thorn_multi_line_peak_width_pct=float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0),
-        thorn_multi_line_length_scale_percent=float(
-            getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0
-        ),
-        thorn_multi_line_cross_enabled=bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
-        outer_edge_enabled=bool(getattr(entry, "outer_white_margin_enabled", False)),
-        outer_edge_width_mm=float(getattr(entry, "outer_white_margin_width_mm", 1.0) or 0.0),
-        inner_edge_enabled=bool(getattr(entry, "inner_white_margin_enabled", False)),
-        inner_edge_width_mm=float(getattr(entry, "inner_white_margin_width_mm", 1.0) or 0.0),
-        fill_blur_amount=float(getattr(entry, "fill_blur_amount", 0.0) or 0.0),
-        fill_blur_dither=bool(getattr(entry, "fill_blur_dither", False)),
-    )

@@ -42,7 +42,8 @@ _KIND_LINE = "balloon_line_mesh"
 _KIND_OUTER_EDGE = "balloon_outer_edge_mesh"
 _KIND_INNER_EDGE = "balloon_inner_edge_mesh"
 _KIND_MULTI_LINE = "balloon_multi_line_mesh"
-_ALL_KINDS = {_KIND_LINE, _KIND_OUTER_EDGE, _KIND_INNER_EDGE, _KIND_MULTI_LINE}
+_KIND_TAIL_MAIN_LINE = "balloon_tail_main_line_mesh"
+_ALL_KINDS = {_KIND_LINE, _KIND_OUTER_EDGE, _KIND_INNER_EDGE, _KIND_MULTI_LINE, _KIND_TAIL_MAIN_LINE}
 
 SAMPLES_PER_SEGMENT = 24
 SHARP_THRESHOLD_RAD = math.radians(30.0)
@@ -2537,6 +2538,130 @@ def ensure_balloon_multi_line_mesh(
         body_object=body_object,
         scene=scene,
         kind=_KIND_MULTI_LINE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
+
+
+# --- しっぽ主線フチ (各しっぽ polygon の外周/内周オフセット band) -----------
+
+BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX = "balloon_tail_main_line_mesh_"
+
+
+def _tail_main_line_mesh_data_name(balloon_id: str) -> str:
+    return f"{BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def _tail_main_line_mesh_object_name(balloon_id: str) -> str:
+    return f"{BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def remove_balloon_tail_main_line_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    obj_name = _tail_main_line_mesh_object_name(balloon_id)
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None:
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+    mesh_name = _tail_main_line_mesh_data_name(balloon_id)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is not None and mesh.users == 0:
+        try:
+            bpy.data.meshes.remove(mesh)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def ensure_balloon_tail_main_line_mesh(
+    *,
+    scene,
+    work,
+    page,
+    entry,
+    body_object: bpy.types.Object,
+    line_material: bpy.types.Material,
+    mask_info=None,
+) -> Optional[bpy.types.Object]:
+    """各しっぽの輪郭に沿った主線フチ Mesh をひとつにまとめて生成する.
+
+    フキダシ本体の主線 (= `ensure_balloon_line_mesh`) と同じ規則で、各しっぽ
+    polygon の外周 +line_width/2 までと内側 -line_width/2 までの帯を Shapely
+    buffer で構築する。
+    """
+    from . import balloon_tail_geom
+    from .geom import Rect
+
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return None
+
+    line_style = str(getattr(entry, "line_style", "") or "")
+    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    if line_width_mm <= 1.0e-6:
+        remove_balloon_tail_main_line_mesh(balloon_id)
+        return None
+
+    tails = list(getattr(entry, "tails", []) or [])
+    if not tails:
+        remove_balloon_tail_main_line_mesh(balloon_id)
+        return None
+
+    rect = Rect(
+        0.0,
+        0.0,
+        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    # rect-local mm → balloon-local mm の平行移動量
+    ox_mm = (
+        float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)) * 0.5
+    )
+    oy_mm = (
+        float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+        - max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)) * 0.5
+    )
+    line_width_m = line_width_mm * 0.001
+
+    polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    for tail in tails:
+        try:
+            pts_mm = balloon_tail_geom.polygon_for_tail(rect, tail)
+        except Exception:  # noqa: BLE001
+            continue
+        if not pts_mm or len(pts_mm) < 3:
+            continue
+        samples = [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm)) for x, y in pts_mm]
+        band = build_offset_band_polygon(
+            samples,
+            signed_offset_m=0.0,
+            band_width_m=line_width_m,
+            valley_sharp=False,
+        )
+        if band is not None:
+            polygons.append(band)
+
+    if not polygons:
+        remove_balloon_tail_main_line_mesh(balloon_id)
+        return None
+
+    mesh_name = _tail_main_line_mesh_data_name(balloon_id)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    _build_band_mesh_from_polygons(mesh, polygons, LINE_Z_OFFSET_M)
+
+    return _attach_band_mesh_object(
+        obj_name=_tail_main_line_mesh_object_name(balloon_id),
+        mesh=mesh,
+        material=line_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_TAIL_MAIN_LINE,
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,

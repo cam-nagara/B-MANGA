@@ -769,34 +769,28 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
+    if line_mat is not None:
+        balloon_line_mesh.ensure_balloon_tail_main_line_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            line_material=line_mat,
+            mask_info=mask_info,
+        )
+    else:
+        balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
 
 
 def _sync_balloon_render_modifier(entry, obj: bpy.types.Object) -> None:
-    import dataclasses
-
+    """旧 Geometry Nodes modifier の撤去 + 旧 clipped_fill spline の掃除."""
     balloon_id = str(getattr(entry, "id", "") or "")
     _remove_balloon_clip_mask(balloon_id)
     _discard_clipped_fill_geometry(obj)
-    filled_line_enabled = balloon_multiline_curve.has_filled_line_paths(obj.data)
-    # メッシュバンド方式を使う形状では、ノードグループ側で主線を描画させない
-    # (filled_line_enabled=True で legacy CurveToMesh を停止、かつ main_line_fill
-    # splines も追加していないので filled 経路も空)。主線は別 Mesh オブジェクト。
-    if balloon_line_mesh.is_mesh_band_shape(entry):
-        filled_line_enabled = True
-    settings = render_contract.settings_from_entry(entry, filled_line_enabled=filled_line_enabled)
-    # 外部 Mesh で描画する要素はノードグループ側を停止 (二重描画 / Z-fight 回避)。
-    override: dict = {}
-    if balloon_line_mesh.is_shapely_line_shape(entry):
-        override["outer_edge_enabled"] = False
-        override["inner_edge_enabled"] = False
-    if balloon_line_mesh.is_shapely_multi_line_shape(entry):
-        override["multi_line_enabled"] = False
-    if override:
-        settings = dataclasses.replace(settings, **override)
-    balloon_curve_render_nodes.ensure_modifier(
-        obj,
-        **settings.as_modifier_kwargs(),
-    )
+    # Phase D 以降: 全描画責務を Python メッシュへ移行。旧 modifier が残って
+    # いれば撤去する (新規 .blend では最初から作られない)。
+    balloon_curve_render_nodes.ensure_modifier(obj)
 
 
 def _sync_visibility_and_modifier(scene: bpy.types.Scene, work, page, entry, obj: bpy.types.Object) -> None:
@@ -908,11 +902,19 @@ def _spline_role_radius(spline) -> float | None:
 
 
 def _remove_clipped_fill_splines(curve: bpy.types.Curve) -> bool:
+    """旧ジオメトリノード経路用の role 付きスプラインを削除する.
+
+    Phase D 以降は role 付きスプラインを生成しないが、 旧 .blend の互換性のため、
+    検出した非 BEZIER の POLY スプライン (= 外側フチ/内側フチ/見切れ塗り/多重線/
+    主線フチ などのレガシー POLY スプライン) を全て削除する。
+    ユーザーが BEZIER 制御点の radius を変更しても、その BEZIER スプラインは
+    body/tail 由来のため残す。
+    """
     changed = False
     for spline in reversed(list(getattr(curve, "splines", []) or [])):
-        role = _spline_role_radius(spline)
-        if role is None or abs(role - CLIPPED_FILL_ROLE_RADIUS) > 1.0e-6:
+        if str(getattr(spline, "type", "") or "") == "BEZIER":
             continue
+        # POLY (= legacy role 付き帯スプライン)
         try:
             curve.splines.remove(spline)
             changed = True
@@ -1218,7 +1220,8 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             sharp_indices=set(range(len(tail_points))),
             offset=offset,
         )
-        balloon_multiline_curve.append_main_line_fill_paths(curve, entry, tail_points, offset=offset)
+        # しっぽの主線フチは Python メッシュ (ensure_balloon_tail_main_line_mesh) で
+        # 焼き込むため、ジオメトリノード用の main_line_fill spline は追加しない。
 
 
 def _tail_polygon_for_entry(entry, tail) -> list[tuple[float, float]]:
