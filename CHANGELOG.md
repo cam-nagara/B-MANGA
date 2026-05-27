@@ -3,6 +3,36 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.138 フキダシ主線「谷/山の線幅」を外側フチ・内側フチにも反映する
+
+### 症状
+- トゲ (直線) などの動的形状フキダシで、 主線の「山の線幅」を 0% に下げると 主線は谷側で消えるが、 外側フチ・内側フチは均一幅で全周を描き続けるため、 谷の鋭い角を フチが覆って 元のフキダシ形状の尖りが消えてしまう。
+- 同様に「谷の線幅」を下げると 山頂の尖りが フチに覆われて弱くなる。
+
+### 原因
+- 外側フチ・内側フチの Mesh は `build_offset_band_polygon` で均一幅 (Shapely の buffer) で構築しており、 主線の `line_valley_width_pct` / `line_peak_width_pct` を参照していなかった。
+- 主線だけが Shapely の可変幅バンド (`_build_dynamic_multi_line_polygons`) で 谷/山の幅を線形補間していたため、 主線とフチが不整合になっていた。
+
+### 修正
+- 主線の谷/山幅判定ロジックを `_line_dynamic_width_params(entry)` に抽出。
+- 外側フチ `ensure_balloon_outer_edge_mesh` / 内側フチ `ensure_balloon_inner_edge_mesh` に動的幅分岐を追加。 動的形状で 谷/山幅が 100% 以外のときは、 主線と同じ係数で フチも `_build_dynamic_multi_line_polygons` で構築する。 フチの絶対幅 (`outer_white_margin_width_mm` / `inner_white_margin_width_mm`) は別途指定したまま、 谷/山の比率だけが共有される。
+- 主線が 谷で 0% の場合 → フチも 谷で 0% → 谷の角は フチに覆われず 元の鋭さを維持。
+- 主線が 山頂で 0% の場合 → フチも 山頂で 0% → 山の尖りが フチに覆われず 元の鋭さを維持。
+- 谷も山も 0% のとき フチも撤去 (主線と同じ挙動)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_line_dynamic_width_params` / `_balloon_center_m_from_samples` ヘルパー新規追加。
+  - `ensure_balloon_line_mesh` / `ensure_balloon_outer_edge_mesh` / `ensure_balloon_inner_edge_mesh` を同じヘルパー経由で動的幅判定する形に統一。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- `test/blender_balloon_edge_dynamic_width_check.py` 新規追加: トゲ (直線) フキダシ + 外側フチ + 内側フチ + 「角を尖らせる」 ON で 4 ケースをレンダリング:
+  - 山 100% / 谷 100%: 従来通り均一幅で フチが全周を覆う
+  - 山 100% / 谷 0%: 主線とフチが谷側で消え、 谷の鋭い凹みが残る
+  - 山 0% / 谷 100%: 主線とフチが山頂で消え、 山の尖りが残る
+  - 両方 0%: 主線とフチを撤去
+- AI 目視で 全ケースが期待通りの見え方になっていることを確認。
+
 ## 2026-05-28 — v0.6.137 ページ一覧を開いたときのビューポートを必ずレンダー表示モードにする
 
 ### 症状

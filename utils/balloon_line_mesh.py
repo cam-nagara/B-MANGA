@@ -2117,25 +2117,13 @@ def ensure_balloon_line_mesh(
 
     # 主線の谷/山の線幅: % 指定 (100% = base line_width, 0% = その頂点で消える)。
     # 辺全体で線形補間。動的形状のみ有効。両方 0% のとき主線全体不可視。
-    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    # `or N` 形式は値 0.0 のとき N にフォールバックしてしまうため使わない (FloatProperty
-    # は常に float を返すため getattr のデフォルトに頼ればよい)。
-    line_valley_width_pct = max(0.0, min(100.0, float(getattr(entry, "line_valley_width_pct", 100.0))))
-    line_peak_width_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0))))
+    # 外側フチ・内側フチでも同じ係数を流用する (フチが山頂を覆って尖りを潰さない
+    # ようにするため)。
+    main_line_dynamic, line_valley_width_pct, line_peak_width_pct, main_line_both_zero = (
+        _line_dynamic_width_params(entry)
+    )
     line_valley_width_mm = line_width_mm * line_valley_width_pct / 100.0
     line_peak_width_mm = line_width_mm * line_peak_width_pct / 100.0
-    main_line_dynamic = (
-        shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
-        and (
-            abs(line_valley_width_pct - 100.0) > 1.0e-3
-            or abs(line_peak_width_pct - 100.0) > 1.0e-3
-        )
-    )
-    main_line_both_zero = (
-        main_line_dynamic
-        and line_valley_width_pct <= 1.0e-3
-        and line_peak_width_pct <= 1.0e-3
-    )
 
     if line_style in {"dashed", "dotted"}:
         dash_polys = _build_dashed_band_polygons(
@@ -2155,10 +2143,7 @@ def ensure_balloon_line_mesh(
     elif main_line_dynamic:
         # 主線を可変幅で構築 (谷/山の line width を辺全体で線形補間)。
         # body samples をそのまま centerline に使うため、body の鋭い谷/山がそのまま残る。
-        body_center_m = (
-            sum(s[0] for s in samples) / len(samples),
-            sum(s[1] for s in samples) / len(samples),
-        )
+        body_center_m = _balloon_center_m_from_samples(samples)
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
             signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
@@ -2204,6 +2189,34 @@ def _valley_sharp_for_entry(entry) -> bool:
     return bool(getattr(sp, "cloud_valley_sharp", False))
 
 
+def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
+    """主線の動的幅パラメータを返す.
+
+    戻り値: (is_dynamic, valley_pct, peak_pct, both_zero)
+    - is_dynamic: 谷/山の線幅 % が 100% 以外で、 動的形状 (cloud/fluffy/thorn/thorn-curve) のとき True
+    - valley_pct / peak_pct: 0..100
+    - both_zero: 両方 0% (= 帯全体が消える) のとき True
+
+    外側フチ・内側フチでも主線と同じ係数を流用し、 主線が山頂で消えるときは
+    フチも山頂で消えて尖りを残す挙動にする。
+    """
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    if shape_norm not in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+        return (False, 100.0, 100.0, False)
+    valley_pct = max(0.0, min(100.0, float(getattr(entry, "line_valley_width_pct", 100.0))))
+    peak_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0))))
+    is_dynamic = abs(valley_pct - 100.0) > 1.0e-3 or abs(peak_pct - 100.0) > 1.0e-3
+    both_zero = is_dynamic and valley_pct <= 1.0e-3 and peak_pct <= 1.0e-3
+    return (is_dynamic, valley_pct, peak_pct, both_zero)
+
+
+def _balloon_center_m_from_samples(samples: Sequence[tuple[float, float, float]]) -> tuple[float, float]:
+    return (
+        sum(s[0] for s in samples) / len(samples),
+        sum(s[1] for s in samples) / len(samples),
+    )
+
+
 def ensure_balloon_outer_edge_mesh(
     *,
     scene,
@@ -2246,22 +2259,51 @@ def ensure_balloon_outer_edge_mesh(
     far_mm = line_width_mm + edge_width_mm
     center_mm = (near_mm + far_mm) * 0.5
     band_mm = max(0.0, far_mm - near_mm)
-    band_polygon = build_offset_band_polygon(
-        samples,
-        signed_offset_m=center_mm * 0.001,
-        band_width_m=band_mm * 0.001,
-        valley_sharp=_valley_sharp_for_entry(entry),
-    )
-    if band_polygon is None:
+    valley_sharp = _valley_sharp_for_entry(entry)
+
+    # 主線の「谷/山の線幅 %」を外側フチにも反映する。
+    # 主線が山頂で 0 になるとき、 フチも山頂で 0 にならないと フチが山の尖りを覆って
+    # 元のフキダシ形状の鋭さを潰してしまうため。
+    is_dynamic, valley_pct, peak_pct, both_zero = _line_dynamic_width_params(entry)
+    if is_dynamic and both_zero:
+        # 谷も山も 0% → 帯全体を非表示
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
-    outer_ring, holes = band_polygon
 
     mesh_name = _outer_edge_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _build_band_mesh_from_union(mesh, outer_ring, holes, OUTER_EDGE_Z_OFFSET_M)
+
+    if is_dynamic:
+        body_center_m = _balloon_center_m_from_samples(samples)
+        sub_polys = _build_dynamic_multi_line_polygons(
+            body_samples=samples,
+            signed_offset_m=center_mm * 0.001,
+            base_width_m=band_mm * 0.001,
+            valley_width_m=band_mm * 0.001 * (valley_pct / 100.0),
+            peak_width_m=band_mm * 0.001 * (peak_pct / 100.0),
+            length_scale=1.0,
+            valley_sharp=valley_sharp,
+            balloon_center_m=body_center_m,
+            peak_extension_m=0.0,
+        )
+        if not sub_polys:
+            remove_balloon_outer_edge_mesh(balloon_id)
+            return None
+        _build_band_mesh_from_polygons(mesh, sub_polys, OUTER_EDGE_Z_OFFSET_M)
+    else:
+        band_polygon = build_offset_band_polygon(
+            samples,
+            signed_offset_m=center_mm * 0.001,
+            band_width_m=band_mm * 0.001,
+            valley_sharp=valley_sharp,
+        )
+        if band_polygon is None:
+            remove_balloon_outer_edge_mesh(balloon_id)
+            return None
+        outer_ring, holes = band_polygon
+        _build_band_mesh_from_union(mesh, outer_ring, holes, OUTER_EDGE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_outer_edge_mesh_object_name(balloon_id),
@@ -2318,22 +2360,48 @@ def ensure_balloon_inner_edge_mesh(
     # 帯は signed offset = +overlap から -edge_width まで → 中央 = (overlap - edge_width)/2.
     center_mm = (overlap_mm - edge_width_mm) * 0.5
     band_mm = overlap_mm + edge_width_mm
-    band_polygon = build_offset_band_polygon(
-        samples,
-        signed_offset_m=center_mm * 0.001,
-        band_width_m=band_mm * 0.001,
-        valley_sharp=_valley_sharp_for_entry(entry),
-    )
-    if band_polygon is None:
+    valley_sharp = _valley_sharp_for_entry(entry)
+
+    # 主線の「谷/山の線幅 %」を内側フチにも反映する (外側フチと同じ理由)。
+    is_dynamic, valley_pct, peak_pct, both_zero = _line_dynamic_width_params(entry)
+    if is_dynamic and both_zero:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
-    outer_ring, holes = band_polygon
 
     mesh_name = _inner_edge_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _build_band_mesh_from_union(mesh, outer_ring, holes, INNER_EDGE_Z_OFFSET_M)
+
+    if is_dynamic:
+        body_center_m = _balloon_center_m_from_samples(samples)
+        sub_polys = _build_dynamic_multi_line_polygons(
+            body_samples=samples,
+            signed_offset_m=center_mm * 0.001,
+            base_width_m=band_mm * 0.001,
+            valley_width_m=band_mm * 0.001 * (valley_pct / 100.0),
+            peak_width_m=band_mm * 0.001 * (peak_pct / 100.0),
+            length_scale=1.0,
+            valley_sharp=valley_sharp,
+            balloon_center_m=body_center_m,
+            peak_extension_m=0.0,
+        )
+        if not sub_polys:
+            remove_balloon_inner_edge_mesh(balloon_id)
+            return None
+        _build_band_mesh_from_polygons(mesh, sub_polys, INNER_EDGE_Z_OFFSET_M)
+    else:
+        band_polygon = build_offset_band_polygon(
+            samples,
+            signed_offset_m=center_mm * 0.001,
+            band_width_m=band_mm * 0.001,
+            valley_sharp=valley_sharp,
+        )
+        if band_polygon is None:
+            remove_balloon_inner_edge_mesh(balloon_id)
+            return None
+        outer_ring, holes = band_polygon
+        _build_band_mesh_from_union(mesh, outer_ring, holes, INNER_EDGE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_inner_edge_mesh_object_name(balloon_id),
