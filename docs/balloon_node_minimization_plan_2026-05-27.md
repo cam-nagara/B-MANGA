@@ -1,5 +1,22 @@
 # フキダシ ジオメトリノード最小化計画 (2026-05-27)
 
+## 進行状況
+
+**全 Phase 完了 (2026-05-27, v0.6.129〜v0.6.133)**
+
+- ✅ Phase A (v0.6.129, commit `8cda170`): マスク経路 + 見切れ塗り経路を撤去
+- ✅ Phase B (v0.6.130, commit `02dd661`): カスタム形状も Shapely バンドメッシュへ統一
+- ✅ Phase C (v0.6.131, commit `aab0d34`): 塗り面を Python earcut で焼き込み、Fill Curve 撤去
+- ✅ Phase D (v0.6.132, commit `c3061a8`): ノードグループを完全撤去、しっぽも Python メッシュ化
+- ✅ Phase E (v0.6.133): 機能網羅チェックリスト 34 ケース PASS
+
+**結果サマリ**:
+- フキダシ本体カーブから geometry node modifier が完全に消えた
+- ノードグループ `BName_GN_BalloonCurveRender` も完全消滅 (旧 .blend からは load_post で削除)
+- 全描画責務 (塗り / 主線 / 外側フチ / 内側フチ / 多重線 / しっぽ主線) が Python メッシュで完結
+- `utils/balloon_curve_render_nodes.py`: 1393 行 → 78 行 (-94%)
+- 移動・サイズ変更・詳細設定変更でノードグループ評価コストがゼロに
+
 ## 目的
 
 フキダシのジオメトリノードグループ (`BName_GN_BalloonCurveRender`, 1393 行で構築) が、画像マスク統一後も残骸 (Raycast マスククリップ / 外フチ・内フチ・多重線 CurveToMesh 系統 / 形状ごとの分岐) を抱えたまま肥大化し、移動・サイズ変更・詳細設定変更の重さの原因になっている。

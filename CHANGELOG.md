@@ -3,6 +3,35 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.133 フキダシ ジオメトリノード最小化 Phase E 機能網羅検証 (全 Phase 完了)
+
+### 概要
+Phase A〜D でフキダシ本体カーブから geometry node modifier が完全に消えた状態を、機能網羅チェックリストで全範囲確認する。
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- `test/blender_balloon_node_minimization_phase_e_check.py` 新規追加: 31 通りの形状/線スタイル/フチ/塗り/変形/形状パラメータ + 3 種のしっぽ (直線/曲線/付箋) = 計 34 ケースを実機検証 PASS。
+  - 形状: rect / ellipse / octagon / cloud / fluffy / thorn / thorn-curve (+ custom は Phase B、none は Phase A で検証済み)
+  - 線スタイル: 実線 / 破線 / 点線 / 多重線 (count=3, count=5+both) / 線なし
+  - 主線: 線幅 / 線色 / 変動幅 (谷山 %)
+  - 多重線: 山谷を延ばして交差
+  - 外側フチ / 内側フチ / 両方
+  - 塗り: 単色 / グラデーション / 輪郭ぼかし / ぼかし+ディザ / 不透明度
+  - 配置: 反転 H/V / 回転 / 中心点オフセット / 角丸
+  - 形状パラメータ: 雲山幅・高さ / 乱れ / 小山 / 動的形状ベース / 谷を尖らせる
+  - しっぽ: type=straight/curve/sticky それぞれで tail_main_line_mesh + union 塗り面が生成
+- すべてのケースで本体カーブに modifier が一切付かないこと、 ノードグループ `BName_GN_BalloonCurveRender` が存在しないことを確認。
+
+### 計画完了
+全 Phase 完了によりノード経路の撤去が完全に達成された:
+- Phase A (v0.6.129): マスク経路 + 見切れ塗り経路撤去
+- Phase B (v0.6.130): カスタム形状も Shapely バンドメッシュへ統一
+- Phase C (v0.6.131): 塗り面を Python earcut で焼き込み、Fill Curve 撤去
+- Phase D (v0.6.132): ノードグループを完全撤去、しっぽも Python メッシュ化
+- Phase E (v0.6.133): 機能網羅検証 PASS
+
+### 関連計画書
+- `docs/balloon_node_minimization_plan_2026-05-27.md` — 全 Phase 完了状態へ更新
+
 ## 2026-05-27 — v0.6.132 フキダシのジオメトリノードグループ自体を撤去、しっぽも Python メッシュ化 (Phase D)
 
 ### 症状
