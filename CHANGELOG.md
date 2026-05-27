@@ -3,6 +3,25 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.124 「山谷を延ばして交差」を本体押し出し方式に再実装 (チャンキー三角形の重なりを解消)
+
+### 症状
+- v0.6.123 の cross スパイク union 方式は、line_width が大きい (例: 3.48mm) ときに三角形の延長量が指数的に増え、隣接スパイクが大きく重なって "崩れた" 見た目になっていた。
+
+### 修正
+- cross 有効時、各主山頂を **body 自体の延長** (= 外側へ smoothstep 局所減衰でずらす) で処理するように方針転換。これにより centerline buffer が自然に山頂で伸び、band が無理なく延長された star 形状になる。
+- 延長量は body の `主山頂 radial − 主谷 radial` (= 主山の高さ) を reference に、`reference × (0.18 + cut_factor)` で決定。line_width に依存しないため、太い線でもスケールが破綻しない。
+- cross 有効時は cut wedges を適用しない (= 押し出し方向と矛盾するため)。length cut は cross OFF のときだけ。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_extend_body_peaks_outward` ヘルパー追加 (主山頂を外側に smoothstep 押し出し)。
+  - `_build_shapely_band_with_peak_cuts` の cross_enabled パスを書き換え (スパイク union を廃止、本体押し出し方式に)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- ユーザー test98 (line_width 3.48mm, 角を尖らせる ON, 12 トゲ, 多重線 3 本, cross ON, 長さ 100/57.45): 3 リングが本体の延長された主山頂に沿って綺麗に配置され、外側リングほど peak が伸びる挙動になることを確認。前のような "崩れた重なり" は解消。
+- cross OFF も依然として山頂で切れる挙動を維持。
+
 ## 2026-05-27 — v0.6.123 「山谷を延ばして交差」を Shapely 経路で実装 (長さ変化 + 交差が両立)
 
 ### 症状
