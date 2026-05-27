@@ -216,6 +216,21 @@ def _draw_balloon_tails(layout, entry, page) -> None:
 def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
+
+    # 配置 (mm) を Outliner メタ の次 (最上段) に配置
+    box = layout.box()
+    box.label(text="配置 (mm)")
+    row = box.row(align=True)
+    row.prop(entry, "x_mm")
+    row.prop(entry, "y_mm")
+    row = box.row(align=True)
+    row.prop(entry, "width_mm")
+    row.prop(entry, "height_mm")
+    box.prop(entry, "rotation_deg")
+    row = box.row(align=True)
+    row.prop(entry, "flip_h")
+    row.prop(entry, "flip_v")
+
     box = layout.box()
     box.label(text="形状")
     source_state = _draw_balloon_regenerate_buttons(box, entry, page)
@@ -253,20 +268,8 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row = col.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-        # 「角を尖らせる」は線・塗りセクション側で全形状向けに表示する
-
-    box = layout.box()
-    box.label(text="配置 (mm)")
-    row = box.row(align=True)
-    row.prop(entry, "x_mm")
-    row.prop(entry, "y_mm")
-    row = box.row(align=True)
-    row.prop(entry, "width_mm")
-    row.prop(entry, "height_mm")
-    box.prop(entry, "rotation_deg")
-    row = box.row(align=True)
-    row.prop(entry, "flip_h")
-    row.prop(entry, "flip_v")
+        # 「角を尖らせる」は形状パラメータの一番下に置く
+        shape_box.prop(sp, "cloud_valley_sharp")
 
     box = layout.box()
     box.label(text="線・塗り")
@@ -294,16 +297,13 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
         if shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}:
             row = box.row(align=True)
-            row.prop(entry, "thorn_multi_line_length_scale_percent")
-            if shape_norm == "thorn":
-                row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
+            row.prop(entry, "thorn_multi_line_length_scale_near_percent")
+            row.prop(entry, "thorn_multi_line_length_scale_far_percent")
+            row = box.row(align=True)
+            row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
             row = box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_pct")
             row.prop(entry, "thorn_multi_line_peak_width_pct")
-    # 角を尖らせる: 全形状共通オプション (主線・フチ・多重線すべてに伝搬)
-    if sp is not None:
-        row = box.row(align=True)
-        row.prop(sp, "cloud_valley_sharp")
     row = box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")

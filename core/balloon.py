@@ -318,6 +318,12 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 線形補間される (谷から山に向かって 100%→0% など)。
     thorn_multi_line_valley_width_pct: FloatProperty(name="谷の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_peak_width_pct: FloatProperty(name="山の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 「長さ変化」を 2 段階に分けて、主線に最も近いリング (near) と最も遠い
+    # リング (far) で別々の % を指定できる。リング間は線形補間。
+    # 後方互換: 旧 `thorn_multi_line_length_scale_percent` は `..._far` のエイリアスとして
+    # 残し、UI/シリアライズは新 2 プロパティを使う。
+    thorn_multi_line_length_scale_near_percent: FloatProperty(name="長さ変化 (主線寄り)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_length_scale_far_percent: FloatProperty(name="長さ変化 (遠い側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_length_scale_percent: FloatProperty(name="長さ変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_cross_enabled: BoolProperty(name="山谷を延ばして交差", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

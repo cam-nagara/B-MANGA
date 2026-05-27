@@ -3,6 +3,37 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.119 長さ変化を主線寄り/遠い側で 2 段階に / 角を尖らせる延長対応 / 山谷を延ばして交差を実装 / UI 並び替え
+
+### 仕様変更・追加
+- 「長さ変化」を **主線寄り (near)** と **遠い側 (far)** で別々の % を指定できるようにした。リング 1 (= 一番主線に近い線) が near、リング N (= 一番遠い線) が far で、その間は線形補間。これまではリング 1 を常に 100% にしていたため、近い線でも縮めたい用途で不便だった。
+- 「角を尖らせる」 ON のとき、主線/多重線の山頂を **法線方向に延ばす** ようにした (smoothstep 局所減衰)。これにより「角を尖らせる」で見た目伸びた分にも長さ変化が反映される。
+- 「山谷を延ばして交差」が機能するように実装。長さ変化 < 100% の各キープ区間の端点を山頂方向へ延長し、隣接区間の端点同士が谷をまたいで交差する形になる。これまで本オプションは Mesh 経路で無視されていた。
+- 「角を尖らせる」を **形状パラメータ** セクションの一番下に配置 (「線・塗り」 側からは撤去)。
+- フキダシ詳細設定の **配置 (mm)** セクションを **Outliner メタ** の次 (最上段) に配置。
+
+### プロパティ追加 (Blender 内部識別子)
+- `thorn_multi_line_length_scale_near_percent` (default 100, range 0〜200)
+- `thorn_multi_line_length_scale_far_percent` (default 100, range 0〜200)
+- 旧 `thorn_multi_line_length_scale_percent` は互換のため残し、ユーザーがそれだけを書き換えた古い work.bname を開いたときに ``..._far`` 側に流し込む。
+
+### 関連ファイル
+- `core/balloon.py`: 2 つの新プロパティ追加。
+- `utils/balloon_line_mesh.py`:
+  - `_build_dynamic_multi_line_polygons` に `cross_extension_m` と `peak_extension_m` を追加。
+  - `_extend_segment_for_cross` ヘルパーを追加 (山谷を延ばして交差)。
+  - `ensure_balloon_line_mesh` (主線) / `ensure_balloon_multi_line_mesh` (多重線) で `peak_extension_m` / `cross_extension_m` を計算して渡す。
+  - 多重線の per-ring `ring_length_scale` を near→far 線形補間に書き換え。
+- `io/schema.py`: 新 2 プロパティをシリアライズ / load 時に 旧 `*Percent` を `*FarPercent` の初期値として継承。
+- `panels/balloon_panel.py`, `operators/layer_detail_op.py`:
+  - UI で near / far を別々の prop に切り替え。
+  - 「角を尖らせる」を形状パラメータの末尾に。
+  - 詳細設定の 配置 (mm) を最上段に。
+  - 「山谷を延ばして交差」を全 4 動的形状で UI 上に出す (これまで トゲ直線のみだった)。
+
+### 検証
+- 既存「長さ変化」 95% / 50% 検証 (`blender_balloon_v0_6_118_check.py`) を新コードで再実行し、PASS。旧 `..._percent` プロパティ値は ``_far`` への自動継承で従来通りの挙動を維持。
+
 ## 2026-05-27 — v0.6.118 多重線「長さ変化」 < 100% で線が破片化するバグ修正
 
 ### 症状

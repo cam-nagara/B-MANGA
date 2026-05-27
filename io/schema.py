@@ -880,6 +880,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "thornMultiLineValleyWidthPct": round(float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0)), 3),
         "thornMultiLinePeakWidthPct": round(float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0)), 3),
         "thornMultiLineLengthScalePercent": round(float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0)), 3),
+        "thornMultiLineLengthScaleNearPercent": round(float(getattr(entry, "thorn_multi_line_length_scale_near_percent", 100.0)), 3),
+        "thornMultiLineLengthScaleFarPercent": round(float(getattr(entry, "thorn_multi_line_length_scale_far_percent", 100.0)), 3),
         "thornMultiLineCrossEnabled": bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
         "lineColor": color_to_hex(entry.line_color),
         "lineColorAlpha": round(entry.line_color[3], 3),
@@ -984,6 +986,10 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.thorn_multi_line_valley_width_pct = float(data.get("thornMultiLineValleyWidthPct", 100.0))
     entry.thorn_multi_line_peak_width_pct = float(data.get("thornMultiLinePeakWidthPct", 100.0))
     entry.thorn_multi_line_length_scale_percent = float(data.get("thornMultiLineLengthScalePercent", 100.0))
+    # 旧 `thornMultiLineLengthScalePercent` が non-default のときは far の初期値に流用。
+    legacy_length_far = float(data.get("thornMultiLineLengthScalePercent", 100.0))
+    entry.thorn_multi_line_length_scale_near_percent = float(data.get("thornMultiLineLengthScaleNearPercent", 100.0))
+    entry.thorn_multi_line_length_scale_far_percent = float(data.get("thornMultiLineLengthScaleFarPercent", legacy_length_far))
     entry.thorn_multi_line_cross_enabled = bool(data.get("thornMultiLineCrossEnabled", False))
     alpha = float(data.get("lineColorAlpha", 1.0))
     entry.line_color = hex_to_rgba(data.get("lineColor", "#000000"), alpha)

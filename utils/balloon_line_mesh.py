@@ -722,6 +722,8 @@ def _build_dynamic_multi_line_polygons(
     length_scale: float,
     valley_sharp: bool,
     balloon_center_m: tuple[float, float],
+    cross_extension_m: float = 0.0,
+    peak_extension_m: float = 0.0,
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """動的形状 (cloud/fluffy/thorn/thorn-curve) の主線/多重線 1 リング分を、
     谷/山可変幅 + 長さ変化を反映した複数バンドポリゴンとして構築する。
@@ -745,12 +747,6 @@ def _build_dynamic_multi_line_polygons(
     n = len(pts)
     # 外向き法線 (samples 上)
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-    # オフセット centerline = samples + normal * signed_offset_m
-    centerline = [
-        (pts[i][0] + normals[i][0] * signed_offset_m,
-         pts[i][1] + normals[i][1] * signed_offset_m)
-        for i in range(n)
-    ]
     # 期待される山数は **body anchor 数** を上限の目安にする。本体カーブは
     # 山/谷 anchor が交互に並ぶ構造なので、anchor 数 = (山数 + 谷数) に近い。
     # 周長ベース (base_width 単位) で見積もると偽の局所最大が大量に拾われ、
@@ -764,6 +760,32 @@ def _build_dynamic_multi_line_polygons(
         balloon_center_m,
         expected_count=expected_count,
     )
+
+    # 「角を尖らせる」相当の peak 延長: peak_extension_m > 0 のとき、各 peak
+    # 頂点を外向き法線方向へ延ばす。延長は peak 周辺の数サンプルに対して
+    # smoothstep で滑らかに減衰させる (急な段差を避ける)。
+    pts_eff = list(pts)
+    if peak_extension_m > 1.0e-9 and peaks:
+        # 隣接 peak/valley 間の距離 (samples 単位) を基準に半幅 falloff を決める
+        half_span = max(2, anchor_count and (n // max(1, anchor_count * 2)) or 4)
+        for peak in peaks:
+            for offset in range(-half_span, half_span + 1):
+                idx = (peak + offset) % n
+                # smoothstep に近い局所重み (= 0 at edge, 1 at peak)
+                u = 1.0 - (abs(offset) / float(half_span))
+                if u <= 0.0:
+                    continue
+                w = u * u * (3.0 - 2.0 * u)
+                ex = peak_extension_m * w
+                nx, ny = normals[idx]
+                pts_eff[idx] = (pts_eff[idx][0] + nx * ex, pts_eff[idx][1] + ny * ex)
+
+    # オフセット centerline = pts_eff + normal * signed_offset_m
+    centerline = [
+        (pts_eff[i][0] + normals[i][0] * signed_offset_m,
+         pts_eff[i][1] + normals[i][1] * signed_offset_m)
+        for i in range(n)
+    ]
 
     # 各サンプル点の line width: 谷と山の頂点それぞれを valley_width_m / peak_width_m とし、
     # 辺全体で線形補間する (山0%・谷100% なら谷→山にかけて 100%→0% に線形で変化)。
@@ -790,8 +812,10 @@ def _build_dynamic_multi_line_polygons(
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
 
     out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    # cross_extension_m > 0: 各 keep segment の山頂方向 (= 端点) を法線方向へ延ばし、
+    # 谷をまたいで隣接 segment と交差する形に。length_scale < 1.0 のときのみ有効。
     if length_scale >= 0.999:
-        # 閉じた全周帯 (ホール付きポリゴン)
+        # 閉じた全周帯 (ホール付きポリゴン): cross_extension は無関係
         if segments:
             seg = segments[0]
             result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=True)
@@ -801,10 +825,65 @@ def _build_dynamic_multi_line_polygons(
         for seg in segments:
             if len(seg) < 2:
                 continue
-            result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=False)
+            if cross_extension_m > 1.0e-9:
+                centerline_ext, widths_ext, normals_ext, seg_ext = _extend_segment_for_cross(
+                    centerline, widths, normals, seg, cross_extension_m
+                )
+                result = _build_variable_width_band_segment(centerline_ext, widths_ext, normals_ext, seg_ext, closed=False)
+            else:
+                result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=False)
             if result is not None:
                 out_polygons.append(result)
     return out_polygons
+
+
+def _extend_segment_for_cross(
+    centerline: Sequence[tuple[float, float]],
+    widths: Sequence[float],
+    normals: Sequence[tuple[float, float]],
+    seg: Sequence[int],
+    cross_extension_m: float,
+) -> tuple[list[tuple[float, float]], list[float], list[tuple[float, float]], list[int]]:
+    """seg の両端 (= peak 寄り) を centerline 上の接線方向に延ばす。
+
+    seg は 谷→山→谷 (3 連) の形をしている想定。両端は「peak の手前で切られた点」。
+    その端点をさらに接線方向へ `cross_extension_m` だけ伸ばし、新しい仮想頂点を
+    centerline の末尾に追加して seg に組み込む。これで隣接 segment の端点同士が
+    谷をまたいで交差する見た目になる。
+    """
+    cl = list(centerline)
+    wd = list(widths)
+    nm = list(normals)
+    new_seg = list(seg)
+    if len(seg) < 2:
+        return cl, wd, nm, new_seg
+    # 前端: seg[0] と seg[1] の接線方向 (反転) で延ばす
+    a0 = cl[seg[0]]
+    a1 = cl[seg[1]]
+    dx = a0[0] - a1[0]
+    dy = a0[1] - a1[1]
+    dlen = math.hypot(dx, dy)
+    if dlen > 1.0e-9:
+        scale = cross_extension_m / dlen
+        head_pt = (a0[0] + dx * scale, a0[1] + dy * scale)
+        cl.append(head_pt)
+        wd.append(wd[seg[0]])
+        nm.append(nm[seg[0]])
+        new_seg.insert(0, len(cl) - 1)
+    # 後端: seg[-1] と seg[-2] の接線方向 (反転) で延ばす
+    b0 = cl[seg[-1]]
+    b1 = cl[seg[-2]]
+    dx = b0[0] - b1[0]
+    dy = b0[1] - b1[1]
+    dlen = math.hypot(dx, dy)
+    if dlen > 1.0e-9:
+        scale = cross_extension_m / dlen
+        tail_pt = (b0[0] + dx * scale, b0[1] + dy * scale)
+        cl.append(tail_pt)
+        wd.append(wd[seg[-1]])
+        nm.append(nm[seg[-1]])
+        new_seg.append(len(cl) - 1)
+    return cl, wd, nm, new_seg
 
 
 def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
@@ -1638,6 +1717,7 @@ def ensure_balloon_line_mesh(
             sum(s[0] for s in samples) / len(samples),
             sum(s[1] for s in samples) / len(samples),
         )
+        peak_extension_m = (line_width_m * 1.5) if valley_sharp else 0.0
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
             signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
@@ -1647,6 +1727,7 @@ def ensure_balloon_line_mesh(
             length_scale=1.0,  # 主線は length_scale 非適用 (常に閉ループ)
             valley_sharp=valley_sharp,
             balloon_center_m=body_center_m,
+            peak_extension_m=peak_extension_m,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -1861,14 +1942,27 @@ def ensure_balloon_multi_line_mesh(
     peak_width_pct = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0))))
     valley_width_mm = multi_width_mm * valley_width_pct / 100.0
     peak_width_mm = multi_width_mm * peak_width_pct / 100.0
-    length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
+    # 「長さ変化」は 主線寄り (near) と 遠い側 (far) を別々に %。リング 1 (= 主線寄り)
+    # を near、リング N (= 最も遠い) を far として、リング間は線形補間。
+    # 旧 `thorn_multi_line_length_scale_percent` は far のフォールバックとして扱う。
+    length_near_pct = float(getattr(entry, "thorn_multi_line_length_scale_near_percent", 100.0))
+    length_far_pct = float(getattr(entry, "thorn_multi_line_length_scale_far_percent", 100.0))
+    legacy_length_pct = float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0))
+    # legacy 値が既定でないとき far に反映 (新規ファイル互換)
+    if abs(length_far_pct - 100.0) < 1.0e-3 and abs(legacy_length_pct - 100.0) > 1.0e-3:
+        length_far_pct = legacy_length_pct
+    length_near = max(0.0, min(1.0, length_near_pct / 100.0))
+    length_far = max(0.0, min(1.0, length_far_pct / 100.0))
+    cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     dynamic_features_active = (
         shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
         and (
-            length_scale < 0.999
+            length_near < 0.999
+            or length_far < 0.999
             or abs(valley_width_pct - 100.0) > 1.0e-3
             or abs(peak_width_pct - 100.0) > 1.0e-3
+            or cross_enabled
         )
     )
     if multi_width_mm <= 1.0e-6:
@@ -1925,9 +2019,13 @@ def ensure_balloon_multi_line_mesh(
             ring_valley_width_mm = valley_width_mm * (width_scale ** max(0, ring_index - 1))
             ring_peak_width_mm = peak_width_mm * (width_scale ** max(0, ring_index - 1))
             ring_extent_mm = max(ring_width_mm, ring_valley_width_mm, ring_peak_width_mm)
-            # length_scale はリングごとに「主線に近い線ほど変化が小さく、遠い線ほど大きい」
-            # 線形補間で適用する: ring N の length_scale = 1 - (1-base) × ring_index / count
-            ring_length_scale = 1.0 - (1.0 - length_scale) * (float(ring_index) / float(max(1, count)))
+            # 「長さ変化」を near (主線寄り) と far (最も遠い) で別々に。リング 1 = near、
+            # リング N = far として線形補間。
+            if count <= 1:
+                ring_length_scale = length_near
+            else:
+                t = float(ring_index - 1) / float(count - 1)
+                ring_length_scale = length_near + (length_far - length_near) * t
             ring_length_scale = max(0.0, min(1.0, ring_length_scale))
         else:
             ring_valley_width_mm = ring_width_mm
@@ -1947,6 +2045,20 @@ def ensure_balloon_multi_line_mesh(
                 # 谷幅・山幅が両方 0 → このリングは描かない (= 多重線全体が消える)
                 pass
             elif dynamic_features_active:
+                # 「角を尖らせる」で主線がミテレ延長される分、多重線も同じ量だけ
+                # 山方向に伸ばす。延長量は line_width に依存しないため、固定の
+                # half ring_width を上限とする (実用的に滑らかな範囲)。
+                if valley_sharp:
+                    peak_extension_m = (line_width_mm * 0.001) * 1.5
+                else:
+                    peak_extension_m = 0.0
+                # 「山谷を延ばして交差」: cross_enabled かつ length < 100% のとき
+                # 端点を山頂方向に延ばして、隣接 segment の端点同士が谷をまたいで
+                # 交差する形に。延長量は ring 幅と spacing を合わせた程度。
+                if cross_enabled and ring_length_scale < 0.999:
+                    cross_extension_m = (ring_spacing_mm + ring_width_mm) * 0.001
+                else:
+                    cross_extension_m = 0.0
                 sub_polys = _build_dynamic_multi_line_polygons(
                     body_samples=samples,
                     signed_offset_m=signed_offset_mm * 0.001,
@@ -1956,6 +2068,8 @@ def ensure_balloon_multi_line_mesh(
                     length_scale=ring_length_scale,
                     valley_sharp=valley_sharp,
                     balloon_center_m=body_center_m,
+                    cross_extension_m=cross_extension_m,
+                    peak_extension_m=peak_extension_m,
                 )
                 polygons.extend(sub_polys)
             else:

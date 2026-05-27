@@ -151,15 +151,13 @@ class BNAME_PT_balloons(Panel):
             shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
             if shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}:
                 row = box.row(align=True)
-                row.prop(entry, "thorn_multi_line_length_scale_percent")
-                if shape_norm == "thorn":
-                    row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
+                row.prop(entry, "thorn_multi_line_length_scale_near_percent")
+                row.prop(entry, "thorn_multi_line_length_scale_far_percent")
+                row = box.row(align=True)
+                row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
                 row = box.row(align=True)
                 row.prop(entry, "thorn_multi_line_valley_width_pct")
                 row.prop(entry, "thorn_multi_line_peak_width_pct")
-        # 角を尖らせる: 全形状共通オプション (主線・フチ・多重線すべてに伝搬)
-        row = box.row(align=True)
-        row.prop(entry.shape_params, "cloud_valley_sharp")
         row = box.row(align=True)
         row.prop(entry, "line_color")
         row.prop(entry, "fill_color")
@@ -210,7 +208,8 @@ class BNAME_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
             row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-            # 「角を尖らせる」は線・塗りセクション側で全形状向けに表示する
+            # 「角を尖らせる」は形状パラメータの一番下に置く
+            box.prop(sp, "cloud_valley_sharp")
 
         # 尻尾
         box = layout.box()
