@@ -1172,10 +1172,13 @@ def _build_variable_width_band_from_buffer(
         from shapely.geometry import Polygon  # type: ignore
     except Exception:  # noqa: BLE001
         return None
-    # centerline 用 buffer は mitre 爆発を避けるため穏やかな mitre_limit (4.0) を使う。
-    # 角を尖らせる効果は per-point 幅補間 と outer/inner offset で表現する。
+    # centerline 用 buffer の mitre_limit:
+    # - 低すぎる (4.0): フキダシ形状の鋭い谷/山が bevel カットされて丸く見える
+    # - 高すぎる (50.0): 山頂が外向きに過剰なヒゲ状スパイクとして mitre 延長される
+    # 中間値 (10.0) で、 thorn の典型的な鋭角 (30〜60 度) を sharp に保ちつつ、
+    # 過剰スパイクを抑える。 角を尖らせる OFF では _ROUND_MITRE_LIMIT を使う。
     join = 2 if valley_sharp else 1
-    mitre = 4.0 if valley_sharp else _ROUND_MITRE_LIMIT
+    mitre = 10.0 if valley_sharp else _ROUND_MITRE_LIMIT
     try:
         center_buf = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
     except Exception:  # noqa: BLE001
@@ -2217,6 +2220,131 @@ def _balloon_center_m_from_samples(samples: Sequence[tuple[float, float, float]]
     )
 
 
+def _compute_main_line_polygon(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    valley_sharp: bool,
+):
+    """主線の Shapely polygon を返す (dynamic / 均一どちらも対応).
+
+    フキダシのアウトラインを 主線が太く描いた領域として算出するため、 外側フチ
+    の buffer 基準として使う。 主線が dynamic で 谷で 0% / 山頂で 0% のときも
+    主線が実際に塗る範囲を返す。 帯全体が無効化される設定では None。
+    """
+    if line_width_m <= 1.0e-9:
+        return None
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    is_dynamic, valley_pct, peak_pct, both_zero = _line_dynamic_width_params(entry)
+    if is_dynamic and both_zero:
+        return None
+    if is_dynamic:
+        line_valley_m = line_width_m * (valley_pct / 100.0)
+        line_peak_m = line_width_m * (peak_pct / 100.0)
+        sub_polys = _build_dynamic_multi_line_polygons(
+            body_samples=samples,
+            signed_offset_m=line_width_m * 0.5,
+            base_width_m=line_width_m,
+            valley_width_m=line_valley_m,
+            peak_width_m=line_peak_m,
+            length_scale=1.0,
+            valley_sharp=valley_sharp,
+            balloon_center_m=balloon_center_m,
+            peak_extension_m=0.0,
+        )
+        if not sub_polys:
+            return None
+        polys = []
+        for outer, holes in sub_polys:
+            try:
+                p = Polygon(outer, holes)
+                if not p.is_valid:
+                    p = p.buffer(0)
+                if not p.is_empty and p.area > 0:
+                    polys.append(p)
+            except Exception:  # noqa: BLE001
+                continue
+        if not polys:
+            return None
+        try:
+            return unary_union(polys)
+        except Exception:  # noqa: BLE001
+            return None
+    # 均一幅主線: body の外側に line_width_m まで膨らんだ帯
+    body_poly = _build_body_polygon(samples)
+    if body_poly is None:
+        return None
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        outline = body_poly.buffer(line_width_m, join_style=join, mitre_limit=mitre)
+        return outline.difference(body_poly)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _compute_balloon_outer_outline(
+    entry,
+    samples,
+    balloon_center_m: tuple[float, float],
+    line_width_m: float,
+    valley_sharp: bool,
+):
+    """body + 主線 polygon の union = 「主線が描く変わったアウトライン」を返す.
+
+    外側フチは このアウトラインを edge_width だけ外側に均一 buffer して作る。
+    """
+    body_poly = _build_body_polygon(samples)
+    if body_poly is None:
+        return None
+    line_poly = _compute_main_line_polygon(entry, samples, balloon_center_m, line_width_m, valley_sharp)
+    if line_poly is None or line_poly.is_empty:
+        return body_poly
+    try:
+        union = body_poly.union(line_poly)
+        if union.is_empty:
+            return body_poly
+        return union
+    except Exception:  # noqa: BLE001
+        return body_poly
+
+
+def _shapely_geom_to_outer_holes_list(geom):
+    """Shapely Polygon/MultiPolygon を [(outer_ring, holes), ...] に変換する."""
+    if geom is None or geom.is_empty:
+        return []
+    if geom.geom_type == "Polygon":
+        geoms = [geom]
+    elif geom.geom_type == "MultiPolygon":
+        geoms = list(geom.geoms)
+    else:
+        return []
+    out = []
+    for g in geoms:
+        if g.is_empty or g.area <= 1.0e-12:
+            continue
+        outer = [(float(x), float(y)) for x, y in g.exterior.coords]
+        if len(outer) >= 2 and outer[0] == outer[-1]:
+            outer = outer[:-1]
+        if len(outer) < 3:
+            continue
+        holes = []
+        for interior in g.interiors:
+            hole = [(float(x), float(y)) for x, y in interior.coords]
+            if len(hole) >= 2 and hole[0] == hole[-1]:
+                hole = hole[:-1]
+            if len(hole) >= 3:
+                holes.append(hole)
+        out.append((outer, holes))
+    return out
+
+
 def ensure_balloon_outer_edge_mesh(
     *,
     scene,
@@ -2252,21 +2380,35 @@ def ensure_balloon_outer_edge_mesh(
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
 
-    # 雲フキダシ主線は外側アライメント (body から +line_width まで body の外を太らせる)。
-    # 外側フチは主線の外側に沿って張り付くため、near=line_width-overlap, far=line_width+edge_width.
-    overlap_mm = min(line_width_mm, edge_width_mm) * _EDGE_OVERLAP_RATIO
-    near_mm = max(0.0, line_width_mm - overlap_mm)
-    far_mm = line_width_mm + edge_width_mm
-    center_mm = (near_mm + far_mm) * 0.5
-    band_mm = max(0.0, far_mm - near_mm)
     valley_sharp = _valley_sharp_for_entry(entry)
+    line_width_m = line_width_mm * 0.001
+    edge_width_m = edge_width_mm * 0.001
+    body_center_m = _balloon_center_m_from_samples(samples)
 
-    # 主線の「谷/山の線幅 %」を外側フチにも反映する。
-    # 主線が山頂で 0 になるとき、 フチも山頂で 0 にならないと フチが山の尖りを覆って
-    # 元のフキダシ形状の鋭さを潰してしまうため。
-    is_dynamic, valley_pct, peak_pct, both_zero = _line_dynamic_width_params(entry)
-    if is_dynamic and both_zero:
-        # 谷も山も 0% → 帯全体を非表示
+    # 「主線が描く変わったアウトライン」 (body + 主線 polygon の union) を取得し、
+    # その外側に均一幅 edge_width で buffer する。 主線が dynamic (谷/山幅変動) でも
+    # アウトラインの形状追従だけが反映され、 フチ自身は常に均一幅で描かれる。
+    outline = _compute_balloon_outer_outline(entry, samples, body_center_m, line_width_m, valley_sharp)
+    if outline is None or outline.is_empty:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+
+    # mitre_limit は 主線アウトラインの細いスパイク先端で過剰延長を起こさないよう、
+    # 主線 dynamic と同じ 10.0 を上限とする (sharp は保ちつつ、 外向きにヒゲ状に
+    # 飛び出さない)。
+    join = 2 if valley_sharp else 1
+    mitre = 10.0 if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        outer_buffer = outline.buffer(edge_width_m, join_style=join, mitre_limit=mitre)
+        outer_band = outer_buffer.difference(outline)
+    except Exception:  # noqa: BLE001
+        outer_band = None
+    if outer_band is None or outer_band.is_empty:
+        remove_balloon_outer_edge_mesh(balloon_id)
+        return None
+
+    polys = _shapely_geom_to_outer_holes_list(outer_band)
+    if not polys:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
 
@@ -2274,36 +2416,7 @@ def ensure_balloon_outer_edge_mesh(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-
-    if is_dynamic:
-        body_center_m = _balloon_center_m_from_samples(samples)
-        sub_polys = _build_dynamic_multi_line_polygons(
-            body_samples=samples,
-            signed_offset_m=center_mm * 0.001,
-            base_width_m=band_mm * 0.001,
-            valley_width_m=band_mm * 0.001 * (valley_pct / 100.0),
-            peak_width_m=band_mm * 0.001 * (peak_pct / 100.0),
-            length_scale=1.0,
-            valley_sharp=valley_sharp,
-            balloon_center_m=body_center_m,
-            peak_extension_m=0.0,
-        )
-        if not sub_polys:
-            remove_balloon_outer_edge_mesh(balloon_id)
-            return None
-        _build_band_mesh_from_polygons(mesh, sub_polys, OUTER_EDGE_Z_OFFSET_M)
-    else:
-        band_polygon = build_offset_band_polygon(
-            samples,
-            signed_offset_m=center_mm * 0.001,
-            band_width_m=band_mm * 0.001,
-            valley_sharp=valley_sharp,
-        )
-        if band_polygon is None:
-            remove_balloon_outer_edge_mesh(balloon_id)
-            return None
-        outer_ring, holes = band_polygon
-        _build_band_mesh_from_union(mesh, outer_ring, holes, OUTER_EDGE_Z_OFFSET_M)
+    _build_band_mesh_from_polygons(mesh, polys, OUTER_EDGE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_outer_edge_mesh_object_name(balloon_id),
@@ -2353,18 +2466,32 @@ def ensure_balloon_inner_edge_mesh(
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
 
-    # 雲フキダシ主線は外側アライメントなので body 内側には主線が無い。内側フチは
-    # body 境界 (+overlap だけ外向きにオーバーラップ) から内向きに edge_width 入った
-    # 領域を帯にする。
-    overlap_mm = min(line_width_mm, edge_width_mm) * _EDGE_OVERLAP_RATIO
-    # 帯は signed offset = +overlap から -edge_width まで → 中央 = (overlap - edge_width)/2.
-    center_mm = (overlap_mm - edge_width_mm) * 0.5
-    band_mm = overlap_mm + edge_width_mm
     valley_sharp = _valley_sharp_for_entry(entry)
+    edge_width_m = edge_width_mm * 0.001
 
-    # 主線の「谷/山の線幅 %」を内側フチにも反映する (外側フチと同じ理由)。
-    is_dynamic, valley_pct, peak_pct, both_zero = _line_dynamic_width_params(entry)
-    if is_dynamic and both_zero:
+    # 主線は外側アライメントなので body 内側には主線が無い。 内側フチは body の内側に
+    # 均一幅 edge_width で描く。 主線の谷/山幅変動とは独立 (フチは常に均一幅)。
+    body_poly = _build_body_polygon(samples)
+    if body_poly is None:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        inner_shrunk = body_poly.buffer(-edge_width_m, join_style=join, mitre_limit=mitre)
+        if inner_shrunk.is_empty:
+            inner_band = body_poly
+        else:
+            inner_band = body_poly.difference(inner_shrunk)
+    except Exception:  # noqa: BLE001
+        inner_band = None
+    if inner_band is None or inner_band.is_empty:
+        remove_balloon_inner_edge_mesh(balloon_id)
+        return None
+
+    polys = _shapely_geom_to_outer_holes_list(inner_band)
+    if not polys:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
 
@@ -2372,36 +2499,7 @@ def ensure_balloon_inner_edge_mesh(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-
-    if is_dynamic:
-        body_center_m = _balloon_center_m_from_samples(samples)
-        sub_polys = _build_dynamic_multi_line_polygons(
-            body_samples=samples,
-            signed_offset_m=center_mm * 0.001,
-            base_width_m=band_mm * 0.001,
-            valley_width_m=band_mm * 0.001 * (valley_pct / 100.0),
-            peak_width_m=band_mm * 0.001 * (peak_pct / 100.0),
-            length_scale=1.0,
-            valley_sharp=valley_sharp,
-            balloon_center_m=body_center_m,
-            peak_extension_m=0.0,
-        )
-        if not sub_polys:
-            remove_balloon_inner_edge_mesh(balloon_id)
-            return None
-        _build_band_mesh_from_polygons(mesh, sub_polys, INNER_EDGE_Z_OFFSET_M)
-    else:
-        band_polygon = build_offset_band_polygon(
-            samples,
-            signed_offset_m=center_mm * 0.001,
-            band_width_m=band_mm * 0.001,
-            valley_sharp=valley_sharp,
-        )
-        if band_polygon is None:
-            remove_balloon_inner_edge_mesh(balloon_id)
-            return None
-        outer_ring, holes = band_polygon
-        _build_band_mesh_from_union(mesh, outer_ring, holes, INNER_EDGE_Z_OFFSET_M)
+    _build_band_mesh_from_polygons(mesh, polys, INNER_EDGE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_inner_edge_mesh_object_name(balloon_id),

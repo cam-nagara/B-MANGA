@@ -3,6 +3,43 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.139 フキダシのフチを「変わったアウトラインに沿う均一幅」へ作り直し + 主線の谷/山の丸まりを軽減
+
+### 症状
+- v0.6.138 で フチを 主線と一緒に 谷/山の線幅 % で削ってしまい、 「フチが一緒に細くなって 谷/山で消える」 状態だった。 ユーザーが望んでいた挙動と全く逆。
+- ユーザーの本来の意図: フチは均一幅のまま、 主線の幅が変わって「変わったアウトライン」に沿って フチが付く。
+- さらに、 主線そのものの谷/山の鋭い角が `_build_variable_width_band_from_buffer` 内部の `mitre_limit = 4.0` 固定で bevel カットされて 丸まっていた。
+
+### 修正
+- フチが谷/山で消える v0.6.138 の挙動を撤廃。 フチは均一幅で描き直す。
+- 外側フチ `ensure_balloon_outer_edge_mesh`:
+  - 「主線が描く変わったアウトライン」 (body + 主線 dynamic polygon の union) を Shapely で計算。
+  - そのアウトラインを `edge_width_mm` だけ外側に均一 buffer して、 アウトラインそのものを difference することで 厚さ `edge_width_mm` の 外側リングを得る。
+  - 主線が均一幅なら従来通り body の外側に均一リング、 dynamic なら 主線の変わった形状に沿った 均一リングになる。
+- 内側フチ `ensure_balloon_inner_edge_mesh`:
+  - body の内側に `edge_width_mm` だけ inner buffer して内側に均一リングを構築。
+  - 主線の谷/山幅とは独立 (主線は外側アライメントで body の内側には描かれないため)。
+- 主線 / フチ どちらも buffer の `mitre_limit` を 10.0 に統一 (元の 4.0 だと谷/山が丸く bevel カット、 50.0 だとヒゲ状に過剰スパイク)。
+- 共通ヘルパー `_compute_main_line_polygon` / `_compute_balloon_outer_outline` / `_shapely_geom_to_outer_holes_list` を追加し、 主線・外側フチで計算を共有。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_variable_width_band_from_buffer` の `mitre_limit` を 4.0 → 10.0 に。
+  - `_compute_main_line_polygon` / `_compute_balloon_outer_outline` / `_shapely_geom_to_outer_holes_list` 新規追加。
+  - `ensure_balloon_outer_edge_mesh` を 「主線アウトライン外側 buffer」 方式に書き直し。
+  - `ensure_balloon_inner_edge_mesh` を 「body 内側 buffer 均一幅」 に簡素化。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- `test/blender_balloon_edge_dynamic_width_check.py` で 4 ケース (peak100/valley100, peak100/valley0, peak0/valley100, peak0/valley0) をレンダー。
+- 修正後:
+  - peak100/valley100: 主線・フチが全周均一幅で thorn 形状を綺麗に描画。
+  - peak100/valley0: 主線が 山頂で太く 谷で 0。 外側フチが 主線アウトラインの外側に均一幅で 山頂の尖りに追従し、 谷では body 境界の外側に均一幅。 内側フチが body 内側で均一幅、 谷の鋭い角が フチに覆われず保たれる。
+  - peak0/valley100: 主線が 谷で太く 山頂で 0。 山頂 (= body の元の鋭い尖り) はフチが均一幅で覆い、 谷では主線太い帯と均一幅フチが外向きに伸びる。
+  - peak0/valley0: 主線撤去、 外側フチは body の外側に edge_width 均一、 内側フチも body 内側に均一。
+
+### 残作業 (ユーザー手元での確認)
+- v0.6.139 で フキダシのフチが期待通りに「変わったアウトラインに沿う均一幅」になっているか、 手元の Blender で 山の線幅 / 谷の線幅 を 0% / 100% / 中間値で目視確認してください。
+
 ## 2026-05-28 — v0.6.138 フキダシ主線「谷/山の線幅」を外側フチ・内側フチにも反映する
 
 ### 症状
