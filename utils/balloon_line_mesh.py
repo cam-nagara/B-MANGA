@@ -799,11 +799,29 @@ def _build_dynamic_multi_line_polygons(
     5. 各点での line width = lerp(valley_w, peak_w, t) を radial peak/valley 距離で計算。
     6. centerline ± normal*width/2 で外周/内周を構築。
     7. length_scale<1.0 なら 谷を起点に keep 区間を切り出し open polygon にする。
+
+    outside_align=True + valley_sharp=True + length_scale=1.0 (= 主線 dynamic + 角を
+    尖らせる) のときは、 anchor-only サンプル (= bezier 制御点だけ) で構築する。
+    こうすると body の peak / valley が単一頂点として残り、 outer ring も peak で
+    1 つの 鋭い頂点に集約されて、 滑らかな円弧で丸まらない。
     """
     if base_width_m <= 1.0e-9:
         return []
     if len(body_samples) < 6:
         return []
+
+    # 角を尖らせる + 外側アライメント + 全周ループは anchor-only で構築
+    use_anchor_only = (
+        outside_align
+        and valley_sharp
+        and length_scale >= 0.999
+        and (len(body_samples) % SAMPLES_PER_SEGMENT == 0)
+    )
+    if use_anchor_only:
+        anchor_step = SAMPLES_PER_SEGMENT
+        anchor_indices = list(range(0, len(body_samples), anchor_step))
+        if len(anchor_indices) >= 6:
+            body_samples = [body_samples[i] for i in anchor_indices]
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
     n = len(pts)
     # 外向き法線 (samples 上)
@@ -812,7 +830,7 @@ def _build_dynamic_multi_line_polygons(
     # 主山 (= local max in radial among anchors) と主谷 (= local min) だけが返る。
     # 高さ jitter があっても全ての主山が検出され、サブバンプは anchor-level の
     # local extremum にならないため自動的に除外される。
-    samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
+    samples_per_segment = 1 if use_anchor_only else max(1, SAMPLES_PER_SEGMENT)
     peaks_all, valleys_all = _detect_anchor_peaks_valleys(
         pts,
         balloon_center_m,

@@ -3,6 +3,33 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.141 角を尖らせる + 主線 dynamic で 山頂・谷の頂点を anchor-only サンプリングで完全に尖らせる
+
+### 症状
+- v0.6.140 で主線 dynamic を外側アライメント sample-direct 化したが、 ユーザーがスクショで指摘した「山頂が丸まる」 現象が残っていた。
+- ユーザー指摘のトゲ (直線) 形状 + 主線・山 100% / 谷 0% で、 黒主線の山頂が滑らかな円弧で 丸まり、 鋭い針状にならない。
+
+### 原因
+- 主線 dynamic は body の bezier サンプル (1 セグメントあたり `SAMPLES_PER_SEGMENT = 24` 個) を centerline に使っていた。
+- peak の頂点周辺に 24 サンプル分布 → outer ring (= body + normal*width) が peak 周辺で 24 サンプル ぶんの 細かい頂点列を作り、 結果として「鋭い針」 ではなく 「滑らかな円弧」 として描画されていた。
+
+### 修正
+- `_build_dynamic_multi_line_polygons` で 「外側アライメント + 角を尖らせる + 全周ループ」 (= 主線 dynamic で 角を尖らせる ON) のとき、 body サンプルを anchor (= bezier 制御点) だけに絞ってから centerline / normals を計算するようにした。
+- peak と valley が それぞれ 単一頂点として残り、 outer ring も peak で 1 つの鋭い頂点に集約 → 山頂・谷が 完全に 鋭く尖る。
+- `_detect_anchor_peaks_valleys` への `samples_per_segment` も anchor-only モードでは 1 にして 検出が破綻しないようにする。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_dynamic_multi_line_polygons` 冒頭に anchor-only サンプリングへ切り替える分岐を追加。
+  - `_detect_anchor_peaks_valleys` 呼び出しで anchor-only 時は `samples_per_segment=1`。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- `test/blender_balloon_edge_dynamic_width_check.py` を ユーザースクショと同じ設定 (トゲ直線・楕円ベース、 山の幅 12.79mm、 山の高さ 15.61mm、 ズラし 50%、 線幅 2.40mm、 外側フチ 2.20mm 薄紫、 内側フチ 1.78mm ピンク、 角を尖らせる ON) で再生成。
+- 3 ケース (peak100/valley100, peak100/valley0, peak0/valley100) を AI 目視で確認:
+  - 全ケースで 山頂・谷とも 滑らかな円弧でなく 鋭く尖る。
+  - 主線が 0 になる頂点で body の鋭い角に 直接 pinch off。
+  - フチも 主線アウトラインに沿って 均一幅で 鋭く折り返す。
+
 ## 2026-05-28 — v0.6.140 主線「谷/山の線幅」変動時に 0 になる頂点を鋭く尖らせる (外側アライメント sample-direct 化)
 
 ### 症状

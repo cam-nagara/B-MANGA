@@ -114,37 +114,42 @@ def main():
     coma_plane.ensure_coma_mask(scene, work, page, coma)
     coma_border_object.ensure_coma_border_object(scene, work, page, coma)
 
-    # トゲ (直線) フキダシ、 ユーザー報告と同じ設定
+    # トゲ (直線) フキダシ、 ユーザー報告 (test108.bname) と同じ設定
     entry = page.balloons.add()
     entry.id = f"balloon_{_SCENARIO}"
     entry.title = "尖り検証"
     entry.shape = "thorn"
     entry.x_mm = 30.0
     entry.y_mm = 30.0
-    entry.width_mm = 100.0
-    entry.height_mm = 100.0
+    entry.width_mm = 51.67
+    entry.height_mm = 63.61
     entry.parent_kind = "coma"
     entry.parent_key = parent_key
     entry.line_style = "solid"
-    entry.line_width_mm = 2.85
+    entry.line_width_mm = 2.40
     entry.line_color = (0.0, 0.0, 0.0, 1.0)
     entry.fill_color = (1.0, 1.0, 1.0, 1.0)
     entry.fill_opacity = 100.0
     # 谷/山の線幅 (ユーザー値)
     entry.line_peak_width_pct = peak_pct
     entry.line_valley_width_pct = valley_pct
-    # 外側フチ (青)
+    # 外側フチ (薄紫 = ユーザースクショと同じ)
     entry.outer_white_margin_enabled = True
-    entry.outer_white_margin_width_mm = 2.23
-    entry.outer_white_margin_color = (0.5, 0.7, 1.0, 1.0)
-    # 内側フチ (緑)
+    entry.outer_white_margin_width_mm = 2.20
+    entry.outer_white_margin_color = (0.65, 0.55, 0.95, 1.0)
+    # 内側フチ (ピンク = ユーザースクショと同じ)
     entry.inner_white_margin_enabled = True
-    entry.inner_white_margin_width_mm = 2.17
-    entry.inner_white_margin_color = (0.5, 1.0, 0.5, 1.0)
-    # 角を尖らせる
+    entry.inner_white_margin_width_mm = 1.78
+    entry.inner_white_margin_color = (1.0, 0.45, 0.85, 1.0)
+    # 形状パラメータ (ユーザースクショと同じ)
     sp = getattr(entry, "shape_params", None)
     if sp is not None:
         try:
+            sp.cloud_bump_width_mm = 12.79
+            sp.cloud_bump_height_mm = 15.61
+            sp.cloud_offset_percent = 50.0
+            sp.cloud_sub_width_ratio = 0.0
+            sp.cloud_sub_height_ratio = 0.0
             sp.cloud_valley_sharp = True
         except Exception:
             pass
@@ -157,7 +162,11 @@ def main():
     cx = (coma.rect_x_mm + coma.rect_width_mm * 0.5 + page_off_x) / 1000.0
     cy = (coma.rect_y_mm + coma.rect_height_mm * 0.5 + page_off_y) / 1000.0
 
-    _set_ortho_camera(cx, cy, 0.16)
+    # フキダシ全体 (約 52x64mm) を画面に大きく映すため ortho_scale を絞る。
+    # カメラ中心は フキダシ中心へ。
+    fcx = (entry.x_mm + entry.width_mm * 0.5 + page_off_x) / 1000.0
+    fcy = (entry.y_mm + entry.height_mm * 0.5 + page_off_y) / 1000.0
+    _set_ortho_camera(fcx, fcy, 0.10)
     out_path = _OUT_PATH / f"{_SCENARIO}.png"
     _render(out_path)
     print(f"=== {_SCENARIO} peak={peak_pct} valley={valley_pct} ===")
