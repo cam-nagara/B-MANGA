@@ -1141,6 +1141,7 @@ def _geometry_key_for_entry(entry) -> str:
         "multi_line_width": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
         "multi_line_spacing": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
         "multi_line_width_scale": float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
+        "multi_line_spacing_scale": float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0),
         "multi_line_direction": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
         "thorn_multi_line_valley_width": float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
         "thorn_multi_line_peak_width": float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),

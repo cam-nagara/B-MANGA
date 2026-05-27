@@ -1103,6 +1103,7 @@ def _set_modifier_values(
     multi_line_width_mm: float = 0.3,
     multi_line_spacing_mm: float = 0.4,
     multi_line_width_scale_percent: float = 100.0,
+    multi_line_spacing_scale_percent: float = 100.0,
     multi_line_direction: str = "outside",
     native_multi_line_rings_enabled: bool = True,
     thorn_multi_line_valley_width_mm: float = 0.3,
@@ -1160,9 +1161,10 @@ def _set_modifier_values(
         "塗り輪郭ぼかし": max(0.0, min(1.0, float(fill_blur_amount or 0.0))),
         "塗りぼかしをディザ化": bool(fill_blur_dither),
     }
-    spacing_mm = max(0.0, float(multi_line_spacing_mm or 0.0))
+    spacing_base_mm = max(0.0, float(multi_line_spacing_mm or 0.0))
     width_base_mm = max(0.0, float(multi_line_width_mm or 0.0))
     scale = max(0.0, float(multi_line_width_scale_percent or 0.0)) / 100.0
+    spacing_scale = max(0.0, float(multi_line_spacing_scale_percent or 0.0)) / 100.0
     extra_count = (
         min(
             _MAX_MULTI_LINE_RINGS - 1,
@@ -1172,10 +1174,12 @@ def _set_modifier_values(
         else 0
     )
     # 主線外側エッジ (body curve + line_width) を起点に、spacing 隙間 + 幅 ring_width
-    # を edge-to-edge gap = spacing 方式で順に並べる。
+    # を edge-to-edge gap = spacing 方式で順に並べる。spacing_scale でリングごとに
+    # spacing をスケール、width_scale でリングごとに幅をスケール。
     running = max(0.0, float(line_width_mm or 0.0))
     for ring_index in range(1, _MAX_MULTI_LINE_RINGS):
         width_mm = width_base_mm * (scale ** max(0, ring_index - 1))
+        spacing_mm = spacing_base_mm * (spacing_scale ** max(0, ring_index - 1))
         inner_mm = running + spacing_mm
         outer_mm = inner_mm + width_mm
         values[f"多重線{ring_index}表示"] = bool(ring_index <= extra_count and width_mm > 0.0)
@@ -1212,6 +1216,7 @@ def ensure_modifier(
     multi_line_width_mm: float = 0.3,
     multi_line_spacing_mm: float = 0.4,
     multi_line_width_scale_percent: float = 100.0,
+    multi_line_spacing_scale_percent: float = 100.0,
     multi_line_direction: str = "outside",
     native_multi_line_rings_enabled: bool = True,
     thorn_multi_line_valley_width_mm: float = 0.3,
@@ -1250,6 +1255,7 @@ def ensure_modifier(
         multi_line_width_mm=multi_line_width_mm,
         multi_line_spacing_mm=multi_line_spacing_mm,
         multi_line_width_scale_percent=multi_line_width_scale_percent,
+        multi_line_spacing_scale_percent=multi_line_spacing_scale_percent,
         multi_line_direction=multi_line_direction,
         native_multi_line_rings_enabled=native_multi_line_rings_enabled,
         thorn_multi_line_valley_width_mm=thorn_multi_line_valley_width_mm,

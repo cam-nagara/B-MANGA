@@ -499,6 +499,300 @@ def _build_dashed_band_polygons(
     return polygons
 
 
+def _polyline_outward_normals(
+    pts: Sequence[tuple[float, float]],
+    *,
+    closed: bool,
+    balloon_center: tuple[float, float] | None = None,
+) -> list[tuple[float, float]]:
+    """各点での外向き法線 (bisector の単位ベクトル) を返す.
+
+    `closed=True` の場合は閉ループとして前後の点を環状に参照する。
+    `balloon_center` が与えられたら radial が外向きを示すように符号を揃える。
+    """
+    n = len(pts)
+    normals: list[tuple[float, float]] = []
+    if n < 2:
+        return [(1.0, 0.0)] * n
+    for i in range(n):
+        if closed:
+            prev_p = pts[(i - 1) % n]
+            next_p = pts[(i + 1) % n]
+        else:
+            prev_p = pts[max(0, i - 1)]
+            next_p = pts[min(n - 1, i + 1)]
+        dx_prev = pts[i][0] - prev_p[0]
+        dy_prev = pts[i][1] - prev_p[1]
+        dx_next = next_p[0] - pts[i][0]
+        dy_next = next_p[1] - pts[i][1]
+        l_prev = math.hypot(dx_prev, dy_prev)
+        l_next = math.hypot(dx_next, dy_next)
+        if l_prev > 1.0e-12:
+            dx_prev /= l_prev
+            dy_prev /= l_prev
+        if l_next > 1.0e-12:
+            dx_next /= l_next
+            dy_next /= l_next
+        # 接線の平均を取り、それに垂直な単位ベクトルを法線とする
+        tx = dx_prev + dx_next
+        ty = dy_prev + dy_next
+        tlen = math.hypot(tx, ty)
+        if tlen < 1.0e-12:
+            # 折り返しに近い (両接線がほぼ反対): 適当な垂直
+            tx, ty = dx_next, dy_next
+            tlen = math.hypot(tx, ty) or 1.0
+        tx /= tlen
+        ty /= tlen
+        nx = -ty
+        ny = tx
+        if balloon_center is not None:
+            rx = pts[i][0] - balloon_center[0]
+            ry = pts[i][1] - balloon_center[1]
+            if nx * rx + ny * ry < 0.0:
+                nx = -nx
+                ny = -ny
+        normals.append((nx, ny))
+    return normals
+
+
+def _detect_centerline_peaks_valleys(
+    pts: Sequence[tuple[float, float]],
+    balloon_center: tuple[float, float],
+    *,
+    expected_count: int,
+) -> tuple[list[int], list[int]]:
+    """閉じた centerline 点列上で、balloon 中心からの radial 距離の局所最大 (山) と
+    局所最小 (谷) のインデックスを返す。
+
+    `expected_count` はおおよそ予想される山数 (= 多重線でのリング期待値)。これに基づき
+    検出ウィンドウ幅を決める。
+    """
+    n = len(pts)
+    if n < 6:
+        return [], []
+    cx, cy = balloon_center
+    radii = [math.hypot(p[0] - cx, p[1] - cy) for p in pts]
+    if expected_count > 0:
+        # 1 ピーク区間あたりの推定インデックス幅 / 3 を比較ウィンドウとする
+        window = max(2, int(n / max(1, expected_count) / 3))
+    else:
+        window = max(2, n // 30)
+    peaks: list[int] = []
+    valleys: list[int] = []
+    for i in range(n):
+        is_peak = True
+        is_valley = True
+        for j in range(1, window + 1):
+            r_minus = radii[(i - j) % n]
+            r_plus = radii[(i + j) % n]
+            if radii[i] < r_minus or radii[i] < r_plus:
+                is_peak = False
+            if radii[i] > r_minus or radii[i] > r_plus:
+                is_valley = False
+            if not is_peak and not is_valley:
+                break
+        if is_peak:
+            peaks.append(i)
+        elif is_valley:
+            valleys.append(i)
+    return peaks, valleys
+
+
+def _circular_dist(a: int, b: int, n: int) -> int:
+    d = abs(a - b) % n
+    return min(d, n - d)
+
+
+def _build_variable_width_band_segment(
+    pts: Sequence[tuple[float, float]],
+    widths: Sequence[float],
+    normals: Sequence[tuple[float, float]],
+    indices: Sequence[int],
+    *,
+    closed: bool,
+) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]] | None:
+    """指定インデックス列 (`indices`) の centerline に沿って、外側 = +normal*width/2,
+    内側 = -normal*width/2 の帯ポリゴンを構築する。
+
+    closed=True: outer (CCW) と inner (CW = hole) のホール付きポリゴン。
+    closed=False: outer + 逆順 inner を 1 つの閉曲線として返す (キャップは平らな端)。
+    """
+    m = len(indices)
+    if m < 2:
+        return None
+    outer: list[tuple[float, float]] = []
+    inner: list[tuple[float, float]] = []
+    for idx in indices:
+        p = pts[idx]
+        nx, ny = normals[idx]
+        half = widths[idx] * 0.5
+        outer.append((p[0] + nx * half, p[1] + ny * half))
+        inner.append((p[0] - nx * half, p[1] - ny * half))
+    if closed:
+        # outer (CCW), inner (CW = hole)
+        outer_ring = outer
+        hole = list(reversed(inner))
+        return outer_ring, [hole]
+    # Open segment: outer + reversed inner で 1 つの閉ポリゴンを作る (平キャップ)
+    polygon = list(outer) + list(reversed(inner))
+    return polygon, []
+
+
+def _ring_kept_index_segments(
+    n: int,
+    peak_indices: Sequence[int],
+    valley_indices: Sequence[int],
+    length_scale: float,
+) -> list[list[int]]:
+    """length_scale 適用後、centerline 上で残すインデックス区間群を返す。
+
+    length_scale=1.0 のときは全周をそのまま 1 区間として返す。
+    length_scale<1.0 のときは各ピーク中心 ± (隣接谷までの距離 × length_scale) を採用
+    して、複数の独立区間に分割する。
+    """
+    if length_scale >= 0.999 or not peak_indices:
+        return [list(range(n))]
+    segments: list[list[int]] = []
+    for peak in peak_indices:
+        # peak 両側で最も近い谷 (なければ隣のピーク中点) を境界に取る
+        if valley_indices:
+            left_distances = [(peak - v) % n for v in valley_indices]
+            right_distances = [(v - peak) % n for v in valley_indices]
+            left_d = min((d for d in left_distances if d > 0), default=n // 2)
+            right_d = min((d for d in right_distances if d > 0), default=n // 2)
+        else:
+            # ピークしかない場合は隣接ピークの半分を境界に
+            others = [p for p in peak_indices if p != peak]
+            if others:
+                left_distances = [(peak - p) % n for p in others]
+                right_distances = [(p - peak) % n for p in others]
+                left_d = min((d for d in left_distances if d > 0), default=n // 2) // 2
+                right_d = min((d for d in right_distances if d > 0), default=n // 2) // 2
+            else:
+                left_d = right_d = n // 2
+        keep_left = max(1, int(left_d * length_scale))
+        keep_right = max(1, int(right_d * length_scale))
+        start = (peak - keep_left) % n
+        # 区間長を求める
+        if start <= peak:
+            indices = list(range(start, peak + keep_right + 1))
+        else:
+            indices = list(range(start, n)) + list(range(0, peak + keep_right + 1))
+        # 境界をクリップ (重複排除なし)
+        segments.append([i % n for i in indices])
+    return segments
+
+
+def _build_dynamic_multi_line_polygons(
+    *,
+    body_poly,
+    signed_offset_m: float,
+    base_width_m: float,
+    valley_width_m: float,
+    peak_width_m: float,
+    length_scale: float,
+    valley_sharp: bool,
+    balloon_center_m: tuple[float, float],
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """動的形状 (cloud/fluffy/thorn/thorn-curve) の多重線 1 リング分を、
+    谷/山可変幅 + 長さ変化を反映した複数バンドポリゴンとして構築する。
+
+    手順:
+    1. body を `signed_offset_m` で buffer して、リング中心線 (closed polyline) を得る
+    2. 中心線上の山/谷インデックスを balloon 中心からの radial 距離で検出
+    3. 各サンプル点での line width を 山から谷への arc 距離で valley/peak 幅を補間
+    4. length_scale<1.0 なら ピークごとの帯断片に分解
+    5. 各断片を可変幅の帯ポリゴンとして組み立て
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    if body_poly is None:
+        return []
+    if base_width_m <= 1.0e-9:
+        return []
+    join = 2 if valley_sharp else 1
+    try:
+        ring_poly = body_poly.buffer(
+            signed_offset_m,
+            join_style=join,
+            mitre_limit=2.5 if valley_sharp else 5.0,
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if ring_poly.is_empty:
+        return []
+    if ring_poly.geom_type == "Polygon":
+        geom = ring_poly
+    elif ring_poly.geom_type == "MultiPolygon":
+        geom = max(ring_poly.geoms, key=lambda g: g.area)
+    else:
+        return []
+    coords = list(geom.exterior.coords)
+    if len(coords) < 6:
+        return []
+    pts = [(float(x), float(y)) for x, y in coords]
+    if math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= 1.0e-9:
+        pts = pts[:-1]
+    n = len(pts)
+    if n < 6:
+        return []
+
+    # 期待される山数 = body の bump 数 (おおよそで OK)。
+    # ここでは 形状情報がないため、半径方向の自己相関から推定するのは複雑なので、
+    # 単に「polyline 長さ / 帯幅」程度に設定する。
+    total_len = 0.0
+    for i in range(n):
+        dx = pts[(i + 1) % n][0] - pts[i][0]
+        dy = pts[(i + 1) % n][1] - pts[i][1]
+        total_len += math.hypot(dx, dy)
+    expected_count = max(4, int(total_len / max(base_width_m * 6.0, 0.002)))
+    peaks, valleys = _detect_centerline_peaks_valleys(
+        pts,
+        balloon_center_m,
+        expected_count=expected_count,
+    )
+
+    # 各点での山-谷重み (0=谷, 1=山) を arc 上の距離比で計算
+    widths: list[float] = []
+    if not peaks and not valleys:
+        widths = [base_width_m] * n
+    else:
+        for i in range(n):
+            if peaks:
+                d_peak = min(_circular_dist(i, p, n) for p in peaks)
+            else:
+                d_peak = n
+            if valleys:
+                d_valley = min(_circular_dist(i, v, n) for v in valleys)
+            else:
+                d_valley = n
+            total = d_peak + d_valley
+            if total <= 0:
+                factor = 0.5
+            else:
+                factor = d_valley / total  # 0 at valley, 1 at peak
+            widths.append(valley_width_m + (peak_width_m - valley_width_m) * factor)
+
+    normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
+
+    segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
+
+    out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    if length_scale >= 0.999:
+        # 閉じた全周帯 (ホール付きポリゴン)
+        seg = segments[0]
+        result = _build_variable_width_band_segment(pts, widths, normals, seg, closed=True)
+        if result is not None:
+            out_polygons.append(result)
+    else:
+        for seg in segments:
+            if len(seg) < 2:
+                continue
+            result = _build_variable_width_band_segment(pts, widths, normals, seg, closed=False)
+            if result is not None:
+                out_polygons.append(result)
+    return out_polygons
+
+
 def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
     samples: Sequence[tuple[float, float, float]],
     *,
@@ -1491,13 +1785,26 @@ def ensure_balloon_multi_line_mesh(
         remove_balloon_multi_line_mesh(balloon_id)
         return None
     count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
-    if count <= 1:
+    if count < 1:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
     line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
     multi_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.0) or 0.0))
     spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.0) or 0.0))
     width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
+    valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.0) or 0.0))
+    peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.0) or 0.0))
+    length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    dynamic_features_active = (
+        shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
+        and (
+            length_scale < 0.999
+            or (valley_width_mm > 1.0e-6 and abs(valley_width_mm - multi_width_mm) > 1.0e-6)
+            or (peak_width_mm > 1.0e-6 and abs(peak_width_mm - multi_width_mm) > 1.0e-6)
+        )
+    )
     if multi_width_mm <= 1.0e-6:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
@@ -1527,36 +1834,65 @@ def ensure_balloon_multi_line_mesh(
     # 多重線は「主線/body の外側 (内側) アウトラインから spacing 隙間 → 幅 ring_width の帯」
     # を順に並べる "edge-to-edge gap = spacing" 方式。これにより線幅が太くてもリング 1 が
     # 主線に隠れず、隣接ライン間の見た目の隙間が常に spacing で揃う。
+    # spacing_scale で各リングの spacing を順番にスケールできる (例 80% で間隔が縮む)。
+    # 動的形状 (cloud/fluffy/thorn/thorn-curve) で valley/peak 幅 or length_scale が
+    # 非デフォルトの場合は、ring polyline を可変幅で帯化するパスに切り替える。
+    body_center_m = (
+        (sum(s[0] for s in samples) / len(samples)),
+        (sum(s[1] for s in samples) / len(samples)),
+    )
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
     running_outside_mm = line_width_mm  # 主線外側エッジ (body curve からの距離)
     running_inside_mm = 0.0  # body 境界 (body curve からの絶対距離; 内側方向では本体に主線無し)
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
+        ring_spacing_mm = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
         if ring_width_mm <= 1.0e-6:
             continue
+        if dynamic_features_active:
+            ring_valley_width_mm = valley_width_mm * (width_scale ** max(0, ring_index - 1))
+            ring_peak_width_mm = peak_width_mm * (width_scale ** max(0, ring_index - 1))
+            ring_extent_mm = max(ring_width_mm, ring_valley_width_mm, ring_peak_width_mm)
+        else:
+            ring_valley_width_mm = ring_width_mm
+            ring_peak_width_mm = ring_width_mm
+            ring_extent_mm = ring_width_mm
         for side in sides:
             if side == "inside":
-                ring_inner_mm = running_inside_mm + spacing_mm
-                ring_center_mm = ring_inner_mm + ring_width_mm * 0.5
+                ring_inner_mm = running_inside_mm + ring_spacing_mm
+                ring_center_mm = ring_inner_mm + ring_extent_mm * 0.5
                 signed_offset_mm = -ring_center_mm
             else:
-                ring_inner_mm = running_outside_mm + spacing_mm
-                ring_center_mm = ring_inner_mm + ring_width_mm * 0.5
+                ring_inner_mm = running_outside_mm + ring_spacing_mm
+                ring_center_mm = ring_inner_mm + ring_extent_mm * 0.5
                 signed_offset_mm = ring_center_mm
-            band = build_offset_band_polygon(
-                samples,
-                signed_offset_m=signed_offset_mm * 0.001,
-                band_width_m=ring_width_mm * 0.001,
-                valley_sharp=valley_sharp,
-                _body_poly=body_poly,
-            )
-            if band is not None:
-                polygons.append(band)
+            if dynamic_features_active:
+                sub_polys = _build_dynamic_multi_line_polygons(
+                    body_poly=body_poly,
+                    signed_offset_m=signed_offset_mm * 0.001,
+                    base_width_m=ring_width_mm * 0.001,
+                    valley_width_m=(ring_valley_width_mm if ring_valley_width_mm > 1.0e-6 else ring_width_mm) * 0.001,
+                    peak_width_m=(ring_peak_width_mm if ring_peak_width_mm > 1.0e-6 else ring_width_mm) * 0.001,
+                    length_scale=length_scale,
+                    valley_sharp=valley_sharp,
+                    balloon_center_m=body_center_m,
+                )
+                polygons.extend(sub_polys)
+            else:
+                band = build_offset_band_polygon(
+                    samples,
+                    signed_offset_m=signed_offset_mm * 0.001,
+                    band_width_m=ring_width_mm * 0.001,
+                    valley_sharp=valley_sharp,
+                    _body_poly=body_poly,
+                )
+                if band is not None:
+                    polygons.append(band)
             # 双方向 (both) なら片方しか進めないように side ごとに running を更新
             if side == "inside":
-                running_inside_mm += spacing_mm + ring_width_mm
+                running_inside_mm += ring_spacing_mm + ring_extent_mm
             else:
-                running_outside_mm += spacing_mm + ring_width_mm
+                running_outside_mm += ring_spacing_mm + ring_extent_mm
     if not polygons:
         remove_balloon_multi_line_mesh(balloon_id)
         return None

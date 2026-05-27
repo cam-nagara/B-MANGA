@@ -297,6 +297,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     multi_line_width_mm: FloatProperty(name="多重線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_width_scale_percent: FloatProperty(name="線幅変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    multi_line_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_valley_width_mm: FloatProperty(name="谷の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_peak_width_mm: FloatProperty(name="山の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

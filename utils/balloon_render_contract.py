@@ -43,6 +43,7 @@ class BalloonRenderSettings:
     multi_line_width_mm: float
     multi_line_spacing_mm: float
     multi_line_width_scale_percent: float
+    multi_line_spacing_scale_percent: float
     multi_line_direction: str
     thorn_multi_line_valley_width_mm: float
     thorn_multi_line_peak_width_mm: float
@@ -68,6 +69,7 @@ class BalloonRenderSettings:
             "multi_line_width_mm": self.multi_line_width_mm,
             "multi_line_spacing_mm": self.multi_line_spacing_mm,
             "multi_line_width_scale_percent": self.multi_line_width_scale_percent,
+            "multi_line_spacing_scale_percent": self.multi_line_spacing_scale_percent,
             "multi_line_direction": self.multi_line_direction,
             "native_multi_line_rings_enabled": self.native_multi_line_rings_enabled,
             "thorn_multi_line_valley_width_mm": self.thorn_multi_line_valley_width_mm,
@@ -98,6 +100,7 @@ def settings_from_entry(entry, *, filled_line_enabled: bool = False) -> BalloonR
         multi_line_width_mm=float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
         multi_line_spacing_mm=float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
         multi_line_width_scale_percent=float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
+        multi_line_spacing_scale_percent=float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0),
         multi_line_direction=str(getattr(entry, "multi_line_direction", "outside") or "outside"),
         thorn_multi_line_valley_width_mm=float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
         thorn_multi_line_peak_width_mm=float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),

@@ -139,9 +139,15 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "multi_line_spacing_mm")
             row = box.row(align=True)
             row.prop(entry, "multi_line_width_scale_percent")
-            # 「長さ変化 (%)」「谷/山の線幅」はトゲ（直線）専用 (設計意図書 7.1.1)
-            if str(getattr(entry, "shape", "") or "") == "thorn":
+            row.prop(entry, "multi_line_spacing_scale_percent")
+            # 谷/山を持つ動的形状 (雲・モフモフ・トゲ直線・トゲ曲線) では
+            # 「長さ変化 (%)」「谷の線幅」「山の線幅」が有効
+            shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+            if shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+                row = box.row(align=True)
                 row.prop(entry, "thorn_multi_line_length_scale_percent")
+                if shape_norm == "thorn":
+                    row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
                 row = box.row(align=True)
                 row.prop(entry, "thorn_multi_line_valley_width_mm")
                 row.prop(entry, "thorn_multi_line_peak_width_mm")

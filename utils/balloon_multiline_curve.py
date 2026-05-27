@@ -723,6 +723,7 @@ def append_closed_multi_line_paths(
     multi_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0))
     spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
     width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
     if multi_width_mm <= 0.0:
         return
     direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
@@ -731,6 +732,7 @@ def append_closed_multi_line_paths(
     # 主線は外側アライメント (body curve 0 〜 +line_width)。多重線は「主線外側エッジ +
     # spacing 隙間 + 幅 ring_width」のリングを順に並べる "edge-to-edge gap = spacing" 方式。
     # 内側方向は body 境界 + spacing 隙間 + 幅 ring_width を順に並べる。
+    # spacing_scale で各リングの spacing を順番にスケールできる。
     base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
     running_outside_mm = line_width_mm  # 主線外側エッジ
@@ -738,6 +740,7 @@ def append_closed_multi_line_paths(
     # 「線の本数 N」は多重線として描かれるリング数 (主線本体はカウント外)。
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
+        ring_spacing_mm = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
             width_scale ** max(0, ring_index - 1)
         )
@@ -749,9 +752,9 @@ def append_closed_multi_line_paths(
             continue
         for side in sides:
             if side == "inside":
-                ring_inner_mm = running_inside_mm + spacing_mm
+                ring_inner_mm = running_inside_mm + ring_spacing_mm
             else:
-                ring_inner_mm = running_outside_mm + spacing_mm
+                ring_inner_mm = running_outside_mm + ring_spacing_mm
             ring_extent_mm = ring_extent_width_mm
             ring_center_mm = ring_inner_mm + ring_extent_mm * 0.5
             offset_fn = _offset_closed_outline if shape_name in {"rect", "octagon", "thorn"} else _offset_closed_outline_smooth
@@ -794,9 +797,9 @@ def append_closed_multi_line_paths(
                             material_index=_MATERIAL_SLOT_LINE,
                         )
             if side == "inside":
-                running_inside_mm += spacing_mm + ring_extent_mm
+                running_inside_mm += ring_spacing_mm + ring_extent_mm
             else:
-                running_outside_mm += spacing_mm + ring_extent_mm
+                running_outside_mm += ring_spacing_mm + ring_extent_mm
 
 
 def append_main_line_fill_paths(
@@ -1050,13 +1053,16 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
         valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", width_mm) or 0.0))
         peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", width_mm) or 0.0))
         scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+        spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
         if str(getattr(entry, "multi_line_direction", "outside") or "outside") in {"outside", "both"}:
             # 主線外側エッジ (= body curve + line_width) を起点に
             # spacing 隙間 + 幅 ring_width のリングを順に並べる。リング N の外側エッジ
-            # = line_width + Σ_{i<=N}(spacing + ring_width_i).
+            # = line_width + Σ_{i<=N}(spacing_i + ring_width_i)。
+            # spacing_i = spacing × spacing_scale^(i-1), ring_width_i = width × width_scale^(i-1)
             running = float(line_width_mm)
             for ring_index in range(1, count + 1):
                 ring_width = width_mm * (scale ** max(0, ring_index - 1))
+                ring_spacing = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
                 if shape_name == "thorn":
                     ring_width = max(
                         ring_width,
@@ -1065,6 +1071,6 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
                     )
                 if ring_width <= 0.0:
                     continue
-                running += spacing_mm + ring_width
+                running += ring_spacing + ring_width
                 margin = max(margin, running)
     return margin

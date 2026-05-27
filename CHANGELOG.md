@@ -3,6 +3,38 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.110 多重線「長さ変化」「谷の線幅」「山の線幅」を動的形状で機能化 + 「間隔変化 (%)」新規追加
+
+### 症状
+- v0.6.109 までは多重線の「長さ変化 (%)」「谷の線幅」「山の線幅」がトゲ (直線) 専用の legacy curve 多重線でしか機能していなかった。Shapely buffer 経路 (= 雲/モフモフ/トゲ直線/トゲ曲線) では一律で全周帯になり、これらのパラメータがレンダリングに反映されていなかった。
+- リングごとに間隔をスケールする手段 (「間隔変化 (%)」) が無く、リングが等間隔でしか並べられなかった。
+
+### 修正
+- 新規プロパティ `multi_line_spacing_scale_percent` 「間隔変化 (%)」(default 100%, 0..200%) を追加し、 リング N の spacing = `multi_line_spacing_mm × spacing_scale^(N-1)` で順に縮小/拡大できるようにした。
+- UI で「長さ変化 (%)」「谷の線幅」「山の線幅」を、 トゲ (直線) 限定から **動的形状全部 (雲/モフモフ/トゲ直線/トゲ曲線)** へ拡張。
+- Shapely 多重線パスに `_build_dynamic_multi_line_polygons` ヘルパーを追加:
+  1. リング中心線 = `body.buffer(signed_offset_m)` の外周を取り、密にサンプリング
+  2. balloon 中心からの radial 距離の局所最大/最小を検出して「山インデックス」「谷インデックス」を確定
+  3. 各サンプルでの line width を「山と谷までの arc 距離の比」で valley_width / peak_width を補間
+  4. `length_scale < 100%` のときは各山の周辺だけを残す断片インデックス列に分解
+  5. 各断片を可変幅の帯ポリゴン (closed=全周/open=断片) として組み立て earcut へ流す
+- 動的形状でデフォルト値の場合 (length_scale=100%, valley/peak width=0 or = base) は従来通り Shapely 等幅 buffer を使う (高速パス)。
+- legacy curve 多重線 / GN socket / `outer_render_margin_mm` / `render_contract` の各経路にも spacing_scale を伝達。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 雲/モフモフ/トゲ直線/トゲ曲線で「間隔変化 70%」を適用し、リングが順に縮む間隔で並ぶことを確認 (`01_spacing_scale_70pct.png`)。
+- 同 4 形状で「長さ変化 50%」を適用し、各リングが全周ではなく山の周辺だけの断片帯になることを確認 (`02_length_scale_50pct.png`)。
+- 同 4 形状で「谷の線幅 0.2mm / 山の線幅 1.5mm」を適用し、リングが山で太く谷で細くなる可変幅で描かれることを確認 (`03_valley_peak_width_diff.png`)。
+
+### 関連ファイル
+- `core/balloon.py`: `multi_line_spacing_scale_percent` プロパティを追加
+- `io/schema.py`: 同プロパティを JSON シリアライズ
+- `panels/balloon_panel.py`, `operators/layer_detail_op.py`: UI を動的形状全部に展開、 「間隔変化 (%)」を追加
+- `utils/balloon_line_mesh.py`: `_build_dynamic_multi_line_polygons` を追加。`ensure_balloon_multi_line_mesh` で動的形状/動的パラメータ時に dynamic builder を呼ぶ
+- `utils/balloon_multiline_curve.py`: legacy 多重線 / `outer_render_margin_mm` に spacing_scale を適用
+- `utils/balloon_curve_render_nodes.py`: GN socket 計算と `ensure_modifier` 引数に spacing_scale を追加
+- `utils/balloon_render_contract.py`: `BalloonRenderSettings` と `settings_from_entry` に spacing_scale を追加
+
 ## 2026-05-27 — v0.6.109 トゲ曲線の形状を v0.6.106 の状態にリバート
 
 ### 理由
