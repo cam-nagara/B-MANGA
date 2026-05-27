@@ -664,9 +664,15 @@ def _build_variable_width_band_segment(
     indices: Sequence[int],
     *,
     closed: bool,
+    outside_align: bool = False,
 ) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]] | None:
-    """指定インデックス列 (`indices`) の centerline に沿って、外側 = +normal*width/2,
-    内側 = -normal*width/2 の帯ポリゴンを構築する。
+    """指定インデックス列 (`indices`) の centerline に沿って、 帯ポリゴンを構築する。
+
+    - 中心アライメント (outside_align=False, 既存挙動): outer = pts + normal*w/2,
+      inner = pts - normal*w/2。 width=0 で 1 点 (=centerline) に収束。
+    - 外側アライメント (outside_align=True): outer = pts + normal*w, inner = pts。
+      pts は body 境界そのものを想定。 width=0 で outer=inner=body → body の鋭い
+      谷/山頂に直接 pinch off し、 帯終端が鋭く尖る (主線専用)。
 
     closed=True: outer (CCW) と inner (CW = hole) のホール付きポリゴン。
     closed=False: outer + 逆順 inner を 1 つの閉曲線として返す (キャップは平らな端)。
@@ -679,9 +685,14 @@ def _build_variable_width_band_segment(
     for idx in indices:
         p = pts[idx]
         nx, ny = normals[idx]
-        half = widths[idx] * 0.5
-        outer.append((p[0] + nx * half, p[1] + ny * half))
-        inner.append((p[0] - nx * half, p[1] - ny * half))
+        if outside_align:
+            w = widths[idx]
+            outer.append((p[0] + nx * w, p[1] + ny * w))
+            inner.append((p[0], p[1]))
+        else:
+            half = widths[idx] * 0.5
+            outer.append((p[0] + nx * half, p[1] + ny * half))
+            inner.append((p[0] - nx * half, p[1] - ny * half))
     if closed:
         # outer (CCW), inner (CW = hole)
         outer_ring = outer
@@ -773,6 +784,7 @@ def _build_dynamic_multi_line_polygons(
     balloon_center_m: tuple[float, float],
     cross_extension_m: float = 0.0,
     peak_extension_m: float = 0.0,
+    outside_align: bool = False,
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """動的形状 (cloud/fluffy/thorn/thorn-curve) の主線/多重線 1 リング分を、
     谷/山可変幅 + 長さ変化を反映した複数バンドポリゴンとして構築する。
@@ -807,11 +819,12 @@ def _build_dynamic_multi_line_polygons(
         samples_per_segment=samples_per_segment,
     )
 
-    # 鋭角コーナーで法線が急変する sample-direct 方式は帯エッジが「ヒゲ状」に
-    # 飛び出してしまうため、length<100% または width 非一様のリングは Shapely
-    # buffer ベースの centerline + 主山頂のくさび形差し引き方式で構築する。
-    # buffer 自体は鋭角コーナーで自然なミテレ延長を持つため、帯が滑らかに繋がる。
-    if length_scale < 0.999 or abs(valley_width_m - peak_width_m) > 1.0e-6:
+    # length_scale<1.0 (= 多重線の「長さ変化」で 山頂を切るケース) のみ Shapely
+    # buffer ベースの peak_cut 構築を使う。 主線 (length_scale=1.0) や 幅可変だけの
+    # 場合は sample-direct で構築し、 body の鋭い谷/山頂をそのまま継承させる
+    # (buffer 経由だと width=0 に近い場所が円弧で丸まり、 主線が 0 になる位置
+    # =「鋭く点で終わる」ところがユーザー目視で 明確に丸く見えてしまうため)。
+    if length_scale < 0.999:
         polys = _build_shapely_band_with_peak_cuts(
             pts,
             balloon_center_m=balloon_center_m,
@@ -826,7 +839,7 @@ def _build_dynamic_multi_line_polygons(
         )
         if polys is not None:
             return polys
-        # 失敗時は従来の sample-direct 経路に fallback
+        # 失敗時は sample-direct 経路に fallback
 
     # peaks_all/valleys_all はすでに anchor-level の主山/主谷だけが入っているので、
     # ここでの radial 閾値フィルタは不要 (高さがバラつく場合も均等に処理される)。
@@ -857,11 +870,17 @@ def _build_dynamic_multi_line_polygons(
                 pts_eff[idx] = (pts_eff[idx][0] + nx * ex, pts_eff[idx][1] + ny * ex)
 
     # オフセット centerline = pts_eff + normal * signed_offset_m
-    centerline = [
-        (pts_eff[i][0] + normals[i][0] * signed_offset_m,
-         pts_eff[i][1] + normals[i][1] * signed_offset_m)
-        for i in range(n)
-    ]
+    # outside_align=True (= 外側アライメント主線) のときは body samples (= pts_eff)
+    # そのものを centerline に使う。 これにより width=0 の頂点で outer=inner=body と
+    # なり、 body の鋭い谷/山頂に直接 pinch off して 帯終端が鋭く尖る。
+    if outside_align:
+        centerline = list(pts_eff)
+    else:
+        centerline = [
+            (pts_eff[i][0] + normals[i][0] * signed_offset_m,
+             pts_eff[i][1] + normals[i][1] * signed_offset_m)
+            for i in range(n)
+        ]
 
     # 各サンプル点の line width: 谷と山の頂点 (大山/小山どちらでも) から
     # 線形補間する。length_scale で正規化した t_segment を使うことで、cut endpoint
@@ -901,7 +920,10 @@ def _build_dynamic_multi_line_polygons(
         # 閉じた全周帯 (ホール付きポリゴン): cross_extension は無関係
         if segments:
             seg = segments[0]
-            result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=True)
+            result = _build_variable_width_band_segment(
+                centerline, widths, normals, seg,
+                closed=True, outside_align=outside_align,
+            )
             if result is not None:
                 out_polygons.append(result)
     else:
@@ -2145,18 +2167,22 @@ def ensure_balloon_line_mesh(
         return None
     elif main_line_dynamic:
         # 主線を可変幅で構築 (谷/山の line width を辺全体で線形補間)。
-        # body samples をそのまま centerline に使うため、body の鋭い谷/山がそのまま残る。
+        # outside_align=True で外側アライメント (inner=body, outer=body+width)。
+        # width=0 の頂点で outer=inner=body となり、 body の鋭い谷/山頂で
+        # 鋭く pinch off して 帯終端が尖る (中心アライメントだと body から
+        # line_width/2 離れた位置で円弧状に丸まってしまう)。
         body_center_m = _balloon_center_m_from_samples(samples)
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
-            signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
+            signed_offset_m=0.0,
             base_width_m=line_width_m,
             valley_width_m=line_valley_width_mm * 0.001,
             peak_width_m=line_peak_width_mm * 0.001,
-            length_scale=1.0,  # 主線は length_scale 非適用 (常に閉ループ)
+            length_scale=1.0,
             valley_sharp=valley_sharp,
             balloon_center_m=body_center_m,
             peak_extension_m=0.0,
+            outside_align=True,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -2249,7 +2275,7 @@ def _compute_main_line_polygon(
         line_peak_m = line_width_m * (peak_pct / 100.0)
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
-            signed_offset_m=line_width_m * 0.5,
+            signed_offset_m=0.0,
             base_width_m=line_width_m,
             valley_width_m=line_valley_m,
             peak_width_m=line_peak_m,
@@ -2257,6 +2283,7 @@ def _compute_main_line_polygon(
             valley_sharp=valley_sharp,
             balloon_center_m=balloon_center_m,
             peak_extension_m=0.0,
+            outside_align=True,
         )
         if not sub_polys:
             return None

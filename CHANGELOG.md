@@ -3,6 +3,34 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.140 主線「谷/山の線幅」変動時に 0 になる頂点を鋭く尖らせる (外側アライメント sample-direct 化)
+
+### 症状
+- v0.6.139 でフチを均一幅にしたが、 主線そのものが「谷/山の線幅 0%」の頂点で 円弧状に丸まったまま終わっていた (= ユーザーが指摘した「角の尖りが消える」現象)。
+- 例: 「主線・山の線幅 0%」の thorn フキダシで、 主線が山頂で 0 になる位置で 鋭く点に収束せず、 小さな円弧で終わっていた。 「主線・谷の線幅 0%」も同様に 谷で円弧。
+
+### 原因
+- 主線 dynamic 構築 (`_build_dynamic_multi_line_polygons`) が 中心アライメント方式 (centerline = body + line_width/2, outer = centerline + width/2, inner = centerline - width/2) を使っていた。 width=0 の頂点で outer=inner=`body + line_width/2` となり、 body 境界そのものから少し離れた位置で pinch する。 そのため 主線終端が body の鋭い谷/山頂 と直接タッチせず、 線形補間で 「徐々に細くなって円弧状に丸まる」 見え方になっていた。
+- さらに 幅可変時 (`abs(valley - peak) > eps`) は Shapely buffer ベースの `_build_shapely_band_with_peak_cuts` に分岐しており、 buffer の特性で width≈0 の場所がさらに丸く近似されていた。
+
+### 修正
+- `_build_variable_width_band_segment` / `_build_dynamic_multi_line_polygons` に `outside_align: bool` パラメータを追加。 True のときは 外側アライメント (inner = body samples そのまま, outer = body + normal*width) で構築する。 width=0 の頂点で outer=inner=body となり、 body の鋭い谷/山頂に直接 pinch off して 帯終端が鋭く尖る。
+- `_build_dynamic_multi_line_polygons` で `length_scale < 1.0` (= 多重線の length 切り) 以外は Shapely buffer 経由を使わず、 sample-direct 経路で構築する。 主線 (= length_scale=1.0) の幅可変は sample-direct + 外側アライメントを通る。
+- `ensure_balloon_line_mesh` と `_compute_main_line_polygon` (外側フチ計算用) で 主線 dynamic 構築時に `outside_align=True` + `signed_offset_m=0.0` で呼び出すように変更。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_variable_width_band_segment` に `outside_align` 追加。
+  - `_build_dynamic_multi_line_polygons` に `outside_align` 追加、 内部の centerline 計算と band segment 呼び出しに伝達。
+  - length_scale<1.0 のときだけ Shapely buffer 経由を使うよう分岐を絞った。
+  - `ensure_balloon_line_mesh` / `_compute_main_line_polygon` で `outside_align=True` を渡すよう変更。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- `test/blender_balloon_edge_dynamic_width_check.py` の 4 ケースを再レンダーし、 AI 目視で 主線終端が鋭く尖って body 境界に直接 pinch することを確認:
+  - 山 100% / 谷 0%: 主線が 谷で鋭く pinch off。 谷の角の尖りが フチに覆われず保たれる。
+  - 山 0% / 谷 100%: 主線が 山頂で鋭く pinch off して body の鋭い山頂に直接タッチ。 山の角の尖りが保たれる。
+- フチも 主線アウトラインを 均一幅で 追従し、 主線終端の鋭さに合わせて 鋭く折り返す。
+
 ## 2026-05-28 — v0.6.139 フキダシのフチを「変わったアウトラインに沿う均一幅」へ作り直し + 主線の谷/山の丸まりを軽減
 
 ### 症状
