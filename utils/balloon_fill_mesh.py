@@ -143,10 +143,13 @@ def _tail_polygon_local_m(entry, tail) -> list[tuple[float, float]]:
 def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Sequence[Sequence[tuple[float, float]]]):
     """本体 + 全しっぽの和集合 Shapely Polygon (または MultiPolygon) を返す。失敗時 None。
 
-    しっぽの root はちょうど body 境界上に乗るため、 そのままだと Shapely union が
-    境界共有 polygon を別ピース扱いし MultiPolygon を返す。 各ポリゴンを微小に
-    buffer して確実に重ねた上で union → 結果を unbuffer する方式で 1 つの polygon
-    に統合する。
+    しっぽが無い (= body のみ) ときは body polygon をそのまま返す。 余計な buffer 操作で
+    sharp corner に微小頂点が増え、 earcut が大きな triangle を生成してしまう不具合を
+    回避するため。
+
+    しっぽがある場合だけ、 各 polygon を微小に mitre buffer して確実に重ねた上で union
+    し、 同量だけ shrink して戻す方式で 1 つの polygon に統合する (round join だと sharp
+    corner に大量の頂点を追加してしまうため、 join_style=2 を使う)。
     """
     python_deps.ensure_bundled_wheels_on_path()
     try:
@@ -154,37 +157,50 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
         from shapely.ops import unary_union  # type: ignore
     except Exception:  # noqa: BLE001
         return None
-    # body 寸法から推定される overlap 量 (= 1 マイクロメートル相当、 視認できない量)。
-    overlap_m = 1.0e-6
-    polys = []
-    if len(body_pts) >= 3:
-        try:
-            p = Polygon(body_pts)
-            if not p.is_valid:
-                p = p.buffer(0)
-            if not p.is_empty and p.area > 0:
-                polys.append(p.buffer(overlap_m))
-        except Exception:  # noqa: BLE001
-            pass
+
+    def _validate(pts):
+        p = Polygon(pts)
+        if not p.is_valid:
+            p = p.buffer(0)
+        if p.is_empty or p.area <= 0:
+            return None
+        return p
+
+    body_poly = _validate(body_pts) if len(body_pts) >= 3 else None
+    tail_polys = []
     for tail_pts in tails_pts:
         if len(tail_pts) < 3:
             continue
         try:
-            p = Polygon(tail_pts)
-            if not p.is_valid:
-                p = p.buffer(0)
-            if not p.is_empty and p.area > 0:
-                polys.append(p.buffer(overlap_m))
+            tp = _validate(tail_pts)
         except Exception:  # noqa: BLE001
-            continue
-    if not polys:
+            tp = None
+        if tp is not None:
+            tail_polys.append(tp)
+
+    if body_poly is None and not tail_polys:
         return None
+    if not tail_polys:
+        # body のみ: そのまま返す (buffer 不要)
+        return body_poly
+    if body_poly is None:
+        # body 無し (=異常系) : tail のみで union
+        polys_to_union = tail_polys
+        return unary_union(polys_to_union)
+
+    # body + tails: 微小 mitre buffer で重ね、 union 後に shrink して戻す
+    # mitre join (join_style=2) は sharp corner に頂点を追加しないため、 earcut の
+    # 安定性を維持できる。 mitre_limit は十分大きく取って fallback round を防ぐ。
+    overlap_m = 1.0e-6
     try:
-        merged = unary_union(polys)
+        polys_buffered = [body_poly.buffer(overlap_m, join_style=2, mitre_limit=50.0)]
+        for tp in tail_polys:
+            polys_buffered.append(tp.buffer(overlap_m, join_style=2, mitre_limit=50.0))
+        merged = unary_union(polys_buffered)
         if merged.is_empty:
             return None
-        # buffer で広げた分を戻す
-        merged = merged.buffer(-overlap_m)
+        # buffer で広げた分を戻す (同じく mitre)
+        merged = merged.buffer(-overlap_m, join_style=2, mitre_limit=50.0)
         if merged.is_empty:
             return None
         if merged.geom_type == "MultiPolygon":
@@ -195,7 +211,7 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
             return polygons[0]
         return merged
     except Exception:  # noqa: BLE001
-        return None
+        return body_poly  # fall back to body only
 
 
 def _polygon_to_outer_holes(poly) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
@@ -301,6 +317,99 @@ def _shrink_polygon_rings(poly, *, blur_width_m: float) -> list:
     return rings
 
 
+def _fan_triangulate(
+    outer_ring: Sequence[tuple[float, float]],
+    holes: Sequence[Sequence[tuple[float, float]]] = (),
+) -> tuple[list[tuple[float, float]], list[tuple[int, int, int]]]:
+    """中心点ファン分割: ポリゴンの重心を内部頂点として追加し、
+    外周の各 edge について (中心, v[i], v[i+1]) の三角形を生成する.
+
+    ear clipping (earcut/bmesh) はトゲ本体のような subtle bumps のある
+    near-circular polygon で 1 つの巨大な三角形を生成してしまう病的ケースが
+    あるが、 ファン分割はその問題を回避する。 holes は無視する (フキダシ塗りは
+    holes 不要のため)。
+
+    純凸でない polygon でも、 重心が内部にあれば全 fan triangle が内側にある
+    ことを保証 — ただし極端な凹形状では fan triangle がはみ出す可能性あり。
+    トゲ/雲のような subtle 凸+凹形状では問題なし。
+    """
+    outer = [(float(x), float(y)) for x, y in outer_ring]
+    if len(outer) >= 2 and outer[0] == outer[-1]:
+        outer = outer[:-1]
+    n = len(outer)
+    if n < 3:
+        return [], []
+    cx = sum(p[0] for p in outer) / n
+    cy = sum(p[1] for p in outer) / n
+    pts = list(outer)
+    pts.append((cx, cy))
+    center_idx = n
+    tris = []
+    for i in range(n):
+        j = (i + 1) % n
+        tris.append((center_idx, i, j))
+    return pts, tris
+
+
+def _bmesh_triangulate(
+    outer_ring: Sequence[tuple[float, float]],
+    holes: Sequence[Sequence[tuple[float, float]]],
+) -> tuple[list[tuple[float, float]], list[tuple[int, int, int]]]:
+    """ホールあり多角形を bmesh で三角分割する (ホールが必要な場合の retry path)."""
+    import bmesh  # type: ignore
+
+    bm = bmesh.new()
+    try:
+        outer = [(float(x), float(y)) for x, y in outer_ring]
+        if len(outer) >= 2 and outer[0] == outer[-1]:
+            outer = outer[:-1]
+        if len(outer) < 3:
+            return [], []
+        outer_verts = [bm.verts.new((p[0], p[1], 0.0)) for p in outer]
+        outer_edges = [bm.edges.new((outer_verts[i], outer_verts[(i + 1) % len(outer_verts)]))
+                       for i in range(len(outer_verts))]
+        hole_verts_list = []
+        hole_edges_list = []
+        for hole in holes:
+            hpts = [(float(x), float(y)) for x, y in hole]
+            if len(hpts) >= 2 and hpts[0] == hpts[-1]:
+                hpts = hpts[:-1]
+            if len(hpts) < 3:
+                continue
+            hverts = [bm.verts.new((p[0], p[1], 0.0)) for p in hpts]
+            hedges = [bm.edges.new((hverts[i], hverts[(i + 1) % len(hverts)]))
+                      for i in range(len(hverts))]
+            hole_verts_list.append(hverts)
+            hole_edges_list.append(hedges)
+
+        bmesh.ops.contextual_create(bm, geom=outer_edges)
+        if hole_edges_list:
+            for hedges in hole_edges_list:
+                bmesh.ops.contextual_create(bm, geom=hedges)
+            faces_to_remove = []
+            for face in bm.faces:
+                fv = set(face.verts)
+                for hverts in hole_verts_list:
+                    if fv == set(hverts):
+                        faces_to_remove.append(face)
+                        break
+            if faces_to_remove:
+                bmesh.ops.delete(bm, geom=faces_to_remove, context="FACES_ONLY")
+        bmesh.ops.triangulate(bm, faces=list(bm.faces), ngon_method="BEAUTY", quad_method="BEAUTY")
+        bm.verts.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
+        pts = [(float(v.co.x), float(v.co.y)) for v in bm.verts]
+        vert_idx = {v: i for i, v in enumerate(bm.verts)}
+        tris = []
+        for f in bm.faces:
+            if len(f.verts) != 3:
+                continue
+            tris.append((vert_idx[f.verts[0]], vert_idx[f.verts[1]], vert_idx[f.verts[2]]))
+        return pts, tris
+    finally:
+        bm.free()
+
+
 def _build_fill_mesh(
     mesh: bpy.types.Mesh,
     outer_ring: Sequence[tuple[float, float]],
@@ -309,11 +418,19 @@ def _build_fill_mesh(
     *,
     blur_alpha: Sequence[float] | None,
 ) -> None:
-    """単一 polygon (hole 込み) を earcut で三角分割して mesh に流し込む.
+    """単一 polygon (hole 込み) を三角分割して mesh に流し込む.
+
+    earcut/bmesh の ear-clipping は near-circular な polygon (トゲ本体など) で
+    1 つの巨大な三角形を生成してしまう病的ケースがあるため、 ファン分割
+    (中心点ベース) を優先する。 ホール (= 多重線で削った穴) がある場合のみ
+    bmesh を使う。
 
     blur_alpha が None でない場合、各頂点に bname_fill_blur_alpha 属性を書き込む。
     """
-    pts, faces = balloon_line_mesh._triangulate_polygon(outer_ring, holes)
+    if holes:
+        pts, faces = _bmesh_triangulate(outer_ring, holes)
+    else:
+        pts, faces = _fan_triangulate(outer_ring, holes)
     mesh.clear_geometry()
     if not faces or len(pts) < 3:
         mesh.update()
@@ -323,8 +440,6 @@ def _build_fill_mesh(
     mesh.update()
     if blur_alpha is None:
         return
-    # earcut のあと、verts の長さに合わせて blur_alpha を再計算するかどうか:
-    # ここではすでに verts と同じ順序・長さで渡される前提なので そのまま書き込む。
     _write_fill_blur_alpha_attribute(mesh, blur_alpha)
 
 

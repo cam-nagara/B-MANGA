@@ -3,6 +3,38 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.135 ユーザー報告のフキダシ塗り面崩れを修正 (earcut 病的ケース対策 + 不要 buffer 削除)
+
+### 症状
+ユーザーから「フキダシの塗り面が崩れている」と報告。 トゲ/雲フキダシで、 多重線+両方向+特定の設定組合せ (間隔変化/長さ変化を小さい値に) を使うと、 本体の塗り面が三角形のような大きな polygon として描画されてしまう。
+
+### 原因
+1. **earcut の病的ケース**: トゲ本体のような「near-circular だが微小な凹凸を持つ」polygon に対して、 mapbox_earcut が ear-clipping を失敗し、 polygon 全体の 30% 以上を覆う 1 つの巨大な三角形を生成してしまう。 bmesh の triangulate (ngon_method=BEAUTY) も同じ ear-clip を使うため同様の不具合。
+2. **microbuffer の頂点増加**: Phase B で導入した 1μm の buffer (しっぽの根元と body の境界共有を解決するため) が、 round join (デフォルト) で sharp corner に多くの微小頂点を追加していた。 これも earcut の病的ケースを悪化させていた。
+
+### 修正
+1. **塗り面三角分割をファン分割に切替**: 塗り面 polygon の重心を内部頂点として追加し、 外周の各 edge について `(centroid, v[i], v[i+1])` の三角形を生成する方式に変更。 ear-clip と違い、 polygon の凹凸に関わらず常に N 個の均一な細い三角形が得られる。 holes (= 多重線で削った穴) がある場合は bmesh の triangulate にフォールバック (フキダシ塗りでは holes は使われないため通常通らない)。
+2. **union polygon の不要 buffer をスキップ**: `_build_union_polygon` で:
+   - しっぽが無い場合 → body polygon をそのまま返す (buffer 不要)
+   - しっぽがある場合 → join_style=mitre, mitre_limit=50 で buffer (sharp corner に頂点を追加しない)
+3. これにより body の sharp corner や微小凹凸が earcut の入力で乱れることがなくなり、 塗り面三角分割が破綻しない。
+
+### 関連ファイル
+- `utils/balloon_fill_mesh.py`:
+  - `_fan_triangulate` 新規追加
+  - `_bmesh_triangulate` を holes 専用フォールバックとして残す
+  - `_build_fill_mesh` がデフォルトでファン分割を使うように変更
+  - `_build_union_polygon` を 「しっぽ無し → buffer なし / しっぽあり → mitre buffer」 に変更
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 新規 `test/blender_balloon_multi_line_break_repro.py` でユーザー報告の設定を再現
+- 修正前: トゲ本体の塗り面が三角形に描画される (earcut が 30% の巨大三角形を生成、画素 200px サンプリングで確認)
+- 修正後: 塗り面 polygon が body 全体を覆う (画素サンプリングで 8 方向すべて緑色を確認、 ファン分割で 624 個の均一な三角形)
+- 既存 `visual_audit` と `multi_line_audit` でも回帰なし
+
+### 既知の残課題
+- トゲ/雲で 「長さ変化 (far) が小さい + 両方向 + 多重線本数 3」 のような設定組合せでは、 多重線リング自体が「短く切られたスパイク状」になり視覚的に賑やかなパターンを生成する。 これは仕様 (length_scale は意図的に多重線を切り詰める機能) なので、 ユーザー側でパラメータ調整するか、 シンプルな設定での運用が望ましい。
+
 ## 2026-05-27 — v0.6.134 AI 目視テストで発見した 3 バグを修正 (塗りぼかし消失 / しっぽ右方向ズレ / しっぽ塗り欠落)
 
 ### 症状
