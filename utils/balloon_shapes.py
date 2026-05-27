@@ -997,9 +997,10 @@ def _outline_thorn_curve_with_corners(
 def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
     """トゲ (曲線) フキダシのベジエループを返す.
 
-    アンカーを谷側に配置し、隣接する谷の間を 1 本のベジエ曲線で繋いでスパイクの
-    山を作る。山の先端はベジエの中央部分で滑らかな曲線になる (= 「曲線の山」)。
-    cloud と同じ構造だが、ピーク高さ係数を大きめに取って細長いスパイク状にする。
+    谷 (内側) とピーク (外側) を交互にアンカーとして配置する。谷では左右ハンドルが
+    隣接ピーク方向を向き V 字 (鋭角谷)、ピークでは左右ハンドルが radial に対する
+    垂直方向で同一直線上 (= C1 連続のなめらか山先端) になる。これによりトゲの
+    形状を保ちつつ、山の先端は鋭角ではなく曲線になる。
     """
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
@@ -1009,44 +1010,83 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     if not segments:
         return _bezier_ellipse(rect)
 
-    def valley_point(t: float) -> tuple[float, float]:
-        notch = min(
-            max(0.2, min(rect.width, rect.height) * 0.02),
-            max(0.0, min(rx, ry) - 0.1),
-        )
-        return (cx + (rx - notch) * math.cos(t), cy + (ry - notch) * math.sin(t))
+    notch = min(
+        max(0.2, min(rect.width, rect.height) * 0.02),
+        max(0.0, min(rx, ry) - 0.1),
+    )
 
-    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    # 谷とピークを交互に並べる
+    points: list[tuple[tuple[float, float], bool]] = []
     for _is_sub, bump_angle, h_mul in segments:
-        start_angle = angle
-        end_angle = angle + bump_angle
-        angle = end_angle
-        v_start = valley_point(start_angle)
-        v_end = valley_point(end_angle)
-        chord_x = v_end[0] - v_start[0]
-        chord_y = v_end[1] - v_start[1]
-        chord_len = math.hypot(chord_x, chord_y)
-        if chord_len < 0.001:
-            continue
-        perp_x = -chord_y / chord_len
-        perp_y = chord_x / chord_len
-        mx = (v_start[0] + v_end[0]) * 0.5
-        my = (v_start[1] + v_end[1]) * 0.5
-        if perp_x * (mx - cx) + perp_y * (my - cy) < 0.0:
-            perp_x = -perp_x
-            perp_y = -perp_y
-        # トゲ (曲線): cloud より縦長スパイクになるよう m_len を大きめに取る。
-        # eff_h ベース + chord ベースの max で「細長い・幅広い」両方をカバー。
-        m_len = max(eff_h * h_mul * 2.6, chord_len * 0.85)
-        c1 = (v_start[0] + m_len * perp_x, v_start[1] + m_len * perp_y)
-        c2 = (v_end[0] + m_len * perp_x, v_end[1] + m_len * perp_y)
-        cubics.append((v_start, c1, c2))
-    if len(cubics) < 3:
+        valley_angle = angle
+        peak_angle = angle + bump_angle * 0.5
+        angle += bump_angle
+        # 谷: 半径 rx - notch
+        v_point = (
+            cx + (rx - notch) * math.cos(valley_angle),
+            cy + (ry - notch) * math.sin(valley_angle),
+        )
+        # ピーク: 半径 rx + eff_h * h_mul
+        peak_rx = rx + eff_h * h_mul
+        peak_ry = ry + eff_h * h_mul
+        p_point = (
+            cx + peak_rx * math.cos(peak_angle),
+            cy + peak_ry * math.sin(peak_angle),
+        )
+        points.append((v_point, False))
+        points.append((p_point, True))
+
+    n = len(points)
+    if n < 6:
         return _bezier_ellipse(rect)
+
     anchors: list[BezierAnchor] = []
-    for i, (co, c1, _c2) in enumerate(cubics):
-        incoming_c2 = cubics[(i - 1) % len(cubics)][2]
-        anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, incoming_c2, c1)))
+    for i in range(n):
+        co, is_peak = points[i]
+        prev_co = points[(i - 1) % n][0]
+        next_co = points[(i + 1) % n][0]
+        if is_peak:
+            # ピーク: radial に垂直な接線方向に C1 連続なハンドルを伸ばす (山先端を曲線にする)
+            rx_p = co[0] - cx
+            ry_p = co[1] - cy
+            rlen = math.hypot(rx_p, ry_p)
+            if rlen < 1.0e-9:
+                handle_left = co
+                handle_right = co
+            else:
+                tx = -ry_p / rlen
+                ty = rx_p / rlen
+                if (next_co[0] - co[0]) * tx + (next_co[1] - co[1]) * ty < 0.0:
+                    tx, ty = -tx, -ty
+                # ハンドル長: 隣接谷までの距離の 35% 程度 (山先端の曲率半径を決定)
+                avg_neighbor = (
+                    math.hypot(prev_co[0] - co[0], prev_co[1] - co[1])
+                    + math.hypot(next_co[0] - co[0], next_co[1] - co[1])
+                ) * 0.5
+                mag = avg_neighbor * 0.32
+                handle_right = (co[0] + tx * mag, co[1] + ty * mag)
+                handle_left = (co[0] - tx * mag, co[1] - ty * mag)
+        else:
+            # 谷: 左右ハンドルがそれぞれ隣接ピーク方向を向き、ハンドル先は谷-ピーク間の
+            # 1/3 程度に置く (V 字の鋭角谷)
+            handle_left = (
+                co[0] + (prev_co[0] - co[0]) / 3.0,
+                co[1] + (prev_co[1] - co[1]) / 3.0,
+            )
+            handle_right = (
+                co[0] + (next_co[0] - co[0]) / 3.0,
+                co[1] + (next_co[1] - co[1]) / 3.0,
+            )
+        anchors.append(_local_anchor_to_rect(
+            rect,
+            BezierAnchor(
+                co=co,
+                handle_left=handle_left,
+                handle_right=handle_right,
+                handle_left_type="FREE",
+                handle_right_type="FREE",
+            ),
+        ))
     return anchors
 
 

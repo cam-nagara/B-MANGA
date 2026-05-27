@@ -140,6 +140,11 @@ def main() -> None:
     out = _OUT_PATH / "02_thorn_curve_smooth_peaks.png"
     _render_to(out, width_px=900, height_px=900)
     print(f"[OUT] thorn-curve smooth peaks: {out}")
+    # クローズアップ: 1 山だけを画面に大きく出して山先端の曲線を確認
+    _set_ortho_camera(cx + 0.025, cy, 0.04)
+    out_close = _OUT_PATH / "02b_thorn_curve_peak_closeup.png"
+    _render_to(out_close, width_px=900, height_px=900)
+    print(f"[OUT] thorn-curve peak closeup: {out_close}")
 
     # --- 3) トゲ曲線 多重線 ---
     entry.line_style = "double"
