@@ -812,22 +812,11 @@ def _build_dynamic_multi_line_polygons(
 
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
     n = len(pts)
-    # 外向き法線 (samples 上)
+    # 外向き法線 (samples 上)。 thorn (直線) なら 各 bezier セグメントが直線で、
+    # 全 sample が同じ bisector 方向を持つため、 outer ring も自然と直線セグメント
+    # で構成される。 peak の normal を radial 方向に強制すると 隣接 sample との
+    # 方向差で 辺が曲線的に膨らむため、 強制しない。
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-    # outside_align=True (= 主線 dynamic) のときは、 peak / valley anchor サンプルで
-    # normal を radial 方向 (= 中心→頂点) に強制する。 通常の bisector 法線だと
-    # peak 周辺の 24 サンプルが「滑らかな円弧」 として描画されるため、 主線の
-    # 山頂が丸く見えてしまう。 radial 方向に強制すると anchor 頂点が「鋭い針状」
-    # として 外向きに突き出る。
-    if outside_align:
-        anchor_step = max(1, SAMPLES_PER_SEGMENT)
-        cx_m, cy_m = balloon_center_m
-        for anchor_idx in range(0, n, anchor_step):
-            rx = pts[anchor_idx][0] - cx_m
-            ry = pts[anchor_idx][1] - cy_m
-            rl = math.hypot(rx, ry)
-            if rl > 1.0e-9:
-                normals[anchor_idx] = (rx / rl, ry / rl)
     # anchor 単位で peak/valley を構造的に検出する。
     # 主山 (= local max in radial among anchors) と主谷 (= local min) だけが返る。
     # 高さ jitter があっても全ての主山が検出され、サブバンプは anchor-level の
@@ -928,20 +917,19 @@ def _build_dynamic_multi_line_polygons(
                 t_geom = d_valley / total  # 0 at valley, 1 at peak
             # length_scale 正規化: cut endpoint で peak_w に達する
             t_segment = min(1.0, t_geom / length_scale_clamped)
-            # outside_align=True (= 主線 dynamic) では power 4 カーブで補間し、
-            # peak 近辺で plateau を作る。 valley_width が小さい (例: 0%) のとき、
-            # 線形補間だと「中間サンプルで 50% に下がる」 ため、 主線全体が細く
-            # 見えてしまっていた。 power 4 で early-rise させると、 valley 直近
-            # 数サンプルだけが pinch し、 それ以外は ほぼ peak_width を保つ。
-            #   t_curve = 1 - (1 - t_segment)**4
-            #     t=0.0 (valley) → 0.0
-            #     t=0.3          → 0.76
-            #     t=0.5          → 0.94
-            #     t=0.7          → 0.99
-            #     t=1.0 (peak)   → 1.0
+            # outside_align=True (= 主線 dynamic) では「ピンチ側の anchor から ±N
+            # サンプル以内だけが pinch、 それ以外は 大きい方の幅で plateau」とする。
+            # 通常 (山 100% / 谷 100%) と比べて 「主線の太さは保ったまま、 ピンチ
+            # 側の頂点だけが 0% に下がる」 挙動を実現。 valley/peak の大小で
+            # ピンチ側を切り替え、 N=2 サンプル distance で 0→100% へ線形補間。
             if outside_align:
-                one_minus_t = 1.0 - t_segment
-                t_curve = 1.0 - (one_minus_t * one_minus_t * one_minus_t * one_minus_t)
+                falloff_samples = 2.0
+                if peak_width_m >= valley_width_m:
+                    # peak 側が太い → valley 直近が pinch
+                    t_curve = min(1.0, d_valley / falloff_samples)
+                else:
+                    # valley 側が太い → peak 直近が pinch
+                    t_curve = 1.0 - min(1.0, d_peak / falloff_samples)
             else:
                 t_curve = t_segment
             widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_curve)

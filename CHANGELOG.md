@@ -3,6 +3,33 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.143 主線 dynamic で 「ベース太さを保ったまま 谷頂点だけ pinch + 辺は直線」 を実現
+
+### 症状
+- v0.6.142 で 帯の太さは保たれるようになったが、 主線アウトラインが「曲線的に膨らんで」 見えていた。 ユーザー指摘: トゲ (直線) なので 辺は直線であるべき。
+
+### 原因
+- v0.6.142 で peak / valley anchor の normal を radial 方向に強制していた。 隣接サンプルが bisector 法線のままなので、 outer ring の頂点列が「peak で radial 外向き / 隣接で bisector 方向」 という方向差を持ち、 辺が直線にならず 曲線的に膨らんでいた。
+- power 4 カーブの幅補間も、 サンプル間で 帯の幅が連続的に変わるため、 辺の方向にも 微妙な変化を生んでいた。
+
+### 修正
+- peak / valley anchor の normal radial 強制を撤去。 トゲ (直線) では body の各 bezier セグメントが直線で、 全サンプルが同じ bisector 方向を持つため、 強制しなくても outer ring が自然に 直線セグメントで構成される。
+- width 補間を 「ピンチ側 anchor から N=2 サンプル以内のみ pinch、 それ以外は 大きい方の幅で plateau」 のステップ的線形補間に変更:
+  - peak が太い → valley anchor で 0%、 valley anchor の隣で 50%、 d=2 以上で 100% plateau
+  - valley が太い → peak anchor で 0%、 peak anchor の隣で 50%、 d=2 以上で 100% plateau
+- これでユーザー期待の挙動 (= ベース 100/100 と同じ太さを保ったまま、 ピンチ側 anchor だけが 0 で pinch、 辺は直線) を実現。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_dynamic_multi_line_polygons` で peak/valley normal の radial 強制を削除。
+  - width 補間ロジックを step 的線形補間に変更 (outside_align=True のときのみ)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- ユーザースクショと同じ設定で 3 ケースを再生成。
+- peak_100_valley_100: 全周一定太さの thorn 直線形状。
+- peak_100_valley_0: **ベースと同じ太さの帯が保たれ、 谷頂点だけが pinch off**、 山頂と山頂を結ぶ辺は **直線**。
+- peak_0_valley_100: ベースと同じ太さで、 山頂頂点だけが pinch off、 谷の太い帯と body 境界が直線で接続。
+
 ## 2026-05-28 — v0.6.142 主線 dynamic で「主線が細くなりすぎる」を修正 (power カーブ + radial 法線)
 
 ### 症状
