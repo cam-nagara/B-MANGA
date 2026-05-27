@@ -3,6 +3,37 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.131 フキダシ塗り面を Python earcut で焼き込み、ノードから Fill Curve を撤去 (Phase C)
+
+### 症状
+- フキダシ本体の塗り面が、ジオメトリノードグループ内の `GeometryNodeFillCurve` で毎フレーム生成されていた。
+- これに付随して、塗り輪郭ぼかしのアルファ計算 (`GeometryNodeProximity` + 数値演算 + Switch + StoreNamedAttribute) もノード側で評価されており、塗り面メッシュ評価コストが移動・サイズ変更・詳細設定変更のたびに発生していた。
+
+### 原因
+- フキダシ本体カーブの塗り面 (主線が削った穴も含む) をジオメトリノード側で生成する設計だったため、ノードグラフの評価が常に必要だった。
+
+### 修正
+- 新規 `utils/balloon_fill_mesh.py` を追加 (396 行)。本体カーブの bezier サンプルと全しっぽの polygon を Shapely Polygon の和集合として構築し、`mapbox_earcut` (同梱 wheel) で三角分割して `balloon_fill_mesh_<id>` という独立 Mesh オブジェクトを生成する。
+- 塗り輪郭ぼかしのアルファは、各メッシュ頂点からフキダシ輪郭までの距離フィールドとして Python 側で計算し、頂点属性 `bname_fill_blur_alpha` (POINT domain Float) に書き込む。マテリアル側の `ShaderNodeAttribute` がこれを読んでアルファに乗算する。
+- ジオメトリノードグループから body 用の `GeometryNodeFillCurve` 関連経路と `_store_fill_blur_alpha` / `_fill_blur_width_socket` / `_math_node` / `_set_curve_radius` ヘルパー、`GeometryNodeProximity` ノード、塗りぼかしの Switch + StoreNamedAttribute を完全削除。
+- しっぽの主線フチ (role=500 の `main_line_fill_curve`) 経路のみノード側に残し、その他の従来形状向け休眠経路 (outer/inner/multi/line_legacy) はそのまま (Phase D で撤去予定)。
+- `GROUP_VERSION` を 43 → 44 へ bump。
+- `cleanup_orphan_balloon_objects` で orphan な fill mesh を回収する `cleanup_orphan_fill_meshes` を追加。
+- `utils/balloon_curve_render_nodes.py` の行数: 1065 → 875 (-190 行)。
+
+### 関連ファイル
+- `utils/balloon_fill_mesh.py` (新規): Python earcut による塗り面メッシュ生成
+- `utils/balloon_curve_object.py`: `_sync_balloon_band_meshes` に fill mesh sync を追加、`cleanup_orphan_balloon_objects` に fill mesh のオーファン回収を追加
+- `utils/balloon_curve_render_nodes.py`: body 塗り面 + ぼかしαノード経路を削除
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- `test/blender_balloon_node_minimization_phase_c_check.py` 新規追加: 全 7 形状で fill mesh (modifier なし) + bname_fill_blur_alpha 属性 + マテリアル割当を確認。しっぽ付きフキダシで body+tail の union 塗り面が正しく拡張されること。
+- `test/blender_balloon_all_shapes_shapely_check.py` 既存テスト: 7 形状の見た目 (フチ + 多重線あり) で回帰なし。
+- Phase A / B のテストも再実行で PASS。
+
+### 関連計画書
+- `docs/balloon_node_minimization_plan_2026-05-27.md` の Phase C に相当 (進行中)。
+
 ## 2026-05-27 — v0.6.130 フキダシのカスタム形状も Shapely バンドメッシュへ統一 (Phase B)
 
 ### 症状

@@ -11,6 +11,7 @@ import bpy
 
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
+from . import balloon_fill_mesh
 from . import balloon_line_mesh
 from . import balloon_multiline_curve
 from . import balloon_render_contract as render_contract
@@ -702,12 +703,24 @@ def _apply_page_world_offset(scene: bpy.types.Scene, work, page, entry, obj: bpy
 
 
 def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, mask_info) -> None:
-    """フキダシ主線・外側フチ・内側フチ・多重線の Mesh オブジェクトを ensure する."""
+    """フキダシ塗り面・主線・外側フチ・内側フチ・多重線の Mesh オブジェクトを ensure する."""
     materials = list(getattr(obj.data, "materials", []) or [])
+    fill_mat = materials[render_contract.MATERIAL_SLOT_FILL] if len(materials) > render_contract.MATERIAL_SLOT_FILL else None
     line_mat = materials[_MATERIAL_SLOT_LINE] if len(materials) > _MATERIAL_SLOT_LINE else None
     outer_mat = materials[_MATERIAL_SLOT_OUTER_EDGE] if len(materials) > _MATERIAL_SLOT_OUTER_EDGE else None
     inner_mat = materials[_MATERIAL_SLOT_INNER_EDGE] if len(materials) > _MATERIAL_SLOT_INNER_EDGE else None
     balloon_id = str(getattr(entry, "id", "") or "")
+    if fill_mat is not None:
+        balloon_fill_mesh.ensure_balloon_fill_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            fill_material=fill_mat,
+        )
+    else:
+        balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     if line_mat is not None:
         balloon_line_mesh.ensure_balloon_line_mesh(
             scene=scene,
@@ -1383,6 +1396,7 @@ def cleanup_orphan_balloon_objects(scene) -> int:
                 _remove_unused_data_block(data)
                 removed += 1
     removed += balloon_line_mesh.cleanup_orphan_line_meshes(valid)
+    removed += balloon_fill_mesh.cleanup_orphan_fill_meshes(valid)
     return removed
 
 
