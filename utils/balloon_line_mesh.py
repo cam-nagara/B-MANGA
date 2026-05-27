@@ -751,13 +751,14 @@ def _build_dynamic_multi_line_polygons(
          pts[i][1] + normals[i][1] * signed_offset_m)
         for i in range(n)
     ]
-    # 期待される山数: body samples の周長 / (base_width_m * 3) 程度 (小山も拾える解像度)。
-    total_len = 0.0
-    for i in range(n):
-        dx = pts[(i + 1) % n][0] - pts[i][0]
-        dy = pts[(i + 1) % n][1] - pts[i][1]
-        total_len += math.hypot(dx, dy)
-    expected_count = max(8, int(total_len / max(base_width_m * 3.0, 0.001)))
+    # 期待される山数は **body anchor 数** を上限の目安にする。本体カーブは
+    # 山/谷 anchor が交互に並ぶ構造なので、anchor 数 = (山数 + 谷数) に近い。
+    # 周長ベース (base_width 単位) で見積もると偽の局所最大が大量に拾われ、
+    # 「長さ変化 < 100%」で各偽 peak ごとに細かい切れ目が入って線が破片化していた。
+    # 小山も拾えるよう anchor の 2 倍までを許容するが、それ以上はノイズとして抑える。
+    samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
+    anchor_count = max(2, n // samples_per_segment)
+    expected_count = max(8, anchor_count * 2)
     peaks, valleys = _detect_centerline_peaks_valleys(
         pts,
         balloon_center_m,
