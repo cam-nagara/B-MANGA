@@ -1097,6 +1097,7 @@ def _geometry_key_for_entry(entry) -> str:
         "cloud_sub_height_ratio": float(getattr(sp, "cloud_sub_height_ratio", 0.0) or 0.0),
         "cloud_sub_height_jitter": float(getattr(sp, "cloud_sub_height_jitter", 0.0) or 0.0),
         "cloud_valley_sharp": bool(getattr(sp, "cloud_valley_sharp", False)),
+        "dynamic_shape_base_kind": str(getattr(sp, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
         "shape_seed": int(getattr(sp, "shape_seed", 0) or 0),
     }
     tails = []

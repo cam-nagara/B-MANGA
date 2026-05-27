@@ -943,6 +943,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             "cloudSubWidthJitter": round(entry.shape_params.cloud_sub_width_jitter, 3),
             "cloudSubHeightJitter": round(entry.shape_params.cloud_sub_height_jitter, 3),
             "cloudValleySharp": bool(entry.shape_params.cloud_valley_sharp),
+            "dynamicShapeBaseKind": str(getattr(entry.shape_params, "dynamic_shape_base_kind", "ellipse") or "ellipse"),
             "cloudWaveCount": int(entry.shape_params.cloud_wave_count),
             "cloudWaveAmplitudeMm": round(entry.shape_params.cloud_wave_amplitude_mm, 3),
             "spikeCount": int(entry.shape_params.spike_count),
@@ -1050,6 +1051,10 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.shape_params.cloud_sub_width_jitter = float(sp.get("cloudSubWidthJitter", 0.0))
     entry.shape_params.cloud_sub_height_jitter = float(sp.get("cloudSubHeightJitter", 0.0))
     entry.shape_params.cloud_valley_sharp = bool(sp.get("cloudValleySharp", False))
+    base_kind = str(sp.get("dynamicShapeBaseKind", "ellipse") or "ellipse")
+    if base_kind not in {"ellipse", "rect"}:
+        base_kind = "ellipse"
+    entry.shape_params.dynamic_shape_base_kind = base_kind
     entry.shape_params.shape_seed = int(sp.get("shapeSeed", sp.get("seed", 0)) or 0)
     if "cloudOffsetPercent" in sp:
         entry.shape_params.cloud_offset_percent = float(sp.get("cloudOffsetPercent", 50.0))

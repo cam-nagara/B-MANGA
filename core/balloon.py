@@ -229,7 +229,7 @@ class BNameBalloonTail(bpy.types.PropertyGroup):
 class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     """形状固有パラメータ."""
 
-    cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
+    cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=200.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=25.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
@@ -243,6 +243,16 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
         name="角を尖らせる",
         description="フキダシ主線の角 (山と谷) を鋭く尖らせる (OFF: 滑らかに丸める). 全形状で有効",
         default=False,
+        update=_on_balloon_shape_params_changed,
+    )
+    dynamic_shape_base_kind: EnumProperty(  # type: ignore[valid-type]
+        name="ベース形状",
+        description="雲・モフモフ・トゲ系のベース輪郭を 楕円 / 矩形 から選ぶ",
+        items=(
+            ("ellipse", "楕円", ""),
+            ("rect", "矩形", ""),
+        ),
+        default="ellipse",
         update=_on_balloon_shape_params_changed,
     )
 

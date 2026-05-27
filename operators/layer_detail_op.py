@@ -237,6 +237,8 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         shape_box.label(text="形状パラメータ")
         col = shape_box.column(align=True)
         row = col.row(align=True)
+        row.prop(sp, "dynamic_shape_base_kind", text="ベース")
+        row = col.row(align=True)
         row.prop(sp, "cloud_bump_width_mm")
         row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
         row = col.row(align=True)

@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.114 山の幅 200mm 拡張 + ズラし量を全周回転に + 動的形状のベースを 楕円/矩形 で切替可能に
+
+### 仕様変更・追加
+- `cloud_bump_width_mm` 「山の幅 (mm)」の soft_max を **50 → 200** に拡張。
+- `cloud_offset_percent` 「ズラし量 (%)」の意味を変更: 0% = 無回転、100% = 全周 1 周 (= 2π 回転、0% と同形)。これまでは 100% でも `period = 2π/N`(1 山分) しか回転しなかった (旧 100% ≈ 新 1/N%)。
+  - 既存プリセットの互換注意: 以前 ズラし量 50% で約「半山分」シフトしていたものが、新仕様では「半周シフト」になる。意図したシフトに揃えるには `(旧設定) / N` の値を指定する。
+- 新規プロパティ `dynamic_shape_base_kind` 「ベース形状」(EnumProperty: 楕円 / 矩形, default 楕円) を追加。雲・モフモフ・トゲ直線・トゲ曲線の動的形状で、ベース輪郭を **楕円** (従来) と **矩形** (新規) から選べる。矩形を選ぶと、各辺の周りに山/谷が並ぶ「装飾枠」状の形状になる。
+
+### 修正
+- `utils/balloon_shapes.py`:
+  - `_base_perimeter` / `_base_position` / `_base_outward_normal` / `_base_position_scaled` / `_base_position_inset` ヘルパーを追加。`base_kind` ("ellipse"/"rect") で楕円・矩形両方の輪郭サンプリング・外向き法線・内側オフセットを一元化。
+  - `_bump_sequence` の周長計算を `_base_perimeter` に切り替え。
+  - `_outline_cloud_with_corners` / `_bezier_cloud` / `_outline_thorn_with_corners` / `_outline_thorn_curve_with_corners` / `_bezier_thorn_curve` / `_outline_fluffy` / `_bezier_fluffy` の peak/valley 計算を `_base_position*` 経由に切り替え、矩形ベースでも正しく山/谷を配置できるようにした。
+  - `_bump_sequence`、`_outline_fluffy`、`_bezier_fluffy`、`_outline_thorn_curve_with_corners`、`_bezier_thorn_curve` で `base_angle = opts.offset * 2π` に統一 (ズラし量 100% = 全周)。
+- `core/balloon.py`: `cloud_bump_width_mm` soft_max 200、`dynamic_shape_base_kind` 追加
+- `io/schema.py`: `dynamic_shape_base_kind` を JSON シリアライズ
+- `panels/balloon_panel.py`, `operators/layer_detail_op.py`: 動的形状パラメータの先頭に「ベース」セレクタを追加
+- `utils/balloon_curve_object.py`: geometry key に `dynamic_shape_base_kind` を追加 (切替で再生成)
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 動的 4 形状で ベース楕円 (default) と ベース矩形 をそれぞれレンダーし、矩形側で「矩形の周りに装飾」状の形状になることを確認 (`01_base_ellipse.png` vs `02_base_rect.png`)。
+- cloud で ズラし量 0/25/50/75% を並べて、それぞれ別の回転状態になることを確認 (`03_offset_rotation.png`)。
+- 200x120mm の雲フキダシで cloud_bump_width_mm=150 を設定し、200mm 上限が機能して 2〜3 山の大きな bump になることを確認 (`04_bump_width_150mm.png`)。
+
 ## 2026-05-27 — v0.6.113 太線時の鋭角山が平切れする問題を修正 + 主線にも「谷の線幅」「山の線幅」を実装
 
 ### 症状

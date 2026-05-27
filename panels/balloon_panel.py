@@ -194,6 +194,8 @@ class BNAME_PT_balloons(Panel):
             box = layout.box()
             box.label(text="Meldex形状パラメータ")
             row = box.row(align=True)
+            row.prop(sp, "dynamic_shape_base_kind", text="ベース")
+            row = box.row(align=True)
             row.prop(sp, "cloud_bump_width_mm")
             row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
             row = box.row(align=True)
