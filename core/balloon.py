@@ -240,8 +240,8 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
     cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_valley_sharp: BoolProperty(  # type: ignore[valid-type]
-        name="谷を尖らせる",
-        description="雲フキダシ主線の谷を曲線同士の交点として鋭く尖らせる (OFF: 滑らかな丸み)",
+        name="角を尖らせる",
+        description="フキダシ主線の角 (山と谷) を鋭く尖らせる (OFF: 滑らかに丸める). 全形状で有効",
         default=False,
         update=_on_balloon_shape_params_changed,
     )

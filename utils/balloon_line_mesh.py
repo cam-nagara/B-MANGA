@@ -336,6 +336,167 @@ def _stroke_band_outside_union(
     )
 
 
+def _polyline_subset_by_arc_length(
+    pts_closed: Sequence[tuple[float, float]],
+    cum: Sequence[float],
+    start_len: float,
+    end_len: float,
+) -> list[tuple[float, float]]:
+    """閉じた点列 (`pts_closed`: 末尾に先頭を再付加した、cum: 累積長) のうち、
+    `start_len` 〜 `end_len` の区間を切り出して返す.
+
+    端点では線分上を補間し、滑らかに区間が始まる/終わるようにする。
+    閉じた線で `end_len` が一周を超えるケースは呼び出し側で個別に処理する想定。
+    """
+    n = len(pts_closed)
+    if n < 2:
+        return []
+    total = cum[-1]
+    if total <= 1.0e-9:
+        return []
+    start_len = max(0.0, float(start_len))
+    end_len = max(start_len, float(end_len))
+    if end_len > total:
+        end_len = total
+    out: list[tuple[float, float]] = []
+    for i in range(n - 1):
+        seg_start = cum[i]
+        seg_end = cum[i + 1]
+        if seg_end < start_len or seg_start > end_len:
+            continue
+        seg_len = seg_end - seg_start
+        if seg_len <= 1.0e-12:
+            continue
+        p0 = pts_closed[i]
+        p1 = pts_closed[i + 1]
+        # 区間と segment の交差点を計算
+        t_in = (max(seg_start, start_len) - seg_start) / seg_len
+        t_out = (min(seg_end, end_len) - seg_start) / seg_len
+        if t_in > 0.0:
+            x = p0[0] + (p1[0] - p0[0]) * t_in
+            y = p0[1] + (p1[1] - p0[1]) * t_in
+            if not out or math.hypot(out[-1][0] - x, out[-1][1] - y) > 1.0e-9:
+                out.append((x, y))
+        else:
+            if not out or math.hypot(out[-1][0] - p0[0], out[-1][1] - p0[1]) > 1.0e-9:
+                out.append((float(p0[0]), float(p0[1])))
+        if t_out < 1.0:
+            x = p0[0] + (p1[0] - p0[0]) * t_out
+            y = p0[1] + (p1[1] - p0[1]) * t_out
+            if not out or math.hypot(out[-1][0] - x, out[-1][1] - y) > 1.0e-9:
+                out.append((x, y))
+    return out
+
+
+def _build_dashed_band_polygons(
+    body_samples: Sequence[tuple[float, float, float]],
+    *,
+    line_width_m: float,
+    line_style: str,
+    valley_sharp: bool,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """主線を破線または点線として、複数の独立バンドポリゴンとして構築する.
+
+    実装手順:
+    1. body 多角形を `line_width/2` だけ外側 buffer して、主線中心線のリングを得る
+    2. リング外周を arc length 軸でサンプリング
+    3. dash 周期に従って区間を切り出し、各区間を LineString として `line_width/2` で
+       buffer すれば、外側アライメント主線の dash バンドが得られる
+    4. 各 dash バンドを (outer_ring, holes) のタプルとして返す
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import LineString  # type: ignore
+    except Exception:  # noqa: BLE001
+        return []
+    if line_width_m <= 1.0e-9 or len(body_samples) < 3:
+        return []
+    body_poly = _build_body_polygon(body_samples)
+    if body_poly is None:
+        return []
+    join = 2 if valley_sharp else 1
+    try:
+        centerline_poly = body_poly.buffer(
+            line_width_m * 0.5,
+            join_style=join,
+            mitre_limit=2.5 if valley_sharp else 5.0,
+        )
+    except Exception:  # noqa: BLE001
+        return []
+    if centerline_poly.is_empty:
+        return []
+    # 最大ポリゴンの外周をセンターラインとして採用
+    if centerline_poly.geom_type == "Polygon":
+        geom = centerline_poly
+    elif centerline_poly.geom_type == "MultiPolygon":
+        geom = max(centerline_poly.geoms, key=lambda g: g.area)
+    else:
+        return []
+    ring_coords = list(geom.exterior.coords)
+    if len(ring_coords) < 4:
+        return []
+    # 閉じた列に変形 (末尾を先頭に重ねる)
+    pts = [(float(x), float(y)) for x, y in ring_coords]
+    if math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) > 1.0e-9:
+        pts.append(pts[0])
+    cum = [0.0]
+    for i in range(1, len(pts)):
+        dx = pts[i][0] - pts[i - 1][0]
+        dy = pts[i][1] - pts[i - 1][1]
+        cum.append(cum[-1] + math.hypot(dx, dy))
+    total_len = cum[-1]
+    if total_len <= 1.0e-9:
+        return []
+
+    line_width_mm = line_width_m * 1000.0
+    if line_style == "dotted":
+        # 点線: 小さな丸ドット (直径 ≈ line_width)。周期は line_width の 2 倍前後。
+        target_period_mm = max(line_width_mm * 2.0, 0.5)
+        dash_ratio = 0.15
+        cap_style = 1  # round
+    else:  # dashed
+        # 破線: 線幅の 8 倍 (最低 6mm) を 1 周期にし、その 6 割を dash として
+        # はっきりした「線・空白・線・空白」のパターンになるようにする。
+        target_period_mm = max(line_width_mm * 8.0, 6.0)
+        dash_ratio = 0.6
+        cap_style = 2  # flat
+    target_period_m = target_period_mm * 0.001
+    num_periods = max(1, int(round(total_len / target_period_m)))
+    period_len = total_len / num_periods
+    dash_len = period_len * dash_ratio
+
+    half_width_m = line_width_m * 0.5
+    polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    for k in range(num_periods):
+        start_len = k * period_len
+        end_len = start_len + dash_len
+        sub_pts = _polyline_subset_by_arc_length(pts, cum, start_len, end_len)
+        if len(sub_pts) < 2:
+            continue
+        try:
+            line = LineString(sub_pts)
+            if line.length <= 1.0e-9:
+                continue
+            band = line.buffer(half_width_m, cap_style=cap_style, join_style=1)
+        except Exception:  # noqa: BLE001
+            continue
+        if band.is_empty:
+            continue
+        if band.geom_type == "Polygon":
+            sub_polys = [band]
+        elif band.geom_type == "MultiPolygon":
+            sub_polys = list(band.geoms)
+        else:
+            continue
+        for sub in sub_polys:
+            if sub.area <= 1.0e-12:
+                continue
+            outer_ring = list(sub.exterior.coords)
+            holes = [list(r.coords) for r in sub.interiors]
+            polygons.append((outer_ring, holes))
+    return polygons
+
+
 def _stroke_band_outside_union_OLD_QUAD_BASED__UNUSED(
     samples: Sequence[tuple[float, float, float]],
     *,
@@ -1121,16 +1282,29 @@ def ensure_balloon_line_mesh(
     if len(samples) < 3:
         remove_balloon_line_mesh(balloon_id)
         return None
-    union_result = _stroke_band_outside_union(
-        samples,
-        line_width_m=line_width_m,
-        valley_sharp=_valley_sharp_for_entry(entry),
-    )
-    if union_result is None:
-        remove_balloon_line_mesh(balloon_id)
-        return None
-    outer_ring, holes = union_result
-    _build_band_mesh_from_union(mesh, outer_ring, holes, LINE_Z_OFFSET_M)
+    valley_sharp = _valley_sharp_for_entry(entry)
+    if line_style in {"dashed", "dotted"}:
+        dash_polys = _build_dashed_band_polygons(
+            samples,
+            line_width_m=line_width_m,
+            line_style=line_style,
+            valley_sharp=valley_sharp,
+        )
+        if not dash_polys:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        _build_band_mesh_from_polygons(mesh, dash_polys, LINE_Z_OFFSET_M)
+    else:
+        union_result = _stroke_band_outside_union(
+            samples,
+            line_width_m=line_width_m,
+            valley_sharp=valley_sharp,
+        )
+        if union_result is None:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        outer_ring, holes = union_result
+        _build_band_mesh_from_union(mesh, outer_ring, holes, LINE_Z_OFFSET_M)
 
     return _attach_band_mesh_object(
         obj_name=_line_mesh_object_name(balloon_id),
@@ -1348,23 +1522,25 @@ def ensure_balloon_multi_line_mesh(
         return None
 
     valley_sharp = _valley_sharp_for_entry(entry)
-    # 多重線のリング中心は「主線中心からの距離 = spacing * ring_index」を満たすように配置する。
-    # これによりリング同士の中心間距離も、主線中心とリング1中心の距離も等しく spacing になる。
-    # 外側アライメント主線 (body 0 〜 +line_width) なので主線中心は body + line_width/2.
-    # 内側方向には主線が無いため、内側多重線は body 境界を基準にリング中心を spacing 刻みで並べる。
-    base_outside_mm = line_width_mm * 0.5
-    base_inside_mm = 0.0
+    # 多重線は「主線/body の外側 (内側) アウトラインから spacing 隙間 → 幅 ring_width の帯」
+    # を順に並べる "edge-to-edge gap = spacing" 方式。これにより線幅が太くてもリング 1 が
+    # 主線に隠れず、隣接ライン間の見た目の隙間が常に spacing で揃う。
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
-    # 「線の本数 N」は多重線として描かれるリング数を意味する (主線本体はカウント外)。
+    running_outside_mm = line_width_mm  # 主線外側エッジ (body curve からの距離)
+    running_inside_mm = 0.0  # body 境界 (body curve からの絶対距離; 内側方向では本体に主線無し)
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         if ring_width_mm <= 1.0e-6:
             continue
         for side in sides:
             if side == "inside":
-                signed_offset_mm = -(base_inside_mm + spacing_mm * ring_index)
+                ring_inner_mm = running_inside_mm + spacing_mm
+                ring_center_mm = ring_inner_mm + ring_width_mm * 0.5
+                signed_offset_mm = -ring_center_mm
             else:
-                signed_offset_mm = base_outside_mm + spacing_mm * ring_index
+                ring_inner_mm = running_outside_mm + spacing_mm
+                ring_center_mm = ring_inner_mm + ring_width_mm * 0.5
+                signed_offset_mm = ring_center_mm
             band = build_offset_band_polygon(
                 samples,
                 signed_offset_m=signed_offset_mm * 0.001,
@@ -1372,9 +1548,13 @@ def ensure_balloon_multi_line_mesh(
                 valley_sharp=valley_sharp,
                 _body_poly=body_poly,
             )
-            if band is None:
-                continue
-            polygons.append(band)
+            if band is not None:
+                polygons.append(band)
+            # 双方向 (both) なら片方しか進めないように side ごとに running を更新
+            if side == "inside":
+                running_inside_mm += spacing_mm + ring_width_mm
+            else:
+                running_outside_mm += spacing_mm + ring_width_mm
     if not polygons:
         remove_balloon_multi_line_mesh(balloon_id)
         return None

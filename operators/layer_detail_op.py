@@ -251,9 +251,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row = col.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-        if str(getattr(entry, "shape", "")) == "cloud":
-            row = col.row(align=True)
-            row.prop(sp, "cloud_valley_sharp")
+        # 「角を尖らせる」は線・塗りセクション側で全形状向けに表示する
 
     box = layout.box()
     box.label(text="配置 (mm)")
@@ -282,12 +280,17 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row.prop(entry, "multi_line_spacing_mm")
         row = box.row(align=True)
         row.prop(entry, "multi_line_width_scale_percent")
-        row.prop(entry, "thorn_multi_line_length_scale_percent")
+        # 「長さ変化(%)」「谷/山の線幅」「延ばして交差」はトゲ(直線)専用 (設計意図書 §7.1.1)
         if str(getattr(entry, "shape", "") or "") == "thorn":
+            row.prop(entry, "thorn_multi_line_length_scale_percent")
             row = box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_mm")
             row.prop(entry, "thorn_multi_line_peak_width_mm")
             box.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
+    # 角を尖らせる: 全形状共通オプション (主線・フチ・多重線すべてに伝搬)
+    if sp is not None:
+        row = box.row(align=True)
+        row.prop(sp, "cloud_valley_sharp")
     row = box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")

@@ -1171,16 +1171,17 @@ def _set_modifier_values(
         if multi_line_enabled and native_multi_line_rings_enabled
         else 0
     )
-    # リング N 中心 = 主線中心 (= body curve) から spacing_mm * N の位置。
-    base_distance_mm = 0.0
+    # 主線外側エッジ (body curve + line_width) を起点に、spacing 隙間 + 幅 ring_width
+    # を edge-to-edge gap = spacing 方式で順に並べる。
+    running = max(0.0, float(line_width_mm or 0.0))
     for ring_index in range(1, _MAX_MULTI_LINE_RINGS):
         width_mm = width_base_mm * (scale ** max(0, ring_index - 1))
-        center_mm = base_distance_mm + spacing_mm * ring_index
-        inner_mm = max(0.0, center_mm - width_mm * 0.5)
-        outer_mm = center_mm + width_mm * 0.5
+        inner_mm = running + spacing_mm
+        outer_mm = inner_mm + width_mm
         values[f"多重線{ring_index}表示"] = bool(ring_index <= extra_count and width_mm > 0.0)
         values[f"多重線{ring_index}外半径 (mm)"] = outer_mm
         values[f"多重線{ring_index}内半径 (mm)"] = inner_mm
+        running = outer_mm
     if mask_object is not _MASK_UNSET:
         values["マスク使用"] = mask_object is not None
         values["マスク対象"] = mask_object

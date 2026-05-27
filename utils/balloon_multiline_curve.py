@@ -728,11 +728,13 @@ def append_closed_multi_line_paths(
     direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
     sides = ("inside", "outside") if direction == "both" else ("inside",) if direction == "inside" else ("outside",)
     clockwise = _polygon_signed_area(body_points) < 0.0
-    # 中央アライメント主線では body curve = 主線中心。「主線中心からリング1中心までの距離 = spacing」
-    # を満たすには base_distance_mm = 0 とし、リング k 中心 = spacing_mm * k にする。
-    base_distance_mm = 0.0
+    # 主線は外側アライメント (body curve 0 〜 +line_width)。多重線は「主線外側エッジ +
+    # spacing 隙間 + 幅 ring_width」のリングを順に並べる "edge-to-edge gap = spacing" 方式。
+    # 内側方向は body 境界 + spacing 隙間 + 幅 ring_width を順に並べる。
     base_length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
+    running_outside_mm = line_width_mm  # 主線外側エッジ
+    running_inside_mm = 0.0  # body 境界
     # 「線の本数 N」は多重線として描かれるリング数 (主線本体はカウント外)。
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
@@ -745,49 +747,56 @@ def append_closed_multi_line_paths(
         ring_extent_width_mm = max(ring_width_mm, valley_width_mm, peak_width_mm) if shape_name == "thorn" else ring_width_mm
         if ring_extent_width_mm <= 0.0:
             continue
-        distance_mm = base_distance_mm + spacing_mm * ring_index
         for side in sides:
-            offset_fn = _offset_closed_outline if shape_name in {"rect", "octagon", "thorn"} else _offset_closed_outline_smooth
-            ring_points = offset_fn(body_points, distance_mm=distance_mm, clockwise=clockwise, side=side)
-            if ring_points is None:
-                continue
-            if shape_name == "thorn":
-                ring_length_scale = base_length_scale ** (max(1, ring_index) * _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN)
-                ring_points = _scaled_thorn_ring_points(
-                    ring_points,
-                    length_scale=ring_length_scale,
-                    cross_enabled=cross_enabled,
-                )
-                _append_thorn_multiline_band(
-                    curve,
-                    ring_points,
-                    valley_width_mm=valley_width_mm,
-                    peak_width_mm=peak_width_mm,
-                    line_width_mm=line_width_mm,
-                    offset=offset,
-                    role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET,
-                    material_index=_MATERIAL_SLOT_LINE,
-                )
+            if side == "inside":
+                ring_inner_mm = running_inside_mm + spacing_mm
             else:
-                band = _band_loops_for_side(
-                    body_points,
-                    center_distance_mm=distance_mm,
-                    width_mm=ring_width_mm,
-                    clockwise=clockwise,
-                    side=side,
-                    smooth=True,
-                )
-                if band is None:
-                    continue
-                outer, inner = band
-                _add_filled_band(
-                    curve,
-                    outer,
-                    inner,
-                    offset=offset,
-                    role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm),
-                    material_index=_MATERIAL_SLOT_LINE,
-                )
+                ring_inner_mm = running_outside_mm + spacing_mm
+            ring_extent_mm = ring_extent_width_mm
+            ring_center_mm = ring_inner_mm + ring_extent_mm * 0.5
+            offset_fn = _offset_closed_outline if shape_name in {"rect", "octagon", "thorn"} else _offset_closed_outline_smooth
+            ring_points = offset_fn(body_points, distance_mm=ring_center_mm, clockwise=clockwise, side=side)
+            if ring_points is not None:
+                if shape_name == "thorn":
+                    ring_length_scale = base_length_scale ** (max(1, ring_index) * _THORN_MULTI_LINE_LENGTH_DISTANCE_GAIN)
+                    ring_points_scaled = _scaled_thorn_ring_points(
+                        ring_points,
+                        length_scale=ring_length_scale,
+                        cross_enabled=cross_enabled,
+                    )
+                    _append_thorn_multiline_band(
+                        curve,
+                        ring_points_scaled,
+                        valley_width_mm=valley_width_mm,
+                        peak_width_mm=peak_width_mm,
+                        line_width_mm=line_width_mm,
+                        offset=offset,
+                        role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET,
+                        material_index=_MATERIAL_SLOT_LINE,
+                    )
+                else:
+                    band = _band_loops_for_side(
+                        body_points,
+                        center_distance_mm=ring_center_mm,
+                        width_mm=ring_width_mm,
+                        clockwise=clockwise,
+                        side=side,
+                        smooth=True,
+                    )
+                    if band is not None:
+                        outer, inner = band
+                        _add_filled_band(
+                            curve,
+                            outer,
+                            inner,
+                            offset=offset,
+                            role_radius=MULTI_LINE_ROLE_RADIUS_OFFSET + (ring_width_mm / line_width_mm),
+                            material_index=_MATERIAL_SLOT_LINE,
+                        )
+            if side == "inside":
+                running_inside_mm += spacing_mm + ring_extent_mm
+            else:
+                running_outside_mm += spacing_mm + ring_extent_mm
 
 
 def append_main_line_fill_paths(
@@ -1042,8 +1051,10 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
         peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", width_mm) or 0.0))
         scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
         if str(getattr(entry, "multi_line_direction", "outside") or "outside") in {"outside", "both"}:
-            # 本体カーブ (主線中心) からリング N 中心までの距離 = spacing * N.
-            # リング N 外側端 = spacing * N + ring_width_N / 2.
+            # 主線外側エッジ (= body curve + line_width) を起点に
+            # spacing 隙間 + 幅 ring_width のリングを順に並べる。リング N の外側エッジ
+            # = line_width + Σ_{i<=N}(spacing + ring_width_i).
+            running = float(line_width_mm)
             for ring_index in range(1, count + 1):
                 ring_width = width_mm * (scale ** max(0, ring_index - 1))
                 if shape_name == "thorn":
@@ -1054,6 +1065,6 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
                     )
                 if ring_width <= 0.0:
                     continue
-                ring_outer_from_curve = spacing_mm * ring_index + ring_width * 0.5
-                margin = max(margin, ring_outer_from_curve)
+                running += spacing_mm + ring_width
+                margin = max(margin, running)
     return margin

@@ -407,8 +407,13 @@ def _setup_emission_alpha_material(
     _mat_link(nt, alpha_socket, mix.inputs["Fac"])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     try:
-        mat.blend_method = "OPAQUE" if float(color[3]) >= 0.999 and not fill_blur_alpha and mask_info is None else "BLEND"
+        opaque_color = float(color[3]) >= 0.999 and not fill_blur_alpha
+        mat.blend_method = "OPAQUE" if opaque_color and mask_info is None else "BLEND"
         if fill_blur_dither:
+            mat.surface_render_method = "DITHERED"
+        elif opaque_color and mask_info is not None:
+            # 画像マスクで切り抜く不透明素材は DITHERED で depth を書き込み、
+            # 下に重なったフキダシの線などが上に透けないようにする。
             mat.surface_render_method = "DITHERED"
         elif fill_blur_alpha or float(color[3]) < 0.999 or mask_info is not None:
             mat.surface_render_method = "BLENDED"

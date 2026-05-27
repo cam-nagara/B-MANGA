@@ -145,6 +145,9 @@ class BNAME_PT_balloons(Panel):
                 row = box.row(align=True)
                 row.prop(entry, "thorn_multi_line_valley_width_mm")
                 row.prop(entry, "thorn_multi_line_peak_width_mm")
+        # 角を尖らせる: 全形状共通オプション (主線・フチ・多重線すべてに伝搬)
+        row = box.row(align=True)
+        row.prop(entry.shape_params, "cloud_valley_sharp")
         row = box.row(align=True)
         row.prop(entry, "line_color")
         row.prop(entry, "fill_color")
@@ -193,9 +196,7 @@ class BNAME_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
             row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-            if entry.shape == "cloud":
-                row = box.row(align=True)
-                row.prop(sp, "cloud_valley_sharp")
+            # 「角を尖らせる」は線・塗りセクション側で全形状向けに表示する
 
         # 尻尾
         box = layout.box()

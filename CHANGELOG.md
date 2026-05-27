@@ -3,6 +3,35 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.106 「角を尖らせる」を全形状化 / 多重線外側基準を主線外側エッジへ / 重なり線抜け修正 / 破線・点線対応
+
+### 症状
+- 「谷を尖らせる」(`cloud_valley_sharp`) が UI 上「雲フキダシ」専用扱いで、矩形・楕円・八角・トゲ・モフモフでは選択できなかった。フキダシ全形状の「角の鋭さ」を切り替えたい用途に対応していなかった。
+- 多重線の外側 spacing が「主線中心 → リング 1 中心 = `spacing`」基準だったため、主線を太くするとリング 1 が主線の中に隠れて見えなかった。
+- フキダシ A と B が重なるとき、A が下 / B が上の Z 順なのに、A の主線が B の塗りの上に透けて見えていた。EEVEE-Next で画像マスク付き不透明素材が `surface_render_method = "BLENDED"` に設定され、深度バッファに書き込まれていなかったため。
+- 線種「破線」「点線」を選んでも、実線と同じ閉じた帯としてレンダリングされ、UI 上の選択が反映されていなかった。
+
+### 修正
+- **「谷を尖らせる」 → 「角を尖らせる」** にラベル変更し、全 Meldex 形状 (矩形・楕円・八角・雲・モフモフ・トゲ直線・トゲ曲線) で UI を表示するように移動。Shapely buffer の `join_style` (round / mitre) を切り替え、山も谷も含めて主線・外側フチ・内側フチ・多重線すべてに伝搬する。
+- 多重線リングを **「エッジ間 隙間 = `spacing`」** ルールで並べ直した: 主線外側エッジ (`body curve + line_width`) + `spacing` 隙間 + 幅 `ring_width_1` のリング 1 → さらに `spacing` 隙間 + リング 2 …。内側方向は body 境界基準で同じパターン。これでリング 1 が太い主線に隠れず、隣接ラインの見た目の隙間が常に `spacing` で揃う。Shapely 経路 / legacy curve 経路 / ノードグループ socket / `outer_render_margin_mm` の 4 箇所すべてを統一した。
+- 画像マスクで切り抜く **不透明素材 (色 alpha ≥ 0.999)** を `surface_render_method = "DITHERED"` に変更。dither で alpha → 深度書き込みの閾値変換が行われるため、コマ内側の不透明領域は深度バッファに書き込まれ、上に重なるフキダシの塗りが下のフキダシの線を正しく隠せるようになった。半透明素材は従来通り `BLENDED`。
+- **破線 / 点線** を実装。Shapely buffer で求めた主線中心線 (= `body.buffer(line_width/2)` の外周リング) を arc length で等分し、各区間を `LineString.buffer(line_width/2, cap_style=…)` で帯化して earcut に流す:
+  - 破線: 周期 `max(line_width × 8, 6.0) mm`、dash 比率 60%、flat cap
+  - 点線: 周期 `max(line_width × 2, 0.5) mm`、dash 比率 15%、round cap (= 小さなドット)
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 全 7 形状で「角を尖らせる」OFF / ON を並べてレンダー比較し、トゲ系の山頂が ON 側で鋭くなることを確認 (`01_sharp_corners_round.png` vs `01_sharp_corners_mitre.png`)。
+- 線幅 5mm × 多重線 count=3 outside で、全 7 形状でリング 1〜3 が主線の外側に並んで見えることを確認 (`02_multiline_outside_thick_line.png`)。
+- 雲フキダシの上に矩形フキダシを重ねたケースで、矩形の白塗りが雲の主線をきちんと隠せていることを確認 (`03_balloon_overlap.png`)。
+- 線種「破線」「点線」をそれぞれ 7 形状で出力し、実線とは明確に異なるダッシュ / ドットのパターンが見えることを確認 (`04_line_style_dashed.png`, `04_line_style_dotted.png`)。
+
+### 関連ファイル
+- `core/balloon.py`: `cloud_valley_sharp` の UI ラベルを「角を尖らせる」に変更
+- `panels/balloon_panel.py`, `operators/layer_detail_op.py`: 「角を尖らせる」を線・塗りセクション側に移動して全形状で表示
+- `utils/balloon_line_mesh.py`: `_build_dashed_band_polygons` / `_polyline_subset_by_arc_length` を追加。`ensure_balloon_line_mesh` で `line_style == "dashed" | "dotted"` を分岐。`ensure_balloon_multi_line_mesh` を「主線外側エッジ + spacing」基準に更新
+- `utils/balloon_multiline_curve.py`, `utils/balloon_curve_render_nodes.py`: legacy curve 多重線とノードグループ socket も「主線外側エッジ + spacing」基準に更新
+- `utils/balloon_curve_object.py`: 不透明素材 (alpha ≥ 0.999) で画像マスク付きの場合 `surface_render_method = "DITHERED"` に切り替え
+
 ## 2026-05-27 — v0.6.105 全形状の主線・フチを Shapely buffer 方式に統一 + 多重線本数/間隔/長さ変化 UI を修正
 
 ### 症状
