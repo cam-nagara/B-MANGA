@@ -3,6 +3,31 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.128 「山の線幅 0% + 長さ変化」で cut endpoint も 0% に収束するよう修正 (根本対処)
+
+### 症状
+- 多重線の「山の線幅」を 0% に設定し、「長さ変化」を 100% 未満にすると、本来は「短くなった多重線の先 (= cut endpoint)」も 0% にすべきところを、cut endpoint 部分で線幅が残ったまま (= 短くなる前の幾何 peak 位置でしか 0% にならない) 動作になっていた。
+- 多重線の V 字の先端が鋭くならず、フラットに切れていた。
+
+### 原因
+- 幅補間が body の geometric peak/valley 位置に対して `t_geom = d_valley / (d_peak + d_valley)` で行われていた (= 0 at valley, 1 at body's peak)。
+- 長さ変化で線が短くなったとき、cut endpoint は `t_geom = length_scale` の位置にあり、その位置の幅は `lerp(valley_w, peak_w, length_scale)` で、peak_w には達していなかった。
+
+### 修正
+- 幅補間を **kept segment 内の position** で正規化:
+  - `t_segment = min(1.0, t_geom / length_scale_clamped)`
+  - cut endpoint (= t_geom が length_scale に達する位置) で t_segment=1.0 → width = peak_w に達する
+  - これにより「山の線幅 0%」 + 「長さ変化 < 100%」で cut endpoint も 0% に収束し、V 字の先端が鋭く尖る
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_dynamic_multi_line_polygons` の幅計算を t_segment 方式に。
+  - `_build_variable_width_band_from_buffer` に length_scale パラメータを追加、同じく t_segment 方式に。
+  - 呼び出し元で length_scale を渡すように。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- ユーザー test101 (山の線幅 0% + length 88/27 + 山谷を延ばして交差): 多重線の V 字先端が cut endpoint で鋭く 0 に収束することを確認。
+
 ## 2026-05-27 — v0.6.127 cross スパイクの "アロー型" 問題を修正 (低 peak 数形状で tongue が太すぎる)
 
 ### 症状

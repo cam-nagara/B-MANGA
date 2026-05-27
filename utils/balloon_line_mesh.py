@@ -831,6 +831,8 @@ def _build_dynamic_multi_line_polygons(
     valleys = list(valleys_all)
     cx_m, cy_m = balloon_center_m
     radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
+    # length_scale で正規化した t_segment で 幅補間 (cut endpoint で peak_w に達するよう)
+    length_scale_clamped = max(0.001, min(1.0, float(length_scale)))
 
     # 「角を尖らせる」相当の peak 延長: peak_extension_m > 0 のとき、各 peak
     # 頂点を外向き法線方向へ延ばす。延長は peak 周辺の数サンプルに対して
@@ -859,8 +861,9 @@ def _build_dynamic_multi_line_polygons(
     ]
 
     # 各サンプル点の line width: 谷と山の頂点 (大山/小山どちらでも) から
-    # 線形補間する。大山だけで補間するとサブバンプ箇所が谷扱いになって帯が
-    # 細くなりすぎるため、ここは peaks_all / valleys_all (= 全 anchor 極値) を使う。
+    # 線形補間する。length_scale で正規化した t_segment を使うことで、cut endpoint
+    # (= t_geom が length_scale に達する位置) で width=peak_w に達する。
+    # → 山の線幅=0% + length<100% で多重線の cut endpoint が綺麗に 0 に収束する。
     width_peaks = peaks_all if peaks_all else peaks
     width_valleys = valleys_all if valleys_all else valleys
     widths: list[float] = []
@@ -878,10 +881,12 @@ def _build_dynamic_multi_line_polygons(
                 d_valley = n
             total = d_peak + d_valley
             if total <= 0:
-                t = 0.5
+                t_geom = 0.5
             else:
-                t = d_valley / total  # 0 at valley, 1 at peak
-            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
+                t_geom = d_valley / total  # 0 at valley, 1 at peak
+            # length_scale 正規化: cut endpoint で peak_w に達する
+            t_segment = min(1.0, t_geom / length_scale_clamped)
+            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_segment)
 
     # length cut は大山ベースだけで行う (= 大山周りで切って valley から伸ばす)
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
@@ -1005,6 +1010,7 @@ def _build_shapely_band_with_peak_cuts(
     else:
         # 幅可変: buffer 由来の centerline をリサンプリングし、各点の幅を peaks/valleys
         # からの radial 距離に基づき線形補間して、独自に帯ポリゴンを構築。
+        # length_scale を渡して、cut endpoint で peak_w に達するように補間する。
         band = _build_variable_width_band_from_buffer(
             body_poly=body_poly,
             pts=pts,
@@ -1015,6 +1021,7 @@ def _build_shapely_band_with_peak_cuts(
             valley_sharp=valley_sharp,
             peaks_all=peaks_all,
             valleys_all=valleys_all,
+            length_scale=length_scale,
         )
         if band is None or band.is_empty:
             return None
@@ -1147,6 +1154,7 @@ def _build_variable_width_band_from_buffer(
     valley_sharp: bool,
     peaks_all: Sequence[int],
     valleys_all: Sequence[int],
+    length_scale: float = 1.0,
 ):
     """幅可変リングを Shapely buffer 由来の centerline で構築する。
 
@@ -1200,6 +1208,11 @@ def _build_variable_width_band_from_buffer(
         d = abs(a - b) % n
         return min(d, n - d)
 
+    # 幅補間: 「kept segment 内の position」で valley→peak をマップする (length_scale 適用)。
+    # t_geom = 谷からの幾何位置 (0=valley, 1=peak)。
+    # t_segment = t_geom / length_scale (cap 1.0)。これにより cut endpoint (= t_geom が
+    # length_scale に達する位置) で width = peak_w に達する。
+    length_scale_clamped = max(0.001, min(1.0, float(length_scale)))
     widths: list[float] = []
     for cl in cl_pts:
         cl_angle = math.atan2(cl[1] - cy, cl[0] - cx)
@@ -1217,8 +1230,10 @@ def _build_variable_width_band_from_buffer(
         d_peak = min((_circ_dist_int(best_i, p) for p in peaks_all), default=n) if peaks_all else n
         d_valley = min((_circ_dist_int(best_i, v) for v in valleys_all), default=n) if valleys_all else n
         total = d_peak + d_valley
-        t = 0.5 if total <= 0 else (d_valley / total)
-        widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
+        t_geom = 0.5 if total <= 0 else (d_valley / total)
+        # t_segment: kept segment 内の位置 (length_scale で正規化)
+        t_segment = min(1.0, t_geom / length_scale_clamped)
+        widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_segment)
 
     # outer/inner ループを構築
     outer_ring = []
