@@ -3,6 +3,36 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.130 フキダシのカスタム形状も Shapely バンドメッシュへ統一 (Phase B)
+
+### 症状
+- フキダシの形状種類のうち、カスタム形状 (ユーザー保存のプリセット参照) だけが、主線・外側フチ・内側フチ・多重線をジオメトリノード側 (CurveToMesh + Fill Curve) で描画していた。
+- 他の形状 (矩形・楕円・雲・もやもや・トゲ直線・トゲ曲線・八角形) はすべて Python (Shapely buffer + earcut) のバンドメッシュ方式に統一されており、ノード側の経路は形状ごとに override で停止されていたが、カスタム形状だけはこの override が掛からなかった。
+
+### 原因
+- `SHAPELY_LINE_SHAPES` / `MESH_BAND_LINE_SHAPES` / `SHAPELY_MULTI_LINE_SHAPES` の対象集合が `MELDEX_CARD_SHAPES` のみで、カスタム形状を含んでいなかった。
+
+### 修正
+- 3 つの対象集合に `"custom"` を追加。これだけでフキダシ生成パイプライン全体がカスタム形状を Shapely 経路で処理するようになる:
+  - `_sync_curve_geometry`: カスタム形状のカーブにフチ/多重線スプラインを追加しない (Shapely 側で描画するため不要)
+  - `_sync_balloon_render_modifier`: ノード側の `外側フチ` / `内側フチ` / `多重線` ソケットを False に override し、`線を面で生成` を True に強制 (中心線方式を停止)
+  - `_sync_balloon_band_meshes`: 主線/外側フチ/内側フチ/多重線をすべて Shapely バンドメッシュとして生成
+- カスタム形状の body 本体カーブは元から `_add_bezier_loop` でベジエ閉ループとして生成されており、これを `_sample_body_bezier` でサンプリングして Shapely buffer 経路に流すだけで他形状と同じ品質のバンドメッシュが得られる。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `SHAPELY_LINE_SHAPES` / `MESH_BAND_LINE_SHAPES` / `SHAPELY_MULTI_LINE_SHAPES` に `"custom"` を追加
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- `test/blender_balloon_node_minimization_phase_b_check.py` 新規追加: 星型カスタムプリセットを作品ローカルに保存して shape=custom + 多重線 + 外側フチ + 内側フチを有効にして検証。
+  - `is_shapely_line_shape(entry)` / `is_shapely_multi_line_shape(entry)` / `is_mesh_band_shape(entry)` が全て True
+  - balloon_line_mesh / outer_edge / inner_edge / multi_line の 4 バンドメッシュが modifier なしで生成
+  - ノードモディファイアの `外側フチ` / `内側フチ` / `多重線` が False、`線を面で生成` が True
+  - レンダリングが落ちないこと
+- `test/blender_balloon_all_shapes_shapely_check.py` 既存テスト: 7 形状の見た目に回帰なし (フチ + 多重線あり / 多重線のみ both 方向の両ケース)。
+
+### 関連計画書
+- `docs/balloon_node_minimization_plan_2026-05-27.md` の Phase B に相当 (進行中)。
+
 ## 2026-05-27 — v0.6.129 フキダシのジオメトリノードからマスク経路と見切れ塗り経路を撤去 (Phase A)
 
 ### 症状

@@ -65,18 +65,20 @@ MASK_CLIP_GROUP_VERSION = 1
 PROP_GROUP_VERSION = "bname_group_version"
 
 # 主線・外側フチ・内側フチを Shapely buffer + earcut で外部 Mesh として描画する形状。
-# 全ての Meldex フキダシ形状で同じ方式に統一する。
-SHAPELY_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)
+# 全ての Meldex フキダシ形状とカスタム形状で同じ方式に統一する。
+# (custom は preset の頂点列ベースの polygon。 rect/octagon と同様に Shapely
+# buffer で band 化できる)
+SHAPELY_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES) | {"custom"}
 
 # 後方互換 (Mesh 直接構築方式で主線が描画される形状)
 MESH_BAND_LINE_SHAPES = set(SHAPELY_LINE_SHAPES)
 
 # 多重線も Shapely buffer 方式で外部 Mesh として描画する形状。
-# 全 Meldex 形状で統一: 角の鋭い形状でもオフセット曲線の自己交差/ごちゃつきや
+# 全形状で統一: 角の鋭い形状でもオフセット曲線の自己交差/ごちゃつきや
 # 意図しないトゲが出ないように Shapely buffer に統一する。
 # (トゲ直線専用の「長さ変化」「谷/山の線幅」は本経路では適用されない — 形状が
 # 谷で自己交差しないリングを優先する設計判断)
-SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)
+SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES) | {"custom"}
 
 
 def is_mesh_band_shape(entry) -> bool:
