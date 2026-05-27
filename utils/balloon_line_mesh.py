@@ -958,36 +958,6 @@ def _build_shapely_band_with_peak_cuts(
         return None
     if max(valley_width_m, peak_width_m) <= 1.0e-9:
         return []
-    # 「山谷を延ばして交差」: cross_extension_m > 0 を「cross 有効フラグ」として扱い、
-    # 実際の延長量は body 形状から計算する (既存実装 `_thorn_multiline_length_points` と同等)。
-    # `reference_length = 主山頂と主谷の radial 差 (= 主山の高さ)` を基準に、
-    # `extension = reference_length × (0.18 + cut_factor)` で延長する。
-    # こうすれば line_width に左右されず、body の形状に応じた自然な延長量になる。
-    cx_m_pre, cy_m_pre = balloon_center_m
-    radii_pre = [math.hypot(p[0] - cx_m_pre, p[1] - cy_m_pre) for p in pts]
-    if cross_extension_m > 1.0e-9 and peaks_all and valleys_all:
-        max_peak_r_pre = max(radii_pre[p] for p in peaks_all)
-        min_valley_r_pre = min(radii_pre[v] for v in valleys_all)
-        if max_peak_r_pre - min_valley_r_pre > 1.0e-6:
-            half_r = (max_peak_r_pre + min_valley_r_pre) * 0.5
-            main_peaks_pre = [p for p in peaks_all if radii_pre[p] >= half_r]
-            main_valleys_pre = [v for v in valleys_all if radii_pre[v] <= half_r]
-        else:
-            main_peaks_pre = list(peaks_all)
-            main_valleys_pre = list(valleys_all)
-        if main_peaks_pre:
-            avg_peak_r = sum(radii_pre[p] for p in main_peaks_pre) / len(main_peaks_pre)
-            avg_valley_r = (
-                sum(radii_pre[v] for v in main_valleys_pre) / max(1, len(main_valleys_pre))
-                if main_valleys_pre else avg_peak_r * 0.7
-            )
-            reference_length = max(0.0, avg_peak_r - avg_valley_r)
-            cut_factor_pre = max(0.0, 1.0 - float(length_scale))
-            # 0.18 は cross 有効時の最小出っ張り (length=100% でも少し出る既定)
-            actual_ext = reference_length * (0.18 + cut_factor_pre)
-            pts = _extend_body_peaks_outward(
-                pts, balloon_center_m, main_peaks_pre, actual_ext
-            )
     body_poly = _build_body_polygon([(p[0], p[1], 1.0) for p in pts])
     if body_poly is None:
         return None
@@ -1039,15 +1009,70 @@ def _build_shapely_band_with_peak_cuts(
         # 山が無い → そのまま閉ループを返す
         return _shapely_band_to_polygons(band)
 
-    # 各 main peak の角度位置 (cross_enabled の本体押し出しは body_poly 構築前に済み)
+    # 各 main peak の角度位置
     n = len(pts)
     num_peaks = max(1, len(main_peaks))
     full_period_angle = 2.0 * math.pi / num_peaks
     cut_factor = max(0.0, 1.0 - float(length_scale))
     cross_enabled = cross_extension_m > 1.0e-9
-    # cross 有効時は body を山頂で外側へ押し出して band が自然に伸びるようにしているため、
-    # cut wedges は適用しない (= 山頂で切るのではなく押し出して延ばす方向)。
-    if cut_factor <= 1.0e-6 or cross_enabled:
+    # cross 有効時: band の外側エッジに細い "舌" を生やす形で延長する。
+    # body を押し出す方式だと buffer mitre が増幅されて過剰延長になっていたが、
+    # band 完成後に固定角度幅の舌を union する方式に切り替え (= 延長量が直接的)。
+    if cross_enabled:
+        max_peak_r_pts = max(radii[p] for p in main_peaks) if main_peaks else 0.0
+        avg_peak_r = (sum(radii[p] for p in main_peaks) / len(main_peaks)) if main_peaks else 0.0
+        # 主谷の平均 radial も計算 (主山の高さ参照)
+        if valleys_all:
+            main_valleys = [v for v in valleys_all if radii[v] <= avg_peak_r]
+            avg_valley_r = sum(radii[v] for v in main_valleys) / max(1, len(main_valleys)) if main_valleys else avg_peak_r * 0.7
+        else:
+            avg_valley_r = avg_peak_r * 0.7
+        spike_height = max(0.5e-3, avg_peak_r - avg_valley_r)
+        # 延長量: 山高 × (0.18 + cut_factor)。length=100% でも 0.18 倍だけ baseline 延長。
+        actual_ext = spike_height * (0.18 + cut_factor)
+        # 舌の半角: 周期の 1/8 (= 隣接山頂の手前で止まる細さ)。多重線の重なり防止。
+        tongue_half_angle = full_period_angle * 0.125
+        # 舌の根元: band 外側エッジ付近 (= avg_peak_r + signed_offset + 半幅 まで)
+        max_w = max(valley_width_m, peak_width_m)
+        base_radial_peak = avg_peak_r + signed_offset_m + max_w * 0.5
+        # 舌の根元は外側 buffer 上に置きたいので、avg_peak_r からの距離を保つ
+        tongues = []
+        for peak_idx in main_peaks:
+            peak_x = pts[peak_idx][0] - cx_m
+            peak_y = pts[peak_idx][1] - cy_m
+            peak_angle = math.atan2(peak_y, peak_x)
+            apex = (cx_m + math.cos(peak_angle) * (base_radial_peak + actual_ext),
+                    cy_m + math.sin(peak_angle) * (base_radial_peak + actual_ext))
+            a0 = peak_angle - tongue_half_angle
+            a1 = peak_angle + tongue_half_angle
+            # 舌の根元 2 点は band 内側エッジ付近に置いて、band と確実に繋がるよう
+            inner_radial = max(0.0, avg_peak_r + signed_offset_m - max_w * 1.5)
+            base0 = (cx_m + math.cos(a0) * inner_radial, cy_m + math.sin(a0) * inner_radial)
+            base1 = (cx_m + math.cos(a1) * inner_radial, cy_m + math.sin(a1) * inner_radial)
+            # 反時計回りで作る
+            cross_p = (base0[0] - apex[0]) * (base1[1] - apex[1]) - (base0[1] - apex[1]) * (base1[0] - apex[0])
+            if cross_p < 0:
+                base0, base1 = base1, base0
+            try:
+                tongue_poly = Polygon([apex, base0, base1])
+                if not tongue_poly.is_valid:
+                    tongue_poly = tongue_poly.buffer(0)
+                if not tongue_poly.is_empty and tongue_poly.area > 0:
+                    tongues.append(tongue_poly)
+            except Exception:  # noqa: BLE001
+                continue
+        if tongues:
+            try:
+                ext_union = unary_union(tongues)
+                # 舌は body 内部にも伸びるが、band と union すれば band 領域外の部分だけが追加される
+                # → 実際には band と舌の合計から body 内部を除いたものになる
+                band = band.union(ext_union)
+                # body 内部は除く (= band の外側にだけ舌を残す)
+                band = band.difference(body_poly)
+            except Exception:  # noqa: BLE001
+                pass
+        return _shapely_band_to_polygons(band)
+    if cut_factor <= 1.0e-6:
         return _shapely_band_to_polygons(band)
 
     band_extent = max(valley_width_m, peak_width_m) * 2.0 + 0.05
