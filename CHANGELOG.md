@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.122 多重線設定が反映されないバグ修正 (centerline buffer の mitre 爆発を抑える)
+
+### 症状
+- 多重線設定 (谷/山の線幅、長さ変化、線の本数 etc.) を変更しても多重線が何も描画されない (= v0.6.121 の幅可変経路が落ちて多重線オブジェクトが空になる) ケースがあった。
+- 特に「角を尖らせる ON + 線の本数 6 + 山谷を延ばして交差 ON + 非一様幅」のような複合設定で発生。
+
+### 原因
+- 幅可変リングを Shapely buffer 由来 centerline で構築するパスで、`mitre_limit=50` を使っていた。多重線リング 6 番目のように `signed_offset = 7.62mm` が大きくなると、鋭角頂点で mitre が指数的に膨張し、centerline 多角形が破綻 / Shapely 演算が hang / fail することがあった。
+
+### 修正
+- centerline 用 buffer の mitre_limit を `4.0` (穏やかな値) に下げ、爆発的なミテレ延長を抑制。
+- 「角を尖らせる」の鋭さは引き続き、main line の `_stroke_band_outside_union` 経路 (`mitre_limit=50`) と、per-point 幅補間で表現される。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `_build_variable_width_band_from_buffer` の mitre_limit を 4.0 に。
+- `test/blender_balloon_v0_6_121_check.py`: ユーザー test97 設定そのままの検証スクリプト追加 (verts/faces 数チェック付き)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- ユーザー test97 完全再現 (12 トゲ + 多重線 6 本 + cross ON + 非一様幅 + 長さ可変): 6 リングが正しく描画され、谷で太く山で細い可変幅、各リングが概ね閉じた状態で表示されることを確認。verts=5184 / faces=5184 で多重線メッシュが正しく生成。
+
 ## 2026-05-27 — v0.6.121 多重線の谷/山の線幅が非一様 (100% 未満) のとき崩れるバグ修正
 
 ### 症状

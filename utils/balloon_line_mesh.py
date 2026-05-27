@@ -1033,8 +1033,10 @@ def _build_variable_width_band_from_buffer(
         from shapely.geometry import Polygon  # type: ignore
     except Exception:  # noqa: BLE001
         return None
+    # centerline 用 buffer は mitre 爆発を避けるため穏やかな mitre_limit (4.0) を使う。
+    # 角を尖らせる効果は per-point 幅補間 と outer/inner offset で表現する。
     join = 2 if valley_sharp else 1
-    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    mitre = 4.0 if valley_sharp else _ROUND_MITRE_LIMIT
     try:
         center_buf = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
     except Exception:  # noqa: BLE001
