@@ -1051,8 +1051,10 @@ def _build_shapely_band_with_peak_cuts(
         spike_height = max(0.5e-3, avg_peak_r - avg_valley_r)
         # 延長量: 山高 × (0.18 + cut_factor)。length=100% でも 0.18 倍だけ baseline 延長。
         actual_ext = spike_height * (0.18 + cut_factor)
-        # 舌の半角: 周期の 1/8 (= 隣接山頂の手前で止まる細さ)。多重線の重なり防止。
-        tongue_half_angle = full_period_angle * 0.125
+        # 舌の半角: 周期の 1/10 にしつつ、最大 4° で頭打ち。
+        # 主山が少ない形状 (例: thorn-curve 3 peak) で周期が大きくなって舌が「アロー型」に
+        # 太くなる問題を防ぐため、4° で cap する。
+        tongue_half_angle = min(math.radians(4.0), full_period_angle * 0.1)
         # 舌の根元: band 外側エッジ付近 (= avg_peak_r + signed_offset + 半幅 まで)
         max_w = max(valley_width_m, peak_width_m)
         base_radial_peak = avg_peak_r + signed_offset_m + max_w * 0.5

@@ -3,6 +3,29 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.127 cross スパイクの "アロー型" 問題を修正 (低 peak 数形状で tongue が太すぎる)
+
+### 症状
+- 全形状の目視チェック中に、トゲ曲線 (thorn-curve) で cross enabled 時にスパイクが「アロー型」(= 太く大きな矢印形) に表示される問題を発見。
+
+### 原因
+- cross の "舌" 三角形の半角 `tongue_half_angle = full_period_angle * 0.125` が、主山数が少ない形状で過剰に大きくなっていた:
+  - 主山 9 個: 40° × 0.125 = 5° (適切)
+  - 主山 3 個 (thorn-curve): 120° × 0.125 = 15° (太すぎる)
+
+### 修正
+- `tongue_half_angle = min(math.radians(4.0), full_period_angle * 0.1)`:
+  - 主山が多い形状: 周期の 10% (= 細い tongue)
+  - 主山が少ない形状: 4° で頭打ち (= アロー型を防ぐ)
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `_build_shapely_band_with_peak_cuts` の `tongue_half_angle` 計算式変更。
+- `test/blender_balloon_v0_6_127_full_audit.py`: 全 7 形状の徹底チェックスクリプト追加。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 7 形状すべて (cloud / fluffy / thorn / thorn-curve / rect / ellipse / octagon) で band メッシュ生成 OK、視覚上も破綻なし。
+- thorn-curve のアロー型問題が解消され、他の形状と同レベルの細いスパイクに。
+
 ## 2026-05-27 — v0.6.126 anchor ベース peak/valley 検出に統一 (高さがバラつく主山にも均等に length/cross が効く)
 
 ### 症状
