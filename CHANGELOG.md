@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.107 多重線の角・谷ゴチャゴチャを全形状で Shapely 化して解消 / トゲ曲線の山を曲線に
+
+### 症状
+- v0.6.106 までは多重線が **雲フキダシ以外の形状で legacy curve オフセット方式** のままだったため、トゲ (直線)・トゲ (曲線)・モフモフなど角を持つ形状で、多重線の角 (とくに谷) に線が重なってごちゃつく / 意図しない短いトゲが出る、というアーティファクトが残っていた。
+- トゲ (曲線) フキダシの本体カーブが「ピーク = 鋭角頂点」「ピーク間にベジエ曲線で谷を作る」構造になっていたため、ピーク (山) の先端が曲線ではなく直線的な鋭角に見えていた。
+
+### 修正
+- `SHAPELY_MULTI_LINE_SHAPES` を **全 Meldex 形状** (rect / ellipse / cloud / fluffy / thorn / thorn-curve / octagon) に拡張。多重線も主線・フチと同じ Shapely buffer + mapbox-earcut 経路で構築するようにし、谷で自己交差した bowtie / 短いトゲアーティファクトが出ないようにした。
+- `utils/balloon_shapes._bezier_thorn_curve` をピーク (山) アンカー方式から **谷アンカー + ピークを cubic ベジエの中央で形成する方式** に書き換え。これによりピークの先端は cubic ベジエ上の点 (= 曲線) になる。`m_len = max(eff_h * h_mul * 2.6, chord_len * 0.85)` でトゲ感が損なわれない縦長スパイクを保つ。
+
+### 互換上の注意
+- 多重線を Shapely buffer に統一したことに伴い、トゲ (直線) 専用だった「長さ変化 (%)」「谷/山の線幅」「延ばして交差」(legacy curve 多重線のリング点単位処理) は本リリースでは多重線描画に反映されなくなる。UI 上は引き続き thorn 形状時に表示されるが現状は非アクティブ (将来 Shapely 経路で再実装予定)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- thorn / thorn-curve / fluffy / cloud / octagon の 5 形状で line_width 1mm + count=4 outside 多重線をレンダーし、谷ゴチャゴチャや意図しないトゲが出ないことを確認 (`01_multiline_no_artifacts.png`)。
+- thorn-curve 単体クローズアップで、山の先端がはっきりと曲線になっていることを確認 (`02_thorn_curve_smooth_peaks.png`)。
+- thorn-curve + 多重線 count=3 でも山が曲線かつ多重線リングがクリーンであることを確認 (`03_thorn_curve_multiline.png`)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)` に拡張
+- `utils/balloon_shapes.py`: `_bezier_thorn_curve` を谷アンカー + cubic ピーク方式に書き換え (cloud と同構造で `m_len` をスパイク向けに大きめに設定)
+
 ## 2026-05-27 — v0.6.106 「角を尖らせる」を全形状化 / 多重線外側基準を主線外側エッジへ / 重なり線抜け修正 / 破線・点線対応
 
 ### 症状

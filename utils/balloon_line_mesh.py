@@ -67,9 +67,11 @@ SHAPELY_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)
 MESH_BAND_LINE_SHAPES = set(SHAPELY_LINE_SHAPES)
 
 # 多重線も Shapely buffer 方式で外部 Mesh として描画する形状。
-# トゲ (直線) は「長さ変化」「谷/山の線幅」など専用ロジックを持つため、
-# 現状は cloud のみ Shapely 多重線対応。それ以外は legacy curve 多重線が継続。
-SHAPELY_MULTI_LINE_SHAPES = {"cloud"}
+# 全 Meldex 形状で統一: 角の鋭い形状でもオフセット曲線の自己交差/ごちゃつきや
+# 意図しないトゲが出ないように Shapely buffer に統一する。
+# (トゲ直線専用の「長さ変化」「谷/山の線幅」は本経路では適用されない — 形状が
+# 谷で自己交差しないリングを優先する設計判断)
+SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES)
 
 
 def is_mesh_band_shape(entry) -> bool:

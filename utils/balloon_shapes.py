@@ -995,6 +995,12 @@ def _outline_thorn_curve_with_corners(
 
 
 def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    """トゲ (曲線) フキダシのベジエループを返す.
+
+    アンカーを谷側に配置し、隣接する谷の間を 1 本のベジエ曲線で繋いでスパイクの
+    山を作る。山の先端はベジエの中央部分で滑らかな曲線になる (= 「曲線の山」)。
+    cloud と同じ構造だが、ピーク高さ係数を大きめに取って細長いスパイク状にする。
+    """
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
         return _bezier_ellipse(rect)
@@ -1002,38 +1008,46 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return _bezier_ellipse(rect)
-    tpull = 0.18
-    depth_ratio = 1.12
 
-    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
-        return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
-
-    peaks: list[tuple[float, float]] = []
-    for _is_sub, bump_angle, h_mul in segments:
-        mid_angle = angle + bump_angle * 0.5
-        angle += bump_angle
-        peaks.append(peak_at(mid_angle, h_mul))
-    if len(peaks) < 3:
-        return _bezier_ellipse(rect)
+    def valley_point(t: float) -> tuple[float, float]:
+        notch = min(
+            max(0.2, min(rect.width, rect.height) * 0.02),
+            max(0.0, min(rx, ry) - 0.1),
+        )
+        return (cx + (rx - notch) * math.cos(t), cy + (ry - notch) * math.sin(t))
 
     cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
-    for i, p0 in enumerate(peaks):
-        p1 = peaks[(i + 1) % len(peaks)]
-        mx = (p0[0] + p1[0]) * 0.5
-        my = (p0[1] + p1[1]) * 0.5
-        dcx = cx - mx
-        dcy = cy - my
-        length = math.hypot(dcx, dcy)
-        in_x = dcx / length if length > 0.001 else 0.0
-        in_y = dcy / length if length > 0.001 else 0.0
-        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
-        c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
-        c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
-        cubics.append((p0, c1, c2))
-    return [
-        _local_anchor_to_rect(rect, BezierAnchor(co, cubics[(i - 1) % len(cubics)][2], c1))
-        for i, (co, c1, _c2) in enumerate(cubics)
-    ]
+    for _is_sub, bump_angle, h_mul in segments:
+        start_angle = angle
+        end_angle = angle + bump_angle
+        angle = end_angle
+        v_start = valley_point(start_angle)
+        v_end = valley_point(end_angle)
+        chord_x = v_end[0] - v_start[0]
+        chord_y = v_end[1] - v_start[1]
+        chord_len = math.hypot(chord_x, chord_y)
+        if chord_len < 0.001:
+            continue
+        perp_x = -chord_y / chord_len
+        perp_y = chord_x / chord_len
+        mx = (v_start[0] + v_end[0]) * 0.5
+        my = (v_start[1] + v_end[1]) * 0.5
+        if perp_x * (mx - cx) + perp_y * (my - cy) < 0.0:
+            perp_x = -perp_x
+            perp_y = -perp_y
+        # トゲ (曲線): cloud より縦長スパイクになるよう m_len を大きめに取る。
+        # eff_h ベース + chord ベースの max で「細長い・幅広い」両方をカバー。
+        m_len = max(eff_h * h_mul * 2.6, chord_len * 0.85)
+        c1 = (v_start[0] + m_len * perp_x, v_start[1] + m_len * perp_y)
+        c2 = (v_end[0] + m_len * perp_x, v_end[1] + m_len * perp_y)
+        cubics.append((v_start, c1, c2))
+    if len(cubics) < 3:
+        return _bezier_ellipse(rect)
+    anchors: list[BezierAnchor] = []
+    for i, (co, c1, _c2) in enumerate(cubics):
+        incoming_c2 = cubics[(i - 1) % len(cubics)][2]
+        anchors.append(_local_anchor_to_rect(rect, BezierAnchor(co, incoming_c2, c1)))
+    return anchors
 
 
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
