@@ -3,6 +3,31 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.126 anchor ベース peak/valley 検出に統一 (高さがバラつく主山にも均等に length/cross が効く)
+
+### 症状
+- 多重線の「長さ変化」「山谷を延ばして交差」が、**高さがバラつく主山** (= 山の高さ jitter > 0) では一部の主山にしか効かなかった。低い主山では多重線が切れず繋がってしまっていた。
+
+### 原因
+- 多重線の peak/valley 検出に「window ベースの局所最大 + radial 閾値フィルタ」を使っていた。後者の radial 閾値が `(最大 peak radial + 最小 valley radial) / 2` で、jitter で低くなった主山がこの閾値を下回って main_peaks から除外されていた。
+- すなわち高さが揃った主山には length 変化が効いて、低い主山には効かない不均等な挙動になっていた。
+
+### 修正
+- peak/valley 検出を **Bezier anchor 単位の構造ベース** に切り替え:
+  - 各 anchor の radial を 隣接 anchor と比較し、両隣より大きければ peak、両隣より小さければ valley。
+  - jitter で高さがバラついても、**すべての主山** が anchor-level の local max なので正しく検出される。
+  - サブバンプ (小山) は両隣の主山/主谷より一方的に高い/低いだけなので anchor-level の local extremum にならず、自動的に除外される (= 過剰分割を防ぐ既存の効果は維持)。
+- radial 閾値フィルタは廃止 (= anchor 検出だけで主山/小山が正しく区別される)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_detect_anchor_peaks_valleys` ヘルパー追加。
+  - `_build_dynamic_multi_line_polygons` / `_build_shapely_band_with_peak_cuts` / `_build_variable_width_band_from_buffer` のすべてで anchor ベース検出を使うように。
+  - radial 閾値フィルタを各所から削除。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- test100 case 1 (jittered 山の高さ + cross ON + length 90/22): 9 個すべての主山頂で正しくスパイク (= cross 延長) が出るようになり、低い主山にも効くことを確認。
+
 ## 2026-05-27 — v0.6.125 「山谷を延ばして交差」を band 生成後の細い舌 union 方式に修正 (buffer mitre 増幅を回避)
 
 ### 症状

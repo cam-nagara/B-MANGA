@@ -560,6 +560,52 @@ def _polyline_outward_normals(
     return normals
 
 
+def _detect_anchor_peaks_valleys(
+    pts: Sequence[tuple[float, float]],
+    balloon_center: tuple[float, float],
+    *,
+    samples_per_segment: int,
+) -> tuple[list[int], list[int]]:
+    """Bezier anchor 単位で peak/valley を検出する。
+
+    body sample は anchor が `samples_per_segment` ごとに並んでいる構造を
+    持つ。各 anchor の radial を 隣接 anchor と比較して、ある anchor が
+    両隣より radial が大きければ peak、小さければ valley とする。
+
+    この方式は:
+      - 山の高さがバラつく (jitter) 場合でも、すべての主山頂を正しく検出できる
+      - サブバンプ (小山) が anchor として挿入されても、その小山は両隣の主山/谷
+        より radial が小さい/大きい一方なので、anchor-level の local max/min に
+        ならず、主山/主谷だけが検出される
+    """
+    n = len(pts)
+    if n < 6 or samples_per_segment <= 0:
+        return [], []
+    cx, cy = balloon_center
+    anchor_count = max(2, n // samples_per_segment)
+    radii: list[float] = []
+    indices: list[int] = []
+    for k in range(anchor_count):
+        idx = k * samples_per_segment
+        if idx >= n:
+            break
+        indices.append(idx)
+        radii.append(math.hypot(pts[idx][0] - cx, pts[idx][1] - cy))
+    if len(indices) < 3:
+        return [], []
+    m = len(indices)
+    peaks: list[int] = []
+    valleys: list[int] = []
+    for k in range(m):
+        prev_r = radii[(k - 1) % m]
+        next_r = radii[(k + 1) % m]
+        if radii[k] > prev_r and radii[k] > next_r:
+            peaks.append(indices[k])
+        elif radii[k] < prev_r and radii[k] < next_r:
+            valleys.append(indices[k])
+    return peaks, valleys
+
+
 def _detect_centerline_peaks_valleys(
     pts: Sequence[tuple[float, float]],
     balloon_center: tuple[float, float],
@@ -747,18 +793,15 @@ def _build_dynamic_multi_line_polygons(
     n = len(pts)
     # 外向き法線 (samples 上)
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-    # 期待される山数は **body anchor 数** を上限の目安にする。本体カーブは
-    # 山/谷 anchor が交互に並ぶ構造なので、anchor 数 = (山数 + 谷数) に近い。
-    # 周長ベース (base_width 単位) で見積もると偽の局所最大が大量に拾われ、
-    # 「長さ変化 < 100%」で各偽 peak ごとに細かい切れ目が入って線が破片化していた。
-    # 小山も拾えるよう anchor の 2 倍までを許容するが、それ以上はノイズとして抑える。
+    # anchor 単位で peak/valley を構造的に検出する。
+    # 主山 (= local max in radial among anchors) と主谷 (= local min) だけが返る。
+    # 高さ jitter があっても全ての主山が検出され、サブバンプは anchor-level の
+    # local extremum にならないため自動的に除外される。
     samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
-    anchor_count = max(2, n // samples_per_segment)
-    expected_count = max(8, anchor_count * 2)
-    peaks_all, valleys_all = _detect_centerline_peaks_valleys(
+    peaks_all, valleys_all = _detect_anchor_peaks_valleys(
         pts,
         balloon_center_m,
-        expected_count=expected_count,
+        samples_per_segment=samples_per_segment,
     )
 
     # 鋭角コーナーで法線が急変する sample-direct 方式は帯エッジが「ヒゲ状」に
@@ -782,26 +825,12 @@ def _build_dynamic_multi_line_polygons(
             return polys
         # 失敗時は従来の sample-direct 経路に fallback
 
-    # 長さ変化のカット中心は **大山のみ** (= 主トゲの先端) に絞る。サブバンプ
-    # (小山) の anchor が peaks_all に大量に含まれると、length<100% で各サブ
-    # バンプ周辺で細かい切れ目が無数に入り、線が破片化する。
-    # 大山/小山の判定は radial 値の閾値で行う: 最大 peak radial と最小 valley
-    # radial の中間より上を「大山」、下を「大谷」とする。
+    # peaks_all/valleys_all はすでに anchor-level の主山/主谷だけが入っているので、
+    # ここでの radial 閾値フィルタは不要 (高さがバラつく場合も均等に処理される)。
+    peaks = list(peaks_all)
+    valleys = list(valleys_all)
     cx_m, cy_m = balloon_center_m
     radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
-    if peaks_all and valleys_all:
-        max_peak_r = max(radii[p] for p in peaks_all)
-        min_valley_r = min(radii[v] for v in valleys_all)
-        if max_peak_r - min_valley_r > 1.0e-6:
-            half_r = (max_peak_r + min_valley_r) * 0.5
-            peaks = [p for p in peaks_all if radii[p] >= half_r]
-            valleys = [v for v in valleys_all if radii[v] <= half_r]
-        else:
-            peaks = list(peaks_all)
-            valleys = list(valleys_all)
-    else:
-        peaks = list(peaks_all)
-        valleys = list(valleys_all)
 
     # 「角を尖らせる」相当の peak 延長: peak_extension_m > 0 のとき、各 peak
     # 頂点を外向き法線方向へ延ばす。延長は peak 周辺の数サンプルに対して
@@ -992,19 +1021,11 @@ def _build_shapely_band_with_peak_cuts(
     if band.is_empty:
         return []
 
-    # 大山頂を radial 閾値で抽出
+    # peaks_all は anchor-level の主山が全部入っている (= radial 閾値フィルタは不要)。
+    # 高さが jitter している主山もすべて均等に処理される。
     cx_m, cy_m = balloon_center_m
     radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
-    if peaks_all and valleys_all:
-        max_peak_r = max(radii[p] for p in peaks_all)
-        min_valley_r = min(radii[v] for v in valleys_all)
-        if max_peak_r - min_valley_r > 1.0e-6:
-            half_r = (max_peak_r + min_valley_r) * 0.5
-            main_peaks = [p for p in peaks_all if radii[p] >= half_r]
-        else:
-            main_peaks = list(peaks_all)
-    else:
-        main_peaks = list(peaks_all)
+    main_peaks = list(peaks_all)
     if not main_peaks:
         # 山が無い → そのまま閉ループを返す
         return _shapely_band_to_polygons(band)
@@ -1190,22 +1211,9 @@ def _build_variable_width_band_from_buffer(
             if da < best_da:
                 best_da = da
                 best_i = i
-        # 大山/大谷の radial 閾値で main peaks/valleys に絞る
-        if peaks_all and valleys_all:
-            max_r = max(radii[p] for p in peaks_all)
-            min_r = min(radii[v] for v in valleys_all)
-            if max_r - min_r > 1.0e-6:
-                half_r = (max_r + min_r) * 0.5
-                main_peaks = [p for p in peaks_all if radii[p] >= half_r]
-                main_valleys = [v for v in valleys_all if radii[v] <= half_r]
-            else:
-                main_peaks = list(peaks_all)
-                main_valleys = list(valleys_all)
-        else:
-            main_peaks = list(peaks_all)
-            main_valleys = list(valleys_all)
-        d_peak = min((_circ_dist_int(best_i, p) for p in main_peaks), default=n) if main_peaks else n
-        d_valley = min((_circ_dist_int(best_i, v) for v in main_valleys), default=n) if main_valleys else n
+        # anchor-level なので主山/主谷だけが入っている (= radial 閾値フィルタは不要)
+        d_peak = min((_circ_dist_int(best_i, p) for p in peaks_all), default=n) if peaks_all else n
+        d_valley = min((_circ_dist_int(best_i, v) for v in valleys_all), default=n) if valleys_all else n
         total = d_peak + d_valley
         t = 0.5 if total <= 0 else (d_valley / total)
         widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
