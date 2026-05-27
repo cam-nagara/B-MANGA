@@ -48,6 +48,11 @@ SAMPLES_PER_SEGMENT = 24
 SHARP_THRESHOLD_RAD = math.radians(30.0)
 ARC_STEP_DEG = 12.0
 LINE_Z_OFFSET_M = 0.00010
+
+# 「角を尖らせる」(mitre join) で鋭角頂点が太線時に bevel 切りされないよう、
+# Shapely の mitre_limit を十分大きく取る。50 で約 1.15° まで保持される。
+_SHARP_MITRE_LIMIT = 50.0
+_ROUND_MITRE_LIMIT = 5.0
 OUTER_EDGE_Z_OFFSET_M = 0.000020
 INNER_EDGE_Z_OFFSET_M = 0.000040
 MULTI_LINE_Z_OFFSET_M = 0.000080
@@ -271,7 +276,7 @@ def build_offset_band_polygon(
     signed_offset_m: float,
     band_width_m: float,
     valley_sharp: bool,
-    miter_limit: float = 2.5,
+    miter_limit: float = _SHARP_MITRE_LIMIT,
     _body_poly=None,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """本体多角形から signed_offset_m を中心に幅 band_width_m の帯を構築する.
@@ -289,7 +294,7 @@ def build_offset_band_polygon(
         return None
 
     join = 2 if valley_sharp else 1  # 1=round, 2=mitre, 3=bevel
-    mitre = float(miter_limit) if valley_sharp else 5.0
+    mitre = float(miter_limit) if valley_sharp else _ROUND_MITRE_LIMIT
     half = band_width_m * 0.5
     try:
         outer_buf = body_poly.buffer(
@@ -326,7 +331,7 @@ def _stroke_band_outside_union(
     *,
     line_width_m: float,
     valley_sharp: bool,
-    miter_limit: float = 2.5,
+    miter_limit: float = _SHARP_MITRE_LIMIT,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """主線 (外側アライメント) の線バンドを Shapely buffer で構築する."""
     return build_offset_band_polygon(
@@ -421,7 +426,7 @@ def _build_dashed_band_polygons(
         centerline_poly = body_poly.buffer(
             line_width_m * 0.5,
             join_style=join,
-            mitre_limit=2.5 if valley_sharp else 5.0,
+            mitre_limit=_SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT,
         )
     except Exception:  # noqa: BLE001
         return []
@@ -738,7 +743,7 @@ def _build_dynamic_multi_line_polygons(
         ring_poly = body_poly.buffer(
             signed_offset_m,
             join_style=join,
-            mitre_limit=2.5 if valley_sharp else 5.0,
+            mitre_limit=_SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT,
         )
     except Exception:  # noqa: BLE001
         return []
@@ -1619,6 +1624,27 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
     valley_sharp = _valley_sharp_for_entry(entry)
+
+    # 主線の谷/山の線幅 (動的形状のみ有効): line_valley_width / line_peak_width が
+    # line_width と一致しないとき、可変幅 builder にルートする。両方 0 のとき主線全体不可視。
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+    line_valley_width_mm = max(0.0, float(getattr(entry, "line_valley_width_mm", line_width_mm) or 0.0))
+    line_peak_width_mm = max(0.0, float(getattr(entry, "line_peak_width_mm", line_width_mm) or 0.0))
+    main_line_dynamic = (
+        shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
+        and (
+            abs(line_valley_width_mm - line_width_mm) > 1.0e-6
+            or abs(line_peak_width_mm - line_width_mm) > 1.0e-6
+        )
+    )
+    main_line_both_zero = (
+        main_line_dynamic
+        and line_valley_width_mm <= 1.0e-6
+        and line_peak_width_mm <= 1.0e-6
+        and abs(line_valley_width_mm - line_width_mm) > 1.0e-6
+        and abs(line_peak_width_mm - line_width_mm) > 1.0e-6
+    )
+
     if line_style in {"dashed", "dotted"}:
         dash_polys = _build_dashed_band_polygons(
             samples,
@@ -1630,6 +1656,34 @@ def ensure_balloon_line_mesh(
             remove_balloon_line_mesh(balloon_id)
             return None
         _build_band_mesh_from_polygons(mesh, dash_polys, LINE_Z_OFFSET_M)
+    elif main_line_both_zero:
+        # 両方 0 = 主線全体を非表示
+        remove_balloon_line_mesh(balloon_id)
+        return None
+    elif main_line_dynamic:
+        # 主線を可変幅で構築 (山/谷の頂点付近のみ peak/valley_width に局所遷移)
+        body_poly = _build_body_polygon(samples)
+        if body_poly is None:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        body_center_m = (
+            sum(s[0] for s in samples) / len(samples),
+            sum(s[1] for s in samples) / len(samples),
+        )
+        sub_polys = _build_dynamic_multi_line_polygons(
+            body_poly=body_poly,
+            signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
+            base_width_m=line_width_m,
+            valley_width_m=line_valley_width_mm * 0.001,
+            peak_width_m=line_peak_width_mm * 0.001,
+            length_scale=1.0,  # 主線は length_scale 非適用 (常に閉ループ)
+            valley_sharp=valley_sharp,
+            balloon_center_m=body_center_m,
+        )
+        if not sub_polys:
+            remove_balloon_line_mesh(balloon_id)
+            return None
+        _build_band_mesh_from_polygons(mesh, sub_polys, LINE_Z_OFFSET_M)
     else:
         union_result = _stroke_band_outside_union(
             samples,

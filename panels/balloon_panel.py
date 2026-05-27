@@ -130,6 +130,12 @@ class BNAME_PT_balloons(Panel):
         row = box.row(align=True)
         row.prop(entry, "line_style")
         row.prop(entry, "line_width_mm")
+        # 主線の谷の線幅/山の線幅: 動的形状でのみ表示 (両方 0 で主線全体が消える)
+        _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+        if _shape_norm_for_main_line in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+            row = box.row(align=True)
+            row.prop(entry, "line_valley_width_mm")
+            row.prop(entry, "line_peak_width_mm")
         if str(getattr(entry, "line_style", "") or "") == "double":
             row = box.row(align=True)
             row.prop(entry, "multi_line_count")

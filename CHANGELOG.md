@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.113 太線時の鋭角山が平切れする問題を修正 + 主線にも「谷の線幅」「山の線幅」を実装
+
+### 症状
+- 「角を尖らせる」ON で線幅を太くすると、トゲ等の鋭角山先端が **平切り (bevel)** になってしまい、尖って残らなかった。Shapely buffer の `mitre_limit=2.5` (= 半幅の 2.5 倍までしか mitre 突出を許容しない) が原因で、acute angle (鋭角) では bevel フォールバックが発動していた。
+- 多重線の「谷の線幅」「山の線幅」と同等の機能が **主線にも欲しい** との要望 (多重線とは別パラメータ)。
+
+### 修正
+- Shapely buffer の `mitre_limit` を `_SHARP_MITRE_LIMIT = 50.0` に統一。50 で約 1.15° まで鋭角山が bevel 切られせず尖って残る (太い線でも)。round join (= 角を尖らせる OFF) は引き続き `_ROUND_MITRE_LIMIT = 5.0`。
+- 新規プロパティを追加 (動的形状 = 雲/モフモフ/トゲ直線/トゲ曲線 のみ有効):
+  - `line_valley_width_mm` 「主線・谷の線幅 (mm)」(default 0.3)
+  - `line_peak_width_mm` 「主線・山の線幅 (mm)」(default 0.3)
+- `ensure_balloon_line_mesh` で **主線の谷/山幅 ≠ line_width** のとき、`_build_dynamic_multi_line_polygons(length_scale=1.0)` 経路に切り替え、頂点付近のみ smoothstep で局所遷移する可変幅主線を構築。
+- 主線の谷幅・山幅とも **0.00** のとき主線全体を非表示にする (= 多重線の both-zero ルールと同じ)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 雲/モフモフ/トゲ直線/トゲ曲線で **line_width=4mm + 角を尖らせる ON** をレンダーし、トゲ直線の星形先端が尖って残ることを確認 (`01_thick_line_sharp_corners.png`)。
+- 同 4 形状で **主線・谷の線幅 0.2 / 山の線幅 3.0** を設定し、主線が頂点付近のみ局所変化することを確認 (`02_main_line_valley_peak.png`)。
+- 同 4 形状で **主線・谷の線幅 0 / 山の線幅 0** を設定し、主線全体が消えて塗りだけ残ることを確認 (`03_main_line_both_zero.png`)。
+
+### 関連ファイル
+- `core/balloon.py`: `line_valley_width_mm` / `line_peak_width_mm` プロパティ追加
+- `io/schema.py`: 同プロパティを JSON シリアライズ
+- `panels/balloon_panel.py`, `operators/layer_detail_op.py`: UI で動的形状のとき主線 valley/peak を表示
+- `utils/balloon_curve_object.py`: geometry key に line_valley/peak_width を追加 (変更で再生成)
+- `utils/balloon_line_mesh.py`: `_SHARP_MITRE_LIMIT = 50.0` 定数化、`ensure_balloon_line_mesh` に主線可変幅ルート追加
+
 ## 2026-05-27 — v0.6.112 多重線「谷幅=山幅=0 → 全体不可視」 / 「長さ変化」を per-ring (近=小 / 遠=大)
 
 ### 仕様追加

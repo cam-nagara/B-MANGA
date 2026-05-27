@@ -1137,6 +1137,8 @@ def _geometry_key_for_entry(entry) -> str:
         "rounded_radius": float(getattr(entry, "rounded_corner_radius_mm", 0.0) or 0.0),
         "line_style": str(getattr(entry, "line_style", "") or ""),
         "line_width": float(getattr(entry, "line_width_mm", 0.3) or 0.0),
+        "line_valley_width": float(getattr(entry, "line_valley_width_mm", 0.3) or 0.0),
+        "line_peak_width": float(getattr(entry, "line_peak_width_mm", 0.3) or 0.0),
         "multi_line_count": int(getattr(entry, "multi_line_count", 3) or 3),
         "multi_line_width": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
         "multi_line_spacing": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
