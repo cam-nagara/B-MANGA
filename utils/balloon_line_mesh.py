@@ -962,20 +962,59 @@ def _build_shapely_band_with_peak_cuts(
     num_peaks = max(1, len(main_peaks))
     full_period_angle = 2.0 * math.pi / num_peaks
     cut_factor = max(0.0, 1.0 - float(length_scale))
-    # cross_enabled (= cross_extension_m > 0) は cut_factor をマイナスにして "重ねる" 方向に。
-    if cross_extension_m > 1.0e-9:
-        # cross の場合は cut を抜くのではなく、山頂を「外側に伸ばす」ようにしたいが
-        # Shapely 経路では難しいため、ここでは cut_factor を 0 にして全閉ループを返す。
-        # 将来的に専用ロジックで対応する。
-        cut_factor = 0.0
-    if cut_factor <= 1.0e-6:
+    cross_enabled = cross_extension_m > 1.0e-9
+    if cut_factor <= 1.0e-6 and not cross_enabled:
         return _shapely_band_to_polygons(band)
 
-    # 各 main peak の角度を計算し、その周辺 cut_factor × half_period_angle 分を抜く
+    band_extent = max(valley_width_m, peak_width_m) * 2.0 + 0.05
     cut_half_angle = cut_factor * full_period_angle * 0.5
-    # くさび形は body 中心 → 大半径 (band 外側より大きい) → 中心 の三角形
-    max_outer_r = max(radii) + abs(signed_offset_m) + band_width_m * 2.0 + 0.05  # 余裕を持たせる
+    max_outer_r = max(radii) + abs(signed_offset_m) + band_extent  # 余裕を持たせる
     wedges = []
+    if cross_enabled:
+        # 「山谷を延ばして交差」: 各主山頂から外側へ細長い三角形の "尻尾" を band に和集合する。
+        # 延長量は cut_factor (= 1 - length_scale) に比例。隣接 peak の尻尾と重なるよう
+        # 三角形の根元は ±半周期分の角度幅 (= 隣接 peak の中央) まで広げる。
+        body_peak_r_avg = sum(radii[p] for p in main_peaks) / max(1, len(main_peaks))
+        max_w = max(valley_width_m, peak_width_m)
+        # 根元: band の外側エッジ付近 (= body peak + signed_offset + 半幅 まで)
+        base_radial = body_peak_r_avg + signed_offset_m + max_w * 0.5
+        # 先端: 根元からさらに外側へ。延長量は band 幅 × (1 + 5*cut_factor) で
+        # length が短いほど派手に飛び出す。基本でも 0.18 の延長 (cross 既定の出っ張り)。
+        tip_distance = max_w * (1.0 + cut_factor * 5.0) + abs(signed_offset_m) * (0.18 + cut_factor)
+        tip_radial = base_radial + tip_distance
+        # 根元の角度半幅: 隣接 peak の中央まで延びる (= 半周期)
+        wedge_half_angle = full_period_angle * 0.5 * 0.9  # 隣接 peak の手前まで
+        for peak_idx in main_peaks:
+            peak_x = pts[peak_idx][0] - cx_m
+            peak_y = pts[peak_idx][1] - cy_m
+            peak_angle = math.atan2(peak_y, peak_x)
+            apex = (cx_m + math.cos(peak_angle) * tip_radial,
+                    cy_m + math.sin(peak_angle) * tip_radial)
+            a0 = peak_angle - wedge_half_angle
+            a1 = peak_angle + wedge_half_angle
+            base0 = (cx_m + math.cos(a0) * base_radial, cy_m + math.sin(a0) * base_radial)
+            base1 = (cx_m + math.cos(a1) * base_radial, cy_m + math.sin(a1) * base_radial)
+            # 三角形 (apex, base0, base1) — 反時計回りで作る
+            cross_p = (base0[0] - apex[0]) * (base1[1] - apex[1]) - (base0[1] - apex[1]) * (base1[0] - apex[0])
+            if cross_p < 0:
+                base0, base1 = base1, base0
+            try:
+                wedge_poly = Polygon([apex, base0, base1])
+                if not wedge_poly.is_valid:
+                    wedge_poly = wedge_poly.buffer(0)
+                if not wedge_poly.is_empty and wedge_poly.area > 0:
+                    wedges.append(wedge_poly)
+            except Exception:  # noqa: BLE001
+                continue
+        if wedges:
+            try:
+                ext_union = unary_union(wedges)
+                band = band.union(ext_union)
+            except Exception:  # noqa: BLE001
+                pass
+        return _shapely_band_to_polygons(band)
+
+    # 各 main peak の角度を計算し、その周辺 cut_factor × half_period_angle 分を抜く (cross OFF)
     for peak_idx in main_peaks:
         peak_x = pts[peak_idx][0] - cx_m
         peak_y = pts[peak_idx][1] - cy_m
