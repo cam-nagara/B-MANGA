@@ -1877,6 +1877,14 @@ def ensure_balloon_multi_line_mesh(
     # spacing_scale で各リングの spacing を順番にスケールできる (例 80% で間隔が縮む)。
     # 動的形状 (cloud/fluffy/thorn/thorn-curve) で valley/peak 幅 or length_scale が
     # 非デフォルトの場合は、ring polyline を可変幅で帯化するパスに切り替える。
+    # 谷幅・山幅が両方 0 のときは多重線全体を非表示にする (= polygons 追加しない)。
+    both_widths_zero = (
+        dynamic_features_active
+        and valley_width_mm <= 1.0e-6
+        and peak_width_mm <= 1.0e-6
+        and abs(valley_width_mm - multi_width_mm) > 1.0e-6
+        and abs(peak_width_mm - multi_width_mm) > 1.0e-6
+    )
     body_center_m = (
         (sum(s[0] for s in samples) / len(samples)),
         (sum(s[1] for s in samples) / len(samples)),
@@ -1893,10 +1901,15 @@ def ensure_balloon_multi_line_mesh(
             ring_valley_width_mm = valley_width_mm * (width_scale ** max(0, ring_index - 1))
             ring_peak_width_mm = peak_width_mm * (width_scale ** max(0, ring_index - 1))
             ring_extent_mm = max(ring_width_mm, ring_valley_width_mm, ring_peak_width_mm)
+            # length_scale はリングごとに「主線に近い線ほど変化が小さく、遠い線ほど大きい」
+            # 線形補間で適用する: ring N の length_scale = 1 - (1-base) × ring_index / count
+            ring_length_scale = 1.0 - (1.0 - length_scale) * (float(ring_index) / float(max(1, count)))
+            ring_length_scale = max(0.0, min(1.0, ring_length_scale))
         else:
             ring_valley_width_mm = ring_width_mm
             ring_peak_width_mm = ring_width_mm
             ring_extent_mm = ring_width_mm
+            ring_length_scale = 1.0
         for side in sides:
             if side == "inside":
                 ring_inner_mm = running_inside_mm + ring_spacing_mm
@@ -1906,14 +1919,17 @@ def ensure_balloon_multi_line_mesh(
                 ring_inner_mm = running_outside_mm + ring_spacing_mm
                 ring_center_mm = ring_inner_mm + ring_extent_mm * 0.5
                 signed_offset_mm = ring_center_mm
-            if dynamic_features_active:
+            if both_widths_zero:
+                # 谷幅・山幅が両方 0 → このリングは描かない (= 多重線全体が消える)
+                pass
+            elif dynamic_features_active:
                 sub_polys = _build_dynamic_multi_line_polygons(
                     body_poly=body_poly,
                     signed_offset_m=signed_offset_mm * 0.001,
                     base_width_m=ring_width_mm * 0.001,
-                    valley_width_m=(ring_valley_width_mm if ring_valley_width_mm > 1.0e-6 else ring_width_mm) * 0.001,
-                    peak_width_m=(ring_peak_width_mm if ring_peak_width_mm > 1.0e-6 else ring_width_mm) * 0.001,
-                    length_scale=length_scale,
+                    valley_width_m=ring_valley_width_mm * 0.001,
+                    peak_width_m=ring_peak_width_mm * 0.001,
+                    length_scale=ring_length_scale,
                     valley_sharp=valley_sharp,
                     balloon_center_m=body_center_m,
                 )

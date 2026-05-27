@@ -3,6 +3,24 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.112 多重線「谷幅=山幅=0 → 全体不可視」 / 「長さ変化」を per-ring (近=小 / 遠=大)
+
+### 仕様追加
+- 「谷の線幅」と「山の線幅」が両方とも **0.00** のとき、多重線全体を非表示にする。これまでは頂点位置だけ 0 で、頂点と頂点の間は base 幅のまま見えていた。
+- 「長さ変化」をリングごとに段階的に適用する。主線に近いリングほど変化量を小さく、遠いリングほど大きくする。具体的には `ring_length_scale = 1 − (1 − length_scale) × ring_index / count` の線形補間で、リング 1 ≈ 1.0 (ほぼ変化なし)、リング N = length_scale (= 設定値で最大変化)。
+
+### 修正
+- `utils/balloon_line_mesh.py ensure_balloon_multi_line_mesh`:
+  - `both_widths_zero` フラグを追加し、谷幅・山幅とも 0 (かつ base と異なる) のときは Shapely 多重線ポリゴンを一切追加しないようにした。
+  - リング毎の `ring_length_scale` を上記公式で計算し、`_build_dynamic_multi_line_polygons` に渡す。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 雲/モフモフ/トゲ直線/トゲ曲線で「谷幅 0 / 山幅 0」を設定し、主線のみ表示・多重線が全消失することを確認 (`04_both_widths_zero.png`)。
+- 同 4 形状で count=4 / length_scale=50% の per-ring 進行を確認し、リング 1 ≈ ほぼ閉ループ、リング 2/3 は谷の周辺だけ残る、リング 4 ≈ 谷ごとの短い帯になることを確認 (`05_length_scale_per_ring.png`)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `both_widths_zero` 判定 + `ring_length_scale` per-ring 計算
+
 ## 2026-05-27 — v0.6.111 多重線「長さ変化」を谷ベースに / 「谷の線幅」「山の線幅」を頂点付近のみへ局所化
 
 ### 症状 (v0.6.110)

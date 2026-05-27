@@ -195,6 +195,72 @@ def main() -> None:
     _render_to(out, width_px=2200, height_px=700)
     print(f"[OUT] valley/peak width diff: {out}")
 
+    # --- 4) 谷幅=0 AND 山幅=0 → 多重線全体が非表示になることを確認 ---
+    _delete_all_balloons(page)
+    balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
+    objects = []
+    for idx, shape in enumerate(DYNAMIC_SHAPES):
+        entry = balloon_op._create_balloon_entry(
+            context, page,
+            shape=shape, x=20.0 + idx * 70.0, y=20.0, w=60.0, h=60.0,
+            parent_kind="page", parent_key=parent_key,
+        )
+        entry.line_style = "double"
+        entry.line_width_mm = 1.0
+        entry.line_color = (0.05, 0.05, 0.05, 1.0)
+        entry.fill_color = (0.8, 1.0, 0.9, 1.0)
+        entry.multi_line_count = 3
+        entry.multi_line_direction = "outside"
+        entry.multi_line_width_mm = 0.6
+        entry.multi_line_spacing_mm = 0.8
+        entry.thorn_multi_line_valley_width_mm = 0.0  # 両方 0
+        entry.thorn_multi_line_peak_width_mm = 0.0
+        obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+        objects.append((obj, shape))
+    xs = [float(o.location.x) for o, _ in objects]
+    ys = [float(o.location.y) for o, _ in objects]
+    cx = (min(xs) + max(xs)) * 0.5
+    cy = (min(ys) + max(ys)) * 0.5
+    scale = (max(xs) - min(xs)) + 0.1
+    _set_ortho_camera(cx, cy, scale)
+    out = _OUT_PATH / "04_both_widths_zero.png"
+    _render_to(out, width_px=2200, height_px=700)
+    print(f"[OUT] both widths zero: {out}")
+
+    # --- 5) 長さ変化を per-ring で確認: count=4 outside, length_scale=50% ---
+    _delete_all_balloons(page)
+    balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
+    objects = []
+    for idx, shape in enumerate(DYNAMIC_SHAPES):
+        entry = balloon_op._create_balloon_entry(
+            context, page,
+            shape=shape, x=20.0 + idx * 80.0, y=20.0, w=70.0, h=70.0,
+            parent_kind="page", parent_key=parent_key,
+        )
+        entry.line_style = "double"
+        entry.line_width_mm = 1.0
+        entry.line_color = (0.05, 0.05, 0.05, 1.0)
+        entry.fill_color = (0.8, 1.0, 0.9, 1.0)
+        entry.multi_line_count = 4
+        entry.multi_line_direction = "outside"
+        entry.multi_line_width_mm = 0.5
+        entry.multi_line_spacing_mm = 0.8
+        entry.thorn_multi_line_length_scale_percent = 50.0
+        # valley/peak は base に揃える (= 長さ変化のみ確認)
+        entry.thorn_multi_line_valley_width_mm = 0.5
+        entry.thorn_multi_line_peak_width_mm = 0.5
+        obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+        objects.append((obj, shape))
+    xs = [float(o.location.x) for o, _ in objects]
+    ys = [float(o.location.y) for o, _ in objects]
+    cx = (min(xs) + max(xs)) * 0.5
+    cy = (min(ys) + max(ys)) * 0.5
+    scale = (max(xs) - min(xs)) + 0.1
+    _set_ortho_camera(cx, cy, scale)
+    out = _OUT_PATH / "05_length_scale_per_ring.png"
+    _render_to(out, width_px=2400, height_px=800)
+    print(f"[OUT] length_scale per-ring: {out}")
+
     print(f"[DONE] 出力: {_OUT_PATH}")
 
 
