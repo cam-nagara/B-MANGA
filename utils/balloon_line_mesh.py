@@ -755,11 +755,53 @@ def _build_dynamic_multi_line_polygons(
     samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
     anchor_count = max(2, n // samples_per_segment)
     expected_count = max(8, anchor_count * 2)
-    peaks, valleys = _detect_centerline_peaks_valleys(
+    peaks_all, valleys_all = _detect_centerline_peaks_valleys(
         pts,
         balloon_center_m,
         expected_count=expected_count,
     )
+
+    # 幅が一様 (valley_width ≈ peak_width) かつ length が < 100% で main peak が
+    # 検出できる場合、Shapely buffer + wedge 差し引き方式で帯を構築する。
+    # サンプル直結方式だと鋭角コーナーで法線が急変して帯エッジがヒゲ状に
+    # 飛び出すため、buffer ベースの方が遥かに綺麗。
+    width_uniform = abs(valley_width_m - peak_width_m) < 1.0e-6
+    if width_uniform and length_scale < 0.999:
+        polys = _build_shapely_band_with_peak_cuts(
+            pts,
+            balloon_center_m=balloon_center_m,
+            signed_offset_m=signed_offset_m,
+            band_width_m=valley_width_m,
+            length_scale=length_scale,
+            valley_sharp=valley_sharp,
+            peaks_all=peaks_all,
+            valleys_all=valleys_all,
+            cross_extension_m=cross_extension_m,
+        )
+        if polys is not None:
+            return polys
+        # 失敗時は従来の sample-direct 経路に fallback
+
+    # 長さ変化のカット中心は **大山のみ** (= 主トゲの先端) に絞る。サブバンプ
+    # (小山) の anchor が peaks_all に大量に含まれると、length<100% で各サブ
+    # バンプ周辺で細かい切れ目が無数に入り、線が破片化する。
+    # 大山/小山の判定は radial 値の閾値で行う: 最大 peak radial と最小 valley
+    # radial の中間より上を「大山」、下を「大谷」とする。
+    cx_m, cy_m = balloon_center_m
+    radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
+    if peaks_all and valleys_all:
+        max_peak_r = max(radii[p] for p in peaks_all)
+        min_valley_r = min(radii[v] for v in valleys_all)
+        if max_peak_r - min_valley_r > 1.0e-6:
+            half_r = (max_peak_r + min_valley_r) * 0.5
+            peaks = [p for p in peaks_all if radii[p] >= half_r]
+            valleys = [v for v in valleys_all if radii[v] <= half_r]
+        else:
+            peaks = list(peaks_all)
+            valleys = list(valleys_all)
+    else:
+        peaks = list(peaks_all)
+        valleys = list(valleys_all)
 
     # 「角を尖らせる」相当の peak 延長: peak_extension_m > 0 のとき、各 peak
     # 頂点を外向き法線方向へ延ばす。延長は peak 周辺の数サンプルに対して
@@ -787,19 +829,22 @@ def _build_dynamic_multi_line_polygons(
         for i in range(n)
     ]
 
-    # 各サンプル点の line width: 谷と山の頂点それぞれを valley_width_m / peak_width_m とし、
-    # 辺全体で線形補間する (山0%・谷100% なら谷→山にかけて 100%→0% に線形で変化)。
+    # 各サンプル点の line width: 谷と山の頂点 (大山/小山どちらでも) から
+    # 線形補間する。大山だけで補間するとサブバンプ箇所が谷扱いになって帯が
+    # 細くなりすぎるため、ここは peaks_all / valleys_all (= 全 anchor 極値) を使う。
+    width_peaks = peaks_all if peaks_all else peaks
+    width_valleys = valleys_all if valleys_all else valleys
     widths: list[float] = []
-    if not peaks and not valleys:
+    if not width_peaks and not width_valleys:
         widths = [base_width_m] * n
     else:
         for i in range(n):
-            if peaks:
-                d_peak = min(_circular_dist(i, p, n) for p in peaks)
+            if width_peaks:
+                d_peak = min(_circular_dist(i, p, n) for p in width_peaks)
             else:
                 d_peak = n  # peak が無いケース: 全体を valley_width とみなす
-            if valleys:
-                d_valley = min(_circular_dist(i, v, n) for v in valleys)
+            if width_valleys:
+                d_valley = min(_circular_dist(i, v, n) for v in width_valleys)
             else:
                 d_valley = n
             total = d_peak + d_valley
@@ -809,6 +854,7 @@ def _build_dynamic_multi_line_polygons(
                 t = d_valley / total  # 0 at valley, 1 at peak
             widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
 
+    # length cut は大山ベースだけで行う (= 大山周りで切って valley から伸ばす)
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
 
     out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
@@ -835,6 +881,128 @@ def _build_dynamic_multi_line_polygons(
             if result is not None:
                 out_polygons.append(result)
     return out_polygons
+
+
+def _build_shapely_band_with_peak_cuts(
+    pts: Sequence[tuple[float, float]],
+    *,
+    balloon_center_m: tuple[float, float],
+    signed_offset_m: float,
+    band_width_m: float,
+    length_scale: float,
+    valley_sharp: bool,
+    peaks_all: Sequence[int],
+    valleys_all: Sequence[int],
+    cross_extension_m: float = 0.0,
+) -> Optional[list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]]:
+    """幅一様のリングを Shapely で構築し、長さ変化分を主山頂のくさび形差し引きで作る."""
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    if band_width_m <= 1.0e-9:
+        return []
+    body_poly = _build_body_polygon([(p[0], p[1], 1.0) for p in pts])
+    if body_poly is None:
+        return None
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    half = band_width_m * 0.5
+    try:
+        outer_buf = body_poly.buffer(signed_offset_m + half, join_style=join, mitre_limit=mitre)
+        inner_buf = body_poly.buffer(signed_offset_m - half, join_style=join, mitre_limit=mitre)
+        band = outer_buf.difference(inner_buf)
+    except Exception:  # noqa: BLE001
+        return None
+    if band.is_empty:
+        return []
+
+    # 大山頂を radial 閾値で抽出
+    cx_m, cy_m = balloon_center_m
+    radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
+    if peaks_all and valleys_all:
+        max_peak_r = max(radii[p] for p in peaks_all)
+        min_valley_r = min(radii[v] for v in valleys_all)
+        if max_peak_r - min_valley_r > 1.0e-6:
+            half_r = (max_peak_r + min_valley_r) * 0.5
+            main_peaks = [p for p in peaks_all if radii[p] >= half_r]
+        else:
+            main_peaks = list(peaks_all)
+    else:
+        main_peaks = list(peaks_all)
+    if not main_peaks:
+        # 山が無い → そのまま閉ループを返す
+        return _shapely_band_to_polygons(band)
+
+    # 各 main peak の角度位置
+    n = len(pts)
+    num_peaks = max(1, len(main_peaks))
+    full_period_angle = 2.0 * math.pi / num_peaks
+    cut_factor = max(0.0, 1.0 - float(length_scale))
+    # cross_enabled (= cross_extension_m > 0) は cut_factor をマイナスにして "重ねる" 方向に。
+    if cross_extension_m > 1.0e-9:
+        # cross の場合は cut を抜くのではなく、山頂を「外側に伸ばす」ようにしたいが
+        # Shapely 経路では難しいため、ここでは cut_factor を 0 にして全閉ループを返す。
+        # 将来的に専用ロジックで対応する。
+        cut_factor = 0.0
+    if cut_factor <= 1.0e-6:
+        return _shapely_band_to_polygons(band)
+
+    # 各 main peak の角度を計算し、その周辺 cut_factor × half_period_angle 分を抜く
+    cut_half_angle = cut_factor * full_period_angle * 0.5
+    # くさび形は body 中心 → 大半径 (band 外側より大きい) → 中心 の三角形
+    max_outer_r = max(radii) + abs(signed_offset_m) + band_width_m * 2.0 + 0.05  # 余裕を持たせる
+    wedges = []
+    for peak_idx in main_peaks:
+        peak_x = pts[peak_idx][0] - cx_m
+        peak_y = pts[peak_idx][1] - cy_m
+        peak_angle = math.atan2(peak_y, peak_x)
+        a0 = peak_angle - cut_half_angle
+        a1 = peak_angle + cut_half_angle
+        # くさび形の 3 頂点 (中心 → 弧上 2 点)
+        steps = 8
+        vertices = [(cx_m, cy_m)]
+        for s in range(steps + 1):
+            t = s / steps
+            a = a0 + (a1 - a0) * t
+            vertices.append((cx_m + math.cos(a) * max_outer_r, cy_m + math.sin(a) * max_outer_r))
+        try:
+            wedge_poly = Polygon(vertices)
+            if not wedge_poly.is_valid:
+                wedge_poly = wedge_poly.buffer(0)
+            if not wedge_poly.is_empty and wedge_poly.area > 0:
+                wedges.append(wedge_poly)
+        except Exception:  # noqa: BLE001
+            continue
+    if wedges:
+        try:
+            cuts = unary_union(wedges)
+            band = band.difference(cuts)
+        except Exception:  # noqa: BLE001
+            pass
+    if band.is_empty:
+        return []
+    return _shapely_band_to_polygons(band)
+
+
+def _shapely_band_to_polygons(band) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """Shapely band を [(outer_ring, holes), ...] のリストに変換."""
+    polys = []
+    if band.geom_type == "Polygon":
+        geoms = [band]
+    elif band.geom_type == "MultiPolygon":
+        geoms = list(band.geoms)
+    else:
+        return []
+    for geom in geoms:
+        if geom.is_empty or geom.area <= 1.0e-12:
+            continue
+        outer_ring = list(geom.exterior.coords)
+        holes = [list(r.coords) for r in geom.interiors]
+        polys.append((outer_ring, holes))
+    return polys
 
 
 def _extend_segment_for_cross(
@@ -1717,7 +1885,6 @@ def ensure_balloon_line_mesh(
             sum(s[0] for s in samples) / len(samples),
             sum(s[1] for s in samples) / len(samples),
         )
-        peak_extension_m = (line_width_m * 1.5) if valley_sharp else 0.0
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
             signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
@@ -1727,7 +1894,7 @@ def ensure_balloon_line_mesh(
             length_scale=1.0,  # 主線は length_scale 非適用 (常に閉ループ)
             valley_sharp=valley_sharp,
             balloon_center_m=body_center_m,
-            peak_extension_m=peak_extension_m,
+            peak_extension_m=0.0,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -2045,13 +2212,6 @@ def ensure_balloon_multi_line_mesh(
                 # 谷幅・山幅が両方 0 → このリングは描かない (= 多重線全体が消える)
                 pass
             elif dynamic_features_active:
-                # 「角を尖らせる」で主線がミテレ延長される分、多重線も同じ量だけ
-                # 山方向に伸ばす。延長量は line_width に依存しないため、固定の
-                # half ring_width を上限とする (実用的に滑らかな範囲)。
-                if valley_sharp:
-                    peak_extension_m = (line_width_mm * 0.001) * 1.5
-                else:
-                    peak_extension_m = 0.0
                 # 「山谷を延ばして交差」: cross_enabled かつ length < 100% のとき
                 # 端点を山頂方向に延ばして、隣接 segment の端点同士が谷をまたいで
                 # 交差する形に。延長量は ring 幅と spacing を合わせた程度。
@@ -2069,7 +2229,7 @@ def ensure_balloon_multi_line_mesh(
                     valley_sharp=valley_sharp,
                     balloon_center_m=body_center_m,
                     cross_extension_m=cross_extension_m,
-                    peak_extension_m=peak_extension_m,
+                    peak_extension_m=0.0,
                 )
                 polygons.extend(sub_polys)
             else:
