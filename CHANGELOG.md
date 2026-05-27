@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.142 主線 dynamic で「主線が細くなりすぎる」を修正 (power カーブ + radial 法線)
+
+### 症状
+- v0.6.141 で 山頂・谷 を鋭く尖らせたが、 ユーザー指摘の「主線が細くなりすぎている」 状態だった。 通常 (山 100%/谷 100%) と比べ、 1 枚目 (山 100%/谷 0%) の方が 主線が全体的に細く見え、 帯が短い針状になっていた。
+
+### 原因
+- v0.6.141 の anchor-only モードは anchor (= peak / valley のみ) をサンプル列に使うため、 anchor 間が直線で結ばれる帯になり、 帯の幅が「peak で 100%, valley で 0% を直接接続」 → 「山頂で 鋭い針 + ほぼ全体が痩せて細い」 状態になっていた。
+- もう一つの要因として、 width 補間が線形だった。 valley=0% / peak=100% の場合、 中間サンプルでは 50% となり、 帯全体が 平均的に痩せる。
+
+### 修正
+- anchor-only モードを撤回し、 per-segment 24 サンプルに戻す。 サンプル解像度を 保ちながら、 以下の 2 つを組み合わせて 「太い帯 + valley 直近だけ pinch + 山頂で 鋭く尖る」 を実現する:
+  - **power 4 カーブで width 補間** (`t_curve = 1 - (1 - t)^4`): valley 近辺数サンプルだけが急速に 0% へ落ち、 それ以外は ほぼ peak_width を保つ。
+  - **peak / valley anchor サンプルだけ normal を radial 方向に強制**: peak 周辺 24 サンプルの中で anchor 1 つを 「中心 → 頂点方向」 に固定。 outer ring が anchor で 1 つの鋭い針として外向きに突き出る。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_dynamic_multi_line_polygons` の anchor-only 切替を撤去。
+  - peak/valley anchor 位置の normal を radial 方向に上書き (outside_align=True のとき)。
+  - width 補間に power 4 カーブを適用 (outside_align=True のとき)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- ユーザースクショと同じ設定 (トゲ直線, 山幅 12.79mm, 山高さ 15.61mm, 線幅 2.40mm, 外側フチ 2.20mm 薄紫, 内側フチ 1.78mm ピンク, 角を尖らせる ON) で 3 ケースを再生成。
+- peak_100_valley_100: 全周 100% で太い帯、山頂・谷とも鋭く尖る。
+- peak_100_valley_0: 主線が **通常と同じ太さで保たれ**、 谷頂点だけが pinch off。 山頂は 鋭い針として外向きに突き出る。
+- peak_0_valley_100: 主線が **谷側で太く保たれ**、 山頂頂点だけが pinch off。
+
 ## 2026-05-28 — v0.6.141 角を尖らせる + 主線 dynamic で 山頂・谷の頂点を anchor-only サンプリングで完全に尖らせる
 
 ### 症状

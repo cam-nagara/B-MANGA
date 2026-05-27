@@ -810,27 +810,29 @@ def _build_dynamic_multi_line_polygons(
     if len(body_samples) < 6:
         return []
 
-    # 角を尖らせる + 外側アライメント + 全周ループは anchor-only で構築
-    use_anchor_only = (
-        outside_align
-        and valley_sharp
-        and length_scale >= 0.999
-        and (len(body_samples) % SAMPLES_PER_SEGMENT == 0)
-    )
-    if use_anchor_only:
-        anchor_step = SAMPLES_PER_SEGMENT
-        anchor_indices = list(range(0, len(body_samples), anchor_step))
-        if len(anchor_indices) >= 6:
-            body_samples = [body_samples[i] for i in anchor_indices]
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
     n = len(pts)
     # 外向き法線 (samples 上)
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
+    # outside_align=True (= 主線 dynamic) のときは、 peak / valley anchor サンプルで
+    # normal を radial 方向 (= 中心→頂点) に強制する。 通常の bisector 法線だと
+    # peak 周辺の 24 サンプルが「滑らかな円弧」 として描画されるため、 主線の
+    # 山頂が丸く見えてしまう。 radial 方向に強制すると anchor 頂点が「鋭い針状」
+    # として 外向きに突き出る。
+    if outside_align:
+        anchor_step = max(1, SAMPLES_PER_SEGMENT)
+        cx_m, cy_m = balloon_center_m
+        for anchor_idx in range(0, n, anchor_step):
+            rx = pts[anchor_idx][0] - cx_m
+            ry = pts[anchor_idx][1] - cy_m
+            rl = math.hypot(rx, ry)
+            if rl > 1.0e-9:
+                normals[anchor_idx] = (rx / rl, ry / rl)
     # anchor 単位で peak/valley を構造的に検出する。
     # 主山 (= local max in radial among anchors) と主谷 (= local min) だけが返る。
     # 高さ jitter があっても全ての主山が検出され、サブバンプは anchor-level の
     # local extremum にならないため自動的に除外される。
-    samples_per_segment = 1 if use_anchor_only else max(1, SAMPLES_PER_SEGMENT)
+    samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
     peaks_all, valleys_all = _detect_anchor_peaks_valleys(
         pts,
         balloon_center_m,
@@ -926,7 +928,23 @@ def _build_dynamic_multi_line_polygons(
                 t_geom = d_valley / total  # 0 at valley, 1 at peak
             # length_scale 正規化: cut endpoint で peak_w に達する
             t_segment = min(1.0, t_geom / length_scale_clamped)
-            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_segment)
+            # outside_align=True (= 主線 dynamic) では power 4 カーブで補間し、
+            # peak 近辺で plateau を作る。 valley_width が小さい (例: 0%) のとき、
+            # 線形補間だと「中間サンプルで 50% に下がる」 ため、 主線全体が細く
+            # 見えてしまっていた。 power 4 で early-rise させると、 valley 直近
+            # 数サンプルだけが pinch し、 それ以外は ほぼ peak_width を保つ。
+            #   t_curve = 1 - (1 - t_segment)**4
+            #     t=0.0 (valley) → 0.0
+            #     t=0.3          → 0.76
+            #     t=0.5          → 0.94
+            #     t=0.7          → 0.99
+            #     t=1.0 (peak)   → 1.0
+            if outside_align:
+                one_minus_t = 1.0 - t_segment
+                t_curve = 1.0 - (one_minus_t * one_minus_t * one_minus_t * one_minus_t)
+            else:
+                t_curve = t_segment
+            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_curve)
 
     # length cut は大山ベースだけで行う (= 大山周りで切って valley から伸ばす)
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
