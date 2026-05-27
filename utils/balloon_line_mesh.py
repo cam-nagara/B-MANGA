@@ -714,7 +714,7 @@ def _ring_kept_index_segments(
 
 def _build_dynamic_multi_line_polygons(
     *,
-    body_poly,
+    body_samples: Sequence[tuple[float, float, float]],
     signed_offset_m: float,
     base_width_m: float,
     valley_width_m: float,
@@ -723,57 +723,41 @@ def _build_dynamic_multi_line_polygons(
     valley_sharp: bool,
     balloon_center_m: tuple[float, float],
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
-    """動的形状 (cloud/fluffy/thorn/thorn-curve) の多重線 1 リング分を、
+    """動的形状 (cloud/fluffy/thorn/thorn-curve) の主線/多重線 1 リング分を、
     谷/山可変幅 + 長さ変化を反映した複数バンドポリゴンとして構築する。
 
     手順:
-    1. body を `signed_offset_m` で buffer して、リング中心線 (closed polyline) を得る
-    2. 中心線上の山/谷インデックスを balloon 中心からの radial 距離で検出
-    3. 各サンプル点での line width を 山から谷への arc 距離で valley/peak 幅を補間
-    4. length_scale<1.0 なら ピークごとの帯断片に分解
-    5. 各断片を可変幅の帯ポリゴンとして組み立て
+    1. body samples (= 本体カーブそのもの) を centerline として使う。これにより
+       本体カーブが谷で鋭く尖っていればそのまま尖り、buffer 経由で発生していた
+       「主線が外側にビョーンと飛び出す + 谷が丸まる」現象を回避する。
+    2. samples の各点で前後 bisector に垂直な外向き法線を求める。
+    3. samples を法線方向に `signed_offset_m` だけシフトしてオフセット centerline。
+    4. peaks/valleys を元 samples 上の radial 距離で検出 (大山だけでなく小山も拾う)。
+    5. 各点での line width = lerp(valley_w, peak_w, t) を radial peak/valley 距離で計算。
+    6. centerline ± normal*width/2 で外周/内周を構築。
+    7. length_scale<1.0 なら 谷を起点に keep 区間を切り出し open polygon にする。
     """
-    python_deps.ensure_bundled_wheels_on_path()
-    if body_poly is None:
-        return []
     if base_width_m <= 1.0e-9:
         return []
-    join = 2 if valley_sharp else 1
-    try:
-        ring_poly = body_poly.buffer(
-            signed_offset_m,
-            join_style=join,
-            mitre_limit=_SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT,
-        )
-    except Exception:  # noqa: BLE001
+    if len(body_samples) < 6:
         return []
-    if ring_poly.is_empty:
-        return []
-    if ring_poly.geom_type == "Polygon":
-        geom = ring_poly
-    elif ring_poly.geom_type == "MultiPolygon":
-        geom = max(ring_poly.geoms, key=lambda g: g.area)
-    else:
-        return []
-    coords = list(geom.exterior.coords)
-    if len(coords) < 6:
-        return []
-    pts = [(float(x), float(y)) for x, y in coords]
-    if math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) <= 1.0e-9:
-        pts = pts[:-1]
+    pts = [(float(s[0]), float(s[1])) for s in body_samples]
     n = len(pts)
-    if n < 6:
-        return []
-
-    # 期待される山数 = body の bump 数 (おおよそで OK)。
-    # ここでは 形状情報がないため、半径方向の自己相関から推定するのは複雑なので、
-    # 単に「polyline 長さ / 帯幅」程度に設定する。
+    # 外向き法線 (samples 上)
+    normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
+    # オフセット centerline = samples + normal * signed_offset_m
+    centerline = [
+        (pts[i][0] + normals[i][0] * signed_offset_m,
+         pts[i][1] + normals[i][1] * signed_offset_m)
+        for i in range(n)
+    ]
+    # 期待される山数: body samples の周長 / (base_width_m * 3) 程度 (小山も拾える解像度)。
     total_len = 0.0
     for i in range(n):
         dx = pts[(i + 1) % n][0] - pts[i][0]
         dy = pts[(i + 1) % n][1] - pts[i][1]
         total_len += math.hypot(dx, dy)
-    expected_count = max(4, int(total_len / max(base_width_m * 6.0, 0.002)))
+    expected_count = max(8, int(total_len / max(base_width_m * 3.0, 0.001)))
     peaks, valleys = _detect_centerline_peaks_valleys(
         pts,
         balloon_center_m,
@@ -802,22 +786,21 @@ def _build_dynamic_multi_line_polygons(
                 t = d_valley / total  # 0 at valley, 1 at peak
             widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
 
-    normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
 
     out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
     if length_scale >= 0.999:
         # 閉じた全周帯 (ホール付きポリゴン)
-        seg = segments[0]
-        result = _build_variable_width_band_segment(pts, widths, normals, seg, closed=True)
-        if result is not None:
-            out_polygons.append(result)
+        if segments:
+            seg = segments[0]
+            result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=True)
+            if result is not None:
+                out_polygons.append(result)
     else:
         for seg in segments:
             if len(seg) < 2:
                 continue
-            result = _build_variable_width_band_segment(pts, widths, normals, seg, closed=False)
+            result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=False)
             if result is not None:
                 out_polygons.append(result)
     return out_polygons
@@ -1613,8 +1596,10 @@ def ensure_balloon_line_mesh(
     # 主線の谷/山の線幅: % 指定 (100% = base line_width, 0% = その頂点で消える)。
     # 辺全体で線形補間。動的形状のみ有効。両方 0% のとき主線全体不可視。
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    line_valley_width_pct = max(0.0, min(500.0, float(getattr(entry, "line_valley_width_pct", 100.0) or 100.0)))
-    line_peak_width_pct = max(0.0, min(500.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0)))
+    # `or N` 形式は値 0.0 のとき N にフォールバックしてしまうため使わない (FloatProperty
+    # は常に float を返すため getattr のデフォルトに頼ればよい)。
+    line_valley_width_pct = max(0.0, min(100.0, float(getattr(entry, "line_valley_width_pct", 100.0))))
+    line_peak_width_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0))))
     line_valley_width_mm = line_width_mm * line_valley_width_pct / 100.0
     line_peak_width_mm = line_width_mm * line_peak_width_pct / 100.0
     main_line_dynamic = (
@@ -1646,17 +1631,14 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
     elif main_line_dynamic:
-        # 主線を可変幅で構築 (山/谷の頂点付近のみ peak/valley_width に局所遷移)
-        body_poly = _build_body_polygon(samples)
-        if body_poly is None:
-            remove_balloon_line_mesh(balloon_id)
-            return None
+        # 主線を可変幅で構築 (谷/山の line width を辺全体で線形補間)。
+        # body samples をそのまま centerline に使うため、body の鋭い谷/山がそのまま残る。
         body_center_m = (
             sum(s[0] for s in samples) / len(samples),
             sum(s[1] for s in samples) / len(samples),
         )
         sub_polys = _build_dynamic_multi_line_polygons(
-            body_poly=body_poly,
+            body_samples=samples,
             signed_offset_m=line_width_m * 0.5,  # 外側アライメント主線の中心線
             base_width_m=line_width_m,
             valley_width_m=line_valley_width_mm * 0.001,
@@ -1872,10 +1854,10 @@ def ensure_balloon_multi_line_mesh(
     spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.0) or 0.0))
     width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
     spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
-    # 谷/山の線幅は % で指定 (100% = base 多重線幅と同じ, 0% = その頂点で消える, 500% = 5 倍)。
+    # 谷/山の線幅は % で指定 (100% = base 多重線幅と同じ, 0% = その頂点で消える)。
     # 辺全体に渡って valley 頂点 → peak 頂点 で線形補間する。
-    valley_width_pct = max(0.0, min(500.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0)))
-    peak_width_pct = max(0.0, min(500.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0)))
+    valley_width_pct = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0))))
+    peak_width_pct = max(0.0, min(100.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0))))
     valley_width_mm = multi_width_mm * valley_width_pct / 100.0
     peak_width_mm = multi_width_mm * peak_width_pct / 100.0
     length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
@@ -1965,7 +1947,7 @@ def ensure_balloon_multi_line_mesh(
                 pass
             elif dynamic_features_active:
                 sub_polys = _build_dynamic_multi_line_polygons(
-                    body_poly=body_poly,
+                    body_samples=samples,
                     signed_offset_m=signed_offset_mm * 0.001,
                     base_width_m=ring_width_mm * 0.001,
                     valley_width_m=ring_valley_width_mm * 0.001,
