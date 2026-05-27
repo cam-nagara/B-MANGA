@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-05-25 (Codex)
+最終更新: 2026-05-27 (Claude Code)
 
 ---
 
@@ -68,6 +68,7 @@
 - **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
 - **作品要素の実体化 (進行中 / 2026-05-05 Codex)**。 アドオン無効時に枠線やテキストが消えたように見える不安を避けるため、 画面描画だけに依存していた要素を Blender 実オブジェクトへ同期する。 第一段階はテキスト画像平面とコマ枠線カーブ。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
 - **効果線 Geometry Nodes 化 (進行中 / 2026-05-23 Codex, v0.6.063)**。効果線の本体生成と詳細設定同期は Geometry Nodes 側で継続する。フキダシは重い全面ノード生成から外し、編集可能カーブを正本にする方針へ切り替え済み。効果線の始点/終点形状にも同じ「編集可能形状を正本にする」方針を段階適用する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
+- **フキダシ ジオメトリノード最小化 (進行中 / 2026-05-27 Claude Code, v0.6.128 時点)**。フキダシのジオメトリノードを「塗りつぶしを含む全ての描画責務を Python 焼き込みに移し、ノードはマテリアル割当のみ、最終的にはノードグループ自体を撤去」する方針で進める。画像マスク統一 (v0.6.104) 後も残っていた Raycast クリップ / 外フチ / 内フチ / 多重線の旧ノード経路を全削除する。詳細: [`docs/balloon_node_minimization_plan_2026-05-27.md`](docs/balloon_node_minimization_plan_2026-05-27.md)
 - **コマ内容の不透明度マスク方式 (完了 / 2026-05-25 Codex, v0.6.075)**。コマ内のフキダシ / 効果線 / GP / ラスター / 画像 / テキストを破壊的に切らず、ページ ID + 表示ページ番号 + コマ ID を含むコマ単位の不透明度マスクで見切る。PSD はコマフォルダのレイヤーマスクを正とし、個別レイヤーへ重複マスクを付けない。詳細: [`docs/coma_content_opacity_mask_plan_2026-05-25.md`](docs/coma_content_opacity_mask_plan_2026-05-25.md)
 - PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))

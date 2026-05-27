@@ -3,6 +3,37 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.129 フキダシのジオメトリノードからマスク経路と見切れ塗り経路を撤去 (Phase A)
+
+### 症状
+- フキダシのジオメトリノードグループに、コマ内マスクのための Raycast / Object Info / Switch / Delete Geometry ノード群が組み込まれたまま残っていた。
+- 実行時は呼び出し側から常に「マスク使用 = False」を渡しており、この経路は休眠状態だったが、ノードグラフ評価コストとしては存在し続けていた。
+- 同様に、「見切れ塗り」用の専用カーブ分離パスと、本体カーブを上書きする Switch も、対応する役割番号 400 のスプラインが現状では常に削除されているため、休眠状態だった。
+
+### 原因
+- 「コマ内マスクを画像マスク方式 (マテリアル α) のみに統一する」改修 (v0.6.104) のとき、フキダシ本体カーブのジオメトリノード側からはマスク経路を撤去せず、`mask_object=None` を渡して休眠扱いにしていただけだったため、ノードグラフ上には残骸が残っていた。
+
+### 修正
+- フキダシのジオメトリノードグループからマスク関連のソケット (マスク使用 / マスク対象 / 塗り切り抜き必要 / 切り抜き必要) を削除。
+- 同じく Raycast / Object Info / マスク用 Switch / Delete Geometry ノード、`_masked_geometry` / `_clip_geometry_by_mask_hit` ヘルパー、未使用となる `_boolean_and` / `_vector_add_constant` ヘルパーを削除。
+- 「見切れ塗り」専用の分離 / Switch 経路を削除し、塗り面は本体カーブから直接生成。
+- `ensure_modifier` / `_set_modifier_values` / `BalloonRenderSettings.as_modifier_kwargs` から `mask_object` / `clip_needed` / `fill_clip_needed` パラメータを削除し、未使用となる `set_mask_object` 関数を撤去。
+- ジオメトリノードグループの `GROUP_VERSION` を 42 → 43 に bump して既存の `.blend` を開いたときに新しい構成で再生成。
+- `utils/balloon_curve_render_nodes.py` の行数: 1393 → 1065 (-328 行)。
+
+### 関連ファイル
+- `utils/balloon_curve_render_nodes.py`: マスク経路 + 見切れ塗り経路 + 未使用ヘルパーを撤去
+- `utils/balloon_render_contract.py`: `as_modifier_kwargs` からマスク関連 kwargs を削除
+- `utils/balloon_curve_object.py`: `_sync_balloon_render_modifier` の呼び出しを追従
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- `test/blender_balloon_node_minimization_phase_a_check.py` 新規追加: rect / ellipse / cloud / fluffy / thorn / thorn-curve / octagon / custom / none の全形状でモディファイア生成 PASS。マスクソケット / Raycast / Object Info ノードが完全に消えていることを確認。
+- `test/blender_balloon_band_mesh_image_mask_check.py` 既存テスト: band メッシュ (主線/外フチ/内フチ/多重線) が modifier なし + 画像マスク接続済の状態を維持していることを確認。
+- `test/blender_balloon_all_shapes_shapely_check.py` 既存テスト: 7 形状 (rect / ellipse / octagon / cloud / fluffy / thorn / thorn-curve) でフチ + 多重線を有効にした構成で目視差分なし。
+
+### 関連計画書
+- `docs/balloon_node_minimization_plan_2026-05-27.md` の Phase A に相当 (進行中)。
+
 ## 2026-05-27 — v0.6.128 「山の線幅 0% + 長さ変化」で cut endpoint も 0% に収束するよう修正 (根本対処)
 
 ### 症状

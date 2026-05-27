@@ -17,9 +17,8 @@ GROUP_NAME = "BName_GN_BalloonCurveRender"
 PROP_GN_KIND = "bname_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bname_geometry_nodes_version"
 KIND = "balloon_curve"
-GROUP_VERSION = 42
+GROUP_VERSION = 43
 FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
-_MASK_UNSET = object()
 _MAX_MULTI_LINE_RINGS = 12
 _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
 _MULTI_LINE_ROLE_RADIUS_OFFSET = render_contract.MULTI_LINE_ROLE_RADIUS_OFFSET
@@ -65,10 +64,6 @@ _SOCKETS = (
     _SocketSpec("線を面で生成", "NodeSocketBool", False, True),
     _SocketSpec("塗り輪郭ぼかし", "NodeSocketFloat", 0.0, True),
     _SocketSpec("塗りぼかしをディザ化", "NodeSocketBool", False, True),
-    _SocketSpec("マスク使用", "NodeSocketBool", False, True),
-    _SocketSpec("マスク対象", "NodeSocketObject", None, True),
-    _SocketSpec("塗り切り抜き必要", "NodeSocketBool", False, True),
-    _SocketSpec("切り抜き必要", "NodeSocketBool", False, True),
 ) + tuple(
     item
     for ring_index in range(1, _MAX_MULTI_LINE_RINGS)
@@ -157,17 +152,6 @@ def _set_material(group, geometry_socket, material_socket, *, label: str, locati
     return node.outputs["Geometry"]
 
 
-def _boolean_and(group, left_socket, right_socket, *, label: str, location: tuple[float, float]):
-    node = _node(group, "FunctionNodeBooleanMath", label=label, location=location)
-    try:
-        node.operation = "AND"
-    except Exception:  # noqa: BLE001
-        pass
-    _link(group, left_socket, node.inputs[0])
-    _link(group, right_socket, node.inputs[1])
-    return node.outputs[0]
-
-
 def _boolean_or(group, left_socket, right_socket, *, label: str, location: tuple[float, float]):
     node = _node(group, "FunctionNodeBooleanMath", label=label, location=location)
     try:
@@ -242,24 +226,6 @@ def _separate_geometry(group, geometry_socket, selection_socket, *, label: str, 
     return selected or separate.outputs[0], inverted or separate.outputs[1]
 
 
-def _vector_add_constant(
-    group,
-    vector_socket,
-    value: tuple[float, float, float],
-    *,
-    label: str,
-    location: tuple[float, float],
-):
-    node = _node(group, "ShaderNodeVectorMath", label=label, location=location)
-    try:
-        node.operation = "ADD"
-    except Exception:  # noqa: BLE001
-        pass
-    _link(group, vector_socket, node.inputs[0])
-    _set_default(node.inputs[1], value)
-    return node.outputs["Vector"]
-
-
 def _offset_geometry_z(group, geometry_socket, z_value: float, *, label: str, location: tuple[float, float]):
     node = _node(group, "GeometryNodeSetPosition", label=label, location=location)
     _link(group, geometry_socket, node.inputs["Geometry"])
@@ -331,96 +297,11 @@ def _point_radius_scale(group, *, location: tuple[float, float], subtract_value:
     return clamp.outputs["Value"]
 
 
-def _masked_geometry(
-    group,
-    geometry_socket,
-    mask_geometry_socket,
-    use_mask_socket,
-    *,
-    label: str,
-    location: tuple[float, float],
-):
-    clipped = _clip_geometry_by_mask_hit(
-        group,
-        geometry_socket,
-        mask_geometry_socket,
-        keep_inside=True,
-        label=label,
-        location=(location[0] + 220, location[1] + 40),
-    )
-
-    switch = _node(
-        group,
-        "GeometryNodeSwitch",
-        label=f"{label}のマスク使用",
-        location=(location[0] + 480, location[1] + 40),
-    )
-    switch.input_type = "GEOMETRY"
-    _link(group, use_mask_socket, switch.inputs["Switch"])
-    _link(group, geometry_socket, switch.inputs["False"])
-    _link(group, clipped, switch.inputs["True"])
-    return switch.outputs["Output"]
-
-
-def _clip_geometry_by_mask_hit(
-    group,
-    geometry_socket,
-    mask_geometry_socket,
-    *,
-    keep_inside: bool,
-    label: str,
-    location: tuple[float, float],
-):
-    position = _node(
-        group,
-        "GeometryNodeInputPosition",
-        label=f"{label}位置",
-        location=(location[0] - 460, location[1] + 80),
-    )
-    source_position = _vector_add_constant(
-        group,
-        position.outputs["Position"],
-        (0.0, 0.0, 1.0),
-        label=f"{label}判定開始位置",
-        location=(location[0] - 250, location[1] + 80),
-    )
-    raycast = _node(group, "GeometryNodeRaycast", label=f"{label}の内外判定", location=location)
-    _link(group, mask_geometry_socket, raycast.inputs["Target Geometry"])
-    _link(group, source_position, raycast.inputs["Source Position"])
-    _set_default(raycast.inputs["Ray Direction"], (0.0, 0.0, -1.0))
-    _set_default(raycast.inputs["Ray Length"], 2.0)
-    if keep_inside:
-        selection = _boolean_not(
-            group,
-            raycast.outputs["Is Hit"],
-            label=f"{label}の外側を消す",
-            location=(location[0] + 220, location[1] - 120),
-        )
-    else:
-        selection = raycast.outputs["Is Hit"]
-    delete = _node(
-        group,
-        "GeometryNodeDeleteGeometry",
-        label=f"{label}を必要な側だけ残す",
-        location=(location[0] + 220, location[1] + 40),
-    )
-    try:
-        delete.domain = "FACE"
-        delete.mode = "ALL"
-    except Exception:  # noqa: BLE001
-        pass
-    _link(group, geometry_socket, delete.inputs["Geometry"])
-    _link(group, selection, delete.inputs["Selection"])
-    return delete.outputs["Geometry"]
-
-
 def _outline_mesh_with_radius(
     group,
     curve_socket,
     radius_socket,
     material_socket,
-    mask_geometry,
-    clip_enabled,
     *,
     label: str,
     z_value: float,
@@ -441,17 +322,9 @@ def _outline_mesh_with_radius(
     fill_caps = _socket_by_name(mesh.inputs, "Fill Caps")
     if fill_caps is not None:
         _set_default(fill_caps, True)
-    masked = _masked_geometry(
-        group,
-        mesh.outputs["Mesh"],
-        mask_geometry,
-        clip_enabled,
-        label=label,
-        location=(location[0] + 250, location[1] - 220),
-    )
     material = _set_material(
         group,
-        masked,
+        mesh.outputs["Mesh"],
         material_socket,
         label=f"{label}素材",
         location=(location[0] + 690, location[1]),
@@ -478,8 +351,6 @@ def _filled_curve_geometry(
     group,
     curve_socket,
     material_socket,
-    mask_geometry,
-    clip_enabled,
     *,
     label: str,
     z_value: float,
@@ -487,17 +358,9 @@ def _filled_curve_geometry(
 ):
     fill = _node(group, "GeometryNodeFillCurve", label=f"{label}を面化", location=location)
     _link(group, curve_socket, fill.inputs["Curve"])
-    masked = _masked_geometry(
-        group,
-        fill.outputs["Mesh"],
-        mask_geometry,
-        clip_enabled,
-        label=label,
-        location=(location[0] + 250, location[1] - 220),
-    )
     material = _set_material(
         group,
-        masked,
+        fill.outputs["Mesh"],
         material_socket,
         label=f"{label}素材",
         location=(location[0] + 690, location[1]),
@@ -708,20 +571,6 @@ def _build_nodes(group) -> None:
     input_node = _node(group, "NodeGroupInput", label="フキダシカーブ", location=(-760, 0))
     output_node = _node(group, "NodeGroupOutput", label="表示結果", location=(980, 0))
     role_radius = _point_radius_scale(group, location=(-1320, -40))
-    clipped_fill_selection = _compare_float_equal(
-        group,
-        role_radius,
-        _CLIPPED_FILL_ROLE_RADIUS,
-        label="見切れ塗りを分離",
-        location=(-1340, 220),
-    )
-    clipped_fill_curve, without_clipped_fill = _separate_geometry(
-        group,
-        input_node.outputs["Geometry"],
-        clipped_fill_selection,
-        label="見切れ塗り",
-        location=(-1120, 220),
-    )
     main_line_fill_selection = _compare_float_equal(
         group,
         role_radius,
@@ -731,7 +580,7 @@ def _build_nodes(group) -> None:
     )
     main_line_fill_curve, without_main_line_fill = _separate_geometry(
         group,
-        without_clipped_fill,
+        input_node.outputs["Geometry"],
         main_line_fill_selection,
         label="鋭角主線",
         location=(-900, 0),
@@ -793,29 +642,6 @@ def _build_nodes(group) -> None:
         location=(-700, -80),
     )
 
-    mask_info = _node(group, "GeometryNodeObjectInfo", label="マスク対象", location=(-500, -360))
-    try:
-        mask_info.transform_space = "RELATIVE"
-    except Exception:  # noqa: BLE001
-        pass
-    _set_default(mask_info.inputs["As Instance"], False)
-    _link(group, input_node.outputs["マスク対象"], mask_info.inputs["Object"])
-    fill_clip_enabled = _boolean_and(
-        group,
-        input_node.outputs["マスク使用"],
-        input_node.outputs["塗り切り抜き必要"],
-        label="塗り切り抜きの有効判定",
-        location=(-730, -420),
-    )
-    line_clip_enabled = _boolean_and(
-        group,
-        input_node.outputs["マスク使用"],
-        input_node.outputs["切り抜き必要"],
-        label="線切り抜きの有効判定",
-        location=(-730, -520),
-    )
-    mask_geometry = mask_info.outputs["Geometry"]
-
     fill_body_source = _set_curve_radius(
         group,
         body_curve,
@@ -823,29 +649,12 @@ def _build_nodes(group) -> None:
         label="塗り用の線幅を消す",
         location=(-700, 180),
     )
-    fill_clipped_source = _set_curve_radius(
-        group,
-        clipped_fill_curve,
-        0.0,
-        label="見切れ塗り用の線幅を消す",
-        location=(-700, 360),
-    )
-    fill_source = _node(
-        group,
-        "GeometryNodeSwitch",
-        label="見切れ塗りへ切り替え",
-        location=(-500, 300),
-    )
-    fill_source.input_type = "GEOMETRY"
-    _link(group, fill_clip_enabled, fill_source.inputs["Switch"])
-    _link(group, fill_body_source, fill_source.inputs["False"])
-    _link(group, fill_clipped_source, fill_source.inputs["True"])
     fill_curve = _node(group, "GeometryNodeFillCurve", label="塗り面", location=(-500, 180))
-    _link(group, fill_source.outputs["Output"], fill_curve.inputs["Curve"])
+    _link(group, fill_body_source, fill_curve.inputs["Curve"])
     fill_mesh = _store_fill_blur_alpha(
         group,
         fill_curve.outputs["Mesh"],
-        fill_source.outputs["Output"],
+        fill_body_source,
         input_node.outputs["線幅 (mm)"],
         input_node.outputs["塗り輪郭ぼかし"],
         location=(-260, 420),
@@ -884,8 +693,6 @@ def _build_nodes(group) -> None:
         outer_curve,
         outer_radius,
         input_node.outputs["外側フチ素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="外側フチ",
         z_value=_OUTER_EDGE_Z_M,
         location=(-250, -760),
@@ -894,8 +701,6 @@ def _build_nodes(group) -> None:
         group,
         outer_curve,
         input_node.outputs["外側フチ素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="外側フチ面",
         z_value=_OUTER_EDGE_Z_M,
         location=(-250, -980),
@@ -927,8 +732,6 @@ def _build_nodes(group) -> None:
         inner_curve,
         inner_radius,
         input_node.outputs["内側フチ素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="内側フチ",
         z_value=_INNER_EDGE_Z_M,
         location=(-250, -1180),
@@ -937,8 +740,6 @@ def _build_nodes(group) -> None:
         group,
         inner_curve,
         input_node.outputs["内側フチ素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="内側フチ面",
         z_value=_INNER_EDGE_Z_M,
         location=(-250, -1400),
@@ -964,8 +765,6 @@ def _build_nodes(group) -> None:
         body_curve,
         radius.outputs["Value"],
         input_node.outputs["線素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="輪郭線",
         z_value=_LINE_Z_M,
         location=(-250, -340),
@@ -984,8 +783,6 @@ def _build_nodes(group) -> None:
         group,
         main_line_fill_curve,
         input_node.outputs["線素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="面としての輪郭線",
         z_value=_LINE_Z_M,
         location=(150, -1060),
@@ -1004,8 +801,6 @@ def _build_nodes(group) -> None:
         multi_curve,
         radius.outputs["Value"],
         input_node.outputs["線素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="多重線",
         z_value=_MULTI_LINE_Z_M,
         location=(150, -1540),
@@ -1016,8 +811,6 @@ def _build_nodes(group) -> None:
         group,
         multi_curve,
         input_node.outputs["線素材"],
-        mask_geometry,
-        line_clip_enabled,
         label="多重線面",
         z_value=_MULTI_LINE_Z_M,
         location=(150, -1780),
@@ -1116,9 +909,6 @@ def _set_modifier_values(
     inner_edge_width_mm: float = 1.0,
     fill_blur_amount: float = 0.0,
     fill_blur_dither: bool = False,
-    mask_object=_MASK_UNSET,
-    clip_needed: bool = False,
-    fill_clip_needed: bool = False,
 ) -> None:
     curve = getattr(obj, "data", None)
     if curve is not None and getattr(obj, "type", "") == "CURVE":
@@ -1188,18 +978,6 @@ def _set_modifier_values(
         values[f"多重線{ring_index}外半径 (mm)"] = outer_mm
         values[f"多重線{ring_index}内半径 (mm)"] = inner_mm
         running = outer_mm
-    if mask_object is not _MASK_UNSET:
-        values["マスク使用"] = mask_object is not None
-        values["マスク対象"] = mask_object
-        values["塗り切り抜き必要"] = bool(mask_object is not None and fill_clip_needed)
-        values["切り抜き必要"] = bool(mask_object is not None and clip_needed)
-    else:
-        mask_use_socket = identifiers.get("マスク使用")
-        if mask_use_socket:
-            mask_use_identifier, _spec = mask_use_socket
-            if mask_use_identifier and mask_use_identifier not in modifier:
-                values["マスク使用"] = False
-                values["マスク対象"] = None
     for name, value in values.items():
         socket = identifiers.get(name)
         if not socket:
@@ -1231,9 +1009,6 @@ def ensure_modifier(
     inner_edge_width_mm: float = 1.0,
     fill_blur_amount: float = 0.0,
     fill_blur_dither: bool = False,
-    mask_object=_MASK_UNSET,
-    clip_needed: bool = False,
-    fill_clip_needed: bool = False,
 ):
     if obj is None:
         return None
@@ -1270,115 +1045,12 @@ def ensure_modifier(
         inner_edge_width_mm=inner_edge_width_mm,
         fill_blur_amount=fill_blur_amount,
         fill_blur_dither=fill_blur_dither,
-        mask_object=mask_object,
-        clip_needed=clip_needed,
-        fill_clip_needed=fill_clip_needed,
     )
     try:
         obj.update_tag()
     except Exception:  # noqa: BLE001
         pass
     return modifier
-
-
-def set_mask_object(obj: bpy.types.Object | None, mask_object) -> None:
-    if obj is None:
-        return
-    modifier = obj.modifiers.get(MODIFIER_NAME)
-    if modifier is None or modifier.node_group is None:
-        modifier = ensure_modifier(obj)
-    if modifier is None or modifier.node_group is None:
-        return
-    current_width = 0.3
-    current_filled_line_enabled = False
-    current_multi_enabled = False
-    current_multi_count = 3
-    current_multi_width = 0.3
-    current_multi_spacing = 0.4
-    current_multi_scale = 100.0
-    current_multi_direction = "outside"
-    current_thorn_valley_width = 0.3
-    current_thorn_peak_width = 0.3
-    current_thorn_length_scale = 100.0
-    current_thorn_cross_enabled = False
-    current_outer_enabled = False
-    current_outer_width = 1.0
-    current_inner_enabled = False
-    current_inner_width = 1.0
-    current_fill_blur = 0.0
-    current_fill_blur_dither = False
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
-            continue
-        name = getattr(item, "name", "")
-        try:
-            if name == "線幅 (mm)":
-                current_width = float(modifier.get(item.identifier, current_width))
-            elif name == "線を面で生成":
-                current_filled_line_enabled = bool(modifier.get(item.identifier, current_filled_line_enabled))
-            elif name == "多重線":
-                current_multi_enabled = bool(modifier.get(item.identifier, current_multi_enabled))
-            elif name == "多重線本数":
-                current_multi_count = int(float(modifier.get(item.identifier, current_multi_count)))
-            elif name == "多重線幅 (mm)":
-                current_multi_width = float(modifier.get(item.identifier, current_multi_width))
-            elif name == "多重線間隔 (mm)":
-                current_multi_spacing = float(modifier.get(item.identifier, current_multi_spacing))
-            elif name == "多重線幅変化 (%)":
-                current_multi_scale = float(modifier.get(item.identifier, current_multi_scale))
-            elif name == "多重線方向":
-                direction_value = int(float(modifier.get(item.identifier, 0.0) or 0.0))
-                current_multi_direction = {0: "outside", 1: "inside", 2: "both"}.get(direction_value, "outside")
-            elif name == "谷の線幅 (mm)":
-                current_thorn_valley_width = float(modifier.get(item.identifier, current_thorn_valley_width))
-            elif name == "山の線幅 (mm)":
-                current_thorn_peak_width = float(modifier.get(item.identifier, current_thorn_peak_width))
-            elif name == "多重線長さ変化 (%)":
-                current_thorn_length_scale = float(modifier.get(item.identifier, current_thorn_length_scale))
-            elif name == "多重線を延ばして交差":
-                current_thorn_cross_enabled = bool(modifier.get(item.identifier, current_thorn_cross_enabled))
-            elif name == "外側フチ":
-                current_outer_enabled = bool(modifier.get(item.identifier, current_outer_enabled))
-            elif name == "外側フチ幅 (mm)":
-                current_outer_width = float(modifier.get(item.identifier, current_outer_width))
-            elif name == "内側フチ":
-                current_inner_enabled = bool(modifier.get(item.identifier, current_inner_enabled))
-            elif name == "内側フチ幅 (mm)":
-                current_inner_width = float(modifier.get(item.identifier, current_inner_width))
-            elif name == "塗り輪郭ぼかし":
-                current_fill_blur = float(modifier.get(item.identifier, current_fill_blur))
-            elif name == "塗りぼかしをディザ化":
-                current_fill_blur_dither = bool(modifier.get(item.identifier, current_fill_blur_dither))
-        except Exception:  # noqa: BLE001
-            pass
-    _set_modifier_values(
-        obj,
-        modifier,
-        line_width_mm=current_width,
-        filled_line_enabled=current_filled_line_enabled,
-        multi_line_enabled=current_multi_enabled,
-        multi_line_count=current_multi_count,
-        multi_line_width_mm=current_multi_width,
-        multi_line_spacing_mm=current_multi_spacing,
-        multi_line_width_scale_percent=current_multi_scale,
-        multi_line_direction=current_multi_direction,
-        # current_thorn_*_width は mm 値だが、ここでは pct として渡す必要があるため
-        # 100% (=変化なし) で代用する。 modifier 由来の旧 mm 値は再構築時に
-        # 失われるが、socket 値は ensure_modifier から再書込される。
-        thorn_multi_line_valley_width_pct=100.0,
-        thorn_multi_line_peak_width_pct=100.0,
-        thorn_multi_line_length_scale_percent=current_thorn_length_scale,
-        thorn_multi_line_cross_enabled=current_thorn_cross_enabled,
-        outer_edge_enabled=current_outer_enabled,
-        outer_edge_width_mm=current_outer_width,
-        inner_edge_enabled=current_inner_enabled,
-        inner_edge_width_mm=current_inner_width,
-        fill_blur_amount=current_fill_blur,
-        fill_blur_dither=current_fill_blur_dither,
-        mask_object=mask_object,
-        clip_needed=False,
-        fill_clip_needed=False,
-    )
 
 
 def _material_at(obj: bpy.types.Object, index: int):

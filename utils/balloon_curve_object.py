@@ -782,7 +782,7 @@ def _sync_balloon_render_modifier(entry, obj: bpy.types.Object) -> None:
         settings = dataclasses.replace(settings, **override)
     balloon_curve_render_nodes.ensure_modifier(
         obj,
-        **settings.as_modifier_kwargs(mask_object=None),
+        **settings.as_modifier_kwargs(),
     )
 
 

@@ -60,7 +60,7 @@ class BalloonRenderSettings:
     def native_multi_line_rings_enabled(self) -> bool:
         return self.shape_name != "thorn"
 
-    def as_modifier_kwargs(self, *, mask_object: Any = None) -> dict[str, Any]:
+    def as_modifier_kwargs(self) -> dict[str, Any]:
         return {
             "line_width_mm": self.line_width_mm,
             "filled_line_enabled": self.filled_line_enabled,
@@ -82,9 +82,6 @@ class BalloonRenderSettings:
             "inner_edge_width_mm": self.inner_edge_width_mm,
             "fill_blur_amount": self.fill_blur_amount,
             "fill_blur_dither": self.fill_blur_dither,
-            "mask_object": mask_object,
-            "clip_needed": False,
-            "fill_clip_needed": False,
         }
 
 
