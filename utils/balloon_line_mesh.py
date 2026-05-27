@@ -646,22 +646,23 @@ def _ring_kept_index_segments(
 ) -> list[list[int]]:
     """length_scale 適用後、centerline 上で残すインデックス区間群を返す。
 
-    length_scale=1.0 のときは全周をそのまま 1 区間として返す。
-    length_scale<1.0 のときは各ピーク中心 ± (隣接谷までの距離 × length_scale) を採用
-    して、複数の独立区間に分割する。
+    谷を基準とし、山の頂点側を削る方式 (設計意図書 7.1.1):
+      - length_scale=1.0: 全周 1 区間として返す
+      - length_scale<1.0: 各山の頂点を中心に (1-length_scale)×隣接谷までの距離 だけ
+        切り取り、残った範囲を区間として返す。隣接する谷から山方向へ length_scale ぶん
+        だけ伸びる帯になる。
     """
     if length_scale >= 0.999 or not peak_indices:
         return [list(range(n))]
-    segments: list[list[int]] = []
+    cut_factor = max(0.0, 1.0 - float(length_scale))
+    cut_mask = [True] * n  # True = keep
     for peak in peak_indices:
-        # peak 両側で最も近い谷 (なければ隣のピーク中点) を境界に取る
         if valley_indices:
             left_distances = [(peak - v) % n for v in valley_indices]
             right_distances = [(v - peak) % n for v in valley_indices]
-            left_d = min((d for d in left_distances if d > 0), default=n // 2)
-            right_d = min((d for d in right_distances if d > 0), default=n // 2)
+            left_d = min((d for d in left_distances if d > 0), default=n // 4)
+            right_d = min((d for d in right_distances if d > 0), default=n // 4)
         else:
-            # ピークしかない場合は隣接ピークの半分を境界に
             others = [p for p in peak_indices if p != peak]
             if others:
                 left_distances = [(peak - p) % n for p in others]
@@ -669,17 +670,40 @@ def _ring_kept_index_segments(
                 left_d = min((d for d in left_distances if d > 0), default=n // 2) // 2
                 right_d = min((d for d in right_distances if d > 0), default=n // 2) // 2
             else:
-                left_d = right_d = n // 2
-        keep_left = max(1, int(left_d * length_scale))
-        keep_right = max(1, int(right_d * length_scale))
-        start = (peak - keep_left) % n
-        # 区間長を求める
-        if start <= peak:
-            indices = list(range(start, peak + keep_right + 1))
+                left_d = right_d = n // 4
+        cut_left = int(round(left_d * cut_factor))
+        cut_right = int(round(right_d * cut_factor))
+        for j in range(cut_left + 1):
+            cut_mask[(peak - j) % n] = False
+        for j in range(cut_right + 1):
+            cut_mask[(peak + j) % n] = False
+    if not any(cut_mask):
+        return []
+    if all(cut_mask):
+        return [list(range(n))]
+    # 連続する keep 範囲を取り出す (ラップ対応)
+    start = 0
+    while start < n and not cut_mask[start]:
+        start += 1
+    # start は最初の "keep" インデックス
+    # ただし全周走査でラップする可能性があるので、start 以前の連続 keep を探して合流させる
+    pre = 0
+    while pre < n and cut_mask[(start - 1 - pre) % n]:
+        pre += 1
+    # ラップ込みの実際の start
+    real_start = (start - pre) % n
+    segments: list[list[int]] = []
+    current: list[int] = []
+    for k in range(n):
+        idx = (real_start + k) % n
+        if cut_mask[idx]:
+            current.append(idx)
         else:
-            indices = list(range(start, n)) + list(range(0, peak + keep_right + 1))
-        # 境界をクリップ (重複排除なし)
-        segments.append([i % n for i in indices])
+            if current:
+                segments.append(current)
+                current = []
+    if current:
+        segments.append(current)
     return segments
 
 
@@ -751,26 +775,42 @@ def _build_dynamic_multi_line_polygons(
         expected_count=expected_count,
     )
 
-    # 各点での山-谷重み (0=谷, 1=山) を arc 上の距離比で計算
-    widths: list[float] = []
-    if not peaks and not valleys:
-        widths = [base_width_m] * n
+    # 各点での line width: 基本は base_width_m。
+    # 山/谷の頂点のごく近傍のみ peak_width_m / valley_width_m へ smoothstep で遷移する。
+    # falloff 半径 = 山-谷間 arc 距離の 35% 程度。
+    if peaks and valleys:
+        char_dist_sum = 0.0
+        count_chars = 0
+        for p in peaks:
+            nearest_v = min((_circular_dist(p, v, n) for v in valleys), default=n // 4)
+            char_dist_sum += nearest_v
+            count_chars += 1
+        char_dist = char_dist_sum / max(count_chars, 1)
+    elif peaks:
+        char_dist = n / max(2, len(peaks))
+    elif valleys:
+        char_dist = n / max(2, len(valleys))
     else:
-        for i in range(n):
-            if peaks:
-                d_peak = min(_circular_dist(i, p, n) for p in peaks)
-            else:
-                d_peak = n
-            if valleys:
-                d_valley = min(_circular_dist(i, v, n) for v in valleys)
-            else:
-                d_valley = n
-            total = d_peak + d_valley
-            if total <= 0:
-                factor = 0.5
-            else:
-                factor = d_valley / total  # 0 at valley, 1 at peak
-            widths.append(valley_width_m + (peak_width_m - valley_width_m) * factor)
+        char_dist = n / 8
+    falloff = max(2.0, char_dist * 0.35)
+    apply_peak = bool(peaks) and abs(peak_width_m - base_width_m) > 1.0e-9
+    apply_valley = bool(valleys) and abs(valley_width_m - base_width_m) > 1.0e-9
+    widths: list[float] = []
+    for i in range(n):
+        w = base_width_m
+        if apply_peak:
+            d_peak = min(_circular_dist(i, p, n) for p in peaks)
+            if d_peak < falloff:
+                t = 1.0 - d_peak / falloff
+                t = t * t * (3.0 - 2.0 * t)  # smoothstep
+                w = w * (1.0 - t) + peak_width_m * t
+        if apply_valley:
+            d_valley = min(_circular_dist(i, v, n) for v in valleys)
+            if d_valley < falloff:
+                t = 1.0 - d_valley / falloff
+                t = t * t * (3.0 - 2.0 * t)
+                w = w * (1.0 - t) + valley_width_m * t
+        widths.append(w)
 
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
 
@@ -1801,8 +1841,8 @@ def ensure_balloon_multi_line_mesh(
         shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
         and (
             length_scale < 0.999
-            or (valley_width_mm > 1.0e-6 and abs(valley_width_mm - multi_width_mm) > 1.0e-6)
-            or (peak_width_mm > 1.0e-6 and abs(peak_width_mm - multi_width_mm) > 1.0e-6)
+            or abs(valley_width_mm - multi_width_mm) > 1.0e-6
+            or abs(peak_width_mm - multi_width_mm) > 1.0e-6
         )
     )
     if multi_width_mm <= 1.0e-6:

@@ -3,6 +3,24 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.111 多重線「長さ変化」を谷ベースに / 「谷の線幅」「山の線幅」を頂点付近のみへ局所化
+
+### 症状 (v0.6.110)
+- 「長さ変化」が山の頂点を中心に伸縮していた。設計意図書 7.1.1 では「谷の頂点側を始点、山の頂点側を終点」とあり、長さ変化は **谷を基準** にして山の頂点側が削れるべきだった。
+- 「谷の線幅」「山の線幅」が全サンプル間で線形補間されていたため、多重線全体の線幅を変えてしまっていた。設計意図ではそれぞれ「谷の頂点」「山の頂点」の **その場所だけ** に影響するべきだった。
+
+### 修正
+- `_ring_kept_index_segments` を**山中心キープ**から**山中心カットオフ**へ反転: `cut_factor = 1 - length_scale` を使い、各山の頂点を中心に隣接谷までの距離 × cut_factor だけインデックスを cut。結果、谷の周辺だけがリングとして残る。
+- `_build_dynamic_multi_line_polygons` の per-sample width 計算を線形補間から **smoothstep localized falloff** に変更: 基本は `base_width_m`、山/谷の頂点から `0.35 × 山-谷 arc 距離` の範囲だけで `peak_width_m` / `valley_width_m` へ滑らかに遷移。多重線の全長にわたるラインは base width を保ち、頂点ごく近傍だけで太く/細くなる。
+- `dynamic_features_active` 判定を `valley/peak_width > 0` の制約から外し、ユーザーが 0 に設定した場合 (= 頂点でラインが消える効果) も dynamic builder へルートされるようにした。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 雲/モフモフ/トゲ直線/トゲ曲線で「長さ変化 50%」を適用し、リングが **谷を中心にした帯** として残り、山の頂点付近に空白ができることを確認 (`02_length_scale_50pct.png`)。
+- 同 4 形状で「谷の線幅 0.2mm / 山の線幅 1.5mm」を適用し、ラインの基本太さが base width のままで、**山の頂点付近のみ** 局所的に太く、谷の頂点付近のみ局所的に細くなることを確認 (`03_valley_peak_width_diff.png`)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`: `_ring_kept_index_segments` (length_scale = 谷ベース カットオフ) / `_build_dynamic_multi_line_polygons` (per-sample width = smoothstep falloff)
+
 ## 2026-05-27 — v0.6.110 多重線「長さ変化」「谷の線幅」「山の線幅」を動的形状で機能化 + 「間隔変化 (%)」新規追加
 
 ### 症状
