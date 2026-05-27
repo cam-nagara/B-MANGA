@@ -141,13 +141,21 @@ def _tail_polygon_local_m(entry, tail) -> list[tuple[float, float]]:
 
 
 def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Sequence[Sequence[tuple[float, float]]]):
-    """本体 + 全しっぽの和集合 Shapely Polygon を返す。失敗時 None。"""
+    """本体 + 全しっぽの和集合 Shapely Polygon (または MultiPolygon) を返す。失敗時 None。
+
+    しっぽの root はちょうど body 境界上に乗るため、 そのままだと Shapely union が
+    境界共有 polygon を別ピース扱いし MultiPolygon を返す。 各ポリゴンを微小に
+    buffer して確実に重ねた上で union → 結果を unbuffer する方式で 1 つの polygon
+    に統合する。
+    """
     python_deps.ensure_bundled_wheels_on_path()
     try:
         from shapely.geometry import Polygon  # type: ignore
         from shapely.ops import unary_union  # type: ignore
     except Exception:  # noqa: BLE001
         return None
+    # body 寸法から推定される overlap 量 (= 1 マイクロメートル相当、 視認できない量)。
+    overlap_m = 1.0e-6
     polys = []
     if len(body_pts) >= 3:
         try:
@@ -155,7 +163,7 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
             if not p.is_valid:
                 p = p.buffer(0)
             if not p.is_empty and p.area > 0:
-                polys.append(p)
+                polys.append(p.buffer(overlap_m))
         except Exception:  # noqa: BLE001
             pass
     for tail_pts in tails_pts:
@@ -166,7 +174,7 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
             if not p.is_valid:
                 p = p.buffer(0)
             if not p.is_empty and p.area > 0:
-                polys.append(p)
+                polys.append(p.buffer(overlap_m))
         except Exception:  # noqa: BLE001
             continue
     if not polys:
@@ -175,10 +183,13 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
         merged = unary_union(polys)
         if merged.is_empty:
             return None
-        # MultiPolygon 対応: 最も大きい polygon を採用 (フキダシ本体相当)。
-        # しっぽが本体から離れる極端な配置は実用上ありえないため、 union 結果が
-        # 単一 polygon になることが期待される。万一 multi の場合は最大面積を採用。
+        # buffer で広げた分を戻す
+        merged = merged.buffer(-overlap_m)
+        if merged.is_empty:
+            return None
         if merged.geom_type == "MultiPolygon":
+            # それでも MultiPolygon (= しっぽが body から離れて完全に disjoint な場合) は
+            # 最大面積の polygon を採用する (実用上は body 本体)。
             polygons = list(merged.geoms)
             polygons.sort(key=lambda p: p.area, reverse=True)
             return polygons[0]
@@ -255,6 +266,41 @@ def _write_fill_blur_alpha_attribute(mesh: bpy.types.Mesh, alpha: Sequence[float
             pass
 
 
+def _shrink_polygon_rings(poly, *, blur_width_m: float) -> list:
+    """blur 効果のために、 外周から内側に向けて段階的に縮小したリング群を返す.
+
+    earcut は boundary 頂点のみしか出力しないため、 内部の距離フィールド
+    (= boundary からの距離) が得られない。 各リングを「境界線」として与えると、
+    earcut の出力に内側リング頂点が含まれ、 そこに正しい alpha 値を計算できる。
+
+    返り値: [poly_0, poly_1, ...] (poly_0 = 元の poly。 リング数は blur_width に応じる)
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+    except Exception:  # noqa: BLE001
+        return [poly]
+    if blur_width_m <= 1.0e-9:
+        return [poly]
+    # 4 段階に shrink: blur_width の 25%, 50%, 75%, 100% (内側 100% = 完全不透明)
+    fractions = [0.25, 0.5, 0.75, 1.0]
+    rings = [poly]
+    for frac in fractions:
+        try:
+            shrunk = poly.buffer(-blur_width_m * frac)
+            if shrunk.is_empty:
+                break
+            if shrunk.geom_type == "MultiPolygon":
+                geoms = sorted(shrunk.geoms, key=lambda p: p.area, reverse=True)
+                shrunk = geoms[0] if geoms else None
+            if shrunk is None or shrunk.is_empty or shrunk.area <= 0:
+                break
+            rings.append(shrunk)
+        except Exception:  # noqa: BLE001
+            break
+    return rings
+
+
 def _build_fill_mesh(
     mesh: bpy.types.Mesh,
     outer_ring: Sequence[tuple[float, float]],
@@ -280,6 +326,55 @@ def _build_fill_mesh(
     # earcut のあと、verts の長さに合わせて blur_alpha を再計算するかどうか:
     # ここではすでに verts と同じ順序・長さで渡される前提なので そのまま書き込む。
     _write_fill_blur_alpha_attribute(mesh, blur_alpha)
+
+
+def _build_fill_mesh_with_blur_rings(
+    mesh: bpy.types.Mesh,
+    union_poly,
+    z_m: float,
+    *,
+    blur_width_m: float,
+) -> tuple[list[tuple[float, float]], list[float]]:
+    """blur 用の同心リング群を含む塗り面メッシュを構築する.
+
+    各リングを別個に earcut で三角分割し、 全リングの頂点とフェースを連結する。
+    内側のリングほど boundary から遠いので、 alpha 値が高くなる。
+
+    返り値: (verts_2d, blur_alpha_per_vertex)
+    """
+    rings = _shrink_polygon_rings(union_poly, blur_width_m=blur_width_m)
+    all_verts: list[tuple[float, float]] = []
+    all_faces: list[tuple[int, int, int]] = []
+    all_alpha: list[float] = []
+    # 外側リングのみで earcut し、 内側リングを hole として与えると、 リング間の
+    # 帯のみ三角分割される。 さらに内側リングを単独で三角分割すると、 内部 fill が
+    # 得られる。 リング 0 = 元の外周。 alpha は: 外側=0, 各リング上=対応 alpha, 最内=1。
+    n_rings = len(rings)
+    for i, ring_poly in enumerate(rings):
+        outer, holes = _polygon_to_outer_holes(ring_poly)
+        # このリングを単独で earcut すると、 全頂点はリング境界上にある。
+        pts_i, faces_i = balloon_line_mesh._triangulate_polygon(outer, holes)
+        if not faces_i or len(pts_i) < 3:
+            continue
+        # alpha = i / (n_rings - 1) (外側 = 0, 最内 = 1)
+        # ただし n_rings=1 なら 1.0 固定 (blur 不可)
+        if n_rings <= 1:
+            ring_alpha = 1.0
+        else:
+            ring_alpha = float(i) / float(n_rings - 1)
+        offset = len(all_verts)
+        all_verts.extend(pts_i)
+        all_alpha.extend([ring_alpha] * len(pts_i))
+        for a, b, c in faces_i:
+            all_faces.append((a + offset, b + offset, c + offset))
+    if not all_verts:
+        return [], []
+    mesh.clear_geometry()
+    verts_3d = [(float(x), float(y), float(z_m)) for x, y in all_verts]
+    mesh.from_pydata(verts_3d, [], all_faces)
+    mesh.update()
+    _write_fill_blur_alpha_attribute(mesh, all_alpha)
+    return all_verts, all_alpha
 
 
 def _attach_fill_mesh_object(
@@ -386,24 +481,24 @@ def ensure_balloon_fill_mesh(
         remove_balloon_fill_mesh(balloon_id)
         return None
 
-    # earcut 直前の pts と同じ順序で blur alpha を計算するため、 先に triangulate
-    # して頂点列を得る。 (距離計算自体はその頂点列を Shapely Point で問い合わせる。)
-    pts, _faces = balloon_line_mesh._triangulate_polygon(outer_ring, holes)
-    if len(pts) < 3:
-        remove_balloon_fill_mesh(balloon_id)
-        return None
-    blur_alpha = _compute_fill_blur_alpha(
-        union_poly,
-        pts,
-        blur_amount=float(getattr(entry, "fill_blur_amount", 0.0) or 0.0),
-        line_width_mm=_line_width_mm(entry),
-    )
-
     mesh_name = _fill_mesh_data_name(balloon_id)
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    _build_fill_mesh(mesh, outer_ring, holes, FILL_Z_M, blur_alpha=blur_alpha)
+
+    blur_amount = float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)
+    blur_amount = max(0.0, min(1.0, blur_amount))
+    if blur_amount > 1.0e-4:
+        # blur 有効: 同心リングを生成して内部頂点に距離フィールドを焼き込む
+        width_mm = max(
+            _FILL_BLUR_MIN_MM,
+            _line_width_mm(entry) * (_FILL_BLUR_BASE + _FILL_BLUR_SCALE * blur_amount),
+        )
+        width_m = width_mm * 0.001
+        _build_fill_mesh_with_blur_rings(mesh, union_poly, FILL_Z_M, blur_width_m=width_m)
+    else:
+        # blur 無効: シンプルな earcut のみ + 全頂点 alpha=1.0
+        _build_fill_mesh(mesh, outer_ring, holes, FILL_Z_M, blur_alpha=None)
 
     return _attach_fill_mesh_object(
         obj_name=_fill_mesh_object_name(balloon_id),

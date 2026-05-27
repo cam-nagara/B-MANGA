@@ -68,7 +68,13 @@ def axis_points(rect: Rect, tail: Any) -> tuple[tuple[float, float], tuple[float
 
 
 def default_axis_points(rect: Rect, tail: Any) -> tuple[tuple[float, float], tuple[float, float]]:
-    angle = math.radians(float(getattr(tail, "direction_deg", 270.0) or 270.0))
+    # `or 270.0` だと direction_deg=0.0 (右) で falsy のため 270.0 (下) に
+    # フォールバックしてしまう不具合があった。 None / 未設定のときだけ既定値を
+    # 採用するように修正。
+    raw_dir = getattr(tail, "direction_deg", 270.0)
+    if raw_dir is None:
+        raw_dir = 270.0
+    angle = math.radians(float(raw_dir))
     dx = math.cos(angle)
     dy = math.sin(angle)
     cx = rect.x + rect.width * 0.5
