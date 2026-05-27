@@ -69,31 +69,6 @@ _PAGE_HEADER_COLOR = (0.0, 0.0, 0.0, 0.95)
 _PAGE_HEADER_OUTLINE_COLOR = (1.0, 1.0, 1.0, 0.9)
 
 
-def _coma_needs_material_preview_blur(coma) -> bool:
-    border = getattr(coma, "border", None)
-    if border is None:
-        return False
-    return (
-        bool(getattr(coma, "visible", True))
-        and bool(getattr(border, "visible", True))
-        and str(getattr(border, "style", "solid") or "solid") == "brush"
-        and max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) > 0.0
-    )
-
-
-def _work_needs_material_preview_blur(work) -> bool:
-    if work is None:
-        return False
-    for page in getattr(work, "pages", []) or []:
-        for coma in getattr(page, "comas", []) or []:
-            if _coma_needs_material_preview_blur(coma):
-                return True
-    for coma in getattr(work, "shared_comas", []) or []:
-        if _coma_needs_material_preview_blur(coma):
-            return True
-    return False
-
-
 def _get_jp_font_id() -> int:
     """日本語表示用 blf font_id を返す (load 失敗時は 0).
 
@@ -1380,24 +1355,17 @@ def apply_bname_shading_mode(context=None) -> int:
     """全ウィンドウの全 VIEW_3D を B-Name のモード別シェーディングに切替.
 
     B-Name 作品 UI の見え方を統一する目的:
-    - 紙の白マテリアルが MatCap や Studio 光源で立体的に陰になるのを防ぎ、
-      フラットな印刷物のように描画する
-    - 紙面編集 (ページ一覧): 通常は shading.type = "SOLID",
-      shading.light = "FLAT", shading.color_type = "TEXTURE"。コマプレビューを
-      コマ平面メッシュの画像テクスチャとして表示するため。
-      「ボカシブラシ」がある場合だけ shading.type = "MATERIAL" に切り替え、
-      コマ平面メッシュのボカシ合成が見えるようにする。
-    - コマ編集: shading.type = "RENDERED"。コマ用blendファイルを開いたとき
-      レンダー結果の見た目で 3D を確認できるようにする (ユーザー要望)。
+    - 紙面編集 (ページ一覧) も コマ編集 もどちらも shading.type = "RENDERED"。
+      フキダシの画像マスクや、 コマ枠のぼかし枠線、 コマ平面のテクスチャ表示が
+      すべて同じシェーダーパスで見えるようにする。
+    - 旧来の ページ一覧 = SOLID 設定では、 フキダシの画像マスクが効かず、
+      コマ枠の外までフキダシが見えてしまっていたため、 RENDERED に統一する。
     work_new / work_open / load_post から呼ぶ。戻り値は変更したエリア数。
     """
     ctx = context or bpy.context
     wm = ctx.window_manager
     if wm is None:
         return 0
-    is_coma = get_mode(ctx) == MODE_COMA
-    work = get_work(ctx)
-    needs_material_preview = (not is_coma) and _work_needs_material_preview_blur(work)
     count = 0
     for window in wm.windows:
         screen = getattr(window, "screen", None)
@@ -1416,29 +1384,9 @@ def apply_bname_shading_mode(context=None) -> int:
             if shading is None:
                 continue
             try:
-                if is_coma:
-                    # コマ編集モード: レンダーモード表示
-                    if getattr(shading, "type", None) != "RENDERED":
-                        shading.type = "RENDERED"
-                        count += 1
-                elif needs_material_preview:
-                    # 画像マスクの輪郭ボカシは Solid 表示では反映されない。
-                    # Material Preview では Emission 素材なので紙面はフラットに見える。
-                    if getattr(shading, "type", None) != "MATERIAL":
-                        shading.type = "MATERIAL"
-                        count += 1
-                else:
-                    # 紙面編集 (ページ一覧): コマプレビュー画像を貼った
-                    # コマ平面メッシュをフラットに表示
-                    if getattr(shading, "type", None) != "SOLID":
-                        shading.type = "SOLID"
-                        count += 1
-                    if getattr(shading, "light", None) != "FLAT":
-                        shading.light = "FLAT"
-                        count += 1
-                    if getattr(shading, "color_type", None) != "TEXTURE":
-                        shading.color_type = "TEXTURE"
-                        count += 1
+                if getattr(shading, "type", None) != "RENDERED":
+                    shading.type = "RENDERED"
+                    count += 1
             except Exception:  # noqa: BLE001
                 _logger.exception("apply_bname_shading_mode: set failed")
     return count
