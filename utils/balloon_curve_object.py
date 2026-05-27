@@ -410,13 +410,15 @@ def _setup_emission_alpha_material(
     try:
         opaque_color = float(color[3]) >= 0.999 and not fill_blur_alpha
         mat.blend_method = "OPAQUE" if opaque_color and mask_info is None else "BLEND"
-        if fill_blur_dither:
+        if mask_info is not None:
+            # 画像マスクがある場合は必ず BLENDED に統一する。
+            # DITHERED はビューポート レンダー表示の低サンプリングだと
+            # マスクのアルファ=0 領域でも斑模様で描画され「マスクが効かない」見え方
+            # になるため、 画像マスクで切り抜くフキダシ系では使わない。
+            mat.surface_render_method = "BLENDED"
+        elif fill_blur_dither:
             mat.surface_render_method = "DITHERED"
-        elif opaque_color and mask_info is not None:
-            # 画像マスクで切り抜く不透明素材は DITHERED で depth を書き込み、
-            # 下に重なったフキダシの線などが上に透けないようにする。
-            mat.surface_render_method = "DITHERED"
-        elif fill_blur_alpha or float(color[3]) < 0.999 or mask_info is not None:
+        elif fill_blur_alpha or float(color[3]) < 0.999:
             mat.surface_render_method = "BLENDED"
         mat.show_transparent_back = True
     except (AttributeError, TypeError):
