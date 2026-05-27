@@ -2826,8 +2826,9 @@ def balloon_values(entry) -> dict[str, Any]:
         "多重線間隔": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
         "多重線幅変化": float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
         "多重線方向": {"outside": 0, "inside": 1, "both": 2}.get(str(getattr(entry, "multi_line_direction", "outside") or "outside"), 0),
-        "谷の線幅": float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
-        "山の線幅": float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
+        # 谷/山の線幅は % 指定。GN socket は mm 値を期待するため base 幅 × pct/100 で渡す。
+        "谷の線幅": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0) * float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0) / 100.0,
+        "山の線幅": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0) * float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0) / 100.0,
         "多重線長さ変化": float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0),
         "線色": tuple(getattr(entry, "line_color", (0.0, 0.0, 0.0, 1.0))),
         "塗り色": tuple(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0))),

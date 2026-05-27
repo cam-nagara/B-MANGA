@@ -308,12 +308,16 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_width_scale_percent: FloatProperty(name="線幅変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_spacing_scale_percent: FloatProperty(name="間隔変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    # 主線の谷/山頂点での線幅 (動的形状のみ有効). 両方とも 0.0 のとき主線全体が非表示。
-    line_valley_width_mm: FloatProperty(name="主線・谷の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    line_peak_width_mm: FloatProperty(name="主線・山の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 主線の谷/山の線幅: 主線の基本線幅 (line_width_mm) を 100% として % 指定。
+    # 100% = 同じ太さ, 0% = その頂点で消える, 500% = 5 倍。辺全体で線形補間。
+    line_valley_width_pct: FloatProperty(name="主線・谷の線幅 (%)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_peak_width_pct: FloatProperty(name="主線・山の線幅 (%)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    thorn_multi_line_valley_width_mm: FloatProperty(name="谷の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    thorn_multi_line_peak_width_mm: FloatProperty(name="山の線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 多重線の谷/山の線幅: 多重線の基本線幅 (multi_line_width_mm) を 100% として % 指定。
+    # 100% = 同じ太さ, 0% = その頂点で消える, 500% = 5 倍。辺全体に渡って隣接頂点間で
+    # 線形補間される (谷から山に向かって 100%→0% など)。
+    thorn_multi_line_valley_width_pct: FloatProperty(name="谷の線幅 (%)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    thorn_multi_line_peak_width_pct: FloatProperty(name="山の線幅 (%)", default=100.0, min=0.0, max=500.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_length_scale_percent: FloatProperty(name="長さ変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     thorn_multi_line_cross_enabled: BoolProperty(name="山谷を延ばして交差", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

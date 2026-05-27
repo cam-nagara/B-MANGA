@@ -100,9 +100,9 @@ def body_outline_point_radii(entry, points: Sequence[tuple[float, float]]) -> li
         return None
     if not points:
         return None
-    base_width = max(1.0e-6, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.3))
-    valley = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", base_width) or 0.0)) / base_width
-    peak = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", base_width) or 0.0)) / base_width
+    # pct → ratio (= multiplier vs base width). 100% → 1.0
+    valley = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0)) / 100.0
+    peak = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0)) / 100.0
     return [valley if index % 2 == 0 else peak for index in range(len(points))]
 
 
@@ -741,12 +741,11 @@ def append_closed_multi_line_paths(
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         ring_spacing_mm = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
-        valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", ring_width_mm) or 0.0)) * (
-            width_scale ** max(0, ring_index - 1)
-        )
-        peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", ring_width_mm) or 0.0)) * (
-            width_scale ** max(0, ring_index - 1)
-        )
+        # pct → 実 mm: 基本リング幅 ring_width_mm に pct/100 を掛ける (width_scale は既に反映済)
+        valley_pct = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0))
+        peak_pct = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0))
+        valley_width_mm = ring_width_mm * valley_pct / 100.0
+        peak_width_mm = ring_width_mm * peak_pct / 100.0
         ring_extent_width_mm = max(ring_width_mm, valley_width_mm, peak_width_mm) if shape_name == "thorn" else ring_width_mm
         if ring_extent_width_mm <= 0.0:
             continue
@@ -1050,8 +1049,11 @@ def outer_render_margin_mm(entry, line_width_mm: float) -> float:
         count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
         spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
         width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0))
-        valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", width_mm) or 0.0))
-        peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", width_mm) or 0.0))
+        # pct → mm: 基本多重線幅 width_mm に pct/100 を掛ける
+        _valley_pct = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0))
+        _peak_pct = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0))
+        valley_width_mm = width_mm * _valley_pct / 100.0
+        peak_width_mm = width_mm * _peak_pct / 100.0
         scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
         spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
         if str(getattr(entry, "multi_line_direction", "outside") or "outside") in {"outside", "both"}:

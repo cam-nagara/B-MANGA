@@ -273,12 +273,12 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     row = box.row(align=True)
     row.prop(entry, "line_style")
     row.prop(entry, "line_width_mm")
-    # 主線の谷/山の線幅: 動的形状でのみ表示 (両方 0 で主線全体が消える)
+    # 主線の谷/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
     _shape_norm_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     if _shape_norm_main_line in {"cloud", "fluffy", "thorn", "thorn-curve"}:
         row = box.row(align=True)
-        row.prop(entry, "line_valley_width_mm")
-        row.prop(entry, "line_peak_width_mm")
+        row.prop(entry, "line_valley_width_pct")
+        row.prop(entry, "line_peak_width_pct")
     if str(getattr(entry, "line_style", "") or "") == "double":
         row = box.row(align=True)
         row.prop(entry, "multi_line_count")
@@ -298,8 +298,8 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             if shape_norm == "thorn":
                 row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
             row = box.row(align=True)
-            row.prop(entry, "thorn_multi_line_valley_width_mm")
-            row.prop(entry, "thorn_multi_line_peak_width_mm")
+            row.prop(entry, "thorn_multi_line_valley_width_pct")
+            row.prop(entry, "thorn_multi_line_peak_width_pct")
     # 角を尖らせる: 全形状共通オプション (主線・フチ・多重線すべてに伝搬)
     if sp is not None:
         row = box.row(align=True)

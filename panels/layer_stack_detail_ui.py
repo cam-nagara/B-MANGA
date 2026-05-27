@@ -183,8 +183,8 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row.prop(entry, "thorn_multi_line_length_scale_percent")
         if str(getattr(entry, "shape", "") or "") == "thorn":
             row = line_box.row(align=True)
-            row.prop(entry, "thorn_multi_line_valley_width_mm")
-            row.prop(entry, "thorn_multi_line_peak_width_mm")
+            row.prop(entry, "thorn_multi_line_valley_width_pct")
+            row.prop(entry, "thorn_multi_line_peak_width_pct")
             line_box.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
     row = line_box.row(align=True)
     row.prop(entry, "line_color")

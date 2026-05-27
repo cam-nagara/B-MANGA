@@ -3,6 +3,38 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.115 谷/山の線幅を % 指定 (0-500%) に変更し、辺全体に線形補間
+
+### 仕様変更
+- 「谷の線幅」「山の線幅」を **mm 指定から % 指定** に変更。`100%` = 基本線幅と同じ、`0%` = その頂点で線幅 0 (= 消える)、`500%` = 5 倍の太さ。範囲 0〜500%。
+- 影響範囲を **頂点ごく近傍** (smoothstep 局所化) から **辺全体** (= 隣接頂点間の線形補間) に変更。
+  - 例: 山 0% / 谷 100% → 谷から山にかけて 100% → 0% に滑らかに変化 (テーパー)
+  - 山 500% / 谷 100% → 山に向かって 100% → 500% に膨らむ
+- 谷・山ともに 0% のとき、多重線・主線とも全体が非表示になる挙動は維持。
+
+### プロパティ rename (Blender 内部識別子)
+- `thorn_multi_line_valley_width_mm` → `thorn_multi_line_valley_width_pct`
+- `thorn_multi_line_peak_width_mm` → `thorn_multi_line_peak_width_pct`
+- `line_valley_width_mm` → `line_valley_width_pct`
+- `line_peak_width_mm` → `line_peak_width_pct`
+- JSON キーも `*WidthMm` → `*WidthPct` に変更。旧キーを持つ古い work ファイルは load 時に default 100% で読み込まれる (= 変化なし表示)。
+
+### 修正
+- `core/balloon.py`: 4 つの線幅プロパティを `_pct` に変更。subtype=PERCENTAGE, default 100, range 0〜500。
+- `utils/balloon_line_mesh.py`:
+  - `ensure_balloon_multi_line_mesh`: `valley_width_pct` / `peak_width_pct` を読み、`multi_width_mm * pct / 100` で実 mm に変換。`dynamic_features_active` 判定も pct ベース。
+  - `ensure_balloon_line_mesh`: 主線も同様に `line_valley/peak_width_pct` を読み `line_width_mm * pct / 100` に変換。
+  - `_build_dynamic_multi_line_polygons`: per-sample 線幅計算を **smoothstep 局所化** から **線形補間** (= `lerp(valley_width, peak_width, t)` で `t = d_valley / (d_valley + d_peak)`) に差し替え。辺全体で滑らかに変化する。
+- `utils/balloon_render_contract.py`, `utils/balloon_curve_render_nodes.py`, `utils/balloon_multiline_curve.py`, `utils/balloon_curve_object.py`, `utils/geometry_nodes_bridge.py`: pct プロパティを読み、必要箇所で base 幅と掛けて mm 値を生成。
+- `panels/balloon_panel.py`, `panels/layer_stack_detail_ui.py`, `operators/layer_detail_op.py`: UI の prop を `_pct` 名に変更。subtype=PERCENTAGE で % 表記。
+- `io/schema.py`: JSON キーを `*WidthPct` に変更 (古い `*WidthMm` キーは無視、default 100 で fallback)。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 主線 valley=100% / peak=0% で 4 動的形状をレンダーし、線幅が谷で太く山で消える線形テーパーになることを確認 (`01_main_line_valley100_peak0.png`)。
+- 主線 valley=100% / peak=500% で、山が 5 倍に膨らむ可変幅主線を確認 (`02_main_line_peak500.png`)。
+- 多重線 valley=100% / peak=0% で、各リングが同じ線形テーパーパターンになることを確認 (`03_multiline_valley100_peak0.png`)。
+- 多重線 valley=0% / peak=0% で全多重線が消えて主線・塗りのみ残ることを確認 (`04_multiline_both_zero.png`)。
+
 ## 2026-05-27 — v0.6.114 山の幅 200mm 拡張 + ズラし量を全周回転に + 動的形状のベースを 楕円/矩形 で切替可能に
 
 ### 仕様変更・追加

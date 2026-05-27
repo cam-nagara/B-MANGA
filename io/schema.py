@@ -874,11 +874,11 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "multiLineSpacingMm": round(float(getattr(entry, "multi_line_spacing_mm", 0.4)), 3),
         "multiLineWidthScalePercent": round(float(getattr(entry, "multi_line_width_scale_percent", 100.0)), 3),
         "multiLineSpacingScalePercent": round(float(getattr(entry, "multi_line_spacing_scale_percent", 100.0)), 3),
-        "lineValleyWidthMm": round(float(getattr(entry, "line_valley_width_mm", 0.3)), 3),
-        "linePeakWidthMm": round(float(getattr(entry, "line_peak_width_mm", 0.3)), 3),
+        "lineValleyWidthPct": round(float(getattr(entry, "line_valley_width_pct", 100.0)), 3),
+        "linePeakWidthPct": round(float(getattr(entry, "line_peak_width_pct", 100.0)), 3),
         "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
-        "thornMultiLineValleyWidthMm": round(float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3)), 3),
-        "thornMultiLinePeakWidthMm": round(float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3)), 3),
+        "thornMultiLineValleyWidthPct": round(float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0)), 3),
+        "thornMultiLinePeakWidthPct": round(float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0)), 3),
         "thornMultiLineLengthScalePercent": round(float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0)), 3),
         "thornMultiLineCrossEnabled": bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
         "lineColor": color_to_hex(entry.line_color),
@@ -978,11 +978,11 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
     entry.multi_line_width_scale_percent = float(data.get("multiLineWidthScalePercent", 100.0))
     entry.multi_line_spacing_scale_percent = float(data.get("multiLineSpacingScalePercent", 100.0))
-    entry.line_valley_width_mm = float(data.get("lineValleyWidthMm", 0.3))
-    entry.line_peak_width_mm = float(data.get("linePeakWidthMm", 0.3))
+    entry.line_valley_width_pct = float(data.get("lineValleyWidthPct", 100.0))
+    entry.line_peak_width_pct = float(data.get("linePeakWidthPct", 100.0))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")
-    entry.thorn_multi_line_valley_width_mm = float(data.get("thornMultiLineValleyWidthMm", 0.3))
-    entry.thorn_multi_line_peak_width_mm = float(data.get("thornMultiLinePeakWidthMm", 0.3))
+    entry.thorn_multi_line_valley_width_pct = float(data.get("thornMultiLineValleyWidthPct", 100.0))
+    entry.thorn_multi_line_peak_width_pct = float(data.get("thornMultiLinePeakWidthPct", 100.0))
     entry.thorn_multi_line_length_scale_percent = float(data.get("thornMultiLineLengthScalePercent", 100.0))
     entry.thorn_multi_line_cross_enabled = bool(data.get("thornMultiLineCrossEnabled", False))
     alpha = float(data.get("lineColorAlpha", 1.0))

@@ -780,42 +780,27 @@ def _build_dynamic_multi_line_polygons(
         expected_count=expected_count,
     )
 
-    # 各点での line width: 基本は base_width_m。
-    # 山/谷の頂点のごく近傍のみ peak_width_m / valley_width_m へ smoothstep で遷移する。
-    # falloff 半径 = 山-谷間 arc 距離の 35% 程度。
-    if peaks and valleys:
-        char_dist_sum = 0.0
-        count_chars = 0
-        for p in peaks:
-            nearest_v = min((_circular_dist(p, v, n) for v in valleys), default=n // 4)
-            char_dist_sum += nearest_v
-            count_chars += 1
-        char_dist = char_dist_sum / max(count_chars, 1)
-    elif peaks:
-        char_dist = n / max(2, len(peaks))
-    elif valleys:
-        char_dist = n / max(2, len(valleys))
-    else:
-        char_dist = n / 8
-    falloff = max(2.0, char_dist * 0.35)
-    apply_peak = bool(peaks) and abs(peak_width_m - base_width_m) > 1.0e-9
-    apply_valley = bool(valleys) and abs(valley_width_m - base_width_m) > 1.0e-9
+    # 各サンプル点の line width: 谷と山の頂点それぞれを valley_width_m / peak_width_m とし、
+    # 辺全体で線形補間する (山0%・谷100% なら谷→山にかけて 100%→0% に線形で変化)。
     widths: list[float] = []
-    for i in range(n):
-        w = base_width_m
-        if apply_peak:
-            d_peak = min(_circular_dist(i, p, n) for p in peaks)
-            if d_peak < falloff:
-                t = 1.0 - d_peak / falloff
-                t = t * t * (3.0 - 2.0 * t)  # smoothstep
-                w = w * (1.0 - t) + peak_width_m * t
-        if apply_valley:
-            d_valley = min(_circular_dist(i, v, n) for v in valleys)
-            if d_valley < falloff:
-                t = 1.0 - d_valley / falloff
-                t = t * t * (3.0 - 2.0 * t)
-                w = w * (1.0 - t) + valley_width_m * t
-        widths.append(w)
+    if not peaks and not valleys:
+        widths = [base_width_m] * n
+    else:
+        for i in range(n):
+            if peaks:
+                d_peak = min(_circular_dist(i, p, n) for p in peaks)
+            else:
+                d_peak = n  # peak が無いケース: 全体を valley_width とみなす
+            if valleys:
+                d_valley = min(_circular_dist(i, v, n) for v in valleys)
+            else:
+                d_valley = n
+            total = d_peak + d_valley
+            if total <= 0:
+                t = 0.5
+            else:
+                t = d_valley / total  # 0 at valley, 1 at peak
+            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
 
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
 
@@ -1625,24 +1610,24 @@ def ensure_balloon_line_mesh(
         return None
     valley_sharp = _valley_sharp_for_entry(entry)
 
-    # 主線の谷/山の線幅 (動的形状のみ有効): line_valley_width / line_peak_width が
-    # line_width と一致しないとき、可変幅 builder にルートする。両方 0 のとき主線全体不可視。
+    # 主線の谷/山の線幅: % 指定 (100% = base line_width, 0% = その頂点で消える)。
+    # 辺全体で線形補間。動的形状のみ有効。両方 0% のとき主線全体不可視。
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    line_valley_width_mm = max(0.0, float(getattr(entry, "line_valley_width_mm", line_width_mm) or 0.0))
-    line_peak_width_mm = max(0.0, float(getattr(entry, "line_peak_width_mm", line_width_mm) or 0.0))
+    line_valley_width_pct = max(0.0, min(500.0, float(getattr(entry, "line_valley_width_pct", 100.0) or 100.0)))
+    line_peak_width_pct = max(0.0, min(500.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0)))
+    line_valley_width_mm = line_width_mm * line_valley_width_pct / 100.0
+    line_peak_width_mm = line_width_mm * line_peak_width_pct / 100.0
     main_line_dynamic = (
         shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
         and (
-            abs(line_valley_width_mm - line_width_mm) > 1.0e-6
-            or abs(line_peak_width_mm - line_width_mm) > 1.0e-6
+            abs(line_valley_width_pct - 100.0) > 1.0e-3
+            or abs(line_peak_width_pct - 100.0) > 1.0e-3
         )
     )
     main_line_both_zero = (
         main_line_dynamic
-        and line_valley_width_mm <= 1.0e-6
-        and line_peak_width_mm <= 1.0e-6
-        and abs(line_valley_width_mm - line_width_mm) > 1.0e-6
-        and abs(line_peak_width_mm - line_width_mm) > 1.0e-6
+        and line_valley_width_pct <= 1.0e-3
+        and line_peak_width_pct <= 1.0e-3
     )
 
     if line_style in {"dashed", "dotted"}:
@@ -1887,16 +1872,20 @@ def ensure_balloon_multi_line_mesh(
     spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.0) or 0.0))
     width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
     spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
-    valley_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.0) or 0.0))
-    peak_width_mm = max(0.0, float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.0) or 0.0))
+    # 谷/山の線幅は % で指定 (100% = base 多重線幅と同じ, 0% = その頂点で消える, 500% = 5 倍)。
+    # 辺全体に渡って valley 頂点 → peak 頂点 で線形補間する。
+    valley_width_pct = max(0.0, min(500.0, float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0)))
+    peak_width_pct = max(0.0, min(500.0, float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0)))
+    valley_width_mm = multi_width_mm * valley_width_pct / 100.0
+    peak_width_mm = multi_width_mm * peak_width_pct / 100.0
     length_scale = max(0.0, min(1.0, float(getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0) / 100.0))
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     dynamic_features_active = (
         shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
         and (
             length_scale < 0.999
-            or abs(valley_width_mm - multi_width_mm) > 1.0e-6
-            or abs(peak_width_mm - multi_width_mm) > 1.0e-6
+            or abs(valley_width_pct - 100.0) > 1.0e-3
+            or abs(peak_width_pct - 100.0) > 1.0e-3
         )
     )
     if multi_width_mm <= 1.0e-6:
@@ -1934,10 +1923,8 @@ def ensure_balloon_multi_line_mesh(
     # 谷幅・山幅が両方 0 のときは多重線全体を非表示にする (= polygons 追加しない)。
     both_widths_zero = (
         dynamic_features_active
-        and valley_width_mm <= 1.0e-6
-        and peak_width_mm <= 1.0e-6
-        and abs(valley_width_mm - multi_width_mm) > 1.0e-6
-        and abs(peak_width_mm - multi_width_mm) > 1.0e-6
+        and valley_width_pct <= 1.0e-3
+        and peak_width_pct <= 1.0e-3
     )
     body_center_m = (
         (sum(s[0] for s in samples) / len(samples)),

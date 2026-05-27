@@ -45,8 +45,8 @@ class BalloonRenderSettings:
     multi_line_width_scale_percent: float
     multi_line_spacing_scale_percent: float
     multi_line_direction: str
-    thorn_multi_line_valley_width_mm: float
-    thorn_multi_line_peak_width_mm: float
+    thorn_multi_line_valley_width_pct: float
+    thorn_multi_line_peak_width_pct: float
     thorn_multi_line_length_scale_percent: float
     thorn_multi_line_cross_enabled: bool
     outer_edge_enabled: bool
@@ -72,8 +72,8 @@ class BalloonRenderSettings:
             "multi_line_spacing_scale_percent": self.multi_line_spacing_scale_percent,
             "multi_line_direction": self.multi_line_direction,
             "native_multi_line_rings_enabled": self.native_multi_line_rings_enabled,
-            "thorn_multi_line_valley_width_mm": self.thorn_multi_line_valley_width_mm,
-            "thorn_multi_line_peak_width_mm": self.thorn_multi_line_peak_width_mm,
+            "thorn_multi_line_valley_width_pct": self.thorn_multi_line_valley_width_pct,
+            "thorn_multi_line_peak_width_pct": self.thorn_multi_line_peak_width_pct,
             "thorn_multi_line_length_scale_percent": self.thorn_multi_line_length_scale_percent,
             "thorn_multi_line_cross_enabled": self.thorn_multi_line_cross_enabled,
             "outer_edge_enabled": self.outer_edge_enabled,
@@ -102,8 +102,8 @@ def settings_from_entry(entry, *, filled_line_enabled: bool = False) -> BalloonR
         multi_line_width_scale_percent=float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0),
         multi_line_spacing_scale_percent=float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0),
         multi_line_direction=str(getattr(entry, "multi_line_direction", "outside") or "outside"),
-        thorn_multi_line_valley_width_mm=float(getattr(entry, "thorn_multi_line_valley_width_mm", 0.3) or 0.0),
-        thorn_multi_line_peak_width_mm=float(getattr(entry, "thorn_multi_line_peak_width_mm", 0.3) or 0.0),
+        thorn_multi_line_valley_width_pct=float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0) or 0.0),
+        thorn_multi_line_peak_width_pct=float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0) or 0.0),
         thorn_multi_line_length_scale_percent=float(
             getattr(entry, "thorn_multi_line_length_scale_percent", 100.0) or 0.0
         ),
