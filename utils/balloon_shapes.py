@@ -995,13 +995,6 @@ def _outline_thorn_curve_with_corners(
 
 
 def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
-    """トゲ (曲線) フキダシのベジエループを返す.
-
-    谷 (内側) とピーク (外側) を交互にアンカーとして配置する。谷では左右ハンドルが
-    隣接ピーク方向を向き V 字 (鋭角谷)、ピークでは左右ハンドルが radial に対する
-    垂直方向で同一直線上 (= C1 連続のなめらか山先端) になる。これによりトゲの
-    形状を保ちつつ、山の先端は鋭角ではなく曲線になる。
-    """
     base = _dynamic_base(rect.width, rect.height, opts)
     if base is None:
         return _bezier_ellipse(rect)
@@ -1009,85 +1002,38 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
     if not segments:
         return _bezier_ellipse(rect)
+    tpull = 0.18
+    depth_ratio = 1.12
 
-    notch = min(
-        max(0.2, min(rect.width, rect.height) * 0.02),
-        max(0.0, min(rx, ry) - 0.1),
-    )
+    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
+        return (cx + (rx + eff_h * h_mul) * math.cos(t), cy + (ry + eff_h * h_mul) * math.sin(t))
 
-    # 谷とピークを交互に並べる
-    points: list[tuple[tuple[float, float], bool]] = []
+    peaks: list[tuple[float, float]] = []
     for _is_sub, bump_angle, h_mul in segments:
-        valley_angle = angle
-        peak_angle = angle + bump_angle * 0.5
+        mid_angle = angle + bump_angle * 0.5
         angle += bump_angle
-        # 谷: 半径 rx - notch
-        v_point = (
-            cx + (rx - notch) * math.cos(valley_angle),
-            cy + (ry - notch) * math.sin(valley_angle),
-        )
-        # ピーク: 半径 rx + eff_h * h_mul
-        peak_rx = rx + eff_h * h_mul
-        peak_ry = ry + eff_h * h_mul
-        p_point = (
-            cx + peak_rx * math.cos(peak_angle),
-            cy + peak_ry * math.sin(peak_angle),
-        )
-        points.append((v_point, False))
-        points.append((p_point, True))
-
-    n = len(points)
-    if n < 6:
+        peaks.append(peak_at(mid_angle, h_mul))
+    if len(peaks) < 3:
         return _bezier_ellipse(rect)
 
-    anchors: list[BezierAnchor] = []
-    for i in range(n):
-        co, is_peak = points[i]
-        prev_co = points[(i - 1) % n][0]
-        next_co = points[(i + 1) % n][0]
-        if is_peak:
-            # ピーク: radial に垂直な接線方向に C1 連続なハンドルを伸ばす (山先端を曲線にする)
-            rx_p = co[0] - cx
-            ry_p = co[1] - cy
-            rlen = math.hypot(rx_p, ry_p)
-            if rlen < 1.0e-9:
-                handle_left = co
-                handle_right = co
-            else:
-                tx = -ry_p / rlen
-                ty = rx_p / rlen
-                if (next_co[0] - co[0]) * tx + (next_co[1] - co[1]) * ty < 0.0:
-                    tx, ty = -tx, -ty
-                # ハンドル長: 隣接谷までの距離の 35% 程度 (山先端の曲率半径を決定)
-                avg_neighbor = (
-                    math.hypot(prev_co[0] - co[0], prev_co[1] - co[1])
-                    + math.hypot(next_co[0] - co[0], next_co[1] - co[1])
-                ) * 0.5
-                mag = avg_neighbor * 0.32
-                handle_right = (co[0] + tx * mag, co[1] + ty * mag)
-                handle_left = (co[0] - tx * mag, co[1] - ty * mag)
-        else:
-            # 谷: 左右ハンドルがそれぞれ隣接ピーク方向を向き、ハンドル先は谷-ピーク間の
-            # 1/3 程度に置く (V 字の鋭角谷)
-            handle_left = (
-                co[0] + (prev_co[0] - co[0]) / 3.0,
-                co[1] + (prev_co[1] - co[1]) / 3.0,
-            )
-            handle_right = (
-                co[0] + (next_co[0] - co[0]) / 3.0,
-                co[1] + (next_co[1] - co[1]) / 3.0,
-            )
-        anchors.append(_local_anchor_to_rect(
-            rect,
-            BezierAnchor(
-                co=co,
-                handle_left=handle_left,
-                handle_right=handle_right,
-                handle_left_type="FREE",
-                handle_right_type="FREE",
-            ),
-        ))
-    return anchors
+    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    for i, p0 in enumerate(peaks):
+        p1 = peaks[(i + 1) % len(peaks)]
+        mx = (p0[0] + p1[0]) * 0.5
+        my = (p0[1] + p1[1]) * 0.5
+        dcx = cx - mx
+        dcy = cy - my
+        length = math.hypot(dcx, dcy)
+        in_x = dcx / length if length > 0.001 else 0.0
+        in_y = dcy / length if length > 0.001 else 0.0
+        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
+        c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
+        c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
+        cubics.append((p0, c1, c2))
+    return [
+        _local_anchor_to_rect(rect, BezierAnchor(co, cubics[(i - 1) % len(cubics)][2], c1))
+        for i, (co, c1, _c2) in enumerate(cubics)
+    ]
 
 
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
