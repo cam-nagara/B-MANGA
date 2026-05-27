@@ -180,6 +180,39 @@ def main() -> None:
     _center_and_render([obj], out)
     print(f"[OUT] thorn + sub-bumps + cross, near=80 far=50: {out}")
 
+    # --- 6) ユーザー再現: 谷=100%, 山=94.15% (僅か非一様) + 長さ 90/24 ---
+    _delete_all_balloons(page)
+    balloon_curve_object.cleanup_orphan_balloon_objects(context.scene)
+    from bname_dev_v120.operators import balloon_op
+    entry = balloon_op._create_balloon_entry(
+        context, page,
+        shape="thorn", x=30.0, y=30.0, w=80.0, h=80.0,
+        parent_kind="page", parent_key=parent_key,
+    )
+    entry.line_style = "double"
+    entry.line_width_mm = 3.45
+    entry.line_color = (1.0, 0.2, 0.2, 1.0)
+    entry.fill_color = (1.0, 1.0, 1.0, 1.0)
+    entry.multi_line_count = 3
+    entry.multi_line_direction = "outside"
+    entry.multi_line_width_mm = 0.30
+    entry.multi_line_spacing_mm = 0.40
+    entry.thorn_multi_line_valley_width_pct = 100.0
+    entry.thorn_multi_line_peak_width_pct = 94.15
+    entry.thorn_multi_line_length_scale_near_percent = 90.43
+    entry.thorn_multi_line_length_scale_far_percent = 24.47
+    sp = entry.shape_params
+    sp.cloud_valley_sharp = True
+    sp.cloud_bump_width_mm = 22.09
+    sp.cloud_bump_height_mm = 11.44
+    sp.cloud_offset_percent = 50.0
+    sp.cloud_sub_width_ratio = 24.60
+    sp.cloud_sub_height_ratio = 0.0
+    obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+    out = _OUT_PATH / "06_user_repro.png"
+    _center_and_render([obj], out)
+    print(f"[OUT] user repro (valley=100 peak=94.15 length 90/24): {out}")
+
     print(f"[DONE] 出力: {_OUT_PATH}")
 
 

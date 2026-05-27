@@ -3,6 +3,31 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-27 — v0.6.121 多重線の谷/山の線幅が非一様 (100% 未満) のとき崩れるバグ修正
+
+### 症状
+- 多重線の「谷の線幅」「山の線幅」を 100% 未満 (例 山=94.15%) に設定すると、多重線が破片化して描画されていた。
+- またトゲごとに多重線の描画形状が揃わず、形状によりバラバラに見えていた。
+
+### 原因
+- 幅一様 (谷=山) のリングは v0.6.120 で Shapely buffer ベースに切り替え済みだったが、幅が非一様のときは sample-direct 経路にフォールバックして、鋭角コーナーで法線が急変した centerline により帯エッジがヒゲ状に飛び出していた。
+
+### 修正
+- 幅非一様のリングも Shapely buffer 由来の centerline を使用するように。`body_poly.buffer(signed_offset_m)` で滑らかな centerline 多角形を作り、その各点について「角度的に最も近い body sample のインデックス」から peaks/valleys までの距離で per-point 幅を線形補間。outer/inner を centerline ± normal*width/2 で構築、`outer_poly.difference(inner_poly)` で帯ポリゴンに。
+- 鋭角コーナーは buffer のミテレ延長が自然に効くため、帯エッジがヒゲ状に飛び出さず滑らかに繋がる。
+- 大山/大谷の radial 閾値フィルタは引き続き有効 (= サブバンプは length cut 中心にしない)。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_build_variable_width_band_from_buffer` ヘルパー追加 (幅可変版の Shapely 帯構築)。
+  - `_build_shapely_band_with_peak_cuts` を幅可変対応に拡張 (`valley_width_m / peak_width_m` の 2 引数を受け取る)。
+  - `_build_dynamic_multi_line_polygons` の分岐条件を「length<100% または 幅非一様」に拡張し、両者で Shapely 経路を採用。
+- `test/blender_balloon_v0_6_120_check.py`: ユーザー報告ケース (谷=100/山=94.15、長さ 90/24) の検証ケースを追加。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- 山=94.15% / 長さ near=90.43% far=24.47% で 3 リングがきれいに谷側に残り、山頂で切れることを確認 (`06_user_repro.png`)。
+- 既存の長さ変化検証 (`02 / 03 / 04`) も clean な多重線を維持。
+
 ## 2026-05-27 — v0.6.120 多重線「長さ変化 < 100%」で線が崩れるバグ修正 (Shapely 化 + 大山フィルタ)
 
 ### 症状

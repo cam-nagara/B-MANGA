@@ -761,17 +761,17 @@ def _build_dynamic_multi_line_polygons(
         expected_count=expected_count,
     )
 
-    # 幅が一様 (valley_width ≈ peak_width) かつ length が < 100% で main peak が
-    # 検出できる場合、Shapely buffer + wedge 差し引き方式で帯を構築する。
-    # サンプル直結方式だと鋭角コーナーで法線が急変して帯エッジがヒゲ状に
-    # 飛び出すため、buffer ベースの方が遥かに綺麗。
-    width_uniform = abs(valley_width_m - peak_width_m) < 1.0e-6
-    if width_uniform and length_scale < 0.999:
+    # 鋭角コーナーで法線が急変する sample-direct 方式は帯エッジが「ヒゲ状」に
+    # 飛び出してしまうため、length<100% または width 非一様のリングは Shapely
+    # buffer ベースの centerline + 主山頂のくさび形差し引き方式で構築する。
+    # buffer 自体は鋭角コーナーで自然なミテレ延長を持つため、帯が滑らかに繋がる。
+    if length_scale < 0.999 or abs(valley_width_m - peak_width_m) > 1.0e-6:
         polys = _build_shapely_band_with_peak_cuts(
             pts,
             balloon_center_m=balloon_center_m,
             signed_offset_m=signed_offset_m,
-            band_width_m=valley_width_m,
+            valley_width_m=valley_width_m,
+            peak_width_m=peak_width_m,
             length_scale=length_scale,
             valley_sharp=valley_sharp,
             peaks_all=peaks_all,
@@ -888,34 +888,55 @@ def _build_shapely_band_with_peak_cuts(
     *,
     balloon_center_m: tuple[float, float],
     signed_offset_m: float,
-    band_width_m: float,
+    valley_width_m: float,
+    peak_width_m: float,
     length_scale: float,
     valley_sharp: bool,
     peaks_all: Sequence[int],
     valleys_all: Sequence[int],
     cross_extension_m: float = 0.0,
 ) -> Optional[list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]]:
-    """幅一様のリングを Shapely で構築し、長さ変化分を主山頂のくさび形差し引きで作る."""
+    """Shapely 上で滑らかな centerline リングを作り、主山頂のくさび差し引きで length 変化を、
+    centerline 上のリサンプル + per-point 幅で width 変化を表現する."""
     python_deps.ensure_bundled_wheels_on_path()
     try:
         from shapely.geometry import Polygon  # type: ignore
         from shapely.ops import unary_union  # type: ignore
     except Exception:  # noqa: BLE001
         return None
-    if band_width_m <= 1.0e-9:
+    if max(valley_width_m, peak_width_m) <= 1.0e-9:
         return []
     body_poly = _build_body_polygon([(p[0], p[1], 1.0) for p in pts])
     if body_poly is None:
         return None
     join = 2 if valley_sharp else 1
     mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
-    half = band_width_m * 0.5
-    try:
-        outer_buf = body_poly.buffer(signed_offset_m + half, join_style=join, mitre_limit=mitre)
-        inner_buf = body_poly.buffer(signed_offset_m - half, join_style=join, mitre_limit=mitre)
-        band = outer_buf.difference(inner_buf)
-    except Exception:  # noqa: BLE001
-        return None
+
+    if abs(valley_width_m - peak_width_m) < 1.0e-6:
+        # 幅一様: 二つの buffer の差で帯を作る (最速・最も綺麗)
+        half = max(valley_width_m, peak_width_m) * 0.5
+        try:
+            outer_buf = body_poly.buffer(signed_offset_m + half, join_style=join, mitre_limit=mitre)
+            inner_buf = body_poly.buffer(signed_offset_m - half, join_style=join, mitre_limit=mitre)
+            band = outer_buf.difference(inner_buf)
+        except Exception:  # noqa: BLE001
+            return None
+    else:
+        # 幅可変: buffer 由来の centerline をリサンプリングし、各点の幅を peaks/valleys
+        # からの radial 距離に基づき線形補間して、独自に帯ポリゴンを構築。
+        band = _build_variable_width_band_from_buffer(
+            body_poly=body_poly,
+            pts=pts,
+            balloon_center_m=balloon_center_m,
+            signed_offset_m=signed_offset_m,
+            valley_width_m=valley_width_m,
+            peak_width_m=peak_width_m,
+            valley_sharp=valley_sharp,
+            peaks_all=peaks_all,
+            valleys_all=valleys_all,
+        )
+        if band is None or band.is_empty:
+            return None
     if band.is_empty:
         return []
 
@@ -985,6 +1006,124 @@ def _build_shapely_band_with_peak_cuts(
     if band.is_empty:
         return []
     return _shapely_band_to_polygons(band)
+
+
+def _build_variable_width_band_from_buffer(
+    *,
+    body_poly,
+    pts: Sequence[tuple[float, float]],
+    balloon_center_m: tuple[float, float],
+    signed_offset_m: float,
+    valley_width_m: float,
+    peak_width_m: float,
+    valley_sharp: bool,
+    peaks_all: Sequence[int],
+    valleys_all: Sequence[int],
+):
+    """幅可変リングを Shapely buffer 由来の centerline で構築する。
+
+    1. body_poly を `signed_offset_m` で buffer して滑らかな centerline 多角形を得る
+    2. centerline の外周をリサンプル (各サンプル点で外向き法線を計算)
+    3. 各 centerline 点について、最も近い body sample のインデックスを推定し、
+       そのインデックスから peaks/valleys の radial 距離で per-point 幅を線形補間
+    4. centerline ± normal * width/2 で outer/inner ループを作り、Shapely Polygon に
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        center_buf = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
+    except Exception:  # noqa: BLE001
+        return None
+    if center_buf.is_empty:
+        return None
+    if center_buf.geom_type == "Polygon":
+        geom = center_buf
+    elif center_buf.geom_type == "MultiPolygon":
+        geom = max(center_buf.geoms, key=lambda g: g.area)
+    else:
+        return None
+    coords = list(geom.exterior.coords)
+    if len(coords) < 6:
+        return None
+    cl_pts = [(float(x), float(y)) for x, y in coords]
+    if math.hypot(cl_pts[0][0] - cl_pts[-1][0], cl_pts[0][1] - cl_pts[-1][1]) <= 1.0e-9:
+        cl_pts = cl_pts[:-1]
+    m = len(cl_pts)
+    if m < 6:
+        return None
+    cl_normals = _polyline_outward_normals(cl_pts, closed=True, balloon_center=balloon_center_m)
+
+    # 各 centerline 点から最も近い body sample を見つける (角度比較で簡略化)
+    cx, cy = balloon_center_m
+    body_angles = [math.atan2(p[1] - cy, p[0] - cx) for p in pts]
+    n = len(pts)
+
+    # peaks_all/valleys_all の radial 値を取っておく
+    radii = [math.hypot(p[0] - cx, p[1] - cy) for p in pts]
+
+    def _circ_dist_int(a: int, b: int) -> int:
+        d = abs(a - b) % n
+        return min(d, n - d)
+
+    widths: list[float] = []
+    for cl in cl_pts:
+        cl_angle = math.atan2(cl[1] - cy, cl[0] - cx)
+        # 角度的に最も近い body sample
+        best_i = 0
+        best_da = float("inf")
+        for i, ba in enumerate(body_angles):
+            da = abs(ba - cl_angle)
+            if da > math.pi:
+                da = 2.0 * math.pi - da
+            if da < best_da:
+                best_da = da
+                best_i = i
+        # 大山/大谷の radial 閾値で main peaks/valleys に絞る
+        if peaks_all and valleys_all:
+            max_r = max(radii[p] for p in peaks_all)
+            min_r = min(radii[v] for v in valleys_all)
+            if max_r - min_r > 1.0e-6:
+                half_r = (max_r + min_r) * 0.5
+                main_peaks = [p for p in peaks_all if radii[p] >= half_r]
+                main_valleys = [v for v in valleys_all if radii[v] <= half_r]
+            else:
+                main_peaks = list(peaks_all)
+                main_valleys = list(valleys_all)
+        else:
+            main_peaks = list(peaks_all)
+            main_valleys = list(valleys_all)
+        d_peak = min((_circ_dist_int(best_i, p) for p in main_peaks), default=n) if main_peaks else n
+        d_valley = min((_circ_dist_int(best_i, v) for v in main_valleys), default=n) if main_valleys else n
+        total = d_peak + d_valley
+        t = 0.5 if total <= 0 else (d_valley / total)
+        widths.append(valley_width_m + (peak_width_m - valley_width_m) * t)
+
+    # outer/inner ループを構築
+    outer_ring = []
+    inner_ring = []
+    for i in range(m):
+        cx_pt, cy_pt = cl_pts[i]
+        nx, ny = cl_normals[i]
+        half_w = widths[i] * 0.5
+        outer_ring.append((cx_pt + nx * half_w, cy_pt + ny * half_w))
+        inner_ring.append((cx_pt - nx * half_w, cy_pt - ny * half_w))
+
+    try:
+        outer_poly = Polygon(outer_ring)
+        inner_poly = Polygon(inner_ring)
+        if not outer_poly.is_valid:
+            outer_poly = outer_poly.buffer(0)
+        if not inner_poly.is_valid:
+            inner_poly = inner_poly.buffer(0)
+        band = outer_poly.difference(inner_poly)
+    except Exception:  # noqa: BLE001
+        return None
+    return band
 
 
 def _shapely_band_to_polygons(band) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
