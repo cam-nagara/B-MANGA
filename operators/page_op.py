@@ -53,6 +53,77 @@ def _set_page_layer_active(context) -> None:
     edge_selection.clear_selection(context)
 
 
+def _duplicate_page_gp_layers(context, src_page, dst_page) -> None:
+    """src_page 配下の GP レイヤー (ページ本体 + 各コマ) を dst_page へ複製する.
+
+    元レイヤーの ``parent_key`` (= ページ/コマの安定 ID) を dst_page 側の
+    対応する ``parent_key`` に書き換える。コマ並びは src/dst で同順を前提とする。
+    """
+    from ..utils import gp_layer_parenting as gp_parent
+    from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
+
+    master = gp_utils.get_master_gpencil()
+    if master is None:
+        return
+    layers = getattr(getattr(master, "data", None), "layers", None)
+    if layers is None:
+        return
+
+    src_page_key = page_stack_key(src_page)
+    dst_page_key = page_stack_key(dst_page)
+    key_map = {src_page_key: dst_page_key}
+    src_comas = list(getattr(src_page, "comas", []) or [])
+    dst_comas = list(getattr(dst_page, "comas", []) or [])
+    for src_coma, dst_coma in zip(src_comas, dst_comas):
+        key_map[coma_stack_key(src_page, src_coma)] = coma_stack_key(dst_page, dst_coma)
+
+    src_keys = set(key_map.keys())
+    layers_to_copy = [layer for layer in list(layers) if gp_parent.parent_key(layer) in src_keys]
+    if not layers_to_copy:
+        return
+
+    view_layer = getattr(context, "view_layer", None)
+    saved_active_obj = (
+        view_layer.objects.active if (view_layer is not None and getattr(view_layer, "objects", None) is not None) else None
+    )
+    saved_active_layer = getattr(layers, "active", None)
+    try:
+        if view_layer is not None:
+            view_layer.objects.active = master
+        for src_layer in layers_to_copy:
+            old_key = gp_parent.parent_key(src_layer)
+            new_key = key_map.get(old_key, dst_page_key)
+            try:
+                layers.active = src_layer
+            except Exception:  # noqa: BLE001
+                continue
+            try:
+                result = bpy.ops.grease_pencil.layer_duplicate("EXEC_DEFAULT", empty_keyframes=False)
+            except Exception:  # noqa: BLE001
+                _logger.exception("page_duplicate: GP layer duplicate failed")
+                continue
+            if "FINISHED" not in result:
+                continue
+            dup_layer = getattr(layers, "active", None)
+            if dup_layer is None or dup_layer is src_layer:
+                continue
+            try:
+                gp_parent.set_parent_key(dup_layer, new_key)
+            except Exception:  # noqa: BLE001
+                _logger.exception("page_duplicate: set_parent_key failed")
+    finally:
+        try:
+            if saved_active_layer is not None:
+                layers.active = saved_active_layer
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            if view_layer is not None and saved_active_obj is not None:
+                view_layer.objects.active = saved_active_obj
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _pick_object_layer_at_event(context, event) -> tuple[dict | None, object | None]:
     try:
         from . import object_tool_op
@@ -236,10 +307,9 @@ class BNAME_OT_page_duplicate(Operator):
                 work.pages.move(new_index, idx + 1)
             work.active_page_index = idx + 1
             new_entry = work.pages[work.active_page_index]
-            # 複製ページの GP/Collection は新規生成 (元ページのストロークは
-            # 引き継がない: 複製は JSON/コマ構成のみとし、GP データは白紙
-            # から始める設計)
             gp_utils.ensure_page_gpencil(context.scene, new_id)
+            # 元ページの GP レイヤー (ページ本体 + 各コマ) を新ページへ複製。
+            _duplicate_page_gp_layers(context, src, new_entry)
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_page_json(work_dir, new_entry)
             page_io.save_pages_json(work_dir, work)

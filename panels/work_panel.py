@@ -62,7 +62,6 @@ class BNAME_PT_work(Panel):
         row.operator("bname.work_new", text="新規", icon="FILE_NEW")
         row.operator("bname.work_open", text="開く", icon="FILE_FOLDER")
         row.operator("bname.open_current_folder", text="", icon="FILEBROWSER")
-        layout.prop(context.scene, "bname_interaction_enabled", text="B-Name操作")
 
         if work is None or not work.loaded:
             layout.label(text="作品が開かれていません", icon="INFO")

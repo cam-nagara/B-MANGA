@@ -51,6 +51,7 @@ class BNAME_PT_tools(Panel):
 
     def draw(self, context):
         layout = self.layout
+        layout.prop(context.scene, "bname_interaction_enabled", text="B-Name操作")
         obj = None
         try:
             from ..utils import gpencil as gp_utils

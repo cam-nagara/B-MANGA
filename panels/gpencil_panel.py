@@ -579,6 +579,26 @@ def _draw_layer_stack_box(layout, context) -> None:
         info_row.operator(
             "bname.outliner_restore_view", text="", icon="LOOP_BACK"
         )
+        # UIList の高さを表示中アイテム数に合わせる。固定 rows だとアイテムが
+        # 少ないとき下端にダミー空行が並び「コマプレビュー周辺に空き行が出る」
+        # 見た目になっていた。filter 適用後の項目数を数えて rows を決める。
+        active_page_idx = int(getattr(work, "active_page_index", -1)) if work is not None else -1
+        active_page_key = ""
+        if work is not None and 0 <= active_page_idx < len(work.pages):
+            active_page_key = layer_stack_utils.page_stack_key(work.pages[active_page_idx])
+        visible_count = 0
+        if active_page_key:
+            for item in stack:
+                kind = getattr(item, "kind", "")
+                if kind == "outside_group":
+                    continue
+                if kind == "page":
+                    if str(getattr(item, "key", "") or "") == active_page_key:
+                        visible_count += 1
+                    continue
+                if layer_stack_utils._stack_item_page_key(item, context) == active_page_key:
+                    visible_count += 1
+        rows = max(1, min(visible_count, 30)) if visible_count else 1
         row = box.row()
         row.template_list(
             BNAME_UL_layer_stack.bl_idname,
@@ -587,7 +607,8 @@ def _draw_layer_stack_box(layout, context) -> None:
             "bname_layer_stack",
             scene,
             "bname_active_layer_stack_index",
-            rows=8,
+            rows=rows,
+            maxrows=30,
             sort_lock=False,
         )
         col = row.column(align=True)
