@@ -151,6 +151,30 @@ class BNAME_RENDER_OT_command_remove(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_command_duplicate(Operator):
+    bl_idname = "bname_render.command_duplicate"
+    bl_label = "コマンドを複製"
+    bl_description = "選択中のコマンドを複製して直下に挿入"
+
+    @classmethod
+    def poll(cls, context):
+        preset = core.active_preset(context)
+        return preset is not None and len(preset.commands) > 0
+
+    def execute(self, context):
+        preset = core.active_preset(context)
+        if preset is None or not preset.commands:
+            return {"CANCELLED"}
+        src_idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
+        data = defaults_store._command_to_dict(preset.commands[src_idx])
+        new_item = preset.commands.add()
+        defaults_store._apply_dict(new_item, data)
+        dst_idx = src_idx + 1
+        preset.commands.move(len(preset.commands) - 1, dst_idx)
+        preset.active_command_index = dst_idx
+        return {"FINISHED"}
+
+
 class BNAME_RENDER_OT_command_move(Operator):
     bl_idname = "bname_render.command_move"
     bl_label = "コマンドを移動"
@@ -288,6 +312,7 @@ _CLASSES = (
     BNAME_RENDER_OT_preset_run,
     BNAME_RENDER_OT_command_add,
     BNAME_RENDER_OT_command_remove,
+    BNAME_RENDER_OT_command_duplicate,
     BNAME_RENDER_OT_command_move,
     BNAME_RENDER_OT_command_card_click,
     BNAME_RENDER_OT_preset_defaults_register,

@@ -181,6 +181,7 @@ def _draw_command_list(layout, preset) -> None:
     edit_tools = tools.column(align=True)
     edit_tools.enabled = bool(preset.commands)
     edit_tools.operator("bname_render.command_remove", text="", icon="REMOVE")
+    edit_tools.operator("bname_render.command_duplicate", text="", icon="DUPLICATE")
 
     move_tools = tools.column(align=True)
     move_tools.enabled = len(preset.commands) > 1
