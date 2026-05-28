@@ -657,6 +657,33 @@ def _circular_dist(a: int, b: int, n: int) -> int:
     return min(d, n - d)
 
 
+def _is_straight_edged(pts: Sequence[tuple[float, float]], samples_per_segment: int) -> bool:
+    """body サンプルが「アンカー間が直線」(= トゲ直線) かどうかを判定する.
+
+    各 bezier セグメント (アンカー間 = samples_per_segment 点) の中点サンプルが、
+    両端アンカーを結ぶ直線上に乗っていれば直線辺。 雲/フワフワ/トゲ曲線のような
+    曲線セグメントでは中点が大きく膨らむため False。 anchor-only サンプリングは
+    直線辺でのみ使う (曲線を多角形化しないため) 判定に用いる。
+    """
+    n = len(pts)
+    if samples_per_segment < 3 or n < samples_per_segment * 3:
+        return False
+    total = 0
+    for k in range(0, n - samples_per_segment + 1, samples_per_segment):
+        ax, ay = pts[k]
+        bx, by = pts[(k + samples_per_segment) % n]
+        abx, aby = bx - ax, by - ay
+        ablen = math.hypot(abx, aby)
+        if ablen < 1.0e-9:
+            continue
+        mx, my = pts[(k + samples_per_segment // 2) % n]
+        perp = abs((mx - ax) * aby - (my - ay) * abx) / ablen
+        total += 1
+        if perp > ablen * 0.02:
+            return False
+    return total > 0
+
+
 def _line_intersection(p1, p2, p3, p4):
     """無限直線 p1p2 と p3p4 の交点を返す。 平行/退化なら None。"""
     x1, y1 = p1
@@ -824,16 +851,17 @@ def _build_dynamic_multi_line_polygons(
         return []
 
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
-    # 角を尖らせる主線 (outside_align + valley_sharp + 全周ループ) は anchor-only で
-    # 構築する。 アンカー (= 山頂/谷の頂点) 間を 1 本の直線セグメントで結ぶことで、
+    # 角を尖らせる + 全周ループ + 「アンカー間が直線」(= トゲ直線) のときだけ anchor-only
+    # で構築する。 アンカー (= 山頂/谷の頂点) 間を 1 本の直線セグメントで結ぶことで、
     # 中間サンプル由来のテーパー線のズレ (= 先端の折れ) を防ぎ、 山頂を mitre 点に
-    # 置けば基準 (均一線) と同じ鋭い直線アウトラインになる。 valley_sharp OFF の
-    # ときは full サンプリングのまま (曲線形状の滑らかさを保つ)。
+    # 置けば基準 (均一線) と同じ鋭い直線アウトラインになる。 雲/フワフワ/トゲ曲線の
+    # ような曲線辺では anchor-only は形状を多角形化してしまうため使わない (full
+    # サンプリングのまま丸みを保つ)。
     use_anchor_only = (
-        outside_align
-        and valley_sharp
+        valley_sharp
         and length_scale >= 0.999
         and len(pts) >= SAMPLES_PER_SEGMENT * 6
+        and _is_straight_edged(pts, SAMPLES_PER_SEGMENT)
     )
     if use_anchor_only:
         anchor_pts = pts[::SAMPLES_PER_SEGMENT]
