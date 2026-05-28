@@ -933,6 +933,50 @@ def _ring_kept_index_segments(
     return segments
 
 
+def _pinch_eff_widths(
+    idxs: Sequence[int],
+    opp_idxs: Sequence[int],
+    radii: Sequence[float],
+    n: int,
+    pinch_w: float,
+    plateau_w: float,
+    *,
+    is_peak: bool,
+) -> dict[int, float]:
+    """各極値 (山 or 谷) の実効 pinch 幅を radial prominence (突出量) で決める。
+
+    小山/小谷 (prominence が小さい極値) を完全に 0 幅へ潰すと、 帯が鋭いトゲ
+    (細い三角スパイク) になる。 そこで prominence が小さいほど pinch_w から
+    plateau_w 側へ寄せ、 小さな突起では帯が 0 まで潰れず控えめに細くなるだけに
+    する。 prominence 最大の主山/主谷は pinch_w のまま (= 従来通り 0% まで細く)。
+
+    pinch_w: その極値で目標とする線幅 (山なら peak_width, 谷なら valley_width)。
+    plateau_w: 反対側の線幅 (寄せる先)。
+    """
+    if not idxs:
+        return {}
+    # この側が「0 へすぼまる pinch 側」(pinch_w < plateau_w) のときだけ浅くする。
+    # この側が広い方 (pinch_w >= plateau_w) のときは満幅のまま (例: 山0% のとき谷は
+    # 満幅であるべきで、 小谷まで細めてはいけない)。
+    if not opp_idxs or pinch_w >= plateau_w:
+        return {i: pinch_w for i in idxs}
+    proms: dict[int, float] = {}
+    for i in idxs:
+        nearest_opp = min(opp_idxs, key=lambda o: _circular_dist(i, o, n))
+        if is_peak:
+            proms[i] = max(0.0, radii[i] - radii[nearest_opp])
+        else:
+            proms[i] = max(0.0, radii[nearest_opp] - radii[i])
+    mx = max(proms.values()) if proms else 0.0
+    if mx <= 1.0e-9:
+        return {i: pinch_w for i in idxs}
+    eff: dict[int, float] = {}
+    for i in idxs:
+        ratio = min(1.0, proms[i] / mx)
+        eff[i] = pinch_w + (plateau_w - pinch_w) * (1.0 - ratio)
+    return eff
+
+
 def _build_dynamic_multi_line_polygons(
     *,
     body_samples: Sequence[tuple[float, float, float]],
@@ -1087,19 +1131,39 @@ def _build_dynamic_multi_line_polygons(
     # → 山の線幅=0% + length<100% で多重線の cut endpoint が綺麗に 0 に収束する。
     width_peaks = peaks_all if peaks_all else peaks
     width_valleys = valleys_all if valleys_all else valleys
+    # 山頂が丸い形状 (雲/フワフワ) のみ: 小山/小谷を prominence に応じて pinch を
+    # 浅くし、 0 幅の鋭いトゲを防ぐ。 主山/主谷 (prominence 最大) は従来通り
+    # peak_w/valley_w まで細くなる。 トゲ/トゲ曲線 (peaks_rounded=False) は小山も
+    # 鋭く尖るのが正しいので、 従来通り peak_w/valley_w をそのまま使う (回帰防止)。
+    if peaks_rounded:
+        peak_eff = _pinch_eff_widths(
+            width_peaks, width_valleys, radii, n, peak_width_m, valley_width_m, is_peak=True
+        )
+        valley_eff = _pinch_eff_widths(
+            width_valleys, width_peaks, radii, n, valley_width_m, peak_width_m, is_peak=False
+        )
+    else:
+        peak_eff = {i: peak_width_m for i in width_peaks}
+        valley_eff = {i: valley_width_m for i in width_valleys}
     widths: list[float] = []
     if not width_peaks and not width_valleys:
         widths = [base_width_m] * n
     else:
         for i in range(n):
             if width_peaks:
-                d_peak = min(_circular_dist(i, p, n) for p in width_peaks)
+                np_idx = min(width_peaks, key=lambda p: _circular_dist(i, p, n))
+                d_peak = _circular_dist(i, np_idx, n)
+                pw = peak_eff.get(np_idx, peak_width_m)
             else:
                 d_peak = n  # peak が無いケース: 全体を valley_width とみなす
+                pw = peak_width_m
             if width_valleys:
-                d_valley = min(_circular_dist(i, v, n) for v in width_valleys)
+                nv_idx = min(width_valleys, key=lambda v: _circular_dist(i, v, n))
+                d_valley = _circular_dist(i, nv_idx, n)
+                vw = valley_eff.get(nv_idx, valley_width_m)
             else:
                 d_valley = n
+                vw = valley_width_m
             total = d_peak + d_valley
             if total <= 0:
                 t_geom = 0.5
@@ -1113,9 +1177,9 @@ def _build_dynamic_multi_line_polygons(
             # 側の頂点だけが 0% に下がる」 挙動を実現。 valley/peak の大小で
             # ピンチ側を切り替え、 N=2 サンプル distance で 0→100% へ線形補間。
             # 谷↔山は線形補間 (t_segment)。 直線辺では幅が線形に変わるだけなので
-            # 帯のアウトラインも直線のまま (曲がらない)。 山頂を基準=均一線と同じ
-            # 鋭い mitre 尖りにする処理は後段 (widths 確定後) で別途行う。
-            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_segment)
+            # 帯のアウトラインも直線のまま (曲がらない)。 vw/pw は小山/小谷の
+            # prominence で浅くした実効幅 (主山/主谷は peak_w/valley_w のまま)。
+            widths.append(vw + (pw - vw) * t_segment)
 
     # 凸の山頂・凹の谷とも、 頂点を「隣接2辺を頂点幅ぶん外側へ平行移動した直線の
     # 交点 (= mitre)」に置く。 anchor-only では各辺が単一直線セグメントなので、 両隣の
@@ -2495,6 +2559,7 @@ def ensure_balloon_line_mesh(
             balloon_center_m=body_center_m,
             peak_extension_m=0.0,
             outside_align=True,
+            peaks_rounded=peaks_rounded,
         )
         if not sub_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -2586,6 +2651,9 @@ def _compute_main_line_polygon(
     if is_dynamic:
         line_valley_m = line_width_m * (valley_pct / 100.0)
         line_peak_m = line_width_m * (peak_pct / 100.0)
+        peaks_rounded = balloon_shapes.normalize_shape(
+            str(getattr(entry, "shape", "rect") or "rect")
+        ) in {"cloud", "fluffy"}
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
             signed_offset_m=0.0,
@@ -2597,6 +2665,7 @@ def _compute_main_line_polygon(
             balloon_center_m=balloon_center_m,
             peak_extension_m=0.0,
             outside_align=True,
+            peaks_rounded=peaks_rounded,
         )
         if not sub_polys:
             return None
