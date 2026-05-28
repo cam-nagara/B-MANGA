@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-05-27 (Claude Code)
+最終更新: 2026-05-28 (Claude Code)
 
 ---
 
@@ -30,7 +30,7 @@
 
 ---
 
-## 2. 現在進行形のアーキテクチャ状態 (Snapshot: 2026-05-02)
+## 2. 現在進行形のアーキテクチャ状態 (Snapshot: 2026-05-28)
 
 直近で大型のデータ構造刷新が完了している。 古い記述で迷ったときはここを参照。
 
@@ -50,7 +50,9 @@
 - **Z リフトは 0.1 刻みのページ毎 per-page rank 方式**
 - **(完了 / 2026-05-17 Claude Code, v0.5.46)** 枠線ボカシブラシ線種 + 枠線プリセット (枠線+白フチ) + コマ作成ツール (矩形/折れ線 自動判別) + 効果線入り抜きの「範囲」(%/長さmm)。 ヘッドレス実機テスト PASS (`test/blender_border_preset_coma_tool_check.py`)。 画面目視は要対話 Blender (本ブランチ読込時)。 計画: [`docs/border_preset_coma_tool_plan_2026-05-16.md`](docs/border_preset_coma_tool_plan_2026-05-16.md)
 - **(完了 / 2026-05-23 Codex, v0.6.063)** フキダシ実体を単一の編集可能カーブへ移行。B-Name は作成・詳細設定・明示再生成を担当し、表示とレンダリングは保存済み Blender 実体が担う。旧 `balloon_fill_*` / `balloon_source_*` 実体は再同期時に削除する。詳細: [`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
-- **(完了 / 2026-05-27 Claude Code, v0.6.129〜v0.6.133)** フキダシ ジオメトリノード最小化 (Phase A〜E)。 全描画責務 (塗り / 主線 / 外側フチ / 内側フチ / 多重線 / しっぽ主線) を Python メッシュ (Shapely + mapbox_earcut) で焼き込み、 ジオメトリノードグループ `BName_GN_BalloonCurveRender` を完全撤去。 フキダシ本体カーブから geometry node modifier も消えた (commits `8cda170`, `02dd661`, `aab0d34`, `c3061a8`)。 `utils/balloon_curve_render_nodes.py`: 1393 行 → 78 行 (-94%)。 移動・サイズ変更・詳細設定変更でのノードグループ評価コストがゼロに。 詳細: [`docs/balloon_node_minimization_plan_2026-05-27.md`](docs/balloon_node_minimization_plan_2026-05-27.md)
+- **(完了 / 2026-05-27 Claude Code, v0.6.129〜v0.6.133)** フキダシ ジオメトリノード最小化 (Phase A〜E)。 全描画責務 (塗り / 主線 / 外側フチ / 内側フチ / 多重線 / しっぽ主線) を Python メッシュ (Shapely + mapbox_earcut) で焼き込み、 ジオメトリノードグループ `BName_GN_BalloonCurveRender` を完全撤去。 フキダシ本体カーブから geometry node modifier も消えた (commits `8cda170`, `02dd661`, `aab0d34`, `c3061a8`)。 `utils/balloon_curve_render_nodes.py`: 1393 行 → 70 行 (-95%)。 移動・サイズ変更・詳細設定変更でのノードグループ評価コストがゼロに。 詳細: [`docs/balloon_node_minimization_plan_2026-05-27.md`](docs/balloon_node_minimization_plan_2026-05-27.md)
+- **(完了 / 2026-05-27〜28 Claude Code, v0.6.103〜v0.6.143)** フキダシのフチ・多重線・主線を Shapely buffer 方式に統一 + 主線「谷/山の線幅」動的化。 外側フチ / 内側フチ / 多重線も Shapely buffer ベースの Mesh band に作り直し (`docs/plans/fringe_multiline_shapely_2026-05-27.md` の計画完了)。 さらに 主線 dynamic で 「ベース太さを保ったまま 谷頂点だけ pinch + 辺は直線」 を実現 (`utils/balloon_line_mesh.py` の `_build_dynamic_multi_line_polygons` を外側アライメント sample-direct 化)。 関連実装は `utils/balloon_line_mesh.py` に集約。 詳細は CHANGELOG 冒頭 (v0.6.138〜v0.6.143)。
+- **(完了 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)** 作品要素の実体化 第一段階。 テキスト (`utils/text_real_object.py`: Pillow 画像を貼った Mesh 平面, 旧 Empty 削除) / 画像レイヤー (`utils/image_real_object.py`: 透明テクスチャ平面) / コマ枠線 (`utils/coma_border_object.py`: 実カーブ, 通常線・破線・点線・二重線・白フチ) / フキダシ本体・塗り・しっぽ / 用紙背景・ガイド線・セーフライン外塗り を Blender 実オブジェクトとして同期済み。 mirror 同期は `utils/layer_object_sync.py` `_mirror_image_text_objects` 経由で配線済み。 アドオン無効時も作品要素が Blender データに残る。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 
@@ -66,9 +68,11 @@
 
 (着手前にユーザーへ確認推奨)
 
-- **B-Name-Render 分離 (進行中 / 2026-05-05 Codex)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
-- **作品要素の実体化 (進行中 / 2026-05-05 Codex)**。 アドオン無効時に枠線やテキストが消えたように見える不安を避けるため、 画面描画だけに依存していた要素を Blender 実オブジェクトへ同期する。 第一段階はテキスト画像平面とコマ枠線カーブ。 詳細: [`docs/bname_real_object_safety_plan_2026-05-05.md`](docs/bname_real_object_safety_plan_2026-05-05.md)
-- **効果線 Geometry Nodes 化 (進行中 / 2026-05-23 Codex, v0.6.063)**。効果線の本体生成と詳細設定同期は Geometry Nodes 側で継続する。フキダシ側のジオメトリノードは完全撤去済み (上記 v0.6.133)。効果線の始点/終点形状にも同じ「編集可能形状を正本にする」方針を段階適用する。詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
+- **B-Name-Render 分離 (進行中 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。
+  - **済**: 独立アドオン土台 (`addons/b_name_render/`, 10 ファイル / 約 2336 行) / カード型プリセット UI / eeVR 連携。
+  - **未 (Phase R4 + R1 一部)**: B-Name 本体に出力系がまだ現役登録されている — 「ページ出力」パネル (`panels/__init__.py` `_MODULES` 内 `export_panel`) / `bname.export_page`・`export_all_pages`・`export_pdf` (`operators/io_op.py`, `operators/__init__.py` 内 `io_op`) / 魚眼 (`operators/__init__.py` 内 `fisheye_op`) / `io/export_*.py`。 これらを B-Name-Render へ移植し本体側を未登録化する作業が残っている。
+  - 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
+- **効果線 Geometry Nodes 化 / カーブ正本化 (進行中 / 2026-05-23 Codex 起点, コード検証 2026-05-28 Claude Code)**。 フキダシ側は GN 完全撤去済み (上記 v0.6.133)。 効果線側は依然 `BName_GN_EffectLine` ノードグループで本体生成中 (`utils/effect_line_object.py` が `geometry_nodes_bridge.ensure_modifier(display, "effect_line", …)` で GN modifier を付与, `utils/geometry_nodes_bridge.py` `_build_effect_line_nodes`)。 `strokes` 渡し時に静的メッシュ化する分岐は一部実装済みだが、 フキダシと同様の「編集可能形状を正本にする」本格移行は未完了。 始点/終点形状への同方式適用、 グリースペンシルからの登録、 手編集後の補助線再生成ルールも次段階。 詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
 - **コマ内容の不透明度マスク方式 (完了 / 2026-05-25 Codex, v0.6.075)**。コマ内のフキダシ / 効果線 / GP / ラスター / 画像 / テキストを破壊的に切らず、ページ ID + 表示ページ番号 + コマ ID を含むコマ単位の不透明度マスクで見切る。PSD はコマフォルダのレイヤーマスクを正とし、個別レイヤーへ重複マスクを付けない。詳細: [`docs/coma_content_opacity_mask_plan_2026-05-25.md`](docs/coma_content_opacity_mask_plan_2026-05-25.md)
 - PSD 書き出し強化は B-Name-Render 側で扱う。 コマ形状レイヤーマスク / 個別レイヤー保持
 - `.clip` 直書き — 現時点で見送り。 deferred 計画あり ([`docs/clip_export_deferred_plan.md`](docs/clip_export_deferred_plan.md))
