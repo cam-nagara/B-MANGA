@@ -652,6 +652,67 @@ def _detect_centerline_peaks_valleys(
     return peaks, valleys
 
 
+def _detect_radial_peaks_valleys(
+    pts: Sequence[tuple[float, float]],
+    balloon_center: tuple[float, float],
+    *,
+    window: int,
+) -> tuple[list[int], list[int]]:
+    """サンプル列上で balloon 中心からの radial 距離の局所最大(山頂)・最小(谷底)を返す.
+
+    雲/フワフワ/トゲ曲線は bezier アンカーが山頂(バンプ先)や谷底に無い (アンカーは
+    谷や曲線途中)。 そのため谷/山の線幅の基準点が取れない。 本関数は曲線そのものの
+    radial 極値を検出することで、 アンカーの有無に依らず「山の先・谷の底・小山の先」を
+    頂点として扱う (= ユーザー指示)。 滑らかな bezier サンプル前提なので、 ±window の
+    局所比較で十分。 近接する極値はクラスタ統合して 1 点に集約する。
+    """
+    n = len(pts)
+    if n < 6 or window < 1:
+        return [], []
+    cx, cy = balloon_center
+    r = [math.hypot(p[0] - cx, p[1] - cy) for p in pts]
+    raw_p: list[int] = []
+    raw_v: list[int] = []
+    for i in range(n):
+        ge = True
+        le = True
+        strict_hi = False
+        strict_lo = False
+        for j in range(1, window + 1):
+            a = r[(i - j) % n]
+            b = r[(i + j) % n]
+            if r[i] < a or r[i] < b:
+                ge = False
+            if r[i] > a or r[i] > b:
+                le = False
+            if r[i] > a or r[i] > b:
+                strict_hi = True
+            if r[i] < a or r[i] < b:
+                strict_lo = True
+        if ge and strict_hi:
+            raw_p.append(i)
+        elif le and strict_lo:
+            raw_v.append(i)
+
+    def _cluster(idxs: list[int], want_max: bool) -> list[int]:
+        if not idxs:
+            return []
+        idxs = sorted(idxs)
+        clusters: list[list[int]] = [[idxs[0]]]
+        for k in idxs[1:]:
+            if k - clusters[-1][-1] <= window:
+                clusters[-1].append(k)
+            else:
+                clusters.append([k])
+        # 円環ラップ: 先頭と末尾クラスタが近ければ統合
+        if len(clusters) >= 2 and (clusters[0][0] + n - clusters[-1][-1]) <= window:
+            clusters[0] = clusters.pop() + clusters[0]
+        pick = (lambda c: max(c, key=lambda x: r[x])) if want_max else (lambda c: min(c, key=lambda x: r[x]))
+        return sorted(pick(c) for c in clusters)
+
+    return _cluster(raw_p, True), _cluster(raw_v, False)
+
+
 def _circular_dist(a: int, b: int, n: int) -> int:
     d = abs(a - b) % n
     return min(d, n - d)
@@ -871,13 +932,20 @@ def _build_dynamic_multi_line_polygons(
     # 外向き法線 (samples 上)。 thorn (直線) なら 各セグメントが直線で、 outer ring も
     # 直線セグメントで構成される。
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-    # anchor 単位で peak/valley を構造的に検出する (anchor-only では 1 点 = 1 anchor)。
-    samples_per_segment = 1 if use_anchor_only else max(1, SAMPLES_PER_SEGMENT)
-    peaks_all, valleys_all = _detect_anchor_peaks_valleys(
-        pts,
-        balloon_center_m,
-        samples_per_segment=samples_per_segment,
-    )
+    # 谷/山の線幅の基準となる山頂・谷底を検出する。
+    # - トゲ直線 (anchor-only): アンカー = 山頂/谷頂なので anchor 単位検出。
+    # - 雲/フワフワ/トゲ曲線 (曲線辺): 山頂(バンプ先)・谷底・小山先にアンカーが無い
+    #   ため、 曲線そのものの radial 極値を頂点として検出する。
+    if use_anchor_only:
+        samples_per_segment = 1
+        peaks_all, valleys_all = _detect_anchor_peaks_valleys(
+            pts, balloon_center_m, samples_per_segment=samples_per_segment,
+        )
+    else:
+        samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
+        peaks_all, valleys_all = _detect_radial_peaks_valleys(
+            pts, balloon_center_m, window=max(2, SAMPLES_PER_SEGMENT // 6),
+        )
 
     # 構築は sample-direct (= body サンプルを法線方向にオフセットした centerline)
     # を基本にする。 凸の山頂では法線が扇状に開くため、 buffer 経由で出ていた
