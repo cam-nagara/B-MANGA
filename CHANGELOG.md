@@ -3,6 +3,33 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-28 — v0.6.144 多重線の崩れを修正 (sample-direct + Shapely クリーニングへ統一)
+
+### 症状
+- トゲ (直線) フキダシ + 多重線・外側 4 本 + 「線幅変化」「長さ変化」「山の線幅 0%」で、 多重線がトゲの輪郭に沿わず、 山頂から外へ細いヒゲ (髭状スパイク) が飛び出し、 全体がぐちゃぐちゃに絡まっていた。
+
+### 原因
+- 多重線の動的形状 (cloud/fluffy/トゲ系) で「長さ変化 < 100%」または「谷/山の線幅」が可変のリングは、 Shapely buffer 由来の centerline を使う経路 (`_build_variable_width_band_from_buffer`) を通っていた。
+- buffer を外側へ広げると凸の山頂が mitre スパイクとして外へ伸び、 山の線幅 0% でも centerline 自体が尖るため、 そこに細いヒゲが残っていた。
+- さらに「長さ変化 100% の全周リング」は sample-direct で閉じた帯を組んでいたが、 谷 (凹) を外側へオフセットすると centerline が収束して帯が自己交差し、 三角分割が破綻して塊状に潰れていた。
+
+### 修正
+- 多重線も主線 (v0.6.140〜143) と同じ **sample-direct 経路に統一**。 凸の山頂では法線が扇状に開くため、 buffer 経由で出ていたヒゲが発生しない。
+- 凹の谷を外側へオフセットして帯が自己交差した場合は、 三角分割の前に `_sanitize_band_polygon` (Shapely buffer(0)) で valid 化して解消する。 交差していないポリゴンはそのまま通すので、 トゲの鋭い角は保たれる。
+- buffer 経由の旧経路は、 sample-direct が何も出せなかったときの fallback に限定。
+- 主線 (外側アライメント) は従来どおり sample-direct のままで、 経路・挙動とも無改変。
+
+### 関連ファイル
+- `utils/balloon_line_mesh.py`:
+  - `_sanitize_band_polygon` を追加 (自己交差帯の Shapely valid 化)。
+  - `_build_dynamic_multi_line_polygons` で buffer 早期 return を撤去し、 多重線は sample-direct + クリーニング、 buffer は fallback に変更。
+
+### 検証 (Blender 5.1.1 ヘッドレス + AI 目視)
+- `test/blender_balloon_multiline_thorn_break_repro.py` でユーザー報告と同じ設定を再現。 修正前は山頂からヒゲ + 塊、 修正後はトゲの輪郭に沿った同心の多重線 (外側ほど短い) に。
+- リング別診断で 4 リングとも自己交差ポリゴン 0 (修正前はリング 1 が自己交差)。
+- `test/blender_balloon_multi_line_audit.py` で全形状 (rect/ellipse/octagon/cloud/fluffy/トゲ/トゲ曲線) × 方向 (外側/内側/両方) × 線幅変化 / 長さ変化 / 谷山の線幅 / 山谷を延ばして交差 を再レンダーし、 いずれも同心のきれいな多重線で破綻なしを確認。
+- 主線・山 100% / 谷 0% の動的幅テストも従来どおり (リグレッションなし)。
+
 ## 2026-05-28 — v0.6.143 主線 dynamic で 「ベース太さを保ったまま 谷頂点だけ pinch + 辺は直線」 を実現
 
 ### 症状

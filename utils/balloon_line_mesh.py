@@ -828,27 +828,14 @@ def _build_dynamic_multi_line_polygons(
         samples_per_segment=samples_per_segment,
     )
 
-    # length_scale<1.0 (= 多重線の「長さ変化」で 山頂を切るケース) のみ Shapely
-    # buffer ベースの peak_cut 構築を使う。 主線 (length_scale=1.0) や 幅可変だけの
-    # 場合は sample-direct で構築し、 body の鋭い谷/山頂をそのまま継承させる
-    # (buffer 経由だと width=0 に近い場所が円弧で丸まり、 主線が 0 になる位置
-    # =「鋭く点で終わる」ところがユーザー目視で 明確に丸く見えてしまうため)。
-    if length_scale < 0.999:
-        polys = _build_shapely_band_with_peak_cuts(
-            pts,
-            balloon_center_m=balloon_center_m,
-            signed_offset_m=signed_offset_m,
-            valley_width_m=valley_width_m,
-            peak_width_m=peak_width_m,
-            length_scale=length_scale,
-            valley_sharp=valley_sharp,
-            peaks_all=peaks_all,
-            valleys_all=valleys_all,
-            cross_extension_m=cross_extension_m,
-        )
-        if polys is not None:
-            return polys
-        # 失敗時は sample-direct 経路に fallback
+    # 構築は sample-direct (= body サンプルを法線方向にオフセットした centerline)
+    # を基本にする。 凸の山頂では法線が扇状に開くため、 buffer 経由で出ていた
+    # 「山頂から外へ飛び出す mitre スパイク (ヒゲ)」 が発生しない。 凹の谷を外側へ
+    # オフセットすると centerline が収束して帯が自己交差するが、 これは最後に
+    # `_sanitize_band_polygon` (Shapely buffer(0)) で valid 化して解消する。
+    # 主線 (outside_align=True) は従来どおり sample-direct のまま (クリーニング不要)。
+    # buffer 経由の peak_cut は sample-direct が空を返したときの fallback に限定する。
+    sanitize = not outside_align
 
     # peaks_all/valleys_all はすでに anchor-level の主山/主谷だけが入っているので、
     # ここでの radial 閾値フィルタは不要 (高さがバラつく場合も均等に処理される)。
@@ -938,6 +925,15 @@ def _build_dynamic_multi_line_polygons(
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
 
     out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+
+    def _emit(result):
+        if result is None:
+            return
+        if sanitize:
+            out_polygons.extend(_sanitize_band_polygon(result[0], result[1]))
+        else:
+            out_polygons.append(result)
+
     # cross_extension_m > 0: 各 keep segment の山頂方向 (= 端点) を法線方向へ延ばし、
     # 谷をまたいで隣接 segment と交差する形に。length_scale < 1.0 のときのみ有効。
     if length_scale >= 0.999:
@@ -948,8 +944,7 @@ def _build_dynamic_multi_line_polygons(
                 centerline, widths, normals, seg,
                 closed=True, outside_align=outside_align,
             )
-            if result is not None:
-                out_polygons.append(result)
+            _emit(result)
     else:
         for seg in segments:
             if len(seg) < 2:
@@ -961,8 +956,24 @@ def _build_dynamic_multi_line_polygons(
                 result = _build_variable_width_band_segment(centerline_ext, widths_ext, normals_ext, seg_ext, closed=False)
             else:
                 result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=False)
-            if result is not None:
-                out_polygons.append(result)
+            _emit(result)
+
+    # sample-direct が何も出せなかったとき (= 退化形状) のみ buffer 経由へ fallback。
+    if not out_polygons and sanitize:
+        polys = _build_shapely_band_with_peak_cuts(
+            pts,
+            balloon_center_m=balloon_center_m,
+            signed_offset_m=signed_offset_m,
+            valley_width_m=valley_width_m,
+            peak_width_m=peak_width_m,
+            length_scale=length_scale,
+            valley_sharp=valley_sharp,
+            peaks_all=peaks_all,
+            valleys_all=valleys_all,
+            cross_extension_m=cross_extension_m,
+        )
+        if polys:
+            return polys
     return out_polygons
 
 
@@ -1326,6 +1337,36 @@ def _shapely_band_to_polygons(band) -> list[tuple[list[tuple[float, float]], lis
         holes = [list(r.coords) for r in geom.interiors]
         polys.append((outer_ring, holes))
     return polys
+
+
+def _sanitize_band_polygon(
+    outer: Sequence[tuple[float, float]],
+    holes: Sequence[Sequence[tuple[float, float]]],
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """sample-direct で組んだ帯ポリゴンが自己交差していたら Shapely で valid 化する。
+
+    谷 (凹) を外側へオフセットすると centerline が収束して帯が自己交差する。
+    earcut は自己交差を扱えないため、 buffer(0) で正規化してから渡す。
+    valid な (= 交差していない) ポリゴンはそのまま返すので、 鋭い角は保たれる。
+    """
+    outer_list = [(float(x), float(y)) for x, y in outer]
+    holes_list = [[(float(x), float(y)) for x, y in h] for h in holes]
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+    except Exception:  # noqa: BLE001
+        return [(outer_list, holes_list)]
+    try:
+        poly = Polygon(outer_list, holes_list)
+        if poly.is_valid:
+            return [(outer_list, holes_list)]
+        fixed = poly.buffer(0)
+        if fixed.is_empty:
+            return []
+        cleaned = _shapely_band_to_polygons(fixed)
+        return cleaned if cleaned else [(outer_list, holes_list)]
+    except Exception:  # noqa: BLE001
+        return [(outer_list, holes_list)]
 
 
 def _extend_segment_for_cross(
