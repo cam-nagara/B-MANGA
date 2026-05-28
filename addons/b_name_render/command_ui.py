@@ -161,10 +161,13 @@ def command_help(command, context=None) -> str:
     if kind == "RENDER":
         return f"現在の設定でレンダーします（{g('engine')}・{int(getattr(command, 'sample_count', 1))}サンプル）。"
     if kind.startswith("FISHEYE_"):
-        return (
-            f"魚眼モード時は eeVR、通常モード時はワード検出レンダーに分岐します"
-            f"（対象グループ「{g('node_group_name')}」/ 検出ワード「{g('label_contains')}」）。"
-        )
+        target = f"（対象グループ「{g('node_group_name')}」/ 検出ワード「{g('label_contains')}」）"
+        if context is not None:
+            scene = getattr(context, "scene", None)
+            if core.fisheye_enabled(scene):
+                return f"現在: 魚眼モードON → eeVR で実行します{target}。"
+            return f"現在: 通常モード → ワード検出レンダーで実行します{target}。"
+        return f"魚眼モード時は eeVR、通常モード時はワード検出レンダーに分岐します{target}。"
     if kind.startswith("EEVR_"):
         return "eeVR の対応処理を呼び出します（魚眼モード時のみ）。"
     if kind == "OPERATOR":
