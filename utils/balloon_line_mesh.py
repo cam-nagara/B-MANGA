@@ -950,14 +950,15 @@ def _build_dynamic_multi_line_polygons(
 
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
     straight_edged = _is_straight_edged(pts, SAMPLES_PER_SEGMENT)
-    # 曲線形状 (雲/フワフワ/トゲ曲線) の多重線リングは、 centerline を法線方向に
-    # 単純オフセットすると凹の谷で自己交差し、 谷/山可変幅 + Shapely 整理でもつれる。
-    # Shapely の clean buffer によるオフセット曲線を centerline にして自己交差を防ぐ。
-    # トゲ直線 (straight) は anchor-only 経路で扱うので対象外。 signed_offset_m を
-    # オフセット曲線へ畳み込んだら 0 にして二重オフセットを避ける。
+    # 曲線形状 (雲/フワフワ/トゲ曲線) の多重線リング (signed_offset!=0) は、 centerline を
+    # 法線方向に単純オフセットすると凹の谷で自己交差し、 谷/山可変幅でもつれる。 Shapely の
+    # clean buffer によるオフセット曲線を centerline にして自己交差を防ぐ。 主線 (signed_offset
+    # =0) と トゲ直線 (straight=anchor-only 経路) は対象外。 畳み込んだら signed_offset=0 に
+    # して二重オフセットを避ける。 曲線多重線は呼び出し側で outside_align=True にしてあるので
+    # (内側オフセットの凸頂点くさび回避)、 outside_align の有無では分岐しない。
+    did_clean_offset = False
     if (
-        not outside_align
-        and not straight_edged
+        not straight_edged
         and abs(signed_offset_m) > 1.0e-9
         and len(pts) >= 6
     ):
@@ -967,6 +968,7 @@ def _build_dynamic_multi_line_polygons(
         if clean is not None and len(clean) >= 6:
             pts = [(c[0], c[1]) for c in clean]
             signed_offset_m = 0.0
+            did_clean_offset = True
     # 角を尖らせる + 全周ループ + 「アンカー間が直線」(= トゲ直線) のときだけ anchor-only
     # で構築する。 アンカー (= 山頂/谷の頂点) 間を 1 本の直線セグメントで結ぶことで、
     # 中間サンプル由来のテーパー線のズレ (= 先端の折れ) を防ぎ、 山頂を mitre 点に
@@ -1007,9 +1009,11 @@ def _build_dynamic_multi_line_polygons(
     # 「山頂から外へ飛び出す mitre スパイク (ヒゲ)」 が発生しない。 凹の谷を外側へ
     # オフセットすると centerline が収束して帯が自己交差するが、 これは最後に
     # `_sanitize_band_polygon` (Shapely buffer(0)) で valid 化して解消する。
-    # 主線 (outside_align=True) は従来どおり sample-direct のまま (クリーニング不要)。
-    # buffer 経由の peak_cut は sample-direct が空を返したときの fallback に限定する。
-    sanitize = not outside_align
+    # sanitize=False で済むのは「トゲ直線の主線」(anchor-only + outside_align、 clean-offset
+    # 無し) だけ。 アンカー間が直線で pinch が単一頂点に収束するため自己接触しない。
+    # それ以外 (曲線の主線/多重線、 中心アライメント多重線、 clean-offset 適用リング) は、
+    # 幅0 の pinch 点で帯が自己接触するので Shapely buffer(0) でローブ分割して三角を防ぐ。
+    sanitize = (not outside_align) or did_clean_offset or (outside_align and not use_anchor_only)
 
     # peaks_all/valleys_all はすでに anchor-level の主山/主谷だけが入っているので、
     # ここでの radial 閾値フィルタは不要 (高さがバラつく場合も均等に処理される)。
@@ -2922,6 +2926,11 @@ def ensure_balloon_multi_line_mesh(
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
     running_outside_mm = line_width_mm  # 主線外側エッジ (body curve からの距離)
     running_inside_mm = 0.0  # body 境界 (body curve からの絶対距離; 内側方向では本体に主線無し)
+    # 曲線形状 (雲/フワフワ/トゲ曲線) は外側アライメントで帯を作る (内側オフセットの
+    # 凸頂点自己交差 = くさび を避ける)。 トゲ直線は従来の中心アライメント。
+    ml_straight = _is_straight_edged(
+        [(float(s[0]), float(s[1])) for s in samples], SAMPLES_PER_SEGMENT
+    )
     for ring_index in range(1, count + 1):
         ring_width_mm = multi_width_mm * (width_scale ** max(0, ring_index - 1))
         ring_spacing_mm = spacing_mm * (spacing_scale ** max(0, ring_index - 1))
@@ -2964,9 +2973,18 @@ def ensure_balloon_multi_line_mesh(
                     cross_extension_m = (ring_spacing_mm + ring_width_mm) * 0.001
                 else:
                     cross_extension_m = 0.0
+                # 曲線 + 外向きリングは外側アライメント。 中心線をリング内側エッジに置き、
+                # 帯は外向きにのみ展開する。 こうすると凸バンプ先で内側オフセットが無く、
+                # くさびアーティファクトが出ない。 トゲ直線/内向きは従来の中心アライメント。
+                if (not ml_straight) and side == "outside":
+                    ml_outside_align = True
+                    ml_offset_mm = ring_inner_mm
+                else:
+                    ml_outside_align = False
+                    ml_offset_mm = signed_offset_mm
                 sub_polys = _build_dynamic_multi_line_polygons(
                     body_samples=samples,
-                    signed_offset_m=signed_offset_mm * 0.001,
+                    signed_offset_m=ml_offset_mm * 0.001,
                     base_width_m=ring_width_mm * 0.001,
                     valley_width_m=ring_valley_width_mm * 0.001,
                     peak_width_m=ring_peak_width_mm * 0.001,
@@ -2975,6 +2993,7 @@ def ensure_balloon_multi_line_mesh(
                     balloon_center_m=body_center_m,
                     cross_extension_m=cross_extension_m,
                     peak_extension_m=0.0,
+                    outside_align=ml_outside_align,
                 )
                 polygons.extend(sub_polys)
             else:
