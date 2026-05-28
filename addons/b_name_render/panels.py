@@ -38,8 +38,13 @@ class BNAME_RENDER_UL_commands(UIList):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
             row.prop(item, "enabled", text="")
-            icon = "CHECKBOX_HLT" if bool(getattr(item, "enabled", False)) else "CHECKBOX_DEHLT"
-            row.label(text=command_ui.display_name(item), icon=icon)
+            sub = row.row(align=True)
+            # 無効コマンドは行をグレー表示 (チェックボックスは押せるまま)。
+            sub.active = bool(getattr(item, "enabled", False))
+            sub.label(
+                text=command_ui.display_name(item),
+                icon=command_ui.command_icon(getattr(item, "command_type", "")),
+            )
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text="", icon="RENDER_STILL")

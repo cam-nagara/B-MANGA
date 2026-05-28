@@ -12,6 +12,36 @@ def command_type_label(command_type: str) -> str:
     return str(command_type or "")
 
 
+# コマンド種類 → 一覧アイコン。Blender 5.1 に存在する識別子のみ使用する。
+_COMMAND_ICONS = {
+    "STATE_BEGIN": "REC",
+    "STATE_END": "LOOP_BACK",
+    "SET_VIEW_LAYER": "RENDERLAYERS",
+    "SET_COLLECTION_EXCLUDE": "OUTLINER_COLLECTION",
+    "SET_NODE_MUTE": "NODE",
+    "SET_OUTPUT_GROUP": "NODETREE",
+    "SET_AOV_INPUT": "OPTIONS",
+    "SET_OUTPUT_NAME": "FILE_IMAGE",
+    "SET_OUTPUT_FOLDER": "FILE_FOLDER",
+    "RELOAD_IMAGES": "FILE_REFRESH",
+    "RENDER": "RENDER_STILL",
+    "RENDER_LAYER": "RENDER_RESULT",
+    "FISHEYE_RENDER_IMAGE_OR_LAYER": "MESH_UVSPHERE",
+    "FISHEYE_RENDER_FACES_OR_LAYER": "MESH_UVSPHERE",
+    "FISHEYE_ASSEMBLE_OR_LAYER": "MESH_UVSPHERE",
+    "EEVR_SETUP": "CAMERA_DATA",
+    "EEVR_RENDER_IMAGE": "CAMERA_DATA",
+    "EEVR_RENDER_FACES": "CAMERA_DATA",
+    "EEVR_ASSEMBLE": "CAMERA_DATA",
+    "OPERATOR": "CONSOLE",
+}
+
+
+def command_icon(command_type: str) -> str:
+    """コマンド種類に対応する一覧アイコン識別子を返す (未知は汎用ドット)."""
+    return _COMMAND_ICONS.get(str(command_type or ""), "DOT")
+
+
 def command_summary(command) -> str:
     kind = str(getattr(command, "command_type", "") or "")
     if kind == "SET_VIEW_LAYER":
