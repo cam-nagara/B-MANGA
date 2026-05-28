@@ -329,6 +329,43 @@ def build_offset_band_polygon(
     return outer_ring, holes
 
 
+def _resample_clean_offset(
+    body_poly,
+    signed_offset_m: float,
+    n: int,
+    valley_sharp: bool,
+) -> list[tuple[float, float, float]] | None:
+    """body を signed_offset_m だけ Shapely buffer し、 その外周を n 点に等間隔再サンプルする.
+
+    多重線リングの centerline を「法線方向の単純オフセット」(凹谷で自己交差) ではなく
+    Shapely のクリーンなオフセット曲線にするために使う。 これで曲線形状でも
+    リングが自己交差せず、 谷/山可変幅でももつれない。
+    """
+    if body_poly is None or n < 6:
+        return None
+    join = 2 if valley_sharp else 1
+    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    try:
+        off = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
+    except Exception:  # noqa: BLE001
+        return None
+    if off is None or off.is_empty:
+        return None
+    if off.geom_type == "MultiPolygon":
+        off = max(off.geoms, key=lambda g: g.area)
+    if off.geom_type != "Polygon":
+        return None
+    ext = off.exterior
+    length = ext.length
+    if length <= 1.0e-9:
+        return None
+    out: list[tuple[float, float, float]] = []
+    for i in range(n):
+        pt = ext.interpolate(length * (i / n))
+        out.append((float(pt.x), float(pt.y), 0.0))
+    return out
+
+
 def _stroke_band_outside_union(
     samples: Sequence[tuple[float, float, float]],
     *,
@@ -912,6 +949,24 @@ def _build_dynamic_multi_line_polygons(
         return []
 
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
+    straight_edged = _is_straight_edged(pts, SAMPLES_PER_SEGMENT)
+    # 曲線形状 (雲/フワフワ/トゲ曲線) の多重線リングは、 centerline を法線方向に
+    # 単純オフセットすると凹の谷で自己交差し、 谷/山可変幅 + Shapely 整理でもつれる。
+    # Shapely の clean buffer によるオフセット曲線を centerline にして自己交差を防ぐ。
+    # トゲ直線 (straight) は anchor-only 経路で扱うので対象外。 signed_offset_m を
+    # オフセット曲線へ畳み込んだら 0 にして二重オフセットを避ける。
+    if (
+        not outside_align
+        and not straight_edged
+        and abs(signed_offset_m) > 1.0e-9
+        and len(pts) >= 6
+    ):
+        clean = _resample_clean_offset(
+            _build_body_polygon(body_samples), signed_offset_m, len(pts), valley_sharp
+        )
+        if clean is not None and len(clean) >= 6:
+            pts = [(c[0], c[1]) for c in clean]
+            signed_offset_m = 0.0
     # 角を尖らせる + 全周ループ + 「アンカー間が直線」(= トゲ直線) のときだけ anchor-only
     # で構築する。 アンカー (= 山頂/谷の頂点) 間を 1 本の直線セグメントで結ぶことで、
     # 中間サンプル由来のテーパー線のズレ (= 先端の折れ) を防ぎ、 山頂を mitre 点に
@@ -922,7 +977,7 @@ def _build_dynamic_multi_line_polygons(
         valley_sharp
         and length_scale >= 0.999
         and len(pts) >= SAMPLES_PER_SEGMENT * 6
-        and _is_straight_edged(pts, SAMPLES_PER_SEGMENT)
+        and straight_edged
     )
     if use_anchor_only:
         anchor_pts = pts[::SAMPLES_PER_SEGMENT]
