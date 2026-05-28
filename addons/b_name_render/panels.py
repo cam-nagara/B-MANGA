@@ -196,6 +196,8 @@ def _draw_command_list(layout, preset) -> None:
     if not preset.commands:
         box.label(text="コマンドがありません")
 
+    box.operator("bname_render.command_add_block", text="出力ブロックを追加", icon="COLLECTION_NEW")
+
 
 def _draw_active_command_detail(layout, preset, context) -> None:
     if not preset.commands:

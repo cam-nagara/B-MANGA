@@ -175,6 +175,27 @@ class BNAME_RENDER_OT_command_duplicate(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_command_add_block(Operator):
+    bl_idname = "bname_render.command_add_block"
+    bl_label = "出力ブロックを追加"
+    bl_description = "退避→レンダー→復元の1出力ブロックをまとめて末尾に追加"
+
+    @classmethod
+    def poll(cls, context):
+        return core.active_preset(context) is not None
+
+    def execute(self, context):
+        preset = core.active_preset(context)
+        if preset is None:
+            return {"CANCELLED"}
+        first_idx = len(preset.commands)
+        for command_type in ("STATE_BEGIN", "RENDER_LAYER", "STATE_END"):
+            preset.commands.add().command_type = command_type
+        preset.active_command_index = first_idx
+        self.report({"INFO"}, "出力ブロックを追加しました")
+        return {"FINISHED"}
+
+
 class BNAME_RENDER_OT_command_move(Operator):
     bl_idname = "bname_render.command_move"
     bl_label = "コマンドを移動"
@@ -313,6 +334,7 @@ _CLASSES = (
     BNAME_RENDER_OT_command_add,
     BNAME_RENDER_OT_command_remove,
     BNAME_RENDER_OT_command_duplicate,
+    BNAME_RENDER_OT_command_add_block,
     BNAME_RENDER_OT_command_move,
     BNAME_RENDER_OT_command_card_click,
     BNAME_RENDER_OT_preset_defaults_register,
