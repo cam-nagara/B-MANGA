@@ -26,7 +26,7 @@ class BNAME_RENDER_UL_presets(UIList):
         category = str(getattr(data, "preset_category", "ALL") or "ALL")
         if category != "ALL":
             for i, item in enumerate(items):
-                if core.preset_category_of(item.name) != category:
+                if not core.preset_matches_category(item, category):
                     flags[i] &= ~self.bitflag_filter_item
         return flags, []
 

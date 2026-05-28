@@ -24,6 +24,10 @@ class _RenderSession:
 
 _SESSION: _RenderSession | None = None
 
+# 親プリセット (プリセット実行) のための実行中プリセット名スタック。
+# 深さ1固定 (親→子の1段のみ)。循環・自己参照・多段ネストの防止に使う。
+_PRESET_RUN_STACK: list[str] = []
+
 
 def _iter_node_trees(scene):
     seen: set[int] = set()
@@ -551,6 +555,39 @@ def _run_command(context, command, preset_name: str = "") -> None:
         eevr_bridge.assemble_images()
     elif kind == "OPERATOR" and command.operator_idname:
         eevr_bridge.run_operator(command.operator_idname)
+    elif kind == "RUN_PRESET":
+        _run_child_preset(context, str(getattr(command, "target_preset_name", "") or ""))
+
+
+def _run_child_preset(context, target_name: str) -> None:
+    """親プリセットから子プリセットを順番に実行する (深さ1固定).
+
+    退避/復元は子プリセットが自前で行う前提。親は子を並べるだけ。
+    多段ネスト・循環・自己参照は実行せず警告ログを出す。
+    """
+    name = str(target_name or "").strip()
+    if not name:
+        return
+    if len(_PRESET_RUN_STACK) >= 2:
+        print(f"[B-Name-Render] 多段のプリセット実行は無視します: {name}")
+        return
+    if name in _PRESET_RUN_STACK:
+        print(f"[B-Name-Render] 循環/自己参照のプリセット実行を回避: {name}")
+        return
+    state = core.get_state(context)
+    if state is None:
+        return
+    child = next((p for p in state.presets if p.name == name), None)
+    if child is None:
+        print(f"[B-Name-Render] プリセットが見つかりません: {name}")
+        return
+    _PRESET_RUN_STACK.append(name)
+    try:
+        for command in child.commands:
+            if getattr(command, "enabled", False):
+                _run_command(context, command, child.name)
+    finally:
+        _PRESET_RUN_STACK.pop()
 
 
 def _sync_bname_coma_output_layout(context) -> None:
@@ -579,11 +616,16 @@ def run_active_preset(context) -> int:
     try:
         core._apply_output_resolution_mode(context.scene)
         _sync_bname_coma_output_layout(context)
-        for command in preset.commands:
-            if not command.enabled:
-                continue
-            _run_command(context, command, preset.name)
-            count += 1
+        _PRESET_RUN_STACK.clear()
+        _PRESET_RUN_STACK.append(str(getattr(preset, "name", "") or ""))
+        try:
+            for command in preset.commands:
+                if not command.enabled:
+                    continue
+                _run_command(context, command, preset.name)
+                count += 1
+        finally:
+            _PRESET_RUN_STACK.clear()
     finally:
         _restore_session(context.scene)
     return count

@@ -34,6 +34,7 @@ COMMAND_TYPE_ITEMS = (
     ("EEVR_RENDER_FACES", "方向画像レンダー", ""),
     ("EEVR_ASSEMBLE", "魚眼合成", ""),
     ("OPERATOR", "Blenderオペレータ", ""),
+    ("RUN_PRESET", "プリセット実行", ""),
 )
 
 ENGINE_ITEMS = (
@@ -73,9 +74,12 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
     engine: EnumProperty(name="レンダーエンジン", items=ENGINE_ITEMS, default="CYCLES")  # type: ignore[valid-type]
     operator_idname: StringProperty(name="オペレータ", default="")  # type: ignore[valid-type]
 
+    target_preset_name: StringProperty(name="実行するプリセット", default="")  # type: ignore[valid-type]
+
 
 PRESET_CATEGORY_ITEMS = (
     ("ALL", "すべて", "すべてのプリセットを表示"),
+    ("GROUP", "まとめ", "親プリセット (プリセット実行を含む) のみ表示"),
     ("CHARA", "キャラ", "キャラ系プリセットのみ表示"),
     ("BG", "背景", "背景系プリセットのみ表示"),
     ("LEGACY", "旧出力シーン互換", "旧出力シーン互換プリセットのみ表示"),
@@ -94,6 +98,23 @@ def preset_category_of(name: str) -> str:
     return "OTHER"
 
 
+def preset_is_group(preset) -> bool:
+    """「プリセット実行」コマンドを含む = 親プリセット (まとめ) かを返す."""
+    commands = getattr(preset, "commands", None)
+    if not commands:
+        return False
+    return any(getattr(c, "command_type", "") == "RUN_PRESET" for c in commands)
+
+
+def preset_matches_category(preset, category: str) -> bool:
+    """プリセットが表示カテゴリに合致するか. GROUP は親プリセット判定。"""
+    if category == "ALL":
+        return True
+    if category == "GROUP":
+        return preset_is_group(preset)
+    return preset_category_of(getattr(preset, "name", "")) == category
+
+
 def _on_preset_category_update(self, _context) -> None:
     """種類フィルタ変更時、選択中プリセットも表示中の種類へ追従させる.
 
@@ -106,10 +127,10 @@ def _on_preset_category_update(self, _context) -> None:
     if category == "ALL" or not presets:
         return
     cur = max(0, min(int(self.active_preset_index), len(presets) - 1))
-    if preset_category_of(presets[cur].name) == category:
+    if preset_matches_category(presets[cur], category):
         return
     for i, preset in enumerate(presets):
-        if preset_category_of(preset.name) == category:
+        if preset_matches_category(preset, category):
             self.active_preset_index = i
             return
 

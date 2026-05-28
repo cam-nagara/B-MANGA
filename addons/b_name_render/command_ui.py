@@ -34,6 +34,7 @@ _COMMAND_ICONS = {
     "EEVR_RENDER_FACES": "CAMERA_DATA",
     "EEVR_ASSEMBLE": "CAMERA_DATA",
     "OPERATOR": "CONSOLE",
+    "RUN_PRESET": "PLAY",
 }
 
 
@@ -111,6 +112,8 @@ def command_summary(command) -> str:
         return " / ".join(part for part in (folder, image) if part)
     if kind == "OPERATOR":
         return str(getattr(command, "operator_idname", "") or "")
+    if kind == "RUN_PRESET":
+        return str(getattr(command, "target_preset_name", "") or "")
     return ""
 
 
@@ -172,6 +175,8 @@ def command_help(command, context=None) -> str:
         return "eeVR の対応処理を呼び出します（魚眼モード時のみ）。"
     if kind == "OPERATOR":
         return f"オペレーター「{g('operator_idname')}」を実行します。"
+    if kind == "RUN_PRESET":
+        return f"プリセット「{g('target_preset_name')}」を順番に実行します（退避/復元は実行先プリセットが行います）。"
     return ""
 
 
@@ -274,4 +279,10 @@ def draw_command(layout, command, context=None) -> None:
         _draw_fisheye_output_fields(layout, command, context)
     elif kind == "OPERATOR":
         layout.prop(command, "operator_idname")
+    elif kind == "RUN_PRESET":
+        state = core.get_state(context) if context is not None else None
+        if state is not None:
+            layout.prop_search(command, "target_preset_name", state, "presets", text="実行するプリセット")
+        else:
+            layout.prop(command, "target_preset_name", text="実行するプリセット")
     draw_command_help(layout, command, context)
