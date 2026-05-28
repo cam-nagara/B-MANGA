@@ -34,16 +34,30 @@ class BNAME_RENDER_UL_presets(UIList):
 class BNAME_RENDER_UL_commands(UIList):
     bl_idname = "BNAME_RENDER_UL_commands"
 
-    def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
+    def draw_item(self, _context, layout, data, item, _icon, _active_data, _active_propname, index):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
+            commands = getattr(data, "commands", None)
+            kind = str(getattr(item, "command_type", "") or "")
+            depth = command_ui.block_depth_before(commands, index)
             row = layout.row(align=True)
+            if kind == "STATE_BEGIN":
+                # 出力ブロックの見出し行
+                row.label(text="", icon="DISCLOSURE_TRI_DOWN")
+                name = command_ui.block_label(commands, index)
+                row.label(text=f"出力ブロック: {name}" if name else "出力ブロック")
+                row.prop(item, "enabled", text="")
+                return
+            # STATE_END は対応する BEGIN と同じ高さ (深さ-1) に戻す
+            indent = max(0, depth - 1) if kind == "STATE_END" else depth
+            for _ in range(indent):
+                row.label(text="", icon="BLANK1")
             row.prop(item, "enabled", text="")
             sub = row.row(align=True)
             # 無効コマンドは行をグレー表示 (チェックボックスは押せるまま)。
             sub.active = bool(getattr(item, "enabled", False))
             sub.label(
                 text=command_ui.display_name(item),
-                icon=command_ui.command_icon(getattr(item, "command_type", "")),
+                icon=command_ui.command_icon(kind),
             )
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"

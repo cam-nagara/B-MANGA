@@ -42,6 +42,46 @@ def command_icon(command_type: str) -> str:
     return _COMMAND_ICONS.get(str(command_type or ""), "DOT")
 
 
+def block_depth_before(commands, index: int) -> int:
+    """index 行より前の STATE_BEGIN/STATE_END の入れ子深さを返す.
+
+    出力ブロック (STATE_BEGIN〜STATE_END) 内のコマンドをインデント表示する
+    ための深さ計算。安全読みのみ。
+    """
+    if commands is None:
+        return 0
+    depth = 0
+    upper = min(int(index), len(commands))
+    for i in range(upper):
+        t = str(getattr(commands[i], "command_type", "") or "")
+        if t == "STATE_BEGIN":
+            depth += 1
+        elif t == "STATE_END":
+            depth = max(0, depth - 1)
+    return depth
+
+
+def block_label(commands, begin_index: int) -> str:
+    """STATE_BEGIN から次の STATE_END までの「出力ブロック」を代表する名前.
+
+    ブロック内で最初に見つかった検出ワード、無ければ出力画像名を返す。
+    """
+    if commands is None:
+        return ""
+    for i in range(int(begin_index) + 1, len(commands)):
+        t = str(getattr(commands[i], "command_type", "") or "")
+        if t == "STATE_END":
+            break
+        lc = str(getattr(commands[i], "label_contains", "") or "")
+        if lc:
+            return lc
+        if t == "SET_OUTPUT_NAME":
+            tv = str(getattr(commands[i], "text_value", "") or "")
+            if tv:
+                return tv
+    return ""
+
+
 def command_summary(command) -> str:
     kind = str(getattr(command, "command_type", "") or "")
     if kind == "SET_VIEW_LAYER":
