@@ -90,6 +90,11 @@ def apply_preset_to_coma(preset: BorderPreset, coma) -> None:
     """プリセットの枠線・白フチ設定を 1 つのコマへ適用."""
     schema.coma_border_from_dict(coma.border, preset.data.get("border", {}))
     schema.coma_white_margin_from_dict(coma.white_margin, preset.data.get("whiteMargin", {}))
+    # セレクタ表示をコマの実状態へ追従させるため、適用プリセット名を記録する。
+    try:
+        coma.border.preset_name = preset.name
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def preset_dict_from_coma(coma, name: str, description: str = "") -> dict[str, Any]:

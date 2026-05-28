@@ -291,6 +291,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
             from ..operators import preset_op
 
             preset_op.sync_paper_preset_selector(bpy.context)
+            preset_op.sync_border_preset_selector(bpy.context)
         except Exception:  # noqa: BLE001
             _logger.exception("load_post: preset selector sync failed")
         try:

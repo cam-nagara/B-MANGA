@@ -88,7 +88,7 @@ class BNAME_RENDER_OT_preset_settings(Operator):
         box = layout.box()
         box.label(text="プリセット", icon="PRESET")
         box.prop(preset, "name", text="名前")
-        box.label(text=f"カード数: {len(preset.commands)}")
+        box.label(text=f"コマンド数: {len(preset.commands)}")
 
     def execute(self, context):
         return {"FINISHED"} if core.active_preset(context) is not None else {"CANCELLED"}
@@ -108,16 +108,16 @@ class BNAME_RENDER_OT_preset_run(Operator):
             self.report({"ERROR"}, f"実行失敗: {exc}")
             return {"CANCELLED"}
         _play_completion_sound()
-        self.report({"INFO"}, f"実行完了: {count} カード")
+        self.report({"INFO"}, f"実行完了: {count} コマンド")
         return {"FINISHED"}
 
 
 class BNAME_RENDER_OT_command_add(Operator):
     bl_idname = "bname_render.command_add"
-    bl_label = "カードを追加"
+    bl_label = "コマンドを追加"
 
     command_type: EnumProperty(name="種類", items=core.COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
-    card_name: StringProperty(name="カード名", default="新規カード")  # type: ignore[valid-type]
+    card_name: StringProperty(name="コマンド名", default="新規コマンド")  # type: ignore[valid-type]
 
     def invoke(self, context, _event):
         return context.window_manager.invoke_props_dialog(self)
@@ -139,7 +139,7 @@ class BNAME_RENDER_OT_command_add(Operator):
 
 class BNAME_RENDER_OT_command_remove(Operator):
     bl_idname = "bname_render.command_remove"
-    bl_label = "カードを削除"
+    bl_label = "コマンドを削除"
 
     def execute(self, context):
         preset = core.active_preset(context)
@@ -153,7 +153,7 @@ class BNAME_RENDER_OT_command_remove(Operator):
 
 class BNAME_RENDER_OT_command_move(Operator):
     bl_idname = "bname_render.command_move"
-    bl_label = "カードを移動"
+    bl_label = "コマンドを移動"
 
     direction: EnumProperty(name="方向", items=(("UP", "上", ""), ("DOWN", "下", "")), default="UP")  # type: ignore[valid-type]
 
@@ -172,9 +172,9 @@ class BNAME_RENDER_OT_command_move(Operator):
 
 class BNAME_RENDER_OT_command_card_click(Operator):
     bl_idname = "bname_render.command_card_click"
-    bl_label = "カードを選択"
+    bl_label = "コマンドを選択"
 
-    index: IntProperty(name="カード", default=0, min=0)  # type: ignore[valid-type]
+    index: IntProperty(name="コマンド", default=0, min=0)  # type: ignore[valid-type]
 
     def _select_card(self, context):
         state = core.get_state(context)
@@ -215,7 +215,7 @@ class BNAME_RENDER_OT_command_card_click(Operator):
 class BNAME_RENDER_OT_preset_defaults_register(Operator):
     bl_idname = "bname_render.preset_defaults_register"
     bl_label = "初期設定に登録"
-    bl_description = "選択中プリセットの現在のカード構成を、ユーザー共通の初期設定として保存"
+    bl_description = "選択中プリセットの現在のコマンド構成を、ユーザー共通の初期設定として保存"
 
     @classmethod
     def poll(cls, context):
@@ -225,7 +225,7 @@ class BNAME_RENDER_OT_preset_defaults_register(Operator):
         return context.window_manager.invoke_confirm(
             self, _event,
             title="初期設定に登録",
-            message="このプリセットの現在のカード構成を初期設定として保存します。",
+            message="このプリセットの現在のコマンド構成を初期設定として保存します。",
             confirm_text="登録",
         )
 
@@ -245,7 +245,7 @@ class BNAME_RENDER_OT_preset_defaults_register(Operator):
 class BNAME_RENDER_OT_preset_defaults_restore(Operator):
     bl_idname = "bname_render.preset_defaults_restore"
     bl_label = "初期設定に戻す"
-    bl_description = "選択中プリセットのカード構成を、登録済みの初期設定（無ければ組み込み既定）へ戻す"
+    bl_description = "選択中プリセットのコマンド構成を、登録済みの初期設定（無ければ組み込み既定）へ戻す"
 
     @classmethod
     def poll(cls, context):
@@ -255,7 +255,7 @@ class BNAME_RENDER_OT_preset_defaults_restore(Operator):
         return context.window_manager.invoke_confirm(
             self, _event,
             title="初期設定に戻す",
-            message="このプリセットのカード構成を初期設定へ戻します。現在の内容は失われます。",
+            message="このプリセットのコマンド構成を初期設定へ戻します。現在の内容は失われます。",
             confirm_text="戻す",
         )
 

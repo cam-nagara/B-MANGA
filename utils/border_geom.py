@@ -47,7 +47,7 @@ def styled_closed_path_mm(
     corner_type: str = "square",
     radius_mm: float = 0.0,
     *,
-    corner_segments: int = 8,
+    corner_segments: int = 16,
 ) -> list[tuple[float, float]]:
     """角処理を反映した閉パスを返す.
 

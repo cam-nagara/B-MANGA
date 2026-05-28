@@ -48,7 +48,7 @@ class BNameRenderToolSettings(bpy.types.PropertyGroup):
 
 
 class BNameRenderCommand(bpy.types.PropertyGroup):
-    name: StringProperty(name="カード名", default="レンダー")  # type: ignore[valid-type]
+    name: StringProperty(name="コマンド名", default="レンダー")  # type: ignore[valid-type]
     name_auto: BoolProperty(name="名前を自動生成", default=True)  # type: ignore[valid-type]
     command_type: EnumProperty(name="種類", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
     enabled: BoolProperty(name="有効", default=True)  # type: ignore[valid-type]
@@ -97,7 +97,7 @@ def preset_category_of(name: str) -> str:
 def _on_preset_category_update(self, _context) -> None:
     """種類フィルタ変更時、選択中プリセットも表示中の種類へ追従させる.
 
-    追従しないと、選択中 (= カード/「プリセットを実行」の対象) が一覧で
+    追従しないと、選択中 (= コマンド/「プリセットを実行」の対象) が一覧で
     非表示のまま残り、別種類の隠れたプリセットを誤実行しかねない。
     update コールバックは書き込み許可コンテキストなので index を更新できる。
     """
@@ -117,14 +117,14 @@ def _on_preset_category_update(self, _context) -> None:
 class BNameRenderPreset(bpy.types.PropertyGroup):
     name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
     commands: CollectionProperty(type=BNameRenderCommand)  # type: ignore[valid-type]
-    active_command_index: IntProperty(name="カード", default=0, min=0)  # type: ignore[valid-type]
+    active_command_index: IntProperty(name="コマンド", default=0, min=0)  # type: ignore[valid-type]
 
 
 class BNameRenderState(bpy.types.PropertyGroup):
     presets: CollectionProperty(type=BNameRenderPreset)  # type: ignore[valid-type]
     active_preset_index: IntProperty(name="プリセット", default=0, min=0)  # type: ignore[valid-type]
     preset_category: EnumProperty(name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL", update=_on_preset_category_update)  # type: ignore[valid-type]
-    last_card_click_index: IntProperty(name="前回カード", default=-1)  # type: ignore[valid-type]
+    last_card_click_index: IntProperty(name="前回コマンド", default=-1)  # type: ignore[valid-type]
     last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
     sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]
 

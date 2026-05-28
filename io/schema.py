@@ -724,6 +724,7 @@ def coma_border_to_dict(border) -> dict[str, Any]:
         ),
         "blurDither": bool(getattr(border, "blur_dither", False)),
         "visible": bool(border.visible),
+        "presetName": str(getattr(border, "preset_name", "") or ""),
     }
 
 
@@ -744,6 +745,8 @@ def coma_border_from_dict(border, data: dict[str, Any]) -> None:
     if "blurDither" in data:
         border.blur_dither = bool(data["blurDither"])
     border.visible = bool(data.get("visible", True))
+    if hasattr(border, "preset_name"):
+        border.preset_name = str(data.get("presetName", "") or "")
 
 
 def coma_white_margin_to_dict(wm) -> dict[str, Any]:

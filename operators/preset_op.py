@@ -194,6 +194,40 @@ def _border_preset_enum_items(_self, context):
     return _BORDER_PRESET_ENUM_CACHE
 
 
+def sync_border_preset_selector(context) -> None:
+    """アクティブコマの ``border.preset_name`` に枠線セレクタを合わせる.
+
+    枠線セレクタ (``bname_border_preset_selector``) は WindowManager 上の一時
+    プロパティで、 ファイル/ウィンドウを開き直すたび先頭の「標準」へ戻る。
+    コマ自身が保持する適用プリセット名へ追従させ、 コマ編集から戻った直後に
+    実際の見た目と表示がズレない (= プリセットがリセットされたように見えない)
+    ようにする。 実データ (border.* / white_margin.*) はここでは一切変更しない。
+    """
+    global _SUPPRESS_BORDER_SELECTOR_UPDATE
+
+    resolved = _resolve_selected_coma(context)
+    if resolved is None:
+        return
+    _work, _page, _pi, coma = resolved
+    name = (getattr(getattr(coma, "border", None), "preset_name", "") or "").strip()
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bname_border_preset_selector"):
+        return
+    if not name:
+        return
+    # セレクタの enum に存在しない名前 (削除済みプリセット等) は無視する。
+    items = _border_preset_enum_items(None, context)
+    if name not in {ident for ident, _label, _desc in items}:
+        return
+    if getattr(wm, "bname_border_preset_selector", "") == name:
+        return
+    _SUPPRESS_BORDER_SELECTOR_UPDATE = True
+    try:
+        wm.bname_border_preset_selector = name
+    finally:
+        _SUPPRESS_BORDER_SELECTOR_UPDATE = False
+
+
 def _resolve_selected_coma(context):
     """枠線プリセットの対象コマを解決.
 

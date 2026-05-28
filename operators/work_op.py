@@ -229,6 +229,7 @@ class BNAME_OT_work_new(Operator, ExportHelper):
                 from . import preset_op
 
                 preset_op.sync_paper_preset_selector(context)
+                preset_op.sync_border_preset_selector(context)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: preset selector sync failed")
 
@@ -339,6 +340,7 @@ class BNAME_OT_work_open(Operator, ImportHelper):
                 from . import preset_op
 
                 preset_op.sync_paper_preset_selector(context)
+                preset_op.sync_border_preset_selector(context)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_open: preset selector sync failed")
             try:

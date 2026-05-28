@@ -145,7 +145,7 @@ def _draw_preset_list(layout, state) -> None:
 
 def _draw_command_list(layout, preset) -> None:
     box = layout.box()
-    box.label(text="カード一覧", icon="SEQ_STRIP_DUPLICATE")
+    box.label(text="コマンドリスト", icon="SEQ_STRIP_DUPLICATE")
     row = box.row()
     row.template_list(
         "BNAME_RENDER_UL_commands",
@@ -174,7 +174,7 @@ def _draw_command_list(layout, preset) -> None:
     tools.operator("bname_render.preset_defaults_register", text="", icon="PINNED")
 
     if not preset.commands:
-        box.label(text="カードがありません")
+        box.label(text="コマンドがありません")
 
 
 def _draw_active_command_detail(layout, preset, context) -> None:
@@ -186,7 +186,7 @@ def _draw_active_command_detail(layout, preset, context) -> None:
     idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
     command = preset.commands[idx]
     box = layout.box()
-    box.label(text="選択カード設定", icon="PREFERENCES")
+    box.label(text="選択コマンド設定", icon="PREFERENCES")
     command_ui.draw_command(box, command, context)
 
 

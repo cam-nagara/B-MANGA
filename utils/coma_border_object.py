@@ -499,9 +499,31 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
     faces: list[tuple[int, int, int, int]] = []
     if visible and enabled_global and base_width > 0.0:
         try:
-            inner = _outline_points(coma)
-            loops = border_geom.stroke_loops_mm(inner, base_width * 2.0)
-            ring = _white_margin_ring(inner, loops[0]) if loops is not None else None
+            # 白フチ幅は「枠線の外縁」から測る (枠線は中心線を芯に幅の半分だけ
+            # 外へ張り出すため、中心線基準だと枠線に半分隠れて見かけ上細くなる)。
+            outline = border_geom._dedupe_closed(_outline_points(coma))
+            border_half = 0.0
+            border_style = str(getattr(border, "style", "solid") or "solid")
+            if (
+                border is not None
+                and bool(getattr(border, "visible", True))
+                and border_style != "brush"
+            ):
+                border_half = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) * 0.5
+            outer_loops = border_geom.stroke_loops_mm(
+                outline, (border_half + base_width) * 2.0
+            )
+            if border_half > 1.0e-6:
+                inner_loops = border_geom.stroke_loops_mm(outline, border_half * 2.0)
+                inner_ring = inner_loops[0] if inner_loops is not None else None
+            else:
+                inner_ring = outline
+            outer_ring = outer_loops[0] if outer_loops is not None else None
+            ring = (
+                _white_margin_ring(inner_ring, outer_ring)
+                if (inner_ring and outer_ring)
+                else None
+            )
         except Exception:  # noqa: BLE001
             _logger.exception("white margin shape ring failed")
             ring = None

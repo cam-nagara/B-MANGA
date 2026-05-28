@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-29 — v0.6.152 コマ用blendのグレースケール表示 + 白フチ実幅 + 丸角解像度 + プリセット表示追従 + 山の高さ上限
+
+### 変更
+- **グレースケール表示**: コマ用blend (コマ編集) のパネルに「グレースケール表示」チェックボックスを追加。 オンでビュー変換 AgX (露出1.0)、 オフで標準。 表示はどちらも sRGB。 ユーザー操作でのみ色管理を切替え、 開閉では再適用しない (コマ用blendの色管理はユーザーに委ねる原則を維持)。
+- **白フチの実幅**: コマ枠の白フチ幅を「枠線の外縁」基準に変更。 従来は枠線の中心線基準だったため、 枠線が白フチの内側半分 (線幅の半分) を覆い、 0.5mm 指定でも実際は半分程度しか見えなかった。 ビューポート・PSD/ラスター書き出しの両方を修正。
+- **丸角の解像度**: コマ枠の丸角の分割数を倍 (8→16) にし、 カクつきを軽減。 ビューポート・書き出し・マスク・コマ平面すべてに反映。
+- **プリセット表示の追従**: コマ編集から戻るとコマ枠プリセットの選択が「標準」へ戻って見えた件を修正。 実データ (線種/角処理/白フチ等) は往復で保持されていた (= リセットされていない) が、 プリセットセレクタが毎回先頭の「標準」を表示していた。 コマに適用プリセット名を保存し、 用紙プリセットと同様にセレクタ表示をコマの実状態へ追従させた。
+- **山の高さ上限**: フキダシ・効果線の「山の高さ (mm)」スライダー上限を 25→100 に拡大。
+
+### 関連ファイル
+- `core/coma_camera.py` / `utils/display_settings.py` / `panels/coma_camera_panel.py`: グレースケール表示トグルと `apply_grayscale_view`。
+- `utils/coma_border_object.py` / `io/export_pipeline.py`: 白フチを枠線外縁基準のリングに。
+- `utils/border_geom.py`: `styled_closed_path_mm` の `corner_segments` 既定 8→16。
+- `core/coma_border.py` / `io/border_presets.py` / `io/schema.py` / `operators/preset_op.py` / `utils/handlers.py` / `operators/work_op.py`: コマ枠プリセット名の保存とセレクタ追従 (`sync_border_preset_selector`)。
+- `core/balloon.py` / `core/effect_line.py`: 山の高さ soft_max 25→100。
+- `addons/b_name_render/`: 「カード一覧」→「コマンドリスト」。 あわせて B-Name-Render の UI に残っていた「カード」表記 (コマンド追加/削除/移動/選択ボタン、コマンド名/コマンド数、初期設定の確認ダイアログ等) をすべて「コマンド」へ統一 (`panels.py` / `operators.py` / `command_ui.py` / `core.py` / `defaults_store.py`)。 「ボードカード」「レイヤーカードプレビュー」は別概念のため対象外。
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- 枠線/白フチ/プリセット名の page.json 往復で全設定が保持されることを確認。
+- グレースケール表示 ON/OFF で view_transform=AgX/Standard・exposure=1.0/0.0・display_device=sRGB を確認。
+- 白フチリング外縁の実幅が指定値どおりになることを確認。
+
 ## 2026-05-29 — v0.6.151 雲/もやもや 多重線・主線で「小山の先が0%のとき鋭いトゲになる」を修正
 
 ### 症状

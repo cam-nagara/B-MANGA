@@ -45,14 +45,14 @@ def command_summary(command) -> str:
 
 
 def auto_command_name(command) -> str:
-    """カードの設定内容から表示名を自動生成する."""
+    """コマンドの設定内容から表示名を自動生成する."""
     label = command_type_label(command.command_type)
     summary = command_summary(command)
     return f"{label}: {summary}" if summary else label
 
 
 def display_name(command) -> str:
-    """リスト等に表示するカード名 (自動生成 ON なら設定から生成)."""
+    """リスト等に表示するコマンド名 (自動生成 ON なら設定から生成)."""
     if bool(getattr(command, "name_auto", True)):
         return auto_command_name(command)
     manual = str(getattr(command, "name", "") or "").strip()
@@ -84,9 +84,9 @@ def draw_command(layout, command, context=None) -> None:
     layout.prop(command, "enabled")
     layout.prop(command, "name_auto", text="名前を自動生成")
     if bool(getattr(command, "name_auto", True)):
-        layout.label(text=f"カード名: {auto_command_name(command)}")
+        layout.label(text=f"コマンド名: {auto_command_name(command)}")
     else:
-        layout.prop(command, "name", text="カード名")
+        layout.prop(command, "name", text="コマンド名")
     layout.prop(command, "command_type")
     kind = command.command_type
     if kind == "SET_VIEW_LAYER":

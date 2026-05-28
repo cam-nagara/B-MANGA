@@ -158,6 +158,8 @@ class BNAME_PT_coma_camera(Panel):
         row.operator("bname.coma_camera_ensure", text="カメラを整備", icon="CAMERA_DATA")
         row.operator("bname.coma_camera_sync_references", text="下絵同期", icon="IMAGE_DATA")
 
+        layout.prop(scene, "bname_coma_grayscale_view", text="グレースケール表示")
+
         cam = _camera(context)
         if cam is None:
             layout.label(text="カメラがありません", icon="ERROR")

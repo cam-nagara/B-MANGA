@@ -98,6 +98,12 @@ class BNameComaBorder(bpy.types.PropertyGroup):
         default=True,
         update=_on_border_changed,
     )
+    preset_name: StringProperty(  # type: ignore[valid-type]
+        name="適用中プリセット",
+        description="最後に適用した枠線プリセット名 (セレクタ表示の追従用)",
+        default="",
+        options={"HIDDEN"},
+    )
 
 
 class BNameComaWhiteMargin(bpy.types.PropertyGroup):

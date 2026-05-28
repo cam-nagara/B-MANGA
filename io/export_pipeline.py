@@ -616,12 +616,28 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
     if not bool(getattr(wm, "enabled", False)) or base_width <= 0.0:
         return None
 
-    path_mm = poly_mm
-    loops = border_geom.stroke_loops_mm(path_mm, base_width * 2.0)
-    if loops is None:
+    # 白フチ幅は枠線の外縁から測る (中心線基準だと枠線に半分隠れて細く見える)。
+    border = getattr(entry, "border", None)
+    border_half = 0.0
+    if (
+        border is not None
+        and bool(getattr(border, "visible", True))
+        and str(getattr(border, "style", "solid") or "solid") != "brush"
+    ):
+        border_half = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) * 0.5
+
+    outer_loops = border_geom.stroke_loops_mm(poly_mm, (border_half + base_width) * 2.0)
+    if outer_loops is None:
         return None
-    outer_mm = loops[0]
-    ring_bbox = _points_bbox([*path_mm, *outer_mm])
+    outer_mm = outer_loops[0]
+    if border_half > 1.0e-6:
+        inner_loops = border_geom.stroke_loops_mm(poly_mm, border_half * 2.0)
+        if inner_loops is None:
+            return None
+        inner_mm = inner_loops[0]
+    else:
+        inner_mm = border_geom._dedupe_closed(poly_mm)
+    ring_bbox = _points_bbox([*inner_mm, *outer_mm])
     if ring_bbox is None:
         return None
     canvas = _canvas_for_bbox(ring_bbox, canvas_height_px, dpi)
@@ -629,7 +645,7 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
         return None
     color = _rgb255(wm.color)
     draw = ImageDraw.Draw(canvas.image)
-    inner_px = canvas.points_px(path_mm)
+    inner_px = canvas.points_px(inner_mm)
     outer_px = canvas.points_px(outer_mm)
     for i in range(len(outer_px)):
         j = (i + 1) % len(outer_px)

@@ -65,6 +65,15 @@ def _update_white_background(self, context) -> None:
         scene.render.film_transparent = bool(self.white_background)
 
 
+def _update_grayscale_view(self, context) -> None:
+    scene = getattr(context, "scene", None) or self
+    from ..utils import display_settings
+
+    display_settings.apply_grayscale_view(
+        scene, bool(getattr(scene, "bname_coma_grayscale_view", False))
+    )
+
+
 def _update_subsurf_realtime(self, _context) -> None:
     for obj in bpy.data.objects:
         for mod in getattr(obj, "modifiers", []):
@@ -282,6 +291,12 @@ def register() -> None:
         default=False,
         update=_update_reduction_mode,
     )
+    bpy.types.Scene.bname_coma_grayscale_view = BoolProperty(
+        name="グレースケール表示",
+        description="オンでビュー変換を AgX (露出1.0)、オフで標準にする (表示は常に sRGB)",
+        default=False,
+        update=_update_grayscale_view,
+    )
     bpy.types.Scene.bname_coma_camera_original_resolution_x = IntProperty(
         name="Original Resolution X",
         default=0,
@@ -324,6 +339,7 @@ def unregister() -> None:
         "bname_coma_camera_preview_scale_percentage",
         "bname_coma_camera_original_resolution_y",
         "bname_coma_camera_original_resolution_x",
+        "bname_coma_grayscale_view",
         "bname_coma_camera_reduction_mode",
         "bname_coma_camera_fisheye_layout_mode",
         "bname_coma_camera_resolution_settings_index",
