@@ -93,6 +93,26 @@ def hidden_command_indices(commands) -> set:
     return hidden
 
 
+def block_inner_count(commands, begin_index: int) -> int:
+    """出力ブロックの内側コマンド数 (見出しの STATE_BEGIN と対応 STATE_END を除く)."""
+    if not commands:
+        return 0
+    depth = 0
+    count = 0
+    for i in range(int(begin_index), len(commands)):
+        t = str(getattr(commands[i], "command_type", "") or "")
+        if t == "STATE_BEGIN":
+            depth += 1
+            if i == begin_index:
+                continue
+        elif t == "STATE_END":
+            depth -= 1
+            if depth <= 0:
+                break
+        count += 1
+    return count
+
+
 def block_label(commands, begin_index: int) -> str:
     """STATE_BEGIN から次の STATE_END までの「出力ブロック」を代表する名前.
 

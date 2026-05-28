@@ -41,6 +41,9 @@ class BNAME_RENDER_UL_commands(UIList):
             depth = command_ui.block_depth_before(commands, index)
             row = layout.row(align=True)
             if kind == "STATE_BEGIN":
+                # 入れ子の出力ブロック見出しもインデントして階層を揃える
+                for _ in range(depth):
+                    row.label(text="", icon="BLANK1")
                 # 出力ブロックの見出し行 (▼/▶ で折りたたみ)
                 collapsed = bool(getattr(item, "collapsed", False))
                 row.prop(
@@ -51,7 +54,10 @@ class BNAME_RENDER_UL_commands(UIList):
                     icon="DISCLOSURE_TRI_RIGHT" if collapsed else "DISCLOSURE_TRI_DOWN",
                 )
                 name = command_ui.block_label(commands, index)
-                row.label(text=f"出力ブロック: {name}" if name else "出力ブロック")
+                head = f"出力ブロック: {name}" if name else "出力ブロック"
+                if collapsed:
+                    head += f" （{command_ui.block_inner_count(commands, index)}件）"
+                row.label(text=head)
                 row.prop(item, "enabled", text="")
                 return
             # STATE_END は対応する BEGIN と同じ高さ (深さ-1) に戻す
