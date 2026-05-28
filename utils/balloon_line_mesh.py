@@ -280,6 +280,7 @@ def build_offset_band_polygon(
     band_width_m: float,
     valley_sharp: bool,
     miter_limit: float = _SHARP_MITRE_LIMIT,
+    peaks_rounded: bool = False,
     _body_poly=None,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """本体多角形から signed_offset_m を中心に幅 band_width_m の帯を構築する.
@@ -287,6 +288,9 @@ def build_offset_band_polygon(
     signed_offset_m: 正=本体の外側へ、負=本体の内側へ。
     band_width_m: 帯の幅 (常に正)。
     valley_sharp=True で mitre join (谷で鋭角), False で round join (谷で丸み).
+    peaks_rounded=True かつ外向き (signed_offset_m>0) のときは凸の山頂を round join
+    で丸める (雲/フワフワのように山頂が丸い形状で、 外側へ広げた帯の山頂が mitre で
+    尖るのを防ぐ)。 谷は外向きオフセットでは交点として鋭く残るので valley_sharp は保つ。
 
     戻り値: (outer_ring, holes) の対。失敗時 None。
     """
@@ -296,8 +300,12 @@ def build_offset_band_polygon(
     if body_poly is None:
         return None
 
-    join = 2 if valley_sharp else 1  # 1=round, 2=mitre, 3=bevel
-    mitre = float(miter_limit) if valley_sharp else _ROUND_MITRE_LIMIT
+    if signed_offset_m > 0.0 and peaks_rounded:
+        join = 1  # round (山頂を丸める)
+        mitre = _ROUND_MITRE_LIMIT
+    else:
+        join = 2 if valley_sharp else 1  # 1=round, 2=mitre, 3=bevel
+        mitre = float(miter_limit) if valley_sharp else _ROUND_MITRE_LIMIT
     half = band_width_m * 0.5
     try:
         outer_buf = body_poly.buffer(
@@ -334,6 +342,7 @@ def _resample_clean_offset(
     signed_offset_m: float,
     n: int,
     valley_sharp: bool,
+    peaks_rounded: bool = False,
 ) -> list[tuple[float, float, float]] | None:
     """body を signed_offset_m だけ Shapely buffer し、 その外周を n 点に等間隔再サンプルする.
 
@@ -343,8 +352,20 @@ def _resample_clean_offset(
     """
     if body_poly is None or n < 6:
         return None
-    join = 2 if valley_sharp else 1
-    mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
+    # 外向きオフセット (signed_offset_m>0) では凸の山頂が join_style の対象になる。
+    # 山頂が丸い形状 (雲/フワフワ) では、 主線が本体カーブに沿って丸い山頂を持つので
+    # 多重線も round join で山頂を丸いままにする。 mitre だと山頂が鋭いスパイクに
+    # 尖ってしまい、 主線は丸いのに多重線だけ尖る不具合になる。 凹の谷は外向き
+    # オフセットでは join 対象にならず、 オフセット辺の交点として自然に鋭く残るため
+    # valley_sharp は保たれる。 山頂が尖る形状 (トゲ曲線) は主線が尖っているので
+    # 多重線も mitre のまま尖らせて主線と揃える。 内向き (signed_offset_m<0) は谷が
+    # join 対象になるので、 谷の鋭さを valley_sharp に従って mitre/round で決める。
+    if signed_offset_m > 0.0 and peaks_rounded:
+        join = 1
+        mitre = _ROUND_MITRE_LIMIT
+    else:
+        join = 2 if valley_sharp else 1
+        mitre = _SHARP_MITRE_LIMIT if valley_sharp else _ROUND_MITRE_LIMIT
     try:
         off = body_poly.buffer(signed_offset_m, join_style=join, mitre_limit=mitre)
     except Exception:  # noqa: BLE001
@@ -372,6 +393,7 @@ def _stroke_band_outside_union(
     line_width_m: float,
     valley_sharp: bool,
     miter_limit: float = _SHARP_MITRE_LIMIT,
+    peaks_rounded: bool = False,
 ) -> Optional[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """主線 (外側アライメント) の線バンドを Shapely buffer で構築する."""
     return build_offset_band_polygon(
@@ -380,6 +402,7 @@ def _stroke_band_outside_union(
         band_width_m=line_width_m,
         valley_sharp=valley_sharp,
         miter_limit=miter_limit,
+        peaks_rounded=peaks_rounded,
     )
 
 
@@ -923,6 +946,7 @@ def _build_dynamic_multi_line_polygons(
     cross_extension_m: float = 0.0,
     peak_extension_m: float = 0.0,
     outside_align: bool = False,
+    peaks_rounded: bool = False,
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """動的形状 (cloud/fluffy/thorn/thorn-curve) の主線/多重線 1 リング分を、
     谷/山可変幅 + 長さ変化を反映した複数バンドポリゴンとして構築する。
@@ -963,7 +987,8 @@ def _build_dynamic_multi_line_polygons(
         and len(pts) >= 6
     ):
         clean = _resample_clean_offset(
-            _build_body_polygon(body_samples), signed_offset_m, len(pts), valley_sharp
+            _build_body_polygon(body_samples), signed_offset_m, len(pts), valley_sharp,
+            peaks_rounded=peaks_rounded,
         )
         if clean is not None and len(clean) >= 6:
             pts = [(c[0], c[1]) for c in clean]
@@ -2421,6 +2446,11 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
     valley_sharp = _valley_sharp_for_entry(entry)
+    # 山頂が丸い形状 (雲/フワフワ) は、 外側へ広げた均一バンドの山頂を round join で
+    # 丸める。 トゲ/トゲ曲線は山頂が尖る形状なので従来通り mitre のまま。
+    peaks_rounded = balloon_shapes.normalize_shape(
+        str(getattr(entry, "shape", "rect") or "rect")
+    ) in {"cloud", "fluffy"}
 
     # 主線の谷/山の線幅: % 指定 (100% = base line_width, 0% = その頂点で消える)。
     # 辺全体で線形補間。動的形状のみ有効。両方 0% のとき主線全体不可視。
@@ -2475,6 +2505,7 @@ def ensure_balloon_line_mesh(
             samples,
             line_width_m=line_width_m,
             valley_sharp=valley_sharp,
+            peaks_rounded=peaks_rounded,
         )
         if union_result is None:
             remove_balloon_line_mesh(balloon_id)
@@ -2994,6 +3025,7 @@ def ensure_balloon_multi_line_mesh(
                     cross_extension_m=cross_extension_m,
                     peak_extension_m=0.0,
                     outside_align=ml_outside_align,
+                    peaks_rounded=(shape_norm in {"cloud", "fluffy"}),
                 )
                 polygons.extend(sub_polys)
             else:
@@ -3002,6 +3034,7 @@ def ensure_balloon_multi_line_mesh(
                     signed_offset_m=signed_offset_mm * 0.001,
                     band_width_m=ring_width_mm * 0.001,
                     valley_sharp=valley_sharp,
+                    peaks_rounded=(shape_norm in {"cloud", "fluffy"}),
                     _body_poly=body_poly,
                 )
                 if band is not None:
