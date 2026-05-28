@@ -25,7 +25,7 @@ COMMAND_TYPE_ITEMS = (
     ("SET_OUTPUT_FOLDER", "出力フォルダ", ""),
     ("RELOAD_IMAGES", "画像ノード再読み込み", ""),
     ("RENDER", "レンダー", ""),
-    ("RENDER_LAYER", "フレーム出力レンダー", ""),
+    ("RENDER_LAYER", "レンダー：ワード検出", ""),
     ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", ""),
     ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", ""),
     ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", ""),
@@ -61,7 +61,7 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
 
     node_name: StringProperty(name="ノード名", default="")  # type: ignore[valid-type]
     node_group_name: StringProperty(name="対象", default="")  # type: ignore[valid-type]
-    label_contains: StringProperty(name="フレーム名", default="")  # type: ignore[valid-type]
+    label_contains: StringProperty(name="検出ワード", default="")  # type: ignore[valid-type]
     mute: BoolProperty(name="ミュート", default=False)  # type: ignore[valid-type]
 
     input_name: StringProperty(name="入力名", default="")  # type: ignore[valid-type]
