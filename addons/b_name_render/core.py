@@ -53,6 +53,7 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
     name_auto: BoolProperty(name="名前を自動生成", default=True)  # type: ignore[valid-type]
     command_type: EnumProperty(name="種類", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
     enabled: BoolProperty(name="有効", default=True)  # type: ignore[valid-type]
+    collapsed: BoolProperty(name="折りたたみ", default=False)  # type: ignore[valid-type]
 
     view_layer_name: StringProperty(name="ビューレイヤー", default="")  # type: ignore[valid-type]
     view_layer_enabled: BoolProperty(name="有効化", default=True)  # type: ignore[valid-type]

@@ -62,6 +62,37 @@ def block_depth_before(commands, index: int) -> int:
     return depth
 
 
+def hidden_command_indices(commands) -> set:
+    """折りたたまれた出力ブロックの内側コマンド (見出し以外) の index 集合.
+
+    STATE_BEGIN の collapsed が True のとき、その出力ブロックの内側コマンドと
+    対応する STATE_END を隠す (見出しの STATE_BEGIN 行は残す)。入れ子対応。
+    """
+    hidden: set = set()
+    if not commands:
+        return hidden
+    depth = 0
+    hide_until_depth = None  # 折りたたみ開始時の depth
+    for i in range(len(commands)):
+        t = str(getattr(commands[i], "command_type", "") or "")
+        if hide_until_depth is not None:
+            hidden.add(i)
+            if t == "STATE_BEGIN":
+                depth += 1
+            elif t == "STATE_END":
+                depth -= 1
+                if depth <= hide_until_depth:
+                    hide_until_depth = None
+            continue
+        if t == "STATE_BEGIN":
+            if bool(getattr(commands[i], "collapsed", False)):
+                hide_until_depth = depth
+            depth += 1
+        elif t == "STATE_END":
+            depth = max(0, depth - 1)
+    return hidden
+
+
 def block_label(commands, begin_index: int) -> str:
     """STATE_BEGIN から次の STATE_END までの「出力ブロック」を代表する名前.
 

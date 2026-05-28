@@ -41,8 +41,15 @@ class BNAME_RENDER_UL_commands(UIList):
             depth = command_ui.block_depth_before(commands, index)
             row = layout.row(align=True)
             if kind == "STATE_BEGIN":
-                # 出力ブロックの見出し行
-                row.label(text="", icon="DISCLOSURE_TRI_DOWN")
+                # 出力ブロックの見出し行 (▼/▶ で折りたたみ)
+                collapsed = bool(getattr(item, "collapsed", False))
+                row.prop(
+                    item,
+                    "collapsed",
+                    text="",
+                    emboss=False,
+                    icon="DISCLOSURE_TRI_RIGHT" if collapsed else "DISCLOSURE_TRI_DOWN",
+                )
                 name = command_ui.block_label(commands, index)
                 row.label(text=f"出力ブロック: {name}" if name else "出力ブロック")
                 row.prop(item, "enabled", text="")
@@ -62,6 +69,14 @@ class BNAME_RENDER_UL_commands(UIList):
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text="", icon="RENDER_STILL")
+
+    def filter_items(self, _context, data, propname):
+        commands = getattr(data, propname)
+        flags = [self.bitflag_filter_item] * len(commands)
+        for i in command_ui.hidden_command_indices(commands):
+            if 0 <= i < len(flags):
+                flags[i] &= ~self.bitflag_filter_item
+        return flags, []
 
 
 class BNAME_RENDER_PT_main(Panel):
