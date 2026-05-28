@@ -657,6 +657,19 @@ def _circular_dist(a: int, b: int, n: int) -> int:
     return min(d, n - d)
 
 
+def _line_intersection(p1, p2, p3, p4):
+    """無限直線 p1p2 と p3p4 の交点を返す。 平行/退化なら None。"""
+    x1, y1 = p1
+    x2, y2 = p2
+    x3, y3 = p3
+    x4, y4 = p4
+    den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    if abs(den) < 1.0e-12:
+        return None
+    t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den
+    return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+
+
 def _build_variable_width_band_segment(
     pts: Sequence[tuple[float, float]],
     widths: Sequence[float],
@@ -811,17 +824,27 @@ def _build_dynamic_multi_line_polygons(
         return []
 
     pts = [(float(s[0]), float(s[1])) for s in body_samples]
+    # 角を尖らせる主線 (outside_align + valley_sharp + 全周ループ) は anchor-only で
+    # 構築する。 アンカー (= 山頂/谷の頂点) 間を 1 本の直線セグメントで結ぶことで、
+    # 中間サンプル由来のテーパー線のズレ (= 先端の折れ) を防ぎ、 山頂を mitre 点に
+    # 置けば基準 (均一線) と同じ鋭い直線アウトラインになる。 valley_sharp OFF の
+    # ときは full サンプリングのまま (曲線形状の滑らかさを保つ)。
+    use_anchor_only = (
+        outside_align
+        and valley_sharp
+        and length_scale >= 0.999
+        and len(pts) >= SAMPLES_PER_SEGMENT * 6
+    )
+    if use_anchor_only:
+        anchor_pts = pts[::SAMPLES_PER_SEGMENT]
+        if len(anchor_pts) >= 6:
+            pts = anchor_pts
     n = len(pts)
-    # 外向き法線 (samples 上)。 thorn (直線) なら 各 bezier セグメントが直線で、
-    # 全 sample が同じ bisector 方向を持つため、 outer ring も自然と直線セグメント
-    # で構成される。 peak の normal を radial 方向に強制すると 隣接 sample との
-    # 方向差で 辺が曲線的に膨らむため、 強制しない。
+    # 外向き法線 (samples 上)。 thorn (直線) なら 各セグメントが直線で、 outer ring も
+    # 直線セグメントで構成される。
     normals = _polyline_outward_normals(pts, closed=True, balloon_center=balloon_center_m)
-    # anchor 単位で peak/valley を構造的に検出する。
-    # 主山 (= local max in radial among anchors) と主谷 (= local min) だけが返る。
-    # 高さ jitter があっても全ての主山が検出され、サブバンプは anchor-level の
-    # local extremum にならないため自動的に除外される。
-    samples_per_segment = max(1, SAMPLES_PER_SEGMENT)
+    # anchor 単位で peak/valley を構造的に検出する (anchor-only では 1 点 = 1 anchor)。
+    samples_per_segment = 1 if use_anchor_only else max(1, SAMPLES_PER_SEGMENT)
     peaks_all, valleys_all = _detect_anchor_peaks_valleys(
         pts,
         balloon_center_m,
@@ -909,17 +932,56 @@ def _build_dynamic_multi_line_polygons(
             # 通常 (山 100% / 谷 100%) と比べて 「主線の太さは保ったまま、 ピンチ
             # 側の頂点だけが 0% に下がる」 挙動を実現。 valley/peak の大小で
             # ピンチ側を切り替え、 N=2 サンプル distance で 0→100% へ線形補間。
-            if outside_align:
-                falloff_samples = 2.0
-                if peak_width_m >= valley_width_m:
-                    # peak 側が太い → valley 直近が pinch
-                    t_curve = min(1.0, d_valley / falloff_samples)
-                else:
-                    # valley 側が太い → peak 直近が pinch
-                    t_curve = 1.0 - min(1.0, d_peak / falloff_samples)
-            else:
-                t_curve = t_segment
-            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_curve)
+            # 谷↔山は線形補間 (t_segment)。 直線辺では幅が線形に変わるだけなので
+            # 帯のアウトラインも直線のまま (曲がらない)。 山頂を基準=均一線と同じ
+            # 鋭い mitre 尖りにする処理は後段 (widths 確定後) で別途行う。
+            widths.append(valley_width_m + (peak_width_m - valley_width_m) * t_segment)
+
+    # 凸の山頂・凹の谷とも、 頂点を「隣接2辺を頂点幅ぶん外側へ平行移動した直線の
+    # 交点 (= mitre)」に置く。 anchor-only では各辺が単一直線セグメントなので、 両隣の
+    # 辺がこの mitre 点を共有し、 先端が折れずに 基準 (均一線 = body.buffer の mitre)
+    # と同じ鋭さ・同じ垂直線幅になる。 単純な法線オフセットだと頂点が mitre より内側
+    # に来て、 辺に対する垂直線幅が base×cos(φ) (≈半分) に痩せる。 山頂だけでなく谷
+    # にも適用しないと、 山を 0% にしたとき太いはずの谷まで細く見える。 幅 0 の頂点
+    # (pinch) は対象外。 過剰スパイクは mitre_limit で頭打ち。
+    if outside_align and use_anchor_only and (width_peaks or width_valleys) and len(widths) == n:
+        cbx, cby = balloon_center_m
+
+        def _edge_offset_line(i, j, w):
+            ax, ay = centerline[i]
+            bx, by = centerline[j]
+            ex, ey = bx - ax, by - ay
+            elen = math.hypot(ex, ey)
+            if elen < 1.0e-12:
+                return None
+            nx, ny = -ey / elen, ex / elen
+            mx, my = (ax + bx) * 0.5 - cbx, (ay + by) * 0.5 - cby
+            if nx * mx + ny * my < 0.0:
+                nx, ny = -nx, -ny
+            return ((ax + nx * w, ay + ny * w), (bx + nx * w, by + ny * w))
+
+        for ci in (*width_peaks, *width_valleys):
+            w_ci = widths[ci]
+            if w_ci <= 1.0e-9:
+                continue
+            la = _edge_offset_line(ci, (ci + 1) % n, w_ci)
+            lb = _edge_offset_line(ci, (ci - 1) % n, w_ci)
+            if la is None or lb is None:
+                continue
+            hit = _line_intersection(la[0], la[1], lb[0], lb[1])
+            if hit is None:
+                continue
+            px, py = centerline[ci]
+            dx = hit[0] - px
+            dy = hit[1] - py
+            dist = math.hypot(dx, dy)
+            if dist <= 1.0e-9:
+                continue
+            # balloon 中心から離れる外向きでなければ無視
+            if dx * (px - cbx) + dy * (py - cby) <= 0.0:
+                continue
+            normals[ci] = (dx / dist, dy / dist)
+            widths[ci] = min(dist, w_ci * _SHARP_MITRE_LIMIT)
 
     # length cut は大山ベースだけで行う (= 大山周りで切って valley から伸ばす)
     segments = _ring_kept_index_segments(n, peaks, valleys, length_scale)
