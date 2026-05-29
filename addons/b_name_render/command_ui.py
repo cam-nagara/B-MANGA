@@ -249,6 +249,27 @@ def draw_command_help(layout, command, context=None) -> None:
         col.label(text=line, icon="INFO" if i == 0 else "BLANK1")
 
 
+def run_preset_target_status(command, context) -> str:
+    """「プリセット実行」の実行先の状態を返す.
+
+    "empty" (未指定/状態なし) / "self" (自分自身) / "missing" (不在) / "ok"。
+    実行時の安全ガード (自己参照・不在を無視) と同じ判定を UI 注意表示に使う。
+    """
+    state = core.get_state(context) if context is not None else None
+    if state is None:
+        return "empty"
+    target = str(getattr(command, "target_preset_name", "") or "").strip()
+    if not target:
+        return "empty"
+    active = core.active_preset(context)
+    active_name = str(getattr(active, "name", "") or "") if active is not None else ""
+    if target == active_name:
+        return "self"
+    if not any(str(getattr(p, "name", "") or "") == target for p in state.presets):
+        return "missing"
+    return "ok"
+
+
 def auto_command_name(command) -> str:
     """コマンドの設定内容から表示名を自動生成する."""
     label = command_type_label(command.command_type)
@@ -334,6 +355,11 @@ def draw_command(layout, command, context=None) -> None:
         state = core.get_state(context) if context is not None else None
         if state is not None:
             layout.prop_search(command, "target_preset_name", state, "presets", text="実行するプリセット")
+            status = run_preset_target_status(command, context)
+            if status == "self":
+                layout.label(text="自分自身は実行時に無視されます", icon="ERROR")
+            elif status == "missing":
+                layout.label(text="そのプリセットが見つかりません", icon="ERROR")
         else:
             layout.prop(command, "target_preset_name", text="実行するプリセット")
     draw_command_help(layout, command, context)
