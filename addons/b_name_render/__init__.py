@@ -5,9 +5,9 @@ from __future__ import annotations
 bl_info = {
     "name": "B-Name-Render",
     "author": "B-Name Project",
-    "version": (0, 1, 20),
+    "version": (0, 1, 21),
     "blender": (4, 3, 0),
-    "description": "Card based render presets and fisheye output for B-Name workflows",
+    "description": "Command based render presets and fisheye output for B-Name workflows",
     "category": "Render",
 }
 
