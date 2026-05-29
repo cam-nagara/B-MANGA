@@ -628,7 +628,11 @@ def _object_page_id(obj: bpy.types.Object, work) -> str:
 
 def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
     max_all = 0.0
-    min_coma_plane = 0.01
+    # コマの重なり順 (z_order) に追従させるため、ページ上で最も手前に来るコマ要素の z を求める。
+    # コマ枠線・白フチ・コマ面の実体は parent_key を持たず、下の max_all 走査では拾えない。
+    # そのためコマデータから直接 z を算出して上限に含める。これを怠ると重なり順の深いコマで
+    # ガイド線が枠線・白フチと同一深度に並び、点滅 (Z 競合) や枠線の裏に隠れる不具合が起きる。
+    max_coma_z = 0.0
     try:
         from . import coma_z_order
 
@@ -636,7 +640,12 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             if str(getattr(page, "id", "") or "") != str(page_id):
                 continue
             for coma in getattr(page, "comas", []) or []:
-                min_coma_plane = min(min_coma_plane, float(coma_z_order.plane_z(coma)))
+                max_coma_z = max(
+                    max_coma_z,
+                    float(coma_z_order.border_z(coma)),
+                    float(coma_z_order.white_margin_z(coma)),
+                    float(coma_z_order.plane_z(coma)),
+                )
             break
     except Exception:  # noqa: BLE001
         pass
@@ -647,7 +656,7 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
             continue
         z = float(getattr(obj.location, "z", 0.0) or 0.0)
         max_all = max(max_all, z)
-    top_z = max(max_all, min_coma_plane, 0.0)
+    top_z = max(max_all, max_coma_z, 0.0)
     safe_z = top_z + _GUIDE_Z_CLEARANCE_M
     guide_z = safe_z + 0.001
     return safe_z, guide_z, max_all

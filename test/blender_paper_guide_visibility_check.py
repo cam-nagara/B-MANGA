@@ -73,15 +73,28 @@ def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
 def _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order) -> None:
     if len(getattr(page, "comas", []) or []) == 0:
         return
-    highest_plane_z = max(float(coma_z_order.plane_z(coma)) for coma in page.comas)
-    if float(safe_fill.location.z) <= highest_plane_z:
+    # コマ面だけでなく、最も手前に来るコマ要素 (コマ枠線・白フチ) より確実に前面であることを確認する。
+    # ここをコマ面 (plane_z) だけで判定すると、重なり順の深いコマで枠線・白フチがガイド線と
+    # 同一深度になり点滅・隠れが起きる不具合を検出できない。
+    coplanar_eps = 5.0e-4  # 0.5mm 未満は同一深度 (Z 競合) とみなす
+    highest_coma_z = max(
+        max(
+            float(coma_z_order.plane_z(coma)),
+            float(coma_z_order.white_margin_z(coma)),
+            float(coma_z_order.border_z(coma)),
+        )
+        for coma in page.comas
+    )
+    if not (float(safe_fill.location.z) > highest_coma_z + coplanar_eps):
         raise AssertionError(
-            f"セーフライン外塗りがコマプレビュー面より奥にあります: fill={safe_fill.location.z}, plane={highest_plane_z}"
+            f"セーフライン外塗りが最も手前のコマ要素と同一深度かそれより奥にあります: "
+            f"fill={safe_fill.location.z}, coma_top={highest_coma_z}"
         )
     for obj in guide_objects:
-        if not (float(obj.location.z) > highest_plane_z):
+        if not (float(obj.location.z) > highest_coma_z + coplanar_eps):
             raise AssertionError(
-                f"用紙ガイド線がコマプレビュー面より奥にあります: guide={obj.location.z}, plane={highest_plane_z}"
+                f"用紙ガイド線が最も手前のコマ要素と同一深度かそれより奥にあります "
+                f"(枠線と重なって点滅/非表示になる): guide={obj.location.z}, coma_top={highest_coma_z}"
             )
 
 
@@ -174,6 +187,16 @@ def main() -> None:
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         if paper_guide_object.repair_loaded_work_paper_guides(scene, work):
             raise AssertionError("用紙ガイド線の修復が不要な状態で再実行されています")
+
+        # 重なり順の深いコマ (z_order=3) では旧実装で白フチがガイド線と同一深度 (23mm) になり、
+        # 点滅・非表示が起きていた。ガイド線 z がコマの重なり順へ追従することを確認する。
+        page.comas[0].z_order = 3
+        paper_guide_object.regenerate_all_paper_guides(scene, work)
+        guide_objects = _guide_objects(paper_guide_object, page)
+        safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+        if not guide_objects or safe_fill is None:
+            raise AssertionError("重なり順変更後の用紙ガイド線/セーフライン外塗りがありません")
+        _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
 
         print("BNAME_PAPER_GUIDE_VISIBILITY_OK", flush=True)
     finally:
