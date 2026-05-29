@@ -19,7 +19,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from . import config as config_mod
-from . import model, worker
+from . import model, theme, worker
 from .jobstore import JobStore
 from .model import Job
 from .predictor import Predictor, project_finish_times
@@ -56,7 +56,8 @@ class App:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("B-Name-Render 連続実行")
-        self.root.geometry("1040x600")
+        scale = theme.geometry_scale()
+        self.root.geometry(f"{int(1040 * scale)}x{int(600 * scale)}")
 
         self.cfg = config_mod.load()
         self.store = JobStore(self.cfg.shared_root, self.cfg.sync_grace_seconds) if self.cfg.shared_root else None
@@ -373,6 +374,8 @@ class App:
 
 
 def main() -> None:
+    theme.enable_dpi_awareness()
     root = tk.Tk()
+    theme.apply(root)
     App(root)
     root.mainloop()
