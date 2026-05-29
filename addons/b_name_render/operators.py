@@ -68,6 +68,25 @@ class BNAME_RENDER_OT_preset_remove(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_preset_move(Operator):
+    bl_idname = "bname_render.preset_move"
+    bl_label = "プリセットを移動"
+
+    direction: EnumProperty(name="方向", items=(("UP", "上", ""), ("DOWN", "下", "")), default="UP")  # type: ignore[valid-type]
+
+    def execute(self, context):
+        state = core.get_state(context)
+        if state is None or len(state.presets) < 2:
+            return {"CANCELLED"}
+        idx = min(core.get_active_preset_index(context), len(state.presets) - 1)
+        new_idx = idx - 1 if self.direction == "UP" else idx + 1
+        if new_idx < 0 or new_idx >= len(state.presets):
+            return {"CANCELLED"}
+        state.presets.move(idx, new_idx)
+        core.set_active_preset_index(context, new_idx)
+        return {"FINISHED"}
+
+
 class BNAME_RENDER_OT_preset_settings(Operator):
     bl_idname = "bname_render.preset_settings"
     bl_label = "プリセット設定"
@@ -329,6 +348,7 @@ _CLASSES = (
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
     BNAME_RENDER_OT_preset_remove,
+    BNAME_RENDER_OT_preset_move,
     BNAME_RENDER_OT_preset_settings,
     BNAME_RENDER_OT_preset_run,
     BNAME_RENDER_OT_command_add,

@@ -174,9 +174,11 @@ def _draw_fisheye_box(layout, context, state) -> None:
 
 def _draw_preset_list(layout, context, state) -> None:
     wm = context.window_manager
-    cat = layout.row(align=True)
+    box = layout.box()
+    box.label(text="プリセット", icon="PRESET")
+    cat = box.row(align=True)
     cat.prop(wm, "bname_render_preset_category", expand=True)
-    row = layout.row()
+    row = box.row()
     row.template_list(
         "BNAME_RENDER_UL_presets",
         "",
@@ -189,6 +191,15 @@ def _draw_preset_list(layout, context, state) -> None:
     tools_preset = row.column(align=True)
     tools_preset.operator("bname_render.preset_add", text="", icon="ADD")
     tools_preset.operator("bname_render.preset_remove", text="", icon="REMOVE")
+
+    move_preset = tools_preset.column(align=True)
+    move_preset.enabled = len(state.presets) > 1
+    up = move_preset.operator("bname_render.preset_move", text="", icon="TRIA_UP")
+    up.direction = "UP"
+    down = move_preset.operator("bname_render.preset_move", text="", icon="TRIA_DOWN")
+    down.direction = "DOWN"
+
+    tools_preset.separator()
     tools_preset.operator("bname_render.preset_settings", text="", icon="PREFERENCES")
     op = tools_preset.operator("bname_render.load_builtin_presets", text="", icon="FILE_REFRESH")
     op.reset = True
