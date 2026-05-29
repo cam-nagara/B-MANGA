@@ -39,7 +39,7 @@ COMMAND_TYPE_ITEMS = (
 
 ENGINE_ITEMS = (
     ("CYCLES", "Cycles", ""),
-    ("BLENDER_EEVEE_NEXT", "EEVEE Next", ""),
+    ("BLENDER_EEVEE_NEXT", "EEVEE", ""),  # 識別子は版互換のため保持。表記は5.1のUI(EEVEE)に合わせる
     ("BLENDER_WORKBENCH", "Workbench", ""),
 )
 

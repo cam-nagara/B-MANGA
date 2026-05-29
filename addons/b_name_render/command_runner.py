@@ -459,11 +459,38 @@ def _reload_images() -> int:
     return count
 
 
+def _resolve_engine_identifier(engine: str) -> str:
+    """保存値のエンジン識別子を、起動中の Blender が実際に持つ識別子へ読み替える。
+
+    EEVEE の識別子は Blender 版で揺れる:
+      4.2〜: ``BLENDER_EEVEE_NEXT``（EEVEE Next 導入で旧 EEVEE を置換）
+      5.x〜: ``BLENDER_EEVEE``（EEVEE Next が正式版に昇格し接尾辞を廃止）
+    既存プリセットは ``BLENDER_EEVEE_NEXT`` を保存しているため、scene へ代入する
+    前に実機の有効値へ変換する。該当しない/判定不能ならそのまま返す（無害）。
+    """
+    try:
+        available = {
+            item.identifier
+            for item in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items
+        }
+    except Exception:  # noqa: BLE001
+        return engine
+    if not available or engine in available:
+        return engine
+    eevee_aliases = ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT")
+    if engine in eevee_aliases:
+        for alias in eevee_aliases:
+            if alias in available:
+                return alias
+    return engine
+
+
 def _configure_render(scene, engine: str, sample_count: int) -> None:
+    engine = _resolve_engine_identifier(engine)
     scene.render.engine = engine
     if engine == "CYCLES" and hasattr(scene, "cycles"):
         scene.cycles.samples = max(1, int(sample_count))
-    elif engine == "BLENDER_EEVEE_NEXT" and hasattr(scene, "eevee"):
+    elif engine in {"BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"} and hasattr(scene, "eevee"):
         if hasattr(scene.eevee, "taa_render_samples"):
             scene.eevee.taa_render_samples = max(1, int(sample_count))
 
@@ -509,6 +536,15 @@ def _output_directories(scene) -> list[str]:
         if getattr(node, "type", "") == "OUTPUT_FILE":
             _add(_get_output_node_directory(node))
     return dirs
+
+
+def _batch_output_dirs(scene) -> list[str]:
+    """計測が有効な時だけ出力フォルダ一覧を集める（無効時は走査しない）。
+
+    通常UI操作(env 未設定)では走査・パス解決を一切行わず空を返す。計測フックの
+    引数評価が通常レンダーにコストを乗せないための薄いラッパ。
+    """
+    return _output_directories(scene) if batch_log.is_enabled() else []
 
 
 def _render(scene, engine: str, sample_count: int) -> None:
@@ -578,33 +614,33 @@ def _run_command(context, command, preset_name: str = "") -> None:
     elif kind == "RELOAD_IMAGES":
         _reload_images()
     elif kind == "RENDER":
-        with batch_log.render_timer(scene, command.label_contains or "レンダー", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "レンダー", command.engine, command.sample_count, _batch_output_dirs(scene)):
             _render(scene, command.engine, command.sample_count)
     elif kind == "RENDER_LAYER":
-        with batch_log.render_timer(scene, command.label_contains, command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains, command.engine, command.sample_count, _batch_output_dirs(scene)):
             _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
     elif kind == "FISHEYE_RENDER_IMAGE_OR_LAYER":
-        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _batch_output_dirs(scene)):
             _run_fisheye_or_layer(scene, command, "IMAGE", preset_name)
     elif kind == "FISHEYE_RENDER_FACES_OR_LAYER":
-        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _batch_output_dirs(scene)):
             _run_fisheye_or_layer(scene, command, "FACES", preset_name)
     elif kind == "FISHEYE_ASSEMBLE_OR_LAYER":
-        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _batch_output_dirs(scene)):
             _run_fisheye_or_layer(scene, command, "ASSEMBLE", preset_name)
     elif kind == "EEVR_SETUP":
         _setup_eevr_from_command(scene, command, preset_name)
     elif kind == "EEVR_RENDER_IMAGE":
         _setup_eevr_from_command(scene, command, preset_name)
-        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _batch_output_dirs(scene)):
             eevr_bridge.render_image()
     elif kind == "EEVR_RENDER_FACES":
         _setup_eevr_from_command(scene, command, preset_name)
-        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _batch_output_dirs(scene)):
             eevr_bridge.render_faces()
     elif kind == "EEVR_ASSEMBLE":
         _setup_eevr_from_command(scene, command, preset_name)
-        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _output_directories(scene)):
+        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _batch_output_dirs(scene)):
             eevr_bridge.assemble_images()
     elif kind == "OPERATOR" and command.operator_idname:
         eevr_bridge.run_operator(command.operator_idname)
