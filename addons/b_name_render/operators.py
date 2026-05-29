@@ -31,6 +31,9 @@ class BNAME_RENDER_OT_load_builtin_presets(Operator):
 
     def execute(self, context):
         count = preset_library.load_builtin_presets(context, reset=bool(self.reset))
+        state = core.get_state(context)
+        core.ensure_default_categories(state)
+        core.migrate_preset_categories(state)
         self.report({"INFO"}, f"初期プリセット: {count}")
         return {"FINISHED"}
 
@@ -96,21 +99,106 @@ class BNAME_RENDER_OT_preset_settings(Operator):
         return core.active_preset(context) is not None
 
     def invoke(self, context, _event):
+        # カテゴリのデータを用意し、未割り当てプリセットを名前から移行しておく
+        # (ドロップダウンに候補が並び、現在のカテゴリが選択表示される)。
+        state = core.get_state(context)
+        core.ensure_default_categories(state)
+        core.migrate_preset_categories(state)
         return context.window_manager.invoke_props_dialog(self, width=360)
 
     def draw(self, context):
         layout = self.layout
         preset = core.active_preset(context)
-        if preset is None:
+        state = core.get_state(context)
+        if preset is None or state is None:
             layout.label(text="プリセットが選択されていません", icon="INFO")
             return
         box = layout.box()
         box.label(text="プリセット", icon="PRESET")
         box.prop(preset, "name", text="名前")
+        box.prop_search(preset, "category", state, "categories", text="カテゴリ")
         box.label(text=f"コマンド数: {len(preset.commands)}")
 
     def execute(self, context):
         return {"FINISHED"} if core.active_preset(context) is not None else {"CANCELLED"}
+
+
+class BNAME_RENDER_OT_category_add(Operator):
+    bl_idname = "bname_render.category_add"
+    bl_label = "カテゴリを追加"
+    bl_description = "プリセットの表示カテゴリを追加する"
+
+    category_name: StringProperty(name="カテゴリ名", default="新規カテゴリ")  # type: ignore[valid-type]
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        state = core.get_state(context)
+        if state is None:
+            return {"CANCELLED"}
+        core.ensure_default_categories(state)
+        name = self.category_name.strip()
+        if not name or name in ("すべて", core._ALL_CATEGORY):
+            self.report({"ERROR"}, "その名前は使えません")
+            return {"CANCELLED"}
+        if any(str(getattr(c, "name", "") or "") == name for c in state.categories):
+            self.report({"WARNING"}, f"カテゴリ「{name}」は既にあります")
+            try:
+                context.window_manager.bname_render_preset_category = name
+            except (TypeError, ValueError):
+                pass
+            return {"CANCELLED"}
+        state.categories.add().name = name
+        try:
+            context.window_manager.bname_render_preset_category = name
+        except (TypeError, ValueError):
+            pass
+        self.report({"INFO"}, f"カテゴリを追加: {name}")
+        return {"FINISHED"}
+
+
+class BNAME_RENDER_OT_category_remove(Operator):
+    bl_idname = "bname_render.category_remove"
+    bl_label = "カテゴリを削除"
+    bl_description = "選択中のカテゴリを削除する (所属プリセットは未分類になります)"
+
+    @classmethod
+    def poll(cls, context):
+        wm = getattr(context, "window_manager", None)
+        cat = str(getattr(wm, "bname_render_preset_category", "") or "")
+        return cat not in ("", core._ALL_CATEGORY)
+
+    def invoke(self, context, _event):
+        cat = str(getattr(context.window_manager, "bname_render_preset_category", "") or "")
+        return context.window_manager.invoke_confirm(
+            self, _event,
+            title="カテゴリを削除",
+            message=f"カテゴリ「{cat}」を削除します。所属プリセットは未分類になります。",
+            confirm_text="削除",
+        )
+
+    def execute(self, context):
+        state = core.get_state(context)
+        wm = context.window_manager
+        if state is None:
+            return {"CANCELLED"}
+        core.ensure_default_categories(state)
+        target = str(getattr(wm, "bname_render_preset_category", "") or "")
+        if target in ("", core._ALL_CATEGORY):
+            return {"CANCELLED"}
+        for preset in state.presets:
+            if str(getattr(preset, "category", "") or "") == target:
+                preset.category = ""
+        idx = next((i for i, c in enumerate(state.categories) if str(getattr(c, "name", "") or "") == target), -1)
+        if idx >= 0:
+            state.categories.remove(idx)
+        try:
+            wm.bname_render_preset_category = core._ALL_CATEGORY
+        except (TypeError, ValueError):
+            pass
+        self.report({"INFO"}, f"カテゴリを削除: {target}")
+        return {"FINISHED"}
 
 
 class BNAME_RENDER_OT_preset_run(Operator):
@@ -350,6 +438,8 @@ _CLASSES = (
     BNAME_RENDER_OT_preset_remove,
     BNAME_RENDER_OT_preset_move,
     BNAME_RENDER_OT_preset_settings,
+    BNAME_RENDER_OT_category_add,
+    BNAME_RENDER_OT_category_remove,
     BNAME_RENDER_OT_preset_run,
     BNAME_RENDER_OT_command_add,
     BNAME_RENDER_OT_command_remove,

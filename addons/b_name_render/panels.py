@@ -178,6 +178,8 @@ def _draw_preset_list(layout, context, state) -> None:
     box.label(text="プリセット", icon="PRESET")
     cat = box.row(align=True)
     cat.prop(wm, "bname_render_preset_category", expand=True)
+    cat.operator("bname_render.category_add", text="", icon="ADD")
+    cat.operator("bname_render.category_remove", text="", icon="REMOVE")
     row = box.row()
     row.template_list(
         "BNAME_RENDER_UL_presets",

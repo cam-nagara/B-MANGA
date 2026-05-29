@@ -78,17 +78,14 @@ class BNameRenderCommand(bpy.types.PropertyGroup):
     target_preset_name: StringProperty(name="実行するプリセット", default="")  # type: ignore[valid-type]
 
 
-PRESET_CATEGORY_ITEMS = (
-    ("ALL", "すべて", "すべてのプリセットを表示"),
-    ("GROUP", "まとめ", "親プリセット (プリセット実行を含む) のみ表示"),
-    ("CHARA", "キャラ", "キャラ系プリセットのみ表示"),
-    ("BG", "背景", "背景系プリセットのみ表示"),
-    ("LEGACY", "旧出力シーン互換", "旧出力シーン互換プリセットのみ表示"),
-    ("OTHER", "その他", "キャラ・背景以外のプリセットを表示"),
-)
+# カテゴリはユーザー定義 (state.categories) で、各プリセットに category 名を
+# 割り当てる。未作成/未割り当てのときは下記の既定カテゴリと名前推定で補う。
+_DEFAULT_CATEGORIES = ("まとめ", "キャラ", "背景", "旧出力シーン互換", "その他")
+_ALL_CATEGORY = "ALL"  # 「すべて」フィルタの内部識別子 (カテゴリ名としては使わない)
 
 
 def preset_category_of(name: str) -> str:
+    """(後方互換) プリセット名の接頭辞からカテゴリコードを返す。"""
     n = str(name or "")
     if n.startswith("旧出力シーン互換"):
         return "LEGACY"
@@ -99,35 +96,97 @@ def preset_category_of(name: str) -> str:
     return "OTHER"
 
 
+def default_category_for_name(name: str) -> str:
+    """プリセット名から既定カテゴリ名 (日本語) を推定 (未割り当て時の移行用)。"""
+    n = str(name or "")
+    if n.startswith("旧出力シーン互換"):
+        return "旧出力シーン互換"
+    if n.startswith("キャラ"):
+        return "キャラ"
+    if n.startswith("背景"):
+        return "背景"
+    return "その他"
+
+
 def preset_is_group(preset) -> bool:
-    """「プリセット実行」コマンドを含む = 親プリセット (まとめ) かを返す."""
+    """「プリセット実行」コマンドを含む = 親プリセットかを返す (補助用)。"""
     commands = getattr(preset, "commands", None)
     if not commands:
         return False
     return any(getattr(c, "command_type", "") == "RUN_PRESET" for c in commands)
 
 
+def category_names(state) -> list[str]:
+    """利用可能なカテゴリ名一覧。未作成時は既定カテゴリを返す (表示用)。"""
+    cats = getattr(state, "categories", None) if state is not None else None
+    if cats and len(cats):
+        return [str(getattr(c, "name", "") or "") for c in cats if str(getattr(c, "name", "") or "")]
+    return list(_DEFAULT_CATEGORIES)
+
+
+def ensure_default_categories(state) -> None:
+    """カテゴリ未作成なら既定カテゴリをデータとして用意する。"""
+    if state is None:
+        return
+    cats = getattr(state, "categories", None)
+    if cats is None or len(cats):
+        return
+    for nm in _DEFAULT_CATEGORIES:
+        cats.add().name = nm
+
+
+def effective_preset_category(preset) -> str:
+    """プリセットの実効カテゴリ名。未割り当ては名前から推定 (後方互換)。"""
+    explicit = str(getattr(preset, "category", "") or "")
+    if explicit:
+        return explicit
+    return default_category_for_name(getattr(preset, "name", ""))
+
+
+def migrate_preset_categories(state) -> None:
+    """カテゴリ未割り当てのプリセットに、名前から推定したカテゴリを割り当てる。"""
+    if state is None:
+        return
+    for preset in getattr(state, "presets", []) or []:
+        if not str(getattr(preset, "category", "") or ""):
+            preset.category = default_category_for_name(getattr(preset, "name", ""))
+
+
 def preset_matches_category(preset, category: str) -> bool:
-    """プリセットが表示カテゴリに合致するか. GROUP は親プリセット判定。"""
-    if category == "ALL":
+    """プリセットが表示カテゴリに合致するか。"""
+    if not category or category == _ALL_CATEGORY:
         return True
-    if category == "GROUP":
-        return preset_is_group(preset)
-    return preset_category_of(getattr(preset, "name", "")) == category
+    return effective_preset_category(preset) == category
+
+
+_PRESET_CATEGORY_ENUM_CACHE: list[tuple[str, str, str]] = []
+
+
+def _preset_category_enum_items(_self, context):
+    """フィルタタブ用の動的 enum (すべて + ユーザーカテゴリ)。
+
+    EnumProperty callback は返した文字列への参照を保持しないと GC でクラッシュ
+    することがあるため、モジュールレベルでキャッシュを保持する。
+    """
+    global _PRESET_CATEGORY_ENUM_CACHE
+    state = get_state(context)
+    items = [(_ALL_CATEGORY, "すべて", "すべてのプリセットを表示")]
+    for nm in category_names(state):
+        items.append((nm, nm, f"カテゴリ「{nm}」のプリセットを表示"))
+    _PRESET_CATEGORY_ENUM_CACHE = items
+    return _PRESET_CATEGORY_ENUM_CACHE
 
 
 def _on_preset_category_update(self, context) -> None:
-    """種類フィルタ変更時、選択中プリセットも表示中の種類へ追従させる.
+    """フィルタ変更時、選択中プリセットも表示中カテゴリへ追従させる.
 
-    追従しないと、選択中 (= コマンド/「プリセットを実行」の対象) が一覧で
-    非表示のまま残り、別種類の隠れたプリセットを誤実行しかねない。
     ``self`` は WindowManager (選択状態は WM 上)。プリセット本体は Scene 側。
     """
     scene = getattr(context, "scene", None) if context is not None else None
     state = getattr(scene, "bname_render_state", None) if scene is not None else None
     presets = getattr(state, "presets", None) if state is not None else None
-    category = str(getattr(self, "bname_render_preset_category", "ALL") or "ALL")
-    if category == "ALL" or not presets:
+    category = str(getattr(self, "bname_render_preset_category", _ALL_CATEGORY) or _ALL_CATEGORY)
+    if category == _ALL_CATEGORY or not presets:
         return
     cur = max(0, min(int(getattr(self, "bname_render_active_preset_index", 0)), len(presets) - 1))
     if preset_matches_category(presets[cur], category):
@@ -173,9 +232,14 @@ def _api_set_command_index(_self, value: int) -> None:
         wm.bname_render_active_command_index = max(0, int(value))
 
 
+class BNameRenderCategory(bpy.types.PropertyGroup):
+    name: StringProperty(name="カテゴリ名", default="カテゴリ")  # type: ignore[valid-type]
+
+
 class BNameRenderPreset(bpy.types.PropertyGroup):
     name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
     commands: CollectionProperty(type=BNameRenderCommand)  # type: ignore[valid-type]
+    category: StringProperty(name="カテゴリ", default="")  # type: ignore[valid-type]
     active_command_index: IntProperty(  # type: ignore[valid-type]
         name="コマンド", get=_api_get_command_index, set=_api_set_command_index
     )
@@ -183,10 +247,11 @@ class BNameRenderPreset(bpy.types.PropertyGroup):
 
 class BNameRenderState(bpy.types.PropertyGroup):
     presets: CollectionProperty(type=BNameRenderPreset)  # type: ignore[valid-type]
+    categories: CollectionProperty(type=BNameRenderCategory)  # type: ignore[valid-type]
     active_preset_index: IntProperty(  # type: ignore[valid-type]
         name="プリセット", get=_api_get_preset_index, set=_api_set_preset_index
     )
-    # 表示カテゴリも WindowManager 側 (テスト等からの直接利用は無い)。
+    # 表示カテゴリ (フィルタ) は WindowManager 側 (テスト等からの直接利用は無い)。
     last_card_click_index: IntProperty(name="前回コマンド", default=-1)  # type: ignore[valid-type]
     last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
     sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]
@@ -195,6 +260,7 @@ class BNameRenderState(bpy.types.PropertyGroup):
 _CLASSES = (
     BNameRenderToolSettings,
     BNameRenderCommand,
+    BNameRenderCategory,
     BNameRenderPreset,
     BNameRenderState,
 )
@@ -399,7 +465,7 @@ def register() -> None:
         name="コマンド", default=0, min=0
     )
     bpy.types.WindowManager.bname_render_preset_category = EnumProperty(
-        name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL",
+        name="表示", items=_preset_category_enum_items,
         update=_on_preset_category_update,
     )
     _register_scene_props()
