@@ -98,8 +98,10 @@ def _ensure_addon(addon_dir: str):
         if hasattr(module, "register"):
             try:
                 module.register()
-            except Exception:  # noqa: BLE001 - 既に登録済みなら無視
-                pass
+            except Exception:  # noqa: BLE001
+                # 既に登録済みなら無害だが、本物の登録失敗(クラス重複・プロパティ
+                # 定義エラー等)まで黙殺すると原因が見えなくなる。診断のため出力する。
+                traceback.print_exc()
         return module
 
     # 導入済み拡張/アドオンの有効化を試みる。

@@ -11,6 +11,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -88,6 +89,7 @@ class App:
         ttk.Button(bar, text="▲ 上へ", command=lambda: self.on_move(-1)).pack(side="left", padx=3)
         ttk.Button(bar, text="▼ 下へ", command=lambda: self.on_move(1)).pack(side="left", padx=3)
         ttk.Button(bar, text="再投入", command=self.on_requeue).pack(side="left", padx=3)
+        ttk.Button(bar, text="完了を片付ける", command=self.on_purge_done).pack(side="left", padx=3)
         ttk.Button(bar, text="更新", command=self.refresh_all).pack(side="left", padx=3)
 
         self.btn_worker = ttk.Button(bar, text="このPCで実行開始", command=self.on_toggle_worker)
@@ -154,15 +156,25 @@ class App:
             self.var_blender.set(path)
 
     def on_save_settings(self) -> None:
-        self.cfg.shared_root = self.var_root.get().strip()
-        self.cfg.pc_name = self.var_pc.get().strip()
-        self.cfg.blender_exe = self.var_blender.get().strip()
+        new_root = self.var_root.get().strip()
+        # 実行中に共有フォルダを変えると、ワーカーが旧フォルダ・画面が新フォルダを
+        # 見る二重状態になるため、変更前に停止を促す。
+        if self.worker and self.worker.is_running() and new_root != self.cfg.shared_root:
+            messagebox.showwarning(
+                "設定", "実行中は共有フォルダを変更できません。先に『実行停止』してください。"
+            )
+            return
         try:
-            self.cfg.sync_grace_seconds = float(self.var_grace.get())
-            self.cfg.poll_seconds = float(self.var_poll.get())
+            grace = float(self.var_grace.get())
+            poll = float(self.var_poll.get())
         except ValueError:
             messagebox.showerror("設定", "秒数は数値で入力してください")
             return
+        self.cfg.shared_root = new_root
+        self.cfg.pc_name = self.var_pc.get().strip()
+        self.cfg.blender_exe = self.var_blender.get().strip()
+        self.cfg.sync_grace_seconds = grace
+        self.cfg.poll_seconds = poll
         config_mod.save(self.cfg)
         self.store = JobStore(self.cfg.shared_root, self.cfg.sync_grace_seconds) if self.cfg.shared_root else None
         messagebox.showinfo("設定", "保存しました")
@@ -207,8 +219,13 @@ class App:
         lb.pack(fill="both", expand=True, padx=8, pady=6)
 
         def add_selected():
+            store = self.store
+            if store is None:
+                messagebox.showwarning("追加", "共有フォルダが未設定のため追加できません")
+                dlg.destroy()
+                return
             for i in lb.curselection():
-                self.store.add_job(Job(blend_path=blend_path, preset_name=presets[i]))
+                store.add_job(Job(blend_path=blend_path, preset_name=presets[i]))
             dlg.destroy()
             self.refresh_all()
 
@@ -222,9 +239,19 @@ class App:
 
     def on_requeue(self) -> None:
         jid = self._selected_id()
-        if jid and self.store:
-            self.store.requeue(jid)
+        if not (jid and self.store):
+            return
+        if self.store.requeue(jid):
             self.refresh_all()
+        else:
+            messagebox.showinfo("再投入", "実行中のジョブは再投入できません（終了したジョブのみ）。")
+
+    def on_purge_done(self) -> None:
+        if not self.store:
+            return
+        n = self.store.purge_finished()
+        self.refresh_all()
+        messagebox.showinfo("片付け", f"完了ジョブ {n} 件を一覧から片付けました（記録は残ります）。")
 
     def on_move(self, delta: int) -> None:
         jid = self._selected_id()
@@ -262,16 +289,21 @@ class App:
         try:
             while True:
                 kind, data = self.events.get_nowait()
-                self._handle_event(kind, data)
+                try:
+                    self._handle_event(kind, data)
+                except Exception:  # noqa: BLE001 - 1イベントの例外でポーリングを止めない
+                    traceback.print_exc()
         except queue.Empty:
             pass
-        self.root.after(400, self._poll_events)
+        finally:
+            # 例外が出ても必ず再スケジュールする（ポーリング恒久停止＝UIフリーズを防ぐ）。
+            self.root.after(400, self._poll_events)
 
     def _handle_event(self, kind: str, data: dict) -> None:
         if kind == "presets_loaded":
             self._ask_preset_dialog(data["blend"], data["presets"])
         elif kind == "error_msg":
-            self.lbl_worker.config(text="停止中")
+            self.lbl_worker.config(text="実行中" if (self.worker and self.worker.is_running()) else "停止中")
             messagebox.showerror("エラー", data.get("text", ""))
         elif kind == "idle":
             self.lbl_worker.config(text="待機中（仕事なし）")

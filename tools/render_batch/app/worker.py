@@ -2,6 +2,9 @@
 
 1PC1本ずつ。GUI のバックグラウンドスレッドから回す想定。
 進捗は callback（on_event）で通知する。
+
+レンダー実行中も短い間隔でポーリングし、(1) 停止指示で子プロセスを終了、
+(2) 実行タイムアウト、(3) 生存印(heartbeat)の更新（孤児検出用）を行う。
 """
 
 from __future__ import annotations
@@ -11,6 +14,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 from . import blender_locator
@@ -37,9 +41,25 @@ class Worker:
 
     def stop(self) -> None:
         self._stop.set()
+        # 実行中のレンダーを実際に止める（communicate ブロックではなく明示終了）。
+        self._terminate_proc()
 
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+    def _terminate_proc(self) -> None:
+        """実行中の Blender 子プロセスを終了させる（停止/タイムアウト時）。"""
+        proc = self._proc
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
 
     def _emit(self, kind: str, **data) -> None:
         try:
@@ -50,16 +70,23 @@ class Worker:
     # ---- メインループ ----
     def _loop(self) -> None:
         pc = self.cfg.resolved_pc()
+        claimant = self.cfg.resolved_claimant()
+        stale_seconds = self.cfg.stale_running_minutes * 60.0
         self._emit("worker_started", pc=pc)
         while not self._stop.is_set():
+            # 死亡ワーカーが取り残した running ジョブを回収してから探す。
+            try:
+                self.store.reclaim_stale_running(stale_seconds)
+            except Exception:  # noqa: BLE001
+                pass
             job = self.store.find_next_for(pc)
             if job is None:
                 self._emit("idle")
                 if self._stop.wait(self.cfg.poll_seconds):
                     break
                 continue
-            if not self.store.claim(job.id, pc):
-                # 取得失敗（他PCが先取り）。少し待って再探索。
+            if not self.store.claim(job.id, pc, claimant):
+                # 取得失敗（他PC/他マシンが先取り）。少し待って再探索。
                 if self._stop.wait(1.0):
                     break
                 continue
@@ -75,10 +102,11 @@ class Worker:
         work = Path(tempfile.mkdtemp(prefix="bname_batch_"))
         result_path = work / "result.json"
         timing_path = work / "timing.json"
+        log_path = work / "blender.log"
 
         blender = blender_locator.find(self.cfg.blender_exe)
         if not blender:
-            self.store.fail(job, "Blender 実行ファイルが見つかりません")
+            self._safe_fail(job, "Blender 実行ファイルが見つかりません")
             self._emit("job_failed", job=self.store.get_job(job_id), error="Blender が見つかりません")
             return
 
@@ -98,36 +126,90 @@ class Worker:
         env = dict(os.environ)
         env["BNAME_BATCH_LOG"] = str(timing_path)
 
+        timeout_seconds = self.cfg.job_timeout_minutes * 60.0
+        heartbeat_seconds = max(5.0, float(self.cfg.heartbeat_seconds))
+        timed_out = False
+        returncode: int | None = None
+        # 子プロセスの出力はファイルへ流す（PIPE を読み続けないとバッファ詰まりで
+        # ハングするため）。ポーリングで停止・タイムアウト・生存印を見る。
         try:
-            self._proc = subprocess.Popen(
-                cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-            )
-            stdout, _ = self._proc.communicate()
-            returncode = self._proc.returncode
+            with open(log_path, "w", encoding="utf-8", errors="replace") as logf:
+                self._proc = subprocess.Popen(
+                    cmd, env=env, stdout=logf, stderr=subprocess.STDOUT, text=True
+                )
+                start = time.monotonic()
+                last_hb = start
+                while True:
+                    returncode = self._proc.poll()
+                    if returncode is not None:
+                        break
+                    now = time.monotonic()
+                    if self._stop.is_set():
+                        self._terminate_proc()
+                        returncode = self._proc.poll()
+                        break
+                    if timeout_seconds > 0 and (now - start) > timeout_seconds:
+                        timed_out = True
+                        self._terminate_proc()
+                        returncode = self._proc.poll()
+                        break
+                    if (now - last_hb) >= heartbeat_seconds:
+                        self.store.heartbeat(job_id)
+                        last_hb = now
+                    time.sleep(0.5)
         except Exception as exc:  # noqa: BLE001
-            self.store.fail(job, f"起動失敗: {exc}")
+            self._safe_fail(job, f"起動失敗: {exc}")
             self._emit("job_failed", job=self.store.get_job(job_id), error=str(exc))
             return
         finally:
             self._proc = None
+
+        # 停止指示で中断された場合は、失敗/完了にせず実行待ちへ戻す（別PC/再開で拾える）。
+        if self._stop.is_set() and not timed_out:
+            self.store.release(job_id)
+            return
+
+        log_tail = self._read_tail(log_path)
+        if timed_out:
+            self._safe_fail(job, f"タイムアウト（{int(timeout_seconds)}秒）", self._read_json(timing_path))
+            self._emit("job_failed", job=self.store.get_job(job_id), error="タイムアウト", log=log_tail)
+            return
 
         timing = self._read_json(timing_path)
         result = self._read_json(result_path)
         ok = bool(result and result.get("ok")) and returncode == 0
 
         if ok:
-            self.store.complete(job, timing)
-            self._emit("job_done", job=self.store.get_job(job_id))
+            self._safe_complete(job, timing)
+            self._emit("job_done", job=self.store.get_job(job_id) or job)
         else:
             err = (result or {}).get("error") or f"異常終了 (code={returncode})"
-            self.store.fail(job, err, timing)
-            self._emit("job_failed", job=self.store.get_job(job_id), error=err, log=(stdout or "")[-2000:])
+            self._safe_fail(job, err, timing)
+            self._emit("job_failed", job=self.store.get_job(job_id), error=err, log=log_tail)
+
+    def _safe_complete(self, job, timing) -> None:
+        try:
+            self.store.complete(job, timing)
+        except OSError as exc:
+            self._emit("error_msg", text=f"完了記録の書き込みに失敗しました: {exc}")
+
+    def _safe_fail(self, job, error, timing=None) -> None:
+        try:
+            self.store.fail(job, error, timing)
+        except OSError as exc:
+            self._emit("error_msg", text=f"失敗記録の書き込みに失敗しました: {exc}")
 
     def _read_json(self, path: Path) -> dict | None:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
+
+    def _read_tail(self, path: Path, limit: int = 2000) -> str:
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")[-limit:]
+        except OSError:
+            return ""
 
 
 def list_presets(cfg: Config, blend_path: str, timeout: float = 180.0) -> list[str]:

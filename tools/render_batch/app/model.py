@@ -40,6 +40,7 @@ class Job:
     # 実行に関する記録（実行後に埋まる）。
     claimed_by: str = ""           # 実際に実行した（している）PC名
     started_at: str = ""
+    heartbeat: str = ""            # 実行中ワーカーの生存印（孤児検出用）。実行中だけ更新
     finished_at: str = ""
     elapsed_seconds: float = 0.0
     predicted_seconds: float = 0.0  # 予測（GUIが計算して表示用に格納）

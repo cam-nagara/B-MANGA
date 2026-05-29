@@ -172,3 +172,82 @@ def test_project_finish_times_accumulates_per_lane():
     # 同一レーン（target_pc 空）なので累積: j1=1100, j2=1200。
     assert finish["j1"] == 1100.0
     assert finish["j2"] == 1200.0
+
+
+# ---- 修正で追加した挙動 ----
+def test_claim_distinct_claimant_no_overwrite(store):
+    """同じ pc_name でもマシン固有 claimant が違えば宣言ファイルは別物。"""
+    a = store.add_job(_job("//x/a.blend", "P1"))
+    store._atomic_write(
+        store.claim_dir / f"{a.id}__PC1#bbb.json",
+        {"job_id": a.id, "pc": "PC1", "claimant": "PC1#bbb", "at": model.now_iso()},
+    )
+    # 別マシン(PC1#aaa)が claim。辞書順最小 PC1#aaa が勝つ。
+    assert store.claim(a.id, "PC1", "PC1#aaa") is True
+    assert store.get_job(a.id).claimed_by == "PC1"
+    # 宣言ファイルは2つ共存（同名でも上書きされていない）。
+    assert len(list(store.claim_dir.glob(f"{a.id}__*.json"))) == 2
+
+
+def test_reclaim_stale_running_recovers_orphan(store):
+    a = store.add_job(_job("//x/a.blend", "P1"))
+    assert store.claim(a.id, "PC-A") is True
+    # 生存印が新しいうちは回収しない。
+    assert store.reclaim_stale_running(60.0) == 0
+    assert store.get_job(a.id).status == model.STATUS_RUNNING
+    # 生存印を大きく過去にして死亡ワーカーの取り残しを模す。
+    job = store.get_job(a.id)
+    job.heartbeat = "2000-01-01T00:00:00+09:00"
+    store.update_job(job)
+    assert store.reclaim_stale_running(60.0) == 1
+    back = store.get_job(a.id)
+    assert back.status == model.STATUS_QUEUED
+    assert back.claimed_by == "" and back.heartbeat == ""
+
+
+def test_requeue_running_is_blocked(store):
+    a = store.add_job(_job("//x/a.blend", "P1"))
+    store.claim(a.id, "PC-A")
+    # 実行中ジョブの再投入は二重実行になるので拒否する。
+    assert store.requeue(a.id) is False
+    assert store.get_job(a.id).status == model.STATUS_RUNNING
+
+
+def test_purge_finished_removes_done_keeps_history(store):
+    a = store.add_job(_job("//x/a.blend", "P1"))
+    store.claim(a.id, "PC-A")
+    store.complete(store.get_job(a.id), {"elapsed_seconds": 5.0})
+    assert store.get_job(a.id) is not None      # 完了直後は queue に残る
+    assert store.purge_finished() == 1
+    assert store.get_job(a.id) is None          # queue からは片付く
+    assert len(store.read_history()) == 1       # 記録は残る
+
+
+def test_predict_backfills_resolution_for_queued():
+    """実行待ちジョブ（解像度・サンプル未確定）でも、同条件の過去から補完して
+    解像度・サンプル別平均(L2)に届く（補完が無ければ "同ファイル" 止まり）。"""
+    hist = [
+        _done("//x/a.blend", "キャラ", 100, [200, 200], 64),
+        _done("//x/a.blend", "キャラ", 140, [200, 200], 64),
+    ]
+    p = Predictor(hist)
+    queued = Job(blend_path="//x/a.blend", preset_name="キャラ")  # resolution/renders 空
+    secs, why = p.predict(queued)
+    assert secs == 120.0
+    assert "同解像度" in why
+
+
+def test_project_finish_times_running_subtracts_elapsed():
+    """実行中ジョブの完了予測は、開始からの経過分を差し引く。"""
+    hist = [_done("//x/a.blend", "P", 100, [10, 10], 1)]
+    p = Predictor(hist)
+    now = 1_700_000_000.0
+    started = model.datetime.fromtimestamp(now - 30).astimezone().isoformat(timespec="seconds")
+    running = Job(
+        id="r1", blend_path="//x/a.blend", preset_name="P",
+        resolution=[10, 10], renders=[{"samples": 1}],
+        status=model.STATUS_RUNNING, started_at=started,
+    )
+    finish = project_finish_times([running], p, now_epoch=now)
+    # 予測100秒・経過30秒 → 残り約70秒。多少の丸め差を許容。
+    assert abs(finish["r1"] - (now + 70)) <= 2.0

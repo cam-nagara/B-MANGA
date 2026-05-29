@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 from . import model
@@ -39,8 +40,25 @@ class JobStore:
     def _atomic_write(self, path: Path, data: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(str(tmp), str(path))
+        text = json.dumps(data, ensure_ascii=False, indent=2)
+        # Dropbox/OneDrive が一時的にファイルを掴むと os.replace が PermissionError
+        # を投げ得る。数回リトライし、最後まで失敗したら孤児 tmp を片付けてから送出する
+        # （呼び出し側で握れるように。握り潰すと書き込み消失に気づけない）。
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                tmp.write_text(text, encoding="utf-8")
+                os.replace(str(tmp), str(path))
+                return
+            except OSError as exc:
+                last_err = exc
+                time.sleep(0.2 * (attempt + 1))
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        if last_err is not None:
+            raise last_err
 
     def _read_json(self, path: Path) -> dict | None:
         try:
@@ -107,55 +125,149 @@ class JobStore:
             return job
         return None
 
-    def claim(self, job_id: str, pc: str) -> bool:
+    def claim(self, job_id: str, pc: str, claimant: str | None = None) -> bool:
         """実行権を取得する。勝者なら True。
 
         手順:
-          1) claim/<id>__<pc>.json を書く（自分の宣言）
+          1) claim/<id>__<claimant>.json を書く（自分の宣言）
           2) 同期猶予を待つ
-          3) その job への全宣言を読み、PC名の辞書順で最小を勝者とする
+          3) その job への全宣言を読み、claimant の辞書順で最小を勝者とする
           4) 勝者が自分なら queue の status を running にして True
+
+        ``claimant`` は同名PC(pc_name 重複)でもマシンごとに必ず異なる一意IDを渡す
+        （省略時は ``pc``。後方互換）。なお Dropbox の同期遅延が宣言の伝播より長い
+        場合は排他を保証しきれない best-effort である点は変わらない。
         """
         self.ensure_dirs()
+        claimant = claimant or pc
         job = self.get_job(job_id)
         if job is None or job.status != model.STATUS_QUEUED:
             return False
 
-        my_claim = self.claim_dir / f"{job_id}__{pc}.json"
-        self._atomic_write(my_claim, {"job_id": job_id, "pc": pc, "at": model.now_iso()})
+        safe = claimant.replace("/", "_").replace("\\", "_")
+        my_claim = self.claim_dir / f"{job_id}__{safe}.json"
+        self._atomic_write(
+            my_claim, {"job_id": job_id, "pc": pc, "claimant": claimant, "at": model.now_iso()}
+        )
 
         if self.sync_grace_seconds > 0:
             time.sleep(self.sync_grace_seconds)
 
-        winner = self._claim_winner(job_id)
-        if winner != pc:
+        if self._claim_winner(job_id) != claimant:
             try:
                 my_claim.unlink()
             except OSError:
                 pass
             return False
 
-        # 競合チェック: 取得直前に他PCが running 化していないか。
+        # 競合チェック: 取得直前に他PC/他マシンが running 化していないか。
         job = self.get_job(job_id)
         if job is None or job.status != model.STATUS_QUEUED:
+            try:
+                my_claim.unlink()
+            except OSError:
+                pass
             return False
         job.status = model.STATUS_RUNNING
         job.claimed_by = pc
         job.started_at = model.now_iso()
+        job.heartbeat = job.started_at
         self.update_job(job)
         return True
 
     def _claim_winner(self, job_id: str) -> str:
-        """その job への宣言のうち、PC名の辞書順で最小のPCを勝者とする。
+        """その job への宣言のうち、claimant の辞書順で最小を勝者とする。
 
-        辞書順 tie-break は決定的なので、複数PCが同じ結論に至る。
+        辞書順 tie-break は決定的なので、同じ宣言集合を見た全PCが同結論に至る。
+        旧形式(claimant 無し)の宣言は pc で代替する（後方互換）。
         """
-        pcs: list[str] = []
+        claimants: list[str] = []
         for path in self.claim_dir.glob(f"{job_id}__*.json"):
             data = self._read_json(path)
-            if data and data.get("pc"):
-                pcs.append(str(data["pc"]))
-        return min(pcs) if pcs else ""
+            if not data:
+                continue
+            who = data.get("claimant") or data.get("pc")
+            if who:
+                claimants.append(str(who))
+        return min(claimants) if claimants else ""
+
+    def heartbeat(self, job_id: str) -> None:
+        """実行中ジョブの生存印を更新する（孤児検出用）。best-effort。"""
+        try:
+            job = self.get_job(job_id)
+            if job is not None and job.status == model.STATUS_RUNNING:
+                job.heartbeat = model.now_iso()
+                self.update_job(job)
+        except OSError:
+            pass
+
+    def release(self, job_id: str) -> None:
+        """実行中ジョブを実行待ちに戻す（停止時など）。claim も消す。"""
+        job = self.get_job(job_id)
+        if job is None or job.status != model.STATUS_RUNNING:
+            return
+        job.status = model.STATUS_QUEUED
+        job.claimed_by = ""
+        job.started_at = ""
+        job.heartbeat = ""
+        self.update_job(job)
+        self._remove_claims(job_id)
+
+    def reclaim_stale_running(self, max_silence_seconds: float) -> int:
+        """生存印が途切れた running ジョブ（死亡ワーカーの取り残し）を queued に戻す。
+
+        戻した件数を返す。max_silence_seconds <= 0 なら何もしない。生存印(heartbeat)
+        基準なので、長時間レンダー中でもワーカーが生きていれば回収されない。
+        """
+        if max_silence_seconds <= 0:
+            return 0
+        now = time.time()
+        reclaimed = 0
+        for job in self.list_jobs():
+            if job.status != model.STATUS_RUNNING:
+                continue
+            epoch = self._iso_epoch(job.heartbeat or job.started_at)
+            if epoch <= 0:
+                continue
+            if now - epoch > max_silence_seconds:
+                job.status = model.STATUS_QUEUED
+                job.claimed_by = ""
+                job.started_at = ""
+                job.heartbeat = ""
+                self.update_job(job)
+                self._remove_claims(job.id)
+                reclaimed += 1
+        return reclaimed
+
+    @staticmethod
+    def _iso_epoch(s: str) -> float:
+        try:
+            return datetime.fromisoformat(str(s)).timestamp()
+        except (ValueError, TypeError):
+            return 0.0
+
+    def _remove_claims(self, job_id: str) -> None:
+        for path in self.claim_dir.glob(f"{job_id}__*.json"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+
+    def purge_finished(self) -> int:
+        """完了(done)ジョブの queue ファイルを片付ける（記録は history に残る）。
+
+        失敗/中止は再投入や確認のため残す。戻り値は削除件数。
+        """
+        removed = 0
+        for job in self.list_jobs():
+            if job.status == model.STATUS_DONE:
+                try:
+                    (self.queue_dir / f"{job.id}.json").unlink()
+                    removed += 1
+                except OSError:
+                    pass
+                self._remove_claims(job.id)
+        return removed
 
     # ---- 完了・失敗 ----
     def _apply_timing(self, job: Job, timing: dict) -> None:
@@ -169,19 +281,23 @@ class JobStore:
     def complete(self, job: Job, timing: dict | None) -> None:
         job.status = model.STATUS_DONE
         job.finished_at = model.now_iso()
+        job.heartbeat = ""
         if timing:
             self._apply_timing(job, timing)
         self.update_job(job)
         self._archive_history(job)
+        self._remove_claims(job.id)
 
     def fail(self, job: Job, error: str, timing: dict | None = None) -> None:
         job.status = model.STATUS_ERROR
         job.finished_at = model.now_iso()
+        job.heartbeat = ""
         job.error = str(error or "")
         if timing:
             self._apply_timing(job, timing)
         self.update_job(job)
         self._archive_history(job)
+        self._remove_claims(job.id)
 
     def cancel(self, job_id: str) -> None:
         job = self.get_job(job_id)
@@ -189,24 +305,29 @@ class JobStore:
             return
         job.status = model.STATUS_CANCELED
         job.finished_at = model.now_iso()
+        job.heartbeat = ""
         self.update_job(job)
+        self._remove_claims(job_id)
 
-    def requeue(self, job_id: str) -> None:
-        """失敗/中止ジョブを実行待ちに戻す。"""
+    def requeue(self, job_id: str) -> bool:
+        """終了したジョブ(失敗/中止/完了)を実行待ちに戻す。実行中(running)は戻さない。
+
+        戻したら True。running を渡された場合は二重実行防止のため何もせず False。
+        """
         job = self.get_job(job_id)
         if job is None:
-            return
+            return False
+        if job.status not in (model.STATUS_ERROR, model.STATUS_CANCELED, model.STATUS_DONE):
+            return False
         job.status = model.STATUS_QUEUED
         job.claimed_by = ""
         job.started_at = ""
+        job.heartbeat = ""
         job.finished_at = ""
         job.error = ""
         self.update_job(job)
-        for path in self.claim_dir.glob(f"{job_id}__*.json"):
-            try:
-                path.unlink()
-            except OSError:
-                pass
+        self._remove_claims(job_id)
+        return True
 
     def _archive_history(self, job: Job) -> None:
         """完了/失敗の記録を history/ に永続化（予測の元データ）。"""
