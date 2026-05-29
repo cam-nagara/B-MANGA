@@ -1,0 +1,7 @@
+{
+  "shared_root": "D:\\TM Dropbox\\Share\\B-Name\\render_batch",
+  "pc_name": "",
+  "blender_exe": "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe",
+  "sync_grace_seconds": 3.0,
+  "poll_seconds": 5.0
+}

@@ -9,7 +9,7 @@ import sys
 
 import bpy
 
-from . import bname_context, core, eevr_bridge
+from . import batch_log, bname_context, core, eevr_bridge
 
 
 @dataclass
@@ -475,6 +475,42 @@ def _ensure_renderable_view_layers(scene) -> None:
             layer.use = True
 
 
+def _output_directories(scene) -> list[str]:
+    """そのシーンが出力に使い得るフォルダ一覧（計測の生成ファイル検出用）。
+
+    実ファイルの更新時刻で「このレンダーで出た出力」を判定するため、
+    走査対象のフォルダを集める。env 無効時は計測側が呼ばないので軽量。
+    """
+    dirs: list[str] = []
+
+    def _add(path: str) -> None:
+        if not path:
+            return
+        try:
+            abspath = str(Path(bpy.path.abspath(str(path))).resolve())
+        except Exception:  # noqa: BLE001
+            return
+        if abspath not in dirs:
+            dirs.append(abspath)
+
+    try:
+        filepath = str(getattr(scene.render, "filepath", "") or "")
+        if filepath:
+            _add(str(Path(bpy.path.abspath(filepath)).parent))
+    except Exception:  # noqa: BLE001
+        pass
+    _add(str(scene.get("bname_render_output_folder", "") or ""))
+    _add(str(scene.get("bname_render_fisheye_output_dir", "") or ""))
+    try:
+        _add(bname_context.default_output_folder(scene, ""))
+    except Exception:  # noqa: BLE001
+        pass
+    for node in _iter_all_nodes(scene):
+        if getattr(node, "type", "") == "OUTPUT_FILE":
+            _add(_get_output_node_directory(node))
+    return dirs
+
+
 def _render(scene, engine: str, sample_count: int) -> None:
     _configure_render(scene, engine, sample_count)
     _ensure_renderable_view_layers(scene)
@@ -542,26 +578,34 @@ def _run_command(context, command, preset_name: str = "") -> None:
     elif kind == "RELOAD_IMAGES":
         _reload_images()
     elif kind == "RENDER":
-        _render(scene, command.engine, command.sample_count)
+        with batch_log.render_timer(scene, command.label_contains or "レンダー", command.engine, command.sample_count, _output_directories(scene)):
+            _render(scene, command.engine, command.sample_count)
     elif kind == "RENDER_LAYER":
-        _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
+        with batch_log.render_timer(scene, command.label_contains, command.engine, command.sample_count, _output_directories(scene)):
+            _render_layer(scene, command.node_group_name, command.label_contains, command.engine, command.sample_count)
     elif kind == "FISHEYE_RENDER_IMAGE_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "IMAGE", preset_name)
+        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _output_directories(scene)):
+            _run_fisheye_or_layer(scene, command, "IMAGE", preset_name)
     elif kind == "FISHEYE_RENDER_FACES_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "FACES", preset_name)
+        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _output_directories(scene)):
+            _run_fisheye_or_layer(scene, command, "FACES", preset_name)
     elif kind == "FISHEYE_ASSEMBLE_OR_LAYER":
-        _run_fisheye_or_layer(scene, command, "ASSEMBLE", preset_name)
+        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _output_directories(scene)):
+            _run_fisheye_or_layer(scene, command, "ASSEMBLE", preset_name)
     elif kind == "EEVR_SETUP":
         _setup_eevr_from_command(scene, command, preset_name)
     elif kind == "EEVR_RENDER_IMAGE":
         _setup_eevr_from_command(scene, command, preset_name)
-        eevr_bridge.render_image()
+        with batch_log.render_timer(scene, command.label_contains or "魚眼画像", command.engine, command.sample_count, _output_directories(scene)):
+            eevr_bridge.render_image()
     elif kind == "EEVR_RENDER_FACES":
         _setup_eevr_from_command(scene, command, preset_name)
-        eevr_bridge.render_faces()
+        with batch_log.render_timer(scene, command.label_contains or "魚眼各面", command.engine, command.sample_count, _output_directories(scene)):
+            eevr_bridge.render_faces()
     elif kind == "EEVR_ASSEMBLE":
         _setup_eevr_from_command(scene, command, preset_name)
-        eevr_bridge.assemble_images()
+        with batch_log.render_timer(scene, command.label_contains or "魚眼合成", command.engine, command.sample_count, _output_directories(scene)):
+            eevr_bridge.assemble_images()
     elif kind == "OPERATOR" and command.operator_idname:
         eevr_bridge.run_operator(command.operator_idname)
     elif kind == "RUN_PRESET":
@@ -623,8 +667,13 @@ def run_active_preset(context) -> int:
         return 0
     global _EXEC_COUNT
     _EXEC_COUNT = 0
+    scene = context.scene
+    blend_path = str(getattr(bpy.data, "filepath", "") or "")
+    batch_log.begin_preset(scene, str(getattr(preset, "name", "") or ""), blend_path)
+    error_text = ""
+    ok = False
     try:
-        core._apply_output_resolution_mode(context.scene)
+        core._apply_output_resolution_mode(scene)
         _sync_bname_coma_output_layout(context)
         _PRESET_RUN_STACK.clear()
         _PRESET_RUN_STACK.append(str(getattr(preset, "name", "") or ""))
@@ -635,6 +684,30 @@ def run_active_preset(context) -> int:
                 _run_command(context, command, preset.name)
         finally:
             _PRESET_RUN_STACK.clear()
+        ok = True
+    except Exception as exc:  # noqa: BLE001
+        error_text = str(exc)
+        raise
     finally:
-        _restore_session(context.scene)
+        _restore_session(scene)
+        batch_log.set_exec_count(_EXEC_COUNT)
+        batch_log.finalize(scene, ok=ok, error=error_text)
     return _EXEC_COUNT
+
+
+def run_preset_by_name(context, name: str) -> int:
+    """名前を指定してプリセットを実行する（連続実行アプリ向けの入口）。
+
+    アクティブプリセットを一時的に指定名へ切り替えてから実行する。
+    見つからない場合は RuntimeError。
+    """
+    target = str(name or "").strip()
+    state = core.get_state(context)
+    if state is None or not state.presets:
+        raise RuntimeError("プリセットがありません")
+    idx = next((i for i, p in enumerate(state.presets) if str(p.name) == target), -1)
+    if idx < 0:
+        available = ", ".join(str(p.name) for p in state.presets)
+        raise RuntimeError(f"プリセットが見つかりません: {target}（候補: {available}）")
+    core.set_active_preset_index(context, idx)
+    return run_active_preset(context)
