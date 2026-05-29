@@ -437,10 +437,23 @@ class BNAME_RENDER_OT_preset_defaults_restore(Operator):
         return {"FINISHED"}
 
 
+def _blender_python() -> str:
+    """Blender 同梱 Python (<blenderdir>/<ver>/python/bin/python.exe) を返す。
+
+    各PCに別途 Python が無くても、Blender さえあれば動かせる。ブラウザ版UIは
+    tkinter 非依存なので同梱 Python で問題ない。
+    """
+    blender_dir = Path(bpy.app.binary_path).resolve().parent
+    for cand in sorted(blender_dir.glob("*/python/bin/python.exe"), reverse=True):
+        if cand.is_file():
+            return str(cand)
+    return shutil.which("python") or ""
+
+
 class BNAME_RENDER_OT_open_batch_app(Operator):
     bl_idname = "bname_render.open_batch_app"
     bl_label = "連続実行アプリを開く"
-    bl_description = "複数ファイル・複数プリセットを連続レンダリングするデスクトップアプリ(別ウィンドウ)を起動する"
+    bl_description = "複数ファイル・複数プリセットを連続レンダリングするアプリ(ブラウザの別ウィンドウ)を起動する"
 
     def execute(self, context):
         # operators.py は <repo>/addons/b_name_render/ にあるので、リポジトリ直下の
@@ -450,22 +463,15 @@ class BNAME_RENDER_OT_open_batch_app(Operator):
         if not run_app.exists():
             self.report({"ERROR"}, f"連続実行アプリが見つかりません: {run_app}")
             return {"CANCELLED"}
-        # 別ウィンドウGUIなのでコンソール無しの pythonw を優先。Blender 同梱 Python は
-        # Tkinter を含まないため使わず、PATH 上の外部 Python を探す。
-        python_exe = (
-            shutil.which("pythonw")
-            or shutil.which("pyw")
-            or shutil.which("python")
-            or shutil.which("py")
-        )
+        # Blender 同梱 Python で起動する（各PCにPython未導入でも動く）。コンソール窓は出さない。
+        python_exe = _blender_python()
         if not python_exe:
-            self.report({"ERROR"}, "Python が見つかりません。Python をインストールしてください。")
+            self.report({"ERROR"}, "Blender 同梱の Python が見つかりませんでした")
             return {"CANCELLED"}
         try:
             kwargs = {"cwd": str(run_app.parent), "close_fds": True}
-            # Blender を閉じてもアプリが残るよう、切り離して起動する（Windows）。
             flags = 0
-            for name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
+            for name in ("CREATE_NO_WINDOW", "CREATE_NEW_PROCESS_GROUP"):
                 flags |= int(getattr(subprocess, name, 0))
             if flags:
                 kwargs["creationflags"] = flags
@@ -473,7 +479,7 @@ class BNAME_RENDER_OT_open_batch_app(Operator):
         except Exception as exc:  # noqa: BLE001
             self.report({"ERROR"}, f"起動に失敗しました: {exc}")
             return {"CANCELLED"}
-        self.report({"INFO"}, "連続実行アプリを起動しました（別ウィンドウ）")
+        self.report({"INFO"}, "連続実行アプリを起動しました（ブラウザの別ウィンドウ）")
         return {"FINISHED"}
 
 
