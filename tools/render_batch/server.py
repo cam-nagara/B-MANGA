@@ -31,7 +31,9 @@ from app.predictor import Predictor, project_finish_times
 
 PORT = 8765
 WEB_DIR = Path(__file__).resolve().parent / "web"
-IDLE_EXIT_SECONDS = 30.0  # 窓を閉じてポーリングが止まり、かつ非実行ならこの秒数で自動終了
+IDLE_EXIT_SECONDS = 180.0  # 窓を閉じてポーリングが止まり、かつ非実行ならこの秒数で自動終了
+# 注: ブラウザは背面/最小化でタイマーを最大約60秒に1回まで間引くため、30秒では
+# 窓を開いたままでも誤終了し得る。間引き上限を十分上回る値にする。
 
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -88,56 +90,67 @@ class AppState:
 
     # ---- 状態 ----
     def state(self) -> dict:
+        # 設定・ワーカー状態だけロック下でスナップショットし、重いファイルI/O
+        # (共有/ネットワーク越しになり得る)はロック外で行う。これにより遅い state()
+        # が他リクエスト(追加・並べ替え等)を待たせない。読み取りは _atomic_write の
+        # 原子性で完全なファイルしか見えない。
         with self.lock:
             cfg = self.cfg
-            jobs_payload: list[dict] = []
-            history_payload: list[dict] = []
-            if self.store is not None:
-                jobs = self.store.list_jobs()
-                predictor = Predictor(self.store.read_history())
-                active = [j for j in jobs if j.status in model.ACTIVE_STATUSES]
-                eta = project_finish_times(active, predictor, now_epoch=time.time())
-                for idx, j in enumerate(jobs, 1):
-                    psecs, why = predictor.predict(j)
-                    jobs_payload.append({
-                        "id": j.id,
-                        "order": idx,
-                        "file": _basename(j.blend_path),
-                        "blend_path": j.blend_path,
-                        "preset": j.preset_name,
-                        "target_pc": j.target_pc,
-                        "status": j.status,
-                        "predict_seconds": psecs,
-                        "predict_why": why,
-                        "eta": eta.get(j.id, 0),
-                        "elapsed": j.elapsed_seconds,
-                        "claimed_by": j.claimed_by,
-                    })
-                for j in reversed(self.store.read_history()):
-                    history_payload.append({
-                        "finished_at": j.finished_at,
-                        "file": _basename(j.blend_path),
-                        "preset": j.preset_name,
-                        "pc": j.claimed_by,
-                        "elapsed": j.elapsed_seconds,
-                        "resolution": list(j.resolution or []),
-                        "status": j.status,
-                    })
-            return {
-                "configured": self.store is not None,
-                "worker": {"running": self.worker_running(), "pc": cfg.resolved_pc(), **self.activity},
-                "config": {
-                    "shared_root": cfg.shared_root,
-                    "pc_name": cfg.pc_name,
-                    "blender_exe": cfg.blender_exe,
-                    "sync_grace_seconds": cfg.sync_grace_seconds,
-                    "poll_seconds": cfg.poll_seconds,
-                    "job_timeout_minutes": cfg.job_timeout_minutes,
-                    "stale_running_minutes": cfg.stale_running_minutes,
-                },
-                "jobs": jobs_payload,
-                "history": history_payload,
+            store = self.store
+            running = self.worker_running()
+            activity = dict(self.activity)
+            config_payload = {
+                "shared_root": cfg.shared_root,
+                "pc_name": cfg.pc_name,
+                "blender_exe": cfg.blender_exe,
+                "sync_grace_seconds": cfg.sync_grace_seconds,
+                "poll_seconds": cfg.poll_seconds,
+                "job_timeout_minutes": cfg.job_timeout_minutes,
+                "stale_running_minutes": cfg.stale_running_minutes,
             }
+            pc = cfg.resolved_pc()
+
+        jobs_payload: list[dict] = []
+        history_payload: list[dict] = []
+        if store is not None:
+            jobs = store.list_jobs()
+            history = store.read_history()  # 1回だけ読み、Predictorと履歴表示で使い回す
+            predictor = Predictor(history)
+            active = [j for j in jobs if j.status in model.ACTIVE_STATUSES]
+            eta = project_finish_times(active, predictor, now_epoch=time.time())
+            for idx, j in enumerate(jobs, 1):
+                psecs, why = predictor.predict(j)
+                jobs_payload.append({
+                    "id": j.id,
+                    "order": idx,
+                    "file": _basename(j.blend_path),
+                    "blend_path": j.blend_path,
+                    "preset": j.preset_name,
+                    "target_pc": j.target_pc,
+                    "status": j.status,
+                    "predict_seconds": psecs,
+                    "predict_why": why,
+                    "eta": eta.get(j.id, 0),
+                    "elapsed": j.elapsed_seconds,
+                    "claimed_by": j.claimed_by,
+                })
+            for j in reversed(history):
+                history_payload.append({
+                    "finished_at": j.finished_at,
+                    "file": _basename(j.blend_path),
+                    "preset": j.preset_name,
+                    "pc": j.claimed_by,
+                    "elapsed": j.elapsed_seconds,
+                    "resolution": list(j.resolution or []),
+                    "status": j.status,
+                })
+        return {
+            "configured": store is not None,
+            "worker": {"running": running, "pc": pc, **activity},
+            "config": config_payload,
+            "jobs": jobs_payload,
+            "history": history_payload,
+        }
 
     # ---- 操作 ----
     def list_presets(self, blend_path: str) -> list[str]:
@@ -230,8 +243,10 @@ class AppState:
 
     def request_shutdown(self) -> None:
         with self.lock:
-            if self.worker is not None:
-                self.worker.stop()
+            w = self.worker
+        if w is not None:
+            w.stop()      # 実行中レンダーを止め(子プロセス terminate)、
+            w.join(12.0)  # release()(実行待ちへ戻す書き戻し)が終わるまで待ってから終了
         self.shutdown_event.set()
 
     # ---- 遊休自動終了 ----
@@ -296,6 +311,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self) -> None:
+        self.app.touch_poll()  # 操作中も生存印を更新（背面でポーリングが間引かれても誤終了させない）
         path = urlparse(self.path).path
         try:
             length = int(self.headers.get("Content-Length") or 0)

@@ -3,6 +3,47 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-29 — B-Name-Render 連続実行アプリをブラウザUIへ刷新 / v0.1.30
+
+### 変更: 連続実行アプリを Tkinter からブラウザUIへ刷新
+- UI層を、ローカルWebサーバ (`tools/render_batch/server.py`、標準ライブラリの http.server・127.0.0.1のみ・単一インスタンス) ＋ HTML/CSS/JS (`tools/render_batch/web/`) に刷新。中核 (jobstore/worker/predictor/model/config) はそのまま流用。
+- 各PCにPython追加インストール不要: サーバを **Blender同梱Python** で起動 (tkinter非依存)。UIは Edge (Windows標準) の `--app` アプリ窓。→ 必要なものは「Blender＋B-Name-Render」だけ。
+- **D&Dでのキュー並べ替え** / **OS追従ダーク** / 高DPIで鮮明 / ライブ更新 / ネイティブ .blend 選択 / 完了予測表示 / 終了ボタン / 遊休自動終了 / ブラウザを閉じても実行継続。
+- 起動: `連続実行アプリ.vbs` (ダブルクリックでBlender同梱Pythonを探し隠し起動) と、B-Name-Render パネルの「連続実行アプリを開く…」ボタン (v0.1.29→0.1.30、Blender同梱Python・CREATE_NO_WINDOW)。
+- 旧 Tkinter版 (`app/gui.py`, `app/theme.py`) と起動 `.bat` を撤去。
+
+### 修正 (徹底チェックで発見・確定6件)
+- **並行性**: ワーカースレッドとUIスレッドが同じキューファイルを read-modify-write して更新を取りこぼす lost-update を、JobStore 内部の RLock で直列化して解消 (完了/実行中ジョブのステータス巻き戻り・再実行・二重実行を防止)。同期猶予の待ちはロック外に出しUIポーリングを止めない。
+- 遊休自動終了が30秒で、ブラウザ背面時のタイマー間引き(>60秒)により窓を開いたままでも誤終了し得たのを **180秒へ延長＋操作(POST)でも生存印更新**。
+- 一覧/記録の status・解像度・id を **エスケープ** (共有フォルダの壊れた/悪意あるジョブJSONによるUIへのHTML/JS注入を防止)。
+- `state()` が毎ポーリングで履歴を二重読み・ロック保持中にI/Oしていたのを、履歴1回読み・重I/Oをロック外へ。
+- 終了時にワーカースレッドを join し、停止ジョブの「実行待ちへ戻す」書き戻しを取りこぼさない。
+- 「ジョブ追加」二重押しでネイティブ選択ダイアログが多重起動するのを抑止。
+
+### 関連ファイル
+- 追加: `tools/render_batch/server.py`, `tools/render_batch/web/(index.html, app.js, style.css)`, `tools/render_batch/連続実行アプリ.vbs`。
+- 変更: `tools/render_batch/run_app.py`, `app/(jobstore, worker)`, `addons/b_name_render/(operators, __init__, blender_manifest)`。撤去: `app/gui.py`, `app/theme.py`, `連続実行アプリ.bat`。
+
+### 検証 (Blender 5.1.1 ヘッドレス)
+- Blender同梱Python(3.13)でサーバ起動→API疎通(状態/設定保存/並べ替え/片付け/終了)→クリーン終了(ポート解放)。`.vbs` でサーバ起動＋Edgeアプリ窓、アドオンの同梱Python解決を確認。
+- ロジック単体 19/19 PASS (ロック追加後も回帰なし)。徹底チェック確定6件 (高1/中2/低3) を修正。
+
+## 2026-05-29 — B-Name-Render EEVEE識別子の版互換修正 + 連続実行アプリ堅牢化 / v0.1.28
+
+### 修正: EEVEE エンジン識別子 (実機で発見)
+- Blender 5.1.1 の `scene.render.engine` は `BLENDER_EEVEE` (4.2〜の `BLENDER_EEVEE_NEXT` から接尾辞が廃止され元に戻った)。アドオンが保存値 `BLENDER_EEVEE_NEXT` をそのまま代入し、EEVEE プリセットの実レンダーが TypeError で失敗していたのを、起動中Blenderの有効値へ自動読み替えて解消 (旧版互換)。UI表記も「EEVEE」に統一。
+- 計測フックの出力フォルダ収集を計測有効時のみに遅延化し、通常UIレンダーへの無駄なコストを排除。
+
+### 修正: 連続実行アプリ堅牢化 (監査18件)
+- ワーカー異常終了で running 滞留 → 生存印(heartbeat)による孤児回収。
+- 「実行停止」で子Blenderを確実に終了 (terminate/kill)・実行タイムアウト。
+- 同名PCでも claim が衝突しないようマシン固有IDで一意化。原子書き込みのリトライ/後始末。requeue の状態ガード。完了の片付け。
+- 予測: 待機ジョブの解像度/サンプルを過去記録から補完し、PC別ETA・実行中ジョブの経過差し引き。
+- runner の登録失敗を可視化。
+
+### 検証
+- 実機: EEVEE プリセットがクラッシュせず実走を確認。ロジック単体・実機E2E (WORKBENCH) PASS。
+
 ## 2026-05-29 — B-Name-Render プリセット連続実行アプリ追加 / v0.1.27
 
 ### 追加: プリセット連続実行アプリ (tools/render_batch)

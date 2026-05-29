@@ -44,6 +44,12 @@ class Worker:
         # 実行中のレンダーを実際に止める（communicate ブロックではなく明示終了）。
         self._terminate_proc()
 
+    def join(self, timeout: float = 10.0) -> None:
+        """ワーカースレッドの終了を待つ（停止後の release 書き戻しを取りこぼさない）。"""
+        t = self._thread
+        if t is not None:
+            t.join(timeout)
+
     def is_running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
 

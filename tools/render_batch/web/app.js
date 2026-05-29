@@ -7,6 +7,7 @@ let dragging = false;
 let dragId = null;
 let settingsInited = false;
 let toastTimer = null;
+let addingJob = false;
 
 const STATUS_JP = { queued: "待機", running: "実行中", done: "完了", error: "失敗", canceled: "中止" };
 
@@ -98,13 +99,13 @@ function renderQueue(jobs) {
       <td title="${escapeAttr(j.blend_path)}">${escapeHtml(j.file)}</td>
       <td>${escapeHtml(j.preset)}</td>
       <td>${escapeHtml(j.target_pc || "どれでも")}</td>
-      <td><span class="status ${j.status}">${STATUS_JP[j.status] || j.status}</span></td>
+      <td><span class="status ${escapeAttr(j.status)}">${escapeHtml(STATUS_JP[j.status] || j.status)}</span></td>
       <td title="${escapeAttr(j.predict_why || "")}">${fmtSecs(j.predict_seconds)}</td>
       <td>${fmtEta(j.eta)}</td>
       <td>${j.elapsed ? fmtSecs(j.elapsed) : "-"}</td>
       <td class="col-act">
-        ${terminal ? `<button class="btn ghost" data-action="requeue" data-id="${j.id}" title="再投入">↺</button>` : ""}
-        <button class="btn ghost danger" data-action="remove" data-id="${j.id}" title="削除">✕</button>
+        ${terminal ? `<button class="btn ghost" data-action="requeue" data-id="${escapeAttr(j.id)}" title="再投入">↺</button>` : ""}
+        <button class="btn ghost danger" data-action="remove" data-id="${escapeAttr(j.id)}" title="削除">✕</button>
       </td>`;
     body.appendChild(tr);
   }
@@ -123,7 +124,7 @@ function renderHistory(hist) {
   empty.classList.add("hidden");
   table.classList.remove("hidden");
   for (const h of hist) {
-    const res = h.resolution && h.resolution.length === 2 ? `${h.resolution[0]}x${h.resolution[1]}` : "-";
+    const res = h.resolution && h.resolution.length === 2 ? escapeHtml(h.resolution[0] + "x" + h.resolution[1]) : "-";
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml((h.finished_at || "").replace("T", " ").slice(0, 16))}</td>
@@ -132,7 +133,7 @@ function renderHistory(hist) {
       <td>${escapeHtml(h.pc || "-")}</td>
       <td>${fmtSecs(h.elapsed)}</td>
       <td>${res}</td>
-      <td><span class="status ${h.status}">${STATUS_JP[h.status] || h.status}</span></td>`;
+      <td><span class="status ${escapeAttr(h.status)}">${escapeHtml(STATUS_JP[h.status] || h.status)}</span></td>`;
     body.appendChild(tr);
   }
 }
@@ -214,18 +215,27 @@ async function commitReorder(ids) {
 
 // ---- ジョブ追加（ネイティブ選択→プリセット→モーダル）----
 async function addJob() {
-  let path;
-  try { path = (await api("/api/pick_blend", {})).path; }
-  catch (e) { toast(e.message); return; }
-  if (!path) return; // キャンセル
-  let presets;
+  if (addingJob) return; // 二重押し防止（ネイティブ選択ダイアログの多重起動を防ぐ）
+  addingJob = true;
+  const btn = $("btn-add");
+  btn.disabled = true;
   try {
-    toast("プリセット読込中…", false, true);
-    presets = (await api("/api/presets", { blend_path: path })).presets;
-    hideToast();
-  } catch (e) { toast(e.message); return; }
-  if (!presets || !presets.length) { toast("このファイルにプリセットがありません"); return; }
-  openModal(path, presets);
+    let path;
+    try { path = (await api("/api/pick_blend", {})).path; }
+    catch (e) { toast(e.message); return; }
+    if (!path) return; // キャンセル
+    let presets;
+    try {
+      toast("プリセット読込中…", false, true);
+      presets = (await api("/api/presets", { blend_path: path })).presets;
+      hideToast();
+    } catch (e) { toast(e.message); return; }
+    if (!presets || !presets.length) { toast("このファイルにプリセットがありません"); return; }
+    openModal(path, presets);
+  } finally {
+    addingJob = false;
+    btn.disabled = false;
+  }
 }
 function openModal(path, presets) {
   $("modal-file").textContent = path.split(/[\\/]/).pop();
