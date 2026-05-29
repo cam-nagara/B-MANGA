@@ -38,7 +38,13 @@ class BNAME_RENDER_UL_commands(UIList):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             commands = getattr(data, "commands", None)
             kind = str(getattr(item, "command_type", "") or "")
-            depth = command_ui.block_depth_before(commands, index)
+            # 深さは filter_items で 1 回だけ計算した配列から引く (各行で
+            # 計算し直すと O(N^2) になり、コマンドの多いプリセットで重い)。
+            depths = getattr(self, "_bnr_depths", None)
+            if depths is not None and 0 <= index < len(depths):
+                depth = depths[index]
+            else:
+                depth = command_ui.block_depth_before(commands, index)
             row = layout.row(align=True)
             if kind == "STATE_BEGIN":
                 # 入れ子の出力ブロック見出しもインデントして階層を揃える
@@ -78,8 +84,11 @@ class BNAME_RENDER_UL_commands(UIList):
 
     def filter_items(self, _context, data, propname):
         commands = getattr(data, propname)
+        # 深さ配列と非表示集合を 1 回だけ計算し、draw_item へキャッシュ渡しする。
+        depths, hidden = command_ui.compute_command_layout(commands)
+        self._bnr_depths = depths
         flags = [self.bitflag_filter_item] * len(commands)
-        for i in command_ui.hidden_command_indices(commands):
+        for i in hidden:
             if 0 <= i < len(flags):
                 flags[i] &= ~self.bitflag_filter_item
         return flags, []

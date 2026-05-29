@@ -43,6 +43,28 @@ def command_icon(command_type: str) -> str:
     return _COMMAND_ICONS.get(str(command_type or ""), "DOT")
 
 
+def compute_command_layout(commands):
+    """一覧描画に必要な (各行の出力ブロック深さ配列, 非表示 index 集合) を 1 パスで返す.
+
+    各行で ``block_depth_before`` を呼ぶと O(N^2) になり、コマンド数の多い
+    プリセットでプリセット切替時の再描画が重くなる。 ``filter_items`` で 1 回
+    だけ計算してキャッシュし、 ``draw_item`` は配列を引くだけにするための前計算。
+    ``depths[i]`` は ``block_depth_before(commands, i)`` と同じ値。
+    """
+    n = len(commands) if commands is not None else 0
+    depths = [0] * n
+    depth = 0
+    for i in range(n):
+        depths[i] = depth
+        t = str(getattr(commands[i], "command_type", "") or "")
+        if t == "STATE_BEGIN":
+            depth += 1
+        elif t == "STATE_END":
+            depth = max(0, depth - 1)
+    hidden = hidden_command_indices(commands)
+    return depths, hidden
+
+
 def block_depth_before(commands, index: int) -> int:
     """index 行より前の STATE_BEGIN/STATE_END の入れ子深さを返す.
 
