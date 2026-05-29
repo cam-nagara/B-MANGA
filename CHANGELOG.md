@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-29 — B-Name-Render プリセット連続実行アプリ追加 / v0.1.27
+
+### 追加: プリセット連続実行アプリ (tools/render_batch)
+- 複数PC・複数ファイル・複数プリセットを自由な順で連続レンダリングするデスクトップアプリ (Tkinter, 標準ライブラリのみ・追加インストール不要) を追加。
+  - 共有フォルダ (Dropbox) を介して各PCが1本ずつ仕事を取り合う分担方式。取得競合はPC名の辞書順で決定的に解決。
+  - プリセット単位・レンダー工程単位の開始/完了/所要時間と生成ファイル一覧を記録 (history) し、「記録」タブで一覧表示。
+  - 過去記録の条件別平均 (プリセット×ファイル×解像度×サンプル数×PC) から完了予測時刻を各行に表示。
+- B-Name-Render (v0.1.26 → v0.1.27): バッチ実行向けに以下を追加。通常のUI操作には影響しない。
+  - `command_runner.run_preset_by_name()`: プリセットを名前指定で実行する入口。
+  - `batch_log.py` (新規): 環境変数 `BNAME_BATCH_LOG` 指定時のみ動作するレンダー時間計測。各レンダー工程をラップし所要時間と出力ファイルを記録 (env 未設定時は全関数 no-op)。
+
+### 関連ファイル
+- `tools/render_batch/`: run_app.py / runner.py / app/(model, jobstore, predictor, worker, config, blender_locator, gui)。README・config.example.json 同梱。
+- `addons/b_name_render/command_runner.py`, `addons/b_name_render/batch_log.py` (新規), `addons/b_name_render/blender_manifest.toml`, `addons/b_name_render/__init__.py`。
+
+### 検証 (Blender 5.1 ヘッドレス)
+- 実機E2E (`test/blender_b_name_render_batch_runner_check.py`): runner起動→名前指定でプリセット実行→工程ごとの時間計測ログ出力→PNG生成→結果サマリまで一気通貫で成功。
+- ロジック単体 (`test/render_batch_logic_test.py`, 13件): キュー操作・複数PC取得排他・完了/失敗/再投入・条件別予測・完了予測時刻の累積、全PASS。
+- 計画書: `docs/plans/render_batch_queue_2026-05-29.md`。
+
 ## 2026-05-29 — B-Name-Render v0.1.26 カテゴリ機能の徹底チェック修正
 
 ### 修正 (徹底チェックで発見)
