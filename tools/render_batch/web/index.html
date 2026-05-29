@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>B-Name-Render 連続実行</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">B-Name-Render <span>連続実行</span></div>
+    <div class="worker">
+      <span id="worker-dot" class="dot"></span>
+      <span id="worker-text" class="worker-text">—</span>
+      <button id="btn-worker" class="btn primary">このPCで実行開始</button>
+      <button id="btn-quit" class="btn ghost" title="サーバを終了します">終了</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-view="queue">実行待ち</button>
+    <button class="tab" data-view="history">記録</button>
+    <button class="tab" data-view="settings">設定</button>
+  </nav>
+
+  <main>
+    <!-- 実行待ち -->
+    <section id="view-queue" class="view active">
+      <div class="toolbar">
+        <button id="btn-add" class="btn">ジョブ追加</button>
+        <button id="btn-purge" class="btn">完了を片付ける</button>
+        <button id="btn-refresh" class="btn ghost">更新</button>
+        <span class="hint">行をドラッグして並べ替え</span>
+      </div>
+      <div id="queue-empty" class="empty">実行待ちはありません。「ジョブ追加」で .blend とプリセットを追加してください。</div>
+      <table id="queue-table" class="grid hidden">
+        <thead>
+          <tr>
+            <th class="col-grip"></th>
+            <th class="col-order">順</th>
+            <th>ファイル</th>
+            <th>プリセット</th>
+            <th>対象PC</th>
+            <th>状態</th>
+            <th>予測所要</th>
+            <th>完了予測</th>
+            <th>実績</th>
+            <th class="col-act"></th>
+          </tr>
+        </thead>
+        <tbody id="queue-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 記録 -->
+    <section id="view-history" class="view">
+      <div id="history-empty" class="empty">記録はまだありません。</div>
+      <table id="history-table" class="grid hidden">
+        <thead>
+          <tr>
+            <th>完了時刻</th>
+            <th>ファイル</th>
+            <th>プリセット</th>
+            <th>PC</th>
+            <th>所要</th>
+            <th>解像度</th>
+            <th>状態</th>
+          </tr>
+        </thead>
+        <tbody id="history-body"></tbody>
+      </table>
+    </section>
+
+    <!-- 設定 -->
+    <section id="view-settings" class="view">
+      <form id="settings-form" class="form" autocomplete="off">
+        <label>共有フォルダ
+          <span class="sub">Dropbox等。全PCで同じパスにする</span>
+          <input type="text" id="cfg-root" placeholder="例) D:\TM Dropbox\Share\B-Name\render_batch">
+        </label>
+        <label>自PC名
+          <span class="sub">空ならコンピュータ名</span>
+          <input type="text" id="cfg-pc">
+        </label>
+        <label>Blender実行ファイル
+          <input type="text" id="cfg-blender">
+        </label>
+        <div class="row2">
+          <label>同期猶予(秒)<input type="number" id="cfg-grace" step="0.5" min="0"></label>
+          <label>監視間隔(秒)<input type="number" id="cfg-poll" step="1" min="1"></label>
+        </div>
+        <div class="row2">
+          <label>実行上限(分) <span class="sub">0=無制限</span><input type="number" id="cfg-timeout" step="1" min="0"></label>
+          <label>孤児回収(分) <span class="sub">生存印が途切れたら回収</span><input type="number" id="cfg-stale" step="1" min="1"></label>
+        </div>
+        <button type="submit" class="btn primary">保存</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- プリセット選択モーダル -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-title" id="modal-file">プリセットを選択</div>
+      <div id="modal-list" class="modal-list"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn ghost">キャンセル</button>
+        <button id="modal-ok" class="btn primary">選んだプリセットを追加</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
