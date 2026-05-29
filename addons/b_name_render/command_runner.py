@@ -28,6 +28,11 @@ _SESSION: _RenderSession | None = None
 # 深さ1固定 (親→子の1段のみ)。循環・自己参照・多段ネストの防止に使う。
 _PRESET_RUN_STACK: list[str] = []
 
+# 「プリセットを実行」完了時に報告する実行コマンド数。子プリセット
+# (プリセット実行で呼んだもの) の中身も合算する。プリセット実行コマンド
+# 自体 (ディスパッチャ) は数えず、実際に動いたコマンドだけを数える。
+_EXEC_COUNT = 0
+
 
 def _iter_node_trees(scene):
     seen: set[int] = set()
@@ -510,8 +515,12 @@ def _setup_eevr_from_command(scene, command, preset_name: str = "") -> None:
 
 
 def _run_command(context, command, preset_name: str = "") -> None:
+    global _EXEC_COUNT
     scene = context.scene
     kind = command.command_type
+    if kind != "RUN_PRESET":
+        # プリセット実行ディスパッチャは数えず、実際に動くコマンドを数える。
+        _EXEC_COUNT += 1
     if kind == "STATE_BEGIN":
         _begin_session(scene)
     elif kind == "STATE_END":
@@ -612,7 +621,8 @@ def run_active_preset(context) -> int:
     preset = core.active_preset(context)
     if preset is None:
         return 0
-    count = 0
+    global _EXEC_COUNT
+    _EXEC_COUNT = 0
     try:
         core._apply_output_resolution_mode(context.scene)
         _sync_bname_coma_output_layout(context)
@@ -623,9 +633,8 @@ def run_active_preset(context) -> int:
                 if not command.enabled:
                     continue
                 _run_command(context, command, preset.name)
-                count += 1
         finally:
             _PRESET_RUN_STACK.clear()
     finally:
         _restore_session(context.scene)
-    return count
+    return _EXEC_COUNT
