@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import time
+from pathlib import Path
 
 import bpy
 from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
@@ -434,6 +437,46 @@ class BNAME_RENDER_OT_preset_defaults_restore(Operator):
         return {"FINISHED"}
 
 
+class BNAME_RENDER_OT_open_batch_app(Operator):
+    bl_idname = "bname_render.open_batch_app"
+    bl_label = "連続実行アプリを開く"
+    bl_description = "複数ファイル・複数プリセットを連続レンダリングするデスクトップアプリ(別ウィンドウ)を起動する"
+
+    def execute(self, context):
+        # operators.py は <repo>/addons/b_name_render/ にあるので、リポジトリ直下の
+        # tools/render_batch/run_app.py を辿る。起動中Blenderは main チェックアウトを
+        # 読む運用のため、この相対解決で実体に届く。
+        run_app = Path(__file__).resolve().parent.parents[1] / "tools" / "render_batch" / "run_app.py"
+        if not run_app.exists():
+            self.report({"ERROR"}, f"連続実行アプリが見つかりません: {run_app}")
+            return {"CANCELLED"}
+        # 別ウィンドウGUIなのでコンソール無しの pythonw を優先。Blender 同梱 Python は
+        # Tkinter を含まないため使わず、PATH 上の外部 Python を探す。
+        python_exe = (
+            shutil.which("pythonw")
+            or shutil.which("pyw")
+            or shutil.which("python")
+            or shutil.which("py")
+        )
+        if not python_exe:
+            self.report({"ERROR"}, "Python が見つかりません。Python をインストールしてください。")
+            return {"CANCELLED"}
+        try:
+            kwargs = {"cwd": str(run_app.parent), "close_fds": True}
+            # Blender を閉じてもアプリが残るよう、切り離して起動する（Windows）。
+            flags = 0
+            for name in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP"):
+                flags |= int(getattr(subprocess, name, 0))
+            if flags:
+                kwargs["creationflags"] = flags
+            subprocess.Popen([python_exe, str(run_app)], **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"起動に失敗しました: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, "連続実行アプリを起動しました（別ウィンドウ）")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
@@ -443,6 +486,7 @@ _CLASSES = (
     BNAME_RENDER_OT_category_add,
     BNAME_RENDER_OT_category_remove,
     BNAME_RENDER_OT_preset_run,
+    BNAME_RENDER_OT_open_batch_app,
     BNAME_RENDER_OT_command_add,
     BNAME_RENDER_OT_command_remove,
     BNAME_RENDER_OT_command_duplicate,

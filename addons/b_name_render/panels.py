@@ -127,6 +127,8 @@ def draw_main_panel(layout, context) -> None:
         col.label(text="プリセットがありません")
         op = col.operator("bname_render.load_builtin_presets", text="初期プリセットを読み込み", icon="IMPORT")
         op.reset = True
+        layout.separator()
+        layout.operator("bname_render.open_batch_app", text="連続実行アプリを開く…", icon="RENDER_ANIMATION")
         return
 
     _draw_fisheye_box(layout, context, state)
@@ -140,6 +142,9 @@ def draw_main_panel(layout, context) -> None:
     layout.separator()
     layout.operator(
         "bname_render.preset_run", text="プリセットを実行", icon="RENDER_STILL"
+    )
+    layout.operator(
+        "bname_render.open_batch_app", text="連続実行アプリを開く…", icon="RENDER_ANIMATION"
     )
 
 
