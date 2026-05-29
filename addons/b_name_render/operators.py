@@ -50,7 +50,7 @@ class BNAME_RENDER_OT_preset_add(Operator):
             return {"CANCELLED"}
         item = state.presets.add()
         item.name = self.preset_name.strip() or "新規プリセット"
-        state.active_preset_index = len(state.presets) - 1
+        core.set_active_preset_index(context, len(state.presets) - 1)
         return {"FINISHED"}
 
 
@@ -62,9 +62,9 @@ class BNAME_RENDER_OT_preset_remove(Operator):
         state = core.get_state(context)
         if state is None or not state.presets:
             return {"CANCELLED"}
-        idx = min(int(state.active_preset_index), len(state.presets) - 1)
+        idx = min(core.get_active_preset_index(context), len(state.presets) - 1)
         state.presets.remove(idx)
-        state.active_preset_index = max(0, idx - 1)
+        core.set_active_preset_index(context, max(0, idx - 1))
         return {"FINISHED"}
 
 
@@ -126,14 +126,14 @@ class BNAME_RENDER_OT_command_add(Operator):
         preset = core.active_preset(context)
         if preset is None:
             return {"CANCELLED"}
-        idx = min(max(0, int(preset.active_command_index) + 1), len(preset.commands))
+        idx = min(max(0, core.get_active_command_index(context) + 1), len(preset.commands))
         item = preset.commands.add()
         if idx < len(preset.commands) - 1:
             preset.commands.move(len(preset.commands) - 1, idx)
             item = preset.commands[idx]
         item.command_type = self.command_type
         item.name = self.card_name.strip() or self.command_type
-        preset.active_command_index = idx
+        core.set_active_command_index(context, idx)
         return {"FINISHED"}
 
 
@@ -145,9 +145,9 @@ class BNAME_RENDER_OT_command_remove(Operator):
         preset = core.active_preset(context)
         if preset is None or not preset.commands:
             return {"CANCELLED"}
-        idx = min(int(preset.active_command_index), len(preset.commands) - 1)
+        idx = min(core.get_active_command_index(context), len(preset.commands) - 1)
         preset.commands.remove(idx)
-        preset.active_command_index = max(0, idx - 1)
+        core.set_active_command_index(context, max(0, idx - 1))
         return {"FINISHED"}
 
 
@@ -165,13 +165,13 @@ class BNAME_RENDER_OT_command_duplicate(Operator):
         preset = core.active_preset(context)
         if preset is None or not preset.commands:
             return {"CANCELLED"}
-        src_idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
+        src_idx = max(0, min(core.get_active_command_index(context), len(preset.commands) - 1))
         data = defaults_store._command_to_dict(preset.commands[src_idx])
         new_item = preset.commands.add()
         defaults_store._apply_dict(new_item, data)
         dst_idx = src_idx + 1
         preset.commands.move(len(preset.commands) - 1, dst_idx)
-        preset.active_command_index = dst_idx
+        core.set_active_command_index(context, dst_idx)
         return {"FINISHED"}
 
 
@@ -191,7 +191,7 @@ class BNAME_RENDER_OT_command_add_block(Operator):
         first_idx = len(preset.commands)
         for command_type in ("STATE_BEGIN", "RENDER_LAYER", "STATE_END"):
             preset.commands.add().command_type = command_type
-        preset.active_command_index = first_idx
+        core.set_active_command_index(context, first_idx)
         self.report({"INFO"}, "出力ブロックを追加しました")
         return {"FINISHED"}
 
@@ -206,12 +206,12 @@ class BNAME_RENDER_OT_command_move(Operator):
         preset = core.active_preset(context)
         if preset is None or len(preset.commands) < 2:
             return {"CANCELLED"}
-        idx = min(int(preset.active_command_index), len(preset.commands) - 1)
+        idx = min(core.get_active_command_index(context), len(preset.commands) - 1)
         new_idx = idx - 1 if self.direction == "UP" else idx + 1
         if new_idx < 0 or new_idx >= len(preset.commands):
             return {"CANCELLED"}
         preset.commands.move(idx, new_idx)
-        preset.active_command_index = new_idx
+        core.set_active_command_index(context, new_idx)
         return {"FINISHED"}
 
 
@@ -227,7 +227,7 @@ class BNAME_RENDER_OT_command_card_click(Operator):
         if state is None or preset is None or not preset.commands:
             return None, None, None
         idx = max(0, min(int(self.index), len(preset.commands) - 1))
-        preset.active_command_index = idx
+        core.set_active_command_index(context, idx)
         return state, preset, idx
 
     def invoke(self, context, _event):
@@ -246,10 +246,10 @@ class BNAME_RENDER_OT_command_card_click(Operator):
         return {"FINISHED"}
 
     def draw(self, context):
-        preset = core.active_preset(context)
-        if preset is None or not preset.commands:
+        command = core.active_command(context)
+        if command is None:
             return
-        command_ui.draw_command(self.layout, preset.commands[preset.active_command_index], context)
+        command_ui.draw_command(self.layout, command, context)
 
     def execute(self, context):
         if self._select_card(context)[0] is None:

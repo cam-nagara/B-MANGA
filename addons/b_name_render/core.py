@@ -116,36 +116,77 @@ def preset_matches_category(preset, category: str) -> bool:
     return preset_category_of(getattr(preset, "name", "")) == category
 
 
-def _on_preset_category_update(self, _context) -> None:
+def _on_preset_category_update(self, context) -> None:
     """種類フィルタ変更時、選択中プリセットも表示中の種類へ追従させる.
 
     追従しないと、選択中 (= コマンド/「プリセットを実行」の対象) が一覧で
     非表示のまま残り、別種類の隠れたプリセットを誤実行しかねない。
-    update コールバックは書き込み許可コンテキストなので index を更新できる。
+    ``self`` は WindowManager (選択状態は WM 上)。プリセット本体は Scene 側。
     """
-    category = str(getattr(self, "preset_category", "ALL") or "ALL")
-    presets = getattr(self, "presets", None)
+    scene = getattr(context, "scene", None) if context is not None else None
+    state = getattr(scene, "bname_render_state", None) if scene is not None else None
+    presets = getattr(state, "presets", None) if state is not None else None
+    category = str(getattr(self, "bname_render_preset_category", "ALL") or "ALL")
     if category == "ALL" or not presets:
         return
-    cur = max(0, min(int(self.active_preset_index), len(presets) - 1))
+    cur = max(0, min(int(getattr(self, "bname_render_active_preset_index", 0)), len(presets) - 1))
     if preset_matches_category(presets[cur], category):
         return
     for i, preset in enumerate(presets):
         if preset_matches_category(preset, category):
-            self.active_preset_index = i
+            self.bname_render_active_preset_index = i
             return
+
+
+# 選択 index の実体は WindowManager (Scene プロパティをクリック毎に書き換える
+# と重いシーンで依存グラフ再評価が走り遅いため)。UI/template_list は WM を直接
+# 参照する。下記の get/set プロキシは、テストや外部から従来通り
+# ``state.active_preset_index`` / ``preset.active_command_index`` でアクセス
+# できるようにするための後方互換シム (実体は常に WM を読み書きする)。
+def _api_wm():
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is not None:
+        return wm
+    wms = getattr(bpy.data, "window_managers", None)
+    return wms[0] if wms and len(wms) else None
+
+
+def _api_get_preset_index(_self) -> int:
+    wm = _api_wm()
+    return int(getattr(wm, "bname_render_active_preset_index", 0) or 0) if wm is not None else 0
+
+
+def _api_set_preset_index(_self, value: int) -> None:
+    wm = _api_wm()
+    if wm is not None:
+        wm.bname_render_active_preset_index = max(0, int(value))
+
+
+def _api_get_command_index(_self) -> int:
+    wm = _api_wm()
+    return int(getattr(wm, "bname_render_active_command_index", 0) or 0) if wm is not None else 0
+
+
+def _api_set_command_index(_self, value: int) -> None:
+    wm = _api_wm()
+    if wm is not None:
+        wm.bname_render_active_command_index = max(0, int(value))
 
 
 class BNameRenderPreset(bpy.types.PropertyGroup):
     name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
     commands: CollectionProperty(type=BNameRenderCommand)  # type: ignore[valid-type]
-    active_command_index: IntProperty(name="コマンド", default=0, min=0)  # type: ignore[valid-type]
+    active_command_index: IntProperty(  # type: ignore[valid-type]
+        name="コマンド", get=_api_get_command_index, set=_api_set_command_index
+    )
 
 
 class BNameRenderState(bpy.types.PropertyGroup):
     presets: CollectionProperty(type=BNameRenderPreset)  # type: ignore[valid-type]
-    active_preset_index: IntProperty(name="プリセット", default=0, min=0)  # type: ignore[valid-type]
-    preset_category: EnumProperty(name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL", update=_on_preset_category_update)  # type: ignore[valid-type]
+    active_preset_index: IntProperty(  # type: ignore[valid-type]
+        name="プリセット", get=_api_get_preset_index, set=_api_set_preset_index
+    )
+    # 表示カテゴリも WindowManager 側 (テスト等からの直接利用は無い)。
     last_card_click_index: IntProperty(name="前回コマンド", default=-1)  # type: ignore[valid-type]
     last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
     sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]
@@ -295,16 +336,38 @@ def get_state(context) -> BNameRenderState | None:
     return getattr(scene, "bname_render_state", None) if scene is not None else None
 
 
+# 選択状態 (プリセット/コマンドの index) は WindowManager に置く。
+# Scene プロパティをクリックの度に書き換えると、重いシーンで Blender の
+# 依存グラフ再評価 (COW) が毎回走り、一覧の選択切替が一拍遅れるため。
+def get_active_preset_index(context) -> int:
+    wm = getattr(context, "window_manager", None)
+    return int(getattr(wm, "bname_render_active_preset_index", 0) or 0) if wm is not None else 0
+
+
+def set_active_preset_index(context, value: int) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is not None:
+        wm.bname_render_active_preset_index = max(0, int(value))
+
+
+def get_active_command_index(context) -> int:
+    wm = getattr(context, "window_manager", None)
+    return int(getattr(wm, "bname_render_active_command_index", 0) or 0) if wm is not None else 0
+
+
+def set_active_command_index(context, value: int) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is not None:
+        wm.bname_render_active_command_index = max(0, int(value))
+
+
 def active_preset(context) -> BNameRenderPreset | None:
     state = get_state(context)
     if state is None or not state.presets:
         return None
-    # 読み取り専用アクセサ。描画中 / poll 中に呼ばれるため、ここで
-    # state.active_preset_index へ書き戻すと Blender 5.1 が
-    # "Writing to ID classes in this context is not allowed" 例外を投げ、
-    # パネル描画がプリセット一覧の直後で中断してしまう。クランプは
-    # ローカル変数だけで行い、ID へは書き込まない。
-    idx = max(0, min(int(state.active_preset_index), len(state.presets) - 1))
+    # 読み取り専用アクセサ。index は WindowManager 側。クランプはローカル
+    # 変数だけで行い、描画中に書き戻さない (ID 書き込み禁止)。
+    idx = max(0, min(get_active_preset_index(context), len(state.presets) - 1))
     return state.presets[idx]
 
 
@@ -312,20 +375,41 @@ def active_command(context) -> BNameRenderCommand | None:
     preset = active_preset(context)
     if preset is None or not preset.commands:
         return None
-    # active_preset と同じ理由で読み取り専用 (描画中の ID 書き込み禁止)。
-    idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
+    idx = max(0, min(get_active_command_index(context), len(preset.commands) - 1))
     return preset.commands[idx]
+
+
+_WM_PROPS = (
+    "bname_render_active_preset_index",
+    "bname_render_active_command_index",
+    "bname_render_preset_category",
+)
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Scene.bname_render_state = PointerProperty(type=BNameRenderState)
+    # 選択状態は WindowManager に置く (Scene だと重いシーンで依存グラフ
+    # 再評価が走り選択切替が遅くなるため)。ファイル間で保存はされない。
+    bpy.types.WindowManager.bname_render_active_preset_index = IntProperty(
+        name="プリセット", default=0, min=0
+    )
+    bpy.types.WindowManager.bname_render_active_command_index = IntProperty(
+        name="コマンド", default=0, min=0
+    )
+    bpy.types.WindowManager.bname_render_preset_category = EnumProperty(
+        name="表示", items=PRESET_CATEGORY_ITEMS, default="ALL",
+        update=_on_preset_category_update,
+    )
     _register_scene_props()
 
 
 def unregister() -> None:
     _unregister_scene_props()
+    for name in _WM_PROPS:
+        if hasattr(bpy.types.WindowManager, name):
+            delattr(bpy.types.WindowManager, name)
     if hasattr(bpy.types.Scene, "bname_render_state"):
         del bpy.types.Scene.bname_render_state
     for cls in reversed(_CLASSES):

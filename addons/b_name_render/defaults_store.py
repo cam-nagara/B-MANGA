@@ -82,4 +82,4 @@ def apply_commands(preset, command_dicts: list[dict]) -> None:
     for d in command_dicts:
         item = preset.commands.add()
         _apply_dict(item, d)
-    preset.active_command_index = 0
+    # 選択コマンド index は WindowManager 側 (ここでは触らない)。

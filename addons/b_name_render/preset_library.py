@@ -291,6 +291,5 @@ def load_builtin_presets(context, *, reset: bool = False) -> int:
             for key, value in values.items():
                 if hasattr(item, key):
                     setattr(item, key, value)
-        preset.active_command_index = 0
-    state.active_preset_index = 0
+    # 選択 index は WindowManager 側 (ここでは触らない / 既定 0)。
     return len(state.presets)

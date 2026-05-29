@@ -16,14 +16,15 @@ class BNAME_RENDER_UL_presets(UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.label(text=item.name, icon="PRESET")
 
-    def filter_items(self, _context, data, propname):
+    def filter_items(self, context, data, propname):
         items = getattr(data, propname)
         flags = [self.bitflag_filter_item] * len(items)
         if self.filter_name:
             flags = bpy.types.UI_UL_list.filter_items_by_name(
                 self.filter_name, self.bitflag_filter_item, items, "name"
             )
-        category = str(getattr(data, "preset_category", "ALL") or "ALL")
+        wm = getattr(context, "window_manager", None)
+        category = str(getattr(wm, "bname_render_preset_category", "ALL") or "ALL")
         if category != "ALL":
             for i, item in enumerate(items):
                 if not core.preset_matches_category(item, category):
@@ -129,12 +130,12 @@ def draw_main_panel(layout, context) -> None:
         return
 
     _draw_fisheye_box(layout, context, state)
-    _draw_preset_list(layout, state)
+    _draw_preset_list(layout, context, state)
 
     preset = core.active_preset(context)
     if preset is None:
         return
-    _draw_command_list(layout, preset)
+    _draw_command_list(layout, context, preset)
     _draw_active_command_detail(layout, preset, context)
     layout.separator()
     layout.operator(
@@ -171,17 +172,18 @@ def _draw_fisheye_box(layout, context, state) -> None:
     fish.prop(state, "sound_enabled", text="出力完了アラーム")
 
 
-def _draw_preset_list(layout, state) -> None:
+def _draw_preset_list(layout, context, state) -> None:
+    wm = context.window_manager
     cat = layout.row(align=True)
-    cat.prop(state, "preset_category", expand=True)
+    cat.prop(wm, "bname_render_preset_category", expand=True)
     row = layout.row()
     row.template_list(
         "BNAME_RENDER_UL_presets",
         "",
         state,
         "presets",
-        state,
-        "active_preset_index",
+        wm,
+        "bname_render_active_preset_index",
         rows=3,
     )
     tools_preset = row.column(align=True)
@@ -192,7 +194,8 @@ def _draw_preset_list(layout, state) -> None:
     op.reset = True
 
 
-def _draw_command_list(layout, preset) -> None:
+def _draw_command_list(layout, context, preset) -> None:
+    wm = context.window_manager
     box = layout.box()
     box.label(text="コマンドリスト", icon="SEQ_STRIP_DUPLICATE")
     row = box.row()
@@ -201,8 +204,8 @@ def _draw_command_list(layout, preset) -> None:
         "",
         preset,
         "commands",
-        preset,
-        "active_command_index",
+        wm,
+        "bname_render_active_command_index",
         rows=max(3, min(8, len(preset.commands))),
     )
     tools = row.column(align=True)
@@ -237,7 +240,9 @@ def _draw_active_command_detail(layout, preset, context) -> None:
     # 中断するので、ここでローカルにクランプして安全に取り出す。
     # 折りたたみで隠れた選択は、囲う出力ブロックの見出しに寄せて表示する
     # (一覧の見え方と設定欄を一致させる)。
-    idx = command_ui.effective_detail_index(preset.commands, preset.active_command_index)
+    idx = command_ui.effective_detail_index(
+        preset.commands, core.get_active_command_index(context)
+    )
     command = preset.commands[idx]
     box = layout.box()
     box.label(text="選択コマンド設定", icon="PREFERENCES")
