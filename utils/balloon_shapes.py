@@ -19,6 +19,15 @@ DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
 # 本体形状とのズレが大きくなる。
 _CLOUD_VALLEY_TILT_DEG = 35.0
 
+# トゲ (曲線): 山頂を鋭く尖らせ、谷をベース輪郭上に深く取り (= 直線トゲと同じ
+# 深い切れ込み)、山↔谷を結ぶ側面を「ふくらみのある弧」にする。
+#  - 谷アンカー: 谷を挟む 2 山の弦方向ハンドル → トゲ軸まわりに鏡映対称な丸い U 字。
+#  - 山頂アンカー: 谷方向の短いハンドル → 鋭い角 (先端)。
+# _THORN_CURVE_PEAK_PULL : 山頂ハンドル長 / 側面弦長。小さいほど先端が鋭い。
+# _THORN_CURVE_VALLEY_PULL: 谷ハンドル長 / 側面弦長 = 側面のふくらみ量。大きいほど弧が膨らむ。
+_THORN_CURVE_PEAK_PULL = 0.05
+_THORN_CURVE_VALLEY_PULL = 0.38
+
 _LEGACY_SHAPE_ALIASES = {
     "polygon": "octagon",
     "pill": "ellipse",
@@ -1085,6 +1094,83 @@ def _outline_thorn_with_corners(
     return _local_to_rect(rect, pts), corners
 
 
+def _thorn_curve_peaks_valleys(
+    rect: Rect, opts: _DynamicOpts
+) -> tuple[float, float, list[tuple[float, float]], list[tuple[float, float]]] | None:
+    """トゲ(曲線)の山頂列と谷列を返す.
+
+    谷 valleys[k] = ベース輪郭 (楕円/矩形) 上の点 (= 直線トゲと同じ深い切れ込み)、
+    山 peaks[k] = 区間中央を外向きに eff_h だけ突出させた点。
+    peaks[k] は valleys[k] と valleys[k+1] に挟まれる。
+    戻り値: (cx, cy, peaks, valleys) または None。
+    """
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None:
+        return None
+    cx, cy, rx, ry, eff_h = base
+    base_kind = getattr(opts, "base_kind", "ellipse")
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
+    if not segments:
+        return None
+    peaks: list[tuple[float, float]] = []
+    valleys: list[tuple[float, float]] = []
+    a = angle
+    for _is_sub, bump_angle, h_mul in segments:
+        valleys.append(_base_position(a, cx, cy, rx, ry, base_kind=base_kind))
+        peaks.append(_base_position_scaled(a + bump_angle * 0.5, h_mul, cx, cy, rx, ry, eff_h, base_kind=base_kind))
+        a += bump_angle
+    if len(peaks) < 3:
+        return None
+    return cx, cy, peaks, valleys
+
+
+def _thorn_curve_cubics(
+    peaks: list[tuple[float, float]],
+    valleys: list[tuple[float, float]],
+) -> list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]]:
+    """山/谷列から「谷→山→谷」を結ぶ 3 次ベジェ列 (閉ループ) を作る.
+
+    返り値: (p0, c1, c2, p1) のリスト (長さ 2m)。
+      cubic[2k]   = 谷k → 山k  (上り側面)
+      cubic[2k+1] = 山k → 谷k+1 (下り側面)
+    谷ハンドルは「谷を挟む 2 山の弦」方向 (= トゲ軸まわりに鏡映対称、丸い U 字)、
+    山頂ハンドルは谷方向の短いベクトル (= 鋭い先端)。側面は弦から膨らむ凸弧になる。
+    """
+    m = len(peaks)
+    Lp = _THORN_CURVE_PEAK_PULL
+    Lv = _THORN_CURVE_VALLEY_PULL
+    # D[k] = 山(k-1)→山k の弦方向単位ベクトル (= 谷k を挟む 2 山の弦)。
+    chord_dirs: list[tuple[float, float]] = []
+    for k in range(m):
+        ax, ay = peaks[(k - 1) % m]
+        bx, by = peaks[k]
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy) or 1.0
+        chord_dirs.append((dx / length, dy / length))
+    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]] = []
+    for k in range(m):
+        vk = valleys[k]
+        pk = peaks[k]
+        vk1 = valleys[(k + 1) % m]
+        dk = chord_dirs[k]
+        dk1 = chord_dirs[(k + 1) % m]
+        # 上り: 谷k → 山k
+        ux, uy = pk[0] - vk[0], pk[1] - vk[1]
+        cl = math.hypot(ux, uy) or 1.0
+        ux, uy = ux / cl, uy / cl
+        c1 = (vk[0] + dk[0] * cl * Lv, vk[1] + dk[1] * cl * Lv)
+        c2 = (pk[0] - ux * cl * Lp, pk[1] - uy * cl * Lp)
+        cubics.append((vk, c1, c2, pk))
+        # 下り: 山k → 谷k+1
+        wx, wy = vk1[0] - pk[0], vk1[1] - pk[1]
+        cl2 = math.hypot(wx, wy) or 1.0
+        wx, wy = wx / cl2, wy / cl2
+        c3 = (pk[0] + wx * cl2 * Lp, pk[1] + wy * cl2 * Lp)
+        c4 = (vk1[0] - dk1[0] * cl2 * Lv, vk1[1] - dk1[1] * cl2 * Lv)
+        cubics.append((pk, c3, c4, vk1))
+    return cubics
+
+
 def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
     return _outline_thorn_curve_with_corners(rect, opts)[0]
 
@@ -1092,87 +1178,41 @@ def _outline_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, fl
 def _outline_thorn_curve_with_corners(
     rect: Rect, opts: _DynamicOpts
 ) -> tuple[list[tuple[float, float]], list[int]]:
-    base = _dynamic_base(rect.width, rect.height, opts)
-    if base is None:
+    geo = _thorn_curve_peaks_valleys(rect, opts)
+    if geo is None:
         return _outline_ellipse(rect), []
-    cx, cy, rx, ry, eff_h = base
-    base_kind = getattr(opts, "base_kind", "ellipse")
-    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
-    if not segments:
-        return _outline_ellipse(rect), []
-    tpull = 0.18
-    depth_ratio = 1.12
-
-    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
-        return _base_position_scaled(t, h_mul, cx, cy, rx, ry, eff_h, base_kind=base_kind)
-
-    peaks: list[tuple[float, float]] = []
-    for _is_sub, bump_angle, h_mul in segments:
-        mid_angle = angle + bump_angle * 0.5
-        angle += bump_angle
-        peaks.append(peak_at(mid_angle, h_mul))
-    if not peaks:
-        return _outline_ellipse(rect), []
-
-    pts = [peaks[0]]
+    cx, cy, peaks, valleys = geo
+    cubics = _thorn_curve_cubics(peaks, valleys)
+    pts = [cubics[0][0]]  # 谷0 から開始
     corners: list[int] = []
-    for i, p0 in enumerate(peaks):
-        p1 = peaks[(i + 1) % len(peaks)]
-        mx = (p0[0] + p1[0]) * 0.5
-        my = (p0[1] + p1[1]) * 0.5
-        dcx = cx - mx
-        dcy = cy - my
-        length = math.hypot(dcx, dcy)
-        in_x = dcx / length if length > 0.001 else 0.0
-        in_y = dcy / length if length > 0.001 else 0.0
-        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
-        c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
-        c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
+    for idx, (p0, c1, c2, p1) in enumerate(cubics):
         pts.extend(_sample_cubic(p0, c1, c2, p1))
+        # cubic[2k] (上り) の終点が山頂 → 鋭角に保つ。谷は丸めるので corner にしない。
+        if idx % 2 == 0:
+            corners.append(len(pts) - 1)
     return _local_to_rect(rect, pts), corners
 
 
 def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
-    base = _dynamic_base(rect.width, rect.height, opts)
-    if base is None:
+    geo = _thorn_curve_peaks_valleys(rect, opts)
+    if geo is None:
         return _bezier_ellipse(rect)
-    cx, cy, rx, ry, eff_h = base
-    base_kind = getattr(opts, "base_kind", "ellipse")
-    angle, segments = _bump_segments(rx, ry, opts, min_slots=6)
-    if not segments:
-        return _bezier_ellipse(rect)
-    tpull = 0.18
-    depth_ratio = 1.12
-
-    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
-        return _base_position_scaled(t, h_mul, cx, cy, rx, ry, eff_h, base_kind=base_kind)
-
-    peaks: list[tuple[float, float]] = []
-    for _is_sub, bump_angle, h_mul in segments:
-        mid_angle = angle + bump_angle * 0.5
-        angle += bump_angle
-        peaks.append(peak_at(mid_angle, h_mul))
-    if len(peaks) < 3:
-        return _bezier_ellipse(rect)
-
-    cubics: list[tuple[tuple[float, float], tuple[float, float], tuple[float, float]]] = []
-    for i, p0 in enumerate(peaks):
-        p1 = peaks[(i + 1) % len(peaks)]
-        mx = (p0[0] + p1[0]) * 0.5
-        my = (p0[1] + p1[1]) * 0.5
-        dcx = cx - mx
-        dcy = cy - my
-        length = math.hypot(dcx, dcy)
-        in_x = dcx / length if length > 0.001 else 0.0
-        in_y = dcy / length if length > 0.001 else 0.0
-        depth = min(eff_h * depth_ratio, max(0.3, min(rect.width, rect.height) * 0.08))
-        c1 = (p0[0] + (p1[0] - p0[0]) * tpull + in_x * depth, p0[1] + (p1[1] - p0[1]) * tpull + in_y * depth)
-        c2 = (p1[0] + (p0[0] - p1[0]) * tpull + in_x * depth, p1[1] + (p0[1] - p1[1]) * tpull + in_y * depth)
-        cubics.append((p0, c1, c2))
-    return [
-        _local_anchor_to_rect(rect, BezierAnchor(co, cubics[(i - 1) % len(cubics)][2], c1))
-        for i, (co, c1, _c2) in enumerate(cubics)
-    ]
+    cx, cy, peaks, valleys = geo
+    # 谷→山→谷 を結ぶ cubic 列 (長さ 2m)。各 cubic 始点がアンカー。
+    cubics = _thorn_curve_cubics(peaks, valleys)
+    n = len(cubics)
+    anchors: list[BezierAnchor] = []
+    for i in range(n):
+        co = cubics[i][0]
+        handle_right = cubics[i][1]
+        handle_left = cubics[(i - 1) % n][2]
+        if i % 2 == 0:
+            # 谷アンカー: 左右ハンドルが弦方向に整列 → 滑らかな U 字 (ALIGNED)
+            anchors.append(BezierAnchor(co, handle_left, handle_right, "ALIGNED", "ALIGNED"))
+        else:
+            # 山頂アンカー: 左右ハンドルが谷方向の短いベクトル → 鋭い角 (FREE)
+            anchors.append(BezierAnchor(co, handle_left, handle_right, "FREE", "FREE"))
+    return [_local_anchor_to_rect(rect, a) for a in anchors]
 
 
 def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:

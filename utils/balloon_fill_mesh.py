@@ -215,7 +215,17 @@ def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Seq
 
 
 def _polygon_to_outer_holes(poly) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
-    """Shapely Polygon を (outer_ring, holes) の対に展開する."""
+    """Shapely Polygon を (outer_ring, holes) の対に展開する.
+
+    自己交差の強い形状 (例: トゲ曲線で側面ふくらみが過大) では union 結果が
+    MultiPolygon になり得る。その場合は最大面積の polygon を本体として採用し、
+    .exterior 参照で落ちないようにする。
+    """
+    if getattr(poly, "geom_type", "") == "MultiPolygon":
+        geoms = [g for g in poly.geoms if not g.is_empty]
+        if not geoms:
+            return [], []
+        poly = max(geoms, key=lambda g: g.area)
     outer = [(float(x), float(y)) for x, y in poly.exterior.coords]
     holes = []
     for inner in poly.interiors:
@@ -590,6 +600,13 @@ def ensure_balloon_fill_mesh(
     if union_poly is None or union_poly.is_empty:
         remove_balloon_fill_mesh(balloon_id)
         return None
+    if getattr(union_poly, "geom_type", "") == "MultiPolygon":
+        # 自己交差で分裂した場合は最大面積の polygon を本体とする (blur 経路も保護)。
+        _geoms = [g for g in union_poly.geoms if not g.is_empty]
+        if not _geoms:
+            remove_balloon_fill_mesh(balloon_id)
+            return None
+        union_poly = max(_geoms, key=lambda g: g.area)
 
     outer_ring, holes = _polygon_to_outer_holes(union_poly)
     if len(outer_ring) < 3:

@@ -818,6 +818,121 @@ def _line_intersection(p1, p2, p3, p4):
     return (x1 + t * (x2 - x1), y1 + t * (y2 - y1))
 
 
+def stroke_variable_width(
+    centerline: Sequence[tuple[float, float]],
+    half_widths: Sequence[float],
+    *,
+    closed: bool,
+    round_joins: bool = True,
+    quad_segs: int = 8,
+    mitre_limit: float = 8.0,
+):
+    """中心線に沿った可変幅ストロークを Shapely の union だけで構築する (堅牢プリミティブ).
+
+    各セグメントを「セグメント法線」(頂点 bisector ではない=鋭い谷でも縮退しない) で
+    台形にして `unary_union` する。union 結果は常に valid なので、自己交差トゲ (バーブ)
+    も太さの暴れ (ガタガタ) も原理的に発生しない。半幅 0 の頂点では台形が中心線の 1 点へ
+    潰れ、きれいな鋭いピンチになる。
+    - round_joins=True : 頂点に半幅の円を足す → 丸い山 (雲・フワフワ向き)。
+    - round_joins=False: 隣接セグメントのオフセット辺の交点 (mitre) を頂点コーナーに使い、
+      鋭い山頂・谷を保つ (トゲ・トゲ曲線向き)。凸角の隙間も mitre で埋まる。
+    戻り値は Shapely geometry (Polygon/MultiPolygon) または None。
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon, Point  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    n = len(centerline)
+    if n < 2:
+        return None
+    seg_count = n if closed else n - 1
+
+    def _seg_normal(i, j):
+        dx = centerline[j][0] - centerline[i][0]
+        dy = centerline[j][1] - centerline[i][1]
+        L = math.hypot(dx, dy)
+        if L < 1.0e-12:
+            return None
+        return (-dy / L, dx / L)
+
+    # 各頂点の ±side コーナー (round=半幅オフセット点, sharp=隣接辺オフセット交点=mitre)
+    def _corner(i, side):
+        p = centerline[i]
+        h = max(0.0, float(half_widths[i]))
+        nb_prev = _seg_normal((i - 1) % n, i) if (closed or i > 0) else None
+        nb_next = _seg_normal(i, (i + 1) % n) if (closed or i < n - 1) else None
+        n_use = nb_next or nb_prev
+        if n_use is None:
+            return p
+        if round_joins or nb_prev is None or nb_next is None:
+            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
+        # mitre: 2 本のオフセット辺の交点
+        a0 = (p[0] + side * nb_prev[0] * h, p[1] + side * nb_prev[1] * h)
+        a1 = (centerline[(i - 1) % n][0] + side * nb_prev[0] * h,
+              centerline[(i - 1) % n][1] + side * nb_prev[1] * h)
+        b0 = (p[0] + side * nb_next[0] * h, p[1] + side * nb_next[1] * h)
+        b1 = (centerline[(i + 1) % n][0] + side * nb_next[0] * h,
+              centerline[(i + 1) % n][1] + side * nb_next[1] * h)
+        hit = _line_intersection(a1, a0, b0, b1)
+        if hit is None:
+            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
+        if math.hypot(hit[0] - p[0], hit[1] - p[1]) > h * mitre_limit + 1.0e-9:
+            # mitre が伸びすぎ → bevel (頂点で2点に分けるが、ここでは近い方の辺点)
+            return (p[0] + side * n_use[0] * h, p[1] + side * n_use[1] * h)
+        return hit
+
+    pieces = []
+    for i in range(seg_count):
+        j = (i + 1) % n
+        ha = max(0.0, float(half_widths[i]))
+        hb = max(0.0, float(half_widths[j]))
+        if ha < 1.0e-9 and hb < 1.0e-9:
+            continue
+        if _seg_normal(i, j) is None:
+            continue
+        pa_plus = _corner(i, +1) if ha >= 1.0e-9 else centerline[i]
+        pa_minus = _corner(i, -1) if ha >= 1.0e-9 else centerline[i]
+        pb_plus = _corner(j, +1) if hb >= 1.0e-9 else centerline[j]
+        pb_minus = _corner(j, -1) if hb >= 1.0e-9 else centerline[j]
+        trap = Polygon([pa_plus, pb_plus, pb_minus, pa_minus])
+        if not trap.is_valid:
+            trap = trap.buffer(0)
+        if (not trap.is_empty) and trap.area > 1.0e-12:
+            pieces.append(trap)
+        if round_joins:
+            a = centerline[i]
+            b = centerline[j]
+            if ha >= 1.0e-9:
+                pieces.append(Point(a).buffer(ha, quad_segs=quad_segs))
+            if hb >= 1.0e-9:
+                pieces.append(Point(b).buffer(hb, quad_segs=quad_segs))
+    if not pieces:
+        return None
+    geom = unary_union(pieces)
+    if geom.is_empty:
+        return None
+    return geom
+
+
+def _geom_to_ring_holes_list(
+    geom,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """Shapely geometry を [(outer_ring, [holes...]), ...] のリストへ展開する."""
+    if geom is None or getattr(geom, "is_empty", True):
+        return []
+    geoms = list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
+    out: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    for g in geoms:
+        if g.geom_type != "Polygon" or g.area <= 1.0e-12:
+            continue
+        outer = [(float(x), float(y)) for x, y in g.exterior.coords]
+        holes = [[(float(x), float(y)) for x, y in r.coords] for r in g.interiors]
+        out.append((outer, holes))
+    return out
+
+
 def _build_variable_width_band_segment(
     pts: Sequence[tuple[float, float]],
     widths: Sequence[float],
@@ -826,42 +941,44 @@ def _build_variable_width_band_segment(
     *,
     closed: bool,
     outside_align: bool = False,
-) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]] | None:
-    """指定インデックス列 (`indices`) の centerline に沿って、 帯ポリゴンを構築する。
+    round_joins: bool = True,
+) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
+    """指定インデックス列の centerline に沿って、可変幅帯を構築する (堅牢版).
 
-    - 中心アライメント (outside_align=False, 既存挙動): outer = pts + normal*w/2,
-      inner = pts - normal*w/2。 width=0 で 1 点 (=centerline) に収束。
-    - 外側アライメント (outside_align=True): outer = pts + normal*w, inner = pts。
-      pts は body 境界そのものを想定。 width=0 で outer=inner=body → body の鋭い
-      谷/山頂に直接 pinch off し、 帯終端が鋭く尖る (主線専用)。
-
-    closed=True: outer (CCW) と inner (CW = hole) のホール付きポリゴン。
-    closed=False: outer + 逆順 inner を 1 つの閉曲線として返す (キャップは平らな端)。
+    `stroke_variable_width` (Shapely union) で帯を作る。`normals` はもう使わない
+    (セグメント法線を内部で計算)。
+    - outside_align=True: centerline=body 境界とみなし、全幅で centered ストローク後、
+      閉ループなら `difference(Polygon(centerline))` で外側半分だけ残す。これで内側
+      エッジは body のまま=本体の鋭い谷/山の角がそのまま保たれ、外周に余計なトゲが出ない。
+    - outside_align=False: 半幅で centered ストローク (帯は中心線を挟む)。
+    戻り値は [(outer, holes), ...]。
     """
     m = len(indices)
     if m < 2:
-        return None
-    outer: list[tuple[float, float]] = []
-    inner: list[tuple[float, float]] = []
-    for idx in indices:
-        p = pts[idx]
-        nx, ny = normals[idx]
-        if outside_align:
-            w = widths[idx]
-            outer.append((p[0] + nx * w, p[1] + ny * w))
-            inner.append((p[0], p[1]))
-        else:
-            half = widths[idx] * 0.5
-            outer.append((p[0] + nx * half, p[1] + ny * half))
-            inner.append((p[0] - nx * half, p[1] - ny * half))
-    if closed:
-        # outer (CCW), inner (CW = hole)
-        outer_ring = outer
-        hole = list(reversed(inner))
-        return outer_ring, [hole]
-    # Open segment: outer + reversed inner で 1 つの閉ポリゴンを作る (平キャップ)
-    polygon = list(outer) + list(reversed(inner))
-    return polygon, []
+        return []
+    centerline = [pts[idx] for idx in indices]
+    # outside_align + 閉ループのみ「全幅 centered ストローク → body 差し引き」方式。
+    # それ以外 (中心アライメント / 開セグメント) は半幅 centered ストローク。
+    use_outside_diff = outside_align and closed
+    if use_outside_diff:
+        half = [max(0.0, float(widths[idx])) for idx in indices]
+    else:
+        half = [max(0.0, float(widths[idx])) * 0.5 for idx in indices]
+    geom = stroke_variable_width(centerline, half, closed=closed, round_joins=round_joins)
+    if geom is None:
+        return []
+    if use_outside_diff:
+        python_deps.ensure_bundled_wheels_on_path()
+        try:
+            from shapely.geometry import Polygon  # type: ignore
+
+            inner = Polygon(centerline)
+            if not inner.is_valid:
+                inner = inner.buffer(0)
+            geom = geom.difference(inner)
+        except Exception:  # noqa: BLE001
+            pass
+    return _geom_to_ring_holes_list(geom)
 
 
 def _ring_kept_index_segments(
@@ -1026,10 +1143,13 @@ def _build_dynamic_multi_line_polygons(
     # (内側オフセットの凸頂点くさび回避)、 outside_align の有無では分岐しない。
     did_clean_offset = False
     if (
-        not straight_edged
-        and abs(signed_offset_m) > 1.0e-9
+        abs(signed_offset_m) > 1.0e-9
         and len(pts) >= 6
     ):
+        # 多重線リング (signed_offset!=0) は全形状で Shapely クリーンオフセットを中心線に
+        # する。法線方向の単純オフセットは鋭い凹谷で自己交差し、満幅バンドがもつれる
+        # (トゲ直線の山0%でも発生)。クリーンオフセットは valley_sharp=mitre で角を保ったまま
+        # 自己交差しない中心線を返す。
         clean = _resample_clean_offset(
             _build_body_polygon(body_samples), signed_offset_m, len(pts), valley_sharp,
             peaks_rounded=peaks_rounded,
@@ -1049,6 +1169,7 @@ def _build_dynamic_multi_line_polygons(
         and length_scale >= 0.999
         and len(pts) >= SAMPLES_PER_SEGMENT * 6
         and straight_edged
+        and not did_clean_offset  # クリーンオフセット後は anchor 構造が無いので無効
     )
     if use_anchor_only:
         anchor_pts = pts[::SAMPLES_PER_SEGMENT]
@@ -1090,27 +1211,14 @@ def _build_dynamic_multi_line_polygons(
     valleys = list(valleys_all)
     cx_m, cy_m = balloon_center_m
     radii = [math.hypot(p[0] - cx_m, p[1] - cy_m) for p in pts]
+    # (旧: 谷の bisector 法線が縮退してバーブ化するのを radial 上書きで補正していたが、
+    #  新ストローク (stroke_variable_width) はセグメント法線のみ使い縮退しないため不要。)
     # length_scale で正規化した t_segment で 幅補間 (cut endpoint で peak_w に達するよう)
     length_scale_clamped = max(0.001, min(1.0, float(length_scale)))
 
-    # 「角を尖らせる」相当の peak 延長: peak_extension_m > 0 のとき、各 peak
-    # 頂点を外向き法線方向へ延ばす。延長は peak 周辺の数サンプルに対して
-    # smoothstep で滑らかに減衰させる (急な段差を避ける)。
+    # (旧: peak_extension_m>0 で peak を外向き延長するブロックがあったが、未定義
+    #  anchor_count を参照する死にコードで全呼び出し元が 0 を渡すため削除。)
     pts_eff = list(pts)
-    if peak_extension_m > 1.0e-9 and peaks:
-        # 隣接 peak/valley 間の距離 (samples 単位) を基準に半幅 falloff を決める
-        half_span = max(2, anchor_count and (n // max(1, anchor_count * 2)) or 4)
-        for peak in peaks:
-            for offset in range(-half_span, half_span + 1):
-                idx = (peak + offset) % n
-                # smoothstep に近い局所重み (= 0 at edge, 1 at peak)
-                u = 1.0 - (abs(offset) / float(half_span))
-                if u <= 0.0:
-                    continue
-                w = u * u * (3.0 - 2.0 * u)
-                ex = peak_extension_m * w
-                nx, ny = normals[idx]
-                pts_eff[idx] = (pts_eff[idx][0] + nx * ex, pts_eff[idx][1] + ny * ex)
 
     # オフセット centerline = pts_eff + normal * signed_offset_m
     # outside_align=True (= 外側アライメント主線) のときは body samples (= pts_eff)
@@ -1232,13 +1340,15 @@ def _build_dynamic_multi_line_polygons(
 
     out_polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
 
-    def _emit(result):
-        if result is None:
+    def _emit(result_list):
+        # result_list: [(outer, holes), ...] (堅牢ストロークは複数ポリゴンを返し得る)
+        if not result_list:
             return
-        if sanitize:
-            out_polygons.extend(_sanitize_band_polygon(result[0], result[1]))
-        else:
-            out_polygons.append(result)
+        for outer, holes in result_list:
+            if sanitize:
+                out_polygons.extend(_sanitize_band_polygon(outer, holes))
+            else:
+                out_polygons.append((outer, holes))
 
     # cross_extension_m > 0: 各 keep segment の山頂方向 (= 端点) を法線方向へ延ばし、
     # 谷をまたいで隣接 segment と交差する形に。length_scale < 1.0 のときのみ有効。
@@ -1248,7 +1358,7 @@ def _build_dynamic_multi_line_polygons(
             seg = segments[0]
             result = _build_variable_width_band_segment(
                 centerline, widths, normals, seg,
-                closed=True, outside_align=outside_align,
+                closed=True, outside_align=outside_align, round_joins=peaks_rounded,
             )
             _emit(result)
     else:
@@ -1259,9 +1369,15 @@ def _build_dynamic_multi_line_polygons(
                 centerline_ext, widths_ext, normals_ext, seg_ext = _extend_segment_for_cross(
                     centerline, widths, normals, seg, cross_extension_m
                 )
-                result = _build_variable_width_band_segment(centerline_ext, widths_ext, normals_ext, seg_ext, closed=False)
+                result = _build_variable_width_band_segment(
+                    centerline_ext, widths_ext, normals_ext, seg_ext,
+                    closed=False, outside_align=outside_align, round_joins=peaks_rounded,
+                )
             else:
-                result = _build_variable_width_band_segment(centerline, widths, normals, seg, closed=False)
+                result = _build_variable_width_band_segment(
+                    centerline, widths, normals, seg,
+                    closed=False, outside_align=outside_align, round_joins=peaks_rounded,
+                )
             _emit(result)
 
     # sample-direct が何も出せなかったとき (= 退化形状) のみ buffer 経由へ fallback。
