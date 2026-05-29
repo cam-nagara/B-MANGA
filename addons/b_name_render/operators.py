@@ -99,11 +99,13 @@ class BNAME_RENDER_OT_preset_settings(Operator):
         return core.active_preset(context) is not None
 
     def invoke(self, context, _event):
-        # カテゴリのデータを用意し、未割り当てプリセットを名前から移行しておく
-        # (ドロップダウンに候補が並び、現在のカテゴリが選択表示される)。
+        # ドロップダウンに候補が並ぶよう、カテゴリのデータだけ用意する。
+        # ここでは各プリセットへの自動移行 (preset.category 書き込み) はしない
+        # (削除で意図的に未分類にしたものを開く度に再分類してしまうのと、
+        #  重いシーンでの一括書き込みを避けるため)。名前からの既定は表示時に
+        #  effective_preset_category がフォールバックとして補う。
         state = core.get_state(context)
         core.ensure_default_categories(state)
-        core.migrate_preset_categories(state)
         return context.window_manager.invoke_props_dialog(self, width=360)
 
     def draw(self, context):
