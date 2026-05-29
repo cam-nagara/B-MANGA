@@ -226,7 +226,9 @@ def _draw_active_command_detail(layout, preset, context) -> None:
     # active_command_index は描画中に書き戻せない (ID 書き込み禁止) ため
     # 範囲外のまま残ることがある。直接添字すると IndexError でパネル描画が
     # 中断するので、ここでローカルにクランプして安全に取り出す。
-    idx = max(0, min(int(preset.active_command_index), len(preset.commands) - 1))
+    # 折りたたみで隠れた選択は、囲う出力ブロックの見出しに寄せて表示する
+    # (一覧の見え方と設定欄を一致させる)。
+    idx = command_ui.effective_detail_index(preset.commands, preset.active_command_index)
     command = preset.commands[idx]
     box = layout.box()
     box.label(text="選択コマンド設定", icon="PREFERENCES")

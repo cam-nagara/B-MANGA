@@ -113,6 +113,28 @@ def block_inner_count(commands, begin_index: int) -> int:
     return count
 
 
+def effective_detail_index(commands, active_index: int) -> int:
+    """「選択コマンド設定」で実際に表示する index.
+
+    折りたたみで隠れた選択は、囲っている出力ブロックの見出し
+    (折りたたまれた STATE_BEGIN) に寄せる。これにより一覧の見え方と
+    設定欄の内容が食い違わない。
+    """
+    if not commands:
+        return int(active_index)
+    idx = max(0, min(int(active_index), len(commands) - 1))
+    hidden = hidden_command_indices(commands)
+    if idx not in hidden:
+        return idx
+    for i in range(idx, -1, -1):
+        if (
+            str(getattr(commands[i], "command_type", "") or "") == "STATE_BEGIN"
+            and i not in hidden
+        ):
+            return i
+    return idx
+
+
 def block_label(commands, begin_index: int) -> str:
     """STATE_BEGIN から次の STATE_END までの「出力ブロック」を代表する名前.
 
