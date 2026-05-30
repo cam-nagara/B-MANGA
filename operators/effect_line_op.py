@@ -590,14 +590,39 @@ def _params_for_write(context, obj, layer, params_override=None):
     return scene_params
 
 
+def _page_for_effect_object(context, obj):
+    """効果線オブジェクトの parent_key から、それが属する実際のページを返す.
+
+    ``get_active_page`` を使うと「カーソル追従でアクティブページ切替」などで
+    アクティブページが別ページになっている瞬間に、別ページのコマ枠を拾って
+    しまう (= 効果線の始点コマ枠が別ページのコマ形状になり、結果として
+    「別のページのコマのマスクが適用される」症状になる)。効果線自身の
+    parent_key を正としてページを解決する。
+    """
+    from ..utils import object_naming as on
+
+    work = get_work(context)
+    if work is None:
+        return get_active_page(context)
+    parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "") if obj is not None else ""
+    page_id = parent_key.split(":", 1)[0] if parent_key else ""
+    if not page_id:
+        return get_active_page(context)
+    for page in getattr(work, "pages", []) or []:
+        if str(getattr(page, "id", "") or "") == page_id:
+            return page
+    return get_active_page(context)
+
+
 def _start_frame_outline_for_bounds(
     context,
     params,
     center_xy_mm: tuple[float, float],
+    obj=None,
 ) -> tuple[list[tuple[float, float]] | None, float]:
     if not bool(getattr(params, "start_to_coma_frame", False)):
         return None, 0.0
-    page = get_active_page(context)
+    page = _page_for_effect_object(context, obj)
     if page is None:
         return None, 0.0
     panel = layer_stack_utils.coma_containing_point(page, center_xy_mm[0], center_xy_mm[1])
@@ -658,7 +683,7 @@ def _write_effect_strokes(
         from ..utils import geometry_nodes_bridge as _gn
         from ..utils import effect_line_object as _elo
 
-        start_frame_outline, _start_frame_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy)
+        start_frame_outline, _start_frame_extend = _start_frame_outline_for_bounds(context, params, focus_center_xy, obj)
         start_source = None
         if start_frame_outline:
             start_source = _elo.ensure_effect_frame_source_object(
