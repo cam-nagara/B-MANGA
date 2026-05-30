@@ -128,12 +128,53 @@ def _assert_organized(work) -> None:
         raise AssertionError(f"コマ内要素の参照先が更新されていません: {page0.balloons[0].parent_key}")
 
 
+def _assert_spread_numbering(root: Path) -> None:
+    from bname_dev_data_name_organizer.utils import paths
+
+    result = bpy.ops.bname.work_new(filepath=str(root / "SpreadDataName.bname"))
+    if "FINISHED" not in result:
+        raise AssertionError(f"見開き確認用の作品作成に失敗しました: {result}")
+    if "FINISHED" not in bpy.ops.bname.page_add("EXEC_DEFAULT"):
+        raise AssertionError("見開き確認用の2ページ目追加に失敗しました")
+    if "FINISHED" not in bpy.ops.bname.page_add("EXEC_DEFAULT"):
+        raise AssertionError("見開き確認用の3ページ目追加に失敗しました")
+
+    work = bpy.context.scene.bname_work
+    work_dir = Path(work.work_dir)
+    spread = work.pages[1]
+    spread.id = "p0005-0006"
+    spread.dir_rel = "p0005-0006/"
+    spread.spread = True
+    spread.original_pages.clear()
+    ref = spread.original_pages.add()
+    ref.page_id = "p0005"
+    ref = spread.original_pages.add()
+    ref.page_id = "p0006"
+    _write_marker(work_dir / "p0005-0006" / "origin_spread.txt", "spread")
+    _write_marker(work_dir / "p0003" / "origin_page_three.txt", "page-three")
+
+    result = bpy.ops.bname.organize_data_names("EXEC_DEFAULT")
+    if "FINISHED" not in result:
+        raise AssertionError(f"見開き込みの実データ名整理に失敗しました: {result}")
+    ids = [str(page.id) for page in work.pages]
+    if ids != ["p0001", "p0002-0003", "p0004"]:
+        raise AssertionError(f"見開き込みのページIDが整理されていません: {ids}")
+    refs = [str(ref.page_id) for ref in work.pages[1].original_pages]
+    if refs != ["p0002", "p0003"]:
+        raise AssertionError(f"見開き元ページ情報が更新されていません: {refs}")
+    if not (work_dir / "p0002-0003" / "origin_spread.txt").is_file():
+        raise AssertionError("見開きページの実データが p0002-0003 に移動していません")
+    if not paths.page_dir(work_dir, "p0004").joinpath("origin_page_three.txt").is_file():
+        raise AssertionError("見開き後の通常ページ実データが p0004 に移動していません")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_data_name_organizer_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
+        _assert_spread_numbering(temp_root)
         work = _prepare_swapped_work(temp_root / "DataNameOrganizer.bname")
 
         result = bpy.ops.bname.organize_data_names("EXEC_DEFAULT")

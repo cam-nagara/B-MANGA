@@ -3,6 +3,34 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — 実データ名整理の徹底チェック修正 / v0.6.198
+
+### 症状
+- 実データ名整理について、通常ページだけでなく見開きページを含む作品でも、ページ数の進み方と実データ名が一致しているか追加確認が必要だった。
+- 直前追加の整理処理に長い更新処理が残っていた。
+
+### 原因
+- 見開きページは1行のページ項目でも、ページ番号としては2ページ分進むため、通常ページと同じ数え方だけでは不十分だった。
+- 実データ名整理時の所属先更新処理が、複数の更新対象を1つの処理にまとめていた。
+
+### 修正
+- 見開きページを含む場合、実データ名整理で2ページ分として数え、見開き元ページ情報も整理後のページ番号へ揃えるようにした。
+- 実データ名整理の所属先更新処理を分割し、通常レイヤー、線レイヤー、アウトライナー上の情報、現在の編集対象を別々に更新するよう整理した。
+- 実機テストへ見開き込みの実データ名整理ケースを追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- 全スクリプト406件を読み込み、Python構文エラー0件、オペレーターID重複0件を確認。
+- `python -m compileall -q .`: PASS。
+- `node --check tools/render_batch/web/app.js`: PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: 12件 PASS。
+- `test/blender_data_name_organizer_check.py`: 通常ページ入れ替え、コマ入れ替え、見開き込みページ番号整理、コマ用blendファイル起動を確認。PASS。
+- `test/blender_coma_knife_cut_reading_order_check.py`: PASS。
+- `test/blender_coma_renumber_reading_order_check.py`: PASS。
+- `test/blender_layer_panel_page_list_check.py`: PASS。
+- `test/blender_active_stack_item_no_sync_check.py`: PASS。
+- `test/blender_shortcut_key_conflict_check.py`: PASS。
+- `test/render_batch_logic_test.py`: PASS。
+
 ## 2026-05-31 — 実データ名を整理してからコマ用blendファイルを開く / v0.6.197
 
 ### 症状

@@ -202,82 +202,91 @@ def _replace_id_key(value: str, old_key: str, new_key: str, *, prefix: bool) -> 
     return value
 
 
+def _retarget_property_entries(scene, work, old_key: str, new_key: str, prefix: bool) -> None:
+    for page in getattr(work, "pages", []) or []:
+        for collection_name in ("balloons", "texts"):
+            for entry in getattr(page, collection_name, []) or []:
+                _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
+        for ref in getattr(page, "original_pages", []) or []:
+            page_id = str(getattr(ref, "page_id", "") or "")
+            if page_id == old_key:
+                ref.page_id = new_key
+    for folder in getattr(work, "layer_folders", []) or []:
+        _replace_entry_parent_key(folder, old_key, new_key, prefix=prefix)
+    for collection_name in ("bname_raster_layers", "bname_image_layers"):
+        for entry in getattr(scene, collection_name, []) or []:
+            _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
+
+
+def _collect_existing_parent_keys(scene, old_key: str, prefix: bool, on) -> set[str]:
+    keys = {old_key}
+    if not prefix:
+        return keys
+    keys.update(
+        str(getattr(item, "parent_key", "") or "")
+        for item in getattr(scene, "bname_layer_stack", []) or []
+        if str(getattr(item, "parent_key", "") or "").startswith(f"{old_key}:")
+    )
+    for datablocks in (bpy.data.objects, bpy.data.collections):
+        for item in datablocks:
+            key = str(item.get(on.PROP_PARENT_KEY, "") or "")
+            if key.startswith(f"{old_key}:"):
+                keys.add(key)
+    return keys
+
+
+def _retarget_drawing_layers(context, keys: set[str], old_key: str, new_key: str, prefix: bool) -> None:
+    from . import gp_layer_parenting as gp_parent
+    from . import layer_stack as layer_stack_utils
+
+    for old_parent_key in keys:
+        new_parent_key = _replace_id_key(old_parent_key, old_key, new_key, prefix=prefix)
+        for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_parent_key}):
+            gp_parent.set_parent_key(layer, new_parent_key)
+        for layer in layer_stack_utils.effect_layers_for_parent_keys(context, {old_parent_key}):
+            gp_parent.set_parent_key(layer, new_parent_key)
+
+
+def _retarget_datablock_keys(datablock, old_key: str, new_key: str, prefix: bool, on) -> None:
+    parent_key = str(datablock.get(on.PROP_PARENT_KEY, "") or "")
+    new_parent = _replace_id_key(parent_key, old_key, new_key, prefix=prefix)
+    if new_parent != parent_key:
+        datablock[on.PROP_PARENT_KEY] = new_parent
+    bname_id = str(datablock.get(on.PROP_ID, "") or "")
+    new_id = _replace_id_key(bname_id, old_key, new_key, prefix=prefix)
+    if new_id != bname_id:
+        datablock[on.PROP_ID] = new_id
+
+
+def _retarget_scene_current(scene, old_key: str, new_key: str, prefix: bool) -> None:
+    if scene is None:
+        return
+    current_page = str(getattr(scene, "bname_current_coma_page_id", "") or "")
+    if current_page == old_key:
+        scene.bname_current_coma_page_id = new_key
+    current_coma = str(getattr(scene, "bname_current_coma_id", "") or "")
+    if not prefix and current_coma and old_key.endswith(f":{current_coma}"):
+        scene.bname_current_coma_id = new_key.split(":", 1)[1]
+
+
 def _retarget_keys(context, phases: list[tuple[str, str, bool]]) -> None:
     if not phases:
         return
-    from . import gp_layer_parenting as gp_parent
-    from . import layer_stack as layer_stack_utils
     from . import object_naming as on
 
     scene = getattr(context, "scene", None)
     work = getattr(scene, "bname_work", None)
     for old_key, new_key, prefix in phases:
-        for page in getattr(work, "pages", []) or []:
-            for collection_name in ("balloons", "texts"):
-                for entry in getattr(page, collection_name, []) or []:
-                    _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
-            for ref in getattr(page, "original_pages", []) or []:
-                page_id = str(getattr(ref, "page_id", "") or "")
-                if page_id == old_key:
-                    ref.page_id = new_key
-
-        for folder in getattr(work, "layer_folders", []) or []:
-            _replace_entry_parent_key(folder, old_key, new_key, prefix=prefix)
-        for collection_name in ("bname_raster_layers", "bname_image_layers"):
-            for entry in getattr(scene, collection_name, []) or []:
-                _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
-
-        keys_to_scan = {old_key}
-        if prefix:
-            keys_to_scan.update(
-                str(getattr(item, "parent_key", "") or "")
-                for item in getattr(scene, "bname_layer_stack", []) or []
-                if str(getattr(item, "parent_key", "") or "").startswith(f"{old_key}:")
-            )
-            for obj in bpy.data.objects:
-                key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
-                if key.startswith(f"{old_key}:"):
-                    keys_to_scan.add(key)
-            for coll in bpy.data.collections:
-                key = str(coll.get(on.PROP_PARENT_KEY, "") or "")
-                if key.startswith(f"{old_key}:"):
-                    keys_to_scan.add(key)
-        for old_parent_key in list(keys_to_scan):
-            new_parent_key = _replace_id_key(old_parent_key, old_key, new_key, prefix=prefix)
-            for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_parent_key}):
-                gp_parent.set_parent_key(layer, new_parent_key)
-            for layer in layer_stack_utils.effect_layers_for_parent_keys(context, {old_parent_key}):
-                gp_parent.set_parent_key(layer, new_parent_key)
-
-        for obj in bpy.data.objects:
-            parent_key = str(obj.get(on.PROP_PARENT_KEY, "") or "")
-            new_parent = _replace_id_key(parent_key, old_key, new_key, prefix=prefix)
-            if new_parent != parent_key:
-                obj[on.PROP_PARENT_KEY] = new_parent
-            bname_id = str(obj.get(on.PROP_ID, "") or "")
-            new_id = _replace_id_key(bname_id, old_key, new_key, prefix=prefix)
-            if new_id != bname_id:
-                obj[on.PROP_ID] = new_id
-        for coll in bpy.data.collections:
-            parent_key = str(coll.get(on.PROP_PARENT_KEY, "") or "")
-            new_parent = _replace_id_key(parent_key, old_key, new_key, prefix=prefix)
-            if new_parent != parent_key:
-                coll[on.PROP_PARENT_KEY] = new_parent
-            bname_id = str(coll.get(on.PROP_ID, "") or "")
-            new_id = _replace_id_key(bname_id, old_key, new_key, prefix=prefix)
-            if new_id != bname_id:
-                coll[on.PROP_ID] = new_id
-
-        if scene is not None:
-            current_page = str(getattr(scene, "bname_current_coma_page_id", "") or "")
-            if current_page == old_key:
-                scene.bname_current_coma_page_id = new_key
-            current_coma = str(getattr(scene, "bname_current_coma_id", "") or "")
-            if not prefix and current_coma and old_key.endswith(f":{current_coma}"):
-                scene.bname_current_coma_id = new_key.split(":", 1)[1]
+        _retarget_property_entries(scene, work, old_key, new_key, prefix)
+        keys = _collect_existing_parent_keys(scene, old_key, prefix, on)
+        _retarget_drawing_layers(context, keys, old_key, new_key, prefix)
+        for datablocks in (bpy.data.objects, bpy.data.collections):
+            for datablock in datablocks:
+                _retarget_datablock_keys(datablock, old_key, new_key, prefix, on)
+        _retarget_scene_current(scene, old_key, new_key, prefix)
 
 
-def _page_retarged_phases(remaps: list[_PageRename]) -> list[tuple[str, str, bool]]:
+def _page_retarget_phases(remaps: list[_PageRename]) -> list[tuple[str, str, bool]]:
     phases: list[tuple[str, str, bool]] = []
     for index, remap in enumerate(remaps):
         phases.append((remap.old_id, f"{_TEMP_PAGE_PREFIX}{index}", True))
@@ -462,7 +471,7 @@ def organize_data_names(context) -> DataNameOrganizeResult:
     page_remaps = _collect_page_remaps(work)
     if page_remaps:
         _rename_page_dirs(work_dir, page_remaps)
-        _retarget_keys(context, _page_retarged_phases(page_remaps))
+        _retarget_keys(context, _page_retarget_phases(page_remaps))
         _apply_page_ids(page_remaps)
 
     coma_remaps, reorder_count = _collect_and_apply_coma_remaps(context, work, read_direction)
