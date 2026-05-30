@@ -69,8 +69,32 @@ def _allocate_balloon_id_from_collection(collection, prefix: str = "balloon") ->
         i += 1
 
 
-def _allocate_balloon_id(page) -> str:
-    return _allocate_balloon_id_from_collection(page.balloons, "balloon")
+def _collect_used_balloon_ids(work) -> set[str]:
+    """全ページの balloons + shared_balloons で使用中の balloon id を集める."""
+    used: set[str] = set()
+    if work is None:
+        return used
+    for p in getattr(work, "pages", []) or []:
+        for b in getattr(p, "balloons", []) or []:
+            used.add(str(getattr(b, "id", "") or ""))
+    for b in getattr(work, "shared_balloons", []) or []:
+        used.add(str(getattr(b, "id", "") or ""))
+    return used
+
+
+def _allocate_balloon_id(page, work=None) -> str:
+    # フキダシ id はページ横断で一意にする。ページ単位で採番すると別ページの
+    # フキダシと id が衝突し、実体オブジェクト名 (id 由来) が重なって 1 ページ目の
+    # 位置に作られてしまい、2 ページ目以降では表示されない (保存時の採番し直しで
+    # 初めて直る)。作成時点で全ページを走査して未使用 id を割り当てる。
+    used = _collect_used_balloon_ids(work)
+    used |= {str(getattr(b, "id", "") or "") for b in getattr(page, "balloons", []) or []}
+    i = 1
+    while True:
+        candidate = f"balloon_{i:04d}"
+        if candidate not in used:
+            return candidate
+        i += 1
 
 
 def _resolve_page_from_event(context, event):
@@ -531,7 +555,7 @@ def _create_balloon_entry(
     else:
         collection = page.balloons
         entry = collection.add()
-        entry.id = _allocate_balloon_id(page)
+        entry.id = _allocate_balloon_id(page, work)
         default_parent_kind = "page"
         default_parent_key = page_stack_key(page)
     entry.shape = balloon_shapes.normalize_shape(shape)
