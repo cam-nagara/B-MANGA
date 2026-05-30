@@ -22,6 +22,7 @@ from typing import Optional, Sequence
 
 import bpy
 
+from . import free_transform
 from . import balloon_shapes
 from . import log
 from . import object_naming as on
@@ -137,6 +138,7 @@ def _sample_anchor_loop_to_local_m(
     anchors: Sequence[balloon_shapes.BezierAnchor],
     offset_mm: tuple[float, float],
     samples_per_segment: int,
+    entry=None,
 ) -> list[tuple[float, float]]:
     """閉じた BezierAnchor 列を samples_per_segment 段でサンプリングし、
     rect-local mm → balloon-local m に変換した (x, y) 列を返す."""
@@ -155,6 +157,8 @@ def _sample_anchor_loop_to_local_m(
         for step in range(steps):
             t = step / steps
             x_mm, y_mm = _cubic_bezier_point(p0, p1, p2, p3, t)
+            if entry is not None:
+                x_mm, y_mm = free_transform.transform_entry_local_point(entry, x_mm, y_mm)
             out.append((mm_to_m(x_mm + ox), mm_to_m(y_mm + oy)))
     return out
 
@@ -2432,8 +2436,8 @@ def _cloud_band_via_independent_line_loops(
     if len(outer_anchors) < 3 or len(inner_anchors) != len(outer_anchors):
         return None
     offset_mm = _entry_local_offset_mm(entry)
-    outer_pts = _sample_anchor_loop_to_local_m(outer_anchors, offset_mm, SAMPLES_PER_SEGMENT)
-    inner_pts = _sample_anchor_loop_to_local_m(inner_anchors, offset_mm, SAMPLES_PER_SEGMENT)
+    outer_pts = _sample_anchor_loop_to_local_m(outer_anchors, offset_mm, SAMPLES_PER_SEGMENT, entry)
+    inner_pts = _sample_anchor_loop_to_local_m(inner_anchors, offset_mm, SAMPLES_PER_SEGMENT, entry)
     if len(outer_pts) < 3 or len(inner_pts) != len(outer_pts):
         return None
     return outer_pts, inner_pts
@@ -3343,6 +3347,7 @@ def ensure_balloon_tail_main_line_mesh(
             continue
         if not pts_mm or len(pts_mm) < 3:
             continue
+        pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
         samples = [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm)) for x, y in pts_mm]
         band = build_offset_band_polygon(
             samples,

@@ -13,6 +13,7 @@ from ..ui import reparent_overlay
 from ..utils import (
     balloon_curve_object,
     edge_selection,
+    free_transform,
     gp_layer_parenting as gp_parent,
     layer_reparent,
     layer_stack as layer_stack_utils,
@@ -30,6 +31,7 @@ from .alt_reparent_op import (
 )
 from . import (
     balloon_op,
+    object_tool_free_transform,
     object_tool_balloon_tail,
     effect_line_op,
     layer_move_session,
@@ -200,6 +202,9 @@ def hit_object_at_event(context, event) -> dict | None:
     if view is None:
         return None
     area, region, rv3d, mx, my = view
+    transformed = object_tool_free_transform.hit_transformed_handle_at_event(context, event, _event_world_xy_mm)
+    if transformed is not None:
+        return transformed
     for resolver in (
         _hit_text_at_event,
         _hit_shared_text_at_event,
@@ -675,6 +680,14 @@ class BNAME_OT_object_tool(Operator):
             return {"RUNNING_MODAL"}
         if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
             return {"FINISHED"}
+        free_action = object_tool_free_transform.free_action_for_hit(
+            hit,
+            ctrl=event.value == "PRESS" and bool(getattr(event, "ctrl", False)),
+        )
+        if free_action:
+            mode = "single"
+            hit = dict(hit)
+            hit["part"] = free_action
         self._activate_hit(context, hit, mode=mode)
         if mode in {"toggle", "add"}:
             return {"RUNNING_MODAL"}
@@ -1001,6 +1014,7 @@ class BNAME_OT_object_tool(Operator):
                     "page_id": page_id,
                     "item_id": item_id,
                     "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
+                    "free_transform": free_transform.entry_snapshot(entry),
                     "center_offset": (
                         float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
                         float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
@@ -1015,6 +1029,7 @@ class BNAME_OT_object_tool(Operator):
                     "page_id": page_id,
                     "item_id": item_id,
                     "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
+                    "free_transform": free_transform.entry_snapshot(entry),
                 })
             elif kind == "effect":
                 obj, layer = _find_effect_layer(item_id)
@@ -1030,6 +1045,7 @@ class BNAME_OT_object_tool(Operator):
                     "item_id": item_id,
                     "rect": (float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3])),
                     "center": (float(center[0]), float(center[1])),
+                    "free_transform": free_transform.effect_payload_for_layer(obj, layer),
                 })
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, item_id)
@@ -1189,6 +1205,18 @@ class BNAME_OT_object_tool(Operator):
                 )
                 if entry is None:
                     continue
+                corner = free_transform.corner_from_action(self._drag_action)
+                if corner:
+                    with balloon_curve_object.suspend_auto_sync():
+                        free_transform.apply_corner_drag_to_entry(
+                            entry,
+                            snapshot.get("free_transform"),
+                            corner,
+                            dx,
+                            dy,
+                        )
+                    balloon_curve_object.on_balloon_entry_changed(entry)
+                    continue
                 if self._drag_action == "center":
                     cx, cy = snapshot.get("center_offset", (0.0, 0.0))
                     with balloon_curve_object.suspend_auto_sync():
@@ -1210,17 +1238,43 @@ class BNAME_OT_object_tool(Operator):
                 )
                 if entry is None:
                     continue
+                corner = free_transform.corner_from_action(self._drag_action)
+                if corner:
+                    free_transform.apply_corner_drag_to_entry(
+                        entry,
+                        snapshot.get("free_transform"),
+                        corner,
+                        dx,
+                        dy,
+                    )
+                    continue
                 nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 text_op._set_text_rect(entry, nx, ny, nw, nh)
             elif kind == "effect":
                 obj, layer = _find_effect_layer(snapshot["item_id"])
                 if layer is None:
                     continue
+                corner = free_transform.corner_from_action(self._drag_action)
+                cx, cy = snapshot.get("center", (x + w * 0.5, y + h * 0.5))
+                if corner:
+                    meta = effect_line_op._effect_meta(obj)
+                    key = effect_line_op._layer_meta_key(layer)
+                    entry = meta.get(key) if isinstance(meta.get(key), dict) else {}
+                    free_transform.apply_corner_drag_to_effect_entry(
+                        entry,
+                        snapshot.get("free_transform"),
+                        corner,
+                        dx,
+                        dy,
+                    )
+                    meta[key] = entry
+                    effect_line_op._write_effect_meta(obj, meta)
+                    effect_line_op._write_effect_strokes(context, obj, layer, (x, y, w, h), center_xy_mm=(cx, cy))
+                    continue
                 if self._drag_action == "center":
                     nx, ny, nw, nh = x, y, w, h
                 else:
                     nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
-                cx, cy = snapshot.get("center", (x + w * 0.5, y + h * 0.5))
                 if self._drag_action in {"move", "center"}:
                     center = (float(cx) + dx, float(cy) + dy)
                 else:

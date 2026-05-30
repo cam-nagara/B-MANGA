@@ -28,6 +28,7 @@ from ..core.work import get_active_page, get_work
 from ..utils import (
     border_geom,
     color_space,
+    free_transform,
     log,
     object_selection,
     page_browser,
@@ -215,6 +216,60 @@ def _selection_handle_rects(rect: Rect, size_mm: float = 2.0) -> list[Rect]:
     return [Rect(x - half, y - half, size_mm, size_mm) for x, y in points]
 
 
+def _draw_quad_outline(
+    quad: dict[str, tuple[float, float]],
+    color: tuple[float, float, float, float],
+    line_width: float = 1.0,
+) -> None:
+    points = free_transform.ordered_quad_points(quad)
+    verts = [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in [*points, points[0]]]
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    batch = batch_for_shader(shader, "LINE_STRIP", {"pos": verts})
+    shader.bind()
+    shader.uniform_float("color", color)
+    try:
+        gpu.state.line_width_set(max(1.0, float(line_width)))
+        batch.draw(shader)
+    finally:
+        gpu.state.line_width_set(1.0)
+
+
+def _quad_handle_rects(quad: dict[str, tuple[float, float]], size_mm: float = 2.0) -> list[Rect]:
+    half = size_mm * 0.5
+    return [
+        Rect(x - half, y - half, size_mm, size_mm)
+        for x, y in free_transform.ordered_quad_points(quad)
+    ]
+
+
+def _free_transform_quad_for_key(context, key: str, rect: Rect):
+    try:
+        from ..operators import object_tool_selection
+        from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY
+    except Exception:  # noqa: BLE001
+        return None
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if kind in {"balloon", "text"}:
+        work = getattr(context.scene, "bname_work", None)
+        if kind == "balloon":
+            if page_id == OUTSIDE_STACK_KEY:
+                _idx, entry = object_tool_selection.find_shared_balloon_by_key(work, item_id)
+            else:
+                _pi, _page, _idx, entry = object_tool_selection.find_balloon_by_key(work, page_id, item_id)
+        else:
+            if page_id == OUTSIDE_STACK_KEY:
+                _idx, entry = object_tool_selection.find_shared_text_by_key(work, item_id)
+            else:
+                _pi, _page, _idx, entry = object_tool_selection.find_text_by_key(work, page_id, item_id)
+        return free_transform.entry_quad(entry, rect) if entry is not None else None
+    if kind == "effect":
+        obj, layer = object_tool_selection.find_effect_layer(item_id)
+        payload = free_transform.effect_payload_for_layer(obj, layer)
+        if free_transform.effect_payload_enabled(payload):
+            return free_transform.quad_from_rect_offsets(rect, payload.get("offsets"))
+    return None
+
+
 def _draw_object_tool_layer_bounds(context) -> None:
     try:
         from ..operators import object_tool_op
@@ -234,8 +289,14 @@ def _draw_object_tool_layer_bounds(context) -> None:
         rect = object_tool_op.selection_bounds_for_key(context, key)
         if rect is None:
             continue
-        _draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
-        for handle in _selection_handle_rects(rect):
+        quad = _free_transform_quad_for_key(context, key, rect)
+        if quad:
+            _draw_quad_outline(quad, viewport_colors.SELECTION, line_width=2.0)
+            handle_rects = _quad_handle_rects(quad)
+        else:
+            _draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION, width_mm=0.50)
+            handle_rects = _selection_handle_rects(rect)
+        for handle in handle_rects:
             _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
             _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
         if kind == "balloon":

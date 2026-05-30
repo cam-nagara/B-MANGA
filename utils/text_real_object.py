@@ -11,6 +11,7 @@ from typing import Optional
 import bpy
 
 from . import color_space
+from . import free_transform
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
@@ -234,6 +235,15 @@ def _render_entry_to_pillow(entry):
     return image, pad_mm, width_mm, height_mm
 
 
+def _mesh_dimensions_for_entry(entry) -> tuple[float, float, float]:
+    width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
+    height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
+    stroke_pad = 0.0
+    if bool(getattr(entry, "stroke_enabled", False)):
+        stroke_pad = max(0.0, float(getattr(entry, "stroke_width_mm", 0.0) or 0.0))
+    return width_mm, height_mm, max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
+
+
 def _ensure_image_data(name: str, pil_image) -> Optional[bpy.types.Image]:
     if pil_image is None:
         return None
@@ -302,12 +312,17 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image]) -> bpy.types.M
     return mat
 
 
-def _rebuild_mesh(mesh: bpy.types.Mesh, width_mm: float, height_mm: float, pad_mm: float) -> None:
+def _text_mesh_vertex(entry, x_mm: float, y_mm: float) -> tuple[float, float, float]:
+    x_mm, y_mm = free_transform.transform_entry_local_point(entry, x_mm, y_mm)
+    return mm_to_m(x_mm), mm_to_m(y_mm), 0.0
+
+
+def _rebuild_mesh(mesh: bpy.types.Mesh, width_mm: float, height_mm: float, pad_mm: float, entry=None) -> None:
     verts = [
-        (mm_to_m(-pad_mm), mm_to_m(-pad_mm), 0.0),
-        (mm_to_m(width_mm + pad_mm), mm_to_m(-pad_mm), 0.0),
-        (mm_to_m(width_mm + pad_mm), mm_to_m(height_mm + pad_mm), 0.0),
-        (mm_to_m(-pad_mm), mm_to_m(height_mm + pad_mm), 0.0),
+        _text_mesh_vertex(entry, -pad_mm, -pad_mm),
+        _text_mesh_vertex(entry, width_mm + pad_mm, -pad_mm),
+        _text_mesh_vertex(entry, width_mm + pad_mm, height_mm + pad_mm),
+        _text_mesh_vertex(entry, -pad_mm, height_mm + pad_mm),
     ]
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], [(0, 1, 2, 3)])
@@ -408,7 +423,7 @@ def ensure_text_real_object(
     mesh = bpy.data.meshes.get(_mesh_name(page_id, text_id))
     if mesh is None:
         mesh = bpy.data.meshes.new(_mesh_name(page_id, text_id))
-    _rebuild_mesh(mesh, width_mm, height_mm, pad_mm)
+    _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
     if not mesh.materials:
         mesh.materials.append(mat)
     elif mesh.materials[0] is not mat:
@@ -506,6 +521,50 @@ def on_text_entry_changed(entry) -> bool:
         if not same_pointer and not same_id:
             continue
         return ensure_text_real_object(scene=scene, entry=candidate, page=None) is not None
+    return False
+
+
+def _refresh_existing_text_mesh(scene, entry, page) -> bool:
+    page_id = _page_id_for_entry(page, entry)
+    text_id = str(getattr(entry, "id", "") or "")
+    obj = find_text_object(scene, text_object_bname_id_for_values(page_id, text_id))
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        return ensure_text_real_object(scene=scene, entry=entry, page=page) is not None
+    mesh = getattr(obj, "data", None)
+    if mesh is None:
+        return False
+    width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
+    _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
+    return True
+
+
+def on_text_free_transform_changed(entry) -> bool:
+    scene = bpy.context.scene if bpy.context is not None else None
+    work = getattr(scene, "bname_work", None) if scene is not None else None
+    if scene is None or work is None or entry is None:
+        return False
+    try:
+        target_ptr = int(entry.as_pointer())
+    except Exception:  # noqa: BLE001
+        target_ptr = 0
+    target_id = str(getattr(entry, "id", "") or "")
+    for page in getattr(work, "pages", []) or []:
+        for candidate in getattr(page, "texts", []) or []:
+            candidate_id = str(getattr(candidate, "id", "") or "")
+            try:
+                same_pointer = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+            except Exception:  # noqa: BLE001
+                same_pointer = False
+            if same_pointer or (target_id and candidate_id == target_id):
+                return _refresh_existing_text_mesh(scene, candidate, page)
+    for candidate in getattr(work, "shared_texts", []) or []:
+        candidate_id = str(getattr(candidate, "id", "") or "")
+        try:
+            same_pointer = bool(target_ptr) and int(candidate.as_pointer()) == target_ptr
+        except Exception:  # noqa: BLE001
+            same_pointer = False
+        if same_pointer or (target_id and candidate_id == target_id):
+            return _refresh_existing_text_mesh(scene, candidate, None)
     return False
 
 

@@ -17,6 +17,7 @@ from . import balloon_multiline_curve
 from . import balloon_render_contract as render_contract
 from . import balloon_shapes
 from . import coma_content_mask
+from . import free_transform
 from . import layer_object_sync as los
 from . import log
 from . import material_opacity_mask
@@ -1032,7 +1033,9 @@ def _entry_origin_xy(entry) -> tuple[float, float]:
     )
 
 
-def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float]) -> tuple[float, float, float]:
+def _point_to_curve_xyz(point: tuple[float, float], offset: tuple[float, float], entry=None) -> tuple[float, float, float]:
+    if entry is not None:
+        point = free_transform.transform_entry_local_point(entry, point[0], point[1])
     return (
         mm_to_m(float(point[0]) + offset[0]),
         mm_to_m(float(point[1]) + offset[1]),
@@ -1047,6 +1050,7 @@ def _add_bezier_loop(
     sharp_indices: set[int],
     offset: tuple[float, float],
     point_radii: Sequence[float] | None = None,
+    entry=None,
 ) -> None:
     if len(points) < 3:
         return
@@ -1056,7 +1060,7 @@ def _add_bezier_loop(
     spline.material_index = _MATERIAL_SLOT_LINE
     for index, point in enumerate(points):
         bp = spline.bezier_points[index]
-        bp.co = _point_to_curve_xyz(point, offset)
+        bp.co = _point_to_curve_xyz(point, offset, entry)
         is_sharp = index in sharp_indices
         handle_type = "VECTOR" if is_sharp else "AUTO"
         bp.handle_left_type = handle_type
@@ -1072,6 +1076,7 @@ def _add_bezier_anchor_loop(
     anchors: Sequence[balloon_shapes.BezierAnchor],
     *,
     offset: tuple[float, float],
+    entry=None,
 ) -> None:
     if len(anchors) < 3:
         return
@@ -1080,6 +1085,7 @@ def _add_bezier_anchor_loop(
     spline.use_cyclic_u = True
     spline.material_index = _MATERIAL_SLOT_LINE
     for index, anchor in enumerate(anchors):
+        anchor = free_transform.transform_entry_anchor(entry, anchor) if entry is not None else anchor
         bp = spline.bezier_points[index]
         bp.co = _point_to_curve_xyz(anchor.co, offset)
         left = anchor.handle_left if anchor.handle_left is not None else anchor.co
@@ -1151,6 +1157,7 @@ def _geometry_key_for_entry(entry) -> str:
         "width": float(getattr(entry, "width_mm", 0.0) or 0.0),
         "height": float(getattr(entry, "height_mm", 0.0) or 0.0),
         "center": _entry_center_offset(entry),
+        "free_transform": free_transform.entry_snapshot(entry),
         "rounded": bool(getattr(entry, "rounded_corner_enabled", False)),
         "rounded_radius": float(getattr(entry, "rounded_corner_radius_mm", 0.0) or 0.0),
         "line_style": str(getattr(entry, "line_style", "") or ""),
@@ -1191,8 +1198,11 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
     use_shapely_multi = balloon_line_mesh.is_shapely_multi_line_shape(entry)
     body_anchors = _body_bezier_for_entry(entry)
     if body_anchors is not None:
-        _add_bezier_anchor_loop(curve, body_anchors, offset=offset)
-        body_points = balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18)
+        _add_bezier_anchor_loop(curve, body_anchors, offset=offset, entry=entry)
+        body_points = free_transform.transform_entry_local_points(
+            entry,
+            balloon_multiline_curve.sample_bezier_anchors(body_anchors, samples_per_segment=18),
+        )
         if not use_mesh_band:
             balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         if not use_shapely_multi:
@@ -1207,7 +1217,9 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             body_points,
             sharp_indices=sharp_set,
             offset=offset,
+            entry=entry,
         )
+        body_points = free_transform.transform_entry_local_points(entry, body_points)
         if not use_mesh_band:
             balloon_multiline_curve.append_main_line_fill_paths(curve, entry, body_points, offset=offset)
         if not use_shapely_multi:
@@ -1221,6 +1233,7 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             tail_points,
             sharp_indices=set(range(len(tail_points))),
             offset=offset,
+            entry=entry,
         )
         # しっぽの主線フチは Python メッシュ (ensure_balloon_tail_main_line_mesh) で
         # 焼き込むため、ジオメトリノード用の main_line_fill spline は追加しない。

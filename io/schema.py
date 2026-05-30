@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..utils import balloon_shapes, color_space, coma_blur_curve, percentage
+from ..utils import balloon_shapes, color_space, coma_blur_curve, free_transform, percentage
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
 WORK_SCHEMA_VERSION = 5
@@ -857,6 +857,41 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
 # ---------- Balloon / Text (Phase 3) ----------
 
 
+def _free_transform_to_dict(entry) -> dict[str, Any]:
+    offsets = free_transform.entry_offsets(entry)
+    return {
+        "enabled": bool(getattr(entry, "free_transform_enabled", False)) and not free_transform.offsets_are_zero(offsets),
+        "offsets": {
+            corner: [round(float(value[0]), 3), round(float(value[1]), 3)]
+            for corner, value in offsets.items()
+        },
+    }
+
+
+def _free_transform_from_dict(entry, data: dict[str, Any] | None) -> None:
+    payload = data if isinstance(data, dict) else {}
+    raw_offsets = payload.get("offsets") if isinstance(payload, dict) else {}
+    offsets = free_transform.zero_offsets()
+    if isinstance(raw_offsets, dict):
+        for corner in free_transform.CORNERS:
+            raw_pair = raw_offsets.get(corner) or (0.0, 0.0)
+            try:
+                x_value = float(raw_pair[0])
+                y_value = float(raw_pair[1])
+            except Exception:  # noqa: BLE001
+                x_value = 0.0
+                y_value = 0.0
+            offsets[corner] = (
+                x_value,
+                y_value,
+            )
+    free_transform.set_entry_offsets(
+        entry,
+        offsets,
+        enabled=bool(payload.get("enabled", False)),
+    )
+
+
 def balloon_entry_to_dict(entry) -> dict[str, Any]:
     return {
         "id": entry.id,
@@ -870,6 +905,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "rotationDeg": round(entry.rotation_deg, 3),
         "centerOffsetXMm": round(float(getattr(entry, "center_offset_x_mm", 0.0)), 3),
         "centerOffsetYMm": round(float(getattr(entry, "center_offset_y_mm", 0.0)), 3),
+        "freeTransform": _free_transform_to_dict(entry),
         "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
         "opacityUnit": "percent",
         "roundedCornerEnabled": bool(entry.rounded_corner_enabled),
@@ -976,6 +1012,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.rotation_deg = float(data.get("rotationDeg", 0.0))
     entry.center_offset_x_mm = float(data.get("centerOffsetXMm", 0.0))
     entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
+    _free_transform_from_dict(entry, data.get("freeTransform"))
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
@@ -1118,6 +1155,7 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "yMm": round(entry.y_mm, 3),
         "widthMm": round(entry.width_mm, 3),
         "heightMm": round(entry.height_mm, 3),
+        "freeTransform": _free_transform_to_dict(entry),
         "parentBalloonId": entry.parent_balloon_id,
         "parentKind": getattr(entry, "parent_kind", "page"),
         "parentKey": getattr(entry, "parent_key", ""),
@@ -1183,6 +1221,7 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.y_mm = float(data.get("yMm", 0.0))
     entry.width_mm = float(data.get("widthMm", 30.0))
     entry.height_mm = float(data.get("heightMm", 15.0))
+    _free_transform_from_dict(entry, data.get("freeTransform"))
     entry.parent_balloon_id = data.get("parentBalloonId", "")
     entry.parent_kind = data.get("parentKind", data.get("parent_kind", "page"))
     entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")

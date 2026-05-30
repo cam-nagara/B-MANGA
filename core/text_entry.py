@@ -105,6 +105,23 @@ def _on_text_entry_changed(self, context) -> None:
         pass
 
 
+def _on_text_free_transform_changed(self, context) -> None:
+    try:
+        from ..utils import text_real_object
+
+        text_real_object.on_text_free_transform_changed(self)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        screen = getattr(context, "screen", None) if context is not None else None
+        if screen is not None:
+            for area in screen.areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _on_text_font_size_q_changed(self, context) -> None:
     global _font_size_sync_depth
     if _font_size_sync_depth > 0:
@@ -169,6 +186,11 @@ class BNameTextEntry(bpy.types.PropertyGroup):
     y_mm: FloatProperty(name="Y", default=0.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
     width_mm: FloatProperty(name="幅", default=30.0, min=0.1, update=_on_text_entry_changed)  # type: ignore[valid-type]
     height_mm: FloatProperty(name="高さ", default=15.0, min=0.1, update=_on_text_entry_changed)  # type: ignore[valid-type]
+    free_transform_enabled: BoolProperty(name="自由変形", default=False, options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
+    free_transform_bottom_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
+    free_transform_bottom_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
+    free_transform_top_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
+    free_transform_top_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
 
     # 親フキダシ (同一ページの BNameBalloonEntry.id を参照). 空文字なら独立テキスト。
     parent_balloon_id: StringProperty(  # type: ignore[valid-type]

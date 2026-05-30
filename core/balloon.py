@@ -295,6 +295,11 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     rotation_deg: FloatProperty(name="回転", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     center_offset_x_mm: FloatProperty(name="中心点 X", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     center_offset_y_mm: FloatProperty(name="中心点 Y", default=0.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_enabled: BoolProperty(name="自由変形", default=False, options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_bottom_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_bottom_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_top_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_top_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 角丸 (全形状共通オプション、計画書 3.1.4.2a)
     rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

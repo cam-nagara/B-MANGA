@@ -14,7 +14,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..ui import overlay_creation_range
-from ..utils import gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
+from ..utils import free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import (
@@ -773,6 +773,11 @@ def _write_effect_strokes(
             )
             if fill_stroke is not None:
                 strokes = [fill_stroke] + list(strokes)
+        strokes = free_transform.transform_effect_strokes(
+            strokes,
+            (float(x), float(y), w, h),
+            free_transform.effect_payload_from_meta_entry(_effect_meta(obj).get(_layer_meta_key(layer))),
+        )
         display = _elo.ensure_effect_display_object(
             scene=context.scene,
             controller_obj=obj,
