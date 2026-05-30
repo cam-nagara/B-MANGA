@@ -541,9 +541,9 @@ def _attach_texts_enclosed_by_balloon(context, page, entry) -> int:
     for text in getattr(page, "texts", []) or []:
         if not bool(getattr(text, "visible", True)):
             continue
-        if not _rect_contains_rect(balloon_rect, _text_rect(text)):
+        if str(getattr(text, "parent_balloon_id", "") or ""):
             continue
-        if str(getattr(text, "parent_balloon_id", "") or "") == balloon_id:
+        if not _rect_contains_rect(balloon_rect, _text_rect(text)):
             continue
         text.parent_balloon_id = balloon_id
         changed += 1

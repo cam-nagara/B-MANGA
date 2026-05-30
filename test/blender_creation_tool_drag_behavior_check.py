@@ -220,6 +220,16 @@ def main() -> None:
             ):
                 raise AssertionError("紐付いたテキストがフキダシ移動に追従していません")
             balloon_op._move_balloon_with_texts(page, created, float(created.x_mm) - 5.0, float(created.y_mm) - 3.0)
+            first_balloon_id = str(getattr(created, "id", "") or "")
+            sx, sy = _page_local(16.0, 16.0)
+            balloon_tool._start_create_preview(page, sx, sy, 16.0, 16.0, "page", page_key)
+            balloon_tool._update_create_preview(context, _event(54.0, 44.0))
+            balloon_tool._finish_create_preview(context)
+            enclosed_text = _text_by_id(page, enclosed_text_id)
+            if enclosed_text is None:
+                raise AssertionError("確認用テキストが見つかりません")
+            if str(getattr(enclosed_text, "parent_balloon_id", "") or "") != first_balloon_id:
+                raise AssertionError("既に紐付いたテキストの親フキダシが上書きされています")
 
             before_shared = len(work.shared_balloons)
             balloon_tool._start_create_preview(
