@@ -7,8 +7,6 @@ from ..utils import object_selection
 
 
 def draw_coma_shape_settings(layout, context, entry) -> None:
-    shape_label = "矩形" if entry.shape_type == "rect" else "多角形"
-    layout.label(text=f"形状: {shape_label}")
     if entry.shape_type == "rect":
         row = layout.row(align=True)
         row.prop(entry, "rect_x_mm")
@@ -16,8 +14,6 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
         row = layout.row(align=True)
         row.prop(entry, "rect_width_mm")
         row.prop(entry, "rect_height_mm")
-    else:
-        layout.label(text=f"頂点数: {len(entry.vertices)}", icon="VERTEXSEL")
 
     row = layout.row(align=True)
     row.operator(
@@ -25,7 +21,6 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
         text="頂点/辺をドラッグ編集",
         icon="EDITMODE_HLT",
     )
-    layout.label(text="(Enter=確定 / ESC=キャンセル / 緑線=スナップ)", icon="INFO")
 
     row = layout.row(align=True)
     if entry.shape_type == "rect":
@@ -36,13 +31,8 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
         layout.operator("bname.coma_merge_selected", text="コマ結合", icon="AUTOMERGE_ON")
 
     row = layout.row(align=True)
-    row.prop(entry, "paper_visible", text="用紙")
-    row.prop(entry, "background_color", text="用紙色")
-    row = layout.row(align=True)
-    row.prop(entry, "coma_gap_vertical_mm", text="上下 (個別)")
-    row.prop(entry, "coma_gap_horizontal_mm", text="左右 (個別)")
-    layout.label(text="(負値は作品共通ルールを継承)", icon="INFO")
-    layout.prop(entry, "overlap_clipping")
+    row.prop(entry, "paper_visible", text="背景")
+    row.prop(entry, "background_color", text="背景色")
 
 
 def draw_coma_border_settings(layout, context, entry) -> None:
@@ -53,23 +43,26 @@ def draw_coma_border_settings(layout, context, entry) -> None:
         row.label(text="プリセット", icon="PRESET")
         row.prop(wm, "bname_border_preset_selector", text="")
         row.operator("bname.border_preset_save_local", text="", icon="FILE_TICK")
-    layout.prop(b, "visible", text="枠線を表示")
+    row = layout.row(align=True)
+    row.prop(b, "visible", text="枠線を表示")
+    row.prop(b, "style", text="線種")
     content = layout.column()
     content.active = b.visible
-    content.prop(b, "style")
     if b.style == "brush":
-        content.prop(b, "blur_amount", slider=True)
+        row = content.row(align=True)
+        row.prop(b, "blur_amount", text="ボカシ量", slider=True)
+        row.prop(b, "blur_dither")
         curve_node = coma_blur_curve.ui_curve_node_for_border(b)
         if curve_node is not None:
             content.label(text="ぼかしカーブ")
             content.template_curve_mapping(curve_node, "mapping", type="NONE")
         else:
             content.label(text="ぼかしカーブは表示更新後に編集できます", icon="INFO")
-        content.prop(b, "blur_dither")
-    content.prop(b, "width_mm")
-    content.prop(b, "color")
     row = content.row(align=True)
-    row.prop(b, "corner_type")
+    row.prop(b, "width_mm", text="線幅")
+    row.prop(b, "color", text="線色")
+    row = content.row(align=True)
+    row.prop(b, "corner_type", text="角")
     sub = row.row(align=True)
     sub.enabled = b.corner_type != "square"
     sub.prop(b, "corner_radius_mm", text="半径")
@@ -77,11 +70,16 @@ def draw_coma_border_settings(layout, context, entry) -> None:
 
 def draw_coma_white_margin_settings(layout, entry) -> None:
     wm = entry.white_margin
-    layout.prop(wm, "enabled", text="白フチを表示")
+    row = layout.row(align=True)
+    row.prop(wm, "enabled", text="フチ", toggle=True)
+    sub = row.row(align=True)
+    sub.enabled = bool(wm.enabled)
+    sub.prop(wm, "placement", text="")
     content = layout.column()
     content.active = wm.enabled
-    content.prop(wm, "width_mm")
-    content.prop(wm, "color")
+    row = content.row(align=True)
+    row.prop(wm, "width_mm", text="幅")
+    row.prop(wm, "color", text="色")
 
 
 def register() -> None:

@@ -616,7 +616,6 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
     if not bool(getattr(wm, "enabled", False)) or base_width <= 0.0:
         return None
 
-    # 白フチ幅は枠線の外縁から測る (中心線基準だと枠線に半分隠れて細く見える)。
     border = getattr(entry, "border", None)
     border_half = 0.0
     if (
@@ -626,18 +625,30 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
     ):
         border_half = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) * 0.5
 
-    outer_loops = border_geom.stroke_loops_mm(poly_mm, (border_half + base_width) * 2.0)
-    if outer_loops is None:
-        return None
-    outer_mm = outer_loops[0]
-    if border_half > 1.0e-6:
-        inner_loops = border_geom.stroke_loops_mm(poly_mm, border_half * 2.0)
-        if inner_loops is None:
+    def offset_loop(offset_mm: float):
+        offset = float(offset_mm)
+        if abs(offset) <= 1.0e-6:
+            return border_geom._dedupe_closed(poly_mm)
+        loops = border_geom.stroke_loops_mm(poly_mm, abs(offset) * 2.0)
+        if loops is None:
             return None
-        inner_mm = inner_loops[0]
-    else:
-        inner_mm = border_geom._dedupe_closed(poly_mm)
-    ring_bbox = _points_bbox([*inner_mm, *outer_mm])
+        return loops[0] if offset > 0.0 else loops[1]
+
+    placement = str(getattr(wm, "placement", "outside") or "outside")
+    if placement not in {"outside", "inside", "both"}:
+        placement = "outside"
+    edge_outer = offset_loop(border_half)
+    edge_inner = offset_loop(-border_half)
+    far_outer = offset_loop(border_half + base_width)
+    far_inner = offset_loop(-(border_half + base_width))
+    bands = []
+    if placement in {"outside", "both"} and edge_outer and far_outer:
+        bands.append((edge_outer, far_outer))
+    if placement in {"inside", "both"} and far_inner and edge_inner:
+        bands.append((far_inner, edge_inner))
+    if not bands:
+        return None
+    ring_bbox = _points_bbox([point for band in bands for loop in band for point in loop])
     if ring_bbox is None:
         return None
     canvas = _canvas_for_bbox(ring_bbox, canvas_height_px, dpi)
@@ -645,11 +656,12 @@ def _draw_coma_white_margin_layer(entry, canvas_height_px: int, dpi: int) -> Exp
         return None
     color = _rgb255(wm.color)
     draw = ImageDraw.Draw(canvas.image)
-    inner_px = canvas.points_px(inner_mm)
-    outer_px = canvas.points_px(outer_mm)
-    for i in range(len(outer_px)):
-        j = (i + 1) % len(outer_px)
-        draw.polygon([inner_px[i], inner_px[j], outer_px[j], outer_px[i]], fill=color)
+    for inner_mm, outer_mm in bands:
+        inner_px = canvas.points_px(inner_mm)
+        outer_px = canvas.points_px(outer_mm)
+        for i in range(len(outer_px)):
+            j = (i + 1) % len(outer_px)
+            draw.polygon([inner_px[i], inner_px[j], outer_px[j], outer_px[i]], fill=color)
     return ExportLayer("white_margin", canvas.image, canvas.left, canvas.top)
 
 

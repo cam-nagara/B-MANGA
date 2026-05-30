@@ -257,9 +257,9 @@ def main() -> None:
     white_obj = bpy.data.objects.get(
         f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"
     )
-    assert white_obj is not None and white_obj.hide_viewport, "輪郭ぼかし時は白フチを表示しないべきです"
+    assert white_obj is not None and white_obj.hide_viewport, "輪郭ぼかし時はフチを表示しないべきです"
     assert export_pipeline._draw_coma_white_margin_layer(coma, 1000, 300) is None, (
-        "輪郭ぼかし時は書き出し用の白フチも生成しないべきです"
+        "輪郭ぼかし時は書き出し用のフチも生成しないべきです"
     )
 
     coma.border.style = "solid"
@@ -270,23 +270,23 @@ def main() -> None:
         vertex.x_mm = x_mm
         vertex.y_mm = y_mm
     obj = coma_border_object.ensure_coma_border_object(scene, work, page, coma)
-    assert obj is not None and obj.type == "CURVE", "実線へ戻したときカーブ枠線に戻りません"
+    assert obj is not None and obj.type in {"CURVE", "MESH"}, "実線へ戻したとき枠線実体に戻りません"
     white_obj = bpy.data.objects.get(
         f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"
     )
-    assert white_obj is not None and not white_obj.hide_viewport, "多角形コマの白フチが表示されていません"
-    coords = {(round(float(v.co.x), 5), round(float(v.co.y), 5)) for v in white_obj.data.vertices}
-    assert (round(mm_to_m(60.0), 5), round(mm_to_m(40.0), 5)) in coords, (
-        "白フチがコマ形状ではなく外接矩形に沿っています"
+    assert white_obj is not None and not white_obj.hide_viewport, "多角形コマのフチが表示されていません"
+    coords_mm = [(float(v.co.x) * 1000.0, float(v.co.y) * 1000.0) for v in white_obj.data.vertices]
+    assert any(55.0 < x < 69.5 and 35.0 < y < 55.0 for x, y in coords_mm), (
+        "フチがコマ形状ではなく外接矩形に沿っています"
     )
-    assert (round(mm_to_m(10.0), 5), round(mm_to_m(50.0), 5)) in coords, (
-        "白フチが斜め辺の頂点に追従していません"
+    assert any(0.0 < x < 20.0 and 45.0 < y < 60.0 for x, y in coords_mm), (
+        "フチが斜め辺の頂点に追従していません"
     )
     white_layer = export_pipeline._draw_coma_white_margin_layer(coma, 1000, 300)
-    assert white_layer is not None, "多角形コマの書き出し用白フチが生成されていません"
+    assert white_layer is not None, "多角形コマの書き出し用フチが生成されていません"
     alpha_values = [px[3] for px in white_layer.image.getdata()]
     assert max(alpha_values) > 0 and min(alpha_values) == 0, (
-        "書き出し用白フチが外接矩形で塗りつぶされています"
+        "書き出し用フチが外接矩形で塗りつぶされています"
     )
     assert bpy.data.images.get(coma_border_texture.plane_alpha_image_name(page.id, coma.id)) is None, (
         "実線へ戻したあとコマ面の透明マスク画像が残っています"

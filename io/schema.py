@@ -752,6 +752,7 @@ def coma_border_from_dict(border, data: dict[str, Any]) -> None:
 def coma_white_margin_to_dict(wm) -> dict[str, Any]:
     return {
         "enabled": bool(wm.enabled),
+        "placement": str(getattr(wm, "placement", "outside") or "outside"),
         "widthMm": round(wm.width_mm, 3),
         "color": color_to_hex(wm.color),
     }
@@ -760,6 +761,9 @@ def coma_white_margin_to_dict(wm) -> dict[str, Any]:
 def coma_white_margin_from_dict(wm, data: dict[str, Any]) -> None:
     data = data or {}
     wm.enabled = bool(data.get("enabled", False))
+    if hasattr(wm, "placement"):
+        placement = str(data.get("placement", "outside") or "outside")
+        wm.placement = placement if placement in {"outside", "inside", "both"} else "outside"
     wm.width_mm = float(data.get("widthMm", 0.37))
     wm.color = hex_to_rgba(data.get("color", "#FFFFFF"))
 

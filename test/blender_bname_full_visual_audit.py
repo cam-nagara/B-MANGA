@@ -256,10 +256,8 @@ def _check_detail_toggles(context, targets) -> list[dict]:
     _toggle_check(results, "テキスト / 表示", text, "visible")
 
     _toggle_check(results, "ページ / 表示", page, "visible")
-    _toggle_check(results, "コマ / 表示", coma, "visible")
-    _toggle_check(results, "コマ / 自動くり抜き", coma, "overlap_clipping")
     _toggle_check(results, "コマ枠 / 枠線を表示", coma.border, "visible")
-    _toggle_check(results, "白フチ / 白フチを表示", coma.white_margin, "enabled")
+    _toggle_check(results, "フチ / フチ", coma.white_margin, "enabled")
 
     _toggle_check(results, "GP / 表示 viewport", gp_obj, "hide_viewport")
     _toggle_check(results, "GP / 表示 render", gp_obj, "hide_render")

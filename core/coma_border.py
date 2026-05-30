@@ -1,4 +1,4 @@
-"""コマ枠線・白フチの PropertyGroup."""
+"""コマ枠線・フチの PropertyGroup."""
 
 from __future__ import annotations
 
@@ -22,6 +22,12 @@ _CORNER_ITEMS = (
     ("square", "直角", ""),
     ("rounded", "丸角", ""),
     ("bevel", "面取り", ""),
+)
+
+_WHITE_MARGIN_PLACEMENT_ITEMS = (
+    ("outside", "外側", ""),
+    ("inside", "内側", ""),
+    ("both", "両側", ""),
 )
 
 
@@ -107,11 +113,17 @@ class BNameComaBorder(bpy.types.PropertyGroup):
 
 
 class BNameComaWhiteMargin(bpy.types.PropertyGroup):
-    """コマの白フチ."""
+    """コマ枠のフチ."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
-        name="白フチ",
+        name="フチ",
         default=True,
+        update=_on_border_changed,
+    )
+    placement: EnumProperty(  # type: ignore[valid-type]
+        name="位置",
+        items=_WHITE_MARGIN_PLACEMENT_ITEMS,
+        default="outside",
         update=_on_border_changed,
     )
     width_mm: FloatProperty(  # type: ignore[valid-type]

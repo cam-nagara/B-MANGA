@@ -597,16 +597,10 @@ def _draw_page_selected_settings(box, context, entry) -> None:
 def _draw_coma_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {coma_layer_name(entry)} (コマ)", icon="MOD_WIREFRAME")
-    settings.prop(entry, "title", text="表示名")
-    if hasattr(entry, "visible"):
-        settings.prop(entry, "visible", text="表示")
 
     blend_box = box.box()
     blend_box.label(text="コマ用blendファイル (このコマのみ)", icon="FILE_BLEND")
     blend_box.prop(entry, "coma_blend_template_path", text="")
-    sub = blend_box.column(align=True)
-    sub.scale_y = 0.85
-    sub.label(text="空のときは作品/プリファレンスの設定が使われる", icon="INFO")
 
     # INVOKE だとマウス直下のコマ逆引きに失敗してボタンが無反応になるため、
     # 選択中コマを対象に execute する EXEC_DEFAULT で呼ぶ (専用 row でスコープ)。
@@ -625,7 +619,7 @@ def _draw_coma_selected_settings(box, context, entry) -> None:
     coma_detail_panel.draw_coma_border_settings(border_box, context, entry)
 
     white_box = box.box()
-    white_box.label(text="白フチ")
+    white_box.label(text="フチ")
     coma_detail_panel.draw_coma_white_margin_settings(white_box, entry)
 
 

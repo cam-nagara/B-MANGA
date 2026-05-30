@@ -220,7 +220,7 @@ def _white_margin_ring(
     """内側/外側の閉ループから一定幅のリング Mesh (頂点/面) を作る.
 
     内外を同じ角分割数の角処理輪郭で生成すれば点数が 1:1 対応するため、
-    対応点同士を四角形で帯状に繋いで丸角の白フチを作る。
+    対応点同士を四角形で帯状に繋いで丸角のフチを作る。
     """
     n = len(inner_pts)
     if n < 3 or len(outer_pts) != n:
@@ -229,6 +229,35 @@ def _white_margin_ring(
     verts += [(mm_to_m(x), mm_to_m(y), 0.0) for x, y in outer_pts]
     faces = [(i, (i + 1) % n, n + (i + 1) % n, n + i) for i in range(n)]
     return verts, faces
+
+
+def _offset_loop(
+    outline: list[tuple[float, float]],
+    offset_mm: float,
+) -> Optional[list[tuple[float, float]]]:
+    offset = float(offset_mm)
+    if abs(offset) <= 1.0e-6:
+        return list(outline)
+    loops = border_geom.stroke_loops_mm(outline, abs(offset) * 2.0)
+    if loops is None:
+        return None
+    return loops[0] if offset > 0.0 else loops[1]
+
+
+def _append_white_margin_band(
+    verts: list[tuple[float, float, float]],
+    faces: list[tuple[int, int, int, int]],
+    inner_pts: list[tuple[float, float]],
+    outer_pts: list[tuple[float, float]],
+) -> bool:
+    ring = _white_margin_ring(inner_pts, outer_pts)
+    if ring is None:
+        return False
+    ring_verts, ring_faces = ring
+    base = len(verts)
+    verts.extend(ring_verts)
+    faces.extend(tuple(base + index for index in face) for face in ring_faces)
+    return True
 
 
 def _rect_points(coma) -> list[tuple[float, float]]:
@@ -499,8 +528,6 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
     faces: list[tuple[int, int, int, int]] = []
     if visible and enabled_global and base_width > 0.0:
         try:
-            # 白フチ幅は「枠線の外縁」から測る (枠線は中心線を芯に幅の半分だけ
-            # 外へ張り出すため、中心線基準だと枠線に半分隠れて見かけ上細くなる)。
             outline = border_geom._dedupe_closed(_outline_points(coma))
             border_half = 0.0
             border_style = str(getattr(border, "style", "solid") or "solid")
@@ -510,26 +537,19 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
                 and border_style != "brush"
             ):
                 border_half = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) * 0.5
-            outer_loops = border_geom.stroke_loops_mm(
-                outline, (border_half + base_width) * 2.0
-            )
-            if border_half > 1.0e-6:
-                inner_loops = border_geom.stroke_loops_mm(outline, border_half * 2.0)
-                inner_ring = inner_loops[0] if inner_loops is not None else None
-            else:
-                inner_ring = outline
-            outer_ring = outer_loops[0] if outer_loops is not None else None
-            ring = (
-                _white_margin_ring(inner_ring, outer_ring)
-                if (inner_ring and outer_ring)
-                else None
-            )
+            placement = str(getattr(wm, "placement", "outside") or "outside")
+            if placement not in {"outside", "inside", "both"}:
+                placement = "outside"
+            edge_outer = _offset_loop(outline, border_half)
+            edge_inner = _offset_loop(outline, -border_half)
+            far_outer = _offset_loop(outline, border_half + base_width)
+            far_inner = _offset_loop(outline, -(border_half + base_width))
+            if placement in {"outside", "both"} and edge_outer and far_outer:
+                _append_white_margin_band(verts, faces, edge_outer, far_outer)
+            if placement in {"inside", "both"} and far_inner and edge_inner:
+                _append_white_margin_band(verts, faces, far_inner, edge_inner)
         except Exception:  # noqa: BLE001
             _logger.exception("white margin shape ring failed")
-            ring = None
-        if ring is not None:
-            verts, faces = ring
-        else:
             visible = False
     mesh.clear_geometry()
     if verts and faces:
