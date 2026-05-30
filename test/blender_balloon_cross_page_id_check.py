@@ -97,6 +97,18 @@ def main() -> None:
                 f"world_x={wx2:.1f} page2_offset={ox2:.1f} page1_offset={ox1:.1f}"
             )
 
+        # work を渡さない採番経路 (フキダシテキスト作成 / レイヤースタック作成 /
+        # 複製 / 別ページへの移動) でもページ横断一意になることを確認する。
+        from bname_dev_balloon_cross_page.operators.balloon_op import _allocate_balloon_id
+        existing = {str(b.id) for p in work.pages for b in p.balloons}
+        existing |= {str(b.id) for b in getattr(work, "shared_balloons", [])}
+        new_id_no_work = _allocate_balloon_id(work.pages[1])  # work 引数なし
+        if new_id_no_work in existing:
+            raise AssertionError(
+                f"work を渡さない採番が既存 id と衝突しました: {new_id_no_work} "
+                f"(複製/移動/テキスト作成 経路で重複フキダシが起きる) existing={sorted(existing)}"
+            )
+
         print("BNAME_BALLOON_CROSS_PAGE_ID_OK", flush=True)
     finally:
         if mod is not None:

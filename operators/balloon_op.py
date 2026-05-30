@@ -87,6 +87,13 @@ def _allocate_balloon_id(page, work=None) -> str:
     # フキダシと id が衝突し、実体オブジェクト名 (id 由来) が重なって 1 ページ目の
     # 位置に作られてしまい、2 ページ目以降では表示されない (保存時の採番し直しで
     # 初めて直る)。作成時点で全ページを走査して未使用 id を割り当てる。
+    # work を渡さない呼び出し (フキダシテキスト作成 / レイヤースタック作成 /
+    # 複製 / 別ページへの移動など) でもページ横断一意を保つため、ここで補完する。
+    if work is None:
+        try:
+            work = get_work(bpy.context)
+        except Exception:  # noqa: BLE001
+            work = None
     used = _collect_used_balloon_ids(work)
     used |= {str(getattr(b, "id", "") or "") for b in getattr(page, "balloons", []) or []}
     i = 1
