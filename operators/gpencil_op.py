@@ -479,21 +479,25 @@ class BNAME_OT_gpencil_follow_modal(Operator):
     """カーソル追従 watcher の内部モーダルオペレータ.
 
     ユーザーは直接呼び出さない。``_follow_start()`` が起動する。
-    - TIMER イベントで MOUSEMOVE 以外の移動もキャッチ (描画中でも吸い上げ)
+    - マウス移動 (MOUSEMOVE) でカーソル下のページをアクティブにする
     - 常に PASS_THROUGH を返して他のオペレータを邪魔しない
+
+    注意: 以前は ``event_timer_add`` で 0.1 秒ごとの TIMER も拾っていたが、
+    常駐 TIMER は「描画していなくても」「ウィンドウが非アクティブでも」毎 tick
+    ビューポートを再描画させ続け、用紙ガイド線・効果線などの細線がずっと点滅
+    する原因になっていた (TIMER イベントの type 読み取りで Event enum 警告も
+    大量出力)。ページ追従は MOUSEMOVE だけで十分 (1 ストロークは 1 ページ内に
+    収まるため描画中の追従は不要) なので、常駐 TIMER は撤去した。
     """
 
     bl_idname = "bname.gpencil_follow_modal"
     bl_label = "B-Name: GP 追従"
     bl_options = {"INTERNAL"}
 
-    _timer = None
-
     def modal(self, context, event):
         if not _follow_state["running"]:
-            self._cleanup(context)
             return {"CANCELLED"}
-        if event.type in {"MOUSEMOVE", "TIMER"}:
+        if event.type == "MOUSEMOVE":
             try:
                 _update_follow_from_event(context, event)
             except Exception:  # noqa: BLE001
@@ -501,18 +505,8 @@ class BNAME_OT_gpencil_follow_modal(Operator):
         return {"PASS_THROUGH"}
 
     def invoke(self, context, event):
-        wm = context.window_manager
-        self._timer = wm.event_timer_add(_FOLLOW_THROTTLE_SEC, window=context.window)
-        wm.modal_handler_add(self)
+        context.window_manager.modal_handler_add(self)
         return {"RUNNING_MODAL"}
-
-    def _cleanup(self, context):
-        if self._timer is not None:
-            try:
-                context.window_manager.event_timer_remove(self._timer)
-            except Exception:  # noqa: BLE001
-                pass
-            self._timer = None
 
 
 def _follow_start() -> None:
@@ -593,7 +587,7 @@ def register() -> None:
 
 
 def unregister() -> None:
-    # 1) モーダル停止フラグを立てる (次の event tick で self._cleanup が走る)
+    # 1) モーダル停止フラグを立てる (次の event tick で CANCELLED 終了する)
     _follow_stop()
     # 2) BNAME_OT_gpencil_follow_modal は最後に unregister し、例外を握り潰す
     #    (走行中のモーダルが残っていても Blender がクラッシュしないよう防御)
