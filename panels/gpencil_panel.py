@@ -78,14 +78,11 @@ def _get_prefs():
 
 
 def _indent(row, depth: int) -> None:
-    """階層インデント。1 階層あたり約 1.5 文字分ずらす.
-
-    `row.separator(factor=N)` は ``N * 0.5 ui-unit`` の幅を空けるため、factor=2.0
-    でおよそ 1 文字分。コマ内レイヤーがコマの中にあると分かるよう、現在は
-    1 階層あたり factor=3.0 で表示する。
-    """
+    """階層インデント。縦方向に行を広げず、横幅だけを空ける."""
     if depth > 0:
-        row.separator(factor=3.0 * depth)
+        spacer = row.row(align=True)
+        spacer.ui_units_x = 1.35 * depth
+        spacer.label(text="")
 
 
 def _kind_icon(kind: str) -> str:
@@ -137,10 +134,16 @@ def _select_name(row, index: int, text: str) -> None:
     cell = row.row(align=True)
     cell.alignment = "LEFT"
     cell.operator_context = "INVOKE_DEFAULT"
+    selected = False
+    try:
+        selected = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1)) == index
+    except Exception:  # noqa: BLE001
+        selected = False
     op = cell.operator(
         "bname.layer_stack_multi_select",
         text=text or "",
-        emboss=False,
+        emboss=selected,
+        depress=selected,
     )
     op.index = index
 
@@ -583,52 +586,23 @@ def _draw_layer_stack_box(layout, context) -> None:
         info_row.operator(
             "bname.outliner_restore_view", text="", icon="LOOP_BACK"
         )
-        # UIList の高さを表示中アイテム数に合わせる。固定 rows だとアイテムが
-        # 少ないとき下端にダミー空行が並び「コマプレビュー周辺に空き行が出る」
-        # 見た目になっていた。filter 適用後の項目数を数えて rows を決める。
-        active_page_idx = int(getattr(work, "active_page_index", -1)) if work is not None else -1
-        active_page_key = ""
-        if work is not None and 0 <= active_page_idx < len(work.pages):
-            active_page_key = layer_stack_utils.page_stack_key(work.pages[active_page_idx])
-        visible_count = 0
-        if active_page_key:
-            for item in stack:
-                kind = getattr(item, "kind", "")
-                if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
-                    continue
-                if kind == "page":
-                    if str(getattr(item, "key", "") or "") == active_page_key:
-                        visible_count += 1
-                    continue
-                if layer_stack_utils._stack_item_page_key(item, context) == active_page_key:
-                    visible_count += 1
-        rows = max(1, min(visible_count, 30)) if visible_count else 1
-        row = box.row()
-        row.template_list(
-            BNAME_UL_layer_stack.bl_idname,
-            "",
-            scene,
-            "bname_layer_stack",
-            scene,
-            "bname_active_layer_stack_index",
-            rows=rows,
-            maxrows=30,
-            sort_lock=False,
-        )
-        col = row.column(align=True)
-        add_menu = col.operator("wm.call_menu", text="", icon="ADD")
+        list_col = box.column(align=True)
+        _draw_layer_stack_rows(list_col, context, stack)
+
+        tools = box.row(align=True)
+        add_menu = tools.operator("wm.call_menu", text="", icon="ADD")
         add_menu.name = "BNAME_MT_layer_stack_add"
-        col.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
-        col.operator("bname.layer_stack_link_selected", text="", icon="LINKED")
-        col.operator("bname.layer_stack_delete", text="", icon="REMOVE")
-        col.separator()
-        op = col.operator("bname.layer_stack_move", text="", icon="TRIA_UP_BAR")
+        tools.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
+        tools.operator("bname.layer_stack_link_selected", text="", icon="LINKED")
+        tools.operator("bname.layer_stack_delete", text="", icon="REMOVE")
+        tools.separator()
+        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_UP_BAR")
         op.direction = "FRONT"
-        op = col.operator("bname.layer_stack_move", text="", icon="TRIA_UP")
+        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_UP")
         op.direction = "UP"
-        op = col.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN")
+        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN")
         op.direction = "DOWN"
-        op = col.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
+        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
 
 
@@ -658,6 +632,60 @@ def _draw_layer_stack_context_menu(self, context) -> None:
     op.index = index
     op.uid = uid
     op.offset_from_selection = True
+
+
+def _visible_layer_stack_entries(context, stack) -> list[tuple[int, object]]:
+    work = get_work(context)
+    active_page_idx = int(getattr(work, "active_page_index", -1)) if work is not None else -1
+    active_page_key = ""
+    if work is not None and 0 <= active_page_idx < len(work.pages):
+        active_page_key = layer_stack_utils.page_stack_key(work.pages[active_page_idx])
+    if not active_page_key:
+        return []
+
+    entries: list[tuple[int, object]] = []
+    for index, item in enumerate(stack):
+        kind = getattr(item, "kind", "")
+        if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
+            continue
+        if kind == "page":
+            if str(getattr(item, "key", "") or "") == active_page_key:
+                entries.append((index, item))
+            continue
+        if layer_stack_utils._stack_item_page_key(item, context) == active_page_key:
+            entries.append((index, item))
+    return entries
+
+
+def _draw_layer_stack_rows(layout, context, stack) -> None:
+    entries = _visible_layer_stack_entries(context, stack)
+    if not entries:
+        layout.label(text="(レイヤーがありません)", icon="INFO")
+        return
+    for index, item in entries:
+        row = layout.row(align=True)
+        row.context_pointer_set("bname_layer_stack_item", item)
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        target = resolved.get("target") if resolved is not None else None
+        _draw_visibility_slot(row, item, target, index)
+        _draw_hierarchy_slot(row, item, target, index)
+        left = row.row(align=True)
+        left.alignment = "LEFT"
+        controls = {}
+        if item.kind == "outside_group":
+            _draw_stack_data_row(left, controls, item, resolved, index)
+        elif item.kind == "page":
+            _draw_stack_page_row(left, item, resolved, index, get_work(context))
+        elif item.kind == "coma":
+            _draw_stack_coma_row(left, controls, item, resolved, index)
+        elif item.kind in {"gp", "gp_folder", "effect"}:
+            _draw_stack_gp_row(left, controls, item, resolved, index)
+        else:
+            _draw_stack_data_row(left, controls, item, resolved, index)
+        if controls.get("gp_style") or controls.get("aux"):
+            right = row.row(align=True)
+            right.alignment = "RIGHT"
+            _draw_right_controls(right, controls, index)
 
 
 class BNAME_PT_layer_stack(Panel):
