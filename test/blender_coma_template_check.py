@@ -38,6 +38,8 @@ def _create_template(path: Path, marker_suffix: str = "") -> None:
     scene.render.film_transparent = True
     scene.render.resolution_x = 321
     scene.render.resolution_y = 123
+    if len(scene.view_layers) > 0:
+        scene.view_layers[0].name = "レイアウト"
 
     suffix = f"_{marker_suffix}" if marker_suffix else ""
     coll = bpy.data.collections.new(f"BNAME_TEMPLATE_MARKER_COLLECTION{suffix}")
@@ -45,6 +47,9 @@ def _create_template(path: Path, marker_suffix: str = "") -> None:
     view_layer_name = f"BNAME_TEMPLATE_MARKER_VIEW_LAYER{suffix}"
     if view_layer_name not in scene.view_layers:
         scene.view_layers.new(name=view_layer_name)
+    layout_view_layer = scene.view_layers.get("レイアウト")
+    if layout_view_layer is not None and bpy.context.window is not None:
+        bpy.context.window.view_layer = layout_view_layer
 
     mesh = bpy.data.meshes.new(f"BNAME_TEMPLATE_MARKER_MESH{suffix}")
     mesh.from_pydata(
@@ -102,6 +107,8 @@ def main() -> None:
         assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP") is not None
         assert bpy.context.scene.camera is not None
         assert bpy.context.scene.camera.data.type == "PANO"
+        assert bpy.context.scene.view_layers.get("コマ枠") is not None
+        assert bpy.context.view_layer.name == "レイアウト", bpy.context.view_layer.name
 
         result = bpy.ops.bname.exit_coma_mode()
         assert result == {"FINISHED"}, result

@@ -168,6 +168,82 @@ def _ensure_aov_on_view_layer(scene) -> None:
         aov.type = "COLOR"
 
 
+def _remember_active_view_layers(scene):
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is None:
+        return []
+    saved = []
+    for window in getattr(wm, "windows", []) or []:
+        try:
+            if getattr(window, "scene", None) is not scene:
+                continue
+            view_layer = getattr(window, "view_layer", None)
+            if view_layer is not None:
+                saved.append((window, view_layer.name))
+        except Exception:  # noqa: BLE001
+            continue
+    return saved
+
+
+def _restore_active_view_layers(scene, saved) -> None:
+    if scene is None:
+        return
+    for window, layer_name in saved:
+        try:
+            view_layer = scene.view_layers.get(layer_name)
+            if view_layer is not None:
+                window.view_layer = view_layer
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def preferred_user_view_layer_name(scene, layer_name: str = "") -> str:
+    """作業用の ``コマ枠`` ではなく、ユーザーが編集するビューレイヤー名を返す."""
+    if scene is None:
+        return ""
+    candidate = str(layer_name or "")
+    if (
+        candidate
+        and candidate != MASK_VIEW_LAYER_NAME
+        and scene.view_layers.get(candidate) is not None
+    ):
+        return candidate
+    if scene.view_layers.get("レイアウト") is not None:
+        return "レイアウト"
+    if candidate and scene.view_layers.get(candidate) is not None:
+        return candidate
+    first = scene.view_layers[0] if len(scene.view_layers) > 0 else None
+    return getattr(first, "name", "") if first is not None else ""
+
+
+def restore_preferred_user_view_layer(scene, layer_name: str = "") -> bool:
+    """指定名、または既定の編集用ビューレイヤーをアクティブに戻す."""
+    target_name = preferred_user_view_layer_name(scene, layer_name)
+    if not target_name:
+        return False
+    target = scene.view_layers.get(target_name)
+    if target is None:
+        return False
+
+    restored = False
+    wm = getattr(bpy.context, "window_manager", None)
+    for window in getattr(wm, "windows", []) or []:
+        try:
+            if getattr(window, "scene", None) is scene:
+                window.view_layer = target
+                restored = True
+        except Exception:  # noqa: BLE001
+            continue
+    try:
+        window = getattr(bpy.context, "window", None)
+        if window is not None and getattr(window, "scene", None) is scene:
+            window.view_layer = target
+            restored = True
+    except Exception:  # noqa: BLE001
+        pass
+    return restored
+
+
 def _ensure_mask_object(scene):
     """マスク用 Object を取得 (無ければ作成)."""
     obj = bpy.data.objects.get(MASK_OBJECT_NAME)
@@ -220,6 +296,7 @@ def ensure_coma_mask_mesh(scene, work, page_id: str, coma_id: str) -> bool:
     polygon = _coma_polygon_mm(panel)
     if not polygon:
         return False
+    active_view_layers = _remember_active_view_layers(scene)
     try:
         _ensure_aov_on_view_layer(scene)
         obj = _ensure_mask_object(scene)
@@ -241,6 +318,8 @@ def ensure_coma_mask_mesh(scene, work, page_id: str, coma_id: str) -> bool:
     except Exception:  # noqa: BLE001
         _logger.exception("ensure_coma_mask_mesh failed")
         return False
+    finally:
+        _restore_active_view_layers(scene, active_view_layers)
 
 
 def remove_coma_mask_mesh(scene) -> None:

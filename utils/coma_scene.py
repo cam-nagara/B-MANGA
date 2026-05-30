@@ -113,6 +113,7 @@ def bootstrap_new_coma_blend(
         return False
     if not _set_coma_scene_state(active_context, work, page_id, coma_id):
         return False
+    active_view_layer_name = _active_view_layer_name(_resolve_scene(active_context))
     prepare_coma_blend_scene(active_context, purge_orphans=template_path is None)
     try:
         from . import coma_camera
@@ -137,6 +138,10 @@ def bootstrap_new_coma_blend(
 
         coma_mask_object.ensure_coma_mask_mesh(
             bpy.context.scene, work, page_id, coma_id
+        )
+        coma_mask_object.restore_preferred_user_view_layer(
+            bpy.context.scene,
+            active_view_layer_name,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("bootstrap_new_coma_blend: coma mask mesh setup failed")
@@ -245,6 +250,22 @@ def prepare_coma_blend_scene(context, *, purge_orphans: bool = True) -> None:
 def _resolve_scene(context):
     scene = getattr(context, "scene", None) if context is not None else None
     return scene or bpy.context.scene
+
+
+def _active_view_layer_name(scene) -> str:
+    try:
+        window = getattr(bpy.context, "window", None)
+        if window is not None and getattr(window, "scene", None) is scene:
+            view_layer = getattr(window, "view_layer", None)
+            if view_layer is not None:
+                return str(getattr(view_layer, "name", "") or "")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        view_layer = getattr(bpy.context, "view_layer", None)
+        return str(getattr(view_layer, "name", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _coma_cleanup_roots(scene) -> list[object]:

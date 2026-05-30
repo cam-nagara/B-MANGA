@@ -2,42 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import bpy
 from bpy.types import Panel
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
-from ..utils import paths as _paths
 from ..utils import shortcut_visibility
 
 B_NAME_CATEGORY = "B-Name"
-
-
-def _current_blend_is_coma_blend() -> bool:
-    """現在開いている .blend が ``pNNNN/cNN/cNN.blend`` 形式なら True.
-
-    ``bname_mode`` / ``work.loaded`` が load_post の遅延や同期失敗で正しく
-    セットされない場合の救済用。ファイルパス自体から「コマ編集中」かを
-    判定して、ページ一覧へ戻る経路を必ず提供する。
-    """
-    fp = bpy.data.filepath
-    if not fp:
-        return False
-    try:
-        path = Path(fp).resolve()
-    except OSError:
-        return False
-    parts = path.parts
-    if len(parts) < 3:
-        return False
-    page_id, coma_id, fname = parts[-3], parts[-2], parts[-1]
-    return (
-        _paths.is_valid_page_id(page_id)
-        and _paths.is_valid_coma_id(coma_id)
-        and fname == f"{coma_id}.blend"
-    )
 
 
 class BNAME_PT_work(Panel):
@@ -130,7 +102,7 @@ class BNAME_PT_coma_return(Panel):
             return True
         # フォールバック: load_post の遅延等でモードが同期できなくても、
         # 開いている .blend のパスが cNN.blend ならパネルを表示する。
-        return _current_blend_is_coma_blend()
+        return shortcut_visibility.current_blend_is_coma_blend()
 
     def draw(self, context):
         shortcut_visibility.mark_bname_panel_drawn(context)
@@ -140,7 +112,6 @@ class BNAME_PT_coma_return(Panel):
             text="ページ一覧に戻る",
             icon="BACK",
         )
-        layout.prop(context.scene, "bname_interaction_enabled", text="B-Name操作")
         op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
         op.target = "COMA"
         layout.separator()

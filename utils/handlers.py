@@ -87,9 +87,45 @@ def _sync_active_from_blend_path(
         if hasattr(scene, "bname_active_layer_kind"):
             scene.bname_active_layer_kind = "coma"
         set_mode(MODE_COMA, bpy.context)
+        _disable_bname_shortcuts_for_coma_blend()
         return
 
     # それ以外 (未知のパス) は overview 扱いのまま触らない
+
+
+def _disable_bname_shortcuts_for_coma_blend() -> None:
+    """コマ用blendファイルではB-Name専用キーと起動中操作を残さない."""
+    try:
+        from ..keymap import keymap
+
+        keymap.force_shortcuts_disabled()
+    except Exception:  # noqa: BLE001
+        _logger.exception("load_post: disable B-Name shortcuts for coma blend failed")
+
+
+def _active_view_layer_name(scene) -> str:
+    try:
+        window = getattr(bpy.context, "window", None)
+        if window is not None and getattr(window, "scene", None) is scene:
+            view_layer = getattr(window, "view_layer", None)
+            if view_layer is not None:
+                return str(getattr(view_layer, "name", "") or "")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        view_layer = getattr(bpy.context, "view_layer", None)
+        return str(getattr(view_layer, "name", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _restore_coma_user_view_layer(scene, layer_name: str = "") -> None:
+    try:
+        from . import coma_mask_object
+
+        coma_mask_object.restore_preferred_user_view_layer(scene, layer_name)
+    except Exception:  # noqa: BLE001
+        _logger.exception("restore coma view layer failed")
 
 
 def _reload_all_pages_panels(work, work_dir: Path) -> None:
@@ -350,6 +386,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                 from . import coma_camera
                 from ..ui import overlay as _overlay
 
+                active_view_layer_name = _active_view_layer_name(scene)
                 coma_scene.prepare_coma_blend_scene(bpy.context)
                 # コマ用blendファイルの色管理はユーザーに委ねる
                 # (ここで Standard に戻さない)。
@@ -381,6 +418,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     _sidebar.schedule_open_bname_sidebar()
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: B-Name sidebar open failed")
+                _restore_coma_user_view_layer(scene, active_view_layer_name)
         except ValueError:
             pass
         _logger.info("B-Name: load_post synced for %s", blend_path)
@@ -409,6 +447,7 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
                     and paths.is_valid_coma_id(rel.parts[1])
                     and rel.parts[2] == f"{rel.parts[1]}.blend"
                 ):
+                    active_view_layer_name = _active_view_layer_name(bpy.context.scene)
                     from . import coma_thumb_output
 
                     coma_thumb_output.ensure_thumb_output_node(bpy.context.scene)
@@ -424,6 +463,10 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
                         )
                     except Exception:  # noqa: BLE001
                         _logger.exception("save_pre: coma mask mesh sync failed")
+                    _restore_coma_user_view_layer(
+                        bpy.context.scene,
+                        active_view_layer_name,
+                    )
         except Exception:  # noqa: BLE001
             _logger.exception("B-Name thumb output save_pre sync failed")
         try:

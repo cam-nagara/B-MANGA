@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import time
 
 import bpy
+
+from . import paths
 
 BNAME_PANEL_CATEGORY = "B-Name"
 PANEL_DRAW_GRACE_SECONDS = 0.35
@@ -119,12 +122,34 @@ def any_bname_panel_visible(context=None) -> bool:
     return False
 
 
+def current_blend_is_coma_blend() -> bool:
+    """現在の .blend が B-Name のコマ用blendファイルなら True."""
+    filepath = str(getattr(bpy.data, "filepath", "") or "")
+    if not filepath:
+        return False
+    try:
+        path = Path(filepath).resolve()
+    except OSError:
+        return False
+    parts = path.parts
+    if len(parts) < 3:
+        return False
+    page_id, coma_id, filename = parts[-3], parts[-2], parts[-1]
+    return (
+        paths.is_valid_page_id(page_id)
+        and paths.is_valid_coma_id(coma_id)
+        and filename == f"{coma_id}.blend"
+    )
+
+
 def shortcut_file_scope_allowed(context=None) -> bool:
     """ショートカットを実行してよい B-Name ファイル状態か返す."""
     try:
         from ..core.mode import MODE_PAGE, get_mode
         from ..core.work import get_work
 
+        if current_blend_is_coma_blend():
+            return False
         ctx = context or bpy.context
         work = get_work(ctx)
         if work is None or not bool(getattr(work, "loaded", False)):

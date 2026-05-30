@@ -20,6 +20,21 @@ class _PtrNamespace(SimpleNamespace):
         return self._ptr
 
 
+class _RecordingLayout:
+    def __init__(self, records: list[tuple[str, str, str]]) -> None:
+        self.records = records
+
+    def operator(self, op_id: str, text: str = "", **_kwargs):
+        self.records.append(("operator", op_id, text))
+        return SimpleNamespace()
+
+    def prop(self, _data, prop_name: str, text: str = "", **_kwargs) -> None:
+        self.records.append(("prop", prop_name, text))
+
+    def separator(self) -> None:
+        self.records.append(("separator", "", ""))
+
+
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
         "bname_dev_shortcut_visibility", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
@@ -45,6 +60,7 @@ def main() -> None:
     from bname_dev_shortcut_visibility.keymap import keymap as keymap_mod
     from bname_dev_shortcut_visibility.keymap import viewport_ops
     from bname_dev_shortcut_visibility.operators import coma_modal_state
+    from bname_dev_shortcut_visibility.panels import work_panel
     from bname_dev_shortcut_visibility.utils import page_browser, runtime_activity, shortcut_visibility
 
     work = bpy.context.scene.bname_work
@@ -206,6 +222,14 @@ def main() -> None:
         assert bool(conflict_kmi.active), "コマ用blendファイル扱いで他のショートカットが退避されています"
         assert not shortcut_visibility.shortcuts_allowed(bpy.context), (
             "コマ用blendファイル扱いでB-Nameショートカットの実行判定が有効です"
+        )
+        records: list[tuple[str, str, str]] = []
+        work_panel.BNAME_PT_coma_return.draw(
+            SimpleNamespace(layout=_RecordingLayout(records)),
+            bpy.context,
+        )
+        assert ("prop", "bname_interaction_enabled", "B-Name操作") not in records, (
+            "コマ用blendファイルのパネルにB-Name操作チェックボックスが残っています"
         )
 
         bpy.context.scene.bname_mode = "PAGE"

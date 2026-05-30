@@ -414,6 +414,9 @@ class BNAME_OT_enter_coma_mode(Operator):
         ctx.scene.bname_current_coma_page_id = page_id
         if hasattr(ctx.scene, "bname_active_layer_kind"):
             ctx.scene.bname_active_layer_kind = "coma"
+        active_view_layer_name = str(
+            getattr(getattr(ctx, "view_layer", None), "name", "") or ""
+        )
         try:
             from ..utils import coma_camera
 
@@ -425,6 +428,15 @@ class BNAME_OT_enter_coma_mode(Operator):
             )
         except Exception:  # noqa: BLE001
             _logger.exception("enter_coma_mode: final panel camera setup failed")
+        try:
+            from ..utils import coma_mask_object
+
+            coma_mask_object.restore_preferred_user_view_layer(
+                ctx.scene,
+                active_view_layer_name,
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("enter_coma_mode: restore view layer failed")
         try:
             from ..ui import sidebar as _sidebar
 
