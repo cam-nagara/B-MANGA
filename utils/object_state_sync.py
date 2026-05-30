@@ -1,0 +1,29 @@
+"""Write standard Blender object edits back to B-Name data when possible."""
+
+from __future__ import annotations
+
+import bpy
+
+from . import object_naming as on
+from . import object_preserve
+
+
+def sync_from_blender_object(scene: bpy.types.Scene, obj: bpy.types.Object | None) -> bool:
+    if scene is None or obj is None:
+        return False
+    if object_preserve.is_preserved(obj):
+        return False
+    kind = str(obj.get(on.PROP_KIND, "") or "")
+    if kind in {"image", "text"}:
+        from . import empty_layer_object
+
+        return empty_layer_object.sync_entry_position_from_object(scene, obj)
+    if kind == "balloon":
+        from . import balloon_object_writeback
+
+        return balloon_object_writeback.sync_entry_transform_from_object(scene, obj)
+    if kind.startswith("effect_"):
+        from . import effect_line_object
+
+        return effect_line_object.sync_controller_transform_from_display(obj)
+    return False

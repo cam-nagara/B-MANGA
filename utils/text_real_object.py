@@ -16,6 +16,7 @@ from . import free_transform
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import object_preserve
 from . import text_layout_bounds
 from . import text_style
 from .geom import Rect, mm_to_m, mm_to_px
@@ -445,10 +446,7 @@ def _remove_legacy_empty(text_id: str, keep_obj: Optional[bpy.types.Object] = No
     if obj is None or obj is keep_obj:
         return
     if obj.type == "EMPTY" or str(obj.get(on.PROP_ID, "") or "") == text_id:
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            _logger.exception("text real object: legacy empty removal failed")
+        object_preserve.preserve_object(obj, "古いテキスト実体を保持")
 
 
 def _remove_text_object(obj: bpy.types.Object) -> None:
@@ -478,7 +476,7 @@ def _remove_duplicate_text_objects(
         bid = str(obj.get(on.PROP_ID, "") or "")
         if bid not in expected_ids:
             continue
-        _remove_text_object(obj)
+        object_preserve.preserve_object(obj, "同じテキストの既存実体を保持")
 
 
 def _find_existing_text_object(full_id: str, text_id: str, obj_name: str) -> Optional[bpy.types.Object]:
@@ -488,11 +486,13 @@ def _find_existing_text_object(full_id: str, text_id: str, obj_name: str) -> Opt
         if legacy_obj is not None and legacy_obj.type == "MESH":
             obj = legacy_obj
         elif legacy_obj is not None:
-            _remove_text_object(legacy_obj)
+            object_preserve.preserve_object(legacy_obj, "古いテキスト実体を保持")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
+    if object_preserve.is_preserved(obj):
+        return None
     if obj is not None and obj.type != "MESH":
-        _remove_text_object(obj)
+        object_preserve.preserve_object(obj, "古いテキスト実体を保持")
         return None
     return obj
 
@@ -712,6 +712,8 @@ def remove_text_real_object(page_id: str, text_id: str) -> bool:
     removed = False
     full_id = text_object_bname_id_for_values(page_id, text_id)
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         if obj.get(on.PROP_KIND) != "text":
             continue
         if obj.get(on.PROP_ID) not in {full_id, text_id}:
@@ -745,6 +747,8 @@ def cleanup_orphan_text_objects(scene: bpy.types.Scene, work) -> int:
         valid_simple.add(str(getattr(entry, "id", "") or ""))
     removed = 0
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         if obj.get(on.PROP_KIND) != "text":
             continue
         bid = str(obj.get(on.PROP_ID, "") or "")
@@ -752,14 +756,8 @@ def cleanup_orphan_text_objects(scene: bpy.types.Scene, work) -> int:
             continue
         # 旧 Empty 方式は単独 ID なので、実体化後は全て置き換える。
         if bid in valid_simple or obj.name.startswith(TEXT_OBJECT_NAME_PREFIX):
-            data = obj.data
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-                removed += 1
-            except Exception:  # noqa: BLE001
-                pass
-            if data is not None and getattr(data, "users", 0) == 0:
-                _remove_mesh_or_curve_data(data)
+            object_preserve.preserve_object(obj, "作品データにないテキスト実体を保持")
+            removed += 1
     return removed
 
 

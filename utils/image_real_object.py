@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import math
 from pathlib import Path
 from typing import Optional
@@ -15,6 +16,7 @@ import bpy
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import object_preserve
 from . import percentage
 from .geom import mm_to_m
 
@@ -25,6 +27,21 @@ IMAGE_MESH_NAME_PREFIX = "image_mesh_"
 IMAGE_DATA_NAME_PREFIX = "bname_image_layer_"
 IMAGE_MATERIAL_NAME_PREFIX = "BName_Image_"
 IMAGE_Z_BASE = 300
+_AUTO_SYNC_SUSPEND_DEPTH = 0
+
+
+@contextmanager
+def suspend_auto_sync():
+    global _AUTO_SYNC_SUSPEND_DEPTH
+    _AUTO_SYNC_SUSPEND_DEPTH += 1
+    try:
+        yield
+    finally:
+        _AUTO_SYNC_SUSPEND_DEPTH = max(0, _AUTO_SYNC_SUSPEND_DEPTH - 1)
+
+
+def auto_sync_suspended() -> bool:
+    return _AUTO_SYNC_SUSPEND_DEPTH > 0
 
 
 def _safe_token(value: str) -> str:
@@ -377,8 +394,10 @@ def ensure_image_real_object(
     obj = on.find_object_by_bname_id(image_id, kind="image")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
+    if object_preserve.is_preserved(obj):
+        obj = None
     if obj is not None and obj.type != "MESH":
-        _remove_object(obj)
+        object_preserve.preserve_object(obj, "古い画像実体を保持")
         obj = None
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)
@@ -427,13 +446,31 @@ def cleanup_orphan_image_objects(scene: bpy.types.Scene) -> int:
     valid = {str(getattr(entry, "id", "") or "") for entry in coll or []}
     removed = 0
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         if obj.get(on.PROP_KIND) != "image":
             continue
         bid = str(obj.get(on.PROP_ID, "") or "")
         if bid in valid:
             continue
-        _remove_object(obj)
+        object_preserve.preserve_object(obj, "作品データにない画像実体を保持")
         removed += 1
+    return removed
+
+
+def remove_image_real_object(image_id: str) -> bool:
+    if not image_id:
+        return False
+    removed = False
+    for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
+        if obj.get(on.PROP_KIND) != "image":
+            continue
+        if str(obj.get(on.PROP_ID, "") or "") != image_id:
+            continue
+        _remove_object(obj)
+        removed = True
     return removed
 
 
@@ -457,6 +494,8 @@ def sync_all_image_real_objects(scene: bpy.types.Scene, work) -> int:
 
 
 def on_image_entry_changed(entry) -> bool:
+    if auto_sync_suspended():
+        return False
     scene = bpy.context.scene if bpy.context is not None else None
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:

@@ -3,6 +3,38 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — 既存実体の自動削除と標準編集の巻き戻りを防止 / v0.6.201
+
+### 症状
+- アドオンの更新や再有効化のタイミングで、古いB-Nameで作成されたフキダシ、効果線、テキストなどの実体が消える場合があった。
+- B-Nameをオフにした状態やBlender標準機能で実体を編集したあと、B-Nameをオンにすると編集結果が元に戻る場合があった。
+- 古いテキスト実体を含むファイルで、アドオンの再有効化時に不安定になる場合があった。
+
+### 原因
+- 互換性維持や再同期の処理で、古い形式・重複・作品データ側から見つからない実体を「不要」と判断して削除していた。
+- ページ一覧の再同期が、Blender標準機能で動かされた現在の位置・サイズ・角度を読む前に、B-Name側の保存値で上書きしていた。
+
+### 修正
+- 古い形式・重複・作品データ側から見つからないフキダシ、フキダシの塗り/線、効果線の補助実体、テキスト、画像を削除せず、保持対象として残すようにした。
+- 保持対象にした実体は自動同期から外し、現在のB-Nameレイヤーとは別のBlender実体として残すようにした。
+- フキダシ、効果線、テキスト、画像の位置・サイズ・角度をBlender標準機能で変更した場合、再同期前に現在の状態をB-Name側へ反映するようにした。
+- B-Name上で明示的にレイヤーを削除した場合だけ、現在管理中の実体を削除するように整理した。
+- 現在のフキダシ表示方式に合わせ、広い実体安全テストの古い前提を更新した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_object_preservation_check.py`: 古いフキダシ、型違いフキダシ、古いテキスト、古い平面方式、効果線補助実体の保持、保持対象の書き戻し抑止、明示削除、フキダシ/画像の標準編集反映を確認。PASS。
+- `test/blender_real_object_safety_check.py`: テキスト、画像、コマ枠、フキダシ、用紙などの実体が保存・再読込後も残ることを確認。PASS。
+- `test/blender_text_autofit_perf_check.py`: テキスト枠と軽量化の既存挙動を確認。PASS。
+- `test/blender_text_ime_runtime_check.py`: テキスト入力の既存挙動を確認。PASS。
+- `test/blender_layer_panel_page_list_check.py`: ページリスト/レイヤーリストの既存挙動を確認。PASS。
+- `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
+- `test/blender_active_stack_item_no_sync_check.py`: レイヤー選択読み取り時に同期が走らないことを確認。PASS。
+- `test/blender_object_free_transform_check.py`: フキダシ/テキスト/効果線の自由変形の既存挙動を確認。PASS。
+- `test/blender_effect_controller_gp_hidden_check.py`: 効果線の編集用実体が再描画ループを起こさないことを確認。PASS。
+- `test/blender_effect_start_frame_page_check.py`: 効果線のページ別補助実体とマスクの既存挙動を確認。PASS。
+- `python -m compileall -q operators utils core ui typography test`: PASS。
+- `python -m pytest test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: リポジトリ直下のアドオン入口ファイルをテストモジュールとして拾う既存の実行方法問題で収集時エラー。今回の修正由来ではないため、Blender実機テストで確認。
+
 ## 2026-05-31 — テキスト枠の余白と改行時の位置ずれ修正 / v0.6.200
 
 ### 症状

@@ -150,8 +150,8 @@ def detect_state(obj: bpy.types.Object | None) -> str:
         return STATE_FREEFORM
     base = _canonical_snapshot(_loads(obj.get(PROP_BASE_SNAPSHOT, "")))
     if base is None:
-        obj[PROP_SOURCE_STATE] = STATE_GENERATED
-        return STATE_GENERATED
+        obj[PROP_SOURCE_STATE] = STATE_FREEFORM
+        return STATE_FREEFORM
     if current == base:
         obj[PROP_SOURCE_STATE] = STATE_GENERATED
         return STATE_GENERATED

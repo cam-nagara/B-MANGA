@@ -18,6 +18,8 @@ from typing import Optional, Sequence
 
 import bpy
 
+from . import object_preserve
+
 from . import balloon_line_mesh
 from . import balloon_tail_geom
 from . import free_transform
@@ -73,6 +75,8 @@ def remove_balloon_fill_mesh(balloon_id: str) -> None:
     obj_name = _fill_mesh_object_name(balloon_id)
     obj = bpy.data.objects.get(obj_name)
     if obj is not None:
+        if object_preserve.is_preserved(obj):
+            return
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
@@ -90,16 +94,15 @@ def cleanup_orphan_fill_meshes(valid_balloon_ids: set[str]) -> int:
     """有効な balloon_id のセットに含まれない fill mesh オブジェクトを削除し件数を返す."""
     removed = 0
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         if obj.get(PROP_BALLOON_FILL_MESH_KIND) != _KIND_FILL:
             continue
         owner_id = str(obj.get(PROP_BALLOON_FILL_MESH_OWNER_ID, "") or "")
         if owner_id and owner_id in valid_balloon_ids:
             continue
         try:
-            mesh = obj.data
-            bpy.data.objects.remove(obj, do_unlink=True)
-            if mesh is not None and mesh.users == 0:
-                bpy.data.meshes.remove(mesh)
+            object_preserve.preserve_object(obj, "作品データにないフキダシ塗りメッシュを保持")
             removed += 1
         except Exception:  # noqa: BLE001
             pass
@@ -516,11 +519,10 @@ def _attach_fill_mesh_object(
 ) -> bpy.types.Object:
     """塗り面メッシュをフキダシ本体に親付けする (band mesh と同じパターン)."""
     obj = bpy.data.objects.get(obj_name)
+    if obj is not None and object_preserve.is_preserved(obj):
+        obj = None
     if obj is not None and getattr(obj, "type", "") != "MESH":
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            pass
+        object_preserve.preserve_object(obj, "古いフキダシ塗りメッシュを保持")
         obj = None
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)

@@ -22,6 +22,8 @@ from typing import Optional, Sequence
 
 import bpy
 
+from . import object_preserve
+
 from . import free_transform
 from . import balloon_shapes
 from . import log
@@ -2517,11 +2519,10 @@ def _attach_band_mesh_object(
     クリップ modifier があれば撤去する。
     """
     obj = bpy.data.objects.get(obj_name)
+    if obj is not None and object_preserve.is_preserved(obj):
+        obj = None
     if obj is not None and getattr(obj, "type", "") != "MESH":
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            pass
+        object_preserve.preserve_object(obj, "古いフキダシ線メッシュを保持")
         obj = None
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)
@@ -3275,6 +3276,8 @@ def remove_balloon_tail_main_line_mesh(balloon_id: str) -> None:
     obj_name = _tail_main_line_mesh_object_name(balloon_id)
     obj = bpy.data.objects.get(obj_name)
     if obj is not None:
+        if object_preserve.is_preserved(obj):
+            return
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
@@ -3511,6 +3514,8 @@ def _remove_named_band_mesh(obj_name: str) -> None:
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
         return
+    if object_preserve.is_preserved(obj):
+        return
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -3561,21 +3566,13 @@ def cleanup_orphan_line_meshes(valid_balloon_ids: set[str]) -> int:
     """主線・フチ・多重線の Mesh のうち、有効な balloon id を持たないものを撤去する."""
     removed = 0
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         kind = str(obj.get(PROP_BALLOON_LINE_MESH_KIND, "") or "")
         if kind not in _ALL_KINDS:
             continue
         owner_id = str(obj.get(PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
         if owner_id and owner_id not in valid_balloon_ids:
-            data = getattr(obj, "data", None)
-            try:
-                bpy.data.objects.remove(obj, do_unlink=True)
-            except Exception:  # noqa: BLE001
-                pass
-            if data is not None and getattr(data, "users", 0) == 0:
-                try:
-                    if isinstance(data, bpy.types.Mesh):
-                        bpy.data.meshes.remove(data)
-                except Exception:  # noqa: BLE001
-                    pass
+            object_preserve.preserve_object(obj, "作品データにないフキダシ線メッシュを保持")
             removed += 1
     return removed

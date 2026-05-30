@@ -226,6 +226,8 @@ def find_object_by_bname_id(bname_id: str, kind: str = "") -> Optional[bpy.types
             continue
         if kind and obj.get(PROP_KIND) != kind:
             continue
+        if bool(obj.get("bname_preserved_external_object", False)):
+            continue
         return obj
     return None
 

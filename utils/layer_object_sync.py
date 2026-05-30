@@ -451,6 +451,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     except Exception:  # noqa: BLE001
         pass
     with suppress_sync():
+        # 既存実体が Blender 標準機能で動かされていた場合は、B-Name 側の
+        # 同期で上書きする前に現在の状態を作品データへ反映する。
+        try:
+            from . import object_state_sync
+
+            for obj in bpy.data.objects:
+                object_state_sync.sync_from_blender_object(scene, obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror pre object state sync failed")
         om.ensure_root_collection(scene)
         om.ensure_outside_collection(scene)
         # 全テキストレイヤー集約用 Collection (B-Name 直下、最上位 z_index)

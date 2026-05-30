@@ -3259,7 +3259,14 @@ def delete_stack_index(context, index: int) -> bool:
         idx = int(resolved.get("index", -1))
         if coll is None or not (0 <= idx < len(coll)):
             return False
+        image_id = str(getattr(coll[idx], "id", "") or "")
         coll.remove(idx)
+        try:
+            from . import image_real_object
+
+            image_real_object.remove_image_real_object(image_id)
+        except Exception:  # noqa: BLE001
+            _logger.exception("delete image real object from layer stack failed")
         scene.bname_active_image_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
     elif kind == "raster":
         idx = int(resolved.get("index", -1))
@@ -3283,6 +3290,12 @@ def delete_stack_index(context, index: int) -> bool:
             for text in getattr(work, "shared_texts", []):
                 if text.parent_balloon_id == bid:
                     text.parent_balloon_id = ""
+            try:
+                from . import balloon_curve_object
+
+                balloon_curve_object.remove_balloon_objects_by_id(bid)
+            except Exception:  # noqa: BLE001
+                _logger.exception("delete shared balloon object from layer stack failed")
             coll.remove(idx)
         else:
             if not (0 <= idx < len(target_page.balloons)):
@@ -3291,6 +3304,12 @@ def delete_stack_index(context, index: int) -> bool:
             for text in target_page.texts:
                 if text.parent_balloon_id == bid:
                     text.parent_balloon_id = ""
+            try:
+                from . import balloon_curve_object
+
+                balloon_curve_object.remove_balloon_objects_by_id(bid)
+            except Exception:  # noqa: BLE001
+                _logger.exception("delete balloon object from layer stack failed")
             target_page.balloons.remove(idx)
             target_page.active_balloon_index = min(idx, len(target_page.balloons) - 1) if len(target_page.balloons) else -1
     elif kind == "text":

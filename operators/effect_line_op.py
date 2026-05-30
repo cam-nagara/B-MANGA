@@ -692,7 +692,7 @@ def _write_effect_strokes(
                 outline_mm=start_frame_outline,
             )
         else:
-            _elo.delete_effect_frame_source_object(obj)
+            _elo.preserve_effect_frame_source_object(obj)
         start_outline: list[tuple[float, float]] = []
         end_outline: list[tuple[float, float]] = []
         end_source = None
@@ -713,7 +713,7 @@ def _write_effect_strokes(
                     outline_mm=start_outline,
                 )
             else:
-                _elo.delete_effect_shape_source_object(obj, "start")
+                _elo.preserve_effect_shape_source_object(obj, "start")
             end_source = _elo.ensure_effect_shape_source_object(
                 scene=context.scene,
                 controller_obj=obj,
@@ -741,10 +741,10 @@ def _write_effect_strokes(
                     points_mm=density_points,
                 )
             else:
-                _elo.delete_effect_density_source_object(obj)
+                _elo.preserve_effect_density_source_object(obj)
         except Exception:  # noqa: BLE001
             _logger.exception("effect_line: density source sync failed")
-            _elo.delete_effect_density_source_object(obj)
+            _elo.preserve_effect_density_source_object(obj)
         values = _gn.effect_values(
             params,
             (float(x), float(y), w, h),

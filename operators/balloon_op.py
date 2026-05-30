@@ -639,6 +639,12 @@ def _delete_balloon_by_id(context, page_id: str, balloon_id: str) -> None:
         return
     for i, entry in enumerate(page.balloons):
         if getattr(entry, "id", "") == balloon_id:
+            try:
+                from ..utils import balloon_curve_object
+
+                balloon_curve_object.remove_balloon_objects_by_id(balloon_id)
+            except Exception:  # noqa: BLE001
+                _logger.exception("delete balloon object failed: %s", balloon_id)
             page.balloons.remove(i)
             page.active_balloon_index = min(i, len(page.balloons) - 1) if len(page.balloons) else -1
             layer_stack_utils.sync_layer_stack_after_data_change(context)
@@ -838,6 +844,12 @@ class BNAME_OT_balloon_remove(Operator):
         if not (0 <= idx < len(page.balloons)):
             return {"CANCELLED"}
         bid = page.balloons[idx].id
+        try:
+            from ..utils import balloon_curve_object
+
+            balloon_curve_object.remove_balloon_objects_by_id(bid)
+        except Exception:  # noqa: BLE001
+            _logger.exception("delete balloon object failed: %s", bid)
         # 子テキストの parent_balloon_id をクリア (孤立テキスト化)
         for txt in page.texts:
             if txt.parent_balloon_id == bid:

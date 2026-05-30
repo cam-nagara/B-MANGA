@@ -22,6 +22,7 @@ from . import layer_object_sync as los
 from . import log
 from . import material_opacity_mask
 from . import object_naming as on
+from . import object_preserve
 from . import percentage
 from .geom import Rect, mm_to_m
 
@@ -100,8 +101,10 @@ def _replace_object_with_curve(
     obj_name: str,
     curve: bpy.types.Curve,
 ) -> bpy.types.Object:
+    if object_preserve.is_preserved(obj):
+        obj = None
     if obj is not None and obj.type != "CURVE":
-        _remove_balloon_object(obj)
+        object_preserve.preserve_object(obj, "古いフキダシ実体を保持")
         obj = None
     if obj is None:
         obj = bpy.data.objects.new(obj_name, curve)
@@ -487,7 +490,7 @@ def _remove_duplicate_balloon_objects(
             continue
         if str(obj.get(on.PROP_ID, "") or "") != balloon_id:
             continue
-        _remove_balloon_object(obj)
+        object_preserve.preserve_object(obj, "同じフキダシの既存実体を保持")
 
 
 def _remove_legacy_balloon_fill_objects(balloon_id: str) -> None:
@@ -500,7 +503,7 @@ def _remove_legacy_balloon_fill_objects(balloon_id: str) -> None:
             and str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "") == balloon_id
         ):
             continue
-        _remove_balloon_object(obj)
+        object_preserve.preserve_object(obj, "古いフキダシ塗り実体を保持")
 
 
 def _remove_balloon_source_object(balloon_id: str) -> None:
@@ -513,7 +516,7 @@ def _remove_balloon_source_object(balloon_id: str) -> None:
             and str(obj.get(PROP_BALLOON_SOURCE_OWNER_ID, "") or "") == balloon_id
         ):
             continue
-        _remove_balloon_object(obj)
+        object_preserve.preserve_object(obj, "古いフキダシ形状実体を保持")
 
 
 def _tag_curve_object_updated(obj: bpy.types.Object | None) -> None:
@@ -631,6 +634,7 @@ def _sync_generated_shape_if_needed(
         return
     can_rebuild = (
         force_regenerate
+        or not obj.data.splines
         or source_state == balloon_curve_source_state.STATE_GENERATED
         or (source_state == balloon_curve_source_state.STATE_MANUAL and preserve_manual_delta)
     )
@@ -948,12 +952,7 @@ def _remove_balloon_clip_mask(balloon_id: str) -> None:
             and str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "") == balloon_id
         ):
             continue
-        data = getattr(obj, "data", None)
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-        except Exception:  # noqa: BLE001
-            pass
-        _remove_unused_data_block(data)
+        object_preserve.preserve_object(obj, "古いフキダシマスク実体を保持")
 
 
 def _set_data_materials(data, materials: Sequence[bpy.types.Material | None]) -> None:
@@ -1385,36 +1384,58 @@ def cleanup_orphan_balloon_objects(scene) -> int:
             valid.add(entry_id)
     removed = 0
     for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
         if obj.get(on.PROP_KIND) == "balloon":
             balloon_id = str(obj.get(on.PROP_ID, "") or "")
             if balloon_id and balloon_id not in valid:
-                _remove_balloon_object(obj)
+                object_preserve.preserve_object(obj, "作品データにないフキダシ実体を保持")
                 removed += 1
             continue
         if obj.get(PROP_BALLOON_FILL_KIND) == "balloon_fill":
             owner_id = str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "")
             if owner_id and owner_id not in valid:
-                _remove_balloon_object(obj)
+                object_preserve.preserve_object(obj, "作品データにないフキダシ塗り実体を保持")
                 removed += 1
             continue
         if obj.get(PROP_BALLOON_SOURCE_KIND) == "geometry_source":
             owner_id = str(obj.get(PROP_BALLOON_SOURCE_OWNER_ID, "") or "")
             if owner_id and owner_id not in valid:
-                _remove_balloon_object(obj)
+                object_preserve.preserve_object(obj, "作品データにないフキダシ形状実体を保持")
                 removed += 1
             continue
         if obj.get(PROP_BALLOON_CLIP_MASK_KIND) == "coma_clip":
             owner_id = str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "")
             if owner_id and owner_id not in valid:
-                data = getattr(obj, "data", None)
-                try:
-                    bpy.data.objects.remove(obj, do_unlink=True)
-                except Exception:  # noqa: BLE001
-                    pass
-                _remove_unused_data_block(data)
+                object_preserve.preserve_object(obj, "作品データにないフキダシマスク実体を保持")
                 removed += 1
     removed += balloon_line_mesh.cleanup_orphan_line_meshes(valid)
     removed += balloon_fill_mesh.cleanup_orphan_fill_meshes(valid)
+    return removed
+
+
+def remove_balloon_objects_by_id(balloon_id: str) -> bool:
+    """Explicit user delete path for a balloon and its generated display meshes."""
+    if not balloon_id:
+        return False
+    removed = False
+    for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
+        if obj.get(on.PROP_KIND) == "balloon" and str(obj.get(on.PROP_ID, "") or "") == balloon_id:
+            _remove_balloon_object(obj)
+            removed = True
+        elif obj.get(PROP_BALLOON_FILL_KIND) == "balloon_fill" and str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "") == balloon_id:
+            _remove_balloon_object(obj)
+            removed = True
+        elif obj.get(PROP_BALLOON_SOURCE_KIND) == "geometry_source" and str(obj.get(PROP_BALLOON_SOURCE_OWNER_ID, "") or "") == balloon_id:
+            _remove_balloon_object(obj)
+            removed = True
+        elif obj.get(PROP_BALLOON_CLIP_MASK_KIND) == "coma_clip" and str(obj.get(PROP_BALLOON_CLIP_MASK_OWNER_ID, "") or "") == balloon_id:
+            _remove_balloon_object(obj)
+            removed = True
+    balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
+    balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     return removed
 
 

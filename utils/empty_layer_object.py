@@ -16,6 +16,7 @@ PNG / PSD 出力結果には影響しない。
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import bpy
@@ -23,6 +24,7 @@ import bpy
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import object_preserve
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -170,56 +172,21 @@ def ensure_text_empty_object(
 
 
 def cleanup_legacy_plane_objects() -> int:
-    """旧 Plane 方式 (text_plane_*, image_plane_*) の Object と関連データを削除.
+    """旧 Plane 方式 (text_plane_*, image_plane_*) の Object を保持対象にする.
 
-    Empty Object 化への移行で残された Mesh + Material + Image データブロックも
-    掃除する。戻り値は削除した Object 数。
+    古いファイルを開いた時やアドオンを再有効化した時に、実体を消さず
+    B-Name の自動同期対象からだけ外す。戻り値は保持対象にした Object 数。
     """
     removed = 0
     legacy_obj_prefixes = ("text_plane_", "image_plane_", "balloon_plane_")
-    legacy_mesh_prefixes = ("text_mesh_", "image_mesh_", "balloon_mesh_")
-    legacy_mat_prefixes = ("text_mat_", "image_mat_", "balloon_mat_")
-    legacy_image_prefixes = ("BNameText_placeholder_", "BNameBalloon_placeholder_")
 
     for obj in list(bpy.data.objects):
         if any(obj.name.startswith(p) for p in legacy_obj_prefixes):
             try:
-                obj_data = obj.data
-                bpy.data.objects.remove(obj, do_unlink=True)
-                removed += 1
-                if obj_data is not None and getattr(obj_data, "users", 1) == 0:
-                    if isinstance(obj_data, bpy.types.Mesh):
-                        try:
-                            bpy.data.meshes.remove(obj_data)
-                        except Exception:  # noqa: BLE001
-                            pass
+                if object_preserve.preserve_object(obj, "古いテキスト・画像・フキダシ実体を保持"):
+                    removed += 1
             except Exception:  # noqa: BLE001
-                _logger.exception("legacy plane removal failed: %s", obj.name)
-
-    # orphan Mesh データを掃除
-    for mesh in list(bpy.data.meshes):
-        if any(mesh.name.startswith(p) for p in legacy_mesh_prefixes):
-            if getattr(mesh, "users", 1) == 0:
-                try:
-                    bpy.data.meshes.remove(mesh)
-                except Exception:  # noqa: BLE001
-                    pass
-
-    # 旧 placeholder Image / Material も掃除 (user=0 のもののみ)
-    for mat in list(bpy.data.materials):
-        if any(mat.name.startswith(p) for p in legacy_mat_prefixes):
-            if getattr(mat, "users", 1) == 0:
-                try:
-                    bpy.data.materials.remove(mat)
-                except Exception:  # noqa: BLE001
-                    pass
-    for img in list(bpy.data.images):
-        if any(img.name.startswith(p) for p in legacy_image_prefixes):
-            if getattr(img, "users", 1) == 0:
-                try:
-                    bpy.data.images.remove(img)
-                except Exception:  # noqa: BLE001
-                    pass
+                _logger.exception("legacy plane preserve failed: %s", obj.name)
 
     return removed
 
@@ -277,15 +244,29 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         entry = find_image_entry(scene, bname_id)
         if entry is None:
             return False
+        page = None
         try:
             work = getattr(scene, "bname_work", None)
             from . import image_real_object
 
+            page = image_real_object.page_for_entry(scene, work, entry)
             ox_mm, oy_mm = image_real_object.entry_page_offset_mm(scene, work, entry)
-            new_x_mm -= ox_mm + float(getattr(entry, "width_mm", 0.0) or 0.0) * 0.5
-            new_y_mm -= oy_mm + float(getattr(entry, "height_mm", 0.0) or 0.0) * 0.5
+            old_w = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
+            old_h = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
+            sx = float(getattr(obj.scale, "x", 1.0) or 1.0)
+            sy = float(getattr(obj.scale, "y", 1.0) or 1.0)
+            new_w = max(0.1, old_w * max(1.0e-6, abs(sx)))
+            new_h = max(0.1, old_h * max(1.0e-6, abs(sy)))
+            new_x_mm -= ox_mm + new_w * 0.5
+            new_y_mm -= oy_mm + new_h * 0.5
+            new_rotation = math.degrees(float(obj.rotation_euler[2]))
         except Exception:  # noqa: BLE001
-            pass
+            page = None
+            old_w = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
+            old_h = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
+            new_w = old_w
+            new_h = old_h
+            new_rotation = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
     else:  # text
         page, entry = find_text_entry(scene, bname_id)
         if entry is None:
@@ -293,15 +274,54 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         ox_mm, oy_mm = _resolve_page_offset(scene, page)
         new_x_mm -= ox_mm
         new_y_mm -= oy_mm
+        old_w = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
+        old_h = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
+        sx = float(getattr(obj.scale, "x", 1.0) or 1.0)
+        sy = float(getattr(obj.scale, "y", 1.0) or 1.0)
+        new_w = max(0.1, old_w * max(1.0e-6, abs(sx)))
+        new_h = max(0.1, old_h * max(1.0e-6, abs(sy)))
+        new_rotation = 0.0
 
     cur_x = float(getattr(entry, "x_mm", 0.0) or 0.0)
     cur_y = float(getattr(entry, "y_mm", 0.0) or 0.0)
-    if abs(cur_x - new_x_mm) < 1e-4 and abs(cur_y - new_y_mm) < 1e-4:
+    cur_w = float(getattr(entry, "width_mm", 0.0) or 0.0)
+    cur_h = float(getattr(entry, "height_mm", 0.0) or 0.0)
+    cur_rot = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+    if (
+        abs(cur_x - new_x_mm) < 1e-4
+        and abs(cur_y - new_y_mm) < 1e-4
+        and abs(cur_w - new_w) < 1e-4
+        and abs(cur_h - new_h) < 1e-4
+        and (kind != "image" or abs(cur_rot - new_rotation) < 1e-4)
+    ):
         return False
     with los.suppress_sync():
         try:
-            entry.x_mm = new_x_mm
-            entry.y_mm = new_y_mm
+            if kind == "image":
+                from . import image_real_object
+
+                with image_real_object.suspend_auto_sync():
+                    entry.x_mm = new_x_mm
+                    entry.y_mm = new_y_mm
+                    entry.width_mm = new_w
+                    entry.height_mm = new_h
+                    entry.rotation_deg = new_rotation
+                obj.scale.x = -1.0 if float(getattr(obj.scale, "x", 1.0) or 1.0) < 0.0 else 1.0
+                obj.scale.y = -1.0 if float(getattr(obj.scale, "y", 1.0) or 1.0) < 0.0 else 1.0
+                obj.scale.z = 1.0
+                image_real_object.ensure_image_real_object(scene=scene, entry=entry, page=page)
+            else:
+                from . import text_real_object
+
+                with text_real_object.suspend_auto_sync():
+                    entry.x_mm = new_x_mm
+                    entry.y_mm = new_y_mm
+                    entry.width_mm = new_w
+                    entry.height_mm = new_h
+                obj.scale.x = -1.0 if float(getattr(obj.scale, "x", 1.0) or 1.0) < 0.0 else 1.0
+                obj.scale.y = -1.0 if float(getattr(obj.scale, "y", 1.0) or 1.0) < 0.0 else 1.0
+                obj.scale.z = 1.0
+                text_real_object.ensure_text_real_object(scene=scene, entry=entry, page=page)
         except Exception:  # noqa: BLE001
             _logger.exception("sync entry position failed: %s", bname_id)
             return False

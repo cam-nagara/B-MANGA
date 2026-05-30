@@ -338,14 +338,12 @@ def _scan_once() -> float | None:
         # Empty Object (image/text) の location 変化を entry.x_mm/y_mm に
         # 書戻し (オーバーレイ描画位置に連動)
         try:
-            from . import empty_layer_object as elo
+            from . import object_state_sync
 
-            for obj in on.iter_managed_objects():
-                k = on.get_kind(obj)
-                if k in {"image", "text"}:
-                    elo.sync_entry_position_from_object(scene, obj)
+            for obj in bpy.data.objects:
+                object_state_sync.sync_from_blender_object(scene, obj)
         except Exception:  # noqa: BLE001
-            _logger.exception("empty location → entry sync failed")
+            _logger.exception("Blender object state → entry sync failed")
     except Exception:  # noqa: BLE001
         _logger.exception("outliner watch scan failed")
     return SCAN_INTERVAL_SECONDS
@@ -386,7 +384,7 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
     if scene is None:
         return
     try:
-        from . import empty_layer_object as elo
+        from . import object_state_sync
 
         for update in depsgraph.updates:
             if not update.is_updated_transform:
@@ -394,15 +392,15 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
             obj_id = update.id
             if not isinstance(obj_id, bpy.types.Object):
                 continue
-            if obj_id.get("bname_kind") not in {"image", "text"}:
+            if not str(obj_id.get("bname_kind", "") or ""):
                 continue
             # 名前で生 Object を引き直す (depsgraph の id は eval 版の場合あり)
             real_obj = bpy.data.objects.get(obj_id.name)
             if real_obj is None:
                 continue
-            elo.sync_entry_position_from_object(scene, real_obj)
+            object_state_sync.sync_from_blender_object(scene, real_obj)
     except Exception:  # noqa: BLE001
-        _logger.exception("depsgraph_update_post empty sync failed")
+        _logger.exception("depsgraph_update_post object state sync failed")
 
     # Collection 移動の即時検出 → mask 自動追従
     try:

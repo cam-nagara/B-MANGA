@@ -16,6 +16,7 @@ from . import layer_object_sync as los
 from . import log
 from . import material_opacity_mask
 from . import object_naming as on
+from . import object_preserve
 from . import percentage
 from .geom import mm_to_m
 
@@ -160,6 +161,8 @@ def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optio
     if not controller_id:
         return None
     for obj in bpy.data.objects:
+        if object_preserve.is_preserved(obj):
+            continue
         if str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id:
             return obj
     return None
@@ -175,6 +178,8 @@ def find_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> 
     if not controller_id:
         return None
     for obj in bpy.data.objects:
+        if object_preserve.is_preserved(obj):
+            continue
         if str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_FRAME_SOURCE_KIND:
             return obj
     return None
@@ -194,6 +199,8 @@ def find_effect_shape_source_object(
         return None
     role = str(role or "")
     for obj in bpy.data.objects:
+        if object_preserve.is_preserved(obj):
+            continue
         if (
             str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id
             and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_SHAPE_SOURCE_KIND
@@ -213,6 +220,8 @@ def find_effect_density_source_object(controller_obj: bpy.types.Object | None) -
     if not controller_id:
         return None
     for obj in bpy.data.objects:
+        if object_preserve.is_preserved(obj):
+            continue
         if str(obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "") == controller_id and str(obj.get(on.PROP_KIND, "") or "") == EFFECT_DENSITY_SOURCE_KIND:
             return obj
     return None
@@ -246,6 +255,27 @@ def delete_effect_shape_source_object(controller_obj: bpy.types.Object | None, r
 
 def delete_effect_density_source_object(controller_obj: bpy.types.Object | None) -> None:
     _delete_source_object(find_effect_density_source_object(controller_obj))
+
+
+def preserve_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> bool:
+    return object_preserve.preserve_object(
+        find_effect_frame_source_object(controller_obj),
+        "効果線の古い始点コマ枠実体を保持",
+    )
+
+
+def preserve_effect_shape_source_object(controller_obj: bpy.types.Object | None, role: str) -> bool:
+    return object_preserve.preserve_object(
+        find_effect_shape_source_object(controller_obj, role),
+        "効果線の古い始終点形状実体を保持",
+    )
+
+
+def preserve_effect_density_source_object(controller_obj: bpy.types.Object | None) -> bool:
+    return object_preserve.preserve_object(
+        find_effect_density_source_object(controller_obj),
+        "効果線の古い距離密度実体を保持",
+    )
 
 
 def delete_effect_display_object(controller_obj: bpy.types.Object | None) -> None:
@@ -529,7 +559,7 @@ def ensure_effect_frame_source_object(
     outline_mm,
 ) -> Optional[bpy.types.Object]:
     if scene is None or controller_obj is None or not outline_mm:
-        delete_effect_frame_source_object(controller_obj)
+        preserve_effect_frame_source_object(controller_obj)
         return None
     source_id = _frame_source_bname_id(controller_obj)
     if not source_id:
@@ -585,7 +615,7 @@ def ensure_effect_shape_source_object(
     outline_mm,
 ) -> Optional[bpy.types.Object]:
     if scene is None or controller_obj is None or not outline_mm:
-        delete_effect_shape_source_object(controller_obj, role)
+        preserve_effect_shape_source_object(controller_obj, role)
         return None
     source_id = _shape_source_bname_id(controller_obj, role)
     if not source_id:
@@ -643,7 +673,7 @@ def ensure_effect_density_source_object(
     points_mm,
 ) -> Optional[bpy.types.Object]:
     if scene is None or controller_obj is None or not points_mm:
-        delete_effect_density_source_object(controller_obj)
+        preserve_effect_density_source_object(controller_obj)
         return None
     source_id = _density_source_bname_id(controller_obj)
     if not source_id:
@@ -1002,6 +1032,39 @@ def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> No
             density_source.scale = tuple(controller_obj.scale)
         except Exception:  # noqa: BLE001
             pass
+
+
+def sync_controller_transform_from_display(display_obj: bpy.types.Object | None) -> bool:
+    """Reflect standard Blender transform edits on effect helper objects to controller."""
+    if display_obj is None:
+        return False
+    kind = str(display_obj.get(on.PROP_KIND, "") or "")
+    if kind not in {
+        EFFECT_DISPLAY_KIND,
+        EFFECT_FRAME_SOURCE_KIND,
+        EFFECT_SHAPE_SOURCE_KIND,
+        EFFECT_DENSITY_SOURCE_KIND,
+    }:
+        return False
+    controller_id = str(display_obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "")
+    if not controller_id:
+        return False
+    controller = on.find_object_by_bname_id(controller_id, kind="effect")
+    if controller is None:
+        return False
+    changed = (
+        tuple(controller.location) != tuple(display_obj.location)
+        or tuple(controller.rotation_euler) != tuple(display_obj.rotation_euler)
+        or tuple(controller.scale) != tuple(display_obj.scale)
+    )
+    if not changed:
+        return False
+    with los.suppress_sync():
+        controller.location = tuple(display_obj.location)
+        controller.rotation_euler = tuple(display_obj.rotation_euler)
+        controller.scale = tuple(display_obj.scale)
+    sync_effect_display_transform(controller)
+    return True
 
 
 def create_effect_line_object(
