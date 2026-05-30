@@ -257,6 +257,27 @@ class BNAME_OT_enter_coma_mode(Operator):
         ):
             self.report({"WARNING"}, "編集対象のコマが選択されていません")
             return {"CANCELLED"}
+
+        try:
+            from ..utils import data_name_organizer
+
+            organize_result = data_name_organizer.organize_data_names(context)
+            if organize_result.changed:
+                self.report({"INFO"}, organize_result.summary)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("enter_coma_mode: data name organize failed")
+            self.report({"ERROR"}, f"実データ名の整理に失敗しました: {exc}")
+            return {"CANCELLED"}
+
+        work = get_work(context)
+        page = get_active_page(context)
+        if (
+            work is None
+            or page is None
+            or not (0 <= page.active_coma_index < len(page.comas))
+        ):
+            self.report({"WARNING"}, "編集対象のコマが選択されていません")
+            return {"CANCELLED"}
         entry = page.comas[page.active_coma_index]
         # BNameComaEntry は ``id`` と ``coma_id`` の 2 フィールドを持つ。
         # 旧コード/移行データでは coma_id が空のまま id だけ設定される

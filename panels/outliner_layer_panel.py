@@ -48,6 +48,7 @@ class BNAME_PT_outliner_layers(Panel):
         col.operator(
             "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
         )
+        col.operator("bname.organize_data_names", icon="FILE_REFRESH")
 
 
 _CLASSES = (BNAME_PT_outliner_layers,)
