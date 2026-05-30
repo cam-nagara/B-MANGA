@@ -136,6 +136,11 @@ def set_active_stack_index_silently(context, index: int) -> None:
     scene = getattr(context, "scene", None)
     if scene is None or not hasattr(scene, "bname_active_layer_stack_index"):
         return
+    # 同値なら代入しない。無条件代入は Scene を更新済み扱いにして depsgraph_update を
+    # 発火させ、描画コールバック経由の sync_layer_stack 呼び出しで無限再描画ループに
+    # なる (細線のちらつきの原因)。
+    if int(getattr(scene, "bname_active_layer_stack_index", -1)) == int(index):
+        return
     core_layer_stack = None
     try:
         from ..core import layer_stack as core_layer_stack
@@ -813,12 +818,22 @@ def collect_targets(context) -> list[LayerTarget]:
 
 
 def _set_item_from_target(item, target: LayerTarget) -> None:
-    item.kind = target.kind
-    item.name = target.label
-    item.key = target.key
-    item.label = target.label
-    item.parent_key = target.parent_key
-    item.depth = target.depth
+    # 既存値と同じなら代入しない。同値でも代入すると Scene が更新済み扱いになり、
+    # depsgraph_update が発火する。sync_layer_stack はビューポート描画コールバック
+    # からも毎フレーム呼ばれるため、無条件代入だと「描画→更新→再描画」の無限ループに
+    # なり、用紙ガイド線などの細線がちらつく。変化がある項目だけ書き込む。
+    if item.kind != target.kind:
+        item.kind = target.kind
+    if item.name != target.label:
+        item.name = target.label
+    if item.key != target.key:
+        item.key = target.key
+    if item.label != target.label:
+        item.label = target.label
+    if item.parent_key != target.parent_key:
+        item.parent_key = target.parent_key
+    if item.depth != target.depth:
+        item.depth = target.depth
 
 
 def _find_insert_index_for_target(stack, target: LayerTarget) -> int:

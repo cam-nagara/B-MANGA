@@ -69,8 +69,15 @@ def _apply() -> None:
     ]
     cur_overview = bool(getattr(scene, "bname_overview_mode", False))
     if camera_items:
-        if _PREV_OVERVIEW is None:
-            _PREV_OVERVIEW = cur_overview
+        if _PREV_OVERVIEW is not None:
+            # カメラビューへの一覧フィットは既に適用済み。ここで再適用すると
+            # rv3d.view_perspective / view_camera_zoom / scene.camera 等を毎回
+            # 書き戻し、購読中の view_perspective msgbus を自分で再発火させて
+            # 「適用→通知→適用」の無限ループ (連続再描画) になる。これがビュー
+            # ポートの TAA を settle させず用紙ガイド線などの細線をちらつかせる。
+            # フィットはカメラビューへ切り替えた瞬間に一度だけ行えば十分。
+            return
+        _PREV_OVERVIEW = cur_overview
         try:
             from . import overview_camera
 
