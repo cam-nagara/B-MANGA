@@ -1581,6 +1581,16 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
     except Exception:  # noqa: BLE001
         scene_key = id(scene)
     signature = _stack_signature(scene)
+    try:
+        from . import layer_stack_visible
+
+        visible_current = layer_stack_visible.visible_layer_stack_is_current(
+            context,
+            stack,
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("visible layer stack freshness check failed")
+        visible_current = True
     if _stack_has_placeholder_rows(stack):
         # 同じ placeholder 状態を毎 draw で再 sync すると、sync タイマーが
         # tag_view3d_redraw を繰り返すためパネルを開いている間ずっとビューポートが
@@ -1589,6 +1599,10 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
         # しない (解消可能なら signature が変わり、その時に再度 sync される)。
         if _draw_stack_signatures.get(scene_key) == signature:
             return False
+        _draw_stack_signatures[scene_key] = signature
+        schedule_layer_stack_sync()
+        return True
+    if not visible_current:
         _draw_stack_signatures[scene_key] = signature
         schedule_layer_stack_sync()
         return True

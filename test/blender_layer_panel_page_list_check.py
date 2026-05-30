@@ -75,6 +75,14 @@ def _assert_layer_list_page(context, expected_page_key: str) -> None:
         raise AssertionError("レイヤー一覧の選択が選択ページ内の行へ反映されていません")
 
 
+def _visible_collection_parent_keys(context) -> list[str]:
+    return [
+        str(getattr(item, "parent_key", "") or "")
+        for item in getattr(context.scene, "bname_layer_stack_visible", [])
+        if str(getattr(item, "kind", "") or "") == "coma"
+    ]
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_page_list_"))
     mod = None
@@ -102,6 +110,20 @@ def main() -> None:
 
         assert "FINISHED" in bpy.ops.bname.page_select("EXEC_DEFAULT", index=0)
         _assert_layer_list_page(context, page_stack_key(work.pages[0]))
+
+        from bname_dev_page_list.utils import layer_stack as layer_stack_utils
+
+        page0_key = page_stack_key(work.pages[0])
+        page1_key = page_stack_key(work.pages[1])
+        work.active_page_index = 1
+        if page1_key in _visible_collection_parent_keys(context):
+            raise AssertionError("直接ページ切替前から表示用レイヤー一覧が更新されています")
+        if not layer_stack_utils.schedule_layer_stack_draw_maintenance(context):
+            raise AssertionError("直接ページ切替後のレイヤー一覧更新が予約されません")
+        layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        if page1_key not in _visible_collection_parent_keys(context):
+            raise AssertionError("直接ページ切替後に表示用レイヤー一覧が更新されません")
+        assert page0_key not in _visible_collection_parent_keys(context)
 
         assert "FINISHED" in bpy.ops.bname.page_select("EXEC_DEFAULT", index=1)
         _assert_layer_list_page(context, page_stack_key(work.pages[1]))

@@ -101,6 +101,27 @@ def visible_layer_stack_entries(context, stack=None) -> list[tuple[int, object]]
     return entries
 
 
+def visible_layer_stack_signature(context, stack=None) -> tuple[str, ...]:
+    return tuple(_stack_item_uid(item) for _index, item in visible_layer_stack_entries(context, stack))
+
+
+def current_visible_layer_stack_signature(scene) -> tuple[str, ...]:
+    visible = getattr(scene, "bname_layer_stack_visible", None)
+    if visible is None:
+        return ()
+    return tuple(_stack_item_uid(item) for item in visible)
+
+
+def visible_layer_stack_is_current(context, stack=None) -> bool:
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return True
+    return current_visible_layer_stack_signature(scene) == visible_layer_stack_signature(
+        context,
+        stack,
+    )
+
+
 def set_active_visible_stack_index_silently(context, index: int) -> None:
     scene = getattr(context, "scene", None)
     if scene is None or not hasattr(scene, "bname_active_layer_stack_visible_index"):
