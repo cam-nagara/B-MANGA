@@ -1,7 +1,7 @@
 """コマエントリ (ComaEntry) PropertyGroup.
 
 page.json のコマリストに対応。cNN.blend の実体本体は Blender API
-側で管理し、ここではメタデータ (形状/Z順序/枠線/白フチ/リンク参照等) を
+側で管理し、ここではメタデータ (形状/Z順序/枠線/フチ/リンク参照等) を
 保持する。
 
 計画書 3.2.5 / 4.7 参照。
@@ -203,8 +203,8 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         default=0,
     )
     overlap_clipping: BoolProperty(  # type: ignore[valid-type]
-        name="自動くり抜き",
-        description="手前コマが重なる範囲を自動的にくり抜く",
+        name="重なり処理",
+        description="手前のコマが重なる範囲を処理する",
         default=True,
     )
     visible: BoolProperty(  # type: ignore[valid-type]
@@ -214,8 +214,8 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         update=_on_coma_visible_changed,
     )
     paper_visible: BoolProperty(  # type: ignore[valid-type]
-        name="用紙",
-        description="このコマの用紙面を表示する",
+        name="背景",
+        description="このコマの背景面を表示する",
         default=True,
         update=_on_coma_paper_visible_changed,
     )
@@ -226,7 +226,7 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     )
     background_color: FloatVectorProperty(  # type: ignore[valid-type]
         name="背景色",
-        description="コマ内側に敷く背景色 (用紙色を初期値とする)。alpha=0 でも mask 用 Mesh は opaque 表示",
+        description="コマ内側に敷く背景色",
         subtype="COLOR",
         size=4,
         default=(1.0, 1.0, 1.0, 1.0),
@@ -235,21 +235,21 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         update=_on_coma_background_color_changed,
     )
 
-    # --- 枠線・白フチ ---
+    # --- 枠線・フチ ---
     border: PointerProperty(type=BNameComaBorder)  # type: ignore[valid-type]
     white_margin: PointerProperty(type=BNameComaWhiteMargin)  # type: ignore[valid-type]
 
     # --- 紐づけ ---
     layer_refs: CollectionProperty(type=BNameLayerRef)  # type: ignore[valid-type]
     coma_gap_vertical_mm: FloatProperty(  # type: ignore[valid-type]
-        name="上下スキマ (個別)",
+        name="上下スキマ",
         default=-1.0,
-        description="負値で作品共通ルールを継承",
+        description="未設定時は作品共通ルールを使う",
     )
     coma_gap_horizontal_mm: FloatProperty(  # type: ignore[valid-type]
-        name="左右スキマ (個別)",
+        name="左右スキマ",
         default=-1.0,
-        description="負値で作品共通ルールを継承",
+        description="未設定時は作品共通ルールを使う",
     )
 
 

@@ -121,6 +121,14 @@ def _assert_detail_ui(context, coma) -> None:
     assert "背景" in texts
     assert "背景色" in texts
     assert "フチ" in texts
+    assert coma.bl_rna.properties["paper_visible"].name == "背景"
+    assert "用紙" not in coma.bl_rna.properties["paper_visible"].description
+    assert "用紙" not in coma.bl_rna.properties["background_color"].description
+    assert coma.bl_rna.properties["overlap_clipping"].name != "自動くり抜き"
+    assert "個別" not in coma.bl_rna.properties["coma_gap_vertical_mm"].name
+    assert "個別" not in coma.bl_rna.properties["coma_gap_horizontal_mm"].name
+    assert "負値" not in coma.bl_rna.properties["coma_gap_vertical_mm"].description
+    assert "負値" not in coma.bl_rna.properties["coma_gap_horizontal_mm"].description
 
 
 def _bounds_mm(obj):
