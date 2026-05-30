@@ -328,7 +328,7 @@ def _curve_material_index(curve: bpy.types.Curve, material: bpy.types.Material) 
 
 
 def _guide_sets_have_geometry(guide_sets) -> bool:
-    for _label, loops, segments, _mat in guide_sets:
+    for _label, loops, segments, *_rest in guide_sets:
         if any(bool(loop) for loop in loops):
             return True
         if bool(segments):
@@ -684,8 +684,7 @@ def _paper_guide_materials() -> tuple[bpy.types.Material, bpy.types.Material, bp
     )
 
 
-def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Material]]:
-    mat_dim, mat_light, mat_guide, mat_safe = _paper_guide_materials()
+def _paper_guide_geometry_sets(paper, rects) -> list[tuple[str, list, list]]:
     guides_visible = bool(getattr(paper, "show_guides", True))
     bleed_enabled = float(getattr(paper, "bleed_mm", 0.0) or 0.0) > 0.0
     return [
@@ -698,7 +697,6 @@ def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Mat
                 else [],
             ],
             [],
-            mat_dim,
         ),
         (
             "light",
@@ -706,20 +704,27 @@ def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Mat
             _trim_segments(rects.finish, rects.bleed)
             if guides_visible and bleed_enabled and getattr(paper, "show_trim_marks", True)
             else [],
-            mat_light,
         ),
         (
             "inner",
             [_rect_loop(rects.inner_frame) if guides_visible and getattr(paper, "show_inner_frame", True) else []],
             [],
-            mat_guide,
         ),
         (
             "safe",
             [_rect_loop(rects.safe) if guides_visible and getattr(paper, "show_safe_line", True) else []],
             [],
-            mat_safe,
         ),
+    ]
+
+
+def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Material]]:
+    return [
+        (label, loops, segments, material)
+        for (label, loops, segments), material in zip(
+            _paper_guide_geometry_sets(paper, rects),
+            _paper_guide_materials(),
+        )
     ]
 
 
@@ -842,18 +847,18 @@ def _meters_per_pixel(region, rv3d) -> Optional[float]:
     return d if d > 1.0e-9 else None
 
 
-def apply_view_constant_thickness() -> None:
+def apply_view_constant_thickness() -> bool:
     """全用紙ガイド線の太さをビュー倍率に合わせ、画面上で一定太さに保つ."""
     global _last_mpp
     found = _active_view3d_region()
     if found is None:
-        return
+        return False
     region, rv3d = found
     mpp = _meters_per_pixel(region, rv3d)
     if mpp is None:
-        return
+        return False
     if _last_mpp > 0.0 and abs(mpp - _last_mpp) <= _last_mpp * 0.03:
-        return
+        return False
     _last_mpp = mpp
     # 異常な視点 (極端なズーム/パース) で bevel が暴れないようクランプ。
     # 0.005mm 〜 3mm 相当の線幅に収める。
@@ -861,18 +866,22 @@ def apply_view_constant_thickness() -> None:
     curve_half = max(mm_to_m(0.005) * 0.5, min(curve_half, mm_to_m(3.0) * 0.5))
     gp_half = GUIDE_SCREEN_PX * mpp * 0.5 * _GUIDE_GP_RADIUS_SCALE
     gp_half = max(mm_to_m(0.005) * 0.5, min(gp_half, mm_to_m(3.0) * 0.5))
+    changed = False
     for curve in bpy.data.curves:
         if not curve.name.startswith(PAPER_GUIDE_CURVE_PREFIX):
             continue
         try:
             if abs(float(curve.bevel_depth) - curve_half) > curve_half * 0.02:
                 curve.bevel_depth = curve_half
+                changed = True
         except Exception:  # noqa: BLE001
             continue
     for obj in bpy.data.objects:
         if obj.get(PROP_GUIDE_KIND) != GUIDE_KIND_LINES or getattr(obj, "type", "") != "GREASEPENCIL":
             continue
-        _set_gp_stroke_radius(obj, gp_half)
+        if _set_gp_stroke_radius(obj, gp_half):
+            changed = True
+    return changed
 
 
 def _guide_strokes(obj: bpy.types.Object):
@@ -988,7 +997,7 @@ def _line_guide_should_have_geometry(work, page) -> bool:
     if page_index < 0:
         return False
     rects = overlay_shared.compute_paper_rects(paper, is_left_half=_is_left_page(paper, page_index))
-    return _guide_sets_have_geometry(_paper_guide_sets(paper, rects))
+    return _guide_sets_have_geometry(_paper_guide_geometry_sets(paper, rects))
 
 
 def _guide_curve_objects(page_id: str) -> list[bpy.types.Object]:
@@ -1049,10 +1058,12 @@ def repair_loaded_work_paper_guides(scene=None, work=None) -> bool:
     return True
 
 
-def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
+def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> bool:
     layers = getattr(getattr(obj, "data", None), "layers", None)
     if layers is None:
-        return
+        return False
+    changed = False
+    threshold = max(abs(float(radius)) * 0.02, 1.0e-9)
     for layer in layers:
         for frame in getattr(layer, "frames", []) or []:
             drawing = getattr(frame, "drawing", None)
@@ -1065,9 +1076,12 @@ def _set_gp_stroke_radius(obj: bpy.types.Object, radius: float) -> None:
                     continue
                 for point in points:
                     try:
-                        point.radius = radius
+                        if abs(float(getattr(point, "radius", 0.0) or 0.0) - radius) > threshold:
+                            point.radius = radius
+                            changed = True
                     except Exception:  # noqa: BLE001
                         pass
+    return changed
 
 
 def _thickness_timer():
@@ -1076,14 +1090,16 @@ def _thickness_timer():
         if not _live_guide_updates_allowed():
             _last_mpp = -1.0
             return _GUIDE_IDLE_INTERVAL
+        changed = False
         now = time.monotonic()
         if now - _last_repair_time >= _GUIDE_REPAIR_INTERVAL:
             _last_repair_time = now
-            repair_loaded_work_paper_guides()
-        apply_view_constant_thickness()
+            changed = bool(repair_loaded_work_paper_guides())
+        changed = bool(apply_view_constant_thickness()) or changed
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide thickness update failed")
-    return _GUIDE_THICKNESS_INTERVAL
+        return _GUIDE_IDLE_INTERVAL
+    return _GUIDE_THICKNESS_INTERVAL if changed else _GUIDE_IDLE_INTERVAL
 
 
 def register() -> None:

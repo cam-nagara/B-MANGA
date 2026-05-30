@@ -6,6 +6,7 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import bpy
@@ -146,6 +147,45 @@ def _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         paper_guide_object._last_mpp = -1.0
 
 
+def _assert_timer_idles_when_view_is_stable(paper_guide_object) -> None:
+    original_allowed = paper_guide_object._live_guide_updates_allowed
+    original_region = paper_guide_object._active_view3d_region
+    original_mpp = paper_guide_object._meters_per_pixel
+    original_repair = paper_guide_object.repair_loaded_work_paper_guides
+    try:
+        paper_guide_object._live_guide_updates_allowed = lambda: True
+        paper_guide_object._active_view3d_region = lambda: (object(), object())
+        paper_guide_object._meters_per_pixel = lambda _region, _rv3d: 0.004
+        paper_guide_object.repair_loaded_work_paper_guides = lambda *args, **kwargs: False
+        paper_guide_object._last_mpp = -1.0
+        paper_guide_object._last_repair_time = time.monotonic()
+        first_interval = paper_guide_object._thickness_timer()
+        second_interval = paper_guide_object._thickness_timer()
+        if abs(float(first_interval) - float(paper_guide_object._GUIDE_THICKNESS_INTERVAL)) > 1.0e-9:
+            raise AssertionError("用紙ガイド線の太さ変更直後に短い確認間隔へ入りません")
+        if abs(float(second_interval) - float(paper_guide_object._GUIDE_IDLE_INTERVAL)) > 1.0e-9:
+            raise AssertionError("用紙ガイド線の太さが安定していても短い間隔で監視し続けています")
+    finally:
+        paper_guide_object._live_guide_updates_allowed = original_allowed
+        paper_guide_object._active_view3d_region = original_region
+        paper_guide_object._meters_per_pixel = original_mpp
+        paper_guide_object.repair_loaded_work_paper_guides = original_repair
+        paper_guide_object._last_mpp = -1.0
+
+
+def _assert_repair_check_does_not_create_materials(paper_guide_object, scene, work) -> None:
+    original_materials = paper_guide_object._paper_guide_materials
+    try:
+        def _fail_materials():
+            raise AssertionError("修復が必要か見るだけの処理で用紙ガイド線の素材を作っています")
+
+        paper_guide_object._paper_guide_materials = _fail_materials
+        if paper_guide_object.repair_loaded_work_paper_guides(scene, work):
+            raise AssertionError("用紙ガイド線の修復が不要な状態で再実行されています")
+    finally:
+        paper_guide_object._paper_guide_materials = original_materials
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_paper_guide_visibility_"))
     mod = None
@@ -185,6 +225,8 @@ def main() -> None:
         _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
         _assert_constant_thickness(paper_guide_object, guide_objects)
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
+        _assert_timer_idles_when_view_is_stable(paper_guide_object)
+        _assert_repair_check_does_not_create_materials(paper_guide_object, scene, work)
         if paper_guide_object.repair_loaded_work_paper_guides(scene, work):
             raise AssertionError("用紙ガイド線の修復が不要な状態で再実行されています")
 
