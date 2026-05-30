@@ -46,6 +46,13 @@ def _assert_rect_close(rect, expected, label: str) -> None:
             raise AssertionError(f"{label} が範囲通りではありません: actual={rect}, expected={expected}")
 
 
+def _text_by_id(page, text_id: str):
+    for entry in page.texts:
+        if str(getattr(entry, "id", "") or "") == str(text_id):
+            return entry
+    return None
+
+
 def _operator_proxy(cls, method_names: tuple[str, ...], **attrs):
     proxy = SimpleNamespace(**attrs)
     for name in method_names:
@@ -63,7 +70,7 @@ def main() -> None:
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
-        from bname_dev_creation_drag.operators import balloon_op, effect_line_op
+        from bname_dev_creation_drag.operators import balloon_op, effect_line_op, text_op
         from bname_dev_creation_drag.ui import overlay_creation_range
         from bname_dev_creation_drag.utils import coma_border_object, layer_hierarchy, layer_object_sync
         from bname_dev_creation_drag.utils import layer_stack as layer_stack_utils
@@ -157,6 +164,34 @@ def main() -> None:
             if len(page.balloons) != before_balloons:
                 raise AssertionError("フキダシツールのクリックだけでフキダシが作成されています")
 
+            text_x, text_y = _page_local(24.0, 22.0)
+            enclosed_text, _missing = text_op._create_text_entry(
+                context,
+                page,
+                body="囲まれるテキスト",
+                speaker_type="normal",
+                x_mm=text_x,
+                y_mm=text_y,
+                width_mm=14.0,
+                height_mm=8.0,
+                parent_kind="page",
+                parent_key=page_key,
+            )
+            enclosed_text_id = str(getattr(enclosed_text, "id", "") or "")
+            text_x, text_y = _page_local(56.0, 24.0)
+            outside_text, _missing = text_op._create_text_entry(
+                context,
+                page,
+                body="外側テキスト",
+                speaker_type="normal",
+                x_mm=text_x,
+                y_mm=text_y,
+                width_mm=14.0,
+                height_mm=8.0,
+                parent_kind="page",
+                parent_key=page_key,
+            )
+            outside_text_id = str(getattr(outside_text, "id", "") or "")
             sx, sy = _page_local(18.0, 18.0)
             balloon_tool._start_create_preview(page, sx, sy, 18.0, 18.0, "page", page_key)
             balloon_tool._update_create_preview(context, _event(50.0, 40.0))
@@ -169,6 +204,22 @@ def main() -> None:
             created = page.balloons[-1]
             if str(getattr(created, "parent_kind", "")) != "page":
                 raise AssertionError("コマ外のフキダシがページ前面のレイヤーとして作成されていません")
+            enclosed_text = _text_by_id(page, enclosed_text_id)
+            outside_text = _text_by_id(page, outside_text_id)
+            if enclosed_text is None or outside_text is None:
+                raise AssertionError("確認用テキストが見つかりません")
+            if str(getattr(enclosed_text, "parent_balloon_id", "") or "") != str(getattr(created, "id", "") or ""):
+                raise AssertionError("囲まれたテキストがフキダシに紐付いていません")
+            if str(getattr(outside_text, "parent_balloon_id", "") or ""):
+                raise AssertionError("範囲外のテキストまでフキダシに紐付いています")
+            old_text_xy = (float(enclosed_text.x_mm), float(enclosed_text.y_mm))
+            balloon_op._move_balloon_with_texts(page, created, float(created.x_mm) + 5.0, float(created.y_mm) + 3.0)
+            if (
+                abs(float(enclosed_text.x_mm) - (old_text_xy[0] + 5.0)) > 0.05
+                or abs(float(enclosed_text.y_mm) - (old_text_xy[1] + 3.0)) > 0.05
+            ):
+                raise AssertionError("紐付いたテキストがフキダシ移動に追従していません")
+            balloon_op._move_balloon_with_texts(page, created, float(created.x_mm) - 5.0, float(created.y_mm) - 3.0)
 
             before_shared = len(work.shared_balloons)
             balloon_tool._start_create_preview(

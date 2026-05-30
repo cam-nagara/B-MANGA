@@ -505,6 +505,53 @@ def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
             text.y_mm += dy
 
 
+def _text_rect(entry) -> tuple[float, float, float, float]:
+    x = float(getattr(entry, "x_mm", 0.0) or 0.0)
+    y = float(getattr(entry, "y_mm", 0.0) or 0.0)
+    w = max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0))
+    h = max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0))
+    return x, y, x + w, y + h
+
+
+def _rect_contains_rect(
+    outer: tuple[float, float, float, float],
+    inner: tuple[float, float, float, float],
+    *,
+    tolerance_mm: float = 0.05,
+) -> bool:
+    outer_left, outer_bottom, outer_right, outer_top = outer
+    inner_left, inner_bottom, inner_right, inner_top = inner
+    tolerance = max(0.0, float(tolerance_mm))
+    return (
+        inner_left >= outer_left - tolerance
+        and inner_right <= outer_right + tolerance
+        and inner_bottom >= outer_bottom - tolerance
+        and inner_top <= outer_top + tolerance
+    )
+
+
+def _attach_texts_enclosed_by_balloon(context, page, entry) -> int:
+    if page is None or entry is None:
+        return 0
+    balloon_id = str(getattr(entry, "id", "") or "")
+    if not balloon_id:
+        return 0
+    balloon_rect = _balloon_rect(entry)
+    changed = 0
+    for text in getattr(page, "texts", []) or []:
+        if not bool(getattr(text, "visible", True)):
+            continue
+        if not _rect_contains_rect(balloon_rect, _text_rect(text)):
+            continue
+        if str(getattr(text, "parent_balloon_id", "") or "") == balloon_id:
+            continue
+        text.parent_balloon_id = balloon_id
+        changed += 1
+    if changed:
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+    return changed
+
+
 def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float) -> None:
     old_rect = (
         float(getattr(entry, "x_mm", 0.0) or 0.0),
@@ -1517,6 +1564,7 @@ class BNAME_OT_balloon_tool(Operator):
                     parent_key=str(getattr(self, "_drag_parent_key", "") or ""),
                 )
                 if entry is not None:
+                    _attach_texts_enclosed_by_balloon(context, page, entry)
                     self._push_undo_step("B-Name: フキダシ作成")
         else:
             layer_stack_utils.tag_view3d_redraw(context)
