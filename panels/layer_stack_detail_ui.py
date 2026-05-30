@@ -23,7 +23,18 @@ def _zero_based_layer_name(prefix: str, value: str, width: int) -> str:
 
 
 def page_layer_name(target, work=None) -> str:
-    _ = work
+    if work is not None:
+        target_id = str(getattr(target, "id", "") or "")
+        for index, page in enumerate(getattr(work, "pages", []) or []):
+            if page == target or (
+                target_id and str(getattr(page, "id", "") or "") == target_id
+            ):
+                info = getattr(work, "work_info", None)
+                try:
+                    start = int(getattr(info, "page_number_start", 1) or 1)
+                except Exception:  # noqa: BLE001
+                    start = 1
+                return f"{start + index}ページ"
     target_id = str(getattr(target, "id", "") or "")
     return target_id or _zero_based_layer_name("p", "", 3)
 

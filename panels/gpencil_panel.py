@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import bpy
-from bpy.types import Menu, Panel, UIList
+from bpy.types import Panel, UIList
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
@@ -513,43 +513,75 @@ class BNAME_UL_layer_stack(UIList):
             _draw_right_controls(right, controls, index)
 
 
+class BNAME_UL_layer_panel_pages(UIList):
+    """レイヤーパネル内のページリスト。選択で下のレイヤー一覧を切り替える."""
+
+    bl_idname = "BNAME_UL_layer_panel_pages"
+
+    def draw_item(
+        self,
+        context,
+        layout,
+        data,
+        item,
+        icon,
+        active_data,
+        active_propname,
+        index,
+    ):
+        if self.layout_type not in {"DEFAULT", "COMPACT"}:
+            layout.label(text=layer_stack_detail_ui.page_layer_name(item, get_work(context)))
+            return
+        row = layout.row(align=True)
+        row.operator_context = "EXEC_DEFAULT"
+        selected = int(getattr(data, active_propname, -1)) == int(index)
+        icon_name = "IMGDISPLAY" if bool(getattr(item, "spread", False)) else "FILE_BLANK"
+        label = layer_stack_detail_ui.page_layer_name(item, get_work(context))
+        title = str(getattr(item, "title", "") or "").strip()
+        if title:
+            label = f"{label} {title}"
+        op = row.operator(
+            "bname.page_select",
+            text=label,
+            icon=icon_name,
+            emboss=selected,
+            depress=selected,
+        )
+        op.index = index
+
+
 def draw_stack_item_detail(layout, context, item, resolved) -> bool:
     return layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved)
 
 
-def _page_menu_label(work) -> str:
+def _draw_page_list_box(layout, context) -> None:
+    work = get_work(context)
+    box = layout.box()
+    box.label(text="ページ", icon="FILE_BLANK")
     if work is None or not getattr(work, "loaded", False):
-        return "ページ"
-    idx = int(getattr(work, "active_page_index", -1))
-    if not (0 <= idx < len(work.pages)):
-        return "ページ"
-    page = work.pages[idx]
-    info = getattr(work, "work_info", None)
-    start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
-    title = str(getattr(page, "title", "") or "").strip()
-    base = f"{start + idx}ページ"
-    return f"{base} {title}" if title else base
-
-
-class BNAME_MT_layer_stack_page_select(Menu):
-    bl_idname = "BNAME_MT_layer_stack_page_select"
-    bl_label = "ページを選択"
-
-    def draw(self, context):
-        layout = self.layout
-        work = get_work(context)
-        if work is None or not getattr(work, "loaded", False):
-            layout.label(text="ページがありません", icon="INFO")
-            return
-        info = getattr(work, "work_info", None)
-        start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
-        for idx, page in enumerate(work.pages):
-            title = str(getattr(page, "title", "") or "").strip()
-            label = f"{start + idx}ページ"
-            if title:
-                label = f"{label} {title}"
-            op = layout.operator("bname.page_select", text=label, icon="FILE_BLANK")
-            op.index = idx
+        box.label(text="(ページがありません)", icon="INFO")
+        return
+    row = box.row(align=True)
+    rows = min(6, max(3, len(work.pages)))
+    row.template_list(
+        BNAME_UL_layer_panel_pages.bl_idname,
+        "",
+        work,
+        "pages",
+        work,
+        "active_page_index",
+        rows=rows,
+    )
+    tools = row.column(align=True)
+    tools.ui_units_x = 1.25
+    tools.operator("bname.page_add", text="", icon="ADD")
+    tools.operator("bname.page_duplicate", text="", icon="DUPLICATE")
+    tools.operator("bname.page_remove", text="", icon="REMOVE")
+    tools.separator()
+    op = tools.operator("bname.page_move", text="", icon="TRIA_UP")
+    op.direction = -1
+    op = tools.operator("bname.page_move", text="", icon="TRIA_DOWN")
+    op.direction = 1
 
 
 def _draw_layer_stack_box(layout, context) -> None:
@@ -567,13 +599,6 @@ def _draw_layer_stack_box(layout, context) -> None:
     if stack is None:
         box.label(text="(レイヤーがありません)")
     else:
-        work = get_work(context)
-        page_row = box.row(align=True)
-        page_row.label(text="ページ", icon="FILE_BLANK")
-        page_row.menu(
-            BNAME_MT_layer_stack_page_select.bl_idname,
-            text=_page_menu_label(work),
-        )
         # Phase 1: Outliner 移行への案内 (計画書 Phase 1 完了条件)
         info_row = box.row(align=True)
         info_row.label(
@@ -711,6 +736,7 @@ class BNAME_PT_layer_stack(Panel):
         if work is None or not work.loaded:
             layout.label(text="作品を開いてください", icon="INFO")
             return
+        _draw_page_list_box(layout, context)
         _draw_layer_stack_box(layout, context)
 
 
@@ -896,7 +922,7 @@ _REMOVED_PANEL_CLASSES = (
 _CLASSES = (
     BNAME_OT_gpencil_master_ensure,
     BNAME_OT_gpencil_master_mode_set,
-    BNAME_MT_layer_stack_page_select,
+    BNAME_UL_layer_panel_pages,
     BNAME_UL_layer_stack,
     BNAME_PT_layer_stack,
 )
