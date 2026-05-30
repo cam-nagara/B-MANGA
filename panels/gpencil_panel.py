@@ -459,11 +459,7 @@ class BNAME_UL_layer_stack(UIList):
                 flags.append(0)
                 continue
             if kind == "page":
-                flags.append(
-                    self.bitflag_filter_item
-                    if str(getattr(item, "key", "") or "") == active_page_key
-                    else 0
-                )
+                flags.append(0)
                 continue
             page_key = layer_stack_utils._stack_item_page_key(item, context)
             flags.append(
@@ -676,8 +672,6 @@ def _visible_layer_stack_entries(context, stack) -> list[tuple[int, object]]:
         if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
             continue
         if kind == "page":
-            if str(getattr(item, "key", "") or "") == active_page_key:
-                entries.append((index, item))
             continue
         if layer_stack_utils._stack_item_page_key(item, context) == active_page_key:
             entries.append((index, item))

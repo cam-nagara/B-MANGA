@@ -28,7 +28,7 @@ def _load_addon():
     return mod
 
 
-def _visible_page_keys(context) -> list[str]:
+def _visible_layer_rows(context) -> list[object]:
     from bname_dev_page_list.panels import gpencil_panel
     from bname_dev_page_list.utils import layer_stack as layer_stack_utils
 
@@ -39,10 +39,30 @@ def _visible_page_keys(context) -> list[str]:
     )
     assert stack is not None
     return [
-        str(getattr(item, "key", "") or "")
+        item
         for _index, item in gpencil_panel._visible_layer_stack_entries(context, stack)
+    ]
+
+
+def _assert_layer_list_page(context, expected_page_key: str) -> None:
+    rows = _visible_layer_rows(context)
+    page_rows = [
+        str(getattr(item, "key", "") or "")
+        for item in rows
         if str(getattr(item, "kind", "") or "") == "page"
     ]
+    if page_rows:
+        raise AssertionError(f"レイヤー一覧にページ行が残っています: {page_rows}")
+    coma_parent_keys = [
+        str(getattr(item, "parent_key", "") or "")
+        for item in rows
+        if str(getattr(item, "kind", "") or "") == "coma"
+    ]
+    if expected_page_key not in coma_parent_keys:
+        raise AssertionError(
+            f"選択ページ内のコマがレイヤー一覧に出ていません: "
+            f"expected={expected_page_key}, actual={coma_parent_keys}"
+        )
 
 
 def main() -> None:
@@ -70,10 +90,10 @@ def main() -> None:
         second_id = str(work.pages[1].id)
 
         assert "FINISHED" in bpy.ops.bname.page_select("EXEC_DEFAULT", index=0)
-        assert _visible_page_keys(context) == [page_stack_key(work.pages[0])]
+        _assert_layer_list_page(context, page_stack_key(work.pages[0]))
 
         assert "FINISHED" in bpy.ops.bname.page_select("EXEC_DEFAULT", index=1)
-        assert _visible_page_keys(context) == [page_stack_key(work.pages[1])]
+        _assert_layer_list_page(context, page_stack_key(work.pages[1]))
 
         assert "FINISHED" in bpy.ops.bname.page_move("EXEC_DEFAULT", direction=-1)
         assert str(work.pages[0].id) == second_id
