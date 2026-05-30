@@ -1,0 +1,180 @@
+"""Blender実機用: コマID再採番がページ上の読み順に従うことを確認."""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_addon():
+    spec = importlib.util.spec_from_file_location(
+        "bname_dev_coma_renumber",
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bname_dev_coma_renumber"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
+def _add_coma(page, coma_id: str, x_mm: float, y_mm: float):
+    entry = page.comas.add()
+    entry.id = coma_id
+    entry.coma_id = coma_id
+    entry.title = coma_id
+    entry.shape_type = "rect"
+    entry.rect_x_mm = x_mm
+    entry.rect_y_mm = y_mm
+    entry.rect_width_mm = 60.0
+    entry.rect_height_mm = 40.0
+    return entry
+
+
+def _reset_page_comas(page) -> None:
+    while len(page.comas):
+        page.comas.remove(len(page.comas) - 1)
+
+
+def _build_four_comas(page) -> None:
+    _reset_page_comas(page)
+    _add_coma(page, "c90", 20.0, 220.0)   # 上左
+    _add_coma(page, "c30", 120.0, 160.0)  # 下右
+    _add_coma(page, "c10", 120.0, 220.0)  # 上右
+    _add_coma(page, "c50", 20.0, 160.0)   # 下左
+
+
+def _assert_order(page, expected: list[tuple[str, str]]) -> None:
+    actual = [
+        (str(getattr(coma, "title", "") or ""), str(getattr(coma, "id", "") or ""))
+        for coma in page.comas
+    ]
+    if actual != expected:
+        raise AssertionError(f"コマの読み順再採番が違います: expected={expected}, actual={actual}")
+
+
+def _add_parented_entries(context, page, page_id: str) -> None:
+    from bname_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
+    from bname_dev_coma_renumber.utils import gpencil as gp_utils
+    from bname_dev_coma_renumber.utils import object_naming as on
+
+    balloon = page.balloons.add()
+    balloon.id = "balloon_read_order"
+    balloon.parent_kind = "coma"
+    balloon.parent_key = f"{page_id}:c10"
+
+    text = page.texts.add()
+    text.id = "text_read_order"
+    text.parent_kind = "coma"
+    text.parent_key = f"{page_id}:c90"
+
+    folder = context.scene.bname_work.layer_folders.add()
+    folder.id = "folder_read_order"
+    folder.parent_key = f"{page_id}:c50"
+
+    image = context.scene.bname_image_layers.add()
+    image.id = "image_read_order"
+    image.parent_kind = "coma"
+    image.parent_key = f"{page_id}:c50"
+
+    raster = context.scene.bname_raster_layers.add()
+    raster.id = "raster_read_order"
+    raster.parent_kind = "coma"
+    raster.parent_key = f"{page_id}:c50"
+
+    gp_obj = gp_utils.ensure_master_gpencil(context.scene)
+    layer = gp_obj.data.layers.new("gp_read_order")
+    gp_parent.set_parent_key(layer, f"{page_id}:c30")
+
+    obj = bpy.data.objects.new("parent_key_probe", None)
+    obj[on.PROP_MANAGED] = True
+    obj[on.PROP_PARENT_KEY] = f"{page_id}:c30"
+    bpy.context.scene.collection.objects.link(obj)
+
+
+def _assert_parented_entries(context, page, page_id: str) -> None:
+    from bname_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
+    from bname_dev_coma_renumber.utils import gpencil as gp_utils
+    from bname_dev_coma_renumber.utils import object_naming as on
+
+    assert page.balloons[0].parent_key == f"{page_id}:c01"
+    assert page.texts[0].parent_key == f"{page_id}:c02"
+    assert context.scene.bname_work.layer_folders[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bname_image_layers[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bname_raster_layers[0].parent_key == f"{page_id}:c04"
+
+    gp_obj = gp_utils.get_master_gpencil()
+    layer = gp_obj.data.layers.get("gp_read_order")
+    assert gp_parent.parent_key(layer) == f"{page_id}:c03"
+
+    obj = bpy.data.objects.get("parent_key_probe")
+    assert str(obj.get(on.PROP_PARENT_KEY, "") or "") == f"{page_id}:c03"
+
+
+def main() -> None:
+    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_renumber_"))
+    mod = None
+    try:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_addon()
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaRenumber.bname"))
+        assert "FINISHED" in result, result
+
+        from bname_dev_coma_renumber.utils import layer_object_sync
+        from bname_dev_coma_renumber.utils import object_naming as on
+
+        context = bpy.context
+        work = context.scene.bname_work
+        page = work.pages[0]
+        page_id = str(page.id)
+
+        work.paper.read_direction = "left"
+        _build_four_comas(page)
+        _add_parented_entries(context, page, page_id)
+        layer_object_sync.mirror_work_to_outliner(context.scene, work)
+        assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
+        _assert_order(
+            page,
+            [("c10", "c01"), ("c90", "c02"), ("c30", "c03"), ("c50", "c04")],
+        )
+        _assert_parented_entries(context, page, page_id)
+        assert on.find_collection_by_bname_id(f"{page_id}:c01", kind="coma") is not None
+        assert not [
+            coll.name for coll in bpy.data.collections
+            if str(coll.get(on.PROP_ID, "") or "").find("__coma_renumber_tmp__") >= 0
+        ]
+
+        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        work.active_page_index = 1
+        page = work.pages[1]
+        work.paper.read_direction = "right"
+        _build_four_comas(page)
+        layer_object_sync.mirror_work_to_outliner(context.scene, work)
+        assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
+        _assert_order(
+            page,
+            [("c90", "c01"), ("c10", "c02"), ("c50", "c03"), ("c30", "c04")],
+        )
+
+        print("BNAME_COMA_RENUMBER_READING_ORDER_OK")
+    finally:
+        if mod is not None:
+            try:
+                mod.unregister()
+            except Exception:
+                pass
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

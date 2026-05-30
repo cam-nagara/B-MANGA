@@ -16,6 +16,7 @@ from bpy.types import Operator
 from ..utils import log
 
 _logger = log.get_logger(__name__)
+_TEMP_KEY_PREFIX = "__coma_renumber_tmp__"
 
 
 def _format_coma_id(index: int) -> str:
@@ -25,13 +26,159 @@ def _format_coma_id(index: int) -> str:
     return f"c{index:d}"
 
 
-def _renumber_page_comas(page) -> int:
-    """page.comas の id / coma_id を 1 から順に振り直す。変更件数を返す."""
+def _coma_bounds(panel) -> tuple[float, float, float, float]:
+    if str(getattr(panel, "shape_type", "") or "") == "rect":
+        x = float(getattr(panel, "rect_x_mm", 0.0) or 0.0)
+        y = float(getattr(panel, "rect_y_mm", 0.0) or 0.0)
+        w = float(getattr(panel, "rect_width_mm", 0.0) or 0.0)
+        h = float(getattr(panel, "rect_height_mm", 0.0) or 0.0)
+        return x, y, x + w, y + h
+    points = [
+        (float(getattr(v, "x_mm", 0.0) or 0.0), float(getattr(v, "y_mm", 0.0) or 0.0))
+        for v in getattr(panel, "vertices", []) or []
+    ]
+    if not points:
+        return 0.0, 0.0, 0.0, 0.0
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _reading_order_indices(page, read_direction: str) -> list[int]:
+    comas = getattr(page, "comas", None)
+    if comas is None:
+        return []
+    items = []
+    for index, coma in enumerate(comas):
+        left, bottom, right, top = _coma_bounds(coma)
+        width = max(0.0, right - left)
+        height = max(0.1, top - bottom)
+        items.append(
+            {
+                "index": index,
+                "left": left,
+                "center_x": left + width * 0.5,
+                "top": top,
+                "height": height,
+            }
+        )
+    if len(items) <= 1:
+        return [item["index"] for item in items]
+    heights = sorted(item["height"] for item in items)
+    row_tolerance = max(2.0, heights[len(heights) // 2] * 0.35)
+    rows: list[dict[str, object]] = []
+    for item in sorted(items, key=lambda value: (-value["top"], value["left"])):
+        for row in rows:
+            if abs(float(item["top"]) - float(row["top"])) <= row_tolerance:
+                row["items"].append(item)  # type: ignore[index, union-attr]
+                row["top"] = max(float(row["top"]), float(item["top"]))
+                break
+        else:
+            rows.append({"top": float(item["top"]), "items": [item]})
+    right_to_left = str(read_direction or "left") == "left"
+    ordered: list[int] = []
+    for row in sorted(rows, key=lambda value: -float(value["top"])):
+        row_items = list(row["items"])  # type: ignore[arg-type]
+        row_items.sort(
+            key=lambda value: float(value["center_x"]),
+            reverse=right_to_left,
+        )
+        ordered.extend(int(item["index"]) for item in row_items)
+    return ordered
+
+
+def _move_comas_to_order(page, ordered_indices: list[int]) -> None:
+    current = list(range(len(getattr(page, "comas", []) or [])))
+    for target_index, original_index in enumerate(ordered_indices):
+        current_index = current.index(original_index)
+        if current_index != target_index:
+            page.comas.move(current_index, target_index)
+            item = current.pop(current_index)
+            current.insert(target_index, item)
+
+
+def _replace_parent_key_on_entry(entry, old_key: str, new_key: str) -> None:
+    if str(getattr(entry, "parent_key", "") or "") != old_key:
+        return
+    if hasattr(entry, "parent_kind"):
+        entry.parent_kind = "coma"
+    if hasattr(entry, "scope"):
+        entry.scope = "page"
+    entry.parent_key = new_key
+
+
+def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
+    from ..utils import gp_layer_parenting as gp_parent
+    from ..utils import layer_stack as layer_stack_utils
+    from ..utils import object_naming as on
+
+    scene = getattr(context, "scene", None)
+    phases = [
+        (old, f"{getattr(page, 'id', '')}:{_TEMP_KEY_PREFIX}{index}")
+        for index, (old, _new) in enumerate(remaps)
+    ]
+    phases.extend(
+        (f"{getattr(page, 'id', '')}:{_TEMP_KEY_PREFIX}{index}", new)
+        for index, (_old, new) in enumerate(remaps)
+    )
+    for old_key, new_key in phases:
+        for collection_name in ("balloons", "texts"):
+            for entry in getattr(page, collection_name, []) or []:
+                _replace_parent_key_on_entry(entry, old_key, new_key)
+        for folder in getattr(getattr(scene, "bname_work", None), "layer_folders", []) or []:
+            _replace_parent_key_on_entry(folder, old_key, new_key)
+        for collection_name in ("bname_raster_layers", "bname_image_layers"):
+            for entry in getattr(scene, collection_name, []) or []:
+                _replace_parent_key_on_entry(entry, old_key, new_key)
+        for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):
+            gp_parent.set_parent_key(layer, new_key)
+        for layer in layer_stack_utils.effect_layers_for_parent_keys(context, {old_key}):
+            gp_parent.set_parent_key(layer, new_key)
+        for obj in bpy.data.objects:
+            if str(obj.get(on.PROP_PARENT_KEY, "") or "") == old_key:
+                obj[on.PROP_PARENT_KEY] = new_key
+        for coll in bpy.data.collections:
+            if str(coll.get(on.PROP_PARENT_KEY, "") or "") == old_key:
+                coll[on.PROP_PARENT_KEY] = new_key
+
+
+def _retarget_coma_collections(page_id: str, remaps: list[tuple[str, str]]) -> None:
+    from ..utils import object_naming as on
+
+    pairs = []
+    for index, (old_key, _new_key) in enumerate(remaps):
+        coll = on.find_collection_by_bname_id(old_key, kind="coma")
+        if coll is not None:
+            temp_key = f"{page_id}:{_TEMP_KEY_PREFIX}{index}"
+            coll[on.PROP_ID] = temp_key
+            pairs.append((coll, temp_key))
+    for coll, temp_key in pairs:
+        index = int(temp_key.rsplit(_TEMP_KEY_PREFIX, 1)[1])
+        new_id = remaps[index][1].split(":", 1)[1]
+        coll[on.PROP_ID] = f"{page_id}:{new_id}"
+
+
+def _renumber_page_comas(context, page, read_direction: str) -> int:
+    """page.comas を読み順に並べ、id / coma_id を 1 から振り直す."""
     comas = getattr(page, "comas", None)
     if comas is None:
         return 0
+    old_stems = [
+        str(getattr(coma, "coma_id", "") or getattr(coma, "id", "") or "")
+        for coma in comas
+    ]
+    active_original = int(getattr(page, "active_coma_index", -1) or -1)
+    ordered_indices = _reading_order_indices(page, read_direction)
+    _move_comas_to_order(page, ordered_indices)
+    if active_original in ordered_indices:
+        page.active_coma_index = ordered_indices.index(active_original)
+    page_id = str(getattr(page, "id", "") or "")
+    scene = getattr(context, "scene", None)
+    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    remaps: list[tuple[str, str]] = []
     changed = 0
-    for i, coma in enumerate(comas):
+    for i, original_index in enumerate(ordered_indices):
+        coma = comas[i]
         new_id = _format_coma_id(i + 1)
         old_id = str(getattr(coma, "id", "") or "")
         if old_id != new_id:
@@ -47,6 +194,13 @@ def _renumber_page_comas(page) -> int:
                 coma.coma_id = new_id
             except Exception:  # noqa: BLE001
                 pass
+        if page_id and old_stems[original_index] and old_stems[original_index] != new_id:
+            remaps.append((f"{page_id}:{old_stems[original_index]}", f"{page_id}:{new_id}"))
+        if scene is not None and current_coma_id and current_coma_id == old_stems[original_index]:
+            scene.bname_current_coma_id = new_id
+    if remaps:
+        _retarget_parent_keys(context, page, remaps)
+        _retarget_coma_collections(page_id, remaps)
     return changed
 
 
@@ -56,9 +210,8 @@ class BNAME_OT_coma_renumber_active_page(Operator):
     bl_idname = "bname.coma_renumber_active_page"
     bl_label = "コマ ID を順番通り再採番"
     bl_description = (
-        "アクティブページの BNameComaEntry を 1 から順に c01/c02/... に "
-        "振り直します。枠線カットで飛び番が出た直後に実行してください。"
-        "物理ファイル (cNN.blend) はリネームされません。"
+        "選択ページのコマ番号を読む順番で c01/c02/... に振り直します。"
+        "コマ用blendファイル名は変更されません。"
     )
     bl_options = {"REGISTER", "UNDO"}
 
@@ -80,8 +233,6 @@ class BNAME_OT_coma_renumber_active_page(Operator):
     def execute(self, context):
         from ..core.work import get_work
         from ..utils import layer_object_sync as los
-        from ..utils import object_naming as on
-        from ..utils import outliner_model as om
 
         scene = context.scene
         work = get_work(context)
@@ -92,28 +243,14 @@ class BNAME_OT_coma_renumber_active_page(Operator):
             self.report({"WARNING"}, "アクティブページの ID が空です")
             return {"CANCELLED"}
 
-        # 旧 coma_id → 新 coma_id の対応を作る
-        old_ids = [str(getattr(c, "id", "") or "") for c in page.comas]
-        changed = _renumber_page_comas(page)
-        new_ids = [str(getattr(c, "id", "") or "") for c in page.comas]
-
-        # Outliner Collection の bname_id も更新 (旧 "p:c01" → 新 "p:c02" 等)
+        read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
+        changed = _renumber_page_comas(context, page, read_direction)
         with los.suppress_sync():
-            for old_id, new_id in zip(old_ids, new_ids):
-                if old_id == new_id:
-                    continue
-                old_coll = on.find_collection_by_bname_id(
-                    f"{page_id}:{old_id}", kind="coma"
-                )
-                if old_coll is not None:
-                    # 一時的に bname_id を新値に書き換え
-                    old_coll[on.PROP_ID] = f"{page_id}:{new_id}"
-            # mirror を再走させて Collection 名と階層を最新化
             los.mirror_work_to_outliner(scene, work)
 
         self.report(
             {"INFO"},
-            f"page {page_id}: {changed} 件のコマ ID を再採番しました",
+            f"選択ページ: {changed} 件のコマ ID を再採番しました",
         )
         return {"FINISHED"}
 

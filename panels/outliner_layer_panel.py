@@ -38,31 +38,13 @@ class BNAME_PT_outliner_layers(Panel):
         row.operator("bname.outliner_apply_view", text="B-Name 表示へ", icon="VIS_SEL_11")
         row.operator("bname.outliner_restore_view", text="復元", icon="LOOP_BACK")
 
-        # オーバーレイ表示切替 (Phase 3c)
+        # メンテナンス
         box = layout.box()
-        scene = context.scene
-        enabled = bool(getattr(scene, "bname_overlay_enabled", True))
-        box.label(text="オーバーレイ表示", icon="OVERLAY")
-        row = box.row()
-        row.operator(
-            "bname.overlay_toggle",
-            text="ON" if enabled else "OFF",
-            icon="HIDE_OFF" if enabled else "HIDE_ON",
-            depress=enabled,
-        )
-
-        # マスク
-        box = layout.box()
-        box.label(text="マスク", icon="MOD_MASK")
-        col = box.column(align=True)
-        col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
-        col.operator("bname.mask_remove_orphans", icon="TRASH")
-
-        # 整合性
-        box = layout.box()
-        box.label(text="整合性", icon="CHECKMARK")
+        box.label(text="メンテナンス", icon="TOOL_SETTINGS")
         col = box.column(align=True)
         col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
+        col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
+        col.operator("bname.mask_remove_orphans", icon="TRASH")
         col.operator(
             "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
         )

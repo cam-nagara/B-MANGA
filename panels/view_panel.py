@@ -72,6 +72,15 @@ class BNAME_PT_view(Panel):
         is_coma_mode = mode == MODE_COMA
         scene = context.scene
 
+        enabled = bool(getattr(scene, "bname_overlay_enabled", True))
+        row = layout.row(align=True)
+        row.operator(
+            "bname.overlay_toggle",
+            text="オーバーレイ表示 ON" if enabled else "オーバーレイ表示 OFF",
+            icon="HIDE_OFF" if enabled else "HIDE_ON",
+            depress=enabled,
+        )
+
         col = layout.column(align=True)
         col.enabled = not is_coma_mode
         row = col.row(align=True)
