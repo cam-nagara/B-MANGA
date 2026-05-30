@@ -586,10 +586,12 @@ def _draw_layer_stack_box(layout, context) -> None:
         info_row.operator(
             "bname.outliner_restore_view", text="", icon="LOOP_BACK"
         )
-        list_col = box.column(align=True)
+        layer_area = box.row(align=True)
+        list_col = layer_area.column(align=True)
         _draw_layer_stack_rows(list_col, context, stack)
 
-        tools = box.row(align=True)
+        tools = layer_area.column(align=True)
+        tools.ui_units_x = 1.25
         add_menu = tools.operator("wm.call_menu", text="", icon="ADD")
         add_menu.name = "BNAME_MT_layer_stack_add"
         tools.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
