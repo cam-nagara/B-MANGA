@@ -316,7 +316,7 @@ def _write_visual_report(state: dict) -> None:
     focus = Image.new("RGB", (760, 360), "white")
     focus_draw = ImageDraw.Draw(focus)
     focus_draw.text((24, 18), "Layer stack preview spacing sample", fill=(0, 0, 0), font=font)
-    focus_draw.text((24, 40), "Expected: effect row / coma preview row / balloon row with no blank rows", fill=(0, 0, 0), font=font)
+    focus_draw.text((24, 40), "Expected: preview helper row is hidden from the visible layer list", fill=(0, 0, 0), font=font)
     y = 78
     for row in state.get("preview_focus_rows", []):
         depth = int(row.get("depth", 0))
@@ -333,6 +333,13 @@ def _write_visual_report(state: dict) -> None:
         (24, y + 16),
         "blank visible rows: " + str(state.get("blank_visible_rows", [])),
         fill=status_color,
+        font=font,
+    )
+    hidden_color = (0, 120, 0) if not state.get("preview_visible_rows") else (180, 0, 0)
+    focus_draw.text(
+        (24, y + 40),
+        "preview helper visible rows: " + str(state.get("preview_visible_rows", [])),
+        fill=hidden_color,
         font=font,
     )
     focus.save(OUT_DIR / "layer_stack_preview_spacing.png")
@@ -508,6 +515,16 @@ def main() -> None:
                 )
         if blank_visible_rows:
             raise AssertionError(f"レイヤー一覧に表示名のない行があります: {blank_visible_rows}")
+        preview_visible_rows = [
+            {
+                "visible_index": visible_index,
+                "key": str(getattr(item, "key", "")),
+            }
+            for visible_index, item in enumerate(visible_rows)
+            if getattr(item, "kind", "") == layer_stack_utils.COMA_PREVIEW_KIND
+        ]
+        if preview_visible_rows:
+            raise AssertionError(f"レイヤー一覧にコマの内部表示行が残っています: {preview_visible_rows}")
 
         if gp_parent.parent_key(gp_layer) != coma_key:
             raise AssertionError("GP layer parent was not applied")
@@ -645,6 +662,7 @@ def main() -> None:
             "stack_rows": stack_rows,
             "preview_focus_rows": preview_focus_rows,
             "blank_visible_rows": blank_visible_rows,
+            "preview_visible_rows": preview_visible_rows,
         }
         _write_visual_report(state)
         print(f"BNAME_LAYER_STACK_UI_BEHAVIOR_OK visual={OUT_DIR}")

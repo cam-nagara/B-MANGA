@@ -106,6 +106,10 @@ def _kind_icon(kind: str) -> str:
     }.get(kind, "RENDERLAYERS")
 
 
+def _show_stack_item_in_layer_list(item) -> bool:
+    return getattr(item, "kind", "") != layer_stack_utils.COMA_PREVIEW_KIND
+
+
 def _hide_icon(hidden: bool) -> str:
     return "HIDE_ON" if hidden else "HIDE_OFF"
 
@@ -448,7 +452,7 @@ class BNAME_UL_layer_stack(UIList):
         flags = []
         for item in items:
             kind = getattr(item, "kind", "")
-            if kind == "outside_group":
+            if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
                 flags.append(0)
                 continue
             if kind == "page":
@@ -590,7 +594,7 @@ def _draw_layer_stack_box(layout, context) -> None:
         if active_page_key:
             for item in stack:
                 kind = getattr(item, "kind", "")
-                if kind == "outside_group":
+                if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
                     continue
                 if kind == "page":
                     if str(getattr(item, "key", "") or "") == active_page_key:
