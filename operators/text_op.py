@@ -23,6 +23,7 @@ from ..utils import (
     object_selection,
     page_range,
     shortcut_visibility,
+    text_real_object,
     text_style,
 )
 from ..utils.layer_hierarchy import page_stack_key
@@ -422,8 +423,6 @@ def _sync_text_real_object(context, page, entry) -> None:
     if context is None or page is None or entry is None:
         return
     try:
-        from ..utils import text_real_object
-
         text_real_object.ensure_text_real_object(
             scene=context.scene,
             entry=entry,
@@ -435,8 +434,6 @@ def _sync_text_real_object(context, page, entry) -> None:
 
 def _remove_text_real_object(page_id: str, text_id: str) -> None:
     try:
-        from ..utils import text_real_object
-
         text_real_object.remove_text_real_object(page_id, text_id)
     except Exception:  # noqa: BLE001
         _logger.exception("text real object removal failed")
@@ -677,6 +674,7 @@ class BNAME_OT_text_tool(Operator):
     _editing_created_new: bool
     _edit_original_body: str
     _edit_original_font_spans: object
+    _edit_original_rect: tuple[float, float, float, float]
     _cursor_index: int
     _selection_anchor: int
     _page_id: str
@@ -730,6 +728,7 @@ class BNAME_OT_text_tool(Operator):
         self._editing_created_new = False
         self._edit_original_body = ""
         self._edit_original_font_spans = ()
+        self._edit_original_rect = (0.0, 0.0, 0.0, 0.0)
         self._cursor_index = 0
         self._selection_anchor = -1
         self._page_id = ""
@@ -953,6 +952,9 @@ class BNAME_OT_text_tool(Operator):
 
     def _finish_current_text_edit(self, context) -> None:
         _page, entry, _idx = self._current_text_entry(context)
+        rect_changed = entry is not None and (
+            float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)
+        ) != getattr(self, "_edit_original_rect", (0.0, 0.0, 0.0, 0.0))
         spans_changed = (
             entry is not None
             and text_style.all_spans_snapshot(entry) != getattr(self, "_edit_original_font_spans", ())
@@ -962,14 +964,19 @@ class BNAME_OT_text_tool(Operator):
             and (
                 str(getattr(entry, "body", "")) != str(getattr(self, "_edit_original_body", ""))
                 or spans_changed
+                or rect_changed
             )
         ):
             self._push_undo_step("B-Name: テキスト編集")
+        if entry is not None and _page is not None:
+            _sync_text_real_object(context, _page, entry)
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
         self._end_inline_input(context)
         self._editing = False
         self._editing_created_new = False
         self._edit_original_body = ""
         self._edit_original_font_spans = ()
+        self._edit_original_rect = (0.0, 0.0, 0.0, 0.0)
         self._cursor_index = 0
         self._selection_anchor = -1
         self._page_id = ""
@@ -984,8 +991,10 @@ class BNAME_OT_text_tool(Operator):
         else:
             page, entry, idx = self._current_text_entry(context)
             if entry is not None:
-                entry.body = str(getattr(self, "_edit_original_body", ""))
-                text_style.restore_all_spans(entry, getattr(self, "_edit_original_font_spans", ()))
+                with text_real_object.suspend_auto_sync():
+                    entry.body = str(getattr(self, "_edit_original_body", ""))
+                    text_style.restore_all_spans(entry, getattr(self, "_edit_original_font_spans", ()))
+                    _set_text_rect(entry, *getattr(self, "_edit_original_rect", (entry.x_mm, entry.y_mm, entry.width_mm, entry.height_mm)))
                 if page is not None:
                     page.active_text_index = idx
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
@@ -996,12 +1005,14 @@ class BNAME_OT_text_tool(Operator):
         self._editing_created_new = False
         self._edit_original_body = str(getattr(entry, "body", ""))
         self._edit_original_font_spans = text_style.all_spans_snapshot(entry)
+        self._edit_original_rect = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
         self._cursor_index = len(self._edit_original_body)
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
         self._clear_drag_state()
         self._clear_click_state()
+        text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
         self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
@@ -1011,12 +1022,14 @@ class BNAME_OT_text_tool(Operator):
         self._editing_created_new = True
         self._edit_original_body = ""
         self._edit_original_font_spans = ()
+        self._edit_original_rect = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
         self._cursor_index = 0
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
         self._clear_drag_state()
         self._clear_click_state()
+        text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
         self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
@@ -1156,7 +1169,10 @@ class BNAME_OT_text_tool(Operator):
         if self._drag_action != "move" and _creation_blocked(context, page, x, y, w, h):
             return
         _set_text_rect(entry, x, y, w, h)
-        _select_text_index(context, work, page, idx)
+        page.active_text_index = idx
+        work.active_page_index = next((i for i, p in enumerate(work.pages) if p == page), work.active_page_index)
+        if hasattr(context.scene, "bname_active_layer_kind"):
+            context.scene.bname_active_layer_kind = "text"
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _drag_result_rect(self, dx: float, dy: float) -> tuple[float, float, float, float]:
@@ -1321,8 +1337,9 @@ class BNAME_OT_text_tool(Operator):
         page.active_text_index = idx
         if hasattr(context.scene, "bname_active_layer_kind"):
             context.scene.bname_active_layer_kind = "text"
-        _sync_text_real_object(context, page, entry)
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        with text_real_object.suspend_auto_sync():
+            text_edit_runtime.fit_text_rect_to_body(entry, min_width=_TEXT_MIN_SIZE_MM, min_height=_TEXT_MIN_SIZE_MM)
+        layer_stack_utils.tag_view3d_redraw(context)
 
     def _insert_current_text(self, context, text: str):
         page, entry, idx = self._current_text_entry(context)
@@ -1332,12 +1349,13 @@ class BNAME_OT_text_tool(Operator):
         cleaned = text.replace("\x00", "")
         if not cleaned:
             return {"RUNNING_MODAL"}
-        self._cursor_index = text_edit_runtime.replace_selection(
-            entry,
-            self._cursor_index,
-            self._selection_anchor,
-            cleaned,
-        )
+        with text_real_object.suspend_auto_sync():
+            self._cursor_index = text_edit_runtime.replace_selection(
+                entry,
+                self._cursor_index,
+                self._selection_anchor,
+                cleaned,
+            )
         self._selection_anchor = -1
         self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
@@ -1347,11 +1365,12 @@ class BNAME_OT_text_tool(Operator):
         if entry is None:
             self.finish_from_external(context, keep_selection=True)
             return {"CANCELLED"}
-        self._cursor_index = text_edit_runtime.delete_backward(
-            entry,
-            self._cursor_index,
-            self._selection_anchor,
-        )
+        with text_real_object.suspend_auto_sync():
+            self._cursor_index = text_edit_runtime.delete_backward(
+                entry,
+                self._cursor_index,
+                self._selection_anchor,
+            )
         self._selection_anchor = -1
         self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
@@ -1361,11 +1380,12 @@ class BNAME_OT_text_tool(Operator):
         if entry is None:
             self.finish_from_external(context, keep_selection=True)
             return {"CANCELLED"}
-        self._cursor_index = text_edit_runtime.delete_forward(
-            entry,
-            self._cursor_index,
-            self._selection_anchor,
-        )
+        with text_real_object.suspend_auto_sync():
+            self._cursor_index = text_edit_runtime.delete_forward(
+                entry,
+                self._cursor_index,
+                self._selection_anchor,
+            )
         self._selection_anchor = -1
         self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
@@ -1413,12 +1433,13 @@ class BNAME_OT_text_tool(Operator):
         selected = text_edit_runtime.selected_text(entry, self._cursor_index, self._selection_anchor)
         if selected:
             context.window_manager.clipboard = selected
-            self._cursor_index = text_edit_runtime.replace_selection(
-                entry,
-                self._cursor_index,
-                self._selection_anchor,
-                "",
-            )
+            with text_real_object.suspend_auto_sync():
+                self._cursor_index = text_edit_runtime.replace_selection(
+                    entry,
+                    self._cursor_index,
+                    self._selection_anchor,
+                    "",
+                )
             self._selection_anchor = -1
             self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
@@ -1432,6 +1453,7 @@ class BNAME_OT_text_tool(Operator):
         self._editing_created_new = False
         self._edit_original_body = ""
         self._edit_original_font_spans = ()
+        self._edit_original_rect = (0.0, 0.0, 0.0, 0.0)
         self._cursor_index = 0
         self._selection_anchor = -1
         self._clear_drag_state()
@@ -1443,6 +1465,8 @@ class BNAME_OT_text_tool(Operator):
         if getattr(self, "_externally_finished", False):
             return
         self._externally_finished = True
+        if getattr(self, "_editing", False):
+            self._finish_current_text_edit(context)
         self._cleanup(context)
         coma_modal_state.clear_active("text_tool", self, context)
 

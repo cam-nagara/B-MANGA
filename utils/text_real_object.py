@@ -6,6 +6,7 @@ B-Name のテキストは、編集時のカーソルや選択範囲だけをオ�
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Optional
 
 import bpy
@@ -28,6 +29,23 @@ TEXT_REAL_DPI = 300
 TEXT_RENDER_PAD_MM = 1.5
 TEXT_Z_BASE = 2000
 OUTSIDE_PAGE_ID = "outside"
+_TEXT_RENDER_SIGNATURE_PROP = "bname_text_render_signature"
+_AUTO_SYNC_SUSPEND_DEPTH = 0
+
+
+@contextmanager
+def suspend_auto_sync():
+    """Temporarily skip expensive text image rebuilds from property callbacks."""
+    global _AUTO_SYNC_SUSPEND_DEPTH
+    _AUTO_SYNC_SUSPEND_DEPTH += 1
+    try:
+        yield
+    finally:
+        _AUTO_SYNC_SUSPEND_DEPTH = max(0, _AUTO_SYNC_SUSPEND_DEPTH - 1)
+
+
+def auto_sync_suspended() -> bool:
+    return _AUTO_SYNC_SUSPEND_DEPTH > 0
 
 
 def text_object_bname_id_for_values(page_id: str, text_id: str) -> str:
@@ -104,6 +122,17 @@ def has_visible_text_object(entry, page=None) -> bool:
         return False
     image = _image_for_object(obj)
     return image is not None and getattr(image, "size", (0, 0))[0] > 0
+
+
+def set_text_object_preview_hidden(entry, page=None, *, hidden: bool) -> None:
+    text_id = str(getattr(entry, "id", "") or "")
+    if not text_id:
+        return
+    obj = find_text_object(_page_id_for_entry(page, entry), text_id)
+    if obj is None:
+        return
+    obj.hide_viewport = bool(hidden) or not bool(getattr(entry, "visible", True))
+    obj.hide_render = obj.hide_viewport
 
 
 def _safe_token(value: str) -> str:
@@ -242,6 +271,52 @@ def _mesh_dimensions_for_entry(entry) -> tuple[float, float, float]:
     if bool(getattr(entry, "stroke_enabled", False)):
         stroke_pad = max(0.0, float(getattr(entry, "stroke_width_mm", 0.0) or 0.0))
     return width_mm, height_mm, max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
+
+
+def _float_sig(value) -> float:
+    try:
+        return round(float(value), 6)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _rgba_sig(value) -> tuple[float, float, float, float]:
+    try:
+        return tuple(_float_sig(value[i]) for i in range(4))  # type: ignore[index]
+    except Exception:  # noqa: BLE001
+        return (0.0, 0.0, 0.0, 1.0)
+
+
+def _vec2_sig(value) -> tuple[float, float]:
+    try:
+        return _float_sig(value[0]), _float_sig(value[1])  # type: ignore[index]
+    except Exception:  # noqa: BLE001
+        return (0.0, 0.0)
+
+
+def _entry_render_signature(entry) -> str:
+    return repr((
+        str(getattr(entry, "body", "") or ""),
+        _float_sig(getattr(entry, "width_mm", 0.0)),
+        _float_sig(getattr(entry, "height_mm", 0.0)),
+        str(getattr(entry, "writing_mode", "vertical") or "vertical"),
+        str(getattr(entry, "font", "") or ""),
+        _float_sig(getattr(entry, "font_size_q", 20.0)),
+        bool(getattr(entry, "font_bold", False)),
+        bool(getattr(entry, "font_italic", False)),
+        _rgba_sig(getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))),
+        _float_sig(getattr(entry, "line_height", 1.4)),
+        _float_sig(getattr(entry, "letter_spacing", 0.0)),
+        bool(getattr(entry, "stroke_enabled", False)),
+        _float_sig(getattr(entry, "stroke_width_mm", 0.0)),
+        _rgba_sig(getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))),
+        text_style.all_spans_snapshot(entry),
+        bool(getattr(entry, "free_transform_enabled", False)),
+        _vec2_sig(getattr(entry, "free_transform_bottom_left", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_bottom_right", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_top_left", (0.0, 0.0))),
+        _vec2_sig(getattr(entry, "free_transform_top_right", (0.0, 0.0))),
+    ))
 
 
 def _ensure_image_data(name: str, pil_image) -> Optional[bpy.types.Image]:
@@ -398,39 +473,7 @@ def _remove_duplicate_text_objects(
         _remove_text_object(obj)
 
 
-def ensure_text_real_object(
-    *,
-    scene: bpy.types.Scene,
-    entry,
-    page,
-    folder_id: str = "",
-) -> Optional[bpy.types.Object]:
-    if scene is None or entry is None:
-        return None
-    text_id = str(getattr(entry, "id", "") or "")
-    page_id = _page_id_for_entry(page, entry)
-    if not text_id or not page_id:
-        return None
-
-    rendered = _render_entry_to_pillow(entry)
-    if rendered is None:
-        _logger.warning("Pillow が利用できないためテキスト実体を更新できません")
-        return None
-    pil_image, pad_mm, width_mm, height_mm = rendered
-    image = _ensure_image_data(_image_name(page_id, text_id), pil_image)
-    mat = _ensure_material(_material_name(page_id, text_id), image)
-
-    mesh = bpy.data.meshes.get(_mesh_name(page_id, text_id))
-    if mesh is None:
-        mesh = bpy.data.meshes.new(_mesh_name(page_id, text_id))
-    _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
-    if not mesh.materials:
-        mesh.materials.append(mat)
-    elif mesh.materials[0] is not mat:
-        mesh.materials[0] = mat
-
-    full_id = text_object_bname_id(page, entry)
-    obj_name = _object_name(page_id, text_id)
+def _find_existing_text_object(full_id: str, text_id: str, obj_name: str) -> Optional[bpy.types.Object]:
     obj = on.find_object_by_bname_id(full_id, kind="text")
     if obj is None:
         legacy_obj = on.find_object_by_bname_id(text_id, kind="text")
@@ -442,15 +485,32 @@ def ensure_text_real_object(
         obj = bpy.data.objects.get(obj_name)
     if obj is not None and obj.type != "MESH":
         _remove_text_object(obj)
-        obj = None
-    if obj is None:
-        obj = bpy.data.objects.new(obj_name, mesh)
-    elif obj.data is not mesh:
-        obj.data = mesh
+        return None
+    return obj
 
-    _remove_duplicate_text_objects(full_id, text_id, obj)
-    _remove_legacy_empty(text_id, keep_obj=obj)
 
+def _can_reuse_rendered_object(obj: Optional[bpy.types.Object], signature: str) -> bool:
+    if obj is None or obj.type != "MESH":
+        return False
+    if str(obj.get(_TEXT_RENDER_SIGNATURE_PROP, "") or "") != signature:
+        return False
+    mesh = getattr(obj, "data", None)
+    if mesh is None or len(getattr(mesh, "polygons", []) or []) == 0:
+        return False
+    image = _image_for_object(obj)
+    return image is not None and getattr(image, "size", (0, 0))[0] > 0
+
+
+def _apply_text_object_state(
+    scene: bpy.types.Scene,
+    page,
+    entry,
+    obj: bpy.types.Object,
+    *,
+    full_id: str,
+    text_id: str,
+    folder_id: str,
+) -> None:
     work = getattr(scene, "bname_work", None)
     ox_mm, oy_mm = _page_offset_mm(scene, work, page)
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
@@ -472,6 +532,75 @@ def ensure_text_real_object(
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     obj.hide_select = False
+
+
+def ensure_text_real_object(
+    *,
+    scene: bpy.types.Scene,
+    entry,
+    page,
+    folder_id: str = "",
+) -> Optional[bpy.types.Object]:
+    if scene is None or entry is None:
+        return None
+    text_id = str(getattr(entry, "id", "") or "")
+    page_id = _page_id_for_entry(page, entry)
+    if not text_id or not page_id:
+        return None
+
+    full_id = text_object_bname_id(page, entry)
+    obj_name = _object_name(page_id, text_id)
+    obj = _find_existing_text_object(full_id, text_id, obj_name)
+    signature = _entry_render_signature(entry)
+    if _can_reuse_rendered_object(obj, signature):
+        _remove_duplicate_text_objects(full_id, text_id, obj)
+        _remove_legacy_empty(text_id, keep_obj=obj)
+        _apply_text_object_state(
+            scene,
+            page,
+            entry,
+            obj,
+            full_id=full_id,
+            text_id=text_id,
+            folder_id=folder_id,
+        )
+        return obj
+
+    rendered = _render_entry_to_pillow(entry)
+    if rendered is None:
+        _logger.warning("Pillow が利用できないためテキスト実体を更新できません")
+        return None
+    pil_image, pad_mm, width_mm, height_mm = rendered
+    image = _ensure_image_data(_image_name(page_id, text_id), pil_image)
+    mat = _ensure_material(_material_name(page_id, text_id), image)
+
+    mesh = bpy.data.meshes.get(_mesh_name(page_id, text_id))
+    if mesh is None:
+        mesh = bpy.data.meshes.new(_mesh_name(page_id, text_id))
+    _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
+    if not mesh.materials:
+        mesh.materials.append(mat)
+    elif mesh.materials[0] is not mat:
+        mesh.materials[0] = mat
+
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    elif obj.data is not mesh:
+        obj.data = mesh
+    obj[_TEXT_RENDER_SIGNATURE_PROP] = signature
+
+    _remove_duplicate_text_objects(full_id, text_id, obj)
+    _remove_legacy_empty(text_id, keep_obj=obj)
+
+    _apply_text_object_state(
+        scene,
+        page,
+        entry,
+        obj,
+        full_id=full_id,
+        text_id=text_id,
+        folder_id=folder_id,
+    )
     return obj
 
 
@@ -491,6 +620,8 @@ def sync_all_text_real_objects(scene: bpy.types.Scene, work) -> int:
 
 
 def on_text_entry_changed(entry) -> bool:
+    if auto_sync_suspended():
+        return False
     scene = bpy.context.scene if bpy.context is not None else None
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
@@ -527,7 +658,7 @@ def on_text_entry_changed(entry) -> bool:
 def _refresh_existing_text_mesh(scene, entry, page) -> bool:
     page_id = _page_id_for_entry(page, entry)
     text_id = str(getattr(entry, "id", "") or "")
-    obj = find_text_object(scene, text_object_bname_id_for_values(page_id, text_id))
+    obj = find_text_object(page_id, text_id)
     if obj is None or getattr(obj, "type", "") != "MESH":
         return ensure_text_real_object(scene=scene, entry=entry, page=page) is not None
     mesh = getattr(obj, "data", None)
@@ -535,6 +666,7 @@ def _refresh_existing_text_mesh(scene, entry, page) -> bool:
         return False
     width_mm, height_mm, pad_mm = _mesh_dimensions_for_entry(entry)
     _rebuild_mesh(mesh, width_mm, height_mm, pad_mm, entry)
+    obj[_TEXT_RENDER_SIGNATURE_PROP] = _entry_render_signature(entry)
     return True
 
 

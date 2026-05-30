@@ -623,6 +623,96 @@ def text_rect(entry) -> Rect:
     )
 
 
+def _glyph_em_mm(entry, index: int) -> float:
+    try:
+        return max(0.25, q_to_mm(float(text_style.font_size_q_for_index(entry, int(index)))))
+    except Exception:  # noqa: BLE001
+        return text_em_mm(entry)
+
+
+def natural_text_outer_size(entry) -> tuple[float, float]:
+    """Return the unwrapped text bounds including the editor padding."""
+    body = text_body(entry)
+    base_em = text_em_mm(entry)
+    if not body:
+        size = base_em + _TEXT_PADDING_MM * 2.0
+        return size, size
+    line_pitch = base_em * text_line_height(entry)
+    char_scale = max(0.1, 1.0 + text_letter_spacing(entry))
+    if getattr(entry, "writing_mode", "vertical") == "horizontal":
+        widths: list[float] = []
+        line_ems: list[float] = []
+        current_advance = 0.0
+        current_width = base_em
+        current_em = base_em
+        for index, ch in enumerate(body):
+            if ch == "\n":
+                widths.append(max(base_em, current_width))
+                line_ems.append(current_em)
+                current_advance = 0.0
+                current_width = base_em
+                current_em = base_em
+                continue
+            em = _glyph_em_mm(entry, index)
+            current_width = max(current_width, current_advance + em)
+            current_advance += em * char_scale
+            current_em = max(current_em, em)
+        widths.append(max(base_em, current_width))
+        line_ems.append(current_em)
+        content_w = max(widths) if widths else base_em
+        content_h = (len(line_ems) - 1) * line_pitch + max(base_em, line_ems[-1])
+    else:
+        heights: list[float] = []
+        column_ems: list[float] = []
+        current_advance = 0.0
+        current_height = base_em
+        current_em = base_em
+        for index, ch in enumerate(body):
+            if ch == "\n":
+                heights.append(max(base_em, current_height))
+                column_ems.append(current_em)
+                current_advance = 0.0
+                current_height = base_em
+                current_em = base_em
+                continue
+            em = _glyph_em_mm(entry, index)
+            current_height = max(current_height, current_advance + em)
+            current_advance += em * char_scale
+            current_em = max(current_em, em)
+        heights.append(max(base_em, current_height))
+        column_ems.append(current_em)
+        content_w = (len(column_ems) - 1) * line_pitch + max(base_em, max(column_ems))
+        content_h = max(heights) if heights else base_em
+    return content_w + _TEXT_PADDING_MM * 2.0, content_h + _TEXT_PADDING_MM * 2.0
+
+
+def fit_text_rect_to_body(entry, *, min_width: float = 2.0, min_height: float = 2.0) -> bool:
+    """Resize the text box to its unwrapped body while keeping the first glyph anchored."""
+    if not text_body(entry):
+        return False
+    rect = text_rect(entry)
+    width, height = natural_text_outer_size(entry)
+    width = max(float(min_width), width)
+    height = max(float(min_height), height)
+    if getattr(entry, "writing_mode", "vertical") == "horizontal":
+        x = rect.x
+    else:
+        x = rect.x2 - width
+    y = rect.y2 - height
+    if (
+        abs(float(getattr(entry, "x_mm", 0.0)) - x) <= 1.0e-5
+        and abs(float(getattr(entry, "y_mm", 0.0)) - y) <= 1.0e-5
+        and abs(float(getattr(entry, "width_mm", 0.0)) - width) <= 1.0e-5
+        and abs(float(getattr(entry, "height_mm", 0.0)) - height) <= 1.0e-5
+    ):
+        return False
+    entry.x_mm = x
+    entry.y_mm = y
+    entry.width_mm = width
+    entry.height_mm = height
+    return True
+
+
 def _layout_cursor_state(entry, rect: Rect, cursor_index: int) -> tuple[Rect, float, float, int, int]:
     region = text_inner_rect(rect)
     em = text_em_mm(entry)
