@@ -189,34 +189,12 @@ def main() -> None:
         ]
         if empty_rows:
             raise AssertionError(f"レイヤーリストに空行が残っています: {empty_rows}")
-        initial_preview_idx = initial_uids.index(preview_uid)
-        initial_balloon_idx = initial_uids.index(balloon_uid)
-        initial_effect_idx = initial_uids.index(effect_uid)
-        if not (initial_balloon_idx < initial_preview_idx and initial_effect_idx < initial_preview_idx):
+        if preview_uid in initial_uids:
+            raise AssertionError("レイヤー一覧にコマの内部表示行が残っています")
+        if balloon_uid not in initial_uids or effect_uid not in initial_uids:
             raise AssertionError(
-                "コマ内で新規作成したフキダシ/効果線がコマプレビューより前面に作成されていません"
+                "コマ内で新規作成したフキダシ/効果線がレイヤー一覧に作成されていません"
             )
-
-        preview_item = stack[initial_preview_idx]
-        preview_resolved = layer_stack_utils.resolve_stack_item(bpy.context, preview_item)
-        preview_obj = preview_resolved.get("object") if preview_resolved is not None else None
-        if preview_obj is None:
-            raise AssertionError("コマプレビューの表示実体が見つかりません")
-        bpy.ops.bname.layer_stack_toggle_visibility(index=initial_preview_idx)
-        if bool(getattr(coma, "paper_visible", True)):
-            raise AssertionError("コマプレビューの瞳アイコンで非表示にできません")
-        if not bool(getattr(preview_obj, "hide_viewport", False)):
-            raise AssertionError("コマプレビューの非表示が表示実体へ反映されていません")
-        bpy.ops.bname.layer_stack_toggle_visibility(index=initial_preview_idx)
-        if not bool(getattr(coma, "paper_visible", True)):
-            raise AssertionError("コマプレビューの瞳アイコンで再表示できません")
-        if bool(getattr(preview_obj, "hide_viewport", False)):
-            raise AssertionError("コマプレビューの再表示が表示実体へ反映されていません")
-
-        def _move_after(uid: str, anchor_uid: str) -> None:
-            from_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
-            anchor_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == anchor_uid)
-            stack.move(from_idx, anchor_idx if from_idx < anchor_idx else anchor_idx + 1)
 
         def _move_before(uid: str, anchor_uid: str) -> None:
             from_idx = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
@@ -225,28 +203,12 @@ def main() -> None:
                 anchor_idx -= 1
             stack.move(from_idx, anchor_idx)
 
-        _move_before(balloon_uid, preview_uid)
-        _move_before(effect_uid, preview_uid)
+        _move_before(effect_uid, balloon_uid)
         layer_stack_utils.apply_stack_order(bpy.context)
         layer_object_sync.assign_per_page_z_ranks(scene, work)
-        _assert_between(balloon_obj.location.z, plane_z, white_z, "コマプレビュー前面のフキダシ")
-        _assert_between(effect_obj.location.z, plane_z, white_z, "コマプレビュー前面の効果線")
-        _assert_between(effect_display.location.z, plane_z, white_z, "コマプレビュー前面の効果線の表示実体")
-
-        _move_after(balloon_uid, preview_uid)
-        _move_after(effect_uid, preview_uid)
-        layer_stack_utils.apply_stack_order(bpy.context)
-        layer_object_sync.assign_per_page_z_ranks(scene, work)
-        if not (balloon_obj.location.z < plane_z):
-            raise AssertionError(f"コマプレビュー背面へ移したフキダシが手前に残っています: {balloon_obj.location.z}")
-        if not (effect_obj.location.z < plane_z):
-            raise AssertionError(f"コマプレビュー背面へ移した効果線が手前に残っています: {effect_obj.location.z}")
-        if not (effect_display.location.z < plane_z):
-            raise AssertionError(
-                f"コマプレビュー背面へ移した効果線の表示実体が手前に残っています: {effect_display.location.z}"
-            )
-        if not (safe_back_z := min(balloon_obj.location.z, effect_obj.location.z, effect_display.location.z)) > 0.0:
-            raise AssertionError(f"コマプレビュー背面の表示物が用紙より奥にあります: {safe_back_z}")
+        _assert_between(balloon_obj.location.z, plane_z, white_z, "コマ内のフキダシ")
+        _assert_between(effect_obj.location.z, plane_z, white_z, "コマ内の効果線")
+        _assert_between(effect_display.location.z, plane_z, white_z, "コマ内の効果線の表示実体")
 
         print("BNAME_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:

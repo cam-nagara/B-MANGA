@@ -158,7 +158,10 @@ def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
     parent_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == parent_uid)
-    target_index = min(len(stack) - 1, parent_index + 1)
+    target_index = parent_index + 1
+    if from_index < target_index:
+        target_index -= 1
+    target_index = min(len(stack) - 1, max(0, target_index))
     stack.move(from_index, target_index)
     layer_stack_utils.apply_stack_order_if_ui_changed(context, moved_uid=uid)
     layer_stack_utils.apply_stack_drop_hint(context, uid, nesting_delta=1)
@@ -461,32 +464,22 @@ def main() -> None:
             _move_uid_below_parent(context, uid, coma_uid)
             _assert_parent(context, uid, coma_key)
         _stack(context)
-        preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
-        if preview_index < 0 or preview_item is None:
-            raise AssertionError("コマプレビュー行がレイヤーリストにありません")
-        if int(getattr(preview_item, "depth", 0)) < 2:
-            raise AssertionError(f"コマプレビュー行がコマ内階層に表示されていません: depth={preview_item.depth}")
-        for uid in (effect_uid, balloon_uid):
-            _move_uid_before(context, uid, coma_preview_uid)
-            stack_uids = [layer_stack_utils.stack_item_uid(item) for item in _stack(context)]
-            if stack_uids.index(uid) > stack_uids.index(coma_preview_uid):
-                raise AssertionError(f"{uid} をコマプレビューの前面へ移動できません")
-            _move_uid_before(context, coma_preview_uid, uid)
-            stack_uids = [layer_stack_utils.stack_item_uid(item) for item in _stack(context)]
-            if stack_uids.index(uid) < stack_uids.index(coma_preview_uid):
-                raise AssertionError(f"{uid} をコマプレビューの背面へ移動できません")
+        try:
+            preview_index, preview_item = _find_stack_item(context, coma_preview_uid)
+        except AssertionError:
+            preview_index, preview_item = -1, None
+        if preview_index >= 0 or preview_item is not None:
+            raise AssertionError("レイヤー一覧にコマの内部表示行が残っています")
 
-        _move_uid_before(context, effect_uid, coma_preview_uid)
-        _move_uid_before(context, coma_preview_uid, balloon_uid)
+        _move_uid_before(context, effect_uid, balloon_uid)
         stack = _stack(context)
         stack_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
         effect_index = stack_uids.index(effect_uid)
-        preview_index = stack_uids.index(coma_preview_uid)
         balloon_index = stack_uids.index(balloon_uid)
-        if not (effect_index < preview_index < balloon_index):
+        if not (effect_index < balloon_index):
             raise AssertionError(
-                "コマプレビューの前後にレイヤーを置いたサンプルを作成できません: "
-                f"effect={effect_index}, preview={preview_index}, balloon={balloon_index}"
+                "コマ内レイヤーのサンプル順を作成できません: "
+                f"effect={effect_index}, balloon={balloon_index}"
             )
 
         from bname_dev.panels import gpencil_panel
@@ -621,12 +614,11 @@ def main() -> None:
         stack = _stack(context)
         stack_uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
         effect_index = stack_uids.index(effect_uid)
-        preview_index = stack_uids.index(coma_preview_uid)
         balloon_index = stack_uids.index(balloon_uid)
-        if not (effect_index < preview_index < balloon_index):
+        if not (effect_index < balloon_index):
             raise AssertionError(
-                "コマプレビュー前後のサンプル順が後続処理で崩れました: "
-                f"effect={effect_index}, preview={preview_index}, balloon={balloon_index}"
+                "コマ内レイヤーのサンプル順が後続処理で崩れました: "
+                f"effect={effect_index}, balloon={balloon_index}"
             )
         stack_rows = [
             {

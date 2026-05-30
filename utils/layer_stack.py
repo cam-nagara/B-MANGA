@@ -32,7 +32,7 @@ _logger = log.get_logger(__name__)
 EFFECT_GP_OBJECT_NAME = "BName_EffectLines"
 PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
-COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS | {COMA_PREVIEW_KIND}
+COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
 LAYER_FOLDER_KIND = layer_folder_utils.LAYER_FOLDER_KIND
 _sync_scheduled = False
 _sync_should_apply_order = False
@@ -94,7 +94,9 @@ def _target_has_stack_row(target: LayerTarget) -> bool:
     kind = str(target.kind or "").strip()
     if not kind:
         return False
-    if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND, COMA_PREVIEW_KIND}:
+    if kind == COMA_PREVIEW_KIND:
+        return False
+    if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND}:
         return True
     return bool(str(target.label or "").strip())
 

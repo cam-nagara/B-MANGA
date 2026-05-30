@@ -202,24 +202,12 @@ def main() -> None:
             if empty_rows:
                 raise AssertionError(f"レイヤーリストに空白行が残っています: {empty_rows}")
 
-            preview_uid = layer_stack_utils.target_uid(
-                layer_stack_utils.COMA_PREVIEW_KIND,
-                layer_stack_utils.coma_preview_key(coma_key),
-            )
-            uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
-            preview_index = uids.index(preview_uid)
-            for neighbor in (preview_index - 1, preview_index + 1):
-                if 0 <= neighbor < len(stack):
-                    label = str(getattr(stack[neighbor], "label", "") or getattr(stack[neighbor], "name", "") or "")
-                    if not label.strip():
-                        raise AssertionError("コマプレビュー前後に空白行があります")
-
             blank = stack.add()
             blank.kind = "gp"
             blank.key = ""
             blank.label = ""
             blank.name = ""
-            stack.move(len(stack) - 1, max(0, preview_index))
+            stack.move(len(stack) - 1, min(1, max(0, len(stack) - 1)))
             if not layer_stack_utils._stack_has_placeholder_rows(stack):
                 raise AssertionError("保存済みの空白行を検出できません")
             if not layer_stack_utils.schedule_layer_stack_draw_maintenance(context):
@@ -233,13 +221,6 @@ def main() -> None:
             ]
             if empty_rows:
                 raise AssertionError(f"同期後もレイヤーリストに空白行が残っています: {empty_rows}")
-            uids = [layer_stack_utils.stack_item_uid(item) for item in stack]
-            preview_index = uids.index(preview_uid)
-            for neighbor in (preview_index - 1, preview_index + 1):
-                if 0 <= neighbor < len(stack):
-                    label = str(getattr(stack[neighbor], "label", "") or getattr(stack[neighbor], "name", "") or "")
-                    if not label.strip():
-                        raise AssertionError("同期後もコマプレビュー前後に空白行があります")
 
             world_bounds = (
                 float(created.x_mm) + page_ox,
