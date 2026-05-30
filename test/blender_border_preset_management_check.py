@@ -180,17 +180,43 @@ def _assert_management_ops(context, work, page, coma) -> None:
     result = bpy.ops.bname.border_preset_delete(preset_name="管理B")
     assert "FINISHED" in result, result
     assert "管理B" not in _names(border_presets, work_dir)
+    assert wm.bname_border_preset_selector == "ぼかし改名管理", wm.bname_border_preset_selector
+    assert coma.border.preset_name == "ぼかし改名管理", coma.border.preset_name
 
     wm.bname_border_preset_selector = "線無し"
+    names_before_delete = _names(border_presets, work_dir)
+    deleted_index = names_before_delete.index("線無し")
+    expected_fallback = (
+        names_before_delete[deleted_index + 1]
+        if deleted_index + 1 < len(names_before_delete)
+        else names_before_delete[deleted_index - 1]
+    )
     result = bpy.ops.bname.border_preset_delete(preset_name="線無し")
     assert "FINISHED" in result, result
     assert "線無し" not in _names(border_presets, work_dir)
     assert "線無し" in {preset.name for preset in border_presets.list_global_presets()}
+    assert wm.bname_border_preset_selector == expected_fallback
+    assert coma.border.preset_name == expected_fallback
 
     _assert_rejected(
         lambda: bpy.ops.bname.border_preset_delete(preset_name="存在しないプリセット"),
         "存在しないプリセットの削除が拒否されていません",
     )
+
+    result = bpy.ops.bname.border_preset_add_local(preset_name="削除対象")
+    assert "FINISHED" in result, result
+    names_before_delete = _names(border_presets, work_dir)
+    deleted_index = names_before_delete.index("削除対象")
+    expected_fallback = (
+        names_before_delete[deleted_index + 1]
+        if deleted_index + 1 < len(names_before_delete)
+        else names_before_delete[deleted_index - 1]
+    )
+    result = bpy.ops.bname.border_preset_delete(preset_name="削除対象")
+    assert "FINISHED" in result, result
+    assert "削除対象" not in _names(border_presets, work_dir)
+    assert wm.bname_border_preset_selector == expected_fallback
+    assert coma.border.preset_name == expected_fallback
 
     for name in ("並べ替えA", "並べ替えB", "並べ替えC"):
         result = bpy.ops.bname.border_preset_add_local(preset_name=name)
@@ -216,6 +242,12 @@ def _assert_management_ops(context, work, page, coma) -> None:
     index_path = work_dir / "assets" / "borders" / border_presets.PRESET_INDEX_FILENAME
     assert index_path.is_file(), "プリセットの並び順ファイルがありません"
     assert "並べ替えC" in _names(border_presets, work_dir)
+
+    from bname_dev_border_preset_manage.utils import json_io
+
+    json_io.write_json(index_path, {"schemaVersion": 1, "order": "bad", "hidden": 42})
+    names = _names(border_presets, work_dir)
+    assert "標準" in names and "並べ替えC" in names
 
 
 def main() -> None:

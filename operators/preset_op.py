@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zlib
 from pathlib import Path
 
 import bpy
@@ -172,8 +173,21 @@ class BNAME_OT_paper_preset_save_local(Operator):
 
 # ---------- 枠線プリセット (枠線 + フチ) ----------
 
-_BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
+_BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str, str, int]] = []
 _SUPPRESS_BORDER_SELECTOR_UPDATE = False
+
+
+def _border_preset_enum_number(identifier: str, used: set[int]) -> int:
+    if identifier == "標準":
+        used.add(0)
+        return 0
+    number = zlib.crc32(identifier.encode("utf-8")) & 0x7FFFFFFF
+    if number == 0:
+        number = 1
+    while number in used:
+        number = (number % 0x7FFFFFFF) + 1
+    used.add(number)
+    return number
 
 
 def _border_preset_enum_items(_self, context):
@@ -181,12 +195,14 @@ def _border_preset_enum_items(_self, context):
     work = get_work(context)
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
     preset_list = list(border_presets.list_all_presets(work_dir))
-    cache: list[tuple[str, str, str]] = []
+    cache: list[tuple[str, str, str, str, int]] = []
+    used_numbers: set[int] = set()
     for p in preset_list:
         label = p.name if p.source == "global" else f"{p.name} (作品)"
-        cache.append((p.name, label, p.description))
+        number = _border_preset_enum_number(p.name, used_numbers)
+        cache.append((p.name, label, p.description, "NONE", number))
     if not cache:
-        cache.append(("", "(プリセットなし)", ""))
+        cache.append(("", "(プリセットなし)", "", "NONE", 0))
     _BORDER_PRESET_ENUM_CACHE = cache
     return _BORDER_PRESET_ENUM_CACHE
 
@@ -210,7 +226,7 @@ def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
     wm = getattr(context, "window_manager", None)
     if wm is None or not hasattr(wm, "bname_border_preset_selector") or not name:
         return
-    valid = {ident for ident, _label, _desc in _border_preset_enum_items(None, context)}
+    valid = {item[0] for item in _border_preset_enum_items(None, context)}
     if name not in valid:
         return
     _SUPPRESS_BORDER_SELECTOR_UPDATE = not apply
@@ -243,7 +259,7 @@ def sync_border_preset_selector(context) -> None:
         return
     # セレクタの enum に存在しない名前 (削除済みプリセット等) は無視する。
     items = _border_preset_enum_items(None, context)
-    if name not in {ident for ident, _label, _desc in items}:
+    if name not in {item[0] for item in items}:
         return
     if getattr(wm, "bname_border_preset_selector", "") == name:
         return
@@ -296,6 +312,20 @@ def _persist_and_refresh_coma_border(context, work, page, coma) -> None:
             _cbo.ensure_coma_border_object(scene, work, page, coma)
     except Exception:  # noqa: BLE001
         _logger.exception("border preset: refresh border object failed")
+
+
+def _apply_border_preset_to_resolved(context, resolved, preset_name: str) -> bool:
+    if resolved is None or not preset_name:
+        return False
+    work, page, _pi, coma = resolved
+    work_dir = Path(work.work_dir) if work.work_dir else None
+    preset = border_presets.load_preset_by_name(preset_name, work_dir)
+    if preset is None:
+        return False
+    border_presets.apply_preset_to_coma(preset, coma)
+    _persist_and_refresh_coma_border(context, work, page, coma)
+    _prepare_border_detail_curve(coma)
+    return True
 
 
 def _prepare_border_detail_curve(coma) -> None:
@@ -494,9 +524,19 @@ class BNAME_OT_border_preset_rename(Operator):
         if work_dir is None:
             self.report({"ERROR"}, "作品ファイルを先に作成してください")
             return {"CANCELLED"}
+        selected_before = _selected_border_preset_name(context)
+        names_before = [preset.name for preset in border_presets.list_all_presets(work_dir)]
+        fallback = ""
+        if old_name in names_before and len(names_before) > 1:
+            index = names_before.index(old_name)
+            fallback = names_before[index + 1] if index + 1 < len(names_before) else names_before[index - 1]
+        if selected_before == old_name and fallback:
+            _set_border_preset_selector(context, fallback, apply=False)
         try:
             preset = border_presets.rename_preset(work_dir, old_name, new_name)
         except Exception as exc:  # noqa: BLE001
+            if selected_before == old_name:
+                _set_border_preset_selector(context, old_name, apply=False)
             self.report({"ERROR"}, f"改名失敗: {exc}")
             return {"CANCELLED"}
         resolved = _resolve_selected_coma(context)
@@ -577,12 +617,13 @@ class BNAME_OT_border_preset_delete(Operator):
         if work_dir is None:
             self.report({"ERROR"}, "作品ファイルを先に作成してください")
             return {"CANCELLED"}
+        selected_before = _selected_border_preset_name(context)
         names_before = [preset.name for preset in border_presets.list_all_presets(work_dir)]
         fallback = ""
         if name in names_before and len(names_before) > 1:
             index = names_before.index(name)
             fallback = names_before[index + 1] if index + 1 < len(names_before) else names_before[index - 1]
-        if fallback and _selected_border_preset_name(context) == name:
+        if fallback and selected_before == name:
             _set_border_preset_selector(context, fallback, apply=False)
         try:
             border_presets.delete_preset(work_dir, name)
@@ -591,15 +632,21 @@ class BNAME_OT_border_preset_delete(Operator):
                 _set_border_preset_selector(context, name, apply=False)
             self.report({"ERROR"}, f"削除失敗: {exc}")
             return {"CANCELLED"}
+        presets_after = border_presets.list_all_presets(work_dir)
+        after_names = {preset.name for preset in presets_after}
+        target = fallback if fallback in after_names else (presets_after[0].name if presets_after else "")
         resolved = _resolve_selected_coma(context)
         if resolved is not None:
             work, page, _pi, coma = resolved
-            if getattr(coma.border, "preset_name", "") == name:
+            should_replace_current = (
+                selected_before == name or getattr(coma.border, "preset_name", "") == name
+            )
+            if should_replace_current and target:
+                _apply_border_preset_to_resolved(context, resolved, target)
+            elif should_replace_current:
                 coma.border.preset_name = ""
                 _persist_and_refresh_coma_border(context, work, page, coma)
-        presets_after = border_presets.list_all_presets(work_dir)
-        if presets_after:
-            target = fallback if fallback in {preset.name for preset in presets_after} else presets_after[0].name
+        if selected_before == name and target:
             _set_border_preset_selector(context, target, apply=False)
         self.report({"INFO"}, f"枠線プリセット削除: {name}")
         return {"FINISHED"}

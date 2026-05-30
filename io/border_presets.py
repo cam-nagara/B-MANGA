@@ -38,6 +38,19 @@ class BorderPreset:
     data: dict[str, Any]
 
 
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    result: list[str] = []
+    for item in value:
+        if item is None:
+            continue
+        text = str(item).strip()
+        if text:
+            result.append(text)
+    return result
+
+
 def _list_in_dir(base: Path, *, source: str) -> list[BorderPreset]:
     if not base.is_dir():
         return []
@@ -82,16 +95,16 @@ def _read_local_index(work_dir: Path) -> dict[str, Any]:
         return {"order": [], "hidden": []}
     if not isinstance(data, dict):
         return {"order": [], "hidden": []}
-    order = [str(name) for name in data.get("order", []) if str(name)]
-    hidden = [str(name) for name in data.get("hidden", []) if str(name)]
+    order = _string_list(data.get("order", []))
+    hidden = _string_list(data.get("hidden", []))
     return {"order": order, "hidden": hidden}
 
 
 def _write_local_index(work_dir: Path, index: dict[str, Any]) -> None:
     target = _local_index_path(work_dir)
     target.parent.mkdir(parents=True, exist_ok=True)
-    order = [str(name) for name in index.get("order", []) if str(name)]
-    hidden = [str(name) for name in index.get("hidden", []) if str(name)]
+    order = _string_list(index.get("order", []))
+    hidden = _string_list(index.get("hidden", []))
     json_io.write_json(
         target,
         {
