@@ -42,7 +42,22 @@ def draw_coma_border_settings(layout, context, entry) -> None:
         row = layout.row(align=True)
         row.label(text="プリセット", icon="PRESET")
         row.prop(wm, "bname_border_preset_selector", text="")
-        row.operator("bname.border_preset_save_local", text="", icon="FILE_TICK")
+        selected = str(getattr(wm, "bname_border_preset_selector", "") or "")
+        tools = layout.row(align=True)
+        tools.operator("bname.border_preset_add_local", text="", icon="ADD")
+        op = tools.operator("bname.border_preset_rename", text="", icon="GREASEPENCIL")
+        op.preset_name = selected
+        op = tools.operator("bname.border_preset_duplicate", text="", icon="DUPLICATE")
+        op.preset_name = selected
+        op = tools.operator("bname.border_preset_delete", text="", icon="TRASH")
+        op.preset_name = selected
+        tools.separator()
+        op = tools.operator("bname.border_preset_move", text="", icon="TRIA_UP")
+        op.preset_name = selected
+        op.direction = "UP"
+        op = tools.operator("bname.border_preset_move", text="", icon="TRIA_DOWN")
+        op.preset_name = selected
+        op.direction = "DOWN"
     row = layout.row(align=True)
     row.prop(b, "visible", text="枠線を表示")
     row.prop(b, "style", text="線種")

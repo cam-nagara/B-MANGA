@@ -170,7 +170,7 @@ class BNAME_OT_paper_preset_save_local(Operator):
         return {"FINISHED"}
 
 
-# ---------- 枠線プリセット (枠線 + 白フチ) ----------
+# ---------- 枠線プリセット (枠線 + フチ) ----------
 
 _BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
 _SUPPRESS_BORDER_SELECTOR_UPDATE = False
@@ -181,9 +181,6 @@ def _border_preset_enum_items(_self, context):
     work = get_work(context)
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
     preset_list = list(border_presets.list_all_presets(work_dir))
-    # 「標準」を先頭に固定し、新規ウィンドウでの初期選択を「標準」にする
-    # (動的 EnumProperty は items の先頭要素が既定値になるため)
-    preset_list.sort(key=lambda p: 0 if p.name == "標準" else 1)
     cache: list[tuple[str, str, str]] = []
     for p in preset_list:
         label = p.name if p.source == "global" else f"{p.name} (作品)"
@@ -192,6 +189,35 @@ def _border_preset_enum_items(_self, context):
         cache.append(("", "(プリセットなし)", ""))
     _BORDER_PRESET_ENUM_CACHE = cache
     return _BORDER_PRESET_ENUM_CACHE
+
+
+def _border_preset_work_dir(context) -> Path | None:
+    work = get_work(context)
+    if work is None or not work.loaded or not work.work_dir:
+        return None
+    return Path(work.work_dir)
+
+
+def _selected_border_preset_name(context) -> str:
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bname_border_preset_selector"):
+        return ""
+    return str(getattr(wm, "bname_border_preset_selector", "") or "")
+
+
+def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
+    global _SUPPRESS_BORDER_SELECTOR_UPDATE
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bname_border_preset_selector") or not name:
+        return
+    valid = {ident for ident, _label, _desc in _border_preset_enum_items(None, context)}
+    if name not in valid:
+        return
+    _SUPPRESS_BORDER_SELECTOR_UPDATE = not apply
+    try:
+        wm.bname_border_preset_selector = name
+    finally:
+        _SUPPRESS_BORDER_SELECTOR_UPDATE = False
 
 
 def sync_border_preset_selector(context) -> None:
@@ -306,7 +332,7 @@ def _on_border_preset_selector_change(self, context):
 
 
 class BNAME_OT_border_preset_apply(Operator):
-    """選択した枠線プリセットを選択中のコマへ適用 (枠線 + 白フチ)."""
+    """選択した枠線プリセットを選択中のコマへ適用 (枠線 + フチ)."""
 
     bl_idname = "bname.border_preset_apply"
     bl_label = "枠線プリセットを適用"
@@ -343,7 +369,7 @@ class BNAME_OT_border_preset_apply(Operator):
 
 
 class BNAME_OT_border_preset_save_local(Operator):
-    """選択中コマの枠線・白フチ設定を作品ローカルプリセットとして保存.
+    """選択中コマの枠線・フチ設定を作品ローカルプリセットとして保存.
 
     詳細設定ダイアログ (``invoke_props_dialog``) の内側から起動される場合、
     Blender は入れ子の ``invoke_props_dialog`` を許さず ``invoke`` を素通り
@@ -392,25 +418,230 @@ class BNAME_OT_border_preset_save_local(Operator):
         return {"FINISHED"}
 
 
+class BNAME_OT_border_preset_add_local(Operator):
+    """現在のコマ枠を新しい作品プリセットとして追加する."""
+
+    bl_idname = "bname.border_preset_add_local"
+    bl_label = "枠線プリセットを追加"
+    bl_description = "現在のコマ枠設定を、新しい作品プリセットとして追加します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="プリセット名", default="新規枠線プリセット")  # type: ignore[valid-type]
+    description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _border_preset_work_dir(context) is not None and _resolve_selected_coma(context) is not None
+
+    def invoke(self, context, event):
+        work_dir = _border_preset_work_dir(context)
+        if work_dir is not None:
+            self.preset_name = border_presets.unique_preset_name(work_dir, "新規枠線プリセット")
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        work_dir = _border_preset_work_dir(context)
+        resolved = _resolve_selected_coma(context)
+        if work_dir is None or resolved is None:
+            self.report({"ERROR"}, "対象のコマが選択されていません")
+            return {"CANCELLED"}
+        work, page, _pi, coma = resolved
+        name = border_presets.unique_preset_name(work_dir, self.preset_name.strip() or "新規枠線プリセット")
+        try:
+            border_presets.save_local_preset(
+                work_dir,
+                coma,
+                name,
+                self.description,
+                insert_after=_selected_border_preset_name(context),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("border_preset_add_local failed")
+            self.report({"ERROR"}, f"追加失敗: {exc}")
+            return {"CANCELLED"}
+        coma.border.preset_name = name
+        _persist_and_refresh_coma_border(context, work, page, coma)
+        _set_border_preset_selector(context, name, apply=True)
+        self.report({"INFO"}, f"枠線プリセット追加: {name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_border_preset_rename(Operator):
+    """選択中の枠線プリセットを改名する."""
+
+    bl_idname = "bname.border_preset_rename"
+    bl_label = "枠線プリセットを改名"
+    bl_description = "選択中の枠線プリセットを改名します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="現在の名前", default="")  # type: ignore[valid-type]
+    new_name: StringProperty(name="新しい名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _border_preset_work_dir(context) is not None and bool(_selected_border_preset_name(context))
+
+    def invoke(self, context, event):
+        selected = _selected_border_preset_name(context)
+        self.preset_name = selected
+        self.new_name = selected
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        work_dir = _border_preset_work_dir(context)
+        old_name = self.preset_name.strip() or _selected_border_preset_name(context)
+        new_name = self.new_name.strip()
+        if work_dir is None:
+            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            return {"CANCELLED"}
+        try:
+            preset = border_presets.rename_preset(work_dir, old_name, new_name)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"改名失敗: {exc}")
+            return {"CANCELLED"}
+        resolved = _resolve_selected_coma(context)
+        if resolved is not None:
+            work, page, _pi, coma = resolved
+            if getattr(coma.border, "preset_name", "") == old_name:
+                coma.border.preset_name = preset.name
+                _persist_and_refresh_coma_border(context, work, page, coma)
+        _set_border_preset_selector(context, preset.name, apply=True)
+        self.report({"INFO"}, f"枠線プリセット改名: {preset.name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_border_preset_duplicate(Operator):
+    """選択中の枠線プリセットを複製する."""
+
+    bl_idname = "bname.border_preset_duplicate"
+    bl_label = "枠線プリセットを複製"
+    bl_description = "選択中の枠線プリセットを作品プリセットとして複製します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="複製元", default="")  # type: ignore[valid-type]
+    new_name: StringProperty(name="複製後の名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _border_preset_work_dir(context) is not None and bool(_selected_border_preset_name(context))
+
+    def invoke(self, context, event):
+        work_dir = _border_preset_work_dir(context)
+        selected = _selected_border_preset_name(context)
+        self.preset_name = selected
+        self.new_name = (
+            border_presets.unique_preset_name(work_dir, f"{selected} コピー")
+            if work_dir is not None
+            else f"{selected} コピー"
+        )
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        work_dir = _border_preset_work_dir(context)
+        source_name = self.preset_name.strip() or _selected_border_preset_name(context)
+        new_name = self.new_name.strip()
+        if work_dir is None:
+            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            return {"CANCELLED"}
+        try:
+            preset = border_presets.duplicate_preset(work_dir, source_name, new_name)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"複製失敗: {exc}")
+            return {"CANCELLED"}
+        _set_border_preset_selector(context, preset.name, apply=True)
+        self.report({"INFO"}, f"枠線プリセット複製: {preset.name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_border_preset_delete(Operator):
+    """選択中の枠線プリセットを削除する."""
+
+    bl_idname = "bname.border_preset_delete"
+    bl_label = "枠線プリセットを削除"
+    bl_description = "選択中の枠線プリセットをこの作品の一覧から削除します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _border_preset_work_dir(context) is not None and bool(_selected_border_preset_name(context))
+
+    def invoke(self, context, event):
+        self.preset_name = self.preset_name or _selected_border_preset_name(context)
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        work_dir = _border_preset_work_dir(context)
+        name = self.preset_name.strip() or _selected_border_preset_name(context)
+        if work_dir is None:
+            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            return {"CANCELLED"}
+        names_before = [preset.name for preset in border_presets.list_all_presets(work_dir)]
+        fallback = ""
+        if name in names_before and len(names_before) > 1:
+            index = names_before.index(name)
+            fallback = names_before[index + 1] if index + 1 < len(names_before) else names_before[index - 1]
+        if fallback and _selected_border_preset_name(context) == name:
+            _set_border_preset_selector(context, fallback, apply=False)
+        try:
+            border_presets.delete_preset(work_dir, name)
+        except Exception as exc:  # noqa: BLE001
+            if name in {preset.name for preset in border_presets.list_all_presets(work_dir)}:
+                _set_border_preset_selector(context, name, apply=False)
+            self.report({"ERROR"}, f"削除失敗: {exc}")
+            return {"CANCELLED"}
+        resolved = _resolve_selected_coma(context)
+        if resolved is not None:
+            work, page, _pi, coma = resolved
+            if getattr(coma.border, "preset_name", "") == name:
+                coma.border.preset_name = ""
+                _persist_and_refresh_coma_border(context, work, page, coma)
+        presets_after = border_presets.list_all_presets(work_dir)
+        if presets_after:
+            target = fallback if fallback in {preset.name for preset in presets_after} else presets_after[0].name
+            _set_border_preset_selector(context, target, apply=False)
+        self.report({"INFO"}, f"枠線プリセット削除: {name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_border_preset_move(Operator):
+    """選択中の枠線プリセットを並べ替える."""
+
+    bl_idname = "bname.border_preset_move"
+    bl_label = "枠線プリセットを並べ替え"
+    bl_description = "選択中の枠線プリセットを上下に移動します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
+    direction: StringProperty(name="方向", default="UP")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _border_preset_work_dir(context) is not None and bool(_selected_border_preset_name(context))
+
+    def execute(self, context):
+        work_dir = _border_preset_work_dir(context)
+        name = self.preset_name.strip() or _selected_border_preset_name(context)
+        if work_dir is None:
+            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            return {"CANCELLED"}
+        try:
+            border_presets.move_preset(work_dir, name, self.direction)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"並べ替え失敗: {exc}")
+            return {"CANCELLED"}
+        _set_border_preset_selector(context, name, apply=False)
+        self.report({"INFO"}, f"枠線プリセット並べ替え: {name}")
+        return {"FINISHED"}
+
+
 def _unique_border_preset_name(context, base: str) -> str:
     """同一作品内で既存プリセット名と被らない名前を返す."""
     work = get_work(context)
     if work is None or not getattr(work, "work_dir", ""):
         return base
-    try:
-        existing = {
-            str(getattr(p, "name", "") or "")
-            for p in border_presets.list_all_presets(Path(work.work_dir))
-        }
-    except Exception:  # noqa: BLE001
-        return base
-    if base not in existing:
-        return base
-    for i in range(2, 1000):
-        candidate = f"{base} {i:03d}"
-        if candidate not in existing:
-            return candidate
-    return base
+    return border_presets.unique_preset_name(Path(work.work_dir), base)
 
 
 _CLASSES = (
@@ -418,6 +649,11 @@ _CLASSES = (
     BNAME_OT_paper_preset_save_local,
     BNAME_OT_border_preset_apply,
     BNAME_OT_border_preset_save_local,
+    BNAME_OT_border_preset_add_local,
+    BNAME_OT_border_preset_rename,
+    BNAME_OT_border_preset_duplicate,
+    BNAME_OT_border_preset_delete,
+    BNAME_OT_border_preset_move,
 )
 
 

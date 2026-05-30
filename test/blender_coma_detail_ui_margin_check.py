@@ -42,6 +42,9 @@ class _RecordingLayout:
         self.records.append(("operator", "", text))
         return type("_Op", (), {})()
 
+    def separator(self) -> None:
+        self.records.append(("separator", "", ""))
+
     def template_curve_mapping(self, *_args, **_kwargs) -> None:
         self.records.append(("curve", "", ""))
 

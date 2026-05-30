@@ -174,18 +174,18 @@ def main() -> None:
     page = work.pages.add()
     coma = page.comas.add()
     if not bool(coma.white_margin.enabled):
-        failures.append("新規コマの白フチ初期値がオンではない")
+        failures.append("新規コマのフチ初期値がオンではない")
     if abs(float(coma.white_margin.width_mm) - 0.5) > 1e-6:
-        failures.append(f"新規コマの白フチ幅初期値が0.5mmではない: {coma.white_margin.width_mm}")
+        failures.append(f"新規コマのフチ幅初期値が0.5mmではない: {coma.white_margin.width_mm}")
     std = border_presets.load_preset_by_name("標準", None)
     if std is None:
         failures.append("標準 プリセットを load 出来ない")
     else:
         border_presets.apply_preset_to_coma(std, coma)
         if not bool(coma.white_margin.enabled):
-            failures.append("標準 プリセット適用後に白フチがオンではない")
+            failures.append("標準 プリセット適用後にフチがオンではない")
         if abs(float(coma.white_margin.width_mm) - 0.5) > 1e-6:
-            failures.append(f"標準 プリセット適用後の白フチ幅が0.5mmではない: {coma.white_margin.width_mm}")
+            failures.append(f"標準 プリセット適用後のフチ幅が0.5mmではない: {coma.white_margin.width_mm}")
     pre = border_presets.load_preset_by_name("輪郭ぼかし", None)
     if pre is None:
         failures.append("輪郭ぼかし プリセットを load 出来ない")
@@ -210,7 +210,7 @@ def main() -> None:
         if bool(coma.border.visible):
             failures.append("線無し プリセット適用後に枠線が表示のまま")
         if bool(coma.white_margin.enabled):
-            failures.append("線無し プリセット適用後に白フチが有効のまま")
+            failures.append("線無し プリセット適用後にフチが有効のまま")
 
     if failures:
         print("=== CHECK FAILURES ===")
