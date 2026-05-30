@@ -900,6 +900,16 @@ def ensure_effect_display_object(
     display.hide_viewport = False
     display.hide_render = False
     display.hide_select = False
+    # 効果線の編集用 GP (controller) は表示状態のままだと、Blender が表示中の
+    # グリースペンシルのためにビューポートを毎フレーム再描画し続け、用紙ガイド線・
+    # 効果線などの細線がずっと点滅する (TAA が settle しない)。画面表示はこの
+    # 表示用 Mesh が担うので、編集用 GP は必ずビューポート非表示にする。
+    try:
+        if str(getattr(controller_obj, "type", "") or "") == "GREASEPENCIL":
+            controller_obj.hide_viewport = True
+            controller_obj.hide_render = True
+    except Exception:  # noqa: BLE001
+        pass
     line_color = (values or {}).get("線色", (0.0, 0.0, 0.0, 1.0))
     line_opacity = percentage.percent_to_factor((values or {}).get("不透明度", 100.0), 100.0)
     fill_color = (values or {}).get("塗り色", (1.0, 1.0, 1.0, 1.0))
@@ -942,6 +952,16 @@ def ensure_effect_display_object(
 def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> None:
     if controller_obj is None:
         return
+    # 読み込み/同期のたびに編集用 GP (controller) を非表示へ戻す。表示状態の
+    # グリースペンシルは Blender がビューポートを毎フレーム再描画させ続け、用紙
+    # ガイド線・効果線などの細線がずっと点滅する。既存ファイルで表示状態のまま
+    # 残っていた編集用 GP も、これで開いた時点で確実に隠れる。
+    try:
+        if str(getattr(controller_obj, "type", "") or "") == "GREASEPENCIL" and not controller_obj.hide_viewport:
+            controller_obj.hide_viewport = True
+            controller_obj.hide_render = True
+    except Exception:  # noqa: BLE001
+        pass
     display = find_effect_display_object(controller_obj)
     source = find_effect_frame_source_object(controller_obj)
     density_source = find_effect_density_source_object(controller_obj)
@@ -1001,6 +1021,13 @@ def create_effect_line_object(
     obj = on.find_object_by_bname_id(bname_id, kind="effect")
     if obj is None:
         obj = _new_effect_gp_object_for_layer(bname_id=bname_id, title=title)
+    # 編集用 GP は作成直後から非表示にする。表示状態のグリースペンシルは Blender が
+    # ビューポートを連続再描画させ、細線が点滅し続ける。画面表示は表示用 Mesh が担う。
+    try:
+        obj.hide_viewport = True
+        obj.hide_render = True
+    except Exception:  # noqa: BLE001
+        pass
     los.stamp_layer_object(
         obj,
         kind="effect",
