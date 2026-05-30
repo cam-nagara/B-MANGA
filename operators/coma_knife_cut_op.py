@@ -240,6 +240,43 @@ def _set_coma_polygon(panel, poly: Sequence[tuple[float, float]]) -> None:
         panel.rect_height_mm = max(ys) - min(ys)
 
 
+def _poly_bounds(poly: Sequence[tuple[float, float]]) -> tuple[float, float, float, float]:
+    if not poly:
+        return 0.0, 0.0, 0.0, 0.0
+    xs = [float(point[0]) for point in poly]
+    ys = [float(point[1]) for point in poly]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _reading_order_key_for_poly(
+    poly: Sequence[tuple[float, float]],
+    read_direction: str,
+) -> tuple[float, float]:
+    left, _bottom, right, top = _poly_bounds(poly)
+    center_x = (left + right) * 0.5
+    horizontal_key = -center_x if str(read_direction or "left") == "left" else center_x
+    return -top, horizontal_key
+
+
+def _ordered_split_polygons(
+    poly_a: list[tuple[float, float]],
+    poly_b: list[tuple[float, float]],
+    read_direction: str,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    ordered = sorted(
+        (poly_a, poly_b),
+        key=lambda poly: _reading_order_key_for_poly(poly, read_direction),
+    )
+    return ordered[0], ordered[1]
+
+
+def _coma_id_number(coma_id: str) -> int:
+    text = str(coma_id or "")
+    if text[:1].lower() == "c" and text[1:].isdigit():
+        return int(text[1:])
+    return 1_000_000
+
+
 def _point_in_polygon(p: tuple[float, float], poly: Sequence[tuple[float, float]]) -> bool:
     """ray casting で点 p が多角形 poly の内側にあるかを判定."""
     x, y = p
@@ -345,11 +382,13 @@ def _apply_cut_to_coma(
     result = _split_convex_polygon_by_line(poly, A_local, B_local, gap_mm=gap_mm)
     if result is None:
         return False
-    left_poly, right_poly = result
+    first_poly, second_poly = _ordered_split_polygons(
+        result[0],
+        result[1],
+        str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left"),
+    )
 
-    # 元コマを左側に書き換え
-    _set_coma_polygon(panel, left_poly)
-    # 新規コマ (右側) を追加
+    # 新規コマを追加し、小さい番号を読む順で先の形に割り当てる。
     new_stem = coma_io.allocate_new_coma_id(work_dir, page.id)
     try:
         coma_io.copy_coma_files(
@@ -362,7 +401,12 @@ def _apply_cut_to_coma(
     new_entry.coma_id = new_stem
     new_entry.id = new_stem
     new_entry.title = blank_generated_coma_title()
-    _set_coma_polygon(new_entry, right_poly)
+    if _coma_id_number(str(getattr(panel, "coma_id", "") or "")) <= _coma_id_number(new_stem):
+        _set_coma_polygon(panel, first_poly)
+        _set_coma_polygon(new_entry, second_poly)
+    else:
+        _set_coma_polygon(panel, second_poly)
+        _set_coma_polygon(new_entry, first_poly)
     z_max = max((p.z_order for p in page.comas), default=0)
     new_entry.z_order = z_max + 1
     try:
