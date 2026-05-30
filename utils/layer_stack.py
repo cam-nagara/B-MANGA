@@ -2301,10 +2301,20 @@ def clear_all_selection(context) -> int:
 
 
 def active_stack_item(context):
-    stack = sync_layer_stack(context, preserve_active_index=True)
+    # 「アクティブ項目を読む」だけの関数。以前はここで毎回 sync_layer_stack を
+    # 呼んでいたが、それはレイヤー一覧を作り直して Scene に書き込む副作用がある。
+    # この関数はパネルの draw やツール/ハンドラから高頻度で呼ばれるため、毎回
+    # 書き込むと depsgraph 更新 → ビューポート再描画 → また呼ばれる、の連鎖で
+    # 「B-Name パネルを開いている間ずっと細線が点滅する」再描画ループ(実測
+    # 約15回/秒)になっていた。読み取りでは書き込まず、既存の一覧をそのまま見る。
+    # 一覧はオペレータの変更後同期・パネルの draw 維持処理で最新化される。
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return None
+    stack = getattr(scene, "bname_layer_stack", None)
     if stack is None:
         return None
-    idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
