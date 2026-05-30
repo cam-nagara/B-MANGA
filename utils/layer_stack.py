@@ -1555,6 +1555,13 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
         scene_key = id(scene)
     signature = _stack_signature(scene)
     if _stack_has_placeholder_rows(stack):
+        # 同じ placeholder 状態を毎 draw で再 sync すると、sync タイマーが
+        # tag_view3d_redraw を繰り返すためパネルを開いている間ずっとビューポートが
+        # 再描画され続ける (約16回/秒の点滅)。signature が前回スケジュール時から
+        # 変わっていない = 直前の sync で解消できなかった状態なら、再スケジュール
+        # しない (解消可能なら signature が変わり、その時に再度 sync される)。
+        if _draw_stack_signatures.get(scene_key) == signature:
+            return False
         _draw_stack_signatures[scene_key] = signature
         schedule_layer_stack_sync()
         return True
