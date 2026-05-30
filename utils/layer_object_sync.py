@@ -598,6 +598,16 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("legacy effect lines hide failed")
 
+    # mirror 完了。outliner_watch の定期 scan が同じ件数差を再検出して、ここで
+    # 済ませた mirror を冗長に再実行 (→ ビューポート連続再描画 → 細線のちらつき) し
+    # ないよう、scan の件数基準を最新化しておく。
+    try:
+        from . import outliner_watch as _outliner_watch
+
+        _outliner_watch.mark_entry_counts_synced(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
 
 def _split_folder_parent(parent_key_raw: str) -> tuple[str, str]:
     """フォルダの ``parent_key`` 文字列を ``(parent_kind, parent_key)`` に分解.

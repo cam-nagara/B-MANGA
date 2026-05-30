@@ -49,6 +49,22 @@ def _collect_entry_counts(scene) -> tuple[int, int, int]:
     return (len(pages), coma_total, folder_count)
 
 
+def mark_entry_counts_synced(scene=None) -> None:
+    """``mirror_work_to_outliner`` 完了時に呼び、scan の件数基準を最新化する.
+
+    load_post やオペレータが mirror を済ませた直後に scan が同じ件数差を再検出して
+    冗長に mirror を再実行すると、ビューポートが連続再描画され用紙ガイド線・効果線
+    などの細線がちらつく。mirror 側からここを呼んでおくことで、scan はその mirror を
+    冗長に繰り返さない (実際に件数が変わったときだけ反応する)。
+    """
+    global _LAST_ENTRY_COUNTS
+    try:
+        target_scene = scene if scene is not None else getattr(bpy.context, "scene", None)
+        _LAST_ENTRY_COUNTS = _collect_entry_counts(target_scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     """Outliner D&D を ``BNameRasterLayer`` に書き戻す (Phase 3a).
 
@@ -397,7 +413,7 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
 
 def schedule_watch_timer() -> None:
     """timer を起動 (既存 timer は世代カウンタ + 明示 unregister で停止)."""
-    global _scan_generation, _active_tick
+    global _scan_generation, _active_tick, _LAST_ENTRY_COUNTS
     # 既存 tick を unregister
     if _active_tick is not None:
         try:
@@ -406,6 +422,14 @@ def schedule_watch_timer() -> None:
         except Exception:  # noqa: BLE001
             pass
         _active_tick = None
+    # entry 件数の基準を「いま」の値で初期化する。これをしないと _LAST_ENTRY_COUNTS が
+    # 初期値 (0,0,0) のままで、ファイルを開いた直後の最初の scan が必ず件数差を検出し、
+    # load_post で済んでいる mirror_work_to_outliner を冗長に再実行する。その mirror が
+    # ビューポートを連続再描画させ、用紙ガイド線・効果線などの細線がちらつく原因になる。
+    try:
+        _LAST_ENTRY_COUNTS = _collect_entry_counts(getattr(bpy.context, "scene", None))
+    except Exception:  # noqa: BLE001
+        pass
     _scan_generation += 1
     gen = _scan_generation
     tick = _make_tick(gen)
