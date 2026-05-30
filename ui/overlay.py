@@ -33,6 +33,7 @@ from ..utils import (
     object_selection,
     page_browser,
     stroke_style,
+    text_layout_bounds,
     text_style,
     viewport_colors,
 )
@@ -780,9 +781,7 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         return
 
     entry = entry_or_text
-    padded = rect.inset(1.0)
-    if padded.width <= 0.0 or padded.height <= 0.0:
-        padded = rect
+    padded = text_layout_bounds.text_inner_rect(rect)
     try:
         from ..typography import layout as text_layout
 

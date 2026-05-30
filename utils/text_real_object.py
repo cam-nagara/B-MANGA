@@ -16,8 +16,9 @@ from . import free_transform
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import text_layout_bounds
 from . import text_style
-from .geom import mm_to_m, mm_to_px
+from .geom import Rect, mm_to_m, mm_to_px
 
 _logger = log.get_logger(__name__)
 
@@ -232,7 +233,14 @@ def _render_entry_to_pillow(entry):
     if not str(getattr(entry, "body", "") or ""):
         return image, pad_mm, width_mm, height_mm
 
-    result = text_layout.typeset(entry, pad_mm, pad_mm, width_mm, height_mm)
+    inner = text_layout_bounds.text_inner_rect(Rect(0.0, 0.0, width_mm, height_mm))
+    result = text_layout.typeset(
+        entry,
+        pad_mm + inner.x,
+        pad_mm + inner.y,
+        inner.width,
+        inner.height,
+    )
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)
     if bool(getattr(entry, "stroke_enabled", False)):

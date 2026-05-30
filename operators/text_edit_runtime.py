@@ -15,10 +15,10 @@ else:  # pragma: no cover - Windows IME bridge is only available on Windows.
     wintypes = None
     _LRESULT = None
 
-from ..utils import text_style
+from ..utils import text_layout_bounds, text_style
 from ..utils.geom import Rect, q_to_mm
 
-_TEXT_PADDING_MM = 1.0
+_TEXT_PADDING_MM = text_layout_bounds.TEXT_CONTENT_PADDING_MM
 _TEXT_CARET_MIN_THICKNESS_MM = 0.18
 _IME_CONTROL_TYPES = {
     "ACCENT_GRAVE",
@@ -610,8 +610,7 @@ def text_letter_spacing(entry) -> float:
 
 
 def text_inner_rect(rect: Rect) -> Rect:
-    padded = rect.inset(_TEXT_PADDING_MM)
-    return padded if padded.width > 0.0 and padded.height > 0.0 else rect
+    return text_layout_bounds.text_inner_rect(rect)
 
 
 def text_rect(entry) -> Rect:
@@ -686,7 +685,13 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
     return content_w + _TEXT_PADDING_MM * 2.0, content_h + _TEXT_PADDING_MM * 2.0
 
 
-def fit_text_rect_to_body(entry, *, min_width: float = 2.0, min_height: float = 2.0) -> bool:
+def fit_text_rect_to_body(
+    entry,
+    *,
+    min_width: float = 2.0,
+    min_height: float = 2.0,
+    allow_shrink: bool = False,
+) -> bool:
     """Resize the text box to its unwrapped body while keeping the first glyph anchored."""
     if not text_body(entry):
         return False
@@ -694,6 +699,9 @@ def fit_text_rect_to_body(entry, *, min_width: float = 2.0, min_height: float = 
     width, height = natural_text_outer_size(entry)
     width = max(float(min_width), width)
     height = max(float(min_height), height)
+    if not allow_shrink:
+        width = max(width, rect.width)
+        height = max(height, rect.height)
     if getattr(entry, "writing_mode", "vertical") == "horizontal":
         x = rect.x
     else:

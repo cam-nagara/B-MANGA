@@ -58,6 +58,44 @@ def _assert_no_overflow(entry):
     assert not result.overflow, (entry.body, rect, result)
 
 
+def _assert_text_has_handle_gap(entry):
+    from bname_dev.operators import text_edit_runtime
+
+    rect = text_edit_runtime.text_rect(entry)
+    region = text_edit_runtime.text_inner_rect(rect)
+    assert region.x - rect.x >= 2.49, (rect, region)
+    assert rect.x2 - region.x2 >= 2.49, (rect, region)
+    assert region.y - rect.y >= 2.49, (rect, region)
+    assert rect.y2 - region.y2 >= 2.49, (rect, region)
+
+
+def _assert_shift_enter_does_not_move_up_or_right(entry, *, body: str, mode: str):
+    from bname_dev.operators import text_edit_runtime
+    from bname_dev.utils import text_real_object
+
+    with text_real_object.suspend_auto_sync():
+        entry.body = body
+        entry.writing_mode = mode
+        entry.x_mm = 20.0
+        entry.y_mm = 30.0
+        entry.width_mm = 6.0
+        entry.height_mm = 6.0
+        text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
+        before = text_edit_runtime.text_rect(entry)
+        entry.body = body[:2] + "\n" + body[2:]
+        text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
+        after = text_edit_runtime.text_rect(entry)
+
+    assert abs(after.y2 - before.y2) < 1.0e-5, (before, after)
+    assert after.y <= before.y + 1.0e-5, (before, after)
+    if mode == "horizontal":
+        assert abs(after.x - before.x) < 1.0e-5, (before, after)
+        assert abs(after.x2 - before.x2) < 1.0e-5, (before, after)
+    else:
+        assert abs(after.x2 - before.x2) < 1.0e-5, (before, after)
+        assert after.x <= before.x + 1.0e-5, (before, after)
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_text_autofit_perf_"))
     mod = None
@@ -77,6 +115,7 @@ def main() -> None:
             changed = text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
         assert changed
         assert entry.width_mm > 6.0, entry.width_mm
+        _assert_text_has_handle_gap(entry)
         _assert_no_overflow(entry)
 
         with text_real_object.suspend_auto_sync():
@@ -87,7 +126,18 @@ def main() -> None:
             changed = text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
         assert changed
         assert entry.height_mm > 6.0, entry.height_mm
+        _assert_text_has_handle_gap(entry)
         _assert_no_overflow(entry)
+        _assert_shift_enter_does_not_move_up_or_right(
+            entry,
+            body="ABCDEFGHIJKL",
+            mode="horizontal",
+        )
+        _assert_shift_enter_does_not_move_up_or_right(
+            entry,
+            body="日本語テキスト長め",
+            mode="vertical",
+        )
 
         calls = {"render": 0}
         original_render = text_real_object._render_entry_to_pillow

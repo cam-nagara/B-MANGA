@@ -28,7 +28,9 @@ _COMMITTED = False
 class _InlineTextOpProbe:
     """overlay_text が読む最小限のテキストツール状態."""
 
-    pass
+    def finish_from_external(self, context, *, keep_selection: bool) -> None:
+        _ = context
+        _ = keep_selection
 
 
 class _Event:
