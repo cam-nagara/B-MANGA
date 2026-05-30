@@ -46,6 +46,11 @@ def _visible_layer_rows(context) -> list[object]:
 
 def _assert_layer_list_page(context, expected_page_key: str) -> None:
     rows = _visible_layer_rows(context)
+    visible_rows = list(getattr(context.scene, "bname_layer_stack_visible", []))
+    if [str(getattr(item, "key", "") or "") for item in visible_rows] != [
+        str(getattr(item, "key", "") or "") for item in rows
+    ]:
+        raise AssertionError("レイヤー一覧の表示用行が選択ページと一致していません")
     page_rows = [
         str(getattr(item, "key", "") or "")
         for item in rows
@@ -63,6 +68,11 @@ def _assert_layer_list_page(context, expected_page_key: str) -> None:
             f"選択ページ内のコマがレイヤー一覧に出ていません: "
             f"expected={expected_page_key}, actual={coma_parent_keys}"
         )
+    context.scene.bname_active_layer_stack_visible_index = 0
+    active_index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+    active = context.scene.bname_layer_stack[active_index]
+    if str(getattr(active, "parent_key", "") or "") != expected_page_key:
+        raise AssertionError("レイヤー一覧の選択が選択ページ内の行へ反映されていません")
 
 
 def main() -> None:
@@ -81,6 +91,7 @@ def main() -> None:
         work = context.scene.bname_work
         assert hasattr(bpy.types, "BNAME_UL_layer_panel_pages")
         assert hasattr(bpy.types, "BNAME_PT_layer_stack")
+        assert hasattr(context.scene, "bname_layer_stack_visible")
         assert len(work.pages) == 1
         assert layer_stack_detail_ui.page_layer_name(work.pages[0], work) == "1ページ"
 

@@ -445,6 +445,8 @@ class BNAME_UL_layer_stack(UIList):
         items = getattr(data, propname, None)
         if items is None:
             return [], []
+        if propname == "bname_layer_stack_visible":
+            return [self.bitflag_filter_item] * len(items), []
         work = get_work(context)
         if work is None or not getattr(work, "loaded", False):
             return [self.bitflag_filter_item] * len(items), []
@@ -484,6 +486,11 @@ class BNAME_UL_layer_stack(UIList):
         if self.layout_type not in {"DEFAULT", "COMPACT"}:
             layout.label(text=item.label, icon=_kind_icon(item.kind))
             return
+        stack = getattr(context.scene, "bname_layer_stack", None)
+        source_index = layer_stack_utils.find_stack_index_for_item(stack, item)
+        if source_index >= 0:
+            item = stack[source_index]
+            index = source_index
         row = layout.row(align=True)
         row.context_pointer_set("bname_layer_stack_item", item)
         resolved = layer_stack_utils.resolve_stack_item(context, item)
@@ -608,8 +615,20 @@ def _draw_layer_stack_box(layout, context) -> None:
             "bname.outliner_restore_view", text="", icon="LOOP_BACK"
         )
         layer_area = box.row(align=True)
-        list_col = layer_area.column(align=True)
-        _draw_layer_stack_rows(list_col, context, stack)
+        visible_stack = getattr(scene, "bname_layer_stack_visible", None)
+        visible_rows = len(visible_stack) if visible_stack is not None else 0
+        rows = max(1, min(visible_rows, 30))
+        layer_area.template_list(
+            BNAME_UL_layer_stack.bl_idname,
+            "",
+            scene,
+            "bname_layer_stack_visible",
+            scene,
+            "bname_active_layer_stack_visible_index",
+            rows=rows,
+            maxrows=30,
+            sort_lock=True,
+        )
 
         tools = layer_area.column(align=True)
         tools.ui_units_x = 1.25
@@ -658,24 +677,7 @@ def _draw_layer_stack_context_menu(self, context) -> None:
 
 
 def _visible_layer_stack_entries(context, stack) -> list[tuple[int, object]]:
-    work = get_work(context)
-    active_page_idx = int(getattr(work, "active_page_index", -1)) if work is not None else -1
-    active_page_key = ""
-    if work is not None and 0 <= active_page_idx < len(work.pages):
-        active_page_key = layer_stack_utils.page_stack_key(work.pages[active_page_idx])
-    if not active_page_key:
-        return []
-
-    entries: list[tuple[int, object]] = []
-    for index, item in enumerate(stack):
-        kind = getattr(item, "kind", "")
-        if kind == "outside_group" or not _show_stack_item_in_layer_list(item):
-            continue
-        if kind == "page":
-            continue
-        if layer_stack_utils._stack_item_page_key(item, context) == active_page_key:
-            entries.append((index, item))
-    return entries
+    return layer_stack_utils.visible_layer_stack_entries(context, stack)
 
 
 def _draw_layer_stack_rows(layout, context, stack) -> None:

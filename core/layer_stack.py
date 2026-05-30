@@ -9,6 +9,7 @@ from ..utils import log
 
 _logger = log.get_logger(__name__)
 _active_index_update_depth = 0
+_visible_index_update_depth = 0
 
 LAYER_KIND_ITEMS = (
     ("page", "ページ", ""),
@@ -102,6 +103,37 @@ def _on_active_layer_stack_index_changed(_self, context) -> None:
         _active_index_update_depth -= 1
 
 
+def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
+    """表示用一覧の選択を、実レイヤー一覧の選択へ反映する."""
+    global _visible_index_update_depth
+
+    if _visible_index_update_depth > 0:
+        return
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return
+    visible = getattr(scene, "bname_layer_stack_visible", None)
+    idx = int(getattr(scene, "bname_active_layer_stack_visible_index", -1))
+    if visible is None or not (0 <= idx < len(visible)):
+        return
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+    except Exception:  # noqa: BLE001
+        _logger.exception("visible layer stack utils import failed")
+        return
+    stack = getattr(scene, "bname_layer_stack", None)
+    source_index = layer_stack_utils.find_stack_index_for_item(stack, visible[idx])
+    if source_index < 0:
+        return
+    _visible_index_update_depth += 1
+    try:
+        layer_stack_utils.select_stack_index(context, source_index)
+    except Exception:  # noqa: BLE001
+        _logger.exception("visible layer stack index update failed")
+    finally:
+        _visible_index_update_depth -= 1
+
+
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -110,6 +142,12 @@ def register() -> None:
         default=-1,
         min=-1,
         update=_on_active_layer_stack_index_changed,
+    )
+    bpy.types.Scene.bname_layer_stack_visible = CollectionProperty(type=BNameLayerStackItem)
+    bpy.types.Scene.bname_active_layer_stack_visible_index = IntProperty(
+        default=-1,
+        min=-1,
+        update=_on_active_layer_stack_visible_index_changed,
     )
     bpy.types.Scene.bname_active_layer_kind = EnumProperty(
         name="アクティブレイヤー種別",
@@ -128,6 +166,8 @@ def unregister() -> None:
         "bname_active_layer_folder_key",
         "bname_active_gp_folder_key",
         "bname_active_layer_kind",
+        "bname_active_layer_stack_visible_index",
+        "bname_layer_stack_visible",
         "bname_active_layer_stack_index",
         "bname_layer_stack",
     ):

@@ -133,6 +133,30 @@ def stack_item_uid(item) -> str:
     return target_uid(getattr(item, "kind", ""), getattr(item, "key", ""))
 
 
+def find_stack_index_for_item(stack, item) -> int:
+    from . import layer_stack_visible
+
+    return layer_stack_visible.find_stack_index_for_item(stack, item)
+
+
+def visible_layer_stack_entries(context, stack=None) -> list[tuple[int, object]]:
+    from . import layer_stack_visible
+
+    return layer_stack_visible.visible_layer_stack_entries(context, stack)
+
+
+def set_active_visible_stack_index_silently(context, index: int) -> None:
+    from . import layer_stack_visible
+
+    layer_stack_visible.set_active_visible_stack_index_silently(context, index)
+
+
+def sync_visible_layer_stack(context, *, stack=None) -> bool:
+    from . import layer_stack_visible
+
+    return layer_stack_visible.sync_visible_layer_stack(context, stack=stack)
+
+
 def set_active_stack_index_silently(context, index: int) -> None:
     """実データ選択を再実行せず、UIList のアクティブ行だけを合わせる。"""
     scene = getattr(context, "scene", None)
@@ -1061,6 +1085,7 @@ def sync_layer_stack(
         set_active_stack_index_silently(context, old_active_index)
     else:
         _sync_active_stack_index(context)
+    sync_visible_layer_stack(context, stack=stack)
     return stack
 
 
@@ -2586,6 +2611,7 @@ def select_stack_index(context, index: int) -> bool:
         layer_links.expand_linked_selection(context, stack=stack, base_item=item)
     except Exception:  # noqa: BLE001
         _logger.exception("linked layer selection expansion failed")
+    sync_visible_layer_stack(context, stack=stack)
     tag_view3d_redraw(context)
     return True
 
