@@ -3,6 +3,25 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — 外部アセットライブラリのサムネイル保存を確実化 / v0.6.207
+
+### 症状
+- アセットブラウザのライブラリへ登録した直後はサムネイルを持っていても、保存先のライブラリを開き直すとサムネイルが残らない場合があった。
+
+### 原因
+- 外部ライブラリ用の `.blend` を書き出す経路では、登録直後に設定したプレビュー画像が保存ファイルへ残らなかった。
+
+### 修正
+- 外部ライブラリへ登録した後、保存先の `.blend` にカスタムプレビューを読み込ませ直し、開き直してもサムネイルが残るようにした。
+- フキダシ、テキスト、効果線、リンクされた複数レイヤー、オブジェクト登録の代表パターンを確認する実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_asset_thumbnail_patterns_check.py`: 楕円/角丸/雲/トゲ/八角フキダシ、縦書き/横書き/長文テキスト、集中線/横長/縦長効果線、フキダシ＆テキスト、効果線＆効果線、フキダシ＆フキダシ、フキダシ＆テキスト＆効果線、オブジェクト複数登録でサムネイル生成を確認。外部ライブラリを開き直してもサムネイルが残ることを確認。PASS。
+- `test/blender_asset_bundle_roundtrip_check.py`: アセット登録と3Dビューへの配置復元を確認。PASS。
+- `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
+- `python -m compileall -q core operators utils panels test __init__.py`: PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: 12 passed。
+
 ## 2026-05-31 — レイヤー名編集とアセットサムネイルを復帰 / v0.6.206
 
 ### 症状

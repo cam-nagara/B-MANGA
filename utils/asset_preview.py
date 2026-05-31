@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
+from pathlib import Path
+
 import bpy
 
 from .geom import m_to_mm
@@ -27,8 +31,139 @@ def set_collection_asset_preview(
         preview.image_pixels_float = pixels
         preview.icon_size = (ASSET_PREVIEW_SIZE, ASSET_PREVIEW_SIZE)
         preview.icon_pixels_float = pixels
+        _load_custom_preview_image(coll, pixels)
     except Exception:  # noqa: BLE001
         _logger.exception("asset preview generation failed")
+
+
+def _load_custom_preview_image(coll: bpy.types.Collection, pixels: list[float]) -> None:
+    image = None
+    path = ""
+    try:
+        path, image = _write_preview_png(pixels)
+        with bpy.context.temp_override(id=coll):
+            bpy.ops.ed.lib_id_load_custom_preview(filepath=path)
+    except Exception:  # noqa: BLE001
+        _logger.exception("asset custom preview load failed")
+    finally:
+        if image is not None:
+            try:
+                bpy.data.images.remove(image)
+            except Exception:  # noqa: BLE001
+                pass
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def patch_external_library_preview(
+    blend_path: str | Path,
+    collection_name: str,
+    *,
+    payload: dict | None = None,
+    objects: list[bpy.types.Object] | None = None,
+) -> None:
+    png_path = ""
+    script_path = ""
+    image = None
+    try:
+        pixels = _asset_preview_pixels(payload=payload, objects=list(objects or []))
+        png_path, image = _write_preview_png(pixels)
+        script_path = _write_preview_patch_script()
+        binary = str(getattr(bpy.app, "binary_path", "") or "")
+        if not binary:
+            return
+        result = subprocess.run(
+            [
+                binary,
+                "--background",
+                "--factory-startup",
+                "--python",
+                script_path,
+                "--",
+                str(blend_path),
+                str(collection_name),
+                png_path,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            _logger.warning(
+                "external asset preview patch failed: %s",
+                (result.stderr or result.stdout or "").strip(),
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("external asset preview patch failed")
+    finally:
+        if image is not None:
+            try:
+                bpy.data.images.remove(image)
+            except Exception:  # noqa: BLE001
+                pass
+        for path in (png_path, script_path):
+            if path:
+                try:
+                    Path(path).unlink(missing_ok=True)
+                except Exception:  # noqa: BLE001
+                    pass
+
+
+def _write_preview_png(pixels: list[float]) -> tuple[str, bpy.types.Image]:
+    handle = tempfile.NamedTemporaryFile(prefix="bname_asset_preview_", suffix=".png", delete=False)
+    path = handle.name
+    handle.close()
+    image = bpy.data.images.new("BNameAssetPreview", ASSET_PREVIEW_SIZE, ASSET_PREVIEW_SIZE, alpha=True)
+    image.pixels = pixels
+    image.filepath_raw = path
+    image.file_format = "PNG"
+    image.save()
+    return path, image
+
+
+def _write_preview_patch_script() -> str:
+    code = r'''
+from __future__ import annotations
+
+import sys
+import bpy
+
+
+def main() -> None:
+    args = sys.argv
+    if "--" not in args:
+        raise SystemExit(2)
+    blend_path, collection_name, png_path = args[args.index("--") + 1:args.index("--") + 4]
+    bpy.ops.wm.open_mainfile(filepath=blend_path)
+    coll = bpy.data.collections.get(collection_name)
+    if coll is None:
+        raise SystemExit(3)
+    if coll.asset_data is None:
+        coll.asset_mark()
+    with bpy.context.temp_override(id=coll):
+        bpy.ops.ed.lib_id_load_custom_preview(filepath=png_path)
+    bpy.ops.wm.save_as_mainfile(filepath=blend_path)
+
+
+if __name__ == "__main__":
+    main()
+'''
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="bname_asset_preview_patch_",
+        suffix=".py",
+        delete=False,
+    )
+    try:
+        handle.write(code)
+        return handle.name
+    finally:
+        handle.close()
 
 
 def _asset_preview_pixels(

@@ -153,7 +153,7 @@ def create_collection_asset(
             coll.objects.link(clone)
     _mark_collection_asset(coll, target=target, description="B-Name レイヤーアセット")
     asset_preview.set_collection_asset_preview(coll, payload=payload)
-    _write_external_library_if_needed(coll, target, context=context)
+    _write_external_library_if_needed(coll, target, context=context, payload=payload)
     return coll
 
 
@@ -688,14 +688,27 @@ def _mark_collection_asset(coll: bpy.types.Collection, *, target: AssetBrowserTa
             obj.data.use_fake_user = True
 
 
-def _write_external_library_if_needed(coll: bpy.types.Collection, target: AssetBrowserTarget, *, context=None) -> None:
+def _write_external_library_if_needed(
+    coll: bpy.types.Collection,
+    target: AssetBrowserTarget,
+    *,
+    context=None,
+    payload: dict | None = None,
+) -> None:
     if target.is_local:
         return
     library_path = Path(target.library_path)
     if not library_path:
         return
     library_path.mkdir(parents=True, exist_ok=True)
-    bpy.data.libraries.write(str(_unique_library_blend_path(library_path, coll.name)), {coll}, fake_user=True)
+    blend_path = _unique_library_blend_path(library_path, coll.name)
+    bpy.data.libraries.write(str(blend_path), {coll}, fake_user=True)
+    asset_preview.patch_external_library_preview(
+        blend_path,
+        coll.name,
+        payload=payload,
+        objects=list(getattr(coll, "objects", []) or []),
+    )
     _refresh_open_asset_browser(context)
 
 
