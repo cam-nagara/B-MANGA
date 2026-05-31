@@ -751,6 +751,10 @@ def _draw_preview_balloon(
         points = balloon_shapes.outline_for_shape(
             str(data.get("shape", "ellipse") or "ellipse"),
             Rect(0.0, 0.0, max(0.1, width_mm), max(0.1, height_mm)),
+            corner_type=str(
+                data.get("corner_type", "")
+                or ("rounded" if bool(data.get("rounded_corner_enabled", False)) else "square")
+            ),
             rounded_corner_enabled=bool(data.get("rounded_corner_enabled", False)),
             rounded_corner_radius_mm=corner_radius.radius_from_values(
                 unit=str(data.get("rounded_corner_radius_unit", "mm") or "mm"),

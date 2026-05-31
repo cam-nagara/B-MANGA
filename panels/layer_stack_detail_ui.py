@@ -6,6 +6,7 @@ import re
 
 import bpy
 
+from ..core import balloon as balloon_core
 from ..core.work import get_active_page, get_work
 from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
@@ -175,9 +176,10 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     if page is not None and sum(1 for b in page.balloons if getattr(b, "selected", False)) >= 2:
         settings.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
     if balloon_shapes.normalize_shape(entry.shape) == "rect":
-        settings.prop(entry, "rounded_corner_enabled")
+        balloon_core.ensure_balloon_corner_type_initialized(entry)
+        settings.prop(entry, "corner_type")
         sub = settings.column(align=True)
-        sub.enabled = entry.rounded_corner_enabled
+        sub.enabled = str(getattr(entry, "corner_type", "square") or "square") != "square"
         corner_radius_ui.draw_corner_radius(sub, entry)
 
     line_box = box.box()
@@ -185,6 +187,14 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     row = line_box.row(align=True)
     row.prop(entry, "line_style")
     row.prop(entry, "line_width_mm")
+    line_style = str(getattr(entry, "line_style", "") or "")
+    if line_style == "dashed":
+        row = line_box.row(align=True)
+        row.prop(entry, "dashed_segment_length_mm", text="線分")
+        row.prop(entry, "dashed_gap_mm", text="間隔")
+    elif line_style == "dotted":
+        row = line_box.row(align=True)
+        row.prop(entry, "dotted_gap_mm", text="間隔")
     if str(getattr(entry, "line_style", "") or "") == "double":
         row = line_box.row(align=True)
         row.prop(entry, "multi_line_count")

@@ -911,6 +911,8 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
             entry.width_mm = 40.0
             entry.height_mm = 20.0
             entry.rounded_corner_enabled = True
+            entry.corner_type = "rounded"
+            entry.corner_type_initialized = True
             entry.parent_kind = "none"
             entry.parent_key = ""
             entry.folder_key = folder_key
@@ -934,6 +936,8 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         entry.width_mm = width
         entry.height_mm = height
         entry.rounded_corner_enabled = True
+        entry.corner_type = "rounded"
+        entry.corner_type_initialized = True
         entry.parent_kind = "coma" if ":" in parent_key else "page"
         entry.parent_key = parent_key or page_stack_key(page)
         if folder_key:

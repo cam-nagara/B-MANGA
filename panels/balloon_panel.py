@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel, UIList
 
+from ..core import balloon as balloon_core
 from ..core.work import get_active_page
 from ..utils import balloon_shapes
 from . import corner_radius_ui
@@ -108,9 +109,10 @@ class BNAME_PT_balloons(Panel):
         row.prop(entry, "flip_v", toggle=True)
         box.prop(entry, "opacity", slider=True)
         if balloon_shapes.normalize_shape(entry.shape) == "rect":
-            box.prop(entry, "rounded_corner_enabled")
+            balloon_core.ensure_balloon_corner_type_initialized(entry)
+            box.prop(entry, "corner_type")
             sub = box.column(align=True)
-            sub.enabled = entry.rounded_corner_enabled
+            sub.enabled = str(getattr(entry, "corner_type", "square") or "square") != "square"
             corner_radius_ui.draw_corner_radius(sub, entry)
 
         # 親子連動つき平行移動
@@ -131,6 +133,14 @@ class BNAME_PT_balloons(Panel):
         row = box.row(align=True)
         row.prop(entry, "line_style")
         row.prop(entry, "line_width_mm")
+        line_style = str(getattr(entry, "line_style", "") or "")
+        if line_style == "dashed":
+            row = box.row(align=True)
+            row.prop(entry, "dashed_segment_length_mm", text="線分")
+            row.prop(entry, "dashed_gap_mm", text="間隔")
+        elif line_style == "dotted":
+            row = box.row(align=True)
+            row.prop(entry, "dotted_gap_mm", text="間隔")
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
         _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
         if _shape_norm_for_main_line in {"cloud", "fluffy", "thorn", "thorn-curve"}:

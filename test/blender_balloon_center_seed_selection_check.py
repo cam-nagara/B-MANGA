@@ -97,8 +97,7 @@ def main() -> None:
 
         from bname_dev_balloon_center_seed_selection.core.work import get_work
         from bname_dev_balloon_center_seed_selection.operators import balloon_op, layer_detail_op, object_tool_selection
-        from bname_dev_balloon_center_seed_selection.utils import balloon_curve_object, object_selection, page_grid
-        from bname_dev_balloon_center_seed_selection.utils import balloon_curve_render_nodes
+        from bname_dev_balloon_center_seed_selection.utils import balloon_curve_object, balloon_line_mesh, object_selection, page_grid
         from bname_dev_balloon_center_seed_selection.utils.layer_hierarchy import OUTSIDE_STACK_KEY
 
         context = bpy.context
@@ -137,14 +136,13 @@ def main() -> None:
         assert min(ys) < -9.9 and max(ys) > 9.9, f"フキダシ曲線が中心原点基準ではありません: {anchors}"
 
         rect_props = _draw_props(layer_detail_op, rect, page)
-        assert "rounded_corner_enabled" in rect_props, "矩形で角丸が表示されていません"
+        assert "corner_type" in rect_props, "矩形で角の種類が表示されていません"
         assert "blend_mode" not in rect_props, "フキダシの合成モードが詳細設定に残っています"
 
         rect.line_style = "none"
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=rect, page=page)
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and modifier.node_group is not None
-        _assert_close(float(_modifier_socket_value(modifier, "線幅 (mm)") or 0.0), 0.0, "線なしの表示線幅")
+        line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(rect.id))  # noqa: SLF001
+        assert line_obj is None, "線なしでもフキダシの主線が残っています"
 
         ellipse = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,
@@ -156,7 +154,7 @@ def main() -> None:
             h=18.0,
         )
         ellipse_props = _draw_props(layer_detail_op, ellipse, page)
-        assert "rounded_corner_enabled" not in ellipse_props, "矩形以外で角丸が表示されています"
+        assert "corner_type" not in ellipse_props, "矩形以外で角の種類が表示されています"
 
         cloud = balloon_op._create_balloon_entry(  # noqa: SLF001
             context,

@@ -618,6 +618,8 @@ def _create_balloon_entry(
     entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))
     entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(h))
     entry.rounded_corner_enabled = (entry.shape == "rect")
+    entry.corner_type = "rounded" if entry.rounded_corner_enabled else "square"
+    entry.corner_type_initialized = True
     entry.parent_kind = str(parent_kind or default_parent_kind)
     entry.parent_key = "" if entry.parent_kind in {"outside", "none"} else str(parent_key or default_parent_key)
     if page is not None:

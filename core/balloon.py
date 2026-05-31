@@ -56,6 +56,12 @@ _LINE_STYLE_ITEMS = (
     ("double", "多重線", ""),
 )
 
+_CORNER_TYPE_ITEMS = (
+    ("square", "直角", ""),
+    ("rounded", "丸角", ""),
+    ("bevel", "面取り", ""),
+)
+
 _MULTI_LINE_DIRECTION_ITEMS = (
     ("outside", "外側", ""),
     ("inside", "内側", ""),
@@ -91,6 +97,25 @@ def _sync_balloon_curve(entry) -> None:
 def _on_balloon_entry_changed(_self, context) -> None:
     _sync_balloon_curve(_self)
     _tag_balloon_redraw(context)
+
+
+def _on_balloon_corner_type_changed(_self, context) -> None:
+    try:
+        _self.corner_type_initialized = True
+        _self.rounded_corner_enabled = str(getattr(_self, "corner_type", "square") or "square") != "square"
+    except Exception:  # noqa: BLE001
+        pass
+    _on_balloon_entry_changed(_self, context)
+
+
+def ensure_balloon_corner_type_initialized(entry) -> None:
+    if entry is None or bool(getattr(entry, "corner_type_initialized", False)):
+        return
+    try:
+        entry.corner_type = "rounded" if bool(getattr(entry, "rounded_corner_enabled", False)) else "square"
+        entry.corner_type_initialized = True
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _sync_layer_stack_title(context, entry=None) -> None:
@@ -319,7 +344,9 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     free_transform_top_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     free_transform_top_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
-    # 角丸 (全形状共通オプション、計画書 3.1.4.2a)
+    # 角処理 (旧 rounded_corner_enabled は既存ファイル互換のため保持)
+    corner_type: EnumProperty(name="角", items=_CORNER_TYPE_ITEMS, default="square", update=_on_balloon_corner_type_changed)  # type: ignore[valid-type]
+    corner_type_initialized: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
     rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -328,6 +355,9 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 線・塗り
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_width_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    dashed_segment_length_mm: FloatProperty(name="破線 線分 (mm)", default=3.6, min=0.05, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    dashed_gap_mm: FloatProperty(name="破線 間隔 (mm)", default=2.4, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    dotted_gap_mm: FloatProperty(name="点線 間隔 (mm)", default=0.45, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_count: IntProperty(name="線の本数", default=3, min=1, max=12, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_width_mm: FloatProperty(name="多重線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

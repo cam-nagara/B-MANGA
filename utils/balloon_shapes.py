@@ -13,6 +13,7 @@ from .geom import Rect
 
 MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
 DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
+CORNER_TYPES = {"square", "rounded", "bevel"}
 
 # 雲フキダシ主線の谷で handle を radial 方向からどれだけ接線方向に傾けるか.
 # 0 = 完全な cusp (本体と同形, ただし radial offset で谷の線幅が 0 に潰れる).
@@ -60,6 +61,13 @@ def is_dynamic_meldex_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in DYNAMIC_MELDEX_SHAPES
 
 
+def corner_type_for_entry(entry) -> str:
+    value = str(getattr(entry, "corner_type", "") or "")
+    if bool(getattr(entry, "corner_type_initialized", False)) and value in CORNER_TYPES:
+        return value
+    return "rounded" if bool(getattr(entry, "rounded_corner_enabled", False)) else "square"
+
+
 def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
     sp = getattr(entry, "shape_params", None)
     shape = normalize_shape(getattr(entry, "shape", "rect"))
@@ -70,6 +78,7 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
     return outline_for_shape(
         shape,
         rect,
+        corner_type=corner_type_for_entry(entry),
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
         rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
@@ -103,6 +112,7 @@ def outline_with_corners_for_entry(
     return outline_with_corners_for_shape(
         shape,
         rect,
+        corner_type=corner_type_for_entry(entry),
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
         rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
@@ -127,6 +137,7 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
     return bezier_loop_for_shape(
         shape,
         rect,
+        corner_type=corner_type_for_entry(entry),
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
         rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
@@ -240,6 +251,7 @@ def outline_for_shape(
     shape: str | None,
     rect: Rect,
     *,
+    corner_type: str = "",
     rounded_corner_enabled: bool = False,
     rounded_corner_radius_mm: float = 0.0,
     cloud_bump_width_mm: float = 10.0,
@@ -257,6 +269,7 @@ def outline_for_shape(
     return outline_with_corners_for_shape(
         shape,
         rect,
+        corner_type=corner_type,
         rounded_corner_enabled=rounded_corner_enabled,
         rounded_corner_radius_mm=rounded_corner_radius_mm,
         cloud_bump_width_mm=cloud_bump_width_mm,
@@ -277,6 +290,7 @@ def outline_with_corners_for_shape(
     shape: str | None,
     rect: Rect,
     *,
+    corner_type: str = "",
     rounded_corner_enabled: bool = False,
     rounded_corner_radius_mm: float = 0.0,
     cloud_bump_width_mm: float = 10.0,
@@ -305,9 +319,14 @@ def outline_with_corners_for_shape(
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
     )
+    resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
+    if resolved_corner not in CORNER_TYPES:
+        resolved_corner = "rounded" if rounded_corner_enabled else "square"
     if s == "rect":
-        if rounded_corner_enabled and rounded_corner_radius_mm > 0.0:
+        if resolved_corner == "rounded" and rounded_corner_radius_mm > 0.0:
             return _outline_rounded_rect(rect, rounded_corner_radius_mm), []
+        if resolved_corner == "bevel" and rounded_corner_radius_mm > 0.0:
+            return _outline_beveled_rect(rect, rounded_corner_radius_mm), list(range(8))
         return _outline_rect(rect), [0, 1, 2, 3]
     if s == "ellipse":
         return _outline_ellipse(rect), []
@@ -337,6 +356,7 @@ def bezier_loop_for_shape(
     shape: str | None,
     rect: Rect,
     *,
+    corner_type: str = "",
     rounded_corner_enabled: bool = False,
     rounded_corner_radius_mm: float = 0.0,
     cloud_bump_width_mm: float = 10.0,
@@ -365,9 +385,12 @@ def bezier_loop_for_shape(
         rng=random.Random(int(jitter_seed) & 0xFFFFFFFF),
         base_kind=str(base_kind or "ellipse"),
     )
+    resolved_corner = str(corner_type or ("rounded" if rounded_corner_enabled else "square"))
+    if resolved_corner not in CORNER_TYPES:
+        resolved_corner = "rounded" if rounded_corner_enabled else "square"
     if s == "ellipse":
         return _bezier_ellipse(rect)
-    if s == "rect" and rounded_corner_enabled and rounded_corner_radius_mm > 0.0:
+    if s == "rect" and resolved_corner == "rounded" and rounded_corner_radius_mm > 0.0:
         return _bezier_rounded_rect(rect, rounded_corner_radius_mm)
     if s == "cloud":
         return _bezier_cloud(rect, opts)
@@ -458,6 +481,22 @@ def _outline_rounded_rect(rect: Rect, radius_mm: float, segments: int = 24) -> l
             angle = start + (math.pi * 0.5) * (step / segments)
             pts.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
     return pts
+
+
+def _outline_beveled_rect(rect: Rect, radius_mm: float) -> list[tuple[float, float]]:
+    radius = max(0.0, min(float(radius_mm), rect.width * 0.5, rect.height * 0.5))
+    if radius <= 0.0:
+        return _outline_rect(rect)
+    return [
+        (rect.x + radius, rect.y),
+        (rect.x2 - radius, rect.y),
+        (rect.x2, rect.y + radius),
+        (rect.x2, rect.y2 - radius),
+        (rect.x2 - radius, rect.y2),
+        (rect.x + radius, rect.y2),
+        (rect.x, rect.y2 - radius),
+        (rect.x, rect.y + radius),
+    ]
 
 
 def _outline_ellipse(rect: Rect, segments: int = 64) -> list[tuple[float, float]]:

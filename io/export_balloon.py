@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Sequence
 
-from ..utils import balloon_shapes, balloon_tail_geom, percentage
+from ..utils import balloon_shapes, balloon_tail_geom, line_pattern, percentage
 from ..utils.geom import Rect, mm_to_px
 
 
@@ -276,10 +276,113 @@ def _entry_fill_rgb255(entry):
     return _ep()._rgb255(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)), alpha=_fill_opacity(entry))
 
 
+def _loop_cumulative_px(pts) -> tuple[list[tuple[float, float]], list[float]]:
+    loop = [(float(x), float(y)) for x, y in pts]
+    if len(loop) >= 2 and math.hypot(loop[0][0] - loop[-1][0], loop[0][1] - loop[-1][1]) > 1.0e-6:
+        loop.append(loop[0])
+    cum = [0.0]
+    for index in range(1, len(loop)):
+        cum.append(cum[-1] + math.hypot(loop[index][0] - loop[index - 1][0], loop[index][1] - loop[index - 1][1]))
+    return loop, cum
+
+
+def _point_on_loop_px(loop, cum, target: float) -> tuple[float, float] | None:
+    if len(loop) < 2 or len(cum) != len(loop) or cum[-1] <= 1.0e-6:
+        return None
+    target = max(0.0, min(float(target), float(cum[-1])))
+    for index in range(len(loop) - 1):
+        start = float(cum[index])
+        end = float(cum[index + 1])
+        if target > end and index < len(loop) - 2:
+            continue
+        seg_len = end - start
+        if seg_len <= 1.0e-6:
+            continue
+        p0 = loop[index]
+        p1 = loop[index + 1]
+        t = (target - start) / seg_len
+        return (p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t)
+    return loop[-1]
+
+
+def _loop_subset_px(loop, cum, start_len: float, end_len: float) -> list[tuple[float, float]]:
+    if len(loop) < 2 or len(cum) != len(loop):
+        return []
+    total = float(cum[-1])
+    if total <= 1.0e-6:
+        return []
+    start_len = max(0.0, float(start_len))
+    end_len = min(total, max(start_len, float(end_len)))
+    out: list[tuple[float, float]] = []
+    for index in range(len(loop) - 1):
+        seg_start = float(cum[index])
+        seg_end = float(cum[index + 1])
+        if seg_end < start_len or seg_start > end_len:
+            continue
+        seg_len = seg_end - seg_start
+        if seg_len <= 1.0e-6:
+            continue
+        p0 = loop[index]
+        p1 = loop[index + 1]
+        t0 = (max(seg_start, start_len) - seg_start) / seg_len
+        t1 = (min(seg_end, end_len) - seg_start) / seg_len
+        x0 = p0[0] + (p1[0] - p0[0]) * t0
+        y0 = p0[1] + (p1[1] - p0[1]) * t0
+        x1 = p0[0] + (p1[0] - p0[0]) * t1
+        y1 = p0[1] + (p1[1] - p0[1]) * t1
+        if not out or math.hypot(out[-1][0] - x0, out[-1][1] - y0) > 1.0e-6:
+            out.append((x0, y0))
+        if math.hypot(out[-1][0] - x1, out[-1][1] - y1) > 1.0e-6:
+            out.append((x1, y1))
+    return out
+
+
+def _draw_pattern_loop(draw, pts, entry, color, width_px: int, dpi: int, style: str) -> None:
+    loop, cum = _loop_cumulative_px(pts)
+    if len(loop) < 2 or cum[-1] <= 1.0e-6:
+        return
+    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.3))
+    if style == "dotted":
+        diameter_px = max(1.0, float(width_px))
+        gap_px = max(0.0, float(mm_to_px(line_pattern.dotted_gap_mm(entry, line_width_mm), dpi)))
+        spacing_px = max(diameter_px + gap_px, diameter_px * 1.05, 1.0)
+        count = max(1, int(round(cum[-1] / spacing_px)))
+        spacing_px = cum[-1] / count
+        radius = diameter_px * 0.5
+        for index in range(count):
+            center = _point_on_loop_px(loop, cum, index * spacing_px)
+            if center is None:
+                continue
+            x, y = center
+            draw.ellipse(
+                (
+                    int(round(x - radius)),
+                    int(round(y - radius)),
+                    int(round(x + radius)),
+                    int(round(y + radius)),
+                ),
+                fill=color,
+            )
+        return
+
+    dash_px = max(1.0, float(mm_to_px(line_pattern.dashed_segment_mm(entry, line_width_mm), dpi)))
+    gap_px = max(0.0, float(mm_to_px(line_pattern.dashed_gap_mm(entry, line_width_mm), dpi)))
+    period_px = max(dash_px + gap_px, dash_px, 1.0)
+    start = 0.0
+    while start < cum[-1] - 1.0e-6:
+        sub = _loop_subset_px(loop, cum, start, min(cum[-1], start + dash_px))
+        if len(sub) >= 2:
+            draw.line([(int(round(x)), int(round(y))) for x, y in sub], fill=color, width=width_px)
+        start += period_px
+
+
 def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
     if width_px <= 0 or len(pts) < 2:
         return
     style = str(getattr(entry, "line_style", "solid") or "solid")
+    if style in {"dashed", "dotted"}:
+        _draw_pattern_loop(draw, pts, entry, color, width_px, dpi, style)
+        return
     if style != "double":
         _ep()._draw_styled_loop(draw, pts, color, width_px, style)
         return

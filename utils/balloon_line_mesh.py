@@ -26,6 +26,7 @@ from . import object_preserve
 
 from . import free_transform
 from . import balloon_shapes
+from . import line_pattern
 from . import log
 from . import object_naming as on
 from . import python_deps
@@ -464,12 +465,44 @@ def _polyline_subset_by_arc_length(
     return out
 
 
+def _point_on_polyline_by_arc_length(
+    pts_closed: Sequence[tuple[float, float]],
+    cum: Sequence[float],
+    target_len: float,
+) -> tuple[float, float] | None:
+    if len(pts_closed) < 2 or len(cum) != len(pts_closed):
+        return None
+    total = float(cum[-1])
+    if total <= 1.0e-9:
+        return None
+    target = max(0.0, min(float(target_len), total))
+    for i in range(len(pts_closed) - 1):
+        seg_start = float(cum[i])
+        seg_end = float(cum[i + 1])
+        if target > seg_end and i < len(pts_closed) - 2:
+            continue
+        seg_len = seg_end - seg_start
+        if seg_len <= 1.0e-12:
+            continue
+        p0 = pts_closed[i]
+        p1 = pts_closed[i + 1]
+        t = (target - seg_start) / seg_len
+        return (
+            p0[0] + (p1[0] - p0[0]) * t,
+            p0[1] + (p1[1] - p0[1]) * t,
+        )
+    return pts_closed[-1]
+
+
 def _build_dashed_band_polygons(
-    body_samples: Sequence[tuple[float, float, float]],
+    body_samples: Sequence,
     *,
     line_width_m: float,
     line_style: str,
     valley_sharp: bool,
+    dash_segment_mm: float = 0.0,
+    dash_gap_mm: float = 0.0,
+    dotted_gap_mm: float = 0.0,
 ) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     """主線を破線または点線として、複数の独立バンドポリゴンとして構築する.
 
@@ -482,7 +515,7 @@ def _build_dashed_band_polygons(
     """
     python_deps.ensure_bundled_wheels_on_path()
     try:
-        from shapely.geometry import LineString  # type: ignore
+        from shapely.geometry import LineString, Point  # type: ignore
     except Exception:  # noqa: BLE001
         return []
     if line_width_m <= 1.0e-9 or len(body_samples) < 3:
@@ -524,45 +557,59 @@ def _build_dashed_band_polygons(
     if total_len <= 1.0e-9:
         return []
 
-    line_width_mm = line_width_m * 1000.0
-    if line_style == "dotted":
-        # 点線: 小さな丸ドット (直径 ≈ line_width)。周期は line_width の 2 倍前後。
-        target_period_mm = max(line_width_mm * 2.0, 0.5)
-        dash_ratio = 0.15
-        cap_style = 1  # round
-    else:  # dashed
-        # 破線: 線幅の 8 倍 (最低 6mm) を 1 周期にし、その 6 割を dash として
-        # はっきりした「線・空白・線・空白」のパターンになるようにする。
-        target_period_mm = max(line_width_mm * 8.0, 6.0)
-        dash_ratio = 0.6
-        cap_style = 2  # flat
-    target_period_m = target_period_mm * 0.001
-    num_periods = max(1, int(round(total_len / target_period_m)))
-    period_len = total_len / num_periods
-    dash_len = period_len * dash_ratio
-
     half_width_m = line_width_m * 0.5
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
-    for k in range(num_periods):
-        start_len = k * period_len
-        end_len = start_len + dash_len
+    if line_style == "dotted":
+        spacing_m = max(
+            line_width_m + max(0.0, float(dotted_gap_mm)) * 0.001,
+            line_width_m * 1.05,
+            1.0e-6,
+        )
+        num_dots = max(1, int(round(total_len / spacing_m)))
+        spacing_m = total_len / num_dots
+        for k in range(num_dots):
+            center = _point_on_polyline_by_arc_length(pts, cum, k * spacing_m)
+            if center is None:
+                continue
+            try:
+                dot = Point(center).buffer(half_width_m, resolution=16)
+            except Exception:  # noqa: BLE001
+                continue
+            if dot.is_empty or dot.area <= 1.0e-12:
+                continue
+            outer_ring = list(dot.exterior.coords)
+            holes = [list(r.coords) for r in dot.interiors]
+            polygons.append((outer_ring, holes))
+        return polygons
+
+    dash_len_m = max(0.05, float(dash_segment_mm)) * 0.001
+    gap_len_m = max(0.0, float(dash_gap_mm)) * 0.001
+    period_len = max(dash_len_m + gap_len_m, dash_len_m, 1.0e-6)
+    start_len = 0.0
+    while start_len < total_len - 1.0e-9:
+        end_len = min(total_len, start_len + dash_len_m)
         sub_pts = _polyline_subset_by_arc_length(pts, cum, start_len, end_len)
         if len(sub_pts) < 2:
+            start_len += period_len
             continue
         try:
             line = LineString(sub_pts)
             if line.length <= 1.0e-9:
+                start_len += period_len
                 continue
-            band = line.buffer(half_width_m, cap_style=cap_style, join_style=1)
+            band = line.buffer(half_width_m, cap_style=2, join_style=1)
         except Exception:  # noqa: BLE001
+            start_len += period_len
             continue
         if band.is_empty:
+            start_len += period_len
             continue
         if band.geom_type == "Polygon":
             sub_polys = [band]
         elif band.geom_type == "MultiPolygon":
             sub_polys = list(band.geoms)
         else:
+            start_len += period_len
             continue
         for sub in sub_polys:
             if sub.area <= 1.0e-12:
@@ -570,6 +617,7 @@ def _build_dashed_band_polygons(
             outer_ring = list(sub.exterior.coords)
             holes = [list(r.coords) for r in sub.interiors]
             polygons.append((outer_ring, holes))
+        start_len += period_len
     return polygons
 
 
@@ -2653,6 +2701,9 @@ def ensure_balloon_line_mesh(
             line_width_m=line_width_m,
             line_style=line_style,
             valley_sharp=valley_sharp,
+            dash_segment_mm=line_pattern.dashed_segment_mm(entry, line_width_mm),
+            dash_gap_mm=line_pattern.dashed_gap_mm(entry, line_width_mm),
+            dotted_gap_mm=line_pattern.dotted_gap_mm(entry, line_width_mm),
         )
         if not dash_polys:
             remove_balloon_line_mesh(balloon_id)
@@ -3352,14 +3403,27 @@ def ensure_balloon_tail_main_line_mesh(
             continue
         pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
         samples = [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm)) for x, y in pts_mm]
-        band = build_offset_band_polygon(
-            samples,
-            signed_offset_m=0.0,
-            band_width_m=line_width_m,
-            valley_sharp=False,
-        )
-        if band is not None:
-            polygons.append(band)
+        if line_style in {"dashed", "dotted"}:
+            polygons.extend(
+                _build_dashed_band_polygons(
+                    samples,
+                    line_width_m=line_width_m,
+                    line_style=line_style,
+                    valley_sharp=False,
+                    dash_segment_mm=line_pattern.dashed_segment_mm(entry, line_width_mm),
+                    dash_gap_mm=line_pattern.dashed_gap_mm(entry, line_width_mm),
+                    dotted_gap_mm=line_pattern.dotted_gap_mm(entry, line_width_mm),
+                )
+            )
+        else:
+            band = build_offset_band_polygon(
+                samples,
+                signed_offset_m=0.0,
+                band_width_m=line_width_m,
+                valley_sharp=False,
+            )
+            if band is not None:
+                polygons.append(band)
 
     if not polygons:
         remove_balloon_tail_main_line_mesh(balloon_id)

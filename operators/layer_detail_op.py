@@ -13,6 +13,7 @@ import bpy
 from bpy.props import StringProperty
 from bpy.types import Operator
 
+from ..core import balloon as balloon_core
 from ..utils import log
 from ..utils import object_naming as on
 from ..utils import balloon_shapes
@@ -248,9 +249,10 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     if str(getattr(entry, "shape", "")) == "custom":
         box.prop(entry, "custom_preset_name")
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) == "rect":
-        box.prop(entry, "rounded_corner_enabled")
+        balloon_core.ensure_balloon_corner_type_initialized(entry)
+        box.prop(entry, "corner_type")
         sub = box.column(align=True)
-        sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
+        sub.enabled = str(getattr(entry, "corner_type", "square") or "square") != "square"
         _draw_corner_radius(sub, entry)
     sp = getattr(entry, "shape_params", None)
     if (
@@ -286,6 +288,14 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     row = box.row(align=True)
     row.prop(entry, "line_style")
     row.prop(entry, "line_width_mm")
+    line_style = str(getattr(entry, "line_style", "") or "")
+    if line_style == "dashed":
+        row = box.row(align=True)
+        row.prop(entry, "dashed_segment_length_mm", text="線分")
+        row.prop(entry, "dashed_gap_mm", text="間隔")
+    elif line_style == "dotted":
+        row = box.row(align=True)
+        row.prop(entry, "dotted_gap_mm", text="間隔")
     # 主線の谷/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
     _shape_norm_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     if _shape_norm_main_line in {"cloud", "fluffy", "thorn", "thorn-curve"}:

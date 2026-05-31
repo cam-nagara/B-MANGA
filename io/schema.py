@@ -919,12 +919,16 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "freeTransform": _free_transform_to_dict(entry),
         "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
         "opacityUnit": "percent",
+        "cornerType": balloon_shapes.corner_type_for_entry(entry),
         "roundedCornerEnabled": bool(entry.rounded_corner_enabled),
         "roundedCornerRadiusMm": round(entry.rounded_corner_radius_mm, 3),
         "roundedCornerRadiusUnit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
         "roundedCornerRadiusPercent": round(float(getattr(entry, "rounded_corner_radius_percent", 30.0)), 3),
         "lineStyle": entry.line_style,
         "lineWidthMm": round(entry.line_width_mm, 3),
+        "dashedSegmentLengthMm": round(float(getattr(entry, "dashed_segment_length_mm", 3.6)), 3),
+        "dashedGapMm": round(float(getattr(entry, "dashed_gap_mm", 2.4)), 3),
+        "dottedGapMm": round(float(getattr(entry, "dotted_gap_mm", 0.45)), 3),
         "multiLineCount": int(getattr(entry, "multi_line_count", 3) or 3),
         "multiLineWidthMm": round(float(getattr(entry, "multi_line_width_mm", 0.3)), 3),
         "multiLineSpacingMm": round(float(getattr(entry, "multi_line_spacing_mm", 0.4)), 3),
@@ -1027,7 +1031,12 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
     _free_transform_from_dict(entry, data.get("freeTransform"))
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
-    entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
+    corner_type = str(data.get("cornerType", "") or "")
+    if corner_type not in balloon_shapes.CORNER_TYPES:
+        corner_type = "rounded" if bool(data.get("roundedCornerEnabled", False)) else "square"
+    entry.corner_type = corner_type
+    entry.corner_type_initialized = True
+    entry.rounded_corner_enabled = corner_type != "square"
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
     if hasattr(entry, "rounded_corner_radius_unit"):
         unit = str(data.get("roundedCornerRadiusUnit", "mm") or "mm")
@@ -1037,6 +1046,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     line_style = str(data.get("lineStyle", "solid") or "solid")
     entry.line_style = "double" if line_style == "multi" else line_style
     entry.line_width_mm = float(data.get("lineWidthMm", 0.3))
+    entry.dashed_segment_length_mm = float(data.get("dashedSegmentLengthMm", 3.6))
+    entry.dashed_gap_mm = float(data.get("dashedGapMm", 2.4))
+    entry.dotted_gap_mm = float(data.get("dottedGapMm", 0.45))
     entry.multi_line_count = int(data.get("multiLineCount", 3))
     entry.multi_line_width_mm = float(data.get("multiLineWidthMm", 0.3))
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
