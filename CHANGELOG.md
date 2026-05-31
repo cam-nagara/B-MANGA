@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — 不要なOutliner表示切替を削除 / v0.6.212
+
+### 症状
+- レイヤー一覧に「Outliner で階層を編集できます」という案内と切り替えボタンが表示されていた。
+- B-Nameパネル内に「Outliner 表示」切り替え用のセクションが残っていた。
+
+### 原因
+- 以前のアウトライナー連携向けの表示切り替えが、現在のレイヤー一覧運用では不要になった後も画面と登録に残っていた。
+
+### 修正
+- レイヤー一覧から「Outliner で階層を編集できます」の案内と切り替えボタンを削除した。
+- B-Nameパネルから「Outliner 表示」セクションを削除し、整合性関連の操作だけを「メンテナンス」として残した。
+- マニュアルと画面監査の確認項目を現在の表示に合わせた。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_layer_stack_ui_behavior_check.py`: レイヤー一覧の表示、選択、並べ替え、インライン入力が維持されることを確認。PASS。
+- `test/blender_bname_ui_inventory_visual_audit.py`: B-Nameパネルの主要表示が欠けていないことを確認。PASS。
+- `python -m pytest --confcutdir=test test/test_view_event_region.py test/test_paths.py test/test_stroke_style.py`: 13 passed。
+- `python -m compileall operators panels test __init__.py`: PASS。
+
 ## 2026-05-31 — 枠線プリセットとレイヤー一覧の選択を修正 / v0.6.211
 
 ### 症状

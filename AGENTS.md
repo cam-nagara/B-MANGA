@@ -105,7 +105,7 @@
 ### 3.2 触る頻度が高い領域 (2026-05 時点)
 
 - **レイヤー Object 同期**: `utils/layer_object_sync.py` `utils/outliner_model.py` `utils/outliner_watch.py` `utils/object_naming.py`
-- **Outliner ↔ B-Name 双方向同期**: `utils/active_collection_sync.py` `operators/outliner_view_op.py` `panels/outliner_layer_panel.py`
+- **Outliner ↔ B-Name 双方向同期**: `utils/active_collection_sync.py` `utils/outliner_watch.py` `panels/outliner_layer_panel.py`
 - **page_grid 配置**: `utils/page_grid.py` (start_side / read_direction 反映)
 - **paper_bg**: `utils/paper_bg_object.py`
 - **GP オブジェクトレイヤー**: `utils/gp_object_layer.py` `utils/gp_layer_parenting.py`

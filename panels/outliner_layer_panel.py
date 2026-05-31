@@ -12,10 +12,10 @@ B_NAME_CATEGORY = "B-Name"
 
 
 class BNAME_PT_outliner_layers(Panel):
-    """Outliner ベースのレイヤー操作パネル."""
+    """B-Name のメンテナンス操作パネル."""
 
     bl_idname = "BNAME_PT_outliner_layers"
-    bl_label = "Outliner レイヤー"
+    bl_label = "メンテナンス"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
@@ -31,17 +31,7 @@ class BNAME_PT_outliner_layers(Panel):
     def draw(self, context):
         layout = self.layout
 
-        # Outliner 表示切替
-        box = layout.box()
-        box.label(text="Outliner 表示", icon="OUTLINER")
-        row = box.row(align=True)
-        row.operator("bname.outliner_apply_view", text="B-Name 表示へ", icon="VIS_SEL_11")
-        row.operator("bname.outliner_restore_view", text="復元", icon="LOOP_BACK")
-
-        # メンテナンス
-        box = layout.box()
-        box.label(text="メンテナンス", icon="TOOL_SETTINGS")
-        col = box.column(align=True)
+        col = layout.column(align=True)
         col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
         col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
         col.operator("bname.mask_remove_orphans", icon="TRASH")
