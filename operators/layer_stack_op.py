@@ -535,6 +535,21 @@ class BNAME_OT_layer_stack_drag(Operator):
             layer_stack_utils.select_stack_index(context, self.index)
             return {"FINISHED"}
 
+        try:
+            from ..utils import asset_bundle
+
+            if asset_bundle.event_over_asset_browser(context, event):
+                coll = asset_bundle.register_selected_layers_as_asset(
+                    context,
+                    index=int(self.index),
+                    event=event,
+                )
+                self.report({"INFO"}, f"アセットに登録: {coll.name}")
+                return {"FINISHED"}
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+
         # ドラッグ扱い: Y デルタから移動先 index を決める
         row_height = self._estimate_row_height(context)
         if row_height <= 0.0:

@@ -3,6 +3,38 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — B-Nameレイヤーのアセット登録と配置復元を追加 / v0.6.202
+
+### 症状
+- B-Nameのフキダシ、効果線、テキストを、アセットブラウザへ登録して再利用する手段がなかった。
+- フキダシとテキスト、複数の効果線、複数のフキダシのようにリンクされた組み合わせを、まとめて登録・配置しても関係を保つ仕組みがなかった。
+- アセットブラウザから3Dビューへ配置したB-Name要素を、通常のB-Nameレイヤーとして扱える状態へ戻せなかった。
+
+### 原因
+- アセットブラウザへ渡すためのB-Nameレイヤー情報と、3Dビューへ配置されたアセットをB-Nameレイヤーへ戻す復元経路が未実装だった。
+- レイヤー間のリンク情報や、フキダシをテキストへ落としたときの自動リンク判定を、アセットの登録・配置に含めていなかった。
+
+### 修正
+- レイヤーリストにアセット登録ボタンを追加し、選択中のフキダシ、効果線、テキストを現在のファイルのアセットとして登録できるようにした。
+- レイヤーリストからアセットブラウザ上へドラッグした場合も、登録先が現在のファイルまたは書き込み可能なアセットライブラリなら登録するようにした。
+- アウトライナーの選択オブジェクトをアセット登録できるメニューを追加した。
+- アセットブラウザから3Dビューへ配置されたB-Nameアセットを、配置位置に合わせて通常のB-Nameレイヤーへ復元するようにした。
+- フキダシ＆テキスト、効果線＆効果線、フキダシ＆フキダシのリンク状態を、登録・配置後も復元するようにした。
+- フキダシを既存テキスト上へ配置した場合、テキストと自動リンクするようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_asset_bundle_roundtrip_check.py`: 効果線、フキダシ、テキスト、フキダシ＆テキスト、効果線＆効果線、フキダシ＆フキダシの登録と3Dビュー配置復元、リンク復元、フキダシをテキスト上へ配置した自動リンクを確認。PASS。
+- `test/blender_layer_panel_page_list_check.py`: ページリスト/レイヤーリストの既存挙動を確認。PASS。
+- `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
+- `test/blender_object_preservation_check.py`: 既存実体保護の既存挙動を確認。PASS。
+- `test/blender_active_stack_item_no_sync_check.py`: レイヤー選択読み取り時に同期が走らないことを確認。PASS。
+- `test/blender_text_autofit_perf_check.py`: テキスト枠と軽量化の既存挙動を確認。PASS。
+- `test/blender_text_ime_runtime_check.py`: テキスト入力の既存挙動を確認。PASS。
+- `test/blender_object_free_transform_check.py`: フキダシ/テキスト/効果線の自由変形の既存挙動を確認。PASS。
+- `test/blender_effect_start_frame_page_check.py`: 効果線のページ別補助実体とマスクの既存挙動を確認。PASS。
+- `python -m compileall -q operators utils panels test __init__.py`: PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: PASS。
+
 ## 2026-05-31 — 既存実体の自動削除と標準編集の巻き戻りを防止 / v0.6.201
 
 ### 症状

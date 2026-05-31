@@ -17,7 +17,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import find_page_by_id, get_work
 from ..io import coma_io
-from ..utils import bpy_link, log, paths
+from ..utils import asset_bundle, bpy_link, log, paths
 
 _logger = log.get_logger(__name__)
 
@@ -105,6 +105,108 @@ class BNAME_OT_record_asset_link(Operator):
         return {"FINISHED"}
 
 
+class BNAME_OT_asset_register_layers(Operator):
+    """選択中のB-Nameレイヤーをアセット登録する。"""
+
+    bl_idname = "bname.asset_register_layers"
+    bl_label = "アセットに登録"
+    bl_options = {"REGISTER", "UNDO"}
+
+    index: bpy.props.IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    name: bpy.props.StringProperty(name="名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        work = get_work(context)
+        return bool(work and getattr(work, "loaded", False))
+
+    def execute(self, context):
+        try:
+            coll = asset_bundle.register_selected_layers_as_asset(
+                context,
+                index=int(self.index),
+                name=str(self.name or ""),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("register B-Name layer asset failed")
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"アセットに登録: {coll.name}")
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        try:
+            coll = asset_bundle.register_selected_layers_as_asset(
+                context,
+                index=int(self.index),
+                name=str(self.name or ""),
+                event=event,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("register B-Name layer asset failed")
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"アセットに登録: {coll.name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_asset_register_selected_objects(Operator):
+    """選択中のBlenderオブジェクトをアセット登録する。"""
+
+    bl_idname = "bname.asset_register_selected_objects"
+    bl_label = "選択オブジェクトをアセットに登録"
+    bl_options = {"REGISTER", "UNDO"}
+
+    name: bpy.props.StringProperty(name="名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return bool(getattr(context, "selected_objects", None) or getattr(context, "active_object", None))
+
+    def execute(self, context):
+        try:
+            coll = asset_bundle.register_selected_objects_as_asset(
+                context,
+                name=str(self.name or ""),
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("register Blender object asset failed")
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"アセットに登録: {coll.name}")
+        return {"FINISHED"}
+
+    def invoke(self, context, event):
+        try:
+            coll = asset_bundle.register_selected_objects_as_asset(
+                context,
+                name=str(self.name or ""),
+                event=event,
+            )
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("register Blender object asset failed")
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"アセットに登録: {coll.name}")
+        return {"FINISHED"}
+
+
+class BNAME_OT_asset_import_dropped(Operator):
+    """配置済みのB-NameアセットをB-Nameレイヤーに変換する。"""
+
+    bl_idname = "bname.asset_import_dropped"
+    bl_label = "配置したB-Nameアセットを取り込む"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        count = asset_bundle.process_pending_dropped_assets(context)
+        if count <= 0:
+            self.report({"INFO"}, "取り込むB-Nameアセットはありません")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"B-Nameアセットを取り込み: {count}")
+        return {"FINISHED"}
+
+
 def _find_coma_by_stem(page, stem: str):
     for entry in page.comas:
         if entry.coma_id == stem:
@@ -122,15 +224,42 @@ def _make_link_id(obj: bpy.types.Object) -> str:
 _CLASSES = (
     BNAME_OT_open_link_source,
     BNAME_OT_record_asset_link,
+    BNAME_OT_asset_register_layers,
+    BNAME_OT_asset_register_selected_objects,
+    BNAME_OT_asset_import_dropped,
 )
+
+
+def _draw_outliner_asset_menu(self, context) -> None:
+    layout = self.layout
+    layout.separator()
+    layout.operator(
+        BNAME_OT_asset_register_selected_objects.bl_idname,
+        text="アセットに登録",
+        icon="ASSET_MANAGER",
+    )
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    for menu_name in ("OUTLINER_MT_object", "OUTLINER_MT_context_menu"):
+        menu = getattr(bpy.types, menu_name, None)
+        if menu is not None:
+            try:
+                menu.append(_draw_outliner_asset_menu)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def unregister() -> None:
+    for menu_name in ("OUTLINER_MT_object", "OUTLINER_MT_context_menu"):
+        menu = getattr(bpy.types, menu_name, None)
+        if menu is not None:
+            try:
+                menu.remove(_draw_outliner_asset_menu)
+            except Exception:  # noqa: BLE001
+                pass
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

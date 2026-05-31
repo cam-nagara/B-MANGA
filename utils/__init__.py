@@ -9,6 +9,7 @@ from . import object_naming, outliner_model, layer_object_sync  # noqa: E402,F40
 from . import (  # noqa: E402,F401
     active_collection_sync,
     active_target,
+    asset_drop_runtime,
     balloon_curve_object,
     balloon_merge_object,
     camera_overview_sync,
@@ -33,6 +34,7 @@ def register() -> None:
     active_collection_sync.register()
     cross_addon_settings_sync.register()
     camera_overview_sync.register()
+    asset_drop_runtime.register()
     paper_bg_object.register()
     paper_guide_object.register()
     geometry_nodes_bridge.register()
@@ -40,6 +42,7 @@ def register() -> None:
 
 
 def unregister() -> None:
+    asset_drop_runtime.unregister()
     coma_plane.unregister()
     geometry_nodes_bridge.unregister()
     paper_guide_object.unregister()

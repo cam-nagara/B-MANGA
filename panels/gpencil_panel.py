@@ -497,6 +497,7 @@ class BNAME_UL_layer_stack(UIList):
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
+        _draw_drag_handle(row, index)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}
@@ -636,6 +637,7 @@ def _draw_layer_stack_box(layout, context) -> None:
         add_menu.name = "BNAME_MT_layer_stack_add"
         tools.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
         tools.operator("bname.layer_stack_link_selected", text="", icon="LINKED")
+        tools.operator("bname.asset_register_layers", text="", icon="ASSET_MANAGER")
         tools.operator("bname.layer_stack_delete", text="", icon="REMOVE")
         tools.separator()
         op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_UP_BAR")
@@ -692,6 +694,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
+        _draw_drag_handle(row, index)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}
