@@ -14,7 +14,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..ui import overlay_creation_range
-from ..utils import free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
+from ..utils import coma_hit_visibility, free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import (
@@ -221,6 +221,14 @@ def _page_world_offset_for_parent_key(context, parent_key: str) -> tuple[float, 
         if str(getattr(page, "id", "") or "") == page_id:
             return page_grid.page_total_offset_mm(work, context.scene, page_index)
     return None
+
+
+def _world_point_visible_in_effect_parent_coma(context, obj, layer, x_mm: float, y_mm: float) -> bool:
+    from ..utils import object_naming as on
+
+    parent_key = gp_parent.parent_key(layer) if layer is not None else ""
+    parent_key = parent_key or (str(obj.get(on.PROP_PARENT_KEY, "") or "") if obj is not None else "")
+    return coma_hit_visibility.world_point_visible_in_parent(context, "coma" if ":" in parent_key else "page", parent_key, x_mm, y_mm)
 
 
 def effect_layer_world_bounds(context, obj, layer, bounds=None) -> tuple[float, float, float, float] | None:
@@ -1247,6 +1255,8 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
             continue
         for layer in reversed(layers):
             if gpencil.layer_effectively_hidden(layer):
+                continue
+            if not _world_point_visible_in_effect_parent_coma(context, obj, layer, x_mm, y_mm):
                 continue
             bounds = effect_layer_bounds(obj, layer)
             if bounds is None:

@@ -8,7 +8,7 @@ from bpy.types import Operator
 
 from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
-from ..utils import text_style
+from ..utils import text_real_object, text_style
 from ..utils.geom import pt_to_q, q_to_pt
 from . import coma_modal_state
 
@@ -180,21 +180,21 @@ class BNAME_OT_text_selection_style_popup(Operator):
         ):
             return False
         page.active_text_index = idx
-        if _active_text_tool_matches(self.page_id, self.text_id):
-            active = coma_modal_state.get_active("text_tool")
-            if active is not None:
-                active._selection_anchor = start
-                active._cursor_index = end
-        try:
-            from ..utils import text_real_object
-
-            text_real_object.ensure_text_real_object(
-                scene=context.scene,
-                entry=entry,
-                page=page,
-            )
-        except Exception:  # noqa: BLE001
-            pass
+        active = coma_modal_state.get_active("text_tool") if _active_text_tool_matches(self.page_id, self.text_id) else None
+        if active is not None:
+            active._selection_anchor = start
+            active._cursor_index = end
+            active._touch_current_text(context, page, entry, idx)
+            text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
+        else:
+            try:
+                text_real_object.ensure_text_real_object(
+                    scene=context.scene,
+                    entry=entry,
+                    page=page,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 

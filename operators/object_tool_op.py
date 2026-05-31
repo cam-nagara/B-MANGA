@@ -202,8 +202,17 @@ def hit_object_at_event(context, event) -> dict | None:
     if view is None:
         return None
     area, region, rv3d, mx, my = view
+    world_x_mm, world_y_mm = _event_world_xy_mm(context, event)
+
+    def _hit_visible(hit: dict | None) -> bool:
+        if hit is None:
+            return False
+        if world_x_mm is None or world_y_mm is None:
+            return True
+        return object_tool_selection.hit_visible_at_world(context, hit, world_x_mm, world_y_mm)
+
     transformed = object_tool_free_transform.hit_transformed_handle_at_event(context, event, _event_world_xy_mm)
-    if transformed is not None:
+    if _hit_visible(transformed):
         return transformed
     for resolver in (
         _hit_text_at_event,
@@ -216,7 +225,7 @@ def hit_object_at_event(context, event) -> dict | None:
         _hit_raster_at_event,
     ):
         hit = resolver(context, event)
-        if hit is not None:
+        if _hit_visible(hit):
             return hit
     edge_hit = coma_edge_move_op._pick_edge_or_vertex(
         work,

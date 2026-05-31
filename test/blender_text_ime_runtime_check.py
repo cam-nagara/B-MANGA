@@ -54,6 +54,8 @@ def main() -> None:
         entry = _new_text_entry(temp_root / "Text_IME.bname")
 
         from bname_dev.operators import text_edit_runtime, text_op
+        from bname_dev.operators import text_edit_history
+        from bname_dev.ui import overlay_text
 
         class Event:
             def __init__(self, event_type: str, value: str = "PRESS") -> None:
@@ -116,6 +118,43 @@ def main() -> None:
         cursor = text_edit_runtime.replace_selection(entry, 3, 1, "日本語")
         assert entry.body == "a日本語def"
         assert cursor == 4
+
+        work = bpy.context.scene.bname_work
+        page = work.pages[0]
+        page.active_text_index = 0
+
+        class EditProbe:
+            _editing = True
+            _cursor_index = 0
+            _selection_anchor = -1
+
+            def _current_text_entry(self, _context):
+                return page, entry, 0
+
+        probe = EditProbe()
+        entry.body = "abc"
+        entry.x_mm = 0.0
+        entry.y_mm = 0.0
+        entry.width_mm = 40.0
+        entry.height_mm = 20.0
+        probe._cursor_index = len(entry.body)
+        text_edit_history.begin(probe, entry)
+        probe._cursor_index = text_edit_runtime.replace_selection(entry, probe._cursor_index, -1, "d")
+        text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
+        text_edit_history.record(probe, entry)
+        assert entry.body == "abcd"
+        assert text_edit_history.restore_previous(probe, bpy.context)
+        assert entry.body == "abc"
+        assert text_edit_history.restore_next(probe, bpy.context)
+        assert entry.body == "abcd"
+
+        probe._selection_anchor = 0
+        probe._cursor_index = 2
+        rect = text_edit_runtime.text_rect(entry)
+        caret = overlay_text.text_caret_rect(entry, rect, probe._cursor_index)
+        selection_rects = overlay_text._selection_rects(entry, rect, probe._cursor_index, probe._selection_anchor)
+        assert caret.width > 0 and caret.height > 0
+        assert selection_rects, "selection highlight rects were not generated"
 
         text_edit_runtime.begin_ime_capture()
         text_edit_runtime.end_ime_capture()

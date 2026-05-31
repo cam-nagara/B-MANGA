@@ -18,6 +18,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
+    coma_hit_visibility,
     layer_stack as layer_stack_utils,
     log,
     object_selection,
@@ -27,7 +28,7 @@ from ..utils import (
     text_style,
 )
 from ..utils.layer_hierarchy import page_stack_key
-from . import coma_modal_state, selection_context_menu, text_edit_runtime, view_event_region
+from . import coma_modal_state, selection_context_menu, text_edit_history, text_edit_runtime, view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -406,6 +407,8 @@ def _hit_text_entry(page, x_mm: float, y_mm: float):
         indices.append(active_idx)
     indices.extend(i for i in reversed(range(len(page.texts))) if i != active_idx)
     for idx in indices:
+        if not coma_hit_visibility.local_point_visible_in_entry_parent(page, page.texts[idx], x_mm, y_mm):
+            continue
         part = _text_hit_part(page.texts[idx], x_mm, y_mm)
         if part:
             return idx, page.texts[idx], part
@@ -654,8 +657,20 @@ class BNAME_OT_text_apply_font_to_selection(Operator):
             return {"CANCELLED"}
         if not text_style.apply_font_span(entry, start, end, font):
             return {"CANCELLED"}
-        _sync_text_real_object(context, page, entry)
-        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        op = coma_modal_state.get_active("text_tool")
+        if (
+            op is not None
+            and bool(getattr(op, "_editing", False))
+            and str(getattr(op, "_page_id", "") or "") == str(getattr(page, "id", "") or "")
+            and str(getattr(op, "_text_id", "") or "") == str(getattr(entry, "id", "") or "")
+        ):
+            op._selection_anchor = start
+            op._cursor_index = end
+            op._touch_current_text(context, page, entry, page.active_text_index)
+            text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
+        else:
+            _sync_text_real_object(context, page, entry)
+            layer_stack_utils.sync_layer_stack_after_data_change(context)
         layer_stack_utils.tag_view3d_redraw(context)
         self.report({"INFO"}, "選択範囲のフォントを更新しました")
         return {"FINISHED"}
@@ -731,6 +746,7 @@ class BNAME_OT_text_tool(Operator):
         self._edit_original_rect = (0.0, 0.0, 0.0, 0.0)
         self._cursor_index = 0
         self._selection_anchor = -1
+        text_edit_history.clear(self)
         self._page_id = ""
         self._text_id = ""
         self._ime_timer = None
@@ -857,6 +873,9 @@ class BNAME_OT_text_tool(Operator):
     def _modal_editing(self, context, event):
         if getattr(self, "_select_dragging", False):
             return self._modal_text_selection_drag(context, event)
+        history_result = text_edit_history.handle_undo_redo(self, context, event)
+        if history_result is not None:
+            return history_result
         queued_text = text_edit_runtime.poll_ime_text()
         if queued_text:
             return self._insert_current_text(context, queued_text)
@@ -1010,6 +1029,7 @@ class BNAME_OT_text_tool(Operator):
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
+        text_edit_history.begin(self, entry)
         self._clear_drag_state()
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
@@ -1027,6 +1047,7 @@ class BNAME_OT_text_tool(Operator):
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
+        text_edit_history.begin(self, entry)
         self._clear_drag_state()
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
@@ -1339,6 +1360,7 @@ class BNAME_OT_text_tool(Operator):
             context.scene.bname_active_layer_kind = "text"
         with text_real_object.suspend_auto_sync():
             text_edit_runtime.fit_text_rect_to_body(entry, min_width=_TEXT_MIN_SIZE_MM, min_height=_TEXT_MIN_SIZE_MM)
+        text_edit_history.record(self, entry)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _insert_current_text(self, context, text: str):
@@ -1456,6 +1478,7 @@ class BNAME_OT_text_tool(Operator):
         self._edit_original_rect = (0.0, 0.0, 0.0, 0.0)
         self._cursor_index = 0
         self._selection_anchor = -1
+        text_edit_history.clear(self)
         self._clear_drag_state()
         self._clear_click_state()
         self._clear_selection_drag_state()

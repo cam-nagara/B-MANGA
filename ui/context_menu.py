@@ -182,6 +182,16 @@ def selection_command_items(context) -> list[dict]:
                 "enabled": has_item,
             },
         )
+    if normalized_kind in {"balloon", "text", "effect"}:
+        items.insert(
+            6 if normalized_kind in {"balloon", "effect"} else 5,
+            {
+                "label": "自由変形をリセット",
+                "operator": "bname.reset_free_transform",
+                "icon": "LOOP_BACK",
+                "enabled": has_item,
+            },
+        )
     if normalized_kind == "balloon":
         items.append(
             {

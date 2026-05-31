@@ -21,6 +21,7 @@ from ..io import balloon_presets
 from ..ui import overlay_creation_range
 from ..utils import (
     balloon_curve_object,
+    coma_hit_visibility,
     balloon_merge_object,
     balloon_shapes,
     balloon_tail_geom,
@@ -36,7 +37,12 @@ def _focus_creation_target(context, work, page, parent_kind: str, parent_key: st
         _active_target.focus_creation_target(context, work, page, parent_kind, parent_key)
     except Exception:  # noqa: BLE001
         pass
-from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY, coma_containing_point, coma_stack_key, page_stack_key
+from ..utils.layer_hierarchy import (
+    OUTSIDE_STACK_KEY,
+    coma_containing_point,
+    coma_stack_key,
+    page_stack_key,
+)
 from . import balloon_tail_op, coma_modal_state, selection_context_menu, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -309,7 +315,7 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
     return ""
 
 
-def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: float):
+def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: float, page=None):
     indices: list[int] = []
     if collection is None:
         return -1, None, ""
@@ -320,6 +326,8 @@ def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: floa
         entry = collection[idx]
         if getattr(entry, "shape", "rect") == "none":
             continue
+        if not coma_hit_visibility.local_point_visible_in_entry_parent(page, entry, x_mm, y_mm):
+            continue
         part = _balloon_tail_hit_part(entry, x_mm, y_mm)
         if part:
             return idx, entry, part
@@ -329,12 +337,14 @@ def _hit_balloon_collection(collection, active_idx: int, x_mm: float, y_mm: floa
     return -1, None, ""
 
 
+
 def _hit_balloon_entry(page, x_mm: float, y_mm: float):
     return _hit_balloon_collection(
         getattr(page, "balloons", None),
         int(getattr(page, "active_balloon_index", -1)),
         x_mm,
         y_mm,
+        page,
     )
 
 

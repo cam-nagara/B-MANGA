@@ -10,6 +10,7 @@ from ..core.work import get_work
 from ..utils import (
     active_collection_sync,
     balloon_curve_object,
+    coma_hit_visibility,
     edge_selection,
     empty_layer_object,
     gp_layer_parenting as gp_parent,
@@ -281,6 +282,47 @@ def rect_contains_point(rect: Rect, x_mm: float, y_mm: float, pad: float = 0.0) 
         rect.x - pad <= x_mm <= rect.x2 + pad
         and rect.y - pad <= y_mm <= rect.y2 + pad
     )
+
+
+def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
+    work = get_work(context)
+    kind, page_id, item_id = object_selection.parse_key(key)
+    if kind == "balloon":
+        if page_id == OUTSIDE_STACK_KEY:
+            return "", ""
+        _pi, _page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "text":
+        if page_id == OUTSIDE_STACK_KEY:
+            return "", ""
+        _pi, _page, _idx, entry = find_text_by_key(work, page_id, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "image":
+        _idx, entry = find_image_by_key(context, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "raster":
+        _idx, entry = find_raster_by_key(context, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "gp":
+        _obj, layer = find_gp_layer(item_id)
+        parent_key = gp_parent.parent_key(layer)
+        return "coma" if ":" in parent_key else "page", parent_key
+    if kind == "effect":
+        obj, layer = find_effect_layer(item_id)
+        parent_key = gp_parent.parent_key(layer) if layer is not None else ""
+        parent_key = parent_key or str(obj.get(on.PROP_PARENT_KEY, "") or "") if obj is not None else parent_key
+        return "coma" if ":" in parent_key else "page", parent_key
+    return "", ""
+
+
+def hit_visible_at_world(context, hit: dict | None, x_mm: float, y_mm: float) -> bool:
+    if hit is None:
+        return False
+    key = str(hit.get("key", "") or "")
+    if not key:
+        return True
+    parent_kind, parent_key = _parent_for_hit_key(context, key)
+    return coma_hit_visibility.world_point_visible_in_parent(context, parent_kind, parent_key, x_mm, y_mm)
 
 
 def rect_intersects(a: Rect, b: Rect) -> bool:
