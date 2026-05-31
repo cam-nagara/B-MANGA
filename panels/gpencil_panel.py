@@ -124,35 +124,6 @@ def _select_icon(row, index: int, icon: str) -> None:
     cell.label(text="", icon=icon)
 
 
-def _select_name(row, index: int, text: str) -> None:
-    """名前ラベルを描画し、Shift/Ctrl を含むクリック選択を受け取る。
-
-    Blender の UIList にはカスタムクラス向けのドラッグ並び替え API が無く、
-    ボタン widget では drag-out を検出できないため、レイヤーの並び替えは
-    パネル右列の TRIA_UP/TRIA_DOWN ボタン経由で行う。
-    """
-    cell = row.row(align=True)
-    cell.alignment = "LEFT"
-    cell.operator_context = "INVOKE_DEFAULT"
-    selected = False
-    try:
-        selected = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1)) == index
-    except Exception:  # noqa: BLE001
-        selected = False
-    op = cell.operator(
-        "bname.layer_stack_multi_select",
-        text=text or "",
-        emboss=selected,
-        depress=selected,
-    )
-    op.index = index
-
-
-def _select_icon_name(row, index: int, text: str, icon: str) -> None:
-    _draw_type_icon(row, index, icon)
-    _select_name(row, index, text)
-
-
 def _visibility_button(row, index: int, hidden: bool) -> None:
     cell = row.row(align=True)
     cell.ui_units_x = 1.0
@@ -215,19 +186,6 @@ def _draw_selection_slot(row, index: int, selected: bool) -> None:
     op.index = index
 
 
-def _draw_drag_handle(row, index: int) -> None:
-    cell = row.row(align=True)
-    cell.ui_units_x = 1.35
-    cell.operator_context = "INVOKE_DEFAULT"
-    op = cell.operator(
-        "bname.layer_stack_drag",
-        text="",
-        icon="GRIP",
-        emboss=False,
-    )
-    op.index = index
-
-
 def _draw_hierarchy_slot(row, item, target, index: int) -> None:
     _indent(row, int(getattr(item, "depth", 0)))
     if target is None:
@@ -281,6 +239,58 @@ def _draw_type_icon(row, index: int, icon: str) -> None:
         emboss=False,
     )
     op.index = index
+
+
+def _editable_name_prop(item, target) -> str | None:
+    if item is None or target is None:
+        return None
+    kind = str(getattr(item, "kind", "") or "")
+    if kind in {"page", "coma", "coma_preview", "outside_group"}:
+        return None
+    if kind in {"layer_folder", "image", "raster", "balloon", "text"} and hasattr(
+        target, "title"
+    ):
+        return "title"
+    if kind in {"gp", "gp_folder", "effect"} and hasattr(target, "name"):
+        return "name"
+    return None
+
+
+def _draw_inline_name(row, item, target, prop_name: str) -> None:
+    cell = row.row(align=True)
+    cell.alignment = "LEFT"
+    cell.prop(target, prop_name, text="", emboss=False)
+
+
+def _is_inline_name_editing(item) -> bool:
+    scene = getattr(bpy.context, "scene", None)
+    if scene is None or item is None:
+        return False
+    uid = layer_stack_utils.stack_item_uid(item)
+    editing_uid = str(getattr(scene, "bname_layer_stack_inline_edit_uid", "") or "")
+    return bool(uid) and uid == editing_uid
+
+
+def _select_name(row, index: int, text: str, item=None, target=None) -> None:
+    prop_name = _editable_name_prop(item, target)
+    if prop_name is not None and _is_inline_name_editing(item):
+        _draw_inline_name(row, item, target, prop_name)
+        return
+    cell = row.row(align=True)
+    cell.alignment = "LEFT"
+    cell.operator_context = "INVOKE_DEFAULT"
+    op = cell.operator(
+        "bname.layer_stack_multi_select",
+        text=str(text or "レイヤー"),
+        emboss=False,
+        depress=False,
+    )
+    op.index = index
+
+
+def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
+    _draw_type_icon(row, index, icon)
+    _select_name(row, index, text, item=item, target=target)
 
 
 def _gp_color_style(layer):
@@ -357,13 +367,13 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
     _draw_type_icon(row, index, _kind_icon(item.kind))
     name = item.label if item.kind == "effect" and item.label else target.name
     if not str(name or "").strip():
         name = item.label or item.name or item.key or "レイヤー"
-    _select_name(row, index, name)
+    _select_name(row, index, name, item=item, target=target)
     if item.kind == "gp":
         controls["gp_style"] = _gp_color_style(target)
     if item.kind == "gp" and hasattr(target, "lock"):
@@ -375,22 +385,29 @@ def _draw_stack_gp_row(row, controls, item, resolved, index: int) -> None:
 def _draw_stack_page_row(row, item, resolved, index: int, work=None) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _select_icon_name(row, index, item.label, _kind_icon(item.kind))
+        _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
         return
     icon = "DOCUMENTS" if target.spread else "FILE_BLANK"
     label = layer_stack_detail_ui.page_layer_name(target, work)
     title = str(getattr(target, "title", "") or "").strip()
-    _select_icon_name(row, index, f"{label} {title}" if title else label, icon)
+    _select_icon_name(row, index, f"{label} {title}" if title else label, icon, item=item, target=target)
 
 
 def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
-        _select_icon_name(row, index, item.label, _kind_icon(item.kind))
+        _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
         return
     label = layer_stack_detail_ui.coma_layer_name(target)
     title = str(getattr(target, "title", "") or "").strip()
-    _select_icon_name(row, index, f"{label} {title}" if title else label, "MOD_WIREFRAME")
+    _select_icon_name(
+        row,
+        index,
+        f"{label} {title}" if title else label,
+        "MOD_WIREFRAME",
+        item=item,
+        target=target,
+    )
     controls["aux"] = "coma_enter"
 
 
@@ -398,42 +415,58 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     target = resolved.get("target") if resolved is not None else None
     if item.kind == "outside_group":
         _select_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label or "(ページ外)")
+        _select_name(row, index, item.label or "(ページ外)", item=item)
         return
     if item.kind == "coma_preview":
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label or "コマプレビュー")
+        _select_name(row, index, item.label or "コマプレビュー", item=item)
         return
     if target is None:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item)
         return
     if item.kind == "layer_folder":
         _draw_type_icon(row, index, "FILE_FOLDER")
-        _select_name(row, index, getattr(target, "title", "") or item.label)
+        _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
     elif item.kind == "image":
         _draw_type_icon(row, index, "IMAGE_DATA")
-        _select_name(row, index, getattr(target, "title", "") or item.label)
+        _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "locked"
     elif item.kind == "raster":
         _draw_type_icon(row, index, "BRUSH_DATA")
-        _select_name(row, index, getattr(target, "title", "") or item.label)
+        _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target
         controls["lock_prop"] = "locked"
     elif item.kind == "balloon":
         _draw_type_icon(row, index, "MOD_FLUID")
-        _select_name(row, index, getattr(target, "id", "") or item.label or item.name or "フキダシ")
+        _select_name(
+            row,
+            index,
+            getattr(target, "title", "")
+            or getattr(target, "id", "")
+            or item.label
+            or item.name
+            or "フキダシ",
+            item=item,
+            target=target,
+        )
     elif item.kind == "text":
         _draw_type_icon(row, index, "FONT_DATA")
-        _select_name(row, index, getattr(target, "body", "") or item.label)
+        _select_name(
+            row,
+            index,
+            getattr(target, "title", "") or getattr(target, "body", "") or item.label,
+            item=item,
+            target=target,
+        )
     elif item.kind == "effect":
         _draw_stack_gp_row(row, controls, item, resolved, index)
     else:
         _draw_type_icon(row, index, _kind_icon(item.kind))
-        _select_name(row, index, item.label or item.name or item.key or "レイヤー")
+        _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item, target=target)
 
 
 class BNAME_UL_layer_stack(UIList):
@@ -497,7 +530,6 @@ class BNAME_UL_layer_stack(UIList):
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
-        _draw_drag_handle(row, index)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}
@@ -544,12 +576,16 @@ class BNAME_UL_layer_panel_pages(UIList):
         title = str(getattr(item, "title", "") or "").strip()
         if title:
             label = f"{label} {title}"
-        op = row.operator(
+        icon_cell = row.row(align=True)
+        icon_cell.ui_units_x = 1.0
+        icon_cell.label(text="", icon=icon_name)
+        name_cell = row.row(align=True)
+        name_cell.alignment = "LEFT"
+        op = name_cell.operator(
             "bname.page_select",
             text=label,
-            icon=icon_name,
-            emboss=selected,
-            depress=selected,
+            emboss=False,
+            depress=False,
         )
         op.index = index
 
@@ -694,7 +730,6 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
-        _draw_drag_handle(row, index)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}

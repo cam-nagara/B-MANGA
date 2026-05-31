@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import bpy
+from mathutils import Vector
 
 from .geom import m_to_mm
 from . import log
@@ -171,6 +172,9 @@ def _asset_preview_pixels(
     payload: dict | None,
     objects: list[bpy.types.Object],
 ) -> list[float]:
+    captured = _capture_objects_preview_pixels(objects)
+    if captured is not None:
+        return captured
     size = ASSET_PREVIEW_SIZE
     canvas = _preview_canvas(size)
     entries = [
@@ -215,6 +219,210 @@ def _asset_preview_pixels(
                     fill=False,
                 )
     return canvas
+
+
+def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[float] | None:
+    preview_objects = [obj for obj in objects if obj is not None]
+    if not preview_objects:
+        return None
+    scene = None
+    camera = None
+    camera_data = None
+    try:
+        scene = bpy.data.scenes.new("BNameAssetPreviewScene")
+        _setup_preview_render_scene(scene)
+        linked: list[bpy.types.Object] = []
+        for obj in preview_objects:
+            try:
+                scene.collection.objects.link(obj)
+                linked.append(obj)
+            except RuntimeError:
+                linked.append(obj)
+            except Exception:  # noqa: BLE001
+                continue
+        if not linked:
+            return None
+        _refresh_scene(scene)
+        bounds = _world_bounds_for_objects(linked)
+        if bounds is None:
+            return None
+        camera_data = bpy.data.cameras.new("BNameAssetPreviewCamera")
+        camera = bpy.data.objects.new("BNameAssetPreviewCamera", camera_data)
+        scene.collection.objects.link(camera)
+        _position_preview_camera(camera, camera_data, bounds)
+        scene.camera = camera
+        _refresh_scene(scene)
+        try:
+            bpy.ops.render.render(write_still=False, scene=scene.name)
+        except TypeError:
+            _render_with_temporary_scene(scene)
+        image = bpy.data.images.get("Render Result")
+        if image is None:
+            return None
+        pixels = list(image.pixels)
+        expected = ASSET_PREVIEW_SIZE * ASSET_PREVIEW_SIZE * 4
+        if len(pixels) != expected or not _captured_pixels_have_content(pixels):
+            return None
+        return pixels
+    except Exception:  # noqa: BLE001
+        _logger.exception("asset preview capture failed")
+        return None
+    finally:
+        if camera is not None:
+            try:
+                bpy.data.objects.remove(camera, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+        if camera_data is not None and camera_data.users == 0:
+            try:
+                bpy.data.cameras.remove(camera_data)
+            except Exception:  # noqa: BLE001
+                pass
+        if scene is not None:
+            try:
+                bpy.data.scenes.remove(scene)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _setup_preview_render_scene(scene: bpy.types.Scene) -> None:
+    scene.render.resolution_x = ASSET_PREVIEW_SIZE
+    scene.render.resolution_y = ASSET_PREVIEW_SIZE
+    scene.render.resolution_percentage = 100
+    scene.render.film_transparent = False
+    for engine in ("BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
+        try:
+            scene.render.engine = engine
+            break
+        except Exception:  # noqa: BLE001
+            continue
+    display = getattr(scene, "display", None)
+    shading = getattr(display, "shading", None)
+    if shading is not None:
+        for attr, value in (
+            ("background_type", "VIEWPORT"),
+            ("background_color", (0.90, 0.90, 0.90)),
+            ("color_type", "MATERIAL"),
+            ("light", "STUDIO"),
+        ):
+            try:
+                setattr(shading, attr, value)
+            except Exception:  # noqa: BLE001
+                pass
+    if scene.world is None:
+        try:
+            scene.world = bpy.data.worlds.new("BNameAssetPreviewWorld")
+        except Exception:  # noqa: BLE001
+            scene.world = None
+    if scene.world is not None:
+        try:
+            scene.world.color = (0.90, 0.90, 0.90)
+        except Exception:  # noqa: BLE001
+            pass
+    for attr, value in (
+        ("view_transform", "Standard"),
+        ("look", "None"),
+        ("exposure", 0.0),
+        ("gamma", 1.0),
+    ):
+        try:
+            setattr(scene.view_settings, attr, value)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _refresh_scene(scene: bpy.types.Scene) -> None:
+    try:
+        scene.frame_set(scene.frame_current)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        scene.view_layers[0].update()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _render_with_temporary_scene(scene: bpy.types.Scene) -> None:
+    window = getattr(bpy.context, "window", None)
+    previous_scene = getattr(window, "scene", None) if window is not None else None
+    try:
+        if window is not None:
+            window.scene = scene
+        bpy.ops.render.render(write_still=False)
+    finally:
+        if window is not None and previous_scene is not None:
+            try:
+                window.scene = previous_scene
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _world_bounds_for_objects(
+    objects: list[bpy.types.Object],
+) -> tuple[float, float, float, float, float, float] | None:
+    points: list[Vector] = []
+    for obj in objects:
+        try:
+            corners = list(getattr(obj, "bound_box", []) or [])
+        except Exception:  # noqa: BLE001
+            corners = []
+        valid_corners = [
+            corner
+            for corner in corners
+            if any(abs(float(component)) > 1.0e-8 for component in corner)
+        ]
+        if valid_corners:
+            points.extend(obj.matrix_world @ Vector(corner) for corner in valid_corners)
+            continue
+        try:
+            points.append(obj.matrix_world.translation.copy())
+        except Exception:  # noqa: BLE001
+            pass
+    if not points:
+        return None
+    min_x = min(point.x for point in points)
+    max_x = max(point.x for point in points)
+    min_y = min(point.y for point in points)
+    max_y = max(point.y for point in points)
+    min_z = min(point.z for point in points)
+    max_z = max(point.z for point in points)
+    pad = max(max_x - min_x, max_y - min_y, 0.01) * 0.08
+    return min_x - pad, max_x + pad, min_y - pad, max_y + pad, min_z, max_z
+
+
+def _position_preview_camera(
+    camera: bpy.types.Object,
+    camera_data: bpy.types.Camera,
+    bounds: tuple[float, float, float, float, float, float],
+) -> None:
+    min_x, max_x, min_y, max_y, min_z, max_z = bounds
+    span_x = max(0.01, max_x - min_x)
+    span_y = max(0.01, max_y - min_y)
+    span_z = max(0.01, max_z - min_z)
+    center_x = (min_x + max_x) * 0.5
+    center_y = (min_y + max_y) * 0.5
+    camera.location = (center_x, center_y, max_z + max(span_x, span_y, span_z) * 2.5 + 1.0)
+    camera.rotation_euler = (0.0, 0.0, 0.0)
+    camera_data.type = "ORTHO"
+    camera_data.ortho_scale = max(span_x, span_y) * 1.08
+    camera_data.clip_start = 0.001
+    camera_data.clip_end = max(10.0, camera.location.z - min_z + 10.0)
+
+
+def _captured_pixels_have_content(pixels: list[float]) -> bool:
+    if not pixels:
+        return False
+    values = []
+    dark_pixels = 0
+    for i in range(0, len(pixels), 4):
+        r, g, b, a = pixels[i:i + 4]
+        if a > 0.5:
+            values.extend((r, g, b))
+            if max(r, g, b) < 0.45:
+                dark_pixels += 1
+    if dark_pixels >= 8:
+        return True
+    return bool(values) and max(values) - min(values) > 0.18
 
 
 def _preview_canvas(size: int) -> list[float]:

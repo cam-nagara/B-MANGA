@@ -157,11 +157,13 @@ def register() -> None:
     bpy.types.Scene.bname_active_gp_folder_key = StringProperty(default="")
     bpy.types.Scene.bname_active_layer_folder_key = StringProperty(default="")
     bpy.types.Scene.bname_active_effect_layer_name = StringProperty(default="")
+    bpy.types.Scene.bname_layer_stack_inline_edit_uid = StringProperty(default="")
     _logger.debug("layer_stack registered")
 
 
 def unregister() -> None:
     for attr in (
+        "bname_layer_stack_inline_edit_uid",
         "bname_active_effect_layer_name",
         "bname_active_layer_folder_key",
         "bname_active_gp_folder_key",

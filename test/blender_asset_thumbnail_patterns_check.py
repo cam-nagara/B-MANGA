@@ -63,6 +63,33 @@ def _assert_preview(coll, label: str) -> None:
         raise AssertionError(f"{label}: 内容を示す線・輪郭が不足しています")
 
 
+def _preview_pixels(coll) -> list[float]:
+    preview = getattr(coll, "preview", None)
+    if preview is None:
+        return []
+    return list(preview.image_pixels_float)
+
+
+def _assert_preview_differs(
+    pixels_a: list[float],
+    pixels_b: list[float],
+    label_a: str,
+    label_b: str,
+) -> None:
+    if not pixels_a or not pixels_b or len(pixels_a) != len(pixels_b):
+        raise AssertionError(f"{label_a} と {label_b}: サムネイル比較ができません")
+    total = 0.0
+    samples = 0
+    for i in range(0, len(pixels_a), 4):
+        total += abs(pixels_a[i] - pixels_b[i])
+        total += abs(pixels_a[i + 1] - pixels_b[i + 1])
+        total += abs(pixels_a[i + 2] - pixels_b[i + 2])
+        samples += 3
+    diff = total / max(1, samples)
+    if diff < 0.005:
+        raise AssertionError(f"{label_a} と {label_b}: 形状差がサムネイルに反映されていません")
+
+
 def _find_entry_by_title(collection, title: str):
     for entry in collection:
         if str(getattr(entry, "title", "") or "") == title:
@@ -283,9 +310,12 @@ def main() -> None:
             ]
         )
 
+        balloon_previews: dict[str, list[float]] = {}
         for label, uids in cases:
             local = _register_payload(context, uids, label, asset_bundle.AssetBrowserTarget("LOCAL"))
             _assert_preview(local, f"{label} (現在のファイル)")
+            if label.startswith("単体フキダシ "):
+                balloon_previews[label.removeprefix("単体フキダシ ")] = _preview_pixels(local)
             before = set(external_root.glob("*.blend"))
             external = _register_payload(context, uids, label, external_target)
             _assert_preview(external, f"{label} (外部ライブラリ)")
@@ -293,6 +323,19 @@ def main() -> None:
             if len(new_files) != 1:
                 raise AssertionError(f"{label}: 外部ライブラリの保存ファイル数が正しくありません")
             saved.append((new_files[0], label))
+
+        _assert_preview_differs(
+            balloon_previews.get("楕円フキダシ", []),
+            balloon_previews.get("雲フキダシ", []),
+            "楕円フキダシ",
+            "雲フキダシ",
+        )
+        _assert_preview_differs(
+            balloon_previews.get("楕円フキダシ", []),
+            balloon_previews.get("トゲフキダシ", []),
+            "楕円フキダシ",
+            "トゲフキダシ",
+        )
 
         object_candidates = [
             balloon_curve_object.find_balloon_object(balloons[4].id),

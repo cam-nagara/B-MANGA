@@ -109,6 +109,8 @@ def register_selected_objects_as_asset(context, *, name: str = "", event=None) -
     _mark_collection_asset(coll, target=target, description="B-Name オブジェクトアセット")
     asset_preview.set_collection_asset_preview(coll)
     _write_external_library_if_needed(coll, target, context=context)
+    if target.is_local:
+        _refresh_open_asset_browser(context)
     return coll
 
 
@@ -154,6 +156,8 @@ def create_collection_asset(
     _mark_collection_asset(coll, target=target, description="B-Name レイヤーアセット")
     asset_preview.set_collection_asset_preview(coll, payload=payload)
     _write_external_library_if_needed(coll, target, context=context, payload=payload)
+    if target.is_local:
+        _refresh_open_asset_browser(context)
     return coll
 
 
@@ -716,17 +720,31 @@ def _refresh_open_asset_browser(context=None) -> None:
     try:
         area = _asset_browser_area(context) if context is not None else None
         if area is None or not hasattr(context, "temp_override"):
-            bpy.ops.asset.library_refresh()
+            _run_asset_browser_refresh_ops()
             return
         space = getattr(area.spaces, "active", None)
         region = next((region for region in getattr(area, "regions", []) if region.type == "WINDOW"), None)
         if region is None:
-            bpy.ops.asset.library_refresh()
+            _run_asset_browser_refresh_ops()
             return
         with context.temp_override(area=area, region=region, space_data=space):
-            bpy.ops.asset.library_refresh()
+            _run_asset_browser_refresh_ops()
+        try:
+            area.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001
         pass
+
+
+def _run_asset_browser_refresh_ops() -> None:
+    for op in (getattr(bpy.ops.asset, "library_refresh", None), getattr(bpy.ops.file, "refresh", None)):
+        if op is None:
+            continue
+        try:
+            op()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _unique_library_blend_path(library_path: Path, asset_name: str) -> Path:

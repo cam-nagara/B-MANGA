@@ -343,6 +343,25 @@ def _select_stack_uid(context, uid: str) -> bool:
     return False
 
 
+def _editable_name_prop_for_item(context, item) -> str | None:
+    if item is None:
+        return None
+    kind = str(getattr(item, "kind", "") or "")
+    if kind in {"page", "coma", "coma_preview", "outside_group"}:
+        return None
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+    target = resolved.get("target") if resolved is not None else None
+    if target is None:
+        return None
+    if kind in {"layer_folder", "image", "raster", "balloon", "text"} and hasattr(
+        target, "title"
+    ):
+        return "title"
+    if kind in {"gp", "gp_folder", "effect"} and hasattr(target, "name"):
+        return "name"
+    return None
+
+
 class BNAME_OT_layer_stack_select(Operator):
     bl_idname = "bname.layer_stack_select"
     bl_label = "レイヤーを選択"
@@ -384,6 +403,19 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         return stack is not None and len(stack) > 0
 
     def invoke(self, context, event):
+        value = str(getattr(event, "value", "") or "")
+        if value == "DOUBLE_CLICK":
+            stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+            if stack is not None and 0 <= self.index < len(stack):
+                item = stack[self.index]
+                if _editable_name_prop_for_item(context, item) is not None:
+                    context.scene.bname_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
+                    layer_stack_utils.clear_all_selection(context)
+                    layer_stack_utils.set_item_selected(context, item, True)
+                    layer_stack_utils.select_stack_index(context, self.index)
+                    layer_stack_utils.tag_view3d_redraw(context)
+                    return {"FINISHED"}
+
         if bool(getattr(event, "shift", False)):
             self.mode = "RANGE"
         elif bool(getattr(event, "ctrl", False)) or bool(getattr(event, "oskey", False)):
@@ -397,6 +429,7 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
         scene = context.scene
+        scene.bname_layer_stack_inline_edit_uid = ""
         active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
 
         if self.mode == "RANGE" and 0 <= active_idx < len(stack):
@@ -490,173 +523,6 @@ class BNAME_OT_layer_stack_move(Operator):
         if not layer_stack_utils.move_stack_item(context, idx, direction=self.direction):
             return {"CANCELLED"}
         return {"FINISHED"}
-
-
-class BNAME_OT_layer_stack_drag(Operator):
-    bl_idname = "bname.layer_stack_drag"
-    bl_label = "レイヤーをドラッグ移動"
-    bl_description = "クリックで選択、ドラッグで並び替えやアセット登録"
-    bl_options = {"REGISTER", "UNDO"}
-
-    index: IntProperty(default=-1)  # type: ignore[valid-type]
-
-    _moved_uid: str
-    _press_x: float
-    _press_y: float
-    _last_x: float
-    _last_y: float
-
-    DRAG_THRESHOLD_PX: float = 6.0  # この距離以上動いたらドラッグ扱い
-
-    @classmethod
-    def poll(cls, context):
-        stack = getattr(context.scene, "bname_layer_stack", None)
-        return stack is not None and len(stack) > 0
-
-    def invoke(self, context, event):
-        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        if stack is None or not (0 <= self.index < len(stack)):
-            return {"CANCELLED"}
-
-        value = str(getattr(event, "value", "") or "")
-        if value == "PRESS":
-            self._press_x = self._event_float(event, "mouse_x", 0.0)
-            self._press_y = self._event_float(event, "mouse_y", 0.0)
-            self._last_x = self._press_x
-            self._last_y = self._press_y
-            layer_stack_utils.select_stack_index(context, self.index)
-            try:
-                context.window_manager.modal_handler_add(self)
-            except Exception:  # noqa: BLE001
-                return self._finish_drag(context, event, self._press_x, self._press_y)
-            return {"RUNNING_MODAL"}
-
-        # UI ボタン経由では離した時点で呼ばれる環境もあるため、その場合は
-        # Blender が保持している押下位置を使って従来の処理を維持する。
-        try:
-            press_x = float(getattr(event, "mouse_prev_press_x", getattr(event, "mouse_x", 0.0)))
-            press_y = float(getattr(event, "mouse_prev_press_y", getattr(event, "mouse_y", 0.0)))
-        except Exception:  # noqa: BLE001
-            press_x = press_y = 0.0
-        return self._finish_drag(context, event, press_x, press_y)
-
-    def modal(self, context, event):
-        event_type = str(getattr(event, "type", "") or "")
-        event_value = str(getattr(event, "value", "") or "")
-
-        if event_type in {"ESC", "RIGHTMOUSE"}:
-            return {"CANCELLED"}
-        if event_type == "WINDOW_DEACTIVATE":
-            return {"CANCELLED"}
-
-        if event_type == "MOUSEMOVE":
-            self._last_x = self._event_float(event, "mouse_x", getattr(self, "_last_x", 0.0))
-            self._last_y = self._event_float(event, "mouse_y", getattr(self, "_last_y", 0.0))
-            return {"RUNNING_MODAL"}
-
-        if event_type == "LEFTMOUSE" and event_value == "RELEASE":
-            return self._finish_drag(
-                context,
-                event,
-                getattr(self, "_press_x", self._event_float(event, "mouse_x", 0.0)),
-                getattr(self, "_press_y", self._event_float(event, "mouse_y", 0.0)),
-            )
-
-        return {"RUNNING_MODAL"}
-
-    def _finish_drag(self, context, event, press_x: float, press_y: float):
-        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        if stack is None or not (0 <= self.index < len(stack)):
-            return {"CANCELLED"}
-
-        cur_x = self._event_float(event, "mouse_x", press_x)
-        cur_y = self._event_float(event, "mouse_y", press_y)
-
-        dx = cur_x - press_x
-        dy = cur_y - press_y
-
-        if abs(dx) < self.DRAG_THRESHOLD_PX and abs(dy) < self.DRAG_THRESHOLD_PX:
-            # クリック扱い: 選択だけ
-            layer_stack_utils.select_stack_index(context, self.index)
-            return {"FINISHED"}
-
-        try:
-            from ..utils import asset_bundle
-
-            if asset_bundle.event_over_asset_browser(context, event):
-                coll = asset_bundle.register_selected_layers_as_asset(
-                    context,
-                    index=int(self.index),
-                    event=event,
-                )
-                self.report({"INFO"}, f"アセットに登録: {coll.name}")
-                return {"FINISHED"}
-        except Exception as exc:  # noqa: BLE001
-            self.report({"ERROR"}, str(exc))
-            return {"CANCELLED"}
-
-        # ドラッグ扱い: Y デルタから移動先 index を決める
-        row_height = self._estimate_row_height(context)
-        if row_height <= 0.0:
-            layer_stack_utils.select_stack_index(context, self.index)
-            return {"CANCELLED"}
-        # Blender UI の Y は上が大きい。ユーザーが下方向 (画面下) にドラッグした
-        # = dy が負 → リスト上で「後ろ (下)」へ移動 → offset 正。
-        offset = int(round(-dy / row_height))
-        target_index = max(0, min(len(stack) - 1, self.index + offset))
-
-        moved_uid = layer_stack_utils.stack_item_uid(stack[self.index])
-        if target_index == self.index:
-            layer_stack_utils.select_stack_index(context, self.index)
-            return {"FINISHED"}
-
-        stack.move(self.index, target_index)
-        # 親キー更新 (CSP/PS 風: 直前行のコンテナを親に採用)
-        if not layer_stack_utils.apply_stack_drop_hint(
-            context, moved_uid, nesting_delta=0
-        ):
-            layer_stack_utils.apply_stack_order(context)
-        layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-
-        # 移動後の位置を選択
-        for i, item in enumerate(context.scene.bname_layer_stack):
-            if layer_stack_utils.stack_item_uid(item) == moved_uid:
-                layer_stack_utils.set_active_stack_index_silently(context, i)
-                break
-
-        layer_stack_utils.remember_layer_stack_signature(context)
-        self._tag_ui_redraw(context)
-        return {"FINISHED"}
-
-    def _event_float(self, event, attr: str, default: float) -> float:
-        try:
-            return float(getattr(event, attr, default))
-        except Exception:  # noqa: BLE001
-            return float(default)
-
-    def execute(self, context):
-        # 直接 EXEC されたとき (履歴から再実行など) は単純な選択にする.
-        layer_stack_utils.select_stack_index(context, self.index)
-        return {"FINISHED"}
-
-    def _estimate_row_height(self, context) -> float:
-        scale = 1.0
-        prefs = getattr(context, "preferences", None)
-        view = getattr(prefs, "view", None) if prefs is not None else None
-        try:
-            scale = float(getattr(view, "ui_scale", 1.0))
-        except Exception:  # noqa: BLE001
-            scale = 1.0
-        return max(16.0, 22.0 * max(0.5, scale))
-
-    def _tag_ui_redraw(self, context) -> None:
-        area = getattr(context, "area", None)
-        if area is not None:
-            try:
-                area.tag_redraw()
-            except Exception:  # noqa: BLE001
-                pass
-        layer_stack_utils.tag_view3d_redraw(context)
 
 
 class BNAME_MT_layer_stack_add(Menu):
@@ -1577,7 +1443,6 @@ _CLASSES = (
     BNAME_OT_layer_stack_select,
     BNAME_OT_layer_stack_multi_select,
     BNAME_OT_layer_stack_move,
-    BNAME_OT_layer_stack_drag,
     BNAME_MT_layer_stack_add,
     BNAME_MT_layer_stack_add_raster,
     BNAME_OT_layer_stack_add,

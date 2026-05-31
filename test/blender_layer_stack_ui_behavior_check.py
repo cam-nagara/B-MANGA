@@ -358,6 +358,7 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev.operators import effect_line_op
+        from bname_dev.operators import layer_stack_op
         from bname_dev.operators import raster_layer_op
         from bname_dev.utils import gp_layer_parenting as gp_parent
         from bname_dev.utils import layer_stack as layer_stack_utils
@@ -401,6 +402,8 @@ def main() -> None:
         assert hasattr(bpy.types, "BNAME_OT_layer_stack_multi_select")
         assert hasattr(bpy.types, "BNAME_OT_layer_stack_link_selected")
         assert hasattr(bpy.types, "BNAME_MT_layer_stack_add")
+        assert not hasattr(bpy.types, "BNAME_OT_layer_stack_drag")
+        assert hasattr(context.scene, "bname_layer_stack_inline_edit_uid")
         text_coll = outliner_model.ensure_text_collection(context.scene)
         root_coll = outliner_model.ensure_root_collection(context.scene)
         assert text_coll.name == "text"
@@ -422,14 +425,25 @@ def main() -> None:
         text_b_uid = layer_stack_utils.target_uid("text", f"{page_key}:{text_b.id}")
 
         _stack(context)
-        text_a_index, _text_a_item = _find_stack_item(context, text_a_uid)
+        text_a_index, text_a_item = _find_stack_item(context, text_a_uid)
         text_b_index, _text_b_item = _find_stack_item(context, text_b_uid)
+        coma_index, coma_item = _find_stack_item(context, coma_uid)
+        assert layer_stack_op._editable_name_prop_for_item(context, text_a_item) == "title"
+        assert layer_stack_op._editable_name_prop_for_item(context, coma_item) is None
+        rename_op = SimpleNamespace(index=text_a_index, mode="SET")
+        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+            rename_op,
+            context,
+            SimpleNamespace(value="DOUBLE_CLICK", shift=False, ctrl=False, oskey=False),
+        )
+        assert context.scene.bname_layer_stack_inline_edit_uid == text_a_uid
         layer_stack_utils.clear_all_selection(context)
         assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_a_index,
             mode="SET",
         )
+        assert context.scene.bname_layer_stack_inline_edit_uid == ""
         assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_b_index,
