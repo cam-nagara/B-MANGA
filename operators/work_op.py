@@ -241,6 +241,12 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: raster runtime setup failed")
             _disable_work_viewport_overlays(context)
+            try:
+                from ..utils import geometry_nodes_bridge
+
+                geometry_nodes_bridge.ensure_effect_line_node_group_for_work(context)
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_new: effect line display preparation failed")
             blend_io.save_work_blend(work_dir)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("work_new failed")

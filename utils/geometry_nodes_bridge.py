@@ -29,6 +29,8 @@ WHITE_OUTLINE_SPACING_MM_SOCKET = "白抜き線 間隔 (mm)"
 WHITE_OUTLINE_WIDTH_MM_SOCKET = "白抜き線 太さ (mm)"
 WHITE_OUTLINE_WHITE_BRUSH_MM_SOCKET = "白線太さ (mm)"
 WHITE_OUTLINE_BLACK_BRUSH_MM_SOCKET = "黒線太さ (mm)"
+_EFFECT_LINE_PREP_TIMER_SCHEDULED = False
+_EFFECT_LINE_PREP_TIMER = None
 
 
 @dataclass(frozen=True)
@@ -2616,6 +2618,62 @@ def ensure_node_group(kind: str) -> bpy.types.NodeTree:
     return group
 
 
+def _work_is_loaded(context=None) -> bool:
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    if scene is None:
+        return False
+    work = getattr(scene, "bname_work", None)
+    if work is None:
+        return False
+    if not bool(getattr(work, "loaded", False)):
+        return False
+    return bool(str(getattr(work, "work_dir", "") or ""))
+
+
+def ensure_effect_line_node_group_for_work(context=None) -> bool:
+    """B-Name作品を開いている時だけ、効果線表示用ノードを準備する."""
+    if not _work_is_loaded(context):
+        return False
+    try:
+        ensure_node_group("effect_line")
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("geometry nodes bridge: effect line group preparation failed")
+        return False
+
+
+def schedule_effect_line_node_group_for_work(context=None, *, delay: float = 0.25) -> bool:
+    """作品読み込み後に、効果線表示用ノードの準備を少し遅らせて実行する."""
+    global _EFFECT_LINE_PREP_TIMER, _EFFECT_LINE_PREP_TIMER_SCHEDULED
+    if _EFFECT_LINE_PREP_TIMER_SCHEDULED:
+        return False
+    if not _work_is_loaded(context):
+        return False
+
+    _EFFECT_LINE_PREP_TIMER_SCHEDULED = True
+
+    def _run():
+        global _EFFECT_LINE_PREP_TIMER, _EFFECT_LINE_PREP_TIMER_SCHEDULED
+        if _EFFECT_LINE_PREP_TIMER is not _run:
+            return None
+        try:
+            ensure_effect_line_node_group_for_work(bpy.context)
+        finally:
+            _EFFECT_LINE_PREP_TIMER = None
+            _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
+        return None
+
+    _EFFECT_LINE_PREP_TIMER = _run
+    try:
+        bpy.app.timers.register(_run, first_interval=max(0.0, float(delay)))
+        return True
+    except Exception:  # noqa: BLE001
+        _EFFECT_LINE_PREP_TIMER = None
+        _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
+        _logger.exception("geometry nodes bridge: effect line group timer failed")
+        return False
+
+
 def _socket_specs(kind: str) -> dict[str, SocketSpec]:
     return {spec.name: spec for spec in _GROUP_SOCKETS.get(kind, ())}
 
@@ -2696,18 +2754,22 @@ def ensure_modifier(obj: bpy.types.Object | None, kind: str, values: Mapping[str
 
 
 def register() -> None:
-    for kind in _GROUP_SOCKETS:
-        if kind == "balloon":
-            # フキダシは編集可能なカーブ正本 + 軽量補助ノードへ移行したため、
-            # 起動時に旧フキダシ生成ノードを構築しない。
-            continue
-        try:
-            ensure_node_group(kind)
-        except Exception:  # noqa: BLE001
-            _logger.exception("geometry nodes bridge: group register rebuild failed")
+    # アドオンをオンにしただけでは作品用の重い表示ノードを作らない。
+    # 作品作成・作品読み込み・効果線の初回表示時に必要分だけ準備する。
+    return None
 
 
 def unregister() -> None:
+    global _EFFECT_LINE_PREP_TIMER, _EFFECT_LINE_PREP_TIMER_SCHEDULED
+    timer = _EFFECT_LINE_PREP_TIMER
+    _EFFECT_LINE_PREP_TIMER = None
+    _EFFECT_LINE_PREP_TIMER_SCHEDULED = False
+    if timer is not None:
+        try:
+            if bpy.app.timers.is_registered(timer):
+                bpy.app.timers.unregister(timer)
+        except Exception:  # noqa: BLE001
+            pass
     return None
 
 

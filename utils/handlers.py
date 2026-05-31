@@ -376,6 +376,14 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     _logger.exception(
                         "load_post: shading/background reset failed"
                     )
+                try:
+                    from . import geometry_nodes_bridge
+
+                    geometry_nodes_bridge.schedule_effect_line_node_group_for_work(
+                        bpy.context
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: effect line display preparation failed")
             elif (
                 len(rel.parts) == 3
                 and paths.is_valid_page_id(rel.parts[0])

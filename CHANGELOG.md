@@ -3,6 +3,27 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — アドオン有効化時の待ち時間を短縮 / v0.6.208
+
+### 症状
+- プリファレンスのアドオンで B-Name をオンにした時、チェックが入るまで数秒待つことがあった。
+
+### 原因
+- 作品を開いていない状態でも、効果線表示用の重い準備をアドオン有効化時に作っていた。
+
+### 修正
+- アドオン有効化時には、効果線表示用の重い準備を作らないようにした。
+- 新規作品の作成時に必要な表示用データを準備し、保存した作品ファイルにも残るようにした。
+- 既存作品を開いた時は、必要な準備を読み込み後に遅延実行するようにした。
+- 効果線を初めて表示する時にも、不足していれば従来通り自動準備する保険を維持した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_addon_enable_lazy_effect_nodes_check.py`: アドオン有効化だけでは効果線表示用データが作られず、新規作品作成時に作られ、保存した作品ファイルにも残ることを確認。PASS。
+- `test/blender_effect_line_end_fill_check.py`: 効果線の終点形状の塗り表示が維持されることを確認。PASS。
+- `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
+- `python -m compileall -q core operators utils panels test __init__.py`: PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: 12 passed。
+
 ## 2026-05-31 — 外部アセットライブラリのサムネイル保存を確実化 / v0.6.207
 
 ### 症状
