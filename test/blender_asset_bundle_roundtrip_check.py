@@ -145,6 +145,23 @@ def main() -> None:
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
+        from bname_dev_asset_bundle.utils import asset_bundle
+
+        pending_coll = asset_bundle.create_collection_asset(
+            bpy.context,
+            {"version": 1, "name": "未読込配置", "origin": {"x": 0.0, "y": 0.0}, "entries": []},
+            target=asset_bundle.AssetBrowserTarget("LOCAL"),
+        )
+        pending = bpy.data.objects.new("drop_before_work_loaded", None)
+        pending.instance_type = "COLLECTION"
+        pending.instance_collection = pending_coll
+        bpy.context.scene.collection.objects.link(pending)
+        if asset_bundle.process_dropped_collection_instance(bpy.context, pending):
+            raise AssertionError("ページ一覧を開く前の配置が取り込まれています")
+        if bool(pending.get(asset_bundle.ASSET_INSTANCE_DONE_PROP, False)):
+            raise AssertionError("ページ一覧を開く前の配置が取り込み済みにされています")
+        bpy.data.objects.remove(pending, do_unlink=True)
+
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "AssetBundle.bname"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
@@ -174,6 +191,18 @@ def main() -> None:
         layer_links.link_uids(context, [uid_effect_a, uid_effect_b])
         layer_links.link_uids(context, [uid_balloon, uid_balloon_b])
         layer_stack_utils.sync_layer_stack_after_data_change(context)
+
+        items_by_uid = _item_by_uid(context)
+        payload = asset_bundle.build_payload(context, [items_by_uid[uid_balloon]], name="フキダシ/登録:*確認")
+        external_dir = temp_root / "AssetLibrary"
+        external_target = asset_bundle.AssetBrowserTarget("BNameTest", "", str(external_dir), True)
+        asset_bundle.create_collection_asset(context, payload, target=external_target)
+        asset_bundle.create_collection_asset(context, payload, target=external_target)
+        blend_files = sorted(external_dir.glob("*.blend"))
+        if len(blend_files) != 2 or len({path.name for path in blend_files}) != 2:
+            raise AssertionError("アセットライブラリ登録が既存ファイルを上書きしています")
+        if any(any(ch in path.name for ch in '<>:"/\\|?*') for path in blend_files):
+            raise AssertionError("アセットライブラリ登録のファイル名が安全化されていません")
 
         before_effects = set(_effect_objects())
         coll = _register_payload(context, [uid_effect_a], "効果線")

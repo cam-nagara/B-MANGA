@@ -28,6 +28,7 @@ ASSET_KIND_LAYER_BUNDLE = "layer_bundle"
 ASSET_PROTOTYPE_PROP = "bname_asset_preview"
 ASSET_INSTANCE_DONE_PROP = "bname_asset_instance_imported"
 ASSET_FILE_NAME = "B-Name Assets.blend"
+INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
 SUPPORTED_LAYER_KINDS = {"balloon", "text", "effect"}
 
@@ -229,6 +230,8 @@ def process_dropped_collection_instance(context, obj) -> bool:
     payload = payload_from_collection(collection)
     if payload is None:
         return False
+    if not _can_instantiate_now(context):
+        return False
     try:
         loc = getattr(obj, "location", None)
         drop = (m_to_mm(float(loc.x)), m_to_mm(float(loc.y))) if loc is not None else None
@@ -249,6 +252,13 @@ def process_pending_dropped_assets(context=None) -> int:
         if process_dropped_collection_instance(ctx, obj):
             count += 1
     return count
+
+
+def _can_instantiate_now(context) -> bool:
+    work = get_work(context)
+    if work is None or not bool(getattr(work, "loaded", False)):
+        return False
+    return get_active_page(context) is not None
 
 
 def _asset_browser_area(context, event=None):
@@ -666,11 +676,29 @@ def _write_external_library_if_needed(coll: bpy.types.Collection, target: AssetB
     if not library_path:
         return
     library_path.mkdir(parents=True, exist_ok=True)
-    bpy.data.libraries.write(str(library_path / ASSET_FILE_NAME), {coll}, fake_user=True)
+    bpy.data.libraries.write(str(_unique_library_blend_path(library_path, coll.name)), {coll}, fake_user=True)
     try:
         bpy.ops.asset.library_refresh()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _unique_library_blend_path(library_path: Path, asset_name: str) -> Path:
+    base = _safe_asset_file_stem(asset_name)
+    path = library_path / f"{base}.blend"
+    index = 1
+    while path.exists():
+        index += 1
+        path = library_path / f"{base}.{index:03d}.blend"
+    return path
+
+
+def _safe_asset_file_stem(name: str) -> str:
+    cleaned = "".join(
+        "_" if ch in INVALID_FILENAME_CHARS or ord(ch) < 32 else ch
+        for ch in str(name or "")
+    ).strip(" .")
+    return (cleaned or ASSET_FILE_NAME.removesuffix(".blend"))[:80]
 
 
 def _unique_asset_name(base: str) -> str:

@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — アセットライブラリ登録時の上書きを防止 / v0.6.203
+
+### 症状
+- アセットブラウザで開いている書き込み可能なライブラリへ登録する場合、同じ保存先で以前のB-Nameアセットファイルを上書きする恐れがあった。
+
+### 原因
+- ライブラリ内へ保存するファイル名が固定名になっており、連続登録時に同じファイルパスを使う可能性があった。
+
+### 修正
+- アセット登録時はアセット名から安全なファイル名を作り、同名ファイルがある場合は連番付きの別ファイルとして保存するようにした。
+- ファイル名に使えない文字を含むアセット名でも、安全な名前で保存するようにした。
+- 外部ライブラリへ同名アセットを連続登録しても、既存ファイルを上書きしない実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_asset_bundle_roundtrip_check.py`: 効果線、フキダシ、テキスト、リンク付き組み合わせの登録/配置復元に加え、外部アセットライブラリへの連続登録で別々の安全なファイルが作られることを確認。PASS。
+- `test/blender_layer_panel_page_list_check.py`: ページリスト/レイヤーリストの既存挙動を確認。PASS。
+- `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
+- `test/blender_object_preservation_check.py`: 既存実体保護の既存挙動を確認。PASS。
+- `test/blender_active_stack_item_no_sync_check.py`: レイヤー選択読み取り時に同期が走らないことを確認。PASS。
+- `test/blender_text_autofit_perf_check.py`: テキスト枠と軽量化の既存挙動を確認。PASS。
+- `test/blender_text_ime_runtime_check.py`: テキスト入力の既存挙動を確認。PASS。
+- `test/blender_object_free_transform_check.py`: フキダシ/テキスト/効果線の自由変形の既存挙動を確認。PASS。
+- `test/blender_effect_start_frame_page_check.py`: 効果線のページ別補助実体とマスクの既存挙動を確認。PASS。
+- `python -m compileall -q operators utils panels test __init__.py`: PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: PASS。
+
 ## 2026-05-31 — B-Nameレイヤーのアセット登録と配置復元を追加 / v0.6.202
 
 ### 症状
