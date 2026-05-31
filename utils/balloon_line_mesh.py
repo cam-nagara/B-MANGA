@@ -24,6 +24,7 @@ import bpy
 
 from . import object_preserve
 
+from . import balloon_tail_boolean
 from . import free_transform
 from . import balloon_shapes
 from . import line_pattern
@@ -312,42 +313,11 @@ def _body_union_with_tails(entry, body_samples):
     tail_pts = _tail_polygons_for_entry_local_m(entry)
     if not tail_pts:
         return None
-    body_poly = _build_body_polygon(body_samples)
-    if body_poly is None:
+    body_pts = [(float(s[0]), float(s[1])) for s in body_samples]
+    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_pts, tail_pts)
+    if not changed:
         return None
-    python_deps.ensure_bundled_wheels_on_path()
-    try:
-        from shapely.geometry import Polygon  # type: ignore
-        from shapely.ops import unary_union  # type: ignore
-    except Exception:  # noqa: BLE001
-        return None
-
-    polys = [body_poly]
-    for pts in tail_pts:
-        try:
-            poly = Polygon(pts)
-            if not poly.is_valid:
-                poly = poly.buffer(0)
-            if not poly.is_empty and poly.area > 0:
-                polys.append(poly)
-        except Exception:  # noqa: BLE001
-            continue
-    if len(polys) <= 1:
-        return None
-    overlap_m = 1.0e-6
-    try:
-        merged = unary_union([poly.buffer(overlap_m, join_style=2, mitre_limit=50.0) for poly in polys])
-        if merged.is_empty:
-            return None
-        merged = merged.buffer(-overlap_m, join_style=2, mitre_limit=50.0)
-        if merged.is_empty:
-            return None
-        if merged.geom_type == "MultiPolygon":
-            # しっぽが本体から完全に離れている場合は、従来の別線描画へ戻す。
-            return None
-        return merged if merged.geom_type == "Polygon" else None
-    except Exception:  # noqa: BLE001
-        return None
+    return merged
 
 
 def _outline_samples_with_tails(entry, body_samples) -> tuple[list[tuple[float, float, float]], bool]:

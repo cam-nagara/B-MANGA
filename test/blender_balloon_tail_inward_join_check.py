@@ -1,0 +1,136 @@
+"""Blender実機用: 内側へ向いたフキダシしっぽを凹みとして描画する回帰確認。"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT_ENV = os.environ.get("BNAME_BALLOON_TAIL_INWARD_VISUAL_OUT", "")
+OUT_PATH = Path(OUT_ENV) if OUT_ENV else ROOT / ".codex" / "visual" / "balloon_tail_reference_sample" / "bname_tail_inward_check.png"
+
+
+def _load_addon():
+    spec = importlib.util.spec_from_file_location(
+        "bname_dev_tail_inward_check",
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bname_dev_tail_inward_check"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
+def _mesh_bounds_xy(obj) -> tuple[float, float, float, float]:
+    xs = [float(v.co.x) for v in obj.data.vertices]
+    ys = [float(v.co.y) for v in obj.data.vertices]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _create_balloon(context, page, parent_key):
+    from bname_dev_tail_inward_check.operators import balloon_op
+    from bname_dev_tail_inward_check.utils import balloon_curve_object
+
+    entry = balloon_op._create_balloon_entry(
+        context,
+        page,
+        shape="ellipse",
+        x=40.0,
+        y=42.0,
+        w=84.0,
+        h=102.0,
+        parent_kind="page",
+        parent_key=parent_key,
+    )
+    entry.id = "tail_inward_check"
+    entry.line_style = "solid"
+    entry.line_width_mm = 0.82
+    entry.fill_color = (1.0, 1.0, 1.0, 1.0)
+    entry.line_color = (0.0, 0.0, 0.0, 1.0)
+
+    inward = entry.tails.add()
+    inward.type = "straight"
+    inward.root_width_mm = 20.0
+    inward.tip_width_mm = 0.0
+    inward.custom_points_enabled = True
+    inward.start_x_mm = -12.0
+    inward.start_y_mm = 35.0
+    inward.end_x_mm = 38.0
+    inward.end_y_mm = 36.0
+
+    outward = entry.tails.add()
+    outward.type = "straight"
+    outward.root_width_mm = 20.0
+    outward.tip_width_mm = 0.0
+    outward.custom_points_enabled = True
+    outward.start_x_mm = 66.0
+    outward.start_y_mm = 31.0
+    outward.end_x_mm = 96.0
+    outward.end_y_mm = 12.0
+
+    obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+    assert obj is not None
+    return entry
+
+
+def _hide_page_helpers() -> None:
+    for obj in bpy.data.objects:
+        name = str(getattr(obj, "name", "") or "").lower()
+        if "paper" in name or "guide" in name or "safe" in name:
+            obj.hide_viewport = True
+            obj.hide_render = True
+
+
+def main() -> None:
+    mod = None
+    try:
+        OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_addon()
+        temp_root = Path(tempfile.mkdtemp(prefix="bname_tail_inward_check_"))
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailInwardCheck.bname"))
+        assert "FINISHED" in result, result
+
+        from bname_dev_tail_inward_check.core.work import get_work
+        from bname_dev_tail_inward_check.utils import balloon_line_mesh
+        from bname_dev_tail_inward_check.utils.layer_hierarchy import page_stack_key
+
+        context = bpy.context
+        work = get_work(context)
+        assert work is not None and work.loaded
+        page = work.pages[0]
+        _hide_page_helpers()
+        entry = _create_balloon(context, page, page_stack_key(page))
+        context.view_layer.update()
+
+        tail_line = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{entry.id}")
+        if tail_line is not None:
+            raise AssertionError("接合済みしっぽで分離線が残っています")
+        line_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{entry.id}")
+        fill_obj = bpy.data.objects.get(f"balloon_fill_mesh_{entry.id}")
+        if line_obj is None or fill_obj is None:
+            raise AssertionError("フキダシの主線または塗りがありません")
+
+        line_min_x, _line_min_y, line_max_x, _line_max_y = _mesh_bounds_xy(line_obj)
+        fill_min_x, _fill_min_y, fill_max_x, _fill_max_y = _mesh_bounds_xy(fill_obj)
+        if line_min_x < -0.052 or fill_min_x < -0.052:
+            raise AssertionError(f"内向きしっぽが外へ突き出しています: line={line_min_x:.4f}, fill={fill_min_x:.4f}")
+        if line_max_x < 0.052 or fill_max_x < 0.050:
+            raise AssertionError(f"外向きしっぽが外形に反映されていません: line={line_max_x:.4f}, fill={fill_max_x:.4f}")
+        print(f"BNAME_BALLOON_TAIL_INWARD_JOIN_OK {OUT_PATH}", flush=True)
+    finally:
+        if mod is not None:
+            mod.unregister()
+
+
+if __name__ == "__main__":
+    main()

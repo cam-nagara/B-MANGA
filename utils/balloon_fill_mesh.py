@@ -21,6 +21,7 @@ import bpy
 from . import object_preserve
 
 from . import balloon_line_mesh
+from . import balloon_tail_boolean
 from . import balloon_tail_geom
 from . import free_transform
 from . import log
@@ -148,75 +149,12 @@ def _tail_polygon_local_m(entry, tail) -> list[tuple[float, float]]:
 def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Sequence[Sequence[tuple[float, float]]]):
     """本体 + 全しっぽの和集合 Shapely Polygon (または MultiPolygon) を返す。失敗時 None。
 
-    しっぽが無い (= body のみ) ときは body polygon をそのまま返す。 余計な buffer 操作で
-    sharp corner に微小頂点が増え、 earcut が大きな triangle を生成してしまう不具合を
-    回避するため。
-
-    しっぽがある場合だけ、 各 polygon を微小に mitre buffer して確実に重ねた上で union
-    し、 同量だけ shrink して戻す方式で 1 つの polygon に統合する (round join だと sharp
-    corner に大量の頂点を追加してしまうため、 join_style=2 を使う)。
+    しっぽが無い (= body のみ) ときは body polygon をそのまま返す。
+    外側へ伸びるしっぽは本体へ結合し、内側へ向くしっぽは本体から差し引く。
+    どちらも主線側と同じ共通処理を使い、塗りと線の外形を一致させる。
     """
-    python_deps.ensure_bundled_wheels_on_path()
-    try:
-        from shapely.geometry import Polygon  # type: ignore
-        from shapely.ops import unary_union  # type: ignore
-    except Exception:  # noqa: BLE001
-        return None
-
-    def _validate(pts):
-        p = Polygon(pts)
-        if not p.is_valid:
-            p = p.buffer(0)
-        if p.is_empty or p.area <= 0:
-            return None
-        return p
-
-    body_poly = _validate(body_pts) if len(body_pts) >= 3 else None
-    tail_polys = []
-    for tail_pts in tails_pts:
-        if len(tail_pts) < 3:
-            continue
-        try:
-            tp = _validate(tail_pts)
-        except Exception:  # noqa: BLE001
-            tp = None
-        if tp is not None:
-            tail_polys.append(tp)
-
-    if body_poly is None and not tail_polys:
-        return None
-    if not tail_polys:
-        # body のみ: そのまま返す (buffer 不要)
-        return body_poly
-    if body_poly is None:
-        # body 無し (=異常系) : tail のみで union
-        polys_to_union = tail_polys
-        return unary_union(polys_to_union)
-
-    # body + tails: 微小 mitre buffer で重ね、 union 後に shrink して戻す
-    # mitre join (join_style=2) は sharp corner に頂点を追加しないため、 earcut の
-    # 安定性を維持できる。 mitre_limit は十分大きく取って fallback round を防ぐ。
-    overlap_m = 1.0e-6
-    try:
-        polys_buffered = [body_poly.buffer(overlap_m, join_style=2, mitre_limit=50.0)]
-        for tp in tail_polys:
-            polys_buffered.append(tp.buffer(overlap_m, join_style=2, mitre_limit=50.0))
-        merged = unary_union(polys_buffered)
-        if merged.is_empty:
-            return None
-        # buffer で広げた分を戻す (同じく mitre)
-        merged = merged.buffer(-overlap_m, join_style=2, mitre_limit=50.0)
-        if merged.is_empty:
-            return None
-        if merged.geom_type == "MultiPolygon":
-            # それでも MultiPolygon (= しっぽが body から離れて完全に disjoint な場合) は
-            # 最大面積の polygon を採用する (実用上は body 本体)。
-            polygons = list(merged.geoms)
-            polygons.sort(key=lambda p: p.area, reverse=True)
-            return polygons[0]
-        return merged
-    except Exception:  # noqa: BLE001
-        return body_poly  # fall back to body only
+    merged, _changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_pts, tails_pts)
+    return merged
 
 
 def _polygon_to_outer_holes(poly) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
