@@ -46,11 +46,15 @@ class AssetBrowserTarget:
 
 
 def event_over_asset_browser(context, event) -> bool:
-    return _asset_browser_area(context, event) is not None
+    return _asset_browser_area(context, event, require_event_hit=True) is not None
 
 
 def current_asset_browser_target(context, event=None) -> AssetBrowserTarget:
-    area = _asset_browser_area(context, event)
+    area = None
+    if event is not None:
+        area = _asset_browser_area(context, event, require_event_hit=True)
+    if area is None:
+        area = _asset_browser_area(context)
     if area is None:
         return AssetBrowserTarget()
     space = getattr(area.spaces, "active", None)
@@ -103,7 +107,7 @@ def register_selected_objects_as_asset(context, *, name: str = "", event=None) -
         if clone is not None:
             coll.objects.link(clone)
     _mark_collection_asset(coll, target=target, description="B-Name オブジェクトアセット")
-    _write_external_library_if_needed(coll, target)
+    _write_external_library_if_needed(coll, target, context=context)
     return coll
 
 
@@ -147,7 +151,7 @@ def create_collection_asset(
         if clone is not None:
             coll.objects.link(clone)
     _mark_collection_asset(coll, target=target, description="B-Name レイヤーアセット")
-    _write_external_library_if_needed(coll, target)
+    _write_external_library_if_needed(coll, target, context=context)
     return coll
 
 
@@ -261,7 +265,7 @@ def _can_instantiate_now(context) -> bool:
     return get_active_page(context) is not None
 
 
-def _asset_browser_area(context, event=None):
+def _asset_browser_area(context, event=None, *, require_event_hit: bool = False):
     screen = getattr(context, "screen", None)
     if screen is None:
         return None
@@ -271,7 +275,7 @@ def _asset_browser_area(context, event=None):
         space = getattr(area.spaces, "active", None)
         if str(getattr(space, "browse_mode", "") or "") != "ASSETS":
             continue
-        if event is not None:
+        if event is not None or require_event_hit:
             x = int(getattr(event, "mouse_x", -1))
             y = int(getattr(event, "mouse_y", -1))
             if not (area.x <= x < area.x + area.width and area.y <= y < area.y + area.height):
@@ -283,10 +287,23 @@ def _asset_browser_area(context, event=None):
 def _asset_library_path(context, reference: str) -> str:
     prefs = getattr(context, "preferences", None)
     filepaths = getattr(prefs, "filepaths", None)
+    wanted = _normalize_asset_library_reference(reference)
     for lib in getattr(filepaths, "asset_libraries", []) or []:
-        if str(getattr(lib, "name", "") or "") == reference:
+        candidates = (
+            str(getattr(lib, "name", "") or ""),
+            str(getattr(lib, "idname", "") or ""),
+            str(getattr(lib, "identifier", "") or ""),
+            str(getattr(lib, "uuid", "") or ""),
+        )
+        if any(candidate == reference for candidate in candidates):
+            return bpy.path.abspath(str(getattr(lib, "path", "") or ""))
+        if any(_normalize_asset_library_reference(candidate) == wanted for candidate in candidates):
             return bpy.path.abspath(str(getattr(lib, "path", "") or ""))
     return ""
+
+
+def _normalize_asset_library_reference(value: str) -> str:
+    return "".join(ch for ch in str(value or "").casefold() if ch.isalnum())
 
 
 def _selected_or_index_uids(context, stack, index: int) -> list[str]:
@@ -669,7 +686,7 @@ def _mark_collection_asset(coll: bpy.types.Collection, *, target: AssetBrowserTa
             obj.data.use_fake_user = True
 
 
-def _write_external_library_if_needed(coll: bpy.types.Collection, target: AssetBrowserTarget) -> None:
+def _write_external_library_if_needed(coll: bpy.types.Collection, target: AssetBrowserTarget, *, context=None) -> None:
     if target.is_local:
         return
     library_path = Path(target.library_path)
@@ -677,8 +694,22 @@ def _write_external_library_if_needed(coll: bpy.types.Collection, target: AssetB
         return
     library_path.mkdir(parents=True, exist_ok=True)
     bpy.data.libraries.write(str(_unique_library_blend_path(library_path, coll.name)), {coll}, fake_user=True)
+    _refresh_open_asset_browser(context)
+
+
+def _refresh_open_asset_browser(context=None) -> None:
     try:
-        bpy.ops.asset.library_refresh()
+        area = _asset_browser_area(context) if context is not None else None
+        if area is None or not hasattr(context, "temp_override"):
+            bpy.ops.asset.library_refresh()
+            return
+        space = getattr(area.spaces, "active", None)
+        region = next((region for region in getattr(area, "regions", []) if region.type == "WINDOW"), None)
+        if region is None:
+            bpy.ops.asset.library_refresh()
+            return
+        with context.temp_override(area=area, region=region, space_data=space):
+            bpy.ops.asset.library_refresh()
     except Exception:  # noqa: BLE001
         pass
 

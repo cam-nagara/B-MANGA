@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from types import SimpleNamespace
 import sys
 import tempfile
 from pathlib import Path
@@ -63,6 +64,38 @@ def _drop_collection(context, coll, world_x_mm: float, world_y_mm: float) -> Non
         raise AssertionError(f"{coll.name}: 3Dビューへの配置復元に失敗しました")
     if inst_name in bpy.data.objects:
         raise AssertionError(f"{coll.name}: 配置用インスタンスが残っています")
+
+
+def _assert_asset_browser_target_detection(asset_bundle, temp_root: Path) -> None:
+    library_path = temp_root / "OpenAssetBrowser"
+    params = SimpleNamespace(asset_library_reference="BNameAssets", catalog_id="test-catalog")
+    area = SimpleNamespace(
+        type="FILE_BROWSER",
+        x=0,
+        y=0,
+        width=420,
+        height=900,
+        spaces=SimpleNamespace(active=SimpleNamespace(browse_mode="ASSETS", params=params)),
+    )
+    context = SimpleNamespace(
+        screen=SimpleNamespace(areas=[area]),
+        preferences=SimpleNamespace(
+            filepaths=SimpleNamespace(
+                asset_libraries=[SimpleNamespace(name="B-Name-Assets", path=str(library_path))]
+            )
+        ),
+    )
+    off_area_event = SimpleNamespace(mouse_x=900, mouse_y=300)
+    if asset_bundle.event_over_asset_browser(context, off_area_event):
+        raise AssertionError("アセットブラウザ外のボタン操作がD&D扱いになっています")
+    target = asset_bundle.current_asset_browser_target(context, off_area_event)
+    if target.is_local or target.library_path != str(library_path):
+        raise AssertionError("開いているアセットブラウザのライブラリを登録先にできていません")
+    if target.catalog_id != "test-catalog":
+        raise AssertionError("アセットブラウザのカタログが登録先に反映されていません")
+    on_area_event = SimpleNamespace(mouse_x=100, mouse_y=300)
+    if not asset_bundle.event_over_asset_browser(context, on_area_event):
+        raise AssertionError("アセットブラウザ上へのD&Dを検出できていません")
 
 
 def _effect_objects():
@@ -146,6 +179,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         from bname_dev_asset_bundle.utils import asset_bundle
+
+        _assert_asset_browser_target_detection(asset_bundle, temp_root)
 
         pending_coll = asset_bundle.create_collection_asset(
             bpy.context,
