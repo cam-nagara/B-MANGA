@@ -495,12 +495,16 @@ class BNAME_OT_layer_stack_move(Operator):
 class BNAME_OT_layer_stack_drag(Operator):
     bl_idname = "bname.layer_stack_drag"
     bl_label = "レイヤーをドラッグ移動"
-    bl_description = "クリックで選択、ドラッグで並び替え"
+    bl_description = "クリックで選択、ドラッグで並び替えやアセット登録"
     bl_options = {"REGISTER", "UNDO"}
 
     index: IntProperty(default=-1)  # type: ignore[valid-type]
 
     _moved_uid: str
+    _press_x: float
+    _press_y: float
+    _last_x: float
+    _last_y: float
 
     DRAG_THRESHOLD_PX: float = 6.0  # この距離以上動いたらドラッグ扱い
 
@@ -510,22 +514,63 @@ class BNAME_OT_layer_stack_drag(Operator):
         return stack is not None and len(stack) > 0
 
     def invoke(self, context, event):
-        """ボタン invoke は RELEASE 時に呼ばれる。
-
-        - press 位置と release 位置の差が閾値未満ならクリック扱い → 選択だけ
-        - 閾値以上ならドラッグ扱い → Y デルタから新しい位置を計算して移動
-        """
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
 
+        value = str(getattr(event, "value", "") or "")
+        if value == "PRESS":
+            self._press_x = self._event_float(event, "mouse_x", 0.0)
+            self._press_y = self._event_float(event, "mouse_y", 0.0)
+            self._last_x = self._press_x
+            self._last_y = self._press_y
+            layer_stack_utils.select_stack_index(context, self.index)
+            try:
+                context.window_manager.modal_handler_add(self)
+            except Exception:  # noqa: BLE001
+                return self._finish_drag(context, event, self._press_x, self._press_y)
+            return {"RUNNING_MODAL"}
+
+        # UI ボタン経由では離した時点で呼ばれる環境もあるため、その場合は
+        # Blender が保持している押下位置を使って従来の処理を維持する。
         try:
             press_x = float(getattr(event, "mouse_prev_press_x", getattr(event, "mouse_x", 0.0)))
             press_y = float(getattr(event, "mouse_prev_press_y", getattr(event, "mouse_y", 0.0)))
-            cur_x = float(getattr(event, "mouse_x", press_x))
-            cur_y = float(getattr(event, "mouse_y", press_y))
         except Exception:  # noqa: BLE001
-            press_x = press_y = cur_x = cur_y = 0.0
+            press_x = press_y = 0.0
+        return self._finish_drag(context, event, press_x, press_y)
+
+    def modal(self, context, event):
+        event_type = str(getattr(event, "type", "") or "")
+        event_value = str(getattr(event, "value", "") or "")
+
+        if event_type in {"ESC", "RIGHTMOUSE"}:
+            return {"CANCELLED"}
+        if event_type == "WINDOW_DEACTIVATE":
+            return {"CANCELLED"}
+
+        if event_type == "MOUSEMOVE":
+            self._last_x = self._event_float(event, "mouse_x", getattr(self, "_last_x", 0.0))
+            self._last_y = self._event_float(event, "mouse_y", getattr(self, "_last_y", 0.0))
+            return {"RUNNING_MODAL"}
+
+        if event_type == "LEFTMOUSE" and event_value == "RELEASE":
+            return self._finish_drag(
+                context,
+                event,
+                getattr(self, "_press_x", self._event_float(event, "mouse_x", 0.0)),
+                getattr(self, "_press_y", self._event_float(event, "mouse_y", 0.0)),
+            )
+
+        return {"RUNNING_MODAL"}
+
+    def _finish_drag(self, context, event, press_x: float, press_y: float):
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        if stack is None or not (0 <= self.index < len(stack)):
+            return {"CANCELLED"}
+
+        cur_x = self._event_float(event, "mouse_x", press_x)
+        cur_y = self._event_float(event, "mouse_y", press_y)
 
         dx = cur_x - press_x
         dy = cur_y - press_y
@@ -582,6 +627,12 @@ class BNAME_OT_layer_stack_drag(Operator):
         layer_stack_utils.remember_layer_stack_signature(context)
         self._tag_ui_redraw(context)
         return {"FINISHED"}
+
+    def _event_float(self, event, attr: str, default: float) -> float:
+        try:
+            return float(getattr(event, attr, default))
+        except Exception:  # noqa: BLE001
+            return float(default)
 
     def execute(self, context):
         # 直接 EXEC されたとき (履歴から再実行など) は単純な選択にする.
