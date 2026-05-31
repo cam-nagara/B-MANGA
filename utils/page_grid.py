@@ -256,6 +256,18 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
 
     full_canvas_kinds = {"raster", "gp", "effect"}
     entry_relative_kinds = {"balloon", "image", "text"}
+    text_objects_by_id: dict[str, object] = {}
+    for obj in bpy.data.objects:
+        try:
+            if str(obj.get("bname_kind", "") or "") != "text":
+                continue
+            if not bool(obj.get("bname_managed", False)):
+                continue
+            bid = str(obj.get("bname_id", "") or "")
+            if bid and bid not in text_objects_by_id:
+                text_objects_by_id[bid] = obj
+        except Exception:  # noqa: BLE001
+            continue
 
     def _owner_page_id(parent_key: str) -> str:
         key = str(parent_key or "")
@@ -292,6 +304,20 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
                 obj.name,
             )
 
+    def _set_page_text_objects(page_entry, page_id: str, ox_mm: float, oy_mm: float) -> None:
+        for entry in getattr(page_entry, "texts", []) or []:
+            text_id = str(getattr(entry, "id", "") or "")
+            if not text_id:
+                continue
+            obj = text_objects_by_id.get(f"{page_id}:{text_id}") or text_objects_by_id.get(text_id)
+            if obj is None:
+                continue
+            _set_xy(
+                obj,
+                mm_to_m(ox_mm + float(getattr(entry, "x_mm", 0.0) or 0.0)),
+                mm_to_m(oy_mm + float(getattr(entry, "y_mm", 0.0) or 0.0)),
+            )
+
     updated = 0
     for i, page_entry in enumerate(work.pages):
         coll = gp_utils.get_page_collection(page_entry.id)
@@ -305,6 +331,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         oy_mm += add_y
 
         page_id_str = str(getattr(page_entry, "id", "") or "")
+        _set_page_text_objects(page_entry, page_id_str, ox_mm, oy_mm)
 
         # ページ内の entry ルックアップを 1 度だけ作る
         balloon_entries: dict[str, object] = {}

@@ -53,6 +53,38 @@ def _set_page_layer_active(context) -> None:
     edge_selection.clear_selection(context)
 
 
+def _page_offsets_by_id(context, work) -> dict[str, tuple[float, float]]:
+    return {
+        str(page.id): page_grid.page_total_offset_mm(work, context.scene, i)
+        for i, page in enumerate(getattr(work, "pages", []) or [])
+    }
+
+
+def _page_offset_for_entry(context, work, target_page) -> tuple[float, float]:
+    if work is None:
+        return (0.0, 0.0)
+    target_id = str(getattr(target_page, "id", "") or "")
+    for i, page in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(page, "id", "") or "") == target_id:
+            return page_grid.page_total_offset_mm(work, context.scene, i)
+    return (0.0, 0.0)
+
+
+def _translate_layers_for_offset_changes(context, work, old_offsets: dict[str, tuple[float, float]]) -> None:
+    for i, page in enumerate(getattr(work, "pages", []) or []):
+        old = old_offsets.get(str(getattr(page, "id", "") or ""))
+        if old is None:
+            continue
+        new = page_grid.page_total_offset_mm(work, context.scene, i)
+        dx = new[0] - old[0]
+        dy = new[1] - old[1]
+        if abs(dx) <= 1.0e-6 and abs(dy) <= 1.0e-6:
+            continue
+        parent_keys = layer_stack_utils.gp_parent_keys_for_page(page)
+        layer_stack_utils.translate_gp_layers_for_parent_keys(context, parent_keys, dx, dy)
+        layer_stack_utils.translate_effect_layers_for_parent_keys(context, parent_keys, dx, dy)
+
+
 def _duplicate_page_gp_layers(context, src_page, dst_page) -> None:
     """src_page 配下の GP レイヤー (ページ本体 + 各コマ) を dst_page へ複製する.
 
@@ -71,6 +103,11 @@ def _duplicate_page_gp_layers(context, src_page, dst_page) -> None:
 
     src_page_key = page_stack_key(src_page)
     dst_page_key = page_stack_key(dst_page)
+    work = get_work(context)
+    src_offset = _page_offset_for_entry(context, work, src_page)
+    dst_offset = _page_offset_for_entry(context, work, dst_page)
+    dx_mm = dst_offset[0] - src_offset[0]
+    dy_mm = dst_offset[1] - src_offset[1]
     key_map = {src_page_key: dst_page_key}
     src_comas = list(getattr(src_page, "comas", []) or [])
     dst_comas = list(getattr(dst_page, "comas", []) or [])
@@ -109,6 +146,8 @@ def _duplicate_page_gp_layers(context, src_page, dst_page) -> None:
                 continue
             try:
                 gp_parent.set_parent_key(dup_layer, new_key)
+                if abs(dx_mm) > 1.0e-6 or abs(dy_mm) > 1.0e-6:
+                    gp_parent.translate_layer(dup_layer, dx_mm, dy_mm)
             except Exception:  # noqa: BLE001
                 _logger.exception("page_duplicate: set_parent_key failed")
     finally:
@@ -209,10 +248,7 @@ class BNAME_OT_page_remove(Operator):
         work_dir = Path(work.work_dir)
 
         try:
-            old_offsets = {
-                entry.id: page_grid.page_total_offset_mm(work, context.scene, i)
-                for i, entry in enumerate(work.pages)
-            }
+            old_offsets = _page_offsets_by_id(context, work)
             page_io.remove_page_dir(work_dir, page_id)
             layer_stack_utils.delete_gp_layers_for_parent_keys(
                 context, layer_stack_utils.gp_parent_keys_for_page(page)
@@ -221,20 +257,7 @@ class BNAME_OT_page_remove(Operator):
                 context, layer_stack_utils.gp_parent_keys_for_page(page)
             )
             work.pages.remove(idx)
-            for i, entry in enumerate(work.pages):
-                old = old_offsets.get(entry.id)
-                if old is None:
-                    continue
-                new = page_grid.page_total_offset_mm(work, context.scene, i)
-                dx = new[0] - old[0]
-                dy = new[1] - old[1]
-                if abs(dx) > 1.0e-6 or abs(dy) > 1.0e-6:
-                    layer_stack_utils.translate_gp_layers_for_parent_keys(
-                        context, layer_stack_utils.gp_parent_keys_for_page(entry), dx, dy
-                    )
-                    layer_stack_utils.translate_effect_layers_for_parent_keys(
-                        context, layer_stack_utils.gp_parent_keys_for_page(entry), dx, dy
-                    )
+            _translate_layers_for_offset_changes(context, work, old_offsets)
             # GP オブジェクト / データ / Collection も削除
             gp_utils.remove_page_gpencil(page_id)
             # active index の補正
@@ -279,6 +302,7 @@ class BNAME_OT_page_duplicate(Operator):
         src = work.pages[idx]
         work_dir = Path(work.work_dir)
         try:
+            old_offsets = _page_offsets_by_id(context, work)
             new_id = page_io.allocate_new_page_id(work)
             page_io.copy_page_dir(work_dir, src.id, new_id)
             new_entry = work.pages.add()
@@ -310,6 +334,7 @@ class BNAME_OT_page_duplicate(Operator):
             gp_utils.ensure_page_gpencil(context.scene, new_id)
             # 元ページの GP レイヤー (ページ本体 + 各コマ) を新ページへ複製。
             _duplicate_page_gp_layers(context, src, new_entry)
+            _translate_layers_for_offset_changes(context, work, old_offsets)
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_page_json(work_dir, new_entry)
             page_io.save_pages_json(work_dir, work)
@@ -358,26 +383,10 @@ class BNAME_OT_page_move(Operator):
             return {"CANCELLED"}  # 端では無効 (エラーにはしない)
         work_dir = Path(work.work_dir)
         try:
-            old_offsets = {
-                page.id: page_grid.page_total_offset_mm(work, context.scene, i)
-                for i, page in enumerate(work.pages)
-            }
+            old_offsets = _page_offsets_by_id(context, work)
             page_io.move_page(work, idx, new_idx)
             page_range.update_page_range_visibility(work)
-            for i, page in enumerate(work.pages):
-                old = old_offsets.get(page.id)
-                if old is None:
-                    continue
-                new = page_grid.page_total_offset_mm(work, context.scene, i)
-                dx = new[0] - old[0]
-                dy = new[1] - old[1]
-                if abs(dx) > 1.0e-6 or abs(dy) > 1.0e-6:
-                    layer_stack_utils.translate_gp_layers_for_parent_keys(
-                        context, layer_stack_utils.gp_parent_keys_for_page(page), dx, dy
-                    )
-                    layer_stack_utils.translate_effect_layers_for_parent_keys(
-                        context, layer_stack_utils.gp_parent_keys_for_page(page), dx, dy
-                    )
+            _translate_layers_for_offset_changes(context, work, old_offsets)
             # 順序が変わったので Collection transform を再計算
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_pages_json(work_dir, work)
