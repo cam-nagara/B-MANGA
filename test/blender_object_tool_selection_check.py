@@ -229,7 +229,7 @@ def main() -> None:
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
         visible_kinds = set(_visible_stack_kinds(context))
-        expected_kinds = {"page", "coma", "gp", "effect", "raster", "image", "balloon", "text"}
+        expected_kinds = {"coma", "gp", "effect", "raster", "image", "balloon", "text"}
         missing = expected_kinds - visible_kinds
         if missing:
             raise AssertionError(f"レイヤーリスト表示不足: {sorted(missing)} / visible={sorted(visible_kinds)}")

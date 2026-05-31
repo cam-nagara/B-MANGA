@@ -412,7 +412,7 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         ("テキストツール", "bname.text_tool", "T", False, False, False),
         ("ナビゲート", "bname.view_navigate", "SPACE", False, False, False),
         ("ブラシサイズ", "bname.brush_size_drag", "LEFTMOUSE", False, True, True),
-        ("レイヤー選択", "bname.view_layer_pick", "LEFTMOUSE", True, True, False),
+        ("レイヤー選択", "bname.page_pick_viewport", "LEFTMOUSE", True, True, False),
         ("Alt移動", "bname.alt_reparent_drag", "LEFTMOUSE", False, False, True),
         ("Alt+Shift移動", "bname.alt_reparent_out", "LEFTMOUSE", True, False, True),
         ("次のページ", "bname.page_next", "COMMA", False, False, False),

@@ -829,6 +829,35 @@ def ensure_balloon_curve_object(
     force_regenerate: bool = False,
     preserve_manual_delta: bool = False,
 ) -> Optional[bpy.types.Object]:
+    if not los.is_sync_in_progress():
+        with los.suppress_sync():
+            return _ensure_balloon_curve_object_impl(
+                scene=scene,
+                entry=entry,
+                page=page,
+                folder_id=folder_id,
+                force_regenerate=force_regenerate,
+                preserve_manual_delta=preserve_manual_delta,
+            )
+    return _ensure_balloon_curve_object_impl(
+        scene=scene,
+        entry=entry,
+        page=page,
+        folder_id=folder_id,
+        force_regenerate=force_regenerate,
+        preserve_manual_delta=preserve_manual_delta,
+    )
+
+
+def _ensure_balloon_curve_object_impl(
+    *,
+    scene: bpy.types.Scene,
+    entry,
+    page,
+    folder_id: str = "",
+    force_regenerate: bool = False,
+    preserve_manual_delta: bool = False,
+) -> Optional[bpy.types.Object]:
     """``BNameBalloonEntry`` から balloon Curve Object を生成・更新する.
 
     rect/ellipse/cloud/fluffy/thorn 等の Meldex 共通形状と尻尾を Curve として
@@ -1287,6 +1316,13 @@ def _apply_balloon_object_transform(scene, work, page, entry, obj) -> None:
 
 
 def _sync_existing_balloon_object_lightweight(scene, work, page, entry) -> bool:
+    if not los.is_sync_in_progress():
+        with los.suppress_sync():
+            return _sync_existing_balloon_object_lightweight_impl(scene, work, page, entry)
+    return _sync_existing_balloon_object_lightweight_impl(scene, work, page, entry)
+
+
+def _sync_existing_balloon_object_lightweight_impl(scene, work, page, entry) -> bool:
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return False

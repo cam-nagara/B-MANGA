@@ -427,9 +427,39 @@ def main() -> None:
         _stack(context)
         text_a_index, text_a_item = _find_stack_item(context, text_a_uid)
         text_b_index, _text_b_item = _find_stack_item(context, text_b_uid)
+        effect_index, effect_item = _find_stack_item(context, effect_uid)
+        balloon_index, balloon_item = _find_stack_item(context, balloon_uid)
         coma_index, coma_item = _find_stack_item(context, coma_uid)
         assert layer_stack_op._editable_name_prop_for_item(context, text_a_item) == "title"
         assert layer_stack_op._editable_name_prop_for_item(context, coma_item) is None
+
+        def _invoke_multi(index: int, *, shift: bool = False, ctrl: bool = False):
+            op = SimpleNamespace(index=index, mode="SET")
+            op.execute = lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(op, ctx)
+            return layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+                op,
+                context,
+                SimpleNamespace(value="PRESS", shift=shift, ctrl=ctrl, oskey=False),
+            )
+
+        assert "FINISHED" in _invoke_multi(text_a_index)
+        assert layer_stack_utils.is_item_selected(context, text_a_item)
+        assert "FINISHED" in _invoke_multi(balloon_index, ctrl=True)
+        _stack(context)
+        _balloon_index, balloon_item = _find_stack_item(context, balloon_uid)
+        assert layer_stack_utils.is_item_selected(context, text_a_item)
+        assert layer_stack_utils.is_item_selected(context, balloon_item)
+        assert "FINISHED" in _invoke_multi(balloon_index, ctrl=True)
+        _stack(context)
+        _balloon_index, balloon_item = _find_stack_item(context, balloon_uid)
+        if layer_stack_utils.is_item_selected(context, balloon_item):
+            raise AssertionError("Ctrlクリックでレイヤーの選択解除ができません")
+        assert "FINISHED" in _invoke_multi(effect_index, shift=True)
+        _stack(context)
+        _effect_index, effect_item = _find_stack_item(context, effect_uid)
+        if not layer_stack_utils.is_item_selected(context, effect_item):
+            raise AssertionError("Shiftクリックで範囲選択の終端が選択されません")
+
         rename_op = SimpleNamespace(index=text_a_index, mode="SET")
         assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
             rename_op,

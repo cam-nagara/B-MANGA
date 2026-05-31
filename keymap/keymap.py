@@ -535,8 +535,6 @@ class KeymapState:
             except Exception as exc:  # noqa: BLE001
                 print(f"[B-Name][KEYMAP] set direction OUT failed: {exc!r}")
 
-        # Ctrl+Shift+クリック → レイヤー選択 (固定)
-        _add("bname.view_layer_pick", "LEFTMOUSE", ctrl=True, shift=True)
         # Ctrl+Alt+ドラッグ → ブラシサイズ変更 (固定)
         _add("bname.brush_size_drag", "LEFTMOUSE", ctrl=True, alt=True)
         # オブジェクトモードのクリック → ページをアクティブ化。
@@ -546,6 +544,7 @@ class KeymapState:
         # operator 内で event の修飾キーを参照し、object_selection に toggle/add する.
         _add("bname.page_pick_viewport", "LEFTMOUSE", ctrl=True)
         _add("bname.page_pick_viewport", "LEFTMOUSE", shift=True)
+        _add("bname.page_pick_viewport", "LEFTMOUSE", ctrl=True, shift=True)
         # Alt+ドラッグ → 選択中レイヤーをドロップ先のコマ/ページへ reparent + 位置追従
         _add("bname.alt_reparent_drag", "LEFTMOUSE", alt=True, head=True)
         # Alt+Shift+クリック → 選択中レイヤーを 1 段浅い親へ (位置維持)

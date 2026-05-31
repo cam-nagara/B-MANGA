@@ -228,6 +228,18 @@ def apply_page_collection_transforms(context, work) -> int:
     Z 軸は ``assign_per_page_z_ranks`` が per-page rank で決めるため、
     ここでは現在値を保持する (= 上書きしない)。
     """
+    try:
+        from . import layer_object_sync as _los
+    except Exception:  # noqa: BLE001
+        _los = None
+
+    if _los is not None and not _los.is_sync_in_progress():
+        with _los.suppress_sync():
+            return _apply_page_collection_transforms_impl(context, work)
+    return _apply_page_collection_transforms_impl(context, work)
+
+
+def _apply_page_collection_transforms_impl(context, work) -> int:
     scene = context.scene if context else bpy.context.scene
     if scene is None or work is None:
         return 0
@@ -268,6 +280,11 @@ def apply_page_collection_transforms(context, work) -> int:
     def _set_xy(obj, x_m: float, y_m: float) -> None:
         try:
             loc = obj.location
+            if (
+                abs(float(loc.x) - float(x_m)) <= 1.0e-9
+                and abs(float(loc.y) - float(y_m)) <= 1.0e-9
+            ):
+                return
             obj.location = (x_m, y_m, loc.z)
         except Exception:  # noqa: BLE001
             _logger.exception(
@@ -339,7 +356,7 @@ def apply_page_collection_transforms(context, work) -> int:
                     continue
                 ex_mm = float(getattr(entry, "x_mm", 0.0) or 0.0)
                 ey_mm = float(getattr(entry, "y_mm", 0.0) or 0.0)
-                if kind == "image":
+                if kind in {"balloon", "image"}:
                     ex_mm += float(getattr(entry, "width_mm", 0.0) or 0.0) * 0.5
                     ey_mm += float(getattr(entry, "height_mm", 0.0) or 0.0) * 0.5
                 _set_xy(

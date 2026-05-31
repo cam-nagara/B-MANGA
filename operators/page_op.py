@@ -487,10 +487,6 @@ class BNAME_OT_page_pick_viewport(Operator):
             return {"PASS_THROUGH"}
         is_ctrl = bool(getattr(event, "ctrl", False))
         is_shift = bool(getattr(event, "shift", False))
-        # Ctrl+Shift は既存の bname.view_layer_pick (作画レイヤー選択) に予約されている
-        # ため、ここでは無視して PASS_THROUGH する.
-        if is_ctrl and is_shift:
-            return {"PASS_THROUGH"}
         multi_mode = "toggle" if is_ctrl else ("add" if is_shift else "single")
         area = getattr(context, "area", None)
         if area is None or area.type != "VIEW_3D":
