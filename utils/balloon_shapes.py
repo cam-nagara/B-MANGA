@@ -1216,10 +1216,10 @@ def _bezier_thorn_curve(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | 
     return [_local_anchor_to_rect(rect, a) for a in anchors]
 
 
-def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
+def _fluffy_raw_points(rect: Rect, opts: _DynamicOpts, *, samples_per_bump: int) -> list[tuple[float, float]] | None:
     base = _dynamic_base(rect.width, rect.height, opts, fluffy=True)
     if base is None:
-        return _outline_ellipse(rect)
+        return None
     cx, cy, rx_base, ry_base, eff_h = base
     base_kind = getattr(opts, "base_kind", "ellipse")
     amp = eff_h * 0.5
@@ -1228,11 +1228,16 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
     num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
     # ズラし量 100% = 全周 1 周 (= 2π)。
     base_angle = -math.pi * 0.5 + opts.offset * 2.0 * math.pi
-    steps = num_bumps * 10
     sub_enabled = opts.sub_w > 0.0 or opts.sub_h > 0.0
+    sub_w_ratio = (opts.sub_w if opts.sub_w > 0.0 else 50.0) / 100.0
     sub_width_factor = _jitter_factor(opts.sub_w_jitter, opts.rng, min_factor=0.5)
-    sub_freq = max(1, round(num_bumps * 2.0 / sub_width_factor)) if sub_enabled else 0
+    sub_freq = (
+        max(1, min(num_bumps * 4, round(num_bumps / max(0.1, sub_w_ratio) / sub_width_factor)))
+        if sub_enabled
+        else 0
+    )
     sub_amp_ratio = ((opts.sub_h if opts.sub_h > 0.0 else 50.0) / 100.0) * 0.4 if sub_enabled else 0.0
+    steps = max(8, num_bumps * max(2, int(samples_per_bump)), sub_freq * 2 if sub_enabled else 0)
     main_width = [_jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5) for _i in range(num_bumps)]
     main_height = [
         _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(main_width[i])
@@ -1256,6 +1261,13 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
         bx, by = _base_position(t, cx, cy, rx_base, ry_base, base_kind=base_kind)
         nx, ny = _base_outward_normal(t, rx_base, ry_base, base_kind=base_kind)
         raw.append((bx + amp * wave * nx, by + amp * wave * ny))
+    return raw
+
+
+def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]:
+    raw = _fluffy_raw_points(rect, opts, samples_per_bump=10)
+    if raw is None:
+        return _outline_ellipse(rect)
 
     pts: list[tuple[float, float]] = [raw[0]]
     n = len(raw)
@@ -1271,32 +1283,9 @@ def _outline_fluffy(rect: Rect, opts: _DynamicOpts) -> list[tuple[float, float]]
 
 
 def _bezier_fluffy(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
-    base = _dynamic_base(rect.width, rect.height, opts, fluffy=True)
-    if base is None:
+    raw = _fluffy_raw_points(rect, opts, samples_per_bump=4)
+    if raw is None:
         return _bezier_ellipse(rect)
-    cx, cy, rx_base, ry_base, eff_h = base
-    base_kind = getattr(opts, "base_kind", "ellipse")
-    amp = eff_h * 0.5
-    perimeter = _base_perimeter(rx_base, ry_base, base_kind)
-    width_factor = _jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5)
-    num_bumps = max(6, round(perimeter / max(0.001, opts.bump_w * width_factor)))
-    steps = max(8, num_bumps * 2)
-    # ズラし量 100% = 全周 1 周 (= 2π)。
-    base_angle = -math.pi * 0.5 + opts.offset * 2.0 * math.pi
-    main_width = [_jitter_factor(opts.bump_w_jitter, opts.rng, min_factor=0.5) for _i in range(num_bumps)]
-    main_height = [
-        _jitter_factor(opts.bump_h_jitter, opts.rng, min_factor=0.2) * _height_factor_for_width(main_width[i])
-        for i in range(num_bumps)
-    ]
-    raw: list[tuple[float, float]] = []
-    for i in range(steps):
-        t = base_angle + (i / steps) * 2.0 * math.pi
-        phase = t - base_angle
-        main_idx = int(((phase % (2.0 * math.pi)) / (2.0 * math.pi)) * num_bumps) % num_bumps
-        wave = math.cos(num_bumps * phase) * main_height[main_idx]
-        bx, by = _base_position(t, cx, cy, rx_base, ry_base, base_kind=base_kind)
-        nx, ny = _base_outward_normal(t, rx_base, ry_base, base_kind=base_kind)
-        raw.append((bx + amp * wave * nx, by + amp * wave * ny))
     if len(raw) < 3:
         return _bezier_ellipse(rect)
     anchors: list[BezierAnchor] = []

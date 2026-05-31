@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import bpy
@@ -20,6 +21,10 @@ from ..utils.layer_hierarchy import (
     outside_child_key,
     split_child_key,
 )
+
+
+_INLINE_RENAME_DOUBLE_CLICK_SEC = 0.45
+_LAST_INLINE_RENAME_CLICK = {"index": -1, "uid": "", "time": 0.0}
 
 
 _ADD_KIND_ITEMS = (
@@ -390,6 +395,48 @@ def _editable_name_prop_for_item(context, item) -> str | None:
     return None
 
 
+def _remember_inline_rename_click(index: int, uid: str) -> bool:
+    now = time.monotonic()
+    previous_index = int(_LAST_INLINE_RENAME_CLICK.get("index", -1) or -1)
+    previous_uid = str(_LAST_INLINE_RENAME_CLICK.get("uid", "") or "")
+    previous_time = float(_LAST_INLINE_RENAME_CLICK.get("time", 0.0) or 0.0)
+    _LAST_INLINE_RENAME_CLICK["index"] = int(index)
+    _LAST_INLINE_RENAME_CLICK["uid"] = str(uid or "")
+    _LAST_INLINE_RENAME_CLICK["time"] = now
+    return (
+        previous_index == int(index)
+        and previous_uid == str(uid or "")
+        and 0.0 <= now - previous_time <= _INLINE_RENAME_DOUBLE_CLICK_SEC
+    )
+
+
+def _should_begin_inline_rename(context, item, index: int, event) -> bool:
+    if _editable_name_prop_for_item(context, item) is None:
+        return False
+    if (
+        bool(getattr(event, "shift", False))
+        or bool(getattr(event, "ctrl", False))
+        or bool(getattr(event, "oskey", False))
+    ):
+        return False
+    value = str(getattr(event, "value", "") or "")
+    uid = layer_stack_utils.stack_item_uid(item)
+    if value == "DOUBLE_CLICK":
+        _remember_inline_rename_click(index, uid)
+        return True
+    if value != "PRESS":
+        return False
+    return _remember_inline_rename_click(index, uid)
+
+
+def _begin_inline_rename(context, item, index: int) -> None:
+    context.scene.bname_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
+    layer_stack_utils.clear_all_selection(context)
+    layer_stack_utils.set_item_selected(context, item, True)
+    layer_stack_utils.select_stack_index(context, index)
+    layer_stack_utils.tag_view3d_redraw(context)
+
+
 class BNAME_OT_layer_stack_select(Operator):
     bl_idname = "bname.layer_stack_select"
     bl_label = "レイヤーを選択"
@@ -431,18 +478,12 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         return stack is not None and len(stack) > 0
 
     def invoke(self, context, event):
-        value = str(getattr(event, "value", "") or "")
-        if value == "DOUBLE_CLICK":
-            stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-            if stack is not None and 0 <= self.index < len(stack):
-                item = stack[self.index]
-                if _editable_name_prop_for_item(context, item) is not None:
-                    context.scene.bname_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
-                    layer_stack_utils.clear_all_selection(context)
-                    layer_stack_utils.set_item_selected(context, item, True)
-                    layer_stack_utils.select_stack_index(context, self.index)
-                    layer_stack_utils.tag_view3d_redraw(context)
-                    return {"FINISHED"}
+        stack = getattr(context.scene, "bname_layer_stack", None)
+        if stack is not None and 0 <= self.index < len(stack):
+            item = stack[self.index]
+            if _should_begin_inline_rename(context, item, self.index, event):
+                _begin_inline_rename(context, item, self.index)
+                return {"FINISHED"}
 
         if bool(getattr(event, "shift", False)):
             self.mode = "RANGE"

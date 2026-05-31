@@ -444,6 +444,25 @@ def main() -> None:
             mode="SET",
         )
         assert context.scene.bname_layer_stack_inline_edit_uid == ""
+        press_event = SimpleNamespace(value="PRESS", shift=False, ctrl=False, oskey=False)
+        first_press = SimpleNamespace(index=text_b_index, mode="SET")
+        first_press.execute = (
+            lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(first_press, ctx)
+        )
+        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(first_press, context, press_event)
+        assert context.scene.bname_layer_stack_inline_edit_uid == ""
+        second_press = SimpleNamespace(index=text_b_index, mode="SET")
+        second_press.execute = (
+            lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(second_press, ctx)
+        )
+        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(second_press, context, press_event)
+        assert context.scene.bname_layer_stack_inline_edit_uid == text_b_uid
+        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+            "EXEC_DEFAULT",
+            index=text_a_index,
+            mode="SET",
+        )
+        assert context.scene.bname_layer_stack_inline_edit_uid == ""
         assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_b_index,

@@ -41,6 +41,8 @@ def _assert_preview(coll, label: str) -> None:
         raise AssertionError(f"{label}: サムネイルがありません")
     width, height = int(preview.image_size[0]), int(preview.image_size[1])
     pixels = list(preview.image_pixels_float)
+    if (width, height) != (256, 256):
+        raise AssertionError(f"{label}: サムネイル画像サイズが違います {width}x{height}")
     if width <= 0 or height <= 0 or len(pixels) != width * height * 4:
         raise AssertionError(f"{label}: サムネイル画像が空です")
     if not bool(getattr(preview, "is_image_custom", False)):

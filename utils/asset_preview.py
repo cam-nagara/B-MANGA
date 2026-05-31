@@ -15,7 +15,7 @@ from . import log
 
 _logger = log.get_logger(__name__)
 
-ASSET_PREVIEW_SIZE = 128
+ASSET_PREVIEW_SIZE = 256
 _PREVIEW_RENDER_ENGINES = ("BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE")
 
 

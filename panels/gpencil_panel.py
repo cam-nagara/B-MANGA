@@ -275,9 +275,16 @@ def _is_inline_name_editing(item) -> bool:
     return bool(uid) and uid == editing_uid
 
 
+def _is_active_name_row(index: int) -> bool:
+    scene = getattr(bpy.context, "scene", None)
+    if scene is None:
+        return False
+    return int(getattr(scene, "bname_active_layer_stack_index", -1) or -1) == int(index)
+
+
 def _select_name(row, index: int, text: str, item=None, target=None) -> None:
     prop_name = _editable_name_prop(item, target)
-    if prop_name is not None and _is_inline_name_editing(item):
+    if prop_name is not None and (_is_inline_name_editing(item) or _is_active_name_row(index)):
         _draw_inline_name(row, item, target, prop_name)
         return
     cell = row.row(align=True)
