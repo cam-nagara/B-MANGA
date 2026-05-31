@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import defaultdict
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 from . import balloon_fill_mesh
 from . import balloon_line_mesh
@@ -22,8 +23,8 @@ MERGE_NAME_PREFIX = "balloon_merge_"
 PROP_MERGE_DISPLAY_KIND = "bname_balloon_merge_display_kind"
 PROP_MERGE_GROUP_ID = "bname_balloon_merge_group_id"
 PROP_MERGE_SOURCE_IDS = "bname_balloon_merge_source_ids"
+PROP_MERGE_SOURCE_SIGNATURE = "bname_balloon_merge_source_signature"
 
-_UNION_OVERLAP_M = 1.0e-7
 _LINE_Z_OFFSET_M = 0.00004
 
 
@@ -35,6 +36,21 @@ def sync_groups_for_page(scene: bpy.types.Scene, work, page) -> None:
         _ensure_group_display(scene, work, page, group_id, entries)
     _cleanup_group_objects(groups.keys())
     _sync_source_visibility(page, groups)
+
+
+def sync_group_for_entry(scene: bpy.types.Scene, work, page, entry) -> None:
+    if scene is None or work is None or page is None or entry is None:
+        return
+    group_id = str(getattr(entry, "merge_group_id", "") or "")
+    if not group_id:
+        return
+    entries = _valid_groups(page).get(group_id)
+    if not entries:
+        return
+    _ensure_group_display(scene, work, page, group_id, entries)
+    for source in entries:
+        balloon_id = str(getattr(source, "id", "") or "")
+        _set_source_display_hidden(balloon_id, True)
 
 
 def cleanup_all() -> None:
@@ -68,12 +84,17 @@ def _set_source_display_hidden(balloon_id: str, hidden: bool) -> None:
         return
     obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
     if obj is not None:
-        obj.hide_viewport = hidden
-        obj.hide_render = hidden
+        _set_object_hidden(obj, hidden)
     for candidate in bpy.data.objects:
         if _is_generated_balloon_display(candidate, balloon_id):
-            candidate.hide_viewport = hidden
-            candidate.hide_render = hidden
+            _set_object_hidden(candidate, hidden)
+
+
+def _set_object_hidden(obj: bpy.types.Object, hidden: bool) -> None:
+    if bool(getattr(obj, "hide_viewport", False)) != hidden:
+        obj.hide_viewport = hidden
+    if bool(getattr(obj, "hide_render", False)) != hidden:
+        obj.hide_render = hidden
 
 
 def _is_generated_balloon_display(obj: bpy.types.Object, balloon_id: str) -> bool:
@@ -101,6 +122,11 @@ def _cleanup_group_objects(valid_group_ids) -> None:
 
 
 def _ensure_group_display(scene, work, page, group_id: str, entries: list[object]) -> None:
+    signature = _group_signature(entries)
+    current = _find_group_display_object(group_id)
+    if current is not None and str(current.get(PROP_MERGE_SOURCE_SIGNATURE, "") or "") == signature:
+        _set_object_hidden(current, False)
+        return
     polygons, max_z = _source_polygons(entries)
     if len(polygons) < 2:
         return
@@ -108,20 +134,27 @@ def _ensure_group_display(scene, work, page, group_id: str, entries: list[object
     if mesh is None:
         return
     obj = _display_object(group_id, mesh)
+    obj[PROP_MERGE_SOURCE_SIGNATURE] = signature
     _stamp_display_object(scene, work, page, obj, group_id, entries, max_z=max_z)
 
 
-def _display_object(group_id: str, mesh: bpy.types.Mesh) -> bpy.types.Object:
+def _find_group_display_object(group_id: str) -> bpy.types.Object | None:
     obj_name = f"{MERGE_NAME_PREFIX}{group_id}"
     obj = on.find_object_by_bname_id(group_id, kind=MERGE_KIND)
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
+    return obj
+
+
+def _display_object(group_id: str, mesh: bpy.types.Mesh) -> bpy.types.Object:
+    obj_name = f"{MERGE_NAME_PREFIX}{group_id}"
+    obj = _find_group_display_object(group_id)
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)
-    else:
-        old_data = getattr(obj, "data", None)
+    elif obj.data is not mesh:
         obj.data = mesh
-        _remove_unused_mesh(old_data)
+    else:
+        obj.data = mesh
     obj[PROP_MERGE_DISPLAY_KIND] = "display"
     obj[PROP_MERGE_GROUP_ID] = group_id
     obj.hide_select = True
@@ -198,19 +231,26 @@ def _spline_role_radius(spline) -> float | None:
 
 
 def _sample_spline_world(obj: bpy.types.Object, spline) -> list[tuple[float, float]]:
+    matrix = _object_transform_matrix(obj)
     if getattr(spline, "type", "") == "BEZIER":
-        return _sample_bezier_world(obj, spline)
+        return _sample_bezier_world(matrix, spline)
     pts = []
     for point in getattr(spline, "points", []) or []:
         co = getattr(point, "co", None)
         if co is None:
             continue
-        world = obj.matrix_world @ Vector((float(co.x), float(co.y), float(co.z)))
+        world = matrix @ Vector((float(co.x), float(co.y), float(co.z)))
         pts.append((float(world.x), float(world.y)))
     return pts
 
 
-def _sample_bezier_world(obj: bpy.types.Object, spline, steps: int = 10) -> list[tuple[float, float]]:
+def _object_transform_matrix(obj: bpy.types.Object) -> Matrix:
+    if getattr(obj, "parent", None) is None:
+        return Matrix.LocRotScale(obj.location, obj.rotation_euler, obj.scale)
+    return obj.matrix_world.copy()
+
+
+def _sample_bezier_world(matrix: Matrix, spline, steps: int = 10) -> list[tuple[float, float]]:
     points = list(getattr(spline, "bezier_points", []) or [])
     count = len(points)
     if count < 2:
@@ -228,7 +268,7 @@ def _sample_bezier_world(obj: bpy.types.Object, spline, steps: int = 10) -> list
                 Vector(p1.co),
                 step / max(1, steps),
             )
-            world = obj.matrix_world @ pos
+            world = matrix @ pos
             pts.append((float(world.x), float(world.y)))
     return pts
 
@@ -242,12 +282,12 @@ def _build_union_mesh(group_id: str, polygons, style_entry) -> bpy.types.Mesh | 
     union = _union_source_polygons(polygons)
     if union is None:
         return None
-    mesh = bpy.data.meshes.new(f"{MERGE_NAME_PREFIX}{group_id}_mesh")
     verts, faces, material_indices = _mesh_parts_from_union(union, style_entry)
     if not faces or len(verts) < 3:
-        _remove_unused_mesh(mesh)
         return None
+    mesh = bpy.data.meshes.new(f"{MERGE_NAME_PREFIX}{group_id}_mesh")
     mesh.from_pydata(verts, [], faces)
+    mesh.validate(clean_customdata=False)
     mesh.update()
     line_mat = bco._ensure_balloon_curve_material(  # noqa: SLF001
         None,
@@ -255,11 +295,182 @@ def _build_union_mesh(group_id: str, polygons, style_entry) -> bpy.types.Mesh | 
         entry=style_entry,
     )
     fill_mat = bco._ensure_fill_material(f"{bco.BALLOON_FILL_MATERIAL_PREFIX}{group_id}", style_entry)  # noqa: SLF001
+    mesh.materials.clear()
     mesh.materials.append(line_mat)
     mesh.materials.append(fill_mat)
     for index, poly in enumerate(mesh.polygons):
         poly.material_index = material_indices[index] if index < len(material_indices) else 1
     return mesh
+
+
+def _group_signature(entries) -> str:
+    raw = repr([_entry_signature(entry) for entry in entries]).encode("utf-8", errors="replace")
+    return hashlib.sha1(raw).hexdigest()
+
+
+def _entry_signature(entry) -> tuple:
+    entry_id = str(getattr(entry, "id", "") or "")
+    return (
+        entry_id,
+        _source_object_signature(entry_id),
+        _entry_geometry_signature(entry),
+        _entry_style_signature(entry),
+        _shape_params_signature(getattr(entry, "shape_params", None)),
+        _tails_signature(entry),
+    )
+
+
+def _entry_geometry_signature(entry) -> tuple:
+    return (
+        bool(getattr(entry, "visible", True)),
+        str(getattr(entry, "shape", "") or ""),
+        _round_float(getattr(entry, "x_mm", 0.0)),
+        _round_float(getattr(entry, "y_mm", 0.0)),
+        _round_float(getattr(entry, "width_mm", 0.0)),
+        _round_float(getattr(entry, "height_mm", 0.0)),
+        _round_float(getattr(entry, "rotation_deg", 0.0)),
+        _round_float(getattr(entry, "center_offset_x_mm", 0.0)),
+        _round_float(getattr(entry, "center_offset_y_mm", 0.0)),
+        bool(getattr(entry, "free_transform_enabled", False)),
+        tuple(_round_float(v) for v in getattr(entry, "free_transform_bottom_left", ())[:2]),
+        tuple(_round_float(v) for v in getattr(entry, "free_transform_bottom_right", ())[:2]),
+        tuple(_round_float(v) for v in getattr(entry, "free_transform_top_left", ())[:2]),
+        tuple(_round_float(v) for v in getattr(entry, "free_transform_top_right", ())[:2]),
+        bool(getattr(entry, "flip_h", False)),
+        bool(getattr(entry, "flip_v", False)),
+        str(getattr(entry, "corner_type", "") or ""),
+        bool(getattr(entry, "rounded_corner_enabled", False)),
+        _round_float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        str(getattr(entry, "rounded_corner_radius_unit", "") or ""),
+        _round_float(getattr(entry, "rounded_corner_radius_percent", 0.0)),
+    )
+
+
+def _entry_style_signature(entry) -> tuple:
+    return (
+        str(getattr(entry, "line_style", "") or ""),
+        _round_float(getattr(entry, "line_width_mm", 0.0)),
+        tuple(_round_float(v) for v in getattr(entry, "line_color", ())[:4]),
+        tuple(_round_float(v) for v in getattr(entry, "fill_color", ())[:4]),
+        _round_float(getattr(entry, "fill_opacity", 0.0)),
+        _round_float(getattr(entry, "opacity", 100.0)),
+        _round_float(getattr(entry, "dashed_segment_length_mm", 0.0)),
+        _round_float(getattr(entry, "dashed_gap_mm", 0.0)),
+        _round_float(getattr(entry, "dotted_gap_mm", 0.0)),
+        int(getattr(entry, "multi_line_count", 0) or 0),
+        _round_float(getattr(entry, "multi_line_width_mm", 0.0)),
+        _round_float(getattr(entry, "multi_line_spacing_mm", 0.0)),
+        _round_float(getattr(entry, "multi_line_width_scale_percent", 0.0)),
+        _round_float(getattr(entry, "multi_line_spacing_scale_percent", 0.0)),
+        str(getattr(entry, "multi_line_direction", "") or ""),
+        _round_float(getattr(entry, "line_valley_width_pct", 0.0)),
+        _round_float(getattr(entry, "line_peak_width_pct", 0.0)),
+        _round_float(getattr(entry, "thorn_multi_line_valley_width_pct", 0.0)),
+        _round_float(getattr(entry, "thorn_multi_line_peak_width_pct", 0.0)),
+        _round_float(getattr(entry, "thorn_multi_line_length_scale_near_percent", 0.0)),
+        _round_float(getattr(entry, "thorn_multi_line_length_scale_far_percent", 0.0)),
+        bool(getattr(entry, "thorn_multi_line_cross_enabled", False)),
+        bool(getattr(entry, "outer_white_margin_enabled", False)),
+        _round_float(getattr(entry, "outer_white_margin_width_mm", 0.0)),
+        bool(getattr(entry, "inner_white_margin_enabled", False)),
+        _round_float(getattr(entry, "inner_white_margin_width_mm", 0.0)),
+    )
+
+
+def _shape_params_signature(sp) -> tuple:
+    if sp is None:
+        return ()
+    return (
+        _round_float(getattr(sp, "cloud_bump_width_mm", 0.0)),
+        _round_float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
+        _round_float(getattr(sp, "cloud_bump_height_mm", 0.0)),
+        _round_float(getattr(sp, "cloud_bump_height_jitter", 0.0)),
+        _round_float(getattr(sp, "cloud_offset_percent", 0.0)),
+        int(getattr(sp, "shape_seed", 0) or 0),
+        _round_float(getattr(sp, "cloud_sub_width_ratio", 0.0)),
+        _round_float(getattr(sp, "cloud_sub_width_jitter", 0.0)),
+        _round_float(getattr(sp, "cloud_sub_height_ratio", 0.0)),
+        _round_float(getattr(sp, "cloud_sub_height_jitter", 0.0)),
+        bool(getattr(sp, "cloud_valley_sharp", False)),
+        str(getattr(sp, "dynamic_shape_base_kind", "") or ""),
+        int(getattr(sp, "cloud_wave_count", 0) or 0),
+        _round_float(getattr(sp, "cloud_wave_amplitude_mm", 0.0)),
+        int(getattr(sp, "spike_count", 0) or 0),
+        _round_float(getattr(sp, "spike_depth_mm", 0.0)),
+        _round_float(getattr(sp, "spike_jitter", 0.0)),
+    )
+
+
+def _tails_signature(entry) -> tuple:
+    tails = []
+    for tail in getattr(entry, "tails", []) or []:
+        tails.append(_tail_signature(tail))
+    return tuple(tails)
+
+
+def _tail_signature(tail) -> tuple:
+    points = tuple(
+        (
+            _round_float(getattr(point, "x_mm", 0.0)),
+            _round_float(getattr(point, "y_mm", 0.0)),
+            str(getattr(point, "corner_type", "") or ""),
+        )
+        for point in getattr(tail, "points", []) or []
+    )
+    return (
+        str(getattr(tail, "type", "") or ""),
+        _round_float(getattr(tail, "direction_deg", 0.0)),
+        _round_float(getattr(tail, "length_mm", 0.0)),
+        _round_float(getattr(tail, "root_width_mm", 0.0)),
+        _round_float(getattr(tail, "tip_width_mm", 0.0)),
+        _round_float(getattr(tail, "curve_bend", 0.0)),
+        bool(getattr(tail, "custom_points_enabled", False)),
+        _round_float(getattr(tail, "start_x_mm", 0.0)),
+        _round_float(getattr(tail, "start_y_mm", 0.0)),
+        _round_float(getattr(tail, "end_x_mm", 0.0)),
+        _round_float(getattr(tail, "end_y_mm", 0.0)),
+        points,
+    )
+
+
+def _round_float(value) -> float:
+    try:
+        return round(float(value), 6)
+    except Exception:  # noqa: BLE001
+        return 0.0
+
+
+def _source_object_signature(balloon_id: str) -> tuple:
+    if not balloon_id:
+        return ()
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is None or getattr(obj, "type", "") != "CURVE":
+        return ()
+    transform = (
+        tuple(_round_float(v) for v in getattr(obj, "location", ())[:3]),
+        tuple(_round_float(v) for v in getattr(obj, "rotation_euler", ())[:3]),
+        tuple(_round_float(v) for v in getattr(obj, "scale", ())[:3]),
+    )
+    curve = getattr(obj, "data", None)
+    splines = []
+    for spline in getattr(curve, "splines", []) or []:
+        spline_type = str(getattr(spline, "type", "") or "")
+        if spline_type == "BEZIER":
+            points = tuple(
+                (
+                    tuple(_round_float(v) for v in point.co[:3]),
+                    tuple(_round_float(v) for v in point.handle_left[:3]),
+                    tuple(_round_float(v) for v in point.handle_right[:3]),
+                )
+                for point in getattr(spline, "bezier_points", []) or []
+            )
+        else:
+            points = tuple(
+                tuple(_round_float(v) for v in getattr(point, "co", ())[:4])
+                for point in getattr(spline, "points", []) or []
+            )
+        splines.append((spline_type, bool(getattr(spline, "use_cyclic_u", False)), points))
+    return (transform, tuple(splines))
 
 
 def _union_source_polygons(polygons):
@@ -277,7 +488,7 @@ def _union_source_polygons(polygons):
         try:
             poly = Polygon(_ccw(pts))
             if not poly.is_valid:
-                poly = poly.buffer(0)
+                continue
             if poly.is_empty or poly.area <= 0.0:
                 continue
             source.append(poly)
@@ -286,13 +497,11 @@ def _union_source_polygons(polygons):
     if not source:
         return None
     try:
-        buffered = [poly.buffer(_UNION_OVERLAP_M, join_style=2, mitre_limit=50.0) for poly in source]
-        union = unary_union(buffered)
+        union = unary_union(source)
         if union.is_empty:
             return None
-        union = union.buffer(-_UNION_OVERLAP_M, join_style=2, mitre_limit=50.0)
         if not union.is_valid:
-            union = union.buffer(0)
+            return None
         return None if union.is_empty or union.area <= 0.0 else union
     except Exception:  # noqa: BLE001
         return None
@@ -302,24 +511,89 @@ def _mesh_parts_from_union(union, style_entry):
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, ...]] = []
     material_indices: list[int] = []
-    for poly in _iter_polygons(union):
+    fill_geom = _fill_geometry_for_union(union, style_entry)
+    for poly in _iter_polygons(fill_geom):
         outer, holes = _polygon_to_outer_holes(poly)
         pts, tris = balloon_line_mesh._triangulate_polygon(outer, holes)  # noqa: SLF001
         if not tris or len(pts) < 3:
             continue
-        base = len(verts)
-        verts.extend((float(x), float(y), 0.0) for x, y in pts)
-        faces.extend(tuple(index + base for index in tri) for tri in tris)
-        material_indices.extend([1] * len(tris))
+        _append_triangles(verts, faces, material_indices, pts, tris, z=0.0, material_index=1)
     for outer, holes in _line_band_polygons(union, style_entry):
         pts, tris = balloon_line_mesh._triangulate_polygon(outer, holes)  # noqa: SLF001
         if not tris or len(pts) < 3:
             continue
-        base = len(verts)
-        verts.extend((float(x), float(y), _LINE_Z_OFFSET_M) for x, y in pts)
-        faces.extend(tuple(index + base for index in tri) for tri in tris)
-        material_indices.extend([0] * len(tris))
+        _append_triangles(verts, faces, material_indices, pts, tris, z=_LINE_Z_OFFSET_M, material_index=0)
     return verts, faces, material_indices
+
+
+def _fill_geometry_for_union(union, style_entry):
+    extent_m = _outer_fill_extent_m(style_entry)
+    if extent_m <= 1.0e-9:
+        return union
+    join, mitre = _buffer_join_params(style_entry)
+    try:
+        expanded = union.buffer(extent_m, join_style=join, mitre_limit=mitre)
+    except Exception:  # noqa: BLE001
+        return union
+    if expanded is None or expanded.is_empty:
+        return union
+    return expanded
+
+
+def _outer_fill_extent_m(style_entry) -> float:
+    line_style = str(getattr(style_entry, "line_style", "") or "")
+    if line_style == "none":
+        line_width_mm = 0.0
+    else:
+        line_width_mm = max(0.0, float(getattr(style_entry, "line_width_mm", 0.3) or 0.0))
+    extent_mm = 0.0
+    if bool(getattr(style_entry, "outer_white_margin_enabled", False)):
+        extent_mm += max(0.0, float(getattr(style_entry, "outer_white_margin_width_mm", 0.0) or 0.0))
+    if line_style == "double":
+        extent_mm = max(extent_mm, line_width_mm)
+        direction = str(getattr(style_entry, "multi_line_direction", "outside") or "outside")
+        if direction in {"outside", "both", ""}:
+            count = max(1, min(12, int(getattr(style_entry, "multi_line_count", 3) or 3)))
+            width_mm = max(0.0, float(getattr(style_entry, "multi_line_width_mm", 0.0) or 0.0))
+            spacing_mm = max(0.0, float(getattr(style_entry, "multi_line_spacing_mm", 0.0) or 0.0))
+            width_scale = max(0.0, float(getattr(style_entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+            spacing_scale = max(0.0, float(getattr(style_entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
+            running_mm = line_width_mm
+            for index in range(count):
+                ring_width = width_mm * (width_scale ** index)
+                ring_spacing = spacing_mm * (spacing_scale ** index)
+                if ring_width > 1.0e-6:
+                    running_mm += ring_spacing + ring_width
+                    extent_mm = max(extent_mm, running_mm)
+    return extent_mm * 0.001
+
+
+def _append_triangles(
+    verts: list[tuple[float, float, float]],
+    faces: list[tuple[int, ...]],
+    material_indices: list[int],
+    pts,
+    tris,
+    *,
+    z: float,
+    material_index: int,
+) -> None:
+    base = len(verts)
+    verts.extend((float(x), float(y), float(z)) for x, y in pts)
+    for tri in tris:
+        if len(tri) != 3:
+            continue
+        face = tuple(int(index) + base for index in tri)
+        if len(set(face)) != 3:
+            continue
+        if _triangle_area_abs(verts[face[0]], verts[face[1]], verts[face[2]]) <= 1.0e-14:
+            continue
+        faces.append(face)
+        material_indices.append(material_index)
+
+
+def _triangle_area_abs(a, b, c) -> float:
+    return abs(((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])) * 0.5)
 
 
 def _iter_polygons(geom):
@@ -346,13 +620,24 @@ def _polygon_to_outer_holes(poly) -> tuple[list[tuple[float, float]], list[list[
 
 
 def _line_band_polygons(union, style_entry) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
-    if str(getattr(style_entry, "line_style", "") or "") == "none":
+    line_style = str(getattr(style_entry, "line_style", "") or "")
+    if line_style == "none":
         return []
     width = max(0.0, float(getattr(style_entry, "line_width_mm", 0.3) or 0.0)) * 0.001
     if width <= 1.0e-9:
         return []
+    if line_style in {"dashed", "dotted"}:
+        return _dashed_union_line_bands(union, style_entry, line_style=line_style, line_width_m=width)
+    join, mitre = _buffer_join_params(style_entry)
+    out = _boundary_band_polygons(union, width * 0.5, join=join, mitre=mitre)
+    if line_style == "double":
+        out.extend(_multi_line_union_bands(union, style_entry, join=join, mitre=mitre))
+    return out
+
+
+def _boundary_band_polygons(geom, half_width_m: float, *, join: int, mitre: float):
     try:
-        band = union.boundary.buffer(width * 0.5, cap_style=2, join_style=2, mitre_limit=50.0)
+        band = geom.boundary.buffer(half_width_m, cap_style=2, join_style=join, mitre_limit=mitre)
         if band.is_empty:
             return []
     except Exception:  # noqa: BLE001
@@ -363,6 +648,102 @@ def _line_band_polygons(union, style_entry) -> list[tuple[list[tuple[float, floa
         if len(outer) >= 3:
             out.append((outer, holes))
     return out
+
+
+def _dashed_union_line_bands(union, style_entry, *, line_style: str, line_width_m: float):
+    valley_sharp = _valley_sharp_for_entry(style_entry)
+    dash_segment = max(0.0, float(getattr(style_entry, "dashed_segment_length_mm", 3.6) or 0.0))
+    dash_gap = max(0.0, float(getattr(style_entry, "dashed_gap_mm", 1.8) or 0.0))
+    dot_gap = max(0.0, float(getattr(style_entry, "dotted_gap_mm", 0.45) or 0.0))
+    out = []
+    for poly in _iter_polygons(union):
+        rings = [poly.exterior]
+        rings.extend(poly.interiors)
+        for ring in rings:
+            coords = [(float(x), float(y), 0.0) for x, y in list(ring.coords)]
+            if len(coords) < 4:
+                continue
+            out.extend(
+                balloon_line_mesh._build_dashed_band_polygons(  # noqa: SLF001
+                    coords,
+                    line_width_m=line_width_m,
+                    line_style=line_style,
+                    valley_sharp=valley_sharp,
+                    dash_segment_mm=dash_segment,
+                    dash_gap_mm=dash_gap,
+                    dotted_gap_mm=dot_gap,
+                )
+            )
+    return out
+
+
+def _multi_line_union_bands(union, style_entry, *, join: int, mitre: float):
+    count = max(1, min(12, int(getattr(style_entry, "multi_line_count", 3) or 3)))
+    width_mm = max(0.0, float(getattr(style_entry, "multi_line_width_mm", 0.0) or 0.0))
+    spacing_mm = max(0.0, float(getattr(style_entry, "multi_line_spacing_mm", 0.0) or 0.0))
+    if count < 1 or width_mm <= 1.0e-6:
+        return []
+    width_scale = max(0.0, float(getattr(style_entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    spacing_scale = max(0.0, float(getattr(style_entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
+    line_width_mm = max(0.0, float(getattr(style_entry, "line_width_mm", 0.3) or 0.0))
+    direction = str(getattr(style_entry, "multi_line_direction", "outside") or "outside")
+    if direction == "both":
+        sides = ("inside", "outside")
+    elif direction == "inside":
+        sides = ("inside",)
+    else:
+        sides = ("outside",)
+    running = {"inside": 0.0, "outside": line_width_mm}
+    out = []
+    for index in range(count):
+        ring_width_mm = width_mm * (width_scale ** index)
+        ring_spacing_mm = spacing_mm * (spacing_scale ** index)
+        if ring_width_mm <= 1.0e-6:
+            continue
+        for side in sides:
+            inner_m = (running[side] + ring_spacing_mm) * 0.001
+            width_m = ring_width_mm * 0.001
+            out.extend(_offset_band_polygons(union, inner_m, width_m, side=side, join=join, mitre=mitre))
+            running[side] += ring_spacing_mm + ring_width_mm
+    return out
+
+
+def _offset_band_polygons(union, inner_m: float, width_m: float, *, side: str, join: int, mitre: float):
+    if width_m <= 1.0e-9:
+        return []
+    try:
+        if side == "inside":
+            outer = union.buffer(-inner_m, join_style=join, mitre_limit=mitre)
+            inner = union.buffer(-(inner_m + width_m), join_style=join, mitre_limit=mitre)
+            band = outer if inner.is_empty else outer.difference(inner)
+        else:
+            outer = union.buffer(inner_m + width_m, join_style=join, mitre_limit=mitre)
+            inner = union.buffer(inner_m, join_style=join, mitre_limit=mitre)
+            band = outer.difference(inner)
+    except Exception:  # noqa: BLE001
+        return []
+    if band is None or band.is_empty:
+        return []
+    out = []
+    for poly in _iter_polygons(band):
+        outer_ring, holes = _polygon_to_outer_holes(poly)
+        if len(outer_ring) >= 3:
+            out.append((outer_ring, holes))
+    return out
+
+
+def _buffer_join_params(style_entry) -> tuple[int, float]:
+    if _valley_sharp_for_entry(style_entry):
+        return 2, 20.0
+    shape = str(getattr(style_entry, "shape", "") or "")
+    if shape in {"thorn", "thorn-curve", "octagon"}:
+        return 2, 20.0
+    return 1, 8.0
+
+
+def _valley_sharp_for_entry(style_entry) -> bool:
+    sp = getattr(style_entry, "shape_params", None)
+    return bool(getattr(sp, "cloud_valley_sharp", False))
 
 
 def _balloon_z_index(scene, page, entry) -> int:

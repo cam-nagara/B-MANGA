@@ -496,11 +496,19 @@ def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
     dy = float(y_mm) - float(getattr(entry, "y_mm", 0.0))
     if abs(dx) <= 1.0e-9 and abs(dy) <= 1.0e-9:
         return
+    in_merge_group = bool(str(getattr(entry, "merge_group_id", "") or ""))
     with balloon_curve_object.defer_auto_sync():
         entry.x_mm = float(x_mm)
         entry.y_mm = float(y_mm)
-    with balloon_curve_object.suspend_auto_sync():
-        balloon_curve_object.on_balloon_entry_changed(entry)
+    if in_merge_group:
+        scene = bpy.context.scene
+        work = get_work(bpy.context)
+        if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, entry):
+            with balloon_curve_object.suspend_auto_sync():
+                balloon_curve_object.on_balloon_entry_changed(entry)
+    else:
+        with balloon_curve_object.suspend_auto_sync():
+            balloon_curve_object.on_balloon_entry_changed(entry)
     _sync_balloon_merge_display_if_needed(page, entry)
     bid = str(getattr(entry, "id", "") or "")
     for text in getattr(page, "texts", []):
@@ -514,8 +522,7 @@ def _sync_balloon_merge_display_if_needed(page, entry) -> None:
         return
     try:
         scene = bpy.context.scene
-        bpy.context.view_layer.update()
-        balloon_merge_object.sync_groups_for_page(scene, get_work(bpy.context), page)
+        balloon_merge_object.sync_group_for_entry(scene, get_work(bpy.context), page, entry)
     except Exception:  # noqa: BLE001
         _logger.exception("balloon merge display sync failed")
 

@@ -33,14 +33,21 @@ def _move_panel(panel, dx_mm: float, dy_mm: float) -> None:
 def _move_balloon(page, balloon, dx_mm: float, dy_mm: float) -> None:
     if abs(float(dx_mm)) <= 1.0e-9 and abs(float(dy_mm)) <= 1.0e-9:
         return
+    in_merge_group = bool(str(getattr(balloon, "merge_group_id", "") or ""))
     with balloon_curve_object.defer_auto_sync():
         balloon.x_mm += dx_mm
         balloon.y_mm += dy_mm
-    with balloon_curve_object.suspend_auto_sync():
-        balloon_curve_object.on_balloon_entry_changed(balloon)
-    if page is not None and str(getattr(balloon, "merge_group_id", "") or ""):
-        bpy.context.view_layer.update()
-        balloon_merge_object.sync_groups_for_page(bpy.context.scene, get_work(bpy.context), page)
+    if in_merge_group:
+        scene = bpy.context.scene
+        work = get_work(bpy.context)
+        if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, balloon):
+            with balloon_curve_object.suspend_auto_sync():
+                balloon_curve_object.on_balloon_entry_changed(balloon)
+    else:
+        with balloon_curve_object.suspend_auto_sync():
+            balloon_curve_object.on_balloon_entry_changed(balloon)
+    if page is not None and in_merge_group:
+        balloon_merge_object.sync_group_for_entry(bpy.context.scene, get_work(bpy.context), page, balloon)
     bid = str(getattr(balloon, "id", "") or "")
     if not bid:
         return

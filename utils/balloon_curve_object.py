@@ -918,12 +918,13 @@ def _ensure_balloon_curve_object_impl(
     )
     _apply_page_world_offset(scene, work, page, entry, obj)
     _sync_visibility_and_modifier(scene, work, page, entry, obj)
-    try:
-        from . import balloon_merge_object
+    if str(getattr(entry, "merge_group_id", "") or ""):
+        try:
+            from . import balloon_merge_object
 
-        balloon_merge_object.sync_groups_for_page(scene, work, page)
-    except Exception:  # noqa: BLE001
-        _logger.exception("balloon: merge display sync failed")
+            balloon_merge_object.sync_group_for_entry(scene, work, page, entry)
+        except Exception:  # noqa: BLE001
+            _logger.exception("balloon: merge display sync failed")
     return obj
 
 
@@ -1400,6 +1401,19 @@ def find_balloon_object(balloon_id: str) -> Optional[bpy.types.Object]:
     if obj is None:
         obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
     return obj
+
+
+def sync_balloon_object_transform_only(scene, work, page, entry) -> bool:
+    """既存のフキダシ実体の位置・回転・表示だけを更新する."""
+    balloon_id = str(getattr(entry, "id", "") or "")
+    obj = find_balloon_object(balloon_id)
+    if obj is None or getattr(obj, "type", "") != "CURVE":
+        return False
+    _apply_balloon_object_transform(scene, work, page, entry, obj)
+    hidden = not bool(getattr(entry, "visible", True))
+    obj.hide_viewport = hidden
+    obj.hide_render = hidden
+    return True
 
 
 def source_state_for_entry(entry) -> str:
