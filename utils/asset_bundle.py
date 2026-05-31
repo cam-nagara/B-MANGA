@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 
 import bpy
+from mathutils import Matrix
 
 from ..core.work import get_active_page, get_work
 from . import asset_preview, layer_links, layer_stack as layer_stack_utils, log, object_naming as on
@@ -631,7 +632,10 @@ def _preview_objects_for_payload(context, payload: dict) -> list[bpy.types.Objec
         if kind == "balloon":
             from . import balloon_curve_object
 
-            obj = balloon_curve_object.find_balloon_object(source_id)
+            for candidate in _balloon_preview_objects(source_id, balloon_curve_object):
+                if candidate is not None and candidate not in out:
+                    out.append(candidate)
+            continue
         elif kind == "text":
             from . import text_real_object
 
@@ -648,6 +652,27 @@ def _preview_objects_for_payload(context, payload: dict) -> list[bpy.types.Objec
     return out
 
 
+def _balloon_preview_objects(source_id: str, balloon_curve_object) -> list[bpy.types.Object]:
+    body = None
+    companions: list[bpy.types.Object] = []
+    if not source_id:
+        return []
+    body = balloon_curve_object.find_balloon_object(source_id)
+    try:
+        from . import balloon_fill_mesh, balloon_line_mesh
+
+        for candidate in bpy.data.objects:
+            fill_owner = str(candidate.get(balloon_fill_mesh.PROP_BALLOON_FILL_MESH_OWNER_ID, "") or "")
+            line_owner = str(candidate.get(balloon_line_mesh.PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
+            if source_id in {fill_owner, line_owner} and candidate not in companions:
+                companions.append(candidate)
+    except Exception:  # noqa: BLE001
+        pass
+    if companions:
+        return companions
+    return [body] if body is not None else []
+
+
 def _clone_preview_object(obj: bpy.types.Object, *, origin_mm: tuple[float, float]) -> bpy.types.Object | None:
     try:
         clone = obj.copy()
@@ -655,8 +680,9 @@ def _clone_preview_object(obj: bpy.types.Object, *, origin_mm: tuple[float, floa
             clone.data = obj.data.copy()
         clone.animation_data_clear()
         clone.name = f"asset_preview_{obj.name}"
-        clone.location.x -= mm_to_m(float(origin_mm[0]))
-        clone.location.y -= mm_to_m(float(origin_mm[1]))
+        clone.parent = None
+        origin_offset = Matrix.Translation((-mm_to_m(float(origin_mm[0])), -mm_to_m(float(origin_mm[1])), 0.0))
+        clone.matrix_world = origin_offset @ obj.matrix_world
         clone.hide_viewport = False
         clone.hide_render = False
         for key in list(clone.keys()):

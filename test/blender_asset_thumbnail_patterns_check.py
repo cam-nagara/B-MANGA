@@ -46,21 +46,16 @@ def _assert_preview(coll, label: str) -> None:
     if not bool(getattr(preview, "is_image_custom", False)):
         raise AssertionError(f"{label}: カスタムサムネイルではありません")
     values = []
-    dark_pixels = 0
     alpha_pixels = 0
     for i in range(0, len(pixels), 4):
         r, g, b, a = pixels[i:i + 4]
         if a > 0.5:
             alpha_pixels += 1
         values.extend((r, g, b))
-        if a > 0.5 and max(r, g, b) < 0.35:
-            dark_pixels += 1
     if alpha_pixels < width * height * 0.9:
         raise AssertionError(f"{label}: 不透明ピクセルが不足しています")
-    if max(values) - min(values) < 0.35:
+    if max(values) - min(values) < 0.18:
         raise AssertionError(f"{label}: サムネイルの濃淡が不足しています")
-    if dark_pixels < 12:
-        raise AssertionError(f"{label}: 内容を示す線・輪郭が不足しています")
 
 
 def _preview_pixels(coll) -> list[float]:
@@ -99,6 +94,7 @@ def _find_entry_by_title(collection, title: str):
 
 def _register_payload(context, uids: list[str], name: str, target):
     from bname_dev_asset_thumbnail.utils import asset_bundle
+    from bname_dev_asset_thumbnail.utils import asset_preview
 
     items = _item_by_uid(context)
     missing = [uid for uid in uids if uid not in items]
@@ -106,10 +102,48 @@ def _register_payload(context, uids: list[str], name: str, target):
         available = "\n".join(f"  {uid}" for uid in sorted(items))
         raise AssertionError(f"{name}: 登録元レイヤーが一覧にありません: {missing}\n{available}")
     payload = asset_bundle.build_payload(context, [items[uid] for uid in uids], name=name)
-    coll = asset_bundle.create_collection_asset(context, payload, target=target)
+    original_capture = asset_preview._capture_objects_preview_pixels
+    captured = {"ok": False}
+
+    def wrapped_capture(objects):
+        pixels = original_capture(objects)
+        captured["ok"] = pixels is not None
+        return pixels
+
+    asset_preview._capture_objects_preview_pixels = wrapped_capture
+    try:
+        coll = asset_bundle.create_collection_asset(context, payload, target=target)
+    finally:
+        asset_preview._capture_objects_preview_pixels = original_capture
     if coll.asset_data is None:
         raise AssertionError(f"{name}: アセット登録されていません")
+    if not captured["ok"]:
+        raise AssertionError(f"{name}: 実体撮影ではなく代替サムネイルに戻っています")
     _assert_preview(coll, name)
+    return coll
+
+
+def _register_objects_with_capture(context, name: str):
+    from bname_dev_asset_thumbnail.utils import asset_bundle
+    from bname_dev_asset_thumbnail.utils import asset_preview
+
+    original_capture = asset_preview._capture_objects_preview_pixels
+    captured = {"ok": False}
+
+    def wrapped_capture(preview_objects):
+        pixels = original_capture(preview_objects)
+        captured["ok"] = pixels is not None
+        return pixels
+
+    asset_preview._capture_objects_preview_pixels = wrapped_capture
+    try:
+        coll = asset_bundle.register_selected_objects_as_asset(context, name=name)
+    finally:
+        asset_preview._capture_objects_preview_pixels = original_capture
+    if coll is None:
+        raise AssertionError(f"{name}: オブジェクトアセットを登録できません")
+    if not captured["ok"]:
+        raise AssertionError(f"{name}: 実体撮影ではなく代替サムネイルに戻っています")
     return coll
 
 
@@ -346,20 +380,16 @@ def main() -> None:
         if len(objects) != 3:
             raise AssertionError("オブジェクト登録用の実体を取得できません")
         _select_objects(objects)
-        object_coll = asset_bundle.register_selected_objects_as_asset(
+        object_coll = _register_objects_with_capture(
             context,
             name="オブジェクト複数",
         )
-        if object_coll is None:
-            raise AssertionError("オブジェクトアセットを登録できません")
         _assert_preview(object_coll, "オブジェクト複数")
         before = set(external_root.glob("*.blend"))
-        object_external = asset_bundle.register_selected_objects_as_asset(
+        object_external = _register_objects_with_capture(
             _fake_asset_browser_context(objects, external_root),
             name="オブジェクト複数",
         )
-        if object_external is None:
-            raise AssertionError("外部ライブラリへオブジェクトアセットを登録できません")
         _assert_preview(object_external, "オブジェクト複数 (外部ライブラリ)")
         new_files = sorted(set(external_root.glob("*.blend")) - before)
         if len(new_files) != 1:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import subprocess
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ from . import log
 _logger = log.get_logger(__name__)
 
 ASSET_PREVIEW_SIZE = 128
+_PREVIEW_RENDER_ENGINES = ("BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE")
 
 
 def set_collection_asset_preview(
@@ -199,7 +201,7 @@ def _asset_preview_pixels(
             elif kind == "text":
                 _draw_preview_text(canvas, size, rect)
             elif kind == "effect":
-                _draw_preview_effect(canvas, size, rect)
+                _draw_preview_effect(canvas, size, rect, entry)
             else:
                 _draw_preview_rect(
                     canvas,
@@ -228,16 +230,25 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
     scene = None
     camera = None
     camera_data = None
+    temporary_objects: list[bpy.types.Object] = []
+    temporary_meshes: list[bpy.types.Mesh] = []
+    temporary_materials: list[bpy.types.Material] = []
     try:
         scene = bpy.data.scenes.new("BNameAssetPreviewScene")
         _setup_preview_render_scene(scene)
         linked: list[bpy.types.Object] = []
         for obj in preview_objects:
+            render_obj = _capture_render_object(
+                obj,
+                temporary_objects=temporary_objects,
+                temporary_meshes=temporary_meshes,
+                temporary_materials=temporary_materials,
+            )
             try:
-                scene.collection.objects.link(obj)
-                linked.append(obj)
+                scene.collection.objects.link(render_obj)
+                linked.append(render_obj)
             except RuntimeError:
-                linked.append(obj)
+                linked.append(render_obj)
             except Exception:  # noqa: BLE001
                 continue
         if not linked:
@@ -251,19 +262,20 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
         scene.collection.objects.link(camera)
         _position_preview_camera(camera, camera_data, bounds)
         scene.camera = camera
-        _refresh_scene(scene)
-        try:
-            bpy.ops.render.render(write_still=False, scene=scene.name)
-        except TypeError:
-            _render_with_temporary_scene(scene)
-        image = bpy.data.images.get("Render Result")
-        if image is None:
-            return None
-        pixels = list(image.pixels)
         expected = ASSET_PREVIEW_SIZE * ASSET_PREVIEW_SIZE * 4
-        if len(pixels) != expected or not _captured_pixels_have_content(pixels):
-            return None
-        return pixels
+        for engine in _PREVIEW_RENDER_ENGINES:
+            if not _set_preview_render_engine(scene, engine):
+                continue
+            _refresh_scene(scene)
+            pixels = _overlay_texture_objects(
+                _render_scene_pixels(scene),
+                linked,
+                bounds,
+                ASSET_PREVIEW_SIZE,
+            )
+            if len(pixels) == expected and _captured_pixels_have_content(pixels):
+                return pixels
+        return None
     except Exception:  # noqa: BLE001
         _logger.exception("asset preview capture failed")
         return None
@@ -271,6 +283,23 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
         if camera is not None:
             try:
                 bpy.data.objects.remove(camera, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+        for obj in temporary_objects:
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+        for mesh in temporary_meshes:
+            try:
+                if mesh.users == 0:
+                    bpy.data.meshes.remove(mesh)
+            except Exception:  # noqa: BLE001
+                pass
+        for mat in temporary_materials:
+            try:
+                if mat.users == 0:
+                    bpy.data.materials.remove(mat)
             except Exception:  # noqa: BLE001
                 pass
         if camera_data is not None and camera_data.users == 0:
@@ -285,17 +314,193 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
                 pass
 
 
+def _capture_render_object(
+    obj: bpy.types.Object,
+    *,
+    temporary_objects: list[bpy.types.Object],
+    temporary_meshes: list[bpy.types.Mesh],
+    temporary_materials: list[bpy.types.Material],
+) -> bpy.types.Object:
+    image = _texture_image_for_object(obj)
+    mesh = getattr(obj, "data", None)
+    if image is None or mesh is None or str(getattr(obj, "type", "") or "") != "MESH":
+        return obj
+    render_mesh = mesh.copy()
+    material = _preview_image_material(image)
+    render_mesh.materials.clear()
+    render_mesh.materials.append(material)
+    render_obj = obj.copy()
+    render_obj.data = render_mesh
+    render_obj.animation_data_clear()
+    render_obj.parent = None
+    try:
+        render_obj.matrix_world = obj.matrix_world.copy()
+    except Exception:  # noqa: BLE001
+        pass
+    render_obj.hide_viewport = False
+    render_obj.hide_render = False
+    temporary_objects.append(render_obj)
+    temporary_meshes.append(render_mesh)
+    temporary_materials.append(material)
+    return render_obj
+
+
+def _texture_image_for_object(obj: bpy.types.Object) -> bpy.types.Image | None:
+    mat = getattr(obj, "active_material", None)
+    tree = getattr(mat, "node_tree", None)
+    nodes = getattr(tree, "nodes", None)
+    if nodes is None:
+        return None
+    for node in nodes:
+        if str(getattr(node, "type", "") or "") == "TEX_IMAGE":
+            image = getattr(node, "image", None)
+            if image is not None:
+                return image
+    return None
+
+
+def _preview_image_material(image: bpy.types.Image) -> bpy.types.Material:
+    mat = bpy.data.materials.new(f"BNameAssetPreview_{image.name}")
+    mat.use_nodes = True
+    try:
+        mat.blend_method = "OPAQUE"
+        mat.use_screen_refraction = False
+        mat.show_transparent_back = False
+    except Exception:  # noqa: BLE001
+        pass
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    out = nodes.new("ShaderNodeOutputMaterial")
+    out.location = (520, 0)
+    tex = nodes.new("ShaderNodeTexImage")
+    tex.location = (-420, 40)
+    tex.image = image
+    mix_color = nodes.new("ShaderNodeMixRGB")
+    mix_color.location = (-160, 60)
+    emission = nodes.new("ShaderNodeEmission")
+    emission.location = (120, 40)
+    try:
+        mix_color.inputs["Color1"].default_value = (1.0, 1.0, 1.0, 1.0)
+        emission.inputs["Strength"].default_value = 1.0
+        links.new(tex.outputs["Alpha"], mix_color.inputs["Fac"])
+        links.new(tex.outputs["Color"], mix_color.inputs["Color2"])
+        links.new(mix_color.outputs["Color"], emission.inputs["Color"])
+        links.new(emission.outputs[0], out.inputs["Surface"])
+    except Exception:  # noqa: BLE001
+        mat.use_nodes = False
+        mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    return mat
+
+
+def _overlay_texture_objects(
+    pixels: list[float],
+    objects: list[bpy.types.Object],
+    bounds: tuple[float, float, float, float, float, float],
+    size: int,
+) -> list[float]:
+    expected = size * size * 4
+    if len(pixels) != expected:
+        return pixels
+    out = list(pixels)
+    for obj in objects:
+        image = _texture_image_for_object(obj)
+        if image is None:
+            continue
+        obj_bounds = _world_bounds_for_objects([obj])
+        if obj_bounds is None:
+            continue
+        _overlay_texture_image(out, image, obj_bounds, bounds, size)
+    return out
+
+
+def _overlay_texture_image(
+    pixels: list[float],
+    image: bpy.types.Image,
+    obj_bounds: tuple[float, float, float, float, float, float],
+    view_bounds: tuple[float, float, float, float, float, float],
+    size: int,
+) -> None:
+    img_w, img_h = (int(image.size[0]), int(image.size[1]))
+    if img_w <= 0 or img_h <= 0:
+        return
+    image_pixels = list(getattr(image, "pixels", []) or [])
+    if len(image_pixels) != img_w * img_h * 4:
+        return
+    min_x, max_x, min_y, max_y, _min_z, _max_z = obj_bounds
+    view_min_x, view_max_x, view_min_y, view_max_y, _view_min_z, _view_max_z = view_bounds
+    center_x = (view_min_x + view_max_x) * 0.5
+    center_y = (view_min_y + view_max_y) * 0.5
+    ortho_scale = max(0.01, view_max_x - view_min_x, view_max_y - view_min_y) * 1.08
+    view_left = center_x - ortho_scale * 0.5
+    view_bottom = center_y - ortho_scale * 0.5
+    left = max(0, min(size - 1, int(math.floor(((min_x - view_left) / ortho_scale) * size))))
+    right = max(0, min(size - 1, int(math.ceil(((max_x - view_left) / ortho_scale) * size))))
+    bottom = max(0, min(size - 1, int(math.floor(((min_y - view_bottom) / ortho_scale) * size))))
+    top = max(0, min(size - 1, int(math.ceil(((max_y - view_bottom) / ortho_scale) * size))))
+    if right <= left or top <= bottom:
+        return
+    for y in range(bottom, top + 1):
+        v = (y + 0.5 - bottom) / max(1.0, top - bottom + 1.0)
+        src_y = max(0, min(img_h - 1, int(v * img_h)))
+        for x in range(left, right + 1):
+            u = (x + 0.5 - left) / max(1.0, right - left + 1.0)
+            src_x = max(0, min(img_w - 1, int(u * img_w)))
+            src = (src_y * img_w + src_x) * 4
+            alpha = max(0.0, min(1.0, float(image_pixels[src + 3])))
+            if alpha <= 0.01:
+                continue
+            dst = (y * size + x) * 4
+            inv = 1.0 - alpha
+            pixels[dst + 0] = float(image_pixels[src + 0]) * alpha + pixels[dst + 0] * inv
+            pixels[dst + 1] = float(image_pixels[src + 1]) * alpha + pixels[dst + 1] * inv
+            pixels[dst + 2] = float(image_pixels[src + 2]) * alpha + pixels[dst + 2] * inv
+            pixels[dst + 3] = max(pixels[dst + 3], alpha)
+
+
+def _render_scene_pixels(scene: bpy.types.Scene) -> list[float]:
+    path = ""
+    image = None
+    previous_filepath = str(getattr(scene.render, "filepath", "") or "")
+    try:
+        handle = tempfile.NamedTemporaryFile(prefix="bname_asset_preview_render_", suffix=".png", delete=False)
+        path = handle.name
+        handle.close()
+        scene.render.filepath = path
+        try:
+            bpy.ops.render.render(write_still=True, scene=scene.name)
+        except TypeError:
+            _render_with_temporary_scene(scene, write_still=True)
+        if Path(path).exists() and Path(path).stat().st_size > 0:
+            image = bpy.data.images.load(path, check_existing=False)
+            return list(image.pixels)
+        render_result = bpy.data.images.get("Render Result")
+        return list(getattr(render_result, "pixels", []) or []) if render_result is not None else []
+    finally:
+        try:
+            scene.render.filepath = previous_filepath
+        except Exception:  # noqa: BLE001
+            pass
+        if image is not None:
+            try:
+                bpy.data.images.remove(image)
+            except Exception:  # noqa: BLE001
+                pass
+        if path:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _setup_preview_render_scene(scene: bpy.types.Scene) -> None:
     scene.render.resolution_x = ASSET_PREVIEW_SIZE
     scene.render.resolution_y = ASSET_PREVIEW_SIZE
     scene.render.resolution_percentage = 100
     scene.render.film_transparent = False
-    for engine in ("BLENDER_WORKBENCH", "BLENDER_EEVEE_NEXT", "BLENDER_EEVEE"):
-        try:
-            scene.render.engine = engine
+    for engine in _PREVIEW_RENDER_ENGINES:
+        if _set_preview_render_engine(scene, engine):
             break
-        except Exception:  # noqa: BLE001
-            continue
     display = getattr(scene, "display", None)
     shading = getattr(display, "shading", None)
     if shading is not None:
@@ -303,7 +508,7 @@ def _setup_preview_render_scene(scene: bpy.types.Scene) -> None:
             ("background_type", "VIEWPORT"),
             ("background_color", (0.90, 0.90, 0.90)),
             ("color_type", "MATERIAL"),
-            ("light", "STUDIO"),
+            ("light", "FLAT"),
         ):
             try:
                 setattr(shading, attr, value)
@@ -331,6 +536,14 @@ def _setup_preview_render_scene(scene: bpy.types.Scene) -> None:
             pass
 
 
+def _set_preview_render_engine(scene: bpy.types.Scene, engine: str) -> bool:
+    try:
+        scene.render.engine = engine
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _refresh_scene(scene: bpy.types.Scene) -> None:
     try:
         scene.frame_set(scene.frame_current)
@@ -342,13 +555,13 @@ def _refresh_scene(scene: bpy.types.Scene) -> None:
         pass
 
 
-def _render_with_temporary_scene(scene: bpy.types.Scene) -> None:
+def _render_with_temporary_scene(scene: bpy.types.Scene, write_still: bool = False) -> None:
     window = getattr(bpy.context, "window", None)
     previous_scene = getattr(window, "scene", None) if window is not None else None
     try:
         if window is not None:
             window.scene = scene
-        bpy.ops.render.render(write_still=False)
+        bpy.ops.render.render(write_still=write_still)
     finally:
         if window is not None and previous_scene is not None:
             try:
@@ -413,16 +626,26 @@ def _captured_pixels_have_content(pixels: list[float]) -> bool:
     if not pixels:
         return False
     values = []
+    alpha_pixels = 0
     dark_pixels = 0
+    light_pixels = 0
     for i in range(0, len(pixels), 4):
         r, g, b, a = pixels[i:i + 4]
         if a > 0.5:
+            alpha_pixels += 1
             values.extend((r, g, b))
             if max(r, g, b) < 0.45:
                 dark_pixels += 1
-    if dark_pixels >= 8:
+            if min(r, g, b) > 0.55:
+                light_pixels += 1
+    if not values or alpha_pixels < 12:
+        return False
+    if alpha_pixels < (len(pixels) // 4) * 0.95 and (dark_pixels >= 12 or light_pixels >= 12):
         return True
-    return bool(values) and max(values) - min(values) > 0.18
+    contrast = max(values) - min(values)
+    if contrast >= 0.18:
+        return True
+    return dark_pixels >= 12 and contrast >= 0.08
 
 
 def _preview_canvas(size: int) -> list[float]:
@@ -517,13 +740,40 @@ def _draw_preview_balloon(
     entry: dict,
 ) -> None:
     data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
-    shape = str(data.get("shape", "ellipse") or "ellipse")
-    if shape in {"rect", "octagon"}:
-        _draw_preview_rect(canvas, size, rect, (1.0, 1.0, 1.0, 1.0), fill=True)
-        _draw_preview_rect(canvas, size, rect, (0.05, 0.05, 0.05, 1.0), fill=False)
-    else:
-        _draw_preview_ellipse(canvas, size, rect, (1.0, 1.0, 1.0, 1.0), fill=True)
-        _draw_preview_ellipse(canvas, size, rect, (0.05, 0.05, 0.05, 1.0), fill=False)
+    try:
+        from . import balloon_shapes
+        from .geom import Rect
+
+        box = _preview_bounds_for_entry(entry)
+        width_mm = float(data.get("width_mm", (box[2] if box else 30.0)) or 30.0)
+        height_mm = float(data.get("height_mm", (box[3] if box else 20.0)) or 20.0)
+        params = data.get("shape_params") if isinstance(data.get("shape_params"), dict) else {}
+        points = balloon_shapes.outline_for_shape(
+            str(data.get("shape", "ellipse") or "ellipse"),
+            Rect(0.0, 0.0, max(0.1, width_mm), max(0.1, height_mm)),
+            rounded_corner_enabled=bool(data.get("rounded_corner_enabled", False)),
+            rounded_corner_radius_mm=float(data.get("rounded_corner_radius_mm", 0.0) or 0.0),
+            cloud_bump_width_mm=float(params.get("cloud_bump_width_mm", 10.0) or 10.0),
+            cloud_bump_width_jitter=float(params.get("cloud_bump_width_jitter", 0.0) or 0.0),
+            cloud_bump_height_mm=float(params.get("cloud_bump_height_mm", 4.0) or 4.0),
+            cloud_bump_height_jitter=float(params.get("cloud_bump_height_jitter", 0.0) or 0.0),
+            cloud_offset=float(params.get("cloud_offset_percent", 50.0) or 50.0) / 100.0,
+            cloud_sub_width_ratio=float(params.get("cloud_sub_width_ratio", 0.0) or 0.0),
+            cloud_sub_width_jitter=float(params.get("cloud_sub_width_jitter", 0.0) or 0.0),
+            cloud_sub_height_ratio=float(params.get("cloud_sub_height_ratio", 0.0) or 0.0),
+            cloud_sub_height_jitter=float(params.get("cloud_sub_height_jitter", 0.0) or 0.0),
+            jitter_seed=int(params.get("shape_seed", 0) or 0),
+            base_kind=str(params.get("dynamic_shape_base_kind", "ellipse") or "ellipse"),
+        )
+        mapped = _map_points_to_preview_rect(points, rect, width_mm, height_mm)
+        if len(mapped) >= 3:
+            _draw_preview_polygon(canvas, size, mapped, (1.0, 1.0, 1.0, 1.0), fill=True)
+            _draw_preview_polygon(canvas, size, mapped, (0.05, 0.05, 0.05, 1.0), fill=False, thickness=2)
+            return
+    except Exception:  # noqa: BLE001
+        pass
+    _draw_preview_ellipse(canvas, size, rect, (1.0, 1.0, 1.0, 1.0), fill=True)
+    _draw_preview_ellipse(canvas, size, rect, (0.05, 0.05, 0.05, 1.0), fill=False)
 
 
 def _draw_preview_text(canvas: list[float], size: int, rect: tuple[int, int, int, int]) -> None:
@@ -535,12 +785,32 @@ def _draw_preview_text(canvas: list[float], size: int, rect: tuple[int, int, int
         _draw_preview_line(canvas, size, left + 2, y, right - 2, y, (0.08, 0.08, 0.08, 1.0))
 
 
-def _draw_preview_effect(canvas: list[float], size: int, rect: tuple[int, int, int, int]) -> None:
+def _draw_preview_effect(canvas: list[float], size: int, rect: tuple[int, int, int, int], entry: dict | None = None) -> None:
     left, bottom, right, top = rect
     cx = (left + right) // 2
     cy = (bottom + top) // 2
-    for i in range(18):
-        t = i / 18.0
+    meta = entry.get("meta") if isinstance(entry, dict) and isinstance(entry.get("meta"), dict) else {}
+    params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
+    effect_type = str(params.get("effect_type", "") or "")
+    if effect_type == "speed":
+        for i in range(12):
+            y = bottom + int(round((i + 1) * (top - bottom) / 13.0))
+            skew = int(round((right - left) * 0.18))
+            _draw_preview_line_thick(canvas, size, left + 2, y - skew // 4, right - 2, y + skew // 4, (0.1, 0.1, 0.1, 1.0), 1)
+        return
+    ray_count = 28 if effect_type in {"uni_flash", "beta_flash"} else 18
+    if effect_type == "beta_flash":
+        star = []
+        radius = min(right - left, top - bottom) * 0.48
+        for i in range(ray_count):
+            t = i / float(ray_count)
+            angle = t * math.tau
+            r = radius if i % 2 == 0 else radius * 0.58
+            star.append((int(round(cx + r * math.cos(angle))), int(round(cy + r * math.sin(angle)))))
+        _draw_preview_polygon(canvas, size, star, (0.05, 0.05, 0.05, 1.0), fill=True)
+        return
+    for i in range(ray_count):
+        t = i / float(ray_count)
         if i % 4 == 0:
             x = left + int((right - left) * t)
             y = top
@@ -554,6 +824,83 @@ def _draw_preview_effect(canvas: list[float], size: int, rect: tuple[int, int, i
             x = left
             y = top - int((top - bottom) * t)
         _draw_preview_line(canvas, size, cx, cy, x, y, (0.1, 0.1, 0.1, 1.0))
+
+
+def _map_points_to_preview_rect(
+    points: list[tuple[float, float]],
+    rect: tuple[int, int, int, int],
+    width_mm: float,
+    height_mm: float,
+) -> list[tuple[int, int]]:
+    left, bottom, right, top = rect
+    width = max(0.1, float(width_mm))
+    height = max(0.1, float(height_mm))
+    span_x = max(1, right - left)
+    span_y = max(1, top - bottom)
+    return [
+        (
+            int(round(left + (float(x) / width) * span_x)),
+            int(round(bottom + (float(y) / height) * span_y)),
+        )
+        for x, y in points
+    ]
+
+
+def _draw_preview_polygon(
+    canvas: list[float],
+    size: int,
+    points: list[tuple[int, int]],
+    color: tuple[float, float, float, float],
+    *,
+    fill: bool,
+    thickness: int = 1,
+) -> None:
+    if len(points) < 3:
+        return
+    if fill:
+        min_x = max(0, min(x for x, _y in points))
+        max_x = min(size - 1, max(x for x, _y in points))
+        min_y = max(0, min(y for _x, y in points))
+        max_y = min(size - 1, max(y for _x, y in points))
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                if _point_in_polygon(x + 0.5, y + 0.5, points):
+                    _set_preview_pixel(canvas, size, x, y, color)
+        return
+    for index, start in enumerate(points):
+        end = points[(index + 1) % len(points)]
+        _draw_preview_line_thick(canvas, size, start[0], start[1], end[0], end[1], color, thickness)
+
+
+def _point_in_polygon(x: float, y: float, points: list[tuple[int, int]]) -> bool:
+    inside = False
+    j = len(points) - 1
+    for i, point in enumerate(points):
+        xi, yi = point
+        xj, yj = points[j]
+        crosses = (yi > y) != (yj > y)
+        if crosses:
+            at_x = (xj - xi) * (y - yi) / max(1.0e-9, yj - yi) + xi
+            if x < at_x:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _draw_preview_line_thick(
+    canvas: list[float],
+    size: int,
+    x0: int,
+    y0: int,
+    x1: int,
+    y1: int,
+    color: tuple[float, float, float, float],
+    thickness: int,
+) -> None:
+    radius = max(0, int(thickness) - 1)
+    for oy in range(-radius, radius + 1):
+        for ox in range(-radius, radius + 1):
+            _draw_preview_line(canvas, size, x0 + ox, y0 + oy, x1 + ox, y1 + oy, color)
 
 
 def _draw_preview_rect(
