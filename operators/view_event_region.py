@@ -42,6 +42,8 @@ def view3d_window_under_event(context, event):
     screen = getattr(context, "screen", None)
     if screen is None:
         return None
+    mouse_x = int(getattr(event, "mouse_x", -10_000_000))
+    mouse_y = int(getattr(event, "mouse_y", -10_000_000))
     active_area = getattr(context, "area", None)
     active_region = getattr(context, "region", None)
     if (
@@ -49,10 +51,9 @@ def view3d_window_under_event(context, event):
         and getattr(active_area, "type", "") == "VIEW_3D"
         and active_region is not None
         and getattr(active_region, "type", "") != "WINDOW"
+        and _contains(active_region, mouse_x, mouse_y)
     ):
         return None
-    mouse_x = int(getattr(event, "mouse_x", -10_000_000))
-    mouse_y = int(getattr(event, "mouse_y", -10_000_000))
     for area in getattr(screen, "areas", []):
         if getattr(area, "type", "") != "VIEW_3D":
             continue

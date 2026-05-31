@@ -3,6 +3,27 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — パネル起動後のドラッグ作成を復旧 / v0.6.213
+
+### 症状
+- B-Nameパネルのボタンから作成系ツールを起動した後、3Dビュー上でドラッグしても作成が始まらない場合があった。
+- コマ、フキダシ、効果線、テキストなど、ドラッグで範囲を決める操作がまとめて効かなくなっていた。
+
+### 原因
+- パネル上のクリックを3Dビュー操作として扱わないための判定が強すぎ、ツール起動後にマウスを3Dビューへ移しても、直前のパネル領域扱いを引きずってドラッグを無視していた。
+
+### 修正
+- クリック位置が実際にパネル上にある場合だけ3Dビュー操作から除外するようにした。
+- パネルからツールを起動した後でも、3Dビュー上へ移動したドラッグは作成操作として受け付けるようにした。
+- 再発防止として、パネル起動後のドラッグ位置判定をテストに追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_creation_tool_drag_behavior_check.py`: 効果線・フキダシのドラッグ作成、クリックのみでは作成しないこと、ページ外作成、フキダシとテキストの紐付けを確認。PASS。
+- `test/blender_border_preset_coma_tool_check.py`: コマ作成ツールと枠線プリセット反映を確認。PASS。
+- `test/blender_bname_partial_completion_check.py`: テキストのドラッグ範囲作成を含む主要操作の部分完了チェックを確認。PASS。
+- `python -m pytest --confcutdir=test test/test_view_event_region.py`: 7 passed。
+- `python -m compileall operators/view_event_region.py test/test_view_event_region.py`: PASS。
+
 ## 2026-05-31 — 不要なOutliner表示切替を削除 / v0.6.212
 
 ### 症状

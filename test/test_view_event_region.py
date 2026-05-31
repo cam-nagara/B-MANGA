@@ -81,6 +81,20 @@ def test_view3d_panel_region_does_not_count_as_viewport_click():
     ) is None
 
 
+def test_panel_launched_modal_still_accepts_viewport_drag_events():
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    ui_region = Obj(type="UI", x=700, y=50, width=200, height=600)
+    context.region = ui_region
+    context.screen.areas[0].regions.append(ui_region)
+    result = region_mod.view3d_window_under_event(
+        context,
+        _event("LEFTMOUSE", region.x + 120, region.y + 120),
+    )
+    assert result is not None
+    assert result[1] is region
+
+
 def test_modal_navigation_passthrough_stays_active_until_release():
     region_mod = _load_view_event_region()
     context, region = _context()
@@ -136,6 +150,7 @@ if __name__ == "__main__":
     test_navigation_ui_hitbox_matches_top_right_viewport_controls()
     test_navigation_ui_respects_blender_visibility_settings()
     test_view3d_panel_region_does_not_count_as_viewport_click()
+    test_panel_launched_modal_still_accepts_viewport_drag_events()
     test_modal_navigation_passthrough_stays_active_until_release()
     test_unmodified_n_toggles_modal_sidebar()
     test_modal_sidebar_close_finishes_bname_tools()
