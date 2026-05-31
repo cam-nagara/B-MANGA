@@ -498,6 +498,13 @@ def main() -> None:
 
         from bname_dev.panels import gpencil_panel
 
+        if gpencil_panel._layer_stack_template_rows(0) != 1:
+            raise AssertionError("レイヤー一覧の空状態の高さが不正です")
+        if gpencil_panel._layer_stack_template_rows(3) != 3:
+            raise AssertionError("少数レイヤー時の高さが不正です")
+        if gpencil_panel._layer_stack_template_rows(9) >= 9:
+            raise AssertionError("多数レイヤー時に一覧を縮められない高さになっています")
+
         fake_ui = SimpleNamespace(bitflag_filter_item=1)
         flags, _order = gpencil_panel.BNAME_UL_layer_stack.filter_items(
             fake_ui,

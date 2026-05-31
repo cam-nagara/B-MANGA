@@ -25,6 +25,7 @@ _GP_OBJECT_TYPE = "GREASEPENCIL"
 _GP_PAINT_MODE = "PAINT_GREASE_PENCIL"
 _GP_EDIT_MODE = "EDIT"
 _GP_OBJECT_MODE = "OBJECT"
+_LAYER_STACK_DEFAULT_ROWS = 6
 _logger = log.get_logger(__name__)
 
 
@@ -81,7 +82,7 @@ def _indent(row, depth: int) -> None:
     """階層インデント。縦方向に行を広げず、横幅だけを空ける."""
     if depth > 0:
         spacer = row.row(align=True)
-        spacer.ui_units_x = 1.35 * depth
+        spacer.ui_units_x = 1.0 * depth
         spacer.label(text="")
 
 
@@ -105,6 +106,10 @@ def _kind_icon(kind: str) -> str:
 
 def _show_stack_item_in_layer_list(item) -> bool:
     return getattr(item, "kind", "") != layer_stack_utils.COMA_PREVIEW_KIND
+
+
+def _layer_stack_template_rows(visible_rows: int) -> int:
+    return max(1, min(int(visible_rows), _LAYER_STACK_DEFAULT_ROWS))
 
 
 def _hide_icon(hidden: bool) -> str:
@@ -189,7 +194,6 @@ def _draw_selection_slot(row, index: int, selected: bool) -> None:
 def _draw_hierarchy_slot(row, item, target, index: int) -> None:
     _indent(row, int(getattr(item, "depth", 0)))
     if target is None:
-        _draw_square_label(row)
         return
     if item.kind == "page":
         expanded = bool(getattr(target, "stack_expanded", True))
@@ -225,7 +229,7 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         )
         op.index = index
     else:
-        _draw_square_label(row)
+        return
 
 
 def _draw_type_icon(row, index: int, icon: str) -> None:
@@ -638,7 +642,7 @@ def _draw_layer_stack_box(layout, context) -> None:
         layer_area = box.row(align=True)
         visible_stack = getattr(scene, "bname_layer_stack_visible", None)
         visible_rows = len(visible_stack) if visible_stack is not None else 0
-        rows = max(1, min(visible_rows, 30))
+        rows = _layer_stack_template_rows(visible_rows)
         layer_area.template_list(
             BNAME_UL_layer_stack.bl_idname,
             "",
