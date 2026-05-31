@@ -38,6 +38,26 @@ _SHAPE_TYPE_ITEMS = (
 )
 
 
+def _coma_number_get(self) -> int:
+    try:
+        from ..utils import coma_id_edit
+
+        return coma_id_edit.coma_number_from_id(
+            str(getattr(self, "coma_id", "") or getattr(self, "id", "") or "")
+        )
+    except Exception:  # noqa: BLE001
+        return 1
+
+
+def _coma_number_set(self, value: int) -> None:
+    try:
+        from ..utils import coma_id_edit
+
+        coma_id_edit.rename_coma_to_number(bpy.context, self, int(value))
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma number update failed")
+
+
 def _tag_view3d_redraw(context) -> None:
     screen = getattr(context, "screen", None) if context is not None else None
     if screen is None:
@@ -157,6 +177,14 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         name="ファイル stem",
         description="cNN (ファイル名のベース)",
         default="",
+    )
+    coma_number: IntProperty(  # type: ignore[valid-type]
+        name="コマ番号",
+        description="レイヤー一覧に表示するコマ番号。並び順は変えず、重複時は番号を入れ替えます",
+        min=1,
+        soft_max=999,
+        get=_coma_number_get,
+        set=_coma_number_set,
     )
     coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
         name="コマ用blendファイル",

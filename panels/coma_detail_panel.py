@@ -40,10 +40,12 @@ def draw_coma_border_settings(layout, context, entry) -> None:
     wm = getattr(context, "window_manager", None)
     if wm is not None and hasattr(wm, "bname_border_preset_selector"):
         row = layout.row(align=True)
-        row.label(text="プリセット", icon="PRESET")
-        row.prop(wm, "bname_border_preset_selector", text="")
+        preset = row.row(align=True)
+        preset.label(text="プリセット", icon="PRESET")
+        preset.prop(wm, "bname_border_preset_selector", text="")
         selected = str(getattr(wm, "bname_border_preset_selector", "") or "")
-        tools = layout.row(align=True)
+        tools = row.row(align=True)
+        tools.alignment = "RIGHT"
         tools.operator("bname.border_preset_add_local", text="", icon="ADD")
         op = tools.operator("bname.border_preset_rename", text="", icon="GREASEPENCIL")
         op.preset_name = selected
@@ -94,7 +96,10 @@ def draw_coma_white_margin_settings(layout, entry) -> None:
     content.active = wm.enabled
     row = content.row(align=True)
     row.prop(wm, "width_mm", text="幅")
-    row.prop(wm, "color", text="色")
+    if str(getattr(wm, "placement", "outside") or "outside") in {"outside", "both"}:
+        row.prop(wm, "outer_color", text="外側色")
+    if str(getattr(wm, "placement", "outside") or "outside") in {"inside", "both"}:
+        row.prop(wm, "inner_color", text="内側色")
 
 
 def register() -> None:

@@ -79,7 +79,10 @@ def _make_coma(page):
     coma.border.style = "solid"
     coma.border.width_mm = 0.75
     coma.white_margin.enabled = True
+    coma.white_margin.placement = "both"
     coma.white_margin.width_mm = 0.5
+    coma.white_margin.outer_color = (1.0, 0.2, 0.2, 1.0)
+    coma.white_margin.inner_color = (0.2, 0.4, 1.0, 1.0)
     page.active_coma_index = 0
     return coma
 
@@ -107,6 +110,7 @@ def _assert_detail_ui(context, coma) -> None:
 
     records: list[tuple[str, str, str]] = []
     coma_detail_panel.draw_coma_border_settings(_RecordingLayout(records), context, coma)
+    coma_detail_panel.draw_coma_white_margin_settings(_RecordingLayout(records), coma)
     ops = {op_id for kind, op_id, _text in records if kind == "operator"}
     for op_id in (
         "bname.border_preset_add_local",
@@ -116,6 +120,33 @@ def _assert_detail_ui(context, coma) -> None:
         "bname.border_preset_move",
     ):
         assert op_id in ops, f"コマ詳細設定に操作ボタンがありません: {op_id}"
+    props = {prop_name for kind, prop_name, _text in records if kind == "prop"}
+    assert "outer_color" in props, "外側フチ色の設定欄がありません"
+    assert "inner_color" in props, "内側フチ色の設定欄がありません"
+
+
+def _assert_white_margin_material_colors(context, work, page, coma) -> None:
+    from bname_dev_border_preset_manage.utils import coma_border_object
+
+    coma.border.visible = True
+    coma.border.style = "solid"
+    coma.white_margin.enabled = True
+    coma.white_margin.placement = "both"
+    coma.white_margin.outer_color = (1.0, 0.0, 0.0, 1.0)
+    coma.white_margin.inner_color = (0.0, 0.0, 1.0, 1.0)
+    coma_border_object.ensure_coma_border_object(context.scene, work, page, coma)
+    obj = bpy.data.objects.get(
+        f"{coma_border_object.COMA_WHITE_MARGIN_NAME_PREFIX}{page.id}_{coma.id}"
+    )
+    assert obj is not None and not obj.hide_viewport, "フチの実体が表示されていません"
+    materials = list(getattr(obj.data, "materials", []) or [])
+    assert len(materials) >= 2, "外側フチと内側フチの材質が分かれていません"
+    outer = tuple(round(float(v), 3) for v in materials[0].diffuse_color[:4])
+    inner = tuple(round(float(v), 3) for v in materials[1].diffuse_color[:4])
+    assert outer == (1.0, 0.0, 0.0, 1.0), outer
+    assert inner == (0.0, 0.0, 1.0, 1.0), inner
+    material_indices = {poly.material_index for poly in obj.data.polygons}
+    assert {0, 1}.issubset(material_indices), material_indices
 
 
 def _assert_management_ops(context, work, page, coma) -> None:
@@ -126,6 +157,15 @@ def _assert_management_ops(context, work, page, coma) -> None:
     initial = _names(border_presets, work_dir)
     for required in ("標準", "線無し", "極太", "輪郭ぼかし"):
         assert required in initial, f"同梱プリセットが見つかりません: {required}"
+
+    wm.bname_border_preset_selector = "輪郭ぼかし"
+    assert wm.bname_border_preset_selector == "輪郭ぼかし"
+    assert coma.border.preset_name == "輪郭ぼかし"
+    assert coma.border.style == "brush"
+    wm.bname_border_preset_selector = "線無し"
+    assert wm.bname_border_preset_selector == "線無し"
+    assert coma.border.preset_name == "線無し"
+    assert not bool(coma.border.visible)
 
     result = bpy.ops.bname.border_preset_add_local(
         preset_name="管理A",
@@ -264,6 +304,7 @@ def main() -> None:
         page = work.pages[0]
         coma = _make_coma(page)
         _assert_detail_ui(context, coma)
+        _assert_white_margin_material_colors(context, work, page, coma)
         _assert_management_ops(context, work, page, coma)
         print("BNAME_BORDER_PRESET_MANAGEMENT_OK")
     finally:

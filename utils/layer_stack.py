@@ -13,6 +13,7 @@ from . import edge_selection
 from . import gpencil as gp_utils
 from . import layer_folder as layer_folder_utils
 from . import log
+from . import object_selection
 from . import object_naming as on
 from .layer_hierarchy import (
     PAGE_KIND,
@@ -2387,7 +2388,58 @@ def _leave_grease_pencil_draw_modes(context) -> None:
         pass
 
 
-def select_stack_index(context, index: int) -> bool:
+def _object_selection_key_for_stack_item(item, resolved) -> str:
+    if item is None or resolved is None:
+        return ""
+    target = resolved.get("target")
+    if target is None:
+        return ""
+    kind = str(getattr(item, "kind", "") or "")
+    if kind == PAGE_KIND:
+        return object_selection.page_key(target)
+    if kind == COMA_KIND:
+        return object_selection.coma_key(resolved.get("page"), target)
+    if kind == "balloon":
+        return object_selection.balloon_key(resolved.get("page"), target)
+    if kind == "text":
+        return object_selection.text_key(resolved.get("page"), target)
+    if kind == "image":
+        return object_selection.image_key(target)
+    if kind == "raster":
+        return object_selection.raster_key(target)
+    if kind == "gp":
+        return object_selection.gp_key(target)
+    if kind == "effect":
+        return object_selection.effect_key(target)
+    return ""
+
+
+def _sync_object_selection_for_stack_item(context, item, resolved) -> None:
+    key = _object_selection_key_for_stack_item(item, resolved)
+    if key:
+        object_selection.select_key(context, key, mode="single")
+    else:
+        object_selection.clear(context)
+
+
+def sync_object_selection_from_stack_selection(context, stack=None) -> None:
+    if stack is None:
+        stack = sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        object_selection.clear(context)
+        return
+    keys: list[str] = []
+    for item in stack:
+        if not is_item_selected(context, item):
+            continue
+        resolved = resolve_stack_item(context, item)
+        key = _object_selection_key_for_stack_item(item, resolved)
+        if key and key not in keys:
+            keys.append(key)
+    object_selection.set_keys(context, keys)
+
+
+def select_stack_index(context, index: int, *, sync_object_selection: bool = True) -> bool:
     stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None or not (0 <= index < len(stack)):
         return False
@@ -2435,6 +2487,9 @@ def select_stack_index(context, index: int) -> bool:
                     target.selected = True
                 except Exception:  # noqa: BLE001
                     pass
+            if sync_object_selection:
+                _sync_object_selection_for_stack_item(context, item, resolved)
+            sync_visible_layer_stack(context, stack=stack)
             tag_view3d_redraw(context)
             return True
         if (
@@ -2556,6 +2611,9 @@ def select_stack_index(context, index: int) -> bool:
             scene.bname_active_gp_folder_key = ""
             scene.bname_active_layer_kind = "balloon"
             edge_selection.clear_selection(context)
+            if sync_object_selection:
+                _sync_object_selection_for_stack_item(context, item, resolved)
+            sync_visible_layer_stack(context, stack=stack)
             tag_view3d_redraw(context)
             return True
         work = get_work(context)
@@ -2584,6 +2642,9 @@ def select_stack_index(context, index: int) -> bool:
             scene.bname_active_gp_folder_key = ""
             scene.bname_active_layer_kind = "text"
             edge_selection.clear_selection(context)
+            if sync_object_selection:
+                _sync_object_selection_for_stack_item(context, item, resolved)
+            sync_visible_layer_stack(context, stack=stack)
             tag_view3d_redraw(context)
             return True
         work = get_work(context)
@@ -2627,6 +2688,11 @@ def select_stack_index(context, index: int) -> bool:
         layer_links.expand_linked_selection(context, stack=stack, base_item=item)
     except Exception:  # noqa: BLE001
         _logger.exception("linked layer selection expansion failed")
+    if sync_object_selection:
+        try:
+            _sync_object_selection_for_stack_item(context, item, resolved)
+        except Exception:  # noqa: BLE001
+            _logger.exception("object selection sync from layer stack failed")
     sync_visible_layer_stack(context, stack=stack)
     tag_view3d_redraw(context)
     return True

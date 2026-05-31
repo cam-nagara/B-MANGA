@@ -277,6 +277,22 @@ def _coma_id_number(coma_id: str) -> int:
     return 1_000_000
 
 
+def _reassign_coma_z_order_by_reading_order(page, read_direction: str) -> None:
+    comas = list(getattr(page, "comas", []) or [])
+    if not comas:
+        return
+    ordered = sorted(
+        comas,
+        key=lambda coma: _reading_order_key_for_poly(_coma_polygon(coma), read_direction),
+    )
+    top_z = max(len(ordered) - 1, 0)
+    for rank, coma in enumerate(ordered):
+        try:
+            coma.z_order = top_z - rank
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _point_in_polygon(p: tuple[float, float], poly: Sequence[tuple[float, float]]) -> bool:
     """ray casting で点 p が多角形 poly の内側にあるかを判定."""
     x, y = p
@@ -407,8 +423,10 @@ def _apply_cut_to_coma(
     else:
         _set_coma_polygon(panel, second_poly)
         _set_coma_polygon(new_entry, first_poly)
-    z_max = max((p.z_order for p in page.comas), default=0)
-    new_entry.z_order = z_max + 1
+    _reassign_coma_z_order_by_reading_order(
+        page,
+        str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left"),
+    )
     try:
         coma_io.save_coma_meta(work_dir, page.id, panel)
         coma_io.save_coma_meta(work_dir, page.id, new_entry)

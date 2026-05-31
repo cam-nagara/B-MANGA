@@ -31,7 +31,7 @@ def _context(*, show_navigate_ui=True, show_gizmo=True, show_gizmo_navigate=True
     )
     area = Obj(type="VIEW_3D", regions=[window], spaces=Obj(active=space))
     prefs = Obj(view=Obj(show_navigate_ui=show_navigate_ui))
-    return Obj(screen=Obj(areas=[area]), preferences=prefs), window
+    return Obj(screen=Obj(areas=[area]), preferences=prefs, area=area, region=window), window
 
 
 def _event(event_type: str, x: int, y: int):
@@ -67,6 +67,18 @@ def test_navigation_ui_respects_blender_visibility_settings():
             context,
             _event("LEFTMOUSE", region.x + region.width - 10, region.y + region.height - 10),
         )
+
+
+def test_view3d_panel_region_does_not_count_as_viewport_click():
+    region_mod = _load_view_event_region()
+    context, region = _context()
+    ui_region = Obj(type="UI", x=700, y=50, width=200, height=600)
+    context.region = ui_region
+    context.screen.areas[0].regions.append(ui_region)
+    assert region_mod.view3d_window_under_event(
+        context,
+        _event("LEFTMOUSE", region.x + region.width - 40, region.y + 120),
+    ) is None
 
 
 def test_modal_navigation_passthrough_stays_active_until_release():
@@ -123,6 +135,7 @@ def test_modal_sidebar_close_finishes_bname_tools():
 if __name__ == "__main__":
     test_navigation_ui_hitbox_matches_top_right_viewport_controls()
     test_navigation_ui_respects_blender_visibility_settings()
+    test_view3d_panel_region_does_not_count_as_viewport_click()
     test_modal_navigation_passthrough_stays_active_until_release()
     test_unmodified_n_toggles_modal_sidebar()
     test_modal_sidebar_close_finishes_bname_tools()

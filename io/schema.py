@@ -755,6 +755,10 @@ def coma_white_margin_to_dict(wm) -> dict[str, Any]:
         "placement": str(getattr(wm, "placement", "outside") or "outside"),
         "widthMm": round(wm.width_mm, 3),
         "color": color_to_hex(wm.color),
+        "outerColor": color_to_hex(getattr(wm, "outer_color", wm.color)),
+        "outerColorAlpha": round(float(getattr(wm, "outer_color", wm.color)[3]), 3),
+        "innerColor": color_to_hex(getattr(wm, "inner_color", wm.color)),
+        "innerColorAlpha": round(float(getattr(wm, "inner_color", wm.color)[3]), 3),
     }
 
 
@@ -765,7 +769,14 @@ def coma_white_margin_from_dict(wm, data: dict[str, Any]) -> None:
         placement = str(data.get("placement", "outside") or "outside")
         wm.placement = placement if placement in {"outside", "inside", "both"} else "outside"
     wm.width_mm = float(data.get("widthMm", 0.37))
-    wm.color = hex_to_rgba(data.get("color", "#FFFFFF"))
+    base_color = hex_to_rgba(data.get("color", "#FFFFFF"))
+    wm.color = base_color
+    if hasattr(wm, "outer_color"):
+        alpha = data.get("outerColorAlpha", base_color[3])
+        wm.outer_color = hex_to_rgba(data.get("outerColor", data.get("color", "#FFFFFF")), alpha)
+    if hasattr(wm, "inner_color"):
+        alpha = data.get("innerColorAlpha", base_color[3])
+        wm.inner_color = hex_to_rgba(data.get("innerColor", data.get("color", "#FFFFFF")), alpha)
 
 
 def coma_entry_to_dict(entry) -> dict[str, Any]:

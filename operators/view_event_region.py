@@ -29,6 +29,10 @@ _MOUSE_EVENT_TYPES = {
 }
 
 
+def _mouse_event_type(event) -> bool:
+    return str(getattr(event, "type", "") or "") in _MOUSE_EVENT_TYPES
+
+
 def view3d_window_under_event(context, event):
     """イベント位置にある VIEW_3D の WINDOW region を返す.
 
@@ -37,6 +41,15 @@ def view3d_window_under_event(context, event):
     """
     screen = getattr(context, "screen", None)
     if screen is None:
+        return None
+    active_area = getattr(context, "area", None)
+    active_region = getattr(context, "region", None)
+    if (
+        _mouse_event_type(event)
+        and getattr(active_area, "type", "") == "VIEW_3D"
+        and active_region is not None
+        and getattr(active_region, "type", "") != "WINDOW"
+    ):
         return None
     mouse_x = int(getattr(event, "mouse_x", -10_000_000))
     mouse_y = int(getattr(event, "mouse_y", -10_000_000))

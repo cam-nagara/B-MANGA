@@ -247,8 +247,10 @@ def _offset_loop(
 def _append_white_margin_band(
     verts: list[tuple[float, float, float]],
     faces: list[tuple[int, int, int, int]],
+    material_indices: list[int],
     inner_pts: list[tuple[float, float]],
     outer_pts: list[tuple[float, float]],
+    material_index: int,
 ) -> bool:
     ring = _white_margin_ring(inner_pts, outer_pts)
     if ring is None:
@@ -257,6 +259,7 @@ def _append_white_margin_band(
     base = len(verts)
     verts.extend(ring_verts)
     faces.extend(tuple(base + index for index in face) for face in ring_faces)
+    material_indices.extend([int(material_index)] * len(ring_faces))
     return True
 
 
@@ -526,6 +529,7 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
         mesh = bpy.data.meshes.new(mesh_name)
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, int, int, int]] = []
+    material_indices: list[int] = []
     if visible and enabled_global and base_width > 0.0:
         try:
             outline = border_geom._dedupe_closed(_outline_points(coma))
@@ -545,24 +549,31 @@ def _ensure_white_margin_object(scene, work, page, coma, page_id: str, coma_id: 
             far_outer = _offset_loop(outline, border_half + base_width)
             far_inner = _offset_loop(outline, -(border_half + base_width))
             if placement in {"outside", "both"} and edge_outer and far_outer:
-                _append_white_margin_band(verts, faces, edge_outer, far_outer)
+                _append_white_margin_band(verts, faces, material_indices, edge_outer, far_outer, 0)
             if placement in {"inside", "both"} and far_inner and edge_inner:
-                _append_white_margin_band(verts, faces, far_inner, edge_inner)
+                _append_white_margin_band(verts, faces, material_indices, far_inner, edge_inner, 1)
         except Exception:  # noqa: BLE001
             _logger.exception("white margin shape ring failed")
             visible = False
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
+        for poly, material_index in zip(mesh.polygons, material_indices, strict=False):
+            poly.material_index = int(material_index)
     mesh.update()
     if not verts or not faces:
         visible = False
-    color = tuple(float(c) for c in getattr(wm, "color", (1.0, 1.0, 1.0, 1.0))[:4])
-    mat = _ensure_color_material(f"{COMA_WHITE_MARGIN_MATERIAL_PREFIX}{page_id}_{coma_id}", color)
-    if not mesh.materials:
-        mesh.materials.append(mat)
-    elif mesh.materials[0] is not mat:
-        mesh.materials[0] = mat
+    base_color = getattr(wm, "color", (1.0, 1.0, 1.0, 1.0))
+    outer_color = tuple(float(c) for c in getattr(wm, "outer_color", base_color)[:4])
+    inner_color = tuple(float(c) for c in getattr(wm, "inner_color", base_color)[:4])
+    outer_mat = _ensure_color_material(f"{COMA_WHITE_MARGIN_MATERIAL_PREFIX}{page_id}_{coma_id}_outer", outer_color)
+    inner_mat = _ensure_color_material(f"{COMA_WHITE_MARGIN_MATERIAL_PREFIX}{page_id}_{coma_id}_inner", inner_color)
+    while len(mesh.materials) < 2:
+        mesh.materials.append(outer_mat)
+    if mesh.materials[0] is not outer_mat:
+        mesh.materials[0] = outer_mat
+    if mesh.materials[1] is not inner_mat:
+        mesh.materials[1] = inner_mat
     obj = bpy.data.objects.get(obj_name)
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)

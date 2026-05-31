@@ -65,6 +65,34 @@ def _active_stack_uid(context) -> str:
     return layer_stack_utils.stack_item_uid(item) if item is not None else ""
 
 
+def _selected_stack_uids(context, stack=None) -> set[str]:
+    stack = stack if stack is not None else layer_stack_utils.sync_layer_stack(
+        context,
+        preserve_active_index=True,
+    )
+    if stack is None:
+        return set()
+    return {
+        layer_stack_utils.stack_item_uid(item)
+        for item in stack
+        if layer_stack_utils.is_item_selected(context, item)
+    }
+
+
+def _set_selected_stack_uids(context, uids: set[str], stack=None):
+    stack = stack if stack is not None else layer_stack_utils.sync_layer_stack(
+        context,
+        preserve_active_index=True,
+    )
+    layer_stack_utils.clear_all_selection(context)
+    if stack is None:
+        return stack
+    for item in stack:
+        if layer_stack_utils.stack_item_uid(item) in uids:
+            layer_stack_utils.set_item_selected(context, item, True)
+    return stack
+
+
 def _page_key_for_item(item, context=None) -> str:
     if item is None:
         return ""
@@ -441,6 +469,7 @@ class BNAME_OT_layer_stack_multi_select(Operator):
             for i in range(lo, hi + 1):
                 layer_stack_utils.set_item_selected(context, stack[i], True)
             layer_links.expand_linked_selection(context, stack=stack)
+            layer_stack_utils.sync_object_selection_from_stack_selection(context, stack)
             # アクティブ行は変更せず、範囲の終端は選択フラグで表現する
             layer_stack_utils.tag_view3d_redraw(context)
             return {"FINISHED"}
@@ -449,47 +478,60 @@ class BNAME_OT_layer_stack_multi_select(Operator):
             from ..utils import layer_links
 
             target = stack[self.index]
+            target_uid = layer_stack_utils.stack_item_uid(target)
+            target_uids = (
+                set(layer_links.linked_uids_for_uid(context, target_uid))
+                if layer_links.is_linkable_item(target)
+                else {target_uid}
+            )
+            selected_uids = _selected_stack_uids(context, stack)
             currently = layer_stack_utils.is_item_selected(context, target)
             if currently:
                 # アクティブ行を解除する場合は別の選択行にアクティブを移す
+                selected_uids.difference_update(target_uids)
                 if self.index == active_idx:
-                    layer_links.set_item_and_linked_selected(
-                        context,
-                        target,
-                        False,
-                        stack=stack,
-                    )
                     new_active = -1
                     for i, it in enumerate(stack):
                         if i == self.index:
                             continue
-                        if layer_stack_utils.is_item_selected(context, it):
+                        if layer_stack_utils.stack_item_uid(it) in selected_uids:
                             new_active = i
                             break
                     if new_active >= 0:
-                        layer_stack_utils.select_stack_index(context, new_active)
-                else:
-                    layer_links.set_item_and_linked_selected(
-                        context,
-                        target,
-                        False,
-                        stack=stack,
-                    )
+                        layer_stack_utils.select_stack_index(
+                            context,
+                            new_active,
+                            sync_object_selection=False,
+                        )
             else:
-                layer_links.set_item_and_linked_selected(
+                selected_uids.update(target_uids)
+                layer_stack_utils.select_stack_index(
                     context,
-                    target,
-                    True,
-                    stack=stack,
+                    self.index,
+                    sync_object_selection=False,
                 )
-                layer_stack_utils.select_stack_index(context, self.index)
+            stack = _set_selected_stack_uids(context, selected_uids)
+            layer_stack_utils.sync_object_selection_from_stack_selection(context, stack)
             layer_stack_utils.tag_view3d_redraw(context)
             return {"FINISHED"}
 
         # SET: 単独選択 — 他の selected をすべてクリアし、この行のみ選択
-        layer_stack_utils.clear_all_selection(context)
-        layer_stack_utils.set_item_selected(context, stack[self.index], True)
-        layer_stack_utils.select_stack_index(context, self.index)
+        from ..utils import layer_links
+
+        target = stack[self.index]
+        target_uid = layer_stack_utils.stack_item_uid(target)
+        selected_uids = (
+            set(layer_links.linked_uids_for_uid(context, target_uid))
+            if layer_links.is_linkable_item(target)
+            else {target_uid}
+        )
+        layer_stack_utils.select_stack_index(
+            context,
+            self.index,
+            sync_object_selection=False,
+        )
+        stack = _set_selected_stack_uids(context, selected_uids)
+        layer_stack_utils.sync_object_selection_from_stack_selection(context, stack)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"FINISHED"}
 

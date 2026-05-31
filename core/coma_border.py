@@ -142,6 +142,24 @@ class BNameComaWhiteMargin(bpy.types.PropertyGroup):
         max=1.0,
         update=_on_border_changed,
     )
+    outer_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="外側色",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=_on_border_changed,
+    )
+    inner_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="内側色",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=_on_border_changed,
+    )
 
 
 _CLASSES = (

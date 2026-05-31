@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import zlib
 from pathlib import Path
 
 import bpy
@@ -173,21 +172,8 @@ class BNAME_OT_paper_preset_save_local(Operator):
 
 # ---------- 枠線プリセット (枠線 + フチ) ----------
 
-_BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str, str, int]] = []
+_BORDER_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
 _SUPPRESS_BORDER_SELECTOR_UPDATE = False
-
-
-def _border_preset_enum_number(identifier: str, used: set[int]) -> int:
-    if identifier == "標準":
-        used.add(0)
-        return 0
-    number = zlib.crc32(identifier.encode("utf-8")) & 0x7FFFFFFF
-    if number == 0:
-        number = 1
-    while number in used:
-        number = (number % 0x7FFFFFFF) + 1
-    used.add(number)
-    return number
 
 
 def _border_preset_enum_items(_self, context):
@@ -195,14 +181,12 @@ def _border_preset_enum_items(_self, context):
     work = get_work(context)
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
     preset_list = list(border_presets.list_all_presets(work_dir))
-    cache: list[tuple[str, str, str, str, int]] = []
-    used_numbers: set[int] = set()
+    cache: list[tuple[str, str, str]] = []
     for p in preset_list:
         label = p.name if p.source == "global" else f"{p.name} (作品)"
-        number = _border_preset_enum_number(p.name, used_numbers)
-        cache.append((p.name, label, p.description, "NONE", number))
+        cache.append((p.name, label, p.description))
     if not cache:
-        cache.append(("", "(プリセットなし)", "", "NONE", 0))
+        cache.append(("", "(プリセットなし)", ""))
     _BORDER_PRESET_ENUM_CACHE = cache
     return _BORDER_PRESET_ENUM_CACHE
 

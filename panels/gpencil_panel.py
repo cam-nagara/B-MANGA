@@ -398,16 +398,12 @@ def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
     if target is None:
         _select_icon_name(row, index, item.label, _kind_icon(item.kind), item=item)
         return
-    label = layer_stack_detail_ui.coma_layer_name(target)
     title = str(getattr(target, "title", "") or "").strip()
-    _select_icon_name(
-        row,
-        index,
-        f"{label} {title}" if title else label,
-        "MOD_WIREFRAME",
-        item=item,
-        target=target,
-    )
+    _draw_type_icon(row, index, "MOD_WIREFRAME")
+    number_cell = row.row(align=True)
+    number_cell.ui_units_x = 1.8
+    number_cell.prop(target, "coma_number", text="")
+    _select_name(row, index, title or "コマ", item=item, target=target)
     controls["aux"] = "coma_enter"
 
 
