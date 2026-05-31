@@ -93,6 +93,23 @@ def _on_balloon_entry_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
+def _sync_layer_stack_title(context, entry=None) -> None:
+    if entry is not None and not str(getattr(entry, "id", "") or "").strip():
+        return
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_balloon_title_changed(_self, context) -> None:
+    _sync_balloon_curve(_self)
+    _sync_layer_stack_title(context, _self)
+    _tag_balloon_redraw(context)
+
+
 def _on_balloon_tail_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     work = getattr(scene, "bname_work", None) if scene is not None else None
@@ -274,6 +291,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     """フキダシ 1 件."""
 
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
+    title: StringProperty(name="名前", default="", update=_on_balloon_title_changed)  # type: ignore[valid-type]
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",
         default=True,

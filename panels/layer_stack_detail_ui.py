@@ -85,6 +85,7 @@ def _draw_gp_selected_settings(box, obj, active_layer) -> None:
 def _draw_image_selected_settings(box, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {entry.title} (画像)")
+    settings.prop(entry, "title", text="名前")
     settings.prop(entry, "visible", text="表示")
     settings.prop(entry, "opacity", text="不透明度", slider=True)
     settings.prop(entry, "filepath")
@@ -141,7 +142,8 @@ def _draw_raster_selected_settings(box, entry) -> None:
 
 def _draw_balloon_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
-    settings.label(text=f"選択中: {entry.id} (フキダシ)")
+    settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (フキダシ)")
+    settings.prop(entry, "title", text="名前")
     source_state = _balloon_source_state(entry)
     settings.label(text=f"編集状態: {_balloon_source_state_label(source_state)}")
     page = _page_for_balloon_entry(context, entry)
@@ -330,7 +332,8 @@ def _page_for_balloon_entry(context, entry):
 def _draw_text_selected_settings(box, context, entry) -> None:
     page = get_active_page(context)
     settings = box.column(align=True)
-    settings.label(text=f"選択中: {entry.id} (テキスト)")
+    settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (テキスト)")
+    settings.prop(entry, "title", text="名前")
     settings.prop(entry, "speaker_type")
     row = settings.row(align=True)
     row.prop(entry, "x_mm")
@@ -548,6 +551,8 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     settings = box.column(align=True)
     name = getattr(active_layer, "name", "効果線")
     settings.label(text=f"選択中: {name} (効果線)")
+    if active_layer is not None and hasattr(active_layer, "name"):
+        settings.prop(active_layer, "name", text="名前")
     params = getattr(context.scene, "bname_effect_line_params", None)
     if params is None:
         settings.label(text="効果線パラメータが未初期化です", icon="ERROR")
@@ -585,7 +590,6 @@ def _draw_page_selected_settings(box, context, entry) -> None:
         text=f"選択中: {page_layer_name(entry, get_work(context))} (ページ)",
         icon="FILE_BLANK",
     )
-    settings.prop(entry, "title", text="表示名")
     settings.prop(entry, "coma_count", text="コマ数")
     if hasattr(entry, "visible"):
         settings.prop(entry, "visible", text="表示")

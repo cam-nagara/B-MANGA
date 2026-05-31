@@ -1428,12 +1428,14 @@ class BNAME_OT_layer_stack_detail(Operator):
     def execute(self, context):
         self._sync_coma_detail_curve(context)
         self._sync_effect_detail_curve(context)
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"FINISHED"}
 
     def check(self, context):
         self._sync_coma_detail_curve(context)
         self._sync_effect_detail_curve(context)
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 

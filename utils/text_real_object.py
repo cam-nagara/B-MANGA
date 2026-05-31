@@ -529,7 +529,7 @@ def _apply_text_object_state(
         obj,
         kind="text",
         bname_id=full_id,
-        title=str(getattr(entry, "body", "") or text_id)[:40],
+        title=str(getattr(entry, "title", "") or getattr(entry, "body", "") or text_id)[:40],
         z_index=_text_z_index(page, text_id),
         parent_kind=parent_kind,
         parent_key=parent_key,

@@ -15,7 +15,7 @@ from pathlib import Path
 import bpy
 
 from ..core.work import get_active_page, get_work
-from . import layer_links, layer_stack as layer_stack_utils, log, object_naming as on
+from . import asset_preview, layer_links, layer_stack as layer_stack_utils, log, object_naming as on
 from . import page_grid
 from .geom import m_to_mm, mm_to_m
 from .layer_hierarchy import OUTSIDE_STACK_KEY, coma_containing_point, coma_stack_key
@@ -107,6 +107,7 @@ def register_selected_objects_as_asset(context, *, name: str = "", event=None) -
         if clone is not None:
             coll.objects.link(clone)
     _mark_collection_asset(coll, target=target, description="B-Name オブジェクトアセット")
+    asset_preview.set_collection_asset_preview(coll)
     _write_external_library_if_needed(coll, target, context=context)
     return coll
 
@@ -151,6 +152,7 @@ def create_collection_asset(
         if clone is not None:
             coll.objects.link(clone)
     _mark_collection_asset(coll, target=target, description="B-Name レイヤーアセット")
+    asset_preview.set_collection_asset_preview(coll, payload=payload)
     _write_external_library_if_needed(coll, target, context=context)
     return coll
 

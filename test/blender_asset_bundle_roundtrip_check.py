@@ -39,6 +39,10 @@ def _register_payload(context, uids: list[str], name: str):
     from bname_dev_asset_bundle.utils import asset_bundle
 
     items = _item_by_uid(context)
+    missing = [uid for uid in uids if uid not in items]
+    if missing:
+        available = "\n".join(f"  {uid}" for uid in sorted(items))
+        raise AssertionError(f"{name}: 登録元レイヤーが一覧にありません: {missing}\n{available}")
     payload = asset_bundle.build_payload(context, [items[uid] for uid in uids], name=name)
     coll = asset_bundle.create_collection_asset(
         context,
@@ -47,7 +51,19 @@ def _register_payload(context, uids: list[str], name: str):
     )
     if coll.asset_data is None:
         raise AssertionError(f"{name}: アセット登録されていません")
+    _assert_collection_preview(coll, name)
     return coll
+
+
+def _assert_collection_preview(coll, label: str) -> None:
+    preview = getattr(coll, "preview", None)
+    if preview is None:
+        raise AssertionError(f"{label}: サムネイルがありません")
+    width, height = int(preview.image_size[0]), int(preview.image_size[1])
+    if width <= 0 or height <= 0 or len(preview.image_pixels_float) != width * height * 4:
+        raise AssertionError(f"{label}: サムネイル画像が空です")
+    if not bool(getattr(preview, "is_image_custom", False)):
+        raise AssertionError(f"{label}: サムネイルがカスタム画像になっていません")
 
 
 def _drop_collection(context, coll, world_x_mm: float, world_y_mm: float) -> None:
@@ -121,6 +137,13 @@ def _assert_linked(context, uid_a: str, uid_b: str, label: str) -> None:
     linked = layer_links.linked_uids_for_uid(context, uid_a)
     if uid_b not in linked:
         raise AssertionError(f"{label}: リンク状態が復元されていません")
+
+
+def _find_entry_by_attr(collection, attr: str, value: str):
+    for entry in collection:
+        if str(getattr(entry, attr, "") or "") == value:
+            return entry
+    return None
 
 
 def _make_balloon(context, page, x, y, w=42.0, h=24.0):
@@ -210,28 +233,59 @@ def main() -> None:
         page = work.pages[0]
 
         source_balloon = _make_balloon(context, page, 20.0, 30.0)
-        source_text = _make_text(context, page, "セリフ", 24.0, 34.0, parent_balloon_id=source_balloon.id)
+        source_balloon_id = str(source_balloon.id)
+        source_balloon.title = "名前変更フキダシ"
+        source_text = _make_text(context, page, "セリフ", 24.0, 34.0, parent_balloon_id=source_balloon_id)
+        source_text.title = "名前変更テキスト"
         source_effect_a = _make_effect(context, page, 80.0, 40.0)
         source_effect_b = _make_effect(context, page, 126.0, 46.0)
+        source_effect_a[1].name = "名前変更効果線"
         source_balloon_b = _make_balloon(context, page, 72.0, 82.0)
+        source_balloon_b.title = "リンク用フキダシ"
         source_lonely_text = _make_text(context, page, "ここへ落とす", 138.0, 110.0)
+        source_lonely_text_id = str(source_lonely_text.id)
+        source_lonely_text_rect = (
+            float(source_lonely_text.x_mm),
+            float(source_lonely_text.y_mm),
+            float(source_lonely_text.width_mm),
+            float(source_lonely_text.height_mm),
+        )
 
-        uid_balloon = layer_stack_utils.target_uid("balloon", f"{page.id}:{source_balloon.id}")
-        uid_text = layer_stack_utils.target_uid("text", f"{page.id}:{source_text.id}")
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        source_balloon_actual = _find_entry_by_attr(page.balloons, "title", "名前変更フキダシ")
+        source_text_actual = _find_entry_by_attr(page.texts, "title", "名前変更テキスト")
+        source_balloon_b_actual = _find_entry_by_attr(page.balloons, "title", "リンク用フキダシ")
+        if source_balloon_actual is None or source_text_actual is None or source_balloon_b_actual is None:
+            raise AssertionError("作成したレイヤーが一覧に反映されていません")
+        source_text_actual.parent_balloon_id = str(source_balloon_actual.id)
+        uid_balloon = layer_stack_utils.target_uid("balloon", f"{page.id}:{source_balloon_actual.id}")
+        uid_text = layer_stack_utils.target_uid("text", f"{page.id}:{source_text_actual.id}")
         uid_effect_a = _effect_uid(source_effect_a[0])
         uid_effect_b = _effect_uid(source_effect_b[0])
-        uid_balloon_b = layer_stack_utils.target_uid("balloon", f"{page.id}:{source_balloon_b.id}")
+        uid_balloon_b = layer_stack_utils.target_uid("balloon", f"{page.id}:{source_balloon_b_actual.id}")
 
         layer_links.link_uids(context, [uid_balloon, uid_text])
         layer_links.link_uids(context, [uid_effect_a, uid_effect_b])
         layer_links.link_uids(context, [uid_balloon, uid_balloon_b])
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
+        labels_by_uid = {
+            layer_stack_utils.stack_item_uid(item): str(getattr(item, "label", "") or "")
+            for item in context.scene.bname_layer_stack
+        }
+        if labels_by_uid.get(uid_balloon) != "名前変更フキダシ":
+            raise AssertionError("フキダシのレイヤー名がレイヤー一覧に反映されていません")
+        if labels_by_uid.get(uid_text) != "名前変更テキスト":
+            raise AssertionError("テキストのレイヤー名がレイヤー一覧に反映されていません")
+        if labels_by_uid.get(uid_effect_a) != "名前変更効果線":
+            raise AssertionError("効果線のレイヤー名がレイヤー一覧に反映されていません")
+
         items_by_uid = _item_by_uid(context)
         payload = asset_bundle.build_payload(context, [items_by_uid[uid_balloon]], name="フキダシ/登録:*確認")
         external_dir = temp_root / "AssetLibrary"
         external_target = asset_bundle.AssetBrowserTarget("BNameTest", "", str(external_dir), True)
-        asset_bundle.create_collection_asset(context, payload, target=external_target)
+        external_coll = asset_bundle.create_collection_asset(context, payload, target=external_target)
+        _assert_collection_preview(external_coll, "外部ライブラリ登録")
         asset_bundle.create_collection_asset(context, payload, target=external_target)
         blend_files = sorted(external_dir.glob("*.blend"))
         if len(blend_files) != 2 or len({path.name for path in blend_files}) != 2:
@@ -295,13 +349,17 @@ def main() -> None:
 
         before_balloons = len(page.balloons)
         coll = _register_payload(context, [uid_balloon_b], "フキダシをテキストへ")
-        text_cx = source_lonely_text.x_mm + source_lonely_text.width_mm * 0.5
-        text_cy = source_lonely_text.y_mm + source_lonely_text.height_mm * 0.5
+        text_x, text_y, text_w, text_h = source_lonely_text_rect
+        text_cx = text_x + text_w * 0.5
+        text_cy = text_y + text_h * 0.5
         page_ox, page_oy = page_grid.page_total_offset_mm(work, context.scene, int(work.active_page_index))
         _drop_collection(context, coll, text_cx + page_ox, text_cy + page_oy)
         if len(page.balloons) != before_balloons + 1:
             raise AssertionError("テキスト上に落としたフキダシが復元されていません")
-        if source_lonely_text.parent_balloon_id != page.balloons[-1].id:
+        source_lonely_after = next((entry for entry in page.texts if entry.id == source_lonely_text_id), None)
+        if source_lonely_after is None:
+            raise AssertionError("テキスト上に落としたフキダシのリンク先テキストが見つかりません")
+        if source_lonely_after.parent_balloon_id != page.balloons[-1].id:
             raise AssertionError("テキスト上に落としたフキダシが自動リンクされていません")
 
         print("BNAME_ASSET_BUNDLE_ROUNDTRIP_OK")

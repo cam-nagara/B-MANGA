@@ -44,9 +44,21 @@ def _on_image_layer_changed(_self, context) -> None:
             area.tag_redraw()
 
 
+def _on_image_title_changed(_self, context) -> None:
+    _on_image_layer_changed(_self, context)
+    if not str(getattr(_self, "id", "") or "").strip():
+        return
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNameImageLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
-    title: StringProperty(name="表示名", default="")  # type: ignore[valid-type]
+    title: StringProperty(name="表示名", default="", update=_on_image_title_changed)  # type: ignore[valid-type]
     filepath: StringProperty(  # type: ignore[valid-type]
         name="画像パス",
         description="PNG/JPG/TIFF/PSD",

@@ -472,13 +472,13 @@ def _collect_outside_layer_targets(
     used_balloon: set[str] = set()
     for entry in reversed(list(getattr(work, "shared_balloons", []))):
         bid = _ensure_unique_id(entry, used_balloon, "shared_balloon")
-        label = getattr(entry, "id", "") or bid
+        label = getattr(entry, "title", "") or getattr(entry, "id", "") or bid
         targets.append(LayerTarget("balloon", outside_child_key(bid), label, OUTSIDE_STACK_KEY, 1))
 
     used_text: set[str] = set()
     for entry in reversed(list(getattr(work, "shared_texts", []))):
         tid = _ensure_unique_id(entry, used_text, "shared_text")
-        label = getattr(entry, "body", "") or tid
+        label = getattr(entry, "title", "") or getattr(entry, "body", "") or tid
         targets.append(LayerTarget("text", outside_child_key(tid), label, OUTSIDE_STACK_KEY, 1))
 
     targets.extend(_retarget_root_subtree_to_outside(effect_root_targets))
@@ -544,10 +544,12 @@ def _collect_page_layer_targets(
                 balloon_groups[group_key] = LayerTarget(
                     "balloon_group", group_key, label, parent, depth
                 )
-            target = LayerTarget("balloon", f"{page_key}:{bid}", bid, group_key, depth + 1)
+            label = getattr(entry, "title", "") or bid
+            target = LayerTarget("balloon", f"{page_key}:{bid}", label, group_key, depth + 1)
             balloon_group_children.setdefault(group_key, []).append(target)
             continue
-        target = LayerTarget("balloon", f"{page_key}:{bid}", bid, parent, depth)
+        label = getattr(entry, "title", "") or bid
+        target = LayerTarget("balloon", f"{page_key}:{bid}", label, parent, depth)
         if depth == 2:
             panel_children.setdefault(parent, []).append(target)
         else:
@@ -577,7 +579,7 @@ def _collect_page_layer_targets(
 
     for entry in reversed(list(getattr(page, "texts", []))):
         tid = _ensure_unique_id(entry, used_text, "text")
-        label = getattr(entry, "body", "") or tid
+        label = getattr(entry, "title", "") or getattr(entry, "body", "") or tid
         explicit_parent = _explicit_entry_parent(entry, page, panels_by_key)
         if explicit_parent is not None:
             parent, depth = explicit_parent
@@ -718,10 +720,10 @@ def _partition_effect_object_targets(work) -> tuple[list[LayerTarget], dict[str,
         if layers is None:
             continue
         used: set[str] = set()
-        label = str(obj.get(on.PROP_TITLE, "") or obj.name)
         for layer in reversed(list(layers)):
             key = _ensure_node_stack_key(layer, used, "effect")
             parent_key = _effect_parent_key(obj, layer)
+            label = str(getattr(layer, "name", "") or obj.get(on.PROP_TITLE, "") or obj.name)
             if parent_key and gp_parent.parent_key_exists(work, parent_key):
                 targets_by_parent.setdefault(parent_key, []).append(
                     LayerTarget(

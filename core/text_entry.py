@@ -105,6 +105,22 @@ def _on_text_entry_changed(self, context) -> None:
         pass
 
 
+def _sync_layer_stack_title(context, entry=None) -> None:
+    if entry is not None and not str(getattr(entry, "id", "") or "").strip():
+        return
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_text_title_changed(self, context) -> None:
+    _on_text_entry_changed(self, context)
+    _sync_layer_stack_title(context, self)
+
+
 def _on_text_free_transform_changed(self, context) -> None:
     try:
         from ..utils import text_real_object
@@ -169,6 +185,7 @@ class BNameTextEntry(bpy.types.PropertyGroup):
     """
 
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
+    title: StringProperty(name="名前", default="", update=_on_text_title_changed)  # type: ignore[valid-type]
     visible: BoolProperty(  # type: ignore[valid-type]
         name="表示",
         default=True,
