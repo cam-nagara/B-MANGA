@@ -112,9 +112,10 @@ def main() -> int:
         else:
             errors.append(f"ノードグループ {bcrn.GROUP_NAME} がまだ {group.users} 個の modifier で使用されている")
 
-    print("=== Phase D-C: しっぽ付きフキダシで tail_main_line_mesh が生成されるか ===")
+    print("=== Phase D-C: しっぽ付きフキダシで主線が一体化されるか ===")
     if objects:
         shape, entry, obj = objects[-1]
+        line_obj_name = f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{entry.id}"
         tail = entry.tails.add()
         tail.type = "straight"
         tail.direction_deg = 270.0
@@ -124,17 +125,17 @@ def main() -> int:
         bco.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
         tail_obj_name = f"{balloon_line_mesh.BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{entry.id}"
         tail_obj = bpy.data.objects.get(tail_obj_name)
-        if tail_obj is None:
-            errors.append(f"しっぽ付き {shape}: tail_main_line_mesh が生成されていない ({tail_obj_name})")
+        line_obj_after = bpy.data.objects.get(line_obj_name)
+        if line_obj_after is None:
+            errors.append(f"しっぽ付き {shape}: 主線メッシュが消えている ({line_obj_name})")
         else:
-            mods = [m.name for m in tail_obj.modifiers]
-            verts = len(tail_obj.data.vertices)
-            polys = len(tail_obj.data.polygons)
-            print(f"  ✓ {shape} + tail: tail_main_line_mesh verts={verts}, polys={polys}, modifiers={mods}")
-            if mods:
-                errors.append(f"tail_main_line_mesh に modifier が付いている: {mods}")
-            if verts < 3:
-                errors.append(f"tail_main_line_mesh の頂点数が少なすぎる ({verts})")
+            verts = len(line_obj_after.data.vertices)
+            polys = len(line_obj_after.data.polygons)
+            print(f"  ✓ {shape} + tail: joined line verts={verts}, polys={polys}, separate_tail={tail_obj is not None}")
+            if verts <= 0 or polys <= 0:
+                errors.append(f"しっぽ付き {shape}: 主線メッシュが空になっている")
+            if tail_obj is not None:
+                errors.append(f"しっぽ付き {shape}: 分離しっぽ線が残っている ({tail_obj_name})")
 
     print("=== Phase D-D: レンダーテスト (all_shapes_shapely_check と同様の構図) ===")
     # 既存の test/blender_balloon_all_shapes_shapely_check.py と同じ設定で

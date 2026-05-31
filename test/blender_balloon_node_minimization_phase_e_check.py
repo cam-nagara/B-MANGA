@@ -246,14 +246,17 @@ def main() -> int:
         if obj is None:
             errors.append(f"{label}: obj=None")
             continue
+        line_mesh = bpy.data.objects.get(f"balloon_line_mesh_{entry.id}")
         tail_mesh = bpy.data.objects.get(f"balloon_tail_main_line_mesh_{entry.id}")
         fill_mesh = bpy.data.objects.get(f"balloon_fill_mesh_{entry.id}")
-        if tail_mesh is None:
-            errors.append(f"{label}: tail_main_line_mesh 未生成")
+        if line_mesh is None or len(getattr(line_mesh.data, "polygons", []) or []) <= 0:
+            errors.append(f"{label}: 一体化した主線メッシュ未生成")
+        if tail_mesh is not None:
+            errors.append(f"{label}: 分離しっぽ線が残っています")
         if fill_mesh is None:
             errors.append(f"{label}: fill_mesh 未生成")
         _verify_no_modifier(obj, label, errors)
-        print(f"  ✓ {label}: tail_mesh={tail_mesh is not None}, fill_mesh={fill_mesh is not None}")
+        print(f"  ✓ {label}: joined_line={line_mesh is not None}, separate_tail={tail_mesh is not None}, fill_mesh={fill_mesh is not None}")
 
     # ノードグループが存在しないことを確認
     print("=== Phase E ノードグループ撤去確認 ===")

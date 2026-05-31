@@ -199,7 +199,12 @@ def _polyline_lengths(points: list[tuple[float, float]]) -> tuple[list[float], f
     return distances, total
 
 
-def polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
+def _root_join_overlap_mm(tail: Any) -> float:
+    root_width = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0))
+    return max(2.0, min(12.0, root_width * 0.65))
+
+
+def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> list[tuple[float, float]]:
     tail_type = str(getattr(tail, "type", "straight") or "straight")
     centerline = tail_world_points(rect, tail)
     if tail_type == "curve" and not uses_custom_points(tail) and len(centerline) == 2:
@@ -242,4 +247,21 @@ def polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
         right.append((point[0] - nx * half_width, point[1] - ny * half_width))
     if len(left) < 2 or len(right) < 2:
         return []
-    return left + list(reversed(right))
+    polygon = left + list(reversed(right))
+    overlap = max(0.0, float(join_overlap_mm))
+    if overlap > 1.0e-6 and len(centerline) >= 2 and len(polygon) >= 3:
+        root = centerline[0]
+        next_point = centerline[1]
+        dx = next_point[0] - root[0]
+        dy = next_point[1] - root[1]
+        length = math.hypot(dx, dy)
+        if length > 1.0e-9:
+            ix = -dx / length * overlap
+            iy = -dy / length * overlap
+            polygon[0] = (polygon[0][0] + ix, polygon[0][1] + iy)
+            polygon[-1] = (polygon[-1][0] + ix, polygon[-1][1] + iy)
+    return polygon
+
+
+def joined_polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
+    return polygon_for_tail(rect, tail, join_overlap_mm=_root_join_overlap_mm(tail))

@@ -280,6 +280,92 @@ def _build_body_polygon(samples):
         return None
 
 
+def _tail_polygons_for_entry_local_m(entry) -> list[list[tuple[float, float]]]:
+    """entry のしっぽを balloon-local m の polygon 点列に変換する."""
+    from . import balloon_tail_geom
+
+    tails = list(getattr(entry, "tails", []) or [])
+    if not tails:
+        return []
+    rect = Rect(
+        0.0,
+        0.0,
+        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    ox_mm, oy_mm = _entry_local_offset_mm(entry)
+    out: list[list[tuple[float, float]]] = []
+    for tail in tails:
+        try:
+            pts_mm = balloon_tail_geom.joined_polygon_for_tail(rect, tail)
+            pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
+        except Exception:  # noqa: BLE001
+            continue
+        if len(pts_mm) < 3:
+            continue
+        out.append([(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm)) for x, y in pts_mm])
+    return out
+
+
+def _body_union_with_tails(entry, body_samples):
+    """本体としっぽを結合した Shapely Polygon を返す。結合できない場合は None."""
+    tail_pts = _tail_polygons_for_entry_local_m(entry)
+    if not tail_pts:
+        return None
+    body_poly = _build_body_polygon(body_samples)
+    if body_poly is None:
+        return None
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+
+    polys = [body_poly]
+    for pts in tail_pts:
+        try:
+            poly = Polygon(pts)
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if not poly.is_empty and poly.area > 0:
+                polys.append(poly)
+        except Exception:  # noqa: BLE001
+            continue
+    if len(polys) <= 1:
+        return None
+    overlap_m = 1.0e-6
+    try:
+        merged = unary_union([poly.buffer(overlap_m, join_style=2, mitre_limit=50.0) for poly in polys])
+        if merged.is_empty:
+            return None
+        merged = merged.buffer(-overlap_m, join_style=2, mitre_limit=50.0)
+        if merged.is_empty:
+            return None
+        if merged.geom_type == "MultiPolygon":
+            # しっぽが本体から完全に離れている場合は、従来の別線描画へ戻す。
+            return None
+        return merged if merged.geom_type == "Polygon" else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _outline_samples_with_tails(entry, body_samples) -> tuple[list[tuple[float, float, float]], bool]:
+    """本体+しっぽの外周サンプルと、しっぽを結合できたかを返す."""
+    merged = _body_union_with_tails(entry, body_samples)
+    if merged is None:
+        return list(body_samples), False
+    try:
+        coords = [(float(x), float(y)) for x, y in merged.exterior.coords]
+    except Exception:  # noqa: BLE001
+        return list(body_samples), False
+    if len(coords) >= 2 and coords[0] == coords[-1]:
+        coords = coords[:-1]
+    if len(coords) < 3:
+        return list(body_samples), False
+    return [(x, y, 1.0) for x, y in coords], True
+
+
 def build_offset_band_polygon(
     body_samples: Sequence,
     *,
@@ -2678,6 +2764,7 @@ def ensure_balloon_line_mesh(
     if len(samples) < 3:
         remove_balloon_line_mesh(balloon_id)
         return None
+    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
     valley_sharp = _valley_sharp_for_entry(entry)
     # 山頂が丸い形状 (雲/フワフワ) は、 外側へ広げた均一バンドの山頂を round join で
     # 丸める。 トゲ/トゲ曲線は山頂が尖る形状なので従来通り mitre のまま。
@@ -2960,6 +3047,7 @@ def ensure_balloon_outer_edge_mesh(
     if len(samples) < 3:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
+    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
 
     valley_sharp = _valley_sharp_for_entry(entry)
     line_width_m = line_width_mm * 0.001
@@ -3046,6 +3134,7 @@ def ensure_balloon_inner_edge_mesh(
     if len(samples) < 3:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
+    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
 
     valley_sharp = _valley_sharp_for_entry(entry)
     edge_width_m = edge_width_mm * 0.001
@@ -3172,6 +3261,7 @@ def ensure_balloon_multi_line_mesh(
     if len(samples) < 3:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
+    samples, _tails_merged = _outline_samples_with_tails(entry, samples)
 
     body_poly = _build_body_polygon(samples)
     if body_poly is None:
@@ -3375,6 +3465,15 @@ def ensure_balloon_tail_main_line_mesh(
     if not tails:
         remove_balloon_tail_main_line_mesh(balloon_id)
         return None
+
+    body_spline = _resolve_body_spline(body_object)
+    if body_spline is not None:
+        body_samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+        if len(body_samples) >= 3:
+            _samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
+            if tails_merged:
+                remove_balloon_tail_main_line_mesh(balloon_id)
+                return None
 
     rect = Rect(
         0.0,

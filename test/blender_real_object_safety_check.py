@@ -351,7 +351,8 @@ def main() -> None:
         fill_mesh_obj = bpy.data.objects.get(f"{balloon_fill_mesh.BALLOON_FILL_MESH_NAME_PREFIX}{balloon.id}")
         assert line_mesh_obj is not None, "balloon line mesh was not created"
         assert fill_mesh_obj is not None, "balloon fill mesh was not created"
-        assert _evaluated_polygon_count(line_mesh_obj) > 0, "balloon line mesh has no polygons"
+        line_poly_count_before_tail = _evaluated_polygon_count(line_mesh_obj)
+        assert line_poly_count_before_tail > 0, "balloon line mesh has no polygons"
         assert _evaluated_polygon_count(fill_mesh_obj) > 0, "balloon fill mesh has no polygons"
         assert len(balloon_obj.modifiers) == 0, "balloon should not use Geometry Nodes display helper"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
@@ -371,14 +372,13 @@ def main() -> None:
         balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
         assert balloon_obj is not None and balloon_obj.type == "CURVE"
         assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to editable curve"
-        tail_line_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{balloon.id}")
-        assert tail_line_obj is not None, "balloon tail line mesh was not created"
-        tail_poly_count = _evaluated_polygon_count(tail_line_obj)
-        assert tail_poly_count > 0, "balloon tail was not added to real mesh"
+        line_mesh_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{balloon.id}")
+        assert line_mesh_obj is not None, "balloon tail removed main line mesh"
+        assert _evaluated_polygon_count(line_mesh_obj) > line_poly_count_before_tail, "balloon tail was not joined into line mesh"
         tail.length_mm = 14.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail update sync failed"
-        tail_line_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX}{balloon.id}")
-        assert tail_line_obj is not None and _evaluated_polygon_count(tail_line_obj) > 0, "balloon tail update removed real mesh"
+        line_mesh_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{balloon.id}")
+        assert line_mesh_obj is not None and _evaluated_polygon_count(line_mesh_obj) > line_poly_count_before_tail, "balloon tail update removed real mesh"
         balloon_real_objects = [
             obj
             for obj in bpy.data.objects

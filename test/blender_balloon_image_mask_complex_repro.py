@@ -221,7 +221,6 @@ def main():
         f"balloon_outer_edge_mesh_{entry.id}",
         f"balloon_inner_edge_mesh_{entry.id}",
         f"balloon_multi_line_mesh_{entry.id}",
-        f"balloon_tail_main_line_mesh_{entry.id}",
         f"balloon_fill_mesh_{entry.id}",
     )
 

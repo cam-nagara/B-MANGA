@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — フキダシしっぽの接合表示と自由変形確認を補強 / v0.6.220
+
+### 症状
+- フキダシのしっぽを付けたとき、本体としっぽの境界に線が残り、別パーツが重なったように見える場合があった。
+- 自由変形について、実体への反映と目視確認を同時に行う検証が不足していた。
+
+### 原因
+- フキダシの塗りは本体としっぽを一体化していたが、主線・フチ・多重線は本体側としっぽ側を別々に作っていた。
+- しっぽの根元が本体境界に浅く接しているだけの形になり、線側で一体の外形として扱いきれない場合があった。
+
+### 修正
+- しっぽの根元を本体側へ自然に食い込ませてから、本体・しっぽを一体の外形として主線・フチ・多重線へ反映するようにした。
+- 本体へ接続できたしっぽでは、分離したしっぽ線を作らず、フキダシ全体の外周線だけを表示するようにした。
+- しっぽ接合表示と自由変形を同時に確認する実機目視用テストを追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_balloon_tail_join_free_transform_visual_check.py`: しっぽ付きフキダシで接合部の内側線が残らないこと、自由変形で角移動が保存され実体へ反映されることを確認し、確認画像を生成。PASS。
+- `test/blender_object_free_transform_check.py`: フキダシ、テキスト、効果線の自由変形が実体へ反映されることを確認。PASS。
+- `test/blender_real_object_safety_check.py`: 既存実体の保持、しっぽ付きフキダシ、再読込の回帰を確認。PASS。
+- `test/blender_balloon_all_shapes_shapely_check.py`: 全フキダシ形状の主線・フチ・多重線の回帰を確認。PASS。
+- `test/blender_balloon_node_minimization_phase_d_check.py` / `test/blender_balloon_node_minimization_phase_e_check.py`: フキダシ表示メッシュの回帰を確認。PASS。
+- `test/blender_balloon_image_mask_complex_repro.py`: 複雑なしっぽ付きフキダシとマスクの回帰を確認。PASS。
+- `python -m py_compile ...`: 変更対象の構文チェック。PASS。
+
 ## 2026-05-31 — ページ操作時の全レイヤー位置保持を補強 / v0.6.219
 
 ### 症状

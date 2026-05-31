@@ -139,7 +139,7 @@ def _tail_polygon_local_m(entry, tail) -> list[tuple[float, float]]:
         max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
-    pts_mm = balloon_tail_geom.polygon_for_tail(rect, tail)
+    pts_mm = balloon_tail_geom.joined_polygon_for_tail(rect, tail)
     pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
     ox, oy = _entry_local_offset_mm(entry)
     return [(mm_to_m(x + ox), mm_to_m(y + oy)) for x, y in pts_mm]
