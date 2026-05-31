@@ -304,6 +304,38 @@ def _fan_triangulate(
     return pts, tris
 
 
+def _open_ring_points(ring: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:
+    pts = [(float(x), float(y)) for x, y in ring]
+    if len(pts) >= 2 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    return pts
+
+
+def _ring_has_concavity(ring: Sequence[tuple[float, float]]) -> bool:
+    pts = _open_ring_points(ring)
+    n = len(pts)
+    if n < 4:
+        return False
+    sign = 0
+    for i in range(n):
+        p0 = pts[(i - 1) % n]
+        p1 = pts[i]
+        p2 = pts[(i + 1) % n]
+        v1x = p1[0] - p0[0]
+        v1y = p1[1] - p0[1]
+        v2x = p2[0] - p1[0]
+        v2y = p2[1] - p1[1]
+        cross = v1x * v2y - v1y * v2x
+        if abs(cross) <= 1.0e-12:
+            continue
+        current = 1 if cross > 0.0 else -1
+        if sign == 0:
+            sign = current
+        elif sign != current:
+            return True
+    return False
+
+
 def _bmesh_triangulate(
     outer_ring: Sequence[tuple[float, float]],
     holes: Sequence[Sequence[tuple[float, float]]],
@@ -382,6 +414,10 @@ def _build_fill_mesh(
     """
     if holes:
         pts, faces = _bmesh_triangulate(outer_ring, holes)
+    elif _ring_has_concavity(outer_ring):
+        pts, faces = balloon_line_mesh._triangulate_polygon(outer_ring, holes)
+        if not faces:
+            pts, faces = _bmesh_triangulate(outer_ring, holes)
     else:
         pts, faces = _fan_triangulate(outer_ring, holes)
     mesh.clear_geometry()

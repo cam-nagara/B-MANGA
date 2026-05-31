@@ -36,6 +36,40 @@ def _mesh_bounds_xy(obj) -> tuple[float, float, float, float]:
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _point_in_tri(px: float, py: float, a, b, c) -> bool:
+    v0x = c.x - a.x
+    v0y = c.y - a.y
+    v1x = b.x - a.x
+    v1y = b.y - a.y
+    v2x = px - a.x
+    v2y = py - a.y
+    dot00 = v0x * v0x + v0y * v0y
+    dot01 = v0x * v1x + v0y * v1y
+    dot02 = v0x * v2x + v0y * v2y
+    dot11 = v1x * v1x + v1y * v1y
+    dot12 = v1x * v2x + v1y * v2y
+    denom = dot00 * dot11 - dot01 * dot01
+    if abs(denom) <= 1.0e-14:
+        return False
+    inv = 1.0 / denom
+    u = (dot11 * dot02 - dot01 * dot12) * inv
+    v = (dot00 * dot12 - dot01 * dot02) * inv
+    return u >= -1.0e-6 and v >= -1.0e-6 and (u + v) <= 1.0 + 1.0e-6
+
+
+def _mesh_covers_point(obj, point_xy: tuple[float, float]) -> bool:
+    px, py = point_xy
+    verts = obj.data.vertices
+    for poly in obj.data.polygons:
+        indices = list(poly.vertices)
+        if len(indices) != 3:
+            continue
+        a, b, c = (verts[i].co for i in indices)
+        if _point_in_tri(px, py, a, b, c):
+            return True
+    return False
+
+
 def _create_balloon(context, page, parent_key):
     from bname_dev_tail_inward_check.operators import balloon_op
     from bname_dev_tail_inward_check.utils import balloon_curve_object
@@ -126,6 +160,8 @@ def main() -> None:
             raise AssertionError(f"内向きしっぽが外へ突き出しています: line={line_min_x:.4f}, fill={fill_min_x:.4f}")
         if line_max_x < 0.052 or fill_max_x < 0.050:
             raise AssertionError(f"外向きしっぽが外形に反映されていません: line={line_max_x:.4f}, fill={fill_max_x:.4f}")
+        if _mesh_covers_point(fill_obj, (-0.050, 0.012)):
+            raise AssertionError("内向きしっぽの外側へ塗りがはみ出しています")
         print(f"BNAME_BALLOON_TAIL_INWARD_JOIN_OK {OUT_PATH}", flush=True)
     finally:
         if mod is not None:
