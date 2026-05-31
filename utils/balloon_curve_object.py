@@ -15,7 +15,7 @@ from . import balloon_fill_mesh
 from . import balloon_line_mesh
 from . import balloon_multiline_curve
 from . import balloon_render_contract as render_contract
-from . import balloon_shapes
+from . import balloon_shapes, corner_radius
 from . import coma_content_mask
 from . import free_transform
 from . import layer_object_sync as los
@@ -1158,7 +1158,9 @@ def _geometry_key_for_entry(entry) -> str:
         "center": _entry_center_offset(entry),
         "free_transform": free_transform.entry_snapshot(entry),
         "rounded": bool(getattr(entry, "rounded_corner_enabled", False)),
-        "rounded_radius": float(getattr(entry, "rounded_corner_radius_mm", 0.0) or 0.0),
+        "rounded_radius": corner_radius.radius_for_balloon_entry(entry),
+        "rounded_radius_unit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
+        "rounded_radius_percent": float(getattr(entry, "rounded_corner_radius_percent", 0.0) or 0.0),
         "line_style": str(getattr(entry, "line_style", "") or ""),
         "line_width": float(getattr(entry, "line_width_mm", 0.3) or 0.0),
         "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 100.0) or 0.0),

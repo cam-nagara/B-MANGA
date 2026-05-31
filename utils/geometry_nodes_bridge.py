@@ -8,7 +8,7 @@ from typing import Any
 
 import bpy
 
-from . import log
+from . import corner_radius, log
 
 _logger = log.get_logger(__name__)
 
@@ -2837,6 +2837,9 @@ def effect_values(
     for field, spec in _EFFECT_FIELD_SPECS.items():
         raw = getattr(params, field, spec.default) if params is not None else spec.default
         values[spec.name] = _socket_value_for_spec(field, spec, raw)
+    if params is not None:
+        values["始点 角半径"] = corner_radius.radius_for_effect_params(params, "start", width, height)
+        values["終点 角半径"] = corner_radius.radius_for_effect_params(params, "end", width, height)
     values["種類"] = _EFFECT_CODES.get(effect_type, 0)
     return values
 
@@ -2881,7 +2884,7 @@ def balloon_values(entry) -> dict[str, Any]:
         "中心点 X": float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
         "中心点 Y": float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
         "角丸": bool(getattr(entry, "rounded_corner_enabled", False)),
-        "角半径": float(getattr(entry, "rounded_corner_radius_mm", 3.0) or 0.0),
+        "角半径": corner_radius.radius_for_balloon_entry(entry),
         "線種": _enum_code("line_style", getattr(entry, "line_style", "")),
         "多重線本数": int(getattr(entry, "multi_line_count", 3) or 3),
         "多重線幅": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),

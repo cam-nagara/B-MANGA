@@ -16,7 +16,7 @@ from bpy.props import (
 )
 
 from . import balloon
-from ..utils import log
+from ..utils import corner_radius, log
 
 _logger = log.get_logger(__name__)
 
@@ -70,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 12
+EFFECT_PARAM_SCHEMA_VERSION = 13
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -85,6 +85,8 @@ EFFECT_PARAM_FIELDS = (
     "start_to_coma_frame",
     "start_rounded_corner_enabled",
     "start_rounded_corner_radius_mm",
+    "start_rounded_corner_radius_unit",
+    "start_rounded_corner_radius_percent",
     "start_cloud_bump_width_mm",
     "start_cloud_bump_width_jitter",
     "start_cloud_bump_height_mm",
@@ -97,6 +99,8 @@ EFFECT_PARAM_FIELDS = (
     "end_shape",
     "end_rounded_corner_enabled",
     "end_rounded_corner_radius_mm",
+    "end_rounded_corner_radius_unit",
+    "end_rounded_corner_radius_percent",
     "end_cloud_bump_width_mm",
     "end_cloud_bump_width_jitter",
     "end_cloud_bump_height_mm",
@@ -330,6 +334,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     start_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
+    start_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_params_changed)  # type: ignore[valid-type]
+    start_rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     start_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -343,6 +349,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     end_shape: EnumProperty(name="終点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     end_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_params_changed)  # type: ignore[valid-type]
+    end_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_params_changed)  # type: ignore[valid-type]
+    end_rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
     end_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]

@@ -3,6 +3,29 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-05-31 — 角丸の角半径を%指定に対応 / v0.6.215
+
+### 症状
+- フキダシや効果線の角丸は、角半径をmmでしか指定できなかった。
+- サイズ違いの矩形で同じ丸み比率にしたい場合、幅や高さに合わせて角半径を手で計算する必要があった。
+
+### 原因
+- 角半径の入力値を実寸だけで保存・生成しており、短辺に対する割合指定を持っていなかった。
+
+### 修正
+- フキダシと効果線の角丸に、角半径の「mm / %」切替を追加した。
+- %指定では、短辺側で作れる最大の丸みを100%として実寸へ換算するようにした。
+- 角半径の単位と%値を保存・読込・アセットサムネイル・リンク効果線の同期に反映した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_corner_radius_percent_check.py`: フキダシと効果線の%指定が実寸角半径へ換算されること、保存/読込、表示値、0%時の扱いを確認。PASS。
+- `test/blender_effect_line_frame_spacing_check.py`: 効果線の始点/終点形状と間隔計算の回帰を確認。PASS。
+- `test/blender_asset_thumbnail_patterns_check.py`: 角丸フキダシを含むアセット登録とサムネイル生成の回帰を確認。PASS。
+- `test/blender_bname_ui_inventory_visual_audit.py`: B-Nameパネルの主要表示が欠けていないことを確認。PASS。
+- `python -m pytest --confcutdir=test test/test_paths.py test/test_stroke_style.py test/test_view_event_region.py`: 14 passed。
+- `python -m compileall ...`: 変更対象の構文チェック。PASS。
+- 既存の古いジオメトリノード前提テスト2件は、現在のフキダシ実体化後の表示方式と前提が合わず失敗することを確認した。
+
 ## 2026-05-31 — レイヤー一覧の左寄せと高さを調整 / v0.6.214
 
 ### 症状

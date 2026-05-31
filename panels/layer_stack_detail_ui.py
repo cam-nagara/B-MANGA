@@ -11,6 +11,7 @@ from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
 from ..utils import balloon_shapes
 from ..utils import gpencil as gp_utils
+from . import corner_radius_ui
 
 
 def _zero_based_layer_name(prefix: str, value: str, width: int) -> str:
@@ -175,9 +176,9 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         settings.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
     if balloon_shapes.normalize_shape(entry.shape) == "rect":
         settings.prop(entry, "rounded_corner_enabled")
-        sub = settings.row()
+        sub = settings.column(align=True)
         sub.enabled = entry.rounded_corner_enabled
-        sub.prop(entry, "rounded_corner_radius_mm")
+        corner_radius_ui.draw_corner_radius(sub, entry)
 
     line_box = box.box()
     line_box.label(text="線・塗り")
@@ -404,9 +405,9 @@ def _draw_effect_shape_settings(box, params, prefix: str, label: str, *, frame_t
     if shape == "rect":
         rounded_attr = f"{prefix}_rounded_corner_enabled"
         content.prop(params, rounded_attr)
-        sub = content.row()
+        sub = content.column(align=True)
         sub.enabled = bool(getattr(params, rounded_attr))
-        sub.prop(params, f"{prefix}_rounded_corner_radius_mm")
+        corner_radius_ui.draw_corner_radius(sub, params, prefix=f"{prefix}_rounded_corner")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
         row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_bump_width_mm")

@@ -921,6 +921,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "opacityUnit": "percent",
         "roundedCornerEnabled": bool(entry.rounded_corner_enabled),
         "roundedCornerRadiusMm": round(entry.rounded_corner_radius_mm, 3),
+        "roundedCornerRadiusUnit": str(getattr(entry, "rounded_corner_radius_unit", "mm") or "mm"),
+        "roundedCornerRadiusPercent": round(float(getattr(entry, "rounded_corner_radius_percent", 30.0)), 3),
         "lineStyle": entry.line_style,
         "lineWidthMm": round(entry.line_width_mm, 3),
         "multiLineCount": int(getattr(entry, "multi_line_count", 3) or 3),
@@ -1027,6 +1029,11 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     entry.rounded_corner_enabled = bool(data.get("roundedCornerEnabled", False))
     entry.rounded_corner_radius_mm = float(data.get("roundedCornerRadiusMm", 3.0))
+    if hasattr(entry, "rounded_corner_radius_unit"):
+        unit = str(data.get("roundedCornerRadiusUnit", "mm") or "mm")
+        entry.rounded_corner_radius_unit = unit if unit in {"mm", "percent"} else "mm"
+    if hasattr(entry, "rounded_corner_radius_percent"):
+        entry.rounded_corner_radius_percent = float(data.get("roundedCornerRadiusPercent", 30.0))
     line_style = str(data.get("lineStyle", "solid") or "solid")
     entry.line_style = "double" if line_style == "multi" else line_style
     entry.line_width_mm = float(data.get("lineWidthMm", 0.3))

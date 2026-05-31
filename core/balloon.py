@@ -20,7 +20,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from ..utils import log
+from ..utils import corner_radius, log
 
 _logger = log.get_logger(__name__)
 
@@ -322,6 +322,8 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 角丸 (全形状共通オプション、計画書 3.1.4.2a)
     rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 線・塗り
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]

@@ -213,6 +213,16 @@ def _draw_balloon_tails(layout, entry, page) -> None:
         row.prop(tail, "end_y_mm")
 
 
+def _draw_corner_radius(layout, owner, *, prefix: str = "rounded_corner", text: str = "角半径") -> None:
+    row = layout.row(align=True)
+    unit_attr = f"{prefix}_radius_unit"
+    if str(getattr(owner, unit_attr, "mm") or "mm") == "percent":
+        row.prop(owner, f"{prefix}_radius_percent", text=text)
+    else:
+        row.prop(owner, f"{prefix}_radius_mm", text=text)
+    row.prop(owner, unit_attr, text="")
+
+
 def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
@@ -239,9 +249,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         box.prop(entry, "custom_preset_name")
     if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) == "rect":
         box.prop(entry, "rounded_corner_enabled")
-        sub = box.row()
+        sub = box.column(align=True)
         sub.enabled = bool(getattr(entry, "rounded_corner_enabled", False))
-        sub.prop(entry, "rounded_corner_radius_mm")
+        _draw_corner_radius(sub, entry)
     sp = getattr(entry, "shape_params", None)
     if (
         sp is not None

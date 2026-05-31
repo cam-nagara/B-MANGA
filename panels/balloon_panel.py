@@ -7,6 +7,7 @@ from bpy.types import Panel, UIList
 
 from ..core.work import get_active_page
 from ..utils import balloon_shapes
+from . import corner_radius_ui
 B_NAME_CATEGORY = "B-Name"
 
 
@@ -108,9 +109,9 @@ class BNAME_PT_balloons(Panel):
         box.prop(entry, "opacity", slider=True)
         if balloon_shapes.normalize_shape(entry.shape) == "rect":
             box.prop(entry, "rounded_corner_enabled")
-            sub = box.row()
+            sub = box.column(align=True)
             sub.enabled = entry.rounded_corner_enabled
-            sub.prop(entry, "rounded_corner_radius_mm")
+            corner_radius_ui.draw_corner_radius(sub, entry)
 
         # 親子連動つき平行移動
         box = layout.box()

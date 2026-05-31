@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import corner_radius
 from .geom import Rect
 
 MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
@@ -70,7 +71,7 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         shape,
         rect,
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
-        rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
         cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),
@@ -103,7 +104,7 @@ def outline_with_corners_for_entry(
         shape,
         rect,
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
-        rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
         cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),
@@ -127,7 +128,7 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
         shape,
         rect,
         rounded_corner_enabled=bool(getattr(entry, "rounded_corner_enabled", False)),
-        rounded_corner_radius_mm=float(getattr(entry, "rounded_corner_radius_mm", 0.0)),
+        rounded_corner_radius_mm=corner_radius.radius_for_balloon_entry(entry, rect),
         cloud_bump_width_mm=float(getattr(sp, "cloud_bump_width_mm", 10.0)),
         cloud_bump_width_jitter=float(getattr(sp, "cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(sp, "cloud_bump_height_mm", 4.0)),

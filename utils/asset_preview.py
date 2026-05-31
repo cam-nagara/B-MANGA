@@ -741,7 +741,7 @@ def _draw_preview_balloon(
 ) -> None:
     data = entry.get("data") if isinstance(entry.get("data"), dict) else {}
     try:
-        from . import balloon_shapes
+        from . import balloon_shapes, corner_radius
         from .geom import Rect
 
         box = _preview_bounds_for_entry(entry)
@@ -752,7 +752,13 @@ def _draw_preview_balloon(
             str(data.get("shape", "ellipse") or "ellipse"),
             Rect(0.0, 0.0, max(0.1, width_mm), max(0.1, height_mm)),
             rounded_corner_enabled=bool(data.get("rounded_corner_enabled", False)),
-            rounded_corner_radius_mm=float(data.get("rounded_corner_radius_mm", 0.0) or 0.0),
+            rounded_corner_radius_mm=corner_radius.radius_from_values(
+                unit=str(data.get("rounded_corner_radius_unit", "mm") or "mm"),
+                radius_mm=float(data.get("rounded_corner_radius_mm", 0.0) or 0.0),
+                radius_percent=float(data.get("rounded_corner_radius_percent", 0.0) or 0.0),
+                width_mm=width_mm,
+                height_mm=height_mm,
+            ),
             cloud_bump_width_mm=float(params.get("cloud_bump_width_mm", 10.0) or 10.0),
             cloud_bump_width_jitter=float(params.get("cloud_bump_width_jitter", 0.0) or 0.0),
             cloud_bump_height_mm=float(params.get("cloud_bump_height_mm", 4.0) or 4.0),

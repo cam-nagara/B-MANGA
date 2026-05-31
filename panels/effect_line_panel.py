@@ -6,6 +6,7 @@ import bpy
 from bpy.types import Panel
 
 from ..utils import balloon_shapes, effect_inout_curve
+from . import corner_radius_ui
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -24,9 +25,9 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
     if shape == "rect":
         rounded_attr = f"{prefix}_rounded_corner_enabled"
         content.prop(params, rounded_attr)
-        sub = content.row()
+        sub = content.column(align=True)
         sub.enabled = bool(getattr(params, rounded_attr))
-        sub.prop(params, f"{prefix}_rounded_corner_radius_mm")
+        corner_radius_ui.draw_corner_radius(sub, params, prefix=f"{prefix}_rounded_corner")
     if balloon_shapes.is_dynamic_meldex_shape(shape):
         row = content.row(align=True)
         row.prop(params, f"{prefix}_cloud_bump_width_mm")

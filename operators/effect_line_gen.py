@@ -14,7 +14,7 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..utils import balloon_shapes, effect_inout_curve, log
+from ..utils import balloon_shapes, corner_radius, effect_inout_curve, log
 from ..utils.geom import Rect, mm_to_m
 from . import effect_line_radial_spacing
 _logger = log.get_logger(__name__)
@@ -151,7 +151,7 @@ def _shape_outline(
         shape,
         rect,
         rounded_corner_enabled=bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)),
-        rounded_corner_radius_mm=float(getattr(params, f"{prefix}_rounded_corner_radius_mm", 0.0)),
+        rounded_corner_radius_mm=corner_radius.radius_for_effect_params(params, prefix, rect.width, rect.height),
         cloud_bump_width_mm=float(getattr(params, f"{prefix}_cloud_bump_width_mm", 10.0)),
         cloud_bump_width_jitter=float(getattr(params, f"{prefix}_cloud_bump_width_jitter", 0.0)),
         cloud_bump_height_mm=float(getattr(params, f"{prefix}_cloud_bump_height_mm", 4.0)),
@@ -205,8 +205,9 @@ def _shape_guide_uses_smooth_bezier(params, prefix: str, *, frame_outline: bool 
     if shape in {"polygon", "octagon", "diamond", "hexagon", "star", "thorn", "spike_straight"}:
         return False
     if shape == "rect":
-        return bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)) and (
-            float(getattr(params, f"{prefix}_rounded_corner_radius_mm", 0.0)) > 0.0
+        return bool(getattr(params, f"{prefix}_rounded_corner_enabled", False)) and corner_radius.has_positive_value(
+            params,
+            prefix=f"{prefix}_rounded_corner",
         )
     return shape in {"ellipse", "cloud", "fluffy", "thorn-curve", "spike_curve", "pill"}
 
