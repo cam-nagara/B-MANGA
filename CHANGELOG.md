@@ -18,7 +18,7 @@ Blender 5.1.1 を対象としています。
 - 効果線を初めて表示する時にも、不足していれば従来通り自動準備する保険を維持した。
 
 ### 検証 (Blender 5.1.2 実機/ヘッドレス)
-- `test/blender_addon_enable_lazy_effect_nodes_check.py`: アドオン有効化だけでは効果線表示用データが作られず、新規作品作成時に作られ、保存した作品ファイルにも残ることを確認。PASS。
+- `test/blender_addon_enable_lazy_effect_nodes_check.py`: アドオン有効化だけでは効果線表示用データが作られず、新規作品作成時に作られ、保存した作品ファイルにも残ること、古い作品相当の欠損状態から補完できること、アドオン無効化で遅延準備が解除されることを確認。PASS。
 - `test/blender_effect_line_end_fill_check.py`: 効果線の終点形状の塗り表示が維持されることを確認。PASS。
 - `test/blender_layer_panel_no_redraw_loop_check.py`: レイヤーパネル表示中の再描画ループ抑止を確認。PASS。
 - `python -m compileall -q core operators utils panels test __init__.py`: PASS。
