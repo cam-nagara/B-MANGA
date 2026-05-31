@@ -9,6 +9,7 @@ from ..core.mode import MODE_COMA, MODE_PAGE, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
     balloon_curve_object,
+    balloon_merge_object,
     geom,
     gp_layer_parenting as gp_parent,
     layer_stack as layer_stack_utils,
@@ -30,9 +31,16 @@ def _move_panel(panel, dx_mm: float, dy_mm: float) -> None:
 
 
 def _move_balloon(page, balloon, dx_mm: float, dy_mm: float) -> None:
-    with balloon_curve_object.suspend_auto_sync():
+    if abs(float(dx_mm)) <= 1.0e-9 and abs(float(dy_mm)) <= 1.0e-9:
+        return
+    with balloon_curve_object.defer_auto_sync():
         balloon.x_mm += dx_mm
         balloon.y_mm += dy_mm
+    with balloon_curve_object.suspend_auto_sync():
+        balloon_curve_object.on_balloon_entry_changed(balloon)
+    if page is not None and str(getattr(balloon, "merge_group_id", "") or ""):
+        bpy.context.view_layer.update()
+        balloon_merge_object.sync_groups_for_page(bpy.context.scene, get_work(bpy.context), page)
     bid = str(getattr(balloon, "id", "") or "")
     if not bid:
         return

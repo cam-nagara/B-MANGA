@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 
 from ..core.work import get_work
-from ..utils import balloon_tail_geom, layer_stack as layer_stack_utils
+from ..utils import balloon_curve_object, balloon_merge_object, balloon_tail_geom, layer_stack as layer_stack_utils
 from . import balloon_op, balloon_tail_op
 
 
@@ -191,11 +191,18 @@ def _apply_point_drag(tool, page, dx: float, dy: float) -> None:
     point_index = int(getattr(tool, "_tail_drag_point_index", -1))
     points = list(getattr(tool, "_tail_drag_points", []) or [])
     if 0 <= tail_index < len(entry.tails) and 0 <= point_index < len(points):
-        balloon_tail_geom.set_point(
-            entry.tails[tail_index],
-            point_index,
-            (points[point_index][0] + dx, points[point_index][1] + dy),
-        )
+        with balloon_curve_object.defer_auto_sync():
+            changed = balloon_tail_geom.set_point(
+                entry.tails[tail_index],
+                point_index,
+                (points[point_index][0] + dx, points[point_index][1] + dy),
+            )
+        if changed:
+            with balloon_curve_object.suspend_auto_sync():
+                balloon_curve_object.on_balloon_entry_changed(entry)
+            if str(getattr(entry, "merge_group_id", "") or ""):
+                bpy.context.view_layer.update()
+                balloon_merge_object.sync_groups_for_page(bpy.context.scene, get_work(bpy.context), page)
 
 
 def _find_page(work, page_id: str):

@@ -6,12 +6,14 @@ from collections import defaultdict
 
 import bpy
 from mathutils import Vector
-from mathutils.geometry import tessellate_polygon
 
+from . import balloon_fill_mesh
+from . import balloon_line_mesh
 from . import balloon_curve_object as bco
 from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
+from . import python_deps
 
 _logger = log.get_logger(__name__)
 
@@ -21,7 +23,8 @@ PROP_MERGE_DISPLAY_KIND = "bname_balloon_merge_display_kind"
 PROP_MERGE_GROUP_ID = "bname_balloon_merge_group_id"
 PROP_MERGE_SOURCE_IDS = "bname_balloon_merge_source_ids"
 
-_TEMP_PREFIX = "__bname_balloon_merge_tmp_"
+_UNION_OVERLAP_M = 1.0e-7
+_LINE_Z_OFFSET_M = 0.00004
 
 
 def sync_groups_for_page(scene: bpy.types.Scene, work, page) -> None:
@@ -56,12 +59,29 @@ def _sync_source_visibility(page, groups: dict[str, list[object]]) -> None:
     }
     for entry in getattr(page, "balloons", []) or []:
         balloon_id = str(getattr(entry, "id", "") or "")
-        obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
-        if obj is None:
-            continue
         hidden = balloon_id in merged_ids or not bool(getattr(entry, "visible", True))
+        _set_source_display_hidden(balloon_id, hidden)
+
+
+def _set_source_display_hidden(balloon_id: str, hidden: bool) -> None:
+    if not balloon_id:
+        return
+    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    if obj is not None:
         obj.hide_viewport = hidden
         obj.hide_render = hidden
+    for candidate in bpy.data.objects:
+        if _is_generated_balloon_display(candidate, balloon_id):
+            candidate.hide_viewport = hidden
+            candidate.hide_render = hidden
+
+
+def _is_generated_balloon_display(obj: bpy.types.Object, balloon_id: str) -> bool:
+    owner = str(obj.get(balloon_fill_mesh.PROP_BALLOON_FILL_MESH_OWNER_ID, "") or "")
+    if owner == balloon_id:
+        return True
+    owner = str(obj.get(balloon_line_mesh.PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
+    return owner == balloon_id
 
 
 def _cleanup_group_objects(valid_group_ids) -> None:
@@ -219,84 +239,14 @@ def _sample_cubic_vec(p0: Vector, h0: Vector, h1: Vector, p1: Vector, t: float) 
 
 
 def _build_union_mesh(group_id: str, polygons, style_entry) -> bpy.types.Mesh | None:
-    temp_objects = _make_temp_prisms(group_id, polygons)
-    try:
-        base = _boolean_union(temp_objects)
-        if base is None:
-            return None
-        return _mesh_from_union(group_id, base.data, style_entry)
-    finally:
-        for obj in temp_objects:
-            if obj.name in bpy.data.objects:
-                data = getattr(obj, "data", None)
-                bpy.data.objects.remove(obj, do_unlink=True)
-                _remove_unused_mesh(data)
-
-
-def _make_temp_prisms(group_id: str, polygons) -> list[bpy.types.Object]:
-    objects = []
-    for index, polygon in enumerate(polygons):
-        mesh = _prism_mesh(f"{_TEMP_PREFIX}{group_id}_{index}_mesh", polygon)
-        if mesh is None:
-            continue
-        obj = bpy.data.objects.new(f"{_TEMP_PREFIX}{group_id}_{index}", mesh)
-        bpy.context.scene.collection.objects.link(obj)
-        obj.hide_viewport = True
-        obj.hide_render = True
-        objects.append(obj)
-    return objects
-
-
-def _prism_mesh(name: str, polygon) -> bpy.types.Mesh | None:
-    pts = _ccw(_dedupe_polygon(polygon))
-    if len(pts) < 3:
+    union = _union_source_polygons(polygons)
+    if union is None:
         return None
-    half = 0.00005
-    verts = [(x, y, half) for x, y in pts] + [(x, y, -half) for x, y in pts]
-    tris = tessellate_polygon([[Vector((x, y, half)) for x, y in pts]])
-    faces = [tuple(tri) for tri in tris]
-    count = len(pts)
-    faces.extend(tuple(count + i for i in reversed(tri)) for tri in tris)
-    for i in range(count):
-        faces.append((i, (i + 1) % count, count + (i + 1) % count, count + i))
-    mesh = bpy.data.meshes.new(name)
-    mesh.from_pydata(verts, [], faces)
-    mesh.update()
-    return mesh
-
-
-def _boolean_union(objects: list[bpy.types.Object]) -> bpy.types.Object | None:
-    if not objects:
-        return None
-    base = objects[0]
-    for other in objects[1:]:
-        mod = base.modifiers.new("B-Name フキダシ結合", "BOOLEAN")
-        mod.operation = "UNION"
-        try:
-            mod.solver = "EXACT"
-        except Exception:  # noqa: BLE001
-            pass
-        mod.object = other
-        _apply_modifier(base, mod)
-    return base
-
-
-def _apply_modifier(obj: bpy.types.Object, modifier) -> None:
-    view_layer = bpy.context.view_layer
-    view_layer.objects.active = obj
-    for selected in tuple(getattr(bpy.context, "selected_objects", []) or []):
-        selected.select_set(False)
-    obj.select_set(True)
-    with bpy.context.temp_override(object=obj, active_object=obj, selected_objects=[obj]):
-        bpy.ops.object.modifier_apply(modifier=modifier.name)
-
-
-def _mesh_from_union(group_id: str, source_mesh: bpy.types.Mesh, style_entry) -> bpy.types.Mesh:
-    source_mesh.update(calc_edges=True)
-    top_polys = [poly for poly in source_mesh.polygons if float(poly.normal.z) > 0.5]
     mesh = bpy.data.meshes.new(f"{MERGE_NAME_PREFIX}{group_id}_mesh")
-    verts, faces, material_indices = _top_faces(source_mesh, top_polys)
-    _append_outline_quads(source_mesh, top_polys, verts, faces, material_indices, style_entry)
+    verts, faces, material_indices = _mesh_parts_from_union(union, style_entry)
+    if not faces or len(verts) < 3:
+        _remove_unused_mesh(mesh)
+        return None
     mesh.from_pydata(verts, [], faces)
     mesh.update()
     line_mat = bco._ensure_balloon_curve_material(  # noqa: SLF001
@@ -312,63 +262,107 @@ def _mesh_from_union(group_id: str, source_mesh: bpy.types.Mesh, style_entry) ->
     return mesh
 
 
-def _top_faces(source_mesh, top_polys):
-    vertex_map: dict[int, int] = {}
+def _union_source_polygons(polygons):
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    source = []
+    for points in polygons:
+        pts = _dedupe_polygon(points)
+        if len(pts) < 3:
+            continue
+        try:
+            poly = Polygon(_ccw(pts))
+            if not poly.is_valid:
+                poly = poly.buffer(0)
+            if poly.is_empty or poly.area <= 0.0:
+                continue
+            source.append(poly)
+        except Exception:  # noqa: BLE001
+            continue
+    if not source:
+        return None
+    try:
+        buffered = [poly.buffer(_UNION_OVERLAP_M, join_style=2, mitre_limit=50.0) for poly in source]
+        union = unary_union(buffered)
+        if union.is_empty:
+            return None
+        union = union.buffer(-_UNION_OVERLAP_M, join_style=2, mitre_limit=50.0)
+        if not union.is_valid:
+            union = union.buffer(0)
+        return None if union.is_empty or union.area <= 0.0 else union
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _mesh_parts_from_union(union, style_entry):
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, ...]] = []
     material_indices: list[int] = []
-    for poly in top_polys:
-        face = []
-        for vi in poly.vertices:
-            if vi not in vertex_map:
-                co = source_mesh.vertices[vi].co
-                vertex_map[vi] = len(verts)
-                verts.append((float(co.x), float(co.y), 0.0))
-            face.append(vertex_map[vi])
-        if len(face) >= 3:
-            faces.append(tuple(face))
-            material_indices.append(1)
+    for poly in _iter_polygons(union):
+        outer, holes = _polygon_to_outer_holes(poly)
+        pts, tris = balloon_line_mesh._triangulate_polygon(outer, holes)  # noqa: SLF001
+        if not tris or len(pts) < 3:
+            continue
+        base = len(verts)
+        verts.extend((float(x), float(y), 0.0) for x, y in pts)
+        faces.extend(tuple(index + base for index in tri) for tri in tris)
+        material_indices.extend([1] * len(tris))
+    for outer, holes in _line_band_polygons(union, style_entry):
+        pts, tris = balloon_line_mesh._triangulate_polygon(outer, holes)  # noqa: SLF001
+        if not tris or len(pts) < 3:
+            continue
+        base = len(verts)
+        verts.extend((float(x), float(y), _LINE_Z_OFFSET_M) for x, y in pts)
+        faces.extend(tuple(index + base for index in tri) for tri in tris)
+        material_indices.extend([0] * len(tris))
     return verts, faces, material_indices
 
 
-def _append_outline_quads(source_mesh, top_polys, verts, faces, material_indices, style_entry) -> None:
+def _iter_polygons(geom):
+    if geom is None or geom.is_empty:
+        return []
+    if geom.geom_type == "Polygon":
+        return [geom]
+    if geom.geom_type == "MultiPolygon":
+        return [poly for poly in geom.geoms if not poly.is_empty and poly.area > 0.0]
+    try:
+        return [
+            poly
+            for poly in geom.geoms
+            if getattr(poly, "geom_type", "") == "Polygon" and not poly.is_empty and poly.area > 0.0
+        ]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _polygon_to_outer_holes(poly) -> tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]:
+    outer = [(float(x), float(y)) for x, y in poly.exterior.coords]
+    holes = [[(float(x), float(y)) for x, y in inner.coords] for inner in poly.interiors]
+    return outer, holes
+
+
+def _line_band_polygons(union, style_entry) -> list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]]:
     if str(getattr(style_entry, "line_style", "") or "") == "none":
-        return
-    top_counts: dict[tuple[int, int], int] = defaultdict(int)
-    for poly in top_polys:
-        for edge_key in poly.edge_keys:
-            top_counts[tuple(sorted(edge_key))] += 1
-    half = float(getattr(style_entry, "line_width_mm", 0.3) or 0.3) * 0.001 * 0.5
-    if half <= 0.0:
-        return
-    for edge_key, count in top_counts.items():
-        if count != 1:
-            continue
-        p0 = source_mesh.vertices[edge_key[0]].co
-        p1 = source_mesh.vertices[edge_key[1]].co
-        quad = _segment_quad((float(p0.x), float(p0.y)), (float(p1.x), float(p1.y)), half)
-        if quad is None:
-            continue
-        start = len(verts)
-        verts.extend((x, y, 0.00004) for x, y in quad)
-        faces.append((start, start + 1, start + 2, start + 3))
-        material_indices.append(0)
-
-
-def _segment_quad(p0, p1, half_width: float):
-    dx = float(p1[0]) - float(p0[0])
-    dy = float(p1[1]) - float(p0[1])
-    length = (dx * dx + dy * dy) ** 0.5
-    if length <= 1.0e-12:
-        return None
-    nx = -dy / length * half_width
-    ny = dx / length * half_width
-    return (
-        (p0[0] + nx, p0[1] + ny),
-        (p1[0] + nx, p1[1] + ny),
-        (p1[0] - nx, p1[1] - ny),
-        (p0[0] - nx, p0[1] - ny),
-    )
+        return []
+    width = max(0.0, float(getattr(style_entry, "line_width_mm", 0.3) or 0.0)) * 0.001
+    if width <= 1.0e-9:
+        return []
+    try:
+        band = union.boundary.buffer(width * 0.5, cap_style=2, join_style=2, mitre_limit=50.0)
+        if band.is_empty:
+            return []
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for poly in _iter_polygons(band):
+        outer, holes = _polygon_to_outer_holes(poly)
+        if len(outer) >= 3:
+            out.append((outer, holes))
+    return out
 
 
 def _balloon_z_index(scene, page, entry) -> int:

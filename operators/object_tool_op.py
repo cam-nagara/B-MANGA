@@ -1216,6 +1216,7 @@ class BNAME_OT_object_tool(Operator):
                             dy,
                         )
                     balloon_curve_object.on_balloon_entry_changed(entry)
+                    balloon_op._sync_balloon_merge_display_if_needed(page, entry)
                     continue
                 if self._drag_action == "center":
                     cx, cy = snapshot.get("center_offset", (0.0, 0.0))

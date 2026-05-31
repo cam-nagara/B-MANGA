@@ -21,6 +21,7 @@ from ..io import balloon_presets
 from ..ui import overlay_creation_range
 from ..utils import (
     balloon_curve_object,
+    balloon_merge_object,
     balloon_shapes,
     balloon_tail_geom,
     layer_stack as layer_stack_utils,
@@ -493,16 +494,30 @@ def _sync_active_balloon_stack_item(context, page, entry) -> None:
 def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
     dx = float(x_mm) - float(getattr(entry, "x_mm", 0.0))
     dy = float(y_mm) - float(getattr(entry, "y_mm", 0.0))
-    with balloon_curve_object.suspend_auto_sync():
-        entry.x_mm = float(x_mm)
-        entry.y_mm = float(y_mm)
     if abs(dx) <= 1.0e-9 and abs(dy) <= 1.0e-9:
         return
+    with balloon_curve_object.defer_auto_sync():
+        entry.x_mm = float(x_mm)
+        entry.y_mm = float(y_mm)
+    with balloon_curve_object.suspend_auto_sync():
+        balloon_curve_object.on_balloon_entry_changed(entry)
+    _sync_balloon_merge_display_if_needed(page, entry)
     bid = str(getattr(entry, "id", "") or "")
     for text in getattr(page, "texts", []):
         if getattr(text, "parent_balloon_id", "") == bid:
             text.x_mm += dx
             text.y_mm += dy
+
+
+def _sync_balloon_merge_display_if_needed(page, entry) -> None:
+    if page is None or not str(getattr(entry, "merge_group_id", "") or ""):
+        return
+    try:
+        scene = bpy.context.scene
+        bpy.context.view_layer.update()
+        balloon_merge_object.sync_groups_for_page(scene, get_work(bpy.context), page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon merge display sync failed")
 
 
 def _text_rect(entry) -> tuple[float, float, float, float]:
@@ -572,6 +587,7 @@ def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: flo
         entry.height_mm = new_rect[3]
     with balloon_curve_object.suspend_auto_sync():
         balloon_curve_object.on_balloon_entry_changed(entry)
+    _sync_balloon_merge_display_if_needed(page, entry)
     if transformed_curve:
         layer_stack_utils.tag_view3d_redraw(bpy.context)
 

@@ -27,6 +27,25 @@ def _load_addon():
     return mod
 
 
+def _bbox_x(obj) -> tuple[float, float]:
+    xs = [(obj.matrix_world @ vert.co).x for vert in obj.data.vertices]
+    return min(xs), max(xs)
+
+
+def _visible_generated_objects(balloon_id: str):
+    from bname_dev_balloon_merge_display.utils import balloon_fill_mesh, balloon_line_mesh
+
+    out = []
+    for obj in bpy.data.objects:
+        fill_owner = str(obj.get(balloon_fill_mesh.PROP_BALLOON_FILL_MESH_OWNER_ID, "") or "")
+        line_owner = str(obj.get(balloon_line_mesh.PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
+        if balloon_id not in {fill_owner, line_owner}:
+            continue
+        if not obj.hide_viewport or not obj.hide_render:
+            out.append(obj.name)
+    return out
+
+
 def main() -> None:
     mod = _load_addon()
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_merge_display_"))
@@ -89,6 +108,8 @@ def main() -> None:
         group_obj = object_naming.find_object_by_bname_id(group_id, kind="balloon_group")
         assert group_obj is not None, "結合表示オブジェクトがありません"
         assert group_obj.type == "MESH"
+        mod_names = [mod.name for mod in group_obj.modifiers]
+        assert "B-Name フキダシ結合" not in mod_names, f"結合用の一時処理が残っています: {mod_names}"
         assert not group_obj.hide_viewport and not group_obj.hide_render
         assert group_obj.hide_select
         mat_indices = {int(poly.material_index) for poly in group_obj.data.polygons}
@@ -98,6 +119,22 @@ def main() -> None:
             source = object_naming.find_object_by_bname_id(entry.id, kind="balloon")
             assert source is not None
             assert source.hide_viewport and source.hide_render, "元フキダシが表示に残っています"
+            visible_generated = _visible_generated_objects(str(entry.id))
+            assert not visible_generated, f"元フキダシの塗り/線が表示に残っています: {visible_generated}"
+
+        before_min_x, before_max_x = _bbox_x(group_obj)
+        balloon_op._move_balloon_with_texts(page, b1, float(b1.x_mm) + 40.0, float(b1.y_mm))
+        group_obj = object_naming.find_object_by_bname_id(group_id, kind="balloon_group")
+        assert group_obj is not None, "移動後に結合表示オブジェクトが消えました"
+        after_min_x, after_max_x = _bbox_x(group_obj)
+        assert after_max_x > before_max_x + 0.01, (before_min_x, before_max_x, after_min_x, after_max_x)
+        for entry in (b1, b2):
+            source = object_naming.find_object_by_bname_id(entry.id, kind="balloon")
+            assert source is not None and source.hide_viewport and source.hide_render
+            visible_generated = _visible_generated_objects(str(entry.id))
+            assert not visible_generated, f"移動後に元フキダシの塗り/線が表示に残っています: {visible_generated}"
+        leftovers = [obj.name for obj in bpy.data.objects if obj.name.startswith("__bname_balloon_merge_tmp_")]
+        assert not leftovers, f"一時オブジェクトが残っています: {leftovers}"
     finally:
         try:
             mod.unregister()
