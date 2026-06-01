@@ -279,6 +279,12 @@ def _reconcile_gpencil_collections(context, work) -> None:
         raster_layer_op.ensure_all_raster_runtime(context)
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: raster runtime sync failed")
+    try:
+        from . import page_content_visibility
+
+        page_content_visibility.apply_page_content_visibility(context, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("load_post: page content visibility sync failed")
 
 
 @persistent
@@ -315,6 +321,13 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
             _logger.exception("load_post: failed to sync work/pages json")
             return
         _sync_active_from_blend_path(scene, work, work_dir, blend_path)
+        try:
+            from . import page_content_visibility
+
+            if page_content_visibility.is_work_blend_scene(scene):
+                page_content_visibility.apply_page_content_visibility(bpy.context, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: initial page content visibility sync failed")
         from . import display_settings
 
         # 色管理の標準化はページ一覧 (work.blend) のみに適用する。
@@ -439,6 +452,16 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
     """通常の .blend 保存前に B-Name の JSON メタデータも同期する."""
     try:
         try:
+            from ..core.work import get_work as _get_work
+            from . import page_content_visibility
+
+            page_content_visibility.restore_all_virtual_hidden(
+                bpy.context,
+                _get_work(bpy.context),
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("B-Name page content visibility restore failed")
+        try:
             from . import coma_camera
 
             coma_camera.capture_camera_runtime_settings(bpy.context)
@@ -488,6 +511,17 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
         _logger.exception("B-Name save_pre handler failed")
 
 
+@persistent
+def _bname_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """保存後にページ一覧用の軽量表示を戻す."""
+    try:
+        from . import page_content_visibility
+
+        page_content_visibility.schedule_apply(bpy.context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("B-Name page content visibility reapply failed")
+
+
 def _remove_named_handler(handler_list, name: str) -> None:
     for h in list(handler_list):
         if getattr(h, "__name__", "") == name:
@@ -502,8 +536,10 @@ def register() -> None:
     # 既存の同名ハンドラを除去 (reload 対策)
     _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
     bpy.app.handlers.load_post.append(_bname_on_load_post)
     bpy.app.handlers.save_pre.append(_bname_on_save_pre)
+    bpy.app.handlers.save_post.append(_bname_on_save_post)
     _logger.debug("handlers registered")
 
 
@@ -533,6 +569,17 @@ def schedule_current_file_sync(retries: int = 3, interval: float = 0.15) -> None
 def unregister() -> None:
     global _current_file_sync_generation
     _current_file_sync_generation += 1
+    try:
+        from ..core.work import get_work as _get_work
+        from . import page_content_visibility
+
+        page_content_visibility.restore_all_virtual_hidden(
+            bpy.context,
+            _get_work(bpy.context),
+        )
+    except Exception:  # noqa: BLE001
+        pass
     _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
     _logger.debug("handlers unregistered")

@@ -665,8 +665,18 @@ def ensure_all_raster_runtime(context) -> int:
         mask_update_context = mask_apply.defer_view_updates()
     except Exception:  # noqa: BLE001
         mask_update_context = nullcontext()
+    try:
+        from ..utils import page_content_visibility
+    except Exception:  # noqa: BLE001
+        page_content_visibility = None
     with _bulk_raster_runtime(), mask_update_context:
         for entry in coll:
+            if page_content_visibility is not None:
+                try:
+                    if not page_content_visibility.raster_entry_in_detail_window(context, entry):
+                        continue
+                except Exception:  # noqa: BLE001
+                    pass
             if ensure_raster_plane(context, entry, mark_missing=True) is not None:
                 count += 1
     if count:

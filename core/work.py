@@ -32,6 +32,15 @@ from .work_info import BNameNombre, BNameWorkInfo
 _logger = log.get_logger(__name__)
 
 
+def _on_active_page_index_changed(_self, context) -> None:
+    try:
+        from ..utils import page_content_visibility
+
+        page_content_visibility.schedule_apply(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNameComaGap(bpy.types.PropertyGroup):
     """コマ間隔ルール (作品共通、計画書 3.2.5.4).
 
@@ -104,6 +113,7 @@ class BNameWorkData(bpy.types.PropertyGroup):
         name="アクティブページ",
         default=-1,
         min=-1,
+        update=_on_active_page_index_changed,
     )
 
     # --- ページ外レイヤー ---

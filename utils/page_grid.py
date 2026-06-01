@@ -438,6 +438,12 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         _work_info_text.sync_work_info_texts_after_page_transform(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: work info text update failed")
+    try:
+        from . import page_content_visibility as _page_content_visibility
+
+        _page_content_visibility.apply_page_content_visibility(context, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: page content visibility update failed")
     return updated
 
 
