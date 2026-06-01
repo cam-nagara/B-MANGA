@@ -251,7 +251,15 @@ def _split_area_for_page_browser(context, base_area, position: str, ratio: float
 
 
 def _fit_view_to_rect_mm(
-    context, area, region, x_mm: float, y_mm: float, w_mm: float, h_mm: float
+    context,
+    area,
+    region,
+    x_mm: float,
+    y_mm: float,
+    w_mm: float,
+    h_mm: float,
+    *,
+    tighten: float = _FIT_TIGHTEN,
 ) -> bool:
     """ビューを指定矩形 (mm) にフィット。トップ+正投影にする。
 
@@ -309,7 +317,7 @@ def _fit_view_to_rect_mm(
             # view_selected は四方向に大きめの余白を残すため、少しズーム
             # インして 3D ビューポート枠内によりフィットさせる。
             try:
-                rv3d.view_distance = float(rv3d.view_distance) * _FIT_TIGHTEN
+                rv3d.view_distance = float(rv3d.view_distance) * float(tighten)
             except Exception:  # noqa: BLE001
                 pass
         return True
@@ -376,6 +384,65 @@ def _overview_layout_bbox(work) -> tuple[float, float, float, float] | None:
     return (min_x, min_y, max_x - min_x, max_y - min_y)
 
 
+def _union_rects_mm(
+    rects: list[tuple[float, float, float, float]]
+) -> tuple[float, float, float, float] | None:
+    if not rects:
+        return None
+    min_x = min(x for x, _y, _w, _h in rects)
+    min_y = min(y for _x, y, _w, _h in rects)
+    max_x = max(x + w for x, _y, w, _h in rects)
+    max_y = max(y + h for _x, y, _w, h in rects)
+    return (min_x, min_y, max_x - min_x, max_y - min_y)
+
+
+def _active_page_rect_mm(scene, work) -> tuple[float, float, float, float] | None:
+    if work is None or len(work.pages) == 0:
+        return None
+    idx = int(getattr(work, "active_page_index", 0) or 0)
+    if idx < 0 or idx >= len(work.pages):
+        return None
+    p = work.paper
+    from ..utils import page_grid
+
+    ox, oy = page_grid.page_total_offset_mm(work, scene, idx)
+    return (ox, oy, float(p.canvas_width_mm), float(p.canvas_height_mm))
+
+
+def _page_fit_rect_mm(scene, work) -> tuple[tuple[float, float, float, float] | None, bool]:
+    active_rect = _active_page_rect_mm(scene, work)
+    if active_rect is None:
+        return None, False
+    try:
+        from ..utils import page_file_scene, page_preview_object
+
+        if (
+            not page_file_scene.is_page_edit_scene(scene)
+            or not page_preview_object.preview_enabled(scene)
+        ):
+            return active_rect, False
+        rects = [active_rect]
+        for _page_id, (_index, x0, y0, x1, y1) in page_preview_object.preview_rects_mm(
+            scene, work
+        ).items():
+            rects.append((float(x0), float(y0), float(x1 - x0), float(y1 - y0)))
+        fit_rect = _union_rects_mm(rects)
+        if fit_rect is None:
+            return active_rect, False
+        x, y, w, h = fit_rect
+        paper = work.paper
+        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0) or 30.0)
+        pad = max(
+            10.0,
+            min(float(paper.canvas_width_mm), float(paper.canvas_height_mm)) * 0.035,
+            gap * 0.25,
+        )
+        return (x - pad, y - pad, w + pad * 2.0, h + pad * 2.0), True
+    except Exception:  # noqa: BLE001
+        _logger.exception("page edit context fit failed")
+    return active_rect, False
+
+
 # ---------- オペレータ ----------
 
 
@@ -412,25 +479,16 @@ class BNAME_OT_view_fit_page(Operator):
             self.report({"ERROR"}, "3D ビューポートが見つかりません")
             return {"CANCELLED"}
         area, region, _rv3d = info
-        p = work.paper
-        # アクティブページの grid 上の実位置にフィットする (master GP / 見開きペア
-        # 配置で active page の world 座標は (0,0) とは限らないため)。
-        from ..utils import page_grid
-
-        cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
-        start_side = getattr(p, "start_side", "right")
-        read_direction = getattr(p, "read_direction", "left")
-        idx = max(0, work.active_page_index) if len(work.pages) > 0 else 0
-        ox, oy = page_grid.page_grid_offset_mm(
-            idx, cols, gap, p.canvas_width_mm, p.canvas_height_mm,
-            start_side, read_direction,
-        )
-        add_x, add_y = page_grid.page_manual_offset_mm(work.pages[idx])
-        ox += add_x
-        oy += add_y
+        fit_rect, includes_previews = _page_fit_rect_mm(scene, work)
+        if fit_rect is None:
+            self.report({"ERROR"}, "ページがありません")
+            return {"CANCELLED"}
         ok = _fit_view_to_rect_mm(
-            context, area, region, ox, oy, p.canvas_width_mm, p.canvas_height_mm
+            context,
+            area,
+            region,
+            *fit_rect,
+            tighten=1.0 if includes_previews else _FIT_TIGHTEN,
         )
         if not ok:
             self.report({"ERROR"}, "フィットに失敗しました")

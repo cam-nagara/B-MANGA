@@ -116,14 +116,14 @@ def _run() -> None:
     work = bpy.context.scene.bname_work
     _set_coma_variation(work)
     bpy.ops.bname.work_save()
-    bpy.ops.bname.open_page_file(index=3)
+    bpy.ops.bname.open_page_file(index=4)
     bpy.app.timers.register(_after_page_open, first_interval=1.0)
 
 
 def _after_page_open() -> None:
     scene = bpy.context.scene
     scene.bname_page_preview_enabled = True
-    scene.bname_page_preview_page_radius = 2
+    scene.bname_page_preview_page_radius = 3
     scene.bname_page_preview_resolution_percentage = 50.0
     from bname_dev_page_preview_visual.utils import page_preview_object
 
@@ -140,7 +140,9 @@ def _after_page_open() -> None:
     visible = _visible_preview_objects()
     data = {
         "work_blend": str(WORK_DIR / "work.blend"),
-        "page_blend": str(WORK_DIR / "p0004" / "page.blend"),
+        "page_blend": str(
+            WORK_DIR / str(getattr(scene, "bname_current_page_id", "")) / "page.blend"
+        ),
         "screenshot": str(SCREENSHOT),
         "current_page_id": str(getattr(scene, "bname_current_page_id", "")),
         "preview_radius": int(getattr(scene, "bname_page_preview_page_radius", -1)),
