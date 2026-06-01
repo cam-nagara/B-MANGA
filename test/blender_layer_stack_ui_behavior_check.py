@@ -356,6 +356,8 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerStack.bname"))
         assert "FINISHED" in result, result
+        result = bpy.ops.bname.open_page_file(index=0)
+        assert "FINISHED" in result, result
 
         from bname_dev.operators import effect_line_op
         from bname_dev.operators import layer_stack_op
@@ -656,18 +658,22 @@ def main() -> None:
 
         page_dx_mm, page_dy_mm = 7.0, -2.0
         _simulate_page_move(context, page, page_dx_mm, page_dy_mm)
+        from bname_dev.utils import page_file_scene
+
+        expected_page_content_dx = 0.0 if page_file_scene.is_page_edit_scene(context.scene) else page_dx_mm
+        expected_page_content_dy = 0.0 if page_file_scene.is_page_edit_scene(context.scene) else page_dy_mm
 
         _assert_close(page.offset_x_mm, before_page_offset[0] + page_dx_mm, "page x")
         _assert_close(page.offset_y_mm, before_page_offset[1] + page_dy_mm, "page y")
         after_page_gp_world = _gp_point_world_mm(_gp_obj, _first_gp_point(gp_layer))
         after_page_effect_world = effect_line_op.effect_layer_world_bounds(context, _eff_obj, effect_layer)
         assert after_page_effect_world is not None
-        _assert_close(after_page_gp_world[0] - before_page_gp_world[0], page_dx_mm, "page move gp world dx")
-        _assert_close(after_page_gp_world[1] - before_page_gp_world[1], page_dy_mm, "page move gp world dy")
-        _assert_close(after_page_effect_world[0] - before_page_effect_world[0], page_dx_mm, "page move effect world dx")
-        _assert_close(after_page_effect_world[1] - before_page_effect_world[1], page_dy_mm, "page move effect world dy")
-        _assert_close(m_to_mm(raster_obj.location.x - before_raster_object[0]), page_dx_mm, "page move raster object dx")
-        _assert_close(m_to_mm(raster_obj.location.y - before_raster_object[1]), page_dy_mm, "page move raster object dy")
+        _assert_close(after_page_gp_world[0] - before_page_gp_world[0], expected_page_content_dx, "page move gp world dx")
+        _assert_close(after_page_gp_world[1] - before_page_gp_world[1], expected_page_content_dy, "page move gp world dy")
+        _assert_close(after_page_effect_world[0] - before_page_effect_world[0], expected_page_content_dx, "page move effect world dx")
+        _assert_close(after_page_effect_world[1] - before_page_effect_world[1], expected_page_content_dy, "page move effect world dy")
+        _assert_close(m_to_mm(raster_obj.location.x - before_raster_object[0]), expected_page_content_dx, "page move raster object dx")
+        _assert_close(m_to_mm(raster_obj.location.y - before_raster_object[1]), expected_page_content_dy, "page move raster object dy")
         _assert_close(balloon.x_mm, before_page_balloon[0], "page move balloon local x")
         _assert_close(balloon.y_mm, before_page_balloon[1], "page move balloon local y")
         _assert_close(text_a.x_mm, before_page_text[0], "page move text local x")

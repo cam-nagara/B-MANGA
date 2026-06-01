@@ -3,6 +3,30 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-01 — ページ編集ファイルのページ選択と移動を整合 / v0.6.233
+
+### 症状
+- ページ編集ファイルでページリストから別ページを選ぶと、画面上のページは切り替わらないまま、レイヤー一覧だけが別ページ側へ寄る可能性があった。
+- ページ編集ファイルでページ自体を動かす操作をした時、現在ページは作業位置に固定される一方で、一部の中身だけが動く可能性があった。
+
+### 原因
+- ページ一覧ファイルとページ編集ファイルで、ページリストの選択処理が同じ扱いになっていた。
+- ページ編集ファイルでは現在ページを作業位置に固定する設計だが、ページ移動時の中身追従処理がその前提を見ていなかった。
+
+### 修正
+- ページ編集ファイルでページリストから別ページを選んだ場合、そのページ編集ファイルへ移るようにした。
+- 現在開いているページを選び直した場合は、ファイルを開き直さず、選択状態とレイヤー一覧だけを整えるようにした。
+- ページ編集ファイルでページ自体を動かしても、現在ページ内の中身が画面上で部分的にずれないようにした。
+- ページ編集ファイルの実機スクリーンショット確認を追加し、現在ページと周辺ページプレビューの表示をAI目視で確認した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_page_file_stage_check.py`: ページ編集ファイル内のページリストで別ページを選ぶと、そのページ編集ファイルへ移ることを確認。PASS。
+- `test/blender_page_file_preview_visual_check.py`: 実ファイルを作成し、現在ページと前後2ページ分のプレビュー画像が表示されることを実機スクリーンショットでAI目視確認。PASS。
+- `test/blender_layer_stack_ui_behavior_check.py`: ページ編集ファイルのレイヤー一覧、複数選択、名前編集、リンク、移動、コマ配下への移動、空行なし表示を確認。PASS。
+- `test/blender_page_operation_layer_stability_check.py`: ページ追加・複製・削除・入れ替えで、フキダシ、テキスト、効果線、ラスター、GP が不要にずれないことを確認。PASS。
+- `test/blender_page_list_lightweight_sync_check.py` / `test/blender_page_content_visibility_window_check.py` / `test/blender_layer_panel_page_list_check.py` / `test/blender_coma_preview_scale_check.py` / `test/blender_restructure_e2e.py`: ページ一覧、ページ内容表示、ページリスト、コマプレビュー、既存の作品・コマ用blendファイル経路を確認。PASS。
+- `python -m compileall __init__.py addons core io keymap operators panels typography ui utils test` / 全スクリプトAST解析 / `git diff --check`: 構文と差分を確認。PASS。
+
 ## 2026-06-01 — ページプレビュー範囲と画像解像度を設定可能に / v0.6.232
 
 ### 症状

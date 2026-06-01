@@ -13,6 +13,7 @@ from ..utils import (
     geom,
     gp_layer_parenting as gp_parent,
     layer_stack as layer_stack_utils,
+    page_file_scene,
     page_grid,
     shortcut_visibility,
 )
@@ -447,6 +448,11 @@ class BNAME_OT_layer_move_tool(Operator):
         if kind == "page":
             target.offset_x_mm += dx_mm
             target.offset_y_mm += dy_mm
+            if (
+                page_file_scene.is_page_edit_scene(context.scene)
+                and page_file_scene.current_page_id(context.scene) == str(getattr(target, "id", "") or "")
+            ):
+                return True
             layer_stack_utils.translate_gp_layers_for_parent_keys(
                 context, layer_stack_utils.gp_parent_keys_for_page(target), dx_mm, dy_mm
             )

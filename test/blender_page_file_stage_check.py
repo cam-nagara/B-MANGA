@@ -159,10 +159,11 @@ def main() -> None:
         assert bpy.data.collections.get("p0002") is None
         assert len(_page_preview_objects()) == 4
 
-        result = bpy.ops.bname.open_page_file(index=1)
+        result = bpy.ops.bname.page_select(index=1)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "page.blend").resolve()
         assert str(getattr(bpy.context.scene, "bname_current_page_id", "")) == "p0002"
+        assert int(getattr(bpy.context.scene.bname_work, "active_page_index", -1)) == 1
         assert bpy.data.collections.get("p0001") is None
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None

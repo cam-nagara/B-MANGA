@@ -452,9 +452,19 @@ class BNAME_OT_page_select(Operator):
             return {"CANCELLED"}
         if not page_range.page_in_range(work.pages[self.index]):
             return {"CANCELLED"}
-        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        role, current_page_id, _coma_id = page_file_scene.current_role(context)
+        if role == page_file_scene.ROLE_PAGE:
+            current_page_index = page_file_scene.find_page_index(work, current_page_id)
+            if self.index == current_page_index:
+                work.active_page_index = int(self.index)
+                context.scene.bname_overview_mode = False
+                _set_page_layer_active(context)
+                _sync_layer_stack_after_page_change(context)
+                return {"FINISHED"}
+            result = bpy.ops.bname.open_page_file(index=int(self.index))
+            return result if result == {"FINISHED"} else {"CANCELLED"}
         if self.index == work.active_page_index:
-            if role != page_file_scene.ROLE_PAGE and not bool(getattr(context.scene, "bname_overview_mode", True)):
+            if not bool(getattr(context.scene, "bname_overview_mode", True)):
                 context.scene.bname_overview_mode = True
                 _tag_screen_redraw(context)
             _set_page_layer_active(context)
