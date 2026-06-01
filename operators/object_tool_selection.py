@@ -13,6 +13,7 @@ from ..utils import (
     coma_hit_visibility,
     edge_selection,
     empty_layer_object,
+    free_transform,
     gp_layer_parenting as gp_parent,
     layer_stack as layer_stack_utils,
     object_naming as on,
@@ -626,6 +627,10 @@ def hit_shared_balloon_at_world(context, x_mm: float, y_mm: float) -> dict | Non
             continue
         rect = world_rect_for_page_entry(context, work, -1, entry, use_parent=False)
         part = hit_part_for_rect(rect, x_mm, y_mm)
+        if not part and free_transform.entry_enabled(entry):
+            quad = free_transform.quad_from_rect_offsets(rect, free_transform.entry_offsets(entry))
+            if free_transform.point_in_quad(quad, x_mm, y_mm, tolerance_mm=2.5):
+                part = "body"
         if part:
             return {
                 "kind": "balloon",

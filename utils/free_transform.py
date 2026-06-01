@@ -228,6 +228,55 @@ def ordered_quad_points(quad: dict[str, tuple[float, float]]) -> list[tuple[floa
     return [quad[BOTTOM_LEFT], quad[BOTTOM_RIGHT], quad[TOP_RIGHT], quad[TOP_LEFT]]
 
 
+def point_in_quad(
+    quad: dict[str, tuple[float, float]],
+    x_mm: float,
+    y_mm: float,
+    tolerance_mm: float = 0.0,
+) -> bool:
+    points = ordered_quad_points(quad) if quad else []
+    if len(points) < 3:
+        return False
+    x = float(x_mm)
+    y = float(y_mm)
+    tol = max(0.0, float(tolerance_mm))
+    if tol > 0.0:
+        for start, end in zip(points, points[1:] + points[:1]):
+            if _point_segment_distance((x, y), start, end) <= tol:
+                return True
+    inside = False
+    prev_x, prev_y = points[-1]
+    for curr_x, curr_y in points:
+        crosses = (float(curr_y) > y) != (float(prev_y) > y)
+        if crosses:
+            denom = float(prev_y) - float(curr_y)
+            if abs(denom) > 1.0e-9:
+                intersect_x = float(curr_x) + (y - float(curr_y)) * (float(prev_x) - float(curr_x)) / denom
+                if x < intersect_x:
+                    inside = not inside
+        prev_x, prev_y = curr_x, curr_y
+    return inside
+
+
+def _point_segment_distance(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> float:
+    px, py = point
+    sx, sy = start
+    ex, ey = end
+    dx = float(ex) - float(sx)
+    dy = float(ey) - float(sy)
+    length_sq = dx * dx + dy * dy
+    if length_sq <= 1.0e-12:
+        return ((px - float(sx)) ** 2 + (py - float(sy)) ** 2) ** 0.5
+    t = max(0.0, min(1.0, ((px - float(sx)) * dx + (py - float(sy)) * dy) / length_sq))
+    nx = float(sx) + dx * t
+    ny = float(sy) + dy * t
+    return ((px - nx) ** 2 + (py - ny) ** 2) ** 0.5
+
+
 def hit_quad_corner(
     quad: dict[str, tuple[float, float]],
     x_mm: float,

@@ -146,6 +146,48 @@ def _find_group_display_object(group_id: str) -> bpy.types.Object | None:
     return obj
 
 
+def is_merge_display_object(obj: bpy.types.Object | None) -> bool:
+    return bool(obj is not None and obj.get(PROP_MERGE_DISPLAY_KIND) == "display")
+
+
+def sync_display_transform_from_object(scene, obj: bpy.types.Object | None) -> bool:
+    if scene is None or not is_merge_display_object(obj):
+        return False
+    changed = False
+    with los.suppress_sync():
+        if (
+            abs(float(getattr(obj.location, "x", 0.0) or 0.0)) > 1.0e-9
+            or abs(float(getattr(obj.location, "y", 0.0) or 0.0)) > 1.0e-9
+        ):
+            obj.location.x = 0.0
+            obj.location.y = 0.0
+            changed = True
+        if (
+            abs(float(getattr(obj.rotation_euler, "x", 0.0) or 0.0)) > 1.0e-9
+            or abs(float(getattr(obj.rotation_euler, "y", 0.0) or 0.0)) > 1.0e-9
+            or abs(float(getattr(obj.rotation_euler, "z", 0.0) or 0.0)) > 1.0e-9
+        ):
+            obj.rotation_euler = (0.0, 0.0, 0.0)
+            changed = True
+        if (
+            abs(float(getattr(obj.scale, "x", 1.0) or 1.0) - 1.0) > 1.0e-9
+            or abs(float(getattr(obj.scale, "y", 1.0) or 1.0) - 1.0) > 1.0e-9
+            or abs(float(getattr(obj.scale, "z", 1.0) or 1.0) - 1.0) > 1.0e-9
+        ):
+            obj.scale = (1.0, 1.0, 1.0)
+            changed = True
+        if not bool(getattr(obj, "hide_select", False)):
+            obj.hide_select = True
+            changed = True
+        try:
+            if obj.select_get():
+                obj.select_set(False)
+                changed = True
+        except Exception:  # noqa: BLE001
+            pass
+    return changed
+
+
 def _display_object(group_id: str, mesh: bpy.types.Mesh) -> bpy.types.Object:
     obj_name = f"{MERGE_NAME_PREFIX}{group_id}"
     obj = _find_group_display_object(group_id)

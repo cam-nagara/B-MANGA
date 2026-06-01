@@ -25,6 +25,7 @@ from ..utils import (
     balloon_merge_object,
     balloon_shapes,
     balloon_tail_geom,
+    free_transform,
     layer_stack as layer_stack_utils,
     log,
     object_selection,
@@ -283,6 +284,13 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
         left - threshold <= x_mm <= right + threshold
         and bottom - threshold <= y_mm <= top + threshold
     ):
+        if free_transform.entry_enabled(entry):
+            quad = free_transform.quad_from_rect_offsets(
+                (left, bottom, width, height),
+                free_transform.entry_offsets(entry),
+            )
+            if free_transform.point_in_quad(quad, x_mm, y_mm, tolerance_mm=threshold):
+                return "body"
         return ""
     near_left = abs(x_mm - left) <= threshold
     near_right = abs(x_mm - right) <= threshold
@@ -312,6 +320,13 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
         return "center"
     if inside_x and inside_y:
         return "body"
+    if free_transform.entry_enabled(entry):
+        quad = free_transform.quad_from_rect_offsets(
+            (left, bottom, width, height),
+            free_transform.entry_offsets(entry),
+        )
+        if free_transform.point_in_quad(quad, x_mm, y_mm, tolerance_mm=threshold):
+            return "body"
     return ""
 
 

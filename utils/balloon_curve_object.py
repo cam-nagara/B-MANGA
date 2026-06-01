@@ -1403,6 +1403,91 @@ def find_balloon_object(balloon_id: str) -> Optional[bpy.types.Object]:
     return obj
 
 
+def generated_display_owner_id(obj: bpy.types.Object | None) -> str:
+    if obj is None:
+        return ""
+    owner_id = str(obj.get(balloon_fill_mesh.PROP_BALLOON_FILL_MESH_OWNER_ID, "") or "")
+    if owner_id:
+        return owner_id
+    owner_id = str(obj.get(balloon_line_mesh.PROP_BALLOON_LINE_MESH_OWNER_ID, "") or "")
+    if owner_id:
+        return owner_id
+    owner_id = str(obj.get(PROP_BALLOON_FILL_OWNER_ID, "") or "")
+    if owner_id and str(obj.get(PROP_BALLOON_FILL_KIND, "") or ""):
+        return owner_id
+    return ""
+
+
+def is_generated_display_object(obj: bpy.types.Object | None) -> bool:
+    return bool(generated_display_owner_id(obj))
+
+
+def sync_generated_display_transform_from_object(scene, obj: bpy.types.Object | None) -> bool:
+    """生成表示メッシュが単独で動かされた場合、本体追従の位置へ戻す."""
+    if scene is None or obj is None or object_preserve.is_preserved(obj):
+        return False
+    balloon_id = generated_display_owner_id(obj)
+    if not balloon_id:
+        return False
+    body = find_balloon_object(balloon_id)
+    if body is None:
+        return False
+    changed = False
+    with los.suppress_sync():
+        if obj.parent is not body:
+            obj.parent = body
+            try:
+                obj.matrix_parent_inverse.identity()
+            except Exception:  # noqa: BLE001
+                pass
+            changed = True
+        if _reset_object_local_transform(obj):
+            changed = True
+        if not bool(getattr(obj, "hide_select", False)):
+            obj.hide_select = True
+            changed = True
+        try:
+            if obj.select_get():
+                obj.select_set(False)
+                changed = True
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            view_layer = getattr(bpy.context, "view_layer", None)
+            if view_layer is not None and getattr(view_layer.objects, "active", None) is obj:
+                view_layer.objects.active = body
+                changed = True
+        except Exception:  # noqa: BLE001
+            pass
+    return changed
+
+
+def _reset_object_local_transform(obj: bpy.types.Object) -> bool:
+    changed = False
+    if (
+        abs(float(getattr(obj.location, "x", 0.0) or 0.0)) > 1.0e-9
+        or abs(float(getattr(obj.location, "y", 0.0) or 0.0)) > 1.0e-9
+        or abs(float(getattr(obj.location, "z", 0.0) or 0.0)) > 1.0e-9
+    ):
+        obj.location = (0.0, 0.0, 0.0)
+        changed = True
+    if (
+        abs(float(getattr(obj.rotation_euler, "x", 0.0) or 0.0)) > 1.0e-9
+        or abs(float(getattr(obj.rotation_euler, "y", 0.0) or 0.0)) > 1.0e-9
+        or abs(float(getattr(obj.rotation_euler, "z", 0.0) or 0.0)) > 1.0e-9
+    ):
+        obj.rotation_euler = (0.0, 0.0, 0.0)
+        changed = True
+    if (
+        abs(float(getattr(obj.scale, "x", 1.0) or 1.0) - 1.0) > 1.0e-9
+        or abs(float(getattr(obj.scale, "y", 1.0) or 1.0) - 1.0) > 1.0e-9
+        or abs(float(getattr(obj.scale, "z", 1.0) or 1.0) - 1.0) > 1.0e-9
+    ):
+        obj.scale = (1.0, 1.0, 1.0)
+        changed = True
+    return changed
+
+
 def sync_balloon_object_transform_only(scene, work, page, entry) -> bool:
     """既存のフキダシ実体の位置・回転・表示だけを更新する."""
     balloon_id = str(getattr(entry, "id", "") or "")

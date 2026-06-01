@@ -392,11 +392,13 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
             obj_id = update.id
             if not isinstance(obj_id, bpy.types.Object):
                 continue
-            if not str(obj_id.get("bname_kind", "") or ""):
+            if not object_state_sync.is_sync_candidate(obj_id):
                 continue
             # 名前で生 Object を引き直す (depsgraph の id は eval 版の場合あり)
             real_obj = bpy.data.objects.get(obj_id.name)
             if real_obj is None:
+                continue
+            if not object_state_sync.is_sync_candidate(real_obj):
                 continue
             object_state_sync.sync_from_blender_object(scene, real_obj)
     except Exception:  # noqa: BLE001
