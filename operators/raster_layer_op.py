@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import uuid
 from array import array
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +48,21 @@ RASTER_ALPHA_MULTIPLY_NODE = "BName Raster Alpha Multiply"
 RASTER_MIX_NODE = "BName Raster Mix"
 RASTER_OUTPUT_NODE = "BName Raster Output"
 RASTER_BRUSH_INITIALIZED_PROP = "bname_raster_brush_initialized"
+_RASTER_RUNTIME_BULK_DEPTH = 0
+
+
+@contextmanager
+def _bulk_raster_runtime():
+    global _RASTER_RUNTIME_BULK_DEPTH
+    _RASTER_RUNTIME_BULK_DEPTH += 1
+    try:
+        yield
+    finally:
+        _RASTER_RUNTIME_BULK_DEPTH -= 1
+
+
+def _is_bulk_raster_runtime() -> bool:
+    return _RASTER_RUNTIME_BULK_DEPTH > 0
 
 
 def raster_image_name(raster_id: str) -> str:
@@ -519,22 +535,17 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
         # raster MESH の Boolean target は専用 coma_mask Object (Solidify 厚み
         # 10m + hide_viewport, coma_plane.py で管理) で、 平面 volume 交差問題
         # と OPAQUE 上書き問題の両方を解消している。
-        try:
-            from ..utils import mask_apply
-
-            mask_apply.apply_mask_to_layer_object(obj)
-        except Exception:  # noqa: BLE001
-            _logger.exception("raster: mask_apply failed")
         # raster Object の Z は assign_per_page_z_ranks (page rank * 0.1) で
         # 上書きされるが、 ensure_raster_plane 直後 (新規 raster 追加直後) では
         # まだ呼ばれていないことがあり、 raster Z が z_for_index = z_index*0.0001
         # (例: z_index=10 → Z=0.001) のままだと coma_plane (Z=0.05) の後ろに
         # 沈み、 Texture Paint で見えない。 ここで明示的に rank 再計算を呼んで
         # raster Z を確実に coma_plane より前 (Z=0.1+) に押し上げる。
-        try:
-            _los.assign_per_page_z_ranks(context.scene, work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("raster: assign_per_page_z_ranks failed")
+        if not _is_bulk_raster_runtime():
+            try:
+                _los.assign_per_page_z_ranks(context.scene, work)
+            except Exception:  # noqa: BLE001
+                _logger.exception("raster: assign_per_page_z_ranks failed")
     except Exception:  # noqa: BLE001
         _logger.exception("raster: stamp_layer_object failed")
     return obj
@@ -648,9 +659,25 @@ def ensure_all_raster_runtime(context) -> int:
     if coll is None:
         return 0
     count = 0
-    for entry in coll:
-        if ensure_raster_plane(context, entry, mark_missing=True) is not None:
-            count += 1
+    try:
+        from ..utils import mask_apply
+
+        mask_update_context = mask_apply.defer_view_updates()
+    except Exception:  # noqa: BLE001
+        mask_update_context = nullcontext()
+    with _bulk_raster_runtime(), mask_update_context:
+        for entry in coll:
+            if ensure_raster_plane(context, entry, mark_missing=True) is not None:
+                count += 1
+    if count:
+        try:
+            from ..utils import layer_object_sync as _los
+
+            work = get_work(context)
+            if work is not None:
+                _los.assign_per_page_z_ranks(context.scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("raster: bulk assign_per_page_z_ranks failed")
     return count
 
 

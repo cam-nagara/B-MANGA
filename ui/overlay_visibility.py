@@ -11,7 +11,53 @@ from __future__ import annotations
 import bpy
 
 from ..utils import page_range
+from ..utils.geom import Rect, mm_to_m
 from ..utils.layer_hierarchy import entry_center, coma_containing_point
+
+
+def rect_may_be_visible_in_region(
+    rect: Rect,
+    region,
+    rv3d,
+    *,
+    margin_px: float = 240.0,
+) -> bool:
+    """画面外のページ補助描画を省くため、キャンバス矩形の可視性をざっくり判定する."""
+    if region is None or rv3d is None:
+        return True
+    try:
+        from bpy_extras import view3d_utils
+    except Exception:  # noqa: BLE001
+        return True
+    coords = []
+    for x_mm, y_mm in (
+        (rect.x, rect.y),
+        (rect.x2, rect.y),
+        (rect.x2, rect.y2),
+        (rect.x, rect.y2),
+    ):
+        try:
+            coord = view3d_utils.location_3d_to_region_2d(
+                region,
+                rv3d,
+                (mm_to_m(x_mm), mm_to_m(y_mm), 0.0),
+            )
+        except Exception:  # noqa: BLE001
+            return True
+        if coord is not None:
+            coords.append(coord)
+    if not coords:
+        return True
+    min_x = min(float(coord.x) for coord in coords)
+    max_x = max(float(coord.x) for coord in coords)
+    min_y = min(float(coord.y) for coord in coords)
+    max_y = max(float(coord.y) for coord in coords)
+    return not (
+        max_x < -margin_px
+        or min_x > float(getattr(region, "width", 0)) + margin_px
+        or max_y < -margin_px
+        or min_y > float(getattr(region, "height", 0)) + margin_px
+    )
 
 
 def _walk_layer_collection(layer_coll, bname_id: str):

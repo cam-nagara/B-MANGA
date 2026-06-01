@@ -422,6 +422,75 @@ def _mirror_image_text_objects(scene, work) -> None:
         _logger.exception("mirror image/text objects failed")
 
 
+def _saved_runtime_objects_look_current(scene: bpy.types.Scene, work) -> bool:
+    """保存済み実体が揃っているなら、読み込み直後の全件再生成を省く."""
+    if scene is None or work is None:
+        return False
+    try:
+        from . import coma_border_object as _cbo
+        from . import coma_plane as _cp
+        from . import text_real_object as _tro
+    except Exception:  # noqa: BLE001
+        return False
+
+    object_ids_by_kind: dict[str, set[str]] = {}
+    plane_owners: set[str] = set()
+    border_owners: set[str] = set()
+    for obj in bpy.data.objects:
+        kind = str(obj.get(on.PROP_KIND, "") or "")
+        bname_id = str(obj.get(on.PROP_ID, "") or "")
+        if kind and bname_id:
+            object_ids_by_kind.setdefault(kind, set()).add(bname_id)
+        owner = str(obj.get(_cp.PROP_COMA_PLANE_OWNER_ID, "") or "")
+        if owner:
+            plane_owners.add(owner)
+        owner = str(obj.get(_cbo.PROP_COMA_BORDER_OWNER_ID, "") or "")
+        if owner:
+            border_owners.add(owner)
+    expected_comas: set[str] = set()
+    expected_borders: set[str] = set()
+    expected_balloons: set[str] = set()
+    expected_texts: set[str] = set()
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id:
+            continue
+        for coma in getattr(page, "comas", []) or []:
+            coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+            if coma_id:
+                owner_id = f"{page_id}:{coma_id}"
+                expected_comas.add(owner_id)
+                border = getattr(coma, "border", None)
+                if str(getattr(border, "style", "solid") or "solid") != "brush":
+                    expected_borders.add(owner_id)
+        for entry in getattr(page, "balloons", []) or []:
+            balloon_id = str(getattr(entry, "id", "") or "")
+            if balloon_id:
+                expected_balloons.add(balloon_id)
+        for entry in getattr(page, "texts", []) or []:
+            text_id = str(getattr(entry, "id", "") or "")
+            if text_id:
+                expected_texts.add(_tro.text_object_bname_id_for_values(page_id, text_id))
+    if expected_comas and not expected_comas.issubset(plane_owners):
+        return False
+    if expected_borders and not expected_borders.issubset(border_owners):
+        return False
+    if expected_balloons and not expected_balloons.issubset(object_ids_by_kind.get("balloon", set())):
+        return False
+    if expected_texts and not expected_texts.issubset(object_ids_by_kind.get("text", set())):
+        return False
+
+    scene_image_layers = getattr(scene, "bname_image_layers", None)
+    expected_images = {
+        str(getattr(entry, "id", "") or "")
+        for entry in (scene_image_layers or [])
+        if str(getattr(entry, "id", "") or "")
+    }
+    if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
+        return False
+    return True
+
+
 def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     """``work`` の page/coma/folder 配列から Collection 階層を生成・整合.
 
@@ -450,6 +519,20 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             return
     except Exception:  # noqa: BLE001
         pass
+    if _saved_runtime_objects_look_current(scene, work):
+        try:
+            from . import paper_bg_object as _pbg
+
+            _pbg.regenerate_all_paper_bgs(scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror fast path paper backgrounds failed")
+        try:
+            from . import outliner_watch as _outliner_watch
+
+            _outliner_watch.mark_entry_counts_synced(scene)
+        except Exception:  # noqa: BLE001
+            pass
+        return
     with suppress_sync():
         # 既存実体が Blender 標準機能で動かされていた場合は、B-Name 側の
         # 同期で上書きする前に現在の状態を作品データへ反映する。

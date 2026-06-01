@@ -10,6 +10,7 @@ utils.json_io で書き出す。
 
 from __future__ import annotations
 
+from contextlib import ExitStack, contextmanager
 from typing import Any
 
 from ..utils import balloon_shapes, color_space, coma_blur_curve, free_transform, percentage
@@ -21,6 +22,61 @@ PAGE_SCHEMA_VERSION = 2
 COMA_SCHEMA_VERSION = 2
 
 # ---------- 共通変換 ----------
+
+
+@contextmanager
+def _suspend_load_property_side_effects():
+    """JSON 読み込み中の即時表示再生成を抑止する."""
+    patches: list[tuple[object, str, object]] = []
+    with ExitStack() as stack:
+        try:
+            from ..utils import balloon_curve_object
+
+            stack.enter_context(balloon_curve_object.defer_auto_sync())
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from ..utils import text_real_object
+
+            stack.enter_context(text_real_object.suspend_auto_sync())
+        except Exception:  # noqa: BLE001
+            pass
+
+        def _patch(module, name: str) -> None:
+            try:
+                original = getattr(module, name)
+            except Exception:  # noqa: BLE001
+                return
+            patches.append((module, name, original))
+            try:
+                setattr(module, name, lambda *args, **kwargs: None)
+            except Exception:  # noqa: BLE001
+                pass
+
+        try:
+            from ..utils import coma_border_object, coma_plane
+
+            _patch(coma_plane, "on_coma_geometry_changed")
+            _patch(coma_plane, "on_coma_background_color_changed")
+            _patch(coma_plane, "on_coma_paper_visible_changed")
+            _patch(coma_border_object, "on_coma_border_changed")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from ..utils import layer_stack
+
+            _patch(layer_stack, "sync_layer_stack_after_data_change")
+            _patch(layer_stack, "tag_view3d_redraw")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            yield
+        finally:
+            for module, name, original in reversed(patches):
+                try:
+                    setattr(module, name, original)
+                except Exception:  # noqa: BLE001
+                    pass
 
 
 def _normalize_generated_page_title(title: object, page_id: object) -> str:
@@ -607,33 +663,37 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
     if raster_layers is not None:
         raster_layers.clear()
-        for item in data.get("raster_layers", []) or []:
-            entry = raster_layers.add()
-            raster_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+        with _suspend_load_property_side_effects():
+            for item in data.get("raster_layers", []) or []:
+                entry = raster_layers.add()
+                raster_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bname_active_raster_layer_index"):
             scene.bname_active_raster_layer_index = 0 if len(raster_layers) else -1
     image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
     if image_layers is not None:
         image_layers.clear()
-        for item in data.get("image_layers", []) or []:
-            entry = image_layers.add()
-            image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+        with _suspend_load_property_side_effects():
+            for item in data.get("image_layers", []) or []:
+                entry = image_layers.add()
+                image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bname_active_image_layer_index"):
             scene.bname_active_image_layer_index = 0 if len(image_layers) else -1
     if hasattr(work, "shared_balloons"):
         work.shared_balloons.clear()
-        for item in data.get("shared_balloons", data.get("sharedBalloons", [])) or []:
-            entry = work.shared_balloons.add()
-            balloon_entry_from_dict(entry, item, opacity_percent=opacity_percent_schema)
-            entry.parent_kind = "none"
-            entry.parent_key = ""
+        with _suspend_load_property_side_effects():
+            for item in data.get("shared_balloons", data.get("sharedBalloons", [])) or []:
+                entry = work.shared_balloons.add()
+                balloon_entry_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+                entry.parent_kind = "none"
+                entry.parent_key = ""
     if hasattr(work, "shared_texts"):
         work.shared_texts.clear()
-        for item in data.get("shared_texts", data.get("sharedTexts", [])) or []:
-            entry = work.shared_texts.add()
-            text_entry_from_dict(entry, item)
-            entry.parent_kind = "none"
-            entry.parent_key = ""
+        with _suspend_load_property_side_effects():
+            for item in data.get("shared_texts", data.get("sharedTexts", [])) or []:
+                entry = work.shared_texts.add()
+                text_entry_from_dict(entry, item)
+                entry.parent_kind = "none"
+                entry.parent_key = ""
     if hasattr(work, "shared_comas"):
         work.shared_comas.clear()
         for item in data.get("shared_comas", data.get("sharedComas", [])) or []:
@@ -1306,38 +1366,39 @@ def page_to_dict(page_entry) -> dict[str, Any]:
 
 
 def page_from_dict(page_entry, data: dict[str, Any]) -> None:
-    data = data or {}
-    page_schema_version = _data_schema_version(data, 1)
-    opacity_percent_schema = page_schema_version >= 2
-    page_entry.id = data.get("id", page_entry.id)
-    if "title" in data:
-        page_entry.title = _normalize_generated_page_title(data["title"], page_entry.id)
-    page_entry.offset_x_mm = float(data.get("offsetXMm", getattr(page_entry, "offset_x_mm", 0.0)))
-    page_entry.offset_y_mm = float(data.get("offsetYMm", getattr(page_entry, "offset_y_mm", 0.0)))
-    page_entry.comas.clear()
-    for coma_data in data.get("comas", []):
-        entry = page_entry.comas.add()
-        coma_entry_from_dict(entry, coma_data)
-    page_entry.balloons.clear()
-    for b_data in data.get("balloons", []):
-        entry = page_entry.balloons.add()
-        balloon_entry_from_dict(entry, b_data, opacity_percent=opacity_percent_schema)
-    page_entry.texts.clear()
-    for t_data in data.get("texts", []):
-        entry = page_entry.texts.add()
-        text_entry_from_dict(entry, t_data)
-    idx = int(data.get("activeComaIndex", -1))
-    if idx < -1 or idx >= len(page_entry.comas):
-        idx = 0 if len(page_entry.comas) > 0 else -1
-    page_entry.active_coma_index = idx
-    idx = int(data.get("activeBalloonIndex", -1))
-    if idx < -1 or idx >= len(page_entry.balloons):
-        idx = 0 if len(page_entry.balloons) > 0 else -1
-    page_entry.active_balloon_index = idx
-    idx = int(data.get("activeTextIndex", -1))
-    if idx < -1 or idx >= len(page_entry.texts):
-        idx = 0 if len(page_entry.texts) > 0 else -1
-    page_entry.active_text_index = idx
+    with _suspend_load_property_side_effects():
+        data = data or {}
+        page_schema_version = _data_schema_version(data, 1)
+        opacity_percent_schema = page_schema_version >= 2
+        page_entry.id = data.get("id", page_entry.id)
+        if "title" in data:
+            page_entry.title = _normalize_generated_page_title(data["title"], page_entry.id)
+        page_entry.offset_x_mm = float(data.get("offsetXMm", getattr(page_entry, "offset_x_mm", 0.0)))
+        page_entry.offset_y_mm = float(data.get("offsetYMm", getattr(page_entry, "offset_y_mm", 0.0)))
+        page_entry.comas.clear()
+        for coma_data in data.get("comas", []):
+            entry = page_entry.comas.add()
+            coma_entry_from_dict(entry, coma_data)
+        page_entry.balloons.clear()
+        for b_data in data.get("balloons", []):
+            entry = page_entry.balloons.add()
+            balloon_entry_from_dict(entry, b_data, opacity_percent=opacity_percent_schema)
+        page_entry.texts.clear()
+        for t_data in data.get("texts", []):
+            entry = page_entry.texts.add()
+            text_entry_from_dict(entry, t_data)
+        idx = int(data.get("activeComaIndex", -1))
+        if idx < -1 or idx >= len(page_entry.comas):
+            idx = 0 if len(page_entry.comas) > 0 else -1
+        page_entry.active_coma_index = idx
+        idx = int(data.get("activeBalloonIndex", -1))
+        if idx < -1 or idx >= len(page_entry.balloons):
+            idx = 0 if len(page_entry.balloons) > 0 else -1
+        page_entry.active_balloon_index = idx
+        idx = int(data.get("activeTextIndex", -1))
+        if idx < -1 or idx >= len(page_entry.texts):
+            idx = 0 if len(page_entry.texts) > 0 else -1
+        page_entry.active_text_index = idx
 
 
 def pages_from_dict(work, data: dict[str, Any]) -> None:

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Optional
 
 import bpy
@@ -34,6 +35,39 @@ MOD_NAME_PAGE_MASK_VOLUME = "BName Page Mask Volume"
 PAGE_MASK_VOLUME_NAME_PREFIX = "page_mask_volume_"
 PROP_PAGE_MASK_VOLUME_KIND = "bname_page_mask_volume_kind"
 PROP_PAGE_MASK_VOLUME_OWNER_ID = "bname_page_mask_volume_owner_id"
+_DEFER_VIEW_UPDATE_DEPTH = 0
+_PENDING_VIEW_UPDATE = False
+
+
+@contextmanager
+def defer_view_updates():
+    """複数マスク更新中の ViewLayer 更新を最後の 1 回にまとめる."""
+    global _DEFER_VIEW_UPDATE_DEPTH, _PENDING_VIEW_UPDATE
+    _DEFER_VIEW_UPDATE_DEPTH += 1
+    try:
+        yield
+    finally:
+        _DEFER_VIEW_UPDATE_DEPTH -= 1
+        if _DEFER_VIEW_UPDATE_DEPTH == 0 and _PENDING_VIEW_UPDATE:
+            _PENDING_VIEW_UPDATE = False
+            _update_view_layer_now()
+
+
+def _update_view_layer_now() -> None:
+    try:
+        view_layer = bpy.context.view_layer
+        if view_layer is not None:
+            view_layer.update()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _request_view_layer_update() -> None:
+    global _PENDING_VIEW_UPDATE
+    if _DEFER_VIEW_UPDATE_DEPTH > 0:
+        _PENDING_VIEW_UPDATE = True
+        return
+    _update_view_layer_now()
 
 
 def _resolve_coma_mask_object(parent_key: str) -> Optional[bpy.types.Object]:
@@ -229,12 +263,7 @@ def _ensure_boolean_intersect_modifier(
                 pass
         mod.object = target
         # 反映を確実にするため depsgraph を更新
-        try:
-            view_layer = bpy.context.view_layer
-            if view_layer is not None:
-                view_layer.update()
-        except Exception:  # noqa: BLE001
-            pass
+        _request_view_layer_update()
         # 万一 object pointer が None のままなら再代入 + name 経由
         try:
             mod_re = obj.modifiers.get(mod_name)

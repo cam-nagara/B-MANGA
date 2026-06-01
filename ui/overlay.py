@@ -1319,6 +1319,7 @@ def _draw_callback(phase: str = "post") -> None:
     paper = work.paper
     rects = overlay_shared.compute_paper_rects(paper)
     scene = context.scene
+    region, rv3d = _resolve_active_region(context)
 
     gpu.state.blend_set("ALPHA")
     # depth_test を有効にして、3D Mesh (raster plane など) との前後関係を
@@ -1357,6 +1358,10 @@ def _draw_callback(phase: str = "post") -> None:
                     context, work, i, cols, gap, cw, ch,
                     start_side, read_direction, is_page_browser=is_page_browser,
                 )
+                if not overlay_visibility.rect_may_be_visible_in_region(
+                    _translate_rect(rects.canvas, ox, oy), region, rv3d,
+                ):
+                    continue
                 left_half = _is_left_half(i, start_side, read_direction)
                 _draw_page_overlay(
                     context, work, paper, rects, page, mode,
@@ -1388,6 +1393,10 @@ def _draw_callback(phase: str = "post") -> None:
                     context, work, i, cols, gap, cw, ch,
                     start_side, read_direction, is_page_browser=is_page_browser,
                 )
+                if not overlay_visibility.rect_may_be_visible_in_region(
+                    _translate_rect(rects.canvas, ox, oy), region, rv3d,
+                ):
+                    continue
                 left_half = _is_left_half(i, start_side, read_direction)
                 _draw_page_overlay(
                     context, work, paper, rects, page, mode,
@@ -1608,6 +1617,7 @@ def _draw_callback_pixel() -> None:
     mode = get_mode(context)
     scene = context.scene
     is_page_browser = page_browser.is_page_browser_area(context)
+    region, rv3d = _resolve_active_region(context)
 
     if mode != MODE_PAGE and not is_page_browser:
         return
@@ -1635,6 +1645,10 @@ def _draw_callback_pixel() -> None:
                 context, work, i, cols, gap, cw, ch,
                 start_side, read_direction, is_page_browser=is_page_browser,
             )
+            if not overlay_visibility.rect_may_be_visible_in_region(
+                _translate_rect(rects.canvas, ox, oy), region, rv3d,
+            ):
+                continue
             left_half = _is_left_half(i, start_side, read_direction)
             inner = bleed_rect(paper)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
@@ -1677,7 +1691,6 @@ def _draw_callback_pixel() -> None:
                 draw_rect_fill_pixel=_draw_rect_fill_pixel,
             )
             _draw_page_header_number_pixel(context, paper, idx, ox, oy)
-    region, rv3d = _resolve_active_region(context)
     overlay_coma_selection.draw(context, work, region, rv3d)
 def register() -> None:
     global _handle, _handle_pixel, _handle_pre

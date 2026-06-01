@@ -28,6 +28,7 @@ PAPER_SAFE_FILL_VIEW_MATERIAL = "BName_SafeAreaFill_View"
 
 PROP_GUIDE_KIND = "bname_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
+PROP_GUIDE_SIGNATURE = "bname_paper_guide_signature"
 GUIDE_KIND_LINES = "guides"
 _OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 
@@ -300,6 +301,19 @@ def _remove_old_line_objects(page_id: str, keep_names: set[str]) -> None:
             _remove_object(obj)
 
 
+def _remove_stale_guide_objects(valid_ids: set[str]) -> None:
+    for obj in list(bpy.data.objects):
+        owner = str(obj.get(PROP_GUIDE_OWNER_ID, "") or "")
+        if not owner or owner in valid_ids:
+            continue
+        data = getattr(obj, "data", None)
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+        _remove_data_block(data)
+
+
 def _ensure_curve_object_data(obj_name: str, curve: bpy.types.Curve) -> bpy.types.Object:
     obj = bpy.data.objects.get(obj_name)
     if obj is not None and getattr(obj, "type", "") != "CURVE":
@@ -569,6 +583,23 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     return obj
 
 
+def _set_page_location_by_index(scene, work, obj: bpy.types.Object, page_index: int) -> None:
+    if scene is None or work is None or obj is None:
+        return
+    try:
+        from . import page_grid
+
+        ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_index)
+        x_m = mm_to_m(ox_mm)
+        y_m = mm_to_m(oy_mm)
+        loc = obj.location
+        if abs(float(loc.x) - x_m) <= 1.0e-9 and abs(float(loc.y) - y_m) <= 1.0e-9:
+            return
+        obj.location = (x_m, y_m, loc.z)
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper guide page offset failed")
+
+
 def _set_page_location(scene, obj: bpy.types.Object, page) -> None:
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if work is None:
@@ -728,6 +759,58 @@ def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Mat
     ]
 
 
+def _paper_guide_signature(work, page_index: int, page, rects) -> str:
+    paper = getattr(work, "paper", None)
+    overlay = getattr(work, "safe_area_overlay", None)
+    attrs = (
+        "canvas_width_mm",
+        "canvas_height_mm",
+        "finish_width_mm",
+        "finish_height_mm",
+        "bleed_mm",
+        "inner_frame_width_mm",
+        "inner_frame_height_mm",
+        "inner_frame_offset_x_mm",
+        "inner_frame_offset_y_mm",
+        "safe_top_mm",
+        "safe_bottom_mm",
+        "safe_gutter_mm",
+        "safe_fore_edge_mm",
+        "show_canvas_frame",
+        "show_guides",
+        "show_bleed_frame",
+        "show_finish_frame",
+        "show_inner_frame",
+        "show_safe_line",
+        "show_trim_marks",
+        "start_side",
+        "read_direction",
+    )
+    paper_values = []
+    for attr in attrs:
+        value = getattr(paper, attr, None)
+        if isinstance(value, float):
+            value = round(value, 6)
+        paper_values.append(value)
+    safe_color = _safe_fill_view_color(work)
+    return repr((
+        int(page_index),
+        str(getattr(page, "id", "") or ""),
+        bool(getattr(page, "in_page_range", True)),
+        tuple(paper_values),
+        tuple(round(float(c), 6) for c in safe_color),
+        bool(getattr(overlay, "enabled", True)) if overlay is not None else True,
+        round(float(rects.canvas.x), 6),
+        round(float(rects.canvas.y), 6),
+        round(float(rects.canvas.width), 6),
+        round(float(rects.canvas.height), 6),
+        round(float(rects.safe.x), 6),
+        round(float(rects.safe.y), 6),
+        round(float(rects.safe.width), 6),
+        round(float(rects.safe.height), 6),
+    ))
+
+
 def _ensure_curve_guides(
     scene,
     page,
@@ -763,10 +846,16 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
     in_range = bool(getattr(page, "in_page_range", True))
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
+    signature = _paper_guide_signature(work, page_index, page, rects)
 
     guide_sets = _paper_guide_sets(paper, rects)
     objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
     objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, rects.canvas, rects.safe, safe_z))
+    for obj in objects:
+        try:
+            obj[PROP_GUIDE_SIGNATURE] = signature
+        except Exception:  # noqa: BLE001
+            pass
     return objects
 
 
@@ -780,17 +869,59 @@ def regenerate_all_paper_guides(scene, work) -> int:
         if page_id:
             valid_ids.add(page_id)
         count += len(ensure_paper_guides_for_page(scene, work, i))
-    for obj in list(bpy.data.objects):
-        owner = str(obj.get(PROP_GUIDE_OWNER_ID, "") or "")
-        if not owner or owner in valid_ids:
+    _remove_stale_guide_objects(valid_ids)
+    return count
+
+
+def sync_paper_guides_after_page_transform(scene, work) -> int:
+    """ページ位置変更後、既存ガイドは位置だけ更新し、必要なページだけ再生成する."""
+    if scene is None or work is None or not getattr(work, "loaded", False):
+        return 0
+    valid_ids: set[str] = set()
+    changed = 0
+    for page_index, page in enumerate(getattr(work, "pages", []) or []):
+        page_id = str(getattr(page, "id", "") or "")
+        if not page_id:
             continue
-        data = getattr(obj, "data", None)
+        valid_ids.add(page_id)
+        paper = work.paper
+        rects = overlay_shared.compute_paper_rects(
+            paper,
+            is_left_half=_is_left_page(paper, page_index),
+        )
+        signature = _paper_guide_signature(work, page_index, page, rects)
+        line_obj = _line_guide_object(page_id)
+        safe_obj = _safe_fill_object(page_id)
+        if (
+            line_obj is None
+            or safe_obj is None
+            or str(line_obj.get(PROP_GUIDE_SIGNATURE, "") or "") != signature
+            or str(safe_obj.get(PROP_GUIDE_SIGNATURE, "") or "") != signature
+            or _guide_curve_objects(page_id)
+        ):
+            changed += len(ensure_paper_guides_for_page(scene, work, page_index))
+            continue
+        in_range = bool(getattr(page, "in_page_range", True))
         try:
-            bpy.data.objects.remove(obj, do_unlink=True)
+            if line_obj.hide_viewport == in_range:
+                line_obj.hide_viewport = not in_range
         except Exception:  # noqa: BLE001
             pass
-        _remove_data_block(data)
-    return count
+        try:
+            visible_safe = (
+                in_range
+                and bool(getattr(work.safe_area_overlay, "enabled", True))
+                and float(safe_obj.color[3]) > 0.0
+            )
+            if safe_obj.hide_viewport == visible_safe:
+                safe_obj.hide_viewport = not visible_safe
+        except Exception:  # noqa: BLE001
+            pass
+        _set_page_location_by_index(scene, work, line_obj, page_index)
+        _set_page_location_by_index(scene, work, safe_obj, page_index)
+        changed += 2
+    _remove_stale_guide_objects(valid_ids)
+    return changed
 
 
 # ---------- ビュー上で一定太さに保つ ----------

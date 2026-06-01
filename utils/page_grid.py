@@ -246,6 +246,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     cols, gap, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
+    page_ids = {str(getattr(page, "id", "") or "") for page in getattr(work, "pages", []) or []}
 
     # entry-positioned kinds 用に scene 全体の image_layers を 1 度だけ index 化
     image_entries: dict[str, object] = {}
@@ -275,9 +276,8 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             return ""
         if ":" in key:
             return key.split(":", 1)[0]
-        for page in getattr(work, "pages", []) or []:
-            if str(getattr(page, "id", "") or "") == key:
-                return key
+        if key in page_ids:
+            return key
         try:
             from . import layer_folder
             from .layer_hierarchy import OUTSIDE_STACK_KEY
@@ -423,7 +423,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     try:
         from . import paper_guide_object as _pgo
 
-        _pgo.regenerate_all_paper_guides(scene, work)
+        _pgo.sync_paper_guides_after_page_transform(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: paper guide update failed")
     try:
@@ -435,7 +435,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     try:
         from . import work_info_text_object as _work_info_text
 
-        _work_info_text.regenerate_all_work_info_texts(scene, work)
+        _work_info_text.sync_work_info_texts_after_page_transform(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: work info text update failed")
     return updated
