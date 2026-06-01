@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-05-28 (Claude Code)
+最終更新: 2026-06-02 (Codex)
 
 ---
 
@@ -70,7 +70,7 @@
 
 - **B-Name-Render 分離 (進行中 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)**。 B-Name 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_name_render/` へ分離する。
   - **済**: 独立アドオン土台 (`addons/b_name_render/`, 10 ファイル / 約 2336 行) / カード型プリセット UI / eeVR 連携。
-  - **未 (Phase R4 + R1 一部)**: B-Name 本体に出力系がまだ現役登録されている — 「ページ出力」パネル (`panels/__init__.py` `_MODULES` 内 `export_panel`) / `bname.export_page`・`export_all_pages`・`export_pdf` (`operators/io_op.py`, `operators/__init__.py` 内 `io_op`) / 魚眼 (`operators/__init__.py` 内 `fisheye_op`) / `io/export_*.py`。 これらを B-Name-Render へ移植し本体側を未登録化する作業が残っている。
+  - **未 (Phase R4 + R1 一部)**: B-Name 本体に出力系がまだ現役登録されている — 「ページ出力」パネル (`panels/__init__.py` `_MODULES` 内 `export_panel`) / `bname.export_page`・`export_all_pages`・`export_pdf` (`operators/io_op.py`, `operators/__init__.py` 内 `io_op`) / `io/export_*.py`。 魚眼モード / 縮小モード / Pencil+4 線幅保存 / ページ画像スケールは 2026-06-02 に B-Name-Render へ移動済み。 残りを B-Name-Render へ移植し本体側を未登録化する作業が残っている。
   - 詳細: [`docs/b_name_render_separation_plan_2026-05-05.md`](docs/b_name_render_separation_plan_2026-05-05.md)
 - **効果線 Geometry Nodes 化 / カーブ正本化 (進行中 / 2026-05-23 Codex 起点, コード検証 2026-05-28 Claude Code)**。 フキダシ側は GN 完全撤去済み (上記 v0.6.133)。 効果線側は依然 `BName_GN_EffectLine` ノードグループで本体生成中 (`utils/effect_line_object.py` が `geometry_nodes_bridge.ensure_modifier(display, "effect_line", …)` で GN modifier を付与, `utils/geometry_nodes_bridge.py` `_build_effect_line_nodes`)。 `strokes` 渡し時に静的メッシュ化する分岐は一部実装済みだが、 フキダシと同様の「編集可能形状を正本にする」本格移行は未完了。 始点/終点形状への同方式適用、 グリースペンシルからの登録、 手編集後の補助線再生成ルールも次段階。 詳細: [`docs/geometry_nodes_generation_plan_2026-05-21.md`](docs/geometry_nodes_generation_plan_2026-05-21.md)、[`docs/balloon_curve_source_plan_2026-05-23.md`](docs/balloon_curve_source_plan_2026-05-23.md)
 - **コマ内容の不透明度マスク方式 (完了 / 2026-05-25 Codex, v0.6.075)**。コマ内のフキダシ / 効果線 / GP / ラスター / 画像 / テキストを破壊的に切らず、ページ ID + 表示ページ番号 + コマ ID を含むコマ単位の不透明度マスクで見切る。PSD はコマフォルダのレイヤーマスクを正とし、個別レイヤーへ重複マスクを付けない。詳細: [`docs/coma_content_opacity_mask_plan_2026-05-25.md`](docs/coma_content_opacity_mask_plan_2026-05-25.md)

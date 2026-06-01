@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 import shutil
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from . import command_runner, command_ui, core, defaults_store, preset_library
@@ -24,6 +26,67 @@ def _play_completion_sound() -> None:
         winsound.MessageBeep(winsound.MB_OK)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _module_by_suffix(suffix: str):
+    for name, module in tuple(sys.modules.items()):
+        if name.endswith(suffix):
+            return module
+    return None
+
+
+def _pencil4_link_module():
+    module = _module_by_suffix(".core.fisheye.pencil4_link")
+    if module is not None:
+        return module
+    for suffix in (".core.mode", ".utils.coma_camera", ".core.work"):
+        for name in tuple(sys.modules):
+            if not name.endswith(suffix):
+                continue
+            package = name[: -len(suffix)]
+            try:
+                return importlib.import_module(f"{package}.core.fisheye.pencil4_link")
+            except Exception:  # noqa: BLE001
+                continue
+    return None
+
+
+class BNAME_RENDER_OT_save_pencil4_widths(Operator):
+    bl_idname = "bname_render.save_pencil4_widths"
+    bl_label = "Pencil+4 線幅を保存"
+
+    def execute(self, context):
+        pencil4_link = _pencil4_link_module()
+        if pencil4_link is None:
+            self.report({"WARNING"}, "B-NameのPencil+4連携が見つかりません")
+            return {"CANCELLED"}
+        reduction_enabled = core.reduction_enabled(context.scene)
+        if reduction_enabled:
+            pencil4_link.restore()
+        count = pencil4_link.save_widths()
+        if reduction_enabled:
+            scale = core.preview_scale_percentage(context.scene) / 100.0
+            pencil4_link.apply_scale(scale, ensure_saved=False)
+        if count <= 0:
+            self.report({"INFO"}, "Pencil+4 線幅ノードは見つかりませんでした")
+        else:
+            self.report({"INFO"}, f"Pencil+4 線幅を保存しました: {count}件")
+        return {"FINISHED"}
+
+
+class BNAME_RENDER_OT_set_reduction_scale(Operator):
+    bl_idname = "bname_render.set_reduction_scale"
+    bl_label = "縮小率を設定"
+
+    percentage: FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0)  # type: ignore[valid-type]
+
+    def execute(self, context):
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            return {"CANCELLED"}
+        scene.preview_scale_percentage = float(self.percentage)
+        core._apply_output_resolution_mode(scene)
+        return {"FINISHED"}
 
 
 class BNAME_RENDER_OT_load_builtin_presets(Operator):
@@ -484,6 +547,8 @@ class BNAME_RENDER_OT_open_batch_app(Operator):
 
 
 _CLASSES = (
+    BNAME_RENDER_OT_save_pencil4_widths,
+    BNAME_RENDER_OT_set_reduction_scale,
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
     BNAME_RENDER_OT_preset_remove,

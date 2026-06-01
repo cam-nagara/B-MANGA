@@ -762,9 +762,8 @@ def _check_bool_controls(context, targets) -> list[dict[str, Any]]:
         "レイヤー詳細 / コマ / 枠線を表示",
         "レイヤー詳細 / コマ / フチ",
         "コマ編集B-Nameパネル / ページ一覧に戻る / フィット",
+        "コマ編集B-Nameパネル / カメラ / グレースケール表示",
         "コマ編集B-Nameパネル / カメラ / 背景を透過",
-        "コマ編集B-Nameパネル / カメラ / 魚眼モード",
-        "コマ編集B-Nameパネル / カメラ / 縮小モード",
         "コマ編集B-Nameパネル / カメラ / ハッチング間隔を表示",
     )
     missing = [fragment for fragment in required_fragments if not any(fragment in label for label in labels)]
@@ -863,17 +862,6 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
         "group": "コマ編集B-Nameパネル",
         "label": "ページ画像 表示/非表示ボタン",
         "ok": not any(hidden) and all(shown),
-    })
-
-    _mark("coma_camera_toggle_koma")
-    bpy.ops.bname.coma_camera_toggle_koma_backgrounds("EXEC_DEFAULT")
-    koma_hidden = [bool(bg.show_background_image) for bg in _koma_backgrounds(context)]
-    bpy.ops.bname.coma_camera_toggle_koma_backgrounds("EXEC_DEFAULT")
-    koma_shown = [bool(bg.show_background_image) for bg in _koma_backgrounds(context)]
-    results.append({
-        "group": "コマ編集B-Nameパネル",
-        "label": "下絵_コマ 表示/非表示ボタン",
-        "ok": not any(koma_hidden) and all(koma_shown),
     })
 
     _mark("coma_camera_depth")

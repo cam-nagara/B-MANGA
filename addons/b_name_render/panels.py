@@ -150,26 +150,29 @@ def draw_main_panel(layout, context) -> None:
 
 def _draw_fisheye_box(layout, context, state) -> None:
     scene = context.scene
+    settings = getattr(scene, "my_tool", None)
     fish = layout.box()
     fish.label(text="魚眼出力", icon="CAMERA_DATA")
-    # 魚眼モード / 魚眼FOV は B-Name のコマファイル側で調節する。
-    # B-Name-Render は単体運用を想定しないため、ここでは編集させず、
-    # 出力に使われる値を読み取り専用で表示する (B-Name と自動同期)。
     fisheye_on = core.fisheye_enabled(scene)
-    info = fish.column(align=True)
-    info.label(
-        text=f"魚眼モード: {'オン' if fisheye_on else 'オフ'}（B-Name側で調節）",
-    )
+    fish.prop(scene, "fisheye_layout_mode", text="魚眼モード")
+    fov = fish.row(align=True)
+    fov.enabled = fisheye_on
+    fov.prop(scene, "fisheye_fov", text="魚眼FOV")
     if fisheye_on:
-        fov_deg = round(
-            math.degrees(float(core.fisheye_fov(scene)))
-        )
-        info.label(text=f"魚眼FOV: {fov_deg}°")
+        fish.label(text=f"現在の魚眼FOV: {round(math.degrees(float(core.fisheye_fov(scene))))}°")
     row = fish.row(align=True)
     row.prop(scene, "reduction_mode", text="縮小モード")
     sub = fish.row(align=True)
     sub.enabled = core.reduction_enabled(scene)
     sub.prop(scene, "preview_scale_percentage", text="縮小率")
+    quick = fish.row(align=True)
+    quick.enabled = core.reduction_enabled(scene)
+    for percentage in (12.5, 25.0, 50.0, 100.0):
+        op = quick.operator("bname_render.set_reduction_scale", text=f"{percentage:g}%")
+        op.percentage = percentage
+    if settings is not None:
+        fish.prop(settings, "bg_images_scale", text="ページ画像のスケール")
+    fish.operator("bname_render.save_pencil4_widths", text="Pencil+4 線幅を保存")
     fish.label(text=f"現在の出力解像度: {scene.render.resolution_x} x {scene.render.resolution_y}")
     original_x, original_y = core.original_resolution(scene)
     if original_x > 0 and original_y > 0:

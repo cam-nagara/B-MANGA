@@ -171,6 +171,7 @@ def main() -> None:
         scene.render.resolution_x = 1200
         scene.render.resolution_y = 900
         _run_fisheye_preset_without_render(bpy.context, render)
+        render.core._apply_output_resolution_mode(scene)
         assert scene.render.resolution_x == 600 and scene.render.resolution_y == 600
         assert scene["bname_render_fisheye_output_dir"] == str(work_dir / "p0001" / "c01" / "passes")
         assert str(scene["bname_render_fisheye_output_name"]).startswith("c01_")

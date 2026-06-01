@@ -110,7 +110,6 @@ def ensure_coma_camera_scene(
     # 委ねる。以前はここで毎回 Standard へ戻していたため、コマで設定した
     # 色管理が開く/閉じるたびに失われていた。
     configure_render_for_current_coma(scene, work, page_id, coma_id)
-    ensure_default_resolution_settings(scene)
     capture_camera_runtime_settings(context, prefer_camera_fisheye=False)
     sync_world_background_color(context, work=work, page_id=page_id, coma_id=coma_id)
 

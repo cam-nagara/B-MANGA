@@ -34,14 +34,9 @@ def _draw_camera_settings(layout, context, cam) -> None:
     row = layout.row()
     row.prop(scene, "camera", text="")
 
-    if bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
-        split = layout.split(factor=0.4)
-        split.label(text="魚眼FOV")
-        split.prop(scene, "bname_coma_camera_fisheye_fov", text="")
-    else:
-        split = layout.split(factor=0.4)
-        split.label(text="焦点距離")
-        split.prop(cam.data, "lens", text="")
+    split = layout.split(factor=0.4)
+    split.label(text="焦点距離")
+    split.prop(cam.data, "lens", text="")
 
     box = layout.box()
     box.label(text="奥行き表示範囲")
@@ -65,7 +60,7 @@ def _draw_camera_settings(layout, context, cam) -> None:
 
 def _draw_angle_list(layout, context, settings) -> None:
     box = layout.box()
-    box.label(text="カメラアングル一覧")
+    box.label(text="カメラプリセット")
     row = box.row()
     row.template_list(
         "UI_UL_list",
@@ -78,48 +73,9 @@ def _draw_angle_list(layout, context, settings) -> None:
     )
     col = row.column(align=True)
     col.operator("bname.coma_camera_angle_add", icon="ADD", text="")
+    col.operator("bname.coma_camera_angle_duplicate", icon="DUPLICATE", text="")
     col.operator("bname.coma_camera_angle_remove", icon="REMOVE", text="")
     box.operator("bname.coma_camera_angle_apply", text="適用")
-
-
-def _draw_resolution_settings(layout, context) -> None:
-    scene = context.scene
-    box = layout.box()
-    box.label(text="出力解像度")
-    row = box.row()
-    row.template_list(
-        "UI_UL_list",
-        "bname_coma_camera_resolution",
-        scene,
-        "bname_coma_camera_resolution_settings",
-        scene,
-        "bname_coma_camera_resolution_settings_index",
-        rows=2,
-    )
-    col = row.column(align=True)
-    col.operator("bname.coma_camera_resolution_add", icon="ADD", text="")
-    col.operator("bname.coma_camera_resolution_remove", icon="REMOVE", text="")
-    coll = scene.bname_coma_camera_resolution_settings
-    idx = int(scene.bname_coma_camera_resolution_settings_index)
-    if 0 <= idx < len(coll):
-        item = coll[idx]
-        box.prop(item, "name")
-        row = box.row(align=True)
-        row.prop(item, "resolution_x")
-        row.prop(item, "resolution_y")
-    box.prop(scene, "bname_coma_camera_fisheye_layout_mode", text="魚眼モード")
-    row = box.row(align=True)
-    row.prop(scene, "bname_coma_camera_reduction_mode", text="縮小モード")
-    sub = row.row(align=True)
-    sub.enabled = bool(scene.bname_coma_camera_reduction_mode)
-    sub.prop(scene, "bname_coma_camera_preview_scale_percentage", text="縮小率")
-    quick = box.row(align=True)
-    quick.enabled = bool(scene.bname_coma_camera_reduction_mode)
-    for percentage in (12.5, 25.0, 50.0, 100.0):
-        op = quick.operator("bname.fisheye_set_reduction_scale", text=f"{percentage:g}%")
-        op.percentage = percentage
-    box.operator("bname.fisheye_save_pencil4_widths", text="Pencil+4 線幅を保存")
-    box.label(text=f"現在: {scene.render.resolution_x} x {scene.render.resolution_y}")
 
 
 def _draw_background_section(layout, context, settings, label: str, kind: str, opacity_prop: str) -> None:
@@ -130,8 +86,6 @@ def _draw_background_section(layout, context, settings, label: str, kind: str, o
     visible = bool(getattr(settings, f"{kind}_visible", False))
     icon = "HIDE_OFF" if visible else "HIDE_ON"
     row.operator(f"bname.coma_camera_toggle_{kind}_backgrounds", text="", icon=icon)
-    if kind == "name":
-        box.prop(settings, "name_show_all_pages", text="全ページも表示")
 
 
 class BNAME_PT_coma_camera(Panel):
@@ -158,8 +112,6 @@ class BNAME_PT_coma_camera(Panel):
         row.operator("bname.coma_camera_ensure", text="カメラを整備", icon="CAMERA_DATA")
         row.operator("bname.coma_camera_sync_references", text="下絵同期", icon="IMAGE_DATA")
 
-        layout.prop(scene, "bname_coma_grayscale_view", text="グレースケール表示")
-
         cam = _camera(context)
         if cam is None:
             layout.label(text="カメラがありません", icon="ERROR")
@@ -169,6 +121,7 @@ class BNAME_PT_coma_camera(Panel):
         _draw_angle_list(layout, context, settings)
 
         box = layout.box()
+        box.prop(scene, "bname_coma_grayscale_view", text="グレースケール表示")
         box.prop(settings, "white_background", text="背景を透過")
         box.prop(settings, "world_background_camera_only", text="ワールド背景色を被写体に影響させない")
         row = box.row(align=True)
@@ -184,17 +137,7 @@ class BNAME_PT_coma_camera(Panel):
         row.prop(settings, "hatching_rotation", text="ハッチング回転")
         box.operator("bname.coma_camera_update_view", text="ビューを更新")
 
-        _draw_resolution_settings(layout, context)
-
-        box = layout.box()
-        row = box.row()
-        row.enabled = bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False))
-        row.prop(settings, "bg_images_scale", text="ページ画像のスケール")
-        box.operator("bname.coma_camera_toggle_all_backgrounds", text="全下絵を表示/非表示")
-
         _draw_background_section(layout, context, settings, "ページ画像", "name", "name_bg_images_opacity")
-        _draw_background_section(layout, context, settings, "下絵_コマ", "koma", "koma_bg_images_opacity")
-        layout.operator("bname.coma_camera_reload_backgrounds", text="すべての下絵を再読込")
 
         count = coma_camera.camera_background_count(context)
         layout.label(text=f"背景画像: {count}件")

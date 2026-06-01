@@ -68,6 +68,26 @@ def main() -> None:
         assert cam.data.panorama_type == "FISHEYE_EQUISOLID"
         assert abs(float(cam.data.fisheye_fov) - 2.4) < 1.0e-6
         assert abs(eevr_bridge._fisheye_fov(scene, cam) - 2.4) < 1.0e-6
+        assert getattr(bpy.types, "BNAME_OT_fisheye_save_pencil4_widths", None) is None
+        assert getattr(bpy.types, "BNAME_OT_coma_camera_toggle_all_backgrounds", None) is None
+        assert getattr(bpy.types, "BNAME_OT_coma_camera_toggle_koma_backgrounds", None) is None
+        assert getattr(bpy.types, "BNAME_OT_coma_camera_reload_backgrounds", None) is None
+        assert getattr(bpy.types, "BNAME_OT_coma_camera_resolution_add", None) is None
+
+        scene.fisheye_layout_mode = True
+        scene.fisheye_fov = 2.8
+        assert scene.bname_coma_camera_fisheye_layout_mode is True
+        assert abs(float(scene.bname_coma_camera_fisheye_fov) - 2.8) < 1.0e-6
+        scene.reduction_mode = True
+        scene.preview_scale_percentage = 25.0
+        assert scene.bname_coma_camera_reduction_mode is True
+        assert abs(float(scene.bname_coma_camera_preview_scale_percentage) - 25.0) < 1.0e-6
+        scene.my_tool.bg_images_scale = 1.4
+        assert abs(float(scene.bname_coma_camera_settings.bg_images_scale) - 1.4) < 1.0e-6
+        result = bpy.ops.bname_render.set_reduction_scale(percentage=50.0)
+        assert result == {"FINISHED"}, result
+        assert abs(float(scene.preview_scale_percentage) - 50.0) < 1.0e-6
+        assert abs(float(scene.bname_coma_camera_preview_scale_percentage) - 50.0) < 1.0e-6
 
         result = bpy.ops.bname_render.load_builtin_presets(reset=True)
         assert result == {"FINISHED"}, result

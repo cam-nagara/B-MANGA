@@ -98,30 +98,6 @@ class BNAME_OT_coma_camera_sync_references(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_toggle_all_backgrounds(Operator):
-    bl_idname = "bname.coma_camera_toggle_all_backgrounds"
-    bl_label = "全下絵を表示/非表示"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return _is_coma_mode(context) and _camera(context) is not None
-
-    def execute(self, context):
-        if coma_camera.camera_background_count(context) <= 0:
-            return {"CANCELLED"}
-        visible = coma_camera.toggle_all_backgrounds(context)
-        settings = _settings(context)
-        if settings is not None:
-            settings.name_visible = visible
-            settings.koma_visible = visible
-            coma_camera.set_page_reference_visibility(
-                context,
-                show_all=bool(getattr(settings, "name_show_all_pages", False)),
-            )
-        return {"FINISHED"}
-
-
 class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
     bl_idname = "bname.coma_camera_toggle_name_backgrounds"
     bl_label = "ページ画像を表示/非表示"
@@ -143,37 +119,6 @@ class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_toggle_koma_backgrounds(Operator):
-    bl_idname = "bname.coma_camera_toggle_koma_backgrounds"
-    bl_label = "コマ下絵を表示/非表示"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return _is_coma_mode(context) and _camera(context) is not None
-
-    def execute(self, context):
-        visible = coma_camera.toggle_backgrounds_by_kind(context, "koma")
-        self.report({"INFO"}, "コマ下絵: 表示" if visible else "コマ下絵: 非表示")
-        return {"FINISHED"}
-
-
-class BNAME_OT_coma_camera_reload_backgrounds(Operator):
-    bl_idname = "bname.coma_camera_reload_backgrounds"
-    bl_label = "すべての下絵を再読込"
-    bl_options = {"REGISTER"}
-
-    @classmethod
-    def poll(cls, context):
-        return _is_coma_mode(context) and _camera(context) is not None
-
-    def execute(self, context):
-        count = coma_camera.reload_background_images(context)
-        coma_camera.update_view(context)
-        self.report({"INFO"}, f"{count}件の下絵を再読込しました")
-        return {"FINISHED"}
-
-
 class BNAME_OT_coma_camera_update_view(Operator):
     bl_idname = "bname.coma_camera_update_view"
     bl_label = "ビューを更新"
@@ -190,7 +135,8 @@ class BNAME_OT_coma_camera_update_view(Operator):
 
 class BNAME_OT_coma_camera_angle_add(Operator):
     bl_idname = "bname.coma_camera_angle_add"
-    bl_label = "カメラアングル追加"
+    bl_label = "カメラプリセット追加"
+    bl_description = "現在のカメラに関する設定をまとめてプリセットとして保存します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -216,9 +162,60 @@ class BNAME_OT_coma_camera_angle_add(Operator):
         return {"FINISHED"}
 
 
+def _camera_angle_copy_name(settings, source_name: str) -> str:
+    base = f"{source_name or 'カメラプリセット'} コピー"
+    existing = {str(getattr(item, "name", "") or "") for item in settings.camera_angles}
+    if base not in existing:
+        return base
+    for number in range(2, 1000):
+        candidate = f"{base} {number}"
+        if candidate not in existing:
+            return candidate
+    return base
+
+
+def _copy_camera_angle(dst, src) -> None:
+    for attr in (
+        "location",
+        "rotation",
+        "lens",
+        "shift_x",
+        "shift_y",
+        "fisheye_layout_mode",
+        "fisheye_fov",
+        "bg_images_scale",
+    ):
+        setattr(dst, attr, getattr(src, attr))
+
+
+class BNAME_OT_coma_camera_angle_duplicate(Operator):
+    bl_idname = "bname.coma_camera_angle_duplicate"
+    bl_label = "カメラプリセット複製"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        settings = _settings(context)
+        return _is_coma_mode(context) and settings is not None and len(settings.camera_angles) > 0
+
+    def execute(self, context):
+        settings = _settings(context)
+        if settings is None or not settings.camera_angles:
+            return {"CANCELLED"}
+        src_idx = max(0, min(int(settings.camera_angles_index), len(settings.camera_angles) - 1))
+        src = settings.camera_angles[src_idx]
+        item = settings.camera_angles.add()
+        _copy_camera_angle(item, src)
+        item.name = _camera_angle_copy_name(settings, str(getattr(src, "name", "") or ""))
+        dst_idx = src_idx + 1
+        settings.camera_angles.move(len(settings.camera_angles) - 1, dst_idx)
+        settings.camera_angles_index = dst_idx
+        return {"FINISHED"}
+
+
 class BNAME_OT_coma_camera_angle_remove(Operator):
     bl_idname = "bname.coma_camera_angle_remove"
-    bl_label = "カメラアングル削除"
+    bl_label = "カメラプリセット削除"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -240,7 +237,7 @@ class BNAME_OT_coma_camera_angle_remove(Operator):
 
 class BNAME_OT_coma_camera_angle_apply(Operator):
     bl_idname = "bname.coma_camera_angle_apply"
-    bl_label = "カメラアングル適用"
+    bl_label = "カメラプリセット適用"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -274,51 +271,6 @@ class BNAME_OT_coma_camera_angle_apply(Operator):
         context.scene.bname_coma_camera_fisheye_layout_mode = bool(item.fisheye_layout_mode)
         settings.bg_images_scale = float(item.bg_images_scale)
         coma_camera.update_render_border_from_current_coma(context)
-        return {"FINISHED"}
-
-
-class BNAME_OT_coma_camera_resolution_add(Operator):
-    bl_idname = "bname.coma_camera_resolution_add"
-    bl_label = "原稿サイズプリセット追加"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        return _is_coma_mode(context)
-
-    def execute(self, context):
-        scene = context.scene
-        coll = scene.bname_coma_camera_resolution_settings
-        item = coll.add()
-        item.name = f"Preset {len(coll)}"
-        item.resolution_x = int(scene.render.resolution_x)
-        item.resolution_y = int(scene.render.resolution_y)
-        scene.bname_coma_camera_resolution_settings_index = len(coll) - 1
-        return {"FINISHED"}
-
-
-class BNAME_OT_coma_camera_resolution_remove(Operator):
-    bl_idname = "bname.coma_camera_resolution_remove"
-    bl_label = "原稿サイズプリセット削除"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        scene = getattr(context, "scene", None)
-        coll = getattr(scene, "bname_coma_camera_resolution_settings", None) if scene else None
-        return _is_coma_mode(context) and coll is not None and len(coll) > 0
-
-    def execute(self, context):
-        scene = context.scene
-        coll = scene.bname_coma_camera_resolution_settings
-        idx = int(scene.bname_coma_camera_resolution_settings_index)
-        if not (0 <= idx < len(coll)):
-            return {"CANCELLED"}
-        coll.remove(idx)
-        scene.bname_coma_camera_resolution_settings_index = min(
-            max(0, idx - 1),
-            max(0, len(coll) - 1),
-        )
         return {"FINISHED"}
 
 
@@ -389,16 +341,12 @@ class BNAME_OT_coma_camera_shift_drag(Operator):
 _CLASSES = (
     BNAME_OT_coma_camera_ensure,
     BNAME_OT_coma_camera_sync_references,
-    BNAME_OT_coma_camera_toggle_all_backgrounds,
     BNAME_OT_coma_camera_toggle_name_backgrounds,
-    BNAME_OT_coma_camera_toggle_koma_backgrounds,
-    BNAME_OT_coma_camera_reload_backgrounds,
     BNAME_OT_coma_camera_update_view,
     BNAME_OT_coma_camera_angle_add,
+    BNAME_OT_coma_camera_angle_duplicate,
     BNAME_OT_coma_camera_angle_remove,
     BNAME_OT_coma_camera_angle_apply,
-    BNAME_OT_coma_camera_resolution_add,
-    BNAME_OT_coma_camera_resolution_remove,
     BNAME_OT_coma_camera_shift_drag,
 )
 

@@ -27,6 +27,21 @@ def _load_addon():
     return mod
 
 
+def _load_render_addon():
+    package_root = ROOT / "addons" / "b_name_render"
+    spec = importlib.util.spec_from_file_location(
+        "bname_render_dev_fisheye",
+        package_root / "__init__.py",
+        submodule_search_locations=[str(package_root)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["bname_render_dev_fisheye"] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
 class _FakePencil4Node:
     def __init__(self, size: float):
         self.name = "Brush Settings"
@@ -108,7 +123,7 @@ def _check_pencil4_save_operator_while_reduced(pencil4_link) -> None:
     real_bpy = pencil4_link.bpy
     pencil4_link.bpy = fake_bpy
     try:
-        result = bpy.ops.bname.fisheye_save_pencil4_widths()
+        result = bpy.ops.bname_render.save_pencil4_widths()
         assert result == {"FINISHED"}, result
         assert node["original_size"] == 8.0
         assert node.size == 4.0
@@ -118,6 +133,7 @@ def _check_pencil4_save_operator_while_reduced(pencil4_link) -> None:
 
 def main() -> None:
     mod = _load_addon()
+    render = _load_render_addon()
     try:
         from bname_dev.core.fisheye import pencil4_link
         from bname_dev.utils import coma_camera
@@ -127,6 +143,7 @@ def main() -> None:
         _check_pencil4_save_operator_while_reduced(pencil4_link)
         print("BNAME_FISHEYE_F1F2_OK")
     finally:
+        render.unregister()
         mod.unregister()
 
 

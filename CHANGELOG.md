@@ -3,6 +3,36 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — コマ編集カメラ設定を整理しB-Name-Renderへ移動 / v0.6.239
+
+### 症状
+- コマ編集ファイルのB-Nameパネルに、作品側の用紙設定で決まる出力解像度リストが残っていた。
+- 魚眼出力や縮小出力など、レンダー出力側で扱うべき設定がB-Name側のコマ編集パネルに混在していた。
+- 旧方式の下絵表示操作が残り、現在のページプレビュー方式では不要な項目が見えていた。
+- カメラプリセットに複製操作がなく、追加ボタンの用途も分かりにくかった。
+
+### 原因
+- コマ編集カメラパネルが、旧下絵方式とレンダー出力設定を同じ場所で扱う設計のまま残っていた。
+- B-Name-Render側は魚眼や縮小の設定値を読み取るだけで、コマ編集ファイルから直接操作する入口になっていなかった。
+- カメラプリセット一覧の表示名と操作ボタンが、現在の用途に合っていなかった。
+
+### 修正
+- コマ編集ファイルのB-Nameパネルから、出力解像度リスト、魚眼モード、縮小モード、Pencil+4 線幅保存、ページ画像のスケール、全下絵表示、コマ下絵、下絵再読込を削除した。
+- 魚眼モード、縮小モード、縮小率、Pencil+4 線幅保存、ページ画像のスケールをB-Name-Renderへ移動し、B-Name側のコマ編集設定へ即時反映するようにした。
+- グレースケール表示を「背景を透過」と同じ設定まとまりの先頭へ移動した。
+- 「カメラアングル一覧」を「カメラプリセット」に改名し、複製ボタンと追加ボタンの説明を追加した。
+- B-Name-Render側のバージョンも v0.1.31 に更新した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_coma_camera_render_panel_migration_check.py`: コマ編集パネルから不要項目が消え、B-Name-Render側に移動後の項目が表示され、魚眼・縮小・ページ画像スケールがB-Name側へ反映されることを確認。PASS。
+- `test/blender_b_name_render_split_check.py`: B-Name本体から移動済み操作が登録されず、B-Name-Render側で魚眼・縮小・ページ画像スケールが同期することを確認。PASS。
+- `test/blender_fisheye_f1f2_check.py`: B-Name-Render側のPencil+4 線幅保存が縮小時にも保存値を保つことを確認。PASS。
+- `test/blender_coma_camera_roundtrip_check.py`: コマ編集カメラ設定の保存・再読込・サムネイル生成が維持されることを確認。PASS。
+- `test/blender_bname_ui_inventory_visual_audit.py`: B-Nameパネル棚卸しで必須項目が欠けていないことを確認。PASS。
+- `test/blender_b_name_render_bname_alignment_check.py`: B-Name-Renderの出力プリセットとB-Nameコマ編集ファイルの連動を確認。PASS。
+- `python -m compileall AGENTS.md panels operators addons/b_name_render utils core test`: 構文を確認。PASS。
+- 参考: 既存の広範囲UIマトリクスは、今回の変更対象外である効果線レイヤーのテストセットアップで停止したため、今回の合否判定からは除外。
+
 ## 2026-06-02 — ページ編集ファイルのページリストを非表示化 / v0.6.238
 
 ### 症状

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 import bpy
 from bpy.props import (
     BoolProperty,
@@ -44,8 +46,45 @@ ENGINE_ITEMS = (
 )
 
 
+def _bname_coma_camera_module():
+    for name, module in tuple(sys.modules.items()):
+        if name.endswith(".utils.coma_camera"):
+            return module
+    return None
+
+
+def _on_bg_images_scale_changed(self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    value = float(getattr(self, "bg_images_scale", 1.0) or 1.0)
+    synced_to_bname = False
+    settings = getattr(scene, "bname_coma_camera_settings", None) if scene is not None else None
+    if settings is not None and hasattr(settings, "bg_images_scale"):
+        try:
+            if abs(float(settings.bg_images_scale) - value) > 1.0e-6:
+                settings.bg_images_scale = value
+            synced_to_bname = True
+        except Exception:  # noqa: BLE001
+            synced_to_bname = False
+    if synced_to_bname:
+        return
+    module = _bname_coma_camera_module()
+    if module is None:
+        return
+    try:
+        module.set_background_images_scale(context, value, kind_filter="name")
+        module.update_render_border_from_current_coma(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNameRenderToolSettings(bpy.types.PropertyGroup):
-    bg_images_scale: FloatProperty(name="ページ画像のスケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
+    bg_images_scale: FloatProperty(
+        name="ページ画像のスケール",
+        default=1.0,
+        min=0.1,
+        max=10.0,
+        update=_on_bg_images_scale_changed,
+    )  # type: ignore[valid-type]
 
 
 class BNameRenderCommand(bpy.types.PropertyGroup):
@@ -372,6 +411,9 @@ def _mirror_render_setting_to_bname(scene, render_name: str, bname_name: str) ->
 def _on_output_mode_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else None
     try:
+        if scene is not None:
+            _mirror_render_setting_to_bname(scene, "fisheye_layout_mode", "bname_coma_camera_fisheye_layout_mode")
+            _mirror_render_setting_to_bname(scene, "fisheye_fov", "bname_coma_camera_fisheye_fov")
         _apply_output_resolution_mode(scene)
     except Exception:  # noqa: BLE001
         pass
