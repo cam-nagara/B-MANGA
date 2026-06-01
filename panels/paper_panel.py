@@ -7,6 +7,7 @@ from bpy.types import Panel
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
+from ..utils import page_file_scene
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -32,7 +33,12 @@ class BNAME_PT_paper(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(w and w.loaded and get_mode(context) != MODE_COMA)
+        return bool(
+            w
+            and w.loaded
+            and get_mode(context) != MODE_COMA
+            and not page_file_scene.is_page_edit_scene(context.scene)
+        )
 
     def draw(self, context):
         layout = self.layout

@@ -57,6 +57,21 @@ def _find_view3d_region(context):
     return area, region, rv3d
 
 
+def _window_screen_for_area(context, area):
+    window = getattr(context, "window", None)
+    screen = getattr(window, "screen", None)
+    if screen is not None and any(candidate == area for candidate in getattr(screen, "areas", [])):
+        return window, screen
+    wm = getattr(context, "window_manager", None) or getattr(bpy.context, "window_manager", None)
+    for candidate in getattr(wm, "windows", []) or []:
+        candidate_screen = getattr(candidate, "screen", None)
+        if candidate_screen is not None and any(
+            candidate_area == area for candidate_area in getattr(candidate_screen, "areas", [])
+        ):
+            return candidate, candidate_screen
+    return window, screen
+
+
 def _refresh_bname_shading(context) -> None:
     try:
         from ..ui import overlay as _overlay
@@ -64,6 +79,28 @@ def _refresh_bname_shading(context) -> None:
         _overlay.apply_bname_shading_mode(context)
     except Exception:  # noqa: BLE001
         _logger.exception("view: shading refresh failed")
+
+
+def schedule_fit_active_page(retries: int = 8, interval: float = 0.15) -> None:
+    """ファイルを開いた直後に現在ページへビューを合わせる."""
+    if bool(getattr(bpy.app, "background", False)):
+        return
+    state = {"left": max(1, int(retries))}
+
+    def _tick():
+        try:
+            result = bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            if "FINISHED" in result:
+                return None
+        except Exception:  # noqa: BLE001
+            pass
+        state["left"] -= 1
+        return interval if state["left"] > 0 else None
+
+    try:
+        bpy.app.timers.register(_tick, first_interval=interval)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _find_window_region(area):
@@ -253,7 +290,18 @@ def _fit_view_to_rect_mm(
 
         space = area.spaces.active
         rv3d = space.region_3d
-        with context.temp_override(area=area, region=region):
+        window, screen = _window_screen_for_area(context, area)
+        override = {
+            "area": area,
+            "region": region,
+            "space_data": space,
+            "region_data": rv3d,
+        }
+        if window is not None:
+            override["window"] = window
+        if screen is not None:
+            override["screen"] = screen
+        with context.temp_override(**override):
             bpy.ops.view3d.view_axis(type="TOP")
             if rv3d.view_perspective != "ORTHO":
                 rv3d.view_perspective = "ORTHO"
@@ -579,6 +627,12 @@ _CLASSES = (
 def _on_overview_layout_changed(_self, context) -> None:
     """cols / gap_mm 変更時にページ Collection の grid 配置を追随させる."""
     try:
+        from ..utils import view_settings
+
+        view_settings.copy_scene_to_work(context.scene, get_work(context))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from ..utils import page_grid
 
         work = get_work(context)
@@ -606,6 +660,12 @@ def _fit_page_browser_areas(context) -> None:
 
 
 def _on_page_browser_fit_changed(_self, context) -> None:
+    try:
+        from ..utils import view_settings
+
+        view_settings.copy_scene_to_work(context.scene, get_work(context))
+    except Exception:  # noqa: BLE001
+        pass
     _PAGE_BROWSER_AREA_SIZES.clear()
     _fit_page_browser_areas(context)
 

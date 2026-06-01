@@ -99,6 +99,50 @@ class BNameWorkData(bpy.types.PropertyGroup):
         description="コマ用blendファイルからページ一覧に戻る時、表示用のコマ画像を自動レンダリングします",
         default=True,
     )
+    view_overlay_enabled: BoolProperty(  # type: ignore[valid-type]
+        name="オーバーレイ表示",
+        default=True,
+    )
+    view_overview_cols: IntProperty(  # type: ignore[valid-type]
+        name="一覧の列数",
+        default=4,
+        min=2,
+    )
+    view_overview_gap_mm: FloatProperty(  # type: ignore[valid-type]
+        name="一覧のページ間隔",
+        default=30.0,
+        min=0.0,
+    )
+    view_page_preview_enabled: BoolProperty(  # type: ignore[valid-type]
+        name="ページ一覧表示",
+        default=True,
+    )
+    view_page_preview_page_radius: IntProperty(  # type: ignore[valid-type]
+        name="前後ページ数",
+        default=3,
+        min=0,
+    )
+    view_page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
+        name="画像解像度",
+        default=25.0,
+        min=5.0,
+        max=200.0,
+        subtype="PERCENTAGE",
+    )
+    view_page_browser_position: StringProperty(  # type: ignore[valid-type]
+        name="ページ一覧の位置",
+        default="LEFT",
+    )
+    view_page_browser_size: FloatProperty(  # type: ignore[valid-type]
+        name="ページ一覧の幅",
+        default=0.28,
+        min=0.12,
+        max=0.5,
+    )
+    view_page_browser_fit: BoolProperty(  # type: ignore[valid-type]
+        name="フィット",
+        default=True,
+    )
 
     # --- 各セクション ---
     work_info: PointerProperty(type=BNameWorkInfo)  # type: ignore[valid-type]

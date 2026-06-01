@@ -201,6 +201,7 @@ class BNAME_OT_layer_move_tool(Operator):
             work
             and work.loaded
             and getattr(context.scene, "bname_layer_stack", None) is not None
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
             and shortcut_visibility.shortcuts_allowed(context)
         )
 

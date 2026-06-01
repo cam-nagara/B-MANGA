@@ -128,7 +128,7 @@ def set_page_edit_state(context, page_id: str) -> bool:
     scene.bname_current_coma_id = ""
     scene.bname_current_coma_page_id = ""
     if hasattr(scene, "bname_overview_mode"):
-        scene.bname_overview_mode = False
+        scene.bname_overview_mode = True
     if hasattr(scene, "bname_active_layer_kind"):
         scene.bname_active_layer_kind = "page"
     return True
@@ -141,7 +141,9 @@ def is_page_edit_scene(scene=None) -> bool:
     role, page_id, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id):
         return True
-    return bool(current_page_id(scene)) and not bool(getattr(scene, "bname_overview_mode", True))
+    if role == ROLE_WORK:
+        return False
+    return bool(current_page_id(scene))
 
 
 def is_work_list_scene(scene=None) -> bool:
@@ -152,7 +154,11 @@ def is_work_list_scene(scene=None) -> bool:
     if role == ROLE_WORK:
         return True
     filepath = str(getattr(bpy.data, "filepath", "") or "")
-    return (not filepath) and bool(getattr(scene, "bname_overview_mode", False))
+    return (
+        (not filepath)
+        and bool(getattr(scene, "bname_overview_mode", False))
+        and not current_page_id(scene)
+    )
 
 
 def structural_page_filter(scene=None) -> set[str] | None:
@@ -172,11 +178,11 @@ def content_page_filter(scene=None) -> set[str] | None:
     role, page_id_from_path, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id_from_path):
         return {page_id_from_path}
-    if is_work_list_scene(scene):
-        return set()
     page_id = current_page_id(scene)
     if page_id and is_page_edit_scene(scene):
         return {page_id}
+    if is_work_list_scene(scene):
+        return set()
     return None
 
 

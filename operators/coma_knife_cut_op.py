@@ -33,6 +33,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     log,
     object_selection,
+    page_file_scene,
     page_grid,
     page_range,
     shortcut_visibility,
@@ -492,18 +493,7 @@ def _sync_layer_stack_after_cut(context) -> None:
 
 def _page_world_offset_mm(work, page_index: int, scene=None) -> tuple[float, float]:
     scene = scene or bpy.context.scene
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
-    cw = work.paper.canvas_width_mm
-    ch = work.paper.canvas_height_mm
-    start_side = getattr(work.paper, "start_side", "right")
-    read_direction = getattr(work.paper, "read_direction", "left")
-    ox, oy = page_grid.page_grid_offset_mm(
-        page_index, cols, gap, cw, ch, start_side, read_direction
-    )
-    page = work.pages[page_index]
-    add_x, add_y = page_grid.page_manual_offset_mm(page)
-    return ox + add_x, oy + add_y
+    return page_grid.page_total_offset_mm(work, scene, page_index)
 
 
 def _find_coma_at_world(
@@ -553,7 +543,12 @@ class BNAME_OT_coma_knife_cut(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded and shortcut_visibility.shortcuts_allowed(context)
+        return bool(
+            work is not None
+            and work.loaded
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+            and shortcut_visibility.shortcuts_allowed(context)
+        )
 
     def invoke(self, context, event):
         if not shortcut_visibility.shortcuts_allowed(context):

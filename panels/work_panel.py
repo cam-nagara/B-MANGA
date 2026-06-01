@@ -19,11 +19,14 @@ class BNAME_PT_work(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 0
+    bl_order = 1
 
     @classmethod
     def poll(cls, context):
-        return get_mode(context) != MODE_COMA
+        return (
+            get_mode(context) != MODE_COMA
+            and not page_file_scene.is_page_edit_scene(context.scene)
+        )
 
     def draw(self, context):
         shortcut_visibility.mark_bname_panel_drawn(context)
@@ -51,12 +54,6 @@ class BNAME_PT_work(Panel):
             return
 
         mode = get_mode(context)
-        role, _page_id, _coma_id = page_file_scene.current_role(context)
-        in_page_file = page_file_scene.is_page_edit_scene(context.scene)
-        if role == page_file_scene.ROLE_PAGE:
-            row = layout.row(align=True)
-            row.operator("bname.exit_page_file", text="ページ一覧に戻る", icon="BACK")
-            row.operator("bname.work_save", text="", icon="FILE_TICK")
 
         box = layout.box()
         box.label(text="作品情報", icon="WORDWRAP_ON")
@@ -66,8 +63,6 @@ class BNAME_PT_work(Panel):
         box.prop(info, "subtitle")
         box.prop(info, "author")
         box.operator("bname.work_meta_dialog", text="メタ情報を編集", icon="INFO")
-        if in_page_file:
-            return
         box.label(text="ページ数")
         row = box.row(align=True)
         row.enabled = mode == MODE_PAGE
@@ -97,7 +92,7 @@ class BNAME_PT_work(Panel):
 
 class BNAME_PT_coma_return(Panel):
     bl_idname = "BNAME_PT_coma_return"
-    bl_label = "ページ一覧に戻る"
+    bl_label = "ファイル遷移"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
@@ -105,8 +100,10 @@ class BNAME_PT_coma_return(Panel):
 
     @classmethod
     def poll(cls, context):
-        # 通常: モードが MODE_COMA + work.loaded
         work = get_work(context)
+        if work and work.loaded and page_file_scene.is_page_edit_scene(context.scene):
+            return True
+        # 通常: モードが MODE_COMA + work.loaded
         if work and work.loaded and get_mode(context) == MODE_COMA:
             return True
         # フォールバック: load_post の遅延等でモードが同期できなくても、
@@ -116,9 +113,20 @@ class BNAME_PT_coma_return(Panel):
     def draw(self, context):
         shortcut_visibility.mark_bname_panel_drawn(context)
         layout = self.layout
+        if page_file_scene.is_page_edit_scene(context.scene):
+            row = layout.row(align=True)
+            row.operator(
+                "bname.exit_page_file",
+                text="ページ一覧に戻る",
+                icon="BACK",
+            )
+            row.operator("bname.work_save", text="", icon="FILE_TICK")
+            op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
+            op.target = "WORK"
+            return
         layout.operator(
             "bname.exit_coma_mode_safe",
-            text="ページ一覧に戻る",
+            text="ページに戻る",
             icon="BACK",
         )
         op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")

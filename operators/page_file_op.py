@@ -180,6 +180,18 @@ class BNAME_OT_open_page_file(Operator):
             _logger.exception("open_page_file failed")
             self.report({"ERROR"}, f"ページを開けませんでした: {exc}")
             return {"CANCELLED"}
+        try:
+            from ..ui import sidebar as _sidebar
+
+            _sidebar.schedule_open_bname_sidebar()
+        except Exception:  # noqa: BLE001
+            _logger.exception("open_page_file: B-Name sidebar open failed")
+        try:
+            from . import view_op
+
+            view_op.schedule_fit_active_page()
+        except Exception:  # noqa: BLE001
+            _logger.exception("open_page_file: fit page scheduling failed")
         self.report({"INFO"}, "ページを開きました")
         return {"FINISHED"}
 

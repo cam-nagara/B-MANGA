@@ -1,0 +1,101 @@
+"""作品内で共有するビュー設定の同期."""
+
+from __future__ import annotations
+
+
+def _clamp_float(value, default: float, minimum: float, maximum: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    return max(minimum, min(maximum, number))
+
+
+def _page_browser_position(value) -> str:
+    text = str(value or "LEFT").upper()
+    return text if text in {"LEFT", "RIGHT", "TOP", "BOTTOM"} else "LEFT"
+
+
+def copy_scene_to_work(scene, work) -> None:
+    """現在の画面側ビュー設定を作品データへ保存する."""
+    if scene is None or work is None:
+        return
+    if hasattr(work, "view_overlay_enabled"):
+        work.view_overlay_enabled = bool(getattr(scene, "bname_overlay_enabled", True))
+    if hasattr(work, "view_overview_cols"):
+        work.view_overview_cols = _clamp_int(
+            getattr(scene, "bname_overview_cols", 4), 4, 2, 200
+        )
+    if hasattr(work, "view_overview_gap_mm"):
+        work.view_overview_gap_mm = _clamp_float(
+            getattr(scene, "bname_overview_gap_mm", 30.0), 30.0, 0.0, 1000.0
+        )
+    if hasattr(work, "view_page_preview_enabled"):
+        work.view_page_preview_enabled = bool(
+            getattr(scene, "bname_page_preview_enabled", True)
+        )
+    if hasattr(work, "view_page_preview_page_radius"):
+        work.view_page_preview_page_radius = _clamp_int(
+            getattr(scene, "bname_page_preview_page_radius", 3), 3, 0, 200
+        )
+    if hasattr(work, "view_page_preview_resolution_percentage"):
+        work.view_page_preview_resolution_percentage = _clamp_float(
+            getattr(scene, "bname_page_preview_resolution_percentage", 25.0),
+            25.0,
+            5.0,
+            200.0,
+        )
+    if hasattr(work, "view_page_browser_position"):
+        work.view_page_browser_position = _page_browser_position(
+            getattr(scene, "bname_page_browser_position", "LEFT")
+        )
+    if hasattr(work, "view_page_browser_size"):
+        work.view_page_browser_size = _clamp_float(
+            getattr(scene, "bname_page_browser_size", 0.28), 0.28, 0.12, 0.5
+        )
+    if hasattr(work, "view_page_browser_fit"):
+        work.view_page_browser_fit = bool(getattr(scene, "bname_page_browser_fit", True))
+
+
+def apply_work_to_scene(scene, work) -> None:
+    """作品データに保存されたビュー設定を現在の画面へ反映する."""
+    if scene is None or work is None:
+        return
+    assignments = (
+        ("bname_overlay_enabled", "view_overlay_enabled", True),
+        ("bname_overview_cols", "view_overview_cols", 4),
+        ("bname_overview_gap_mm", "view_overview_gap_mm", 30.0),
+        ("bname_page_preview_enabled", "view_page_preview_enabled", True),
+        ("bname_page_preview_page_radius", "view_page_preview_page_radius", 3),
+        (
+            "bname_page_preview_resolution_percentage",
+            "view_page_preview_resolution_percentage",
+            25.0,
+        ),
+        ("bname_page_browser_position", "view_page_browser_position", "LEFT"),
+        ("bname_page_browser_size", "view_page_browser_size", 0.28),
+        ("bname_page_browser_fit", "view_page_browser_fit", True),
+    )
+    resolved = []
+    for scene_attr, work_attr, default in assignments:
+        if not hasattr(scene, scene_attr) or not hasattr(work, work_attr):
+            continue
+        value = getattr(work, work_attr, default)
+        if scene_attr == "bname_page_browser_position":
+            value = _page_browser_position(value)
+        resolved.append((scene_attr, value))
+
+    for scene_attr, value in resolved:
+        try:
+            if getattr(scene, scene_attr) != value:
+                setattr(scene, scene_attr, value)
+        except Exception:  # noqa: BLE001
+            pass

@@ -9,7 +9,7 @@ from ..utils import page_browser
 B_NAME_CATEGORY = "B-Name"
 
 
-def open_bname_sidebar(context=None) -> int:
+def open_bname_sidebar(context=None, *, select_category: bool = True) -> int:
     """全 VIEW_3D でサイドバーを開き、可能なら B-Name タブを選択する."""
     ctx = context or bpy.context
     wm = getattr(ctx, "window_manager", None)
@@ -35,7 +35,8 @@ def open_bname_sidebar(context=None) -> int:
                         changed += 1
                 except Exception:  # noqa: BLE001
                     pass
-            _select_bname_category(area)
+            if select_category:
+                _select_bname_category(area)
             try:
                 area.tag_redraw()
             except Exception:  # noqa: BLE001

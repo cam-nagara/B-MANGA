@@ -14,7 +14,7 @@ from bpy.types import Operator
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..ui import overlay_creation_range
-from ..utils import coma_hit_visibility, free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_grid, percentage
+from ..utils import coma_hit_visibility, free_transform, gp_layer_parenting as gp_parent, layer_hierarchy, log, object_selection, page_file_scene, page_grid, percentage
 from ..utils.geom import m_to_mm, mm_to_m
 from ..utils import layer_stack as layer_stack_utils
 from . import (
@@ -1333,7 +1333,12 @@ class BNAME_OT_effect_line_tool(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return bool(work and work.loaded and get_mode(context) != MODE_COMA)
+        return bool(
+            work
+            and work.loaded
+            and get_mode(context) != MODE_COMA
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def invoke(self, context, _event):
         active = coma_modal_state.get_active("effect_line_tool")

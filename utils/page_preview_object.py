@@ -18,7 +18,6 @@ PREVIEW_MESH_PREFIX = "page_preview_mesh_"
 PREVIEW_OBJECT_PREFIX = "page_preview_"
 PREVIEW_MATERIAL_PREFIX = "BName_PagePreview_"
 PREVIEW_PAGE_ID_PROP = "bname_page_preview_page_id"
-PREVIEW_SCALE = 0.25
 PREVIEW_BASE_MAX_PX = 1536
 DEFAULT_PREVIEW_PAGE_RADIUS = 3
 DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
@@ -364,13 +363,11 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
         return {}
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-    thumb_w = cw * PREVIEW_SCALE
-    thumb_h = ch * PREVIEW_SCALE
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4) or 4))
-    gap = max(6.0, float(getattr(scene, "bname_overview_gap_mm", 30.0) or 30.0) * PREVIEW_SCALE)
+    gap = max(0.0, float(getattr(scene, "bname_overview_gap_mm", 30.0)))
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
-    offsets: list[tuple[int, str, float, float]] = []
+    rects: dict[str, tuple[int, float, float, float, float]] = {}
     target_indices = _preview_page_indices(scene, work)
     for i, page in enumerate(getattr(work, "pages", []) or []):
         if i not in target_indices:
@@ -379,26 +376,12 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
         if not page_id or not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i,
-            cols,
-            gap,
-            thumb_w,
-            thumb_h,
-            start_side,
-            read_direction,
+            i, cols, gap, cw, ch, start_side, read_direction
         )
-        offsets.append((i, page_id, ox, oy))
-    if not offsets:
-        return {}
-    min_x = min(ox for _i, _pid, ox, _oy in offsets)
-    max_y = max(oy for _i, _pid, _ox, oy in offsets)
-    origin_x = cw + max(20.0, gap * 2.0)
-    origin_y = ch - thumb_h
-    rects: dict[str, tuple[int, float, float, float, float]] = {}
-    for i, page_id, ox, oy in offsets:
-        x0 = origin_x + (ox - min_x)
-        y0 = origin_y + (oy - max_y)
-        rects[page_id] = (i, x0, y0, x0 + thumb_w, y0 + thumb_h)
+        add_x, add_y = page_grid.page_manual_offset_mm(page)
+        x0 = ox + add_x
+        y0 = oy + add_y
+        rects[page_id] = (i, x0, y0, x0 + cw, y0 + ch)
     return rects
 
 
@@ -493,14 +476,14 @@ def sync_page_previews(context=None, work=None) -> int:
     valid_page_ids = set(rects)
     for obj in _iter_preview_objects():
         page_id = str(obj.get(PREVIEW_PAGE_ID_PROP, "") or "")
-        if page_id not in valid_page_ids:
+        if page_id not in valid_page_ids or page_id == current_page_id:
             obj.hide_viewport = True
             obj.hide_render = True
     updated = 0
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         rect = rects.get(page_id)
-        if rect is None:
+        if rect is None or page_id == current_page_id:
             continue
         _ensure_preview_object(
             scene,

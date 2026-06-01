@@ -57,6 +57,12 @@ def _active_page_number_set(scene, value: int) -> None:
 
 def _page_preview_enabled_update(scene, context) -> None:
     try:
+        from ..utils import view_settings
+
+        view_settings.copy_scene_to_work(scene, getattr(scene, "bname_work", None))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from ..utils import page_preview_object
 
         page_preview_object.sync_page_previews(context, getattr(scene, "bname_work", None))
@@ -104,6 +110,9 @@ class BNAME_PT_view(Panel):
             row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
             row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
             row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
+            row = col.row(align=True)
+            row.prop(scene, "bname_overview_cols", text="列数")
+            row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
         else:
             row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
             row = col.row(align=True)

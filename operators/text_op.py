@@ -22,6 +22,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     log,
     object_selection,
+    page_file_scene,
     page_range,
     shortcut_visibility,
     text_real_object,
@@ -739,6 +740,7 @@ class BNAME_OT_text_tool(Operator):
             work is not None
             and work.loaded
             and get_active_page(context) is not None
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
             and shortcut_visibility.shortcuts_allowed(context)
         )
 

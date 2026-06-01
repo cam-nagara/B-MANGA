@@ -197,8 +197,8 @@ def _sync_scene_state_from_filepath(scene, mode: str, page_id: str, coma_id: str
                         except Exception:  # noqa: BLE001
                             pass
                         break
-                if hasattr(scene, "bname_overview_mode") and bool(scene.bname_overview_mode):
-                    scene.bname_overview_mode = False
+                if hasattr(scene, "bname_overview_mode") and not bool(scene.bname_overview_mode):
+                    scene.bname_overview_mode = True
             else:
                 if str(getattr(scene, "bname_current_page_id", "") or ""):
                     scene.bname_current_page_id = ""

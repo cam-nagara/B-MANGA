@@ -415,7 +415,7 @@ def _switch_to_page(context, work, work_dir: Path, new_index: int) -> bool:
         return False
     work.active_page_index = new_index
     role, _page_id, _coma_id = page_file_scene.current_role(context)
-    context.scene.bname_overview_mode = role != page_file_scene.ROLE_PAGE
+    context.scene.bname_overview_mode = True
     set_mode(MODE_PAGE, context)
     context.scene.bname_current_coma_id = ""
     context.scene.bname_current_coma_page_id = ""
@@ -457,7 +457,7 @@ class BNAME_OT_page_select(Operator):
             current_page_index = page_file_scene.find_page_index(work, current_page_id)
             if self.index == current_page_index:
                 work.active_page_index = int(self.index)
-                context.scene.bname_overview_mode = False
+                context.scene.bname_overview_mode = True
                 _set_page_layer_active(context)
                 _sync_layer_stack_after_page_change(context)
                 return {"FINISHED"}

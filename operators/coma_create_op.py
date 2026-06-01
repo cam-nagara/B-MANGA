@@ -19,7 +19,7 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_active_page, get_work
 from ..io import coma_io, page_io
-from ..utils import geom, layer_stack as layer_stack_utils, log
+from ..utils import geom, layer_stack as layer_stack_utils, log, page_file_scene
 from . import coma_modal_state, view_event_region
 from .coma_knife_cut_op import _set_coma_polygon
 from .coma_op import create_rect_coma
@@ -110,7 +110,12 @@ class BNAME_OT_coma_create_tool(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded and get_active_page(context) is not None
+        return bool(
+            work is not None
+            and work.loaded
+            and get_active_page(context) is not None
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def invoke(self, context, _event):
         if coma_modal_state.get_active("coma_create") is not None:

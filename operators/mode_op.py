@@ -38,6 +38,12 @@ def _save_current_work_metadata(work, page) -> None:
     if work is None or not getattr(work, "work_dir", ""):
         return
     work_dir = Path(work.work_dir)
+    try:
+        from ..utils import view_settings
+
+        view_settings.copy_scene_to_work(bpy.context.scene, work)
+    except Exception:  # noqa: BLE001
+        pass
     work_io.save_work_json(work_dir, work)
     page_io.save_pages_json(work_dir, work)
     if page is not None:

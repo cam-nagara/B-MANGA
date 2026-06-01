@@ -29,6 +29,7 @@ from ..utils import (
     layer_stack as layer_stack_utils,
     log,
     object_selection,
+    page_file_scene,
 )
 from ..utils import active_target as _active_target
 
@@ -838,7 +839,12 @@ class BNAME_OT_balloon_add(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded and get_active_page(context) is not None
+        return bool(
+            work is not None
+            and work.loaded
+            and get_active_page(context) is not None
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def invoke(self, context, event):
         work, page, lx, ly = _resolve_page_from_event(context, event)
@@ -1046,7 +1052,12 @@ class BNAME_OT_balloon_tool(Operator):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return work is not None and work.loaded and get_active_page(context) is not None
+        return bool(
+            work is not None
+            and work.loaded
+            and get_active_page(context) is not None
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def invoke(self, context, _event):
         if coma_modal_state.get_active("balloon_tool") is not None:

@@ -28,6 +28,13 @@ class BNAME_OT_overlay_toggle(bpy.types.Operator):
         scene = context.scene
         new_val = not bool(getattr(scene, "bname_overlay_enabled", True))
         scene.bname_overlay_enabled = new_val
+        try:
+            from ..core.work import get_work
+            from ..utils import view_settings
+
+            view_settings.copy_scene_to_work(scene, get_work(context))
+        except Exception:  # noqa: BLE001
+            pass
         # 全 3D ビュー再描画
         try:
             for area in context.screen.areas if context.screen else ():

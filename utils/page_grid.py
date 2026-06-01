@@ -154,14 +154,6 @@ def page_total_offset_mm(
     """grid 配置とページ手動移動量を合成した offset (mm) を返す."""
     if work is None or scene is None or not (0 <= page_index < len(work.pages)):
         return 0.0, 0.0
-    try:
-        from . import page_file_scene
-
-        page_id = str(getattr(work.pages[page_index], "id", "") or "")
-        if page_file_scene.is_page_edit_scene(scene) and page_file_scene.current_page_id(scene) == page_id:
-            return 0.0, 0.0
-    except Exception:  # noqa: BLE001
-        pass
     cols, gap, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
@@ -332,24 +324,12 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         if coll is None:
             continue
         page_id_str = str(getattr(page_entry, "id", "") or "")
-        try:
-            from . import page_file_scene
-
-            page_edit_origin = (
-                page_file_scene.is_page_edit_scene(scene)
-                and page_file_scene.current_page_id(scene) == page_id_str
-            )
-        except Exception:  # noqa: BLE001
-            page_edit_origin = False
-        if page_edit_origin:
-            ox_mm, oy_mm = 0.0, 0.0
-        else:
-            ox_mm, oy_mm = page_grid_offset_mm(
-                i, cols, gap, cw, ch, start_side, read_direction
-            )
-            add_x, add_y = page_manual_offset_mm(page_entry)
-            ox_mm += add_x
-            oy_mm += add_y
+        ox_mm, oy_mm = page_grid_offset_mm(
+            i, cols, gap, cw, ch, start_side, read_direction
+        )
+        add_x, add_y = page_manual_offset_mm(page_entry)
+        ox_mm += add_x
+        oy_mm += add_y
 
         _set_page_text_objects(page_entry, page_id_str, ox_mm, oy_mm)
 
@@ -478,20 +458,13 @@ def page_index_at_world_mm(
     """
     if work is None or scene is None:
         return None
-    cols, gap, cw, ch = _resolve_overview_params(scene, work)
-    start_side = getattr(work.paper, "start_side", "right")
-    read_direction = getattr(work.paper, "read_direction", "left")
+    _, _, cw, ch = _resolve_overview_params(scene, work)
     from . import page_range
 
     for i, page in enumerate(work.pages):
         if not page_range.page_in_range(page):
             continue
-        ox_mm, oy_mm = page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
-        )
-        add_x, add_y = page_manual_offset_mm(work.pages[i])
-        ox_mm += add_x
-        oy_mm += add_y
+        ox_mm, oy_mm = page_total_offset_mm(work, scene, i)
         if ox_mm <= x_mm <= ox_mm + cw and oy_mm <= y_mm <= oy_mm + ch:
             return i
     return None

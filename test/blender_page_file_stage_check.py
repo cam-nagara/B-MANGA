@@ -103,24 +103,36 @@ def main() -> None:
         result = bpy.ops.bname.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
-        assert bool(getattr(bpy.context.scene, "bname_overview_mode", True)) is False
+        assert bool(getattr(bpy.context.scene, "bname_overview_mode", False)) is True
         assert str(getattr(bpy.context.scene, "bname_current_page_id", "")) == "p0001"
         assert bpy.data.collections.get("p0002") is None
         assert _managed_object("balloon", "other_page_balloon") is None
         previews = _page_preview_objects()
-        assert len(previews) == 4
-        assert len(_visible_page_preview_objects()) == 4
+        assert len(previews) == 3
+        assert len(_visible_page_preview_objects()) == 3
         assert (work_dir / "p0002" / "page_preview.png").is_file()
         assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 3
         assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
+        assert bpy.ops.bname.coma_knife_cut.poll()
+        assert bpy.ops.bname.coma_create_tool.poll()
+        assert bpy.ops.bname.balloon_tool.poll()
+        assert bpy.ops.bname.text_tool.poll()
+        assert bpy.ops.bname.effect_line_tool.poll()
+        assert bpy.ops.bname.layer_move_tool.poll()
 
         from bname_dev_page_file_stage.utils import page_preview_object
+        from bname_dev_page_file_stage.utils import page_grid
+        from bname_dev_page_file_stage.operators import coma_knife_cut_op
 
         work = bpy.context.scene.bname_work
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert "p0002" in rects
         index, x0, y0, x1, y1 = rects["p0002"]
         assert index == 1
+        ox, oy = page_grid.page_total_offset_mm(work, bpy.context.scene, 1)
+        assert abs(x0 - ox) < 0.001 and abs(y0 - oy) < 0.001
+        assert abs((x1 - x0) - float(work.paper.canvas_width_mm)) < 0.001
+        assert abs((y1 - y0) - float(work.paper.canvas_height_mm)) < 0.001
         hit = page_preview_object.page_index_at_world_mm(
             bpy.context.scene,
             work,
@@ -128,6 +140,14 @@ def main() -> None:
             (y0 + y1) * 0.5,
         )
         assert hit == 1
+        current_ox, current_oy = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
+        coma = work.pages[0].comas[0]
+        coma_hit = coma_knife_cut_op._find_coma_at_world(
+            work,
+            current_ox + float(coma.rect_x_mm) + float(coma.rect_width_mm) * 0.5,
+            current_oy + float(coma.rect_y_mm) + float(coma.rect_height_mm) * 0.5,
+        )
+        assert coma_hit == (0, 0), f"ページファイル上のコマを検出できません: {coma_hit}"
         bpy.context.scene.bname_page_preview_enabled = False
         assert all(obj.hide_viewport for obj in _page_preview_objects())
         bpy.context.scene.bname_page_preview_enabled = True
@@ -135,8 +155,12 @@ def main() -> None:
         bpy.context.scene.bname_page_preview_page_radius = 1
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert set(rects) == {"p0001", "p0002"}
-        assert len(_visible_page_preview_objects()) == 2
+        assert len(_visible_page_preview_objects()) == 1
         bpy.context.scene.bname_page_preview_resolution_percentage = 50.0
+        bpy.context.scene.bname_overview_cols = 6
+        bpy.context.scene.bname_overview_gap_mm = 0.0
+        bpy.context.scene.bname_page_preview_page_radius = 0
+        assert len(_visible_page_preview_objects()) == 0
         from PIL import Image
 
         preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
@@ -151,23 +175,34 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "work.blend").resolve()
         assert _managed_kind_count("balloon") == 0
+        assert not bpy.ops.bname.coma_knife_cut.poll()
+        assert not bpy.ops.bname.coma_create_tool.poll()
+        assert not bpy.ops.bname.balloon_tool.poll()
+        assert not bpy.ops.bname.text_tool.poll()
+        assert not bpy.ops.bname.effect_line_tool.poll()
+        assert not bpy.ops.bname.layer_move_tool.poll()
 
         result = bpy.ops.bname.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
         assert _managed_kind_count("balloon") == 1
         assert bpy.data.collections.get("p0002") is None
-        assert len(_page_preview_objects()) == 4
+        assert len(_page_preview_objects()) >= 1
+        assert int(getattr(bpy.context.scene, "bname_overview_cols", -1)) == 6
+        assert abs(float(getattr(bpy.context.scene, "bname_overview_gap_mm", -1.0))) < 0.001
+        assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 0
+        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 50.0) < 0.001
 
         result = bpy.ops.bname.page_select(index=1)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "page.blend").resolve()
         assert str(getattr(bpy.context.scene, "bname_current_page_id", "")) == "p0002"
         assert int(getattr(bpy.context.scene.bname_work, "active_page_index", -1)) == 1
+        assert bool(getattr(bpy.context.scene, "bname_overview_mode", False)) is True
         assert bpy.data.collections.get("p0001") is None
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None
-        assert len(_page_preview_objects()) == 4
+        assert len(_visible_page_preview_objects()) == 0
 
         work = bpy.context.scene.bname_work
         work.active_page_index = 1

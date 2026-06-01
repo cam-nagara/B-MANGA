@@ -86,7 +86,7 @@ def _sync_active_from_blend_path(
         scene.bname_current_coma_id = ""
         scene.bname_current_coma_page_id = ""
         try:
-            scene.bname_overview_mode = False
+            scene.bname_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
         if hasattr(scene, "bname_active_layer_kind"):
@@ -184,6 +184,7 @@ def sync_scene_work_from_disk(context, work_dir: Path):
     """現在 scene の ``bname_work`` を disk 上の work/pages/page JSON に同期."""
     from ..core.work import get_work
     from ..io import page_io, work_io
+    from . import view_settings
 
     work = get_work(context)
     if work is None:
@@ -193,6 +194,7 @@ def sync_scene_work_from_disk(context, work_dir: Path):
     _reload_all_pages_panels(work, work_dir)
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
+    view_settings.apply_work_to_scene(getattr(context, "scene", None), work)
     return work
 
 
@@ -225,6 +227,12 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
     _saving_work_metadata = True
     try:
         page_range.update_page_range_visibility(work)
+        try:
+            from . import view_settings
+
+            view_settings.copy_scene_to_work(getattr(context, "scene", None), work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("view settings save failed")
         try:
             from ..operators import raster_layer_op
 
@@ -461,6 +469,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     _sidebar.schedule_open_bname_sidebar()
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: B-Name sidebar open failed")
+                try:
+                    from ..operators import view_op
+
+                    view_op.schedule_fit_active_page()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: page fit scheduling failed")
             elif (
                 len(rel.parts) == 3
                 and paths.is_valid_page_id(rel.parts[0])

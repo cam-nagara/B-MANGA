@@ -586,6 +586,72 @@ def _page_preview_scale_percentage_from_data(value: object) -> float:
     return max(1.0, min(100.0, percentage))
 
 
+def _view_settings_to_dict(work) -> dict[str, Any]:
+    return {
+        "overlayEnabled": bool(getattr(work, "view_overlay_enabled", True)),
+        "overviewCols": int(getattr(work, "view_overview_cols", 4) or 4),
+        "overviewGapMm": round(float(getattr(work, "view_overview_gap_mm", 30.0)), 3),
+        "pagePreviewEnabled": bool(getattr(work, "view_page_preview_enabled", True)),
+        "pagePreviewPageRadius": int(getattr(work, "view_page_preview_page_radius", 3)),
+        "pagePreviewResolutionPercentage": round(
+            float(getattr(work, "view_page_preview_resolution_percentage", 25.0) or 25.0),
+            3,
+        ),
+        "pageBrowserPosition": str(getattr(work, "view_page_browser_position", "LEFT") or "LEFT"),
+        "pageBrowserSize": round(float(getattr(work, "view_page_browser_size", 0.28) or 0.28), 4),
+        "pageBrowserFit": bool(getattr(work, "view_page_browser_fit", True)),
+    }
+
+
+def _view_settings_from_dict(work, data: dict[str, Any]) -> None:
+    settings = data.get("viewSettings", {}) or {}
+    if hasattr(work, "view_overlay_enabled"):
+        work.view_overlay_enabled = bool(settings.get("overlayEnabled", True))
+    if hasattr(work, "view_overview_cols"):
+        try:
+            cols = int(settings.get("overviewCols", 4) or 4)
+        except (TypeError, ValueError):
+            cols = 4
+        work.view_overview_cols = max(2, cols)
+    if hasattr(work, "view_overview_gap_mm"):
+        try:
+            gap = float(settings["overviewGapMm"]) if "overviewGapMm" in settings else 30.0
+        except (TypeError, ValueError):
+            gap = 30.0
+        work.view_overview_gap_mm = max(0.0, gap)
+    if hasattr(work, "view_page_preview_enabled"):
+        work.view_page_preview_enabled = bool(settings.get("pagePreviewEnabled", True))
+    if hasattr(work, "view_page_preview_page_radius"):
+        try:
+            radius = (
+                int(settings["pagePreviewPageRadius"])
+                if "pagePreviewPageRadius" in settings
+                else 3
+            )
+        except (TypeError, ValueError):
+            radius = 3
+        work.view_page_preview_page_radius = max(0, radius)
+    if hasattr(work, "view_page_preview_resolution_percentage"):
+        try:
+            resolution = float(settings.get("pagePreviewResolutionPercentage", 25.0) or 25.0)
+        except (TypeError, ValueError):
+            resolution = 25.0
+        work.view_page_preview_resolution_percentage = max(5.0, min(200.0, resolution))
+    if hasattr(work, "view_page_browser_position"):
+        position = str(settings.get("pageBrowserPosition", "LEFT") or "LEFT").upper()
+        work.view_page_browser_position = (
+            position if position in {"LEFT", "RIGHT", "TOP", "BOTTOM"} else "LEFT"
+        )
+    if hasattr(work, "view_page_browser_size"):
+        try:
+            size = float(settings.get("pageBrowserSize", 0.28) or 0.28)
+        except (TypeError, ValueError):
+            size = 0.28
+        work.view_page_browser_size = max(0.12, min(0.5, size))
+    if hasattr(work, "view_page_browser_fit"):
+        work.view_page_browser_fit = bool(settings.get("pageBrowserFit", True))
+
+
 def work_to_dict(work) -> dict[str, Any]:
     """BNameWorkData → work.json dict."""
     scene = _scene_from_work(work)
@@ -607,6 +673,7 @@ def work_to_dict(work) -> dict[str, Any]:
         "autoRenderComaThumbOnReturn": bool(
             getattr(work, "auto_render_coma_thumb_on_return", True)
         ),
+        "viewSettings": _view_settings_to_dict(work),
         "safeAreaOverlay": safe_area_to_dict(work.safe_area_overlay),
         "raster_layers": [
             raster_layer_to_dict(entry)
@@ -658,6 +725,7 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
         work.auto_render_coma_thumb_on_return = bool(
             data.get("autoRenderComaThumbOnReturn", True)
         )
+    _view_settings_from_dict(work, data)
     safe_area_from_dict(work.safe_area_overlay, data.get("safeAreaOverlay", {}))
     scene = _scene_from_work(work)
     raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None

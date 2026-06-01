@@ -78,26 +78,7 @@ def _first_window_screen():
     return window, screen
 
 
-def _frame_view() -> None:
-    for obj in bpy.context.scene.objects:
-        obj.select_set(False)
-    selected = 0
-    for obj in bpy.context.scene.objects:
-        if not obj.visible_get():
-            continue
-        kind = str(obj.get("bname_kind", "") or "")
-        if kind == "page_preview":
-            obj.hide_select = False
-            obj.select_set(True)
-            selected += 1
-    if selected == 0:
-        for obj in bpy.context.scene.objects:
-            if not obj.visible_get():
-                continue
-            kind = str(obj.get("bname_kind", "") or "")
-            if kind in {"page", "coma"} or obj.name.startswith(("page_paper_", "coma_")):
-                obj.select_set(True)
-                selected += 1
+def _fit_current_page_view() -> None:
     window, screen = _first_window_screen()
     if window is None or screen is None:
         return
@@ -110,7 +91,7 @@ def _frame_view() -> None:
         if region is None or rv3d is None:
             continue
         try:
-            space.shading.type = "MATERIAL"
+            space.shading.type = "RENDERED"
         except Exception:  # noqa: BLE001
             pass
         with bpy.context.temp_override(
@@ -121,9 +102,7 @@ def _frame_view() -> None:
             space_data=space,
             region_data=rv3d,
         ):
-            bpy.ops.view3d.view_axis(type="TOP", align_active=False)
-            if selected:
-                bpy.ops.view3d.view_selected(use_all_regions=False)
+            bpy.ops.bname.view_fit_page()
         break
 
 
@@ -138,6 +117,10 @@ def _run() -> None:
     _set_coma_variation(work)
     bpy.ops.bname.work_save()
     bpy.ops.bname.open_page_file(index=3)
+    bpy.app.timers.register(_after_page_open, first_interval=1.0)
+
+
+def _after_page_open() -> None:
     scene = bpy.context.scene
     scene.bname_page_preview_enabled = True
     scene.bname_page_preview_page_radius = 2
@@ -145,7 +128,7 @@ def _run() -> None:
     from bname_dev_page_preview_visual.utils import page_preview_object
 
     page_preview_object.sync_page_previews(bpy.context, scene.bname_work)
-    _frame_view()
+    _fit_current_page_view()
     window, screen = _first_window_screen()
     if window is not None and screen is not None:
         with bpy.context.temp_override(window=window, screen=screen):
@@ -166,6 +149,18 @@ def _run() -> None:
         ),
         "visible_preview_count": len(visible),
         "visible_preview_ids": [str(obj.get("bname_id", "") or obj.name) for obj in visible],
+        "view_shading": [
+            str(area.spaces.active.shading.type)
+            for _window in bpy.context.window_manager.windows
+            for area in _window.screen.areas
+            if area.type == "VIEW_3D"
+        ],
+        "sidebar_open": [
+            bool(getattr(area.spaces.active, "show_region_ui", False))
+            for _window in bpy.context.window_manager.windows
+            for area in _window.screen.areas
+            if area.type == "VIEW_3D"
+        ],
         "page_collections": [
             coll.name
             for coll in bpy.data.collections
