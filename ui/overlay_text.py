@@ -11,7 +11,8 @@ from ..operators import text_edit_runtime
 EntryVisiblePredicate = Callable[[object], bool]
 _TEXT_HANDLE_SIZE_MM = 2.0
 _TEXT_CARET_MIN_THICKNESS_MM = 0.18
-_TEXT_CARET_COLOR = viewport_colors.SELECTION_STRONG
+_TEXT_CARET_COLOR = (0.02, 0.02, 0.02, 1.0)
+_TEXT_SELECTION_COLOR = (0.0, 0.35, 1.0, 0.85)
 
 
 def _text_handle_rects(rect: Rect) -> list[Rect]:
@@ -118,13 +119,13 @@ def _editing_operator(context, page, entry):
     except Exception:  # noqa: BLE001
         return None
     if op is None or not bool(getattr(op, "_editing", False)):
-        return None
+        return text_edit_runtime.view_edit_state_for_entry(context, page, entry)
     if (
         str(getattr(op, "_page_id", "") or "") == str(getattr(page, "id", "") or "")
         and str(getattr(op, "_text_id", "") or "") == str(getattr(entry, "id", "") or "")
     ):
         return op
-    return None
+    return text_edit_runtime.view_edit_state_for_entry(context, page, entry)
 
 
 def _selection_rects(entry, rect: Rect, cursor_index: int, selection_anchor: int) -> list[Rect]:
@@ -172,9 +173,6 @@ def draw_text_guides(
         draw_rect_outline(rect, color, width_mm=0.30)
         if i == active_idx or object_selection.is_text_selected(context, page, entry):
             draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION_STRONG, width_mm=0.50)
-            for handle in _text_handle_rects(rect):
-                draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
-                draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.25)
         editing_op = _editing_operator(context, page, entry)
         if editing_op is not None:
             cursor_index = int(getattr(editing_op, "_cursor_index", 0))
@@ -193,11 +191,11 @@ def draw_text_guides(
                     cursor_index,
                     selection_anchor,
                 ):
-                    draw_rect_fill(selection_rect, viewport_colors.SELECTION_FILL)
+                    draw_rect_fill(selection_rect, _TEXT_SELECTION_COLOR)
             else:
                 start, end = composition_bounds
                 for composition_rect in _selection_rects(preview_entry, rect, end, start):
-                    draw_rect_fill(composition_rect, viewport_colors.SELECTION_FILL)
+                    draw_rect_fill(composition_rect, _TEXT_SELECTION_COLOR)
             caret = text_caret_rect(preview_entry, rect, preview_cursor)
             draw_rect_fill(caret, _TEXT_CARET_COLOR)
 
@@ -210,6 +208,7 @@ def draw_text_pixels(
     oy_mm: float,
     entry_visible: EntryVisiblePredicate,
     draw_text_in_rect: Callable[..., None],
+    draw_rect_fill_pixel: Callable[..., None] | None = None,
 ) -> None:
     texts = getattr(page, "texts", None)
     if texts is None:
@@ -230,11 +229,29 @@ def draw_text_pixels(
         if editing_op is not None:
             cursor_index = int(getattr(editing_op, "_cursor_index", 0))
             selection_anchor = int(getattr(editing_op, "_selection_anchor", -1))
-            entry, _cursor, _bounds = text_edit_runtime.preview_entry_with_composition(
+            preview_entry, preview_cursor, composition_bounds = text_edit_runtime.preview_entry_with_composition(
                 entry,
                 cursor_index,
                 selection_anchor,
             )
+            if draw_rect_fill_pixel is not None:
+                if composition_bounds is None:
+                    for selection_rect in _selection_rects(
+                        entry,
+                        rect,
+                        cursor_index,
+                        selection_anchor,
+                    ):
+                        draw_rect_fill_pixel(context, selection_rect, _TEXT_SELECTION_COLOR)
+                else:
+                    start, end = composition_bounds
+                    for composition_rect in _selection_rects(preview_entry, rect, end, start):
+                        draw_rect_fill_pixel(context, composition_rect, _TEXT_SELECTION_COLOR)
+            draw_text_in_rect(context, rect, preview_entry)
+            if draw_rect_fill_pixel is not None:
+                caret = text_caret_rect(preview_entry, rect, preview_cursor)
+                draw_rect_fill_pixel(context, caret, _TEXT_CARET_COLOR)
+            continue
         draw_text_in_rect(context, rect, entry)
 
 

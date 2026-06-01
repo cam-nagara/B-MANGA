@@ -15,7 +15,7 @@ _HANDLE_HIT_MM = 3.0
 def free_action_for_hit(hit: dict | None, *, ctrl: bool) -> str:
     if not ctrl or hit is None:
         return ""
-    if str(hit.get("kind", "") or "") not in {"balloon", "text", "effect"}:
+    if str(hit.get("kind", "") or "") not in {"balloon", "effect"}:
         return ""
     return free_transform.action_for_part(str(hit.get("part", "") or ""))
 
@@ -58,7 +58,7 @@ def _quad_for_key(context, key: str):
 
 def _hit_for_selected_key(context, key: str, x_mm: float, y_mm: float) -> dict | None:
     kind, page_id, item_id = object_selection.parse_key(key)
-    if kind not in {"balloon", "text", "effect"}:
+    if kind not in {"balloon", "effect"}:
         return None
     quad = _quad_for_key(context, key)
     if not quad:

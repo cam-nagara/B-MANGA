@@ -67,16 +67,33 @@ def main() -> None:
         text.parent_key = coma_stack_key(page, first)
 
         original_order = [coma.as_pointer() for coma in page.comas]
+        original_ids = [(str(coma.id), str(coma.coma_id)) for coma in page.comas]
+        original_z = [int(coma.z_order) for coma in page.comas]
+        original_parent_key = text.parent_key
         first.coma_number = 5
-        assert str(first.coma_id) == "c05"
-        assert text.parent_key == f"{page.id}:c05", text.parent_key
+        assert first.coma_number == 5
+        assert str(first.coma_id) == original_ids[0][1]
+        assert text.parent_key == original_parent_key, text.parent_key
         assert [coma.as_pointer() for coma in page.comas] == original_order
+        assert [(str(coma.id), str(coma.coma_id)) for coma in page.comas] == original_ids
+        assert [int(coma.z_order) for coma in page.comas] == original_z
 
         second.coma_number = 5
-        assert str(second.coma_id) == "c05"
-        assert str(first.coma_id) == "c02"
-        assert text.parent_key == f"{page.id}:c02", text.parent_key
+        assert second.coma_number == 5
+        assert first.coma_number == 5
+        assert text.parent_key == original_parent_key, text.parent_key
         assert [coma.as_pointer() for coma in page.comas] == original_order
+        assert [(str(coma.id), str(coma.coma_id)) for coma in page.comas] == original_ids
+        assert [int(coma.z_order) for coma in page.comas] == original_z
+
+        from bname_dev_coma_number_selection.io import schema
+
+        data = schema.coma_entry_to_dict(first)
+        assert data["displayNumber"] == 5
+        restored = page.comas.add()
+        schema.coma_entry_from_dict(restored, data)
+        assert restored.coma_number == 5
+        page.comas.remove(len(page.comas) - 1)
 
         coma_uid = layer_stack.target_uid(COMA_KIND, coma_stack_key(page, first))
         coma_index = _stack_index_for_uid(context, coma_uid)

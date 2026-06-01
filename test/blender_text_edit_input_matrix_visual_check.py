@@ -38,7 +38,13 @@ class _InlineTextProbe:
         from bname_dev.utils import layer_stack as layer_stack_utils, text_real_object
 
         with text_real_object.suspend_auto_sync():
-            text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0)
+            text_edit_runtime.fit_text_rect_to_body(
+                entry,
+                min_width=2.0,
+                min_height=2.0,
+                allow_shrink=True,
+            )
+        text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         layer_stack_utils.tag_view3d_redraw(context)
 
 
@@ -164,6 +170,13 @@ def _activate_case(index: int, *, composition: str = "") -> None:
     _PROBE._cursor_index = cursors[index]
     _PROBE._selection_anchor = anchors[index]
     coma_modal_state.set_active("text_tool", _PROBE, bpy.context)
+    text_edit_runtime.set_view_edit_state(
+        bpy.context,
+        getattr(page, "id", ""),
+        getattr(entry, "id", ""),
+        _PROBE._cursor_index,
+        _PROBE._selection_anchor,
+    )
     text_edit_runtime._clear_ime_text_queue()
     if composition:
         text_edit_runtime._set_ime_composition_text(composition, active=True)

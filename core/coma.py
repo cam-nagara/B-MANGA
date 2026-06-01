@@ -39,6 +39,9 @@ _SHAPE_TYPE_ITEMS = (
 
 
 def _coma_number_get(self) -> int:
+    display_number = int(getattr(self, "display_number", 0) or 0)
+    if display_number > 0:
+        return display_number
     try:
         from ..utils import coma_id_edit
 
@@ -53,7 +56,7 @@ def _coma_number_set(self, value: int) -> None:
     try:
         from ..utils import coma_id_edit
 
-        coma_id_edit.rename_coma_to_number(bpy.context, self, int(value))
+        coma_id_edit.set_coma_display_number(bpy.context, self, int(value))
     except Exception:  # noqa: BLE001
         _logger.exception("coma number update failed")
 
@@ -178,9 +181,15 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         description="cNN (ファイル名のベース)",
         default="",
     )
+    display_number: IntProperty(  # type: ignore[valid-type]
+        name="表示番号",
+        default=0,
+        min=0,
+        options={"HIDDEN"},
+    )
     coma_number: IntProperty(  # type: ignore[valid-type]
         name="コマ番号",
-        description="レイヤー一覧に表示するコマ番号。並び順は変えず、重複時は番号を入れ替えます",
+        description="レイヤー一覧に表示するコマ番号。並び順やファイル名は変えません",
         min=1,
         soft_max=999,
         get=_coma_number_get,

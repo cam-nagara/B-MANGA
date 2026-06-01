@@ -1,4 +1,4 @@
-"""Ctrl+角ハンドルの自由変形が主要オブジェクトへ反映されることを確認."""
+"""Ctrl+角ハンドルの自由変形とテキスト固定サイズを確認."""
 
 from __future__ import annotations
 
@@ -101,10 +101,10 @@ def main() -> None:
         before_text = _mesh_xy_bounds(text_obj)
         _apply_free_drag(bpy.context, object_selection.text_key(page, text), 9.0, 6.0)
         after_text = _mesh_xy_bounds(text_obj)
-        if tuple(round(v, 3) for v in text.free_transform_top_right) != (9.0, 6.0):
-            raise AssertionError("テキストの自由変形量が保存されていません")
-        if after_text[2] <= before_text[2] + 8.0 or after_text[3] <= before_text[3] + 5.0:
-            raise AssertionError("テキスト実体メッシュに自由変形が反映されていません")
+        if tuple(round(v, 3) for v in text.free_transform_top_right) != (0.0, 0.0):
+            raise AssertionError("テキストのハンドルドラッグで自由変形量が変わっています")
+        if tuple(round(v, 3) for v in after_text) != tuple(round(v, 3) for v in before_text):
+            raise AssertionError("テキストのハンドルドラッグで実体メッシュが変形しています")
 
         balloon = page.balloons.add()
         balloon.id = "balloon_free"

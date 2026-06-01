@@ -271,7 +271,7 @@ def _hit_text_at_event(context, event) -> dict | None:
         "kind": "text",
         "page_id": getattr(page, "id", ""),
         "index": hit_index,
-        "part": "move" if hit_part == "body" else hit_part,
+        "part": "move",
         "key": object_selection.text_key(page, hit_entry),
         "local": (float(lx), float(ly)),
     }
@@ -637,6 +637,8 @@ class BNAME_OT_object_tool(Operator):
             self._clear_click_state()
         if event.value == "DOUBLE_CLICK" and mode == "single":
             hit = self._hit_object(context, event)
+            if self._try_enter_text_edit_from_hit(context, hit):
+                return {"FINISHED"}
             coma_hit = self._coma_open_hit_from_hit(hit)
             if coma_hit is not None and self._try_enter_coma_from_hit(context, coma_hit):
                 return {"FINISHED"}
@@ -779,6 +781,20 @@ class BNAME_OT_object_tool(Operator):
             return False
         self.finish_from_external(context, keep_selection=True)
         return True
+
+    def _try_enter_text_edit_from_hit(self, context, hit: dict | None) -> bool:
+        if hit is None or str(hit.get("kind", "") or "") != "text":
+            return False
+        page_id = str(hit.get("page_id", "") or "")
+        if not page_id or page_id == OUTSIDE_STACK_KEY:
+            return False
+        key = str(hit.get("key", "") or "")
+        _kind, _hit_page_id, text_id = object_selection.parse_key(key)
+        if not text_id:
+            return False
+        activate_hit(context, hit, mode="single")
+        self.finish_from_external(context, keep_selection=True)
+        return text_op.start_editing_existing_from_object_tool(context, page_id, text_id)
 
     def _hit_object(self, context, event) -> dict | None:
         return hit_object_at_event(context, event)
@@ -950,6 +966,8 @@ class BNAME_OT_object_tool(Operator):
 
     def _start_object_drag(self, context, hit: dict, x_mm: float, y_mm: float) -> None:
         action = str(hit.get("part", "move") or "move")
+        if str(hit.get("kind", "") or "") == "text":
+            action = "move"
         key = str(hit.get("key", "") or "")
         selected = object_selection.get_keys(context)
         if action == "move" and key in selected:
@@ -1248,18 +1266,9 @@ class BNAME_OT_object_tool(Operator):
                 )
                 if entry is None:
                     continue
-                corner = free_transform.corner_from_action(self._drag_action)
-                if corner:
-                    free_transform.apply_corner_drag_to_entry(
-                        entry,
-                        snapshot.get("free_transform"),
-                        corner,
-                        dx,
-                        dy,
-                    )
+                if self._drag_action != "move":
                     continue
-                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
-                text_op._set_text_rect(entry, nx, ny, nw, nh)
+                text_op._set_text_rect(entry, x + dx, y + dy, w, h)
             elif kind == "effect":
                 obj, layer = _find_effect_layer(snapshot["item_id"])
                 if layer is None:

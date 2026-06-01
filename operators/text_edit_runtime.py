@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import math
 import time
+from types import SimpleNamespace
 
 if sys.platform == "win32":
     import ctypes
@@ -65,6 +66,14 @@ _IME_COMPOSITION_TEXT = ""
 _IME_COMPOSITION_ACTIVE = False
 _USER32 = None
 _IMM32 = None
+_VIEW_EDIT_STATE_KEYS = (
+    "bname_text_edit_active",
+    "bname_text_edit_filepath",
+    "bname_text_edit_page_id",
+    "bname_text_edit_text_id",
+    "bname_text_edit_cursor_index",
+    "bname_text_edit_selection_anchor",
+)
 
 
 def _clean_ime_text(value: str) -> str:
@@ -130,6 +139,64 @@ def _clear_ime_text_queue() -> None:
     _IME_LAST_APPEND = ("", 0.0)
     _IME_COMPOSITION_TEXT = ""
     _IME_COMPOSITION_ACTIVE = False
+
+
+def set_view_edit_state(
+    context,
+    page_id: str,
+    text_id: str,
+    cursor_index: int,
+    selection_anchor: int,
+) -> None:
+    wm = getattr(context, "window_manager", None) if context is not None else None
+    if wm is None:
+        return
+    wm["bname_text_edit_active"] = 1
+    try:
+        import bpy
+
+        wm["bname_text_edit_filepath"] = str(getattr(bpy.data, "filepath", "") or "")
+    except Exception:  # noqa: BLE001
+        wm["bname_text_edit_filepath"] = ""
+    wm["bname_text_edit_page_id"] = str(page_id or "")
+    wm["bname_text_edit_text_id"] = str(text_id or "")
+    wm["bname_text_edit_cursor_index"] = int(cursor_index)
+    wm["bname_text_edit_selection_anchor"] = int(selection_anchor)
+
+
+def clear_view_edit_state(context) -> None:
+    wm = getattr(context, "window_manager", None) if context is not None else None
+    if wm is None:
+        return
+    for key in _VIEW_EDIT_STATE_KEYS:
+        try:
+            del wm[key]
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def view_edit_state_for_entry(context, page, entry):
+    wm = getattr(context, "window_manager", None) if context is not None else None
+    if wm is None or int(wm.get("bname_text_edit_active", 0) or 0) != 1:
+        return None
+    try:
+        import bpy
+
+        if str(wm.get("bname_text_edit_filepath", "") or "") != str(getattr(bpy.data, "filepath", "") or ""):
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+    if str(wm.get("bname_text_edit_page_id", "") or "") != str(getattr(page, "id", "") or ""):
+        return None
+    if str(wm.get("bname_text_edit_text_id", "") or "") != str(getattr(entry, "id", "") or ""):
+        return None
+    return SimpleNamespace(
+        _editing=True,
+        _page_id=str(wm.get("bname_text_edit_page_id", "") or ""),
+        _text_id=str(wm.get("bname_text_edit_text_id", "") or ""),
+        _cursor_index=int(wm.get("bname_text_edit_cursor_index", 0)),
+        _selection_anchor=int(wm.get("bname_text_edit_selection_anchor", -1)),
+    )
 
 
 def _ensure_win32_ime_api() -> bool:

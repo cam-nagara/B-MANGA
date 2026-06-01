@@ -790,6 +790,7 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "id": entry.id,
         "title": title,
         "comaId": entry.coma_id,
+        "displayNumber": int(getattr(entry, "display_number", 0) or 0),
         "comaBlendTemplatePath": str(getattr(entry, "coma_blend_template_path", "") or ""),
         "comaBlendTemplateNeedsApply": bool(getattr(entry, "coma_blend_template_needs_apply", False)),
         "shape": {
@@ -828,6 +829,8 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.id,
         entry.coma_id,
     )
+    if hasattr(entry, "display_number"):
+        entry.display_number = max(0, int(data.get("displayNumber", 0) or 0))
     if hasattr(entry, "coma_blend_template_path"):
         entry.coma_blend_template_path = str(data.get("comaBlendTemplatePath", "") or "")
     if hasattr(entry, "coma_blend_template_needs_apply"):

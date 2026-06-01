@@ -607,7 +607,7 @@ def hit_shared_text_at_world(context, x_mm: float, y_mm: float) -> dict | None:
                 "kind": "text",
                 "page_id": OUTSIDE_STACK_KEY,
                 "index": index,
-                "part": "move" if part == "body" else part,
+                "part": "move",
                 "key": object_selection.text_key(None, entry),
                 "world": (float(x_mm), float(y_mm)),
             }

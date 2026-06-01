@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import MethodType, SimpleNamespace
 
 import bpy
 
@@ -53,8 +54,9 @@ def main() -> None:
         mod = _load_addon()
         entry = _new_text_entry(temp_root / "Text_IME.bname")
 
-        from bname_dev.operators import text_edit_runtime, text_op
+        from bname_dev.operators import object_tool_op, text_edit_runtime, text_op
         from bname_dev.operators import text_edit_history
+        from bname_dev.utils import object_selection, text_real_object
         from bname_dev.ui import overlay_text
 
         class Event:
@@ -155,6 +157,87 @@ def main() -> None:
         selection_rects = overlay_text._selection_rects(entry, rect, probe._cursor_index, probe._selection_anchor)
         assert caret.width > 0 and caret.height > 0
         assert selection_rects, "selection highlight rects were not generated"
+        text_edit_runtime.set_view_edit_state(
+            bpy.context,
+            getattr(page, "id", ""),
+            getattr(entry, "id", ""),
+            probe._cursor_index,
+            probe._selection_anchor,
+        )
+        state = text_edit_runtime.view_edit_state_for_entry(bpy.context, page, entry)
+        assert state is not None
+        assert state._selection_anchor == 0, "selection anchor at the first character was lost"
+        assert overlay_text._editing_operator(bpy.context, page, entry) is not None
+        text_edit_runtime.clear_view_edit_state(bpy.context)
+
+        entry.body = "固定"
+        entry.x_mm = 0.0
+        entry.y_mm = 0.0
+        entry.width_mm = 80.0
+        entry.height_mm = 30.0
+        assert text_op._text_hit_part(entry, entry.x_mm + entry.width_mm, entry.y_mm + entry.height_mm) == "body"
+        text_edit_runtime.fit_text_rect_to_body(entry, min_width=2.0, min_height=2.0, allow_shrink=True)
+        assert entry.width_mm < 80.0 and entry.height_mm < 30.0
+
+        key = object_selection.text_key(page, entry)
+        before_rect = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
+        dummy = SimpleNamespace(_drag_action="top_right")
+        dummy._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+            dummy,
+            bpy.context,
+            [key],
+            primary_key=key,
+            action="top_right",
+        )
+        object_tool_op.BNAME_OT_object_tool._apply_snapshots(dummy, bpy.context, 12.0, 8.0)
+        after_resize_attempt = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
+        assert after_resize_attempt == before_rect, "text handle drag changed the fixed text rect"
+
+        dummy._drag_action = "move"
+        dummy._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+            dummy,
+            bpy.context,
+            [key],
+            primary_key=key,
+            action="move",
+        )
+        object_tool_op.BNAME_OT_object_tool._apply_snapshots(dummy, bpy.context, 3.0, 4.0)
+        assert round(entry.x_mm - before_rect[0], 3) == 3.0
+        assert round(entry.y_mm - before_rect[1], 3) == 4.0
+        assert round(entry.width_mm, 3) == round(before_rect[2], 3)
+        assert round(entry.height_mm, 3) == round(before_rect[3], 3)
+
+        obj = text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
+        assert obj is not None
+        text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
+        entry.body = "固定確認"
+        hidden_obj = text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
+        assert hidden_obj is not None and hidden_obj.hide_viewport, "editing preview object became visible"
+        text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=False)
+        shown_obj = text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
+        assert shown_obj is not None and not shown_obj.hide_viewport, "text object did not show after edit finish"
+
+        text_hit = {
+            "kind": "text",
+            "page_id": getattr(page, "id", ""),
+            "index": 0,
+            "part": "move",
+            "key": object_selection.text_key(page, entry),
+        }
+        routed: list[tuple[str, str]] = []
+        old_start = text_op.start_editing_existing_from_object_tool
+        text_op.start_editing_existing_from_object_tool = (
+            lambda _ctx, page_id, text_id: routed.append((page_id, text_id)) or True
+        )
+        try:
+            tool = SimpleNamespace(finished=False)
+            tool.finish_from_external = lambda _ctx, *, keep_selection: setattr(tool, "finished", True)
+            method = MethodType(object_tool_op.BNAME_OT_object_tool._try_enter_text_edit_from_hit, tool)
+            assert method(bpy.context, text_hit)
+        finally:
+            text_op.start_editing_existing_from_object_tool = old_start
+        assert tool.finished
+        assert routed == [(getattr(page, "id", ""), getattr(entry, "id", ""))]
 
         text_edit_runtime.begin_ime_capture()
         text_edit_runtime.end_ime_capture()

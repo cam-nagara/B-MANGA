@@ -32,6 +32,7 @@ TEXT_RENDER_PAD_MM = 1.5
 TEXT_Z_BASE = 2000
 OUTSIDE_PAGE_ID = "outside"
 _TEXT_RENDER_SIGNATURE_PROP = "bname_text_render_signature"
+_TEXT_PREVIEW_HIDDEN_PROP = "bname_text_preview_hidden"
 _AUTO_SYNC_SUSPEND_DEPTH = 0
 
 
@@ -126,6 +127,20 @@ def has_visible_text_object(entry, page=None) -> bool:
     return image is not None and getattr(image, "size", (0, 0))[0] > 0
 
 
+def _preview_hidden(obj: bpy.types.Object) -> bool:
+    return bool(obj.get(_TEXT_PREVIEW_HIDDEN_PROP, False))
+
+
+def _set_preview_hidden_marker(obj: bpy.types.Object, hidden: bool) -> None:
+    if hidden:
+        obj[_TEXT_PREVIEW_HIDDEN_PROP] = True
+        return
+    try:
+        del obj[_TEXT_PREVIEW_HIDDEN_PROP]
+    except Exception:  # noqa: BLE001
+        obj[_TEXT_PREVIEW_HIDDEN_PROP] = False
+
+
 def set_text_object_preview_hidden(entry, page=None, *, hidden: bool) -> None:
     text_id = str(getattr(entry, "id", "") or "")
     if not text_id:
@@ -133,6 +148,7 @@ def set_text_object_preview_hidden(entry, page=None, *, hidden: bool) -> None:
     obj = find_text_object(_page_id_for_entry(page, entry), text_id)
     if obj is None:
         return
+    _set_preview_hidden_marker(obj, bool(hidden))
     obj.hide_viewport = bool(hidden) or not bool(getattr(entry, "visible", True))
     obj.hide_render = obj.hide_viewport
 
@@ -537,8 +553,9 @@ def _apply_text_object_state(
         scene=scene,
         apply_page_offset=False,
     )
-    obj.hide_viewport = not bool(getattr(entry, "visible", True))
-    obj.hide_render = not bool(getattr(entry, "visible", True))
+    preview_hidden = _preview_hidden(obj)
+    obj.hide_viewport = preview_hidden or not bool(getattr(entry, "visible", True))
+    obj.hide_render = obj.hide_viewport
     obj.hide_select = False
 
 

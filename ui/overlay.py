@@ -878,6 +878,44 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             blf.draw(glyph_font_id, glyph.ch)
 
 
+def _draw_rect_fill_pixel(context, rect: Rect, color: tuple[float, float, float, float]) -> None:
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    from mathutils import Vector
+
+    region, rv3d = _resolve_active_region(context)
+    if region is None or rv3d is None:
+        return
+    coords = []
+    for x_mm, y_mm in (
+        (rect.x, rect.y),
+        (rect.x2, rect.y),
+        (rect.x2, rect.y2),
+        (rect.x, rect.y2),
+    ):
+        coord = location_3d_to_region_2d(
+            region,
+            rv3d,
+            Vector((mm_to_m(x_mm), mm_to_m(y_mm), 0.0)),
+        )
+        if coord is None:
+            return
+        coords.append((float(coord.x), float(coord.y)))
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    batch = batch_for_shader(
+        shader,
+        "TRIS",
+        {"pos": coords},
+        indices=[(0, 1, 2), (0, 2, 3)],
+    )
+    gpu.state.blend_set("ALPHA")
+    try:
+        shader.bind()
+        shader.uniform_float("color", color)
+        batch.draw(shader)
+    finally:
+        gpu.state.blend_set("NONE")
+
+
 def _edge_selection_targets_coma(work, page, wm) -> bool:
     if (
         wm is None
@@ -1608,7 +1646,8 @@ def _draw_callback_pixel() -> None:
                     oy_mm=oy,
                     entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                     draw_text_in_rect=_draw_text_in_rect,
-            )
+                    draw_rect_fill_pixel=_draw_rect_fill_pixel,
+                )
             _draw_page_header_number_pixel(context, paper, i, ox, oy)
     else:
         from ..utils.page_grid import (
@@ -1635,6 +1674,7 @@ def _draw_callback_pixel() -> None:
                 oy_mm=oy,
                 entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
                 draw_text_in_rect=_draw_text_in_rect,
+                draw_rect_fill_pixel=_draw_rect_fill_pixel,
             )
             _draw_page_header_number_pixel(context, paper, idx, ox, oy)
     region, rv3d = _resolve_active_region(context)

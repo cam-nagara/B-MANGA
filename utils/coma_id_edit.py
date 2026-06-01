@@ -47,6 +47,33 @@ def find_page_for_coma(context, target_coma):
     return work, None, -1, -1
 
 
+def set_coma_display_number(context, target_coma, number: int) -> bool:
+    """レイヤー一覧の表示番号だけを変え、実データ名と並び順は触らない。"""
+    if context is None or target_coma is None:
+        return False
+    work, page, _page_index, coma_index = find_page_for_coma(context, target_coma)
+    if work is None or page is None or not (0 <= coma_index < len(page.comas)):
+        return False
+    display_number = max(1, int(number))
+    if int(getattr(target_coma, "display_number", 0) or 0) == display_number:
+        return False
+    target_coma.display_number = display_number
+    work_dir_text = str(getattr(work, "work_dir", "") or "")
+    if work_dir_text:
+        work_dir = Path(work_dir_text)
+        try:
+            page_io.save_page_json(work_dir, page)
+            page_io.save_pages_json(work_dir, work)
+            coma_io.save_coma_meta(work_dir, str(getattr(page, "id", "") or ""), target_coma)
+        except Exception:  # noqa: BLE001
+            _logger.exception("coma display number save failed")
+    try:
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("coma display number layer stack sync failed")
+    return True
+
+
 def _replace_parent_key_on_entry(entry, old_key: str, new_key: str) -> None:
     if str(getattr(entry, "parent_key", "") or "") != old_key:
         return

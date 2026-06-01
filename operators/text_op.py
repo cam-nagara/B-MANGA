@@ -346,12 +346,26 @@ def _select_text_index(context, work, page, text_index: int) -> bool:
 def _active_text_selection_bounds(context, page, entry) -> tuple[int, int] | None:
     op = coma_modal_state.get_active("text_tool")
     if op is None or not bool(getattr(op, "_editing", False)):
+        op = text_edit_runtime.view_edit_state_for_entry(context, page, entry)
+    if op is None or not bool(getattr(op, "_editing", False)):
         return None
     if str(getattr(op, "_page_id", "") or "") != str(getattr(page, "id", "") or ""):
         return None
     if str(getattr(op, "_text_id", "") or "") != str(getattr(entry, "id", "") or ""):
         return None
     return text_edit_runtime.selection_bounds(
+        int(getattr(op, "_cursor_index", 0)),
+        int(getattr(op, "_selection_anchor", -1)),
+    )
+
+
+def _set_view_edit_state_from_op(context, op) -> None:
+    if context is None or op is None or not bool(getattr(op, "_editing", False)):
+        return
+    text_edit_runtime.set_view_edit_state(
+        context,
+        str(getattr(op, "_page_id", "") or ""),
+        str(getattr(op, "_text_id", "") or ""),
         int(getattr(op, "_cursor_index", 0)),
         int(getattr(op, "_selection_anchor", -1)),
     )
@@ -368,34 +382,10 @@ def _text_rect(entry) -> tuple[float, float, float, float]:
 def _text_hit_part(entry, x_mm: float, y_mm: float) -> str:
     left, bottom, right, top = _text_rect(entry)
     threshold = _TEXT_HANDLE_HIT_MM
-    if not (
+    if (
         left - threshold <= x_mm <= right + threshold
         and bottom - threshold <= y_mm <= top + threshold
     ):
-        return ""
-    near_left = abs(x_mm - left) <= threshold
-    near_right = abs(x_mm - right) <= threshold
-    near_bottom = abs(y_mm - bottom) <= threshold
-    near_top = abs(y_mm - top) <= threshold
-    inside_x = left <= x_mm <= right
-    inside_y = bottom <= y_mm <= top
-    if near_left and near_top:
-        return "top_left"
-    if near_right and near_top:
-        return "top_right"
-    if near_left and near_bottom:
-        return "bottom_left"
-    if near_right and near_bottom:
-        return "bottom_right"
-    if near_left and inside_y:
-        return "left"
-    if near_right and inside_y:
-        return "right"
-    if near_top and inside_x:
-        return "top"
-    if near_bottom and inside_x:
-        return "bottom"
-    if inside_x and inside_y:
         return "body"
     return ""
 
@@ -440,6 +430,33 @@ def _remove_text_real_object(page_id: str, text_id: str) -> None:
         text_real_object.remove_text_real_object(page_id, text_id)
     except Exception:  # noqa: BLE001
         _logger.exception("text real object removal failed")
+
+
+def start_editing_existing_from_object_tool(context, page_id: str, text_id: str) -> bool:
+    work = get_work(context)
+    page = _find_page_by_id(context, page_id)
+    if work is None or page is None:
+        return False
+    idx = _find_text_index(page, text_id)
+    if idx < 0:
+        return False
+    op = coma_modal_state.get_active("text_tool")
+    if op is None:
+        try:
+            result = bpy.ops.bname.text_tool("INVOKE_DEFAULT")
+        except Exception:  # noqa: BLE001
+            _logger.exception("text_tool: start from object tool failed")
+            return False
+        if "RUNNING_MODAL" not in result and "FINISHED" not in result:
+            return False
+        op = coma_modal_state.get_active("text_tool")
+    if op is None:
+        return False
+    if bool(getattr(op, "_editing", False)):
+        op._finish_current_text_edit(context)
+    _select_text_index(context, work, page, idx)
+    op._start_editing_existing(context, page, page.texts[idx])
+    return True
 
 
 def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float, float, float, float]:
@@ -988,9 +1005,11 @@ class BNAME_OT_text_tool(Operator):
         ):
             self._push_undo_step("B-Name: テキスト編集")
         if entry is not None and _page is not None:
+            text_real_object.set_text_object_preview_hidden(entry, _page, hidden=False)
             _sync_text_real_object(context, _page, entry)
             layer_stack_utils.sync_layer_stack_after_data_change(context)
         self._end_inline_input(context)
+        text_edit_runtime.clear_view_edit_state(context)
         self._editing = False
         self._editing_created_new = False
         self._edit_original_body = ""
@@ -1020,6 +1039,13 @@ class BNAME_OT_text_tool(Operator):
         self._finish_current_text_edit(context)
 
     def _start_editing_existing(self, context, page, entry) -> None:
+        with text_real_object.suspend_auto_sync():
+            text_edit_runtime.fit_text_rect_to_body(
+                entry,
+                min_width=_TEXT_MIN_SIZE_MM,
+                min_height=_TEXT_MIN_SIZE_MM,
+                allow_shrink=True,
+            )
         self._editing = True
         self._editing_created_new = False
         self._edit_original_body = str(getattr(entry, "body", ""))
@@ -1029,6 +1055,7 @@ class BNAME_OT_text_tool(Operator):
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
+        _set_view_edit_state_from_op(context, self)
         text_edit_history.begin(self, entry)
         self._clear_drag_state()
         self._clear_click_state()
@@ -1047,6 +1074,7 @@ class BNAME_OT_text_tool(Operator):
         self._selection_anchor = -1
         self._page_id = getattr(page, "id", "")
         self._text_id = getattr(entry, "id", "")
+        _set_view_edit_state_from_op(context, self)
         text_edit_history.begin(self, entry)
         self._clear_drag_state()
         self._clear_click_state()
@@ -1057,7 +1085,7 @@ class BNAME_OT_text_tool(Operator):
 
     def _start_text_drag(self, page, entry, part: str, x_mm: float, y_mm: float) -> None:
         self._dragging = True
-        self._drag_action = "move" if part == "body" else part
+        self._drag_action = "create" if part == "create" else "move"
         self._drag_page_id = getattr(page, "id", "")
         self._drag_text_id = getattr(entry, "id", "")
         self._drag_start_x = float(x_mm)
@@ -1213,6 +1241,8 @@ class BNAME_OT_text_tool(Operator):
         top = y + h
         if action == "move":
             return x + dx, y + dy, w, h
+        if action != "create":
+            return x, y, w, h
         new_left = x
         new_right = right
         new_bottom = y
@@ -1284,6 +1314,7 @@ class BNAME_OT_text_tool(Operator):
             self._cursor_index = text_edit_runtime.cursor_index_from_point(entry, lx, ly)
             self._selection_anchor = -1
         page.active_text_index = idx
+        _set_view_edit_state_from_op(context, self)
         layer_stack_utils.tag_view3d_redraw(context)
         return True
 
@@ -1295,6 +1326,7 @@ class BNAME_OT_text_tool(Operator):
         self._select_dragging = True
         self._select_drag_page_id = str(getattr(self, "_page_id", "") or "")
         self._select_drag_text_id = str(getattr(self, "_text_id", "") or "")
+        _set_view_edit_state_from_op(context, self)
 
     def _modal_text_selection_drag(self, context, event):
         if event.type == "MOUSEMOVE":
@@ -1308,6 +1340,7 @@ class BNAME_OT_text_tool(Operator):
         if event.type in {"ESC", "RIGHTMOUSE"} and event.value == "PRESS":
             self._clear_selection_drag_state()
             self._selection_anchor = -1
+            _set_view_edit_state_from_op(context, self)
             layer_stack_utils.tag_view3d_redraw(context)
             return {"RUNNING_MODAL"}
         return {"RUNNING_MODAL"}
@@ -1332,6 +1365,7 @@ class BNAME_OT_text_tool(Operator):
             return
         self._cursor_index = text_edit_runtime.cursor_index_from_point(entry, lx, ly)
         page.active_text_index = idx
+        _set_view_edit_state_from_op(context, self)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _open_selection_style_popup(self, context) -> None:
@@ -1359,8 +1393,15 @@ class BNAME_OT_text_tool(Operator):
         if hasattr(context.scene, "bname_active_layer_kind"):
             context.scene.bname_active_layer_kind = "text"
         with text_real_object.suspend_auto_sync():
-            text_edit_runtime.fit_text_rect_to_body(entry, min_width=_TEXT_MIN_SIZE_MM, min_height=_TEXT_MIN_SIZE_MM)
+            text_edit_runtime.fit_text_rect_to_body(
+                entry,
+                min_width=_TEXT_MIN_SIZE_MM,
+                min_height=_TEXT_MIN_SIZE_MM,
+                allow_shrink=True,
+            )
+        text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         text_edit_history.record(self, entry)
+        _set_view_edit_state_from_op(context, self)
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _insert_current_text(self, context, text: str):
@@ -1423,6 +1464,7 @@ class BNAME_OT_text_tool(Operator):
         if not select:
             self._selection_anchor = -1
         page.active_text_index = idx
+        _set_view_edit_state_from_op(context, self)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"RUNNING_MODAL"}
 
@@ -1434,6 +1476,7 @@ class BNAME_OT_text_tool(Operator):
         self._selection_anchor = 0
         self._cursor_index = len(text_edit_runtime.text_body(entry))
         page.active_text_index = idx
+        _set_view_edit_state_from_op(context, self)
         layer_stack_utils.tag_view3d_redraw(context)
         return {"RUNNING_MODAL"}
 
@@ -1479,6 +1522,7 @@ class BNAME_OT_text_tool(Operator):
         self._cursor_index = 0
         self._selection_anchor = -1
         text_edit_history.clear(self)
+        text_edit_runtime.clear_view_edit_state(context)
         self._clear_drag_state()
         self._clear_click_state()
         self._clear_selection_drag_state()
