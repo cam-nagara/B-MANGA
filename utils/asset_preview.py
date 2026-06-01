@@ -10,6 +10,7 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+from . import asset_preview_extended
 from .geom import m_to_mm
 from . import log
 
@@ -199,9 +200,36 @@ def _asset_preview_pixels(
             if kind == "balloon":
                 _draw_preview_balloon(canvas, size, rect, entry)
             elif kind == "text":
-                _draw_preview_text(canvas, size, rect)
+                asset_preview_extended.draw_preview_text(
+                    canvas,
+                    size,
+                    rect,
+                    draw_line=_draw_preview_line,
+                )
             elif kind == "effect":
-                _draw_preview_effect(canvas, size, rect, entry)
+                asset_preview_extended.draw_preview_effect(
+                    canvas,
+                    size,
+                    rect,
+                    entry,
+                    draw_polygon=_draw_preview_polygon,
+                    draw_line=_draw_preview_line,
+                    draw_line_thick=_draw_preview_line_thick,
+                )
+            elif asset_preview_extended.draw_extended_preview(
+                canvas,
+                size,
+                rect,
+                transform,
+                entry,
+                map_points=_map_points_to_preview_rect,
+                draw_polygon=_draw_preview_polygon,
+                draw_rect=_draw_preview_rect,
+                draw_line=_draw_preview_line,
+                draw_line_thick=_draw_preview_line_thick,
+                clamp_rect=_clamp_preview_rect,
+            ):
+                pass
             else:
                 _draw_preview_rect(
                     canvas,
@@ -784,56 +812,6 @@ def _draw_preview_balloon(
         pass
     _draw_preview_ellipse(canvas, size, rect, (1.0, 1.0, 1.0, 1.0), fill=True)
     _draw_preview_ellipse(canvas, size, rect, (0.05, 0.05, 0.05, 1.0), fill=False)
-
-
-def _draw_preview_text(canvas: list[float], size: int, rect: tuple[int, int, int, int]) -> None:
-    left, bottom, right, top = rect
-    height = max(1, top - bottom)
-    count = max(2, min(5, height // 7))
-    for i in range(count):
-        y = bottom + int(round((i + 1) * height / (count + 1)))
-        _draw_preview_line(canvas, size, left + 2, y, right - 2, y, (0.08, 0.08, 0.08, 1.0))
-
-
-def _draw_preview_effect(canvas: list[float], size: int, rect: tuple[int, int, int, int], entry: dict | None = None) -> None:
-    left, bottom, right, top = rect
-    cx = (left + right) // 2
-    cy = (bottom + top) // 2
-    meta = entry.get("meta") if isinstance(entry, dict) and isinstance(entry.get("meta"), dict) else {}
-    params = meta.get("params") if isinstance(meta.get("params"), dict) else {}
-    effect_type = str(params.get("effect_type", "") or "")
-    if effect_type == "speed":
-        for i in range(12):
-            y = bottom + int(round((i + 1) * (top - bottom) / 13.0))
-            skew = int(round((right - left) * 0.18))
-            _draw_preview_line_thick(canvas, size, left + 2, y - skew // 4, right - 2, y + skew // 4, (0.1, 0.1, 0.1, 1.0), 1)
-        return
-    ray_count = 28 if effect_type in {"uni_flash", "beta_flash"} else 18
-    if effect_type == "beta_flash":
-        star = []
-        radius = min(right - left, top - bottom) * 0.48
-        for i in range(ray_count):
-            t = i / float(ray_count)
-            angle = t * math.tau
-            r = radius if i % 2 == 0 else radius * 0.58
-            star.append((int(round(cx + r * math.cos(angle))), int(round(cy + r * math.sin(angle)))))
-        _draw_preview_polygon(canvas, size, star, (0.05, 0.05, 0.05, 1.0), fill=True)
-        return
-    for i in range(ray_count):
-        t = i / float(ray_count)
-        if i % 4 == 0:
-            x = left + int((right - left) * t)
-            y = top
-        elif i % 4 == 1:
-            x = right
-            y = bottom + int((top - bottom) * t)
-        elif i % 4 == 2:
-            x = right - int((right - left) * t)
-            y = bottom
-        else:
-            x = left
-            y = top - int((top - bottom) * t)
-        _draw_preview_line(canvas, size, cx, cy, x, y, (0.1, 0.1, 0.1, 1.0))
 
 
 def _map_points_to_preview_rect(

@@ -16,10 +16,17 @@ import bpy
 from mathutils import Matrix
 
 from ..core.work import get_active_page, get_work
-from . import asset_preview, layer_links, layer_stack as layer_stack_utils, log, object_naming as on
+from . import (
+    asset_bundle_extended,
+    asset_preview,
+    layer_links,
+    layer_stack as layer_stack_utils,
+    log,
+    object_naming as on,
+)
 from . import page_grid
 from .geom import m_to_mm, mm_to_m
-from .layer_hierarchy import OUTSIDE_STACK_KEY, coma_containing_point, coma_stack_key
+from .layer_hierarchy import coma_containing_point, coma_stack_key
 
 _logger = log.get_logger(__name__)
 
@@ -31,7 +38,7 @@ ASSET_INSTANCE_DONE_PROP = "bname_asset_instance_imported"
 ASSET_FILE_NAME = "B-Name Assets.blend"
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
-SUPPORTED_LAYER_KINDS = {"balloon", "text", "effect"}
+SUPPORTED_LAYER_KINDS = {"coma", "balloon", "text", "effect", "raster", "gp"}
 
 
 @dataclass(frozen=True)
@@ -127,7 +134,8 @@ def build_payload(context, items, *, name: str = "") -> dict:
         source_uids.append(source_uid)
         entries.append(entry)
     if not entries:
-        raise RuntimeError("登録できるフキダシ、テキスト、効果線がありません")
+        raise RuntimeError("登録できるレイヤーがありません")
+    entries.sort(key=lambda entry: 0 if str(entry.get("kind", "")) == "coma" else 1)
     origin = _payload_origin(entries)
     return {
         "version": 1,
@@ -202,18 +210,49 @@ def instantiate_payload(
     dy = drop_local[1] - float(origin.get("y", 0.0) or 0.0)
     parent_kind, parent_key = _parent_for_point(page, drop_local[0], drop_local[1])
     id_map: dict[str, str] = {}
+    parent_key_map: dict[str, str] = {}
     new_uids_by_source: dict[str, str] = {}
     made: list[object] = []
     for entry in payload.get("entries", []) or []:
         if not isinstance(entry, dict):
             continue
         kind = str(entry.get("kind", "") or "")
-        if kind == "balloon":
-            obj = _instantiate_balloon(context, page, entry, dx, dy, parent_kind, parent_key)
+        entry_parent_kind, entry_parent_key = _parent_for_payload_entry(
+            entry,
+            parent_kind,
+            parent_key,
+            parent_key_map,
+        )
+        if kind == "coma":
+            obj = asset_bundle_extended.instantiate_coma(context, page, entry, dx, dy)
+            if obj is not None:
+                source_parent = asset_bundle_extended.source_parent_key(entry)
+                if source_parent:
+                    parent_key_map[source_parent] = coma_stack_key(page, obj)
+        elif kind == "balloon":
+            obj = _instantiate_balloon(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key)
         elif kind == "text":
-            obj = _instantiate_text(context, page, entry, dx, dy, parent_kind, parent_key, id_map)
+            obj = _instantiate_text(context, page, entry, dx, dy, entry_parent_kind, entry_parent_key, id_map)
         elif kind == "effect":
-            obj = _instantiate_effect(context, entry, dx, dy, parent_key)
+            obj = _instantiate_effect(context, entry, dx, dy, entry_parent_key)
+        elif kind == "raster":
+            obj = asset_bundle_extended.instantiate_raster(
+                context,
+                page,
+                entry,
+                entry_parent_kind,
+                entry_parent_key,
+            )
+        elif kind == "gp":
+            obj = asset_bundle_extended.instantiate_gp_layer(
+                context,
+                page,
+                entry,
+                dx,
+                dy,
+                entry_parent_kind,
+                entry_parent_key,
+            )
         else:
             obj = None
         if obj is None:
@@ -332,7 +371,7 @@ def _selected_or_index_uids(context, stack, index: int) -> list[str]:
 
 
 def _items_for_uids(context, stack, uids: list[str]) -> list[object]:
-    wanted = set(uids)
+    wanted = set(asset_bundle_extended.expand_asset_uids(context, stack, uids))
     out = []
     for item in stack:
         uid = layer_stack_utils.stack_item_uid(item)
@@ -349,6 +388,9 @@ def _serialize_stack_item(context, item) -> dict | None:
     if resolved is None or resolved.get("target") is None:
         return None
     target = resolved["target"]
+    extended = asset_bundle_extended.serialize_stack_item(context, item)
+    if extended is not None:
+        return extended
     if kind == "balloon":
         return {
             "kind": kind,
@@ -453,7 +495,14 @@ def _payload_origin(entries: list[dict]) -> tuple[float, float]:
 
 
 def _payload_default_name(entries: list[dict]) -> str:
-    labels = {"balloon": "フキダシ", "text": "テキスト", "effect": "効果線"}
+    labels = {
+        "coma": "コマ",
+        "balloon": "フキダシ",
+        "text": "テキスト",
+        "effect": "効果線",
+        "raster": "ラスター",
+        "gp": "グリースペンシル",
+    }
     parts = [labels.get(str(entry.get("kind", "")), "レイヤー") for entry in entries]
     return "＆".join(parts[:3]) if len(parts) <= 3 else f"{parts[0]}ほか"
 
@@ -486,6 +535,19 @@ def _parent_for_point(page, x_mm: float, y_mm: float) -> tuple[str, str]:
     if panel is not None:
         return "coma", coma_stack_key(page, panel)
     return "page", str(getattr(page, "id", "") or "")
+
+
+def _parent_for_payload_entry(
+    entry: dict,
+    default_kind: str,
+    default_key: str,
+    parent_key_map: dict[str, str],
+) -> tuple[str, str]:
+    source_parent = asset_bundle_extended.source_parent_key(entry)
+    if source_parent and source_parent in parent_key_map:
+        key = parent_key_map[source_parent]
+        return ("coma" if ":" in key else "page"), key
+    return default_kind, default_key
 
 
 def _instantiate_balloon(context, page, entry: dict, dx: float, dy: float, parent_kind: str, parent_key: str):
@@ -561,6 +623,9 @@ def _entry_id(obj) -> str:
 
 
 def _new_uid_for_created(context, kind: str, page, obj) -> str:
+    extended = asset_bundle_extended.new_uid_for_created(kind, page, obj)
+    if extended:
+        return extended
     if kind == "balloon":
         return layer_stack_utils.target_uid("balloon", f"{getattr(page, 'id', '')}:{getattr(obj, 'id', '')}")
     if kind == "text":
@@ -629,6 +694,11 @@ def _preview_objects_for_payload(context, payload: dict) -> list[bpy.types.Objec
         kind = str(entry.get("kind", "") or "")
         source_id = str(entry.get("source_id", "") or "")
         obj = None
+        for candidate in asset_bundle_extended.preview_objects_for_entry(entry):
+            if candidate is not None and candidate not in out:
+                out.append(candidate)
+        if kind in asset_bundle_extended.EXTENDED_LAYER_KINDS:
+            continue
         if kind == "balloon":
             from . import balloon_curve_object
 
