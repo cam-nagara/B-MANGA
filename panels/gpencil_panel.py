@@ -775,9 +775,10 @@ class BNAME_PT_layer_stack(Panel):
         if work is None or not work.loaded:
             layout.label(text="作品を開いてください", icon="INFO")
             return
-        _draw_page_list_box(layout, context)
         if _is_page_edit_context(context):
             _draw_layer_stack_box(layout, context)
+        else:
+            _draw_page_list_box(layout, context)
 
 
 class BNAME_PT_gpencil(Panel):

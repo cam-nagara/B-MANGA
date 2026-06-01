@@ -173,8 +173,15 @@ def main() -> None:
         _assert_present(view_records, "ページ一覧表示", "前後ページ数", "画像解像度%", "列数", "間隔mm")
         _assert_absent(view_records, "全ページを一覧", "選択ページ")
         layer_records = _draw_records(gpencil_panel.BNAME_PT_layer_stack, context)
-        _assert_present(layer_records, "BNAME_UL_layer_panel_pages:pages", "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
-        _assert_absent(layer_records, "bname.page_add", "bname.page_duplicate", "bname.page_remove", "bname.open_page_file")
+        _assert_present(layer_records, "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
+        _assert_absent(
+            layer_records,
+            "BNAME_UL_layer_panel_pages:pages",
+            "bname.page_add",
+            "bname.page_duplicate",
+            "bname.page_remove",
+            "bname.open_page_file",
+        )
         maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
         _assert_present(maintenance_records, "bname.repair_hierarchy", "bname.mask_regenerate_all", "bname.mask_remove_orphans", "bname.coma_renumber_active_page")
         _assert_absent(maintenance_records, "bname.organize_data_names")
