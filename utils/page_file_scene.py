@@ -337,3 +337,89 @@ def purge_other_page_data(scene, page_id: str) -> int:
             except Exception:  # noqa: BLE001
                 pass
     return removed
+
+
+_WORK_LIST_RUNTIME_KIND_PROPS = {
+    "bname_coma_plane_kind",
+    "bname_coma_mask_kind",
+    "bname_coma_border_kind",
+    "bname_coma_white_margin_kind",
+    "bname_paper_bg_kind",
+    "bname_paper_guide_kind",
+    "bname_work_info_text_kind",
+}
+
+_WORK_LIST_RUNTIME_OBJECT_NAMES = {
+    "bname_master_sketch",
+    "BName_EffectLines",
+}
+
+
+def _object_is_work_list_runtime(obj) -> bool:
+    if obj.name in _WORK_LIST_RUNTIME_OBJECT_NAMES:
+        return True
+    if _object_is_page_content(obj):
+        return True
+    if str(obj.get("bname_kind", "") or "") == "page_preview":
+        return False
+    return any(str(obj.get(prop, "") or "") for prop in _WORK_LIST_RUNTIME_KIND_PROPS)
+
+
+def _collection_is_work_list_runtime(coll) -> bool:
+    kind = str(coll.get("bname_kind", "") or "")
+    if kind in {"page", "coma", "folder"}:
+        return True
+    coll_id = str(coll.get("bname_id", "") or "")
+    if kind == "page_preview":
+        return False
+    if paths.is_valid_page_id(coll_id) or paths.is_valid_page_id(coll.name):
+        return True
+    if ":" in coll_id:
+        page_id, _rest = coll_id.split(":", 1)
+        return paths.is_valid_page_id(page_id)
+    parent_key = str(coll.get("bname_parent_key", "") or "")
+    if ":" in parent_key:
+        page_id, _rest = parent_key.split(":", 1)
+        return paths.is_valid_page_id(page_id)
+    return False
+
+
+def purge_work_list_runtime_data(scene) -> int:
+    """ページ一覧ファイルに残ってはいけないページ実体を取り除く."""
+    _ = scene
+    removed = 0
+    for obj in list(bpy.data.objects):
+        if not _object_is_work_list_runtime(obj):
+            continue
+        data = getattr(obj, "data", None)
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed += 1
+        except Exception:  # noqa: BLE001
+            continue
+        if data is not None and getattr(data, "users", 0) == 0:
+            for datablocks in (
+                bpy.data.meshes,
+                bpy.data.curves,
+                getattr(bpy.data, "grease_pencils", []),
+                bpy.data.fonts,
+            ):
+                try:
+                    if data.name in datablocks:
+                        datablocks.remove(data)
+                        break
+                except Exception:  # noqa: BLE001
+                    pass
+    collections = sorted(
+        list(bpy.data.collections),
+        key=lambda coll: 1 if str(coll.get("bname_kind", "") or "") == "page" else 0,
+    )
+    for coll in collections:
+        if not _collection_is_work_list_runtime(coll):
+            continue
+        try:
+            bpy.data.collections.remove(coll, do_unlink=True)
+            removed += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return removed

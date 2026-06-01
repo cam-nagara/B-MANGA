@@ -205,10 +205,8 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             # (ネームキャンバスに余計な 3D オブジェクトが載らないようにする)
             _cleanup_default_scene_objects()
 
-            # 初期ページの GP オブジェクト + ページ Collection を生成し、
-            # grid transform を適用 (1 ページ目なので offset は (0,0) だが
-            # 以降のページ追加で効いてくる呼び出しを揃える)
-            gp_initial_obj = gp_utils.ensure_page_gpencil(context.scene, entry.id)
+            # ページ一覧ファイルでは各ページの実体を持たず、プレビュー画像だけを表示する。
+            gp_initial_obj = None
             page_grid.apply_page_collection_transforms(context, work)
 
             # overview 編集モード既定。保存前にモード/stem を確実にセット。
@@ -247,6 +245,13 @@ class BNAME_OT_work_new(Operator, ExportHelper):
                 geometry_nodes_bridge.ensure_effect_line_node_group_for_work(context)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: effect line display preparation failed")
+            try:
+                from ..utils import page_file_scene, page_preview_object
+
+                page_file_scene.purge_work_list_runtime_data(context.scene)
+                page_preview_object.sync_page_previews(context, work)
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_new: page preview setup failed")
             blend_io.save_work_blend(work_dir)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("work_new failed")
@@ -513,6 +518,24 @@ class BNAME_OT_work_save(Operator):
                 file_role, file_page_id, _file_coma_id = page_file_scene.current_role(context)
             except Exception:  # noqa: BLE001
                 file_role, file_page_id = "", ""
+            try:
+                from ..utils import page_file_scene, page_preview_object
+
+                if file_role == "page" and paths.is_valid_page_id(file_page_id):
+                    page_index = page_file_scene.find_page_index(work, file_page_id)
+                    if 0 <= page_index < len(work.pages):
+                        page_preview_object.ensure_preview_png(
+                            work,
+                            work.pages[page_index],
+                            page_index,
+                            current=True,
+                            scene=context.scene,
+                        )
+                elif file_role == "work":
+                    page_file_scene.purge_work_list_runtime_data(context.scene)
+                    page_preview_object.sync_page_previews(context, work)
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_save: page preview refresh failed")
 
             # 2) .blend 保存. ユーザーが File > Save As で work_dir 外に保存
             #    していた場合は、そのパスを尊重して save_mainfile する (B-Name の

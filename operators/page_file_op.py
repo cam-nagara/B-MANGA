@@ -47,6 +47,25 @@ def _save_metadata(context, *, reason: str) -> bool:
         return False
 
 
+def _update_page_preview_png(work, page_id: str) -> None:
+    if work is None or not paths.is_valid_page_id(page_id):
+        return
+    try:
+        from ..utils import page_preview_object
+
+        index = page_file_scene.find_page_index(work, page_id)
+        if 0 <= index < len(work.pages):
+            page_preview_object.ensure_preview_png(
+                work,
+                work.pages[index],
+                index,
+                current=True,
+                scene=bpy.context.scene,
+            )
+    except Exception:  # noqa: BLE001
+        _logger.exception("page preview update failed: %s", page_id)
+
+
 def _load_work_metadata_into_current_scene(work_dir: Path):
     from ..utils import handlers
 
@@ -223,6 +242,7 @@ class BNAME_OT_exit_page_file(Operator):
             if not _save_metadata(context, reason="exit_page_file"):
                 self.report({"ERROR"}, "作品情報の保存に失敗しました")
                 return {"CANCELLED"}
+            _update_page_preview_png(work, page_id)
             blend_io.save_page_blend(work_dir, page_id)
             if not blend_io.work_blend_exists(work_dir):
                 self.report({"ERROR"}, "ページ一覧ファイルが見つかりません")

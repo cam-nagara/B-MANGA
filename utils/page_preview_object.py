@@ -29,6 +29,13 @@ def preview_enabled(scene=None) -> bool:
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return False
+    try:
+        from . import page_file_scene
+
+        if page_file_scene.is_work_list_scene(scene):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
     return bool(getattr(scene, "bname_page_preview_enabled", True))
 
 
@@ -65,6 +72,25 @@ def _is_page_edit_scene(scene) -> tuple[bool, str]:
         return bool(page_id and page_file_scene.is_page_edit_scene(scene)), page_id
     except Exception:  # noqa: BLE001
         return False, ""
+
+
+def _preview_scene_role(scene) -> tuple[str, str]:
+    try:
+        from . import page_file_scene
+
+        role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
+        if role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
+            return "page", page_id
+        if role == page_file_scene.ROLE_WORK:
+            return "work", ""
+        page_id = page_file_scene.current_page_id(scene)
+        if page_id and page_file_scene.is_page_edit_scene(scene):
+            return "page", page_id
+        if page_file_scene.is_work_list_scene(scene):
+            return "work", ""
+    except Exception:  # noqa: BLE001
+        pass
+    return "", ""
 
 
 def _preview_collection(scene: bpy.types.Scene) -> bpy.types.Collection:
@@ -210,6 +236,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     from PIL import Image, ImageDraw
 
     width, height = _image_size(work, scene)
+    exported = _render_preview_image_from_export(work, page, width, height)
+    if exported is not None:
+        draw = ImageDraw.Draw(exported)
+        outline = (72, 190, 222, 255)
+        if current:
+            outline = (64, 140, 255, 255)
+        draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
+        return exported
+
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     img = Image.new("RGBA", (width, height), (250, 250, 250, 255))
@@ -250,6 +285,40 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
     draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
     return img
+
+
+def _render_preview_image_from_export(work, page, width: int, height: int):
+    try:
+        from PIL import Image
+        from ..io import export_pipeline
+
+        if not export_pipeline.has_pillow():
+            return None
+        cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
+        ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+        dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
+        options = export_pipeline.ExportOptions(
+            area="canvas",
+            dpi_override=dpi,
+            include_border=True,
+            include_white_margin=True,
+            include_nombre=True,
+            include_work_info=True,
+            include_tombo=False,
+            include_paper_color=True,
+            include_coma_previews=True,
+        )
+        image = export_pipeline.render_page(work, page, options)
+        if image is None:
+            return None
+        image = image.convert("RGBA")
+        if image.size != (width, height):
+            resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+            image = image.resize((width, height), resampling)
+        return image
+    except Exception:  # noqa: BLE001
+        _logger.exception("page preview export render failed: %s", getattr(page, "id", ""))
+        return None
 
 
 def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None) -> Path | None:
@@ -392,6 +461,9 @@ def _preview_page_indices(scene, work) -> set[int]:
     pages = list(getattr(work, "pages", []) or [])
     if not pages:
         return set()
+    role, _current_page_id = _preview_scene_role(scene)
+    if role == "work":
+        return set(range(len(pages)))
     _is_page_scene, current_page_id = _is_page_edit_scene(scene)
     current_index = -1
     for i, page in enumerate(pages):
@@ -473,8 +545,8 @@ def sync_page_previews(context=None, work=None) -> int:
         return 0
     if work is None:
         work = getattr(scene, "bname_work", None)
-    is_page_scene, current_page_id = _is_page_edit_scene(scene)
-    if not is_page_scene or not preview_enabled(scene):
+    role, current_page_id = _preview_scene_role(scene)
+    if role not in {"page", "work"} or not preview_enabled(scene):
         hide_page_previews(scene)
         return 0
     if work is None or not getattr(work, "loaded", False):
@@ -482,16 +554,25 @@ def sync_page_previews(context=None, work=None) -> int:
         return 0
     rects = preview_rects_mm(scene, work)
     valid_page_ids = set(rects)
+    if role == "page" and current_page_id:
+        current_rect = rects.get(current_page_id)
+        if current_rect is not None:
+            current_index = int(current_rect[0])
+            try:
+                page = getattr(work, "pages", [])[current_index]
+                ensure_preview_png(work, page, current_index, current=True, scene=scene)
+            except Exception:  # noqa: BLE001
+                _logger.exception("current page preview update failed: %s", current_page_id)
     for obj in _iter_preview_objects():
         page_id = str(obj.get(PREVIEW_PAGE_ID_PROP, "") or "")
-        if page_id not in valid_page_ids or page_id == current_page_id:
+        if page_id not in valid_page_ids or (role == "page" and page_id == current_page_id):
             obj.hide_viewport = True
             obj.hide_render = True
     updated = 0
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         rect = rects.get(page_id)
-        if rect is None or page_id == current_page_id:
+        if rect is None or (role == "page" and page_id == current_page_id):
             continue
         _ensure_preview_object(
             scene,

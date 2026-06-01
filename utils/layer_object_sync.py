@@ -620,6 +620,29 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             return
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from . import page_file_scene
+
+        if page_file_scene.is_work_list_scene(scene):
+            with suppress_sync():
+                om.ensure_root_collection(scene)
+                om.ensure_outside_collection(scene)
+                page_file_scene.purge_work_list_runtime_data(scene)
+                try:
+                    from . import page_preview_object
+
+                    page_preview_object.sync_page_previews(bpy.context, work)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("work list page previews failed")
+                try:
+                    from . import outliner_watch as _outliner_watch
+
+                    _outliner_watch.mark_entry_counts_synced(scene)
+                except Exception:  # noqa: BLE001
+                    pass
+            return
+    except Exception:  # noqa: BLE001
+        _logger.exception("work list lightweight mirror failed")
     structure_page_filter, content_page_filter = _page_filter_for_scene(scene)
     structure_work = _work_for_page_filter(work, structure_page_filter)
     include_content = content_page_filter is None or bool(content_page_filter)

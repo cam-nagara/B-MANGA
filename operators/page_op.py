@@ -40,6 +40,16 @@ def _sync_layer_stack_after_page_change(context, *, align_page_order: bool = Fal
         layer_stack_utils.tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("page op: layer stack sync failed")
+    try:
+        work = get_work(context)
+        scene = getattr(context, "scene", None)
+        if scene is not None and work is not None and page_file_scene.is_work_list_scene(scene):
+            page_file_scene.purge_work_list_runtime_data(scene)
+            from ..utils import page_preview_object
+
+            page_preview_object.sync_page_previews(context, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page op: work list preview refresh failed")
 
 
 def _sync_page_number_range(work_dir: Path, work) -> None:
@@ -201,8 +211,8 @@ class BNAME_OT_page_add(Operator):
             from .coma_op import create_basic_frame_coma
 
             create_basic_frame_coma(work, entry, work_dir)
-            # ページ Collection + GP オブジェクトを生成
-            gp_utils.ensure_page_gpencil(context.scene, entry.id)
+            if not page_file_scene.is_work_list_scene(context.scene):
+                gp_utils.ensure_page_gpencil(context.scene, entry.id)
             # 全ページの Collection transform を grid 位置に再配置
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_pages_json(work_dir, work)
@@ -334,9 +344,10 @@ class BNAME_OT_page_duplicate(Operator):
                 work.pages.move(new_index, idx + 1)
             work.active_page_index = idx + 1
             new_entry = work.pages[work.active_page_index]
-            gp_utils.ensure_page_gpencil(context.scene, new_id)
-            # 元ページの GP レイヤー (ページ本体 + 各コマ) を新ページへ複製。
-            _duplicate_page_gp_layers(context, src, new_entry)
+            if not page_file_scene.is_work_list_scene(context.scene):
+                gp_utils.ensure_page_gpencil(context.scene, new_id)
+                # 元ページの GP レイヤー (ページ本体 + 各コマ) を新ページへ複製。
+                _duplicate_page_gp_layers(context, src, new_entry)
             _translate_layers_for_offset_changes(context, work, old_offsets)
             page_grid.apply_page_collection_transforms(context, work)
             page_io.save_page_json(work_dir, new_entry)

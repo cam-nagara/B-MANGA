@@ -247,6 +247,17 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     page_ids = {str(getattr(page, "id", "") or "") for page in getattr(work, "pages", []) or []}
+    try:
+        from . import page_file_scene
+
+        is_work_list_scene = page_file_scene.is_work_list_scene(scene)
+        current_page_id = page_file_scene.current_page_id(scene)
+        is_page_edit_scene = bool(current_page_id and page_file_scene.is_page_edit_scene(scene))
+        real_work = page_file_scene.work_for_pages(work, {current_page_id}) if is_page_edit_scene else work
+    except Exception:  # noqa: BLE001
+        is_work_list_scene = False
+        current_page_id = ""
+        real_work = work
 
     # entry-positioned kinds 用に scene 全体の image_layers を 1 度だけ index 化
     image_entries: dict[str, object] = {}
@@ -411,19 +422,22 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     try:
         from . import coma_plane as _cp
 
-        _cp.update_coma_plane_locations(scene, work)
+        if not is_work_list_scene:
+            _cp.update_coma_plane_locations(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_plane location update failed")
     try:
         from . import coma_border_object as _cbo
 
-        _cbo.update_coma_border_locations(scene, work)
+        if not is_work_list_scene:
+            _cbo.update_coma_border_locations(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_border location update failed")
     try:
         from . import paper_guide_object as _pgo
 
-        _pgo.sync_paper_guides_after_page_transform(scene, work)
+        if not is_work_list_scene:
+            _pgo.sync_paper_guides_after_page_transform(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: paper guide update failed")
     try:
@@ -435,7 +449,8 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     try:
         from . import work_info_text_object as _work_info_text
 
-        _work_info_text.sync_work_info_texts_after_page_transform(scene, work)
+        if not is_work_list_scene:
+            _work_info_text.sync_work_info_texts_after_page_transform(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: work info text update failed")
     try:
@@ -444,6 +459,13 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         _page_content_visibility.apply_page_content_visibility(context, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: page content visibility update failed")
+    if is_work_list_scene:
+        try:
+            from . import page_preview_object
+
+            page_preview_object.sync_page_previews(context, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("apply_page_collection_transforms: page preview sync failed")
     return updated
 
 

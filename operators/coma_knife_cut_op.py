@@ -455,14 +455,21 @@ def _sync_layer_stack_after_cut(context) -> None:
         from ..core.work import get_work
         from ..utils import layer_object_sync as _los
         from ..utils import mask_object as _mask
+        from ..utils import page_file_scene
 
         scene = context.scene
         work = get_work(context)
         if scene is not None and work is not None and getattr(work, "loaded", False):
             _los.mirror_work_to_outliner(scene, work)
             # 新コマのマスク Mesh も再生成
+            current_page_id = page_file_scene.current_page_id(scene)
+            mask_work = (
+                page_file_scene.work_for_pages(work, {current_page_id})
+                if current_page_id and page_file_scene.is_page_edit_scene(scene)
+                else work
+            )
             if getattr(context, "mode", "OBJECT") == "OBJECT":
-                _mask.regenerate_all_masks(scene, work)
+                _mask.regenerate_all_masks(scene, mask_work)
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: outliner mirror failed")
     # mask 再生成や mirror で ``__masks__`` Collection が active になり
@@ -506,9 +513,19 @@ def _find_coma_at_world(
     scene = bpy.context.scene
     if scene is None:
         return None
+    allowed_page_indices: set[int] | None = None
+    try:
+        current_page_id = page_file_scene.current_page_id(scene)
+        if current_page_id and page_file_scene.is_page_edit_scene(scene):
+            current_index = page_file_scene.find_page_index(work, current_page_id)
+            allowed_page_indices = {current_index} if current_index >= 0 else set()
+    except Exception:  # noqa: BLE001
+        allowed_page_indices = None
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     for i, page in enumerate(work.pages):
+        if allowed_page_indices is not None and i not in allowed_page_indices:
+            continue
         if not page_range.page_in_range(page):
             continue
         ox, oy = _page_world_offset_mm(work, i, scene)

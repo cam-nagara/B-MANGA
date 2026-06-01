@@ -379,9 +379,14 @@ def create_rect_coma(
     # その間ドラッグや色変更の update callback が空振り (False return) する。
     try:
         from ..utils import coma_plane as _cp
+        from ..utils import page_file_scene
 
         scene = bpy.context.scene if bpy.context is not None else None
-        if scene is not None:
+        if (
+            scene is not None
+            and page_file_scene.is_page_edit_scene(scene)
+            and page_file_scene.current_page_id(scene) == str(getattr(page, "id", "") or "")
+        ):
             _cp.ensure_coma_plane(scene, work, page, entry)
             try:
                 from ..utils import coma_border_object as _cbo
