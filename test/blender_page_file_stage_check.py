@@ -122,9 +122,11 @@ def main() -> None:
 
         from bname_dev_page_file_stage.utils import page_preview_object
         from bname_dev_page_file_stage.utils import page_grid
+        from bname_dev_page_file_stage.ui import overlay
         from bname_dev_page_file_stage.operators import coma_knife_cut_op
 
         work = bpy.context.scene.bname_work
+        assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1, 2, 3}  # noqa: SLF001
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert "p0002" in rects
         index, x0, y0, x1, y1 = rects["p0002"]
@@ -150,12 +152,17 @@ def main() -> None:
         assert coma_hit == (0, 0), f"ページファイル上のコマを検出できません: {coma_hit}"
         bpy.context.scene.bname_page_preview_enabled = False
         assert all(obj.hide_viewport for obj in _page_preview_objects())
+        assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0}  # noqa: SLF001
         bpy.context.scene.bname_page_preview_enabled = True
         assert any(not obj.hide_viewport for obj in _page_preview_objects())
         bpy.context.scene.bname_page_preview_page_radius = 1
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert set(rects) == {"p0001", "p0002"}
+        assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1}  # noqa: SLF001
         assert len(_visible_page_preview_objects()) == 1
+        mat = _visible_page_preview_objects()[0].active_material
+        assert mat is not None and mat.node_tree is not None
+        assert any(getattr(node, "type", "") == "EMISSION" for node in mat.node_tree.nodes)
         bpy.context.scene.bname_page_preview_resolution_percentage = 50.0
         bpy.context.scene.bname_overview_cols = 6
         bpy.context.scene.bname_overview_gap_mm = 0.0
@@ -165,6 +172,9 @@ def main() -> None:
 
         preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
         assert max(preview_size) == 768
+        preview_image = Image.open(work_dir / "p0002" / "page_preview.png").convert("RGBA")
+        r, g, b, a = preview_image.getpixel((preview_image.width // 2, preview_image.height // 2))
+        assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
 
         _add_page_only_probe()
         result = bpy.ops.bname.work_save()

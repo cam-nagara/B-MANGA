@@ -32,8 +32,10 @@ from ..utils import (
     log,
     object_selection,
     page_browser,
+    page_file_scene,
     stroke_style,
     text_layout_bounds,
+    page_preview_object,
     text_style,
     viewport_colors,
 )
@@ -1192,6 +1194,47 @@ def _page_overview_offset(
     return _with_page_manual_offset(work, page_index, ox, oy)
 
 
+def _page_file_current_page_index(scene, work) -> int:
+    """ページファイルで実体編集しているページ index を返す."""
+    try:
+        idx = page_file_scene.find_page_index(work, page_file_scene.current_page_id(scene))
+        if idx >= 0:
+            return idx
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        pages_len = len(getattr(work, "pages", []) or [])
+        if pages_len <= 0:
+            return -1
+        return max(0, min(pages_len - 1, int(getattr(work, "active_page_index", 0))))
+    except Exception:  # noqa: BLE001
+        return -1
+
+
+def _page_file_overview_indices(scene, work) -> set[int] | None:
+    """ページファイルで補助表示を許可するページ index 群を返す.
+
+    None は通常のページ一覧ファイルを表し、従来どおり全ページが対象。
+    ページファイルでは、現在ページに加えて「ページ一覧表示」で指定された
+    前後ページだけを対象にする。
+    """
+    try:
+        if not page_file_scene.is_page_edit_scene(scene):
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    pages_len = len(getattr(work, "pages", []) or [])
+    if pages_len <= 0:
+        return set()
+    current_index = _page_file_current_page_index(scene, work)
+    indices: set[int] = set()
+    if page_preview_object.preview_enabled(scene):
+        indices.update(page_preview_object.preview_page_indices(scene, work))
+    if current_index >= 0:
+        indices.add(current_index)
+    return {i for i in indices if 0 <= i < pages_len}
+
+
 def _format_page_header_number(page_index: int, work=None) -> str:
     """作品の開始番号に従って、ページ番号を 001 形式にする。"""
     try:
@@ -1350,7 +1393,15 @@ def _draw_callback(phase: str = "post") -> None:
             active_idx = work.active_page_index
             highlight_active_page = _should_highlight_active_page(context)
             active_highlight_rect = None
+            page_file_indices = None if is_page_browser else _page_file_overview_indices(scene, work)
+            page_file_current_index = (
+                _page_file_current_page_index(scene, work)
+                if page_file_indices is not None
+                else -1
+            )
             for i, page in enumerate(work.pages):
+                if page_file_indices is not None and i not in page_file_indices:
+                    continue
                 if not overlay_visibility.page_visible(page):
                     continue
                 # 見開き判定込みの式は page_grid 側に集約
@@ -1361,6 +1412,8 @@ def _draw_callback(phase: str = "post") -> None:
                 if not overlay_visibility.rect_may_be_visible_in_region(
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
                 ):
+                    continue
+                if page_file_indices is not None and i != page_file_current_index:
                     continue
                 left_half = _is_left_half(i, start_side, read_direction)
                 _draw_page_overlay(
@@ -1386,7 +1439,15 @@ def _draw_callback(phase: str = "post") -> None:
             active_idx = work.active_page_index
             highlight_active_page = _should_highlight_active_page(context)
             active_highlight_rect = None
+            page_file_indices = None if is_page_browser else _page_file_overview_indices(scene, work)
+            page_file_current_index = (
+                _page_file_current_page_index(scene, work)
+                if page_file_indices is not None
+                else -1
+            )
             for i, page in enumerate(work.pages):
+                if page_file_indices is not None and i not in page_file_indices:
+                    continue
                 if not overlay_visibility.page_visible(page):
                     continue
                 ox, oy = _page_overview_offset(
@@ -1396,6 +1457,8 @@ def _draw_callback(phase: str = "post") -> None:
                 if not overlay_visibility.rect_may_be_visible_in_region(
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
                 ):
+                    continue
+                if page_file_indices is not None and i != page_file_current_index:
                     continue
                 left_half = _is_left_half(i, start_side, read_direction)
                 _draw_page_overlay(
@@ -1638,7 +1701,15 @@ def _draw_callback_pixel() -> None:
         ch = paper.canvas_height_mm
         start_side = getattr(paper, "start_side", "right")
         read_direction = getattr(paper, "read_direction", "left")
+        page_file_indices = None if is_page_browser else _page_file_overview_indices(scene, work)
+        page_file_current_index = (
+            _page_file_current_page_index(scene, work)
+            if page_file_indices is not None
+            else -1
+        )
         for i, page in enumerate(work.pages):
+            if page_file_indices is not None and i not in page_file_indices:
+                continue
             if not overlay_visibility.page_visible(page):
                 continue
             ox, oy = _page_overview_offset(
@@ -1652,7 +1723,10 @@ def _draw_callback_pixel() -> None:
             left_half = _is_left_half(i, start_side, read_direction)
             inner = bleed_rect(paper)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
-            if page is not None:
+            if (
+                page is not None
+                and (page_file_indices is None or i == page_file_current_index)
+            ):
                 overlay_text.draw_text_pixels(
                     context,
                     page,

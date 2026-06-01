@@ -323,12 +323,15 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
     for node in list(nt.nodes):
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    emission = nt.nodes.new("ShaderNodeEmission")
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = image
     try:
-        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        emission.inputs["Strength"].default_value = 1.0
+        nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        emission_out = emission.outputs.get("Emission") or next(iter(emission.outputs), None)
+        if emission_out is not None:
+            nt.links.new(emission_out, out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("page preview material link failed")
     mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
@@ -404,6 +407,11 @@ def _preview_page_indices(scene, work) -> set[int]:
     first = max(0, current_index - radius)
     last = min(len(pages) - 1, current_index + radius)
     return set(range(first, last + 1))
+
+
+def preview_page_indices(scene, work) -> set[int]:
+    """ページファイルで表示対象になる周辺ページ index を返す."""
+    return set(_preview_page_indices(scene, work))
 
 
 def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
