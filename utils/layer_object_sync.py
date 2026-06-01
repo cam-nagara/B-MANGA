@@ -462,6 +462,20 @@ def _entry_in_page_filter(entry, work, page_filter: set[str] | None) -> bool:
     return bool(page_id and page_id in page_filter)
 
 
+def _purge_content_for_filter(scene, page_filter: set[str] | None) -> None:
+    if page_filter is None:
+        return
+    keep_page_id = ""
+    if len(page_filter) == 1:
+        keep_page_id = next(iter(page_filter))
+    try:
+        from . import page_file_scene
+
+        page_file_scene.purge_page_content_data(scene, keep_page_id)
+    except Exception:  # noqa: BLE001
+        _logger.exception("mirror content purge failed")
+
+
 def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None) -> None:
     """全 BNameImageLayer / BNameTextEntry に対応する表示 Object を ensure."""
     try:
@@ -543,7 +557,11 @@ def _saved_runtime_objects_look_current(
                 border = getattr(coma, "border", None)
                 if str(getattr(border, "style", "solid") or "solid") != "brush":
                     expected_borders.add(owner_id)
-        if page_filter is None or page_filter:
+        page_content_expected = (
+            page_filter is None
+            or (bool(page_filter) and page_id in page_filter)
+        )
+        if page_content_expected:
             for entry in getattr(page, "balloons", []) or []:
                 balloon_id = str(getattr(entry, "id", "") or "")
                 if balloon_id:
@@ -618,6 +636,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _outliner_watch.mark_entry_counts_synced(scene)
         except Exception:  # noqa: BLE001
             pass
+        _purge_content_for_filter(scene, content_page_filter)
         return
     with suppress_sync():
         # 既存実体が Blender 標準機能で動かされていた場合は、B-Name 側の
@@ -760,6 +779,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _pgo.regenerate_all_paper_guides(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror paper guides failed")
+        _purge_content_for_filter(scene, content_page_filter)
 
         # 既存 raster Object の Boolean Intersect modifier の target を最新の
         # coma_mask Object に同期 (2026-05-04 案 1。 file ロード直後や

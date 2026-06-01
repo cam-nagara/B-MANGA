@@ -79,6 +79,12 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
     except Exception:  # noqa: BLE001
         _logger.exception("page file: purge other page data failed")
     try:
+        from ..utils import page_preview_object
+
+        page_preview_object.sync_page_previews(context, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page file: page preview setup failed")
+    try:
         from . import raster_layer_op
 
         raster_layer_op.ensure_all_raster_runtime(context)

@@ -230,14 +230,49 @@ def _object_page_id(obj) -> str:
     return ""
 
 
-def purge_other_page_data(scene, page_id: str) -> int:
-    """ページ用blendから対象外ページの管理データブロックを取り除く."""
-    if not paths.is_valid_page_id(page_id):
+_CONTENT_KINDS = {
+    "balloon",
+    "text",
+    "image",
+    "raster",
+    "gp",
+    "effect",
+    "effect_display",
+    "effect_frame_source",
+    "effect_shape_source",
+    "effect_density_source",
+}
+
+
+def _object_is_page_content(obj) -> bool:
+    kind = str(obj.get("bname_kind", "") or "")
+    if kind in _CONTENT_KINDS:
+        return True
+    for prop in (
+        "bname_balloon_fill_kind",
+        "bname_balloon_source_kind",
+        "bname_balloon_clip_mask_kind",
+    ):
+        if str(obj.get(prop, "") or ""):
+            return True
+    return False
+
+
+def purge_page_content_data(scene, keep_page_id: str = "") -> int:
+    """ページ編集に不要な中身データを取り除く.
+
+    ``keep_page_id`` が空なら全ページの中身を取り除く。ページ ID が渡された
+    場合は、そのページ以外の中身だけを取り除く。
+    """
+    keep_page_id = str(keep_page_id or "")
+    if keep_page_id and not paths.is_valid_page_id(keep_page_id):
         return 0
     removed = 0
     for obj in list(bpy.data.objects):
+        if not _object_is_page_content(obj):
+            continue
         obj_page_id = _object_page_id(obj)
-        if obj_page_id and obj_page_id != page_id:
+        if not keep_page_id or (obj_page_id and obj_page_id != keep_page_id):
             data = getattr(obj, "data", None)
             try:
                 bpy.data.objects.remove(obj, do_unlink=True)
@@ -256,12 +291,39 @@ def purge_other_page_data(scene, page_id: str) -> int:
                             break
                     except Exception:  # noqa: BLE001
                         pass
-    for coll in list(bpy.data.collections):
+    return removed
+
+
+def purge_other_page_data(scene, page_id: str) -> int:
+    """ページ用blendから対象外ページの編集実体を取り除く."""
+    if not paths.is_valid_page_id(page_id):
+        return 0
+    removed = purge_page_content_data(scene, page_id)
+
+    def _collection_page_id(coll) -> str:
         coll_id = str(coll.get("bname_id", "") or "")
         coll_kind = str(coll.get("bname_kind", "") or "")
-        coll_page_id = coll_id if coll_kind == "page" and paths.is_valid_page_id(coll_id) else ""
-        if not coll_page_id and paths.is_valid_page_id(coll.name):
-            coll_page_id = coll.name
+        if coll_kind == "page" and paths.is_valid_page_id(coll_id):
+            return coll_id
+        if coll_kind == "coma" and ":" in coll_id:
+            candidate = coll_id.split(":", 1)[0]
+            if paths.is_valid_page_id(candidate):
+                return candidate
+        parent_key = str(coll.get("bname_parent_key", "") or "")
+        if ":" in parent_key:
+            parent_key = parent_key.split(":", 1)[0]
+        if paths.is_valid_page_id(parent_key):
+            return parent_key
+        if paths.is_valid_page_id(coll.name):
+            return coll.name
+        return ""
+
+    collections = sorted(
+        list(bpy.data.collections),
+        key=lambda coll: 1 if str(coll.get("bname_kind", "") or "") == "page" else 0,
+    )
+    for coll in collections:
+        coll_page_id = _collection_page_id(coll)
         if coll_page_id and coll_page_id != page_id:
             try:
                 bpy.data.collections.remove(coll, do_unlink=True)

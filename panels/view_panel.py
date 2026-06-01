@@ -7,7 +7,7 @@ from bpy.types import Panel
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
-from ..utils import page_browser
+from ..utils import page_browser, page_file_scene
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -53,6 +53,15 @@ def _active_page_number_set(scene, value: int) -> None:
         pass
 
 
+def _page_preview_enabled_update(scene, context) -> None:
+    try:
+        from ..utils import page_preview_object
+
+        page_preview_object.sync_page_previews(context, getattr(scene, "bname_work", None))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNAME_PT_view(Panel):
     bl_idname = "BNAME_PT_view"
     bl_label = "ビュー"
@@ -91,6 +100,10 @@ class BNAME_PT_view(Panel):
         row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
         row = col.row(align=True)
         row.prop(scene, "bname_active_page_number", text="選択ページ")
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        if role == page_file_scene.ROLE_PAGE:
+            row = col.row(align=True)
+            row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
 
         if mode != MODE_PAGE:
             layout.separator()
@@ -118,6 +131,12 @@ def register() -> None:
         get=_active_page_number_get,
         set=_active_page_number_set,
     )
+    bpy.types.Scene.bname_page_preview_enabled = bpy.props.BoolProperty(
+        name="ページ一覧表示",
+        description="ページ編集中に、他のページを軽い縮小画像で表示します",
+        default=True,
+        update=_page_preview_enabled_update,
+    )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -130,5 +149,9 @@ def unregister() -> None:
             pass
     try:
         del bpy.types.Scene.bname_active_page_number
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_page_preview_enabled
     except AttributeError:
         pass

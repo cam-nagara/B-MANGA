@@ -543,6 +543,12 @@ class BNAME_OT_page_pick_viewport(Operator):
             return {"PASS_THROUGH"}
         if not page_range.page_in_range(work.pages[page_index]):
             return {"PASS_THROUGH"}
+        role, current_page_id, _coma_id = page_file_scene.current_role(context)
+        in_page_file = role == page_file_scene.ROLE_PAGE
+        if in_page_file:
+            current_page_index = page_file_scene.find_page_index(work, current_page_id)
+            if page_index != current_page_index:
+                return {"FINISHED"}
         # マルチ選択モード時は object_selection キーセットへトグル/追加するだけで
         # アクティブやページ切替は行わない (CSP/PS のレイヤー複数選択と同じ感覚)
         if multi_mode != "single":
@@ -562,7 +568,11 @@ class BNAME_OT_page_pick_viewport(Operator):
 
         object_selection.clear(context)
         changed = False
-        if not is_browser and not bool(getattr(context.scene, "bname_overview_mode", True)):
+        if (
+            not is_browser
+            and not in_page_file
+            and not bool(getattr(context.scene, "bname_overview_mode", True))
+        ):
             context.scene.bname_overview_mode = True
             changed = True
         if page_index != work.active_page_index:

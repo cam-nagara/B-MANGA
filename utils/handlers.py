@@ -437,6 +437,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     page_file_scene.purge_other_page_data(scene, str(rel.parts[0]))
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: purge other page data failed")
+                try:
+                    from . import page_preview_object
+
+                    page_preview_object.sync_page_previews(bpy.context, work)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: page preview setup failed")
                 display_settings.apply_standard_color_management(scene)
                 try:
                     from ..ui import overlay as _overlay

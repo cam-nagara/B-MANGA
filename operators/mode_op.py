@@ -98,6 +98,47 @@ def _resolve_coma_at_event(context, event) -> tuple[int, int] | None:
     return None
 
 
+def _resolve_page_preview_at_event(context, event) -> int | None:
+    """Return a page index when the event hits a page edit preview image."""
+    work = get_work(context)
+    if work is None or not work.loaded:
+        return None
+    from bpy_extras.view3d_utils import region_2d_to_location_3d
+
+    from ..utils import page_preview_object
+
+    screen = getattr(context, "screen", None)
+    if screen is None:
+        return None
+    for area in screen.areas:
+        if area.type != "VIEW_3D":
+            continue
+        for region in area.regions:
+            if region.type != "WINDOW":
+                continue
+            if not (
+                region.x <= event.mouse_x < region.x + region.width
+                and region.y <= event.mouse_y < region.y + region.height
+            ):
+                continue
+            space = area.spaces.active
+            rv3d = getattr(space, "region_3d", None)
+            if rv3d is None:
+                continue
+            mx = event.mouse_x - region.x
+            my = event.mouse_y - region.y
+            loc = region_2d_to_location_3d(region, rv3d, (mx, my), (0.0, 0.0, 0.0))
+            if loc is None:
+                continue
+            return page_preview_object.page_index_at_world_mm(
+                context.scene,
+                work,
+                geom.m_to_mm(loc.x),
+                geom.m_to_mm(loc.y),
+            )
+    return None
+
+
 def schedule_enter_coma_mode(
     page_index: int,
     coma_index: int,
@@ -553,11 +594,35 @@ class BNAME_OT_enter_coma_mode_from_viewport(Operator):
         cur_mode = getattr(context, "mode", "")
         if cur_mode != "OBJECT":
             return {"PASS_THROUGH"}
+        work = get_work(context)
+        if work is None:
+            return {"PASS_THROUGH"}
+        try:
+            from ..utils import page_file_scene
+
+            role, current_page_id, _coma_id = page_file_scene.current_role(context)
+            page_hit = (
+                _resolve_page_preview_at_event(context, event)
+                if role == page_file_scene.ROLE_PAGE
+                else None
+            )
+            if (
+                role == page_file_scene.ROLE_PAGE
+                and page_hit is not None
+                and 0 <= page_hit < len(work.pages)
+            ):
+                hit_page_id = str(getattr(work.pages[page_hit], "id", "") or "")
+                if hit_page_id and hit_page_id != current_page_id:
+                    work.active_page_index = int(page_hit)
+                    result = bpy.ops.bname.open_page_file(index=int(page_hit))
+                    return result if result == {"FINISHED"} else {"CANCELLED"}
+        except Exception:  # noqa: BLE001
+            _logger.exception("enter_coma_mode_from_viewport: page switch failed")
+            return {"CANCELLED"}
         hit = _resolve_coma_at_event(context, event)
         if hit is None:
             return {"PASS_THROUGH"}
         page_idx, coma_idx = hit
-        work = get_work(context)
         if work is None or not (0 <= page_idx < len(work.pages)):
             return {"PASS_THROUGH"}
         page = work.pages[page_idx]
