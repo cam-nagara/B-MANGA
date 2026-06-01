@@ -48,6 +48,10 @@ def _page_preview_objects() -> list[bpy.types.Object]:
     ]
 
 
+def _visible_page_preview_objects() -> list[bpy.types.Object]:
+    return [obj for obj in _page_preview_objects() if not bool(getattr(obj, "hide_viewport", False))]
+
+
 def _managed_object(kind: str, bname_id: str):
     for obj in bpy.data.objects:
         if (
@@ -105,7 +109,10 @@ def main() -> None:
         assert _managed_object("balloon", "other_page_balloon") is None
         previews = _page_preview_objects()
         assert len(previews) == 4
+        assert len(_visible_page_preview_objects()) == 4
         assert (work_dir / "p0002" / "page_preview.png").is_file()
+        assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 3
+        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
 
         from bname_dev_page_file_stage.utils import page_preview_object
 
@@ -125,6 +132,15 @@ def main() -> None:
         assert all(obj.hide_viewport for obj in _page_preview_objects())
         bpy.context.scene.bname_page_preview_enabled = True
         assert any(not obj.hide_viewport for obj in _page_preview_objects())
+        bpy.context.scene.bname_page_preview_page_radius = 1
+        rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
+        assert set(rects) == {"p0001", "p0002"}
+        assert len(_visible_page_preview_objects()) == 2
+        bpy.context.scene.bname_page_preview_resolution_percentage = 50.0
+        from PIL import Image
+
+        preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
+        assert max(preview_size) == 768
 
         _add_page_only_probe()
         result = bpy.ops.bname.work_save()

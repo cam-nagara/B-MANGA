@@ -19,7 +19,9 @@ PREVIEW_OBJECT_PREFIX = "page_preview_"
 PREVIEW_MATERIAL_PREFIX = "BName_PagePreview_"
 PREVIEW_PAGE_ID_PROP = "bname_page_preview_page_id"
 PREVIEW_SCALE = 0.25
-PREVIEW_MAX_PX = 384
+PREVIEW_BASE_MAX_PX = 1536
+DEFAULT_PREVIEW_PAGE_RADIUS = 3
+DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
 PREVIEW_Z_M = 0.25
 PREVIEW_FILENAME = "page_preview.png"
 
@@ -29,6 +31,28 @@ def preview_enabled(scene=None) -> bool:
     if scene is None:
         return False
     return bool(getattr(scene, "bname_page_preview_enabled", True))
+
+
+def preview_page_radius(scene=None) -> int:
+    scene = scene or getattr(bpy.context, "scene", None)
+    value = getattr(scene, "bname_page_preview_page_radius", DEFAULT_PREVIEW_PAGE_RADIUS)
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return DEFAULT_PREVIEW_PAGE_RADIUS
+
+
+def preview_resolution_percentage(scene=None) -> float:
+    scene = scene or getattr(bpy.context, "scene", None)
+    value = getattr(
+        scene,
+        "bname_page_preview_resolution_percentage",
+        DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE,
+    )
+    try:
+        return max(5.0, min(200.0, float(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE
 
 
 def _is_page_edit_scene(scene) -> tuple[bool, str]:
@@ -109,15 +133,19 @@ def _rgba255(rgba, fallback=(255, 255, 255, 255)) -> tuple[int, int, int, int]:
         return fallback
 
 
-def _image_size(work) -> tuple[int, int]:
+def _image_size(work, scene=None) -> tuple[int, int]:
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+    max_px = max(
+        64,
+        int(round(PREVIEW_BASE_MAX_PX * preview_resolution_percentage(scene) / 100.0)),
+    )
     if cw >= ch:
-        width = PREVIEW_MAX_PX
-        height = max(1, int(round(PREVIEW_MAX_PX * ch / cw)))
+        width = max_px
+        height = max(1, int(round(max_px * ch / cw)))
     else:
-        height = PREVIEW_MAX_PX
-        width = max(1, int(round(PREVIEW_MAX_PX * cw / ch)))
+        height = max_px
+        width = max(1, int(round(max_px * cw / ch)))
     return width, height
 
 
@@ -179,10 +207,10 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
         return
 
 
-def _render_preview_image(work, page, page_index: int, *, current: bool):
+def _render_preview_image(work, page, page_index: int, *, current: bool, scene=None):
     from PIL import Image, ImageDraw
 
-    width, height = _image_size(work)
+    width, height = _image_size(work, scene)
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     img = Image.new("RGBA", (width, height), (250, 250, 250, 255))
@@ -225,7 +253,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool):
     return img
 
 
-def ensure_preview_png(work, page, page_index: int, *, current: bool) -> Path | None:
+def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None) -> Path | None:
     page_id = str(getattr(page, "id", "") or "")
     if not paths.is_valid_page_id(page_id):
         return None
@@ -234,14 +262,14 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool) -> Path | 
         return None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _render_preview_image(work, page, page_index, current=current).save(path)
+        _render_preview_image(work, page, page_index, current=current, scene=scene).save(path)
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
         return None
 
 
-def _load_image(path: Path) -> bpy.types.Image | None:
+def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy.types.Image | None:
     try:
         abspath = str(path.resolve())
         mtime = path.stat().st_mtime
@@ -255,6 +283,13 @@ def _load_image(path: Path) -> bpy.types.Image | None:
                 break
         except Exception:  # noqa: BLE001
             continue
+    if img is not None and expected_size is not None:
+        try:
+            if tuple(int(v) for v in img.size[:2]) != tuple(expected_size):
+                bpy.data.images.remove(img)
+                img = None
+        except Exception:  # noqa: BLE001
+            img = None
     if img is None:
         try:
             img = bpy.data.images.load(abspath, check_existing=True)
@@ -336,7 +371,10 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     offsets: list[tuple[int, str, float, float]] = []
+    target_indices = _preview_page_indices(scene, work)
     for i, page in enumerate(getattr(work, "pages", []) or []):
+        if i not in target_indices:
+            continue
         page_id = str(getattr(page, "id", "") or "")
         if not page_id or not page_range.page_in_range(page):
             continue
@@ -353,14 +391,36 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
     if not offsets:
         return {}
     min_x = min(ox for _i, _pid, ox, _oy in offsets)
+    max_y = max(oy for _i, _pid, _ox, oy in offsets)
     origin_x = cw + max(20.0, gap * 2.0)
     origin_y = ch - thumb_h
     rects: dict[str, tuple[int, float, float, float, float]] = {}
     for i, page_id, ox, oy in offsets:
         x0 = origin_x + (ox - min_x)
-        y0 = origin_y + oy
+        y0 = origin_y + (oy - max_y)
         rects[page_id] = (i, x0, y0, x0 + thumb_w, y0 + thumb_h)
     return rects
+
+
+def _preview_page_indices(scene, work) -> set[int]:
+    pages = list(getattr(work, "pages", []) or [])
+    if not pages:
+        return set()
+    _is_page_scene, current_page_id = _is_page_edit_scene(scene)
+    current_index = -1
+    for i, page in enumerate(pages):
+        if str(getattr(page, "id", "") or "") == current_page_id:
+            current_index = i
+            break
+    if current_index < 0:
+        try:
+            current_index = max(0, min(len(pages) - 1, int(getattr(work, "active_page_index", 0))))
+        except (TypeError, ValueError):
+            current_index = 0
+    radius = preview_page_radius(scene)
+    first = max(0, current_index - radius)
+    last = min(len(pages) - 1, current_index + radius)
+    return set(range(first, last + 1))
 
 
 def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
@@ -374,8 +434,8 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
 
 def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool) -> None:
     page_id = str(getattr(page, "id", "") or "")
-    path = ensure_preview_png(work, page, page_index, current=current)
-    image = _load_image(path) if path is not None else None
+    path = ensure_preview_png(work, page, page_index, current=current, scene=scene)
+    image = _load_image(path, _image_size(work, scene)) if path is not None else None
     _index, x0, y0, x1, y1 = rect
     mesh = _ensure_plane_mesh(page_id, x1 - x0, y1 - y0)
     mat = _ensure_material(page_id, image)

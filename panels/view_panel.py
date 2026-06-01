@@ -104,6 +104,10 @@ class BNAME_PT_view(Panel):
         if role == page_file_scene.ROLE_PAGE:
             row = col.row(align=True)
             row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
+            row = col.row(align=True)
+            row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
+            row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
+            row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
 
         if mode != MODE_PAGE:
             layout.separator()
@@ -137,6 +141,24 @@ def register() -> None:
         default=True,
         update=_page_preview_enabled_update,
     )
+    bpy.types.Scene.bname_page_preview_page_radius = bpy.props.IntProperty(
+        name="前後ページ数",
+        description="ページ編集中に、現在のページの前後何ページ分を表示するかを指定します",
+        default=3,
+        min=0,
+        soft_max=20,
+        update=_page_preview_enabled_update,
+    )
+    bpy.types.Scene.bname_page_preview_resolution_percentage = bpy.props.FloatProperty(
+        name="画像解像度%",
+        description="ページプレビュー画像の細かさを指定します",
+        default=25.0,
+        min=5.0,
+        soft_max=100.0,
+        max=200.0,
+        subtype="PERCENTAGE",
+        update=_page_preview_enabled_update,
+    )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -153,5 +175,13 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bname_page_preview_enabled
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_page_preview_page_radius
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_page_preview_resolution_percentage
     except AttributeError:
         pass
