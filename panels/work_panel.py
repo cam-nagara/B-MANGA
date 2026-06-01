@@ -52,6 +52,7 @@ class BNAME_PT_work(Panel):
 
         mode = get_mode(context)
         role, _page_id, _coma_id = page_file_scene.current_role(context)
+        in_page_file = page_file_scene.is_page_edit_scene(context.scene)
         if role == page_file_scene.ROLE_PAGE:
             row = layout.row(align=True)
             row.operator("bname.exit_page_file", text="ページ一覧に戻る", icon="BACK")
@@ -65,6 +66,8 @@ class BNAME_PT_work(Panel):
         box.prop(info, "subtitle")
         box.prop(info, "author")
         box.operator("bname.work_meta_dialog", text="メタ情報を編集", icon="INFO")
+        if in_page_file:
+            return
         box.label(text="ページ数")
         row = box.row(align=True)
         row.enabled = mode == MODE_PAGE

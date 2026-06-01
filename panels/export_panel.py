@@ -8,6 +8,7 @@ from bpy.types import Panel
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..io import export_pipeline
+from ..utils import page_file_scene
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -24,7 +25,12 @@ class BNAME_PT_export(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(w and w.loaded and get_mode(context) != MODE_COMA)
+        return bool(
+            w
+            and w.loaded
+            and get_mode(context) != MODE_COMA
+            and page_file_scene.is_work_list_scene(context.scene)
+        )
 
     def draw(self, context):
         layout = self.layout

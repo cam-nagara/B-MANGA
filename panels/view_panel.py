@@ -27,6 +27,8 @@ def _active_page_number_set(scene, value: int) -> None:
     work = getattr(scene, "bname_work", None)
     if work is None or not getattr(work, "loaded", False) or len(getattr(work, "pages", [])) == 0:
         return
+    if page_file_scene.is_page_edit_scene(scene):
+        return
     info = getattr(work, "work_info", None)
     start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
     idx = int(value) - start
@@ -90,24 +92,25 @@ class BNAME_PT_view(Panel):
             depress=enabled,
         )
 
+        in_page_file = page_file_scene.is_page_edit_scene(scene)
         col = layout.column(align=True)
         col.enabled = not is_coma_mode
         row = col.row(align=True)
         row.operator("bname.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
-        row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
-        row = col.row(align=True)
-        row.prop(scene, "bname_overview_cols", text="列数")
-        row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
-        row = col.row(align=True)
-        row.prop(scene, "bname_active_page_number", text="選択ページ")
-        role, _page_id, _coma_id = page_file_scene.current_role(context)
-        if role == page_file_scene.ROLE_PAGE:
+        if in_page_file:
             row = col.row(align=True)
             row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
             row = col.row(align=True)
             row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
             row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
             row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
+        else:
+            row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
+            row = col.row(align=True)
+            row.prop(scene, "bname_overview_cols", text="列数")
+            row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+            row = col.row(align=True)
+            row.prop(scene, "bname_active_page_number", text="選択ページ")
 
         if mode != MODE_PAGE:
             layout.separator()

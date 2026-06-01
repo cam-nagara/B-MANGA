@@ -7,6 +7,7 @@ from bpy.types import Panel
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
+from ..utils import page_file_scene
 
 B_NAME_CATEGORY = "B-Name"
 
@@ -30,15 +31,18 @@ class BNAME_PT_outliner_layers(Panel):
 
     def draw(self, context):
         layout = self.layout
+        in_page_file = page_file_scene.is_page_edit_scene(context.scene)
 
         col = layout.column(align=True)
         col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
-        col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
-        col.operator("bname.mask_remove_orphans", icon="TRASH")
+        if in_page_file:
+            col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
+            col.operator("bname.mask_remove_orphans", icon="TRASH")
         col.operator(
             "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
         )
-        col.operator("bname.organize_data_names", icon="FILE_REFRESH")
+        if not in_page_file:
+            col.operator("bname.organize_data_names", icon="FILE_REFRESH")
 
 
 _CLASSES = (BNAME_PT_outliner_layers,)

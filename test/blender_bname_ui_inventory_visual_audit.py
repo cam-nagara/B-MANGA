@@ -410,6 +410,7 @@ def _registered_panel_classes():
 def _collect_panels(records: list[dict[str, Any]], context) -> None:
     from bname_dev_ui_inventory.core.mode import MODE_COMA, MODE_PAGE, set_mode
     from bname_dev_ui_inventory.utils import coma_camera
+    from bname_dev_ui_inventory.utils import page_file_scene
     from bname_dev_ui_inventory.panels import coma_camera_panel, gpencil_panel, work_panel
 
     set_mode(MODE_PAGE, context)
@@ -418,6 +419,24 @@ def _collect_panels(records: list[dict[str, Any]], context) -> None:
     try:
         for cls in _registered_panel_classes():
             _collect_panel(records, context, cls, "B-Nameパネル / ページ一覧")
+
+        work = context.scene.bname_work
+        page = work.pages[0] if len(work.pages) else None
+        original_current_role = page_file_scene.current_role
+        original_page_id = str(getattr(context.scene, "bname_current_page_id", "") or "")
+        original_overview = bool(getattr(context.scene, "bname_overview_mode", True))
+        if page is not None:
+            page_id = str(getattr(page, "id", "") or "")
+            context.scene.bname_current_page_id = page_id
+            context.scene.bname_overview_mode = False
+            page_file_scene.current_role = lambda _context=None: (page_file_scene.ROLE_PAGE, page_id, "")
+            try:
+                for cls in _registered_panel_classes():
+                    _collect_panel(records, context, cls, "B-Nameパネル / ページ編集")
+            finally:
+                page_file_scene.current_role = original_current_role
+                context.scene.bname_current_page_id = original_page_id
+                context.scene.bname_overview_mode = original_overview
 
         set_mode(MODE_COMA, context)
         work = context.scene.bname_work

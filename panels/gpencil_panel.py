@@ -18,6 +18,7 @@ from ..core.work import get_work
 from ..utils import gpencil as gp_utils
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log
+from ..utils import page_file_scene
 from . import layer_stack_detail_ui
 
 B_NAME_CATEGORY = "B-Name"
@@ -110,6 +111,11 @@ def _show_stack_item_in_layer_list(item) -> bool:
 
 def _layer_stack_template_rows(visible_rows: int) -> int:
     return max(1, min(int(visible_rows), _LAYER_STACK_DEFAULT_ROWS))
+
+
+def _is_page_edit_context(context) -> bool:
+    scene = getattr(context, "scene", None)
+    return bool(scene is not None and page_file_scene.is_page_edit_scene(scene))
 
 
 def _hide_icon(hidden: bool) -> str:
@@ -619,6 +625,8 @@ def _draw_page_list_box(layout, context) -> None:
         "active_page_index",
         rows=rows,
     )
+    if _is_page_edit_context(context):
+        return
     tools = row.column(align=True)
     tools.ui_units_x = 1.25
     tools.operator("bname.open_page_file", text="", icon="FILE_BLEND")
@@ -768,7 +776,8 @@ class BNAME_PT_layer_stack(Panel):
             layout.label(text="作品を開いてください", icon="INFO")
             return
         _draw_page_list_box(layout, context)
-        _draw_layer_stack_box(layout, context)
+        if _is_page_edit_context(context):
+            _draw_layer_stack_box(layout, context)
 
 
 class BNAME_PT_gpencil(Panel):
