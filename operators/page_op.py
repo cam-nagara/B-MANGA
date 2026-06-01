@@ -1,9 +1,8 @@
 """ページ追加・削除・複製・並び替え・選択の Operator.
 
-Phase 1 以降: work.blend 一本化に伴い、ページ切替時の mainfile swap は
-廃止された。ページ操作は Scene 上のページメタ (work.pages) と JSON ファイル
-(pages.json / page.json) を対象にするのみで、.blend は触らない。
-コマ編集モード遷移のみ ``operators.mode_op`` で cNN.blend を開閉する。
+ページ一覧ファイルでは、ページ追加・削除・複製・並び替えを行う。
+ページの中身編集はページ用blendファイルで行い、コマ編集モード遷移のみ
+``operators.mode_op`` で cNN.blend を開閉する。
 """
 
 from __future__ import annotations
@@ -20,6 +19,7 @@ from ..io import page_io, work_io
 from ..utils import gpencil as gp_utils
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import edge_selection, log, page_browser, page_grid, page_range, paths
+from ..utils import page_file_scene
 from ..utils import shortcut_visibility
 
 _logger = log.get_logger(__name__)
@@ -305,6 +305,9 @@ class BNAME_OT_page_duplicate(Operator):
             old_offsets = _page_offsets_by_id(context, work)
             new_id = page_io.allocate_new_page_id(work)
             page_io.copy_page_dir(work_dir, src.id, new_id)
+            copied_page_blend = paths.page_blend_path(work_dir, new_id)
+            if copied_page_blend.exists():
+                copied_page_blend.unlink()
             new_entry = work.pages.add()
             new_entry.id = new_id
             new_entry.title = ""
@@ -411,7 +414,8 @@ def _switch_to_page(context, work, work_dir: Path, new_index: int) -> bool:
     if not page_range.page_in_range(work.pages[new_index]):
         return False
     work.active_page_index = new_index
-    context.scene.bname_overview_mode = True
+    role, _page_id, _coma_id = page_file_scene.current_role(context)
+    context.scene.bname_overview_mode = role != page_file_scene.ROLE_PAGE
     set_mode(MODE_PAGE, context)
     context.scene.bname_current_coma_id = ""
     context.scene.bname_current_coma_page_id = ""
@@ -448,8 +452,9 @@ class BNAME_OT_page_select(Operator):
             return {"CANCELLED"}
         if not page_range.page_in_range(work.pages[self.index]):
             return {"CANCELLED"}
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
         if self.index == work.active_page_index:
-            if not bool(getattr(context.scene, "bname_overview_mode", True)):
+            if role != page_file_scene.ROLE_PAGE and not bool(getattr(context.scene, "bname_overview_mode", True)):
                 context.scene.bname_overview_mode = True
                 _tag_screen_redraw(context)
             _set_page_layer_active(context)

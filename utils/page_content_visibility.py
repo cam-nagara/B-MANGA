@@ -89,6 +89,14 @@ def _detail_page_ids(work) -> set[str]:
 def detail_page_ids(context=None, work=None) -> set[str]:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     work = work or getattr(scene, "bname_work", None)
+    try:
+        from . import page_file_scene
+
+        page_id = page_file_scene.current_page_id(scene)
+        if page_id and page_file_scene.is_page_edit_scene(scene):
+            return {page_id}
+    except Exception:  # noqa: BLE001
+        pass
     if not is_work_blend_scene(scene):
         return {
             str(getattr(page, "id", "") or "")

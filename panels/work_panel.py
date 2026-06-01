@@ -7,6 +7,7 @@ from bpy.types import Panel
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
+from ..utils import page_file_scene
 from ..utils import shortcut_visibility
 
 B_NAME_CATEGORY = "B-Name"
@@ -50,6 +51,11 @@ class BNAME_PT_work(Panel):
             return
 
         mode = get_mode(context)
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        if role == page_file_scene.ROLE_PAGE:
+            row = layout.row(align=True)
+            row.operator("bname.exit_page_file", text="ページ一覧に戻る", icon="BACK")
+            row.operator("bname.work_save", text="", icon="FILE_TICK")
 
         box = layout.box()
         box.label(text="作品情報", icon="WORDWRAP_ON")

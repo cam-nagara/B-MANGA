@@ -65,6 +65,10 @@ def register() -> None:
         name="現在編集中のコマ page_id",
         default="",
     )
+    bpy.types.Scene.bname_current_page_id = StringProperty(
+        name="現在編集中のページ ID",
+        default="",
+    )
     _logger.debug("mode registered")
 
 
@@ -83,6 +87,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bname_current_coma_page_id
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_current_page_id
     except AttributeError:
         pass
 
@@ -123,6 +131,12 @@ def _infer_mode_from_filepath(scene) -> tuple[str, str, str] | None:
     parts = rel.parts
     if len(parts) == 1 and parts[0] == "work.blend":
         return MODE_PAGE, "", ""
+    if (
+        len(parts) == 2
+        and paths.is_valid_page_id(parts[0])
+        and parts[1] == paths.PAGE_BLEND_NAME
+    ):
+        return MODE_PAGE, parts[0], ""
     if (
         len(parts) == 3
         and paths.is_valid_page_id(parts[0])
@@ -171,8 +185,25 @@ def _sync_scene_state_from_filepath(scene, mode: str, page_id: str, coma_id: str
                 scene.bname_current_coma_page_id = ""
             if str(getattr(scene, "bname_current_coma_id", "") or ""):
                 scene.bname_current_coma_id = ""
-            if hasattr(scene, "bname_overview_mode") and not bool(scene.bname_overview_mode):
-                scene.bname_overview_mode = True
+            if paths.is_valid_page_id(page_id):
+                if str(getattr(scene, "bname_current_page_id", "") or "") != page_id:
+                    scene.bname_current_page_id = page_id
+                work = getattr(scene, "bname_work", None)
+                for page_index, page in enumerate(getattr(work, "pages", []) or []):
+                    if str(getattr(page, "id", "") or "") == page_id:
+                        try:
+                            if int(getattr(work, "active_page_index", -1)) != page_index:
+                                work.active_page_index = page_index
+                        except Exception:  # noqa: BLE001
+                            pass
+                        break
+                if hasattr(scene, "bname_overview_mode") and bool(scene.bname_overview_mode):
+                    scene.bname_overview_mode = False
+            else:
+                if str(getattr(scene, "bname_current_page_id", "") or ""):
+                    scene.bname_current_page_id = ""
+                if hasattr(scene, "bname_overview_mode") and not bool(scene.bname_overview_mode):
+                    scene.bname_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
 

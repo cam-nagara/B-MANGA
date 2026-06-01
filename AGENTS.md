@@ -42,7 +42,7 @@
   - 命名規則: `P0001__p0001__1ページ` (ページ) / `C0010__c01__コマ1` (コマ) / `F0030__folder_xxxxxx__人物` (フォルダ) / `L0040__text__セリフ本文` (レイヤー)。 prefix 文字は `P/C/F/L`
   - **legacy/migration コードは削除済** (commit `b2177cb`)。 復活させない
   - 詳細: [`docs/outliner_object_layer_plan_2026-04-30.md`](docs/outliner_object_layer_plan_2026-04-30.md) §3.1〜§3.2
-- **`work.blend` 一元化** (per-page `.blend` の廃止 / overview モード採用)。 [`docs/B-Name-overview-plan.md`](docs/B-Name-overview-plan.md)
+- **ページ一覧 + ページ用blend + コマ用blendの三段構成** (2026-06-01 Codex, v0.6.230)。`work.blend` はページ一覧専用の軽量ファイル、各ページのフキダシ / 効果線 / テキスト / ラスター等は `pNNNN/page.blend`、コマの 3D データは従来どおり `pNNNN/cNN/cNN.blend` に保存する。旧 `work.blend` 一元化方針は 55p/80p 級作品の重さ対策として撤回。詳細: [`docs/page_file_stage_plan_2026-06-01.md`](docs/page_file_stage_plan_2026-06-01.md)、旧経緯: [`docs/B-Name-overview-plan.md`](docs/B-Name-overview-plan.md)
 - **ディレクトリ構造改修** (`pages/` 階層撤去, `pNNNN/cNN/` フラット化, `passes/` 配置)。 [`docs/B-Name-restructure-plan-2026-04-28.md`](docs/B-Name-restructure-plan-2026-04-28.md)
 - **コマ独立 `.blend` 方式維持** + 用紙設定共有 + 紙面側即時反映。 [`docs/B-Name_設計意図.md`](docs/B-Name_設計意図.md) §0.6.2〜§0.6.3
 - **paper_bg は実 Mesh Object** (ラスター paint のジラジラノイズ解消) + 範囲外 paper_bg は viewport hide
@@ -95,7 +95,7 @@
 | `ui/` | overlay (GPU 描画) と context menu |
 | `keymap/` | キーマップ登録 (`viewport_ops.py` は viewport-side のホットキー) |
 | `utils/` | ロジックヘルパー。 直接 Blender state を触らない / Operator 以外から呼べる純粋ロジックの保管所 |
-| `io/` | 永続化 (`work.blend` `pNNNN/page.json` `cNN.blend` `cNN.json` / PSD 書き出し / Meldex 受信) |
+| `io/` | 永続化 (`work.blend` `pNNNN/page.blend` `pNNNN/page.json` `cNN.blend` `cNN.json` / PSD 書き出し / Meldex 受信) |
 | `typography/` | 縦書き / ルビ / 縦中横 / 行頭禁則 / metrics / レンダラ |
 | `test/` | Blender 実機テスト (後述) |
 | `presets/` | 用紙プリセット |

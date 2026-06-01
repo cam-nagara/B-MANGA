@@ -1,20 +1,22 @@
 # B-Name オーバービュー編集への再設計 計画書
 
+> 2026-06-01 追記: この計画の「work.blend 一本化」は、55p/80p 級作品での重さ対策として撤回済み。現在は `work.blend` をページ一覧専用、`pNNNN/page.blend` を各ページ編集用、`pNNNN/cNN/cNN.blend` をコマ編集用に分ける。最新方針は [`docs/page_file_stage_plan_2026-06-01.md`](page_file_stage_plan_2026-06-01.md) を参照。
+
 ## 1. 背景と目的
 
 現行実装は「1 ページ = 1 `page.blend`」の per-page .blend 方式。ユーザーはページ切替のたびに .blend を swap しており、全ページを俯瞰した編集ができない。
 
 要望: **「全ページ一覧」を編集ホームにし、その上で** コマ割り / コマ形状変更 / GP ラフ描画 / 縦書きテキスト / フキダシ配置 **ができるようにする**。コマの 3D データはダブルクリックで `cNN.blend` を開いて編集する方式に変更する。
 
-## 2. 確定アーキテクチャ
+## 2. 旧アーキテクチャ案
 
-### ファイル構成 (新)
+### ファイル構成 (旧案)
 
 ```
 <Work>.bname/
 ├── work.json                          # 作品メタ
 ├── pages.json                         # ページ一覧メタ
-├── work.blend                         # ★新: マスター .blend (全ページの 2D データ)
+├── work.blend                         # 旧案: マスター .blend (全ページの 2D データ)
 └── pNNNN/
     ├── page.json                      # ページメタ (comas リストを含む)
     └── cNN/
@@ -24,7 +26,7 @@
         └── passes/                    # 魚眼レンダ等の副産物
 ```
 
-**`page.blend` は廃止**。役割を `work.blend` が吸収する。
+**旧案では `page.blend` を廃止**し、役割を `work.blend` が吸収する想定だった。
 
 ### Blender セッションの状態モデル
 
@@ -74,7 +76,7 @@ Collection の transform でページを grid 位置に配置。GP/テキスト/
 ### 範囲内
 - `io/blend_io.py`: `save_work_blend` / `open_work_blend` を追加。`save_page_blend` / `open_page_blend` は削除。coma 系は維持
 - `operators/work_op.py`:
-  - `work_new`: work.blend を `<work>.bname/work.blend` に保存。page.blend の保存は行わない。最初のページ 0001 と基本枠コマは従来通り作成 (Scene に乗る)
+  - 旧案 `work_new`: work.blend を `<work>.bname/work.blend` に保存。page.blend の保存は行わない。最初のページ 0001 と基本枠コマは従来通り作成 (Scene に乗る)
   - `work_open`: work.json + pages.json 読込 → work.blend を open
   - `work_save`: 現在 mainfile が work.blend なら save_mainfile、cNN.blend なら save_as_mainfile に委譲
 - `operators/page_op.py`:
@@ -86,7 +88,7 @@ Collection の transform でページを grid 位置に配置。GP/テキスト/
   - `exit_coma_mode`: save cNN.blend → open work.blend
 - `utils/handlers.py`:
   - `_on_load_post`: `work.blend` ロード時は work_dir/pages.json から全メタを Scene に復元。`cNN.blend` ロード時は mode=COMA + 該当 coma_id を設定
-  - `_sync_active_from_blend_path` を `work.blend` / `cNN.blend` の 2 系統に対応 (page.blend 分岐を削除)
+  - 旧案 `_sync_active_from_blend_path` を `work.blend` / `cNN.blend` の 2 系統に対応 (page.blend 分岐を削除)
 - `ui/overlay.py`:
   - Scene.bname_overview_mode の default を True にする
   - コマ編集モード中は overview 描画をスキップし従来通りアクティブコマの 2D 表示のみ

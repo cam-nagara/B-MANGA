@@ -186,9 +186,8 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             work_io.save_work_json(work_dir, work)
             page_io.save_pages_json(work_dir, work)
 
-            # 最初のページ p0001 を自動生成し、現在のシーンを work.blend として保存.
-            # work.blend は作品全体のマスター .blend で、全ページの 2D データ
-            # (コマ枠・GP・テキスト・フキダシ等) が 1 つのシーンに載る。
+            # 最初のページ p0001 を自動生成し、ページ一覧ファイルとして保存する。
+            # 各ページのフキダシ・テキスト等は、ページ用blendファイルで扱う。
             entry = page_io.register_new_page(work)
             page_io.ensure_page_dir(work_dir, entry.id)
             from .coma_op import create_basic_frame_coma
@@ -214,6 +213,7 @@ class BNAME_OT_work_new(Operator, ExportHelper):
 
             # overview 編集モード既定。保存前にモード/stem を確実にセット。
             set_mode(MODE_PAGE, context)
+            context.scene.bname_current_page_id = ""
             context.scene.bname_current_coma_id = ""
             context.scene.bname_current_coma_page_id = ""
             context.scene.bname_overview_mode = True
@@ -331,6 +331,7 @@ class BNAME_OT_work_open(Operator, ImportHelper):
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
             set_mode(MODE_PAGE, context)
+            context.scene.bname_current_page_id = ""
             context.scene.bname_current_coma_id = ""
             context.scene.bname_current_coma_page_id = ""
             context.scene.bname_overview_mode = True
@@ -506,6 +507,12 @@ class BNAME_OT_work_save(Operator):
             mode = get_mode(context)
             if mode != MODE_COMA:
                 _disable_work_viewport_overlays(context)
+            try:
+                from ..utils import page_file_scene
+
+                file_role, file_page_id, _file_coma_id = page_file_scene.current_role(context)
+            except Exception:  # noqa: BLE001
+                file_role, file_page_id = "", ""
 
             # 2) .blend 保存. ユーザーが File > Save As で work_dir 外に保存
             #    していた場合は、そのパスを尊重して save_mainfile する (B-Name の
@@ -546,6 +553,10 @@ class BNAME_OT_work_save(Operator):
                             saved_path = str(
                                 paths.coma_blend_path(work_dir, page_id, stem)
                             )
+                elif file_role == "page" and paths.is_valid_page_id(file_page_id):
+                    saved_blend = blend_io.save_page_blend(work_dir, file_page_id)
+                    if saved_blend:
+                        saved_path = str(paths.page_blend_path(work_dir, file_page_id))
                 else:
                     saved_blend = blend_io.save_work_blend(work_dir)
                     if saved_blend:
@@ -599,6 +610,7 @@ class BNAME_OT_work_close(Operator):
         work.loaded = False
         work.work_dir = ""
         set_mode(MODE_PAGE, context)
+        context.scene.bname_current_page_id = ""
         context.scene.bname_current_coma_id = ""
         context.scene.bname_current_coma_page_id = ""
         self.report({"INFO"}, "作品を閉じました")

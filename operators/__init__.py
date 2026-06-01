@@ -30,6 +30,7 @@ from . import (
     mode_op,
     object_tool_op,
     overlay_toggle_op,
+    page_file_op,
     page_op,
     repair_op,
     coma_edge_move_op,
@@ -57,6 +58,7 @@ from . import (
 
 _MODULES = (
     work_op,
+    page_file_op,
     page_op,
     spread_op,
     coma_op,

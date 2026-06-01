@@ -400,7 +400,69 @@ def assign_per_page_z_ranks(scene, work) -> int:
 # ---------- 作品全体の mirror 同期 (Phase 0 の中核) ----------
 
 
-def _mirror_image_text_objects(scene, work) -> None:
+def _page_filter_for_scene(scene) -> tuple[set[str] | None, set[str] | None]:
+    """現在のファイル種別に応じた (構造ページ, 中身ページ) フィルタ."""
+    try:
+        from . import page_file_scene
+
+        return (
+            page_file_scene.structural_page_filter(scene),
+            page_file_scene.content_page_filter(scene),
+        )
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+def _iter_filtered_pages(work, page_filter: set[str] | None):
+    for page in getattr(work, "pages", []) or []:
+        page_id = str(getattr(page, "id", "") or "")
+        if page_filter is not None and page_id not in page_filter:
+            continue
+        yield page
+
+
+def _work_for_page_filter(work, page_filter: set[str] | None):
+    if page_filter is None:
+        return work
+    try:
+        from . import page_file_scene
+
+        return page_file_scene.work_for_pages(work, page_filter)
+    except Exception:  # noqa: BLE001
+        return work
+
+
+def _page_id_from_parent_key(parent_key: str, work=None) -> str:
+    key = str(parent_key or "")
+    if not key:
+        return ""
+    if ":" in key:
+        return key.split(":", 1)[0]
+    if key.startswith(("p", "P")):
+        return key
+    if work is not None:
+        try:
+            from . import layer_folder
+            from .layer_hierarchy import OUTSIDE_STACK_KEY
+
+            semantic = layer_folder.semantic_parent_key_for_folder(work, key)
+            if semantic and semantic != OUTSIDE_STACK_KEY:
+                return str(semantic).split(":", 1)[0]
+        except Exception:  # noqa: BLE001
+            pass
+    return ""
+
+
+def _entry_in_page_filter(entry, work, page_filter: set[str] | None) -> bool:
+    if page_filter is None:
+        return True
+    if not page_filter:
+        return False
+    page_id = _page_id_from_parent_key(str(getattr(entry, "parent_key", "") or ""), work)
+    return bool(page_id and page_id in page_filter)
+
+
+def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None) -> None:
     """全 BNameImageLayer / BNameTextEntry に対応する表示 Object を ensure."""
     try:
         from . import empty_layer_object as elo
@@ -414,15 +476,33 @@ def _mirror_image_text_objects(scene, work) -> None:
             _logger.exception("legacy plane cleanup failed")
 
         # image_layers (scene 直下): Empty ではなく、透明画像付き平面として実体化する。
-        iro.sync_all_image_real_objects(scene, work)
+        if page_filter is None:
+            iro.sync_all_image_real_objects(scene, work)
+        elif page_filter:
+            for entry in getattr(scene, "bname_image_layers", []) or []:
+                if not _entry_in_page_filter(entry, work, page_filter):
+                    continue
+                page = iro.page_for_entry(scene, work, entry)
+                iro.ensure_image_real_object(scene=scene, entry=entry, page=page)
+            iro.cleanup_orphan_image_objects(scene)
 
         # texts (page.texts): 空 Object ではなく、透明画像平面として実体化する。
-        tro.sync_all_text_real_objects(scene, work)
+        if page_filter is None:
+            tro.sync_all_text_real_objects(scene, work)
+        elif page_filter:
+            for page in _iter_filtered_pages(work, page_filter):
+                for entry in getattr(page, "texts", []) or []:
+                    tro.ensure_text_real_object(scene=scene, entry=entry, page=page)
+            tro.cleanup_orphan_text_objects(scene, _work_for_page_filter(work, page_filter))
     except Exception:  # noqa: BLE001
         _logger.exception("mirror image/text objects failed")
 
 
-def _saved_runtime_objects_look_current(scene: bpy.types.Scene, work) -> bool:
+def _saved_runtime_objects_look_current(
+    scene: bpy.types.Scene,
+    work,
+    page_filter: set[str] | None = None,
+) -> bool:
     """保存済み実体が揃っているなら、読み込み直後の全件再生成を省く."""
     if scene is None or work is None:
         return False
@@ -463,14 +543,15 @@ def _saved_runtime_objects_look_current(scene: bpy.types.Scene, work) -> bool:
                 border = getattr(coma, "border", None)
                 if str(getattr(border, "style", "solid") or "solid") != "brush":
                     expected_borders.add(owner_id)
-        for entry in getattr(page, "balloons", []) or []:
-            balloon_id = str(getattr(entry, "id", "") or "")
-            if balloon_id:
-                expected_balloons.add(balloon_id)
-        for entry in getattr(page, "texts", []) or []:
-            text_id = str(getattr(entry, "id", "") or "")
-            if text_id:
-                expected_texts.add(_tro.text_object_bname_id_for_values(page_id, text_id))
+        if page_filter is None or page_filter:
+            for entry in getattr(page, "balloons", []) or []:
+                balloon_id = str(getattr(entry, "id", "") or "")
+                if balloon_id:
+                    expected_balloons.add(balloon_id)
+            for entry in getattr(page, "texts", []) or []:
+                text_id = str(getattr(entry, "id", "") or "")
+                if text_id:
+                    expected_texts.add(_tro.text_object_bname_id_for_values(page_id, text_id))
     if expected_comas and not expected_comas.issubset(plane_owners):
         return False
     if expected_borders and not expected_borders.issubset(border_owners):
@@ -480,14 +561,16 @@ def _saved_runtime_objects_look_current(scene: bpy.types.Scene, work) -> bool:
     if expected_texts and not expected_texts.issubset(object_ids_by_kind.get("text", set())):
         return False
 
-    scene_image_layers = getattr(scene, "bname_image_layers", None)
-    expected_images = {
-        str(getattr(entry, "id", "") or "")
-        for entry in (scene_image_layers or [])
-        if str(getattr(entry, "id", "") or "")
-    }
-    if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
-        return False
+    if page_filter is None or page_filter:
+        scene_image_layers = getattr(scene, "bname_image_layers", None)
+        expected_images = {
+            str(getattr(entry, "id", "") or "")
+            for entry in (scene_image_layers or [])
+            if str(getattr(entry, "id", "") or "")
+            and _entry_in_page_filter(entry, work, page_filter)
+        }
+        if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
+            return False
     return True
 
 
@@ -519,11 +602,14 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             return
     except Exception:  # noqa: BLE001
         pass
-    if _saved_runtime_objects_look_current(scene, work):
+    structure_page_filter, content_page_filter = _page_filter_for_scene(scene)
+    structure_work = _work_for_page_filter(work, structure_page_filter)
+    include_content = content_page_filter is None or bool(content_page_filter)
+    if _saved_runtime_objects_look_current(scene, structure_work, content_page_filter):
         try:
             from . import paper_bg_object as _pbg
 
-            _pbg.regenerate_all_paper_bgs(scene, work)
+            _pbg.regenerate_all_paper_bgs(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror fast path paper backgrounds failed")
         try:
@@ -548,7 +634,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         # 全テキストレイヤー集約用 Collection (B-Name 直下、最上位 z_index)
         om.ensure_text_collection(scene)
         om.ensure_work_info_collection(scene)
-        for page in getattr(work, "pages", []):
+        for page in _iter_filtered_pages(work, structure_page_filter):
             page_id = str(getattr(page, "id", "") or "")
             if not page_id:
                 continue
@@ -565,6 +651,13 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             folder_id = str(getattr(folder, "id", "") or "")
             if not folder_id:
                 continue
+            if structure_page_filter is not None:
+                folder_page_id = _page_id_from_parent_key(
+                    str(getattr(folder, "parent_key", "") or ""),
+                    work,
+                )
+                if folder_page_id not in structure_page_filter:
+                    continue
             title = str(getattr(folder, "title", "") or folder_id)
             parent_key_raw = str(getattr(folder, "parent_key", "") or "")
             parent_kind, parent_key = _split_folder_parent(parent_key_raw)
@@ -579,7 +672,8 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             )
         # 画像 / テキストの表示 Object を ensure。
         # どちらも透明画像付き平面として実体化する。
-        _mirror_image_text_objects(scene, work)
+        if include_content:
+            _mirror_image_text_objects(scene, work, content_page_filter)
 
         # フキダシ Curve Object を ensure (entry.parent_key に基づき該当 page/coma
         # Collection 配下に置く)。 これを呼ばないと viewport 上では overlay 描画
@@ -588,28 +682,30 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         try:
             from . import balloon_curve_object as _bco
 
-            for page in getattr(work, "pages", []):
-                for entry in getattr(page, "balloons", []):
-                    try:
-                        _bco.ensure_balloon_curve_object(
-                            scene=scene, entry=entry, page=page,
-                        )
-                    except Exception:  # noqa: BLE001
-                        _logger.exception(
-                            "mirror balloon curve failed: %s",
-                            getattr(entry, "id", ""),
-                        )
-            for entry in getattr(work, "shared_balloons", []):
-                try:
-                    _bco.ensure_balloon_curve_object(
-                        scene=scene, entry=entry, page=None,
-                    )
-                except Exception:  # noqa: BLE001
-                    _logger.exception(
-                        "mirror shared balloon curve failed: %s",
-                        getattr(entry, "id", ""),
-                    )
-            _bco.cleanup_orphan_balloon_objects(scene)
+            if include_content:
+                for page in _iter_filtered_pages(work, content_page_filter):
+                    for entry in getattr(page, "balloons", []):
+                        try:
+                            _bco.ensure_balloon_curve_object(
+                                scene=scene, entry=entry, page=page,
+                            )
+                        except Exception:  # noqa: BLE001
+                            _logger.exception(
+                                "mirror balloon curve failed: %s",
+                                getattr(entry, "id", ""),
+                            )
+                if content_page_filter is None:
+                    for entry in getattr(work, "shared_balloons", []):
+                        try:
+                            _bco.ensure_balloon_curve_object(
+                                scene=scene, entry=entry, page=None,
+                            )
+                        except Exception:  # noqa: BLE001
+                            _logger.exception(
+                                "mirror shared balloon curve failed: %s",
+                                getattr(entry, "id", ""),
+                            )
+                _bco.cleanup_orphan_balloon_objects(scene)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror balloon curve top-level failed")
 
@@ -619,7 +715,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         try:
             from . import paper_bg_object as _pbg
 
-            _pbg.regenerate_all_paper_bgs(scene, work)
+            _pbg.regenerate_all_paper_bgs(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror paper backgrounds failed")
 
@@ -628,7 +724,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         try:
             from . import coma_plane as _cp
 
-            _cp.regenerate_all_coma_planes(scene, work)
+            _cp.regenerate_all_coma_planes(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma planes failed")
 
@@ -636,7 +732,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         try:
             from . import coma_border_object as _cbo
 
-            _cbo.regenerate_all_coma_borders(scene, work)
+            _cbo.regenerate_all_coma_borders(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma borders failed")
 
@@ -652,7 +748,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         # 最後にページごとの Z rank を再計算 (page 内 0.1 刻み、 ページ間
         # は独立)。 paper_bg は z=0、 各レイヤーは z=0.1, 0.2, 0.3, ...
         try:
-            assign_per_page_z_ranks(scene, work)
+            assign_per_page_z_ranks(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("assign_per_page_z_ranks failed")
 
@@ -661,7 +757,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         try:
             from . import paper_guide_object as _pgo
 
-            _pgo.regenerate_all_paper_guides(scene, work)
+            _pgo.regenerate_all_paper_guides(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror paper guides failed")
 

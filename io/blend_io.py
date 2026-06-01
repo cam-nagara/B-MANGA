@@ -1,13 +1,12 @@
 """Blender mainfile (.blend) の save/open ラッパ.
 
 Phase 1 (overview 再設計): モデル変更あり。
-- **work.blend** — 全ページの 2D データを載せるマスター .blend。起動時はこれが
-  mainfile。overview 編集ホーム。
+- **work.blend** — ページ一覧専用の軽量 .blend。ページの並びとコマ枠を載せる。
+- **page.blend** — 各ページの 2D 編集用 .blend。フキダシ・テキスト・効果線等を載せる。
 - **cNN.blend** — 各コマの 3D シーン。コマ編集モード時のみ mainfile。
 
 モード遷移は「現在の mainfile を save_as_mainfile で当該 .blend として保存」
-→「切替先の .blend を open_mainfile で開く」の 2 段で行う。以前の ``page.blend``
-(1 ページ 1 mainfile) は廃止された (計画書 3. Phase 1 参照)。
+→「切替先の .blend を open_mainfile で開く」の 2 段で行う。
 """
 
 from __future__ import annotations
@@ -94,6 +93,27 @@ def open_work_blend(work_dir: Path) -> bool:
 
 def work_blend_exists(work_dir: Path) -> bool:
     return paths.work_blend_path(Path(work_dir)).is_file()
+
+
+# ---------- page.blend (ページ 2D) ----------
+
+
+def save_page_blend(work_dir: Path, page_id: str) -> bool:
+    if not paths.is_valid_page_id(page_id):
+        return False
+    return save_current_as(paths.page_blend_path(Path(work_dir), page_id))
+
+
+def open_page_blend(work_dir: Path, page_id: str) -> bool:
+    if not paths.is_valid_page_id(page_id):
+        return False
+    return open_mainfile(paths.page_blend_path(Path(work_dir), page_id))
+
+
+def page_blend_exists(work_dir: Path, page_id: str) -> bool:
+    if not paths.is_valid_page_id(page_id):
+        return False
+    return paths.page_blend_path(Path(work_dir), page_id).is_file()
 
 
 # ---------- cNN.blend (コマ 3D) ----------

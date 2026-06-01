@@ -77,6 +77,8 @@ class BNAME_PT_pages(Panel):
         )
         col = row.column(align=True)
         col.enabled = not is_coma_mode
+        col.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+        col.separator()
         col.operator("bname.page_add", text="", icon="ADD")
         col.operator("bname.page_remove", text="", icon="REMOVE")
         col.separator()

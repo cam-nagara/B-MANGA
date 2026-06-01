@@ -42,6 +42,7 @@ def _sync_active_from_blend_path(
     """開かれた blend のパスから mode / active_page_index / coma_id を推定.
 
     - ``<work>.bname/work.blend`` → overview モード (MODE_PAGE)
+    - ``<work>.bname/pNNNN/page.blend`` → ページ編集モード
     - ``<work>.bname/pNNNN/cNN/cNN.blend`` → コマ編集モード
       (MODE_COMA + active_page_index を該当ページに、coma_id を設定)
     - それ以外のパス (旧 page.blend 等) は何もしない
@@ -60,8 +61,32 @@ def _sync_active_from_blend_path(
     if len(parts) == 1 and parts[0] == paths.WORK_BLEND_NAME:
         scene.bname_current_coma_id = ""
         scene.bname_current_coma_page_id = ""
+        scene.bname_current_page_id = ""
         try:
             scene.bname_overview_mode = True
+        except Exception:  # noqa: BLE001
+            pass
+        if hasattr(scene, "bname_active_layer_kind"):
+            scene.bname_active_layer_kind = "page"
+        set_mode(MODE_PAGE, bpy.context)
+        return
+
+    # pNNNN/page.blend → ページ編集モード
+    if (
+        len(parts) == 2
+        and paths.is_valid_page_id(parts[0])
+        and parts[1] == paths.PAGE_BLEND_NAME
+    ):
+        page_id = parts[0]
+        for i, pg in enumerate(work.pages):
+            if pg.id == page_id:
+                work.active_page_index = i
+                break
+        scene.bname_current_page_id = page_id
+        scene.bname_current_coma_id = ""
+        scene.bname_current_coma_page_id = ""
+        try:
+            scene.bname_overview_mode = False
         except Exception:  # noqa: BLE001
             pass
         if hasattr(scene, "bname_active_layer_kind"):
@@ -84,6 +109,7 @@ def _sync_active_from_blend_path(
                 break
         scene.bname_current_coma_id = coma_id
         scene.bname_current_coma_page_id = page_id
+        scene.bname_current_page_id = page_id
         if hasattr(scene, "bname_active_layer_kind"):
             scene.bname_active_layer_kind = "coma"
         set_mode(MODE_COMA, bpy.context)
@@ -231,7 +257,7 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
         _saving_work_metadata = False
 
 
-def _reconcile_gpencil_collections(context, work) -> None:
+def _reconcile_gpencil_collections(context, work, *, include_page_content: bool = True) -> None:
     """master GP とページ Collection × pages の整合をとる (新仕様).
 
     - 作品全体で **唯一の** master GP オブジェクトを ensure (旧 page GP は残置)
@@ -255,11 +281,12 @@ def _reconcile_gpencil_collections(context, work) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: remove page paper meshes failed")
 
-    # master GP は作品で 1 つだけ
-    try:
-        gp_utils.ensure_master_gpencil(scene)
-    except Exception:  # noqa: BLE001
-        _logger.exception("load_post: ensure_master_gpencil failed")
+    # master GP はページ編集側だけで用意する。ページ一覧では中身を載せない。
+    if include_page_content:
+        try:
+            gp_utils.ensure_master_gpencil(scene)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: ensure_master_gpencil failed")
 
     try:
         from . import layer_stack as layer_stack_utils
@@ -273,18 +300,19 @@ def _reconcile_gpencil_collections(context, work) -> None:
         page_grid.apply_page_collection_transforms(context, work)
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: apply_page_collection_transforms failed")
-    try:
-        from ..operators import raster_layer_op
+    if include_page_content:
+        try:
+            from ..operators import raster_layer_op
 
-        raster_layer_op.ensure_all_raster_runtime(context)
-    except Exception:  # noqa: BLE001
-        _logger.exception("load_post: raster runtime sync failed")
-    try:
-        from . import page_content_visibility
+            raster_layer_op.ensure_all_raster_runtime(context)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: raster runtime sync failed")
+        try:
+            from . import page_content_visibility
 
-        page_content_visibility.apply_page_content_visibility(context, work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("load_post: page content visibility sync failed")
+            page_content_visibility.apply_page_content_visibility(context, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("load_post: page content visibility sync failed")
 
 
 @persistent
@@ -375,7 +403,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
         try:
             rel = blend_path.resolve().relative_to(work_dir.resolve())
             if len(rel.parts) == 1 and rel.parts[0] == paths.WORK_BLEND_NAME:
-                _reconcile_gpencil_collections(bpy.context, work)
+                _reconcile_gpencil_collections(bpy.context, work, include_page_content=False)
                 # ページ一覧は常にフラットな印刷物の見た目 (Standard)。
                 display_settings.apply_standard_color_management(scene)
                 try:
@@ -397,6 +425,36 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     )
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: effect line display preparation failed")
+            elif (
+                len(rel.parts) == 2
+                and paths.is_valid_page_id(rel.parts[0])
+                and rel.parts[1] == paths.PAGE_BLEND_NAME
+            ):
+                _reconcile_gpencil_collections(bpy.context, work, include_page_content=True)
+                try:
+                    from . import page_file_scene
+
+                    page_file_scene.purge_other_page_data(scene, str(rel.parts[0]))
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: purge other page data failed")
+                display_settings.apply_standard_color_management(scene)
+                try:
+                    from ..ui import overlay as _overlay
+
+                    _overlay.reset_viewport_background_to_theme(bpy.context)
+                    _overlay.apply_bname_shading_mode(bpy.context)
+                    _overlay.set_viewport_overlays_enabled(bpy.context, enabled=False)
+                    _overlay.schedule_viewport_overlays_enabled(enabled=False)
+                except Exception:  # noqa: BLE001
+                    _logger.exception(
+                        "load_post: page blend shading/background reset failed"
+                    )
+                try:
+                    from ..ui import sidebar as _sidebar
+
+                    _sidebar.schedule_open_bname_sidebar()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: B-Name sidebar open failed")
             elif (
                 len(rel.parts) == 3
                 and paths.is_valid_page_id(rel.parts[0])

@@ -14,6 +14,7 @@ WORK_META_NAME = "work.json"
 WORK_BLEND_NAME = "work.blend"
 PAGES_META_NAME = "pages.json"
 PAGE_META_NAME = "page.json"
+PAGE_BLEND_NAME = "page.blend"
 ASSETS_DIR_NAME = "assets"
 ASSETS_TEMPLATES_DIR = "templates"
 ASSETS_BRUSHES_DIR = "brushes"
@@ -96,6 +97,11 @@ def page_dir(work_dir: Path, page_id: str) -> Path:
 
 def page_meta_path(work_dir: Path, page_id: str) -> Path:
     return page_dir(work_dir, page_id) / PAGE_META_NAME
+
+
+def page_blend_path(work_dir: Path, page_id: str) -> Path:
+    """ページ用 .blend のパス (``<work>.bname/pNNNN/page.blend``)."""
+    return page_dir(work_dir, page_id) / PAGE_BLEND_NAME
 
 
 def work_blend_path(work_dir: Path) -> Path:

@@ -621,6 +621,8 @@ def _draw_page_list_box(layout, context) -> None:
     )
     tools = row.column(align=True)
     tools.ui_units_x = 1.25
+    tools.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+    tools.separator()
     tools.operator("bname.page_add", text="", icon="ADD")
     tools.operator("bname.page_duplicate", text="", icon="DUPLICATE")
     tools.operator("bname.page_remove", text="", icon="REMOVE")

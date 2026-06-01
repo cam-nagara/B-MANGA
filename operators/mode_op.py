@@ -315,11 +315,14 @@ class BNAME_OT_enter_coma_mode(Operator):
             # 古い JSON で巻き戻らないよう、mainfile 切替前に必ず保存する。
             _save_current_work_metadata(work, page)
 
-            # 1) 現在の mainfile が work.blend なら上書き保存
+            # 1) 現在の mainfile が B-Name の編集ファイルなら上書き保存
             cur = blend_io.current_mainfile_path()
             expected_work = paths.work_blend_path(work_dir).resolve()
+            expected_page = paths.page_blend_path(work_dir, page_id).resolve()
             if cur is not None and cur == expected_work:
                 blend_io.save_current_as(expected_work)
+            elif cur is not None and cur == expected_page:
+                blend_io.save_current_as(expected_page)
 
             try:
                 from ..utils import coma_camera
@@ -383,7 +386,10 @@ class BNAME_OT_enter_coma_mode(Operator):
                     self.report({"ERROR"}, "cNN.blend の新規作成に失敗")
                     try:
                         _suspend_keymap_visibility_updates()
-                        blend_io.open_work_blend(work_dir)
+                        if blend_io.page_blend_exists(work_dir, page_id):
+                            blend_io.open_page_blend(work_dir, page_id)
+                        else:
+                            blend_io.open_work_blend(work_dir)
                         _suspend_keymap_visibility_updates()
                     except Exception:  # noqa: BLE001
                         _logger.exception("enter_coma_mode: failed to restore work.blend")
@@ -404,7 +410,10 @@ class BNAME_OT_enter_coma_mode(Operator):
                     self.report({"ERROR"}, "cNN.blend の新規保存に失敗")
                     try:
                         _suspend_keymap_visibility_updates()
-                        blend_io.open_work_blend(work_dir)
+                        if blend_io.page_blend_exists(work_dir, page_id):
+                            blend_io.open_page_blend(work_dir, page_id)
+                        else:
+                            blend_io.open_work_blend(work_dir)
                         _suspend_keymap_visibility_updates()
                     except Exception:  # noqa: BLE001
                         _logger.exception("enter_coma_mode: failed to restore work.blend")
@@ -622,23 +631,24 @@ class BNAME_OT_exit_coma_mode(Operator):
                 _auto_render_thumb_before_return(context, work)
                 if cur is not None and cur == expected_panel:
                     blend_io.save_current_as(expected_panel)
-                # work.blend を開く. 通常 work_new で必ず作られているはずで、
-                # 無い場合は user が外部削除した等の異常系。現在開いている
-                # cNN.blend のシーンを work.blend として保存するとパネルの
-                # 3D データが work.blend に紛れ込むため、その fallback は
-                # 行わず、エラー報告だけして現状維持する。
-                if blend_io.work_blend_exists(work_dir):
+                # ページ用blendがあればページ編集へ戻る。無い場合だけページ一覧へ戻る。
+                if blend_io.page_blend_exists(work_dir, page_id):
+                    _suspend_keymap_visibility_updates()
+                    blend_io.open_page_blend(work_dir, page_id)
+                    _suspend_keymap_visibility_updates()
+                elif blend_io.work_blend_exists(work_dir):
                     _suspend_keymap_visibility_updates()
                     blend_io.open_work_blend(work_dir)
                     _suspend_keymap_visibility_updates()
                 else:
                     _logger.error(
-                        "exit_coma_mode: work.blend not found at %s",
+                        "exit_coma_mode: page/work blend not found at %s / %s",
+                        paths.page_blend_path(work_dir, page_id),
                         paths.work_blend_path(work_dir),
                     )
                     self.report(
                         {"ERROR"},
-                        "work.blend が見つかりません. 作品フォルダの整合性を確認してください",
+                        "戻り先のblendファイルが見つかりません. 作品フォルダの整合性を確認してください",
                     )
                     return {"CANCELLED"}
             except Exception as exc:  # noqa: BLE001
@@ -738,15 +748,19 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
             except Exception:  # noqa: BLE001
                 _logger.exception("exit_coma_mode_safe: cNN.blend 保存失敗 (続行)")
 
-            if not blend_io.work_blend_exists(work_dir):
+            if blend_io.page_blend_exists(work_dir, page_id):
+                target_opened = blend_io.open_page_blend(work_dir, page_id)
+            elif blend_io.work_blend_exists(work_dir):
+                target_opened = blend_io.open_work_blend(work_dir)
+            else:
                 self.report(
                     {"ERROR"},
-                    f"work.blend が見つかりません: {paths.work_blend_path(work_dir)}",
+                    f"戻り先のblendファイルが見つかりません: {paths.work_blend_path(work_dir)}",
                 )
                 return {"CANCELLED"}
-            _suspend_keymap_visibility_updates()
-            blend_io.open_work_blend(work_dir)
-            _suspend_keymap_visibility_updates()
+            if not target_opened:
+                self.report({"ERROR"}, "戻り先のblendファイルを開けませんでした")
+                return {"CANCELLED"}
             # load_post が走るので mode/state は自動で同期される。
             # 念のため現在 scene にも反映 (load_post 前に UI 更新が走る場合)。
             try:
@@ -756,7 +770,7 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
                 ctx.scene.bname_current_coma_page_id = ""
             except Exception:  # noqa: BLE001
                 pass
-            self.report({"INFO"}, "ページ一覧に戻りました")
+            self.report({"INFO"}, "戻りました")
             return {"FINISHED"}
         except Exception as exc:  # noqa: BLE001
             _logger.exception("exit_coma_mode_safe: work.blend 切替失敗")
