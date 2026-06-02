@@ -2710,6 +2710,34 @@ def _resolve_body_spline(body_object: bpy.types.Object | None):
     return None
 
 
+def _flash_line_samples_for_entry(entry) -> list[tuple[float, float, float]]:
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+    if not balloon_shapes.is_flash_balloon_shape(shape_norm):
+        return []
+    rect = Rect(
+        0.0,
+        0.0,
+        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
+        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
+    )
+    points, _corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
+    if len(points) < 3:
+        return []
+    points = free_transform.transform_entry_local_points(entry, points)
+    ox_mm, oy_mm = _entry_local_offset_mm(entry)
+    return [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm), 1.0) for x, y in points]
+
+
+def _body_samples_for_line_mesh(entry, body_object: bpy.types.Object) -> list[tuple[float, float, float]]:
+    flash_samples = _flash_line_samples_for_entry(entry)
+    if len(flash_samples) >= 3:
+        return flash_samples
+    body_spline = _resolve_body_spline(body_object)
+    if body_spline is None:
+        return []
+    return _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+
+
 def ensure_balloon_line_mesh(
     *,
     scene,
@@ -2738,11 +2766,6 @@ def ensure_balloon_line_mesh(
         remove_balloon_line_mesh(balloon_id)
         return None
 
-    body_spline = _resolve_body_spline(body_object)
-    if body_spline is None:
-        remove_balloon_line_mesh(balloon_id)
-        return None
-
     line_width_m = line_width_mm * 0.001
 
     mesh_name = _line_mesh_data_name(balloon_id)
@@ -2751,7 +2774,7 @@ def ensure_balloon_line_mesh(
         mesh = bpy.data.meshes.new(mesh_name)
 
     # 主線は全形状で「外側アライメント + Shapely buffer + earcut」方式に統一。
-    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_line_mesh(balloon_id)
         return None
@@ -3030,11 +3053,7 @@ def ensure_balloon_outer_edge_mesh(
         return None
     line_style = str(getattr(entry, "line_style", "") or "")
     line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    body_spline = _resolve_body_spline(body_object)
-    if body_spline is None:
-        remove_balloon_outer_edge_mesh(balloon_id)
-        return None
-    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
@@ -3117,11 +3136,7 @@ def ensure_balloon_inner_edge_mesh(
         return None
     line_style = str(getattr(entry, "line_style", "") or "")
     line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    body_spline = _resolve_body_spline(body_object)
-    if body_spline is None:
-        remove_balloon_inner_edge_mesh(balloon_id)
-        return None
-    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
@@ -3244,11 +3259,7 @@ def ensure_balloon_multi_line_mesh(
     else:
         sides = ("outside",)
 
-    body_spline = _resolve_body_spline(body_object)
-    if body_spline is None:
-        remove_balloon_multi_line_mesh(balloon_id)
-        return None
-    samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_multi_line_mesh(balloon_id)
         return None

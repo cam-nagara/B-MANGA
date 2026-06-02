@@ -1151,6 +1151,8 @@ def _body_bezier_for_entry(entry) -> list[balloon_shapes.BezierAnchor] | None:
         max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
+    if balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or "")):
+        return balloon_shapes.flash_base_bezier_for_entry(entry, rect)
     return balloon_shapes.bezier_loop_for_entry(entry, rect)
 
 

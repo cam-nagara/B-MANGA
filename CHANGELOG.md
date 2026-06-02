@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — ウニフラと白抜き線の下地を楕円に分離 / v0.6.250
+
+### 症状
+- ウニフラ / 白抜き線フキダシで、下地までトゲ状の形状になり、ユーザー意図の「楕円をベースに線だけを放射状に並べる」見た目になっていなかった。
+- 書き出し時も下地と線が同じトゲ状の輪郭を共有していたため、実画面と出力画像で同じ問題が残る可能性があった。
+
+### 原因
+- フキダシ本体の輪郭と、黒線 / 白線 / 多重線の輪郭を同じ放射状の形状から作っていた。
+- 書き出し側でも塗り用の輪郭と線用の輪郭を分けていなかった。
+
+### 修正
+- ウニフラ / 白抜き線では、フキダシ本体と塗りを楕円にし、黒線 / 白線 / 多重線だけを楕円外周から放射状に出る線として生成するようにした。
+- 放射状の谷位置を楕円上に揃え、山だけが楕円の外へ出るようにした。
+- 書き出し時も塗り用の楕円と線用の放射状輪郭を分け、白線と内側フチが線側の輪郭に沿うようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile utils/balloon_shapes.py utils/balloon_curve_object.py utils/balloon_line_mesh.py utils/balloon_flash_white_line_mesh.py io/export_balloon.py test/blender_balloon_uni_flash_check.py _verify/make_balloon_flash_shape_samples.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_all_shapes_shapely_check.py`
+- `blender.exe --background --factory-startup --python _verify/make_balloon_flash_shape_samples.py`
+- `_verify/balloon_flash_shape_samples.png` をAI目視し、上下段とも下地が楕円で、黒線 / 白線 / 多重線だけが放射状になっていることを確認。
+
 ## 2026-06-02 — 白線幅を黒線基準で調整可能に補完 / v0.6.249
 
 ### 症状

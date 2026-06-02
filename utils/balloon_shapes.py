@@ -168,6 +168,45 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
     )
 
 
+def flash_base_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
+    sp = getattr(entry, "shape_params", None)
+    shape = normalize_shape(getattr(entry, "shape", "rect"))
+    if shape not in FLASH_BALLOON_SHAPES:
+        return None
+    opts = _DynamicOpts(
+        bump_w=max(2.0, float(getattr(sp, "cloud_bump_width_mm", 10.0))),
+        bump_w_jitter=_clamp01(float(getattr(sp, "cloud_bump_width_jitter", 0.0))),
+        bump_h=max(0.5, float(getattr(sp, "cloud_bump_height_mm", 4.0))),
+        bump_h_jitter=_clamp01(float(getattr(sp, "cloud_bump_height_jitter", 0.0))),
+        offset=max(0.0, min(1.0, float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0)),
+        sub_w=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_width_ratio", 0.0)))),
+        sub_w_jitter=_clamp01(float(getattr(sp, "cloud_sub_width_jitter", 0.0))),
+        sub_h=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_height_ratio", 0.0)))),
+        sub_h_jitter=_clamp01(float(getattr(sp, "cloud_sub_height_jitter", 0.0))),
+        rng=random.Random(_entry_jitter_seed(entry, sp)),
+        base_kind="ellipse",
+    )
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None:
+        return _outline_ellipse(rect)
+    cx, cy, rx, ry, _eff_h = base
+    base_rect = Rect(rect.x + cx - rx, rect.y + cy - ry, rx * 2.0, ry * 2.0)
+    return _outline_ellipse(base_rect)
+
+
+def flash_base_bezier_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
+    points = flash_base_outline_for_entry(entry, rect)
+    if points is None:
+        return None
+    if not points:
+        return _bezier_ellipse(rect)
+    x0 = min(float(x) for x, _y in points)
+    y0 = min(float(y) for _x, y in points)
+    x1 = max(float(x) for x, _y in points)
+    y1 = max(float(y) for _x, y in points)
+    return _bezier_ellipse(Rect(x0, y0, x1 - x0, y1 - y0))
+
+
 def bezier_line_loops_for_entry(
     entry,
     rect: Rect,
@@ -1163,14 +1202,10 @@ def _outline_flash_with_corners(
     angle, segments = _bump_segments(rx, ry, opts, min_slots=10)
     if not segments:
         return _outline_ellipse(rect), []
-    notch = min(
-        max(eff_h * 0.65, min(rect.width, rect.height) * 0.04),
-        max(0.0, min(rx, ry) - 0.2),
-    )
     peak_scale = 1.35
 
     def valley_at(t: float) -> tuple[float, float]:
-        return _base_position_inset(t, notch, cx, cy, rx, ry, base_kind=base_kind)
+        return _base_position(t, cx, cy, rx, ry, base_kind=base_kind)
 
     def peak_at(t: float, h_mul: float) -> tuple[float, float]:
         return _base_position_scaled(t, max(0.2, h_mul) * peak_scale, cx, cy, rx, ry, eff_h, base_kind=base_kind)

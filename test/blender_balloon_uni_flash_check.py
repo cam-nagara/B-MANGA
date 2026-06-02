@@ -47,9 +47,28 @@ def _assert_flash_outline(entry, balloon_shapes, Rect) -> None:
     points, corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
     assert len(points) >= 20, "放射状の山谷点が不足しています"
     assert len(corners) == len(points), "ウニフラ / 白抜き線の角が鋭角指定になっていません"
-    center = (float(entry.width_mm) * 0.5, float(entry.height_mm) * 0.5)
+    base = balloon_shapes.flash_base_outline_for_entry(entry, rect)
+    assert base is not None and len(base) >= 8, "ベース楕円が作成されていません"
+    min_x = min(x for x, _y in base)
+    max_x = max(x for x, _y in base)
+    min_y = min(y for _x, y in base)
+    max_y = max(y for _x, y in base)
+    center = ((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
+    rx = max(1.0e-6, (max_x - min_x) * 0.5)
+    ry = max(1.0e-6, (max_y - min_y) * 0.5)
     radii = [math.hypot(x - center[0], y - center[1]) for x, y in points]
     assert max(radii) - min(radii) > 3.0, "放射状の山谷差が出ていません"
+    valley_norms = [((x - center[0]) / rx) ** 2 + ((y - center[1]) / ry) ** 2 for x, y in points[0::2]]
+    peak_norms = [((x - center[0]) / rx) ** 2 + ((y - center[1]) / ry) ** 2 for x, y in points[1::2]]
+    assert max(abs(value - 1.0) for value in valley_norms) < 0.08, "谷がベース楕円上にありません"
+    assert min(peak_norms) > 1.1, "山がベース楕円の外へ出ていません"
+
+
+def _sample_radius_range(samples) -> tuple[float, float]:
+    cx = sum(float(s[0]) for s in samples) / len(samples)
+    cy = sum(float(s[1]) for s in samples) / len(samples)
+    radii = [math.hypot(float(s[0]) - cx, float(s[1]) - cy) for s in samples]
+    return min(radii), max(radii)
 
 
 def _configure_shape_params(entry) -> None:
@@ -148,11 +167,18 @@ def main() -> None:
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
             assert len(obj.data.splines) >= 1, "フキダシの輪郭カーブがありません"
+            body_spline = obj.data.splines[0]
+            assert len(body_spline.bezier_points) == 4, "下地が楕円カーブになっていません"
             assert _evaluated_polygon_count(obj) == 0, "本体カーブ側に表示面が残っています"
             white_obj = bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id))
             line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(entry.id))
             assert white_obj is not None and _evaluated_polygon_count(white_obj) > 0, "白線実体が作成されていません"
             assert line_obj is not None and _evaluated_polygon_count(line_obj) > 0, "黒線実体が作成されていません"
+            body_samples = balloon_line_mesh._sample_body_bezier(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)
+            line_samples = balloon_line_mesh._body_samples_for_line_mesh(entry, obj)
+            _body_min, body_max = _sample_radius_range(body_samples)
+            _line_min, line_max = _sample_radius_range(line_samples)
+            assert line_max > body_max * 1.08, "黒線が楕円下地の外へ放射していません"
             white_z = max((float(v.co.z) for v in white_obj.data.vertices), default=0.0)
             line_z = max((float(v.co.z) for v in line_obj.data.vertices), default=0.0)
             assert 0.0 < white_z < line_z, "白線が黒線と下地の間に配置されていません"

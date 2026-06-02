@@ -69,10 +69,7 @@ def _uniform_inner_band(body_poly, width_m: float, *, valley_sharp: bool):
 
 
 def _body_samples_and_poly(entry, body_object: bpy.types.Object):
-    body_spline = balloon_line_mesh._resolve_body_spline(body_object)
-    if body_spline is None:
-        return None
-    samples = balloon_line_mesh._sample_body_bezier(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)
+    samples = balloon_line_mesh._body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         return None
     samples, _tails_merged = balloon_line_mesh._outline_samples_with_tails(entry, samples)

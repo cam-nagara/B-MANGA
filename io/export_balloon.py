@@ -148,6 +148,13 @@ def _balloon_outline_mm(entry, rect: Rect) -> list[tuple[float, float]]:
     return balloon_shapes.outline_for_entry(entry, rect)
 
 
+def _balloon_fill_outline_mm(entry, rect: Rect) -> list[tuple[float, float]]:
+    fill_outline = balloon_shapes.flash_base_outline_for_entry(entry, rect)
+    if fill_outline is not None:
+        return fill_outline
+    return _balloon_outline_mm(entry, rect)
+
+
 def _apply_balloon_transforms(
     pts: Sequence[tuple[float, float]],
     rect: Rect,
@@ -431,8 +438,11 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     flip_v = bool(getattr(entry, "flip_v", False))
     rotation_deg = float(getattr(entry, "rotation_deg", 0.0))
     outline = _balloon_outline_mm(entry, rect)
+    fill_outline = _balloon_fill_outline_mm(entry, rect)
     outline = _apply_balloon_transforms(outline, rect, flip_h, flip_v, rotation_deg)
+    fill_outline = _apply_balloon_transforms(fill_outline, rect, flip_h, flip_v, rotation_deg)
     all_pts = list(outline)
+    all_pts.extend(fill_outline)
     for tail in entry.tails:
         all_pts.extend(_balloon_tail_polygon(rect, tail))
     bbox = ep._points_bbox(all_pts)
@@ -455,31 +465,37 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     inner_width_px = int(round(mm_to_px(float(getattr(entry, "inner_white_margin_width_mm", 0.0)), dpi)))
     draw = ep.ImageDraw.Draw(canvas.image)
     outline_px = canvas.points_px(outline)
+    fill_outline_px = canvas.points_px(fill_outline)
     fill_clip_mask = None
-    if len(outline_px) >= 3:
-        fill_polygons = [outline_px]
+    if len(fill_outline_px) >= 3:
+        fill_polygons = [fill_outline_px]
         fill_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
         fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
+    line_clip_mask = fill_clip_mask
+    if balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or "")) and len(outline_px) >= 3:
+        line_polygons = [outline_px]
+        line_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
+        line_clip_mask = _fill_mask(canvas, [pts for pts in line_polygons if len(pts) >= 3])
     draw_line = str(line_style or "") != "none" and line_width_px > 0
     flash_white_width_px = _flash_white_line_width_px(entry, line_w_mm, dpi) if draw_line else 0
     flash_white_color = ep._rgb255((1.0, 1.0, 1.0, 1.0), alpha=_entry_opacity(entry))
     if flash_white_width_px > 0:
-        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, flash_white_color, flash_white_width_px, "solid")
+        _draw_inner_white_loop(canvas, line_clip_mask, outline_px, flash_white_color, flash_white_width_px, "solid")
     if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
         _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, "solid")
     if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), "solid")
+        _draw_inner_white_loop(canvas, line_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), "solid")
     if draw_line:
         _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi)
     for tail in entry.tails:
         tail_px = canvas.points_px(_balloon_tail_polygon(rect, tail))
         if len(tail_px) >= 3:
             if flash_white_width_px > 0:
-                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, flash_white_color, flash_white_width_px, "solid")
+                _draw_inner_white_loop(canvas, line_clip_mask, tail_px, flash_white_color, flash_white_width_px, "solid")
             if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
                 _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, "solid")
             if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), "solid")
+                _draw_inner_white_loop(canvas, line_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), "solid")
             if draw_line:
                 _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi)
     return ep.ExportLayer(
