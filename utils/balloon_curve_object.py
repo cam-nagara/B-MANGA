@@ -12,6 +12,7 @@ import bpy
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
 from . import balloon_fill_mesh
+from . import balloon_flash_white_line_mesh
 from . import balloon_line_mesh
 from . import balloon_multiline_curve
 from . import balloon_render_contract as render_contract
@@ -36,6 +37,7 @@ BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
 BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 BALLOON_OUTER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Outer_Edge_"
 BALLOON_INNER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Inner_Edge_"
+BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX = "BName_Balloon_Flash_White_Line_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
@@ -729,6 +731,21 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     if line_mat is not None:
+        flash_white_mat = _ensure_color_material(
+            f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
+            (1.0, 1.0, 1.0, 1.0),
+            mask_info=mask_info,
+            mask_power=_LINE_AND_EDGE_MASK_POWER,
+        )
+        balloon_flash_white_line_mesh.ensure_balloon_flash_white_line_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            white_line_material=flash_white_mat,
+            mask_info=mask_info,
+        )
         balloon_line_mesh.ensure_balloon_line_mesh(
             scene=scene,
             work=work,
@@ -739,6 +756,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             mask_info=mask_info,
         )
     else:
+        balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
     if outer_mat is not None:
         balloon_line_mesh.ensure_balloon_outer_edge_mesh(

@@ -1067,6 +1067,13 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "multiLineSpacingScalePercent": round(float(getattr(entry, "multi_line_spacing_scale_percent", 100.0)), 3),
         "lineValleyWidthPct": round(float(getattr(entry, "line_valley_width_pct", 100.0)), 3),
         "linePeakWidthPct": round(float(getattr(entry, "line_peak_width_pct", 100.0)), 3),
+        "flashWhiteLineEnabled": (
+            bool(getattr(entry, "flash_white_line_enabled", True))
+            if balloon_shapes.is_flash_balloon_shape(entry.shape)
+            else False
+        ),
+        "flashWhiteLineValleyWidthPct": round(float(getattr(entry, "flash_white_line_valley_width_pct", 0.0)), 3),
+        "flashWhiteLinePeakWidthPct": round(float(getattr(entry, "flash_white_line_peak_width_pct", 100.0)), 3),
         "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
         "thornMultiLineValleyWidthPct": round(float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0)), 3),
         "thornMultiLinePeakWidthPct": round(float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0)), 3),
@@ -1189,6 +1196,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.multi_line_spacing_scale_percent = float(data.get("multiLineSpacingScalePercent", 100.0))
     entry.line_valley_width_pct = float(data.get("lineValleyWidthPct", default_flash_endpoint_width))
     entry.line_peak_width_pct = float(data.get("linePeakWidthPct", 100.0))
+    entry.flash_white_line_enabled = bool(data.get("flashWhiteLineEnabled", is_flash_shape))
+    entry.flash_white_line_valley_width_pct = float(data.get("flashWhiteLineValleyWidthPct", default_flash_endpoint_width))
+    entry.flash_white_line_peak_width_pct = float(data.get("flashWhiteLinePeakWidthPct", 100.0))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")
     entry.thorn_multi_line_valley_width_pct = float(
         data.get("thornMultiLineValleyWidthPct", default_flash_endpoint_width)

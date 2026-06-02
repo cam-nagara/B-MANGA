@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — ウニフラと白抜き線フキダシに白線層を追加 / v0.6.248
+
+### 症状
+- フキダシのウニフラと白抜き線で、黒線と下地の間に白線が独立して描かれず、確認サンプルでも上段と下段が同じ見た目になっていた。
+- 白抜き線側で、白線の入り抜きと中間線幅を黒線基準の割合として調整できなかった。
+
+### 原因
+- 前回追加したウニフラ / 白抜き線は、放射状の輪郭形状と黒線の入り抜き設定だけを共有しており、白線を黒線とは別の描画層として作っていなかった。
+- 実体表示と書き出しのどちらでも、下地の上に白線、その上に黒線という順番が存在していなかった。
+
+### 修正
+- ウニフラ / 白抜き線専用の白線を追加し、下地より上・黒線より下の独立した層として生成するようにした。
+- 白線に「入り・抜き」「中間線幅」を追加し、黒線を 100% とした割合で設定できるようにした。初期値は入り抜き 0%、中間線幅 100%。
+- フキダシパネルとレイヤー詳細の両方に、ウニフラ / 白抜き線選択時だけ白線設定を表示するようにした。
+- 確認用サンプル画像を作り直し、白抜き線の下段でも白線が黒線と下地の間に見えるようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile core/balloon.py utils/balloon_line_mesh.py utils/balloon_flash_white_line_mesh.py utils/balloon_curve_object.py panels/balloon_panel.py panels/layer_stack_detail_ui.py operators/layer_detail_op.py io/schema.py io/export_balloon.py test/blender_balloon_uni_flash_check.py _verify/make_balloon_flash_shape_samples.py`
+- `test/blender_balloon_uni_flash_check.py` (`--factory-startup`) — PASS。ウニフラ / 白抜き線の白線初期値、保存復元、黒線・白線の別実体生成、白線が黒線と下地の間にあることを確認。
+- `test/blender_balloon_all_shapes_shapely_check.py` (`--factory-startup`) — PASS。ウニフラ / 白抜き線を含む全フキダシ形状の主線・フチ・多重線生成が維持されることを確認。
+- `_verify/make_balloon_flash_shape_samples.py` (`--factory-startup`) — PASS。`_verify/balloon_flash_shape_samples.png` を生成し、白抜き線のサンプルにも白線が見えることをAI目視確認。
+
 ## 2026-06-02 — フキダシにウニフラと白抜き線形状を追加 / v0.6.247
 
 ### 症状

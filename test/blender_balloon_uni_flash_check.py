@@ -78,7 +78,7 @@ def main() -> None:
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
         from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_shapes
+        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_line_mesh, balloon_shapes
         from bname_dev_balloon_uni_flash.utils.geom import Rect
         from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
 
@@ -109,6 +109,9 @@ def main() -> None:
             assert entry.shape == shape
             assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
             assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
+            assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"
+            assert abs(float(entry.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
+            assert abs(float(entry.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
             assert abs(float(entry.thorn_multi_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(entry.thorn_multi_line_peak_width_pct) - 100.0) < 1.0e-6
             _assert_flash_outline(entry, balloon_shapes, Rect)
@@ -117,17 +120,36 @@ def main() -> None:
             assert saved["shape"] == shape, "保存データに追加形状が残っていません"
             assert saved["lineValleyWidthPct"] == 0.0
             assert saved["linePeakWidthPct"] == 100.0
+            assert saved["flashWhiteLineEnabled"] is True
+            assert saved["flashWhiteLineValleyWidthPct"] == 0.0
+            assert saved["flashWhiteLinePeakWidthPct"] == 100.0
             restored = page.balloons.add()
             schema.balloon_entry_from_dict(restored, saved)
             assert restored.shape == shape
             assert abs(float(restored.line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.line_peak_width_pct) - 100.0) < 1.0e-6
+            assert bool(restored.flash_white_line_enabled)
+            assert abs(float(restored.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
+            assert abs(float(restored.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
             page.balloons.remove(len(page.balloons) - 1)
 
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
             assert len(obj.data.splines) >= 1, "フキダシの輪郭カーブがありません"
             assert _evaluated_polygon_count(obj) == 0, "本体カーブ側に表示面が残っています"
+            white_obj = bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id))
+            line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(entry.id))
+            assert white_obj is not None and _evaluated_polygon_count(white_obj) > 0, "白線実体が作成されていません"
+            assert line_obj is not None and _evaluated_polygon_count(line_obj) > 0, "黒線実体が作成されていません"
+            white_z = max((float(v.co.z) for v in white_obj.data.vertices), default=0.0)
+            line_z = max((float(v.co.z) for v in line_obj.data.vertices), default=0.0)
+            assert 0.0 < white_z < line_z, "白線が黒線と下地の間に配置されていません"
+            entry.flash_white_line_enabled = False
+            balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+            assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is None
+            entry.flash_white_line_enabled = True
+            balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+            assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is not None
             layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
             assert layer is not None, "フキダシを書き出せません"
             assert layer.image.size[0] > 0 and layer.image.size[1] > 0

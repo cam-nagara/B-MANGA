@@ -272,6 +272,20 @@ def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: 
     canvas.image.alpha_composite(temp)
 
 
+def _flash_white_line_width_px(entry, line_w_mm: float, dpi: int) -> int:
+    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+    if not balloon_shapes.is_flash_balloon_shape(shape_norm):
+        return 0
+    if not bool(getattr(entry, "flash_white_line_enabled", True)):
+        return 0
+    black_peak_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 0.0)))
+    white_peak_pct = max(0.0, min(200.0, float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 0.0)))
+    width_mm = max(0.0, float(line_w_mm)) * black_peak_pct * white_peak_pct / 10000.0
+    if width_mm <= 1.0e-6:
+        return 0
+    return max(1, int(round(mm_to_px(width_mm, dpi) * 2.0)))
+
+
 def _entry_fill_rgb255(entry):
     return _ep()._rgb255(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)), alpha=_fill_opacity(entry))
 
@@ -447,6 +461,10 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         fill_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
         fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
     draw_line = str(line_style or "") != "none" and line_width_px > 0
+    flash_white_width_px = _flash_white_line_width_px(entry, line_w_mm, dpi) if draw_line else 0
+    flash_white_color = ep._rgb255((1.0, 1.0, 1.0, 1.0), alpha=_entry_opacity(entry))
+    if flash_white_width_px > 0:
+        _draw_inner_white_loop(canvas, fill_clip_mask, outline_px, flash_white_color, flash_white_width_px, "solid")
     if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
         _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, "solid")
     if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
@@ -456,6 +474,8 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     for tail in entry.tails:
         tail_px = canvas.points_px(_balloon_tail_polygon(rect, tail))
         if len(tail_px) >= 3:
+            if flash_white_width_px > 0:
+                _draw_inner_white_loop(canvas, fill_clip_mask, tail_px, flash_white_color, flash_white_width_px, "solid")
             if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
                 _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, "solid")
             if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):

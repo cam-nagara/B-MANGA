@@ -204,6 +204,14 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         else:
             row.prop(entry, "line_valley_width_pct")
             row.prop(entry, "line_peak_width_pct")
+        if balloon_shapes.is_flash_balloon_shape(shape_norm_for_line):
+            row = line_box.row(align=True)
+            row.label(text="白線 (黒線=100%)")
+            row.prop(entry, "flash_white_line_enabled", text="", toggle=True)
+            row = line_box.row(align=True)
+            row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
+            row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "flash_white_line_peak_width_pct", text="中間線幅")
     if str(getattr(entry, "line_style", "") or "") == "double":
         row = line_box.row(align=True)
         row.prop(entry, "multi_line_count")

@@ -39,6 +39,7 @@ BALLOON_LINE_MESH_NAME_PREFIX = "balloon_line_mesh_"
 BALLOON_OUTER_EDGE_MESH_NAME_PREFIX = "balloon_outer_edge_mesh_"
 BALLOON_INNER_EDGE_MESH_NAME_PREFIX = "balloon_inner_edge_mesh_"
 BALLOON_MULTI_LINE_MESH_NAME_PREFIX = "balloon_multi_line_mesh_"
+BALLOON_FLASH_WHITE_LINE_MESH_NAME_PREFIX = "balloon_flash_white_line_mesh_"
 PROP_BALLOON_LINE_MESH_KIND = "bname_balloon_line_mesh_kind"
 PROP_BALLOON_LINE_MESH_OWNER_ID = "bname_balloon_line_mesh_owner_id"
 
@@ -47,8 +48,16 @@ _KIND_LINE = "balloon_line_mesh"
 _KIND_OUTER_EDGE = "balloon_outer_edge_mesh"
 _KIND_INNER_EDGE = "balloon_inner_edge_mesh"
 _KIND_MULTI_LINE = "balloon_multi_line_mesh"
+_KIND_FLASH_WHITE_LINE = "balloon_flash_white_line_mesh"
 _KIND_TAIL_MAIN_LINE = "balloon_tail_main_line_mesh"
-_ALL_KINDS = {_KIND_LINE, _KIND_OUTER_EDGE, _KIND_INNER_EDGE, _KIND_MULTI_LINE, _KIND_TAIL_MAIN_LINE}
+_ALL_KINDS = {
+    _KIND_LINE,
+    _KIND_OUTER_EDGE,
+    _KIND_INNER_EDGE,
+    _KIND_MULTI_LINE,
+    _KIND_FLASH_WHITE_LINE,
+    _KIND_TAIL_MAIN_LINE,
+}
 
 SAMPLES_PER_SEGMENT = 24
 SHARP_THRESHOLD_RAD = math.radians(30.0)
@@ -62,6 +71,7 @@ _ROUND_MITRE_LIMIT = 5.0
 OUTER_EDGE_Z_OFFSET_M = 0.000020
 INNER_EDGE_Z_OFFSET_M = 0.000040
 MULTI_LINE_Z_OFFSET_M = 0.000080
+FLASH_WHITE_LINE_Z_OFFSET_M = 0.000090
 
 _EDGE_OVERLAP_RATIO = 0.06
 
@@ -2607,6 +2617,14 @@ def _multi_line_mesh_data_name(balloon_id: str) -> str:
     return f"{BALLOON_MULTI_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
 
 
+def _flash_white_line_mesh_object_name(balloon_id: str) -> str:
+    return f"{BALLOON_FLASH_WHITE_LINE_MESH_NAME_PREFIX}{balloon_id}"
+
+
+def _flash_white_line_mesh_data_name(balloon_id: str) -> str:
+    return f"{BALLOON_FLASH_WHITE_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
+
+
 def _attach_band_mesh_object(
     *,
     obj_name: str,
@@ -3690,12 +3708,19 @@ def remove_balloon_multi_line_mesh(balloon_id: str) -> None:
     _remove_named_band_mesh(_multi_line_mesh_object_name(balloon_id))
 
 
+def remove_balloon_flash_white_line_mesh(balloon_id: str) -> None:
+    if not balloon_id:
+        return
+    _remove_named_band_mesh(_flash_white_line_mesh_object_name(balloon_id))
+
+
 def remove_all_balloon_band_meshes(balloon_id: str) -> None:
     """主線・フチ・多重線の Mesh をまとめて撤去する."""
     remove_balloon_line_mesh(balloon_id)
     remove_balloon_outer_edge_mesh(balloon_id)
     remove_balloon_inner_edge_mesh(balloon_id)
     remove_balloon_multi_line_mesh(balloon_id)
+    remove_balloon_flash_white_line_mesh(balloon_id)
 
 
 def cleanup_orphan_line_meshes(valid_balloon_ids: set[str]) -> int:
