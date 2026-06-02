@@ -1374,6 +1374,7 @@ class BNAME_OT_layer_stack_detail(Operator):
         layer_stack_utils.select_stack_index(context, index)
         self._restore_edge_selection_if_needed(context, stack[index], edge_state)
         self._ensure_coma_detail_material(context, stack[index])
+        self._ensure_effect_detail_curve(context, stack[index])
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
         return context.window_manager.invoke_props_dialog(self, width=360)
@@ -1455,19 +1456,52 @@ class BNAME_OT_layer_stack_detail(Operator):
         if stack is None:
             return
         item = self._resolve_item(stack)
-        if item is None or item.kind not in {"effect", "effect_legacy"}:
+        if item is None:
             return
-        params = getattr(context.scene, "bname_effect_line_params", None)
+        params = self._effect_curve_params_for_item(context, item)
         if params is None:
             return
         try:
-            from ..operators import effect_line_op
             from ..utils import effect_inout_curve
 
             if effect_inout_curve.sync_ui_nodes_to_params(params):
-                effect_line_op.on_effect_params_changed(context, params)
+                if item.kind in {"effect", "effect_legacy"}:
+                    from ..operators import effect_line_op
+
+                    effect_line_op.on_effect_params_changed(context, params)
         except Exception:  # noqa: BLE001
             pass
+
+    def _ensure_effect_detail_curve(self, context, item) -> None:
+        params = self._effect_curve_params_for_item(context, item)
+        if params is None:
+            return
+        try:
+            from ..utils import effect_inout_curve
+
+            effect_inout_curve.ensure_ui_nodes(params)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _effect_curve_params_for_item(self, context, item):
+        if item is None:
+            return None
+        if item.kind in {"effect", "effect_legacy"}:
+            return getattr(context.scene, "bname_effect_line_params", None)
+        if item.kind != "balloon":
+            return None
+        resolved = layer_stack_utils.resolve_stack_item(context, item)
+        entry = resolved.get("target") if resolved else None
+        if entry is None:
+            return None
+        try:
+            from ..utils import balloon_shapes
+
+            if balloon_shapes.normalize_line_style(getattr(entry, "line_style", "")) == "uni_flash":
+                return entry
+        except Exception:  # noqa: BLE001
+            return None
+        return None
 
     def _ensure_coma_detail_material(self, context, item) -> None:
         if item is None or item.kind != COMA_KIND:

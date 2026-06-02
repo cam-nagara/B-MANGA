@@ -421,8 +421,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     out_range_mm: FloatProperty(name="抜きの範囲 (mm)", description="終点からこの長さを抜きの変化区間にする", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
 
     opacity: FloatProperty(name="不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    line_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
-    fill_color: FloatVectorProperty(subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    line_color: FloatVectorProperty(name="線色", subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    fill_color: FloatVectorProperty(name="塗り色", subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_params_changed)  # type: ignore[valid-type]

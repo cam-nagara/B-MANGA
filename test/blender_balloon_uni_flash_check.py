@@ -226,6 +226,10 @@ def main() -> None:
                 )
                 uni_props = _effect_setting_props(effect_line_panel, entry, "uni_flash")
                 assert uni_props == focus_props, "ウニフラ線種の表示項目が集中線と一致していません"
+                assert "spacing_density_compensation" in uni_props, "ウニフラ設定に密度補正が表示されていません"
+                assert entry.bl_rna.properties["line_style"].name == "線種"
+                assert entry.bl_rna.properties["line_color"].name == "線色"
+                assert entry.bl_rna.properties["fill_color"].name == "塗り色"
                 assert "flash_line_count" not in uni_props
                 assert "flash_line_spacing_mm" not in uni_props
                 assert "flash_white_line_width_percent" not in uni_props

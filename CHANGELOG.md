@@ -3,6 +3,34 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-03 — ウニフラ設定UIの実機表示を修正 / v0.6.257
+
+### 症状
+
+- 実機UIのAI目視チェックで、フキダシ線種「ウニフラ」の設定項目数は集中線と一致していたが、共通設定画面に「密度補正」が表示されていなかった。
+- レイヤー詳細でウニフラを開くと、入り抜きカーブの表示準備が描画中に走り、「詳細設定を描画できません」と表示される場合があった。
+- 線種や線色・塗り色の一部が、ユーザー向けの日本語表示名ではなく内部名由来で表示される箇所があった。
+
+### 原因
+
+- 効果線共通の設定UIで、保存項目には存在する「密度補正」を描画していなかった。
+- 入り抜きカーブUIの準備と同期を、詳細ダイアログの描画中に実行していた。
+- フキダシ線種と色項目に、ユーザー向けの表示名が不足していた。
+
+### 修正
+
+- 効果線共通設定に「密度補正」を表示し、ウニフラでも集中線と同じ項目順で出るようにした。
+- レイヤー詳細を開く前に入り抜きカーブUIを準備し、描画中は準備済みの表示を読むようにして、詳細ダイアログの描画エラーを防いだ。
+- 線種・線色・塗り色の表示名を日本語化した。
+- 回帰テストに「密度補正」表示と表示名の確認を追加した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+
+- `python -m py_compile core/balloon.py core/effect_line.py panels/effect_line_panel.py panels/layer_stack_detail_ui.py operators/layer_stack_op.py utils/effect_inout_curve.py _verify/uni_flash_ui_visual_check.py test/blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --python _verify/uni_flash_ui_visual_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+- `.codex/visual/uni_flash_ui_visual_check/uni_flash_ui_draw_records.png` と `.codex/visual/uni_flash_ui_visual_check/uni_flash_layer_detail_dialog.png` をAI目視し、ウニフラの設定項目が集中線と同数・同順で、密度補正が表示され、レイヤー詳細の描画エラーが消えていることを確認。
+
 ## 2026-06-03 — ウニフラ線種の設定項目を集中線へ統一 / v0.6.256
 
 ### 症状

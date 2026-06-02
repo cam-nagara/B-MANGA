@@ -545,19 +545,7 @@ def _draw_effect_tail_settings(box, params) -> None:
     row = inout_box.row(align=True)
     row.prop(params, "in_start_percent")
     row.prop(params, "out_start_percent")
-    try:
-        from ..utils import effect_inout_curve
-
-        effect_inout_curve.sync_ui_nodes_to_params(params)
-        in_node, out_node = effect_inout_curve.ensure_ui_nodes(params)
-    except Exception:  # noqa: BLE001
-        in_node = out_node = None
-    if in_node is not None:
-        inout_box.label(text="入りカーブ")
-        inout_box.template_curve_mapping(in_node, "mapping", type="NONE")
-    if out_node is not None:
-        inout_box.label(text="抜きカーブ")
-        inout_box.template_curve_mapping(out_node, "mapping", type="NONE")
+    effect_line_panel.draw_inout_curve_mapping(inout_box, params)
 
     color_box = box.box()
     color_box.label(text="色")

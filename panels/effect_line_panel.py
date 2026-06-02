@@ -106,6 +106,30 @@ def _draw_white_outline_settings(layout, params) -> None:
     row.prop(params, "white_outline_black_length_scale_far_percent")
 
 
+def _inout_curve_nodes_for_draw(params):
+    try:
+        effect_inout_curve.sync_ui_nodes_to_params(params)
+    except Exception:  # noqa: BLE001
+        pass
+    in_node, out_node = effect_inout_curve.get_ui_nodes()
+    if in_node is not None or out_node is not None:
+        return in_node, out_node
+    try:
+        return effect_inout_curve.ensure_ui_nodes(params)
+    except Exception:  # noqa: BLE001
+        return effect_inout_curve.get_ui_nodes()
+
+
+def draw_inout_curve_mapping(layout, params) -> None:
+    in_node, out_node = _inout_curve_nodes_for_draw(params)
+    if in_node is not None:
+        layout.label(text="入りカーブ")
+        layout.template_curve_mapping(in_node, "mapping", type="NONE")
+    if out_node is not None:
+        layout.label(text="抜きカーブ")
+        layout.template_curve_mapping(out_node, "mapping", type="NONE")
+
+
 def draw_effect_params(
     layout,
     params,
@@ -174,6 +198,7 @@ def draw_effect_params(
             box.prop(params, "spacing_angle_deg")
         else:
             box.prop(params, "spacing_distance_mm")
+            box.prop(params, "spacing_density_compensation")
         row = box.row(align=True)
         row.prop(params, "spacing_jitter_enabled", text="間隔乱れ")
         sub = row.row()
@@ -207,14 +232,7 @@ def draw_effect_params(
     row = box.row(align=True)
     row.prop(params, "in_start_percent")
     row.prop(params, "out_start_percent")
-    effect_inout_curve.sync_ui_nodes_to_params(params)
-    in_node, out_node = effect_inout_curve.ensure_ui_nodes(params)
-    if in_node is not None:
-        box.label(text="入りカーブ")
-        box.template_curve_mapping(in_node, "mapping", type="NONE")
-    if out_node is not None:
-        box.label(text="抜きカーブ")
-        box.template_curve_mapping(out_node, "mapping", type="NONE")
+    draw_inout_curve_mapping(box, params)
 
     box = layout.box()
     box.label(text="色")

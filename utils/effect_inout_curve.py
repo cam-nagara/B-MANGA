@@ -93,6 +93,16 @@ def ensure_ui_nodes(params):
     return in_node, out_node
 
 
+def get_ui_nodes():
+    if bpy is None:
+        return None, None
+    mat = bpy.data.materials.get(MATERIAL_NAME)
+    nt = getattr(mat, "node_tree", None) if mat is not None else None
+    if nt is None:
+        return None, None
+    return _get_curve_node(nt, IN_NODE_NAME), _get_curve_node(nt, OUT_NODE_NAME)
+
+
 def sync_ui_nodes_to_params(params) -> bool:
     if bpy is None or params is None:
         return False
@@ -114,6 +124,13 @@ def sync_ui_nodes_to_params(params) -> bool:
             changed = True
         mat[prop_name] = text
     return changed
+
+
+def _get_curve_node(nt, node_name: str):
+    node = nt.nodes.get(node_name)
+    if node is None or node.bl_idname != "ShaderNodeFloatCurve":
+        return None
+    return node
 
 
 def read_node_points(node) -> tuple[tuple[float, float], ...]:
