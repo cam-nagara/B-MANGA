@@ -271,17 +271,12 @@ def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float
     buckets: set[int] = set()
     for index, stroke in enumerate(white):
         points = _stroke_points_mm(stroke, m_to_mm)
-        if len(points) == 2:
-            start, end = points
-        elif len(points) >= 4 and bool(getattr(stroke, "cyclic", False)):
-            start = _midpoint(points[0], points[3])
-            end = _midpoint(points[1], points[2])
-            start_width = _distance(points[0], points[3])
-            end_width = _distance(points[1], points[2])
-            if start_width <= end_width:
-                raise AssertionError(f"白抜き線の白い面が中心側へ細くなっていません: start={start_width}, end={end_width}")
-        else:
-            raise AssertionError(f"白抜き線は直線または白い面である必要があります: index={index}, points={len(points)}")
+        if len(points) != 2 or bool(getattr(stroke, "cyclic", False)):
+            raise AssertionError(f"白抜き線は抜きのある直線である必要があります: index={index}, points={len(points)}")
+        start, end = points
+        radii = list(getattr(stroke, "radii", None) or [])
+        if len(radii) < 2 or not float(radii[0]) > float(radii[-1]):
+            raise AssertionError(f"白抜き線の終点に抜きがありません: index={index}, radii={radii}")
         if _distance(start, center) <= _distance(end, center):
             raise AssertionError(f"白抜き線が始点側から中心方向へ伸びていません: start={start}, end={end}")
         _assert_points_collinear_to_center(start, end, center, label=f"white outline {index}")

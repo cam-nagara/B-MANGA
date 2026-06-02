@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — 効果線の白抜き線を複数の抜き線へ修正 / v0.6.245
+
+### 症状
+
+白抜き線の白い部分が面として表示され、送付スクリーンショットのような「終点で抜ける白線が何本も並ぶ」見た目になっていませんでした。白抜き線の詳細設定でも、集中線などと共通の始点形状・終点形状を調整できませんでした。
+
+### 原因
+
+白線側を太い塗り面として生成していたため、白線一本ごとの終点の抜きが表現されていませんでした。また、白抜き線の設定画面で始点形状・終点形状を隠していたため、共通の形状基準に従う操作ができませんでした。
+
+### 修正
+
+白抜き線の白い部分を、終点側で線幅が抜ける複数の白線として生成するように変更しました。各白線と左右の黒線は、集中線などと同じ中心点、始点形状、終点形状を基準に放射方向へ配置します。白抜き線の詳細設定にも、始点形状・終点形状・全体回転を表示するように戻しました。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+
+- `python -m py_compile operators/effect_line_gen.py operators/effect_line_white_outline.py panels/effect_line_panel.py test/blender_effect_line_frame_spacing_check.py test/blender_effect_line_white_outline_visual_check.py`
+- `test/blender_effect_line_frame_spacing_check.py` (`--factory-startup`) — PASS
+- `test/blender_effect_line_white_outline_visual_check.py` (`--factory-startup`) — PASS。`_verify/effect_line_white_outline_after.png` を生成し、抜きのある複数の白線と左右の黒線が放射状に表示されることを確認。
+
 ## 2026-06-02 — 効果線の白抜き線を放射状の白面表示へ修正 / v0.6.244
 
 ### 症状

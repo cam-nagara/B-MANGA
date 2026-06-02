@@ -74,21 +74,23 @@ def _white_outline_params() -> SimpleNamespace:
     )
 
 
-def _assert_white_outline_strokes(strokes) -> None:
+def _assert_white_outline_strokes(strokes, center: tuple[float, float]) -> None:
     white = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_white"]
     black = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_black"]
-    if len(white) != 7:
-        raise AssertionError(f"白い抜き面が指定本数と一致しません: {len(white)}")
-    if len(black) <= len(white) * 2:
+    if len(white) <= 7:
+        raise AssertionError(f"抜きのある白線が複数生成されていません: {len(white)}")
+    if len(black) < 14:
         raise AssertionError(f"左右の黒線が不足しています: white={len(white)} black={len(black)}")
     for index, stroke in enumerate(white):
         points = list(getattr(stroke, "points_xyz", []) or [])
-        if len(points) < 4 or not bool(getattr(stroke, "cyclic", False)):
-            raise AssertionError(f"白い抜き面が閉じた面になっていません: {index}")
-        start_width = math.dist(points[0][:2], points[3][:2])
-        end_width = math.dist(points[1][:2], points[2][:2])
-        if not start_width > end_width:
-            raise AssertionError(f"白い抜き面が先細りになっていません: {index}")
+        if len(points) != 2 or bool(getattr(stroke, "cyclic", False)):
+            raise AssertionError(f"白線が抜きのある直線になっていません: {index}")
+        radii = list(getattr(stroke, "radii", None) or [])
+        if len(radii) < 2 or not float(radii[0]) > float(radii[-1]):
+            raise AssertionError(f"白線の終点が抜けていません: {index}")
+        start, end = points
+        if math.dist(start[:2], center) <= math.dist(end[:2], center):
+            raise AssertionError(f"白線が中心へ向かっていません: {index}")
 
 
 def _setup_camera() -> None:
@@ -138,7 +140,7 @@ def main() -> None:
         radius_xy_mm=(42.0, 66.0),
         seed=12,
     )
-    _assert_white_outline_strokes(strokes)
+    _assert_white_outline_strokes(strokes, (0.105, 0.105))
 
     mesh = bpy.data.meshes.new("B-Name 白抜き線 スクショ")
     display = bpy.data.objects.new("B-Name 白抜き線 スクショ", mesh)

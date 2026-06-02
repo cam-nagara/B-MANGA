@@ -85,10 +85,12 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     box = layout.box()
     box.label(text="種類")
     box.prop(params, "effect_type")
-    if params.effect_type not in {"white_outline", "speed"}:
+    if params.effect_type != "speed":
         box.prop(params, "rotation_deg")
 
     if params.effect_type == "white_outline":
+        _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
+        _draw_shape_settings(layout, params, "end", "終点形状")
         _draw_white_outline_settings(layout, params)
         if with_generate_button:
             layout.operator("bname.effect_line_generate", icon="STROKE")

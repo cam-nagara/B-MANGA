@@ -1041,8 +1041,6 @@ def generate_shape_guide_strokes(
     """始点/終点の形状ラインをガイドストロークとして返す。"""
     etype = getattr(params, "effect_type", "")
     shape_center_xy_mm = end_center_xy_mm if end_center_xy_mm is not None else center_xy_mm
-    if etype == "white_outline":
-        return []
     if etype == "speed":
         return generate_speed_guide_strokes(params, shape_center_xy_mm, radius_xy_mm)
     rx, ry = radius_xy_mm
