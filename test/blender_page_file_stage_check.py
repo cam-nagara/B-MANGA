@@ -163,6 +163,55 @@ def _assert_page_file_current_page_runtime_only(page_id: str) -> None:
     assert not offenders, f"ページファイルに他ページの実体が残っています: {offenders}"
 
 
+def _assert_current_page_runtime_aligned(page_index: int) -> None:
+    from bname_dev_page_file_stage.utils import page_grid
+
+    scene = bpy.context.scene
+    work = scene.bname_work
+    page = work.pages[page_index]
+    page_id = str(getattr(page, "id", "") or "")
+    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_index)
+
+    def assert_xy(obj, expected_x_mm: float, expected_y_mm: float) -> None:
+        actual_x = float(obj.location.x) * 1000.0
+        actual_y = float(obj.location.y) * 1000.0
+        if abs(actual_x - expected_x_mm) > 0.01 or abs(actual_y - expected_y_mm) > 0.01:
+            raise AssertionError(
+                f"{obj.name} の位置がページ一覧上の位置とずれています: "
+                f"expected=({expected_x_mm:.3f}, {expected_y_mm:.3f}), "
+                f"actual=({actual_x:.3f}, {actual_y:.3f})"
+            )
+
+    page_objects = [
+        obj
+        for obj in bpy.data.objects
+        if str(obj.get("bname_paper_bg_page_id", "") or "") == page_id
+        or str(obj.get("bname_paper_guide_page_id", "") or "") == page_id
+    ]
+    assert page_objects, f"{page_id} の用紙実体がありません"
+    for obj in page_objects:
+        assert_xy(obj, ox_mm, oy_mm)
+
+    for coma in getattr(page, "comas", []) or []:
+        owner = f"{page_id}:{getattr(coma, 'id', '')}"
+        local_x = 0.0
+        local_y = 0.0
+        if str(getattr(coma, "shape_type", "rect") or "rect") == "rect":
+            local_x = float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
+            local_y = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
+        coma_objects = [
+            obj
+            for obj in bpy.data.objects
+            if str(obj.get("bname_coma_plane_owner_id", "") or "") == owner
+            or str(obj.get("bname_coma_mask_owner_id", "") or "") == owner
+            or str(obj.get("bname_coma_border_owner_id", "") or "") == owner
+            or str(obj.get("bname_coma_white_margin_owner_id", "") or "") == owner
+        ]
+        assert coma_objects, f"{owner} のコマ実体がありません"
+        for obj in coma_objects:
+            assert_xy(obj, ox_mm + local_x, oy_mm + local_y)
+
+
 def _managed_object(kind: str, bname_id: str):
     for obj in bpy.data.objects:
         if (
@@ -251,6 +300,7 @@ def main() -> None:
         assert bpy.data.collections.get("p0002") is None
         assert _managed_object("balloon", "other_page_balloon") is None
         _assert_page_file_current_page_runtime_only("p0001")
+        _assert_current_page_runtime_aligned(0)
         previews = _page_preview_objects()
         assert len(previews) == 3
         assert len(_visible_page_preview_objects()) == 3
@@ -397,6 +447,7 @@ def main() -> None:
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None
         assert len(_visible_page_preview_objects()) == 0
+        _assert_current_page_runtime_aligned(1)
 
         work = bpy.context.scene.bname_work
         work.active_page_index = 1

@@ -192,13 +192,25 @@ class PageSubsetWork(SimpleNamespace):
     def __init__(self, work, page_ids: set[str]):
         super().__init__()
         self._source_work = work
-        self.pages = [
-            page
-            for page in getattr(work, "pages", []) or []
+        pages_with_indices = [
+            (index, page)
+            for index, page in enumerate(getattr(work, "pages", []) or [])
             if str(getattr(page, "id", "") or "") in page_ids
         ]
+        self.pages = [page for _index, page in pages_with_indices]
+        self._source_page_indices = [index for index, _page in pages_with_indices]
         self.active_page_index = 0 if self.pages else -1
         self.loaded = bool(getattr(work, "loaded", False))
+
+    def original_page_index(self, page_index: int) -> int:
+        """この軽量 work 内の page_index を元の作品内 page_index へ戻す."""
+        try:
+            index = int(page_index)
+        except (TypeError, ValueError):
+            return -1
+        if 0 <= index < len(self._source_page_indices):
+            return int(self._source_page_indices[index])
+        return -1
 
     def __getattr__(self, name: str):
         return getattr(self._source_work, name)

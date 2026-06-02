@@ -146,6 +146,23 @@ def page_manual_offset_mm(page_entry) -> tuple[float, float]:
         return 0.0, 0.0
 
 
+def original_page_index(work, page_index: int) -> int:
+    """軽量化されたページ一覧でも、元の作品内ページ番号を返す."""
+    try:
+        index = int(page_index)
+    except (TypeError, ValueError):
+        return -1
+    resolver = getattr(work, "original_page_index", None)
+    if callable(resolver):
+        try:
+            resolved = int(resolver(index))
+            if resolved >= 0:
+                return resolved
+        except Exception:  # noqa: BLE001
+            pass
+    return index
+
+
 def page_total_offset_mm(
     work,
     scene,
@@ -157,8 +174,9 @@ def page_total_offset_mm(
     cols, gap, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
+    grid_page_index = original_page_index(work, page_index)
     ox_mm, oy_mm = page_grid_offset_mm(
-        page_index, cols, gap, cw, ch, start_side, read_direction
+        grid_page_index, cols, gap, cw, ch, start_side, read_direction
     )
     add_x, add_y = page_manual_offset_mm(work.pages[page_index])
     return ox_mm + add_x, oy_mm + add_y

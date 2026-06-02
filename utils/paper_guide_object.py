@@ -839,14 +839,20 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     if not page_id:
         return []
     paper = work.paper
-    is_left = _is_left_page(paper, page_index)
+    try:
+        from . import page_grid
+
+        grid_page_index = page_grid.original_page_index(work, page_index)
+    except Exception:  # noqa: BLE001
+        grid_page_index = page_index
+    is_left = _is_left_page(paper, grid_page_index)
     rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left)
     page_coll = on.find_collection_by_bname_id(page_id, kind="page")
     if page_coll is None:
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
     in_range = bool(getattr(page, "in_page_range", True))
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
-    signature = _paper_guide_signature(work, page_index, page, rects)
+    signature = _paper_guide_signature(work, grid_page_index, page, rects)
 
     guide_sets = _paper_guide_sets(paper, rects)
     objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
@@ -885,11 +891,17 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             continue
         valid_ids.add(page_id)
         paper = work.paper
+        try:
+            from . import page_grid
+
+            grid_page_index = page_grid.original_page_index(work, page_index)
+        except Exception:  # noqa: BLE001
+            grid_page_index = page_index
         rects = overlay_shared.compute_paper_rects(
             paper,
-            is_left_half=_is_left_page(paper, page_index),
+            is_left_half=_is_left_page(paper, grid_page_index),
         )
-        signature = _paper_guide_signature(work, page_index, page, rects)
+        signature = _paper_guide_signature(work, grid_page_index, page, rects)
         line_obj = _line_guide_object(page_id)
         safe_obj = _safe_fill_object(page_id)
         if (
