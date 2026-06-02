@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — 効果線の白抜き線を放射状の白面表示へ修正 / v0.6.244
+
+### 症状
+
+効果線の白抜き線が、スクリーンショットのような太い白い抜き面と左右の黒い細線群にならず、意図した放射状の線を作れませんでした。
+
+### 原因
+
+白抜き線の白い部分を塗り面ではなく細い白線の集合として扱っていたため、フキダシの多重線に近い「白い面を黒線で挟む」見た目になっていませんでした。
+
+### 修正
+
+白抜き線を、放射方向へ細くなる白い抜き面と、その左右へ並ぶ黒い細線として生成するように変更しました。既存の本数・間隔・太さ・白線割合・白線太さ・黒線太さ・角度・乱れの設定を使って、複数本の白抜き線を放射状に並べられるようにしました。
+徹底チェックで、旧方式の白抜き線生成経路が同じ生成ファイル内に残っていたため撤去し、現在の生成経路を新しい白い抜き面方式に一本化しました。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+
+- `python -m py_compile operators/effect_line_gen.py operators/effect_line_white_outline.py utils/effect_line_object.py test/blender_effect_line_frame_spacing_check.py`
+- `test/blender_effect_line_frame_spacing_check.py` (`--factory-startup`) — PASS
+- `test/blender_effect_line_white_outline_visual_check.py` (`--factory-startup`) — PASS。`_verify/effect_line_white_outline_after.png` を生成し、白い抜き面と左右の黒線が放射状に表示されることを確認。
+- `test/blender_geometry_nodes_functional_settings_check.py` (`--factory-startup`) — 既存のフキダシ角丸確認で停止 (今回の白抜き線修正とは別項目)
+
 ## 2026-06-02 — ページ編集ファイルの現在ページ位置を一覧位置に一致 / v0.6.243
 
 ### 症状

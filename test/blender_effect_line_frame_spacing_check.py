@@ -71,6 +71,10 @@ def _distance(a: tuple[float, float], b: tuple[float, float]) -> float:
     return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
 
 
+def _midpoint(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
+    return (float(a[0]) + float(b[0])) * 0.5, (float(a[1]) + float(b[1])) * 0.5
+
+
 def _point_segment_distance(
     point: tuple[float, float],
     start: tuple[float, float],
@@ -267,9 +271,17 @@ def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float
     buckets: set[int] = set()
     for index, stroke in enumerate(white):
         points = _stroke_points_mm(stroke, m_to_mm)
-        if len(points) != 2:
-            raise AssertionError(f"白抜き線は直線である必要があります: index={index}, points={len(points)}")
-        start, end = points
+        if len(points) == 2:
+            start, end = points
+        elif len(points) >= 4 and bool(getattr(stroke, "cyclic", False)):
+            start = _midpoint(points[0], points[3])
+            end = _midpoint(points[1], points[2])
+            start_width = _distance(points[0], points[3])
+            end_width = _distance(points[1], points[2])
+            if start_width <= end_width:
+                raise AssertionError(f"白抜き線の白い面が中心側へ細くなっていません: start={start_width}, end={end_width}")
+        else:
+            raise AssertionError(f"白抜き線は直線または白い面である必要があります: index={index}, points={len(points)}")
         if _distance(start, center) <= _distance(end, center):
             raise AssertionError(f"白抜き線が始点側から中心方向へ伸びていません: start={start}, end={end}")
         _assert_points_collinear_to_center(start, end, center, label=f"white outline {index}")
@@ -277,6 +289,9 @@ def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float
         buckets.add(int(round(angle / (360.0 / expected_count))) % expected_count)
     if len(buckets) != expected_count:
         raise AssertionError(f"白抜き線が本数分の放射方向に配置されていません: buckets={sorted(buckets)}")
+    black = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_black"]
+    if not black:
+        raise AssertionError("白抜き線の左右に黒線が生成されていません")
 
 
 def _assert_bundle_jagged_keeps_start(effect_line_gen, m_to_mm) -> None:
@@ -589,8 +604,9 @@ def main() -> None:
         white_params = _base_params()
         white_params.effect_type = "white_outline"
         white_params.white_outline_count = 6
-        white_params.white_outline_width_mm = 0.3
-        white_params.white_outline_white_ratio_percent = 100.0
+        white_params.white_outline_width_mm = 10.0
+        white_params.white_outline_spacing_mm = 0.4
+        white_params.white_outline_white_ratio_percent = 70.0
         white_params.white_outline_white_brush_mm = 0.3
         white_params.white_outline_black_brush_mm = 0.3
         white_params.white_outline_angle_deg = 0.0

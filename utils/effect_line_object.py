@@ -399,6 +399,8 @@ def _stroke_z_offset(stroke) -> float:
         return -1.2e-4
     if role == "underlay":
         return -8.0e-5
+    if role == "white_outline_white":
+        return -4.0e-5
     return 0.0
 
 
@@ -486,7 +488,7 @@ def _append_stroke_mesh(
     points = list(getattr(stroke, "points_xyz", None) or [])
     if not points:
         return
-    if _stroke_role(stroke) == "end_fill" and len(points) >= 3:
+    if _stroke_role(stroke) in {"end_fill", "white_outline_white"} and len(points) >= 3:
         base = len(verts)
         z_offset = _stroke_z_offset(stroke)
         for index, point in enumerate(points):
