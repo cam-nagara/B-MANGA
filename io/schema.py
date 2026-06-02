@@ -13,7 +13,14 @@ from __future__ import annotations
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
-from ..utils import balloon_shapes, color_space, coma_blur_curve, free_transform, percentage
+from ..utils import (
+    balloon_shapes,
+    color_space,
+    coma_blur_curve,
+    free_transform,
+    percentage,
+    view_settings,
+)
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
 WORK_SCHEMA_VERSION = 5
@@ -586,7 +593,28 @@ def _page_preview_scale_percentage_from_data(value: object) -> float:
     return max(1.0, min(100.0, percentage))
 
 
+def _page_preview_resolution_percentage_default() -> float:
+    try:
+        return view_settings.default_page_preview_resolution_percentage()
+    except Exception:  # noqa: BLE001
+        return view_settings.DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE
+
+
+def _page_preview_resolution_percentage_from_data(value: object, default: float | None = None) -> float:
+    fallback = (
+        float(default)
+        if default is not None
+        else _page_preview_resolution_percentage_default()
+    )
+    try:
+        resolution = float(value if value is not None else fallback)
+    except (TypeError, ValueError):
+        resolution = fallback
+    return max(5.0, min(200.0, resolution))
+
+
 def _view_settings_to_dict(work) -> dict[str, Any]:
+    default_resolution = _page_preview_resolution_percentage_default()
     return {
         "overlayEnabled": bool(getattr(work, "view_overlay_enabled", True)),
         "overviewCols": int(getattr(work, "view_overview_cols", 4) or 4),
@@ -594,7 +622,14 @@ def _view_settings_to_dict(work) -> dict[str, Any]:
         "pagePreviewEnabled": bool(getattr(work, "view_page_preview_enabled", True)),
         "pagePreviewPageRadius": int(getattr(work, "view_page_preview_page_radius", 3)),
         "pagePreviewResolutionPercentage": round(
-            float(getattr(work, "view_page_preview_resolution_percentage", 25.0) or 25.0),
+            _page_preview_resolution_percentage_from_data(
+                getattr(
+                    work,
+                    "view_page_preview_resolution_percentage",
+                    default_resolution,
+                ),
+                default_resolution,
+            ),
             3,
         ),
         "pageBrowserPosition": str(getattr(work, "view_page_browser_position", "LEFT") or "LEFT"),
@@ -632,11 +667,13 @@ def _view_settings_from_dict(work, data: dict[str, Any]) -> None:
             radius = 3
         work.view_page_preview_page_radius = max(0, radius)
     if hasattr(work, "view_page_preview_resolution_percentage"):
-        try:
-            resolution = float(settings.get("pagePreviewResolutionPercentage", 25.0) or 25.0)
-        except (TypeError, ValueError):
-            resolution = 25.0
-        work.view_page_preview_resolution_percentage = max(5.0, min(200.0, resolution))
+        work.view_page_preview_resolution_percentage = (
+            _page_preview_resolution_percentage_from_data(
+                settings.get("pagePreviewResolutionPercentage")
+                if "pagePreviewResolutionPercentage" in settings
+                else None
+            )
+        )
     if hasattr(work, "view_page_browser_position"):
         position = str(settings.get("pageBrowserPosition", "LEFT") or "LEFT").upper()
         work.view_page_browser_position = (

@@ -145,6 +145,47 @@ def _resolve_page_preview_at_event(context, event) -> int | None:
     return None
 
 
+_PENDING_OPEN_PAGE: int | None = None
+
+
+def schedule_open_page_file(page_index: int) -> bool:
+    """Open a page file after the current viewport event has finished."""
+    global _PENDING_OPEN_PAGE
+    try:
+        index = int(page_index)
+    except Exception:
+        return False
+    if index < 0:
+        return False
+    _PENDING_OPEN_PAGE = index
+    _suspend_keymap_visibility_updates()
+    if not bpy.app.timers.is_registered(_run_deferred_open_page_file):
+        bpy.app.timers.register(_run_deferred_open_page_file, first_interval=0.12)
+    return True
+
+
+def _run_deferred_open_page_file():
+    global _PENDING_OPEN_PAGE
+    page_index = _PENDING_OPEN_PAGE
+    _PENDING_OPEN_PAGE = None
+    if page_index is None:
+        return None
+    try:
+        context = bpy.context
+        work = context.scene.bname_work
+        if not getattr(work, "loaded", False):
+            return None
+        if get_mode(context) != MODE_PAGE:
+            return None
+        if int(page_index) < 0 or int(page_index) >= len(work.pages):
+            return None
+        work.active_page_index = int(page_index)
+        bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=int(page_index))
+    except Exception:
+        _logger.exception("deferred page file open failed")
+    return None
+
+
 def schedule_enter_coma_mode(
     page_index: int,
     coma_index: int,
@@ -202,8 +243,14 @@ def _run_deferred_enter_coma_mode() -> None:
 
 
 def _clear_deferred_enter_coma_mode() -> None:
-    global _PENDING_ENTER_COMA
+    global _PENDING_ENTER_COMA, _PENDING_OPEN_PAGE
     _PENDING_ENTER_COMA = None
+    _PENDING_OPEN_PAGE = None
+    try:
+        if bpy.app.timers.is_registered(_run_deferred_open_page_file):
+            bpy.app.timers.unregister(_run_deferred_open_page_file)
+    except Exception:
+        pass
     if bpy.app.timers.is_registered(_run_deferred_enter_coma_mode):
         try:
             bpy.app.timers.unregister(_run_deferred_enter_coma_mode)
@@ -619,9 +666,9 @@ class BNAME_OT_enter_coma_mode_from_viewport(Operator):
             ):
                 hit_page_id = str(getattr(work.pages[page_hit], "id", "") or "")
                 if hit_page_id and hit_page_id != current_page_id:
-                    work.active_page_index = int(page_hit)
-                    result = bpy.ops.bname.open_page_file(index=int(page_hit))
-                    return result if result == {"FINISHED"} else {"CANCELLED"}
+                    if schedule_open_page_file(int(page_hit)):
+                        return {"FINISHED"}
+                    return {"CANCELLED"}
         except Exception:  # noqa: BLE001
             _logger.exception("enter_coma_mode_from_viewport: page switch failed")
             return {"CANCELLED"}

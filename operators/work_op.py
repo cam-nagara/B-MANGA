@@ -14,7 +14,7 @@ from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
 from ..utils import gpencil as gp_utils
-from ..utils import log, page_grid, page_range, paths
+from ..utils import log, page_grid, page_range, paths, view_settings
 
 _logger = log.get_logger(__name__)
 
@@ -183,6 +183,8 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
             work.work_info.work_name = work_dir.stem
+            view_settings.apply_preferences_to_work_defaults(work, context)
+            view_settings.apply_work_to_scene(context.scene, work)
             work_io.save_work_json(work_dir, work)
             page_io.save_pages_json(work_dir, work)
 

@@ -21,6 +21,7 @@ PREVIEW_PAGE_ID_PROP = "bname_page_preview_page_id"
 PREVIEW_BASE_MAX_PX = 1536
 DEFAULT_PREVIEW_PAGE_RADIUS = 3
 DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
+PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_Z_M = 0.25
 PREVIEW_FILENAME = "page_preview.png"
 
@@ -174,6 +175,22 @@ def _image_size(work, scene=None) -> tuple[int, int]:
     return width, height
 
 
+def _resize_preview_image(image, width: int, height: int):
+    if tuple(image.size) == (int(width), int(height)):
+        return image
+    from PIL import Image
+
+    resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
+    return image.resize((int(width), int(height)), resampling)
+
+
+def _draw_preview_frame(draw, width: int, height: int, *, current: bool) -> None:
+    outline = (72, 190, 222, 255)
+    if current:
+        outline = (64, 140, 255, 255)
+    draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
+
+
 def _page_number(work, page_index: int) -> str:
     info = getattr(work, "work_info", None)
     start = int(getattr(info, "page_number_start", 1) or 1) if info is not None else 1
@@ -235,14 +252,15 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
 def _render_preview_image(work, page, page_index: int, *, current: bool, scene=None):
     from PIL import Image, ImageDraw
 
-    width, height = _image_size(work, scene)
+    target_width, target_height = _image_size(work, scene)
+    scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
+    width = max(1, target_width * scale)
+    height = max(1, target_height * scale)
     exported = _render_preview_image_from_export(work, page, width, height)
     if exported is not None:
+        exported = _resize_preview_image(exported, target_width, target_height)
         draw = ImageDraw.Draw(exported)
-        outline = (72, 190, 222, 255)
-        if current:
-            outline = (64, 140, 255, 255)
-        draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
+        _draw_preview_frame(draw, target_width, target_height, current=current)
         return exported
 
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
@@ -279,10 +297,9 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         closed = pts_px + [pts_px[0]]
         draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
-    outline = (72, 190, 222, 255)
-    if current:
-        outline = (64, 140, 255, 255)
-    draw.rectangle((0, 0, width - 1, height - 1), outline=outline, width=3 if current else 2)
+    img = _resize_preview_image(img, target_width, target_height)
+    draw = ImageDraw.Draw(img)
+    _draw_preview_frame(draw, target_width, target_height, current=current)
     draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
     return img
 
@@ -312,9 +329,7 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
         if image is None:
             return None
         image = image.convert("RGBA")
-        if image.size != (width, height):
-            resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.BICUBIC)
-            image = image.resize((width, height), resampling)
+        image = _resize_preview_image(image, width, height)
         return image
     except Exception:  # noqa: BLE001
         _logger.exception("page preview export render failed: %s", getattr(page, "id", ""))

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
+
 
 def _clamp_float(value, default: float, minimum: float, maximum: float) -> float:
     try:
@@ -22,6 +24,35 @@ def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
 def _page_browser_position(value) -> str:
     text = str(value or "LEFT").upper()
     return text if text in {"LEFT", "RIGHT", "TOP", "BOTTOM"} else "LEFT"
+
+
+def default_page_preview_resolution_percentage(context=None) -> float:
+    try:
+        from ..preferences import get_preferences
+
+        prefs = get_preferences(context)
+        value = getattr(
+            prefs,
+            "page_preview_resolution_percentage",
+            DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE,
+        )
+    except Exception:  # noqa: BLE001
+        value = DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE
+    return _clamp_float(
+        value,
+        DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE,
+        5.0,
+        200.0,
+    )
+
+
+def apply_preferences_to_work_defaults(work, context=None) -> None:
+    if work is None:
+        return
+    if hasattr(work, "view_page_preview_resolution_percentage"):
+        work.view_page_preview_resolution_percentage = default_page_preview_resolution_percentage(
+            context
+        )
 
 
 def copy_scene_to_work(scene, work) -> None:
@@ -47,9 +78,10 @@ def copy_scene_to_work(scene, work) -> None:
             getattr(scene, "bname_page_preview_page_radius", 3), 3, 0, 200
         )
     if hasattr(work, "view_page_preview_resolution_percentage"):
+        default_resolution = default_page_preview_resolution_percentage()
         work.view_page_preview_resolution_percentage = _clamp_float(
-            getattr(scene, "bname_page_preview_resolution_percentage", 25.0),
-            25.0,
+            getattr(scene, "bname_page_preview_resolution_percentage", default_resolution),
+            default_resolution,
             5.0,
             200.0,
         )
@@ -69,6 +101,7 @@ def apply_work_to_scene(scene, work) -> None:
     """作品データに保存されたビュー設定を現在の画面へ反映する."""
     if scene is None or work is None:
         return
+    default_resolution = default_page_preview_resolution_percentage()
     assignments = (
         ("bname_overlay_enabled", "view_overlay_enabled", True),
         ("bname_overview_cols", "view_overview_cols", 4),
@@ -78,7 +111,7 @@ def apply_work_to_scene(scene, work) -> None:
         (
             "bname_page_preview_resolution_percentage",
             "view_page_preview_resolution_percentage",
-            25.0,
+            default_resolution,
         ),
         ("bname_page_browser_position", "view_page_browser_position", "LEFT"),
         ("bname_page_browser_size", "view_page_browser_size", 0.28),

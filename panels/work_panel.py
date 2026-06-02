@@ -131,11 +131,6 @@ class BNAME_PT_coma_return(Panel):
         )
         op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
         op.target = "COMA"
-        layout.separator()
-        layout.prop(context.scene, "bname_page_browser_position", text="ページ一覧位置")
-        layout.prop(context.scene, "bname_page_browser_size", text="サイズ")
-        layout.prop(context.scene, "bname_page_browser_fit", text="フィット")
-        layout.operator("bname.page_browser_workspace", text="ページ一覧ビューを開く", icon="WINDOW")
 
 
 _CLASSES = (

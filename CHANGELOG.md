@@ -3,6 +3,34 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-03 — ページ一覧プレビュー操作と解像度設定を修正 / v0.6.254
+
+### 症状
+- 作品ファイルやページファイルで、ページ一覧プレビュー上のダブルクリックから別ファイルを開くと、イベント処理中のファイル切替で Blender が落ちる可能性があった。
+- ページ一覧プレビューのコマ枠が、低いプレビュー解像度では 1px 丸めの影響で実際より太く見えやすかった。
+- ページ一覧プレビュー画像の解像度をプリファレンスで指定できなかった。
+- コマファイルの「ファイル遷移」パネルに、作品ファイル/ページファイルの「ビュー」パネルと重複するページ一覧ビュー設定が混在していた。
+
+### 原因
+- コマファイルを開く経路は遅延実行化されていたが、ページ一覧プレビューからページファイルを開く経路はダブルクリックイベント中に即時実行していた。
+- ページプレビュー画像を最終サイズで直接描いていたため、細いコマ枠が縮小前に整数ピクセルへ丸められていた。
+- 解像度設定は作品内の表示設定だけで、アドオン全体の既定値として持っていなかった。
+- コマファイル側のページ一覧ビュー設定UIが、以前の独自構成のまま残っていた。
+
+### 修正
+- ページ一覧プレビューからページファイルを開く処理も、イベント終了後の遅延実行へ変更。
+- ページプレビュー画像を内部的に高めの解像度で描画してから縮小し、コマ枠の太りを抑制。
+- プリファレンスに「ページ一覧プレビュー > 画像解像度%」を追加し、新規作品と設定未保存の作品の既定値に反映。
+- コマファイルでも「ビュー」パネルを表示し、ページ一覧ビュー設定を作品ファイル/ページファイルと同じUIへ統一。「ファイル遷移」パネルから重複設定を削除。
+
+### 検証 (Blender 5.1 実機)
+- `python -m py_compile preferences.py utils\view_settings.py utils\page_preview_object.py operators\mode_op.py operators\work_op.py panels\view_panel.py panels\work_panel.py io\schema.py test\blender_page_file_panel_role_check.py`
+- `blender.exe --background --factory-startup --python test/blender_page_file_panel_role_check.py`
+- `blender.exe --background --factory-startup --python test/blender_page_file_stage_check.py`
+- `blender.exe --factory-startup --python test/blender_object_tool_coma_open_deferred_ui_check.py`
+- `blender.exe --factory-startup --python test/blender_page_file_preview_visual_check.py`
+- 生成スクリーンショット `.codex/visual/page_file_preview_visual_check/page_preview_screen.png` をAI目視し、周辺ページプレビューと現在ページの強調枠、コマ枠の太りがないことを確認。
+
 ## 2026-06-03 — ウニフラと白抜き線をフキダシ線種へ移動 / v0.6.253
 
 ### 症状

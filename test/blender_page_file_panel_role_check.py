@@ -205,6 +205,34 @@ def main() -> None:
         active_before = int(getattr(context.scene.bname_work, "active_page_index", -1))
         context.scene.bname_active_page_number = 2
         assert int(getattr(context.scene.bname_work, "active_page_index", -1)) == active_before
+
+        context.scene.bname_work.active_page_index = 0
+        context.scene.bname_work.pages[0].active_coma_index = 0
+        result = bpy.ops.bname.enter_coma_mode()
+        assert result == {"FINISHED"}, result
+        context = bpy.context
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        assert role == page_file_scene.ROLE_COMA
+        assert work_panel.BNAME_PT_coma_return.poll(context)
+        transition_records = _draw_records(work_panel.BNAME_PT_coma_return, context)
+        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
+        _assert_absent(
+            transition_records,
+            "ページ一覧位置",
+            "フィット",
+            "ページ一覧ビューを開く",
+        )
+        assert view_panel.BNAME_PT_view.poll(context)
+        view_records = _draw_records(view_panel.BNAME_PT_view, context)
+        _assert_present(view_records, "ページ一覧ビュー", "位置", "サイズ", "フィット", "専用ワークスペース")
+        _assert_absent(
+            view_records,
+            "ページ一覧表示",
+            "前後ページ数",
+            "画像解像度%",
+            "全ページを一覧",
+            "選択ページ",
+        )
         print("BNAME_PAGE_FILE_PANEL_ROLE_OK")
     finally:
         if mod is not None:

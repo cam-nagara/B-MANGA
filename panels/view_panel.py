@@ -70,6 +70,20 @@ def _page_preview_enabled_update(scene, context) -> None:
         pass
 
 
+def _draw_page_browser_settings(layout, scene, context) -> None:
+    layout.separator()
+    box = layout.box()
+    box.label(text="ページ一覧ビュー", icon="WINDOW")
+    box.prop(scene, "bname_page_browser_position", text="位置")
+    box.prop(scene, "bname_page_browser_size", text="サイズ")
+    box.prop(scene, "bname_page_browser_fit", text="フィット")
+    row = box.row(align=True)
+    row.operator("bname.page_browser_workspace", text="専用ワークスペース", icon="WINDOW")
+    row.operator("bname.page_browser_mark_area", text="", icon="IMGDISPLAY")
+    if page_browser.is_page_browser_area(context):
+        box.label(text="この3Dビューはページ一覧です", icon="CHECKMARK")
+
+
 class BNAME_PT_view(Panel):
     bl_idname = "BNAME_PT_view"
     bl_label = "ビュー"
@@ -81,7 +95,7 @@ class BNAME_PT_view(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(w and w.loaded and get_mode(context) != MODE_COMA)
+        return bool(w and w.loaded)
 
     def draw(self, context):
         layout = self.layout
@@ -99,40 +113,30 @@ class BNAME_PT_view(Panel):
         )
 
         in_page_file = page_file_scene.is_page_edit_scene(scene)
-        col = layout.column(align=True)
-        col.enabled = not is_coma_mode
-        row = col.row(align=True)
-        row.operator("bname.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
-        if in_page_file:
+        if not is_coma_mode:
+            col = layout.column(align=True)
             row = col.row(align=True)
-            row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
-            row = col.row(align=True)
-            row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
-            row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
-            row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_cols", text="列数")
-            row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
-        else:
-            row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_cols", text="列数")
-            row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
-            row = col.row(align=True)
-            row.prop(scene, "bname_active_page_number", text="選択ページ")
+            row.operator("bname.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
+            if in_page_file:
+                row = col.row(align=True)
+                row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
+                row = col.row(align=True)
+                row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
+                row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
+                row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_cols", text="列数")
+                row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+            else:
+                row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_cols", text="列数")
+                row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+                row = col.row(align=True)
+                row.prop(scene, "bname_active_page_number", text="選択ページ")
 
         if mode != MODE_PAGE:
-            layout.separator()
-            box = layout.box()
-            box.label(text="ページ一覧ビュー", icon="WINDOW")
-            box.prop(scene, "bname_page_browser_position", text="位置")
-            box.prop(scene, "bname_page_browser_size", text="サイズ")
-            box.prop(scene, "bname_page_browser_fit", text="フィット")
-            row = box.row(align=True)
-            row.operator("bname.page_browser_workspace", text="専用ワークスペース", icon="WINDOW")
-            row.operator("bname.page_browser_mark_area", text="", icon="IMGDISPLAY")
-            if page_browser.is_page_browser_area(context):
-                box.label(text="この3Dビューはページ一覧です", icon="CHECKMARK")
+            _draw_page_browser_settings(layout, scene, context)
 
 
 _CLASSES = (

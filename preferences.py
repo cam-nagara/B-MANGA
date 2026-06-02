@@ -16,7 +16,7 @@ Blender 4.3+ / 5.x の Extensions Platform 配下では ``bl_idname`` に
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 
 from .utils import log
 
@@ -75,6 +75,25 @@ def _on_keymap_settings_changed(self, _context) -> None:
         from .keymap import keymap as _kmap
 
         _kmap.rebuild_keymap_from_prefs()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
+    try:
+        from .utils import page_preview_object, view_settings
+
+        scene = getattr(context or bpy.context, "scene", None)
+        if scene is None:
+            return
+        work = getattr(scene, "bname_work", None)
+        value = view_settings.default_page_preview_resolution_percentage(context)
+        if work is not None and hasattr(work, "view_page_preview_resolution_percentage"):
+            work.view_page_preview_resolution_percentage = value
+        if hasattr(scene, "bname_page_preview_resolution_percentage"):
+            scene.bname_page_preview_resolution_percentage = value
+        if work is not None and getattr(work, "loaded", False):
+            page_preview_object.sync_page_previews(context, work)
     except Exception:  # noqa: BLE001
         pass
 
@@ -142,6 +161,16 @@ class BNamePreferences(bpy.types.AddonPreferences):
         ),
         default=True,
         update=_on_gpencil_follow_changed,
+    )
+
+    page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
+        name="ページプレビュー画像解像度%",
+        description="ページ一覧プレビュー画像の細かさを指定します",
+        default=25.0,
+        min=5.0,
+        soft_max=100.0,
+        max=200.0,
+        update=_on_page_preview_resolution_changed,
     )
 
     # ---------- ショートカットキーのカスタマイズ ----------
@@ -235,6 +264,10 @@ class BNamePreferences(bpy.types.AddonPreferences):
         sub.enabled = self.keymap_enabled
         sub.prop(self, "right_click_eyedropper")
         sub.prop(self, "spacebar_preset")
+
+        box = layout.box()
+        box.label(text="ページ一覧プレビュー")
+        box.prop(self, "page_preview_resolution_percentage", text="画像解像度%")
 
         # ショートカットキー カスタマイズ
         kbox = layout.box()
