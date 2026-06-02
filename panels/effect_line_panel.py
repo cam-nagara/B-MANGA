@@ -106,7 +106,16 @@ def _draw_white_outline_settings(layout, params) -> None:
     row.prop(params, "white_outline_black_length_scale_far_percent")
 
 
-def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> None:
+def draw_effect_params(
+    layout,
+    params,
+    *,
+    with_generate_button: bool = True,
+    fixed_effect_type: str | None = None,
+    show_type: bool = True,
+    show_rotation: bool = True,
+    show_opacity: bool = True,
+) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
     ``with_generate_button=True`` で末尾に「効果線を追加」 ボタンを追加。
@@ -116,13 +125,19 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         layout.label(text="未初期化", icon="ERROR")
         return
 
-    box = layout.box()
-    box.label(text="種類")
-    box.prop(params, "effect_type")
-    if params.effect_type != "speed":
+    effect_type = str(fixed_effect_type or getattr(params, "effect_type", "focus") or "focus")
+    if show_type:
+        box = layout.box()
+        box.label(text="種類")
+        box.prop(params, "effect_type")
+        if effect_type != "speed" and show_rotation:
+            box.prop(params, "rotation_deg")
+    elif effect_type != "speed" and show_rotation:
+        box = layout.box()
+        box.label(text="向き")
         box.prop(params, "rotation_deg")
 
-    if params.effect_type == "white_outline":
+    if effect_type == "white_outline":
         _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(layout, params, "end", "終点形状")
         _draw_white_outline_settings(layout, params)
@@ -130,7 +145,7 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
             layout.operator("bname.effect_line_generate", icon="STROKE")
         return
 
-    if params.effect_type != "speed":
+    if effect_type != "speed":
         _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(layout, params, "end", "終点形状")
 
@@ -153,7 +168,7 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
     sub.enabled = params.end_length_jitter_enabled
     sub.prop(params, "end_length_jitter_amount", text="")
 
-    if params.effect_type != "beta_flash":
+    if effect_type != "beta_flash":
         box.prop(params, "spacing_mode")
         if params.spacing_mode == "angle":
             box.prop(params, "spacing_angle_deg")
@@ -203,13 +218,14 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
 
     box = layout.box()
     box.label(text="色")
-    box.prop(params, "opacity", slider=True)
+    if show_opacity:
+        box.prop(params, "opacity", slider=True)
     box.prop(params, "line_color")
-    if params.effect_type not in {"speed", "white_outline"}:
+    if effect_type not in {"speed", "white_outline"}:
         box.prop(params, "fill_color")
         box.prop(params, "fill_opacity")
         box.prop(params, "fill_base_shape")
-    if params.effect_type in {"focus", "uni_flash"}:
+    if effect_type in {"focus", "uni_flash"}:
         row = box.row(align=True)
         row.prop(params, "white_underlay_enabled", toggle=True)
         sub = row.row(align=True)
@@ -217,7 +233,7 @@ def draw_effect_params(layout, params, *, with_generate_button: bool = True) -> 
         sub.prop(params, "white_underlay_width_percent", text="幅")
         sub.prop(params, "white_underlay_color", text="")
 
-    if params.effect_type == "speed":
+    if effect_type == "speed":
         box = layout.box()
         box.label(text="流線")
         box.prop(params, "speed_angle_deg")

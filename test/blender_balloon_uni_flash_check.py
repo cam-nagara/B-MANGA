@@ -80,6 +80,54 @@ def _configure_shape_params(entry) -> None:
     sp.shape_seed = 0
 
 
+class _RecordingLayout:
+    def __init__(self, props: list[str] | None = None):
+        self.props = [] if props is None else props
+        self.enabled = True
+
+    def box(self):
+        return _RecordingLayout(self.props)
+
+    def row(self, align: bool = False):
+        return _RecordingLayout(self.props)
+
+    def column(self, align: bool = False):
+        return _RecordingLayout(self.props)
+
+    def label(self, **_kwargs):
+        return None
+
+    def prop(self, _owner, attr: str, **_kwargs):
+        self.props.append(str(attr))
+        return None
+
+    def prop_search(self, _owner, attr: str, *_args, **_kwargs):
+        self.props.append(str(attr))
+        return None
+
+    def operator(self, *_args, **_kwargs):
+        return _RecordingOperator()
+
+    def template_curve_mapping(self, *_args, **_kwargs):
+        return None
+
+
+class _RecordingOperator:
+    pass
+
+
+def _effect_setting_props(effect_line_panel, params, effect_type: str) -> list[str]:
+    layout = _RecordingLayout()
+    effect_line_panel.draw_effect_params(
+        layout,
+        params,
+        with_generate_button=False,
+        fixed_effect_type=effect_type,
+        show_type=False,
+    )
+    return layout.props
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_uni_flash_"))
     mod = None
@@ -90,9 +138,13 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev_balloon_uni_flash.core import balloon as balloon_core
+        from bname_dev_balloon_uni_flash.core import effect_line as effect_line_core
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
+        from bname_dev_balloon_uni_flash.operators import layer_detail_op
         from bname_dev_balloon_uni_flash.operators import balloon_op
+        from bname_dev_balloon_uni_flash.panels import effect_line_panel
+        from bname_dev_balloon_uni_flash.panels import layer_stack_detail_ui
         from bname_dev_balloon_uni_flash.utils import (
             balloon_curve_object,
             balloon_flash_effect_line_mesh,
@@ -117,6 +169,15 @@ def main() -> None:
         assert balloon_shapes.normalize_shape("white_outline") == "ellipse"
         assert balloon_shapes.normalize_line_style("uni_flash") == "uni_flash"
         assert balloon_shapes.normalize_line_style("white_outline") == "white_outline"
+        expected_uni_flash_fields = tuple(
+            field
+            for field in effect_line_core.EFFECT_PARAM_FIELDS
+            if field not in {"speed_angle_deg", "speed_line_count"}
+            and not field.startswith("white_outline_")
+        )
+        assert tuple(balloon_core.UNI_FLASH_PARAM_FIELDS) == expected_uni_flash_fields, (
+            "ウニフラ線種の設定項目が効果線の集中線と一致していません"
+        )
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):
             entry = balloon_op._create_balloon_entry(
@@ -137,6 +198,53 @@ def main() -> None:
             assert entry.line_style == line_style
             assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
             assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
+            if line_style == "uni_flash":
+                for field in expected_uni_flash_fields:
+                    assert hasattr(entry, field), f"ウニフラ線種に集中線の設定項目 {field} がありません"
+                assert entry.effect_type == "uni_flash"
+                assert entry.start_shape == "ellipse"
+                assert entry.end_shape == "ellipse"
+                assert abs(float(entry.brush_size_mm) - 0.3) < 1.0e-6
+                assert int(entry.max_line_count) == 1000
+                assert entry.spacing_mode == "distance"
+                assert abs(float(entry.spacing_distance_mm) - 1.0) < 1.0e-6
+                assert abs(float(entry.in_percent) - 0.0) < 1.0e-6
+                assert abs(float(entry.out_percent) - 0.0) < 1.0e-6
+                assert abs(float(entry.in_start_percent) - 50.0) < 1.0e-6
+                assert abs(float(entry.out_start_percent) - 50.0) < 1.0e-6
+                assert bool(entry.white_underlay_enabled)
+                assert abs(float(entry.white_underlay_width_percent) - 100.0) < 1.0e-6
+                focus_params = context.scene.bname_effect_line_params
+                focus_params.start_shape = entry.start_shape
+                focus_params.end_shape = entry.end_shape
+                focus_params.spacing_mode = entry.spacing_mode
+                focus_params.bundle_enabled = entry.bundle_enabled
+                focus_props = _effect_setting_props(
+                    effect_line_panel,
+                    focus_params,
+                    "focus",
+                )
+                uni_props = _effect_setting_props(effect_line_panel, entry, "uni_flash")
+                assert uni_props == focus_props, "ウニフラ線種の表示項目が集中線と一致していません"
+                assert "flash_line_count" not in uni_props
+                assert "flash_line_spacing_mm" not in uni_props
+                assert "flash_white_line_width_percent" not in uni_props
+                popup_layout = _RecordingLayout()
+                layer_detail_op._draw_balloon_detail(popup_layout, entry, page)
+                stack_layout = _RecordingLayout()
+                layer_stack_detail_ui._draw_balloon_selected_settings(stack_layout, context, entry)
+                for detail_props in (popup_layout.props, stack_layout.props):
+                    for old_attr in (
+                        "flash_line_count",
+                        "flash_line_spacing_mm",
+                        "flash_white_line_width_percent",
+                        "fill_material_name",
+                        "fill_blur_amount",
+                        "fill_gradient_enabled",
+                        "outer_white_margin_enabled",
+                        "inner_white_margin_enabled",
+                    ):
+                        assert old_attr not in detail_props, f"ウニフラ詳細に余分な項目 {old_attr} が出ています"
             assert int(entry.flash_line_count) == 120
             assert abs(float(entry.flash_line_spacing_mm) - 1.0) < 1.0e-6
             assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"
@@ -164,6 +272,12 @@ def main() -> None:
             assert saved["flashWhiteOutlineCount"] == 5
             assert saved["flashWhiteOutlineWhiteLineCount"] == 24
             assert saved["flashWhiteOutlineBlackLineCount"] == 3
+            if line_style == "uni_flash":
+                assert tuple(saved["uniFlashParams"].keys()) == expected_uni_flash_fields
+                assert saved["uniFlashParams"]["start_shape"] == "ellipse"
+                assert saved["uniFlashParams"]["end_shape"] == "ellipse"
+                assert saved["uniFlashParams"]["in_percent"] == 0.0
+                assert saved["uniFlashParams"]["out_percent"] == 0.0
             restored = page.balloons.add()
             schema.balloon_entry_from_dict(restored, saved)
             assert restored.shape == "ellipse"
@@ -179,6 +293,13 @@ def main() -> None:
             assert int(restored.flash_white_outline_count) == 5
             assert int(restored.flash_white_outline_white_line_count) == 24
             assert int(restored.flash_white_outline_black_line_count) == 3
+            if line_style == "uni_flash":
+                assert restored.start_shape == "ellipse"
+                assert restored.end_shape == "ellipse"
+                assert abs(float(restored.brush_size_mm) - 0.3) < 1.0e-6
+                assert int(restored.max_line_count) == 1000
+                assert abs(float(restored.in_percent) - 0.0) < 1.0e-6
+                assert abs(float(restored.out_percent) - 0.0) < 1.0e-6
             page.balloons.remove(len(page.balloons) - 1)
 
             legacy_saved = dict(saved)
@@ -190,14 +311,47 @@ def main() -> None:
             assert legacy_restored.line_style == line_style
             page.balloons.remove(len(page.balloons) - 1)
 
-            entry.flash_white_line_width_percent = 175.0
+            if line_style == "uni_flash":
+                entry.start_shape = "rect"
+                entry.start_rounded_corner_enabled = True
+                entry.spacing_mode = "angle"
+                entry.spacing_angle_deg = 12.5
+                entry.bundle_enabled = True
+                entry.bundle_line_count = 4
+                entry.in_percent = 15.0
+                entry.out_percent = 25.0
+                entry.white_underlay_width_percent = 175.0
+            else:
+                entry.flash_white_line_width_percent = 175.0
             custom_saved = schema.balloon_entry_to_dict(entry)
-            assert custom_saved["flashWhiteLineWidthPercent"] == 175.0
+            if line_style == "uni_flash":
+                assert custom_saved["uniFlashParams"]["start_shape"] == "rect"
+                assert custom_saved["uniFlashParams"]["spacing_mode"] == "angle"
+                assert custom_saved["uniFlashParams"]["bundle_enabled"] is True
+                assert custom_saved["uniFlashParams"]["white_underlay_width_percent"] == 175.0
+            else:
+                assert custom_saved["flashWhiteLineWidthPercent"] == 175.0
             custom_restored = page.balloons.add()
             schema.balloon_entry_from_dict(custom_restored, custom_saved)
-            assert abs(float(custom_restored.flash_white_line_width_percent) - 175.0) < 1.0e-6
+            if line_style == "uni_flash":
+                assert custom_restored.start_shape == "rect"
+                assert custom_restored.spacing_mode == "angle"
+                assert custom_restored.bundle_enabled is True
+                assert abs(float(custom_restored.white_underlay_width_percent) - 175.0) < 1.0e-6
+            else:
+                assert abs(float(custom_restored.flash_white_line_width_percent) - 175.0) < 1.0e-6
             page.balloons.remove(len(page.balloons) - 1)
-            entry.flash_white_line_width_percent = 100.0
+            if line_style == "uni_flash":
+                entry.start_shape = "ellipse"
+                entry.start_rounded_corner_enabled = False
+                entry.spacing_mode = "distance"
+                entry.spacing_distance_mm = 1.0
+                entry.bundle_enabled = False
+                entry.in_percent = 0.0
+                entry.out_percent = 0.0
+                entry.white_underlay_width_percent = 100.0
+            else:
+                entry.flash_white_line_width_percent = 100.0
 
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
@@ -227,10 +381,16 @@ def main() -> None:
             black_z = max((z for _x, _y, z in verts), default=0.0)
             white_z = min((z for _x, _y, z in verts if z > 0.0), default=0.0)
             assert 0.0 < white_z < black_z, "白線が黒線と下地の間に配置されていません"
-            entry.flash_white_line_enabled = False
+            if line_style == "uni_flash":
+                entry.white_underlay_enabled = False
+            else:
+                entry.flash_white_line_enabled = False
             balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is None
-            entry.flash_white_line_enabled = True
+            if line_style == "uni_flash":
+                entry.white_underlay_enabled = True
+            else:
+                entry.flash_white_line_enabled = True
             balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert bpy.data.objects.get(balloon_flash_effect_line_mesh._flash_effect_line_mesh_object_name(entry.id)) is not None
             layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)

@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-03 — ウニフラ線種の設定項目を集中線へ統一 / v0.6.256
+
+### 症状
+
+- フキダシの線種「ウニフラ」が、効果線の「集中線」と同じ設定項目になっておらず、線の本数・間隔・入り抜き周辺の簡易設定だけで生成されていた。
+- フキダシ詳細、レイヤー詳細、右クリックの詳細設定で表示される項目が、効果線の集中線設定と揃っていなかった。
+
+### 原因
+
+- フキダシ側のウニフラ生成が、集中線生成を固定値で呼び出しており、集中線の設定項目・保存データ・表示ブロックと別管理になっていた。
+
+### 修正
+
+- ウニフラ線種に、集中線と同じ始点形状・終点形状・線幅・乱れ・間隔方式・密度補正・最大本数・まとまり・入り抜き・色・下地・白抜き線設定を追加した。
+- フキダシ詳細、レイヤー詳細、右クリックの詳細設定で、ウニフラ選択時に集中線と同じ設定ブロックを表示するようにした。
+- ウニフラの生成・保存読込を集中線設定へ接続し、旧データは既存の本数・間隔・白線設定から新設定へ移行するようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+
+- `python -m py_compile core/balloon.py panels/effect_line_panel.py panels/balloon_panel.py panels/layer_stack_detail_ui.py operators/layer_detail_op.py utils/balloon_flash_effect_line_mesh.py utils/balloon_curve_object.py io/schema.py test/blender_balloon_uni_flash_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+
 ## 2026-06-03 — ページ一覧からページを開く操作を追加 / v0.6.255
 
 ### 症状

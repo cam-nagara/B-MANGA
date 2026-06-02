@@ -9,6 +9,7 @@ from typing import Optional
 
 import bpy
 
+from ..core import balloon as balloon_core
 from ..operators import effect_line_gen
 from . import balloon_line_mesh
 from . import balloon_shapes
@@ -63,52 +64,16 @@ def _default_easing_curve() -> str:
     return "0.0000,0.0000;1.0000,1.0000"
 
 
-def _focus_params(entry, *, brush_mm: float, endpoint_pct: float) -> SimpleNamespace:
-    spacing = max(0.01, float(getattr(entry, "flash_line_spacing_mm", 1.0) or 1.0))
-    max_count = max(1, int(getattr(entry, "flash_line_count", 120) or 120))
-    return SimpleNamespace(
-        effect_type="focus",
-        rotation_deg=0.0,
-        start_shape="ellipse",
-        end_shape="ellipse",
-        start_rounded_corner_enabled=False,
-        end_rounded_corner_enabled=False,
-        brush_size_mm=max(0.01, brush_mm),
-        brush_jitter_enabled=False,
-        brush_jitter_amount=0.0,
-        length_jitter_enabled=False,
-        length_jitter_amount=0.0,
-        end_length_jitter_enabled=False,
-        end_length_jitter_amount=0.0,
-        spacing_mode="distance",
-        spacing_angle_deg=5.0,
-        spacing_distance_mm=spacing,
-        spacing_density_compensation=True,
-        spacing_jitter_enabled=False,
-        spacing_jitter_amount=0.0,
-        max_line_count=max_count,
-        bundle_enabled=False,
-        bundle_line_count=1,
-        bundle_line_count_jitter=0.0,
-        bundle_gap_mm=0.0,
-        bundle_gap_jitter_amount=0.0,
-        bundle_jagged_enabled=False,
-        bundle_jagged_height_percent=0.0,
-        inout_apply="brush_size",
-        in_percent=endpoint_pct,
-        out_percent=endpoint_pct,
-        in_start_percent=50.0,
-        out_start_percent=50.0,
-        in_easing_curve=_default_easing_curve(),
-        out_easing_curve=_default_easing_curve(),
-        inout_range_mode="percent",
-        in_range_percent=50.0,
-        out_range_percent=50.0,
-        in_range_mm=10.0,
-        out_range_mm=10.0,
-        white_underlay_enabled=False,
-        white_underlay_width_percent=0.0,
-    )
+def _focus_params(entry) -> SimpleNamespace:
+    data = balloon_core.uni_flash_params_to_dict(entry)
+    data["effect_type"] = "focus"
+    data["brush_size_mm"] = max(0.01, float(data.get("brush_size_mm", 0.3) or 0.3))
+    data["spacing_angle_deg"] = max(0.1, float(data.get("spacing_angle_deg", 5.0) or 5.0))
+    data["spacing_distance_mm"] = max(0.01, float(data.get("spacing_distance_mm", 1.0) or 1.0))
+    data["max_line_count"] = max(1, int(data.get("max_line_count", 1000) or 1000))
+    data.setdefault("in_easing_curve", _default_easing_curve())
+    data.setdefault("out_easing_curve", _default_easing_curve())
+    return SimpleNamespace(**data)
 
 
 def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
@@ -241,17 +206,17 @@ def _transform_stroke_to_local(entry, stroke) -> effect_line_gen.EffectLineStrok
 
 
 def _generated_strokes(entry):
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    black_brush_mm, black_endpoint_pct = _line_width_and_endpoint_pct(
-        line_width_mm,
-        float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
-        float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
-    )
-    if black_brush_mm <= 1.0e-9:
-        return []
     center, rx, ry = _base_rect(entry)
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "white_outline":
+        line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+        black_brush_mm, _black_endpoint_pct = _line_width_and_endpoint_pct(
+            line_width_mm,
+            float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
+            float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
+        )
+        if black_brush_mm <= 1.0e-9:
+            return []
         params = _white_outline_params(entry, black_brush_mm=black_brush_mm)
         strokes = effect_line_gen.generate_white_outline_strokes(
             params,
@@ -261,14 +226,27 @@ def _generated_strokes(entry):
             seed=int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0),
         )
     else:
-        params = _focus_params(entry, brush_mm=black_brush_mm, endpoint_pct=black_endpoint_pct)
-        black_strokes = effect_line_gen.generate_strokes(
+        params = _focus_params(entry)
+        if float(getattr(params, "brush_size_mm", 0.0) or 0.0) <= 1.0e-9:
+            return []
+        seed = int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0)
+        strokes = []
+        if bool(getattr(params, "fill_base_shape", False)):
+            fill = effect_line_gen.generate_end_shape_fill_stroke(
+                params,
+                center,
+                rx,
+                ry,
+                seed=seed,
+            )
+            if fill is not None:
+                strokes.append(fill)
+        strokes.extend(effect_line_gen.generate_strokes(
             params,
             center_xy_mm=center,
             radius_xy_mm=(rx, ry),
-            seed=int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0),
-        )
-        strokes = _white_underlay_strokes(entry, black_strokes, black_brush_mm) + black_strokes
+            seed=seed,
+        ))
     return [_transform_stroke_to_local(entry, stroke) for stroke in strokes]
 
 
@@ -302,7 +280,10 @@ def ensure_balloon_flash_effect_line_mesh(
         not balloon_id
         or not balloon_shapes.is_flash_line_style(line_style)
         or line_style == "none"
-        or float(getattr(entry, "line_width_mm", 0.0) or 0.0) <= 1.0e-9
+        or (
+            float(getattr(entry, "brush_size_mm" if line_style == "uni_flash" else "line_width_mm", 0.0) or 0.0)
+            <= 1.0e-9
+        )
     ):
         remove_balloon_flash_effect_line_mesh(balloon_id)
         return None

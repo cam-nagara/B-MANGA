@@ -287,8 +287,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     box.label(text="線・塗り")
     row = box.row(align=True)
     row.prop(entry, "line_style")
-    row.prop(entry, "line_width_mm")
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    if line_style != "uni_flash":
+        row.prop(entry, "line_width_mm")
     if line_style == "dashed":
         row = box.row(align=True)
         row.prop(entry, "dashed_segment_length_mm", text="線分")
@@ -298,7 +299,17 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row.prop(entry, "dotted_gap_mm", text="間隔")
     # 主線の谷/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
     _shape_norm_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if balloon_shapes.is_flash_line_style(line_style):
+    if line_style == "uni_flash":
+        from ..panels import effect_line_panel
+
+        effect_line_panel.draw_effect_params(
+            box,
+            entry,
+            with_generate_button=False,
+            fixed_effect_type="uni_flash",
+            show_type=False,
+        )
+    elif balloon_shapes.is_flash_line_style(line_style):
         row = box.row(align=True)
         row.prop(entry, "flash_line_count", text="線の本数")
         row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
@@ -315,17 +326,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row = box.row(align=True)
             row.prop(entry, "flash_white_outline_black_line_count")
             row.prop(entry, "flash_white_outline_black_spacing_mm")
-        else:
-            row = box.row(align=True)
-            row.label(text="白線 (黒線=100%)")
-            row.prop(entry, "flash_white_line_enabled", text="", toggle=True)
-            row = box.row(align=True)
-            row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
-            row.prop(entry, "flash_white_line_width_percent", text="線幅")
-            row.prop(entry, "flash_white_line_peak_width_pct", text="中間線幅")
-            row = box.row(align=True)
-            row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
-            row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
     elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_main_line):
         row = box.row(align=True)
         row.prop(entry, "line_valley_width_pct")
@@ -352,34 +352,36 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row = box.row(align=True)
             row.prop(entry, "thorn_multi_line_valley_width_pct")
             row.prop(entry, "thorn_multi_line_peak_width_pct")
-    row = box.row(align=True)
-    row.prop(entry, "line_color")
-    row.prop(entry, "fill_color")
-    box.prop(entry, "fill_opacity", slider=True)
-    box.prop_search(entry, "fill_material_name", bpy.data, "materials")
-    row = box.row(align=True)
-    row.prop(entry, "fill_blur_amount", slider=True)
-    row.prop(entry, "fill_blur_dither", toggle=True)
-    box.prop(entry, "fill_gradient_enabled")
-    sub = box.column(align=True)
-    sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
-    row = sub.row(align=True)
-    row.prop(entry, "fill_gradient_start_color")
-    row.prop(entry, "fill_gradient_end_color")
-    sub.prop(entry, "fill_gradient_angle_deg")
-    row = box.row(align=True)
-    row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
-    sub = row.row(align=True)
-    sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
-    sub.prop(entry, "outer_white_margin_width_mm", text="幅")
-    sub.prop(entry, "outer_white_margin_color", text="")
-    row = box.row(align=True)
-    row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
-    sub = row.row(align=True)
-    sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
-    sub.prop(entry, "inner_white_margin_width_mm", text="幅")
-    sub.prop(entry, "inner_white_margin_color", text="")
-    box.prop(entry, "opacity", slider=True)
+    if line_style != "uni_flash":
+        row = box.row(align=True)
+        row.prop(entry, "line_color")
+        row.prop(entry, "fill_color")
+        box.prop(entry, "fill_opacity", slider=True)
+    if line_style != "uni_flash":
+        box.prop_search(entry, "fill_material_name", bpy.data, "materials")
+        row = box.row(align=True)
+        row.prop(entry, "fill_blur_amount", slider=True)
+        row.prop(entry, "fill_blur_dither", toggle=True)
+        box.prop(entry, "fill_gradient_enabled")
+        sub = box.column(align=True)
+        sub.enabled = bool(getattr(entry, "fill_gradient_enabled", False))
+        row = sub.row(align=True)
+        row.prop(entry, "fill_gradient_start_color")
+        row.prop(entry, "fill_gradient_end_color")
+        sub.prop(entry, "fill_gradient_angle_deg")
+        row = box.row(align=True)
+        row.prop(entry, "outer_white_margin_enabled", text="外側フチ", toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = bool(getattr(entry, "outer_white_margin_enabled", False))
+        sub.prop(entry, "outer_white_margin_width_mm", text="幅")
+        sub.prop(entry, "outer_white_margin_color", text="")
+        row = box.row(align=True)
+        row.prop(entry, "inner_white_margin_enabled", text="内側フチ", toggle=True)
+        sub = row.row(align=True)
+        sub.enabled = bool(getattr(entry, "inner_white_margin_enabled", False))
+        sub.prop(entry, "inner_white_margin_width_mm", text="幅")
+        sub.prop(entry, "inner_white_margin_color", text="")
+        box.prop(entry, "opacity", slider=True)
 
     _draw_balloon_tails(layout, entry, page)
 

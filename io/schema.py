@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
+from ..core import balloon as balloon_core
 from ..utils import (
     balloon_shapes,
     color_space,
@@ -1120,6 +1121,11 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "flashWhiteOutlineWhiteLineCount": int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24),
         "flashWhiteOutlineBlackLineCount": int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3),
         "flashWhiteOutlineBlackSpacingMm": round(float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.25)), 3),
+        "uniFlashParams": (
+            balloon_core.uni_flash_params_to_dict(entry)
+            if str(getattr(entry, "line_style", "") or "") == "uni_flash"
+            else {}
+        ),
         "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
         "thornMultiLineValleyWidthPct": round(float(getattr(entry, "thorn_multi_line_valley_width_pct", 100.0)), 3),
         "thornMultiLinePeakWidthPct": round(float(getattr(entry, "thorn_multi_line_peak_width_pct", 100.0)), 3),
@@ -1284,6 +1290,24 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     alpha = float(data.get("fillColorAlpha", 1.0))
     entry.fill_color = hex_to_rgba(data.get("fillColor", "#FFFFFF"), alpha)
     entry.fill_opacity = _opacity_from_data(data, "fillOpacity", 100.0, percent_schema=opacity_percent)
+    uni_flash_data = data.get("uniFlashParams")
+    if isinstance(uni_flash_data, dict):
+        balloon_core.uni_flash_params_from_dict(entry, uni_flash_data)
+    elif entry.line_style == "uni_flash":
+        peak_pct = max(0.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0))
+        valley_pct = max(0.0, float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0))
+        line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.3))
+        entry.brush_size_mm = max(0.01, line_width_mm * peak_pct / 100.0)
+        endpoint_pct = 0.0 if peak_pct <= 1.0e-6 else max(0.0, min(100.0, valley_pct / peak_pct * 100.0))
+        entry.in_percent = endpoint_pct
+        entry.out_percent = endpoint_pct
+        entry.in_start_percent = 50.0
+        entry.out_start_percent = 50.0
+        entry.spacing_mode = "distance"
+        entry.spacing_distance_mm = max(0.01, float(getattr(entry, "flash_line_spacing_mm", 1.0) or 1.0))
+        entry.max_line_count = max(1, int(getattr(entry, "flash_line_count", 120) or 120))
+        entry.white_underlay_enabled = bool(getattr(entry, "flash_white_line_enabled", True))
+        entry.white_underlay_width_percent = float(getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0)
     entry.fill_material_name = str(data.get("fillMaterialName", "") or "")
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))

@@ -39,6 +39,7 @@ BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
 BALLOON_OUTER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Outer_Edge_"
 BALLOON_INNER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Inner_Edge_"
 BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX = "BName_Balloon_Flash_White_Line_"
+BALLOON_FLASH_UNDERLAY_MATERIAL_PREFIX = "BName_Balloon_Flash_Underlay_"
 PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
 PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
 PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
@@ -722,6 +723,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     inner_mat = materials[_MATERIAL_SLOT_INNER_EDGE] if len(materials) > _MATERIAL_SLOT_INNER_EDGE else None
     balloon_id = str(getattr(entry, "id", "") or "")
     is_flash_line_style = balloon_shapes.is_flash_line_style(str(getattr(entry, "line_style", "") or ""))
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if fill_mat is not None:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
@@ -741,6 +743,16 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
                 mask_info=mask_info,
                 mask_power=_LINE_AND_EDGE_MASK_POWER,
             )
+            underlay_mat = white_mat
+            fill_slot_mat = white_mat
+            if line_style == "uni_flash":
+                underlay_mat = _ensure_color_material(
+                    f"{BALLOON_FLASH_UNDERLAY_MATERIAL_PREFIX}{balloon_id}",
+                    _entry_margin_rgba(entry, "white_underlay_color"),
+                    mask_info=mask_info,
+                    mask_power=_LINE_AND_EDGE_MASK_POWER,
+                )
+                fill_slot_mat = fill_mat if fill_mat is not None else white_mat
             balloon_flash_effect_line_mesh.ensure_balloon_flash_effect_line_mesh(
                 scene=scene,
                 work=work,
@@ -748,8 +760,8 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
                 entry=entry,
                 body_object=obj,
                 line_material=line_mat,
-                white_material=white_mat,
-                underlay_material=white_mat,
+                white_material=fill_slot_mat,
+                underlay_material=underlay_mat,
                 mask_info=mask_info,
             )
         else:

@@ -76,6 +76,143 @@ _BLEND_MODE_ITEMS = (
 )
 
 _FLASH_LINE_STYLE_IDS = {"uni_flash", "white_outline"}
+_UNI_FLASH_EFFECT_TYPE_ITEMS = (
+    ("uni_flash", "ウニフラ", "フキダシの形状に沿って放射状の線を並べる"),
+)
+_EFFECT_SHAPE_ITEMS = tuple(
+    (item[0], item[1], item[2])
+    for item in _SHAPE_ITEMS
+    if item[0] not in {"custom", "none"}
+)
+_SPACING_MODE_ITEMS = (
+    ("angle", "角度指定", ""),
+    ("distance", "距離指定", ""),
+)
+_INOUT_APPLY_ITEMS = (
+    ("brush_size", "線幅", ""),
+    ("opacity", "不透明度", ""),
+)
+_INOUT_RANGE_MODE_ITEMS = (
+    ("percent", "％指定", "線全体に対する割合で入り抜きの範囲を指定"),
+    ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
+)
+UNI_FLASH_PARAM_FIELDS = (
+    "effect_type",
+    "rotation_deg",
+    "start_shape",
+    "start_to_coma_frame",
+    "start_rounded_corner_enabled",
+    "start_rounded_corner_radius_mm",
+    "start_rounded_corner_radius_unit",
+    "start_rounded_corner_radius_percent",
+    "start_cloud_bump_width_mm",
+    "start_cloud_bump_width_jitter",
+    "start_cloud_bump_height_mm",
+    "start_cloud_bump_height_jitter",
+    "start_cloud_offset_percent",
+    "start_cloud_sub_width_ratio",
+    "start_cloud_sub_width_jitter",
+    "start_cloud_sub_height_ratio",
+    "start_cloud_sub_height_jitter",
+    "end_shape",
+    "end_rounded_corner_enabled",
+    "end_rounded_corner_radius_mm",
+    "end_rounded_corner_radius_unit",
+    "end_rounded_corner_radius_percent",
+    "end_cloud_bump_width_mm",
+    "end_cloud_bump_width_jitter",
+    "end_cloud_bump_height_mm",
+    "end_cloud_bump_height_jitter",
+    "end_cloud_offset_percent",
+    "end_cloud_sub_width_ratio",
+    "end_cloud_sub_width_jitter",
+    "end_cloud_sub_height_ratio",
+    "end_cloud_sub_height_jitter",
+    "brush_size_mm",
+    "brush_jitter_enabled",
+    "brush_jitter_amount",
+    "length_jitter_enabled",
+    "length_jitter_amount",
+    "end_length_jitter_enabled",
+    "end_length_jitter_amount",
+    "spacing_mode",
+    "spacing_angle_deg",
+    "spacing_distance_mm",
+    "spacing_density_compensation",
+    "spacing_jitter_enabled",
+    "spacing_jitter_amount",
+    "max_line_count",
+    "bundle_enabled",
+    "bundle_line_count",
+    "bundle_line_count_jitter",
+    "bundle_gap_mm",
+    "bundle_gap_jitter_amount",
+    "bundle_jagged_enabled",
+    "bundle_jagged_height_percent",
+    "inout_apply",
+    "in_percent",
+    "out_percent",
+    "in_start_percent",
+    "out_start_percent",
+    "in_easing_curve",
+    "out_easing_curve",
+    "inout_range_mode",
+    "in_range_percent",
+    "out_range_percent",
+    "in_range_mm",
+    "out_range_mm",
+    "opacity",
+    "line_color",
+    "fill_color",
+    "fill_opacity",
+    "fill_base_shape",
+    "white_underlay_enabled",
+    "white_underlay_width_percent",
+    "white_underlay_color",
+)
+
+
+def _color_value(value) -> list[float]:
+    try:
+        return [float(value[i]) for i in range(4)]
+    except Exception:  # noqa: BLE001
+        return [0.0, 0.0, 0.0, 1.0]
+
+
+def uni_flash_params_to_dict(entry) -> dict:
+    data = {}
+    for field in UNI_FLASH_PARAM_FIELDS:
+        if not hasattr(entry, field):
+            continue
+        value = getattr(entry, field)
+        if field in {"line_color", "fill_color", "white_underlay_color"}:
+            data[field] = _color_value(value)
+        elif isinstance(value, bool):
+            data[field] = bool(value)
+        elif isinstance(value, int):
+            data[field] = int(value)
+        elif isinstance(value, float):
+            data[field] = float(value)
+        else:
+            data[field] = str(value)
+    data["effect_type"] = "uni_flash"
+    return data
+
+
+def uni_flash_params_from_dict(entry, data: dict) -> None:
+    if entry is None or not isinstance(data, dict):
+        return
+    for field in UNI_FLASH_PARAM_FIELDS:
+        if field == "effect_type" or not hasattr(entry, field) or field not in data:
+            continue
+        try:
+            setattr(entry, field, data[field])
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        entry.effect_type = "uni_flash"
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _tag_balloon_redraw(context) -> None:
@@ -124,12 +261,24 @@ def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
     _set_if_default("line_peak_width_pct", 100.0)
     _set_if_default("thorn_multi_line_valley_width_pct", 0.0)
     _set_if_default("thorn_multi_line_peak_width_pct", 100.0)
+    _set_if_default("brush_size_mm", float(getattr(entry, "line_width_mm", 0.3) or 0.3), default=0.3)
+    _set_if_default("in_percent", 0.0, default=100.0)
+    _set_if_default("out_percent", 0.0, default=0.0)
+    _set_if_default("in_start_percent", 50.0, default=0.0)
+    _set_if_default("out_start_percent", 50.0, default=100.0)
+    _set_if_default("white_underlay_width_percent", 100.0, default=150.0)
     _set_if_default("flash_white_line_width_percent", 100.0)
     _set_if_default("flash_white_line_valley_width_pct", 0.0)
     _set_if_default("flash_white_line_peak_width_pct", 100.0)
     try:
         if force or not bool(getattr(entry, "flash_white_line_enabled", True)):
             entry.flash_white_line_enabled = True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        entry.effect_type = "uni_flash"
+        if force or not bool(getattr(entry, "white_underlay_enabled", True)):
+            entry.white_underlay_enabled = True
     except Exception:  # noqa: BLE001
         pass
 
@@ -403,6 +552,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 線・塗り
+    effect_type: EnumProperty(items=_UNI_FLASH_EFFECT_TYPE_ITEMS, default="uni_flash", options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_line_style_changed)  # type: ignore[valid-type]
     line_width_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     dashed_segment_length_mm: FloatProperty(name="破線 線分 (mm)", default=3.6, min=0.05, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -429,6 +579,72 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     flash_white_outline_white_line_count: IntProperty(name="白線本数", default=24, min=1, max=200, soft_max=80, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_line_count: IntProperty(name="黒線本数", default=3, min=1, max=50, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_spacing_mm: FloatProperty(name="黒線間隔 (mm)", default=0.25, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_shape: EnumProperty(name="始点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    start_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_shape: EnumProperty(name="終点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_rounded_corner_radius_mm: FloatProperty(name="角半径 (mm)", default=3.0, min=0.0, soft_max=30.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_rounded_corner_radius_unit: EnumProperty(name="単位", items=corner_radius.RADIUS_UNIT_ITEMS, default="mm", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_bump_width_jitter: FloatProperty(name="山の幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_bump_height_mm: FloatProperty(name="山の高さ (mm)", default=4.0, min=0.5, soft_max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_bump_height_jitter: FloatProperty(name="山の高さ 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_offset_percent: FloatProperty(name="ズラし量 (%)", default=50.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_sub_width_ratio: FloatProperty(name="小山幅 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_sub_width_jitter: FloatProperty(name="小山幅 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_sub_height_ratio: FloatProperty(name="小山高 (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    brush_size_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.01, soft_max=5.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="始点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    end_length_jitter_amount: FloatProperty(name="終点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_distance_mm: FloatProperty(name="線の間隔 (距離 mm)", default=1.0, min=0.01, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_density_compensation: BoolProperty(name="密度補正", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    spacing_jitter_amount: FloatProperty(name="間隔乱れ量", default=0.2, min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    max_line_count: IntProperty(name="最大本数", default=1000, min=1, soft_max=2000, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_enabled: BoolProperty(name="まとまり", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_line_count: IntProperty(name="数", default=5, min=1, soft_max=50, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_line_count_jitter: FloatProperty(name="数の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_gap_mm: FloatProperty(name="まとまり間隔 (mm)", default=5.0, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_jagged_enabled: BoolProperty(name="ギザギザにする", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    bundle_jagged_height_percent: FloatProperty(name="ギザギザ高さ (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    in_percent: FloatProperty(name="入り (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=50.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    out_start_percent: FloatProperty(name="抜き始点 (%)", description="線の終点側から、抜きが始まる長さを指定します", default=50.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    in_easing_curve: StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    out_easing_curve: StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inout_range_mode: EnumProperty(name="範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    in_range_percent: FloatProperty(name="入りの範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    out_range_percent: FloatProperty(name="抜きの範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    in_range_mm: FloatProperty(name="入りの範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    out_range_mm: FloatProperty(name="抜きの範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_underlay_enabled: BoolProperty(name="白抜き線", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=100.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_underlay_color: FloatVectorProperty(name="白抜き線色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 多重線の谷/山の線幅: 多重線の基本線幅 (multi_line_width_mm) を 100% として % 指定。
     # 100% = 同じ太さ, 0% = その頂点で消える。辺全体に渡って隣接頂点間で
