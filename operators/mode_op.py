@@ -145,6 +145,42 @@ def _resolve_page_preview_at_event(context, event) -> int | None:
     return None
 
 
+def _resolve_page_at_event(context, event) -> int | None:
+    """Return a page index when the event hits a page in the overview."""
+    work = get_work(context)
+    if work is None or not work.loaded:
+        return None
+    from . import coma_picker
+
+    return coma_picker.find_page_at_event(context, event)
+
+
+def page_file_index_from_viewport_event(context, event) -> int | None:
+    """Return the page file index that should open for a viewport double click."""
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False):
+        return None
+    from ..utils import page_file_scene
+
+    role, current_page_id, _coma_id = page_file_scene.current_role(context)
+    if role == page_file_scene.ROLE_PAGE:
+        page_hit = _resolve_page_preview_at_event(context, event)
+        if page_hit is None or not (0 <= page_hit < len(work.pages)):
+            return None
+        hit_page_id = str(getattr(work.pages[page_hit], "id", "") or "")
+        if hit_page_id and hit_page_id != current_page_id:
+            return int(page_hit)
+        return None
+    if (
+        role == page_file_scene.ROLE_WORK
+        and bool(getattr(context.scene, "bname_overview_mode", False))
+    ):
+        page_hit = _resolve_page_at_event(context, event)
+        if page_hit is not None and 0 <= page_hit < len(work.pages):
+            return int(page_hit)
+    return None
+
+
 _PENDING_OPEN_PAGE: int | None = None
 
 
@@ -651,24 +687,11 @@ class BNAME_OT_enter_coma_mode_from_viewport(Operator):
         if work is None:
             return {"PASS_THROUGH"}
         try:
-            from ..utils import page_file_scene
-
-            role, current_page_id, _coma_id = page_file_scene.current_role(context)
-            page_hit = (
-                _resolve_page_preview_at_event(context, event)
-                if role == page_file_scene.ROLE_PAGE
-                else None
-            )
-            if (
-                role == page_file_scene.ROLE_PAGE
-                and page_hit is not None
-                and 0 <= page_hit < len(work.pages)
-            ):
-                hit_page_id = str(getattr(work.pages[page_hit], "id", "") or "")
-                if hit_page_id and hit_page_id != current_page_id:
-                    if schedule_open_page_file(int(page_hit)):
-                        return {"FINISHED"}
-                    return {"CANCELLED"}
+            page_hit = page_file_index_from_viewport_event(context, event)
+            if page_hit is not None:
+                if schedule_open_page_file(int(page_hit)):
+                    return {"FINISHED"}
+                return {"CANCELLED"}
         except Exception:  # noqa: BLE001
             _logger.exception("enter_coma_mode_from_viewport: page switch failed")
             return {"CANCELLED"}

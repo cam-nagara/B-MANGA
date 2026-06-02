@@ -601,6 +601,10 @@ class BNAME_UL_layer_panel_pages(UIList):
             depress=False,
         )
         op.index = index
+        open_cell = row.row(align=True)
+        open_cell.ui_units_x = 1.0
+        open_op = open_cell.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+        open_op.index = index
 
 
 def draw_stack_item_detail(layout, context, item, resolved) -> bool:

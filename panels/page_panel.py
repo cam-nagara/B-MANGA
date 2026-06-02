@@ -29,11 +29,14 @@ class BNAME_UL_pages(UIList):
     ):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
+            row.operator_context = "EXEC_DEFAULT"
             icon_name = "FILE_IMAGE" if not item.spread else "IMGDISPLAY"
             row.label(text=f"{item.id}", icon=icon_name)
             row.prop(item, "title", text="", emboss=False)
             if item.spread:
                 row.label(text="見開き", icon="ARROW_LEFTRIGHT")
+            op = row.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+            op.index = index
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
             layout.label(text=item.id)

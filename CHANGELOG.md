@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-03 — ページ一覧からページを開く操作を追加 / v0.6.255
+
+### 症状
+- 作品ファイルの全ページ一覧表示で、ページ上をダブルクリックしてもページ用blendファイルではなく、ページ内のコマが優先されてコマ用blendファイルへ進む場合があった。
+- ページリストの各ページ行には「ページを開く」ボタンがなく、右側の操作ボタンからアクティブページだけを開く必要があった。
+
+### 原因
+- ビューポートのダブルクリック判定で、作品ファイルの全ページ一覧表示時にもコマ判定を先に処理していた。
+- ページ一覧の行描画は選択操作だけを持ち、ページ用blendファイルを開く操作はリスト外のボタンに集約されていた。
+
+### 修正
+- 作品ファイルの全ページ一覧表示では、ダブルクリック位置がページ内ならページ判定をコマ判定より優先し、イベント終了後にページ用blendファイルを開くようにした。
+- 常駐するオブジェクト操作ツールのダブルクリック経路も同じページ判定へ接続した。
+- ページリストの各ページ行に「ページを開く」ボタンを追加し、押した行のページ用blendファイルを直接開けるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+- `python -m py_compile operators\mode_op.py operators\object_tool_op.py panels\gpencil_panel.py panels\page_panel.py test\blender_page_file_panel_role_check.py test\blender_object_tool_coma_open_deferred_ui_check.py test\blender_page_overview_open_page_deferred_ui_check.py`
+- `blender.exe --background --factory-startup --python test/blender_page_file_panel_role_check.py`
+- `blender.exe --factory-startup --python test/blender_object_tool_coma_open_deferred_ui_check.py`
+- `blender.exe --factory-startup --python test/blender_page_overview_open_page_deferred_ui_check.py`
+- `blender.exe --background --factory-startup --python test/blender_page_file_stage_check.py`
+
 ## 2026-06-03 — ページ一覧プレビュー操作と解像度設定を修正 / v0.6.254
 
 ### 症状

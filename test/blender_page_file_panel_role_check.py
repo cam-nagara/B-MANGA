@@ -102,6 +102,22 @@ def _draw_records(panel_cls, context) -> list[tuple[str, str]]:
     return records
 
 
+def _draw_ui_list_item_records(ui_list_cls, context, data, item, index: int) -> list[tuple[str, str]]:
+    records: list[tuple[str, str]] = []
+    ui_list_cls.draw_item(
+        SimpleNamespace(layout_type="DEFAULT"),
+        context,
+        _FakeLayout(records),
+        data,
+        item,
+        0,
+        data,
+        "active_page_index",
+        index,
+    )
+    return records
+
+
 def _values(records: list[tuple[str, str]]) -> set[str]:
     return {value for _kind, value in records}
 
@@ -135,6 +151,7 @@ def main() -> None:
             export_panel,
             gpencil_panel,
             outliner_layer_panel,
+            page_panel,
             tool_panel,
             view_panel,
             work_panel,
@@ -152,6 +169,22 @@ def main() -> None:
         layer_records = _draw_records(gpencil_panel.BNAME_PT_layer_stack, context)
         _assert_present(layer_records, "BNAME_UL_layer_panel_pages:pages", "bname.page_add", "bname.open_page_file")
         _assert_absent(layer_records, "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
+        row_records = _draw_ui_list_item_records(
+            gpencil_panel.BNAME_UL_layer_panel_pages,
+            context,
+            context.scene.bname_work,
+            context.scene.bname_work.pages[1],
+            1,
+        )
+        _assert_present(row_records, "bname.open_page_file")
+        page_row_records = _draw_ui_list_item_records(
+            page_panel.BNAME_UL_pages,
+            context,
+            context.scene.bname_work,
+            context.scene.bname_work.pages[1],
+            1,
+        )
+        _assert_present(page_row_records, "bname.open_page_file")
         maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
         _assert_present(maintenance_records, "bname.organize_data_names")
         _assert_absent(

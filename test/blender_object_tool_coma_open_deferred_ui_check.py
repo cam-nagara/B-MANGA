@@ -29,6 +29,35 @@ def _load_addon():
     return mod
 
 
+def _assert_object_tool_page_open_route() -> None:
+    from bname_dev_deferred_coma_open_ui.operators import mode_op, object_tool_op
+
+    fake_tool = SimpleNamespace(finished=False, keep_selection=False)
+
+    def _finish_from_external(_context, *, keep_selection: bool) -> None:
+        fake_tool.finished = True
+        fake_tool.keep_selection = bool(keep_selection)
+
+    fake_tool.finish_from_external = _finish_from_external
+    original_resolve = mode_op.page_file_index_from_viewport_event
+    original_schedule = mode_op.schedule_open_page_file
+    scheduled: list[int] = []
+    try:
+        mode_op.page_file_index_from_viewport_event = lambda _context, _event: 1
+        mode_op.schedule_open_page_file = lambda page_index: scheduled.append(int(page_index)) or True
+        event = SimpleNamespace(type="LEFTMOUSE", value="DOUBLE_CLICK")
+        assert object_tool_op.BNAME_OT_object_tool._try_open_page_file_from_event(
+            fake_tool,
+            bpy.context,
+            event,
+        )
+        assert scheduled == [1], scheduled
+        assert fake_tool.finished and fake_tool.keep_selection
+    finally:
+        mode_op.page_file_index_from_viewport_event = original_resolve
+        mode_op.schedule_open_page_file = original_schedule
+
+
 def _start_check(temp_root: Path) -> Path:
     result = bpy.ops.bname.work_new(filepath=str(temp_root / "DeferredOpen.bname"))
     assert result == {"FINISHED"}, result
@@ -42,6 +71,7 @@ def _start_check(temp_root: Path) -> Path:
     item_ids = {str(getattr(kmi, "idname", "") or "") for kmi in state.bname_items}
     assert "bname.enter_coma_mode_from_viewport" in item_ids
     assert "bname.enter_coma_mode" not in item_ids
+    _assert_object_tool_page_open_route()
 
     work = bpy.context.scene.bname_work
     page = work.pages[0]

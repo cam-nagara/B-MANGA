@@ -636,6 +636,8 @@ class BNAME_OT_object_tool(Operator):
         if mode != "single":
             self._clear_click_state()
         if event.value == "DOUBLE_CLICK" and mode == "single":
+            if self._try_open_page_file_from_event(context, event):
+                return {"FINISHED"}
             hit = self._hit_object(context, event)
             if self._try_enter_text_edit_from_hit(context, hit):
                 return {"FINISHED"}
@@ -755,6 +757,21 @@ class BNAME_OT_object_tool(Operator):
             "part": "body",
             "key": str(hit.get("key", "") or ""),
         }
+
+    def _try_open_page_file_from_event(self, context, event) -> bool:
+        try:
+            from . import mode_op
+
+            page_index = mode_op.page_file_index_from_viewport_event(context, event)
+            if page_index is None:
+                return False
+            scheduled = mode_op.schedule_open_page_file(int(page_index))
+        except Exception:  # noqa: BLE001
+            return False
+        if not scheduled:
+            return False
+        self.finish_from_external(context, keep_selection=True)
+        return True
 
     def _try_enter_coma_from_hit(self, context, hit: dict) -> bool:
         if str(hit.get("kind", "") or "") != "coma":
