@@ -153,8 +153,19 @@ def main() -> None:
         _assert_present(layer_records, "BNAME_UL_layer_panel_pages:pages", "bname.page_add", "bname.open_page_file")
         _assert_absent(layer_records, "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
         maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
-        _assert_present(maintenance_records, "bname.repair_hierarchy", "bname.coma_renumber_active_page", "bname.organize_data_names")
-        _assert_absent(maintenance_records, "bname.mask_regenerate_all", "bname.mask_remove_orphans")
+        _assert_present(maintenance_records, "bname.organize_data_names")
+        _assert_absent(
+            maintenance_records,
+            "bname.repair_hierarchy",
+            "bname.coma_renumber_active_page",
+            "bname.mask_regenerate_all",
+            "bname.mask_remove_orphans",
+        )
+        assert not bpy.ops.bname.repair_hierarchy.poll()
+        assert not bpy.ops.bname.coma_renumber_active_page.poll()
+        assert not bpy.ops.bname.mask_regenerate_all.poll()
+        assert not bpy.ops.bname.mask_remove_orphans.poll()
+        assert bpy.ops.bname.organize_data_names.poll()
 
         result = bpy.ops.bname.open_page_file(index=0)
         assert result == {"FINISHED"}, result
@@ -185,6 +196,11 @@ def main() -> None:
         maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
         _assert_present(maintenance_records, "bname.repair_hierarchy", "bname.mask_regenerate_all", "bname.mask_remove_orphans", "bname.coma_renumber_active_page")
         _assert_absent(maintenance_records, "bname.organize_data_names")
+        assert bpy.ops.bname.repair_hierarchy.poll()
+        assert bpy.ops.bname.coma_renumber_active_page.poll()
+        assert bpy.ops.bname.mask_regenerate_all.poll()
+        assert bpy.ops.bname.mask_remove_orphans.poll()
+        assert not bpy.ops.bname.organize_data_names.poll()
 
         active_before = int(getattr(context.scene.bname_work, "active_page_index", -1))
         context.scene.bname_active_page_number = 2

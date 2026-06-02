@@ -54,9 +54,13 @@ def _build_four_comas(page) -> None:
     _add_coma(page, "c50", 20.0, 160.0)   # 下左
 
 
-def _assert_order(page, expected: list[tuple[str, str]]) -> None:
+def _assert_order(page, expected: list[tuple[str, float, float]]) -> None:
     actual = [
-        (str(getattr(coma, "title", "") or ""), str(getattr(coma, "id", "") or ""))
+        (
+            str(getattr(coma, "id", "") or ""),
+            round(float(getattr(coma, "rect_x_mm", 0.0) or 0.0), 3),
+            round(float(getattr(coma, "rect_y_mm", 0.0) or 0.0), 3),
+        )
         for coma in page.comas
     ]
     if actual != expected:
@@ -130,22 +134,35 @@ def main() -> None:
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaRenumber.bname"))
         assert "FINISHED" in result, result
 
-        from bname_dev_coma_renumber.utils import layer_object_sync
         from bname_dev_coma_renumber.utils import object_naming as on
 
         context = bpy.context
         work = context.scene.bname_work
-        page = work.pages[0]
-        page_id = str(page.id)
+        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
 
         work.paper.read_direction = "left"
+        page = work.pages[0]
         _build_four_comas(page)
+        work.paper.read_direction = "right"
+        _build_four_comas(work.pages[1])
+        assert not bpy.ops.bname.coma_renumber_active_page.poll()
+
+        assert "FINISHED" in bpy.ops.bname.open_page_file(index=0)
+        context = bpy.context
+        work = context.scene.bname_work
+        page = work.pages[0]
+        page_id = str(page.id)
+        work.paper.read_direction = "left"
         _add_parented_entries(context, page, page_id)
-        layer_object_sync.mirror_work_to_outliner(context.scene, work)
         assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
         _assert_order(
             page,
-            [("c10", "c01"), ("c90", "c02"), ("c30", "c03"), ("c50", "c04")],
+            [
+                ("c01", 120.0, 220.0),
+                ("c02", 20.0, 220.0),
+                ("c03", 120.0, 160.0),
+                ("c04", 20.0, 160.0),
+            ],
         )
         _assert_parented_entries(context, page, page_id)
         assert on.find_collection_by_bname_id(f"{page_id}:c01", kind="coma") is not None
@@ -154,16 +171,21 @@ def main() -> None:
             if str(coll.get(on.PROP_ID, "") or "").find("__coma_renumber_tmp__") >= 0
         ]
 
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
-        work.active_page_index = 1
+        assert "FINISHED" in bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bname.open_page_file(index=1)
+        context = bpy.context
+        work = context.scene.bname_work
         page = work.pages[1]
         work.paper.read_direction = "right"
-        _build_four_comas(page)
-        layer_object_sync.mirror_work_to_outliner(context.scene, work)
         assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
         _assert_order(
             page,
-            [("c90", "c01"), ("c10", "c02"), ("c50", "c03"), ("c30", "c04")],
+            [
+                ("c01", 20.0, 220.0),
+                ("c02", 120.0, 220.0),
+                ("c03", 20.0, 160.0),
+                ("c04", 120.0, 160.0),
+            ],
         )
 
         print("BNAME_COMA_RENUMBER_READING_ORDER_OK")

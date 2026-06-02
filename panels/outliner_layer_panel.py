@@ -5,7 +5,6 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel
 
-from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import page_file_scene
 
@@ -27,21 +26,22 @@ class BNAME_PT_outliner_layers(Panel):
         work = get_work(context)
         if not (work and getattr(work, "loaded", False)):
             return False
-        return get_mode(context) != MODE_COMA
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        return role in {page_file_scene.ROLE_WORK, page_file_scene.ROLE_PAGE}
 
     def draw(self, context):
         layout = self.layout
-        in_page_file = page_file_scene.is_page_edit_scene(context.scene)
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
 
         col = layout.column(align=True)
-        col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
-        if in_page_file:
+        if role == page_file_scene.ROLE_PAGE:
+            col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
             col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
             col.operator("bname.mask_remove_orphans", icon="TRASH")
-        col.operator(
-            "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
-        )
-        if not in_page_file:
+            col.operator(
+                "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
+            )
+        elif role == page_file_scene.ROLE_WORK:
             col.operator("bname.organize_data_names", icon="FILE_REFRESH")
 
 

@@ -27,24 +27,32 @@ _logger = log.get_logger(__name__)
 class BNAME_OT_repair_hierarchy(bpy.types.Operator):
     bl_idname = "bname.repair_hierarchy"
     bl_label = "B-Name 階層を修復"
-    bl_description = (
-        "Outliner Collection 階層を再生成し、bname_id 空白/重複を修正し、"
-        "マスク Object を再生成します (Phase 6)。"
-    )
+    bl_description = "現在のページのB-Name階層と表示範囲を作り直します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
-        return bool(work and getattr(work, "loaded", False))
+        return bool(
+            work
+            and getattr(work, "loaded", False)
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def execute(self, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         scene = context.scene
         work = get_work(context)
+        page_id = page_file_scene.current_page_id(scene)
+        if not page_id or not page_file_scene.is_page_edit_scene(scene):
+            self.report({"WARNING"}, "ページ用blendファイルで実行してください")
+            return {"CANCELLED"}
+        page_work = page_file_scene.work_for_pages(work, {page_id})
 
         # 1. mirror 再走 (失敗したら ERROR で打ち切り、二次破壊を防ぐ)
         try:
@@ -86,8 +94,8 @@ class BNAME_OT_repair_hierarchy(bpy.types.Operator):
 
         # 4. 全マスク再生成 + orphan 削除 + 全レイヤーへ mask 適用 (Edit Mode は skip)
         if context.mode == "OBJECT":
-            mask_result = mask_obj.regenerate_all_masks(scene, work)
-            orphan_removed = mask_obj.remove_orphan_masks(scene, work)
+            mask_result = mask_obj.regenerate_all_masks(scene, page_work)
+            orphan_removed = mask_obj.remove_orphan_masks(scene, page_work)
             from ..utils import mask_apply
 
             mask_apply.apply_masks_to_all_managed(scene)
@@ -105,9 +113,10 @@ class BNAME_OT_repair_hierarchy(bpy.types.Operator):
             pass
 
         msg = (
-            f"修復: empty_fixed={empty_fixed}, dup_demoted={dup_demoted}, "
-            f"page_mask={mask_result['page_masks']}, coma_mask={mask_result['coma_masks']}, "
-            f"orphan_removed={orphan_removed}"
+            f"修復しました: 識別情報 {empty_fixed} 件を補完、"
+            f"重複 {dup_demoted} 件を整理、用紙 {mask_result['page_masks']} 件 / "
+            f"コマ {mask_result['coma_masks']} 件の表示範囲を再生成、"
+            f"不要な古いマスク {orphan_removed} 件を削除"
         )
         self.report({"INFO"}, msg)
         return {"FINISHED"}

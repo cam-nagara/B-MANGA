@@ -18,6 +18,7 @@ class BNAME_OT_organize_data_names(Operator):
     def poll(cls, context):
         from ..core.mode import MODE_PAGE, get_mode
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
         return (
@@ -25,6 +26,7 @@ class BNAME_OT_organize_data_names(Operator):
             and getattr(work, "loaded", False)
             and bool(getattr(work, "work_dir", "") or "")
             and get_mode(context) == MODE_PAGE
+            and page_file_scene.is_work_list_scene(getattr(context, "scene", None))
         )
 
     def execute(self, context):

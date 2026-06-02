@@ -263,6 +263,15 @@ def main() -> None:
         assert bpy.ops.bname.text_tool.poll()
         assert bpy.ops.bname.effect_line_tool.poll()
         assert bpy.ops.bname.layer_move_tool.poll()
+        assert bpy.ops.bname.mask_regenerate_all.poll()
+        assert bpy.ops.bname.mask_remove_orphans.poll()
+        assert bpy.ops.bname.repair_hierarchy.poll()
+        assert "FINISHED" in bpy.ops.bname.mask_regenerate_all("EXEC_DEFAULT")
+        _assert_page_file_current_page_runtime_only("p0001")
+        assert "FINISHED" in bpy.ops.bname.mask_remove_orphans("EXEC_DEFAULT")
+        _assert_page_file_current_page_runtime_only("p0001")
+        assert "FINISHED" in bpy.ops.bname.repair_hierarchy("EXEC_DEFAULT")
+        _assert_page_file_current_page_runtime_only("p0001")
 
         from bname_dev_page_file_stage.utils import page_preview_object
         from bname_dev_page_file_stage.utils import page_grid

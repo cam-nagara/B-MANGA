@@ -13,42 +13,46 @@ _logger = log.get_logger(__name__)
 class BNAME_OT_mask_regenerate_all(bpy.types.Operator):
     bl_idname = "bname.mask_regenerate_all"
     bl_label = "全マスクを再生成"
-    bl_description = (
-        "全ページ・全コマのマスク Mesh Object を再生成します。形状は "
-        "B-Name のページ/コマデータから派生します (Phase 5)。"
-    )
+    bl_description = "現在のページの表示範囲を作り直し、コマ外が隠れる状態を整えます"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
-        # mask Mesh 再生成は Object Mode でのみ安全
         return bool(
             work
             and getattr(work, "loaded", False)
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
             and getattr(context, "mode", "OBJECT") == "OBJECT"
         )
 
     def execute(self, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         if context.mode != "OBJECT":
             self.report({"WARNING"}, "Object Mode で実行してください")
             return {"CANCELLED"}
         work = get_work(context)
+        page_id = page_file_scene.current_page_id(context.scene)
+        if not page_id or not page_file_scene.is_page_edit_scene(context.scene):
+            self.report({"WARNING"}, "ページ用blendファイルで実行してください")
+            return {"CANCELLED"}
+        mask_work = page_file_scene.work_for_pages(work, {page_id})
         scene = context.scene
-        result = mask_obj.regenerate_all_masks(scene, work)
-        removed = mask_obj.remove_orphan_masks(scene, work)
+        result = mask_obj.regenerate_all_masks(scene, mask_work)
+        removed = mask_obj.remove_orphan_masks(scene, mask_work)
         # 全レイヤーへマスクを適用 (枠外を視覚的に切抜き)
         from ..utils import mask_apply
 
         applied = mask_apply.apply_masks_to_all_managed(scene)
         self.report(
             {"INFO"},
-            f"page mask {result['page_masks']} 再生成 / coma mask {result['coma_masks']} 再生成、"
-            f"orphan {removed} 削除、{applied} レイヤーに適用",
+            f"用紙 {result['page_masks']} 件 / コマ {result['coma_masks']} 件の表示範囲を再生成、"
+            f"不要な古いマスク {removed} 件を削除、{applied} 件のレイヤーへ適用",
         )
         return {"FINISHED"}
 
@@ -56,22 +60,35 @@ class BNAME_OT_mask_regenerate_all(bpy.types.Operator):
 class BNAME_OT_mask_remove_orphans(bpy.types.Operator):
     bl_idname = "bname.mask_remove_orphans"
     bl_label = "孤立マスクを削除"
-    bl_description = "対応する page/coma が消えた mask Object を削除します。"
+    bl_description = "現在のページで不要になった古いマスクを削除します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
-        return bool(work and getattr(work, "loaded", False))
+        return bool(
+            work
+            and getattr(work, "loaded", False)
+            and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+        )
 
     def execute(self, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
-        removed = mask_obj.remove_orphan_masks(context.scene, work)
-        self.report({"INFO"}, f"orphan mask {removed} 個を削除しました")
+        page_id = page_file_scene.current_page_id(context.scene)
+        if not page_id or not page_file_scene.is_page_edit_scene(context.scene):
+            self.report({"WARNING"}, "ページ用blendファイルで実行してください")
+            return {"CANCELLED"}
+        removed = mask_obj.remove_orphan_masks(
+            context.scene,
+            page_file_scene.work_for_pages(work, {page_id}),
+        )
+        self.report({"INFO"}, f"不要な古いマスク {removed} 件を削除しました")
         return {"FINISHED"}
 
 

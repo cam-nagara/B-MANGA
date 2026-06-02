@@ -210,7 +210,7 @@ class BNAME_OT_coma_renumber_active_page(Operator):
     bl_idname = "bname.coma_renumber_active_page"
     bl_label = "コマ ID を順番通り再採番"
     bl_description = (
-        "選択ページのコマ番号を読む順番で c01/c02/... に振り直します。"
+        "現在のページのコマ番号を読む順番に振り直します。"
         "コマ用blendファイル名は変更されません。"
     )
     bl_options = {"REGISTER", "UNDO"}
@@ -218,25 +218,32 @@ class BNAME_OT_coma_renumber_active_page(Operator):
     @classmethod
     def poll(cls, context):
         from ..core.work import get_work
+        from ..utils import page_file_scene
 
         work = get_work(context)
         if not (work and getattr(work, "loaded", False)):
             return False
-        pages = getattr(work, "pages", None)
-        if not pages:
+        scene = getattr(context, "scene", None)
+        if not page_file_scene.is_page_edit_scene(scene):
             return False
-        idx = int(getattr(work, "active_page_index", 0))
-        if not (0 <= idx < len(pages)):
+        page_id = page_file_scene.current_page_id(scene)
+        page_index = page_file_scene.find_page_index(work, page_id)
+        if page_index < 0:
             return False
-        return bool(len(pages[idx].comas))
+        return bool(len(getattr(work.pages[page_index], "comas", []) or []))
 
     def execute(self, context):
         from ..core.work import get_work
         from ..utils import layer_object_sync as los
+        from ..utils import page_file_scene
 
         scene = context.scene
         work = get_work(context)
-        idx = int(getattr(work, "active_page_index", 0))
+        page_id = page_file_scene.current_page_id(scene)
+        idx = page_file_scene.find_page_index(work, page_id)
+        if idx < 0:
+            self.report({"WARNING"}, "ページ用blendファイルで実行してください")
+            return {"CANCELLED"}
         page = work.pages[idx]
         page_id = str(getattr(page, "id", "") or "")
         if not page_id:

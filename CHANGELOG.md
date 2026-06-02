@@ -3,6 +3,29 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — メンテナンス操作をファイル役割ごとに整理 / v0.6.242
+
+### 症状
+- 作品ファイルのメンテナンスに、ページ編集ファイルで使う「コマ ID を順番通り再採番」などが表示されていた。
+- 作品ファイルはページの中身を直接持たない構造になったため、「B-Name 階層を修復」やマスク関連の操作を作品ファイル側で実行できる状態が分かりにくかった。
+
+### 原因
+- ページ一覧ファイルとページ編集ファイルを分けた後も、メンテナンスの表示条件が旧来の紙面編集前提のまま残っていた。
+- 一部のメンテナンス操作は、パネル上で非表示にしても検索メニューなどから実行できる条件のままだった。
+
+### 修正
+- 作品ファイルのメンテナンスには「実データ名を整理」だけを表示するようにした。
+- ページ編集ファイルのメンテナンスには「B-Name 階層を修復」「全マスクを再生成」「孤立マスクを削除」「コマ ID を順番通り再採番」だけを表示するようにした。
+- ページ編集ファイル用のメンテナンス操作は、現在のページだけを対象にして実行するようにした。
+- 対象外のファイルでは、検索メニューなどからも該当操作を実行できないようにした。
+- メンテナンス操作の説明と実行結果を、ページ・コマ・表示範囲などの画面上の用語に整理した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `test/blender_page_file_panel_role_check.py`: 作品ファイルではファイル整理のみ、ページ編集ファイルではページ内修復のみが表示・実行可能になることを確認。PASS。
+- `test/blender_page_file_stage_check.py`: ページ編集ファイルで修復・マスク操作を実行しても、現在ページ以外の実体が復活しないことを確認。PASS。
+- `test/blender_coma_renumber_reading_order_check.py`: コマ番号整理がページ編集ファイルでのみ動作し、読み順と親子関係の付け替えが維持されることを確認。PASS。
+- `python -m compileall panels\outliner_layer_panel.py operators\mask_object_op.py operators\repair_op.py operators\coma_renumber_op.py operators\data_name_op.py test\blender_page_file_panel_role_check.py test\blender_coma_renumber_reading_order_check.py test\blender_page_file_stage_check.py __init__.py`: 構文を確認。PASS。
+
 ## 2026-06-02 — 作品ファイルをページプレビュー専用に整理 / v0.6.241
 
 ### 症状
