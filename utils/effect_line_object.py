@@ -488,7 +488,11 @@ def _append_stroke_mesh(
     points = list(getattr(stroke, "points_xyz", None) or [])
     if not points:
         return
-    if _stroke_role(stroke) in {"end_fill", "white_outline_white"} and len(points) >= 3:
+    role = _stroke_role(stroke)
+    if (
+        role == "end_fill"
+        or (role == "white_outline_white" and bool(getattr(stroke, "cyclic", False)))
+    ) and len(points) >= 3:
         base = len(verts)
         z_offset = _stroke_z_offset(stroke)
         for index, point in enumerate(points):

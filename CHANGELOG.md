@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — 効果線の白抜き線設定を拡張 / v0.6.246
+
+### 症状
+
+白抜き線で、白線そのものの本数、間隔、入り抜き、入り抜き範囲を個別に指定できませんでした。黒線側も、フキダシの多重線に相当する本数、方向、間隔、幅変化、長さ変化を持っていませんでした。
+
+### 原因
+
+白抜き線の既存設定は、束の数や束の幅を中心にした設定で、白線・黒線それぞれの線単位の制御項目が不足していました。また、白線は2点の単純な抜き線として生成していたため、入り抜き範囲を表現できませんでした。
+
+### 修正
+
+白線に、本数の自動/手動、間隔、太さ、入り、抜き、入り抜き範囲(％指定/長さ指定)を追加しました。黒線に、本数の自動/手動、方向、太さ、間隔、幅変化、長さ変化、減衰を追加しました。白線は途中点を持つ線幅変化線として生成し、リンク複製時には追加した白線・黒線設定も同期するようにしました。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+
+- `python -m py_compile __init__.py core/effect_line.py operators/effect_line_white_outline.py operators/effect_line_link_op.py panels/effect_line_panel.py panels/layer_stack_detail_ui.py utils/effect_line_object.py utils/geometry_nodes_bridge.py test/blender_effect_line_frame_spacing_check.py test/blender_effect_line_white_outline_visual_check.py`
+- `test/blender_effect_line_frame_spacing_check.py` (`--factory-startup`) — PASS。白線本数、黒線本数、白線入り抜き範囲、リンク複製同期を確認。
+- `test/blender_effect_line_white_outline_visual_check.py` (`--factory-startup`) — PASS。`_verify/effect_line_white_outline_after.png` と `_verify/effect_line_white_outline_reference_like.png` を生成し、複数の白線と黒線が表示されることを確認。
+- `test/blender_context_menu_commands_check.py` (`--factory-startup`) — PASS。効果線のリンク複製メニューが維持されることを確認。
+- 参考: `test/blender_ui_micro_behavior_matrix_check.py` は、効果線オブジェクトが View Layer 外で選択できない既存セットアップ問題で、今回の設定表示確認前に停止。
+
 ## 2026-06-02 — 効果線の白抜き線を複数の抜き線へ修正 / v0.6.245
 
 ### 症状

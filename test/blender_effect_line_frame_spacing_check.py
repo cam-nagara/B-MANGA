@@ -264,19 +264,33 @@ def _assert_start_jitter_moves_starts_inward(strokes, m_to_mm, center, outline) 
         raise AssertionError("start jitter should move at least one start point inward")
 
 
-def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float], expected_count: int) -> None:
+def _assert_white_outline_is_radial(
+    strokes,
+    m_to_mm,
+    center: tuple[float, float],
+    expected_count: int,
+    *,
+    expected_white_lines_per_band: int | None = None,
+    expected_black_lines_per_band: int | None = None,
+) -> None:
     white = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_white"]
     if not white:
         raise AssertionError("白抜き線の白線が生成されていません")
+    if expected_white_lines_per_band is not None:
+        expected_total = expected_count * expected_white_lines_per_band
+        if len(white) != expected_total:
+            raise AssertionError(f"白線本数が指定と違います: actual={len(white)} expected={expected_total}")
     buckets: set[int] = set()
     for index, stroke in enumerate(white):
         points = _stroke_points_mm(stroke, m_to_mm)
-        if len(points) != 2 or bool(getattr(stroke, "cyclic", False)):
+        if len(points) < 2 or bool(getattr(stroke, "cyclic", False)):
             raise AssertionError(f"白抜き線は抜きのある直線である必要があります: index={index}, points={len(points)}")
-        start, end = points
+        start, end = points[0], points[-1]
         radii = list(getattr(stroke, "radii", None) or [])
         if len(radii) < 2 or not float(radii[0]) > float(radii[-1]):
             raise AssertionError(f"白抜き線の終点に抜きがありません: index={index}, radii={radii}")
+        if len(radii) != len(points):
+            raise AssertionError(f"白線の入り抜き点と線幅点の数が一致しません: index={index}")
         if _distance(start, center) <= _distance(end, center):
             raise AssertionError(f"白抜き線が始点側から中心方向へ伸びていません: start={start}, end={end}")
         _assert_points_collinear_to_center(start, end, center, label=f"white outline {index}")
@@ -287,6 +301,10 @@ def _assert_white_outline_is_radial(strokes, m_to_mm, center: tuple[float, float
     black = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_black"]
     if not black:
         raise AssertionError("白抜き線の左右に黒線が生成されていません")
+    if expected_black_lines_per_band is not None:
+        expected_total = expected_count * expected_black_lines_per_band
+        if len(black) != expected_total:
+            raise AssertionError(f"黒線本数が指定と違います: actual={len(black)} expected={expected_total}")
 
 
 def _assert_bundle_jagged_keeps_start(effect_line_gen, m_to_mm) -> None:
@@ -601,9 +619,23 @@ def main() -> None:
         white_params.white_outline_count = 6
         white_params.white_outline_width_mm = 10.0
         white_params.white_outline_spacing_mm = 0.4
+        white_params.white_outline_white_line_count_auto = False
+        white_params.white_outline_white_line_count = 5
         white_params.white_outline_white_ratio_percent = 70.0
         white_params.white_outline_white_brush_mm = 0.3
+        white_params.white_outline_white_in_percent = 80.0
+        white_params.white_outline_white_out_percent = 0.0
+        white_params.white_outline_white_inout_range_mode = "length"
+        white_params.white_outline_white_in_range_mm = 4.0
+        white_params.white_outline_white_out_range_mm = 6.0
+        white_params.white_outline_black_line_count_auto = False
+        white_params.white_outline_black_line_count = 2
+        white_params.white_outline_black_direction = "outside"
         white_params.white_outline_black_brush_mm = 0.3
+        white_params.white_outline_black_spacing_mm = 0.5
+        white_params.white_outline_black_width_scale_percent = 80.0
+        white_params.white_outline_black_length_scale_near_percent = 100.0
+        white_params.white_outline_black_length_scale_far_percent = 75.0
         white_params.white_outline_angle_deg = 0.0
         white_strokes = effect_line_gen.generate_strokes(
             white_params,
@@ -611,7 +643,14 @@ def main() -> None:
             radius_xy_mm=(30.0, 12.0),
             seed=5,
         )
-        _assert_white_outline_is_radial(white_strokes, m_to_mm, center, 6)
+        _assert_white_outline_is_radial(
+            white_strokes,
+            m_to_mm,
+            center,
+            6,
+            expected_white_lines_per_band=5,
+            expected_black_lines_per_band=4,
+        )
 
         if effect_line_op._effect_hit_part((10.0, 20.0, 40.0, 24.0), 30.0, 32.0) != "center":
             raise AssertionError("effect center cross should be draggable as a center hit")
@@ -670,14 +709,27 @@ def main() -> None:
         linked_params = effect_line_link_op._copy_linked_shape_params(
             {
                 "spacing_density_compensation": True,
+                "white_outline_white_line_count": 11,
+                "white_outline_white_out_range_mm": 7.5,
+                "white_outline_black_line_count": 4,
+                "white_outline_black_direction": "outside",
+                "white_outline_angle_deg": 33.0,
             },
             {
                 "spacing_density_compensation": False,
+                "white_outline_white_line_count": 3,
+                "white_outline_black_line_count": 1,
+                "white_outline_angle_deg": 0.0,
             },
         )
         if "start_frame_density_basis" in linked_params or "start_frame_density_rounding_percent" in linked_params:
             raise AssertionError("リンク効果線に密度基準の同期項目が残っています")
         assert linked_params["spacing_density_compensation"] is True
+        assert linked_params["white_outline_white_line_count"] == 11
+        assert abs(float(linked_params["white_outline_white_out_range_mm"]) - 7.5) < 1.0e-6
+        assert linked_params["white_outline_black_line_count"] == 4
+        assert linked_params["white_outline_black_direction"] == "outside"
+        assert linked_params["white_outline_angle_deg"] == 0.0
         print("BNAME_EFFECT_LINE_FRAME_SPACING_OK")
     finally:
         mod.unregister()

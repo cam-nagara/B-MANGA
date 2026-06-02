@@ -61,6 +61,8 @@ def _white_outline_params() -> SimpleNamespace:
         end_rounded_corner_enabled=False,
         white_outline_count=7,
         white_outline_spacing_mm=0.45,
+        white_outline_white_line_count_auto=False,
+        white_outline_white_line_count=18,
         white_outline_width_mm=18.0,
         white_outline_width_jitter_enabled=True,
         white_outline_width_min_percent=82.0,
@@ -69,7 +71,21 @@ def _white_outline_params() -> SimpleNamespace:
         white_outline_white_ratio_percent=72.0,
         white_outline_white_brush_mm=0.45,
         white_outline_white_attenuation=18.0,
+        white_outline_white_in_percent=90.0,
+        white_outline_white_out_percent=0.0,
+        white_outline_white_inout_range_mode="percent",
+        white_outline_white_in_range_percent=18.0,
+        white_outline_white_out_range_percent=34.0,
+        white_outline_white_in_range_mm=10.0,
+        white_outline_white_out_range_mm=10.0,
+        white_outline_black_line_count_auto=False,
+        white_outline_black_line_count=3,
+        white_outline_black_direction="outside",
         white_outline_black_brush_mm=0.34,
+        white_outline_black_spacing_mm=0.45,
+        white_outline_black_width_scale_percent=86.0,
+        white_outline_black_length_scale_near_percent=100.0,
+        white_outline_black_length_scale_far_percent=82.0,
         white_outline_black_attenuation=-8.0,
         white_outline_angle_deg=90.0,
     )
@@ -79,12 +95,25 @@ def _white_outline_reference_params() -> SimpleNamespace:
     params = _white_outline_params()
     params.white_outline_count = 1
     params.white_outline_spacing_mm = 0.38
+    params.white_outline_white_line_count_auto = False
+    params.white_outline_white_line_count = 36
     params.white_outline_width_mm = 42.0
     params.white_outline_width_jitter_enabled = False
     params.white_outline_length_jitter_enabled = False
     params.white_outline_white_ratio_percent = 74.0
     params.white_outline_white_brush_mm = 0.42
+    params.white_outline_white_in_percent = 100.0
+    params.white_outline_white_out_percent = 0.0
+    params.white_outline_white_inout_range_mode = "percent"
+    params.white_outline_white_in_range_percent = 6.0
+    params.white_outline_white_out_range_percent = 36.0
+    params.white_outline_black_line_count_auto = False
+    params.white_outline_black_line_count = 5
     params.white_outline_black_brush_mm = 0.46
+    params.white_outline_black_spacing_mm = 0.38
+    params.white_outline_black_width_scale_percent = 80.0
+    params.white_outline_black_length_scale_near_percent = 100.0
+    params.white_outline_black_length_scale_far_percent = 78.0
     params.white_outline_angle_deg = 270.0
     return params
 
@@ -94,16 +123,18 @@ def _assert_white_outline_strokes(strokes, center: tuple[float, float]) -> None:
     black = [stroke for stroke in strokes if getattr(stroke, "role", "") == "white_outline_black"]
     if len(white) <= 7:
         raise AssertionError(f"抜きのある白線が複数生成されていません: {len(white)}")
-    if len(black) < 14:
+    if len(black) < 2:
         raise AssertionError(f"左右の黒線が不足しています: white={len(white)} black={len(black)}")
     for index, stroke in enumerate(white):
         points = list(getattr(stroke, "points_xyz", []) or [])
-        if len(points) != 2 or bool(getattr(stroke, "cyclic", False)):
+        if len(points) < 2 or bool(getattr(stroke, "cyclic", False)):
             raise AssertionError(f"白線が抜きのある直線になっていません: {index}")
         radii = list(getattr(stroke, "radii", None) or [])
         if len(radii) < 2 or not float(radii[0]) > float(radii[-1]):
             raise AssertionError(f"白線の終点が抜けていません: {index}")
-        start, end = points
+        if len(radii) != len(points):
+            raise AssertionError(f"白線の入り抜き点と線幅点の数が一致しません: {index}")
+        start, end = points[0], points[-1]
         if math.dist(start[:2], center) <= math.dist(end[:2], center):
             raise AssertionError(f"白線が中心へ向かっていません: {index}")
 

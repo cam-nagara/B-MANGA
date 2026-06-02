@@ -536,7 +536,7 @@ def _draw_effect_white_outline_settings(box, params) -> None:
     outline_box.label(text="白抜き線")
     row = outline_box.row(align=True)
     row.prop(params, "white_outline_count")
-    row.prop(params, "white_outline_spacing_mm")
+    row.prop(params, "white_outline_angle_deg")
     outline_box.prop(params, "white_outline_width_mm")
     row = outline_box.row(align=True)
     row.prop(params, "white_outline_width_jitter_enabled")
@@ -548,14 +548,48 @@ def _draw_effect_white_outline_settings(box, params) -> None:
     sub = row.row()
     sub.enabled = params.white_outline_length_jitter_enabled
     sub.prop(params, "white_outline_length_min_percent", text="最小")
-    outline_box.prop(params, "white_outline_white_ratio_percent")
-    row = outline_box.row(align=True)
+
+    white_box = box.box()
+    white_box.label(text="白線")
+    white_box.prop(params, "white_outline_white_ratio_percent")
+    row = white_box.row(align=True)
+    row.prop(params, "white_outline_white_line_count_auto", toggle=True)
+    count_row = row.row()
+    count_row.enabled = not bool(params.white_outline_white_line_count_auto)
+    count_row.prop(params, "white_outline_white_line_count", text="本数")
+    row = white_box.row(align=True)
+    row.prop(params, "white_outline_spacing_mm")
     row.prop(params, "white_outline_white_brush_mm")
-    row.prop(params, "white_outline_white_attenuation")
-    row = outline_box.row(align=True)
+    white_box.prop(params, "white_outline_white_attenuation")
+    row = white_box.row(align=True)
+    row.prop(params, "white_outline_white_in_percent")
+    row.prop(params, "white_outline_white_out_percent")
+    white_box.prop(params, "white_outline_white_inout_range_mode")
+    range_row = white_box.row(align=True)
+    if params.white_outline_white_inout_range_mode == "length":
+        range_row.prop(params, "white_outline_white_in_range_mm")
+        range_row.prop(params, "white_outline_white_out_range_mm")
+    else:
+        range_row.prop(params, "white_outline_white_in_range_percent")
+        range_row.prop(params, "white_outline_white_out_range_percent")
+
+    black_box = box.box()
+    black_box.label(text="黒線")
+    row = black_box.row(align=True)
+    row.prop(params, "white_outline_black_line_count_auto", toggle=True)
+    count_row = row.row()
+    count_row.enabled = not bool(params.white_outline_black_line_count_auto)
+    count_row.prop(params, "white_outline_black_line_count", text="本数")
+    black_box.prop(params, "white_outline_black_direction")
+    row = black_box.row(align=True)
     row.prop(params, "white_outline_black_brush_mm")
+    row.prop(params, "white_outline_black_spacing_mm")
+    row = black_box.row(align=True)
+    row.prop(params, "white_outline_black_width_scale_percent")
     row.prop(params, "white_outline_black_attenuation")
-    outline_box.prop(params, "white_outline_angle_deg")
+    row = black_box.row(align=True)
+    row.prop(params, "white_outline_black_length_scale_near_percent")
+    row.prop(params, "white_outline_black_length_scale_far_percent")
 
 
 def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
@@ -574,6 +608,8 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
 
     _draw_effect_type_settings(box, params)
     if params.effect_type == "white_outline":
+        _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
+        _draw_effect_shape_settings(box, params, "end", "終点形状")
         _draw_effect_white_outline_settings(box, params)
         box.operator("bname.effect_line_generate", text="効果線を追加", icon="STROKE")
         return

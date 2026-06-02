@@ -64,13 +64,19 @@ _INOUT_RANGE_MODE_ITEMS = (
     ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
 )
 
+_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = (
+    ("outside", "外側", "白線群の外側へ黒線を重ねる"),
+    ("inside", "内側", "白線群の内側へ黒線を重ねる"),
+    ("both", "両側", "白線群の外側と内側へ黒線を重ねる"),
+)
+
 _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "rect": "rect",
     "ellipse": "ellipse",
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 13
+EFFECT_PARAM_SCHEMA_VERSION = 14
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -155,6 +161,8 @@ EFFECT_PARAM_FIELDS = (
     "speed_line_count",
     "white_outline_count",
     "white_outline_spacing_mm",
+    "white_outline_white_line_count_auto",
+    "white_outline_white_line_count",
     "white_outline_width_mm",
     "white_outline_width_jitter_enabled",
     "white_outline_width_min_percent",
@@ -163,7 +171,21 @@ EFFECT_PARAM_FIELDS = (
     "white_outline_white_ratio_percent",
     "white_outline_white_brush_mm",
     "white_outline_white_attenuation",
+    "white_outline_white_in_percent",
+    "white_outline_white_out_percent",
+    "white_outline_white_inout_range_mode",
+    "white_outline_white_in_range_percent",
+    "white_outline_white_out_range_percent",
+    "white_outline_white_in_range_mm",
+    "white_outline_white_out_range_mm",
+    "white_outline_black_line_count_auto",
+    "white_outline_black_line_count",
+    "white_outline_black_direction",
     "white_outline_black_brush_mm",
+    "white_outline_black_spacing_mm",
+    "white_outline_black_width_scale_percent",
+    "white_outline_black_length_scale_near_percent",
+    "white_outline_black_length_scale_far_percent",
     "white_outline_black_attenuation",
     "white_outline_angle_deg",
 )
@@ -412,9 +434,11 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     speed_line_count: IntProperty(name="流線の本数上限", default=_DEFAULT_SPEED_LINE_COUNT, min=1, soft_max=1000, update=_on_params_changed)  # type: ignore[valid-type]
 
     # 白抜き線固有
-    white_outline_count: IntProperty(name="本数", default=5, min=1, soft_max=100, update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_spacing_mm: FloatProperty(name="間隔 (mm)", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
-    white_outline_width_mm: FloatProperty(name="太さ (mm)", default=10.0, min=0.01, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_count: IntProperty(name="束の数", default=5, min=1, soft_max=100, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_spacing_mm: FloatProperty(name="白線間隔 (mm)", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_line_count_auto: BoolProperty(name="白線本数を自動計算", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_line_count: IntProperty(name="白線本数", default=24, min=1, soft_max=200, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_width_mm: FloatProperty(name="束の幅 (mm)", default=10.0, min=0.01, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_width_jitter_enabled: BoolProperty(name="太さ乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_width_min_percent: FloatProperty(name="最小太さ (%)", default=50.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_length_jitter_enabled: BoolProperty(name="長さ乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
@@ -422,7 +446,21 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     white_outline_white_ratio_percent: FloatProperty(name="白線割合 (%)", default=30.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_brush_mm: FloatProperty(name="白線太さ (mm)", default=0.3, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_white_attenuation: FloatProperty(name="白線減衰", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_in_percent: FloatProperty(name="白線入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_out_percent: FloatProperty(name="白線抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_inout_range_mode: EnumProperty(name="白線入り抜き範囲", items=_INOUT_RANGE_MODE_ITEMS, default="percent", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_in_range_percent: FloatProperty(name="白線入り範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_out_range_percent: FloatProperty(name="白線抜き範囲 (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_in_range_mm: FloatProperty(name="白線入り範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_white_out_range_mm: FloatProperty(name="白線抜き範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_line_count_auto: BoolProperty(name="黒線本数を自動計算", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_line_count: IntProperty(name="黒線本数", default=3, min=1, soft_max=50, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_direction: EnumProperty(name="黒線方向", items=_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS, default="outside", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_brush_mm: FloatProperty(name="黒線太さ (mm)", default=0.3, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_spacing_mm: FloatProperty(name="黒線間隔 (mm)", default=0.2, min=0.0, soft_max=20.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_width_scale_percent: FloatProperty(name="黒線幅変化 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_near_percent: FloatProperty(name="黒線長さ変化 (内側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_far_percent: FloatProperty(name="黒線長さ変化 (外側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_black_attenuation: FloatProperty(name="黒線減衰", default=0.0, min=-100.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     white_outline_angle_deg: FloatProperty(name="角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
 
