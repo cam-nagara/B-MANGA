@@ -3,6 +3,29 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — ウニフラと白抜き線を集中線方式へ修正 / v0.6.252
+
+### 症状
+- ウニフラ / 白抜き線フキダシで、下地を楕円にしても黒線と白線の生成経路が閉じたフキダシ輪郭のままだった。
+- そのため、ユーザー意図の「効果線の集中線と同じ、始点形状・終点形状・中心点に従う放射状の線列」ではなく、トゲ状の輪郭線に見えていた。
+
+### 原因
+- フキダシ形状として追加したウニフラ / 白抜き線を、効果線の集中線ではなく「トゲ輪郭を持つフキダシ線」として処理していた。
+- 下地の楕円化だけでは、黒線・白線・白抜き線の実体生成が古い閉じた線から切り替わっていなかった。
+
+### 修正
+- ウニフラ / 白抜き線の下地は楕円のまま、黒線・白線・白抜き線を効果線の集中線と同じ放射状線として生成するようにした。
+- ウニフラは黒線、白線、下地の順で重ね、白線を黒線と下地の間に置くようにした。
+- 白抜き線は複数の白線束と黒線を同じ始点・終点・中心点に従わせ、線の本数・間隔・束幅を設定できるようにした。
+- フキダシ設定とレイヤー詳細に、線の本数・線の間隔・白線本数・黒線本数などの放射状線向け項目を表示し、保存復元と複製でも値が残るようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile core/balloon.py utils/balloon_shapes.py utils/balloon_curve_object.py utils/balloon_flash_effect_line_mesh.py panels/balloon_panel.py panels/layer_stack_detail_ui.py io/schema.py test/blender_balloon_uni_flash_check.py _verify/make_balloon_flash_shape_samples.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_all_shapes_shapely_check.py`
+- `blender.exe --background --factory-startup --python _verify/make_balloon_flash_shape_samples.py`
+- `_verify/balloon_flash_shape_samples.png` をAI目視し、下地が楕円、黒線・白線・白抜き線が閉じたトゲ輪郭ではなく放射状の線列になっていることを確認。
+
 ## 2026-06-02 — ウニフラと白抜き線の黒線・白線も楕円へ統一 / v0.6.251
 
 ### 症状

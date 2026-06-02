@@ -93,7 +93,12 @@ def main() -> None:
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
         from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_line_mesh, balloon_shapes
+        from bname_dev_balloon_uni_flash.utils import (
+            balloon_curve_object,
+            balloon_flash_effect_line_mesh,
+            balloon_line_mesh,
+            balloon_shapes,
+        )
         from bname_dev_balloon_uni_flash.utils.geom import Rect
         from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
 
@@ -124,10 +129,15 @@ def main() -> None:
             assert entry.shape == shape
             assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
             assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
+            assert int(entry.flash_line_count) == 120
+            assert abs(float(entry.flash_line_spacing_mm) - 1.0) < 1.0e-6
             assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"
             assert abs(float(entry.flash_white_line_width_percent) - 100.0) < 1.0e-6
             assert abs(float(entry.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(entry.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
+            assert int(entry.flash_white_outline_count) == 5
+            assert int(entry.flash_white_outline_white_line_count) == 24
+            assert int(entry.flash_white_outline_black_line_count) == 3
             assert abs(float(entry.thorn_multi_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(entry.thorn_multi_line_peak_width_pct) - 100.0) < 1.0e-6
             _assert_flash_outline(entry, balloon_shapes, Rect)
@@ -136,19 +146,29 @@ def main() -> None:
             assert saved["shape"] == shape, "保存データに追加形状が残っていません"
             assert saved["lineValleyWidthPct"] == 0.0
             assert saved["linePeakWidthPct"] == 100.0
+            assert saved["flashLineCount"] == 120
+            assert saved["flashLineSpacingMm"] == 1.0
             assert saved["flashWhiteLineEnabled"] is True
             assert saved["flashWhiteLineWidthPercent"] == 100.0
             assert saved["flashWhiteLineValleyWidthPct"] == 0.0
             assert saved["flashWhiteLinePeakWidthPct"] == 100.0
+            assert saved["flashWhiteOutlineCount"] == 5
+            assert saved["flashWhiteOutlineWhiteLineCount"] == 24
+            assert saved["flashWhiteOutlineBlackLineCount"] == 3
             restored = page.balloons.add()
             schema.balloon_entry_from_dict(restored, saved)
             assert restored.shape == shape
             assert abs(float(restored.line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.line_peak_width_pct) - 100.0) < 1.0e-6
+            assert int(restored.flash_line_count) == 120
+            assert abs(float(restored.flash_line_spacing_mm) - 1.0) < 1.0e-6
             assert bool(restored.flash_white_line_enabled)
             assert abs(float(restored.flash_white_line_width_percent) - 100.0) < 1.0e-6
             assert abs(float(restored.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
+            assert int(restored.flash_white_outline_count) == 5
+            assert int(restored.flash_white_outline_white_line_count) == 24
+            assert int(restored.flash_white_outline_black_line_count) == 3
             page.balloons.remove(len(page.balloons) - 1)
 
             entry.flash_white_line_width_percent = 175.0
@@ -166,24 +186,34 @@ def main() -> None:
             body_spline = obj.data.splines[0]
             assert len(body_spline.bezier_points) == 4, "下地が楕円カーブになっていません"
             assert _evaluated_polygon_count(obj) == 0, "本体カーブ側に表示面が残っています"
+            flash_obj = bpy.data.objects.get(balloon_flash_effect_line_mesh._flash_effect_line_mesh_object_name(entry.id))
             white_obj = bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id))
             line_obj = bpy.data.objects.get(balloon_line_mesh._line_mesh_object_name(entry.id))
-            assert white_obj is not None and _evaluated_polygon_count(white_obj) > 0, "白線実体が作成されていません"
-            assert line_obj is not None and _evaluated_polygon_count(line_obj) > 0, "黒線実体が作成されていません"
+            assert flash_obj is not None and _evaluated_polygon_count(flash_obj) > 0, "放射状の線実体が作成されていません"
+            assert white_obj is None, "古い閉じた白線実体が残っています"
+            assert line_obj is None, "古い閉じた黒線実体が残っています"
             body_samples = balloon_line_mesh._sample_body_bezier(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)
-            line_samples = balloon_line_mesh._body_samples_for_line_mesh(entry, obj)
             _body_min, body_max = _sample_radius_range(body_samples)
-            _line_min, line_max = _sample_radius_range(line_samples)
-            assert abs(line_max - body_max) < max(1.0e-6, body_max * 0.03), "黒線が楕円下地から外れてトゲ状になっています"
-            white_z = max((float(v.co.z) for v in white_obj.data.vertices), default=0.0)
-            line_z = max((float(v.co.z) for v in line_obj.data.vertices), default=0.0)
-            assert 0.0 < white_z < line_z, "白線が黒線と下地の間に配置されていません"
+            verts = [(float(v.co.x), float(v.co.y), float(v.co.z)) for v in flash_obj.data.vertices]
+            assert len(verts) > 100, "放射状の線本数が不足しています"
+            center_x = sum(float(s[0]) for s in body_samples) / len(body_samples)
+            center_y = sum(float(s[1]) for s in body_samples) / len(body_samples)
+            flash_max = max(math.hypot(x - center_x, y - center_y) for x, y, _z in verts)
+            assert flash_max > body_max * 1.45, "線が楕円の外側から終点へ向かっていません"
+            material_indices = {int(poly.material_index) for poly in flash_obj.data.polygons}
+            if shape == "uni_flash":
+                assert {0, 2} <= material_indices, "黒線と白線の重なりが作成されていません"
+            else:
+                assert {0, 1} <= material_indices, "白抜き線の白線と黒線が作成されていません"
+            black_z = max((z for _x, _y, z in verts), default=0.0)
+            white_z = min((z for _x, _y, z in verts if z > 0.0), default=0.0)
+            assert 0.0 < white_z < black_z, "白線が黒線と下地の間に配置されていません"
             entry.flash_white_line_enabled = False
             balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is None
             entry.flash_white_line_enabled = True
             balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-            assert bpy.data.objects.get(balloon_line_mesh._flash_white_line_mesh_object_name(entry.id)) is not None
+            assert bpy.data.objects.get(balloon_flash_effect_line_mesh._flash_effect_line_mesh_object_name(entry.id)) is not None
             layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
             assert layer is not None, "フキダシを書き出せません"
             assert layer.image.size[0] > 0 and layer.image.size[1] > 0

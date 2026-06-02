@@ -11,6 +11,7 @@ import bpy
 
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
+from . import balloon_flash_effect_line_mesh
 from . import balloon_fill_mesh
 from . import balloon_flash_white_line_mesh
 from . import balloon_line_mesh
@@ -470,6 +471,7 @@ def _remove_balloon_object(obj: bpy.types.Object) -> None:
         balloon_id = str(obj.get(on.PROP_ID, "") or "")
         if balloon_id:
             balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
+            balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -719,6 +721,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     outer_mat = materials[_MATERIAL_SLOT_OUTER_EDGE] if len(materials) > _MATERIAL_SLOT_OUTER_EDGE else None
     inner_mat = materials[_MATERIAL_SLOT_INNER_EDGE] if len(materials) > _MATERIAL_SLOT_INNER_EDGE else None
     balloon_id = str(getattr(entry, "id", "") or "")
+    is_flash_shape = balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or ""))
     if fill_mat is not None:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
@@ -730,6 +733,35 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
+    if is_flash_shape:
+        if line_mat is not None:
+            white_mat = _ensure_color_material(
+                f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
+                (1.0, 1.0, 1.0, 1.0),
+                mask_info=mask_info,
+                mask_power=_LINE_AND_EDGE_MASK_POWER,
+            )
+            balloon_flash_effect_line_mesh.ensure_balloon_flash_effect_line_mesh(
+                scene=scene,
+                work=work,
+                page=page,
+                entry=entry,
+                body_object=obj,
+                line_material=line_mat,
+                white_material=white_mat,
+                underlay_material=white_mat,
+                mask_info=mask_info,
+            )
+        else:
+            balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_outer_edge_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_inner_edge_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+        return
+    balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
     if line_mat is not None:
         flash_white_mat = _ensure_color_material(
             f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
@@ -1219,6 +1251,18 @@ def _geometry_key_for_entry(entry) -> str:
         "dotted_gap": float(getattr(entry, "dotted_gap_mm", 0.45) or 0.0),
         "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 100.0) or 0.0),
         "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0) or 0.0),
+        "flash_line_count": int(getattr(entry, "flash_line_count", 120) or 120),
+        "flash_line_spacing_mm": float(getattr(entry, "flash_line_spacing_mm", 1.0) or 0.0),
+        "flash_white_line_enabled": bool(getattr(entry, "flash_white_line_enabled", True)),
+        "flash_white_line_width_percent": float(getattr(entry, "flash_white_line_width_percent", 100.0) or 0.0),
+        "flash_white_line_valley_width_pct": float(getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0),
+        "flash_white_line_peak_width_pct": float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 0.0),
+        "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5) or 5),
+        "flash_white_outline_width_mm": float(getattr(entry, "flash_white_outline_width_mm", 10.0) or 0.0),
+        "flash_white_outline_spacing_mm": float(getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.0),
+        "flash_white_outline_white_line_count": int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24),
+        "flash_white_outline_black_line_count": int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3),
+        "flash_white_outline_black_spacing_mm": float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.0),
         "multi_line_count": int(getattr(entry, "multi_line_count", 3) or 3),
         "multi_line_width": float(getattr(entry, "multi_line_width_mm", 0.3) or 0.0),
         "multi_line_spacing": float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0),
@@ -1572,6 +1616,7 @@ def cleanup_orphan_balloon_objects(scene) -> int:
                 removed += 1
     removed += balloon_line_mesh.cleanup_orphan_line_meshes(valid)
     removed += balloon_fill_mesh.cleanup_orphan_fill_meshes(valid)
+    removed += balloon_flash_effect_line_mesh.cleanup_orphan_flash_effect_line_meshes(valid)
     return removed
 
 
@@ -1596,6 +1641,7 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
             _remove_balloon_object(obj)
             removed = True
     balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
+    balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
     balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     return removed
 

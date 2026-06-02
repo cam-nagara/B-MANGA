@@ -143,15 +143,24 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "dotted_gap_mm", text="間隔")
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
         _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-        if balloon_shapes.is_dynamic_meldex_shape(_shape_norm_for_main_line):
+        if balloon_shapes.is_flash_balloon_shape(_shape_norm_for_main_line):
             row = box.row(align=True)
-            if balloon_shapes.is_flash_balloon_shape(_shape_norm_for_main_line):
-                row.prop(entry, "line_valley_width_pct", text="入り・抜き")
-                row.prop(entry, "line_peak_width_pct", text="中間線幅")
+            row.prop(entry, "flash_line_count", text="線の本数")
+            row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
+            row = box.row(align=True)
+            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "line_peak_width_pct", text="中間線幅")
+            if _shape_norm_for_main_line == "white_outline":
+                row = box.row(align=True)
+                row.prop(entry, "flash_white_outline_count")
+                row.prop(entry, "flash_white_outline_width_mm")
+                row = box.row(align=True)
+                row.prop(entry, "flash_white_outline_white_line_count")
+                row.prop(entry, "flash_white_outline_spacing_mm")
+                row = box.row(align=True)
+                row.prop(entry, "flash_white_outline_black_line_count")
+                row.prop(entry, "flash_white_outline_black_spacing_mm")
             else:
-                row.prop(entry, "line_valley_width_pct")
-                row.prop(entry, "line_peak_width_pct")
-            if balloon_shapes.is_flash_balloon_shape(_shape_norm_for_main_line):
                 row = box.row(align=True)
                 row.label(text="白線 (黒線=100%)")
                 row.prop(entry, "flash_white_line_enabled", text="", toggle=True)
@@ -162,7 +171,11 @@ class BNAME_PT_balloons(Panel):
                 row = box.row(align=True)
                 row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
                 row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
-        if str(getattr(entry, "line_style", "") or "") == "double":
+        elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_for_main_line):
+            row = box.row(align=True)
+            row.prop(entry, "line_valley_width_pct")
+            row.prop(entry, "line_peak_width_pct")
+        if str(getattr(entry, "line_style", "") or "") == "double" and not balloon_shapes.is_flash_balloon_shape(_shape_norm_for_main_line):
             row = box.row(align=True)
             row.prop(entry, "multi_line_count")
             row.prop(entry, "multi_line_direction")
@@ -218,7 +231,7 @@ class BNAME_PT_balloons(Panel):
 
         # 形状別パラメータ
         sp = entry.shape_params
-        if balloon_shapes.is_dynamic_meldex_shape(entry.shape):
+        if balloon_shapes.is_dynamic_meldex_shape(entry.shape) and not balloon_shapes.is_flash_balloon_shape(entry.shape):
             box = layout.box()
             box.label(text="形状パラメータ")
             row = box.row(align=True)

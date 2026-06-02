@@ -407,10 +407,18 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     # 100% = 同じ太さ, 0% = その頂点で消える。辺全体で線形補間。
     line_valley_width_pct: FloatProperty(name="主線・谷の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_peak_width_pct: FloatProperty(name="主線・山の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_line_count: IntProperty(name="線の本数", default=120, min=1, max=1000, soft_max=300, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_line_spacing_mm: FloatProperty(name="線の間隔 (mm)", default=1.0, min=0.01, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_enabled: BoolProperty(name="白線", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_width_percent: FloatProperty(name="白線幅 (%)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_valley_width_pct: FloatProperty(name="白線・入り抜き (%)", default=0.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_peak_width_pct: FloatProperty(name="白線・中間線幅 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_count: IntProperty(name="束の数", default=5, min=1, max=100, soft_max=30, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_width_mm: FloatProperty(name="束の幅 (mm)", default=10.0, min=0.01, soft_max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_spacing_mm: FloatProperty(name="白線間隔 (mm)", default=0.25, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_white_line_count: IntProperty(name="白線本数", default=24, min=1, max=200, soft_max=80, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_black_line_count: IntProperty(name="黒線本数", default=3, min=1, max=50, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_outline_black_spacing_mm: FloatProperty(name="黒線間隔 (mm)", default=0.25, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 多重線の谷/山の線幅: 多重線の基本線幅 (multi_line_width_mm) を 100% として % 指定。
     # 100% = 同じ太さ, 0% = その頂点で消える。辺全体に渡って隣接頂点間で

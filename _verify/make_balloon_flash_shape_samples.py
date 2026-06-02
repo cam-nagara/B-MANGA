@@ -139,20 +139,28 @@ def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float,
     )
     _configure_shape_params(entry)
     entry.line_width_mm = 1.6
+    entry.flash_line_count = 96
+    entry.flash_line_spacing_mm = 1.0
     entry.line_color = (0.0, 0.0, 0.0, 1.0)
     if shape == "white_outline":
         entry.fill_color = (0.08, 0.17, 0.34, 1.0)
         entry.line_width_mm = 1.05
         entry.flash_white_line_width_percent = 300.0
         entry.flash_white_line_peak_width_pct = 100.0
+        entry.flash_white_outline_count = 5
+        entry.flash_white_outline_width_mm = 22.0
+        entry.flash_white_outline_white_line_count = 18
+        entry.flash_white_outline_black_line_count = 4
     else:
         entry.fill_color = (0.66, 0.76, 0.62, 1.0)
-        entry.flash_white_line_width_percent = 100.0
+        entry.flash_white_line_width_percent = 140.0
         entry.flash_white_line_peak_width_pct = 100.0
     entry.fill_opacity = 100.0
 
     if variant == "taper":
         entry.line_width_mm = 2.2 if shape == "uni_flash" else 1.1
+        entry.flash_line_count = 120
+        entry.flash_line_spacing_mm = 0.8
         entry.line_valley_width_pct = 0.0
         entry.line_peak_width_pct = 100.0
         entry.flash_white_line_width_percent = 135.0 if shape == "uni_flash" else 300.0
@@ -161,11 +169,17 @@ def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float,
         entry.thorn_multi_line_valley_width_pct = 0.0
         entry.thorn_multi_line_peak_width_pct = 100.0
     elif variant == "multi":
-        entry.line_style = "double"
         entry.line_width_mm = 1.4 if shape == "uni_flash" else 1.0
+        entry.flash_line_count = 180
+        entry.flash_line_spacing_mm = 0.45
         entry.flash_white_line_width_percent = 135.0 if shape == "uni_flash" else 300.0
         entry.flash_white_line_valley_width_pct = 0.0
         entry.flash_white_line_peak_width_pct = 100.0
+        if shape == "white_outline":
+            entry.flash_white_outline_count = 8
+            entry.flash_white_outline_width_mm = 26.0
+            entry.flash_white_outline_white_line_count = 26
+            entry.flash_white_outline_black_line_count = 5
         entry.multi_line_count = 4
         entry.multi_line_direction = "outside"
         entry.multi_line_width_mm = 0.45
@@ -239,7 +253,7 @@ def main() -> None:
         col_objects = [
             _add_label("白線あり", float(objects[0].location.x), top_y, text_size),
             _add_label("入り・抜き 0%", float(objects[1].location.x), top_y, text_size),
-            _add_label("多重線", float(objects[2].location.x), top_y, text_size),
+            _add_label("本数・間隔", float(objects[2].location.x), top_y, text_size),
             _add_label("ウニフラ", row_label_x, float(objects[0].location.y), text_size),
             _add_label("白抜き線", row_label_x, float(objects[3].location.y), text_size),
         ]

@@ -177,29 +177,10 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
 
 
 def flash_base_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
-    sp = getattr(entry, "shape_params", None)
     shape = normalize_shape(getattr(entry, "shape", "rect"))
     if shape not in FLASH_BALLOON_SHAPES:
         return None
-    opts = _DynamicOpts(
-        bump_w=max(2.0, float(getattr(sp, "cloud_bump_width_mm", 10.0))),
-        bump_w_jitter=_clamp01(float(getattr(sp, "cloud_bump_width_jitter", 0.0))),
-        bump_h=max(0.5, float(getattr(sp, "cloud_bump_height_mm", 4.0))),
-        bump_h_jitter=_clamp01(float(getattr(sp, "cloud_bump_height_jitter", 0.0))),
-        offset=max(0.0, min(1.0, float(getattr(sp, "cloud_offset_percent", 50.0)) / 100.0)),
-        sub_w=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_width_ratio", 0.0)))),
-        sub_w_jitter=_clamp01(float(getattr(sp, "cloud_sub_width_jitter", 0.0))),
-        sub_h=max(0.0, min(100.0, float(getattr(sp, "cloud_sub_height_ratio", 0.0)))),
-        sub_h_jitter=_clamp01(float(getattr(sp, "cloud_sub_height_jitter", 0.0))),
-        rng=random.Random(_entry_jitter_seed(entry, sp)),
-        base_kind="ellipse",
-    )
-    base = _dynamic_base(rect.width, rect.height, opts)
-    if base is None:
-        return _outline_ellipse(rect)
-    cx, cy, rx, ry, _eff_h = base
-    base_rect = Rect(rect.x + cx - rx, rect.y + cy - ry, rx * 2.0, ry * 2.0)
-    return _outline_ellipse(base_rect)
+    return _outline_ellipse(rect)
 
 
 def flash_base_bezier_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
@@ -400,7 +381,7 @@ def outline_with_corners_for_shape(
     if s == "thorn-curve":
         return _outline_thorn_curve_with_corners(rect, opts)
     if s in FLASH_BALLOON_SHAPES:
-        return _outline_flash_with_corners(rect, opts)
+        return _outline_ellipse(rect), []
     if s == "octagon":
         return _outline_octagon(rect), list(range(8))
     # Legacy B-Name shapes kept for existing files.
@@ -462,7 +443,7 @@ def bezier_loop_for_shape(
     if s == "thorn-curve":
         return _bezier_thorn_curve(rect, opts)
     if s in FLASH_BALLOON_SHAPES:
-        return _bezier_flash(rect, opts)
+        return _bezier_ellipse(rect)
     if s == "pill":
         return _bezier_pill(rect)
     return None
@@ -1229,7 +1210,7 @@ def _outline_flash_with_corners(
 
 def _bezier_flash(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
     _ = rect, opts
-    return None
+    return _bezier_ellipse(rect)
 
 
 def _thorn_curve_peaks_valleys(
