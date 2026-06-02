@@ -498,11 +498,15 @@ def main() -> None:
         end_labels = [str(getattr(item, "name", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items]
         if any("（旧）" in label for label in end_labels):
             raise AssertionError(f"終点形状に旧表記が残っています: {end_labels}")
-        old_shape_ids = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve", "uni_flash"}
+        old_shape_ids = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
         end_ids = {str(getattr(item, "identifier", "") or "") for item in params.bl_rna.properties["end_shape"].enum_items}
         balloon_ids = {str(getattr(item, "identifier", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
         if (end_ids | balloon_ids) & old_shape_ids:
             raise AssertionError(f"旧タイプが形状候補に残っています: effect={end_ids}, balloon={balloon_ids}")
+        if {"uni_flash", "white_outline"} & end_ids:
+            raise AssertionError(f"フキダシ専用形状が終点形状に混入しています: {end_ids}")
+        if not {"uni_flash", "white_outline"} <= balloon_ids:
+            raise AssertionError(f"フキダシ形状にウニフラ / 白抜き線がありません: {balloon_ids}")
         balloon_labels = {str(getattr(item, "name", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
         if any("旧" in label for label in end_labels + list(balloon_labels)):
             raise AssertionError("終点形状または形状に旧表記が残っています")

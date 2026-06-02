@@ -32,6 +32,8 @@ _SHAPE_ITEMS = (
     ("fluffy", "もやもや", "Meldex ボードカードと同じもやもや形"),
     ("thorn", "トゲ（直線）", "Meldex ボードカードと同じ直線トゲ形"),
     ("thorn-curve", "トゲ（曲線）", "Meldex ボードカードと同じ曲線トゲ形"),
+    ("uni_flash", "ウニフラ", "効果線の集中線と同じ放射状のフキダシ形状"),
+    ("white_outline", "白抜き線", "白抜き線向けの放射状フキダシ形状"),
     ("octagon", "八角形", "Meldex ボードカードと同じ八角形"),
     ("custom", "カスタム", "カスタム形状プリセット参照"),
     ("none", "本体なし", "テキスト単体 (擬音/ナレーション用)"),
@@ -73,6 +75,8 @@ _BLEND_MODE_ITEMS = (
     ("lighten", "比較 (明)", ""),
 )
 
+_FLASH_SHAPE_IDS = {"uni_flash", "white_outline"}
+
 
 def _tag_balloon_redraw(context) -> None:
     try:
@@ -97,6 +101,34 @@ def _sync_balloon_curve(entry) -> None:
 def _on_balloon_entry_changed(_self, context) -> None:
     _sync_balloon_curve(_self)
     _tag_balloon_redraw(context)
+
+
+def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
+    """形状ごとの初期線幅を既存設定を壊さない範囲で適用する."""
+
+    if entry is None or str(getattr(entry, "shape", "") or "") not in _FLASH_SHAPE_IDS:
+        return
+
+    def _set_if_default(attr: str, value: float, default: float = 100.0) -> None:
+        try:
+            current = float(getattr(entry, attr, default))
+        except Exception:  # noqa: BLE001
+            current = default
+        if force or abs(current - default) < 1.0e-6:
+            try:
+                setattr(entry, attr, float(value))
+            except Exception:  # noqa: BLE001
+                pass
+
+    _set_if_default("line_valley_width_pct", 0.0)
+    _set_if_default("line_peak_width_pct", 100.0)
+    _set_if_default("thorn_multi_line_valley_width_pct", 0.0)
+    _set_if_default("thorn_multi_line_peak_width_pct", 100.0)
+
+
+def _on_balloon_shape_changed(_self, context) -> None:
+    apply_balloon_shape_defaults(_self)
+    _on_balloon_entry_changed(_self, context)
 
 
 def _on_balloon_corner_type_changed(_self, context) -> None:
@@ -322,7 +354,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
         default=True,
         update=_on_balloon_entry_changed,
     )
-    shape: EnumProperty(name="形状", items=_SHAPE_ITEMS, default="rect", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    shape: EnumProperty(name="形状", items=_SHAPE_ITEMS, default="rect", update=_on_balloon_shape_changed)  # type: ignore[valid-type]
     custom_preset_name: StringProperty(  # type: ignore[valid-type]
         name="カスタム形状名",
         description="shape=custom のとき参照するプリセット名",

@@ -1152,6 +1152,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.id = data.get("id", entry.id)
     entry.visible = bool(data.get("visible", True))
     entry.shape = balloon_shapes.normalize_shape(data.get("shape", entry.shape))
+    is_flash_shape = balloon_shapes.is_flash_balloon_shape(entry.shape)
+    default_flash_endpoint_width = 0.0 if is_flash_shape else 100.0
     entry.custom_preset_name = data.get("customPresetName", "")
     entry.x_mm = float(data.get("xMm", 0.0))
     entry.y_mm = float(data.get("yMm", 0.0))
@@ -1185,10 +1187,12 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
     entry.multi_line_width_scale_percent = float(data.get("multiLineWidthScalePercent", 100.0))
     entry.multi_line_spacing_scale_percent = float(data.get("multiLineSpacingScalePercent", 100.0))
-    entry.line_valley_width_pct = float(data.get("lineValleyWidthPct", 100.0))
+    entry.line_valley_width_pct = float(data.get("lineValleyWidthPct", default_flash_endpoint_width))
     entry.line_peak_width_pct = float(data.get("linePeakWidthPct", 100.0))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")
-    entry.thorn_multi_line_valley_width_pct = float(data.get("thornMultiLineValleyWidthPct", 100.0))
+    entry.thorn_multi_line_valley_width_pct = float(
+        data.get("thornMultiLineValleyWidthPct", default_flash_endpoint_width)
+    )
     entry.thorn_multi_line_peak_width_pct = float(data.get("thornMultiLinePeakWidthPct", 100.0))
     entry.thorn_multi_line_length_scale_percent = float(data.get("thornMultiLineLengthScalePercent", 100.0))
     # 旧 `thornMultiLineLengthScalePercent` が non-default のときは far の初期値に流用。

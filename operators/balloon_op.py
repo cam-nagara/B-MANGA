@@ -16,6 +16,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from bpy.types import Operator
 
+from ..core import balloon as balloon_core
 from ..core.work import get_active_page, get_work
 from ..io import balloon_presets
 from ..ui import overlay_creation_range
@@ -63,6 +64,8 @@ _SHAPE_FOR_ADD = (
     ("fluffy", "もやもや", ""),
     ("thorn", "トゲ（直線）", ""),
     ("thorn-curve", "トゲ（曲線）", ""),
+    ("uni_flash", "ウニフラ", ""),
+    ("white_outline", "白抜き線", ""),
     ("octagon", "八角形", ""),
     ("none", "本体なし (テキスト単体)", ""),
 )
@@ -662,6 +665,7 @@ def _create_balloon_entry(
         default_parent_kind = "page"
         default_parent_key = page_stack_key(page)
     entry.shape = balloon_shapes.normalize_shape(shape)
+    balloon_core.apply_balloon_shape_defaults(entry, force=True)
     entry.x_mm = float(x)
     entry.y_mm = float(y)
     entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))

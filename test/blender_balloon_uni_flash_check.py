@@ -1,8 +1,9 @@
-"""Blender 実機用: フキダシからウニフラッシュを排除したことを確認。"""
+"""Blender 実機用: フキダシ形状のウニフラ / 白抜き線を確認。"""
 
 from __future__ import annotations
 
 import importlib.util
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -11,16 +12,6 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _evaluated_polygon_count(obj) -> int:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        return len(getattr(mesh, "polygons", []) or [])
-    finally:
-        evaluated.to_mesh_clear()
 
 
 def _load_addon():
@@ -41,19 +32,54 @@ def _enum_ids(prop) -> set[str]:
     return {str(getattr(item, "identifier", "") or "") for item in prop.enum_items}
 
 
+def _evaluated_polygon_count(obj) -> int:
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = obj.evaluated_get(depsgraph)
+    mesh = evaluated.to_mesh()
+    try:
+        return len(getattr(mesh, "polygons", []) or [])
+    finally:
+        evaluated.to_mesh_clear()
+
+
+def _assert_flash_outline(entry, balloon_shapes, Rect) -> None:
+    rect = Rect(0.0, 0.0, float(entry.width_mm), float(entry.height_mm))
+    points, corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
+    assert len(points) >= 20, "放射状の山谷点が不足しています"
+    assert len(corners) == len(points), "ウニフラ / 白抜き線の角が鋭角指定になっていません"
+    center = (float(entry.width_mm) * 0.5, float(entry.height_mm) * 0.5)
+    radii = [math.hypot(x - center[0], y - center[1]) for x, y in points]
+    assert max(radii) - min(radii) > 3.0, "放射状の山谷差が出ていません"
+
+
+def _configure_shape_params(entry) -> None:
+    sp = entry.shape_params
+    sp.dynamic_shape_base_kind = "ellipse"
+    sp.cloud_bump_width_mm = 5.0
+    sp.cloud_bump_height_mm = 8.0
+    sp.cloud_offset_percent = 12.0
+    sp.cloud_bump_width_jitter = 0.0
+    sp.cloud_bump_height_jitter = 0.0
+    sp.cloud_sub_width_ratio = 0.0
+    sp.cloud_sub_height_ratio = 0.0
+    sp.shape_seed = 0
+
+
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_uni_flash_removed_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_uni_flash_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "UniFlashRemoved.bname"))
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonFlash.bname"))
         assert "FINISHED" in result, result
 
+        from bname_dev_balloon_uni_flash.core import balloon as balloon_core
         from bname_dev_balloon_uni_flash.core.work import get_work
         from bname_dev_balloon_uni_flash.io import export_balloon, schema
         from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_curve_render_nodes
+        from bname_dev_balloon_uni_flash.utils import balloon_curve_object, balloon_shapes
+        from bname_dev_balloon_uni_flash.utils.geom import Rect
         from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
@@ -62,63 +88,51 @@ def main() -> None:
         page = work.pages[0]
         page_key = page_stack_key(page)
 
-        entry = balloon_op._create_balloon_entry(
-            context,
-            page,
-            shape="uni_flash",
-            x=32.0,
-            y=48.0,
-            w=90.0,
-            h=46.0,
-            parent_kind="page",
-            parent_key=page_key,
-        )
-        assert entry.shape == "ellipse", "旧ウニフラッシュ指定が楕円へ読み替わっていません"
+        shape_ids = {item[0] for item in balloon_core._SHAPE_ITEMS}
+        assert {"uni_flash", "white_outline"} <= shape_ids, "フキダシ形状候補に追加形状がありません"
+        assert balloon_shapes.normalize_shape("uni_flash") == "uni_flash"
+        assert balloon_shapes.normalize_shape("white_outline") == "white_outline"
 
-        balloon_shape_ids = _enum_ids(entry.bl_rna.properties["shape"])
-        assert "uni_flash" not in balloon_shape_ids, "フキダシ形状にウニフラッシュが残っています"
+        for index, shape in enumerate(("uni_flash", "white_outline")):
+            entry = balloon_op._create_balloon_entry(
+                context,
+                page,
+                shape=shape,
+                x=24.0 + index * 70.0,
+                y=42.0,
+                w=58.0,
+                h=42.0,
+                parent_kind="page",
+                parent_key=page_key,
+            )
+            _configure_shape_params(entry)
+            assert entry.shape == shape
+            assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
+            assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
+            assert abs(float(entry.thorn_multi_line_valley_width_pct) - 0.0) < 1.0e-6
+            assert abs(float(entry.thorn_multi_line_peak_width_pct) - 100.0) < 1.0e-6
+            _assert_flash_outline(entry, balloon_shapes, Rect)
 
-        saved = schema.balloon_entry_to_dict(entry)
-        assert saved["shape"] == "ellipse", "保存データにウニフラッシュ形状が残っています"
-        assert not any(str(key).startswith("uniFlash") for key in saved.get("shapeParams", {})), (
-            "保存データにウニフラッシュ専用設定が残っています"
-        )
+            saved = schema.balloon_entry_to_dict(entry)
+            assert saved["shape"] == shape, "保存データに追加形状が残っていません"
+            assert saved["lineValleyWidthPct"] == 0.0
+            assert saved["linePeakWidthPct"] == 100.0
+            restored = page.balloons.add()
+            schema.balloon_entry_from_dict(restored, saved)
+            assert restored.shape == shape
+            assert abs(float(restored.line_valley_width_pct) - 0.0) < 1.0e-6
+            assert abs(float(restored.line_peak_width_pct) - 100.0) < 1.0e-6
+            page.balloons.remove(len(page.balloons) - 1)
 
-        restored = page.balloons.add()
-        schema.balloon_entry_from_dict(
-            restored,
-            {
-                "id": "legacy_flash",
-                "shape": "uni_flash",
-                "xMm": 12.0,
-                "yMm": 18.0,
-                "widthMm": 40.0,
-                "heightMm": 24.0,
-                "shapeParams": {"uniFlashSpacingMm": 1.2, "uniFlashMaxLineCount": 400},
-            },
-        )
-        assert restored.shape == "ellipse", "旧保存データのウニフラッシュが楕円へ読み替わっていません"
-        page.balloons.remove(len(page.balloons) - 1)
+            obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
+            assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
+            assert len(obj.data.splines) >= 1, "フキダシの輪郭カーブがありません"
+            assert _evaluated_polygon_count(obj) == 0, "本体カーブ側に表示面が残っています"
+            layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
+            assert layer is not None, "フキダシを書き出せません"
+            assert layer.image.size[0] > 0 and layer.image.size[1] > 0
 
-        obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
-        assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
-        assert len(obj.data.splines) >= 1, "フキダシの輪郭カーブがありません"
-        assert _evaluated_polygon_count(obj) > 0, "フキダシの表示結果が空です"
-        modifier = obj.modifiers.get("B-Name Geometry Nodes")
-        assert modifier is not None, "フキダシに軽量表示補助がありません"
-        assert modifier.node_group is not None and modifier.node_group.name == balloon_curve_render_nodes.GROUP_NAME
-        assert obj.get(balloon_curve_render_nodes.PROP_GN_KIND) == balloon_curve_render_nodes.KIND, "フキダシが旧ウニフラッシュ用ノードを使っています"
-        modifier.show_viewport = False
-        bpy.context.view_layer.update()
-        assert len(obj.data.splines) >= 1, "表示補助を非表示にすると編集用カーブまで消えています"
-        assert _evaluated_polygon_count(obj) == 0, "表示補助を非表示にしても下敷きフキダシが残っています"
-        modifier.show_viewport = True
-        bpy.context.view_layer.update()
-
-        layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
-        assert layer is not None, "フキダシを書き出せません"
-        assert layer.image.size[0] > 0 and layer.image.size[1] > 0
-        print("BNAME_BALLOON_UNI_FLASH_REMOVED_OK")
+        print("BNAME_BALLOON_FLASH_SHAPES_OK")
     finally:
         if mod is not None:
             try:

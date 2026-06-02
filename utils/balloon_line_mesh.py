@@ -86,6 +86,9 @@ MESH_BAND_LINE_SHAPES = set(SHAPELY_LINE_SHAPES)
 # 谷で自己交差しないリングを優先する設計判断)
 SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES) | {"custom"}
 
+_DYNAMIC_WIDTH_SHAPES = {"cloud", "fluffy", "thorn", "thorn-curve", "uni_flash", "white_outline"}
+_ROUNDED_PEAK_SHAPES = {"cloud", "fluffy"}
+
 
 def is_mesh_band_shape(entry) -> bool:
     """主線を Mesh 直接構築方式で描画する形状か."""
@@ -2740,7 +2743,7 @@ def ensure_balloon_line_mesh(
     # 丸める。 トゲ/トゲ曲線は山頂が尖る形状なので従来通り mitre のまま。
     peaks_rounded = balloon_shapes.normalize_shape(
         str(getattr(entry, "shape", "rect") or "rect")
-    ) in {"cloud", "fluffy"}
+    ) in _ROUNDED_PEAK_SHAPES
 
     # 主線の谷/山の線幅: % 指定 (100% = base line_width, 0% = その頂点で消える)。
     # 辺全体で線形補間。動的形状のみ有効。両方 0% のとき主線全体不可視。
@@ -2837,7 +2840,7 @@ def _line_dynamic_width_params(entry) -> tuple[bool, float, float, bool]:
     フチも山頂で消えて尖りを残す挙動にする。
     """
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
-    if shape_norm not in {"cloud", "fluffy", "thorn", "thorn-curve"}:
+    if shape_norm not in _DYNAMIC_WIDTH_SHAPES:
         return (False, 100.0, 100.0, False)
     valley_pct = max(0.0, min(100.0, float(getattr(entry, "line_valley_width_pct", 100.0))))
     peak_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0))))
@@ -2882,7 +2885,7 @@ def _compute_main_line_polygon(
         line_peak_m = line_width_m * (peak_pct / 100.0)
         peaks_rounded = balloon_shapes.normalize_shape(
             str(getattr(entry, "shape", "rect") or "rect")
-        ) in {"cloud", "fluffy"}
+        ) in _ROUNDED_PEAK_SHAPES
         sub_polys = _build_dynamic_multi_line_polygons(
             body_samples=samples,
             signed_offset_m=0.0,
@@ -3203,7 +3206,7 @@ def ensure_balloon_multi_line_mesh(
     cross_enabled = bool(getattr(entry, "thorn_multi_line_cross_enabled", False))
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
     dynamic_features_active = (
-        shape_norm in {"cloud", "fluffy", "thorn", "thorn-curve"}
+        shape_norm in _DYNAMIC_WIDTH_SHAPES
         and (
             length_near < 0.999
             or length_far < 0.999
@@ -3326,7 +3329,7 @@ def ensure_balloon_multi_line_mesh(
                     cross_extension_m=cross_extension_m,
                     peak_extension_m=0.0,
                     outside_align=ml_outside_align,
-                    peaks_rounded=(shape_norm in {"cloud", "fluffy"}),
+                    peaks_rounded=(shape_norm in _ROUNDED_PEAK_SHAPES),
                 )
                 polygons.extend(sub_polys)
             else:
@@ -3335,7 +3338,7 @@ def ensure_balloon_multi_line_mesh(
                     signed_offset_m=signed_offset_mm * 0.001,
                     band_width_m=ring_width_mm * 0.001,
                     valley_sharp=valley_sharp,
-                    peaks_rounded=(shape_norm in {"cloud", "fluffy"}),
+                    peaks_rounded=(shape_norm in _ROUNDED_PEAK_SHAPES),
                     _body_poly=body_poly,
                 )
                 if band is not None:

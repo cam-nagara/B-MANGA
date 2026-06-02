@@ -3,6 +3,26 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — フキダシにウニフラと白抜き線形状を追加 / v0.6.247
+
+### 症状
+- フキダシの形状としてウニフラと白抜き線を選べず、入り抜き 0%・中間線幅 100% の放射状輪郭を初期状態で作れなかった。
+
+### 原因
+- フキダシ側では過去にウニフラを楕円として扱う読み替えが残っており、白抜き線もフキダシ形状候補・生成・保存復元・詳細設定の対象になっていなかった。
+
+### 修正
+- フキダシ形状にウニフラと白抜き線を追加し、雲・もやもや・トゲと同じ形状パラメータ、主線と多重線の入り抜き / 中間線幅設定を使えるようにした。
+- ウニフラと白抜き線の新規作成時、および保存値がないデータの読み込み時は、入り抜き 0%・中間線幅 100% を初期値にした。
+- 効果線の始点 / 終点形状にはウニフラと白抜き線が混入しないようにし、効果線本体の種類としてのウニフラ / 白抜き線とは分けて扱うようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile __init__.py core/balloon.py core/effect_line.py utils/balloon_shapes.py utils/balloon_line_mesh.py panels/balloon_panel.py panels/layer_stack_detail_ui.py operators/balloon_op.py operators/layer_detail_op.py io/schema.py test/blender_balloon_uni_flash_check.py test/blender_balloon_all_shapes_shapely_check.py test/blender_effect_line_frame_spacing_check.py test/blender_object_tool_selection_check.py test/blender_geometry_nodes_bridge_check.py`
+- `test/blender_balloon_uni_flash_check.py` (`--factory-startup`) — PASS。フキダシ形状候補、ウニフラ / 白抜き線の入り抜き 0%・中間線幅 100% 初期値、保存復元、実体生成、書き出しを確認。
+- `test/blender_balloon_all_shapes_shapely_check.py` (`--factory-startup`) — PASS。ウニフラ / 白抜き線を含む全フキダシ形状で主線・フチ・多重線生成を確認。
+- `test/blender_effect_line_frame_spacing_check.py` (`--factory-startup`) — PASS。効果線の始点 / 終点形状にウニフラ / 白抜き線が混入せず、フキダシ側の形状候補に存在することを確認。
+- `test/blender_object_tool_selection_check.py` (`--factory-startup`) — PASS。ツール選択画面でフキダシ形状候補と効果線の始点 / 終点形状候補が分離していることを確認。
+
 ## 2026-06-02 — 効果線の白抜き線設定を拡張 / v0.6.246
 
 ### 症状

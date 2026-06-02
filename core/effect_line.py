@@ -46,7 +46,7 @@ _LEGACY_SHAPE_TO_CURRENT = {
 _EFFECT_SHAPE_ITEMS = tuple(
     (item[0], _clean_effect_shape_label(item[1]), item[2])
     for item in balloon._SHAPE_ITEMS
-    if item[0] not in {"custom", "none", "uni_flash"}
+    if item[0] not in {"custom", "none", "uni_flash", "white_outline"}
 )
 
 _SPACING_MODE_ITEMS = (

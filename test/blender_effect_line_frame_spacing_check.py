@@ -365,7 +365,7 @@ def main() -> None:
         from bname_dev_effect_spacing.utils import balloon_shapes, effect_line_object
         from bname_dev_effect_spacing.utils.geom import m_to_mm
 
-        old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve", "uni_flash"}
+        old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
         effect_shape_ids = {
             str(getattr(item, "identifier", "") or "")
             for item in params.bl_rna.properties["end_shape"].enum_items
@@ -373,6 +373,10 @@ def main() -> None:
         balloon_shape_ids = {item[0] for item in balloon._SHAPE_ITEMS}
         if effect_shape_ids & old_shapes or balloon_shape_ids & old_shapes:
             raise AssertionError(f"旧タイプが形状候補に残っています: effect={effect_shape_ids}, balloon={balloon_shape_ids}")
+        if {"uni_flash", "white_outline"} & effect_shape_ids:
+            raise AssertionError(f"フキダシ専用形状が効果線の始点・終点形状に混入しています: {effect_shape_ids}")
+        if not {"uni_flash", "white_outline"} <= balloon_shape_ids:
+            raise AssertionError(f"フキダシ形状候補にウニフラ / 白抜き線がありません: {balloon_shape_ids}")
         effect_shape_labels = {
             str(getattr(item, "name", "") or "")
             for item in params.bl_rna.properties["end_shape"].enum_items
@@ -384,8 +388,8 @@ def main() -> None:
             raise AssertionError("旧フキダシ形状の読み替えが機能していません")
         if balloon_shapes.normalize_shape("spike_curve") != "thorn-curve":
             raise AssertionError("旧トゲ形状の読み替えが機能していません")
-        if balloon_shapes.normalize_shape("uni_flash") != "ellipse":
-            raise AssertionError("旧フキダシのウニフラッシュが楕円へ読み替えられていません")
+        if balloon_shapes.normalize_shape("uni_flash") != "uni_flash":
+            raise AssertionError("フキダシのウニフラ形状が維持されていません")
         assert params.bl_rna.properties["bundle_line_count_jitter"].name == "数の乱れ"
         assert params.bl_rna.properties["bundle_gap_jitter_amount"].name == "まとまり間隔の乱れ"
 

@@ -195,6 +195,15 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     elif line_style == "dotted":
         row = line_box.row(align=True)
         row.prop(entry, "dotted_gap_mm", text="間隔")
+    shape_norm_for_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+    if balloon_shapes.is_dynamic_meldex_shape(shape_norm_for_line):
+        row = line_box.row(align=True)
+        if balloon_shapes.is_flash_balloon_shape(shape_norm_for_line):
+            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "line_peak_width_pct", text="中間線幅")
+        else:
+            row.prop(entry, "line_valley_width_pct")
+            row.prop(entry, "line_peak_width_pct")
     if str(getattr(entry, "line_style", "") or "") == "double":
         row = line_box.row(align=True)
         row.prop(entry, "multi_line_count")
@@ -204,12 +213,21 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row.prop(entry, "multi_line_spacing_mm")
         row = line_box.row(align=True)
         row.prop(entry, "multi_line_width_scale_percent")
-        row.prop(entry, "thorn_multi_line_length_scale_percent")
-        if str(getattr(entry, "shape", "") or "") == "thorn":
+        row.prop(entry, "multi_line_spacing_scale_percent")
+        shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
+        if balloon_shapes.is_dynamic_meldex_shape(shape_norm):
             row = line_box.row(align=True)
-            row.prop(entry, "thorn_multi_line_valley_width_pct")
-            row.prop(entry, "thorn_multi_line_peak_width_pct")
-            line_box.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
+            row.prop(entry, "thorn_multi_line_length_scale_near_percent")
+            row.prop(entry, "thorn_multi_line_length_scale_far_percent")
+            row = line_box.row(align=True)
+            row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
+            row = line_box.row(align=True)
+            if balloon_shapes.is_flash_balloon_shape(shape_norm):
+                row.prop(entry, "thorn_multi_line_valley_width_pct", text="入り・抜き")
+                row.prop(entry, "thorn_multi_line_peak_width_pct", text="中間線幅")
+            else:
+                row.prop(entry, "thorn_multi_line_valley_width_pct")
+                row.prop(entry, "thorn_multi_line_peak_width_pct")
     row = line_box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")
@@ -241,7 +259,9 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     sp = entry.shape_params
     if source_state != balloon_curve_source_state.STATE_FREEFORM and balloon_shapes.is_dynamic_meldex_shape(entry.shape):
         shape_box = box.box()
-        shape_box.label(text="Meldex形状パラメータ")
+        shape_box.label(text="形状パラメータ")
+        row = shape_box.row(align=True)
+        row.prop(sp, "dynamic_shape_base_kind", text="ベース")
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_bump_width_mm")
         row.prop(sp, "cloud_bump_width_jitter", text="乱れ")
@@ -257,6 +277,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
+        shape_box.prop(sp, "cloud_valley_sharp")
 
     move_box = box.box()
     move_box.label(text="親子連動移動", icon="CON_TRACKTO")

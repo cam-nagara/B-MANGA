@@ -11,8 +11,19 @@ from pathlib import Path
 from . import corner_radius
 from .geom import Rect
 
-MELDEX_CARD_SHAPES = ("rect", "ellipse", "cloud", "fluffy", "thorn", "thorn-curve", "octagon")
-DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
+MELDEX_CARD_SHAPES = (
+    "rect",
+    "ellipse",
+    "cloud",
+    "fluffy",
+    "thorn",
+    "thorn-curve",
+    "uni_flash",
+    "white_outline",
+    "octagon",
+)
+DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve", "uni_flash", "white_outline")
+FLASH_BALLOON_SHAPES = {"uni_flash", "white_outline"}
 CORNER_TYPES = {"square", "rounded", "bevel"}
 
 # 雲フキダシ主線の谷で handle を radial 方向からどれだけ接線方向に傾けるか.
@@ -39,7 +50,6 @@ _LEGACY_SHAPE_ALIASES = {
     "spike_straight": "thorn",
     "spike_curve": "thorn-curve",
     "thorn_curve": "thorn-curve",
-    "uni_flash": "ellipse",
 }
 
 
@@ -59,6 +69,10 @@ def normalize_shape(shape: str | None) -> str:
 
 def is_dynamic_meldex_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in DYNAMIC_MELDEX_SHAPES
+
+
+def is_flash_balloon_shape(shape: str | None) -> bool:
+    return normalize_shape(shape) in FLASH_BALLOON_SHAPES
 
 
 def corner_type_for_entry(entry) -> str:
@@ -338,6 +352,8 @@ def outline_with_corners_for_shape(
         return _outline_thorn_with_corners(rect, opts)
     if s == "thorn-curve":
         return _outline_thorn_curve_with_corners(rect, opts)
+    if s in FLASH_BALLOON_SHAPES:
+        return _outline_flash_with_corners(rect, opts)
     if s == "octagon":
         return _outline_octagon(rect), list(range(8))
     # Legacy B-Name shapes kept for existing files.
@@ -398,6 +414,8 @@ def bezier_loop_for_shape(
         return _bezier_fluffy(rect, opts)
     if s == "thorn-curve":
         return _bezier_thorn_curve(rect, opts)
+    if s in FLASH_BALLOON_SHAPES:
+        return _bezier_flash(rect, opts)
     if s == "pill":
         return _bezier_pill(rect)
     return None
@@ -1132,6 +1150,43 @@ def _outline_thorn_with_corners(
     # トゲは全頂点 (先端・谷) が鋭角の多角形。
     corners = list(range(len(pts)))
     return _local_to_rect(rect, pts), corners
+
+
+def _outline_flash_with_corners(
+    rect: Rect, opts: _DynamicOpts
+) -> tuple[list[tuple[float, float]], list[int]]:
+    base = _dynamic_base(rect.width, rect.height, opts)
+    if base is None:
+        return _outline_ellipse(rect), []
+    cx, cy, rx, ry, eff_h = base
+    base_kind = getattr(opts, "base_kind", "ellipse")
+    angle, segments = _bump_segments(rx, ry, opts, min_slots=10)
+    if not segments:
+        return _outline_ellipse(rect), []
+    notch = min(
+        max(eff_h * 0.65, min(rect.width, rect.height) * 0.04),
+        max(0.0, min(rx, ry) - 0.2),
+    )
+    peak_scale = 1.35
+
+    def valley_at(t: float) -> tuple[float, float]:
+        return _base_position_inset(t, notch, cx, cy, rx, ry, base_kind=base_kind)
+
+    def peak_at(t: float, h_mul: float) -> tuple[float, float]:
+        return _base_position_scaled(t, max(0.2, h_mul) * peak_scale, cx, cy, rx, ry, eff_h, base_kind=base_kind)
+
+    pts = [valley_at(angle)]
+    for _is_sub, bump_angle, h_mul in segments:
+        mid_angle = angle + bump_angle * 0.5
+        angle += bump_angle
+        pts.append(peak_at(mid_angle, h_mul))
+        pts.append(valley_at(angle))
+    return _local_to_rect(rect, pts), list(range(len(pts)))
+
+
+def _bezier_flash(rect: Rect, opts: _DynamicOpts) -> list[BezierAnchor] | None:
+    _ = rect, opts
+    return None
 
 
 def _thorn_curve_peaks_valleys(

@@ -504,7 +504,7 @@ def main() -> None:
             str(getattr(item, "identifier", "") or "")
             for item in balloon.bl_rna.properties["shape"].enum_items
         }
-        assert "uni_flash" not in balloon_shape_ids, "フキダシ形状にウニフラッシュが残っています"
+        assert {"uni_flash", "white_outline"} <= balloon_shape_ids, "フキダシ形状にウニフラ / 白抜き線がありません"
 
         legacy = balloon_op._create_balloon_entry(
             context,
@@ -526,7 +526,7 @@ def main() -> None:
         assert legacy_obj is not None
         assert legacy_obj.type == "CURVE"
         legacy_modifier = _assert_balloon_curve_nodes(legacy_obj, balloon_curve_render_nodes)
-        _assert_close(_modifier_socket_value(legacy_modifier, "線幅 (mm)"), 0.38, "旧フキダシ 線幅")
+        _assert_close(_modifier_socket_value(legacy_modifier, "線幅 (mm)"), 0.38, "ウニフラフキダシ 線幅")
         assert legacy_modifier.node_group.name != "BName_GN_UniFlash"
 
         print("BNAME_GEOMETRY_NODES_BRIDGE_OK")
