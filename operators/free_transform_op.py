@@ -54,6 +54,12 @@ class BNAME_OT_reset_free_transform(Operator):
                 balloon_op._sync_balloon_merge_display_if_needed(page, target)
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                from . import layer_link_duplicate_op
+
+                layer_link_duplicate_op.propagate_linked_balloon_center_free(context, page, target)
+            except Exception:  # noqa: BLE001
+                pass
         elif kind == "text" and target is not None:
             page = resolved.get("page") if resolved else None
             with text_real_object.suspend_auto_sync():

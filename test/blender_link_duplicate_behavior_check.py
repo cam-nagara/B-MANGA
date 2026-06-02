@@ -1,0 +1,307 @@
+"""Blender実機用: フキダシ/効果線の複製とリンク複製を確認."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+ROOT = Path(__file__).resolve().parents[1]
+MODULE_NAME = "bname_dev_link_duplicate"
+
+
+def _load_addon():
+    spec = importlib.util.spec_from_file_location(
+        MODULE_NAME,
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[MODULE_NAME] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
+def _select_stack(kind: str, key_suffix: str = ""):
+    from bname_dev_link_duplicate.utils import layer_stack
+
+    stack = layer_stack.sync_layer_stack(bpy.context)
+    assert stack is not None
+    for index, item in enumerate(stack):
+        if str(getattr(item, "kind", "") or "") != kind:
+            continue
+        key = str(getattr(item, "key", "") or "")
+        if key_suffix and not key.endswith(key_suffix):
+            continue
+        assert layer_stack.select_stack_index(bpy.context, index)
+        return item
+    raise AssertionError(f"レイヤー一覧に対象がありません: {kind} {key_suffix}")
+
+
+def _balloon_uid(page, entry) -> str:
+    from bname_dev_link_duplicate.utils import layer_stack
+    from bname_dev_link_duplicate.utils.layer_hierarchy import page_stack_key
+
+    return layer_stack.target_uid("balloon", f"{page_stack_key(page)}:{entry.id}")
+
+
+def _assert_pair(value, expected, label: str) -> None:
+    actual = (round(float(value[0]), 6), round(float(value[1]), 6))
+    exp = (round(float(expected[0]), 6), round(float(expected[1]), 6))
+    if actual != exp:
+        raise AssertionError(f"{label}: actual={actual} expected={exp}")
+
+
+def _effect_key(layer) -> str:
+    from bname_dev_link_duplicate.utils import layer_stack
+
+    return layer_stack._node_stack_key(layer)
+
+
+def _effect_uid(layer) -> str:
+    from bname_dev_link_duplicate.utils import layer_stack
+
+    return layer_stack.target_uid("effect", _effect_key(layer))
+
+
+def _select_effect(obj, layer) -> None:
+    from bname_dev_link_duplicate.operators import effect_line_op
+
+    _select_stack("effect", _effect_key(layer))
+    effect_line_op._select_effect_layer(bpy.context, obj, layer)
+
+
+def _effect_meta_entry(effect_line_op, obj, layer) -> dict:
+    meta = effect_line_op._effect_meta(obj)
+    key = effect_line_op._layer_meta_key(layer)
+    entry = meta.get(key)
+    return entry if isinstance(entry, dict) else {}
+
+
+def _resolve_effect_by_id(effect_id: str):
+    from bname_dev_link_duplicate.utils import object_naming as on
+
+    obj = on.find_object_by_bname_id(effect_id, kind="effect")
+    if obj is None:
+        raise AssertionError(f"効果線が見つかりません: {effect_id}")
+    layers = getattr(getattr(obj, "data", None), "layers", None)
+    layer = getattr(layers, "active", None) if layers is not None else None
+    if layer is None and layers is not None and len(layers) > 0:
+        layer = layers[0]
+    if layer is None:
+        raise AssertionError(f"効果線レイヤーが見つかりません: {effect_id}")
+    return obj, layer
+
+
+def _test_balloon_link_duplicate(page) -> None:
+    from bname_dev_link_duplicate.operators import balloon_op, layer_link_duplicate_op
+    from bname_dev_link_duplicate.utils import free_transform, layer_links
+
+    source = balloon_op._create_balloon_entry(
+        bpy.context,
+        page,
+        shape="ellipse",
+        x=32.0,
+        y=44.0,
+        w=46.0,
+        h=28.0,
+        parent_kind="page",
+        parent_key="",
+    )
+    source.center_offset_x_mm = 4.0
+    source.center_offset_y_mm = -2.0
+    free_transform.set_entry_offsets(
+        source,
+        {
+            free_transform.BOTTOM_LEFT: (1.0, 0.0),
+            free_transform.BOTTOM_RIGHT: (0.0, 1.0),
+            free_transform.TOP_RIGHT: (-1.0, 0.0),
+            free_transform.TOP_LEFT: (0.0, -1.0),
+        },
+        enabled=True,
+    )
+
+    _select_stack("balloon", f":{source.id}")
+    assert bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    normal = page.balloons[-1]
+    if abs(float(normal.x_mm) - 32.0) > 1.0e-6 or abs(float(normal.y_mm) - 44.0) > 1.0e-6:
+        raise AssertionError("フキダシの通常複製で位置がずれています")
+
+    _select_stack("balloon", f":{source.id}")
+    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    linked = page.balloons[-1]
+    if abs(float(linked.x_mm) - float(source.x_mm)) > 1.0e-6 or abs(float(linked.y_mm) - float(source.y_mm)) > 1.0e-6:
+        raise AssertionError("フキダシのリンク複製で位置がずれています")
+    linked_uids = layer_links.linked_uids_for_uid(bpy.context, _balloon_uid(page, source))
+    if _balloon_uid(page, linked) not in linked_uids:
+        raise AssertionError("フキダシのリンク複製でリンク状態が作られていません")
+
+    source.center_offset_x_mm = 7.0
+    source.center_offset_y_mm = -3.0
+    free_transform.set_entry_offsets(
+        source,
+        {
+            free_transform.BOTTOM_LEFT: (2.0, 0.5),
+            free_transform.BOTTOM_RIGHT: (0.5, 2.0),
+            free_transform.TOP_RIGHT: (-2.0, -0.5),
+            free_transform.TOP_LEFT: (-0.5, -2.0),
+        },
+        enabled=True,
+    )
+    layer_link_duplicate_op.propagate_linked_balloon_center_free(bpy.context, page, source)
+    if float(linked.center_offset_x_mm) != 7.0 or float(linked.center_offset_y_mm) != -3.0:
+        raise AssertionError("リンクフキダシの中心点が共有されていません")
+    _assert_pair(linked.free_transform_bottom_left, (2.0, 0.5), "リンクフキダシの自由変形")
+
+    _select_stack("balloon", f":{source.id}")
+    assert bpy.ops.bname.reset_center_point("EXEC_DEFAULT") == {"FINISHED"}
+    if float(source.center_offset_x_mm) != 0.0 or float(linked.center_offset_x_mm) != 0.0:
+        raise AssertionError("中心点リセットがリンクフキダシに反映されていません")
+    source.center_offset_x_mm = 3.0
+    source.center_offset_y_mm = 3.0
+    layer_link_duplicate_op.propagate_linked_balloon_center_free(bpy.context, page, source)
+    assert bpy.ops.bname.reset_free_transform("EXEC_DEFAULT") == {"FINISHED"}
+    if bool(source.free_transform_enabled) or bool(linked.free_transform_enabled):
+        raise AssertionError("自由変形リセットがリンクフキダシに反映されていません")
+
+
+def _test_effect_link_duplicate() -> None:
+    from bname_dev_link_duplicate.operators import effect_line_op
+    from bname_dev_link_duplicate.utils import free_transform, layer_links
+
+    obj, source = effect_line_op._create_effect_layer(
+        bpy.context,
+        (20.0, 60.0, 36.0, 42.0),
+        parent_key="",
+    )
+    effect_line_op._write_effect_strokes(bpy.context, obj, source, (20.0, 60.0, 36.0, 42.0), center_xy_mm=(33.0, 77.0))
+    meta = effect_line_op._effect_meta(obj)
+    key = effect_line_op._layer_meta_key(source)
+    entry = dict(meta.get(key, {}) if isinstance(meta.get(key), dict) else {})
+    free_transform.set_effect_payload_on_meta_entry(
+        entry,
+        {
+            "enabled": True,
+            "offsets": {
+                free_transform.BOTTOM_LEFT: (1.0, 1.0),
+                free_transform.BOTTOM_RIGHT: (2.0, 0.0),
+                free_transform.TOP_RIGHT: (-1.0, -1.0),
+                free_transform.TOP_LEFT: (0.0, -2.0),
+            },
+        },
+    )
+    meta[key] = entry
+    effect_line_op._write_effect_meta(obj, meta)
+    source_effect_id = str(obj.get("bname_id", "") or "")
+    source_bounds = effect_line_op.effect_layer_bounds(obj, source)
+
+    _select_effect(obj, source)
+    assert bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    normal_obj, normal, _normal_bounds = effect_line_op.active_effect_layer_bounds(bpy.context)
+    normal_bounds = effect_line_op.effect_layer_bounds(normal_obj, normal)
+    if normal_bounds != source_bounds:
+        debug = []
+        for candidate in bpy.data.objects:
+            if str(candidate.get("bname_kind", "") or "") != "effect":
+                continue
+            layers = getattr(getattr(candidate, "data", None), "layers", None)
+            layer_keys = [effect_line_op._layer_meta_key(layer) for layer in (layers or [])]
+            debug.append(
+                {
+                    "obj": candidate.name,
+                    "id": str(candidate.get("bname_id", "") or ""),
+                    "layers": layer_keys,
+                    "meta": list(effect_line_op._effect_meta(candidate).keys()),
+                }
+            )
+        raise AssertionError(
+            f"効果線の通常複製で範囲がずれています: actual={normal_bounds} expected={source_bounds} debug={debug}"
+        )
+
+    obj, source = _resolve_effect_by_id(source_effect_id)
+    _select_effect(obj, source)
+    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    linked_obj, linked, _linked_bounds = effect_line_op.active_effect_layer_bounds(bpy.context)
+    linked_effect_id = str(linked_obj.get("bname_id", "") or "")
+    linked_uids = layer_links.linked_uids_for_uid(bpy.context, _effect_uid(source))
+    if _effect_uid(linked) not in linked_uids:
+        raise AssertionError("効果線のリンク複製でリンク状態が作られていません")
+    source_entry = _effect_meta_entry(effect_line_op, obj, source)
+    linked_entry = _effect_meta_entry(effect_line_op, linked_obj, linked)
+    for field in ("x", "y", "w", "h", "center_x", "center_y"):
+        if abs(float(source_entry[field]) - float(linked_entry[field])) > 1.0e-6:
+            raise AssertionError(f"リンク効果線の {field} が共有されていません")
+    source_payload = free_transform.effect_payload_from_meta_entry(source_entry)
+    linked_payload = free_transform.effect_payload_from_meta_entry(linked_entry)
+    if source_payload != linked_payload:
+        raise AssertionError("リンク効果線の自由変形が複製時に共有されていません")
+
+    source_entry = dict(source_entry)
+    free_transform.set_effect_payload_on_meta_entry(
+        source_entry,
+        {
+            "enabled": True,
+            "offsets": {
+                free_transform.BOTTOM_LEFT: (4.0, 0.0),
+                free_transform.BOTTOM_RIGHT: (0.0, 4.0),
+                free_transform.TOP_RIGHT: (-4.0, 0.0),
+                free_transform.TOP_LEFT: (0.0, -4.0),
+            },
+        },
+    )
+    meta = effect_line_op._effect_meta(obj)
+    meta[effect_line_op._layer_meta_key(source)] = source_entry
+    effect_line_op._write_effect_meta(obj, meta)
+    effect_line_op._write_effect_strokes(
+        bpy.context,
+        obj,
+        source,
+        (20.0, 60.0, 36.0, 42.0),
+        center_xy_mm=(50.0, 88.0),
+    )
+    linked_obj, linked = _resolve_effect_by_id(linked_effect_id)
+    linked_entry = _effect_meta_entry(effect_line_op, linked_obj, linked)
+    linked_payload = free_transform.effect_payload_from_meta_entry(linked_entry)
+    if linked_payload != free_transform.effect_payload_from_meta_entry(source_entry):
+        raise AssertionError("リンク効果線の自由変形変更が共有されていません")
+    if abs(float(linked_entry["center_x"]) - 50.0) > 1.0e-6 or abs(float(linked_entry["center_y"]) - 88.0) > 1.0e-6:
+        raise AssertionError("リンク効果線の中心点変更が共有されていません")
+
+
+def _test_white_outline_order() -> None:
+    from bname_dev_link_duplicate.utils import balloon_line_mesh
+
+    if not (balloon_line_mesh.FLASH_WHITE_LINE_Z_OFFSET_M < balloon_line_mesh.LINE_Z_OFFSET_M):
+        raise AssertionError("フキダシ白抜き線の白線が主線より下になっていません")
+
+
+def main() -> None:
+    temp_root = Path(tempfile.mkdtemp(prefix="bname_link_duplicate_"))
+    mod = None
+    try:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        mod = _load_addon()
+        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LinkDuplicate.bname"))
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bname.open_page_file(index=0)
+        assert result == {"FINISHED"}, result
+        page = bpy.context.scene.bname_work.pages[0]
+        _test_balloon_link_duplicate(page)
+        _test_effect_link_duplicate()
+        _test_white_outline_order()
+        print("BNAME_LINK_DUPLICATE_BEHAVIOR_OK")
+    finally:
+        if mod is not None:
+            try:
+                mod.unregister()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+if __name__ == "__main__":
+    main()

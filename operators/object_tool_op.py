@@ -1261,6 +1261,12 @@ class BNAME_OT_object_tool(Operator):
                         )
                     balloon_curve_object.on_balloon_entry_changed(entry)
                     balloon_op._sync_balloon_merge_display_if_needed(page, entry)
+                    try:
+                        from . import layer_link_duplicate_op
+
+                        layer_link_duplicate_op.propagate_linked_balloon_center_free(context, page, entry)
+                    except Exception:  # noqa: BLE001
+                        pass
                     continue
                 if self._drag_action == "center":
                     cx, cy = snapshot.get("center_offset", (0.0, 0.0))
@@ -1269,6 +1275,12 @@ class BNAME_OT_object_tool(Operator):
                             entry.center_offset_x_mm = float(cx) + dx
                         if hasattr(entry, "center_offset_y_mm"):
                             entry.center_offset_y_mm = float(cy) + dy
+                    try:
+                        from . import layer_link_duplicate_op
+
+                        layer_link_duplicate_op.propagate_linked_balloon_center_free(context, page, entry)
+                    except Exception:  # noqa: BLE001
+                        pass
                     continue
                 if self._drag_action == "move":
                     balloon_op._move_balloon_with_texts(page, entry, x + dx, y + dy)

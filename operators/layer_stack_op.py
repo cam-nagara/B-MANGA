@@ -1078,6 +1078,16 @@ class BNAME_OT_layer_stack_duplicate(Operator):
                 resolved = layer_stack_utils.resolve_stack_item(context, item)
                 source_obj = resolved.get("object") if resolved is not None else None
                 source_layer = resolved.get("target") if resolved is not None else None
+                from . import effect_line_link_op
+
+                _dest_obj, dest_layer = effect_line_link_op.duplicate_effect_entry(
+                    context,
+                    source_obj,
+                    source_layer,
+                    linked=False,
+                    ui_parent_key=parent_key,
+                )
+                return dest_layer is not None
             result = bpy.ops.grease_pencil.layer_duplicate("EXEC_DEFAULT", empty_keyframes=False)
             if "FINISHED" not in result:
                 return False
@@ -1090,14 +1100,6 @@ class BNAME_OT_layer_stack_duplicate(Operator):
                 active = getattr(layer, "active", None) if layer is not None else None
                 if active is not None and gp_parent.parent_key_exists(get_work(context), parent_key):
                     gp_parent.set_parent_key(active, parent_key)
-            elif item.kind == "effect":
-                from . import effect_line_op
-
-                active = getattr(getattr(source_obj, "data", None), "layers", None)
-                active = getattr(active, "active", None) if active is not None else None
-                effect_line_op.copy_layer_effect_meta(source_obj, source_layer, active)
-                if active is not None and hasattr(context.scene, "bname_active_effect_layer_name"):
-                    context.scene.bname_active_effect_layer_name = layer_stack_utils._node_stack_key(active)
             return True
         except Exception:  # noqa: BLE001
             return False
@@ -1173,8 +1175,6 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         dst = page.balloons.add()
         schema.balloon_entry_from_dict(dst, schema.balloon_entry_to_dict(src))
         dst.id = _allocate_balloon_id(page)
-        dst.x_mm += 5.0
-        dst.y_mm -= 5.0
         page.active_balloon_index = len(page.balloons) - 1
         context.scene.bname_active_layer_kind = "balloon"
         return True

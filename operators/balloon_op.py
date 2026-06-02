@@ -1438,6 +1438,12 @@ class BNAME_OT_balloon_tool(Operator):
                     entry.center_offset_x_mm = self._drag_orig_center_offset_x + dx
                 if hasattr(entry, "center_offset_y_mm"):
                     entry.center_offset_y_mm = self._drag_orig_center_offset_y + dy
+            try:
+                from . import layer_link_duplicate_op
+
+                layer_link_duplicate_op.propagate_linked_balloon_center_free(context, page, entry)
+            except Exception:  # noqa: BLE001
+                pass
         elif self._drag_action == "move":
             if self._move_violates_layer_scope(context, page, dx, dy):
                 return
@@ -1599,6 +1605,12 @@ class BNAME_OT_balloon_tool(Operator):
                     if self._drag_action == "center":
                         collection[idx].center_offset_x_mm = self._drag_orig_center_offset_x
                         collection[idx].center_offset_y_mm = self._drag_orig_center_offset_y
+                        try:
+                            from . import layer_link_duplicate_op
+
+                            layer_link_duplicate_op.propagate_linked_balloon_center_free(context, page, collection[idx])
+                        except Exception:  # noqa: BLE001
+                            pass
         self._clear_drag_state()
         layer_stack_utils.tag_view3d_redraw(context)
 

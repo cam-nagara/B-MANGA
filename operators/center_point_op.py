@@ -40,6 +40,12 @@ class BNAME_OT_reset_center_point(Operator):
                     entry.center_offset_x_mm = 0.0
                 if hasattr(entry, "center_offset_y_mm"):
                     entry.center_offset_y_mm = 0.0
+                try:
+                    from . import layer_link_duplicate_op
+
+                    layer_link_duplicate_op.propagate_linked_balloon_center_free(context, resolved.get("page"), entry)
+                except Exception:  # noqa: BLE001
+                    pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
                 return {"FINISHED"}
         self.report({"WARNING"}, "中心点を戻す対象が見つかりません")

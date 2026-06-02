@@ -140,7 +140,7 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert enabled["貼り付け"] is False, (kind, enabled)
     assert enabled["複製"]
     assert enabled["削除"]
-    assert enabled["リンク複製"] is (kind == "effect"), (kind, enabled)
+    assert enabled["リンク複製"] is (kind in {"balloon", "effect"}), (kind, enabled)
     if kind in {"balloon", "effect"}:
         assert enabled["中心点を中心へ戻す"] is True, (kind, enabled)
     if kind in {"balloon", "text", "effect"}:

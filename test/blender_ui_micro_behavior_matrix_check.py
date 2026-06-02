@@ -305,11 +305,7 @@ def _create_scene(context):
         (x, y, 38.0, 30.0),
         parent_key=coma_key,
     )
-    _set_active_object(effect_obj)
-    context.scene.bname_active_layer_kind = "effect"
-    effect_layer.select = True
-    effect_obj.data.layers.active = effect_layer
-    effect_obj[on.PROP_KIND] = "effect"
+    effect_line_op._select_effect_layer(context, effect_obj, effect_layer)
 
     layer_stack.sync_layer_stack_after_data_change(context)
     return {
@@ -412,7 +408,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
             "コピー": True,
             "貼り付け": False,
             "複製": True,
-            "リンク複製": False,
+            "リンク複製": True,
             "中心点を中心へ戻す": True,
             "選択レイヤーをリンク": False,
             "しっぽをコピー": False,
@@ -512,6 +508,21 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
                 and after == before + 1
             ),
             "state": paste_state,
+            "before": before,
+            "after": after,
+        }
+    )
+
+    _mark("right_click_link_balloon")
+    _select_kind("balloon")
+    before = _stack_count("balloon")
+    result = bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT")
+    after = _stack_count("balloon")
+    results.append(
+        {
+            "group": "右クリック",
+            "label": "フキダシ リンク複製",
+            "ok": result == {"FINISHED"} and after == before + 1,
             "before": before,
             "after": after,
         }
@@ -927,6 +938,8 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "UiMicro.bname"))
+        assert result == {"FINISHED"}, result
+        result = bpy.ops.bname.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         context = bpy.context
         _mark("scene")

@@ -161,9 +161,9 @@ def selection_command_items(context) -> list[dict]:
         },
         {
             "label": "リンク複製",
-            "operator": "bname.effect_line_create_linked",
+            "operator": "bname.layer_stack_link_duplicate",
             "icon": "LINKED",
-            "enabled": has_item and kind in {"effect", "effect_legacy"},
+            "enabled": has_item and normalized_kind in {"balloon", "effect"},
         },
         {
             "label": "選択レイヤーをリンク",
@@ -281,12 +281,12 @@ def _draw_layer_commands(layout, context) -> None:
         detail_row.operator(
             "bname.layer_detail_open", text="詳細設定", icon="PREFERENCES"
         )
-        # 効果線の場合はリンク複製も
-        if kind in {"effect", "effect_legacy"}:
-            link_op = getattr(bpy.ops.bname, "effect_line_create_linked", None)
+        # フキダシ / 効果線の場合はリンク複製も
+        if kind in {"balloon", "effect", "effect_legacy"}:
+            link_op = getattr(bpy.ops.bname, "layer_stack_link_duplicate", None)
             if link_op is not None:
                 layout.operator(
-                    "bname.effect_line_create_linked",
+                    "bname.layer_stack_link_duplicate",
                     text="リンク複製",
                     icon="LINKED",
                 )
