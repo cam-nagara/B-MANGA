@@ -278,9 +278,9 @@ def _flash_white_line_width_px(entry, line_w_mm: float, dpi: int) -> int:
         return 0
     if not bool(getattr(entry, "flash_white_line_enabled", True)):
         return 0
-    black_peak_pct = max(0.0, min(100.0, float(getattr(entry, "line_peak_width_pct", 100.0) or 0.0)))
+    white_width_pct = max(0.0, min(300.0, float(getattr(entry, "flash_white_line_width_percent", 100.0) or 0.0)))
     white_peak_pct = max(0.0, min(200.0, float(getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 0.0)))
-    width_mm = max(0.0, float(line_w_mm)) * black_peak_pct * white_peak_pct / 10000.0
+    width_mm = max(0.0, float(line_w_mm)) * white_width_pct * white_peak_pct / 10000.0
     if width_mm <= 1.0e-6:
         return 0
     return max(1, int(round(mm_to_px(width_mm, dpi) * 2.0)))

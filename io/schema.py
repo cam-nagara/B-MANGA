@@ -1072,6 +1072,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
             if balloon_shapes.is_flash_balloon_shape(entry.shape)
             else False
         ),
+        "flashWhiteLineWidthPercent": round(float(getattr(entry, "flash_white_line_width_percent", 100.0)), 3),
         "flashWhiteLineValleyWidthPct": round(float(getattr(entry, "flash_white_line_valley_width_pct", 0.0)), 3),
         "flashWhiteLinePeakWidthPct": round(float(getattr(entry, "flash_white_line_peak_width_pct", 100.0)), 3),
         "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
@@ -1197,6 +1198,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.line_valley_width_pct = float(data.get("lineValleyWidthPct", default_flash_endpoint_width))
     entry.line_peak_width_pct = float(data.get("linePeakWidthPct", 100.0))
     entry.flash_white_line_enabled = bool(data.get("flashWhiteLineEnabled", is_flash_shape))
+    entry.flash_white_line_width_percent = float(data.get("flashWhiteLineWidthPercent", 100.0))
     entry.flash_white_line_valley_width_pct = float(data.get("flashWhiteLineValleyWidthPct", default_flash_endpoint_width))
     entry.flash_white_line_peak_width_pct = float(data.get("flashWhiteLinePeakWidthPct", 100.0))
     entry.multi_line_direction = data.get("multiLineDirection", "outside")

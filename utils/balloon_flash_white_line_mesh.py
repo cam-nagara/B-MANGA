@@ -19,17 +19,12 @@ def _pct(entry, attr: str, default: float) -> float:
 
 
 def _white_widths_m(entry, line_width_m: float) -> tuple[float, float, bool]:
-    dynamic, black_valley_pct, black_peak_pct, black_both_zero = balloon_line_mesh._line_dynamic_width_params(entry)
+    _dynamic, _black_valley_pct, _black_peak_pct, black_both_zero = balloon_line_mesh._line_dynamic_width_params(entry)
     if black_both_zero:
         return 0.0, 0.0, True
-    if dynamic:
-        black_valley_m = line_width_m * black_valley_pct / 100.0
-        black_peak_m = line_width_m * black_peak_pct / 100.0
-    else:
-        black_valley_m = line_width_m
-        black_peak_m = line_width_m
-    white_valley_m = black_valley_m * _pct(entry, "flash_white_line_valley_width_pct", 0.0) / 100.0
-    white_peak_m = black_peak_m * _pct(entry, "flash_white_line_peak_width_pct", 100.0) / 100.0
+    white_base_m = line_width_m * _pct(entry, "flash_white_line_width_percent", 100.0) / 100.0
+    white_valley_m = white_base_m * _pct(entry, "flash_white_line_valley_width_pct", 0.0) / 100.0
+    white_peak_m = white_base_m * _pct(entry, "flash_white_line_peak_width_pct", 100.0) / 100.0
     both_zero = white_valley_m <= 1.0e-9 and white_peak_m <= 1.0e-9
     return white_valley_m, white_peak_m, both_zero
 

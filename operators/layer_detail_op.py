@@ -312,8 +312,11 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row.prop(entry, "flash_white_line_enabled", text="", toggle=True)
             row = box.row(align=True)
             row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
-            row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
+            row.prop(entry, "flash_white_line_width_percent", text="線幅")
             row.prop(entry, "flash_white_line_peak_width_pct", text="中間線幅")
+            row = box.row(align=True)
+            row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
+            row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
     if str(getattr(entry, "line_style", "") or "") == "double":
         row = box.row(align=True)
         row.prop(entry, "multi_line_count")

@@ -124,6 +124,7 @@ def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
     _set_if_default("line_peak_width_pct", 100.0)
     _set_if_default("thorn_multi_line_valley_width_pct", 0.0)
     _set_if_default("thorn_multi_line_peak_width_pct", 100.0)
+    _set_if_default("flash_white_line_width_percent", 100.0)
     _set_if_default("flash_white_line_valley_width_pct", 0.0)
     _set_if_default("flash_white_line_peak_width_pct", 100.0)
     try:
@@ -407,6 +408,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     line_valley_width_pct: FloatProperty(name="主線・谷の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_peak_width_pct: FloatProperty(name="主線・山の線幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_enabled: BoolProperty(name="白線", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    flash_white_line_width_percent: FloatProperty(name="白線幅 (%)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_valley_width_pct: FloatProperty(name="白線・入り抜き (%)", default=0.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_line_peak_width_pct: FloatProperty(name="白線・中間線幅 (%)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]

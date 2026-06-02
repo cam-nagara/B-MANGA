@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — 白線幅を黒線基準で調整可能に補完 / v0.6.249
+
+### 症状
+- ウニフラ / 白抜き線フキダシの白線に、黒線の線幅を100%とした「白線幅」の指定がなく、白抜き線サンプルでも白い層が見分けづらかった。
+- 初期値として指定された「入り・抜き 0%」「中間線幅 100%」に加え、白線側の基準幅が明示されていなかった。
+
+### 原因
+- 白線の入り・抜きと中間線幅は持っていたが、黒線幅を基準にした白線全体の幅指定を持っていなかった。
+- 確認用サンプルは白抜き線側の白線幅を十分に強調しておらず、上段と下段の差が視認しにくかった。
+
+### 修正
+- ウニフラ / 白抜き線フキダシの白線に「白線幅 (%)」を追加し、黒線=100%の比率で調整できるようにした。
+- 初期値は「白線幅 100%」「入り・抜き 0%」「中間線幅 100%」にそろえ、保存復元と書き出しでも同じ値を使うようにした。
+- フキダシ設定パネルとレイヤー詳細の白線項目を「線幅」「中間線幅」「入り・抜き」に整理した。
+- 確認用サンプル画像は、下段の白抜き線で白線幅を強調し、黒線・白線・下地の層が見えるように作り直した。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile core/balloon.py utils/balloon_flash_white_line_mesh.py panels/balloon_panel.py panels/layer_stack_detail_ui.py operators/layer_detail_op.py io/schema.py io/export_balloon.py test/blender_balloon_uni_flash_check.py _verify/make_balloon_flash_shape_samples.py`
+- `test/blender_balloon_uni_flash_check.py` (`--factory-startup`) — PASS。ウニフラ / 白抜き線の白線幅 100%、入り・抜き 0%、中間線幅 100% の初期値と保存復元を確認。
+- `test/blender_balloon_all_shapes_shapely_check.py` (`--factory-startup`) — PASS。全フキダシ形状の主線・フチ・多重線生成が維持されることを確認。
+- `_verify/make_balloon_flash_shape_samples.py` (`--factory-startup`) — PASS。`_verify/balloon_flash_shape_samples.png` を生成し、下段の白抜き線で白線層が見えることをAI目視確認。
+
 ## 2026-06-02 — ウニフラと白抜き線フキダシに白線層を追加 / v0.6.248
 
 ### 症状

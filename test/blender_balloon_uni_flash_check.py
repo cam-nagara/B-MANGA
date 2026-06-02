@@ -110,6 +110,7 @@ def main() -> None:
             assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
             assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
             assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"
+            assert abs(float(entry.flash_white_line_width_percent) - 100.0) < 1.0e-6
             assert abs(float(entry.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(entry.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
             assert abs(float(entry.thorn_multi_line_valley_width_pct) - 0.0) < 1.0e-6
@@ -121,6 +122,7 @@ def main() -> None:
             assert saved["lineValleyWidthPct"] == 0.0
             assert saved["linePeakWidthPct"] == 100.0
             assert saved["flashWhiteLineEnabled"] is True
+            assert saved["flashWhiteLineWidthPercent"] == 100.0
             assert saved["flashWhiteLineValleyWidthPct"] == 0.0
             assert saved["flashWhiteLinePeakWidthPct"] == 100.0
             restored = page.balloons.add()
@@ -129,9 +131,19 @@ def main() -> None:
             assert abs(float(restored.line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.line_peak_width_pct) - 100.0) < 1.0e-6
             assert bool(restored.flash_white_line_enabled)
+            assert abs(float(restored.flash_white_line_width_percent) - 100.0) < 1.0e-6
             assert abs(float(restored.flash_white_line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.flash_white_line_peak_width_pct) - 100.0) < 1.0e-6
             page.balloons.remove(len(page.balloons) - 1)
+
+            entry.flash_white_line_width_percent = 175.0
+            custom_saved = schema.balloon_entry_to_dict(entry)
+            assert custom_saved["flashWhiteLineWidthPercent"] == 175.0
+            custom_restored = page.balloons.add()
+            schema.balloon_entry_from_dict(custom_restored, custom_saved)
+            assert abs(float(custom_restored.flash_white_line_width_percent) - 175.0) < 1.0e-6
+            page.balloons.remove(len(page.balloons) - 1)
+            entry.flash_white_line_width_percent = 100.0
 
             obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
             assert obj is not None and obj.type == "CURVE", "フキダシのカーブ実体が作成されていません"
