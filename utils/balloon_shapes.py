@@ -18,12 +18,11 @@ MELDEX_CARD_SHAPES = (
     "fluffy",
     "thorn",
     "thorn-curve",
-    "uni_flash",
-    "white_outline",
     "octagon",
 )
-DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve", "uni_flash", "white_outline")
-FLASH_BALLOON_SHAPES = {"uni_flash", "white_outline"}
+DYNAMIC_MELDEX_SHAPES = ("cloud", "fluffy", "thorn", "thorn-curve")
+FLASH_LINE_STYLES = {"uni_flash", "white_outline"}
+FLASH_BALLOON_SHAPES = FLASH_LINE_STYLES
 CORNER_TYPES = {"square", "rounded", "bevel"}
 
 # 雲フキダシ主線の谷で handle を radial 方向からどれだけ接線方向に傾けるか.
@@ -50,7 +49,16 @@ _LEGACY_SHAPE_ALIASES = {
     "spike_straight": "thorn",
     "spike_curve": "thorn-curve",
     "thorn_curve": "thorn-curve",
+    "uni_flash": "ellipse",
+    "white_outline": "ellipse",
 }
+
+_LEGACY_FLASH_SHAPE_LINE_STYLES = {
+    "uni_flash": "uni_flash",
+    "white_outline": "white_outline",
+}
+
+_VALID_LINE_STYLES = {"none", "solid", "dashed", "dotted", "double"} | FLASH_LINE_STYLES
 
 
 @dataclass(frozen=True)
@@ -67,12 +75,27 @@ def normalize_shape(shape: str | None) -> str:
     return _LEGACY_SHAPE_ALIASES.get(value, value)
 
 
+def normalize_line_style(line_style: str | None) -> str:
+    value = str(line_style or "solid")
+    if value == "multi":
+        value = "double"
+    return value if value in _VALID_LINE_STYLES else "solid"
+
+
 def is_dynamic_meldex_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in DYNAMIC_MELDEX_SHAPES
 
 
 def is_flash_balloon_shape(shape: str | None) -> bool:
     return normalize_shape(shape) in FLASH_BALLOON_SHAPES
+
+
+def is_flash_line_style(line_style: str | None) -> bool:
+    return normalize_line_style(line_style) in FLASH_LINE_STYLES
+
+
+def legacy_flash_shape_to_line_style(shape: str | None) -> str:
+    return _LEGACY_FLASH_SHAPE_LINE_STYLES.get(str(shape or ""), "")
 
 
 def corner_type_for_entry(entry) -> str:
@@ -89,10 +112,6 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         custom = _custom_outline_for_entry(entry, rect)
         if custom is not None:
             return custom
-    if shape in FLASH_BALLOON_SHAPES:
-        base_outline = flash_base_outline_for_entry(entry, rect)
-        if base_outline is not None:
-            return base_outline
     return outline_for_shape(
         shape,
         rect,
@@ -127,10 +146,6 @@ def outline_with_corners_for_entry(
         custom = _custom_outline_for_entry(entry, rect)
         if custom is not None:
             return custom, []
-    if shape in FLASH_BALLOON_SHAPES:
-        base_outline = flash_base_outline_for_entry(entry, rect)
-        if base_outline is not None:
-            return base_outline, []
     return outline_with_corners_for_shape(
         shape,
         rect,
@@ -177,8 +192,7 @@ def bezier_loop_for_entry(entry, rect: Rect) -> list[BezierAnchor] | None:
 
 
 def flash_base_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
-    shape = normalize_shape(getattr(entry, "shape", "rect"))
-    if shape not in FLASH_BALLOON_SHAPES:
+    if not is_flash_line_style(getattr(entry, "line_style", "")):
         return None
     return _outline_ellipse(rect)
 

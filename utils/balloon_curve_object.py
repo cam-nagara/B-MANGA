@@ -721,7 +721,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     outer_mat = materials[_MATERIAL_SLOT_OUTER_EDGE] if len(materials) > _MATERIAL_SLOT_OUTER_EDGE else None
     inner_mat = materials[_MATERIAL_SLOT_INNER_EDGE] if len(materials) > _MATERIAL_SLOT_INNER_EDGE else None
     balloon_id = str(getattr(entry, "id", "") or "")
-    is_flash_shape = balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or ""))
+    is_flash_line_style = balloon_shapes.is_flash_line_style(str(getattr(entry, "line_style", "") or ""))
     if fill_mat is not None:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
@@ -733,7 +733,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
-    if is_flash_shape:
+    if is_flash_line_style:
         if line_mat is not None:
             white_mat = _ensure_color_material(
                 f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
@@ -1183,8 +1183,6 @@ def _body_bezier_for_entry(entry) -> list[balloon_shapes.BezierAnchor] | None:
         max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
-    if balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or "")):
-        return balloon_shapes.flash_base_bezier_for_entry(entry, rect)
     return balloon_shapes.bezier_loop_for_entry(entry, rect)
 
 

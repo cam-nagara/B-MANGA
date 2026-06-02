@@ -32,8 +32,6 @@ _SHAPE_ITEMS = (
     ("fluffy", "もやもや", "Meldex ボードカードと同じもやもや形"),
     ("thorn", "トゲ（直線）", "Meldex ボードカードと同じ直線トゲ形"),
     ("thorn-curve", "トゲ（曲線）", "Meldex ボードカードと同じ曲線トゲ形"),
-    ("uni_flash", "ウニフラ", "効果線の集中線と同じ放射状のフキダシ形状"),
-    ("white_outline", "白抜き線", "白抜き線向けの放射状フキダシ形状"),
     ("octagon", "八角形", "Meldex ボードカードと同じ八角形"),
     ("custom", "カスタム", "カスタム形状プリセット参照"),
     ("none", "本体なし", "テキスト単体 (擬音/ナレーション用)"),
@@ -56,6 +54,8 @@ _LINE_STYLE_ITEMS = (
     ("dashed", "破線", ""),
     ("dotted", "点線", ""),
     ("double", "多重線", ""),
+    ("uni_flash", "ウニフラ", "フキダシの形状に沿って放射状の線を並べる"),
+    ("white_outline", "白抜き線", "フキダシの形状に沿って白抜き線を放射状に並べる"),
 )
 
 _CORNER_TYPE_ITEMS = (
@@ -75,7 +75,7 @@ _BLEND_MODE_ITEMS = (
     ("lighten", "比較 (明)", ""),
 )
 
-_FLASH_SHAPE_IDS = {"uni_flash", "white_outline"}
+_FLASH_LINE_STYLE_IDS = {"uni_flash", "white_outline"}
 
 
 def _tag_balloon_redraw(context) -> None:
@@ -103,10 +103,10 @@ def _on_balloon_entry_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
-def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
-    """形状ごとの初期線幅を既存設定を壊さない範囲で適用する."""
+def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
+    """線種ごとの初期線幅を既存設定を壊さない範囲で適用する."""
 
-    if entry is None or str(getattr(entry, "shape", "") or "") not in _FLASH_SHAPE_IDS:
+    if entry is None or str(getattr(entry, "line_style", "") or "") not in _FLASH_LINE_STYLE_IDS:
         return
 
     def _set_if_default(attr: str, value: float, default: float = 100.0) -> None:
@@ -134,8 +134,18 @@ def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
         pass
 
 
+def apply_balloon_shape_defaults(entry, *, force: bool = False) -> None:
+    """後方互換: 旧呼び出し元からも線種別初期値を適用する."""
+
+    apply_balloon_line_style_defaults(entry, force=force)
+
+
 def _on_balloon_shape_changed(_self, context) -> None:
-    apply_balloon_shape_defaults(_self)
+    _on_balloon_entry_changed(_self, context)
+
+
+def _on_balloon_line_style_changed(_self, context) -> None:
+    apply_balloon_line_style_defaults(_self)
     _on_balloon_entry_changed(_self, context)
 
 
@@ -393,7 +403,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     rounded_corner_radius_percent: FloatProperty(name="角半径 (%)", default=30.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 線・塗り
-    line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_style: EnumProperty(items=_LINE_STYLE_ITEMS, default="solid", update=_on_balloon_line_style_changed)  # type: ignore[valid-type]
     line_width_mm: FloatProperty(name="線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     dashed_segment_length_mm: FloatProperty(name="破線 線分 (mm)", default=3.6, min=0.05, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     dashed_gap_mm: FloatProperty(name="破線 間隔 (mm)", default=2.4, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

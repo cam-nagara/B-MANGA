@@ -1,4 +1,4 @@
-"""Generate a sample image for balloon uni flash / white outline shapes."""
+"""Generate a sample image for balloon uni flash / white outline line styles."""
 
 from __future__ import annotations
 
@@ -122,14 +122,15 @@ def _configure_shape_params(entry, *, height: float = 10.0, width: float = 4.0) 
     sp.shape_seed = 0
 
 
-def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float, variant: str):
+def _create_sample(context, page, parent_key, *, line_style: str, x: float, y: float, variant: str):
+    from bname_dev_balloon_flash_sample.core import balloon as balloon_core
     from bname_dev_balloon_flash_sample.operators import balloon_op
     from bname_dev_balloon_flash_sample.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
         page,
-        shape=shape,
+        shape="ellipse",
         x=x,
         y=y,
         w=52.0,
@@ -138,11 +139,13 @@ def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float,
         parent_key=parent_key,
     )
     _configure_shape_params(entry)
+    entry.line_style = line_style
+    balloon_core.apply_balloon_line_style_defaults(entry, force=True)
     entry.line_width_mm = 1.6
     entry.flash_line_count = 96
     entry.flash_line_spacing_mm = 1.0
     entry.line_color = (0.0, 0.0, 0.0, 1.0)
-    if shape == "white_outline":
+    if line_style == "white_outline":
         entry.fill_color = (0.08, 0.17, 0.34, 1.0)
         entry.line_width_mm = 1.05
         entry.flash_white_line_width_percent = 300.0
@@ -158,24 +161,24 @@ def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float,
     entry.fill_opacity = 100.0
 
     if variant == "taper":
-        entry.line_width_mm = 2.2 if shape == "uni_flash" else 1.1
+        entry.line_width_mm = 2.2 if line_style == "uni_flash" else 1.1
         entry.flash_line_count = 120
         entry.flash_line_spacing_mm = 0.8
         entry.line_valley_width_pct = 0.0
         entry.line_peak_width_pct = 100.0
-        entry.flash_white_line_width_percent = 135.0 if shape == "uni_flash" else 300.0
+        entry.flash_white_line_width_percent = 135.0 if line_style == "uni_flash" else 300.0
         entry.flash_white_line_valley_width_pct = 0.0
         entry.flash_white_line_peak_width_pct = 100.0
         entry.thorn_multi_line_valley_width_pct = 0.0
         entry.thorn_multi_line_peak_width_pct = 100.0
     elif variant == "multi":
-        entry.line_width_mm = 1.4 if shape == "uni_flash" else 1.0
+        entry.line_width_mm = 1.4 if line_style == "uni_flash" else 1.0
         entry.flash_line_count = 180
         entry.flash_line_spacing_mm = 0.45
-        entry.flash_white_line_width_percent = 135.0 if shape == "uni_flash" else 300.0
+        entry.flash_white_line_width_percent = 135.0 if line_style == "uni_flash" else 300.0
         entry.flash_white_line_valley_width_pct = 0.0
         entry.flash_white_line_peak_width_pct = 100.0
-        if shape == "white_outline":
+        if line_style == "white_outline":
             entry.flash_white_outline_count = 8
             entry.flash_white_outline_width_mm = 26.0
             entry.flash_white_outline_white_line_count = 26
@@ -193,7 +196,7 @@ def _create_sample(context, page, parent_key, *, shape: str, x: float, y: float,
 
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
     assert obj is not None
-    print(f"[SAMPLE_OBJECT] {shape} {variant} location={tuple(round(float(v), 6) for v in obj.location)}")
+    print(f"[SAMPLE_OBJECT] {line_style} {variant} location={tuple(round(float(v), 6) for v in obj.location)}")
     return obj
 
 
@@ -239,10 +242,10 @@ def main() -> None:
         parent_key = page_stack_key(page)
 
         objects = []
-        for row_y, shape in ((155.0, "uni_flash"), (20.0, "white_outline")):
-            objects.append(_create_sample(context, page, parent_key, shape=shape, x=55.0, y=row_y, variant="default"))
-            objects.append(_create_sample(context, page, parent_key, shape=shape, x=130.0, y=row_y, variant="taper"))
-            objects.append(_create_sample(context, page, parent_key, shape=shape, x=205.0, y=row_y, variant="multi"))
+        for row_y, line_style in ((155.0, "uni_flash"), (20.0, "white_outline")):
+            objects.append(_create_sample(context, page, parent_key, line_style=line_style, x=55.0, y=row_y, variant="default"))
+            objects.append(_create_sample(context, page, parent_key, line_style=line_style, x=130.0, y=row_y, variant="taper"))
+            objects.append(_create_sample(context, page, parent_key, line_style=line_style, x=205.0, y=row_y, variant="multi"))
 
         xs = [float(obj.location.x) for obj in objects]
         ys = [float(obj.location.y) for obj in objects]

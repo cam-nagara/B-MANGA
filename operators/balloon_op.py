@@ -64,8 +64,6 @@ _SHAPE_FOR_ADD = (
     ("fluffy", "もやもや", ""),
     ("thorn", "トゲ（直線）", ""),
     ("thorn-curve", "トゲ（曲線）", ""),
-    ("uni_flash", "ウニフラ", ""),
-    ("white_outline", "白抜き線", ""),
     ("octagon", "八角形", ""),
     ("none", "本体なし (テキスト単体)", ""),
 )

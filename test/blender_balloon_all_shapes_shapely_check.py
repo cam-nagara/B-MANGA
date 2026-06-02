@@ -91,7 +91,7 @@ def main() -> None:
     page = work.pages[0]
     parent_key = page_stack_key(page)
 
-    SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve", "uni_flash", "white_outline"]
+    SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
     width_mm = 50.0
     height_mm = 50.0
 

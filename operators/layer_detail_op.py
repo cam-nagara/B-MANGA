@@ -288,7 +288,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     row = box.row(align=True)
     row.prop(entry, "line_style")
     row.prop(entry, "line_width_mm")
-    line_style = str(getattr(entry, "line_style", "") or "")
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "dashed":
         row = box.row(align=True)
         row.prop(entry, "dashed_segment_length_mm", text="線分")
@@ -298,15 +298,24 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row.prop(entry, "dotted_gap_mm", text="間隔")
     # 主線の谷/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
     _shape_norm_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if balloon_shapes.is_dynamic_meldex_shape(_shape_norm_main_line):
+    if balloon_shapes.is_flash_line_style(line_style):
         row = box.row(align=True)
-        if balloon_shapes.is_flash_balloon_shape(_shape_norm_main_line):
-            row.prop(entry, "line_valley_width_pct", text="入り・抜き")
-            row.prop(entry, "line_peak_width_pct", text="中間線幅")
+        row.prop(entry, "flash_line_count", text="線の本数")
+        row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
+        row = box.row(align=True)
+        row.prop(entry, "line_valley_width_pct", text="入り・抜き")
+        row.prop(entry, "line_peak_width_pct", text="中間線幅")
+        if line_style == "white_outline":
+            row = box.row(align=True)
+            row.prop(entry, "flash_white_outline_count")
+            row.prop(entry, "flash_white_outline_width_mm")
+            row = box.row(align=True)
+            row.prop(entry, "flash_white_outline_white_line_count")
+            row.prop(entry, "flash_white_outline_spacing_mm")
+            row = box.row(align=True)
+            row.prop(entry, "flash_white_outline_black_line_count")
+            row.prop(entry, "flash_white_outline_black_spacing_mm")
         else:
-            row.prop(entry, "line_valley_width_pct")
-            row.prop(entry, "line_peak_width_pct")
-        if balloon_shapes.is_flash_balloon_shape(_shape_norm_main_line):
             row = box.row(align=True)
             row.label(text="白線 (黒線=100%)")
             row.prop(entry, "flash_white_line_enabled", text="", toggle=True)
@@ -317,7 +326,11 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row = box.row(align=True)
             row.enabled = bool(getattr(entry, "flash_white_line_enabled", True))
             row.prop(entry, "flash_white_line_valley_width_pct", text="入り・抜き")
-    if str(getattr(entry, "line_style", "") or "") == "double":
+    elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_main_line):
+        row = box.row(align=True)
+        row.prop(entry, "line_valley_width_pct")
+        row.prop(entry, "line_peak_width_pct")
+    if line_style == "double":
         row = box.row(align=True)
         row.prop(entry, "multi_line_count")
         row.prop(entry, "multi_line_direction")
@@ -337,12 +350,8 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             row = box.row(align=True)
             row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
             row = box.row(align=True)
-            if balloon_shapes.is_flash_balloon_shape(shape_norm):
-                row.prop(entry, "thorn_multi_line_valley_width_pct", text="入り・抜き")
-                row.prop(entry, "thorn_multi_line_peak_width_pct", text="中間線幅")
-            else:
-                row.prop(entry, "thorn_multi_line_valley_width_pct")
-                row.prop(entry, "thorn_multi_line_peak_width_pct")
+            row.prop(entry, "thorn_multi_line_valley_width_pct")
+            row.prop(entry, "thorn_multi_line_peak_width_pct")
     row = box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")

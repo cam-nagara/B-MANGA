@@ -145,9 +145,6 @@ def _outline_fluffy(rect: Rect) -> list[tuple[float, float]]:
 
 
 def _balloon_outline_mm(entry, rect: Rect) -> list[tuple[float, float]]:
-    base_outline = balloon_shapes.flash_base_outline_for_entry(entry, rect)
-    if base_outline is not None:
-        return base_outline
     return balloon_shapes.outline_for_entry(entry, rect)
 
 
@@ -280,8 +277,7 @@ def _draw_inner_white_loop(canvas, clip_mask, pts, color, width_px: int, style: 
 
 
 def _flash_white_line_width_px(entry, line_w_mm: float, dpi: int) -> int:
-    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if not balloon_shapes.is_flash_balloon_shape(shape_norm):
+    if not balloon_shapes.is_flash_line_style(getattr(entry, "line_style", "")):
         return 0
     if not bool(getattr(entry, "flash_white_line_enabled", True)):
         return 0

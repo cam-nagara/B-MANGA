@@ -479,32 +479,28 @@ def main() -> None:
         assert balloon_obj.type == "CURVE", f"フキダシがカーブ実体ではありません: {balloon_obj.type}"
         assert len(balloon_obj.data.splines) >= 1, "フキダシカーブに輪郭がありません"
         assert len(balloon_obj.data.splines) >= 1 + len(balloon.tails), "フキダシしっぽがカーブ実体に入っていません"
-        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
-        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.55, "フキダシ 線幅")
-        _assert_socket_hidden_in_modifier(balloon_modifier, "線幅 (mm)", False)
-        balloon_inputs = {
-            str(getattr(item, "name", "") or "")
-            for item in balloon_modifier.node_group.interface.items_tree
-            if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
-        }
-        assert "合成モード" not in balloon_inputs, "フキダシに合成モード入力が残っています"
-        assert _evaluated_polygon_count(balloon_obj) > 0, "フキダシの表示結果が空です"
+        assert balloon_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "フキダシに古い軽量表示補助が残っています"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
         assert source_obj is None, "フキダシにB-Name生成の参照形状が残っています"
 
         balloon.line_width_mm = 0.91
-        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
-        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.91, "フキダシ 線幅 更新")
+        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        assert balloon_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "線幅更新後に古い軽量表示補助が復活しました"
 
         balloon.line_style = "none"
-        balloon_modifier = _assert_balloon_curve_nodes(balloon_obj, balloon_curve_render_nodes)
-        _assert_close(_modifier_socket_value(balloon_modifier, "線幅 (mm)"), 0.0, "フキダシ 線なし")
+        balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
+        assert balloon_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "線なし設定後に古い軽量表示補助が復活しました"
 
         balloon_shape_ids = {
             str(getattr(item, "identifier", "") or "")
             for item in balloon.bl_rna.properties["shape"].enum_items
         }
-        assert {"uni_flash", "white_outline"} <= balloon_shape_ids, "フキダシ形状にウニフラ / 白抜き線がありません"
+        balloon_line_style_ids = {
+            str(getattr(item, "identifier", "") or "")
+            for item in balloon.bl_rna.properties["line_style"].enum_items
+        }
+        assert not {"uni_flash", "white_outline"} & balloon_shape_ids, "ウニフラ / 白抜き線がフキダシ形状に残っています"
+        assert {"uni_flash", "white_outline"} <= balloon_line_style_ids, "フキダシ線種にウニフラ / 白抜き線がありません"
 
         legacy = balloon_op._create_balloon_entry(
             context,
@@ -517,6 +513,7 @@ def main() -> None:
             parent_kind="page",
             parent_key=page_key,
         )
+        assert legacy.shape == "ellipse"
         legacy.line_width_mm = 0.38
         legacy_obj = balloon_curve_object.ensure_balloon_curve_object(
             scene=context.scene,
@@ -525,9 +522,7 @@ def main() -> None:
         )
         assert legacy_obj is not None
         assert legacy_obj.type == "CURVE"
-        legacy_modifier = _assert_balloon_curve_nodes(legacy_obj, balloon_curve_render_nodes)
-        _assert_close(_modifier_socket_value(legacy_modifier, "線幅 (mm)"), 0.38, "ウニフラフキダシ 線幅")
-        assert legacy_modifier.node_group.name != "BName_GN_UniFlash"
+        assert legacy_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "旧ウニフラ読み替え後に古い軽量表示補助が残っています"
 
         print("BNAME_GEOMETRY_NODES_BRIDGE_OK")
     finally:

@@ -1,4 +1,4 @@
-"""Blender 実機用: フキダシ形状のウニフラ / 白抜き線を確認。"""
+"""Blender 実機用: フキダシ線種のウニフラ / 白抜き線を確認。"""
 
 from __future__ import annotations
 
@@ -108,16 +108,21 @@ def main() -> None:
         page = work.pages[0]
         page_key = page_stack_key(page)
 
+        flash_styles = {"uni_flash", "white_outline"}
         shape_ids = {item[0] for item in balloon_core._SHAPE_ITEMS}
-        assert {"uni_flash", "white_outline"} <= shape_ids, "フキダシ形状候補に追加形状がありません"
-        assert balloon_shapes.normalize_shape("uni_flash") == "uni_flash"
-        assert balloon_shapes.normalize_shape("white_outline") == "white_outline"
+        line_style_ids = {item[0] for item in balloon_core._LINE_STYLE_ITEMS}
+        assert not (flash_styles & shape_ids), "ウニフラ / 白抜き線が形状候補に残っています"
+        assert flash_styles <= line_style_ids, "ウニフラ / 白抜き線が線種候補にありません"
+        assert balloon_shapes.normalize_shape("uni_flash") == "ellipse"
+        assert balloon_shapes.normalize_shape("white_outline") == "ellipse"
+        assert balloon_shapes.normalize_line_style("uni_flash") == "uni_flash"
+        assert balloon_shapes.normalize_line_style("white_outline") == "white_outline"
 
-        for index, shape in enumerate(("uni_flash", "white_outline")):
+        for index, line_style in enumerate(("uni_flash", "white_outline")):
             entry = balloon_op._create_balloon_entry(
                 context,
                 page,
-                shape=shape,
+                shape="ellipse",
                 x=24.0 + index * 70.0,
                 y=42.0,
                 w=58.0,
@@ -126,7 +131,10 @@ def main() -> None:
                 parent_key=page_key,
             )
             _configure_shape_params(entry)
-            assert entry.shape == shape
+            entry.line_style = line_style
+            balloon_core.apply_balloon_line_style_defaults(entry, force=True)
+            assert entry.shape == "ellipse"
+            assert entry.line_style == line_style
             assert abs(float(entry.line_valley_width_pct) - 0.0) < 1.0e-6, "入り・抜きの初期値が0%ではありません"
             assert abs(float(entry.line_peak_width_pct) - 100.0) < 1.0e-6, "中間線幅の初期値が100%ではありません"
             assert int(entry.flash_line_count) == 120
@@ -143,7 +151,8 @@ def main() -> None:
             _assert_flash_outline(entry, balloon_shapes, Rect)
 
             saved = schema.balloon_entry_to_dict(entry)
-            assert saved["shape"] == shape, "保存データに追加形状が残っていません"
+            assert saved["shape"] == "ellipse", "保存データの形状が通常形状になっていません"
+            assert saved["lineStyle"] == line_style, "保存データの線種にウニフラ / 白抜き線が残っていません"
             assert saved["lineValleyWidthPct"] == 0.0
             assert saved["linePeakWidthPct"] == 100.0
             assert saved["flashLineCount"] == 120
@@ -157,7 +166,8 @@ def main() -> None:
             assert saved["flashWhiteOutlineBlackLineCount"] == 3
             restored = page.balloons.add()
             schema.balloon_entry_from_dict(restored, saved)
-            assert restored.shape == shape
+            assert restored.shape == "ellipse"
+            assert restored.line_style == line_style
             assert abs(float(restored.line_valley_width_pct) - 0.0) < 1.0e-6
             assert abs(float(restored.line_peak_width_pct) - 100.0) < 1.0e-6
             assert int(restored.flash_line_count) == 120
@@ -169,6 +179,15 @@ def main() -> None:
             assert int(restored.flash_white_outline_count) == 5
             assert int(restored.flash_white_outline_white_line_count) == 24
             assert int(restored.flash_white_outline_black_line_count) == 3
+            page.balloons.remove(len(page.balloons) - 1)
+
+            legacy_saved = dict(saved)
+            legacy_saved["shape"] = line_style
+            legacy_saved["lineStyle"] = "solid"
+            legacy_restored = page.balloons.add()
+            schema.balloon_entry_from_dict(legacy_restored, legacy_saved)
+            assert legacy_restored.shape == "ellipse"
+            assert legacy_restored.line_style == line_style
             page.balloons.remove(len(page.balloons) - 1)
 
             entry.flash_white_line_width_percent = 175.0
@@ -201,7 +220,7 @@ def main() -> None:
             flash_max = max(math.hypot(x - center_x, y - center_y) for x, y, _z in verts)
             assert flash_max > body_max * 1.45, "線が楕円の外側から終点へ向かっていません"
             material_indices = {int(poly.material_index) for poly in flash_obj.data.polygons}
-            if shape == "uni_flash":
+            if line_style == "uni_flash":
                 assert {0, 2} <= material_indices, "黒線と白線の重なりが作成されていません"
             else:
                 assert {0, 1} <= material_indices, "白抜き線の白線と黒線が作成されていません"
@@ -218,7 +237,7 @@ def main() -> None:
             assert layer is not None, "フキダシを書き出せません"
             assert layer.image.size[0] > 0 and layer.image.size[1] > 0
 
-        print("BNAME_BALLOON_FLASH_SHAPES_OK")
+        print("BNAME_BALLOON_FLASH_LINE_STYLES_OK")
     finally:
         if mod is not None:
             try:

@@ -70,7 +70,7 @@ _ENUM_CODES = {
     "inout_range_mode": {"percent": 1, "length": 2},
     "white_outline_white_inout_range_mode": {"percent": 1, "length": 2},
     "white_outline_black_direction": {"outside": 1, "inside": 2, "both": 3},
-    "line_style": {"none": 0, "solid": 1, "dashed": 2, "dotted": 3, "double": 4},
+    "line_style": {"none": 0, "solid": 1, "dashed": 2, "dotted": 3, "double": 4, "uni_flash": 5, "white_outline": 6},
 }
 
 _TAIL_TYPE_CODES = {"straight": 1, "curve": 2, "sticky": 3}

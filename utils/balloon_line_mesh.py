@@ -96,7 +96,7 @@ MESH_BAND_LINE_SHAPES = set(SHAPELY_LINE_SHAPES)
 # 谷で自己交差しないリングを優先する設計判断)
 SHAPELY_MULTI_LINE_SHAPES = set(balloon_shapes.MELDEX_CARD_SHAPES) | {"custom"}
 
-_DYNAMIC_WIDTH_SHAPES = {"cloud", "fluffy", "thorn", "thorn-curve", "uni_flash", "white_outline"}
+_DYNAMIC_WIDTH_SHAPES = {"cloud", "fluffy", "thorn", "thorn-curve"}
 _ROUNDED_PEAK_SHAPES = {"cloud", "fluffy"}
 
 

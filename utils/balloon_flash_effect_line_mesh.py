@@ -50,7 +50,7 @@ def _base_rect(entry) -> tuple[tuple[float, float], float, float]:
     width = max(0.001, float(getattr(entry, "width_mm", 0.0) or 0.0))
     height = max(0.001, float(getattr(entry, "height_mm", 0.0) or 0.0))
     rect = Rect(0.0, 0.0, width, height)
-    points = balloon_shapes.flash_base_outline_for_entry(entry, rect) or balloon_shapes.outline_for_shape("ellipse", rect)
+    points = balloon_shapes.outline_for_entry(entry, rect) or balloon_shapes.outline_for_shape("ellipse", rect)
     min_x = min(float(x) for x, _y in points)
     max_x = max(float(x) for x, _y in points)
     min_y = min(float(y) for _x, y in points)
@@ -250,8 +250,8 @@ def _generated_strokes(entry):
     if black_brush_mm <= 1.0e-9:
         return []
     center, rx, ry = _base_rect(entry)
-    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if shape == "white_outline":
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    if line_style == "white_outline":
         params = _white_outline_params(entry, black_brush_mm=black_brush_mm)
         strokes = effect_line_gen.generate_white_outline_strokes(
             params,
@@ -297,11 +297,10 @@ def ensure_balloon_flash_effect_line_mesh(
 ) -> Optional[bpy.types.Object]:
     del work, page
     balloon_id = str(getattr(entry, "id", "") or "")
-    shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    line_style = str(getattr(entry, "line_style", "") or "")
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if (
         not balloon_id
-        or not balloon_shapes.is_flash_balloon_shape(shape)
+        or not balloon_shapes.is_flash_line_style(line_style)
         or line_style == "none"
         or float(getattr(entry, "line_width_mm", 0.0) or 0.0) <= 1.0e-9
     ):

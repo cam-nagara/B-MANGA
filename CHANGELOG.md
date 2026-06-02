@@ -3,6 +3,32 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-03 — ウニフラと白抜き線をフキダシ線種へ移動 / v0.6.253
+
+### 症状
+- ウニフラ / 白抜き線がフキダシの「形状」として追加されており、ユーザー意図の「通常のフキダシ形状に適用する線種」になっていなかった。
+- 旧データでは形状欄にウニフラ / 白抜き線が保存されるため、形状候補から外すだけでは既存作品の表示が崩れる可能性があった。
+
+### 原因
+- フキダシの候補、初期値、保存復元、実体生成の判定が「形状=ウニフラ / 白抜き線」を前提にしていた。
+- 詳細設定画面の本数・間隔・入り抜き表示も形状欄を見て切り替えていた。
+
+### 修正
+- フキダシの形状候補からウニフラ / 白抜き線を削除し、線種候補へ移動した。
+- 線種がウニフラ / 白抜き線のときだけ、線の本数・間隔・入り抜き・中間線幅・白線/黒線設定を表示し、通常のフキダシ形状はそのまま選べるようにした。
+- 旧保存データの「形状=ウニフラ / 白抜き線」は、読み込み時に「形状=楕円、線種=ウニフラ / 白抜き線」へ移行するようにした。
+- 実体生成は線種を見て放射状線を生成し、形状は下地と基準範囲として扱うようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile core/balloon.py utils/balloon_shapes.py utils/balloon_line_mesh.py utils/balloon_flash_white_line_mesh.py utils/balloon_flash_effect_line_mesh.py utils/balloon_curve_object.py panels/balloon_panel.py panels/layer_stack_detail_ui.py operators/balloon_op.py operators/layer_detail_op.py io/schema.py io/export_balloon.py utils/geometry_nodes_bridge.py test/blender_balloon_uni_flash_check.py test/blender_balloon_all_shapes_shapely_check.py test/blender_effect_line_frame_spacing_check.py test/blender_geometry_nodes_bridge_check.py test/blender_object_tool_selection_check.py _verify/make_balloon_flash_shape_samples.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_all_shapes_shapely_check.py`
+- `blender.exe --background --factory-startup --python test/blender_effect_line_frame_spacing_check.py`
+- `blender.exe --background --factory-startup --python test/blender_object_tool_selection_check.py`
+- `blender.exe --background --factory-startup --python test/blender_geometry_nodes_bridge_check.py`
+- `blender.exe --background --factory-startup --python _verify/make_balloon_flash_shape_samples.py`
+- `_verify/balloon_flash_shape_samples.png` をAI目視し、上段がウニフラ線種、下段が白抜き線線種として異なる見た目になり、どちらも通常の楕円フキダシ形状に線種を適用していることを確認。
+
 ## 2026-06-02 — ウニフラと白抜き線を集中線方式へ修正 / v0.6.252
 
 ### 症状

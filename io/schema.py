@@ -1071,7 +1071,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "flashLineSpacingMm": round(float(getattr(entry, "flash_line_spacing_mm", 1.0)), 3),
         "flashWhiteLineEnabled": (
             bool(getattr(entry, "flash_white_line_enabled", True))
-            if balloon_shapes.is_flash_balloon_shape(entry.shape)
+            if balloon_shapes.is_flash_line_style(getattr(entry, "line_style", ""))
             else False
         ),
         "flashWhiteLineWidthPercent": round(float(getattr(entry, "flash_white_line_width_percent", 100.0)), 3),
@@ -1167,9 +1167,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     data = data or {}
     entry.id = data.get("id", entry.id)
     entry.visible = bool(data.get("visible", True))
-    entry.shape = balloon_shapes.normalize_shape(data.get("shape", entry.shape))
-    is_flash_shape = balloon_shapes.is_flash_balloon_shape(entry.shape)
-    default_flash_endpoint_width = 0.0 if is_flash_shape else 100.0
+    raw_shape = data.get("shape", entry.shape)
+    legacy_flash_line_style = balloon_shapes.legacy_flash_shape_to_line_style(raw_shape)
+    entry.shape = balloon_shapes.normalize_shape(raw_shape)
     entry.custom_preset_name = data.get("customPresetName", "")
     entry.x_mm = float(data.get("xMm", 0.0))
     entry.y_mm = float(data.get("yMm", 0.0))
@@ -1192,8 +1192,14 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.rounded_corner_radius_unit = unit if unit in {"mm", "percent"} else "mm"
     if hasattr(entry, "rounded_corner_radius_percent"):
         entry.rounded_corner_radius_percent = float(data.get("roundedCornerRadiusPercent", 30.0))
-    line_style = str(data.get("lineStyle", "solid") or "solid")
-    entry.line_style = "double" if line_style == "multi" else line_style
+    raw_line_style = data.get("lineStyle", "")
+    if legacy_flash_line_style and str(raw_line_style or "") not in {"none", "uni_flash", "white_outline"}:
+        line_style = legacy_flash_line_style
+    else:
+        line_style = raw_line_style or legacy_flash_line_style or "solid"
+    entry.line_style = balloon_shapes.normalize_line_style(line_style)
+    is_flash_line_style = balloon_shapes.is_flash_line_style(entry.line_style)
+    default_flash_endpoint_width = 0.0 if is_flash_line_style else 100.0
     entry.line_width_mm = float(data.get("lineWidthMm", 0.3))
     entry.dashed_segment_length_mm = float(data.get("dashedSegmentLengthMm", 3.6))
     entry.dashed_gap_mm = float(data.get("dashedGapMm", 2.4))
@@ -1209,7 +1215,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.flash_line_count = int(data.get("flashLineCount", 120))
     if hasattr(entry, "flash_line_spacing_mm"):
         entry.flash_line_spacing_mm = float(data.get("flashLineSpacingMm", 1.0))
-    entry.flash_white_line_enabled = bool(data.get("flashWhiteLineEnabled", is_flash_shape))
+    entry.flash_white_line_enabled = bool(data.get("flashWhiteLineEnabled", is_flash_line_style))
     entry.flash_white_line_width_percent = float(data.get("flashWhiteLineWidthPercent", 100.0))
     entry.flash_white_line_valley_width_pct = float(data.get("flashWhiteLineValleyWidthPct", default_flash_endpoint_width))
     entry.flash_white_line_peak_width_pct = float(data.get("flashWhiteLinePeakWidthPct", 100.0))

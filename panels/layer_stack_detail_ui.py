@@ -187,7 +187,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     row = line_box.row(align=True)
     row.prop(entry, "line_style")
     row.prop(entry, "line_width_mm")
-    line_style = str(getattr(entry, "line_style", "") or "")
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "dashed":
         row = line_box.row(align=True)
         row.prop(entry, "dashed_segment_length_mm", text="線分")
@@ -196,14 +196,14 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = line_box.row(align=True)
         row.prop(entry, "dotted_gap_mm", text="間隔")
     shape_norm_for_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if balloon_shapes.is_flash_balloon_shape(shape_norm_for_line):
+    if balloon_shapes.is_flash_line_style(line_style):
         row = line_box.row(align=True)
         row.prop(entry, "flash_line_count", text="線の本数")
         row.prop(entry, "flash_line_spacing_mm", text="線の間隔")
         row = line_box.row(align=True)
         row.prop(entry, "line_valley_width_pct", text="入り・抜き")
         row.prop(entry, "line_peak_width_pct", text="中間線幅")
-        if shape_norm_for_line == "white_outline":
+        if line_style == "white_outline":
             row = line_box.row(align=True)
             row.prop(entry, "flash_white_outline_count")
             row.prop(entry, "flash_white_outline_width_mm")
@@ -228,7 +228,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = line_box.row(align=True)
         row.prop(entry, "line_valley_width_pct")
         row.prop(entry, "line_peak_width_pct")
-    if str(getattr(entry, "line_style", "") or "") == "double" and not balloon_shapes.is_flash_balloon_shape(shape_norm_for_line):
+    if line_style == "double":
         row = line_box.row(align=True)
         row.prop(entry, "multi_line_count")
         row.prop(entry, "multi_line_direction")
@@ -246,12 +246,8 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             row = line_box.row(align=True)
             row.prop(entry, "thorn_multi_line_cross_enabled", toggle=True)
             row = line_box.row(align=True)
-            if balloon_shapes.is_flash_balloon_shape(shape_norm):
-                row.prop(entry, "thorn_multi_line_valley_width_pct", text="入り・抜き")
-                row.prop(entry, "thorn_multi_line_peak_width_pct", text="中間線幅")
-            else:
-                row.prop(entry, "thorn_multi_line_valley_width_pct")
-                row.prop(entry, "thorn_multi_line_peak_width_pct")
+            row.prop(entry, "thorn_multi_line_valley_width_pct")
+            row.prop(entry, "thorn_multi_line_peak_width_pct")
     row = line_box.row(align=True)
     row.prop(entry, "line_color")
     row.prop(entry, "fill_color")
@@ -284,7 +280,6 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     if (
         source_state != balloon_curve_source_state.STATE_FREEFORM
         and balloon_shapes.is_dynamic_meldex_shape(entry.shape)
-        and not balloon_shapes.is_flash_balloon_shape(entry.shape)
     ):
         shape_box = box.box()
         shape_box.label(text="形状パラメータ")
