@@ -45,8 +45,8 @@ def _evaluated_polygon_count(obj) -> int:
 def _assert_flash_outline(entry, balloon_shapes, Rect) -> None:
     rect = Rect(0.0, 0.0, float(entry.width_mm), float(entry.height_mm))
     points, corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
-    assert len(points) >= 20, "放射状の山谷点が不足しています"
-    assert len(corners) == len(points), "ウニフラ / 白抜き線の角が鋭角指定になっていません"
+    assert len(points) >= 8, "楕円輪郭の点が不足しています"
+    assert not corners, "ウニフラ / 白抜き線の輪郭にトゲ状の角が残っています"
     base = balloon_shapes.flash_base_outline_for_entry(entry, rect)
     assert base is not None and len(base) >= 8, "ベース楕円が作成されていません"
     min_x = min(x for x, _y in base)
@@ -56,12 +56,8 @@ def _assert_flash_outline(entry, balloon_shapes, Rect) -> None:
     center = ((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
     rx = max(1.0e-6, (max_x - min_x) * 0.5)
     ry = max(1.0e-6, (max_y - min_y) * 0.5)
-    radii = [math.hypot(x - center[0], y - center[1]) for x, y in points]
-    assert max(radii) - min(radii) > 3.0, "放射状の山谷差が出ていません"
-    valley_norms = [((x - center[0]) / rx) ** 2 + ((y - center[1]) / ry) ** 2 for x, y in points[0::2]]
-    peak_norms = [((x - center[0]) / rx) ** 2 + ((y - center[1]) / ry) ** 2 for x, y in points[1::2]]
-    assert max(abs(value - 1.0) for value in valley_norms) < 0.08, "谷がベース楕円上にありません"
-    assert min(peak_norms) > 1.1, "山がベース楕円の外へ出ていません"
+    norms = [((x - center[0]) / rx) ** 2 + ((y - center[1]) / ry) ** 2 for x, y in points]
+    assert max(abs(value - 1.0) for value in norms) < 0.08, "輪郭が楕円から外れています"
 
 
 def _sample_radius_range(samples) -> tuple[float, float]:
@@ -178,7 +174,7 @@ def main() -> None:
             line_samples = balloon_line_mesh._body_samples_for_line_mesh(entry, obj)
             _body_min, body_max = _sample_radius_range(body_samples)
             _line_min, line_max = _sample_radius_range(line_samples)
-            assert line_max > body_max * 1.08, "黒線が楕円下地の外へ放射していません"
+            assert abs(line_max - body_max) < max(1.0e-6, body_max * 0.03), "黒線が楕円下地から外れてトゲ状になっています"
             white_z = max((float(v.co.z) for v in white_obj.data.vertices), default=0.0)
             line_z = max((float(v.co.z) for v in line_obj.data.vertices), default=0.0)
             assert 0.0 < white_z < line_z, "白線が黒線と下地の間に配置されていません"

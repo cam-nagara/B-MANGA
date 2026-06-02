@@ -89,6 +89,10 @@ def outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]]:
         custom = _custom_outline_for_entry(entry, rect)
         if custom is not None:
             return custom
+    if shape in FLASH_BALLOON_SHAPES:
+        base_outline = flash_base_outline_for_entry(entry, rect)
+        if base_outline is not None:
+            return base_outline
     return outline_for_shape(
         shape,
         rect,
@@ -123,6 +127,10 @@ def outline_with_corners_for_entry(
         custom = _custom_outline_for_entry(entry, rect)
         if custom is not None:
             return custom, []
+    if shape in FLASH_BALLOON_SHAPES:
+        base_outline = flash_base_outline_for_entry(entry, rect)
+        if base_outline is not None:
+            return base_outline, []
     return outline_with_corners_for_shape(
         shape,
         rect,

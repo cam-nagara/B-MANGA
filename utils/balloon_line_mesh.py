@@ -2710,28 +2710,7 @@ def _resolve_body_spline(body_object: bpy.types.Object | None):
     return None
 
 
-def _flash_line_samples_for_entry(entry) -> list[tuple[float, float, float]]:
-    shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
-    if not balloon_shapes.is_flash_balloon_shape(shape_norm):
-        return []
-    rect = Rect(
-        0.0,
-        0.0,
-        max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)),
-        max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
-    )
-    points, _corners = balloon_shapes.outline_with_corners_for_entry(entry, rect)
-    if len(points) < 3:
-        return []
-    points = free_transform.transform_entry_local_points(entry, points)
-    ox_mm, oy_mm = _entry_local_offset_mm(entry)
-    return [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm), 1.0) for x, y in points]
-
-
 def _body_samples_for_line_mesh(entry, body_object: bpy.types.Object) -> list[tuple[float, float, float]]:
-    flash_samples = _flash_line_samples_for_entry(entry)
-    if len(flash_samples) >= 3:
-        return flash_samples
     body_spline = _resolve_body_spline(body_object)
     if body_spline is None:
         return []

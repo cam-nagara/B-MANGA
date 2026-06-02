@@ -3,6 +3,28 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-02 — ウニフラと白抜き線の黒線・白線も楕円へ統一 / v0.6.251
+
+### 症状
+- ウニフラ / 白抜き線フキダシで、下地は楕円になっていたが、黒線と白線がまだトゲ状の輪郭を参照していた。
+- 共通の輪郭取得でもトゲ状の山谷輪郭が残っており、別経路から再びトゲ表示に戻る余地があった。
+
+### 原因
+- 線用の輪郭だけ、放射状の山谷点列を使う分岐が残っていた。
+- 書き出し側でも、線用輪郭と塗り用輪郭を別々に扱う前回修正が残っていた。
+
+### 修正
+- ウニフラ / 白抜き線の黒線、白線、外側フチ、内側フチ、多重線をすべて楕円輪郭に沿わせた。
+- 共通の輪郭取得も楕円を返すようにし、トゲ状の角が線に戻らないようにした。
+- 書き出し時も線と塗りを同じ楕円輪郭で描くようにした。
+
+### 検証 (Blender 5.1.2 実機/ヘッドレス)
+- `python -m py_compile utils/balloon_shapes.py utils/balloon_line_mesh.py io/export_balloon.py test/blender_balloon_uni_flash_check.py _verify/make_balloon_flash_shape_samples.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_uni_flash_check.py`
+- `blender.exe --background --factory-startup --python test/blender_balloon_all_shapes_shapely_check.py`
+- `blender.exe --background --factory-startup --python _verify/make_balloon_flash_shape_samples.py`
+- `_verify/balloon_flash_shape_samples.png` をAI目視し、ウニフラ / 白抜き線とも黒線・白線・多重線が楕円になり、トゲ状の線が残っていないことを確認。
+
 ## 2026-06-02 — ウニフラと白抜き線の下地を楕円に分離 / v0.6.250
 
 ### 症状

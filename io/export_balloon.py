@@ -145,13 +145,13 @@ def _outline_fluffy(rect: Rect) -> list[tuple[float, float]]:
 
 
 def _balloon_outline_mm(entry, rect: Rect) -> list[tuple[float, float]]:
+    base_outline = balloon_shapes.flash_base_outline_for_entry(entry, rect)
+    if base_outline is not None:
+        return base_outline
     return balloon_shapes.outline_for_entry(entry, rect)
 
 
 def _balloon_fill_outline_mm(entry, rect: Rect) -> list[tuple[float, float]]:
-    fill_outline = balloon_shapes.flash_base_outline_for_entry(entry, rect)
-    if fill_outline is not None:
-        return fill_outline
     return _balloon_outline_mm(entry, rect)
 
 
@@ -472,10 +472,6 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         fill_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
         fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
     line_clip_mask = fill_clip_mask
-    if balloon_shapes.is_flash_balloon_shape(str(getattr(entry, "shape", "") or "")) and len(outline_px) >= 3:
-        line_polygons = [outline_px]
-        line_polygons.extend(canvas.points_px(_balloon_tail_polygon(rect, tail)) for tail in entry.tails)
-        line_clip_mask = _fill_mask(canvas, [pts for pts in line_polygons if len(pts) >= 3])
     draw_line = str(line_style or "") != "none" and line_width_px > 0
     flash_white_width_px = _flash_white_line_width_px(entry, line_w_mm, dpi) if draw_line else 0
     flash_white_color = ep._rgb255((1.0, 1.0, 1.0, 1.0), alpha=_entry_opacity(entry))
