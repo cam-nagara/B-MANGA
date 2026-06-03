@@ -1220,6 +1220,18 @@ class BNAME_OT_object_tool(Operator):
 
     def _apply_snapshots(self, context, dx: float, dy: float) -> None:
         work = get_work(context)
+        balloon_move_uids: set[str] = set()
+        if self._drag_action == "move":
+            for snapshot in self._snapshots:
+                if snapshot.get("kind") != "balloon":
+                    continue
+                balloon_move_uids.add(
+                    layer_stack_utils.target_uid(
+                        "balloon",
+                        f"{snapshot.get('page_id', '')}:{snapshot.get('item_id', '')}",
+                    )
+                )
+        balloon_link_updated: set[str] = set()
         for snapshot in self._snapshots:
             kind = snapshot["kind"]
             x, y, w, h = snapshot.get("rect", (0.0, 0.0, 0.0, 0.0))
@@ -1283,7 +1295,25 @@ class BNAME_OT_object_tool(Operator):
                         pass
                     continue
                 if self._drag_action == "move":
+                    old_x = float(getattr(entry, "x_mm", 0.0) or 0.0)
+                    old_y = float(getattr(entry, "y_mm", 0.0) or 0.0)
                     balloon_op._move_balloon_with_texts(page, entry, x + dx, y + dy)
+                    actual_dx = float(getattr(entry, "x_mm", 0.0) or 0.0) - old_x
+                    actual_dy = float(getattr(entry, "y_mm", 0.0) or 0.0) - old_y
+                    try:
+                        from . import layer_link_duplicate_op
+
+                        layer_link_duplicate_op.propagate_linked_balloon_move_delta(
+                            context,
+                            page,
+                            entry,
+                            actual_dx,
+                            actual_dy,
+                            skip_uids=balloon_move_uids,
+                            updated_uids=balloon_link_updated,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                     continue
                 nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 balloon_op._set_balloon_rect(page, entry, nx, ny, nw, nh)

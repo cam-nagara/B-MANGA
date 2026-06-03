@@ -16,6 +16,7 @@ from bpy.types import Panel, UIList
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import gpencil as gp_utils
+from ..utils import layer_links
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import log
 from ..utils import page_file_scene
@@ -290,7 +291,7 @@ def _is_active_name_row(index: int) -> bool:
 
 def _select_name(row, index: int, text: str, item=None, target=None) -> None:
     prop_name = _editable_name_prop(item, target)
-    if prop_name is not None and (_is_inline_name_editing(item) or _is_active_name_row(index)):
+    if prop_name is not None and _is_inline_name_editing(item):
         _draw_inline_name(row, item, target, prop_name)
         return
     cell = row.row(align=True)
@@ -308,6 +309,25 @@ def _select_name(row, index: int, text: str, item=None, target=None) -> None:
 def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
     _draw_type_icon(row, index, icon)
     _select_name(row, index, text, item=item, target=target)
+
+
+def _link_state_icon(context, item) -> str:
+    if item is None or not layer_links.is_linkable_item(item):
+        return ""
+    uid = layer_stack_utils.stack_item_uid(item)
+    if not uid:
+        return ""
+    linked = layer_links.linked_uids_for_uid(context, uid)
+    return "LINKED" if len(linked) > 1 else ""
+
+
+def _draw_link_state_icon(row, context, item) -> None:
+    icon = _link_state_icon(context, item)
+    if not icon:
+        return
+    cell = row.row(align=True)
+    cell.ui_units_x = 0.9
+    cell.label(text="", icon=icon)
 
 
 def _gp_color_style(layer):
@@ -543,6 +563,7 @@ class BNAME_UL_layer_stack(UIList):
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
+        _draw_link_state_icon(row, context, item)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}
@@ -739,6 +760,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
         _draw_hierarchy_slot(row, item, target, index)
+        _draw_link_state_icon(row, context, item)
         left = row.row(align=True)
         left.alignment = "LEFT"
         controls = {}

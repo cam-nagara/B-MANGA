@@ -62,14 +62,20 @@ def sync_entry_transform_from_object(scene: bpy.types.Scene, obj: bpy.types.Obje
         old_h,
     )
     new_rect = (new_x, new_y, new_w, new_h)
-    changed = (
+    position_changed = (
         abs(old_rect[0] - new_x) > 1.0e-4
         or abs(old_rect[1] - new_y) > 1.0e-4
-        or abs(old_w - new_w) > 1.0e-4
+    )
+    transform_shape_changed = (
+        abs(old_w - new_w) > 1.0e-4
         or abs(old_h - new_h) > 1.0e-4
         or abs(float(getattr(entry, "rotation_deg", 0.0) or 0.0) - new_rotation) > 1.0e-4
         or bool(getattr(entry, "flip_h", False)) != new_flip_h
         or bool(getattr(entry, "flip_v", False)) != new_flip_v
+    )
+    changed = (
+        position_changed
+        or transform_shape_changed
     )
     if not changed:
         return False
@@ -89,4 +95,17 @@ def sync_entry_transform_from_object(scene: bpy.types.Scene, obj: bpy.types.Obje
     obj.scale.y = -1.0 if new_flip_v else 1.0
     obj.scale.z = 1.0
     balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
+    if position_changed and not transform_shape_changed:
+        try:
+            from ..operators import layer_link_duplicate_op
+
+            layer_link_duplicate_op.propagate_linked_balloon_move_delta(
+                bpy.context,
+                page,
+                entry,
+                new_x - old_rect[0],
+                new_y - old_rect[1],
+            )
+        except Exception:  # noqa: BLE001
+            pass
     return True

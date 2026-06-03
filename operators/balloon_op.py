@@ -985,6 +985,12 @@ class BNAME_OT_balloon_move(Operator):
         dx = float(self.delta_x_mm)
         dy = float(self.delta_y_mm)
         _move_balloon_with_texts(page, entry, entry.x_mm + dx, entry.y_mm + dy)
+        try:
+            from . import layer_link_duplicate_op
+
+            layer_link_duplicate_op.propagate_linked_balloon_move_delta(context, page, entry, dx, dy)
+        except Exception:  # noqa: BLE001
+            pass
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 
@@ -1552,10 +1558,35 @@ class BNAME_OT_balloon_tool(Operator):
     def _apply_move_snapshots(self, context, page, dx: float, dy: float) -> None:
         work = get_work(context)
         collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
+        page_key = OUTSIDE_STACK_KEY if page is None else page_stack_key(page)
+        snapshot_uids = {
+            layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon_id}")
+            for balloon_id, *_rest in self._snapshots
+        }
+        linked_updated: set[str] = set()
         for balloon_id, x, y, _w, _h in self._snapshots:
             idx = _find_balloon_index_in_collection(collection, balloon_id)
             if collection is not None and 0 <= idx < len(collection):
-                _move_balloon_with_texts(page, collection[idx], x + dx, y + dy)
+                entry = collection[idx]
+                old_x = float(getattr(entry, "x_mm", 0.0) or 0.0)
+                old_y = float(getattr(entry, "y_mm", 0.0) or 0.0)
+                _move_balloon_with_texts(page, entry, x + dx, y + dy)
+                actual_dx = float(getattr(entry, "x_mm", 0.0) or 0.0) - old_x
+                actual_dy = float(getattr(entry, "y_mm", 0.0) or 0.0) - old_y
+                try:
+                    from . import layer_link_duplicate_op
+
+                    layer_link_duplicate_op.propagate_linked_balloon_move_delta(
+                        context,
+                        page,
+                        entry,
+                        actual_dx,
+                        actual_dy,
+                        skip_uids=snapshot_uids,
+                        updated_uids=linked_updated,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
     def _move_violates_layer_scope(self, context, page, dx: float, dy: float) -> bool:
         if page is None:

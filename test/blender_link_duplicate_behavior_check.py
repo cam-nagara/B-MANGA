@@ -100,7 +100,9 @@ def _resolve_effect_by_id(effect_id: str):
 
 def _test_balloon_link_duplicate(page) -> None:
     from bname_dev_link_duplicate.operators import balloon_op, layer_link_duplicate_op
+    from bname_dev_link_duplicate.panels import gpencil_panel
     from bname_dev_link_duplicate.utils import free_transform, layer_links
+    from bname_dev_link_duplicate.utils import layer_stack as layer_stack_utils
 
     source = balloon_op._create_balloon_entry(
         bpy.context,
@@ -140,6 +142,21 @@ def _test_balloon_link_duplicate(page) -> None:
     linked_uids = layer_links.linked_uids_for_uid(bpy.context, _balloon_uid(page, source))
     if _balloon_uid(page, linked) not in linked_uids:
         raise AssertionError("フキダシのリンク複製でリンク状態が作られていません")
+    stack = layer_stack_utils.sync_layer_stack(bpy.context, preserve_active_index=True)
+    linked_icons = {}
+    for item in stack or []:
+        uid = layer_stack_utils.stack_item_uid(item)
+        if uid in {_balloon_uid(page, source), _balloon_uid(page, linked)}:
+            linked_icons[uid] = gpencil_panel._link_state_icon(bpy.context, item)
+    if linked_icons.get(_balloon_uid(page, source)) != "LINKED" or linked_icons.get(_balloon_uid(page, linked)) != "LINKED":
+        raise AssertionError(f"レイヤーリストにリンク状態が表示されません: {linked_icons}")
+
+    old_linked_x = float(linked.x_mm)
+    old_linked_y = float(linked.y_mm)
+    balloon_op._move_balloon_with_texts(page, source, float(source.x_mm) + 6.0, float(source.y_mm) - 4.0)
+    layer_link_duplicate_op.propagate_linked_balloon_move_delta(bpy.context, page, source, 6.0, -4.0)
+    if abs(float(linked.x_mm) - (old_linked_x + 6.0)) > 1.0e-6 or abs(float(linked.y_mm) - (old_linked_y - 4.0)) > 1.0e-6:
+        raise AssertionError("リンクフキダシの移動が共有されていません")
 
     source.center_offset_x_mm = 7.0
     source.center_offset_y_mm = -3.0

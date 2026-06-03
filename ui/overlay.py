@@ -26,6 +26,7 @@ from gpu_extras.batch import batch_for_shader
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
 from ..utils import (
+    balloon_shapes,
     border_geom,
     color_space,
     free_transform,
@@ -273,6 +274,17 @@ def _free_transform_quad_for_key(context, key: str, rect: Rect):
     return None
 
 
+def _balloon_flash_center_xy(entry, rect: Rect) -> tuple[float, float] | None:
+    if entry is None or not balloon_shapes.is_flash_line_style(getattr(entry, "line_style", "")):
+        return None
+    local_x = max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0)) * 0.5
+    local_y = max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)) * 0.5
+    local_x += float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+    local_y += float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+    local_x, local_y = free_transform.transform_entry_local_point(entry, local_x, local_y)
+    return rect.x + local_x, rect.y + local_y
+
+
 def _draw_object_tool_layer_bounds(context) -> None:
     try:
         from ..operators import object_tool_op
@@ -310,6 +322,14 @@ def _draw_object_tool_layer_bounds(context) -> None:
             except Exception:  # noqa: BLE001
                 entry = None
             if entry is not None:
+                center_xy = _balloon_flash_center_xy(entry, rect)
+                if center_xy is not None:
+                    overlay_effect_line._draw_center_cross(
+                        rect,
+                        center_xy=center_xy,
+                        draw_rect_fill=_draw_rect_fill,
+                        draw_rect_outline=_draw_rect_outline,
+                    )
                 for tail in getattr(entry, "tails", []) or []:
                     tail_points = balloon_tail_geom.tail_world_points(rect, tail)
                     if len(tail_points) < 2:

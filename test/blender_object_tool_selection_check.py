@@ -146,8 +146,10 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bname_dev.operators import effect_line_op
+        from bname_dev.ui import overlay as overlay_ui
         from bname_dev.ui import overlay_effect_line, overlay_visibility
         from bname_dev.utils import balloon_shapes
+        from bname_dev.utils import free_transform
         from bname_dev.utils import layer_stack as layer_stack_utils
         from bname_dev.utils import object_naming as on
         from bname_dev.utils import effect_line_object
@@ -513,6 +515,34 @@ def main() -> None:
             raise AssertionError(f"ウニフラ / 白抜き線がフキダシ形状に残っています: {balloon_ids}")
         if not {"uni_flash", "white_outline"} <= balloon_line_style_ids:
             raise AssertionError(f"フキダシ線種にウニフラ / 白抜き線がありません: {balloon_line_style_ids}")
+        flash_rect = Rect(10.0, 20.0, 80.0, 40.0)
+        balloon.line_style = "uni_flash"
+        balloon.width_mm = 80.0
+        balloon.height_mm = 40.0
+        balloon.center_offset_x_mm = 4.0
+        balloon.center_offset_y_mm = -3.0
+        free_transform.set_entry_offsets(balloon, {}, enabled=False)
+        center_xy = overlay_ui._balloon_flash_center_xy(balloon, flash_rect)
+        if center_xy != (54.0, 37.0):
+            raise AssertionError(f"ウニフラの中心点表示位置が不正です: {center_xy}")
+        free_transform.set_entry_offsets(
+            balloon,
+            {
+                free_transform.BOTTOM_LEFT: (2.0, -1.0),
+                free_transform.BOTTOM_RIGHT: (2.0, -1.0),
+                free_transform.TOP_RIGHT: (2.0, -1.0),
+                free_transform.TOP_LEFT: (2.0, -1.0),
+            },
+            enabled=True,
+        )
+        balloon.line_style = "white_outline"
+        center_xy = overlay_ui._balloon_flash_center_xy(balloon, flash_rect)
+        if center_xy != (56.0, 36.0):
+            raise AssertionError(f"白抜き線の中心点表示位置が不正です: {center_xy}")
+        balloon.line_style = "solid"
+        if overlay_ui._balloon_flash_center_xy(balloon, flash_rect) is not None:
+            raise AssertionError("通常線に中心点表示が出ています")
+        free_transform.set_entry_offsets(balloon, {}, enabled=False)
         balloon_labels = {str(getattr(item, "name", "") or "") for item in balloon.bl_rna.properties["shape"].enum_items}
         if any("旧" in label for label in end_labels + list(balloon_labels)):
             raise AssertionError("終点形状または形状に旧表記が残っています")
