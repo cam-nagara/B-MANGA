@@ -235,8 +235,27 @@ def _sync_balloon_curve(entry) -> None:
         pass
 
 
+def _sync_linked_balloon_transform(entry, context) -> None:
+    try:
+        from ..operators import layer_link_duplicate_op
+        from ..utils import balloon_curve_object
+
+        if balloon_curve_object.auto_sync_is_paused():
+            return
+        scene = getattr(context, "scene", None) if context is not None else None
+        if scene is None:
+            return
+        page, resolved = balloon_curve_object.find_balloon_entry(scene, str(getattr(entry, "id", "") or ""))
+        if resolved is None:
+            return
+        layer_link_duplicate_op.propagate_linked_balloon_transform_absolute(context, page, resolved)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _on_balloon_entry_changed(_self, context) -> None:
     _sync_balloon_curve(_self)
+    _sync_linked_balloon_transform(_self, context)
     _tag_balloon_redraw(context)
 
 

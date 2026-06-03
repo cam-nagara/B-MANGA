@@ -87,6 +87,10 @@ def defer_auto_sync():
 def _auto_sync_deferred() -> bool:
     return _AUTO_SYNC_DEFER_COUNT > 0
 
+
+def auto_sync_is_paused() -> bool:
+    return _auto_sync_suspended() or _auto_sync_deferred()
+
 def _remove_unused_data_block(data) -> None:
     if data is None or getattr(data, "users", 0) != 0:
         return

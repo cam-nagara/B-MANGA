@@ -601,7 +601,7 @@ def _attach_texts_enclosed_by_balloon(context, page, entry) -> int:
     return changed
 
 
-def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float) -> None:
+def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float, *, propagate_link: bool = True) -> None:
     old_rect = (
         float(getattr(entry, "x_mm", 0.0) or 0.0),
         float(getattr(entry, "y_mm", 0.0) or 0.0),
@@ -622,6 +622,13 @@ def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: flo
     with balloon_curve_object.suspend_auto_sync():
         balloon_curve_object.on_balloon_entry_changed(entry)
     _sync_balloon_merge_display_if_needed(page, entry)
+    if propagate_link:
+        try:
+            from . import layer_link_duplicate_op
+
+            layer_link_duplicate_op.propagate_linked_balloon_transform_absolute(bpy.context, page, entry)
+        except Exception:  # noqa: BLE001
+            pass
     if transformed_curve:
         layer_stack_utils.tag_view3d_redraw(bpy.context)
 

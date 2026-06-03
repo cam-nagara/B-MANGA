@@ -296,6 +296,31 @@ def duplicate_effect_entry(
     return dest_obj, dest_layer
 
 
+def link_existing_effect_layers(context, effect_layers: list[tuple[object, object]]) -> int:
+    from . import effect_line_op
+
+    valid = [
+        (obj, layer)
+        for obj, layer in effect_layers
+        if obj is not None and layer is not None
+    ]
+    if len(valid) < 2:
+        return 0
+    source_obj, source_layer = valid[0]
+    for dest_obj, dest_layer in valid[1:]:
+        _ensure_effect_link_pair(effect_line_op, source_obj, source_layer, dest_obj, dest_layer)
+    bounds = effect_line_op.effect_layer_bounds(source_obj, source_layer)
+    if bounds is not None:
+        effect_line_op._write_effect_strokes(
+            context,
+            source_obj,
+            source_layer,
+            bounds,
+            center_xy_mm=effect_line_op.effect_layer_center(source_obj, source_layer, bounds),
+        )
+    return len(valid)
+
+
 class BNAME_OT_effect_line_create_linked(Operator):
     bl_idname = "bname.effect_line_create_linked"
     bl_label = "リンク効果線を作成"

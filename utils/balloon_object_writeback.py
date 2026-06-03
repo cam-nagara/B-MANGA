@@ -108,4 +108,15 @@ def sync_entry_transform_from_object(scene: bpy.types.Scene, obj: bpy.types.Obje
             )
         except Exception:  # noqa: BLE001
             pass
+    elif transform_shape_changed:
+        try:
+            from ..operators import layer_link_duplicate_op
+
+            layer_link_duplicate_op.propagate_linked_balloon_transform_absolute(
+                bpy.context,
+                page,
+                entry,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     return True

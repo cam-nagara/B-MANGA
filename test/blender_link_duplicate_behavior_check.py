@@ -43,11 +43,47 @@ def _select_stack(kind: str, key_suffix: str = ""):
     raise AssertionError(f"レイヤー一覧に対象がありません: {kind} {key_suffix}")
 
 
+def _select_stack_uid(uid: str):
+    from bname_dev_link_duplicate.utils import layer_stack
+
+    stack = layer_stack.sync_layer_stack(bpy.context)
+    assert stack is not None
+    for index, item in enumerate(stack):
+        if layer_stack.stack_item_uid(item) == uid:
+            assert layer_stack.select_stack_index(bpy.context, index)
+            return item
+    raise AssertionError(f"レイヤー一覧に対象がありません: {uid}")
+
+
+def _multi_select_stack_uids(uids: list[str], active_uid: str) -> None:
+    from bname_dev_link_duplicate.utils import layer_stack
+
+    stack = layer_stack.sync_layer_stack(bpy.context)
+    assert stack is not None
+    layer_stack.clear_all_selection(bpy.context)
+    active_index = -1
+    for index, item in enumerate(stack):
+        uid = layer_stack.stack_item_uid(item)
+        if uid == active_uid:
+            active_index = index
+        if uid in set(uids):
+            layer_stack.set_item_selected(bpy.context, item, True)
+    if active_index < 0:
+        raise AssertionError(f"アクティブにするレイヤーがありません: {active_uid}")
+    assert layer_stack.select_stack_index(bpy.context, active_index)
+    stack = layer_stack.sync_layer_stack(bpy.context, preserve_active_index=True)
+    for item in stack or []:
+        uid = layer_stack.stack_item_uid(item)
+        if uid in set(uids):
+            layer_stack.set_item_selected(bpy.context, item, True)
+
+
 def _balloon_uid(page, entry) -> str:
     from bname_dev_link_duplicate.utils import layer_stack
-    from bname_dev_link_duplicate.utils.layer_hierarchy import page_stack_key
+    from bname_dev_link_duplicate.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
 
-    return layer_stack.target_uid("balloon", f"{page_stack_key(page)}:{entry.id}")
+    page_key = OUTSIDE_STACK_KEY if page is None else page_stack_key(page)
+    return layer_stack.target_uid("balloon", f"{page_key}:{entry.id}")
 
 
 def _assert_pair(value, expected, label: str) -> None:
@@ -186,6 +222,78 @@ def _test_balloon_link_duplicate(page) -> None:
     if bool(source.free_transform_enabled) or bool(linked.free_transform_enabled):
         raise AssertionError("自由変形リセットがリンクフキダシに反映されていません")
 
+    manual_a = balloon_op._create_balloon_entry(
+        bpy.context,
+        page,
+        shape="ellipse",
+        x=120.0,
+        y=82.0,
+        w=38.0,
+        h=24.0,
+        parent_kind="page",
+        parent_key="",
+    )
+    manual_b = balloon_op._create_balloon_entry(
+        bpy.context,
+        page,
+        shape="ellipse",
+        x=170.0,
+        y=112.0,
+        w=52.0,
+        h=30.0,
+        parent_kind="page",
+        parent_key="",
+    )
+    manual_a.rotation_deg = 18.0
+    manual_a.center_offset_x_mm = 5.0
+    manual_a.center_offset_y_mm = -6.0
+    manual_b.rotation_deg = -11.0
+    manual_b.center_offset_x_mm = -9.0
+    manual_b.center_offset_y_mm = 8.0
+    uid_a = _balloon_uid(page, manual_a)
+    uid_b = _balloon_uid(page, manual_b)
+    _multi_select_stack_uids([uid_a, uid_b], uid_a)
+    assert bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    if abs(float(manual_b.x_mm) - float(manual_a.x_mm)) > 1.0e-6 or abs(float(manual_b.y_mm) - float(manual_a.y_mm)) > 1.0e-6:
+        raise AssertionError("通常リンクしたフキダシの位置が共有されていません")
+    if abs(float(manual_b.rotation_deg) - 18.0) > 1.0e-6:
+        raise AssertionError("通常リンクしたフキダシの回転が共有されていません")
+    if abs(float(manual_b.center_offset_x_mm) - 5.0) > 1.0e-6 or abs(float(manual_b.center_offset_y_mm) + 6.0) > 1.0e-6:
+        raise AssertionError("通常リンクしたフキダシの中心点が共有されていません")
+    manual_a.x_mm = 133.0
+    manual_a.y_mm = 91.0
+    manual_a.rotation_deg = 27.0
+    manual_a.center_offset_x_mm = 2.5
+    manual_a.center_offset_y_mm = -1.5
+    if abs(float(manual_b.x_mm) - 133.0) > 1.0e-6 or abs(float(manual_b.y_mm) - 91.0) > 1.0e-6:
+        raise AssertionError("通常リンク後のフキダシ位置変更が共有されていません")
+    if abs(float(manual_b.rotation_deg) - 27.0) > 1.0e-6:
+        raise AssertionError("通常リンク後のフキダシ回転変更が共有されていません")
+    if abs(float(manual_b.center_offset_x_mm) - 2.5) > 1.0e-6 or abs(float(manual_b.center_offset_y_mm) + 1.5) > 1.0e-6:
+        raise AssertionError("通常リンク後のフキダシ中心点変更が共有されていません")
+
+    work = bpy.context.scene.bname_work
+    shared = work.shared_balloons.add()
+    shared.id = "shared_balloon_link_source"
+    shared.title = "ページ外リンク元"
+    shared.shape = "ellipse"
+    shared.x_mm = 12.0
+    shared.y_mm = 18.0
+    shared.width_mm = 28.0
+    shared.height_mm = 20.0
+    shared.parent_kind = "none"
+    shared.parent_key = ""
+    _select_stack_uid(_balloon_uid(None, shared))
+    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    shared_linked = work.shared_balloons[-1]
+    if shared_linked is shared or not str(getattr(shared_linked, "id", "") or "").startswith("shared_balloon"):
+        raise AssertionError("ページ外フキダシのリンク複製が作成されていません")
+    if abs(float(shared_linked.x_mm) - float(shared.x_mm)) > 1.0e-6 or abs(float(shared_linked.y_mm) - float(shared.y_mm)) > 1.0e-6:
+        raise AssertionError("ページ外フキダシのリンク複製で位置がずれています")
+    shared_uids = layer_links.linked_uids_for_uid(bpy.context, _balloon_uid(None, shared))
+    if _balloon_uid(None, shared_linked) not in shared_uids:
+        raise AssertionError("ページ外フキダシのリンク複製でリンク状態が作られていません")
+
 
 def _test_effect_link_duplicate() -> None:
     from bname_dev_link_duplicate.operators import effect_line_op
@@ -288,6 +396,68 @@ def _test_effect_link_duplicate() -> None:
         raise AssertionError("リンク効果線の自由変形変更が共有されていません")
     if abs(float(linked_entry["center_x"]) - 50.0) > 1.0e-6 or abs(float(linked_entry["center_y"]) - 88.0) > 1.0e-6:
         raise AssertionError("リンク効果線の中心点変更が共有されていません")
+
+    manual_obj_a, manual_layer_a = effect_line_op._create_effect_layer(
+        bpy.context,
+        (75.0, 20.0, 44.0, 34.0),
+        parent_key="",
+    )
+    effect_line_op._write_effect_strokes(
+        bpy.context,
+        manual_obj_a,
+        manual_layer_a,
+        (75.0, 20.0, 44.0, 34.0),
+        center_xy_mm=(91.0, 33.0),
+    )
+    manual_obj_b, manual_layer_b = effect_line_op._create_effect_layer(
+        bpy.context,
+        (150.0, 95.0, 30.0, 28.0),
+        parent_key="",
+    )
+    effect_line_op._write_effect_strokes(
+        bpy.context,
+        manual_obj_b,
+        manual_layer_b,
+        (150.0, 95.0, 30.0, 28.0),
+        center_xy_mm=(162.0, 110.0),
+    )
+    uid_a = _effect_uid(manual_layer_a)
+    uid_b = _effect_uid(manual_layer_b)
+    _multi_select_stack_uids([uid_a, uid_b], uid_a)
+    assert bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    manual_entry_a = _effect_meta_entry(effect_line_op, manual_obj_a, manual_layer_a)
+    manual_entry_b = _effect_meta_entry(effect_line_op, manual_obj_b, manual_layer_b)
+    for field in ("x", "y", "w", "h", "center_x", "center_y"):
+        if abs(float(manual_entry_a[field]) - float(manual_entry_b[field])) > 1.0e-6:
+            raise AssertionError(f"通常リンクした効果線の {field} が共有されていません")
+    manual_entry_a = dict(manual_entry_a)
+    params = dict(manual_entry_a.get("params", {}) if isinstance(manual_entry_a.get("params", {}), dict) else {})
+    params["rotation_deg"] = 37.0
+    manual_entry_a["params"] = params
+    meta = effect_line_op._effect_meta(manual_obj_a)
+    meta[effect_line_op._layer_meta_key(manual_layer_a)] = manual_entry_a
+    effect_line_op._write_effect_meta(manual_obj_a, meta)
+    effect_line_op._write_effect_strokes(
+        bpy.context,
+        manual_obj_a,
+        manual_layer_a,
+        (88.0, 26.0, 44.0, 34.0),
+        center_xy_mm=(101.0, 48.0),
+    )
+    manual_entry_b = _effect_meta_entry(effect_line_op, manual_obj_b, manual_layer_b)
+    for field, expected in {
+        "x": 88.0,
+        "y": 26.0,
+        "w": 44.0,
+        "h": 34.0,
+        "center_x": 101.0,
+        "center_y": 48.0,
+    }.items():
+        if abs(float(manual_entry_b[field]) - expected) > 1.0e-6:
+            raise AssertionError(f"通常リンク後の効果線 {field} 変更が共有されていません")
+    manual_params_b = manual_entry_b.get("params", {}) if isinstance(manual_entry_b.get("params", {}), dict) else {}
+    if abs(float(manual_params_b.get("rotation_deg", 0.0)) - 37.0) > 1.0e-6:
+        raise AssertionError("通常リンク後の効果線回転変更が共有されていません")
 
 
 def _test_white_outline_order() -> None:

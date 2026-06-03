@@ -18,11 +18,19 @@ _logger = log.get_logger(__name__)
 _BALLOON_CENTER_FREE_ATTRS = (
     "center_offset_x_mm",
     "center_offset_y_mm",
+    "rotation_deg",
     "free_transform_enabled",
     "free_transform_bottom_left",
     "free_transform_bottom_right",
     "free_transform_top_left",
     "free_transform_top_right",
+)
+
+_BALLOON_RECT_ATTRS = (
+    "x_mm",
+    "y_mm",
+    "width_mm",
+    "height_mm",
 )
 
 
@@ -71,6 +79,18 @@ def _copy_center_free(src, dst) -> bool:
     return changed
 
 
+def _copy_balloon_rect(src, dst) -> tuple[float, float, float, float] | None:
+    values: list[float] = []
+    for attr in _BALLOON_RECT_ATTRS:
+        if not hasattr(src, attr) or not hasattr(dst, attr):
+            return None
+        try:
+            values.append(float(getattr(src, attr, 0.0) or 0.0))
+        except Exception:  # noqa: BLE001
+            return None
+    return values[0], values[1], values[2], values[3]
+
+
 def _linked_balloon_targets(context, page, entry):
     from ..core.work import get_work
 
@@ -99,7 +119,7 @@ def _linked_balloon_targets(context, page, entry):
 
 
 def propagate_linked_balloon_center_free(context, page, entry) -> int:
-    """リンクされたフキダシへ中心点と自由変形だけを反映する."""
+    """リンクされたフキダシへ中心点・回転・自由変形だけを反映する."""
     if entry is None:
         return 0
     changed = 0
@@ -118,6 +138,51 @@ def propagate_linked_balloon_center_free(context, page, entry) -> int:
                 balloon_op._sync_balloon_merge_display_if_needed(target_page, target)
             except Exception:  # noqa: BLE001
                 pass
+    return changed
+
+
+def propagate_linked_balloon_transform_absolute(
+    context,
+    page,
+    entry,
+    *,
+    skip_uids: set[str] | None = None,
+) -> int:
+    """リンクされたフキダシへ位置・サイズ・回転・中心点を同値で反映する."""
+    if entry is None:
+        return 0
+    skip = set(skip_uids or ())
+    source_uid = _balloon_uid(page, entry)
+    if source_uid:
+        skip.add(source_uid)
+    changed = 0
+    for target_page, target in _linked_balloon_targets(context, page, entry):
+        uid = _balloon_uid(target_page, target)
+        if uid in skip:
+            continue
+        try:
+            from . import balloon_op
+
+            rect = _copy_balloon_rect(entry, target)
+            if rect is not None:
+                balloon_op._set_balloon_rect(
+                    target_page,
+                    target,
+                    rect[0],
+                    rect[1],
+                    rect[2],
+                    rect[3],
+                    propagate_link=False,
+                )
+            with balloon_curve_object.suspend_auto_sync():
+                copied = _copy_center_free(entry, target)
+            if copied:
+                balloon_curve_object.on_balloon_entry_changed(target)
+                balloon_op._sync_balloon_merge_display_if_needed(target_page, target)
+            changed += 1
+        except Exception:  # noqa: BLE001
+            _logger.exception("linked balloon absolute transform sync failed")
+            continue
     return changed
 
 
@@ -168,24 +233,35 @@ def propagate_linked_balloon_move_delta(
 
 
 def _create_linked_balloon_duplicate(context, item) -> bool:
+    from ..core.work import get_work
     from ..io import schema
-    from .balloon_op import _allocate_balloon_id
+    from .balloon_op import _allocate_balloon_id, _allocate_balloon_id_from_collection
 
     resolved = layer_stack_utils.resolve_stack_item(context, item)
     src = resolved.get("target") if resolved is not None else None
     page = resolved.get("page") if resolved is not None else None
-    if src is None or page is None:
+    work = get_work(context)
+    if src is None:
+        return False
+    collection = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
+    if collection is None:
         return False
     source_uid = _balloon_uid(page, src)
-    dst = page.balloons.add()
+    dst = collection.add()
     with balloon_curve_object.suspend_auto_sync():
         schema.balloon_entry_from_dict(dst, schema.balloon_entry_to_dict(src))
-        dst.id = _allocate_balloon_id(page)
+        if page is None:
+            dst.id = _allocate_balloon_id_from_collection(collection, "shared_balloon")
+            dst.parent_kind = "none"
+            dst.parent_key = ""
+        else:
+            dst.id = _allocate_balloon_id(page, work)
     try:
         balloon_curve_object.on_balloon_entry_changed(dst)
     except Exception:  # noqa: BLE001
         _logger.exception("linked balloon duplicate display sync failed")
-    page.active_balloon_index = len(page.balloons) - 1
+    if page is not None:
+        page.active_balloon_index = len(collection) - 1
     context.scene.bname_active_layer_kind = "balloon"
     dest_uid = _balloon_uid(page, dst)
     if source_uid and dest_uid:
