@@ -283,6 +283,7 @@ def main() -> None:
         work_dir = temp_root / "PageFileStage.bname"
         result = bpy.ops.bname.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
+        assert bpy.context.scene.bname_work.work_info.display_work_name.position == "bottom-left"
         assert _mainfile() == (work_dir / "work.blend").resolve()
         _assert_work_file_preview_only()
 

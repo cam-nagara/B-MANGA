@@ -98,6 +98,10 @@ def _anchor(anchor_rect, position: str) -> tuple[float, float, str, str]:
     return x_mm, y_mm, align_x, align_y
 
 
+def _anchor_rect(work):
+    return overlay_shared.compute_paper_rects(work.paper).bleed
+
+
 def _set_page_location(obj: bpy.types.Object, scene, work, page_index: int, x_mm: float, y_mm: float) -> None:
     from . import page_grid
 
@@ -150,7 +154,7 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
         obj = bpy.data.objects.new(obj_name, curve)
     elif obj.data is not curve:
         obj.data = curve
-    rect = overlay_shared.compute_paper_rects(work.paper).bleed
+    rect = _anchor_rect(work)
     x_mm, y_mm, align_x, align_y = _anchor(rect, str(getattr(item, "position", "bottom-left") or "bottom-left"))
     curve.align_x = align_x
     try:
@@ -191,7 +195,7 @@ def _item_signature(page_id: str, page_index: int, item_key: str, item, text: st
 
 
 def _text_anchor_for_item(work, item) -> tuple[float, float]:
-    rect = overlay_shared.compute_paper_rects(work.paper).bleed
+    rect = _anchor_rect(work)
     x_mm, y_mm, _align_x, _align_y = _anchor(
         rect,
         str(getattr(item, "position", "bottom-left") or "bottom-left"),

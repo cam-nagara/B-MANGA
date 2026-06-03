@@ -184,6 +184,26 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
+def _preview_png_usable(path: Path, expected_size: tuple[int, int], *, current: bool) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            if tuple(image.size) != tuple(expected_size):
+                return False
+            rgba = image.convert("RGBA")
+            r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
+    except Exception:  # noqa: BLE001
+        return False
+    if a < 200 or r > 120:
+        return False
+    if current:
+        return g <= 170 and b >= 220
+    return g >= 170 and b >= 180
+
+
 def _draw_preview_frame(draw, width: int, height: int, *, current: bool) -> None:
     outline = (72, 190, 222, 255)
     if current:
@@ -336,7 +356,7 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
         return None
 
 
-def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None) -> Path | None:
+def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None, force: bool = False) -> Path | None:
     page_id = str(getattr(page, "id", "") or "")
     if not paths.is_valid_page_id(page_id):
         return None
@@ -345,7 +365,13 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         return None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        _render_preview_image(work, page, page_index, current=current, scene=scene).save(path)
+        expected_size = _image_size(work, scene)
+        if not force and _preview_png_usable(path, expected_size, current=current):
+            return path
+        image = _render_preview_image(work, page, page_index, current=current, scene=scene)
+        if image is None:
+            return None
+        image.save(path)
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
@@ -510,9 +536,9 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
     return None
 
 
-def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool) -> None:
+def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False) -> None:
     page_id = str(getattr(page, "id", "") or "")
-    path = ensure_preview_png(work, page, page_index, current=current, scene=scene)
+    path = ensure_preview_png(work, page, page_index, current=current, scene=scene, force=force)
     image = _load_image(path, _image_size(work, scene)) if path is not None else None
     _index, x0, y0, x1, y1 = rect
     mesh = _ensure_plane_mesh(page_id, x1 - x0, y1 - y0)
@@ -553,7 +579,7 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
             pass
 
 
-def sync_page_previews(context=None, work=None) -> int:
+def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     context = context or bpy.context
     scene = getattr(context, "scene", None)
     if scene is None:
@@ -575,7 +601,7 @@ def sync_page_previews(context=None, work=None) -> int:
             current_index = int(current_rect[0])
             try:
                 page = getattr(work, "pages", [])[current_index]
-                ensure_preview_png(work, page, current_index, current=True, scene=scene)
+                ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
             except Exception:  # noqa: BLE001
                 _logger.exception("current page preview update failed: %s", current_page_id)
     for obj in _iter_preview_objects():
@@ -596,6 +622,7 @@ def sync_page_previews(context=None, work=None) -> int:
             int(rect[0]),
             rect,
             current=page_id == current_page_id,
+            force=force,
         )
         updated += 1
     try:

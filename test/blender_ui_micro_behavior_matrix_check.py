@@ -763,7 +763,6 @@ def _check_bool_controls(context, targets) -> list[dict[str, Any]]:
         "画像 / 2値化",
         "ラスター / 表示",
         "ラスター / ロック",
-        "フキダシ / 角丸",
         "フキダシ / 水平反転",
         "フキダシ / 垂直反転",
         "テキスト / 太字",
@@ -779,7 +778,49 @@ def _check_bool_controls(context, targets) -> list[dict[str, Any]]:
     )
     missing = [fragment for fragment in required_fragments if not any(fragment in label for label in labels)]
     results.append({"group": "必須項目", "label": "主要チェックボックス検出", "ok": not missing, "missing": missing})
+    balloon = targets["balloon"]
+    before_corner = str(getattr(balloon, "corner_type", "square") or "square")
+    rounded_ok = False
+    bevel_ok = False
+    square_ok = False
+    try:
+        balloon.corner_type = "rounded"
+        rounded_ok = (
+            str(getattr(balloon, "corner_type", "")) == "rounded"
+            and bool(getattr(balloon, "rounded_corner_enabled", False))
+        )
+        balloon.corner_type = "bevel"
+        bevel_ok = (
+            str(getattr(balloon, "corner_type", "")) == "bevel"
+            and bool(getattr(balloon, "rounded_corner_enabled", False))
+        )
+        balloon.corner_type = "square"
+        square_ok = (
+            str(getattr(balloon, "corner_type", "")) == "square"
+            and not bool(getattr(balloon, "rounded_corner_enabled", False))
+        )
+    finally:
+        try:
+            balloon.corner_type = before_corner
+        except Exception:  # noqa: BLE001
+            pass
+    results.append(
+        {
+            "group": "レイヤー詳細 / フキダシ",
+            "label": "角",
+            "ok": rounded_ok and bevel_ok and square_ok,
+            "before": before_corner,
+        }
+    )
     return results
+
+
+def _effective_render_size(scene) -> tuple[int, int]:
+    percentage = max(1, int(getattr(scene.render, "resolution_percentage", 100) or 100))
+    return (
+        max(1, int(scene.render.resolution_x) * percentage // 100),
+        max(1, int(scene.render.resolution_y) * percentage // 100),
+    )
 
 
 def _page_backgrounds(context):
@@ -887,12 +928,12 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     })
 
     _mark("coma_camera_reduction")
-    original = (int(scene.render.resolution_x), int(scene.render.resolution_y))
+    original = _effective_render_size(scene)
     scene.bname_coma_camera_reduction_mode = True
     scene.bname_coma_camera_preview_scale_percentage = 25.0
-    reduced = (int(scene.render.resolution_x), int(scene.render.resolution_y))
+    reduced = _effective_render_size(scene)
     scene.bname_coma_camera_reduction_mode = False
-    restored = (int(scene.render.resolution_x), int(scene.render.resolution_y))
+    restored = _effective_render_size(scene)
     results.append({
         "group": "コマ編集B-Nameパネル",
         "label": "縮小モード",

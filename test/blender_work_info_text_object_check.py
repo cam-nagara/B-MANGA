@@ -37,7 +37,7 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_work_info_text.ui import overlay
+        from bname_dev_work_info_text.ui import overlay, overlay_shared
         from bname_dev_work_info_text.utils import outliner_model, page_grid, work_info_text_object
         from bname_dev_work_info_text.utils.geom import m_to_mm, q_to_mm
 
@@ -47,8 +47,15 @@ def main() -> None:
         scene = bpy.context.scene
         work = scene.bname_work
         work.loaded = True
-        work.paper.canvas_width_mm = 210.0
-        work.paper.canvas_height_mm = 297.0
+        work.paper.canvas_width_mm = 257.0
+        work.paper.canvas_height_mm = 364.0
+        work.paper.finish_width_mm = 221.81
+        work.paper.finish_height_mm = 328.78
+        work.paper.bleed_mm = 7.0
+        work.paper.inner_frame_width_mm = 180.0
+        work.paper.inner_frame_height_mm = 270.0
+        work.paper.inner_frame_offset_x_mm = 0.0
+        work.paper.inner_frame_offset_y_mm = 0.0
         for idx in range(2):
             page = work.pages.add()
             page.id = f"p{idx + 1:04d}"
@@ -80,6 +87,21 @@ def main() -> None:
         assert "ページ0005" in bodies and "ページ0006" in bodies
         bpy.context.view_layer.update()
         work_name_obj = next(obj for obj in objs if str(obj.data.body) == "作品テスト")
+        rects = overlay_shared.compute_paper_rects(work.paper)
+        ox, oy = page_grid.page_total_offset_mm(work, scene, 0)
+        work_name_x = m_to_mm(float(work_name_obj.location.x)) - ox
+        work_name_y = m_to_mm(float(work_name_obj.location.y)) - oy
+        assert abs(work_name_x - rects.bleed.x) < 0.001, "作品名の左位置が裁ち落とし枠に揃っていません"
+        assert abs(work_name_y - (rects.bleed.y2 + 2.0)) < 0.001, "作品名の上位置が裁ち落とし枠外側にありません"
+        assert work_name_x < rects.inner_frame.x and work_name_y > rects.inner_frame.y2, (
+            "作品情報が基本枠基準に戻っています"
+        )
+        author_obj = next(obj for obj in objs if str(obj.data.body) == "作者")
+        author_x = m_to_mm(float(author_obj.location.x)) - ox
+        author_y = m_to_mm(float(author_obj.location.y)) - oy
+        assert abs(author_x - rects.bleed.x2) < 0.001, "作者名の右位置が裁ち落とし枠に揃っていません"
+        assert abs(author_y - (rects.bleed.y - 2.0)) < 0.001, "作者名の下位置が裁ち落とし枠外側にありません"
+        assert author_x > rects.inner_frame.x2 and author_y < rects.inner_frame.y
         bbox = [work_name_obj.matrix_world @ Vector(corner) for corner in work_name_obj.bound_box]
         height_mm = m_to_mm(max(v.y for v in bbox) - min(v.y for v in bbox))
         expected_mm = q_to_mm(float(info.display_work_name.font_size_q))

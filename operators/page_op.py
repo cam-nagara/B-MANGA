@@ -441,6 +441,43 @@ def _tag_screen_redraw(context) -> None:
         area.tag_redraw()
 
 
+def _set_stack_row_for_page_selection(context, work, page_index: int, coma_index: int | None = None) -> bool:
+    scene = getattr(context, "scene", None)
+    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    if stack is None or work is None or not (0 <= int(page_index) < len(work.pages)):
+        return False
+    from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
+
+    page = work.pages[int(page_index)]
+    if coma_index is not None and 0 <= int(coma_index) < len(page.comas):
+        target_kind = "coma"
+        target_key = coma_stack_key(page, page.comas[int(coma_index)])
+    else:
+        target_kind = "page"
+        target_key = page_stack_key(page)
+    for index, item in enumerate(stack):
+        if str(getattr(item, "kind", "") or "") != target_kind:
+            continue
+        if str(getattr(item, "key", "") or "") != target_key:
+            continue
+        layer_stack_utils.set_active_stack_index_silently(context, index)
+        try:
+            layer_stack_utils.sync_visible_layer_stack(context, stack=stack)
+        except Exception:  # noqa: BLE001
+            _logger.exception("page op: visible layer stack sync failed")
+        return True
+    return False
+
+
+def _sync_light_page_selection(context, work, page_index: int, coma_index: int | None = None) -> None:
+    try:
+        _set_stack_row_for_page_selection(context, work, page_index, coma_index)
+        layer_stack_utils.tag_view3d_redraw(context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page op: light page selection sync failed")
+    _tag_screen_redraw(context)
+
+
 class BNAME_OT_page_select(Operator):
     """ページ一覧のクリックで active_page_index を設定."""
 
@@ -470,7 +507,7 @@ class BNAME_OT_page_select(Operator):
                 work.active_page_index = int(self.index)
                 context.scene.bname_overview_mode = True
                 _set_page_layer_active(context)
-                _sync_layer_stack_after_page_change(context)
+                _sync_light_page_selection(context, work, int(self.index))
                 return {"FINISHED"}
             result = bpy.ops.bname.open_page_file(index=int(self.index))
             return result if result == {"FINISHED"} else {"CANCELLED"}
@@ -479,7 +516,7 @@ class BNAME_OT_page_select(Operator):
                 context.scene.bname_overview_mode = True
                 _tag_screen_redraw(context)
             _set_page_layer_active(context)
-            _sync_layer_stack_after_page_change(context)
+            _sync_light_page_selection(context, work, int(self.index))
             return {"FINISHED"}
         try:
             _switch_to_page(context, work, Path(work.work_dir), self.index)
@@ -488,7 +525,7 @@ class BNAME_OT_page_select(Operator):
             self.report({"ERROR"}, f"ページ切替失敗: {exc}")
             return {"CANCELLED"}
         _set_page_layer_active(context)
-        _sync_layer_stack_after_page_change(context)
+        _sync_light_page_selection(context, work, int(self.index))
         return {"FINISHED"}
 
 
@@ -633,7 +670,7 @@ class BNAME_OT_page_pick_viewport(Operator):
                     )
         else:
             _set_page_layer_active(context)
-        _sync_layer_stack_after_page_change(context)
+        _sync_light_page_selection(context, work, page_index, coma_index)
         if changed:
             _tag_screen_redraw(context)
         # Blender標準のオブジェクト選択は妨げない。

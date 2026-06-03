@@ -23,7 +23,7 @@ def _apply_phase1_defaults(work) -> None:
     """新規作品のワンショット既定値セット.
 
     原稿上の表示の初期値:
-      - 作品名 ON / 左上 (top-left)
+      - 作品名 ON / 左下 (bottom-left)
       - 話数 OFF / 上中央 (top-center)
       - サブタイトル OFF / 右上 (top-right)
       - 作者名 ON / 右下 (bottom-right) — 値は OS のユーザー名で初期化
@@ -31,7 +31,7 @@ def _apply_phase1_defaults(work) -> None:
     """
     info = work.work_info
     info.display_work_name.enabled = True
-    info.display_work_name.position = "top-left"
+    info.display_work_name.position = "bottom-left"
     info.display_episode.enabled = False
     info.display_episode.position = "top-center"
     info.display_subtitle.enabled = False
@@ -532,10 +532,11 @@ class BNAME_OT_work_save(Operator):
                             page_index,
                             current=True,
                             scene=context.scene,
+                            force=True,
                         )
                 elif file_role == "work":
                     page_file_scene.purge_work_list_runtime_data(context.scene)
-                    page_preview_object.sync_page_previews(context, work)
+                    page_preview_object.sync_page_previews(context, work, force=True)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_save: page preview refresh failed")
 

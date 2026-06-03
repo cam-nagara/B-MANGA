@@ -1341,7 +1341,19 @@ def _page_highlight_rect(rects, ox_mm: float, oy_mm: float) -> Rect:
 def _draw_page_highlight(rect: Rect | None) -> None:
     if rect is None:
         return
-    _draw_rect_outline(rect, viewport_colors.SELECTION, width_mm=1.00)
+    previous_depth = None
+    try:
+        previous_depth = gpu.state.depth_test_get()
+    except Exception:  # noqa: BLE001
+        previous_depth = None
+    try:
+        gpu.state.depth_test_set("NONE")
+        _draw_rect_outline(rect, viewport_colors.SELECTION, width_mm=1.00)
+    finally:
+        try:
+            gpu.state.depth_test_set(previous_depth or "LESS_EQUAL")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _draw_callback(phase: str = "post") -> None:

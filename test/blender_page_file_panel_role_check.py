@@ -211,7 +211,7 @@ def main() -> None:
         assert not work_panel.BNAME_PT_work.poll(context)
 
         transition_records = _draw_records(work_panel.BNAME_PT_coma_return, context)
-        _assert_present(transition_records, "ページ一覧に戻る")
+        _assert_present(transition_records, "ページ一覧に戻る", "ページ一覧ビュー", "フィット")
         _assert_absent(transition_records, "作品情報", "ページ数", "コマ用blendファイル (この作品のみ)")
         view_records = _draw_records(view_panel.BNAME_PT_view, context)
         _assert_present(view_records, "ページ一覧表示", "前後ページ数", "画像解像度%", "列数", "間隔mm")
@@ -248,11 +248,10 @@ def main() -> None:
         assert role == page_file_scene.ROLE_COMA
         assert work_panel.BNAME_PT_coma_return.poll(context)
         transition_records = _draw_records(work_panel.BNAME_PT_coma_return, context)
-        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
+        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く", "ページ一覧ビュー", "フィット")
         _assert_absent(
             transition_records,
             "ページ一覧位置",
-            "フィット",
             "ページ一覧ビューを開く",
         )
         assert view_panel.BNAME_PT_view.poll(context)

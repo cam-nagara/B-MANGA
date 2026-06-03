@@ -61,6 +61,7 @@ def _update_page_preview_png(work, page_id: str) -> None:
                 index,
                 current=True,
                 scene=bpy.context.scene,
+                force=True,
             )
     except Exception:  # noqa: BLE001
         _logger.exception("page preview update failed: %s", page_id)

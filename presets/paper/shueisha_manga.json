@@ -36,7 +36,7 @@
   "displayOnCanvas": {
     "workName": {
       "enabled": true,
-      "position": "top-left",
+      "position": "bottom-left",
       "fontSizeQ": 20.0,
       "color": "#000000"
     },

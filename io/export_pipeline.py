@@ -963,7 +963,7 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
         return []
     layers: list[ExportLayer] = []
     rects = overlay_shared.compute_paper_rects(work.paper, is_left_half=_is_left_half_page(work, page))
-    inner = rects.inner_frame
+    anchor_rect = rects.bleed
     page_text = f"ページ{int(getattr(info, 'page_number_start', 1)) + _resolve_page_index(work, page):04d}"
     items = [
         (info.display_work_name, info.work_name, "work_name"),
@@ -979,19 +979,19 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
             continue
         pos = getattr(item, "position", "bottom-left")
         if pos.endswith("left"):
-            x_mm = inner.x
+            x_mm = anchor_rect.x
             anchor_x = "left"
         elif pos.endswith("right"):
-            x_mm = inner.x2
+            x_mm = anchor_rect.x2
             anchor_x = "right"
         else:
-            x_mm = inner.x + inner.width * 0.5
+            x_mm = anchor_rect.x + anchor_rect.width * 0.5
             anchor_x = "center"
         if pos.startswith("top"):
-            y_mm = inner.y2 + pad_mm
+            y_mm = anchor_rect.y2 + pad_mm
             anchor_y = "top"
         else:
-            y_mm = inner.y - pad_mm
+            y_mm = anchor_rect.y - pad_mm
             anchor_y = "bottom"
         font_size_mm = q_to_mm(float(getattr(item, "font_size_q", 20.0)))
         layer = _render_simple_text_layer(
