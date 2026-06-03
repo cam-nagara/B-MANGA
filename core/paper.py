@@ -112,7 +112,7 @@ def _on_paper_layout_changed(_self, context) -> None:
 def _on_coma_border_width_changed(self, context) -> None:
     try:
         from ..core.work import get_work
-        from ..utils import coma_border_object, coma_plane, paper_guide_object
+        from ..utils import coma_border_object, coma_plane, page_file_scene, paper_guide_object
 
         work = get_work(context)
         scene = getattr(context, "scene", None) if context is not None else None
@@ -126,7 +126,7 @@ def _on_coma_border_width_changed(self, context) -> None:
                     continue
                 if abs(float(getattr(border, "width_mm", 0.0) or 0.0) - target_width) > 1.0e-6:
                     border.width_mm = target_width
-                if scene is not None:
+                if scene is not None and page_file_scene.is_current_page_edit_scene(scene, page.id):
                     coma_plane.ensure_coma_plane(scene, work, page, coma)
                     coma_border_object.ensure_coma_border_object(scene, work, page, coma)
         if scene is not None:

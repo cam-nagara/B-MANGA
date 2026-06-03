@@ -1513,9 +1513,10 @@ class BNAME_OT_layer_stack_detail(Operator):
             return
         try:
             from ..core.work import get_work
-            from ..utils import coma_blur_curve, coma_border_object
+            from ..utils import coma_blur_curve, coma_border_object, page_file_scene
 
-            coma_border_object.ensure_coma_border_object(context.scene, get_work(context), page, coma)
+            if page_file_scene.is_current_page_edit_scene(context.scene, getattr(page, "id", "")):
+                coma_border_object.ensure_coma_border_object(context.scene, get_work(context), page, coma)
             coma_blur_curve.ensure_ui_curve_node(coma.border)
         except Exception:  # noqa: BLE001
             pass

@@ -57,9 +57,24 @@ _WORK_FILE_FORBIDDEN_OBJECT_PROPS = {
     "bname_coma_mask_kind",
     "bname_coma_border_kind",
     "bname_coma_white_margin_kind",
+    "bname_coma_plane_owner_id",
+    "bname_coma_mask_owner_id",
+    "bname_coma_border_owner_id",
+    "bname_coma_white_margin_owner_id",
     "bname_paper_bg_kind",
     "bname_paper_guide_kind",
     "bname_work_info_text_kind",
+}
+
+_COMA_RUNTIME_OBJECT_PROPS = {
+    "bname_coma_plane_kind",
+    "bname_coma_mask_kind",
+    "bname_coma_border_kind",
+    "bname_coma_white_margin_kind",
+    "bname_coma_plane_owner_id",
+    "bname_coma_mask_owner_id",
+    "bname_coma_border_owner_id",
+    "bname_coma_white_margin_owner_id",
 }
 
 _WORK_FILE_FORBIDDEN_OBJECT_NAMES = {
@@ -122,6 +137,17 @@ def _forbidden_work_file_objects() -> list[str]:
     return sorted(out)
 
 
+def _coma_runtime_owner_pages() -> set[str]:
+    pages = set()
+    for obj in bpy.data.objects:
+        if not any(str(obj.get(prop, "") or "") for prop in _COMA_RUNTIME_OBJECT_PROPS):
+            continue
+        owner_page = _owner_page_id(obj)
+        if owner_page:
+            pages.add(owner_page)
+    return pages
+
+
 def _forbidden_work_file_collections() -> list[str]:
     out = []
     for coll in bpy.data.collections:
@@ -146,6 +172,7 @@ def _assert_work_file_preview_only() -> None:
     forbidden_collections = _forbidden_work_file_collections()
     assert not forbidden_objects, f"作品ファイルにページ実体が残っています: {forbidden_objects}"
     assert not forbidden_collections, f"作品ファイルにページ階層が残っています: {forbidden_collections}"
+    assert not _coma_runtime_owner_pages(), "作品ファイルにコマ枠実体が残っています"
 
 
 def _assert_page_file_current_page_runtime_only(page_id: str) -> None:
@@ -161,6 +188,8 @@ def _assert_page_file_current_page_runtime_only(page_id: str) -> None:
         if owner_page and owner_page != page_id:
             offenders.append((obj.name, owner_page))
     assert not offenders, f"ページファイルに他ページの実体が残っています: {offenders}"
+    runtime_pages = _coma_runtime_owner_pages()
+    assert runtime_pages == {page_id}, f"ページファイルのコマ枠実体が現在ページ以外を含んでいます: {runtime_pages}"
 
 
 def _assert_current_page_runtime_aligned(page_index: int) -> None:
@@ -302,6 +331,17 @@ def main() -> None:
         assert _managed_object("balloon", "other_page_balloon") is None
         _assert_page_file_current_page_runtime_only("p0001")
         _assert_current_page_runtime_aligned(0)
+        from bname_dev_page_file_stage.utils import coma_border_object, coma_plane, layer_object_sync
+
+        work = bpy.context.scene.bname_work
+        other_page = work.pages[1]
+        other_coma = other_page.comas[0]
+        coma_plane.ensure_coma_plane(bpy.context.scene, work, other_page, other_coma)
+        coma_border_object.ensure_coma_border_object(bpy.context.scene, work, other_page, other_coma)
+        assert "p0002" in _coma_runtime_owner_pages()
+        layer_object_sync.mirror_work_to_outliner(bpy.context.scene, work)
+        _assert_page_file_current_page_runtime_only("p0001")
+        assert bpy.data.collections.get("p0002") is None
         previews = _page_preview_objects()
         assert len(previews) == 3
         assert len(_visible_page_preview_objects()) == 3
@@ -448,6 +488,7 @@ def main() -> None:
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None
         assert len(_visible_page_preview_objects()) == 0
+        _assert_page_file_current_page_runtime_only("p0002")
         _assert_current_page_runtime_aligned(1)
 
         work = bpy.context.scene.bname_work

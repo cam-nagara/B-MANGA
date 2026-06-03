@@ -101,10 +101,11 @@ def instantiate_coma(context, page, entry: dict, dx: float, dy: float):
     page.active_coma_index = len(page.comas) - 1
     page.coma_count = len(page.comas)
     try:
-        from . import coma_border_object, coma_plane
+        from . import coma_border_object, coma_plane, page_file_scene
 
-        coma_plane.ensure_coma_plane(context.scene, work, page, panel)
-        coma_border_object.ensure_coma_border_object(context.scene, work, page, panel)
+        if page_file_scene.is_current_page_edit_scene(context.scene, getattr(page, "id", "")):
+            coma_plane.ensure_coma_plane(context.scene, work, page, panel)
+            coma_border_object.ensure_coma_border_object(context.scene, work, page, panel)
     except Exception:  # noqa: BLE001
         pass
     try:

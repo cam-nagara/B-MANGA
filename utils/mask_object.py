@@ -60,8 +60,14 @@ def regenerate_all_masks(scene: bpy.types.Scene, work) -> dict:
         _logger.exception("regenerate_all_masks: paper_bg failed")
     try:
         from . import coma_plane as _cp
+        from . import page_file_scene
 
-        result["coma_masks"] = int(_cp.regenerate_all_coma_planes(scene, work) or 0)
+        page_filter = page_file_scene.coma_runtime_page_filter(scene)
+        if page_filter is not None and not page_filter:
+            page_file_scene.purge_coma_runtime_data(scene, set())
+        else:
+            mask_work = page_file_scene.work_for_pages(work, page_filter)
+            result["coma_masks"] = int(_cp.regenerate_all_coma_planes(scene, mask_work) or 0)
     except Exception:  # noqa: BLE001
         _logger.exception("regenerate_all_masks: coma_plane failed")
     purge_legacy_masks_collection()

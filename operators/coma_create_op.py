@@ -433,6 +433,13 @@ class BNAME_OT_coma_create_tool(Operator):
         if scene is None:
             return
         try:
+            from ..utils import page_file_scene
+
+            if not page_file_scene.is_current_page_edit_scene(scene, getattr(page, "id", "")):
+                return
+        except Exception:  # noqa: BLE001
+            return
+        try:
             from ..utils import coma_plane as _cp
 
             _cp.ensure_coma_plane(scene, work, page, entry)

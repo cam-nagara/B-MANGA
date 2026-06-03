@@ -413,6 +413,15 @@ def _page_filter_for_scene(scene) -> tuple[set[str] | None, set[str] | None]:
         return None, None
 
 
+def _coma_runtime_page_filter_for_scene(scene) -> set[str] | None:
+    try:
+        from . import page_file_scene
+
+        return page_file_scene.coma_runtime_page_filter(scene)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _iter_filtered_pages(work, page_filter: set[str] | None):
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
@@ -516,6 +525,7 @@ def _saved_runtime_objects_look_current(
     scene: bpy.types.Scene,
     work,
     page_filter: set[str] | None = None,
+    coma_page_filter: set[str] | None = None,
 ) -> bool:
     """保存済み実体が揃っているなら、読み込み直後の全件再生成を省く."""
     if scene is None or work is None:
@@ -549,14 +559,15 @@ def _saved_runtime_objects_look_current(
         page_id = str(getattr(page, "id", "") or "")
         if not page_id:
             continue
-        for coma in getattr(page, "comas", []) or []:
-            coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
-            if coma_id:
-                owner_id = f"{page_id}:{coma_id}"
-                expected_comas.add(owner_id)
-                border = getattr(coma, "border", None)
-                if str(getattr(border, "style", "solid") or "solid") != "brush":
-                    expected_borders.add(owner_id)
+        if coma_page_filter is None or page_id in coma_page_filter:
+            for coma in getattr(page, "comas", []) or []:
+                coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+                if coma_id:
+                    owner_id = f"{page_id}:{coma_id}"
+                    expected_comas.add(owner_id)
+                    border = getattr(coma, "border", None)
+                    if str(getattr(border, "style", "solid") or "solid") != "brush":
+                        expected_borders.add(owner_id)
         page_content_expected = (
             page_filter is None
             or (bool(page_filter) and page_id in page_filter)
@@ -644,15 +655,31 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("work list lightweight mirror failed")
     structure_page_filter, content_page_filter = _page_filter_for_scene(scene)
+    coma_runtime_page_filter = _coma_runtime_page_filter_for_scene(scene)
     structure_work = _work_for_page_filter(work, structure_page_filter)
+    coma_runtime_work = _work_for_page_filter(work, coma_runtime_page_filter)
     include_content = content_page_filter is None or bool(content_page_filter)
-    if _saved_runtime_objects_look_current(scene, structure_work, content_page_filter):
+    if _saved_runtime_objects_look_current(
+        scene,
+        structure_work,
+        content_page_filter,
+        coma_runtime_page_filter,
+    ):
         try:
             from . import paper_bg_object as _pbg
 
             _pbg.regenerate_all_paper_bgs(scene, structure_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror fast path paper backgrounds failed")
+        try:
+            from . import page_file_scene
+
+            if structure_page_filter is not None and len(structure_page_filter) == 1:
+                page_file_scene.purge_other_page_data(scene, next(iter(structure_page_filter)))
+            else:
+                page_file_scene.purge_coma_runtime_data(scene, coma_runtime_page_filter)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror fast path coma runtime purge failed")
         try:
             from . import outliner_watch as _outliner_watch
 
@@ -765,16 +792,24 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         # (背景色 + Boolean マスク兼用 / 旧 __masks__ Collection の置き換え)
         try:
             from . import coma_plane as _cp
+            from . import page_file_scene
 
-            _cp.regenerate_all_coma_planes(scene, structure_work)
+            if coma_runtime_page_filter is not None and not coma_runtime_page_filter:
+                page_file_scene.purge_coma_runtime_data(scene, set())
+            else:
+                _cp.regenerate_all_coma_planes(scene, coma_runtime_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma planes failed")
 
         # コマ枠線はオーバーレイだけに依存せず、カーブ Object として残す。
         try:
             from . import coma_border_object as _cbo
+            from . import page_file_scene
 
-            _cbo.regenerate_all_coma_borders(scene, structure_work)
+            if coma_runtime_page_filter is not None and not coma_runtime_page_filter:
+                page_file_scene.purge_coma_runtime_data(scene, set())
+            else:
+                _cbo.regenerate_all_coma_borders(scene, coma_runtime_work)
         except Exception:  # noqa: BLE001
             _logger.exception("mirror coma borders failed")
 
@@ -803,6 +838,15 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("mirror paper guides failed")
         _purge_content_for_filter(scene, content_page_filter)
+        try:
+            from . import page_file_scene
+
+            if structure_page_filter is not None and len(structure_page_filter) == 1:
+                page_file_scene.purge_other_page_data(scene, next(iter(structure_page_filter)))
+            else:
+                page_file_scene.purge_coma_runtime_data(scene, coma_runtime_page_filter)
+        except Exception:  # noqa: BLE001
+            _logger.exception("mirror post page runtime purge failed")
 
         # 既存 raster Object の Boolean Intersect modifier の target を最新の
         # coma_mask Object に同期 (2026-05-04 案 1。 file ロード直後や

@@ -290,9 +290,10 @@ def _persist_and_refresh_coma_border(context, work, page, coma) -> None:
         _logger.exception("border preset: save coma meta failed")
     try:
         from ..utils import coma_border_object as _cbo
+        from ..utils import page_file_scene
 
         scene = context.scene
-        if scene is not None:
+        if scene is not None and page_file_scene.is_current_page_edit_scene(scene, getattr(page, "id", "")):
             _cbo.ensure_coma_border_object(scene, work, page, coma)
     except Exception:  # noqa: BLE001
         _logger.exception("border preset: refresh border object failed")

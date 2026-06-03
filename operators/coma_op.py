@@ -552,8 +552,10 @@ class BNAME_OT_coma_duplicate(Operator):
             # 複製でコマが増えた分の coma_plane Mesh を即時 ensure
             try:
                 from ..utils import coma_plane as _cp
+                from ..utils import page_file_scene
 
-                _cp.ensure_coma_plane(context.scene, work, page, new_entry)
+                if page_file_scene.is_current_page_edit_scene(context.scene, getattr(page, "id", "")):
+                    _cp.ensure_coma_plane(context.scene, work, page, new_entry)
             except Exception:  # noqa: BLE001
                 _logger.exception("coma_duplicate: ensure_coma_plane failed")
         except Exception as exc:  # noqa: BLE001

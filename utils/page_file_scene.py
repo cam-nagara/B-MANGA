@@ -186,6 +186,35 @@ def content_page_filter(scene=None) -> set[str] | None:
     return None
 
 
+def coma_runtime_page_filter(scene=None) -> set[str] | None:
+    """コマ枠実体を保持してよいページ ID。
+
+    作品ファイルはページプレビューだけを持つため空集合、ページ用blendは
+    現在ページだけを返す。判定できない旧ファイルでは None を返して従来通りにする。
+    """
+    scene = scene or getattr(bpy.context, "scene", None)
+    if scene is None:
+        return None
+    role, page_id_from_path, _coma_id = current_role(bpy.context)
+    if role == ROLE_PAGE and paths.is_valid_page_id(page_id_from_path):
+        return {page_id_from_path}
+    page_id = current_page_id(scene)
+    if page_id and is_page_edit_scene(scene):
+        return {page_id}
+    if is_work_list_scene(scene):
+        return set()
+    return None
+
+
+def is_current_page_edit_scene(scene, page_id: str) -> bool:
+    page_id = str(page_id or "")
+    return (
+        paths.is_valid_page_id(page_id)
+        and is_page_edit_scene(scene)
+        and current_page_id(scene) == page_id
+    )
+
+
 class PageSubsetWork(SimpleNamespace):
     """全作品データから指定ページだけを見せる軽量 proxy."""
 
@@ -199,6 +228,9 @@ class PageSubsetWork(SimpleNamespace):
         ]
         self.pages = [page for _index, page in pages_with_indices]
         self._source_page_indices = [index for index, _page in pages_with_indices]
+        self.shared_comas = []
+        self.shared_balloons = []
+        self.shared_texts = []
         self.active_page_index = 0 if self.pages else -1
         self.loaded = bool(getattr(work, "loaded", False))
 
@@ -237,6 +269,7 @@ def _object_page_id(obj) -> str:
             return page_id
     for prop in (
         "bname_coma_plane_owner_id",
+        "bname_coma_mask_owner_id",
         "bname_coma_border_owner_id",
         "bname_coma_white_margin_owner_id",
     ):
@@ -274,6 +307,64 @@ def _object_is_page_content(obj) -> bool:
         if str(obj.get(prop, "") or ""):
             return True
     return False
+
+
+_COMA_RUNTIME_KIND_PROPS = {
+    "bname_coma_plane_kind",
+    "bname_coma_mask_kind",
+    "bname_coma_border_kind",
+    "bname_coma_white_margin_kind",
+}
+
+_COMA_RUNTIME_OWNER_PROPS = {
+    "bname_coma_plane_owner_id",
+    "bname_coma_mask_owner_id",
+    "bname_coma_border_owner_id",
+    "bname_coma_white_margin_owner_id",
+}
+
+
+def _object_is_coma_runtime(obj) -> bool:
+    return any(str(obj.get(prop, "") or "") for prop in _COMA_RUNTIME_KIND_PROPS | _COMA_RUNTIME_OWNER_PROPS)
+
+
+def _remove_object_with_data(obj) -> int:
+    data = getattr(obj, "data", None)
+    try:
+        bpy.data.objects.remove(obj, do_unlink=True)
+    except Exception:  # noqa: BLE001
+        return 0
+    if data is not None and getattr(data, "users", 0) == 0:
+        for datablocks in (
+            bpy.data.meshes,
+            bpy.data.curves,
+            getattr(bpy.data, "grease_pencils", []),
+            bpy.data.fonts,
+        ):
+            try:
+                if data.name in datablocks:
+                    datablocks.remove(data)
+                    break
+            except Exception:  # noqa: BLE001
+                pass
+    return 1
+
+
+def purge_coma_runtime_data(scene, keep_page_ids: set[str] | None) -> int:
+    """許可ページ以外のコマ枠実体を完全に取り除く."""
+    _ = scene
+    if keep_page_ids is None:
+        return 0
+    keep = {str(page_id) for page_id in keep_page_ids if paths.is_valid_page_id(str(page_id))}
+    removed = 0
+    for obj in list(bpy.data.objects):
+        if not _object_is_coma_runtime(obj):
+            continue
+        owner_page = _object_page_id(obj)
+        if owner_page in keep:
+            continue
+        removed += _remove_object_with_data(obj)
+    return removed
 
 
 def purge_page_content_data(scene, keep_page_id: str = "") -> int:
@@ -317,6 +408,7 @@ def purge_other_page_data(scene, page_id: str) -> int:
     if not paths.is_valid_page_id(page_id):
         return 0
     removed = purge_page_content_data(scene, page_id)
+    removed += purge_coma_runtime_data(scene, {page_id})
 
     def _collection_page_id(coll) -> str:
         coll_id = str(coll.get("bname_id", "") or "")
@@ -356,6 +448,10 @@ _WORK_LIST_RUNTIME_KIND_PROPS = {
     "bname_coma_mask_kind",
     "bname_coma_border_kind",
     "bname_coma_white_margin_kind",
+    "bname_coma_plane_owner_id",
+    "bname_coma_mask_owner_id",
+    "bname_coma_border_owner_id",
+    "bname_coma_white_margin_owner_id",
     "bname_paper_bg_kind",
     "bname_paper_guide_kind",
     "bname_work_info_text_kind",
@@ -399,7 +495,7 @@ def _collection_is_work_list_runtime(coll) -> bool:
 def purge_work_list_runtime_data(scene) -> int:
     """ページ一覧ファイルに残ってはいけないページ実体を取り除く."""
     _ = scene
-    removed = 0
+    removed = purge_coma_runtime_data(scene, set())
     for obj in list(bpy.data.objects):
         if not _object_is_work_list_runtime(obj):
             continue
