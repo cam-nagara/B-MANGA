@@ -145,6 +145,21 @@ def _entry_local_offset_mm(entry) -> tuple[float, float]:
     )
 
 
+def entry_line_width_scale(entry) -> float:
+    try:
+        return max(0.01, float(getattr(entry, "free_transform_line_width_scale", 1.0) or 1.0))
+    except Exception:  # noqa: BLE001
+        return 1.0
+
+
+def scaled_entry_width_mm(entry, attr: str, default: float = 0.0) -> float:
+    try:
+        value = float(getattr(entry, attr, default) or 0.0)
+    except Exception:  # noqa: BLE001
+        value = float(default)
+    return max(0.0, value) * entry_line_width_scale(entry)
+
+
 def _body_per_anchor_radii(spline) -> list[float]:
     """本体 Bezier の各 anchor の radius (per-point) を順に返す."""
     pts = list(getattr(spline, "bezier_points", []) or [])
@@ -2740,7 +2755,7 @@ def ensure_balloon_line_mesh(
         return None
 
     line_style = str(getattr(entry, "line_style", "") or "")
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    line_width_mm = scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     if line_style == "none" or line_width_mm <= 1.0e-6:
         remove_balloon_line_mesh(balloon_id)
         return None
@@ -3026,12 +3041,12 @@ def ensure_balloon_outer_edge_mesh(
     if not bool(getattr(entry, "outer_white_margin_enabled", False)):
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
-    edge_width_mm = max(0.0, float(getattr(entry, "outer_white_margin_width_mm", 0.0) or 0.0))
+    edge_width_mm = scaled_entry_width_mm(entry, "outer_white_margin_width_mm", 0.0)
     if edge_width_mm <= 1.0e-6:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
     line_style = str(getattr(entry, "line_style", "") or "")
-    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_outer_edge_mesh(balloon_id)
@@ -3109,12 +3124,12 @@ def ensure_balloon_inner_edge_mesh(
     if not bool(getattr(entry, "inner_white_margin_enabled", False)):
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
-    edge_width_mm = max(0.0, float(getattr(entry, "inner_white_margin_width_mm", 0.0) or 0.0))
+    edge_width_mm = scaled_entry_width_mm(entry, "inner_white_margin_width_mm", 0.0)
     if edge_width_mm <= 1.0e-6:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
     line_style = str(getattr(entry, "line_style", "") or "")
-    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     samples = _body_samples_for_line_mesh(entry, body_object)
     if len(samples) < 3:
         remove_balloon_inner_edge_mesh(balloon_id)
@@ -3193,8 +3208,8 @@ def ensure_balloon_multi_line_mesh(
     if count < 1:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
-    multi_width_mm = max(0.0, float(getattr(entry, "multi_line_width_mm", 0.0) or 0.0))
+    line_width_mm = scaled_entry_width_mm(entry, "line_width_mm", 0.3)
+    multi_width_mm = scaled_entry_width_mm(entry, "multi_line_width_mm", 0.0)
     spacing_mm = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.0) or 0.0))
     width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
     spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
@@ -3437,7 +3452,7 @@ def ensure_balloon_tail_main_line_mesh(
         return None
 
     line_style = str(getattr(entry, "line_style", "") or "")
-    line_width_mm = 0.0 if line_style == "none" else max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     if line_width_mm <= 1.0e-6:
         remove_balloon_tail_main_line_mesh(balloon_id)
         return None

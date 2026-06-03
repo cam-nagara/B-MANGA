@@ -26,6 +26,7 @@ from . import material_opacity_mask
 from . import object_naming as on
 from . import object_preserve
 from . import percentage
+from . import python_deps
 from .geom import Rect, mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -58,6 +59,7 @@ _MATERIAL_SLOT_LINE = render_contract.MATERIAL_SLOT_LINE
 _LINE_AND_EDGE_MASK_POWER = render_contract.LINE_AND_EDGE_MASK_POWER
 _AUTO_SYNC_SUSPEND_COUNT = 0
 _AUTO_SYNC_DEFER_COUNT = 0
+_BALLOON_RESOURCES_PREWARMED = False
 
 @contextmanager
 def suspend_auto_sync():
@@ -72,6 +74,28 @@ def suspend_auto_sync():
 
 def _auto_sync_suspended() -> bool:
     return _AUTO_SYNC_SUSPEND_COUNT > 0
+
+
+def prewarm_balloon_resources() -> None:
+    """ページを開いた時点で、フキダシ初回生成に必要な依存関係を読み込む."""
+    global _BALLOON_RESOURCES_PREWARMED
+    if not _BALLOON_RESOURCES_PREWARMED:
+        try:
+            python_deps.ensure_bundled_wheels_on_path()
+        except Exception:  # noqa: BLE001
+            _logger.exception("balloon: bundled wheel path preparation failed")
+        try:
+            import mapbox_earcut  # noqa: F401
+            import shapely.geometry  # noqa: F401
+            import shapely.ops  # noqa: F401
+        except Exception:  # noqa: BLE001
+            _logger.exception("balloon: geometry dependency prewarm failed")
+        _BALLOON_RESOURCES_PREWARMED = True
+    try:
+        balloon_curve_render_nodes.remove_node_group()
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: legacy node group cleanup failed")
+
 
 @contextmanager
 def defer_auto_sync():
@@ -1253,6 +1277,7 @@ def _geometry_key_for_entry(entry) -> str:
         "height": float(getattr(entry, "height_mm", 0.0) or 0.0),
         "center": _entry_center_offset(entry),
         "free_transform": free_transform.entry_snapshot(entry),
+        "free_transform_line_width_scale": float(getattr(entry, "free_transform_line_width_scale", 1.0) or 1.0),
         "corner_type": balloon_shapes.corner_type_for_entry(entry),
         "rounded": bool(getattr(entry, "rounded_corner_enabled", False)),
         "rounded_radius": corner_radius.radius_for_balloon_entry(entry),

@@ -440,6 +440,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
             ):
                 _reconcile_gpencil_collections(bpy.context, work, include_page_content=True)
                 try:
+                    from . import balloon_curve_object
+
+                    balloon_curve_object.prewarm_balloon_resources()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: balloon resource preparation failed")
+                try:
                     from . import page_file_scene
 
                     page_file_scene.purge_other_page_data(scene, str(rel.parts[0]))

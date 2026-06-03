@@ -49,7 +49,7 @@ def _line_width_mm(entry) -> float:
     style = str(getattr(entry, "line_style", "") or "")
     if style == "none":
         return 0.0
-    return max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    return balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
 
 
 def _entry_local_offset_mm(entry) -> tuple[float, float]:

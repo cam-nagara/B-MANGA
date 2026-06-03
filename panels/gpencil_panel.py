@@ -18,8 +18,10 @@ from ..core.work import get_work
 from ..utils import gpencil as gp_utils
 from ..utils import layer_links
 from ..utils import layer_stack as layer_stack_utils
+from ..utils import layer_stack_visible
 from ..utils import log
 from ..utils import page_file_scene
+from ..utils.layer_hierarchy import split_child_key
 from . import layer_stack_detail_ui
 
 B_NAME_CATEGORY = "B-Name"
@@ -148,6 +150,20 @@ def _visibility_button(row, index: int, hidden: bool) -> None:
     op.index = index
 
 
+def _balloon_group_hidden(item, target) -> bool:
+    if item is None or target is None:
+        return False
+    _page_key, group_id = split_child_key(str(getattr(item, "key", "") or ""))
+    members = [
+        entry
+        for entry in getattr(target, "balloons", []) or []
+        if str(getattr(entry, "merge_group_id", "") or "") == group_id
+    ]
+    if not members:
+        return False
+    return not any(bool(getattr(entry, "visible", True)) for entry in members)
+
+
 def _draw_square_label(row, text: str = "", icon: str = "BLANK1") -> None:
     """1 ui-unit 幅の placeholder ラベル.
 
@@ -172,6 +188,8 @@ def _draw_visibility_slot(row, item, target, index: int) -> None:
         _visibility_button(row, index, not bool(target.visible))
     elif item.kind in {"image", "raster"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
+    elif item.kind == "balloon_group":
+        _visibility_button(row, index, _balloon_group_hidden(item, target))
     elif item.kind in {"balloon", "text"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
     elif item.kind in {"gp", "gp_folder", "effect"} and hasattr(target, "hide"):
@@ -196,6 +214,7 @@ def _draw_selection_slot(row, index: int, selected: bool) -> None:
         emboss=False,
     )
     op.index = index
+    op.anchor_index = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1))
 
 
 def _draw_hierarchy_slot(row, item, target, index: int) -> None:
@@ -226,6 +245,17 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         op.index = index
     elif item.kind == "layer_folder":
         expanded = bool(getattr(target, "expanded", True))
+        cell = row.row(align=True)
+        cell.ui_units_x = 1.0
+        op = cell.operator(
+            "bname.layer_stack_toggle_expanded",
+            text="",
+            emboss=False,
+            icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
+        )
+        op.index = index
+    elif item.kind == "balloon_group":
+        expanded = not layer_stack_visible.is_balloon_group_collapsed(bpy.context, item.key)
         cell = row.row(align=True)
         cell.ui_units_x = 1.0
         op = cell.operator(
@@ -304,6 +334,7 @@ def _select_name(row, index: int, text: str, item=None, target=None) -> None:
         depress=False,
     )
     op.index = index
+    op.anchor_index = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1))
 
 
 def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
@@ -461,6 +492,9 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
     if item.kind == "layer_folder":
         _draw_type_icon(row, index, "FILE_FOLDER")
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
+    elif item.kind == "balloon_group":
+        _draw_type_icon(row, index, "FILE_FOLDER")
+        _select_name(row, index, item.label or "フキダシ結合", item=item, target=target)
     elif item.kind == "image":
         _draw_type_icon(row, index, "IMAGE_DATA")
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)

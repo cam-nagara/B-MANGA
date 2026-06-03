@@ -1086,6 +1086,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "centerOffsetXMm": round(float(getattr(entry, "center_offset_x_mm", 0.0)), 3),
         "centerOffsetYMm": round(float(getattr(entry, "center_offset_y_mm", 0.0)), 3),
         "freeTransform": _free_transform_to_dict(entry),
+        "freeTransformLineWidthScale": round(float(getattr(entry, "free_transform_line_width_scale", 1.0) or 1.0), 6),
         "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
         "opacityUnit": "percent",
         "cornerType": balloon_shapes.corner_type_for_entry(entry),
@@ -1222,6 +1223,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.center_offset_x_mm = float(data.get("centerOffsetXMm", 0.0))
     entry.center_offset_y_mm = float(data.get("centerOffsetYMm", 0.0))
     _free_transform_from_dict(entry, data.get("freeTransform"))
+    if hasattr(entry, "free_transform_line_width_scale"):
+        entry.free_transform_line_width_scale = max(0.01, float(data.get("freeTransformLineWidthScale", 1.0) or 1.0))
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
     corner_type = str(data.get("cornerType", "") or "")
     if corner_type not in balloon_shapes.CORNER_TYPES:

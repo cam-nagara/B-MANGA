@@ -133,7 +133,7 @@ def ensure_balloon_flash_white_line_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     shape_norm = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
-    line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+    line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     enabled = bool(getattr(entry, "flash_white_line_enabled", True))
     if (
         not balloon_id

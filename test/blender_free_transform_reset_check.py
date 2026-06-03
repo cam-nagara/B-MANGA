@@ -49,7 +49,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
 
         from bname_dev.operators import balloon_op, coma_modal_state, effect_line_op, text_op
-        from bname_dev.utils import free_transform, layer_hierarchy, layer_stack as layer_stack_utils
+        from bname_dev.utils import balloon_line_mesh, free_transform, layer_hierarchy, layer_stack as layer_stack_utils
         from bname_dev.utils import text_real_object
 
         context = bpy.context
@@ -75,6 +75,42 @@ def main() -> None:
         _select_stack_item(context, "balloon", f"{page.id}:{balloon.id}")
         assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(balloon)
+
+        balloon.line_width_mm = 1.0
+        assert bpy.ops.bname.balloon_free_transform_scale(
+            "EXEC_DEFAULT",
+            scale_percent=200.0,
+            keep_line_width=True,
+        ) == {"FINISHED"}
+        scaled_offsets = free_transform.entry_offsets(balloon)
+        bottom_left = scaled_offsets[free_transform.BOTTOM_LEFT]
+        if abs(bottom_left[0] + 25.0) > 1.0e-6 or abs(bottom_left[1] + 15.0) > 1.0e-6:
+            raise AssertionError(f"フキダシ拡大の自由変形値が不正です: {scaled_offsets}")
+        if abs(float(balloon.free_transform_line_width_scale) - 1.0) > 1.0e-6:
+            raise AssertionError("線幅を維持した拡大で線幅倍率が変わっています")
+        if abs(balloon_line_mesh.scaled_entry_width_mm(balloon, "line_width_mm", 0.3) - 1.0) > 1.0e-6:
+            raise AssertionError("線幅を維持した拡大で描画線幅が変わっています")
+
+        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bname.balloon_free_transform_scale(
+            "EXEC_DEFAULT",
+            scale_percent=200.0,
+            keep_line_width=False,
+        ) == {"FINISHED"}
+        if abs(float(balloon.free_transform_line_width_scale) - 2.0) > 1.0e-6:
+            raise AssertionError("線幅を維持しない拡大で線幅倍率が反映されていません")
+        if abs(balloon_line_mesh.scaled_entry_width_mm(balloon, "line_width_mm", 0.3) - 2.0) > 1.0e-6:
+            raise AssertionError("線幅を維持しない拡大で描画線幅が太くなっていません")
+        assert bpy.ops.bname.balloon_free_transform_rotate(
+            "EXEC_DEFAULT",
+            angle_deg=90.0,
+        ) == {"FINISHED"}
+        if not free_transform.entry_enabled(balloon):
+            raise AssertionError("フキダシ回転で自由変形が有効になっていません")
+        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert not free_transform.entry_enabled(balloon)
+        if abs(float(balloon.free_transform_line_width_scale) - 1.0) > 1.0e-6:
+            raise AssertionError("自由変形リセットで線幅倍率が戻っていません")
 
         text, missing = text_op._create_text_entry(
             context,

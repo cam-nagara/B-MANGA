@@ -462,6 +462,7 @@ class BNAME_OT_layer_stack_multi_select(Operator):
     bl_options = {"REGISTER"}
 
     index: IntProperty(default=-1)  # type: ignore[valid-type]
+    anchor_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
     mode: EnumProperty(  # type: ignore[valid-type]
         items=(
             ("SET", "単独", ""),
@@ -494,22 +495,32 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         return self.execute(context)
 
     def execute(self, context):
+        try:
+            from ..core import layer_stack as core_layer_stack
+
+            core_layer_stack.suppress_next_visible_index_select()
+        except Exception:  # noqa: BLE001
+            pass
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
         scene = context.scene
         scene.bname_layer_stack_inline_edit_uid = ""
         active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        anchor_idx = int(getattr(self, "anchor_index", -1))
+        if not (0 <= anchor_idx < len(stack)):
+            anchor_idx = active_idx
 
-        if self.mode == "RANGE" and 0 <= active_idx < len(stack):
+        if self.mode == "RANGE" and 0 <= anchor_idx < len(stack):
             from ..utils import layer_links
 
             layer_stack_utils.clear_all_selection(context)
-            lo = min(active_idx, self.index)
-            hi = max(active_idx, self.index)
+            lo = min(anchor_idx, self.index)
+            hi = max(anchor_idx, self.index)
             for i in range(lo, hi + 1):
                 layer_stack_utils.set_item_selected(context, stack[i], True)
             layer_links.expand_linked_selection(context, stack=stack)
+            layer_stack_utils.set_active_stack_index_silently(context, anchor_idx)
             layer_stack_utils.sync_object_selection_from_stack_selection(context, stack)
             # アクティブ行は変更せず、範囲の終端は選択フラグで表現する
             layer_stack_utils.tag_view3d_redraw(context)
@@ -1219,7 +1230,31 @@ class BNAME_OT_layer_stack_toggle_visibility(Operator):
         target = resolved.get("target") if resolved is not None else None
         if target is None:
             return {"CANCELLED"}
-        if item.kind == layer_stack_utils.COMA_PREVIEW_KIND and hasattr(target, "paper_visible"):
+        if item.kind == "balloon_group":
+            page = resolved.get("page") if resolved is not None else None
+            group_id = str(resolved.get("group_id", "") or "") if resolved is not None else ""
+            members = [
+                entry
+                for entry in getattr(page, "balloons", []) or []
+                if str(getattr(entry, "merge_group_id", "") or "") == group_id
+            ]
+            if not members:
+                return {"CANCELLED"}
+            new_visible = not any(bool(getattr(entry, "visible", True)) for entry in members)
+            try:
+                from ..core.work import get_work
+                from ..utils import balloon_curve_object, balloon_merge_object
+
+                with balloon_curve_object.suspend_auto_sync():
+                    for entry in members:
+                        entry.visible = new_visible
+                for entry in members:
+                    balloon_curve_object.on_balloon_entry_changed(entry)
+                balloon_merge_object.sync_group_for_entry(context.scene, get_work(context), page, members[0])
+            except Exception:  # noqa: BLE001
+                for entry in members:
+                    entry.visible = new_visible
+        elif item.kind == layer_stack_utils.COMA_PREVIEW_KIND and hasattr(target, "paper_visible"):
             target.paper_visible = not bool(target.paper_visible)
             obj = resolved.get("object") if resolved is not None else None
             if obj is not None:
@@ -1282,6 +1317,12 @@ class BNAME_OT_layer_stack_toggle_expanded(Operator):
         if item.kind == PAGE_KIND and hasattr(target, "stack_expanded"):
             was_expanded = bool(target.stack_expanded)
             target.stack_expanded = not was_expanded
+            active_will_be_hidden = active_will_be_hidden and was_expanded
+        elif item.kind == "balloon_group":
+            from ..utils import layer_stack_visible
+
+            was_expanded = not layer_stack_visible.is_balloon_group_collapsed(context, item.key)
+            layer_stack_visible.set_balloon_group_collapsed(context, item.key, was_expanded)
             active_will_be_hidden = active_will_be_hidden and was_expanded
         elif item.kind == "gp_folder" and hasattr(target, "is_expanded"):
             was_expanded = bool(target.is_expanded)

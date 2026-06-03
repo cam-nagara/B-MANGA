@@ -561,6 +561,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     free_transform_bottom_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     free_transform_top_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     free_transform_top_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    free_transform_line_width_scale: FloatProperty(default=1.0, min=0.01, options={"HIDDEN"}, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
 
     # 角処理 (旧 rounded_corner_enabled は既存ファイル互換のため保持)
     corner_type: EnumProperty(name="角", items=_CORNER_TYPE_ITEMS, default="square", update=_on_balloon_corner_type_changed)  # type: ignore[valid-type]

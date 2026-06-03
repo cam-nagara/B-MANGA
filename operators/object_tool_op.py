@@ -681,6 +681,14 @@ class BNAME_OT_object_tool(Operator):
                     return {"FINISHED"}
             self._remember_coma_click(event, coma_hit)
         if hit is None:
+            if mode == "single":
+                move_hit = self._selected_move_hit_from_event(context, event)
+                if move_hit is not None:
+                    self._activate_hit(context, move_hit, mode="single")
+                    x_mm, y_mm = self._start_point_for_hit(context, event, move_hit)
+                    if x_mm is not None and y_mm is not None:
+                        self._start_object_drag(context, move_hit, x_mm, y_mm)
+                        return {"RUNNING_MODAL"}
             if mode == "single" and self._try_start_layer_drag(context, event):
                 return {"RUNNING_MODAL"}
             if self._start_marquee_select(context, event, mode):
@@ -815,6 +823,41 @@ class BNAME_OT_object_tool(Operator):
 
     def _hit_object(self, context, event) -> dict | None:
         return hit_object_at_event(context, event)
+
+    def _selected_move_hit_from_event(self, context, event) -> dict | None:
+        x_mm, y_mm = _event_world_xy_mm(context, event)
+        if x_mm is None or y_mm is None:
+            return None
+        keys = object_selection.get_keys(context)
+        key = active_selection_key(context)
+        if not key and keys:
+            key = keys[-1]
+        if not key:
+            return None
+        kind, page_id, item_id = object_selection.parse_key(key)
+        if kind not in {"balloon", "text", "effect"}:
+            return None
+        rect = selection_bounds_for_key(context, key)
+        if rect is None or not object_tool_selection.rect_contains_point(rect, float(x_mm), float(y_mm), pad=2.5):
+            return None
+        hit = {
+            "kind": kind,
+            "part": "move",
+            "key": key,
+            "world": (float(x_mm), float(y_mm)),
+        }
+        work = get_work(context)
+        if kind == "balloon":
+            _page_index, _page, index, _entry = _find_balloon_by_key(work, page_id, item_id)
+            hit["page_id"] = page_id
+            hit["index"] = index
+        elif kind == "text":
+            _page_index, _page, index, _entry = _find_text_by_key(work, page_id, item_id)
+            hit["page_id"] = page_id
+            hit["index"] = index
+        elif kind == "effect":
+            hit["layer_name"] = item_id
+        return hit
 
     def _hit_text(self, context, event) -> dict | None:
         return _hit_text_at_event(context, event)
@@ -1287,6 +1330,8 @@ class BNAME_OT_object_tool(Operator):
                             entry.center_offset_x_mm = float(cx) + dx
                         if hasattr(entry, "center_offset_y_mm"):
                             entry.center_offset_y_mm = float(cy) + dy
+                    balloon_curve_object.on_balloon_entry_changed(entry)
+                    balloon_op._sync_balloon_merge_display_if_needed(page, entry)
                     try:
                         from . import layer_link_duplicate_op
 

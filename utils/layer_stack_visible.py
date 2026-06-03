@@ -25,6 +25,33 @@ def _stack_item_uid(item) -> str:
     return _target_uid(getattr(item, "kind", ""), getattr(item, "key", ""))
 
 
+def collapsed_balloon_group_keys(context) -> set[str]:
+    scene = getattr(context, "scene", None)
+    if scene is None or not hasattr(scene, "bname_collapsed_balloon_group_keys"):
+        return set()
+    raw = str(getattr(scene, "bname_collapsed_balloon_group_keys", "") or "")
+    return {line.strip() for line in raw.splitlines() if line.strip()}
+
+
+def is_balloon_group_collapsed(context, key: str) -> bool:
+    return str(key or "") in collapsed_balloon_group_keys(context)
+
+
+def set_balloon_group_collapsed(context, key: str, collapsed: bool) -> None:
+    scene = getattr(context, "scene", None)
+    if scene is None or not hasattr(scene, "bname_collapsed_balloon_group_keys"):
+        return
+    keys = collapsed_balloon_group_keys(context)
+    text_key = str(key or "")
+    if not text_key:
+        return
+    if collapsed:
+        keys.add(text_key)
+    else:
+        keys.discard(text_key)
+    scene.bname_collapsed_balloon_group_keys = "\n".join(sorted(keys))
+
+
 def _copy_stack_item_values(dst, src) -> bool:
     changed = False
     values = (
@@ -92,9 +119,12 @@ def visible_layer_stack_entries(context, stack=None) -> list[tuple[int, object]]
         return []
 
     entries: list[tuple[int, object]] = []
+    collapsed_groups = collapsed_balloon_group_keys(context)
     for index, item in enumerate(stack):
         kind = str(getattr(item, "kind", "") or "")
         if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_PREVIEW_KIND}:
+            continue
+        if kind == "balloon" and str(getattr(item, "parent_key", "") or "") in collapsed_groups:
             continue
         if _stack_item_page_key(item, context) == active_page_key:
             entries.append((index, item))

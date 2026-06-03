@@ -67,7 +67,10 @@ def _default_easing_curve() -> str:
 def _focus_params(entry) -> SimpleNamespace:
     data = balloon_core.uni_flash_params_to_dict(entry)
     data["effect_type"] = "focus"
-    data["brush_size_mm"] = max(0.01, float(data.get("brush_size_mm", 0.3) or 0.3))
+    data["brush_size_mm"] = max(
+        0.01,
+        float(data.get("brush_size_mm", 0.3) or 0.3) * balloon_line_mesh.entry_line_width_scale(entry),
+    )
     data["spacing_angle_deg"] = max(0.1, float(data.get("spacing_angle_deg", 5.0) or 5.0))
     data["spacing_distance_mm"] = max(0.01, float(data.get("spacing_distance_mm", 1.0) or 1.0))
     data["max_line_count"] = max(1, int(data.get("max_line_count", 1000) or 1000))
@@ -209,7 +212,7 @@ def _generated_strokes(entry):
     center, rx, ry = _base_rect(entry)
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "white_outline":
-        line_width_mm = max(0.0, float(getattr(entry, "line_width_mm", 0.3) or 0.0))
+        line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
         black_brush_mm, _black_endpoint_pct = _line_width_and_endpoint_pct(
             line_width_mm,
             float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),

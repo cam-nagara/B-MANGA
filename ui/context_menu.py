@@ -193,6 +193,24 @@ def selection_command_items(context) -> list[dict]:
             },
         )
     if normalized_kind == "balloon":
+        items.insert(
+            7,
+            {
+                "label": "拡大・縮小",
+                "operator": "bname.balloon_free_transform_scale",
+                "icon": "FULLSCREEN_ENTER",
+                "enabled": has_item,
+            },
+        )
+        items.insert(
+            8,
+            {
+                "label": "回転",
+                "operator": "bname.balloon_free_transform_rotate",
+                "icon": "ORIENTATION_GIMBAL",
+                "enabled": has_item,
+            },
+        )
         items.append(
             {
                 "label": "フキダシを結合",

@@ -58,6 +58,15 @@ class BNameLayerStackItem(bpy.types.PropertyGroup):
 
 
 _CLASSES = (BNameLayerStackItem,)
+_visible_index_select_suppress_count = 0
+
+
+def suppress_next_visible_index_select(count: int = 1) -> None:
+    global _visible_index_select_suppress_count
+    _visible_index_select_suppress_count = max(
+        _visible_index_select_suppress_count,
+        max(1, int(count)),
+    )
 
 
 def _on_active_layer_stack_index_changed(_self, context) -> None:
@@ -105,9 +114,12 @@ def _on_active_layer_stack_index_changed(_self, context) -> None:
 
 def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
     """表示用一覧の選択を、実レイヤー一覧の選択へ反映する."""
-    global _visible_index_update_depth
+    global _visible_index_select_suppress_count, _visible_index_update_depth
 
     if _visible_index_update_depth > 0:
+        return
+    if _visible_index_select_suppress_count > 0:
+        _visible_index_select_suppress_count = max(0, _visible_index_select_suppress_count - 1)
         return
     scene = getattr(context, "scene", None)
     if scene is None:
@@ -158,12 +170,14 @@ def register() -> None:
     bpy.types.Scene.bname_active_layer_folder_key = StringProperty(default="")
     bpy.types.Scene.bname_active_effect_layer_name = StringProperty(default="")
     bpy.types.Scene.bname_layer_stack_inline_edit_uid = StringProperty(default="")
+    bpy.types.Scene.bname_collapsed_balloon_group_keys = StringProperty(default="", options={"HIDDEN"})
     _logger.debug("layer_stack registered")
 
 
 def unregister() -> None:
     for attr in (
         "bname_layer_stack_inline_edit_uid",
+        "bname_collapsed_balloon_group_keys",
         "bname_active_effect_layer_name",
         "bname_active_layer_folder_key",
         "bname_active_gp_folder_key",

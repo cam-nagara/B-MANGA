@@ -1451,6 +1451,8 @@ class BNAME_OT_balloon_tool(Operator):
                     entry.center_offset_x_mm = self._drag_orig_center_offset_x + dx
                 if hasattr(entry, "center_offset_y_mm"):
                     entry.center_offset_y_mm = self._drag_orig_center_offset_y + dy
+            balloon_curve_object.on_balloon_entry_changed(entry)
+            _sync_balloon_merge_display_if_needed(page, entry)
             try:
                 from . import layer_link_duplicate_op
 
@@ -1641,8 +1643,11 @@ class BNAME_OT_balloon_tool(Operator):
                 if collection is not None and 0 <= idx < len(collection):
                     _set_balloon_rect(page, collection[idx], x, y, w, h)
                     if self._drag_action == "center":
-                        collection[idx].center_offset_x_mm = self._drag_orig_center_offset_x
-                        collection[idx].center_offset_y_mm = self._drag_orig_center_offset_y
+                        with balloon_curve_object.suspend_auto_sync():
+                            collection[idx].center_offset_x_mm = self._drag_orig_center_offset_x
+                            collection[idx].center_offset_y_mm = self._drag_orig_center_offset_y
+                        balloon_curve_object.on_balloon_entry_changed(collection[idx])
+                        _sync_balloon_merge_display_if_needed(page, collection[idx])
                         try:
                             from . import layer_link_duplicate_op
 
