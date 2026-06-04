@@ -196,6 +196,7 @@ def _test_balloon_link_duplicate(page) -> None:
 
     source.center_offset_x_mm = 7.0
     source.center_offset_y_mm = -3.0
+    source.free_transform_line_width_scale = 1.75
     free_transform.set_entry_offsets(
         source,
         {
@@ -210,6 +211,8 @@ def _test_balloon_link_duplicate(page) -> None:
     if float(linked.center_offset_x_mm) != 7.0 or float(linked.center_offset_y_mm) != -3.0:
         raise AssertionError("リンクフキダシの中心点が共有されていません")
     _assert_pair(linked.free_transform_bottom_left, (2.0, 0.5), "リンクフキダシの自由変形")
+    if abs(float(linked.free_transform_line_width_scale) - 1.75) > 1.0e-6:
+        raise AssertionError("リンクフキダシの自由変形線幅が共有されていません")
 
     _select_stack("balloon", f":{source.id}")
     assert bpy.ops.bname.reset_center_point("EXEC_DEFAULT") == {"FINISHED"}
@@ -221,6 +224,11 @@ def _test_balloon_link_duplicate(page) -> None:
     assert bpy.ops.bname.reset_free_transform("EXEC_DEFAULT") == {"FINISHED"}
     if bool(source.free_transform_enabled) or bool(linked.free_transform_enabled):
         raise AssertionError("自由変形リセットがリンクフキダシに反映されていません")
+    if (
+        abs(float(source.free_transform_line_width_scale) - 1.0) > 1.0e-6
+        or abs(float(linked.free_transform_line_width_scale) - 1.0) > 1.0e-6
+    ):
+        raise AssertionError("自由変形リセットでリンクフキダシの線幅が戻っていません")
 
     manual_a = balloon_op._create_balloon_entry(
         bpy.context,

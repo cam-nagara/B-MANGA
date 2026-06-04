@@ -24,6 +24,7 @@ _BALLOON_CENTER_FREE_ATTRS = (
     "free_transform_bottom_right",
     "free_transform_top_left",
     "free_transform_top_right",
+    "free_transform_line_width_scale",
 )
 
 _BALLOON_RECT_ATTRS = (
@@ -65,7 +66,12 @@ def _copy_center_free(src, dst) -> bool:
             continue
         value = getattr(src, attr)
         try:
-            if attr.startswith("free_transform_") and attr != "free_transform_enabled":
+            if attr in {
+                "free_transform_bottom_left",
+                "free_transform_bottom_right",
+                "free_transform_top_left",
+                "free_transform_top_right",
+            }:
                 value = (float(value[0]), float(value[1]))
             if getattr(dst, attr) != value:
                 setattr(dst, attr, value)

@@ -3,6 +3,37 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-04 — リンク共有時のフキダシ自由変形線幅を補完 / v0.6.264
+
+### 症状
+
+- フキダシをリンク複製または通常リンクしたあと、中心点・回転・自由変形は共有されるが、「線幅を維持」をオフにした拡大・縮小で変わる線幅だけがリンク先へ共有されない可能性があった。
+- ここまでの修正の一つずつの確認で、自由変形の線幅倍率がリンク共有対象から漏れていることを発見した。
+
+### 原因
+
+- リンクされたフキダシへ共有する値の一覧に、自由変形の角・中心点・回転は入っていたが、自由変形で線幅だけを拡大縮小する値が入っていなかった。
+- 角の自由変形値だけを座標ペアとして扱うべき処理が、自由変形系の値全体に広がる形になっており、線幅倍率を安全に追加しにくい構造だった。
+
+### 修正
+
+- リンクされたフキダシ同士で共有する自由変形値に、線幅倍率を追加した。
+- 自由変形の角だけを座標ペアとして扱い、線幅倍率は数値としてそのまま共有するように整理した。
+- リンク共有テストに、自由変形線幅の共有と、自由変形リセット時にリンク先の線幅も戻る確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- PASS: `python -m py_compile operators/layer_link_duplicate_op.py test/blender_link_duplicate_behavior_check.py`
+- PASS: `python -m py_compile _verify/balloon_free_transform_ai_visual_check.py`
+- PASS: `test/blender_link_duplicate_behavior_check.py`
+- PASS: `test/blender_free_transform_reset_check.py`
+- PASS: `test/blender_context_menu_commands_check.py`
+- PASS: `test/blender_object_tool_selection_check.py`
+- PASS: `test/blender_layer_stack_balloon_group_selection_check.py`
+- AI目視 PASS: `_verify/balloon_free_transform_ai_visual_check.png`
+  - 通常線幅、拡大して線幅維持、拡大して線幅も拡大、回転、リンク元/リンク先の線幅倍率一致、右クリックメニュー、Ctrl/Shift選択、結合フォルダ開閉を1枚で確認。
+- 既知の別件: `test/blender_layer_stack_ui_behavior_check.py` は従来と同じ「ページ移動時の効果線位置」の期待値差分で停止した。今回のリンク線幅共有・右クリック変形・複数選択・結合フォルダ表示の専用検証はすべて通過。
+
 ## 2026-06-04 — フキダシ自由変形とレイヤー一覧操作を修正 / v0.6.263
 
 ### 症状
