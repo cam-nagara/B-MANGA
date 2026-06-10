@@ -781,7 +781,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
                     mask_power=_LINE_AND_EDGE_MASK_POWER,
                 )
                 fill_slot_mat = fill_mat if fill_mat is not None else white_mat
-            balloon_flash_effect_line_mesh.ensure_balloon_flash_effect_line_mesh(
+            flash_obj = balloon_flash_effect_line_mesh.ensure_balloon_flash_effect_line_mesh(
                 scene=scene,
                 work=work,
                 page=page,
@@ -792,6 +792,19 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
                 underlay_material=underlay_mat,
                 mask_info=mask_info,
             )
+            if flash_obj is not None and not balloon_flash_effect_line_mesh.has_expected_layers(flash_obj, entry):
+                balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
+                balloon_flash_effect_line_mesh.ensure_balloon_flash_effect_line_mesh(
+                    scene=scene,
+                    work=work,
+                    page=page,
+                    entry=entry,
+                    body_object=obj,
+                    line_material=line_mat,
+                    white_material=fill_slot_mat,
+                    underlay_material=underlay_mat,
+                    mask_info=mask_info,
+                )
         else:
             balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)

@@ -24,9 +24,9 @@ from ..utils import (
 )
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
-WORK_SCHEMA_VERSION = 5
+WORK_SCHEMA_VERSION = 6
 PAGES_SCHEMA_VERSION = 1
-PAGE_SCHEMA_VERSION = 2
+PAGE_SCHEMA_VERSION = 3
 COMA_SCHEMA_VERSION = 2
 
 # ---------- 共通変換 ----------
@@ -1452,6 +1452,22 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
             }
             for start, end, style in text_style.style_spans_snapshot(entry)
         ],
+        "rubySpans": [
+            {
+                "start": int(start),
+                "length": int(end - start),
+                "rubyText": ruby_text,
+                "style": style,
+            }
+            for start, end, ruby_text, style in text_style.ruby_spans_snapshot(entry)
+        ],
+        "tatechuyokoRanges": [
+            {
+                "start": int(start),
+                "length": int(end - start),
+            }
+            for start, end, _text, _style in text_style.tatechuyoko_ranges_snapshot(entry)
+        ],
     }
 
 
@@ -1517,6 +1533,21 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
         span.font_bold = bool(item.get("bold", False))
         span.font_italic = bool(item.get("italic", False))
     text_style.normalize_style_spans(entry)
+    entry.ruby_spans.clear()
+    for item in data.get("rubySpans", data.get("ruby_spans", [])) or []:
+        span = entry.ruby_spans.add()
+        span.start = int(item.get("start", 0))
+        span.length = max(1, int(item.get("length", 1)))
+        span.ruby_text = str(item.get("rubyText", item.get("ruby_text", "")) or "")
+        span.style = str(item.get("style", "group") or "group")
+    text_style.normalize_ruby_spans(entry)
+    entry.tatechuyoko_ranges.clear()
+    for item in data.get("tatechuyokoRanges", data.get("tatechuyoko_ranges", [])) or []:
+        span = entry.tatechuyoko_ranges.add()
+        span.start = int(item.get("start", 0))
+        span.length = max(1, int(item.get("length", 1)))
+        span.style = str(item.get("style", "group") or "group")
+    text_style.normalize_tatechuyoko_ranges(entry)
 
 
 # ---------- page.json ----------

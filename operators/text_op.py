@@ -811,6 +811,8 @@ class BNAME_OT_text_tool(Operator):
         ):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
+        if event.type == "LEFTMOUSE" and event.value == "PRESS" and event.alt and not event.ctrl:
+            return {"PASS_THROUGH"}
         if event.type != "LEFTMOUSE" or event.value not in {"PRESS", "DOUBLE_CLICK"}:
             return {"PASS_THROUGH"}
         work, page, lx, ly, hit_index, hit_entry, hit_part, can_create = _resolve_text_hit_from_event(
@@ -931,10 +933,10 @@ class BNAME_OT_text_tool(Operator):
             self._cancel_current_text_edit(context)
             return {"RUNNING_MODAL"}
         if event.type in {"RET", "NUMPAD_ENTER"}:
-            if event.shift:
-                return self._insert_current_text(context, "\n")
-            self._finish_current_text_edit(context)
-            return {"RUNNING_MODAL"}
+            if event.ctrl or event.oskey:
+                self._finish_current_text_edit(context)
+                return {"RUNNING_MODAL"}
+            return self._insert_current_text(context, "\n")
         if event.type == "BACK_SPACE":
             return self._backspace_current_text(context)
         if event.type in {"DEL", "DELETE"}:
@@ -1063,7 +1065,7 @@ class BNAME_OT_text_tool(Operator):
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
+        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _start_editing_created(self, context, page, entry) -> None:
@@ -1082,7 +1084,7 @@ class BNAME_OT_text_tool(Operator):
         self._clear_click_state()
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         self._begin_inline_input(context)
-        self.report({"INFO"}, "本文を入力してください (Enter: 確定 / Esc: キャンセル)")
+        self.report({"INFO"}, "本文を入力してください (Enter: 改行 / Ctrl+Enter: 確定 / Esc: キャンセル)")
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _start_text_drag(self, page, entry, part: str, x_mm: float, y_mm: float) -> None:
@@ -1309,8 +1311,10 @@ class BNAME_OT_text_tool(Operator):
         if hit_part != "body" or lx is None or ly is None:
             return False
         if event.value == "DOUBLE_CLICK":
-            self._cursor_index = len(text_edit_runtime.text_body(entry))
-            self._selection_anchor = 0
+            cursor = text_edit_runtime.cursor_index_from_point(entry, lx, ly)
+            start, end = text_edit_runtime.word_bounds_at_index(entry, cursor)
+            self._selection_anchor = start
+            self._cursor_index = end
             self._open_selection_style_popup(context)
         else:
             self._cursor_index = text_edit_runtime.cursor_index_from_point(entry, lx, ly)

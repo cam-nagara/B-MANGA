@@ -146,6 +146,12 @@ class BNAME_OT_text_selection_style_popup(Operator):
         row.prop(self, "font_size_unit", text="")
         row.prop(self, "font_size_value", text="サイズ")
         layout.prop(self, "font_choice")
+        layout.separator()
+        ruby = layout.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="FONT_DATA")
+        ruby.page_id = self.page_id
+        ruby.text_id = self.text_id
+        ruby.start = self.start
+        ruby.length = max(1, self.end - self.start)
 
     def check(self, context):
         self._apply(context)

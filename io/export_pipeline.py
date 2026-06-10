@@ -886,11 +886,16 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
     )
     if canvas is None:
         return None
-    from ..typography import export_renderer, layout as text_layout
+    from ..typography import export_renderer, layout as text_layout, ruby as text_ruby
     from ..utils import text_style
 
     font_path = _resolve_font_path(str(getattr(entry, "font", "")))
     result = text_layout.typeset(entry, pad_mm, pad_mm, float(entry.width_mm), float(entry.height_mm))
+    ruby_placements = text_ruby.compute_ruby_placements(
+        result.placements,
+        getattr(entry, "ruby_spans", []) or [],
+        writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
+    )
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)
     if getattr(entry, "stroke_enabled", False):
@@ -908,6 +913,7 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
         color=_rgb255(getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))),
         stroke_width_px=stroke_width_px,
         stroke_color=stroke_color,
+        ruby_placements=ruby_placements,
     )
     return ExportLayer(
         str(getattr(entry, "id", "") or "text"),

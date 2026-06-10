@@ -44,7 +44,30 @@ def _sync_linked_balloon_items(context, items: list[object]) -> int:
     page = resolved.get("page") if resolved is not None else None
     if source is None:
         return 0
-    return layer_link_duplicate_op.propagate_linked_balloon_transform_absolute(context, page, source)
+    changed = 0
+    skip_uids: set[str] = set()
+    for item in items[1:]:
+        uid = layer_stack_utils.stack_item_uid(item)
+        if uid:
+            skip_uids.add(uid)
+        target_resolved = layer_stack_utils.resolve_stack_item(context, item)
+        target = target_resolved.get("target") if target_resolved is not None else None
+        target_page = target_resolved.get("page") if target_resolved is not None else None
+        if layer_link_duplicate_op.sync_balloon_transform_to_target(
+            context,
+            page,
+            source,
+            target_page,
+            target,
+        ):
+            changed += 1
+    changed += layer_link_duplicate_op.propagate_linked_balloon_transform_absolute(
+        context,
+        page,
+        source,
+        skip_uids=skip_uids,
+    )
+    return changed
 
 
 def _sync_linked_effect_items(context, items: list[object]) -> int:

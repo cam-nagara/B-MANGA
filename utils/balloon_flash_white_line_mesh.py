@@ -7,8 +7,11 @@ from typing import Optional
 import bpy
 
 from . import balloon_line_mesh
+from . import balloon_mesh_signature
 from . import balloon_shapes
 from . import line_pattern
+
+_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP = "bname_balloon_flash_white_line_mesh_signature"
 
 
 def _pct(entry, attr: str, default: float) -> float:
@@ -16,6 +19,71 @@ def _pct(entry, attr: str, default: float) -> float:
         return max(0.0, min(200.0, float(getattr(entry, attr, default) or 0.0)))
     except Exception:  # noqa: BLE001
         return default
+
+
+def _mesh_signature(entry, line_style: str, line_width_mm: float, shape_norm: str) -> str:
+    payload = {
+        "version": 1,
+        "kind": balloon_line_mesh._KIND_FLASH_WHITE_LINE,
+        "line_style": line_style,
+        "shape_norm": shape_norm,
+        "shape": balloon_mesh_signature.entry_shape(entry),
+        "line_width_mm": float(line_width_mm),
+        "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 100.0) or 100.0),
+        "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
+        "flash_white_line_enabled": bool(getattr(entry, "flash_white_line_enabled", True)),
+        "flash_white_line_width_percent": float(
+            getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0
+        ),
+        "flash_white_line_valley_width_pct": float(
+            getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0
+        ),
+        "flash_white_line_peak_width_pct": float(
+            getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0
+        ),
+    }
+    return balloon_mesh_signature.stable_json(payload)
+
+
+def _cached_mesh_object(
+    *,
+    scene,
+    entry,
+    body_object: bpy.types.Object,
+    white_line_material: bpy.types.Material,
+    mask_info,
+    balloon_id: str,
+    signature: str,
+) -> Optional[bpy.types.Object]:
+    obj_name = balloon_line_mesh._flash_white_line_mesh_object_name(balloon_id)
+    mesh_name = balloon_line_mesh._flash_white_line_mesh_data_name(balloon_id)
+    obj = bpy.data.objects.get(obj_name)
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None and obj is not None and getattr(obj, "type", "") == "MESH":
+        mesh = getattr(obj, "data", None)
+    if mesh is None or not isinstance(mesh, bpy.types.Mesh):
+        return None
+    stored = ""
+    if obj is not None and getattr(obj, "type", "") == "MESH":
+        stored = str(obj.get(_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP, "") or "")
+    if not stored:
+        stored = str(mesh.get(_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP, "") or "")
+    if stored != signature:
+        return None
+    cached = balloon_line_mesh._attach_band_mesh_object(
+        obj_name=obj_name,
+        mesh=mesh,
+        material=white_line_material,
+        body_object=body_object,
+        scene=scene,
+        kind=balloon_line_mesh._KIND_FLASH_WHITE_LINE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
+    cached[_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP] = signature
+    mesh[_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP] = signature
+    return cached
 
 
 def _white_widths_m(entry, line_width_m: float) -> tuple[float, float, bool]:
@@ -145,6 +213,19 @@ def ensure_balloon_flash_white_line_mesh(
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         return None
 
+    signature = _mesh_signature(entry, line_style, line_width_mm, shape_norm)
+    cached = _cached_mesh_object(
+        scene=scene,
+        entry=entry,
+        body_object=body_object,
+        white_line_material=white_line_material,
+        mask_info=mask_info,
+        balloon_id=balloon_id,
+        signature=signature,
+    )
+    if cached is not None:
+        return cached
+
     body = _body_samples_and_poly(entry, body_object)
     if body is None:
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
@@ -164,7 +245,8 @@ def ensure_balloon_flash_white_line_mesh(
         polygons,
         balloon_line_mesh.FLASH_WHITE_LINE_Z_OFFSET_M,
     )
-    return balloon_line_mesh._attach_band_mesh_object(
+    mesh[_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP] = signature
+    obj = balloon_line_mesh._attach_band_mesh_object(
         obj_name=balloon_line_mesh._flash_white_line_mesh_object_name(balloon_id),
         mesh=mesh,
         material=white_line_material,
@@ -175,3 +257,5 @@ def ensure_balloon_flash_white_line_mesh(
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
     )
+    obj[_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP] = signature
+    return obj

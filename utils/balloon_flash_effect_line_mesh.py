@@ -12,6 +12,7 @@ import bpy
 from ..core import balloon as balloon_core
 from ..operators import effect_line_gen
 from . import balloon_line_mesh
+from . import balloon_mesh_signature
 from . import balloon_shapes
 from . import effect_line_object
 from . import free_transform
@@ -21,6 +22,8 @@ from .geom import Rect, mm_to_m
 BALLOON_FLASH_EFFECT_LINE_MESH_NAME_PREFIX = "balloon_flash_effect_line_mesh_"
 _KIND_FLASH_EFFECT_LINE = "balloon_flash_effect_line_mesh"
 _FLASH_LINE_Z_M = balloon_line_mesh.LINE_Z_OFFSET_M
+_FLASH_EFFECT_MESH_SIGNATURE_PROP = "bname_balloon_flash_effect_mesh_signature"
+_COLOR_ONLY_PARAM_FIELDS = {"line_color", "fill_color", "white_underlay_color"}
 
 
 def _flash_effect_line_mesh_object_name(balloon_id: str) -> str:
@@ -29,6 +32,150 @@ def _flash_effect_line_mesh_object_name(balloon_id: str) -> str:
 
 def _flash_effect_line_mesh_data_name(balloon_id: str) -> str:
     return f"{BALLOON_FLASH_EFFECT_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
+
+
+def _effect_params_signature(entry, line_style: str) -> dict:
+    if line_style == "white_outline":
+        line_width_mm = balloon_line_mesh.scaled_entry_width_mm(entry, "line_width_mm", 0.3)
+        black_brush_mm, black_endpoint_pct = _line_width_and_endpoint_pct(
+            line_width_mm,
+            float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
+            float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
+        )
+        return {
+            "line_width_mm": line_width_mm,
+            "line_peak_width_pct": float(getattr(entry, "line_peak_width_pct", 100.0) or 100.0),
+            "line_valley_width_pct": float(getattr(entry, "line_valley_width_pct", 0.0) or 0.0),
+            "black_brush_mm": black_brush_mm,
+            "black_endpoint_pct": black_endpoint_pct,
+            "flash_white_line_width_percent": float(
+                getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0
+            ),
+            "flash_white_line_valley_width_pct": float(
+                getattr(entry, "flash_white_line_valley_width_pct", 0.0) or 0.0
+            ),
+            "flash_white_line_peak_width_pct": float(
+                getattr(entry, "flash_white_line_peak_width_pct", 100.0) or 100.0
+            ),
+            "flash_white_outline_count": int(getattr(entry, "flash_white_outline_count", 5) or 5),
+            "flash_white_outline_width_mm": float(
+                getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0
+            ),
+            "flash_white_outline_spacing_mm": float(
+                getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.25
+            ),
+            "flash_white_outline_white_line_count": int(
+                getattr(entry, "flash_white_outline_white_line_count", 24) or 24
+            ),
+            "flash_white_outline_black_line_count": int(
+                getattr(entry, "flash_white_outline_black_line_count", 3) or 3
+            ),
+            "flash_white_outline_black_spacing_mm": float(
+                getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.25
+            ),
+        }
+    data = balloon_core.uni_flash_params_to_dict(entry)
+    for field in _COLOR_ONLY_PARAM_FIELDS:
+        data.pop(field, None)
+    data["brush_size_mm"] = float(data.get("brush_size_mm", 0.3) or 0.3) * balloon_line_mesh.entry_line_width_scale(entry)
+    return data
+
+
+def _mesh_signature(entry, line_style: str) -> str:
+    payload = {
+        "version": 1,
+        "kind": _KIND_FLASH_EFFECT_LINE,
+        "line_style": line_style,
+        "shape": balloon_mesh_signature.entry_shape(entry),
+        "effect": _effect_params_signature(entry, line_style),
+    }
+    return balloon_mesh_signature.stable_json(payload)
+
+
+def _mesh_has_material_index(mesh: bpy.types.Mesh, material_index: int) -> bool:
+    for poly in getattr(mesh, "polygons", []) or []:
+        if int(getattr(poly, "material_index", 0) or 0) == int(material_index):
+            return True
+    return False
+
+
+def _mesh_has_expected_layers(mesh: bpy.types.Mesh, entry, line_style: str) -> bool:
+    if line_style == "white_outline":
+        return _mesh_has_material_index(mesh, 1)
+    if line_style == "uni_flash" and bool(getattr(entry, "white_underlay_enabled", True)):
+        try:
+            if abs(float(getattr(entry, "white_underlay_width_percent", 100.0) or 0.0)) <= 1.0e-6:
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        return _mesh_has_material_index(mesh, 2)
+    return True
+
+
+def has_expected_layers(obj: bpy.types.Object | None, entry) -> bool:
+    if obj is None or getattr(obj, "type", "") != "MESH":
+        return False
+    mesh = getattr(obj, "data", None)
+    if mesh is None or not isinstance(mesh, bpy.types.Mesh):
+        return False
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    return _mesh_has_expected_layers(mesh, entry, line_style)
+
+
+def _cached_mesh_object(
+    *,
+    scene,
+    entry,
+    body_object: bpy.types.Object,
+    line_material: bpy.types.Material,
+    white_material: bpy.types.Material,
+    underlay_material: bpy.types.Material,
+    mask_info,
+    balloon_id: str,
+    signature: str,
+) -> Optional[bpy.types.Object]:
+    obj_name = _flash_effect_line_mesh_object_name(balloon_id)
+    mesh_name = _flash_effect_line_mesh_data_name(balloon_id)
+    obj = bpy.data.objects.get(obj_name)
+    if obj is not None and object_preserve.is_preserved(obj):
+        return None
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None and obj is not None and getattr(obj, "type", "") == "MESH":
+        mesh = getattr(obj, "data", None)
+    if mesh is None or not isinstance(mesh, bpy.types.Mesh):
+        return None
+    stored = ""
+    if obj is not None and getattr(obj, "type", "") == "MESH":
+        stored = str(obj.get(_FLASH_EFFECT_MESH_SIGNATURE_PROP, "") or "")
+    if not stored:
+        stored = str(mesh.get(_FLASH_EFFECT_MESH_SIGNATURE_PROP, "") or "")
+    if stored != signature:
+        return None
+    line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    if not _mesh_has_expected_layers(mesh, entry, line_style):
+        return None
+    _set_mesh_materials(mesh, (line_material, white_material, underlay_material))
+    cached = balloon_line_mesh._attach_band_mesh_object(
+        obj_name=obj_name,
+        mesh=mesh,
+        material=line_material,
+        body_object=body_object,
+        scene=scene,
+        kind=_KIND_FLASH_EFFECT_LINE,
+        balloon_id=balloon_id,
+        visible=bool(getattr(entry, "visible", True)),
+        mask_info=mask_info,
+    )
+    cached[_FLASH_EFFECT_MESH_SIGNATURE_PROP] = signature
+    mesh[_FLASH_EFFECT_MESH_SIGNATURE_PROP] = signature
+    return cached
+
+
+def _discard_mesh_for_rebuild(balloon_id: str) -> None:
+    obj = bpy.data.objects.get(_flash_effect_line_mesh_object_name(balloon_id))
+    if obj is not None and object_preserve.is_preserved(obj):
+        return
+    remove_balloon_flash_effect_line_mesh(balloon_id)
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -254,14 +401,12 @@ def _generated_strokes(entry):
 
 
 def _set_mesh_materials(mesh: bpy.types.Mesh, materials: Sequence[bpy.types.Material | None]) -> None:
-    try:
-        mesh.materials.clear()
-    except Exception:  # noqa: BLE001
-        while len(mesh.materials) > 0:
-            mesh.materials.pop(index=len(mesh.materials) - 1)
-    for mat in materials:
+    for index, mat in enumerate(materials):
         if mat is not None:
-            mesh.materials.append(mat)
+            if len(mesh.materials) <= index:
+                mesh.materials.append(mat)
+            elif mesh.materials[index] is not mat:
+                mesh.materials[index] = mat
 
 
 def ensure_balloon_flash_effect_line_mesh(
@@ -290,6 +435,21 @@ def ensure_balloon_flash_effect_line_mesh(
     ):
         remove_balloon_flash_effect_line_mesh(balloon_id)
         return None
+    signature = _mesh_signature(entry, line_style)
+    cached = _cached_mesh_object(
+        scene=scene,
+        entry=entry,
+        body_object=body_object,
+        line_material=line_material,
+        white_material=white_material,
+        underlay_material=underlay_material,
+        mask_info=mask_info,
+        balloon_id=balloon_id,
+        signature=signature,
+    )
+    if cached is not None:
+        return cached
+    _discard_mesh_for_rebuild(balloon_id)
     strokes = _generated_strokes(entry)
     if not strokes:
         remove_balloon_flash_effect_line_mesh(balloon_id)
@@ -300,7 +460,8 @@ def ensure_balloon_flash_effect_line_mesh(
         mesh = bpy.data.meshes.new(mesh_name)
     _set_mesh_materials(mesh, (line_material, white_material, underlay_material))
     effect_line_object._rebuild_effect_display_mesh(mesh, strokes)
-    return balloon_line_mesh._attach_band_mesh_object(
+    mesh[_FLASH_EFFECT_MESH_SIGNATURE_PROP] = signature
+    obj = balloon_line_mesh._attach_band_mesh_object(
         obj_name=_flash_effect_line_mesh_object_name(balloon_id),
         mesh=mesh,
         material=line_material,
@@ -311,6 +472,8 @@ def ensure_balloon_flash_effect_line_mesh(
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
     )
+    obj[_FLASH_EFFECT_MESH_SIGNATURE_PROP] = signature
+    return obj
 
 
 def remove_balloon_flash_effect_line_mesh(balloon_id: str) -> None:

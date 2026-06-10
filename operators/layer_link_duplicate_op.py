@@ -124,6 +124,38 @@ def _linked_balloon_targets(context, page, entry):
     return targets
 
 
+def sync_balloon_transform_to_target(context, source_page, source, target_page, target) -> bool:
+    """source の位置・サイズ・回転・中心点を target へ同値で反映する."""
+    if source is None or target is None or source is target:
+        return False
+    try:
+        from . import balloon_op
+
+        changed = False
+        rect = _copy_balloon_rect(source, target)
+        if rect is not None:
+            old_rect = _copy_balloon_rect(target, source)
+            balloon_op._set_balloon_rect(
+                target_page,
+                target,
+                rect[0],
+                rect[1],
+                rect[2],
+                rect[3],
+                propagate_link=False,
+            )
+            changed = old_rect != rect
+        with balloon_curve_object.suspend_auto_sync():
+            changed = _copy_center_free(source, target) or changed
+        if changed:
+            balloon_curve_object.on_balloon_entry_changed(target)
+            balloon_op._sync_balloon_merge_display_if_needed(target_page, target)
+        return changed
+    except Exception:  # noqa: BLE001
+        _logger.exception("linked balloon direct transform sync failed")
+        return False
+
+
 def propagate_linked_balloon_center_free(context, page, entry) -> int:
     """リンクされたフキダシへ中心点・回転・自由変形だけを反映する."""
     if entry is None:
@@ -166,29 +198,8 @@ def propagate_linked_balloon_transform_absolute(
         uid = _balloon_uid(target_page, target)
         if uid in skip:
             continue
-        try:
-            from . import balloon_op
-
-            rect = _copy_balloon_rect(entry, target)
-            if rect is not None:
-                balloon_op._set_balloon_rect(
-                    target_page,
-                    target,
-                    rect[0],
-                    rect[1],
-                    rect[2],
-                    rect[3],
-                    propagate_link=False,
-                )
-            with balloon_curve_object.suspend_auto_sync():
-                copied = _copy_center_free(entry, target)
-            if copied:
-                balloon_curve_object.on_balloon_entry_changed(target)
-                balloon_op._sync_balloon_merge_display_if_needed(target_page, target)
+        if sync_balloon_transform_to_target(context, page, entry, target_page, target):
             changed += 1
-        except Exception:  # noqa: BLE001
-            _logger.exception("linked balloon absolute transform sync failed")
-            continue
     return changed
 
 

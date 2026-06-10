@@ -442,6 +442,9 @@ def _draw_text_detail(layout, entry) -> None:
     row = box.row(align=True)
     row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
     row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
+    row = box.row(align=True)
+    row.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
+    row.operator("bname.text_ruby_clear", text="ルビを削除", icon="TRASH")
 
     box = layout.box()
     box.label(text="表示・所属")

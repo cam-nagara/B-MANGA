@@ -523,6 +523,7 @@ def _append_stroke_mesh(
 
 
 def _rebuild_effect_display_mesh(mesh: bpy.types.Mesh, strokes) -> None:
+    materials = list(getattr(mesh, "materials", []) or [])
     verts: list[tuple[float, float, float]] = []
     faces: list[tuple[int, ...]] = []
     face_materials: list[int] = []
@@ -545,6 +546,10 @@ def _rebuild_effect_display_mesh(mesh: bpy.types.Mesh, strokes) -> None:
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
     mesh.update()
+    if materials and len(mesh.materials) == 0:
+        for mat in materials:
+            if mat is not None:
+                mesh.materials.append(mat)
     for index, material_index in enumerate(face_materials):
         if index < len(mesh.polygons):
             mesh.polygons[index].material_index = int(material_index)

@@ -805,7 +805,7 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
     entry = entry_or_text
     padded = text_layout_bounds.text_inner_rect(rect)
     try:
-        from ..typography import layout as text_layout
+        from ..typography import layout as text_layout, ruby as text_ruby
 
         result = text_layout.typeset(
             entry,
@@ -813,6 +813,11 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             padded.y,
             padded.width,
             padded.height,
+        )
+        ruby_placements = text_ruby.compute_ruby_placements(
+            result.placements,
+            getattr(entry, "ruby_spans", []) or [],
+            writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
         )
     except Exception:  # noqa: BLE001
         _logger.exception("text layout failed")
@@ -898,6 +903,27 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             # setting has an immediate viewport-visible effect.
             blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.055), y_px + max(1.0, size_px * 0.025), 0.0)
             blf.draw(glyph_font_id, glyph.ch)
+    ruby_font_id = _get_font_id_for_path(str(getattr(entry, "font", "") or ""))
+    ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
+    for ruby_glyph in ruby_placements:
+        coord = location_3d_to_region_2d(
+            region,
+            rv3d,
+            Vector((mm_to_m(ruby_glyph.x_mm), mm_to_m(ruby_glyph.y_mm), 0.0)),
+        )
+        if coord is None:
+            continue
+        size_px = ruby_glyph.size_pt * px_per_mm * 25.4 / 72.0
+        try:
+            blf.size(ruby_font_id, max(1, int(size_px)))
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            blf.color(ruby_font_id, float(ruby_color[0]), float(ruby_color[1]), float(ruby_color[2]), float(ruby_color[3]))
+        except Exception:  # noqa: BLE001
+            pass
+        blf.position(ruby_font_id, float(coord.x), float(coord.y), 0.0)
+        blf.draw(ruby_font_id, ruby_glyph.ch)
 
 
 def _draw_rect_fill_pixel(context, rect: Rect, color: tuple[float, float, float, float]) -> None:

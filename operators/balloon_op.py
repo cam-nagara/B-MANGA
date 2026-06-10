@@ -527,13 +527,9 @@ def _move_balloon_with_texts(page, entry, x_mm: float, y_mm: float) -> None:
     with balloon_curve_object.defer_auto_sync():
         entry.x_mm = float(x_mm)
         entry.y_mm = float(y_mm)
-    if in_merge_group:
-        scene = bpy.context.scene
-        work = get_work(bpy.context)
-        if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, entry):
-            with balloon_curve_object.suspend_auto_sync():
-                balloon_curve_object.on_balloon_entry_changed(entry)
-    else:
+    scene = bpy.context.scene
+    work = get_work(bpy.context)
+    if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, entry):
         with balloon_curve_object.suspend_auto_sync():
             balloon_curve_object.on_balloon_entry_changed(entry)
     _sync_balloon_merge_display_if_needed(page, entry)

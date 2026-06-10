@@ -852,6 +852,51 @@ def cursor_index_from_point(entry, x_mm: float, y_mm: float) -> int:
     return best_index
 
 
+def _is_cjk_char(ch: str) -> bool:
+    if not ch:
+        return False
+    code = ord(ch)
+    return (
+        0x3040 <= code <= 0x30FF
+        or 0x3400 <= code <= 0x4DBF
+        or 0x4E00 <= code <= 0x9FFF
+        or 0xF900 <= code <= 0xFAFF
+    )
+
+
+def _is_latin_word_char(ch: str) -> bool:
+    return bool(ch) and not _is_cjk_char(ch) and (ch.isalnum() or ch == "_")
+
+
+def word_bounds_at_index(entry, index: int) -> tuple[int, int]:
+    body = text_body(entry)
+    if not body:
+        return 0, 0
+    index = clamp_cursor(entry, index)
+    if index >= len(body):
+        index = len(body) - 1
+    ch = body[index]
+    if ch == "\n":
+        return index, index + 1
+    if _is_latin_word_char(ch):
+        start = index
+        end = index + 1
+        while start > 0 and _is_latin_word_char(body[start - 1]):
+            start -= 1
+        while end < len(body) and _is_latin_word_char(body[end]):
+            end += 1
+        return start, end
+    if ch.isspace():
+        start = index
+        end = index + 1
+        while start > 0 and body[start - 1].isspace() and body[start - 1] != "\n":
+            start -= 1
+        while end < len(body) and body[end].isspace() and body[end] != "\n":
+            end += 1
+        return start, end
+    return index, index + 1
+
+
 def selection_bounds(cursor_index: int, selection_anchor: int) -> tuple[int, int] | None:
     if selection_anchor < 0 or selection_anchor == cursor_index:
         return None

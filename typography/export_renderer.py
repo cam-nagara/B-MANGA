@@ -10,7 +10,7 @@ Pillow が同梱されていない環境 (Phase 3 時点) では使えないた�
 from __future__ import annotations
 
 from typing import Any
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from ..utils import python_deps
 from ..utils import log
@@ -48,6 +48,7 @@ def render_to_image(
     color: tuple[int, int, int, int] = (0, 0, 0, 255),
     stroke_width_px: int = 0,
     stroke_color: tuple[int, int, int, int] = (255, 255, 255, 255),
+    ruby_placements: Sequence[Any] | None = None,
 ) -> None:
     """Pillow Image に組版結果を描画."""
     if not _HAS_PIL:
@@ -55,17 +56,23 @@ def render_to_image(
         return
     draw = ImageDraw.Draw(image)
     font_cache: dict[tuple[str, int], Any] = {}
+
+    def font_for(path: str, size_px: int):
+        cache_key = (path or "", int(size_px))
+        font = font_cache.get(cache_key)
+        if font is not None:
+            return font
+        try:
+            font = ImageFont.truetype(path, size_px)
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+        font_cache[cache_key] = font
+        return font
+
     for g in result.placements:
         size_px = max(1, int(g.size_pt * px_per_mm * 25.4 / 72.0))
         glyph_font_path = font_path_for_index(g.index) if font_path_for_index is not None else font_path
-        cache_key = (glyph_font_path or "", size_px)
-        font = font_cache.get(cache_key)
-        if font is None:
-            try:
-                font = ImageFont.truetype(glyph_font_path, size_px)
-            except (OSError, IOError):
-                font = ImageFont.load_default()
-            font_cache[cache_key] = font
+        font = font_for(glyph_font_path, size_px)
         x = origin_xy_px[0] + g.x_mm * px_per_mm
         y = origin_xy_px[1] + g.y_mm * px_per_mm
         # Pillow の座標系は左上原点なので Y 反転
@@ -85,3 +92,17 @@ def render_to_image(
                 font=font,
                 **kwargs,
             )
+    for r in ruby_placements or ():
+        size_pt = float(getattr(r, "size_pt", 0.0) or 0.0)
+        if size_pt <= 0.0:
+            continue
+        size_px = max(1, int(size_pt * px_per_mm * 25.4 / 72.0))
+        font = font_for(font_path, size_px)
+        x = origin_xy_px[0] + float(getattr(r, "x_mm", 0.0)) * px_per_mm
+        y = origin_xy_px[1] + float(getattr(r, "y_mm", 0.0)) * px_per_mm
+        y_px = image.height - y
+        kwargs: dict = {"fill": color}
+        if stroke_width_px > 0:
+            kwargs["stroke_width"] = max(1, stroke_width_px // 2)
+            kwargs["stroke_fill"] = stroke_color
+        draw.text((x, y_px), str(getattr(r, "ch", "") or ""), font=font, **kwargs)

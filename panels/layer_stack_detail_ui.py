@@ -412,6 +412,13 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     row.prop(entry, "line_height")
     row.prop(entry, "letter_spacing")
 
+    ruby_box = box.box()
+    ruby_box.label(text="ルビ", icon="FONT_DATA")
+    ruby_box.label(text=f"{len(getattr(entry, 'ruby_spans', ()) or ())} 件")
+    row = ruby_box.row(align=True)
+    row.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
+    row.operator("bname.text_ruby_clear", text="すべて削除", icon="TRASH")
+
     stroke_box = box.box()
     stroke_box.prop(entry, "stroke_enabled")
     sub = stroke_box.column()

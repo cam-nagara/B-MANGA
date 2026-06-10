@@ -38,13 +38,9 @@ def _move_balloon(page, balloon, dx_mm: float, dy_mm: float) -> None:
     with balloon_curve_object.defer_auto_sync():
         balloon.x_mm += dx_mm
         balloon.y_mm += dy_mm
-    if in_merge_group:
-        scene = bpy.context.scene
-        work = get_work(bpy.context)
-        if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, balloon):
-            with balloon_curve_object.suspend_auto_sync():
-                balloon_curve_object.on_balloon_entry_changed(balloon)
-    else:
+    scene = bpy.context.scene
+    work = get_work(bpy.context)
+    if not balloon_curve_object.sync_balloon_object_transform_only(scene, work, page, balloon):
         with balloon_curve_object.suspend_auto_sync():
             balloon_curve_object.on_balloon_entry_changed(balloon)
     if page is not None and in_merge_group:

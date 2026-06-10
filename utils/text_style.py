@@ -8,6 +8,7 @@ from pathlib import Path
 
 StyleTuple = tuple[str, float, tuple[float, float, float, float], bool, bool]
 StyleSegment = tuple[int, int, StyleTuple]
+RubySegment = tuple[int, int, str, str]
 
 _FONT_DROPDOWN_ITEMS: list[tuple[str, str, str]] | None = None
 _FONT_DROPDOWN_PATHS: dict[str, str] = {}
@@ -203,12 +204,15 @@ def _merge_segments(segments: list[tuple[int, int, str]]) -> list[tuple[int, int
     return merged
 
 
-def _write_segments(entry, segments: list[tuple[int, int, str]]) -> None:
+def _write_segments(entry, segments: list[tuple[int, int, str]], *, body_len_override: int | None = None) -> None:
     spans = getattr(entry, "font_spans", None)
     if spans is None:
         return
     spans.clear()
+    body_len = _body_len(entry) if body_len_override is None else max(0, int(body_len_override))
     for start, end, font in _merge_segments(sorted(segments, key=lambda item: item[0])):
+        start = max(0, min(body_len, int(start)))
+        end = max(start, min(body_len, int(end)))
         if start >= end or not font:
             continue
         span = spans.add()
@@ -274,12 +278,15 @@ def _merge_style_segments(segments: list[StyleSegment]) -> list[StyleSegment]:
     return merged
 
 
-def _write_style_segments(entry, segments: list[StyleSegment]) -> None:
+def _write_style_segments(entry, segments: list[StyleSegment], *, body_len_override: int | None = None) -> None:
     spans = getattr(entry, "style_spans", None)
     if spans is None:
         return
     spans.clear()
+    body_len = _body_len(entry) if body_len_override is None else max(0, int(body_len_override))
     for start, end, style in _merge_style_segments(sorted(segments, key=lambda item: item[0])):
+        start = max(0, min(body_len, int(start)))
+        end = max(start, min(body_len, int(end)))
         if start >= end:
             continue
         font, font_size_q, color, bold, italic = style
@@ -309,8 +316,75 @@ def style_spans_snapshot(entry) -> tuple[StyleSegment, ...]:
     return tuple(_normalized_style_segments(entry))
 
 
+def _normalized_ruby_segments(entry, collection_name: str = "ruby_spans") -> list[RubySegment]:
+    spans = getattr(entry, collection_name, None)
+    if spans is None:
+        return []
+    body_len = _body_len(entry)
+    segments: list[RubySegment] = []
+    for span in spans:
+        start = max(0, min(body_len, int(getattr(span, "start", 0))))
+        end = max(start, min(body_len, start + int(getattr(span, "length", 0))))
+        text = str(getattr(span, "ruby_text", "") or "")
+        style = str(getattr(span, "style", "group") or "group")
+        if start < end and (text or collection_name != "ruby_spans"):
+            segments.append((start, end, text, style))
+    return sorted(segments, key=lambda item: (item[0], item[1], item[2], item[3]))
+
+
+def _write_ruby_segments(
+    entry,
+    segments: list[RubySegment],
+    collection_name: str = "ruby_spans",
+    *,
+    body_len_override: int | None = None,
+) -> None:
+    spans = getattr(entry, collection_name, None)
+    if spans is None:
+        return
+    spans.clear()
+    body_len = _body_len(entry) if body_len_override is None else max(0, int(body_len_override))
+    for start, end, text, style in sorted(segments, key=lambda item: (item[0], item[1])):
+        start = max(0, min(body_len, int(start)))
+        end = max(start, min(body_len, int(end)))
+        if start >= end:
+            continue
+        if collection_name == "ruby_spans" and not str(text or ""):
+            continue
+        span = spans.add()
+        span.start = int(start)
+        span.length = int(end - start)
+        span.ruby_text = str(text or "")
+        span.style = str(style or "group")
+
+
+def ruby_spans_snapshot(entry) -> tuple[RubySegment, ...]:
+    return tuple(_normalized_ruby_segments(entry, "ruby_spans"))
+
+
+def tatechuyoko_ranges_snapshot(entry) -> tuple[RubySegment, ...]:
+    return tuple(_normalized_ruby_segments(entry, "tatechuyoko_ranges"))
+
+
+def normalize_ruby_spans(entry) -> None:
+    _write_ruby_segments(entry, _normalized_ruby_segments(entry, "ruby_spans"), "ruby_spans")
+
+
+def normalize_tatechuyoko_ranges(entry) -> None:
+    _write_ruby_segments(
+        entry,
+        _normalized_ruby_segments(entry, "tatechuyoko_ranges"),
+        "tatechuyoko_ranges",
+    )
+
+
 def all_spans_snapshot(entry):
-    return (font_spans_snapshot(entry), style_spans_snapshot(entry))
+    return (
+        font_spans_snapshot(entry),
+        style_spans_snapshot(entry),
+        ruby_spans_snapshot(entry),
+        tatechuyoko_ranges_snapshot(entry),
+    )
 
 
 def restore_font_spans(entry, snapshot) -> None:
@@ -336,10 +410,40 @@ def restore_style_spans(entry, snapshot) -> None:
     _write_style_segments(entry, segments)
 
 
+def restore_ruby_spans(entry, snapshot) -> None:
+    segments: list[RubySegment] = []
+    body_len = _body_len(entry)
+    for item in snapshot or ():
+        start, end, text, style = item
+        start = max(0, min(body_len, int(start)))
+        end = max(start, min(body_len, int(end)))
+        if start < end and str(text or ""):
+            segments.append((start, end, str(text or ""), str(style or "group")))
+    _write_ruby_segments(entry, segments, "ruby_spans")
+
+
+def restore_tatechuyoko_ranges(entry, snapshot) -> None:
+    segments: list[RubySegment] = []
+    body_len = _body_len(entry)
+    for item in snapshot or ():
+        start, end, text, style = item
+        start = max(0, min(body_len, int(start)))
+        end = max(start, min(body_len, int(end)))
+        if start < end:
+            segments.append((start, end, str(text or ""), str(style or "group")))
+    _write_ruby_segments(entry, segments, "tatechuyoko_ranges")
+
+
 def restore_all_spans(entry, snapshot) -> None:
-    font_snapshot, style_snapshot = snapshot or ((), ())
+    parts = tuple(snapshot or ())
+    font_snapshot = parts[0] if len(parts) >= 1 else ()
+    style_snapshot = parts[1] if len(parts) >= 2 else ()
+    ruby_snapshot = parts[2] if len(parts) >= 3 else ()
+    tatechuyoko_snapshot = parts[3] if len(parts) >= 4 else ()
     restore_font_spans(entry, font_snapshot)
     restore_style_spans(entry, style_snapshot)
+    restore_ruby_spans(entry, ruby_snapshot)
+    restore_tatechuyoko_ranges(entry, tatechuyoko_snapshot)
 
 
 def apply_font_span(entry, start: int, end: int, font: str) -> bool:
@@ -391,6 +495,47 @@ def apply_style_span(
     return True
 
 
+def apply_ruby_span(entry, start: int, end: int, ruby_text: str, style: str = "group") -> bool:
+    body_len = _body_len(entry)
+    start = max(0, min(body_len, int(start)))
+    end = max(start, min(body_len, int(end)))
+    ruby_text = str(ruby_text or "").strip()
+    if start >= end or not ruby_text:
+        return False
+    segments = clear_ruby_span_segments(
+        _normalized_ruby_segments(entry, "ruby_spans"),
+        start,
+        end,
+    )
+    segments.append((start, end, ruby_text, str(style or "group")))
+    _write_ruby_segments(entry, segments, "ruby_spans")
+    return True
+
+
+def clear_ruby_span_segments(segments: list[RubySegment], start: int, end: int) -> list[RubySegment]:
+    kept: list[RubySegment] = []
+    for seg_start, seg_end, text, style in segments:
+        if seg_end <= start or seg_start >= end:
+            kept.append((seg_start, seg_end, text, style))
+    return kept
+
+
+def clear_ruby_spans(entry, start: int | None = None, end: int | None = None) -> bool:
+    spans = getattr(entry, "ruby_spans", None)
+    if spans is None:
+        return False
+    if start is None or end is None:
+        changed = len(spans) > 0
+        spans.clear()
+        return changed
+    body_len = _body_len(entry)
+    start = max(0, min(body_len, int(start)))
+    end = max(start, min(body_len, int(end)))
+    before = ruby_spans_snapshot(entry)
+    _write_ruby_segments(entry, clear_ruby_span_segments(list(before), start, end), "ruby_spans")
+    return before != ruby_spans_snapshot(entry)
+
+
 def _adjust_font_spans_for_replace(entry, start: int, end: int, new_length: int) -> None:
     body_len = _body_len(entry)
     start = max(0, min(body_len, int(start)))
@@ -426,7 +571,7 @@ def _adjust_font_spans_for_replace(entry, start: int, end: int, new_length: int)
     if inherited_font:
         adjusted = _exclude_range(adjusted, start, start + new_length)
         adjusted.append((start, start + new_length, inherited_font))
-    _write_segments(entry, adjusted)
+    _write_segments(entry, adjusted, body_len_override=body_len + delta)
 
 
 def _adjust_style_spans_for_replace(entry, start: int, end: int, new_length: int) -> None:
@@ -464,12 +609,44 @@ def _adjust_style_spans_for_replace(entry, start: int, end: int, new_length: int
     if inherited_style is not None:
         adjusted = _exclude_style_range(adjusted, start, start + new_length)
         adjusted.append((start, start + new_length, inherited_style))
-    _write_style_segments(entry, adjusted)
+    _write_style_segments(entry, adjusted, body_len_override=body_len + delta)
+
+
+def _adjust_ruby_segments_for_replace(
+    entry,
+    start: int,
+    end: int,
+    new_length: int,
+    collection_name: str,
+) -> None:
+    body_len = _body_len(entry)
+    start = max(0, min(body_len, int(start)))
+    end = max(start, min(body_len, int(end)))
+    new_length = max(0, int(new_length))
+    delta = new_length - (end - start)
+    adjusted: list[RubySegment] = []
+    for seg_start, seg_end, text, style in _normalized_ruby_segments(entry, collection_name):
+        if start == end:
+            if seg_end <= start:
+                adjusted.append((seg_start, seg_end, text, style))
+            elif seg_start >= start:
+                adjusted.append((seg_start + delta, seg_end + delta, text, style))
+            else:
+                adjusted.append((seg_start, seg_end + delta, text, style))
+            continue
+        if seg_end <= start:
+            adjusted.append((seg_start, seg_end, text, style))
+        elif seg_start >= end:
+            adjusted.append((seg_start + delta, seg_end + delta, text, style))
+        # A replacement touching the annotated parent text invalidates that ruby.
+    _write_ruby_segments(entry, adjusted, collection_name, body_len_override=body_len + delta)
 
 
 def adjust_spans_for_replace(entry, start: int, end: int, new_length: int) -> None:
     _adjust_font_spans_for_replace(entry, start, end, new_length)
     _adjust_style_spans_for_replace(entry, start, end, new_length)
+    _adjust_ruby_segments_for_replace(entry, start, end, new_length, "ruby_spans")
+    _adjust_ruby_segments_for_replace(entry, start, end, new_length, "tatechuyoko_ranges")
 
 
 def adjust_font_spans_for_replace(entry, start: int, end: int, new_length: int) -> None:

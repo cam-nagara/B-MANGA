@@ -19,7 +19,7 @@ from . import object_naming as on
 from . import object_preserve
 from . import text_layout_bounds
 from . import text_style
-from .geom import Rect, mm_to_m, mm_to_px
+from .geom import Rect, mm_to_m, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
 
@@ -226,6 +226,20 @@ def _rgba255_from_linear(rgba) -> tuple[int, int, int, int]:
     )
 
 
+def _render_pad_mm(entry) -> float:
+    stroke_pad = 0.0
+    if bool(getattr(entry, "stroke_enabled", False)):
+        stroke_pad = max(0.0, float(getattr(entry, "stroke_width_mm", 0.0) or 0.0))
+    pad = max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
+    if len(getattr(entry, "ruby_spans", []) or []) > 0:
+        try:
+            base_em = q_to_mm(float(getattr(entry, "font_size_q", 20.0) or 20.0))
+        except Exception:  # noqa: BLE001
+            base_em = q_to_mm(20.0)
+        pad = max(pad, base_em * 0.75 + 1.0)
+    return pad
+
+
 def _render_entry_to_pillow(entry):
     from . import python_deps
 
@@ -235,14 +249,11 @@ def _render_entry_to_pillow(entry):
     except ImportError:
         return None
 
-    from ..typography import export_renderer, layout as text_layout
+    from ..typography import export_renderer, layout as text_layout, ruby as text_ruby
 
     width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
     height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
-    stroke_pad = 0.0
-    if bool(getattr(entry, "stroke_enabled", False)):
-        stroke_pad = max(0.0, float(getattr(entry, "stroke_width_mm", 0.0) or 0.0))
-    pad_mm = max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
+    pad_mm = _render_pad_mm(entry)
     px_per_mm = mm_to_px(1.0, TEXT_REAL_DPI)
     image_width = max(1, int(round((width_mm + pad_mm * 2.0) * px_per_mm)))
     image_height = max(1, int(round((height_mm + pad_mm * 2.0) * px_per_mm)))
@@ -257,6 +268,11 @@ def _render_entry_to_pillow(entry):
         pad_mm + inner.y,
         inner.width,
         inner.height,
+    )
+    ruby_placements = text_ruby.compute_ruby_placements(
+        result.placements,
+        getattr(entry, "ruby_spans", []) or [],
+        writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
     )
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)
@@ -285,6 +301,7 @@ def _render_entry_to_pillow(entry):
         color=_rgba255_from_linear(getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))),
         stroke_width_px=stroke_width_px,
         stroke_color=stroke_color,
+        ruby_placements=ruby_placements,
     )
     return image, pad_mm, width_mm, height_mm
 
@@ -292,10 +309,7 @@ def _render_entry_to_pillow(entry):
 def _mesh_dimensions_for_entry(entry) -> tuple[float, float, float]:
     width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
     height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
-    stroke_pad = 0.0
-    if bool(getattr(entry, "stroke_enabled", False)):
-        stroke_pad = max(0.0, float(getattr(entry, "stroke_width_mm", 0.0) or 0.0))
-    return width_mm, height_mm, max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
+    return width_mm, height_mm, _render_pad_mm(entry)
 
 
 def _float_sig(value) -> float:
