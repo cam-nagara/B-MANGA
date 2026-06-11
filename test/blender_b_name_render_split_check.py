@@ -109,10 +109,12 @@ def main() -> None:
         state.active_preset_index = 0
         preset = state.presets[0]
         before = len(preset.commands)
-        result = bpy.ops.bname_render.command_add(command_type="RENDER", card_name="テストカード")
+        result = bpy.ops.bname_render.command_add(command_type="RENDER")
         assert result == {"FINISHED"}, result
         assert len(preset.commands) == before + 1
-        assert preset.commands[preset.active_command_index].name == "テストカード"
+        added = preset.commands[preset.active_command_index]
+        assert added.command_type == "RENDER", added.command_type
+        assert added.name == "レンダー", added.name
 
         empty = state.presets.add()
         empty.name = "空プリセット"

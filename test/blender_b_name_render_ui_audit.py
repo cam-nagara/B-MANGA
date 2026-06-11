@@ -76,6 +76,9 @@ class CaptureLayout:
     def column(self, *args, **kwargs):
         return self
 
+    def grid_flow(self, *args, **kwargs):
+        return self
+
     def split(self, *args, **kwargs):
         return self
 

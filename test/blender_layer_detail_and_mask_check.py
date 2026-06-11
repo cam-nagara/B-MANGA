@@ -79,40 +79,46 @@ def _assert_mesh_mask(obj, mod_name: str) -> None:
     assert str(getattr(mod, "operation", "")) == "INTERSECT", obj.name
 
 
-def _assert_curve_mask(obj) -> None:
-    from bname_dev_layer_mask.utils import balloon_curve_render_nodes
+def _material_has_content_mask(mat) -> bool:
+    """マテリアルがコマ内容マスク (画像マスク) を持つかを返す."""
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return False
+    has_tex = False
+    has_coord = False
+    for node in nt.nodes:
+        if (
+            node.bl_idname == "ShaderNodeTexImage"
+            and node.label == "コマ内容マスク"
+            and getattr(node, "image", None) is not None
+        ):
+            has_tex = True
+        if (
+            node.bl_idname == "ShaderNodeTexCoord"
+            and node.label == "コマ内容マスク座標"
+            and getattr(node, "object", None) is not None
+        ):
+            has_coord = True
+    return has_tex and has_coord
 
-    modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-    assert modifier is not None and modifier.node_group is not None, f"フキダシ表示補助がありません: {obj.name}"
-    mask_enabled = None
-    mask_target = None
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
-            continue
-        if getattr(item, "name", "") == "マスク使用":
-            mask_enabled = modifier.get(item.identifier)
-        elif getattr(item, "name", "") == "マスク対象":
-            mask_target = modifier.get(item.identifier)
-    assert bool(mask_enabled), f"フキダシのマスクが有効ではありません: {obj.name}"
-    assert mask_target is not None, f"フキダシのマスク対象が空です: {obj.name}"
+
+def _assert_curve_mask(obj) -> None:
+    """コマ内フキダシの切り抜き確認.
+
+    v0.6.132 (Phase D) 以降、フキダシは Geometry Nodes ではなく
+    マテリアルのコマ内容マスク画像でコマ内に切り抜かれる。
+    """
+    mats = [m for m in getattr(obj.data, "materials", []) or [] if m is not None]
+    assert mats, f"フキダシのマテリアルがありません: {obj.name}"
+    masked = [m.name for m in mats if _material_has_content_mask(m)]
+    assert masked, f"フキダシにコマ内容マスクがありません: {obj.name}"
 
 
 def _assert_curve_no_mask(obj) -> None:
-    from bname_dev_layer_mask.utils import balloon_curve_render_nodes
-
-    modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-    assert modifier is not None and modifier.node_group is not None, f"フキダシ表示補助がありません: {obj.name}"
-    mask_enabled = None
-    mask_target = None
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
-            continue
-        if getattr(item, "name", "") == "マスク使用":
-            mask_enabled = modifier.get(item.identifier)
-        elif getattr(item, "name", "") == "マスク対象":
-            mask_target = modifier.get(item.identifier)
-    assert not bool(mask_enabled), f"ページ上フキダシに不要なマスクがあります: {obj.name}"
-    assert mask_target is None, f"ページ上フキダシのマスク対象が残っています: {obj.name}"
+    mats = [m for m in getattr(obj.data, "materials", []) or [] if m is not None]
+    assert mats, f"フキダシのマテリアルがありません: {obj.name}"
+    masked = [m.name for m in mats if _material_has_content_mask(m)]
+    assert not masked, f"ページ上フキダシに不要なコマ内容マスクがあります: {obj.name} {masked}"
 
 
 def _assert_gp_mask(obj) -> None:
@@ -173,6 +179,11 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerMask.bname"))
+        assert "FINISHED" in result, result
+        # 実運用と同じく、レイヤー作成はページ編集ファイル内で行う。
+        # 用紙背景 (ページマスクの実体) はページファイルにのみ存在するため、
+        # 作品一覧シーンのまま作成するとページ直下レイヤーのマスクが付かない。
+        result = bpy.ops.bname.open_page_file()
         assert "FINISHED" in result, result
 
         from bname_dev_layer_mask.operators import effect_line_op, raster_layer_op, text_op
