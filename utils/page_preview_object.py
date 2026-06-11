@@ -18,10 +18,15 @@ PREVIEW_MESH_PREFIX = "page_preview_mesh_"
 PREVIEW_OBJECT_PREFIX = "page_preview_"
 PREVIEW_MATERIAL_PREFIX = "BName_PagePreview_"
 PREVIEW_PAGE_ID_PROP = "bname_page_preview_page_id"
-PREVIEW_BASE_MAX_PX = 1536
+# プレビュー画像 (長辺) の上限。GPU メモリ保護のための安全弁。
+PREVIEW_MAX_LONG_PX = 1536
+# 用紙 DPI が取れない場合のフォールバック解像度基準。
+PREVIEW_FALLBACK_LONG_PX = 1536
 DEFAULT_PREVIEW_PAGE_RADIUS = 3
 DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
 PREVIEW_RENDER_SUPERSAMPLE = 2
+# 目標サイズがこれ以上なら、スーパーサンプリング無しで直接描画する。
+PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.25
 PREVIEW_FILENAME = "page_preview.png"
 
@@ -165,10 +170,18 @@ def _image_size(work, scene=None, page=None) -> tuple[int, int]:
     if page is not None and bool(getattr(page, "spread", False)):
         # 見開きは 2 ページ分の横長タイルとして描く
         cw *= 2.0
-    max_px = max(
-        64,
-        int(round(PREVIEW_BASE_MAX_PX * preview_resolution_percentage(scene) / 100.0)),
-    )
+    # 「画像解像度%」はページ実解像度 (用紙サイズ × DPI) に対する割合。
+    # 長辺は PREVIEW_MAX_LONG_PX を上限にしてメモリを保護する。
+    try:
+        dpi = float(getattr(work.paper, "dpi", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        dpi = 0.0
+    if dpi > 0.0:
+        full_long_px = max(cw, ch) / 25.4 * dpi
+    else:
+        full_long_px = float(PREVIEW_FALLBACK_LONG_PX)
+    max_px = int(round(full_long_px * preview_resolution_percentage(scene) / 100.0))
+    max_px = max(64, min(PREVIEW_MAX_LONG_PX, max_px))
     if cw >= ch:
         width = max_px
         height = max(1, int(round(max_px * ch / cw)))
@@ -292,7 +305,10 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     spread = bool(getattr(page, "spread", False))
     content_width_mm = cw * (2.0 if spread else 1.0)
+    # 大きい目標サイズではスーパーサンプリング不要 (生成時間とメモリの節約)
     scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
+    if max(target_width, target_height) >= PREVIEW_SUPERSAMPLE_MAX_TARGET_PX:
+        scale = 1
     width = max(1, target_width * scale)
     height = max(1, target_height * scale)
     exported = _render_preview_image_from_export(work, page, width, height)

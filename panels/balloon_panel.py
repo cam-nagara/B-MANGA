@@ -76,6 +76,13 @@ class BNAME_PT_balloons(Panel):
         col = row.column(align=True)
         col.operator("bname.balloon_add", text="", icon="ADD")
         col.operator("bname.balloon_remove", text="", icon="REMOVE")
+        # 自分で描いたパス (B-Name 管理外カーブ) を選択した状態で押すと
+        # 自由形状フキダシとして取り込める (右クリックメニューにも同項目あり)
+        layout.operator(
+            "bname.balloon_register_selected_curve",
+            text="選択カーブをフキダシに登録",
+            icon="MOD_CURVE",
+        )
         if sum(1 for balloon in page.balloons if getattr(balloon, "selected", False)) >= 2:
             layout.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
 

@@ -672,6 +672,10 @@ class BNAME_OT_object_tool(Operator):
                 return {"RUNNING_MODAL"}
         if event.value == "PRESS" and not bool(getattr(event, "ctrl", False)):
             object_tool_balloon_tail.clear_pending(self)
+            # 選択中フキダシの既存しっぽポイントは Ctrl 無しでもつかめる
+            if mode == "single" and object_tool_balloon_tail.handle_plain_press(self, context, event):
+                self._clear_click_state()
+                return {"RUNNING_MODAL"}
         hit = self._hit_object(context, event)
         if event.value == "PRESS" and mode == "single":
             # Blender の DOUBLE_CLICK はモーダル実行中に届かないため、

@@ -197,6 +197,39 @@ def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
     return balloon_tail_geom.polygon_for_tail(rect, tail)
 
 
+def _merged_outline_with_tails(
+    outline: Sequence[tuple[float, float]],
+    tail_outlines: Sequence[Sequence[tuple[float, float]]],
+) -> list[tuple[float, float]] | None:
+    """本体としっぽの輪郭を、ビューポート描画と同じ結合方式で 1 つにする.
+
+    外へ伸びるしっぽは本体へ結合し、内側へえぐるしっぽは本体から
+    差し引く。結合できない場合は None を返し、呼び出し側は従来の
+    個別描画へフォールバックする。
+    """
+    tails = [list(pts) for pts in tail_outlines if len(pts) >= 3]
+    if len(outline) < 3 or not tails:
+        return None
+    try:
+        from ..utils import balloon_tail_boolean
+    except Exception:  # noqa: BLE001
+        return None
+    # 結合判定のしきい値が m 基準のため mm -> m へ揃える
+    scale = 0.001
+    body_m = [(x * scale, y * scale) for x, y in outline]
+    tails_m = [[(x * scale, y * scale) for x, y in pts] for pts in tails]
+    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_m, tails_m)
+    if merged is None or not changed:
+        return None
+    try:
+        coords = list(merged.exterior.coords)
+    except Exception:  # noqa: BLE001
+        return None
+    if len(coords) < 4:
+        return None
+    return [(float(x) / scale, float(y) / scale) for x, y in coords[:-1]]
+
+
 def _entry_opacity(entry) -> float:
     return percentage.percent_to_factor(getattr(entry, "opacity", 100.0), 100.0)
 
@@ -476,6 +509,12 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     for tail in entry.tails:
         tail_outline = _apply_entry_free_transform(entry, _balloon_tail_polygon(rect, tail), rect)
         tail_outlines.append(_apply_balloon_transforms(tail_outline, rect, flip_h, flip_v, rotation_deg))
+    # ビューポートと同じ結合 (外しっぽは結合 / 内しっぽはえぐり) を出力側にも適用
+    merged_outline = _merged_outline_with_tails(outline, tail_outlines)
+    if merged_outline is not None:
+        outline = merged_outline
+        fill_outline = list(merged_outline)
+        tail_outlines = []
     all_pts = list(outline)
     all_pts.extend(fill_outline)
     for tail_outline in tail_outlines:

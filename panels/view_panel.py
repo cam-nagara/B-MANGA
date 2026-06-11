@@ -167,7 +167,7 @@ def register() -> None:
     )
     bpy.types.Scene.bname_page_preview_resolution_percentage = bpy.props.FloatProperty(
         name="画像解像度%",
-        description="ページプレビュー画像の細かさを指定します",
+        description="ページプレビュー画像の細かさ。ページ実解像度 (用紙サイズ×DPI) に対する割合で指定します (長辺1536pxが上限)",
         default=25.0,
         min=5.0,
         soft_max=100.0,

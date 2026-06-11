@@ -165,7 +165,7 @@ class BNamePreferences(bpy.types.AddonPreferences):
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="ページプレビュー画像解像度%",
-        description="ページ一覧プレビュー画像の細かさを指定します",
+        description="ページ一覧プレビュー画像の細かさ。ページ実解像度 (用紙サイズ×DPI) に対する割合で指定します (長辺1536pxが上限)",
         default=25.0,
         min=5.0,
         soft_max=100.0,

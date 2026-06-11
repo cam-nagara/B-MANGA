@@ -5,7 +5,13 @@ from __future__ import annotations
 import bpy
 
 from ..core.work import get_work
-from ..utils import balloon_curve_object, balloon_merge_object, balloon_tail_geom, layer_stack as layer_stack_utils
+from ..utils import (
+    balloon_curve_object,
+    balloon_merge_object,
+    balloon_tail_geom,
+    layer_stack as layer_stack_utils,
+    object_selection,
+)
 from . import balloon_op, balloon_tail_op
 
 
@@ -36,6 +42,30 @@ def handle_ctrl_press(tool, context, event) -> bool:
             start_point_drag(tool, page, entry, int(tail_index), int(point_index), float(lx), float(ly))
             return True
     return append_pending_click(tool, context, page, float(lx), float(ly))
+
+
+def handle_plain_press(tool, context, event) -> bool:
+    """Ctrl無しの通常クリックで、既存しっぽポイントのドラッグを開始する.
+
+    ポイントのハンドルは選択中のフキダシにだけ表示されるため、
+    つかめる対象も選択中 (またはアクティブ) のフキダシに限定する。
+    新規しっぽの作成は従来どおり Ctrl+ドラッグだけで行う。
+    """
+    work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
+    if work is None or page is None or lx is None or ly is None:
+        return False
+    hit_index, entry, part = balloon_op._hit_balloon_entry(page, lx, ly)
+    if entry is None or hit_index < 0 or not str(part).startswith("tail_point:"):
+        return False
+    key = object_selection.balloon_key(page, entry)
+    if not object_selection.is_selected(context, key):
+        from . import object_tool_selection
+
+        if key != object_tool_selection.active_selection_key(context):
+            return False
+    _prefix, tail_index, point_index = str(part).split(":")
+    start_point_drag(tool, page, entry, int(tail_index), int(point_index), float(lx), float(ly))
+    return True
 
 
 def open_point_menu(context, event) -> bool:
