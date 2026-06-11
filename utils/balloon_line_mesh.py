@@ -57,6 +57,11 @@ _ALL_KINDS = {
     _KIND_MULTI_LINE,
     _KIND_FLASH_WHITE_LINE,
     _KIND_TAIL_MAIN_LINE,
+    # 連続楕円しっぽ (balloon_tail_ellipse_mesh) / 線種図形・画像 (balloon_line_decor_mesh)
+    "balloon_tail_ellipse_fill_mesh",
+    "balloon_tail_ellipse_line_mesh",
+    "balloon_line_shape_mesh",
+    "balloon_line_image_mesh",
 }
 
 SAMPLES_PER_SEGMENT = 24
@@ -222,6 +227,53 @@ def _sample_body_bezier(spline, samples_per_segment: int) -> list[tuple[float, f
             radius = r0 * (1.0 - t) + r1 * t
             samples.append((pos[0], pos[1], radius))
     return samples
+
+
+def _sample_body_nurbs(spline, samples_per_segment: int) -> list[tuple[float, float, float]]:
+    """NURBS 閉スプラインをサンプリングして、(x, y, per_point_radius) のタプル列を返す.
+
+    閉じた一様 3 次 B-spline として評価する (重みは等しい前提)。
+    """
+    samples: list[tuple[float, float, float]] = []
+    if str(getattr(spline, "type", "") or "") != "NURBS":
+        return samples
+    if not bool(getattr(spline, "use_cyclic_u", False)):
+        return samples
+    points = list(getattr(spline, "points", []) or [])
+    n = len(points)
+    if n < 3:
+        return samples
+    coords = [(float(p.co.x), float(p.co.y)) for p in points]
+    radii = [max(0.0, float(getattr(p, "radius", 1.0) or 0.0)) for p in points]
+    steps = max(4, int(samples_per_segment))
+    for i in range(n):
+        p0 = coords[(i - 1) % n]
+        p1 = coords[i]
+        p2 = coords[(i + 1) % n]
+        p3 = coords[(i + 2) % n]
+        r1 = radii[i]
+        r2 = radii[(i + 1) % n]
+        for step in range(steps):
+            t = step / steps
+            t2 = t * t
+            t3 = t2 * t
+            # 一様 3 次 B-spline 基底
+            b0 = (1.0 - 3.0 * t + 3.0 * t2 - t3) / 6.0
+            b1 = (4.0 - 6.0 * t2 + 3.0 * t3) / 6.0
+            b2 = (1.0 + 3.0 * t + 3.0 * t2 - 3.0 * t3) / 6.0
+            b3 = t3 / 6.0
+            x = b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0]
+            y = b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1]
+            samples.append((x, y, r1 * (1.0 - t) + r2 * t))
+    return samples
+
+
+def sample_body_spline(spline, samples_per_segment: int) -> list[tuple[float, float, float]]:
+    """本体スプライン (BEZIER / NURBS) をサンプリングする."""
+    spline_type = str(getattr(spline, "type", "") or "")
+    if spline_type == "NURBS":
+        return _sample_body_nurbs(spline, samples_per_segment)
+    return _sample_body_bezier(spline, samples_per_segment)
 
 
 def _smooth_sharp_corners(
@@ -2713,23 +2765,29 @@ def _attach_band_mesh_object(
 
 
 def _resolve_body_spline(body_object: bpy.types.Object | None):
-    """フキダシ本体カーブの閉じた Bezier spline を返す。無ければ None。"""
+    """フキダシ本体カーブの閉じた spline (Bezier または NURBS) を返す。無ければ None。"""
     if body_object is None or getattr(body_object, "type", "") != "CURVE":
         return None
     body_curve = getattr(body_object, "data", None)
     if body_curve is None:
         return None
+    nurbs_fallback = None
     for spline in list(getattr(body_curve, "splines", []) or []):
-        if str(getattr(spline, "type", "") or "") == "BEZIER" and bool(getattr(spline, "use_cyclic_u", False)):
+        if not bool(getattr(spline, "use_cyclic_u", False)):
+            continue
+        spline_type = str(getattr(spline, "type", "") or "")
+        if spline_type == "BEZIER":
             return spline
-    return None
+        if spline_type == "NURBS" and nurbs_fallback is None:
+            nurbs_fallback = spline
+    return nurbs_fallback
 
 
 def _body_samples_for_line_mesh(entry, body_object: bpy.types.Object) -> list[tuple[float, float, float]]:
     body_spline = _resolve_body_spline(body_object)
     if body_spline is None:
         return []
-    return _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+    return sample_body_spline(body_spline, SAMPLES_PER_SEGMENT)
 
 
 def ensure_balloon_line_mesh(
@@ -3464,7 +3522,7 @@ def ensure_balloon_tail_main_line_mesh(
 
     body_spline = _resolve_body_spline(body_object)
     if body_spline is not None:
-        body_samples = _sample_body_bezier(body_spline, SAMPLES_PER_SEGMENT)
+        body_samples = sample_body_spline(body_spline, SAMPLES_PER_SEGMENT)
         if len(body_samples) >= 3:
             _samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
             if tails_merged:

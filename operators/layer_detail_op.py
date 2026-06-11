@@ -180,38 +180,13 @@ def _draw_raster_detail(layout, entry) -> None:
 
 
 def _draw_balloon_tails(layout, entry, page) -> None:
+    """しっぽの設定は独立したダイアログへ分離した。ここでは入口だけ置く."""
     box = layout.box()
     row = box.row(align=True)
     row.label(text=f"しっぽ ({len(entry.tails)})")
-    add_op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
-    add_op.page_id = str(getattr(page, "id", "") or "")
-    add_op.balloon_id = str(getattr(entry, "id", "") or "")
-    for i, tail in enumerate(entry.tails):
-        sub = box.box()
-        header = sub.row(align=True)
-        header.label(text=f"しっぽ {i + 1}")
-        remove_op = header.operator("bname.balloon_tail_remove", text="", icon="X")
-        remove_op.page_id = str(getattr(page, "id", "") or "")
-        remove_op.balloon_id = str(getattr(entry, "id", "") or "")
-        remove_op.tail_index = i
-        sub.prop(tail, "type", text="種類")
-        sub.prop(tail, "direction_deg", text="方向")
-        sub.prop(tail, "length_mm", text="長さ (mm)")
-        row = sub.row(align=True)
-        row.prop(tail, "root_width_mm", text="根元幅 (mm)")
-        row.prop(tail, "tip_width_mm", text="先端幅 (mm)")
-        bend = sub.row()
-        bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
-        bend.prop(tail, "curve_bend", text="曲げ")
-        sub.prop(tail, "custom_points_enabled")
-        point_box = sub.column(align=True)
-        point_box.enabled = bool(getattr(tail, "custom_points_enabled", False))
-        row = point_box.row(align=True)
-        row.prop(tail, "start_x_mm")
-        row.prop(tail, "start_y_mm")
-        row = point_box.row(align=True)
-        row.prop(tail, "end_x_mm")
-        row.prop(tail, "end_y_mm")
+    open_op = row.operator("bname.balloon_tail_detail_open", text="しっぽの詳細設定", icon="PREFERENCES")
+    open_op.page_id = str(getattr(page, "id", "") or "")
+    open_op.balloon_id = str(getattr(entry, "id", "") or "")
 
 
 def _draw_corner_radius(layout, owner, *, prefix: str = "rounded_corner", text: str = "角半径") -> None:
@@ -300,6 +275,23 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     elif line_style == "dotted":
         row = box.row(align=True)
         row.prop(entry, "dotted_gap_mm", text="間隔")
+    elif line_style == "shape":
+        row = box.row(align=True)
+        row.prop(entry, "line_shape_kind", text="")
+        row.prop(entry, "line_shape_spacing_mm", text="間隔")
+        row = box.row(align=True)
+        row.prop(entry, "line_shape_angle_deg", text="角度")
+        row = box.row(align=True)
+        row.prop(entry, "line_shape_jitter", text="乱れ", slider=True)
+        row.prop(entry, "line_shape_seed", text="シード")
+        box.label(text="図形の大きさは「線幅」で決まります", icon="INFO")
+    elif line_style == "image":
+        box.prop(entry, "line_image_path", text="画像")
+        row = box.row(align=True)
+        row.prop(entry, "line_image_interval_mm", text="間隔")
+        row.prop(entry, "line_image_angle_deg", text="角度")
+        box.prop(entry, "line_image_jitter", text="乱れ", slider=True)
+        box.label(text="画像は線に沿って引き延ばされます (幅=線幅)", icon="INFO")
     # 主線の谷/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
     _shape_norm_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
     if line_style == "uni_flash":

@@ -1080,6 +1080,8 @@ class BNAME_OT_balloon_tool(Operator):
         coma_modal_state.finish_active("layer_move", context, keep_selection=True)
         coma_modal_state.finish_active("text_tool", context, keep_selection=True)
         coma_modal_state.finish_active("effect_line_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         self._clear_drag_state()
@@ -1678,10 +1680,14 @@ class BNAME_OT_balloon_tool(Operator):
             if page is not None and _creation_violates_layer_scope(context, page, x, y, w, h):
                 self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
             else:
+                # ツールのプリセット選択 (基本形状 / カスタム形状) を新規作成へ反映
+                from . import preset_op
+
+                preset_shape, preset_custom = preset_op.selected_balloon_tool_shape(context)
                 entry = _create_balloon_entry(
                     context,
                     page,
-                    shape=_BALLOON_DEFAULT_SHAPE,
+                    shape=preset_shape or _BALLOON_DEFAULT_SHAPE,
                     x=x,
                     y=y,
                     w=w,
@@ -1690,6 +1696,8 @@ class BNAME_OT_balloon_tool(Operator):
                     parent_key=str(getattr(self, "_drag_parent_key", "") or ""),
                 )
                 if entry is not None:
+                    if preset_custom and hasattr(entry, "custom_preset_name"):
+                        entry.custom_preset_name = preset_custom
                     _attach_texts_enclosed_by_balloon(context, page, entry)
                     self._push_undo_step("B-Name: フキダシ作成")
         else:

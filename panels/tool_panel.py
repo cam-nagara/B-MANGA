@@ -17,6 +17,8 @@ _MODAL_TOOL_NAMES = (
     "edge_move",
     "layer_move",
     "balloon_tool",
+    "balloon_tail_tool",
+    "balloon_nurbs_tool",
     "text_tool",
     "effect_line_tool",
     "coma_vertex_edit",
@@ -84,7 +86,7 @@ class BNAME_PT_tools(Panel):
         op = row.operator(
             "bname.raster_layer_mode_set" if raster_layer_active else "bname.gpencil_master_mode_set",
             text="",
-            icon="OBJECT_DATAMODE",
+            icon="RESTRICT_SELECT_OFF",
             depress=(
                 coma_modal_state.is_active("object_tool")
                 or (not modal_tool_active and active_mode == "OBJECT")
@@ -120,20 +122,32 @@ class BNAME_PT_tools(Panel):
         row.operator(
             "bname.coma_knife_cut",
             text="",
-            icon="SCULPTMODE_HLT",
+            icon="MESH_GRID",
             depress=coma_modal_state.is_active("knife_cut"),
         )
         row.operator(
             "bname.layer_move_tool",
             text="",
-            icon="DRIVER_TRANSFORM",
+            icon="EMPTY_ARROWS",
             depress=coma_modal_state.is_active("layer_move"),
         )
         row.operator(
             "bname.balloon_tool",
             text="",
-            icon="MOD_FLUID",
+            icon="MESH_CIRCLE",
             depress=coma_modal_state.is_active("balloon_tool"),
+        )
+        row.operator(
+            "bname.balloon_nurbs_tool",
+            text="",
+            icon="CURVE_NCIRCLE",
+            depress=coma_modal_state.is_active("balloon_nurbs_tool"),
+        )
+        row.operator(
+            "bname.balloon_tail_tool",
+            text="",
+            icon="SHARPCURVE",
+            depress=coma_modal_state.is_active("balloon_tail_tool"),
         )
         row.operator(
             "bname.text_tool",
@@ -144,15 +158,33 @@ class BNAME_PT_tools(Panel):
         row.operator(
             "bname.effect_line_tool",
             text="",
-            icon="STROKE",
+            icon="FORCE_FORCE",
             depress=coma_modal_state.is_active("effect_line_tool"),
         )
 
-        wm = getattr(context, "window_manager", None)
-        if wm is not None and hasattr(wm, "bname_border_preset_selector"):
-            prow = layout.row(align=True)
-            prow.label(text="コマ作成の枠線", icon="MESH_PLANE")
-            prow.prop(wm, "bname_border_preset_selector", text="")
+        _draw_active_tool_preset_row(layout, context)
+
+
+def _draw_active_tool_preset_row(layout, context) -> None:
+    """選択中ツールに対応するプリセット選択を、ボタン群の下に表示する."""
+    wm = getattr(context, "window_manager", None)
+    if wm is None:
+        return
+    if coma_modal_state.is_active("coma_create") and hasattr(wm, "bname_border_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="コマ作成の枠線", icon="MESH_PLANE")
+        prow.prop(wm, "bname_border_preset_selector", text="")
+        return
+    if coma_modal_state.is_active("balloon_tool") and hasattr(wm, "bname_balloon_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="フキダシ形状", icon="MESH_CIRCLE")
+        prow.prop(wm, "bname_balloon_tool_preset_selector", text="")
+        return
+    if coma_modal_state.is_active("balloon_tail_tool") and hasattr(wm, "bname_tail_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="しっぽプリセット", icon="SHARPCURVE")
+        prow.prop(wm, "bname_tail_preset_selector", text="")
+        return
 
 
 _CLASSES = (BNAME_PT_tools,)

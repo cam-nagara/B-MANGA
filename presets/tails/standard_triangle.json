@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "presetType": "balloon_tail",
+  "presetName": "標準 (三角)",
+  "description": "根元から先端へ細くなる三角のしっぽ",
+  "tail": {
+    "type": "straight",
+    "curveMode": "polyline",
+    "lineType": "wedge",
+    "ellipseGapMm": 1.5,
+    "directionDeg": 270.0,
+    "lengthMm": 6.0,
+    "rootWidthMm": 3.0,
+    "tipWidthMm": 0.0,
+    "curveBend": 0.0
+  }
+}

@@ -48,6 +48,16 @@ _TAIL_POINT_CORNER_ITEMS = (
     ("curve", "曲線", "角を曲線でつなぐ"),
 )
 
+_TAIL_CURVE_MODE_ITEMS = (
+    ("polyline", "折れ線", "ポイントを直線でつなぐ"),
+    ("curve", "曲線", "ポイントをなめらかな曲線でつなぐ"),
+)
+
+_TAIL_LINE_TYPE_ITEMS = (
+    ("wedge", "三角", "根元から先端へ細くなる従来のしっぽ"),
+    ("ellipse_chain", "楕円", "心の声のように、先端へ向かって小さくなる楕円を連ねる"),
+)
+
 _LINE_STYLE_ITEMS = (
     ("none", "線なし", ""),
     ("solid", "実線", ""),
@@ -56,6 +66,16 @@ _LINE_STYLE_ITEMS = (
     ("double", "多重線", ""),
     ("uni_flash", "ウニフラ", "フキダシの形状に沿って放射状の線を並べる"),
     ("white_outline", "白抜き線", "フキダシの形状に沿って白抜き線を放射状に並べる"),
+    ("shape", "図形", "●や★などの図形を線に沿って連続配置する"),
+    ("image", "画像", "画像を線に沿って引き延ばして描く"),
+)
+
+_LINE_SHAPE_KIND_ITEMS = (
+    ("circle", "● 丸", ""),
+    ("star", "★ 星", ""),
+    ("triangle", "▲ 三角", ""),
+    ("diamond", "◆ ひし形", ""),
+    ("heart", "♥ ハート", ""),
 )
 
 _CORNER_TYPE_ITEMS = (
@@ -466,6 +486,28 @@ class BNameBalloonTailPoint(bpy.types.PropertyGroup):
 
 class BNameBalloonTail(bpy.types.PropertyGroup):
     type: EnumProperty(items=_TAIL_TYPE_ITEMS, default="straight", update=_on_balloon_tail_changed)  # type: ignore[valid-type]
+    curve_mode: EnumProperty(  # type: ignore[valid-type]
+        name="線のつなぎ",
+        description="ポイントを折れ線でつなぐか、なめらかな曲線でつなぐか",
+        items=_TAIL_CURVE_MODE_ITEMS,
+        default="polyline",
+        update=_on_balloon_tail_changed,
+    )
+    line_type: EnumProperty(  # type: ignore[valid-type]
+        name="線種",
+        description="しっぽの描き方 (三角のくさび / 連続する楕円)",
+        items=_TAIL_LINE_TYPE_ITEMS,
+        default="wedge",
+        update=_on_balloon_tail_changed,
+    )
+    ellipse_gap_mm: FloatProperty(  # type: ignore[valid-type]
+        name="楕円の間隔 (mm)",
+        description="線種が楕円のとき、楕円どうしの間隔",
+        default=1.5,
+        min=0.0,
+        soft_max=20.0,
+        update=_on_balloon_tail_changed,
+    )
     direction_deg: FloatProperty(name="方向 (度)", default=270.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     length_mm: FloatProperty(name="長さ (mm)", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     root_width_mm: FloatProperty(name="根元幅 (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
@@ -578,6 +620,20 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     dashed_segment_length_mm: FloatProperty(name="破線 線分 (mm)", default=3.6, min=0.05, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     dashed_gap_mm: FloatProperty(name="破線 間隔 (mm)", default=2.4, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     dotted_gap_mm: FloatProperty(name="点線 間隔 (mm)", default=0.45, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 線種「図形」: 図形を線に沿って連続配置
+    line_shape_kind: EnumProperty(name="図形", items=_LINE_SHAPE_KIND_ITEMS, default="circle", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_shape_spacing_mm: FloatProperty(name="図形の間隔 (mm)", default=1.5, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_shape_angle_deg: FloatProperty(name="図形の角度 (度)", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_shape_jitter: FloatProperty(name="図形の乱れ", description="位置・角度・大きさのばらつき", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_shape_seed: IntProperty(name="乱れシード", default=0, min=0, soft_max=9999, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 線種「画像」: 画像を線に沿って引き延ばして描く
+    line_image_path: StringProperty(name="画像", description="線に沿って引き延ばす画像ファイル", default="", subtype="FILE_PATH", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_interval_mm: FloatProperty(name="画像の間隔 (mm)", description="画像 1 枚分を線に沿って繰り返す長さ", default=20.0, min=0.5, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_angle_deg: FloatProperty(name="画像の角度 (度)", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_image_jitter: FloatProperty(name="画像の乱れ", description="線に対する画像の揺らぎ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 自由形状 (登録カーブ / 手編集) の輪郭キャッシュ。出力・プレビューが
+    # カーブ実体の無いファイルでも実形状を描けるよう JSON で保持する。
+    custom_outline_json: StringProperty(name="自由形状輪郭", default="", options={"HIDDEN"})  # type: ignore[valid-type]
     multi_line_count: IntProperty(name="線の本数", default=3, min=1, max=12, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_width_mm: FloatProperty(name="多重線幅 (mm)", default=0.3, min=0.0, soft_max=10.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_spacing_mm: FloatProperty(name="多重線間隔 (mm)", default=0.4, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

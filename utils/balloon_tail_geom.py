@@ -160,6 +160,137 @@ def set_point(tail: Any, index: int, point_xy: tuple[float, float]) -> bool:
     return True
 
 
+def is_ellipse_chain(tail: Any) -> bool:
+    """しっぽの線種が「楕円」(連続楕円) かを返す."""
+    return str(getattr(tail, "line_type", "wedge") or "wedge") == "ellipse_chain"
+
+
+def is_curve_mode(tail: Any) -> bool:
+    """しっぽのポイント列を曲線でつなぐ設定かを返す."""
+    return str(getattr(tail, "curve_mode", "polyline") or "polyline") == "curve"
+
+
+def _catmull_rom_centerline(
+    points: list[tuple[float, float]],
+    samples_per_segment: int = 6,
+) -> list[tuple[float, float]]:
+    """ポイント列を通るなめらかな曲線 (Catmull-Rom 補間) でサンプリングする."""
+    n = len(points)
+    if n < 3:
+        return list(points)
+    out: list[tuple[float, float]] = [points[0]]
+    for i in range(n - 1):
+        p0 = points[max(0, i - 1)]
+        p1 = points[i]
+        p2 = points[i + 1]
+        p3 = points[min(n - 1, i + 2)]
+        for step in range(1, samples_per_segment + 1):
+            t = step / samples_per_segment
+            t2 = t * t
+            t3 = t2 * t
+            out.append((
+                0.5 * ((2.0 * p1[0]) + (-p0[0] + p2[0]) * t
+                       + (2.0 * p0[0] - 5.0 * p1[0] + 4.0 * p2[0] - p3[0]) * t2
+                       + (-p0[0] + 3.0 * p1[0] - 3.0 * p2[0] + p3[0]) * t3),
+                0.5 * ((2.0 * p1[1]) + (-p0[1] + p2[1]) * t
+                       + (2.0 * p0[1] - 5.0 * p1[1] + 4.0 * p2[1] - p3[1]) * t2
+                       + (-p0[1] + 3.0 * p1[1] - 3.0 * p2[1] + p3[1]) * t3),
+            ))
+    return out
+
+
+def centerline_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
+    """しっぽの中心線 (くさび・楕円チェーン共通) を返す."""
+    tail_type = str(getattr(tail, "type", "straight") or "straight")
+    centerline = tail_world_points(rect, tail)
+    if tail_type == "curve" and not uses_custom_points(tail) and len(centerline) == 2:
+        root, tip = centerline
+        vx = tip[0] - root[0]
+        vy = tip[1] - root[1]
+        length = math.hypot(vx, vy)
+        if length > 0.0:
+            nx = -vy / length
+            ny = vx / length
+            bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
+            centerline = [root, ((root[0] + tip[0]) * 0.5 + nx * bend, (root[1] + tip[1]) * 0.5 + ny * bend), tip]
+    if is_curve_mode(tail) and len(centerline) >= 3:
+        return _catmull_rom_centerline(centerline)
+    return _smoothed_centerline(centerline, tail)
+
+
+def ellipse_chain_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float, float, float, float]]:
+    """連続楕円しっぽの楕円列 [(cx, cy, rx, ry, angle_rad), ...] を返す.
+
+    - 各楕円の大きさはしっぽの太さ (根元幅→先端幅の補間) に連動する。
+    - 楕円どうしの間隔は ellipse_gap_mm。
+    - 長軸は進行方向に対して垂直 (心の声らしい縦長の見た目)。
+    """
+    centerline = centerline_for_tail(rect, tail)
+    if len(centerline) < 2:
+        return []
+    distances, total = _polyline_lengths(centerline)
+    if total <= 1.0e-6:
+        return []
+    rw = max(0.1, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
+    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
+    gap = max(0.0, float(getattr(tail, "ellipse_gap_mm", 1.5) or 0.0))
+
+    def _point_at(dist: float) -> tuple[float, float, float]:
+        """中心線上の距離 dist の位置と接線角を返す."""
+        dist = max(0.0, min(total, dist))
+        for i in range(1, len(centerline)):
+            if distances[i] >= dist or i == len(centerline) - 1:
+                seg = distances[i] - distances[i - 1]
+                t = (dist - distances[i - 1]) / seg if seg > 1.0e-9 else 0.0
+                x0, y0 = centerline[i - 1]
+                x1, y1 = centerline[i]
+                return (
+                    x0 + (x1 - x0) * t,
+                    y0 + (y1 - y0) * t,
+                    math.atan2(y1 - y0, x1 - x0),
+                )
+        x0, y0 = centerline[-1]
+        return (x0, y0, 0.0)
+
+    ellipses: list[tuple[float, float, float, float, float]] = []
+    min_radius = 0.15
+    dist = 0.0
+    for _ in range(200):
+        t = dist / total
+        radius = rw + (tw - rw) * t
+        if radius < min_radius and ellipses:
+            break
+        radius = max(min_radius, radius)
+        # 進行方向に沿った半径は少し短く (縦長の楕円)
+        along = radius * 0.75
+        center_dist = dist + along
+        if center_dist + along > total + radius * 0.5:
+            break
+        cx, cy, angle = _point_at(center_dist)
+        ellipses.append((cx, cy, along, radius, angle))
+        dist = center_dist + along + gap
+        if dist >= total:
+            break
+    return ellipses
+
+
+def ellipse_polygon(
+    ellipse: tuple[float, float, float, float, float],
+    segments: int = 24,
+) -> list[tuple[float, float]]:
+    """楕円 (cx, cy, rx, ry, angle) を多角形の点列にする."""
+    cx, cy, rx, ry, angle = ellipse
+    cos_a = math.cos(angle)
+    sin_a = math.sin(angle)
+    pts: list[tuple[float, float]] = []
+    for i in range(max(8, int(segments))):
+        theta = (i / segments) * math.tau
+        x = math.cos(theta) * rx
+        y = math.sin(theta) * ry
+        pts.append((cx + x * cos_a - y * sin_a, cy + x * sin_a + y * cos_a))
+    return pts
+
+
 def _smoothed_centerline(points: list[tuple[float, float]], tail: Any) -> list[tuple[float, float]]:
     if len(points) < 3 or not hasattr(tail, "points"):
         return points
@@ -205,19 +336,12 @@ def _root_join_overlap_mm(tail: Any) -> float:
 
 
 def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> list[tuple[float, float]]:
+    # 連続楕円しっぽは「くさび多角形」を持たない (ellipse_chain_for_tail で描く)。
+    # 空を返すことで、本体との結合・くさび描画の全経路から自然に外れる。
+    if is_ellipse_chain(tail):
+        return []
     tail_type = str(getattr(tail, "type", "straight") or "straight")
-    centerline = tail_world_points(rect, tail)
-    if tail_type == "curve" and not uses_custom_points(tail) and len(centerline) == 2:
-        root, tip = centerline
-        vx = tip[0] - root[0]
-        vy = tip[1] - root[1]
-        length = math.hypot(vx, vy)
-        if length > 0.0:
-            nx = -vy / length
-            ny = vx / length
-            bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
-            centerline = [root, ((root[0] + tip[0]) * 0.5 + nx * bend, (root[1] + tip[1]) * 0.5 + ny * bend), tip]
-    centerline = _smoothed_centerline(centerline, tail)
+    centerline = centerline_for_tail(rect, tail)
     if len(centerline) < 2:
         return []
     distances, total_length = _polyline_lengths(centerline)

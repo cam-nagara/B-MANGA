@@ -220,6 +220,45 @@ def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
         _SUPPRESS_BORDER_SELECTOR_UPDATE = False
 
 
+_BALLOON_TOOL_ENUM_CACHE: dict[str, list] = {}
+
+
+def _balloon_tool_preset_enum_items(_self, context):
+    """フキダシツール用: 基本形状 + カスタム形状プリセットの選択肢."""
+    items = [("DEFAULT", "標準", "既定の形状で作成する")]
+    try:
+        from ..core.balloon import _SHAPE_ITEMS
+
+        for shape_id, label, desc in _SHAPE_ITEMS:
+            if shape_id in {"custom", "none"}:
+                continue
+            items.append((f"shape:{shape_id}", label, desc or f"{label}で作成する"))
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon tool shape items build failed")
+    try:
+        from ..io import balloon_presets
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+        for preset in balloon_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None):
+            items.append((f"custom:{preset.name}", f"{preset.name} (カスタム)", preset.description or ""))
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon tool custom preset items build failed")
+    _BALLOON_TOOL_ENUM_CACHE["items"] = items
+    return items
+
+
+def selected_balloon_tool_shape(context) -> tuple[str, str]:
+    """フキダシツールのプリセット選択を (shape, custom_preset_name) で返す."""
+    wm = getattr(context, "window_manager", None)
+    value = str(getattr(wm, "bname_balloon_tool_preset_selector", "") or "") if wm is not None else ""
+    if value.startswith("shape:"):
+        return value.split(":", 1)[1], ""
+    if value.startswith("custom:"):
+        return "custom", value.split(":", 1)[1]
+    return "", ""
+
+
 def sync_border_preset_selector(context) -> None:
     """アクティブコマの ``border.preset_name`` に枠線セレクタを合わせる.
 
@@ -704,6 +743,11 @@ def register() -> None:
         items=_border_preset_enum_items,
         update=_on_border_preset_selector_change,
     )
+    bpy.types.WindowManager.bname_balloon_tool_preset_selector = EnumProperty(
+        name="フキダシ形状",
+        description="フキダシツールで新しく作るフキダシの形状プリセット",
+        items=_balloon_tool_preset_enum_items,
+    )
 
 
 def unregister() -> None:
@@ -713,6 +757,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.WindowManager.bname_border_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bname_balloon_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

@@ -189,6 +189,30 @@ class BNAME_OT_balloon_tail_point_toggle_corner(Operator):
         return {"FINISHED"}
 
 
+class BNAME_OT_balloon_tail_set_curve_mode(Operator):
+    bl_idname = "bname.balloon_tail_set_curve_mode"
+    bl_label = "しっぽの線のつなぎを変更"
+    bl_options = {"REGISTER", "UNDO"}
+
+    page_id: StringProperty(name="ページID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    balloon_id: StringProperty(name="フキダシID", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    tail_index: IntProperty(name="しっぽ番号", default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
+    mode: StringProperty(name="つなぎ", default="curve", options={"HIDDEN"})  # type: ignore[valid-type]
+
+    def execute(self, context):
+        page_id, balloon_id, tail_index, _point_index = _context_values(self)
+        page, entry = _find_balloon(context, page_id, balloon_id)
+        if entry is None or not (0 <= tail_index < len(entry.tails)):
+            self.report({"WARNING"}, "しっぽが見つかりません")
+            return {"CANCELLED"}
+        tail = entry.tails[tail_index]
+        mode = "curve" if str(self.mode or "") == "curve" else "polyline"
+        tail.curve_mode = mode
+        _sync_after_tail_change(context, page, entry)
+        self.report({"INFO"}, "しっぽを曲線にしました" if mode == "curve" else "しっぽを折れ線に戻しました")
+        return {"FINISHED"}
+
+
 class BNAME_MT_balloon_tail_point_context(Menu):
     bl_idname = "BNAME_MT_balloon_tail_point_context"
     bl_label = "しっぽ制御点"
@@ -218,6 +242,24 @@ class BNAME_MT_balloon_tail_point_context(Menu):
         op.balloon_id = balloon_id
         op.tail_index = tail_index
         op.point_index = point_index
+        # 折れ線 ⇔ 曲線 の相互変換
+        try:
+            _page, entry = _find_balloon(context, page_id, balloon_id)
+            tail = entry.tails[tail_index] if entry is not None and 0 <= tail_index < len(entry.tails) else None
+        except Exception:  # noqa: BLE001
+            tail = None
+        if tail is not None:
+            is_curve = str(getattr(tail, "curve_mode", "polyline") or "polyline") == "curve"
+            layout.separator()
+            op = layout.operator(
+                BNAME_OT_balloon_tail_set_curve_mode.bl_idname,
+                text="折れ線に戻す" if is_curve else "曲線 (なめらか) に変更",
+                icon="IPO_LINEAR" if is_curve else "IPO_BEZIER",
+            )
+            op.page_id = page_id
+            op.balloon_id = balloon_id
+            op.tail_index = tail_index
+            op.mode = "polyline" if is_curve else "curve"
 
 
 _CLASSES = (
@@ -225,6 +267,7 @@ _CLASSES = (
     BNAME_OT_balloon_tail_remove,
     BNAME_OT_balloon_tail_point_delete,
     BNAME_OT_balloon_tail_point_toggle_corner,
+    BNAME_OT_balloon_tail_set_curve_mode,
     BNAME_MT_balloon_tail_point_context,
 )
 

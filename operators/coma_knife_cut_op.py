@@ -582,6 +582,8 @@ class BNAME_OT_coma_knife_cut(Operator):
         coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
         coma_modal_state.finish_active("text_tool", context, keep_selection=True)
         coma_modal_state.finish_active("effect_line_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
         self._area, self._region, self._rv3d = target
         self._work = get_work(context)
         if self._work is None or not self._work.loaded:

@@ -1099,6 +1099,15 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "dashedSegmentLengthMm": round(float(getattr(entry, "dashed_segment_length_mm", 3.6)), 3),
         "dashedGapMm": round(float(getattr(entry, "dashed_gap_mm", 2.4)), 3),
         "dottedGapMm": round(float(getattr(entry, "dotted_gap_mm", 0.45)), 3),
+        "lineShapeKind": str(getattr(entry, "line_shape_kind", "circle") or "circle"),
+        "lineShapeSpacingMm": round(float(getattr(entry, "line_shape_spacing_mm", 1.5)), 3),
+        "lineShapeAngleDeg": round(float(getattr(entry, "line_shape_angle_deg", 0.0)), 3),
+        "lineShapeJitter": round(float(getattr(entry, "line_shape_jitter", 0.0)), 3),
+        "lineShapeSeed": int(getattr(entry, "line_shape_seed", 0) or 0),
+        "lineImagePath": str(getattr(entry, "line_image_path", "") or ""),
+        "lineImageIntervalMm": round(float(getattr(entry, "line_image_interval_mm", 20.0)), 3),
+        "lineImageAngleDeg": round(float(getattr(entry, "line_image_angle_deg", 0.0)), 3),
+        "lineImageJitter": round(float(getattr(entry, "line_image_jitter", 0.0)), 3),
         "multiLineCount": int(getattr(entry, "multi_line_count", 3) or 3),
         "multiLineWidthMm": round(float(getattr(entry, "multi_line_width_mm", 0.3)), 3),
         "multiLineSpacingMm": round(float(getattr(entry, "multi_line_spacing_mm", 0.4)), 3),
@@ -1160,9 +1169,13 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "parentKind": getattr(entry, "parent_kind", "page"),
         "parentKey": getattr(entry, "parent_key", ""),
         "folderKey": getattr(entry, "folder_key", ""),
+        "customOutlineJson": str(getattr(entry, "custom_outline_json", "") or ""),
         "tails": [
             {
                 "type": t.type,
+                "curveMode": str(getattr(t, "curve_mode", "polyline") or "polyline"),
+                "lineType": str(getattr(t, "line_type", "wedge") or "wedge"),
+                "ellipseGapMm": round(float(getattr(t, "ellipse_gap_mm", 1.5)), 3),
                 "directionDeg": round(t.direction_deg, 3),
                 "lengthMm": round(t.length_mm, 3),
                 "rootWidthMm": round(t.root_width_mm, 3),
@@ -1250,6 +1263,18 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.dashed_segment_length_mm = float(data.get("dashedSegmentLengthMm", 3.6))
     entry.dashed_gap_mm = float(data.get("dashedGapMm", 2.4))
     entry.dotted_gap_mm = float(data.get("dottedGapMm", 0.45))
+    if hasattr(entry, "line_shape_kind"):
+        kind = str(data.get("lineShapeKind", "circle") or "circle")
+        entry.line_shape_kind = kind if kind in {"circle", "star", "triangle", "diamond", "heart"} else "circle"
+        entry.line_shape_spacing_mm = float(data.get("lineShapeSpacingMm", 1.5))
+        entry.line_shape_angle_deg = float(data.get("lineShapeAngleDeg", 0.0))
+        entry.line_shape_jitter = float(data.get("lineShapeJitter", 0.0))
+        entry.line_shape_seed = int(data.get("lineShapeSeed", 0))
+    if hasattr(entry, "line_image_path"):
+        entry.line_image_path = str(data.get("lineImagePath", "") or "")
+        entry.line_image_interval_mm = float(data.get("lineImageIntervalMm", 20.0))
+        entry.line_image_angle_deg = float(data.get("lineImageAngleDeg", 0.0))
+        entry.line_image_jitter = float(data.get("lineImageJitter", 0.0))
     entry.multi_line_count = int(data.get("multiLineCount", 3))
     entry.multi_line_width_mm = float(data.get("multiLineWidthMm", 0.3))
     entry.multi_line_spacing_mm = float(data.get("multiLineSpacingMm", 0.4))
@@ -1335,10 +1360,18 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
     if hasattr(entry, "folder_key"):
         entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
+    if hasattr(entry, "custom_outline_json"):
+        entry.custom_outline_json = str(data.get("customOutlineJson", "") or "")
     entry.tails.clear()
     for td in data.get("tails", []):
         tail = entry.tails.add()
         tail.type = td.get("type", "straight")
+        if hasattr(tail, "curve_mode"):
+            tail.curve_mode = str(td.get("curveMode", "polyline") or "polyline")
+        if hasattr(tail, "line_type"):
+            tail.line_type = str(td.get("lineType", "wedge") or "wedge")
+        if hasattr(tail, "ellipse_gap_mm"):
+            tail.ellipse_gap_mm = float(td.get("ellipseGapMm", 1.5))
         tail.direction_deg = float(td.get("directionDeg", 270.0))
         tail.length_mm = float(td.get("lengthMm", 6.0))
         tail.root_width_mm = float(td.get("rootWidthMm", 3.0))

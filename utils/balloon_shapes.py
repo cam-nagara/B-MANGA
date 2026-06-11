@@ -58,7 +58,7 @@ _LEGACY_FLASH_SHAPE_LINE_STYLES = {
     "white_outline": "white_outline",
 }
 
-_VALID_LINE_STYLES = {"none", "solid", "dashed", "dotted", "double"} | FLASH_LINE_STYLES
+_VALID_LINE_STYLES = {"none", "solid", "dashed", "dotted", "double", "shape", "image"} | FLASH_LINE_STYLES
 
 
 @dataclass(frozen=True)
@@ -247,12 +247,24 @@ def bezier_line_loops_for_entry(
 
 def _custom_outline_for_entry(entry, rect: Rect) -> list[tuple[float, float]] | None:
     preset_name = str(getattr(entry, "custom_preset_name", "") or "").strip()
-    if not preset_name:
+    vertices: list = []
+    if preset_name:
+        preset = _find_custom_preset(preset_name)
+        if preset is not None:
+            vertices = preset.data.get("vertices", [])
+    if not vertices:
+        # プリセット名が無い自由形状 (登録カーブ・手編集) は、実カーブから
+        # 保存した輪郭キャッシュを使う (カーブ実体の無いファイルでの描画用)。
+        cached = str(getattr(entry, "custom_outline_json", "") or "")
+        if cached:
+            try:
+                import json as _json
+
+                vertices = _json.loads(cached)
+            except Exception:  # noqa: BLE001
+                vertices = []
+    if not vertices:
         return None
-    preset = _find_custom_preset(preset_name)
-    if preset is None:
-        return None
-    vertices = preset.data.get("vertices", [])
     pts: list[tuple[float, float]] = []
     for item in vertices:
         try:

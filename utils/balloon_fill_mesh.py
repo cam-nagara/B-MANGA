@@ -111,24 +111,13 @@ def cleanup_orphan_fill_meshes(valid_balloon_ids: set[str]) -> int:
 
 
 def _resolve_body_spline(body_object: bpy.types.Object | None):
-    """フキダシ本体カーブの中で、最初の閉じた Bezier spline (= 本体) を返す."""
-    if body_object is None or getattr(body_object, "type", "") != "CURVE":
-        return None
-    curve = getattr(body_object, "data", None)
-    if curve is None:
-        return None
-    for spline in list(getattr(curve, "splines", []) or []):
-        if str(getattr(spline, "type", "") or "") != "BEZIER":
-            continue
-        if not bool(getattr(spline, "use_cyclic_u", False)):
-            continue
-        return spline
-    return None
+    """フキダシ本体カーブの中で、最初の閉じた spline (Bezier/NURBS) を返す."""
+    return balloon_line_mesh._resolve_body_spline(body_object)
 
 
 def _sample_body_polygon_local_m(body_spline) -> list[tuple[float, float]]:
-    """本体 bezier をサンプリングし、balloon-local (m) の輪郭点列を返す."""
-    raw = balloon_line_mesh._sample_body_bezier(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)
+    """本体 spline をサンプリングし、balloon-local (m) の輪郭点列を返す."""
+    raw = balloon_line_mesh.sample_body_spline(body_spline, balloon_line_mesh.SAMPLES_PER_SEGMENT)
     return [(float(x), float(y)) for (x, y, _r) in raw]
 
 

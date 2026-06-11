@@ -127,6 +127,8 @@ class BNAME_OT_coma_create_tool(Operator):
             "edge_move",
             "layer_move",
             "balloon_tool",
+            "balloon_tail_tool",
+            "balloon_nurbs_tool",
             "text_tool",
             "effect_line_tool",
         ):

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "presetType": "balloon_tail",
+  "presetName": "心の声 (楕円)",
+  "description": "先端へ向かって小さくなる楕円を連ねるしっぽ",
+  "tail": {
+    "type": "straight",
+    "curveMode": "polyline",
+    "lineType": "ellipse_chain",
+    "ellipseGapMm": 1.5,
+    "directionDeg": 270.0,
+    "lengthMm": 10.0,
+    "rootWidthMm": 4.0,
+    "tipWidthMm": 1.2,
+    "curveBend": 0.0
+  }
+}

@@ -1352,6 +1352,8 @@ class BNAME_OT_effect_line_tool(Operator):
         coma_modal_state.finish_active("layer_move", context, keep_selection=True)
         coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
         coma_modal_state.finish_active("text_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
+        coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         self._clear_drag_state()

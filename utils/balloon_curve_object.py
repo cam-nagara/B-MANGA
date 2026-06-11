@@ -12,6 +12,8 @@ import bpy
 from . import balloon_curve_render_nodes
 from . import balloon_curve_source_state
 from . import balloon_flash_effect_line_mesh
+from . import balloon_line_decor_mesh
+from . import balloon_tail_ellipse_mesh
 from . import balloon_fill_mesh
 from . import balloon_flash_white_line_mesh
 from . import balloon_line_mesh
@@ -522,6 +524,8 @@ def _remove_balloon_object(obj: bpy.types.Object) -> None:
         if balloon_id:
             balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
             balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
+            balloon_tail_ellipse_mesh.remove_balloon_tail_ellipse_meshes(balloon_id)
+            balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
     data = getattr(obj, "data", None)
     try:
         bpy.data.objects.remove(obj, do_unlink=True)
@@ -784,6 +788,17 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
+    # 連続楕円しっぽ (線種「楕円」) は本体と結合せず、独立した塗り+線メッシュで描く
+    balloon_tail_ellipse_mesh.ensure_balloon_tail_ellipse_meshes(
+        scene=scene,
+        work=work,
+        page=page,
+        entry=entry,
+        body_object=obj,
+        fill_material=fill_mat,
+        line_material=line_mat,
+        mask_info=mask_info,
+    )
     if is_flash_line_style:
         if line_mat is not None:
             white_mat = _ensure_color_material(
@@ -834,9 +849,40 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         balloon_line_mesh.remove_balloon_inner_edge_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+        balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
         return
     balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
-    if line_mat is not None:
+    if line_style == "shape" and line_mat is not None:
+        # 線種「図形」: 主線の帯の代わりに図形列メッシュを描く
+        balloon_line_decor_mesh.ensure_balloon_line_shape_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            line_material=line_mat,
+            mask_info=mask_info,
+        )
+        balloon_line_decor_mesh.remove_balloon_line_image_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+    elif line_style == "image":
+        # 線種「画像」: 主線の帯の代わりに画像を貼った帯メッシュを描く
+        balloon_line_decor_mesh.ensure_balloon_line_image_mesh(
+            scene=scene,
+            work=work,
+            page=page,
+            entry=entry,
+            body_object=obj,
+            mask_info=mask_info,
+        )
+        balloon_line_decor_mesh.remove_balloon_line_shape_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
+        balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
+    elif line_mat is not None:
+        balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
         flash_white_mat = _ensure_color_material(
             f"{BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX}{balloon_id}",
             (1.0, 1.0, 1.0, 1.0),
@@ -862,6 +908,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             mask_info=mask_info,
         )
     else:
+        balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_line_mesh(balloon_id)
     if outer_mat is not None:
@@ -900,7 +947,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
-    if line_mat is not None:
+    if line_mat is not None and line_style not in {"shape", "image"}:
         balloon_line_mesh.ensure_balloon_tail_main_line_mesh(
             scene=scene,
             work=work,
@@ -911,6 +958,8 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             mask_info=mask_info,
         )
     else:
+        # 線種「図形」「画像」では、本体と結合しないしっぽも図形/画像の輪郭に
+        # 含まれるため、くさび実線の帯は出さない
         balloon_line_mesh.remove_balloon_tail_main_line_mesh(balloon_id)
 
 
@@ -1023,6 +1072,7 @@ def _ensure_balloon_curve_object_impl(
         force_regenerate=force_regenerate,
         preserve_manual_delta=preserve_manual_delta,
     )
+    _update_custom_outline_cache(entry, obj)
     _apply_entry_transform(entry, obj)
     stamp_kind, stamp_key, stamp_folder = _stamp_values_for_entry(entry, page, folder_id)
 
@@ -1052,6 +1102,50 @@ def _ensure_balloon_curve_object_impl(
     return obj
 
 
+def _update_custom_outline_cache(entry, obj) -> None:
+    """手編集・自由形状カーブの輪郭を entry に保存する.
+
+    カーブ実体が存在しないファイル (ページ一覧プレビュー・ページ出力・PSD)
+    でも、登録カーブや手編集後の実形状で描けるようにするためのキャッシュ。
+    生成形状のままなら空にして、通常の形状計算へ任せる。
+    """
+    try:
+        state = balloon_curve_source_state.detect_state(obj)
+    except Exception:  # noqa: BLE001
+        state = ""
+    if state not in {balloon_curve_source_state.STATE_MANUAL, balloon_curve_source_state.STATE_FREEFORM}:
+        # 自由形状由来 (custom かつプリセット名なし) のフキダシは、実体が
+        # 作り直された直後に状態が「生成」へ戻ってもキャッシュを正本として
+        # 残す (消すと実形状が永久に失われるため)。
+        shape = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "rect") or "rect"))
+        preset_name = str(getattr(entry, "custom_preset_name", "") or "").strip()
+        if shape == "custom" and not preset_name:
+            return
+        try:
+            if str(getattr(entry, "custom_outline_json", "") or ""):
+                entry.custom_outline_json = ""
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        spline = balloon_line_mesh._resolve_body_spline(obj)
+        if spline is None:
+            return
+        samples = balloon_line_mesh.sample_body_spline(spline, 12)
+        if len(samples) < 3:
+            return
+        ox_mm, oy_mm = balloon_line_mesh._entry_local_offset_mm(entry)
+        pts = [
+            [round(float(x) * 1000.0 - ox_mm, 3), round(float(y) * 1000.0 - oy_mm, 3)]
+            for x, y, _r in samples
+        ]
+        payload = json.dumps(pts, separators=(",", ":"))
+        if payload != str(getattr(entry, "custom_outline_json", "") or ""):
+            entry.custom_outline_json = payload
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon: custom outline cache update failed")
+
+
 def _spline_role_radius(spline) -> float | None:
     if getattr(spline, "type", "") == "BEZIER":
         points = getattr(spline, "bezier_points", []) or []
@@ -1073,7 +1167,9 @@ def _remove_clipped_fill_splines(curve: bpy.types.Curve) -> bool:
     """
     changed = False
     for spline in reversed(list(getattr(curve, "splines", []) or [])):
-        if str(getattr(spline, "type", "") or "") == "BEZIER":
+        # NURBS は自由形状フキダシ (NURBSフキダシツール / 登録カーブ) の本体
+        # スプラインとして正当なので残す。レガシー帯スプラインは POLY のみ。
+        if str(getattr(spline, "type", "") or "") in {"BEZIER", "NURBS"}:
             continue
         # POLY (= legacy role 付き帯スプライン)
         try:
@@ -1290,6 +1386,9 @@ def _geometry_key_for_entry(entry) -> str:
         tails.append(
             {
                 "type": str(getattr(tail, "type", "straight") or "straight"),
+                "curve_mode": str(getattr(tail, "curve_mode", "polyline") or "polyline"),
+                "line_type": str(getattr(tail, "line_type", "wedge") or "wedge"),
+                "ellipse_gap": float(getattr(tail, "ellipse_gap_mm", 1.5) or 0.0),
                 "direction": float(getattr(tail, "direction_deg", 270.0) or 270.0),
                 "length": float(getattr(tail, "length_mm", 0.0) or 0.0),
                 "root_width": float(getattr(tail, "root_width_mm", 0.0) or 0.0),
@@ -1400,6 +1499,9 @@ def _sync_curve_geometry(obj: bpy.types.Object, entry) -> None:
             balloon_multiline_curve.append_edge_paths(curve, entry, body_points, offset=offset)
     for tail in getattr(entry, "tails", []) or []:
         tail_points = _tail_polygon_for_entry(entry, tail)
+        # 連続楕円しっぽ等、くさび多角形を持たないしっぽはカーブに足さない
+        if len(tail_points) < 3:
+            continue
         _add_bezier_loop(
             curve,
             tail_points,
@@ -1715,6 +1817,8 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
             removed = True
     balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
     balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
+    balloon_tail_ellipse_mesh.remove_balloon_tail_ellipse_meshes(balloon_id)
+    balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
     balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     return removed
 

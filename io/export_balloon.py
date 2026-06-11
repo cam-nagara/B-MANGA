@@ -459,12 +459,112 @@ def _draw_pattern_loop(draw, pts, entry, color, width_px: int, dpi: int, style: 
         start += period_px
 
 
+def _draw_shape_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
+    """線種「図形」: 図形を輪郭に沿って連続配置して描く."""
+    from ..utils import line_decor_geom
+
+    polygons = line_decor_geom.decorations_along_loop(
+        [(float(x), float(y)) for x, y in pts],
+        kind=str(getattr(entry, "line_shape_kind", "circle") or "circle"),
+        size=float(width_px),
+        spacing=mm_to_px(max(0.0, float(getattr(entry, "line_shape_spacing_mm", 1.5) or 0.0)), dpi),
+        angle_rad=math.radians(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0)),
+        jitter=float(getattr(entry, "line_shape_jitter", 0.0) or 0.0),
+        seed=int(getattr(entry, "line_shape_seed", 0) or 0),
+        flip_y=True,
+    )
+    for poly in polygons:
+        draw.polygon([(int(round(x)), int(round(y))) for x, y in poly], fill=color)
+
+
+def _wrapped_strip(src, u0: float, width_ratio: float):
+    """画像を横方向 u0..u0+width_ratio (画像幅 1.0 で折り返し) で切り出す."""
+    ep = _ep()
+    src_w, src_h = src.size
+    x0 = int(round((u0 % 1.0) * src_w))
+    take = max(1, int(round(width_ratio * src_w)))
+    strip = ep.Image.new("RGBA", (take, src_h), (0, 0, 0, 0))
+    copied = 0
+    while copied < take:
+        chunk = min(src_w - x0, take - copied)
+        strip.paste(src.crop((x0, 0, x0 + chunk, src_h)), (copied, 0))
+        copied += chunk
+        x0 = 0
+    return strip
+
+
+def _draw_image_line_loop(canvas, pts, entry, width_px: int, dpi: int) -> None:
+    """線種「画像」: 画像を輪郭に沿って引き延ばして描く (区間パッチ近似)."""
+    from pathlib import Path as _Path
+
+    from ..utils import line_decor_geom
+
+    ep = _ep()
+    raw = str(getattr(entry, "line_image_path", "") or "").strip()
+    if not raw or width_px <= 0 or len(pts) < 3:
+        return
+    try:
+        import bpy
+
+        path = bpy.path.abspath(raw)
+    except Exception:  # noqa: BLE001
+        path = raw
+    if not _Path(path).is_file():
+        return
+    try:
+        src = ep.Image.open(path).convert("RGBA")
+    except Exception:  # noqa: BLE001
+        return
+    angle_deg = float(getattr(entry, "line_image_angle_deg", 0.0) or 0.0)
+    if abs(angle_deg) > 1.0e-3:
+        src = src.rotate(-angle_deg, expand=True)
+    # フキダシの不透明度を画像線にも反映する
+    opacity = _entry_opacity(entry)
+    if opacity < 0.999:
+        alpha = src.getchannel("A").point(lambda v: int(v * opacity))
+        src.putalpha(alpha)
+    interval_px = max(2.0, mm_to_px(max(0.5, float(getattr(entry, "line_image_interval_mm", 20.0) or 20.0)), dpi))
+    jitter = max(0.0, min(1.0, float(getattr(entry, "line_image_jitter", 0.0) or 0.0)))
+    loop = line_decor_geom.resample_loop(
+        [(float(x), float(y)) for x, y in pts],
+        max(4.0, float(width_px) * 2.0),
+    )
+    if len(loop) < 3:
+        return
+    resampling = getattr(getattr(ep.Image, "Resampling", ep.Image), "BICUBIC", 3)
+    arc = 0.0
+    n = len(loop)
+    for i in range(n):
+        p0 = loop[i]
+        p1 = loop[(i + 1) % n]
+        seg_len = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+        if seg_len < 0.5:
+            continue
+        strip = _wrapped_strip(src, arc / interval_px, seg_len / interval_px)
+        patch = strip.resize((max(1, int(round(seg_len + 1))), max(1, int(round(width_px)))), resampling)
+        rotation = math.degrees(math.atan2(-(p1[1] - p0[1]), p1[0] - p0[0]))
+        patch = patch.rotate(rotation, expand=True, resample=resampling)
+        cx = (p0[0] + p1[0]) * 0.5
+        cy = (p0[1] + p1[1]) * 0.5
+        if jitter > 0.0:
+            wobble = math.sin(arc / interval_px * math.tau) * width_px * 0.5 * jitter
+            normal = math.atan2(p1[0] - p0[0], -(p1[1] - p0[1]))
+            cx += math.cos(normal) * wobble
+            cy += math.sin(normal) * wobble
+        pos = (int(round(cx - patch.width * 0.5)), int(round(cy - patch.height * 0.5)))
+        canvas.image.alpha_composite(patch, dest=pos)
+        arc += seg_len
+
+
 def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
     if width_px <= 0 or len(pts) < 2:
         return
     style = str(getattr(entry, "line_style", "solid") or "solid")
     if style in {"dashed", "dotted"}:
         _draw_pattern_loop(draw, pts, entry, color, width_px, dpi, style)
+        return
+    if style == "shape":
+        _draw_shape_line_loop(draw, pts, entry, color, width_px, dpi)
         return
     if style != "double":
         _ep()._draw_styled_loop(draw, pts, color, width_px, style)
@@ -509,6 +609,17 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     for tail in entry.tails:
         tail_outline = _apply_entry_free_transform(entry, _balloon_tail_polygon(rect, tail), rect)
         tail_outlines.append(_apply_balloon_transforms(tail_outline, rect, flip_h, flip_v, rotation_deg))
+    # 連続楕円しっぽ (線種「楕円」) は本体と結合せず、独立した楕円列として描く
+    ellipse_outlines: list[list[tuple[float, float]]] = []
+    for tail in entry.tails:
+        if not balloon_tail_geom.is_ellipse_chain(tail):
+            continue
+        for ellipse in balloon_tail_geom.ellipse_chain_for_tail(rect, tail):
+            pts = balloon_tail_geom.ellipse_polygon(ellipse)
+            pts = _apply_entry_free_transform(entry, pts, rect)
+            pts = _apply_balloon_transforms(pts, rect, flip_h, flip_v, rotation_deg)
+            if len(pts) >= 3:
+                ellipse_outlines.append(pts)
     # ビューポートと同じ結合 (外しっぽは結合 / 内しっぽはえぐり) を出力側にも適用
     merged_outline = _merged_outline_with_tails(outline, tail_outlines)
     if merged_outline is not None:
@@ -519,6 +630,8 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     all_pts.extend(fill_outline)
     for tail_outline in tail_outlines:
         all_pts.extend(tail_outline)
+    for ellipse_outline in ellipse_outlines:
+        all_pts.extend(ellipse_outline)
     bbox = ep._points_bbox(all_pts)
     if bbox is None:
         return None
@@ -556,7 +669,10 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
         _draw_inner_white_loop(canvas, line_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), "solid")
     if draw_line:
-        _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi)
+        if str(line_style or "") == "image":
+            _draw_image_line_loop(canvas, outline_px, entry, line_width_px, dpi)
+        else:
+            _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi)
     for tail_outline in tail_outlines:
         tail_px = canvas.points_px(tail_outline)
         if len(tail_px) >= 3:
@@ -567,7 +683,20 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
             if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
                 _draw_inner_white_loop(canvas, line_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), "solid")
             if draw_line:
-                _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi)
+                if str(line_style or "") == "image":
+                    _draw_image_line_loop(canvas, tail_px, entry, line_width_px, dpi)
+                else:
+                    _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi)
+    # 連続楕円しっぽ: 親フキダシの塗り色・線色・線幅で各楕円を描く
+    if ellipse_outlines:
+        ellipse_fill = _entry_fill_rgb255(entry)
+        for ellipse_outline in ellipse_outlines:
+            ellipse_px = canvas.points_px(ellipse_outline)
+            if len(ellipse_px) < 3:
+                continue
+            draw.polygon(ellipse_px, fill=ellipse_fill)
+            if draw_line:
+                ep._draw_styled_loop(draw, ellipse_px, line_color, line_width_px, "solid")
     return ep.ExportLayer(
         str(getattr(entry, "id", "") or "balloon"),
         canvas.image,
