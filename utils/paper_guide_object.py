@@ -941,9 +941,12 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
 
 
 def _active_view3d_region():
+    """最も大きい 3D ビューポートを基準にする (ページ一覧の小窓と併存するため)."""
     wm = getattr(bpy.context, "window_manager", None)
     if wm is None:
         return None
+    best = None
+    best_size = 0
     for win in wm.windows:
         scr = getattr(win, "screen", None)
         if scr is None:
@@ -957,8 +960,11 @@ def _active_view3d_region():
                 continue
             for region in area.regions:
                 if region.type == "WINDOW" and region.width > 0 and region.height > 0:
-                    return region, rv3d
-    return None
+                    size = int(region.width) * int(region.height)
+                    if size > best_size:
+                        best = (region, rv3d)
+                        best_size = size
+    return best
 
 
 def _meters_per_pixel(region, rv3d) -> Optional[float]:
@@ -1248,7 +1254,13 @@ def _thickness_timer():
 
 def register() -> None:
     if not bpy.app.timers.is_registered(_thickness_timer):
-        bpy.app.timers.register(_thickness_timer, first_interval=_GUIDE_THICKNESS_INTERVAL)
+        # persistent=True が無いと最初のファイル切替 (ページ一覧⇄ページ⇄コマ) で
+        # タイマーが消え、以後ズームしてもガイド線の太さが更新されなくなる。
+        bpy.app.timers.register(
+            _thickness_timer,
+            first_interval=_GUIDE_THICKNESS_INTERVAL,
+            persistent=True,
+        )
 
 
 def unregister() -> None:

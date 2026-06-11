@@ -102,20 +102,7 @@ class BNAME_PT_paper(Panel):
         box.label(text="色")
         box.prop(p, "paper_color", text="用紙色")
 
-        box = layout.box()
-        box.label(text="用紙要素の表示")
-        box.prop(p, "show_guides")
-        guide_box = box.column()
-        guide_box.enabled = bool(getattr(p, "show_guides", True))
-        row = guide_box.row(align=True)
-        row.prop(p, "show_canvas_frame")
-        row.prop(p, "show_bleed_frame")
-        row = guide_box.row(align=True)
-        row.prop(p, "show_finish_frame")
-        row.prop(p, "show_inner_frame")
-        row = guide_box.row(align=True)
-        row.prop(p, "show_safe_line")
-        row.prop(p, "show_trim_marks")
+        _draw_paper_visibility_section(layout, p)
 
         # 綴じ / 読む方向
         box = layout.box()
@@ -141,6 +128,49 @@ class BNAME_PT_paper(Panel):
         row.prop(g, "horizontal_mm")
 
 
+def _draw_paper_visibility_section(layout, paper) -> None:
+    box = layout.box()
+    box.label(text="用紙要素の表示")
+    box.prop(paper, "show_guides")
+    guide_box = box.column()
+    guide_box.enabled = bool(getattr(paper, "show_guides", True))
+    row = guide_box.row(align=True)
+    row.prop(paper, "show_canvas_frame")
+    row.prop(paper, "show_bleed_frame")
+    row = guide_box.row(align=True)
+    row.prop(paper, "show_finish_frame")
+    row.prop(paper, "show_inner_frame")
+    row = guide_box.row(align=True)
+    row.prop(paper, "show_safe_line")
+    row.prop(paper, "show_trim_marks")
+
+
+class BNAME_PT_page_paper_visibility(Panel):
+    """ページファイル上でも用紙要素の表示を切り替えられるようにする."""
+
+    bl_idname = "BNAME_PT_page_paper_visibility"
+    bl_label = "用紙要素の表示"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = B_NAME_CATEGORY
+    bl_order = 2
+
+    @classmethod
+    def poll(cls, context):
+        w = get_work(context)
+        return bool(
+            w
+            and w.loaded
+            and page_file_scene.is_page_edit_scene(context.scene)
+        )
+
+    def draw(self, context):
+        work = get_work(context)
+        if work is None:
+            return
+        _draw_paper_visibility_section(self.layout, work.paper)
+
+
 def _draw_display_item(layout, label: str, item) -> None:
     row = layout.row(align=True)
     row.prop(item, "enabled", text=label)
@@ -153,6 +183,7 @@ def _draw_display_item(layout, label: str, item) -> None:
 
 _CLASSES = (
     BNAME_PT_paper,
+    BNAME_PT_page_paper_visibility,
 )
 
 

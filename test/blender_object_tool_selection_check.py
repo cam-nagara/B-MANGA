@@ -204,6 +204,8 @@ def main() -> None:
         tool._start_point_for_hit = lambda _ctx, _event, _hit: (10.0, 10.0)
         tool._start_object_drag = lambda _ctx, _hit, _x, _y: None
         tool._try_enter_coma_from_hit = lambda _ctx, hit: opened_hits.append(hit) or True
+        # このケースはコマ連続クリックの検証なので、ページファイル判定は無効化する
+        tool._page_open_hit_from_event = lambda _ctx, _event: None
         try:
             event1 = SimpleNamespace(type="LEFTMOUSE", value="PRESS", mouse_x=120, mouse_y=130)
             event2 = SimpleNamespace(type="LEFTMOUSE", value="PRESS", mouse_x=123, mouse_y=132)

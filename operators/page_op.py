@@ -25,6 +25,55 @@ from ..utils import shortcut_visibility
 _logger = log.get_logger(__name__)
 _PAGE_PICK_LAYER_KINDS = {"text", "balloon", "effect", "image", "gp", "raster"}
 
+# ダブルクリックが DOUBLE_CLICK イベントとして届かない入力環境 (ペンタブレット等)
+# 向けの自前連続クリック判定。object_tool 側の判定と同じしきい値。
+_PAGE_OPEN_CLICK_INTERVAL_SEC = 0.4
+_PAGE_OPEN_CLICK_DISTANCE_PX = 8.0
+_page_open_click_state = {"time": 0.0, "x": -1.0e9, "y": -1.0e9, "key": ""}
+
+
+def _clear_page_open_click_state() -> None:
+    _page_open_click_state.update(time=0.0, x=-1.0e9, y=-1.0e9, key="")
+
+
+def _detect_page_open_double_click(context, event) -> int | None:
+    """連続クリックでページファイルを開くべきならその index を返す.
+
+    呼び出しごとにクリック位置を記憶し、同じページ上で時間・距離ともに
+    しきい値内の 2 回目のクリックが来たときだけ index を返す。
+    """
+    import time as _time
+
+    from . import mode_op
+
+    try:
+        page_index = mode_op.page_file_index_from_viewport_event(context, event)
+    except Exception:  # noqa: BLE001
+        page_index = None
+    if page_index is None:
+        _clear_page_open_click_state()
+        return None
+    key = f"page_file:{int(page_index)}"
+    now = _time.monotonic()
+    state = _page_open_click_state
+    dx = float(getattr(event, "mouse_x", 0.0)) - float(state["x"])
+    dy = float(getattr(event, "mouse_y", 0.0)) - float(state["y"])
+    is_double = (
+        key == state["key"]
+        and (now - float(state["time"])) <= _PAGE_OPEN_CLICK_INTERVAL_SEC
+        and (dx * dx + dy * dy) ** 0.5 <= _PAGE_OPEN_CLICK_DISTANCE_PX
+    )
+    if is_double:
+        _clear_page_open_click_state()
+        return int(page_index)
+    state.update(
+        time=now,
+        x=float(getattr(event, "mouse_x", 0.0)),
+        y=float(getattr(event, "mouse_y", 0.0)),
+        key=key,
+    )
+    return None
+
 
 def _require_loaded(op: Operator, work) -> bool:
     if work is None or not work.loaded or not work.work_dir:
@@ -566,6 +615,16 @@ class BNAME_OT_page_pick_viewport(Operator):
         work = get_work(context)
         if work is None or not work.loaded:
             return {"PASS_THROUGH"}
+        if multi_mode == "single":
+            # ペンタブレット等では DOUBLE_CLICK イベントが発生せず PRESS が
+            # 2回届くため、ここで自前判定してページファイルを開く。
+            from . import mode_op
+
+            open_index = _detect_page_open_double_click(context, event)
+            if open_index is not None and mode_op.schedule_open_page_file(open_index):
+                return {"FINISHED"}
+        else:
+            _clear_page_open_click_state()
         is_browser = page_browser.is_page_browser_area(context)
         previous_overview = bool(getattr(context.scene, "bname_overview_mode", False))
         try:

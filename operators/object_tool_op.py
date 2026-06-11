@@ -674,12 +674,20 @@ class BNAME_OT_object_tool(Operator):
             object_tool_balloon_tail.clear_pending(self)
         hit = self._hit_object(context, event)
         if event.value == "PRESS" and mode == "single":
-            coma_hit = self._coma_open_hit_from_hit(hit)
-            if self._is_manual_coma_double_click(event, coma_hit):
+            # Blender の DOUBLE_CLICK はモーダル実行中に届かないため、
+            # ページファイルを開く判定もコマと同じ自前連続クリック検出で行う。
+            # ページ一覧 (全ページ表示) ではページ判定をコマ判定より優先する。
+            open_hit = self._page_open_hit_from_event(context, event)
+            if open_hit is None:
+                open_hit = self._coma_open_hit_from_hit(hit)
+            if self._is_manual_coma_double_click(event, open_hit):
                 self._clear_click_state()
-                if self._try_enter_coma_from_hit(context, coma_hit):
+                if str(open_hit.get("kind", "") or "") == "page_file":
+                    if self._try_open_page_file_from_event(context, event):
+                        return {"FINISHED"}
+                elif self._try_enter_coma_from_hit(context, open_hit):
                     return {"FINISHED"}
-            self._remember_coma_click(event, coma_hit)
+            self._remember_coma_click(event, open_hit)
         if hit is None:
             if mode == "single":
                 move_hit = self._selected_move_hit_from_event(context, event)
@@ -750,6 +758,22 @@ class BNAME_OT_object_tool(Operator):
         self._last_click_time = 0.0
         self._last_click_xy = (-1.0e9, -1.0e9)
         self._last_click_key = ""
+
+    def _page_open_hit_from_event(self, context, event) -> dict | None:
+        """連続クリックで開くべきページファイルがあれば、その判定情報を返す."""
+        try:
+            from . import mode_op
+
+            page_index = mode_op.page_file_index_from_viewport_event(context, event)
+        except Exception:  # noqa: BLE001
+            return None
+        if page_index is None:
+            return None
+        return {
+            "kind": "page_file",
+            "page": int(page_index),
+            "key": f"page_file:{int(page_index)}",
+        }
 
     def _coma_open_hit_from_hit(self, hit: dict | None) -> dict | None:
         if hit is None or str(hit.get("kind", "") or "") not in {"coma", "coma_edge", "coma_vertex"}:
