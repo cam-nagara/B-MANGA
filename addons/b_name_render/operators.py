@@ -109,9 +109,26 @@ class BNAME_RENDER_OT_preset_add(Operator):
     bl_label = "プリセットを追加"
 
     preset_name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
+    category: StringProperty(name="カテゴリ", default="")  # type: ignore[valid-type]
 
     def invoke(self, context, _event):
+        # 表示中のカテゴリを既定にする。カテゴリで絞り込んだまま追加しても、
+        # 新しいプリセットがフィルタで見えなくなることを防ぐ。
+        state = core.get_state(context)
+        core.ensure_default_categories(state)
+        wm = getattr(context, "window_manager", None)
+        current = str(getattr(wm, "bname_render_preset_category", "") or "")
+        self.category = "" if current in ("", core._ALL_CATEGORY) else current
         return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "preset_name")
+        state = core.get_state(context)
+        if state is not None:
+            layout.prop_search(self, "category", state, "categories", text="カテゴリ")
+        else:
+            layout.prop(self, "category")
 
     def execute(self, context):
         state = core.get_state(context)
@@ -119,7 +136,36 @@ class BNAME_RENDER_OT_preset_add(Operator):
             return {"CANCELLED"}
         item = state.presets.add()
         item.name = self.preset_name.strip() or "新規プリセット"
+        item.category = self.category.strip()
         core.set_active_preset_index(context, len(state.presets) - 1)
+        return {"FINISHED"}
+
+
+class BNAME_RENDER_OT_preset_duplicate(Operator):
+    bl_idname = "bname_render.preset_duplicate"
+    bl_label = "プリセットを複製"
+    bl_description = "選択中のプリセットを、コマンドごと複製して直下に挿入する"
+
+    @classmethod
+    def poll(cls, context):
+        return core.active_preset(context) is not None
+
+    def execute(self, context):
+        state = core.get_state(context)
+        if state is None or not state.presets:
+            return {"CANCELLED"}
+        src_idx = max(0, min(core.get_active_preset_index(context), len(state.presets) - 1))
+        src = state.presets[src_idx]
+        new_preset = state.presets.add()
+        new_preset.name = f"{str(getattr(src, 'name', '') or 'プリセット')} のコピー"
+        new_preset.category = str(getattr(src, "category", "") or "")
+        for command in src.commands:
+            data = defaults_store._command_to_dict(command)
+            defaults_store._apply_dict(new_preset.commands.add(), data)
+        dst_idx = src_idx + 1
+        state.presets.move(len(state.presets) - 1, dst_idx)
+        core.set_active_preset_index(context, dst_idx)
+        self.report({"INFO"}, f"プリセットを複製: {state.presets[dst_idx].name}")
         return {"FINISHED"}
 
 
@@ -291,11 +337,26 @@ class BNAME_RENDER_OT_command_add(Operator):
     bl_idname = "bname_render.command_add"
     bl_label = "コマンドを追加"
 
-    command_type: EnumProperty(name="種類", items=core.COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
-    card_name: StringProperty(name="コマンド名", default="新規コマンド")  # type: ignore[valid-type]
+    # 旧形式 (EEVR_*) は自動分岐版で代替できるため、新規追加の候補から外す
+    command_type: EnumProperty(name="種類", items=core.ADD_COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
 
     def invoke(self, context, _event):
         return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, _context):
+        layout = self.layout
+        layout.prop(self, "command_type")
+        # 選んだ種類が何をするか、その場で読めるようにする
+        description = next(
+            (item[2] for item in core.ADD_COMMAND_TYPE_ITEMS if item[0] == self.command_type),
+            "",
+        )
+        if description:
+            box = layout.box()
+            col = box.column(align=True)
+            col.scale_y = 0.7
+            for i, line in enumerate(command_ui._wrap_text(f"{description}。", 28)):
+                col.label(text=line, icon="INFO" if i == 0 else "BLANK1")
 
     def execute(self, context):
         preset = core.active_preset(context)
@@ -307,7 +368,7 @@ class BNAME_RENDER_OT_command_add(Operator):
             preset.commands.move(len(preset.commands) - 1, idx)
             item = preset.commands[idx]
         item.command_type = self.command_type
-        item.name = self.card_name.strip() or self.command_type
+        item.name = command_ui.command_type_label(self.command_type)
         core.set_active_command_index(context, idx)
         return {"FINISHED"}
 
@@ -551,6 +612,7 @@ _CLASSES = (
     BNAME_RENDER_OT_set_reduction_scale,
     BNAME_RENDER_OT_load_builtin_presets,
     BNAME_RENDER_OT_preset_add,
+    BNAME_RENDER_OT_preset_duplicate,
     BNAME_RENDER_OT_preset_remove,
     BNAME_RENDER_OT_preset_move,
     BNAME_RENDER_OT_preset_settings,

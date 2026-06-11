@@ -106,6 +106,21 @@ class BNAME_RENDER_PT_main(Panel):
         draw_main_panel(self.layout, context)
 
 
+class BNAME_RENDER_PT_fisheye(Panel):
+    """魚眼・縮小などの出力環境設定。毎回は触らないため折りたたみにする."""
+
+    bl_idname = "BNAME_RENDER_PT_fisheye"
+    bl_label = "魚眼・縮小設定"
+    bl_parent_id = "BNAME_RENDER_PT_main"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "B-Name-Render"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        draw_fisheye_panel(self.layout, context)
+
+
 class BNAME_RENDER_PT_node(Panel):
     bl_idname = "BNAME_RENDER_PT_node"
     bl_label = "B-Name-Render"
@@ -115,6 +130,19 @@ class BNAME_RENDER_PT_node(Panel):
 
     def draw(self, context):
         draw_main_panel(self.layout, context)
+
+
+class BNAME_RENDER_PT_node_fisheye(Panel):
+    bl_idname = "BNAME_RENDER_PT_node_fisheye"
+    bl_label = "魚眼・縮小設定"
+    bl_parent_id = "BNAME_RENDER_PT_node"
+    bl_space_type = "NODE_EDITOR"
+    bl_region_type = "UI"
+    bl_category = "B-Name-Render"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        draw_fisheye_panel(self.layout, context)
 
 
 def draw_main_panel(layout, context) -> None:
@@ -131,7 +159,6 @@ def draw_main_panel(layout, context) -> None:
         layout.operator("bname_render.open_batch_app", text="連続実行アプリを開く…", icon="RENDER_ANIMATION")
         return
 
-    _draw_fisheye_box(layout, context, state)
     _draw_preset_list(layout, context, state)
 
     preset = core.active_preset(context)
@@ -140,19 +167,22 @@ def draw_main_panel(layout, context) -> None:
     _draw_command_list(layout, context, preset)
     _draw_active_command_detail(layout, preset, context)
     layout.separator()
-    layout.operator(
-        "bname_render.preset_run", text="プリセットを実行", icon="RENDER_STILL"
+    run_box = layout.box()
+    run_box.operator(
+        "bname_render.preset_run",
+        text=f"プリセットを実行 — {str(getattr(preset, 'name', '') or '')}",
+        icon="RENDER_STILL",
     )
+    run_box.prop(state, "sound_enabled", text="出力完了アラーム")
     layout.operator(
         "bname_render.open_batch_app", text="連続実行アプリを開く…", icon="RENDER_ANIMATION"
     )
 
 
-def _draw_fisheye_box(layout, context, state) -> None:
+def draw_fisheye_panel(layout, context) -> None:
     scene = context.scene
     settings = getattr(scene, "my_tool", None)
-    fish = layout.box()
-    fish.label(text="魚眼出力", icon="CAMERA_DATA")
+    fish = layout.column()
     fisheye_on = core.fisheye_enabled(scene)
     fish.prop(scene, "fisheye_layout_mode", text="魚眼モード")
     fov = fish.row(align=True)
@@ -177,17 +207,18 @@ def _draw_fisheye_box(layout, context, state) -> None:
     original_x, original_y = core.original_resolution(scene)
     if original_x > 0 and original_y > 0:
         fish.label(text=f"元解像度: {original_x} x {original_y}")
-    fish.prop(state, "sound_enabled", text="出力完了アラーム")
 
 
 def _draw_preset_list(layout, context, state) -> None:
     wm = context.window_manager
     box = layout.box()
-    box.label(text="プリセット", icon="PRESET")
-    cat = box.row(align=True)
+    head = box.row(align=True)
+    head.label(text="プリセット", icon="PRESET")
+    head.operator("bname_render.category_add", text="", icon="ADD")
+    head.operator("bname_render.category_remove", text="", icon="REMOVE")
+    # カテゴリタブ: 1 行に詰めると文字が潰れるため、折り返して全部読めるようにする
+    cat = box.grid_flow(row_major=True, columns=3, even_columns=True, align=True)
     cat.prop(wm, "bname_render_preset_category", expand=True)
-    cat.operator("bname_render.category_add", text="", icon="ADD")
-    cat.operator("bname_render.category_remove", text="", icon="REMOVE")
     row = box.row()
     row.template_list(
         "BNAME_RENDER_UL_presets",
@@ -196,10 +227,11 @@ def _draw_preset_list(layout, context, state) -> None:
         "presets",
         wm,
         "bname_render_active_preset_index",
-        rows=3,
+        rows=5,
     )
     tools_preset = row.column(align=True)
     tools_preset.operator("bname_render.preset_add", text="", icon="ADD")
+    tools_preset.operator("bname_render.preset_duplicate", text="", icon="DUPLICATE")
     tools_preset.operator("bname_render.preset_remove", text="", icon="REMOVE")
 
     move_preset = tools_preset.column(align=True)
@@ -218,7 +250,8 @@ def _draw_preset_list(layout, context, state) -> None:
 def _draw_command_list(layout, context, preset) -> None:
     wm = context.window_manager
     box = layout.box()
-    box.label(text="コマンドリスト", icon="SEQ_STRIP_DUPLICATE")
+    preset_name = str(getattr(preset, "name", "") or "")
+    box.label(text=f"コマンドリスト — {preset_name}", icon="SEQ_STRIP_DUPLICATE")
     row = box.row()
     row.template_list(
         "BNAME_RENDER_UL_commands",
@@ -270,7 +303,14 @@ def _draw_active_command_detail(layout, preset, context) -> None:
     command_ui.draw_command(box, command, context)
 
 
-_CLASSES = (BNAME_RENDER_UL_presets, BNAME_RENDER_UL_commands, BNAME_RENDER_PT_main, BNAME_RENDER_PT_node)
+_CLASSES = (
+    BNAME_RENDER_UL_presets,
+    BNAME_RENDER_UL_commands,
+    BNAME_RENDER_PT_main,
+    BNAME_RENDER_PT_fisheye,
+    BNAME_RENDER_PT_node,
+    BNAME_RENDER_PT_node_fisheye,
+)
 
 
 def register() -> None:

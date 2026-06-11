@@ -16,27 +16,33 @@ from bpy.props import (
 )
 
 COMMAND_TYPE_ITEMS = (
-    ("STATE_BEGIN", "出力状態を退避して初期化", ""),
-    ("STATE_END", "出力状態を復元", ""),
-    ("SET_VIEW_LAYER", "ビューレイヤー", ""),
-    ("SET_COLLECTION_EXCLUDE", "コレクション除外", ""),
-    ("SET_NODE_MUTE", "ノードミュート", ""),
-    ("SET_OUTPUT_GROUP", "ファイル出力切替", ""),
-    ("SET_AOV_INPUT", "AOV入力", ""),
-    ("SET_OUTPUT_NAME", "出力画像名", ""),
-    ("SET_OUTPUT_FOLDER", "出力フォルダ", ""),
-    ("RELOAD_IMAGES", "画像ノード再読み込み", ""),
-    ("RENDER", "レンダー", ""),
-    ("RENDER_LAYER", "レンダー：ワード検出", ""),
-    ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", ""),
-    ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", ""),
-    ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", ""),
-    ("EEVR_SETUP", "魚眼設定", ""),
-    ("EEVR_RENDER_IMAGE", "魚眼レンダー", ""),
-    ("EEVR_RENDER_FACES", "方向画像レンダー", ""),
-    ("EEVR_ASSEMBLE", "魚眼合成", ""),
-    ("OPERATOR", "Blenderオペレータ", ""),
-    ("RUN_PRESET", "プリセット実行", ""),
+    ("STATE_BEGIN", "出力状態を退避して初期化", "現在のレンダー・出力状態を退避し、プリセット用に初期化する (出力ブロックの開始)"),
+    ("STATE_END", "出力状態を復元", "退避した状態を元に戻す (出力ブロックの終了)"),
+    ("SET_VIEW_LAYER", "ビューレイヤー", "指定した名前のビューレイヤーを有効/無効にする"),
+    ("SET_COLLECTION_EXCLUDE", "コレクション除外", "ビューレイヤー内のコレクションを除外/表示する"),
+    ("SET_NODE_MUTE", "ノードミュート", "名前またはラベルが完全一致するノードをミュート/解除する"),
+    ("SET_OUTPUT_GROUP", "ファイル出力切替", "グループ内で検出ワードを含むファイル出力ノードをまとめて切り替える (部分一致)"),
+    ("SET_AOV_INPUT", "AOV入力", "グループの入力値を数値で設定する"),
+    ("SET_OUTPUT_NAME", "出力画像名", "出力する画像のファイル名を設定する"),
+    ("SET_OUTPUT_FOLDER", "出力フォルダ", "出力先フォルダを設定する"),
+    ("RELOAD_IMAGES", "画像ノード再読み込み", "すべての画像ノードを再読み込みする"),
+    ("RENDER", "レンダー", "現在の設定のままレンダーする"),
+    ("RENDER_LAYER", "レンダー：ワード検出", "検出ワードを含む出力ノードだけ有効化してレンダーする (部分一致)"),
+    ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", "魚眼モードONなら魚眼レンダー、OFFならワード検出レンダーに自動分岐する"),
+    ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", "魚眼モードONなら方向画像レンダー、OFFならワード検出レンダーに自動分岐する"),
+    ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", "魚眼モードONなら魚眼合成、OFFならワード検出レンダーに自動分岐する"),
+    ("EEVR_SETUP", "魚眼設定", "魚眼レンダーの準備をする (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_RENDER_IMAGE", "魚眼レンダー", "魚眼レンダーを実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_RENDER_FACES", "方向画像レンダー", "方向画像レンダーを実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_ASSEMBLE", "魚眼合成", "魚眼合成を実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("OPERATOR", "Blenderオペレータ", "任意のBlenderオペレーターを実行する"),
+    ("RUN_PRESET", "プリセット実行", "別のプリセットを丸ごと実行する (親プリセットの組み立てに使う)"),
+)
+
+# 「コマンドを追加」で選べる種類。旧形式 (EEVR_*) は自動分岐版で代替できる
+# ため新規追加からは隠す。既存プリセット内の旧形式は従来どおり動作・表示する。
+ADD_COMMAND_TYPE_ITEMS = tuple(
+    item for item in COMMAND_TYPE_ITEMS if not item[0].startswith("EEVR_")
 )
 
 ENGINE_ITEMS = (
