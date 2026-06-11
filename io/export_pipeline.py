@@ -215,6 +215,7 @@ def _resolve_page_offset_mm(work, page) -> tuple[float, float]:
         float(paper.canvas_height_mm),
         getattr(paper, "start_side", "right"),
         getattr(paper, "read_direction", "left"),
+        work=work,
     )
     add_x, add_y = page_manual_offset_mm(page)
     return ox + add_x, oy + add_y
@@ -230,6 +231,7 @@ def _is_left_half_page(work, page) -> bool:
         index,
         getattr(work.paper, "start_side", "right"),
         getattr(work.paper, "read_direction", "left"),
+        work=work,
     )
 
 

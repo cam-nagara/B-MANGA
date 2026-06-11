@@ -1195,7 +1195,7 @@ def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
     eps = 0.5  # mm 単位の許容誤差
     for i in range(len(work.pages)):
         ox_i, oy_i = _pg_offset(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         ox_i, oy_i = _with_page_manual_offset(work, i, ox_i, oy_i)
         if abs(ox_i - ox_mm) < eps and abs(oy_i - oy_mm) < eps:
@@ -1236,7 +1236,7 @@ def _page_overview_offset(
         )
     from ..utils.page_grid import page_grid_offset_mm as _pg_offset
 
-    ox, oy = _pg_offset(page_index, cols, gap, cw, ch, start_side, read_direction)
+    ox, oy = _pg_offset(page_index, cols, gap, cw, ch, start_side, read_direction, work=work)
     return _with_page_manual_offset(work, page_index, ox, oy)
 
 
@@ -1473,7 +1473,7 @@ def _draw_callback(phase: str = "post") -> None:
                     continue
                 if page_file_indices is not None and i != page_file_current_index:
                     continue
-                left_half = _is_left_half(i, start_side, read_direction)
+                left_half = _is_left_half(i, start_side, read_direction, work=work)
                 _draw_page_overlay(
                     context, work, paper, rects, page, mode,
                     ox_mm=ox, oy_mm=oy, draw_image_layers=False,
@@ -1518,7 +1518,7 @@ def _draw_callback(phase: str = "post") -> None:
                     continue
                 if page_file_indices is not None and i != page_file_current_index:
                     continue
-                left_half = _is_left_half(i, start_side, read_direction)
+                left_half = _is_left_half(i, start_side, read_direction, work=work)
                 _draw_page_overlay(
                     context, work, paper, rects, page, mode,
                     ox_mm=ox, oy_mm=oy, draw_image_layers=False,
@@ -1545,10 +1545,10 @@ def _draw_callback(phase: str = "post") -> None:
             # 単ページモードでも active page の内容は grid 位置にあるため、
             # overlay も同じ (ox, oy) で描画して内容と一致させる。
             ox, oy = _pg_offset(
-                max(0, idx), cols, gap, cw, ch, start_side, read_direction
+                max(0, idx), cols, gap, cw, ch, start_side, read_direction, work=work
             )
             ox, oy = _with_page_manual_offset(work, max(0, idx), ox, oy)
-            left_half = _is_left_half(max(0, idx), start_side, read_direction)
+            left_half = _is_left_half(max(0, idx), start_side, read_direction, work=work)
             _draw_page_overlay(
                 context, work, paper, rects, page, mode,
                 ox_mm=ox, oy_mm=oy, draw_image_layers=True,
@@ -1778,7 +1778,7 @@ def _draw_callback_pixel() -> None:
                 _translate_rect(rects.canvas, ox, oy), region, rv3d,
             ):
                 continue
-            left_half = _is_left_half(i, start_side, read_direction)
+            left_half = _is_left_half(i, start_side, read_direction, work=work)
             inner = bleed_rect(paper)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
             if (
@@ -1807,9 +1807,9 @@ def _draw_callback_pixel() -> None:
         start_side = getattr(paper, "start_side", "right")
         read_direction = getattr(paper, "read_direction", "left")
         idx = max(0, work.active_page_index) if len(work.pages) > 0 else 0
-        ox, oy = _pg_offset(idx, cols, gap, cw, ch, start_side, read_direction)
+        ox, oy = _pg_offset(idx, cols, gap, cw, ch, start_side, read_direction, work=work)
         ox, oy = _with_page_manual_offset(work, idx, ox, oy)
-        left_half = _is_left_half(idx, start_side, read_direction)
+        left_half = _is_left_half(idx, start_side, read_direction, work=work)
         inner = bleed_rect(paper)
         page = get_active_page(context)
         if page is not None and overlay_visibility.page_visible(page):

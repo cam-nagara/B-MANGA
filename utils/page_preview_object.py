@@ -159,9 +159,12 @@ def _rgba255(rgba, fallback=(255, 255, 255, 255)) -> tuple[int, int, int, int]:
         return fallback
 
 
-def _image_size(work, scene=None) -> tuple[int, int]:
+def _image_size(work, scene=None, page=None) -> tuple[int, int]:
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+    if page is not None and bool(getattr(page, "spread", False)):
+        # 見開きは 2 ページ分の横長タイルとして描く
+        cw *= 2.0
     max_px = max(
         64,
         int(round(PREVIEW_BASE_MAX_PX * preview_resolution_percentage(scene) / 100.0)),
@@ -189,8 +192,13 @@ def _preview_png_usable(
     expected_size: tuple[int, int],
     *,
     current: bool,
-    spread: bool = False,
 ) -> bool:
+    """既存プレビュー PNG を使い回せるか。
+
+    見開きの期待サイズは横長 (`_image_size` が page 対応) なので、
+    見開き化の途中で作られた単ページ縦横比の古いプレビューは
+    サイズ不一致で自動的に再生成へ回る。
+    """
     if not path.is_file():
         return False
     try:
@@ -201,13 +209,6 @@ def _preview_png_usable(
                 return False
             rgba = image.convert("RGBA")
             r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
-            if spread:
-                # 見開きはレターボックス (上端中央が透明) で保存される。
-                # 見開き化の途中で作られた単ページ縦横比の古いプレビューを
-                # 使い続けないよう、ここで弾いて再生成させる。
-                top = rgba.getpixel((rgba.width // 2, min(4, rgba.height - 1)))
-                if top[3] > 30:
-                    return False
     except Exception:  # noqa: BLE001
         return False
     if a < 200 or r > 120:
@@ -282,41 +283,21 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
         return
 
 
-def _letterbox_preview_image(image, target_width: int, target_height: int):
-    """見開きなどタイルと縦横比が違う画像を、つぶさず中央配置で収める."""
-    if tuple(image.size) == (int(target_width), int(target_height)):
-        return image
-    from PIL import Image
-
-    canvas = Image.new("RGBA", (int(target_width), int(target_height)), (0, 0, 0, 0))
-    canvas.paste(
-        image,
-        ((int(target_width) - image.width) // 2, (int(target_height) - image.height) // 2),
-    )
-    return canvas
-
-
 def _render_preview_image(work, page, page_index: int, *, current: bool, scene=None):
     from PIL import Image, ImageDraw
 
-    target_width, target_height = _image_size(work, scene)
+    # 見開きはタイル自体が 2 ページ分の横長 (_image_size が page 対応)
+    target_width, target_height = _image_size(work, scene, page)
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     spread = bool(getattr(page, "spread", False))
-    # 見開きは横幅 2 ページ分。タイル (単ページ縦横比) へつぶして縮めず、
-    # 正しい縦横比で描いてからタイル中央へレターボックス配置する。
     content_width_mm = cw * (2.0 if spread else 1.0)
-    content_tw = target_width
-    content_th = target_height
-    if spread:
-        content_th = max(1, int(round(target_width * ch / content_width_mm)))
     scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
-    width = max(1, content_tw * scale)
-    height = max(1, content_th * scale)
+    width = max(1, target_width * scale)
+    height = max(1, target_height * scale)
     exported = _render_preview_image_from_export(work, page, width, height)
     if exported is not None:
-        exported = _resize_preview_image(exported, content_tw, content_th)
-        exported = _letterbox_preview_image(exported, target_width, target_height)
+        exported = _resize_preview_image(exported, target_width, target_height)
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
         return exported
@@ -353,8 +334,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         closed = pts_px + [pts_px[0]]
         draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
-    img = _resize_preview_image(img, content_tw, content_th)
-    img = _letterbox_preview_image(img, target_width, target_height)
+    img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
     draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
@@ -404,13 +384,8 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         return None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        expected_size = _image_size(work, scene)
-        if not force and _preview_png_usable(
-            path,
-            expected_size,
-            current=current,
-            spread=bool(getattr(page, "spread", False)),
-        ):
+        expected_size = _image_size(work, scene, page)
+        if not force and _preview_png_usable(path, expected_size, current=current):
             return path
         image = _render_preview_image(work, page, page_index, current=current, scene=scene)
         if image is None:
@@ -463,20 +438,13 @@ def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy
     return img
 
 
-def _ensure_material(
-    page_id: str,
-    image: bpy.types.Image | None,
-    *,
-    alpha_blend: bool = False,
-) -> bpy.types.Material:
+def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.Material:
     mat = bpy.data.materials.get(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     if mat is None:
         mat = bpy.data.materials.new(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     mat.use_nodes = True
     try:
-        # 見開きプレビューのレターボックス余白 (透明) を黒で塗らないよう、
-        # 見開きだけアルファを尊重して合成する。単ページは従来どおり不透明。
-        mat.blend_method = "BLEND" if alpha_blend else "OPAQUE"
+        mat.blend_method = "OPAQUE"
         mat.show_transparent_back = False
     except Exception:  # noqa: BLE001
         pass
@@ -545,12 +513,13 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
         if not page_id or not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         x0 = ox + add_x
         y0 = oy + add_y
-        rects[page_id] = (i, x0, y0, x0 + cw, y0 + ch)
+        page_w = page_grid.page_content_width_mm(work, i, cw)
+        rects[page_id] = (i, x0, y0, x0 + page_w, y0 + ch)
     return rects
 
 
@@ -595,10 +564,10 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
 def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False) -> None:
     page_id = str(getattr(page, "id", "") or "")
     path = ensure_preview_png(work, page, page_index, current=current, scene=scene, force=force)
-    image = _load_image(path, _image_size(work, scene)) if path is not None else None
+    image = _load_image(path, _image_size(work, scene, page)) if path is not None else None
     _index, x0, y0, x1, y1 = rect
     mesh = _ensure_plane_mesh(page_id, x1 - x0, y1 - y0)
-    mat = _ensure_material(page_id, image, alpha_blend=bool(getattr(page, "spread", False)))
+    mat = _ensure_material(page_id, image)
     if not mesh.materials:
         mesh.materials.append(mat)
     elif mesh.materials[0] is not mat:

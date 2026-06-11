@@ -222,7 +222,7 @@ def _is_page_left_half(work, page_id: str) -> bool:
     paper = getattr(work, "paper", None)
     start_side = str(getattr(paper, "start_side", "right") or "right")
     read_direction = str(getattr(paper, "read_direction", "left") or "left")
-    return page_grid.is_left_half_page(page_index, start_side, read_direction)
+    return page_grid.is_left_half_page(page_index, start_side, read_direction, work=work)
 
 
 def _render_page_reference(work, page, out: Path, *, transparent_coma_id: str = "") -> bool:

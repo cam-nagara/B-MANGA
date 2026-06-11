@@ -693,7 +693,7 @@ def _page_z_levels(work, page_id: str) -> tuple[float, float, float]:
     return safe_z, guide_z, max_all
 
 
-def _is_left_page(paper, page_index: int) -> bool:
+def _is_left_page(paper, page_index: int, work=None) -> bool:
     try:
         from . import page_grid
 
@@ -701,6 +701,7 @@ def _is_left_page(paper, page_index: int) -> bool:
             page_index,
             getattr(paper, "start_side", "right"),
             getattr(paper, "read_direction", "left"),
+            work=work,
         )
     except Exception:  # noqa: BLE001
         return False
@@ -845,7 +846,7 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
         grid_page_index = page_grid.original_page_index(work, page_index)
     except Exception:  # noqa: BLE001
         grid_page_index = page_index
-    is_left = _is_left_page(paper, grid_page_index)
+    is_left = _is_left_page(paper, grid_page_index, work=work)
     rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left)
     page_coll = on.find_collection_by_bname_id(page_id, kind="page")
     if page_coll is None:
@@ -899,7 +900,7 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             grid_page_index = page_index
         rects = overlay_shared.compute_paper_rects(
             paper,
-            is_left_half=_is_left_page(paper, grid_page_index),
+            is_left_half=_is_left_page(paper, grid_page_index, work=work),
         )
         signature = _paper_guide_signature(work, grid_page_index, page, rects)
         line_obj = _line_guide_object(page_id)
@@ -1139,7 +1140,7 @@ def _line_guide_should_have_geometry(work, page) -> bool:
             break
     if page_index < 0:
         return False
-    rects = overlay_shared.compute_paper_rects(paper, is_left_half=_is_left_page(paper, page_index))
+    rects = overlay_shared.compute_paper_rects(paper, is_left_half=_is_left_page(paper, page_index, work=work))
     return _guide_sets_have_geometry(_paper_guide_geometry_sets(paper, rects))
 
 

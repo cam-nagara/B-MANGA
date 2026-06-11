@@ -166,7 +166,7 @@ def find_coma_at_world_mm(
         start_side = getattr(work.paper, "start_side", "right")
         read_direction = getattr(work.paper, "read_direction", "left")
         ox, oy = page_grid.page_grid_offset_mm(
-            idx, cols, gap, cw, ch, start_side, read_direction
+            idx, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         ox += add_x
@@ -184,7 +184,7 @@ def find_coma_at_world_mm(
         if not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         ox += add_x
@@ -192,7 +192,8 @@ def find_coma_at_world_mm(
         local_x = x_mm - ox
         local_y = y_mm - oy
         # キャンバス矩形の外は早期スキップ (パフォーマンス最適化)
-        if not (0.0 <= local_x <= cw and 0.0 <= local_y <= ch):
+        page_w = page_grid.page_content_width_mm(work, i, cw)
+        if not (0.0 <= local_x <= page_w and 0.0 <= local_y <= ch):
             continue
         hit = _hit_test_page(page, local_x, local_y)
         if hit is not None:
@@ -317,18 +318,18 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
         if not page_range.page_in_range(work.pages[idx]):
             return None
         ox, oy = page_grid.page_grid_offset_mm(
-            idx, cols, gap, cw, ch, start_side, read_direction
+            idx, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(work.pages[idx])
         ox += add_x
         oy += add_y
-        return idx if _hit_test_canvas(x_mm - ox, y_mm - oy, cw, ch) else None
+        return idx if _hit_test_canvas(x_mm - ox, y_mm - oy, page_grid.page_content_width_mm(work, idx, cw), ch) else None
 
     for i, _page in enumerate(work.pages):
         if not page_range.page_in_range(_page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(_page)
         ox += add_x
@@ -481,6 +482,7 @@ def _page_offset_for_area(context, work, area, page_index: int) -> tuple[float, 
         float(paper.canvas_height_mm),
         getattr(paper, "start_side", "right"),
         getattr(paper, "read_direction", "left"),
+        work=work,
     )
     add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_index])
     return ox + add_x, oy + add_y

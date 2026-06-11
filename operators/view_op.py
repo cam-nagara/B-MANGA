@@ -366,14 +366,14 @@ def _overview_layout_bbox(work) -> tuple[float, float, float, float] | None:
     max_y = None
     for i in range(n):
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(work.pages[i])
         ox += add_x
         oy += add_y
         x0 = ox
         y0 = oy
-        x1 = ox + cw
+        x1 = ox + page_grid.page_content_width_mm(work, i, cw)
         y1 = oy + ch
         min_x = x0 if min_x is None else min(min_x, x0)
         min_y = y0 if min_y is None else min(min_y, y0)

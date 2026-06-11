@@ -462,6 +462,7 @@ def page_offset_mm(work, scene, area, page_index: int) -> tuple[float, float]:
         float(paper.canvas_height_mm),
         start_side,
         read_direction,
+        work=work,
     )
     add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_index])
     return ox + add_x, oy + add_y

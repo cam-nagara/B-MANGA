@@ -213,9 +213,9 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row.prop(entry, "line_valley_width_pct", text="入り・抜き")
         row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
+            # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
             row = line_box.row(align=True)
             row.prop(entry, "flash_white_outline_count")
-            row.prop(entry, "flash_white_outline_width_mm")
             row = line_box.row(align=True)
             row.prop(entry, "flash_white_outline_white_line_count")
             row.prop(entry, "flash_white_outline_spacing_mm")
@@ -300,7 +300,9 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row = shape_box.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-        shape_box.prop(sp, "cloud_valley_sharp")
+        # 雲・もやもやでは効かない確定仕様のためトゲ系でだけ表示する
+        if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) in {"thorn", "thorn-curve"}:
+            shape_box.prop(sp, "cloud_valley_sharp")
 
     move_box = box.box()
     move_box.label(text="親子連動移動", icon="CON_TRACKTO")

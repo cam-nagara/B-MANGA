@@ -177,7 +177,7 @@ def _focus_view_to_page(context, work, page_index: int) -> None:
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     ox_mm, oy_mm = page_grid_offset_mm(
-        page_index, cols, gap, cw, ch, start_side, read_direction
+        page_index, cols, gap, cw, ch, start_side, read_direction, work=work
     )
     if 0 <= page_index < len(work.pages):
         add_x = float(getattr(work.pages[page_index], "offset_x_mm", 0.0))

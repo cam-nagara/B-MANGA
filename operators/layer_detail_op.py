@@ -280,8 +280,11 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row = col.row(align=True)
         row.prop(sp, "cloud_sub_height_ratio")
         row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-        # 「角を尖らせる」は形状パラメータの一番下に置く
-        shape_box.prop(sp, "cloud_valley_sharp")
+        # 「角を尖らせる」は形状パラメータの一番下に置く。
+        # 雲・もやもやの主線は常に尖る確定仕様で切替が効かないため、
+        # 効果のあるトゲ系の形状でだけ表示する。
+        if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) in {"thorn", "thorn-curve"}:
+            shape_box.prop(sp, "cloud_valley_sharp")
 
     box = layout.box()
     box.label(text="線・塗り")
@@ -317,9 +320,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row.prop(entry, "line_valley_width_pct", text="入り・抜き")
         row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
+            # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
             row = box.row(align=True)
             row.prop(entry, "flash_white_outline_count")
-            row.prop(entry, "flash_white_outline_width_mm")
             row = box.row(align=True)
             row.prop(entry, "flash_white_outline_white_line_count")
             row.prop(entry, "flash_white_outline_spacing_mm")

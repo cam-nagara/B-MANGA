@@ -160,9 +160,9 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "line_valley_width_pct", text="入り・抜き")
             row.prop(entry, "line_peak_width_pct", text="中間線幅")
             if line_style == "white_outline":
+                # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
                 row = box.row(align=True)
                 row.prop(entry, "flash_white_outline_count")
-                row.prop(entry, "flash_white_outline_width_mm")
                 row = box.row(align=True)
                 row.prop(entry, "flash_white_outline_white_line_count")
                 row.prop(entry, "flash_white_outline_spacing_mm")
@@ -247,8 +247,10 @@ class BNAME_PT_balloons(Panel):
             row = box.row(align=True)
             row.prop(sp, "cloud_sub_height_ratio")
             row.prop(sp, "cloud_sub_height_jitter", text="乱れ")
-            # 「角を尖らせる」は形状パラメータの一番下に置く
-            box.prop(sp, "cloud_valley_sharp")
+            # 「角を尖らせる」は形状パラメータの一番下に置く。
+            # 雲・もやもやでは効かない確定仕様のためトゲ系でだけ表示する。
+            if balloon_shapes.normalize_shape(str(entry.shape or "")) in {"thorn", "thorn-curve"}:
+                box.prop(sp, "cloud_valley_sharp")
 
         # 尻尾
         box = layout.box()

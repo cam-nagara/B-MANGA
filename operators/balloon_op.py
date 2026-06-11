@@ -151,7 +151,7 @@ def _resolve_page_from_event(context, event):
         start_side = getattr(work.paper, "start_side", "right")
         read_direction = getattr(work.paper, "read_direction", "left")
         ox, oy = page_grid.page_grid_offset_mm(
-            page_idx, cols, gap, cw, ch, start_side, read_direction
+            page_idx, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         ox += add_x

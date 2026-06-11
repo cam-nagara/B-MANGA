@@ -42,8 +42,53 @@ def _logical_slot_index(
     return page_index + 1
 
 
+def _work_spread_flags(work) -> list[bool]:
+    return [bool(getattr(p, "spread", False)) for p in getattr(work, "pages", []) or []]
+
+
+def slot_for_page_in_work(
+    work,
+    page_index: int,
+    start_side: str = "right",
+    read_direction: str = "left",
+) -> int:
+    """見開きを 2 スロット占有として数えた論理スロットを返す.
+
+    - 見開きでないページだけの作品では `_logical_slot_index` と完全一致する
+      (1 ページ目の逆側を空白にし、2 ページ目以降は 1 スロットずつ進む)。
+    - 見開きページは 2 スロットを占有する。ペア (偶スロット+奇スロット) に
+      跨がるよう、奇スロット開始になる場合は 1 スロット空けて偶スロットへ揃える。
+    """
+    if read_direction == "down":
+        return max(0, int(page_index))
+    flags = _work_spread_flags(work)
+    if not (0 <= int(page_index) < len(flags)):
+        return _logical_slot_index(page_index, start_side, read_direction)
+    first_page_is_slot0 = (
+        (start_side == "right" and read_direction == "left")
+        or (start_side == "left" and read_direction == "right")
+    )
+    slot = 0
+    cursor = 0
+    for i in range(int(page_index) + 1):
+        is_spread = flags[i]
+        if i == 0:
+            if is_spread:
+                slot = 0
+                cursor = 2
+            else:
+                slot = 0 if first_page_is_slot0 else 1
+                cursor = 2
+            continue
+        if is_spread and cursor % 2 == 1:
+            cursor += 1
+        slot = cursor
+        cursor += 2 if is_spread else 1
+    return slot
+
+
 def is_left_half_page(page_index: int, start_side: str = "right",
-                      read_direction: str = "left") -> bool:
+                      read_direction: str = "left", *, work=None) -> bool:
     """そのページが見開きペアの「物理左半分」かを返す.
 
     ``page_grid_offset_mm`` で計算される X 軸位置に基づき、ペア (col=偶, col=奇)
@@ -60,7 +105,10 @@ def is_left_half_page(page_index: int, start_side: str = "right",
     """
     if read_direction == "down":
         return False
-    slot = _logical_slot_index(page_index, start_side, read_direction)
+    if work is not None:
+        slot = slot_for_page_in_work(work, page_index, start_side, read_direction)
+    else:
+        slot = _logical_slot_index(page_index, start_side, read_direction)
     c_in_pair = slot % 2
     if read_direction == "right":
         return c_in_pair == 0
@@ -75,6 +123,8 @@ def page_grid_offset_mm(
     canvas_height_mm: float,
     start_side: str = "right",
     read_direction: str = "left",
+    *,
+    work=None,
 ) -> tuple[float, float]:
     """``page_index`` の grid offset (mm) を返す.
 
@@ -89,7 +139,27 @@ def page_grid_offset_mm(
       - "left":  X が負方向に進む (col が増えるほど左へ) — 日本マンガ既定
       - "right": X が正方向に進む — 西洋本
       - "down":  すべて X=0 で Y のみ進む (縦スクロール)。cols は無視。
+
+    ``work`` を渡すと見開きページを 2 スロット占有として配置する
+    (見開き自身はペア 2 枠ぶんの幅で表示し、後続ページはその分ずれる)。
+    返す offset はページ内容のローカル原点 (= 内容の左端) に対応する。
     """
+    if work is not None:
+        slot = slot_for_page_in_work(work, page_index, start_side, read_direction)
+        ox, oy = slot_grid_offset_mm(
+            slot, cols, gap_mm, canvas_width_mm, canvas_height_mm, read_direction
+        )
+        pages = getattr(work, "pages", []) or []
+        is_spread = (
+            bool(getattr(pages[page_index], "spread", False))
+            if 0 <= int(page_index) < len(pages)
+            else False
+        )
+        if is_spread and read_direction == "left":
+            # 見開きはペア先頭 (偶スロット) を右半分として占有する。
+            # 内容のローカル原点は左端なので 1 ページ分左へ寄せる。
+            ox -= canvas_width_mm
+        return ox, oy
     slot = _logical_slot_index(page_index, start_side, read_direction)
     return slot_grid_offset_mm(
         slot,
@@ -99,6 +169,14 @@ def page_grid_offset_mm(
         canvas_height_mm,
         read_direction,
     )
+
+
+def page_content_width_mm(work, page_index: int, canvas_width_mm: float) -> float:
+    """ページ内容の横幅 (mm)。見開きは 2 ページ分."""
+    pages = getattr(work, "pages", []) or []
+    if 0 <= int(page_index) < len(pages) and bool(getattr(pages[page_index], "spread", False)):
+        return float(canvas_width_mm) * 2.0
+    return float(canvas_width_mm)
 
 
 def slot_grid_offset_mm(
@@ -176,7 +254,7 @@ def page_total_offset_mm(
     read_direction = getattr(work.paper, "read_direction", "left")
     grid_page_index = original_page_index(work, page_index)
     ox_mm, oy_mm = page_grid_offset_mm(
-        grid_page_index, cols, gap, cw, ch, start_side, read_direction
+        grid_page_index, cols, gap, cw, ch, start_side, read_direction, work=work
     )
     add_x, add_y = page_manual_offset_mm(work.pages[page_index])
     return ox_mm + add_x, oy_mm + add_y
@@ -354,7 +432,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             continue
         page_id_str = str(getattr(page_entry, "id", "") or "")
         ox_mm, oy_mm = page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction
+            i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
         add_x, add_y = page_manual_offset_mm(page_entry)
         ox_mm += add_x

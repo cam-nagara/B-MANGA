@@ -81,7 +81,11 @@ _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
 _DEFAULT_SPEED_LINE_COUNT = 300
-_DEFAULT_IN_START_PERCENT = 0.0
+# 入り始点の既定が 0% だと「入り (%)」を変えても見た目が変わらない
+# (入り区間の長さがゼロ) ため、既定で始点から 50% を入り区間にして
+# 「入り%」を動かせばすぐ効く状態にする。既定の入り% は 100 なので
+# 既存・新規とも見た目は変わらない。
+_DEFAULT_IN_START_PERCENT = 50.0
 _DEFAULT_OUT_START_PERCENT = 100.0
 
 EFFECT_PARAM_FIELDS = (
