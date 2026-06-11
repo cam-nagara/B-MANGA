@@ -28,37 +28,17 @@ def _load_addon():
     return mod
 
 
-def _evaluated_polygon_count(obj) -> int:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        return len(getattr(mesh, "polygons", []) or [])
-    finally:
-        evaluated.to_mesh_clear()
+def _mesh_polygon_count(obj) -> int:
+    return len(getattr(getattr(obj, "data", None), "polygons", []) or [])
 
 
-def _evaluated_width(obj) -> float:
-    depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        coords = [vertex.co for vertex in mesh.vertices]
-        assert coords, "表示結果の頂点がありません"
-        return max(co.x for co in coords) - min(co.x for co in coords)
-    finally:
-        evaluated.to_mesh_clear()
+def _mesh_area(obj) -> float:
+    return sum(float(p.area) for p in getattr(getattr(obj, "data", None), "polygons", []) or [])
 
 
-def _input_socket_names(modifier, *, visible_only: bool = False) -> set[str]:
-    group = modifier.node_group
-    assert group is not None
-    return {
-        str(getattr(item, "name", "") or "")
-        for item in group.interface.items_tree
-        if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT"
-        and (not visible_only or not bool(getattr(item, "hide_in_modifier", False)))
-    }
+def _render_mesh_objects(module_prefixes, balloon_id: str):
+    """フキダシ描画メッシュ (塗り / 主線) の実体オブジェクトを返す."""
+    return [bpy.data.objects.get(f"{prefix}{balloon_id}") for prefix in module_prefixes]
 
 
 def main() -> None:
@@ -75,8 +55,14 @@ def main() -> None:
         from bname_dev_balloon_curve_source.utils import balloon_curve_object
         from bname_dev_balloon_curve_source.utils import balloon_curve_render_nodes
         from bname_dev_balloon_curve_source.utils import balloon_curve_source_state
+        from bname_dev_balloon_curve_source.utils import balloon_fill_mesh, balloon_line_mesh
         from bname_dev_balloon_curve_source.utils import object_naming
         from bname_dev_balloon_curve_source.utils.layer_hierarchy import page_stack_key
+
+        mesh_prefixes = (
+            balloon_fill_mesh.BALLOON_FILL_MESH_NAME_PREFIX,
+            balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX,
+        )
 
         context = bpy.context
         work = get_work(context)
@@ -99,32 +85,36 @@ def main() -> None:
         assert obj.type == "CURVE", f"フキダシがカーブ実体ではありません: {obj.type}"
         assert len(obj.data.splines) >= 1, "フキダシカーブに輪郭がありません"
         assert len(obj.data.materials) >= 2, "フキダシに線と塗りの素材がありません"
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None, "フキダシに軽量表示補助がありません"
-        assert modifier.node_group is not None and modifier.node_group.name == balloon_curve_render_nodes.GROUP_NAME
-        assert obj.get(balloon_curve_render_nodes.PROP_GN_KIND) == balloon_curve_render_nodes.KIND
-        assert _evaluated_polygon_count(obj) > 0, "フキダシの表示結果が空です"
-        socket_names = _input_socket_names(modifier)
-        assert "線幅 (mm)" in socket_names
-        assert "線素材" in socket_names
-        assert "塗り素材" in socket_names
-        visible_socket_names = _input_socket_names(modifier, visible_only=True)
-        forbidden = {
-            name
-            for name in visible_socket_names
-            if name.startswith("しっぽ") or "山の" in name or name == "形状"
-        }
-        assert not forbidden, f"使わない形状設定が軽量表示補助に残っています: {sorted(forbidden)}"
+        # 現行仕様 (v0.6.132 以降): 描画は Python メッシュ焼き込みで行い、
+        # 本体カーブに旧ジオメトリノードの表示補助は付かない。
+        assert obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, (
+            "旧ジオメトリノードの表示補助がフキダシ本体に残っています"
+        )
+        fill_obj, line_obj = _render_mesh_objects(mesh_prefixes, str(entry.id))
+        assert fill_obj is not None, "フキダシの塗りメッシュがありません"
+        assert _mesh_polygon_count(fill_obj) > 0, "フキダシの塗り表示が空です"
+        assert line_obj is not None, "フキダシの主線メッシュがありません"
+        assert _mesh_polygon_count(line_obj) > 0, "フキダシの主線表示が空です"
+        assert len(getattr(fill_obj.data, "materials", []) or []) >= 1, "塗りメッシュに素材がありません"
+        assert len(getattr(line_obj.data, "materials", []) or []) >= 1, "主線メッシュに素材がありません"
 
+        # 「線の太さ」の変更が主線メッシュへ反映されること
+        # (現行仕様: 主線は Shapely の均一ストロークで焼き込む。
+        #  制御点ごとの太さ radius は主線では使わない)
+        entry.line_width_mm = 0.3
+        balloon_curve_object.on_balloon_entry_changed(entry)
+        bpy.context.view_layer.update()
+        _fill_obj, line_obj = _render_mesh_objects(mesh_prefixes, str(entry.id))
+        base_area = _mesh_area(line_obj)
+        assert base_area > 0.0, "主線メッシュの面積が取得できません"
         entry.line_width_mm = 1.0
         balloon_curve_object.on_balloon_entry_changed(entry)
         bpy.context.view_layer.update()
-        base_width = _evaluated_width(obj)
-        widest_point = max(obj.data.splines[0].bezier_points, key=lambda point: float(point.co.x))
-        widest_point.radius = 3.0
-        bpy.context.view_layer.update()
-        wider_width = _evaluated_width(obj)
-        assert wider_width > base_width + 0.0003, "制御点ごとの線幅が表示結果へ反映されていません"
+        _fill_obj, line_obj = _render_mesh_objects(mesh_prefixes, str(entry.id))
+        wider_area = _mesh_area(line_obj)
+        assert wider_area > base_area * 1.5, (
+            f"線の太さの変更が主線メッシュへ反映されていません: {base_area} -> {wider_area}"
+        )
 
         first_point = obj.data.splines[0].bezier_points[0]
         original_x = float(first_point.co.x)
@@ -145,7 +135,9 @@ def main() -> None:
             force_regenerate=True,
             preserve_manual_delta=True,
         )
-        assert _evaluated_polygon_count(obj_after) > 0, "再生成後のフキダシ表示が空です"
+        fill_obj, line_obj = _render_mesh_objects(mesh_prefixes, str(entry.id))
+        assert fill_obj is not None and _mesh_polygon_count(fill_obj) > 0, "再生成後のフキダシ塗り表示が空です"
+        assert line_obj is not None and _mesh_polygon_count(line_obj) > 0, "再生成後のフキダシ主線表示が空です"
 
         curve = bpy.data.curves.new("自由カーブ", "CURVE")
         curve.dimensions = "2D"
@@ -178,7 +170,16 @@ def main() -> None:
         assert object_naming.get_kind(raw_obj) == "balloon", "選択カーブがフキダシ実体として登録されていません"
         assert object_naming.get_bname_id(raw_obj) == free_entry.id, "登録フキダシのIDが一致しません"
         assert balloon_curve_source_state.detect_state(raw_obj) == balloon_curve_source_state.STATE_FREEFORM
-        assert raw_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is not None
+        assert raw_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, (
+            "登録カーブに旧ジオメトリノードの表示補助が付いています"
+        )
+        free_fill_obj, free_line_obj = _render_mesh_objects(mesh_prefixes, str(free_entry.id))
+        assert free_fill_obj is not None and _mesh_polygon_count(free_fill_obj) > 0, (
+            "登録フキダシの塗り表示が空です"
+        )
+        assert free_line_obj is not None and _mesh_polygon_count(free_line_obj) > 0, (
+            "登録フキダシの主線表示が空です"
+        )
         free_point_x = float(raw_obj.data.splines[0].bezier_points[0].co.x)
         free_entry.width_mm += 10.0
         balloon_curve_object.on_balloon_entry_changed(free_entry)
