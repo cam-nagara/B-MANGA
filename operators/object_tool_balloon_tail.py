@@ -49,8 +49,15 @@ def handle_plain_press(tool, context, event) -> bool:
 
     ポイントのハンドルは選択中のフキダシにだけ表示されるため、
     つかめる対象も選択中 (またはアクティブ) のフキダシに限定する。
+    フキダシ実体が編集できるのはページ編集画面だけなので、ページ一覧
+    (プレビュー表示) で不可視のポイントをつかんでしまわないよう、
+    ページ編集シーン以外では何もしない。
     新規しっぽの作成は従来どおり Ctrl+ドラッグだけで行う。
     """
+    from ..utils import page_file_scene
+
+    if not page_file_scene.is_page_edit_scene(getattr(context, "scene", None)):
+        return False
     work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
     if work is None or page is None or lx is None or ly is None:
         return False

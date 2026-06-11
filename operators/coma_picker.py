@@ -334,7 +334,8 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
         add_x, add_y = page_grid.page_manual_offset_mm(_page)
         ox += add_x
         oy += add_y
-        if _hit_test_canvas(x_mm - ox, y_mm - oy, cw, ch):
+        # 見開きページは 2 ページ分の幅で判定する
+        if _hit_test_canvas(x_mm - ox, y_mm - oy, page_grid.page_content_width_mm(work, i, cw), ch):
             return i
     return None
 
@@ -390,7 +391,8 @@ def _find_page_at_world_mm_page_browser(context, work, x_mm: float, y_mm: float)
         if not page_range.page_in_range(_page):
             continue
         ox, oy = page_browser.page_offset_mm(work, context.scene, area, i)
-        if _hit_test_canvas(x_mm - ox, y_mm - oy, cw, ch):
+        # 見開きページは 2 ページ分の幅で判定する
+        if _hit_test_canvas(x_mm - ox, y_mm - oy, page_grid.page_content_width_mm(work, i, cw), ch):
             return i
     return None
 

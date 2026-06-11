@@ -188,6 +188,28 @@ def _check_pick_viewport_manual_open(event, expected_index: int) -> None:
         page_op.shortcut_visibility.shortcuts_allowed = original_allowed
 
 
+def _check_spread_right_half_hit() -> None:
+    """見開きページの右半分でもページのヒット判定が当たること."""
+    coma_picker = _submodule("operators.coma_picker")
+    page_grid = _submodule("utils.page_grid")
+
+    scene = bpy.context.scene
+    work = scene.bname_work
+    page = work.pages[1]
+    page.spread = True
+    try:
+        ox, oy = page_grid.page_total_offset_mm(work, scene, 1)
+        cw = float(work.paper.canvas_width_mm)
+        ch = float(work.paper.canvas_height_mm)
+        left_hit = coma_picker.find_page_at_world_mm(work, ox + cw * 0.5, oy + ch * 0.5)
+        right_hit = coma_picker.find_page_at_world_mm(work, ox + cw * 1.5, oy + ch * 0.5)
+        assert left_hit == 1, f"見開き左半分のヒット判定に失敗: {left_hit}"
+        assert right_hit == 1, f"見開き右半分のヒット判定に失敗: {right_hit}"
+    finally:
+        page.spread = False
+    print("SPREAD_RIGHT_HALF_HIT_OK", flush=True)
+
+
 def _start_check(temp_root: Path) -> None:
     result = bpy.ops.bname.work_new(filepath=str(temp_root / "PageOpenManualDC.bname"))
     assert result == {"FINISHED"}, result
@@ -198,6 +220,7 @@ def _start_check(temp_root: Path) -> None:
     work.active_page_index = 0
     scene.bname_overview_mode = True
 
+    _check_spread_right_half_hit()
     event = _press_event_for_page(1)
     _check_object_tool_manual_page_open(event)
     _check_pick_viewport_manual_open(event, 1)

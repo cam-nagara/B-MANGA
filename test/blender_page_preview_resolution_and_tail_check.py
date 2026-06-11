@@ -143,13 +143,18 @@ def _check_preview_png_tail_carve(temp_root: Path) -> None:
 
 
 def _check_tail_point_plain_press() -> None:
-    """Ctrl無しクリックで選択中フキダシのしっぽポイントをつかめること."""
+    """Ctrl無しクリックで選択中フキダシのしっぽポイントをつかめること.
+
+    つかめるのはフキダシ実体を編集できるページ編集シーンだけ。
+    ページ一覧シーンでは不可視のポイントをつかまないことも確認する。
+    """
     from types import SimpleNamespace
 
     tail_helper = _sub("operators.object_tool_balloon_tail")
     balloon_op = _sub("operators.balloon_op")
     object_selection = _sub("utils.object_selection")
     balloon_tail_geom = _sub("utils.balloon_tail_geom")
+    page_file_scene = _sub("utils.page_file_scene")
 
     context = bpy.context
     work = context.scene.bname_work
@@ -169,6 +174,9 @@ def _check_tail_point_plain_press() -> None:
         balloon_op._resolve_page_from_event = lambda _ctx, _event: (work, page, x_mm, y_mm)
 
     try:
+        assert page_file_scene.is_page_edit_scene(context.scene), (
+            "このチェックはページ編集シーンで実行する前提です"
+        )
         # しっぽポイント上 → ドラッグ開始
         px, py = tail_points[0]
         _resolve_at(float(px), float(py))
@@ -179,6 +187,15 @@ def _check_tail_point_plain_press() -> None:
         _resolve_at(float(entry.x_mm) + 5.0, float(entry.y_mm) + 5.0)
         assert tail_helper.handle_plain_press(tool2, context, fake_event) is False
         assert not getattr(tool2, "_dragging", False)
+        # ページ編集シーン以外 (ページ一覧) では不可視ポイントをつかまない
+        tool3 = SimpleNamespace()
+        _resolve_at(float(px), float(py))
+        original_is_page_edit = page_file_scene.is_page_edit_scene
+        page_file_scene.is_page_edit_scene = lambda _scene: False
+        try:
+            assert tail_helper.handle_plain_press(tool3, context, fake_event) is False
+        finally:
+            page_file_scene.is_page_edit_scene = original_is_page_edit
     finally:
         balloon_op._resolve_page_from_event = original_resolve
     print("TAIL_POINT_PLAIN_PRESS_OK", flush=True)
@@ -189,8 +206,11 @@ def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bname_preview_res_tail_"))
     result = bpy.ops.bname.work_new(filepath=str(temp_root / "PreviewResTail.bname"))
     assert result == {"FINISHED"}, result
-    _check_image_size()
     _check_merged_outline()
+    # フキダシ実体としっぽ操作はページ編集シーンで検証する
+    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
+    _check_image_size()
     _check_preview_png_tail_carve(temp_root)
     _check_tail_point_plain_press()
     print("BNAME_PAGE_PREVIEW_RESOLUTION_AND_TAIL_CHECK_OK", flush=True)
