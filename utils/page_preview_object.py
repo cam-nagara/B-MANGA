@@ -184,7 +184,13 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
-def _preview_png_usable(path: Path, expected_size: tuple[int, int], *, current: bool) -> bool:
+def _preview_png_usable(
+    path: Path,
+    expected_size: tuple[int, int],
+    *,
+    current: bool,
+    spread: bool = False,
+) -> bool:
     if not path.is_file():
         return False
     try:
@@ -195,6 +201,13 @@ def _preview_png_usable(path: Path, expected_size: tuple[int, int], *, current: 
                 return False
             rgba = image.convert("RGBA")
             r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
+            if spread:
+                # 見開きはレターボックス (上端中央が透明) で保存される。
+                # 見開き化の途中で作られた単ページ縦横比の古いプレビューを
+                # 使い続けないよう、ここで弾いて再生成させる。
+                top = rgba.getpixel((rgba.width // 2, min(4, rgba.height - 1)))
+                if top[3] > 30:
+                    return False
     except Exception:  # noqa: BLE001
         return False
     if a < 200 or r > 120:
@@ -392,7 +405,12 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         expected_size = _image_size(work, scene)
-        if not force and _preview_png_usable(path, expected_size, current=current):
+        if not force and _preview_png_usable(
+            path,
+            expected_size,
+            current=current,
+            spread=bool(getattr(page, "spread", False)),
+        ):
             return path
         image = _render_preview_image(work, page, page_index, current=current, scene=scene)
         if image is None:
@@ -445,13 +463,20 @@ def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy
     return img
 
 
-def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.Material:
+def _ensure_material(
+    page_id: str,
+    image: bpy.types.Image | None,
+    *,
+    alpha_blend: bool = False,
+) -> bpy.types.Material:
     mat = bpy.data.materials.get(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     if mat is None:
         mat = bpy.data.materials.new(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     mat.use_nodes = True
     try:
-        mat.blend_method = "OPAQUE"
+        # 見開きプレビューのレターボックス余白 (透明) を黒で塗らないよう、
+        # 見開きだけアルファを尊重して合成する。単ページは従来どおり不透明。
+        mat.blend_method = "BLEND" if alpha_blend else "OPAQUE"
         mat.show_transparent_back = False
     except Exception:  # noqa: BLE001
         pass
@@ -460,14 +485,19 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         nt.nodes.remove(node)
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     emission = nt.nodes.new("ShaderNodeEmission")
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    mix = nt.nodes.new("ShaderNodeMixShader")
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = image
     try:
         emission.inputs["Strength"].default_value = 1.0
         nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
         emission_out = emission.outputs.get("Emission") or next(iter(emission.outputs), None)
         if emission_out is not None:
-            nt.links.new(emission_out, out.inputs["Surface"])
+            nt.links.new(emission_out, mix.inputs[2])
+        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("page preview material link failed")
     mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
@@ -568,7 +598,7 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
     image = _load_image(path, _image_size(work, scene)) if path is not None else None
     _index, x0, y0, x1, y1 = rect
     mesh = _ensure_plane_mesh(page_id, x1 - x0, y1 - y0)
-    mat = _ensure_material(page_id, image)
+    mat = _ensure_material(page_id, image, alpha_blend=bool(getattr(page, "spread", False)))
     if not mesh.materials:
         mesh.materials.append(mat)
     elif mesh.materials[0] is not mat:
