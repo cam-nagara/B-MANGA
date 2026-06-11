@@ -205,12 +205,12 @@ def _find_spread_mate_page(work, current_page_id: str):
     read_direction = str(getattr(paper, "read_direction", "left") or "left")
     if read_direction == "down":
         return None
-    current_slot = page_grid._logical_slot_index(current_index, start_side, read_direction)
+    current_slot = page_grid.slot_for_page_in_work(work, current_index, start_side, read_direction)
     mate_slot = current_slot - 1 if current_slot % 2 else current_slot + 1
     for index, page in enumerate(pages):
         if index == current_index or bool(getattr(page, "spread", False)):
             continue
-        slot = page_grid._logical_slot_index(index, start_side, read_direction)
+        slot = page_grid.slot_for_page_in_work(work, index, start_side, read_direction)
         if slot == mate_slot:
             return page
     return None

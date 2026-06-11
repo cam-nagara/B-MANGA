@@ -416,7 +416,7 @@ def _page_slots(work) -> tuple[int, int]:
     start_side = getattr(paper, "start_side", "right")
     read_direction = getattr(paper, "read_direction", "left")
     slots = [
-        int(page_grid._logical_slot_index(i, start_side, read_direction))
+        int(page_grid.slot_for_page_in_work(work, i, start_side, read_direction))
         for i, _page in enumerate(work.pages)
         if page_range.page_in_range(_page)
     ]
