@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from . import export_pipeline, export_psd
+from . import export_group_masks, export_pipeline, export_psd
 from .export_pipeline import ExportLayer, ExportOptions
 
 
@@ -94,7 +94,7 @@ def build_page_region_layers(
     crop_box = page_crop_box(work, page, options, spread_side=spread_side)
     if _crop_needed(work, page, options, crop_box):
         layers, size = export_pipeline._crop_layers(layers, crop_box)
-        masks = export_pipeline._crop_group_masks(masks, crop_box)
+        masks = export_group_masks.crop_group_masks(masks, crop_box, export_pipeline.ExportMask)
     else:
         size = export_pipeline._page_canvas_size_px(work, page, options)
     return layers, size, masks
@@ -110,11 +110,17 @@ def render_page_region(
     """Render a flattened image for a page or a spread half."""
     if not export_pipeline.has_pillow():
         return None
-    layers, size, _masks = build_page_region_layers(
+    layers, size, masks = build_page_region_layers(
         work,
         page,
         options,
         spread_side=spread_side,
+    )
+    layers = export_group_masks.apply_group_masks_to_layers(
+        layers,
+        masks,
+        export_pipeline.Image,
+        export_pipeline.ImageChops,
     )
     image = export_pipeline._flatten_layers(layers, size)
     return export_pipeline._convert_flatten_mode(image, options)

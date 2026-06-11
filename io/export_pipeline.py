@@ -1448,10 +1448,22 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         image_layers = getattr(bpy.context.scene, "bname_image_layers", None)
     except Exception:  # pragma: no cover - bpy unavailable outside Blender
         image_layers = None
+    page_id_for_filter = str(getattr(page, "id", "") or "")
     if image_layers is not None:
         for entry in image_layers:
             if not getattr(entry, "visible", True):
                 continue
+            entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+            entry_parent_key = str(getattr(entry, "parent_key", "") or "")
+            # ページ外 (parent 無し) の画像レイヤーは作業用なので
+            # ページ書き出しに含めない (座標系もページ基準ではない)。
+            if entry_parent_kind in {"none", "outside"}:
+                continue
+            # 別ページ所属の画像レイヤーをこのページへ写し込まない。
+            if entry_parent_kind in {"page", "coma"} and entry_parent_key:
+                entry_page_id = entry_parent_key.split(":", 1)[0]
+                if entry_page_id and page_id_for_filter and entry_page_id != page_id_for_filter:
+                    continue
             layer = _render_image_layer(
                 entry,
                 canvas_size,
@@ -1526,6 +1538,9 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             layers.append(
                 replace(
                     layer,
+                    # 非表示フキダシは PSD では非表示レイヤーとして残し、
+                    # PNG / プレビューの合成では描かない
+                    visible=bool(getattr(balloon, "visible", True)),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(balloon, "parent_kind", "") or "page"),
@@ -1541,6 +1556,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             layers.append(
                 replace(
                     layer,
+                    visible=bool(getattr(text, "visible", True)),
                     group_path=_group_path_for_parent(
                         page,
                         str(getattr(text, "parent_kind", "") or "page"),

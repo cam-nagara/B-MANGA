@@ -271,6 +271,9 @@ def _ensure_image_data_from_pillow(name: str, pil_image) -> Optional[bpy.types.I
     try:
         image.pixels.foreach_set(pixels)
         image.update()
+        # 生成画像のピクセルは .blend に保存されないため pack して永続化する
+        # (開き直しで補正済み画像が黒い矩形になるのを防ぐ)。
+        image.pack()
     except Exception:  # noqa: BLE001
         _logger.exception("image real object: pixel upload failed")
     return image

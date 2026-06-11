@@ -269,28 +269,51 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
         return
 
 
+def _letterbox_preview_image(image, target_width: int, target_height: int):
+    """見開きなどタイルと縦横比が違う画像を、つぶさず中央配置で収める."""
+    if tuple(image.size) == (int(target_width), int(target_height)):
+        return image
+    from PIL import Image
+
+    canvas = Image.new("RGBA", (int(target_width), int(target_height)), (0, 0, 0, 0))
+    canvas.paste(
+        image,
+        ((int(target_width) - image.width) // 2, (int(target_height) - image.height) // 2),
+    )
+    return canvas
+
+
 def _render_preview_image(work, page, page_index: int, *, current: bool, scene=None):
     from PIL import Image, ImageDraw
 
     target_width, target_height = _image_size(work, scene)
+    cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
+    ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+    spread = bool(getattr(page, "spread", False))
+    # 見開きは横幅 2 ページ分。タイル (単ページ縦横比) へつぶして縮めず、
+    # 正しい縦横比で描いてからタイル中央へレターボックス配置する。
+    content_width_mm = cw * (2.0 if spread else 1.0)
+    content_tw = target_width
+    content_th = target_height
+    if spread:
+        content_th = max(1, int(round(target_width * ch / content_width_mm)))
     scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
-    width = max(1, target_width * scale)
-    height = max(1, target_height * scale)
+    width = max(1, content_tw * scale)
+    height = max(1, content_th * scale)
     exported = _render_preview_image_from_export(work, page, width, height)
     if exported is not None:
-        exported = _resize_preview_image(exported, target_width, target_height)
+        exported = _resize_preview_image(exported, content_tw, content_th)
+        exported = _letterbox_preview_image(exported, target_width, target_height)
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
         return exported
 
-    cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
-    ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     img = Image.new("RGBA", (width, height), (250, 250, 250, 255))
     draw = ImageDraw.Draw(img)
 
     def point_px(pt: tuple[float, float]) -> tuple[float, float]:
         x, y = pt
-        return (x / cw * width, height - (y / ch * height))
+        return (x / content_width_mm * width, height - (y / ch * height))
 
     paper_color = _rgba255(getattr(work.paper, "paper_color", (1, 1, 1, 1)))
     draw.rectangle((0, 0, width - 1, height - 1), fill=paper_color)
@@ -312,12 +335,13 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         border = getattr(coma, "border", None)
         border_color = _rgba255(getattr(border, "color", (0, 0, 0, 1)), (0, 0, 0, 255))
         line_w_mm = max(0.2, float(getattr(border, "width_mm", 0.5) or 0.5))
-        px_per_mm = max(width / cw, height / ch)
+        px_per_mm = max(width / content_width_mm, height / ch)
         line_w = max(1, int(round(line_w_mm * px_per_mm)))
         closed = pts_px + [pts_px[0]]
         draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
-    img = _resize_preview_image(img, target_width, target_height)
+    img = _resize_preview_image(img, content_tw, content_th)
+    img = _letterbox_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
     draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
@@ -333,6 +357,8 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
             return None
         cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
         ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+        if bool(getattr(page, "spread", False)):
+            cw *= 2.0
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
         options = export_pipeline.ExportOptions(
             area="canvas",

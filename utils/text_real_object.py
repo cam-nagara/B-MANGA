@@ -387,6 +387,10 @@ def _ensure_image_data(name: str, pil_image) -> Optional[bpy.types.Image]:
     try:
         image.pixels.foreach_set(pixels)
         image.update()
+        # 生成画像のピクセルは .blend に保存されないため pack して永続化する。
+        # pack しないと、ファイルを開き直した時に黒い矩形になり、
+        # 「アドオン無効でも保存ファイルだけで表示できる」要件も満たせない。
+        image.pack()
     except Exception:  # noqa: BLE001
         _logger.exception("text real object: image pixel upload failed")
     return image
@@ -545,7 +549,13 @@ def _can_reuse_rendered_object(obj: Optional[bpy.types.Object], signature: str) 
     if mesh is None or len(getattr(mesh, "polygons", []) or []) == 0:
         return False
     image = _image_for_object(obj)
-    return image is not None and getattr(image, "size", (0, 0))[0] > 0
+    if image is None or getattr(image, "size", (0, 0))[0] <= 0:
+        return False
+    # 生成画像が pack されていない場合、開き直しでピクセルが失われ
+    # 黒い矩形になっているので再描画させる (再描画時に pack される)。
+    if getattr(image, "source", "") == "GENERATED" and getattr(image, "packed_file", None) is None:
+        return False
+    return True
 
 
 def _apply_text_object_state(
