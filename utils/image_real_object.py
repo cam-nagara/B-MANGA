@@ -308,17 +308,26 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image]) -> bpy.types.M
     nt = mat.node_tree
     for node in list(nt.nodes):
         nt.nodes.remove(node)
+    # 発光+透過で照明非依存に描く。Principled だと照明 (ワールド背景) に
+    # 依存して画像が暗く沈み、用紙・フキダシ等の発光描画と明るさが揃わない。
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (300, 0)
-    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-    bsdf.location = (80, 0)
+    out.location = (360, 0)
+    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (-60, -140)
+    emission = nt.nodes.new("ShaderNodeEmission")
+    emission.location = (-60, 60)
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    mix.location = (140, 0)
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.location = (-180, 40)
+    tex.location = (-340, 40)
     tex.image = image
     try:
-        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-        nt.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
-        nt.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        emission.inputs["Strength"].default_value = 1.0
+        nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
+        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
+        nt.links.new(emission.outputs["Emission"], mix.inputs[2])
+        nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("image real object: material link failed")
     try:

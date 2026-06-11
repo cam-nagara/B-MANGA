@@ -168,12 +168,16 @@ def draw_text_guides(
         if not entry_visible(entry):
             continue
         rect = Rect(entry.x_mm + ox_mm, entry.y_mm + oy_mm, entry.width_mm, entry.height_mm)
-        draw_rect_fill(rect, (1.0, 1.0, 1.0, 0.55))
+        editing_op = _editing_operator(context, page, entry)
+        # 白下地はインライン編集中、または実体テキストが表示されない
+        # フォールバック描画時だけ敷く。実体テキストの上へ常時 55% 白を
+        # 重ねると、テキスト本体が常に白く霞んで見えてしまうため。
+        if editing_op is not None or not _real_text_object_shown(context, page, entry):
+            draw_rect_fill(rect, (1.0, 1.0, 1.0, 0.55))
         color = (0.2, 0.7, 1.0, 1.0) if entry.parent_balloon_id else (0.95, 0.85, 0.1, 1.0)
         draw_rect_outline(rect, color, width_mm=0.30)
         if i == active_idx or object_selection.is_text_selected(context, page, entry):
             draw_rect_outline(rect.inset(-1.0), viewport_colors.SELECTION_STRONG, width_mm=0.50)
-        editing_op = _editing_operator(context, page, entry)
         if editing_op is not None:
             cursor_index = int(getattr(editing_op, "_cursor_index", 0))
             selection_anchor = int(getattr(editing_op, "_selection_anchor", -1))
@@ -253,6 +257,18 @@ def draw_text_pixels(
                 draw_rect_fill_pixel(context, caret, _TEXT_CARET_COLOR)
             continue
         draw_text_in_rect(context, rect, entry)
+
+
+def _real_text_object_shown(context, page, entry) -> bool:
+    """実体テキスト (画像平面) がビューポートに表示されているか."""
+    if not _viewport_can_show_text_real_object(context):
+        return False
+    try:
+        from ..utils import text_real_object
+
+        return text_real_object.has_visible_text_object(entry, page=page)
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _viewport_can_show_text_real_object(context) -> bool:

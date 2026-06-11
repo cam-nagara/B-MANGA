@@ -401,7 +401,19 @@ def _setup_emission_alpha_material(
         ramp.color_ramp.elements[1].position = 1.0
         ramp.color_ramp.elements[1].color = end
         try:
-            mapping.inputs["Rotation"].default_value[2] = math.radians(float(angle_deg))
+            # Generated 空間 (bbox=0..1) の中心を固定して回転し、 形状の対角投影で
+            # 0..1 に正規化する。 Mapping は原点回りに回転するため、 そのまま角度を
+            # 入れると 90 度などで Fac が全域 0 未満になり開始色のベタ塗りになる。
+            # 書き出し (Pillow) 側の corner 投影正規化と同じ向き・同じ分布に揃える。
+            rad = math.radians(float(angle_deg))
+            span = abs(math.cos(rad)) + abs(math.sin(rad))
+            inv = 1.0 / max(1.0e-6, span)
+            sx = sy = 0.5 * inv
+            rot_cx = sx * math.cos(rad) + sy * math.sin(rad)
+            rot_cy = -sx * math.sin(rad) + sy * math.cos(rad)
+            mapping.inputs["Scale"].default_value = (inv, inv, 1.0)
+            mapping.inputs["Rotation"].default_value[2] = -rad
+            mapping.inputs["Location"].default_value = (0.5 - rot_cx, 0.5 - rot_cy, 0.0)
         except Exception:  # noqa: BLE001
             pass
         nt.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
@@ -461,6 +473,15 @@ def _setup_emission_alpha_material(
         pass
 
 
+def _gradient_angle_deg(entry) -> float:
+    """グラデーション角度を返す。0 度は有効値なので `or` で潰さない."""
+    try:
+        value = getattr(entry, "fill_gradient_angle_deg", None)
+        return 90.0 if value is None else float(value)
+    except Exception:  # noqa: BLE001
+        return 90.0
+
+
 def _ensure_fill_material(material_name: str, entry=None, *, mask_info=None) -> bpy.types.Material:
     mat, copied_user_material = _fill_material_for_entry(material_name, entry)
     fill = _entry_fill_rgba(entry)
@@ -476,7 +497,7 @@ def _ensure_fill_material(material_name: str, entry=None, *, mask_info=None) -> 
             _setup_emission_alpha_material(
                 mat,
                 fill,
-                gradient=(start, end, float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0)),
+                gradient=(start, end, _gradient_angle_deg(entry)),
                 fill_blur_alpha=fill_blur_enabled,
                 fill_blur_dither=fill_blur_dither,
                 mask_info=mask_info,

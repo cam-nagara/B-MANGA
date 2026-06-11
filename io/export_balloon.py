@@ -231,7 +231,9 @@ def _fill_source_image(size: tuple[int, int], entry):
     image = ep.Image.new("RGBA", size, start)
     if width <= 0 or height <= 0:
         return image
-    angle = math.radians(float(getattr(entry, "fill_gradient_angle_deg", 90.0) or 90.0))
+    angle_value = getattr(entry, "fill_gradient_angle_deg", None)
+    # 0 度は有効値なので `or 90.0` で潰さない
+    angle = math.radians(90.0 if angle_value is None else float(angle_value))
     ux = math.cos(angle)
     uy = -math.sin(angle)
     corners = [(0.0, 0.0), (float(width - 1), 0.0), (0.0, float(height - 1)), (float(width - 1), float(height - 1))]
