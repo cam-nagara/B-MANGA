@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import weakref
 
 import bpy
@@ -66,6 +67,37 @@ def get_active(tool_name: str):
 
 def is_active(tool_name: str) -> bool:
     return get_active(tool_name) is not None
+
+
+def mark_heartbeat(op) -> None:
+    """modal() がイベントを受け取るたびに呼び、生存時刻を記録する."""
+    try:
+        op._last_modal_heartbeat = time.monotonic()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def active_or_reclaim(tool_name: str, *, stale_seconds: float = 3.0):
+    """生きている modal を返す。イベントが届いていない残骸なら回収して None.
+
+    Blender 側の都合 (取り消しによる巻き戻し・ウィンドウ切替など) で modal が
+    打ち切られても、Python 側の参照は残るため「ツールは選ばれて見えるのに
+    何も反応しない」状態になる。心拍 (最後にイベントを受け取った時刻) が
+    止まっている参照は残骸とみなして回収し、呼び出し側が新しい modal を
+    起動できるようにする。
+    """
+    op = get_active(tool_name)
+    if op is None:
+        return None
+    last = float(getattr(op, "_last_modal_heartbeat", 0.0) or 0.0)
+    if last <= 0.0 or (time.monotonic() - last) <= max(0.5, float(stale_seconds)):
+        return op
+    try:
+        op._externally_finished = True
+    except Exception:  # noqa: BLE001
+        pass
+    _ACTIVE_REFS[tool_name] = None
+    return None
 
 
 def set_active(tool_name: str, op, context=None) -> None:

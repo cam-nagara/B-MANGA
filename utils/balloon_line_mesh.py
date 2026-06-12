@@ -786,7 +786,8 @@ def _build_dashed_band_polygons(
             if line.length <= 1.0e-9:
                 start_len += period_len
                 continue
-            band = line.buffer(half_width_m, cap_style=2, join_style=1)
+            # 端はしっぽの線と同じ丸キャップ (cap_style=1)
+            band = line.buffer(half_width_m, cap_style=1, join_style=1)
         except Exception:  # noqa: BLE001
             start_len += period_len
             continue

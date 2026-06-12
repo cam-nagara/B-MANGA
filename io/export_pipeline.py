@@ -1213,11 +1213,29 @@ def _rgba_with_alpha_scale(color: tuple[int, int, int, int], scale: float) -> tu
     )
 
 
+def _draw_round_cap(draw, point, color, width_px: int) -> None:
+    radius = max(0.5, float(width_px) * 0.5)
+    x, y = point
+    draw.ellipse(
+        (
+            int(round(x - radius)),
+            int(round(y - radius)),
+            int(round(x + radius)),
+            int(round(y + radius)),
+        ),
+        fill=color,
+    )
+
+
 def _draw_gp_line_with_point_opacity(draw, pts_px, color, width_px: int, opacities: list[float]) -> None:
     if len(pts_px) < 2:
         return
     if len(opacities) != len(pts_px) or all(abs(op - 1.0) < 1.0e-6 for op in opacities):
-        draw.line(pts_px, fill=color, width=width_px)
+        # PIL の line は端が四角・折れ目が欠けるため、画面 (Grease Pencil の
+        # 丸い線) に合わせて折れ目を丸め、端に丸キャップを足す
+        draw.line(pts_px, fill=color, width=width_px, joint="curve")
+        _draw_round_cap(draw, pts_px[0], color, width_px)
+        _draw_round_cap(draw, pts_px[-1], color, width_px)
         return
     for i in range(len(pts_px) - 1):
         p0 = pts_px[i]
@@ -1237,6 +1255,8 @@ def _draw_gp_line_with_point_opacity(draw, pts_px, color, width_px: int, opaciti
             alpha = o0 + (o1 - o0) * ((t0 + t1) * 0.5)
             draw.line([prev, cur], fill=_rgba_with_alpha_scale(color, alpha), width=width_px)
             prev = cur
+    _draw_round_cap(draw, pts_px[0], _rgba_with_alpha_scale(color, opacities[0]), width_px)
+    _draw_round_cap(draw, pts_px[-1], _rgba_with_alpha_scale(color, opacities[-1]), width_px)
 
 
 def _render_gp_object_layers(

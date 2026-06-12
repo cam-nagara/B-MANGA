@@ -17,8 +17,11 @@ from ..utils import (
     gp_layer_parenting as gp_parent,
     layer_reparent,
     layer_stack as layer_stack_utils,
+    log,
     object_selection,
 )
+
+_logger = log.get_logger(__name__)
 from ..utils.geom import Rect
 from ..utils.layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key
 from .alt_reparent_op import (
@@ -552,6 +555,42 @@ def _rect_resize_result(
     return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
 
+def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
+    """取り消し処理などで一旦終了したオブジェクトツールを自動で再開する.
+
+    timer から modal を起動するには 3D ビューのウィンドウ文脈が必要なため、
+    temp_override で最初の 3D ビューを指して INVOKE する。
+    """
+
+    def _relaunch():
+        try:
+            from . import coma_modal_state as _state
+
+            if _state.get_active("object_tool") is not None:
+                return None
+            wm = getattr(bpy.context, "window_manager", None)
+            for window in getattr(wm, "windows", []) or []:
+                screen = getattr(window, "screen", None)
+                for area in getattr(screen, "areas", []) or []:
+                    if area.type != "VIEW_3D":
+                        continue
+                    region = next((r for r in area.regions if r.type == "WINDOW"), None)
+                    if region is None:
+                        continue
+                    with bpy.context.temp_override(window=window, area=area, region=region):
+                        if bpy.ops.bname.object_tool.poll():
+                            bpy.ops.bname.object_tool("INVOKE_DEFAULT")
+                    return None
+        except Exception:  # noqa: BLE001
+            _logger.exception("object tool relaunch failed")
+        return None
+
+    try:
+        bpy.app.timers.register(_relaunch, first_interval=max(0.05, float(delay_seconds)), persistent=True)
+    except Exception:  # noqa: BLE001
+        _logger.exception("object tool relaunch scheduling failed")
+
+
 class BNAME_OT_object_tool(Operator):
     bl_idname = "bname.object_tool"
     bl_label = "オブジェクトツール"
@@ -580,7 +619,9 @@ class BNAME_OT_object_tool(Operator):
         return bool(work is not None and getattr(work, "loaded", False))
 
     def invoke(self, context, _event):
-        active = coma_modal_state.get_active("object_tool")
+        # 心拍が止まった残骸 (Blender 側で modal が打ち切られた参照) は回収し、
+        # ツールを選び直せば必ず操作可能な状態へ復帰できるようにする
+        active = coma_modal_state.active_or_reclaim("object_tool")
         if active is not None:
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
@@ -596,6 +637,7 @@ class BNAME_OT_object_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
+        coma_modal_state.mark_heartbeat(self)
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("object_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
@@ -623,7 +665,11 @@ class BNAME_OT_object_tool(Operator):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
         if event.value == "PRESS" and event.type in {"Z", "Y"} and event.ctrl:
+            # 取り消し/やり直しを Blender に渡すため一旦終了し、処理後に
+            # ツールを自動で再開する (再開しないと「ツールは選ばれて見える
+            # のに操作できない」状態になる)
             self.finish_from_external(context, keep_selection=True)
+            _schedule_object_tool_relaunch()
             return {"FINISHED", "PASS_THROUGH"}
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}

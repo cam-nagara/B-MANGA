@@ -405,6 +405,30 @@ def _draw_flash_strokes(canvas, entry, flash_strokes, dpi: int) -> None:
             continue
         n = len(pts_mm)
         seg_count = n if cyclic else n - 1
+        # 端と折れ目を点ごとの半径の円で丸める (しっぽと同じ円ベースのストローク)。
+        # 下地 (underlay) は片側オフセットの帯なので円を打たない。
+        if not (role == "underlay" and abs(side) > 1.0e-9):
+            for k in range(n):
+                rk = radii_mm[k] if k < len(radii_mm) else 0.0
+                if rk <= 1.0e-9:
+                    continue
+                ak = float(opacities[k]) if k < len(opacities) else 1.0
+                alpha_k = int(round(255.0 * max(0.0, min(1.0, ak))))
+                if alpha_k <= 0:
+                    continue
+                cx, cy = pts_mm[k]
+                corner_px = canvas.points_px([(cx - rk, cy - rk), (cx + rk, cy + rk)])
+                if len(corner_px) == 2:
+                    (x0_px, y0_px), (x1_px, y1_px) = corner_px
+                    draw.ellipse(
+                        (
+                            min(x0_px, x1_px),
+                            min(y0_px, y1_px),
+                            max(x0_px, x1_px),
+                            max(y0_px, y1_px),
+                        ),
+                        fill=(*rgb, alpha_k),
+                    )
         for i in range(seg_count):
             j = (i + 1) % n
             x0, y0 = pts_mm[i]
@@ -684,11 +708,28 @@ def _draw_pattern_loop(draw, pts, entry, color, width_px: int, dpi: int, style: 
     dash_px = max(1.0, float(mm_to_px(line_pattern.dashed_segment_mm(entry, line_width_mm), dpi)))
     gap_px = max(0.0, float(mm_to_px(line_pattern.dashed_gap_mm(entry, line_width_mm), dpi)))
     period_px = max(dash_px + gap_px, dash_px, 1.0)
+    cap_radius = max(0.5, float(width_px) * 0.5)
     start = 0.0
     while start < cum[-1] - 1.0e-6:
         sub = _loop_subset_px(loop, cum, start, min(cum[-1], start + dash_px))
         if len(sub) >= 2:
-            draw.line([(int(round(x)), int(round(y))) for x, y in sub], fill=color, width=width_px)
+            draw.line(
+                [(int(round(x)), int(round(y))) for x, y in sub],
+                fill=color,
+                width=width_px,
+                joint="curve",
+            )
+            # 端はしっぽの線と同じ丸キャップ (PIL の line は端が四角)
+            for cx, cy in (sub[0], sub[-1]):
+                draw.ellipse(
+                    (
+                        int(round(cx - cap_radius)),
+                        int(round(cy - cap_radius)),
+                        int(round(cx + cap_radius)),
+                        int(round(cy + cap_radius)),
+                    ),
+                    fill=color,
+                )
         start += period_px
 
 

@@ -1,9 +1,41 @@
 from __future__ import annotations
 
 import math
+from contextlib import nullcontext
 from typing import Any
 
 from .balloon_shapes import Rect
+
+
+def _deferred_balloon_sync():
+    """まとめ書きの間、点ごとのフキダシ全再構築 update を止める.
+
+    しっぽポイントの x_mm / y_mm / corner_type は 1 代入ごとに update
+    コールバック → フキダシ全再構築が走るため、ポイント列の書込みを
+    そのまま行うと「クリック 1 回 = (点数 × 3) 回の全再構築」になり、
+    点が増えるほど操作が加速度的に重くなる。書込みをまとめて、最後に
+    1 回だけ再構築を発火させる。
+    """
+    try:
+        from . import balloon_curve_object
+
+        return balloon_curve_object.defer_auto_sync()
+    except Exception:  # noqa: BLE001
+        return nullcontext()
+
+
+def _fire_single_update(tail: Any) -> None:
+    """まとめ書きの後に、再構築 update を 1 回だけ発火させる."""
+    try:
+        points = getattr(tail, "points", None)
+        if points is not None and len(points) > 0:
+            point = points[len(points) - 1]
+            point.x_mm = float(point.x_mm)
+        else:
+            # ポイントが無い場合は旧 (始点・終点) フィールドで発火する
+            tail.start_x_mm = float(getattr(tail, "start_x_mm", 0.0) or 0.0)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def uses_custom_points(tail: Any) -> bool:
@@ -111,14 +143,16 @@ def write_axis_points(tail: Any, root: tuple[float, float], tip: tuple[float, fl
 def write_polyline_points(tail: Any, points: list[tuple[float, float]]) -> None:
     if len(points) < 2:
         return
-    if hasattr(tail, "points"):
-        tail.points.clear()
-        for x, y in points:
-            point = tail.points.add()
-            point.x_mm = float(x)
-            point.y_mm = float(y)
-            point.corner_type = "line"
-    sync_legacy_axis_fields(tail)
+    with _deferred_balloon_sync():
+        if hasattr(tail, "points"):
+            tail.points.clear()
+            for x, y in points:
+                point = tail.points.add()
+                point.x_mm = float(x)
+                point.y_mm = float(y)
+                point.corner_type = "line"
+        sync_legacy_axis_fields(tail)
+    _fire_single_update(tail)
 
 
 def add_polyline_point(tail: Any, point_xy: tuple[float, float], *, insert_index: int | None = None) -> int:
@@ -127,37 +161,43 @@ def add_polyline_point(tail: Any, point_xy: tuple[float, float], *, insert_index
         return -1
     if not hasattr(tail, "points"):
         return -1
-    if len(tail.points) < 2:
-        write_polyline_points(tail, pts)
-    index = len(tail.points) if insert_index is None else max(1, min(int(insert_index), len(tail.points)))
-    point = tail.points.add()
-    for i in range(len(tail.points) - 1, index, -1):
-        prev = tail.points[i - 1]
-        tail.points[i].x_mm = prev.x_mm
-        tail.points[i].y_mm = prev.y_mm
-        tail.points[i].corner_type = prev.corner_type
-    point = tail.points[index]
-    point.x_mm = float(point_xy[0])
-    point.y_mm = float(point_xy[1])
-    point.corner_type = "line"
-    sync_legacy_axis_fields(tail)
+    with _deferred_balloon_sync():
+        if len(tail.points) < 2:
+            write_polyline_points(tail, pts)
+        index = len(tail.points) if insert_index is None else max(1, min(int(insert_index), len(tail.points)))
+        point = tail.points.add()
+        for i in range(len(tail.points) - 1, index, -1):
+            prev = tail.points[i - 1]
+            tail.points[i].x_mm = prev.x_mm
+            tail.points[i].y_mm = prev.y_mm
+            tail.points[i].corner_type = prev.corner_type
+        point = tail.points[index]
+        point.x_mm = float(point_xy[0])
+        point.y_mm = float(point_xy[1])
+        point.corner_type = "line"
+        sync_legacy_axis_fields(tail)
+    _fire_single_update(tail)
     return index
 
 
 def set_point(tail: Any, index: int, point_xy: tuple[float, float]) -> bool:
     if not hasattr(tail, "points"):
         return False
-    if len(tail.points) < 2:
-        pts = tail_local_points(tail)
-        if len(pts) >= 2:
-            write_polyline_points(tail, pts)
-    if not (0 <= int(index) < len(tail.points)):
-        return False
-    point = tail.points[int(index)]
-    point.x_mm = float(point_xy[0])
-    point.y_mm = float(point_xy[1])
-    sync_legacy_axis_fields(tail)
-    return True
+    ok = False
+    with _deferred_balloon_sync():
+        if len(tail.points) < 2:
+            pts = tail_local_points(tail)
+            if len(pts) >= 2:
+                write_polyline_points(tail, pts)
+        if 0 <= int(index) < len(tail.points):
+            point = tail.points[int(index)]
+            point.x_mm = float(point_xy[0])
+            point.y_mm = float(point_xy[1])
+            sync_legacy_axis_fields(tail)
+            ok = True
+    if ok:
+        _fire_single_update(tail)
+    return ok
 
 
 def is_ellipse_chain(tail: Any) -> bool:
