@@ -212,6 +212,38 @@ def main() -> None:
         if bool(coma.white_margin.enabled):
             failures.append("線無し プリセット適用後にフチが有効のまま")
 
+    # 6. 背景チェックボックス + 背景色のプリセット往復 (v0.6.295)
+    coma.paper_visible = False
+    coma.background_color = (0.25, 0.5, 0.75, 0.9)
+    data = border_presets.preset_dict_from_coma(coma, "背景往復テスト")
+    if "paperVisible" not in data or data["paperVisible"] is not False:
+        failures.append(f"プリセット保存に背景チェックが含まれない: {data.get('paperVisible')}")
+    if "backgroundColor" not in data:
+        failures.append("プリセット保存に背景色が含まれない")
+    coma2 = page.comas.add()
+    coma2.paper_visible = True
+    fake = border_presets.BorderPreset(
+        name="背景往復テスト",
+        description="",
+        path=Path("dummy.json"),
+        source="local",
+        data=data,
+    )
+    border_presets.apply_preset_to_coma(fake, coma2)
+    if bool(coma2.paper_visible):
+        failures.append("プリセット適用で背景チェックが復元されない")
+    bg = tuple(coma2.background_color)
+    src = tuple(coma.background_color)
+    if any(abs(bg[i] - src[i]) > 1.0 / 255.0 + 1e-6 for i in range(3)) or abs(bg[3] - src[3]) > 5e-3:
+        failures.append(f"プリセット適用で背景色が復元されない: {bg} != {src}")
+    # 古いプリセット (背景キー無し) は背景設定を変えない
+    coma2.paper_visible = True
+    coma2.background_color = (1.0, 1.0, 1.0, 1.0)
+    if std is not None and "paperVisible" not in std.data:
+        border_presets.apply_preset_to_coma(std, coma2)
+        if not bool(coma2.paper_visible):
+            failures.append("背景キー無しプリセットが背景チェックを変えてしまう")
+
     if failures:
         print("=== CHECK FAILURES ===")
         for f in failures:

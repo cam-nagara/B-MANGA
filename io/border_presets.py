@@ -170,9 +170,24 @@ def load_preset_by_name(name: str, work_dir: Path | None) -> BorderPreset | None
 
 
 def apply_preset_to_coma(preset: BorderPreset, coma) -> None:
-    """プリセットの枠線・フチ設定を 1 つのコマへ適用."""
+    """プリセットの枠線・フチ・背景設定を 1 つのコマへ適用."""
     schema.coma_border_from_dict(coma.border, preset.data.get("border", {}))
     schema.coma_white_margin_from_dict(coma.white_margin, preset.data.get("whiteMargin", {}))
+    # 背景 (表示有無 + 背景色)。古いプリセットには無いキーなので、存在する
+    # 場合のみ適用して既存プリセットの挙動を変えない。
+    if "paperVisible" in preset.data and hasattr(coma, "paper_visible"):
+        coma.paper_visible = bool(preset.data.get("paperVisible", True))
+    if "backgroundColor" in preset.data and hasattr(coma, "background_color"):
+        try:
+            alpha = float(preset.data.get("backgroundColorAlpha", 1.0))
+        except (TypeError, ValueError):
+            alpha = 1.0
+        try:
+            coma.background_color = schema.hex_to_rgba(
+                str(preset.data.get("backgroundColor", "#FFFFFF")), alpha
+            )
+        except ValueError:
+            _logger.warning("invalid backgroundColor in preset %s", preset.name)
     # セレクタ表示をコマの実状態へ追従させるため、適用プリセット名を記録する。
     try:
         coma.border.preset_name = preset.name
@@ -188,6 +203,9 @@ def preset_dict_from_coma(coma, name: str, description: str = "") -> dict[str, A
         "description": description,
         "border": schema.coma_border_to_dict(coma.border),
         "whiteMargin": schema.coma_white_margin_to_dict(coma.white_margin),
+        "paperVisible": bool(getattr(coma, "paper_visible", True)),
+        "backgroundColor": schema.color_to_hex(tuple(coma.background_color)),
+        "backgroundColorAlpha": round(float(coma.background_color[3]), 3),
     }
 
 
