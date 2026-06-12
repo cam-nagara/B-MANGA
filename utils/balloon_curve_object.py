@@ -261,6 +261,43 @@ def _fill_material_for_entry(material_name: str, entry=None) -> tuple[bpy.types.
     return mat, False
 
 
+PROP_BALLOON_LINE_USER_SOURCE = "bname_balloon_line_user_source"
+
+
+def _line_material_override(entry, balloon_id: str, fallback):
+    """線種「マテリアル」のとき、主線帯に使うユーザーマテリアルを返す.
+
+    ユーザーのマテリアル本体を直接使うと B-Name 側の刻印で汚すため、
+    フキダシごとにコピーを保持する (元マテリアル名が変わったら作り直す)。
+    見つからない場合は従来の線色マテリアルへフォールバック。
+    """
+    try:
+        from . import balloon_shapes as _bs
+
+        if _bs.normalize_line_style(str(getattr(entry, "line_style", "") or "")) != "material":
+            return fallback
+        source_name = str(getattr(entry, "line_material_name", "") or "").strip()
+        source = bpy.data.materials.get(source_name) if source_name else None
+        if source is None:
+            return fallback
+        copy_name = f"BName_Balloon_LineUser_{balloon_id}"
+        mat = bpy.data.materials.get(copy_name)
+        if mat is not None and str(mat.get(PROP_BALLOON_LINE_USER_SOURCE, "") or "") != source_name:
+            try:
+                bpy.data.materials.remove(mat)
+            except Exception:  # noqa: BLE001
+                pass
+            mat = None
+        if mat is None:
+            mat = source.copy()
+            mat.name = copy_name
+        mat[PROP_BALLOON_LINE_USER_SOURCE] = source_name
+        return mat
+    except Exception:  # noqa: BLE001
+        _logger.exception("line material override failed")
+        return fallback
+
+
 def _apply_fill_material_basics(mat: bpy.types.Material, fill: tuple[float, float, float, float], entry=None) -> None:
     try:
         mat.diffuse_color = fill
@@ -927,7 +964,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             page=page,
             entry=entry,
             body_object=obj,
-            line_material=line_mat,
+            line_material=_line_material_override(entry, balloon_id, line_mat),
             mask_info=mask_info,
             geometry_sig=band_sig,
         )
@@ -981,7 +1018,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             page=page,
             entry=entry,
             body_object=obj,
-            line_material=line_mat,
+            line_material=_line_material_override(entry, balloon_id, line_mat),
             mask_info=mask_info,
             geometry_sig=band_sig,
         )

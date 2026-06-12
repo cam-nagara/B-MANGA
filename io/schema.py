@@ -1152,7 +1152,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "flashWhiteOutlineBlackSpacingMm": round(float(getattr(entry, "flash_white_outline_black_spacing_mm", 0.25)), 3),
         "uniFlashParams": (
             balloon_core.uni_flash_params_to_dict(entry)
-            if str(getattr(entry, "line_style", "") or "") == "uni_flash"
+            if str(getattr(entry, "line_style", "") or "") in {"uni_flash", "white_outline"}
             else {}
         ),
         "multiLineDirection": str(getattr(entry, "multi_line_direction", "outside") or "outside"),
@@ -1168,6 +1168,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "fillColorAlpha": round(entry.fill_color[3], 3),
         "fillOpacity": _opacity_to_data(getattr(entry, "fill_opacity", 100.0)),
         "fillMaterialName": str(getattr(entry, "fill_material_name", "") or ""),
+        "lineMaterialName": str(getattr(entry, "line_material_name", "") or ""),
         "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
         "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
         "fillGradientEnabled": bool(getattr(entry, "fill_gradient_enabled", False)),
@@ -1364,6 +1365,7 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.white_underlay_enabled = bool(getattr(entry, "flash_white_line_enabled", True))
         entry.white_underlay_width_percent = float(getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0)
     entry.fill_material_name = str(data.get("fillMaterialName", "") or "")
+    entry.line_material_name = str(data.get("lineMaterialName", "") or "")
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
     entry.fill_gradient_enabled = bool(data.get("fillGradientEnabled", False))

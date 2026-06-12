@@ -58,7 +58,7 @@ _LEGACY_FLASH_SHAPE_LINE_STYLES = {
     "white_outline": "white_outline",
 }
 
-_VALID_LINE_STYLES = {"none", "solid", "dashed", "dotted", "double", "shape", "image"} | FLASH_LINE_STYLES
+_VALID_LINE_STYLES = {"none", "solid", "dashed", "dotted", "double", "shape", "image", "material"} | FLASH_LINE_STYLES
 
 
 @dataclass(frozen=True)

@@ -291,10 +291,38 @@ def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> Non
             _composite_patches_px(canvas, band, color)
 
 
-def _composite_patches_px(canvas, patches, color, clip_mask=None) -> None:
-    """穴つき多角形パッチを指定色で合成する (穴は透過のまま残す)."""
+def _composite_patches_px(canvas, patches, color, clip_mask=None, fill_image=None) -> None:
+    """穴つき多角形パッチを指定色で合成する (穴は透過のまま残す).
+
+    ``fill_image`` を渡すと、色の代わりにその画像 (キャンバスと同サイズ) を
+    パッチ領域へ貼り込む (線種「マテリアル」用。領域基準で貼るため、閉じた
+    形でも継ぎ目が出ない)。
+    """
     ep = _ep()
     if ep.Image is None or ep.ImageDraw is None or not patches:
+        return
+    if fill_image is not None:
+        mask = ep.Image.new("L", canvas.image.size, 0)
+        mask_draw = ep.ImageDraw.Draw(mask)
+        for outer, holes in patches:
+            outer_px = canvas.points_px(outer)
+            if len(outer_px) < 3:
+                continue
+            mask_draw.polygon(outer_px, fill=255)
+            for hole in holes:
+                hole_px = canvas.points_px(hole)
+                if len(hole_px) >= 3:
+                    mask_draw.polygon(hole_px, fill=0)
+        if clip_mask is not None and ep.ImageChops is not None:
+            mask = ep.ImageChops.multiply(mask, clip_mask)
+        temp = fill_image.copy()
+        if temp.size != canvas.image.size:
+            temp = temp.resize(canvas.image.size)
+        alpha = mask
+        if ep.ImageChops is not None:
+            alpha = ep.ImageChops.multiply(temp.getchannel("A"), mask)
+        temp.putalpha(alpha)
+        canvas.image.alpha_composite(temp)
         return
     temp = ep.Image.new("RGBA", canvas.image.size, (0, 0, 0, 0))
     temp_draw = ep.ImageDraw.Draw(temp)
@@ -311,6 +339,57 @@ def _composite_patches_px(canvas, patches, color, clip_mask=None) -> None:
         alpha = ep.ImageChops.multiply(temp.getchannel("A"), clip_mask)
         temp.putalpha(alpha)
     canvas.image.alpha_composite(temp)
+
+
+def _line_material_fill_image(entry, size: tuple[int, int]):
+    """線種「マテリアル」の帯を塗る画像 (キャンバスサイズ) を作る.
+
+    マテリアルの最初の画像テクスチャをページ空間でタイルして使う。
+    画像が無ければマテリアルのビューポート表示色で塗る。どちらも領域基準の
+    貼り込みのため、閉じた形 (円・矩形など) でも始点終点の継ぎ目が出ない。
+    """
+    import os
+
+    name = str(getattr(entry, "line_material_name", "") or "").strip()
+    if not name:
+        return None
+    try:
+        import bpy as _bpy
+
+        mat = _bpy.data.materials.get(name)
+    except Exception:  # noqa: BLE001
+        mat = None
+    if mat is None:
+        return None
+    ep = _ep()
+    if ep.Image is None:
+        return None
+    src = None
+    try:
+        if getattr(mat, "use_nodes", False) and mat.node_tree is not None:
+            for node in mat.node_tree.nodes:
+                image = getattr(node, "image", None)
+                if getattr(node, "bl_idname", "") == "ShaderNodeTexImage" and image is not None:
+                    path = _bpy.path.abspath(image.filepath) if image.filepath else ""
+                    if path and os.path.isfile(path):
+                        from pathlib import Path as _Path
+
+                        src = ep._safe_load_image(_Path(path))
+                    break
+    except Exception:  # noqa: BLE001
+        src = None
+    if src is not None:
+        src = src.convert("RGBA")
+        out = ep.Image.new("RGBA", size, (0, 0, 0, 0))
+        for y in range(0, size[1], max(1, src.height)):
+            for x in range(0, size[0], max(1, src.width)):
+                out.paste(src, (x, y))
+        return out
+    try:
+        color = ep._rgb255(tuple(mat.diffuse_color), alpha=1.0)
+    except Exception:  # noqa: BLE001
+        return None
+    return ep.Image.new("RGBA", size, color)
 
 
 def _mitre_band_polygons_mm(outline, outer_off_mm: float, inner_off_mm: float, *, sharp: bool = True):
@@ -1000,7 +1079,12 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     # オフセット帯で描く。「角を尖らせる」ON なら mitre join で角まで尖らせる。
     inner_w_mm = _scaled_width_mm(entry, "inner_white_margin_width_mm", 0.0)
     body_sharp = _body_sharp_corners(entry)
-    band_line_styles = {"solid", "double"}
+    band_line_styles = {"solid", "double", "material"}
+    line_band_fill = (
+        _line_material_fill_image(entry, canvas.image.size)
+        if str(line_style or "") == "material"
+        else None
+    )
     if draw_line and not is_flash and bool(getattr(entry, "outer_white_margin_enabled", False)):
         # 外フチ: 線の外側にだけ付く帯 (画面のメッシュと同じ付き方)。
         # 「角を尖らせる」ON のときは mitre join で角まで尖らせる。
@@ -1044,7 +1128,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                     )
                 except Exception:  # noqa: BLE001
                     pass
-            _composite_patches_px(canvas, band_rings, line_color)
+            _composite_patches_px(canvas, band_rings, line_color, fill_image=line_band_fill)
         else:
             _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi, body_center_px)
     for tail_outline in tail_outlines:
@@ -1089,7 +1173,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                             )
                         except Exception:  # noqa: BLE001
                             pass
-                    _composite_patches_px(canvas, band_rings, line_color)
+                    _composite_patches_px(canvas, band_rings, line_color, fill_image=line_band_fill)
                 else:
                     _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi, body_center_px)
     # 線しっぽ (線種「線」): ストローク多角形を線色で塗る

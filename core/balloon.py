@@ -75,6 +75,7 @@ _LINE_STYLE_ITEMS = (
     ("white_outline", "白抜き線", "フキダシの形状に沿って白抜き線を放射状に並べる"),
     ("shape", "図形", "●や★などの図形を線に沿って連続配置する"),
     ("image", "画像", "画像を線に沿って引き延ばして描く"),
+    ("material", "マテリアル", "線の帯をマテリアルで塗る (フキダシの領域基準で貼るため、閉じた形でも切れ目が出ない)"),
 )
 
 _LINE_SHAPE_ORIENT_ITEMS = (
@@ -202,6 +203,21 @@ UNI_FLASH_PARAM_FIELDS = (
     "white_underlay_width_percent",
     "white_underlay_color",
     "uni_flash_offset_percent",
+    # 白抜き線の詳細 (線種 white_outline でも同じ dict で保存する)
+    "white_outline_angle_deg",
+    "white_outline_width_jitter_enabled",
+    "white_outline_width_min_percent",
+    "white_outline_length_jitter_enabled",
+    "white_outline_length_min_percent",
+    "white_outline_white_line_count_auto",
+    "white_outline_black_line_count_auto",
+    "white_outline_white_ratio_percent",
+    "white_outline_white_attenuation",
+    "white_outline_black_direction",
+    "white_outline_black_width_scale_percent",
+    "white_outline_black_length_scale_near_percent",
+    "white_outline_black_length_scale_far_percent",
+    "white_outline_black_attenuation",
 )
 
 
@@ -715,6 +731,22 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     flash_white_outline_white_line_count: IntProperty(name="白線本数", default=24, min=1, max=200, soft_max=80, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_line_count: IntProperty(name="黒線本数", default=3, min=1, max=50, soft_max=12, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     flash_white_outline_black_spacing_mm: FloatProperty(name="黒線間隔 (mm)", default=0.25, min=0.0, soft_max=20.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    # 白抜き線の詳細 (効果線の白抜き線と同じ項目。既定値 = 従来の固定値なので
+    # 既存フキダシの見た目は変わらない)
+    white_outline_angle_deg: FloatProperty(name="角度", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_width_jitter_enabled: BoolProperty(name="幅の乱れ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_width_min_percent: FloatProperty(name="最小幅 (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_length_jitter_enabled: BoolProperty(name="長さの乱れ", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_length_min_percent: FloatProperty(name="最小長さ (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_white_line_count_auto: BoolProperty(name="白線本数を自動", description="束の幅と白線割合から白線の本数を決める", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_line_count_auto: BoolProperty(name="黒線本数を自動", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_white_ratio_percent: FloatProperty(name="白線割合 (%)", default=70.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_white_attenuation: FloatProperty(name="白線減衰", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_width_scale_percent: FloatProperty(name="黒線幅スケール (%)", default=100.0, min=0.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_near_percent: FloatProperty(name="長さ変化 (主線寄り)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_length_scale_far_percent: FloatProperty(name="長さ変化 (遠い側)", default=100.0, min=0.0, max=200.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_outline_black_attenuation: FloatProperty(name="黒線減衰", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     start_shape: EnumProperty(name="始点形状", items=_EFFECT_SHAPE_ITEMS, default="ellipse", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     start_to_coma_frame: BoolProperty(name="始点をコマ枠に設定", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     start_rounded_corner_enabled: BoolProperty(name="角丸", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
@@ -800,6 +832,7 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     fill_color: FloatVectorProperty(name="塗り色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_material_name: StringProperty(name="塗りマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_material_name: StringProperty(name="線マテリアル", description="線種「マテリアル」で線の帯に使うマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_enabled: BoolProperty(name="塗りグラデーション", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

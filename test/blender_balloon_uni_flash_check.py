@@ -181,9 +181,19 @@ def main() -> None:
             if field not in {"speed_angle_deg", "speed_line_count"}
             and not field.startswith("white_outline_")
         )
-        assert tuple(balloon_core.UNI_FLASH_PARAM_FIELDS) == expected_uni_flash_fields, (
+        # v0.6.290: 白抜き線の詳細フィールドもフキダシ側の同じ保存リストに同居する
+        balloon_uni_fields = tuple(
+            field
+            for field in balloon_core.UNI_FLASH_PARAM_FIELDS
+            if not field.startswith("white_outline_")
+        )
+        assert balloon_uni_fields == expected_uni_flash_fields, (
             "ウニフラ線種の設定項目が効果線の集中線と一致していません"
         )
+        assert any(
+            field.startswith("white_outline_")
+            for field in balloon_core.UNI_FLASH_PARAM_FIELDS
+        ), "白抜き線の詳細フィールドが保存リストにありません"
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):
             entry = balloon_op._create_balloon_entry(
@@ -290,7 +300,12 @@ def main() -> None:
             assert saved["flashWhiteOutlineWhiteLineCount"] == 24
             assert saved["flashWhiteOutlineBlackLineCount"] == 3
             if line_style == "uni_flash":
-                assert tuple(saved["uniFlashParams"].keys()) == expected_uni_flash_fields
+                saved_uni_keys = tuple(
+                    key
+                    for key in saved["uniFlashParams"].keys()
+                    if not key.startswith("white_outline_")
+                )
+                assert saved_uni_keys == expected_uni_flash_fields
                 assert saved["uniFlashParams"]["start_shape"] == "ellipse"
                 assert saved["uniFlashParams"]["end_shape"] == "ellipse"
                 assert saved["uniFlashParams"]["in_percent"] == 0.0

@@ -497,15 +497,19 @@ def _point_at_distance(points_xyz, cum, target: float):
     return points_xyz[-1]
 
 
-def _apply_inout_profile(strokes, params):
-    """role=='line' の非閉路ストロークに入り抜き範囲プロファイルを適用する."""
+def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
+    """指定 role の非閉路ストロークに入り抜き範囲プロファイルを適用する.
+
+    既定は従来どおり role=='line' のみ。白抜き線では
+    ("line", "white_outline_white", "white_outline_black") を渡す。
+    """
     apply = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
     if apply not in {"brush_size", "opacity"}:
         return strokes
     out: list[EffectLineStroke] = []
     for stroke in strokes:
         pts = list(stroke.points_xyz)
-        if stroke.role != "line" or stroke.cyclic or len(pts) < 2:
+        if stroke.role not in roles or stroke.cyclic or len(pts) < 2:
             out.append(stroke)
             continue
         cum = _polyline_cumulative(pts)

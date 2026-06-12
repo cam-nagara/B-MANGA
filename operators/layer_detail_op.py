@@ -208,7 +208,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     # ウニフラは線種の設定群が特に長いため、さらに 2 列足して 4 列にする
     dialog_line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     effect_cols = None
-    if dialog_line_style == "uni_flash":
+    if dialog_line_style in {"uni_flash", "white_outline"}:
         flow = layout.row()
         left_col = flow.column()
         right_col = flow.column()
@@ -292,6 +292,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     elif line_style == "dotted":
         row = box.row(align=True)
         row.prop(entry, "dotted_gap_mm", text="間隔")
+    elif line_style == "material":
+        box.prop_search(entry, "line_material_name", bpy.data, "materials", text="マテリアル")
+        box.label(text="領域基準で貼るため、閉じた形でも切れ目は出ません", icon="INFO")
     elif line_style == "shape":
         row = box.row(align=True)
         row.prop(entry, "line_shape_kind", text="")
@@ -335,15 +338,13 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         row.prop(entry, "line_valley_width_pct", text="入り・抜き")
         row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
-            # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
-            row = box.row(align=True)
-            row.prop(entry, "flash_white_outline_count")
-            row = box.row(align=True)
-            row.prop(entry, "flash_white_outline_white_line_count")
-            row.prop(entry, "flash_white_outline_spacing_mm")
-            row = box.row(align=True)
-            row.prop(entry, "flash_white_outline_black_line_count")
-            row.prop(entry, "flash_white_outline_black_spacing_mm")
+            from ..panels import balloon_panel as _bp
+
+            _bp.draw_white_outline_line_settings(
+                box,
+                entry,
+                columns=((box, *effect_cols) if effect_cols else None),
+            )
     elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_main_line):
         row = box.row(align=True)
         row.prop(entry, "line_valley_width_pct")
@@ -599,8 +600,8 @@ class BNAME_OT_layer_detail_open(Operator):
                 _page, entry = _find_balloon_entry(scene, self.bname_id)
                 if entry is not None and balloon_shapes.normalize_line_style(
                     str(getattr(entry, "line_style", "") or "")
-                ) == "uni_flash":
-                    # ウニフラは線種の設定群が長いため 4 列で開く
+                ) in {"uni_flash", "white_outline"}:
+                    # ウニフラ/白抜き線は線種の設定群が長いため 4 列で開く
                     width = 1080
             except Exception:  # noqa: BLE001
                 pass

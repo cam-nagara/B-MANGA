@@ -12,6 +12,75 @@ from . import corner_radius_ui, effect_line_panel
 B_NAME_CATEGORY = "B-Name"
 
 
+def draw_white_outline_line_settings(box, entry, columns=None) -> None:
+    """線種「白抜き線」の設定一式 (効果線の白抜き線と同等 + ウニフラ同等の入り抜き).
+
+    フキダシのパネルと詳細設定ダイアログで共用する。``columns`` を渡すと
+    白線/黒線/入り抜きを列に分配する (縦長になりすぎるダイアログ用)。
+    """
+    cols = [c for c in (columns or ()) if c is not None] or [box]
+
+    def _col(index: int):
+        return cols[min(int(index), len(cols) - 1)]
+
+    row = box.row(align=True)
+    row.prop(entry, "flash_white_outline_count")
+    row.prop(entry, "white_outline_angle_deg")
+    row = box.row(align=True)
+    row.prop(entry, "flash_white_outline_width_mm")
+    row.prop(entry, "white_outline_black_direction", text="")
+    row = box.row(align=True)
+    row.prop(entry, "white_outline_width_jitter_enabled")
+    sub = row.row(align=True)
+    sub.enabled = bool(getattr(entry, "white_outline_width_jitter_enabled", False))
+    sub.prop(entry, "white_outline_width_min_percent", text="最小")
+    row = box.row(align=True)
+    row.prop(entry, "white_outline_length_jitter_enabled")
+    sub = row.row(align=True)
+    sub.enabled = bool(getattr(entry, "white_outline_length_jitter_enabled", False))
+    sub.prop(entry, "white_outline_length_min_percent", text="最小")
+
+    white_box = _col(1).box()
+    white_box.label(text="白線")
+    row = white_box.row(align=True)
+    row.prop(entry, "white_outline_white_line_count_auto", toggle=True)
+    sub = row.row(align=True)
+    sub.enabled = not bool(getattr(entry, "white_outline_white_line_count_auto", False))
+    sub.prop(entry, "flash_white_outline_white_line_count")
+    row = white_box.row(align=True)
+    row.prop(entry, "flash_white_outline_spacing_mm")
+    ratio = row.row(align=True)
+    ratio.enabled = bool(getattr(entry, "white_outline_white_line_count_auto", False))
+    ratio.prop(entry, "white_outline_white_ratio_percent")
+    white_box.prop(entry, "white_outline_white_attenuation", text="減衰")
+
+    black_box = _col(1).box()
+    black_box.label(text="黒線")
+    row = black_box.row(align=True)
+    row.prop(entry, "white_outline_black_line_count_auto", toggle=True)
+    sub = row.row(align=True)
+    sub.enabled = not bool(getattr(entry, "white_outline_black_line_count_auto", False))
+    sub.prop(entry, "flash_white_outline_black_line_count")
+    black_box.prop(entry, "flash_white_outline_black_spacing_mm")
+    row = black_box.row(align=True)
+    row.prop(entry, "white_outline_black_width_scale_percent")
+    row.prop(entry, "white_outline_black_attenuation", text="減衰")
+    row = black_box.row(align=True)
+    row.prop(entry, "white_outline_black_length_scale_near_percent")
+    row.prop(entry, "white_outline_black_length_scale_far_percent")
+
+    inout_box = _col(2).box()
+    inout_box.label(text="入り抜き")
+    inout_box.prop(entry, "inout_apply")
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_percent")
+    row.prop(entry, "out_percent")
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_start_percent")
+    row.prop(entry, "out_start_percent")
+    effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
+
+
 class BNAME_UL_balloons(UIList):
     bl_idname = "BNAME_UL_balloons"
 
@@ -149,6 +218,9 @@ class BNAME_PT_balloons(Panel):
         elif line_style == "dotted":
             row = box.row(align=True)
             row.prop(entry, "dotted_gap_mm", text="間隔")
+        elif line_style == "material":
+            box.prop_search(entry, "line_material_name", bpy.data, "materials", text="マテリアル")
+            box.label(text="フキダシの領域基準で貼るため、閉じた形でも切れ目は出ません", icon="INFO")
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
         _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
         if line_style == "uni_flash":
@@ -167,15 +239,7 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "line_valley_width_pct", text="入り・抜き")
             row.prop(entry, "line_peak_width_pct", text="中間線幅")
             if line_style == "white_outline":
-                # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
-                row = box.row(align=True)
-                row.prop(entry, "flash_white_outline_count")
-                row = box.row(align=True)
-                row.prop(entry, "flash_white_outline_white_line_count")
-                row.prop(entry, "flash_white_outline_spacing_mm")
-                row = box.row(align=True)
-                row.prop(entry, "flash_white_outline_black_line_count")
-                row.prop(entry, "flash_white_outline_black_spacing_mm")
+                draw_white_outline_line_settings(box, entry)
         elif balloon_shapes.is_dynamic_meldex_shape(_shape_norm_for_main_line):
             row = box.row(align=True)
             row.prop(entry, "line_valley_width_pct")

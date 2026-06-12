@@ -73,6 +73,34 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             "flash_white_outline_black_spacing_mm": float(
                 getattr(entry, "flash_white_outline_black_spacing_mm", 0.25) or 0.25
             ),
+            # 白抜き線の詳細 (v0.6.290): 変更で再構築されるよう署名に含める
+            "white_outline_angle_deg": float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
+            "white_outline_width_jitter_enabled": bool(getattr(entry, "white_outline_width_jitter_enabled", False)),
+            "white_outline_width_min_percent": float(getattr(entry, "white_outline_width_min_percent", 100.0) or 0.0),
+            "white_outline_length_jitter_enabled": bool(getattr(entry, "white_outline_length_jitter_enabled", False)),
+            "white_outline_length_min_percent": float(getattr(entry, "white_outline_length_min_percent", 100.0) or 0.0),
+            "white_outline_white_line_count_auto": bool(getattr(entry, "white_outline_white_line_count_auto", False)),
+            "white_outline_black_line_count_auto": bool(getattr(entry, "white_outline_black_line_count_auto", False)),
+            "white_outline_white_ratio_percent": float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
+            "white_outline_white_attenuation": float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
+            "white_outline_black_direction": str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
+            "white_outline_black_width_scale_percent": float(getattr(entry, "white_outline_black_width_scale_percent", 100.0) or 0.0),
+            "white_outline_black_length_scale_near_percent": float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
+            "white_outline_black_length_scale_far_percent": float(getattr(entry, "white_outline_black_length_scale_far_percent", 100.0) or 0.0),
+            "white_outline_black_attenuation": float(getattr(entry, "white_outline_black_attenuation", 0.0) or 0.0),
+            # 入り抜き (ウニフラと同じ機構を白抜き線にも適用)
+            "inout_apply": str(getattr(entry, "inout_apply", "brush_size") or "brush_size"),
+            "in_percent": float(getattr(entry, "in_percent", 0.0) or 0.0),
+            "out_percent": float(getattr(entry, "out_percent", 0.0) or 0.0),
+            "in_start_percent": float(getattr(entry, "in_start_percent", 50.0) or 0.0),
+            "out_start_percent": float(getattr(entry, "out_start_percent", 50.0) or 0.0),
+            "in_easing_curve": str(getattr(entry, "in_easing_curve", "") or ""),
+            "out_easing_curve": str(getattr(entry, "out_easing_curve", "") or ""),
+            "inout_range_mode": str(getattr(entry, "inout_range_mode", "percent") or "percent"),
+            "in_range_percent": float(getattr(entry, "in_range_percent", 100.0) or 0.0),
+            "out_range_percent": float(getattr(entry, "out_range_percent", 100.0) or 0.0),
+            "in_range_mm": float(getattr(entry, "in_range_mm", 10.0) or 0.0),
+            "out_range_mm": float(getattr(entry, "out_range_mm", 10.0) or 0.0),
         }
     data = balloon_core.uni_flash_params_to_dict(entry)
     for field in _COLOR_ONLY_PARAM_FIELDS:
@@ -235,6 +263,8 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
     white_width_scale = max(0.0, float(getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0)) / 100.0
     white_brush = max(0.01, white_brush * white_width_scale)
     spacing = max(0.0, float(getattr(entry, "flash_white_outline_spacing_mm", 0.25) or 0.25))
+    # 詳細フィールドはフキダシ側にも同名で持ち、既定値 = 従来の固定値
+    # (既存フキダシの見た目を変えない)
     return SimpleNamespace(
         effect_type="white_outline",
         rotation_deg=0.0,
@@ -244,16 +274,16 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         end_rounded_corner_enabled=False,
         white_outline_count=max(1, int(getattr(entry, "flash_white_outline_count", 5) or 5)),
         white_outline_spacing_mm=spacing,
-        white_outline_white_line_count_auto=False,
+        white_outline_white_line_count_auto=bool(getattr(entry, "white_outline_white_line_count_auto", False)),
         white_outline_white_line_count=max(1, int(getattr(entry, "flash_white_outline_white_line_count", 24) or 24)),
         white_outline_width_mm=max(0.01, float(getattr(entry, "flash_white_outline_width_mm", 10.0) or 10.0)),
-        white_outline_width_jitter_enabled=False,
-        white_outline_width_min_percent=100.0,
-        white_outline_length_jitter_enabled=False,
-        white_outline_length_min_percent=100.0,
-        white_outline_white_ratio_percent=70.0,
+        white_outline_width_jitter_enabled=bool(getattr(entry, "white_outline_width_jitter_enabled", False)),
+        white_outline_width_min_percent=float(getattr(entry, "white_outline_width_min_percent", 100.0) or 0.0),
+        white_outline_length_jitter_enabled=bool(getattr(entry, "white_outline_length_jitter_enabled", False)),
+        white_outline_length_min_percent=float(getattr(entry, "white_outline_length_min_percent", 100.0) or 0.0),
+        white_outline_white_ratio_percent=float(getattr(entry, "white_outline_white_ratio_percent", 70.0) or 0.0),
         white_outline_white_brush_mm=white_brush,
-        white_outline_white_attenuation=0.0,
+        white_outline_white_attenuation=float(getattr(entry, "white_outline_white_attenuation", 0.0) or 0.0),
         white_outline_white_in_percent=white_endpoint,
         white_outline_white_out_percent=white_endpoint,
         white_outline_white_inout_range_mode="percent",
@@ -261,16 +291,16 @@ def _white_outline_params(entry, *, black_brush_mm: float) -> SimpleNamespace:
         white_outline_white_out_range_percent=50.0,
         white_outline_white_in_range_mm=10.0,
         white_outline_white_out_range_mm=10.0,
-        white_outline_black_line_count_auto=False,
+        white_outline_black_line_count_auto=bool(getattr(entry, "white_outline_black_line_count_auto", False)),
         white_outline_black_line_count=max(1, int(getattr(entry, "flash_white_outline_black_line_count", 3) or 3)),
-        white_outline_black_direction="outside",
+        white_outline_black_direction=str(getattr(entry, "white_outline_black_direction", "outside") or "outside"),
         white_outline_black_brush_mm=max(0.01, black_brush_mm),
         white_outline_black_spacing_mm=max(0.0, float(getattr(entry, "flash_white_outline_black_spacing_mm", spacing) or spacing)),
-        white_outline_black_width_scale_percent=100.0,
-        white_outline_black_length_scale_near_percent=100.0,
-        white_outline_black_length_scale_far_percent=100.0,
-        white_outline_black_attenuation=0.0,
-        white_outline_angle_deg=0.0,
+        white_outline_black_width_scale_percent=float(getattr(entry, "white_outline_black_width_scale_percent", 100.0) or 0.0),
+        white_outline_black_length_scale_near_percent=float(getattr(entry, "white_outline_black_length_scale_near_percent", 100.0) or 0.0),
+        white_outline_black_length_scale_far_percent=float(getattr(entry, "white_outline_black_length_scale_far_percent", 100.0) or 0.0),
+        white_outline_black_attenuation=float(getattr(entry, "white_outline_black_attenuation", 0.0) or 0.0),
+        white_outline_angle_deg=float(getattr(entry, "white_outline_angle_deg", 0.0) or 0.0),
     )
 
 
@@ -381,6 +411,22 @@ def generate_flash_strokes_rect_local(entry):
             ry,
             seed=int(getattr(getattr(entry, "shape_params", None), "shape_seed", 0) or 0),
         )
+        # 入り抜き: ウニフラと同じ機構 (適用先/入り抜き%/始点%/カーブ/範囲) を
+        # 白抜き線の各線にも適用する。既定 (入り0%・抜き0%) では何もしないため
+        # 既存フキダシの見た目は変わらない
+        try:
+            inout = _focus_params(entry)
+            if (
+                float(getattr(inout, "in_percent", 0.0) or 0.0) > 1.0e-6
+                or float(getattr(inout, "out_percent", 0.0) or 0.0) > 1.0e-6
+            ):
+                strokes = effect_line_gen._apply_inout_profile(
+                    strokes,
+                    inout,
+                    roles=("line", "white_outline_white", "white_outline_black"),
+                )
+        except Exception:  # noqa: BLE001
+            pass
     else:
         params = _focus_params(entry)
         if float(getattr(params, "brush_size_mm", 0.0) or 0.0) <= 1.0e-9:
