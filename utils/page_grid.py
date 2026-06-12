@@ -211,6 +211,23 @@ def slot_grid_offset_mm(
     return (ox, oy)
 
 
+def page_manual_offset_for_scene_mm(scene, page_entry) -> tuple[float, float]:
+    """シーンの役割を考慮した手動移動量 (mm)。
+
+    「表示X/Y」は全ページ一覧での見た目上の移動のため、ページ編集シーンでは
+    内容の配置に加えない (紙・コマ・フキダシ・効果線などが一覧上の移動量で
+    ばらばらに動かないようにする)。
+    """
+    try:
+        from . import page_file_scene
+
+        if page_file_scene.is_page_edit_scene(scene):
+            return 0.0, 0.0
+    except Exception:  # noqa: BLE001
+        pass
+    return page_manual_offset_mm(page_entry)
+
+
 def page_manual_offset_mm(page_entry) -> tuple[float, float]:
     """ページエントリに保存された手動移動量 (mm) を返す."""
     if page_entry is None:
@@ -256,7 +273,7 @@ def page_total_offset_mm(
     ox_mm, oy_mm = page_grid_offset_mm(
         grid_page_index, cols, gap, cw, ch, start_side, read_direction, work=work
     )
-    add_x, add_y = page_manual_offset_mm(work.pages[page_index])
+    add_x, add_y = page_manual_offset_for_scene_mm(scene, work.pages[page_index])
     return ox_mm + add_x, oy_mm + add_y
 
 
@@ -266,6 +283,100 @@ def _resolve_overview_params(scene, work) -> tuple[int, float, float, float]:
     cw = float(work.paper.canvas_width_mm)
     ch = float(work.paper.canvas_height_mm)
     return cols, gap, cw, ch
+
+
+# 下書き (マスター GP) のストローク座標はキャンバス絶対値のため、ページの
+# 並べ替え・列数変更などで grid 配置が変わると、その時点で閉じている
+# ページ用 blend のストロークには平行移動が届かない。ページ/コマ用 blend の
+# 保存時に「自ページの grid オフセット」を scene へ記録し、次の読込時に
+# 現在のオフセットとの差分だけストロークを動かして追従させる。
+PROP_GP_SAVED_PAGE_OFFSET = "bname_gp_saved_page_offset"
+
+
+def _own_detail_page_id(context) -> str:
+    """ページ/コマ用 blend が属するページ ID (作品一覧シーンでは空)."""
+    try:
+        from . import page_file_scene
+
+        role, page_id, _coma_id = page_file_scene.current_role(context)
+        if role in {page_file_scene.ROLE_PAGE, page_file_scene.ROLE_COMA}:
+            return page_id
+        if role != page_file_scene.ROLE_UNKNOWN:
+            return ""
+        # 新規作成中 (filepath 未確定) はシーン上の編集状態から判定する
+        scene = getattr(context, "scene", None)
+        page_id = page_file_scene.current_page_id(scene)
+        if page_id:
+            return page_id
+        return str(getattr(scene, "bname_current_coma_page_id", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def record_gp_page_offset(context, work) -> None:
+    """自ページの grid オフセットを scene に記録する (ページ/コマ用 blend のみ)."""
+    scene = getattr(context, "scene", None) or bpy.context.scene
+    if scene is None or work is None:
+        return
+    page_id = _own_detail_page_id(context)
+    if not page_id:
+        return
+    try:
+        from . import page_file_scene
+
+        index = page_file_scene.find_page_index(work, page_id)
+    except Exception:  # noqa: BLE001
+        return
+    if not (0 <= index < len(getattr(work, "pages", []) or [])):
+        return
+    ox, oy = page_total_offset_mm(work, scene, index)
+    scene[PROP_GP_SAVED_PAGE_OFFSET] = {"page_id": page_id, "ox": float(ox), "oy": float(oy)}
+
+
+def reconcile_gp_strokes_with_page_offset(context, work) -> None:
+    """保存時と現在で自ページの配置が変わっていたら、下書きを差分だけ移動する."""
+    scene = getattr(context, "scene", None) or bpy.context.scene
+    if scene is None or work is None:
+        return
+    page_id = _own_detail_page_id(context)
+    if not page_id:
+        return
+    try:
+        from . import page_file_scene
+
+        index = page_file_scene.find_page_index(work, page_id)
+    except Exception:  # noqa: BLE001
+        return
+    if not (0 <= index < len(getattr(work, "pages", []) or [])):
+        return
+    stored = scene.get(PROP_GP_SAVED_PAGE_OFFSET)
+    stored_id = ""
+    stored_ox = stored_oy = 0.0
+    try:
+        if stored is not None:
+            stored_id = str(stored.get("page_id", "") or "")
+            stored_ox = float(stored.get("ox", 0.0))
+            stored_oy = float(stored.get("oy", 0.0))
+    except Exception:  # noqa: BLE001
+        stored_id = ""
+    if stored_id == page_id:
+        ox, oy = page_total_offset_mm(work, scene, index)
+        dx = ox - stored_ox
+        dy = oy - stored_oy
+        if abs(dx) > 1.0e-6 or abs(dy) > 1.0e-6:
+            try:
+                from . import layer_stack
+
+                layer_stack.translate_gp_layers_for_parent_keys(
+                    context,
+                    layer_stack.gp_parent_keys_for_page(work.pages[index]),
+                    dx,
+                    dy,
+                )
+            except Exception:  # noqa: BLE001
+                _logger.exception("gp stroke reconcile failed: %s", page_id)
+    # 旧ファイル (記録なし) や別ページの記録は、現在値の記録だけ行う
+    record_gp_page_offset(context, work)
 
 
 SUBPAGE_OFFSET_X_PROP = "bname_subpage_offset_x_mm"
@@ -353,6 +464,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     except Exception:  # noqa: BLE001
         is_work_list_scene = False
         current_page_id = ""
+        is_page_edit_scene = False
         real_work = work
 
     # entry-positioned kinds 用に scene 全体の image_layers を 1 度だけ index 化
@@ -434,9 +546,12 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         ox_mm, oy_mm = page_grid_offset_mm(
             i, cols, gap, cw, ch, start_side, read_direction, work=work
         )
-        add_x, add_y = page_manual_offset_mm(page_entry)
-        ox_mm += add_x
-        oy_mm += add_y
+        # ページ編集シーンでは「一覧上の手動移動量」を内容に加えない
+        # (一覧専用の見た目オフセット。紙やコマと内容がずれる原因になる)
+        if not is_page_edit_scene:
+            add_x, add_y = page_manual_offset_mm(page_entry)
+            ox_mm += add_x
+            oy_mm += add_y
 
         _set_page_text_objects(page_entry, page_id_str, ox_mm, oy_mm)
 

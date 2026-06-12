@@ -200,6 +200,11 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
+# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA)。
+# 毎回 PIL で開き直すとページ数分の固定コストになるため。
+_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int]]] = {}
+
+
 def _preview_png_usable(
     path: Path,
     expected_size: tuple[int, int],
@@ -212,17 +217,28 @@ def _preview_png_usable(
     見開き化の途中で作られた単ページ縦横比の古いプレビューは
     サイズ不一致で自動的に再生成へ回る。
     """
-    if not path.is_file():
-        return False
     try:
-        from PIL import Image
+        mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    key = str(path)
+    cached = _PNG_USABLE_CACHE.get(key)
+    if cached is not None and cached[0] == mtime:
+        size, (r, g, b, a) = cached[1], cached[2]
+    else:
+        try:
+            from PIL import Image
 
-        with Image.open(path) as image:
-            if tuple(image.size) != tuple(expected_size):
-                return False
-            rgba = image.convert("RGBA")
-            r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
-    except Exception:  # noqa: BLE001
+            with Image.open(path) as image:
+                size = tuple(image.size)
+                rgba = image.convert("RGBA")
+                r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
+        except Exception:  # noqa: BLE001
+            return False
+        if len(_PNG_USABLE_CACHE) > 512:
+            _PNG_USABLE_CACHE.clear()
+        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a))
+    if tuple(size) != tuple(expected_size):
         return False
     if a < 200 or r > 120:
         return False
@@ -434,13 +450,32 @@ def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy
     except OSError:
         return None
     img = None
-    for candidate in bpy.data.images:
+    # 高速パス: プレビュー画像は決まった名前で保持しているため、まず名前で引く
+    # (全画像を走査してパス解決する従来経路はページ数に比例して重い)
+    expected_name = f"{PREVIEW_IMAGE_PREFIX}{path.parent.name}"
+    named = bpy.data.images.get(expected_name)
+    if named is not None:
         try:
-            if str(Path(bpy.path.abspath(candidate.filepath)).resolve()) == abspath:
-                img = candidate
-                break
+            if str(Path(bpy.path.abspath(named.filepath)).resolve()) == abspath:
+                img = named
+                if (
+                    float(named.get("_bname_page_preview_mtime", -1.0)) == mtime
+                    and (
+                        expected_size is None
+                        or tuple(int(v) for v in named.size[:2]) == tuple(expected_size)
+                    )
+                ):
+                    return named
         except Exception:  # noqa: BLE001
-            continue
+            img = None
+    if img is None:
+        for candidate in bpy.data.images:
+            try:
+                if str(Path(bpy.path.abspath(candidate.filepath)).resolve()) == abspath:
+                    img = candidate
+                    break
+            except Exception:  # noqa: BLE001
+                continue
     if img is not None and expected_size is not None:
         try:
             if tuple(int(v) for v in img.size[:2]) != tuple(expected_size):
@@ -472,6 +507,18 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
     mat = bpy.data.materials.get(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     if mat is None:
         mat = bpy.data.materials.new(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
+    # 既に同じ画像へ結線済みならノード再構築をスキップ (ページ追加等の高速化)
+    try:
+        if (
+            image is not None
+            and mat.use_nodes
+            and str(mat.get("_bname_preview_image", "") or "") == str(image.name)
+            and mat.node_tree is not None
+            and len(mat.node_tree.nodes) >= 5
+        ):
+            return mat
+    except Exception:  # noqa: BLE001
+        pass
     mat.use_nodes = True
     try:
         mat.blend_method = "OPAQUE"
@@ -499,6 +546,10 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
     except Exception:  # noqa: BLE001
         _logger.exception("page preview material link failed")
     mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    try:
+        mat["_bname_preview_image"] = str(getattr(image, "name", "") or "")
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -506,6 +557,16 @@ def _ensure_plane_mesh(page_id: str, width_mm: float, height_mm: float) -> bpy.t
     mesh = bpy.data.meshes.get(f"{PREVIEW_MESH_PREFIX}{page_id}")
     if mesh is None:
         mesh = bpy.data.meshes.new(f"{PREVIEW_MESH_PREFIX}{page_id}")
+    # 同じ寸法ならジオメトリ再構築をスキップ
+    try:
+        if (
+            len(mesh.vertices) == 4
+            and abs(float(mesh.get("_bname_w", -1.0)) - float(width_mm)) < 1.0e-6
+            and abs(float(mesh.get("_bname_h", -1.0)) - float(height_mm)) < 1.0e-6
+        ):
+            return mesh
+    except Exception:  # noqa: BLE001
+        pass
     hw = mm_to_m(width_mm) * 0.5
     hh = mm_to_m(height_mm) * 0.5
     mesh.clear_geometry()
@@ -522,6 +583,8 @@ def _ensure_plane_mesh(page_id: str, width_mm: float, height_mm: float) -> bpy.t
         strict=False,
     ):
         uv.data[loop_index].uv = uv_value
+    mesh["_bname_w"] = float(width_mm)
+    mesh["_bname_h"] = float(height_mm)
     return mesh
 
 

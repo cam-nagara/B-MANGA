@@ -223,6 +223,14 @@ def sync_scene_work_from_disk(context, work_dir: Path):
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
     view_settings.apply_work_to_scene(getattr(context, "scene", None), work)
+    try:
+        from . import page_grid
+
+        # 閉じている間に一覧側で並べ替え・配置変更があった場合、
+        # 下書き (マスター GP) のストロークを新しいページ位置へ追従させる
+        page_grid.reconcile_gp_strokes_with_page_offset(context, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("gp page-offset reconcile failed")
     return work
 
 
@@ -289,6 +297,13 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
                 _los.mirror_work_to_outliner(scene, work)
         except Exception:  # noqa: BLE001
             _logger.exception("save_scene_work_to_disk: mirror refresh failed")
+        try:
+            from . import page_grid
+
+            # 読込時の下書き位置補正の基準として、自ページの現在配置を記録
+            page_grid.record_gp_page_offset(context, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("gp page-offset record failed")
         return True
     except Exception:  # noqa: BLE001
         _logger.exception("B-Name metadata save failed%s", f" ({reason})" if reason else "")

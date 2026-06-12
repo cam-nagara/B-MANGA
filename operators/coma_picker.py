@@ -168,7 +168,7 @@ def find_coma_at_world_mm(
         ox, oy = page_grid.page_grid_offset_mm(
             idx, cols, gap, cw, ch, start_side, read_direction, work=work
         )
-        add_x, add_y = page_grid.page_manual_offset_mm(page)
+        add_x, add_y = page_grid.page_manual_offset_for_scene_mm(scene, page)
         ox += add_x
         oy += add_y
         hit = _hit_test_page(page, x_mm - ox, y_mm - oy)

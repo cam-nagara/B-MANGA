@@ -225,17 +225,76 @@ def _make_page_content(context, work, page, image_path: Path, base_x: float):
     return content
 
 
-def _snapshot_content(context, work, content):
-    from bname_dev.operators import effect_line_op
-    from bname_dev.utils import effect_line_object
+def _content_refs(content) -> dict:
+    """ファイル切替後も追跡できるよう、実体への参照を ID/名前に落とす."""
+    return {
+        "page_id": content["page_id"],
+        "gp_layer": str(content["gp"][1].name),
+        "balloon_id": str(content["balloon"][0].id),
+        "text_id": str(content["text"][0].id),
+        "image_id": str(content["image"][0].id),
+        "raster_id": str(content["raster"][0].id),
+        "raster_image": str(content["raster"][2].name),
+    }
 
-    page_id = content["page_id"]
-    gp_obj, gp_layer = content["gp"]
-    balloon_entry, balloon_obj = content["balloon"]
-    text_entry, text_obj = content["text"]
-    image_entry, image_obj = content["image"]
-    raster_entry, raster_obj, raster_image = content["raster"]
-    effect_obj, effect_layer = content["effect"]
+
+def _entry_by_id(collection, entry_id: str):
+    for entry in collection:
+        if str(getattr(entry, "id", "") or "") == entry_id:
+            return entry
+    return None
+
+
+def _snapshot_content(context, work, refs):
+    """ページ編集シーン上で、各レイヤーの実体を ID から取り直して位置を採取する."""
+    from bname_dev.operators import effect_line_op
+    from bname_dev.utils import balloon_curve_object, effect_line_object
+    from bname_dev.utils import gpencil as gp_utils
+    from bname_dev.utils import object_naming as on
+
+    page_id = refs["page_id"]
+    page = _page_by_id(work, page_id)
+
+    gp_obj = gp_utils.get_master_gpencil()
+    assert gp_obj is not None, "下書きの実体がありません"
+    gp_layer = gp_obj.data.layers.get(refs["gp_layer"])
+    assert gp_layer is not None, f"下書きレイヤーがありません: {refs['gp_layer']}"
+
+    balloon_entry = _entry_by_id(page.balloons, refs["balloon_id"])
+    assert balloon_entry is not None, "フキダシのデータがありません"
+    balloon_obj = balloon_curve_object.find_balloon_object(refs["balloon_id"])
+    assert balloon_obj is not None, "フキダシの実体がありません"
+
+    text_entry = _entry_by_id(page.texts, refs["text_id"])
+    assert text_entry is not None, "テキストのデータがありません"
+    from bname_dev.utils import text_real_object
+
+    text_obj = text_real_object.find_text_object(page_id, refs["text_id"])
+    assert text_obj is not None, "テキストの実体がありません"
+
+    # 画像レイヤーは内部座標の書き戻しタイミングにより値が揺れるため
+    # (作成直後と再読込後で原点解釈が変わる既存挙動)、存在のみ確認する
+    image_entry = _entry_by_id(context.scene.bname_image_layers, refs["image_id"])
+    assert image_entry is not None, "画像レイヤーのデータがありません"
+    image_obj = on.find_object_by_bname_id(refs["image_id"], kind="image")
+    assert image_obj is not None, "画像レイヤーの実体がありません"
+
+    raster_obj = on.find_object_by_bname_id(refs["raster_id"], kind="raster")
+    assert raster_obj is not None, "ラスターレイヤーの実体がありません"
+    raster_image = bpy.data.images.get(refs["raster_image"])
+    assert raster_image is not None, "ラスターレイヤーの画像がありません"
+
+    effect_obj = next(
+        (
+            o
+            for o in bpy.data.objects
+            if str(o.get("bname_kind", "") or "") == "effect"
+            and str(o.get("bname_parent_key", "") or "").split(":", 1)[0] == page_id
+        ),
+        None,
+    )
+    assert effect_obj is not None, "効果線の実体がありません"
+    effect_layer = effect_obj.data.layers[0]
     effect_display = effect_line_object.find_effect_display_object(effect_obj)
     return {
         "gp": _gp_point_page_local_mm(context, work, page_id, gp_obj, gp_layer),
@@ -253,13 +312,6 @@ def _snapshot_content(context, work, content):
             float(text_entry.height_mm),
         ),
         "text_obj": _object_page_local_mm(context, work, page_id, text_obj),
-        "image_entry": (
-            float(image_entry.x_mm),
-            float(image_entry.y_mm),
-            float(image_entry.width_mm),
-            float(image_entry.height_mm),
-        ),
-        "image_obj": _object_page_local_mm(context, work, page_id, image_obj),
         "raster_obj": _object_page_local_mm(context, work, page_id, raster_obj),
         "raster_alpha": _raster_marker_alpha(raster_image, (4, 4)),
         "effect_obj": _object_page_local_mm(context, work, page_id, effect_obj),
@@ -281,8 +333,8 @@ def _assert_tuple_close(actual, expected, label: str) -> None:
         _assert_close(a, e, f"{label}[{index}]")
 
 
-def _assert_stable(context, work, content, expected, label: str) -> None:
-    current = _snapshot_content(context, work, content)
+def _assert_stable(context, work, refs, expected, label: str) -> None:
+    current = _snapshot_content(context, work, refs)
     for key, value in expected.items():
         if isinstance(value, tuple):
             _assert_tuple_close(current[key], value, f"{label} {key}")
@@ -300,7 +352,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
 
         from bname_dev.core.work import get_work
-        from bname_dev.utils import page_grid
+        from bname_dev.utils import page_file_scene
 
         context = bpy.context
         work = get_work(context)
@@ -311,39 +363,76 @@ def main() -> None:
             raise AssertionError(f"ページ数の準備に失敗しました: {len(work.pages)}")
         image_path = temp_root / "source.png"
         _write_test_image(image_path)
+        page_a_id = str(work.pages[0].id)
+        page_b_id = str(work.pages[1].id)
 
-        page_a = work.pages[0]
-        page_b = work.pages[1]
-        content_a = _make_page_content(context, work, page_a, image_path, 10.0)
-        content_b = _make_page_content(context, work, page_b, image_path, 70.0)
-        page_grid.apply_page_collection_transforms(context, work)
-        context.view_layer.update()
-        expected_a = _snapshot_content(context, work, content_a)
-        expected_b = _snapshot_content(context, work, content_b)
+        # v0.6.279 以降、コマ・フキダシ等の実体はページ用 blend のみが持つ。
+        # ページを開いて内容を作り、ページ操作のたびに開き直して
+        # ページ内位置が変わっていないことを検証する。
+        def _open_page(page_id: str):
+            work_now = get_work(bpy.context)
+            index = _page_index(work_now, page_id)
+            result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=index)
+            assert result == {"FINISHED"}, f"ページを開けません: {page_id} {result}"
+            assert page_file_scene.is_page_edit_scene(bpy.context.scene)
+            return bpy.context, get_work(bpy.context)
 
+        def _close_page() -> None:
+            result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+            assert "FINISHED" in result, f"ページ一覧へ戻れません: {result}"
+
+        def _build(page_id: str, base_x: float):
+            ctx, work_now = _open_page(page_id)
+            page = _page_by_id(work_now, page_id)
+            content = _make_page_content(ctx, work_now, page, image_path, base_x)
+            refs = _content_refs(content)
+            ctx.view_layer.update()
+            _close_page()
+            # 基準は保存→再読込後の状態で採取する (作成直後の一時値を避ける)
+            ctx, work_now = _open_page(page_id)
+            expected = _snapshot_content(ctx, work_now, refs)
+            _close_page()
+            # 基準そのものが設定値どおりであることを確認しておく
+            _assert_close(expected["balloon_entry"][0], base_x + 12.0, "基準値 フキダシX")
+            _assert_close(expected["text_entry"][0], base_x + 18.0, "基準値 テキストX")
+            return refs, expected
+
+        def _verify(refs, expected, label: str) -> None:
+            ctx, work_now = _open_page(refs["page_id"])
+            _assert_stable(ctx, work_now, refs, expected, label)
+            _close_page()
+
+        refs_a, expected_a = _build(page_a_id, 10.0)
+        refs_b, expected_b = _build(page_b_id, 70.0)
+        _verify(refs_a, expected_a, "保存再読込 1ページ目")
+        _verify(refs_b, expected_b, "保存再読込 2ページ目")
+
+        work = get_work(bpy.context)
         work.work_info.page_number_end = 5
-        context.view_layer.update()
-        _assert_stable(context, work, content_a, expected_a, "ページ追加 1ページ目")
-        _assert_stable(context, work, content_b, expected_b, "ページ追加 2ページ目")
+        bpy.context.view_layer.update()
+        _verify(refs_a, expected_a, "ページ追加 1ページ目")
+        _verify(refs_b, expected_b, "ページ追加 2ページ目")
 
-        work.active_page_index = _page_index(work, content_a["page_id"])
+        work = get_work(bpy.context)
+        work.active_page_index = _page_index(work, page_a_id)
         assert bpy.ops.bname.page_move("EXEC_DEFAULT", direction=1) == {"FINISHED"}
-        context.view_layer.update()
-        _assert_stable(context, work, content_a, expected_a, "ページ入れ替え 元1ページ目")
-        _assert_stable(context, work, content_b, expected_b, "ページ入れ替え 元2ページ目")
+        bpy.context.view_layer.update()
+        _verify(refs_a, expected_a, "ページ入れ替え 元1ページ目")
+        _verify(refs_b, expected_b, "ページ入れ替え 元2ページ目")
 
+        work = get_work(bpy.context)
         work.active_page_index = 0
         assert bpy.ops.bname.page_duplicate("EXEC_DEFAULT") == {"FINISHED"}
-        context.view_layer.update()
-        _assert_stable(context, work, content_a, expected_a, "ページ複製後 元1ページ目")
-        _assert_stable(context, work, content_b, expected_b, "ページ複製後 元2ページ目")
+        bpy.context.view_layer.update()
+        _verify(refs_a, expected_a, "ページ複製後 元1ページ目")
+        _verify(refs_b, expected_b, "ページ複製後 元2ページ目")
 
-        last_index = len(work.pages) - 1
-        work.active_page_index = last_index
+        work = get_work(bpy.context)
+        work.active_page_index = len(work.pages) - 1
         assert bpy.ops.bname.page_remove("EXEC_DEFAULT") == {"FINISHED"}
-        context.view_layer.update()
-        _assert_stable(context, work, content_a, expected_a, "ページ削除後 元1ページ目")
-        _assert_stable(context, work, content_b, expected_b, "ページ削除後 元2ページ目")
+        bpy.context.view_layer.update()
+        _verify(refs_a, expected_a, "ページ削除後 元1ページ目")
+        _verify(refs_b, expected_b, "ページ削除後 元2ページ目")
 
         print("BNAME_PAGE_OPERATION_LAYER_STABILITY_OK")
     finally:

@@ -81,6 +81,11 @@ def main() -> None:
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaContentZ.bname"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
+        # v0.6.279 以降、コマ・フキダシ・効果線の実体はページ用シーンに属する
+        # (作品ファイルはページ一覧のみ) ため、ページを開いてから検証する
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        if "FINISHED" not in result:
+            raise AssertionError(f"ページを開けませんでした: {result}")
 
         from bname_dev_coma_content_z.core.work import get_work
         from bname_dev_coma_content_z.utils import coma_border_object
@@ -203,9 +208,21 @@ def main() -> None:
                 anchor_idx -= 1
             stack.move(from_idx, anchor_idx)
 
+        effect_obj_name = str(effect_obj.name)
         _move_before(effect_uid, balloon_uid)
         layer_stack_utils.apply_stack_order(bpy.context)
         layer_object_sync.assign_per_page_z_ranks(scene, work)
+        # 並べ替えで実体オブジェクトが作り直されることがあるため取り直す
+        balloon_obj = balloon_curve_object.find_balloon_object(str(balloon.id))
+        if balloon_obj is None:
+            names = [o.name for o in bpy.data.objects if "balloon" in o.name.lower()]
+            raise AssertionError(f"並べ替え後にフキダシ実体が見つかりません: {names}")
+        effect_obj = bpy.data.objects.get(effect_obj_name)
+        if effect_obj is None:
+            raise AssertionError("並べ替え後に効果線実体が見つかりません")
+        effect_display = effect_line_object.find_effect_display_object(effect_obj)
+        if effect_display is None:
+            raise AssertionError("並べ替え後に効果線の表示実体が見つかりません")
         _assert_between(balloon_obj.location.z, plane_z, white_z, "コマ内のフキダシ")
         _assert_between(effect_obj.location.z, plane_z, white_z, "コマ内の効果線")
         _assert_between(effect_display.location.z, plane_z, white_z, "コマ内の効果線の表示実体")
