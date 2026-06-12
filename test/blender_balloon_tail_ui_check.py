@@ -63,6 +63,10 @@ class _FakeLayout:
         self.ops.append(op_id)
         return _FakeOp()
 
+    def operator_menu_enum(self, op_id: str, _prop: str, **_kwargs):
+        self.ops.append(op_id)
+        return _FakeOp()
+
 
 def _add_balloon(page):
     entry = page.balloons.add()
@@ -160,8 +164,10 @@ def main() -> None:
 
         tail.type = "curve"
         tail.curve_bend = 0.4
-        assert len(balloon_curve_object._tail_polygon_for_entry(entry, tail)) == 6
-        assert len(export_balloon._balloon_tail_polygon(rect, tail)) == 6
+        # v0.6.277: 曲げしっぽは 3 点の折れ線ではなく、なめらかな 2 次曲線で
+        # サンプリングされる (カクカク解消)
+        assert len(balloon_curve_object._tail_polygon_for_entry(entry, tail)) >= 20
+        assert len(export_balloon._balloon_tail_polygon(rect, tail)) >= 20
         balloon_tail_geom.write_polyline_points(tail, [(25.0, 12.0), (34.0, 4.0), (46.0, -8.0)])
         tail.points[1].corner_type = "curve"
         assert len(tail.points) == 3
@@ -229,16 +235,9 @@ def main() -> None:
 
         layout = _FakeLayout()
         layer_detail_op._draw_balloon_detail(layout, entry, page)
-        assert "bname.balloon_tail_add_target" in layout.ops
-        assert "bname.balloon_tail_remove" in layout.ops
+        # v0.6.275: しっぽ設定は専用ダイアログへ分離され、開くボタンだけが置かれる
+        assert "bname.balloon_tail_detail_open" in layout.ops
         for prop_name in {
-            "type",
-            "direction_deg",
-            "length_mm",
-            "root_width_mm",
-            "tip_width_mm",
-            "curve_bend",
-            "custom_points_enabled",
             "fill_opacity",
             "fill_material_name",
             "fill_blur_amount",
@@ -248,6 +247,19 @@ def main() -> None:
             "inner_white_margin_enabled",
         }:
             assert prop_name in layout.props, prop_name
+
+        # しっぽの詳細設定ダイアログ側の UI (追加・削除・プリセット・新設定)
+        from bname_dev_tail_ui.operators import balloon_tail_detail_op
+
+        tail_layout = _FakeLayout()
+        balloon_tail_detail_op._draw_tail_box(
+            tail_layout, context, page, entry, entry.tails[0], 0
+        )
+        assert "bname.balloon_tail_remove" in tail_layout.ops
+        assert "bname.balloon_tail_preset_apply" in tail_layout.ops
+        assert "bname.balloon_tail_preset_save" in tail_layout.ops
+        for prop_name in {"line_type", "root_width_mm", "tip_width_mm", "sharp_corners"}:
+            assert prop_name in tail_layout.props, prop_name
 
         result = bpy.ops.bname.balloon_tail_remove(
             "EXEC_DEFAULT",

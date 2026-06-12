@@ -259,39 +259,18 @@ class BNAME_PT_balloons(Panel):
             if balloon_shapes.normalize_shape(str(entry.shape or "")) in {"thorn", "thorn-curve"}:
                 box.prop(sp, "cloud_valley_sharp")
 
-        # 尻尾
+        # 尻尾 (個別の設定は「しっぽの詳細設定」ダイアログに集約)
         box = layout.box()
         row = box.row(align=True)
         row.label(text=f"尻尾 ({len(entry.tails)})")
         add_op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
         add_op.page_id = str(getattr(page, "id", "") or "")
         add_op.balloon_id = str(getattr(entry, "id", "") or "")
-        for i, tail in enumerate(entry.tails):
-            sub = box.box()
-            header = sub.row(align=True)
-            header.label(text=f"尻尾 {i + 1}")
-            remove_op = header.operator("bname.balloon_tail_remove", text="", icon="X")
-            remove_op.page_id = str(getattr(page, "id", "") or "")
-            remove_op.balloon_id = str(getattr(entry, "id", "") or "")
-            remove_op.tail_index = i
-            sub.prop(tail, "type", text="種類")
-            sub.prop(tail, "direction_deg", text="方向")
-            sub.prop(tail, "length_mm", text="長さ (mm)")
-            row = sub.row(align=True)
-            row.prop(tail, "root_width_mm", text="根元幅 (mm)")
-            row.prop(tail, "tip_width_mm", text="先端幅 (mm)")
-            bend = sub.row()
-            bend.enabled = str(getattr(tail, "type", "") or "") == "curve"
-            bend.prop(tail, "curve_bend", text="曲げ")
-            sub.prop(tail, "custom_points_enabled")
-            point_box = sub.column(align=True)
-            point_box.enabled = bool(getattr(tail, "custom_points_enabled", False))
-            row = point_box.row(align=True)
-            row.prop(tail, "start_x_mm")
-            row.prop(tail, "start_y_mm")
-            row = point_box.row(align=True)
-            row.prop(tail, "end_x_mm")
-            row.prop(tail, "end_y_mm")
+        detail_op = box.operator(
+            "bname.balloon_tail_detail_open", text="しっぽの詳細設定...", icon="PREFERENCES"
+        )
+        detail_op.page_id = str(getattr(page, "id", "") or "")
+        detail_op.balloon_id = str(getattr(entry, "id", "") or "")
 
 
 class BNAME_PT_texts(Panel):

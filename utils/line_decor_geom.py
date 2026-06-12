@@ -100,14 +100,18 @@ def decorations_along_loop(
     jitter: float = 0.0,
     seed: int = 0,
     flip_y: bool = False,
+    orient: str = "line",
+    center: tuple[float, float] | None = None,
 ) -> list[list[tuple[float, float]]]:
     """閉じた輪郭に沿って図形を並べ、多角形 (点列) のリストを返す.
 
     - size: 図形の大きさ (線幅と同じ単位)
     - spacing: 図形どうしの間隔 (中心間距離 = size + spacing)
-    - angle_rad: 線の向きに対する図形の追加回転
+    - angle_rad: 基準の向きに対する図形の追加回転
     - jitter: 0-1。位置・角度・大きさのばらつき
     - flip_y: ピクセル座標系 (Y 下向き) で図形の上下が反転しないようにする
+    - orient: "line" = 線の進行方向に沿わせる / "center" = 常に center の方向を向く
+    - center: orient="center" のときの基準点 (フキダシの中心点)
     """
     loop = _closed_loop(points)
     if len(loop) < 3 or size <= 1.0e-9:
@@ -140,7 +144,15 @@ def decorations_along_loop(
             cx += math.cos(normal) * offset
             cy += math.sin(normal) * offset
         scale = size * (1.0 + (rng.random() - 0.5) * jitter if jitter > 0.0 else 1.0)
-        rotation = tangent + angle_rad + ((rng.random() - 0.5) * math.pi * jitter if jitter > 0.0 else 0.0)
+        if orient == "center" and center is not None:
+            # 図形の上方向 (+Y) が常に center を向くような回転角。
+            # flip_y (ピクセル座標, Y 下向き) では回転の見た目の向きが反転する
+            # ため補正の符号も反転する。
+            to_center = math.atan2(float(center[1]) - cy, float(center[0]) - cx)
+            base_rotation = to_center + (math.pi * 0.5 if flip_y else -math.pi * 0.5)
+        else:
+            base_rotation = tangent
+        rotation = base_rotation + angle_rad + ((rng.random() - 0.5) * math.pi * jitter if jitter > 0.0 else 0.0)
         cos_r = math.cos(rotation)
         sin_r = math.sin(rotation)
         polygons.append([

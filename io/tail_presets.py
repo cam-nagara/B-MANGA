@@ -32,6 +32,11 @@ _TAIL_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("curve_mode", "curveMode", "str"),
     ("line_type", "lineType", "str"),
     ("ellipse_gap_mm", "ellipseGapMm", "float"),
+    ("ellipse_angle_deg", "ellipseAngleDeg", "float"),
+    ("ellipse_orient", "ellipseOrient", "str"),
+    ("sharp_corners", "sharpCorners", "bool"),
+    ("taper_in_percent", "taperInPercent", "float"),
+    ("taper_out_percent", "taperOutPercent", "float"),
     ("direction_deg", "directionDeg", "float"),
     ("length_mm", "lengthMm", "float"),
     ("root_width_mm", "rootWidthMm", "float"),
@@ -104,6 +109,8 @@ def apply_preset_to_tail(preset: TailPreset, tail) -> None:
             value = data[key]
             if kind == "float":
                 setattr(tail, attr, float(value))
+            elif kind == "bool":
+                setattr(tail, attr, bool(value))
             else:
                 setattr(tail, attr, str(value))
         except Exception:  # noqa: BLE001
@@ -116,7 +123,12 @@ def preset_dict_from_tail(tail, name: str, description: str = "") -> dict[str, A
         value = getattr(tail, attr, None)
         if value is None:
             continue
-        data[key] = round(float(value), 3) if kind == "float" else str(value)
+        if kind == "float":
+            data[key] = round(float(value), 3)
+        elif kind == "bool":
+            data[key] = bool(value)
+        else:
+            data[key] = str(value)
     return {
         "schemaVersion": 1,
         "presetType": "balloon_tail",

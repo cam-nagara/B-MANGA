@@ -1102,6 +1102,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineShapeKind": str(getattr(entry, "line_shape_kind", "circle") or "circle"),
         "lineShapeSpacingMm": round(float(getattr(entry, "line_shape_spacing_mm", 1.5)), 3),
         "lineShapeAngleDeg": round(float(getattr(entry, "line_shape_angle_deg", 0.0)), 3),
+        "lineShapeOrient": str(getattr(entry, "line_shape_orient", "line") or "line"),
         "lineShapeJitter": round(float(getattr(entry, "line_shape_jitter", 0.0)), 3),
         "lineShapeSeed": int(getattr(entry, "line_shape_seed", 0) or 0),
         "lineImagePath": str(getattr(entry, "line_image_path", "") or ""),
@@ -1176,6 +1177,11 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
                 "curveMode": str(getattr(t, "curve_mode", "polyline") or "polyline"),
                 "lineType": str(getattr(t, "line_type", "wedge") or "wedge"),
                 "ellipseGapMm": round(float(getattr(t, "ellipse_gap_mm", 1.5)), 3),
+                "ellipseAngleDeg": round(float(getattr(t, "ellipse_angle_deg", 0.0)), 3),
+                "ellipseOrient": str(getattr(t, "ellipse_orient", "start_end") or "start_end"),
+                "sharpCorners": bool(getattr(t, "sharp_corners", False)),
+                "taperInPercent": round(float(getattr(t, "taper_in_percent", 0.0)), 3),
+                "taperOutPercent": round(float(getattr(t, "taper_out_percent", 0.0)), 3),
                 "directionDeg": round(t.direction_deg, 3),
                 "lengthMm": round(t.length_mm, 3),
                 "rootWidthMm": round(t.root_width_mm, 3),
@@ -1268,6 +1274,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.line_shape_kind = kind if kind in {"circle", "star", "triangle", "diamond", "heart"} else "circle"
         entry.line_shape_spacing_mm = float(data.get("lineShapeSpacingMm", 1.5))
         entry.line_shape_angle_deg = float(data.get("lineShapeAngleDeg", 0.0))
+        if hasattr(entry, "line_shape_orient"):
+            orient = str(data.get("lineShapeOrient", "line") or "line")
+            entry.line_shape_orient = orient if orient in {"line", "center"} else "line"
         entry.line_shape_jitter = float(data.get("lineShapeJitter", 0.0))
         entry.line_shape_seed = int(data.get("lineShapeSeed", 0))
     if hasattr(entry, "line_image_path"):
@@ -1372,6 +1381,16 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
             tail.line_type = str(td.get("lineType", "wedge") or "wedge")
         if hasattr(tail, "ellipse_gap_mm"):
             tail.ellipse_gap_mm = float(td.get("ellipseGapMm", 1.5))
+        if hasattr(tail, "ellipse_angle_deg"):
+            tail.ellipse_angle_deg = float(td.get("ellipseAngleDeg", 0.0))
+        if hasattr(tail, "ellipse_orient"):
+            orient = str(td.get("ellipseOrient", "start_end") or "start_end")
+            tail.ellipse_orient = orient if orient in {"start_end", "line", "fixed"} else "start_end"
+        if hasattr(tail, "sharp_corners"):
+            tail.sharp_corners = bool(td.get("sharpCorners", False))
+        if hasattr(tail, "taper_in_percent"):
+            tail.taper_in_percent = float(td.get("taperInPercent", 0.0))
+            tail.taper_out_percent = float(td.get("taperOutPercent", 0.0))
         tail.direction_deg = float(td.get("directionDeg", 270.0))
         tail.length_mm = float(td.get("lengthMm", 6.0))
         tail.root_width_mm = float(td.get("rootWidthMm", 3.0))

@@ -355,7 +355,13 @@ def _transform_stroke_to_local(entry, stroke) -> effect_line_gen.EffectLineStrok
     )
 
 
-def _generated_strokes(entry):
+def generate_flash_strokes_rect_local(entry):
+    """ウニフラ/白抜き線のストローク列を rect ローカル座標 (m 単位) で返す.
+
+    ビューポートの Mesh 焼き込みと、ページ出力 (PIL 描画) の両方が
+    同じ線群を使うための共通入口。free_transform やフキダシ原点への
+    平行移動は含まない。
+    """
     center, rx, ry = _base_rect(entry)
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     if line_style == "white_outline":
@@ -397,7 +403,14 @@ def _generated_strokes(entry):
             radius_xy_mm=(rx, ry),
             seed=seed,
         ))
-    return [_transform_stroke_to_local(entry, stroke) for stroke in strokes]
+    return strokes
+
+
+def _generated_strokes(entry):
+    return [
+        _transform_stroke_to_local(entry, stroke)
+        for stroke in generate_flash_strokes_rect_local(entry)
+    ]
 
 
 def _set_mesh_materials(mesh: bpy.types.Mesh, materials: Sequence[bpy.types.Material | None]) -> None:

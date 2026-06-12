@@ -12,10 +12,11 @@ from typing import Optional
 
 import bpy
 
-from . import balloon_tail_geom, free_transform, log
+from . import balloon_tail_boolean, balloon_tail_geom, free_transform, log
 from .balloon_line_mesh import (
     LINE_Z_OFFSET_M,
     _attach_band_mesh_object,
+    _body_samples_for_line_mesh,
     _entry_local_offset_mm,
     scaled_entry_width_mm,
 )
@@ -30,7 +31,7 @@ _FILL_OBJ_PREFIX = "balloon_tail_ellipse_fill_"
 _LINE_OBJ_PREFIX = "balloon_tail_ellipse_line_"
 # 塗りは主線より僅かに下、本体塗りより上に置く
 _FILL_Z_OFFSET_M = LINE_Z_OFFSET_M * 0.5
-_ELLIPSE_SEGMENTS = 24
+_ELLIPSE_SEGMENTS = 48
 
 
 def _ellipse_polygons_local_m(entry) -> list[list[tuple[float, float]]]:
@@ -131,6 +132,15 @@ def ensure_balloon_tail_ellipse_meshes(
     if not balloon_id:
         return None
     polygons = _ellipse_polygons_local_m(entry)
+    # 本体に重なる楕円は (三角しっぽと同様に) 本体の輪郭へ結合されるため、
+    # 個別の塗り・線メッシュからは除外する。
+    if polygons:
+        body_samples = _body_samples_for_line_mesh(entry, body_object)
+        if len(body_samples) >= 3:
+            _touching, separate = balloon_tail_boolean.split_indices_touching_body(
+                [(float(s[0]), float(s[1])) for s in body_samples], polygons
+            )
+            polygons = [polygons[i] for i in separate]
     if not polygons or not bool(getattr(entry, "visible", True)):
         remove_balloon_tail_ellipse_meshes(balloon_id)
         return None

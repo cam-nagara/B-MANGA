@@ -165,6 +165,11 @@ def is_ellipse_chain(tail: Any) -> bool:
     return str(getattr(tail, "line_type", "wedge") or "wedge") == "ellipse_chain"
 
 
+def is_line_stroke(tail: Any) -> bool:
+    """しっぽの線種が「線」(1本のストローク線) かを返す."""
+    return str(getattr(tail, "line_type", "wedge") or "wedge") == "line"
+
+
 def is_curve_mode(tail: Any) -> bool:
     """しっぽのポイント列を曲線でつなぐ設定かを返す."""
     return str(getattr(tail, "curve_mode", "polyline") or "polyline") == "curve"
@@ -172,7 +177,7 @@ def is_curve_mode(tail: Any) -> bool:
 
 def _catmull_rom_centerline(
     points: list[tuple[float, float]],
-    samples_per_segment: int = 6,
+    samples_per_segment: int = 16,
 ) -> list[tuple[float, float]]:
     """ポイント列を通るなめらかな曲線 (Catmull-Rom 補間) でサンプリングする."""
     n = len(points)
@@ -212,7 +217,19 @@ def centerline_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
             nx = -vy / length
             ny = vx / length
             bend = float(getattr(tail, "curve_bend", 0.0) or 0.0) * length * 0.4
-            centerline = [root, ((root[0] + tip[0]) * 0.5 + nx * bend, (root[1] + tip[1]) * 0.5 + ny * bend), tip]
+            mid = ((root[0] + tip[0]) * 0.5 + nx * bend, (root[1] + tip[1]) * 0.5 + ny * bend)
+            # 3 点の折れ線ではカクカクするため、mid を通る 2 次ベジェとして
+            # なめらかにサンプリングする (制御点 = 2*mid - (root+tip)/2)。
+            ctrl = (2.0 * mid[0] - (root[0] + tip[0]) * 0.5, 2.0 * mid[1] - (root[1] + tip[1]) * 0.5)
+            steps = 24
+            centerline = [
+                (
+                    (1.0 - t) * (1.0 - t) * root[0] + 2.0 * (1.0 - t) * t * ctrl[0] + t * t * tip[0],
+                    (1.0 - t) * (1.0 - t) * root[1] + 2.0 * (1.0 - t) * t * ctrl[1] + t * t * tip[1],
+                )
+                for t in (i / steps for i in range(steps + 1))
+            ]
+            return centerline
     if is_curve_mode(tail) and len(centerline) >= 3:
         return _catmull_rom_centerline(centerline)
     return _smoothed_centerline(centerline, tail)
@@ -234,6 +251,17 @@ def ellipse_chain_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float, fl
     rw = max(0.1, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
     tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
     gap = max(0.0, float(getattr(tail, "ellipse_gap_mm", 1.5) or 0.0))
+    # 楕円の向き: 始点終点 (既定) = 始点→終点の直線角で全楕円を揃える /
+    # 線の向き = 各楕円位置の接線角 / 固定 = 常に 0 度 (ページ水平)。
+    # さらに「楕円の角度」を各楕円へ追加回転する。
+    orient = str(getattr(tail, "ellipse_orient", "start_end") or "start_end")
+    extra_angle = math.radians(float(getattr(tail, "ellipse_angle_deg", 0.0) or 0.0))
+    axis_angle = 0.0
+    if orient == "start_end":
+        sx, sy = centerline[0]
+        ex, ey = centerline[-1]
+        if abs(ex - sx) > 1.0e-9 or abs(ey - sy) > 1.0e-9:
+            axis_angle = math.atan2(ey - sy, ex - sx)
 
     def _point_at(dist: float) -> tuple[float, float, float]:
         """中心線上の距離 dist の位置と接線角を返す."""
@@ -266,7 +294,13 @@ def ellipse_chain_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float, fl
         center_dist = dist + along
         if center_dist + along > total + radius * 0.5:
             break
-        cx, cy, angle = _point_at(center_dist)
+        cx, cy, tangent_angle = _point_at(center_dist)
+        if orient == "line":
+            angle = tangent_angle + extra_angle
+        elif orient == "fixed":
+            angle = extra_angle
+        else:  # start_end
+            angle = axis_angle + extra_angle
         ellipses.append((cx, cy, along, radius, angle))
         dist = center_dist + along + gap
         if dist >= total:
@@ -276,7 +310,7 @@ def ellipse_chain_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float, fl
 
 def ellipse_polygon(
     ellipse: tuple[float, float, float, float, float],
-    segments: int = 24,
+    segments: int = 48,
 ) -> list[tuple[float, float]]:
     """楕円 (cx, cy, rx, ry, angle) を多角形の点列にする."""
     cx, cy, rx, ry, angle = ellipse
@@ -310,8 +344,8 @@ def _smoothed_centerline(points: list[tuple[float, float]], tail: Any) -> list[t
         b = ((p1[0] + p2[0]) * 0.5, (p1[1] + p2[1]) * 0.5)
         if out[-1] != a:
             out.append(a)
-        for step in range(1, 5):
-            t = step / 4.0
+        for step in range(1, 13):
+            t = step / 12.0
             mt = 1.0 - t
             out.append((
                 mt * mt * a[0] + 2.0 * mt * t * p1[0] + t * t * b[0],
@@ -335,22 +369,13 @@ def _root_join_overlap_mm(tail: Any) -> float:
     return max(2.0, min(12.0, root_width * 0.65))
 
 
-def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> list[tuple[float, float]]:
-    # 連続楕円しっぽは「くさび多角形」を持たない (ellipse_chain_for_tail で描く)。
-    # 空を返すことで、本体との結合・くさび描画の全経路から自然に外れる。
-    if is_ellipse_chain(tail):
-        return []
-    tail_type = str(getattr(tail, "type", "straight") or "straight")
-    centerline = centerline_for_tail(rect, tail)
-    if len(centerline) < 2:
-        return []
-    distances, total_length = _polyline_lengths(centerline)
-    if total_length <= 0.0:
-        return []
-    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
-    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
-    if tail_type == "sticky":
-        tw = max(tw, rw * 0.5)
+def _variable_width_stroke_polygon(
+    centerline: list[tuple[float, float]],
+    distances: list[float],
+    total_length: float,
+    half_width_at,
+) -> list[tuple[float, float]]:
+    """中心線に沿った可変幅ストローク多角形 (左辺 + 右辺の閉ループ) を作る."""
     left: list[tuple[float, float]] = []
     right: list[tuple[float, float]] = []
     for i, point in enumerate(centerline):
@@ -366,12 +391,68 @@ def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> 
         nx = -tangent[1] / length
         ny = tangent[0] / length
         t = distances[i] / total_length if total_length > 0.0 else 0.0
-        half_width = rw + (tw - rw) * t
+        half_width = half_width_at(t)
         left.append((point[0] + nx * half_width, point[1] + ny * half_width))
         right.append((point[0] - nx * half_width, point[1] - ny * half_width))
     if len(left) < 2 or len(right) < 2:
         return []
-    polygon = left + list(reversed(right))
+    return left + list(reversed(right))
+
+
+def line_stroke_polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
+    """線種「線」しっぽの 1 本線ストローク多角形を返す.
+
+    幅は根元幅→先端幅を線形補間し、「入り」「抜き」(%) の範囲で
+    端へ向かって細く絞る (マンガのペン線の入り抜き)。
+    """
+    if not is_line_stroke(tail):
+        return []
+    centerline = centerline_for_tail(rect, tail)
+    if len(centerline) < 2:
+        return []
+    distances, total_length = _polyline_lengths(centerline)
+    if total_length <= 0.0:
+        return []
+    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
+    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
+    taper_in = max(0.0, min(100.0, float(getattr(tail, "taper_in_percent", 0.0) or 0.0))) / 100.0
+    taper_out = max(0.0, min(100.0, float(getattr(tail, "taper_out_percent", 0.0) or 0.0))) / 100.0
+    # 完全に幅 0 だと多角形が退化するため、端でもごく僅かな幅を残す
+    min_half = 0.01
+
+    def _half_width_at(t: float) -> float:
+        width = rw + (tw - rw) * t
+        if taper_in > 1.0e-6 and t < taper_in:
+            width *= t / taper_in
+        if taper_out > 1.0e-6 and t > 1.0 - taper_out:
+            width *= (1.0 - t) / taper_out
+        return max(min_half, width)
+
+    return _variable_width_stroke_polygon(centerline, distances, total_length, _half_width_at)
+
+
+def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> list[tuple[float, float]]:
+    # 連続楕円しっぽ・線しっぽは「くさび多角形」を持たない (それぞれ
+    # ellipse_chain_for_tail / line_stroke_polygon_for_tail で描く)。
+    # 空を返すことで、本体との結合・くさび描画の全経路から自然に外れる。
+    if is_ellipse_chain(tail) or is_line_stroke(tail):
+        return []
+    tail_type = str(getattr(tail, "type", "straight") or "straight")
+    centerline = centerline_for_tail(rect, tail)
+    if len(centerline) < 2:
+        return []
+    distances, total_length = _polyline_lengths(centerline)
+    if total_length <= 0.0:
+        return []
+    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
+    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
+    if tail_type == "sticky":
+        tw = max(tw, rw * 0.5)
+    polygon = _variable_width_stroke_polygon(
+        centerline, distances, total_length, lambda t: rw + (tw - rw) * t
+    )
+    if len(polygon) < 3:
+        return []
     overlap = max(0.0, float(join_overlap_mm))
     if overlap > 1.0e-6 and len(centerline) >= 2 and len(polygon) >= 3:
         root = centerline[0]

@@ -159,7 +159,18 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     row = box.row(align=True)
     row.prop(tail, "line_type", expand=True)
     if balloon_tail_geom.is_ellipse_chain(tail):
-        box.prop(tail, "ellipse_gap_mm")
+        row = box.row(align=True)
+        row.prop(tail, "ellipse_gap_mm", text="間隔")
+        row.prop(tail, "ellipse_angle_deg", text="角度")
+        sub = box.column(align=True)
+        sub.label(text="楕円の向き")
+        sub.row(align=True).prop(tail, "ellipse_orient", expand=True)
+    elif balloon_tail_geom.is_line_stroke(tail):
+        row = box.row(align=True)
+        row.prop(tail, "taper_in_percent", text="入り")
+        row.prop(tail, "taper_out_percent", text="抜き")
+    else:
+        box.prop(tail, "sharp_corners")
     if has_points and len(tail.points) >= 3:
         row = box.row(align=True)
         row.prop(tail, "curve_mode", expand=True)

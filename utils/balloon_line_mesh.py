@@ -361,7 +361,7 @@ def _build_body_polygon(samples):
         return None
 
 
-def _tail_polygons_for_entry_local_m(entry) -> list[list[tuple[float, float]]]:
+def _tail_polygons_for_entry_local_m(entry, tail_filter=None) -> list[list[tuple[float, float]]]:
     """entry のしっぽを balloon-local m の polygon 点列に変換する."""
     from . import balloon_tail_geom
 
@@ -377,6 +377,8 @@ def _tail_polygons_for_entry_local_m(entry) -> list[list[tuple[float, float]]]:
     ox_mm, oy_mm = _entry_local_offset_mm(entry)
     out: list[list[tuple[float, float]]] = []
     for tail in tails:
+        if tail_filter is not None and not tail_filter(tail):
+            continue
         try:
             pts_mm = balloon_tail_geom.joined_polygon_for_tail(rect, tail)
             pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
@@ -388,13 +390,27 @@ def _tail_polygons_for_entry_local_m(entry) -> list[list[tuple[float, float]]]:
     return out
 
 
+def ellipse_polygons_for_entry_local_m(entry) -> list[list[tuple[float, float]]]:
+    """連続楕円しっぽの全楕円を balloon-local m の polygon 点列で返す."""
+    from . import balloon_tail_ellipse_mesh
+
+    return balloon_tail_ellipse_mesh._ellipse_polygons_local_m(entry)
+
+
 def _body_union_with_tails(entry, body_samples):
-    """本体としっぽを結合した Shapely Polygon を返す。結合できない場合は None."""
+    """本体としっぽを結合した Shapely Polygon を返す。結合できない場合は None.
+
+    くさびしっぽに加え、連続楕円しっぽの「本体に重なる楕円」も結合する
+    (重ならない楕円は従来どおり個別メッシュで描く)。
+    """
     tail_pts = _tail_polygons_for_entry_local_m(entry)
-    if not tail_pts:
+    ellipse_pts = ellipse_polygons_for_entry_local_m(entry)
+    if not tail_pts and not ellipse_pts:
         return None
     body_pts = [(float(s[0]), float(s[1])) for s in body_samples]
-    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_pts, tail_pts)
+    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(
+        body_pts, tail_pts, union_only_points_list=ellipse_pts
+    )
     if not changed:
         return None
     return merged
@@ -3524,10 +3540,43 @@ def ensure_balloon_tail_main_line_mesh(
     if body_spline is not None:
         body_samples = sample_body_spline(body_spline, SAMPLES_PER_SEGMENT)
         if len(body_samples) >= 3:
-            _samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
+            merged_samples, tails_merged = _outline_samples_with_tails(entry, body_samples)
             if tails_merged:
-                remove_balloon_tail_main_line_mesh(balloon_id)
-                return None
+                # 結合済みしっぽの主線は本体側の帯に含まれる。「角を尖らせる」
+                # しっぽがあるときだけ、しっぽ周辺の角を mitre で尖らせる
+                # 差分パッチを round join の帯の上へ重ねる。
+                patches = []
+                if line_style in {"solid", "double"}:
+                    sharp_regions = _tail_polygons_for_entry_local_m(
+                        entry,
+                        tail_filter=lambda t: bool(getattr(t, "sharp_corners", False)),
+                    )
+                    if sharp_regions:
+                        patches = balloon_tail_boolean.sharp_corner_patch_polygons(
+                            [(float(s[0]), float(s[1])) for s in merged_samples],
+                            sharp_regions,
+                            line_width_mm * 0.001,
+                            centered=False,
+                        )
+                if not patches:
+                    remove_balloon_tail_main_line_mesh(balloon_id)
+                    return None
+                mesh_name = _tail_main_line_mesh_data_name(balloon_id)
+                mesh = bpy.data.meshes.get(mesh_name)
+                if mesh is None:
+                    mesh = bpy.data.meshes.new(mesh_name)
+                _build_band_mesh_from_polygons(mesh, patches, LINE_Z_OFFSET_M)
+                return _attach_band_mesh_object(
+                    obj_name=_tail_main_line_mesh_object_name(balloon_id),
+                    mesh=mesh,
+                    material=line_material,
+                    body_object=body_object,
+                    scene=scene,
+                    kind=_KIND_TAIL_MAIN_LINE,
+                    balloon_id=balloon_id,
+                    visible=bool(getattr(entry, "visible", True)),
+                    mask_info=mask_info,
+                )
 
     rect = Rect(
         0.0,
@@ -3556,13 +3605,14 @@ def ensure_balloon_tail_main_line_mesh(
             continue
         pts_mm = free_transform.transform_entry_local_points(entry, pts_mm)
         samples = [(mm_to_m(x + ox_mm), mm_to_m(y + oy_mm)) for x, y in pts_mm]
+        tail_sharp = bool(getattr(tail, "sharp_corners", False))
         if line_style in {"dashed", "dotted"}:
             polygons.extend(
                 _build_dashed_band_polygons(
                     samples,
                     line_width_m=line_width_m,
                     line_style=line_style,
-                    valley_sharp=False,
+                    valley_sharp=tail_sharp,
                     dash_segment_mm=line_pattern.dashed_segment_mm(entry, line_width_mm),
                     dash_gap_mm=line_pattern.dashed_gap_mm(entry, line_width_mm),
                     dotted_gap_mm=line_pattern.dotted_gap_mm(entry, line_width_mm),
@@ -3573,7 +3623,7 @@ def ensure_balloon_tail_main_line_mesh(
                 samples,
                 signed_offset_m=0.0,
                 band_width_m=line_width_m,
-                valley_sharp=False,
+                valley_sharp=tail_sharp,
             )
             if band is not None:
                 polygons.append(band)

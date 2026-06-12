@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
   "presetType": "balloon_tail",
-  "presetName": "心の声 (楕円)",
-  "description": "先端へ向かって小さくなる楕円を連ねるしっぽ",
+  "presetName": "ペン線 (抜き)",
+  "description": "先端へ抜く 1 本のペン線のしっぽ",
   "tail": {
     "type": "straight",
     "curveMode": "polyline",
-    "lineType": "ellipse_chain",
+    "lineType": "line",
     "ellipseGapMm": 1.5,
     "ellipseAngleDeg": 0.0,
     "ellipseOrient": "start_end",
     "sharpCorners": false,
     "taperInPercent": 0.0,
-    "taperOutPercent": 0.0,
+    "taperOutPercent": 60.0,
     "directionDeg": 270.0,
-    "lengthMm": 10.0,
-    "rootWidthMm": 4.0,
+    "lengthMm": 8.0,
+    "rootWidthMm": 1.2,
     "tipWidthMm": 1.2,
     "curveBend": 0.0
   }

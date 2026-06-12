@@ -56,6 +56,13 @@ _TAIL_CURVE_MODE_ITEMS = (
 _TAIL_LINE_TYPE_ITEMS = (
     ("wedge", "三角", "根元から先端へ細くなる従来のしっぽ"),
     ("ellipse_chain", "楕円", "心の声のように、先端へ向かって小さくなる楕円を連ねる"),
+    ("line", "線", "1本の線を描く (入り抜きを設定可能)"),
+)
+
+_TAIL_ELLIPSE_ORIENT_ITEMS = (
+    ("start_end", "始点終点", "しっぽの始点と終点を結ぶ直線に全楕円の角度を揃える"),
+    ("line", "線の向き", "しっぽの線 (カーブ) の進行方向に各楕円を沿わせる"),
+    ("fixed", "固定", "線の向きに関わらず、どの楕円も一律の角度にする"),
 )
 
 _LINE_STYLE_ITEMS = (
@@ -68,6 +75,11 @@ _LINE_STYLE_ITEMS = (
     ("white_outline", "白抜き線", "フキダシの形状に沿って白抜き線を放射状に並べる"),
     ("shape", "図形", "●や★などの図形を線に沿って連続配置する"),
     ("image", "画像", "画像を線に沿って引き延ばして描く"),
+)
+
+_LINE_SHAPE_ORIENT_ITEMS = (
+    ("line", "線の向き", "線の進行方向に沿って図形を回転させる"),
+    ("center", "中心点", "常にフキダシの中心点の方向を向かせる"),
 )
 
 _LINE_SHAPE_KIND_ITEMS = (
@@ -508,6 +520,45 @@ class BNameBalloonTail(bpy.types.PropertyGroup):
         soft_max=20.0,
         update=_on_balloon_tail_changed,
     )
+    ellipse_angle_deg: FloatProperty(  # type: ignore[valid-type]
+        name="楕円の角度 (度)",
+        description="連続スタンプする楕円 1 つ 1 つの追加回転角",
+        default=0.0,
+        soft_min=-360.0,
+        soft_max=360.0,
+        update=_on_balloon_tail_changed,
+    )
+    ellipse_orient: EnumProperty(  # type: ignore[valid-type]
+        name="楕円の向き",
+        description="しっぽのカーブに対して楕円をどう連動させるか",
+        items=_TAIL_ELLIPSE_ORIENT_ITEMS,
+        default="start_end",
+        update=_on_balloon_tail_changed,
+    )
+    sharp_corners: BoolProperty(  # type: ignore[valid-type]
+        name="角を尖らせる",
+        description="しっぽの角 (先端や折れ角) を鋭く尖らせる (OFF: 線幅分だけ丸まる)",
+        default=False,
+        update=_on_balloon_tail_changed,
+    )
+    taper_in_percent: FloatProperty(  # type: ignore[valid-type]
+        name="入り (%)",
+        description="線種が線のとき、根元側から細く入る範囲 (しっぽの長さに対する割合)",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_tail_changed,
+    )
+    taper_out_percent: FloatProperty(  # type: ignore[valid-type]
+        name="抜き (%)",
+        description="線種が線のとき、先端側へ細く抜ける範囲 (しっぽの長さに対する割合)",
+        default=0.0,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_balloon_tail_changed,
+    )
     direction_deg: FloatProperty(name="方向 (度)", default=270.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     length_mm: FloatProperty(name="長さ (mm)", default=6.0, min=0.0, soft_max=50.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     root_width_mm: FloatProperty(name="根元幅 (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
@@ -624,6 +675,13 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     line_shape_kind: EnumProperty(name="図形", items=_LINE_SHAPE_KIND_ITEMS, default="circle", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_shape_spacing_mm: FloatProperty(name="図形の間隔 (mm)", default=1.5, min=0.0, soft_max=50.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_shape_angle_deg: FloatProperty(name="図形の角度 (度)", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_shape_orient: EnumProperty(  # type: ignore[valid-type]
+        name="図形の向き",
+        description="線に沿わせるか、常にフキダシの中心点の方向を向かせるか",
+        items=_LINE_SHAPE_ORIENT_ITEMS,
+        default="line",
+        update=_on_balloon_entry_changed,
+    )
     line_shape_jitter: FloatProperty(name="図形の乱れ", description="位置・角度・大きさのばらつき", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_shape_seed: IntProperty(name="乱れシード", default=0, min=0, soft_max=9999, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 線種「画像」: 画像を線に沿って引き延ばして描く

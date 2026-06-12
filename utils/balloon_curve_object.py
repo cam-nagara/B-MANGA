@@ -14,6 +14,7 @@ from . import balloon_curve_source_state
 from . import balloon_flash_effect_line_mesh
 from . import balloon_line_decor_mesh
 from . import balloon_tail_ellipse_mesh
+from . import balloon_tail_stroke_mesh
 from . import balloon_fill_mesh
 from . import balloon_flash_white_line_mesh
 from . import balloon_line_mesh
@@ -525,6 +526,7 @@ def _remove_balloon_object(obj: bpy.types.Object) -> None:
             balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
             balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
             balloon_tail_ellipse_mesh.remove_balloon_tail_ellipse_meshes(balloon_id)
+            balloon_tail_stroke_mesh.remove_balloon_tail_stroke_meshes(balloon_id)
             balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
     data = getattr(obj, "data", None)
     try:
@@ -788,7 +790,8 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         )
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
-    # 連続楕円しっぽ (線種「楕円」) は本体と結合せず、独立した塗り+線メッシュで描く
+    # 連続楕円しっぽ (線種「楕円」): 本体に重ならない楕円を独立した塗り+線メッシュで描く
+    # (本体に重なる楕円は塗り・主線の結合輪郭に含まれる)
     balloon_tail_ellipse_mesh.ensure_balloon_tail_ellipse_meshes(
         scene=scene,
         work=work,
@@ -796,6 +799,16 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         entry=entry,
         body_object=obj,
         fill_material=fill_mat,
+        line_material=line_mat,
+        mask_info=mask_info,
+    )
+    # 線しっぽ (線種「線」): 親フキダシの線素材で 1 本線ストロークを描く
+    balloon_tail_stroke_mesh.ensure_balloon_tail_stroke_meshes(
+        scene=scene,
+        work=work,
+        page=page,
+        entry=entry,
+        body_object=obj,
         line_material=line_mat,
         mask_info=mask_info,
     )
@@ -1389,6 +1402,11 @@ def _geometry_key_for_entry(entry) -> str:
                 "curve_mode": str(getattr(tail, "curve_mode", "polyline") or "polyline"),
                 "line_type": str(getattr(tail, "line_type", "wedge") or "wedge"),
                 "ellipse_gap": float(getattr(tail, "ellipse_gap_mm", 1.5) or 0.0),
+                "ellipse_angle": float(getattr(tail, "ellipse_angle_deg", 0.0) or 0.0),
+                "ellipse_orient": str(getattr(tail, "ellipse_orient", "start_end") or "start_end"),
+                "sharp": bool(getattr(tail, "sharp_corners", False)),
+                "taper_in": float(getattr(tail, "taper_in_percent", 0.0) or 0.0),
+                "taper_out": float(getattr(tail, "taper_out_percent", 0.0) or 0.0),
                 "direction": float(getattr(tail, "direction_deg", 270.0) or 270.0),
                 "length": float(getattr(tail, "length_mm", 0.0) or 0.0),
                 "root_width": float(getattr(tail, "root_width_mm", 0.0) or 0.0),
@@ -1818,6 +1836,7 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
     balloon_line_mesh.remove_all_balloon_band_meshes(balloon_id)
     balloon_flash_effect_line_mesh.remove_balloon_flash_effect_line_mesh(balloon_id)
     balloon_tail_ellipse_mesh.remove_balloon_tail_ellipse_meshes(balloon_id)
+    balloon_tail_stroke_mesh.remove_balloon_tail_stroke_meshes(balloon_id)
     balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
     balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
     return removed

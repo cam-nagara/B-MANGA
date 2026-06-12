@@ -571,7 +571,7 @@ def _outline_beveled_rect(rect: Rect, radius_mm: float) -> list[tuple[float, flo
     ]
 
 
-def _outline_ellipse(rect: Rect, segments: int = 64) -> list[tuple[float, float]]:
+def _outline_ellipse(rect: Rect, segments: int = 160) -> list[tuple[float, float]]:
     cx = (rect.x + rect.x2) * 0.5
     cy = (rect.y + rect.y2) * 0.5
     rx = rect.width * 0.5
@@ -630,7 +630,7 @@ def _outline_octagon(rect: Rect) -> list[tuple[float, float]]:
     return _outline_polygon_pct(rect, [(12, 0), (88, 0), (100, 12), (100, 88), (88, 100), (12, 100), (0, 88), (0, 12)])
 
 
-def _outline_pill(rect: Rect, segments: int = 16) -> list[tuple[float, float]]:
+def _outline_pill(rect: Rect, segments: int = 40) -> list[tuple[float, float]]:
     radius = min(rect.width, rect.height) * 0.5
     if radius <= 0.0:
         return _outline_rect(rect)

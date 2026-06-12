@@ -461,6 +461,14 @@ def _tail_signature(tail) -> tuple:
     )
     return (
         str(getattr(tail, "type", "") or ""),
+        str(getattr(tail, "curve_mode", "polyline") or "polyline"),
+        str(getattr(tail, "line_type", "wedge") or "wedge"),
+        _round_float(getattr(tail, "ellipse_gap_mm", 1.5)),
+        _round_float(getattr(tail, "ellipse_angle_deg", 0.0)),
+        str(getattr(tail, "ellipse_orient", "start_end") or "start_end"),
+        bool(getattr(tail, "sharp_corners", False)),
+        _round_float(getattr(tail, "taper_in_percent", 0.0)),
+        _round_float(getattr(tail, "taper_out_percent", 0.0)),
         _round_float(getattr(tail, "direction_deg", 0.0)),
         _round_float(getattr(tail, "length_mm", 0.0)),
         _round_float(getattr(tail, "root_width_mm", 0.0)),

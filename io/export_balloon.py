@@ -200,15 +200,18 @@ def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
 def _merged_outline_with_tails(
     outline: Sequence[tuple[float, float]],
     tail_outlines: Sequence[Sequence[tuple[float, float]]],
+    union_only_outlines: Sequence[Sequence[tuple[float, float]]] = (),
 ) -> list[tuple[float, float]] | None:
     """本体としっぽの輪郭を、ビューポート描画と同じ結合方式で 1 つにする.
 
     外へ伸びるしっぽは本体へ結合し、内側へえぐるしっぽは本体から
-    差し引く。結合できない場合は None を返し、呼び出し側は従来の
+    差し引く。連続楕円しっぽの「本体に重なる楕円」(union_only_outlines)
+    は常に結合する。結合できない場合は None を返し、呼び出し側は従来の
     個別描画へフォールバックする。
     """
     tails = [list(pts) for pts in tail_outlines if len(pts) >= 3]
-    if len(outline) < 3 or not tails:
+    union_only = [list(pts) for pts in union_only_outlines if len(pts) >= 3]
+    if len(outline) < 3 or (not tails and not union_only):
         return None
     try:
         from ..utils import balloon_tail_boolean
@@ -218,7 +221,10 @@ def _merged_outline_with_tails(
     scale = 0.001
     body_m = [(x * scale, y * scale) for x, y in outline]
     tails_m = [[(x * scale, y * scale) for x, y in pts] for pts in tails]
-    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_m, tails_m)
+    union_only_m = [[(x * scale, y * scale) for x, y in pts] for pts in union_only]
+    merged, changed = balloon_tail_boolean.combine_body_with_tail_polygons(
+        body_m, tails_m, union_only_points_list=union_only_m
+    )
     if merged is None or not changed:
         return None
     try:
@@ -228,6 +234,242 @@ def _merged_outline_with_tails(
     if len(coords) < 4:
         return None
     return [(float(x) / scale, float(y) / scale) for x, y in coords[:-1]]
+
+
+def _split_ellipse_outlines_by_body(
+    outline: Sequence[tuple[float, float]],
+    ellipse_outlines: Sequence[Sequence[tuple[float, float]]],
+) -> tuple[list[list[tuple[float, float]]], list[list[tuple[float, float]]]]:
+    """楕円列を「本体に重なる (結合対象)」と「重ならない (個別描画)」に分ける."""
+    polys = [list(pts) for pts in ellipse_outlines]
+    if not polys or len(outline) < 3:
+        return [], polys
+    try:
+        from ..utils import balloon_tail_boolean
+
+        touching, separate = balloon_tail_boolean.split_indices_touching_body(list(outline), polys)
+        return [polys[i] for i in touching], [polys[i] for i in separate]
+    except Exception:  # noqa: BLE001
+        return [], polys
+
+
+def _sharp_tail_patch_polygons_mm(
+    outline: Sequence[tuple[float, float]],
+    sharp_regions: Sequence[Sequence[tuple[float, float]]],
+    line_w_mm: float,
+):
+    """「角を尖らせる」しっぽの mitre 帯パッチ (mm 座標) を返す.
+
+    round join 相当で描かれた主線の上に重ねると、しっぽ周辺の角だけが
+    鋭く尖る。戻り値は [(outer, holes), ...]。
+    """
+    if line_w_mm <= 1.0e-6 or len(outline) < 3:
+        return []
+    try:
+        from ..utils import balloon_tail_boolean
+
+        return balloon_tail_boolean.sharp_corner_patch_polygons(
+            list(outline), [list(pts) for pts in sharp_regions], float(line_w_mm), centered=False
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> None:
+    """多重線のリングを、画面のメッシュと同じオフセット帯で描く.
+
+    本体の線の外側 (または内側) に「隙間 = 間隔」で帯を順に並べる。
+    幅スケール・間隔スケール・方向 (外側/内側/両方向) に対応する。
+    """
+    line_w_mm = _scaled_width_mm(entry, "line_width_mm", 0.3)
+    ring_w_base = _scaled_width_mm(entry, "multi_line_width_mm", 0.3)
+    spacing_base = max(0.0, float(getattr(entry, "multi_line_spacing_mm", 0.4) or 0.0))
+    count = max(1, min(12, int(getattr(entry, "multi_line_count", 3) or 3)))
+    width_scale = max(0.0, float(getattr(entry, "multi_line_width_scale_percent", 100.0) or 0.0)) / 100.0
+    spacing_scale = max(0.0, float(getattr(entry, "multi_line_spacing_scale_percent", 100.0) or 0.0)) / 100.0
+    direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
+    if direction == "both":
+        sides = ("inside", "outside")
+    elif direction == "inside":
+        sides = ("inside",)
+    else:
+        sides = ("outside",)
+    running_outside = line_w_mm
+    running_inside = 0.0
+    for ring_index in range(1, count + 1):
+        ring_w = ring_w_base * (width_scale ** max(0, ring_index - 1))
+        spacing = spacing_base * (spacing_scale ** max(0, ring_index - 1))
+        if ring_w <= 1.0e-6:
+            continue
+        for side in sides:
+            if side == "inside":
+                inner = running_inside + spacing
+                band = _mitre_band_polygons_mm(outline, -inner, -(inner + ring_w), sharp=sharp)
+                running_inside = inner + ring_w
+            else:
+                inner = running_outside + spacing
+                band = _mitre_band_polygons_mm(outline, inner + ring_w, inner, sharp=sharp)
+                running_outside = inner + ring_w
+            _composite_patches_px(canvas, band, color)
+
+
+def _composite_patches_px(canvas, patches, color, clip_mask=None) -> None:
+    """穴つき多角形パッチを指定色で合成する (穴は透過のまま残す)."""
+    ep = _ep()
+    if ep.Image is None or ep.ImageDraw is None or not patches:
+        return
+    temp = ep.Image.new("RGBA", canvas.image.size, (0, 0, 0, 0))
+    temp_draw = ep.ImageDraw.Draw(temp)
+    for outer, holes in patches:
+        outer_px = canvas.points_px(outer)
+        if len(outer_px) < 3:
+            continue
+        temp_draw.polygon(outer_px, fill=color)
+        for hole in holes:
+            hole_px = canvas.points_px(hole)
+            if len(hole_px) >= 3:
+                temp_draw.polygon(hole_px, fill=(0, 0, 0, 0))
+    if clip_mask is not None and ep.ImageChops is not None:
+        alpha = ep.ImageChops.multiply(temp.getchannel("A"), clip_mask)
+        temp.putalpha(alpha)
+    canvas.image.alpha_composite(temp)
+
+
+def _mitre_band_polygons_mm(outline, outer_off_mm: float, inner_off_mm: float, *, sharp: bool = True):
+    """輪郭のオフセット帯 (mm 座標) を返す。sharp=True で角が尖る."""
+    if len(outline) < 3:
+        return []
+    try:
+        from ..utils import balloon_tail_boolean
+
+        return balloon_tail_boolean.mitre_band_polygons(
+            list(outline), float(outer_off_mm), float(inner_off_mm), sharp=sharp
+        )
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _body_sharp_corners(entry) -> bool:
+    """フキダシ本体の「角を尖らせる」(形状パラメータ) が ON か."""
+    sp = getattr(entry, "shape_params", None)
+    return bool(getattr(sp, "cloud_valley_sharp", False))
+
+
+def _flash_strokes_page_mm(entry, rect: Rect, flip_h: bool, flip_v: bool, rotation_deg: float):
+    """ウニフラ/白抜き線のストローク列をページ座標 mm で返す.
+
+    ビューポートのメッシュ焼き込みと同じ生成器を使い、出力 (サムネイル/
+    ページ出力/PSD) にも同じ放射線を描けるようにする。
+    戻り値: [(role, pts_mm, radii_mm, opacities, side, cyclic), ...]
+    """
+    try:
+        from ..utils import balloon_flash_effect_line_mesh as flash_mesh
+
+        strokes = flash_mesh.generate_flash_strokes_rect_local(entry)
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for stroke in strokes:
+        raw = list(getattr(stroke, "points_xyz", None) or [])
+        if len(raw) < 2:
+            continue
+        pts = [(rect.x + float(p[0]) * 1000.0, rect.y + float(p[1]) * 1000.0) for p in raw]
+        pts = _apply_entry_free_transform(entry, pts, rect)
+        pts = _apply_balloon_transforms(pts, rect, flip_h, flip_v, rotation_deg)
+        radii = list(getattr(stroke, "radii", None) or [])
+        base_r_mm = float(getattr(stroke, "radius", 0.0) or 0.0) * 1000.0
+        radii_mm = [
+            float(radii[i]) * 1000.0 if i < len(radii) else base_r_mm
+            for i in range(len(raw))
+        ]
+        out.append((
+            str(getattr(stroke, "role", "") or "line"),
+            pts,
+            radii_mm,
+            list(getattr(stroke, "opacities", None) or []),
+            float(getattr(stroke, "side", 0.0) or 0.0),
+            bool(getattr(stroke, "cyclic", False)),
+        ))
+    return out
+
+
+def _draw_flash_strokes(canvas, entry, flash_strokes, dpi: int) -> None:
+    """ウニフラ/白抜き線のストローク列を可変幅の多角形として描く."""
+    ep = _ep()
+    if ep.Image is None or ep.ImageDraw is None or not flash_strokes:
+        return
+    style = str(getattr(entry, "line_style", "") or "")
+    line_rgb = ep._rgb255(entry.line_color, alpha=1.0)[:3]
+    white_rgb = (255, 255, 255)
+    if style == "uni_flash":
+        # スロット 1 (終点形状の塗り) は塗り色、下地はウニフラの下地色
+        slot1_rgb = ep._rgb255(getattr(entry, "fill_color", (1.0, 1.0, 1.0, 1.0)), alpha=1.0)[:3]
+        underlay_rgb = ep._rgb255(getattr(entry, "white_underlay_color", (1.0, 1.0, 1.0, 1.0)), alpha=1.0)[:3]
+    else:
+        slot1_rgb = white_rgb
+        underlay_rgb = white_rgb
+    z_order = {"end_fill": 0, "underlay": 1, "white_outline_white": 2}
+    temp = ep.Image.new("RGBA", canvas.image.size, (0, 0, 0, 0))
+    draw = ep.ImageDraw.Draw(temp)
+    for role, pts_mm, radii_mm, opacities, side, cyclic in sorted(
+        flash_strokes, key=lambda item: z_order.get(item[0], 3)
+    ):
+        if role == "underlay":
+            rgb = underlay_rgb
+        elif role in {"end_fill", "white_outline_white"}:
+            rgb = slot1_rgb
+        else:
+            rgb = line_rgb
+        if (role == "end_fill" or (role == "white_outline_white" and cyclic)) and len(pts_mm) >= 3:
+            poly_px = canvas.points_px(pts_mm)
+            if len(poly_px) >= 3:
+                draw.polygon(poly_px, fill=(*rgb, 255))
+            continue
+        n = len(pts_mm)
+        seg_count = n if cyclic else n - 1
+        for i in range(seg_count):
+            j = (i + 1) % n
+            x0, y0 = pts_mm[i]
+            x1, y1 = pts_mm[j]
+            dx = x1 - x0
+            dy = y1 - y0
+            seg = math.hypot(dx, dy)
+            if seg <= 1.0e-9:
+                continue
+            r0 = radii_mm[i] if i < len(radii_mm) else 0.0
+            r1 = radii_mm[j] if j < len(radii_mm) else 0.0
+            if r0 <= 1.0e-9 and r1 <= 1.0e-9:
+                continue
+            a0 = float(opacities[i]) if i < len(opacities) else 1.0
+            a1 = float(opacities[j]) if j < len(opacities) else 1.0
+            alpha = int(round(255.0 * max(0.0, min(1.0, (a0 + a1) * 0.5))))
+            if alpha <= 0:
+                continue
+            nx = -dy / seg
+            ny = dx / seg
+            if role == "underlay" and abs(side) > 1.0e-9:
+                sign = 1.0 if side >= 0.0 else -1.0
+                quad_mm = [
+                    (x0, y0),
+                    (x0 + nx * sign * r0, y0 + ny * sign * r0),
+                    (x1 + nx * sign * r1, y1 + ny * sign * r1),
+                    (x1, y1),
+                ]
+            else:
+                quad_mm = [
+                    (x0 + nx * r0, y0 + ny * r0),
+                    (x0 - nx * r0, y0 - ny * r0),
+                    (x1 - nx * r1, y1 - ny * r1),
+                    (x1 + nx * r1, y1 + ny * r1),
+                ]
+            quad_px = canvas.points_px(quad_mm)
+            if len(quad_px) >= 3:
+                draw.polygon(quad_px, fill=(*rgb, alpha))
+    opacity = _entry_opacity(entry)
+    if opacity < 0.999:
+        alpha_ch = temp.getchannel("A").point(lambda v: int(v * opacity))
+        temp.putalpha(alpha_ch)
+    canvas.image.alpha_composite(temp)
 
 
 def _entry_opacity(entry) -> float:
@@ -459,7 +701,7 @@ def _draw_pattern_loop(draw, pts, entry, color, width_px: int, dpi: int, style: 
         start += period_px
 
 
-def _draw_shape_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
+def _draw_shape_line_loop(draw, pts, entry, color, width_px: int, dpi: int, center_px=None) -> None:
     """線種「図形」: 図形を輪郭に沿って連続配置して描く."""
     from ..utils import line_decor_geom
 
@@ -472,6 +714,8 @@ def _draw_shape_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> N
         jitter=float(getattr(entry, "line_shape_jitter", 0.0) or 0.0),
         seed=int(getattr(entry, "line_shape_seed", 0) or 0),
         flip_y=True,
+        orient=str(getattr(entry, "line_shape_orient", "line") or "line"),
+        center=center_px,
     )
     for poly in polygons:
         draw.polygon([(int(round(x)), int(round(y))) for x, y in poly], fill=color)
@@ -556,7 +800,7 @@ def _draw_image_line_loop(canvas, pts, entry, width_px: int, dpi: int) -> None:
         arc += seg_len
 
 
-def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int) -> None:
+def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int, shape_center_px=None) -> None:
     if width_px <= 0 or len(pts) < 2:
         return
     style = str(getattr(entry, "line_style", "solid") or "solid")
@@ -564,7 +808,7 @@ def _draw_balloon_line_loop(draw, pts, entry, color, width_px: int, dpi: int) ->
         _draw_pattern_loop(draw, pts, entry, color, width_px, dpi, style)
         return
     if style == "shape":
-        _draw_shape_line_loop(draw, pts, entry, color, width_px, dpi)
+        _draw_shape_line_loop(draw, pts, entry, color, width_px, dpi, shape_center_px)
         return
     if style != "double":
         _ep()._draw_styled_loop(draw, pts, color, width_px, style)
@@ -606,10 +850,25 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     outline = _apply_balloon_transforms(outline, rect, flip_h, flip_v, rotation_deg)
     fill_outline = _apply_balloon_transforms(fill_outline, rect, flip_h, flip_v, rotation_deg)
     tail_outlines = []
+    sharp_tail_regions: list[list[tuple[float, float]]] = []
     for tail in entry.tails:
         tail_outline = _apply_entry_free_transform(entry, _balloon_tail_polygon(rect, tail), rect)
-        tail_outlines.append(_apply_balloon_transforms(tail_outline, rect, flip_h, flip_v, rotation_deg))
-    # 連続楕円しっぽ (線種「楕円」) は本体と結合せず、独立した楕円列として描く
+        tail_outline = _apply_balloon_transforms(tail_outline, rect, flip_h, flip_v, rotation_deg)
+        tail_outlines.append(tail_outline)
+        if bool(getattr(tail, "sharp_corners", False)) and len(tail_outline) >= 3:
+            sharp_tail_regions.append(tail_outline)
+    # 線しっぽ (線種「線」): 1本のストローク線として線色で塗る
+    line_stroke_outlines: list[list[tuple[float, float]]] = []
+    for tail in entry.tails:
+        if not balloon_tail_geom.is_line_stroke(tail):
+            continue
+        pts = balloon_tail_geom.line_stroke_polygon_for_tail(rect, tail)
+        pts = _apply_entry_free_transform(entry, pts, rect)
+        pts = _apply_balloon_transforms(pts, rect, flip_h, flip_v, rotation_deg)
+        if len(pts) >= 3:
+            line_stroke_outlines.append(pts)
+    # 連続楕円しっぽ (線種「楕円」): 本体に重なる楕円は本体と結合し、
+    # 重ならない楕円だけ独立した楕円列として描く
     ellipse_outlines: list[list[tuple[float, float]]] = []
     for tail in entry.tails:
         if not balloon_tail_geom.is_ellipse_chain(tail):
@@ -620,8 +879,16 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
             pts = _apply_balloon_transforms(pts, rect, flip_h, flip_v, rotation_deg)
             if len(pts) >= 3:
                 ellipse_outlines.append(pts)
+    merged_ellipses, ellipse_outlines = _split_ellipse_outlines_by_body(outline, ellipse_outlines)
+    # 「中心点」向き図形の基準: 本体 (しっぽ結合前) の輪郭の中心
+    body_center_mm = None
+    if outline:
+        body_center_mm = (
+            sum(x for x, _y in outline) / len(outline),
+            sum(y for _x, y in outline) / len(outline),
+        )
     # ビューポートと同じ結合 (外しっぽは結合 / 内しっぽはえぐり) を出力側にも適用
-    merged_outline = _merged_outline_with_tails(outline, tail_outlines)
+    merged_outline = _merged_outline_with_tails(outline, tail_outlines, merged_ellipses)
     if merged_outline is not None:
         outline = merged_outline
         fill_outline = list(merged_outline)
@@ -632,6 +899,19 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         all_pts.extend(tail_outline)
     for ellipse_outline in ellipse_outlines:
         all_pts.extend(ellipse_outline)
+    for stroke_outline in line_stroke_outlines:
+        all_pts.extend(stroke_outline)
+    # ウニフラ/白抜き線: ビューポートと同じ生成器で放射線を計算し、
+    # キャンバス範囲にも含める (線はフキダシの外へ大きく伸びるため)
+    is_flash = balloon_shapes.is_flash_line_style(str(getattr(entry, "line_style", "") or ""))
+    flash_strokes = (
+        _flash_strokes_page_mm(entry, rect, flip_h, flip_v, rotation_deg) if is_flash else []
+    )
+    flash_pad_mm = 0.0
+    for _role, flash_pts, flash_radii, _ops, _side, _cyc in flash_strokes:
+        all_pts.extend(flash_pts)
+        if flash_radii:
+            flash_pad_mm = max(flash_pad_mm, max(flash_radii))
     bbox = ep._points_bbox(all_pts)
     if bbox is None:
         return None
@@ -640,7 +920,7 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     outer_w_mm = _scaled_width_mm(entry, "outer_white_margin_width_mm", 0.0) if bool(getattr(entry, "outer_white_margin_enabled", False)) else 0.0
     blur = max(0.0, min(1.0, float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)))
     blur_pad = line_w_mm * (0.65 + 3.35 * blur) if blur > 0.0 else 0.0
-    pad_mm = max(2.0, line_w_mm * 4.0 + outer_w_mm * 2.0 + blur_pad)
+    pad_mm = max(2.0, line_w_mm * 4.0 + outer_w_mm * 2.0 + blur_pad, flash_pad_mm + 1.0)
     canvas = ep._canvas_for_bbox(bbox, canvas_height_px, dpi, pad_mm=pad_mm)
     if canvas is None:
         return None
@@ -653,6 +933,11 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     draw = ep.ImageDraw.Draw(canvas.image)
     outline_px = canvas.points_px(outline)
     fill_outline_px = canvas.points_px(fill_outline)
+    body_center_px = None
+    if body_center_mm is not None:
+        center_pts = canvas.points_px([body_center_mm])
+        if center_pts:
+            body_center_px = (float(center_pts[0][0]), float(center_pts[0][1]))
     fill_clip_mask = None
     if len(fill_outline_px) >= 3:
         fill_polygons = [fill_outline_px]
@@ -664,29 +949,98 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     flash_white_color = ep._rgb255((1.0, 1.0, 1.0, 1.0), alpha=_entry_opacity(entry))
     if flash_white_width_px > 0:
         _draw_inner_white_loop(canvas, line_clip_mask, outline_px, flash_white_color, flash_white_width_px, "solid")
-    if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
-        _draw_white_loop(draw, outline_px, outer_color, line_width_px + outer_width_px * 2, "solid")
-    if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-        _draw_inner_white_loop(canvas, line_clip_mask, outline_px, inner_color, max(1, inner_width_px * 2), "solid")
+    # 実線・多重線の主線とフチは、画面のメッシュと同じ「輪郭の外側に乗る」
+    # オフセット帯で描く。「角を尖らせる」ON なら mitre join で角まで尖らせる。
+    inner_w_mm = _scaled_width_mm(entry, "inner_white_margin_width_mm", 0.0)
+    body_sharp = _body_sharp_corners(entry)
+    band_line_styles = {"solid", "double"}
+    if draw_line and not is_flash and bool(getattr(entry, "outer_white_margin_enabled", False)):
+        # 外フチ: 線の外側にだけ付く帯 (画面のメッシュと同じ付き方)。
+        # 「角を尖らせる」ON のときは mitre join で角まで尖らせる。
+        _composite_patches_px(
+            canvas,
+            _mitre_band_polygons_mm(
+                outline, line_w_mm + outer_w_mm, line_w_mm, sharp=body_sharp
+            ),
+            outer_color,
+        )
+    if draw_line and not is_flash and bool(getattr(entry, "inner_white_margin_enabled", False)):
+        # 内フチ: 本体の内側に付く帯
+        _composite_patches_px(
+            canvas,
+            _mitre_band_polygons_mm(outline, 0.0, -inner_w_mm, sharp=body_sharp),
+            inner_color,
+            clip_mask=line_clip_mask,
+        )
     if draw_line:
-        if str(line_style or "") == "image":
+        if is_flash:
+            # ウニフラ/白抜き線: 本体輪郭の線は描かず、放射線群を描く
+            # (ビューポートでも主線の帯は無く、放射線メッシュだけが見える)
+            _draw_flash_strokes(canvas, entry, flash_strokes, dpi)
+        elif str(line_style or "") == "image":
             _draw_image_line_loop(canvas, outline_px, entry, line_width_px, dpi)
+        elif str(line_style or "") in band_line_styles:
+            if str(line_style or "") == "double":
+                _draw_multi_ring_bands(canvas, outline, entry, line_color, sharp=body_sharp)
+            _composite_patches_px(
+                canvas,
+                _mitre_band_polygons_mm(outline, line_w_mm, 0.0, sharp=body_sharp),
+                line_color,
+            )
         else:
-            _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi)
+            _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi, body_center_px)
+    # 「角を尖らせる」しっぽ: 本体は丸いまま、しっぽ周辺の角だけ mitre の帯を
+    # 重ねて尖らせる (実線・多重線のみ。本体側が尖らせ ON ならば全体が mitre 済み)
+    if (
+        draw_line
+        and not body_sharp
+        and merged_outline is not None
+        and sharp_tail_regions
+        and str(line_style or "") in band_line_styles
+    ):
+        _composite_patches_px(
+            canvas,
+            _sharp_tail_patch_polygons_mm(outline, sharp_tail_regions, line_w_mm),
+            line_color,
+        )
     for tail_outline in tail_outlines:
         tail_px = canvas.points_px(tail_outline)
         if len(tail_px) >= 3:
             if flash_white_width_px > 0:
                 _draw_inner_white_loop(canvas, line_clip_mask, tail_px, flash_white_color, flash_white_width_px, "solid")
-            if draw_line and bool(getattr(entry, "outer_white_margin_enabled", False)):
-                _draw_white_loop(draw, tail_px, outer_color, line_width_px + outer_width_px * 2, "solid")
-            if draw_line and bool(getattr(entry, "inner_white_margin_enabled", False)):
-                _draw_inner_white_loop(canvas, line_clip_mask, tail_px, inner_color, max(1, inner_width_px * 2), "solid")
-            if draw_line:
+            tail_sharp = body_sharp or tail_outline in sharp_tail_regions
+            if draw_line and not is_flash and bool(getattr(entry, "outer_white_margin_enabled", False)):
+                _composite_patches_px(
+                    canvas,
+                    _mitre_band_polygons_mm(
+                        tail_outline, line_w_mm + outer_w_mm, line_w_mm, sharp=tail_sharp
+                    ),
+                    outer_color,
+                )
+            if draw_line and not is_flash and bool(getattr(entry, "inner_white_margin_enabled", False)):
+                _composite_patches_px(
+                    canvas,
+                    _mitre_band_polygons_mm(tail_outline, 0.0, -inner_w_mm, sharp=tail_sharp),
+                    inner_color,
+                    clip_mask=line_clip_mask,
+                )
+            if draw_line and not is_flash:
                 if str(line_style or "") == "image":
                     _draw_image_line_loop(canvas, tail_px, entry, line_width_px, dpi)
+                elif str(line_style or "") in band_line_styles:
+                    _composite_patches_px(
+                        canvas,
+                        _mitre_band_polygons_mm(tail_outline, line_w_mm, 0.0, sharp=tail_sharp),
+                        line_color,
+                    )
                 else:
-                    _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi)
+                    _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi, body_center_px)
+    # 線しっぽ (線種「線」): ストローク多角形を線色で塗る
+    if line_stroke_outlines and draw_line:
+        for stroke_outline in line_stroke_outlines:
+            stroke_px = canvas.points_px(stroke_outline)
+            if len(stroke_px) >= 3:
+                draw.polygon(stroke_px, fill=line_color)
     # 連続楕円しっぽ: 親フキダシの塗り色・線色・線幅で各楕円を描く
     if ellipse_outlines:
         ellipse_fill = _entry_fill_rgb255(entry)

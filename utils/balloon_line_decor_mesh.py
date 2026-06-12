@@ -60,6 +60,15 @@ def ensure_balloon_line_shape_mesh(
     if len(loop) < 3 or line_width_mm <= 1.0e-6:
         remove_balloon_line_shape_mesh(balloon_id)
         return None
+    # 「中心点」向きの基準: フキダシ本体 (しっぽ結合前) の中心
+    body_samples = _body_samples_for_line_mesh(entry, body_object)
+    if body_samples:
+        center = (
+            sum(float(s[0]) for s in body_samples) / len(body_samples),
+            sum(float(s[1]) for s in body_samples) / len(body_samples),
+        )
+    else:
+        center = None
     polygons = line_decor_geom.decorations_along_loop(
         loop,
         kind=str(getattr(entry, "line_shape_kind", "circle") or "circle"),
@@ -68,6 +77,8 @@ def ensure_balloon_line_shape_mesh(
         angle_rad=math.radians(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0)),
         jitter=float(getattr(entry, "line_shape_jitter", 0.0) or 0.0),
         seed=int(getattr(entry, "line_shape_seed", 0) or 0),
+        orient=str(getattr(entry, "line_shape_orient", "line") or "line"),
+        center=center,
     )
     if not polygons:
         remove_balloon_line_shape_mesh(balloon_id)

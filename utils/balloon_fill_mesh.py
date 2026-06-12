@@ -135,14 +135,21 @@ def _tail_polygon_local_m(entry, tail) -> list[tuple[float, float]]:
     return [(mm_to_m(x + ox), mm_to_m(y + oy)) for x, y in pts_mm]
 
 
-def _build_union_polygon(body_pts: Sequence[tuple[float, float]], tails_pts: Sequence[Sequence[tuple[float, float]]]):
+def _build_union_polygon(
+    body_pts: Sequence[tuple[float, float]],
+    tails_pts: Sequence[Sequence[tuple[float, float]]],
+    union_only_pts: Sequence[Sequence[tuple[float, float]]] = (),
+):
     """本体 + 全しっぽの和集合 Shapely Polygon (または MultiPolygon) を返す。失敗時 None。
 
     しっぽが無い (= body のみ) ときは body polygon をそのまま返す。
     外側へ伸びるしっぽは本体へ結合し、内側へ向くしっぽは本体から差し引く。
+    連続楕円しっぽの「本体に重なる楕円」(union_only_pts) は常に結合する。
     どちらも主線側と同じ共通処理を使い、塗りと線の外形を一致させる。
     """
-    merged, _changed = balloon_tail_boolean.combine_body_with_tail_polygons(body_pts, tails_pts)
+    merged, _changed = balloon_tail_boolean.combine_body_with_tail_polygons(
+        body_pts, tails_pts, union_only_points_list=union_only_pts
+    )
     return merged
 
 
@@ -563,7 +570,8 @@ def ensure_balloon_fill_mesh(
         _tail_polygon_local_m(entry, tail)
         for tail in (getattr(entry, "tails", []) or [])
     ]
-    union_poly = _build_union_polygon(body_pts, tails_pts)
+    ellipse_pts = balloon_line_mesh.ellipse_polygons_for_entry_local_m(entry)
+    union_poly = _build_union_polygon(body_pts, tails_pts, ellipse_pts)
     if union_poly is None or union_poly.is_empty:
         remove_balloon_fill_mesh(balloon_id)
         return None
