@@ -1071,6 +1071,7 @@ def _effect_hit_part(
     y_mm: float,
     *,
     center_xy_mm: tuple[float, float] | None = None,
+    allow_center: bool = True,
 ) -> str:
     x, y, w, h = bounds
     left, bottom, right, top = x, y, x + w, y + h
@@ -1101,10 +1102,14 @@ def _effect_hit_part(
         return "top"
     if in_expanded_bounds and near_bottom and inside_x:
         return "bottom"
-    center_threshold = max(threshold, _EFFECT_HANDLE_HIT_MM)
-    cx, cy = center_xy_mm if center_xy_mm is not None else (left + w * 0.5, bottom + h * 0.5)
-    if math.hypot(float(x_mm) - float(cx), float(y_mm) - float(cy)) <= center_threshold:
-        return "center"
+    # 「中心ズラし」ハンドルは中心十字が見えている (= 選択中) 時だけ掴む。
+    # 未選択の効果線で見えない中心を拾うと、内側ドラッグのつもりが
+    # 本体が動かず「ハンドルと位置が合わない」誤動作になる。
+    if allow_center:
+        center_threshold = max(threshold, _EFFECT_HANDLE_HIT_MM)
+        cx, cy = center_xy_mm if center_xy_mm is not None else (left + w * 0.5, bottom + h * 0.5)
+        if math.hypot(float(x_mm) - float(cx), float(y_mm) - float(cy)) <= center_threshold:
+            return "center"
     if not in_expanded_bounds:
         return ""
     if inside_x and inside_y:
@@ -1266,6 +1271,8 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
                 local_x,
                 local_y,
                 center_xy_mm=effect_layer_center(obj, layer, bounds),
+                allow_center=object_selection.effect_key(layer)
+                in object_selection.get_keys(context),
             )
             if not part:
                 part = _layer_stroke_hit_part(layer, local_x, local_y)

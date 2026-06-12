@@ -371,10 +371,17 @@ def _balloon_hit_part(entry, x_mm: float, y_mm: float) -> str:
         return "top"
     if near_bottom and inside_x:
         return "bottom"
-    cx = left + width * 0.5 + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
-    cy = bottom + height * 0.5 + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
-    if math.hypot(float(x_mm) - cx, float(y_mm) - cy) <= max(threshold, _BALLOON_HANDLE_HIT_MM):
-        return "center"
+    # 「中心ズラし」ハンドルは、中心十字が画面に見えている場合
+    # (= 選択中のフラッシュ系線種) だけ掴めるようにする。見えていない
+    # 中心を拾うと、内側ドラッグのつもりがフキダシ本体は動かず見た目
+    # だけがズレて「ハンドルと位置が合わない」誤動作になる。
+    if bool(getattr(entry, "selected", False)) and balloon_shapes.is_flash_line_style(
+        getattr(entry, "line_style", "")
+    ):
+        cx = left + width * 0.5 + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        cy = bottom + height * 0.5 + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+        if math.hypot(float(x_mm) - cx, float(y_mm) - cy) <= max(threshold, _BALLOON_HANDLE_HIT_MM):
+            return "center"
     if inside_x and inside_y:
         return "body"
     if free_transform.entry_enabled(entry):

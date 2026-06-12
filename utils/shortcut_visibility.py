@@ -122,6 +122,42 @@ def any_bname_panel_visible(context=None) -> bool:
     return False
 
 
+def any_bname_panel_status(context=None) -> str:
+    """全 3D ビューを総合した B-Name タブ状態を返す.
+
+    戻り値:
+        ``"bname"``     — どこかのビューで B-Name タブがアクティブ
+        ``"ambiguous"`` — タブ名を読めないビューがある (一時的な判定不能)
+        ``"off"``       — すべて非表示 or 他タブ (確定的に B-Name 外)
+
+    タブ名は再描画タイミングによって一瞬読めなくなることがあり、その瞬間を
+    「タブが閉じた」と誤認すると常駐ツールが不意に終了する。呼び出し側が
+    「確定 off」と「判定不能」を区別できるようにする。
+    """
+    if bool(getattr(bpy.app, "background", False)):
+        return "bname"
+    ctx = context or bpy.context
+    wm = getattr(ctx, "window_manager", None)
+    if wm is None:
+        return "off"
+    ambiguous = False
+    for window in getattr(wm, "windows", []) or []:
+        screen = getattr(window, "screen", None)
+        if screen is None:
+            continue
+        for area in getattr(screen, "areas", []) or []:
+            if getattr(area, "type", "") != "VIEW_3D":
+                continue
+            status = _area_bname_status(area)
+            if status == "bname":
+                return "bname"
+            if status == "unknown":
+                if _recent_bname_panel_drawn(area, screen):
+                    return "bname"
+                ambiguous = True
+    return "ambiguous" if ambiguous else "off"
+
+
 def current_blend_is_coma_blend() -> bool:
     """現在の .blend が B-Name のコマ用blendファイルなら True."""
     filepath = str(getattr(bpy.data, "filepath", "") or "")

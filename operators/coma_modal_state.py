@@ -124,6 +124,11 @@ def finish_active(tool_name: str, context, *, keep_selection: bool = False) -> b
     return True
 
 
+def any_tool_active() -> bool:
+    """いずれかの B-Name モーダルツールが稼働中か返す."""
+    return any(get_active(tool_name) is not None for tool_name in tuple(_ACTIVE_REFS.keys()))
+
+
 def finish_all(context, *, except_tool: str = "") -> bool:
     """アクティブな B-Name モーダルツールをまとめて終了する."""
     changed = False

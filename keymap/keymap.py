@@ -842,6 +842,10 @@ _WATCH_INTERVAL = runtime_activity.KEYMAP_WATCH_INTERVAL
 _BNAME_TAB_CATEGORY = "B-Name"
 _SUSPEND_UNTIL = 0.0
 _SUSPEND_REASON = ""
+# タブ非表示の確定待ち tick 数 (1 tick だけの判定不能で常駐ツールを殺さない)
+_DISABLE_PENDING_TICKS = 0
+# 監視がオブジェクトツールを終了させた場合 True (タブ復帰時に自動再開)
+_WATCHER_KILLED_OBJECT_TOOL = False
 
 
 def get_state() -> Optional[KeymapState]:
@@ -950,7 +954,16 @@ def _watch_bname_tab() -> Optional[float]:
     ず ``create_bname_keymap`` が失敗した場合に備え、毎 tick ``bname_items``
     が空なら作成をリトライする。これがないと「ショートカットが一つも効か
     ない」状態が永久に続く。
+
+    無効化 (= 常駐ツールの終了を伴う) は慎重に行う:
+    タブ名はサイドバー再描画のタイミングで一瞬読めなくなることがあり、
+    その瞬間の 1 tick だけで「タブが閉じた」と確定すると、選択クリック直後の
+    ドラッグ中などに常駐オブジェクトツールが黙って終了し、以後のドラッグが
+    Blender 素の挙動に落ちて「ハンドルと実体の位置がズレる」誤動作になる。
+    判定不能 (ambiguous) でツール稼働中なら現状維持し、確定 off も連続 2 tick
+    待ってから無効化する。
     """
+    global _DISABLE_PENDING_TICKS
     state = _state
     if state is None:
         return None  # タイマー停止
@@ -973,10 +986,51 @@ def _watch_bname_tab() -> Optional[float]:
                     len(state.bname_items),
                 )
 
-        _apply_visibility_state(state, enabled)
+        if enabled:
+            _DISABLE_PENDING_TICKS = 0
+            _apply_visibility_state(state, True)
+            _relaunch_object_tool_if_watcher_killed()
+        else:
+            if keymap_pref_enabled and _disable_is_ambiguous():
+                # タブ名が読めないだけの可能性が高い。ツールを殺さず次 tick へ
+                return _WATCH_INTERVAL
+            _DISABLE_PENDING_TICKS += 1
+            if _DISABLE_PENDING_TICKS >= 2:
+                _apply_visibility_state(state, False)
     except Exception:  # noqa: BLE001
         _logger.exception("watch_bname_tab failed")
     return _WATCH_INTERVAL
+
+
+def _disable_is_ambiguous() -> bool:
+    """無効化判定が「タブ名を読めない一瞬」によるものか判定する."""
+    try:
+        from ..operators import coma_modal_state
+        from ..utils import shortcut_visibility
+
+        if not coma_modal_state.any_tool_active():
+            return False
+        if not shortcut_visibility.shortcut_file_scope_allowed(bpy.context):
+            return False
+        return shortcut_visibility.any_bname_panel_status(bpy.context) == "ambiguous"
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _relaunch_object_tool_if_watcher_killed() -> None:
+    """監視で止めたオブジェクトツールを、タブ復帰時に自動で再開する."""
+    global _WATCHER_KILLED_OBJECT_TOOL
+    if not _WATCHER_KILLED_OBJECT_TOOL:
+        return
+    _WATCHER_KILLED_OBJECT_TOOL = False
+    try:
+        from ..operators import coma_modal_state
+        from ..operators.object_tool_op import _schedule_object_tool_relaunch
+
+        if coma_modal_state.get_active("object_tool") is None:
+            _schedule_object_tool_relaunch(0.1)
+    except Exception:  # noqa: BLE001
+        _logger.exception("object tool relaunch after tab return failed")
 
 
 def _bname_tab_is_active() -> bool:
@@ -989,6 +1043,7 @@ def _bname_tab_is_active() -> bool:
 
 def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
     """B-Name タブ表示状態に合わせて自前キーと競合退避を切り替える."""
+    global _WATCHER_KILLED_OBJECT_TOOL
     if enabled:
         state.set_bname_items_active(True)
         if not state.enabled and state.bname_items:
@@ -1001,6 +1056,9 @@ def _apply_visibility_state(state: KeymapState, enabled: bool) -> None:
     try:
         from ..operators import coma_modal_state
 
+        if coma_modal_state.get_active("object_tool") is not None:
+            # タブが戻ったとき自動で再開できるよう記録する
+            _WATCHER_KILLED_OBJECT_TOOL = True
         coma_modal_state.finish_all(bpy.context)
     except Exception:  # noqa: BLE001
         _logger.exception("finish B-Name modal tools failed")
