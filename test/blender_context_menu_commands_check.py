@@ -128,6 +128,7 @@ def _assert_menu_for_kind(kind: str) -> None:
     if kind == "balloon":
         expected.extend(["拡大・縮小", "回転"])
     expected.append("選択レイヤーをリンク")
+    expected.append("リンクを解除")
     if kind == "balloon":
         expected.extend(["フキダシを結合", "しっぽをコピー", "しっぽを貼り付け"])
     expected.append("削除")
@@ -151,6 +152,7 @@ def _assert_menu_for_kind(kind: str) -> None:
         assert enabled["拡大・縮小"] is True, (kind, enabled)
         assert enabled["回転"] is True, (kind, enabled)
     assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
+    assert enabled["リンクを解除"] is False, (kind, enabled)
     if kind == "balloon":
         assert enabled["フキダシを結合"] is False, enabled
         assert enabled["しっぽをコピー"] is False, enabled
@@ -179,8 +181,26 @@ def _assert_link_selected_menu() -> None:
     items = context_menu.selection_command_items(bpy.context)
     enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
     assert enabled["選択レイヤーをリンク"] is True, enabled
+    assert enabled["リンクを解除"] is False, enabled
     result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
+    # リンク後はメニューの「リンクを解除」が有効になり、
+    # リンクボタン (同オペレーター) の再実行で解除される (トグル)
+    items = context_menu.selection_command_items(bpy.context)
+    enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
+    assert enabled["リンクを解除"] is True, enabled
+    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
+    from bname_dev.utils import layer_links
+
+    assert not layer_links.selected_any_linked(bpy.context), "トグルでリンクが解除されていません"
+    # 再リンクして解除オペレーター単体も確認
+    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
+    assert layer_links.selected_any_linked(bpy.context)
+    result = bpy.ops.bname.layer_stack_unlink_selected("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
+    assert not layer_links.selected_any_linked(bpy.context), "リンク解除オペレーターが効いていません"
 
 
 class _FakeLayout:

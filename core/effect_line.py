@@ -161,6 +161,7 @@ EFFECT_PARAM_FIELDS = (
     "white_underlay_enabled",
     "white_underlay_width_percent",
     "white_underlay_color",
+    "uni_flash_offset_percent",
     "speed_angle_deg",
     "speed_line_count",
     "white_outline_count",
@@ -432,6 +433,8 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     white_underlay_color: FloatVectorProperty(name="白抜き線色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    # ウニフラ固有: 線の終点を交互に出し入れする量 (50% = 従来の固定量)
+    uni_flash_offset_percent: FloatProperty(name="ズラし量 (%)", description="線の終点を交互に出し入れして、長さをずらします", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     # 流線固有
     speed_angle_deg: FloatProperty(name="流線の角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]

@@ -128,8 +128,10 @@ def selection_command_items(context) -> list[dict]:
         has_tail_clipboard = layer_clipboard_op.has_tail_clipboard(context)
         balloon_has_tails = layer_clipboard_op.active_balloon_has_tails(context)
         selected_linkable_count = layer_links.selected_linkable_count(context)
+        selected_any_linked = layer_links.selected_any_linked(context)
     except Exception:  # noqa: BLE001
         selected_linkable_count = 0
+        selected_any_linked = False
     detail_operator = "bname.layer_stack_detail"
     if kind in {"image", "raster", "balloon", "text", "gp", "effect", "effect_legacy"}:
         if _active_managed_object_for_stack_item(context, item) is not None:
@@ -170,6 +172,12 @@ def selection_command_items(context) -> list[dict]:
             "operator": "bname.layer_stack_link_selected",
             "icon": "LINKED",
             "enabled": has_item and selected_linkable_count >= 2,
+        },
+        {
+            "label": "リンクを解除",
+            "operator": "bname.layer_stack_unlink_selected",
+            "icon": "UNLINKED",
+            "enabled": has_item and selected_any_linked,
         },
     ]
     if normalized_kind in {"balloon", "effect"}:

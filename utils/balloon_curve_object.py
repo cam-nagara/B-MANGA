@@ -782,7 +782,9 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     # ジオメトリ署名: 一致すれば各帯メッシュの再構築 (shapely/earcut) を丸ごと
     # スキップし、親子付け・可視性・マスクの反映だけ行う (色変更などが高速になる)
     band_sig = _band_geometry_signature(entry, obj)
-    if fill_mat is not None:
+    # ウニフラ/白抜き線では本体の塗りを描かない (下地は「終点形状を下地として
+    # 塗る」で別途描かれる。塗りメッシュが残ると設定オフでも塗り色で塗られる)
+    if fill_mat is not None and not is_flash_line_style:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
             work=work,

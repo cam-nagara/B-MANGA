@@ -229,6 +229,10 @@ class BNAME_OT_coma_create_tool(Operator):
             return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
+        # 3D ビューの描画領域外 (サイドバー・プリセット選択・ヘッダーなど) の
+        # 操作は素通しする。これが無いとツール起動中に他の UI を一切押せない
+        if not view_event_region.is_view3d_window_event(context, event):
+            return {"PASS_THROUGH"}
 
         if event.type in {"RIGHTMOUSE", "ESC"} and event.value == "PRESS":
             if self._points_mm:
@@ -274,7 +278,8 @@ class BNAME_OT_coma_create_tool(Operator):
             return self._on_press(context, event)
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
             return self._on_release(context, event)
-        return {"RUNNING_MODAL"}
+        # 扱わないイベント (ショートカットキー等) は素通しする
+        return {"PASS_THROUGH"}
 
     def _tag_redraw(self) -> None:
         region = getattr(self, "_region", None)

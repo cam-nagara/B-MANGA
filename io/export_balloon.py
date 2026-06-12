@@ -551,13 +551,16 @@ def _fill_mask(canvas, polygons_px: list[list[tuple[int, int]]]):
     return mask
 
 
-def _draw_fill_layer(canvas, entry, polygons_px: list[list[tuple[int, int]]], dpi: int):
+def _draw_fill_layer(canvas, entry, polygons_px: list[list[tuple[int, int]]], dpi: int, *, composite: bool = True):
     ep = _ep()
     if ep.Image is None or ep.ImageDraw is None:
         return None
     hard = _fill_mask(canvas, polygons_px)
     if hard is None:
         return None
+    if not composite:
+        # クリップ用のマスクだけ返す (ウニフラ/白抜き線では本体の塗りを描かない)
+        return hard
     mask = hard
     blur = max(0.0, min(1.0, float(getattr(entry, "fill_blur_amount", 0.0) or 0.0)))
     if blur > 0.0 and ep.ImageFilter is not None and ep.ImageChops is not None:
@@ -981,7 +984,12 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     if len(fill_outline_px) >= 3:
         fill_polygons = [fill_outline_px]
         fill_polygons.extend(canvas.points_px(tail_outline) for tail_outline in tail_outlines)
-        fill_clip_mask = _draw_fill_layer(canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi)
+        # ウニフラ/白抜き線では本体の塗りは描かない (下地は「終点形状を下地と
+        # して塗る」が担当)。クリップ用マスクだけ作る
+        fill_clip_mask = _draw_fill_layer(
+            canvas, entry, [pts for pts in fill_polygons if len(pts) >= 3], dpi,
+            composite=not is_flash,
+        )
     line_clip_mask = fill_clip_mask
     draw_line = str(line_style or "") != "none" and line_width_px > 0
     flash_white_width_px = _flash_white_line_width_px(entry, line_w_mm, dpi) if draw_line else 0

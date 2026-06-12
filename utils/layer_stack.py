@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from array import array
 
@@ -348,6 +349,41 @@ def _explicit_entry_parent(entry, page, panels_by_key: dict[str, object]) -> tup
     return None
 
 
+_LAYER_KIND_JP = {
+    "balloon": "フキダシ",
+    "text": "テキスト",
+    "image": "画像",
+    "raster": "ラスター",
+    "effect": "効果線",
+    "gp": "下書き",
+}
+
+_LAYER_ID_NUMBER_RE = re.compile(
+    r"^(?:shared_)?(?:balloon|text|image|raster|effect|gp)[_-]?0*(\d+)$"
+)
+
+
+def _jp_layer_label(kind: str, raw_id: str) -> str:
+    """既定 ID (balloon_0001 等) のままのレイヤー名を日本語表記で表示する.
+
+    ユーザーが付けた表示名はそのまま使い、ここへは表示名が空のときの
+    フォールバック (= 内部 ID) だけが来る。
+    """
+    base = _LAYER_KIND_JP.get(str(kind or ""), "")
+    raw = str(raw_id or "")
+    if not base:
+        return raw
+    if not raw:
+        return base
+    match = _LAYER_ID_NUMBER_RE.match(raw)
+    if match:
+        return f"{base} {int(match.group(1))}"
+    lowered = raw.lower()
+    if lowered in {kind, f"shared_{kind}"}:
+        return base
+    return raw
+
+
 def _collect_raster_targets_for_page(page, panels_by_key: dict[str, object]):
     scene = getattr(bpy.context, "scene", None)
     coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
@@ -361,7 +397,7 @@ def _collect_raster_targets_for_page(page, panels_by_key: dict[str, object]):
             continue
         parent_kind = str(getattr(entry, "parent_kind", "") or "page")
         parent_key = str(getattr(entry, "parent_key", "") or "")
-        label = getattr(entry, "title", "") or getattr(entry, "id", "") or "ラスター"
+        label = getattr(entry, "title", "") or _jp_layer_label("raster", getattr(entry, "id", ""))
         if parent_kind == "page" and parent_key in {getattr(page, "id", ""), page_key}:
             page_children.append(LayerTarget("raster", entry.id, label, page_key, 1))
             continue
@@ -386,7 +422,7 @@ def _collect_image_targets_for_page(page, panels_by_key: dict[str, object]):
     for entry in reversed(list(coll)):
         parent_kind = str(getattr(entry, "parent_kind", "") or "none")
         parent_key = str(getattr(entry, "parent_key", "") or "")
-        label = getattr(entry, "title", "") or getattr(entry, "id", "") or "画像"
+        label = getattr(entry, "title", "") or _jp_layer_label("image", getattr(entry, "id", ""))
         if parent_kind == "page" and parent_key in {getattr(page, "id", ""), page_key}:
             page_children.append(LayerTarget("image", entry.id, label, page_key, 1))
             continue
@@ -455,7 +491,7 @@ def _collect_outside_layer_targets(
             if scope != "master" and parent_kind != "none" and parent_key:
                 continue
             key = _ensure_unique_id(entry, used_raster, "raster")
-            label = getattr(entry, "title", "") or key
+            label = getattr(entry, "title", "") or _jp_layer_label("raster", key)
             targets.append(LayerTarget("raster", key, label, OUTSIDE_STACK_KEY, 1))
 
     image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
@@ -467,19 +503,19 @@ def _collect_outside_layer_targets(
             if parent_kind != "none" and parent_key:
                 continue
             key = _ensure_unique_id(entry, used_image, "image")
-            label = getattr(entry, "title", "") or key
+            label = getattr(entry, "title", "") or _jp_layer_label("image", key)
             targets.append(LayerTarget("image", key, label, OUTSIDE_STACK_KEY, 1))
 
     used_balloon: set[str] = set()
     for entry in reversed(list(getattr(work, "shared_balloons", []))):
         bid = _ensure_unique_id(entry, used_balloon, "shared_balloon")
-        label = getattr(entry, "title", "") or getattr(entry, "id", "") or bid
+        label = getattr(entry, "title", "") or _jp_layer_label("balloon", getattr(entry, "id", "") or bid)
         targets.append(LayerTarget("balloon", outside_child_key(bid), label, OUTSIDE_STACK_KEY, 1))
 
     used_text: set[str] = set()
     for entry in reversed(list(getattr(work, "shared_texts", []))):
         tid = _ensure_unique_id(entry, used_text, "shared_text")
-        label = getattr(entry, "title", "") or getattr(entry, "body", "") or tid
+        label = getattr(entry, "title", "") or getattr(entry, "body", "") or _jp_layer_label("text", tid)
         targets.append(LayerTarget("text", outside_child_key(tid), label, OUTSIDE_STACK_KEY, 1))
 
     targets.extend(_retarget_root_subtree_to_outside(effect_root_targets))
@@ -545,11 +581,11 @@ def _collect_page_layer_targets(
                 balloon_groups[group_key] = LayerTarget(
                     "balloon_group", group_key, label, parent, depth
                 )
-            label = getattr(entry, "title", "") or bid
+            label = getattr(entry, "title", "") or _jp_layer_label("balloon", bid)
             target = LayerTarget("balloon", f"{page_key}:{bid}", label, group_key, depth + 1)
             balloon_group_children.setdefault(group_key, []).append(target)
             continue
-        label = getattr(entry, "title", "") or bid
+        label = getattr(entry, "title", "") or _jp_layer_label("balloon", bid)
         target = LayerTarget("balloon", f"{page_key}:{bid}", label, parent, depth)
         if depth == 2:
             panel_children.setdefault(parent, []).append(target)
@@ -580,7 +616,7 @@ def _collect_page_layer_targets(
 
     for entry in reversed(list(getattr(page, "texts", []))):
         tid = _ensure_unique_id(entry, used_text, "text")
-        label = getattr(entry, "title", "") or getattr(entry, "body", "") or tid
+        label = getattr(entry, "title", "") or getattr(entry, "body", "") or _jp_layer_label("text", tid)
         explicit_parent = _explicit_entry_parent(entry, page, panels_by_key)
         if explicit_parent is not None:
             parent, depth = explicit_parent

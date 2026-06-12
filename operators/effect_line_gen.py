@@ -947,8 +947,18 @@ def _apply_white_underlay_strokes(strokes: list[EffectLineStroke], params) -> li
 def _apply_uni_flash_jag(
     strokes: list[EffectLineStroke],
     center_xy_mm: tuple[float, float],
+    offset_percent: float = 50.0,
 ) -> list[EffectLineStroke]:
-    """ウニフラ用に終点側を交互に出入りさせ、通常の集中線と差別化する。"""
+    """ウニフラ用に終点側を交互に出入りさせ、通常の集中線と差別化する。
+
+    offset_percent は「ズラし量 (%)」。50% が従来の固定量 (0.84 / 1.10) と
+    同じで、0% でズラしなし、100% で従来の 2 倍。
+    """
+    k = max(0.0, min(100.0, float(offset_percent))) / 50.0
+    if k <= 1.0e-9:
+        return strokes
+    scale_in = 1.0 - 0.16 * k
+    scale_out = 1.0 + 0.10 * k
     cx = mm_to_m(center_xy_mm[0])
     cy = mm_to_m(center_xy_mm[1])
     out: list[EffectLineStroke] = []
@@ -958,7 +968,7 @@ def _apply_uni_flash_jag(
             continue
         pts = list(stroke.points_xyz)
         ex, ey, ez = pts[-1]
-        scale = 0.84 if i % 2 == 0 else 1.10
+        scale = scale_in if i % 2 == 0 else scale_out
         pts[-1] = (cx + (ex - cx) * scale, cy + (ey - cy) * scale, ez)
         out.append(
             EffectLineStroke(
@@ -973,6 +983,15 @@ def _apply_uni_flash_jag(
             )
         )
     return out
+
+
+def apply_uni_flash_offset(
+    strokes: list[EffectLineStroke],
+    center_xy_mm: tuple[float, float],
+    offset_percent: float,
+) -> list[EffectLineStroke]:
+    """ウニフラの「ズラし量」を外部 (フキダシの線種ウニフラ) から適用する入口."""
+    return _apply_uni_flash_jag(strokes, center_xy_mm, offset_percent)
 
 
 def generate_strokes(
@@ -1023,7 +1042,11 @@ def generate_strokes(
         end_center_xy_mm=shape_center_xy_mm,
     )
     if etype == "uni_flash":
-        focus_strokes = _apply_uni_flash_jag(focus_strokes, center_xy_mm)
+        focus_strokes = _apply_uni_flash_jag(
+            focus_strokes,
+            center_xy_mm,
+            float(getattr(params, "uni_flash_offset_percent", 50.0) or 0.0),
+        )
     focus_strokes = _apply_bundle_jagged_start_fixed(focus_strokes, params)
     focus_strokes = _apply_inout_profile(focus_strokes, params)
     return _apply_white_underlay_strokes(focus_strokes, params)

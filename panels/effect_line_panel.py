@@ -250,6 +250,8 @@ def draw_effect_params(
         sub.enabled = bool(params.white_underlay_enabled)
         sub.prop(params, "white_underlay_width_percent", text="幅")
         sub.prop(params, "white_underlay_color", text="")
+    if effect_type == "uni_flash":
+        box.prop(params, "uni_flash_offset_percent")
 
     if effect_type == "speed":
         box = layout.box()

@@ -570,6 +570,8 @@ def _draw_effect_tail_settings(box, params) -> None:
         sub.enabled = bool(params.white_underlay_enabled)
         sub.prop(params, "white_underlay_width_percent", text="幅")
         sub.prop(params, "white_underlay_color", text="")
+    if params.effect_type == "uni_flash":
+        color_box.prop(params, "uni_flash_offset_percent")
 
 
 def _draw_effect_white_outline_settings(box, params) -> None:

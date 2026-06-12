@@ -201,6 +201,7 @@ UNI_FLASH_PARAM_FIELDS = (
     "white_underlay_enabled",
     "white_underlay_width_percent",
     "white_underlay_color",
+    "uni_flash_offset_percent",
 )
 
 
@@ -328,8 +329,9 @@ def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
         pass
     try:
         entry.effect_type = "uni_flash"
-        if force or not bool(getattr(entry, "white_underlay_enabled", True)):
-            entry.white_underlay_enabled = True
+        # 白抜き線の初期値はオフ (ユーザーが明示的にオンにしたものは保持)
+        if force:
+            entry.white_underlay_enabled = False
     except Exception:  # noqa: BLE001
         pass
 
@@ -776,9 +778,10 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     in_range_mm: FloatProperty(name="入りの範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     out_range_mm: FloatProperty(name="抜きの範囲 (mm)", default=10.0, min=0.0, soft_max=200.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    white_underlay_enabled: BoolProperty(name="白抜き線", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=100.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     white_underlay_color: FloatVectorProperty(name="白抜き線色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    uni_flash_offset_percent: FloatProperty(name="ズラし量 (%)", description="線の終点を交互に出し入れして、長さをずらします", default=0.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     multi_line_direction: EnumProperty(name="重ねる方向", items=_MULTI_LINE_DIRECTION_ITEMS, default="outside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     # 多重線の谷/山の線幅: 多重線の基本線幅 (multi_line_width_mm) を 100% として % 指定。
     # 100% = 同じ太さ, 0% = その頂点で消える。辺全体に渡って隣接頂点間で

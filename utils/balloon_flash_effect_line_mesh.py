@@ -397,12 +397,19 @@ def generate_flash_strokes_rect_local(entry):
             )
             if fill is not None:
                 strokes.append(fill)
-        strokes.extend(effect_line_gen.generate_strokes(
+        flash_strokes = effect_line_gen.generate_strokes(
             params,
             center_xy_mm=center,
             radius_xy_mm=(rx, ry),
             seed=seed,
-        ))
+        )
+        # ウニフラの「ズラし量」: 線の終点を交互に出し入れする
+        # (フキダシ側は params.effect_type を focus に固定しているため、
+        #  生成後にここで適用する)
+        offset_pct = float(getattr(entry, "uni_flash_offset_percent", 0.0) or 0.0)
+        if line_style == "uni_flash" and offset_pct > 1.0e-6:
+            flash_strokes = effect_line_gen.apply_uni_flash_offset(flash_strokes, center, offset_pct)
+        strokes.extend(flash_strokes)
     return strokes
 
 

@@ -97,16 +97,28 @@ def _sync_new_link_transforms(context, stack, uids: list[str]) -> None:
 class BNAME_OT_layer_stack_link_selected(Operator):
     bl_idname = "bname.layer_stack_link_selected"
     bl_label = "選択レイヤーをリンク"
-    bl_description = "選択中のレイヤー同士をリンクします"
+    bl_description = (
+        "選択中のレイヤー同士をリンクします。"
+        "選択がすべてリンク済みのときはリンクを解除します"
+    )
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return layer_links.selected_linkable_count(context) >= 2
+        if layer_links.selected_linkable_count(context) >= 2:
+            return True
+        # リンク済みレイヤーが選択されていれば、1件でも「解除」として押せる
+        return layer_links.selected_any_linked(context)
 
     def execute(self, context):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uids = layer_links.selected_linkable_uids(context, stack=stack)
+        if uids and all(layer_links.is_uid_linked(context, uid) for uid in uids):
+            removed = layer_links.unlink_uids(context, uids)
+            if removed:
+                layer_stack_utils.tag_view3d_redraw(context)
+                self.report({"INFO"}, f"{removed}件のレイヤーのリンクを解除しました")
+                return {"FINISHED"}
         _group_id, count = layer_links.link_uids(context, uids)
         if count < 2:
             self.report({"WARNING"}, "リンクするレイヤーを2つ以上選択してください")
@@ -118,7 +130,32 @@ class BNAME_OT_layer_stack_link_selected(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_layer_stack_link_selected,)
+class BNAME_OT_layer_stack_unlink_selected(Operator):
+    bl_idname = "bname.layer_stack_unlink_selected"
+    bl_label = "リンクを解除"
+    bl_description = "選択中のレイヤーをリンクグループから外します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return layer_links.selected_any_linked(context)
+
+    def execute(self, context):
+        stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+        uids = layer_links.selected_linkable_uids(context, stack=stack)
+        removed = layer_links.unlink_uids(context, uids)
+        if not removed:
+            self.report({"WARNING"}, "リンクされているレイヤーが選択されていません")
+            return {"CANCELLED"}
+        layer_stack_utils.tag_view3d_redraw(context)
+        self.report({"INFO"}, f"{removed}件のレイヤーのリンクを解除しました")
+        return {"FINISHED"}
+
+
+_CLASSES = (
+    BNAME_OT_layer_stack_link_selected,
+    BNAME_OT_layer_stack_unlink_selected,
+)
 
 
 def register() -> None:

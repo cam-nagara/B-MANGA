@@ -203,8 +203,14 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
 
+    # 縦長になりすぎるため 2 列に分ける
+    # (左: 配置・形状・しっぽ / 右: 線・塗り・表示)
+    split = layout.split(factor=0.5)
+    left_col = split.column()
+    right_col = split.column()
+
     # 配置 (mm) を Outliner メタ の次 (最上段) に配置
-    box = layout.box()
+    box = left_col.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)
     row.prop(entry, "x_mm")
@@ -217,7 +223,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     row.prop(entry, "flip_h")
     row.prop(entry, "flip_v")
 
-    box = layout.box()
+    box = left_col.box()
     box.label(text="形状")
     source_state = _draw_balloon_regenerate_buttons(box, entry, page)
     box.prop(entry, "shape")
@@ -235,7 +241,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         and source_state != balloon_curve_source_state.STATE_FREEFORM
         and balloon_shapes.is_dynamic_meldex_shape(str(getattr(entry, "shape", "") or ""))
     ):
-        shape_box = layout.box()
+        shape_box = left_col.box()
         shape_box.label(text="形状パラメータ")
         col = shape_box.column(align=True)
         row = col.row(align=True)
@@ -261,7 +267,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         if balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or "")) in {"thorn", "thorn-curve"}:
             shape_box.prop(sp, "cloud_valley_sharp")
 
-    box = layout.box()
+    box = right_col.box()
     box.label(text="線・塗り")
     row = box.row(align=True)
     row.prop(entry, "line_style")
@@ -381,9 +387,9 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
         sub.prop(entry, "inner_white_margin_color", text="")
         box.prop(entry, "opacity", slider=True)
 
-    _draw_balloon_tails(layout, entry, page)
+    _draw_balloon_tails(left_col, entry, page)
 
-    box = layout.box()
+    box = right_col.box()
     box.label(text="表示・所属")
     box.prop(entry, "visible")
     box.prop(entry, "parent_kind")
@@ -567,7 +573,9 @@ class BNAME_OT_layer_detail_open(Operator):
         from ..utils import detail_popup
 
         detail_popup.position_dialog_cursor(context, event, key="layer_detail")
-        return context.window_manager.invoke_props_dialog(self, width=260)
+        # フキダシは項目が多く縦長になりすぎるため、2 列レイアウト + 広い幅で開く
+        width = 560 if self.kind == "balloon" else 260
+        return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):
         layout = self.layout

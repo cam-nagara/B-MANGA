@@ -94,6 +94,12 @@ class _RecordingLayout:
     def column(self, align: bool = False):
         return _RecordingLayout(self.props)
 
+    def split(self, factor: float = 0.5, align: bool = False):
+        return _RecordingLayout(self.props)
+
+    def separator(self, **_kwargs):
+        return None
+
     def label(self, **_kwargs):
         return None
 
@@ -212,8 +218,12 @@ def main() -> None:
                 assert abs(float(entry.out_percent) - 0.0) < 1.0e-6
                 assert abs(float(entry.in_start_percent) - 50.0) < 1.0e-6
                 assert abs(float(entry.out_start_percent) - 50.0) < 1.0e-6
-                assert bool(entry.white_underlay_enabled)
+                # v0.6.286: 白抜き線の初期値はオフ
+                assert not bool(entry.white_underlay_enabled)
                 assert abs(float(entry.white_underlay_width_percent) - 100.0) < 1.0e-6
+                # v0.6.286: ウニフラに「ズラし量」が追加されている
+                assert hasattr(entry, "uni_flash_offset_percent")
+                assert abs(float(entry.uni_flash_offset_percent) - 0.0) < 1.0e-6
                 focus_params = context.scene.bname_effect_line_params
                 focus_params.start_shape = entry.start_shape
                 focus_params.end_shape = entry.end_shape
@@ -225,7 +235,10 @@ def main() -> None:
                     "focus",
                 )
                 uni_props = _effect_setting_props(effect_line_panel, entry, "uni_flash")
-                assert uni_props == focus_props, "ウニフラ線種の表示項目が集中線と一致していません"
+                # 「ズラし量」はウニフラ専用なので、それ以外が集中線と一致していればよい
+                assert set(uni_props) - {"uni_flash_offset_percent"} == set(focus_props), (
+                    "ウニフラ線種の表示項目が集中線と一致していません"
+                )
                 assert "spacing_density_compensation" in uni_props, "ウニフラ設定に密度補正が表示されていません"
                 assert entry.bl_rna.properties["line_style"].name == "線種"
                 assert entry.bl_rna.properties["line_color"].name == "線色"
@@ -353,6 +366,8 @@ def main() -> None:
                 entry.bundle_enabled = False
                 entry.in_percent = 0.0
                 entry.out_percent = 0.0
+                # v0.6.286 で初期値オフになったため、白抜き線の検証区画では明示的にオン
+                entry.white_underlay_enabled = True
                 entry.white_underlay_width_percent = 100.0
             else:
                 entry.flash_white_line_width_percent = 100.0

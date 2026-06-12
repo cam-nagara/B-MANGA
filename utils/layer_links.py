@@ -132,6 +132,38 @@ def link_selected(context, stack=None) -> tuple[str, int]:
     return link_uids(context, selected_linkable_uids(context, stack=stack))
 
 
+def is_uid_linked(context, uid: str) -> bool:
+    return bool(_load_map(context).get(str(uid or ""), ""))
+
+
+def selected_any_linked(context) -> bool:
+    return any(
+        is_uid_linked(context, uid)
+        for uid in selected_linkable_uids(context, sync=False)
+    )
+
+
+def unlink_uids(context, uids: list[str]) -> int:
+    """指定レイヤーをリンクグループから外す。1件だけ残ったグループは解散する."""
+    unique = [str(uid) for uid in uids if str(uid or "")]
+    if not unique:
+        return 0
+    mapping = _load_map(context)
+    removed = 0
+    for uid in unique:
+        if mapping.pop(uid, ""):
+            removed += 1
+    if removed:
+        counts: dict[str, int] = {}
+        for group in mapping.values():
+            counts[group] = counts.get(group, 0) + 1
+        mapping = {
+            uid: group for uid, group in mapping.items() if counts.get(group, 0) >= 2
+        }
+        _save_map(context, mapping)
+    return removed
+
+
 def set_item_and_linked_selected(context, item, value: bool, *, stack=None) -> bool:
     from . import layer_stack as layer_stack_utils
 
