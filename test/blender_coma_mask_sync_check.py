@@ -66,6 +66,10 @@ def main() -> None:
 
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaPlane.bname"))
         assert result == {"FINISHED"}, result
+        # v0.6.279 以降、コマ実体 (coma_plane / coma_mask) はページ用 blend
+        # のみが持つため、ページを開いてから検証する
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bname_dev.core.work import get_work
         from bname_dev.io import export_pipeline
@@ -238,18 +242,29 @@ def main() -> None:
         assert _approx(new_plane.location.x, mm_to_m(page_ox_mm + 120.0))
         assert _approx(new_plane.location.y, mm_to_m(page_oy_mm + 130.0))
 
-        # ---- 9. ページオフセット変化で coma_plane location が追従 ----
-        # apply_page_collection_transforms (= 末尾で update_coma_plane_locations
-        # を呼ぶよう Fix #1 で改修済) が new_entry の coma_plane の location も
-        # page_grid offset に追従させることを直接確認
+        # ---- 9. ページ編集シーンでは「一覧上の手動移動量」が内容を動かさない ----
+        # (v0.6.281: 表示X/Y は一覧専用の見た目オフセット。ページ編集中は
+        #  紙・コマ・内容の位置関係を固定する)。あわせて coma_mask が
+        #  coma_plane と同じ XY を保つこと (位置更新の追従) も確認する。
         from bname_dev.utils import page_grid as _pg
 
-        # page.manual_offset_x_mm を変えて page offset を強制シフト
         old_loc_x = float(new_plane.location.x)
+        mask_follow = cp.find_coma_mask_object(page.id, new_entry.id) or cp.ensure_coma_mask(
+            scene, work, page, new_entry
+        )
+        assert mask_follow is not None, "新規コマの coma_mask がありません"
         page.offset_x_mm = float(getattr(page, "offset_x_mm", 0.0)) + 50.0
         _pg.apply_page_collection_transforms(bpy.context, work)
         new_loc_x = float(new_plane.location.x)
-        assert _approx(new_loc_x - old_loc_x, mm_to_m(50.0)), (old_loc_x, new_loc_x)
+        assert _approx(new_loc_x, old_loc_x), (
+            f"ページ編集シーンで手動移動量がコマ面を動かしています: {old_loc_x} -> {new_loc_x}"
+        )
+        assert _approx(float(mask_follow.location.x), float(new_plane.location.x)), (
+            "coma_mask が coma_plane の X 位置に追従していません"
+        )
+        assert _approx(float(mask_follow.location.y), float(new_plane.location.y)), (
+            "coma_mask が coma_plane の Y 位置に追従していません"
+        )
 
         # ---- 10. コマ削除で coma_plane が即時掃除 ----
         # page.comas からの削除と remove_coma_plane の連携を直接テスト

@@ -280,7 +280,15 @@ def _add_current_page_preview_balloon(work) -> None:
     entry.line_width_mm = 0.8
 
 
-def _add_other_page_balloon_entry(work) -> None:
+def _add_other_page_balloon_entry() -> None:
+    """p0002 のページ用 blend を開いてフキダシデータを作り、保存して戻る.
+
+    v0.6.279 以降、作品ファイルは他ページの詳細を保持しない (保存ガードで
+    page.json にも書かれない) ため、対象ページを開いて作成する。
+    """
+    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=1)
+    assert result == {"FINISHED"}, result
+    work = bpy.context.scene.bname_work
     entry = work.pages[1].balloons.add()
     entry.id = "other_page_balloon"
     entry.title = "other_page_balloon"
@@ -289,6 +297,8 @@ def _add_other_page_balloon_entry(work) -> None:
     entry.y_mm = 20.0
     entry.width_mm = 40.0
     entry.height_mm = 30.0
+    result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+    assert result == {"FINISHED"}, result
 
 
 def _image_has_red_area(path: Path) -> bool:
@@ -321,7 +331,7 @@ def main() -> None:
             assert result == {"FINISHED"}, result
         _assert_work_file_preview_only()
 
-        _add_other_page_balloon_entry(bpy.context.scene.bname_work)
+        _add_other_page_balloon_entry()
         result = bpy.ops.bname.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
@@ -335,11 +345,22 @@ def main() -> None:
 
         work = bpy.context.scene.bname_work
         other_page = work.pages[1]
-        other_coma = other_page.comas[0]
-        coma_plane.ensure_coma_plane(bpy.context.scene, work, other_page, other_coma)
-        coma_border_object.ensure_coma_border_object(bpy.context.scene, work, other_page, other_coma)
+        # 現行仕様ではページ用 blend に他ページの詳細データは無いため、
+        # 汚染プローブ用に一時的なコマデータを直接作って実体を生成する
+        assert len(other_page.comas) == 0, "ページ用 blend が他ページの詳細を保持しています"
+        probe_coma = other_page.comas.add()
+        probe_coma.id = "c01"
+        probe_coma.coma_id = "c01"
+        probe_coma.shape_type = "rect"
+        probe_coma.rect_x_mm = 10.0
+        probe_coma.rect_y_mm = 10.0
+        probe_coma.rect_width_mm = 60.0
+        probe_coma.rect_height_mm = 40.0
+        coma_plane.ensure_coma_plane(bpy.context.scene, work, other_page, probe_coma)
+        coma_border_object.ensure_coma_border_object(bpy.context.scene, work, other_page, probe_coma)
         assert "p0002" in _coma_runtime_owner_pages()
         layer_object_sync.mirror_work_to_outliner(bpy.context.scene, work)
+        other_page.comas.clear()  # 後始末: 他ページの詳細を持たない状態へ戻す
         _assert_page_file_current_page_runtime_only("p0001")
         assert bpy.data.collections.get("p0002") is None
         previews = _page_preview_objects()
@@ -394,12 +415,18 @@ def main() -> None:
             current_oy + float(coma.rect_y_mm) + float(coma.rect_height_mm) * 0.5,
         )
         assert coma_hit == (0, 0), f"ページファイル上のコマを検出できません: {coma_hit}"
+        # 他ページのコマ位置は (詳細がメモリに無いため) ディスクの page.json から取る
+        import json as _json
+
+        other_pj = _json.loads((work_dir / "p0002" / "page.json").read_text(encoding="utf-8"))
+        other_comas = other_pj.get("comas", [])
+        assert other_comas, "p0002 の page.json にコマがありません"
+        other_rect = other_comas[0].get("shape", {}).get("rect", {})
         other_ox, other_oy = page_grid.page_total_offset_mm(work, bpy.context.scene, 1)
-        other_coma = work.pages[1].comas[0]
         other_hit = coma_knife_cut_op._find_coma_at_world(
             work,
-            other_ox + float(other_coma.rect_x_mm) + float(other_coma.rect_width_mm) * 0.5,
-            other_oy + float(other_coma.rect_y_mm) + float(other_coma.rect_height_mm) * 0.5,
+            other_ox + float(other_rect.get("x", 0.0)) + float(other_rect.get("widthMm", 0.0)) * 0.5,
+            other_oy + float(other_rect.get("y", 0.0)) + float(other_rect.get("heightMm", 0.0)) * 0.5,
         )
         assert other_hit is None, f"ページファイル上で他ページのコマを検出しています: {other_hit}"
         bpy.context.scene.bname_page_preview_enabled = False
@@ -432,18 +459,30 @@ def main() -> None:
         assert len(work.pages[0].comas) == before_cut + 1
         assert len(_visible_page_preview_objects()) == 1
         _assert_page_file_current_page_runtime_only("p0001")
-        bpy.context.scene.bname_page_preview_resolution_percentage = 50.0
+        # 解像度%の変更は、表示中 (半径1 → p0002 が見えている) のプレビューを
+        # 新しいサイズで再生成する。v0.6.280 以降は表示対象だけ再生成するため、
+        # 非表示 (半径0) にする前に確認する。「画像解像度%」はページ実解像度
+        # (用紙サイズ×DPI) に対する割合・長辺1536px上限なので、上限未満になる
+        # 10% を指定し、期待サイズは実装と同じ計算で求める。
+        bpy.context.scene.bname_page_preview_resolution_percentage = 10.0
+        expected_preview_size = page_preview_object._image_size(  # noqa: SLF001
+            work, bpy.context.scene, work.pages[1]
+        )
+        from PIL import Image
+
+        preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
+        assert tuple(preview_size) == tuple(expected_preview_size), (
+            preview_size,
+            expected_preview_size,
+        )
+        assert max(preview_size) < 1536, preview_size
+        preview_image = Image.open(work_dir / "p0002" / "page_preview.png").convert("RGBA")
+        r, g, b, a = preview_image.getpixel((preview_image.width // 2, preview_image.height // 2))
+        assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
         bpy.context.scene.bname_overview_cols = 6
         bpy.context.scene.bname_overview_gap_mm = 0.0
         bpy.context.scene.bname_page_preview_page_radius = 0
         assert len(_visible_page_preview_objects()) == 0
-        from PIL import Image
-
-        preview_size = Image.open(work_dir / "p0002" / "page_preview.png").size
-        assert max(preview_size) == 768
-        preview_image = Image.open(work_dir / "p0002" / "page_preview.png").convert("RGBA")
-        r, g, b, a = preview_image.getpixel((preview_image.width // 2, preview_image.height // 2))
-        assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
 
         _add_current_page_preview_balloon(work)
         _add_page_only_probe()
@@ -476,7 +515,7 @@ def main() -> None:
         assert int(getattr(bpy.context.scene, "bname_overview_cols", -1)) == 6
         assert abs(float(getattr(bpy.context.scene, "bname_overview_gap_mm", -1.0))) < 0.001
         assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 0
-        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 50.0) < 0.001
+        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 10.0) < 0.001
 
         result = bpy.ops.bname.page_select(index=1)
         assert result == {"FINISHED"}, result

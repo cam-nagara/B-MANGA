@@ -3,6 +3,25 @@
 このファイルは B-Name の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-12 — v0.6.282 コマのマスクが配置変更に追従しない不具合の修正と、旧前提テスト3本の現行仕様化
+
+### 不具合修正
+
+- **一覧の列数・間隔・並べ替えなどでページの配置が変わったとき、コマの内部マスク (ラスター・フキダシの切り抜きに使う非表示の実体) だけが古い位置に取り残される問題を修正**。コマ面・枠線と同じタイミングでマスクの位置も再計算するようにした。放置するとコマ内の塗り・画像がコマ枠とずれた位置で切り抜かれる。
+- **ページ一覧プレビューのマテリアルが、解像度%変更などで作り直された画像データを掴み損ねる穴を修正** (v0.6.281 の高速化キャッシュの判定を「名前一致」から「実体一致」へ強化)。
+
+### テスト整備
+
+- 旧前提 (作品ファイルがコマ・フキダシの実体を持つ) のまま失敗していた実機テスト 3 本を現行仕様へ更新し PASS:
+  - `blender_page_add_content_stability_check` (ページを開いてフキダシを作り、ページ追加・並べ替えのたびに開き直してページ内位置を検証する方式へ更新)
+  - `blender_page_file_stage_check` (他ページのフキダシはそのページを開いて作成 / 他ページのコマ座標はディスクの page.json から取得 / 解像度%は「ページ実解像度に対する割合・上限1536px」の現行仕様で検証 → 上記マスク取り残しバグを発見)
+  - `blender_coma_mask_sync_check` (ページを開いてから検証 + ページ編集中は「表示X/Y」で内容が動かない v0.6.281 仕様へ更新 + マスクがコマ面と同位置を保つ検証を追加)
+- 既知の残課題: `blender_mask_visual_matrix_check` も同型の旧前提で失敗する (今回の変更とは無関係に変更前のコードでも同一エラーで失敗することを確認済み)。
+
+### 検証 (Blender 5.1.2 実機)
+
+- 上記 3 本に加え、`blender_coma_mask_hit_visibility_check` / `blender_work_file_slim_check` / `blender_page_operation_layer_stability_check` / `blender_layer_stack_ui_behavior_check` / `blender_coma_content_z_order_check` / `blender_coma_preview_scale_check` / `blender_page_preview_resolution_and_tail_check` PASS。
+
 ## 2026-06-12 — v0.6.281 ページ追加の高速化と、下書きがページ並べ替えに追従しない不具合の修正
 
 ### 高速化

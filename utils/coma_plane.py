@@ -1313,8 +1313,25 @@ def update_coma_plane_color(page, coma) -> bool:
     return True
 
 
+def _update_coma_mask_location(scene, work, page, coma, page_id: str) -> None:
+    """coma_mask (Boolean 用の非表示実体) の XY を coma_plane と同じ式で更新.
+
+    マスクはページ配置 (並べ替え・列数・間隔) の変更時に ensure が走らない
+    経路があるため、 plane と同時に位置だけ追従させる。 Z は raster Z 範囲を
+    包含する固定値のまま。
+    """
+    mask = bpy.data.objects.get(f"{COMA_MASK_NAME_PREFIX}{page_id}_{coma.id}")
+    if mask is None:
+        return
+    _set_obj_location(mask, scene, work, page, coma)
+    try:
+        mask.location.z = COMA_MASK_Z_M
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
-    """全 coma_plane の Object location を page_grid offset に基づき再計算.
+    """全 coma_plane / coma_mask の Object location を page_grid offset に基づき再計算.
 
     ``apply_page_collection_transforms`` の後で呼ぶ用途。 mesh / material は
     触らない。
@@ -1326,6 +1343,7 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
         for coma in getattr(page, "comas", []) or []:
             if not getattr(coma, "id", ""):
                 continue
+            _update_coma_mask_location(scene, work, page, coma, str(page.id))
             obj_name = f"{COMA_PLANE_NAME_PREFIX}{page.id}_{coma.id}"
             obj = bpy.data.objects.get(obj_name)
             if obj is None:
@@ -1336,6 +1354,7 @@ def update_coma_plane_locations(scene: bpy.types.Scene, work) -> int:
     for coma in getattr(work, "shared_comas", []) or []:
         if not getattr(coma, "id", ""):
             continue
+        _update_coma_mask_location(scene, work, None, coma, OUTSIDE_PAGE_ID)
         obj_name = f"{COMA_PLANE_NAME_PREFIX}{OUTSIDE_PAGE_ID}_{coma.id}"
         obj = bpy.data.objects.get(obj_name)
         if obj is None:

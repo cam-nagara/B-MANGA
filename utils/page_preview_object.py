@@ -507,7 +507,9 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
     mat = bpy.data.materials.get(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
     if mat is None:
         mat = bpy.data.materials.new(f"{PREVIEW_MATERIAL_PREFIX}{page_id}")
-    # 既に同じ画像へ結線済みならノード再構築をスキップ (ページ追加等の高速化)
+    # 既に同じ画像へ結線済みならノード再構築をスキップ (ページ追加等の高速化)。
+    # 名前一致だけでは、解像度変更などで画像データブロックが入れ替わったときに
+    # 古い参照を掴み続けるため、テクスチャノードの実体一致まで確認する。
     try:
         if (
             image is not None
@@ -515,6 +517,10 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
             and str(mat.get("_bname_preview_image", "") or "") == str(image.name)
             and mat.node_tree is not None
             and len(mat.node_tree.nodes) >= 5
+            and any(
+                getattr(node, "type", "") == "TEX_IMAGE" and node.image == image
+                for node in mat.node_tree.nodes
+            )
         ):
             return mat
     except Exception:  # noqa: BLE001

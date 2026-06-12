@@ -32,32 +32,41 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
 
 
-def _balloon_world_center_mm(context, work, page_index: int, entry, obj) -> tuple[float, float]:
-    from bname_dev.utils import page_grid
-
-    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
-    return (
-        float(obj.location.x) * 1000.0 - ox_mm,
-        float(obj.location.y) * 1000.0 - oy_mm,
-    )
-
-
-def _assert_balloon_stable(context, work, page_index: int, entry, obj, expected, label: str) -> None:
-    x, y, width, height, center_x, center_y = expected
-    _assert_close(entry.x_mm, x, f"{label} x")
-    _assert_close(entry.y_mm, y, f"{label} y")
-    _assert_close(entry.width_mm, width, f"{label} width")
-    _assert_close(entry.height_mm, height, f"{label} height")
-    actual_center = _balloon_world_center_mm(context, work, page_index, entry, obj)
-    _assert_close(actual_center[0], center_x, f"{label} object center x")
-    _assert_close(actual_center[1], center_y, f"{label} object center y")
-
-
 def _find_page_index(work, page_id: str) -> int:
     for index, page in enumerate(work.pages):
         if str(getattr(page, "id", "") or "") == page_id:
             return index
     raise AssertionError(f"ページが見つかりません: {page_id}")
+
+
+def _snapshot_balloon(context, work, page_id: str, balloon_id: str):
+    """ページ編集シーン上で、フキダシのデータ値とページ内の実体中心を採取する."""
+    from bname_dev.utils import balloon_curve_object, page_grid
+
+    index = _find_page_index(work, page_id)
+    page = work.pages[index]
+    entry = next(
+        (e for e in page.balloons if str(getattr(e, "id", "") or "") == balloon_id),
+        None,
+    )
+    assert entry is not None, f"フキダシのデータがありません: {balloon_id}"
+    obj = balloon_curve_object.find_balloon_object(balloon_id)
+    assert obj is not None, f"フキダシの実体がありません: {balloon_id}"
+    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, index)
+    return (
+        float(entry.x_mm),
+        float(entry.y_mm),
+        float(entry.width_mm),
+        float(entry.height_mm),
+        float(obj.location.x) * 1000.0 - ox_mm,
+        float(obj.location.y) * 1000.0 - oy_mm,
+    )
+
+
+def _assert_balloon_stable(current, expected, label: str) -> None:
+    names = ("x", "y", "width", "height", "object center x", "object center y")
+    for name, actual, want in zip(names, current, expected, strict=True):
+        _assert_close(actual, want, f"{label} {name}")
 
 
 def main() -> None:
@@ -70,114 +79,96 @@ def main() -> None:
         assert result == {"FINISHED"}, result
 
         from bname_dev.core.work import get_work
-        from bname_dev.operators import balloon_op
-        from bname_dev.utils import balloon_curve_object
-        from bname_dev.utils.layer_hierarchy import page_stack_key
+        from bname_dev.utils import page_file_scene
 
         context = bpy.context
         work = get_work(context)
         assert work is not None and work.loaded
-        page_a = work.pages[0]
-        page_a_id = str(getattr(page_a, "id", "") or "")
-        entry_a = balloon_op._create_balloon_entry(
-            context,
-            page_a,
-            shape="ellipse",
-            x=52.0,
-            y=64.0,
-            w=38.0,
-            h=24.0,
-            parent_kind="page",
-            parent_key=page_stack_key(page_a),
-        )
-        obj_a = balloon_curve_object.ensure_balloon_curve_object(
-            scene=context.scene,
-            entry=entry_a,
-            page=page_a,
-        )
-        assert obj_a is not None
-        context.view_layer.update()
-        expected_a = (
-            float(entry_a.x_mm),
-            float(entry_a.y_mm),
-            float(entry_a.width_mm),
-            float(entry_a.height_mm),
-            float(entry_a.x_mm) + float(entry_a.width_mm) * 0.5,
-            float(entry_a.y_mm) + float(entry_a.height_mm) * 0.5,
+        page_a_id = str(getattr(work.pages[0], "id", "") or "")
+
+        # v0.6.279 以降、フキダシ等の実体はページ用 blend のみが持つ。
+        # ページを開いてフキダシを作り、ページ操作のたびに開き直して
+        # ページ内位置が変わっていないことを検証する。
+        def _open_page(page_id: str):
+            work_now = get_work(bpy.context)
+            index = _find_page_index(work_now, page_id)
+            result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=index)
+            assert result == {"FINISHED"}, f"ページを開けません: {page_id} {result}"
+            assert page_file_scene.is_page_edit_scene(bpy.context.scene)
+            return bpy.context, get_work(bpy.context)
+
+        def _close_page() -> None:
+            result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+            assert "FINISHED" in result, f"ページ一覧へ戻れません: {result}"
+
+        def _build(page_id: str, *, shape: str, x: float, y: float, w: float, h: float):
+            from bname_dev.operators import balloon_op
+            from bname_dev.utils import balloon_curve_object
+            from bname_dev.utils.layer_hierarchy import page_stack_key
+
+            ctx, work_now = _open_page(page_id)
+            page = work_now.pages[_find_page_index(work_now, page_id)]
+            entry = balloon_op._create_balloon_entry(
+                ctx,
+                page,
+                shape=shape,
+                x=x,
+                y=y,
+                w=w,
+                h=h,
+                parent_kind="page",
+                parent_key=page_stack_key(page),
+            )
+            assert entry is not None
+            balloon_id = str(entry.id)
+            obj = balloon_curve_object.ensure_balloon_curve_object(
+                scene=ctx.scene, entry=entry, page=page
+            )
+            assert obj is not None
+            ctx.view_layer.update()
+            expected = _snapshot_balloon(ctx, work_now, page_id, balloon_id)
+            _close_page()
+            # 基準そのものが設定値どおりであることを確認しておく
+            _assert_close(expected[0], x, "基準値 x")
+            _assert_close(expected[1], y, "基準値 y")
+            _assert_close(expected[4], x + w * 0.5, "基準値 中心x")
+            _assert_close(expected[5], y + h * 0.5, "基準値 中心y")
+            return balloon_id, expected
+
+        def _verify(page_id: str, balloon_id: str, expected, label: str) -> None:
+            ctx, work_now = _open_page(page_id)
+            current = _snapshot_balloon(ctx, work_now, page_id, balloon_id)
+            _assert_balloon_stable(current, expected, label)
+            _close_page()
+
+        balloon_a, expected_a = _build(
+            page_a_id, shape="ellipse", x=52.0, y=64.0, w=38.0, h=24.0
         )
 
         for end_number in (2, 3, 4, 5):
+            work = get_work(bpy.context)
             work.work_info.page_number_end = end_number
-            context.view_layer.update()
-            page_a_index = _find_page_index(work, page_a_id)
-            _assert_balloon_stable(
-                context,
-                work,
-                page_a_index,
-                entry_a,
-                obj_a,
-                expected_a,
-                f"ページ数 {end_number}",
-            )
+            bpy.context.view_layer.update()
+            _verify(page_a_id, balloon_a, expected_a, f"ページ数 {end_number}")
 
+        work = get_work(bpy.context)
         if len(work.pages) != 5:
             raise AssertionError(f"ページ数が反映されていません: {len(work.pages)}")
-        if int(getattr(work, "active_page_index", -1)) != 0:
-            raise AssertionError("ページ追加後に選択ページが変わっています")
 
-        page_b = work.pages[1]
-        page_b_id = str(getattr(page_b, "id", "") or "")
-        entry_b = balloon_op._create_balloon_entry(
-            context,
-            page_b,
-            shape="rect",
-            x=24.0,
-            y=36.0,
-            w=28.0,
-            h=18.0,
-            parent_kind="page",
-            parent_key=page_stack_key(page_b),
-        )
-        obj_b = balloon_curve_object.ensure_balloon_curve_object(
-            scene=context.scene,
-            entry=entry_b,
-            page=page_b,
-        )
-        assert obj_b is not None
-        context.view_layer.update()
-        expected_b = (
-            float(entry_b.x_mm),
-            float(entry_b.y_mm),
-            float(entry_b.width_mm),
-            float(entry_b.height_mm),
-            float(entry_b.x_mm) + float(entry_b.width_mm) * 0.5,
-            float(entry_b.y_mm) + float(entry_b.height_mm) * 0.5,
+        page_b_id = str(getattr(work.pages[1], "id", "") or "")
+        balloon_b, expected_b = _build(
+            page_b_id, shape="rect", x=24.0, y=36.0, w=28.0, h=18.0
         )
 
+        work = get_work(bpy.context)
         work.active_page_index = _find_page_index(work, page_a_id)
         move_result = bpy.ops.bname.page_move(direction=1)
         assert move_result == {"FINISHED"}, move_result
-        context.view_layer.update()
-        _assert_balloon_stable(
-            context,
-            work,
-            _find_page_index(work, page_a_id),
-            entry_a,
-            obj_a,
-            expected_a,
-            "ページ並べ替え 元の1ページ目",
-        )
-        _assert_balloon_stable(
-            context,
-            work,
-            _find_page_index(work, page_b_id),
-            entry_b,
-            obj_b,
-            expected_b,
-            "ページ並べ替え 元の2ページ目",
-        )
+        bpy.context.view_layer.update()
+        _verify(page_a_id, balloon_a, expected_a, "ページ並べ替え 元の1ページ目")
+        _verify(page_b_id, balloon_b, expected_b, "ページ並べ替え 元の2ページ目")
 
-        print("BNAME_PAGE_ADD_CONTENT_STABILITY_OK")
+        print("BNAME_PAGE_ADD_CONTENT_STABILITY_OK", flush=True)
     finally:
         if mod is not None:
             try:
