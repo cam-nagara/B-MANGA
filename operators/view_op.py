@@ -793,7 +793,7 @@ def register() -> None:
     bpy.types.Scene.bname_overview_cols = IntProperty(
         name="一覧の列数",
         description="全ページ一覧時の横方向ページ数 (見開みかいペアが分断されないよう偶数刻み)",
-        default=4,
+        default=8,
         min=2,
         soft_max=12,
         step=2,

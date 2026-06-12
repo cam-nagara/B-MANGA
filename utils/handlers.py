@@ -154,21 +154,48 @@ def _restore_coma_user_view_layer(scene, layer_name: str = "") -> None:
         _logger.exception("restore coma view layer failed")
 
 
+def _page_detail_filter() -> set[str] | None:
+    """このファイルで詳細 (コマ・フキダシ・テキスト) を持つページ ID を返す.
+
+    - 作品ファイル: 空集合 (ページ一覧だけを扱うため詳細は持たない)
+    - コマ用 blend: 自分が属するページのみ
+    - ページ用 blend / 判定不能: None (= 全ページ。ID 採番・出力・見開きで
+      他ページの情報が必要なため)
+    """
+    try:
+        from . import page_file_scene
+
+        role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
+        if role == page_file_scene.ROLE_WORK:
+            return set()
+        if role == page_file_scene.ROLE_COMA and page_id:
+            return {page_id}
+    except Exception:  # noqa: BLE001
+        _logger.exception("page detail filter resolve failed")
+    return None
+
+
 def _reload_all_pages_panels(work, work_dir: Path) -> None:
-    """全ページの ``comas`` を各 ``page.json`` から再ロードして Scene に反映.
+    """各ページの詳細を page.json から再ロードして Scene に反映.
 
     pages.json は全ページのリストだけを持ち、comas は各ページの page.json
     にしか無いため、load_post で pages.json を読み込んだ後に各 page.json
     を個別に再ロードしないと、他ページの comas が現在の .blend に
     キャッシュされた古いものに固定されてしまう。
 
-    load_page_json は内部で ``page_entry.comas.clear()`` → 再構築 するので
-    上書き安全。
+    ファイルの役割に応じて読み込む対象を絞り、対象外のページは詳細を
+    メモリから破棄する (作品ファイルのスリム化)。load_page_json は内部で
+    ``page_entry.comas.clear()`` → 再構築 するので上書き安全。
     """
     from ..io import page_io  # 遅延 import
+    from . import page_detail
 
+    detail_filter = _page_detail_filter()
     for page_entry in work.pages:
         if not page_entry.id:
+            continue
+        if detail_filter is not None and page_entry.id not in detail_filter:
+            page_detail.clear_page_detail(page_entry)
             continue
         try:
             page_io.load_page_json(work_dir, page_entry)
@@ -243,6 +270,10 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
         page_io.save_pages_json(work_dir, work)
         for page in getattr(work, "pages", []):
             if not getattr(page, "id", ""):
+                continue
+            # 詳細未読込のページは page.json を書かない (作品ファイルなどで
+            # 空のコマ・フキダシ・テキストによる上書きを防ぐ)
+            if not bool(getattr(page, "detail_loaded", True)):
                 continue
             page_io.save_page_json(work_dir, page)
         _logger.info("B-Name metadata saved%s", f" ({reason})" if reason else "")

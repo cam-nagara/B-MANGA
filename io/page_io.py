@@ -34,9 +34,15 @@ def load_page_json(work_dir: Path, page_entry) -> dict:
     paths.validate_page_id(page_entry.id)
     path = paths.page_meta_path(Path(work_dir), page_entry.id)
     if not path.is_file():
+        # page.json がまだ無い新規ページも「詳細読込済み」として扱う
+        # (保存時に page.json を新規作成できるようにする)
+        page_entry.detail_loaded = True
         return {}
     data = json_io.read_json(path)
     schema.page_from_dict(page_entry, data)
+    # 読込成功したページだけ保存対象にする (読込失敗・未読込ページの
+    # page.json を空データで上書きしないための実行時フラグ)
+    page_entry.detail_loaded = True
     return data
 
 
@@ -150,6 +156,8 @@ def register_new_page(work, title: str = "") -> object:
     entry.dir_rel = f"{page_id}/"
     entry.spread = False
     entry.coma_count = 0
+    # 新規ページはメモリ上のデータが正本 (page.json を新規作成して良い)
+    entry.detail_loaded = True
     work.active_page_index = len(work.pages) - 1
     return entry
 

@@ -403,7 +403,16 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         expected_size = _image_size(work, scene, page)
         if not force and _preview_png_usable(path, expected_size, current=current):
             return path
-        image = _render_preview_image(work, page, page_index, current=current, scene=scene)
+        # 作品ファイルではページ詳細を常駐させないため、プレビュー再生成の
+        # 間だけ page.json から読み込み、使用後に破棄する
+        from . import page_detail
+
+        loaded_here = page_detail.ensure_page_detail(work, page)
+        try:
+            image = _render_preview_image(work, page, page_index, current=current, scene=scene)
+        finally:
+            if loaded_here:
+                page_detail.clear_page_detail(page)
         if image is None:
             return None
         image.save(path)

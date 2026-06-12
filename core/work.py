@@ -105,7 +105,7 @@ class BNameWorkData(bpy.types.PropertyGroup):
     )
     view_overview_cols: IntProperty(  # type: ignore[valid-type]
         name="一覧の列数",
-        default=4,
+        default=8,
         min=2,
     )
     view_overview_gap_mm: FloatProperty(  # type: ignore[valid-type]

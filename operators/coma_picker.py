@@ -14,7 +14,7 @@ from typing import Sequence
 
 import bpy
 
-from ..utils import geom, log, page_browser, page_grid, page_range
+from ..utils import geom, log, page_browser, page_file_scene, page_grid, page_range
 
 _logger = log.get_logger(__name__)
 EDGE_PICK_TOLERANCE_PX = 12.0
@@ -203,6 +203,9 @@ def find_coma_at_world_mm(
 
 def find_coma_at_event(context, event) -> tuple[int, int] | None:
     """VIEW_3D のマウスイベントから (page_index, coma_index) を解決."""
+    # 作品ファイルのページ一覧はページだけを扱う (プレビュー上のコマは選択不可)
+    if page_file_scene.is_work_list_scene(getattr(context, "scene", None)):
+        return None
     work = None
     try:
         from ..core.work import get_work
@@ -222,6 +225,9 @@ def find_coma_at_event(context, event) -> tuple[int, int] | None:
 
 def find_coma_edge_at_event(context, event, tolerance_px: float = EDGE_PICK_TOLERANCE_PX):
     """VIEW_3D のマウスイベントから最寄りのコマ辺をピクセル距離で解決."""
+    # 作品ファイルのページ一覧ではコマ辺の操作は行わない
+    if page_file_scene.is_work_list_scene(getattr(context, "scene", None)):
+        return None
     work = None
     try:
         from ..core.work import get_work

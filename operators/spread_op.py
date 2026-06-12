@@ -34,7 +34,7 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..io import page_io, coma_io, schema
 from ..utils import gpencil as gp_utils
-from ..utils import log, page_grid, paths
+from ..utils import log, page_detail, page_grid, paths
 
 _logger = log.get_logger(__name__)
 
@@ -584,6 +584,11 @@ class BNAME_OT_pages_merge_spread(Operator):
         work = get_work(context)
         if self.left_index < 0:
             self.left_index = work.active_page_index
+        # 作品ファイルではページ詳細を常駐させないため、結合対象 2 ページの
+        # 詳細をここで読み込む (ダイアログの件数表示と結合処理に使う)
+        if 0 <= self.left_index < len(work.pages) - 1:
+            page_detail.ensure_page_detail(work, work.pages[self.left_index])
+            page_detail.ensure_page_detail(work, work.pages[self.left_index + 1])
         return context.window_manager.invoke_props_dialog(self, width=450)
 
     def draw(self, context):
@@ -627,6 +632,8 @@ class BNAME_OT_pages_merge_spread(Operator):
         if a.spread or b.spread:
             self.report({"ERROR"}, "既に見開きのページは結合できません")
             return {"CANCELLED"}
+        page_detail.ensure_page_detail(work, a)
+        page_detail.ensure_page_detail(work, b)
         work_dir = Path(work.work_dir)
 
         # 結合 ID (左=a, 右=b を連結した文字列; 読み順準拠)
@@ -725,6 +732,7 @@ class BNAME_OT_pages_split_spread(Operator):
         if len(entry.original_pages) < 2:
             self.report({"ERROR"}, "結合元ページ情報が失われているため解除できません")
             return {"CANCELLED"}
+        page_detail.ensure_page_detail(work, entry)
         work_dir = Path(work.work_dir)
         spread_id_prev = entry.id
         # original_pages[0] は merge 時に head_a (読み順で先) を保存している。

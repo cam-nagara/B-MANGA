@@ -130,6 +130,15 @@ class BNamePageEntry(bpy.types.PropertyGroup):
         update=_on_page_visible_changed,
     )
 
+    # --- 詳細データの読込状態 (実行時管理) ---
+    # 作品ファイルはページ一覧だけを扱うため、各ページの詳細 (コマ・フキダシ・
+    # テキスト) を読み込まない。詳細未読込のページの page.json は保存時に
+    # 書き出さない (空データでの上書き防止)。
+    detail_loaded: BoolProperty(  # type: ignore[valid-type]
+        default=False,
+        options={"HIDDEN"},
+    )
+
     # --- コマ一覧 ---
     comas: CollectionProperty(type=BNameComaEntry)  # type: ignore[valid-type]
     active_coma_index: IntProperty(  # type: ignore[valid-type]

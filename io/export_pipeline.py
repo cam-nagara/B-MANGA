@@ -1427,6 +1427,14 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
 def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     if not _HAS_PIL:
         return []
+    # 作品ファイルなど、ページ詳細 (コマ・フキダシ・テキスト) を常駐させない
+    # ファイルから出力するときは、ここで page.json から読み込む
+    try:
+        from ..utils import page_detail
+
+        page_detail.ensure_page_detail(work, page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("export: page detail on-demand load failed")
     paper = work.paper
     dpi = _dpi(paper, options)
     canvas_size = _page_canvas_size_px(work, page, options)
