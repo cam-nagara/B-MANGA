@@ -139,41 +139,49 @@ def draw_effect_params(
     show_type: bool = True,
     show_rotation: bool = True,
     show_opacity: bool = True,
+    columns=None,
 ) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
     ``with_generate_button=True`` で末尾に「効果線を追加」 ボタンを追加。
     ``params`` は ``scene.bname_effect_line_params`` (BNameEffectLineParams)。
+    ``columns`` に複数の column を渡すと、設定群を列に分配する
+    (縦長になりすぎる詳細設定ダイアログ用。None なら従来どおり縦一列)。
     """
     if params is None:
         layout.label(text="未初期化", icon="ERROR")
         return
 
+    cols = [c for c in (columns or ()) if c is not None] or [layout]
+
+    def _col(index: int):
+        return cols[min(int(index), len(cols) - 1)]
+
     effect_type = str(fixed_effect_type or getattr(params, "effect_type", "focus") or "focus")
     if show_type:
-        box = layout.box()
+        box = _col(0).box()
         box.label(text="種類")
         box.prop(params, "effect_type")
         if effect_type != "speed" and show_rotation:
             box.prop(params, "rotation_deg")
     elif effect_type != "speed" and show_rotation:
-        box = layout.box()
+        box = _col(0).box()
         box.label(text="向き")
         box.prop(params, "rotation_deg")
 
     if effect_type == "white_outline":
-        _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
-        _draw_shape_settings(layout, params, "end", "終点形状")
-        _draw_white_outline_settings(layout, params)
+        _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
+        _draw_shape_settings(_col(0), params, "end", "終点形状")
+        _draw_white_outline_settings(_col(1), params)
         if with_generate_button:
-            layout.operator("bname.effect_line_generate", icon="STROKE")
+            _col(0).operator("bname.effect_line_generate", icon="STROKE")
         return
 
     if effect_type != "speed":
-        _draw_shape_settings(layout, params, "start", "始点形状", frame_toggle=True)
-        _draw_shape_settings(layout, params, "end", "終点形状")
+        _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
+        _draw_shape_settings(_col(0), params, "end", "終点形状")
 
-    box = layout.box()
+    box = _col(1).box()
     box.label(text="線")
     box.prop(params, "brush_size_mm")
     row = box.row(align=True)
@@ -206,7 +214,7 @@ def draw_effect_params(
         sub.prop(params, "spacing_jitter_amount", text="")
         box.prop(params, "max_line_count")
 
-        bundle_box = layout.box()
+        bundle_box = _col(1).box()
         bundle_box.label(text="まとまり")
         bundle_box.prop(params, "bundle_enabled")
         sub = bundle_box.column(align=True)
@@ -223,7 +231,7 @@ def draw_effect_params(
         jag.enabled = params.bundle_jagged_enabled
         jag.prop(params, "bundle_jagged_height_percent", text="高さ")
 
-    box = layout.box()
+    box = _col(2).box()
     box.label(text="入り抜き")
     box.prop(params, "inout_apply")
     row = box.row(align=True)
@@ -234,7 +242,7 @@ def draw_effect_params(
     row.prop(params, "out_start_percent")
     draw_inout_curve_mapping(box, params)
 
-    box = layout.box()
+    box = _col(1).box()
     box.label(text="色")
     if show_opacity:
         box.prop(params, "opacity", slider=True)
@@ -254,13 +262,13 @@ def draw_effect_params(
         box.prop(params, "uni_flash_offset_percent")
 
     if effect_type == "speed":
-        box = layout.box()
+        box = _col(1).box()
         box.label(text="流線")
         box.prop(params, "speed_angle_deg")
         box.prop(params, "speed_line_count")
 
     if with_generate_button:
-        layout.operator("bname.effect_line_generate", icon="STROKE")
+        _col(0).operator("bname.effect_line_generate", icon="STROKE")
 
 
 class BNAME_PT_effect_line(Panel):

@@ -203,11 +203,22 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
 
-    # 縦長になりすぎるため 2 列に分ける
-    # (左: 配置・形状・しっぽ / 右: 線・塗り・表示)
-    split = layout.split(factor=0.5)
-    left_col = split.column()
-    right_col = split.column()
+    # 縦長になりすぎるため複数列に分ける
+    # (左: 配置・形状・しっぽ / 右: 線・塗り・表示)。
+    # ウニフラは線種の設定群が特に長いため、さらに 2 列足して 4 列にする
+    dialog_line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    effect_cols = None
+    if dialog_line_style == "uni_flash":
+        flow = layout.row()
+        left_col = flow.column()
+        right_col = flow.column()
+        effect_col3 = flow.column()
+        effect_col4 = flow.column()
+        effect_cols = (effect_col3, effect_col4)
+    else:
+        split = layout.split(factor=0.5)
+        left_col = split.column()
+        right_col = split.column()
 
     # 配置 (mm) を Outliner メタ の次 (最上段) に配置
     box = left_col.box()
@@ -306,12 +317,15 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     if line_style == "uni_flash":
         from ..panels import effect_line_panel
 
+        # 設定群が長いので「線・塗り」列 + 追加 2 列に分配する
+        uni_columns = (box, *effect_cols) if effect_cols else None
         effect_line_panel.draw_effect_params(
             box,
             entry,
             with_generate_button=False,
             fixed_effect_type="uni_flash",
             show_type=False,
+            columns=uni_columns,
         )
     elif balloon_shapes.is_flash_line_style(line_style):
         row = box.row(align=True)
@@ -520,11 +534,14 @@ def _draw_effect_detail(layout, context, obj) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("effect detail: load params failed")
 
-    # effect_line_panel の draw_effect_params を再利用
+    # effect_line_panel の draw_effect_params を再利用。
+    # 縦長になりすぎるため 3 列に分配する
     from ..panels import effect_line_panel as _elp
 
     layout.separator()
-    _elp.draw_effect_params(layout, params, with_generate_button=True)
+    flow = layout.row()
+    cols = (flow.column(), flow.column(), flow.column())
+    _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 
 def _draw_object_meta(layout, obj) -> None:
@@ -573,8 +590,23 @@ class BNAME_OT_layer_detail_open(Operator):
         from ..utils import detail_popup
 
         detail_popup.position_dialog_cursor(context, event, key="layer_detail")
-        # フキダシは項目が多く縦長になりすぎるため、2 列レイアウト + 広い幅で開く
-        width = 560 if self.kind == "balloon" else 260
+        # 項目が多いレイヤー種別は複数列レイアウト + 広い幅で開く
+        width = 260
+        if self.kind == "balloon":
+            width = 560
+            try:
+                scene = getattr(context, "scene", None)
+                _page, entry = _find_balloon_entry(scene, self.bname_id)
+                if entry is not None and balloon_shapes.normalize_line_style(
+                    str(getattr(entry, "line_style", "") or "")
+                ) == "uni_flash":
+                    # ウニフラは線種の設定群が長いため 4 列で開く
+                    width = 1080
+            except Exception:  # noqa: BLE001
+                pass
+        elif self.kind in {"effect", "effect_legacy"}:
+            # 効果線は設定群を 3 列に分配して開く
+            width = 840
         return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):
