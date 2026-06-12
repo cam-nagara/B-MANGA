@@ -41,18 +41,34 @@ def _curve_world_bounds_and_normalize(obj: bpy.types.Object) -> tuple[float, flo
     for spline in getattr(curve, "splines", []) or []:
         if str(getattr(spline, "type", "") or "") == "BEZIER":
             coords.extend(matrix @ point.co for point in getattr(spline, "bezier_points", []) or [])
-        else:
-            for point in getattr(spline, "points", []) or []:
-                co = getattr(point, "co", None)
-                if co is not None:
-                    coords.append(matrix @ Vector((float(co[0]), float(co[1]), float(co[2]))))
+            continue
+        # NURBS は制御点が実際の曲線より外側に張り出すため、評価後の曲線を
+        # サンプリングして実形状のサイズを取る (制御点 bbox だと矩形が大きく
+        # なりすぎ、出力側の輪郭が拡大・ズレして描かれる)。
+        sampled: list = []
+        if str(getattr(spline, "type", "") or "") == "NURBS" and bool(getattr(spline, "use_cyclic_u", False)):
+            try:
+                from ..utils import balloon_line_mesh
+
+                sampled = balloon_line_mesh.sample_body_spline(spline, 16)
+            except Exception:  # noqa: BLE001
+                sampled = []
+        if sampled:
+            coords.extend(matrix @ Vector((float(s[0]), float(s[1]), 0.0)) for s in sampled)
+            continue
+        for point in getattr(spline, "points", []) or []:
+            co = getattr(point, "co", None)
+            if co is not None:
+                coords.append(matrix @ Vector((float(co[0]), float(co[1]), float(co[2]))))
     if not coords:
         return None
     min_x = min(v.x for v in coords)
     min_y = min(v.y for v in coords)
     max_x = max(v.x for v in coords)
     max_y = max(v.y for v in coords)
-    origin = Vector((min_x, min_y, float(matrix.translation.z)))
+    # フキダシの基準点 (object origin) は矩形中心に置く規約のため、中心で
+    # 正規化する (左下角基準だと表示が半サイズ分ズレ、しっぽ等も合わなくなる)。
+    origin = Vector(((min_x + max_x) * 0.5, (min_y + max_y) * 0.5, float(matrix.translation.z)))
     for spline in getattr(curve, "splines", []) or []:
         if str(getattr(spline, "type", "") or "") == "BEZIER":
             for point in getattr(spline, "bezier_points", []) or []:

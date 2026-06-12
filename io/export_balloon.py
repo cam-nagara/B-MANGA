@@ -253,28 +253,6 @@ def _split_ellipse_outlines_by_body(
         return [], polys
 
 
-def _sharp_tail_patch_polygons_mm(
-    outline: Sequence[tuple[float, float]],
-    sharp_regions: Sequence[Sequence[tuple[float, float]]],
-    line_w_mm: float,
-):
-    """「角を尖らせる」しっぽの mitre 帯パッチ (mm 座標) を返す.
-
-    round join 相当で描かれた主線の上に重ねると、しっぽ周辺の角だけが
-    鋭く尖る。戻り値は [(outer, holes), ...]。
-    """
-    if line_w_mm <= 1.0e-6 or len(outline) < 3:
-        return []
-    try:
-        from ..utils import balloon_tail_boolean
-
-        return balloon_tail_boolean.sharp_corner_patch_polygons(
-            list(outline), [list(pts) for pts in sharp_regions], float(line_w_mm), centered=False
-        )
-    except Exception:  # noqa: BLE001
-        return []
-
-
 def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> None:
     """多重線のリングを、画面のメッシュと同じオフセット帯で描く.
 
@@ -851,12 +829,19 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     fill_outline = _apply_balloon_transforms(fill_outline, rect, flip_h, flip_v, rotation_deg)
     tail_outlines = []
     sharp_tail_regions: list[list[tuple[float, float]]] = []
+    sharp_tail_infos: list[tuple[list, list, list]] = []
     for tail in entry.tails:
         tail_outline = _apply_entry_free_transform(entry, _balloon_tail_polygon(rect, tail), rect)
         tail_outline = _apply_balloon_transforms(tail_outline, rect, flip_h, flip_v, rotation_deg)
         tail_outlines.append(tail_outline)
         if bool(getattr(tail, "sharp_corners", False)) and len(tail_outline) >= 3:
             sharp_tail_regions.append(tail_outline)
+            # 先端を「抜き」のように絞るための中心線と半幅
+            centerline_mm, halves_mm = balloon_tail_geom.centerline_with_halfwidths(rect, tail)
+            if len(centerline_mm) >= 2:
+                centerline_mm = _apply_entry_free_transform(entry, centerline_mm, rect)
+                centerline_mm = _apply_balloon_transforms(centerline_mm, rect, flip_h, flip_v, rotation_deg)
+                sharp_tail_infos.append((centerline_mm, list(halves_mm), tail_outline))
     # 線しっぽ (線種「線」): 1本のストローク線として線色で塗る
     line_stroke_outlines: list[list[tuple[float, float]]] = []
     for tail in entry.tails:
@@ -982,27 +967,24 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
         elif str(line_style or "") in band_line_styles:
             if str(line_style or "") == "double":
                 _draw_multi_ring_bands(canvas, outline, entry, line_color, sharp=body_sharp)
-            _composite_patches_px(
-                canvas,
-                _mitre_band_polygons_mm(outline, line_w_mm, 0.0, sharp=body_sharp),
-                line_color,
-            )
+            band_rings = _mitre_band_polygons_mm(outline, line_w_mm, 0.0, sharp=body_sharp)
+            # 「角を尖らせる」しっぽ: 折れ角を尖らせ、先端をペンの抜きのように絞る
+            if merged_outline is not None and sharp_tail_infos:
+                try:
+                    from ..utils import balloon_tail_boolean
+
+                    band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
+                        band_rings,
+                        list(outline),
+                        line_w_mm,
+                        sharp_tail_infos,
+                        add_bend_mitre=not body_sharp,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            _composite_patches_px(canvas, band_rings, line_color)
         else:
             _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi, body_center_px)
-    # 「角を尖らせる」しっぽ: 本体は丸いまま、しっぽ周辺の角だけ mitre の帯を
-    # 重ねて尖らせる (実線・多重線のみ。本体側が尖らせ ON ならば全体が mitre 済み)
-    if (
-        draw_line
-        and not body_sharp
-        and merged_outline is not None
-        and sharp_tail_regions
-        and str(line_style or "") in band_line_styles
-    ):
-        _composite_patches_px(
-            canvas,
-            _sharp_tail_patch_polygons_mm(outline, sharp_tail_regions, line_w_mm),
-            line_color,
-        )
     for tail_outline in tail_outlines:
         tail_px = canvas.points_px(tail_outline)
         if len(tail_px) >= 3:
@@ -1028,11 +1010,24 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                 if str(line_style or "") == "image":
                     _draw_image_line_loop(canvas, tail_px, entry, line_width_px, dpi)
                 elif str(line_style or "") in band_line_styles:
-                    _composite_patches_px(
-                        canvas,
-                        _mitre_band_polygons_mm(tail_outline, line_w_mm, 0.0, sharp=tail_sharp),
-                        line_color,
+                    band_rings = _mitre_band_polygons_mm(tail_outline, line_w_mm, 0.0, sharp=tail_sharp)
+                    tail_info = next(
+                        (info for info in sharp_tail_infos if info[2] is tail_outline), None
                     )
+                    if tail_info is not None:
+                        try:
+                            from ..utils import balloon_tail_boolean
+
+                            band_rings = balloon_tail_boolean.apply_sharp_tail_tips(
+                                band_rings,
+                                list(tail_outline),
+                                line_w_mm,
+                                [tail_info],
+                                add_bend_mitre=False,
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                    _composite_patches_px(canvas, band_rings, line_color)
                 else:
                     _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi, body_center_px)
     # 線しっぽ (線種「線」): ストローク多角形を線色で塗る

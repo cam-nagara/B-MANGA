@@ -369,15 +369,41 @@ def _root_join_overlap_mm(tail: Any) -> float:
     return max(2.0, min(12.0, root_width * 0.65))
 
 
+def _round_cap_points(
+    center: tuple[float, float],
+    start_angle: float,
+    radius: float,
+    segments: int = 10,
+) -> list[tuple[float, float]]:
+    """start_angle から時計回りに半周する円弧の中間点列 (端点は含まない)."""
+    if radius <= 1.0e-6:
+        return []
+    return [
+        (
+            center[0] + radius * math.cos(start_angle - math.pi * s / segments),
+            center[1] + radius * math.sin(start_angle - math.pi * s / segments),
+        )
+        for s in range(1, segments)
+    ]
+
+
 def _variable_width_stroke_polygon(
     centerline: list[tuple[float, float]],
     distances: list[float],
     total_length: float,
     half_width_at,
+    *,
+    round_caps: bool = False,
 ) -> list[tuple[float, float]]:
-    """中心線に沿った可変幅ストローク多角形 (左辺 + 右辺の閉ループ) を作る."""
+    """中心線に沿った可変幅ストローク多角形 (左辺 + 右辺の閉ループ) を作る.
+
+    round_caps=True で両端を半円 (丸キャップ) にする (線しっぽ用)。
+    """
     left: list[tuple[float, float]] = []
     right: list[tuple[float, float]] = []
+    normals: list[tuple[float, float]] = []
+    points_used: list[tuple[float, float]] = []
+    halves: list[float] = []
     for i, point in enumerate(centerline):
         if i == 0:
             tangent = (centerline[1][0] - point[0], centerline[1][1] - point[1])
@@ -394,9 +420,22 @@ def _variable_width_stroke_polygon(
         half_width = half_width_at(t)
         left.append((point[0] + nx * half_width, point[1] + ny * half_width))
         right.append((point[0] - nx * half_width, point[1] - ny * half_width))
+        normals.append((nx, ny))
+        points_used.append((float(point[0]), float(point[1])))
+        halves.append(half_width)
     if len(left) < 2 or len(right) < 2:
         return []
-    return left + list(reversed(right))
+    if not round_caps:
+        return left + list(reversed(right))
+    # 先端キャップ: 左端 (+n) から右端 (-n) へ進行方向側を通る半円
+    tip_cap = _round_cap_points(
+        points_used[-1], math.atan2(normals[-1][1], normals[-1][0]), halves[-1]
+    )
+    # 根元キャップ: 右端 (-n) から左端 (+n) へ後方側を通る半円
+    root_cap = _round_cap_points(
+        points_used[0], math.atan2(-normals[0][1], -normals[0][0]), halves[0]
+    )
+    return left + tip_cap + list(reversed(right)) + root_cap
 
 
 def line_stroke_polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, float]]:
@@ -428,7 +467,27 @@ def line_stroke_polygon_for_tail(rect: Rect, tail: Any) -> list[tuple[float, flo
             width *= (1.0 - t) / taper_out
         return max(min_half, width)
 
-    return _variable_width_stroke_polygon(centerline, distances, total_length, _half_width_at)
+    # 線しっぽの端は丸キャップ (円ベース) で閉じる
+    return _variable_width_stroke_polygon(
+        centerline, distances, total_length, _half_width_at, round_caps=True
+    )
+
+
+def centerline_with_halfwidths(rect: Rect, tail: Any) -> tuple[list[tuple[float, float]], list[float]]:
+    """しっぽの中心線と、各点のくさび半幅 (mm) を返す (尖り先端の絞り用)."""
+    centerline = centerline_for_tail(rect, tail)
+    if len(centerline) < 2:
+        return [], []
+    distances, total = _polyline_lengths(centerline)
+    if total <= 0.0:
+        return [], []
+    tail_type = str(getattr(tail, "type", "straight") or "straight")
+    rw = max(0.0, float(getattr(tail, "root_width_mm", 0.0) or 0.0)) * 0.5
+    tw = max(0.0, float(getattr(tail, "tip_width_mm", 0.0) or 0.0)) * 0.5
+    if tail_type == "sticky":
+        tw = max(tw, rw * 0.5)
+    halves = [rw + (tw - rw) * (d / total) for d in distances]
+    return centerline, halves
 
 
 def polygon_for_tail(rect: Rect, tail: Any, *, join_overlap_mm: float = 0.0) -> list[tuple[float, float]]:

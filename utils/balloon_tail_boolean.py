@@ -157,58 +157,12 @@ def mitre_band_polygons(
     return out
 
 
-def sharp_corner_patch_polygons(
-    outline_points: Sequence[tuple[float, float]],
-    region_points_list: Sequence[Sequence[tuple[float, float]]],
-    line_width: float,
-    *,
-    centered: bool = True,
-):
-    """「角を尖らせる」しっぽ用の mitre 差分パッチを返す。
-
-    round join で描いた主線の上に重ねると、しっぽ周辺の角 (先端・折れ角・
-    本体との付け根) だけが鋭く尖って見える。座標と線幅は同一単位なら何でもよい。
-
-    centered=True: 主線が輪郭の中心に乗る描き方 (出力側)。
-    centered=False: 主線が輪郭の外側へ広がる描き方 (ビューポート側)。
-
-    戻り値: [(outer_ring, holes), ...] (失敗・対象なしのときは空リスト)
-    """
-    python_deps.ensure_bundled_wheels_on_path()
-    try:
-        from shapely.ops import unary_union  # type: ignore
-    except Exception:  # noqa: BLE001
+def _geom_to_ring_list(geom):
+    """Shapely Polygon/MultiPolygon を [(outer, holes), ...] に変換する."""
+    if geom is None or geom.is_empty:
         return []
-    width = float(line_width)
-    if width <= 0.0:
-        return []
-    poly = polygon_from_points(outline_points)
-    if poly is None:
-        return []
-    outer_off = width * 0.5 if centered else width
-    inner_off = -width * 0.5 if centered else 0.0
-    try:
-        mitre_outer = poly.buffer(outer_off, join_style=2, mitre_limit=50.0)
-        if abs(inner_off) > 1.0e-12:
-            mitre_inner = poly.buffer(inner_off, join_style=2, mitre_limit=50.0)
-        else:
-            mitre_inner = poly
-        # round join との「差分スライバー」ではなく、しっぽ周辺の mitre 帯全体を
-        # 返して round join の主線の上へそのまま重ねる。差分方式だとラスタライズの
-        # 丸め誤差で主線との間に白い継ぎ目が出るため。
-        band_mitre = mitre_outer.difference(mitre_inner)
-        regions = []
-        for points in region_points_list:
-            region_poly = polygon_from_points(points)
-            if region_poly is not None:
-                regions.append(region_poly.buffer(width * 2.0, join_style=1))
-        patch = band_mitre.intersection(unary_union(regions)) if regions else band_mitre
-        if patch.is_empty:
-            return []
-    except Exception:  # noqa: BLE001
-        return []
+    geoms = [geom] if geom.geom_type == "Polygon" else list(getattr(geom, "geoms", []))
     out = []
-    geoms = [patch] if patch.geom_type == "Polygon" else list(getattr(patch, "geoms", []))
     for g in geoms:
         if getattr(g, "geom_type", "") != "Polygon" or g.is_empty or g.area <= 0.0:
             continue
@@ -222,6 +176,108 @@ def sharp_corner_patch_polygons(
                 holes.append(ring)
         out.append((outer, holes))
     return out
+
+
+def apply_sharp_tail_tips(
+    band_rings,
+    outline_points: Sequence[tuple[float, float]],
+    line_width: float,
+    sharp_tails,
+    *,
+    add_bend_mitre: bool = True,
+):
+    """「角を尖らせる」しっぽの先端を、ペンの抜きのように細く絞った帯へ加工する。
+
+    band_rings: 主線の帯 [(outer, holes), ...] (本体輪郭の外側 0..line_width)。
+    sharp_tails: [(centerline_pts, halfwidths, region_pts), ...]
+      - centerline_pts: しっぽ中心線 (band と同じ座標系・単位)
+      - halfwidths: 各点のくさび半幅 (同単位)
+      - region_pts: しっぽのくさび多角形 (折れ角を mitre で尖らせる範囲)
+    add_bend_mitre=True なら、しっぽ周辺の折れ角・付け根を mitre で尖らせる
+    (本体側の「角を尖らせる」が ON なら帯全体が mitre 済みのため不要)。
+
+    失敗時は band_rings をそのまま返す。
+    """
+    python_deps.ensure_bundled_wheels_on_path()
+    try:
+        from shapely.geometry import LineString, Polygon  # type: ignore
+        from shapely.ops import unary_union  # type: ignore
+    except Exception:  # noqa: BLE001
+        return band_rings
+    try:
+        from .balloon_tail_geom import _variable_width_stroke_polygon
+    except Exception:  # noqa: BLE001
+        return band_rings
+    w = float(line_width)
+    if w <= 0.0 or not sharp_tails:
+        return band_rings
+    try:
+        polys = []
+        for outer, holes in band_rings:
+            p = Polygon(outer, holes)
+            if not p.is_valid:
+                p = p.buffer(0)
+            if not p.is_empty:
+                polys.append(p)
+        if not polys:
+            return band_rings
+        band = unary_union(polys)
+    except Exception:  # noqa: BLE001
+        return band_rings
+    outline_poly = polygon_from_points(outline_points)
+    mitre_band_geom = None
+    changed = False
+    for centerline, halfwidths, region_pts in sharp_tails:
+        pts = [(float(x), float(y)) for x, y in centerline]
+        if len(pts) < 2:
+            continue
+        tip_half = float(halfwidths[-1]) if halfwidths else 0.0
+        tip = pts[-1]
+        prev = pts[-2]
+        seg = ((tip[0] - prev[0]) ** 2 + (tip[1] - prev[1]) ** 2) ** 0.5
+        if seg <= 1.0e-12:
+            continue
+        dir_x = (tip[0] - prev[0]) / seg
+        dir_y = (tip[1] - prev[1]) / seg
+        try:
+            # 先端の平面 (先端点を通る進行方向に垂直な面) より先の帯を除去する。
+            # round join の丸キャップも mitre のトゲ状の延長もここで消える。
+            corridor = LineString(
+                [tip, (tip[0] + dir_x * w * 60.0, tip[1] + dir_y * w * 60.0)]
+            ).buffer(w * 4.0, cap_style=2)
+            band = band.difference(corridor)
+            if add_bend_mitre and outline_poly is not None and len(region_pts) >= 3:
+                region_poly = polygon_from_points(region_pts)
+                if region_poly is not None:
+                    if mitre_band_geom is None:
+                        mitre_band_geom = outline_poly.buffer(
+                            w, join_style=2, mitre_limit=50.0
+                        ).difference(outline_poly)
+                    band = band.union(
+                        mitre_band_geom.intersection(
+                            region_poly.buffer(w * 2.0, join_style=1).difference(corridor)
+                        )
+                    )
+            # 先端から短く「抜く」: 切断面の幅 → 0 へ絞る延長を付ける (ペンの抜き)
+            ext_len = w * 2.5
+            start_half = tip_half + w
+            ext_pts = [tip, (tip[0] + dir_x * ext_len, tip[1] + dir_y * ext_len)]
+            taper_pts = _variable_width_stroke_polygon(
+                ext_pts, [0.0, ext_len], ext_len, lambda t: max(0.0, start_half * (1.0 - t))
+            )
+            if len(taper_pts) >= 3:
+                taper_poly = Polygon(taper_pts)
+                if not taper_poly.is_valid:
+                    taper_poly = taper_poly.buffer(0)
+                if not taper_poly.is_empty:
+                    band = band.union(taper_poly)
+            changed = True
+        except Exception:  # noqa: BLE001
+            continue
+    if not changed:
+        return band_rings
+    rings = _geom_to_ring_list(band)
+    return rings if rings else band_rings
 
 
 def combine_body_with_tail_polygons(

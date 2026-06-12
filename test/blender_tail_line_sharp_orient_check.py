@@ -131,14 +131,21 @@ def _check_sharp_corners(page, entry, balloon_op) -> None:
     entry.line_style = "solid"
     entry.line_width_mm = 2.0
     bid = str(entry.id)
-    # OFF: 結合しっぽでは tail 主線メッシュは撤去されたまま
+    # OFF: 主線は丸い帯のまま (しっぽ独立メッシュは無い)
     tail.sharp_corners = False
     _ensure(page, entry)
-    assert _poly_count(f"balloon_tail_main_line_mesh_{bid}") == -1, "OFF なのに尖りパッチがあります"
-    # ON: 尖りパッチが生成される
+    assert _poly_count(f"balloon_tail_main_line_mesh_{bid}") == -1, "OFF なのに独立しっぽ線メッシュがあります"
+    line_obj = bpy.data.objects.get(f"balloon_line_mesh_{bid}")
+    assert line_obj is not None
+    off_verts = len(line_obj.data.vertices)
+    # ON: 主線の帯がしっぽ先端で「抜き」状に絞られる (= 主線メッシュの形状が変わる)
     tail.sharp_corners = True
     _ensure(page, entry)
-    assert _poly_count(f"balloon_tail_main_line_mesh_{bid}") > 0, "角を尖らせるパッチがありません"
+    assert _poly_count(f"balloon_tail_main_line_mesh_{bid}") == -1, "ON でも独立しっぽ線メッシュは持たない (主線側で加工)"
+    line_obj = bpy.data.objects.get(f"balloon_line_mesh_{bid}")
+    assert line_obj is not None
+    on_verts = len(line_obj.data.vertices)
+    assert on_verts != off_verts, "角を尖らせる ON で主線メッシュが変化していません"
     # 出力も成功する
     export_balloon = _sub("io.export_balloon")
     layer = export_balloon.render_balloon_layer(entry, 2048, 96)

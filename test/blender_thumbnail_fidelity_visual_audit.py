@@ -1,7 +1,6 @@
 """Blender実機用: サムネイル(出力エンジン)とビューポート(実機レンダー)の一致監査.
 
-多パターンの要素を1ページに配置し、実機レンダーと出力エンジンを横並びにして
-AI目視レビュー用の画像を生成する。`side_by_side.png` を見比べて差異を探す。
+`side_by_side.png` を見比べて差異を探す。
 
 多パターンの要素を 1 ページに配置し、
   A) Blender 実機レンダー (EEVEE, ビューポート相当 = メッシュの見た目)
@@ -229,6 +228,13 @@ def _render_scene(out_path: Path, page_index: int, page_w_mm: float, page_h_mm: 
         bg.inputs[1].default_value = 1.0
     items = {i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items}
     sc.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in items else "BLENDER_EEVEE"
+    # フィルム調の色変換 (AgX) だと色が薄く写り、出力エンジンとの比較にならないため
+    # Standard で素の色を写す
+    try:
+        sc.view_settings.view_transform = "Standard"
+        sc.view_settings.look = "None"
+    except Exception:
+        pass
     px_w = int(round(page_w_mm / 25.4 * DPI))
     px_h = int(round(page_h_mm / 25.4 * DPI))
     sc.render.resolution_x = px_w
@@ -305,9 +311,18 @@ def main() -> None:
     work = bpy.context.scene.bname_work
     page = work.pages[0]
     page.comas.clear()
+    # コマの実体オブジェクトも除去 (実アプリではコマ削除オペレーターが行う)
+    for obj in list(bpy.data.objects):
+        if obj.name.startswith(("coma_", "page_coma_")):
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:
+                pass
 
     captions = _build_patterns(page)
     _ensure_all(page)
+
+
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     scene_png = OUT_DIR / "A_scene_render.png"
