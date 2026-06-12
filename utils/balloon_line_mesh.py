@@ -2759,11 +2759,22 @@ def _apply_ribbon_uv(mesh: bpy.types.Mesh, entry, loops_m, line_width_m: float) 
         mesh.vertices.foreach_get("co", co)
         xs = co[0::3].astype(np.float64)
         ys = co[1::3].astype(np.float64)
+        stretch_single = bool(getattr(entry, "line_material_stretch_single", False))
+        seam_fix = str(getattr(entry, "line_material_seam_fix", "none") or "none")
         best_d = best_u = best_n = None
         for segs in seg_list:
-            n_tiles = float(ribbon_mapping.tile_count(segs["total"], float(line_width_m), tex_w, tex_h))
+            n_tiles = (
+                1.0
+                if stretch_single
+                else float(ribbon_mapping.tile_count(segs["total"], float(line_width_m), tex_w, tex_h))
+            )
             s_arr, d_arr = ribbon_mapping.project_points(segs, xs, ys)
-            u_arr = s_arr / segs["total"] * n_tiles
+            t_arr = s_arr / segs["total"]
+            if stretch_single and seam_fix == "mirror":
+                # ミラー往復: 行きは普通に、帰りは鏡像 (始点終点とも同じ端で連続)
+                u_arr = 1.0 - np.abs(1.0 - 2.0 * t_arr)
+            else:
+                u_arr = t_arr * n_tiles
             if best_d is None:
                 best_d, best_u = d_arr, u_arr
                 best_n = np.full(len(u_arr), n_tiles)

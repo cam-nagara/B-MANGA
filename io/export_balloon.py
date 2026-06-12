@@ -435,7 +435,13 @@ def _line_material_ribbon_image(entry, canvas, outline_mm, band_rings, line_w_mm
     if segs is None:
         return None
     band_w_px = max(1.0, mm_to_px(float(line_w_mm), dpi))
-    n_tiles = ribbon_mapping.tile_count(segs["total"], band_w_px, src.width, src.height)
+    stretch_single = bool(getattr(entry, "line_material_stretch_single", False))
+    seam_fix = str(getattr(entry, "line_material_seam_fix", "none") or "none")
+    if stretch_single:
+        # 1枚を始点から終点まで引き伸ばす (左右がつながらない柄では接続点で途切れる)
+        n_tiles = 1
+    else:
+        n_tiles = ribbon_mapping.tile_count(segs["total"], band_w_px, src.width, src.height)
     mask = _patches_mask_px(canvas, band_rings)
     mask_arr = np.asarray(mask)
     ys, xs = np.nonzero(mask_arr)
@@ -443,10 +449,29 @@ def _line_material_ribbon_image(entry, canvas, outline_mm, band_rings, line_w_mm
         return None
     s_arr, d_arr = ribbon_mapping.project_points(segs, xs + 0.5, ys + 0.5)
     src_arr = np.asarray(src, dtype=np.uint8)
-    u = np.floor(s_arr / segs["total"] * n_tiles * src.width).astype(np.int64) % src.width
     v = np.clip(np.floor(d_arr / band_w_px * src.height), 0, src.height - 1).astype(np.int64)
     out_arr = np.zeros((canvas.image.size[1], canvas.image.size[0], 4), dtype=np.uint8)
-    out_arr[ys, xs] = src_arr[v, u]
+    t_arr = np.clip(s_arr / segs["total"], 0.0, 1.0)
+    if stretch_single and seam_fix == "mirror":
+        # 行きは普通に、帰りは鏡像: u(t) = 1-|1-2t| → 始点終点とも左端で一致
+        m = 1.0 - np.abs(1.0 - 2.0 * t_arr)
+        u = np.clip(np.floor(m * src.width), 0, src.width - 1).astype(np.int64)
+        out_arr[ys, xs] = src_arr[v, u]
+    elif stretch_single and seam_fix == "crossfade":
+        # 始点側の短い区間で「画像の先頭」と「画像の末尾」を重ねて馴染ませる。
+        # 使用幅を W-F に縮め、u<F の区間で tex(u) と tex(u+W-F) をブレンドする
+        # と、一周の終わり tex(W-F) と始まりが連続する。
+        fade_px = max(1, int(round(src.width * 0.15)))
+        usable = max(1, src.width - fade_px)
+        u_base = t_arr * usable
+        u1 = np.clip(np.floor(u_base), 0, src.width - 1).astype(np.int64)
+        u2 = np.clip(np.floor(u_base + usable), 0, src.width - 1).astype(np.int64)
+        beta = np.clip(1.0 - u_base / fade_px, 0.0, 1.0)[:, None]
+        blended = (1.0 - beta) * src_arr[v, u1].astype(np.float64) + beta * src_arr[v, u2].astype(np.float64)
+        out_arr[ys, xs] = np.clip(np.round(blended), 0, 255).astype(np.uint8)
+    else:
+        u = np.floor(t_arr * n_tiles * src.width).astype(np.int64) % src.width
+        out_arr[ys, xs] = src_arr[v, u]
     return ep.Image.fromarray(out_arr, "RGBA")
 
 

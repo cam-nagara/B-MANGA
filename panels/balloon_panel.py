@@ -222,7 +222,18 @@ class BNAME_PT_balloons(Panel):
             box.prop_search(entry, "line_material_name", bpy.data, "materials", text="マテリアル")
             box.prop(entry, "line_material_mapping", text="貼り方")
             if str(getattr(entry, "line_material_mapping", "tile") or "tile") == "ribbon":
-                box.label(text="線に沿って貼り、周の長さに合わせて整数枚に調整するため切れ目は出ません", icon="INFO")
+                box.prop(entry, "line_material_stretch_single")
+                if bool(getattr(entry, "line_material_stretch_single", False)):
+                    box.prop(entry, "line_material_seam_fix", text="継ぎ目処理")
+                    _seam_fix = str(getattr(entry, "line_material_seam_fix", "none") or "none")
+                    if _seam_fix == "mirror":
+                        box.label(text="行きと帰りで鏡像にして始点終点をつなげます (柄が途中で左右反転)", icon="INFO")
+                    elif _seam_fix == "crossfade":
+                        box.label(text="始点終点の手前を重ねて馴染ませます (出力で適用)", icon="INFO")
+                    else:
+                        box.label(text="1枚を引き伸ばすため、左右がつながらない柄は始点終点で途切れます", icon="INFO")
+                else:
+                    box.label(text="線に沿って貼り、周の長さに合わせて整数枚に調整するため切れ目は出ません", icon="INFO")
             else:
                 box.label(text="フキダシの領域基準で貼るため、閉じた形でも切れ目は出ません", icon="INFO")
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)

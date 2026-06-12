@@ -1443,6 +1443,8 @@ def _band_geometry_signature(entry, obj) -> str:
             int(getattr(entry, "line_shape_seed", 0) or 0),
             str(getattr(entry, "line_material_name", "") or ""),
             str(getattr(entry, "line_material_mapping", "tile") or "tile"),
+            bool(getattr(entry, "line_material_stretch_single", False)),
+            str(getattr(entry, "line_material_seam_fix", "none") or "none"),
             str(getattr(entry, "line_image_path", "") or ""),
             round(float(getattr(entry, "line_image_interval_mm", 0.0) or 0.0), 4),
             round(float(getattr(entry, "line_image_angle_deg", 0.0) or 0.0), 4),

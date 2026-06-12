@@ -843,6 +843,23 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
         default="tile",
         update=_on_balloon_entry_changed,
     )  # type: ignore[valid-type]
+    line_material_stretch_single: BoolProperty(
+        name="1枚を全周に引き伸ばす",
+        description="タイルを繰り返さず、テクスチャ1枚を線の始点から終点まで引き伸ばして貼る。左右の端がつながらない柄では、始点終点の接続点で柄が途切れて見える",
+        default=False,
+        update=_on_balloon_entry_changed,
+    )  # type: ignore[valid-type]
+    line_material_seam_fix: EnumProperty(
+        name="継ぎ目処理",
+        description="「1枚を全周に引き伸ばす」で左右がつながらない柄の始点終点を馴染ませる方法",
+        items=[
+            ("none", "そのまま", "始点終点で柄が途切れたまま貼る"),
+            ("mirror", "ミラー往復", "行きは普通に、帰りは鏡像で貼る。始点終点が同じ端になり途切れないが、柄が途中で左右反転する"),
+            ("crossfade", "クロスフェード", "始点終点の手前の短い区間で柄を重ねて馴染ませる (出力で馴染ませる。画面の簡易表示では途切れて見えることがある)"),
+        ],
+        default="none",
+        update=_on_balloon_entry_changed,
+    )  # type: ignore[valid-type]
     fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_enabled: BoolProperty(name="塗りグラデーション", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

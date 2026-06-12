@@ -1170,6 +1170,8 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "fillMaterialName": str(getattr(entry, "fill_material_name", "") or ""),
         "lineMaterialName": str(getattr(entry, "line_material_name", "") or ""),
         "lineMaterialMapping": str(getattr(entry, "line_material_mapping", "tile") or "tile"),
+        "lineMaterialStretchSingle": bool(getattr(entry, "line_material_stretch_single", False)),
+        "lineMaterialSeamFix": str(getattr(entry, "line_material_seam_fix", "none") or "none"),
         "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
         "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
         "fillGradientEnabled": bool(getattr(entry, "fill_gradient_enabled", False)),
@@ -1369,6 +1371,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     entry.line_material_name = str(data.get("lineMaterialName", "") or "")
     mapping = str(data.get("lineMaterialMapping", "tile") or "tile")
     entry.line_material_mapping = mapping if mapping in {"tile", "ribbon"} else "tile"
+    entry.line_material_stretch_single = bool(data.get("lineMaterialStretchSingle", False))
+    seam_fix = str(data.get("lineMaterialSeamFix", "none") or "none")
+    entry.line_material_seam_fix = seam_fix if seam_fix in {"none", "mirror", "crossfade"} else "none"
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
     entry.fill_gradient_enabled = bool(data.get("fillGradientEnabled", False))
