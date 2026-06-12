@@ -47,6 +47,9 @@ class _FakeLayout:
 
     def column(self, align: bool = False):  # noqa: ARG002
         return self
+    def split(self, factor: float = 0.5, align: bool = False):  # noqa: ARG002
+        return self
+
 
     def label(self, text: str = "", icon: str = ""):  # noqa: ARG002
         self.labels.append(text)

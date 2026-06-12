@@ -69,13 +69,16 @@ def set_tail_point_context(page_id: str, balloon_id: str, tail_index: int, point
     _TAIL_POINT_CONTEXT["point_index"] = int(point_index)
 
 
-def open_tail_point_context_menu(context, page_id: str, balloon_id: str, tail_index: int, point_index: int) -> bool:
+def open_tail_point_context_menu(
+    context, page_id: str, balloon_id: str, tail_index: int, point_index: int, event=None
+) -> bool:
     set_tail_point_context(page_id, balloon_id, tail_index, point_index)
-    try:
-        bpy.ops.wm.call_menu(name=BNAME_MT_balloon_tail_point_context.bl_idname)
-        return True
-    except Exception:  # noqa: BLE001
-        return False
+    from ..utils import detail_popup
+
+    # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
+    return detail_popup.call_menu_right_of_cursor(
+        context, event, BNAME_MT_balloon_tail_point_context.bl_idname, half_width_px=110
+    )
 
 
 def _context_values(self) -> tuple[str, str, int, int]:

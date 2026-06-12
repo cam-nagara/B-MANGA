@@ -74,6 +74,55 @@ def position_dialog_cursor(context, event, *, key: str = "layer_detail", offset_
         return False
 
 
+def call_menu_right_of_cursor(context, event, menu_idname: str, *, half_width_px: int = 130) -> bool:
+    """ポップアップメニューをカーソルの右側に出して開く.
+
+    Blender の ``wm.call_menu`` はカーソルが水平中央に来るようにメニューを
+    出すため、そのままだと半分がカーソルの左へ被さる。メニュー半幅ぶん
+    カーソルを一時的に右へ動かしてから開き、直後に元の位置へ戻す。
+    """
+    window = getattr(context, "window", None) if context is not None else None
+    if window is None or event is None:
+        try:
+            bpy.ops.wm.call_menu(name=menu_idname)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+    original_x = int(getattr(event, "mouse_x", 0))
+    original_y = int(getattr(event, "mouse_y", 0))
+    try:
+        ui_scale = float(
+            getattr(getattr(bpy.context.preferences, "system", None), "ui_scale", 1.0) or 1.0
+        )
+    except Exception:  # noqa: BLE001
+        ui_scale = 1.0
+    shift = max(0, int(round(float(half_width_px) * ui_scale)))
+    warped = False
+    try:
+        if shift > 0 and (original_x > 0 or original_y > 0):
+            window.cursor_warp(original_x + shift, original_y)
+            warped = True
+        bpy.ops.wm.call_menu(name=menu_idname)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("context menu: call_menu failed: %s", menu_idname)
+        return False
+    finally:
+        if warped:
+
+            def _restore_cursor():
+                try:
+                    window.cursor_warp(original_x, original_y)
+                except Exception:  # noqa: BLE001
+                    pass
+                return None
+
+            try:
+                bpy.app.timers.register(_restore_cursor, first_interval=0.05)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _active_detail_index(context) -> int:
     scene = getattr(context, "scene", None)
     if scene is None:

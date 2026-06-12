@@ -268,7 +268,9 @@ def _assert_viewport_tool_menu_paths(work) -> None:
     calls = []
     modes = []
     try:
-        selection_context_menu._call_selection_menu = lambda _context: calls.append("menu") or True
+        selection_context_menu._call_selection_menu = (
+            lambda _context, _event=None: calls.append("menu") or True
+        )
         object_tool_op.hit_object_at_event = lambda _context, _event: None
         assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
         assert calls == ["menu"], calls

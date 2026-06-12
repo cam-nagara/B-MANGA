@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import bpy
-
-from ..utils import layer_stack as layer_stack_utils, object_selection
+from ..utils import detail_popup, layer_stack as layer_stack_utils, object_selection
 
 
-def _call_selection_menu(context) -> bool:
+def _call_selection_menu(context, event=None) -> bool:
     if layer_stack_utils.active_stack_item(context) is None:
         return False
-    try:
-        bpy.ops.wm.call_menu(name="BNAME_MT_selection_context")
-    except Exception:  # noqa: BLE001
-        return False
-    return True
+    # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
+    return detail_popup.call_menu_right_of_cursor(
+        context, event, "BNAME_MT_selection_context"
+    )
 
 
 def _right_click_selection_mode(context, hit: dict, event) -> str:
@@ -56,9 +53,9 @@ def open_for_viewport_object(context, event) -> bool:
 
     hit = object_tool_op.hit_object_at_event(context, event)
     if hit is None:
-        return _call_selection_menu(context)
+        return _call_selection_menu(context, event)
     object_tool_op.activate_hit(context, hit, mode=_right_click_selection_mode(context, hit, event))
-    return _call_selection_menu(context)
+    return _call_selection_menu(context, event)
 
 
 def open_for_object_tool(op, context, event) -> bool:
@@ -101,5 +98,5 @@ def open_for_coma_edge_tool(op, context, event) -> bool:
             object_selection.coma_key(page, panel),
             mode="single",
         )
-        return _call_selection_menu(context)
+        return _call_selection_menu(context, event)
     return open_for_viewport_object(context, event)

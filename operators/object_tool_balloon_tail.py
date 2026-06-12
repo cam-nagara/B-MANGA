@@ -92,6 +92,7 @@ def open_point_menu(context, event) -> bool:
         str(getattr(entry, "id", "") or ""),
         int(tail_index),
         int(point_index),
+        event=event,
     )
 
 
