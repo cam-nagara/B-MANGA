@@ -212,6 +212,21 @@ def reparent_stack_item(
     if target.kind != "outside" and not new_parent_key:
         return False
 
+    # 移送先が詳細未読込のページ (ページ用 blend で開いていない他ページ) の
+    # 場合、先にディスクの page.json を読み込んでおく。読み込まずにエントリを
+    # 足すと、保存ガード (詳細未読込ページは page.json を書かない) によって
+    # 移したレイヤーが保存されず消える。
+    if target.page is not None and not bool(getattr(target.page, "detail_loaded", True)):
+        try:
+            from ..core.work import get_work
+            from . import page_detail
+
+            work = get_work(context)
+            if work is not None:
+                page_detail.ensure_page_detail(work, target.page)
+        except Exception:  # noqa: BLE001
+            _logger.exception("reparent: target page detail load failed")
+
     kind = getattr(item, "kind", "")
     # NOTE: item.parent_key は位置ベースの heuristic で決まるため、エントリ実体の
     # parent_key と乖離していることがある。早期 return は item.parent_key だけで

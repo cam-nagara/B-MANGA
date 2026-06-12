@@ -228,9 +228,13 @@ class PageSubsetWork(SimpleNamespace):
         ]
         self.pages = [page for _index, page in pages_with_indices]
         self._source_page_indices = [index for index, _page in pages_with_indices]
-        self.shared_comas = []
-        self.shared_balloons = []
-        self.shared_texts = []
+        # 作品直下 (親なし) の共有レイヤーは特定ページに属さないため、
+        # ページ編集ビュー (page_ids あり) では見せる。作品一覧 (空集合) は
+        # プレビュー専用なので持たない。
+        include_shared = bool(page_ids)
+        self.shared_comas = list(getattr(work, "shared_comas", []) or []) if include_shared else []
+        self.shared_balloons = list(getattr(work, "shared_balloons", []) or []) if include_shared else []
+        self.shared_texts = list(getattr(work, "shared_texts", []) or []) if include_shared else []
         self.active_page_index = 0 if self.pages else -1
         self.loaded = bool(getattr(work, "loaded", False))
 
@@ -362,6 +366,15 @@ def purge_coma_runtime_data(scene, keep_page_ids: set[str] | None) -> int:
             continue
         owner_page = _object_page_id(obj)
         if owner_page in keep:
+            continue
+        # 作品直下 (親なし) のコマ実体はページ編集中は残す
+        # (作品一覧では keep が空集合になり、ここを通らず除去される)。
+        # _object_page_id は正規のページ ID しか返さないため、所有者プロパティ
+        # から直接 outside 所属を判定する。
+        if keep and any(
+            str(obj.get(prop, "") or "").split(":", 1)[0] == "outside"
+            for prop in _COMA_RUNTIME_OWNER_PROPS
+        ):
             continue
         removed += _remove_object_with_data(obj)
     return removed

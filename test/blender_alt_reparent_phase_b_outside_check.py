@@ -96,6 +96,11 @@ def main() -> None:
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "AltReparentB.bname"))
         assert "FINISHED" in result, result
         assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        # v0.6.279 以降、フキダシ・テキスト等の実体はページ用 blend のみが持ち、
+        # Alt reparent はページ編集中の操作なので、ページを開いてから検証する。
+        # ページ編集中は自ページと作品直下 (親なし) の間の移送が対象。
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bname_dev.utils import layer_reparent
         from bname_dev.utils import layer_stack as layer_stack_utils
@@ -112,10 +117,10 @@ def main() -> None:
         scene = context.scene
         work = scene.bname_work
         page1 = work.pages[0]
-        page2 = work.pages[1]
         page1_key = page_stack_key(page1)
-        page2_key = page_stack_key(page2)
-        coma2_key = coma_stack_key(page2, page2.comas[0])
+        assert len(page1.comas) >= 1, "自ページにコマがありません"
+        coma1_key = coma_stack_key(page1, page1.comas[0])
+        initial_coma_count = len(page1.comas)
 
         balloon = _add_balloon(page1, "outside_balloon", page1_key)
         child = _add_text(page1, "outside_child", page1_key, parent_balloon_id=balloon.id)
@@ -176,16 +181,16 @@ def main() -> None:
         assert layer_reparent.reparent_stack_item(
             context,
             shared_balloon_item,
-            target=layer_reparent.ClickTarget("coma", page2, page2.comas[0], 1, None, None),
+            target=layer_reparent.ClickTarget("coma", page1, page1.comas[0], 0, None, None),
         )
-        dst_off = page_grid.page_total_offset_mm(work, scene, 1)
+        dst_off = page_grid.page_total_offset_mm(work, scene, 0)
         assert len(work.shared_balloons) == 0
         assert len(work.shared_texts) == 0
-        assert len(page2.balloons) == 1
-        assert len(page2.texts) == 1
-        moved_balloon = page2.balloons[0]
-        moved_child = page2.texts[0]
-        assert moved_balloon.parent_kind == "coma" and moved_balloon.parent_key == coma2_key
+        assert len(page1.balloons) == 1
+        assert len(page1.texts) == 2  # outside_text + 戻ってきた outside_child
+        moved_balloon = page1.balloons[0]
+        moved_child = next(entry for entry in page1.texts if entry.id == "outside_child")
+        assert moved_balloon.parent_kind == "coma" and moved_balloon.parent_key == coma1_key
         assert moved_child.parent_balloon_id == moved_balloon.id
         _assert_close(moved_balloon.x_mm, 10.0 + src_off[0] - dst_off[0], "restored balloon x")
 
@@ -223,15 +228,15 @@ def main() -> None:
         assert shared_text_obj.select_get()
 
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        _idx, coma_item = _stack_item(context, "coma", coma2_key)
+        _idx, coma_item = _stack_item(context, "coma", coma1_key)
         assert layer_reparent.reparent_stack_item(
             context,
             coma_item,
             target=layer_reparent.ClickTarget("outside", None, None, -1, None, None),
         )
-        assert len(page2.comas) == 0
+        assert len(page1.comas) == initial_coma_count - 1
         assert len(work.shared_comas) == 1
-        assert len(page2.balloons) == 0
+        assert len(page1.balloons) == 0
         assert len(work.shared_balloons) == 1
         assert len(work.shared_texts) == 2
         assert work.shared_balloons[0].parent_kind == "none"
@@ -261,13 +266,13 @@ def main() -> None:
         image.id = "outside_image"
         image.title = "outside image"
         image.parent_kind = "page"
-        image.parent_key = page2_key
+        image.parent_key = page1_key
         raster = scene.bname_raster_layers.add()
         raster.id = "outside_raster"
         raster.title = "outside raster"
         raster.scope = "page"
         raster.parent_kind = "page"
-        raster.parent_key = page2_key
+        raster.parent_key = page1_key
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         _idx, image_item = _stack_item(context, "image", image.id)
         _idx, raster_item = _stack_item(context, "raster", raster.id)

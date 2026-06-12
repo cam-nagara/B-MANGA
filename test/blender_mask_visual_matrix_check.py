@@ -43,24 +43,27 @@ def _write_png(path: Path) -> None:
 
 def _mesh_mask_state(obj, expected: str, mask_apply) -> tuple[bool, str]:
     if getattr(obj, "type", "") == "CURVE":
-        from bname_dev_mask_visual.utils import balloon_curve_render_nodes
-
-        modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        target = None
-        enabled = None
-        if modifier is not None and modifier.node_group is not None:
-            for item in modifier.node_group.interface.items_tree:
-                if getattr(item, "item_type", "") != "SOCKET" or getattr(item, "in_out", "") != "INPUT":
+        # フキダシのコマ内マスクは画像マスク方式 (GN くり抜き modifier は撤去済)。
+        # 主線 Mesh の material に「コマ内容マスク」ノードが接続されているかで
+        # 判定する。
+        balloon_id = str(obj.get("bname_id", "") or "")
+        line_mesh = bpy.data.objects.get(f"balloon_line_mesh_{balloon_id}")
+        mask_found = False
+        if line_mesh is not None and getattr(line_mesh, "data", None) is not None:
+            for mat in list(getattr(line_mesh.data, "materials", []) or []):
+                if mat is None or not getattr(mat, "use_nodes", False):
                     continue
-                if getattr(item, "name", "") == "マスク使用":
-                    enabled = bool(modifier.get(item.identifier))
-                elif getattr(item, "name", "") == "マスク対象":
-                    target = modifier.get(item.identifier)
+                if any(
+                    str(getattr(node, "label", "") or "") == "コマ内容マスク"
+                    for node in mat.node_tree.nodes
+                ):
+                    mask_found = True
+                    break
         if expected in {"coma", "page"}:
-            ok = bool(enabled) and target is not None
-            return ok, expected if ok else f"NG curve target={target}"
-        ok = not bool(enabled)
-        return ok, "なし" if ok else "NG curve maskあり"
+            ok = mask_found
+            return ok, expected if ok else "NG image-mask未接続"
+        ok = not mask_found
+        return ok, "なし" if ok else "NG image-maskあり"
     coma = obj.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
     page = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
     if expected == "coma":
@@ -286,6 +289,10 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "MaskVisual.bname"))
         assert "FINISHED" in result, result
+        # v0.6.279 以降、コマ・マスク等の実体はページ用 blend のみが持つため、
+        # ページを開いてから検証する
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bname_dev_mask_visual.utils import active_target
         from bname_dev_mask_visual.utils import coma_plane

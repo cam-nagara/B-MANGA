@@ -468,7 +468,11 @@ def _entry_in_page_filter(entry, work, page_filter: set[str] | None) -> bool:
     if not page_filter:
         return False
     page_id = _page_id_from_parent_key(str(getattr(entry, "parent_key", "") or ""), work)
-    return bool(page_id and page_id in page_filter)
+    if not page_id:
+        # どのページにも属さない作品直下 (親なし) のレイヤーは、ページ編集中も
+        # 表示対象にする (作品一覧は空集合フィルタで上の分岐に入る)
+        return True
+    return page_id in page_filter
 
 
 def _purge_content_for_filter(scene, page_filter: set[str] | None) -> None:
@@ -516,6 +520,9 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
             for page in _iter_filtered_pages(work, page_filter):
                 for entry in getattr(page, "texts", []) or []:
                     tro.ensure_text_real_object(scene=scene, entry=entry, page=page)
+            # 作品直下 (親なし) のテキストもページ編集中は表示する
+            for entry in getattr(work, "shared_texts", []) or []:
+                tro.ensure_text_real_object(scene=scene, entry=entry, page=None)
             tro.cleanup_orphan_text_objects(scene, _work_for_page_filter(work, page_filter))
     except Exception:  # noqa: BLE001
         _logger.exception("mirror image/text objects failed")
@@ -581,6 +588,29 @@ def _saved_runtime_objects_look_current(
                 text_id = str(getattr(entry, "id", "") or "")
                 if text_id:
                     expected_texts.add(_tro.text_object_bname_id_for_values(page_id, text_id))
+    # 作品直下 (親なし) の共有レイヤーもページ編集中は実体が必要。
+    # ここに入れないと「ページ側は揃っている」と誤判定して全件ミラーが
+    # スキップされ、作品直下へ移した直後のレイヤーが実体化されない。
+    if page_filter is None or page_filter:
+        for entry in getattr(work, "shared_balloons", []) or []:
+            balloon_id = str(getattr(entry, "id", "") or "")
+            if balloon_id:
+                expected_balloons.add(balloon_id)
+        for entry in getattr(work, "shared_texts", []) or []:
+            text_id = str(getattr(entry, "id", "") or "")
+            if text_id:
+                expected_texts.add(
+                    _tro.text_object_bname_id_for_values(_tro.OUTSIDE_PAGE_ID, text_id)
+                )
+    if coma_page_filter is None or coma_page_filter:
+        for coma in getattr(work, "shared_comas", []) or []:
+            coma_id = str(getattr(coma, "id", "") or getattr(coma, "coma_id", "") or "")
+            if coma_id:
+                owner_id = f"{_cp.OUTSIDE_PAGE_ID}:{coma_id}"
+                expected_comas.add(owner_id)
+                border = getattr(coma, "border", None)
+                if str(getattr(border, "style", "solid") or "solid") != "brush":
+                    expected_borders.add(owner_id)
     if expected_comas and not expected_comas.issubset(plane_owners):
         return False
     if expected_borders and not expected_borders.issubset(border_owners):
@@ -763,7 +793,10 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                                 "mirror balloon curve failed: %s",
                                 getattr(entry, "id", ""),
                             )
-                if content_page_filter is None:
+                # 作品直下 (親なし) のフキダシは特定ページに属さないため、
+                # ページ編集中 (フィルタあり) も表示する。作品一覧 (空集合) は
+                # プレビュー専用なので作らない。
+                if content_page_filter is None or content_page_filter:
                     for entry in getattr(work, "shared_balloons", []):
                         try:
                             _bco.ensure_balloon_curve_object(

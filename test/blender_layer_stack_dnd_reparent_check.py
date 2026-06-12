@@ -136,6 +136,10 @@ def main() -> None:
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerStackDnd.bname"))
         assert "FINISHED" in result, result
         assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        # v0.6.279 以降、レイヤーリストの内容行はページ編集シーンにのみ
+        # 並ぶため、ページを開いてから D&D 親変更を検証する
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        assert result == {"FINISHED"}, result
 
         from bname_dev.utils import layer_stack as layer_stack_utils
         from bname_dev.utils.layer_hierarchy import (
@@ -154,18 +158,22 @@ def main() -> None:
         page1_key = page_stack_key(page1)
         page2_key = page_stack_key(page2)
         page1_coma_key = coma_stack_key(page1, page1.comas[0])
-        page2_coma_key = coma_stack_key(page2, page2.comas[0])
         page2_uid = layer_stack_utils.target_uid("page", page2_key)
-        page2_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page2_coma_key)
         outside_uid = layer_stack_utils.target_uid(OUTSIDE_KIND, OUTSIDE_STACK_KEY)
+        # 自ページ以外の詳細 (コマ等) は未読込
+        assert len(page2.comas) == 0, "ページ用 blend が他ページの詳細を保持しています"
 
         text = _add_text(page1, "dnd_cross_text", page1_key)
         text_uid = layer_stack_utils.target_uid("text", f"{page1_key}:{text.id}")
         _move_uid_below_parent(context, text_uid, page2_uid)
         assert len(page1.texts) == 0
-        assert len(page2.texts) == 1
-        moved_text = page2.texts[0]
+        # 別ページへの移送で移送先の詳細がその場で読み込まれる (保存消失防止)
+        assert bool(page2.detail_loaded), "移送先ページの詳細が読み込まれていません"
+        assert len(page2.comas) >= 1, "移送先ページのコマが読み込まれていません"
+        moved_text = next(t for t in page2.texts if t.id == "dnd_cross_text")
         assert moved_text.parent_kind == "page" and moved_text.parent_key == page2_key
+        page2_coma_key = coma_stack_key(page2, page2.comas[0])
+        page2_coma_uid = layer_stack_utils.target_uid(COMA_KIND, page2_coma_key)
 
         balloon = _add_balloon(page1, "dnd_cross_balloon", page1_key)
         child = _add_text(page1, "dnd_cross_child", page1_key, parent_balloon_id=balloon.id)

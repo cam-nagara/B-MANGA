@@ -265,8 +265,10 @@ def main() -> None:
         assert any(item["id"] == folder_id for item in work_data["layer_folders"])
         assert next(item for item in work_data["raster_layers"] if item["id"] == raster.id)["folderKey"] == coma_folder_id
         page_data = schema.page_to_dict(page2)
-        balloon_data = next(item for item in page_data["balloons"] if item["id"] == moved_balloon.id)
-        text_data = next(item for item in page_data["texts"] if item["id"] == moved_text.id)
+        # レイヤー一覧の並べ替えで CollectionProperty の参照位置がずれるため、
+        # moved_balloon/moved_text の参照は使わず ID 文字列で引き直す
+        balloon_data = next(item for item in page_data["balloons"] if item["id"] == "folder_balloon")
+        text_data = next(item for item in page_data["texts"] if item["id"] == "folder_text")
         assert balloon_data["folderKey"] == folder_id, balloon_data
         assert text_data["folderKey"] == folder_id, text_data
 
