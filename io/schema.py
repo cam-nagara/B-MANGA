@@ -49,6 +49,15 @@ def _suspend_load_property_side_effects():
             stack.enter_context(text_real_object.suspend_auto_sync())
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from ..utils import image_real_object
+
+            # 画像レイヤーも読込中の update コールバック (配置 + 書き戻し連鎖)
+            # を抑止する。親と座標の代入が揃う前に同期が走ると、ページ幅
+            # 単位の位置ドリフトが起こる
+            stack.enter_context(image_real_object.suspend_auto_sync())
+        except Exception:  # noqa: BLE001
+            pass
 
         def _patch(module, name: str) -> None:
             try:
@@ -539,6 +548,13 @@ def image_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool 
     entry.id = str(data.get("id", "") or "")
     entry.title = str(data.get("title", "") or "")
     entry.filepath = str(data.get("filepath", "") or "")
+    # 親を座標より先に確定させる。座標 (x_mm/y_mm) は親ページ基準の
+    # ローカル値のため、親が旧値のまま座標代入の update が走ると
+    # 原点解釈の違う値へ書き換えられ得る
+    entry.parent_kind = str(data.get("parentKind", data.get("parent_kind", "none")) or "none")
+    entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
+    if hasattr(entry, "folder_key"):
+        entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
     entry.x_mm = float(data.get("xMm", data.get("x_mm", 0.0)))
     entry.y_mm = float(data.get("yMm", data.get("y_mm", 0.0)))
     entry.width_mm = float(data.get("widthMm", data.get("width_mm", 100.0)))
@@ -557,10 +573,6 @@ def image_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool 
     alpha = float(data.get("tintColorAlpha", data.get("tint_color_alpha", 1.0)))
     tint = hex_to_rgba(str(data.get("tintColor", data.get("tint_color", "#FFFFFF"))), alpha)
     entry.tint_color = (*color_space.srgb_to_linear_rgb(tint[:3]), tint[3])
-    entry.parent_kind = str(data.get("parentKind", data.get("parent_kind", "none")) or "none")
-    entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
-    if hasattr(entry, "folder_key"):
-        entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
 
 
 # ---------- LayerFolder ----------

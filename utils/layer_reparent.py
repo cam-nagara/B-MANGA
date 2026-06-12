@@ -814,13 +814,25 @@ def _reparent_text(context, item, target: ClickTarget, new_parent_key: str, new_
 
 
 def _reparent_image(context, item, target: ClickTarget, new_parent_key: str, new_world_xy_mm) -> bool:
-    """画像レイヤーの parent_kind/parent_key と world 座標を更新する."""
+    """画像レイヤーの parent_kind/parent_key と座標を更新する.
+
+    x_mm/y_mm は親ページ基準のローカル値のため、テキストと同様に旧親での
+    world 位置を取ってから親を変え、新親のローカル値へ変換して書き戻す。
+    親変更の途中状態 (parent_kind だけ新値で parent_key が旧値) のまま
+    自動同期が走るとページ幅単位で位置が飛ぶ
+    (docs/image_layer_xmm_origin_mismatch_investigation_2026-06-12.md) ため、
+    確定までは suspend_auto_sync で囲み、最後にまとめて実体へ反映する。
+    """
+    from ..core.work import get_work
+    from . import image_real_object
+
     scene = getattr(context, "scene", None)
     if scene is None:
         return False
     coll = getattr(scene, "bname_image_layers", None)
     if coll is None:
         return False
+    work = get_work(context)
     image_id = str(getattr(item, "key", "") or "")
     entry = None
     for e in coll:
@@ -829,23 +841,22 @@ def _reparent_image(context, item, target: ClickTarget, new_parent_key: str, new
             break
     if entry is None:
         return False
-    if target.kind == "outside":
-        entry.parent_kind = "none"
-        entry.parent_key = ""
-        item.parent_key = OUTSIDE_STACK_KEY
-    else:
-        entry.parent_kind = "coma" if target.kind == "coma" else "page"
-        entry.parent_key = new_parent_key
-        item.parent_key = new_parent_key
-    if new_world_xy_mm is not None:
-        wx, wy = new_world_xy_mm
-        w = float(getattr(entry, "width_mm", 0.0))
-        h = float(getattr(entry, "height_mm", 0.0))
-        try:
-            entry.x_mm = wx - w * 0.5
-            entry.y_mm = wy - h * 0.5
-        except Exception:  # noqa: BLE001
-            pass
+    old_page = image_real_object.page_for_entry(scene, work, entry)
+    old_world = _entry_top_left_world(context, work, old_page, entry)
+    with image_real_object.suspend_auto_sync():
+        if target.kind == "outside":
+            entry.parent_kind = "none"
+            entry.parent_key = ""
+            item.parent_key = OUTSIDE_STACK_KEY
+            new_page = None
+        else:
+            entry.parent_kind = "coma" if target.kind == "coma" else "page"
+            entry.parent_key = new_parent_key
+            item.parent_key = new_parent_key
+            new_page = target.page
+        _set_entry_top_left_world(context, work, new_page, entry, old_world)
+        _move_entry_center_world(context, work, new_page, entry, new_world_xy_mm)
+    image_real_object.on_image_entry_changed(entry)
     return True
 
 

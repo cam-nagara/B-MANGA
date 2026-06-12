@@ -272,8 +272,6 @@ def _snapshot_content(context, work, refs):
     text_obj = text_real_object.find_text_object(page_id, refs["text_id"])
     assert text_obj is not None, "テキストの実体がありません"
 
-    # 画像レイヤーは内部座標の書き戻しタイミングにより値が揺れるため
-    # (作成直後と再読込後で原点解釈が変わる既存挙動)、存在のみ確認する
     image_entry = _entry_by_id(context.scene.bname_image_layers, refs["image_id"])
     assert image_entry is not None, "画像レイヤーのデータがありません"
     image_obj = on.find_object_by_bname_id(refs["image_id"], kind="image")
@@ -312,6 +310,13 @@ def _snapshot_content(context, work, refs):
             float(text_entry.height_mm),
         ),
         "text_obj": _object_page_local_mm(context, work, page_id, text_obj),
+        "image_entry": (
+            float(image_entry.x_mm),
+            float(image_entry.y_mm),
+            float(image_entry.width_mm),
+            float(image_entry.height_mm),
+        ),
+        "image_obj": _object_page_local_mm(context, work, page_id, image_obj),
         "raster_obj": _object_page_local_mm(context, work, page_id, raster_obj),
         "raster_alpha": _raster_marker_alpha(raster_image, (4, 4)),
         "effect_obj": _object_page_local_mm(context, work, page_id, effect_obj),
@@ -395,6 +400,7 @@ def main() -> None:
             # 基準そのものが設定値どおりであることを確認しておく
             _assert_close(expected["balloon_entry"][0], base_x + 12.0, "基準値 フキダシX")
             _assert_close(expected["text_entry"][0], base_x + 18.0, "基準値 テキストX")
+            _assert_close(expected["image_entry"][0], base_x + 24.0, "基準値 画像X")
             return refs, expected
 
         def _verify(refs, expected, label: str) -> None:

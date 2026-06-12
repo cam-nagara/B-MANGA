@@ -123,7 +123,21 @@ def _semantic_parent_key_for_entry(work, entry, fallback_page=None) -> str:
 def page_for_entry(scene, work, entry, fallback_page=None):
     key = _semantic_parent_key_for_entry(work, entry, fallback_page)
     page_id = key.split(":", 1)[0] if key else ""
-    return _page_by_id(work, page_id)
+    page = _page_by_id(work, page_id)
+    if (
+        page is None
+        and str(getattr(entry, "parent_kind", "") or "page") == "page"
+        and not str(getattr(entry, "parent_key", "") or "")
+    ):
+        # 「親種別だけ page で対象ページ未設定」の過渡状態は先頭ページ扱い。
+        # この規則を配置 (sync_all_image_real_objects) と書き戻し
+        # (sync_entry_position_from_object) の両方が共有しないと、片側だけ
+        # オフセット 0 で解釈してページ幅単位の位置ドリフトが起こる
+        # (docs/image_layer_xmm_origin_mismatch_investigation_2026-06-12.md)。
+        pages = getattr(work, "pages", []) or []
+        if len(pages) > 0:
+            return pages[0]
+    return page
 
 
 def _page_offset_mm(scene, work, page) -> tuple[float, float]:
@@ -494,11 +508,9 @@ def sync_all_image_real_objects(scene: bpy.types.Scene, work) -> int:
         return 0
     count = 0
     for entry in coll:
+        # 過渡状態 (parent_kind=page かつ parent_key 空) の先頭ページ扱いは
+        # page_for_entry 側へ一元化済み (書き戻しと同じ規則を共有する)
         page = page_for_entry(scene, work, entry)
-        parent_kind = str(getattr(entry, "parent_kind", "") or "page")
-        parent_key = str(getattr(entry, "parent_key", "") or "")
-        if page is None and parent_kind == "page" and not parent_key and len(getattr(work, "pages", []) or []) > 0:
-            page = work.pages[0]
         if ensure_image_real_object(scene=scene, entry=entry, page=page) is not None:
             count += 1
     cleanup_orphan_image_objects(scene)

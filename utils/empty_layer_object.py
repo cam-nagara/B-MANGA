@@ -267,6 +267,13 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
             new_w = old_w
             new_h = old_h
             new_rotation = float(getattr(entry, "rotation_deg", 0.0) or 0.0)
+        # ページ/コマ所属なのに親ページを解決できない (親付け替えの途中状態や
+        # 参照切れ) 間は書き戻さない。オフセット 0 で解釈した値を書き込むと
+        # ページ幅単位の位置ドリフトが起こる
+        # (docs/image_layer_xmm_origin_mismatch_investigation_2026-06-12.md)
+        parent_kind = str(getattr(entry, "parent_kind", "") or "")
+        if page is None and parent_kind not in {"", "none", "outside"}:
+            return False
     else:  # text
         page, entry = find_text_entry(scene, bname_id)
         if entry is None:
