@@ -779,6 +779,9 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
     balloon_id = str(getattr(entry, "id", "") or "")
     is_flash_line_style = balloon_shapes.is_flash_line_style(str(getattr(entry, "line_style", "") or ""))
     line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
+    # ジオメトリ署名: 一致すれば各帯メッシュの再構築 (shapely/earcut) を丸ごと
+    # スキップし、親子付け・可視性・マスクの反映だけ行う (色変更などが高速になる)
+    band_sig = _band_geometry_signature(entry, obj)
     if fill_mat is not None:
         balloon_fill_mesh.ensure_balloon_fill_mesh(
             scene=scene,
@@ -787,6 +790,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             entry=entry,
             body_object=obj,
             fill_material=fill_mat,
+            geometry_sig=band_sig,
         )
     else:
         balloon_fill_mesh.remove_balloon_fill_mesh(balloon_id)
@@ -801,6 +805,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         fill_material=fill_mat,
         line_material=line_mat,
         mask_info=mask_info,
+        geometry_sig=band_sig,
     )
     # 線しっぽ (線種「線」): 親フキダシの線素材で 1 本線ストロークを描く
     balloon_tail_stroke_mesh.ensure_balloon_tail_stroke_meshes(
@@ -811,6 +816,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
         body_object=obj,
         line_material=line_mat,
         mask_info=mask_info,
+        geometry_sig=band_sig,
     )
     if is_flash_line_style:
         if line_mat is not None:
@@ -875,6 +881,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             line_material=line_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
         balloon_line_decor_mesh.remove_balloon_line_image_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
@@ -889,6 +896,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             entry=entry,
             body_object=obj,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
         balloon_line_decor_mesh.remove_balloon_line_shape_mesh(balloon_id)
         balloon_line_mesh.remove_balloon_flash_white_line_mesh(balloon_id)
@@ -919,6 +927,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             line_material=line_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
     else:
         balloon_line_decor_mesh.remove_balloon_line_decor_meshes(balloon_id)
@@ -933,6 +942,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             outer_edge_material=outer_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
     else:
         balloon_line_mesh.remove_balloon_outer_edge_mesh(balloon_id)
@@ -945,6 +955,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             inner_edge_material=inner_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
     else:
         balloon_line_mesh.remove_balloon_inner_edge_mesh(balloon_id)
@@ -957,6 +968,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             line_material=line_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
     else:
         balloon_line_mesh.remove_balloon_multi_line_mesh(balloon_id)
@@ -969,6 +981,7 @@ def _sync_balloon_band_meshes(scene, work, page, entry, obj: bpy.types.Object, m
             body_object=obj,
             line_material=line_mat,
             mask_info=mask_info,
+            geometry_sig=band_sig,
         )
     else:
         # 線種「図形」「画像」では、本体と結合しないしっぽも図形/画像の輪郭に
@@ -1367,6 +1380,53 @@ def _body_bezier_for_entry(entry) -> list[balloon_shapes.BezierAnchor] | None:
         max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0)),
     )
     return balloon_shapes.bezier_loop_for_entry(entry, rect)
+
+
+def _band_geometry_signature(entry, obj) -> str:
+    """帯メッシュ群のジオメトリ署名。一致すれば shapely/earcut の再構築をスキップする.
+
+    エントリのジオメトリキーに加え、本体カーブの実制御点 (手編集対応) と、
+    キーに含まれない帯固有のパラメータ (塗りぼかし・図形/画像線種の設定) を含める。
+    色や不透明度は含まれないため、色変更ではメッシュ再構築が走らない。
+    """
+    import hashlib
+    import struct
+
+    try:
+        h = hashlib.md5(_geometry_key_for_entry(entry).encode("utf-8"))
+        extra = (
+            round(float(getattr(entry, "fill_blur_amount", 0.0) or 0.0), 4),
+            str(getattr(entry, "line_shape_kind", "") or ""),
+            round(float(getattr(entry, "line_shape_spacing_mm", 0.0) or 0.0), 4),
+            round(float(getattr(entry, "line_shape_angle_deg", 0.0) or 0.0), 4),
+            str(getattr(entry, "line_shape_orient", "") or ""),
+            round(float(getattr(entry, "line_shape_jitter", 0.0) or 0.0), 4),
+            int(getattr(entry, "line_shape_seed", 0) or 0),
+            str(getattr(entry, "line_image_path", "") or ""),
+            round(float(getattr(entry, "line_image_interval_mm", 0.0) or 0.0), 4),
+            round(float(getattr(entry, "line_image_angle_deg", 0.0) or 0.0), 4),
+            round(float(getattr(entry, "line_image_jitter", 0.0) or 0.0), 4),
+        )
+        h.update(repr(extra).encode("utf-8"))
+        curve = getattr(obj, "data", None)
+        for spline in list(getattr(curve, "splines", []) or []):
+            spline_type = str(getattr(spline, "type", "") or "")
+            h.update(spline_type.encode("utf-8"))
+            if spline_type == "BEZIER":
+                for point in spline.bezier_points:
+                    h.update(struct.pack(
+                        "<9f",
+                        *point.co,
+                        *point.handle_left,
+                        *point.handle_right,
+                    ))
+            else:
+                for point in spline.points:
+                    h.update(struct.pack("<4f", *point.co))
+        return h.hexdigest()
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon band geometry signature failed")
+        return ""
 
 
 def _geometry_key_for_entry(entry) -> str:

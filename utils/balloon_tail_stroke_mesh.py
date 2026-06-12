@@ -60,12 +60,29 @@ def ensure_balloon_tail_stroke_meshes(
     body_object: bpy.types.Object,
     line_material: bpy.types.Material | None,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """線しっぽのストロークメッシュを生成・更新する。対象が無ければ撤去する."""
     del work, page
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
+    from .balloon_line_mesh import band_geometry_cache_hit
+
+    cached = band_geometry_cache_hit(f"{_STROKE_OBJ_PREFIX}{balloon_id}", geometry_sig)
+    if cached is not None and line_material is not None:
+        return _attach_band_mesh_object(
+            obj_name=f"{_STROKE_OBJ_PREFIX}{balloon_id}",
+            mesh=cached.data,
+            material=line_material,
+            body_object=body_object,
+            scene=scene,
+            kind=KIND_TAIL_STROKE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
     line_style = str(getattr(entry, "line_style", "solid") or "solid")
     polygons = _stroke_polygons_local_m(entry)
     if (
@@ -91,6 +108,7 @@ def ensure_balloon_tail_stroke_meshes(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 

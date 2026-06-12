@@ -385,12 +385,12 @@ def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
 
 def _reload_loaded_work_metadata(work, work_dir: Path) -> None:
     from ..io import page_io, work_io
+    from . import handlers
 
     work_io.load_work_json(work_dir, work)
     page_io.load_pages_json(work_dir, work)
-    for page in getattr(work, "pages", []) or []:
-        if str(getattr(page, "id", "") or ""):
-            page_io.load_page_json(work_dir, page)
+    # ファイルの役割に応じた詳細読込 (自ページのみ等) を handlers と共有する
+    handlers._reload_all_pages_panels(work, work_dir)
     work.work_dir = str(Path(work_dir).resolve())
     work.loaded = True
 

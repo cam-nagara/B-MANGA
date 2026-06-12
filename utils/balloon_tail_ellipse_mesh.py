@@ -126,11 +126,45 @@ def ensure_balloon_tail_ellipse_meshes(
     fill_material: bpy.types.Material | None,
     line_material: bpy.types.Material | None,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """連続楕円しっぽの塗り・線メッシュを生成・更新する。対象が無ければ撤去する."""
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
+    from .balloon_line_mesh import band_geometry_cache_hit
+
+    cached_fill = band_geometry_cache_hit(f"{_FILL_OBJ_PREFIX}{balloon_id}", geometry_sig)
+    cached_line = band_geometry_cache_hit(f"{_LINE_OBJ_PREFIX}{balloon_id}", geometry_sig)
+    if cached_fill is not None and cached_line is not None:
+        result = None
+        if fill_material is not None:
+            result = _attach_band_mesh_object(
+                obj_name=f"{_FILL_OBJ_PREFIX}{balloon_id}",
+                mesh=cached_fill.data,
+                material=fill_material,
+                body_object=body_object,
+                scene=scene,
+                kind=KIND_TAIL_ELLIPSE_FILL,
+                balloon_id=balloon_id,
+                visible=bool(getattr(entry, "visible", True)),
+                mask_info=mask_info,
+                geometry_sig=geometry_sig,
+            )
+        if line_material is not None:
+            result = _attach_band_mesh_object(
+                obj_name=f"{_LINE_OBJ_PREFIX}{balloon_id}",
+                mesh=cached_line.data,
+                material=line_material,
+                body_object=body_object,
+                scene=scene,
+                kind=KIND_TAIL_ELLIPSE_LINE,
+                balloon_id=balloon_id,
+                visible=bool(getattr(entry, "visible", True)),
+                mask_info=mask_info,
+                geometry_sig=geometry_sig,
+            )
+        return result
     polygons = _ellipse_polygons_local_m(entry)
     # 本体に重なる楕円は (三角しっぽと同様に) 本体の輪郭へ結合されるため、
     # 個別の塗り・線メッシュからは除外する。
@@ -159,6 +193,7 @@ def ensure_balloon_tail_ellipse_meshes(
             balloon_id=balloon_id,
             visible=bool(getattr(entry, "visible", True)),
             mask_info=mask_info,
+            geometry_sig=geometry_sig,
         )
     else:
         _remove_named(f"{_FILL_OBJ_PREFIX}{balloon_id}")
@@ -178,6 +213,7 @@ def ensure_balloon_tail_ellipse_meshes(
             balloon_id=balloon_id,
             visible=bool(getattr(entry, "visible", True)),
             mask_info=mask_info,
+            geometry_sig=geometry_sig,
         )
     else:
         _remove_named(f"{_LINE_OBJ_PREFIX}{balloon_id}")

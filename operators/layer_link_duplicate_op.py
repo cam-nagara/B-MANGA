@@ -110,6 +110,19 @@ def _linked_balloon_targets(context, page, entry):
     targets = []
     work = get_work(context)
     pages = getattr(work, "pages", []) if work is not None else []
+    # リンク先が別ページにある場合に備え、リンク uid が指すページの詳細を
+    # 読み込んでおく (詳細未読込のページではリンク先がメモリに存在しないため)
+    try:
+        from ..utils import page_detail
+
+        for target_page in pages:
+            if bool(getattr(target_page, "detail_loaded", True)):
+                continue
+            pk = page_stack_key(target_page)
+            if pk and any(f"{pk}:" in uid for uid in linked_uids):
+                page_detail.ensure_page_detail(work, target_page)
+    except Exception:  # noqa: BLE001
+        pass
     for target_page in pages:
         for target in getattr(target_page, "balloons", []) or []:
             if target is entry:

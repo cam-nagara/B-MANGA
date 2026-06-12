@@ -21,12 +21,27 @@ _logger = log.get_logger(__name__)
 # ---------- page.json (個別ページメタ) ----------
 
 
+# 保存の差分書込: 直近にこのセッションで書いた page.json の内容ハッシュ。
+# 一致すればファイル書込をスキップする (55 ページ規模の Ctrl+S 高速化)。
+_LAST_WRITTEN_PAGE_JSON: dict[str, str] = {}
+
+
 def save_page_json(work_dir: Path, page_entry) -> Path:
+    import hashlib
+    import json as _json
+
     paths.validate_page_id(page_entry.id)
     out = paths.page_meta_path(Path(work_dir), page_entry.id)
     out.parent.mkdir(parents=True, exist_ok=True)
     data = schema.page_to_dict(page_entry)
+    digest = hashlib.md5(
+        _json.dumps(data, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    key = str(out)
+    if _LAST_WRITTEN_PAGE_JSON.get(key) == digest and out.is_file():
+        return out
     json_io.write_json(out, data)
+    _LAST_WRITTEN_PAGE_JSON[key] = digest
     return out
 
 

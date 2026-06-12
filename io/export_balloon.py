@@ -445,7 +445,7 @@ def _draw_flash_strokes(canvas, entry, flash_strokes, dpi: int) -> None:
                 draw.polygon(quad_px, fill=(*rgb, alpha))
     opacity = _entry_opacity(entry)
     if opacity < 0.999:
-        alpha_ch = temp.getchannel("A").point(lambda v: int(v * opacity))
+        alpha_ch = temp.getchannel("A").point([int(i * opacity) for i in range(256)])
         temp.putalpha(alpha_ch)
     canvas.image.alpha_composite(temp)
 
@@ -493,6 +493,19 @@ def _fill_source_image(size: tuple[int, int], entry):
     dots = [x * ux + y * uy for x, y in corners]
     mn = min(dots)
     span = max(1.0e-6, max(dots) - mn)
+    try:
+        # 全画素 Python ループは大きいページで秒単位かかるため NumPy で生成する
+        import numpy as np
+
+        xs = np.arange(width, dtype=np.float32) * ux
+        ys = np.arange(height, dtype=np.float32) * uy
+        t = np.clip((xs[None, :] + ys[:, None] - mn) / span, 0.0, 1.0)
+        start_arr = np.asarray(start, dtype=np.float32)
+        end_arr = np.asarray(end, dtype=np.float32)
+        arr = start_arr[None, None, :] + (end_arr - start_arr)[None, None, :] * t[:, :, None]
+        return ep.Image.fromarray(np.rint(arr).astype(np.uint8), "RGBA")
+    except Exception:  # noqa: BLE001
+        pass
     pixels = []
     for y in range(height):
         for x in range(width):
@@ -533,7 +546,7 @@ def _draw_fill_layer(canvas, entry, polygons_px: list[list[tuple[int, int]]], dp
     fill_alpha = float(getattr(entry, "fill_color", (1, 1, 1, 1))[3])
     alpha_scale = max(0, min(255, int(round(255.0 * _fill_opacity(entry) * fill_alpha))))
     if alpha_scale < 255:
-        mask = mask.point(lambda px: int(round(px * (alpha_scale / 255.0))))
+        mask = mask.point([int(round(i * (alpha_scale / 255.0))) for i in range(256)])
     fill_image = _fill_source_image(canvas.image.size, entry)
     fill_image.putalpha(mask)
     canvas.image.alpha_composite(fill_image)
@@ -743,7 +756,7 @@ def _draw_image_line_loop(canvas, pts, entry, width_px: int, dpi: int) -> None:
     # フキダシの不透明度を画像線にも反映する
     opacity = _entry_opacity(entry)
     if opacity < 0.999:
-        alpha = src.getchannel("A").point(lambda v: int(v * opacity))
+        alpha = src.getchannel("A").point([int(i * opacity) for i in range(256)])
         src.putalpha(alpha)
     interval_px = max(2.0, mm_to_px(max(0.5, float(getattr(entry, "line_image_interval_mm", 20.0) or 20.0)), dpi))
     jitter = max(0.0, min(1.0, float(getattr(entry, "line_image_jitter", 0.0) or 0.0)))

@@ -311,6 +311,36 @@ def _export_all_output_settings(operator, work) -> tuple[str, ExportOptions]:
     )
 
 
+
+
+def _transient_detail_ids(work) -> set[str]:
+    """出力前に詳細未読込だったページ ID (出力後にメモリから解放する対象)."""
+    try:
+        return {
+            str(getattr(page, "id", "") or "")
+            for page in getattr(work, "pages", []) or []
+            if not bool(getattr(page, "detail_loaded", True))
+        }
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def _release_transient_details(context, work, transient_ids: set[str]) -> None:
+    """作品ファイル (ページ一覧) では、出力のために読み込んだ詳細を解放する."""
+    if not transient_ids:
+        return
+    try:
+        from ..utils import page_detail, page_file_scene
+
+        if not page_file_scene.is_work_list_scene(getattr(context, "scene", None)):
+            return
+        for page in getattr(work, "pages", []) or []:
+            if str(getattr(page, "id", "") or "") in transient_ids:
+                page_detail.clear_page_detail(page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("transient page detail release failed")
+
+
 class BNAME_OT_export_page(Operator):
     """現在のページを画像書き出し."""
 
@@ -382,6 +412,7 @@ class BNAME_OT_export_page(Operator):
             include_tombo=self.include_tombo,
             include_paper_color=self.include_paper_color,
         )
+        transient_ids = _transient_detail_ids(work)
         try:
             work_dir = Path(work.work_dir)
             out_dir = paths.exports_dir(work_dir) / datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -401,6 +432,8 @@ class BNAME_OT_export_page(Operator):
             _logger.exception("export_page failed")
             self.report({"ERROR"}, f"書き出し失敗: {exc}")
             return {"CANCELLED"}
+        finally:
+            _release_transient_details(context, work, transient_ids)
         self.report({"INFO"}, f"書き出し完了: {out}")
         return {"FINISHED"}
 
@@ -518,14 +551,18 @@ class BNAME_OT_export_all_pages(Operator):
         if not export_units:
             self.report({"ERROR"}, "書き出せるページがありません")
             return {"CANCELLED"}
-        success, errors = _export_all_page_units(
-            self,
-            work,
-            out_dir,
-            output_format,
-            options,
-            export_units,
-        )
+        transient_ids = _transient_detail_ids(work)
+        try:
+            success, errors = _export_all_page_units(
+                self,
+                work,
+                out_dir,
+                output_format,
+                options,
+                export_units,
+            )
+        finally:
+            _release_transient_details(context, work, transient_ids)
         msg = f"書き出し完了: {success}/{len(export_units)} ページ"
         if errors:
             msg += f" (エラー {len(errors)} 件)"
@@ -617,6 +654,7 @@ class BNAME_OT_export_pdf(Operator):
             split_spreads=bool(self.split_spreads),
         )
         tmp_images: list[Path] = []
+        transient_ids = _transient_detail_ids(work)
         for unit in export_units:
             try:
                 img = export_page_regions.render_page_region(
@@ -633,6 +671,7 @@ class BNAME_OT_export_pdf(Operator):
                 tmp_images.append(tmp)
             except Exception:  # noqa: BLE001
                 _logger.exception("pdf intermediate render failed for %s", getattr(unit.page, "id", "?"))
+        _release_transient_details(context, work, transient_ids)
         if not tmp_images:
             self.report({"ERROR"}, "書き出せるページがありません")
             return {"CANCELLED"}

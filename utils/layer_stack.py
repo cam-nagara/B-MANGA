@@ -3458,18 +3458,31 @@ def schedule_layer_stack_sync(
     def _tick():
         global _sync_order_moved_uid, _sync_scheduled, _sync_should_apply_order
 
+        converged = False
         try:
             if _sync_should_apply_order:
                 if _sync_order_moved_uid:
                     _apply_gp_folder_drop_hint(bpy.context, _sync_order_moved_uid)
                 apply_stack_order(bpy.context)
+            scene = getattr(bpy.context, "scene", None)
+            before_sig = _stack_signature(scene) if scene is not None else ()
             sync_layer_stack(bpy.context)
+            after_sig = _stack_signature(scene) if scene is not None else None
             _remember_stack_signature(bpy.context)
-            tag_view3d_redraw(bpy.context)
+            # 一覧が前回 tick から変化しなければ収束とみなし、残りの tick と
+            # 再描画を打ち切る (読込直後の連続再構築・連続再描画を抑える)
+            converged = (
+                not _sync_should_apply_order
+                and after_sig is not None
+                and after_sig == before_sig
+                and state["left"] < max(1, int(retries))
+            )
+            if not converged:
+                tag_view3d_redraw(bpy.context)
         except Exception:  # noqa: BLE001
             _logger.exception("scheduled layer stack sync failed")
         state["left"] -= 1
-        if state["left"] > 0:
+        if state["left"] > 0 and not converged:
             return interval
         _sync_scheduled = False
         _sync_should_apply_order = False

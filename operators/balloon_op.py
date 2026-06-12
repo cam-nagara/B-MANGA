@@ -92,24 +92,79 @@ def _collect_used_balloon_ids(work) -> set[str]:
     return used
 
 
+def _ensure_balloon_id_counter(work) -> int:
+    """採番カウンターを初期化して返す (旧作品はディスクの page.json を一度だけ走査).
+
+    詳細未読込のページがあってもフキダシ id が衝突しないよう、過去に使われた
+    最大番号を作品単位で記憶する (単調増加・再利用しない)。
+    """
+    import json as _json
+    import re
+
+    from ..utils import paths as _paths
+
+    if work is None:
+        return 0
+    counter = int(getattr(work, "balloon_id_counter", 0) or 0)
+    if counter > 0:
+        return counter
+    pat = re.compile(r"^balloon_(\d+)$")
+    max_n = 0
+    for p in getattr(work, "pages", []) or []:
+        for b in getattr(p, "balloons", []) or []:
+            m = pat.match(str(getattr(b, "id", "") or ""))
+            if m:
+                max_n = max(max_n, int(m.group(1)))
+    for b in getattr(work, "shared_balloons", []) or []:
+        m = pat.match(str(getattr(b, "id", "") or ""))
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+    work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+    if work_dir.is_dir():
+        for p in getattr(work, "pages", []) or []:
+            if bool(getattr(p, "detail_loaded", False)):
+                continue  # メモリ側で確認済み
+            try:
+                meta = _paths.page_meta_path(work_dir, str(getattr(p, "id", "") or ""))
+                if not meta.is_file():
+                    continue
+                data = _json.loads(meta.read_text(encoding="utf-8"))
+                for b in data.get("balloons", []) or []:
+                    m = pat.match(str(b.get("id", "") or ""))
+                    if m:
+                        max_n = max(max_n, int(m.group(1)))
+            except Exception:  # noqa: BLE001
+                continue
+    try:
+        work.balloon_id_counter = max_n
+    except Exception:  # noqa: BLE001
+        pass
+    return max_n
+
+
 def _allocate_balloon_id(page, work=None) -> str:
     # フキダシ id はページ横断で一意にする。ページ単位で採番すると別ページの
     # フキダシと id が衝突し、実体オブジェクト名 (id 由来) が重なって 1 ページ目の
-    # 位置に作られてしまい、2 ページ目以降では表示されない (保存時の採番し直しで
-    # 初めて直る)。作成時点で全ページを走査して未使用 id を割り当てる。
-    # work を渡さない呼び出し (フキダシテキスト作成 / レイヤースタック作成 /
-    # 複製 / 別ページへの移動など) でもページ横断一意を保つため、ここで補完する。
+    # 位置に作られてしまい、2 ページ目以降では表示されない。採番カウンター
+    # (過去に使った最大番号) より先の番号だけを使うため、詳細未読込のページが
+    # あっても衝突しない。
     if work is None:
         try:
             work = get_work(bpy.context)
         except Exception:  # noqa: BLE001
             work = None
+    counter = _ensure_balloon_id_counter(work)
     used = _collect_used_balloon_ids(work)
     used |= {str(getattr(b, "id", "") or "") for b in getattr(page, "balloons", []) or []}
-    i = 1
+    i = max(1, counter + 1)
     while True:
         candidate = f"balloon_{i:04d}"
         if candidate not in used:
+            if work is not None:
+                try:
+                    work.balloon_id_counter = max(counter, i)
+                except Exception:  # noqa: BLE001
+                    pass
             return candidate
         i += 1
 

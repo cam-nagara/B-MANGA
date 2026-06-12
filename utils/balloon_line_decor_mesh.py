@@ -20,6 +20,7 @@ from .balloon_line_mesh import (
     _body_samples_for_line_mesh,
     _build_band_mesh_from_polygons,
     _outline_samples_with_tails,
+    band_geometry_cache_hit,
     scaled_entry_width_mm,
 )
 
@@ -49,12 +50,27 @@ def ensure_balloon_line_shape_mesh(
     body_object: bpy.types.Object,
     line_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """線種「図形」の図形列メッシュを生成・更新する."""
     del work, page
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
+    cached = band_geometry_cache_hit(f"{_SHAPE_OBJ_PREFIX}{balloon_id}", geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=f"{_SHAPE_OBJ_PREFIX}{balloon_id}",
+            mesh=cached.data,
+            material=line_material,
+            body_object=body_object,
+            scene=scene,
+            kind=KIND_LINE_SHAPE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
     loop = _decor_outline_m(entry, body_object)
     line_width_mm = scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     if len(loop) < 3 or line_width_mm <= 1.0e-6:
@@ -98,6 +114,7 @@ def ensure_balloon_line_shape_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 
@@ -223,6 +240,7 @@ def ensure_balloon_line_image_mesh(
     entry,
     body_object: bpy.types.Object,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """線種「画像」の帯メッシュを生成・更新する.
 
@@ -233,6 +251,23 @@ def ensure_balloon_line_image_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
+    cached = band_geometry_cache_hit(f"{_IMAGE_OBJ_PREFIX}{balloon_id}", geometry_sig)
+    if cached is not None:
+        image = _load_line_image(entry)
+        if image is not None:
+            material = _ensure_image_material(f"{_IMAGE_MATERIAL_PREFIX}{balloon_id}", image)
+            return _attach_band_mesh_object(
+                obj_name=f"{_IMAGE_OBJ_PREFIX}{balloon_id}",
+                mesh=cached.data,
+                material=material,
+                body_object=body_object,
+                scene=scene,
+                kind=KIND_LINE_IMAGE,
+                balloon_id=balloon_id,
+                visible=bool(getattr(entry, "visible", True)),
+                mask_info=None,
+                geometry_sig=geometry_sig,
+            )
     image = _load_line_image(entry)
     loop = _decor_outline_m(entry, body_object)
     line_width_mm = scaled_entry_width_mm(entry, "line_width_mm", 0.3)
@@ -263,6 +298,7 @@ def ensure_balloon_line_image_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=None,
+        geometry_sig=geometry_sig,
     )
 
 

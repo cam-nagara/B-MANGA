@@ -70,8 +70,11 @@ def main() -> None:
     assert page_file_scene.is_page_edit_scene(bpy.context.scene)
     work = bpy.context.scene.bname_work
     page = work.pages[0]
-    # ページ用 blend では全ページの詳細が読み込まれている
-    assert all(bool(p.detail_loaded) for p in work.pages), [p.detail_loaded for p in work.pages]
+    # ページ用 blend では「自分のページ」の詳細だけが読み込まれている (v0.6.280)
+    assert bool(page.detail_loaded), "自ページの詳細が読み込まれていません"
+    assert not any(bool(p.detail_loaded) for p in work.pages[1:]), (
+        "ページ用 blend が他ページの詳細を保持しています"
+    )
     balloon_op = _sub("operators.balloon_op")
     entry = balloon_op._create_balloon_entry(
         bpy.context, page, shape="ellipse", x=40.0, y=120.0, w=50.0, h=40.0,
@@ -148,6 +151,17 @@ def main() -> None:
     merged_json = json.loads((work_dir / merged.dir_rel.strip("/") / "page.json").read_text(encoding="utf-8"))
     assert len(merged_json.get("balloons", [])) == 1
     print("SPREAD_MERGE_ON_DEMAND_OK", flush=True)
+
+    # --- フキダシ番号の採番: 詳細未読込ページの番号とも衝突しない ---
+    # (旧作品相当: カウンター未初期化 + 詳細未読込の状態から、ディスクの
+    #  page.json を走査して balloon_0001 を検出し、次番号を採る)
+    balloon_op2 = _sub("operators.balloon_op")
+    page_detail.clear_page_detail(work.pages[0])
+    work.balloon_id_counter = 0
+    new_id = balloon_op2._allocate_balloon_id(work.pages[0], work)
+    assert new_id == "balloon_0002", f"採番が衝突しています: {new_id} (既存: balloon_0001)"
+    assert int(work.balloon_id_counter) >= 2, work.balloon_id_counter
+    print("BALLOON_ID_COUNTER_OK", flush=True)
 
     # --- ページ一覧上ではコマを選択できない (ピッカーのゲート) ---
     coma_picker = _sub("operators.coma_picker")

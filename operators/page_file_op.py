@@ -137,6 +137,19 @@ def _create_page_blend(work_dir: Path, page_id: str) -> bool:
     work = _load_work_metadata_into_current_scene(work_dir)
     if work is None:
         return False
+    # 作成中はファイルの役割がまだ確定していないため全ページの詳細が
+    # 読み込まれる。ページ用 blend は自分のページの詳細だけを持つ規約に
+    # 合わせ、他ページの詳細をここで解放してから保存する。
+    try:
+        from ..utils import page_detail
+
+        for entry in getattr(work, "pages", []) or []:
+            if str(getattr(entry, "id", "") or "") != page_id and bool(
+                getattr(entry, "detail_loaded", False)
+            ):
+                page_detail.clear_page_detail(entry)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page blend creation: detail slimming failed")
     if not _finalize_page_scene(context, work, page_id):
         return False
     return blend_io.save_page_blend(work_dir, page_id)

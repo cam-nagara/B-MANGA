@@ -153,6 +153,9 @@ class BNameWorkData(bpy.types.PropertyGroup):
 
     # --- ページ一覧 ---
     pages: CollectionProperty(type=BNamePageEntry)  # type: ignore[valid-type]
+    # フキダシ番号の採番カウンター (作品全体で単調増加)。詳細未読込の
+    # ページが居ても番号が衝突しないよう、過去に使った最大番号を記憶する。
+    balloon_id_counter: IntProperty(default=0, min=0, options={"HIDDEN"})  # type: ignore[valid-type]
     active_page_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブページ",
         default=-1,

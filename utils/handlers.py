@@ -158,9 +158,10 @@ def _page_detail_filter() -> set[str] | None:
     """このファイルで詳細 (コマ・フキダシ・テキスト) を持つページ ID を返す.
 
     - 作品ファイル: 空集合 (ページ一覧だけを扱うため詳細は持たない)
-    - コマ用 blend: 自分が属するページのみ
-    - ページ用 blend / 判定不能: None (= 全ページ。ID 採番・出力・見開きで
-      他ページの情報が必要なため)
+    - ページ用 blend / コマ用 blend: 自分が属するページのみ
+      (フキダシ番号は採番カウンター、出力・見開き・リンク先はその場読み込みで
+      他ページ詳細への依存を断っている)
+    - 判定不能な旧ファイル: None (= 全ページ読み込み)
     """
     try:
         from . import page_file_scene
@@ -168,7 +169,7 @@ def _page_detail_filter() -> set[str] | None:
         role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
         if role == page_file_scene.ROLE_WORK:
             return set()
-        if role == page_file_scene.ROLE_COMA and page_id:
+        if role in {page_file_scene.ROLE_PAGE, page_file_scene.ROLE_COMA} and page_id:
             return {page_id}
     except Exception:  # noqa: BLE001
         _logger.exception("page detail filter resolve failed")

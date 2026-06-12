@@ -2745,6 +2745,22 @@ def _flash_white_line_mesh_data_name(balloon_id: str) -> str:
     return f"{BALLOON_FLASH_WHITE_LINE_MESH_NAME_PREFIX}{balloon_id}_mesh"
 
 
+# 帯メッシュのジオメトリ署名: 一致すれば shapely/earcut の再構築を丸ごとスキップする
+PROP_BAND_GEOMETRY_SIG = "bname_band_geometry_sig"
+
+
+def band_geometry_cache_hit(obj_name: str, geometry_sig) -> Optional[bpy.types.Object]:
+    """署名一致なら既存の帯メッシュオブジェクトを返す (再構築スキップ用)."""
+    if not geometry_sig:
+        return None
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None or getattr(obj, "type", "") != "MESH" or getattr(obj, "data", None) is None:
+        return None
+    if str(obj.get(PROP_BAND_GEOMETRY_SIG, "") or "") != str(geometry_sig):
+        return None
+    return obj
+
+
 def _attach_band_mesh_object(
     *,
     obj_name: str,
@@ -2756,6 +2772,7 @@ def _attach_band_mesh_object(
     balloon_id: str,
     visible: bool,
     mask_info=None,
+    geometry_sig=None,
 ) -> bpy.types.Object:
     """Mesh をフキダシ本体に連結し、コレクション/親子を ensure する.
 
@@ -2812,6 +2829,15 @@ def _attach_band_mesh_object(
     obj.hide_viewport = not visible
     obj.hide_render = not visible
 
+    # ジオメトリ署名の更新 (署名なし経路で作られた場合は古い署名を消す)
+    if geometry_sig:
+        obj[PROP_BAND_GEOMETRY_SIG] = str(geometry_sig)
+    elif PROP_BAND_GEOMETRY_SIG in obj:
+        try:
+            del obj[PROP_BAND_GEOMETRY_SIG]
+        except Exception:  # noqa: BLE001
+            pass
+
     # 旧来のメッシュくり抜き modifier は画像マスク方式に切り替えたため撤去する
     _sync_mask_clip_modifier(obj, None)
     return obj
@@ -2852,6 +2878,7 @@ def ensure_balloon_line_mesh(
     body_object: bpy.types.Object,
     line_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ主線のメッシュバンドオブジェクトを生成・更新する.
 
@@ -2870,6 +2897,21 @@ def ensure_balloon_line_mesh(
     if line_style == "none" or line_width_mm <= 1.0e-6:
         remove_balloon_line_mesh(balloon_id)
         return None
+
+    cached = band_geometry_cache_hit(_line_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=_line_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=line_material,
+            body_object=body_object,
+            scene=scene,
+            kind=_KIND_LINE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
 
     line_width_m = line_width_mm * 0.001
 
@@ -2979,6 +3021,7 @@ def ensure_balloon_line_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 
@@ -3154,6 +3197,7 @@ def ensure_balloon_outer_edge_mesh(
     body_object: bpy.types.Object,
     outer_edge_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ外側フチのメッシュバンドを Shapely buffer で生成する."""
     balloon_id = str(getattr(entry, "id", "") or "")
@@ -3169,6 +3213,20 @@ def ensure_balloon_outer_edge_mesh(
     if edge_width_mm <= 1.0e-6:
         remove_balloon_outer_edge_mesh(balloon_id)
         return None
+    cached = band_geometry_cache_hit(_outer_edge_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=_outer_edge_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=outer_edge_material,
+            body_object=body_object,
+            scene=scene,
+            kind=_KIND_OUTER_EDGE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
     line_style = str(getattr(entry, "line_style", "") or "")
     line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     samples = _body_samples_for_line_mesh(entry, body_object)
@@ -3225,6 +3283,7 @@ def ensure_balloon_outer_edge_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 
@@ -3237,6 +3296,7 @@ def ensure_balloon_inner_edge_mesh(
     body_object: bpy.types.Object,
     inner_edge_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ内側フチのメッシュバンドを Shapely buffer で生成する."""
     balloon_id = str(getattr(entry, "id", "") or "")
@@ -3252,6 +3312,20 @@ def ensure_balloon_inner_edge_mesh(
     if edge_width_mm <= 1.0e-6:
         remove_balloon_inner_edge_mesh(balloon_id)
         return None
+    cached = band_geometry_cache_hit(_inner_edge_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=_inner_edge_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=inner_edge_material,
+            body_object=body_object,
+            scene=scene,
+            kind=_KIND_INNER_EDGE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
     line_style = str(getattr(entry, "line_style", "") or "")
     line_width_mm = 0.0 if line_style == "none" else scaled_entry_width_mm(entry, "line_width_mm", 0.3)
     samples = _body_samples_for_line_mesh(entry, body_object)
@@ -3305,6 +3379,7 @@ def ensure_balloon_inner_edge_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 
@@ -3317,6 +3392,7 @@ def ensure_balloon_multi_line_mesh(
     body_object: bpy.types.Object,
     line_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ多重線 (全リング統合) のメッシュを Shapely buffer で生成する."""
     balloon_id = str(getattr(entry, "id", "") or "")
@@ -3369,6 +3445,20 @@ def ensure_balloon_multi_line_mesh(
     if multi_width_mm <= 1.0e-6:
         remove_balloon_multi_line_mesh(balloon_id)
         return None
+    cached = band_geometry_cache_hit(_multi_line_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=_multi_line_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=line_material,
+            body_object=body_object,
+            scene=scene,
+            kind=_KIND_MULTI_LINE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
     direction = str(getattr(entry, "multi_line_direction", "outside") or "outside")
     if direction == "both":
         sides = ("inside", "outside")
@@ -3515,12 +3605,15 @@ def ensure_balloon_multi_line_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 
 # --- しっぽ主線フチ (各しっぽ polygon の外周/内周オフセット band) -----------
 
 BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX = "balloon_tail_main_line_mesh_"
+# 「結合済みで独立しっぽ線メッシュ無し」を記憶する署名 (本体オブジェクトに保持)
+_PROP_TAIL_MAIN_ABSENT_SIG = "bname_tail_main_absent_sig"
 
 
 def _tail_main_line_mesh_data_name(balloon_id: str) -> str:
@@ -3561,6 +3654,7 @@ def ensure_balloon_tail_main_line_mesh(
     body_object: bpy.types.Object,
     line_material: bpy.types.Material,
     mask_info=None,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """各しっぽの輪郭に沿った主線フチ Mesh をひとつにまとめて生成する.
 
@@ -3586,6 +3680,29 @@ def ensure_balloon_tail_main_line_mesh(
         remove_balloon_tail_main_line_mesh(balloon_id)
         return None
 
+    # 前回と同じジオメトリで「しっぽは本体に結合済み (独立メッシュ無し)」だった
+    # 場合は、結合判定 (shapely union) ごとスキップする
+    if (
+        geometry_sig
+        and body_object is not None
+        and str(body_object.get(_PROP_TAIL_MAIN_ABSENT_SIG, "") or "") == str(geometry_sig)
+    ):
+        return None
+    cached = band_geometry_cache_hit(_tail_main_line_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_band_mesh_object(
+            obj_name=_tail_main_line_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=line_material,
+            body_object=body_object,
+            scene=scene,
+            kind=_KIND_TAIL_MAIN_LINE,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            mask_info=mask_info,
+            geometry_sig=geometry_sig,
+        )
+
     body_spline = _resolve_body_spline(body_object)
     if body_spline is not None:
         body_samples = sample_body_spline(body_spline, SAMPLES_PER_SEGMENT)
@@ -3596,6 +3713,8 @@ def ensure_balloon_tail_main_line_mesh(
                 # しっぽの折れ角・先端の絞りも本体主線側 (ensure_balloon_line_mesh)
                 # で加工されるため、ここでは独立メッシュを持たない。
                 remove_balloon_tail_main_line_mesh(balloon_id)
+                if geometry_sig and body_object is not None:
+                    body_object[_PROP_TAIL_MAIN_ABSENT_SIG] = str(geometry_sig)
                 return None
 
     rect = Rect(
@@ -3668,6 +3787,7 @@ def ensure_balloon_tail_main_line_mesh(
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
         mask_info=mask_info,
+        geometry_sig=geometry_sig,
     )
 
 

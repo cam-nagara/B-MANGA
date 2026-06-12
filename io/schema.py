@@ -697,6 +697,7 @@ def work_to_dict(work) -> dict[str, Any]:
     image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
     return {
         "schemaVersion": WORK_SCHEMA_VERSION,
+        "balloonIdCounter": int(getattr(work, "balloon_id_counter", 0) or 0),
         "workInfo": work_info_to_dict(work.work_info),
         "nombre": nombre_to_dict(work.nombre),
         "paper": paper_to_dict(work.paper),
@@ -748,6 +749,11 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     data = data or {}
     work_schema_version = _data_schema_version(data, 1)
     opacity_percent_schema = work_schema_version >= 5
+    if hasattr(work, "balloon_id_counter"):
+        try:
+            work.balloon_id_counter = max(0, int(data.get("balloonIdCounter", 0) or 0))
+        except Exception:  # noqa: BLE001
+            pass
     # 現状は v1 のみ対応。未知バージョンは読み込もうとするが警告は呼出側で。
     work_info_from_dict(work.work_info, data.get("workInfo", {}))
     nombre_from_dict(work.nombre, data.get("nombre", {}))

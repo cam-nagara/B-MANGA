@@ -285,7 +285,12 @@ def _draw_coma_thumb(draw, image, work, page, coma, points_px, bbox_px) -> None:
         x0, y0, x1, y1 = bbox_px
         width = max(1, int(round(x1 - x0)))
         height = max(1, int(round(y1 - y0)))
-        thumb = Image.open(src).convert("RGBA").resize((width, height))
+        from ..io import export_pipeline
+
+        src_image = export_pipeline._safe_load_image(Path(src))
+        if src_image is None:
+            return
+        thumb = src_image.resize((width, height))
         mask_draw = Image.new("L", (width, height), 0)
         local_points = [(int(round(x - x0)), int(round(y - y0))) for x, y in points_px]
         from PIL import ImageDraw
@@ -629,6 +634,29 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
             pass
 
 
+def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
+    """プレビュー PNG が保存内容 (page.json / コマ画像) より新しいかを返す."""
+    try:
+        png_mtime = path.stat().st_mtime
+    except OSError:
+        return False
+    try:
+        from . import coma_preview
+
+        work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+        page_id = str(getattr(page, "id", "") or "")
+        meta = paths.page_meta_path(work_dir, page_id)
+        if meta.is_file() and meta.stat().st_mtime > png_mtime:
+            return False
+        for coma in getattr(page, "comas", []) or []:
+            src = coma_preview.coma_preview_source_path(work_dir, page_id, coma)
+            if src is not None and src.is_file() and src.stat().st_mtime > png_mtime:
+                return False
+    except Exception:  # noqa: BLE001
+        return False
+    return True
+
+
 def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     context = context or bpy.context
     scene = getattr(context, "scene", None)
@@ -651,7 +679,13 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
             current_index = int(current_rect[0])
             try:
                 page = getattr(work, "pages", [])[current_index]
-                ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
+                # 毎回の強制再生成はやめ、保存内容 (page.json / コマ画像) より
+                # 古いときだけ作り直す。ページを閉じるときは別途強制再生成される
+                # ため、ページ一覧へ戻った時点の見た目は常に最新になる。
+                png_path = _preview_png_path(work, current_page_id)
+                needs = png_path is None or not _preview_png_fresh_for_page(work, page, png_path)
+                if needs:
+                    ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
             except Exception:  # noqa: BLE001
                 _logger.exception("current page preview update failed: %s", current_page_id)
     for obj in _iter_preview_objects():

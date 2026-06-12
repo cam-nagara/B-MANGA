@@ -486,6 +486,7 @@ def _attach_fill_mesh_object(
     scene,
     balloon_id: str,
     visible: bool,
+    geometry_sig=None,
 ) -> bpy.types.Object:
     """塗り面メッシュをフキダシ本体に親付けする (band mesh と同じパターン)."""
     obj = bpy.data.objects.get(obj_name)
@@ -536,6 +537,13 @@ def _attach_fill_mesh_object(
 
     obj.hide_viewport = not visible
     obj.hide_render = not visible
+    if geometry_sig:
+        obj[balloon_line_mesh.PROP_BAND_GEOMETRY_SIG] = str(geometry_sig)
+    elif balloon_line_mesh.PROP_BAND_GEOMETRY_SIG in obj:
+        try:
+            del obj[balloon_line_mesh.PROP_BAND_GEOMETRY_SIG]
+        except Exception:  # noqa: BLE001
+            pass
     return obj
 
 
@@ -547,6 +555,7 @@ def ensure_balloon_fill_mesh(
     entry,
     body_object: bpy.types.Object,
     fill_material: bpy.types.Material,
+    geometry_sig=None,
 ) -> Optional[bpy.types.Object]:
     """フキダシ塗り面のメッシュオブジェクトを生成・更新する.
 
@@ -556,6 +565,19 @@ def ensure_balloon_fill_mesh(
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
+
+    cached = balloon_line_mesh.band_geometry_cache_hit(_fill_mesh_object_name(balloon_id), geometry_sig)
+    if cached is not None:
+        return _attach_fill_mesh_object(
+            obj_name=_fill_mesh_object_name(balloon_id),
+            mesh=cached.data,
+            material=fill_material,
+            body_object=body_object,
+            scene=scene,
+            balloon_id=balloon_id,
+            visible=bool(getattr(entry, "visible", True)),
+            geometry_sig=geometry_sig,
+        )
 
     body_spline = _resolve_body_spline(body_object)
     if body_spline is None:
@@ -615,4 +637,5 @@ def ensure_balloon_fill_mesh(
         scene=scene,
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
+        geometry_sig=geometry_sig,
     )

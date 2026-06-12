@@ -255,7 +255,7 @@ def _scale_alpha(img, opacity: int) -> Any:
     if opacity >= 255:
         return img
     out = img.copy()
-    alpha = out.getchannel("A").point(lambda px: int(round(px * (opacity / 255.0))))
+    alpha = out.getchannel("A").point([int(round(i * (opacity / 255.0))) for i in range(256)])
     out.putalpha(alpha)
     return out
 
@@ -449,13 +449,31 @@ def _coma_preview_source(work_dir: Path, page_id: str, entry) -> Path | None:
     return coma_preview.coma_preview_source_path(work_dir, page_id, entry)
 
 
+# 同一画像 (コマ画像等) の繰り返し読み込みを避ける小さなキャッシュ。
+# キーは (パス, 更新時刻) なので、画像が更新されれば自動で読み直す。
+_IMAGE_FILE_CACHE: dict[tuple[str, float], Any] = {}
+_IMAGE_FILE_CACHE_MAX = 64
+
+
 def _safe_load_image(path: Path) -> Any | None:
     try:
+        mtime = Path(path).stat().st_mtime
+    except OSError:
+        mtime = -1.0
+    key = (str(path), mtime)
+    cached = _IMAGE_FILE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    try:
         with Image.open(str(path)) as opened:
-            return opened.convert("RGBA")
+            image = opened.convert("RGBA")
     except (OSError, ValueError) as exc:
         _logger.warning("failed to open image %s: %s", path, exc)
         return None
+    if len(_IMAGE_FILE_CACHE) >= _IMAGE_FILE_CACHE_MAX:
+        _IMAGE_FILE_CACHE.clear()
+    _IMAGE_FILE_CACHE[key] = image
+    return image
 
 
 def _line_segments_for_style(
@@ -1370,6 +1388,8 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
     page_id = str(getattr(page, "id", "") or "")
     for obj in bpy.data.objects:
         if obj is master:
+            continue
+        if getattr(obj, "type", "") != "GREASEPENCIL":
             continue
         try:
             if str(obj.get("bname_kind", "") or "") != "effect":
