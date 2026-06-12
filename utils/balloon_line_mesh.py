@@ -2706,6 +2706,110 @@ def _rebuild_band_mesh(
     mesh.update()
 
 
+RIBBON_UV_LAYER_NAME = "BNameRibbon"
+
+
+def _line_material_texture_size(entry) -> tuple[int, int]:
+    """線マテリアルの最初の画像テクスチャのピクセルサイズを返す (無ければ 0,0)."""
+    name = str(getattr(entry, "line_material_name", "") or "").strip()
+    if not name:
+        return 0, 0
+    mat = bpy.data.materials.get(name)
+    if mat is None or not getattr(mat, "use_nodes", False) or mat.node_tree is None:
+        return 0, 0
+    for node in mat.node_tree.nodes:
+        image = getattr(node, "image", None)
+        if getattr(node, "bl_idname", "") == "ShaderNodeTexImage" and image is not None:
+            try:
+                return int(image.size[0]), int(image.size[1])
+            except Exception:  # noqa: BLE001
+                return 0, 0
+    return 0, 0
+
+
+def _apply_ribbon_uv(mesh: bpy.types.Mesh, entry, loops_m, line_width_m: float) -> None:
+    """貼り方「線に沿う (リボン)」: 帯メッシュへ輪郭弧長ベースの UV を設定する.
+
+    各頂点を最寄りの輪郭ループへ投影し、u = 弧長 × 整数タイル数 / 周長、
+    v = 輪郭からの距離 / 帯幅 とする。周長をタイルの整数枚に合わせるため、
+    閉ループ一周で u がちょうど整数になり、始点終点で模様が連続する
+    (出力 PNG のリボン貼りと同じ規則)。
+    """
+    try:
+        if str(getattr(entry, "line_style", "") or "") != "material":
+            return
+        if str(getattr(entry, "line_material_mapping", "tile") or "tile") != "ribbon":
+            return
+        tex_w, tex_h = _line_material_texture_size(entry)
+        if tex_w <= 0 or tex_h <= 0 or line_width_m <= 1.0e-9 or len(mesh.vertices) == 0:
+            return
+        import numpy as np
+
+        from . import ribbon_mapping
+
+        seg_list = []
+        for loop in loops_m or ():
+            segs = ribbon_mapping.loop_segments([(float(p[0]), float(p[1])) for p in loop])
+            if segs is not None:
+                seg_list.append(segs)
+        if not seg_list:
+            return
+        count = len(mesh.vertices)
+        co = np.empty(count * 3, dtype=np.float32)
+        mesh.vertices.foreach_get("co", co)
+        xs = co[0::3].astype(np.float64)
+        ys = co[1::3].astype(np.float64)
+        best_d = best_u = best_n = None
+        for segs in seg_list:
+            n_tiles = float(ribbon_mapping.tile_count(segs["total"], float(line_width_m), tex_w, tex_h))
+            s_arr, d_arr = ribbon_mapping.project_points(segs, xs, ys)
+            u_arr = s_arr / segs["total"] * n_tiles
+            if best_d is None:
+                best_d, best_u = d_arr, u_arr
+                best_n = np.full(len(u_arr), n_tiles)
+            else:
+                take = d_arr < best_d
+                best_u = np.where(take, u_arr, best_u)
+                best_n = np.where(take, n_tiles, best_n)
+                best_d = np.where(take, d_arr, best_d)
+        v_arr = 1.0 - np.clip(best_d / float(line_width_m), 0.0, 1.0)
+        loop_count = len(mesh.loops)
+        if loop_count == 0:
+            return
+        vidx = np.empty(loop_count, dtype=np.int32)
+        mesh.loops.foreach_get("vertex_index", vidx)
+        u_corner = best_u[vidx]
+        n_corner = best_n[vidx]
+        # ループ閉合をまたぐ面 (u が n 付近と 0 付近の頂点が混在) は、面ごとに
+        # 小さい側へ -n して連続させる (テクスチャは繰り返しなので負でもよい)
+        poly_count = len(mesh.polygons)
+        if poly_count:
+            loop_start = np.empty(poly_count, dtype=np.int32)
+            loop_total = np.empty(poly_count, dtype=np.int32)
+            mesh.polygons.foreach_get("loop_start", loop_start)
+            mesh.polygons.foreach_get("loop_total", loop_total)
+            face_min = np.minimum.reduceat(u_corner, loop_start)
+            face_min_rep = np.repeat(face_min, loop_total)
+            wrap = (u_corner - face_min_rep) > (n_corner * 0.5)
+            u_corner = np.where(wrap, u_corner - n_corner, u_corner)
+        uv_layer = mesh.uv_layers.get(RIBBON_UV_LAYER_NAME)
+        if uv_layer is None:
+            uv_layer = mesh.uv_layers.new(name=RIBBON_UV_LAYER_NAME, do_init=False)
+        if uv_layer is None:
+            return
+        uv = np.empty(loop_count * 2, dtype=np.float32)
+        uv[0::2] = u_corner
+        uv[1::2] = v_arr[vidx]
+        uv_layer.data.foreach_set("uv", uv)
+        try:
+            uv_layer.active_render = True
+            mesh.uv_layers.active = uv_layer
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception:  # noqa: BLE001
+        _logger.exception("ribbon uv failed")
+
+
 def _line_mesh_object_name(balloon_id: str) -> str:
     return f"{BALLOON_LINE_MESH_NAME_PREFIX}{balloon_id}"
 
@@ -3011,6 +3115,8 @@ def ensure_balloon_line_mesh(
                     add_bend_mitre=not valley_sharp,
                 )
         _build_band_mesh_from_polygons(mesh, rings, LINE_Z_OFFSET_M)
+
+    _apply_ribbon_uv(mesh, entry, [samples], line_width_m)
 
     return _attach_band_mesh_object(
         obj_name=_line_mesh_object_name(balloon_id),
@@ -3736,6 +3842,7 @@ def ensure_balloon_tail_main_line_mesh(
     line_width_m = line_width_mm * 0.001
 
     polygons: list[tuple[list[tuple[float, float]], list[list[tuple[float, float]]]]] = []
+    tail_sample_loops: list[list[tuple[float, float]]] = []
     for tail in tails:
         try:
             pts_mm = balloon_tail_geom.polygon_for_tail(rect, tail)
@@ -3767,6 +3874,7 @@ def ensure_balloon_tail_main_line_mesh(
             )
             if band is not None:
                 polygons.append(band)
+                tail_sample_loops.append(samples)
 
     if not polygons:
         remove_balloon_tail_main_line_mesh(balloon_id)
@@ -3777,6 +3885,7 @@ def ensure_balloon_tail_main_line_mesh(
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
     _build_band_mesh_from_polygons(mesh, polygons, LINE_Z_OFFSET_M)
+    _apply_ribbon_uv(mesh, entry, tail_sample_loops, line_width_m)
 
     return _attach_band_mesh_object(
         obj_name=_tail_main_line_mesh_object_name(balloon_id),

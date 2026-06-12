@@ -220,7 +220,11 @@ class BNAME_PT_balloons(Panel):
             row.prop(entry, "dotted_gap_mm", text="間隔")
         elif line_style == "material":
             box.prop_search(entry, "line_material_name", bpy.data, "materials", text="マテリアル")
-            box.label(text="フキダシの領域基準で貼るため、閉じた形でも切れ目は出ません", icon="INFO")
+            box.prop(entry, "line_material_mapping", text="貼り方")
+            if str(getattr(entry, "line_material_mapping", "tile") or "tile") == "ribbon":
+                box.label(text="線に沿って貼り、周の長さに合わせて整数枚に調整するため切れ目は出ません", icon="INFO")
+            else:
+                box.label(text="フキダシの領域基準で貼るため、閉じた形でも切れ目は出ません", icon="INFO")
         # 主線の谷の線幅/山の線幅: % 指定 (動的形状のみ表示, 両方 0% で主線全体消失)
         _shape_norm_for_main_line = balloon_shapes.normalize_shape(str(getattr(entry, "shape", "") or ""))
         if line_style == "uni_flash":

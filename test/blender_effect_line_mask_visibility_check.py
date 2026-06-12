@@ -134,6 +134,10 @@ def main() -> None:
         mod = _load_addon()
         result = bpy.ops.bname.work_new(filepath=str(temp_root / "EffectMask.bname"))
         assert "FINISHED" in result, result
+        # 現行仕様: コマ・効果線の編集と用紙背景の実体はページファイル側にある
+        # (作品ファイルはページ一覧のみ)。ページファイルを開いてから検証する。
+        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        assert "FINISHED" in result, result
 
         from bname_dev_effect_mask_visibility.operators import coma_op, effect_line_op
         from bname_dev_effect_mask_visibility.utils import coma_border_object, coma_plane

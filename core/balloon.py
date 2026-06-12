@@ -833,6 +833,16 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_material_name: StringProperty(name="塗りマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     line_material_name: StringProperty(name="線マテリアル", description="線種「マテリアル」で線の帯に使うマテリアル", default="", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    line_material_mapping: EnumProperty(
+        name="貼り方",
+        description="線種「マテリアル」のテクスチャの貼り方",
+        items=[
+            ("tile", "そのまま (タイル)", "ページ全体に敷き詰めた模様を帯の形に切り抜く"),
+            ("ribbon", "線に沿う (リボン)", "テクスチャを線の向きに沿って変形して貼る。閉じた図形では周の長さに合わせて整数枚に調整し、始点終点に継ぎ目を出さない"),
+        ],
+        default="tile",
+        update=_on_balloon_entry_changed,
+    )  # type: ignore[valid-type]
     fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_enabled: BoolProperty(name="塗りグラデーション", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

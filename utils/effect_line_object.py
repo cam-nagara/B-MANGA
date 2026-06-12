@@ -477,6 +477,37 @@ def _append_line_segment_mesh(
     point_alphas.extend([_stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, start_index), _stroke_alpha_at(stroke, end_index), _stroke_alpha_at(stroke, end_index)])
 
 
+_POINT_CAP_SEGMENTS = 12
+
+
+def _append_point_cap_mesh(
+    *,
+    verts: list[tuple[float, float, float]],
+    faces: list[tuple[int, ...]],
+    face_materials: list[int],
+    point_alphas: list[float],
+    stroke,
+    index: int,
+) -> None:
+    points = getattr(stroke, "points_xyz", None) or []
+    try:
+        x, y, z = points[index]
+    except Exception:  # noqa: BLE001
+        return
+    radius = _stroke_radius_at(stroke, index)
+    if radius <= 1.0e-9:
+        return
+    z0 = float(z) + _stroke_z_offset(stroke)
+    alpha = _stroke_alpha_at(stroke, index)
+    base = len(verts)
+    for k in range(_POINT_CAP_SEGMENTS):
+        angle = 2.0 * math.pi * k / _POINT_CAP_SEGMENTS
+        verts.append((float(x) + math.cos(angle) * radius, float(y) + math.sin(angle) * radius, z0))
+        point_alphas.append(alpha)
+    faces.append(tuple(range(base, base + _POINT_CAP_SEGMENTS)))
+    face_materials.append(_stroke_material_index(stroke))
+
+
 def _append_stroke_mesh(
     *,
     verts: list[tuple[float, float, float]],
@@ -520,6 +551,23 @@ def _append_stroke_mesh(
             start_index=index,
             end_index=(index + 1) % count,
         )
+    # 端と折れ目を点ごとの半径の円で丸める (出力 PNG と同じ円ベースの線)。
+    # 下地 (underlay) の片側オフセット帯は出力同様に円を打たない。
+    side = 0.0
+    try:
+        side = float(getattr(stroke, "side", 0.0) or 0.0)
+    except Exception:  # noqa: BLE001
+        side = 0.0
+    if not (role == "underlay" and abs(side) > 1.0e-9):
+        for index in range(count):
+            _append_point_cap_mesh(
+                verts=verts,
+                faces=faces,
+                face_materials=face_materials,
+                point_alphas=point_alphas,
+                stroke=stroke,
+                index=index,
+            )
 
 
 def _rebuild_effect_display_mesh(mesh: bpy.types.Mesh, strokes) -> None:

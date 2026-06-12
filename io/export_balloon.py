@@ -291,6 +291,23 @@ def _draw_multi_ring_bands(canvas, outline, entry, color, *, sharp: bool) -> Non
             _composite_patches_px(canvas, band, color)
 
 
+def _patches_mask_px(canvas, patches):
+    """穴つき多角形パッチ群の領域マスク (L, 255=塗る) を作る."""
+    ep = _ep()
+    mask = ep.Image.new("L", canvas.image.size, 0)
+    mask_draw = ep.ImageDraw.Draw(mask)
+    for outer, holes in patches:
+        outer_px = canvas.points_px(outer)
+        if len(outer_px) < 3:
+            continue
+        mask_draw.polygon(outer_px, fill=255)
+        for hole in holes:
+            hole_px = canvas.points_px(hole)
+            if len(hole_px) >= 3:
+                mask_draw.polygon(hole_px, fill=0)
+    return mask
+
+
 def _composite_patches_px(canvas, patches, color, clip_mask=None, fill_image=None) -> None:
     """穴つき多角形パッチを指定色で合成する (穴は透過のまま残す).
 
@@ -302,17 +319,7 @@ def _composite_patches_px(canvas, patches, color, clip_mask=None, fill_image=Non
     if ep.Image is None or ep.ImageDraw is None or not patches:
         return
     if fill_image is not None:
-        mask = ep.Image.new("L", canvas.image.size, 0)
-        mask_draw = ep.ImageDraw.Draw(mask)
-        for outer, holes in patches:
-            outer_px = canvas.points_px(outer)
-            if len(outer_px) < 3:
-                continue
-            mask_draw.polygon(outer_px, fill=255)
-            for hole in holes:
-                hole_px = canvas.points_px(hole)
-                if len(hole_px) >= 3:
-                    mask_draw.polygon(hole_px, fill=0)
+        mask = _patches_mask_px(canvas, patches)
         if clip_mask is not None and ep.ImageChops is not None:
             mask = ep.ImageChops.multiply(mask, clip_mask)
         temp = fill_image.copy()
@@ -341,18 +348,16 @@ def _composite_patches_px(canvas, patches, color, clip_mask=None, fill_image=Non
     canvas.image.alpha_composite(temp)
 
 
-def _line_material_fill_image(entry, size: tuple[int, int]):
-    """線種「マテリアル」の帯を塗る画像 (キャンバスサイズ) を作る.
+def _line_material_texture(entry):
+    """線種「マテリアル」のテクスチャ画像と単色フォールバックを返す.
 
-    マテリアルの最初の画像テクスチャをページ空間でタイルして使う。
-    画像が無ければマテリアルのビューポート表示色で塗る。どちらも領域基準の
-    貼り込みのため、閉じた形 (円・矩形など) でも始点終点の継ぎ目が出ない。
+    返り値は (PIL画像 or None, RGBA色 or None)。マテリアル未指定なら (None, None)。
     """
     import os
 
     name = str(getattr(entry, "line_material_name", "") or "").strip()
     if not name:
-        return None
+        return None, None
     try:
         import bpy as _bpy
 
@@ -360,10 +365,10 @@ def _line_material_fill_image(entry, size: tuple[int, int]):
     except Exception:  # noqa: BLE001
         mat = None
     if mat is None:
-        return None
+        return None, None
     ep = _ep()
     if ep.Image is None:
-        return None
+        return None, None
     src = None
     try:
         if getattr(mat, "use_nodes", False) and mat.node_tree is not None:
@@ -379,17 +384,70 @@ def _line_material_fill_image(entry, size: tuple[int, int]):
     except Exception:  # noqa: BLE001
         src = None
     if src is not None:
-        src = src.convert("RGBA")
+        return src.convert("RGBA"), None
+    try:
+        return None, ep._rgb255(tuple(mat.diffuse_color), alpha=1.0)
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+def _line_material_fill_image(entry, size: tuple[int, int]):
+    """線種「マテリアル」の帯を塗る画像 (キャンバスサイズ) を作る.
+
+    マテリアルの最初の画像テクスチャをページ空間でタイルして使う。
+    画像が無ければマテリアルのビューポート表示色で塗る。どちらも領域基準の
+    貼り込みのため、閉じた形 (円・矩形など) でも始点終点の継ぎ目が出ない。
+    """
+    ep = _ep()
+    src, color = _line_material_texture(entry)
+    if src is not None:
         out = ep.Image.new("RGBA", size, (0, 0, 0, 0))
         for y in range(0, size[1], max(1, src.height)):
             for x in range(0, size[0], max(1, src.width)):
                 out.paste(src, (x, y))
         return out
+    if color is not None:
+        return ep.Image.new("RGBA", size, color)
+    return None
+
+
+def _line_material_ribbon_image(entry, canvas, outline_mm, band_rings, line_w_mm: float, dpi: float):
+    """貼り方「線に沿う (リボン)」の帯画像 (キャンバスサイズ) を作る.
+
+    テクスチャの高さを帯幅に合わせ、輪郭の弧長方向へ「周長 ÷ タイル幅」の
+    整数枚で敷く。閉ループ一周でちょうど割り切れるため、始点終点の継ぎ目が
+    構造的に出ない (テクスチャ自体が横方向にループする柄なら模様も連続する)。
+    テクスチャ画像が無いマテリアルではタイル貼りと同じ結果のため None を返す
+    (呼び出し側が領域基準の塗りへフォールバックする)。
+    """
+    ep = _ep()
+    src, _color = _line_material_texture(entry)
+    if src is None or not band_rings:
+        return None
     try:
-        color = ep._rgb255(tuple(mat.diffuse_color), alpha=1.0)
+        import numpy as np
+
+        from ..utils import ribbon_mapping
     except Exception:  # noqa: BLE001
         return None
-    return ep.Image.new("RGBA", size, color)
+    loop_px = canvas.points_px(outline_mm)
+    segs = ribbon_mapping.loop_segments(loop_px)
+    if segs is None:
+        return None
+    band_w_px = max(1.0, mm_to_px(float(line_w_mm), dpi))
+    n_tiles = ribbon_mapping.tile_count(segs["total"], band_w_px, src.width, src.height)
+    mask = _patches_mask_px(canvas, band_rings)
+    mask_arr = np.asarray(mask)
+    ys, xs = np.nonzero(mask_arr)
+    if len(xs) == 0:
+        return None
+    s_arr, d_arr = ribbon_mapping.project_points(segs, xs + 0.5, ys + 0.5)
+    src_arr = np.asarray(src, dtype=np.uint8)
+    u = np.floor(s_arr / segs["total"] * n_tiles * src.width).astype(np.int64) % src.width
+    v = np.clip(np.floor(d_arr / band_w_px * src.height), 0, src.height - 1).astype(np.int64)
+    out_arr = np.zeros((canvas.image.size[1], canvas.image.size[0], 4), dtype=np.uint8)
+    out_arr[ys, xs] = src_arr[v, u]
+    return ep.Image.fromarray(out_arr, "RGBA")
 
 
 def _mitre_band_polygons_mm(outline, outer_off_mm: float, inner_off_mm: float, *, sharp: bool = True):
@@ -1080,11 +1138,22 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
     inner_w_mm = _scaled_width_mm(entry, "inner_white_margin_width_mm", 0.0)
     body_sharp = _body_sharp_corners(entry)
     band_line_styles = {"solid", "double", "material"}
-    line_band_fill = (
-        _line_material_fill_image(entry, canvas.image.size)
-        if str(line_style or "") == "material"
-        else None
-    )
+    line_material_mapping = str(getattr(entry, "line_material_mapping", "tile") or "tile")
+    _tile_fill_cache: list = []
+
+    def _line_band_fill_for(loop_outline, loop_band_rings):
+        """この帯 (本体/しっぽ) を塗るマテリアル画像を貼り方に応じて返す."""
+        if str(line_style or "") != "material":
+            return None
+        if line_material_mapping == "ribbon":
+            ribbon = _line_material_ribbon_image(
+                entry, canvas, loop_outline, loop_band_rings, line_w_mm, dpi
+            )
+            if ribbon is not None:
+                return ribbon
+        if not _tile_fill_cache:
+            _tile_fill_cache.append(_line_material_fill_image(entry, canvas.image.size))
+        return _tile_fill_cache[0]
     if draw_line and not is_flash and bool(getattr(entry, "outer_white_margin_enabled", False)):
         # 外フチ: 線の外側にだけ付く帯 (画面のメッシュと同じ付き方)。
         # 「角を尖らせる」ON のときは mitre join で角まで尖らせる。
@@ -1128,7 +1197,9 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                     )
                 except Exception:  # noqa: BLE001
                     pass
-            _composite_patches_px(canvas, band_rings, line_color, fill_image=line_band_fill)
+            _composite_patches_px(
+                canvas, band_rings, line_color, fill_image=_line_band_fill_for(outline, band_rings)
+            )
         else:
             _draw_balloon_line_loop(draw, outline_px, entry, line_color, line_width_px, dpi, body_center_px)
     for tail_outline in tail_outlines:
@@ -1173,7 +1244,12 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
                             )
                         except Exception:  # noqa: BLE001
                             pass
-                    _composite_patches_px(canvas, band_rings, line_color, fill_image=line_band_fill)
+                    _composite_patches_px(
+                        canvas,
+                        band_rings,
+                        line_color,
+                        fill_image=_line_band_fill_for(tail_outline, band_rings),
+                    )
                 else:
                     _draw_balloon_line_loop(draw, tail_px, entry, line_color, line_width_px, dpi, body_center_px)
     # 線しっぽ (線種「線」): ストローク多角形を線色で塗る

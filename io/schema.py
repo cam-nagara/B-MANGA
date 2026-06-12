@@ -1169,6 +1169,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "fillOpacity": _opacity_to_data(getattr(entry, "fill_opacity", 100.0)),
         "fillMaterialName": str(getattr(entry, "fill_material_name", "") or ""),
         "lineMaterialName": str(getattr(entry, "line_material_name", "") or ""),
+        "lineMaterialMapping": str(getattr(entry, "line_material_mapping", "tile") or "tile"),
         "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
         "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
         "fillGradientEnabled": bool(getattr(entry, "fill_gradient_enabled", False)),
@@ -1366,6 +1367,8 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
         entry.white_underlay_width_percent = float(getattr(entry, "flash_white_line_width_percent", 100.0) or 100.0)
     entry.fill_material_name = str(data.get("fillMaterialName", "") or "")
     entry.line_material_name = str(data.get("lineMaterialName", "") or "")
+    mapping = str(data.get("lineMaterialMapping", "tile") or "tile")
+    entry.line_material_mapping = mapping if mapping in {"tile", "ribbon"} else "tile"
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
     entry.fill_gradient_enabled = bool(data.get("fillGradientEnabled", False))
