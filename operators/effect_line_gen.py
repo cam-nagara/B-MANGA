@@ -961,14 +961,21 @@ def _apply_uni_flash_jag(
     scale_out = 1.0 + 0.10 * k
     cx = mm_to_m(center_xy_mm[0])
     cy = mm_to_m(center_xy_mm[1])
+    # 主線とその白抜き (下地) は同じ始点を共有する複製のため、リストの並びで
+    # 交互判定すると主線と白抜きが別々の伸縮率になりズレて見える。始点ごとに
+    # 同じ伸縮率を割り当てて、主線と白抜きを一緒にズラす。
+    parity_by_start: dict[tuple[int, int], int] = {}
     out: list[EffectLineStroke] = []
-    for i, stroke in enumerate(strokes):
+    for stroke in strokes:
         if len(stroke.points_xyz) < 2:
             out.append(stroke)
             continue
         pts = list(stroke.points_xyz)
+        sx, sy, _sz = pts[0]
+        start_key = (int(round(float(sx) * 1.0e5)), int(round(float(sy) * 1.0e5)))
+        slot = parity_by_start.setdefault(start_key, len(parity_by_start))
         ex, ey, ez = pts[-1]
-        scale = scale_in if i % 2 == 0 else scale_out
+        scale = scale_in if slot % 2 == 0 else scale_out
         pts[-1] = (cx + (ex - cx) * scale, cy + (ey - cy) * scale, ez)
         out.append(
             EffectLineStroke(

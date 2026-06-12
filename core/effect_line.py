@@ -392,9 +392,9 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    length_jitter_amount: FloatProperty(name="始点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    length_jitter_amount: FloatProperty(name="始点乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     end_length_jitter_enabled: BoolProperty(name="終点乱れ", default=True, update=_on_params_changed)  # type: ignore[valid-type]
-    end_length_jitter_amount: FloatProperty(name="終点乱れ (%)", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    end_length_jitter_amount: FloatProperty(name="終点乱れ (%)", default=20.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
     spacing_mode: EnumProperty(name="線の間隔", items=_SPACING_MODE_ITEMS, default="distance", update=_on_params_changed)  # type: ignore[valid-type]
     spacing_angle_deg: FloatProperty(name="線の間隔 (角度)", default=5.0, min=0.1, soft_max=90.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -430,9 +430,9 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     fill_color: FloatVectorProperty(name="塗り色", subtype="COLOR", size=4, default=(0.0, 0.0, 0.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     fill_opacity: FloatProperty(name="塗り不透明度", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
     fill_base_shape: BoolProperty(name="終点形状を下地として塗る", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    white_underlay_enabled: BoolProperty(name="白抜き線", default=False, update=_on_params_changed)  # type: ignore[valid-type]
-    white_underlay_width_percent: FloatProperty(name="白抜き線幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
-    white_underlay_color: FloatVectorProperty(name="白抜き線色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_enabled: BoolProperty(name="白抜き", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_width_percent: FloatProperty(name="白抜き幅 (%)", default=150.0, min=-300.0, max=300.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    white_underlay_color: FloatVectorProperty(name="白抜き色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     # ウニフラ固有: 線の終点を交互に出し入れする量 (50% = 従来の固定量)
     uni_flash_offset_percent: FloatProperty(name="ズラし量 (%)", description="線の終点を交互に出し入れして、長さをずらします", default=50.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 

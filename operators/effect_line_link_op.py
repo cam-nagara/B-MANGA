@@ -125,6 +125,9 @@ def _copy_linked_shape_params(source_params: dict, dest_params: dict) -> dict:
     for field in _LINKED_SHAPE_FIELDS:
         if field in source_params:
             out[field] = source_params[field]
+    # 「ズラし量」はリンクで連動させない。保存データに値が無い旧レイヤーでも、
+    # 共有の作業用パラメータ (編集元の値) へフォールバックしないよう既定値で埋める
+    out.setdefault("uni_flash_offset_percent", 50.0)
     return out
 
 
