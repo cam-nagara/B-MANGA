@@ -190,9 +190,19 @@ def selection_command_items(context) -> list[dict]:
                 "enabled": has_item,
             },
         )
+    if normalized_kind in {"balloon", "effect"}:
+        items.insert(
+            6,
+            {
+                "label": "自由変形",
+                "operator": "bname.free_transform_mode",
+                "icon": "MOD_LATTICE",
+                "enabled": has_item,
+            },
+        )
     if normalized_kind in {"balloon", "text", "effect"}:
         items.insert(
-            6 if normalized_kind in {"balloon", "effect"} else 5,
+            7 if normalized_kind in {"balloon", "effect"} else 5,
             {
                 "label": "自由変形をリセット",
                 "operator": "bname.reset_free_transform",
@@ -202,7 +212,7 @@ def selection_command_items(context) -> list[dict]:
         )
     if normalized_kind == "balloon":
         items.insert(
-            7,
+            8,
             {
                 "label": "拡大・縮小",
                 "operator": "bname.balloon_free_transform_scale",
@@ -211,7 +221,7 @@ def selection_command_items(context) -> list[dict]:
             },
         )
         items.insert(
-            8,
+            9,
             {
                 "label": "回転",
                 "operator": "bname.balloon_free_transform_rotate",

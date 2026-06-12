@@ -83,6 +83,34 @@ def _sync_balloon_after_transform(context, page, entry) -> None:
         pass
 
 
+class BNAME_OT_free_transform_mode(Operator):
+    bl_idname = "bname.free_transform_mode"
+    bl_label = "自由変形"
+    bl_description = (
+        "四隅のハンドルをドラッグして形を自由に歪められるようにします"
+        " (別のオブジェクトを選択すると通常操作に戻ります)"
+    )
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        return _active_stack_kind(context) in {"balloon", "effect", "effect_legacy"}
+
+    def execute(self, context):
+        from . import object_tool_selection
+
+        key = object_tool_selection.active_selection_key(context)
+        if not key:
+            self.report({"WARNING"}, "自由変形する対象が選択されていません")
+            return {"CANCELLED"}
+        wm = context.window_manager
+        if hasattr(wm, "bname_free_transform_key"):
+            wm.bname_free_transform_key = key
+        layer_stack_utils.tag_view3d_redraw(context)
+        self.report({"INFO"}, "自由変形: 四隅のハンドルをドラッグして変形 (別のオブジェクトを選択で終了)")
+        return {"FINISHED"}
+
+
 class BNAME_OT_reset_free_transform(Operator):
     bl_idname = "bname.reset_free_transform"
     bl_label = "自由変形をリセット"
@@ -243,6 +271,7 @@ class BNAME_OT_balloon_free_transform_rotate(Operator):
 
 
 _CLASSES = (
+    BNAME_OT_free_transform_mode,
     BNAME_OT_reset_free_transform,
     BNAME_OT_balloon_free_transform_scale,
     BNAME_OT_balloon_free_transform_rotate,
@@ -250,6 +279,7 @@ _CLASSES = (
 
 
 def register() -> None:
+    bpy.types.WindowManager.bname_free_transform_key = bpy.props.StringProperty(default="")
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -260,3 +290,7 @@ def unregister() -> None:
             bpy.utils.unregister_class(cls)
         except RuntimeError:
             pass
+    try:
+        del bpy.types.WindowManager.bname_free_transform_key
+    except AttributeError:
+        pass

@@ -390,6 +390,9 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         return
     kind = hit["kind"]
     key = str(hit.get("key", "") or "")
+    # 「自由変形」モードは対象以外を選択した時点で終了する
+    if key != object_tool_free_transform.mode_key(context):
+        object_tool_free_transform.clear_mode(context)
     if kind == "page":
         page_index = int(hit["page"])
         if 0 <= page_index < len(work.pages):
@@ -755,6 +758,7 @@ class BNAME_OT_object_tool(Operator):
                 object_selection.clear(context)
                 object_tool_selection.sync_outliner_selection_for_keys(context, [])
                 edge_selection.clear_selection(context)
+                object_tool_free_transform.clear_mode(context)
                 self._clear_click_state()
             return {"RUNNING_MODAL"}
         if event.value == "DOUBLE_CLICK" and mode == "single" and self._try_enter_coma_from_hit(context, hit):
@@ -762,6 +766,7 @@ class BNAME_OT_object_tool(Operator):
         free_action = object_tool_free_transform.free_action_for_hit(
             hit,
             ctrl=event.value == "PRESS" and bool(getattr(event, "ctrl", False)),
+            context=context if event.value == "PRESS" else None,
         )
         if free_action:
             mode = "single"

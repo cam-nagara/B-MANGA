@@ -123,6 +123,7 @@ def _assert_menu_for_kind(kind: str) -> None:
     expected = ["詳細設定", "コピー", "貼り付け", "複製", "リンク複製"]
     if kind in {"balloon", "effect"}:
         expected.append("中心点を中心へ戻す")
+        expected.append("自由変形")
     if kind in {"balloon", "text", "effect"}:
         expected.append("自由変形をリセット")
     if kind == "balloon":
@@ -146,6 +147,7 @@ def _assert_menu_for_kind(kind: str) -> None:
     assert enabled["リンク複製"] is (kind in {"balloon", "effect"}), (kind, enabled)
     if kind in {"balloon", "effect"}:
         assert enabled["中心点を中心へ戻す"] is True, (kind, enabled)
+        assert enabled["自由変形"] is True, (kind, enabled)
     if kind in {"balloon", "text", "effect"}:
         assert enabled["自由変形をリセット"] is True, (kind, enabled)
     if kind == "balloon":
