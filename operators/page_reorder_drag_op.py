@@ -175,6 +175,7 @@ class BNAME_OT_page_reorder_drag(Operator):
         self._start_xy = (float(event.mouse_x), float(event.mouse_y))
         self._drag_moved = False
         self._target_index: int | None = None
+        self._dst_index: int | None = None
         context.window_manager.modal_handler_add(self)
         return {"RUNNING_MODAL"}
 
@@ -216,6 +217,10 @@ class BNAME_OT_page_reorder_drag(Operator):
         page_index = coma_picker.find_page_at_event(context, event)
         if page_index is not None and 0 <= page_index < len(work.pages):
             self._target_index = page_index
+            insert_after = self._mouse_past_page_center(
+                context, event, work, page_index
+            )
+            self._dst_index = page_index + (1 if insert_after else 0)
             page = work.pages[page_index]
             reparent_overlay.set_hover(
                 "page",
@@ -224,11 +229,28 @@ class BNAME_OT_page_reorder_drag(Operator):
             )
         else:
             self._target_index = None
+            self._dst_index = None
             reparent_overlay.clear_hover()
         layer_stack_utils.tag_view3d_redraw(context)
 
+    @staticmethod
+    def _mouse_past_page_center(context, event, work, page_index: int) -> bool:
+        """マウスがページ中心より右（横並び）か下（縦並び）なら True."""
+        from . import coma_picker
+
+        coords = coma_picker._event_world_mm(context, event)
+        if coords is None:
+            return False
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            return False
+        ox, oy = page_grid.page_total_offset_mm(work, scene, page_index)
+        cw = float(work.paper.canvas_width_mm)
+        cx = ox + cw * 0.5
+        return coords[0] > cx
+
     def _execute_reorder(self, context) -> None:
-        target = self._target_index
+        target = self._dst_index
         if target is None:
             return
         work = get_work(context)
