@@ -63,6 +63,10 @@ def raster_key(entry) -> str:
     return make_key("raster", "", str(getattr(entry, "id", "") or ""))
 
 
+def fill_key(entry) -> str:
+    return make_key("fill", "", str(getattr(entry, "id", "") or ""))
+
+
 def _coma_id(panel) -> str:
     return str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
 

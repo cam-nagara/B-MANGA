@@ -260,7 +260,7 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
 
         if kind in {"balloon", "text"}:
             return ls.target_uid(kind, f"{page_id}:{bname_id}")
-        if kind in {"image", "raster"}:
+        if kind in {"image", "raster", "fill"}:
             return ls.target_uid(kind, bname_id)
         if kind == "effect":
             layers = getattr(getattr(obj, "data", None), "layers", None)
@@ -524,8 +524,21 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
             for entry in getattr(work, "shared_texts", []) or []:
                 tro.ensure_text_real_object(scene=scene, entry=entry, page=None)
             tro.cleanup_orphan_text_objects(scene, _work_for_page_filter(work, page_filter))
+
+        # fill_layers (scene 直下): ベタ塗り/グラデーション平面として実体化する。
+        from . import fill_real_object as fro
+
+        if page_filter is None:
+            fro.sync_all_fill_real_objects(scene, work)
+        elif page_filter:
+            for entry in getattr(scene, "bname_fill_layers", []) or []:
+                if not _entry_in_page_filter(entry, work, page_filter):
+                    continue
+                page = fro.page_for_entry(scene, work, entry)
+                fro.ensure_fill_real_object(scene=scene, entry=entry, page=page)
+            fro.cleanup_orphan_fill_objects(scene)
     except Exception:  # noqa: BLE001
-        _logger.exception("mirror image/text objects failed")
+        _logger.exception("mirror image/text/fill objects failed")
 
 
 def _saved_runtime_objects_look_current(

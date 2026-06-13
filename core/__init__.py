@@ -15,6 +15,7 @@ from ..utils import log
 from . import (
     balloon,
     effect_line,
+    fill_layer,
     image_layer,
     layer_folder,
     layer_stack,
@@ -47,6 +48,7 @@ _MODULES = (
     effect_line,
     image_layer,
     raster_layer,
+    fill_layer,
     layer_folder,
     layer_stack,
     work,

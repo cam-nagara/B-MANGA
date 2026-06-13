@@ -58,6 +58,12 @@ def _suspend_load_property_side_effects():
             stack.enter_context(image_real_object.suspend_auto_sync())
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from ..utils import fill_real_object
+
+            stack.enter_context(fill_real_object.suspend_auto_sync())
+        except Exception:  # noqa: BLE001
+            pass
 
         def _patch(module, name: str) -> None:
             try:
@@ -575,6 +581,50 @@ def image_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool 
     entry.tint_color = (*color_space.srgb_to_linear_rgb(tint[:3]), tint[3])
 
 
+# ---------- FillLayer ----------
+
+
+def fill_layer_to_dict(entry) -> dict[str, Any]:
+    c1 = color_space.linear_to_srgb_rgb(tuple(float(c) for c in entry.color[:3]))
+    c2 = color_space.linear_to_srgb_rgb(tuple(float(c) for c in entry.color2[:3]))
+    return {
+        "id": entry.id,
+        "title": entry.title,
+        "fillType": str(getattr(entry, "fill_type", "solid") or "solid"),
+        "color": color_to_hex((*c1, float(entry.color[3]))),
+        "color2": color_to_hex((*c2, float(entry.color2[3]))),
+        "gradientType": str(getattr(entry, "gradient_type", "linear") or "linear"),
+        "gradientAngle": round(float(getattr(entry, "gradient_angle", 0.0) or 0.0), 4),
+        "visible": bool(entry.visible),
+        "locked": bool(entry.locked),
+        "opacity": _opacity_to_data(entry.opacity),
+        "opacityUnit": "percent",
+        "parentKind": str(getattr(entry, "parent_kind", "page") or "page"),
+        "parentKey": str(getattr(entry, "parent_key", "") or ""),
+        "folderKey": str(getattr(entry, "folder_key", "") or ""),
+    }
+
+
+def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
+    data = data or {}
+    entry.id = str(data.get("id", "") or "")
+    entry.title = str(data.get("title", "") or "")
+    entry.fill_type = str(data.get("fillType", data.get("fill_type", "solid")) or "solid")
+    entry.parent_kind = str(data.get("parentKind", data.get("parent_kind", "page")) or "page")
+    entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
+    if hasattr(entry, "folder_key"):
+        entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
+    c1 = hex_to_rgba(str(data.get("color", "#000000FF")))
+    entry.color = (*color_space.srgb_to_linear_rgb(c1[:3]), c1[3])
+    c2 = hex_to_rgba(str(data.get("color2", "#FFFFFFFF")))
+    entry.color2 = (*color_space.srgb_to_linear_rgb(c2[:3]), c2[3])
+    entry.gradient_type = str(data.get("gradientType", data.get("gradient_type", "linear")) or "linear")
+    entry.gradient_angle = float(data.get("gradientAngle", data.get("gradient_angle", 0.0)) or 0.0)
+    entry.visible = bool(data.get("visible", True))
+    entry.locked = bool(data.get("locked", False))
+    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
+
+
 # ---------- LayerFolder ----------
 
 
@@ -734,6 +784,10 @@ def work_to_dict(work) -> dict[str, Any]:
             image_layer_to_dict(entry)
             for entry in (image_layers or [])
         ],
+        "fill_layers": [
+            fill_layer_to_dict(entry)
+            for entry in (getattr(scene, "bname_fill_layers", None) or [])
+        ],
         "shared_balloons": [
             balloon_entry_to_dict(entry)
             for entry in getattr(work, "shared_balloons", [])
@@ -802,6 +856,15 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
                 image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bname_active_image_layer_index"):
             scene.bname_active_image_layer_index = 0 if len(image_layers) else -1
+    fill_layers = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    if fill_layers is not None:
+        fill_layers.clear()
+        with _suspend_load_property_side_effects():
+            for item in data.get("fill_layers", []) or []:
+                entry = fill_layers.add()
+                fill_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+        if hasattr(scene, "bname_active_fill_layer_index"):
+            scene.bname_active_fill_layer_index = 0 if len(fill_layers) else -1
     if hasattr(work, "shared_balloons"):
         work.shared_balloons.clear()
         with _suspend_load_property_side_effects():

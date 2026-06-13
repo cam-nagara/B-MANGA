@@ -33,6 +33,7 @@ _ADD_KIND_ITEMS = (
     ("gp", "グリースペンシル", ""),
     ("image", "画像 (配置)", ""),
     ("raster", "ラスター (描画)", ""),
+    ("fill", "塗り", ""),
     ("balloon", "フキダシ", ""),
     ("text", "テキスト", ""),
     ("effect", "効果線", ""),
@@ -46,6 +47,7 @@ _ADD_KIND_ICONS = {
     "gp": "OUTLINER_OB_GREASEPENCIL",
     "image": "IMAGE_DATA",
     "raster": "BRUSH_DATA",
+    "fill": "NODE_TEXTURE",
     "balloon_group": "FILE_FOLDER",
     "balloon": "MOD_FLUID",
     "text": "FONT_DATA",
@@ -227,12 +229,12 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
     from ..utils import gp_layer_parenting as gp_parent
 
     work = get_work(context)
-    logical_child_kinds = {"gp", "effect", "raster", "image", "balloon", "text"}
+    logical_child_kinds = {"gp", "effect", "raster", "image", "fill", "balloon", "text"}
     for item in stack:
         if layer_stack_utils.stack_item_uid(item) != anchor_uid:
             continue
         folder_key = _folder_key_for_anchor_item(context, item)
-        if kind in {"image", "raster", "balloon", "text"} and folder_key:
+        if kind in {"image", "raster", "fill", "balloon", "text"} and folder_key:
             semantic_parent = layer_folder_utils.semantic_parent_key_for_folder(work, folder_key)
             return "" if semantic_parent == OUTSIDE_STACK_KEY else semantic_parent
         # Page / Coma 行を選択中: そのコンテナの中へ
@@ -248,7 +250,7 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
         # 同種レイヤー選択中: 兄弟として
         if kind in {"gp", "gp_folder"} and item.kind == "gp":
             return str(getattr(item, "parent_key", "") or "")
-        if kind in {"effect", "raster", "balloon", "text"} and item.kind in {"effect", "raster", "balloon", "text"}:
+        if kind in {"effect", "raster", "fill", "balloon", "text"} and item.kind in {"effect", "raster", "fill", "balloon", "text"}:
             return str(getattr(item, "parent_key", "") or "")
         if kind == COMA_KIND and item.kind == COMA_KIND:
             return str(getattr(item, "parent_key", "") or "")
@@ -386,7 +388,7 @@ def _editable_name_prop_for_item(context, item) -> str | None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
         return None
-    if kind in {"layer_folder", "image", "raster", "balloon", "text"} and hasattr(
+    if kind in {"layer_folder", "image", "raster", "fill", "balloon", "text"} and hasattr(
         target, "title"
     ):
         return "title"
@@ -633,6 +635,13 @@ class BNAME_MT_layer_stack_add(Menu):
                     icon=_ADD_KIND_ICONS.get(kind, "ADD"),
                 )
                 continue
+            if kind == "fill":
+                layout.menu(
+                    "BNAME_MT_layer_stack_add_fill",
+                    text=label,
+                    icon=_ADD_KIND_ICONS.get(kind, "ADD"),
+                )
+                continue
             op = layout.operator(
                 "bname.layer_stack_add",
                 text=label,
@@ -665,6 +674,35 @@ class BNAME_MT_layer_stack_add_raster(Menu):
         op.bit_depth = "gray8"
 
 
+class BNAME_MT_layer_stack_add_fill(Menu):
+    bl_idname = "BNAME_MT_layer_stack_add_fill"
+    bl_label = "塗りを追加"
+
+    def draw(self, _context):
+        layout = self.layout
+        op = layout.operator(
+            "bname.layer_stack_add",
+            text="ベタ塗り",
+            icon="NODE_TEXTURE",
+        )
+        op.kind = "fill"
+        op.fill_type = "solid"
+        op = layout.operator(
+            "bname.layer_stack_add",
+            text="線形グラデーション",
+            icon="NODE_TEXTURE",
+        )
+        op.kind = "fill"
+        op.fill_type = "gradient_linear"
+        op = layout.operator(
+            "bname.layer_stack_add",
+            text="円形グラデーション",
+            icon="NODE_TEXTURE",
+        )
+        op.kind = "fill"
+        op.fill_type = "gradient_radial"
+
+
 class BNAME_OT_layer_stack_add(Operator, ImportHelper):
     bl_idname = "bname.layer_stack_add"
     bl_label = "レイヤーを追加"
@@ -678,6 +716,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         items=(("gray8", "グレー 8bit", ""), ("gray1", "1bit", "")),
         default="gray8",
     )
+    fill_type: StringProperty(default="solid", options={"HIDDEN"})  # type: ignore[valid-type]
     filter_glob: StringProperty(  # type: ignore[valid-type]
         default="*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.psd;*.bmp",
         options={"HIDDEN"},
@@ -718,6 +757,8 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
             return self._add_image(context, anchor_uid)
         if self.kind == "raster":
             return self._add_raster(context, anchor_uid)
+        if self.kind == "fill":
+            return self._add_fill(context, anchor_uid)
         if self.kind == "balloon":
             return self._add_balloon(context, anchor_uid)
         if self.kind == "text":
@@ -906,6 +947,41 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         if 0 <= idx < len(coll):
             return layer_stack_utils.target_uid("raster", coll[idx].id)
         return ""
+
+    def _add_fill(self, context, anchor_uid: str) -> str:
+        coll = getattr(context.scene, "bname_fill_layers", None)
+        if coll is None:
+            self.report({"ERROR"}, "塗りレイヤーが未初期化です")
+            return ""
+        used = {entry.id for entry in coll}
+        i = 1
+        while f"fill_{i:04d}" in used:
+            i += 1
+        entry = coll.add()
+        entry.id = f"fill_{i:04d}"
+        ft = str(getattr(self, "fill_type", "solid") or "solid")
+        if ft == "gradient_linear":
+            entry.fill_type = "gradient"
+            entry.gradient_type = "linear"
+            entry.title = f"グラデーション {i}"
+        elif ft == "gradient_radial":
+            entry.fill_type = "gradient"
+            entry.gradient_type = "radial"
+            entry.title = f"円形グラデーション {i}"
+        else:
+            entry.fill_type = "solid"
+            entry.title = f"ベタ塗り {i}"
+        parent_key = _parent_key_for_new_item(context, anchor_uid, "fill")
+        if parent_key:
+            entry.parent_kind = "coma" if ":" in parent_key else "page"
+            entry.parent_key = parent_key
+        folder_key = _folder_key_for_anchor(context, anchor_uid)
+        if folder_key:
+            entry.folder_key = folder_key
+        context.scene.bname_active_fill_layer_index = len(coll) - 1
+        context.scene.bname_active_layer_kind = "fill"
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        return layer_stack_utils.target_uid("fill", entry.id)
 
     def _add_balloon(self, context, anchor_uid: str) -> str:
         from .balloon_op import _allocate_balloon_id, _creation_violates_layer_scope
@@ -1266,7 +1342,7 @@ class BNAME_OT_layer_stack_toggle_visibility(Operator):
                     pass
         elif item.kind in {PAGE_KIND, COMA_KIND} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
-        elif item.kind in {"image", "raster"} and hasattr(target, "visible"):
+        elif item.kind in {"image", "raster", "fill"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
         elif item.kind in {"balloon", "text"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
@@ -1608,6 +1684,7 @@ _CLASSES = (
     BNAME_OT_layer_stack_move,
     BNAME_MT_layer_stack_add,
     BNAME_MT_layer_stack_add_raster,
+    BNAME_MT_layer_stack_add_fill,
     BNAME_OT_layer_stack_add,
     BNAME_OT_layer_stack_duplicate,
     BNAME_OT_layer_stack_toggle_visibility,

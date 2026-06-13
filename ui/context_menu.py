@@ -140,7 +140,7 @@ def selection_command_items(context) -> list[dict]:
         selected_linkable_count = 0
         selected_any_linked = False
     detail_operator = "bname.layer_stack_detail"
-    if kind in {"image", "raster", "balloon", "text", "gp", "effect", "effect_legacy"}:
+    if kind in {"image", "raster", "fill", "balloon", "text", "gp", "effect", "effect_legacy"}:
         if _active_managed_object_for_stack_item(context, item) is not None:
             detail_operator = "bname.layer_detail_open"
     items = [

@@ -142,6 +142,25 @@ def _draw_raster_selected_settings(box, entry) -> None:
     op.force = True
 
 
+def _draw_fill_selected_settings(box, entry) -> None:
+    settings = box.column(align=True)
+    fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
+    type_label = "グラデーション" if fill_type == "gradient" else "ベタ塗り"
+    settings.label(text=f"選択中: {entry.title or entry.id} ({type_label})", icon="NODE_TEXTURE")
+    settings.prop(entry, "title", text="名前")
+    settings.prop(entry, "visible", text="表示")
+    settings.prop(entry, "locked", text="ロック")
+    settings.prop(entry, "opacity", text="不透明度", slider=True)
+    settings.prop(entry, "fill_type", text="タイプ")
+    settings.prop(entry, "color", text="色")
+    if fill_type == "gradient":
+        settings.prop(entry, "color2", text="色2")
+        settings.prop(entry, "gradient_type", text="形状")
+        grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
+        if grad_type == "linear":
+            settings.prop(entry, "gradient_angle", text="角度")
+
+
 def _draw_balloon_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (フキダシ)")
@@ -734,6 +753,8 @@ def draw_stack_item_detail(layout, context, item, resolved) -> bool:
         _draw_image_selected_settings(box, target)
     elif kind == "raster":
         _draw_raster_selected_settings(box, target)
+    elif kind == "fill":
+        _draw_fill_selected_settings(box, target)
     elif kind == "balloon":
         _draw_balloon_selected_settings(box, context, target)
     elif kind == "text":

@@ -8,7 +8,7 @@ from ..core.work import get_work
 from .layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key, page_stack_key, split_child_key
 
 LAYER_FOLDER_KIND = "layer_folder"
-FOLDER_CHILD_KINDS = {"image", "raster", "balloon", "text"}
+FOLDER_CHILD_KINDS = {"image", "raster", "fill", "balloon", "text"}
 FOLDER_CONTAINER_CHILD_KINDS = FOLDER_CHILD_KINDS | {LAYER_FOLDER_KIND}
 
 

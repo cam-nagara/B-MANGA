@@ -32,7 +32,7 @@ from .layer_hierarchy import (
 _logger = log.get_logger(__name__)
 
 EFFECT_GP_OBJECT_NAME = "BName_EffectLines"
-PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "balloon", "text"}
+PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "fill", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
 COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
 LAYER_FOLDER_KIND = layer_folder_utils.LAYER_FOLDER_KIND
@@ -436,6 +436,31 @@ def _collect_image_targets_for_page(page, panels_by_key: dict[str, object]):
     return page_children, panel_children
 
 
+def _collect_fill_targets_for_page(page, panels_by_key: dict[str, object]):
+    scene = getattr(bpy.context, "scene", None)
+    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    if coll is None:
+        return [], {}
+    page_key = page_stack_key(page)
+    page_children: list[LayerTarget] = []
+    panel_children: dict[str, list[LayerTarget]] = {}
+    for entry in reversed(list(coll)):
+        parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+        parent_key = str(getattr(entry, "parent_key", "") or "")
+        label = getattr(entry, "title", "") or _jp_layer_label("fill", getattr(entry, "id", ""))
+        if parent_kind == "page" and parent_key in {getattr(page, "id", ""), page_key}:
+            page_children.append(LayerTarget("fill", entry.id, label, page_key, 1))
+            continue
+        if parent_kind == "coma":
+            for coma_key, panel in panels_by_key.items():
+                if _coma_parent_key_matches(entry, page, coma_key, panel):
+                    panel_children.setdefault(coma_key, []).append(
+                        LayerTarget("fill", entry.id, label, coma_key, 2)
+                    )
+                    break
+    return page_children, panel_children
+
+
 def _retarget_root_subtree_to_outside(targets: list[LayerTarget]) -> list[LayerTarget]:
     """GP/Effect の root 階層を UI 上の「ページ外」配下へ載せ替える."""
     folder_keys = {target.key for target in targets if target.kind == "gp_folder"}
@@ -551,6 +576,13 @@ def _collect_page_layer_targets(
     )
     page_children.extend(image_page_children)
     for coma_key, children in image_panel_children.items():
+        panel_children.setdefault(coma_key, []).extend(children)
+    fill_page_children, fill_panel_children = _collect_fill_targets_for_page(
+        page,
+        panels_by_key,
+    )
+    page_children.extend(fill_page_children)
+    for coma_key, children in fill_panel_children.items():
         panel_children.setdefault(coma_key, []).extend(children)
 
     for entry in reversed(list(getattr(page, "balloons", []))):
@@ -1705,6 +1737,11 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
         idx = int(getattr(scene, "bname_active_raster_layer_index", -1))
         if coll is not None and 0 <= idx < len(coll):
             return "raster", getattr(coll[idx], "id", "")
+    if kind == "fill":
+        coll = getattr(scene, "bname_fill_layers", None)
+        idx = int(getattr(scene, "bname_active_fill_layer_index", -1))
+        if coll is not None and 0 <= idx < len(coll):
+            return "fill", getattr(coll[idx], "id", "")
     if kind == "balloon" and page is not None:
         idx = int(getattr(page, "active_balloon_index", -1))
         if 0 <= idx < len(page.balloons):
@@ -2232,6 +2269,12 @@ def resolve_stack_item(context, item):
             "page": target_page,
             "page_index": page_idx,
         }
+    if kind == "fill":
+        coll = getattr(scene, "bname_fill_layers", None)
+        if coll is None:
+            return None
+        idx, entry = _find_by_id(coll, key)
+        return {"kind": kind, "target": entry, "object": None, "index": idx}
     if kind == "balloon":
         page_id, child_id = split_child_key(key)
         if page_id == OUTSIDE_STACK_KEY and work is not None:
@@ -2443,6 +2486,8 @@ def _object_selection_key_for_stack_item(item, resolved) -> str:
         return object_selection.image_key(target)
     if kind == "raster":
         return object_selection.raster_key(target)
+    if kind == "fill":
+        return object_selection.fill_key(target)
     if kind == "gp":
         return object_selection.gp_key(target)
     if kind == "effect":
@@ -2624,6 +2669,11 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         scene.bname_active_raster_layer_index = int(resolved.get("index", -1))
         scene.bname_active_gp_folder_key = ""
         scene.bname_active_layer_kind = "raster"
+        edge_selection.clear_selection(context)
+    elif kind == "fill":
+        scene.bname_active_fill_layer_index = int(resolved.get("index", -1))
+        scene.bname_active_gp_folder_key = ""
+        scene.bname_active_layer_kind = "fill"
         edge_selection.clear_selection(context)
     elif kind == "balloon_group":
         target_page = resolved.get("page") or page
@@ -2911,6 +2961,19 @@ def _apply_simple_collection_orders(context, stack) -> None:
         if active_key:
             _restore_active_collection_index(
                 scene, "bname_active_raster_layer_index", raster_layers, active_key
+            )
+
+    fill_layers = getattr(scene, "bname_fill_layers", None)
+    if fill_layers is not None:
+        active_key = ""
+        idx = int(getattr(scene, "bname_active_fill_layer_index", -1))
+        if 0 <= idx < len(fill_layers):
+            active_key = getattr(fill_layers[idx], "id", "")
+        front = [item.key for item in stack if item.kind == "fill"]
+        _reorder_collection(fill_layers, list(reversed(front)), lambda entry: entry.id)
+        if active_key:
+            _restore_active_collection_index(
+                scene, "bname_active_fill_layer_index", fill_layers, active_key
             )
 
     work = get_work(context)
@@ -3396,6 +3459,20 @@ def delete_stack_index(context, index: int) -> bool:
         except Exception:  # noqa: BLE001
             _logger.exception("delete raster from layer stack failed")
             return False
+    elif kind == "fill":
+        coll = getattr(scene, "bname_fill_layers", None)
+        idx = int(resolved.get("index", -1))
+        if coll is None or not (0 <= idx < len(coll)):
+            return False
+        fill_id = str(getattr(coll[idx], "id", "") or "")
+        coll.remove(idx)
+        try:
+            from . import fill_real_object
+
+            fill_real_object.remove_fill_real_object(fill_id)
+        except Exception:  # noqa: BLE001
+            _logger.exception("delete fill real object from layer stack failed")
+        scene.bname_active_fill_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
     elif kind == "balloon":
         idx = int(resolved.get("index", -1))
         target_page = resolved.get("page") or page

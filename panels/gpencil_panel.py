@@ -101,6 +101,7 @@ def _kind_icon(kind: str) -> str:
         "layer_folder": "FILE_FOLDER",
         "image": "IMAGE_DATA",
         "raster": "BRUSH_DATA",
+        "fill": "NODE_TEXTURE",
         "balloon_group": "FILE_FOLDER",
         "balloon": "MOD_FLUID",
         "text": "FONT_DATA",
@@ -186,7 +187,7 @@ def _draw_visibility_slot(row, item, target, index: int) -> None:
         _visibility_button(row, index, not bool(target.paper_visible))
     elif item.kind in {"page", "coma"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
-    elif item.kind in {"image", "raster"} and hasattr(target, "visible"):
+    elif item.kind in {"image", "raster", "fill"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
     elif item.kind == "balloon_group":
         _visibility_button(row, index, _balloon_group_hidden(item, target))
@@ -288,7 +289,7 @@ def _editable_name_prop(item, target) -> str | None:
     kind = str(getattr(item, "kind", "") or "")
     if kind in {"page", "coma", "coma_preview", "outside_group"}:
         return None
-    if kind in {"layer_folder", "image", "raster", "balloon", "text"} and hasattr(
+    if kind in {"layer_folder", "image", "raster", "fill", "balloon", "text"} and hasattr(
         target, "title"
     ):
         return "title"
@@ -503,6 +504,12 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         controls["lock_prop"] = "locked"
     elif item.kind == "raster":
         _draw_type_icon(row, index, "BRUSH_DATA")
+        _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
+        controls["aux"] = "lock"
+        controls["lock_target"] = target
+        controls["lock_prop"] = "locked"
+    elif item.kind == "fill":
+        _draw_type_icon(row, index, "NODE_TEXTURE")
         _select_name(row, index, getattr(target, "title", "") or item.label, item=item, target=target)
         controls["aux"] = "lock"
         controls["lock_target"] = target

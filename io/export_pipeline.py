@@ -884,6 +884,82 @@ def _render_image_layer(
     )
 
 
+def _render_fill_layer(
+    entry,
+    canvas_size: tuple[int, int],
+    *,
+    group_path: tuple[str, ...] = ("fill_layers",),
+) -> ExportLayer | None:
+    fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
+    opacity_pct = float(getattr(entry, "opacity", 100.0) or 100.0)
+    alpha_byte = max(0, min(255, int(round(opacity_pct * 2.55))))
+
+    try:
+        from ..utils import color_space
+    except Exception:  # noqa: BLE001
+        color_space = None
+
+    def _to_srgb_byte(linear_rgba):
+        r, g, b = float(linear_rgba[0]), float(linear_rgba[1]), float(linear_rgba[2])
+        a = float(linear_rgba[3]) if len(linear_rgba) > 3 else 1.0
+        if color_space is not None:
+            r, g, b = color_space.linear_to_srgb_rgb((r, g, b))
+        return (
+            max(0, min(255, int(round(r * 255)))),
+            max(0, min(255, int(round(g * 255)))),
+            max(0, min(255, int(round(b * 255)))),
+            max(0, min(255, int(round(a * 255)))),
+        )
+
+    w, h = canvas_size
+    if fill_type == "solid":
+        c = _to_srgb_byte(tuple(entry.color))
+        img = Image.new("RGBA", (w, h), c)
+    else:
+        grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
+        c1 = _to_srgb_byte(tuple(entry.color))
+        c2 = _to_srgb_byte(tuple(entry.color2))
+        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        import math
+
+        if grad_type == "radial":
+            cx, cy = w / 2.0, h / 2.0
+            max_r = math.hypot(cx, cy)
+            for y in range(h):
+                for x in range(w):
+                    d = math.hypot(x - cx, y - cy) / max_r if max_r > 0 else 0.0
+                    t = max(0.0, min(1.0, d))
+                    r = int(c1[0] + (c2[0] - c1[0]) * t)
+                    g = int(c1[1] + (c2[1] - c1[1]) * t)
+                    b = int(c1[2] + (c2[2] - c1[2]) * t)
+                    a = int(c1[3] + (c2[3] - c1[3]) * t)
+                    img.putpixel((x, y), (r, g, b, a))
+        else:
+            angle = float(getattr(entry, "gradient_angle", 0.0) or 0.0)
+            dx = math.cos(angle)
+            dy = -math.sin(angle)
+            for y in range(h):
+                for x in range(w):
+                    nx = (x / w - 0.5) * dx + (y / h - 0.5) * dy + 0.5
+                    t = max(0.0, min(1.0, nx))
+                    r = int(c1[0] + (c2[0] - c1[0]) * t)
+                    g = int(c1[1] + (c2[1] - c1[1]) * t)
+                    b = int(c1[2] + (c2[2] - c1[2]) * t)
+                    a = int(c1[3] + (c2[3] - c1[3]) * t)
+                    img.putpixel((x, y), (r, g, b, a))
+
+    return ExportLayer(
+        str(getattr(entry, "title", "") or entry.id),
+        img,
+        0,
+        0,
+        group_path=group_path,
+        visible=bool(getattr(entry, "visible", True)),
+        opacity=alpha_byte,
+        blend_mode="normal",
+    )
+
+
 def _render_balloon_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | None:
     from . import export_balloon
 
@@ -1525,6 +1601,35 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     str(getattr(entry, "parent_kind", "") or "page"),
                     str(getattr(entry, "parent_key", "") or ""),
                     ("image_layers",),
+                ),
+            )
+            if layer is not None:
+                layers.append(layer)
+
+    try:
+        fill_layers_coll = getattr(bpy.context.scene, "bname_fill_layers", None)
+    except Exception:  # pragma: no cover
+        fill_layers_coll = None
+    if fill_layers_coll is not None:
+        for entry in fill_layers_coll:
+            if not getattr(entry, "visible", True):
+                continue
+            entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+            entry_parent_key = str(getattr(entry, "parent_key", "") or "")
+            if entry_parent_kind in {"none", "outside"}:
+                continue
+            if entry_parent_kind in {"page", "coma"} and entry_parent_key:
+                entry_page_id = entry_parent_key.split(":", 1)[0]
+                if entry_page_id and page_id_for_filter and entry_page_id != page_id_for_filter:
+                    continue
+            layer = _render_fill_layer(
+                entry,
+                canvas_size,
+                group_path=_group_path_for_parent(
+                    page,
+                    entry_parent_kind,
+                    entry_parent_key,
+                    ("fill_layers",),
                 ),
             )
             if layer is not None:
