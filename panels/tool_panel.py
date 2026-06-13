@@ -23,6 +23,8 @@ _MODAL_TOOL_NAMES = (
     "effect_line_tool",
     "coma_vertex_edit",
     "coma_create",
+    "fill_tool",
+    "gradient_tool",
 )
 
 
@@ -160,6 +162,19 @@ class BNAME_PT_tools(Panel):
             text="",
             icon="FORCE_FORCE",
             depress=coma_modal_state.is_active("effect_line_tool"),
+        )
+        row.separator()
+        row.operator(
+            "bname.fill_tool",
+            text="",
+            icon="SNAP_FACE",
+            depress=coma_modal_state.is_active("fill_tool"),
+        )
+        row.operator(
+            "bname.gradient_tool",
+            text="",
+            icon="NODE_TEXTURE",
+            depress=coma_modal_state.is_active("gradient_tool"),
         )
 
         _draw_active_tool_preset_row(layout, context)

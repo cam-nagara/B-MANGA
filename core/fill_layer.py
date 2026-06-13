@@ -114,6 +114,20 @@ class BNameFillLayer(bpy.types.PropertyGroup):
     parent_key: StringProperty(name="親キー", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
     folder_key: StringProperty(name="レイヤーフォルダ", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
+    use_region: BoolProperty(name="領域指定", default=False, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_x_mm: FloatProperty(name="X (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_y_mm: FloatProperty(name="Y (mm)", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_width_mm: FloatProperty(name="幅 (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    region_height_mm: FloatProperty(name="高さ (mm)", default=0.0, min=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+
+    lasso_points_json: StringProperty(name="投げ縄頂点", default="", update=_on_fill_layer_changed)  # type: ignore[valid-type]
+
+    use_gradient_endpoints: BoolProperty(name="端点指定", default=False, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_start_x_mm: FloatProperty(name="開始X", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_start_y_mm: FloatProperty(name="開始Y", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_end_x_mm: FloatProperty(name="終了X", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+    gradient_end_y_mm: FloatProperty(name="終了Y", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
+
 
 _CLASSES = (BNameFillLayer,)
 

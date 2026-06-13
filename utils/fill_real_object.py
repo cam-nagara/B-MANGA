@@ -132,9 +132,13 @@ def entry_page_offset_mm(scene, work, entry, page):
         from . import page_grid
     except ImportError:
         return 0.0, 0.0
-    if page is None:
+    if page is None or work is None:
         return 0.0, 0.0
-    return page_grid.page_origin_mm(work, page)
+    page_id = str(getattr(page, "id", "") or "")
+    for i, p in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(p, "id", "") or "") == page_id:
+            return page_grid.page_total_offset_mm(work, scene, i)
+    return 0.0, 0.0
 
 
 def _fill_z_index(scene, fill_id: str) -> int:
@@ -163,6 +167,45 @@ def _rebuild_mesh(mesh: bpy.types.Mesh, width_m: float, height_m: float) -> None
     uvs = ((0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0))
     for loop_index, uv in zip(mesh.polygons[0].loop_indices, uvs, strict=False):
         uv_layer.data[loop_index].uv = uv
+
+
+def _rebuild_lasso_mesh(
+    mesh: bpy.types.Mesh,
+    points_mm: list,
+    center_x_mm: float,
+    center_y_mm: float,
+    canvas_w_mm: float,
+    canvas_h_mm: float,
+) -> bool:
+    import bmesh
+
+    if len(points_mm) < 3:
+        return False
+    bm = bmesh.new()
+    try:
+        for x, y in points_mm:
+            bm.verts.new((mm_to_m(x - center_x_mm), mm_to_m(y - center_y_mm), 0.0))
+        bm.verts.ensure_lookup_table()
+        try:
+            face = bm.faces.new(bm.verts)
+        except ValueError:
+            return False
+        bmesh.ops.triangulate(bm, faces=[face])
+        mesh.clear_geometry()
+        bm.to_mesh(mesh)
+    finally:
+        bm.free()
+    mesh.update()
+    uv_layer = mesh.uv_layers.active or mesh.uv_layers.new(name="UVMap")
+    cw = canvas_w_mm if canvas_w_mm > 1e-6 else 1.0
+    ch = canvas_h_mm if canvas_h_mm > 1e-6 else 1.0
+    for poly in mesh.polygons:
+        for li in poly.loop_indices:
+            v = mesh.vertices[mesh.loops[li].vertex_index]
+            px = v.co.x * 1000.0 + center_x_mm
+            py = v.co.y * 1000.0 + center_y_mm
+            uv_layer.data[li].uv = (px / cw, py / ch)
+    return True
 
 
 def _ensure_solid_material(name: str, color: tuple, opacity: float) -> bpy.types.Material:
@@ -213,6 +256,8 @@ def _ensure_gradient_material(
     gradient_type: str,
     angle_rad: float,
     opacity: float,
+    *,
+    endpoint_uv: tuple | None = None,
 ) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -247,11 +292,31 @@ def _ensure_gradient_material(
 
     if gradient_type == "radial":
         gradient.gradient_type = "SPHERICAL"
-        mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
+        if endpoint_uv is not None:
+            su, sv, eu, ev = endpoint_uv
+            dx, dy = eu - su, ev - sv
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist < 1e-6:
+                dist = 1.0
+            mapping.inputs["Location"].default_value = (su, sv, 0.0)
+            mapping.inputs["Scale"].default_value = (1.0 / dist, 1.0 / dist, 1.0)
+        else:
+            mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
     else:
         gradient.gradient_type = "LINEAR"
-        mapping.inputs["Rotation"].default_value = (0.0, 0.0, angle_rad)
-        mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
+        if endpoint_uv is not None:
+            su, sv, eu, ev = endpoint_uv
+            dx, dy = eu - su, ev - sv
+            dist = math.sqrt(dx * dx + dy * dy)
+            if dist < 1e-6:
+                dist = 1.0
+            ep_angle = math.atan2(dy, dx)
+            mapping.inputs["Location"].default_value = (su, sv, 0.0)
+            mapping.inputs["Rotation"].default_value = (0.0, 0.0, -ep_angle)
+            mapping.inputs["Scale"].default_value = (1.0 / dist, 1.0, 1.0)
+        else:
+            mapping.inputs["Rotation"].default_value = (0.0, 0.0, angle_rad)
+            mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
 
     cr = ramp.color_ramp
     cr.elements[0].color = (float(color1[0]), float(color1[1]), float(color1[2]), 1.0)
@@ -277,7 +342,19 @@ def _ensure_gradient_material(
     return mat
 
 
-def _ensure_material(entry) -> bpy.types.Material:
+def _endpoint_uv_for_entry(entry, width_mm: float, height_mm: float):
+    if not getattr(entry, "use_gradient_endpoints", False):
+        return None
+    if width_mm < 1e-6 or height_mm < 1e-6:
+        return None
+    su = float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0) / width_mm
+    sv = float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0) / height_mm
+    eu = float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0) / width_mm
+    ev = float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0) / height_mm
+    return (su, sv, eu, ev)
+
+
+def _ensure_material(entry, width_mm: float = 182.0, height_mm: float = 257.0) -> bpy.types.Material:
     fill_id = str(getattr(entry, "id", "") or "")
     name = _material_name(fill_id)
     fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
@@ -288,7 +365,10 @@ def _ensure_material(entry) -> bpy.types.Material:
         color2 = tuple(entry.color2)
         grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
         angle = float(getattr(entry, "gradient_angle", 0.0) or 0.0)
-        return _ensure_gradient_material(name, color, color2, grad_type, angle, opacity)
+        ep_uv = _endpoint_uv_for_entry(entry, width_mm, height_mm)
+        return _ensure_gradient_material(
+            name, color, color2, grad_type, angle, opacity, endpoint_uv=ep_uv,
+        )
     return _ensure_solid_material(name, color, opacity)
 
 
@@ -305,19 +385,51 @@ def ensure_fill_real_object(
     if not fill_id:
         return None
 
-    mat = _ensure_material(entry)
-
     work = getattr(scene, "bname_work", None)
     paper = getattr(work, "paper", None) if work is not None else None
-    width_mm = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
-    height_mm = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
-    width_m = mm_to_m(width_mm)
-    height_m = mm_to_m(height_mm)
+    canvas_w_mm = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
+    canvas_h_mm = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
+
+    use_region = bool(getattr(entry, "use_region", False))
+    lasso_json = str(getattr(entry, "lasso_points_json", "") or "")
+    lasso_points = None
+    if lasso_json:
+        import json
+        try:
+            lasso_points = json.loads(lasso_json)
+        except (json.JSONDecodeError, TypeError):
+            lasso_points = None
+        if lasso_points is not None and len(lasso_points) < 3:
+            lasso_points = None
+
+    if use_region:
+        rw = float(getattr(entry, "region_width_mm", 0.0) or 0.0)
+        rh = float(getattr(entry, "region_height_mm", 0.0) or 0.0)
+        if rw < 0.1 or rh < 0.1:
+            use_region = False
+
+    if use_region:
+        mesh_w_mm = rw
+        mesh_h_mm = rh
+        rx = float(getattr(entry, "region_x_mm", 0.0) or 0.0)
+        ry = float(getattr(entry, "region_y_mm", 0.0) or 0.0)
+    else:
+        mesh_w_mm = canvas_w_mm
+        mesh_h_mm = canvas_h_mm
+
+    mat = _ensure_material(entry, canvas_w_mm, canvas_h_mm)
 
     mesh = bpy.data.meshes.get(_mesh_name(fill_id))
     if mesh is None:
         mesh = bpy.data.meshes.new(_mesh_name(fill_id))
-    _rebuild_mesh(mesh, width_m, height_m)
+
+    if lasso_points is not None and use_region:
+        center_x = rx + mesh_w_mm * 0.5
+        center_y = ry + mesh_h_mm * 0.5
+        if not _rebuild_lasso_mesh(mesh, lasso_points, center_x, center_y, canvas_w_mm, canvas_h_mm):
+            _rebuild_mesh(mesh, mm_to_m(mesh_w_mm), mm_to_m(mesh_h_mm))
+    else:
+        _rebuild_mesh(mesh, mm_to_m(mesh_w_mm), mm_to_m(mesh_h_mm))
     if not mesh.materials:
         mesh.materials.append(mat)
     elif mesh.materials[0] is not mat:
@@ -338,8 +450,12 @@ def ensure_fill_real_object(
         obj.data = mesh
 
     ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
-    obj.location.x = mm_to_m(width_mm * 0.5 + ox_mm)
-    obj.location.y = mm_to_m(height_mm * 0.5 + oy_mm)
+    if use_region:
+        obj.location.x = mm_to_m(rx + mesh_w_mm * 0.5 + ox_mm)
+        obj.location.y = mm_to_m(ry + mesh_h_mm * 0.5 + oy_mm)
+    else:
+        obj.location.x = mm_to_m(canvas_w_mm * 0.5 + ox_mm)
+        obj.location.y = mm_to_m(canvas_h_mm * 0.5 + oy_mm)
 
     parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
     los.stamp_layer_object(

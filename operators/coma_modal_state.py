@@ -29,6 +29,8 @@ _ACTIVE_REFS: dict[str, weakref.ReferenceType | None] = {
     "text_tool": None,
     "effect_line_tool": None,
     "coma_vertex_edit": None,
+    "fill_tool": None,
+    "gradient_tool": None,
 }
 
 _DEFAULT_KEEP_SELECTION: dict[str, bool] = {
@@ -43,6 +45,8 @@ _DEFAULT_KEEP_SELECTION: dict[str, bool] = {
     "text_tool": True,
     "effect_line_tool": True,
     "coma_vertex_edit": True,
+    "fill_tool": True,
+    "gradient_tool": True,
 }
 
 

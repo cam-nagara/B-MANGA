@@ -159,6 +159,24 @@ def _draw_fill_selected_settings(box, entry) -> None:
         grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
         if grad_type == "linear":
             settings.prop(entry, "gradient_angle", text="角度")
+        if getattr(entry, "use_gradient_endpoints", False):
+            ep_box = settings.box()
+            ep_box.label(text="グラデーション範囲", icon="ARROW_LEFTRIGHT")
+            row = ep_box.row(align=True)
+            row.prop(entry, "gradient_start_x_mm", text="開始X")
+            row.prop(entry, "gradient_start_y_mm", text="Y")
+            row = ep_box.row(align=True)
+            row.prop(entry, "gradient_end_x_mm", text="終了X")
+            row.prop(entry, "gradient_end_y_mm", text="Y")
+    if getattr(entry, "use_region", False):
+        reg_box = settings.box()
+        reg_box.label(text="塗り範囲", icon="SELECT_SET")
+        row = reg_box.row(align=True)
+        row.prop(entry, "region_x_mm", text="X")
+        row.prop(entry, "region_y_mm", text="Y")
+        row = reg_box.row(align=True)
+        row.prop(entry, "region_width_mm", text="幅")
+        row.prop(entry, "region_height_mm", text="高さ")
 
 
 def _draw_balloon_selected_settings(box, context, entry) -> None:
