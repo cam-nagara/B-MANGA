@@ -21,6 +21,7 @@ from bpy.props import (
     CollectionProperty,
     EnumProperty,
     FloatProperty,
+    FloatVectorProperty,
     IntProperty,
     StringProperty,
 )
@@ -194,6 +195,16 @@ class BNamePreferences(bpy.types.AddonPreferences):
         update=_on_gpencil_follow_changed,
     )
 
+    text_selection_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="テキスト選択ハイライト色",
+        description="テキスト編集中の選択範囲の色",
+        subtype="COLOR_GAMMA",
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.7, 1.0, 0.45),
+    )
+
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="ページプレビュー画像解像度%",
         description="ページ一覧プレビュー画像の細かさ。ページ実解像度 (用紙サイズ×DPI) に対する割合で指定します (長辺1536pxが上限)",
@@ -295,6 +306,10 @@ class BNamePreferences(bpy.types.AddonPreferences):
         sub.enabled = self.keymap_enabled
         sub.prop(self, "right_click_eyedropper")
         sub.prop(self, "spacebar_preset")
+
+        box = layout.box()
+        box.label(text="テキスト編集")
+        box.prop(self, "text_selection_color", text="選択ハイライト色")
 
         box = layout.box()
         box.label(text="ページ一覧プレビュー")

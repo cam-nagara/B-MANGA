@@ -338,7 +338,8 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
         if not page_range.page_in_range(_page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(_page)
         ox += add_x

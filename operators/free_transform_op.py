@@ -67,6 +67,30 @@ def _set_balloon_transformed_corners(entry, transform) -> None:
     free_transform.set_entry_offsets(entry, new_offsets, enabled=True)
 
 
+def _transform_balloon_tails(entry, transform) -> None:
+    """しっぽのポイントを同じ変換で追従させる."""
+    for tail in getattr(entry, "tails", []) or []:
+        for point in getattr(tail, "points", []) or []:
+            ox = float(getattr(point, "x_mm", 0.0) or 0.0)
+            oy = float(getattr(point, "y_mm", 0.0) or 0.0)
+            nx, ny = transform(ox, oy)
+            point.x_mm = float(nx)
+            point.y_mm = float(ny)
+        if bool(getattr(tail, "custom_points_enabled", False)):
+            sx, sy = transform(
+                float(getattr(tail, "start_x_mm", 0.0) or 0.0),
+                float(getattr(tail, "start_y_mm", 0.0) or 0.0),
+            )
+            tail.start_x_mm = float(sx)
+            tail.start_y_mm = float(sy)
+            ex, ey = transform(
+                float(getattr(tail, "end_x_mm", 0.0) or 0.0),
+                float(getattr(tail, "end_y_mm", 0.0) or 0.0),
+            )
+            tail.end_x_mm = float(ex)
+            tail.end_y_mm = float(ey)
+
+
 def _sync_balloon_after_transform(context, page, entry) -> None:
     balloon_curve_object.on_balloon_entry_changed(entry)
     try:
@@ -225,6 +249,7 @@ class BNAME_OT_balloon_free_transform_scale(Operator):
 
         with balloon_curve_object.suspend_auto_sync():
             _set_balloon_transformed_corners(target, _scale_point)
+            _transform_balloon_tails(target, _scale_point)
             if not bool(self.keep_line_width) and hasattr(target, "free_transform_line_width_scale"):
                 current = max(0.01, float(getattr(target, "free_transform_line_width_scale", 1.0) or 1.0))
                 target.free_transform_line_width_scale = max(0.01, current * factor)
@@ -265,6 +290,58 @@ class BNAME_OT_balloon_free_transform_rotate(Operator):
 
         with balloon_curve_object.suspend_auto_sync():
             _set_balloon_transformed_corners(target, _rotate_point)
+            _transform_balloon_tails(target, _rotate_point)
+        _sync_balloon_after_transform(context, page, target)
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        return {"FINISHED"}
+
+
+class BNAME_OT_balloon_free_transform_scale_rotate(Operator):
+    bl_idname = "bname.balloon_free_transform_scale_rotate"
+    bl_label = "拡大・縮小・回転"
+    bl_description = "選択中のフキダシを、形状を保ったまま拡大・縮小・回転します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    scale_percent: FloatProperty(  # type: ignore[valid-type]
+        name="倍率 (%)",
+        default=100.0,
+        min=1.0,
+        soft_min=10.0,
+        soft_max=400.0,
+        subtype="PERCENTAGE",
+    )
+    angle_deg: FloatProperty(name="角度", default=0.0, soft_min=-180.0, soft_max=180.0)  # type: ignore[valid-type]
+    keep_line_width: BoolProperty(name="線幅を維持", default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _active_stack_kind(context) == "balloon"
+
+    def invoke(self, context, _event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        target, resolved = _active_stack_target(context)
+        if target is None:
+            return {"CANCELLED"}
+        factor = max(0.01, float(self.scale_percent) / 100.0)
+        page = resolved.get("page") if resolved else None
+        px, py = _balloon_pivot(target)
+        radians = math.radians(float(self.angle_deg))
+        cos_v = math.cos(radians)
+        sin_v = math.sin(radians)
+
+        def _transform_point(x: float, y: float) -> tuple[float, float]:
+            dx = (float(x) - px) * factor
+            dy = (float(y) - py) * factor
+            return px + dx * cos_v - dy * sin_v, py + dx * sin_v + dy * cos_v
+
+        with balloon_curve_object.suspend_auto_sync():
+            _set_balloon_transformed_corners(target, _transform_point)
+            _transform_balloon_tails(target, _transform_point)
+            if not bool(self.keep_line_width) and hasattr(target, "free_transform_line_width_scale"):
+                current = max(0.01, float(getattr(target, "free_transform_line_width_scale", 1.0) or 1.0))
+                target.free_transform_line_width_scale = max(0.01, current * factor)
         _sync_balloon_after_transform(context, page, target)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
@@ -275,6 +352,7 @@ _CLASSES = (
     BNAME_OT_reset_free_transform,
     BNAME_OT_balloon_free_transform_scale,
     BNAME_OT_balloon_free_transform_rotate,
+    BNAME_OT_balloon_free_transform_scale_rotate,
 )
 
 

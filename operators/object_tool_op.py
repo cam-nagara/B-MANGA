@@ -643,6 +643,29 @@ def _rect_resize_result(
     return new_left, new_bottom, new_right - new_left, new_top - new_bottom
 
 
+_CORNER_PARTS = {"top_left", "top_right", "bottom_left", "bottom_right"}
+
+
+def _uniform_scale_result(
+    action: str,
+    x: float, y: float, w: float, h: float,
+    dx: float, dy: float, min_size: float,
+) -> tuple[float, float, float, float]:
+    """コーナードラッグで縦横比を維持したまま拡大縮小する."""
+    dir_x = w if "right" in action else -w
+    dir_y = h if "top" in action else -h
+    diag = (dir_x ** 2 + dir_y ** 2) ** 0.5
+    if diag < 0.001:
+        return x, y, w, h
+    projected = (dx * dir_x + dy * dir_y) / diag
+    factor = max(min_size / max(w, h, 0.001), 1.0 + projected / diag)
+    new_w = max(min_size, w * factor)
+    new_h = max(min_size, h * factor)
+    new_x = x if "right" in action else x + w - new_w
+    new_y = y if "top" in action else y + h - new_h
+    return new_x, new_y, new_w, new_h
+
+
 def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
     """取り消し処理などで一旦終了したオブジェクトツールを自動で再開する.
 
@@ -718,6 +741,9 @@ class BNAME_OT_object_tool(Operator):
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "DEFAULT")
         self._clear_drag_state()
         self._clear_click_state()
+        self._ft_mode = False
+        self._ft_snapshot = None
+        self._ft_key = ""
         object_tool_balloon_tail.clear_pending(self)
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("object_tool", self, context)
@@ -747,8 +773,25 @@ class BNAME_OT_object_tool(Operator):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED"}
         if event.type == "ESC" and event.value == "PRESS":
+            if getattr(self, "_ft_mode", False):
+                self._cancel_free_transform(context)
+                return {"RUNNING_MODAL"}
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED"}
+        if getattr(self, "_ft_mode", False):
+            if event.value == "PRESS" and event.type in {"RET", "NUMPAD_ENTER"}:
+                self._confirm_free_transform(context)
+                return {"RUNNING_MODAL"}
+            if event.type == "MOUSEMOVE":
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE":
+                if not view_event_region.is_view3d_window_event(context, event):
+                    return {"RUNNING_MODAL"}
+                return self._handle_left_press(context, event)
+            return {"RUNNING_MODAL"}
+        if event.value == "PRESS" and event.type == "T" and event.ctrl and not event.alt:
+            self._enter_free_transform(context)
+            return {"RUNNING_MODAL"}
         if event.value == "PRESS" and event.type in {"P", "F", "K", "T"} and not event.ctrl and not event.alt:
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
@@ -1638,7 +1681,10 @@ class BNAME_OT_object_tool(Operator):
                     except Exception:  # noqa: BLE001
                         pass
                     continue
-                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
+                if self._drag_action in _CORNER_PARTS:
+                    nx, ny, nw, nh = _uniform_scale_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
+                else:
+                    nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 balloon_op._set_balloon_rect(page, entry, nx, ny, nw, nh)
             elif kind == "text":
                 _page_index, _page, _idx, entry = _find_text_by_key(
@@ -1674,6 +1720,8 @@ class BNAME_OT_object_tool(Operator):
                     continue
                 if self._drag_action == "center":
                     nx, ny, nw, nh = x, y, w, h
+                elif self._drag_action in _CORNER_PARTS:
+                    nx, ny, nw, nh = _uniform_scale_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 else:
                     nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 if self._drag_action in {"move", "center"}:
@@ -1896,6 +1944,131 @@ class BNAME_OT_object_tool(Operator):
         self._reparent_start_px = (0.0, 0.0)
         self._reparent_target = None
 
+    def _enter_free_transform(self, context) -> None:
+        key = object_tool_selection.active_selection_key(context)
+        if not key:
+            return
+        kind = object_selection.parse_key(key)[0]
+        if kind not in {"balloon", "effect"}:
+            return
+        snapshot = self._capture_ft_snapshot(context, key, kind)
+        if snapshot is None:
+            return
+        self._ft_mode = True
+        self._ft_key = key
+        self._ft_snapshot = snapshot
+        wm = context.window_manager
+        if hasattr(wm, "bname_free_transform_key"):
+            wm.bname_free_transform_key = key
+        context.workspace.status_text_set("自由変形: Enter で確定 / Esc でキャンセル")
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _confirm_free_transform(self, context) -> None:
+        self._ft_mode = False
+        self._ft_snapshot = None
+        self._ft_key = ""
+        object_tool_free_transform.clear_mode(context)
+        context.workspace.status_text_set(None)
+        try:
+            bpy.ops.ed.undo_push(message="B-Name: 自由変形")
+        except Exception:  # noqa: BLE001
+            pass
+        layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _cancel_free_transform(self, context) -> None:
+        if self._ft_snapshot is not None:
+            self._restore_ft_snapshot(context, self._ft_snapshot)
+        self._ft_mode = False
+        self._ft_snapshot = None
+        self._ft_key = ""
+        object_tool_free_transform.clear_mode(context)
+        context.workspace.status_text_set(None)
+        layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        layer_stack_utils.tag_view3d_redraw(context)
+
+    def _capture_ft_snapshot(self, context, key: str, kind: str) -> dict | None:
+        work = get_work(context)
+        if work is None:
+            return None
+        _kind, page_id, item_id = object_selection.parse_key(key)
+        if kind == "balloon":
+            _pi, _p, _idx, entry = _find_balloon_by_key(work, page_id, item_id)
+            if entry is None:
+                return None
+            tails_snapshot = []
+            for tail in getattr(entry, "tails", []) or []:
+                pts = [(float(getattr(p, "x_mm", 0)), float(getattr(p, "y_mm", 0))) for p in getattr(tail, "points", []) or []]
+                td = {"points": pts}
+                if bool(getattr(tail, "custom_points_enabled", False)):
+                    td["start"] = (float(getattr(tail, "start_x_mm", 0)), float(getattr(tail, "start_y_mm", 0)))
+                    td["end"] = (float(getattr(tail, "end_x_mm", 0)), float(getattr(tail, "end_y_mm", 0)))
+                tails_snapshot.append(td)
+            return {
+                "kind": "balloon",
+                "key": key,
+                "page_id": page_id,
+                "item_id": item_id,
+                "offsets": free_transform.entry_offsets(entry),
+                "enabled": bool(getattr(entry, "free_transform_enabled", False)),
+                "line_width_scale": float(getattr(entry, "free_transform_line_width_scale", 1.0) or 1.0),
+                "tails": tails_snapshot,
+            }
+        if kind == "effect":
+            obj, layer = _find_effect_layer(item_id)
+            if layer is None:
+                return None
+            payload = free_transform.effect_payload_for_layer(obj, layer)
+            return {
+                "kind": "effect",
+                "key": key,
+                "item_id": item_id,
+                "payload": dict(payload) if payload else {},
+            }
+        return None
+
+    def _restore_ft_snapshot(self, context, snapshot: dict) -> None:
+        work = get_work(context)
+        if work is None:
+            return
+        kind = snapshot["kind"]
+        if kind == "balloon":
+            _pi, _p, _idx, entry = _find_balloon_by_key(
+                work, snapshot["page_id"], snapshot["item_id"],
+            )
+            if entry is None:
+                return
+            free_transform.set_entry_offsets(
+                entry, snapshot["offsets"], enabled=snapshot["enabled"],
+            )
+            if hasattr(entry, "free_transform_line_width_scale"):
+                entry.free_transform_line_width_scale = snapshot["line_width_scale"]
+            for ti, tail in enumerate(getattr(entry, "tails", []) or []):
+                if ti >= len(snapshot.get("tails", [])):
+                    break
+                td = snapshot["tails"][ti]
+                for pi, point in enumerate(getattr(tail, "points", []) or []):
+                    if pi >= len(td.get("points", [])):
+                        break
+                    point.x_mm, point.y_mm = td["points"][pi]
+                if "start" in td and bool(getattr(tail, "custom_points_enabled", False)):
+                    tail.start_x_mm, tail.start_y_mm = td["start"]
+                    tail.end_x_mm, tail.end_y_mm = td["end"]
+            balloon_curve_object.on_balloon_entry_changed(entry)
+        elif kind == "effect":
+            obj, layer = _find_effect_layer(snapshot["item_id"])
+            if layer is None:
+                return
+            meta = effect_line_op._effect_meta(obj)
+            key = effect_line_op._layer_meta_key(layer)
+            entry = dict(meta.get(key, {}) if isinstance(meta.get(key, {}), dict) else {})
+            free_transform.set_effect_payload_on_meta_entry(entry, snapshot["payload"])
+            meta[key] = entry
+            effect_line_op._write_effect_meta(obj, meta)
+            bounds = effect_line_op.effect_layer_bounds(obj, layer)
+            if bounds is not None:
+                effect_line_op._write_effect_strokes(context, obj, layer, bounds)
+
     def _cleanup(self, context) -> None:
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
@@ -1909,6 +2082,15 @@ class BNAME_OT_object_tool(Operator):
             reparent_overlay.clear_preview()
         self._clear_drag_state()
         object_tool_balloon_tail.clear_pending(self)
+        if getattr(self, "_ft_mode", False):
+            self._ft_mode = False
+            self._ft_snapshot = None
+            self._ft_key = ""
+            object_tool_free_transform.clear_mode(context)
+            try:
+                context.workspace.status_text_set(None)
+            except Exception:  # noqa: BLE001
+                pass
 
     def finish_from_external(self, context, *, keep_selection: bool) -> None:
         if getattr(self, "_externally_finished", False):

@@ -107,6 +107,13 @@ def _active_stack_item_no_sync(context):
     return None
 
 
+def _active_stack_target(context):
+    from ..utils import layer_stack as _ls
+    item = _active_stack_item_no_sync(context)
+    resolved = _ls.resolve_stack_item(context, item) if item is not None else None
+    return resolved.get("target") if resolved else None, resolved
+
+
 def selection_command_items(context) -> list[dict]:
     """選択中レイヤー向け右クリックメニュー項目を返す.
 
@@ -201,31 +208,49 @@ def selection_command_items(context) -> list[dict]:
             },
         )
     if normalized_kind in {"balloon", "text", "effect"}:
+        ft_has_transform = False
+        if has_item:
+            try:
+                from ..utils import free_transform as _ft
+                from ..operators import object_tool_selection as _ots
+
+                if normalized_kind == "balloon":
+                    _target, _resolved = _active_stack_target(context)
+                    ft_has_transform = _target is not None and (
+                        _ft.entry_enabled(_target)
+                        or not _ft.offsets_are_zero(_ft.entry_offsets(_target))
+                    )
+                elif normalized_kind == "effect":
+                    _key = _ots.active_selection_key(context)
+                    if _key:
+                        _item_id = _key.split(":", 2)[-1] if ":" in _key else ""
+                        _obj, _layer = _ots.find_effect_layer(_item_id)
+                        _payload = _ft.effect_payload_for_layer(_obj, _layer)
+                        ft_has_transform = _ft.effect_payload_enabled(_payload)
+                elif normalized_kind == "text":
+                    _target, _resolved = _active_stack_target(context)
+                    ft_has_transform = _target is not None and (
+                        _ft.entry_enabled(_target)
+                        or not _ft.offsets_are_zero(_ft.entry_offsets(_target))
+                    )
+            except Exception:  # noqa: BLE001
+                pass
         items.insert(
             7 if normalized_kind in {"balloon", "effect"} else 5,
             {
                 "label": "自由変形をリセット",
                 "operator": "bname.reset_free_transform",
                 "icon": "LOOP_BACK",
-                "enabled": has_item,
+                "enabled": has_item and ft_has_transform,
             },
         )
     if normalized_kind == "balloon":
         items.insert(
             8,
             {
-                "label": "拡大・縮小",
-                "operator": "bname.balloon_free_transform_scale",
+                "label": "拡大・縮小・回転",
+                "operator": "bname.balloon_free_transform_scale_rotate",
                 "icon": "FULLSCREEN_ENTER",
-                "enabled": has_item,
-            },
-        )
-        items.insert(
-            9,
-            {
-                "label": "回転",
-                "operator": "bname.balloon_free_transform_rotate",
-                "icon": "ORIENTATION_GIMBAL",
                 "enabled": has_item,
             },
         )
