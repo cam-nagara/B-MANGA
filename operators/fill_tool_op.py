@@ -17,9 +17,10 @@ from . import coma_modal_state, view_event_region
 _logger = log.get_logger(__name__)
 
 TOOL_NAME = "fill_tool"
-_MIN_POINT_DIST_PX = 3.0
+_MIN_POINT_DIST_PX = 2.0
 _MIN_POINTS = 3
-_SIMPLIFY_TOLERANCE_MM = 1.0
+_SIMPLIFY_TOLERANCE_MM = 0.3
+_SMOOTH_ITERATIONS = 3
 _COLOR_OUTLINE = (0.2, 0.7, 0.3, 0.9)
 _COLOR_FILL = (0.2, 0.7, 0.3, 0.12)
 
@@ -35,6 +36,23 @@ def _world_mm_from_event(context, event):
     if loc is None:
         return None
     return area, region, rv3d, mx, my, geom.m_to_mm(loc.x), geom.m_to_mm(loc.y)
+
+
+def _chaikin_smooth(points: list, iterations: int = 2) -> list:
+    """Chaikin corner-cutting for closed polygon smoothing."""
+    pts = list(points)
+    for _ in range(iterations):
+        if len(pts) < 3:
+            break
+        new_pts: list[tuple[float, float]] = []
+        n = len(pts)
+        for i in range(n):
+            p0 = pts[i]
+            p1 = pts[(i + 1) % n]
+            new_pts.append((0.75 * p0[0] + 0.25 * p1[0], 0.75 * p0[1] + 0.25 * p1[1]))
+            new_pts.append((0.25 * p0[0] + 0.75 * p1[0], 0.25 * p0[1] + 0.75 * p1[1]))
+        pts = new_pts
+    return pts
 
 
 def _simplify_dp(points: list, tol: float) -> list:
@@ -223,7 +241,8 @@ class BNAME_OT_fill_tool(Operator):
         if len(simplified) < _MIN_POINTS:
             return {"RUNNING_MODAL"}
 
-        self._create_lasso_fill(context, simplified)
+        smoothed = _chaikin_smooth(simplified, _SMOOTH_ITERATIONS)
+        self._create_lasso_fill(context, smoothed)
         bpy.ops.ed.undo_push(message="囲い塗り")
         return {"RUNNING_MODAL"}
 

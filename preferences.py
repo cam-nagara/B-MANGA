@@ -101,6 +101,10 @@ def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
             work.view_page_preview_resolution_percentage = value
         if hasattr(scene, "bname_page_preview_resolution_percentage"):
             scene.bname_page_preview_resolution_percentage = value
+        if work is not None and hasattr(work, "page_preview_scale_percentage"):
+            work.page_preview_scale_percentage = value
+        if hasattr(scene, "bname_coma_camera_preview_scale_percentage"):
+            scene.bname_coma_camera_preview_scale_percentage = value
         if work is not None and getattr(work, "loaded", False):
             page_preview_object.sync_page_previews(context, work)
     except Exception:  # noqa: BLE001
@@ -221,18 +225,19 @@ class BNamePreferences(bpy.types.AddonPreferences):
     )
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
-        name="ページプレビュー画像解像度%",
-        description="ページ一覧プレビュー画像の細かさ。ページ実解像度 (用紙サイズ×DPI) に対する割合で指定します (長辺1536pxが上限)",
+        name="プレビュー画像縮小率",
+        description="ページ一覧プレビューとコマ画像の縮小率",
         default=25.0,
-        min=5.0,
+        min=1.0,
         soft_max=100.0,
-        max=200.0,
+        max=100.0,
+        subtype="PERCENTAGE",
         update=_on_page_preview_resolution_changed,
     )
 
     coma_thumb_scale_percentage: FloatProperty(  # type: ignore[valid-type]
         name="コマ画像縮小率",
-        description="ページ一覧に表示するコマ画像PNGの縮小率",
+        description="ページ一覧に表示するコマ画像PNGの縮小率（後方互換用）",
         default=12.5,
         min=1.0,
         max=100.0,
@@ -338,8 +343,7 @@ class BNamePreferences(bpy.types.AddonPreferences):
 
         box = layout.box()
         box.label(text="ページ一覧プレビュー")
-        box.prop(self, "page_preview_resolution_percentage", text="画像解像度%")
-        box.prop(self, "coma_thumb_scale_percentage", text="コマ画像縮小率")
+        box.prop(self, "page_preview_resolution_percentage", text="プレビュー画像縮小率")
 
         # ショートカットキー カスタマイズ
         kbox = layout.box()
