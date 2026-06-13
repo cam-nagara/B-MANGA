@@ -15,7 +15,7 @@ import bpy
 from bpy.props import EnumProperty, FloatProperty
 from bpy.types import Operator
 
-from ..core.work import get_active_page, get_work
+from ..core.work import get_work
 from ..io import coma_io, page_io
 from ..utils import (
     layer_stack as layer_stack_utils,
@@ -138,6 +138,23 @@ def _split_line_along_edges(
     b0 = poly[(e0 + 1) % n]
     a1 = poly[e1]
     b1 = poly[(e1 + 1) % n]
+
+    # 周回で対辺は逆方向になるため、方向を揃える
+    dx0, dy0 = b0[0] - a0[0], b0[1] - a0[1]
+    dx1, dy1 = b1[0] - a1[0], b1[1] - a1[1]
+    if dx0 * dx1 + dy0 * dy1 < 0:
+        a1, b1 = b1, a1
+
+    # ページ軸モードと一致する方向に正規化 (H→y増加, V→x増加)
+    if direction == "H":
+        avg_s = a0[1] + a1[1]
+        avg_e = b0[1] + b1[1]
+    else:
+        avg_s = a0[0] + a1[0]
+        avg_e = b0[0] + b1[0]
+    if avg_e < avg_s:
+        a0, b0 = b0, a0
+        a1, b1 = b1, a1
 
     p0 = _lerp(a0, b0, ratio)
     p1 = _lerp(a1, b1, ratio)
