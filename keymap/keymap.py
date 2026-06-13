@@ -540,6 +540,8 @@ class KeymapState:
         # オブジェクトモードのクリック → ページをアクティブ化。
         # operator 側で PASS_THROUGH し、Blender 標準のオブジェクト選択は妨げない。
         _add("bname.page_pick_viewport", "LEFTMOUSE")
+        # Ctrl+ドラッグ → 作品ファイル上で選択ページを並べ替え (head で先行判定)
+        _add("bname.page_reorder_drag", "LEFTMOUSE", ctrl=True, head=True)
         # Ctrl+クリック / Shift+クリック → ページ/コマのマルチセレクト
         # operator 内で event の修飾キーを参照し、object_selection に toggle/add する.
         _add("bname.page_pick_viewport", "LEFTMOUSE", ctrl=True)

@@ -131,9 +131,32 @@ def find_click_target(context, event) -> ClickTarget:
 def find_target_for_drop(context, event) -> ClickTarget:
     """Alt+ドラッグのドロップ位置から、置きたい親候補を返す.
 
-    現状は ``find_click_target`` と同じだが、ドラッグ専用の意味付けを持たせて
-    将来 (Phase B) で挙動を変えやすくするためエイリアス化."""
-    return find_click_target(context, event)
+    ページファイル上のプレビューサムネイルも有効なドロップ先として扱う。
+    """
+    target = find_click_target(context, event)
+    if target.kind != "outside":
+        return target
+    from . import page_file_scene, page_preview_object
+
+    role, _cur_page_id, _ = page_file_scene.current_role(context)
+    if role != page_file_scene.ROLE_PAGE:
+        return target
+    world = _world_xy_mm_from_event(context, event)
+    if world is None:
+        return target
+    from ..core.work import get_work
+
+    work = get_work(context)
+    scene = getattr(context, "scene", None)
+    if work is None or scene is None:
+        return target
+    preview_idx = page_preview_object.page_index_at_world_mm(
+        scene, work, world[0], world[1]
+    )
+    if preview_idx is None or not (0 <= preview_idx < len(work.pages)):
+        return target
+    page = work.pages[preview_idx]
+    return ClickTarget("page", page, None, preview_idx, None, None)
 
 
 # ---------- 公開関数: 親キー解決 ----------

@@ -1607,7 +1607,8 @@ class BNAME_OT_object_tool(Operator):
     def _finish_drag(self, context) -> None:
         if self._drag_action == "marquee":
             self._finish_marquee_select(context)
-            self._clear_click_state()
+            if self._drag_moved:
+                self._clear_click_state()
             self._clear_drag_state()
             layer_stack_utils.tag_view3d_redraw(context)
             return
