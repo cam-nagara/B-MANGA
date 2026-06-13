@@ -416,34 +416,6 @@ def _page_fit_rect_mm(scene, work) -> tuple[tuple[float, float, float, float] | 
     active_rect = _active_page_rect_mm(scene, work)
     if active_rect is None:
         return None, False
-    try:
-        from ..utils import page_file_scene, page_preview_object
-
-        if (
-            not page_file_scene.is_page_edit_scene(scene)
-            or not page_preview_object.preview_enabled(scene)
-        ):
-            return active_rect, False
-        rects = [active_rect]
-        for _page_id, (_index, x0, y0, x1, y1) in page_preview_object.preview_rects_mm(
-            scene, work
-        ).items():
-            rects.append((float(x0), float(y0), float(x1 - x0), float(y1 - y0)))
-        fit_rect = _union_rects_mm(rects)
-        if fit_rect is None:
-            return active_rect, False
-        x, y, w, h = fit_rect
-        paper = work.paper
-        from ..utils.page_grid import resolve_gap_mm as _resolve_gap
-        _gx, _gy = _resolve_gap(scene)
-        pad = max(
-            10.0,
-            min(float(paper.canvas_width_mm), float(paper.canvas_height_mm)) * 0.035,
-            min(_gx, _gy) * 0.25,
-        )
-        return (x - pad, y - pad, w + pad * 2.0, h + pad * 2.0), True
-    except Exception:  # noqa: BLE001
-        _logger.exception("page edit context fit failed")
     return active_rect, False
 
 

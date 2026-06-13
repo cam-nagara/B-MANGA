@@ -1816,7 +1816,8 @@ def _draw_callback_pixel() -> None:
                     draw_text_in_rect=_draw_text_in_rect,
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
-            _draw_page_header_number_pixel(context, paper, i, ox, oy)
+            if page_file_indices is None or i == page_file_current_index:
+                _draw_page_header_number_pixel(context, paper, i, ox, oy)
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
