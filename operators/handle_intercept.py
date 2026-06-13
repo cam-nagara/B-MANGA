@@ -114,7 +114,7 @@ def try_intercept_press(context, event, operator) -> bool:
                 return True
 
     # 選択済みオブジェクトの body/edge ドラッグ (移動)
-    hit = object_tool_op._hit_object(context, event)
+    hit = object_tool_op.hit_object_at_event(context, event)
     if hit is not None:
         part = str(hit.get("part", "") or "")
         if part in free_transform.CORNER_PARTS:
