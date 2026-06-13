@@ -1314,7 +1314,7 @@ class BNAME_OT_effect_line_generate(Operator):
 class BNAME_OT_effect_line_tool(Operator):
     bl_idname = "bname.effect_line_tool"
     bl_label = "効果線ツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     _externally_finished: bool
     _cursor_modal_set: bool
@@ -1373,6 +1373,18 @@ class BNAME_OT_effect_line_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("effect_line_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if getattr(self, "_dragging", False):
@@ -1392,6 +1404,12 @@ class BNAME_OT_effect_line_tool(Operator):
         if self._should_leave_for_tool_key(event):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
+        if (
+            event.type == "LEFTMOUSE"
+            and event.value == "PRESS"
+            and handle_intercept.try_intercept_press(context, event, self)
+        ):
+            return {"RUNNING_MODAL"}
         if event.type != "LEFTMOUSE" or event.value != "PRESS":
             return {"PASS_THROUGH"}
         x_mm, y_mm = _event_world_xy_mm(context, event)

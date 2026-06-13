@@ -204,18 +204,20 @@ def _resolve_page_offset_mm(work, page) -> tuple[float, float]:
     if scene is None:
         return (0.0, 0.0)
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    from ..utils.page_grid import resolve_gap_mm
+    gap_x, gap_y = resolve_gap_mm(scene)
     index = _resolve_page_index(work, page)
     paper = work.paper
     ox, oy = page_grid_offset_mm(
         index,
         cols,
-        gap,
+        gap_x,
         float(paper.canvas_width_mm),
         float(paper.canvas_height_mm),
         getattr(paper, "start_side", "right"),
         getattr(paper, "read_direction", "left"),
         work=work,
+        gap_y_mm=gap_y,
     )
     add_x, add_y = page_manual_offset_mm(page)
     return ox + add_x, oy + add_y

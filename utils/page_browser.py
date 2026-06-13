@@ -451,18 +451,19 @@ def page_offset_mm(work, scene, area, page_index: int) -> tuple[float, float]:
         return 0.0, 0.0
     paper = work.paper
     cols = layout_cols_for_area(work, area, scene)
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     start_side = getattr(paper, "start_side", "right")
     read_direction = getattr(paper, "read_direction", "left")
     ox, oy = page_grid.page_grid_offset_mm(
         page_index,
         cols,
-        gap,
+        gap_x,
         float(paper.canvas_width_mm),
         float(paper.canvas_height_mm),
         start_side,
         read_direction,
         work=work,
+        gap_y_mm=gap_y,
     )
     add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_index])
     return ox + add_x, oy + add_y
@@ -477,7 +478,7 @@ def layout_bbox_mm(work, scene, area) -> tuple[float, float, float, float] | Non
     paper = work.paper
     cw = float(paper.canvas_width_mm)
     ch = float(paper.canvas_height_mm)
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     start_side = getattr(paper, "start_side", "right")
     read_direction = getattr(paper, "read_direction", "left")
     cols = layout_cols_for_area(work, area, scene)
@@ -489,7 +490,7 @@ def layout_bbox_mm(work, scene, area) -> tuple[float, float, float, float] | Non
         if read_direction != "down" and is_vertical_area(area):
             slot_count = max(2, ((slot_count + 1) // 2) * 2)
         for slot in range(slot_count):
-            ox, oy = page_grid.slot_grid_offset_mm(slot, cols, gap, cw, ch, read_direction)
+            ox, oy = page_grid.slot_grid_offset_mm(slot, cols, gap_x, cw, ch, read_direction, gap_y_mm=gap_y)
             min_x = ox if min_x is None else min(min_x, ox)
             min_y = oy if min_y is None else min(min_y, oy)
             max_x = ox + cw if max_x is None else max(max_x, ox + cw)

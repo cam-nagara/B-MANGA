@@ -180,7 +180,7 @@ def _move_would_violate_layer_scope(context, page, entry, dx_mm: float, dy_mm: f
 class BNAME_OT_layer_move_tool(Operator):
     bl_idname = "bname.layer_move_tool"
     bl_label = "レイヤー移動ツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     _last_world: tuple[float, float] | None
     _target: dict | None
@@ -233,6 +233,18 @@ class BNAME_OT_layer_move_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("layer_move", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if (
@@ -292,6 +304,8 @@ class BNAME_OT_layer_move_tool(Operator):
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             if not view_event_region.is_view3d_window_event(context, event):
                 return {"PASS_THROUGH"}
+            if handle_intercept.try_intercept_press(context, event, self):
+                return {"RUNNING_MODAL"}
             coords = coma_picker._event_world_mm(context, event)
             if coords is None:
                 return {"PASS_THROUGH"}

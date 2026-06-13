@@ -662,15 +662,33 @@ def _remove_named_handler(handler_list, name: str) -> None:
                 pass
 
 
+@persistent
+def _bname_on_undo_post(*_args) -> None:
+    """undo/redo 後にモーダルツールの参照を無効化し、再起動する."""
+    try:
+        from ..operators import coma_modal_state as _modal_state
+        count = _modal_state.mark_all_externally_finished()
+        if count > 0:
+            _logger.debug("undo_post: marked %d modals as finished", count)
+            from ..operators.object_tool_op import _schedule_object_tool_relaunch
+            _schedule_object_tool_relaunch(delay_seconds=0.1)
+    except Exception:  # noqa: BLE001
+        _logger.exception("undo_post: mark_all_externally_finished failed")
+
+
 def register() -> None:
     """ハンドラを重複なく登録."""
     # 既存の同名ハンドラを除去 (reload 対策)
     _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_post, _bname_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bname_on_undo_post.__name__)
     bpy.app.handlers.load_post.append(_bname_on_load_post)
     bpy.app.handlers.save_pre.append(_bname_on_save_pre)
     bpy.app.handlers.save_post.append(_bname_on_save_post)
+    bpy.app.handlers.undo_post.append(_bname_on_undo_post)
+    bpy.app.handlers.redo_post.append(_bname_on_undo_post)
     _logger.debug("handlers registered")
 
 
@@ -713,4 +731,6 @@ def unregister() -> None:
     _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
     _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
     _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_post, _bname_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bname_on_undo_post.__name__)
     _logger.debug("handlers unregistered")

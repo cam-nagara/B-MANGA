@@ -160,13 +160,14 @@ def find_coma_at_world_mm(
         if not page_range.page_in_range(page):
             return None
         cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+        gap_x, gap_y = page_grid.resolve_gap_mm(scene)
         cw = work.paper.canvas_width_mm
         ch = work.paper.canvas_height_mm
         start_side = getattr(work.paper, "start_side", "right")
         read_direction = getattr(work.paper, "read_direction", "left")
         ox, oy = page_grid.page_grid_offset_mm(
-            idx, cols, gap, cw, ch, start_side, read_direction, work=work
+            idx, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_for_scene_mm(scene, page)
         ox += add_x
@@ -175,7 +176,7 @@ def find_coma_at_world_mm(
         return (idx, hit) if hit is not None else None
 
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     start_side = getattr(work.paper, "start_side", "right")
@@ -184,7 +185,8 @@ def find_coma_at_world_mm(
         if not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         ox += add_x
@@ -311,7 +313,7 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
         return None
     overview = bool(getattr(scene, "bname_overview_mode", False))
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = float(work.paper.canvas_width_mm)
     ch = float(work.paper.canvas_height_mm)
     start_side = getattr(work.paper, "start_side", "right")
@@ -324,7 +326,8 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
         if not page_range.page_in_range(work.pages[idx]):
             return None
         ox, oy = page_grid.page_grid_offset_mm(
-            idx, cols, gap, cw, ch, start_side, read_direction, work=work
+            idx, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(work.pages[idx])
         ox += add_x
@@ -480,17 +483,18 @@ def _page_offset_for_area(context, work, area, page_index: int) -> tuple[float, 
     if is_browser and page_browser.fit_enabled(scene):
         return page_browser.page_offset_mm(work, scene, area, page_index)
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     paper = work.paper
     ox, oy = page_grid.page_grid_offset_mm(
         page_index,
         cols,
-        gap,
+        gap_x,
         float(paper.canvas_width_mm),
         float(paper.canvas_height_mm),
         getattr(paper, "start_side", "right"),
         getattr(paper, "read_direction", "left"),
         work=work,
+        gap_y_mm=gap_y,
     )
     add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_index])
     return ox + add_x, oy + add_y

@@ -126,12 +126,16 @@ class BNAME_PT_view(Panel):
                 row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
                 row = col.row(align=True)
                 row.prop(scene, "bname_overview_cols", text="列数")
-                row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
+                row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
             else:
                 row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
                 row = col.row(align=True)
                 row.prop(scene, "bname_overview_cols", text="列数")
-                row.prop(scene, "bname_overview_gap_mm", text="間隔mm")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
+                row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
                 row = col.row(align=True)
                 row.prop(scene, "bname_active_page_number", text="選択ページ")
 

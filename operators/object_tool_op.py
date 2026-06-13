@@ -60,6 +60,70 @@ _NUDGE_PX = 1.0
 _NUDGE_SHIFT_PX = 20.0
 
 
+def _focus_parent_coma_for_entry(context, work, page_index: int, page, entry) -> None:
+    """エントリの parent_key からコマを特定し、そのコマを active にする."""
+    if page is None or entry is None or work is None:
+        return
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    if not parent_key:
+        return
+    parts = parent_key.split(":", 1)
+    if len(parts) < 2 or not parts[1]:
+        return
+    coma_id = parts[1]
+    for ci, panel in enumerate(getattr(page, "comas", []) or []):
+        if _coma_identity(panel) == coma_id:
+            from ..utils import active_target as _at
+            _at.focus_active_coma(context.scene, work, page_index, ci)
+            return
+
+
+def _focus_parent_coma_for_entry_by_key(context, work, entry) -> None:
+    """エントリの parent_key からページとコマを特定し、active にする."""
+    if entry is None or work is None:
+        return
+    parent_key = str(getattr(entry, "parent_key", "") or "")
+    if not parent_key:
+        return
+    parts = parent_key.split(":", 1)
+    if not parts[0] or parts[0] == OUTSIDE_STACK_KEY:
+        return
+    page_id = parts[0]
+    page_index, page = _find_page_by_id(work, page_id)
+    if page is None:
+        return
+    if len(parts) < 2 or not parts[1]:
+        return
+    coma_id = parts[1]
+    for ci, panel in enumerate(getattr(page, "comas", []) or []):
+        if _coma_identity(panel) == coma_id:
+            from ..utils import active_target as _at
+            _at.focus_active_coma(context.scene, work, page_index, ci)
+            return
+
+
+def _focus_parent_coma_for_gp_layer(context, work, layer) -> None:
+    """GPレイヤーの parent_key からコマを特定し、そのコマを active にする."""
+    if layer is None or work is None:
+        return
+    pkey = gp_parent.parent_key(layer)
+    if not pkey:
+        return
+    parts = pkey.split(":", 1)
+    if len(parts) < 2 or not parts[1]:
+        return
+    page_id = parts[0]
+    coma_id = parts[1]
+    page_index, page = _find_page_by_id(work, page_id)
+    if page is None:
+        return
+    for ci, panel in enumerate(getattr(page, "comas", []) or []):
+        if _coma_identity(panel) == coma_id:
+            from ..utils import active_target as _at
+            _at.focus_active_coma(context.scene, work, page_index, ci)
+            return
+
+
 def _find_page_by_id(work, page_id: str):
     if work is None:
         return -1, None
@@ -465,30 +529,40 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                 mode=mode,
             )
         elif page is not None:
+            balloon_index = int(hit.get("index", -1))
+            balloons = getattr(page, "balloons", None)
+            if balloons is not None and 0 <= balloon_index < len(balloons):
+                _focus_parent_coma_for_entry(context, work, page_index, page, balloons[balloon_index])
             balloon_op._select_balloon_index(
                 context,
                 work,
                 page,
-                int(hit.get("index", -1)),
+                balloon_index,
                 mode=mode,
             )
             work.active_page_index = page_index
         edge_selection.clear_selection(context)
     elif kind == "text":
-        _page_index, page = _find_page_by_id(work, hit.get("page_id", ""))
+        page_index, page = _find_page_by_id(work, hit.get("page_id", ""))
         if page is None and hit.get("page_id", "") == OUTSIDE_STACK_KEY:
             _select_stack_target(context, "text", outside_child_key(object_selection.parse_key(key)[2]))
         elif page is not None:
-            text_op._select_text_index(context, work, page, int(hit.get("index", -1)))
+            text_index = int(hit.get("index", -1))
+            texts = getattr(page, "texts", None)
+            if texts is not None and 0 <= text_index < len(texts):
+                _focus_parent_coma_for_entry(context, work, page_index, page, texts[text_index])
+            text_op._select_text_index(context, work, page, text_index)
         edge_selection.clear_selection(context)
     elif kind == "effect":
         obj, layer = _find_effect_layer(hit.get("layer_name", ""))
         if layer is not None:
+            _focus_parent_coma_for_gp_layer(context, work, layer)
             effect_line_op._select_effect_layer(context, obj, layer)
         edge_selection.clear_selection(context)
     elif kind == "image":
         index, entry = _find_image_by_key(context, object_selection.parse_key(key)[2])
         if entry is not None:
+            _focus_parent_coma_for_entry_by_key(context, work, entry)
             if not _select_stack_target(context, "image", getattr(entry, "id", "")):
                 context.scene.bname_active_image_layer_index = index
                 context.scene.bname_active_layer_kind = "image"
@@ -496,6 +570,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
     elif kind == "raster":
         index, entry = _find_raster_by_key(context, object_selection.parse_key(key)[2])
         if entry is not None:
+            _focus_parent_coma_for_entry_by_key(context, work, entry)
             if not _select_stack_target(context, "raster", getattr(entry, "id", "")):
                 context.scene.bname_active_raster_layer_index = index
                 context.scene.bname_active_layer_kind = "raster"
@@ -503,6 +578,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
     elif kind == "gp":
         obj, layer = _find_gp_layer(hit.get("layer_key", object_selection.parse_key(key)[2]))
         if layer is not None:
+            _focus_parent_coma_for_gp_layer(context, work, layer)
             if not _select_stack_target(context, "gp", layer_stack_utils._node_stack_key(layer)):
                 try:
                     context.view_layer.objects.active = obj
@@ -606,7 +682,7 @@ def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
 class BNAME_OT_object_tool(Operator):
     bl_idname = "bname.object_tool"
     bl_label = "オブジェクトツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     _externally_finished: bool
     _cursor_modal_set: bool
@@ -677,11 +753,11 @@ class BNAME_OT_object_tool(Operator):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
         if event.value == "PRESS" and event.type in {"Z", "Y"} and event.ctrl:
-            # 取り消し/やり直しを Blender に渡すため一旦終了し、処理後に
-            # ツールを自動で再開する (再開しないと「ツールは選ばれて見える
-            # のに操作できない」状態になる)
-            self.finish_from_external(context, keep_selection=True)
-            _schedule_object_tool_relaunch()
+            # 取り消し/やり直しを Blender に渡す。undo_post ハンドラが
+            # モーダルの無効化と再起動を担当する。
+            self._cleanup(context)
+            self._externally_finished = True
+            coma_modal_state.clear_active("object_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
         if event.value == "PRESS" and event.type in _ARROW_KEYS:
             if self._nudge_selection(context, event):
@@ -760,6 +836,12 @@ class BNAME_OT_object_tool(Operator):
             self._remember_coma_click(event, hit or open_hit)
         if hit is None:
             if mode == "single":
+                rot_hit = object_tool_free_transform.hit_rotation_zone_at_event(
+                    context, event, _event_world_xy_mm,
+                )
+                if rot_hit is not None:
+                    self._start_rotation_drag(context, event, rot_hit)
+                    return {"RUNNING_MODAL"}
                 move_hit = self._selected_move_hit_from_event(context, event)
                 if move_hit is not None:
                     self._activate_hit(context, move_hit, mode="single")
@@ -1172,6 +1254,38 @@ class BNAME_OT_object_tool(Operator):
         self._snapshots = self._make_snapshots(context, keys, primary_key=key, action=action)
         self._drag_moved = False
 
+    def _start_rotation_drag(self, context, event, rot_hit: dict) -> None:
+        x_mm, y_mm = _event_world_xy_mm(context, event)
+        if x_mm is None or y_mm is None:
+            return
+        self._dragging = True
+        self._drag_action = "rotate"
+        self._drag_start_x = float(x_mm)
+        self._drag_start_y = float(y_mm)
+        self._rotate_center = rot_hit["center"]
+        self._drag_keys = [rot_hit["key"]]
+        self._drag_moved = False
+        self._rotate_snapshots = []
+        key = rot_hit["key"]
+        kind, page_id, item_id = object_selection.parse_key(key)
+        work = get_work(context)
+        if kind == "balloon" and work is not None:
+            _pi, _p, _idx, entry = _find_balloon_by_key(work, page_id, item_id)
+            if entry is not None:
+                self._rotate_snapshots.append({
+                    "entry": entry,
+                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
+                })
+        elif kind == "effect":
+            scene = getattr(context, "scene", None)
+            params = getattr(scene, "bname_effect_line_params", None) if scene else None
+            if params is not None:
+                self._rotate_snapshots.append({
+                    "entry": params,
+                    "rotation_deg": float(getattr(params, "rotation_deg", 0.0)),
+                })
+        coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
+
     def _start_marquee_select(self, context, event, mode: str) -> bool:
         x_mm, y_mm = _event_world_xy_mm(context, event)
         if x_mm is None or y_mm is None:
@@ -1333,15 +1447,49 @@ class BNAME_OT_object_tool(Operator):
             view = None
         if view is None:
             edge_selection.update_overlay_pointer(context, None, event)
+            self._update_rotation_cursor(context, event, in_view=False)
             return
         _area, region, _rv3d, _mx, _my = view
         edge_selection.update_overlay_pointer(context, region, event)
+        self._update_rotation_cursor(context, event, in_view=True)
         try:
             region.tag_redraw()
         except Exception:  # noqa: BLE001
             pass
 
+    def _update_rotation_cursor(self, context, event, *, in_view: bool) -> None:
+        was_rotate = getattr(self, "_rotate_cursor_active", False)
+        if in_view and not getattr(self, "_dragging", False):
+            rot_hit = object_tool_free_transform.hit_rotation_zone_at_event(
+                context, event, _event_world_xy_mm,
+            )
+            if rot_hit is not None:
+                if not was_rotate:
+                    coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
+                    self._rotate_cursor_active = True
+                return
+        if was_rotate:
+            coma_modal_state.set_modal_cursor(context, "DEFAULT")
+            self._rotate_cursor_active = False
+
     def _update_drag(self, context, event) -> None:
+        if self._drag_action == "rotate":
+            x_mm, y_mm = _event_world_xy_mm(context, event)
+            if x_mm is None or y_mm is None:
+                return
+            delta_deg = object_tool_free_transform.compute_rotation_delta(
+                self._rotate_center,
+                self._drag_start_x, self._drag_start_y,
+                x_mm, y_mm,
+            )
+            if abs(delta_deg) > 0.001:
+                self._drag_moved = True
+            for snap in self._rotate_snapshots:
+                entry = snap.get("entry")
+                if entry is not None:
+                    entry.rotation_deg = float(snap.get("rotation_deg", 0.0)) + delta_deg
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "marquee":
             x_mm, y_mm = _event_world_xy_mm(context, event)
             if x_mm is None or y_mm is None:
@@ -1605,6 +1753,19 @@ class BNAME_OT_object_tool(Operator):
         layer_stack_utils.translate_raster_layers_for_parent_keys(context, {snapshot["gp_key"]}, dx, dy)
 
     def _finish_drag(self, context) -> None:
+        if self._drag_action == "rotate":
+            coma_modal_state.set_modal_cursor(context, "DEFAULT")
+            self._rotate_cursor_active = False
+            if self._drag_moved:
+                self._clear_click_state()
+                try:
+                    bpy.ops.ed.undo_push(message="B-Name: 回転")
+                except Exception:  # noqa: BLE001
+                    pass
+                layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "marquee":
             self._finish_marquee_select(context)
             if self._drag_moved:
@@ -1680,6 +1841,16 @@ class BNAME_OT_object_tool(Operator):
         )
 
     def _cancel_drag(self, context) -> None:
+        if self._drag_action == "rotate":
+            for snap in self._rotate_snapshots:
+                entry = snap.get("entry")
+                if entry is not None:
+                    entry.rotation_deg = float(snap.get("rotation_deg", 0.0))
+            coma_modal_state.set_modal_cursor(context, "DEFAULT")
+            self._rotate_cursor_active = False
+            self._clear_drag_state()
+            layer_stack_utils.tag_view3d_redraw(context)
+            return
         if self._drag_action == "reparent":
             reparent_overlay.clear_hover()
             reparent_overlay.clear_preview()
@@ -1720,6 +1891,8 @@ class BNAME_OT_object_tool(Operator):
         self._marquee_start_y = 0.0
         self._marquee_current_x = 0.0
         self._marquee_current_y = 0.0
+        self._rotate_center = (0.0, 0.0)
+        self._rotate_snapshots = []
         self._reparent_start_px = (0.0, 0.0)
         self._reparent_target = None
 

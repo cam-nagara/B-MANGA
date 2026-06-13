@@ -173,11 +173,12 @@ def _focus_view_to_page(context, work, page_index: int) -> None:
     scene = context.scene
     if scene is None:
         return
-    cols, gap, cw, ch = _resolve_overview_params(scene, work)
+    cols, gap_x, gap_y, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     ox_mm, oy_mm = page_grid_offset_mm(
-        page_index, cols, gap, cw, ch, start_side, read_direction, work=work
+        page_index, cols, gap_x, cw, ch, start_side, read_direction,
+        work=work, gap_y_mm=gap_y,
     )
     if 0 <= page_index < len(work.pages):
         add_x = float(getattr(work.pages[page_index], "offset_x_mm", 0.0))

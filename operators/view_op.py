@@ -165,7 +165,9 @@ def _page_browser_fit_rect_mm(context, area, region, work) -> tuple[float, float
     paper = work.paper
     cw = float(paper.canvas_width_mm)
     ch = float(paper.canvas_height_mm)
-    pad = max(10.0, float(getattr(context.scene, "bname_overview_gap_mm", 30.0)) * 0.5)
+    from ..utils.page_grid import resolve_gap_mm as _resolve_gap
+    _gx, _gy = _resolve_gap(context.scene)
+    pad = max(10.0, min(_gx, _gy) * 0.5)
     aspect = max(0.01, float(getattr(region, "width", 1)) / max(1.0, float(getattr(region, "height", 1))))
     if page_browser.is_vertical_area(area):
         target_w = max(1.0, min(max(w, cw), cw * 2.0) + pad * 2.0)
@@ -353,12 +355,12 @@ def _overview_layout_bbox(work) -> tuple[float, float, float, float] | None:
         return None
     scene = bpy.context.scene
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    from ..utils import page_grid
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
-    from ..utils import page_grid
 
     min_x = None
     min_y = None
@@ -366,7 +368,8 @@ def _overview_layout_bbox(work) -> tuple[float, float, float, float] | None:
     max_y = None
     for i in range(n):
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(work.pages[i])
         ox += add_x
@@ -431,11 +434,12 @@ def _page_fit_rect_mm(scene, work) -> tuple[tuple[float, float, float, float] | 
             return active_rect, False
         x, y, w, h = fit_rect
         paper = work.paper
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0) or 30.0)
+        from ..utils.page_grid import resolve_gap_mm as _resolve_gap
+        _gx, _gy = _resolve_gap(scene)
         pad = max(
             10.0,
             min(float(paper.canvas_width_mm), float(paper.canvas_height_mm)) * 0.035,
-            gap * 0.25,
+            min(_gx, _gy) * 0.25,
         )
         return (x - pad, y - pad, w + pad * 2.0, h + pad * 2.0), True
     except Exception:  # noqa: BLE001
@@ -807,6 +811,22 @@ def register() -> None:
         soft_max=200.0,
         update=_on_overview_layout_changed,
     )
+    bpy.types.Scene.bname_overview_gap_x_mm = FloatProperty(
+        name="横間隔 (mm)",
+        description="全ページ一覧時の横方向の余白",
+        default=30.0,
+        min=0.0,
+        soft_max=200.0,
+        update=_on_overview_layout_changed,
+    )
+    bpy.types.Scene.bname_overview_gap_y_mm = FloatProperty(
+        name="縦間隔 (mm)",
+        description="全ページ一覧時の縦方向の余白",
+        default=30.0,
+        min=0.0,
+        soft_max=200.0,
+        update=_on_overview_layout_changed,
+    )
     bpy.types.Scene.bname_page_browser_position = EnumProperty(
         name="ページ一覧の位置",
         description="ページ一覧専用ビューを表示する位置",
@@ -850,6 +870,8 @@ def unregister() -> None:
         "bname_overview_mode",
         "bname_overview_cols",
         "bname_overview_gap_mm",
+        "bname_overview_gap_x_mm",
+        "bname_overview_gap_y_mm",
         "bname_page_browser_position",
         "bname_page_browser_size",
         "bname_page_browser_fit",

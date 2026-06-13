@@ -555,7 +555,7 @@ class BNAME_OT_coma_knife_cut(Operator):
 
     bl_idname = "bname.coma_knife_cut"
     bl_label = "枠線カットツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):

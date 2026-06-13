@@ -200,13 +200,14 @@ def _resolve_page_from_event(context, event):
         work.active_page_index = page_idx
         page = work.pages[page_idx]
         cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+        gap_x, gap_y = page_grid.resolve_gap_mm(scene)
         cw = work.paper.canvas_width_mm
         ch = work.paper.canvas_height_mm
         start_side = getattr(work.paper, "start_side", "right")
         read_direction = getattr(work.paper, "read_direction", "left")
         ox, oy = page_grid.page_grid_offset_mm(
-            page_idx, cols, gap, cw, ch, start_side, read_direction, work=work
+            page_idx, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         ox += add_x
@@ -1103,7 +1104,7 @@ class BNAME_OT_balloon_merge_selected(Operator):
 class BNAME_OT_balloon_tool(Operator):
     bl_idname = "bname.balloon_tool"
     bl_label = "フキダシツール"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     _externally_finished: bool
     _cursor_modal_set: bool
@@ -1157,6 +1158,18 @@ class BNAME_OT_balloon_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("balloon_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if getattr(self, "_dragging", False):
@@ -1178,6 +1191,12 @@ class BNAME_OT_balloon_tool(Operator):
         if self._should_leave_for_tool_key(event):
             self.finish_from_external(context, keep_selection=True)
             return {"FINISHED", "PASS_THROUGH"}
+        if (
+            event.type == "LEFTMOUSE"
+            and event.value == "PRESS"
+            and handle_intercept.try_intercept_press(context, event, self)
+        ):
+            return {"RUNNING_MODAL"}
         if event.type != "LEFTMOUSE" or event.value != "PRESS":
             return {"PASS_THROUGH"}
         return self._handle_left_press(context, event)

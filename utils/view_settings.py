@@ -69,6 +69,14 @@ def copy_scene_to_work(scene, work) -> None:
         work.view_overview_gap_mm = _clamp_float(
             getattr(scene, "bname_overview_gap_mm", 30.0), 30.0, 0.0, 1000.0
         )
+    if hasattr(work, "view_overview_gap_x_mm"):
+        work.view_overview_gap_x_mm = _clamp_float(
+            getattr(scene, "bname_overview_gap_x_mm", 30.0), 30.0, 0.0, 1000.0
+        )
+    if hasattr(work, "view_overview_gap_y_mm"):
+        work.view_overview_gap_y_mm = _clamp_float(
+            getattr(scene, "bname_overview_gap_y_mm", 30.0), 30.0, 0.0, 1000.0
+        )
     if hasattr(work, "view_page_preview_enabled"):
         work.view_page_preview_enabled = bool(
             getattr(scene, "bname_page_preview_enabled", True)
@@ -106,6 +114,8 @@ def apply_work_to_scene(scene, work) -> None:
         ("bname_overlay_enabled", "view_overlay_enabled", True),
         ("bname_overview_cols", "view_overview_cols", 4),
         ("bname_overview_gap_mm", "view_overview_gap_mm", 30.0),
+        ("bname_overview_gap_x_mm", "view_overview_gap_x_mm", 30.0),
+        ("bname_overview_gap_y_mm", "view_overview_gap_y_mm", 30.0),
         ("bname_page_preview_enabled", "view_page_preview_enabled", True),
         ("bname_page_preview_page_radius", "view_page_preview_page_radius", 3),
         (

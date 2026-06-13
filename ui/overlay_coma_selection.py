@@ -121,16 +121,17 @@ def _page_offset(context, work, page_index: int) -> tuple[float, float]:
         return page_browser.page_offset_mm(work, scene, area, page_index)
     paper = work.paper
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     ox, oy = page_grid.page_grid_offset_mm(
         page_index,
         cols,
-        gap,
+        gap_x,
         float(paper.canvas_width_mm),
         float(paper.canvas_height_mm),
         getattr(paper, "start_side", "right"),
         getattr(paper, "read_direction", "left"),
         work=work,
+        gap_y_mm=gap_y,
     )
     add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_index])
     return ox + add_x, oy + add_y

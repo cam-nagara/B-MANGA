@@ -125,6 +125,7 @@ def page_grid_offset_mm(
     read_direction: str = "left",
     *,
     work=None,
+    gap_y_mm: float | None = None,
 ) -> tuple[float, float]:
     """``page_index`` の grid offset (mm) を返す.
 
@@ -147,7 +148,8 @@ def page_grid_offset_mm(
     if work is not None:
         slot = slot_for_page_in_work(work, page_index, start_side, read_direction)
         ox, oy = slot_grid_offset_mm(
-            slot, cols, gap_mm, canvas_width_mm, canvas_height_mm, read_direction
+            slot, cols, gap_mm, canvas_width_mm, canvas_height_mm, read_direction,
+            gap_y_mm=gap_y_mm,
         )
         pages = getattr(work, "pages", []) or []
         is_spread = (
@@ -156,8 +158,6 @@ def page_grid_offset_mm(
             else False
         )
         if is_spread and read_direction == "left":
-            # 見開きはペア先頭 (偶スロット) を右半分として占有する。
-            # 内容のローカル原点は左端なので 1 ページ分左へ寄せる。
             ox -= canvas_width_mm
         return ox, oy
     slot = _logical_slot_index(page_index, start_side, read_direction)
@@ -168,6 +168,7 @@ def page_grid_offset_mm(
         canvas_width_mm,
         canvas_height_mm,
         read_direction,
+        gap_y_mm=gap_y_mm,
     )
 
 
@@ -186,28 +187,25 @@ def slot_grid_offset_mm(
     canvas_width_mm: float,
     canvas_height_mm: float,
     read_direction: str = "left",
+    *,
+    gap_y_mm: float | None = None,
 ) -> tuple[float, float]:
     """見開き補正後の論理 slot から grid offset (mm) を返す."""
     cols = max(1, int(cols))
+    gy = float(gap_y_mm) if gap_y_mm is not None else float(gap_mm)
     if read_direction == "down":
-        # 縦スクロール: 全ページが 1 列に並ぶ。見開きの概念は無視。
-        return (0.0, -int(slot) * (canvas_height_mm + gap_mm))
+        return (0.0, -int(slot) * (canvas_height_mm + gy))
 
     col = slot % cols
     row = slot // cols
-    # X 方向は「列 c=0..col-1 の幅 + ペア境界 gap」を累積
-    # ペア境界: c 番目スロットが偶数 (= 左半分の終わり) の次は奇数 (右半分の始まり)
-    #          → c が奇数 (右半分) の次 c+1 (= 左半分の頭) で gap
     x_total = 0.0
     for c in range(col):
         x_total += canvas_width_mm
-        # c 番目 → c+1 番目で gap が入るのは「c が奇数 (= 右半分) の次」
         if c % 2 == 1:
             x_total += gap_mm
-    # read_direction で符号を決定
     sign = -1.0 if read_direction == "left" else 1.0
     ox = sign * x_total
-    oy = -row * (canvas_height_mm + gap_mm)
+    oy = -row * (canvas_height_mm + gy)
     return (ox, oy)
 
 
@@ -266,23 +264,32 @@ def page_total_offset_mm(
     """grid 配置とページ手動移動量を合成した offset (mm) を返す."""
     if work is None or scene is None or not (0 <= page_index < len(work.pages)):
         return 0.0, 0.0
-    cols, gap, cw, ch = _resolve_overview_params(scene, work)
+    cols, gap_x, gap_y, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     grid_page_index = original_page_index(work, page_index)
     ox_mm, oy_mm = page_grid_offset_mm(
-        grid_page_index, cols, gap, cw, ch, start_side, read_direction, work=work
+        grid_page_index, cols, gap_x, cw, ch, start_side, read_direction,
+        work=work, gap_y_mm=gap_y,
     )
     add_x, add_y = page_manual_offset_for_scene_mm(scene, work.pages[page_index])
     return ox_mm + add_x, oy_mm + add_y
 
 
-def _resolve_overview_params(scene, work) -> tuple[int, float, float, float]:
+def resolve_gap_mm(scene) -> tuple[float, float]:
+    """シーンからページ間隔 (横, 縦) mm を取得する."""
+    fallback = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x = float(getattr(scene, "bname_overview_gap_x_mm", fallback))
+    gap_y = float(getattr(scene, "bname_overview_gap_y_mm", fallback))
+    return gap_x, gap_y
+
+
+def _resolve_overview_params(scene, work) -> tuple[int, float, float, float, float]:
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = resolve_gap_mm(scene)
     cw = float(work.paper.canvas_width_mm)
     ch = float(work.paper.canvas_height_mm)
-    return cols, gap, cw, ch
+    return cols, gap_x, gap_y, cw, ch
 
 
 # 下書き (マスター GP) のストローク座標はキャンバス絶対値のため、ページの
@@ -450,7 +457,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     scene = context.scene if context else bpy.context.scene
     if scene is None or work is None:
         return 0
-    cols, gap, cw, ch = _resolve_overview_params(scene, work)
+    cols, gap_x, gap_y, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     page_ids = {str(getattr(page, "id", "") or "") for page in getattr(work, "pages", []) or []}
@@ -544,7 +551,8 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             continue
         page_id_str = str(getattr(page_entry, "id", "") or "")
         ox_mm, oy_mm = page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         # ページ編集シーンでは「一覧上の手動移動量」を内容に加えない
         # (一覧専用の見た目オフセット。紙やコマと内容がずれる原因になる)
@@ -691,7 +699,7 @@ def page_index_at_world_mm(
     """
     if work is None or scene is None:
         return None
-    _, _, cw, ch = _resolve_overview_params(scene, work)
+    _, _, _, cw, ch = _resolve_overview_params(scene, work)
     from . import page_range
 
     for i, page in enumerate(work.pages):

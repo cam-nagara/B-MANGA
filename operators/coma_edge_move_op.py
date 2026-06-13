@@ -318,7 +318,7 @@ def _all_coma_edges_world(
     """
     scene = getattr(context, "scene", None) or bpy.context.scene
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     start_side = getattr(work.paper, "start_side", "right")
@@ -332,7 +332,8 @@ def _all_coma_edges_world(
             ox, oy = _page_offset_for_area(context or bpy.context, work, area, pi)
         else:
             ox, oy = page_grid.page_grid_offset_mm(
-                pi, cols, gap, cw, ch, start_side, read_direction, work=work
+                pi, cols, gap_x, cw, ch, start_side, read_direction,
+                work=work, gap_y_mm=gap_y,
             )
             add_x, add_y = page_grid.page_manual_offset_mm(page)
             ox += add_x
@@ -351,13 +352,14 @@ def _all_coma_edges_world(
 def _page_offset(work, page_idx: int) -> tuple[float, float]:
     scene = bpy.context.scene
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     ox, oy = page_grid.page_grid_offset_mm(
-        page_idx, cols, gap, cw, ch, start_side, read_direction, work=work
+        page_idx, cols, gap_x, cw, ch, start_side, read_direction,
+        work=work, gap_y_mm=gap_y,
     )
     if 0 <= page_idx < len(work.pages):
         add_x, add_y = page_grid.page_manual_offset_mm(work.pages[page_idx])

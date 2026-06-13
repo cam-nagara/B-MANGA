@@ -600,7 +600,7 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4) or 4))
-    gap = max(0.0, float(getattr(scene, "bname_overview_gap_mm", 30.0)))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
     rects: dict[str, tuple[int, float, float, float, float]] = {}
@@ -612,7 +612,8 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
         if not page_id or not page_range.page_in_range(page):
             continue
         ox, oy = page_grid.page_grid_offset_mm(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         add_x, add_y = page_grid.page_manual_offset_mm(page)
         x0 = ox + add_x

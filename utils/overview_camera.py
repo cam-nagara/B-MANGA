@@ -91,8 +91,8 @@ def ensure_overview_camera(scene, work) -> bpy.types.Object | None:
     if bbox is None:
         return None
     x, y, w, h = bbox
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0) or 30.0)
-    pad = max(4.0, gap * 0.18)
+    _gx, _gy = page_grid.resolve_gap_mm(scene)
+    pad = max(4.0, min(_gx, _gy) * 0.18)
     aspect = _camera_aspect(scene)
     target_w = max(1.0, w + pad * 2.0)
     target_h = max(1.0, h + pad * 2.0)

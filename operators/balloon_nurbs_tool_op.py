@@ -114,6 +114,18 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -133,6 +145,12 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
             return self._finish(context)
         if event.value == "PRESS" and event.type in {"RET", "NUMPAD_ENTER"}:
             self._create_balloon(context)
+            return {"RUNNING_MODAL"}
+        if (
+            event.type == "LEFTMOUSE"
+            and event.value == "PRESS"
+            and handle_intercept.try_intercept_press(context, event, self)
+        ):
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value in {"PRESS", "DOUBLE_CLICK"}:
             return self._handle_press(context, event)

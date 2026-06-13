@@ -30,7 +30,7 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_active_page, get_work
 from ..io import page_io, coma_io
-from ..utils import geom, log, viewport_colors
+from ..utils import geom, log, page_grid, viewport_colors
 from . import coma_modal_state, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -126,12 +126,12 @@ def _compute_page_offset(context) -> tuple[float, float]:
     if not (0 <= idx < len(work.pages)):
         return (0.0, 0.0)
     cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-    gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     col = idx % cols
     row = idx // cols
-    return (-col * (cw + gap), -row * (ch + gap))
+    return (-col * (cw + gap_x), -row * (ch + gap_y))
 
 
 def _collect_snap_lines(work, page, current_entry) -> tuple[list[float], list[float]]:
@@ -192,7 +192,7 @@ class BNAME_OT_coma_edit_vertices(Operator):
 
     bl_idname = "bname.coma_edit_vertices"
     bl_label = "コマ枠を編集 (頂点/辺ドラッグ)"
-    bl_options = {"REGISTER", "UNDO"}
+    bl_options = {"REGISTER"}
 
     @classmethod
     def poll(cls, context):

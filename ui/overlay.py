@@ -1196,15 +1196,16 @@ def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
     ch = paper.canvas_height_mm
     if cw <= 0 or ch <= 0:
         return work.active_page_index
-    from ..utils.page_grid import page_grid_offset_mm as _pg_offset
+    from ..utils.page_grid import page_grid_offset_mm as _pg_offset, resolve_gap_mm as _resolve_gap
     cols = max(1, int(getattr(bpy.context.scene, "bname_overview_cols", 4)))
-    gap = float(getattr(bpy.context.scene, "bname_overview_gap_mm", 30.0))
+    gap_x, gap_y = _resolve_gap(bpy.context.scene)
     start_side = getattr(paper, "start_side", "right")
     read_direction = getattr(paper, "read_direction", "left")
     eps = 0.5  # mm 単位の許容誤差
     for i in range(len(work.pages)):
         ox_i, oy_i = _pg_offset(
-            i, cols, gap, cw, ch, start_side, read_direction, work=work
+            i, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
         )
         ox_i, oy_i = _with_page_manual_offset(work, i, ox_i, oy_i)
         if abs(ox_i - ox_mm) < eps and abs(oy_i - oy_mm) < eps:
@@ -1235,6 +1236,7 @@ def _page_overview_offset(
     read_direction: str,
     *,
     is_page_browser: bool,
+    gap_y: float | None = None,
 ) -> tuple[float, float]:
     if is_page_browser and page_browser.fit_enabled(context.scene):
         return page_browser.page_offset_mm(
@@ -1245,7 +1247,10 @@ def _page_overview_offset(
         )
     from ..utils.page_grid import page_grid_offset_mm as _pg_offset
 
-    ox, oy = _pg_offset(page_index, cols, gap, cw, ch, start_side, read_direction, work=work)
+    ox, oy = _pg_offset(
+        page_index, cols, gap, cw, ch, start_side, read_direction,
+        work=work, gap_y_mm=gap_y,
+    )
     return _with_page_manual_offset(work, page_index, ox, oy)
 
 
@@ -1449,10 +1454,11 @@ def _draw_callback(phase: str = "post") -> None:
             # ページ (0002, 0003...) を左方向に展開する。オフセットは負の X。
             from ..utils.page_grid import (
                 is_left_half_page as _is_left_half,
+                resolve_gap_mm as _resolve_gap,
             )
 
             cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
-            gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+            gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
             start_side = getattr(paper, "start_side", "right")
@@ -1473,8 +1479,9 @@ def _draw_callback(phase: str = "post") -> None:
                     continue
                 # 見開き判定込みの式は page_grid 側に集約
                 ox, oy = _page_overview_offset(
-                    context, work, i, cols, gap, cw, ch,
+                    context, work, i, cols, gap_x, cw, ch,
                     start_side, read_direction, is_page_browser=is_page_browser,
+                    gap_y=gap_y,
                 )
                 if not overlay_visibility.rect_may_be_visible_in_region(
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
@@ -1495,10 +1502,11 @@ def _draw_callback(phase: str = "post") -> None:
         elif mode == MODE_COMA and len(work.pages) > 0:
             from ..utils.page_grid import (
                 is_left_half_page as _is_left_half,
+                resolve_gap_mm as _resolve_gap,
             )
 
             cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
-            gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+            gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
             start_side = getattr(paper, "start_side", "left")
@@ -1518,8 +1526,9 @@ def _draw_callback(phase: str = "post") -> None:
                 if not overlay_visibility.page_visible(page):
                     continue
                 ox, oy = _page_overview_offset(
-                    context, work, i, cols, gap, cw, ch,
+                    context, work, i, cols, gap_x, cw, ch,
                     start_side, read_direction, is_page_browser=is_page_browser,
+                    gap_y=gap_y,
                 )
                 if not overlay_visibility.rect_may_be_visible_in_region(
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
@@ -1540,12 +1549,13 @@ def _draw_callback(phase: str = "post") -> None:
             from ..utils.page_grid import (
                 is_left_half_page as _is_left_half,
                 page_grid_offset_mm as _pg_offset,
+                resolve_gap_mm as _resolve_gap,
             )
             page = get_active_page(context)
             if page is not None and not overlay_visibility.page_visible(page):
                 return
             cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
-            gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+            gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
             start_side = getattr(paper, "start_side", "right")
@@ -1554,7 +1564,8 @@ def _draw_callback(phase: str = "post") -> None:
             # 単ページモードでも active page の内容は grid 位置にあるため、
             # overlay も同じ (ox, oy) で描画して内容と一致させる。
             ox, oy = _pg_offset(
-                max(0, idx), cols, gap, cw, ch, start_side, read_direction, work=work
+                max(0, idx), cols, gap_x, cw, ch, start_side, read_direction,
+                work=work, gap_y_mm=gap_y,
             )
             ox, oy = _with_page_manual_offset(work, max(0, idx), ox, oy)
             left_half = _is_left_half(max(0, idx), start_side, read_direction, work=work)
@@ -1761,9 +1772,10 @@ def _draw_callback_pixel() -> None:
     ) and len(work.pages) > 0:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
+            resolve_gap_mm as _resolve_gap,
         )
         cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+        gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm
         start_side = getattr(paper, "start_side", "right")
@@ -1780,8 +1792,9 @@ def _draw_callback_pixel() -> None:
             if not overlay_visibility.page_visible(page):
                 continue
             ox, oy = _page_overview_offset(
-                context, work, i, cols, gap, cw, ch,
+                context, work, i, cols, gap_x, cw, ch,
                 start_side, read_direction, is_page_browser=is_page_browser,
+                gap_y=gap_y,
             )
             if not overlay_visibility.rect_may_be_visible_in_region(
                 _translate_rect(rects.canvas, ox, oy), region, rv3d,
@@ -1808,15 +1821,19 @@ def _draw_callback_pixel() -> None:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
             page_grid_offset_mm as _pg_offset,
+            resolve_gap_mm as _resolve_gap,
         )
         cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
-        gap = float(getattr(scene, "bname_overview_gap_mm", 30.0))
+        gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm
         start_side = getattr(paper, "start_side", "right")
         read_direction = getattr(paper, "read_direction", "left")
         idx = max(0, work.active_page_index) if len(work.pages) > 0 else 0
-        ox, oy = _pg_offset(idx, cols, gap, cw, ch, start_side, read_direction, work=work)
+        ox, oy = _pg_offset(
+            idx, cols, gap_x, cw, ch, start_side, read_direction,
+            work=work, gap_y_mm=gap_y,
+        )
         ox, oy = _with_page_manual_offset(work, idx, ox, oy)
         left_half = _is_left_half(idx, start_side, read_direction, work=work)
         inner = bleed_rect(paper)
