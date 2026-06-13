@@ -16,7 +16,15 @@ Blender 4.3+ / 5.x の Extensions Platform 配下では ``bl_idname`` に
 from __future__ import annotations
 
 import bpy
-from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    StringProperty,
+)
+from bpy.types import PropertyGroup
 
 from .utils import log
 
@@ -98,6 +106,20 @@ def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
         pass
 
 
+class BNameRubyDictEntry(PropertyGroup):
+    """自動ルビ用の辞書ファイルエントリ."""
+
+    path: StringProperty(  # type: ignore[valid-type]
+        name="辞書ファイル",
+        description="IME / Google日本語入力の辞書テキストファイル (.txt)",
+        subtype="FILE_PATH",
+    )
+    enabled: BoolProperty(  # type: ignore[valid-type]
+        name="有効",
+        default=True,
+    )
+
+
 class BNamePreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
@@ -151,6 +173,15 @@ class BNamePreferences(bpy.types.AddonPreferences):
         ),
         default="",
         subtype="FILE_PATH",
+    )
+
+    ruby_dictionaries: CollectionProperty(  # type: ignore[valid-type]
+        name="自動ルビ辞書",
+        type=BNameRubyDictEntry,
+    )
+    ruby_dict_active_index: IntProperty(  # type: ignore[valid-type]
+        name="選択中の辞書",
+        default=0,
     )
 
     gpencil_follow_cursor: BoolProperty(  # type: ignore[valid-type]
@@ -317,6 +348,23 @@ class BNamePreferences(bpy.types.AddonPreferences):
         col.label(text="作品情報パネル側のコマ用blendファイルが設定されていれば、そちらが優先される")
 
         box = layout.box()
+        box.label(text="自動ルビ辞書", icon="FONT_DATA")
+        col = box.column(align=True)
+        col.scale_y = 0.85
+        col.label(text="Google日本語入力 / MS-IME / ATOK のエクスポート辞書ファイル (TSV) を登録", icon="INFO")
+        col.label(text="形式: 読み<TAB>表記<TAB>品詞 (1行1語)")
+        row = box.row()
+        row.template_list(
+            "BNAME_UL_ruby_dict_list", "",
+            self, "ruby_dictionaries",
+            self, "ruby_dict_active_index",
+            rows=3,
+        )
+        side = row.column(align=True)
+        side.operator("bname.ruby_dict_add", icon="ADD", text="")
+        side.operator("bname.ruby_dict_remove", icon="REMOVE", text="")
+
+        box = layout.box()
         box.label(text="Grease Pencil (overview)")
         box.prop(self, "gpencil_follow_cursor")
 
@@ -327,7 +375,7 @@ def get_preferences(context=None) -> "BNamePreferences | None":
     return prefs.preferences if prefs else None
 
 
-_CLASSES = (BNamePreferences,)
+_CLASSES = (BNameRubyDictEntry, BNamePreferences)
 
 
 def register() -> None:

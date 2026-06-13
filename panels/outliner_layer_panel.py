@@ -35,6 +35,9 @@ class BNAME_PT_outliner_layers(Panel):
 
         col = layout.column(align=True)
         if role == page_file_scene.ROLE_PAGE:
+            col.operator("bname.coma_split_ratio", icon="MOD_EDGESPLIT")
+            col.operator("bname.auto_ruby_apply", icon="FONT_DATA")
+            col.separator()
             col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
             col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
             col.operator("bname.mask_remove_orphans", icon="TRASH")
