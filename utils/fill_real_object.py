@@ -285,6 +285,7 @@ def _ensure_gradient_material(
     tex_coord.location = (-600, 0)
     mapping = nt.nodes.new("ShaderNodeMapping")
     mapping.location = (-400, 0)
+    mapping.vector_type = "TEXTURE"
     gradient = nt.nodes.new("ShaderNodeTexGradient")
     gradient.location = (-200, 0)
     ramp = nt.nodes.new("ShaderNodeValToRGB")

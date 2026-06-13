@@ -107,6 +107,7 @@ class BNAME_OT_gradient_tool(Operator):
         self._page_id = ""
         self._page_ox = 0.0
         self._page_oy = 0.0
+        self._coma_key = ""
         self._region = None
         self._rv3d = None
         self._externally_finished = False
@@ -195,6 +196,7 @@ class BNAME_OT_gradient_tool(Operator):
 
     def _lock_page(self, context, world_x_mm, world_y_mm) -> bool:
         from ..utils import page_grid
+        from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key
 
         work = get_work(context)
         scene = context.scene
@@ -208,6 +210,13 @@ class BNAME_OT_gradient_tool(Operator):
         self._page_id = str(getattr(page, "id", ""))
         self._page_ox = ox
         self._page_oy = oy
+        local_x = world_x_mm - ox
+        local_y = world_y_mm - oy
+        coma = coma_containing_point(page, local_x, local_y)
+        if coma is not None:
+            self._coma_key = coma_stack_key(page, coma)
+        else:
+            self._coma_key = ""
         return True
 
     def _create_gradient(self, context, sx, sy, ex, ey) -> None:
@@ -231,7 +240,10 @@ class BNAME_OT_gradient_tool(Operator):
         dx = ex - sx
         dy = ey - sy
         entry.gradient_angle = math.atan2(dy, dx)
-        if self._page_id:
+        if self._coma_key:
+            entry.parent_kind = "coma"
+            entry.parent_key = self._coma_key
+        elif self._page_id:
             entry.parent_kind = "page"
             entry.parent_key = self._page_id
         context.scene.bname_active_fill_layer_index = len(coll) - 1

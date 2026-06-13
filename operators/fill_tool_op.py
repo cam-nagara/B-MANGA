@@ -152,6 +152,7 @@ class BNAME_OT_fill_tool(Operator):
         self._page_id = ""
         self._page_ox = 0.0
         self._page_oy = 0.0
+        self._coma_key = ""
         self._region = None
         self._externally_finished = False
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
@@ -261,6 +262,7 @@ class BNAME_OT_fill_tool(Operator):
 
     def _lock_page(self, context, world_x_mm, world_y_mm) -> bool:
         from ..utils import page_grid
+        from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key
 
         work = get_work(context)
         scene = context.scene
@@ -274,6 +276,13 @@ class BNAME_OT_fill_tool(Operator):
         self._page_id = str(getattr(page, "id", ""))
         self._page_ox = ox
         self._page_oy = oy
+        local_x = world_x_mm - ox
+        local_y = world_y_mm - oy
+        coma = coma_containing_point(page, local_x, local_y)
+        if coma is not None:
+            self._coma_key = coma_stack_key(page, coma)
+        else:
+            self._coma_key = ""
         return True
 
     def _create_lasso_fill(self, context, points_mm: list) -> None:
@@ -304,7 +313,10 @@ class BNAME_OT_fill_tool(Operator):
         entry.region_width_mm = rw
         entry.region_height_mm = rh
         entry.lasso_points_json = json.dumps(points_mm)
-        if self._page_id:
+        if self._coma_key:
+            entry.parent_kind = "coma"
+            entry.parent_key = self._coma_key
+        elif self._page_id:
             entry.parent_kind = "page"
             entry.parent_key = self._page_id
         context.scene.bname_active_fill_layer_index = len(coll) - 1
