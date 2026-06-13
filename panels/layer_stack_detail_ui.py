@@ -36,14 +36,20 @@ def page_layer_name(target, work=None) -> str:
                     start = int(getattr(info, "page_number_start", 1) or 1)
                 except Exception:  # noqa: BLE001
                     start = 1
-                return f"{start + index}ページ"
+                return f"ページ{start + index:03d}"
     target_id = str(getattr(target, "id", "") or "")
-    return target_id or _zero_based_layer_name("p", "", 3)
+    m = re.search(r"(\d+)", target_id)
+    if m:
+        return f"ページ{int(m.group(1)):03d}"
+    return target_id or "ページ000"
 
 
 def coma_layer_name(target) -> str:
     stem = str(getattr(target, "coma_id", "") or getattr(target, "id", "") or "")
-    return stem or _zero_based_layer_name("c", "", 2)
+    m = re.search(r"(\d+)", stem)
+    if m:
+        return f"コマ{int(m.group(1)):02d}"
+    return stem or "コマ00"
 
 
 def _draw_gp_selected_settings(box, obj, active_layer) -> None:

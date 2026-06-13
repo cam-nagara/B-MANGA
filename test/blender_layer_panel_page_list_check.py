@@ -101,7 +101,7 @@ def main() -> None:
         assert hasattr(bpy.types, "BNAME_PT_layer_stack")
         assert hasattr(context.scene, "bname_layer_stack_visible")
         assert len(work.pages) == 1
-        assert layer_stack_detail_ui.page_layer_name(work.pages[0], work) == "1ページ"
+        assert layer_stack_detail_ui.page_layer_name(work.pages[0], work) == "ページ001"
 
         assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
         assert len(work.pages) == 2
@@ -131,13 +131,13 @@ def main() -> None:
         assert "FINISHED" in bpy.ops.bname.page_move("EXEC_DEFAULT", direction=-1)
         assert str(work.pages[0].id) == second_id
         assert str(work.pages[1].id) == first_id
-        assert layer_stack_detail_ui.page_layer_name(work.pages[0], work) == "1ページ"
-        assert layer_stack_detail_ui.page_layer_name(work.pages[1], work) == "2ページ"
+        assert layer_stack_detail_ui.page_layer_name(work.pages[0], work) == "ページ001"
+        assert layer_stack_detail_ui.page_layer_name(work.pages[1], work) == "ページ002"
 
         assert "FINISHED" in bpy.ops.bname.page_duplicate("EXEC_DEFAULT")
         assert len(work.pages) == 3
         assert work.active_page_index == 1
-        assert layer_stack_detail_ui.page_layer_name(work.pages[1], work) == "2ページ"
+        assert layer_stack_detail_ui.page_layer_name(work.pages[1], work) == "ページ002"
 
         assert "FINISHED" in bpy.ops.bname.page_remove("EXEC_DEFAULT")
         assert len(work.pages) == 2

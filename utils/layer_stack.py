@@ -349,6 +349,31 @@ def _explicit_entry_parent(entry, page, panels_by_key: dict[str, object]) -> tup
     return None
 
 
+_PAGE_NUM_RE = re.compile(r"p0*(\d+)$")
+_COMA_NUM_RE = re.compile(r"(?:coma[_-]?)0*(\d+)$")
+
+
+def _page_label(page_key: str, title: str) -> str:
+    if title:
+        return title
+    m = _PAGE_NUM_RE.match(str(page_key or ""))
+    if m:
+        return f"ページ{int(m.group(1)):03d}"
+    return str(page_key or "")
+
+
+def _coma_display_label(panel, fallback: str) -> str:
+    raw_title = str(getattr(panel, "title", "") or "")
+    label = raw_title.replace("基本枠", "").strip(" -_　")
+    if label:
+        return label
+    coma_id = str(getattr(panel, "coma_id", "") or fallback or "")
+    m = _COMA_NUM_RE.match(coma_id)
+    if m:
+        return f"コマ{int(m.group(1)):02d}"
+    return coma_id or str(fallback or "")
+
+
 _LAYER_KIND_JP = {
     "balloon": "フキダシ",
     "text": "テキスト",
@@ -479,10 +504,6 @@ def _retarget_root_subtree_to_outside(targets: list[LayerTarget]) -> list[LayerT
     return out
 
 
-def _coma_label(panel, fallback: str) -> str:
-    label = str(getattr(panel, "title", "") or "").replace("基本枠", "").strip()
-    label = label.strip(" -_　")
-    return label or str(fallback or "")
 
 
 def _collect_outside_layer_targets(
@@ -503,7 +524,7 @@ def _collect_outside_layer_targets(
         stem = str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
         if not stem:
             continue
-        label = _coma_label(panel, stem)
+        label = _coma_display_label(panel, stem)
         targets.append(LayerTarget(COMA_KIND, outside_child_key(stem), label, OUTSIDE_STACK_KEY, 1))
 
     raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
@@ -843,7 +864,7 @@ def collect_targets(context) -> list[LayerTarget]:
             if not page_range.page_in_range(page):
                 continue
             page_key = page_stack_key(page)
-            label = getattr(page, "title", "") or page_key
+            label = _page_label(page_key, getattr(page, "title", ""))
             targets.append(LayerTarget(PAGE_KIND, page_key, label))
             if not bool(getattr(page, "stack_expanded", True)):
                 continue
@@ -873,7 +894,7 @@ def collect_targets(context) -> list[LayerTarget]:
 
             for panel in panels:
                 key = coma_stack_key(page, panel)
-                panel_label = _coma_label(panel, getattr(panel, "coma_id", "") or key)
+                panel_label = _coma_display_label(panel, getattr(panel, "coma_id", "") or key)
                 targets.append(LayerTarget(COMA_KIND, key, panel_label, page_key, 1))
                 targets.extend(gp_targets_by_parent.get(key, []))
                 targets.extend(effect_targets_by_parent.get(key, []))
