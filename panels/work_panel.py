@@ -77,7 +77,6 @@ class BNAME_PT_work(Panel):
         box.label(text="ページ一覧プレビュー")
         preview = box.column(align=True)
         preview.enabled = mode == MODE_PAGE
-        preview.prop(work, "page_preview_scale_percentage", text="コマ画像縮小率")
         preview.prop(work, "auto_render_coma_thumb_on_return", text="戻る時に更新")
 
         box = layout.box()

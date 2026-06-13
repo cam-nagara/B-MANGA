@@ -107,6 +107,21 @@ def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
         pass
 
 
+def _on_coma_thumb_scale_changed(self, context) -> None:  # noqa: ANN001
+    try:
+        scene = getattr(context or bpy.context, "scene", None)
+        if scene is None:
+            return
+        work = getattr(scene, "bname_work", None)
+        value = float(getattr(self, "coma_thumb_scale_percentage", 12.5) or 12.5)
+        if work is not None and hasattr(work, "page_preview_scale_percentage"):
+            work.page_preview_scale_percentage = value
+        if hasattr(scene, "bname_coma_camera_preview_scale_percentage"):
+            scene.bname_coma_camera_preview_scale_percentage = value
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class BNameRubyDictEntry(PropertyGroup):
     """自動ルビ用の辞書ファイルエントリ."""
 
@@ -215,6 +230,16 @@ class BNamePreferences(bpy.types.AddonPreferences):
         update=_on_page_preview_resolution_changed,
     )
 
+    coma_thumb_scale_percentage: FloatProperty(  # type: ignore[valid-type]
+        name="コマ画像縮小率",
+        description="ページ一覧に表示するコマ画像PNGの縮小率",
+        default=12.5,
+        min=1.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_coma_thumb_scale_changed,
+    )
+
     # ---------- ショートカットキーのカスタマイズ ----------
     # 各機能ごとに「キー文字列 + Shift/Ctrl/Alt 修飾」を保持する。
     # キー文字列は Blender の Event.type 名 (例: "SPACE", "O", "P",
@@ -314,6 +339,7 @@ class BNamePreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="ページ一覧プレビュー")
         box.prop(self, "page_preview_resolution_percentage", text="画像解像度%")
+        box.prop(self, "coma_thumb_scale_percentage", text="コマ画像縮小率")
 
         # ショートカットキー カスタマイズ
         kbox = layout.box()

@@ -123,7 +123,6 @@ class BNAME_PT_view(Panel):
                 row = col.row(align=True)
                 row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
                 row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
-                row.prop(scene, "bname_page_preview_resolution_percentage", text="画像解像度%")
                 row = col.row(align=True)
                 row.prop(scene, "bname_overview_cols", text="列数")
                 row = col.row(align=True)

@@ -46,6 +46,17 @@ def default_page_preview_resolution_percentage(context=None) -> float:
     )
 
 
+def default_coma_thumb_scale_percentage(context=None) -> float:
+    try:
+        from ..preferences import get_preferences
+
+        prefs = get_preferences(context)
+        value = getattr(prefs, "coma_thumb_scale_percentage", 12.5)
+    except Exception:  # noqa: BLE001
+        value = 12.5
+    return _clamp_float(value, 12.5, 1.0, 100.0)
+
+
 def apply_preferences_to_work_defaults(work, context=None) -> None:
     if work is None:
         return
@@ -53,6 +64,8 @@ def apply_preferences_to_work_defaults(work, context=None) -> None:
         work.view_page_preview_resolution_percentage = default_page_preview_resolution_percentage(
             context
         )
+    if hasattr(work, "page_preview_scale_percentage"):
+        work.page_preview_scale_percentage = default_coma_thumb_scale_percentage(context)
 
 
 def copy_scene_to_work(scene, work) -> None:
