@@ -2456,6 +2456,7 @@ def _sync_object_selection_for_stack_item(context, item, resolved) -> None:
         object_selection.select_key(context, key, mode="single")
     else:
         object_selection.clear(context)
+    _sync_native_selection(context)
 
 
 def sync_object_selection_from_stack_selection(context, stack=None) -> None:
@@ -2463,6 +2464,7 @@ def sync_object_selection_from_stack_selection(context, stack=None) -> None:
         stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None:
         object_selection.clear(context)
+        _sync_native_selection(context)
         return
     keys: list[str] = []
     for item in stack:
@@ -2473,6 +2475,18 @@ def sync_object_selection_from_stack_selection(context, stack=None) -> None:
         if key and key not in keys:
             keys.append(key)
     object_selection.set_keys(context, keys)
+    _sync_native_selection(context)
+
+
+def _sync_native_selection(context) -> None:
+    try:
+        from ..operators import object_tool_selection
+
+        object_tool_selection.sync_outliner_selection_for_keys(
+            context, object_selection.get_keys(context)
+        )
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def select_stack_index(context, index: int, *, sync_object_selection: bool = True) -> bool:

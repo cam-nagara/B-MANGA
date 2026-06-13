@@ -16,6 +16,7 @@ overlay_shared ロジックを Pillow で再実装する、Phase 6 で実装)。
 
 from __future__ import annotations
 
+import math
 from typing import Optional
 
 import blf
@@ -856,6 +857,13 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             pass
         x_px = float(coord.x)
         y_px = float(coord.y)
+        rotated = getattr(glyph, "rotation_deg", 0.0) != 0.0
+        if rotated:
+            blf.enable(glyph_font_id, blf.ROTATION)
+            blf.rotation(glyph_font_id, math.radians(glyph.rotation_deg))
+            half_em = size_px * 0.5
+            x_px += half_em
+            y_px += half_em
         stroke_width_px = 0.0
         if getattr(entry, "stroke_enabled", False):
             stroke_width_px = max(1.0, float(getattr(entry, "stroke_width_mm", 0.2)) * max(px_per_mm, 0.1))
@@ -895,14 +903,15 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
         except Exception:  # noqa: BLE001
             pass
         blf.draw(glyph_font_id, glyph.ch)
-        if text_style.bold_for_index(entry, glyph.index):
-            blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.035), y_px, 0.0)
-            blf.draw(glyph_font_id, glyph.ch)
-        if text_style.italic_for_index(entry, glyph.index):
-            # BLF has no shear flag; draw a slight upper-right echo so the
-            # setting has an immediate viewport-visible effect.
-            blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.055), y_px + max(1.0, size_px * 0.025), 0.0)
-            blf.draw(glyph_font_id, glyph.ch)
+        if not rotated:
+            if text_style.bold_for_index(entry, glyph.index):
+                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.035), y_px, 0.0)
+                blf.draw(glyph_font_id, glyph.ch)
+            if text_style.italic_for_index(entry, glyph.index):
+                blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.055), y_px + max(1.0, size_px * 0.025), 0.0)
+                blf.draw(glyph_font_id, glyph.ch)
+        if rotated:
+            blf.disable(glyph_font_id, blf.ROTATION)
     ruby_font_id = _get_font_id_for_path(str(getattr(entry, "font", "") or ""))
     ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
     for ruby_glyph in ruby_placements:

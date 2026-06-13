@@ -135,6 +135,10 @@ class BNAME_PT_view(Panel):
                 row = col.row(align=True)
                 row.prop(scene, "bname_active_page_number", text="選択ページ")
 
+        box = layout.box()
+        box.label(text="テキスト編集")
+        box.prop(scene, "bname_text_selection_color", text="選択ハイライト色")
+
         if mode != MODE_PAGE:
             _draw_page_browser_settings(layout, scene, context)
 
@@ -175,6 +179,15 @@ def register() -> None:
         subtype="PERCENTAGE",
         update=_page_preview_enabled_update,
     )
+    bpy.types.Scene.bname_text_selection_color = bpy.props.FloatVectorProperty(
+        name="テキスト選択ハイライト色",
+        description="テキスト編集中の選択範囲の色",
+        subtype="COLOR_GAMMA",
+        size=4,
+        min=0.0,
+        max=1.0,
+        default=(0.0, 0.7, 1.0, 0.45),
+    )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -199,5 +212,9 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bname_page_preview_resolution_percentage
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_text_selection_color
     except AttributeError:
         pass

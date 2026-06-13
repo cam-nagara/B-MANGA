@@ -55,6 +55,9 @@ _EDGE_PICK_WORLD_TOLERANCE_MIN_MM = 3.0
 _EDGE_PICK_WORLD_TOLERANCE_MAX_MM = 12.0
 _DOUBLE_CLICK_INTERVAL_SEC = 0.4
 _DOUBLE_CLICK_DISTANCE_PX = 8.0
+_ARROW_KEYS = {"UP_ARROW", "DOWN_ARROW", "LEFT_ARROW", "RIGHT_ARROW"}
+_NUDGE_PX = 1.0
+_NUDGE_SHIFT_PX = 20.0
 
 
 def _find_page_by_id(work, page_id: str):
@@ -211,6 +214,12 @@ def hit_object_at_event(context, event) -> dict | None:
         if hit is None:
             return False
         if world_x_mm is None or world_y_mm is None:
+            return True
+        part = str(hit.get("part", "") or "")
+        if part and part not in {"body", "move"}:
+            return True
+        key = str(hit.get("key", "") or "")
+        if key and object_selection.is_selected(context, key):
             return True
         return object_tool_selection.hit_visible_at_world(context, hit, world_x_mm, world_y_mm)
 
@@ -674,6 +683,9 @@ class BNAME_OT_object_tool(Operator):
             self.finish_from_external(context, keep_selection=True)
             _schedule_object_tool_relaunch()
             return {"FINISHED", "PASS_THROUGH"}
+        if event.value == "PRESS" and event.type in _ARROW_KEYS:
+            if self._nudge_selection(context, event):
+                return {"RUNNING_MODAL"}
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
         if event.type != "LEFTMOUSE" or event.value not in {"PRESS", "DOUBLE_CLICK"}:
@@ -730,6 +742,11 @@ class BNAME_OT_object_tool(Operator):
             # Blender の DOUBLE_CLICK はモーダル実行中に届かないため、
             # ページファイルを開く判定もコマと同じ自前連続クリック検出で行う。
             # ページ一覧 (全ページ表示) ではページ判定をコマ判定より優先する。
+            if hit is not None and self._is_manual_coma_double_click(event, hit):
+                if str(hit.get("kind", "") or "") == "text":
+                    self._clear_click_state()
+                    if self._try_enter_text_edit_from_hit(context, hit):
+                        return {"FINISHED"}
             open_hit = self._page_open_hit_from_event(context, event)
             if open_hit is None:
                 open_hit = self._coma_open_hit_from_hit(hit)
@@ -740,7 +757,7 @@ class BNAME_OT_object_tool(Operator):
                         return {"FINISHED"}
                 elif self._try_enter_coma_from_hit(context, open_hit):
                     return {"FINISHED"}
-            self._remember_coma_click(event, open_hit)
+            self._remember_coma_click(event, hit or open_hit)
         if hit is None:
             if mode == "single":
                 move_hit = self._selected_move_hit_from_event(context, event)
@@ -813,6 +830,40 @@ class BNAME_OT_object_tool(Operator):
         self._last_click_time = 0.0
         self._last_click_xy = (-1.0e9, -1.0e9)
         self._last_click_key = ""
+
+    def _nudge_selection(self, context, event) -> bool:
+        keys = object_selection.get_keys(context)
+        if not keys:
+            return False
+        from ..utils.geom import px_to_mm
+
+        work = get_work(context)
+        dpi = 600
+        if work is not None:
+            dpi = int(getattr(getattr(work, "paper", None), "dpi", 600) or 600)
+        px = _NUDGE_SHIFT_PX if bool(getattr(event, "shift", False)) else _NUDGE_PX
+        step = px_to_mm(px, dpi)
+        dx, dy = 0.0, 0.0
+        if event.type == "RIGHT_ARROW":
+            dx = step
+        elif event.type == "LEFT_ARROW":
+            dx = -step
+        elif event.type == "UP_ARROW":
+            dy = step
+        elif event.type == "DOWN_ARROW":
+            dy = -step
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+            return False
+        self._drag_action = "move"
+        self._snapshots = self._make_snapshots(
+            context, keys, primary_key=keys[0], action="move",
+        )
+        if not self._snapshots:
+            return False
+        self._apply_snapshots(context, dx, dy)
+        self._snapshots = []
+        object_selection.tag_view3d_redraw(context)
+        return True
 
     def _page_open_hit_from_event(self, context, event) -> dict | None:
         """連続クリックで開くべきページファイルがあれば、その判定情報を返す."""

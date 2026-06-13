@@ -8,6 +8,8 @@ Blender 4.0+ の blf API: ``blf.size(fontid, size)`` (dpi 引数は廃止済み)
 
 from __future__ import annotations
 
+import math
+
 import blf
 
 from ..utils import log
@@ -33,6 +35,7 @@ def render_placements(
     呼出側は region.width / world_span_mm から計算して渡す。
     """
     blf.color(font_id, color[0], color[1], color[2], color[3])
+    rotated = False
     for g in result.placements:
         size_px = g.size_pt * view_to_screen_px_per_mm * 25.4 / 72.0
         if size_px <= 0:
@@ -40,7 +43,17 @@ def render_placements(
         blf.size(font_id, max(1, int(size_px)))
         screen_x = origin_screen_xy[0] + g.x_mm * view_to_screen_px_per_mm
         screen_y = origin_screen_xy[1] + g.y_mm * view_to_screen_px_per_mm
-        blf.position(font_id, screen_x, screen_y, 0.0)
-        # 縦中横 (rotation_deg=-90) は blf.rotation が使えないため、将来は
-        # gpu オフスクリーン回転合成で対応。Phase 3 暫定版は回転無し描画。
+        if g.rotation_deg != 0.0:
+            blf.enable(font_id, blf.ROTATION)
+            blf.rotation(font_id, math.radians(g.rotation_deg))
+            half_em = size_px * 0.5
+            blf.position(font_id, screen_x + half_em, screen_y + half_em, 0.0)
+            rotated = True
+        else:
+            if rotated:
+                blf.disable(font_id, blf.ROTATION)
+                rotated = False
+            blf.position(font_id, screen_x, screen_y, 0.0)
         blf.draw(font_id, g.ch)
+    if rotated:
+        blf.disable(font_id, blf.ROTATION)

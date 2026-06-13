@@ -834,23 +834,10 @@ def _current_blend_is_coma_blend() -> tuple[Path | None, str, str]:
 
 
 class BNAME_OT_exit_coma_mode_safe(Operator):
-    """ページ一覧へ戻る (堅牢版).
-
-    ``bname.exit_coma_mode`` は ``get_mode == MODE_COMA`` かつ ``work.loaded``
-    を要求するが、load_post の遅延・失敗で Scene 状態が壊れていると
-    poll/execute が通らずユーザーが帰り道を失う。本 operator は
-
-    1. 通常パス: 既存の ``bname.exit_coma_mode`` を呼ぶ
-    2. フォールバック: それが無理なら、開いている .blend のパスから
-       ``work_dir`` を逆引きし、直接 ``open_work_blend`` で work.blend を
-       開く (cNN.blend は保存しない / Blender は通常 mainfile dirty 状態を
-       保存するか聞いてくる)
-
-    どちらにせよ、ユーザーは ``ページ一覧 (work.blend)`` に戻れる。
-    """
+    """コマ編集を終了してページに戻る."""
 
     bl_idname = "bname.exit_coma_mode_safe"
-    bl_label = "ページ一覧に戻る"
+    bl_label = "ページに戻る"
 
     @classmethod
     def poll(cls, context):

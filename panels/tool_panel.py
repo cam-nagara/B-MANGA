@@ -185,6 +185,11 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         prow.label(text="しっぽプリセット", icon="SHARPCURVE")
         prow.prop(wm, "bname_tail_preset_selector", text="")
         return
+    if coma_modal_state.is_active("text_tool") and hasattr(wm, "bname_text_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="テキストプリセット", icon="FONT_DATA")
+        prow.prop(wm, "bname_text_tool_preset_selector", text="")
+        return
 
 
 _CLASSES = (BNAME_PT_tools,)

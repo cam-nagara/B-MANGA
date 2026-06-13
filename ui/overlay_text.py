@@ -12,7 +12,16 @@ EntryVisiblePredicate = Callable[[object], bool]
 _TEXT_HANDLE_SIZE_MM = 2.0
 _TEXT_CARET_MIN_THICKNESS_MM = 0.18
 _TEXT_CARET_COLOR = (0.02, 0.02, 0.02, 1.0)
-_TEXT_SELECTION_COLOR = (0.0, 0.35, 1.0, 0.85)
+_TEXT_SELECTION_COLOR_DEFAULT = (0.0, 0.7, 1.0, 0.45)
+
+
+def _text_selection_color(context) -> tuple[float, float, float, float]:
+    if context is not None:
+        scene = getattr(context, "scene", None)
+        c = getattr(scene, "bname_text_selection_color", None) if scene is not None else None
+        if c is not None and len(c) >= 4:
+            return (float(c[0]), float(c[1]), float(c[2]), float(c[3]))
+    return _TEXT_SELECTION_COLOR_DEFAULT
 
 
 def _text_handle_rects(rect: Rect) -> list[Rect]:
@@ -195,11 +204,11 @@ def draw_text_guides(
                     cursor_index,
                     selection_anchor,
                 ):
-                    draw_rect_fill(selection_rect, _TEXT_SELECTION_COLOR)
+                    draw_rect_fill(selection_rect, _text_selection_color(context))
             else:
                 start, end = composition_bounds
                 for composition_rect in _selection_rects(preview_entry, rect, end, start):
-                    draw_rect_fill(composition_rect, _TEXT_SELECTION_COLOR)
+                    draw_rect_fill(composition_rect, _text_selection_color(context))
             caret = text_caret_rect(preview_entry, rect, preview_cursor)
             draw_rect_fill(caret, _TEXT_CARET_COLOR)
 
@@ -246,11 +255,11 @@ def draw_text_pixels(
                         cursor_index,
                         selection_anchor,
                     ):
-                        draw_rect_fill_pixel(context, selection_rect, _TEXT_SELECTION_COLOR)
+                        draw_rect_fill_pixel(context, selection_rect, _text_selection_color(context))
                 else:
                     start, end = composition_bounds
                     for composition_rect in _selection_rects(preview_entry, rect, end, start):
-                        draw_rect_fill_pixel(context, composition_rect, _TEXT_SELECTION_COLOR)
+                        draw_rect_fill_pixel(context, composition_rect, _text_selection_color(context))
             draw_text_in_rect(context, rect, preview_entry)
             if draw_rect_fill_pixel is not None:
                 caret = text_caret_rect(preview_entry, rect, preview_cursor)

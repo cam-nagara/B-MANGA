@@ -429,8 +429,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
 
 
 def _draw_text_detail(layout, entry) -> None:
-    layout.prop(entry, "body", text="本文")
-
     box = layout.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)

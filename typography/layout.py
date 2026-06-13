@@ -115,13 +115,14 @@ def typeset_vertical(
             # y_cursor はそのまま (次の文字も新行の先頭扱い)
             continue
 
+        rot = -90.0 if metrics.needs_vertical_rotation(ch) else 0.0
         placements.append(
             GlyphPlacement(
                 ch=ch,
                 x_mm=x,
                 y_mm=y,
                 size_pt=glyph_size_pt,
-                rotation_deg=0.0,
+                rotation_deg=rot,
                 index=text_index,
             )
         )

@@ -33,8 +33,8 @@ from . import coma_modal_state, selection_context_menu, text_edit_history, text_
 
 _logger = log.get_logger(__name__)
 
-_TEXT_DEFAULT_WIDTH_MM = 30.0
-_TEXT_DEFAULT_HEIGHT_MM = 15.0
+_TEXT_DEFAULT_WIDTH_MM = 20.0
+_TEXT_DEFAULT_HEIGHT_MM = 20.0
 _TEXT_HANDLE_HIT_MM = 2.5
 _TEXT_MIN_SIZE_MM = 2.0
 _TEXT_DRAG_EPS_MM = 0.05
@@ -237,6 +237,11 @@ def _create_text_entry(
     page.active_text_index = len(page.texts) - 1
     if hasattr(context.scene, "bname_active_layer_kind"):
         context.scene.bname_active_layer_kind = "text"
+    try:
+        from . import preset_op
+        preset_op.apply_text_preset_to_entry(context, entry)
+    except Exception:  # noqa: BLE001
+        pass
     _sync_text_real_object(context, page, entry)
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     return entry, missing_parent
@@ -1050,7 +1055,7 @@ class BNAME_OT_text_tool(Operator):
                 entry,
                 min_width=_TEXT_MIN_SIZE_MM,
                 min_height=_TEXT_MIN_SIZE_MM,
-                allow_shrink=True,
+                allow_shrink=False,
             )
         self._editing = True
         self._editing_created_new = False
@@ -1405,7 +1410,7 @@ class BNAME_OT_text_tool(Operator):
                 entry,
                 min_width=_TEXT_MIN_SIZE_MM,
                 min_height=_TEXT_MIN_SIZE_MM,
-                allow_shrink=True,
+                allow_shrink=False,
             )
         text_real_object.set_text_object_preview_hidden(entry, page, hidden=True)
         text_edit_history.record(self, entry)

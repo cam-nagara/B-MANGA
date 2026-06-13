@@ -34,6 +34,29 @@ def has_pillow() -> bool:
     return _HAS_PIL
 
 
+def _draw_rotated_char(
+    image: Any,
+    draw: Any,
+    ch: str,
+    font: Any,
+    x: float,
+    y: float,
+    size_px: int,
+    rotation_deg: float,
+    **kwargs,
+) -> None:
+    """1文字を回転して image に合成."""
+    margin = size_px
+    tmp_size = size_px + margin * 2
+    tmp = Image.new("RGBA", (tmp_size, tmp_size), (0, 0, 0, 0))
+    tmp_draw = ImageDraw.Draw(tmp)
+    tmp_draw.text((margin, margin), ch, font=font, **kwargs)
+    rotated = tmp.rotate(-rotation_deg, resample=Image.BICUBIC, expand=False)
+    paste_x = int(x - tmp_size / 2 + size_px * 0.5)
+    paste_y = int(y - tmp_size / 2 + size_px * 0.5)
+    image.alpha_composite(rotated, (paste_x, paste_y))
+
+
 def render_to_image(
     result: TypesetResult,
     image: Any,
@@ -82,16 +105,19 @@ def render_to_image(
         if stroke_width_px > 0:
             kwargs["stroke_width"] = stroke_width_px
             kwargs["stroke_fill"] = stroke_color
-        draw.text((x, y_px), g.ch, font=font, **kwargs)
-        if bold_for_index is not None and bold_for_index(g.index):
-            draw.text((x + max(1, size_px // 28), y_px), g.ch, font=font, **kwargs)
-        if italic_for_index is not None and italic_for_index(g.index):
-            draw.text(
-                (x + max(1, int(round(size_px * 0.055))), y_px - max(1, int(round(size_px * 0.025)))),
-                g.ch,
-                font=font,
-                **kwargs,
-            )
+        if g.rotation_deg != 0.0:
+            _draw_rotated_char(image, draw, g.ch, font, x, y_px, size_px, g.rotation_deg, **kwargs)
+        else:
+            draw.text((x, y_px), g.ch, font=font, **kwargs)
+            if bold_for_index is not None and bold_for_index(g.index):
+                draw.text((x + max(1, size_px // 28), y_px), g.ch, font=font, **kwargs)
+            if italic_for_index is not None and italic_for_index(g.index):
+                draw.text(
+                    (x + max(1, int(round(size_px * 0.055))), y_px - max(1, int(round(size_px * 0.025)))),
+                    g.ch,
+                    font=font,
+                    **kwargs,
+                )
     for r in ruby_placements or ():
         size_pt = float(getattr(r, "size_pt", 0.0) or 0.0)
         if size_pt <= 0.0:

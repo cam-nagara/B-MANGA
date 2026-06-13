@@ -221,6 +221,7 @@ def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
 
 
 _BALLOON_TOOL_ENUM_CACHE: dict[str, list] = {}
+_TEXT_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
 
 
 def _balloon_tool_preset_enum_items(_self, context):
@@ -257,6 +258,57 @@ def selected_balloon_tool_shape(context) -> tuple[str, str]:
     if value.startswith("custom:"):
         return "custom", value.split(":", 1)[1]
     return "", ""
+
+
+def _text_preset_enum_items(_self, context):
+    """テキストツール用: テキストスタイルプリセットの選択肢."""
+    global _TEXT_PRESET_ENUM_CACHE
+    items: list[tuple[str, str, str]] = [("NONE", "（なし）", "プリセットを適用しない")]
+    try:
+        from ..io import text_presets
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+        for preset in text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None):
+            items.append((preset.name, preset.name, preset.description or ""))
+    except Exception:  # noqa: BLE001
+        _logger.exception("text preset items build failed")
+    _TEXT_PRESET_ENUM_CACHE = items
+    return items
+
+
+def _on_text_preset_selector_change(_self, context):
+    """テキストプリセット変更時: 次に作成するテキストに適用する設定を記憶."""
+    pass
+
+
+def selected_text_preset_name(context) -> str:
+    """テキストツールで選択中のプリセット名を返す."""
+    wm = getattr(context, "window_manager", None)
+    value = str(getattr(wm, "bname_text_tool_preset_selector", "") or "") if wm is not None else ""
+    if value == "NONE" or not value:
+        return ""
+    return value
+
+
+def apply_text_preset_to_entry(context, entry) -> bool:
+    """選択中のテキストプリセットを TextEntry に適用."""
+    name = selected_text_preset_name(context)
+    if not name:
+        return False
+    try:
+        from ..io import text_presets
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+        all_presets = text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None)
+        for preset in all_presets:
+            if preset.name == name:
+                text_presets.apply_to_entry(entry, preset.data)
+                return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("text preset apply failed")
+    return False
 
 
 def sync_border_preset_selector(context) -> None:
@@ -748,6 +800,12 @@ def register() -> None:
         description="フキダシツールで新しく作るフキダシの形状プリセット",
         items=_balloon_tool_preset_enum_items,
     )
+    bpy.types.WindowManager.bname_text_tool_preset_selector = EnumProperty(
+        name="テキストプリセット",
+        description="テキストツールで新しく作るテキストのスタイルプリセット",
+        items=_text_preset_enum_items,
+        update=_on_text_preset_selector_change,
+    )
 
 
 def unregister() -> None:
@@ -761,6 +819,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.WindowManager.bname_balloon_tool_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bname_text_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

@@ -67,6 +67,14 @@ def is_kinsoku_end(ch: str) -> bool:
     return ch in "「『（【〈《〔［"
 
 
+_VERTICAL_ROTATE_CHARS = frozenset("…～〜ー―–—─")
+
+
+def needs_vertical_rotation(ch: str) -> bool:
+    """縦書きで 90° 回転が必要な文字か."""
+    return ch in _VERTICAL_ROTATE_CHARS
+
+
 def is_tatechuyoko_candidate(chars: str) -> bool:
     """連続した半角英数字の塊が縦中横の候補か (2〜4 文字の半角数字)."""
     if not chars or len(chars) > 4:
