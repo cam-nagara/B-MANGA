@@ -12,6 +12,7 @@ from ..core.work import get_active_page, get_work
 from ..io import border_presets, page_io, presets, work_io
 from ..io import coma_io
 from ..utils import log
+from . import coma_modal_state
 
 _logger = log.get_logger(__name__)
 
@@ -278,8 +279,29 @@ def _text_preset_enum_items(_self, context):
 
 
 def _on_text_preset_selector_change(_self, context):
-    """テキストプリセット変更時: 次に作成するテキストに適用する設定を記憶."""
-    pass
+    """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替."""
+    if coma_modal_state.is_active("text_tool"):
+        coma_modal_state.set_modal_cursor(context, text_tool_cursor_type(context))
+
+
+def text_tool_cursor_type(context) -> str:
+    """選択中のテキストプリセットの縦横に応じたカーソル種別を返す."""
+    name = selected_text_preset_name(context)
+    if not name:
+        return "TEXT"
+    try:
+        from ..io import text_presets
+
+        work = get_work(context)
+        work_dir = Path(str(getattr(work, "work_dir", "") or "")) if work is not None else None
+        for preset in text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None):
+            if preset.name == name:
+                if preset.data.get("writing_mode") == "vertical":
+                    return "PAINT_CROSS"
+                return "TEXT"
+    except Exception:  # noqa: BLE001
+        pass
+    return "TEXT"
 
 
 def selected_text_preset_name(context) -> str:

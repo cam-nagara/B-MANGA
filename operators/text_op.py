@@ -29,7 +29,7 @@ from ..utils import (
     text_style,
 )
 from ..utils.layer_hierarchy import page_stack_key
-from . import coma_modal_state, selection_context_menu, text_edit_history, text_edit_runtime, view_event_region
+from . import coma_modal_state, preset_op, selection_context_menu, text_edit_history, text_edit_runtime, view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -764,7 +764,9 @@ class BNAME_OT_text_tool(Operator):
         coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
         coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
         self._externally_finished = False
-        self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "TEXT")
+        self._cursor_modal_set = coma_modal_state.set_modal_cursor(
+            context, preset_op.text_tool_cursor_type(context)
+        )
         self._editing = False
         self._editing_created_new = False
         self._edit_original_body = ""
