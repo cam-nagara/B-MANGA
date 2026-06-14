@@ -32,13 +32,15 @@ def _work_dir(context) -> Path | None:
 
 
 def _tail_preset_enum_items(_self, context):
-    items = [("NONE", "(プリセットなし)", "プリセットを適用しない")]
+    items = []
     try:
         for preset in tail_presets.list_all_presets(_work_dir(context)):
             label = preset.name if preset.source == "local" else f"{preset.name} (同梱)"
             items.append((preset.name, label, preset.description or ""))
     except Exception:  # noqa: BLE001
         _logger.exception("tail preset enum build failed")
+    if not items:
+        items.append(("NONE", "—", ""))
     _ENUM_ITEMS_CACHE["all"] = items
     return items
 

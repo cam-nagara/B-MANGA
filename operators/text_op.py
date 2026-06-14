@@ -703,10 +703,10 @@ class BNAME_OT_text_apply_font_to_selection(Operator):
 
 # ---- 縦書きカーソル描画 ----
 
-_VCUR_HALF_BAR = 9
-_VCUR_SERIF = 4
-_VCUR_COLOR = (0.9, 0.9, 0.9, 0.9)
-_VCUR_SHADOW = (0.0, 0.0, 0.0, 0.6)
+_VCUR_HALF_BAR = 12
+_VCUR_SERIF = 5
+_VCUR_COLOR = (0.0, 0.0, 0.0, 1.0)
+_VCUR_SHADOW = (1.0, 1.0, 1.0, 0.5)
 
 
 def _draw_vertical_cursor(op: "BNAME_OT_text_tool") -> None:
@@ -724,7 +724,7 @@ def _draw_vertical_cursor(op: "BNAME_OT_text_tool") -> None:
         ]
         batch = batch_for_shader(shader, "LINES", {"pos": verts})
         gpu.state.blend_set("ALPHA")
-        gpu.state.line_width_set(2.0 if o else 1.5)
+        gpu.state.line_width_set(1.5 if o else 2.0)
         shader.bind()
         shader.uniform_float("color", color)
         batch.draw(shader)
@@ -828,11 +828,12 @@ class BNAME_OT_text_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
-        if event.type == "MOUSEMOVE" and getattr(self, "_vcur_draw_handler", None) is not None:
+        if event.type == "MOUSEMOVE" and not getattr(self, "_editing", False) and getattr(self, "_vcur_draw_handler", None) is not None:
             self._vcur_x = event.mouse_region_x
             self._vcur_y = event.mouse_region_y
             self._tag_redraw_vcur(context)
         if getattr(self, "_externally_finished", False):
+            self._cleanup(context)
             coma_modal_state.clear_active("text_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
         if getattr(self, "_editing", False):

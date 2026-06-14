@@ -264,7 +264,7 @@ def selected_balloon_tool_shape(context) -> tuple[str, str]:
 def _text_preset_enum_items(_self, context):
     """テキストツール用: テキストスタイルプリセットの選択肢."""
     global _TEXT_PRESET_ENUM_CACHE
-    items: list[tuple[str, str, str]] = [("NONE", "（なし）", "プリセットを適用しない")]
+    items: list[tuple[str, str, str]] = []
     try:
         from ..io import text_presets
 
@@ -274,6 +274,8 @@ def _text_preset_enum_items(_self, context):
             items.append((preset.name, preset.name, preset.description or ""))
     except Exception:  # noqa: BLE001
         _logger.exception("text preset items build failed")
+    if not items:
+        items.append(("NONE", "—", ""))
     _TEXT_PRESET_ENUM_CACHE = items
     return items
 
