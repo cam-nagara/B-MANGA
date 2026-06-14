@@ -275,6 +275,8 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         if page is None and parent_kind not in {"", "none", "outside"}:
             return False
     else:  # text
+        if obj.get("bname_text_preview_hidden", False):
+            return False
         page, entry = find_text_entry(scene, bname_id)
         if entry is None:
             return False
