@@ -319,6 +319,22 @@ class BNAME_OT_work_open(Operator, ImportHelper):
             self.report({"ERROR"}, "シーンに B-Name データが見つかりません")
             return {"CANCELLED"}
 
+        old_work_dir = Path(work.work_dir) if work.loaded and work.work_dir else None
+        if old_work_dir is not None and old_work_dir.is_dir():
+            try:
+                from ..utils import handlers, page_file_scene
+
+                handlers.save_scene_work_to_disk(context, reason="work_open")
+                role, page_id, coma_id = page_file_scene.current_role(context)
+                if role == page_file_scene.ROLE_WORK:
+                    blend_io.save_work_blend(old_work_dir)
+                elif role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
+                    blend_io.save_page_blend(old_work_dir, page_id)
+                elif role == page_file_scene.ROLE_COMA and paths.is_valid_page_id(page_id) and paths.is_valid_coma_id(coma_id):
+                    blend_io.save_coma_blend(old_work_dir, page_id, coma_id)
+            except Exception:  # noqa: BLE001
+                _logger.exception("work_open: save current file failed")
+
         selected = Path(self.filepath)
         # ファイルを選ばれても親ディレクトリを作品ルートとして解釈
         work_dir = selected if selected.suffix == paths.BNAME_DIR_SUFFIX else selected.parent
