@@ -112,7 +112,7 @@ class BNAME_PT_paper(Panel):
 
         box = layout.box()
         box.label(text="原稿上の表示")
-        box.operator("bname.work_meta_dialog", text="メタ情報を編集", icon="INFO")
+        box.operator("bname.work_meta_dialog", text="作品情報を編集", icon="INFO")
         info = work.work_info
         _draw_display_item(box, "作品名", info.display_work_name)
         _draw_display_item(box, "話数", info.display_episode)

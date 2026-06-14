@@ -62,7 +62,7 @@ class BNAME_PT_work(Panel):
         box.prop(info, "episode_number")
         box.prop(info, "subtitle")
         box.prop(info, "author")
-        box.operator("bname.work_meta_dialog", text="メタ情報を編集", icon="INFO")
+        box.operator("bname.work_meta_dialog", text="作品情報を編集", icon="INFO")
         box.label(text="ページ数")
         row = box.row(align=True)
         row.enabled = mode == MODE_PAGE

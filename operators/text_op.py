@@ -40,6 +40,7 @@ _TEXT_DEFAULT_HEIGHT_MM = 20.0
 _TEXT_HANDLE_HIT_MM = 2.5
 _TEXT_MIN_SIZE_MM = 2.0
 _TEXT_DRAG_EPS_MM = 0.05
+_TEXT_CREATE_DRAG_EPS_MM = 2.0
 _TEXT_DOUBLE_CLICK_SECONDS = 0.45
 _TEXT_DOUBLE_CLICK_DISTANCE_MM = 3.0
 _IME_MOUSE_EVENT_TYPES = {
@@ -1289,7 +1290,12 @@ class BNAME_OT_text_tool(Operator):
             return
         dx = float(lx) - float(self._drag_start_x)
         dy = float(ly) - float(self._drag_start_y)
-        if abs(dx) > _TEXT_DRAG_EPS_MM or abs(dy) > _TEXT_DRAG_EPS_MM:
+        if self._drag_action == "create":
+            if abs(dx) > _TEXT_CREATE_DRAG_EPS_MM or abs(dy) > _TEXT_CREATE_DRAG_EPS_MM:
+                self._drag_moved = True
+            if not self._drag_moved:
+                return
+        elif abs(dx) > _TEXT_DRAG_EPS_MM or abs(dy) > _TEXT_DRAG_EPS_MM:
             self._drag_moved = True
         x, y, w, h = self._drag_result_rect(dx, dy)
         if self._drag_action != "move" and _creation_blocked(context, page, x, y, w, h):

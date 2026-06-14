@@ -23,18 +23,19 @@ def _draw_display_item(layout, label: str, item) -> None:
     box.prop(item, "enabled", text=label)
     sub = box.column(align=True)
     sub.enabled = bool(getattr(item, "enabled", False))
-    sub.prop(item, "position", text="位置")
     row = sub.row(align=True)
-    row.prop(item, "font_size_unit", text="")
+    row.prop(item, "position", text="位置")
+    row.prop(item, "color", text="")
+    row = sub.row(align=True)
     row.prop(item, "font_size_value", text="サイズ")
-    sub.prop(item, "color", text="色")
+    row.prop(item, "font_size_unit", text="")
 
 
 class BNAME_OT_work_meta_dialog(Operator):
     """作品情報、用紙、原稿上の表示をまとめて編集する."""
 
     bl_idname = "bname.work_meta_dialog"
-    bl_label = "作品メタ情報"
+    bl_label = "作品情報"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -79,9 +80,9 @@ class BNAME_OT_work_meta_dialog(Operator):
         row.prop(paper, "finish_width_value", text=f"仕上幅 ({unit})")
         row.prop(paper, "finish_height_value", text=f"仕上高 ({unit})")
         box.prop(paper, "bleed_value", text=f"裁ち落とし ({unit})")
-        row = box.row(align=True)
-        row.prop(paper, "start_side", text="開始ページ")
-        row.prop(paper, "read_direction", text="読む方向")
+        col = box.column(align=True)
+        col.prop(paper, "start_side", text="開始ページ")
+        col.prop(paper, "read_direction", text="読む方向")
 
         box = layout.box()
         box.label(text="原稿上の表示", icon="TEXT")
