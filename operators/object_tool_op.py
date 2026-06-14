@@ -291,6 +291,7 @@ def hit_object_at_event(context, event) -> dict | None:
     if _hit_visible(transformed):
         return transformed
     for resolver in (
+        _hit_gradient_handle_at_event,
         _hit_text_at_event,
         _hit_shared_text_at_event,
         _hit_balloon_at_event,
@@ -404,6 +405,42 @@ def _hit_gp_at_event(context, event) -> dict | None:
 
 def _hit_raster_at_event(context, event) -> dict | None:
     return object_tool_selection.hit_raster_at_event(context, event, _event_world_xy_mm)
+
+
+_HANDLE_HIT_RADIUS_MM = 5.0
+
+
+def _hit_gradient_handle_at_event(context, event) -> dict | None:
+    from ..utils.fill_real_object import GRADIENT_HANDLE_KIND, find_fill_entry
+    from ..utils import object_naming as _on
+
+    x_mm, y_mm = _event_world_xy_mm(context, event)
+    if x_mm is None or y_mm is None:
+        return None
+    from ..utils.geom import m_to_mm
+
+    best = None
+    best_dist = _HANDLE_HIT_RADIUS_MM
+    for obj in bpy.data.objects:
+        if obj.get(_on.PROP_KIND) != GRADIENT_HANDLE_KIND:
+            continue
+        if obj.hide_viewport:
+            continue
+        hx = m_to_mm(obj.location.x)
+        hy = m_to_mm(obj.location.y)
+        dist = ((hx - x_mm) ** 2 + (hy - y_mm) ** 2) ** 0.5
+        if dist < best_dist:
+            best_dist = dist
+            fill_id = str(obj.get(_on.PROP_ID, "") or "")
+            end_tag = str(obj.get("bname_handle_end", "") or "")
+            best = {
+                "kind": "gradient_handle",
+                "fill_id": fill_id,
+                "end": end_tag,
+                "part": "move",
+                "key": object_selection.gradient_handle_key(fill_id, end_tag),
+            }
+    return best
 
 
 def selection_bounds_for_key(context, key: str) -> Rect | None:
@@ -587,6 +624,8 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                 except Exception:  # noqa: BLE001
                     pass
                 context.scene.bname_active_layer_kind = "gp"
+        edge_selection.clear_selection(context)
+    if kind == "gradient_handle":
         edge_selection.clear_selection(context)
     if kind != "balloon":
         object_selection.select_key(context, key, mode=mode)
@@ -1458,6 +1497,25 @@ class BNAME_OT_object_tool(Operator):
                     "rect": (bounds.x, bounds.y, bounds.width, bounds.height),
                     "points": gp_parent.capture_layers([layer]),
                 })
+            elif kind == "gradient_handle":
+                from ..utils.fill_real_object import find_fill_entry as _find_fill
+                entry = _find_fill(context.scene, item_id)
+                if entry is None:
+                    continue
+                end_tag = page_id  # parse_key: kind|end|fill_id
+                if end_tag == "start":
+                    hx = float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0)
+                    hy = float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0)
+                else:
+                    hx = float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0)
+                    hy = float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0)
+                snapshots.append({
+                    "kind": "gradient_handle",
+                    "fill_id": item_id,
+                    "end": end_tag,
+                    "x": hx,
+                    "y": hy,
+                })
         return snapshots
 
     def _panel_child_snapshots(self, page, panel) -> list[tuple[str, str, float, float]]:
@@ -1769,6 +1827,21 @@ class BNAME_OT_object_tool(Operator):
                         (x, y, w, h),
                         (nx, ny, nw, nh),
                     )
+            elif kind == "gradient_handle":
+                if self._drag_action != "move":
+                    continue
+                from ..utils.fill_real_object import find_fill_entry as _find_fill
+                entry = _find_fill(context.scene, snapshot["fill_id"])
+                if entry is None:
+                    continue
+                end_tag = snapshot.get("end", "")
+                sx, sy = snapshot.get("x", 0.0), snapshot.get("y", 0.0)
+                if end_tag == "start":
+                    entry.gradient_start_x_mm = sx + dx
+                    entry.gradient_start_y_mm = sy + dy
+                else:
+                    entry.gradient_end_x_mm = sx + dx
+                    entry.gradient_end_y_mm = sy + dy
 
     def _apply_panel_move(self, context, page, panel, snapshot: dict, dx: float, dy: float) -> None:
         if snapshot["shape"] == "rect":

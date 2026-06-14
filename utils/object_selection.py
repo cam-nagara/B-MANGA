@@ -67,6 +67,10 @@ def fill_key(entry) -> str:
     return make_key("fill", "", str(getattr(entry, "id", "") or ""))
 
 
+def gradient_handle_key(fill_id: str, end: str) -> str:
+    return make_key("gradient_handle", str(end or ""), str(fill_id or ""))
+
+
 def _coma_id(panel) -> str:
     return str(getattr(panel, "coma_id", "") or getattr(panel, "id", "") or "")
 

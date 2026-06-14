@@ -22,8 +22,13 @@ _logger = log.get_logger(__name__)
 FILL_OBJECT_NAME_PREFIX = "fill_"
 FILL_MESH_NAME_PREFIX = "fill_mesh_"
 FILL_MATERIAL_NAME_PREFIX = "BName_Fill_"
+GRADIENT_HANDLE_KIND = "gradient_handle"
+_HANDLE_DISPLAY_SIZE = 0.008
+_HANDLE_MESH_ARM_M = 0.005
+_HANDLE_Z_M = 0.30
 FILL_Z_BASE = 250
 _AUTO_SYNC_SUSPEND_DEPTH = 0
+_HANDLE_WRITEBACK_GUARD = False
 
 
 @contextmanager
@@ -54,6 +59,19 @@ def _mesh_name(fill_id: str) -> str:
 
 def _material_name(fill_id: str) -> str:
     return f"{FILL_MATERIAL_NAME_PREFIX}{_safe_token(fill_id)}"
+
+
+def _ensure_parent_collection(
+    scene: bpy.types.Scene, parent_kind: str, parent_key: str,
+) -> None:
+    """stamp_layer_object が link 先を見つけられるよう親 Collection を確保."""
+    from . import outliner_model as _om
+
+    if parent_kind == "coma" and ":" in parent_key:
+        page_id, coma_id = parent_key.split(":", 1)
+        _om.ensure_coma_collection(scene, page_id, coma_id)
+    elif parent_kind == "page" and parent_key:
+        _om.ensure_page_collection(scene, parent_key)
 
 
 def _resolve_parent_for_entry(entry, page, folder_id: str) -> tuple[str, str, str]:
@@ -125,6 +143,38 @@ def page_for_entry(scene, work, entry, fallback_page=None):
         if pages and len(pages):
             page = pages[0]
     return page
+
+
+def _sync_coma_mask_position(scene, work, parent_key: str) -> None:
+    """コママスク Object の位置をページグリッドに合わせて補正する."""
+    try:
+        from . import coma_plane as _cp
+        from . import page_grid as _pg
+    except ImportError:
+        return
+    parts = parent_key.split(":", 1)
+    if len(parts) != 2:
+        return
+    page_id, coma_id = parts[0], parts[1]
+    mask = _cp.find_coma_mask_object(page_id, coma_id)
+    if mask is None:
+        return
+    page = _page_by_id(work, page_id)
+    if page is None:
+        return
+    ox_mm, oy_mm = entry_page_offset_mm(scene, work, None, page)
+    coma = None
+    for c in getattr(page, "comas", []) or []:
+        if str(getattr(c, "id", "") or "") == coma_id:
+            coma = c
+            break
+    if coma is None:
+        return
+    shape_type = str(getattr(coma, "shape_type", "rect") or "rect")
+    local_x = float(getattr(coma, "rect_x_mm", 0.0) or 0.0) if shape_type == "rect" else 0.0
+    local_y = float(getattr(coma, "rect_y_mm", 0.0) or 0.0) if shape_type == "rect" else 0.0
+    mask.location.x = mm_to_m(ox_mm + local_x)
+    mask.location.y = mm_to_m(oy_mm + local_y)
 
 
 def entry_page_offset_mm(scene, work, entry, page):
@@ -300,7 +350,7 @@ def _ensure_gradient_material(
             if dist < 1e-6:
                 dist = 1.0
             mapping.inputs["Location"].default_value = (su, sv, 0.0)
-            mapping.inputs["Scale"].default_value = (1.0 / dist, 1.0 / dist, 1.0)
+            mapping.inputs["Scale"].default_value = (dist, dist, 1.0)
         else:
             mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
     else:
@@ -313,11 +363,11 @@ def _ensure_gradient_material(
                 dist = 1.0
             ep_angle = math.atan2(dy, dx)
             mapping.inputs["Location"].default_value = (su, sv, 0.0)
-            mapping.inputs["Rotation"].default_value = (0.0, 0.0, -ep_angle)
-            mapping.inputs["Scale"].default_value = (1.0 / dist, 1.0, 1.0)
+            mapping.inputs["Rotation"].default_value = (0.0, 0.0, ep_angle)
+            mapping.inputs["Scale"].default_value = (dist, 1.0, 1.0)
         else:
             mapping.inputs["Rotation"].default_value = (0.0, 0.0, angle_rad)
-            mapping.inputs["Location"].default_value = (0.5, 0.5, 0.0)
+            mapping.inputs["Location"].default_value = (0.0, 0.0, 0.0)
 
     cr = ramp.color_ramp
     cr.elements[0].color = (float(color1[0]), float(color1[1]), float(color1[2]), 1.0)
@@ -459,6 +509,7 @@ def ensure_fill_real_object(
         obj.location.y = mm_to_m(canvas_h_mm * 0.5 + oy_mm)
 
     parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
+    _ensure_parent_collection(scene, parent_kind, parent_key)
     los.stamp_layer_object(
         obj,
         kind="fill",
@@ -474,7 +525,209 @@ def ensure_fill_real_object(
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     obj.hide_select = False
+    if parent_kind == "coma" and parent_key and ":" in parent_key:
+        _sync_coma_mask_position(scene, work, parent_key)
+    global _HANDLE_WRITEBACK_GUARD
+    _HANDLE_WRITEBACK_GUARD = True
+    try:
+        _ensure_gradient_handles(scene, entry, page, ox_mm, oy_mm)
+    finally:
+        _HANDLE_WRITEBACK_GUARD = False
     return obj
+
+
+def _handle_object_name(fill_id: str, end: str) -> str:
+    return f"grad_handle_{_safe_token(fill_id)}_{end}"
+
+
+def _ensure_handle_mesh(name: str) -> bpy.types.Mesh:
+    """十字型の小さな面付きメッシュ (レンダーモードでも表示される)."""
+    mesh = bpy.data.meshes.get(name)
+    if mesh is not None:
+        if len(mesh.vertices) == 8 and abs(mesh.vertices[1].co.x - _HANDLE_MESH_ARM_M) < 1e-6:
+            return mesh
+        bpy.data.meshes.remove(mesh)
+        mesh = None
+    mesh = bpy.data.meshes.new(name)
+    a = _HANDLE_MESH_ARM_M
+    t = a * 0.15
+    verts = [
+        (-a, -t, 0), (a, -t, 0), (a, t, 0), (-a, t, 0),
+        (-t, -a, 0), (t, -a, 0), (t, a, 0), (-t, a, 0),
+    ]
+    faces = [(0, 1, 2, 3), (4, 5, 6, 7)]
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    return mesh
+
+
+def _ensure_handle_material(end_tag: str) -> bpy.types.Material:
+    mat_name = f"BName_GradHandle_{end_tag}"
+    mat = bpy.data.materials.get(mat_name)
+    if mat is not None:
+        return mat
+    mat = bpy.data.materials.new(mat_name)
+    mat.use_nodes = True
+    tree = mat.node_tree
+    tree.nodes.clear()
+    emit = tree.nodes.new("ShaderNodeEmission")
+    if end_tag == "start":
+        emit.inputs["Color"].default_value = (0.1, 0.5, 0.9, 1.0)
+    else:
+        emit.inputs["Color"].default_value = (0.9, 0.2, 0.2, 1.0)
+    emit.inputs["Strength"].default_value = 3.0
+    out = tree.nodes.new("ShaderNodeOutputMaterial")
+    tree.links.new(emit.outputs[0], out.inputs[0])
+    mat.diffuse_color = (0.1, 0.5, 0.9, 1.0) if end_tag == "start" else (0.9, 0.2, 0.2, 1.0)
+    return mat
+
+
+def _ensure_gradient_handles(
+    scene, entry, page, ox_mm: float, oy_mm: float,
+) -> None:
+    fill_id = str(getattr(entry, "id", "") or "")
+    if not fill_id:
+        return
+    if (
+        str(getattr(entry, "fill_type", "") or "") != "gradient"
+        or not bool(getattr(entry, "use_gradient_endpoints", False))
+    ):
+        _remove_gradient_handles(fill_id)
+        return
+    sx = float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0)
+    sy = float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0)
+    ex = float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0)
+    ey = float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0)
+    visible = bool(getattr(entry, "visible", True))
+    for end_tag, lx, ly in (("start", sx, sy), ("end", ex, ey)):
+        obj = _find_gradient_handle(fill_id, end_tag)
+        handle_mesh_name = f"grad_handle_mesh_{end_tag}"
+        handle_mesh = _ensure_handle_mesh(handle_mesh_name)
+        if obj is None:
+            obj = bpy.data.objects.new(_handle_object_name(fill_id, end_tag), handle_mesh)
+        elif obj.type == "EMPTY" or obj.data is not handle_mesh:
+            obj.data = handle_mesh
+        handle_mat = _ensure_handle_material(end_tag)
+        if not obj.data.materials:
+            obj.data.materials.append(handle_mat)
+        elif obj.data.materials[0] is not handle_mat:
+            obj.data.materials[0] = handle_mat
+        obj.show_in_front = True
+        obj[on.PROP_KIND] = GRADIENT_HANDLE_KIND
+        obj[on.PROP_ID] = fill_id
+        obj["bname_handle_end"] = end_tag
+        obj[on.PROP_MANAGED] = True
+        obj.location.x = mm_to_m(lx + ox_mm)
+        obj.location.y = mm_to_m(ly + oy_mm)
+        obj.location.z = _HANDLE_Z_M
+        obj.hide_viewport = True
+        obj.hide_render = True
+        obj.hide_select = False
+        for coll in list(obj.users_collection):
+            coll.objects.unlink(obj)
+        scene_coll = scene.collection
+        if obj.name not in scene_coll.objects:
+            scene_coll.objects.link(obj)
+
+
+def _find_gradient_handle(fill_id: str, end: str):
+    for obj in bpy.data.objects:
+        if (
+            obj.get(on.PROP_KIND) == GRADIENT_HANDLE_KIND
+            and str(obj.get(on.PROP_ID, "") or "") == fill_id
+            and str(obj.get("bname_handle_end", "") or "") == end
+            and not object_preserve.is_preserved(obj)
+        ):
+            return obj
+    return None
+
+
+def _remove_gradient_handles(fill_id: str) -> None:
+    for obj in list(bpy.data.objects):
+        if object_preserve.is_preserved(obj):
+            continue
+        if obj.get(on.PROP_KIND) != GRADIENT_HANDLE_KIND:
+            continue
+        if str(obj.get(on.PROP_ID, "") or "") != fill_id:
+            continue
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def sync_gradient_handle_visibility(context) -> None:
+    """選択状態に応じてグラデーションハンドルの表示/非表示を切り替える."""
+    from . import object_selection
+
+    keys = set(object_selection.get_keys(context))
+    selected_fill_ids: set[str] = set()
+    for key in keys:
+        kind, _sub, item_id = object_selection.parse_key(key)
+        if kind == "fill":
+            selected_fill_ids.add(item_id)
+        elif kind == "gradient_handle":
+            selected_fill_ids.add(item_id)
+    for obj in bpy.data.objects:
+        if obj.get(on.PROP_KIND) != GRADIENT_HANDLE_KIND:
+            continue
+        fill_id = str(obj.get(on.PROP_ID, "") or "")
+        obj.hide_viewport = fill_id not in selected_fill_ids
+
+
+def gradient_handle_positions_mm(context, fill_id: str):
+    """選択中グラデーションの始点・終点 mm 座標を返す (overlay 用)."""
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return None
+    entry = find_fill_entry(scene, fill_id)
+    if entry is None:
+        return None
+    work = getattr(scene, "bname_work", None)
+    page = page_for_entry(scene, work, entry) if work else None
+    ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
+    sx = float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0) + ox_mm
+    sy = float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0) + oy_mm
+    ex = float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0) + ox_mm
+    ey = float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0) + oy_mm
+    return sx, sy, ex, ey
+
+
+def _on_depsgraph_update_post_handles(scene, depsgraph) -> None:
+    global _HANDLE_WRITEBACK_GUARD
+    if _HANDLE_WRITEBACK_GUARD or auto_sync_suspended():
+        return
+    work = getattr(scene, "bname_work", None)
+    if work is None or not getattr(work, "loaded", False):
+        return
+    for update in depsgraph.updates:
+        obj = getattr(update, "id", None)
+        if obj is None or not isinstance(obj, bpy.types.Object):
+            continue
+        if obj.get(on.PROP_KIND) != GRADIENT_HANDLE_KIND:
+            continue
+        fill_id = str(obj.get(on.PROP_ID, "") or "")
+        end_tag = str(obj.get("bname_handle_end", "") or "")
+        if not fill_id or end_tag not in {"start", "end"}:
+            continue
+        entry = find_fill_entry(scene, fill_id)
+        if entry is None:
+            continue
+        page = page_for_entry(scene, work, entry)
+        ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
+        from .geom import m_to_mm
+        new_x = m_to_mm(obj.location.x) - ox_mm
+        new_y = m_to_mm(obj.location.y) - oy_mm
+        _HANDLE_WRITEBACK_GUARD = True
+        try:
+            if end_tag == "start":
+                entry.gradient_start_x_mm = new_x
+                entry.gradient_start_y_mm = new_y
+            else:
+                entry.gradient_end_x_mm = new_x
+                entry.gradient_end_y_mm = new_y
+        finally:
+            _HANDLE_WRITEBACK_GUARD = False
 
 
 def find_fill_entry(scene, fill_id: str):
@@ -494,12 +747,19 @@ def cleanup_orphan_fill_objects(scene: bpy.types.Scene) -> int:
     for obj in list(bpy.data.objects):
         if object_preserve.is_preserved(obj):
             continue
-        if obj.get(on.PROP_KIND) != "fill":
+        kind = obj.get(on.PROP_KIND)
+        if kind not in {"fill", GRADIENT_HANDLE_KIND}:
             continue
         bid = str(obj.get(on.PROP_ID, "") or "")
         if bid in valid:
             continue
-        object_preserve.preserve_object(obj, "作品データにないフィル実体を保持")
+        if kind == GRADIENT_HANDLE_KIND:
+            try:
+                bpy.data.objects.remove(obj, do_unlink=True)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            object_preserve.preserve_object(obj, "作品データにないフィル実体を保持")
         removed += 1
     return removed
 
@@ -507,6 +767,7 @@ def cleanup_orphan_fill_objects(scene: bpy.types.Scene) -> int:
 def remove_fill_real_object(fill_id: str) -> bool:
     if not fill_id:
         return False
+    _remove_gradient_handles(fill_id)
     removed = False
     for obj in list(bpy.data.objects):
         if object_preserve.is_preserved(obj):
@@ -557,6 +818,8 @@ def sync_all_fill_real_objects(scene: bpy.types.Scene, work) -> int:
 def on_fill_entry_changed(entry) -> bool:
     if auto_sync_suspended():
         return False
+    if _HANDLE_WRITEBACK_GUARD:
+        return False
     scene = bpy.context.scene if bpy.context is not None else None
     work = getattr(scene, "bname_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
@@ -567,3 +830,16 @@ def on_fill_entry_changed(entry) -> bool:
     page = page_for_entry(scene, work, entry)
     ensure_fill_real_object(scene=scene, entry=entry, page=page)
     return True
+
+
+def register() -> None:
+    if _on_depsgraph_update_post_handles not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post_handles)
+
+
+def unregister() -> None:
+    if _on_depsgraph_update_post_handles in bpy.app.handlers.depsgraph_update_post:
+        try:
+            bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post_handles)
+        except ValueError:
+            pass

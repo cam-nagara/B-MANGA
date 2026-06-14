@@ -275,6 +275,11 @@ def sync_outliner_selection_for_keys(context, keys) -> None:
             view_layer.objects.active = active_obj
         except Exception:  # noqa: BLE001
             pass
+    try:
+        from ..utils.fill_real_object import sync_gradient_handle_visibility
+        sync_gradient_handle_visibility(context)
+    except Exception:  # noqa: BLE001
+        pass
     object_selection.tag_view3d_redraw(context)
 
 

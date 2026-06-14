@@ -17,6 +17,7 @@ from . import (  # noqa: E402,F401
     cross_addon_settings_sync,
     effect_line_object,
     empty_layer_object,
+    fill_real_object,
     geometry_nodes_bridge,
     gp_object_layer,
     mask_apply,
@@ -39,9 +40,11 @@ def register() -> None:
     paper_guide_object.register()
     geometry_nodes_bridge.register()
     coma_plane.register()
+    fill_real_object.register()
 
 
 def unregister() -> None:
+    fill_real_object.unregister()
     asset_drop_runtime.unregister()
     coma_plane.unregister()
     geometry_nodes_bridge.unregister()

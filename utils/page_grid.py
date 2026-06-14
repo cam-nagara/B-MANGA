@@ -642,14 +642,14 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         from . import coma_plane as _cp
 
         if not is_work_list_scene:
-            _cp.update_coma_plane_locations(scene, real_work)
+            _cp.update_coma_plane_locations(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_plane location update failed")
     try:
         from . import coma_border_object as _cbo
 
         if not is_work_list_scene:
-            _cbo.update_coma_border_locations(scene, real_work)
+            _cbo.update_coma_border_locations(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_border location update failed")
     try:
@@ -678,6 +678,13 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         _page_content_visibility.apply_page_content_visibility(context, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: page content visibility update failed")
+    try:
+        from . import fill_real_object as _fro
+
+        if not is_work_list_scene:
+            _fro.sync_all_fill_real_objects(scene, real_work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: fill object location update failed")
     if is_work_list_scene:
         try:
             from . import page_preview_object

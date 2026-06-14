@@ -205,6 +205,16 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         prow.label(text="テキストプリセット", icon="FONT_DATA")
         prow.prop(wm, "bname_text_tool_preset_selector", text="")
         return
+    if coma_modal_state.is_active("fill_tool") and hasattr(wm, "bname_fill_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="囲い塗りプリセット", icon="MESH_PLANE")
+        prow.prop(wm, "bname_fill_tool_preset_selector", text="")
+        return
+    if coma_modal_state.is_active("gradient_tool") and hasattr(wm, "bname_gradient_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="グラデーション", icon="NODE_TEXTURE")
+        prow.prop(wm, "bname_gradient_tool_preset_selector", text="")
+        return
 
 
 _CLASSES = (BNAME_PT_tools,)

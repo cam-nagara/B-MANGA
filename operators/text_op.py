@@ -14,6 +14,8 @@ import time
 import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, StringProperty
 from bpy.types import Operator
+import gpu
+from gpu_extras.batch import batch_for_shader
 
 from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_active_page, get_work
@@ -699,6 +701,37 @@ class BNAME_OT_text_apply_font_to_selection(Operator):
         return {"FINISHED"}
 
 
+# ---- 縦書きカーソル描画 ----
+
+_VCUR_HALF_BAR = 9
+_VCUR_SERIF = 4
+_VCUR_COLOR = (0.9, 0.9, 0.9, 0.9)
+_VCUR_SHADOW = (0.0, 0.0, 0.0, 0.6)
+
+
+def _draw_vertical_cursor(op: "BNAME_OT_text_tool") -> None:
+    cx = getattr(op, "_vcur_x", -1)
+    cy = getattr(op, "_vcur_y", -1)
+    if cx < 0 or cy < 0:
+        return
+    hb, sf = _VCUR_HALF_BAR, _VCUR_SERIF
+    shader = gpu.shader.from_builtin("UNIFORM_COLOR")
+    for color, o in ((_VCUR_SHADOW, 1), (_VCUR_COLOR, 0)):
+        verts = [
+            (cx - hb + o, cy + o), (cx + hb + o, cy + o),
+            (cx - hb + o, cy - sf + o), (cx - hb + o, cy + sf + o),
+            (cx + hb + o, cy - sf + o), (cx + hb + o, cy + sf + o),
+        ]
+        batch = batch_for_shader(shader, "LINES", {"pos": verts})
+        gpu.state.blend_set("ALPHA")
+        gpu.state.line_width_set(2.0 if o else 1.5)
+        shader.bind()
+        shader.uniform_float("color", color)
+        batch.draw(shader)
+    gpu.state.line_width_set(1.0)
+    gpu.state.blend_set("NONE")
+
+
 class BNAME_OT_text_tool(Operator):
     """クリック位置へテキストレイヤーを作成し、インライン入力を開始する."""
 
@@ -737,6 +770,9 @@ class BNAME_OT_text_tool(Operator):
     _select_dragging: bool
     _select_drag_page_id: str
     _select_drag_text_id: str
+    _vcur_x: int
+    _vcur_y: int
+    _vcur_draw_handler: object | None
 
     @classmethod
     def poll(cls, context):
@@ -764,8 +800,13 @@ class BNAME_OT_text_tool(Operator):
         coma_modal_state.finish_active("balloon_tail_tool", context, keep_selection=True)
         coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
         self._externally_finished = False
+        self._vcur_x = -1
+        self._vcur_y = -1
+        self._vcur_draw_handler = None
+        cursor_type = preset_op.text_tool_cursor_type(context)
+        self._setup_vertical_cursor(context, cursor_type == "vertical")
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(
-            context, preset_op.text_tool_cursor_type(context)
+            context, "NONE" if cursor_type == "vertical" else cursor_type
         )
         self._editing = False
         self._editing_created_new = False
@@ -787,6 +828,10 @@ class BNAME_OT_text_tool(Operator):
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
+        if event.type == "MOUSEMOVE" and getattr(self, "_vcur_draw_handler", None) is not None:
+            self._vcur_x = event.mouse_region_x
+            self._vcur_y = event.mouse_region_y
+            self._tag_redraw_vcur(context)
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("text_tool", self, context)
             return {"FINISHED", "PASS_THROUGH"}
@@ -1542,7 +1587,34 @@ class BNAME_OT_text_tool(Operator):
             self._touch_current_text(context, page, entry, idx)
         return {"RUNNING_MODAL"}
 
+    def _setup_vertical_cursor(self, context, vertical: bool) -> None:
+        self._remove_vcur_handler()
+        if vertical:
+            self._vcur_draw_handler = bpy.types.SpaceView3D.draw_handler_add(
+                _draw_vertical_cursor, (self,), "WINDOW", "POST_PIXEL"
+            )
+            self._tag_redraw_vcur(context)
+        else:
+            self._vcur_x = -1
+            self._vcur_y = -1
+
+    def _remove_vcur_handler(self) -> None:
+        h = getattr(self, "_vcur_draw_handler", None)
+        if h is not None:
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(h, "WINDOW")
+            except Exception:  # noqa: BLE001
+                pass
+            self._vcur_draw_handler = None
+
+    @staticmethod
+    def _tag_redraw_vcur(context) -> None:
+        for area in getattr(getattr(context, "screen", None), "areas", ()):
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
+
     def _cleanup(self, context) -> None:
+        self._remove_vcur_handler()
         if getattr(self, "_cursor_modal_set", False):
             coma_modal_state.restore_modal_cursor(context)
             self._cursor_modal_set = False

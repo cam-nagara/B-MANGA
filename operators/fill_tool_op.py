@@ -319,8 +319,23 @@ class BNAME_OT_fill_tool(Operator):
         elif self._page_id:
             entry.parent_kind = "page"
             entry.parent_key = self._page_id
+        try:
+            from . import preset_op
+            preset_op.apply_fill_preset_to_entry(context, entry)
+        except Exception:  # noqa: BLE001
+            pass
         context.scene.bname_active_fill_layer_index = len(coll) - 1
         context.scene.bname_active_layer_kind = "fill"
+        try:
+            from ..utils import fill_real_object as _fro
+
+            work = get_work(context)
+            page = _fro.page_for_entry(context.scene, work, entry)
+            _fro.ensure_fill_real_object(scene=context.scene, entry=entry, page=page)
+            from ..utils import layer_object_sync as _los
+            _los.assign_per_page_z_ranks(context.scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("fill real object creation failed")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
 
     def _cleanup(self, context) -> None:

@@ -343,6 +343,36 @@ def _draw_object_tool_layer_bounds(context) -> None:
                         handle = Rect(px - 0.8, py - 0.8, 1.6, 1.6)
                         _draw_rect_fill(handle, viewport_colors.HANDLE_FILL)
                         _draw_rect_outline(handle, viewport_colors.HANDLE_OUTLINE, width_mm=0.20)
+    _draw_gradient_lines(context, keys)
+
+
+def _draw_gradient_lines(context, keys) -> None:
+    """選択中のグラデーションフィルの始点→終点接続線を描画."""
+    try:
+        from ..utils.fill_real_object import gradient_handle_positions_mm
+    except Exception:  # noqa: BLE001
+        return
+    drawn: set[str] = set()
+    for key in keys:
+        kind, _sub, item_id = object_selection.parse_key(key)
+        if kind == "fill":
+            fill_id = item_id
+        elif kind == "gradient_handle":
+            fill_id = item_id
+        else:
+            continue
+        if fill_id in drawn:
+            continue
+        drawn.add(fill_id)
+        pts = gradient_handle_positions_mm(context, fill_id)
+        if pts is None:
+            continue
+        sx, sy, ex, ey = pts
+        _draw_segments_mm(
+            [((sx, sy), (ex, ey))],
+            viewport_colors.SELECTION,
+            width_mm=0.25,
+        )
 
 
 def _draw_segments_mm(

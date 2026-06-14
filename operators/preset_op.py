@@ -281,11 +281,20 @@ def _text_preset_enum_items(_self, context):
 def _on_text_preset_selector_change(_self, context):
     """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替."""
     if coma_modal_state.is_active("text_tool"):
-        coma_modal_state.set_modal_cursor(context, text_tool_cursor_type(context))
+        cursor_type = text_tool_cursor_type(context)
+        op = coma_modal_state.get_active("text_tool")
+        if op is not None and hasattr(op, "_setup_vertical_cursor"):
+            op._setup_vertical_cursor(context, cursor_type == "vertical")
+        coma_modal_state.set_modal_cursor(
+            context, "NONE" if cursor_type == "vertical" else cursor_type
+        )
 
 
 def text_tool_cursor_type(context) -> str:
-    """選択中のテキストプリセットの縦横に応じたカーソル種別を返す."""
+    """選択中のテキストプリセットの縦横に応じたカーソル種別を返す.
+
+    縦書き時は ``"vertical"`` を返す (呼び出し側でカスタム描画に切り替える)。
+    """
     name = selected_text_preset_name(context)
     if not name:
         return "TEXT"
@@ -297,7 +306,7 @@ def text_tool_cursor_type(context) -> str:
         for preset in text_presets.list_all_presets(work_dir if work_dir and str(work_dir) else None):
             if preset.name == name:
                 if preset.data.get("writing_mode") == "vertical":
-                    return "PAINT_CROSS"
+                    return "vertical"
                 return "TEXT"
     except Exception:  # noqa: BLE001
         pass
@@ -789,6 +798,82 @@ def _unique_border_preset_name(context, base: str) -> str:
     return border_presets.unique_preset_name(Path(work.work_dir), base)
 
 
+# ---------- 囲い塗り / グラデーション プリセット ----------
+
+_FILL_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
+_GRADIENT_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
+
+_FILL_PRESETS = [
+    {"id": "black", "label": "ベタ塗り (黒)", "color": (0, 0, 0, 1), "opacity": 100},
+    {"id": "white", "label": "ベタ塗り (白)", "color": (1, 1, 1, 1), "opacity": 100},
+    {"id": "gray50", "label": "ベタ塗り (50%)", "color": (0.214, 0.214, 0.214, 1), "opacity": 100},
+    {"id": "black50", "label": "ベタ塗り (黒 半透明)", "color": (0, 0, 0, 1), "opacity": 50},
+]
+
+_GRADIENT_PRESETS = [
+    {"id": "bw_linear", "label": "黒→白", "gradient_type": "linear", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 100},
+    {"id": "wb_linear", "label": "白→黒", "gradient_type": "linear", "color": (1, 1, 1, 1), "color2": (0, 0, 0, 1), "opacity": 100},
+    {"id": "bw_radial", "label": "黒→白 (円形)", "gradient_type": "radial", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 100},
+    {"id": "bw50", "label": "黒→白 (半透明)", "gradient_type": "linear", "color": (0, 0, 0, 1), "color2": (1, 1, 1, 1), "opacity": 50},
+]
+
+
+def _fill_tool_preset_enum_items(_self, _context):
+    global _FILL_TOOL_ENUM_CACHE
+    _FILL_TOOL_ENUM_CACHE = [(p["id"], p["label"], "") for p in _FILL_PRESETS]
+    return _FILL_TOOL_ENUM_CACHE
+
+
+def _gradient_tool_preset_enum_items(_self, _context):
+    global _GRADIENT_TOOL_ENUM_CACHE
+    _GRADIENT_TOOL_ENUM_CACHE = [(p["id"], p["label"], "") for p in _GRADIENT_PRESETS]
+    return _GRADIENT_TOOL_ENUM_CACHE
+
+
+def _find_fill_preset(preset_id: str) -> dict | None:
+    for p in _FILL_PRESETS:
+        if p["id"] == preset_id:
+            return p
+    return None
+
+
+def _find_gradient_preset(preset_id: str) -> dict | None:
+    for p in _GRADIENT_PRESETS:
+        if p["id"] == preset_id:
+            return p
+    return None
+
+
+def apply_fill_preset_to_entry(context, entry) -> bool:
+    """選択中の囲い塗りプリセットをフィルエントリに適用."""
+    wm = getattr(context, "window_manager", None)
+    pid = str(getattr(wm, "bname_fill_tool_preset_selector", "") or "") if wm else ""
+    preset = _find_fill_preset(pid) if pid else None
+    if preset is None and _FILL_PRESETS:
+        preset = _FILL_PRESETS[0]
+    if preset is None:
+        return False
+    entry.color = preset["color"]
+    entry.opacity = preset["opacity"]
+    return True
+
+
+def apply_gradient_preset_to_entry(context, entry) -> bool:
+    """選択中のグラデーションプリセットをフィルエントリに適用."""
+    wm = getattr(context, "window_manager", None)
+    pid = str(getattr(wm, "bname_gradient_tool_preset_selector", "") or "") if wm else ""
+    preset = _find_gradient_preset(pid) if pid else None
+    if preset is None and _GRADIENT_PRESETS:
+        preset = _GRADIENT_PRESETS[0]
+    if preset is None:
+        return False
+    entry.color = preset["color"]
+    entry.color2 = preset["color2"]
+    entry.gradient_type = preset["gradient_type"]
+    entry.opacity = preset["opacity"]
+    return True
+
+
 _CLASSES = (
     BNAME_OT_paper_preset_apply,
     BNAME_OT_paper_preset_save_local,
@@ -828,6 +913,16 @@ def register() -> None:
         items=_text_preset_enum_items,
         update=_on_text_preset_selector_change,
     )
+    bpy.types.WindowManager.bname_fill_tool_preset_selector = EnumProperty(
+        name="囲い塗りプリセット",
+        description="囲い塗りツールで新しく作るベタ塗りの色・不透明度",
+        items=_fill_tool_preset_enum_items,
+    )
+    bpy.types.WindowManager.bname_gradient_tool_preset_selector = EnumProperty(
+        name="グラデーションプリセット",
+        description="グラデーションツールで新しく作るグラデーションの設定",
+        items=_gradient_tool_preset_enum_items,
+    )
 
 
 def unregister() -> None:
@@ -845,6 +940,14 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.WindowManager.bname_text_tool_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bname_fill_tool_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bname_gradient_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

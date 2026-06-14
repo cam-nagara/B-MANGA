@@ -602,6 +602,17 @@ def fill_layer_to_dict(entry) -> dict[str, Any]:
         "parentKind": str(getattr(entry, "parent_kind", "page") or "page"),
         "parentKey": str(getattr(entry, "parent_key", "") or ""),
         "folderKey": str(getattr(entry, "folder_key", "") or ""),
+        "useRegion": bool(getattr(entry, "use_region", False)),
+        "regionXMm": round(float(getattr(entry, "region_x_mm", 0.0) or 0.0), 4),
+        "regionYMm": round(float(getattr(entry, "region_y_mm", 0.0) or 0.0), 4),
+        "regionWidthMm": round(float(getattr(entry, "region_width_mm", 0.0) or 0.0), 4),
+        "regionHeightMm": round(float(getattr(entry, "region_height_mm", 0.0) or 0.0), 4),
+        "lassoPointsJson": str(getattr(entry, "lasso_points_json", "") or ""),
+        "useGradientEndpoints": bool(getattr(entry, "use_gradient_endpoints", False)),
+        "gradientStartXMm": round(float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0), 4),
+        "gradientStartYMm": round(float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0), 4),
+        "gradientEndXMm": round(float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0), 4),
+        "gradientEndYMm": round(float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0), 4),
     }
 
 
@@ -623,6 +634,28 @@ def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool =
     entry.visible = bool(data.get("visible", True))
     entry.locked = bool(data.get("locked", False))
     entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
+    if hasattr(entry, "use_region"):
+        entry.use_region = bool(data.get("useRegion", False))
+    if hasattr(entry, "region_x_mm"):
+        entry.region_x_mm = float(data.get("regionXMm", 0.0) or 0.0)
+    if hasattr(entry, "region_y_mm"):
+        entry.region_y_mm = float(data.get("regionYMm", 0.0) or 0.0)
+    if hasattr(entry, "region_width_mm"):
+        entry.region_width_mm = float(data.get("regionWidthMm", 0.0) or 0.0)
+    if hasattr(entry, "region_height_mm"):
+        entry.region_height_mm = float(data.get("regionHeightMm", 0.0) or 0.0)
+    if hasattr(entry, "lasso_points_json"):
+        entry.lasso_points_json = str(data.get("lassoPointsJson", "") or "")
+    if hasattr(entry, "use_gradient_endpoints"):
+        entry.use_gradient_endpoints = bool(data.get("useGradientEndpoints", False))
+    if hasattr(entry, "gradient_start_x_mm"):
+        entry.gradient_start_x_mm = float(data.get("gradientStartXMm", 0.0) or 0.0)
+    if hasattr(entry, "gradient_start_y_mm"):
+        entry.gradient_start_y_mm = float(data.get("gradientStartYMm", 0.0) or 0.0)
+    if hasattr(entry, "gradient_end_x_mm"):
+        entry.gradient_end_x_mm = float(data.get("gradientEndXMm", 0.0) or 0.0)
+    if hasattr(entry, "gradient_end_y_mm"):
+        entry.gradient_end_y_mm = float(data.get("gradientEndYMm", 0.0) or 0.0)
 
 
 # ---------- LayerFolder ----------
