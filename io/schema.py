@@ -613,7 +613,18 @@ def fill_layer_to_dict(entry) -> dict[str, Any]:
         "gradientStartYMm": round(float(getattr(entry, "gradient_start_y_mm", 0.0) or 0.0), 4),
         "gradientEndXMm": round(float(getattr(entry, "gradient_end_x_mm", 0.0) or 0.0), 4),
         "gradientEndYMm": round(float(getattr(entry, "gradient_end_y_mm", 0.0) or 0.0), 4),
+        "gradientCurvePoints": _export_gradient_curve(entry),
     }
+
+
+def _export_gradient_curve(entry) -> list[list[float | str]]:
+    from ..utils.fill_real_object import get_gradient_curve_points
+
+    fill_id = str(getattr(entry, "id", "") or "")
+    if not fill_id:
+        return []
+    pts = get_gradient_curve_points(fill_id)
+    return [[round(x, 4), round(y, 4), ht] for x, y, ht in pts]
 
 
 def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
@@ -656,6 +667,10 @@ def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool =
         entry.gradient_end_x_mm = float(data.get("gradientEndXMm", 0.0) or 0.0)
     if hasattr(entry, "gradient_end_y_mm"):
         entry.gradient_end_y_mm = float(data.get("gradientEndYMm", 0.0) or 0.0)
+    curve_pts = data.get("gradientCurvePoints")
+    if curve_pts and isinstance(curve_pts, list) and len(curve_pts) >= 2:
+        import json as _json
+        entry["_pending_curve_points"] = _json.dumps(curve_pts)
 
 
 # ---------- LayerFolder ----------

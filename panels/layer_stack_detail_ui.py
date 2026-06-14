@@ -165,6 +165,12 @@ def _draw_fill_selected_settings(box, entry) -> None:
         grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
         if grad_type == "linear":
             settings.prop(entry, "gradient_angle", text="角度")
+        from ..utils.fill_real_object import get_gradient_curve_node
+        curve_node = get_gradient_curve_node(str(getattr(entry, "id", "") or ""))
+        if curve_node is not None:
+            curve_box = settings.box()
+            curve_box.label(text="濃度カーブ", icon="CURVE_DATA")
+            curve_box.template_curve_mapping(curve_node, "mapping", type="NONE")
         if getattr(entry, "use_gradient_endpoints", False):
             ep_box = settings.box()
             ep_box.label(text="グラデーション範囲", icon="ARROW_LEFTRIGHT")

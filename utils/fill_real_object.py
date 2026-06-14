@@ -24,7 +24,7 @@ FILL_MESH_NAME_PREFIX = "fill_mesh_"
 FILL_MATERIAL_NAME_PREFIX = "BName_Fill_"
 GRADIENT_HANDLE_KIND = "gradient_handle"
 _HANDLE_DISPLAY_SIZE = 0.008
-_HANDLE_MESH_ARM_M = 0.005
+_HANDLE_MESH_ARM_M = 0.0025
 _HANDLE_Z_M = 0.30
 FILL_Z_BASE = 250
 _AUTO_SYNC_SUSPEND_DEPTH = 0
@@ -299,6 +299,32 @@ def _ensure_solid_material(name: str, color: tuple, opacity: float) -> bpy.types
     return mat
 
 
+def _extract_curve_points(nt) -> list[tuple[float, float, str]] | None:
+    """ノードツリーから FloatCurve のポイントデータを退避."""
+    for node in nt.nodes:
+        if node.type == "CURVE_FLOAT":
+            curve = node.mapping.curves[0]
+            return [(p.location[0], p.location[1], p.handle_type) for p in curve.points]
+    return None
+
+
+def _apply_curve_points(float_curve_node, points: list[tuple[float, float, str]] | None) -> None:
+    """FloatCurve ノードにポイントデータを復元."""
+    if points is None or len(points) < 2:
+        return
+    curve = float_curve_node.mapping.curves[0]
+    while len(curve.points) > 2:
+        curve.points.remove(curve.points[1])
+    curve.points[0].location = (points[0][0], points[0][1])
+    curve.points[0].handle_type = points[0][2]
+    curve.points[-1].location = (points[-1][0], points[-1][1])
+    curve.points[-1].handle_type = points[-1][2]
+    for px, py, ht in points[1:-1]:
+        p = curve.points.new(px, py)
+        p.handle_type = ht
+    float_curve_node.mapping.update()
+
+
 def _ensure_gradient_material(
     name: str,
     color1: tuple,
@@ -308,6 +334,7 @@ def _ensure_gradient_material(
     opacity: float,
     *,
     endpoint_uv: tuple | None = None,
+    curve_points: list[tuple[float, float, str]] | None = None,
 ) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -319,17 +346,18 @@ def _ensure_gradient_material(
     except Exception:  # noqa: BLE001
         pass
     nt = mat.node_tree
+    saved_curve = curve_points or _extract_curve_points(nt)
     for node in list(nt.nodes):
         nt.nodes.remove(node)
 
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (600, 0)
+    out.location = (700, 0)
     transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-    transparent.location = (160, -140)
+    transparent.location = (260, -140)
     emission = nt.nodes.new("ShaderNodeEmission")
-    emission.location = (160, 60)
+    emission.location = (260, 60)
     mix_shader = nt.nodes.new("ShaderNodeMixShader")
-    mix_shader.location = (380, 0)
+    mix_shader.location = (480, 0)
 
     tex_coord = nt.nodes.new("ShaderNodeTexCoord")
     tex_coord.location = (-600, 0)
@@ -338,8 +366,13 @@ def _ensure_gradient_material(
     mapping.vector_type = "TEXTURE"
     gradient = nt.nodes.new("ShaderNodeTexGradient")
     gradient.location = (-200, 0)
+    float_curve = nt.nodes.new("ShaderNodeFloatCurve")
+    float_curve.location = (-20, 0)
+    float_curve.label = "濃度カーブ"
     ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.location = (0, 0)
+    ramp.location = (60, 0)
+
+    _apply_curve_points(float_curve, saved_curve)
 
     if gradient_type == "radial":
         gradient.gradient_type = "SPHERICAL"
@@ -379,7 +412,8 @@ def _ensure_gradient_material(
 
     nt.links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
     nt.links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
-    nt.links.new(gradient.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(gradient.outputs["Fac"], float_curve.inputs["Value"])
+    nt.links.new(float_curve.outputs["Value"], ramp.inputs["Fac"])
     nt.links.new(ramp.outputs["Color"], emission.inputs["Color"])
     nt.links.new(transparent.outputs["BSDF"], mix_shader.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix_shader.inputs[2])
@@ -417,8 +451,19 @@ def _ensure_material(entry, width_mm: float = 182.0, height_mm: float = 257.0) -
         grad_type = str(getattr(entry, "gradient_type", "linear") or "linear")
         angle = float(getattr(entry, "gradient_angle", 0.0) or 0.0)
         ep_uv = _endpoint_uv_for_entry(entry, width_mm, height_mm)
+        pending = None
+        try:
+            raw = entry.get("_pending_curve_points")
+            if raw is not None:
+                del entry["_pending_curve_points"]
+                import json as _json
+                parsed = _json.loads(raw) if isinstance(raw, str) else raw
+                pending = [(float(p[0]), float(p[1]), str(p[2])) for p in parsed if len(p) >= 3]
+        except Exception:  # noqa: BLE001
+            pass
         return _ensure_gradient_material(
-            name, color, color2, grad_type, angle, opacity, endpoint_uv=ep_uv,
+            name, color, color2, grad_type, angle, opacity,
+            endpoint_uv=ep_uv, curve_points=pending,
         )
     return _ensure_solid_material(name, color, opacity)
 
@@ -550,7 +595,7 @@ def _ensure_handle_mesh(name: str) -> bpy.types.Mesh:
         mesh = None
     mesh = bpy.data.meshes.new(name)
     a = _HANDLE_MESH_ARM_M
-    t = a * 0.15
+    t = a * 0.25
     verts = [
         (-a, -t, 0), (a, -t, 0), (a, t, 0), (-a, t, 0),
         (-t, -a, 0), (t, -a, 0), (t, a, 0), (-t, a, 0),
@@ -603,7 +648,8 @@ def _ensure_gradient_handles(
         obj = _find_gradient_handle(fill_id, end_tag)
         handle_mesh_name = f"grad_handle_mesh_{end_tag}"
         handle_mesh = _ensure_handle_mesh(handle_mesh_name)
-        if obj is None:
+        is_new = obj is None
+        if is_new:
             obj = bpy.data.objects.new(_handle_object_name(fill_id, end_tag), handle_mesh)
         elif obj.type == "EMPTY" or obj.data is not handle_mesh:
             obj.data = handle_mesh
@@ -620,7 +666,8 @@ def _ensure_gradient_handles(
         obj.location.x = mm_to_m(lx + ox_mm)
         obj.location.y = mm_to_m(ly + oy_mm)
         obj.location.z = _HANDLE_Z_M
-        obj.hide_viewport = True
+        if is_new:
+            obj.hide_viewport = True
         obj.hide_render = True
         obj.hide_select = False
         for coll in list(obj.users_collection):
@@ -654,6 +701,27 @@ def _remove_gradient_handles(fill_id: str) -> None:
             bpy.data.objects.remove(obj, do_unlink=True)
         except Exception:  # noqa: BLE001
             pass
+
+
+def get_gradient_curve_node(fill_id: str):
+    """フィルIDからグラデーションマテリアルの FloatCurve ノードを返す."""
+    mat_name = _material_name(fill_id)
+    mat = bpy.data.materials.get(mat_name)
+    if mat is None or not mat.use_nodes:
+        return None
+    for node in mat.node_tree.nodes:
+        if node.type == "CURVE_FLOAT":
+            return node
+    return None
+
+
+def get_gradient_curve_points(fill_id: str) -> list[tuple[float, float, str]]:
+    """フィルIDのグラデーション濃度カーブポイントを取得."""
+    node = get_gradient_curve_node(fill_id)
+    if node is None:
+        return []
+    curve = node.mapping.curves[0]
+    return [(p.location[0], p.location[1], p.handle_type) for p in curve.points]
 
 
 def sync_gradient_handle_visibility(context) -> None:
