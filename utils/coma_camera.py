@@ -463,6 +463,8 @@ def _background_scale_offset_for_image(img, base_scale: float) -> tuple[float, t
 
 
 def _ref_is_page_image(ref: ReferenceImage) -> bool:
+    if str(ref.kind or "") == "koma":
+        return False
     return bool(ref.full_page_mask) or str(ref.kind or "") == "name"
 
 
@@ -470,9 +472,12 @@ def _image_is_page_image(img) -> bool:
     if img is None:
         return False
     try:
+        kind = str(img.get("bname_kind", "") or "")
+        if kind == "koma":
+            return False
         if bool(img.get("bname_full_page_mask", False)):
             return True
-        if str(img.get("bname_kind", "") or "") == "name":
+        if kind == "name":
             return True
     except Exception:  # noqa: BLE001
         pass

@@ -272,13 +272,22 @@ def _render_page_with_transparent_coma_background(work, page, options, transpare
         target_group = export_pipeline._coma_content_group_path(panel)
         dpi = int(getattr(options, "dpi_override", 0) or getattr(getattr(work, "paper", None), "dpi", DEFAULT_REF_DPI))
         prepared_layers = []
+        target_prefix = tuple(target_group)
         for layer in layers:
-            if layer.name == "background" and tuple(layer.group_path) == tuple(target_group):
+            gp = tuple(layer.group_path)
+            if len(gp) >= len(target_prefix) and gp[: len(target_prefix)] == target_prefix:
                 continue
             if layer.name == "paper":
                 layer = _layer_with_coma_background_hole(layer, panel, dpi)
             prepared_layers.append(layer)
         size = export_pipeline._page_canvas_size_px(work, page, options)
+        group_masks = export_pipeline._coma_group_masks(work, page, options)
+        from ..io import export_group_masks
+        Image = export_pipeline.Image
+        ImageChops = export_pipeline.ImageChops
+        prepared_layers = export_group_masks.apply_group_masks_to_layers(
+            prepared_layers, group_masks, Image, ImageChops,
+        )
         image = export_pipeline._flatten_layers(prepared_layers, size)
         return export_pipeline._convert_flatten_mode(image, options)
     except Exception:  # noqa: BLE001
