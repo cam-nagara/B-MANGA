@@ -807,7 +807,7 @@ class BNAME_OT_text_tool(Operator):
         cursor_type = preset_op.text_tool_cursor_type(context)
         self._setup_vertical_cursor(context, cursor_type == "vertical")
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(
-            context, "NONE" if cursor_type == "vertical" else cursor_type
+            context, "CROSSHAIR" if cursor_type == "vertical" else cursor_type
         )
         self._editing = False
         self._editing_created_new = False
