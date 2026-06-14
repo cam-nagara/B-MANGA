@@ -182,6 +182,10 @@ def _find_raster_by_key(context, item_id: str):
     return object_tool_selection.find_raster_by_key(context, item_id)
 
 
+def _find_fill_by_key(context, item_id: str):
+    return object_tool_selection.find_fill_by_key(context, item_id)
+
+
 def _find_gp_layer(key: str):
     return object_tool_selection.find_gp_layer(key)
 
@@ -300,6 +304,7 @@ def hit_object_at_event(context, event) -> dict | None:
         _hit_image_at_event,
         _hit_gp_at_event,
         _hit_raster_at_event,
+        _hit_fill_at_event,
     ):
         hit = resolver(context, event)
         if _hit_visible(hit):
@@ -405,6 +410,10 @@ def _hit_gp_at_event(context, event) -> dict | None:
 
 def _hit_raster_at_event(context, event) -> dict | None:
     return object_tool_selection.hit_raster_at_event(context, event, _event_world_xy_mm)
+
+
+def _hit_fill_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_fill_at_event(context, event, _event_world_xy_mm)
 
 
 _HANDLE_HIT_RADIUS_MM = 5.0
@@ -611,6 +620,14 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
             if not _select_stack_target(context, "raster", getattr(entry, "id", "")):
                 context.scene.bname_active_raster_layer_index = index
                 context.scene.bname_active_layer_kind = "raster"
+        edge_selection.clear_selection(context)
+    elif kind == "fill":
+        index, entry = _find_fill_by_key(context, object_selection.parse_key(key)[2])
+        if entry is not None:
+            _focus_parent_coma_for_entry_by_key(context, work, entry)
+            if not _select_stack_target(context, "fill", getattr(entry, "id", "")):
+                context.scene.bname_active_fill_layer_index = index
+                context.scene.bname_active_layer_kind = "fill"
         edge_selection.clear_selection(context)
     elif kind == "gp":
         obj, layer = _find_gp_layer(hit.get("layer_key", object_selection.parse_key(key)[2]))
@@ -1486,6 +1503,21 @@ class BNAME_OT_object_tool(Operator):
                     "image_name": str(getattr(image, "name", "") or ""),
                     "pixels": tuple(pixels),
                 })
+            elif kind == "fill":
+                _idx, entry = _find_fill_by_key(context, item_id)
+                if entry is None:
+                    continue
+                if bool(getattr(entry, "use_region", False)):
+                    snapshots.append({
+                        "kind": "fill",
+                        "item_id": item_id,
+                        "rect": (
+                            float(getattr(entry, "region_x_mm", 0.0)),
+                            float(getattr(entry, "region_y_mm", 0.0)),
+                            float(getattr(entry, "region_width_mm", 0.0)),
+                            float(getattr(entry, "region_height_mm", 0.0)),
+                        ),
+                    })
             elif kind == "gp":
                 obj, layer = _find_gp_layer(item_id)
                 bounds = object_tool_selection.gp_layer_local_bounds(layer)
@@ -1790,6 +1822,13 @@ class BNAME_OT_object_tool(Operator):
                         float(cy) + (float(ny) + float(nh) * 0.5) - (float(y) + float(h) * 0.5),
                     )
                 effect_line_op._write_effect_strokes(context, obj, layer, (nx, ny, nw, nh), center_xy_mm=center)
+            elif kind == "fill":
+                _idx, entry = _find_fill_by_key(context, snapshot["item_id"])
+                if entry is None or not bool(getattr(entry, "use_region", False)):
+                    continue
+                if self._drag_action == "move":
+                    entry.region_x_mm = x + dx
+                    entry.region_y_mm = y + dy
             elif kind == "image":
                 _idx, entry = _find_image_by_key(context, snapshot["item_id"])
                 if entry is None:

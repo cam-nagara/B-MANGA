@@ -437,7 +437,6 @@ class BNAME_OT_view_fit_page(Operator):
             and work.loaded
             and len(work.pages) > 0
             and 0 <= int(getattr(work, "active_page_index", -1)) < len(work.pages)
-            and get_mode(context) == MODE_PAGE
         )
 
     def execute(self, context):

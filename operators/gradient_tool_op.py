@@ -11,7 +11,7 @@ from gpu_extras.batch import batch_for_shader
 
 from ..core.work import get_active_page, get_work
 from ..utils import geom, layer_stack as layer_stack_utils, log, page_file_scene
-from . import coma_modal_state, view_event_region
+from . import coma_modal_state, selection_context_menu, view_event_region
 
 _logger = log.get_logger(__name__)
 
@@ -126,16 +126,46 @@ class BNAME_OT_gradient_tool(Operator):
             self._cleanup(context)
             return {"FINISHED"}
 
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
+
         ev_type = str(getattr(event, "type", "") or "")
         ev_value = str(getattr(event, "value", "") or "")
 
-        if ev_type in {"RIGHTMOUSE", "ESC"} and ev_value == "PRESS":
+        if view_event_region.modal_navigation_ui_passthrough(self, context, event):
+            return {"PASS_THROUGH"}
+
+        if ev_type == "RIGHTMOUSE" and ev_value == "PRESS":
+            if selection_context_menu.open_for_viewport_object(context, event):
+                return {"RUNNING_MODAL"}
+            self._cleanup(context)
+            coma_modal_state.clear_active(TOOL_NAME, self, context)
+            return {"FINISHED"}
+
+        if ev_type == "ESC" and ev_value == "PRESS":
             self._cleanup(context)
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED"}
 
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
+
+        if (
+            ev_type == "LEFTMOUSE"
+            and ev_value == "PRESS"
+            and handle_intercept.try_intercept_press(context, event, self)
+        ):
+            return {"RUNNING_MODAL"}
 
         if ev_type == "LEFTMOUSE" and ev_value == "PRESS":
             return self._on_press(context, event)

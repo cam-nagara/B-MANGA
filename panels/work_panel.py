@@ -113,6 +113,15 @@ class BNAME_PT_coma_return(Panel):
         shortcut_visibility.mark_bname_panel_drawn(context)
         layout = self.layout
         scene = getattr(context, "scene", None)
+        if get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend():
+            layout.operator(
+                "bname.exit_coma_mode_safe",
+                text="ページに戻る",
+                icon="BACK",
+            )
+            op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
+            op.target = "COMA"
+            return
         if page_file_scene.is_page_edit_scene(context.scene):
             row = layout.row(align=True)
             row.operator(
@@ -125,14 +134,6 @@ class BNAME_PT_coma_return(Panel):
             op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return
-        layout.operator(
-            "bname.exit_coma_mode_safe",
-            text="ページに戻る",
-            icon="BACK",
-        )
-        _draw_page_browser_fit(layout, scene)
-        op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
-        op.target = "COMA"
 
 
 def _draw_page_browser_fit(layout, scene) -> None:

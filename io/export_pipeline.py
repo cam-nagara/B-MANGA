@@ -1577,17 +1577,15 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     except Exception:  # pragma: no cover - bpy unavailable outside Blender
         image_layers = None
     page_id_for_filter = str(getattr(page, "id", "") or "")
+    _image_layers_by_coma: dict[str, list[ExportLayer]] = {}
     if image_layers is not None:
         for entry in image_layers:
             if not getattr(entry, "visible", True):
                 continue
             entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
             entry_parent_key = str(getattr(entry, "parent_key", "") or "")
-            # ページ外 (parent 無し) の画像レイヤーは作業用なので
-            # ページ書き出しに含めない (座標系もページ基準ではない)。
             if entry_parent_kind in {"none", "outside"}:
                 continue
-            # 別ページ所属の画像レイヤーをこのページへ写し込まない。
             if entry_parent_kind in {"page", "coma"} and entry_parent_key:
                 entry_page_id = entry_parent_key.split(":", 1)[0]
                 if entry_page_id and page_id_for_filter and entry_page_id != page_id_for_filter:
@@ -1604,12 +1602,17 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 ),
             )
             if layer is not None:
-                layers.append(layer)
+                if entry_parent_kind == "coma" and ":" in entry_parent_key:
+                    coma_id = entry_parent_key.split(":", 1)[1]
+                    _image_layers_by_coma.setdefault(coma_id, []).append(layer)
+                else:
+                    layers.append(layer)
 
     try:
         fill_layers_coll = getattr(bpy.context.scene, "bname_fill_layers", None)
     except Exception:  # pragma: no cover
         fill_layers_coll = None
+    _fill_layers_by_coma: dict[str, list[ExportLayer]] = {}
     if fill_layers_coll is not None:
         for entry in fill_layers_coll:
             if not getattr(entry, "visible", True):
@@ -1633,7 +1636,11 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                 ),
             )
             if layer is not None:
-                layers.append(layer)
+                if entry_parent_kind == "coma" and ":" in entry_parent_key:
+                    coma_id = entry_parent_key.split(":", 1)[1]
+                    _fill_layers_by_coma.setdefault(coma_id, []).append(layer)
+                else:
+                    layers.append(layer)
 
     try:
         raster_layers = export_raster.page_raster_layers(
@@ -1654,7 +1661,13 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     except Exception:  # noqa: BLE001
         _logger.exception("raster layer export failed")
         raster_layers = []
-    layers.extend(raster_layers)
+    _raster_layers_by_coma: dict[str, list[ExportLayer]] = {}
+    for rl in raster_layers:
+        gp = getattr(rl, "group_path", ()) or ()
+        if len(gp) >= 2 and gp[0] == "comas":
+            _raster_layers_by_coma.setdefault(gp[1], []).append(rl)
+        else:
+            layers.append(rl)
 
     for panel in sorted(page.comas, key=lambda candidate: int(getattr(candidate, "z_order", 0))):
         coma_group = _coma_root_group_path(panel)
@@ -1682,6 +1695,14 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
             )
             if render_layer is not None:
                 layers.append(replace(render_layer, group_path=content_group))
+        coma_id = str(getattr(panel, "id", "") or "")
+        coma_gn = _coma_group_name(panel)
+        for il in _image_layers_by_coma.get(coma_id, []):
+            layers.append(il)
+        for fl in _fill_layers_by_coma.get(coma_id, []):
+            layers.append(fl)
+        for rl in _raster_layers_by_coma.get(coma_gn, []):
+            layers.append(rl)
         if options.include_border and getattr(panel.border, "visible", False):
             border_layer = _draw_coma_border_layer(panel, canvas_size[1], dpi)
             if border_layer is not None:

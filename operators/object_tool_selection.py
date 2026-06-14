@@ -116,6 +116,16 @@ def find_raster_by_key(context, item_id: str):
     return -1, None
 
 
+def find_fill_by_key(context, item_id: str):
+    coll = getattr(getattr(context, "scene", None), "bname_fill_layers", None)
+    if coll is None:
+        return -1, None
+    for i, entry in enumerate(coll):
+        if str(getattr(entry, "id", "") or "") == str(item_id or ""):
+            return i, entry
+    return -1, None
+
+
 def find_gp_layer(key: str):
     obj = layer_stack_utils.gp_utils.get_master_gpencil()
     layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
@@ -206,6 +216,17 @@ def _managed_object_for_key(context, key: str):
         from . import raster_layer_op
 
         return raster_layer_op.ensure_raster_plane(context, entry)
+    if kind == "fill":
+        obj = on.find_object_by_bname_id(item_id, kind="fill")
+        if obj is not None:
+            return obj
+        _idx, entry = find_fill_by_key(context, item_id)
+        if entry is not None:
+            from ..utils.fill_real_object import ensure_fill_real_object, page_for_entry
+            scene = getattr(context, "scene", None)
+            page = page_for_entry(scene, work, entry)
+            return ensure_fill_real_object(scene=scene, entry=entry, page=page)
+        return None
     if kind == "gp":
         obj, layer = find_gp_layer(item_id)
         if obj is not None and layer is not None:
@@ -308,6 +329,9 @@ def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
         return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
     if kind == "raster":
         _idx, entry = find_raster_by_key(context, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "fill":
+        _idx, entry = find_fill_by_key(context, item_id)
         return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
     if kind == "gp":
         _obj, layer = find_gp_layer(item_id)
@@ -594,6 +618,64 @@ def hit_raster_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     return None
 
 
+def fill_world_rect(context, work, entry) -> Rect | None:
+    if entry is None or work is None:
+        return None
+    use_region = bool(getattr(entry, "use_region", False))
+    if not use_region:
+        paper = getattr(work, "paper", None) if work is not None else None
+        cw = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
+        ch = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
+        x_mm, y_mm, w_mm, h_mm = 0.0, 0.0, cw, ch
+    else:
+        x_mm = float(getattr(entry, "region_x_mm", 0.0) or 0.0)
+        y_mm = float(getattr(entry, "region_y_mm", 0.0) or 0.0)
+        w_mm = float(getattr(entry, "region_width_mm", 0.0) or 0.0)
+        h_mm = float(getattr(entry, "region_height_mm", 0.0) or 0.0)
+    from ..utils.fill_real_object import page_for_entry, entry_page_offset_mm
+    scene = getattr(context, "scene", None)
+    page = page_for_entry(scene, work, entry)
+    ox, oy = entry_page_offset_mm(scene, work, entry, page)
+    return Rect(x_mm + ox, y_mm + oy, w_mm, h_mm)
+
+
+def hit_fill_at_world(context, x_mm: float, y_mm: float) -> dict | None:
+    work = get_work(context)
+    scene = getattr(context, "scene", None)
+    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    if work is None or coll is None:
+        return None
+    fullcanvas_hit = None
+    for index in reversed(range(len(coll))):
+        entry = coll[index]
+        if not bool(getattr(entry, "visible", True)) or bool(getattr(entry, "locked", False)):
+            continue
+        rect = fill_world_rect(context, work, entry)
+        if rect is None:
+            continue
+        part = hit_part_for_rect(rect, x_mm, y_mm)
+        if part:
+            hit = {
+                "kind": "fill",
+                "index": index,
+                "part": "move",
+                "key": object_selection.fill_key(entry),
+                "world": (float(x_mm), float(y_mm)),
+            }
+            if bool(getattr(entry, "use_region", False)):
+                return hit
+            if fullcanvas_hit is None:
+                fullcanvas_hit = hit
+    return fullcanvas_hit
+
+
+def hit_fill_at_event(context, event, event_world_xy: Callable) -> dict | None:
+    x_mm, y_mm = event_world_xy(context, event)
+    if x_mm is None or y_mm is None:
+        return None
+    return hit_fill_at_world(context, x_mm, y_mm)
+
+
 def hit_shared_text_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     work = get_work(context)
     if work is None:
@@ -762,6 +844,9 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
     if kind == "raster":
         _idx, entry = find_raster_by_key(context, item_id)
         return raster_world_rect(context, work, entry) if entry is not None else None
+    if kind == "fill":
+        _idx, entry = find_fill_by_key(context, item_id)
+        return fill_world_rect(context, work, entry) if entry is not None else None
     if kind == "gp":
         _obj, layer = find_gp_layer(item_id)
         return gp_layer_world_rect(context, work, layer) if layer is not None else None
@@ -912,6 +997,14 @@ def _iter_rect_select_candidates(context):
         if rect is None:
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "raster", "part": "move", "key": key}}
+    for entry in reversed(list(getattr(scene, "bname_fill_layers", []) or [])):
+        if not bool(getattr(entry, "visible", True)):
+            continue
+        key = object_selection.fill_key(entry)
+        rect = selection_bounds_for_key(context, key)
+        if rect is None:
+            continue
+        yield {"key": key, "rect": rect, "hit": {"kind": "fill", "part": "move", "key": key}}
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
         if not page_range.page_in_range(page):
             continue
@@ -1004,6 +1097,8 @@ def active_selection_key(context) -> str:
         return object_selection.raster_key(target)
     if kind == "effect":
         return object_selection.effect_key(target)
+    if kind == "fill":
+        return object_selection.fill_key(target)
     if kind == "balloon":
         page = resolved.get("page")
         return object_selection.balloon_key(page, target)

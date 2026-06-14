@@ -163,6 +163,12 @@ def try_intercept_press(context, event, operator) -> bool:
             coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
             return True
 
+    if bool(getattr(event, "ctrl", False)):
+        hit = object_tool_op.hit_object_at_event(context, event)
+        if hit is not None:
+            object_tool_op.activate_hit(context, hit, mode="single")
+            return True
+
     return False
 
 
