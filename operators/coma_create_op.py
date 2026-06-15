@@ -225,12 +225,22 @@ class BNAME_OT_coma_create_tool(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("coma_create", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
-        # 3D ビューの描画領域外 (サイドバー・プリセット選択・ヘッダーなど) の
-        # 操作は素通しする。これが無いとツール起動中に他の UI を一切押せない
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
 
@@ -275,6 +285,8 @@ class BNAME_OT_coma_create_tool(Operator):
             return {"RUNNING_MODAL"}
 
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
+            if handle_intercept.try_intercept_press(context, event, self):
+                return {"RUNNING_MODAL"}
             return self._on_press(context, event)
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
             return self._on_release(context, event)

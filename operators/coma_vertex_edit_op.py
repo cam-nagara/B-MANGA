@@ -292,11 +292,22 @@ class BNAME_OT_coma_edit_vertices(Operator):
             coma_modal_state.clear_active("coma_vertex_edit", self, context)
             return {"FINISHED", "PASS_THROUGH"}
         try:
-            # entry が削除された等の例外ケースで modal が暴走しないよう防御
-            _ = self._entry.coma_id  # 参照を生かす
+            _ = self._entry.coma_id
         except Exception:  # noqa: BLE001
             self._cleanup(context)
             return {"CANCELLED"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
 
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
@@ -325,6 +336,8 @@ class BNAME_OT_coma_edit_vertices(Operator):
 
         if event.type == "LEFTMOUSE":
             if event.value == "PRESS":
+                if handle_intercept.try_intercept_press(context, event, self):
+                    return {"RUNNING_MODAL"}
                 mx, my = _to_window(event)
                 hit = self._hit_test(context, mx, my)
                 if hit is not None:

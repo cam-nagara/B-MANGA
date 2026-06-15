@@ -16,8 +16,9 @@ import time
 import bpy
 from bpy.types import Operator
 
-from ..core.work import get_work
+from ..core.work import get_active_page, get_work
 from ..utils import geom, layer_stack as layer_stack_utils, log, page_file_scene, page_grid
+from ..utils.layer_hierarchy import coma_containing_point, coma_stack_key, page_stack_key
 from . import balloon_op, coma_modal_state, view_event_region
 
 _logger = log.get_logger(__name__)
@@ -220,10 +221,11 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
             if "FINISHED" not in result:
                 bpy.data.objects.remove(obj, do_unlink=True)
                 bpy.data.curves.remove(curve)
-                # クリック済みポイントは捨てずに残し、やり直せるようにする
                 self._points_world_mm = points
                 self.report({"WARNING"}, "フキダシとして登録できませんでした")
                 return
+            # クリック位置の重心からコマを特定し、親を修正する
+            self._fix_parent_from_points(context, points)
             try:
                 bpy.ops.ed.undo_push(message="B-Name: NURBSフキダシ作成")
             except Exception:  # noqa: BLE001
@@ -233,6 +235,39 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
         except Exception:  # noqa: BLE001
             _logger.exception("nurbs balloon create failed")
             self.report({"ERROR"}, "NURBSフキダシの作成に失敗しました")
+
+    def _fix_parent_from_points(self, context, points: list[tuple[float, float]]) -> None:
+        """クリック点の重心位置から正しい親コマを特定して設定する."""
+        if not points:
+            return
+        work = get_work(context)
+        page = get_active_page(context)
+        if work is None or page is None:
+            return
+        balloons = getattr(page, "balloons", None)
+        if not balloons:
+            return
+        entry = balloons[len(balloons) - 1]
+        cx = sum(p[0] for p in points) / len(points)
+        cy = sum(p[1] for p in points) / len(points)
+        page_index = -1
+        page_id = str(getattr(page, "id", "") or "")
+        for i, candidate in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(candidate, "id", "") or "") == page_id:
+                page_index = i
+                break
+        if page_index < 0:
+            return
+        ox, oy = page_grid.page_total_offset_mm(work, context.scene, page_index)
+        lx = cx - ox
+        ly = cy - oy
+        panel = coma_containing_point(page, lx, ly)
+        if panel is not None:
+            entry.parent_kind = "coma"
+            entry.parent_key = coma_stack_key(page, panel)
+        else:
+            entry.parent_kind = "page"
+            entry.parent_key = page_stack_key(page)
 
     def _finish(self, context):
         if getattr(self, "_cursor_modal_set", False):

@@ -700,6 +700,18 @@ class BNAME_OT_coma_knife_cut(Operator):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active("knife_cut", self, context)
             return {"FINISHED", "PASS_THROUGH"}
+        from . import handle_intercept
+        if handle_intercept.is_dragging(self):
+            if event.type == "MOUSEMOVE":
+                handle_intercept.update_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                handle_intercept.finish_drag(context, event, self)
+                return {"RUNNING_MODAL"}
+            if event.type == "ESC" and event.value == "PRESS":
+                handle_intercept.cancel_drag(context, self)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if getattr(self, "_edge_drag", None) is not None:
@@ -778,6 +790,8 @@ class BNAME_OT_coma_knife_cut(Operator):
                     return {"PASS_THROUGH"}
                 if not self._is_inside_region(event):
                     return {"PASS_THROUGH"}
+                if handle_intercept.try_intercept_press(context, event, self):
+                    return {"RUNNING_MODAL"}
                 if self._try_start_edge_drag(context, event):
                     self._tag_redraw()
                     return {"RUNNING_MODAL"}

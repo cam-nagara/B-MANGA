@@ -17,6 +17,7 @@ from ..utils import (
     page_grid,
     shortcut_visibility,
 )
+from . import raster_layer_op
 from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
 from . import coma_modal_state, coma_picker, view_event_region
 
@@ -226,7 +227,13 @@ class BNAME_OT_layer_move_tool(Operator):
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active("layer_move", self, context)
-        self.report({"INFO"}, "レイヤー移動ツール: ビューポート上でドラッグ")
+        coords = coma_picker._event_world_mm(context, event)
+        if coords is not None:
+            self._begin_drag(context, coords)
+        if self._dragging:
+            self.report({"INFO"}, "レイヤー移動ツール: クリックで確定")
+        else:
+            self.report({"INFO"}, "レイヤー移動ツール: ビューポート上でドラッグ")
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -304,6 +311,8 @@ class BNAME_OT_layer_move_tool(Operator):
         if event.type == "LEFTMOUSE" and event.value == "PRESS":
             if not view_event_region.is_view3d_window_event(context, event):
                 return {"PASS_THROUGH"}
+            if self._dragging:
+                return {"RUNNING_MODAL"}
             if handle_intercept.try_intercept_press(context, event, self):
                 return {"RUNNING_MODAL"}
             coords = coma_picker._event_world_mm(context, event)
@@ -431,6 +440,25 @@ class BNAME_OT_layer_move_tool(Operator):
                 for text in getattr(page, "texts", []):
                     if getattr(text, "parent_balloon_id", "") == bid:
                         self._snapshots.append(("attached_text", text, (text.x_mm, text.y_mm)))
+        elif kind == "raster":
+            image = raster_layer_op.ensure_raster_image(context, target, create_missing=False)
+            if image is not None:
+                try:
+                    pixels = tuple(image.pixels[:])
+                except Exception:  # noqa: BLE001
+                    pixels = ()
+                self._snapshots.append(("raster", target, {
+                    "image_name": str(getattr(image, "name", "") or ""),
+                    "pixels": pixels,
+                    "total_dx": 0.0,
+                    "total_dy": 0.0,
+                }))
+        elif kind == "fill":
+            if bool(getattr(target, "use_region", False)):
+                self._snapshots.append(("fill", target, (
+                    float(getattr(target, "region_x_mm", 0.0)),
+                    float(getattr(target, "region_y_mm", 0.0)),
+                )))
         elif kind == "gp":
             self._snapshots.append(("gp_layers", None, gp_parent.capture_layers([target])))
         elif kind == "effect":
@@ -444,6 +472,17 @@ class BNAME_OT_layer_move_tool(Operator):
                 _restore_panel(target, data)
             elif kind in {"balloon", "text", "attached_text", "image"}:
                 target.x_mm, target.y_mm = data
+            elif kind == "raster":
+                image = bpy.data.images.get(str(data.get("image_name", "") or ""))
+                pixels = data.get("pixels", ())
+                if image is not None and pixels:
+                    try:
+                        image.pixels[:] = pixels
+                        image.update()
+                    except Exception:  # noqa: BLE001
+                        pass
+            elif kind == "fill":
+                target.region_x_mm, target.region_y_mm = data
             elif kind == "gp_layers":
                 layer_stack_utils.restore_gp_layer_snapshots(data)
             elif kind == "effect_layers":
@@ -512,6 +551,31 @@ class BNAME_OT_layer_move_tool(Operator):
             target.x_mm += dx_mm
             target.y_mm += dy_mm
             return True
+        if kind == "raster":
+            for snap_kind, snap_target, snap_data in self._snapshots:
+                if snap_kind != "raster" or snap_target is not target:
+                    continue
+                snap_data["total_dx"] += dx_mm
+                snap_data["total_dy"] += dy_mm
+                image = bpy.data.images.get(str(snap_data.get("image_name", "") or ""))
+                pixels = snap_data.get("pixels", ())
+                if image is not None and pixels:
+                    try:
+                        image.pixels[:] = pixels
+                        image.update()
+                    except Exception:  # noqa: BLE001
+                        break
+                    raster_layer_op.translate_raster_layer_pixels(
+                        context, target, snap_data["total_dx"], snap_data["total_dy"],
+                    )
+                break
+            return True
+        if kind == "fill":
+            if bool(getattr(target, "use_region", False)):
+                target.region_x_mm += dx_mm
+                target.region_y_mm += dy_mm
+                return True
+            return False
         if kind == "gp":
             gp_parent.translate_layer(target, dx_mm, dy_mm)
             return True

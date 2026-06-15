@@ -1146,7 +1146,10 @@ class BNAME_OT_object_tool(Operator):
         if not key:
             return None
         kind, page_id, item_id = object_selection.parse_key(key)
-        if kind not in {"balloon", "text", "effect"}:
+        if kind not in {
+            "balloon", "text", "effect", "image", "raster", "fill", "gp",
+            "gradient_handle",
+        }:
             return None
         rect = selection_bounds_for_key(context, key)
         if rect is None or not object_tool_selection.rect_contains_point(rect, float(x_mm), float(y_mm), pad=2.5):
@@ -1168,6 +1171,17 @@ class BNAME_OT_object_tool(Operator):
             hit["index"] = index
         elif kind == "effect":
             hit["layer_name"] = item_id
+        elif kind == "image":
+            hit["item_id"] = item_id
+        elif kind == "raster":
+            hit["item_id"] = item_id
+        elif kind == "fill":
+            hit["item_id"] = item_id
+        elif kind == "gp":
+            hit["layer_key"] = item_id
+        elif kind == "gradient_handle":
+            hit["fill_id"] = item_id
+            hit["end"] = page_id
         return hit
 
     def _hit_text(self, context, event) -> dict | None:
@@ -1382,6 +1396,13 @@ class BNAME_OT_object_tool(Operator):
                 self._rotate_snapshots.append({
                     "entry": params,
                     "rotation_deg": float(getattr(params, "rotation_deg", 0.0)),
+                })
+        elif kind == "image":
+            _idx, entry = _find_image_by_key(context, item_id)
+            if entry is not None:
+                self._rotate_snapshots.append({
+                    "entry": entry,
+                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
                 })
         coma_modal_state.set_modal_cursor(context, "SCROLL_XY")
 

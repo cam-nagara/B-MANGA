@@ -43,6 +43,7 @@ class _DragSession:
         "center",
         "prev_x",
         "prev_y",
+        "move_session",
     )
 
     def __init__(self, kind: str, action: str) -> None:
@@ -56,6 +57,7 @@ class _DragSession:
         self.center: tuple[float, float] = (0.0, 0.0)
         self.prev_x: float = 0.0
         self.prev_y: float = 0.0
+        self.move_session = None
 
 
 def is_dragging(operator) -> bool:
@@ -167,6 +169,18 @@ def try_intercept_press(context, event, operator) -> bool:
         hit = object_tool_op.hit_object_at_event(context, event)
         if hit is not None:
             object_tool_op.activate_hit(context, hit, mode="single")
+            coords = world_fn(context, event)
+            if coords[0] is not None:
+                from . import layer_move_session
+                move_ses = layer_move_session.LayerMoveDragSession(
+                    context, (coords[0], coords[1]),
+                )
+                if move_ses.started:
+                    session = _DragSession("move", "move")
+                    session.move_session = move_ses
+                    setattr(operator, _ATTR, session)
+                    coma_modal_state.set_modal_cursor(context, "HAND")
+                    return True
             return True
 
     return False
@@ -183,6 +197,12 @@ def update_drag(context, event, operator) -> bool:
     if coords[0] is None:
         return True
     x_mm, y_mm = coords
+
+    if session.kind == "move":
+        if session.move_session is not None:
+            if session.move_session.apply(context, event):
+                session.moved = True
+        return True
 
     if session.kind == "rotate":
         delta_deg = object_tool_free_transform.compute_rotation_delta(
@@ -264,6 +284,12 @@ def finish_drag(context, event, operator) -> bool:
     if session is None:
         return False
     moved = getattr(session, "moved", False)
+    if session.kind == "move":
+        if session.move_session is not None:
+            session.move_session.finish(context)
+        coma_modal_state.restore_modal_cursor(context)
+        setattr(operator, _ATTR, None)
+        return True
     if session.kind == "rotate":
         coma_modal_state.restore_modal_cursor(context)
     if moved:
@@ -282,6 +308,12 @@ def cancel_drag(context, operator) -> None:
     """ESC などでドラッグをキャンセル。"""
     session: _DragSession | None = getattr(operator, _ATTR, None)
     if session is None:
+        return
+    if session.kind == "move":
+        if session.move_session is not None:
+            session.move_session.cancel(context)
+        coma_modal_state.restore_modal_cursor(context)
+        setattr(operator, _ATTR, None)
         return
     if session.kind == "free_transform":
         for snap in session.snapshots:
@@ -359,6 +391,14 @@ def _capture_rotation_snapshots(context, keys: list[str]) -> list[dict]:
                 snapshots.append({
                     "entry": params,
                     "rotation_deg": float(getattr(params, "rotation_deg", 0.0)),
+                })
+        elif kind == "image":
+            from . import object_tool_op
+            _idx, entry = object_tool_op._find_image_by_key(context, item_id)
+            if entry is not None:
+                snapshots.append({
+                    "entry": entry,
+                    "rotation_deg": float(getattr(entry, "rotation_deg", 0.0)),
                 })
     return snapshots
 

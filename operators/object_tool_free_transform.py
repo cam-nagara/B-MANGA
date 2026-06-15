@@ -190,7 +190,7 @@ def hit_rotation_zone_at_event(
         keys.append(active_key)
     for key in reversed(keys):
         kind = object_selection.parse_key(key)[0]
-        if kind not in {"balloon", "effect"}:
+        if kind not in {"balloon", "effect", "image"}:
             continue
         if not _hit_rotation_zone(context, key, float(x_mm), float(y_mm)):
             continue
