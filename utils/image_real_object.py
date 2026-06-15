@@ -312,7 +312,7 @@ def _ensure_image_data(entry, image_id: str) -> Optional[bpy.types.Image]:
         return None
 
 
-def _ensure_material(name: str, image: Optional[bpy.types.Image]) -> bpy.types.Material:
+def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=None) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -341,7 +341,19 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image]) -> bpy.types.M
     try:
         emission.inputs["Strength"].default_value = 1.0
         nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        if mask_info is not None:
+            from . import material_opacity_mask
+            alpha_out = material_opacity_mask.multiply_alpha_by_mask(
+                nt, tex.outputs["Alpha"],
+                mask_object=getattr(mask_info, "space_object", None),
+                mask_image=getattr(mask_info, "image", None),
+            )
+            if alpha_out is not None:
+                nt.links.new(alpha_out, mix.inputs["Fac"])
+            else:
+                nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        else:
+            nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
         nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
         nt.links.new(emission.outputs["Emission"], mix.inputs[2])
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
@@ -405,7 +417,20 @@ def ensure_image_real_object(
         return None
 
     image = _ensure_image_data(entry, image_id)
-    mat = _ensure_material(_material_name(image_id), image)
+
+    mask_info = None
+    parent_kind, parent_key, _ = _resolve_parent_for_entry(entry, page, folder_id)
+    if parent_kind == "coma" and parent_key and ":" in parent_key:
+        try:
+            from . import coma_content_mask
+            work = getattr(scene, "bname_work", None)
+            mask_info = coma_content_mask.ensure_viewport_mask_for_parent(
+                scene, work, parent_key,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    mat = _ensure_material(_material_name(image_id), image, mask_info=mask_info)
 
     mesh = bpy.data.meshes.get(_mesh_name(image_id))
     if mesh is None:

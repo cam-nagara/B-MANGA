@@ -258,7 +258,9 @@ def _rebuild_lasso_mesh(
     return True
 
 
-def _ensure_solid_material(name: str, color: tuple, opacity: float) -> bpy.types.Material:
+def _ensure_solid_material(
+    name: str, color: tuple, opacity: float, *, mask_info=None,
+) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -287,10 +289,26 @@ def _ensure_solid_material(name: str, color: tuple, opacity: float) -> bpy.types
 
     emission.inputs["Color"].default_value = (r, g, b, 1.0)
     emission.inputs["Strength"].default_value = 1.0
-    mix.inputs["Fac"].default_value = fac
     nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix.inputs[2])
     nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+
+    if mask_info is not None:
+        from . import material_opacity_mask
+        val = nt.nodes.new("ShaderNodeValue")
+        val.location = (-260, -260)
+        val.outputs[0].default_value = fac
+        alpha_out = material_opacity_mask.multiply_alpha_by_mask(
+            nt, val.outputs[0],
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+        )
+        if alpha_out is not None:
+            nt.links.new(alpha_out, mix.inputs["Fac"])
+        else:
+            mix.inputs["Fac"].default_value = fac
+    else:
+        mix.inputs["Fac"].default_value = fac
 
     try:
         mat.diffuse_color = (r, g, b, fac)
@@ -335,6 +353,7 @@ def _ensure_gradient_material(
     *,
     endpoint_uv: tuple | None = None,
     curve_points: list[tuple[float, float, str]] | None = None,
+    mask_info=None,
 ) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -408,7 +427,6 @@ def _ensure_gradient_material(
 
     alpha = opacity / 100.0
     emission.inputs["Strength"].default_value = 1.0
-    mix_shader.inputs["Fac"].default_value = alpha
 
     nt.links.new(tex_coord.outputs["UV"], mapping.inputs["Vector"])
     nt.links.new(mapping.outputs["Vector"], gradient.inputs["Vector"])
@@ -418,6 +436,23 @@ def _ensure_gradient_material(
     nt.links.new(transparent.outputs["BSDF"], mix_shader.inputs[1])
     nt.links.new(emission.outputs["Emission"], mix_shader.inputs[2])
     nt.links.new(mix_shader.outputs["Shader"], out.inputs["Surface"])
+
+    if mask_info is not None:
+        from . import material_opacity_mask
+        val = nt.nodes.new("ShaderNodeValue")
+        val.location = (-600, -260)
+        val.outputs[0].default_value = alpha
+        alpha_out = material_opacity_mask.multiply_alpha_by_mask(
+            nt, val.outputs[0],
+            mask_object=getattr(mask_info, "space_object", None),
+            mask_image=getattr(mask_info, "image", None),
+        )
+        if alpha_out is not None:
+            nt.links.new(alpha_out, mix_shader.inputs["Fac"])
+        else:
+            mix_shader.inputs["Fac"].default_value = alpha
+    else:
+        mix_shader.inputs["Fac"].default_value = alpha
 
     r1, g1, b1 = float(color1[0]), float(color1[1]), float(color1[2])
     try:
@@ -439,7 +474,9 @@ def _endpoint_uv_for_entry(entry, width_mm: float, height_mm: float):
     return (su, sv, eu, ev)
 
 
-def _ensure_material(entry, width_mm: float = 182.0, height_mm: float = 257.0) -> bpy.types.Material:
+def _ensure_material(
+    entry, width_mm: float = 182.0, height_mm: float = 257.0, *, mask_info=None,
+) -> bpy.types.Material:
     fill_id = str(getattr(entry, "id", "") or "")
     name = _material_name(fill_id)
     fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
@@ -463,9 +500,9 @@ def _ensure_material(entry, width_mm: float = 182.0, height_mm: float = 257.0) -
             pass
         return _ensure_gradient_material(
             name, color, color2, grad_type, angle, opacity,
-            endpoint_uv=ep_uv, curve_points=pending,
+            endpoint_uv=ep_uv, curve_points=pending, mask_info=mask_info,
         )
-    return _ensure_solid_material(name, color, opacity)
+    return _ensure_solid_material(name, color, opacity, mask_info=mask_info)
 
 
 def ensure_fill_real_object(
@@ -513,7 +550,18 @@ def ensure_fill_real_object(
         mesh_w_mm = canvas_w_mm
         mesh_h_mm = canvas_h_mm
 
-    mat = _ensure_material(entry, canvas_w_mm, canvas_h_mm)
+    parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
+    mask_info = None
+    if parent_kind == "coma" and parent_key and ":" in parent_key:
+        try:
+            from . import coma_content_mask
+            mask_info = coma_content_mask.ensure_viewport_mask_for_parent(
+                scene, work, parent_key,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    mat = _ensure_material(entry, canvas_w_mm, canvas_h_mm, mask_info=mask_info)
 
     mesh = bpy.data.meshes.get(_mesh_name(fill_id))
     if mesh is None:
@@ -553,7 +601,6 @@ def ensure_fill_real_object(
         obj.location.x = mm_to_m(canvas_w_mm * 0.5 + ox_mm)
         obj.location.y = mm_to_m(canvas_h_mm * 0.5 + oy_mm)
 
-    parent_kind, parent_key, stamp_folder = _resolve_parent_for_entry(entry, page, folder_id)
     _ensure_parent_collection(scene, parent_kind, parent_key)
     los.stamp_layer_object(
         obj,

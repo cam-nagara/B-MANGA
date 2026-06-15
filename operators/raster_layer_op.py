@@ -238,7 +238,7 @@ def _node_by_name_and_type(tree, name: str, bl_idname: str):
     return None
 
 
-def _build_raster_material_nodes(mat) -> dict[str, object]:
+def _build_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
     tree = mat.node_tree
     _clear_material_nodes(mat)
     nodes = tree.nodes
@@ -263,7 +263,19 @@ def _build_raster_material_nodes(mat) -> dict[str, object]:
     if tex.outputs.get("Alpha") is not None:
         links.new(tex.outputs["Alpha"], alpha_mul.inputs[0])
         links.new(alpha_scale.outputs[0], alpha_mul.inputs[1])
-        links.new(alpha_mul.outputs[0], mix.inputs[0])
+        if mask_info is not None:
+            from ..utils import material_opacity_mask
+            alpha_out = material_opacity_mask.multiply_alpha_by_mask(
+                tree, alpha_mul.outputs[0],
+                mask_object=getattr(mask_info, "space_object", None),
+                mask_image=getattr(mask_info, "image", None),
+            )
+            if alpha_out is not None:
+                links.new(alpha_out, mix.inputs[0])
+            else:
+                links.new(alpha_mul.outputs[0], mix.inputs[0])
+        else:
+            links.new(alpha_mul.outputs[0], mix.inputs[0])
     links.new(transparent.outputs["BSDF"], mix.inputs[1])
     links.new(emission.outputs["Emission"], mix.inputs[2])
     links.new(mix.outputs["Shader"], out.inputs["Surface"])
@@ -276,8 +288,16 @@ def _build_raster_material_nodes(mat) -> dict[str, object]:
     }
 
 
-def _ensure_raster_material_nodes(mat) -> dict[str, object]:
+def _has_mask_nodes(tree) -> bool:
+    return any(n.label.startswith("コマ内容マスク") for n in tree.nodes)
+
+
+def _ensure_raster_material_nodes(mat, mask_info=None) -> dict[str, object]:
+    if mask_info is not None:
+        return _build_raster_material_nodes(mat, mask_info=mask_info)
     tree = mat.node_tree
+    if _has_mask_nodes(tree):
+        return _build_raster_material_nodes(mat)
     try:
         version = int(mat.get(RASTER_MATERIAL_VERSION_PROP, 0))
     except Exception:  # noqa: BLE001
@@ -308,7 +328,7 @@ def _ensure_raster_material_nodes(mat) -> dict[str, object]:
     }
 
 
-def ensure_raster_material(entry, image):
+def ensure_raster_material(entry, image, mask_info=None):
     raster_id = str(getattr(entry, "id", "") or "")
     mat = bpy.data.materials.get(raster_material_name(raster_id))
     if mat is None:
@@ -340,7 +360,7 @@ def ensure_raster_material(entry, image):
         mat.surface_render_method = "BLENDED"
     except (AttributeError, TypeError):
         pass
-    nodes = _ensure_raster_material_nodes(mat)
+    nodes = _ensure_raster_material_nodes(mat, mask_info=mask_info)
     tex = nodes["tex"]
     tex.image = image
     emission = nodes["emission"]
@@ -475,7 +495,18 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
         obj = bpy.data.objects.new(raster_plane_name(raster_id), mesh)
     else:
         obj.data = mesh
-    mat = ensure_raster_material(entry, image)
+    mask_info = None
+    entry_parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+    if entry_parent_kind == "coma" and parent_key and ":" in parent_key:
+        try:
+            from ..utils import coma_content_mask
+            mask_info = coma_content_mask.ensure_viewport_mask_for_parent(
+                context.scene, work, parent_key,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    mat = ensure_raster_material(entry, image, mask_info=mask_info)
     _assign_raster_material(obj, mat)
     obj["bname_raster_id"] = raster_id
     obj["bname_raster_parent_page"] = getattr(page, "id", "")
