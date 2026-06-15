@@ -9,6 +9,7 @@ from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import page_file_scene
 
+
 B_NAME_CATEGORY = "B-Name"
 
 
@@ -55,6 +56,26 @@ def _active_page_number_set(scene, value: int) -> None:
         pass
 
 
+def _coma_content_visible_update(scene, context) -> None:
+    visible = bool(scene.bname_coma_content_visible)
+    cam = getattr(scene, "camera", None)
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return
+    for bg in cam_data.background_images:
+        img = getattr(bg, "image", None)
+        if img is None:
+            continue
+        if "コマ" in getattr(img, "name", ""):
+            try:
+                bg.show_background_image = visible
+            except Exception:  # noqa: BLE001
+                pass
+    settings = getattr(scene, "bname_coma_camera_settings", None)
+    if settings is not None:
+        settings.koma_visible = visible
+
+
 def _page_preview_enabled_update(scene, context) -> None:
     try:
         from ..utils import view_settings
@@ -99,30 +120,55 @@ class BNAME_PT_view(Panel):
             depress=enabled,
         )
 
-        in_page_file = page_file_scene.is_page_edit_scene(scene)
-        col = layout.column(align=True)
-        row = col.row(align=True)
-        row.operator("bname.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
-        if in_page_file or is_coma_mode:
-            row = col.row(align=True)
-            row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
-            row = col.row(align=True)
-            row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
-            row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_cols", text="列数")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
-            row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
-        else:
-            row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_cols", text="列数")
-            row = col.row(align=True)
-            row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
-            row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
-            row = col.row(align=True)
-            row.prop(scene, "bname_active_page_number", text="選択ページ")
+        layout.operator("bname.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
+
+        if is_coma_mode:
+            settings = getattr(scene, "bname_coma_camera_settings", None)
+            if settings is not None:
+                box = layout.box()
+                row = box.row(align=True)
+                row.label(text="ページ画像")
+                row.prop(settings, "name_bg_images_opacity", text="")
+                name_vis = bool(getattr(settings, "name_visible", False))
+                row.operator(
+                    "bname.coma_camera_toggle_name_backgrounds",
+                    text="",
+                    icon="HIDE_OFF" if name_vis else "HIDE_ON",
+                )
+            content_vis = bool(getattr(scene, "bname_coma_content_visible", True))
+            row = layout.row(align=True)
+            row.prop(
+                scene, "bname_coma_content_visible",
+                text="コマ内レイヤー",
+                icon="HIDE_OFF" if content_vis else "HIDE_ON",
+                toggle=True,
+            )
+
+        if not is_coma_mode:
+            in_page_file = page_file_scene.is_page_edit_scene(scene)
+            if in_page_file:
+                col = layout.column(align=True)
+                row = col.row(align=True)
+                row.prop(scene, "bname_page_preview_enabled", text="ページ一覧表示")
+                row = col.row(align=True)
+                row.enabled = bool(getattr(scene, "bname_page_preview_enabled", True))
+                row.prop(scene, "bname_page_preview_page_radius", text="前後ページ数")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_cols", text="列数")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
+                row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
+            else:
+                col = layout.column(align=True)
+                row = col.row(align=True)
+                row.operator("bname.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_cols", text="列数")
+                row = col.row(align=True)
+                row.prop(scene, "bname_overview_gap_x_mm", text="横間隔mm")
+                row.prop(scene, "bname_overview_gap_y_mm", text="縦間隔mm")
+                row = col.row(align=True)
+                row.prop(scene, "bname_active_page_number", text="選択ページ")
 
 
 _CLASSES = (
@@ -131,6 +177,12 @@ _CLASSES = (
 
 
 def register() -> None:
+    bpy.types.Scene.bname_coma_content_visible = bpy.props.BoolProperty(
+        name="コマ内レイヤー表示",
+        description="コマ内のフキダシ・フィル・テキストなどのレイヤーの表示を切り替えます",
+        default=True,
+        update=_coma_content_visible_update,
+    )
     bpy.types.Scene.bname_active_page_number = bpy.props.IntProperty(
         name="選択ページ",
         min=1,
@@ -185,5 +237,9 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bname_page_preview_resolution_percentage
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bname_coma_content_visible
     except AttributeError:
         pass

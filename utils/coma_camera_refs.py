@@ -9,7 +9,7 @@ from typing import Iterable
 from ..core.work import find_page_by_id
 from ..io import export_pipeline
 from . import log, page_grid, coma_preview, paths
-from .geom import mm_to_px
+from .geom import mm_to_px, canvas_rect, safe_rect
 from .coma_camera_constants import (
     DEFAULT_REF_DPI,
     KOMA_REF_PREFIX,
@@ -234,6 +234,59 @@ def _render_page_reference(work, page, out: Path, *, transparent_coma_id: str = 
     return _render_page_reference_in_scene(work, page, out, transparent_coma_id=transparent_coma_id)
 
 
+def _overlay_safe_area_fill(img, work, dpi: int):
+    """セーフライン外の塗りつぶしをプレビュー画像に合成する."""
+    Image = export_pipeline.Image
+    ImageDraw = export_pipeline.ImageDraw
+    if Image is None or ImageDraw is None or img is None:
+        return img
+    paper = getattr(work, "paper", None)
+    overlay_cfg = getattr(work, "safe_area_overlay", None)
+    if paper is None or overlay_cfg is None:
+        return img
+    if not getattr(overlay_cfg, "enabled", True):
+        return img
+    opacity_pct = float(getattr(overlay_cfg, "opacity", 30.0) or 30.0)
+    if opacity_pct <= 0.0:
+        return img
+    color = getattr(overlay_cfg, "color", (0.0, 0.0, 0.0))
+    alpha = max(0, min(255, int(round(opacity_pct / 100.0 * 255))))
+    r = max(0, min(255, int(round(float(color[0]) * 255))))
+    g = max(0, min(255, int(round(float(color[1]) * 255))))
+    b = max(0, min(255, int(round(float(color[2]) * 255))))
+
+    canvas = canvas_rect(paper)
+    safe = safe_rect(paper)
+    w, h = img.size
+
+    def to_px(mm_val):
+        return int(round(mm_to_px(mm_val, dpi)))
+
+    sx = to_px(safe.x)
+    sy_top = to_px(canvas.height - safe.y2)
+    sx2 = to_px(safe.x2)
+    sy_bottom = to_px(canvas.height - safe.y)
+    sx = max(0, min(w, sx))
+    sx2 = max(0, min(w, sx2))
+    sy_top = max(0, min(h, sy_top))
+    sy_bottom = max(0, min(h, sy_bottom))
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    fc = (r, g, b, alpha)
+    if sy_top > 0:
+        draw.rectangle([0, 0, w - 1, sy_top - 1], fill=fc)
+    if sy_bottom < h:
+        draw.rectangle([0, sy_bottom, w - 1, h - 1], fill=fc)
+    if sx > 0:
+        draw.rectangle([0, sy_top, sx - 1, sy_bottom - 1], fill=fc)
+    if sx2 < w:
+        draw.rectangle([sx2, sy_top, w - 1, sy_bottom - 1], fill=fc)
+
+    result = img.convert("RGBA")
+    return Image.alpha_composite(result, overlay)
+
+
 def _render_page_reference_in_scene(work, page, out: Path, *, transparent_coma_id: str = "") -> bool:
     try:
         options = export_pipeline.ExportOptions(
@@ -253,6 +306,8 @@ def _render_page_reference_in_scene(work, page, out: Path, *, transparent_coma_i
         )
         if img is None:
             return False
+        dpi = int(getattr(options, "dpi_override", 0) or getattr(getattr(work, "paper", None), "dpi", DEFAULT_REF_DPI))
+        img = _overlay_safe_area_fill(img, work, dpi)
         out.parent.mkdir(parents=True, exist_ok=True)
         img.save(str(out))
         return True

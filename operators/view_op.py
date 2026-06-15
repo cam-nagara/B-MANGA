@@ -13,7 +13,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from bpy.types import Operator
 
-from ..core.mode import MODE_PAGE, get_mode
+from ..core.mode import MODE_COMA, MODE_PAGE, get_mode
 from ..core.work import get_work
 from ..utils import geom, log, page_browser, runtime_activity
 
@@ -448,6 +448,10 @@ class BNAME_OT_view_fit_page(Operator):
         ):
             return {"CANCELLED"}
         scene = context.scene
+
+        if get_mode(context) == MODE_COMA:
+            return self._execute_coma_fit(context, scene, work)
+
         scene.bname_overview_mode = True
         info = _find_view3d_region(context)
         if info is None:
@@ -474,6 +478,45 @@ class BNAME_OT_view_fit_page(Operator):
             if a.type == "VIEW_3D":
                 a.tag_redraw()
         self.report({"INFO"}, "ページに合わせました")
+        return {"FINISHED"}
+
+    def _execute_coma_fit(self, context, scene, work):
+        """コマファイルで既存 Camera のカメラビューに切り替える."""
+        cam = scene.camera
+        if cam is None:
+            self.report({"ERROR"}, "カメラが見つかりません")
+            return {"CANCELLED"}
+
+        info = _find_view3d_region(context)
+        if info is None:
+            self.report({"ERROR"}, "3D ビューポートが見つかりません")
+            return {"CANCELLED"}
+        area, region, rv3d = info
+
+        space = area.spaces.active
+        rv3d.view_perspective = "CAMERA"
+        try:
+            space.lock_camera = False
+        except Exception:  # noqa: BLE001
+            pass
+
+        window, screen = _window_screen_for_area(context, area)
+        override = {"area": area, "region": region}
+        if window is not None:
+            override["window"] = window
+        if screen is not None:
+            override["screen"] = screen
+        try:
+            with context.temp_override(**override):
+                bpy.ops.view3d.view_center_camera()
+        except Exception:  # noqa: BLE001
+            rv3d.view_camera_zoom = 0
+            rv3d.view_camera_offset = (0.0, 0.0)
+
+        for a in context.screen.areas:
+            if a.type == "VIEW_3D":
+                a.tag_redraw()
+        self.report({"INFO"}, "カメラビューに切り替えました")
         return {"FINISHED"}
 
 

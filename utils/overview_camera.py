@@ -91,6 +91,7 @@ def ensure_overview_camera(scene, work) -> bpy.types.Object | None:
     if bbox is None:
         return None
     x, y, w, h = bbox
+    from . import page_grid
     _gx, _gy = page_grid.resolve_gap_mm(scene)
     pad = max(4.0, min(_gx, _gy) * 0.18)
     aspect = _camera_aspect(scene)
