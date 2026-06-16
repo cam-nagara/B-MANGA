@@ -821,6 +821,29 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
             _draw_right_controls(right, controls, index)
 
 
+class BMANGA_PT_page_list(Panel):
+    """作品ファイルでのページリスト。ページ選択・追加・並べ替えを行う."""
+
+    bl_idname = "BMANGA_PT_page_list"
+    bl_label = "ページ"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = B_NAME_CATEGORY
+    bl_order = 22
+
+    @classmethod
+    def poll(cls, context):
+        work = get_work(context)
+        return bool(
+            work and work.loaded
+            and get_mode(context) != MODE_COMA
+            and not _is_page_edit_context(context)
+        )
+
+    def draw(self, context):
+        _draw_page_list_box(self.layout, context)
+
+
 class BMANGA_PT_layer_stack(Panel):
     """統合レイヤーリスト。画像/GP/フキダシ/テキスト/効果線をここに集約する."""
 
@@ -1029,6 +1052,7 @@ _CLASSES = (
     BMANGA_OT_gpencil_master_mode_set,
     BMANGA_UL_layer_panel_pages,
     BMANGA_UL_layer_stack,
+    BMANGA_PT_page_list,
     BMANGA_PT_layer_stack,
 )
 
