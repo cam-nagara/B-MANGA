@@ -54,13 +54,7 @@ class BMANGA_PT_pages(Panel):
 
     @classmethod
     def poll(cls, context):
-        w = get_work(context)
-        return bool(
-            w
-            and w.loaded
-            and get_mode(context) != MODE_COMA
-            and not page_file_scene.is_page_edit_scene(context.scene)
-        )
+        return False
 
     def draw(self, context):
         layout = self.layout

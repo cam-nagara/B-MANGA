@@ -705,6 +705,14 @@ def _draw_page_list_box(layout, context) -> None:
     op.direction = -1
     op = tools.operator("bmanga.page_move", text="", icon="TRIA_DOWN")
     op.direction = 1
+    spread = layout.box()
+    spread.label(text="見開き")
+    row = spread.row(align=True)
+    row.operator("bmanga.pages_merge_spread", text="変更", icon="ARROW_LEFTRIGHT")
+    row.operator("bmanga.pages_split_spread", text="解除", icon="UNLINKED")
+    idx = work.active_page_index
+    if 0 <= idx < len(work.pages) and work.pages[idx].spread:
+        spread.label(text=f"間隔 {work.pages[idx].tombo_gap_mm:.2f}mm")
 
 
 def _draw_layer_stack_box(layout, context) -> None:
