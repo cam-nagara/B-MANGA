@@ -1,7 +1,7 @@
 """Grease Pencil パネル — master GP (作品全ページ共通) のレイヤー管理 UI.
 
 新仕様:
-- 作品全体で 1 つの master GP オブジェクト (bname_master_sketch)
+- 作品全体で 1 つの master GP オブジェクト (bmanga_master_sketch)
 - 各レイヤーは複数ページに横断的に存在 (CSP のレイヤーパネル感覚)
 - 「ページ GP 一覧」は廃止 (master GP 1 つだけなので不要)
 - レイヤー行の種類アイコンから各種設定ダイアログを開く
@@ -24,7 +24,7 @@ from ..utils import page_file_scene
 from ..utils.layer_hierarchy import split_child_key
 from . import layer_stack_detail_ui
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 _GP_OBJECT_TYPE = "GREASEPENCIL"
 _GP_PAINT_MODE = "PAINT_GREASE_PENCIL"
 _GP_EDIT_MODE = "EDIT"
@@ -40,7 +40,7 @@ def _master_gp_object():
 
 def _active_gp_layer_target(context):
     scene = getattr(context, "scene", None)
-    if scene is None or getattr(scene, "bname_active_layer_kind", "") != "gp":
+    if scene is None or getattr(scene, "bmanga_active_layer_kind", "") != "gp":
         return None, None
     item = layer_stack_utils.active_stack_item(context)
     if item is None or getattr(item, "kind", "") != "gp":
@@ -143,7 +143,7 @@ def _visibility_button(row, index: int, hidden: bool) -> None:
     cell = row.row(align=True)
     cell.ui_units_x = 1.0
     op = cell.operator(
-        "bname.layer_stack_toggle_visibility",
+        "bmanga.layer_stack_toggle_visibility",
         text="",
         icon=_hide_icon(hidden),
         emboss=False,
@@ -209,13 +209,13 @@ def _draw_selection_slot(row, index: int, selected: bool) -> None:
     cell.ui_units_x = 1.0
     cell.operator_context = "INVOKE_DEFAULT"
     op = cell.operator(
-        "bname.layer_stack_multi_select",
+        "bmanga.layer_stack_multi_select",
         text="",
         icon="RADIOBUT_ON" if selected else "RADIOBUT_OFF",
         emboss=False,
     )
     op.index = index
-    op.anchor_index = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1))
+    op.anchor_index = int(getattr(bpy.context.scene, "bmanga_active_layer_stack_index", -1))
 
 
 def _draw_hierarchy_slot(row, item, target, index: int) -> None:
@@ -227,7 +227,7 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         cell = row.row(align=True)
         cell.ui_units_x = 1.0
         op = cell.operator(
-            "bname.layer_stack_toggle_expanded",
+            "bmanga.layer_stack_toggle_expanded",
             text="",
             emboss=False,
             icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
@@ -238,7 +238,7 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         cell = row.row(align=True)
         cell.ui_units_x = 1.0
         op = cell.operator(
-            "bname.layer_stack_toggle_expanded",
+            "bmanga.layer_stack_toggle_expanded",
             text="",
             emboss=False,
             icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
@@ -249,7 +249,7 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         cell = row.row(align=True)
         cell.ui_units_x = 1.0
         op = cell.operator(
-            "bname.layer_stack_toggle_expanded",
+            "bmanga.layer_stack_toggle_expanded",
             text="",
             emboss=False,
             icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
@@ -260,7 +260,7 @@ def _draw_hierarchy_slot(row, item, target, index: int) -> None:
         cell = row.row(align=True)
         cell.ui_units_x = 1.0
         op = cell.operator(
-            "bname.layer_stack_toggle_expanded",
+            "bmanga.layer_stack_toggle_expanded",
             text="",
             emboss=False,
             icon="DISCLOSURE_TRI_DOWN" if expanded else "DISCLOSURE_TRI_RIGHT",
@@ -275,7 +275,7 @@ def _draw_type_icon(row, index: int, icon: str) -> None:
     cell.ui_units_x = 1.0
     cell.operator_context = "INVOKE_DEFAULT"
     op = cell.operator(
-        "bname.layer_stack_detail",
+        "bmanga.layer_stack_detail",
         text="",
         icon=icon,
         emboss=False,
@@ -309,7 +309,7 @@ def _is_inline_name_editing(item) -> bool:
     if scene is None or item is None:
         return False
     uid = layer_stack_utils.stack_item_uid(item)
-    editing_uid = str(getattr(scene, "bname_layer_stack_inline_edit_uid", "") or "")
+    editing_uid = str(getattr(scene, "bmanga_layer_stack_inline_edit_uid", "") or "")
     return bool(uid) and uid == editing_uid
 
 
@@ -317,7 +317,7 @@ def _is_active_name_row(index: int) -> bool:
     scene = getattr(bpy.context, "scene", None)
     if scene is None:
         return False
-    return int(getattr(scene, "bname_active_layer_stack_index", -1) or -1) == int(index)
+    return int(getattr(scene, "bmanga_active_layer_stack_index", -1) or -1) == int(index)
 
 
 def _select_name(row, index: int, text: str, item=None, target=None) -> None:
@@ -329,13 +329,13 @@ def _select_name(row, index: int, text: str, item=None, target=None) -> None:
     cell.alignment = "LEFT"
     cell.operator_context = "INVOKE_DEFAULT"
     op = cell.operator(
-        "bname.layer_stack_multi_select",
+        "bmanga.layer_stack_multi_select",
         text=str(text or "レイヤー"),
         emboss=False,
         depress=False,
     )
     op.index = index
-    op.anchor_index = int(getattr(bpy.context.scene, "bname_active_layer_stack_index", -1))
+    op.anchor_index = int(getattr(bpy.context.scene, "bmanga_active_layer_stack_index", -1))
 
 
 def _select_icon_name(row, index: int, text: str, icon: str, item=None, target=None) -> None:
@@ -406,7 +406,7 @@ def _draw_right_aux_coma_enter(row, index: int) -> None:
     cell = row.row(align=True)
     cell.ui_units_x = 1.0
     op = cell.operator(
-        "bname.layer_stack_enter_coma",
+        "bmanga.layer_stack_enter_coma",
         text="",
         icon="PLAY",
         emboss=False,
@@ -543,16 +543,16 @@ def _draw_stack_data_row(row, controls, item, resolved, index: int) -> None:
         _select_name(row, index, item.label or item.name or item.key or "レイヤー", item=item, target=target)
 
 
-class BNAME_UL_layer_stack(UIList):
+class BMANGA_UL_layer_stack(UIList):
     """統合レイヤーリスト。UIList の実CollectionをD&D並び替え対象にする."""
 
-    bl_idname = "BNAME_UL_layer_stack"
+    bl_idname = "BMANGA_UL_layer_stack"
 
     def filter_items(self, context, data, propname):
         items = getattr(data, propname, None)
         if items is None:
             return [], []
-        if propname == "bname_layer_stack_visible":
+        if propname == "bmanga_layer_stack_visible":
             return [self.bitflag_filter_item] * len(items), []
         work = get_work(context)
         if work is None or not getattr(work, "loaded", False):
@@ -593,13 +593,13 @@ class BNAME_UL_layer_stack(UIList):
         if self.layout_type not in {"DEFAULT", "COMPACT"}:
             layout.label(text=item.label, icon=_kind_icon(item.kind))
             return
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         source_index = layer_stack_utils.find_stack_index_for_item(stack, item)
         if source_index >= 0:
             item = stack[source_index]
             index = source_index
         row = layout.row(align=True)
-        row.context_pointer_set("bname_layer_stack_item", item)
+        row.context_pointer_set("bmanga_layer_stack_item", item)
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
@@ -624,10 +624,10 @@ class BNAME_UL_layer_stack(UIList):
             _draw_right_controls(right, controls, index)
 
 
-class BNAME_UL_layer_panel_pages(UIList):
+class BMANGA_UL_layer_panel_pages(UIList):
     """レイヤーパネル内のページリスト。選択で下のレイヤー一覧を切り替える."""
 
-    bl_idname = "BNAME_UL_layer_panel_pages"
+    bl_idname = "BMANGA_UL_layer_panel_pages"
 
     def draw_item(
         self,
@@ -657,7 +657,7 @@ class BNAME_UL_layer_panel_pages(UIList):
         name_cell = row.row(align=True)
         name_cell.alignment = "LEFT"
         op = name_cell.operator(
-            "bname.page_select",
+            "bmanga.page_select",
             text=label,
             emboss=False,
             depress=False,
@@ -665,7 +665,7 @@ class BNAME_UL_layer_panel_pages(UIList):
         op.index = index
         open_cell = row.row(align=True)
         open_cell.ui_units_x = 1.0
-        open_op = open_cell.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+        open_op = open_cell.operator("bmanga.open_page_file", text="", icon="FILE_BLEND")
         open_op.index = index
 
 
@@ -683,7 +683,7 @@ def _draw_page_list_box(layout, context) -> None:
     row = box.row(align=True)
     rows = min(6, max(3, len(work.pages)))
     row.template_list(
-        BNAME_UL_layer_panel_pages.bl_idname,
+        BMANGA_UL_layer_panel_pages.bl_idname,
         "",
         work,
         "pages",
@@ -695,15 +695,15 @@ def _draw_page_list_box(layout, context) -> None:
         return
     tools = row.column(align=True)
     tools.ui_units_x = 1.25
-    tools.operator("bname.open_page_file", text="", icon="FILE_BLEND")
+    tools.operator("bmanga.open_page_file", text="", icon="FILE_BLEND")
     tools.separator()
-    tools.operator("bname.page_add", text="", icon="ADD")
-    tools.operator("bname.page_duplicate", text="", icon="DUPLICATE")
-    tools.operator("bname.page_remove", text="", icon="REMOVE")
+    tools.operator("bmanga.page_add", text="", icon="ADD")
+    tools.operator("bmanga.page_duplicate", text="", icon="DUPLICATE")
+    tools.operator("bmanga.page_remove", text="", icon="REMOVE")
     tools.separator()
-    op = tools.operator("bname.page_move", text="", icon="TRIA_UP")
+    op = tools.operator("bmanga.page_move", text="", icon="TRIA_UP")
     op.direction = -1
-    op = tools.operator("bname.page_move", text="", icon="TRIA_DOWN")
+    op = tools.operator("bmanga.page_move", text="", icon="TRIA_DOWN")
     op.direction = 1
 
 
@@ -718,21 +718,21 @@ def _draw_layer_stack_box(layout, context) -> None:
         box.label(text="レイヤー一覧を更新できません", icon="ERROR")
         box.label(text=str(exc)[:80])
         return
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         box.label(text="(レイヤーがありません)")
     else:
         layer_area = box.row(align=True)
-        visible_stack = getattr(scene, "bname_layer_stack_visible", None)
+        visible_stack = getattr(scene, "bmanga_layer_stack_visible", None)
         visible_rows = len(visible_stack) if visible_stack is not None else 0
         rows = _layer_stack_template_rows(visible_rows)
         layer_area.template_list(
-            BNAME_UL_layer_stack.bl_idname,
+            BMANGA_UL_layer_stack.bl_idname,
             "",
             scene,
-            "bname_layer_stack_visible",
+            "bmanga_layer_stack_visible",
             scene,
-            "bname_active_layer_stack_visible_index",
+            "bmanga_active_layer_stack_visible_index",
             rows=rows,
             maxrows=30,
             sort_lock=True,
@@ -741,30 +741,30 @@ def _draw_layer_stack_box(layout, context) -> None:
         tools = layer_area.column(align=True)
         tools.ui_units_x = 1.25
         add_menu = tools.operator("wm.call_menu", text="", icon="ADD")
-        add_menu.name = "BNAME_MT_layer_stack_add"
-        tools.operator("bname.layer_stack_duplicate", text="", icon="DUPLICATE")
-        tools.operator("bname.layer_stack_link_selected", text="", icon="LINKED")
-        tools.operator("bname.asset_register_layers", text="", icon="ASSET_MANAGER")
-        tools.operator("bname.layer_stack_delete", text="", icon="REMOVE")
+        add_menu.name = "BMANGA_MT_layer_stack_add"
+        tools.operator("bmanga.layer_stack_duplicate", text="", icon="DUPLICATE")
+        tools.operator("bmanga.layer_stack_link_selected", text="", icon="LINKED")
+        tools.operator("bmanga.asset_register_layers", text="", icon="ASSET_MANAGER")
+        tools.operator("bmanga.layer_stack_delete", text="", icon="REMOVE")
         tools.separator()
-        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_UP_BAR")
+        op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_UP_BAR")
         op.direction = "FRONT"
-        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_UP")
+        op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_UP")
         op.direction = "UP"
-        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN")
+        op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_DOWN")
         op.direction = "DOWN"
-        op = tools.operator("bname.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
+        op = tools.operator("bmanga.layer_stack_move", text="", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
 
 
 def _draw_layer_stack_context_menu(self, context) -> None:
-    item = getattr(context, "bname_layer_stack_item", None)
-    stack = getattr(getattr(context, "scene", None), "bname_layer_stack", None)
+    item = getattr(context, "bmanga_layer_stack_item", None)
+    stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
     if stack is None:
         return
     index = -1
     if item is None:
-        index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        index = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         if 0 <= index < len(stack):
             item = stack[index]
     else:
@@ -779,7 +779,7 @@ def _draw_layer_stack_context_menu(self, context) -> None:
         return
     layout = self.layout
     layout.separator()
-    op = layout.operator("bname.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
+    op = layout.operator("bmanga.layer_stack_detail", text="詳細設定", icon="PREFERENCES")
     op.index = index
     op.uid = uid
     op.offset_from_selection = True
@@ -796,7 +796,7 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
         return
     for index, item in entries:
         row = layout.row(align=True)
-        row.context_pointer_set("bname_layer_stack_item", item)
+        row.context_pointer_set("bmanga_layer_stack_item", item)
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         target = resolved.get("target") if resolved is not None else None
         _draw_visibility_slot(row, item, target, index)
@@ -821,20 +821,20 @@ def _draw_layer_stack_rows(layout, context, stack) -> None:
             _draw_right_controls(right, controls, index)
 
 
-class BNAME_PT_layer_stack(Panel):
+class BMANGA_PT_layer_stack(Panel):
     """統合レイヤーリスト。画像/GP/フキダシ/テキスト/効果線をここに集約する."""
 
-    bl_idname = "BNAME_PT_layer_stack"
+    bl_idname = "BMANGA_PT_layer_stack"
     bl_label = "レイヤー"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 12
+    bl_order = 22
 
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        return bool(work and work.loaded and get_mode(context) != MODE_COMA)
+        return bool(work and work.loaded and _is_page_edit_context(context))
 
     def draw(self, context):
         layout = self.layout
@@ -842,21 +842,18 @@ class BNAME_PT_layer_stack(Panel):
         if work is None or not work.loaded:
             layout.label(text="作品を開いてください", icon="INFO")
             return
-        if _is_page_edit_context(context):
-            _draw_layer_stack_box(layout, context)
-        else:
-            _draw_page_list_box(layout, context)
+        _draw_layer_stack_box(layout, context)
 
 
-class BNAME_PT_gpencil(Panel):
+class BMANGA_PT_gpencil(Panel):
     """master GP のモード / 描画色管理 UI."""
 
-    bl_idname = "BNAME_PT_gpencil"
+    bl_idname = "BMANGA_PT_gpencil"
     bl_label = "Grease Pencil"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 13
+    bl_order = 23
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -874,7 +871,7 @@ class BNAME_PT_gpencil(Panel):
             row = box.row(align=True)
             row.label(text="カーソル追従", icon="RESTRICT_SELECT_OFF")
             row.prop(prefs, "gpencil_follow_cursor", text="")
-            row.operator("bname.gpencil_follow_cursor", text="切替")
+            row.operator("bmanga.gpencil_follow_cursor", text="切替")
 
         if work is None or not work.loaded:
             layout.label(text="作品を開いてください", icon="INFO")
@@ -882,7 +879,7 @@ class BNAME_PT_gpencil(Panel):
 
         # master GP の確保ボタン
         layout.operator(
-            "bname.gpencil_master_ensure",
+            "bmanga.gpencil_master_ensure",
             text="マスター GP を用意",
             icon="OUTLINER_OB_GREASEPENCIL",
         )
@@ -923,10 +920,10 @@ class BNAME_PT_gpencil(Panel):
                         brush_box.prop(brush, "strength")
 
 
-class BNAME_OT_gpencil_master_ensure(bpy.types.Operator):
+class BMANGA_OT_gpencil_master_ensure(bpy.types.Operator):
     """master GP オブジェクトを ensure (生成 or 既存取得) して active 化."""
 
-    bl_idname = "bname.gpencil_master_ensure"
+    bl_idname = "bmanga.gpencil_master_ensure"
     bl_label = "マスター GP を用意"
     bl_options = {"REGISTER"}
 
@@ -949,7 +946,7 @@ class BNAME_OT_gpencil_master_ensure(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
+class BMANGA_OT_gpencil_master_mode_set(bpy.types.Operator):
     """master GP を必ず active 化してからツールを切り替える wrapper.
 
     UI のモード切替ボタンは ``bpy.ops.object.mode_set`` を直接呼ぶと、
@@ -958,8 +955,8 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
     active 化してから mode_set を呼ぶ。
     """
 
-    bl_idname = "bname.gpencil_master_mode_set"
-    bl_label = "B-Nameツール切替"
+    bl_idname = "bmanga.gpencil_master_mode_set"
+    bl_label = "B-MANGAツール切替"
     bl_options = {"REGISTER", "INTERNAL"}
 
     mode: bpy.props.StringProperty(default="OBJECT")  # type: ignore[valid-type]
@@ -973,7 +970,7 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
             return "描画ツールに切り替えます"
         if mode == "EDIT":
             return "グリースペンシル編集モードに切り替えます"
-        return "B-Nameツールを切り替えます"
+        return "B-MANGAツールを切り替えます"
 
     def execute(self, context):
         try:
@@ -1017,22 +1014,22 @@ class BNAME_OT_gpencil_master_mode_set(bpy.types.Operator):
             return {"CANCELLED"}
         if self.mode == _GP_OBJECT_MODE:
             try:
-                bpy.ops.bname.object_tool("INVOKE_DEFAULT")
+                bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 pass
         return {"FINISHED"}
 
 
 _REMOVED_PANEL_CLASSES = (
-    BNAME_PT_gpencil,
+    BMANGA_PT_gpencil,
 )
 
 _CLASSES = (
-    BNAME_OT_gpencil_master_ensure,
-    BNAME_OT_gpencil_master_mode_set,
-    BNAME_UL_layer_panel_pages,
-    BNAME_UL_layer_stack,
-    BNAME_PT_layer_stack,
+    BMANGA_OT_gpencil_master_ensure,
+    BMANGA_OT_gpencil_master_mode_set,
+    BMANGA_UL_layer_panel_pages,
+    BMANGA_UL_layer_stack,
+    BMANGA_PT_layer_stack,
 )
 
 
