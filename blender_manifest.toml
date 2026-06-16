@@ -1,10 +1,10 @@
 schema_version = "1.0.0"
 
-id = "b_name"
-version = "0.6.325"
-name = "B-Name"
+id = "b_manga"
+version = "0.6.326"
+name = "B-MANGA"
 tagline = "Blender manga name/storyboard authoring addon"
-maintainer = "B-Name Project"
+maintainer = "B-MANGA Project"
 type = "add-on"
 
 blender_version_min = "4.3.0"

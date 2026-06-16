@@ -17,13 +17,13 @@ _logger = log.get_logger(__name__)
 
 MASK_IMAGE_PREFIX = "コマ内容マスク"
 MASK_SPACE_PREFIX = "coma_content_mask_space_"
-PROP_MASK_KIND = "bname_content_mask_kind"
-PROP_MASK_PAGE_ID = "bname_content_mask_page_id"
-PROP_MASK_COMA_ID = "bname_content_mask_coma_id"
-PROP_MASK_PAGE_NUMBER = "bname_content_mask_page_number"
-PROP_MASK_DPI = "bname_content_mask_dpi"
-PROP_MASK_SIGNATURE = "bname_content_mask_signature"
-PROP_MASK_BBOX_MM = "bname_content_mask_bbox_mm"
+PROP_MASK_KIND = "bmanga_content_mask_kind"
+PROP_MASK_PAGE_ID = "bmanga_content_mask_page_id"
+PROP_MASK_COMA_ID = "bmanga_content_mask_coma_id"
+PROP_MASK_PAGE_NUMBER = "bmanga_content_mask_page_number"
+PROP_MASK_DPI = "bmanga_content_mask_dpi"
+PROP_MASK_SIGNATURE = "bmanga_content_mask_signature"
+PROP_MASK_BBOX_MM = "bmanga_content_mask_bbox_mm"
 
 VIEWPORT_MASK_MAX_SIZE = 2048
 
@@ -177,6 +177,7 @@ def _page_offset_mm(work, scene, page) -> tuple[float, float]:
 def _image_signature(coma, bbox: tuple[float, float, float, float], size: tuple[int, int], dpi: int) -> str:
     border = getattr(coma, "border", None)
     payload = {
+        "v": 2,
         "bbox": tuple(round(v, 5) for v in bbox),
         "poly": tuple((round(x, 5), round(y, 5)) for x, y in coma_polygon_mm(coma)),
         "size": size,

@@ -122,6 +122,23 @@ def apply_blur_curve_to_mask(mask, entry) -> object:
     return mask.point(lut)
 
 
+def _linear_distance_ramp(Image, hard_mask, distance_px: int):
+    """ポリゴン辺から内側へ *distance_px* px で 0→255 のリニアランプを生成する.
+
+    コマ面の頂点属性 (BMangaComaSoftMask) と同じリニア遷移を画像で再現する。
+    Chebyshev 距離変換で O(pixels) に高速化。
+    """
+    import numpy as np
+    from scipy.ndimage import distance_transform_cdt
+
+    steps = max(1, int(distance_px))
+    binary = np.array(hard_mask, dtype=np.uint8) > 127
+    dist = distance_transform_cdt(binary, metric="chessboard")
+    ramp = np.clip(dist.astype(np.float32) / float(steps), 0.0, 1.0)
+    result = (ramp * 255.0).astype(np.uint8)
+    return Image.fromarray(result, mode="L")
+
+
 def coma_soft_edge_mask(Image, ImageChops, ImageDraw, ImageFilter, entry, points_mm, bbox_mm, size, dpi: int) -> object:
     hard = coma_shape_mask(Image, ImageDraw, points_mm, bbox_mm, size)
     if not brush_edge_enabled(entry):
@@ -129,13 +146,12 @@ def coma_soft_edge_mask(Image, ImageChops, ImageDraw, ImageFilter, entry, points
     soft_width = brush_soft_width_mm(entry)
     if soft_width <= 0.0:
         return hard
-    radius_px = max(1, int(round(mm_to_px(soft_width, dpi) * 0.35)))
-    soft = hard.filter(ImageFilter.GaussianBlur(radius=radius_px))
-    soft = ImageChops.multiply(soft, hard)
-    soft = apply_blur_curve_to_mask(soft, entry)
+    soft_width_px = max(1, int(round(mm_to_px(soft_width, dpi))))
+    mask = _linear_distance_ramp(Image, hard, soft_width_px)
+    mask = apply_blur_curve_to_mask(mask, entry)
     if bool(getattr(getattr(entry, "border", None), "blur_dither", False)):
-        soft = soft.convert("1", dither=Image.FLOYDSTEINBERG).convert("L")
-    return soft
+        mask = mask.convert("1", dither=Image.FLOYDSTEINBERG).convert("L")
+    return mask
 
 
 def apply_mask_alpha(Image, image, mask, alpha_scale: int = 255):
