@@ -122,6 +122,28 @@ def apply_blur_curve_to_mask(mask, entry) -> object:
     return mask.point(lut)
 
 
+def _chebyshev_distance(binary, max_dist: int):
+    """Chebyshev (chessboard) distance from True to nearest False pixel (pure numpy)."""
+    import numpy as np
+
+    h, w = binary.shape
+    dist = np.zeros((h, w), dtype=np.int32)
+    current = binary.copy()
+    for level in range(1, max_dist + 1):
+        p = np.pad(current, 1, constant_values=False)
+        eroded = (
+            p[0:h, 0:w] & p[0:h, 1:w + 1] & p[0:h, 2:w + 2]
+            & p[1:h + 1, 0:w] & p[1:h + 1, 1:w + 1] & p[1:h + 1, 2:w + 2]
+            & p[2:h + 2, 0:w] & p[2:h + 2, 1:w + 1] & p[2:h + 2, 2:w + 2]
+        )
+        dist[current & ~eroded] = level
+        current = eroded
+        if not current.any():
+            break
+    dist[current] = max_dist
+    return dist
+
+
 def _linear_distance_ramp(Image, hard_mask, distance_px: int):
     """ポリゴン辺から内側へ *distance_px* px で 0→255 のリニアランプを生成する.
 
@@ -129,11 +151,10 @@ def _linear_distance_ramp(Image, hard_mask, distance_px: int):
     Chebyshev 距離変換で O(pixels) に高速化。
     """
     import numpy as np
-    from scipy.ndimage import distance_transform_cdt
 
     steps = max(1, int(distance_px))
     binary = np.array(hard_mask, dtype=np.uint8) > 127
-    dist = distance_transform_cdt(binary, metric="chessboard")
+    dist = _chebyshev_distance(binary, steps)
     ramp = np.clip(dist.astype(np.float32) / float(steps), 0.0, 1.0)
     result = (ramp * 255.0).astype(np.uint8)
     return Image.fromarray(result, mode="L")

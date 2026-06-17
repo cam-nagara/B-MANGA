@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "b_manga_render"
+version = "0.1.32"
+name = "B-MANGA Render"
+tagline = "Command based render presets and fisheye rendering for B-MANGA workflows"
+maintainer = "B-MANGA Project"
+type = "add-on"
+
+blender_version_min = "4.3.0"
+
+license = [
+    "SPDX:GPL-2.0-or-later",
+]
+
+tags = ["Render"]
+
+[permissions]
+files = "出力画像・プリセットファイルを読み書きするため"

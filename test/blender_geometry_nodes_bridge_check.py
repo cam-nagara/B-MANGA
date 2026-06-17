@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_gn_bridge",
+        "bmanga_dev_gn_bridge",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_gn_bridge"] = mod
+    sys.modules["bmanga_dev_gn_bridge"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -134,7 +134,7 @@ def _assert_generated_group(group, *, kind: str) -> None:
         }
         assert len(linked_object_info_nodes) == 3, f"{kind} の始点/終点/距離密度参照が入力ノードから接続されていません"
     else:
-        assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-Name生成の参照形状を読んでいます"
+        assert "GeometryNodeObjectInfo" not in nodes, f"{kind} がB-MANGA生成の参照形状を読んでいます"
     direct_links = [
         link
         for link in group.links
@@ -202,7 +202,7 @@ def _assert_all_setting_inputs_linked(group, gn, *, kind: str) -> None:
 
 
 def _assert_nodes(obj, *, kind: str, group_name: str):
-    from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn
+    from bmanga_dev_gn_bridge.utils import geometry_nodes_bridge as gn
 
     modifier = obj.modifiers.get(gn.MODIFIER_NAME)
     assert modifier is not None, f"{getattr(obj, 'name', '')} に Geometry Nodes がありません"
@@ -216,7 +216,7 @@ def _assert_nodes(obj, *, kind: str, group_name: str):
 
 
 def _create_legacy_passthrough_group() -> None:
-    group = bpy.data.node_groups.new("BName_GN_Balloon", "GeometryNodeTree")
+    group = bpy.data.node_groups.new("BManga_GN_Balloon", "GeometryNodeTree")
     group.interface.new_socket(name="Geometry", in_out="INPUT", socket_type="NodeSocketGeometry")
     group.interface.new_socket(name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry")
     input_node = group.nodes.new("NodeGroupInput")
@@ -225,22 +225,22 @@ def _create_legacy_passthrough_group() -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_gn_bridge_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_gn_bridge_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "GeometryNodes.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "GeometryNodes.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_gn_bridge.core.work import get_work
-        from bname_dev_gn_bridge.core import effect_line as effect_core
-        from bname_dev_gn_bridge.operators import balloon_op, effect_line_op
-        from bname_dev_gn_bridge.utils import balloon_curve_object
-        from bname_dev_gn_bridge.utils import balloon_curve_render_nodes
-        from bname_dev_gn_bridge.utils import effect_line_object
-        from bname_dev_gn_bridge.utils import geometry_nodes_bridge as gn_bridge
-        from bname_dev_gn_bridge.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_gn_bridge.core.work import get_work
+        from bmanga_dev_gn_bridge.core import effect_line as effect_core
+        from bmanga_dev_gn_bridge.operators import balloon_op, effect_line_op
+        from bmanga_dev_gn_bridge.utils import balloon_curve_object
+        from bmanga_dev_gn_bridge.utils import balloon_curve_render_nodes
+        from bmanga_dev_gn_bridge.utils import effect_line_object
+        from bmanga_dev_gn_bridge.utils import geometry_nodes_bridge as gn_bridge
+        from bmanga_dev_gn_bridge.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -248,8 +248,8 @@ def main() -> None:
         page = work.pages[0]
         page_key = page_stack_key(page)
 
-        params = context.scene.bname_effect_line_params
-        _assert_close(params.in_start_percent, 0.0, "効果線 入り始点 初期値")
+        params = context.scene.bmanga_effect_line_params
+        _assert_close(params.in_start_percent, 50.0, "効果線 入り始点 初期値")
         _assert_close(params.out_start_percent, 100.0, "効果線 抜き始点 初期値")
         _assert_close(params.spacing_distance_mm, 1.0, "効果線 線の間隔（距離）初期値")
         _assert_close(params.bundle_gap_mm, 5.0, "効果線 まとまり間隔 初期値")
@@ -391,8 +391,8 @@ def main() -> None:
             1
             for obj in bpy.data.objects
             if str(obj.get(effect_line_object.PROP_EFFECT_CONTROLLER_ID, "") or "")
-            == str(effect_obj.get("bname_id", "") or "")
-            and str(obj.get("bname_kind", "") or "") == effect_line_object.EFFECT_DISPLAY_KIND
+            == str(effect_obj.get("bmanga_id", "") or "")
+            and str(obj.get("bmanga_kind", "") or "") == effect_line_object.EFFECT_DISPLAY_KIND
         )
         assert display_count == 1, f"効果線の表示実体が重複しています: {display_count}"
 
@@ -481,7 +481,7 @@ def main() -> None:
         assert len(balloon_obj.data.splines) >= 1 + len(balloon.tails), "フキダシしっぽがカーブ実体に入っていません"
         assert balloon_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "フキダシに古い軽量表示補助が残っています"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
-        assert source_obj is None, "フキダシにB-Name生成の参照形状が残っています"
+        assert source_obj is None, "フキダシにB-MANGA生成の参照形状が残っています"
 
         balloon.line_width_mm = 0.91
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=balloon, page=page)
@@ -524,7 +524,7 @@ def main() -> None:
         assert legacy_obj.type == "CURVE"
         assert legacy_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, "旧ウニフラ読み替え後に古い軽量表示補助が残っています"
 
-        print("BNAME_GEOMETRY_NODES_BRIDGE_OK")
+        print("BMANGA_GEOMETRY_NODES_BRIDGE_OK")
     finally:
         if mod is not None:
             try:

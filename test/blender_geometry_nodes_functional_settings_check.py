@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_gn_functional",
+        "bmanga_dev_gn_functional",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_gn_functional"] = mod
+    sys.modules["bmanga_dev_gn_functional"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -49,13 +49,22 @@ def _mesh_stats(obj) -> dict:
             if 0 <= index < len(mesh.materials) and mesh.materials[index] is not None:
                 name = mesh.materials[index].name
             material_names[name] = material_names.get(name, 0) + count
+        spline_data = ()
+        if hasattr(obj.data, "splines"):
+            pts = []
+            for spline in obj.data.splines:
+                for pt in getattr(spline, "bezier_points", []):
+                    pts.append((round(pt.co.x, 5), round(pt.co.y, 5)))
+                for pt in getattr(spline, "points", []):
+                    pts.append((round(pt.co.x, 5), round(pt.co.y, 5)))
+            spline_data = tuple(pts)
         return {
             "verts": len(mesh.vertices),
             "polys": len(mesh.polygons),
             "bounds": bounds,
             "materials": material_counts,
             "material_names": material_names,
-            "hash": hash(tuple(verts[:400]) + tuple(sorted(material_counts.items()))),
+            "hash": hash(tuple(verts[:400]) + tuple(sorted(material_counts.items())) + spline_data),
         }
     finally:
         evaluated.to_mesh_clear()
@@ -138,18 +147,18 @@ def _float_attribute_range(obj, name: str) -> tuple[float, float]:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_gn_functional_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_gn_functional_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "GeometryNodesFunctional.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "GeometryNodesFunctional.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_gn_functional.core.work import get_work
-        from bname_dev_gn_functional.operators import balloon_op, effect_line_op
-        from bname_dev_gn_functional.utils import balloon_curve_object, effect_line_object
-        from bname_dev_gn_functional.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_gn_functional.core.work import get_work
+        from bmanga_dev_gn_functional.operators import balloon_op, effect_line_op
+        from bmanga_dev_gn_functional.utils import balloon_curve_object, effect_line_object
+        from bmanga_dev_gn_functional.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -242,7 +251,7 @@ def main() -> None:
         _assert_material_alpha(balloon_obj, 0, 0.8, "フキダシ 線の不透明度")
         _assert_material_alpha(balloon_obj, 1, 0.28, "フキダシ 塗りの不透明度")
 
-        params = context.scene.bname_effect_line_params
+        params = context.scene.bmanga_effect_line_params
         params.effect_type = "focus"
         params.spacing_mode = "angle"
         params.spacing_angle_deg = 30.0
@@ -262,7 +271,7 @@ def main() -> None:
         focus_dense = _mesh_stats(display)
         if focus_dense["polys"] <= focus_sparse["polys"]:
             raise AssertionError("効果線 線の間隔が本数へ反映されていません")
-        if _modifier_input_value(display, "B-Name Geometry Nodes", "密度補正") is not None:
+        if _modifier_input_value(display, "B-MANGA Geometry Nodes", "密度補正") is not None:
             raise AssertionError("効果線 密度補正が独立した設定欄として残っています")
 
         params.spacing_mode = "distance"
@@ -275,9 +284,9 @@ def main() -> None:
         distance_dense = _mesh_stats(display)
         if distance_dense["polys"] <= distance_sparse["polys"]:
             raise AssertionError("効果線 距離指定の線間隔がノード内本数計算へ反映されていません")
-        if _modifier_input_value(display, "B-Name Geometry Nodes", "密度基準") is not None:
+        if _modifier_input_value(display, "B-MANGA Geometry Nodes", "密度基準") is not None:
             raise AssertionError("効果線 密度基準が設定欄に残っています")
-        if _modifier_input_value(display, "B-Name Geometry Nodes", "角丸率 (%)") is not None:
+        if _modifier_input_value(display, "B-MANGA Geometry Nodes", "角丸率 (%)") is not None:
             raise AssertionError("効果線 角丸率が設定欄に残っています")
         params.start_to_coma_frame = False
         params.spacing_mode = "distance"
@@ -317,8 +326,8 @@ def main() -> None:
         frame_source = effect_line_object.find_effect_frame_source_object(effect_obj)
         if frame_source is None:
             raise AssertionError("効果線 始点をコマ枠に設定しても参照用のコマ枠が作られていません")
-        frame_input = _modifier_input_value(display, "B-Name Geometry Nodes", "始点コマ枠オブジェクト")
-        if display.modifiers.get("B-Name Geometry Nodes") is not None and frame_input is not frame_source:
+        frame_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "始点コマ枠オブジェクト")
+        if display.modifiers.get("B-MANGA Geometry Nodes") is not None and frame_input is not frame_source:
             raise AssertionError("効果線 始点コマ枠がGeometry Nodes入力へ接続されていません")
         frame_start = _mesh_stats(display)
         if frame_start["bounds"][2] < 0.158 or frame_start["bounds"][0] > 0.002 or frame_start["bounds"][3] < 0.133:
@@ -346,7 +355,7 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
         focus_fill = _mesh_stats(display)
         if _material_name_count(focus_fill, "_Fill_") <= 0:
-            fill_value = _modifier_input_value(display, "B-Name Geometry Nodes", "終点形状を下地として塗る")
+            fill_value = _modifier_input_value(display, "B-MANGA Geometry Nodes", "終点形状を下地として塗る")
             raise AssertionError(f"効果線 終点形状の下地塗りが表示されていません: value={fill_value}, stats={focus_fill}")
 
         params.end_shape = "rect"
@@ -401,7 +410,7 @@ def main() -> None:
         params.in_start_percent = 35.0
         params.out_start_percent = 30.0
         effect_line_op._write_effect_strokes(context, effect_obj, effect_layer, (20.0, 40.0, 60.0, 48.0), seed=8, params_override=params)
-        alpha_min, alpha_max = _float_attribute_range(display, "bname_effect_alpha")
+        alpha_min, alpha_max = _float_attribute_range(display, "bmanga_effect_alpha")
         if not (alpha_min < 0.5 and alpha_max > 0.95):
             raise AssertionError(f"効果線 入り抜きの不透明度が表示属性へ反映されていません: min={alpha_min}, max={alpha_max}")
         line_material = display.data.materials[0]
@@ -428,11 +437,11 @@ def main() -> None:
             raise AssertionError("効果線 白抜き線の本数が表示結果へ反映されていません")
         if _material_name_count(white_9, "_Line_") <= 0 or _material_name_count(white_9, "_Fill_") <= 0:
             slots = [mat.name if mat is not None else "" for mat in getattr(display.data, "materials", [])]
-            line_input = _modifier_input_value(display, "B-Name Geometry Nodes", "線素材")
-            fill_input = _modifier_input_value(display, "B-Name Geometry Nodes", "塗り素材")
-            white_ratio_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白線割合 (%)")
-            white_width_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白抜き線 太さ (mm)")
-            white_brush_input = _modifier_input_value(display, "B-Name Geometry Nodes", "白線太さ (mm)")
+            line_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "線素材")
+            fill_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "塗り素材")
+            white_ratio_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "白線割合 (%)")
+            white_width_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "白抜き線 太さ (mm)")
+            white_brush_input = _modifier_input_value(display, "B-MANGA Geometry Nodes", "白線太さ (mm)")
             raise AssertionError(
                 "効果線 白抜き線の黒線/白線が両方表示されていません: "
                 f"stats={white_9}, slots={slots}, "
@@ -458,7 +467,7 @@ def main() -> None:
         white_detail = _mesh_stats(display)
         _assert_changed(white_width_spacing, white_detail, "効果線 白抜き線の長さ・割合・減衰")
 
-        print("BNAME_GEOMETRY_NODES_FUNCTIONAL_SETTINGS_OK")
+        print("BMANGA_GEOMETRY_NODES_FUNCTIONAL_SETTINGS_OK")
     finally:
         if mod is not None:
             try:

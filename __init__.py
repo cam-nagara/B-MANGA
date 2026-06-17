@@ -1,4 +1,4 @@
-"""B-Name — Blender manga name/storyboard authoring addon.
+"""B-MANGA — Blender manga name/storyboard authoring addon.
 
 Entry point. Only register/unregister lives here; everything else belongs
 to submodules. Registration order follows plan 5.3 to avoid circular imports
@@ -9,9 +9,9 @@ from __future__ import annotations
 
 # Kept for legacy compatibility only. blender_manifest.toml is authoritative.
 bl_info = {
-    "name": "B-Name",
-    "author": "B-Name Project",
-    "version": (0, 6, 308),
+    "name": "B-MANGA",
+    "author": "B-MANGA Project",
+    "version": (0, 6, 328),
     "blender": (4, 3, 0),
     "description": "Blender manga name/storyboard authoring addon",
     "category": "Paint",
@@ -36,7 +36,7 @@ def _reload_all_submodules() -> None:
     呼び直すが、子モジュール (utils.gpencil, ui.overlay, operators.* 等) は
     `sys.modules` キャッシュが残ったまま使われる。これにより「コードを修正
     したのに反映されない」現象が起きる。register 前にここで importlib.reload
-    で全 B-Name サブモジュールを再ロードすると、ファイル変更が即時反映される。
+    で全 B-MANGA サブモジュールを再ロードすると、ファイル変更が即時反映される。
 
     PropertyGroup の size 変更や Scene attach の型変更は reload では反映
     されないため、それらの変更時は Blender 自体の再起動が依然必要。
@@ -44,7 +44,7 @@ def _reload_all_submodules() -> None:
     import importlib
     import sys
 
-    pkg_prefix = (__package__ or "b_name") + "."
+    pkg_prefix = (__package__ or "b_manga") + "."
     targets = sorted(
         (name for name in list(sys.modules) if name.startswith(pkg_prefix)),
         key=lambda n: n.count("."),  # 深い順は後で
@@ -79,7 +79,7 @@ def register() -> None:
     _reload_all_submodules()
     utils.register()
     logger = log.get_logger(__name__)
-    logger.info("B-Name: register start")
+    logger.info("B-MANGA: register start")
     registered: list = []
     try:
         for module in _MODULES:
@@ -88,7 +88,7 @@ def register() -> None:
         try:
             utils.handlers.schedule_current_file_sync()
         except Exception:
-            logger.exception("current B-Name file sync scheduling failed")
+            logger.exception("current B-MANGA file sync scheduling failed")
     except Exception:
         logger.exception("register failed; rolling back")
         for module in reversed(registered):
@@ -98,16 +98,16 @@ def register() -> None:
                 logger.exception("rollback unregister failed for %s", module.__name__)
         utils.unregister()
         raise
-    logger.info("B-Name: register done")
+    logger.info("B-MANGA: register done")
 
 
 def unregister() -> None:
     logger = log.get_logger(__name__)
-    logger.info("B-Name: unregister start")
+    logger.info("B-MANGA: unregister start")
     for module in reversed(_MODULES):
         try:
             module.unregister()
         except Exception:
             logger.exception("unregister failed for %s", module.__name__)
-    logger.info("B-Name: unregister done")
+    logger.info("B-MANGA: unregister done")
     utils.unregister()

@@ -12,19 +12,19 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_CURVE_RENDER_VISUAL_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_balloon_curve_render_visual_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_CURVE_RENDER_VISUAL_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_balloon_curve_render_visual_"))
 OUTPUT_PATH = _OUT_PATH if _OUT_PATH.suffix.lower() == ".png" else _OUT_PATH / "balloon_curve_white_fill_black_line.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_curve_render_visual",
+        "bmanga_dev_balloon_curve_render_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_curve_render_visual"] = mod
+    sys.modules["bmanga_dev_balloon_curve_render_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -61,14 +61,6 @@ def _evaluated_material_names(obj) -> set[str]:
         evaluated.to_mesh_clear()
 
 
-def _modifier_socket_value(modifier, name: str):
-    for item in modifier.node_group.interface.items_tree:
-        if getattr(item, "item_type", "") == "SOCKET" and getattr(item, "in_out", "") == "INPUT":
-            if getattr(item, "name", "") == name:
-                return modifier.get(item.identifier)
-    raise AssertionError(f"modifier socket not found: {name}")
-
-
 def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-6) -> None:
     if abs(float(actual) - float(expected)) > eps:
         raise AssertionError(f"{label}: expected {expected}, got {actual}")
@@ -98,7 +90,7 @@ def _material_has_blur_attribute(obj, material_prefix: str, attribute_name: str)
 
 
 def _set_camera_for_object(obj, width_mm: float, height_mm: float) -> None:
-    from bname_dev_balloon_curve_render_visual.utils.geom import mm_to_m
+    from bmanga_dev_balloon_curve_render_visual.utils.geom import mm_to_m
 
     center_x = obj.location.x
     center_y = obj.location.y
@@ -113,20 +105,20 @@ def _set_camera_for_object(obj, width_mm: float, height_mm: float) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_curve_render_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_curve_render_visual_work_"))
     mod = None
     try:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonCurveRenderVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonCurveRenderVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_curve_render_visual.core.work import get_work
-        from bname_dev_balloon_curve_render_visual.operators import balloon_op
-        from bname_dev_balloon_curve_render_visual.utils import balloon_curve_object
-        from bname_dev_balloon_curve_render_visual.utils import balloon_curve_render_nodes
-        from bname_dev_balloon_curve_render_visual.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_curve_render_visual.core.work import get_work
+        from bmanga_dev_balloon_curve_render_visual.operators import balloon_op
+        from bmanga_dev_balloon_curve_render_visual.utils import balloon_curve_object
+        from bmanga_dev_balloon_curve_render_visual.utils import balloon_curve_render_nodes
+        from bmanga_dev_balloon_curve_render_visual.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -151,15 +143,7 @@ def main() -> None:
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         assert obj is not None, "フキダシ実体がありません"
         modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and modifier.node_group is not None, "フキダシ表示補助がありません"
-        node_types = {node.bl_idname for node in modifier.node_group.nodes}
-        required = {"GeometryNodeFillCurve", "GeometryNodeCurveToMesh", "GeometryNodeSetMaterial"}
-        missing = required - node_types
-        assert not missing, f"塗り/線の表示ノードが不足しています: {sorted(missing)}"
-        node_labels = {str(getattr(node, "label", "") or "") for node in modifier.node_group.nodes}
-        assert "塗りを背面へ" in node_labels and "輪郭線を前面へ" in node_labels, (
-            "フキダシの塗りと輪郭線の前後関係を固定するノードがありません"
-        )
+        assert modifier is None, "撤去済みの旧GNモディファイアが残っています"
         material_names = _evaluated_material_names(obj)
         assert any(name.startswith(balloon_curve_object.BALLOON_FILL_MATERIAL_PREFIX) for name in material_names), (
             f"表示結果に塗り素材がありません: {sorted(material_names)}"
@@ -201,9 +185,9 @@ def main() -> None:
         obj = balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
         assert obj is not None, "フキダシ実体がありません"
         modifier = obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME)
-        assert modifier is not None and modifier.node_group is not None, "フキダシ表示補助がありません"
-        _assert_close(_modifier_socket_value(modifier, "塗り輪郭ぼかし"), 0.6, "塗り輪郭ぼかし")
-        assert bool(_modifier_socket_value(modifier, "塗りぼかしをディザ化")), "塗りぼかしをディザ化が渡っていません"
+        assert modifier is None, "撤去済みの旧GNモディファイアが残っています"
+        _assert_close(float(entry.fill_blur_amount), 0.6, "塗り輪郭ぼかし")
+        assert bool(entry.fill_blur_dither), "塗りぼかしをディザ化が設定されていません"
         assert _material_has_blur_attribute(
             obj,
             balloon_curve_object.BALLOON_FILL_MATERIAL_PREFIX,
@@ -215,7 +199,7 @@ def main() -> None:
             "塗りグラデーション用の座標変換がありません"
         )
         print(
-            "BNAME_BALLOON_CURVE_RENDER_VISUAL_OK "
+            "BMANGA_BALLOON_CURVE_RENDER_VISUAL_OK "
             f"center={tuple(round(v, 1) for v in center)} "
             f"line={tuple(round(v, 1) for v in right_line)} "
             f"out={output}",

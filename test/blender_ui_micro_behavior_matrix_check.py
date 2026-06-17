@@ -1,4 +1,4 @@
-"""Blender実機用: B-Name UI項目の微細挙動マトリクス監査."""
+"""Blender実機用: B-MANGA UI項目の微細挙動マトリクス監査."""
 
 from __future__ import annotations
 
@@ -17,19 +17,19 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_UI_MICRO_OUT", "")
-    or tempfile.mkdtemp(prefix="bname_ui_micro_")
+    os.environ.get("BMANGA_UI_MICRO_OUT", "")
+    or tempfile.mkdtemp(prefix="bmanga_ui_micro_")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_ui_micro",
+        "bmanga_dev_ui_micro",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_ui_micro"] = mod
+    sys.modules["bmanga_dev_ui_micro"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -37,8 +37,8 @@ def _load_addon():
 
 
 def _mark(label: str) -> None:
-    if os.environ.get("BNAME_UI_MICRO_VERBOSE"):
-        print(f"BNAME_UI_MICRO_STEP {label}", flush=True)
+    if os.environ.get("BMANGA_UI_MICRO_VERBOSE"):
+        print(f"BMANGA_UI_MICRO_STEP {label}", flush=True)
     try:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         with (OUT_DIR / "steps.txt").open("a", encoding="utf-8") as fh:
@@ -193,26 +193,26 @@ def _set_active_object(obj) -> None:
 
 
 def _raster_obj_for(entry):
-    from bname_dev_ui_micro.operators import raster_layer_op
-    from bname_dev_ui_micro.utils import object_naming as on
+    from bmanga_dev_ui_micro.operators import raster_layer_op
+    from bmanga_dev_ui_micro.utils import object_naming as on
 
-    return on.find_object_by_bname_id(entry.id, kind="raster") or bpy.data.objects.get(
+    return on.find_object_by_bmanga_id(entry.id, kind="raster") or bpy.data.objects.get(
         raster_layer_op.raster_plane_name(entry.id)
     )
 
 
 def _create_scene(context):
-    from bname_dev_ui_micro.operators import balloon_op, effect_line_op, text_op
-    from bname_dev_ui_micro.utils import gp_layer_parenting
-    from bname_dev_ui_micro.utils import gpencil as gp_utils
-    from bname_dev_ui_micro.utils import layer_hierarchy, layer_stack
-    from bname_dev_ui_micro.utils import object_naming as on
-    from bname_dev_ui_micro.utils.geom import mm_to_m
+    from bmanga_dev_ui_micro.operators import balloon_op, effect_line_op, text_op
+    from bmanga_dev_ui_micro.utils import gp_layer_parenting
+    from bmanga_dev_ui_micro.utils import gpencil as gp_utils
+    from bmanga_dev_ui_micro.utils import layer_hierarchy, layer_stack
+    from bmanga_dev_ui_micro.utils import object_naming as on
+    from bmanga_dev_ui_micro.utils.geom import mm_to_m
 
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     page = work.pages[0]
     if len(page.comas) < 1:
-        result = bpy.ops.bname.coma_add()
+        result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
     coma = page.comas[0]
     page_key = layer_hierarchy.page_stack_key(page)
@@ -225,7 +225,7 @@ def _create_scene(context):
     folder.title = "監査フォルダ"
     folder.parent_key = page_key
 
-    result = bpy.ops.bname.raster_layer_add(
+    result = bpy.ops.bmanga.raster_layer_add(
         "EXEC_DEFAULT",
         dpi_preset="custom",
         dpi=72,
@@ -233,14 +233,14 @@ def _create_scene(context):
         enter_paint=False,
     )
     assert result == {"FINISHED"}, result
-    raster = context.scene.bname_raster_layers[int(context.scene.bname_active_raster_layer_index)]
+    raster = context.scene.bmanga_raster_layers[int(context.scene.bmanga_active_raster_layer_index)]
     raster.title = "監査ラスター"
     raster.parent_kind = "coma"
     raster.parent_key = coma_key
     raster_obj = _raster_obj_for(raster)
     assert raster_obj is not None
 
-    image = context.scene.bname_image_layers.add()
+    image = context.scene.bmanga_image_layers.add()
     image.id = "micro_image"
     image.title = "監査画像"
     image.parent_kind = "coma"
@@ -328,7 +328,7 @@ def _create_scene(context):
 
 
 def _stack_index_for_kind(kind: str, *, label_contains: str = "") -> int:
-    from bname_dev_ui_micro.utils import layer_stack
+    from bmanga_dev_ui_micro.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -342,7 +342,7 @@ def _stack_index_for_kind(kind: str, *, label_contains: str = "") -> int:
 
 
 def _select_kind(kind: str, *, label_contains: str = ""):
-    from bname_dev_ui_micro.utils import layer_stack
+    from bmanga_dev_ui_micro.utils import layer_stack
 
     index = _stack_index_for_kind(kind, label_contains=label_contains)
     stack = layer_stack.sync_layer_stack(bpy.context, preserve_active_index=True)
@@ -354,7 +354,7 @@ def _select_kind(kind: str, *, label_contains: str = ""):
 
 
 def _select_balloon_id(balloon_id: str):
-    from bname_dev_ui_micro.utils import layer_stack
+    from bmanga_dev_ui_micro.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -370,7 +370,7 @@ def _select_balloon_id(balloon_id: str):
 
 
 def _menu_state() -> dict[str, bool]:
-    from bname_dev_ui_micro.ui import context_menu
+    from bmanga_dev_ui_micro.ui import context_menu
 
     items = context_menu.selection_command_items(bpy.context)
     for item in items:
@@ -381,7 +381,7 @@ def _menu_state() -> dict[str, bool]:
 
 
 def _stack_count(kind: str) -> int:
-    from bname_dev_ui_micro.utils import layer_stack
+    from bmanga_dev_ui_micro.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     return sum(1 for item in stack if str(getattr(item, "kind", "") or "") == kind)
@@ -391,7 +391,7 @@ def _select_effect_object(targets) -> None:
     _set_active_object(targets["effect_obj"])
     targets["effect_obj"].data.layers.active = targets["effect_layer"]
     targets["effect_layer"].select = True
-    bpy.context.scene.bname_active_layer_kind = "effect"
+    bpy.context.scene.bmanga_active_layer_kind = "effect"
 
 
 def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
@@ -410,10 +410,12 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
             "複製": True,
             "リンク複製": True,
             "中心点を中心へ戻す": True,
-            "自由変形をリセット": True,
-            "拡大・縮小": True,
-            "回転": True,
+            "自由変形": True,
+            "自由変形をリセット": False,
+            "拡大・縮小・回転": True,
             "選択レイヤーをリンク": False,
+            "リンクを解除": False,
+            "フキダシを結合": False,
             "しっぽをコピー": False,
             "しっぽを貼り付け": False,
             "削除": True,
@@ -434,7 +436,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
         _select_kind(kind)
         if kind == "effect":
             _select_effect_object(targets)
-        result = bpy.ops.bname.layer_clipboard_copy("EXEC_DEFAULT")
+        result = bpy.ops.bmanga.layer_clipboard_copy("EXEC_DEFAULT")
         state = _menu_state()
         ok = result == {"FINISHED"} and state.get("貼り付け") is True
         results.append({"group": "右クリック", "label": f"{kind} コピー後に貼り付け有効", "ok": ok, "state": state})
@@ -442,7 +444,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     _mark("right_click_paste_text")
     _select_kind("text")
     before = _stack_count("text")
-    result = bpy.ops.bname.layer_clipboard_paste("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_clipboard_paste("EXEC_DEFAULT")
     after = _stack_count("text")
     results.append(
         {
@@ -457,7 +459,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     _mark("right_click_duplicate_image")
     _select_kind("image")
     before = _stack_count("image")
-    result = bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_duplicate("EXEC_DEFAULT")
     after = _stack_count("image")
     results.append(
         {
@@ -469,7 +471,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
         }
     )
     _mark("right_click_delete_image")
-    result = bpy.ops.bname.layer_stack_delete("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_delete("EXEC_DEFAULT")
     deleted = _stack_count("image")
     results.append(
         {
@@ -488,15 +490,15 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     _mark("right_click_tail_select_source")
     _select_balloon_id(str(source.id))
     state = _menu_state()
-    _mark(f"right_click_tail_poll_{bpy.ops.bname.balloon_tail_clipboard_copy.poll()}")
+    _mark(f"right_click_tail_poll_{bpy.ops.bmanga.balloon_tail_clipboard_copy.poll()}")
     _mark("right_click_tail_copy")
-    result = bpy.ops.bname.balloon_tail_clipboard_copy("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.balloon_tail_clipboard_copy("EXEC_DEFAULT")
     _mark("right_click_tail_select_target")
     _select_balloon_id(str(targets["balloon_target"].id))
     paste_state = _menu_state()
     before = len(targets["balloon_target"].tails)
     _mark("right_click_tail_paste")
-    paste_result = bpy.ops.bname.balloon_tail_clipboard_paste("EXEC_DEFAULT")
+    paste_result = bpy.ops.bmanga.balloon_tail_clipboard_paste("EXEC_DEFAULT")
     _mark("right_click_tail_done")
     after = len(targets["balloon_target"].tails)
     results.append(
@@ -519,7 +521,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     _mark("right_click_link_balloon")
     _select_kind("balloon")
     before = _stack_count("balloon")
-    result = bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT")
     after = _stack_count("balloon")
     results.append(
         {
@@ -535,7 +537,7 @@ def _check_right_click_matrix(targets) -> list[dict[str, Any]]:
     _select_kind("effect")
     _select_effect_object(targets)
     before = _stack_count("effect")
-    result = bpy.ops.bname.effect_line_create_linked("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.effect_line_create_linked("EXEC_DEFAULT")
     after = _stack_count("effect")
     results.append(
         {
@@ -559,8 +561,8 @@ def _stack_item(kind: str, label: str = ""):
 
 
 def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> None:
-    from bname_dev_ui_micro.operators import layer_detail_op
-    from bname_dev_ui_micro.panels import gpencil_panel
+    from bmanga_dev_ui_micro.operators import layer_detail_op
+    from bmanga_dev_ui_micro.panels import gpencil_panel
 
     pairs = (
         ("ページ", "page", targets["page"], None),
@@ -597,7 +599,7 @@ def _collect_detail_props(records: list[dict[str, Any]], context, targets) -> No
             {"target": balloon, "object": None},
         )
 
-    params = context.scene.bname_effect_line_params
+    params = context.scene.bmanga_effect_line_params
     for effect_type in ("focus", "speed", "beta_flash", "white_outline"):
         params.effect_type = effect_type
         params.start_to_coma_frame = False
@@ -657,11 +659,11 @@ def _make_background(context, name: str, *, kind: str, page_id: str = ""):
     cam = context.scene.camera
     assert cam is not None
     image = bpy.data.images.new(name, width=16, height=16)
-    image["bname_coma_camera_ref"] = True
-    image["bname_kind"] = kind
-    image["bname_page_id"] = page_id
+    image["bmanga_coma_camera_ref"] = True
+    image["bmanga_kind"] = kind
+    image["bmanga_page_id"] = page_id
     if kind == "name":
-        image["bname_full_page_mask"] = True
+        image["bmanga_full_page_mask"] = True
     bg = cam.data.background_images.new()
     bg.image = image
     bg.show_background_image = True
@@ -669,9 +671,9 @@ def _make_background(context, name: str, *, kind: str, page_id: str = ""):
 
 
 def _force_coma_file_mode(context) -> None:
-    from bname_dev_ui_micro.core.mode import MODE_COMA, set_mode
+    from bmanga_dev_ui_micro.core.mode import MODE_COMA, set_mode
 
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     page = work.pages[0]
     coma = page.comas[0]
     work_dir = Path(work.work_dir)
@@ -682,16 +684,16 @@ def _force_coma_file_mode(context) -> None:
         result = bpy.ops.wm.save_as_mainfile(filepath=str(coma_path))
         assert "FINISHED" in result, result
     set_mode(MODE_COMA, context)
-    context.scene.bname_current_coma_page_id = page.id
-    context.scene.bname_current_coma_id = coma.coma_id
+    context.scene.bmanga_current_coma_page_id = page.id
+    context.scene.bmanga_current_coma_id = coma.coma_id
 
 
 def _collect_coma_panel_props(records: list[dict[str, Any]], context) -> None:
-    from bname_dev_ui_micro.panels import coma_camera_panel, work_panel
-    from bname_dev_ui_micro.utils import coma_camera
+    from bmanga_dev_ui_micro.panels import coma_camera_panel, work_panel
+    from bmanga_dev_ui_micro.utils import coma_camera
 
     _force_coma_file_mode(context)
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     page = work.pages[0]
     coma = page.comas[0]
     coma_camera.ensure_coma_camera_scene(context, generate_references=False)
@@ -701,8 +703,8 @@ def _collect_coma_panel_props(records: list[dict[str, Any]], context) -> None:
     _make_background(context, "ハッチング間隔.png", kind="koma")
 
     for cls, group in (
-        (work_panel.BNAME_PT_coma_return, "コマ編集B-Nameパネル / ページ一覧に戻る"),
-        (coma_camera_panel.BNAME_PT_coma_camera, "コマ編集B-Nameパネル / カメラ"),
+        (work_panel.BMANGA_PT_coma_return, "コマ編集B-MANGAパネル / ページ一覧に戻る"),
+        (coma_camera_panel.BMANGA_PT_coma_camera, "コマ編集B-MANGAパネル / カメラ"),
     ):
         layout = _RecordingLayout(records, group)
         dummy = SimpleNamespace(layout=layout)
@@ -774,10 +776,9 @@ def _check_bool_controls(context, targets) -> list[dict[str, Any]]:
         "ページ / 表示",
         "レイヤー詳細 / コマ / 枠線を表示",
         "レイヤー詳細 / コマ / フチ",
-        "コマ編集B-Nameパネル / ページ一覧に戻る / フィット",
-        "コマ編集B-Nameパネル / カメラ / グレースケール表示",
-        "コマ編集B-Nameパネル / カメラ / 背景を透過",
-        "コマ編集B-Nameパネル / カメラ / ハッチング間隔を表示",
+        "コマ編集B-MANGAパネル / カメラ / グレースケール表示",
+        "コマ編集B-MANGAパネル / カメラ / 背景を透過",
+        "コマ編集B-MANGAパネル / カメラ / ハッチング間隔を表示",
     )
     missing = [fragment for fragment in required_fragments if not any(fragment in label for label in labels)]
     results.append({"group": "必須項目", "label": "主要チェックボックス検出", "ok": not missing, "missing": missing})
@@ -830,7 +831,7 @@ def _page_backgrounds(context):
     return [
         bg
         for bg in context.scene.camera.data.background_images
-        if getattr(bg, "image", None) is not None and str(bg.image.get("bname_kind", "")) == "name"
+        if getattr(bg, "image", None) is not None and str(bg.image.get("bmanga_kind", "")) == "name"
     ]
 
 
@@ -839,31 +840,31 @@ def _koma_backgrounds(context):
         bg
         for bg in context.scene.camera.data.background_images
         if getattr(bg, "image", None) is not None
-        and str(bg.image.get("bname_kind", "")) == "koma"
+        and str(bg.image.get("bmanga_kind", "")) == "koma"
         and "コマ" in getattr(bg.image, "name", "")
     ]
 
 
 def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
-    from bname_dev_ui_micro.core.mode import get_mode
-    from bname_dev_ui_micro.utils import coma_camera
+    from bmanga_dev_ui_micro.core.mode import get_mode
+    from bmanga_dev_ui_micro.utils import coma_camera
 
     _mark("coma_camera_start")
     scene = context.scene
     _mark(f"coma_camera_state_mode_{get_mode(context)}_camera_{getattr(getattr(scene, 'camera', None), 'type', '')}")
-    settings = scene.bname_coma_camera_settings
+    settings = scene.bmanga_coma_camera_settings
     results: list[dict[str, Any]] = []
 
     _mark("coma_camera_white")
     settings.white_background = False
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "背景を透過 OFF",
         "ok": scene.render.film_transparent is False,
     })
     settings.white_background = True
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "背景を透過 ON",
         "ok": scene.render.film_transparent is True,
     })
@@ -875,7 +876,7 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     settings.koma_bg_images_opacity = 74.0
     koma_alphas_after = [round(float(bg.alpha), 2) for bg in _koma_backgrounds(context)]
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "ページ画像/下絵_コマ 不透明度が分離",
         "ok": all(alpha == 0.32 for alpha in page_alphas)
         and all(alpha != 0.32 for alpha in koma_alphas_before)
@@ -887,7 +888,7 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     _mark("coma_camera_scale")
     settings.bg_images_scale = 1.35
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "ページ画像のスケール",
         "ok": all(abs(float(bg.scale) - 1.35) < 0.01 for bg in _page_backgrounds(context)),
     })
@@ -900,7 +901,7 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     settings.name_show_all_pages = True
     page_vis_all = [bool(bg.show_background_image) for bg in _page_backgrounds(context)]
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "全ページも表示",
         "ok": page_vis_current.count(True) == 1 and all(page_vis_all),
         "current": page_vis_current,
@@ -908,13 +909,13 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     })
 
     _mark("coma_camera_toggle_name")
-    _mark(f"coma_camera_toggle_name_poll_{bpy.ops.bname.coma_camera_toggle_name_backgrounds.poll()}")
-    bpy.ops.bname.coma_camera_toggle_name_backgrounds("EXEC_DEFAULT")
+    _mark(f"coma_camera_toggle_name_poll_{bpy.ops.bmanga.coma_camera_toggle_name_backgrounds.poll()}")
+    bpy.ops.bmanga.coma_camera_toggle_name_backgrounds("EXEC_DEFAULT")
     hidden = [bool(bg.show_background_image) for bg in _page_backgrounds(context)]
-    bpy.ops.bname.coma_camera_toggle_name_backgrounds("EXEC_DEFAULT")
+    bpy.ops.bmanga.coma_camera_toggle_name_backgrounds("EXEC_DEFAULT")
     shown = [bool(bg.show_background_image) for bg in _page_backgrounds(context)]
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "ページ画像 表示/非表示ボタン",
         "ok": not any(hidden) and all(shown),
     })
@@ -925,20 +926,20 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     settings.koma_depth = False
     depths_front = [str(bg.display_depth) for bg in _koma_backgrounds(context)]
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "コマを後ろにする",
         "ok": all(depth == "BACK" for depth in depths_back) and all(depth == "FRONT" for depth in depths_front),
     })
 
     _mark("coma_camera_reduction")
     original = _effective_render_size(scene)
-    scene.bname_coma_camera_reduction_mode = True
-    scene.bname_coma_camera_preview_scale_percentage = 25.0
+    scene.bmanga_coma_camera_reduction_mode = True
+    scene.bmanga_coma_camera_preview_scale_percentage = 25.0
     reduced = _effective_render_size(scene)
-    scene.bname_coma_camera_reduction_mode = False
+    scene.bmanga_coma_camera_reduction_mode = False
     restored = _effective_render_size(scene)
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "縮小モード",
         "ok": reduced[0] < original[0] and reduced[1] < original[1] and restored == original,
         "original": original,
@@ -947,16 +948,16 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     })
 
     _mark("coma_camera_fisheye")
-    scene.bname_coma_camera_fisheye_layout_mode = True
+    scene.bmanga_coma_camera_fisheye_layout_mode = True
     fisheye = (
         str(getattr(scene.camera.data, "type", "")),
         int(scene.render.resolution_x),
         int(scene.render.resolution_y),
     )
-    scene.bname_coma_camera_fisheye_layout_mode = False
+    scene.bmanga_coma_camera_fisheye_layout_mode = False
     normal = str(getattr(scene.camera.data, "type", ""))
     results.append({
-        "group": "コマ編集B-Nameパネル",
+        "group": "コマ編集B-MANGAパネル",
         "label": "魚眼モード",
         "ok": fisheye[0] == "PANO" and fisheye[1] == fisheye[2] and normal == "PERSP",
         "fisheye": fisheye,
@@ -968,7 +969,7 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
 
 def _write_results(results: list[dict[str, Any]]) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUT_DIR / "bname_ui_micro_behavior_matrix.json"
+    path = OUT_DIR / "bmanga_ui_micro_behavior_matrix.json"
     serializable = []
     for item in results:
         serializable.append({k: v for k, v in item.items() if k != "target"})
@@ -976,14 +977,14 @@ def _write_results(results: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_ui_micro_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_ui_micro_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "UiMicro.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "UiMicro.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         context = bpy.context
         _mark("scene")
@@ -999,7 +1000,7 @@ def main() -> None:
         _write_results(results)
         failures = [item for item in results if not bool(item.get("ok", False))]
         _mark("before_final_print")
-        print(f"BNAME_UI_MICRO_BEHAVIOR_MATRIX_OK items={len(results)} failures={len(failures)} out={OUT_DIR}")
+        print(f"BMANGA_UI_MICRO_BEHAVIOR_MATRIX_OK items={len(results)} failures={len(failures)} out={OUT_DIR}")
         _mark("after_final_print")
         assert not failures, json.dumps(failures[:20], ensure_ascii=False, indent=2)
     finally:
