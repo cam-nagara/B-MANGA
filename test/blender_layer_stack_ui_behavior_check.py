@@ -189,20 +189,40 @@ def _assert_parent(context, uid: str, parent_key: str) -> None:
         raise AssertionError(f"{uid} parent: expected {parent_key}, got {actual}")
 
 
+def _assert_only_coma_selected(context, page, panel, label: str) -> None:
+    from bmanga_dev.utils import object_selection
+
+    expected_key = object_selection.coma_key(page, panel)
+    keys = set(object_selection.get_keys(context))
+    if keys != {expected_key}:
+        raise AssertionError(f"{label}: 3Dビューの選択が移動したコマだけではありません: {keys}")
+    expected_id = str(getattr(panel, "coma_id", "") or getattr(panel, "id", ""))
+    selected_ids = [
+        str(getattr(coma, "coma_id", "") or getattr(coma, "id", ""))
+        for coma in page.comas
+        if bool(getattr(coma, "selected", False))
+    ]
+    if selected_ids != [expected_id]:
+        raise AssertionError(f"{label}: コマの選択フラグが移動したコマだけではありません: {selected_ids}")
+
+
 def _assert_coma_order_buttons(context, page) -> None:
+    from bmanga_dev.utils import object_selection
     from bmanga_dev.utils import layer_stack as layer_stack_utils
     from bmanga_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
 
     target = _add_order_coma(page, "c_order_a", 15.0)
-    _add_order_coma(page, "c_order_b", 28.0)
+    sibling = _add_order_coma(page, "c_order_b", 28.0)
     page.coma_count = len(page.comas)
     target_id = str(target.coma_id)
     uid = layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, target))
 
     index, _item = _find_stack_item(context, uid)
+    object_selection.select_key(context, object_selection.coma_key(page, sibling), mode="single")
     layer_stack_utils.set_active_stack_index_silently(context, index)
     assert "FINISHED" in bpy.ops.bmanga.layer_stack_move("EXEC_DEFAULT", direction="BACK")
     target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
+    _assert_only_coma_selected(context, page, target, "最背面へ移動後")
     if int(target.z_order) != 0:
         order = [
             (getattr(coma, "coma_id", ""), int(getattr(coma, "z_order", -1)))
@@ -211,9 +231,12 @@ def _assert_coma_order_buttons(context, page) -> None:
         raise AssertionError(f"最背面後のz_orderが0ではありません: {target.z_order}; order={order}")
 
     index, _item = _find_stack_item(context, uid)
+    sibling = next(coma for coma in page.comas if str(coma.coma_id) == "c_order_b")
+    object_selection.select_key(context, object_selection.coma_key(page, sibling), mode="single")
     layer_stack_utils.set_active_stack_index_silently(context, index)
     assert "FINISHED" in bpy.ops.bmanga.layer_stack_move("EXEC_DEFAULT", direction="FRONT")
     target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
+    _assert_only_coma_selected(context, page, target, "最前面へ移動後")
     max_z = max(int(getattr(coma, "z_order", -1)) for coma in page.comas)
     if int(target.z_order) != max_z:
         raise AssertionError(f"最前面後のz_orderが最大ではありません: {target.z_order}/{max_z}")

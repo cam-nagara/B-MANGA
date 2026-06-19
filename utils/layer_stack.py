@@ -2546,6 +2546,29 @@ def sync_object_selection_from_stack_selection(context, stack=None) -> None:
     _sync_native_selection(context)
 
 
+def _select_stack_item_after_move(context, moved_uid: str) -> bool:
+    stack = sync_layer_stack(context, preserve_active_index=True)
+    if stack is None:
+        object_selection.clear(context)
+        _sync_native_selection(context)
+        return False
+    for index, item in enumerate(stack):
+        if stack_item_uid(item) != moved_uid:
+            continue
+        clear_all_selection(context)
+        if select_stack_index(context, index, sync_object_selection=True):
+            return True
+        set_active_stack_index_silently(context, index)
+        object_selection.clear(context)
+        _sync_native_selection(context)
+        sync_visible_layer_stack(context, stack=stack)
+        tag_view3d_redraw(context)
+        return False
+    object_selection.clear(context)
+    _sync_native_selection(context)
+    return False
+
+
 def _sync_native_selection(context) -> None:
     try:
         from ..operators import object_tool_selection
@@ -2842,11 +2865,7 @@ def move_stack_item(
     if moved_index >= 0:
         set_active_stack_index_silently(context, moved_index)
     apply_stack_order(context)
-    sync_layer_stack(context, preserve_active_index=True)
-    for i, item in enumerate(context.scene.bmanga_layer_stack):
-        if stack_item_uid(item) == moved_uid:
-            set_active_stack_index_silently(context, i)
-            break
+    _select_stack_item_after_move(context, moved_uid)
     remember_layer_stack_signature(context)
     return True
 
