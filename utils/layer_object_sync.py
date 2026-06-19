@@ -612,6 +612,7 @@ def _saved_runtime_objects_look_current(
 
     object_ids_by_kind: dict[str, set[str]] = {}
     plane_owners: set[str] = set()
+    plane_objects_by_owner: dict[str, bpy.types.Object] = {}
     border_owners: set[str] = set()
     for obj in bpy.data.objects:
         kind = str(obj.get(on.PROP_KIND, "") or "")
@@ -621,13 +622,30 @@ def _saved_runtime_objects_look_current(
         owner = str(obj.get(_cp.PROP_COMA_PLANE_OWNER_ID, "") or "")
         if owner:
             plane_owners.add(owner)
+            plane_objects_by_owner[owner] = obj
         owner = str(obj.get(_cbo.PROP_COMA_BORDER_OWNER_ID, "") or "")
         if owner:
             border_owners.add(owner)
     expected_comas: set[str] = set()
     expected_borders: set[str] = set()
+    expected_brush_borders: set[str] = set()
+    expected_brush_soft_masks: set[str] = set()
     expected_balloons: set[str] = set()
     expected_texts: set[str] = set()
+
+    def _track_expected_border(owner_id: str, border) -> None:
+        style = str(getattr(border, "style", "solid") or "solid")
+        if style == "brush":
+            expected_brush_borders.add(owner_id)
+            if (
+                bool(getattr(border, "visible", True))
+                and max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0)) > 0.0
+                and max(0.0, float(getattr(border, "blur_amount", 0.0) or 0.0)) > 0.0
+            ):
+                expected_brush_soft_masks.add(owner_id)
+        else:
+            expected_borders.add(owner_id)
+
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         if not page_id:
@@ -639,8 +657,7 @@ def _saved_runtime_objects_look_current(
                     owner_id = f"{page_id}:{coma_id}"
                     expected_comas.add(owner_id)
                     border = getattr(coma, "border", None)
-                    if str(getattr(border, "style", "solid") or "solid") != "brush":
-                        expected_borders.add(owner_id)
+                    _track_expected_border(owner_id, border)
         page_content_expected = (
             page_filter is None
             or (bool(page_filter) and page_id in page_filter)
@@ -675,18 +692,34 @@ def _saved_runtime_objects_look_current(
                 owner_id = f"{_cp.OUTSIDE_PAGE_ID}:{coma_id}"
                 expected_comas.add(owner_id)
                 border = getattr(coma, "border", None)
-                if str(getattr(border, "style", "solid") or "solid") != "brush":
-                    expected_borders.add(owner_id)
+                _track_expected_border(owner_id, border)
     if expected_comas and not expected_comas.issubset(plane_owners):
         return False
     if expected_borders and not expected_borders.issubset(border_owners):
         return False
+    if expected_brush_borders and expected_brush_borders.intersection(border_owners):
+        return False
+    for owner_id in expected_brush_soft_masks:
+        plane_obj = plane_objects_by_owner.get(owner_id)
+        mesh = getattr(plane_obj, "data", None)
+        attrs = getattr(mesh, "attributes", None)
+        if attrs is None or attrs.get(_cp.COMA_PLANE_SOFT_MASK_ATTR) is None:
+            return False
     if expected_balloons and not expected_balloons.issubset(object_ids_by_kind.get("balloon", set())):
         return False
     if expected_texts and not expected_texts.issubset(object_ids_by_kind.get("text", set())):
         return False
 
     if page_filter is None or page_filter:
+        scene_raster_layers = getattr(scene, "bmanga_raster_layers", None)
+        expected_rasters = {
+            str(getattr(entry, "id", "") or "")
+            for entry in (scene_raster_layers or [])
+            if str(getattr(entry, "id", "") or "")
+            and _entry_in_page_filter(entry, work, page_filter)
+        }
+        if expected_rasters and not expected_rasters.issubset(object_ids_by_kind.get("raster", set())):
+            return False
         scene_image_layers = getattr(scene, "bmanga_image_layers", None)
         expected_images = {
             str(getattr(entry, "id", "") or "")
@@ -695,6 +728,15 @@ def _saved_runtime_objects_look_current(
             and _entry_in_page_filter(entry, work, page_filter)
         }
         if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
+            return False
+        scene_fill_layers = getattr(scene, "bmanga_fill_layers", None)
+        expected_fills = {
+            str(getattr(entry, "id", "") or "")
+            for entry in (scene_fill_layers or [])
+            if str(getattr(entry, "id", "") or "")
+            and _entry_in_page_filter(entry, work, page_filter)
+        }
+        if expected_fills and not expected_fills.issubset(object_ids_by_kind.get("fill", set())):
             return False
     return True
 

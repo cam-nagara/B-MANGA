@@ -40,6 +40,23 @@ def _material_transparent_enabled(mat) -> bool:
     return getattr(mat, "blend_method", "") == "BLEND" or method in {"BLENDED", "DITHERED"}
 
 
+def _make_stale_standard_border(coma_border_object, page_id: str, coma_id: str) -> bpy.types.Object:
+    curve_name = f"{coma_border_object.COMA_BORDER_CURVE_PREFIX}{page_id}_{coma_id}"
+    obj_name = f"{coma_border_object.COMA_BORDER_NAME_PREFIX}{page_id}_{coma_id}"
+    curve = bpy.data.curves.new(curve_name, type="CURVE")
+    curve.dimensions = "3D"
+    spline = curve.splines.new(type="POLY")
+    spline.points.add(1)
+    spline.points[0].co = (0.0, 0.0, 0.0, 1.0)
+    spline.points[1].co = (0.08, 0.0, 0.0, 1.0)
+    curve.bevel_depth = 0.001
+    obj = bpy.data.objects.new(obj_name, curve)
+    obj[coma_border_object.PROP_COMA_BORDER_KIND] = "coma_border"
+    obj[coma_border_object.PROP_COMA_BORDER_OWNER_ID] = f"{page_id}:{coma_id}"
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
@@ -50,6 +67,8 @@ def main() -> None:
         coma_blur_curve,
         coma_plane,
         coma_z_order,
+        layer_object_sync,
+        page_file_scene,
     )
     from bmanga_dev_border_texture.utils.geom import mm_to_m
 
@@ -100,6 +119,25 @@ def main() -> None:
         node.name == "BManga_ComaAlphaMask"
         for node in mat.node_tree.nodes
     ), "コマ面素材に透明マスク画像が接続されています"
+    assert page_file_scene.set_page_edit_state(bpy.context, page.id)
+    stale = _make_stale_standard_border(coma_border_object, page.id, coma.id)
+    assert bpy.data.objects.get(stale.name) is stale
+    stale_name = stale.name
+    assert not layer_object_sync._saved_runtime_objects_look_current(  # noqa: SLF001
+        scene,
+        work,
+        None,
+        None,
+    ), "輪郭ぼかしに古い標準枠線実体が残っているのに読み込み再同期が省略されます"
+    layer_object_sync.mirror_work_to_outliner(scene, work)
+    assert bpy.data.objects.get(stale_name) is None, "輪郭ぼかしの古い標準枠線実体が削除されていません"
+    assert coma.border.style == "brush", "古い標準枠線実体で輪郭ぼかし設定が巻き戻されています"
+    plane = coma_plane.find_coma_plane_object(page.id, coma.id)
+    assert plane is not None, "再同期後に輪郭ぼかしのコマ面がありません"
+    assert plane.data.attributes.get(coma_plane.COMA_PLANE_SOFT_MASK_ATTR) is not None, (
+        "再同期後に輪郭ぼかし濃度がありません"
+    )
+    mat = plane.data.materials[0]
     attr_node = mat.node_tree.nodes.get("BManga_ComaSoftMask")
     assert attr_node is not None, "コマ面素材に輪郭ぼかし濃度ノードがありません"
     assert attr_node.attribute_name == coma_plane.COMA_PLANE_SOFT_MASK_ATTR, (

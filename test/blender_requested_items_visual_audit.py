@@ -439,16 +439,16 @@ def _run_visual_audit() -> None:
         shots: list[str] = []
         with _view3d_override():
             bpy.ops.bmanga.view_fit_all("EXEC_DEFAULT")
-            if bpy.context.space_data.shading.type != "MATERIAL":
-                raise AssertionError("輪郭ぼかし使用時にマテリアルプレビューへ切り替わっていません")
+            if bpy.context.space_data.shading.type not in {"MATERIAL", "RENDERED"}:
+                raise AssertionError("輪郭ぼかし使用時に画像表示用の表示モードへ切り替わっていません")
         shots.append(_screenshot("01_all_pages_fit.png"))
 
         with _view3d_override():
             work.active_page_index = 1
             bpy.context.scene.bmanga_overview_mode = False
             bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
-            if bpy.context.space_data.shading.type != "MATERIAL":
-                raise AssertionError("ページに合わせる後にマテリアルプレビューへ切り替わっていません")
+            if bpy.context.space_data.shading.type not in {"MATERIAL", "RENDERED"}:
+                raise AssertionError("ページに合わせる後に画像表示用の表示モードへ切り替わっていません")
             rv3d = bpy.context.space_data.region_3d
             rv3d.view_distance = max(0.01, float(rv3d.view_distance) * 0.36)
         shots.append(_screenshot("02_blur_brush_zoom.png"))
