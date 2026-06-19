@@ -60,7 +60,7 @@ def _draw_callback_impl() -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
-    if not bool(getattr(scene, "bname_coma_camera_fisheye_layout_mode", False)):
+    if not bool(getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False)):
         return
     if not _is_coma_blend_file():
         return

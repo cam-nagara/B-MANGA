@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -41,7 +41,7 @@ def _find_page_index(work, page_id: str) -> int:
 
 def _snapshot_balloon(context, work, page_id: str, balloon_id: str):
     """ページ編集シーン上で、フキダシのデータ値とページ内の実体中心を採取する."""
-    from bname_dev.utils import balloon_curve_object, page_grid
+    from bmanga_dev.utils import balloon_curve_object, page_grid
 
     index = _find_page_index(work, page_id)
     page = work.pages[index]
@@ -70,16 +70,16 @@ def _assert_balloon_stable(current, expected, label: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_add_stability_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_add_stability_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PageAddStability.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PageAddStability.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.utils import page_file_scene
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.utils import page_file_scene
 
         context = bpy.context
         work = get_work(context)
@@ -92,19 +92,19 @@ def main() -> None:
         def _open_page(page_id: str):
             work_now = get_work(bpy.context)
             index = _find_page_index(work_now, page_id)
-            result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=index)
+            result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index)
             assert result == {"FINISHED"}, f"ページを開けません: {page_id} {result}"
             assert page_file_scene.is_page_edit_scene(bpy.context.scene)
             return bpy.context, get_work(bpy.context)
 
         def _close_page() -> None:
-            result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
             assert "FINISHED" in result, f"ページ一覧へ戻れません: {result}"
 
         def _build(page_id: str, *, shape: str, x: float, y: float, w: float, h: float):
-            from bname_dev.operators import balloon_op
-            from bname_dev.utils import balloon_curve_object
-            from bname_dev.utils.layer_hierarchy import page_stack_key
+            from bmanga_dev.operators import balloon_op
+            from bmanga_dev.utils import balloon_curve_object
+            from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
             ctx, work_now = _open_page(page_id)
             page = work_now.pages[_find_page_index(work_now, page_id)]
@@ -162,13 +162,13 @@ def main() -> None:
 
         work = get_work(bpy.context)
         work.active_page_index = _find_page_index(work, page_a_id)
-        move_result = bpy.ops.bname.page_move(direction=1)
+        move_result = bpy.ops.bmanga.page_move(direction=1)
         assert move_result == {"FINISHED"}, move_result
         bpy.context.view_layer.update()
         _verify(page_a_id, balloon_a, expected_a, "ページ並べ替え 元の1ページ目")
         _verify(page_b_id, balloon_b, expected_b, "ページ並べ替え 元の2ページ目")
 
-        print("BNAME_PAGE_ADD_CONTENT_STABILITY_OK", flush=True)
+        print("BMANGA_PAGE_ADD_CONTENT_STABILITY_OK", flush=True)
     finally:
         if mod is not None:
             try:

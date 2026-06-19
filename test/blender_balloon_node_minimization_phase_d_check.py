@@ -1,9 +1,9 @@
 """Blender 実機用: Phase D (フキダシ Geometry Nodes modifier 完全撤去) 検証.
 
 確認内容:
-  1. 全形状でフキダシを作成しても、本体カーブに B-Name Geometry Nodes
+  1. 全形状でフキダシを作成しても、本体カーブに B-MANGA Geometry Nodes
      modifier が一切付かないこと。
-  2. ノードグループ `BName_GN_BalloonCurveRender` がシーン内に存在しないか、
+  2. ノードグループ `BManga_GN_BalloonCurveRender` がシーン内に存在しないか、
      存在しても使用件数 0 であること。
   3. しっぽ付きフキダシで balloon_tail_main_line_mesh_<id> オブジェクトが
      生成されること (modifier なし)。
@@ -14,7 +14,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_node_minimization_phase_d_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_node_minimization_phase_d_check.py"
 """
 
 from __future__ import annotations
@@ -28,20 +28,20 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_PHASE_D_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_phase_d_"))
+_OUT_ENV = os.environ.get("BMANGA_PHASE_D_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_phase_d_"))
 
 SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_phase_d",
+        "bmanga_dev_phase_d",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_phase_d"] = mod
+    sys.modules["bmanga_dev_phase_d"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -53,21 +53,21 @@ def main() -> int:
     _load_addon()
     errors: list[str] = []
 
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_phase_d_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PhaseDCheck.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_phase_d_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PhaseDCheck.bmanga"))  # type: ignore[attr-defined]
     if "FINISHED" not in result:
         print(f"  ✗ work_new failed: {result}")
         return 1
 
-    from bname_dev_phase_d.operators import balloon_op
-    from bname_dev_phase_d.utils import balloon_curve_object as bco
-    from bname_dev_phase_d.utils import balloon_line_mesh
-    from bname_dev_phase_d.utils import balloon_curve_render_nodes as bcrn
-    from bname_dev_phase_d.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_phase_d.operators import balloon_op
+    from bmanga_dev_phase_d.utils import balloon_curve_object as bco
+    from bmanga_dev_phase_d.utils import balloon_line_mesh
+    from bmanga_dev_phase_d.utils import balloon_curve_render_nodes as bcrn
+    from bmanga_dev_phase_d.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     parent_key = page_stack_key(page)
 

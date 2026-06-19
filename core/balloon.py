@@ -405,7 +405,7 @@ def _on_balloon_title_changed(_self, context) -> None:
 
 def _on_balloon_tail_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         _tag_balloon_redraw(context)
         return
@@ -439,7 +439,7 @@ def _on_balloon_tail_changed(_self, context) -> None:
 
 def _on_balloon_tail_point_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         _tag_balloon_redraw(context)
         return
@@ -478,7 +478,7 @@ def _on_balloon_tail_point_changed(_self, context) -> None:
 
 def _on_balloon_shape_params_changed(_self, context) -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         _tag_balloon_redraw(context)
         return
@@ -508,13 +508,13 @@ def _on_balloon_shape_params_changed(_self, context) -> None:
     _tag_balloon_redraw(context)
 
 
-class BNameBalloonTailPoint(bpy.types.PropertyGroup):
+class BMangaBalloonTailPoint(bpy.types.PropertyGroup):
     x_mm: FloatProperty(name="X", default=0.0, update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
     y_mm: FloatProperty(name="Y", default=0.0, update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
     corner_type: EnumProperty(name="角のタイプ", items=_TAIL_POINT_CORNER_ITEMS, default="line", update=_on_balloon_tail_point_changed)  # type: ignore[valid-type]
 
 
-class BNameBalloonTail(bpy.types.PropertyGroup):
+class BMangaBalloonTail(bpy.types.PropertyGroup):
     type: EnumProperty(items=_TAIL_TYPE_ITEMS, default="straight", update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     curve_mode: EnumProperty(  # type: ignore[valid-type]
         name="線のつなぎ",
@@ -594,10 +594,10 @@ class BNameBalloonTail(bpy.types.PropertyGroup):
     start_y_mm: FloatProperty(name="始点 Y", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     end_x_mm: FloatProperty(name="終点 X", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
     end_y_mm: FloatProperty(name="終点 Y", default=0.0, update=_on_balloon_tail_changed)  # type: ignore[valid-type]
-    points: CollectionProperty(type=BNameBalloonTailPoint)  # type: ignore[valid-type]
+    points: CollectionProperty(type=BMangaBalloonTailPoint)  # type: ignore[valid-type]
 
 
-class BNameBalloonShapeParams(bpy.types.PropertyGroup):
+class BMangaBalloonShapeParams(bpy.types.PropertyGroup):
     """形状固有パラメータ."""
 
     cloud_bump_width_mm: FloatProperty(name="山の幅 (mm)", default=10.0, min=2.0, soft_max=200.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
@@ -627,7 +627,7 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
         update=_on_balloon_shape_params_changed,
     )
 
-    # Legacy parameters kept for older B-Name files/presets.
+    # Legacy parameters kept for older B-MANGA files/presets.
     cloud_wave_count: IntProperty(name="雲の波数", default=12, min=3, soft_max=60, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     cloud_wave_amplitude_mm: FloatProperty(name="波の振幅 (mm)", default=3.0, min=0.0, soft_max=20.0, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
     spike_count: IntProperty(name="トゲ数", default=24, min=3, soft_max=80, update=_on_balloon_shape_params_changed)  # type: ignore[valid-type]
@@ -641,7 +641,7 @@ class BNameBalloonShapeParams(bpy.types.PropertyGroup):
         update=_on_balloon_shape_params_changed,
     )
 
-class BNameBalloonEntry(bpy.types.PropertyGroup):
+class BMangaBalloonEntry(bpy.types.PropertyGroup):
     """フキダシ 1 件."""
 
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
@@ -892,18 +892,18 @@ class BNameBalloonEntry(bpy.types.PropertyGroup):
     )
 
     # 形状固有パラメータ・尻尾
-    shape_params: PointerProperty(type=BNameBalloonShapeParams)  # type: ignore[valid-type]
-    tails: CollectionProperty(type=BNameBalloonTail)  # type: ignore[valid-type]
+    shape_params: PointerProperty(type=BMangaBalloonShapeParams)  # type: ignore[valid-type]
+    tails: CollectionProperty(type=BMangaBalloonTail)  # type: ignore[valid-type]
 
     # テキスト (実内容は TextEntry)
     text_id: StringProperty(name="Text ID", default="")  # type: ignore[valid-type]
 
 
 _CLASSES = (
-    BNameBalloonTailPoint,
-    BNameBalloonTail,
-    BNameBalloonShapeParams,
-    BNameBalloonEntry,
+    BMangaBalloonTailPoint,
+    BMangaBalloonTail,
+    BMangaBalloonShapeParams,
+    BMangaBalloonEntry,
 )
 
 

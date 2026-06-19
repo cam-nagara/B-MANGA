@@ -12,8 +12,8 @@ from ..io import coma_io, page_io, work_io
 from . import log, paths
 
 _logger = log.get_logger(__name__)
-_TEMP_PAGE_PREFIX = "__bname_page_tmp__"
-_TEMP_COMA_PREFIX = "__bname_coma_tmp__"
+_TEMP_PAGE_PREFIX = "__bmanga_page_tmp__"
+_TEMP_COMA_PREFIX = "__bmanga_coma_tmp__"
 
 
 @dataclass(slots=True)
@@ -153,7 +153,7 @@ def _rename_directories(parent: Path, pairs: list[tuple[str, str]]) -> list[tupl
         src = parent / old
         if not src.exists():
             continue
-        temp = parent / f".bname_rename_{token}_{index}"
+        temp = parent / f".bmanga_rename_{token}_{index}"
         src.rename(temp)
         temp_pairs.append((temp, parent / new, old, new))
 
@@ -213,7 +213,7 @@ def _retarget_property_entries(scene, work, old_key: str, new_key: str, prefix: 
                 ref.page_id = new_key
     for folder in getattr(work, "layer_folders", []) or []:
         _replace_entry_parent_key(folder, old_key, new_key, prefix=prefix)
-    for collection_name in ("bname_raster_layers", "bname_image_layers"):
+    for collection_name in ("bmanga_raster_layers", "bmanga_image_layers"):
         for entry in getattr(scene, collection_name, []) or []:
             _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
 
@@ -224,7 +224,7 @@ def _collect_existing_parent_keys(scene, old_key: str, prefix: bool, on) -> set[
         return keys
     keys.update(
         str(getattr(item, "parent_key", "") or "")
-        for item in getattr(scene, "bname_layer_stack", []) or []
+        for item in getattr(scene, "bmanga_layer_stack", []) or []
         if str(getattr(item, "parent_key", "") or "").startswith(f"{old_key}:")
     )
     for datablocks in (bpy.data.objects, bpy.data.collections):
@@ -252,21 +252,21 @@ def _retarget_datablock_keys(datablock, old_key: str, new_key: str, prefix: bool
     new_parent = _replace_id_key(parent_key, old_key, new_key, prefix=prefix)
     if new_parent != parent_key:
         datablock[on.PROP_PARENT_KEY] = new_parent
-    bname_id = str(datablock.get(on.PROP_ID, "") or "")
-    new_id = _replace_id_key(bname_id, old_key, new_key, prefix=prefix)
-    if new_id != bname_id:
+    bmanga_id = str(datablock.get(on.PROP_ID, "") or "")
+    new_id = _replace_id_key(bmanga_id, old_key, new_key, prefix=prefix)
+    if new_id != bmanga_id:
         datablock[on.PROP_ID] = new_id
 
 
 def _retarget_scene_current(scene, old_key: str, new_key: str, prefix: bool) -> None:
     if scene is None:
         return
-    current_page = str(getattr(scene, "bname_current_coma_page_id", "") or "")
+    current_page = str(getattr(scene, "bmanga_current_coma_page_id", "") or "")
     if current_page == old_key:
-        scene.bname_current_coma_page_id = new_key
-    current_coma = str(getattr(scene, "bname_current_coma_id", "") or "")
+        scene.bmanga_current_coma_page_id = new_key
+    current_coma = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     if not prefix and current_coma and old_key.endswith(f":{current_coma}"):
-        scene.bname_current_coma_id = new_key.split(":", 1)[1]
+        scene.bmanga_current_coma_id = new_key.split(":", 1)[1]
 
 
 def _retarget_keys(context, phases: list[tuple[str, str, bool]]) -> None:
@@ -275,7 +275,7 @@ def _retarget_keys(context, phases: list[tuple[str, str, bool]]) -> None:
     from . import object_naming as on
 
     scene = getattr(context, "scene", None)
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     for old_key, new_key, prefix in phases:
         _retarget_property_entries(scene, work, old_key, new_key, prefix)
         keys = _collect_existing_parent_keys(scene, old_key, prefix, on)
@@ -375,7 +375,7 @@ def _collect_and_apply_coma_remaps(context, work, read_direction: str) -> tuple[
         if hasattr(page, "coma_count"):
             page.coma_count = len(comas)
 
-        current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+        current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
         for target_index, original_index in enumerate(ordered_indices):
             coma = comas[target_index]
             new_id = _format_coma_id(target_index + 1)
@@ -383,7 +383,7 @@ def _collect_and_apply_coma_remaps(context, work, read_direction: str) -> tuple[
             coma.id = new_id
             coma.coma_id = new_id
             if current_coma_id and current_coma_id == old_id:
-                scene.bname_current_coma_id = new_id
+                scene.bmanga_current_coma_id = new_id
         for _original_index, old_id, new_id in remaps_for_page:
             all_remaps.append(_ComaRename(page=page, page_id=page_id, old_id=old_id, new_id=new_id))
     return all_remaps, reorder_count

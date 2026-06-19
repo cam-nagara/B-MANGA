@@ -11,7 +11,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ADDON_NAME = "bname_dev_balloon_corner_line_pattern"
+ADDON_NAME = "bmanga_dev_balloon_corner_line_pattern"
 
 
 def _load_addon():
@@ -55,7 +55,7 @@ def main() -> None:
     schema = _import("io.schema")
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages.add()
     page.id = "p0001"
     entry = page.balloons.add()
@@ -147,7 +147,7 @@ def main() -> None:
     if len(dense) <= len(sparse):
         raise AssertionError("破線の線分・間隔が生成数へ反映されていません")
 
-    print("BNAME_BALLOON_CORNER_LINE_PATTERN_OK")
+    print("BMANGA_BALLOON_CORNER_LINE_PATTERN_OK")
 
 
 if __name__ == "__main__":

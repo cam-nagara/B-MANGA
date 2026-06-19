@@ -22,6 +22,42 @@ _logger = log.get_logger(__name__)
 # キャッシュを保持して回避する。
 _PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
 _SUPPRESS_SELECTOR_UPDATE = False
+_SUPPRESS_TOOL_PRESET_REMEMBER = False
+
+
+def _remember_tool_preset(context, attr: str, value: str) -> None:
+    if _SUPPRESS_TOOL_PRESET_REMEMBER:
+        return
+    try:
+        from .. import preferences as addon_preferences
+
+        prefs = addon_preferences.get_preferences(context)
+        if prefs is None or not hasattr(prefs, attr):
+            return
+        setattr(prefs, attr, str(value or ""))
+        addon_preferences.request_user_preferences_save()
+    except Exception:  # noqa: BLE001
+        _logger.debug("tool preset selection remember failed", exc_info=True)
+
+
+def _restore_selector_if_valid(context, prop_name: str, value: str, items_callback) -> bool:
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, prop_name):
+        return False
+    value = str(value or "")
+    if not value:
+        return False
+    try:
+        valid = {str(item[0]) for item in items_callback(None, context)}
+    except Exception:  # noqa: BLE001
+        _logger.debug("tool preset selector items failed: %s", prop_name, exc_info=True)
+        return False
+    if value not in valid:
+        return False
+    if str(getattr(wm, prop_name, "") or "") == value:
+        return True
+    setattr(wm, prop_name, value)
+    return True
 
 
 def _preset_enum_items(_self, context):
@@ -30,7 +66,7 @@ def _preset_enum_items(_self, context):
     work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
     cache: list[tuple[str, str, str]] = []
     for p in presets.list_all_presets(work_dir):
-        label = p.name if p.source == "global" else f"{p.name} (作品)"
+        label = p.name if p.source == "global" else f"{p.name} (共通)"
         cache.append((p.name, label, p.description))
     if not cache:
         cache.append(("", "(プリセットなし)", ""))
@@ -39,11 +75,11 @@ def _preset_enum_items(_self, context):
 
 
 def _on_paper_preset_selector_change(self, context):
-    """WindowManager.bname_paper_preset_selector の変更時に用紙プリセットを即時適用."""
+    """WindowManager.bmanga_paper_preset_selector の変更時に用紙プリセットを即時適用."""
     global _SUPPRESS_SELECTOR_UPDATE
     if _SUPPRESS_SELECTOR_UPDATE:
         return
-    name = getattr(self, "bname_paper_preset_selector", "")
+    name = getattr(self, "bmanga_paper_preset_selector", "")
     if not name:
         return
     work = get_work(context)
@@ -72,23 +108,23 @@ def sync_paper_preset_selector(context) -> None:
     if preset is None:
         return
     wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bname_paper_preset_selector"):
+    if wm is None or not hasattr(wm, "bmanga_paper_preset_selector"):
         return
-    cur = getattr(wm, "bname_paper_preset_selector", "")
+    cur = getattr(wm, "bmanga_paper_preset_selector", "")
     if cur == name:
         return
     _preset_enum_items(None, context)
     _SUPPRESS_SELECTOR_UPDATE = True
     try:
-        wm.bname_paper_preset_selector = name
+        wm.bmanga_paper_preset_selector = name
     finally:
         _SUPPRESS_SELECTOR_UPDATE = False
 
 
-class BNAME_OT_paper_preset_apply(Operator):
+class BMANGA_OT_paper_preset_apply(Operator):
     """選択した用紙プリセットを現在の作品に適用."""
 
-    bl_idname = "bname.paper_preset_apply"
+    bl_idname = "bmanga.paper_preset_apply"
     bl_label = "用紙プリセットを適用"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -120,10 +156,10 @@ class BNAME_OT_paper_preset_apply(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_paper_preset_save_local(Operator):
-    """現在の用紙設定を作品ローカルプリセットとして保存."""
+class BMANGA_OT_paper_preset_save_local(Operator):
+    """現在の用紙設定を共通プリセットとして保存."""
 
-    bl_idname = "bname.paper_preset_save_local"
+    bl_idname = "bmanga.paper_preset_save_local"
     bl_label = "用紙プリセットとして保存"
     bl_options = {"REGISTER"}
 
@@ -167,7 +203,7 @@ class BNAME_OT_paper_preset_save_local(Operator):
         except Exception as exc:  # noqa: BLE001
             _logger.exception("preset_save_local post-save sync failed")
             self.report({"WARNING"}, f"プリセット保存後の同期に失敗: {exc}")
-        self.report({"INFO"}, f"ローカルプリセット保存: {out.name}")
+        self.report({"INFO"}, f"共通プリセット保存: {out.name}")
         return {"FINISHED"}
 
 
@@ -184,7 +220,7 @@ def _border_preset_enum_items(_self, context):
     preset_list = list(border_presets.list_all_presets(work_dir))
     cache: list[tuple[str, str, str]] = []
     for p in preset_list:
-        label = p.name if p.source == "global" else f"{p.name} (作品)"
+        label = p.name if p.source == "global" else f"{p.name} (共通)"
         cache.append((p.name, label, p.description))
     if not cache:
         cache.append(("", "(プリセットなし)", ""))
@@ -201,22 +237,22 @@ def _border_preset_work_dir(context) -> Path | None:
 
 def _selected_border_preset_name(context) -> str:
     wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bname_border_preset_selector"):
+    if wm is None or not hasattr(wm, "bmanga_border_preset_selector"):
         return ""
-    return str(getattr(wm, "bname_border_preset_selector", "") or "")
+    return str(getattr(wm, "bmanga_border_preset_selector", "") or "")
 
 
 def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
     global _SUPPRESS_BORDER_SELECTOR_UPDATE
     wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bname_border_preset_selector") or not name:
+    if wm is None or not hasattr(wm, "bmanga_border_preset_selector") or not name:
         return
     valid = {item[0] for item in _border_preset_enum_items(None, context)}
     if name not in valid:
         return
     _SUPPRESS_BORDER_SELECTOR_UPDATE = not apply
     try:
-        wm.bname_border_preset_selector = name
+        wm.bmanga_border_preset_selector = name
     finally:
         _SUPPRESS_BORDER_SELECTOR_UPDATE = False
 
@@ -250,10 +286,15 @@ def _balloon_tool_preset_enum_items(_self, context):
     return items
 
 
+def _on_balloon_tool_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_balloon_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_balloon_tool_preset", value)
+
+
 def selected_balloon_tool_shape(context) -> tuple[str, str]:
     """フキダシツールのプリセット選択を (shape, custom_preset_name) で返す."""
     wm = getattr(context, "window_manager", None)
-    value = str(getattr(wm, "bname_balloon_tool_preset_selector", "") or "") if wm is not None else ""
+    value = str(getattr(wm, "bmanga_balloon_tool_preset_selector", "") or "") if wm is not None else ""
     if value.startswith("shape:"):
         return value.split(":", 1)[1], ""
     if value.startswith("custom:"):
@@ -280,8 +321,10 @@ def _text_preset_enum_items(_self, context):
     return items
 
 
-def _on_text_preset_selector_change(_self, context):
+def _on_text_preset_selector_change(self, context):
     """テキストプリセット変更時: カーソル形状を縦書き/横書きに合わせて切替."""
+    value = str(getattr(self, "bmanga_text_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_text_tool_preset", value)
     if coma_modal_state.is_active("text_tool"):
         cursor_type = text_tool_cursor_type(context)
         op = coma_modal_state.get_active("text_tool")
@@ -318,7 +361,7 @@ def text_tool_cursor_type(context) -> str:
 def selected_text_preset_name(context) -> str:
     """テキストツールで選択中のプリセット名を返す."""
     wm = getattr(context, "window_manager", None)
-    value = str(getattr(wm, "bname_text_tool_preset_selector", "") or "") if wm is not None else ""
+    value = str(getattr(wm, "bmanga_text_tool_preset_selector", "") or "") if wm is not None else ""
     if value == "NONE" or not value:
         return ""
     return value
@@ -347,7 +390,7 @@ def apply_text_preset_to_entry(context, entry) -> bool:
 def sync_border_preset_selector(context) -> None:
     """アクティブコマの ``border.preset_name`` に枠線セレクタを合わせる.
 
-    枠線セレクタ (``bname_border_preset_selector``) は WindowManager 上の一時
+    枠線セレクタ (``bmanga_border_preset_selector``) は WindowManager 上の一時
     プロパティで、 ファイル/ウィンドウを開き直すたび先頭の「標準」へ戻る。
     コマ自身が保持する適用プリセット名へ追従させ、 コマ編集から戻った直後に
     実際の見た目と表示がズレない (= プリセットがリセットされたように見えない)
@@ -361,7 +404,7 @@ def sync_border_preset_selector(context) -> None:
     _work, _page, _pi, coma = resolved
     name = (getattr(getattr(coma, "border", None), "preset_name", "") or "").strip()
     wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bname_border_preset_selector"):
+    if wm is None or not hasattr(wm, "bmanga_border_preset_selector"):
         return
     if not name:
         return
@@ -369,11 +412,11 @@ def sync_border_preset_selector(context) -> None:
     items = _border_preset_enum_items(None, context)
     if name not in {item[0] for item in items}:
         return
-    if getattr(wm, "bname_border_preset_selector", "") == name:
+    if getattr(wm, "bmanga_border_preset_selector", "") == name:
         return
     _SUPPRESS_BORDER_SELECTOR_UPDATE = True
     try:
-        wm.bname_border_preset_selector = name
+        wm.bmanga_border_preset_selector = name
     finally:
         _SUPPRESS_BORDER_SELECTOR_UPDATE = False
 
@@ -381,16 +424,16 @@ def sync_border_preset_selector(context) -> None:
 def _resolve_selected_coma(context):
     """枠線プリセットの対象コマを解決.
 
-    枠線/辺の選択 (``bname_edge_select_*``) を優先し、無ければアクティブ
+    枠線/辺の選択 (``bmanga_edge_select_*``) を優先し、無ければアクティブ
     ページのアクティブコマ。戻り値: (work, page, page_index, coma) or None。
     """
     work = get_work(context)
     if work is None or not work.loaded:
         return None
     wm = context.window_manager
-    if getattr(wm, "bname_edge_select_kind", "none") != "none":
-        pi = int(getattr(wm, "bname_edge_select_page", -1))
-        ci = int(getattr(wm, "bname_edge_select_coma", -1))
+    if getattr(wm, "bmanga_edge_select_kind", "none") != "none":
+        pi = int(getattr(wm, "bmanga_edge_select_page", -1))
+        ci = int(getattr(wm, "bmanga_edge_select_coma", -1))
         if 0 <= pi < len(work.pages):
             page = work.pages[pi]
             if 0 <= ci < len(page.comas):
@@ -453,7 +496,7 @@ def _on_border_preset_selector_change(self, context):
     global _SUPPRESS_BORDER_SELECTOR_UPDATE
     if _SUPPRESS_BORDER_SELECTOR_UPDATE:
         return
-    name = getattr(self, "bname_border_preset_selector", "")
+    name = getattr(self, "bmanga_border_preset_selector", "")
     if not name:
         return
     resolved = _resolve_selected_coma(context)
@@ -470,10 +513,10 @@ def _on_border_preset_selector_change(self, context):
     _logger.info("border preset applied via selector: %s", preset.name)
 
 
-class BNAME_OT_border_preset_apply(Operator):
+class BMANGA_OT_border_preset_apply(Operator):
     """選択した枠線プリセットを選択中のコマへ適用 (枠線 + フチ)."""
 
-    bl_idname = "bname.border_preset_apply"
+    bl_idname = "bmanga.border_preset_apply"
     bl_label = "枠線プリセットを適用"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -507,8 +550,8 @@ class BNAME_OT_border_preset_apply(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_save_local(Operator):
-    """選択中コマの枠線・フチ設定を作品ローカルプリセットとして保存.
+class BMANGA_OT_border_preset_save_local(Operator):
+    """選択中コマの枠線・フチ設定を共通プリセットとして保存.
 
     詳細設定ダイアログ (``invoke_props_dialog``) の内側から起動される場合、
     Blender は入れ子の ``invoke_props_dialog`` を許さず ``invoke`` を素通り
@@ -517,7 +560,7 @@ class BNAME_OT_border_preset_save_local(Operator):
     既存プリセット名と重複しない一意な名前へ更新する。
     """
 
-    bl_idname = "bname.border_preset_save_local"
+    bl_idname = "bmanga.border_preset_save_local"
     bl_label = "枠線プリセットとして保存"
     bl_options = {"REGISTER"}
 
@@ -557,12 +600,12 @@ class BNAME_OT_border_preset_save_local(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_add_local(Operator):
-    """現在のコマ枠を新しい作品プリセットとして追加する."""
+class BMANGA_OT_border_preset_add_local(Operator):
+    """現在のコマ枠を新しい共通プリセットとして追加する."""
 
-    bl_idname = "bname.border_preset_add_local"
+    bl_idname = "bmanga.border_preset_add_local"
     bl_label = "枠線プリセットを追加"
-    bl_description = "現在のコマ枠設定を、新しい作品プリセットとして追加します"
+    bl_description = "現在のコマ枠設定を、新しい共通プリセットとして追加します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="プリセット名", default="新規枠線プリセット")  # type: ignore[valid-type]
@@ -605,10 +648,10 @@ class BNAME_OT_border_preset_add_local(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_rename(Operator):
+class BMANGA_OT_border_preset_rename(Operator):
     """選択中の枠線プリセットを改名する."""
 
-    bl_idname = "bname.border_preset_rename"
+    bl_idname = "bmanga.border_preset_rename"
     bl_label = "枠線プリセットを改名"
     bl_description = "選択中の枠線プリセットを改名します"
     bl_options = {"REGISTER", "UNDO"}
@@ -631,7 +674,7 @@ class BNAME_OT_border_preset_rename(Operator):
         old_name = self.preset_name.strip() or _selected_border_preset_name(context)
         new_name = self.new_name.strip()
         if work_dir is None:
-            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            self.report({"ERROR"}, "対象のコマを選択してください")
             return {"CANCELLED"}
         selected_before = _selected_border_preset_name(context)
         names_before = [preset.name for preset in border_presets.list_all_presets(work_dir)]
@@ -659,12 +702,12 @@ class BNAME_OT_border_preset_rename(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_duplicate(Operator):
+class BMANGA_OT_border_preset_duplicate(Operator):
     """選択中の枠線プリセットを複製する."""
 
-    bl_idname = "bname.border_preset_duplicate"
+    bl_idname = "bmanga.border_preset_duplicate"
     bl_label = "枠線プリセットを複製"
-    bl_description = "選択中の枠線プリセットを作品プリセットとして複製します"
+    bl_description = "選択中の枠線プリセットを共通プリセットとして複製します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="複製元", default="")  # type: ignore[valid-type]
@@ -690,7 +733,7 @@ class BNAME_OT_border_preset_duplicate(Operator):
         source_name = self.preset_name.strip() or _selected_border_preset_name(context)
         new_name = self.new_name.strip()
         if work_dir is None:
-            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            self.report({"ERROR"}, "対象のコマを選択してください")
             return {"CANCELLED"}
         try:
             preset = border_presets.duplicate_preset(work_dir, source_name, new_name)
@@ -702,12 +745,12 @@ class BNAME_OT_border_preset_duplicate(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_delete(Operator):
+class BMANGA_OT_border_preset_delete(Operator):
     """選択中の枠線プリセットを削除する."""
 
-    bl_idname = "bname.border_preset_delete"
+    bl_idname = "bmanga.border_preset_delete"
     bl_label = "枠線プリセットを削除"
-    bl_description = "選択中の枠線プリセットをこの作品の一覧から削除します"
+    bl_description = "選択中の枠線プリセットを共通一覧から削除します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
@@ -724,7 +767,7 @@ class BNAME_OT_border_preset_delete(Operator):
         work_dir = _border_preset_work_dir(context)
         name = self.preset_name.strip() or _selected_border_preset_name(context)
         if work_dir is None:
-            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            self.report({"ERROR"}, "対象のコマを選択してください")
             return {"CANCELLED"}
         selected_before = _selected_border_preset_name(context)
         names_before = [preset.name for preset in border_presets.list_all_presets(work_dir)]
@@ -761,10 +804,10 @@ class BNAME_OT_border_preset_delete(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_border_preset_move(Operator):
+class BMANGA_OT_border_preset_move(Operator):
     """選択中の枠線プリセットを並べ替える."""
 
-    bl_idname = "bname.border_preset_move"
+    bl_idname = "bmanga.border_preset_move"
     bl_label = "枠線プリセットを並べ替え"
     bl_description = "選択中の枠線プリセットを上下に移動します"
     bl_options = {"REGISTER", "UNDO"}
@@ -780,7 +823,7 @@ class BNAME_OT_border_preset_move(Operator):
         work_dir = _border_preset_work_dir(context)
         name = self.preset_name.strip() or _selected_border_preset_name(context)
         if work_dir is None:
-            self.report({"ERROR"}, "作品ファイルを先に作成してください")
+            self.report({"ERROR"}, "対象のコマを選択してください")
             return {"CANCELLED"}
         try:
             border_presets.move_preset(work_dir, name, self.direction)
@@ -793,7 +836,7 @@ class BNAME_OT_border_preset_move(Operator):
 
 
 def _unique_border_preset_name(context, base: str) -> str:
-    """同一作品内で既存プリセット名と被らない名前を返す."""
+    """共通一覧内で既存プリセット名と被らない名前を返す."""
     work = get_work(context)
     if work is None or not getattr(work, "work_dir", ""):
         return base
@@ -832,6 +875,16 @@ def _gradient_tool_preset_enum_items(_self, _context):
     return _GRADIENT_TOOL_ENUM_CACHE
 
 
+def _on_fill_tool_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_fill_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_fill_tool_preset", value)
+
+
+def _on_gradient_tool_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_gradient_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_gradient_tool_preset", value)
+
+
 def _find_fill_preset(preset_id: str) -> dict | None:
     for p in _FILL_PRESETS:
         if p["id"] == preset_id:
@@ -849,7 +902,7 @@ def _find_gradient_preset(preset_id: str) -> dict | None:
 def apply_fill_preset_to_entry(context, entry) -> bool:
     """選択中の囲い塗りプリセットをフィルエントリに適用."""
     wm = getattr(context, "window_manager", None)
-    pid = str(getattr(wm, "bname_fill_tool_preset_selector", "") or "") if wm else ""
+    pid = str(getattr(wm, "bmanga_fill_tool_preset_selector", "") or "") if wm else ""
     preset = _find_fill_preset(pid) if pid else None
     if preset is None and _FILL_PRESETS:
         preset = _FILL_PRESETS[0]
@@ -863,7 +916,7 @@ def apply_fill_preset_to_entry(context, entry) -> bool:
 def apply_gradient_preset_to_entry(context, entry) -> bool:
     """選択中のグラデーションプリセットをフィルエントリに適用."""
     wm = getattr(context, "window_manager", None)
-    pid = str(getattr(wm, "bname_gradient_tool_preset_selector", "") or "") if wm else ""
+    pid = str(getattr(wm, "bmanga_gradient_tool_preset_selector", "") or "") if wm else ""
     preset = _find_gradient_preset(pid) if pid else None
     if preset is None and _GRADIENT_PRESETS:
         preset = _GRADIENT_PRESETS[0]
@@ -877,79 +930,128 @@ def apply_gradient_preset_to_entry(context, entry) -> bool:
 
 
 _CLASSES = (
-    BNAME_OT_paper_preset_apply,
-    BNAME_OT_paper_preset_save_local,
-    BNAME_OT_border_preset_apply,
-    BNAME_OT_border_preset_save_local,
-    BNAME_OT_border_preset_add_local,
-    BNAME_OT_border_preset_rename,
-    BNAME_OT_border_preset_duplicate,
-    BNAME_OT_border_preset_delete,
-    BNAME_OT_border_preset_move,
+    BMANGA_OT_paper_preset_apply,
+    BMANGA_OT_paper_preset_save_local,
+    BMANGA_OT_border_preset_apply,
+    BMANGA_OT_border_preset_save_local,
+    BMANGA_OT_border_preset_add_local,
+    BMANGA_OT_border_preset_rename,
+    BMANGA_OT_border_preset_duplicate,
+    BMANGA_OT_border_preset_delete,
+    BMANGA_OT_border_preset_move,
 )
+
+
+def restore_tool_preset_selectors(context) -> None:
+    """前回選んだツールプリセットを WindowManager の選択欄へ戻す."""
+    global _SUPPRESS_TOOL_PRESET_REMEMBER
+    try:
+        from .. import preferences as addon_preferences
+
+        prefs = addon_preferences.get_preferences(context)
+    except Exception:  # noqa: BLE001
+        prefs = None
+    if prefs is None:
+        return
+
+    _SUPPRESS_TOOL_PRESET_REMEMBER = True
+    try:
+        _restore_selector_if_valid(
+            context,
+            "bmanga_balloon_tool_preset_selector",
+            getattr(prefs, "last_balloon_tool_preset", ""),
+            _balloon_tool_preset_enum_items,
+        )
+        _restore_selector_if_valid(
+            context,
+            "bmanga_text_tool_preset_selector",
+            getattr(prefs, "last_text_tool_preset", ""),
+            _text_preset_enum_items,
+        )
+        _restore_selector_if_valid(
+            context,
+            "bmanga_fill_tool_preset_selector",
+            getattr(prefs, "last_fill_tool_preset", ""),
+            _fill_tool_preset_enum_items,
+        )
+        _restore_selector_if_valid(
+            context,
+            "bmanga_gradient_tool_preset_selector",
+            getattr(prefs, "last_gradient_tool_preset", ""),
+            _gradient_tool_preset_enum_items,
+        )
+    finally:
+        _SUPPRESS_TOOL_PRESET_REMEMBER = False
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.WindowManager.bname_paper_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_paper_preset_selector = EnumProperty(
         name="プリセット",
         description="用紙プリセットを選択して即時適用",
         items=_preset_enum_items,
         update=_on_paper_preset_selector_change,
     )
-    bpy.types.WindowManager.bname_border_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_border_preset_selector = EnumProperty(
         name="枠線プリセット",
         description="枠線プリセットを選択して選択中のコマへ即時適用",
         items=_border_preset_enum_items,
         update=_on_border_preset_selector_change,
     )
-    bpy.types.WindowManager.bname_balloon_tool_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_balloon_tool_preset_selector = EnumProperty(
         name="フキダシ形状",
         description="フキダシツールで新しく作るフキダシの形状プリセット",
         items=_balloon_tool_preset_enum_items,
+        update=_on_balloon_tool_preset_selector_change,
     )
-    bpy.types.WindowManager.bname_text_tool_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_text_tool_preset_selector = EnumProperty(
         name="テキストプリセット",
         description="テキストツールで新しく作るテキストのスタイルプリセット",
         items=_text_preset_enum_items,
         update=_on_text_preset_selector_change,
     )
-    bpy.types.WindowManager.bname_fill_tool_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_fill_tool_preset_selector = EnumProperty(
         name="囲い塗りプリセット",
         description="囲い塗りツールで新しく作るベタ塗りの色・不透明度",
         items=_fill_tool_preset_enum_items,
+        update=_on_fill_tool_preset_selector_change,
     )
-    bpy.types.WindowManager.bname_gradient_tool_preset_selector = EnumProperty(
+    bpy.types.WindowManager.bmanga_gradient_tool_preset_selector = EnumProperty(
         name="グラデーションプリセット",
         description="グラデーションツールで新しく作るグラデーションの設定",
         items=_gradient_tool_preset_enum_items,
+        update=_on_gradient_tool_preset_selector_change,
     )
+    try:
+        restore_tool_preset_selectors(bpy.context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("tool preset selector restore failed")
 
 
 def unregister() -> None:
     try:
-        del bpy.types.WindowManager.bname_paper_preset_selector
+        del bpy.types.WindowManager.bmanga_paper_preset_selector
     except AttributeError:
         pass
     try:
-        del bpy.types.WindowManager.bname_border_preset_selector
+        del bpy.types.WindowManager.bmanga_border_preset_selector
     except AttributeError:
         pass
     try:
-        del bpy.types.WindowManager.bname_balloon_tool_preset_selector
+        del bpy.types.WindowManager.bmanga_balloon_tool_preset_selector
     except AttributeError:
         pass
     try:
-        del bpy.types.WindowManager.bname_text_tool_preset_selector
+        del bpy.types.WindowManager.bmanga_text_tool_preset_selector
     except AttributeError:
         pass
     try:
-        del bpy.types.WindowManager.bname_fill_tool_preset_selector
+        del bpy.types.WindowManager.bmanga_fill_tool_preset_selector
     except AttributeError:
         pass
     try:
-        del bpy.types.WindowManager.bname_gradient_tool_preset_selector
+        del bpy.types.WindowManager.bmanga_gradient_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

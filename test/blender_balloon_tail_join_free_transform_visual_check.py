@@ -13,19 +13,19 @@ from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_TAIL_FREE_VISUAL_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_tail_free_visual_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_TAIL_FREE_VISUAL_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_tail_free_visual_"))
 OUTPUT_PATH = _OUT_PATH if _OUT_PATH.suffix.lower() == ".png" else _OUT_PATH / "balloon_tail_join_free_transform.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_tail_free_visual",
+        "bmanga_dev_tail_free_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_tail_free_visual"] = mod
+    sys.modules["bmanga_dev_tail_free_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -141,8 +141,8 @@ def _configure_render() -> None:
 
 
 def _create_joined_tail_balloon(context, page, parent_key):
-    from bname_dev_tail_free_visual.operators import balloon_op
-    from bname_dev_tail_free_visual.utils import balloon_curve_object
+    from bmanga_dev_tail_free_visual.operators import balloon_op
+    from bmanga_dev_tail_free_visual.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -178,9 +178,9 @@ def _create_joined_tail_balloon(context, page, parent_key):
 
 
 def _create_free_transform_balloon(context, page, parent_key):
-    from bname_dev_tail_free_visual.operators import balloon_op
-    from bname_dev_tail_free_visual.utils import balloon_curve_object, free_transform, object_selection
-    from bname_dev_tail_free_visual.operators import object_tool_op
+    from bmanga_dev_tail_free_visual.operators import balloon_op
+    from bmanga_dev_tail_free_visual.utils import balloon_curve_object, free_transform, object_selection
+    from bmanga_dev_tail_free_visual.operators import object_tool_op
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -209,30 +209,30 @@ def _create_free_transform_balloon(context, page, parent_key):
     action = free_transform.action_for_part(free_transform.TOP_RIGHT)
     tool = _DummyObjectTool()
     tool._drag_action = action
-    tool._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+    tool._snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
         tool,
         context,
         [key],
         primary_key=key,
         action=action,
     )
-    object_tool_op.BNAME_OT_object_tool._apply_snapshots(tool, context, 20.0, 18.0)
+    object_tool_op.BMANGA_OT_object_tool._apply_snapshots(tool, context, 20.0, 18.0)
     return entry, obj
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_tail_free_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tail_free_visual_work_"))
     mod = None
     try:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailFreeVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailFreeVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_tail_free_visual.core.work import get_work
-        from bname_dev_tail_free_visual.utils import balloon_line_mesh
-        from bname_dev_tail_free_visual.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_tail_free_visual.core.work import get_work
+        from bmanga_dev_tail_free_visual.utils import balloon_line_mesh
+        from bmanga_dev_tail_free_visual.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -265,7 +265,7 @@ def main() -> None:
         _hide_non_visual_objects({str(joined.id), str(free_entry.id)})
         _configure_render()
         bpy.ops.render.render(write_still=True)
-        print(f"BNAME_BALLOON_TAIL_JOIN_FREE_TRANSFORM_VISUAL_OK {OUTPUT_PATH}", flush=True)
+        print(f"BMANGA_BALLOON_TAIL_JOIN_FREE_TRANSFORM_VISUAL_OK {OUTPUT_PATH}", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

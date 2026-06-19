@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_knife_order",
+        "bmanga_dev_coma_knife_order",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_knife_order"] = mod
+    sys.modules["bmanga_dev_coma_knife_order"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -51,10 +51,10 @@ def _coma_by_id(page, coma_id: str):
 
 
 def _prepare_case(root: Path, name: str, read_direction: str):
-    result = bpy.ops.bname.work_new(filepath=str(root / f"{name}.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(root / f"{name}.bmanga"))
     if "FINISHED" not in result:
         raise AssertionError(f"作品作成に失敗しました: {result}")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work.paper.read_direction = read_direction
     work.coma_gap.vertical_mm = 0.0
     work.coma_gap.horizontal_mm = 0.0
@@ -80,7 +80,7 @@ def _prepare_case(root: Path, name: str, read_direction: str):
 
 
 def _cut_case(name: str, read_direction: str, point_a, point_b, expectation: str, root: Path) -> None:
-    from bname_dev_coma_knife_order.operators import coma_knife_cut_op
+    from bmanga_dev_coma_knife_order.operators import coma_knife_cut_op
 
     work, page = _prepare_case(root, name, read_direction)
     ok = coma_knife_cut_op._apply_cut_to_coma(
@@ -111,7 +111,7 @@ def _cut_case(name: str, read_direction: str, point_a, point_b, expectation: str
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_knife_order_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_knife_order_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -122,7 +122,7 @@ def main() -> None:
         _cut_case("right_vertical_down", "right", (100.0, 140.0), (100.0, -20.0), "c01_left", temp_root)
         _cut_case("left_horizontal", "left", (-20.0, 60.0), (220.0, 60.0), "c01_top", temp_root)
         _cut_case("right_horizontal", "right", (-20.0, 60.0), (220.0, 60.0), "c01_top", temp_root)
-        print("BNAME_COMA_KNIFE_CUT_READING_ORDER_OK", flush=True)
+        print("BMANGA_COMA_KNIFE_CUT_READING_ORDER_OK", flush=True)
     finally:
         if mod is not None:
             try:

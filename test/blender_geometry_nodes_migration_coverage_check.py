@@ -20,12 +20,12 @@ OUT_MD = OUT_DIR / "migration_coverage.md"
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_gn_migration",
+        "bmanga_dev_gn_migration",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_gn_migration"] = mod
+    sys.modules["bmanga_dev_gn_migration"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -171,14 +171,14 @@ def _write_report(results: list[dict]) -> None:
 
 def main() -> None:
     mod = None
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_gn_migration_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_gn_migration_"))
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "MigrationCoverage.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MigrationCoverage.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
-        from bname_dev_gn_migration.utils import geometry_nodes_bridge as bridge
+        from bmanga_dev_gn_migration.utils import geometry_nodes_bridge as bridge
 
         results = [
             _coverage_for_group(bridge, "balloon"),
@@ -195,7 +195,7 @@ def main() -> None:
             bad_missing.append({"kind": "common_shape_usage", "missing": ["フキダシの共通形状利用"]})
         if bad_missing:
             raise AssertionError(f"ノード入力が欠落しています: {bad_missing}")
-        print(f"BNAME_GEOMETRY_NODES_MIGRATION_COVERAGE_OK {OUT_MD}", flush=True)
+        print(f"BMANGA_GEOMETRY_NODES_MIGRATION_COVERAGE_OK {OUT_MD}", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

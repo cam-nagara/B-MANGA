@@ -265,7 +265,7 @@ def _normalize_start_percent_pair(data: dict) -> None:
 
 
 def effect_params_to_dict(params) -> dict:
-    """BNameEffectLineParams をレイヤーメタデータ保存用 dict に変換する。"""
+    """BMangaEffectLineParams をレイヤーメタデータ保存用 dict に変換する。"""
     data = {"schema_version": EFFECT_PARAM_SCHEMA_VERSION}
     for field in EFFECT_PARAM_FIELDS:
         if not hasattr(params, field):
@@ -290,7 +290,7 @@ def effect_params_to_dict(params) -> dict:
 
 
 def effect_params_from_dict(params, data: dict) -> None:
-    """保存済み dict を BNameEffectLineParams へ戻す。未知項目は無視する。"""
+    """保存済み dict を BMangaEffectLineParams へ戻す。未知項目は無視する。"""
     data = dict(data or {})
     try:
         schema_version = int(data.get("schema_version", 1) or 1)
@@ -351,7 +351,7 @@ def effect_params_from_dict(params, data: dict) -> None:
             _logger.debug("effect_line param restore skipped: %s=%r", field, value)
 
 
-class BNameEffectLineParams(bpy.types.PropertyGroup):
+class BMangaEffectLineParams(bpy.types.PropertyGroup):
     """効果線ツールのパラメータ (プリセット保存対象)."""
 
     effect_type: EnumProperty(name="種類", items=_EFFECT_TYPE_ITEMS, default="focus", update=_on_params_changed)  # type: ignore[valid-type]
@@ -472,7 +472,7 @@ class BNameEffectLineParams(bpy.types.PropertyGroup):
     white_outline_angle_deg: FloatProperty(name="角度", default=0.0, update=_on_params_changed)  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameEffectLineParams,)
+_CLASSES = (BMangaEffectLineParams,)
 
 
 def register() -> None:

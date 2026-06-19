@@ -31,10 +31,10 @@ def _draw_display_item(layout, label: str, item) -> None:
     row.prop(item, "font_size_unit", text="")
 
 
-class BNAME_OT_work_meta_dialog(Operator):
+class BMANGA_OT_work_meta_dialog(Operator):
     """作品情報、用紙、原稿上の表示をまとめて編集する."""
 
-    bl_idname = "bname.work_meta_dialog"
+    bl_idname = "bmanga.work_meta_dialog"
     bl_label = "作品情報"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -99,7 +99,7 @@ class BNAME_OT_work_meta_dialog(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_work_meta_dialog,)
+_CLASSES = (BMANGA_OT_work_meta_dialog,)
 
 
 def register() -> None:

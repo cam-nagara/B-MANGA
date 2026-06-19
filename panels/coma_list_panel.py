@@ -8,13 +8,13 @@ from bpy.types import Panel, UIList
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_active_page
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_OT_coma_enter_from_list(bpy.types.Operator):
+class BMANGA_OT_coma_enter_from_list(bpy.types.Operator):
     """UIList 行の「コマ編集へ」ボタン用: 指定 index のコマを選択してから enter_coma_mode."""
 
-    bl_idname = "bname.coma_enter_from_list"
+    bl_idname = "bmanga.coma_enter_from_list"
     bl_label = "このコマを編集"
     bl_options = {"REGISTER"}
 
@@ -31,11 +31,11 @@ class BNAME_OT_coma_enter_from_list(bpy.types.Operator):
         page.active_coma_index = self.index
         # enter_coma_mode.execute は active panel を対象にするので、
         # ここで invoke ではなく execute 経由で呼び出せば ok。
-        return bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+        return bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
 
 
-class BNAME_UL_comas(UIList):
-    bl_idname = "BNAME_UL_comas"
+class BMANGA_UL_comas(UIList):
+    bl_idname = "BMANGA_UL_comas"
 
     def draw_item(
         self,
@@ -55,7 +55,7 @@ class BNAME_UL_comas(UIList):
             row.label(text=f"z={item.z_order}")
             # 行内「コマ編集へ」ボタン (overview ダブルクリックと同等の導線)
             op = row.operator(
-                "bname.coma_enter_from_list",
+                "bmanga.coma_enter_from_list",
                 text="",
                 icon="PLAY",
                 emboss=False,
@@ -66,8 +66,8 @@ class BNAME_UL_comas(UIList):
             layout.label(text=item.coma_id)
 
 
-class BNAME_PT_comas(Panel):
-    bl_idname = "BNAME_PT_comas"
+class BMANGA_PT_comas(Panel):
+    bl_idname = "BMANGA_PT_comas"
     bl_label = "コマ一覧"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -95,15 +95,15 @@ class BNAME_PT_comas(Panel):
             # INVOKE だとマウス直下のコマ逆引きに失敗してボタンが無反応に
             # なるため、選択中コマを対象に execute する EXEC_DEFAULT で呼ぶ。
             row.operator_context = "EXEC_DEFAULT"
-            row.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
+            row.operator("bmanga.enter_coma_mode", text="コマ編集へ", icon="PLAY")
         else:
-            stem = getattr(context.scene, "bname_current_coma_id", "")
+            stem = getattr(context.scene, "bmanga_current_coma_id", "")
             row.label(text=f"コマ編集モード: {stem}", icon="IMAGE_DATA")
-            row.operator("bname.exit_coma_mode", text="戻る (Esc)", icon="BACK")
+            row.operator("bmanga.exit_coma_mode", text="戻る (Esc)", icon="BACK")
 
         row = layout.row()
         row.template_list(
-            BNAME_UL_comas.bl_idname,
+            BMANGA_UL_comas.bl_idname,
             "",
             page,
             "comas",
@@ -112,30 +112,30 @@ class BNAME_PT_comas(Panel):
             rows=6,
         )
         col = row.column(align=True)
-        col.operator("bname.coma_add", text="", icon="ADD")
-        col.operator("bname.coma_remove", text="", icon="REMOVE")
+        col.operator("bmanga.coma_add", text="", icon="ADD")
+        col.operator("bmanga.coma_remove", text="", icon="REMOVE")
         col.separator()
-        col.operator("bname.coma_duplicate", text="", icon="DUPLICATE")
-        col.operator("bname.coma_move_to_page", text="", icon="FORWARD")
+        col.operator("bmanga.coma_duplicate", text="", icon="DUPLICATE")
+        col.operator("bmanga.coma_move_to_page", text="", icon="FORWARD")
 
         # Z順序操作
         box = layout.box()
         box.label(text="Z順序")
         row = box.row(align=True)
-        op = row.operator("bname.coma_z_order", text="最背面", icon="TRIA_DOWN_BAR")
+        op = row.operator("bmanga.coma_z_order", text="最背面", icon="TRIA_DOWN_BAR")
         op.direction = "BACK"
-        op = row.operator("bname.coma_z_order", text="背面へ", icon="TRIA_DOWN")
+        op = row.operator("bmanga.coma_z_order", text="背面へ", icon="TRIA_DOWN")
         op.direction = "BACKWARD"
-        op = row.operator("bname.coma_z_order", text="前面へ", icon="TRIA_UP")
+        op = row.operator("bmanga.coma_z_order", text="前面へ", icon="TRIA_UP")
         op.direction = "FORWARD"
-        op = row.operator("bname.coma_z_order", text="最前面", icon="TRIA_UP_BAR")
+        op = row.operator("bmanga.coma_z_order", text="最前面", icon="TRIA_UP_BAR")
         op.direction = "FRONT"
 
 
 _CLASSES = (
-    BNAME_OT_coma_enter_from_list,
-    BNAME_UL_comas,
-    BNAME_PT_comas,
+    BMANGA_OT_coma_enter_from_list,
+    BMANGA_UL_comas,
+    BMANGA_PT_comas,
 )
 
 

@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_free_transform_check",
+        "bmanga_dev_free_transform_check",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_free_transform_check"] = mod
+    sys.modules["bmanga_dev_free_transform_check"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -44,8 +44,8 @@ def _curve_xy_bounds(obj) -> tuple[float, float, float, float]:
 
 
 def _apply_free_drag(context, key: str, dx: float, dy: float) -> None:
-    from bname_dev_free_transform_check.operators import object_tool_op
-    from bname_dev_free_transform_check.utils import free_transform
+    from bmanga_dev_free_transform_check.operators import object_tool_op
+    from bmanga_dev_free_transform_check.utils import free_transform
 
     class _DummyObjectTool:
         def _panel_child_snapshots(self, _page, _panel):
@@ -54,7 +54,7 @@ def _apply_free_drag(context, key: str, dx: float, dy: float) -> None:
     op = _DummyObjectTool()
     action = free_transform.action_for_part(free_transform.TOP_RIGHT)
     op._drag_action = action
-    op._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+    op._snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
         op,
         context,
         [key],
@@ -63,21 +63,21 @@ def _apply_free_drag(context, key: str, dx: float, dy: float) -> None:
     )
     if not op._snapshots:
         raise AssertionError(f"snapshot が作成されませんでした: {key}")
-    object_tool_op.BNAME_OT_object_tool._apply_snapshots(op, context, dx, dy)
+    object_tool_op.BMANGA_OT_object_tool._apply_snapshots(op, context, dx, dy)
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_free_transform_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_free_transform_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "FreeTransform.bname"))
+        bpy.context.scene.bmanga_overview_mode = True
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FreeTransform.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_free_transform_check.operators import effect_line_op
-        from bname_dev_free_transform_check.utils import (
+        from bmanga_dev_free_transform_check.operators import effect_line_op
+        from bmanga_dev_free_transform_check.utils import (
             balloon_curve_object,
             effect_line_object,
             free_transform,
@@ -86,7 +86,7 @@ def main() -> None:
         )
 
         scene = bpy.context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page = work.pages[0]
 
         text = page.texts.add()
@@ -145,7 +145,7 @@ def main() -> None:
         if after_effect[2] <= before_effect[2] + 1.0:
             raise AssertionError("効果線表示メッシュに自由変形が反映されていません")
 
-        print("BNAME_OBJECT_FREE_TRANSFORM_OK", flush=True)
+        print("BMANGA_OBJECT_FREE_TRANSFORM_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

@@ -278,14 +278,14 @@ def page_total_offset_mm(
 
 def resolve_gap_mm(scene) -> tuple[float, float]:
     """シーンからページ間隔 (横, 縦) mm を取得する."""
-    fallback = float(getattr(scene, "bname_overview_gap_mm", 30.0))
-    gap_x = float(getattr(scene, "bname_overview_gap_x_mm", fallback))
-    gap_y = float(getattr(scene, "bname_overview_gap_y_mm", fallback))
+    fallback = float(getattr(scene, "bmanga_overview_gap_mm", 30.0))
+    gap_x = float(getattr(scene, "bmanga_overview_gap_x_mm", fallback))
+    gap_y = float(getattr(scene, "bmanga_overview_gap_y_mm", fallback))
     return gap_x, gap_y
 
 
 def _resolve_overview_params(scene, work) -> tuple[int, float, float, float, float]:
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = resolve_gap_mm(scene)
     cw = float(work.paper.canvas_width_mm)
     ch = float(work.paper.canvas_height_mm)
@@ -297,7 +297,7 @@ def _resolve_overview_params(scene, work) -> tuple[int, float, float, float, flo
 # ページ用 blend のストロークには平行移動が届かない。ページ/コマ用 blend の
 # 保存時に「自ページの grid オフセット」を scene へ記録し、次の読込時に
 # 現在のオフセットとの差分だけストロークを動かして追従させる。
-PROP_GP_SAVED_PAGE_OFFSET = "bname_gp_saved_page_offset"
+PROP_GP_SAVED_PAGE_OFFSET = "bmanga_gp_saved_page_offset"
 
 
 def _own_detail_page_id(context) -> str:
@@ -315,7 +315,7 @@ def _own_detail_page_id(context) -> str:
         page_id = page_file_scene.current_page_id(scene)
         if page_id:
             return page_id
-        return str(getattr(scene, "bname_current_coma_page_id", "") or "")
+        return str(getattr(scene, "bmanga_current_coma_page_id", "") or "")
     except Exception:  # noqa: BLE001
         return ""
 
@@ -386,8 +386,8 @@ def reconcile_gp_strokes_with_page_offset(context, work) -> None:
     record_gp_page_offset(context, work)
 
 
-SUBPAGE_OFFSET_X_PROP = "bname_subpage_offset_x_mm"
-SUBPAGE_OFFSET_Y_PROP = "bname_subpage_offset_y_mm"
+SUBPAGE_OFFSET_X_PROP = "bmanga_subpage_offset_x_mm"
+SUBPAGE_OFFSET_Y_PROP = "bmanga_subpage_offset_y_mm"
 
 
 def _obj_subpage_offset_mm(obj) -> tuple[float, float]:
@@ -476,7 +476,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
 
     # entry-positioned kinds 用に scene 全体の image_layers を 1 度だけ index 化
     image_entries: dict[str, object] = {}
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         eid = str(getattr(entry, "id", "") or "")
         if eid:
             image_entries[eid] = entry
@@ -486,11 +486,11 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     text_objects_by_id: dict[str, object] = {}
     for obj in bpy.data.objects:
         try:
-            if str(obj.get("bname_kind", "") or "") != "text":
+            if str(obj.get("bmanga_kind", "") or "") != "text":
                 continue
-            if not bool(obj.get("bname_managed", False)):
+            if not bool(obj.get("bmanga_managed", False)):
                 continue
-            bid = str(obj.get("bname_id", "") or "")
+            bid = str(obj.get("bmanga_id", "") or "")
             if bid and bid not in text_objects_by_id:
                 text_objects_by_id[bid] = obj
         except Exception:  # noqa: BLE001
@@ -579,13 +579,13 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         direct_child_set = {id(o) for o in coll.objects}
         # サブコレクション (c01, c02, ... ) も含めた全 Object を走査。
         # Object が他ページの Collection にも link されているケースがあるため、
-        # ``bname_parent_key`` で「自分はこのページに属している」と明示している
+        # ``bmanga_parent_key`` で「自分はこのページに属している」と明示している
         # Object のみ位置更新する (二重処理防止)。
         for obj in coll.all_objects:
             sub_x, sub_y = _obj_subpage_offset_mm(obj)
-            kind = str(obj.get("bname_kind", "") or "")
-            managed = bool(obj.get("bname_managed", False))
-            parent_key = str(obj.get("bname_parent_key", "") or "")
+            kind = str(obj.get("bmanga_kind", "") or "")
+            managed = bool(obj.get("bmanga_managed", False))
+            parent_key = str(obj.get("bmanga_parent_key", "") or "")
             owner_page_id = _owner_page_id(parent_key)
             # parent_key がページ ID を持つのに現在処理中のページと違うなら、
             # 別ページの管轄なのでここでは触らない (そのページの iteration で更新される)
@@ -601,14 +601,14 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
                 continue
 
             if kind in entry_relative_kinds and managed:
-                bname_id = str(obj.get("bname_id", "") or "")
+                bmanga_id = str(obj.get("bmanga_id", "") or "")
                 entry = None
                 if kind == "balloon":
-                    entry = balloon_entries.get(bname_id)
+                    entry = balloon_entries.get(bmanga_id)
                 elif kind == "text":
-                    entry = text_entries.get(bname_id)
+                    entry = text_entries.get(bmanga_id)
                 elif kind == "image":
-                    entry = image_entries.get(bname_id)
+                    entry = image_entries.get(bmanga_id)
                 if entry is None:
                     continue
                 ex_mm = float(getattr(entry, "x_mm", 0.0) or 0.0)
@@ -623,7 +623,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
                 )
                 continue
 
-            # 旧仕様維持: bname_kind が無い page Collection 直下の Object
+            # 旧仕様維持: bmanga_kind が無い page Collection 直下の Object
             # (master_sketch 等) は page offset に揃える。コマサブ配下の
             # 未識別 Object (= 基本枠コマ Mesh など) には触らない。
             if id(obj) in direct_child_set:
@@ -635,8 +635,8 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
         updated += 1
 
     # コマ平面 Mesh (utils/coma_plane.py) は ``__masks__`` 撤廃後の新方式で、
-    # コマ Collection 直下 + ``bname_managed=False`` で識別フラグも持たないため
-    # 上記の bname_kind 判定では拾われない。 page offset 変更時に追従させるため、
+    # コマ Collection 直下 + ``bmanga_managed=False`` で識別フラグも持たないため
+    # 上記の bmanga_kind 判定では拾われない。 page offset 変更時に追従させるため、
     # 末尾で明示的に locations を再計算する。
     try:
         from . import coma_plane as _cp

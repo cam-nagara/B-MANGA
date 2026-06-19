@@ -226,23 +226,23 @@ def prepare_coma_blend_scene(context, *, purge_orphans: bool = True) -> None:
     """cNN.blend を コマ専用 scene に寄せる.
 
     既存の save_as 由来 cNN.blend を開いたときも、この関数で work.blend 由来の
-    B-Name collection / paper / GP を scene から掃除する。
+    B-MANGA collection / paper / GP を scene から掃除する。
     """
     scene = _resolve_scene(context)
     if scene is None:
         return
     try:
-        scene.bname_overview_mode = False
+        scene.bmanga_overview_mode = False
     except Exception:  # noqa: BLE001
         pass
 
     roots = _coma_cleanup_roots(scene)
     for root in roots:
         _remove_collection_tree_objects(root)
-    _remove_internal_bname_objects()
+    _remove_internal_bmanga_objects()
     for root in roots:
         _remove_collection_tree(scene, root)
-    _purge_internal_bname_data()
+    _purge_internal_bmanga_data()
     if purge_orphans:
         _purge_generic_orphan_data()
 
@@ -271,7 +271,7 @@ def _active_view_layer_name(scene) -> str:
 def _coma_cleanup_roots(scene) -> list[object]:
     roots: list[object] = []
     for child in tuple(scene.collection.children):
-        if _is_internal_bname_collection(child):
+        if _is_internal_bmanga_collection(child):
             roots.append(child)
     root = bpy.data.collections.get(gp_utils.ROOT_COLLECTION_NAME)
     if root is not None and root not in roots:
@@ -311,10 +311,10 @@ def _set_coma_scene_state(context, work, page_id: str, coma_id: str) -> bool:
         )
         return False
     page.active_coma_index = active_coma_index
-    scene.bname_current_coma_id = coma_id
-    scene.bname_current_coma_page_id = page_id
-    if hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "coma"
+    scene.bmanga_current_coma_id = coma_id
+    scene.bmanga_current_coma_page_id = page_id
+    if hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "coma"
     set_mode(MODE_COMA, context)
     return True
 
@@ -361,9 +361,9 @@ def _remove_collection_tree_objects(root) -> None:
                 _logger.exception("prepare_coma_blend_scene: remove collection object failed: %s", obj.name)
 
 
-def _remove_internal_bname_objects() -> None:
+def _remove_internal_bmanga_objects() -> None:
     for obj in tuple(bpy.data.objects):
-        if not _is_internal_bname_object(obj):
+        if not _is_internal_bmanga_object(obj):
             continue
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -407,9 +407,9 @@ def _unlink_collection_from_all_parents(scene, coll) -> None:
             )
 
 
-def _purge_internal_bname_data() -> None:
+def _purge_internal_bmanga_data() -> None:
     for coll in tuple(bpy.data.collections):
-        if not _is_internal_bname_collection(coll):
+        if not _is_internal_bmanga_collection(coll):
             continue
         if coll.users != 0:
             continue
@@ -433,7 +433,7 @@ def _purge_internal_bname_data() -> None:
         gp_blocks = getattr(bpy.data, "grease_pencils", None)
     if gp_blocks is not None:
         for gp_data in tuple(gp_blocks):
-            if not _is_internal_bname_gp_data_name(gp_data.name):
+            if not _is_internal_bmanga_gp_data_name(gp_data.name):
                 continue
             if gp_data.users != 0:
                 continue
@@ -477,7 +477,7 @@ def _purge_orphan_collection(blocks) -> None:
             pass
 
 
-def _is_internal_bname_collection(coll) -> bool:
+def _is_internal_bmanga_collection(coll) -> bool:
     name = str(getattr(coll, "name", "") or "")
     return (
         name == gp_utils.ROOT_COLLECTION_NAME
@@ -486,7 +486,7 @@ def _is_internal_bname_collection(coll) -> bool:
     )
 
 
-def _is_internal_bname_object(obj) -> bool:
+def _is_internal_bmanga_object(obj) -> bool:
     name = str(getattr(obj, "name", "") or "")
     if name == gp_utils.MASTER_GP_OBJECT_NAME or bool(
         re.match(rf"^{re.escape(gp_utils.MASTER_GP_OBJECT_NAME)}\.\d{{3}}$", name)
@@ -495,7 +495,7 @@ def _is_internal_bname_object(obj) -> bool:
     return bool(_PAGE_HELPER_OBJECT_RE.match(name) or _PAGE_OBJECT_RE.match(name))
 
 
-def _is_internal_bname_gp_data_name(name: str) -> bool:
+def _is_internal_bmanga_gp_data_name(name: str) -> bool:
     return (
         name == gp_utils.MASTER_GP_DATA_NAME
         or bool(re.match(rf"^{re.escape(gp_utils.MASTER_GP_DATA_NAME)}\.\d{{3}}$", name))

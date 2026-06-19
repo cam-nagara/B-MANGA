@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_uni_flash",
+        "bmanga_dev_balloon_uni_flash",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_uni_flash"] = mod
+    sys.modules["bmanga_dev_balloon_uni_flash"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -135,30 +135,30 @@ def _effect_setting_props(effect_line_panel, params, effect_type: str) -> list[s
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_uni_flash_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_uni_flash_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonFlash.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonFlash.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_uni_flash.core import balloon as balloon_core
-        from bname_dev_balloon_uni_flash.core import effect_line as effect_line_core
-        from bname_dev_balloon_uni_flash.core.work import get_work
-        from bname_dev_balloon_uni_flash.io import export_balloon, schema
-        from bname_dev_balloon_uni_flash.operators import layer_detail_op
-        from bname_dev_balloon_uni_flash.operators import balloon_op
-        from bname_dev_balloon_uni_flash.panels import effect_line_panel
-        from bname_dev_balloon_uni_flash.panels import layer_stack_detail_ui
-        from bname_dev_balloon_uni_flash.utils import (
+        from bmanga_dev_balloon_uni_flash.core import balloon as balloon_core
+        from bmanga_dev_balloon_uni_flash.core import effect_line as effect_line_core
+        from bmanga_dev_balloon_uni_flash.core.work import get_work
+        from bmanga_dev_balloon_uni_flash.io import export_balloon, schema
+        from bmanga_dev_balloon_uni_flash.operators import layer_detail_op
+        from bmanga_dev_balloon_uni_flash.operators import balloon_op
+        from bmanga_dev_balloon_uni_flash.panels import effect_line_panel
+        from bmanga_dev_balloon_uni_flash.panels import layer_stack_detail_ui
+        from bmanga_dev_balloon_uni_flash.utils import (
             balloon_curve_object,
             balloon_flash_effect_line_mesh,
             balloon_line_mesh,
             balloon_shapes,
         )
-        from bname_dev_balloon_uni_flash.utils.geom import Rect
-        from bname_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_uni_flash.utils.geom import Rect
+        from bmanga_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -234,7 +234,7 @@ def main() -> None:
                 # v0.6.286: ウニフラに「ズラし量」が追加されている
                 assert hasattr(entry, "uni_flash_offset_percent")
                 assert abs(float(entry.uni_flash_offset_percent) - 0.0) < 1.0e-6
-                focus_params = context.scene.bname_effect_line_params
+                focus_params = context.scene.bmanga_effect_line_params
                 focus_params.start_shape = entry.start_shape
                 focus_params.end_shape = entry.end_shape
                 focus_params.spacing_mode = entry.spacing_mode
@@ -431,7 +431,7 @@ def main() -> None:
             assert layer is not None, "フキダシを書き出せません"
             assert layer.image.size[0] > 0 and layer.image.size[1] > 0
 
-        print("BNAME_BALLOON_FLASH_LINE_STYLES_OK")
+        print("BMANGA_BALLOON_FLASH_LINE_STYLES_OK")
     finally:
         if mod is not None:
             try:

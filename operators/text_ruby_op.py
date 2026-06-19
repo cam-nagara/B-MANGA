@@ -89,10 +89,10 @@ def _sync_after_ruby_change(context, page, entry, start: int, end: int) -> None:
     layer_stack_utils.tag_view3d_redraw(context)
 
 
-class BNAME_OT_text_ruby_add_dialog(Operator):
+class BMANGA_OT_text_ruby_add_dialog(Operator):
     """選択中の文字にルビを付ける."""
 
-    bl_idname = "bname.text_ruby_add_dialog"
+    bl_idname = "bmanga.text_ruby_add_dialog"
     bl_label = "ルビを付ける"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -173,10 +173,10 @@ class BNAME_OT_text_ruby_add_dialog(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_text_ruby_clear(Operator):
+class BMANGA_OT_text_ruby_clear(Operator):
     """選択中のテキストからルビを削除する."""
 
-    bl_idname = "bname.text_ruby_clear"
+    bl_idname = "bmanga.text_ruby_clear"
     bl_label = "ルビを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -208,8 +208,8 @@ class BNAME_OT_text_ruby_clear(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_text_ruby_add_dialog,
-    BNAME_OT_text_ruby_clear,
+    BMANGA_OT_text_ruby_add_dialog,
+    BMANGA_OT_text_ruby_clear,
 )
 
 

@@ -15,7 +15,7 @@ _logger = log.get_logger(__name__)
 
 
 def _find_balloon(context, page_id: str, balloon_id: str):
-    work = getattr(context.scene, "bname_work", None)
+    work = getattr(context.scene, "bmanga_work", None)
     if work is None:
         return None, None
     target_page_id = str(page_id or "")
@@ -101,8 +101,8 @@ def _page_offset_mm(context, work, page) -> tuple[float, float]:
     return 0.0, 0.0
 
 
-class BNAME_OT_balloons_to_curve_all(bpy.types.Operator):
-    bl_idname = "bname.balloons_to_curve_all"
+class BMANGA_OT_balloons_to_curve_all(bpy.types.Operator):
+    bl_idname = "bmanga.balloons_to_curve_all"
     bl_label = "全フキダシを再生成"
     bl_description = "全 page.balloons を Bezier Curve として再生成します。"
     bl_options = {"REGISTER", "UNDO"}
@@ -128,8 +128,8 @@ class BNAME_OT_balloons_to_curve_all(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_regenerate_keep_edit(bpy.types.Operator):
-    bl_idname = "bname.balloon_regenerate_keep_edit"
+class BMANGA_OT_balloon_regenerate_keep_edit(bpy.types.Operator):
+    bl_idname = "bmanga.balloon_regenerate_keep_edit"
     bl_label = "手編集を維持して再生成"
     bl_description = "制御点数と順序が一致する場合だけ、手編集差分を維持してフキダシ形状を再生成します。"
     bl_options = {"REGISTER", "UNDO"}
@@ -156,8 +156,8 @@ class BNAME_OT_balloon_regenerate_keep_edit(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_register_selected_curve(bpy.types.Operator):
-    bl_idname = "bname.balloon_register_selected_curve"
+class BMANGA_OT_balloon_register_selected_curve(bpy.types.Operator):
+    bl_idname = "bmanga.balloon_register_selected_curve"
     bl_label = "選択カーブをフキダシに登録"
     bl_description = "選択中のBlenderカーブを自由形状フキダシとして登録します。"
     bl_options = {"REGISTER", "UNDO"}
@@ -181,7 +181,7 @@ class BNAME_OT_balloon_register_selected_curve(bpy.types.Operator):
         if obj is None or bounds is None:
             self.report({"WARNING"}, "登録できるカーブが見つかりません")
             return {"CANCELLED"}
-        work = getattr(context.scene, "bname_work", None)
+        work = getattr(context.scene, "bmanga_work", None)
         parent_kind, parent_key, page = active_target.resolve_active_target(context)
         if page is None:
             self.report({"WARNING"}, "ページが選択されていません")
@@ -208,7 +208,7 @@ class BNAME_OT_balloon_register_selected_curve(bpy.types.Operator):
         on.stamp_identity(
             obj,
             kind="balloon",
-            bname_id=entry.id,
+            bmanga_id=entry.id,
             title=entry.title,
             z_index=1000 + len(page.balloons) * 10,
             parent_key=parent_key,
@@ -221,8 +221,8 @@ class BNAME_OT_balloon_register_selected_curve(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_regenerate_discard_edit(bpy.types.Operator):
-    bl_idname = "bname.balloon_regenerate_discard_edit"
+class BMANGA_OT_balloon_regenerate_discard_edit(bpy.types.Operator):
+    bl_idname = "bmanga.balloon_regenerate_discard_edit"
     bl_label = "手編集を破棄して再生成"
     bl_description = "Blenderで直接編集した制御点を破棄し、詳細設定の形状として再生成します。"
     bl_options = {"REGISTER", "UNDO"}
@@ -249,10 +249,10 @@ class BNAME_OT_balloon_regenerate_discard_edit(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_images_to_empty_all(bpy.types.Operator):
+class BMANGA_OT_images_to_empty_all(bpy.types.Operator):
     """画像レイヤーを実画像平面として登録する互換 Operator."""
 
-    bl_idname = "bname.images_to_empty_all"
+    bl_idname = "bmanga.images_to_empty_all"
     bl_label = "全画像レイヤーを再登録"
     bl_description = "画像レイヤーを透明画像付きの平面として登録します。"
     bl_options = {"REGISTER", "UNDO"}
@@ -264,7 +264,7 @@ class BNAME_OT_images_to_empty_all(bpy.types.Operator):
         work = get_work(context)
         if not (work and getattr(work, "loaded", False)):
             return False
-        return getattr(context.scene, "bname_image_layers", None) is not None
+        return getattr(context.scene, "bmanga_image_layers", None) is not None
 
     def execute(self, context):
         from ..core.work import get_work
@@ -276,14 +276,14 @@ class BNAME_OT_images_to_empty_all(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_texts_to_empty_all(bpy.types.Operator):
+class BMANGA_OT_texts_to_empty_all(bpy.types.Operator):
     """テキストレイヤーを実体付き表示 Object として登録."""
 
-    bl_idname = "bname.texts_to_empty_all"
+    bl_idname = "bmanga.texts_to_empty_all"
     bl_label = "全テキストを再登録"
     bl_description = (
         "テキストを透明画像付きの平面として登録します。"
-        "編集用のカーソルや選択範囲は B-Name のオーバーレイで表示します。"
+        "編集用のカーソルや選択範囲は B-MANGA のオーバーレイで表示します。"
     )
     bl_options = {"REGISTER", "UNDO"}
 
@@ -308,19 +308,19 @@ class BNAME_OT_texts_to_empty_all(bpy.types.Operator):
         return {"FINISHED"}
 
 
-# 後方互換: 旧 op 名 bname.texts_to_plane_all を新しい実体版にエイリアス。
+# 後方互換: 旧 op 名 bmanga.texts_to_plane_all を新しい実体版にエイリアス。
 # Blender 5.x では Operator サブクラスが親の bl_rna を継承すると
 # 「unable to get Python class for RNA struct」警告が連発するため、
 # 継承ではなく独立クラスとして定義し、execute は再実装してロジックを共有する。
-class BNAME_OT_texts_to_plane_all(bpy.types.Operator):
-    bl_idname = "bname.texts_to_plane_all"
+class BMANGA_OT_texts_to_plane_all(bpy.types.Operator):
+    bl_idname = "bmanga.texts_to_plane_all"
     bl_label = "全テキストを再登録 (旧名)"
-    bl_description = BNAME_OT_texts_to_empty_all.bl_description
+    bl_description = BMANGA_OT_texts_to_empty_all.bl_description
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return BNAME_OT_texts_to_empty_all.poll(context)
+        return BMANGA_OT_texts_to_empty_all.poll(context)
 
     def execute(self, context):
         from ..core.work import get_work
@@ -337,13 +337,13 @@ class BNAME_OT_texts_to_plane_all(bpy.types.Operator):
 
 
 _CLASSES = (
-    BNAME_OT_balloons_to_curve_all,
-    BNAME_OT_balloon_regenerate_keep_edit,
-    BNAME_OT_balloon_register_selected_curve,
-    BNAME_OT_balloon_regenerate_discard_edit,
-    BNAME_OT_images_to_empty_all,
-    BNAME_OT_texts_to_empty_all,
-    BNAME_OT_texts_to_plane_all,
+    BMANGA_OT_balloons_to_curve_all,
+    BMANGA_OT_balloon_regenerate_keep_edit,
+    BMANGA_OT_balloon_register_selected_curve,
+    BMANGA_OT_balloon_regenerate_discard_edit,
+    BMANGA_OT_images_to_empty_all,
+    BMANGA_OT_texts_to_empty_all,
+    BMANGA_OT_texts_to_plane_all,
 )
 
 

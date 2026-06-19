@@ -12,7 +12,7 @@
       Boolean Modifier (Intersect, FLOAT solver) で実形状クリップ。
     - GP 系レイヤー (gp / effect): Blender 5.1 GP v3 では外部 Mesh Object
       をマスク source にする一般 Modifier が無いため、現状は no-op。
-      Phase 5d で `__bname_mask` 内蔵 layer 方式で実装予定。
+      Phase 5d で `__bmanga_mask` 内蔵 layer 方式で実装予定。
 """
 
 from __future__ import annotations
@@ -29,12 +29,12 @@ from . import paper_bg_object as pbg
 
 _logger = log.get_logger(__name__)
 
-MOD_NAME_COMA_MASK = "BName Coma Mask"
-MOD_NAME_PAGE_MASK = "BName Page Mask"
-MOD_NAME_PAGE_MASK_VOLUME = "BName Page Mask Volume"
+MOD_NAME_COMA_MASK = "BManga Coma Mask"
+MOD_NAME_PAGE_MASK = "BManga Page Mask"
+MOD_NAME_PAGE_MASK_VOLUME = "BManga Page Mask Volume"
 PAGE_MASK_VOLUME_NAME_PREFIX = "page_mask_volume_"
-PROP_PAGE_MASK_VOLUME_KIND = "bname_page_mask_volume_kind"
-PROP_PAGE_MASK_VOLUME_OWNER_ID = "bname_page_mask_volume_owner_id"
+PROP_PAGE_MASK_VOLUME_KIND = "bmanga_page_mask_volume_kind"
+PROP_PAGE_MASK_VOLUME_OWNER_ID = "bmanga_page_mask_volume_owner_id"
 _DEFER_VIEW_UPDATE_DEPTH = 0
 _PENDING_VIEW_UPDATE = False
 
@@ -175,7 +175,7 @@ def _semantic_mask_parent_key(obj: bpy.types.Object, parent_key: str) -> str:
     if bpy.context is None:
         return parent_key
     scene = getattr(bpy.context, "scene", None)
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return parent_key
     try:
@@ -275,7 +275,7 @@ def _ensure_boolean_intersect_modifier(
         _logger.exception("mask_apply: boolean modifier setup failed")
 
 
-_GP_MASK_LAYER_NAME = "__bname_mask"
+_GP_MASK_LAYER_NAME = "__bmanga_mask"
 
 
 def _build_polygon_strokes_from_mesh(
@@ -302,7 +302,7 @@ def _build_polygon_strokes_from_mesh(
         pass
     # mesh ローカル座標 → GP Object ローカル座標。
     # hidden な Boolean 参照用 Object は matrix_world が更新されない場合がある
-    # ため、B-Name のマスク Object が使う location + local vertex で明示的に
+    # ため、B-MANGA のマスク Object が使う location + local vertex で明示的に
     # 座標を組み立てる。
     mesh_loc = getattr(mesh_obj, "location", None)
     owner_loc = getattr(owner_obj, "location", None) if owner_obj is not None else None
@@ -355,7 +355,7 @@ def _ensure_gp_fill_material(obj) -> int:
     """マスク塗り潰し用の Fill-only マテリアルを ensure し slot index を返す."""
     if obj is None or getattr(obj, "type", "") != "GREASEPENCIL":
         return 0
-    name = "BName_Mask_Fill"
+    name = "BManga_Mask_Fill"
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name=name)
@@ -390,7 +390,7 @@ def _ensure_gp_fill_material(obj) -> int:
 def _ensure_gp_internal_mask(
     obj: bpy.types.Object, target: bpy.types.Object
 ) -> None:
-    """GP Object に ``__bname_mask`` 内蔵レイヤーを生成し、target Mesh の
+    """GP Object に ``__bmanga_mask`` 内蔵レイヤーを生成し、target Mesh の
     形状をその layer の stroke として描いて、コンテンツレイヤーから mask 参照
     する (Blender 5.1 GP v3 の `GreasePencilLayer.use_masks` + `mask_layers`).
     """
@@ -413,7 +413,7 @@ def _ensure_gp_internal_mask(
         try:
             mask_layer = gp_utils.ensure_layer(gp_data, _GP_MASK_LAYER_NAME)
         except Exception:  # noqa: BLE001
-            _logger.exception("GP __bname_mask layer create failed")
+            _logger.exception("GP __bmanga_mask layer create failed")
             return
 
     # マスクレイヤーは描画上は非表示 (stroke 自体は配置するが、mask 専用として
@@ -448,7 +448,7 @@ def _ensure_gp_internal_mask(
     except Exception:  # noqa: BLE001
         _logger.exception("GP mask drawing build failed")
 
-    # 全コンテンツレイヤー (= __bname_mask 以外) で use_masks を有効にし、
+    # 全コンテンツレイヤー (= __bmanga_mask 以外) で use_masks を有効にし、
     # mask_layers コレクションに mask layer を登録する
     for layer in layers:
         if getattr(layer, "name", "") == _GP_MASK_LAYER_NAME:
@@ -561,7 +561,7 @@ def _add_gp_mask_reference_with_operator(obj, gp_data, layer) -> bool:
 
 
 def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
-    """GP Object から ``__bname_mask`` 内蔵レイヤーと参照を取り除く."""
+    """GP Object から ``__bmanga_mask`` 内蔵レイヤーと参照を取り除く."""
     if obj is None or getattr(obj, "type", "") != "GREASEPENCIL":
         return
     gp_data = obj.data
@@ -570,7 +570,7 @@ def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
     layers = getattr(gp_data, "layers", None)
     if layers is None:
         return
-    # 各コンテンツレイヤーの mask_layers から __bname_mask を外す
+    # 各コンテンツレイヤーの mask_layers から __bmanga_mask を外す
     for layer in layers:
         if getattr(layer, "name", "") == _GP_MASK_LAYER_NAME:
             continue
@@ -593,7 +593,7 @@ def _remove_gp_internal_mask(obj: bpy.types.Object) -> None:
                 pass
         except Exception:  # noqa: BLE001
             pass
-    # __bname_mask layer 自体を削除
+    # __bmanga_mask layer 自体を削除
     mask_layer = layers.get(_GP_MASK_LAYER_NAME)
     if mask_layer is not None:
         try:
@@ -609,7 +609,7 @@ def _ensure_gp_mask_modifier(
 
     Blender 5.1 GP v3 では ``GreasePencilLayer.use_masks`` と
     ``mask_layers`` を使う。同じ GP Object 内のマスクレイヤーを参照する
-    仕組みなので、target Mesh の形状を ``__bname_mask`` レイヤーの stroke
+    仕組みなので、target Mesh の形状を ``__bmanga_mask`` レイヤーの stroke
     として描き写してから mask 参照を立てる。
     """
     if obj is None:
@@ -635,7 +635,7 @@ def _remove_modifier_if_present(obj: bpy.types.Object, mod_name: str) -> None:
 
 
 def remove_mask_from_object(obj: bpy.types.Object) -> None:
-    """Remove B-Name clipping modifiers/internal GP masks from an object."""
+    """Remove B-MANGA clipping modifiers/internal GP masks from an object."""
     if obj is None:
         return
     _remove_modifier_if_present(obj, MOD_NAME_COMA_MASK)
@@ -714,7 +714,7 @@ def apply_mask_to_object_for_parent(obj: bpy.types.Object, parent_key: str) -> N
 
 
 def apply_masks_to_all_managed(scene: bpy.types.Scene) -> int:
-    """全 B-Name 管理 Object にマスクを適用する。適用件数を返す."""
+    """全 B-MANGA 管理 Object にマスクを適用する。適用件数を返す."""
     if scene is None:
         return 0
     _cleanup_visible_page_bg_mask_volumes()

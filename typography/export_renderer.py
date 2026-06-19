@@ -34,6 +34,10 @@ def has_pillow() -> bool:
     return _HAS_PIL
 
 
+def _layout_bottom_to_pillow_top(image_height: int, y_px: float, size_px: int) -> float:
+    return float(image_height) - (float(y_px) + float(size_px))
+
+
 def _draw_rotated_char(
     image: Any,
     draw: Any,
@@ -98,8 +102,8 @@ def render_to_image(
         font = font_for(glyph_font_path, size_px)
         x = origin_xy_px[0] + g.x_mm * px_per_mm
         y = origin_xy_px[1] + g.y_mm * px_per_mm
-        # Pillow の座標系は左上原点なので Y 反転
-        y_px = image.height - y
+        # layout.py の y は文字の下端、Pillow は左上原点の上端指定。
+        y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
         glyph_color = color_for_index(g.index) if color_for_index is not None else color
         kwargs: dict = {"fill": glyph_color}
         if stroke_width_px > 0:
@@ -126,7 +130,7 @@ def render_to_image(
         font = font_for(font_path, size_px)
         x = origin_xy_px[0] + float(getattr(r, "x_mm", 0.0)) * px_per_mm
         y = origin_xy_px[1] + float(getattr(r, "y_mm", 0.0)) * px_per_mm
-        y_px = image.height - y
+        y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
         kwargs: dict = {"fill": color}
         if stroke_width_px > 0:
             kwargs["stroke_width"] = max(1, stroke_width_px // 2)

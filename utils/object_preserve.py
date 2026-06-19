@@ -6,12 +6,12 @@ import bpy
 
 from . import object_naming as on
 
-PROP_PRESERVED = "bname_preserved_external_object"
-PROP_PRESERVE_REASON = "bname_preserve_reason"
+PROP_PRESERVED = "bmanga_preserved_external_object"
+PROP_PRESERVE_REASON = "bmanga_preserve_reason"
 
 
 def preserve_object(obj: bpy.types.Object | None, reason: str = "") -> bool:
-    """Keep an object in the file but detach it from automatic B-Name rewrites."""
+    """Keep an object in the file but detach it from automatic B-MANGA rewrites."""
     if obj is None:
         return False
     try:

@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -36,28 +36,28 @@ def _value_node_default(material) -> float:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_detail_settings_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_detail_settings_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "Detail_Settings.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Detail_Settings.bmanga"))
         assert result == {"FINISHED"}, result
 
-        result = bpy.ops.bname.raster_layer_add(dpi=300, bit_depth="gray8")
+        result = bpy.ops.bmanga.raster_layer_add(dpi=300, bit_depth="gray8")
         assert result == {"FINISHED"}, result
-        entry = bpy.context.scene.bname_raster_layers[0]
+        entry = bpy.context.scene.bmanga_raster_layers[0]
 
-        from bname_dev.operators import raster_layer_op
-        from bname_dev.core.work import get_work
-        from bname_dev.io import balloon_presets
-        from bname_dev.ui import overlay_image
-        from bname_dev.utils import balloon_shapes
-        from bname_dev.utils import detail_popup
-        from bname_dev.utils import object_naming
-        from bname_dev.utils.geom import Rect
+        from bmanga_dev.operators import raster_layer_op
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.io import balloon_presets
+        from bmanga_dev.ui import overlay_image
+        from bmanga_dev.utils import balloon_shapes
+        from bmanga_dev.utils import detail_popup
+        from bmanga_dev.utils import object_naming
+        from bmanga_dev.utils.geom import Rect
 
-        obj = object_naming.find_object_by_bname_id(entry.id, kind="raster")
+        obj = object_naming.find_object_by_bmanga_id(entry.id, kind="raster")
         if obj is None:
             obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
         assert obj is not None
@@ -125,8 +125,8 @@ def main() -> None:
             key="test_detail",
             offset_x=50,
         )
-        assert fake_wm["bname_detail_popup_pos_test_detail_x"] == 150
-        assert fake_wm["bname_detail_popup_pos_test_detail_y"] == 200
+        assert fake_wm["bmanga_detail_popup_pos_test_detail_x"] == 150
+        assert fake_wm["bmanga_detail_popup_pos_test_detail_y"] == 200
         detail_popup.position_dialog_cursor(
             fake_context,
             SimpleNamespace(mouse_x=300, mouse_y=400),
@@ -138,7 +138,7 @@ def main() -> None:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_DETAIL_SETTINGS_RUNTIME_OK")
+    print("BMANGA_DETAIL_SETTINGS_RUNTIME_OK")
 
 
 if __name__ == "__main__":

@@ -4,9 +4,9 @@
 
     blender --background "<file.blend>" --python runner.py -- <サブコマンド> ...
 
-の形で起動する。Blender の UI は使わず、B-Name-Render の
+の形で起動する。Blender の UI は使わず、B-MANGA Render の
 プリセットを名前指定で1件実行する。レンダー時間の計測ログは
-アドオン側 ``batch_log`` が環境変数 ``BNAME_BATCH_LOG`` のパスへ
+アドオン側 ``batch_log`` が環境変数 ``BMANGA_BATCH_LOG`` のパスへ
 書き出す（worker がそのパスを env で渡す）。
 
 サブコマンド:
@@ -15,7 +15,7 @@
 
 共通オプション:
   --result "<path>"         : 実行結果サマリ JSON の書き出し先
-  --addon-dir "<path>"      : b_name_render を含む addons ディレクトリ
+  --addon-dir "<path>"      : b_manga_render を含む addons ディレクトリ
                               （拡張として未導入の環境向け。省略時は導入済み拡張を探す）
 """
 
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import bpy
 
-ADDON_PKG = "b_name_render"
+ADDON_PKG = "b_manga_render"
 
 
 def _args_after_ddash() -> list[str]:
@@ -65,9 +65,9 @@ def _parse(args: list[str]) -> dict:
 
 
 def _find_loaded_module():
-    """すでに読み込み済みの b_name_render パッケージ本体を探す。
+    """すでに読み込み済みの b_manga_render パッケージ本体を探す。
 
-    Blender 4.2+ の拡張はパッケージ名が ``bl_ext.<repo>.b_name_render``
+    Blender 4.2+ の拡張はパッケージ名が ``bl_ext.<repo>.b_manga_render``
     などになるため、末尾一致で柔軟に探す。
     """
     for name, module in list(sys.modules.items()):
@@ -78,7 +78,7 @@ def _find_loaded_module():
 
 
 def _ensure_addon(addon_dir: str):
-    """B-Name-Render を有効化し、パッケージ本体モジュールを返す。
+    """B-MANGA Render を有効化し、パッケージ本体モジュールを返す。
 
     1) 既に拡張として読み込み済みならそれを使う。
     2) addon_dir 指定があれば sys.path 経由で import して register。
@@ -134,7 +134,7 @@ def _get_submodule(module, sub: str):
 
 def _state():
     scene = bpy.context.scene
-    return getattr(scene, "bname_render_state", None)
+    return getattr(scene, "bmanga_render_state", None)
 
 
 def _write_result(path: str, data: dict) -> None:
@@ -155,10 +155,10 @@ def main() -> int:
     try:
         module = _ensure_addon(opts["addon_dir"])
         if module is None:
-            raise RuntimeError("B-Name-Render を有効化できません（拡張が見つかりません）")
+            raise RuntimeError("B-MANGA Render を有効化できません（拡張が見つかりません）")
         state = _state()
         if state is None:
-            raise RuntimeError("このファイルに B-Name-Render のデータがありません")
+            raise RuntimeError("このファイルに B-MANGA Render のデータがありません")
 
         if opts["mode"] == "list":
             names = [str(p.name) for p in state.presets]

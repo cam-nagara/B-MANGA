@@ -50,12 +50,12 @@ work
 
 ### 新規追加プロパティ
 
-#### `BNameWorkData` (work)
+#### `BMangaWorkData` (work)
 
 ```python
-shared_balloons: CollectionProperty(type=BNameBalloonEntry)
-shared_texts: CollectionProperty(type=BNameTextEntry)
-shared_comas: CollectionProperty(type=BNameComaEntry)
+shared_balloons: CollectionProperty(type=BMangaBalloonEntry)
+shared_texts: CollectionProperty(type=BMangaTextEntry)
+shared_comas: CollectionProperty(type=BMangaComaEntry)
 ```
 
 (image / raster は既存で `scope` プロパティで master 化可能)
@@ -67,7 +67,7 @@ shared_comas: CollectionProperty(type=BNameComaEntry)
 
 ### 影響を受ける既存ロジック
 
-- `core/page.py`: `BNamePageEntry.balloons` / `.texts` / `.comas` 走査ロジック → `(page or shared)` 両方を見る共通イテレータが必要
+- `core/page.py`: `BMangaPageEntry.balloons` / `.texts` / `.comas` 走査ロジック → `(page or shared)` 両方を見る共通イテレータが必要
 - `io/schema.py` / `io/page_io.py` / `io/work_io.py`: 保存/読込スキーマに `shared_*` を追加
 - `utils/layer_stack.py`: collect_targets で shared コレクションを最上位グループとして集約
 - `panels/gpencil_panel.py`: レイヤーリストに「(ページ外)」グループ表示
@@ -82,9 +82,9 @@ shared_comas: CollectionProperty(type=BNameComaEntry)
 **実装内容**
 1. `utils/layer_reparent.py` 新設: 1 つのレイヤー (or マルチセレクト集合) を指定コンテナへ reparent する純関数
 2. `operators/alt_reparent_op.py` 新設: 3 つのオペレーター
-   - `BNAME_OT_alt_reparent_drag` (modal): Alt+ドラッグ
-   - `BNAME_OT_alt_reparent_into` (oneshot): Alt+クリック → 1 段深い
-   - `BNAME_OT_alt_reparent_out` (oneshot): Alt+Shift+クリック → 1 段浅い
+   - `BMANGA_OT_alt_reparent_drag` (modal): Alt+ドラッグ
+   - `BMANGA_OT_alt_reparent_into` (oneshot): Alt+クリック → 1 段深い
+   - `BMANGA_OT_alt_reparent_out` (oneshot): Alt+Shift+クリック → 1 段浅い
 3. `ui/reparent_overlay.py` 新設: GPU draw_handler でドロップインジケーター描画
 4. `keymap/keymap.py`: Alt+LEFTMOUSE / Alt+Shift+LEFTMOUSE 追加
 5. CHANGELOG / コミット / プッシュ
@@ -100,7 +100,7 @@ shared_comas: CollectionProperty(type=BNameComaEntry)
 「ページ外」コレクションの新設と、コマ / balloon / text / image / raster の page 外昇格対応。
 
 **実装内容**
-1. `BNameWorkData.shared_balloons` / `shared_texts` / `shared_comas` を追加
+1. `BMangaWorkData.shared_balloons` / `shared_texts` / `shared_comas` を追加
 2. `parent_kind="none"` を許可
 3. shared 系の保存/読込 (io/schema, page_io, work_io)
 4. レイヤーリストに「(ページ外)」最上位グループ

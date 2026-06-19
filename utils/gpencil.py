@@ -9,7 +9,7 @@
 両方を自動検出して同じ方法で扱えるよう ``_gp_data_blocks()`` でラップ。
 
 Phase 2 以降は「ページごとに 1 つの GP オブジェクト」モデル:
-- ルート Collection ``B-Name`` の下に ページ Collection ``page_NNNN`` を持ち、
+- ルート Collection ``B-MANGA`` の下に ページ Collection ``page_NNNN`` を持ち、
   その中に GP オブジェクト ``page_NNNN_sketch`` (データ ``page_NNNN_sketch_data``)
   を配置する。ページ Collection 自体の transform に grid offset (負の X) を
   かけることで overview での全ページ配置を実現する。
@@ -47,7 +47,7 @@ def _gp_data_blocks():
 
 # ---------- 命名規則 ----------
 
-ROOT_COLLECTION_NAME = "B-Name"
+ROOT_COLLECTION_NAME = "B-MANGA"
 
 
 def page_collection_name(page_id: str) -> str:
@@ -100,9 +100,9 @@ def ensure_layer(gp_data, layer_name: str):
 
 # ---------- Grease Pencil マテリアル ----------
 
-_DEFAULT_STROKE_MAT_NAME = "BName_Pen_Black"
-_LAYER_MATERIAL_PROP = "bname_material_name"
-_LAYER_MATERIAL_PREFIX = "BName_GP_Layer_"
+_DEFAULT_STROKE_MAT_NAME = "BManga_Pen_Black"
+_LAYER_MATERIAL_PROP = "bmanga_material_name"
+_LAYER_MATERIAL_PREFIX = "BManga_GP_Layer_"
 
 
 def ensure_default_stroke_material(
@@ -118,7 +118,7 @@ def ensure_default_stroke_material(
     直接生成した場合はマテリアルが付かない。結果として Draw モードで
     ストロークがブラシ既定色 (Pencil 等ではごく淡色) で描画され、
     「白い線しか出ない」ように見える。
-    この関数は ``BName_Pen_Black`` マテリアルを確保し、GP Object の
+    この関数は ``BManga_Pen_Black`` マテリアルを確保し、GP Object の
     material slot に attach + active 化する。
     """
     if obj is None or obj.type != "GREASEPENCIL":
@@ -242,7 +242,7 @@ def ensure_layer_material(
 ):
     """GP レイヤー専用の内部マテリアルを確保し、必要なら active 化する.
 
-    B-Name UI ではマテリアルを見せず、レイヤーの線色/塗り色として扱う。
+    B-MANGA UI ではマテリアルを見せず、レイヤーの線色/塗り色として扱う。
     実体は Grease Pencil の描画仕様に合わせてレイヤーごとに 1 マテリアルを
     自動管理する。
     """
@@ -391,7 +391,7 @@ def remove_layer_group_preserve_children(gp_data, group) -> bool:
 
 
 def ensure_root_collection(scene):
-    """ルート Collection ``B-Name`` を scene 直下に確保."""
+    """ルート Collection ``B-MANGA`` を scene 直下に確保."""
     root = bpy.data.collections.get(ROOT_COLLECTION_NAME)
     if root is None:
         root = bpy.data.collections.new(ROOT_COLLECTION_NAME)
@@ -422,18 +422,18 @@ def ensure_page_collection(scene, page_id: str):
     """ページ Collection を Outliner mirror 経由で取得/生成して返す.
 
     新仕様: ``utils.outliner_model.ensure_page_collection`` に委譲し、
-    bname_id で安定逆引きされる ``p0001`` 形式 Collection を返す。
+    bmanga_id で安定逆引きされる ``p0001`` 形式 Collection を返す。
     旧 ``page_p0001`` 名で生成されていた残置 Collection も移行のため
     リネームを試みる。
     """
     from . import outliner_model as om
 
     if scene is not None and page_id:
-        # 旧名残置 Collection があれば mirror 統合のため bname_id を立てて取り込む
+        # 旧名残置 Collection があれば mirror 統合のため bmanga_id を立てて取り込む
         old_name = f"page_{page_id}"
         old_coll = bpy.data.collections.get(old_name)
         if old_coll is not None:
-            # bname_id "page_id" を持つ管理 Collection が既に別にあれば、
+            # bmanga_id "page_id" を持つ管理 Collection が既に別にあれば、
             # 旧 Collection の中身を新側へ移し替える前に mirror で新側を ensure。
             new_coll = om.ensure_page_collection(scene, page_id)
             if new_coll is not None and new_coll is not old_coll:
@@ -482,21 +482,21 @@ def ensure_page_collection(scene, page_id: str):
 #
 # 旧仕様: ページごとに page_NNNN_sketch GP を生成 → ストロークがどのページに
 # 属するか分かりにくい問題があった。
-# 新仕様: 作品全体で 1 つの ``bname_master_sketch`` GP を持つ。各レイヤーは
+# 新仕様: 作品全体で 1 つの ``bmanga_master_sketch`` GP を持つ。各レイヤーは
 # 全ページに横断的に存在する (CSP のレイヤーパネル感覚)。ストロークの
 # world 座標がそのままページ位置を表す。
 # 既存 .blend に残る page_NNNN_sketch は「残置」(削除も移行もしない)。
 
-MASTER_GP_OBJECT_NAME = "bname_master_sketch"
-MASTER_GP_DATA_NAME = "bname_master_sketch_data"
+MASTER_GP_OBJECT_NAME = "bmanga_master_sketch"
+MASTER_GP_DATA_NAME = "bmanga_master_sketch_data"
 
 
 def ensure_master_gpencil(scene, layer_name: str = "ネーム"):
     """作品全体で唯一の master GP オブジェクトを取得/生成して返す.
 
-    - Object 名: ``bname_master_sketch``
-    - Data 名: ``bname_master_sketch_data``
-    - ルート Collection (B-Name) 直下にリンク
+    - Object 名: ``bmanga_master_sketch``
+    - Data 名: ``bmanga_master_sketch_data``
+    - ルート Collection (B-MANGA) 直下にリンク
     - location は (0, 0, GP_Z_LIFT_M) 固定 (用紙 overlay z=0 より +1mm 手前)
     - 既定レイヤー + 現在フレーム + 黒線マテリアルを自動補完
     """
@@ -555,7 +555,7 @@ def get_master_gpencil():
 
 # ---------- 旧紙メッシュ互換 ----------
 
-PAPER_MATERIAL_NAME = "BName_Paper_White"
+PAPER_MATERIAL_NAME = "BManga_Paper_White"
 
 
 def _ensure_paper_material():
@@ -664,16 +664,16 @@ def remove_all_page_papers() -> None:
 
 
 def remove_all_page_gpencils() -> None:
-    """B-Name の全ページ Collection / GP オブジェクト / 紙メッシュを一括削除する.
+    """B-MANGA の全ページ Collection / GP オブジェクト / 紙メッシュを一括削除する.
 
     新規作品作成 (``work_new``) や作品クローズ (``work_close``) で、前作品の
     ``page_pNNNN`` Collection や ``page_pNNNN_sketch`` GP が残らないようにする。
-    master GP (``bname_master_sketch``) と effect GP (``BName_EffectLines``) は
+    master GP (``bmanga_master_sketch``) と effect GP (``BManga_EffectLines``) は
     作品横断で使い回すため対象外。
 
     判定は ``page_<page_id>`` (Collection) / ``page_<page_id>_sketch`` (GP) の
     命名規則に基づく。手動で同名 Collection を作っている場合に巻き込まれる
-    可能性があるため、Collection は ``B-Name`` ルート配下に登録されているもの
+    可能性があるため、Collection は ``B-MANGA`` ルート配下に登録されているもの
     だけを対象にする。
     """
     import re
@@ -695,7 +695,7 @@ def remove_all_page_gpencils() -> None:
     # 2) 紙メッシュ (page_pNNNN_paper / _paper_data) も併せて掃除
     remove_all_page_papers()
 
-    # 3) page_pNNNN Collection を削除 (B-Name ルート配下のみ対象)
+    # 3) page_pNNNN Collection を削除 (B-MANGA ルート配下のみ対象)
     root = bpy.data.collections.get(ROOT_COLLECTION_NAME)
     candidates: list[object] = []
     if root is not None:

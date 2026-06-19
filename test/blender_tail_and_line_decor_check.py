@@ -22,7 +22,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_NAME = "bname_dev_tail_line_decor"
+MOD_NAME = "bmanga_dev_tail_line_decor"
 
 
 def _load_addon():
@@ -80,7 +80,7 @@ def _check_ellipse_tail(page, entry, balloon_op) -> None:
     assert _poly_count(f"balloon_tail_ellipse_fill_{bid}") > 0, "楕円しっぽの塗りメッシュがありません"
     assert _poly_count(f"balloon_tail_ellipse_line_{bid}") > 0, "楕円しっぽの線メッシュがありません"
     # 楕円チェーンはくさび多角形を持たない (本体と結合しない)
-    from bname_dev_tail_line_decor.utils.balloon_shapes import Rect
+    from bmanga_dev_tail_line_decor.utils.balloon_shapes import Rect
 
     rect = Rect(0.0, 0.0, float(entry.width_mm), float(entry.height_mm))
     assert balloon_tail_geom.polygon_for_tail(rect, tail) == []
@@ -100,21 +100,21 @@ def _check_ellipse_tail(page, entry, balloon_op) -> None:
 
 def _check_curve_mode(page, entry, balloon_op) -> None:
     balloon_tail_geom = _sub("utils.balloon_tail_geom")
-    from bname_dev_tail_line_decor.utils.balloon_shapes import Rect
+    from bmanga_dev_tail_line_decor.utils.balloon_shapes import Rect
 
     tail_index = balloon_op._add_tail_polyline(entry, [(70.0, 148.0), (60.0, 130.0)])
     tail = entry.tails[tail_index]
     balloon_tail_geom.add_polyline_point(tail, (50.0, 120.0))
     rect = Rect(0.0, 0.0, float(entry.width_mm), float(entry.height_mm))
     poly_points = len(balloon_tail_geom.polygon_for_tail(rect, tail))
-    result = bpy.ops.bname.balloon_tail_set_curve_mode(
+    result = bpy.ops.bmanga.balloon_tail_set_curve_mode(
         page_id=str(page.id), balloon_id=str(entry.id), tail_index=tail_index, mode="curve"
     )
     assert "FINISHED" in result, result
     assert str(tail.curve_mode) == "curve"
     curve_points = len(balloon_tail_geom.polygon_for_tail(rect, tail))
     assert curve_points > poly_points, (poly_points, curve_points)
-    result = bpy.ops.bname.balloon_tail_set_curve_mode(
+    result = bpy.ops.bmanga.balloon_tail_set_curve_mode(
         page_id=str(page.id), balloon_id=str(entry.id), tail_index=tail_index, mode="polyline"
     )
     assert "FINISHED" in result and str(tail.curve_mode) == "polyline"
@@ -124,7 +124,7 @@ def _check_curve_mode(page, entry, balloon_op) -> None:
 
 def _check_tail_presets(page, entry) -> None:
     tail_presets = _sub("io.tail_presets")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work_dir = Path(str(work.work_dir))
     tail = entry.tails[0]
     tail.ellipse_gap_mm = 3.21
@@ -159,7 +159,7 @@ def _check_line_decor(page, entry) -> None:
     # 画像線種: テスト用 PNG を作って指定
     from PIL import Image
 
-    img_path = Path(tempfile.gettempdir()) / "bname_line_decor_test.png"
+    img_path = Path(tempfile.gettempdir()) / "bmanga_line_decor_test.png"
     Image.new("RGBA", (64, 16), (255, 0, 0, 255)).save(img_path)
     entry.line_style = "image"
     entry.line_image_path = str(img_path)
@@ -200,7 +200,7 @@ def _check_nurbs_balloon(page) -> None:
     geom = _sub("utils.geom")
     page_grid = _sub("utils.page_grid")
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     ox, oy = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
     pts = [(150.0, 250.0), (190.0, 245.0), (200.0, 280.0), (170.0, 300.0), (145.0, 280.0)]
     curve = bpy.data.curves.new("NURBSフキダシテスト", "CURVE")
@@ -218,7 +218,7 @@ def _check_nurbs_balloon(page) -> None:
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
     before = len(page.balloons)
-    result = bpy.ops.bname.balloon_register_selected_curve()
+    result = bpy.ops.bmanga.balloon_register_selected_curve()
     assert "FINISHED" in result, result
     assert len(page.balloons) == before + 1
     entry = page.balloons[-1]
@@ -229,7 +229,7 @@ def _check_nurbs_balloon(page) -> None:
     # 自由形状の輪郭キャッシュが保存され、出力用の輪郭計算が実形状を返す
     cached = str(getattr(entry, "custom_outline_json", "") or "")
     assert cached, "自由形状の輪郭キャッシュがありません"
-    from bname_dev_tail_line_decor.utils.balloon_shapes import Rect
+    from bmanga_dev_tail_line_decor.utils.balloon_shapes import Rect
 
     rect = Rect(float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
     outline = balloon_shapes.outline_for_entry(entry, rect)
@@ -251,15 +251,15 @@ def _check_tool_icons_and_presets() -> None:
     assert not missing, f"存在しないアイコン名: {sorted(missing)}"
     # ツールプリセット選択の登録と解決
     wm = bpy.context.window_manager
-    assert hasattr(wm, "bname_tail_preset_selector"), "しっぽプリセット選択が未登録です"
-    assert hasattr(wm, "bname_balloon_tool_preset_selector"), "フキダシ形状選択が未登録です"
+    assert hasattr(wm, "bmanga_tail_preset_selector"), "しっぽプリセット選択が未登録です"
+    assert hasattr(wm, "bmanga_balloon_tool_preset_selector"), "フキダシ形状選択が未登録です"
     preset_op = _sub("operators.preset_op")
-    wm.bname_balloon_tool_preset_selector = "shape:cloud"
+    wm.bmanga_balloon_tool_preset_selector = "shape:cloud"
     assert preset_op.selected_balloon_tool_shape(bpy.context) == ("cloud", "")
     # 新ツールのオペレーター登録
-    assert hasattr(bpy.ops.bname, "balloon_tail_tool")
-    assert hasattr(bpy.ops.bname, "balloon_nurbs_tool")
-    assert hasattr(bpy.ops.bname, "balloon_tail_detail_open")
+    assert hasattr(bpy.ops.bmanga, "balloon_tail_tool")
+    assert hasattr(bpy.ops.bmanga, "balloon_nurbs_tool")
+    assert hasattr(bpy.ops.bmanga, "balloon_tail_detail_open")
     print("ICONS_AND_PRESETS_OK", flush=True)
 
 
@@ -287,13 +287,13 @@ def _check_schema_roundtrip(page, entry) -> None:
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_tail_decor_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailDecor.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tail_decor_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailDecor.bmanga"))
     assert result == {"FINISHED"}, result
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     balloon_op = _sub("operators.balloon_op")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = _make_balloon(page, balloon_op)
 
@@ -305,7 +305,7 @@ def main() -> None:
     _check_nurbs_balloon(page)
     _check_tool_icons_and_presets()
     _check_schema_roundtrip(page, entry)
-    print("BNAME_TAIL_AND_LINE_DECOR_CHECK_OK", flush=True)
+    print("BMANGA_TAIL_AND_LINE_DECOR_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

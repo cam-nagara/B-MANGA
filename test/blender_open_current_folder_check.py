@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_open_current_folder",
+        "bmanga_dev_open_current_folder",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_open_current_folder"] = mod
+    sys.modules["bmanga_dev_open_current_folder"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,14 +29,14 @@ def _load_addon():
 
 def main() -> None:
     mod = _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_open_current_folder_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_open_current_folder_"))
     try:
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "FolderCheck.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FolderCheck.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev_open_current_folder.core.work import get_work
-        from bname_dev_open_current_folder.operators import folder_op
-        from bname_dev_open_current_folder.utils import paths
+        from bmanga_dev_open_current_folder.core.work import get_work
+        from bmanga_dev_open_current_folder.operators import folder_op
+        from bmanga_dev_open_current_folder.utils import paths
 
         work = get_work(bpy.context)
         assert work is not None
@@ -61,7 +61,7 @@ def main() -> None:
         original_open_folder = folder_op._open_folder  # noqa: SLF001
         folder_op._open_folder = lambda path: opened.append(Path(path))  # noqa: SLF001
         try:
-            result = bpy.ops.bname.open_current_folder("EXEC_DEFAULT", target="WORK")
+            result = bpy.ops.bmanga.open_current_folder("EXEC_DEFAULT", target="WORK")
         finally:
             folder_op._open_folder = original_open_folder  # noqa: SLF001
         assert result == {"FINISHED"}, result
@@ -72,7 +72,7 @@ def main() -> None:
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    print("BNAME_OPEN_CURRENT_FOLDER_CHECK_OK")
+    print("BMANGA_OPEN_CURRENT_FOLDER_CHECK_OK")
 
 
 main()

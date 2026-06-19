@@ -11,7 +11,7 @@ from . import balloon_mesh_signature
 from . import balloon_shapes
 from . import line_pattern
 
-_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP = "bname_balloon_flash_white_line_mesh_signature"
+_FLASH_WHITE_LINE_MESH_SIGNATURE_PROP = "bmanga_balloon_flash_white_line_mesh_signature"
 
 
 def _pct(entry, attr: str, default: float) -> float:

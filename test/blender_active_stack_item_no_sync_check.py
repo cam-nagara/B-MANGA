@@ -3,7 +3,7 @@
 active_stack_item はアクティブなレイヤー項目を読むだけの関数で、パネルの draw・
 ツール・ハンドラから高頻度に呼ばれる。以前はここで毎回 sync_layer_stack を呼んで
 おり、これはレイヤー一覧を作り直して Scene に書き込む副作用がある。書き込みは
-depsgraph 更新 → ビューポート再描画 → また呼ばれる、の連鎖になり、「B-Name パネルを
+depsgraph 更新 → ビューポート再描画 → また呼ばれる、の連鎖になり、「B-MANGA パネルを
 開いている間ずっと細線が点滅する」再描画ループ(実測 約15回/秒)の真因だった。
 
 読み取りでは sync_layer_stack を呼ばない(書き込まない)ことを保証する。
@@ -24,12 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_active_no_sync",
+        "bmanga_dev_active_no_sync",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_active_no_sync"] = mod
+    sys.modules["bmanga_dev_active_no_sync"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -37,17 +37,17 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_active_no_sync_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_active_no_sync_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        if "FINISHED" not in bpy.ops.bname.work_new(
-            filepath=str(temp_root / "ActiveNoSync.bname")
+        bpy.context.scene.bmanga_overview_mode = True
+        if "FINISHED" not in bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "ActiveNoSync.bmanga")
         ):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_active_no_sync.utils import layer_stack as LS
+        from bmanga_dev_active_no_sync.utils import layer_stack as LS
 
         # 初期同期 (この時点では一覧は最新)。
         LS.sync_layer_stack(bpy.context)
@@ -72,7 +72,7 @@ def main() -> None:
                 f"(10 回の読み取りで {calls['n']} 回同期 = 書き込み → 再描画ループの原因)"
             )
 
-        print("BNAME_ACTIVE_STACK_ITEM_NO_SYNC_OK", flush=True)
+        print("BMANGA_ACTIVE_STACK_ITEM_NO_SYNC_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

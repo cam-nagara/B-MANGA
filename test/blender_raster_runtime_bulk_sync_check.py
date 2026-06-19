@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_raster_bulk_sync",
+        "bmanga_dev_raster_bulk_sync",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_raster_bulk_sync"] = mod
+    sys.modules["bmanga_dev_raster_bulk_sync"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,25 +28,25 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_raster_bulk_sync_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_raster_bulk_sync_"))
     mod = None
     try:
         mod = _load_addon()
-        if "FINISHED" not in bpy.ops.bname.work_new(
-            filepath=str(temp_root / "RasterBulkSync.bname")
+        if "FINISHED" not in bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "RasterBulkSync.bmanga")
         ):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_raster_bulk_sync.core.work import get_work
-        from bname_dev_raster_bulk_sync.operators import raster_layer_op
-        from bname_dev_raster_bulk_sync.utils import layer_object_sync, mask_apply
+        from bmanga_dev_raster_bulk_sync.core.work import get_work
+        from bmanga_dev_raster_bulk_sync.operators import raster_layer_op
+        from bmanga_dev_raster_bulk_sync.utils import layer_object_sync, mask_apply
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
         page_id = str(work.pages[0].id)
-        scene.bname_raster_layers.clear()
+        scene.bmanga_raster_layers.clear()
         for index in range(4):
-            entry = scene.bname_raster_layers.add()
+            entry = scene.bmanga_raster_layers.add()
             entry.id = f"bulk_raster_{index + 1}"
             entry.title = f"ラスター{index + 1}"
             entry.image_name = ""
@@ -82,7 +82,7 @@ def main() -> None:
         if calls["view_update"] > 1:
             raise AssertionError(f"表示更新が一括化されていません: {calls['view_update']}")
 
-        print("BNAME_RASTER_RUNTIME_BULK_SYNC_OK", flush=True)
+        print("BMANGA_RASTER_RUNTIME_BULK_SYNC_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

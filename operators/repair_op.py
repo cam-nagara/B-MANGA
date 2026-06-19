@@ -1,12 +1,12 @@
-"""Phase 6: B-Name 階層整合性 修復 operator.
+"""Phase 6: B-MANGA 階層整合性 修復 operator.
 
 計画書 Phase 6 完了条件「修復 operator」を提供。
 
 責務:
     - ルート / outside / 各ページ / 各コマ Collection を mirror_work_to_outliner
       経由で再生成
-    - bname_managed=True だが bname_id が空の Object を警告
-    - bname_id が重複する Object を警告
+    - bmanga_managed=True だが bmanga_id が空の Object を警告
+    - bmanga_id が重複する Object を警告
     - 全 mask Object を再生成
 """
 
@@ -24,10 +24,10 @@ from ..utils import object_naming as on
 _logger = log.get_logger(__name__)
 
 
-class BNAME_OT_repair_hierarchy(bpy.types.Operator):
-    bl_idname = "bname.repair_hierarchy"
-    bl_label = "B-Name 階層を修復"
-    bl_description = "現在のページのB-Name階層と表示範囲を作り直します"
+class BMANGA_OT_repair_hierarchy(bpy.types.Operator):
+    bl_idname = "bmanga.repair_hierarchy"
+    bl_label = "B-MANGA 階層を修復"
+    bl_description = "現在のページのB-MANGA階層と表示範囲を作り直します"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -62,23 +62,23 @@ class BNAME_OT_repair_hierarchy(bpy.types.Operator):
             self.report({"ERROR"}, f"mirror 失敗: {exc}")
             return {"CANCELLED"}
 
-        # 2. bname_id 空白を新 uuid で修復
+        # 2. bmanga_id 空白を新 uuid で修復
         empty_fixed = 0
         for obj in bpy.data.objects:
             if not on.is_managed(obj):
                 continue
-            if not on.get_bname_id(obj):
+            if not on.get_bmanga_id(obj):
                 kind = on.get_kind(obj) or "unknown"
                 obj[on.PROP_ID] = f"{kind}_repaired_{uuid.uuid4().hex[:8]}"
                 empty_fixed += 1
 
-        # 3. bname_id 重複を片方降格 (managed=False)
+        # 3. bmanga_id 重複を片方降格 (managed=False)
         seen: dict[str, bpy.types.Object] = {}
         dup_demoted = 0
         for obj in bpy.data.objects:
             if not on.is_managed(obj):
                 continue
-            bid = on.get_bname_id(obj)
+            bid = on.get_bmanga_id(obj)
             if not bid:
                 continue
             if bid in seen:
@@ -86,7 +86,7 @@ class BNAME_OT_repair_hierarchy(bpy.types.Operator):
                 obj[on.PROP_MANAGED] = False
                 dup_demoted += 1
                 _logger.warning(
-                    "repair: bname_id %s 重複 → %s を managed=False へ降格",
+                    "repair: bmanga_id %s 重複 → %s を managed=False へ降格",
                     bid, obj.name,
                 )
             else:
@@ -122,7 +122,7 @@ class BNAME_OT_repair_hierarchy(bpy.types.Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_repair_hierarchy,)
+_CLASSES = (BMANGA_OT_repair_hierarchy,)
 
 
 def register() -> None:

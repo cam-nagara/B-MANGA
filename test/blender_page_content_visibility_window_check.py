@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_content_visibility",
+        "bmanga_dev_page_content_visibility",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_content_visibility"] = mod
+    sys.modules["bmanga_dev_page_content_visibility"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,7 +28,7 @@ def _load_addon():
 
 
 def _make_layer_object(page_id: str, suffix: str, *, parent_key: str = ""):
-    from bname_dev_page_content_visibility.utils import object_naming as on
+    from bmanga_dev_page_content_visibility.utils import object_naming as on
 
     obj = bpy.data.objects.new(f"visibility_probe_{page_id}_{suffix}", None)
     bpy.context.scene.collection.objects.link(obj)
@@ -46,21 +46,21 @@ def _assert_hidden(obj, expected: bool, label: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_content_visibility_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_content_visibility_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        if "FINISHED" not in bpy.ops.bname.work_new(
-            filepath=str(temp_root / "PageContentVisibility.bname")
+        bpy.context.scene.bmanga_overview_mode = True
+        if "FINISHED" not in bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "PageContentVisibility.bmanga")
         ):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_page_content_visibility.core.work import get_work
-        from bname_dev_page_content_visibility.utils import page_content_visibility, page_range
+        from bmanga_dev_page_content_visibility.core.work import get_work
+        from bmanga_dev_page_content_visibility.utils import page_content_visibility, page_range
 
         scene = bpy.context.scene
-        scene.bname_overview_mode = True
+        scene.bmanga_overview_mode = True
         work = get_work(bpy.context)
         work.work_info.page_number_start = 1
         work.work_info.page_number_end = 6
@@ -112,7 +112,7 @@ def main() -> None:
         _assert_hidden(folder_object, False, "folder child restored")
         _assert_hidden(originally_hidden, True, "original hidden remains hidden")
 
-        print("BNAME_PAGE_CONTENT_VISIBILITY_WINDOW_OK", flush=True)
+        print("BMANGA_PAGE_CONTENT_VISIBILITY_WINDOW_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

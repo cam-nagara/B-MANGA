@@ -85,7 +85,7 @@ def _runtime_platform_tags() -> set[str]:
 
 def _ensure_wheel_extracted(wheel: Path) -> Path | None:
     target = wheel.parent / _EXTRACT_DIR_NAME / wheel.stem
-    marker = target / ".bname-wheel.json"
+    marker = target / ".bmanga-wheel.json"
     fingerprint = {
         "wheel": wheel.name,
         "size": wheel.stat().st_size,

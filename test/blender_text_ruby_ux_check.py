@@ -13,17 +13,17 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = Path(os.environ.get("BNAME_TEXT_RUBY_UX_OUT", "") or (ROOT / "_verify"))
+OUT_DIR = Path(os.environ.get("BMANGA_TEXT_RUBY_UX_OUT", "") or (ROOT / "_verify"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -31,9 +31,9 @@ def _load_addon():
 
 
 def _new_entry(work_dir: Path):
-    result = bpy.ops.bname.work_new(filepath=str(work_dir))
+    result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = page.texts.add()
     entry.id = "text_ruby_ux"
@@ -62,17 +62,17 @@ def _save_on_white(image, path: Path) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_text_ruby_ux_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_text_ruby_ux_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        work, page, entry = _new_entry(temp_root / "Text_Ruby_UX.bname")
+        work, page, entry = _new_entry(temp_root / "Text_Ruby_UX.bmanga")
 
-        from bname_dev.io import schema
-        from bname_dev.operators import text_edit_history, text_edit_runtime
-        from bname_dev.typography import layout as text_layout, ruby as text_ruby
-        from bname_dev.utils import text_real_object, text_style
+        from bmanga_dev.io import schema
+        from bmanga_dev.operators import text_edit_history, text_edit_runtime
+        from bmanga_dev.typography import layout as text_layout, ruby as text_ruby
+        from bmanga_dev.utils import text_real_object, text_style
 
         assert text_style.apply_ruby_span(entry, 0, 2, "かんじ", "group")
         assert text_style.ruby_spans_snapshot(entry) == ((0, 2, "かんじ", "group"),)
@@ -135,7 +135,7 @@ def main() -> None:
         assert text_edit_history.restore_next(probe, bpy.context)
         assert text_style.ruby_spans_snapshot(entry) == ()
 
-        bpy.ops.bname.text_ruby_add_dialog(
+        bpy.ops.bmanga.text_ruby_add_dialog(
             "EXEC_DEFAULT",
             start=0,
             length=3,
@@ -146,7 +146,7 @@ def main() -> None:
         obj = text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
         assert obj is not None and not obj.hide_viewport
         _ = work
-        print("BNAME_TEXT_RUBY_UX_OK")
+        print("BMANGA_TEXT_RUBY_UX_OK")
     finally:
         if mod is not None:
             try:

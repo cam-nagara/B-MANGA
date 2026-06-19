@@ -18,12 +18,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -42,28 +42,28 @@ def _create_template(path: Path, marker_suffix: str = "") -> None:
         scene.view_layers[0].name = "レイアウト"
 
     suffix = f"_{marker_suffix}" if marker_suffix else ""
-    coll = bpy.data.collections.new(f"BNAME_TEMPLATE_MARKER_COLLECTION{suffix}")
+    coll = bpy.data.collections.new(f"BMANGA_TEMPLATE_MARKER_COLLECTION{suffix}")
     scene.collection.children.link(coll)
-    view_layer_name = f"BNAME_TEMPLATE_MARKER_VIEW_LAYER{suffix}"
+    view_layer_name = f"BMANGA_TEMPLATE_MARKER_VIEW_LAYER{suffix}"
     if view_layer_name not in scene.view_layers:
         scene.view_layers.new(name=view_layer_name)
     layout_view_layer = scene.view_layers.get("レイアウト")
     if layout_view_layer is not None and bpy.context.window is not None:
         bpy.context.window.view_layer = layout_view_layer
 
-    mesh = bpy.data.meshes.new(f"BNAME_TEMPLATE_MARKER_MESH{suffix}")
+    mesh = bpy.data.meshes.new(f"BMANGA_TEMPLATE_MARKER_MESH{suffix}")
     mesh.from_pydata(
         [(-0.5, -0.5, 0.0), (0.5, -0.5, 0.0), (0.5, 0.5, 0.0), (-0.5, 0.5, 0.0)],
         [],
         [(0, 1, 2, 3)],
     )
-    obj = bpy.data.objects.new(f"BNAME_TEMPLATE_MARKER_OBJECT{suffix}", mesh)
+    obj = bpy.data.objects.new(f"BMANGA_TEMPLATE_MARKER_OBJECT{suffix}", mesh)
     coll.objects.link(obj)
 
-    mat = bpy.data.materials.new(f"BNAME_TEMPLATE_MARKER_MATERIAL{suffix}")
+    mat = bpy.data.materials.new(f"BMANGA_TEMPLATE_MARKER_MATERIAL{suffix}")
     mat.use_nodes = True
     obj.data.materials.append(mat)
-    node_group = bpy.data.node_groups.new(f"BNAME_TEMPLATE_MARKER_NODE_GROUP{suffix}", "ShaderNodeTree")
+    node_group = bpy.data.node_groups.new(f"BMANGA_TEMPLATE_MARKER_NODE_GROUP{suffix}", "ShaderNodeTree")
     node_group.use_fake_user = True
 
     cam_data = bpy.data.cameras.new("Camera")
@@ -77,11 +77,11 @@ def _create_template(path: Path, marker_suffix: str = "") -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_template_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_template_"))
     template_path = temp_root / "template.blend"
     coma_template_path = temp_root / "coma_template.blend"
     replacement_template_path = temp_root / "replacement_template.blend"
-    work_dir = temp_root / "Template_Test.bname"
+    work_dir = temp_root / "Template_Test.bmanga"
     mod = None
     try:
         _create_template(template_path)
@@ -90,44 +90,44 @@ def main() -> None:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
-        result = bpy.ops.bname.work_new(filepath=str(work_dir))
+        result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.coma_blend_template_path = str(template_path)
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
 
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c01" / "c01.blend").resolve()
         assert bpy.context.scene.name == "TemplateScene"
-        assert bpy.data.collections.get("BNAME_TEMPLATE_MARKER_COLLECTION") is not None
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT") is not None
-        assert bpy.context.scene.view_layers.get("BNAME_TEMPLATE_MARKER_VIEW_LAYER") is not None
-        assert bpy.data.materials.get("BNAME_TEMPLATE_MARKER_MATERIAL") is not None
-        assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP") is not None
+        assert bpy.data.collections.get("BMANGA_TEMPLATE_MARKER_COLLECTION") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
+        assert bpy.context.scene.view_layers.get("BMANGA_TEMPLATE_MARKER_VIEW_LAYER") is not None
+        assert bpy.data.materials.get("BMANGA_TEMPLATE_MARKER_MATERIAL") is not None
+        assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
         assert bpy.context.scene.camera is not None
         assert bpy.context.scene.camera.data.type == "PANO"
         assert bpy.context.scene.view_layers.get("コマ枠") is not None
         assert bpy.context.view_layer.name == "レイアウト", bpy.context.view_layer.name
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         work.pages[0].active_coma_index = 0
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
-        assert bpy.data.collections.get("BNAME_TEMPLATE_MARKER_COLLECTION") is not None
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT") is not None
-        assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP") is not None
+        assert bpy.data.collections.get("BMANGA_TEMPLATE_MARKER_COLLECTION") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
+        assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
-        result = bpy.ops.bname.coma_add()
+        result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
         page = work.pages[0]
         assert len(page.comas) >= 2
@@ -137,7 +137,7 @@ def main() -> None:
         )
         page.active_coma_index = coma_index
         page.comas[coma_index].coma_blend_template_path = str(coma_template_path)
-        from bname_dev.utils import coma_scene
+        from bmanga_dev.utils import coma_scene
 
         resolved, error = coma_scene.resolve_coma_blend_template_path(
             work,
@@ -147,59 +147,59 @@ def main() -> None:
         assert error == "", error
         assert resolved == coma_template_path.resolve(), resolved
 
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_COMA") is not None
-        assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP_COMA") is not None
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT") is None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
+        assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP_COMA") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is None
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
         page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
         stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
         assert stored_coma["comaBlendTemplatePath"] == str(coma_template_path)
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         page = work.pages[0]
         page.active_coma_index = coma_index
         page.comas[coma_index].coma_blend_template_path = str(replacement_template_path)
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_COMA") is None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is None
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
         page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
         stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
         assert stored_coma["comaBlendTemplatePath"] == str(replacement_template_path)
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
         page = work.pages[0]
         page.active_coma_index = coma_index
         page.comas[coma_index].coma_blend_template_path = ""
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
         page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
         stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c02")
         assert stored_coma["comaBlendTemplatePath"] == ""
         assert stored_coma["comaBlendTemplateNeedsApply"] is False
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
-        result = bpy.ops.bname.coma_add()
+        result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
         page = work.pages[0]
         coma_index = next(
@@ -208,26 +208,26 @@ def main() -> None:
         )
         page.active_coma_index = coma_index
         assert page.comas[coma_index].coma_blend_template_path == ""
-        result = bpy.ops.bname.enter_coma_mode(filepath=str(coma_template_path))
+        result = bpy.ops.bmanga.enter_coma_mode(filepath=str(coma_template_path))
         assert result == {"FINISHED"}, result
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c03" / "c03.blend").resolve()
-        assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT_COMA") is not None
+        assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
         page_json = json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8"))
         stored_coma = next(item for item in page_json["comas"] if item["comaId"] == "c03")
         assert stored_coma["comaBlendTemplatePath"] == str(coma_template_path)
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "Template_Prefs.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Template_Prefs.bmanga"))
         assert result == {"FINISHED"}, result
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.coma_blend_template_path = ""
 
-        from bname_dev import preferences
-        from bname_dev.operators import object_tool_op
-        from bname_dev.utils import coma_scene, edge_selection, object_selection
-        from bname_dev.ui import overlay_coma_selection
+        from bmanga_dev import preferences
+        from bmanga_dev.operators import object_tool_op
+        from bmanga_dev.utils import coma_scene, edge_selection, object_selection
+        from bmanga_dev.ui import overlay_coma_selection
 
         original_get_preferences = preferences.get_preferences
         preferences.get_preferences = lambda _context=None: SimpleNamespace(
@@ -252,10 +252,10 @@ def main() -> None:
             }
             assert object_tool_op.enter_coma_from_hit(bpy.context, hit)
             assert Path(bpy.data.filepath).resolve() == (
-                temp_root / "Template_Prefs.bname" / "p0001" / "c01" / "c01.blend"
+                temp_root / "Template_Prefs.bmanga" / "p0001" / "c01" / "c01.blend"
             ).resolve()
-            assert bpy.data.objects.get("BNAME_TEMPLATE_MARKER_OBJECT") is not None
-            assert bpy.data.node_groups.get("BNAME_TEMPLATE_MARKER_NODE_GROUP") is not None
+            assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
+            assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
         finally:
             preferences.get_preferences = original_get_preferences
 
@@ -269,7 +269,7 @@ def main() -> None:
         edge_selection.update_overlay_pointer(bpy.context, region, event)
         assert edge_selection.get_overlay_pointer(bpy.context) == (18, 24)
         assert overlay_coma_selection._is_handle_hovered((20.0, 25.0), (18, 24))
-        print("BNAME_COMA_TEMPLATE_OK")
+        print("BMANGA_COMA_TEMPLATE_OK")
     finally:
         if mod is not None:
             try:

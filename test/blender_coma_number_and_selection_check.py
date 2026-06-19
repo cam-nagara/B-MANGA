@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_number_selection",
+        "bmanga_dev_coma_number_selection",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_number_selection"] = mod
+    sys.modules["bmanga_dev_coma_number_selection"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _stack_index_for_uid(context, uid: str) -> int:
-    from bname_dev_coma_number_selection.utils import layer_stack
+    from bmanga_dev_coma_number_selection.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -40,20 +40,20 @@ def _stack_index_for_uid(context, uid: str) -> int:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_number_selection_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_number_selection_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaNumberSelection.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaNumberSelection.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_coma_number_selection.operators.coma_op import create_rect_coma
-        from bname_dev_coma_number_selection.utils import layer_stack, object_selection
-        from bname_dev_coma_number_selection.utils.layer_hierarchy import COMA_KIND, coma_stack_key
+        from bmanga_dev_coma_number_selection.operators.coma_op import create_rect_coma
+        from bmanga_dev_coma_number_selection.utils import layer_stack, object_selection
+        from bmanga_dev_coma_number_selection.utils.layer_hierarchy import COMA_KIND, coma_stack_key
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         work_dir = Path(work.work_dir)
         page = work.pages[0]
         first = page.comas[0]
@@ -86,7 +86,7 @@ def main() -> None:
         assert [(str(coma.id), str(coma.coma_id)) for coma in page.comas] == original_ids
         assert [int(coma.z_order) for coma in page.comas] == original_z
 
-        from bname_dev_coma_number_selection.io import schema
+        from bmanga_dev_coma_number_selection.io import schema
 
         data = schema.coma_entry_to_dict(first)
         assert data["displayNumber"] == 5
@@ -105,7 +105,7 @@ def main() -> None:
         expected_coma_key = object_selection.coma_key(page, first)
         assert keys == [expected_coma_key], keys
 
-        print("BNAME_COMA_NUMBER_AND_SELECTION_OK")
+        print("BMANGA_COMA_NUMBER_AND_SELECTION_OK")
     finally:
         if mod is not None:
             try:

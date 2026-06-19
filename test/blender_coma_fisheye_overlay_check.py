@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_fisheye_overlay",
+        "bmanga_dev_fisheye_overlay",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_fisheye_overlay"] = mod
+    sys.modules["bmanga_dev_fisheye_overlay"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -31,7 +31,7 @@ def main() -> int:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_fisheye_overlay.ui import coma_fisheye_overlay as fo
+        from bmanga_dev_fisheye_overlay.ui import coma_fisheye_overlay as fo
 
         # 1) blend ファイルパスが空ならコマ用 blend ではない
         ok_empty = not fo._is_coma_blend_file()

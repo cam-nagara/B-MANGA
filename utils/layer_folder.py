@@ -144,9 +144,9 @@ def _entry_for_kind_key(context, kind: str, key: str):
     kind = str(kind or "")
     key = str(key or "")
     if kind == "image":
-        return _find_by_id(getattr(scene, "bname_image_layers", None), key)
+        return _find_by_id(getattr(scene, "bmanga_image_layers", None), key)
     if kind == "raster":
-        return _find_by_id(getattr(scene, "bname_raster_layers", None), key)
+        return _find_by_id(getattr(scene, "bmanga_raster_layers", None), key)
     if kind in {"balloon", "text"}:
         page_key, child_id = split_child_key(key)
         child_id = child_id or key
@@ -181,12 +181,12 @@ def _iter_entries_for_identity(context, kind: str, key: str, preferred_parent_ke
     key = str(key or "")
     preferred_parent_key = str(preferred_parent_key or "")
     if kind == "image":
-        for entry in getattr(scene, "bname_image_layers", []) or []:
+        for entry in getattr(scene, "bmanga_image_layers", []) or []:
             if str(getattr(entry, "id", "") or "") == key:
                 yield entry
         return
     if kind == "raster":
-        for entry in getattr(scene, "bname_raster_layers", []) or []:
+        for entry in getattr(scene, "bmanga_raster_layers", []) or []:
             if str(getattr(entry, "id", "") or "") == key:
                 yield entry
         return
@@ -317,10 +317,10 @@ def descendant_folder_keys(work, root_key: str) -> set[str]:
 def _iter_folder_member_entries(context, folder_keys: set[str]):
     scene = getattr(context, "scene", None)
     work = get_work(context)
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "image", entry
-    for entry in getattr(scene, "bname_raster_layers", []) or []:
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "raster", entry
     for entry in getattr(work, "shared_balloons", []) or []:
@@ -341,10 +341,10 @@ def _iter_folder_member_entries(context, folder_keys: set[str]):
 def _folder_member_move_specs(context, folder_keys: set[str]):
     scene = getattr(context, "scene", None)
     work = get_work(context)
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "image", str(getattr(entry, "id", "") or "")
-    for entry in getattr(scene, "bname_raster_layers", []) or []:
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if str(getattr(entry, "folder_key", "") or "") in folder_keys:
             yield "raster", str(getattr(entry, "id", "") or "")
 
@@ -426,9 +426,9 @@ def remove_folder_preserve_children(work, key: str) -> bool:
 
 def _iter_entries_from_work(work):
     scene = getattr(work, "id_data", None)
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         yield "image", entry
-    for entry in getattr(scene, "bname_raster_layers", []) or []:
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         yield "raster", entry
     for entry in getattr(work, "shared_balloons", []) or []:
         yield "balloon", entry

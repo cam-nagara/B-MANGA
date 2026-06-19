@@ -13,11 +13,11 @@ _logger = log.get_logger(__name__)
 
 PREVIEW_KIND = "page_preview"
 PREVIEW_COLLECTION_NAME = "ページ一覧プレビュー"
-PREVIEW_IMAGE_PREFIX = "BName_PagePreview_"
+PREVIEW_IMAGE_PREFIX = "BManga_PagePreview_"
 PREVIEW_MESH_PREFIX = "page_preview_mesh_"
 PREVIEW_OBJECT_PREFIX = "page_preview_"
-PREVIEW_MATERIAL_PREFIX = "BName_PagePreview_"
-PREVIEW_PAGE_ID_PROP = "bname_page_preview_page_id"
+PREVIEW_MATERIAL_PREFIX = "BManga_PagePreview_"
+PREVIEW_PAGE_ID_PROP = "bmanga_page_preview_page_id"
 # プレビュー画像 (長辺) の上限。GPU メモリ保護のための安全弁。
 PREVIEW_MAX_LONG_PX = 1536
 # 用紙 DPI が取れない場合のフォールバック解像度基準。
@@ -42,12 +42,12 @@ def preview_enabled(scene=None) -> bool:
             return True
     except Exception:  # noqa: BLE001
         pass
-    return bool(getattr(scene, "bname_page_preview_enabled", True))
+    return bool(getattr(scene, "bmanga_page_preview_enabled", True))
 
 
 def preview_page_radius(scene=None) -> int:
     scene = scene or getattr(bpy.context, "scene", None)
-    value = getattr(scene, "bname_page_preview_page_radius", DEFAULT_PREVIEW_PAGE_RADIUS)
+    value = getattr(scene, "bmanga_page_preview_page_radius", DEFAULT_PREVIEW_PAGE_RADIUS)
     try:
         return max(0, int(value))
     except (TypeError, ValueError):
@@ -58,7 +58,7 @@ def preview_resolution_percentage(scene=None) -> float:
     scene = scene or getattr(bpy.context, "scene", None)
     value = getattr(
         scene,
-        "bname_page_preview_resolution_percentage",
+        "bmanga_page_preview_resolution_percentage",
         DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE,
     )
     try:
@@ -459,7 +459,7 @@ def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy
             if str(Path(bpy.path.abspath(named.filepath)).resolve()) == abspath:
                 img = named
                 if (
-                    float(named.get("_bname_page_preview_mtime", -1.0)) == mtime
+                    float(named.get("_bmanga_page_preview_mtime", -1.0)) == mtime
                     and (
                         expected_size is None
                         or tuple(int(v) for v in named.size[:2]) == tuple(expected_size)
@@ -490,12 +490,12 @@ def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy
             return None
     else:
         try:
-            if float(img.get("_bname_page_preview_mtime", -1.0)) != mtime:
+            if float(img.get("_bmanga_page_preview_mtime", -1.0)) != mtime:
                 img.reload()
         except Exception:  # noqa: BLE001
             pass
     img.name = f"{PREVIEW_IMAGE_PREFIX}{path.parent.name}"
-    img["_bname_page_preview_mtime"] = mtime
+    img["_bmanga_page_preview_mtime"] = mtime
     try:
         img.colorspace_settings.name = "sRGB"
     except Exception:  # noqa: BLE001
@@ -514,7 +514,7 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         if (
             image is not None
             and mat.use_nodes
-            and str(mat.get("_bname_preview_image", "") or "") == str(image.name)
+            and str(mat.get("_bmanga_preview_image", "") or "") == str(image.name)
             and mat.node_tree is not None
             and len(mat.node_tree.nodes) >= 5
             and any(
@@ -553,7 +553,7 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         _logger.exception("page preview material link failed")
     mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
     try:
-        mat["_bname_preview_image"] = str(getattr(image, "name", "") or "")
+        mat["_bmanga_preview_image"] = str(getattr(image, "name", "") or "")
     except Exception:  # noqa: BLE001
         pass
     return mat
@@ -567,8 +567,8 @@ def _ensure_plane_mesh(page_id: str, width_mm: float, height_mm: float) -> bpy.t
     try:
         if (
             len(mesh.vertices) == 4
-            and abs(float(mesh.get("_bname_w", -1.0)) - float(width_mm)) < 1.0e-6
-            and abs(float(mesh.get("_bname_h", -1.0)) - float(height_mm)) < 1.0e-6
+            and abs(float(mesh.get("_bmanga_w", -1.0)) - float(width_mm)) < 1.0e-6
+            and abs(float(mesh.get("_bmanga_h", -1.0)) - float(height_mm)) < 1.0e-6
         ):
             return mesh
     except Exception:  # noqa: BLE001
@@ -589,8 +589,8 @@ def _ensure_plane_mesh(page_id: str, width_mm: float, height_mm: float) -> bpy.t
         strict=False,
     ):
         uv.data[loop_index].uv = uv_value
-    mesh["_bname_w"] = float(width_mm)
-    mesh["_bname_h"] = float(height_mm)
+    mesh["_bmanga_w"] = float(width_mm)
+    mesh["_bmanga_h"] = float(height_mm)
     return mesh
 
 
@@ -599,7 +599,7 @@ def preview_rects_mm(scene, work) -> dict[str, tuple[int, float, float, float, f
         return {}
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4) or 4))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4) or 4))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
@@ -733,7 +733,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     if scene is None:
         return 0
     if work is None:
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
     if role not in {"page", "work"} or not preview_enabled(scene):
         hide_page_previews(scene)

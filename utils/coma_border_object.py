@@ -19,10 +19,10 @@ _logger = log.get_logger(__name__)
 COMA_BORDER_NAME_PREFIX = "coma_border_"
 COMA_BORDER_CURVE_PREFIX = "coma_border_curve_"
 COMA_BORDER_MESH_PREFIX = "coma_border_mesh_"
-COMA_BORDER_MATERIAL_PREFIX = "BName_ComaBorder_"
+COMA_BORDER_MATERIAL_PREFIX = "BManga_ComaBorder_"
 COMA_WHITE_MARGIN_NAME_PREFIX = "coma_white_margin_"
 COMA_WHITE_MARGIN_MESH_PREFIX = "coma_white_margin_mesh_"
-COMA_WHITE_MARGIN_MATERIAL_PREFIX = "BName_ComaWhiteMargin_"
+COMA_WHITE_MARGIN_MATERIAL_PREFIX = "BManga_ComaWhiteMargin_"
 COMA_WHITE_MARGIN_Z_M = (
     coma_z_order.COMA_PLANE_BASE_Z_M + coma_z_order.COMA_WHITE_MARGIN_OFFSET_Z_M
 )
@@ -30,10 +30,10 @@ COMA_BORDER_Z_M = coma_z_order.COMA_PLANE_BASE_Z_M + coma_z_order.COMA_BORDER_OF
 OUTSIDE_PAGE_ID = "outside"
 _CURVE_PROFILE_RADIUS_FROM_WIDTH_MM = 0.0007071067811865476
 
-PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
-PROP_COMA_BORDER_OWNER_ID = "bname_coma_border_owner_id"
-PROP_COMA_WHITE_MARGIN_KIND = "bname_coma_white_margin_kind"
-PROP_COMA_WHITE_MARGIN_OWNER_ID = "bname_coma_white_margin_owner_id"
+PROP_COMA_BORDER_KIND = "bmanga_coma_border_kind"
+PROP_COMA_BORDER_OWNER_ID = "bmanga_coma_border_owner_id"
+PROP_COMA_WHITE_MARGIN_KIND = "bmanga_coma_white_margin_kind"
+PROP_COMA_WHITE_MARGIN_OWNER_ID = "bmanga_coma_white_margin_owner_id"
 
 
 def _owner_id(page_id: str, coma_id: str) -> str:
@@ -882,7 +882,7 @@ def remove_coma_border(page_id: str, coma_id: str) -> bool:
 
 def on_coma_border_changed(border) -> None:
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or border is None:
         return
 
@@ -890,7 +890,7 @@ def on_coma_border_changed(border) -> None:
         try:
             from ..ui import overlay as _overlay
 
-            _overlay.apply_bname_shading_mode(bpy.context)
+            _overlay.apply_bmanga_shading_mode(bpy.context)
         except Exception:  # noqa: BLE001
             pass
 

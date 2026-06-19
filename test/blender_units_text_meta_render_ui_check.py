@@ -47,10 +47,10 @@ class _CaptureLayout:
 
 
 def _assert_paper_units() -> None:
-    from bname_units_meta_dev.io import schema
-    from bname_units_meta_dev.utils.geom import pt_to_q, px_to_mm, q_to_pt
+    from bmanga_units_meta_dev.io import schema
+    from bmanga_units_meta_dev.utils.geom import pt_to_q, px_to_mm, q_to_pt
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work.loaded = True
     paper = work.paper
     paper.dpi = 100
@@ -80,14 +80,14 @@ def _assert_paper_units() -> None:
     schema.display_item_from_dict(restored, data)
     assert restored.font_size_unit == "pt"
     assert abs(restored.font_size_pt - 12.0) < 0.001
-    assert bpy.ops.bname.work_meta_dialog() == {"FINISHED"}
+    assert bpy.ops.bmanga.work_meta_dialog() == {"FINISHED"}
 
 
 def _assert_text_size_and_meta_dialog() -> None:
-    from bname_units_meta_dev.io import schema
-    from bname_units_meta_dev.utils.geom import pt_to_q, q_to_pt
+    from bmanga_units_meta_dev.io import schema
+    from bmanga_units_meta_dev.utils.geom import pt_to_q, q_to_pt
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages.add()
     page.id = "p0001"
     page.title = "1ページ"
@@ -115,16 +115,16 @@ def _assert_text_size_and_meta_dialog() -> None:
     assert abs(restored.font_size_pt - 10.0) < 0.001
     assert restored.speaker_type == "thought"
     assert restored.speaker_name == "話者"
-    result = bpy.ops.bname.text_meta_dialog()
+    result = bpy.ops.bmanga.text_meta_dialog()
     assert result == {"FINISHED"}, result
 
 
 def _assert_render_ui_and_native_setup() -> None:
-    from bname_render_units_meta import command_ui, core, eevr_bridge
+    from bmanga_render_units_meta import command_ui, core, eevr_bridge
 
     labels = [label for _identifier, label, _desc in core.COMMAND_TYPE_ITEMS]
     assert not any("eeVR" in label for label in labels), labels
-    command = bpy.context.scene.bname_render_state.presets.add().commands.add()
+    command = bpy.context.scene.bmanga_render_state.presets.add().commands.add()
     command.command_type = "FISHEYE_RENDER_IMAGE_OR_LAYER"
     command.node_group_name = "出力_背景"
     command.label_contains = "背景線画"
@@ -150,25 +150,25 @@ def _assert_render_ui_and_native_setup() -> None:
     scene.camera = cam
     assert eevr_bridge.setup(scene, cam, output_dir="//passes/", output_name="監査")
     assert cam.data.type == "PANO"
-    assert scene["bname_render_fisheye_output_name"] == "監査"
+    assert scene["bmanga_render_fisheye_output_name"] == "監査"
 
 
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bname = None
+    bmanga = None
     render = None
     try:
-        bname = _load_package("bname_units_meta_dev", ROOT)
+        bmanga = _load_package("bmanga_units_meta_dev", ROOT)
         _assert_paper_units()
         _assert_text_size_and_meta_dialog()
-        render = _load_package("bname_render_units_meta", ROOT / "addons" / "b_name_render")
+        render = _load_package("bmanga_render_units_meta", ROOT / "addons" / "b_manga_render")
         _assert_render_ui_and_native_setup()
-        print("BNAME_UNITS_TEXT_META_RENDER_UI_OK")
+        print("BMANGA_UNITS_TEXT_META_RENDER_UI_OK")
     finally:
         if render is not None:
             render.unregister()
-        if bname is not None:
-            bname.unregister()
+        if bmanga is not None:
+            bmanga.unregister()
         bpy.ops.wm.read_factory_settings(use_empty=True)
 
 

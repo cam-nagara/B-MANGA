@@ -1,14 +1,14 @@
-"""B-Name AddonPreferences.
+"""B-MANGA AddonPreferences.
 
 Phase 0 時点では以下を提供:
 - ログレベル
 - Meldex 受信サーバーのポート（Phase 5 で利用、UI は先に用意）
-- B-Name 専用キーマップのトグル
+- B-MANGA 専用キーマップのトグル
 - 右クリック=スポイト モードのスイッチ
 - Spaceバー既定挙動の退避情報（デバッグ表示）
 - アセットライブラリ登録ガイド
 
-``__package__`` が ``b_name`` のようなアドオン ID 名を指す前提。
+``__package__`` が ``b_manga`` のようなアドオン ID 名を指す前提。
 Blender 4.3+ / 5.x の Extensions Platform 配下では ``bl_idname`` に
 ``__package__`` を使う。
 """
@@ -29,7 +29,7 @@ from bpy.types import PropertyGroup
 
 from .utils import log
 
-ADDON_ID = __package__ or "b_name"
+ADDON_ID = __package__ or "b_manga"
 
 _LOG_LEVEL_ITEMS = (
     ("DEBUG", "Debug", "詳細ログ"),
@@ -45,9 +45,42 @@ _SPACEBAR_PRESET_ITEMS = (
     ("PLAY", "Playback", "Space = 再生"),
 )
 
+_USERPREF_SAVE_PENDING = False
+_USERPREF_SAVE_SUSPENDED = 0
+
+
+def _save_user_preferences_timer():
+    """変更後のプリファレンスを Blender のユーザー設定へ保存する."""
+    global _USERPREF_SAVE_PENDING
+    _USERPREF_SAVE_PENDING = False
+    try:
+        bpy.ops.wm.save_userpref()
+    except Exception:  # noqa: BLE001
+        log.get_logger(__name__).exception("B-MANGA preferences auto-save failed")
+    return None
+
+
+def request_user_preferences_save() -> None:
+    """プリファレンス保存を短く遅延してまとめる."""
+    global _USERPREF_SAVE_PENDING
+    if _USERPREF_SAVE_SUSPENDED > 0:
+        return
+    if _USERPREF_SAVE_PENDING:
+        return
+    _USERPREF_SAVE_PENDING = True
+    try:
+        bpy.app.timers.register(_save_user_preferences_timer, first_interval=0.8)
+    except Exception:  # noqa: BLE001
+        _save_user_preferences_timer()
+
+
+def _on_preferences_changed(_self, _context) -> None:  # noqa: ANN001 - Blender callback
+    request_user_preferences_save()
+
 
 def _on_log_level_changed(self, _context) -> None:  # noqa: ANN001 - Blender callback
     log.set_level(self.log_level)
+    request_user_preferences_save()
 
 
 def _on_gpencil_follow_changed(self, _context=None) -> None:  # noqa: ANN001 - Blender callback
@@ -72,6 +105,8 @@ def _on_gpencil_follow_changed(self, _context=None) -> None:  # noqa: ANN001 - B
             gpencil_op._follow_stop()
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        request_user_preferences_save()
 
 
 def _on_keymap_settings_changed(self, _context) -> None:
@@ -86,6 +121,8 @@ def _on_keymap_settings_changed(self, _context) -> None:
         _kmap.rebuild_keymap_from_prefs()
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        request_user_preferences_save()
 
 
 def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
@@ -95,20 +132,22 @@ def _on_page_preview_resolution_changed(self, context) -> None:  # noqa: ANN001
         scene = getattr(context or bpy.context, "scene", None)
         if scene is None:
             return
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
         value = view_settings.default_page_preview_resolution_percentage(context)
         if work is not None and hasattr(work, "view_page_preview_resolution_percentage"):
             work.view_page_preview_resolution_percentage = value
-        if hasattr(scene, "bname_page_preview_resolution_percentage"):
-            scene.bname_page_preview_resolution_percentage = value
+        if hasattr(scene, "bmanga_page_preview_resolution_percentage"):
+            scene.bmanga_page_preview_resolution_percentage = value
         if work is not None and hasattr(work, "page_preview_scale_percentage"):
             work.page_preview_scale_percentage = value
-        if hasattr(scene, "bname_coma_camera_preview_scale_percentage"):
-            scene.bname_coma_camera_preview_scale_percentage = value
+        if hasattr(scene, "bmanga_coma_camera_preview_scale_percentage"):
+            scene.bmanga_coma_camera_preview_scale_percentage = value
         if work is not None and getattr(work, "loaded", False):
             page_preview_object.sync_page_previews(context, work)
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        request_user_preferences_save()
 
 
 def _on_coma_thumb_scale_changed(self, context) -> None:  # noqa: ANN001
@@ -116,36 +155,40 @@ def _on_coma_thumb_scale_changed(self, context) -> None:  # noqa: ANN001
         scene = getattr(context or bpy.context, "scene", None)
         if scene is None:
             return
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
         value = float(getattr(self, "coma_thumb_scale_percentage", 12.5) or 12.5)
         if work is not None and hasattr(work, "page_preview_scale_percentage"):
             work.page_preview_scale_percentage = value
-        if hasattr(scene, "bname_coma_camera_preview_scale_percentage"):
-            scene.bname_coma_camera_preview_scale_percentage = value
+        if hasattr(scene, "bmanga_coma_camera_preview_scale_percentage"):
+            scene.bmanga_coma_camera_preview_scale_percentage = value
     except Exception:  # noqa: BLE001
         pass
+    finally:
+        request_user_preferences_save()
 
 
-class BNameRubyDictEntry(PropertyGroup):
+class BMangaRubyDictEntry(PropertyGroup):
     """自動ルビ用の辞書ファイルエントリ."""
 
     path: StringProperty(  # type: ignore[valid-type]
         name="辞書ファイル",
         description="IME / Google日本語入力の辞書テキストファイル (.txt)",
         subtype="FILE_PATH",
+        update=_on_preferences_changed,
     )
     enabled: BoolProperty(  # type: ignore[valid-type]
         name="有効",
         default=True,
+        update=_on_preferences_changed,
     )
 
 
-class BNamePreferences(bpy.types.AddonPreferences):
+class BMangaPreferences(bpy.types.AddonPreferences):
     bl_idname = ADDON_ID
 
     log_level: EnumProperty(  # type: ignore[valid-type]
         name="ログレベル",
-        description="B-Name アドオンのログレベル",
+        description="B-MANGA アドオンのログレベル",
         items=_LOG_LEVEL_ITEMS,
         default="INFO",
         update=_on_log_level_changed,
@@ -157,18 +200,21 @@ class BNamePreferences(bpy.types.AddonPreferences):
         default=47817,
         min=1024,
         max=65535,
+        update=_on_preferences_changed,
     )
 
     keymap_enabled: BoolProperty(  # type: ignore[valid-type]
-        name="B-Name 専用キーマップを有効化",
+        name="B-MANGA 専用キーマップを有効化",
         description="CLIP STUDIO PAINT 準拠のビューポート操作ショートカットを有効にする",
         default=True,
+        update=_on_keymap_settings_changed,
     )
 
     right_click_eyedropper: BoolProperty(  # type: ignore[valid-type]
         name="右クリックをスポイトに割り当てる",
-        description="B-Name モード中のみ、右クリックの既定動作をスポイトに切り替える",
+        description="B-MANGA モード中のみ、右クリックの既定動作をスポイトに切り替える",
         default=False,
+        update=_on_keymap_settings_changed,
     )
 
     spacebar_preset: EnumProperty(  # type: ignore[valid-type]
@@ -176,13 +222,15 @@ class BNamePreferences(bpy.types.AddonPreferences):
         description="既定キーマップの Space キー挙動。AUTO 以外は退避処理のベースとして使用",
         items=_SPACEBAR_PRESET_ITEMS,
         default="AUTO",
+        update=_on_keymap_settings_changed,
     )
 
     global_asset_library: StringProperty(  # type: ignore[valid-type]
         name="グローバルアセットライブラリ パス",
         description="全作品共通で参照するアセットの格納先 (Blender 設定でアセットライブラリとして登録)",
-        default=r"D:\Develop\Blender\B-Name-Assets",
+        default=r"D:\Develop\Blender\B-MANGA-Assets",
         subtype="DIR_PATH",
+        update=_on_preferences_changed,
     )
 
     coma_blend_template_path: StringProperty(  # type: ignore[valid-type]
@@ -193,15 +241,17 @@ class BNamePreferences(bpy.types.AddonPreferences):
         ),
         default="",
         subtype="FILE_PATH",
+        update=_on_preferences_changed,
     )
 
     ruby_dictionaries: CollectionProperty(  # type: ignore[valid-type]
         name="自動ルビ辞書",
-        type=BNameRubyDictEntry,
+        type=BMangaRubyDictEntry,
     )
     ruby_dict_active_index: IntProperty(  # type: ignore[valid-type]
         name="選択中の辞書",
         default=0,
+        update=_on_preferences_changed,
     )
 
     gpencil_follow_cursor: BoolProperty(  # type: ignore[valid-type]
@@ -222,6 +272,33 @@ class BNamePreferences(bpy.types.AddonPreferences):
         min=0.0,
         max=1.0,
         default=(0.0, 0.7, 1.0, 0.45),
+        update=_on_preferences_changed,
+    )
+
+    last_balloon_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回のフキダシ形状",
+        default="DEFAULT",
+        options={"HIDDEN"},
+    )
+    last_tail_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回のしっぽプリセット",
+        default="",
+        options={"HIDDEN"},
+    )
+    last_text_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回のテキストプリセット",
+        default="",
+        options={"HIDDEN"},
+    )
+    last_fill_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回の囲い塗りプリセット",
+        default="black",
+        options={"HIDDEN"},
+    )
+    last_gradient_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回のグラデーションプリセット",
+        default="bw_linear",
+        options={"HIDDEN"},
     )
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
@@ -372,7 +449,7 @@ class BNamePreferences(bpy.types.AddonPreferences):
         info.scale_y = 0.85
         info.label(text="キー名は Blender のイベント名 (例: SPACE, O, P, COMMA, PERIOD, F1〜F12)", icon="INFO")
         info.label(text="ナビゲートのモード切替はキー押下中の Shift=回転 / Ctrl=ズーム (固定)")
-        info.label(text="B-Name使用中は Z=Undo / X=Redo (固定)")
+        info.label(text="B-MANGA使用中は Z=Undo / X=Redo (固定)")
         info.label(text="ズーム中の LMB クリック=40%イン / Alt+LMB クリック=40%アウト (固定)")
         info.label(text="描画ツール中: Space=ナビゲート / C=ブラシシェルフ表示切替 (Blender既定の入れ替え)")
 
@@ -381,7 +458,7 @@ class BNamePreferences(bpy.types.AddonPreferences):
         box.prop(self, "global_asset_library")
         col = box.column(align=True)
         col.label(text="1. 上のパスを Blender 本体の Preferences > File Paths > Asset Libraries に追加")
-        col.label(text="2. 作品固有アセットは MyWork.bname/assets/ 配下 (B-Name が自動管理)")
+        col.label(text="2. 作品固有アセットは MyWork.bmanga/assets/ 配下 (B-MANGA が自動管理)")
         col.label(text="3. コマ編集モード中にアセットブラウザからドラッグ&ドロップでリンク参照")
 
         box = layout.box()
@@ -393,6 +470,15 @@ class BNamePreferences(bpy.types.AddonPreferences):
         col.label(text="作品情報パネル側のコマ用blendファイルが設定されていれば、そちらが優先される")
 
         box = layout.box()
+        box.label(text="設定の移行", icon="FILE_REFRESH")
+        row = box.row(align=True)
+        row.operator("bmanga.preferences_export", text="設定を書き出す", icon="EXPORT")
+        row.operator("bmanga.preferences_import", text="設定を読み込む", icon="IMPORT")
+        col = box.column(align=True)
+        col.scale_y = 0.85
+        col.label(text="プリファレンスと共通プリセットをZIPで移行します", icon="INFO")
+
+        box = layout.box()
         box.label(text="自動ルビ辞書", icon="FONT_DATA")
         col = box.column(align=True)
         col.scale_y = 0.85
@@ -400,36 +486,41 @@ class BNamePreferences(bpy.types.AddonPreferences):
         col.label(text="形式: 読み<TAB>表記<TAB>品詞 (1行1語)")
         row = box.row()
         row.template_list(
-            "BNAME_UL_ruby_dict_list", "",
+            "BMANGA_UL_ruby_dict_list", "",
             self, "ruby_dictionaries",
             self, "ruby_dict_active_index",
             rows=3,
         )
         side = row.column(align=True)
-        side.operator("bname.ruby_dict_add", icon="ADD", text="")
-        side.operator("bname.ruby_dict_remove", icon="REMOVE", text="")
+        side.operator("bmanga.ruby_dict_add", icon="ADD", text="")
+        side.operator("bmanga.ruby_dict_remove", icon="REMOVE", text="")
 
         box = layout.box()
         box.label(text="Grease Pencil (overview)")
         box.prop(self, "gpencil_follow_cursor")
 
 
-def get_preferences(context=None) -> "BNamePreferences | None":
+def get_preferences(context=None) -> "BMangaPreferences | None":
     ctx = context or bpy.context
     prefs = ctx.preferences.addons.get(ADDON_ID)
     return prefs.preferences if prefs else None
 
 
-_CLASSES = (BNameRubyDictEntry, BNamePreferences)
+_CLASSES = (BMangaRubyDictEntry, BMangaPreferences)
 
 
 def register() -> None:
+    global _USERPREF_SAVE_SUSPENDED
     logger = log.get_logger(__name__)
-    for cls in _CLASSES:
-        bpy.utils.register_class(cls)
-    prefs = get_preferences()
-    if prefs is not None:
-        log.set_level(prefs.log_level)
+    _USERPREF_SAVE_SUSPENDED += 1
+    try:
+        for cls in _CLASSES:
+            bpy.utils.register_class(cls)
+        prefs = get_preferences()
+        if prefs is not None:
+            log.set_level(prefs.log_level)
+    finally:
+        _USERPREF_SAVE_SUSPENDED = max(0, _USERPREF_SAVE_SUSPENDED - 1)
     logger.debug("preferences registered")
 
 

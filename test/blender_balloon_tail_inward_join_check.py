@@ -12,18 +12,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_ENV = os.environ.get("BNAME_BALLOON_TAIL_INWARD_VISUAL_OUT", "")
-OUT_PATH = Path(OUT_ENV) if OUT_ENV else ROOT / ".codex" / "visual" / "balloon_tail_reference_sample" / "bname_tail_inward_check.png"
+OUT_ENV = os.environ.get("BMANGA_BALLOON_TAIL_INWARD_VISUAL_OUT", "")
+OUT_PATH = Path(OUT_ENV) if OUT_ENV else ROOT / ".codex" / "visual" / "balloon_tail_reference_sample" / "bmanga_tail_inward_check.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_tail_inward_check",
+        "bmanga_dev_tail_inward_check",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_tail_inward_check"] = mod
+    sys.modules["bmanga_dev_tail_inward_check"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -71,8 +71,8 @@ def _mesh_covers_point(obj, point_xy: tuple[float, float]) -> bool:
 
 
 def _create_balloon(context, page, parent_key):
-    from bname_dev_tail_inward_check.operators import balloon_op
-    from bname_dev_tail_inward_check.utils import balloon_curve_object
+    from bmanga_dev_tail_inward_check.operators import balloon_op
+    from bmanga_dev_tail_inward_check.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -130,13 +130,13 @@ def main() -> None:
         OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        temp_root = Path(tempfile.mkdtemp(prefix="bname_tail_inward_check_"))
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailInwardCheck.bname"))
+        temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tail_inward_check_"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailInwardCheck.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_tail_inward_check.core.work import get_work
-        from bname_dev_tail_inward_check.utils import balloon_line_mesh
-        from bname_dev_tail_inward_check.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_tail_inward_check.core.work import get_work
+        from bmanga_dev_tail_inward_check.utils import balloon_line_mesh
+        from bmanga_dev_tail_inward_check.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -162,7 +162,7 @@ def main() -> None:
             raise AssertionError(f"外向きしっぽが外形に反映されていません: line={line_max_x:.4f}, fill={fill_max_x:.4f}")
         if _mesh_covers_point(fill_obj, (-0.050, 0.012)):
             raise AssertionError("内向きしっぽの外側へ塗りがはみ出しています")
-        print(f"BNAME_BALLOON_TAIL_INWARD_JOIN_OK {OUT_PATH}", flush=True)
+        print(f"BMANGA_BALLOON_TAIL_INWARD_JOIN_OK {OUT_PATH}", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

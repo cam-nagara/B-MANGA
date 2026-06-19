@@ -150,7 +150,7 @@ def find_coma_at_world_mm(
     if scene is None:
         return None
 
-    overview = bool(getattr(scene, "bname_overview_mode", False))
+    overview = bool(getattr(scene, "bmanga_overview_mode", False))
 
     if not overview:
         idx = work.active_page_index
@@ -159,7 +159,7 @@ def find_coma_at_world_mm(
         page = work.pages[idx]
         if not page_range.page_in_range(page):
             return None
-        cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = page_grid.resolve_gap_mm(scene)
         cw = work.paper.canvas_width_mm
         ch = work.paper.canvas_height_mm
@@ -175,7 +175,7 @@ def find_coma_at_world_mm(
         hit = _hit_test_page(page, x_mm - ox, y_mm - oy)
         return (idx, hit) if hit is not None else None
 
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
@@ -311,8 +311,8 @@ def find_page_at_world_mm(work, x_mm: float, y_mm: float) -> int | None:
     scene = bpy.context.scene
     if scene is None:
         return None
-    overview = bool(getattr(scene, "bname_overview_mode", False))
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    overview = bool(getattr(scene, "bmanga_overview_mode", False))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = float(work.paper.canvas_width_mm)
     ch = float(work.paper.canvas_height_mm)
@@ -467,7 +467,7 @@ def _iter_pickable_pages(context, work, area):
     if scene is None:
         return
     is_browser = page_browser.is_marked_area(area) or page_browser.page_browser_area(context) == area
-    overview = bool(getattr(scene, "bname_overview_mode", False)) or is_browser
+    overview = bool(getattr(scene, "bmanga_overview_mode", False)) or is_browser
     if not overview:
         idx = int(getattr(work, "active_page_index", -1))
         if 0 <= idx < len(work.pages) and page_range.page_in_range(work.pages[idx]):
@@ -483,7 +483,7 @@ def _page_offset_for_area(context, work, area, page_index: int) -> tuple[float, 
     is_browser = page_browser.is_marked_area(area) or page_browser.page_browser_area(context) == area
     if is_browser and page_browser.fit_enabled(scene):
         return page_browser.page_offset_mm(work, scene, area, page_index)
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     paper = work.paper
     ox, oy = page_grid.page_grid_offset_mm(

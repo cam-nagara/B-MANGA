@@ -239,10 +239,10 @@ def _sync_after_split(context) -> None:
         _logger.exception("coma_split: object sync failed")
 
 
-class BNAME_OT_coma_split_ratio(Operator):
+class BMANGA_OT_coma_split_ratio(Operator):
     """選択中のコマを指定比率で分割する."""
 
-    bl_idname = "bname.coma_split_ratio"
+    bl_idname = "bmanga.coma_split_ratio"
     bl_label = "コマを比率で分割"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -324,7 +324,7 @@ class BNAME_OT_coma_split_ratio(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_coma_split_ratio,)
+_CLASSES = (BMANGA_OT_coma_split_ratio,)
 
 
 def register() -> None:

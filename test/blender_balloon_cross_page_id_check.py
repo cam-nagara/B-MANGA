@@ -21,12 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_cross_page",
+        "bmanga_dev_balloon_cross_page",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_cross_page"] = mod
+    sys.modules["bmanga_dev_balloon_cross_page"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -46,31 +46,31 @@ def _balloon_world_x(balloon_id: str) -> float | None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_cross_page_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_cross_page_"))
     mod = None
     try:
         mod = _load_addon()
-        if "FINISHED" not in bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonCrossPage.bname")):
+        if "FINISHED" not in bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonCrossPage.bmanga")):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_balloon_cross_page.core.work import get_work
-        from bname_dev_balloon_cross_page.utils import page_grid
+        from bmanga_dev_balloon_cross_page.core.work import get_work
+        from bmanga_dev_balloon_cross_page.utils import page_grid
 
         context = bpy.context
         work = get_work(context)
         while len(work.pages) < 2:
-            if "FINISHED" not in bpy.ops.bname.page_add():
+            if "FINISHED" not in bpy.ops.bmanga.page_add():
                 raise AssertionError("ページ追加に失敗しました")
         if len(work.pages) < 2:
             raise AssertionError("検証には 2 ページ以上必要です")
 
         # p1 と p2 に同じ位置・サイズのフキダシを作成
         work.active_page_index = 0
-        bpy.ops.bname.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
+        bpy.ops.bmanga.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
         id_p1 = str(work.pages[0].balloons[-1].id)
 
         work.active_page_index = 1
-        bpy.ops.bname.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
+        bpy.ops.bmanga.balloon_add('EXEC_DEFAULT', shape='rect', x_mm=30.0, y_mm=200.0, width_mm=40.0, height_mm=20.0)
         id_p2 = str(work.pages[1].balloons[-1].id)
 
         # 1) id がページ横断で一意
@@ -99,7 +99,7 @@ def main() -> None:
 
         # work を渡さない採番経路 (フキダシテキスト作成 / レイヤースタック作成 /
         # 複製 / 別ページへの移動) でもページ横断一意になることを確認する。
-        from bname_dev_balloon_cross_page.operators.balloon_op import _allocate_balloon_id
+        from bmanga_dev_balloon_cross_page.operators.balloon_op import _allocate_balloon_id
         existing = {str(b.id) for p in work.pages for b in p.balloons}
         existing |= {str(b.id) for b in getattr(work, "shared_balloons", [])}
         new_id_no_work = _allocate_balloon_id(work.pages[1])  # work 引数なし
@@ -109,7 +109,7 @@ def main() -> None:
                 f"(複製/移動/テキスト作成 経路で重複フキダシが起きる) existing={sorted(existing)}"
             )
 
-        print("BNAME_BALLOON_CROSS_PAGE_ID_OK", flush=True)
+        print("BMANGA_BALLOON_CROSS_PAGE_ID_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

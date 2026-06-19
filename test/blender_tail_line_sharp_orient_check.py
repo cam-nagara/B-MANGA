@@ -24,7 +24,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_NAME = "bname_dev_tail_sharp_orient"
+MOD_NAME = "bmanga_dev_tail_sharp_orient"
 
 
 def _load_addon():
@@ -290,7 +290,7 @@ def _check_schema_and_presets(page, entry) -> None:
     page.balloons.remove(len(page.balloons) - 1)
 
     # プリセット: 新項目を往復できる + 同梱「ペン線 (抜き)」がある
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work_dir = Path(str(work.work_dir))
     names = [p.name for p in tail_presets.list_all_presets(work_dir)]
     assert "ペン線 (抜き)" in names, names
@@ -314,13 +314,13 @@ def _check_schema_and_presets(page, entry) -> None:
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_tail_sharp_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailSharp.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tail_sharp_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailSharp.bmanga"))
     assert result == {"FINISHED"}, result
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     balloon_op = _sub("operators.balloon_op")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = _make_balloon(page, balloon_op)
 
@@ -329,7 +329,7 @@ def main() -> None:
     _check_ellipse_merge_and_orient(page, entry, balloon_op)
     _check_shape_orient()
     _check_schema_and_presets(page, entry)
-    print("BNAME_TAIL_SHARP_ORIENT_CHECK_OK", flush=True)
+    print("BMANGA_TAIL_SHARP_ORIENT_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

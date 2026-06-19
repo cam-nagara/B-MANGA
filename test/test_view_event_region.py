@@ -13,7 +13,7 @@ class Obj:
 def _load_view_event_region():
     root = Path(__file__).resolve().parents[1]
     spec = importlib.util.spec_from_file_location(
-        "bname_view_event_region",
+        "bmanga_view_event_region",
         root / "operators" / "view_event_region.py",
     )
     module = importlib.util.module_from_spec(spec)
@@ -132,7 +132,7 @@ def test_unmodified_n_toggles_modal_sidebar():
     assert space.show_region_ui
 
 
-def test_modal_sidebar_close_finishes_bname_tools():
+def test_modal_sidebar_close_finishes_bmanga_tools():
     region_mod = _load_view_event_region()
     context, region = _context()
     space = context.screen.areas[0].spaces.active
@@ -153,4 +153,4 @@ if __name__ == "__main__":
     test_panel_launched_modal_still_accepts_viewport_drag_events()
     test_modal_navigation_passthrough_stays_active_until_release()
     test_unmodified_n_toggles_modal_sidebar()
-    test_modal_sidebar_close_finishes_bname_tools()
+    test_modal_sidebar_close_finishes_bmanga_tools()

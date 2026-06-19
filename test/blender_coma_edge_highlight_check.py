@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_edge_highlight",
+        "bmanga_dev_edge_highlight",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_edge_highlight"] = mod
+    sys.modules["bmanga_dev_edge_highlight"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -81,12 +81,12 @@ def main() -> None:
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        from bname_dev_edge_highlight.operators import coma_edge_move_op
-        from bname_dev_edge_highlight.ui import overlay_coma_selection
+        from bmanga_dev_edge_highlight.operators import coma_edge_move_op
+        from bmanga_dev_edge_highlight.ui import overlay_coma_selection
 
         _assert_band(overlay_coma_selection, "_draw_screen_segment_band")
         _assert_band(coma_edge_move_op, "_draw_screen_segment_band")
-        print("BNAME_COMA_EDGE_HIGHLIGHT_OK")
+        print("BMANGA_COMA_EDGE_HIGHLIGHT_OK")
     finally:
         if mod is not None:
             try:

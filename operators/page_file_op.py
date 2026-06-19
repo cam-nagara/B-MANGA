@@ -27,7 +27,7 @@ def _cleanup_default_scene_objects() -> None:
                 pass
 
 
-def _save_current_blend_if_bname(context, work_dir: Path) -> None:
+def _save_current_blend_if_bmanga(context, work_dir: Path) -> None:
     role, page_id, coma_id = page_file_scene.current_role(context)
     if role == page_file_scene.ROLE_WORK:
         blend_io.save_work_blend(work_dir)
@@ -121,7 +121,7 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
         from ..ui import overlay as _overlay
 
         _overlay.reset_viewport_background_to_theme(context)
-        _overlay.apply_bname_shading_mode(context)
+        _overlay.apply_bmanga_shading_mode(context)
         _overlay.set_viewport_overlays_enabled(context, enabled=False)
         _overlay.schedule_viewport_overlays_enabled(enabled=False)
     except Exception:  # noqa: BLE001
@@ -155,10 +155,10 @@ def _create_page_blend(work_dir: Path, page_id: str) -> bool:
     return blend_io.save_page_blend(work_dir, page_id)
 
 
-class BNAME_OT_open_page_file(Operator):
+class BMANGA_OT_open_page_file(Operator):
     """選択ページのページ用blendファイルを開く."""
 
-    bl_idname = "bname.open_page_file"
+    bl_idname = "bmanga.open_page_file"
     bl_label = "ページを開く"
     bl_options = {"REGISTER"}
 
@@ -196,7 +196,7 @@ class BNAME_OT_open_page_file(Operator):
             if not _save_metadata(context, reason="open_page_file"):
                 self.report({"ERROR"}, "作品情報の保存に失敗しました")
                 return {"CANCELLED"}
-            _save_current_blend_if_bname(context, work_dir)
+            _save_current_blend_if_bmanga(context, work_dir)
             if blend_io.page_blend_exists(work_dir, page_id):
                 if not blend_io.open_page_blend(work_dir, page_id):
                     self.report({"ERROR"}, "ページを開けませんでした")
@@ -216,9 +216,9 @@ class BNAME_OT_open_page_file(Operator):
         try:
             from ..ui import sidebar as _sidebar
 
-            _sidebar.schedule_open_bname_sidebar()
+            _sidebar.schedule_open_bmanga_sidebar()
         except Exception:  # noqa: BLE001
-            _logger.exception("open_page_file: B-Name sidebar open failed")
+            _logger.exception("open_page_file: B-MANGA sidebar open failed")
         try:
             from . import view_op
 
@@ -229,10 +229,10 @@ class BNAME_OT_open_page_file(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_exit_page_file(Operator):
+class BMANGA_OT_exit_page_file(Operator):
     """ページ用blendファイルを保存してページ一覧へ戻る."""
 
-    bl_idname = "bname.exit_page_file"
+    bl_idname = "bmanga.exit_page_file"
     bl_label = "ページ一覧に戻る"
     bl_options = {"REGISTER"}
 
@@ -276,8 +276,8 @@ class BNAME_OT_exit_page_file(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_open_page_file,
-    BNAME_OT_exit_page_file,
+    BMANGA_OT_open_page_file,
+    BMANGA_OT_exit_page_file,
 )
 
 

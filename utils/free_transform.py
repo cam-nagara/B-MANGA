@@ -1,4 +1,4 @@
-"""Shared 2x2 corner free-transform helpers for B-Name objects."""
+"""Shared 2x2 corner free-transform helpers for B-MANGA objects."""
 
 from __future__ import annotations
 
@@ -325,7 +325,7 @@ def effect_payload_for_layer(obj, layer) -> dict[str, Any]:
     try:
         import json
 
-        raw = str(getattr(obj, "data", {}).get("bname_effect_line_meta", "") or "{}")
+        raw = str(getattr(obj, "data", {}).get("bmanga_effect_line_meta", "") or "{}")
         meta = json.loads(raw) if raw else {}
         layer_id = str(getattr(layer, "name", "") or "")
         entry = meta.get(layer_id)

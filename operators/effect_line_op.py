@@ -29,7 +29,7 @@ from . import (
 
 _logger = log.get_logger(__name__)
 
-_EFFECT_META_PROP = "bname_effect_line_meta"
+_EFFECT_META_PROP = "bmanga_effect_line_meta"
 _PARAM_SYNCING = False
 _EFFECT_MIN_SIZE_MM = 2.0
 _EFFECT_HANDLE_HIT_MM = 2.5
@@ -274,7 +274,7 @@ def active_effect_layer_bounds(context=None):
     ctx = context or bpy.context
     from ..utils import layer_stack as stack_utils
 
-    key = str(getattr(getattr(ctx, "scene", None), "bname_active_effect_layer_name", "") or "")
+    key = str(getattr(getattr(ctx, "scene", None), "bmanga_active_effect_layer_name", "") or "")
     obj, active = stack_utils._find_effect_layer_by_key(key) if key else (None, None)
     layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
     if active is None:
@@ -299,10 +299,10 @@ def _set_active_effect_layer(context, obj, layer) -> None:
             pass
     scene = getattr(context, "scene", None)
     if scene is not None and layer is not None:
-        if hasattr(scene, "bname_active_layer_kind"):
-            scene.bname_active_layer_kind = "effect"
-        if hasattr(scene, "bname_active_effect_layer_name"):
-            scene.bname_active_effect_layer_name = layer_stack_utils._node_stack_key(layer)
+        if hasattr(scene, "bmanga_active_layer_kind"):
+            scene.bmanga_active_layer_kind = "effect"
+        if hasattr(scene, "bmanga_active_effect_layer_name"):
+            scene.bmanga_active_effect_layer_name = layer_stack_utils._node_stack_key(layer)
         _load_layer_params_to_scene(context, obj, layer)
 
 
@@ -373,7 +373,7 @@ def _set_scene_params_syncing(scene, value: bool) -> None:
 
 def _load_layer_params_to_scene(context, obj, layer) -> None:
     scene = getattr(context, "scene", None)
-    params = getattr(scene, "bname_effect_line_params", None) if scene is not None else None
+    params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
     data = _layer_params_data(obj, layer)
     if params is None or not data:
         return
@@ -446,7 +446,7 @@ def _effect_role_material_name(layer, role: str) -> str:
     base = str(getattr(layer, "name", "") or "Layer")
     safe = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in base)
     safe = safe.strip("_") or "Layer"
-    return f"BName_Effect_{role}_{safe}"
+    return f"BManga_Effect_{role}_{safe}"
 
 
 def _ensure_effect_material(obj, name: str, color: tuple[float, float, float, float]) -> int:
@@ -577,7 +577,7 @@ class _EffectParamProxy:
 def _params_for_write(context, obj, layer, params_override=None):
     if params_override is not None:
         return params_override
-    scene_params = getattr(context.scene, "bname_effect_line_params", None)
+    scene_params = getattr(context.scene, "bmanga_effect_line_params", None)
     if scene_params is None:
         return None
     try:
@@ -825,7 +825,7 @@ def on_effect_params_changed(context, _params) -> None:
     scene = getattr(context, "scene", None)
     if scene is None or _scene_params_syncing(scene):
         return
-    if getattr(scene, "bname_active_layer_kind", "") != "effect":
+    if getattr(scene, "bmanga_active_layer_kind", "") != "effect":
         return
     obj, layer, bounds = active_effect_layer_bounds(context)
     if obj is None or layer is None or bounds is None:
@@ -907,7 +907,7 @@ def _create_effect_layer(
 ):
     """新規効果線 GP Object を作成 (新設計: 1 effect = 1 GP Object @ コマ Collection).
 
-    旧設計の集約 GP Object (`BName_EffectLines`) に layer を追加する方式を撤廃し、
+    旧設計の集約 GP Object (`BManga_EffectLines`) に layer を追加する方式を撤廃し、
     各効果線が独立した GP Object として該当コマ / ページ Collection 配下に
     配置される。 これにより Outliner 上で「効果線レイヤーが該当コマの中に
     作成」されるようになる。
@@ -917,7 +917,7 @@ def _create_effect_layer(
     from ..utils import object_naming as on
 
     scene = context.scene
-    params = getattr(scene, "bname_effect_line_params", None)
+    params = getattr(scene, "bmanga_effect_line_params", None)
     suffix = getattr(params, "effect_type", "effect") if params is not None else "effect"
 
     # parent_kind / parent_key を解決
@@ -939,7 +939,7 @@ def _create_effect_layer(
             parent_kind = "page"
             object_parent_key = page_id
 
-    bname_id = elop._make_effect_bname_id()
+    bmanga_id = elop._make_effect_bmanga_id()
     title = f"効果線_{suffix}"
 
     # z_index は parent 配下の effect Object 群の最大値 + 10
@@ -959,7 +959,7 @@ def _create_effect_layer(
 
     obj = elo.create_effect_line_object(
         scene=scene,
-        bname_id=bname_id,
+        bmanga_id=bmanga_id,
         title=title,
         z_index=z_index,
         parent_kind=parent_kind,
@@ -1007,7 +1007,7 @@ def _delete_effect_layer(context, obj, layer) -> None:
 
     新設計 (1 effect = 1 GP Object) では、 layer を消すと obj が空シェル
     として残るため、 obj 全体を削除する。 旧設計の集約 GP Object
-    (BName_EffectLines) からの削除は layer のみ消す互換動作を維持する。
+    (BManga_EffectLines) からの削除は layer のみ消す互換動作を維持する。
     """
     from ..utils import object_naming as on
 
@@ -1041,8 +1041,8 @@ def _delete_effect_layer(context, obj, layer) -> None:
                 pass
         except Exception:  # noqa: BLE001
             pass
-    if hasattr(context.scene, "bname_active_effect_layer_name"):
-        context.scene.bname_active_effect_layer_name = ""
+    if hasattr(context.scene, "bmanga_active_effect_layer_name"):
+        context.scene.bmanga_active_effect_layer_name = ""
     layer_stack_utils.sync_layer_stack_after_data_change(context)
 
 
@@ -1221,7 +1221,7 @@ def _hit_effect_layer(context, x_mm: float, y_mm: float):
     """全 effect GP Object をスキャンし、 (obj, layer, bounds, part) を返す.
 
     新設計 (1 effect = 1 GP Object) に対応。 各 effect Object はデフォルトで
-    1 layer ("content") を持つ。 旧設計の単一集約 Object (BName_EffectLines)
+    1 layer ("content") を持つ。 旧設計の単一集約 Object (BManga_EffectLines)
     は新規作成時に hide されるが、 念のため fallback として最後にスキャンする。
     """
     from ..utils import gpencil
@@ -1291,14 +1291,14 @@ def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float
     return left, bottom, max(_EFFECT_MIN_SIZE_MM, right - left), max(_EFFECT_MIN_SIZE_MM, top - bottom)
 
 
-class BNAME_OT_effect_line_generate(Operator):
-    bl_idname = "bname.effect_line_generate"
+class BMANGA_OT_effect_line_generate(Operator):
+    bl_idname = "bmanga.effect_line_generate"
     bl_label = "効果線を追加"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_effect_line_params", None) is not None
+        return getattr(context.scene, "bmanga_effect_line_params", None) is not None
 
     def execute(self, context):
         try:
@@ -1311,8 +1311,8 @@ class BNAME_OT_effect_line_generate(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_effect_line_tool(Operator):
-    bl_idname = "bname.effect_line_tool"
+class BMANGA_OT_effect_line_tool(Operator):
+    bl_idname = "bmanga.effect_line_tool"
     bl_label = "効果線ツール"
     bl_options = {"REGISTER"}
 
@@ -1453,7 +1453,7 @@ class BNAME_OT_effect_line_tool(Operator):
         except Exception:  # noqa: BLE001
             pass
         if ":" in str(parent_key_for_create or ""):
-            params = getattr(context.scene, "bname_effect_line_params", None)
+            params = getattr(context.scene, "bmanga_effect_line_params", None)
             if params is not None and str(getattr(params, "effect_type", "") or "") != "speed":
                 _set_scene_params_syncing(context.scene, True)
                 try:
@@ -1738,7 +1738,7 @@ class BNAME_OT_effect_line_tool(Operator):
                         object_selection.effect_key(layer),
                         mode="single",
                     )
-                    self._push_undo_step("B-Name: 効果線作成")
+                    self._push_undo_step("B-MANGA: 効果線作成")
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
             else:
                 layer_stack_utils.tag_view3d_redraw(context)
@@ -1759,7 +1759,7 @@ class BNAME_OT_effect_line_tool(Operator):
                     bounds,
                     center_xy_mm=effect_layer_center(obj, layer, bounds),
                 )
-            self._push_undo_step("B-Name: 効果線編集")
+            self._push_undo_step("B-MANGA: 効果線編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
         else:
             layer_stack_utils.tag_view3d_redraw(context)
@@ -1813,16 +1813,16 @@ class BNAME_OT_effect_line_tool(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_effect_line_generate,
-    BNAME_OT_effect_line_tool,
+    BMANGA_OT_effect_line_generate,
+    BMANGA_OT_effect_line_tool,
 )
 
 
 def register() -> None:
-    from ..core.effect_line import BNameEffectLineParams
+    from ..core.effect_line import BMangaEffectLineParams
 
-    bpy.types.Scene.bname_effect_line_params = bpy.props.PointerProperty(
-        type=BNameEffectLineParams
+    bpy.types.Scene.bmanga_effect_line_params = bpy.props.PointerProperty(
+        type=BMangaEffectLineParams
     )
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
@@ -1835,6 +1835,6 @@ def unregister() -> None:
         except RuntimeError:
             pass
     try:
-        del bpy.types.Scene.bname_effect_line_params
+        del bpy.types.Scene.bmanga_effect_line_params
     except AttributeError:
         pass

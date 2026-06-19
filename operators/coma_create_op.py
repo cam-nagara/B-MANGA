@@ -54,7 +54,7 @@ def _region_pos_from_local(region, rv3d, ox, oy, lx, ly):
     return None if co is None else (co[0], co[1])
 
 
-def _draw_callback(op: "BNAME_OT_coma_create_tool") -> None:
+def _draw_callback(op: "BMANGA_OT_coma_create_tool") -> None:
     region = getattr(op, "_region", None)
     rv3d = getattr(op, "_rv3d", None)
     if region is None or rv3d is None:
@@ -100,10 +100,10 @@ def _draw_callback(op: "BNAME_OT_coma_create_tool") -> None:
             pass
 
 
-class BNAME_OT_coma_create_tool(Operator):
+class BMANGA_OT_coma_create_tool(Operator):
     """コマ作成ツール: ドラッグで矩形、クリック連続で折れ線。"""
 
-    bl_idname = "bname.coma_create_tool"
+    bl_idname = "bmanga.coma_create_tool"
     bl_label = "コマ作成ツール"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -420,8 +420,8 @@ class BNAME_OT_coma_create_tool(Operator):
             page_io.save_pages_json(work_dir, work)
             work.active_page_index = page_index
             self._refresh_coma_objects(context, work, page, entry)
-            if hasattr(context.scene, "bname_active_layer_kind"):
-                context.scene.bname_active_layer_kind = "coma"
+            if hasattr(context.scene, "bmanga_active_layer_kind"):
+                context.scene.bmanga_active_layer_kind = "coma"
             layer_stack_utils.sync_layer_stack_after_data_change(
                 context, align_coma_order=True
             )
@@ -433,7 +433,7 @@ class BNAME_OT_coma_create_tool(Operator):
 
     def _apply_border_preset(self, context, entry) -> None:
         wm = context.window_manager
-        name = getattr(wm, "bname_border_preset_selector", "") if wm is not None else ""
+        name = getattr(wm, "bmanga_border_preset_selector", "") if wm is not None else ""
         if not name:
             return
         try:
@@ -472,7 +472,7 @@ class BNAME_OT_coma_create_tool(Operator):
             _logger.exception("coma_create: ensure_coma_border failed")
 
 
-_CLASSES = (BNAME_OT_coma_create_tool,)
+_CLASSES = (BMANGA_OT_coma_create_tool,)
 
 
 def register() -> None:

@@ -34,7 +34,7 @@ def handle_ctrl_press(tool, context, event) -> bool:
         if str(part).startswith("tail_segment:"):
             _prefix, tail_index, insert_index = str(part).split(":")
             if balloon_op._insert_tail_point_page(entry, int(tail_index), int(insert_index), lx, ly) >= 0:
-                _push_undo("B-Name: しっぽ制御点追加")
+                _push_undo("B-MANGA: しっぽ制御点追加")
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
             return True
         if str(part).startswith("tail_point:"):
@@ -154,7 +154,7 @@ def append_pending_click(tool, context, page, x_mm: float, y_mm: float) -> bool:
             (float(point.x_mm) + float(entry.x_mm), float(point.y_mm) + float(entry.y_mm))
             for point in entry.tails[tail_index].points
         ]
-    _push_undo("B-Name: しっぽ編集")
+    _push_undo("B-MANGA: しっぽ編集")
     layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
     return True
 
@@ -198,7 +198,7 @@ def finish_create_drag(tool, context) -> None:
     current = tuple(getattr(tool, "_last_tail_xy", (tool._drag_start_x, tool._drag_start_y)))
     if balloon_op._add_tail_polyline(entry, [(tool._drag_start_x, tool._drag_start_y), current]) >= 0:
         clear_pending(tool)
-        _push_undo("B-Name: しっぽ作成")
+        _push_undo("B-MANGA: しっぽ作成")
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
 
 

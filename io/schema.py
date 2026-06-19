@@ -469,7 +469,7 @@ def coma_gap_from_dict(pg, data: dict[str, Any]) -> None:
 
 def _scene_from_work(work):
     scene = getattr(work, "id_data", None)
-    return scene if scene is not None and hasattr(scene, "bname_raster_layers") else None
+    return scene if scene is not None and hasattr(scene, "bmanga_raster_layers") else None
 
 
 def raster_layer_to_dict(entry) -> dict[str, Any]:
@@ -801,10 +801,10 @@ def _view_settings_from_dict(work, data: dict[str, Any]) -> None:
 
 
 def work_to_dict(work) -> dict[str, Any]:
-    """BNameWorkData → work.json dict."""
+    """BMangaWorkData → work.json dict."""
     scene = _scene_from_work(work)
-    raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
-    image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    raster_layers = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
+    image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     return {
         "schemaVersion": WORK_SCHEMA_VERSION,
         "balloonIdCounter": int(getattr(work, "balloon_id_counter", 0) or 0),
@@ -834,7 +834,7 @@ def work_to_dict(work) -> dict[str, Any]:
         ],
         "fill_layers": [
             fill_layer_to_dict(entry)
-            for entry in (getattr(scene, "bname_fill_layers", None) or [])
+            for entry in (getattr(scene, "bmanga_fill_layers", None) or [])
         ],
         "shared_balloons": [
             balloon_entry_to_dict(entry)
@@ -856,7 +856,7 @@ def work_to_dict(work) -> dict[str, Any]:
 
 
 def work_from_dict(work, data: dict[str, Any]) -> None:
-    """work.json dict → BNameWorkData.
+    """work.json dict → BMangaWorkData.
 
     schemaVersion が将来上がった場合はここでマイグレーションを挟む。
     """
@@ -886,33 +886,33 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
     _view_settings_from_dict(work, data)
     safe_area_from_dict(work.safe_area_overlay, data.get("safeAreaOverlay", {}))
     scene = _scene_from_work(work)
-    raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    raster_layers = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if raster_layers is not None:
         raster_layers.clear()
         with _suspend_load_property_side_effects():
             for item in data.get("raster_layers", []) or []:
                 entry = raster_layers.add()
                 raster_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
-        if hasattr(scene, "bname_active_raster_layer_index"):
-            scene.bname_active_raster_layer_index = 0 if len(raster_layers) else -1
-    image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
+        if hasattr(scene, "bmanga_active_raster_layer_index"):
+            scene.bmanga_active_raster_layer_index = 0 if len(raster_layers) else -1
+    image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if image_layers is not None:
         image_layers.clear()
         with _suspend_load_property_side_effects():
             for item in data.get("image_layers", []) or []:
                 entry = image_layers.add()
                 image_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
-        if hasattr(scene, "bname_active_image_layer_index"):
-            scene.bname_active_image_layer_index = 0 if len(image_layers) else -1
-    fill_layers = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+        if hasattr(scene, "bmanga_active_image_layer_index"):
+            scene.bmanga_active_image_layer_index = 0 if len(image_layers) else -1
+    fill_layers = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     if fill_layers is not None:
         fill_layers.clear()
         with _suspend_load_property_side_effects():
             for item in data.get("fill_layers", []) or []:
                 entry = fill_layers.add()
                 fill_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
-        if hasattr(scene, "bname_active_fill_layer_index"):
-            scene.bname_active_fill_layer_index = 0 if len(fill_layers) else -1
+        if hasattr(scene, "bmanga_active_fill_layer_index"):
+            scene.bmanga_active_fill_layer_index = 0 if len(fill_layers) else -1
     if hasattr(work, "shared_balloons"):
         work.shared_balloons.clear()
         with _suspend_load_property_side_effects():
@@ -1102,6 +1102,7 @@ def coma_entry_to_dict(entry) -> dict[str, Any]:
         "overlapClipping": bool(entry.overlap_clipping),
         "visible": bool(getattr(entry, "visible", True)),
         "paperVisible": bool(getattr(entry, "paper_visible", True)),
+        "snapGutterToFinish": bool(getattr(entry, "snap_gutter_to_finish", False)),
         "backgroundColor": color_to_hex(entry.background_color),
         "backgroundColorAlpha": round(entry.background_color[3], 3),
         "border": coma_border_to_dict(entry.border),
@@ -1148,6 +1149,8 @@ def coma_entry_from_dict(entry, data: dict[str, Any]) -> None:
         entry.visible = bool(data.get("visible", True))
     if hasattr(entry, "paper_visible"):
         entry.paper_visible = bool(data.get("paperVisible", True))
+    if hasattr(entry, "snap_gutter_to_finish"):
+        entry.snap_gutter_to_finish = bool(data.get("snapGutterToFinish", False))
     # 既定値を opaque (1.0) に変更 (2026-05-02 リアーキ: コマ平面 Mesh が
     # 背景色 + マスク Boolean reference を兼ねるため、 alpha=0 だと意味が無い)
     bg_alpha = float(data.get("backgroundColorAlpha", 1.0))
@@ -1747,7 +1750,7 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
 def page_to_dict(page_entry) -> dict[str, Any]:
     """page.json (個別ページメタ) を書き出す.
 
-    page_entry は BNamePageEntry。comas / balloons / texts をシリアライズする。
+    page_entry は BMangaPageEntry。comas / balloons / texts をシリアライズする。
     """
     return {
         "schemaVersion": PAGE_SCHEMA_VERSION,

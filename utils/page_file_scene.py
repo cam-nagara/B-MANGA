@@ -18,7 +18,7 @@ ROLE_UNKNOWN = "unknown"
 def find_work_root(blend_path: Path) -> Path | None:
     p = Path(blend_path).parent
     for _ in range(6):
-        if p.suffix == paths.BNAME_DIR_SUFFIX:
+        if p.suffix == paths.BMANGA_DIR_SUFFIX:
             return p
         if p.parent == p:
             break
@@ -62,7 +62,7 @@ def role_from_path(blend_path: Path, work_dir: Path | None = None) -> tuple[str,
 
 def current_role(context=None) -> tuple[str, str, str]:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     work_dir_text = str(getattr(work, "work_dir", "") or "")
     work_dir = Path(work_dir_text) if work_dir_text else None
     filepath = str(getattr(bpy.data, "filepath", "") or "")
@@ -75,7 +75,7 @@ def current_page_id(scene=None) -> str:
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return ""
-    page_id = str(getattr(scene, "bname_current_page_id", "") or "")
+    page_id = str(getattr(scene, "bmanga_current_page_id", "") or "")
     return page_id if paths.is_valid_page_id(page_id) else ""
 
 
@@ -98,20 +98,20 @@ def set_work_list_state(context) -> None:
         set_mode(MODE_PAGE, context)
     except Exception:  # noqa: BLE001
         pass
-    scene.bname_current_page_id = ""
-    scene.bname_current_coma_id = ""
-    scene.bname_current_coma_page_id = ""
-    if hasattr(scene, "bname_overview_mode"):
-        scene.bname_overview_mode = True
-    if hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "page"
+    scene.bmanga_current_page_id = ""
+    scene.bmanga_current_coma_id = ""
+    scene.bmanga_current_coma_page_id = ""
+    if hasattr(scene, "bmanga_overview_mode"):
+        scene.bmanga_overview_mode = True
+    if hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "page"
 
 
 def set_page_edit_state(context, page_id: str) -> bool:
     if not paths.is_valid_page_id(page_id):
         return False
     scene = getattr(context, "scene", None)
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None:
         return False
     index = find_page_index(work, page_id)
@@ -124,13 +124,13 @@ def set_page_edit_state(context, page_id: str) -> bool:
     except Exception:  # noqa: BLE001
         pass
     work.active_page_index = index
-    scene.bname_current_page_id = page_id
-    scene.bname_current_coma_id = ""
-    scene.bname_current_coma_page_id = ""
-    if hasattr(scene, "bname_overview_mode"):
-        scene.bname_overview_mode = True
-    if hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "page"
+    scene.bmanga_current_page_id = page_id
+    scene.bmanga_current_coma_id = ""
+    scene.bmanga_current_coma_page_id = ""
+    if hasattr(scene, "bmanga_overview_mode"):
+        scene.bmanga_overview_mode = True
+    if hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "page"
     return True
 
 
@@ -156,7 +156,7 @@ def is_work_list_scene(scene=None) -> bool:
     filepath = str(getattr(bpy.data, "filepath", "") or "")
     return (
         (not filepath)
-        and bool(getattr(scene, "bname_overview_mode", False))
+        and bool(getattr(scene, "bmanga_overview_mode", False))
         and not current_page_id(scene)
     )
 
@@ -259,23 +259,23 @@ def work_for_pages(work, page_ids: set[str] | None):
 
 
 def _object_page_id(obj) -> str:
-    parent_key = str(obj.get("bname_parent_key", "") or "")
+    parent_key = str(obj.get("bmanga_parent_key", "") or "")
     if ":" in parent_key:
         return parent_key.split(":", 1)[0]
     if paths.is_valid_page_id(parent_key):
         return parent_key
     for prop in (
-        "bname_paper_bg_page_id",
-        "bname_paper_guide_page_id",
+        "bmanga_paper_bg_page_id",
+        "bmanga_paper_guide_page_id",
     ):
         page_id = str(obj.get(prop, "") or "")
         if paths.is_valid_page_id(page_id):
             return page_id
     for prop in (
-        "bname_coma_plane_owner_id",
-        "bname_coma_mask_owner_id",
-        "bname_coma_border_owner_id",
-        "bname_coma_white_margin_owner_id",
+        "bmanga_coma_plane_owner_id",
+        "bmanga_coma_mask_owner_id",
+        "bmanga_coma_border_owner_id",
+        "bmanga_coma_white_margin_owner_id",
     ):
         owner = str(obj.get(prop, "") or "")
         if ":" in owner:
@@ -300,13 +300,13 @@ _CONTENT_KINDS = {
 
 
 def _object_is_page_content(obj) -> bool:
-    kind = str(obj.get("bname_kind", "") or "")
+    kind = str(obj.get("bmanga_kind", "") or "")
     if kind in _CONTENT_KINDS:
         return True
     for prop in (
-        "bname_balloon_fill_kind",
-        "bname_balloon_source_kind",
-        "bname_balloon_clip_mask_kind",
+        "bmanga_balloon_fill_kind",
+        "bmanga_balloon_source_kind",
+        "bmanga_balloon_clip_mask_kind",
     ):
         if str(obj.get(prop, "") or ""):
             return True
@@ -314,17 +314,17 @@ def _object_is_page_content(obj) -> bool:
 
 
 _COMA_RUNTIME_KIND_PROPS = {
-    "bname_coma_plane_kind",
-    "bname_coma_mask_kind",
-    "bname_coma_border_kind",
-    "bname_coma_white_margin_kind",
+    "bmanga_coma_plane_kind",
+    "bmanga_coma_mask_kind",
+    "bmanga_coma_border_kind",
+    "bmanga_coma_white_margin_kind",
 }
 
 _COMA_RUNTIME_OWNER_PROPS = {
-    "bname_coma_plane_owner_id",
-    "bname_coma_mask_owner_id",
-    "bname_coma_border_owner_id",
-    "bname_coma_white_margin_owner_id",
+    "bmanga_coma_plane_owner_id",
+    "bmanga_coma_mask_owner_id",
+    "bmanga_coma_border_owner_id",
+    "bmanga_coma_white_margin_owner_id",
 }
 
 
@@ -424,15 +424,15 @@ def purge_other_page_data(scene, page_id: str) -> int:
     removed += purge_coma_runtime_data(scene, {page_id})
 
     def _collection_page_id(coll) -> str:
-        coll_id = str(coll.get("bname_id", "") or "")
-        coll_kind = str(coll.get("bname_kind", "") or "")
+        coll_id = str(coll.get("bmanga_id", "") or "")
+        coll_kind = str(coll.get("bmanga_kind", "") or "")
         if coll_kind == "page" and paths.is_valid_page_id(coll_id):
             return coll_id
         if coll_kind == "coma" and ":" in coll_id:
             candidate = coll_id.split(":", 1)[0]
             if paths.is_valid_page_id(candidate):
                 return candidate
-        parent_key = str(coll.get("bname_parent_key", "") or "")
+        parent_key = str(coll.get("bmanga_parent_key", "") or "")
         if ":" in parent_key:
             parent_key = parent_key.split(":", 1)[0]
         if paths.is_valid_page_id(parent_key):
@@ -443,7 +443,7 @@ def purge_other_page_data(scene, page_id: str) -> int:
 
     collections = sorted(
         list(bpy.data.collections),
-        key=lambda coll: 1 if str(coll.get("bname_kind", "") or "") == "page" else 0,
+        key=lambda coll: 1 if str(coll.get("bmanga_kind", "") or "") == "page" else 0,
     )
     for coll in collections:
         coll_page_id = _collection_page_id(coll)
@@ -457,22 +457,22 @@ def purge_other_page_data(scene, page_id: str) -> int:
 
 
 _WORK_LIST_RUNTIME_KIND_PROPS = {
-    "bname_coma_plane_kind",
-    "bname_coma_mask_kind",
-    "bname_coma_border_kind",
-    "bname_coma_white_margin_kind",
-    "bname_coma_plane_owner_id",
-    "bname_coma_mask_owner_id",
-    "bname_coma_border_owner_id",
-    "bname_coma_white_margin_owner_id",
-    "bname_paper_bg_kind",
-    "bname_paper_guide_kind",
-    "bname_work_info_text_kind",
+    "bmanga_coma_plane_kind",
+    "bmanga_coma_mask_kind",
+    "bmanga_coma_border_kind",
+    "bmanga_coma_white_margin_kind",
+    "bmanga_coma_plane_owner_id",
+    "bmanga_coma_mask_owner_id",
+    "bmanga_coma_border_owner_id",
+    "bmanga_coma_white_margin_owner_id",
+    "bmanga_paper_bg_kind",
+    "bmanga_paper_guide_kind",
+    "bmanga_work_info_text_kind",
 }
 
 _WORK_LIST_RUNTIME_OBJECT_NAMES = {
-    "bname_master_sketch",
-    "BName_EffectLines",
+    "bmanga_master_sketch",
+    "BManga_EffectLines",
 }
 
 
@@ -481,16 +481,16 @@ def _object_is_work_list_runtime(obj) -> bool:
         return True
     if _object_is_page_content(obj):
         return True
-    if str(obj.get("bname_kind", "") or "") == "page_preview":
+    if str(obj.get("bmanga_kind", "") or "") == "page_preview":
         return False
     return any(str(obj.get(prop, "") or "") for prop in _WORK_LIST_RUNTIME_KIND_PROPS)
 
 
 def _collection_is_work_list_runtime(coll) -> bool:
-    kind = str(coll.get("bname_kind", "") or "")
+    kind = str(coll.get("bmanga_kind", "") or "")
     if kind in {"page", "coma", "folder"}:
         return True
-    coll_id = str(coll.get("bname_id", "") or "")
+    coll_id = str(coll.get("bmanga_id", "") or "")
     if kind == "page_preview":
         return False
     if paths.is_valid_page_id(coll_id) or paths.is_valid_page_id(coll.name):
@@ -498,7 +498,7 @@ def _collection_is_work_list_runtime(coll) -> bool:
     if ":" in coll_id:
         page_id, _rest = coll_id.split(":", 1)
         return paths.is_valid_page_id(page_id)
-    parent_key = str(coll.get("bname_parent_key", "") or "")
+    parent_key = str(coll.get("bmanga_parent_key", "") or "")
     if ":" in parent_key:
         page_id, _rest = parent_key.split(":", 1)
         return paths.is_valid_page_id(page_id)
@@ -533,7 +533,7 @@ def purge_work_list_runtime_data(scene) -> int:
                     pass
     collections = sorted(
         list(bpy.data.collections),
-        key=lambda coll: 1 if str(coll.get("bname_kind", "") or "") == "page" else 0,
+        key=lambda coll: 1 if str(coll.get("bmanga_kind", "") or "") == "page" else 0,
     )
     for coll in collections:
         if not _collection_is_work_list_runtime(coll):

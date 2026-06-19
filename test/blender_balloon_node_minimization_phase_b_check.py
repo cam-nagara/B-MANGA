@@ -12,7 +12,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_node_minimization_phase_b_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_node_minimization_phase_b_check.py"
 """
 
 from __future__ import annotations
@@ -27,18 +27,18 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_PHASE_B_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_phase_b_"))
+_OUT_ENV = os.environ.get("BMANGA_PHASE_B_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_phase_b_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_phase_b",
+        "bmanga_dev_phase_b",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_phase_b"] = mod
+    sys.modules["bmanga_dev_phase_b"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -60,18 +60,18 @@ def main() -> int:
     _load_addon()
     errors: list[str] = []
 
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_phase_b_work_"))
-    work_path = temp_root / "PhaseBCheck.bname"
-    result = bpy.ops.bname.work_new(filepath=str(work_path))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_phase_b_work_"))
+    work_path = temp_root / "PhaseBCheck.bmanga"
+    result = bpy.ops.bmanga.work_new(filepath=str(work_path))  # type: ignore[attr-defined]
     if "FINISHED" not in result:
         print(f"  ✗ work_new failed: {result}")
         return 1
 
-    from bname_dev_phase_b.io import balloon_presets
-    from bname_dev_phase_b.operators import balloon_op
-    from bname_dev_phase_b.utils import balloon_curve_object as bco
-    from bname_dev_phase_b.utils import balloon_line_mesh
-    from bname_dev_phase_b.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_phase_b.io import balloon_presets
+    from bmanga_dev_phase_b.operators import balloon_op
+    from bmanga_dev_phase_b.utils import balloon_curve_object as bco
+    from bmanga_dev_phase_b.utils import balloon_line_mesh
+    from bmanga_dev_phase_b.utils.layer_hierarchy import page_stack_key
 
     # 1. カスタムプリセット (星型) を作品ローカルに保存
     star_vertices = _make_star_vertices(5, 1.0, 0.5)
@@ -87,7 +87,7 @@ def main() -> int:
     # 2. shape=custom のフキダシを追加
     context = bpy.context
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     parent_key = page_stack_key(page)
 
@@ -163,7 +163,7 @@ def main() -> int:
 
     # 6. Phase D 以降: ノードモディファイアは完全撤去されているため、存在しないことを確認
     print("=== ノードモディファイア撤去検証 (Phase D 以降) ===")
-    modifier = obj.modifiers.get("B-Name Geometry Nodes")
+    modifier = obj.modifiers.get("B-MANGA Geometry Nodes")
     if modifier is not None:
         errors.append(f"Phase D 以降は GN modifier が無いはずなのに存在する: {modifier.name}")
     else:

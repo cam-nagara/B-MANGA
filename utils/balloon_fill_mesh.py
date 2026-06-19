@@ -7,7 +7,7 @@
 塗り面の生成を、Python 側 (本体カーブと無関係の別オブジェクト) で焼き込む
 ことで、ジオメトリノードの評価コストを丸ごと無くす。
 
-塗り輪郭ぼかしのアルファ属性 (`bname_fill_blur_alpha`) は、各メッシュ頂点
+塗り輪郭ぼかしのアルファ属性 (`bmanga_fill_blur_alpha`) は、各メッシュ頂点
 からフキダシ輪郭までの距離フィールドとして頂点属性に書き込み、マテリアル
 側 (`_mat_fill_blur_alpha_socket`) でアルファに乗算される。
 """
@@ -34,8 +34,8 @@ from .geom import Rect, mm_to_m
 _logger = log.get_logger(__name__)
 
 BALLOON_FILL_MESH_NAME_PREFIX = "balloon_fill_mesh_"
-PROP_BALLOON_FILL_MESH_KIND = "bname_balloon_fill_mesh_kind"
-PROP_BALLOON_FILL_MESH_OWNER_ID = "bname_balloon_fill_mesh_owner_id"
+PROP_BALLOON_FILL_MESH_KIND = "bmanga_balloon_fill_mesh_kind"
+PROP_BALLOON_FILL_MESH_OWNER_ID = "bmanga_balloon_fill_mesh_owner_id"
 _KIND_FILL = "balloon_fill_mesh"
 
 # 塗り輪郭ぼかしの幅は、線幅と blur_amount (0..1) から決まる。
@@ -210,7 +210,7 @@ def _compute_fill_blur_alpha(
 
 
 def _write_fill_blur_alpha_attribute(mesh: bpy.types.Mesh, alpha: Sequence[float]) -> None:
-    """頂点属性 bname_fill_blur_alpha を POINT domain Float として書き込む."""
+    """頂点属性 bmanga_fill_blur_alpha を POINT domain Float として書き込む."""
     name = FILL_BLUR_ALPHA_ATTRIBUTE
     # 既存属性を消して作り直す (型と長さを確実に揃える)
     try:
@@ -406,7 +406,7 @@ def _build_fill_mesh(
     (中心点ベース) を優先する。 ホール (= 多重線で削った穴) がある場合のみ
     bmesh を使う。
 
-    blur_alpha が None でない場合、各頂点に bname_fill_blur_alpha 属性を書き込む。
+    blur_alpha が None でない場合、各頂点に bmanga_fill_blur_alpha 属性を書き込む。
     """
     if holes:
         pts, faces = _bmesh_triangulate(outer_ring, holes)

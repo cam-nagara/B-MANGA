@@ -22,23 +22,23 @@ from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
 
-PER_LAYER_EFFECT_DATA_PREFIX = "BName_EffectGP_"
-EFFECT_DISPLAY_DATA_PREFIX = "BName_EffectDisplay_"
+PER_LAYER_EFFECT_DATA_PREFIX = "BManga_EffectGP_"
+EFFECT_DISPLAY_DATA_PREFIX = "BManga_EffectDisplay_"
 EFFECT_DISPLAY_ID_PREFIX = "effect_display_"
 EFFECT_DISPLAY_KIND = "effect_display"
-EFFECT_FRAME_SOURCE_DATA_PREFIX = "BName_EffectFrameSource_"
+EFFECT_FRAME_SOURCE_DATA_PREFIX = "BManga_EffectFrameSource_"
 EFFECT_FRAME_SOURCE_ID_PREFIX = "effect_frame_source_"
 EFFECT_FRAME_SOURCE_KIND = "effect_frame_source"
-EFFECT_SHAPE_SOURCE_DATA_PREFIX = "BName_EffectShapeSource_"
+EFFECT_SHAPE_SOURCE_DATA_PREFIX = "BManga_EffectShapeSource_"
 EFFECT_SHAPE_SOURCE_ID_PREFIX = "effect_shape_source_"
 EFFECT_SHAPE_SOURCE_KIND = "effect_shape_source"
-EFFECT_DENSITY_SOURCE_DATA_PREFIX = "BName_EffectDensitySource_"
+EFFECT_DENSITY_SOURCE_DATA_PREFIX = "BManga_EffectDensitySource_"
 EFFECT_DENSITY_SOURCE_ID_PREFIX = "effect_density_source_"
 EFFECT_DENSITY_SOURCE_KIND = "effect_density_source"
-PROP_EFFECT_TARGET = "bname_effect_target"
-PROP_EFFECT_CONTROLLER_ID = "bname_effect_controller_id"
-PROP_EFFECT_DISPLAY_MASK_PARENT = "bname_effect_display_mask_parent"
-PROP_EFFECT_SOURCE_ROLE = "bname_effect_source_role"
+PROP_EFFECT_TARGET = "bmanga_effect_target"
+PROP_EFFECT_CONTROLLER_ID = "bmanga_effect_controller_id"
+PROP_EFFECT_DISPLAY_MASK_PARENT = "bmanga_effect_display_mask_parent"
+PROP_EFFECT_SOURCE_ROLE = "bmanga_effect_source_role"
 
 
 def _configure_line_material_nodes(
@@ -98,12 +98,12 @@ def _resolve_unique_data_name(base: str) -> str:
 
 
 def _new_effect_gp_object_for_layer(
-    *, bname_id: str, title: str
+    *, bmanga_id: str, title: str
 ) -> bpy.types.Object:
-    base_data_name = f"{PER_LAYER_EFFECT_DATA_PREFIX}{bname_id}"
+    base_data_name = f"{PER_LAYER_EFFECT_DATA_PREFIX}{bmanga_id}"
     data_name = _resolve_unique_data_name(base_data_name)
     gp_data = gp_utils.ensure_gpencil(data_name)
-    obj_name = title or bname_id
+    obj_name = title or bmanga_id
     obj = bpy.data.objects.new(obj_name, gp_data)
     if len(gp_data.layers) == 0:
         try:
@@ -113,7 +113,7 @@ def _new_effect_gp_object_for_layer(
     return obj
 
 
-def _display_bname_id(controller_obj: bpy.types.Object | None) -> str:
+def _display_bmanga_id(controller_obj: bpy.types.Object | None) -> str:
     if controller_obj is None:
         return ""
     base = str(controller_obj.get(on.PROP_ID, "") or "")
@@ -122,7 +122,7 @@ def _display_bname_id(controller_obj: bpy.types.Object | None) -> str:
     return f"{EFFECT_DISPLAY_ID_PREFIX}{base}" if base else ""
 
 
-def _frame_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
+def _frame_source_bmanga_id(controller_obj: bpy.types.Object | None) -> str:
     if controller_obj is None:
         return ""
     base = str(controller_obj.get(on.PROP_ID, "") or "")
@@ -131,7 +131,7 @@ def _frame_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
     return f"{EFFECT_FRAME_SOURCE_ID_PREFIX}{base}" if base else ""
 
 
-def _shape_source_bname_id(controller_obj: bpy.types.Object | None, role: str) -> str:
+def _shape_source_bmanga_id(controller_obj: bpy.types.Object | None, role: str) -> str:
     if controller_obj is None:
         return ""
     base = str(controller_obj.get(on.PROP_ID, "") or "")
@@ -141,7 +141,7 @@ def _shape_source_bname_id(controller_obj: bpy.types.Object | None, role: str) -
     return f"{EFFECT_SHAPE_SOURCE_ID_PREFIX}{role}_{base}" if role and base else ""
 
 
-def _density_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
+def _density_source_bmanga_id(controller_obj: bpy.types.Object | None) -> str:
     if controller_obj is None:
         return ""
     base = str(controller_obj.get(on.PROP_ID, "") or "")
@@ -152,9 +152,9 @@ def _density_source_bname_id(controller_obj: bpy.types.Object | None) -> str:
 
 def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
     """効果線の実表示用 Mesh Object を返す。"""
-    display_id = _display_bname_id(controller_obj)
+    display_id = _display_bmanga_id(controller_obj)
     if display_id:
-        obj = on.find_object_by_bname_id(display_id, kind=EFFECT_DISPLAY_KIND)
+        obj = on.find_object_by_bmanga_id(display_id, kind=EFFECT_DISPLAY_KIND)
         if obj is not None:
             return obj
     controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
@@ -169,9 +169,9 @@ def find_effect_display_object(controller_obj: bpy.types.Object | None) -> Optio
 
 
 def find_effect_frame_source_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
-    source_id = _frame_source_bname_id(controller_obj)
+    source_id = _frame_source_bmanga_id(controller_obj)
     if source_id:
-        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_FRAME_SOURCE_KIND)
+        obj = on.find_object_by_bmanga_id(source_id, kind=EFFECT_FRAME_SOURCE_KIND)
         if obj is not None:
             return obj
     controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
@@ -189,9 +189,9 @@ def find_effect_shape_source_object(
     controller_obj: bpy.types.Object | None,
     role: str,
 ) -> Optional[bpy.types.Object]:
-    source_id = _shape_source_bname_id(controller_obj, role)
+    source_id = _shape_source_bmanga_id(controller_obj, role)
     if source_id:
-        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_SHAPE_SOURCE_KIND)
+        obj = on.find_object_by_bmanga_id(source_id, kind=EFFECT_SHAPE_SOURCE_KIND)
         if obj is not None:
             return obj
     controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
@@ -211,9 +211,9 @@ def find_effect_shape_source_object(
 
 
 def find_effect_density_source_object(controller_obj: bpy.types.Object | None) -> Optional[bpy.types.Object]:
-    source_id = _density_source_bname_id(controller_obj)
+    source_id = _density_source_bmanga_id(controller_obj)
     if source_id:
-        obj = on.find_object_by_bname_id(source_id, kind=EFFECT_DENSITY_SOURCE_KIND)
+        obj = on.find_object_by_bmanga_id(source_id, kind=EFFECT_DENSITY_SOURCE_KIND)
         if obj is not None:
             return obj
     controller_id = str(controller_obj.get(on.PROP_ID, "") or "") if controller_obj is not None else ""
@@ -377,7 +377,7 @@ def _effect_alpha_attribute_name() -> str:
 
         return str(_gn.EFFECT_ALPHA_ATTR)
     except Exception:  # noqa: BLE001
-        return "bname_effect_alpha"
+        return "bmanga_effect_alpha"
 
 
 def _stroke_role(stroke) -> str:
@@ -620,7 +620,7 @@ def ensure_effect_frame_source_object(
     if scene is None or controller_obj is None or not outline_mm:
         preserve_effect_frame_source_object(controller_obj)
         return None
-    source_id = _frame_source_bname_id(controller_obj)
+    source_id = _frame_source_bmanga_id(controller_obj)
     if not source_id:
         return None
     obj = find_effect_frame_source_object(controller_obj)
@@ -643,7 +643,7 @@ def ensure_effect_frame_source_object(
         on.stamp_identity(
             obj,
             kind=EFFECT_FRAME_SOURCE_KIND,
-            bname_id=source_id,
+            bmanga_id=source_id,
             title=f"{title}_始点コマ枠",
             z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
             parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
@@ -676,7 +676,7 @@ def ensure_effect_shape_source_object(
     if scene is None or controller_obj is None or not outline_mm:
         preserve_effect_shape_source_object(controller_obj, role)
         return None
-    source_id = _shape_source_bname_id(controller_obj, role)
+    source_id = _shape_source_bmanga_id(controller_obj, role)
     if not source_id:
         return None
     obj = find_effect_shape_source_object(controller_obj, role)
@@ -701,7 +701,7 @@ def ensure_effect_shape_source_object(
         on.stamp_identity(
             obj,
             kind=EFFECT_SHAPE_SOURCE_KIND,
-            bname_id=source_id,
+            bmanga_id=source_id,
             title=f"{title}_{suffix}",
             z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
             parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
@@ -734,7 +734,7 @@ def ensure_effect_density_source_object(
     if scene is None or controller_obj is None or not points_mm:
         preserve_effect_density_source_object(controller_obj)
         return None
-    source_id = _density_source_bname_id(controller_obj)
+    source_id = _density_source_bmanga_id(controller_obj)
     if not source_id:
         return None
     obj = find_effect_density_source_object(controller_obj)
@@ -757,7 +757,7 @@ def ensure_effect_density_source_object(
         on.stamp_identity(
             obj,
             kind=EFFECT_DENSITY_SOURCE_KIND,
-            bname_id=source_id,
+            bmanga_id=source_id,
             title=f"{title}_距離密度",
             z_index=int(controller_obj.get(on.PROP_Z_INDEX, 0) or 0),
             parent_key=str(controller_obj.get(on.PROP_PARENT_KEY, "") or ""),
@@ -791,15 +791,15 @@ def _ensure_display_material(
     mask_info=None,
 ) -> None:
     display_id = str(display.get(on.PROP_ID, "") or display.name)
-    mat_name = f"BName_Effect_Display_Line_{display_id}"
+    mat_name = f"BManga_Effect_Display_Line_{display_id}"
     mat = bpy.data.materials.get(mat_name)
     if mat is None:
         mat = bpy.data.materials.new(mat_name)
-    fill_mat_name = f"BName_Effect_Display_Fill_{display_id}"
+    fill_mat_name = f"BManga_Effect_Display_Fill_{display_id}"
     fill_mat = bpy.data.materials.get(fill_mat_name)
     if fill_mat is None:
         fill_mat = bpy.data.materials.new(fill_mat_name)
-    underlay_mat_name = f"BName_Effect_Display_Underlay_{display_id}"
+    underlay_mat_name = f"BManga_Effect_Display_Underlay_{display_id}"
     underlay_mat = bpy.data.materials.get(underlay_mat_name)
     if underlay_mat is None:
         underlay_mat = bpy.data.materials.new(underlay_mat_name)
@@ -952,10 +952,10 @@ def ensure_effect_display_object(
     """
     if scene is None or controller_obj is None:
         return None
-    display_id = _display_bname_id(controller_obj)
+    display_id = _display_bmanga_id(controller_obj)
     if not display_id:
         return None
-    display = on.find_object_by_bname_id(display_id, kind=EFFECT_DISPLAY_KIND)
+    display = on.find_object_by_bmanga_id(display_id, kind=EFFECT_DISPLAY_KIND)
     if display is None:
         mesh = bpy.data.meshes.new(f"{EFFECT_DISPLAY_DATA_PREFIX}{display_id}")
         title = str(controller_obj.get(on.PROP_TITLE, "") or controller_obj.name)
@@ -967,7 +967,7 @@ def ensure_effect_display_object(
     on.stamp_identity(
         display,
         kind=EFFECT_DISPLAY_KIND,
-        bname_id=display_id,
+        bmanga_id=display_id,
         title=title,
         z_index=z_index,
         parent_key=parent_key,
@@ -1016,7 +1016,7 @@ def ensure_effect_display_object(
         underlay_color=underlay_color,
         mask_info=coma_content_mask.ensure_viewport_mask_for_parent(
             scene,
-            getattr(scene, "bname_work", None),
+            getattr(scene, "bmanga_work", None),
             parent_key,
         ),
     )
@@ -1108,7 +1108,7 @@ def sync_controller_transform_from_display(display_obj: bpy.types.Object | None)
     controller_id = str(display_obj.get(PROP_EFFECT_CONTROLLER_ID, "") or "")
     if not controller_id:
         return False
-    controller = on.find_object_by_bname_id(controller_id, kind="effect")
+    controller = on.find_object_by_bmanga_id(controller_id, kind="effect")
     if controller is None:
         return False
     changed = (
@@ -1129,7 +1129,7 @@ def sync_controller_transform_from_display(display_obj: bpy.types.Object | None)
 def create_effect_line_object(
     *,
     scene: bpy.types.Scene,
-    bname_id: str,
+    bmanga_id: str,
     title: str,
     z_index: int,
     parent_kind: str,
@@ -1138,11 +1138,11 @@ def create_effect_line_object(
     target_ref: str = "",
 ) -> Optional[bpy.types.Object]:
     """新規効果線 GP Object を生成し、Outliner mirror に登録."""
-    if scene is None or not bname_id:
+    if scene is None or not bmanga_id:
         return None
-    obj = on.find_object_by_bname_id(bname_id, kind="effect")
+    obj = on.find_object_by_bmanga_id(bmanga_id, kind="effect")
     if obj is None:
-        obj = _new_effect_gp_object_for_layer(bname_id=bname_id, title=title)
+        obj = _new_effect_gp_object_for_layer(bmanga_id=bmanga_id, title=title)
     # 編集用 GP は作成直後から非表示にする。表示状態のグリースペンシルは Blender が
     # ビューポートを連続再描画させ、細線が点滅し続ける。画面表示は表示用 Mesh が担う。
     try:
@@ -1153,7 +1153,7 @@ def create_effect_line_object(
     los.stamp_layer_object(
         obj,
         kind="effect",
-        bname_id=bname_id,
+        bmanga_id=bmanga_id,
         title=title,
         z_index=z_index,
         parent_kind=parent_kind,
@@ -1164,7 +1164,7 @@ def create_effect_line_object(
     if target_ref:
         obj[PROP_EFFECT_TARGET] = target_ref
     try:
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
         if work is not None:
             los.assign_per_page_z_ranks(scene, work)
     except Exception:  # noqa: BLE001

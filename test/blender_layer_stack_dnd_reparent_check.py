@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _stack(context):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -38,7 +38,7 @@ def _stack(context):
 
 
 def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
@@ -88,7 +88,7 @@ def _add_text(page, tid: str, parent_key: str, parent_balloon_id: str = ""):
 
 
 def _add_image(context, image_id: str, parent_key: str):
-    entry = context.scene.bname_image_layers.add()
+    entry = context.scene.bmanga_image_layers.add()
     entry.id = image_id
     entry.title = image_id
     entry.parent_kind = "coma" if ":" in parent_key else "page"
@@ -97,7 +97,7 @@ def _add_image(context, image_id: str, parent_key: str):
 
 
 def _add_raster(context, raster_id: str, parent_key: str):
-    entry = context.scene.bname_raster_layers.add()
+    entry = context.scene.bmanga_raster_layers.add()
     entry.id = raster_id
     entry.title = raster_id
     entry.scope = "page"
@@ -107,8 +107,8 @@ def _add_raster(context, raster_id: str, parent_key: str):
 
 
 def _add_gp_layer(context, name: str, parent_key: str):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gpencil as gp_utils
 
     obj = gp_utils.ensure_master_gpencil(context.scene)
     layer = obj.data.layers.new(name)
@@ -117,7 +117,7 @@ def _add_gp_layer(context, name: str, parent_key: str):
 
 
 def _add_effect_layer(context, parent_key: str):
-    from bname_dev.operators import effect_line_op
+    from bmanga_dev.operators import effect_line_op
 
     _obj, layer = effect_line_op._create_effect_layer(
         context,
@@ -128,21 +128,21 @@ def _add_effect_layer(context, parent_key: str):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_layer_stack_dnd_reparent_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_stack_dnd_reparent_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerStackDnd.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LayerStackDnd.bmanga"))
         assert "FINISHED" in result, result
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
         # v0.6.279 以降、レイヤーリストの内容行はページ編集シーンにのみ
         # 並ぶため、ページを開いてから D&D 親変更を検証する
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
 
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils.layer_hierarchy import (
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils.layer_hierarchy import (
             COMA_KIND,
             OUTSIDE_KIND,
             OUTSIDE_STACK_KEY,
@@ -152,7 +152,7 @@ def main() -> None:
         )
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page1 = work.pages[0]
         page2 = work.pages[1]
         page1_key = page_stack_key(page1)
@@ -195,17 +195,17 @@ def main() -> None:
         _move_uid_below_parent(context, moved_text_uid, outside_uid)
         assert not any(getattr(t, "id", "") == moved_text_id for t in page2.texts)
         assert any(getattr(t, "id", "") == moved_text_id for t in work.shared_texts)
-        from bname_dev.operators import object_tool_selection
-        from bname_dev.utils import object_naming as on
-        from bname_dev.utils import object_selection
-        from bname_dev.utils import text_real_object
+        from bmanga_dev.operators import object_tool_selection
+        from bmanga_dev.utils import object_naming as on
+        from bmanga_dev.utils import object_selection
+        from bmanga_dev.utils import text_real_object
 
         shared_text = next(t for t in work.shared_texts if t.id == moved_text_id)
-        shared_text_bname_id = text_real_object.text_object_bname_id_for_values(
+        shared_text_bmanga_id = text_real_object.text_object_bmanga_id_for_values(
             text_real_object.OUTSIDE_PAGE_ID,
             moved_text_id,
         )
-        shared_text_obj = on.find_object_by_bname_id(shared_text_bname_id, kind="text")
+        shared_text_obj = on.find_object_by_bmanga_id(shared_text_bmanga_id, kind="text")
         _assert_visible_object(shared_text_obj, "shared text after layer-stack D&D")
         shared_key = object_selection.text_key(None, shared_text)
         shared_rect = object_tool_selection.selection_bounds_for_key(context, shared_key)
@@ -226,7 +226,7 @@ def main() -> None:
         restored_text = next(t for t in page2.texts if t.id == moved_text_id)
         assert restored_text.parent_kind == "page" and restored_text.parent_key == page2_key
 
-        from bname_dev.utils import gp_layer_parenting as gp_parent
+        from bmanga_dev.utils import gp_layer_parenting as gp_parent
 
         gp_layer = _add_gp_layer(context, "dnd_cross_gp", page1_key)
         gp_uid = layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(gp_layer))
@@ -292,7 +292,7 @@ def main() -> None:
         assert gp_parent.parent_key(coma_gp) == moved_coma_key
         assert gp_parent.parent_key(coma_effect) == moved_coma_key
 
-        print("BNAME_LAYER_STACK_DND_REPARENT_OK")
+        print("BMANGA_LAYER_STACK_DND_REPARENT_OK")
     finally:
         if mod is not None:
             try:

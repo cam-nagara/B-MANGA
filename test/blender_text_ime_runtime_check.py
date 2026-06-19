@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -30,9 +30,9 @@ def _load_addon():
 
 
 def _new_text_entry(work_dir: Path):
-    result = bpy.ops.bname.work_new(filepath=str(work_dir))
+    result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = page.texts.add()
     entry.id = "text_ime_check"
@@ -47,17 +47,17 @@ def _new_text_entry(work_dir: Path):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_text_ime_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_text_ime_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        entry = _new_text_entry(temp_root / "Text_IME.bname")
+        entry = _new_text_entry(temp_root / "Text_IME.bmanga")
 
-        from bname_dev.operators import object_tool_op, text_edit_runtime, text_op
-        from bname_dev.operators import text_edit_history
-        from bname_dev.utils import object_selection, text_real_object
-        from bname_dev.ui import overlay_text
+        from bmanga_dev.operators import object_tool_op, text_edit_runtime, text_op
+        from bmanga_dev.operators import text_edit_history
+        from bmanga_dev.utils import object_selection, text_real_object
+        from bmanga_dev.ui import overlay_text
 
         class Event:
             def __init__(self, event_type: str, value: str = "PRESS") -> None:
@@ -84,8 +84,8 @@ def main() -> None:
         vertical_region = text_edit_runtime.text_inner_rect(vertical_rect)
         vertical_em = text_edit_runtime.text_em_mm(entry)
         vertical_caret = text_edit_runtime.caret_rect(entry, vertical_rect, 0)
-        from bname_dev.typography import layout as text_layout
-        from bname_dev.ui import overlay_text
+        from bmanga_dev.typography import layout as text_layout
+        from bmanga_dev.ui import overlay_text
 
         layout_result = text_layout.typeset(
             entry,
@@ -121,7 +121,7 @@ def main() -> None:
         assert entry.body == "a日本語def"
         assert cursor == 4
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         page = work.pages[0]
         page.active_text_index = 0
 
@@ -182,26 +182,26 @@ def main() -> None:
         key = object_selection.text_key(page, entry)
         before_rect = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
         dummy = SimpleNamespace(_drag_action="top_right")
-        dummy._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+        dummy._snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
             dummy,
             bpy.context,
             [key],
             primary_key=key,
             action="top_right",
         )
-        object_tool_op.BNAME_OT_object_tool._apply_snapshots(dummy, bpy.context, 12.0, 8.0)
+        object_tool_op.BMANGA_OT_object_tool._apply_snapshots(dummy, bpy.context, 12.0, 8.0)
         after_resize_attempt = (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
         assert after_resize_attempt == before_rect, "text handle drag changed the fixed text rect"
 
         dummy._drag_action = "move"
-        dummy._snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+        dummy._snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
             dummy,
             bpy.context,
             [key],
             primary_key=key,
             action="move",
         )
-        object_tool_op.BNAME_OT_object_tool._apply_snapshots(dummy, bpy.context, 3.0, 4.0)
+        object_tool_op.BMANGA_OT_object_tool._apply_snapshots(dummy, bpy.context, 3.0, 4.0)
         assert round(entry.x_mm - before_rect[0], 3) == 3.0
         assert round(entry.y_mm - before_rect[1], 3) == 4.0
         assert round(entry.width_mm, 3) == round(before_rect[2], 3)
@@ -232,7 +232,7 @@ def main() -> None:
         try:
             tool = SimpleNamespace(finished=False)
             tool.finish_from_external = lambda _ctx, *, keep_selection: setattr(tool, "finished", True)
-            method = MethodType(object_tool_op.BNAME_OT_object_tool._try_enter_text_edit_from_hit, tool)
+            method = MethodType(object_tool_op.BMANGA_OT_object_tool._try_enter_text_edit_from_hit, tool)
             assert method(bpy.context, text_hit)
         finally:
             text_op.start_editing_existing_from_object_tool = old_start
@@ -241,7 +241,7 @@ def main() -> None:
 
         text_edit_runtime.begin_ime_capture()
         text_edit_runtime.end_ime_capture()
-        print("BNAME_TEXT_IME_RUNTIME_OK")
+        print("BMANGA_TEXT_IME_RUNTIME_OK")
     finally:
         if mod is not None:
             try:

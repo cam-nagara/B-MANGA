@@ -1,13 +1,13 @@
 """キーボードショートカット用の小オペレータ群.
 
 Preferences でキー割当を変更可能なショートカット:
-- bname.set_mode_object  : O 既定 → アクティブを Object モードへ
-- bname.set_mode_draw    : P 既定 → アクティブ GP を Draw モードへ
-- bname.page_next        : COMMA 既定 → 次のページへフォーカス
-- bname.page_prev        : PERIOD 既定 → 前のページへフォーカス
-- bname.undo             : Z → Undo
-- bname.redo             : X → Redo
-- bname.toggle_eraser_brush : E → Eraser Hard / Eraser Stroke 切替
+- bmanga.set_mode_object  : O 既定 → アクティブを Object モードへ
+- bmanga.set_mode_draw    : P 既定 → アクティブ GP を Draw モードへ
+- bmanga.page_next        : COMMA 既定 → 次のページへフォーカス
+- bmanga.page_prev        : PERIOD 既定 → 前のページへフォーカス
+- bmanga.undo             : Z → Undo
+- bmanga.redo             : X → Redo
+- bmanga.toggle_eraser_brush : E → Eraser Hard / Eraser Stroke 切替
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ _GP_ERASER_STROKE_ASSET = (
 )
 
 
-def _bname_work_loaded(context) -> bool:
+def _bmanga_work_loaded(context) -> bool:
     work = get_work(context)
     return bool(work is not None and work.loaded)
 
@@ -63,7 +63,7 @@ def _finish_modal_tools_for_mode_switch(context) -> None:
 
 def _active_gp_layer_target(context):
     scene = getattr(context, "scene", None)
-    if scene is None or getattr(scene, "bname_active_layer_kind", "") != "gp":
+    if scene is None or getattr(scene, "bmanga_active_layer_kind", "") != "gp":
         return None, None
     item = layer_stack_utils.active_stack_item(context)
     if item is None or getattr(item, "kind", "") != "gp":
@@ -99,10 +99,10 @@ def _activate_gp_layer_for_drawing(context):
 # ---------- ツール切替 ----------
 
 
-class BNAME_OT_set_mode_object(Operator):
+class BMANGA_OT_set_mode_object(Operator):
     """アクティブオブジェクトを Object ツールへ切替."""
 
-    bl_idname = "bname.set_mode_object"
+    bl_idname = "bmanga.set_mode_object"
     bl_label = "オブジェクトツール"
     bl_options = {"REGISTER"}
 
@@ -112,9 +112,9 @@ class BNAME_OT_set_mode_object(Operator):
 
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
-        if getattr(context.scene, "bname_active_layer_kind", "") == "raster":
+        if getattr(context.scene, "bmanga_active_layer_kind", "") == "raster":
             try:
-                return bpy.ops.bname.raster_layer_paint_exit("EXEC_DEFAULT")
+                return bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
             except Exception:  # noqa: BLE001
                 pass
         obj = context.view_layer.objects.active
@@ -126,16 +126,16 @@ class BNAME_OT_set_mode_object(Operator):
             self.report({"WARNING"}, f"切替不可: {exc}")
             return {"CANCELLED"}
         try:
-            bpy.ops.bname.object_tool("INVOKE_DEFAULT")
+            bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             pass
         return {"FINISHED"}
 
 
-class BNAME_OT_set_mode_draw(Operator):
+class BMANGA_OT_set_mode_draw(Operator):
     """選択中の GP レイヤーを描画ツール (PAINT_GREASE_PENCIL) へ切替."""
 
-    bl_idname = "bname.set_mode_draw"
+    bl_idname = "bmanga.set_mode_draw"
     bl_label = "描画ツール"
     bl_options = {"REGISTER"}
 
@@ -145,9 +145,9 @@ class BNAME_OT_set_mode_draw(Operator):
 
     def execute(self, context):
         _finish_modal_tools_for_mode_switch(context)
-        if getattr(context.scene, "bname_active_layer_kind", "") == "raster":
+        if getattr(context.scene, "bmanga_active_layer_kind", "") == "raster":
             try:
-                return bpy.ops.bname.raster_layer_paint_enter("EXEC_DEFAULT")
+                return bpy.ops.bmanga.raster_layer_paint_enter("EXEC_DEFAULT")
             except Exception as exc:  # noqa: BLE001
                 self.report({"WARNING"}, f"切替不可: {exc}")
                 return {"CANCELLED"}
@@ -211,10 +211,10 @@ def _focus_view_to_page(context, work, page_index: int) -> None:
         _logger.debug("focus_view_to_page: no VIEW_3D updated")
 
 
-class BNAME_OT_page_next(Operator):
+class BMANGA_OT_page_next(Operator):
     """active_page_index を +1 してビューをそのページにフォーカス (循環なし)."""
 
-    bl_idname = "bname.page_next"
+    bl_idname = "bmanga.page_next"
     bl_label = "次のページ"
     bl_options = {"REGISTER"}
 
@@ -248,10 +248,10 @@ class BNAME_OT_page_next(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_prev(Operator):
+class BMANGA_OT_page_prev(Operator):
     """active_page_index を -1 してビューをそのページにフォーカス (循環なし)."""
 
-    bl_idname = "bname.page_prev"
+    bl_idname = "bmanga.page_prev"
     bl_label = "前のページ"
     bl_options = {"REGISTER"}
 
@@ -285,10 +285,10 @@ class BNAME_OT_page_prev(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_undo(Operator):
-    """B-Name 有効時の単独 Z: Undo."""
+class BMANGA_OT_undo(Operator):
+    """B-MANGA 有効時の単独 Z: Undo."""
 
-    bl_idname = "bname.undo"
+    bl_idname = "bmanga.undo"
     bl_label = "戻る"
     bl_options = {"REGISTER"}
 
@@ -298,7 +298,7 @@ class BNAME_OT_undo(Operator):
         try:
             result = bpy.ops.ed.undo()
         except Exception as exc:  # noqa: BLE001
-            _logger.exception("bname undo failed")
+            _logger.exception("bmanga undo failed")
             self.report({"WARNING"}, f"Undo失敗: {exc}")
             return {"CANCELLED"}
         return {"FINISHED"} if "FINISHED" in result else {"CANCELLED"}
@@ -306,20 +306,20 @@ class BNAME_OT_undo(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
 
     def execute(self, context):
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"CANCELLED"}
         return self._run(context)
 
 
-class BNAME_OT_redo(Operator):
-    """B-Name 有効時の単独 X: Redo."""
+class BMANGA_OT_redo(Operator):
+    """B-MANGA 有効時の単独 X: Redo."""
 
-    bl_idname = "bname.redo"
+    bl_idname = "bmanga.redo"
     bl_label = "進む"
     bl_options = {"REGISTER"}
 
@@ -329,7 +329,7 @@ class BNAME_OT_redo(Operator):
         try:
             result = bpy.ops.ed.redo()
         except Exception as exc:  # noqa: BLE001
-            _logger.exception("bname redo failed")
+            _logger.exception("bmanga redo failed")
             self.report({"WARNING"}, f"Redo失敗: {exc}")
             return {"CANCELLED"}
         return {"FINISHED"} if "FINISHED" in result else {"CANCELLED"}
@@ -337,20 +337,20 @@ class BNAME_OT_redo(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         return self._run(context)
 
     def execute(self, context):
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"CANCELLED"}
         return self._run(context)
 
 
-class BNAME_OT_toggle_eraser_brush(Operator):
-    """B-Name GP描画時の単独 E: Eraser Hard / Eraser Stroke を切替."""
+class BMANGA_OT_toggle_eraser_brush(Operator):
+    """B-MANGA GP描画時の単独 E: Eraser Hard / Eraser Stroke を切替."""
 
-    bl_idname = "bname.toggle_eraser_brush"
+    bl_idname = "bmanga.toggle_eraser_brush"
     bl_label = "消しゴム切替"
     bl_options = {"REGISTER"}
 
@@ -378,7 +378,7 @@ class BNAME_OT_toggle_eraser_brush(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"PASS_THROUGH"}
         brush = _active_gp_paint_brush(context)
         if brush is None:
@@ -386,19 +386,19 @@ class BNAME_OT_toggle_eraser_brush(Operator):
         return self._run(context)
 
     def execute(self, context):
-        if not _bname_work_loaded(context):
+        if not _bmanga_work_loaded(context):
             return {"CANCELLED"}
         return self._run(context)
 
 
-class BNAME_OT_toggle_lasso_tool(Operator):
+class BMANGA_OT_toggle_lasso_tool(Operator):
     """L キー: 選択ツールを Lasso ⇔ Box でトグル.
 
-    B-Name 作品が開かれている時のみ動作。それ以外は PASS_THROUGH で
+    B-MANGA 作品が開かれている時のみ動作。それ以外は PASS_THROUGH で
     Blender 標準 (Select Linked) に譲る。
     """
 
-    bl_idname = "bname.toggle_lasso_tool"
+    bl_idname = "bmanga.toggle_lasso_tool"
     bl_label = "投げ縄ツール切替"
     bl_options = {"REGISTER"}
 
@@ -491,14 +491,14 @@ def _gp_paste_clipboard(context) -> bool:
     return False
 
 
-class BNAME_OT_gp_cut_to_new_layer(Operator):
+class BMANGA_OT_gp_cut_to_new_layer(Operator):
     """Ctrl+X 上書き: 選択 GP ストロークを切り取り、次の Paste で新レイヤー化フラグを立てる.
 
-    B-Name 作品が開かれていない、または GP 編集モードでない場合は
+    B-MANGA 作品が開かれていない、または GP 編集モードでない場合は
     PASS_THROUGH で標準 Cut に譲る。
     """
 
-    bl_idname = "bname.gp_cut_to_new_layer"
+    bl_idname = "bmanga.gp_cut_to_new_layer"
     bl_label = "切り取り (新レイヤー予約)"
     bl_options = {"REGISTER"}
 
@@ -523,13 +523,13 @@ class BNAME_OT_gp_cut_to_new_layer(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gp_paste_to_new_layer(Operator):
+class BMANGA_OT_gp_paste_to_new_layer(Operator):
     """Ctrl+V 上書き: フラグが立っていれば新規レイヤーを作成し、そこに paste.
 
     フラグが無い場合は通常 paste (現在レイヤーへ)。
     """
 
-    bl_idname = "bname.gp_paste_to_new_layer"
+    bl_idname = "bmanga.gp_paste_to_new_layer"
     bl_label = "貼付 (新レイヤー)"
     bl_options = {"REGISTER"}
 
@@ -588,14 +588,14 @@ class BNAME_OT_gp_paste_to_new_layer(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_toggle_asset_shelf(Operator):
+class BMANGA_OT_toggle_asset_shelf(Operator):
     """3D View のブラシアセットシェルフをカーソル位置に表示.
 
     Blender 5.x の Grease Pencil 描画モードで Space に既定割り当てされている
     ブラシ Asset Shelf を、C キー側に移すための wrapper。
     """
 
-    bl_idname = "bname.toggle_asset_shelf"
+    bl_idname = "bmanga.toggle_asset_shelf"
     bl_label = "アセットシェルフ表示切替"
     bl_options = {"REGISTER"}
 
@@ -698,17 +698,17 @@ class BNAME_OT_toggle_asset_shelf(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_set_mode_object,
-    BNAME_OT_set_mode_draw,
-    BNAME_OT_page_next,
-    BNAME_OT_page_prev,
-    BNAME_OT_undo,
-    BNAME_OT_redo,
-    BNAME_OT_toggle_eraser_brush,
-    BNAME_OT_toggle_asset_shelf,
-    BNAME_OT_toggle_lasso_tool,
-    BNAME_OT_gp_cut_to_new_layer,
-    BNAME_OT_gp_paste_to_new_layer,
+    BMANGA_OT_set_mode_object,
+    BMANGA_OT_set_mode_draw,
+    BMANGA_OT_page_next,
+    BMANGA_OT_page_prev,
+    BMANGA_OT_undo,
+    BMANGA_OT_redo,
+    BMANGA_OT_toggle_eraser_brush,
+    BMANGA_OT_toggle_asset_shelf,
+    BMANGA_OT_toggle_lasso_tool,
+    BMANGA_OT_gp_cut_to_new_layer,
+    BMANGA_OT_gp_paste_to_new_layer,
 )
 
 

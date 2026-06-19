@@ -127,23 +127,23 @@ def _draw_raster_selected_settings(box, entry) -> None:
     settings.prop(entry, "locked", text="ロック")
     settings.prop(entry, "opacity", text="不透明度", slider=True)
     settings.label(text=f"DPI: {int(getattr(entry, 'dpi', 0))}")
-    settings.operator("bname.raster_layer_resample", text="リサンプル...", icon="IMAGE_DATA")
+    settings.operator("bmanga.raster_layer_resample", text="リサンプル...", icon="IMAGE_DATA")
 
     bit_box = box.box()
     bit_box.label(text=f"階調: {getattr(entry, 'bit_depth', 'gray8')}")
     row = bit_box.row(align=True)
-    op = row.operator("bname.raster_layer_set_bit_depth", text="グレー 8bit")
+    op = row.operator("bmanga.raster_layer_set_bit_depth", text="グレー 8bit")
     op.bit_depth = "gray8"
-    op = row.operator("bname.raster_layer_set_bit_depth", text="1bit")
+    op = row.operator("bmanga.raster_layer_set_bit_depth", text="1bit")
     op.bit_depth = "gray1"
 
     settings.prop(entry, "line_color", text="線色")
     settings.label(text=f"所属: {entry.scope or 'page'}")
     settings.label(text=f"親: {entry.parent_kind or 'none'} / {entry.parent_key or '-'}")
     row = settings.row(align=True)
-    op = row.operator("bname.raster_layer_paint_enter", text="Texture Paint へ入る", icon="TPAINT_HLT")
+    op = row.operator("bmanga.raster_layer_paint_enter", text="Texture Paint へ入る", icon="TPAINT_HLT")
     op.raster_id = entry.id
-    op = row.operator("bname.raster_layer_save_png", text="", icon="FILE_TICK")
+    op = row.operator("bmanga.raster_layer_save_png", text="", icon="FILE_TICK")
     op.raster_id = entry.id
     op.force = True
 
@@ -199,10 +199,10 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     settings.label(text=f"編集状態: {_balloon_source_state_label(source_state)}")
     page = _page_for_balloon_entry(context, entry)
     row = settings.row(align=True)
-    op = row.operator("bname.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
+    op = row.operator("bmanga.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
     op.page_id = str(getattr(page, "id", "") or "")
     op.balloon_id = str(getattr(entry, "id", "") or "")
-    op = row.operator("bname.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
+    op = row.operator("bmanga.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
     op.page_id = str(getattr(page, "id", "") or "")
     op.balloon_id = str(getattr(entry, "id", "") or "")
     settings.prop(entry, "shape")
@@ -223,7 +223,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         settings.label(text=f"結合: {entry.merge_group_id}", icon="FILE_FOLDER")
     page = get_active_page(context)
     if page is not None and sum(1 for b in page.balloons if getattr(b, "selected", False)) >= 2:
-        settings.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
+        settings.operator("bmanga.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
     if balloon_shapes.normalize_shape(entry.shape) == "rect":
         balloon_core.ensure_balloon_corner_type_initialized(entry)
         settings.prop(entry, "corner_type")
@@ -356,27 +356,27 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
     move_box = box.box()
     move_box.label(text="親子連動移動", icon="CON_TRACKTO")
     row = move_box.row(align=True)
-    op = row.operator("bname.balloon_move", text="← 5mm")
+    op = row.operator("bmanga.balloon_move", text="← 5mm")
     op.delta_x_mm = -5.0
-    op = row.operator("bname.balloon_move", text="→ 5mm")
+    op = row.operator("bmanga.balloon_move", text="→ 5mm")
     op.delta_x_mm = 5.0
-    op = row.operator("bname.balloon_move", text="↑ 5mm")
+    op = row.operator("bmanga.balloon_move", text="↑ 5mm")
     op.delta_y_mm = 5.0
-    op = row.operator("bname.balloon_move", text="↓ 5mm")
+    op = row.operator("bmanga.balloon_move", text="↓ 5mm")
     op.delta_y_mm = -5.0
 
     tail_box = box.box()
     row = tail_box.row(align=True)
     row.label(text=f"尻尾 ({len(entry.tails)})")
     page = _page_for_balloon_entry(context, entry)
-    op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
+    op = row.operator("bmanga.balloon_tail_add_target", text="", icon="ADD")
     op.page_id = str(getattr(page, "id", "") or "")
     op.balloon_id = str(getattr(entry, "id", "") or "")
     for i, tail in enumerate(entry.tails):
         sub = tail_box.box()
         header = sub.row(align=True)
         header.label(text=f"尻尾 {i + 1}")
-        op = header.operator("bname.balloon_tail_remove", text="", icon="X")
+        op = header.operator("bmanga.balloon_tail_remove", text="", icon="X")
         op.page_id = str(getattr(page, "id", "") or "")
         op.balloon_id = str(getattr(entry, "id", "") or "")
         op.tail_index = i
@@ -467,8 +467,8 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     ruby_box.label(text="ルビ", icon="FONT_DATA")
     ruby_box.label(text=f"{len(getattr(entry, 'ruby_spans', ()) or ())} 件")
     row = ruby_box.row(align=True)
-    row.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
-    row.operator("bname.text_ruby_clear", text="すべて削除", icon="TRASH")
+    row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
+    row.operator("bmanga.text_ruby_clear", text="すべて削除", icon="TRASH")
 
     stroke_box = box.box()
     stroke_box.prop(entry, "stroke_enabled")
@@ -480,15 +480,15 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     parent_box = box.box()
     parent_box.label(text="親フキダシ", icon="LINKED")
     parent_box.prop(entry, "parent_balloon_id", text="ID")
-    parent_box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
+    parent_box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
     if page is not None and len(page.balloons) > 0:
         row = parent_box.row(align=True)
         row.label(text="紐付け:")
         for balloon in page.balloons:
-            op = row.operator("bname.text_attach_to_balloon", text=balloon.id)
+            op = row.operator("bmanga.text_attach_to_balloon", text=balloon.id)
             op.balloon_id = balloon.id
         op = parent_box.operator(
-            "bname.text_attach_to_balloon",
+            "bmanga.text_attach_to_balloon",
             text="独立テキストにする",
             icon="UNLINKED",
         )
@@ -690,7 +690,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     settings.label(text=f"選択中: {name} (効果線)")
     if active_layer is not None and hasattr(active_layer, "name"):
         settings.prop(active_layer, "name", text="名前")
-    params = getattr(context.scene, "bname_effect_line_params", None)
+    params = getattr(context.scene, "bmanga_effect_line_params", None)
     if params is None:
         settings.label(text="効果線パラメータが未初期化です", icon="ERROR")
         return
@@ -703,7 +703,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
         _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
         _draw_effect_shape_settings(box, params, "end", "終点形状")
         _draw_effect_white_outline_settings(box, params)
-        box.operator("bname.effect_line_generate", text="効果線を追加", icon="STROKE")
+        box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
         return
     if params.effect_type != "speed":
         _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
@@ -712,7 +712,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     if params.effect_type != "beta_flash":
         _draw_effect_interval_settings(box, params)
     _draw_effect_tail_settings(box, params)
-    box.operator("bname.effect_line_generate", text="効果線を追加", icon="STROKE")
+    box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
 
 
 def _draw_layer_folder_selected_settings(box, entry) -> None:
@@ -749,7 +749,7 @@ def _draw_coma_selected_settings(box, context, entry) -> None:
     # 選択中コマを対象に execute する EXEC_DEFAULT で呼ぶ (専用 row でスコープ)。
     enter_row = box.row(align=True)
     enter_row.operator_context = "EXEC_DEFAULT"
-    enter_row.operator("bname.enter_coma_mode", text="コマ編集へ", icon="PLAY")
+    enter_row.operator("bmanga.enter_coma_mode", text="コマ編集へ", icon="PLAY")
 
     from . import coma_detail_panel
 

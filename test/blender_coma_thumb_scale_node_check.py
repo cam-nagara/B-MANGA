@@ -38,7 +38,7 @@ def _setup_module():
 def main() -> int:
     cto = _setup_module()
     scene = bpy.context.scene
-    # Step 1: With no bname_work, default factor is 12.5%
+    # Step 1: With no bmanga_work, default factor is 12.5%
     factor = cto._resolve_thumb_scale_factor(scene)
     assert abs(factor - 0.125) < 1e-6, f"expected 0.125, got {factor}"
     print(f"[ok] default scale factor (no work): {factor}")
@@ -56,7 +56,7 @@ def main() -> int:
     ]
     output_nodes = [n for n in tree.nodes if n.bl_idname == "CompositorNodeOutputFile"]
     rl_nodes = [n for n in tree.nodes if n.bl_idname == "CompositorNodeRLayers"]
-    assert not scale_nodes, "legacy B-Name scale node should not be created"
+    assert not scale_nodes, "legacy B-MANGA scale node should not be created"
     assert output_nodes, "output node missing"
     assert rl_nodes, "RLayers node missing"
     output = output_nodes[0]
@@ -114,7 +114,7 @@ def main() -> int:
     assert incoming[0].from_node.name == user_src.name
     print("[ok] user's source preserved directly")
 
-    # Step 6: legacy B-Name Scale → thumb は、Scale 入力のソース → thumb へ
+    # Step 6: legacy B-MANGA Scale → thumb は、Scale 入力のソース → thumb へ
     # バイパスされ、未使用 Scale は取り除かれる。
     legacy_scale = tree.nodes.new("CompositorNodeScale")
     legacy_scale.name = cto.THUMB_SCALE_NODE_NAME

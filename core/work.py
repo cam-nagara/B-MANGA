@@ -1,6 +1,6 @@
 """作品データの集約 PropertyGroup.
 
-work.json 全体を Blender 内で保持する root コンテナ。Scene.bname_work に
+work.json 全体を Blender 内で保持する root コンテナ。Scene.bmanga_work に
 PointerProperty で attach する。
 
 依存順: 参照先 (paper / work_info / safe_area_overlay / page) を先に
@@ -20,14 +20,14 @@ from bpy.props import (
 )
 
 from ..utils import log
-from .balloon import BNameBalloonEntry
-from .coma import BNameComaEntry
-from .layer_folder import BNameLayerFolder
-from .page import BNamePageEntry
-from .paper import BNamePaperSettings
-from .safe_area_overlay import BNameSafeAreaOverlay
-from .text_entry import BNameTextEntry
-from .work_info import BNameNombre, BNameWorkInfo
+from .balloon import BMangaBalloonEntry
+from .coma import BMangaComaEntry
+from .layer_folder import BMangaLayerFolder
+from .page import BMangaPageEntry
+from .paper import BMangaPaperSettings
+from .safe_area_overlay import BMangaSafeAreaOverlay
+from .text_entry import BMangaTextEntry
+from .work_info import BMangaNombre, BMangaWorkInfo
 
 _logger = log.get_logger(__name__)
 
@@ -41,7 +41,7 @@ def _on_active_page_index_changed(_self, context) -> None:
         pass
 
 
-class BNameComaGap(bpy.types.PropertyGroup):
+class BMangaComaGap(bpy.types.PropertyGroup):
     """コマ間隔ルール (作品共通、計画書 3.2.5.4).
 
     既定値: 上下 7.3mm / 左右 2.1mm。値は mm 単位。
@@ -63,8 +63,8 @@ class BNameComaGap(bpy.types.PropertyGroup):
     )
 
 
-class BNameWorkData(bpy.types.PropertyGroup):
-    """作品 1 件分のデータ (.bname フォルダ 1 個分)."""
+class BMangaWorkData(bpy.types.PropertyGroup):
+    """作品 1 件分のデータ (.bmanga フォルダ 1 個分)."""
 
     # --- メタ ---
     loaded: BoolProperty(  # type: ignore[valid-type]
@@ -73,7 +73,7 @@ class BNameWorkData(bpy.types.PropertyGroup):
     )
     work_dir: StringProperty(  # type: ignore[valid-type]
         name="作品ディレクトリ",
-        description="MyWork.bname/ のフルパス",
+        description="MyWork.bmanga/ のフルパス",
         default="",
         subtype="DIR_PATH",
     )
@@ -81,7 +81,7 @@ class BNameWorkData(bpy.types.PropertyGroup):
         name="コマblendテンプレート",
         description=(
             "新規 cNN.blend 作成時に初回コピーする .blend。"
-            "空ならB-Name標準の空コマシーンを作成"
+            "空ならB-MANGA標準の空コマシーンを作成"
         ),
         default="",
         subtype="FILE_PATH",
@@ -145,14 +145,14 @@ class BNameWorkData(bpy.types.PropertyGroup):
     )
 
     # --- 各セクション ---
-    work_info: PointerProperty(type=BNameWorkInfo)  # type: ignore[valid-type]
-    nombre: PointerProperty(type=BNameNombre)  # type: ignore[valid-type]
-    paper: PointerProperty(type=BNamePaperSettings)  # type: ignore[valid-type]
-    safe_area_overlay: PointerProperty(type=BNameSafeAreaOverlay)  # type: ignore[valid-type]
-    coma_gap: PointerProperty(type=BNameComaGap)  # type: ignore[valid-type]
+    work_info: PointerProperty(type=BMangaWorkInfo)  # type: ignore[valid-type]
+    nombre: PointerProperty(type=BMangaNombre)  # type: ignore[valid-type]
+    paper: PointerProperty(type=BMangaPaperSettings)  # type: ignore[valid-type]
+    safe_area_overlay: PointerProperty(type=BMangaSafeAreaOverlay)  # type: ignore[valid-type]
+    coma_gap: PointerProperty(type=BMangaComaGap)  # type: ignore[valid-type]
 
     # --- ページ一覧 ---
-    pages: CollectionProperty(type=BNamePageEntry)  # type: ignore[valid-type]
+    pages: CollectionProperty(type=BMangaPageEntry)  # type: ignore[valid-type]
     # フキダシ番号の採番カウンター (作品全体で単調増加)。詳細未読込の
     # ページが居ても番号が衝突しないよう、過去に使った最大番号を記憶する。
     balloon_id_counter: IntProperty(default=0, min=0, options={"HIDDEN"})  # type: ignore[valid-type]
@@ -164,17 +164,17 @@ class BNameWorkData(bpy.types.PropertyGroup):
     )
 
     # --- ページ外レイヤー ---
-    shared_balloons: CollectionProperty(type=BNameBalloonEntry)  # type: ignore[valid-type]
-    shared_texts: CollectionProperty(type=BNameTextEntry)  # type: ignore[valid-type]
-    shared_comas: CollectionProperty(type=BNameComaEntry)  # type: ignore[valid-type]
-    layer_folders: CollectionProperty(type=BNameLayerFolder)  # type: ignore[valid-type]
+    shared_balloons: CollectionProperty(type=BMangaBalloonEntry)  # type: ignore[valid-type]
+    shared_texts: CollectionProperty(type=BMangaTextEntry)  # type: ignore[valid-type]
+    shared_comas: CollectionProperty(type=BMangaComaEntry)  # type: ignore[valid-type]
+    layer_folders: CollectionProperty(type=BMangaLayerFolder)  # type: ignore[valid-type]
 
 
 # ----- Scene attach ヘルパ -----
 
 
-def get_work(context: bpy.types.Context | None = None) -> BNameWorkData | None:
-    """現在のシーンに紐づく BNameWorkData を返す.
+def get_work(context: bpy.types.Context | None = None) -> BMangaWorkData | None:
+    """現在のシーンに紐づく BMangaWorkData を返す.
 
     Scene に PointerProperty が attach されていなければ None。
     """
@@ -182,10 +182,10 @@ def get_work(context: bpy.types.Context | None = None) -> BNameWorkData | None:
     scene = getattr(ctx, "scene", None)
     if scene is None:
         return None
-    return getattr(scene, "bname_work", None)
+    return getattr(scene, "bmanga_work", None)
 
 
-def get_active_page(context: bpy.types.Context | None = None) -> BNamePageEntry | None:
+def get_active_page(context: bpy.types.Context | None = None) -> BMangaPageEntry | None:
     work = get_work(context)
     if work is None or not work.loaded:
         return None
@@ -195,7 +195,7 @@ def get_active_page(context: bpy.types.Context | None = None) -> BNamePageEntry 
     return work.pages[idx]
 
 
-def find_page_by_id(work: BNameWorkData | None, page_id: str) -> BNamePageEntry | None:
+def find_page_by_id(work: BMangaWorkData | None, page_id: str) -> BMangaPageEntry | None:
     if work is None or not work.loaded or not page_id:
         return None
     for page in work.pages:
@@ -205,21 +205,21 @@ def find_page_by_id(work: BNameWorkData | None, page_id: str) -> BNamePageEntry 
 
 
 _CLASSES = (
-    BNameComaGap,
-    BNameWorkData,
+    BMangaComaGap,
+    BMangaWorkData,
 )
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bname_work = PointerProperty(type=BNameWorkData)
+    bpy.types.Scene.bmanga_work = PointerProperty(type=BMangaWorkData)
     _logger.debug("work registered")
 
 
 def unregister() -> None:
     try:
-        del bpy.types.Scene.bname_work
+        del bpy.types.Scene.bmanga_work
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

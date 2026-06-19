@@ -72,7 +72,7 @@ def page_raster_layers(
     *,
     group_path_for_parent=None,
 ) -> list:
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
         return []
     layers = []

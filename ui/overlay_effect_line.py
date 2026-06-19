@@ -1,4 +1,4 @@
-"""Viewport overlay drawing for selected B-Name effect-line layers."""
+"""Viewport overlay drawing for selected B-MANGA effect-line layers."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def draw_active_effect_line_bounds(
     logger=None,
 ) -> None:
     selected_names = object_selection.selected_effect_names(context)
-    active_effect = getattr(context.scene, "bname_active_layer_kind", "") == "effect"
+    active_effect = getattr(context.scene, "bmanga_active_layer_kind", "") == "effect"
     if not active_effect and not selected_names:
         return
     try:

@@ -19,12 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_overview_open_ui",
+        "bmanga_dev_page_overview_open_ui",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_overview_open_ui"] = mod
+    sys.modules["bmanga_dev_page_overview_open_ui"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -49,14 +49,14 @@ def _view3d_context():
 
 def _double_click_event_for_page(page_index: int):
     from bpy_extras.view3d_utils import location_3d_to_region_2d
-    from bname_dev_page_overview_open_ui.utils import geom, page_grid
+    from bmanga_dev_page_overview_open_ui.utils import geom, page_grid
 
     view = _view3d_context()
     if view is None:
         raise RuntimeError("VIEW_3D が見つかりません")
     window, screen, area, region, space, rv3d = view
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     ox, oy = page_grid.page_total_offset_mm(work, scene, page_index)
     center_x = ox + float(work.paper.canvas_width_mm) * 0.5
     center_y = oy + float(work.paper.canvas_height_mm) * 0.5
@@ -107,24 +107,24 @@ def _double_click_event_for_page(page_index: int):
 
 
 def _start_check(temp_root: Path) -> Path:
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PageOverviewOpen.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PageOverviewOpen.bmanga"))
     assert result == {"FINISHED"}, result
-    result = bpy.ops.bname.page_add()
+    result = bpy.ops.bmanga.page_add()
     assert result == {"FINISHED"}, result
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.active_page_index = 0
-    scene.bname_overview_mode = True
+    scene.bmanga_overview_mode = True
     work_path = Path(bpy.data.filepath).resolve()
-    expected = temp_root / "PageOverviewOpen.bname" / "p0002" / "page.blend"
+    expected = temp_root / "PageOverviewOpen.bmanga" / "p0002" / "page.blend"
 
     event = _double_click_event_for_page(1)
-    from bname_dev_page_overview_open_ui.operators import mode_op
+    from bmanga_dev_page_overview_open_ui.operators import mode_op
 
     resolved = mode_op.page_file_index_from_viewport_event(bpy.context, event)
     assert resolved == 1, resolved
     fake_operator = SimpleNamespace()
-    result = mode_op.BNAME_OT_enter_coma_mode_from_viewport.invoke(
+    result = mode_op.BMANGA_OT_enter_coma_mode_from_viewport.invoke(
         fake_operator,
         bpy.context,
         event,
@@ -136,8 +136,8 @@ def _start_check(temp_root: Path) -> Path:
 
 def _assert_opened(expected: Path) -> None:
     assert Path(bpy.data.filepath).resolve() == expected.resolve(), bpy.data.filepath
-    assert bpy.context.scene.bname_current_page_id == "p0002"
-    assert int(getattr(bpy.context.scene.bname_work, "active_page_index", -1)) == 1
+    assert bpy.context.scene.bmanga_current_page_id == "p0002"
+    assert int(getattr(bpy.context.scene.bmanga_work, "active_page_index", -1)) == 1
 
 
 def main() -> None:
@@ -147,7 +147,7 @@ def main() -> None:
     except Exception:
         pass
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_overview_open_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_overview_open_"))
     attempts = {"count": 0}
 
     def _timer():
@@ -174,7 +174,7 @@ def main() -> None:
             except Exception:
                 traceback.print_exc()
                 os._exit(1)
-            print("BNAME_PAGE_OVERVIEW_OPEN_PAGE_DEFERRED_UI_CHECK_OK", flush=True)
+            print("BMANGA_PAGE_OVERVIEW_OPEN_PAGE_DEFERRED_UI_CHECK_OK", flush=True)
             os._exit(0)
             return None
 

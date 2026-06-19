@@ -23,19 +23,19 @@ import bpy
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_JSON = Path(tempfile.gettempdir()) / "bname_drag_select_then_drag_result.json"
+OUT_JSON = Path(tempfile.gettempdir()) / "bmanga_drag_select_then_drag_result.json"
 
 _STATE: dict = {"step": 0, "events": [], "logs": [], "temp": None, "mod": None}
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_drag_select_check",
+        "bmanga_dev_drag_select_check",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_drag_select_check"] = mod
+    sys.modules["bmanga_dev_drag_select_check"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -63,7 +63,7 @@ def _world_mm_to_window_px(region, rv3d, x_mm: float, y_mm: float):
 
 
 def _balloon_world_center_mm(work, scene, page_index, entry):
-    from bname_dev_drag_select_check.utils import page_grid
+    from bmanga_dev_drag_select_check.utils import page_grid
 
     ox, oy = page_grid.page_total_offset_mm(work, scene, page_index)
     return (
@@ -74,19 +74,19 @@ def _balloon_world_center_mm(work, scene, page_index, entry):
 
 def _create_work():
     scene = bpy.context.scene
-    scene.bname_overview_mode = True
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_drag_select_"))
+    scene.bmanga_overview_mode = True
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_drag_select_"))
     _STATE["temp"] = temp_root
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "DragSelect.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "DragSelect.bmanga"))
     if "FINISHED" not in result:
         raise AssertionError("作品作成に失敗しました")
 
 
 def _setup_scene():
-    from bname_dev_drag_select_check.utils import balloon_curve_object
+    from bmanga_dev_drag_select_check.utils import balloon_curve_object
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
 
     def add_balloon(bid, x, y, with_text):
@@ -118,7 +118,7 @@ def _setup_scene():
 
 
 def _frame_view(window, area, region, rv3d, work, scene):
-    from bname_dev_drag_select_check.utils import page_grid
+    from bmanga_dev_drag_select_check.utils import page_grid
 
     ox, oy = page_grid.page_total_offset_mm(work, scene, 0)
     cw = float(work.paper.canvas_width_mm)
@@ -127,14 +127,14 @@ def _frame_view(window, area, region, rv3d, work, scene):
     rv3d.view_rotation = (1.0, 0.0, 0.0, 0.0)
     rv3d.view_location = ((ox + cw * 0.5) / 1000.0, (oy + ch * 0.5) / 1000.0, 0.0)
     rv3d.view_distance = max(cw, ch) / 1000.0 * 1.3
-    # 実際のユーザー環境と同じく、N パネルの B-Name タブを表示状態にする
+    # 実際のユーザー環境と同じく、N パネルの B-MANGA タブを表示状態にする
     # (タブ非表示だとキーマップ監視が常駐ツールを終了させてしまうため)
     space = area.spaces.active
     space.show_region_ui = True
     for r in area.regions:
         if r.type == "UI":
             try:
-                r.active_panel_category = "B-Name"
+                r.active_panel_category = "B-MANGA"
             except Exception:  # noqa: BLE001
                 pass
 
@@ -179,19 +179,19 @@ def _queue_drag_events(window, region, rv3d, work, scene, page):
 def _find_balloon_object(bid):
     for obj in bpy.data.objects:
         if (
-            str(obj.get("bname_kind", "") or "") == "balloon"
-            and str(obj.get("bname_id", "") or "") == bid
+            str(obj.get("bmanga_kind", "") or "") == "balloon"
+            and str(obj.get("bmanga_id", "") or "") == bid
         ):
             return obj
     return None
 
 
 def _evaluate():
-    from bname_dev_drag_select_check.operators import object_tool_selection
-    from bname_dev_drag_select_check.utils import object_selection, page_grid
+    from bmanga_dev_drag_select_check.operators import object_tool_selection
+    from bmanga_dev_drag_select_check.utils import object_selection, page_grid
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     bB = page.balloons[1]
     ox, oy = page_grid.page_total_offset_mm(work, scene, 0)
@@ -232,7 +232,7 @@ def _evaluate():
     if keys != [key]:
         problems.append(f"選択キーが不正: {keys}")
 
-    from bname_dev_drag_select_check.operators import coma_modal_state
+    from bmanga_dev_drag_select_check.operators import coma_modal_state
 
     bA = page.balloons[0]
     payload = {
@@ -249,9 +249,9 @@ def _evaluate():
     }
     OUT_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
     if problems:
-        print("BNAME_DRAG_SELECT_THEN_DRAG_NG:", "; ".join(problems), flush=True)
+        print("BMANGA_DRAG_SELECT_THEN_DRAG_NG:", "; ".join(problems), flush=True)
     else:
-        print("BNAME_DRAG_SELECT_THEN_DRAG_OK", flush=True)
+        print("BMANGA_DRAG_SELECT_THEN_DRAG_OK", flush=True)
 
 
 def _tick():
@@ -267,30 +267,30 @@ def _tick():
             _frame_view(window, area, region, rv3d, work, bpy.context.scene)
             return 0.5
         if step == 2:
-            # B-Name タブが実際にアクティブ判定されるまで再設定して待つ
-            from bname_dev_drag_select_check.utils import shortcut_visibility as sv
+            # B-MANGA タブが実際にアクティブ判定されるまで再設定して待つ
+            from bmanga_dev_drag_select_check.utils import shortcut_visibility as sv
 
             for r in area.regions:
                 if r.type == "UI":
                     try:
-                        r.active_panel_category = "B-Name"
+                        r.active_panel_category = "B-MANGA"
                     except Exception:  # noqa: BLE001
                         pass
             area.tag_redraw()
-            if sv._area_bname_status(area) != "bname":
+            if sv._area_bmanga_status(area) != "bmanga":
                 if _STATE.setdefault("tab_retry", 0) < 20:
                     _STATE["tab_retry"] += 1
                     _STATE["step"] = 2
                     return 0.2
                 raise AssertionError(
-                    f"B-Name タブをアクティブにできません: {sv._area_bname_status(area)}"
+                    f"B-MANGA タブをアクティブにできません: {sv._area_bmanga_status(area)}"
                 )
             scene = bpy.context.scene
-            work = scene.bname_work
+            work = scene.bmanga_work
             page = work.pages[0]
             with bpy.context.temp_override(window=window, area=area, region=region):
-                bpy.ops.bname.object_tool("INVOKE_DEFAULT")
-            from bname_dev_drag_select_check.operators import coma_modal_state
+                bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
+            from bmanga_dev_drag_select_check.operators import coma_modal_state
 
             _STATE["op_strong"] = coma_modal_state.get_active("object_tool")
             _queue_drag_events(window, region, rv3d, work, scene, page)
@@ -299,10 +299,10 @@ def _tick():
         if events:
             # 1 tick に 1 イベント注入し、本物のマウス操作と同じく
             # イベントごとにメインループへ処理させる
-            from bname_dev_drag_select_check.operators import coma_modal_state
-            from bname_dev_drag_select_check.utils import object_selection
+            from bmanga_dev_drag_select_check.operators import coma_modal_state
+            from bmanga_dev_drag_select_check.utils import object_selection
 
-            from bname_dev_drag_select_check.utils import shortcut_visibility as sv
+            from bmanga_dev_drag_select_check.utils import shortcut_visibility as sv
 
             op = coma_modal_state.get_active("object_tool")
             strong = _STATE.get("op_strong")
@@ -310,7 +310,7 @@ def _tick():
             for w in bpy.data.window_managers[0].windows:
                 for a in w.screen.areas:
                     if a.type == "VIEW_3D":
-                        area_status.append(sv._area_bname_status(a))
+                        area_status.append(sv._area_bmanga_status(a))
             _STATE["logs"].append(
                 {
                     "before": _STATE.get("last_event"),
@@ -322,7 +322,7 @@ def _tick():
                     "allowed": {
                         "interaction": sv.interaction_enabled(),
                         "file_scope": sv.shortcut_file_scope_allowed(),
-                        "panel": sv.any_bname_panel_visible(),
+                        "panel": sv.any_bmanga_panel_visible(),
                         "area_status": area_status,
                     },
                 }
@@ -343,7 +343,7 @@ def _tick():
             json.dumps({"problems": [f"exception: {exc}"], "logs": _STATE["logs"]}, ensure_ascii=False),
             encoding="utf-8",
         )
-        print("BNAME_DRAG_SELECT_THEN_DRAG_NG: exception", exc, flush=True)
+        print("BMANGA_DRAG_SELECT_THEN_DRAG_NG: exception", exc, flush=True)
         bpy.ops.wm.quit_blender()
         return None
     return 0.05

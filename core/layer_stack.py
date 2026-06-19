@@ -43,7 +43,7 @@ ACTIVE_LAYER_KIND_ITEMS = (
 )
 
 
-class BNameLayerStackItem(bpy.types.PropertyGroup):
+class BMangaLayerStackItem(bpy.types.PropertyGroup):
     """統合レイヤーリストの 1 行。
 
     実データは GP / 画像 / ページ要素側に保持し、この行は参照キーと
@@ -59,7 +59,7 @@ class BNameLayerStackItem(bpy.types.PropertyGroup):
     depth: IntProperty(name="階層", default=0, min=0)  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameLayerStackItem,)
+_CLASSES = (BMangaLayerStackItem,)
 _visible_index_select_suppress_count = 0
 
 
@@ -80,8 +80,8 @@ def _on_active_layer_stack_index_changed(_self, context) -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
-    stack = getattr(scene, "bname_layer_stack", None)
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    stack = getattr(scene, "bmanga_layer_stack", None)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if stack is None or not (0 <= idx < len(stack)):
         return
     try:
@@ -126,8 +126,8 @@ def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
-    visible = getattr(scene, "bname_layer_stack_visible", None)
-    idx = int(getattr(scene, "bname_active_layer_stack_visible_index", -1))
+    visible = getattr(scene, "bmanga_layer_stack_visible", None)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_visible_index", -1))
     if visible is None or not (0 <= idx < len(visible)):
         return
     try:
@@ -135,7 +135,7 @@ def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("visible layer stack utils import failed")
         return
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     source_index = layer_stack_utils.find_stack_index_for_item(stack, visible[idx])
     if source_index < 0:
         return
@@ -151,43 +151,43 @@ def _on_active_layer_stack_visible_index_changed(_self, context) -> None:
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bname_layer_stack = CollectionProperty(type=BNameLayerStackItem)
-    bpy.types.Scene.bname_active_layer_stack_index = IntProperty(
+    bpy.types.Scene.bmanga_layer_stack = CollectionProperty(type=BMangaLayerStackItem)
+    bpy.types.Scene.bmanga_active_layer_stack_index = IntProperty(
         default=-1,
         min=-1,
         update=_on_active_layer_stack_index_changed,
     )
-    bpy.types.Scene.bname_layer_stack_visible = CollectionProperty(type=BNameLayerStackItem)
-    bpy.types.Scene.bname_active_layer_stack_visible_index = IntProperty(
+    bpy.types.Scene.bmanga_layer_stack_visible = CollectionProperty(type=BMangaLayerStackItem)
+    bpy.types.Scene.bmanga_active_layer_stack_visible_index = IntProperty(
         default=-1,
         min=-1,
         update=_on_active_layer_stack_visible_index_changed,
     )
-    bpy.types.Scene.bname_active_layer_kind = EnumProperty(
+    bpy.types.Scene.bmanga_active_layer_kind = EnumProperty(
         name="アクティブレイヤー種別",
         items=ACTIVE_LAYER_KIND_ITEMS,
         default="gp",
     )
-    bpy.types.Scene.bname_active_gp_folder_key = StringProperty(default="")
-    bpy.types.Scene.bname_active_layer_folder_key = StringProperty(default="")
-    bpy.types.Scene.bname_active_effect_layer_name = StringProperty(default="")
-    bpy.types.Scene.bname_layer_stack_inline_edit_uid = StringProperty(default="")
-    bpy.types.Scene.bname_collapsed_balloon_group_keys = StringProperty(default="", options={"HIDDEN"})
+    bpy.types.Scene.bmanga_active_gp_folder_key = StringProperty(default="")
+    bpy.types.Scene.bmanga_active_layer_folder_key = StringProperty(default="")
+    bpy.types.Scene.bmanga_active_effect_layer_name = StringProperty(default="")
+    bpy.types.Scene.bmanga_layer_stack_inline_edit_uid = StringProperty(default="")
+    bpy.types.Scene.bmanga_collapsed_balloon_group_keys = StringProperty(default="", options={"HIDDEN"})
     _logger.debug("layer_stack registered")
 
 
 def unregister() -> None:
     for attr in (
-        "bname_layer_stack_inline_edit_uid",
-        "bname_collapsed_balloon_group_keys",
-        "bname_active_effect_layer_name",
-        "bname_active_layer_folder_key",
-        "bname_active_gp_folder_key",
-        "bname_active_layer_kind",
-        "bname_active_layer_stack_visible_index",
-        "bname_layer_stack_visible",
-        "bname_active_layer_stack_index",
-        "bname_layer_stack",
+        "bmanga_layer_stack_inline_edit_uid",
+        "bmanga_collapsed_balloon_group_keys",
+        "bmanga_active_effect_layer_name",
+        "bmanga_active_layer_folder_key",
+        "bmanga_active_gp_folder_key",
+        "bmanga_active_layer_kind",
+        "bmanga_active_layer_stack_visible_index",
+        "bmanga_layer_stack_visible",
+        "bmanga_active_layer_stack_index",
+        "bmanga_layer_stack",
     ):
         try:
             delattr(bpy.types.Scene, attr)

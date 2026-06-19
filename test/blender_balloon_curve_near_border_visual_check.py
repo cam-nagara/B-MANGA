@@ -13,19 +13,19 @@ from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_NEAR_BORDER_VISUAL_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_balloon_near_border_visual_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_NEAR_BORDER_VISUAL_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_balloon_near_border_visual_"))
 OUTPUT_PATH = _OUT_PATH if _OUT_PATH.suffix.lower() == ".png" else _OUT_PATH / "balloon_near_border_no_black_coma.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_near_border_visual",
+        "bmanga_dev_balloon_near_border_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_near_border_visual"] = mod
+    sys.modules["bmanga_dev_balloon_near_border_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -95,22 +95,22 @@ def _project_to_pixel(scene, camera, world: Vector) -> tuple[int, int]:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_near_border_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_near_border_visual_work_"))
     mod = None
     try:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonNearBorderVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonNearBorderVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_near_border_visual.core.work import get_work
-        from bname_dev_balloon_near_border_visual.operators import balloon_op
-        from bname_dev_balloon_near_border_visual.utils import balloon_curve_object
-        from bname_dev_balloon_near_border_visual.utils import coma_plane
-        from bname_dev_balloon_near_border_visual.utils import geom
-        from bname_dev_balloon_near_border_visual.utils import page_grid
-        from bname_dev_balloon_near_border_visual.utils.layer_hierarchy import coma_stack_key
+        from bmanga_dev_balloon_near_border_visual.core.work import get_work
+        from bmanga_dev_balloon_near_border_visual.operators import balloon_op
+        from bmanga_dev_balloon_near_border_visual.utils import balloon_curve_object
+        from bmanga_dev_balloon_near_border_visual.utils import coma_plane
+        from bmanga_dev_balloon_near_border_visual.utils import geom
+        from bmanga_dev_balloon_near_border_visual.utils import page_grid
+        from bmanga_dev_balloon_near_border_visual.utils.layer_hierarchy import coma_stack_key
 
         context = bpy.context
         scene = context.scene
@@ -177,7 +177,7 @@ def main() -> None:
         if not (balloon_area[0] < 50.0 and balloon_area[1] < 50.0 and balloon_area[2] < 50.0):
             raise AssertionError(f"黒フキダシ本体が表示されていません: rgb={balloon_area}, out={OUTPUT_PATH}")
         print(
-            "BNAME_BALLOON_NEAR_BORDER_VISUAL_OK "
+            "BMANGA_BALLOON_NEAR_BORDER_VISUAL_OK "
             f"white={tuple(round(v, 1) for v in white_area)} "
             f"balloon={tuple(round(v, 1) for v in balloon_area)} "
             f"out={OUTPUT_PATH}",

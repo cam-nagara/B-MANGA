@@ -1,4 +1,4 @@
-' B-Name-Render renzoku-jikko (continuous run) launcher.
+' B-MANGA Render renzoku-jikko (continuous run) launcher.
 ' Double-click this file to start the app.
 ' Starts the local server using Blender's bundled Python and opens the UI in a
 ' browser app window. No separate Python install is required (Blender is enough).
@@ -15,7 +15,7 @@ scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 
 py = FindBlenderPython()
 If py = "" Then
-  MsgBox "Blender not found. Please install Blender 5.x and try again.", 48, "B-Name-Render"
+  MsgBox "Blender not found. Please install Blender 5.x and try again.", 48, "B-MANGA Render"
   WScript.Quit
 End If
 

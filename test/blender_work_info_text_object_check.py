@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_work_info_text",
+        "bmanga_dev_work_info_text",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_work_info_text"] = mod
+    sys.modules["bmanga_dev_work_info_text"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -37,15 +37,15 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_work_info_text.ui import overlay, overlay_shared
-        from bname_dev_work_info_text.utils import outliner_model, page_grid, work_info_text_object
-        from bname_dev_work_info_text.utils.geom import m_to_mm, q_to_mm
+        from bmanga_dev_work_info_text.ui import overlay, overlay_shared
+        from bmanga_dev_work_info_text.utils import outliner_model, page_grid, work_info_text_object
+        from bmanga_dev_work_info_text.utils.geom import m_to_mm, q_to_mm
 
         assert not hasattr(overlay, "_draw_work_info_texts"), "作品情報の古いオーバーレイ描画が残っています"
         assert not hasattr(overlay, "_draw_work_info_texts_pixel"), "作品情報の古いオーバーレイ描画が残っています"
 
         scene = bpy.context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         work.loaded = True
         work.paper.canvas_width_mm = 257.0
         work.paper.canvas_height_mm = 364.0
@@ -120,7 +120,7 @@ def main() -> None:
         bodies = [str(obj.data.body) for obj in _work_info_objects(work_info_text_object)]
         assert "作者" not in bodies, "非表示にした作品情報テキストが残っています"
 
-        print("BNAME_WORK_INFO_TEXT_OBJECT_CHECK_OK")
+        print("BMANGA_WORK_INFO_TEXT_OBJECT_CHECK_OK")
     finally:
         mod.unregister()
         bpy.ops.wm.read_factory_settings(use_empty=True)

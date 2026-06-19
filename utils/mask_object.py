@@ -32,7 +32,7 @@ _logger = log.get_logger(__name__)
 
 # 旧 __masks__ Collection の名前 / 識別子 (purge 用)
 LEGACY_MASKS_COLLECTION_NAME = "__masks__"
-LEGACY_MASKS_COLLECTION_BNAME_ID = "__masks_root__"
+LEGACY_MASKS_COLLECTION_BMANGA_ID = "__masks_root__"
 
 # 旧 mask Object の name prefix (purge 用)
 PAGE_MASK_NAME_PREFIX = "page_mask_"
@@ -40,8 +40,8 @@ COMA_MASK_NAME_PREFIX = "coma_mask_"
 PAGE_MASK_MESH_PREFIX = "page_mask_mesh_"
 COMA_MASK_MESH_PREFIX = "coma_mask_mesh_"
 
-PROP_MASK_KIND = "bname_mask_kind"  # legacy: "page" | "coma"
-PROP_MASK_OWNER_ID = "bname_mask_owner_id"
+PROP_MASK_KIND = "bmanga_mask_kind"  # legacy: "page" | "coma"
+PROP_MASK_OWNER_ID = "bmanga_mask_owner_id"
 
 
 # ---------------- Backward-compatible shims ----------------
@@ -92,7 +92,7 @@ def purge_legacy_masks_collection() -> int:
     """
     removed = 0
     # Collection 配下の Object を全部削除
-    coll = on.find_collection_by_bname_id(LEGACY_MASKS_COLLECTION_BNAME_ID, kind="masks_root")
+    coll = on.find_collection_by_bmanga_id(LEGACY_MASKS_COLLECTION_BMANGA_ID, kind="masks_root")
     if coll is None:
         coll = bpy.data.collections.get(LEGACY_MASKS_COLLECTION_NAME)
     if coll is not None:

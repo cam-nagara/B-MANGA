@@ -16,23 +16,23 @@ from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 BLEND_PATH = Path(
-    os.environ.get("BNAME_REAL_WORK_BLEND", "")
-    or r"D:\TM Dropbox\Miura Tadahiro\Develop\B-Nameテスト\test05.bname\work.blend"
+    os.environ.get("BMANGA_REAL_WORK_BLEND", "")
+    or r"D:\TM Dropbox\Miura Tadahiro\Develop\B-MANGAテスト\test05.bmanga\work.blend"
 )
 OUT_DIR = Path(
-    os.environ.get("BNAME_REAL_WORK_VISUAL_OUT", "")
+    os.environ.get("BMANGA_REAL_WORK_VISUAL_OUT", "")
     or (ROOT / ".codex" / "visual" / "real_work_visual_audit")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_real_work_audit",
+        "bmanga_real_work_audit",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_real_work_audit"] = mod
+    sys.modules["bmanga_real_work_audit"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -79,7 +79,7 @@ def _screenshot(name: str) -> str:
 
 
 def _set_top_view() -> None:
-    from bname_real_work_audit.utils.geom import mm_to_m
+    from bmanga_real_work_audit.utils.geom import mm_to_m
 
     with _view3d_override():
         bpy.ops.view3d.view_axis(type="TOP", align_active=False)
@@ -95,11 +95,11 @@ def _set_top_view() -> None:
 
 
 def _fit_all() -> None:
-    cols = os.environ.get("BNAME_REAL_WORK_COLS", "").strip()
+    cols = os.environ.get("BMANGA_REAL_WORK_COLS", "").strip()
     if cols:
-        bpy.context.scene.bname_overview_cols = int(cols)
+        bpy.context.scene.bmanga_overview_cols = int(cols)
     with _view3d_override():
-        result = bpy.ops.bname.view_fit_all()
+        result = bpy.ops.bmanga.view_fit_all()
     if "FINISHED" not in result:
         raise AssertionError(f"全ページを一覧に失敗: {result}")
     _redraw(8)
@@ -113,7 +113,7 @@ def _open_target_blend(mod) -> None:
         raise RuntimeError(f"open_mainfile failed: {result}")
     # load_post と同じ同期を明示的にもう一度走らせ、テスト環境差を潰す。
     try:
-        mod.utils.handlers._bname_on_load_post(str(BLEND_PATH))
+        mod.utils.handlers._bmanga_on_load_post(str(BLEND_PATH))
     except Exception:
         traceback.print_exc()
     _redraw(8)
@@ -129,16 +129,16 @@ def _material_method(mat) -> str:
 
 
 def _collect_report() -> dict:
-    from bname_real_work_audit.core.mode import MODE_PAGE, get_mode
-    from bname_real_work_audit.core.work import get_work
-    from bname_real_work_audit.io import border_presets
-    from bname_real_work_audit.utils import paper_guide_object
-    from bname_real_work_audit.utils import coma_border_object
+    from bmanga_real_work_audit.core.mode import MODE_PAGE, get_mode
+    from bmanga_real_work_audit.core.work import get_work
+    from bmanga_real_work_audit.io import border_presets
+    from bmanga_real_work_audit.utils import paper_guide_object
+    from bmanga_real_work_audit.utils import coma_border_object
 
     scene = bpy.context.scene
     work = get_work(bpy.context)
     if work is None or not getattr(work, "loaded", False):
-        raise AssertionError("B-Name作品として読み込めていません")
+        raise AssertionError("B-MANGA作品として読み込めていません")
     work_dir = Path(str(getattr(work, "work_dir", "") or BLEND_PATH.parent))
     guide_objs = [
         obj
@@ -182,8 +182,8 @@ def _collect_report() -> dict:
         "work_loaded": bool(getattr(work, "loaded", False)),
         "work_dir": str(work_dir),
         "page_count": len(getattr(work, "pages", []) or []),
-        "overview_mode": bool(getattr(scene, "bname_overview_mode", False)),
-        "bname_overlay_enabled": bool(getattr(scene, "bname_overlay_enabled", True)),
+        "overview_mode": bool(getattr(scene, "bmanga_overview_mode", False)),
+        "bmanga_overlay_enabled": bool(getattr(scene, "bmanga_overlay_enabled", True)),
         "guide_object_count": len(guide_objs),
         "guide_curve_radii": guide_curve_radii[:12],
         "visible_guide_count": sum(1 for obj in guide_objs if not bool(getattr(obj, "hide_viewport", False))),
@@ -211,7 +211,7 @@ def _camera_switch_report() -> dict:
         _redraw(2)
     _window, _screen, _area, _region, rv3d = _view3d_context()
     return {
-        "overview_mode_after_camera": bool(getattr(scene, "bname_overview_mode", False)),
+        "overview_mode_after_camera": bool(getattr(scene, "bmanga_overview_mode", False)),
         "view_perspective_after_camera": str(getattr(rv3d, "view_perspective", "")),
     }
 
@@ -235,7 +235,7 @@ def main() -> None:
     }
     report_path = OUT_DIR / "real_work_visual_report.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("BNAME_REAL_WORK_VISUAL_AUDIT_OK")
+    print("BMANGA_REAL_WORK_VISUAL_AUDIT_OK")
     print(json.dumps(report, ensure_ascii=False, indent=2))
     sys.stdout.flush()
     os._exit(0)

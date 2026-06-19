@@ -1,7 +1,7 @@
 # フキダシのフチ・多重線を Shapely buffer 方式に統一する計画
 
 作成日: 2026-05-27
-対象: B-Name v0.6.102 以降
+対象: B-MANGA v0.6.102 以降
 ベース commit: 2f71a2e ([claude] feat: 雲フキダシ主線を Shapely buffer 方式に刷新…)
 
 ## ゴール

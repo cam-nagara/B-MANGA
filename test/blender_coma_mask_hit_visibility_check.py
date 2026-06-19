@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,21 +29,21 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_hit_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_hit_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaHit.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaHit.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.operators import balloon_op, effect_line_op, object_tool_selection, text_op
-        from bname_dev.utils import gp_layer_parenting as gp_parent
-        from bname_dev.utils import gpencil as gp_utils
-        from bname_dev.utils import layer_hierarchy, object_selection, page_grid
+        from bmanga_dev.operators import balloon_op, effect_line_op, object_tool_selection, text_op
+        from bmanga_dev.utils import gp_layer_parenting as gp_parent
+        from bmanga_dev.utils import gpencil as gp_utils
+        from bmanga_dev.utils import layer_hierarchy, object_selection, page_grid
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         panel = page.comas[0]
         panel.shape_type = "rect"
@@ -87,11 +87,11 @@ def main() -> None:
         )
         assert effect_obj is not None and effect_layer is not None
         assert gp_parent.parent_key(effect_layer) == coma_key
-        image = context.scene.bname_image_layers.add()
+        image = context.scene.bmanga_image_layers.add()
         image.id = "image_hit"
         image.parent_kind = "coma"
         image.parent_key = coma_key
-        raster = context.scene.bname_raster_layers.add()
+        raster = context.scene.bmanga_raster_layers.add()
         raster.id = "raster_hit"
         raster.parent_kind = "coma"
         raster.parent_key = coma_key
@@ -113,7 +113,7 @@ def main() -> None:
         assert text_op._hit_text_entry(page, 35.0, 60.0)[1] is None
         assert balloon_op._hit_balloon_entry(page, 35.0, 60.0)[1] is None
         assert effect_line_op._hit_effect_layer(context, hidden[0], hidden[1])[1] is None
-        print("BNAME_COMA_MASK_HIT_VISIBILITY_OK")
+        print("BMANGA_COMA_MASK_HIT_VISIBILITY_OK")
     finally:
         if mod is not None:
             try:

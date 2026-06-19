@@ -1,4 +1,4 @@
-"""Write standard Blender object edits back to B-Name data when possible."""
+"""Write standard Blender object edits back to B-MANGA data when possible."""
 
 from __future__ import annotations
 
@@ -16,13 +16,13 @@ def is_sync_candidate(obj: bpy.types.Object | None) -> bool:
         return True
     if kind == "balloon_group":
         return True
-    if str(obj.get("bname_balloon_fill_mesh_owner_id", "") or ""):
+    if str(obj.get("bmanga_balloon_fill_mesh_owner_id", "") or ""):
         return True
-    if str(obj.get("bname_balloon_line_mesh_owner_id", "") or ""):
+    if str(obj.get("bmanga_balloon_line_mesh_owner_id", "") or ""):
         return True
-    if str(obj.get("bname_balloon_fill_owner_id", "") or "") and str(obj.get("bname_balloon_fill_kind", "") or ""):
+    if str(obj.get("bmanga_balloon_fill_owner_id", "") or "") and str(obj.get("bmanga_balloon_fill_kind", "") or ""):
         return True
-    if str(obj.get("bname_balloon_merge_display_kind", "") or ""):
+    if str(obj.get("bmanga_balloon_merge_display_kind", "") or ""):
         return True
     return False
 

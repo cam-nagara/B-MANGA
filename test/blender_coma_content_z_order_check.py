@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_content_z",
+        "bmanga_dev_coma_content_z",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_content_z"] = mod
+    sys.modules["bmanga_dev_coma_content_z"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -74,28 +74,28 @@ def _assert_content_safe_z(obj, *, low: float, high: float, border_z: float, lab
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_content_z_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_content_z_"))
     mod = None
     try:
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaContentZ.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaContentZ.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
         # v0.6.279 以降、コマ・フキダシ・効果線の実体はページ用シーンに属する
         # (作品ファイルはページ一覧のみ) ため、ページを開いてから検証する
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         if "FINISHED" not in result:
             raise AssertionError(f"ページを開けませんでした: {result}")
 
-        from bname_dev_coma_content_z.core.work import get_work
-        from bname_dev_coma_content_z.utils import coma_border_object
-        from bname_dev_coma_content_z.utils import coma_plane
-        from bname_dev_coma_content_z.utils import coma_z_order
-        from bname_dev_coma_content_z.utils import balloon_curve_object
-        from bname_dev_coma_content_z.utils import effect_line_object
-        from bname_dev_coma_content_z.utils import layer_object_sync
-        from bname_dev_coma_content_z.utils import layer_stack as layer_stack_utils
-        from bname_dev_coma_content_z.operators import effect_line_op
+        from bmanga_dev_coma_content_z.core.work import get_work
+        from bmanga_dev_coma_content_z.utils import coma_border_object
+        from bmanga_dev_coma_content_z.utils import coma_plane
+        from bmanga_dev_coma_content_z.utils import coma_z_order
+        from bmanga_dev_coma_content_z.utils import balloon_curve_object
+        from bmanga_dev_coma_content_z.utils import effect_line_object
+        from bmanga_dev_coma_content_z.utils import layer_object_sync
+        from bmanga_dev_coma_content_z.utils import layer_stack as layer_stack_utils
+        from bmanga_dev_coma_content_z.operators import effect_line_op
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -113,7 +113,7 @@ def main() -> None:
         layer_object_sync.stamp_layer_object(
             back,
             kind="image",
-            bname_id="content_back",
+            bmanga_id="content_back",
             title="content_back",
             z_index=10,
             parent_kind="coma",
@@ -123,7 +123,7 @@ def main() -> None:
         layer_object_sync.stamp_layer_object(
             front,
             kind="image",
-            bname_id="content_front",
+            bmanga_id="content_front",
             title="content_front",
             z_index=20,
             parent_kind="coma",
@@ -227,7 +227,7 @@ def main() -> None:
         _assert_between(effect_obj.location.z, plane_z, white_z, "コマ内の効果線")
         _assert_between(effect_display.location.z, plane_z, white_z, "コマ内の効果線の表示実体")
 
-        print("BNAME_COMA_CONTENT_Z_ORDER_OK", flush=True)
+        print("BMANGA_COMA_CONTENT_Z_ORDER_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

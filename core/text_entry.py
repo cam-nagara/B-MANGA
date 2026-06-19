@@ -46,7 +46,7 @@ _FONT_SIZE_UNIT_ITEMS = (
 _font_size_sync_depth = 0
 
 
-class BNameRubySpan(bpy.types.PropertyGroup):
+class BMangaRubySpan(bpy.types.PropertyGroup):
     """親文字範囲とルビ (フリガナ) を対応付ける."""
 
     start: IntProperty(name="開始", default=0, min=0)  # type: ignore[valid-type]
@@ -64,7 +64,7 @@ class BNameRubySpan(bpy.types.PropertyGroup):
     )
 
 
-class BNameTextFontSpan(bpy.types.PropertyGroup):
+class BMangaTextFontSpan(bpy.types.PropertyGroup):
     """本文内の一部範囲に適用するフォント指定."""
 
     start: IntProperty(name="開始", default=0, min=0)  # type: ignore[valid-type]
@@ -72,7 +72,7 @@ class BNameTextFontSpan(bpy.types.PropertyGroup):
     font: StringProperty(name="フォント", default="", subtype="FILE_PATH")  # type: ignore[valid-type]
 
 
-class BNameTextStyleSpan(bpy.types.PropertyGroup):
+class BMangaTextStyleSpan(bpy.types.PropertyGroup):
     """本文内の一部範囲に適用する文字スタイル."""
 
     start: IntProperty(name="開始", default=0, min=0)  # type: ignore[valid-type]
@@ -176,10 +176,10 @@ def _set_text_font_size_value(self, value: float) -> None:
         self.font_size_q = size
 
 
-class BNameTextEntry(bpy.types.PropertyGroup):
+class BMangaTextEntry(bpy.types.PropertyGroup):
     """1 つのテキストオブジェクト.
 
-    Phase 3 以降、テキストはページ単位 (``BNamePageEntry.texts``) で保持し、
+    Phase 3 以降、テキストはページ単位 (``BMangaPageEntry.texts``) で保持し、
     ``parent_balloon_id`` 経由でフキダシと親子連動する (フキダシ移動で子
     テキストも同じ delta で動く)。
     """
@@ -209,10 +209,10 @@ class BNameTextEntry(bpy.types.PropertyGroup):
     free_transform_top_left: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
     free_transform_top_right: FloatVectorProperty(size=2, default=(0.0, 0.0), options={"HIDDEN"}, update=_on_text_free_transform_changed)  # type: ignore[valid-type]
 
-    # 親フキダシ (同一ページの BNameBalloonEntry.id を参照). 空文字なら独立テキスト。
+    # 親フキダシ (同一ページの BMangaBalloonEntry.id を参照). 空文字なら独立テキスト。
     parent_balloon_id: StringProperty(  # type: ignore[valid-type]
         name="親フキダシ ID",
-        description="同じページの BNameBalloonEntry.id を参照。空で独立テキスト。",
+        description="同じページの BMangaBalloonEntry.id を参照。空で独立テキスト。",
         default="",
         update=_on_text_entry_changed,
     )
@@ -274,23 +274,23 @@ class BNameTextEntry(bpy.types.PropertyGroup):
     stroke_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
 
     # ルビ (複数スパン)
-    ruby_spans: CollectionProperty(type=BNameRubySpan)  # type: ignore[valid-type]
+    ruby_spans: CollectionProperty(type=BMangaRubySpan)  # type: ignore[valid-type]
 
     # 部分フォント。font が空の範囲は基本フォントに戻す扱い。
-    font_spans: CollectionProperty(type=BNameTextFontSpan)  # type: ignore[valid-type]
+    font_spans: CollectionProperty(type=BMangaTextFontSpan)  # type: ignore[valid-type]
 
     # 部分スタイル。font が空の範囲は基本フォントに戻す扱い。
-    style_spans: CollectionProperty(type=BNameTextStyleSpan)  # type: ignore[valid-type]
+    style_spans: CollectionProperty(type=BMangaTextStyleSpan)  # type: ignore[valid-type]
 
     # 縦中横 (horizontal-in-vertical): 指定した範囲を縦書き内で横向きに
-    tatechuyoko_ranges: CollectionProperty(type=BNameRubySpan)  # type: ignore[valid-type]
+    tatechuyoko_ranges: CollectionProperty(type=BMangaRubySpan)  # type: ignore[valid-type]
 
 
 _CLASSES = (
-    BNameRubySpan,
-    BNameTextFontSpan,
-    BNameTextStyleSpan,
-    BNameTextEntry,
+    BMangaRubySpan,
+    BMangaTextFontSpan,
+    BMangaTextStyleSpan,
+    BMangaTextEntry,
 )
 
 

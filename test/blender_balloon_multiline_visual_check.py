@@ -12,19 +12,19 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_MULTILINE_VISUAL_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_visual_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_MULTILINE_VISUAL_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_balloon_multiline_visual_"))
 OUTPUT_PATH = _OUT_PATH if _OUT_PATH.suffix.lower() == ".png" else _OUT_PATH / "balloon_multiline_visual.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_multiline_visual",
+        "bmanga_dev_balloon_multiline_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_multiline_visual"] = mod
+    sys.modules["bmanga_dev_balloon_multiline_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -76,10 +76,10 @@ def _material_slot_names(obj) -> list[str]:
 def _assert_balloon_material_order(obj) -> None:
     names = _material_slot_names(obj)
     assert len(names) >= 4, f"フキダシ素材スロットが不足しています: {names}"
-    assert "BName_Balloon_Fill_" in names[0], f"塗りが最背面スロットではありません: {names}"
-    assert "BName_Balloon_Outer_Edge_" in names[1], f"外側フチが塗りの直後ではありません: {names}"
-    assert "BName_Balloon_Inner_Edge_" in names[2], f"内側フチが外側フチの直後ではありません: {names}"
-    assert "BName_Balloon_Curve_" in names[3], f"主線が最前面スロットではありません: {names}"
+    assert "BManga_Balloon_Fill_" in names[0], f"塗りが最背面スロットではありません: {names}"
+    assert "BManga_Balloon_Outer_Edge_" in names[1], f"外側フチが塗りの直後ではありません: {names}"
+    assert "BManga_Balloon_Inner_Edge_" in names[2], f"内側フチが外側フチの直後ではありません: {names}"
+    assert "BManga_Balloon_Curve_" in names[3], f"主線が最前面スロットではありません: {names}"
     for index in (0, 3):
         material = obj.data.materials[index]
         assert str(getattr(material, "blend_method", "") or "") in {"OPAQUE", "HASHED"}, (
@@ -176,19 +176,19 @@ def _assert_smooth_shape_line_has_no_spikes(obj, entry) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_multiline_visual_work_"))
     mod = None
     try:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonMultiLineVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMultiLineVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_multiline_visual.core.work import get_work
-        from bname_dev_balloon_multiline_visual.operators import balloon_op
-        from bname_dev_balloon_multiline_visual.utils import balloon_curve_object
-        from bname_dev_balloon_multiline_visual.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_multiline_visual.core.work import get_work
+        from bmanga_dev_balloon_multiline_visual.operators import balloon_op
+        from bmanga_dev_balloon_multiline_visual.utils import balloon_curve_object
+        from bmanga_dev_balloon_multiline_visual.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -350,7 +350,7 @@ def main() -> None:
         scene.render.filepath = str(OUTPUT_PATH)
         result = bpy.ops.render.render(write_still=True)
         assert "FINISHED" in result, result
-        print(f"BNAME_BALLOON_MULTILINE_VISUAL_OK out={OUTPUT_PATH}", flush=True)
+        print(f"BMANGA_BALLOON_MULTILINE_VISUAL_OK out={OUTPUT_PATH}", flush=True)
     finally:
         if mod is not None:
             try:

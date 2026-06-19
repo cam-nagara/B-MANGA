@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_tail_ui",
+        "bmanga_dev_tail_ui",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_tail_ui"] = mod
+    sys.modules["bmanga_dev_tail_ui"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -86,30 +86,30 @@ def _add_balloon(page):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_tail_ui_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_tail_ui_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "TailUI.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "TailUI.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_tail_ui.operators import layer_detail_op
-        from bname_dev_tail_ui.utils import (
+        from bmanga_dev_tail_ui.operators import layer_detail_op
+        from bmanga_dev_tail_ui.utils import (
             balloon_curve_object,
             balloon_render_contract,
             balloon_shapes,
             balloon_tail_geom,
         )
-        from bname_dev_tail_ui.utils.geom import Rect
-        from bname_dev_tail_ui.io import export_balloon, schema
+        from bmanga_dev_tail_ui.utils.geom import Rect
+        from bmanga_dev_tail_ui.io import export_balloon, schema
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         entry = _add_balloon(page)
 
-        result = bpy.ops.bname.balloon_tail_add_target(
+        result = bpy.ops.bmanga.balloon_tail_add_target(
             "EXEC_DEFAULT",
             page_id=page.id,
             balloon_id=entry.id,
@@ -183,7 +183,7 @@ def main() -> None:
         schema.balloon_entry_from_dict(restored, data)
         assert len(restored.tails) == 1 and len(restored.tails[0].points) == 4
         assert restored.tails[0].points[1].corner_type == "curve"
-        result = bpy.ops.bname.balloon_tail_point_toggle_corner(
+        result = bpy.ops.bmanga.balloon_tail_point_toggle_corner(
             "EXEC_DEFAULT",
             page_id=page.id,
             balloon_id=entry.id,
@@ -191,7 +191,7 @@ def main() -> None:
             point_index=1,
         )
         assert "FINISHED" in result and entry.tails[0].points[1].corner_type == "line"
-        result = bpy.ops.bname.balloon_tail_point_delete(
+        result = bpy.ops.bmanga.balloon_tail_point_delete(
             "EXEC_DEFAULT",
             page_id=page.id,
             balloon_id=entry.id,
@@ -233,13 +233,13 @@ def main() -> None:
         assert len(obj.data.materials) > fill_slot
         used_mat = obj.data.materials[fill_slot]
         assert used_mat is not source_mat
-        assert used_mat.get("bname_balloon_fill_source_material") == source_mat.name
+        assert used_mat.get("bmanga_balloon_fill_source_material") == source_mat.name
         assert [node.name for node in source_mat.node_tree.nodes] == source_nodes
 
         layout = _FakeLayout()
         layer_detail_op._draw_balloon_detail(layout, entry, page)
         # v0.6.275: しっぽ設定は専用ダイアログへ分離され、開くボタンだけが置かれる
-        assert "bname.balloon_tail_detail_open" in layout.ops
+        assert "bmanga.balloon_tail_detail_open" in layout.ops
         for prop_name in {
             "fill_opacity",
             "fill_material_name",
@@ -252,19 +252,19 @@ def main() -> None:
             assert prop_name in layout.props, prop_name
 
         # しっぽの詳細設定ダイアログ側の UI (追加・削除・プリセット・新設定)
-        from bname_dev_tail_ui.operators import balloon_tail_detail_op
+        from bmanga_dev_tail_ui.operators import balloon_tail_detail_op
 
         tail_layout = _FakeLayout()
         balloon_tail_detail_op._draw_tail_box(
             tail_layout, context, page, entry, entry.tails[0], 0
         )
-        assert "bname.balloon_tail_remove" in tail_layout.ops
-        assert "bname.balloon_tail_preset_apply" in tail_layout.ops
-        assert "bname.balloon_tail_preset_save" in tail_layout.ops
+        assert "bmanga.balloon_tail_remove" in tail_layout.ops
+        assert "bmanga.balloon_tail_preset_apply" in tail_layout.ops
+        assert "bmanga.balloon_tail_preset_save" in tail_layout.ops
         for prop_name in {"line_type", "root_width_mm", "tip_width_mm", "sharp_corners"}:
             assert prop_name in tail_layout.props, prop_name
 
-        result = bpy.ops.bname.balloon_tail_remove(
+        result = bpy.ops.bmanga.balloon_tail_remove(
             "EXEC_DEFAULT",
             page_id=page.id,
             balloon_id=entry.id,
@@ -273,7 +273,7 @@ def main() -> None:
         assert "FINISHED" in result, result
         assert len(entry.tails) == 0
 
-        print("BNAME_BALLOON_TAIL_UI_OK")
+        print("BMANGA_BALLOON_TAIL_UI_OK")
     finally:
         if mod is not None:
             try:

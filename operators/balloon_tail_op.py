@@ -77,7 +77,7 @@ def open_tail_point_context_menu(
 
     # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
     return detail_popup.call_menu_right_of_cursor(
-        context, event, BNAME_MT_balloon_tail_point_context.bl_idname, half_width_px=110
+        context, event, BMANGA_MT_balloon_tail_point_context.bl_idname, half_width_px=110
     )
 
 
@@ -93,8 +93,8 @@ def _context_values(self) -> tuple[str, str, int, int]:
     return page_id, balloon_id, tail_index, point_index
 
 
-class BNAME_OT_balloon_tail_add_target(Operator):
-    bl_idname = "bname.balloon_tail_add_target"
+class BMANGA_OT_balloon_tail_add_target(Operator):
+    bl_idname = "bmanga.balloon_tail_add_target"
     bl_label = "しっぽを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -117,8 +117,8 @@ class BNAME_OT_balloon_tail_add_target(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_remove(Operator):
-    bl_idname = "bname.balloon_tail_remove"
+class BMANGA_OT_balloon_tail_remove(Operator):
+    bl_idname = "bmanga.balloon_tail_remove"
     bl_label = "しっぽを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -140,8 +140,8 @@ class BNAME_OT_balloon_tail_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_point_delete(Operator):
-    bl_idname = "bname.balloon_tail_point_delete"
+class BMANGA_OT_balloon_tail_point_delete(Operator):
+    bl_idname = "bmanga.balloon_tail_point_delete"
     bl_label = "制御点を削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -166,8 +166,8 @@ class BNAME_OT_balloon_tail_point_delete(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_point_toggle_corner(Operator):
-    bl_idname = "bname.balloon_tail_point_toggle_corner"
+class BMANGA_OT_balloon_tail_point_toggle_corner(Operator):
+    bl_idname = "bmanga.balloon_tail_point_toggle_corner"
     bl_label = "角のタイプを切り替え"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -192,8 +192,8 @@ class BNAME_OT_balloon_tail_point_toggle_corner(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_set_curve_mode(Operator):
-    bl_idname = "bname.balloon_tail_set_curve_mode"
+class BMANGA_OT_balloon_tail_set_curve_mode(Operator):
+    bl_idname = "bmanga.balloon_tail_set_curve_mode"
     bl_label = "しっぽの線のつなぎを変更"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -216,8 +216,8 @@ class BNAME_OT_balloon_tail_set_curve_mode(Operator):
         return {"FINISHED"}
 
 
-class BNAME_MT_balloon_tail_point_context(Menu):
-    bl_idname = "BNAME_MT_balloon_tail_point_context"
+class BMANGA_MT_balloon_tail_point_context(Menu):
+    bl_idname = "BMANGA_MT_balloon_tail_point_context"
     bl_label = "しっぽ制御点"
 
     def draw(self, context):
@@ -235,12 +235,12 @@ class BNAME_MT_balloon_tail_point_context(Menu):
             can_delete = False
         row = layout.row()
         row.enabled = can_delete
-        op = row.operator(BNAME_OT_balloon_tail_point_delete.bl_idname, text="制御点を削除", icon="X")
+        op = row.operator(BMANGA_OT_balloon_tail_point_delete.bl_idname, text="制御点を削除", icon="X")
         op.page_id = page_id
         op.balloon_id = balloon_id
         op.tail_index = tail_index
         op.point_index = point_index
-        op = layout.operator(BNAME_OT_balloon_tail_point_toggle_corner.bl_idname, text="角のタイプを切り替え", icon="MOD_CURVE")
+        op = layout.operator(BMANGA_OT_balloon_tail_point_toggle_corner.bl_idname, text="角のタイプを切り替え", icon="MOD_CURVE")
         op.page_id = page_id
         op.balloon_id = balloon_id
         op.tail_index = tail_index
@@ -255,7 +255,7 @@ class BNAME_MT_balloon_tail_point_context(Menu):
             is_curve = str(getattr(tail, "curve_mode", "polyline") or "polyline") == "curve"
             layout.separator()
             op = layout.operator(
-                BNAME_OT_balloon_tail_set_curve_mode.bl_idname,
+                BMANGA_OT_balloon_tail_set_curve_mode.bl_idname,
                 text="折れ線に戻す" if is_curve else "曲線 (なめらか) に変更",
                 icon="IPO_LINEAR" if is_curve else "IPO_BEZIER",
             )
@@ -266,12 +266,12 @@ class BNAME_MT_balloon_tail_point_context(Menu):
 
 
 _CLASSES = (
-    BNAME_OT_balloon_tail_add_target,
-    BNAME_OT_balloon_tail_remove,
-    BNAME_OT_balloon_tail_point_delete,
-    BNAME_OT_balloon_tail_point_toggle_corner,
-    BNAME_OT_balloon_tail_set_curve_mode,
-    BNAME_MT_balloon_tail_point_context,
+    BMANGA_OT_balloon_tail_add_target,
+    BMANGA_OT_balloon_tail_remove,
+    BMANGA_OT_balloon_tail_point_delete,
+    BMANGA_OT_balloon_tail_point_toggle_corner,
+    BMANGA_OT_balloon_tail_set_curve_mode,
+    BMANGA_MT_balloon_tail_point_context,
 )
 
 

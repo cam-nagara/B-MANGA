@@ -1,7 +1,7 @@
-"""作品 (.bname) フォルダの作成・読み込み・保存.
+"""作品 (.bmanga) フォルダの作成・読み込み・保存.
 
 ディレクトリ構造は新構造を参照:
-  MyWork.bname/
+  MyWork.bmanga/
     work.json
     pages.json  (page_io 担当)
     assets/
@@ -24,8 +24,8 @@ _logger = log.get_logger(__name__)
 # ---------- 新規作成 ----------
 
 
-def create_bname_skeleton(work_dir: Path) -> None:
-    """.bname フォルダのディレクトリ骨格を作成する (中身の JSON は別関数で書く)."""
+def create_bmanga_skeleton(work_dir: Path) -> None:
+    """.bmanga フォルダのディレクトリ骨格を作成する (中身の JSON は別関数で書く)."""
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     assets = paths.assets_dir(work_dir)
@@ -39,14 +39,14 @@ def create_bname_skeleton(work_dir: Path) -> None:
     paths.exports_dir(work_dir).mkdir(exist_ok=True)
     paths.raster_dir(work_dir).mkdir(exist_ok=True)
     paths.raster_trash_dir(work_dir).mkdir(exist_ok=True)
-    _logger.info("bname skeleton created: %s", work_dir)
+    _logger.info("bmanga skeleton created: %s", work_dir)
 
 
 # ---------- work.json ----------
 
 
 def save_work_json(work_dir: Path, work) -> Path:
-    """BNameWorkData → work.json に保存."""
+    """BMangaWorkData → work.json に保存."""
     work_dir = Path(work_dir)
     data = schema.work_to_dict(work)
     data["lastSaved"] = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -57,7 +57,7 @@ def save_work_json(work_dir: Path, work) -> Path:
 
 
 def load_work_json(work_dir: Path, work) -> dict[str, Any]:
-    """work.json → BNameWorkData に読み込み。戻り値は読込み生 dict."""
+    """work.json → BMangaWorkData に読み込み。戻り値は読込み生 dict."""
     path = paths.work_meta_path(Path(work_dir))
     if not path.is_file():
         raise FileNotFoundError(f"work.json not found: {path}")

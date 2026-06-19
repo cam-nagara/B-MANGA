@@ -22,7 +22,7 @@ from .geom import Rect, mm_to_m
 BALLOON_FLASH_EFFECT_LINE_MESH_NAME_PREFIX = "balloon_flash_effect_line_mesh_"
 _KIND_FLASH_EFFECT_LINE = "balloon_flash_effect_line_mesh"
 _FLASH_LINE_Z_M = balloon_line_mesh.LINE_Z_OFFSET_M
-_FLASH_EFFECT_MESH_SIGNATURE_PROP = "bname_balloon_flash_effect_mesh_signature"
+_FLASH_EFFECT_MESH_SIGNATURE_PROP = "bmanga_balloon_flash_effect_mesh_signature"
 _COLOR_ONLY_PARAM_FIELDS = {"line_color", "fill_color", "white_underlay_color"}
 
 

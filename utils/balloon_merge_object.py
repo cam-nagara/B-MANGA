@@ -20,10 +20,10 @@ _logger = log.get_logger(__name__)
 
 MERGE_KIND = "balloon_group"
 MERGE_NAME_PREFIX = "balloon_merge_"
-PROP_MERGE_DISPLAY_KIND = "bname_balloon_merge_display_kind"
-PROP_MERGE_GROUP_ID = "bname_balloon_merge_group_id"
-PROP_MERGE_SOURCE_IDS = "bname_balloon_merge_source_ids"
-PROP_MERGE_SOURCE_SIGNATURE = "bname_balloon_merge_source_signature"
+PROP_MERGE_DISPLAY_KIND = "bmanga_balloon_merge_display_kind"
+PROP_MERGE_GROUP_ID = "bmanga_balloon_merge_group_id"
+PROP_MERGE_SOURCE_IDS = "bmanga_balloon_merge_source_ids"
+PROP_MERGE_SOURCE_SIGNATURE = "bmanga_balloon_merge_source_signature"
 
 _LINE_Z_OFFSET_M = 0.00004
 
@@ -82,7 +82,7 @@ def _sync_source_visibility(page, groups: dict[str, list[object]]) -> None:
 def _set_source_display_hidden(balloon_id: str, hidden: bool) -> None:
     if not balloon_id:
         return
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is not None:
         _set_object_hidden(obj, hidden)
     for candidate in bpy.data.objects:
@@ -140,7 +140,7 @@ def _ensure_group_display(scene, work, page, group_id: str, entries: list[object
 
 def _find_group_display_object(group_id: str) -> bpy.types.Object | None:
     obj_name = f"{MERGE_NAME_PREFIX}{group_id}"
-    obj = on.find_object_by_bname_id(group_id, kind=MERGE_KIND)
+    obj = on.find_object_by_bmanga_id(group_id, kind=MERGE_KIND)
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
     return obj
@@ -216,7 +216,7 @@ def _stamp_display_object(scene, work, page, obj, group_id: str, entries, *, max
     los.stamp_layer_object(
         obj,
         kind=MERGE_KIND,
-        bname_id=group_id,
+        bmanga_id=group_id,
         title=group_id.replace("balloon_group_", "フキダシ結合 "),
         z_index=z_index,
         parent_kind=parent_kind,
@@ -234,7 +234,7 @@ def _source_polygons(entries) -> tuple[list[list[tuple[float, float]]], float]:
     polygons: list[list[tuple[float, float]]] = []
     max_z = 0.0
     for entry in entries:
-        obj = on.find_object_by_bname_id(str(getattr(entry, "id", "") or ""), kind="balloon")
+        obj = on.find_object_by_bmanga_id(str(getattr(entry, "id", "") or ""), kind="balloon")
         if obj is None or getattr(obj, "type", "") != "CURVE":
             continue
         max_z = max(max_z, float(getattr(obj.location, "z", 0.0) or 0.0))
@@ -493,7 +493,7 @@ def _round_float(value) -> float:
 def _source_object_signature(balloon_id: str) -> tuple:
     if not balloon_id:
         return ()
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is None or getattr(obj, "type", "") != "CURVE":
         return ()
     transform = (

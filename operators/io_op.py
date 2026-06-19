@@ -341,10 +341,10 @@ def _release_transient_details(context, work, transient_ids: set[str]) -> None:
         _logger.exception("transient page detail release failed")
 
 
-class BNAME_OT_export_page(Operator):
+class BMANGA_OT_export_page(Operator):
     """現在のページを画像書き出し."""
 
-    bl_idname = "bname.export_page"
+    bl_idname = "bmanga.export_page"
     bl_label = "現在のページを書き出し"
     bl_options = {"REGISTER"}
 
@@ -438,10 +438,10 @@ class BNAME_OT_export_page(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_export_all_pages(Operator):
+class BMANGA_OT_export_all_pages(Operator):
     """指定範囲のページを書き出し."""
 
-    bl_idname = "bname.export_all_pages"
+    bl_idname = "bmanga.export_all_pages"
     bl_label = "指定範囲を書き出し"
     bl_options = {"REGISTER"}
 
@@ -570,10 +570,10 @@ class BNAME_OT_export_all_pages(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_export_pdf(Operator):
+class BMANGA_OT_export_pdf(Operator):
     """全ページを 1 つの PDF に結合書き出し (Phase 6b)."""
 
-    bl_idname = "bname.export_pdf"
+    bl_idname = "bmanga.export_pdf"
     bl_label = "PDF 結合書き出し"
     bl_options = {"REGISTER"}
 
@@ -691,9 +691,9 @@ class BNAME_OT_export_pdf(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_export_page,
-    BNAME_OT_export_all_pages,
-    BNAME_OT_export_pdf,
+    BMANGA_OT_export_page,
+    BMANGA_OT_export_all_pages,
+    BMANGA_OT_export_pdf,
 )
 
 

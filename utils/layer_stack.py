@@ -31,7 +31,7 @@ from .layer_hierarchy import (
 
 _logger = log.get_logger(__name__)
 
-EFFECT_GP_OBJECT_NAME = "BName_EffectLines"
+EFFECT_GP_OBJECT_NAME = "BManga_EffectLines"
 PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "fill", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
 COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
@@ -162,12 +162,12 @@ def sync_visible_layer_stack(context, *, stack=None) -> bool:
 def set_active_stack_index_silently(context, index: int) -> None:
     """実データ選択を再実行せず、UIList のアクティブ行だけを合わせる。"""
     scene = getattr(context, "scene", None)
-    if scene is None or not hasattr(scene, "bname_active_layer_stack_index"):
+    if scene is None or not hasattr(scene, "bmanga_active_layer_stack_index"):
         return
     # 同値なら代入しない。無条件代入は Scene を更新済み扱いにして depsgraph_update を
     # 発火させ、描画コールバック経由の sync_layer_stack 呼び出しで無限再描画ループに
     # なる (細線のちらつきの原因)。
-    if int(getattr(scene, "bname_active_layer_stack_index", -1)) == int(index):
+    if int(getattr(scene, "bmanga_active_layer_stack_index", -1)) == int(index):
         return
     core_layer_stack = None
     try:
@@ -177,7 +177,7 @@ def set_active_stack_index_silently(context, index: int) -> None:
     except Exception:  # noqa: BLE001
         core_layer_stack = None
     try:
-        scene.bname_active_layer_stack_index = int(index)
+        scene.bmanga_active_layer_stack_index = int(index)
     finally:
         if core_layer_stack is not None:
             core_layer_stack._active_index_update_depth = max(
@@ -411,7 +411,7 @@ def _jp_layer_label(kind: str, raw_id: str) -> str:
 
 def _collect_raster_targets_for_page(page, panels_by_key: dict[str, object]):
     scene = getattr(bpy.context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
         return [], {}
     page_key = page_stack_key(page)
@@ -438,7 +438,7 @@ def _collect_raster_targets_for_page(page, panels_by_key: dict[str, object]):
 
 def _collect_image_targets_for_page(page, panels_by_key: dict[str, object]):
     scene = getattr(bpy.context, "scene", None)
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if coll is None:
         return [], {}
     page_key = page_stack_key(page)
@@ -463,7 +463,7 @@ def _collect_image_targets_for_page(page, panels_by_key: dict[str, object]):
 
 def _collect_fill_targets_for_page(page, panels_by_key: dict[str, object]):
     scene = getattr(bpy.context, "scene", None)
-    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     if coll is None:
         return [], {}
     page_key = page_stack_key(page)
@@ -527,7 +527,7 @@ def _collect_outside_layer_targets(
         label = _coma_display_label(panel, stem)
         targets.append(LayerTarget(COMA_KIND, outside_child_key(stem), label, OUTSIDE_STACK_KEY, 1))
 
-    raster_layers = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    raster_layers = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if raster_layers is not None:
         used_raster: set[str] = set()
         for entry in reversed(list(raster_layers)):
@@ -540,7 +540,7 @@ def _collect_outside_layer_targets(
             label = getattr(entry, "title", "") or _jp_layer_label("raster", key)
             targets.append(LayerTarget("raster", key, label, OUTSIDE_STACK_KEY, 1))
 
-    image_layers = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if image_layers is not None:
         used_image: set[str] = set()
         for entry in reversed(list(image_layers)):
@@ -1127,10 +1127,10 @@ def sync_layer_stack(
     追加する。これにより UIList 側のD&D並び替えを上書きしない。
     """
     scene = context.scene
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return None
-    old_active_index = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    old_active_index = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     old_active_uid = ""
     if 0 <= old_active_index < len(stack):
         old_active_uid = stack_item_uid(stack[old_active_index])
@@ -1182,7 +1182,7 @@ def sync_layer_stack(
 
 
 def _stack_signature(scene) -> tuple[str, ...]:
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return ()
     return tuple(stack_item_uid(item) for item in stack)
@@ -1356,7 +1356,7 @@ def _parent_key_exists_for_child(context, child_kind: str, parent_key: str) -> b
     if child_kind in PAGE_COMA_CHILD_KINDS and gp_parent.parent_key_exists(work, parent_key):
         return True
     if child_kind in {"gp", "gp_folder"}:
-        stack = getattr(getattr(context, "scene", None), "bname_layer_stack", None)
+        stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
         return bool(_find_stack_item(stack, "gp_folder", parent_key))
     return False
 
@@ -1463,7 +1463,7 @@ def _parent_key_page(parent_key: str) -> str:
 def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -> bool:
     """UIList D&Dの位置/横方向ヒントを、保存可能な親変更へ変換する."""
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     moved_index = _find_stack_index_by_uid(stack, moved_uid)
     if moved_index < 0:
         return False
@@ -1592,7 +1592,7 @@ def _infer_moved_uid(previous: tuple[str, ...], current: tuple[str, ...]) -> str
 
 
 def _active_uid_from_signature(scene, signature: tuple[str, ...]) -> str:
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= idx < len(signature):
         return signature[idx]
     return ""
@@ -1601,7 +1601,7 @@ def _active_uid_from_signature(scene, signature: tuple[str, ...]) -> str:
 def apply_stack_order_if_ui_changed(context, *, moved_uid: str = "") -> bool:
     """UIList の D&D で変わった Collection 順を、同期で戻る前に実データへ適用する."""
     scene = getattr(context, "scene", None)
-    if scene is None or getattr(scene, "bname_layer_stack", None) is None:
+    if scene is None or getattr(scene, "bmanga_layer_stack", None) is None:
         return False
     try:
         scene_key = int(scene.as_pointer())
@@ -1637,6 +1637,8 @@ def _sync_real_objects_after_stack_order(context) -> None:
         from . import layer_object_sync
 
         layer_object_sync.mirror_work_to_outliner(scene, work)
+        with layer_object_sync.suppress_sync():
+            layer_object_sync.assign_per_page_z_ranks(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack real object sync failed")
 
@@ -1665,7 +1667,7 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
     scene = getattr(context, "scene", None)
     if scene is None:
         return False
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return False
     try:
@@ -1723,7 +1725,7 @@ def schedule_layer_stack_draw_maintenance(context) -> bool:
 
 def _active_key_from_scene(context) -> tuple[str, str] | None:
     scene = context.scene
-    kind = getattr(scene, "bname_active_layer_kind", "gp")
+    kind = getattr(scene, "bmanga_active_layer_kind", "gp")
     work = get_work(context)
     page = get_active_page(context)
 
@@ -1736,31 +1738,31 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
         if 0 <= idx < len(page.comas):
             return COMA_KIND, coma_stack_key(page, page.comas[idx])
     if kind == "gp_folder":
-        key = str(getattr(scene, "bname_active_gp_folder_key", "") or "")
+        key = str(getattr(scene, "bmanga_active_gp_folder_key", "") or "")
         obj = gp_utils.get_master_gpencil()
         groups = getattr(getattr(obj, "data", None), "layer_groups", None)
         group = _find_gp_group_by_key(groups, key)
         if group is not None:
             key = _node_stack_key(group)
-            scene.bname_active_gp_folder_key = key
+            scene.bmanga_active_gp_folder_key = key
             return "gp_folder", key
     if kind == LAYER_FOLDER_KIND:
-        key = str(getattr(scene, "bname_active_layer_folder_key", "") or "")
+        key = str(getattr(scene, "bmanga_active_layer_folder_key", "") or "")
         if layer_folder_utils.is_folder_key(context, key):
             return LAYER_FOLDER_KIND, key
     if kind == "image":
-        coll = getattr(scene, "bname_image_layers", None)
-        idx = int(getattr(scene, "bname_active_image_layer_index", -1))
+        coll = getattr(scene, "bmanga_image_layers", None)
+        idx = int(getattr(scene, "bmanga_active_image_layer_index", -1))
         if coll is not None and 0 <= idx < len(coll):
             return "image", getattr(coll[idx], "id", "")
     if kind == "raster":
-        coll = getattr(scene, "bname_raster_layers", None)
-        idx = int(getattr(scene, "bname_active_raster_layer_index", -1))
+        coll = getattr(scene, "bmanga_raster_layers", None)
+        idx = int(getattr(scene, "bmanga_active_raster_layer_index", -1))
         if coll is not None and 0 <= idx < len(coll):
             return "raster", getattr(coll[idx], "id", "")
     if kind == "fill":
-        coll = getattr(scene, "bname_fill_layers", None)
-        idx = int(getattr(scene, "bname_active_fill_layer_index", -1))
+        coll = getattr(scene, "bmanga_fill_layers", None)
+        idx = int(getattr(scene, "bmanga_active_fill_layer_index", -1))
         if coll is not None and 0 <= idx < len(coll):
             return "fill", getattr(coll[idx], "id", "")
     if kind == "balloon" and page is not None:
@@ -1772,7 +1774,7 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
         if 0 <= idx < len(page.texts):
             return "text", f"{page_stack_key(page)}:{getattr(page.texts[idx], 'id', '')}"
     if kind == "effect":
-        key = str(getattr(scene, "bname_active_effect_layer_name", "") or "")
+        key = str(getattr(scene, "bmanga_active_effect_layer_name", "") or "")
         obj, layer = _find_effect_layer_by_key(key)
         if layer is None:
             obj = get_effect_gp_object()
@@ -1791,7 +1793,7 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
 
 def _sync_active_stack_index(context) -> None:
     scene = context.scene
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return
     active_key = _active_key_from_scene(context)
@@ -1801,7 +1803,7 @@ def _sync_active_stack_index(context) -> None:
             if stack_item_uid(item) == uid:
                 set_active_stack_index_silently(context, i)
                 return
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if idx >= len(stack):
         set_active_stack_index_silently(context, len(stack) - 1)
     elif idx < -1:
@@ -1916,7 +1918,7 @@ def _stamp_effect_object_parent(context, obj, parent_key: str) -> None:
         los.stamp_layer_object(
             obj,
             kind="effect",
-            bname_id=str(obj.get(on.PROP_ID, "") or obj.name),
+            bmanga_id=str(obj.get(on.PROP_ID, "") or obj.name),
             title=str(obj.get(on.PROP_TITLE, "") or obj.name),
             z_index=int(obj.get(on.PROP_Z_INDEX, 0) or 0),
             parent_kind=parent_kind,
@@ -2082,7 +2084,7 @@ def restore_gp_layer_snapshots(snapshot) -> None:
 
 def raster_entries_for_parent_keys(context, parent_keys: set[str]) -> list[object]:
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None or not parent_keys:
         return []
     keys = {str(key or "") for key in parent_keys if str(key or "")}
@@ -2136,7 +2138,7 @@ def restore_raster_layer_snapshots(context, snapshot) -> None:
     except Exception:  # noqa: BLE001
         raster_layer_op = None
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     entry_by_id = {
         str(getattr(entry, "id", "") or ""): entry
         for entry in (coll or [])
@@ -2260,13 +2262,13 @@ def resolve_stack_item(context, item):
                 return {"kind": kind, "target": folder, "object": None, "index": idx}
         return {"kind": kind, "target": None, "object": None, "index": -1}
     if kind == "image":
-        coll = getattr(scene, "bname_image_layers", None)
+        coll = getattr(scene, "bmanga_image_layers", None)
         if coll is None:
             return None
         idx, entry = _find_by_id(coll, key)
         return {"kind": kind, "target": entry, "object": None, "index": idx}
     if kind == "raster":
-        coll = getattr(scene, "bname_raster_layers", None)
+        coll = getattr(scene, "bmanga_raster_layers", None)
         if coll is None:
             return None
         idx, entry = _find_by_id(coll, key)
@@ -2291,7 +2293,7 @@ def resolve_stack_item(context, item):
             "page_index": page_idx,
         }
     if kind == "fill":
-        coll = getattr(scene, "bname_fill_layers", None)
+        coll = getattr(scene, "bmanga_fill_layers", None)
         if coll is None:
             return None
         idx, entry = _find_by_id(coll, key)
@@ -2387,14 +2389,14 @@ def _selection_attr_name(target) -> str:
 def is_item_selected(context, item) -> bool:
     """``item`` がマルチセレクト集合に含まれるかを返す。
 
-    アクティブ行 (``bname_active_layer_stack_index``) も「選択中」として扱う。
+    アクティブ行 (``bmanga_active_layer_stack_index``) も「選択中」として扱う。
     """
     scene = getattr(context, "scene", None)
     if scene is None or item is None:
         return False
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is not None:
-        idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
         if 0 <= idx < len(stack):
             if stack_item_uid(stack[idx]) == stack_item_uid(item):
                 return True
@@ -2434,7 +2436,7 @@ def clear_all_selection(context) -> int:
     scene = getattr(context, "scene", None)
     if scene is None:
         return 0
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return 0
     cleared = 0
@@ -2449,16 +2451,16 @@ def active_stack_item(context):
     # 呼んでいたが、それはレイヤー一覧を作り直して Scene に書き込む副作用がある。
     # この関数はパネルの draw やツール/ハンドラから高頻度で呼ばれるため、毎回
     # 書き込むと depsgraph 更新 → ビューポート再描画 → また呼ばれる、の連鎖で
-    # 「B-Name パネルを開いている間ずっと細線が点滅する」再描画ループ(実測
+    # 「B-MANGA パネルを開いている間ずっと細線が点滅する」再描画ループ(実測
     # 約15回/秒)になっていた。読み取りでは書き込まず、既存の一覧をそのまま見る。
     # 一覧はオペレータの変更後同期・パネルの draw 維持処理で最新化される。
     scene = getattr(context, "scene", None)
     if scene is None:
         return None
-    stack = getattr(scene, "bname_layer_stack", None)
+    stack = getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return None
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
@@ -2559,7 +2561,7 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
     stack = sync_layer_stack(context, preserve_active_index=True)
     if stack is None or not (0 <= index < len(stack)):
         return False
-    context.scene.bname_active_layer_stack_index = index
+    context.scene.bmanga_active_layer_stack_index = index
     item = stack[index]
     resolved = resolve_stack_item(context, item)
     if resolved is None or resolved.get("target") is None:
@@ -2580,13 +2582,13 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             from ..core.mode import MODE_PAGE, set_mode
 
             set_mode(MODE_PAGE, context)
-            scene.bname_overview_mode = True
-            scene.bname_current_coma_id = ""
-            scene.bname_current_coma_page_id = ""
+            scene.bmanga_overview_mode = True
+            scene.bmanga_current_coma_id = ""
+            scene.bmanga_current_coma_page_id = ""
         except Exception:  # noqa: BLE001
             pass
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = PAGE_KIND
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = PAGE_KIND
         edge_selection.clear_selection(context)
     elif kind == COMA_KIND:
         work = get_work(context)
@@ -2594,8 +2596,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         coma_idx = int(resolved.get("index", -1))
         target_page = resolved.get("page")
         if target_page is None:
-            scene.bname_active_gp_folder_key = ""
-            scene.bname_active_layer_kind = COMA_KIND
+            scene.bmanga_active_gp_folder_key = ""
+            scene.bmanga_active_layer_kind = COMA_KIND
             edge_selection.clear_selection(context)
             target = resolved.get("target")
             if target is not None and hasattr(target, "selected"):
@@ -2621,11 +2623,11 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             from ..core.mode import MODE_PAGE, set_mode
 
             set_mode(MODE_PAGE, context)
-            scene.bname_overview_mode = True
+            scene.bmanga_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = COMA_KIND
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = COMA_KIND
         edge_selection.set_selection(
             context,
             "border",
@@ -2642,8 +2644,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             if 0 <= coma_idx < len(target_page.comas):
                 target_page.active_coma_index = coma_idx
         _set_active_object(context, resolved.get("object"))
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = COMA_KIND
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = COMA_KIND
         edge_selection.clear_selection(context)
     elif kind == "gp":
         obj = resolved.get("object")
@@ -2655,20 +2657,20 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
         except Exception:  # noqa: BLE001
             _logger.exception("select gp layer failed")
-        scene.bname_active_layer_kind = "gp"
-        scene.bname_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "gp"
+        scene.bmanga_active_gp_folder_key = ""
         edge_selection.clear_selection(context)
     elif kind == "gp_folder":
         _set_active_object(context, resolved.get("object"))
-        scene.bname_active_gp_folder_key = item.key
-        scene.bname_active_layer_kind = "gp_folder"
+        scene.bmanga_active_gp_folder_key = item.key
+        scene.bmanga_active_layer_kind = "gp_folder"
         edge_selection.clear_selection(context)
     elif kind == LAYER_FOLDER_KIND:
         folder_key = str(getattr(item, "key", "") or "")
-        if hasattr(scene, "bname_active_layer_folder_key"):
-            scene.bname_active_layer_folder_key = folder_key
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = LAYER_FOLDER_KIND
+        if hasattr(scene, "bmanga_active_layer_folder_key"):
+            scene.bmanga_active_layer_folder_key = folder_key
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = LAYER_FOLDER_KIND
         work = get_work(context)
         semantic_parent = layer_folder_utils.semantic_parent_key_for_folder(work, folder_key)
         if work is not None and semantic_parent and semantic_parent != OUTSIDE_STACK_KEY:
@@ -2678,23 +2680,23 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 work.active_page_index = idx
         edge_selection.clear_selection(context)
     elif kind == "image":
-        scene.bname_active_image_layer_index = int(resolved.get("index", -1))
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "image"
+        scene.bmanga_active_image_layer_index = int(resolved.get("index", -1))
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "image"
         edge_selection.clear_selection(context)
     elif kind == "raster":
         page_idx = int(resolved.get("page_index", -1))
         work = get_work(context)
         if work is not None and 0 <= page_idx < len(work.pages):
             work.active_page_index = page_idx
-        scene.bname_active_raster_layer_index = int(resolved.get("index", -1))
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "raster"
+        scene.bmanga_active_raster_layer_index = int(resolved.get("index", -1))
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "raster"
         edge_selection.clear_selection(context)
     elif kind == "fill":
-        scene.bname_active_fill_layer_index = int(resolved.get("index", -1))
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "fill"
+        scene.bmanga_active_fill_layer_index = int(resolved.get("index", -1))
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "fill"
         edge_selection.clear_selection(context)
     elif kind == "balloon_group":
         target_page = resolved.get("page") or page
@@ -2716,8 +2718,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 first_selected = i
         if first_selected >= 0:
             target_page.active_balloon_index = first_selected
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "balloon"
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "balloon"
         edge_selection.clear_selection(context)
     elif kind == "balloon":
         target_page = resolved.get("page") or page
@@ -2729,8 +2731,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 target.selected = True
             except Exception:  # noqa: BLE001
                 pass
-            scene.bname_active_gp_folder_key = ""
-            scene.bname_active_layer_kind = "balloon"
+            scene.bmanga_active_gp_folder_key = ""
+            scene.bmanga_active_layer_kind = "balloon"
             edge_selection.clear_selection(context)
             if sync_object_selection:
                 _sync_object_selection_for_stack_item(context, item, resolved)
@@ -2747,8 +2749,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 balloon.selected = i == target_page.active_balloon_index
             except Exception:  # noqa: BLE001
                 pass
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "balloon"
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "balloon"
         edge_selection.clear_selection(context)
     elif kind == "text":
         target_page = resolved.get("page") or page
@@ -2760,8 +2762,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
                 target.selected = True
             except Exception:  # noqa: BLE001
                 pass
-            scene.bname_active_gp_folder_key = ""
-            scene.bname_active_layer_kind = "text"
+            scene.bmanga_active_gp_folder_key = ""
+            scene.bmanga_active_layer_kind = "text"
             edge_selection.clear_selection(context)
             if sync_object_selection:
                 _sync_object_selection_for_stack_item(context, item, resolved)
@@ -2773,8 +2775,8 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         if work is not None and 0 <= page_idx < len(work.pages):
             work.active_page_index = page_idx
         target_page.active_text_index = int(resolved.get("index", -1))
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "text"
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "text"
         edge_selection.clear_selection(context)
     elif kind == "effect":
         obj = resolved.get("object")
@@ -2793,9 +2795,9 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
             obj.data.layers.active = layer
         except Exception:  # noqa: BLE001
             pass
-        scene.bname_active_effect_layer_name = item.key
-        scene.bname_active_gp_folder_key = ""
-        scene.bname_active_layer_kind = "effect"
+        scene.bmanga_active_effect_layer_name = item.key
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "effect"
         try:
             from ..operators import effect_line_op
 
@@ -2841,7 +2843,7 @@ def move_stack_item(
         set_active_stack_index_silently(context, moved_index)
     apply_stack_order(context)
     sync_layer_stack(context, preserve_active_index=True)
-    for i, item in enumerate(context.scene.bname_layer_stack):
+    for i, item in enumerate(context.scene.bmanga_layer_stack):
         if stack_item_uid(item) == moved_uid:
             set_active_stack_index_silently(context, i)
             break
@@ -2958,43 +2960,43 @@ def _apply_page_coma_orders(context, stack) -> None:
 
 def _apply_simple_collection_orders(context, stack) -> None:
     scene = context.scene
-    image_layers = getattr(scene, "bname_image_layers", None)
+    image_layers = getattr(scene, "bmanga_image_layers", None)
     if image_layers is not None:
         active_key = ""
-        idx = int(getattr(scene, "bname_active_image_layer_index", -1))
+        idx = int(getattr(scene, "bmanga_active_image_layer_index", -1))
         if 0 <= idx < len(image_layers):
             active_key = getattr(image_layers[idx], "id", "")
         front = [item.key for item in stack if item.kind == "image"]
         _reorder_collection(image_layers, list(reversed(front)), lambda entry: entry.id)
         if active_key:
             _restore_active_collection_index(
-                scene, "bname_active_image_layer_index", image_layers, active_key
+                scene, "bmanga_active_image_layer_index", image_layers, active_key
             )
 
-    raster_layers = getattr(scene, "bname_raster_layers", None)
+    raster_layers = getattr(scene, "bmanga_raster_layers", None)
     if raster_layers is not None:
         active_key = ""
-        idx = int(getattr(scene, "bname_active_raster_layer_index", -1))
+        idx = int(getattr(scene, "bmanga_active_raster_layer_index", -1))
         if 0 <= idx < len(raster_layers):
             active_key = getattr(raster_layers[idx], "id", "")
         front = [item.key for item in stack if item.kind == "raster"]
         _reorder_collection(raster_layers, list(reversed(front)), lambda entry: entry.id)
         if active_key:
             _restore_active_collection_index(
-                scene, "bname_active_raster_layer_index", raster_layers, active_key
+                scene, "bmanga_active_raster_layer_index", raster_layers, active_key
             )
 
-    fill_layers = getattr(scene, "bname_fill_layers", None)
+    fill_layers = getattr(scene, "bmanga_fill_layers", None)
     if fill_layers is not None:
         active_key = ""
-        idx = int(getattr(scene, "bname_active_fill_layer_index", -1))
+        idx = int(getattr(scene, "bmanga_active_fill_layer_index", -1))
         if 0 <= idx < len(fill_layers):
             active_key = getattr(fill_layers[idx], "id", "")
         front = [item.key for item in stack if item.kind == "fill"]
         _reorder_collection(fill_layers, list(reversed(front)), lambda entry: entry.id)
         if active_key:
             _restore_active_collection_index(
-                scene, "bname_active_fill_layer_index", fill_layers, active_key
+                scene, "bmanga_active_fill_layer_index", fill_layers, active_key
             )
 
     work = get_work(context)
@@ -3211,7 +3213,7 @@ def _apply_effect_object_parenting(context, stack, work) -> None:
 
 def _apply_image_parenting(context, stack) -> None:
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if coll is None:
         return
     work = get_work(context)
@@ -3238,7 +3240,7 @@ def _apply_image_parenting(context, stack) -> None:
 
 def _apply_raster_parenting(context, stack) -> None:
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
         return
     work = get_work(context)
@@ -3375,7 +3377,7 @@ def _apply_gp_order(obj, stack, *, effect: bool) -> None:
 
 
 def apply_stack_order(context) -> None:
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None:
         return
     _apply_page_coma_orders(context, stack)
@@ -3416,7 +3418,7 @@ def delete_stack_index(context, index: int) -> bool:
         if not select_stack_index(context, index):
             return False
         try:
-            return "FINISHED" in bpy.ops.bname.page_remove("EXEC_DEFAULT")
+            return "FINISHED" in bpy.ops.bmanga.page_remove("EXEC_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("delete page from layer stack failed")
             return False
@@ -3434,7 +3436,7 @@ def delete_stack_index(context, index: int) -> bool:
         if not select_stack_index(context, index):
             return False
         try:
-            return "FINISHED" in bpy.ops.bname.coma_remove("EXEC_DEFAULT")
+            return "FINISHED" in bpy.ops.bmanga.coma_remove("EXEC_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("delete panel from layer stack failed")
             return False
@@ -3449,15 +3451,15 @@ def delete_stack_index(context, index: int) -> bool:
         obj = resolved.get("object")
         if not gp_utils.remove_layer_group_preserve_children(obj.data, resolved["target"]):
             return False
-        scene.bname_active_gp_folder_key = ""
+        scene.bmanga_active_gp_folder_key = ""
     elif kind == LAYER_FOLDER_KIND:
         work = get_work(context)
         if work is None or not layer_folder_utils.remove_folder_preserve_children(work, item.key):
             return False
-        if hasattr(scene, "bname_active_layer_folder_key"):
-            scene.bname_active_layer_folder_key = ""
+        if hasattr(scene, "bmanga_active_layer_folder_key"):
+            scene.bmanga_active_layer_folder_key = ""
     elif kind == "image":
-        coll = getattr(scene, "bname_image_layers", None)
+        coll = getattr(scene, "bmanga_image_layers", None)
         idx = int(resolved.get("index", -1))
         if coll is None or not (0 <= idx < len(coll)):
             return False
@@ -3469,7 +3471,7 @@ def delete_stack_index(context, index: int) -> bool:
             image_real_object.remove_image_real_object(image_id)
         except Exception:  # noqa: BLE001
             _logger.exception("delete image real object from layer stack failed")
-        scene.bname_active_image_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
+        scene.bmanga_active_image_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
     elif kind == "raster":
         idx = int(resolved.get("index", -1))
         try:
@@ -3481,7 +3483,7 @@ def delete_stack_index(context, index: int) -> bool:
             _logger.exception("delete raster from layer stack failed")
             return False
     elif kind == "fill":
-        coll = getattr(scene, "bname_fill_layers", None)
+        coll = getattr(scene, "bmanga_fill_layers", None)
         idx = int(resolved.get("index", -1))
         if coll is None or not (0 <= idx < len(coll)):
             return False
@@ -3493,7 +3495,7 @@ def delete_stack_index(context, index: int) -> bool:
             fill_real_object.remove_fill_real_object(fill_id)
         except Exception:  # noqa: BLE001
             _logger.exception("delete fill real object from layer stack failed")
-        scene.bname_active_fill_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
+        scene.bmanga_active_fill_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
     elif kind == "balloon":
         idx = int(resolved.get("index", -1))
         target_page = resolved.get("page") or page
@@ -3560,18 +3562,18 @@ def delete_stack_index(context, index: int) -> bool:
         except Exception:  # noqa: BLE001
             _logger.exception("delete effect from layer stack failed")
             return False
-        scene.bname_active_effect_layer_name = ""
+        scene.bmanga_active_effect_layer_name = ""
     else:
         return False
 
     sync_layer_stack(context)
     idx = min(index, len(stack) - 1) if len(stack) else -1
-    scene.bname_active_layer_stack_index = idx
+    scene.bmanga_active_layer_stack_index = idx
     if idx >= 0:
         select_stack_index(context, idx)
-    elif hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "gp"
-        scene.bname_active_gp_folder_key = ""
+    elif hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "gp"
+        scene.bmanga_active_gp_folder_key = ""
     tag_view3d_redraw(context)
     return True
 

@@ -24,18 +24,18 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_MLBREAK_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_mlbreak_"))
+_OUT_ENV = os.environ.get("BMANGA_MLBREAK_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_mlbreak_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_mlbreak",
+        "bmanga_dev_mlbreak",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_mlbreak"] = mod
+    sys.modules["bmanga_dev_mlbreak"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -80,8 +80,8 @@ def _render_to(path, *, w=1500, h=1500):
 def _reset_work():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_mlbreak_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "MLBreak.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_mlbreak_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MLBreak.bmanga"))  # type: ignore[attr-defined]
     assert "FINISHED" in result, result
     return bpy.context
 
@@ -90,12 +90,12 @@ def main() -> int:
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
 
     context = _reset_work()
-    from bname_dev_mlbreak.utils import balloon_curve_object as bco
-    from bname_dev_mlbreak.utils.layer_hierarchy import page_stack_key
-    from bname_dev_mlbreak.utils import page_grid
+    from bmanga_dev_mlbreak.utils import balloon_curve_object as bco
+    from bmanga_dev_mlbreak.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_mlbreak.utils import page_grid
 
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     pk = page_stack_key(page)
 
@@ -151,7 +151,7 @@ def main() -> int:
     bco.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
 
     # 多重線メッシュの統計を出力
-    from bname_dev_mlbreak.utils import balloon_line_mesh as blm
+    from bmanga_dev_mlbreak.utils import balloon_line_mesh as blm
     ml_name = blm._multi_line_mesh_object_name(entry.id)
     ml_obj = bpy.data.objects.get(ml_name)
     if ml_obj is not None and ml_obj.type == "MESH":

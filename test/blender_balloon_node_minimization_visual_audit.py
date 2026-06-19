@@ -11,7 +11,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_node_minimization_visual_audit.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_node_minimization_visual_audit.py"
 """
 
 from __future__ import annotations
@@ -25,18 +25,18 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_VISUAL_AUDIT_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_visual_audit_"))
+_OUT_ENV = os.environ.get("BMANGA_VISUAL_AUDIT_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_visual_audit_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_visual_audit",
+        "bmanga_dev_visual_audit",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_visual_audit"] = mod
+    sys.modules["bmanga_dev_visual_audit"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -76,34 +76,34 @@ def _reset_work():
     """新しい作品を作って初期化する."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_visual_audit_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "VisualAudit.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_visual_audit_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "VisualAudit.bmanga"))  # type: ignore[attr-defined]
     assert "FINISHED" in result, result
     return bpy.context, temp_root
 
 
 def _bco():
-    from bname_dev_visual_audit.utils import balloon_curve_object as bco
+    from bmanga_dev_visual_audit.utils import balloon_curve_object as bco
     return bco
 
 
 def _coma_plane():
-    from bname_dev_visual_audit.utils import coma_plane
+    from bmanga_dev_visual_audit.utils import coma_plane
     return coma_plane
 
 
 def _coma_stack_key(page, coma):
-    from bname_dev_visual_audit.utils.layer_hierarchy import coma_stack_key
+    from bmanga_dev_visual_audit.utils.layer_hierarchy import coma_stack_key
     return coma_stack_key(page, coma)
 
 
 def _page_stack_key(page):
-    from bname_dev_visual_audit.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_visual_audit.utils.layer_hierarchy import page_stack_key
     return page_stack_key(page)
 
 
 def _page_offset_m(work, scene):
-    from bname_dev_visual_audit.utils import page_grid
+    from bmanga_dev_visual_audit.utils import page_grid
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, 0)
     return ox_mm / 1000.0, oy_mm / 1000.0
 
@@ -176,7 +176,7 @@ def scenario_1_coma_mask_all_shapes():
     """S1: コマ内マスク - 各形状でコマ右上にはみ出すフキダシ."""
     context, _ = _reset_work()
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     coma = _setup_coma(page, 0, 20.0, 30.0, 100.0, 100.0)
     parent_key = _coma_stack_key(page, coma)
@@ -221,7 +221,7 @@ def scenario_2_fill_features():
     """S2: 不透明度・ぼかし・グラデーション・多重線・フチ - 全コマ内に配置."""
     context, _ = _reset_work()
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     coma = _setup_coma(page, 0, 10.0, 10.0, 180.0, 180.0)
     parent_key = _coma_stack_key(page, coma)
@@ -281,7 +281,7 @@ def scenario_3_tails():
     """S3: しっぽ (3 type) + しっぽがコマ外へ突き出す."""
     context, _ = _reset_work()
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     coma = _setup_coma(page, 0, 20.0, 30.0, 160.0, 160.0)
     parent_key = _coma_stack_key(page, coma)
@@ -338,7 +338,7 @@ def scenario_4_page_vs_coma_mask():
     """S4: ページ直下フキダシ (マスクなし) と コマ内フキダシ (マスクあり) の比較."""
     context, _ = _reset_work()
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     page_pk = _page_stack_key(page)
     coma = _setup_coma(page, 0, 20.0, 30.0, 100.0, 100.0)
@@ -382,7 +382,7 @@ def scenario_5_extreme_sizes_and_widths():
     """S5: 細い線/太い線/極小フキダシ/極大フキダシ - 全コマ内."""
     context, _ = _reset_work()
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     coma = _setup_coma(page, 0, 10.0, 10.0, 180.0, 180.0)
     parent_key = _coma_stack_key(page, coma)

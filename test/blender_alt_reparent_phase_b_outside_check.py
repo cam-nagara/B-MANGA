@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _stack_item(context, kind: str, key: str):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -46,7 +46,7 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
 
 
 def _mirror(context, work) -> None:
-    from bname_dev.utils import layer_object_sync
+    from bmanga_dev.utils import layer_object_sync
 
     layer_object_sync.mirror_work_to_outliner(context.scene, work)
 
@@ -88,24 +88,24 @@ def _add_text(page, tid: str, parent_key: str, parent_balloon_id: str = ""):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_alt_reparent_phase_b_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_alt_reparent_phase_b_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "AltReparentB.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AltReparentB.bmanga"))
         assert "FINISHED" in result, result
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
         # v0.6.279 以降、フキダシ・テキスト等の実体はページ用 blend のみが持ち、
         # Alt reparent はページ編集中の操作なので、ページを開いてから検証する。
         # ページ編集中は自ページと作品直下 (親なし) の間の移送が対象。
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
 
-        from bname_dev.utils import layer_reparent
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils import page_grid
-        from bname_dev.utils.layer_hierarchy import (
+        from bmanga_dev.utils import layer_reparent
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import page_grid
+        from bmanga_dev.utils.layer_hierarchy import (
             OUTSIDE_KIND,
             OUTSIDE_STACK_KEY,
             coma_stack_key,
@@ -115,7 +115,7 @@ def main() -> None:
 
         context = bpy.context
         scene = context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page1 = work.pages[0]
         page1_key = page_stack_key(page1)
         assert len(page1.comas) >= 1, "自ページにコマがありません"
@@ -149,10 +149,10 @@ def main() -> None:
         _assert_close(shared_balloon.x_mm, 10.0 + src_off[0], "shared balloon x")
         _assert_close(shared_child.x_mm, child_x + src_off[0], "shared child x")
         _mirror(context, work)
-        from bname_dev.utils import balloon_curve_object
-        from bname_dev.utils import object_naming as on
+        from bmanga_dev.utils import balloon_curve_object
+        from bmanga_dev.utils import object_naming as on
 
-        shared_balloon_obj = on.find_object_by_bname_id(shared_balloon.id, kind="balloon")
+        shared_balloon_obj = on.find_object_by_bmanga_id(shared_balloon.id, kind="balloon")
         _assert_visible_object(shared_balloon_obj, "shared balloon")
         _assert_close(
             shared_balloon_obj.location.x,
@@ -160,8 +160,8 @@ def main() -> None:
             "shared balloon object x",
         )
         assert balloon_curve_object.find_balloon_entry(scene, shared_balloon.id)[1] is not None
-        from bname_dev.operators import object_tool_selection
-        from bname_dev.utils import object_selection
+        from bmanga_dev.operators import object_tool_selection
+        from bmanga_dev.utils import object_selection
 
         shared_balloon_key = object_selection.balloon_key(None, shared_balloon)
         shared_balloon_rect = object_tool_selection.selection_bounds_for_key(context, shared_balloon_key)
@@ -205,13 +205,13 @@ def main() -> None:
         shared_text = work.shared_texts[0]
         assert shared_text.parent_kind == "none" and shared_text.parent_key == ""
         _mirror(context, work)
-        from bname_dev.utils import text_real_object
+        from bmanga_dev.utils import text_real_object
 
-        shared_text_id = text_real_object.text_object_bname_id_for_values(
+        shared_text_id = text_real_object.text_object_bmanga_id_for_values(
             text_real_object.OUTSIDE_PAGE_ID,
             shared_text.id,
         )
-        shared_text_obj = on.find_object_by_bname_id(shared_text_id, kind="text")
+        shared_text_obj = on.find_object_by_bmanga_id(shared_text_id, kind="text")
         _assert_visible_object(shared_text_obj, "shared text")
         _assert_close(shared_text_obj.location.x, shared_text.x_mm * 0.001, "shared text object x")
         shared_text_key = object_selection.text_key(None, shared_text)
@@ -241,8 +241,8 @@ def main() -> None:
         assert len(work.shared_texts) == 2
         assert work.shared_balloons[0].parent_kind == "none"
         _mirror(context, work)
-        from bname_dev.utils import coma_border_object
-        from bname_dev.utils import coma_plane
+        from bmanga_dev.utils import coma_border_object
+        from bmanga_dev.utils import coma_plane
 
         shared_coma = work.shared_comas[0]
         shared_coma_owner = f"{coma_plane.OUTSIDE_PAGE_ID}:{shared_coma.id}"
@@ -262,12 +262,12 @@ def main() -> None:
         assert layer_stack_utils.select_stack_index(context, _idx)
         assert object_tool_selection.active_selection_key(context) == shared_coma_key
 
-        image = scene.bname_image_layers.add()
+        image = scene.bmanga_image_layers.add()
         image.id = "outside_image"
         image.title = "outside image"
         image.parent_kind = "page"
         image.parent_key = page1_key
-        raster = scene.bname_raster_layers.add()
+        raster = scene.bmanga_raster_layers.add()
         raster.id = "outside_raster"
         raster.title = "outside raster"
         raster.scope = "page"
@@ -291,7 +291,7 @@ def main() -> None:
         )
         assert raster.scope == "master" and raster.parent_kind == "none" and raster.parent_key == ""
 
-        print("BNAME_ALT_REPARENT_PHASE_B_OUTSIDE_OK")
+        print("BMANGA_ALT_REPARENT_PHASE_B_OUTSIDE_OK")
     finally:
         if mod is not None:
             try:

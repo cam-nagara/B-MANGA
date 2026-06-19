@@ -53,7 +53,7 @@ def _on_fill_title_changed(_self, context) -> None:
         pass
 
 
-class BNameFillLayer(bpy.types.PropertyGroup):
+class BMangaFillLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
     title: StringProperty(name="表示名", default="", update=_on_fill_title_changed)  # type: ignore[valid-type]
 
@@ -129,21 +129,21 @@ class BNameFillLayer(bpy.types.PropertyGroup):
     gradient_end_y_mm: FloatProperty(name="終了Y", default=0.0, update=_on_fill_layer_changed)  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameFillLayer,)
+_CLASSES = (BMangaFillLayer,)
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bname_fill_layers = bpy.props.CollectionProperty(type=BNameFillLayer)
-    bpy.types.Scene.bname_active_fill_layer_index = bpy.props.IntProperty(default=-1, min=-1)
+    bpy.types.Scene.bmanga_fill_layers = bpy.props.CollectionProperty(type=BMangaFillLayer)
+    bpy.types.Scene.bmanga_active_fill_layer_index = bpy.props.IntProperty(default=-1, min=-1)
     _logger.debug("fill_layer registered")
 
 
 def unregister() -> None:
     for attr in (
-        "bname_active_fill_layer_index",
-        "bname_fill_layers",
+        "bmanga_active_fill_layer_index",
+        "bmanga_fill_layers",
     ):
         try:
             delattr(bpy.types.Scene, attr)

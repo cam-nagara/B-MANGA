@@ -1,4 +1,4 @@
-"""Scene display/color-management defaults for B-Name files."""
+"""Scene display/color-management defaults for B-MANGA files."""
 
 from __future__ import annotations
 

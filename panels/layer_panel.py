@@ -5,11 +5,11 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel, UIList
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_UL_image_layers(UIList):
-    bl_idname = "BNAME_UL_image_layers"
+class BMANGA_UL_image_layers(UIList):
+    bl_idname = "BMANGA_UL_image_layers"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
@@ -19,8 +19,8 @@ class BNAME_UL_image_layers(UIList):
             row.prop(item, "title", text="", emboss=False)
 
 
-class BNAME_PT_image_layers(Panel):
-    bl_idname = "BNAME_PT_image_layers"
+class BMANGA_PT_image_layers(Panel):
+    bl_idname = "BMANGA_PT_image_layers"
     bl_label = "画像レイヤー"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -30,25 +30,25 @@ class BNAME_PT_image_layers(Panel):
 
     def draw(self, context):
         layout = self.layout
-        coll = getattr(context.scene, "bname_image_layers", None)
+        coll = getattr(context.scene, "bmanga_image_layers", None)
         if coll is None:
             layout.label(text="未初期化", icon="ERROR")
             return
         row = layout.row()
         row.template_list(
-            BNAME_UL_image_layers.bl_idname,
+            BMANGA_UL_image_layers.bl_idname,
             "",
             context.scene,
-            "bname_image_layers",
+            "bmanga_image_layers",
             context.scene,
-            "bname_active_image_layer_index",
+            "bmanga_active_image_layer_index",
             rows=4,
         )
         col = row.column(align=True)
-        col.operator("bname.image_layer_add", text="", icon="ADD")
-        col.operator("bname.image_layer_remove", text="", icon="REMOVE")
+        col.operator("bmanga.image_layer_add", text="", icon="ADD")
+        col.operator("bmanga.image_layer_remove", text="", icon="REMOVE")
 
-        idx = context.scene.bname_active_image_layer_index
+        idx = context.scene.bmanga_active_image_layer_index
         if not (0 <= idx < len(coll)):
             return
         entry = coll[idx]
@@ -82,8 +82,8 @@ class BNAME_PT_image_layers(Panel):
 
 
 _CLASSES = (
-    BNAME_UL_image_layers,
-    BNAME_PT_image_layers,
+    BMANGA_UL_image_layers,
+    BMANGA_PT_image_layers,
 )
 
 

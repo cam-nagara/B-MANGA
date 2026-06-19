@@ -1,4 +1,4 @@
-"""B-Name のコマ辺選択状態を共有するヘルパ."""
+"""B-MANGA のコマ辺選択状態を共有するヘルパ."""
 
 from __future__ import annotations
 
@@ -50,10 +50,10 @@ def _sync_active_panel_stack_item(context, work, page, panel) -> None:
         from . import layer_stack as layer_stack_utils
         from .layer_hierarchy import COMA_KIND, coma_stack_key
 
-        if hasattr(scene, "bname_active_layer_kind"):
-            scene.bname_active_layer_kind = COMA_KIND
-        if hasattr(scene, "bname_active_gp_folder_key"):
-            scene.bname_active_gp_folder_key = ""
+        if hasattr(scene, "bmanga_active_layer_kind"):
+            scene.bmanga_active_layer_kind = COMA_KIND
+        if hasattr(scene, "bmanga_active_gp_folder_key"):
+            scene.bmanga_active_gp_folder_key = ""
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         uid = layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, panel))
         if stack is not None:
@@ -79,7 +79,7 @@ def set_selection(
 ) -> bool:
     """アクティブなコマ辺選択を WindowManager プロパティに保存する."""
     wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bname_edge_select_kind"):
+    if wm is None or not hasattr(wm, "bmanga_edge_select_kind"):
         return False
     if kind not in {"none", "edge", "border", "vertex"}:
         kind = "none"
@@ -96,13 +96,13 @@ def set_selection(
     else:
         vertex_indices = ()
     try:
-        wm.bname_edge_select_kind = kind
-        wm.bname_edge_select_page = int(page_index)
-        wm.bname_edge_select_coma = int(coma_index)
-        wm.bname_edge_select_edge = int(edge_index) if kind == "edge" else -1
-        wm.bname_edge_select_vertex = int(vertex_index) if kind == "vertex" else -1
-        if hasattr(wm, "bname_edge_select_vertices"):
-            wm.bname_edge_select_vertices = _format_vertex_indices(vertex_indices)
+        wm.bmanga_edge_select_kind = kind
+        wm.bmanga_edge_select_page = int(page_index)
+        wm.bmanga_edge_select_coma = int(coma_index)
+        wm.bmanga_edge_select_edge = int(edge_index) if kind == "edge" else -1
+        wm.bmanga_edge_select_vertex = int(vertex_index) if kind == "vertex" else -1
+        if hasattr(wm, "bmanga_edge_select_vertices"):
+            wm.bmanga_edge_select_vertices = _format_vertex_indices(vertex_indices)
     except Exception:  # noqa: BLE001
         return False
     if kind != "none":
@@ -137,14 +137,14 @@ def selected_vertices(context, *, page_index: int = -1, coma_index: int = -1) ->
     wm = getattr(context, "window_manager", None) if context is not None else None
     if wm is None:
         return set()
-    if str(getattr(wm, "bname_edge_select_kind", "none") or "none") != "vertex":
+    if str(getattr(wm, "bmanga_edge_select_kind", "none") or "none") != "vertex":
         return set()
-    if page_index >= 0 and int(getattr(wm, "bname_edge_select_page", -1)) != int(page_index):
+    if page_index >= 0 and int(getattr(wm, "bmanga_edge_select_page", -1)) != int(page_index):
         return set()
-    if coma_index >= 0 and int(getattr(wm, "bname_edge_select_coma", -1)) != int(coma_index):
+    if coma_index >= 0 and int(getattr(wm, "bmanga_edge_select_coma", -1)) != int(coma_index):
         return set()
-    values = _parse_vertex_indices(str(getattr(wm, "bname_edge_select_vertices", "") or ""))
-    active = int(getattr(wm, "bname_edge_select_vertex", -1))
+    values = _parse_vertex_indices(str(getattr(wm, "bmanga_edge_select_vertices", "") or ""))
+    active = int(getattr(wm, "bmanga_edge_select_vertex", -1))
     if active >= 0:
         values.add(active)
     return values
@@ -189,7 +189,7 @@ def set_vertex_selection(
 
 
 def update_overlay_pointer(context, region, event) -> None:
-    """B-Name modal の MOUSEMOVE から呼ぶ: ▲ hover ハイライト用に
+    """B-MANGA modal の MOUSEMOVE から呼ぶ: ▲ hover ハイライト用に
     region 相対のカーソル位置を WindowManager に書き込む.
 
     overlay_coma_selection.draw / coma_edge_move_op._draw_callback の
@@ -200,8 +200,8 @@ def update_overlay_pointer(context, region, event) -> None:
         return
     if region is None or event is None:
         try:
-            if hasattr(wm, "bname_overlay_pointer_valid"):
-                wm.bname_overlay_pointer_valid = False
+            if hasattr(wm, "bmanga_overlay_pointer_valid"):
+                wm.bmanga_overlay_pointer_valid = False
         except Exception:  # noqa: BLE001
             pass
         return
@@ -212,12 +212,12 @@ def update_overlay_pointer(context, region, event) -> None:
         else:
             rx = int(getattr(event, "mouse_x", 0)) - int(getattr(region, "x", 0))
             ry = int(getattr(event, "mouse_y", 0)) - int(getattr(region, "y", 0))
-        if hasattr(wm, "bname_overlay_pointer_x"):
-            wm.bname_overlay_pointer_x = rx
-        if hasattr(wm, "bname_overlay_pointer_y"):
-            wm.bname_overlay_pointer_y = ry
-        if hasattr(wm, "bname_overlay_pointer_valid"):
-            wm.bname_overlay_pointer_valid = True
+        if hasattr(wm, "bmanga_overlay_pointer_x"):
+            wm.bmanga_overlay_pointer_x = rx
+        if hasattr(wm, "bmanga_overlay_pointer_y"):
+            wm.bmanga_overlay_pointer_y = ry
+        if hasattr(wm, "bmanga_overlay_pointer_valid"):
+            wm.bmanga_overlay_pointer_valid = True
     except Exception:  # noqa: BLE001
         pass
 
@@ -228,8 +228,8 @@ def clear_overlay_pointer(context) -> None:
     if wm is None:
         return
     try:
-        if hasattr(wm, "bname_overlay_pointer_valid"):
-            wm.bname_overlay_pointer_valid = False
+        if hasattr(wm, "bmanga_overlay_pointer_valid"):
+            wm.bmanga_overlay_pointer_valid = False
     except Exception:  # noqa: BLE001
         pass
 
@@ -239,11 +239,11 @@ def get_overlay_pointer(context) -> tuple[int, int] | None:
     wm = getattr(context, "window_manager", None) if context is not None else None
     if wm is None:
         return None
-    if not bool(getattr(wm, "bname_overlay_pointer_valid", False)):
+    if not bool(getattr(wm, "bmanga_overlay_pointer_valid", False)):
         return None
     try:
-        return int(getattr(wm, "bname_overlay_pointer_x", -1)), int(
-            getattr(wm, "bname_overlay_pointer_y", -1)
+        return int(getattr(wm, "bmanga_overlay_pointer_x", -1)), int(
+            getattr(wm, "bmanga_overlay_pointer_y", -1)
         )
     except Exception:  # noqa: BLE001
         return None

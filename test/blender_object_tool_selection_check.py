@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,9 +29,9 @@ def _load_addon():
 
 
 def _add_gp_layer(context, parent_key: str):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import gpencil as gp_utils
-    from bname_dev.utils.geom import mm_to_m
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils.geom import mm_to_m
 
     obj = gp_utils.ensure_master_gpencil(context.scene)
     layer = obj.data.layers.new("object_tool_gp")
@@ -89,7 +89,7 @@ def _add_text(page, parent_key: str):
 
 
 def _add_image(context, parent_key: str):
-    entry = context.scene.bname_image_layers.add()
+    entry = context.scene.bmanga_image_layers.add()
     entry.id = "object_tool_image"
     entry.title = "画像"
     entry.x_mm = 34.0
@@ -102,12 +102,12 @@ def _add_image(context, parent_key: str):
 
 
 def _add_raster(context, parent_key: str):
-    result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
     assert "FINISHED" in result, result
-    entry = context.scene.bname_raster_layers[context.scene.bname_active_raster_layer_index]
+    entry = context.scene.bmanga_raster_layers[context.scene.bmanga_active_raster_layer_index]
     entry.parent_kind = "coma"
     entry.parent_key = parent_key
-    from bname_dev.operators import raster_layer_op
+    from bmanga_dev.operators import raster_layer_op
 
     image = raster_layer_op.ensure_raster_image(context, entry, create_missing=True)
     assert image is not None
@@ -116,51 +116,51 @@ def _add_raster(context, parent_key: str):
     pixels[mid:mid + 4] = [0.0, 0.0, 0.0, 1.0]
     image.pixels[:] = pixels
     image.update()
-    entry["bname_raster_dirty"] = False
+    entry["bmanga_raster_dirty"] = False
     return entry
 
 
 def _visible_stack_kinds(context):
-    from bname_dev.panels import gpencil_panel
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.panels import gpencil_panel
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None and len(stack) > 0
     fake_ui = SimpleNamespace(bitflag_filter_item=1)
-    flags, _order = gpencil_panel.BNAME_UL_layer_stack.filter_items(
+    flags, _order = gpencil_panel.BMANGA_UL_layer_stack.filter_items(
         fake_ui,
         context,
         context.scene,
-        "bname_layer_stack",
+        "bmanga_layer_stack",
     )
     return [getattr(item, "kind", "") for item, flag in zip(stack, flags) if flag]
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_object_tool_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_object_tool_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ObjectTool.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ObjectTool.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev.operators import effect_line_op
-        from bname_dev.ui import overlay as overlay_ui
-        from bname_dev.ui import overlay_effect_line, overlay_visibility
-        from bname_dev.utils import balloon_shapes
-        from bname_dev.utils import free_transform
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils import object_naming as on
-        from bname_dev.utils import effect_line_object
-        from bname_dev.utils import object_selection
-        from bname_dev.utils import text_real_object
-        from bname_dev.utils.geom import Rect
-        from bname_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
-        from bname_dev.operators import effect_line_gen, object_tool_op, object_tool_selection, page_op
+        from bmanga_dev.operators import effect_line_op
+        from bmanga_dev.ui import overlay as overlay_ui
+        from bmanga_dev.ui import overlay_effect_line, overlay_visibility
+        from bmanga_dev.utils import balloon_shapes
+        from bmanga_dev.utils import free_transform
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import object_naming as on
+        from bmanga_dev.utils import effect_line_object
+        from bmanga_dev.utils import object_selection
+        from bmanga_dev.utils import text_real_object
+        from bmanga_dev.utils.geom import Rect
+        from bmanga_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
+        from bmanga_dev.operators import effect_line_gen, object_tool_op, object_tool_selection, page_op
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         panel = page.comas[0]
         panel.shape_type = "rect"
@@ -183,7 +183,7 @@ def main() -> None:
             setattr(
                 tool,
                 method_name,
-                MethodType(getattr(object_tool_op.BNAME_OT_object_tool, method_name), tool),
+                MethodType(getattr(object_tool_op.BMANGA_OT_object_tool, method_name), tool),
             )
         tool._clear_drag_state()
         tool._clear_click_state()
@@ -275,12 +275,12 @@ def main() -> None:
                 shift=False,
             )
             object_selection.clear(context)
-            result = page_op.BNAME_OT_page_pick_viewport.invoke(SimpleNamespace(), fake_context, event)
+            result = page_op.BMANGA_OT_page_pick_viewport.invoke(SimpleNamespace(), fake_context, event)
             if result != {"FINISHED"}:
                 raise AssertionError(f"コマ外フキダシのクリック選択が処理されません: {result}")
             if object_selection.get_keys(context) != [page_balloon_key]:
                 raise AssertionError("コマ外フキダシのクリックがページ選択に奪われています")
-            if getattr(context.scene, "bname_active_layer_kind", "") != "balloon":
+            if getattr(context.scene, "bmanga_active_layer_kind", "") != "balloon":
                 raise AssertionError("コマ外フキダシのクリック後、フキダシがアクティブになっていません")
         finally:
             page_op._pick_object_layer_at_event = original_pick_layer
@@ -308,20 +308,20 @@ def main() -> None:
             if kind in {"image", "raster", "balloon", "text"}:
                 expected_id = item_id
                 if kind == "text":
-                    expected_id = text_real_object.text_object_bname_id_for_values(
+                    expected_id = text_real_object.text_object_bmanga_id_for_values(
                         page.id, item_id
                     )
                 if (
                     not on.is_managed(active_obj)
                     or on.get_kind(active_obj) != kind
-                    or on.get_bname_id(active_obj) != expected_id
+                    or on.get_bmanga_id(active_obj) != expected_id
                 ):
                     raise AssertionError(f"対象オブジェクトが一致しません: {key}")
 
         for key in keys:
             kind, _page_id, item_id = object_selection.parse_key(key)
             fake_op = SimpleNamespace(_drag_action="move")
-            snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+            snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
                 fake_op,
                 context,
                 [key],
@@ -336,10 +336,10 @@ def main() -> None:
                 obj, layer = object_tool_selection.find_effect_layer(item_id)
                 before_center = effect_line_op.effect_layer_center(obj, layer)
             fake_op._snapshots = snapshots
-            object_tool_op.BNAME_OT_object_tool._apply_snapshots(fake_op, context, 4.0, 3.0)
+            object_tool_op.BMANGA_OT_object_tool._apply_snapshots(fake_op, context, 4.0, 3.0)
             if kind == "raster":
                 _idx, raster_entry = object_tool_selection.find_raster_by_key(context, item_id)
-                if raster_entry is None or not bool(raster_entry.get("bname_raster_dirty", False)):
+                if raster_entry is None or not bool(raster_entry.get("bmanga_raster_dirty", False)):
                     raise AssertionError("ラスターのドラッグ編集が画素移動として反映されません")
                 continue
             after = object_tool_selection.selection_bounds_for_key(context, key)
@@ -424,7 +424,7 @@ def main() -> None:
         if len(guide_drawn) < 2:
             raise AssertionError("効果線の始点形状・終点形状ガイドが描画されません")
 
-        params = context.scene.bname_effect_line_params
+        params = context.scene.bmanga_effect_line_params
         params.effect_type = "focus"
         params.start_to_coma_frame = True
         params.spacing_mode = "distance"
@@ -594,7 +594,7 @@ def main() -> None:
         if plain_outline == jitter_outline:
             raise AssertionError("形状の乱れが輪郭に反映されていません")
 
-        print("BNAME_OBJECT_TOOL_SELECTION_OK")
+        print("BMANGA_OBJECT_TOOL_SELECTION_OK")
     finally:
         if mod is not None:
             try:

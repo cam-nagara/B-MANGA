@@ -3,7 +3,7 @@
 Phase D (v0.6.132) でフキダシの全描画責務 (塗り / 主線 / 外側フチ / 内側フチ /
 多重線 / しっぽ主線フチ) を Python メッシュ (balloon_fill_mesh /
 balloon_line_mesh) へ移行したため、本体カーブに付いていた
-`BName_GN_BalloonCurveRender` Geometry Nodes グループは不要になった。
+`BManga_GN_BalloonCurveRender` Geometry Nodes グループは不要になった。
 
 このモジュールは互換のためのスタブとして残り、 旧 .blend ファイルから
 読み込まれた古い modifier とノードグループを削除する。 描画 API としての
@@ -18,13 +18,13 @@ from . import log
 
 _logger = log.get_logger(__name__)
 
-MODIFIER_NAME = "B-Name Geometry Nodes"
-GROUP_NAME = "BName_GN_BalloonCurveRender"
-PROP_GN_KIND = "bname_geometry_nodes_kind"
-PROP_GROUP_VERSION = "bname_geometry_nodes_version"
+MODIFIER_NAME = "B-MANGA Geometry Nodes"
+GROUP_NAME = "BManga_GN_BalloonCurveRender"
+PROP_GN_KIND = "bmanga_geometry_nodes_kind"
+PROP_GROUP_VERSION = "bmanga_geometry_nodes_version"
 KIND = "balloon_curve"
 GROUP_VERSION = 100  # 後方互換: 任意の十分大きな値
-FILL_BLUR_ALPHA_ATTRIBUTE = "bname_fill_blur_alpha"
+FILL_BLUR_ALPHA_ATTRIBUTE = "bmanga_fill_blur_alpha"
 
 
 def remove_modifier(obj: bpy.types.Object | None) -> None:

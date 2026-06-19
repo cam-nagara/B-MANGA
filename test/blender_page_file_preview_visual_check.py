@@ -1,6 +1,6 @@
 """UI visual check for page edit previews.
 
-This script creates a real B-Name work, opens a page edit file, enables
+This script creates a real B-MANGA work, opens a page edit file, enables
 nearby-page previews, saves a Blender UI screenshot, and writes a small JSON
 summary. It must run without ``--background``.
 """
@@ -18,19 +18,19 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / ".codex" / "visual" / "page_file_preview_visual_check"
-WORK_DIR = OUT_DIR / "PagePreviewVisual.bname"
+WORK_DIR = OUT_DIR / "PagePreviewVisual.bmanga"
 SCREENSHOT = OUT_DIR / "page_preview_screen.png"
 SUMMARY = OUT_DIR / "page_preview_summary.json"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_preview_visual",
+        "bmanga_dev_page_preview_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_preview_visual"] = mod
+    sys.modules["bmanga_dev_page_preview_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -67,7 +67,7 @@ def _visible_preview_objects() -> list[bpy.types.Object]:
     return [
         obj
         for obj in bpy.data.objects
-        if str(obj.get("bname_kind", "") or "") == "page_preview"
+        if str(obj.get("bmanga_kind", "") or "") == "page_preview"
         and not bool(getattr(obj, "hide_viewport", False))
     ]
 
@@ -102,7 +102,7 @@ def _fit_current_page_view() -> None:
             space_data=space,
             region_data=rv3d,
         ):
-            bpy.ops.bname.view_fit_page()
+            bpy.ops.bmanga.view_fit_page()
         break
 
 
@@ -110,24 +110,24 @@ def _run() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     shutil.rmtree(WORK_DIR, ignore_errors=True)
     _load_addon()
-    bpy.ops.bname.work_new(filepath=str(WORK_DIR))
+    bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
     for _ in range(7):
-        bpy.ops.bname.page_add()
-    work = bpy.context.scene.bname_work
+        bpy.ops.bmanga.page_add()
+    work = bpy.context.scene.bmanga_work
     _set_coma_variation(work)
-    bpy.ops.bname.work_save()
-    bpy.ops.bname.open_page_file(index=4)
+    bpy.ops.bmanga.work_save()
+    bpy.ops.bmanga.open_page_file(index=4)
     bpy.app.timers.register(_after_page_open, first_interval=1.0)
 
 
 def _after_page_open() -> None:
     scene = bpy.context.scene
-    scene.bname_page_preview_enabled = True
-    scene.bname_page_preview_page_radius = 3
-    scene.bname_page_preview_resolution_percentage = 50.0
-    from bname_dev_page_preview_visual.utils import page_preview_object
+    scene.bmanga_page_preview_enabled = True
+    scene.bmanga_page_preview_page_radius = 3
+    scene.bmanga_page_preview_resolution_percentage = 50.0
+    from bmanga_dev_page_preview_visual.utils import page_preview_object
 
-    page_preview_object.sync_page_previews(bpy.context, scene.bname_work)
+    page_preview_object.sync_page_previews(bpy.context, scene.bmanga_work)
     _fit_current_page_view()
     window, screen = _first_window_screen()
     if window is not None and screen is not None:
@@ -141,16 +141,16 @@ def _after_page_open() -> None:
     data = {
         "work_blend": str(WORK_DIR / "work.blend"),
         "page_blend": str(
-            WORK_DIR / str(getattr(scene, "bname_current_page_id", "")) / "page.blend"
+            WORK_DIR / str(getattr(scene, "bmanga_current_page_id", "")) / "page.blend"
         ),
         "screenshot": str(SCREENSHOT),
-        "current_page_id": str(getattr(scene, "bname_current_page_id", "")),
-        "preview_radius": int(getattr(scene, "bname_page_preview_page_radius", -1)),
+        "current_page_id": str(getattr(scene, "bmanga_current_page_id", "")),
+        "preview_radius": int(getattr(scene, "bmanga_page_preview_page_radius", -1)),
         "preview_resolution_percentage": float(
-            getattr(scene, "bname_page_preview_resolution_percentage", 0.0)
+            getattr(scene, "bmanga_page_preview_resolution_percentage", 0.0)
         ),
         "visible_preview_count": len(visible),
-        "visible_preview_ids": [str(obj.get("bname_id", "") or obj.name) for obj in visible],
+        "visible_preview_ids": [str(obj.get("bmanga_id", "") or obj.name) for obj in visible],
         "view_shading": [
             str(area.spaces.active.shading.type)
             for _window in bpy.context.window_manager.windows
@@ -166,11 +166,11 @@ def _after_page_open() -> None:
         "page_collections": [
             coll.name
             for coll in bpy.data.collections
-            if str(coll.get("bname_kind", "") or "") == "page"
+            if str(coll.get("bmanga_kind", "") or "") == "page"
         ],
     }
     SUMMARY.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    print("BNAME_PAGE_FILE_PREVIEW_VISUAL_OK", json.dumps(data, ensure_ascii=False), flush=True)
+    print("BMANGA_PAGE_FILE_PREVIEW_VISUAL_OK", json.dumps(data, ensure_ascii=False), flush=True)
     os._exit(0)
 
 

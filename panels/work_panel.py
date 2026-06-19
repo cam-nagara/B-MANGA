@@ -1,4 +1,4 @@
-"""N-Panel の B-Name タブ: 作品情報・作品操作."""
+"""N-Panel の B-MANGA タブ: 作品情報・作品操作."""
 
 from __future__ import annotations
 
@@ -10,16 +10,16 @@ from ..core.work import get_work
 from ..utils import page_file_scene
 from ..utils import shortcut_visibility
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_PT_work(Panel):
-    bl_idname = "BNAME_PT_work"
+class BMANGA_PT_work(Panel):
+    bl_idname = "BMANGA_PT_work"
     bl_label = "作品"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 1
+    bl_order = 11
 
     @classmethod
     def poll(cls, context):
@@ -29,15 +29,15 @@ class BNAME_PT_work(Panel):
         )
 
     def draw(self, context):
-        shortcut_visibility.mark_bname_panel_drawn(context)
+        shortcut_visibility.mark_bmanga_panel_drawn(context)
         layout = self.layout
         work = get_work(context)
 
         # ツールバー: 新規 / 開く
         row = layout.row(align=True)
-        row.operator("bname.work_new", text="新規", icon="FILE_NEW")
-        row.operator("bname.work_open", text="開く", icon="FILE_FOLDER")
-        row.operator("bname.open_current_folder", text="", icon="FILEBROWSER")
+        row.operator("bmanga.work_new", text="新規", icon="FILE_NEW")
+        row.operator("bmanga.work_open", text="開く", icon="FILE_FOLDER")
+        row.operator("bmanga.open_current_folder", text="", icon="FILEBROWSER")
 
         if work is None or not work.loaded:
             layout.label(text="作品が開かれていません", icon="INFO")
@@ -47,7 +47,7 @@ class BNAME_PT_work(Panel):
                 icon="QUESTION",
             )
             box.operator(
-                "bname.work_make_coma_file",
+                "bmanga.work_make_coma_file",
                 text="このファイルをコマファイルにする",
                 icon="FILE_BLEND",
             )
@@ -62,7 +62,7 @@ class BNAME_PT_work(Panel):
         box.prop(info, "episode_number")
         box.prop(info, "subtitle")
         box.prop(info, "author")
-        box.operator("bname.work_meta_dialog", text="作品情報を編集", icon="INFO")
+        box.operator("bmanga.work_meta_dialog", text="作品情報を編集", icon="INFO")
         box.label(text="ページ数")
         row = box.row(align=True)
         row.enabled = mode == MODE_PAGE
@@ -89,13 +89,13 @@ class BNAME_PT_work(Panel):
         sub.label(text="さらに空のときはプリファレンスの共通設定が使われる")
 
 
-class BNAME_PT_coma_return(Panel):
-    bl_idname = "BNAME_PT_coma_return"
+class BMANGA_PT_coma_return(Panel):
+    bl_idname = "BMANGA_PT_coma_return"
     bl_label = "ファイル遷移"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 0
+    bl_order = 10
 
     @classmethod
     def poll(cls, context):
@@ -110,43 +110,43 @@ class BNAME_PT_coma_return(Panel):
         return shortcut_visibility.current_blend_is_coma_blend()
 
     def draw(self, context):
-        shortcut_visibility.mark_bname_panel_drawn(context)
+        shortcut_visibility.mark_bmanga_panel_drawn(context)
         layout = self.layout
         scene = getattr(context, "scene", None)
         if get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend():
             layout.operator(
-                "bname.exit_coma_mode_safe",
+                "bmanga.exit_coma_mode_safe",
                 text="ページに戻る",
                 icon="BACK",
             )
-            op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
+            op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "COMA"
             return
         if page_file_scene.is_page_edit_scene(context.scene):
             row = layout.row(align=True)
             row.operator(
-                "bname.exit_page_file",
+                "bmanga.exit_page_file",
                 text="ページ一覧に戻る",
                 icon="BACK",
             )
-            row.operator("bname.work_save", text="", icon="FILE_TICK")
+            row.operator("bmanga.work_save", text="", icon="FILE_TICK")
             _draw_page_browser_fit(layout, scene)
-            op = layout.operator("bname.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
+            op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return
 
 
 def _draw_page_browser_fit(layout, scene) -> None:
-    if scene is None or not hasattr(scene, "bname_page_browser_fit"):
+    if scene is None or not hasattr(scene, "bmanga_page_browser_fit"):
         return
     box = layout.box()
     box.label(text="ページ一覧ビュー", icon="WINDOW")
-    box.prop(scene, "bname_page_browser_fit", text="フィット")
+    box.prop(scene, "bmanga_page_browser_fit", text="フィット")
 
 
 _CLASSES = (
-    BNAME_PT_work,
-    BNAME_PT_coma_return,
+    BMANGA_PT_work,
+    BMANGA_PT_coma_return,
 )
 
 

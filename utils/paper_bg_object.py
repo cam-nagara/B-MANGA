@@ -33,23 +33,23 @@ from .geom import mm_to_m
 _logger = log.get_logger(__name__)
 
 PAPERS_COLLECTION_NAME = "__papers__"
-PAPERS_COLLECTION_BNAME_ID = "__papers_root__"
+PAPERS_COLLECTION_BMANGA_ID = "__papers_root__"
 PAPER_BG_NAME_PREFIX = "page_paper_bg_"
 PAPER_BG_MESH_PREFIX = "paper_bg_mesh_"
-PAPER_BG_MATERIAL_NAME = "BName_PaperBackground"
+PAPER_BG_MATERIAL_NAME = "BManga_PaperBackground"
 
-PROP_BG_KIND = "bname_paper_bg_kind"
-PROP_BG_OWNER_ID = "bname_paper_bg_page_id"
+PROP_BG_KIND = "bmanga_paper_bg_kind"
+PROP_BG_OWNER_ID = "bmanga_paper_bg_page_id"
 # ページが ``page_number_start..end`` レンジ内にいるかどうか。
 # 「自然な可視性」を保持し、 paint mode の一時 hide とは独立に管理する。
-PROP_BG_IN_RANGE = "bname_paper_bg_in_range"
+PROP_BG_IN_RANGE = "bmanga_paper_bg_in_range"
 
 
 def _ensure_papers_collection(scene: bpy.types.Scene) -> Optional[bpy.types.Collection]:
-    """``__papers__`` Collection を確保 (B-Name root 直下)."""
+    """``__papers__`` Collection を確保 (B-MANGA root 直下)."""
     if scene is None:
         return None
-    coll = on.find_collection_by_bname_id(PAPERS_COLLECTION_BNAME_ID, kind="papers_root")
+    coll = on.find_collection_by_bmanga_id(PAPERS_COLLECTION_BMANGA_ID, kind="papers_root")
     if coll is None:
         existing = bpy.data.collections.get(PAPERS_COLLECTION_NAME)
         if existing is not None:
@@ -59,7 +59,7 @@ def _ensure_papers_collection(scene: bpy.types.Scene) -> Optional[bpy.types.Coll
     on.stamp_identity(
         coll,
         kind="papers_root",
-        bname_id=PAPERS_COLLECTION_BNAME_ID,
+        bmanga_id=PAPERS_COLLECTION_BMANGA_ID,
         title=PAPERS_COLLECTION_NAME,
         z_index=-1,
         managed=False,
@@ -153,7 +153,7 @@ def ensure_paper_bg_for_page(
     生成するが ``hide_viewport=True`` にして viewport から隠す。 これにより
     ``page_number_end`` を縮めて範囲外になったページの白紙が viewport に
     取り残されない。 paint mode 中の一時 hide とは独立した
-    ``bname_paper_bg_in_range`` 属性で「自然な可視性」を保持する。
+    ``bmanga_paper_bg_in_range`` 属性で「自然な可視性」を保持する。
     """
     if scene is None or work is None or not (0 <= page_index < len(work.pages)):
         return None
@@ -184,7 +184,7 @@ def ensure_paper_bg_for_page(
     obj[PROP_BG_IN_RANGE] = bool(in_range)
     obj[on.PROP_MANAGED] = False  # Outliner mirror 正規化対象外
     obj.hide_select = True  # ユーザーが触って動かさないように
-    obj.hide_render = True  # B-Name の export は別 path で行うため render off
+    obj.hide_render = True  # B-MANGA の export は別 path で行うため render off
     # ページ範囲外なら viewport から隠す (paint mode hide が立っていない限り)
     if not _LAST_PAINT_HIDDEN:
         try:
@@ -213,7 +213,7 @@ def ensure_paper_bg_for_page(
     # に集約していた方式を撤廃し、 各ページ Mesh は対応するページ Collection
     # 直下に置く。 Outliner で「P0001__p0001__1ページ」配下に paper_bg が
     # 並ぶ。 これにより coma_plane と同じく per-page 階層に統一される)
-    page_coll = on.find_collection_by_bname_id(page_id, kind="page")
+    page_coll = on.find_collection_by_bmanga_id(page_id, kind="page")
     if page_coll is None:
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
     if page_coll is not None and not any(o is obj for o in page_coll.objects):
@@ -309,8 +309,8 @@ def purge_legacy_papers_collection(scene: bpy.types.Scene) -> int:
     ``bpy.data.collections.remove`` する。
     """
     removed = 0
-    legacy_coll = on.find_collection_by_bname_id(
-        PAPERS_COLLECTION_BNAME_ID, kind="papers_root"
+    legacy_coll = on.find_collection_by_bmanga_id(
+        PAPERS_COLLECTION_BMANGA_ID, kind="papers_root"
     )
     if legacy_coll is None:
         legacy_coll = bpy.data.collections.get(PAPERS_COLLECTION_NAME)
@@ -407,7 +407,7 @@ _LAST_PAINT_HIDDEN: bool = False
 def _on_depsgraph_update_post(scene, depsgraph) -> None:
     """``bpy.context.mode`` が paint 系のとき自動で paper_bg を hide.
 
-    ユーザーが B-Name の operator を経由せず Tab / Pie menu / mode dropdown
+    ユーザーが B-MANGA の operator を経由せず Tab / Pie menu / mode dropdown
     などから直接 Texture Paint / GP Paint に入った場合でも、 raycast 干渉
     で「何も描けない」状態にならないように自動でガード。
     """

@@ -13,7 +13,7 @@ from . import log, page_grid
 from .layer_hierarchy import page_stack_key, split_child_key
 
 _logger = log.get_logger(__name__)
-_RANGE_HIDE_MAP_PROP = "bname_range_hide_original_map_json"
+_RANGE_HIDE_MAP_PROP = "bmanga_range_hide_original_map_json"
 
 
 def desired_page_count(work) -> int:

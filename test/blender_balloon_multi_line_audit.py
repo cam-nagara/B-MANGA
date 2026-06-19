@@ -13,7 +13,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_multi_line_audit.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_multi_line_audit.py"
 """
 
 from __future__ import annotations
@@ -27,20 +27,20 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_MULTI_AUDIT_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_multi_audit_"))
+_OUT_ENV = os.environ.get("BMANGA_MULTI_AUDIT_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_multi_audit_"))
 
 SHAPES = ["rect", "ellipse", "octagon", "cloud", "fluffy", "thorn", "thorn-curve"]
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_multi_audit",
+        "bmanga_dev_multi_audit",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_multi_audit"] = mod
+    sys.modules["bmanga_dev_multi_audit"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -78,8 +78,8 @@ def _render_to(path: Path, *, width_px: int = 1280, height_px: int = 720):
 def _reset_work():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_multi_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "MultiAudit.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_multi_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MultiAudit.bmanga"))  # type: ignore[attr-defined]
     assert "FINISHED" in result, result
     return bpy.context
 
@@ -127,7 +127,7 @@ def _add_multi_balloon(page, parent_key, idx, shape, *,
 
 
 def _ensure_all_balloons(context, page):
-    from bname_dev_multi_audit.utils import balloon_curve_object as bco
+    from bmanga_dev_multi_audit.utils import balloon_curve_object as bco
     scene = context.scene
     for entry in page.balloons:
         bco.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -135,8 +135,8 @@ def _ensure_all_balloons(context, page):
 
 def _setup_camera_for_grid(page, scale_m=0.45):
     """画面に全フキダシが収まるカメラ設定."""
-    from bname_dev_multi_audit.utils import page_grid
-    work = bpy.context.scene.bname_work
+    from bmanga_dev_multi_audit.utils import page_grid
+    work = bpy.context.scene.bmanga_work
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
     xs = [entry.x_mm + entry.width_mm * 0.5 for entry in page.balloons]
     ys = [entry.y_mm + entry.height_mm * 0.5 for entry in page.balloons]
@@ -151,8 +151,8 @@ def _setup_camera_for_grid(page, scale_m=0.45):
 
 
 def _page_key():
-    from bname_dev_multi_audit.utils.layer_hierarchy import page_stack_key
-    return page_stack_key(bpy.context.scene.bname_work.pages[0])
+    from bmanga_dev_multi_audit.utils.layer_hierarchy import page_stack_key
+    return page_stack_key(bpy.context.scene.bmanga_work.pages[0])
 
 
 # -----------------------------------------------------------------------------
@@ -167,7 +167,7 @@ def scenario_directions():
         ("both", 4, "both_count4"),
     ]:
         context = _reset_work()
-        page = context.scene.bname_work.pages[0]
+        page = context.scene.bmanga_work.pages[0]
         pk = _page_key()
         for idx, shape in enumerate(SHAPES):
             _add_multi_balloon(page, pk, idx, shape,
@@ -182,7 +182,7 @@ def scenario_directions():
 def scenario_width_scale():
     """M4: 線幅変化 (width_scale_percent) 100/80/50/25 (cloud で確認)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     scales = [100.0, 80.0, 50.0, 25.0]
     for idx, scale in enumerate(scales):
@@ -199,7 +199,7 @@ def scenario_width_scale():
 def scenario_spacing_scale():
     """M5: 間隔変化 (spacing_scale_percent) 100/80/50/25 (rect で確認)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     scales = [100.0, 80.0, 50.0, 25.0]
     for idx, scale in enumerate(scales):
@@ -216,7 +216,7 @@ def scenario_spacing_scale():
 def scenario_thorn_valley_peak():
     """M6: トゲの 谷/山の線幅 % 組合せ (100/100, 100/30, 30/100, 0/100)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     cases = [(100, 100), (100, 30), (30, 100), (0, 100)]
     for idx, (valley, peak) in enumerate(cases):
@@ -233,7 +233,7 @@ def scenario_thorn_valley_peak():
 def scenario_thorn_valley_peak_closeup():
     """M6b: トゲの 谷/山の線幅 を更に強調 (大型トゲ + 太い多重線 + 単独表示)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     # 大きなトゲ (60mm) で太い多重線 (1.5mm) を 3 本配置し、 valley/peak の差を強調
     cases = [
@@ -272,7 +272,7 @@ def scenario_thorn_valley_peak_closeup():
 def scenario_thorn_length_change():
     """M7: トゲの 長さ変化 (near/far) (100/100, 100/50, 50/100, 25/100)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     cases = [(100, 100), (100, 50), (50, 100), (25, 100)]
     for idx, (near, far) in enumerate(cases):
@@ -290,7 +290,7 @@ def scenario_thorn_length_change():
 def scenario_thorn_cross():
     """M8: トゲの 山谷を延ばして交差 (off/on)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     for idx, cross in enumerate([False, True]):
         _add_multi_balloon(page, pk, idx, "thorn",
@@ -308,7 +308,7 @@ def scenario_thorn_cross():
 def scenario_extreme_counts():
     """M9: 本数 1 (= 単線) / 本数 12 (極端多)."""
     context = _reset_work()
-    page = context.scene.bname_work.pages[0]
+    page = context.scene.bmanga_work.pages[0]
     pk = _page_key()
     cases = [(1, "cloud"), (1, "rect"), (12, "cloud"), (12, "rect")]
     for idx, (count, shape) in enumerate(cases):

@@ -8,11 +8,11 @@ from bpy.types import Panel
 from ..core.mode import MODE_COMA, get_mode
 from ..utils import coma_camera
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
 def _settings(context):
-    return getattr(context.scene, "bname_coma_camera_settings", None)
+    return getattr(context.scene, "bmanga_coma_camera_settings", None)
 
 
 def _camera(context):
@@ -51,7 +51,7 @@ def _draw_camera_settings(layout, context, cam) -> None:
     row.prop(cam.data, "shift_y", text="Y")
     row = box.row()
     row.enabled = _is_camera_view(context)
-    row.operator("bname.coma_camera_shift_drag", text="ビューで調整")
+    row.operator("bmanga.coma_camera_shift_drag", text="ビューで調整")
 
     split = layout.split(factor=0.4)
     split.label(text="カメラの回転")
@@ -64,7 +64,7 @@ def _draw_angle_list(layout, context, settings) -> None:
     row = box.row()
     row.template_list(
         "UI_UL_list",
-        "bname_coma_camera_angles",
+        "bmanga_coma_camera_angles",
         settings,
         "camera_angles",
         settings,
@@ -72,10 +72,10 @@ def _draw_angle_list(layout, context, settings) -> None:
         rows=3,
     )
     col = row.column(align=True)
-    col.operator("bname.coma_camera_angle_add", icon="ADD", text="")
-    col.operator("bname.coma_camera_angle_duplicate", icon="DUPLICATE", text="")
-    col.operator("bname.coma_camera_angle_remove", icon="REMOVE", text="")
-    box.operator("bname.coma_camera_angle_apply", text="適用")
+    col.operator("bmanga.coma_camera_angle_add", icon="ADD", text="")
+    col.operator("bmanga.coma_camera_angle_duplicate", icon="DUPLICATE", text="")
+    col.operator("bmanga.coma_camera_angle_remove", icon="REMOVE", text="")
+    box.operator("bmanga.coma_camera_angle_apply", text="適用")
 
 
 def _draw_background_section(layout, context, settings, label: str, kind: str, opacity_prop: str) -> None:
@@ -85,16 +85,16 @@ def _draw_background_section(layout, context, settings, label: str, kind: str, o
     row.prop(settings, opacity_prop, text="")
     visible = bool(getattr(settings, f"{kind}_visible", False))
     icon = "HIDE_OFF" if visible else "HIDE_ON"
-    row.operator(f"bname.coma_camera_toggle_{kind}_backgrounds", text="", icon=icon)
+    row.operator(f"bmanga.coma_camera_toggle_{kind}_backgrounds", text="", icon=icon)
 
 
-class BNAME_PT_coma_camera(Panel):
-    bl_idname = "BNAME_PT_coma_camera"
+class BMANGA_PT_coma_camera(Panel):
+    bl_idname = "BMANGA_PT_coma_camera"
     bl_label = "コマ編集: カメラ"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 1
+    bl_order = 11
 
     @classmethod
     def poll(cls, context):
@@ -105,12 +105,12 @@ class BNAME_PT_coma_camera(Panel):
         scene = context.scene
         settings = _settings(context)
         if settings is None:
-            layout.operator("bname.coma_camera_ensure", text="コマ編集カメラを用意")
+            layout.operator("bmanga.coma_camera_ensure", text="コマ編集カメラを用意")
             return
 
         row = layout.row(align=True)
-        row.operator("bname.coma_camera_ensure", text="カメラを整備", icon="CAMERA_DATA")
-        row.operator("bname.coma_camera_sync_references", text="下絵同期", icon="IMAGE_DATA")
+        row.operator("bmanga.coma_camera_ensure", text="カメラを整備", icon="CAMERA_DATA")
+        row.operator("bmanga.coma_camera_sync_references", text="下絵同期", icon="IMAGE_DATA")
 
         cam = _camera(context)
         if cam is None:
@@ -121,7 +121,7 @@ class BNAME_PT_coma_camera(Panel):
         _draw_angle_list(layout, context, settings)
 
         box = layout.box()
-        box.prop(scene, "bname_coma_grayscale_view", text="グレースケール表示")
+        box.prop(scene, "bmanga_coma_grayscale_view", text="グレースケール表示")
         box.prop(settings, "white_background", text="背景を透過")
         box.prop(settings, "world_background_camera_only", text="ワールド背景色を被写体に影響させない")
         row = box.row(align=True)
@@ -135,7 +135,7 @@ class BNAME_PT_coma_camera(Panel):
         row = box.row()
         row.enabled = bool(settings.hatching_visible)
         row.prop(settings, "hatching_rotation", text="ハッチング回転")
-        box.operator("bname.coma_camera_update_view", text="ビューを更新")
+        box.operator("bmanga.coma_camera_update_view", text="ビューを更新")
 
         _draw_background_section(layout, context, settings, "ページ画像", "name", "name_bg_images_opacity")
 
@@ -143,7 +143,7 @@ class BNAME_PT_coma_camera(Panel):
         layout.label(text=f"背景画像: {count}件")
 
 
-_CLASSES = (BNAME_PT_coma_camera,)
+_CLASSES = (BMANGA_PT_coma_camera,)
 
 
 def register() -> None:

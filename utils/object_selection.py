@@ -1,4 +1,4 @@
-"""Viewport object selection shared by B-Name object-style tools."""
+"""Viewport object selection shared by B-MANGA object-style tools."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 from .layer_hierarchy import OUTSIDE_STACK_KEY
 
 
-SELECTION_PROP = "bname_object_selection_keys"
+SELECTION_PROP = "bmanga_object_selection_keys"
 
 
 def make_key(kind: str, page_id: str = "", item_id: str = "") -> str:
@@ -267,10 +267,10 @@ def _sync_balloon_flags(context, keys: list[str]) -> None:
                 text.selected = make_key("text", OUTSIDE_STACK_KEY, getattr(text, "id", "")) in key_set
     # シーン直下に置かれる image / raster コレクションも同期
     if scene is not None:
-        for entry in getattr(scene, "bname_image_layers", []) or []:
+        for entry in getattr(scene, "bmanga_image_layers", []) or []:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("image", "", getattr(entry, "id", "")) in key_set
-        for entry in getattr(scene, "bname_raster_layers", []) or []:
+        for entry in getattr(scene, "bmanga_raster_layers", []) or []:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("raster", "", getattr(entry, "id", "")) in key_set
         try:

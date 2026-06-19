@@ -3,15 +3,15 @@
 Phase 2 以降は「1 ページ = 1 GP オブジェクト (``page_NNNN_sketch``)」で、
 overview 上で全ページの GP が grid 配置される。オペレータは以下の導線:
 
-- ``bname.gpencil_page_ensure``: アクティブページの GP を確保 (必要なら生成)
+- ``bmanga.gpencil_page_ensure``: アクティブページの GP を確保 (必要なら生成)
   し、view_layer.objects.active をその GP に設定。描画モードには入らない
   (ユーザーが任意で Blender 標準の mode_set を使う)。
-- ``bname.gpencil_follow_cursor``: マウス位置 → アクティブページ/GP を自動
+- ``bmanga.gpencil_follow_cursor``: マウス位置 → アクティブページ/GP を自動
   切替するタイマー watcher の ON/OFF をトグル。
-- ``bname.gpencil_layer_add`` / ``bname.gpencil_layer_remove`` /
-  ``bname.gpencil_layer_select``: master GP のレイヤー操作。
+- ``bmanga.gpencil_layer_add`` / ``bmanga.gpencil_layer_remove`` /
+  ``bmanga.gpencil_layer_select``: master GP のレイヤー操作。
 
-``bname.gpencil_setup`` (1 つのグローバル GP を作る旧オペレータ) は廃止し、
+``bmanga.gpencil_setup`` (1 つのグローバル GP を作る旧オペレータ) は廃止し、
 page_ensure にリネーム・改変した。
 """
 
@@ -66,7 +66,7 @@ def _set_view_layer_active(context, obj) -> None:
         pass
 
 
-class BNAME_OT_gpencil_page_ensure(Operator):
+class BMANGA_OT_gpencil_page_ensure(Operator):
     """アクティブページの GP オブジェクトを確保して active 化.
 
     - ページ Collection が無ければ生成
@@ -75,7 +75,7 @@ class BNAME_OT_gpencil_page_ensure(Operator):
     描画モードには切替しない (ユーザーの意図を尊重)。
     """
 
-    bl_idname = "bname.gpencil_page_ensure"
+    bl_idname = "bmanga.gpencil_page_ensure"
     bl_label = "ページ用 GP を用意"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -103,10 +103,10 @@ class BNAME_OT_gpencil_page_ensure(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_layer_add(Operator):
+class BMANGA_OT_gpencil_layer_add(Operator):
     """アクティブ GP v3 にレイヤーを追加."""
 
-    bl_idname = "bname.gpencil_layer_add"
+    bl_idname = "bmanga.gpencil_layer_add"
     bl_label = "レイヤー追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -121,8 +121,8 @@ class BNAME_OT_gpencil_layer_add(Operator):
         if obj is None:
             return {"CANCELLED"}
         _set_view_layer_active(context, obj)
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         gp_data = obj.data
         current_layer = getattr(gp_data.layers, "active", None)
         parent_group = getattr(current_layer, "parent_group", None)
@@ -156,10 +156,10 @@ class BNAME_OT_gpencil_layer_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_layer_remove(Operator):
+class BMANGA_OT_gpencil_layer_remove(Operator):
     """アクティブレイヤーを削除."""
 
-    bl_idname = "bname.gpencil_layer_remove"
+    bl_idname = "bmanga.gpencil_layer_remove"
     bl_label = "レイヤー削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -178,8 +178,8 @@ class BNAME_OT_gpencil_layer_remove(Operator):
         if obj is None:
             return {"CANCELLED"}
         _set_view_layer_active(context, obj)
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         gp_data = obj.data
         layer = getattr(gp_data.layers, "active", None)
         if layer is None:
@@ -203,10 +203,10 @@ class BNAME_OT_gpencil_layer_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_layer_select(Operator):
+class BMANGA_OT_gpencil_layer_select(Operator):
     """名前指定で GP レイヤーをアクティブ化."""
 
-    bl_idname = "bname.gpencil_layer_select"
+    bl_idname = "bmanga.gpencil_layer_select"
     bl_label = "レイヤー選択"
     bl_options = {"REGISTER"}
 
@@ -217,8 +217,8 @@ class BNAME_OT_gpencil_layer_select(Operator):
         if obj is None:
             return {"CANCELLED"}
         _set_view_layer_active(context, obj)
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         layer = obj.data.layers.get(self.layer_name)
         if layer is None:
             return {"CANCELLED"}
@@ -235,10 +235,10 @@ class BNAME_OT_gpencil_layer_select(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_folder_add(Operator):
+class BMANGA_OT_gpencil_folder_add(Operator):
     """Grease Pencil レイヤーフォルダを追加."""
 
-    bl_idname = "bname.gpencil_folder_add"
+    bl_idname = "bmanga.gpencil_folder_add"
     bl_label = "レイヤーフォルダ追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -274,18 +274,18 @@ class BNAME_OT_gpencil_folder_add(Operator):
             group.is_expanded = True
         except Exception:  # noqa: BLE001
             pass
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp_folder"
-        if hasattr(context.scene, "bname_active_gp_folder_key"):
-            context.scene.bname_active_gp_folder_key = group.name
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp_folder"
+        if hasattr(context.scene, "bmanga_active_gp_folder_key"):
+            context.scene.bmanga_active_gp_folder_key = group.name
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_folder_remove(Operator):
+class BMANGA_OT_gpencil_folder_remove(Operator):
     """Grease Pencil レイヤーフォルダを削除し、中身は親階層へ出す."""
 
-    bl_idname = "bname.gpencil_folder_remove"
+    bl_idname = "bmanga.gpencil_folder_remove"
     bl_label = "レイヤーフォルダ削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -315,18 +315,18 @@ class BNAME_OT_gpencil_folder_remove(Operator):
         if not gp_utils.remove_layer_group_preserve_children(gp_data, group):
             self.report({"ERROR"}, "フォルダ削除失敗")
             return {"CANCELLED"}
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
-        if hasattr(context.scene, "bname_active_gp_folder_key"):
-            context.scene.bname_active_gp_folder_key = ""
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
+        if hasattr(context.scene, "bmanga_active_gp_folder_key"):
+            context.scene.bmanga_active_gp_folder_key = ""
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return {"FINISHED"}
 
 
-class BNAME_OT_gpencil_layer_move_to_folder(Operator):
+class BMANGA_OT_gpencil_layer_move_to_folder(Operator):
     """GP レイヤーを指定フォルダへ移動する。folder_name 空欄ならルートへ戻す."""
 
-    bl_idname = "bname.gpencil_layer_move_to_folder"
+    bl_idname = "bmanga.gpencil_layer_move_to_folder"
     bl_label = "レイヤーをフォルダへ移動"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -395,7 +395,7 @@ def _update_follow_from_event(context, event) -> None:
     _follow_state["last_update_time"] = now
 
     scene = context.scene
-    if scene is None or not getattr(scene, "bname_overview_mode", False):
+    if scene is None or not getattr(scene, "bmanga_overview_mode", False):
         return
     try:
         from ..preferences import get_preferences
@@ -475,7 +475,7 @@ def _update_follow_from_event(context, event) -> None:
     # active_page_index の更新だけで「現在のページ」UI は追従する。
 
 
-class BNAME_OT_gpencil_follow_modal(Operator):
+class BMANGA_OT_gpencil_follow_modal(Operator):
     """カーソル追従 watcher の内部モーダルオペレータ.
 
     ユーザーは直接呼び出さない。``_follow_start()`` が起動する。
@@ -490,8 +490,8 @@ class BNAME_OT_gpencil_follow_modal(Operator):
     収まるため描画中の追従は不要) なので、常駐 TIMER は撤去した。
     """
 
-    bl_idname = "bname.gpencil_follow_modal"
-    bl_label = "B-Name: GP 追従"
+    bl_idname = "bmanga.gpencil_follow_modal"
+    bl_label = "B-MANGA: GP 追従"
     bl_options = {"INTERNAL"}
 
     def modal(self, context, event):
@@ -521,7 +521,7 @@ def _follow_start() -> None:
     # (起動直後 register 時にこのパスを通る場合があるので無害)。
     try:
         if bpy.context.window is not None:
-            bpy.ops.bname.gpencil_follow_modal("INVOKE_DEFAULT")
+            bpy.ops.bmanga.gpencil_follow_modal("INVOKE_DEFAULT")
     except Exception:  # noqa: BLE001
         _logger.exception("follow_start: invoke failed")
 
@@ -530,13 +530,13 @@ def _follow_stop() -> None:
     _follow_state["running"] = False
 
 
-class BNAME_OT_gpencil_follow_cursor(Operator):
+class BMANGA_OT_gpencil_follow_cursor(Operator):
     """マウス位置追従 watcher の ON/OFF トグル.
 
     preferences.gpencil_follow_cursor に状態を保存する。
     """
 
-    bl_idname = "bname.gpencil_follow_cursor"
+    bl_idname = "bmanga.gpencil_follow_cursor"
     bl_label = "カーソル追従 GP"
     bl_options = {"REGISTER"}
 
@@ -564,15 +564,15 @@ class BNAME_OT_gpencil_follow_cursor(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_gpencil_page_ensure,
-    BNAME_OT_gpencil_follow_modal,
-    BNAME_OT_gpencil_follow_cursor,
-    BNAME_OT_gpencil_layer_add,
-    BNAME_OT_gpencil_layer_remove,
-    BNAME_OT_gpencil_layer_select,
-    BNAME_OT_gpencil_folder_add,
-    BNAME_OT_gpencil_folder_remove,
-    BNAME_OT_gpencil_layer_move_to_folder,
+    BMANGA_OT_gpencil_page_ensure,
+    BMANGA_OT_gpencil_follow_modal,
+    BMANGA_OT_gpencil_follow_cursor,
+    BMANGA_OT_gpencil_layer_add,
+    BMANGA_OT_gpencil_layer_remove,
+    BMANGA_OT_gpencil_layer_select,
+    BMANGA_OT_gpencil_folder_add,
+    BMANGA_OT_gpencil_folder_remove,
+    BMANGA_OT_gpencil_layer_move_to_folder,
 )
 
 
@@ -589,12 +589,12 @@ def register() -> None:
 def unregister() -> None:
     # 1) モーダル停止フラグを立てる (次の event tick で CANCELLED 終了する)
     _follow_stop()
-    # 2) BNAME_OT_gpencil_follow_modal は最後に unregister し、例外を握り潰す
+    # 2) BMANGA_OT_gpencil_follow_modal は最後に unregister し、例外を握り潰す
     #    (走行中のモーダルが残っていても Blender がクラッシュしないよう防御)
     modal_cls = None
     other_classes = []
     for cls in _CLASSES:
-        if cls.__name__ == "BNAME_OT_gpencil_follow_modal":
+        if cls.__name__ == "BMANGA_OT_gpencil_follow_modal":
             modal_cls = cls
         else:
             other_classes.append(cls)

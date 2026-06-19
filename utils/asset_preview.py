@@ -1,4 +1,4 @@
-"""Asset Browser thumbnail generation for B-Name assets."""
+"""Asset Browser thumbnail generation for B-MANGA assets."""
 
 from __future__ import annotations
 
@@ -118,10 +118,10 @@ def patch_external_library_preview(
 
 
 def _write_preview_png(pixels: list[float]) -> tuple[str, bpy.types.Image]:
-    handle = tempfile.NamedTemporaryFile(prefix="bname_asset_preview_", suffix=".png", delete=False)
+    handle = tempfile.NamedTemporaryFile(prefix="bmanga_asset_preview_", suffix=".png", delete=False)
     path = handle.name
     handle.close()
-    image = bpy.data.images.new("BNameAssetPreview", ASSET_PREVIEW_SIZE, ASSET_PREVIEW_SIZE, alpha=True)
+    image = bpy.data.images.new("BMangaAssetPreview", ASSET_PREVIEW_SIZE, ASSET_PREVIEW_SIZE, alpha=True)
     image.pixels = pixels
     image.filepath_raw = path
     image.file_format = "PNG"
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     handle = tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
-        prefix="bname_asset_preview_patch_",
+        prefix="bmanga_asset_preview_patch_",
         suffix=".py",
         delete=False,
     )
@@ -262,7 +262,7 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
     temporary_meshes: list[bpy.types.Mesh] = []
     temporary_materials: list[bpy.types.Material] = []
     try:
-        scene = bpy.data.scenes.new("BNameAssetPreviewScene")
+        scene = bpy.data.scenes.new("BMangaAssetPreviewScene")
         _setup_preview_render_scene(scene)
         linked: list[bpy.types.Object] = []
         for obj in preview_objects:
@@ -285,8 +285,8 @@ def _capture_objects_preview_pixels(objects: list[bpy.types.Object]) -> list[flo
         bounds = _world_bounds_for_objects(linked)
         if bounds is None:
             return None
-        camera_data = bpy.data.cameras.new("BNameAssetPreviewCamera")
-        camera = bpy.data.objects.new("BNameAssetPreviewCamera", camera_data)
+        camera_data = bpy.data.cameras.new("BMangaAssetPreviewCamera")
+        camera = bpy.data.objects.new("BMangaAssetPreviewCamera", camera_data)
         scene.collection.objects.link(camera)
         _position_preview_camera(camera, camera_data, bounds)
         scene.camera = camera
@@ -388,7 +388,7 @@ def _texture_image_for_object(obj: bpy.types.Object) -> bpy.types.Image | None:
 
 
 def _preview_image_material(image: bpy.types.Image) -> bpy.types.Material:
-    mat = bpy.data.materials.new(f"BNameAssetPreview_{image.name}")
+    mat = bpy.data.materials.new(f"BMangaAssetPreview_{image.name}")
     mat.use_nodes = True
     try:
         mat.blend_method = "OPAQUE"
@@ -491,7 +491,7 @@ def _render_scene_pixels(scene: bpy.types.Scene) -> list[float]:
     image = None
     previous_filepath = str(getattr(scene.render, "filepath", "") or "")
     try:
-        handle = tempfile.NamedTemporaryFile(prefix="bname_asset_preview_render_", suffix=".png", delete=False)
+        handle = tempfile.NamedTemporaryFile(prefix="bmanga_asset_preview_render_", suffix=".png", delete=False)
         path = handle.name
         handle.close()
         scene.render.filepath = path
@@ -544,7 +544,7 @@ def _setup_preview_render_scene(scene: bpy.types.Scene) -> None:
                 pass
     if scene.world is None:
         try:
-            scene.world = bpy.data.worlds.new("BNameAssetPreviewWorld")
+            scene.world = bpy.data.worlds.new("BMangaAssetPreviewWorld")
         except Exception:  # noqa: BLE001
             scene.world = None
     if scene.world is not None:

@@ -3,7 +3,7 @@
 確認内容:
   1. 全形状で `balloon_fill_mesh_<id>` オブジェクトが生成されること。
   2. 塗り面メッシュに modifier が一切付いていないこと (Python 焼き込みのみ)。
-  3. 塗り面の頂点に bname_fill_blur_alpha 属性が POINT domain Float で存在すること。
+  3. 塗り面の頂点に bmanga_fill_blur_alpha 属性が POINT domain Float で存在すること。
   4. ジオメトリノードグループから GeometryNodeFillCurve が body 経路では削除されていること
      (main_line_fill 用の FillCurve は残る)。
   5. しっぽ付きフキダシで body + tail の union 塗り面が生成されること。
@@ -11,7 +11,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_node_minimization_phase_c_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_node_minimization_phase_c_check.py"
 """
 
 from __future__ import annotations
@@ -25,18 +25,18 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_PHASE_C_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_phase_c_"))
+_OUT_ENV = os.environ.get("BMANGA_PHASE_C_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_phase_c_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_phase_c",
+        "bmanga_dev_phase_c",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_phase_c"] = mod
+    sys.modules["bmanga_dev_phase_c"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -51,21 +51,21 @@ def main() -> int:
     _load_addon()
     errors: list[str] = []
 
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_phase_c_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PhaseCCheck.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_phase_c_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PhaseCCheck.bmanga"))  # type: ignore[attr-defined]
     if "FINISHED" not in result:
         print(f"  ✗ work_new failed: {result}")
         return 1
 
-    from bname_dev_phase_c.operators import balloon_op
-    from bname_dev_phase_c.utils import balloon_curve_object as bco
-    from bname_dev_phase_c.utils import balloon_fill_mesh
-    from bname_dev_phase_c.utils import balloon_curve_render_nodes as bcrn
-    from bname_dev_phase_c.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_phase_c.operators import balloon_op
+    from bmanga_dev_phase_c.utils import balloon_curve_object as bco
+    from bmanga_dev_phase_c.utils import balloon_fill_mesh
+    from bmanga_dev_phase_c.utils import balloon_curve_render_nodes as bcrn
+    from bmanga_dev_phase_c.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     parent_key = page_stack_key(page)
 
@@ -115,7 +115,7 @@ def main() -> int:
         if verts < 3:
             errors.append(f"{shape}: fill mesh の頂点数が少なすぎる ({verts})")
         if not attr_ok:
-            errors.append(f"{shape}: bname_fill_blur_alpha 属性が無いか型が違う")
+            errors.append(f"{shape}: bmanga_fill_blur_alpha 属性が無いか型が違う")
         if material is None:
             errors.append(f"{shape}: fill mesh にマテリアル未割当")
 
@@ -165,7 +165,7 @@ def main() -> int:
     # フキダシをカバーする範囲にカメラ調整
     xs = []; ys = []
     for obj in bpy.data.objects:
-        if obj.get("bname_balloon_fill_mesh_kind") == "balloon_fill_mesh":
+        if obj.get("bmanga_balloon_fill_mesh_kind") == "balloon_fill_mesh":
             xs.append(obj.location.x); ys.append(obj.location.y)
             for v in obj.data.vertices:
                 xs.append(obj.location.x + v.co.x); ys.append(obj.location.y + v.co.y)

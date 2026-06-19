@@ -1,4 +1,4 @@
-"""B-Name の保存先フォルダを開くオペレーター."""
+"""B-MANGA の保存先フォルダを開くオペレーター."""
 
 from __future__ import annotations
 
@@ -81,8 +81,8 @@ def _open_folder(path: Path) -> None:
     subprocess.Popen(["xdg-open", str(path)])  # noqa: S603,S607
 
 
-class BNAME_OT_open_current_folder(Operator):
-    bl_idname = "bname.open_current_folder"
+class BMANGA_OT_open_current_folder(Operator):
+    bl_idname = "bmanga.open_current_folder"
     bl_label = "保存フォルダを開く"
     bl_options = {"REGISTER"}
 
@@ -117,7 +117,7 @@ class BNAME_OT_open_current_folder(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_open_current_folder,)
+_CLASSES = (BMANGA_OT_open_current_folder,)
 
 
 def register() -> None:

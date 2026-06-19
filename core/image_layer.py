@@ -56,7 +56,7 @@ def _on_image_title_changed(_self, context) -> None:
         pass
 
 
-class BNameImageLayer(bpy.types.PropertyGroup):
+class BMangaImageLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
     title: StringProperty(name="表示名", default="", update=_on_image_title_changed)  # type: ignore[valid-type]
     filepath: StringProperty(  # type: ignore[valid-type]
@@ -159,7 +159,7 @@ class BNameImageLayer(bpy.types.PropertyGroup):
     folder_key: StringProperty(name="レイヤーフォルダ", default="", update=_on_image_layer_changed)  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameImageLayer,)
+_CLASSES = (BMangaImageLayer,)
 
 
 def register() -> None:

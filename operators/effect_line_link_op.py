@@ -142,7 +142,7 @@ def _copy_linked_free_transform(source_entry: dict, dest_entry: dict) -> dict:
 
 
 def _params_proxy_from_data(effect_op, context, data: dict):
-    scene_params = getattr(context.scene, "bname_effect_line_params", None)
+    scene_params = getattr(context.scene, "bmanga_effect_line_params", None)
     if scene_params is None:
         return None
     return effect_op._EffectParamProxy(scene_params, data)
@@ -324,14 +324,14 @@ def link_existing_effect_layers(context, effect_layers: list[tuple[object, objec
     return len(valid)
 
 
-class BNAME_OT_effect_line_create_linked(Operator):
-    bl_idname = "bname.effect_line_create_linked"
+class BMANGA_OT_effect_line_create_linked(Operator):
+    bl_idname = "bmanga.effect_line_create_linked"
     bl_label = "リンク効果線を作成"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        if getattr(getattr(context, "scene", None), "bname_active_layer_kind", "") != "effect":
+        if getattr(getattr(context, "scene", None), "bmanga_active_layer_kind", "") != "effect":
             return False
         from . import effect_line_op
 
@@ -358,7 +358,7 @@ class BNAME_OT_effect_line_create_linked(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_effect_line_create_linked,)
+_CLASSES = (BMANGA_OT_effect_line_create_linked,)
 
 
 def register() -> None:

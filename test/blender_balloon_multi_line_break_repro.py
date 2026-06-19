@@ -23,18 +23,18 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BREAK_REPRO_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_break_repro_"))
+_OUT_ENV = os.environ.get("BMANGA_BREAK_REPRO_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_break_repro_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_break_repro",
+        "bmanga_dev_break_repro",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_break_repro"] = mod
+    sys.modules["bmanga_dev_break_repro"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -72,8 +72,8 @@ def _render_to(path, *, w=1024, h=1024):
 def _reset_work():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_break_work_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "BreakRepro.bname"))  # type: ignore[attr-defined]
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_break_work_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BreakRepro.bmanga"))  # type: ignore[attr-defined]
     assert "FINISHED" in result, result
     return bpy.context
 
@@ -82,12 +82,12 @@ def main() -> int:
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
 
     context = _reset_work()
-    from bname_dev_break_repro.utils import balloon_curve_object as bco
-    from bname_dev_break_repro.utils.layer_hierarchy import page_stack_key
-    from bname_dev_break_repro.utils import page_grid
+    from bmanga_dev_break_repro.utils import balloon_curve_object as bco
+    from bmanga_dev_break_repro.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_break_repro.utils import page_grid
 
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
     pk = page_stack_key(page)
 

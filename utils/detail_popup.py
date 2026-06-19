@@ -9,7 +9,7 @@ from . import log
 
 _logger = log.get_logger(__name__)
 
-_POS_PREFIX = "bname_detail_popup_pos"
+_POS_PREFIX = "bmanga_detail_popup_pos"
 
 
 def _pos_key(key: str, suffix: str) -> str:
@@ -130,7 +130,7 @@ def _active_detail_index(context) -> int:
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is None:
         return -1
-    index = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    index = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= index < len(stack):
         return index
     return -1
@@ -142,7 +142,7 @@ def open_active_detail(context) -> bool:
     if index < 0:
         return False
     try:
-        result = bpy.ops.bname.layer_stack_detail(
+        result = bpy.ops.bmanga.layer_stack_detail(
             "INVOKE_DEFAULT",
             index=index,
             preserve_edge_selection=True,

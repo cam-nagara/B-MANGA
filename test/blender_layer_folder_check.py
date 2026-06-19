@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -30,7 +30,7 @@ def _load_addon():
 
 
 def _stack(context):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -39,7 +39,7 @@ def _stack(context):
 
 
 def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
@@ -58,7 +58,7 @@ def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
 
 
 def _maybe_stack_parent(context, uid: str) -> str | None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     for item in _stack(context):
         if layer_stack_utils.stack_item_uid(item) == uid:
@@ -74,7 +74,7 @@ def _stack_parent(context, uid: str) -> str:
 
 
 def _add_image(context, image_id: str, parent_key: str):
-    entry = context.scene.bname_image_layers.add()
+    entry = context.scene.bmanga_image_layers.add()
     entry.id = image_id
     entry.title = image_id
     entry.parent_kind = "coma" if ":" in parent_key else "page"
@@ -83,7 +83,7 @@ def _add_image(context, image_id: str, parent_key: str):
 
 
 def _add_raster(context, raster_id: str, parent_key: str):
-    entry = context.scene.bname_raster_layers.add()
+    entry = context.scene.bmanga_raster_layers.add()
     entry.id = raster_id
     entry.title = raster_id
     entry.scope = "page"
@@ -119,22 +119,22 @@ def _add_text(page, text_id: str, parent_key: str):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_layer_folder_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_folder_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerFolder.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LayerFolder.bmanga"))
         assert "FINISHED" in result, result
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
 
-        from bname_dev.io import schema
-        from bname_dev.utils import layer_folder as layer_folder_utils
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils.layer_hierarchy import COMA_KIND, OUTSIDE_STACK_KEY, coma_stack_key, page_stack_key
+        from bmanga_dev.io import schema
+        from bmanga_dev.utils import layer_folder as layer_folder_utils
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils.layer_hierarchy import COMA_KIND, OUTSIDE_STACK_KEY, coma_stack_key, page_stack_key
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page1 = work.pages[0]
         page2 = work.pages[1]
         page1_key = page_stack_key(page1)
@@ -273,10 +273,10 @@ def main() -> None:
         assert text_data["folderKey"] == folder_id, text_data
 
         work.layer_folders.clear()
-        context.scene.bname_raster_layers.clear()
+        context.scene.bmanga_raster_layers.clear()
         schema.work_from_dict(work, work_data)
         assert any(item.id == folder_id for item in work.layer_folders)
-        restored_raster = next(entry for entry in context.scene.bname_raster_layers if entry.id == "folder_raster")
+        restored_raster = next(entry for entry in context.scene.bmanga_raster_layers if entry.id == "folder_raster")
         assert restored_raster.folder_key == coma_folder_id
         page2.balloons.clear()
         page2.texts.clear()
@@ -336,7 +336,7 @@ def main() -> None:
         assert restored_child_delete_folder.parent_key == page2_key
         assert child_delete_image.folder_key == child_delete_folder_id
 
-        print("BNAME_LAYER_FOLDER_OK")
+        print("BMANGA_LAYER_FOLDER_OK")
     finally:
         if mod is not None:
             try:

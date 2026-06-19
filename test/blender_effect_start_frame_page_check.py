@@ -22,12 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_effect_start_page",
+        "bmanga_dev_effect_start_page",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_effect_start_page"] = mod
+    sys.modules["bmanga_dev_effect_start_page"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -46,22 +46,22 @@ class _FakeObj:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_effect_start_page_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_start_page_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        if "FINISHED" not in bpy.ops.bname.work_new(
-            filepath=str(temp_root / "EffectStartPage.bname")
+        bpy.context.scene.bmanga_overview_mode = True
+        if "FINISHED" not in bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "EffectStartPage.bmanga")
         ):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_effect_start_page.core.work import get_active_page, get_work
-        from bname_dev_effect_start_page.operators import effect_line_op
-        from bname_dev_effect_start_page.utils import object_naming as on
+        from bmanga_dev_effect_start_page.core.work import get_active_page, get_work
+        from bmanga_dev_effect_start_page.operators import effect_line_op
+        from bmanga_dev_effect_start_page.utils import object_naming as on
 
         work = get_work(bpy.context)
-        if "FINISHED" not in bpy.ops.bname.page_duplicate():
+        if "FINISHED" not in bpy.ops.bmanga.page_duplicate():
             raise AssertionError("ページ複製に失敗しました")
         if len(work.pages) < 2:
             raise AssertionError("複製後にページが2つありません")
@@ -94,7 +94,7 @@ def main() -> None:
         if fallback is None or str(fallback.id) != page0_id:
             raise AssertionError("parent_key 空のときアクティブページへフォールバックしていません")
 
-        print("BNAME_EFFECT_START_FRAME_PAGE_OK", flush=True)
+        print("BMANGA_EFFECT_START_FRAME_PAGE_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

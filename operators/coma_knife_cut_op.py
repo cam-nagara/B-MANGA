@@ -473,8 +473,8 @@ def _sync_layer_stack_after_cut(context) -> None:
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: outliner mirror failed")
     # mask 再生成や mirror で ``__masks__`` Collection が active になり
-    # ``bname_master_sketch`` が active object として残る副作用がある。
-    # B-Name 側 active コマ (page.active_coma_index) を Outliner にも反映
+    # ``bmanga_master_sketch`` が active object として残る副作用がある。
+    # B-MANGA 側 active コマ (page.active_coma_index) を Outliner にも反映
     # して、ユーザーが期待するコマを Outliner で active 状態に戻す。
     try:
         from ..core.work import get_work
@@ -550,10 +550,10 @@ def _find_coma_at_world(
 # ---------- modal operator ----------
 
 
-class BNAME_OT_coma_knife_cut(Operator):
+class BMANGA_OT_coma_knife_cut(Operator):
     """枠線カットツール (CSP 互換): 任意角度の切断線で複数コマを連続分割する."""
 
-    bl_idname = "bname.coma_knife_cut"
+    bl_idname = "bmanga.coma_knife_cut"
     bl_label = "枠線カットツール"
     bl_options = {"REGISTER"}
 
@@ -749,12 +749,12 @@ class BNAME_OT_coma_knife_cut(Operator):
             self.finish_from_external(context, keep_selection=False)
             try:
                 with context.temp_override(area=self._area, region=self._region):
-                    bpy.ops.bname.layer_move_tool("INVOKE_DEFAULT")
+                    bpy.ops.bmanga.layer_move_tool("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 _logger.exception("knife_cut: failed to switch to layer_move")
             return {"FINISHED"}
 
-        # B-Name のモード切替ショートカットが押されたら modal を終了して譲る。
+        # B-MANGA のモード切替ショートカットが押されたら modal を終了して譲る。
         if (
             event.value == "PRESS"
             and event.type in {"O", "P", "COMMA", "PERIOD", "Z", "X"}
@@ -849,7 +849,7 @@ class BNAME_OT_coma_knife_cut(Operator):
                 self._edge_drag_moved = True
             return {"RUNNING_MODAL"}
         if event.type == "LEFTMOUSE" and event.value == "RELEASE":
-            changed = self._edge_drag.finish("B-Name: 枠線移動")
+            changed = self._edge_drag.finish("B-MANGA: 枠線移動")
             moved = bool(getattr(self, "_edge_drag_moved", False))
             self._edge_drag = None
             self._edge_drag_moved = False
@@ -971,7 +971,7 @@ class BNAME_OT_coma_knife_cut(Operator):
             # 1 回のカットを独立した undo step として記録
             # (modal 中のすべてのカットを 1 ステップにまとめず個別に undo/redo 可能に)
             try:
-                bpy.ops.ed.undo_push(message="B-Name: 枠線カット")
+                bpy.ops.ed.undo_push(message="B-MANGA: 枠線カット")
             except Exception:  # noqa: BLE001
                 _logger.exception("knife_cut: undo_push failed")
             self.report({"INFO"}, "コマを分割 (続けてカットできます)")
@@ -983,7 +983,7 @@ class BNAME_OT_coma_knife_cut(Operator):
 
 
 def _preview_cut_polygons(
-    op: "BNAME_OT_coma_knife_cut",
+    op: "BMANGA_OT_coma_knife_cut",
 ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]] | None:
     work = getattr(op, "_work", None)
     if work is None or op._p1_px is None or op._p2_px is None:
@@ -1057,7 +1057,7 @@ def _draw_preview_outline(shader, points: list[tuple[float, float]]) -> None:
     batch_for_shader(shader, "LINES", {"pos": verts}).draw(shader)
 
 
-def _draw_callback(op: "BNAME_OT_coma_knife_cut") -> None:
+def _draw_callback(op: "BMANGA_OT_coma_knife_cut") -> None:
     if not op._dragging or op._p1_px is None or op._p2_px is None:
         return
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
@@ -1102,7 +1102,7 @@ def _draw_callback(op: "BNAME_OT_coma_knife_cut") -> None:
         pass
 
 
-_CLASSES = (BNAME_OT_coma_knife_cut,)
+_CLASSES = (BMANGA_OT_coma_knife_cut,)
 
 
 def register() -> None:

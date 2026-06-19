@@ -6,10 +6,10 @@ import bpy
 from bpy.types import Operator
 
 
-class BNAME_OT_organize_data_names(Operator):
+class BMANGA_OT_organize_data_names(Operator):
     """ページ/コマの実データ名を現在の並びへ揃える."""
 
-    bl_idname = "bname.organize_data_names"
+    bl_idname = "bmanga.organize_data_names"
     bl_label = "実データ名を整理"
     bl_description = "ページとコマのフォルダ名・ファイル名を、現在のページ順と読む順番に揃えます"
     bl_options = {"REGISTER"}
@@ -41,7 +41,7 @@ class BNAME_OT_organize_data_names(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_organize_data_names,)
+_CLASSES = (BMANGA_OT_organize_data_names,)
 
 
 def register() -> None:

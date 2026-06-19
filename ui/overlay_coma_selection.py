@@ -1,4 +1,4 @@
-"""選択中の B-Name コマ辺を POST_PIXEL で描画する."""
+"""選択中の B-MANGA コマ辺を POST_PIXEL で描画する."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def draw(context, work, region, rv3d) -> None:
     if scene is None:
         return
     selected_refs = object_selection.selected_coma_refs(context)
-    active_coma_selection = getattr(scene, "bname_active_layer_kind", "") == "coma"
+    active_coma_selection = getattr(scene, "bmanga_active_layer_kind", "") == "coma"
     if not active_coma_selection and not selected_refs:
         return
     try:
@@ -63,11 +63,11 @@ def draw(context, work, region, rv3d) -> None:
             _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
     if not active_coma_selection:
         return
-    kind = getattr(wm, "bname_edge_select_kind", "none")
+    kind = getattr(wm, "bmanga_edge_select_kind", "none")
     if kind not in {"edge", "border", "vertex"}:
         return
-    page_index = int(getattr(wm, "bname_edge_select_page", -1))
-    coma_index = int(getattr(wm, "bname_edge_select_coma", -1))
+    page_index = int(getattr(wm, "bmanga_edge_select_page", -1))
+    coma_index = int(getattr(wm, "bmanga_edge_select_coma", -1))
     if not (0 <= page_index < len(work.pages)):
         return
     page = work.pages[page_index]
@@ -85,7 +85,7 @@ def draw(context, work, region, rv3d) -> None:
     world_poly = [(x + ox, y + oy) for x, y in poly]
 
     if kind == "edge":
-        edge_index = int(getattr(wm, "bname_edge_select_edge", -1))
+        edge_index = int(getattr(wm, "bmanga_edge_select_edge", -1))
         # 選択辺だけハイライト + ▲ ハンドル
         _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
         # 他 3 辺の ▲ ハンドルもクリック可能なので、 マーカーだけ描画する
@@ -99,7 +99,7 @@ def draw(context, work, region, rv3d) -> None:
         for edge_index in range(len(world_poly)):
             _draw_edge(shader, region, rv3d, world_poly, edge_index, pointer=pointer)
     elif kind == "vertex":
-        vertex_index = int(getattr(wm, "bname_edge_select_vertex", -1))
+        vertex_index = int(getattr(wm, "bmanga_edge_select_vertex", -1))
         selected_vertices = edge_selection.selected_vertices(
             context,
             page_index=page_index,
@@ -120,7 +120,7 @@ def _page_offset(context, work, page_index: int) -> tuple[float, float]:
     if page_browser.is_page_browser_area(context) and page_browser.fit_enabled(scene):
         return page_browser.page_offset_mm(work, scene, area, page_index)
     paper = work.paper
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     ox, oy = page_grid.page_grid_offset_mm(
         page_index,

@@ -173,7 +173,7 @@ def page_file_index_from_viewport_event(context, event) -> int | None:
         return None
     if (
         role == page_file_scene.ROLE_WORK
-        and bool(getattr(context.scene, "bname_overview_mode", False))
+        and bool(getattr(context.scene, "bmanga_overview_mode", False))
     ):
         page_hit = _resolve_page_at_event(context, event)
         if page_hit is not None and 0 <= page_hit < len(work.pages):
@@ -208,7 +208,7 @@ def _run_deferred_open_page_file():
         return None
     try:
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         if not getattr(work, "loaded", False):
             return None
         if get_mode(context) != MODE_PAGE:
@@ -216,7 +216,7 @@ def _run_deferred_open_page_file():
         if int(page_index) < 0 or int(page_index) >= len(work.pages):
             return None
         work.active_page_index = int(page_index)
-        bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=int(page_index))
+        bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=int(page_index))
     except Exception:
         _logger.exception("deferred page file open failed")
     return None
@@ -269,7 +269,7 @@ def _run_deferred_enter_coma_mode() -> None:
     work.active_page_index = page_index
     page.active_coma_index = coma_index
     try:
-        bpy.ops.bname.enter_coma_mode(
+        bpy.ops.bmanga.enter_coma_mode(
             "EXEC_DEFAULT",
             prompt_template_if_missing=prompt_template_if_missing,
         )
@@ -294,7 +294,7 @@ def _clear_deferred_enter_coma_mode() -> None:
             pass
 
 
-class BNAME_OT_enter_coma_mode(Operator):
+class BMANGA_OT_enter_coma_mode(Operator):
     """選択中 or マウス直下のコマの 3D シーンに入る (コマ編集モード).
 
     work.blend を保存し、cNN.blend を開く。未作成なら空の scene から
@@ -304,7 +304,7 @@ class BNAME_OT_enter_coma_mode(Operator):
     execute のみの場合は現在の active をそのまま使う。
     """
 
-    bl_idname = "bname.enter_coma_mode"
+    bl_idname = "bmanga.enter_coma_mode"
     bl_label = "コマ編集モードへ"
 
     filepath: StringProperty(  # type: ignore[valid-type]
@@ -340,9 +340,9 @@ class BNAME_OT_enter_coma_mode(Operator):
         # Edit モード等) のときはダブルクリックを譲る (描画ストロークなどに干渉しない)。
         cur_mode = getattr(context, "mode", "")
         if cur_mode != "OBJECT":
-            print(f"[B-Name][OP] enter_coma_mode: skip (context.mode={cur_mode!r})")
+            print(f"[B-MANGA][OP] enter_coma_mode: skip (context.mode={cur_mode!r})")
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] enter_coma_mode.invoke event.type={event.type} value={event.value}"
+        print(f"[B-MANGA][OP] enter_coma_mode.invoke event.type={event.type} value={event.value}"
               f" poll_ok={self.__class__.poll(context)}")
         # ダブルクリックからの起動: マウス直下のコマへ active をフォーカス
         hit = _resolve_coma_at_event(context, event)
@@ -409,7 +409,7 @@ class BNAME_OT_enter_coma_mode(Operator):
             self.report({"WARNING"}, "編集対象のコマが選択されていません")
             return {"CANCELLED"}
         entry = page.comas[page.active_coma_index]
-        # BNameComaEntry は ``id`` と ``coma_id`` の 2 フィールドを持つ。
+        # BMangaComaEntry は ``id`` と ``coma_id`` の 2 フィールドを持つ。
         # 旧コード/移行データでは coma_id が空のまま id だけ設定される
         # ケースがあるため、両方を fallback として参照する。
         stem = entry.coma_id or entry.id
@@ -445,7 +445,7 @@ class BNAME_OT_enter_coma_mode(Operator):
             # 古い JSON で巻き戻らないよう、mainfile 切替前に必ず保存する。
             _save_current_work_metadata(work, page)
 
-            # 1) 現在の mainfile が B-Name の編集ファイルなら上書き保存
+            # 1) 現在の mainfile が B-MANGA の編集ファイルなら上書き保存
             cur = blend_io.current_mainfile_path()
             expected_work = paths.work_blend_path(work_dir).resolve()
             expected_page = paths.page_blend_path(work_dir, page_id).resolve()
@@ -554,12 +554,12 @@ class BNAME_OT_enter_coma_mode(Operator):
                     from ..ui import overlay as _overlay
 
                     set_mode(MODE_COMA, bpy.context)
-                    bpy.context.scene.bname_current_coma_id = stem
-                    bpy.context.scene.bname_current_coma_page_id = page_id
-                    if hasattr(bpy.context.scene, "bname_active_layer_kind"):
-                        bpy.context.scene.bname_active_layer_kind = "coma"
+                    bpy.context.scene.bmanga_current_coma_id = stem
+                    bpy.context.scene.bmanga_current_coma_page_id = page_id
+                    if hasattr(bpy.context.scene, "bmanga_active_layer_kind"):
+                        bpy.context.scene.bmanga_active_layer_kind = "coma"
                     _overlay.reset_viewport_background_to_theme(bpy.context)
-                    _overlay.apply_bname_shading_mode(bpy.context)
+                    _overlay.apply_bmanga_shading_mode(bpy.context)
                 except Exception:  # noqa: BLE001
                     _logger.exception("enter_coma_mode: initial panel scene finalize failed")
         except Exception as exc:  # noqa: BLE001
@@ -570,10 +570,10 @@ class BNAME_OT_enter_coma_mode(Operator):
         # load_post ハンドラがモード/stem を同期するが、念のため明示的にも設定
         ctx = bpy.context
         set_mode(MODE_COMA, ctx)
-        ctx.scene.bname_current_coma_id = stem
-        ctx.scene.bname_current_coma_page_id = page_id
-        if hasattr(ctx.scene, "bname_active_layer_kind"):
-            ctx.scene.bname_active_layer_kind = "coma"
+        ctx.scene.bmanga_current_coma_id = stem
+        ctx.scene.bmanga_current_coma_page_id = page_id
+        if hasattr(ctx.scene, "bmanga_active_layer_kind"):
+            ctx.scene.bmanga_active_layer_kind = "coma"
         active_view_layer_name = str(
             getattr(getattr(ctx, "view_layer", None), "name", "") or ""
         )
@@ -600,9 +600,9 @@ class BNAME_OT_enter_coma_mode(Operator):
         try:
             from ..ui import sidebar as _sidebar
 
-            _sidebar.schedule_open_bname_sidebar()
+            _sidebar.schedule_open_bmanga_sidebar()
         except Exception:  # noqa: BLE001
-            _logger.exception("enter_coma_mode: B-Name sidebar open failed")
+            _logger.exception("enter_coma_mode: B-MANGA sidebar open failed")
         self.report({"INFO"}, f"コマ編集モード: {stem}")
         return {"FINISHED"}
 
@@ -669,15 +669,15 @@ class BNAME_OT_enter_coma_mode(Operator):
         return template_path
 
 
-class BNAME_OT_enter_coma_mode_from_viewport(Operator):
+class BMANGA_OT_enter_coma_mode_from_viewport(Operator):
     """3D ビューのダブルクリックからコマ用 blend ファイルを開く."""
 
-    bl_idname = "bname.enter_coma_mode_from_viewport"
+    bl_idname = "bmanga.enter_coma_mode_from_viewport"
     bl_label = "コマ用blendファイルを開く"
 
     @classmethod
     def poll(cls, context):
-        return BNAME_OT_enter_coma_mode.poll(context)
+        return BMANGA_OT_enter_coma_mode.poll(context)
 
     def invoke(self, context, event):
         cur_mode = getattr(context, "mode", "")
@@ -732,13 +732,13 @@ class BNAME_OT_enter_coma_mode_from_viewport(Operator):
         return {"CANCELLED"}
 
 
-class BNAME_OT_exit_coma_mode(Operator):
+class BMANGA_OT_exit_coma_mode(Operator):
     """コマ編集モードを抜けて overview モード (work.blend) へ戻る.
 
     cNN.blend を保存し、work.blend を開く。
     """
 
-    bl_idname = "bname.exit_coma_mode"
+    bl_idname = "bmanga.exit_coma_mode"
     bl_label = "紙面編集モードへ戻る"
 
     @classmethod
@@ -755,7 +755,7 @@ class BNAME_OT_exit_coma_mode(Operator):
             _logger.exception("exit_coma_mode: camera runtime sync failed")
         # 1) 現在の cNN.blend を保存 → work.blend を開く
         work = get_work(context)
-        stem = getattr(context.scene, "bname_current_coma_id", "")
+        stem = getattr(context.scene, "bmanga_current_coma_id", "")
         if (
             work is not None
             and work.loaded
@@ -763,7 +763,7 @@ class BNAME_OT_exit_coma_mode(Operator):
         ):
             work_dir = Path(work.work_dir)
             try:
-                page_id = getattr(context.scene, "bname_current_coma_page_id", "")
+                page_id = getattr(context.scene, "bmanga_current_coma_page_id", "")
                 if not paths.is_valid_page_id(page_id):
                     self.report({"ERROR"}, "編集中コマの page_id が失われています")
                     return {"CANCELLED"}
@@ -799,8 +799,8 @@ class BNAME_OT_exit_coma_mode(Operator):
 
         ctx = bpy.context
         set_mode(MODE_PAGE, ctx)
-        ctx.scene.bname_current_coma_id = ""
-        ctx.scene.bname_current_coma_page_id = ""
+        ctx.scene.bmanga_current_coma_id = ""
+        ctx.scene.bmanga_current_coma_page_id = ""
         self.report({"INFO"}, "紙面編集モード")
         return {"FINISHED"}
 
@@ -809,7 +809,7 @@ def _current_blend_is_coma_blend() -> tuple[Path | None, str, str]:
     """開いている mainfile が ``pNNNN/cNN/cNN.blend`` 形式かを判定.
 
     Returns ``(work_dir, page_id, coma_id)`` を返す。マッチしなければ
-    ``(None, "", "")``。``bname_mode`` / ``bname_current_coma_id`` 等の
+    ``(None, "", "")``。``bmanga_mode`` / ``bmanga_current_coma_id`` 等の
     Scene プロパティが load_post 失敗で同期されていないケースの救済用。
     """
     fp = bpy.data.filepath
@@ -833,10 +833,10 @@ def _current_blend_is_coma_blend() -> tuple[Path | None, str, str]:
     return work_dir, page_id, coma_id
 
 
-class BNAME_OT_exit_coma_mode_safe(Operator):
+class BMANGA_OT_exit_coma_mode_safe(Operator):
     """コマ編集を終了してページに戻る."""
 
-    bl_idname = "bname.exit_coma_mode_safe"
+    bl_idname = "bmanga.exit_coma_mode_safe"
     bl_label = "ページに戻る"
 
     @classmethod
@@ -849,8 +849,8 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
     def execute(self, context):
         # 1) 通常パス: ``exit_coma_mode`` の poll が通るならそれに委譲
         try:
-            if BNAME_OT_exit_coma_mode.poll(context):
-                return bpy.ops.bname.exit_coma_mode("EXEC_DEFAULT")
+            if BMANGA_OT_exit_coma_mode.poll(context):
+                return bpy.ops.bmanga.exit_coma_mode("EXEC_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("exit_coma_mode_safe: 通常パス失敗")
 
@@ -894,8 +894,8 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
             try:
                 ctx = bpy.context
                 set_mode(MODE_PAGE, ctx)
-                ctx.scene.bname_current_coma_id = ""
-                ctx.scene.bname_current_coma_page_id = ""
+                ctx.scene.bmanga_current_coma_id = ""
+                ctx.scene.bmanga_current_coma_page_id = ""
             except Exception:  # noqa: BLE001
                 pass
             self.report({"INFO"}, "戻りました")
@@ -907,10 +907,10 @@ class BNAME_OT_exit_coma_mode_safe(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_enter_coma_mode,
-    BNAME_OT_enter_coma_mode_from_viewport,
-    BNAME_OT_exit_coma_mode,
-    BNAME_OT_exit_coma_mode_safe,
+    BMANGA_OT_enter_coma_mode,
+    BMANGA_OT_enter_coma_mode_from_viewport,
+    BMANGA_OT_exit_coma_mode,
+    BMANGA_OT_exit_coma_mode_safe,
 )
 
 

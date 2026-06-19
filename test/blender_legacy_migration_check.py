@@ -28,12 +28,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -43,53 +43,53 @@ def _load_addon():
 def _create_legacy_collections(scene, page_id: str, coma_id: str) -> None:
     """旧アーキの ``__papers__`` / ``__masks__`` Collection と配下 Object を捏造."""
     papers_coll = bpy.data.collections.new("__papers__")
-    papers_coll["bname_kind"] = "papers_root"
-    papers_coll["bname_id"] = "__papers_root__"
+    papers_coll["bmanga_kind"] = "papers_root"
+    papers_coll["bmanga_id"] = "__papers_root__"
     scene.collection.children.link(papers_coll)
     paper_bg_mesh = bpy.data.meshes.new(f"paper_bg_mesh_main")
     paper_bg = bpy.data.objects.new(f"page_paper_bg_{page_id}", paper_bg_mesh)
-    paper_bg["bname_paper_bg_kind"] = "page"
-    paper_bg["bname_paper_bg_page_id"] = page_id
+    paper_bg["bmanga_paper_bg_kind"] = "page"
+    paper_bg["bmanga_paper_bg_page_id"] = page_id
     papers_coll.objects.link(paper_bg)
 
     masks_coll = bpy.data.collections.new("__masks__")
-    masks_coll["bname_kind"] = "masks_root"
-    masks_coll["bname_id"] = "__masks_root__"
+    masks_coll["bmanga_kind"] = "masks_root"
+    masks_coll["bmanga_id"] = "__masks_root__"
     scene.collection.children.link(masks_coll)
     page_mask_mesh = bpy.data.meshes.new(f"page_mask_mesh_{page_id}")
     page_mask = bpy.data.objects.new(f"page_mask_{page_id}", page_mask_mesh)
-    page_mask["bname_mask_kind"] = "page"
-    page_mask["bname_mask_owner_id"] = page_id
+    page_mask["bmanga_mask_kind"] = "page"
+    page_mask["bmanga_mask_owner_id"] = page_id
     masks_coll.objects.link(page_mask)
     coma_mask_mesh = bpy.data.meshes.new(f"coma_mask_mesh_{page_id}_{coma_id}")
     coma_mask = bpy.data.objects.new(f"coma_mask_{page_id}_{coma_id}", coma_mask_mesh)
-    coma_mask["bname_mask_kind"] = "coma"
-    coma_mask["bname_mask_owner_id"] = f"{page_id}:{coma_id}"
+    coma_mask["bmanga_mask_kind"] = "coma"
+    coma_mask["bmanga_mask_owner_id"] = f"{page_id}:{coma_id}"
     masks_coll.objects.link(coma_mask)
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_legacy_migration_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_legacy_migration_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
-        # まず legacy 状態を捏造 → そのあと bname.work_new で新アーキで作品作成
+        # まず legacy 状態を捏造 → そのあと bmanga.work_new で新アーキで作品作成
         # → mirror_work_to_outliner が走る → migration が起きるかを検証
         scene = bpy.context.scene
-        # bname.work_new の前段階で legacy Collection を捏造する必要がある。
-        # bname.work_new 内で mirror_work_to_outliner が呼ばれる流れを利用。
+        # bmanga.work_new の前段階で legacy Collection を捏造する必要がある。
+        # bmanga.work_new 内で mirror_work_to_outliner が呼ばれる流れを利用。
         # (factory_settings 直後は scene.collection.children に "Collection" のみ)
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "Migration.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Migration.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.utils import layer_object_sync as los
-        from bname_dev.utils import paper_bg_object as pbg
-        from bname_dev.utils import mask_object as mo
-        from bname_dev.utils import coma_plane as cp
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.utils import layer_object_sync as los
+        from bmanga_dev.utils import paper_bg_object as pbg
+        from bmanga_dev.utils import mask_object as mo
+        from bmanga_dev.utils import coma_plane as cp
 
         work = get_work(bpy.context)
         assert work is not None
@@ -136,9 +136,9 @@ def main() -> None:
             assert c.name != "__papers__", (
                 f"paper_bg should not be in __papers__ anymore: {[c.name for c in paper_bg_obj.users_collection]}"
             )
-        # かつ、 ページ Collection (bname_id == page.id) 直下にあること
+        # かつ、 ページ Collection (bmanga_id == page.id) 直下にあること
         in_page_coll = any(
-            str(c.get("bname_id", "") or "") == page.id
+            str(c.get("bmanga_id", "") or "") == page.id
             for c in paper_bg_obj.users_collection
         )
         assert in_page_coll, (
@@ -152,7 +152,7 @@ def main() -> None:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_LEGACY_MIGRATION_OK")
+    print("BMANGA_LEGACY_MIGRATION_OK")
 
 
 if __name__ == "__main__":

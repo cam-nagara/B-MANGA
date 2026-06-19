@@ -28,7 +28,7 @@ def _camera(context):
 
 def _settings(context):
     scene = getattr(context, "scene", None)
-    return getattr(scene, "bname_coma_camera_settings", None) if scene is not None else None
+    return getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
 
 
 def _calculate_shift_drag(
@@ -55,8 +55,8 @@ def _calculate_shift_drag(
     return next_shift, shift_anchor, mouse_anchor, fine_adjust_next
 
 
-class BNAME_OT_coma_camera_ensure(Operator):
-    bl_idname = "bname.coma_camera_ensure"
+class BMANGA_OT_coma_camera_ensure(Operator):
+    bl_idname = "bmanga.coma_camera_ensure"
     bl_label = "コマ編集カメラを用意"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -74,8 +74,8 @@ class BNAME_OT_coma_camera_ensure(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_sync_references(Operator):
-    bl_idname = "bname.coma_camera_sync_references"
+class BMANGA_OT_coma_camera_sync_references(Operator):
+    bl_idname = "bmanga.coma_camera_sync_references"
     bl_label = "下絵を生成・同期"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -98,8 +98,8 @@ class BNAME_OT_coma_camera_sync_references(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
-    bl_idname = "bname.coma_camera_toggle_name_backgrounds"
+class BMANGA_OT_coma_camera_toggle_name_backgrounds(Operator):
+    bl_idname = "bmanga.coma_camera_toggle_name_backgrounds"
     bl_label = "ページ画像を表示/非表示"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -119,8 +119,8 @@ class BNAME_OT_coma_camera_toggle_name_backgrounds(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_update_view(Operator):
-    bl_idname = "bname.coma_camera_update_view"
+class BMANGA_OT_coma_camera_update_view(Operator):
+    bl_idname = "bmanga.coma_camera_update_view"
     bl_label = "ビューを更新"
     bl_options = {"REGISTER"}
 
@@ -133,8 +133,8 @@ class BNAME_OT_coma_camera_update_view(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_angle_add(Operator):
-    bl_idname = "bname.coma_camera_angle_add"
+class BMANGA_OT_coma_camera_angle_add(Operator):
+    bl_idname = "bmanga.coma_camera_angle_add"
     bl_label = "カメラプリセット追加"
     bl_description = "現在のカメラに関する設定をまとめてプリセットとして保存します"
     bl_options = {"REGISTER", "UNDO"}
@@ -155,7 +155,7 @@ class BNAME_OT_coma_camera_angle_add(Operator):
         item.lens = float(getattr(cam.data, "lens", 35.0))
         item.shift_x = float(getattr(cam.data, "shift_x", 0.0))
         item.shift_y = float(getattr(cam.data, "shift_y", 0.0))
-        item.fisheye_layout_mode = bool(context.scene.bname_coma_camera_fisheye_layout_mode)
+        item.fisheye_layout_mode = bool(context.scene.bmanga_coma_camera_fisheye_layout_mode)
         item.fisheye_fov = float(getattr(cam.data, "fisheye_fov", math.pi))
         item.bg_images_scale = float(getattr(settings, "bg_images_scale", 1.0))
         settings.camera_angles_index = len(settings.camera_angles) - 1
@@ -188,8 +188,8 @@ def _copy_camera_angle(dst, src) -> None:
         setattr(dst, attr, getattr(src, attr))
 
 
-class BNAME_OT_coma_camera_angle_duplicate(Operator):
-    bl_idname = "bname.coma_camera_angle_duplicate"
+class BMANGA_OT_coma_camera_angle_duplicate(Operator):
+    bl_idname = "bmanga.coma_camera_angle_duplicate"
     bl_label = "カメラプリセット複製"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -213,8 +213,8 @@ class BNAME_OT_coma_camera_angle_duplicate(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_angle_remove(Operator):
-    bl_idname = "bname.coma_camera_angle_remove"
+class BMANGA_OT_coma_camera_angle_remove(Operator):
+    bl_idname = "bmanga.coma_camera_angle_remove"
     bl_label = "カメラプリセット削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -235,8 +235,8 @@ class BNAME_OT_coma_camera_angle_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_angle_apply(Operator):
-    bl_idname = "bname.coma_camera_angle_apply"
+class BMANGA_OT_coma_camera_angle_apply(Operator):
+    bl_idname = "bmanga.coma_camera_angle_apply"
     bl_label = "カメラプリセット適用"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -266,16 +266,16 @@ class BNAME_OT_coma_camera_angle_apply(Operator):
         cam.data.lens = float(item.lens)
         if hasattr(cam.data, "fisheye_fov"):
             cam.data.fisheye_fov = float(item.fisheye_fov)
-        context.scene.bname_coma_camera_fisheye_fov = float(item.fisheye_fov)
-        context.scene.bname_coma_camera_lens = float(item.lens)
-        context.scene.bname_coma_camera_fisheye_layout_mode = bool(item.fisheye_layout_mode)
+        context.scene.bmanga_coma_camera_fisheye_fov = float(item.fisheye_fov)
+        context.scene.bmanga_coma_camera_lens = float(item.lens)
+        context.scene.bmanga_coma_camera_fisheye_layout_mode = bool(item.fisheye_layout_mode)
         settings.bg_images_scale = float(item.bg_images_scale)
         coma_camera.update_render_border_from_current_coma(context)
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_camera_shift_drag(Operator):
-    bl_idname = "bname.coma_camera_shift_drag"
+class BMANGA_OT_coma_camera_shift_drag(Operator):
+    bl_idname = "bmanga.coma_camera_shift_drag"
     bl_label = "カメラのシフトをビューで調整"
     bl_description = "カメラビュー上でドラッグしてカメラシフトを調整します"
     bl_options = {"REGISTER", "UNDO"}
@@ -339,15 +339,15 @@ class BNAME_OT_coma_camera_shift_drag(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_coma_camera_ensure,
-    BNAME_OT_coma_camera_sync_references,
-    BNAME_OT_coma_camera_toggle_name_backgrounds,
-    BNAME_OT_coma_camera_update_view,
-    BNAME_OT_coma_camera_angle_add,
-    BNAME_OT_coma_camera_angle_duplicate,
-    BNAME_OT_coma_camera_angle_remove,
-    BNAME_OT_coma_camera_angle_apply,
-    BNAME_OT_coma_camera_shift_drag,
+    BMANGA_OT_coma_camera_ensure,
+    BMANGA_OT_coma_camera_sync_references,
+    BMANGA_OT_coma_camera_toggle_name_backgrounds,
+    BMANGA_OT_coma_camera_update_view,
+    BMANGA_OT_coma_camera_angle_add,
+    BMANGA_OT_coma_camera_angle_duplicate,
+    BMANGA_OT_coma_camera_angle_remove,
+    BMANGA_OT_coma_camera_angle_apply,
+    BMANGA_OT_coma_camera_shift_drag,
 )
 
 

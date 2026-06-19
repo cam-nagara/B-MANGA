@@ -114,8 +114,8 @@ def restore_next(op, context) -> bool:
 
 def _after_restore(context, page, entry, idx: int) -> None:
     page.active_text_index = idx
-    if hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "text"
+    if hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "text"
     text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
     layer_stack_utils.tag_view3d_redraw(context)
 

@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -48,7 +48,7 @@ def _image_from_text_object(obj):
 
 
 def _make_source_png(path: Path) -> None:
-    img = bpy.data.images.new("bname_real_object_source", width=2, height=2, alpha=True)
+    img = bpy.data.images.new("bmanga_real_object_source", width=2, height=2, alpha=True)
     img.pixels.foreach_set([
         1.0, 0.0, 0.0, 1.0,
         0.0, 1.0, 0.0, 1.0,
@@ -61,34 +61,34 @@ def _make_source_png(path: Path) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_real_object_safety_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_real_object_safety_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "RealObjectSafety.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "RealObjectSafety.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.operators import balloon_op, text_op
-        from bname_dev.utils import balloon_curve_object
-        from bname_dev.utils import balloon_fill_mesh
-        from bname_dev.utils import balloon_line_mesh
-        from bname_dev.utils import coma_border_object
-        from bname_dev.utils import image_real_object
-        from bname_dev.utils import layer_object_sync
-        from bname_dev.utils import object_naming as on
-        from bname_dev.utils import outliner_model
-        from bname_dev.utils import page_grid
-        from bname_dev.utils import paper_guide_object
-        from bname_dev.utils import text_real_object
-        from bname_dev.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.operators import balloon_op, text_op
+        from bmanga_dev.utils import balloon_curve_object
+        from bmanga_dev.utils import balloon_fill_mesh
+        from bmanga_dev.utils import balloon_line_mesh
+        from bmanga_dev.utils import coma_border_object
+        from bmanga_dev.utils import image_real_object
+        from bmanga_dev.utils import layer_object_sync
+        from bmanga_dev.utils import object_naming as on
+        from bmanga_dev.utils import outliner_model
+        from bmanga_dev.utils import page_grid
+        from bmanga_dev.utils import paper_guide_object
+        from bmanga_dev.utils import text_real_object
+        from bmanga_dev.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
 
         context = bpy.context
         scene = context.scene
         work = get_work(context)
         assert work is not None and work.loaded
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
         page = work.pages[0]
         page2 = work.pages[1]
         assert len(page.comas) > 0, "work_new should create a basic frame coma"
@@ -122,7 +122,7 @@ def main() -> None:
         )
         source_png = temp_root / "source.png"
         _make_source_png(source_png)
-        image_entry = scene.bname_image_layers.add()
+        image_entry = scene.bmanga_image_layers.add()
         image_entry.id = "image_real_0001"
         image_entry.title = "実体画像"
         image_entry.filepath = str(source_png)
@@ -138,7 +138,7 @@ def main() -> None:
         folder.title = "画像フォルダ"
         folder.parent_key = page2_key
         folder.expanded = True
-        folder_image_entry = scene.bname_image_layers.add()
+        folder_image_entry = scene.bmanga_image_layers.add()
         folder_image_entry.id = "image_real_folder_page2"
         folder_image_entry.title = "フォルダ内画像"
         folder_image_entry.filepath = str(source_png)
@@ -154,7 +154,7 @@ def main() -> None:
         outside_folder.title = "ページ外画像フォルダ"
         outside_folder.parent_key = OUTSIDE_STACK_KEY
         outside_folder.expanded = True
-        outside_folder_image_entry = scene.bname_image_layers.add()
+        outside_folder_image_entry = scene.bmanga_image_layers.add()
         outside_folder_image_entry.id = "image_real_folder_outside"
         outside_folder_image_entry.title = "ページ外フォルダ内画像"
         outside_folder_image_entry.filepath = str(source_png)
@@ -165,7 +165,7 @@ def main() -> None:
         outside_folder_image_entry.parent_kind = "folder"
         outside_folder_image_entry.parent_key = outside_folder.id
         outside_folder_image_entry.folder_key = outside_folder.id
-        outside_image_entry = scene.bname_image_layers.add()
+        outside_image_entry = scene.bmanga_image_layers.add()
         outside_image_entry.id = "image_real_outside"
         outside_image_entry.title = "ページ外画像"
         outside_image_entry.filepath = str(source_png)
@@ -180,7 +180,7 @@ def main() -> None:
         coma.border.style = "dashed"
         work.safe_area_overlay.opacity = 17.0
         work.safe_area_overlay.color = (0.25, 0.50, 0.75)
-        old_safe_mat = bpy.data.materials.get("BName_SafeAreaFill") or bpy.data.materials.new("BName_SafeAreaFill")
+        old_safe_mat = bpy.data.materials.get("BManga_SafeAreaFill") or bpy.data.materials.new("BManga_SafeAreaFill")
         old_safe_mesh = bpy.data.meshes.get(f"{paper_guide_object.PAPER_SAFE_FILL_MESH_PREFIX}{page.id}")
         if old_safe_mesh is None:
             old_safe_mesh = bpy.data.meshes.new(f"{paper_guide_object.PAPER_SAFE_FILL_MESH_PREFIX}{page.id}")
@@ -190,11 +190,11 @@ def main() -> None:
         layer_object_sync.mirror_work_to_outliner(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)
 
-        text_obj = on.find_object_by_bname_id(
-            text_real_object.text_object_bname_id(page, text),
+        text_obj = on.find_object_by_bmanga_id(
+            text_real_object.text_object_bmanga_id(page, text),
             kind="text",
         )
-        text_full_id = text_real_object.text_object_bname_id(page, text)
+        text_full_id = text_real_object.text_object_bmanga_id(page, text)
         assert text_obj is not None, "text real object was not created"
         assert text_obj.type == "MESH", f"text should be a mesh plane, got {text_obj.type}"
         assert text_coll.name == "text"
@@ -221,14 +221,14 @@ def main() -> None:
         old_empty = bpy.data.objects.get(f"text_{text.id}")
         assert old_empty is None or old_empty.type != "EMPTY", "legacy text Empty still exists"
 
-        image_obj = on.find_object_by_bname_id(image_entry.id, kind="image")
+        image_obj = on.find_object_by_bmanga_id(image_entry.id, kind="image")
         assert image_obj is not None, "image real object was not created"
         assert image_obj.type == "MESH", f"image should be a mesh plane, got {image_obj.type}"
         assert image_obj.active_material is not None, "image real object has no material"
         assert image_obj.data.uv_layers.active is not None, "image real object has no UV"
         legacy_image_empty = bpy.data.objects.get(f"image_{image_entry.id}")
         assert legacy_image_empty is None or legacy_image_empty.type != "EMPTY", "legacy image Empty still exists"
-        folder_image_obj = on.find_object_by_bname_id(folder_image_entry.id, kind="image")
+        folder_image_obj = on.find_object_by_bmanga_id(folder_image_entry.id, kind="image")
         assert folder_image_obj is not None, "folder image real object was not created"
         ox2, oy2 = page_grid.page_total_offset_mm(work, scene, 1)
         expected_x = ox2 + folder_image_entry.x_mm + folder_image_entry.width_mm * 0.5
@@ -237,13 +237,13 @@ def main() -> None:
         actual_y = folder_image_obj.location.y * 1000.0
         assert abs(actual_x - expected_x) < 1e-4, (actual_x, expected_x, folder_image_obj.location[:])
         assert abs(actual_y - expected_y) < 1e-4, (actual_y, expected_y, folder_image_obj.location[:])
-        outside_image_obj = on.find_object_by_bname_id(outside_image_entry.id, kind="image")
+        outside_image_obj = on.find_object_by_bmanga_id(outside_image_entry.id, kind="image")
         assert outside_image_obj is not None, "outside image real object was not created"
         expected_outside_x = outside_image_entry.x_mm + outside_image_entry.width_mm * 0.5
         expected_outside_y = outside_image_entry.y_mm + outside_image_entry.height_mm * 0.5
         assert abs(outside_image_obj.location.x * 1000.0 - expected_outside_x) < 1e-4
         assert abs(outside_image_obj.location.y * 1000.0 - expected_outside_y) < 1e-4
-        outside_folder_image_obj = on.find_object_by_bname_id(outside_folder_image_entry.id, kind="image")
+        outside_folder_image_obj = on.find_object_by_bmanga_id(outside_folder_image_entry.id, kind="image")
         assert outside_folder_image_obj is not None, "outside folder image real object was not created"
         expected_outside_folder_x = outside_folder_image_entry.x_mm + outside_folder_image_entry.width_mm * 0.5
         expected_outside_folder_y = outside_folder_image_entry.y_mm + outside_folder_image_entry.height_mm * 0.5
@@ -304,7 +304,7 @@ def main() -> None:
         assert safe_mat is not None, "safe area fill needs a viewport material in texture shading"
         assert safe_mat.name.startswith(paper_guide_object.PAPER_SAFE_FILL_VIEW_MATERIAL), safe_mat.name
         assert len(getattr(safe_fill_obj.data, "materials", [])) == 1, "safe area fill material slot count is wrong"
-        assert bpy.data.materials.get("BName_SafeAreaFill") is None, "old safe area fill material was not removed"
+        assert bpy.data.materials.get("BManga_SafeAreaFill") is None, "old safe area fill material was not removed"
         expected_safe_color = (0.25, 0.50, 0.75, 0.17)
         for actual, expected in zip(safe_fill_obj.color, expected_safe_color, strict=False):
             assert abs(float(actual) - expected) < 1.0e-4, (tuple(safe_fill_obj.color), expected_safe_color)
@@ -342,7 +342,7 @@ def main() -> None:
         assert not border_obj.hide_viewport and not border_obj.hide_render, "coma visibility restore failed"
 
         _ = balloon_curve_object.BALLOON_CURVE_NAME_PREFIX
-        balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
+        balloon_obj = on.find_object_by_bmanga_id(balloon.id, kind="balloon")
         assert balloon_obj is not None, "balloon curve was not created"
         assert balloon_obj.type == "CURVE", f"balloon should be a curve, got {balloon_obj.type}"
         assert len(balloon_obj.data.splines) >= 1, "balloon should keep editable curve outline"
@@ -356,7 +356,7 @@ def main() -> None:
         assert _evaluated_polygon_count(fill_mesh_obj) > 0, "balloon fill mesh has no polygons"
         assert len(balloon_obj.modifiers) == 0, "balloon should not use Geometry Nodes display helper"
         source_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_SOURCE_NAME_PREFIX}{balloon.id}")
-        assert source_obj is None, "balloon reference shape should not be generated by B-Name"
+        assert source_obj is None, "balloon reference shape should not be generated by B-MANGA"
         balloon_fill_obj = bpy.data.objects.get(f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}")
         assert balloon_fill_obj is None, "balloon fill object should not be separate"
         balloon.visible = False
@@ -369,7 +369,7 @@ def main() -> None:
         tail.length_mm = 12.0
         tail.root_width_mm = 5.0
         assert balloon_curve_object.on_balloon_entry_changed(balloon), "balloon tail sync failed"
-        balloon_obj = on.find_object_by_bname_id(balloon.id, kind="balloon")
+        balloon_obj = on.find_object_by_bmanga_id(balloon.id, kind="balloon")
         assert balloon_obj is not None and balloon_obj.type == "CURVE"
         assert len(balloon_obj.data.splines) >= 2, "balloon tail was not added to editable curve"
         line_mesh_obj = bpy.data.objects.get(f"{balloon_line_mesh.BALLOON_LINE_MESH_NAME_PREFIX}{balloon.id}")

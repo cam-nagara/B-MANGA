@@ -82,7 +82,7 @@ def _simplify_dp(points: list, tol: float) -> list:
     return [points[0], points[-1]]
 
 
-def _draw_callback(op: "BNAME_OT_fill_tool") -> None:
+def _draw_callback(op: "BMANGA_OT_fill_tool") -> None:
     pts = op._points_px
     if not pts or len(pts) < 2:
         return
@@ -124,10 +124,10 @@ def _draw_callback(op: "BNAME_OT_fill_tool") -> None:
             pass
 
 
-class BNAME_OT_fill_tool(Operator):
+class BMANGA_OT_fill_tool(Operator):
     """囲い塗りツール: 投げ縄ドラッグでフリーハンド範囲のベタ塗りレイヤーを作成"""
 
-    bl_idname = "bname.fill_tool"
+    bl_idname = "bmanga.fill_tool"
     bl_label = "囲い塗り"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -316,7 +316,7 @@ class BNAME_OT_fill_tool(Operator):
         return True
 
     def _create_lasso_fill(self, context, points_mm: list) -> None:
-        coll = getattr(context.scene, "bname_fill_layers", None)
+        coll = getattr(context.scene, "bmanga_fill_layers", None)
         if coll is None:
             return
 
@@ -354,8 +354,8 @@ class BNAME_OT_fill_tool(Operator):
             preset_op.apply_fill_preset_to_entry(context, entry)
         except Exception:  # noqa: BLE001
             pass
-        context.scene.bname_active_fill_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "fill"
+        context.scene.bmanga_active_fill_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "fill"
         try:
             from ..utils import fill_real_object as _fro
 
@@ -395,7 +395,7 @@ class BNAME_OT_fill_tool(Operator):
         coma_modal_state.clear_active(TOOL_NAME, self, context)
 
 
-_CLASSES = (BNAME_OT_fill_tool,)
+_CLASSES = (BMANGA_OT_fill_tool,)
 
 
 def register() -> None:

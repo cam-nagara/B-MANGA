@@ -1,7 +1,7 @@
 """パス構築ユーティリティ.
 
-作品フォルダ (.bname) 直下・ページディレクトリ・コマファイルの相対パスを
-一元的に構築する。.bname フォルダの命名規則 (4.1-4.4) を 1 箇所に集約。
+作品フォルダ (.bmanga) 直下・ページディレクトリ・コマファイルの相対パスを
+一元的に構築する。.bmanga フォルダの命名規則 (4.1-4.4) を 1 箇所に集約。
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ EXPORTS_DIR_NAME = "exports"
 RASTER_DIR_NAME = "raster"
 RASTER_TRASH_DIR_NAME = ".trash"
 
-BNAME_DIR_SUFFIX = ".bname"
+BMANGA_DIR_SUFFIX = ".bmanga"
 
 
 # 単ページ ("p0001") と見開き ("p0020-0021") のみ許可
@@ -101,12 +101,12 @@ def page_meta_path(work_dir: Path, page_id: str) -> Path:
 
 
 def page_blend_path(work_dir: Path, page_id: str) -> Path:
-    """ページ用 .blend のパス (``<work>.bname/pNNNN/page.blend``)."""
+    """ページ用 .blend のパス (``<work>.bmanga/pNNNN/page.blend``)."""
     return page_dir(work_dir, page_id) / PAGE_BLEND_NAME
 
 
 def work_blend_path(work_dir: Path) -> Path:
-    """作品マスター .blend のパス (``<work>.bname/work.blend``)."""
+    """作品マスター .blend のパス (``<work>.bmanga/work.blend``)."""
     return Path(work_dir) / WORK_BLEND_NAME
 
 
@@ -170,12 +170,12 @@ def raster_png_path(work_dir: Path, raster_id: str) -> Path:
     return raster_dir(work_dir) / f"{safe_id}.png"
 
 
-def ensure_bname_suffix(path: Path) -> Path:
-    """``.bname`` 拡張子を持たせたディレクトリパスを返す (既に持っていればそのまま)."""
+def ensure_bmanga_suffix(path: Path) -> Path:
+    """``.bmanga`` 拡張子を持たせたディレクトリパスを返す (既に持っていればそのまま)."""
     p = Path(path)
-    if p.suffix == BNAME_DIR_SUFFIX:
+    if p.suffix == BMANGA_DIR_SUFFIX:
         return p
-    return p.with_suffix(BNAME_DIR_SUFFIX)
+    return p.with_suffix(BMANGA_DIR_SUFFIX)
 
 
 def as_relative(path: Path, base: Path) -> Path:

@@ -13,7 +13,7 @@
 4. polygon shape でも頂点が追従する。
 5. ``utils.active_target.focus_active_coma`` 呼び出し後に
    ``resolve_active_target`` が ``("coma", "<page_id>:<coma_id>", page)`` を返す。
-6. paper_bg Material (``BName_PaperBackground``) と ``__papers__`` Collection
+6. paper_bg Material (``BManga_PaperBackground``) と ``__papers__`` Collection
    visibility が coma_plane 操作前後で不変。
 7. 旧 ``__masks__`` Collection / ``page_mask_*`` は生成されず、コマ内
    ラスター用の非表示 ``coma_mask_*`` だけが参照オブジェクトとして
@@ -35,12 +35,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -58,24 +58,24 @@ def _mesh_extents_local_m(obj: bpy.types.Object) -> tuple[float, float, float, f
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_plane_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_plane_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaPlane.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaPlane.bmanga"))
         assert result == {"FINISHED"}, result
         # v0.6.279 以降、コマ実体 (coma_plane / coma_mask) はページ用 blend
         # のみが持つため、ページを開いてから検証する
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.io import export_pipeline
-        from bname_dev.utils import active_target as _at
-        from bname_dev.utils import coma_plane as cp
-        from bname_dev.utils import paper_bg_object as pbg
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.io import export_pipeline
+        from bmanga_dev.utils import active_target as _at
+        from bmanga_dev.utils import coma_plane as cp
+        from bmanga_dev.utils import paper_bg_object as pbg
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -126,7 +126,7 @@ def main() -> None:
         paper_bg_obj = bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page.id}")
         assert paper_bg_obj is not None
         paper_bg_in_page_coll = any(
-            str(c.get("bname_id", "") or "") == page.id for c in paper_bg_obj.users_collection
+            str(c.get("bmanga_id", "") or "") == page.id for c in paper_bg_obj.users_collection
         )
         assert paper_bg_in_page_coll, (
             f"paper_bg はページ Collection 直下に置かれるべき: "
@@ -151,10 +151,10 @@ def main() -> None:
 
         # rect_x_mm/rect_y_mm は obj.location で表現 (page offset = 0 なので等価)
         # page offset を考慮した world 位置
-        from bname_dev.utils import page_grid as _pg
+        from bmanga_dev.utils import page_grid as _pg
 
         page_ox_mm, page_oy_mm = _pg.page_total_offset_mm(work, scene, 0)
-        from bname_dev.utils.geom import mm_to_m
+        from bmanga_dev.utils.geom import mm_to_m
 
         assert _approx(plane_obj_after.location.x, mm_to_m(page_ox_mm + 10.0)), plane_obj_after.location.x
         assert _approx(plane_obj_after.location.y, mm_to_m(page_oy_mm + 20.0)), plane_obj_after.location.y
@@ -189,7 +189,7 @@ def main() -> None:
 
         # 5. focus_active_coma → resolve_active_target が coma を返す
         page.active_coma_index = -1
-        scene.bname_current_coma_id = ""
+        scene.bmanga_current_coma_id = ""
         kind, _key, _page = _at.resolve_active_target(bpy.context)
         assert kind == "page", kind
         _at.focus_active_coma(scene, work, 0, 0)
@@ -204,7 +204,7 @@ def main() -> None:
         paper_bg_obj_after = bpy.data.objects.get(f"{pbg.PAPER_BG_NAME_PREFIX}{page.id}")
         assert paper_bg_obj_after is paper_bg_obj
         assert any(
-            str(c.get("bname_id", "") or "") == page.id
+            str(c.get("bmanga_id", "") or "") == page.id
             for c in paper_bg_obj_after.users_collection
         )
 
@@ -223,7 +223,7 @@ def main() -> None:
         assert mask_obj.modifiers.get(cp.COMA_MASK_SOLIDIFY_NAME) is not None
 
         # ---- 8. 新規コマ追加で coma_plane が即時生成されること ----
-        from bname_dev.operators import coma_op
+        from bmanga_dev.operators import coma_op
         from pathlib import Path as _P
 
         new_entry = coma_op.create_rect_coma(
@@ -246,7 +246,7 @@ def main() -> None:
         # (v0.6.281: 表示X/Y は一覧専用の見た目オフセット。ページ編集中は
         #  紙・コマ・内容の位置関係を固定する)。あわせて coma_mask が
         #  coma_plane と同じ XY を保つこと (位置更新の追従) も確認する。
-        from bname_dev.utils import page_grid as _pg
+        from bmanga_dev.utils import page_grid as _pg
 
         old_loc_x = float(new_plane.location.x)
         mask_follow = cp.find_coma_mask_object(page.id, new_entry.id) or cp.ensure_coma_mask(
@@ -279,7 +279,7 @@ def main() -> None:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_COMA_PLANE_OK")
+    print("BMANGA_COMA_PLANE_OK")
 
 
 if __name__ == "__main__":

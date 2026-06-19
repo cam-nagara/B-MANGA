@@ -17,9 +17,9 @@ from bpy.props import (
 )
 
 from ..utils import log
-from .balloon import BNameBalloonEntry
-from .coma import BNameComaEntry
-from .text_entry import BNameTextEntry
+from .balloon import BMangaBalloonEntry
+from .coma import BMangaComaEntry
+from .text_entry import BMangaTextEntry
 
 _logger = log.get_logger(__name__)
 
@@ -35,7 +35,7 @@ def _on_page_visible_changed(self, context) -> None:
         _logger.exception("page visible update failed")
 
 
-class BNameOriginalPageRef(bpy.types.PropertyGroup):
+class BMangaOriginalPageRef(bpy.types.PropertyGroup):
     """見開きページ結合時の結合元ページ ID を保持する要素."""
 
     page_id: StringProperty(  # type: ignore[valid-type]
@@ -44,7 +44,7 @@ class BNameOriginalPageRef(bpy.types.PropertyGroup):
     )
 
 
-class BNamePageEntry(bpy.types.PropertyGroup):
+class BMangaPageEntry(bpy.types.PropertyGroup):
     """pages.json の 1 エントリに対応."""
 
     # --- 識別子 ---
@@ -71,7 +71,7 @@ class BNamePageEntry(bpy.types.PropertyGroup):
     )
     original_pages: CollectionProperty(  # type: ignore[valid-type]
         name="結合元ページ",
-        type=BNameOriginalPageRef,
+        type=BMangaOriginalPageRef,
     )
     tombo_aligned: BoolProperty(  # type: ignore[valid-type]
         name="トンボを合わせる",
@@ -140,7 +140,7 @@ class BNamePageEntry(bpy.types.PropertyGroup):
     )
 
     # --- コマ一覧 ---
-    comas: CollectionProperty(type=BNameComaEntry)  # type: ignore[valid-type]
+    comas: CollectionProperty(type=BMangaComaEntry)  # type: ignore[valid-type]
     active_coma_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブコマ",
         default=-1,
@@ -148,13 +148,13 @@ class BNamePageEntry(bpy.types.PropertyGroup):
     )
 
     # --- フキダシ / テキスト (Phase 3 以降: ページ単位保持) ---
-    balloons: CollectionProperty(type=BNameBalloonEntry)  # type: ignore[valid-type]
+    balloons: CollectionProperty(type=BMangaBalloonEntry)  # type: ignore[valid-type]
     active_balloon_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブフキダシ",
         default=-1,
         min=-1,
     )
-    texts: CollectionProperty(type=BNameTextEntry)  # type: ignore[valid-type]
+    texts: CollectionProperty(type=BMangaTextEntry)  # type: ignore[valid-type]
     active_text_index: IntProperty(  # type: ignore[valid-type]
         name="アクティブテキスト",
         default=-1,
@@ -163,8 +163,8 @@ class BNamePageEntry(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
-    BNameOriginalPageRef,
-    BNamePageEntry,
+    BMangaOriginalPageRef,
+    BMangaPageEntry,
 )
 
 

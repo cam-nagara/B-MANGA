@@ -107,8 +107,8 @@ def _sync_balloon_after_transform(context, page, entry) -> None:
         pass
 
 
-class BNAME_OT_free_transform_mode(Operator):
-    bl_idname = "bname.free_transform_mode"
+class BMANGA_OT_free_transform_mode(Operator):
+    bl_idname = "bmanga.free_transform_mode"
     bl_label = "自由変形"
     bl_description = (
         "四隅のハンドルをドラッグして形を自由に歪められるようにします"
@@ -128,15 +128,15 @@ class BNAME_OT_free_transform_mode(Operator):
             self.report({"WARNING"}, "自由変形する対象が選択されていません")
             return {"CANCELLED"}
         wm = context.window_manager
-        if hasattr(wm, "bname_free_transform_key"):
-            wm.bname_free_transform_key = key
+        if hasattr(wm, "bmanga_free_transform_key"):
+            wm.bmanga_free_transform_key = key
         layer_stack_utils.tag_view3d_redraw(context)
         self.report({"INFO"}, "自由変形: 四隅のハンドルをドラッグして変形 (別のオブジェクトを選択で終了)")
         return {"FINISHED"}
 
 
-class BNAME_OT_reset_free_transform(Operator):
-    bl_idname = "bname.reset_free_transform"
+class BMANGA_OT_reset_free_transform(Operator):
+    bl_idname = "bmanga.reset_free_transform"
     bl_label = "自由変形をリセット"
     bl_description = "選択中のフキダシ、テキスト、効果線の自由変形を元の矩形に戻します"
     bl_options = {"UNDO"}
@@ -213,8 +213,8 @@ class BNAME_OT_reset_free_transform(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_free_transform_scale(Operator):
-    bl_idname = "bname.balloon_free_transform_scale"
+class BMANGA_OT_balloon_free_transform_scale(Operator):
+    bl_idname = "bmanga.balloon_free_transform_scale"
     bl_label = "拡大・縮小"
     bl_description = "選択中のフキダシを、形状を保ったまま自由変形で拡大・縮小します"
     bl_options = {"REGISTER", "UNDO"}
@@ -258,8 +258,8 @@ class BNAME_OT_balloon_free_transform_scale(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_free_transform_rotate(Operator):
-    bl_idname = "bname.balloon_free_transform_rotate"
+class BMANGA_OT_balloon_free_transform_rotate(Operator):
+    bl_idname = "bmanga.balloon_free_transform_rotate"
     bl_label = "回転"
     bl_description = "選択中のフキダシを、形状を保ったまま自由変形で回転します"
     bl_options = {"REGISTER", "UNDO"}
@@ -296,8 +296,8 @@ class BNAME_OT_balloon_free_transform_rotate(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_free_transform_scale_rotate(Operator):
-    bl_idname = "bname.balloon_free_transform_scale_rotate"
+class BMANGA_OT_balloon_free_transform_scale_rotate(Operator):
+    bl_idname = "bmanga.balloon_free_transform_scale_rotate"
     bl_label = "拡大・縮小・回転"
     bl_description = "選択中のフキダシを、形状を保ったまま拡大・縮小・回転します"
     bl_options = {"REGISTER", "UNDO"}
@@ -348,16 +348,16 @@ class BNAME_OT_balloon_free_transform_scale_rotate(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_free_transform_mode,
-    BNAME_OT_reset_free_transform,
-    BNAME_OT_balloon_free_transform_scale,
-    BNAME_OT_balloon_free_transform_rotate,
-    BNAME_OT_balloon_free_transform_scale_rotate,
+    BMANGA_OT_free_transform_mode,
+    BMANGA_OT_reset_free_transform,
+    BMANGA_OT_balloon_free_transform_scale,
+    BMANGA_OT_balloon_free_transform_rotate,
+    BMANGA_OT_balloon_free_transform_scale_rotate,
 )
 
 
 def register() -> None:
-    bpy.types.WindowManager.bname_free_transform_key = bpy.props.StringProperty(default="")
+    bpy.types.WindowManager.bmanga_free_transform_key = bpy.props.StringProperty(default="")
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -369,6 +369,6 @@ def unregister() -> None:
         except RuntimeError:
             pass
     try:
-        del bpy.types.WindowManager.bname_free_transform_key
+        del bpy.types.WindowManager.bmanga_free_transform_key
     except AttributeError:
         pass

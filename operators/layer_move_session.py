@@ -16,7 +16,7 @@ class LayerMoveDragSession:
         self._last_world = start_world
         self._dragging = False
         self._moved = False
-        self._started = bool(layer_move_op.BNAME_OT_layer_move_tool._begin_drag(self, context, start_world))
+        self._started = bool(layer_move_op.BMANGA_OT_layer_move_tool._begin_drag(self, context, start_world))
 
     @property
     def started(self) -> bool:
@@ -30,16 +30,16 @@ class LayerMoveDragSession:
         return
 
     def _capture_snapshot(self, context, kind: str, resolved: dict) -> None:
-        layer_move_op.BNAME_OT_layer_move_tool._capture_snapshot(self, context, kind, resolved)
+        layer_move_op.BMANGA_OT_layer_move_tool._capture_snapshot(self, context, kind, resolved)
 
     def _restore_snapshots(self, context) -> None:
-        layer_move_op.BNAME_OT_layer_move_tool._restore_snapshots(self, context)
+        layer_move_op.BMANGA_OT_layer_move_tool._restore_snapshots(self, context)
 
     def _apply_delta(self, context, dx_mm: float, dy_mm: float) -> bool:
-        return bool(layer_move_op.BNAME_OT_layer_move_tool._apply_delta(self, context, dx_mm, dy_mm))
+        return bool(layer_move_op.BMANGA_OT_layer_move_tool._apply_delta(self, context, dx_mm, dy_mm))
 
     def _push_undo_step(self) -> None:
-        layer_move_op.BNAME_OT_layer_move_tool._push_undo_step(self)
+        layer_move_op.BMANGA_OT_layer_move_tool._push_undo_step(self)
 
     def apply(self, context, event) -> bool:
         coords = coma_picker._event_world_mm(context, event)

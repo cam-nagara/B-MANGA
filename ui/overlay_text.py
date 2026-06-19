@@ -1,4 +1,4 @@
-"""Viewport overlay drawing for B-Name text entries."""
+"""Viewport overlay drawing for B-MANGA text entries."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _TEXT_SELECTION_COLOR_DEFAULT = (0.0, 0.7, 1.0, 0.45)
 def _text_selection_color(context) -> tuple[float, float, float, float]:
     try:
         import bpy
-        prefs = bpy.context.preferences.addons.get("b_name")
+        prefs = bpy.context.preferences.addons.get("b_manga")
         if prefs is not None:
             c = getattr(prefs.preferences, "text_selection_color", None)
             if c is not None and len(c) >= 4:
@@ -27,7 +27,7 @@ def _text_selection_color(context) -> tuple[float, float, float, float]:
         pass
     if context is not None:
         scene = getattr(context, "scene", None)
-        c = getattr(scene, "bname_text_selection_color", None) if scene is not None else None
+        c = getattr(scene, "bmanga_text_selection_color", None) if scene is not None else None
         if c is not None and len(c) >= 4:
             return (float(c[0]), float(c[1]), float(c[2]), float(c[3]))
     return _TEXT_SELECTION_COLOR_DEFAULT

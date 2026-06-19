@@ -14,8 +14,8 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_MASK_VISUAL_OUT", "")
-    or (ROOT / ".codex" / "visual" / "bname_mask_matrix")
+    os.environ.get("BMANGA_MASK_VISUAL_OUT", "")
+    or (ROOT / ".codex" / "visual" / "bmanga_mask_matrix")
 )
 PNG_1PX = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYPgPAAEDAQCW"
@@ -25,12 +25,12 @@ PNG_1PX = (
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_mask_visual",
+        "bmanga_dev_mask_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_mask_visual"] = mod
+    sys.modules["bmanga_dev_mask_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -46,7 +46,7 @@ def _mesh_mask_state(obj, expected: str, mask_apply) -> tuple[bool, str]:
         # フキダシのコマ内マスクは画像マスク方式 (GN くり抜き modifier は撤去済)。
         # 主線 Mesh の material に「コマ内容マスク」ノードが接続されているかで
         # 判定する。
-        balloon_id = str(obj.get("bname_id", "") or "")
+        balloon_id = str(obj.get("bmanga_id", "") or "")
         line_mesh = bpy.data.objects.get(f"balloon_line_mesh_{balloon_id}")
         mask_found = False
         if line_mesh is not None and getattr(line_mesh, "data", None) is not None:
@@ -77,12 +77,12 @@ def _mesh_mask_state(obj, expected: str, mask_apply) -> tuple[bool, str]:
 
 
 def _gp_mask_bounds_mm(obj) -> tuple[float, float, float, float] | None:
-    from bname_dev_mask_visual.utils.geom import m_to_mm
+    from bmanga_dev_mask_visual.utils.geom import m_to_mm
 
     layers = getattr(getattr(obj, "data", None), "layers", None)
     if layers is None:
         return None
-    mask_layer = layers.get("__bname_mask")
+    mask_layer = layers.get("__bmanga_mask")
     if mask_layer is None:
         return None
     xs: list[float] = []
@@ -116,18 +116,18 @@ def _gp_mask_state(obj, expected: str, page_bounds, coma_bounds) -> tuple[bool, 
         ok = _close_bounds(bounds, page_bounds)
         return ok, "ページ" if ok else f"NG {bounds}"
     layers = getattr(getattr(obj, "data", None), "layers", None)
-    mask_layer = layers.get("__bname_mask") if layers is not None else None
+    mask_layer = layers.get("__bmanga_mask") if layers is not None else None
     return mask_layer is None, "なし" if mask_layer is None else "NG maskあり"
 
 
 def _effect_mask_state(obj) -> tuple[bool, str]:
     layers = getattr(getattr(obj, "data", None), "layers", None)
-    mask_layer = layers.get("__bname_mask") if layers is not None else None
+    mask_layer = layers.get("__bmanga_mask") if layers is not None else None
     return mask_layer is None, "なし" if mask_layer is None else "NG maskあり"
 
 
 def _assert_page_mask_volumes_are_hidden(mask_apply) -> None:
-    from bname_dev_mask_visual.utils import paper_bg_object
+    from bmanga_dev_mask_visual.utils import paper_bg_object
 
     for obj in bpy.data.objects:
         if obj.name.startswith(paper_bg_object.PAPER_BG_NAME_PREFIX):
@@ -141,9 +141,9 @@ def _assert_page_mask_volumes_are_hidden(mask_apply) -> None:
 
 
 def _create_image(context, page, parent_kind: str, parent_key: str, index: int, image_path: Path):
-    from bname_dev_mask_visual.utils import image_real_object
+    from bmanga_dev_mask_visual.utils import image_real_object
 
-    entry = context.scene.bname_image_layers.add()
+    entry = context.scene.bmanga_image_layers.add()
     entry.id = f"mask_image_{index}"
     entry.title = "画像"
     entry.filepath = str(image_path)
@@ -157,9 +157,9 @@ def _create_image(context, page, parent_kind: str, parent_key: str, index: int, 
 
 
 def _create_raster(context, parent_kind: str, parent_key: str, index: int):
-    from bname_dev_mask_visual.operators import raster_layer_op
+    from bmanga_dev_mask_visual.operators import raster_layer_op
 
-    entry = context.scene.bname_raster_layers.add()
+    entry = context.scene.bmanga_raster_layers.add()
     entry.id = f"mask_raster_{index}"
     entry.title = "ラスター"
     entry.scope = "master" if parent_kind in {"none", "outside"} else "page"
@@ -171,8 +171,8 @@ def _create_raster(context, parent_kind: str, parent_key: str, index: int):
 
 
 def _create_text(context, page, parent_kind: str, parent_key: str, index: int):
-    from bname_dev_mask_visual.operators import text_op
-    from bname_dev_mask_visual.utils import text_real_object
+    from bmanga_dev_mask_visual.operators import text_op
+    from bmanga_dev_mask_visual.utils import text_real_object
 
     entry, _missing = text_op._create_text_entry(
         context,
@@ -190,7 +190,7 @@ def _create_text(context, page, parent_kind: str, parent_key: str, index: int):
 
 
 def _create_balloon(context, page, parent_kind: str, parent_key: str, index: int):
-    from bname_dev_mask_visual.utils import balloon_curve_object
+    from bmanga_dev_mask_visual.utils import balloon_curve_object
 
     entry = page.balloons.add()
     entry.id = f"mask_balloon_{index}"
@@ -209,11 +209,11 @@ def _create_balloon(context, page, parent_kind: str, parent_key: str, index: int
 
 
 def _create_gp(context, parent_kind: str, parent_key: str, index: int):
-    from bname_dev_mask_visual.utils import gp_object_layer
+    from bmanga_dev_mask_visual.utils import gp_object_layer
 
     return gp_object_layer.create_layer_gp_object(
         scene=context.scene,
-        bname_id=f"mask_gp_{index}",
+        bmanga_id=f"mask_gp_{index}",
         title="GP",
         z_index=100 + index,
         parent_kind=parent_kind,
@@ -222,11 +222,11 @@ def _create_gp(context, parent_kind: str, parent_key: str, index: int):
 
 
 def _create_effect(context, parent_kind: str, parent_key: str, index: int):
-    from bname_dev_mask_visual.utils import effect_line_object
+    from bmanga_dev_mask_visual.utils import effect_line_object
 
     return effect_line_object.create_effect_line_object(
         scene=context.scene,
-        bname_id=f"mask_effect_{index}",
+        bmanga_id=f"mask_effect_{index}",
         title="効果線",
         z_index=200 + index,
         parent_kind=parent_kind,
@@ -235,7 +235,7 @@ def _create_effect(context, parent_kind: str, parent_key: str, index: int):
 
 
 def _draw_report(rows: list[dict], output: Path) -> None:
-    from bname_dev_mask_visual.utils import python_deps
+    from bmanga_dev_mask_visual.utils import python_deps
 
     python_deps.ensure_bundled_wheels_on_path()
     from PIL import Image, ImageDraw, ImageFont  # type: ignore
@@ -256,7 +256,7 @@ def _draw_report(rows: list[dict], output: Path) -> None:
         small = ImageFont.truetype("meiryo.ttc", 12)
     except Exception:
         font = font_bold = small = ImageFont.load_default()
-    draw.text((18, 16), "B-Name マスク組み合わせ目視監査", fill="#111", font=font_bold)
+    draw.text((18, 16), "B-MANGA マスク組み合わせ目視監査", fill="#111", font=font_bold)
     draw.text((18, 44), "緑=期待マスク適用 / 赤=不整合", fill="#333", font=small)
     for c, name in enumerate(cols):
         x = left_w + c * cell_w
@@ -281,27 +281,27 @@ def _draw_report(rows: list[dict], output: Path) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_mask_visual_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_mask_visual_"))
     mod = None
     rows: list[dict] = []
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "MaskVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MaskVisual.bmanga"))
         assert "FINISHED" in result, result
         # v0.6.279 以降、コマ・マスク等の実体はページ用 blend のみが持つため、
         # ページを開いてから検証する
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert result == {"FINISHED"}, result
 
-        from bname_dev_mask_visual.utils import active_target
-        from bname_dev_mask_visual.utils import coma_plane
-        from bname_dev_mask_visual.utils import mask_apply
-        from bname_dev_mask_visual.utils.layer_hierarchy import coma_stack_key, page_stack_key
+        from bmanga_dev_mask_visual.utils import active_target
+        from bmanga_dev_mask_visual.utils import coma_plane
+        from bmanga_dev_mask_visual.utils import mask_apply
+        from bmanga_dev_mask_visual.utils.layer_hierarchy import coma_stack_key, page_stack_key
 
         context = bpy.context
         scene = context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page = work.pages[0]
         coma = page.comas[0]
         coma.shape_type = "rect"
@@ -356,13 +356,13 @@ def main() -> None:
                     "state": state,
                     "note": "期待=" + ("マスクなし" if actual_expected == "none" else actual_expected),
                 })
-        output = OUT_DIR / "bname_mask_matrix.png"
+        output = OUT_DIR / "bmanga_mask_matrix.png"
         _draw_report(rows, output)
         _assert_page_mask_volumes_are_hidden(mask_apply)
         if not all(bool(row["ok"]) for row in rows):
             failed = [f"{row['layer']}/{row['scope']}:{row['state']}" for row in rows if not row["ok"]]
             raise AssertionError("; ".join(failed))
-        print(f"BNAME_MASK_VISUAL_MATRIX_OK visual={output}")
+        print(f"BMANGA_MASK_VISUAL_MATRIX_OK visual={output}")
     finally:
         if mod is not None:
             try:

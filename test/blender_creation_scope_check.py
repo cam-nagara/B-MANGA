@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -41,7 +41,7 @@ def _inside_panel_point(panel) -> tuple[float, float]:
 
 
 def _outside_panel_point(work, page) -> tuple[float, float]:
-    from bname_dev.utils import layer_hierarchy
+    from bmanga_dev.utils import layer_hierarchy
 
     width = float(getattr(work.paper, "canvas_width_mm", 210.0) or 210.0)
     height = float(getattr(work.paper, "canvas_height_mm", 297.0) or 297.0)
@@ -60,7 +60,7 @@ def _outside_panel_point(work, page) -> tuple[float, float]:
 
 
 def _assert_rect_on_page(context, work, page_index: int, rect, label: str) -> None:
-    from bname_dev.utils import page_grid
+    from bmanga_dev.utils import page_grid
 
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, context.scene, page_index)
     center_x = float(rect.x) + float(rect.width) * 0.5
@@ -80,14 +80,14 @@ def _assert_rect_on_page(context, work, page_index: int, rect, label: str) -> No
 
 
 def _check_creation_scope_for_layout(context, work, page_index: int, *, start_side: str, read_direction: str) -> None:
-    from bname_dev.operators import balloon_op, effect_line_op
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import layer_hierarchy, object_selection, page_grid
-    from bname_dev.operators import object_tool_selection, text_op
+    from bmanga_dev.operators import balloon_op, effect_line_op
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import layer_hierarchy, object_selection, page_grid
+    from bmanga_dev.operators import object_tool_selection, text_op
 
     work.paper.start_side = start_side
     work.paper.read_direction = read_direction
-    context.scene.bname_overview_mode = True
+    context.scene.bmanga_overview_mode = True
     page_grid.apply_page_collection_transforms(context, work)
 
     page = work.pages[page_index]
@@ -187,24 +187,24 @@ def _check_creation_scope_for_layout(context, work, page_index: int, *, start_si
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_creation_scope_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_creation_scope_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "CreationScope.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "CreationScope.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.page_add()
+        result = bpy.ops.bmanga.page_add()
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.page_add()
+        result = bpy.ops.bmanga.page_add()
         assert result == {"FINISHED"}, result
 
-        from bname_dev.operators import balloon_op, effect_line_op
-        from bname_dev.utils import gp_layer_parenting as gp_parent
-        from bname_dev.utils import layer_hierarchy, object_naming as on, page_grid
+        from bmanga_dev.operators import balloon_op, effect_line_op
+        from bmanga_dev.utils import gp_layer_parenting as gp_parent
+        from bmanga_dev.utils import layer_hierarchy, object_naming as on, page_grid
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[1]
         panel = page.comas[0]
         page_key = layer_hierarchy.page_stack_key(page)
@@ -240,7 +240,7 @@ def main() -> None:
         _assert_close(world_bounds[0], world_x, "effect handle world x")
         _assert_close(world_bounds[1], world_y, "effect handle world y")
 
-        from bname_dev.ui import overlay_effect_line
+        from bmanga_dev.ui import overlay_effect_line
 
         drawn_rects = []
 
@@ -305,7 +305,7 @@ def main() -> None:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_CREATION_SCOPE_OK")
+    print("BMANGA_CREATION_SCOPE_OK")
 
 
 if __name__ == "__main__":

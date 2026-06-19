@@ -69,10 +69,10 @@ def _resolve_target_from_event(context, event) -> None:
             return
 
 
-class BNAME_OT_coma_to_polygon(Operator):
+class BMANGA_OT_coma_to_polygon(Operator):
     """矩形コマを多角形化 (4 頂点を vertices にセット)."""
 
-    bl_idname = "bname.coma_to_polygon"
+    bl_idname = "bmanga.coma_to_polygon"
     bl_label = "多角形化"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -131,10 +131,10 @@ class BNAME_OT_coma_to_polygon(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_to_rect(Operator):
+class BMANGA_OT_coma_to_rect(Operator):
     """多角形/曲線/フリーフォームのコマを矩形化 (外接矩形で近似)."""
 
-    bl_idname = "bname.coma_to_rect"
+    bl_idname = "bmanga.coma_to_rect"
     bl_label = "矩形化"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -189,8 +189,8 @@ class BNAME_OT_coma_to_rect(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_coma_to_polygon,
-    BNAME_OT_coma_to_rect,
+    BMANGA_OT_coma_to_polygon,
+    BMANGA_OT_coma_to_rect,
 )
 
 

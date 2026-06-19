@@ -1,4 +1,4 @@
-"""Blender実機用: B-Nameアセット登録と配置復元を確認."""
+"""Blender実機用: B-MANGAアセット登録と配置復元を確認."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_asset_bundle",
+        "bmanga_dev_asset_bundle",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_asset_bundle"] = mod
+    sys.modules["bmanga_dev_asset_bundle"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,14 +29,14 @@ def _load_addon():
 
 
 def _item_by_uid(context):
-    from bname_dev_asset_bundle.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_bundle.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     return {layer_stack_utils.stack_item_uid(item): item for item in stack}
 
 
 def _register_payload(context, uids: list[str], name: str):
-    from bname_dev_asset_bundle.utils import asset_bundle
+    from bmanga_dev_asset_bundle.utils import asset_bundle
 
     items = _item_by_uid(context)
     missing = [uid for uid in uids if uid not in items]
@@ -69,8 +69,8 @@ def _assert_collection_preview(coll, label: str) -> None:
 
 
 def _drop_collection(context, coll, world_x_mm: float, world_y_mm: float) -> None:
-    from bname_dev_asset_bundle.utils import asset_bundle
-    from bname_dev_asset_bundle.utils.geom import mm_to_m
+    from bmanga_dev_asset_bundle.utils import asset_bundle
+    from bmanga_dev_asset_bundle.utils.geom import mm_to_m
 
     inst = bpy.data.objects.new(f"drop_{coll.name}", None)
     inst.instance_type = "COLLECTION"
@@ -86,7 +86,7 @@ def _drop_collection(context, coll, world_x_mm: float, world_y_mm: float) -> Non
 
 def _assert_asset_browser_target_detection(asset_bundle, temp_root: Path) -> None:
     library_path = temp_root / "OpenAssetBrowser"
-    params = SimpleNamespace(asset_library_reference="BNameAssets", catalog_id="test-catalog")
+    params = SimpleNamespace(asset_library_reference="BMangaAssets", catalog_id="test-catalog")
     area = SimpleNamespace(
         type="FILE_BROWSER",
         x=0,
@@ -99,7 +99,7 @@ def _assert_asset_browser_target_detection(asset_bundle, temp_root: Path) -> Non
         screen=SimpleNamespace(areas=[area]),
         preferences=SimpleNamespace(
             filepaths=SimpleNamespace(
-                asset_libraries=[SimpleNamespace(name="B-Name-Assets", path=str(library_path))]
+                asset_libraries=[SimpleNamespace(name="B-MANGA-Assets", path=str(library_path))]
             )
         ),
     )
@@ -117,7 +117,7 @@ def _assert_asset_browser_target_detection(asset_bundle, temp_root: Path) -> Non
 
 
 def _effect_objects():
-    from bname_dev_asset_bundle.utils import object_naming
+    from bmanga_dev_asset_bundle.utils import object_naming
 
     return [
         obj
@@ -127,14 +127,14 @@ def _effect_objects():
 
 
 def _effect_uid(obj) -> str:
-    from bname_dev_asset_bundle.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_bundle.utils import layer_stack as layer_stack_utils
 
     layer = obj.data.layers[0]
     return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
 
 
 def _assert_linked(context, uid_a: str, uid_b: str, label: str) -> None:
-    from bname_dev_asset_bundle.utils import layer_links
+    from bmanga_dev_asset_bundle.utils import layer_links
 
     linked = layer_links.linked_uids_for_uid(context, uid_a)
     if uid_b not in linked:
@@ -149,10 +149,10 @@ def _find_entry_by_attr(collection, attr: str, value: str):
 
 
 def _make_balloon(context, page, x, y, w=42.0, h=24.0):
-    from bname_dev_asset_bundle.operators import balloon_op
-    from bname_dev_asset_bundle.utils import balloon_curve_object
+    from bmanga_dev_asset_bundle.operators import balloon_op
+    from bmanga_dev_asset_bundle.utils import balloon_curve_object
 
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     entry = page.balloons.add()
     entry.id = balloon_op._allocate_balloon_id(page, work)
     entry.shape = "ellipse"
@@ -167,8 +167,8 @@ def _make_balloon(context, page, x, y, w=42.0, h=24.0):
 
 
 def _make_text(context, page, body, x, y, w=34.0, h=18.0, parent_balloon_id=""):
-    from bname_dev_asset_bundle.operators import text_op
-    from bname_dev_asset_bundle.utils import text_real_object
+    from bmanga_dev_asset_bundle.operators import text_op
+    from bmanga_dev_asset_bundle.utils import text_real_object
 
     entry = page.texts.add()
     entry.id = text_op._allocate_text_id(page)
@@ -185,7 +185,7 @@ def _make_text(context, page, body, x, y, w=34.0, h=18.0, parent_balloon_id=""):
 
 
 def _make_effect(context, page, x, y, w=58.0, h=46.0):
-    from bname_dev_asset_bundle.operators import effect_line_op
+    from bmanga_dev_asset_bundle.operators import effect_line_op
 
     obj, layer = effect_line_op._create_effect_layer(
         context,
@@ -199,11 +199,11 @@ def _make_effect(context, page, x, y, w=58.0, h=46.0):
 
 def main() -> None:
     mod = None
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_asset_bundle_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_asset_bundle_"))
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        from bname_dev_asset_bundle.utils import asset_bundle
+        from bmanga_dev_asset_bundle.utils import asset_bundle
 
         _assert_asset_browser_target_detection(asset_bundle, temp_root)
 
@@ -222,16 +222,16 @@ def main() -> None:
             raise AssertionError("ページ一覧を開く前の配置が取り込み済みにされています")
         bpy.data.objects.remove(pending, do_unlink=True)
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "AssetBundle.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AssetBundle.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
-        from bname_dev_asset_bundle.utils import layer_links
-        from bname_dev_asset_bundle.utils import layer_stack as layer_stack_utils
-        from bname_dev_asset_bundle.utils import page_grid
+        from bmanga_dev_asset_bundle.utils import layer_links
+        from bmanga_dev_asset_bundle.utils import layer_stack as layer_stack_utils
+        from bmanga_dev_asset_bundle.utils import page_grid
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
 
         source_balloon = _make_balloon(context, page, 20.0, 30.0)
@@ -273,7 +273,7 @@ def main() -> None:
 
         labels_by_uid = {
             layer_stack_utils.stack_item_uid(item): str(getattr(item, "label", "") or "")
-            for item in context.scene.bname_layer_stack
+            for item in context.scene.bmanga_layer_stack
         }
         if labels_by_uid.get(uid_balloon) != "名前変更フキダシ":
             raise AssertionError("フキダシのレイヤー名がレイヤー一覧に反映されていません")
@@ -285,7 +285,7 @@ def main() -> None:
         items_by_uid = _item_by_uid(context)
         payload = asset_bundle.build_payload(context, [items_by_uid[uid_balloon]], name="フキダシ/登録:*確認")
         external_dir = temp_root / "AssetLibrary"
-        external_target = asset_bundle.AssetBrowserTarget("BNameTest", "", str(external_dir), True)
+        external_target = asset_bundle.AssetBrowserTarget("BMangaTest", "", str(external_dir), True)
         external_coll = asset_bundle.create_collection_asset(context, payload, target=external_target)
         _assert_collection_preview(external_coll, "外部ライブラリ登録")
         asset_bundle.create_collection_asset(context, payload, target=external_target)
@@ -364,7 +364,7 @@ def main() -> None:
         if source_lonely_after.parent_balloon_id != page.balloons[-1].id:
             raise AssertionError("テキスト上に落としたフキダシが自動リンクされていません")
 
-        print("BNAME_ASSET_BUNDLE_ROUNDTRIP_OK")
+        print("BMANGA_ASSET_BUNDLE_ROUNDTRIP_OK")
     finally:
         if mod is not None:
             mod.unregister()

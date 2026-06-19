@@ -1,4 +1,4 @@
-"""作品 (.bname) の新規作成・オープン・保存・クローズ Operator."""
+"""作品 (.bmanga) の新規作成・オープン・保存・クローズ Operator."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def _apply_phase1_defaults(work) -> None:
 def _cleanup_default_scene_objects() -> None:
     """Blender のデフォルトシーンに含まれる Cube / Light / Camera を削除.
 
-    B-Name の新規作品ではネームキャンバスを真正面から見るため、3D の既定
+    B-MANGA の新規作品ではネームキャンバスを真正面から見るため、3D の既定
     ライトやカメラは不要。ユーザーが作ったオブジェクトと名前衝突しないよう、
     Blender 既定の "Cube" / "Light" / "Camera" という正確な名前のみを対象とする。
     """
@@ -127,27 +127,27 @@ def _schedule_layer_stack_sync(context, *, schedule: bool = True) -> None:
         _logger.exception("work layer stack sync failed")
 
 
-class BNAME_OT_work_new(Operator, ExportHelper):
-    """新規作品を作成 (.bname ディレクトリを生成).
+class BMANGA_OT_work_new(Operator, ExportHelper):
+    """新規作品を作成 (.bmanga ディレクトリを生成).
 
     既存の同名ディレクトリがあれば作成を中止する (安全のため上書き禁止)。
     """
 
-    bl_idname = "bname.work_new"
+    bl_idname = "bmanga.work_new"
     bl_label = "新規作品を作成"
     bl_options = {"REGISTER"}
 
-    filename_ext = paths.BNAME_DIR_SUFFIX
-    filter_glob: StringProperty(default="*.bname", options={"HIDDEN"})  # type: ignore[valid-type]
+    filename_ext = paths.BMANGA_DIR_SUFFIX
+    filter_glob: StringProperty(default="*.bmanga", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def execute(self, context):
         work = get_work(context)
         if work is None:
-            self.report({"ERROR"}, "シーンに B-Name データが見つかりません")
+            self.report({"ERROR"}, "シーンに B-MANGA データが見つかりません")
             return {"CANCELLED"}
 
         selected = Path(self.filepath)
-        work_dir = paths.ensure_bname_suffix(selected)
+        work_dir = paths.ensure_bmanga_suffix(selected)
         if work_dir.exists():
             self.report({"ERROR"}, f"既に存在します: {work_dir.name}")
             return {"CANCELLED"}
@@ -158,7 +158,7 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             coll = getattr(work, attr, None)
             if coll is not None:
                 coll.clear()
-        raster_layers = getattr(context.scene, "bname_raster_layers", None)
+        raster_layers = getattr(context.scene, "bmanga_raster_layers", None)
         if raster_layers is not None:
             try:
                 from . import raster_layer_op
@@ -167,8 +167,8 @@ class BNAME_OT_work_new(Operator, ExportHelper):
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: old raster runtime purge failed")
             raster_layers.clear()
-        if hasattr(context.scene, "bname_active_raster_layer_index"):
-            context.scene.bname_active_raster_layer_index = -1
+        if hasattr(context.scene, "bmanga_active_raster_layer_index"):
+            context.scene.bmanga_active_raster_layer_index = -1
         # 前作品の page_pNNNN Collection / GP を掃除 (orphan 防止)
         try:
             gp_utils.remove_all_page_gpencils()
@@ -178,7 +178,7 @@ class BNAME_OT_work_new(Operator, ExportHelper):
         work.loaded = False
 
         try:
-            work_io.create_bname_skeleton(work_dir)
+            work_io.create_bmanga_skeleton(work_dir)
             _apply_phase1_defaults(work)
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
@@ -213,12 +213,12 @@ class BNAME_OT_work_new(Operator, ExportHelper):
 
             # overview 編集モード既定。保存前にモード/stem を確実にセット。
             set_mode(MODE_PAGE, context)
-            context.scene.bname_current_page_id = ""
-            context.scene.bname_current_coma_id = ""
-            context.scene.bname_current_coma_page_id = ""
-            context.scene.bname_overview_mode = True
-            if hasattr(context.scene, "bname_active_layer_kind"):
-                context.scene.bname_active_layer_kind = "page"
+            context.scene.bmanga_current_page_id = ""
+            context.scene.bmanga_current_coma_id = ""
+            context.scene.bmanga_current_coma_page_id = ""
+            context.scene.bmanga_overview_mode = True
+            if hasattr(context.scene, "bmanga_active_layer_kind"):
+                context.scene.bmanga_active_layer_kind = "page"
             try:
                 from ..utils import display_settings
 
@@ -263,19 +263,19 @@ class BNAME_OT_work_new(Operator, ExportHelper):
 
         # --- 作成直後の UX 整備 ---
         # 0) 旧バージョンで白く書き換えられた可能性のあるビューポート背景を
-        #    テーマ既定 (灰色) に戻す + Solid+Flat 照明に切替 (B-Name の標準表示)
+        #    テーマ既定 (灰色) に戻す + Solid+Flat 照明に切替 (B-MANGA の標準表示)
         try:
             from ..ui import overlay as _overlay
 
             _overlay.reset_viewport_background_to_theme(context)
-            _overlay.apply_bname_shading_mode(context)
+            _overlay.apply_bmanga_shading_mode(context)
             _disable_work_viewport_overlays(context, schedule=True)
         except Exception:  # noqa: BLE001
             _logger.exception("work_new: shading/background setup failed")
 
         # 1) ビューポートを全ページフィット (overview モードを維持したままキャンバス可視化)
         try:
-            bpy.ops.bname.view_fit_all("INVOKE_DEFAULT")
+            bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("work_new: view_fit_all failed")
 
@@ -303,20 +303,20 @@ class BNAME_OT_work_new(Operator, ExportHelper):
         return {"FINISHED"}
 
 
-class BNAME_OT_work_open(Operator, ImportHelper):
-    """既存の .bname 作品フォルダを開く."""
+class BMANGA_OT_work_open(Operator, ImportHelper):
+    """既存の .bmanga 作品フォルダを開く."""
 
-    bl_idname = "bname.work_open"
+    bl_idname = "bmanga.work_open"
     bl_label = "作品を開く"
     bl_options = {"REGISTER"}
 
-    filename_ext = paths.BNAME_DIR_SUFFIX
-    filter_glob: StringProperty(default="*.bname", options={"HIDDEN"})  # type: ignore[valid-type]
+    filename_ext = paths.BMANGA_DIR_SUFFIX
+    filter_glob: StringProperty(default="*.bmanga", options={"HIDDEN"})  # type: ignore[valid-type]
 
     def execute(self, context):
         work = get_work(context)
         if work is None:
-            self.report({"ERROR"}, "シーンに B-Name データが見つかりません")
+            self.report({"ERROR"}, "シーンに B-MANGA データが見つかりません")
             return {"CANCELLED"}
 
         old_work_dir = Path(work.work_dir) if work.loaded and work.work_dir else None
@@ -337,9 +337,9 @@ class BNAME_OT_work_open(Operator, ImportHelper):
 
         selected = Path(self.filepath)
         # ファイルを選ばれても親ディレクトリを作品ルートとして解釈
-        work_dir = selected if selected.suffix == paths.BNAME_DIR_SUFFIX else selected.parent
-        if not work_dir.is_dir() or work_dir.suffix != paths.BNAME_DIR_SUFFIX:
-            self.report({"ERROR"}, f".bname フォルダを指定してください: {work_dir}")
+        work_dir = selected if selected.suffix == paths.BMANGA_DIR_SUFFIX else selected.parent
+        if not work_dir.is_dir() or work_dir.suffix != paths.BMANGA_DIR_SUFFIX:
+            self.report({"ERROR"}, f".bmanga フォルダを指定してください: {work_dir}")
             return {"CANCELLED"}
 
         try:
@@ -354,12 +354,12 @@ class BNAME_OT_work_open(Operator, ImportHelper):
             work.work_dir = str(work_dir.resolve())
             work.loaded = True
             set_mode(MODE_PAGE, context)
-            context.scene.bname_current_page_id = ""
-            context.scene.bname_current_coma_id = ""
-            context.scene.bname_current_coma_page_id = ""
-            context.scene.bname_overview_mode = True
-            if hasattr(context.scene, "bname_active_layer_kind"):
-                context.scene.bname_active_layer_kind = "page"
+            context.scene.bmanga_current_page_id = ""
+            context.scene.bmanga_current_coma_id = ""
+            context.scene.bmanga_current_coma_page_id = ""
+            context.scene.bmanga_overview_mode = True
+            if hasattr(context.scene, "bmanga_active_layer_kind"):
+                context.scene.bmanga_active_layer_kind = "page"
             try:
                 from ..utils import display_settings
 
@@ -401,7 +401,7 @@ class BNAME_OT_work_open(Operator, ImportHelper):
             from ..ui import overlay as _overlay
 
             _overlay.reset_viewport_background_to_theme(context)
-            _overlay.apply_bname_shading_mode(context)
+            _overlay.apply_bmanga_shading_mode(context)
             _disable_work_viewport_overlays(context, schedule=True)
         except Exception:  # noqa: BLE001
             _logger.exception("work_open: shading/background setup failed")
@@ -410,15 +410,15 @@ class BNAME_OT_work_open(Operator, ImportHelper):
         return {"FINISHED"}
 
 
-class BNAME_OT_work_make_coma_file(Operator):
+class BMANGA_OT_work_make_coma_file(Operator):
     """現在開いている .blend を、親作品を持たない単独のコマファイルにする.
 
     ページ一覧ファイルでもコマファイルでもない .blend を開いたときに、
     この .blend を「単独コマファイル」として扱えるようにする。作品
-    (.bname) には属さないため、ページ一覧側のコマ一覧には現れない。
+    (.bmanga) には属さないため、ページ一覧側のコマ一覧には現れない。
     """
 
-    bl_idname = "bname.work_make_coma_file"
+    bl_idname = "bmanga.work_make_coma_file"
     bl_label = "コマファイル化"
     bl_options = {"REGISTER"}
 
@@ -468,12 +468,12 @@ class BNAME_OT_work_make_coma_file(Operator):
             coma_scene.prepare_coma_blend_scene(context, purge_orphans=False)
 
             set_mode(MODE_COMA, context)
-            scene.bname_current_coma_id = ""
-            scene.bname_current_coma_page_id = ""
-            if hasattr(scene, "bname_overview_mode"):
-                scene.bname_overview_mode = False
-            if hasattr(scene, "bname_active_layer_kind"):
-                scene.bname_active_layer_kind = "coma"
+            scene.bmanga_current_coma_id = ""
+            scene.bmanga_current_coma_page_id = ""
+            if hasattr(scene, "bmanga_overview_mode"):
+                scene.bmanga_overview_mode = False
+            if hasattr(scene, "bmanga_active_layer_kind"):
+                scene.bmanga_active_layer_kind = "coma"
 
             display_settings.apply_standard_color_management(scene)
             coma_camera.ensure_coma_camera_scene(
@@ -485,12 +485,12 @@ class BNAME_OT_work_make_coma_file(Operator):
             from ..ui import overlay as _overlay
 
             _overlay.reset_viewport_background_to_theme(context)
-            _overlay.apply_bname_shading_mode(context)
+            _overlay.apply_bmanga_shading_mode(context)
             coma_camera.schedule_coma_view_camera()
             try:
                 from ..ui import sidebar as _sidebar
 
-                _sidebar.schedule_open_bname_sidebar()
+                _sidebar.schedule_open_bmanga_sidebar()
             except Exception:  # noqa: BLE001
                 _logger.exception("work_make_coma_file: sidebar open failed")
         except Exception as exc:  # noqa: BLE001
@@ -502,10 +502,10 @@ class BNAME_OT_work_make_coma_file(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_work_save(Operator):
+class BMANGA_OT_work_save(Operator):
     """現在の作品データを保存 (work.json / pages.json + 現在の mainfile .blend)."""
 
-    bl_idname = "bname.work_save"
+    bl_idname = "bmanga.work_save"
     bl_label = "作品を保存"
     bl_options = {"REGISTER"}
 
@@ -557,7 +557,7 @@ class BNAME_OT_work_save(Operator):
                 _logger.exception("work_save: page preview refresh failed")
 
             # 2) .blend 保存. ユーザーが File > Save As で work_dir 外に保存
-            #    していた場合は、そのパスを尊重して save_mainfile する (B-Name の
+            #    していた場合は、そのパスを尊重して save_mainfile する (B-MANGA の
             #    期待パスへ強制リロケートしない)。work_dir 内 or 未保存なら
             #    overview モードなら work.blend、コマ編集モードなら cNN.blend
             #    を期待パスとして save_as_mainfile する。
@@ -583,10 +583,10 @@ class BNAME_OT_work_save(Operator):
                     _logger.exception("save_mainfile (external path) failed")
                     saved_blend = False
             else:
-                # work_dir 内 or 未保存 → B-Name 期待パスへ save_as
+                # work_dir 内 or 未保存 → B-MANGA 期待パスへ save_as
                 if mode == MODE_COMA:
-                    stem = getattr(context.scene, "bname_current_coma_id", "")
-                    page_id = getattr(context.scene, "bname_current_coma_page_id", "")
+                    stem = getattr(context.scene, "bmanga_current_coma_id", "")
+                    page_id = getattr(context.scene, "bmanga_current_coma_page_id", "")
                     if paths.is_valid_coma_id(stem) and paths.is_valid_page_id(page_id):
                         saved_blend = blend_io.save_coma_blend(
                             work_dir, page_id, stem
@@ -614,10 +614,10 @@ class BNAME_OT_work_save(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_work_close(Operator):
+class BMANGA_OT_work_close(Operator):
     """作品を閉じる (データをメモリから解放、ディスクは触らない)."""
 
-    bl_idname = "bname.work_close"
+    bl_idname = "bmanga.work_close"
     bl_label = "作品を閉じる"
     bl_options = {"REGISTER"}
 
@@ -634,11 +634,11 @@ class BNAME_OT_work_close(Operator):
             raster_layer_op.purge_all_raster_runtime(context.scene)
         except Exception:  # noqa: BLE001
             _logger.exception("work_close: raster runtime purge failed")
-        raster_layers = getattr(context.scene, "bname_raster_layers", None)
+        raster_layers = getattr(context.scene, "bmanga_raster_layers", None)
         if raster_layers is not None:
             raster_layers.clear()
-        if hasattr(context.scene, "bname_active_raster_layer_index"):
-            context.scene.bname_active_raster_layer_index = -1
+        if hasattr(context.scene, "bmanga_active_raster_layer_index"):
+            context.scene.bmanga_active_raster_layer_index = -1
         try:
             gp_utils.remove_all_page_gpencils()
         except Exception:  # noqa: BLE001
@@ -652,19 +652,19 @@ class BNAME_OT_work_close(Operator):
         work.loaded = False
         work.work_dir = ""
         set_mode(MODE_PAGE, context)
-        context.scene.bname_current_page_id = ""
-        context.scene.bname_current_coma_id = ""
-        context.scene.bname_current_coma_page_id = ""
+        context.scene.bmanga_current_page_id = ""
+        context.scene.bmanga_current_coma_id = ""
+        context.scene.bmanga_current_coma_page_id = ""
         self.report({"INFO"}, "作品を閉じました")
         return {"FINISHED"}
 
 
 _CLASSES = (
-    BNAME_OT_work_new,
-    BNAME_OT_work_open,
-    BNAME_OT_work_make_coma_file,
-    BNAME_OT_work_save,
-    BNAME_OT_work_close,
+    BMANGA_OT_work_new,
+    BMANGA_OT_work_open,
+    BMANGA_OT_work_make_coma_file,
+    BMANGA_OT_work_save,
+    BMANGA_OT_work_close,
 )
 
 

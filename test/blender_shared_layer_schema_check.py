@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,18 +29,18 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_shared_schema_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_shared_schema_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "SharedSchema.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "SharedSchema.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev.io import schema
+        from bmanga_dev.io import schema
 
         scene = bpy.context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
 
         balloon = work.shared_balloons.add()
         balloon.id = "shared_balloon_1"
@@ -67,7 +67,7 @@ def main() -> None:
         coma.rect_width_mm = 80.0
         coma.rect_height_mm = 60.0
 
-        image = scene.bname_image_layers.add()
+        image = scene.bmanga_image_layers.add()
         image.id = "image_shared_1"
         image.title = "参照画像"
         image.filepath = "C:/tmp/reference.png"
@@ -84,7 +84,7 @@ def main() -> None:
         work.shared_balloons.clear()
         work.shared_texts.clear()
         work.shared_comas.clear()
-        scene.bname_image_layers.clear()
+        scene.bmanga_image_layers.clear()
         schema.work_from_dict(work, data)
 
         assert len(work.shared_balloons) == 1
@@ -95,10 +95,10 @@ def main() -> None:
         assert work.shared_texts[0].parent_kind == "none"
         assert len(work.shared_comas) == 1
         assert work.shared_comas[0].coma_id == "shared_c01"
-        assert len(scene.bname_image_layers) == 1
-        assert scene.bname_image_layers[0].parent_kind == "none"
+        assert len(scene.bmanga_image_layers) == 1
+        assert scene.bmanga_image_layers[0].parent_kind == "none"
 
-        print("BNAME_SHARED_LAYER_SCHEMA_OK")
+        print("BMANGA_SHARED_LAYER_SCHEMA_OK")
     finally:
         if mod is not None:
             try:

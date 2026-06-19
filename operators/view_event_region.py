@@ -97,7 +97,7 @@ def _navigation_ui_visible(context, area) -> bool:
 def is_view3d_navigation_ui_event(context, event) -> bool:
     """Return True when a mouse event is over Blender's top-right navigation UI.
 
-    Modal B-Name tools run while the user keeps working in the viewport. Without
+    Modal B-MANGA tools run while the user keeps working in the viewport. Without
     this guard they also consume clicks on Blender's navigation gizmo and the
     zoom/pan buttons because those controls live inside the VIEW_3D WINDOW region.
     """
@@ -181,7 +181,7 @@ def _finish_modal_tools_for_sidebar_close(context) -> None:
 
 
 def toggle_modal_sidebar_if_requested(context, event) -> bool:
-    """Handle the standard N sidebar key while a B-Name modal tool is active."""
+    """Handle the standard N sidebar key while a B-MANGA modal tool is active."""
     if not _unmodified_key_press(event, "N"):
         return False
     area = _view3d_area_for_keyboard_event(context, event)

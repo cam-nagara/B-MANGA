@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_center_seed_selection",
+        "bmanga_dev_balloon_center_seed_selection",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_center_seed_selection"] = mod
+    sys.modules["bmanga_dev_balloon_center_seed_selection"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -87,18 +87,18 @@ def _draw_props(layer_detail_op, entry, page) -> list[str]:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_center_seed_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_center_seed_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonCenterSeed.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonCenterSeed.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev_balloon_center_seed_selection.core.work import get_work
-        from bname_dev_balloon_center_seed_selection.operators import balloon_op, layer_detail_op, object_tool_selection
-        from bname_dev_balloon_center_seed_selection.utils import balloon_curve_object, balloon_line_mesh, object_selection, page_grid
-        from bname_dev_balloon_center_seed_selection.utils.layer_hierarchy import OUTSIDE_STACK_KEY
+        from bmanga_dev_balloon_center_seed_selection.core.work import get_work
+        from bmanga_dev_balloon_center_seed_selection.operators import balloon_op, layer_detail_op, object_tool_selection
+        from bmanga_dev_balloon_center_seed_selection.utils import balloon_curve_object, balloon_line_mesh, object_selection, page_grid
+        from bmanga_dev_balloon_center_seed_selection.utils.layer_hierarchy import OUTSIDE_STACK_KEY
 
         context = bpy.context
         work = get_work(context)
@@ -123,8 +123,8 @@ def main() -> None:
         obj.data.resolution_u = 12
         obj.data.render_resolution_u = 24
         balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=rect, page=page)
-        assert int(obj.data.resolution_u) == 12, "ユーザー変更後のプレビュー解像度UをB-Nameが上書きしています"
-        assert int(obj.data.render_resolution_u) == 24, "ユーザー変更後のレンダーUをB-Nameが上書きしています"
+        assert int(obj.data.resolution_u) == 12, "ユーザー変更後のプレビュー解像度UをB-MANGAが上書きしています"
+        assert int(obj.data.render_resolution_u) == 24, "ユーザー変更後のレンダーUをB-MANGAが上書きしています"
         page_ox, page_oy = page_grid.page_total_offset_mm(work, context.scene, 0)
         _assert_close(obj.location.x, (page_ox + 40.0) * 0.001, "中心原点 X")
         _assert_close(obj.location.y, (page_oy + 40.0) * 0.001, "中心原点 Y")
@@ -219,7 +219,7 @@ def main() -> None:
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    print("BNAME_BALLOON_CENTER_SEED_SELECTION_OK")
+    print("BMANGA_BALLOON_CENTER_SEED_SELECTION_OK")
 
 
 main()

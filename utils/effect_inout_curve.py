@@ -11,11 +11,11 @@ except ModuleNotFoundError:  # pragma: no cover
 
 DEFAULT_CURVE_TEXT = "0.0000,0.0000;1.0000,1.0000"
 DEFAULT_POINTS: tuple[tuple[float, float], ...] = ((0.0, 0.0), (1.0, 1.0))
-MATERIAL_NAME = "BName_EffectLine_InOutCurve"
-IN_NODE_NAME = "BName_EffectLine_InCurve"
-OUT_NODE_NAME = "BName_EffectLine_OutCurve"
-IN_SOURCE_PROP = "bname_effect_in_curve_source"
-OUT_SOURCE_PROP = "bname_effect_out_curve_source"
+MATERIAL_NAME = "BManga_EffectLine_InOutCurve"
+IN_NODE_NAME = "BManga_EffectLine_InCurve"
+OUT_NODE_NAME = "BManga_EffectLine_OutCurve"
+IN_SOURCE_PROP = "bmanga_effect_in_curve_source"
+OUT_SOURCE_PROP = "bmanga_effect_out_curve_source"
 
 
 def parse_points(value: object) -> tuple[tuple[float, float], ...]:

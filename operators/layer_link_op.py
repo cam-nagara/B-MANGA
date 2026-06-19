@@ -94,8 +94,8 @@ def _sync_new_link_transforms(context, stack, uids: list[str]) -> None:
             sync(context, items)
 
 
-class BNAME_OT_layer_stack_link_selected(Operator):
-    bl_idname = "bname.layer_stack_link_selected"
+class BMANGA_OT_layer_stack_link_selected(Operator):
+    bl_idname = "bmanga.layer_stack_link_selected"
     bl_label = "選択レイヤーをリンク"
     bl_description = (
         "選択中のレイヤー同士をリンクします。"
@@ -130,8 +130,8 @@ class BNAME_OT_layer_stack_link_selected(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_unlink_selected(Operator):
-    bl_idname = "bname.layer_stack_unlink_selected"
+class BMANGA_OT_layer_stack_unlink_selected(Operator):
+    bl_idname = "bmanga.layer_stack_unlink_selected"
     bl_label = "リンクを解除"
     bl_description = "選択中のレイヤーをリンクグループから外します"
     bl_options = {"REGISTER", "UNDO"}
@@ -153,8 +153,8 @@ class BNAME_OT_layer_stack_unlink_selected(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_layer_stack_link_selected,
-    BNAME_OT_layer_stack_unlink_selected,
+    BMANGA_OT_layer_stack_link_selected,
+    BMANGA_OT_layer_stack_unlink_selected,
 )
 
 

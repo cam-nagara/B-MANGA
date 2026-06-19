@@ -13,8 +13,8 @@ def _active_stack_kind(context) -> str:
     return str(getattr(item, "kind", "") or "")
 
 
-class BNAME_OT_reset_center_point(Operator):
-    bl_idname = "bname.reset_center_point"
+class BMANGA_OT_reset_center_point(Operator):
+    bl_idname = "bmanga.reset_center_point"
     bl_label = "中心点を中心へ戻す"
     bl_description = "選択中のフキダシまたは効果線の中心点を枠の中心に戻します"
     bl_options = {"UNDO"}
@@ -52,7 +52,7 @@ class BNAME_OT_reset_center_point(Operator):
         return {"CANCELLED"}
 
 
-_CLASSES = (BNAME_OT_reset_center_point,)
+_CLASSES = (BMANGA_OT_reset_center_point,)
 
 
 def register() -> None:

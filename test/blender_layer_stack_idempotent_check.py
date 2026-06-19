@@ -22,12 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_layer_stack_idempotent",
+        "bmanga_dev_layer_stack_idempotent",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_layer_stack_idempotent"] = mod
+    sys.modules["bmanga_dev_layer_stack_idempotent"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -62,7 +62,7 @@ def main() -> None:
     mod = None
     try:
         mod = _load_addon()
-        from bname_dev_layer_stack_idempotent.utils import layer_stack
+        from bmanga_dev_layer_stack_idempotent.utils import layer_stack
 
         target = _Target("text", "セリフ", "p0001:l0001", "p0001:c01", 3)
 
@@ -104,23 +104,23 @@ def main() -> None:
 
         # 3) set_active_stack_index_silently は同値なら scene を書き換えない。
         scene = bpy.context.scene
-        if hasattr(scene, "bname_active_layer_stack_index"):
-            scene.bname_active_layer_stack_index = 2
+        if hasattr(scene, "bmanga_active_layer_stack_index"):
+            scene.bmanga_active_layer_stack_index = 2
             writes = {"n": 0}
 
             class _SpyScene:
-                bname_active_layer_stack_index = 2
+                bmanga_active_layer_stack_index = 2
 
                 def __getattr__(self, name):
                     return getattr(scene, name)
 
             # 実 scene で値が同じときに代入が走らないことを、index 変化なしで確認する。
-            before = int(scene.bname_active_layer_stack_index)
+            before = int(scene.bmanga_active_layer_stack_index)
             layer_stack.set_active_stack_index_silently(bpy.context, before)
-            if int(scene.bname_active_layer_stack_index) != before:
+            if int(scene.bmanga_active_layer_stack_index) != before:
                 raise AssertionError("同値の set_active_stack_index_silently で値が変化しました")
 
-        print("BNAME_LAYER_STACK_IDEMPOTENT_OK", flush=True)
+        print("BMANGA_LAYER_STACK_IDEMPOTENT_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

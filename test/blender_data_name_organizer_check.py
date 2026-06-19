@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_data_name_organizer",
+        "bmanga_dev_data_name_organizer",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_data_name_organizer"] = mod
+    sys.modules["bmanga_dev_data_name_organizer"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -51,15 +51,15 @@ def _write_marker(path: Path, text: str) -> None:
 
 
 def _prepare_swapped_work(work_dir: Path):
-    from bname_dev_data_name_organizer.utils import layer_object_sync
-    from bname_dev_data_name_organizer.utils import paths
+    from bmanga_dev_data_name_organizer.utils import layer_object_sync
+    from bmanga_dev_data_name_organizer.utils import paths
 
-    result = bpy.ops.bname.work_new(filepath=str(work_dir))
+    result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     if "FINISHED" not in result:
         raise AssertionError(f"作品作成に失敗しました: {result}")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work.paper.read_direction = "left"
-    if "FINISHED" not in bpy.ops.bname.page_add("EXEC_DEFAULT"):
+    if "FINISHED" not in bpy.ops.bmanga.page_add("EXEC_DEFAULT"):
         raise AssertionError("ページ追加に失敗しました")
 
     first_old = work.pages[0]
@@ -99,7 +99,7 @@ def _prepare_swapped_work(work_dir: Path):
 
 
 def _assert_organized(work) -> None:
-    from bname_dev_data_name_organizer.utils import paths
+    from bmanga_dev_data_name_organizer.utils import paths
 
     root = Path(work.work_dir)
     page0 = work.pages[0]
@@ -129,17 +129,17 @@ def _assert_organized(work) -> None:
 
 
 def _assert_spread_numbering(root: Path) -> None:
-    from bname_dev_data_name_organizer.utils import paths
+    from bmanga_dev_data_name_organizer.utils import paths
 
-    result = bpy.ops.bname.work_new(filepath=str(root / "SpreadDataName.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(root / "SpreadDataName.bmanga"))
     if "FINISHED" not in result:
         raise AssertionError(f"見開き確認用の作品作成に失敗しました: {result}")
-    if "FINISHED" not in bpy.ops.bname.page_add("EXEC_DEFAULT"):
+    if "FINISHED" not in bpy.ops.bmanga.page_add("EXEC_DEFAULT"):
         raise AssertionError("見開き確認用の2ページ目追加に失敗しました")
-    if "FINISHED" not in bpy.ops.bname.page_add("EXEC_DEFAULT"):
+    if "FINISHED" not in bpy.ops.bmanga.page_add("EXEC_DEFAULT"):
         raise AssertionError("見開き確認用の3ページ目追加に失敗しました")
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work_dir = Path(work.work_dir)
     spread = work.pages[1]
     spread.id = "p0005-0006"
@@ -153,7 +153,7 @@ def _assert_spread_numbering(root: Path) -> None:
     _write_marker(work_dir / "p0005-0006" / "origin_spread.txt", "spread")
     _write_marker(work_dir / "p0003" / "origin_page_three.txt", "page-three")
 
-    result = bpy.ops.bname.organize_data_names("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.organize_data_names("EXEC_DEFAULT")
     if "FINISHED" not in result:
         raise AssertionError(f"見開き込みの実データ名整理に失敗しました: {result}")
     ids = [str(page.id) for page in work.pages]
@@ -169,28 +169,28 @@ def _assert_spread_numbering(root: Path) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_data_name_organizer_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_data_name_organizer_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
         _assert_spread_numbering(temp_root)
-        work = _prepare_swapped_work(temp_root / "DataNameOrganizer.bname")
+        work = _prepare_swapped_work(temp_root / "DataNameOrganizer.bmanga")
 
-        result = bpy.ops.bname.organize_data_names("EXEC_DEFAULT")
+        result = bpy.ops.bmanga.organize_data_names("EXEC_DEFAULT")
         if "FINISHED" not in result:
             raise AssertionError(f"実データ名整理に失敗しました: {result}")
         _assert_organized(work)
 
-        result = bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+        result = bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
         if "FINISHED" not in result:
             raise AssertionError(f"コマ用blendファイルを開けません: {result}")
-        expected = Path(temp_root / "DataNameOrganizer.bname" / "p0001" / "c01" / "c01.blend").resolve()
+        expected = Path(temp_root / "DataNameOrganizer.bmanga" / "p0001" / "c01" / "c01.blend").resolve()
         actual = Path(bpy.data.filepath).resolve()
         if actual != expected:
             raise AssertionError(f"開いたコマ用blendファイルが違います: expected={expected}, actual={actual}")
 
-        print("BNAME_DATA_NAME_ORGANIZER_OK", flush=True)
+        print("BMANGA_DATA_NAME_ORGANIZER_OK", flush=True)
     finally:
         if mod is not None:
             try:

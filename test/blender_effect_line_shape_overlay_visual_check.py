@@ -16,19 +16,19 @@ from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_EFFECT_SHAPE_VISUAL_OUT", "")
+    os.environ.get("BMANGA_EFFECT_SHAPE_VISUAL_OUT", "")
     or (ROOT / ".codex" / "visual" / "effect_line_shape_overlay")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_effect_shape_visual",
+        "bmanga_dev_effect_shape_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_effect_shape_visual"] = mod
+    sys.modules["bmanga_dev_effect_shape_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -53,7 +53,7 @@ def _view3d_override():
 
 
 def _set_top_view() -> None:
-    from bname_dev_effect_shape_visual.utils.geom import mm_to_m
+    from bmanga_dev_effect_shape_visual.utils.geom import mm_to_m
 
     with _view3d_override():
         bpy.ops.view3d.view_axis(type="TOP", align_active=False)
@@ -98,19 +98,19 @@ def _assert_close(label: str, actual: float, expected: float, eps: float = 0.8) 
 
 def _setup_scene(temp_root: Path):
     mod = _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "EffectShapeVisual.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "EffectShapeVisual.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_effect_shape_visual.core.work import get_work
-    from bname_dev_effect_shape_visual.operators import effect_line_op
-    from bname_dev_effect_shape_visual.utils import object_selection
-    from bname_dev_effect_shape_visual.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_effect_shape_visual.core.work import get_work
+    from bmanga_dev_effect_shape_visual.operators import effect_line_op
+    from bmanga_dev_effect_shape_visual.utils import object_selection
+    from bmanga_dev_effect_shape_visual.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     work = get_work(context)
     assert work is not None and work.loaded
     page = work.pages[0]
-    params = context.scene.bname_effect_line_params
+    params = context.scene.bmanga_effect_line_params
     params.effect_type = "focus"
     params.start_to_coma_frame = False
     params.start_shape = "ellipse"
@@ -132,8 +132,8 @@ def _setup_scene(temp_root: Path):
 
 
 def _assert_overlay_guides(obj, layer, bounds) -> None:
-    from bname_dev_effect_shape_visual.operators import effect_line_op
-    from bname_dev_effect_shape_visual.ui import overlay_effect_line
+    from bmanga_dev_effect_shape_visual.operators import effect_line_op
+    from bmanga_dev_effect_shape_visual.ui import overlay_effect_line
 
     context = bpy.context
     guides = []
@@ -165,7 +165,7 @@ def _assert_overlay_guides(obj, layer, bounds) -> None:
 
 
 def _run_visual_check() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_effect_shape_visual_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_shape_visual_"))
     mod = None
     try:
         try:
@@ -176,7 +176,7 @@ def _run_visual_check() -> None:
         _assert_overlay_guides(obj, layer, bounds)
         _set_top_view()
         path = _screenshot("effect_line_shape_overlay.png")
-        print(f"BNAME_EFFECT_LINE_SHAPE_OVERLAY_VISUAL_OK {path}", flush=True)
+        print(f"BMANGA_EFFECT_LINE_SHAPE_OVERLAY_VISUAL_OK {path}", flush=True)
     finally:
         if mod is not None:
             try:

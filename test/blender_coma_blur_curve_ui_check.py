@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_blur_ui",
+        "bmanga_dev_coma_blur_ui",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_blur_ui"] = mod
+    sys.modules["bmanga_dev_coma_blur_ui"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 def _create_coma():
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.loaded = True
     work.active_page_index = 0
     page = work.pages.add()
@@ -50,7 +50,7 @@ def _create_coma():
 
 
 def _select_coma_in_stack(context) -> int:
-    from bname_dev_coma_blur_ui.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_coma_blur_ui.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -78,16 +78,16 @@ def _ui_override():
 
 
 def _run_ui_check(scene, work, page, coma) -> None:
-    from bname_dev_coma_blur_ui.utils import coma_blur_curve, coma_border_object
+    from bmanga_dev_coma_blur_ui.utils import coma_blur_curve, coma_border_object
 
     index = _select_coma_in_stack(bpy.context)
     override = _ui_override()
     assert override is not None, "UIコンテキストが見つかりません"
     with bpy.context.temp_override(**override):
-        result = bpy.ops.bname.layer_stack_detail("INVOKE_DEFAULT", index=index)
+        result = bpy.ops.bmanga.layer_stack_detail("INVOKE_DEFAULT", index=index)
         assert "RUNNING_MODAL" in result or "FINISHED" in result, result
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
-        bpy.context.window_manager.bname_border_preset_selector = "輪郭ぼかし"
+        bpy.context.window_manager.bmanga_border_preset_selector = "輪郭ぼかし"
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
 
     assert coma.border.style == "brush", "輪郭ぼかしプリセットがコマへ適用されていません"
@@ -130,7 +130,7 @@ def _run_ui_check(scene, work, page, coma) -> None:
     assert "0.2200,0.9000" in coma.border.blur_curve_points, coma.border.blur_curve_points
     with bpy.context.temp_override(**override):
         bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=8)
-    print("BNAME_COMA_BLUR_CURVE_UI_CHECK_OK")
+    print("BMANGA_COMA_BLUR_CURVE_UI_CHECK_OK")
     sys.stdout.flush()
 
 

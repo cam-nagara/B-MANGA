@@ -1,9 +1,9 @@
 """bpy.app.handlers ハンドラ.
 
-``load_post``: .blend ファイル open 後に、B-Name 作品フォルダ配下の
+``load_post``: .blend ファイル open 後に、B-MANGA 作品フォルダ配下の
 .blend であれば work.json / pages.json を再読み込みして Scene プロパティを
 同期する。また、開かれた .blend のパスから active_page_index と
-bname_current_coma_id を自動推定する。
+bmanga_current_coma_id を自動推定する。
 
 これにより、ページ切替 (page.blend 差替) 時に JSON メタが正しく維持され、
 古い .blend 内に残っていた Scene プロパティが上書きされる。
@@ -25,10 +25,10 @@ _saving_work_metadata = False
 
 
 def _find_work_root(blend_path: Path) -> Path | None:
-    """blend パスから上位に辿って .bname ディレクトリを探す (最大 6 階層)."""
+    """blend パスから上位に辿って .bmanga ディレクトリを探す (最大 6 階層)."""
     p = blend_path.parent
     for _ in range(6):
-        if p.suffix == paths.BNAME_DIR_SUFFIX:
+        if p.suffix == paths.BMANGA_DIR_SUFFIX:
             return p
         if p.parent == p:
             break
@@ -41,9 +41,9 @@ def _sync_active_from_blend_path(
 ) -> None:
     """開かれた blend のパスから mode / active_page_index / coma_id を推定.
 
-    - ``<work>.bname/work.blend`` → overview モード (MODE_PAGE)
-    - ``<work>.bname/pNNNN/page.blend`` → ページ編集モード
-    - ``<work>.bname/pNNNN/cNN/cNN.blend`` → コマ編集モード
+    - ``<work>.bmanga/work.blend`` → overview モード (MODE_PAGE)
+    - ``<work>.bmanga/pNNNN/page.blend`` → ページ編集モード
+    - ``<work>.bmanga/pNNNN/cNN/cNN.blend`` → コマ編集モード
       (MODE_COMA + active_page_index を該当ページに、coma_id を設定)
     - それ以外のパス (旧 page.blend 等) は何もしない
     """
@@ -59,15 +59,15 @@ def _sync_active_from_blend_path(
 
     # work.blend 直下 → overview モード
     if len(parts) == 1 and parts[0] == paths.WORK_BLEND_NAME:
-        scene.bname_current_coma_id = ""
-        scene.bname_current_coma_page_id = ""
-        scene.bname_current_page_id = ""
+        scene.bmanga_current_coma_id = ""
+        scene.bmanga_current_coma_page_id = ""
+        scene.bmanga_current_page_id = ""
         try:
-            scene.bname_overview_mode = True
+            scene.bmanga_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
-        if hasattr(scene, "bname_active_layer_kind"):
-            scene.bname_active_layer_kind = "page"
+        if hasattr(scene, "bmanga_active_layer_kind"):
+            scene.bmanga_active_layer_kind = "page"
         set_mode(MODE_PAGE, bpy.context)
         return
 
@@ -82,15 +82,15 @@ def _sync_active_from_blend_path(
             if pg.id == page_id:
                 work.active_page_index = i
                 break
-        scene.bname_current_page_id = page_id
-        scene.bname_current_coma_id = ""
-        scene.bname_current_coma_page_id = ""
+        scene.bmanga_current_page_id = page_id
+        scene.bmanga_current_coma_id = ""
+        scene.bmanga_current_coma_page_id = ""
         try:
-            scene.bname_overview_mode = True
+            scene.bmanga_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
-        if hasattr(scene, "bname_active_layer_kind"):
-            scene.bname_active_layer_kind = "page"
+        if hasattr(scene, "bmanga_active_layer_kind"):
+            scene.bmanga_active_layer_kind = "page"
         set_mode(MODE_PAGE, bpy.context)
         return
 
@@ -107,26 +107,26 @@ def _sync_active_from_blend_path(
             if pg.id == page_id:
                 work.active_page_index = i
                 break
-        scene.bname_current_coma_id = coma_id
-        scene.bname_current_coma_page_id = page_id
-        scene.bname_current_page_id = page_id
-        if hasattr(scene, "bname_active_layer_kind"):
-            scene.bname_active_layer_kind = "coma"
+        scene.bmanga_current_coma_id = coma_id
+        scene.bmanga_current_coma_page_id = page_id
+        scene.bmanga_current_page_id = page_id
+        if hasattr(scene, "bmanga_active_layer_kind"):
+            scene.bmanga_active_layer_kind = "coma"
         set_mode(MODE_COMA, bpy.context)
-        _disable_bname_shortcuts_for_coma_blend()
+        _disable_bmanga_shortcuts_for_coma_blend()
         return
 
     # それ以外 (未知のパス) は overview 扱いのまま触らない
 
 
-def _disable_bname_shortcuts_for_coma_blend() -> None:
-    """コマ用blendファイルではB-Name専用キーと起動中操作を残さない."""
+def _disable_bmanga_shortcuts_for_coma_blend() -> None:
+    """コマ用blendファイルではB-MANGA専用キーと起動中操作を残さない."""
     try:
         from ..keymap import keymap
 
         keymap.force_shortcuts_disabled()
     except Exception:  # noqa: BLE001
-        _logger.exception("load_post: disable B-Name shortcuts for coma blend failed")
+        _logger.exception("load_post: disable B-MANGA shortcuts for coma blend failed")
 
 
 def _active_view_layer_name(scene) -> str:
@@ -209,7 +209,7 @@ def _reload_all_pages_panels(work, work_dir: Path) -> None:
 
 
 def sync_scene_work_from_disk(context, work_dir: Path):
-    """現在 scene の ``bname_work`` を disk 上の work/pages/page JSON に同期."""
+    """現在 scene の ``bmanga_work`` を disk 上の work/pages/page JSON に同期."""
     from ..core.work import get_work
     from ..io import page_io, work_io
     from . import view_settings
@@ -235,7 +235,7 @@ def sync_scene_work_from_disk(context, work_dir: Path):
 
 
 def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
-    """現在 scene の B-Name JSON メタデータを disk へ保存する.
+    """現在 scene の B-MANGA JSON メタデータを disk へ保存する.
 
     通常の .blend 保存フックからも呼ぶため、ここでは .blend 保存は行わない。
     """
@@ -285,7 +285,7 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
             if not bool(getattr(page, "detail_loaded", True)):
                 continue
             page_io.save_page_json(work_dir, page)
-        _logger.info("B-Name metadata saved%s", f" ({reason})" if reason else "")
+        _logger.info("B-MANGA metadata saved%s", f" ({reason})" if reason else "")
         # Phase 1: 保存契機で Outliner mirror を最新化する。page/coma 追加削除
         # 直後に save_scene_work_to_disk が呼ばれるため、ここでミラーを更新
         # しておけば各 op に侵襲しない。冪等で安全。
@@ -306,7 +306,7 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
             _logger.exception("gp page-offset record failed")
         return True
     except Exception:  # noqa: BLE001
-        _logger.exception("B-Name metadata save failed%s", f" ({reason})" if reason else "")
+        _logger.exception("B-MANGA metadata save failed%s", f" ({reason})" if reason else "")
         return False
     finally:
         _saving_work_metadata = False
@@ -371,8 +371,8 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
 
 
 @persistent
-def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
-    """.blend ロード直後に B-Name 作品のメタ情報を再同期."""
+def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """.blend ロード直後に B-MANGA 作品のメタ情報を再同期."""
     try:
         # ファイル切替前のツール modal が残っているとイベントを奪ったままになる
         # (例: 枠線ツール起動中にページ一覧へ戻ると、マウスホイールドラッグや N
@@ -420,10 +420,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
         # 保存値ごと初期化されていた)。work.blend かどうかは下の
         # 分岐で判定するため、ここでは一律適用しない。
         try:
-            from ..operators import preset_op
+            from ..operators import balloon_tail_detail_op, preset_op
 
             preset_op.sync_paper_preset_selector(bpy.context)
             preset_op.sync_border_preset_selector(bpy.context)
+            preset_op.restore_tool_preset_selectors(bpy.context)
+            balloon_tail_detail_op.restore_tail_preset_selector(bpy.context)
         except Exception:  # noqa: BLE001
             _logger.exception("load_post: preset selector sync failed")
         try:
@@ -435,7 +437,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
             _logger.exception("load_post: layer stack sync failed")
         # コマ blend (cNN/cNN.blend) では Outliner mirror を即時実行しない。
         # prepare_coma_blend_scene が後段で scene 構造を組み直すため、その前に
-        # mirror が走ると不要な B-Name root が cNN scene に作られる。
+        # mirror が走ると不要な B-MANGA root が cNN scene に作られる。
         is_coma_blend = False
         try:
             rel = blend_path.resolve().relative_to(work_dir.resolve())
@@ -465,7 +467,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     from ..ui import overlay as _overlay
 
                     _overlay.reset_viewport_background_to_theme(bpy.context)
-                    _overlay.apply_bname_shading_mode(bpy.context)
+                    _overlay.apply_bmanga_shading_mode(bpy.context)
                     _overlay.set_viewport_overlays_enabled(bpy.context, enabled=False)
                     _overlay.schedule_viewport_overlays_enabled(enabled=False)
                 except Exception:  # noqa: BLE001
@@ -480,6 +482,12 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     )
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: effect line display preparation failed")
+                try:
+                    from ..ui import sidebar as _sidebar
+
+                    _sidebar.schedule_open_bmanga_sidebar()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: B-MANGA sidebar open failed")
             elif (
                 len(rel.parts) == 2
                 and paths.is_valid_page_id(rel.parts[0])
@@ -509,7 +517,7 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                     from ..ui import overlay as _overlay
 
                     _overlay.reset_viewport_background_to_theme(bpy.context)
-                    _overlay.apply_bname_shading_mode(bpy.context)
+                    _overlay.apply_bmanga_shading_mode(bpy.context)
                     _overlay.set_viewport_overlays_enabled(bpy.context, enabled=False)
                     _overlay.schedule_viewport_overlays_enabled(enabled=False)
                 except Exception:  # noqa: BLE001
@@ -519,9 +527,9 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                 try:
                     from ..ui import sidebar as _sidebar
 
-                    _sidebar.schedule_open_bname_sidebar()
+                    _sidebar.schedule_open_bmanga_sidebar()
                 except Exception:  # noqa: BLE001
-                    _logger.exception("load_post: B-Name sidebar open failed")
+                    _logger.exception("load_post: B-MANGA sidebar open failed")
                 try:
                     from ..operators import view_op
 
@@ -562,25 +570,25 @@ def _bname_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender h
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: coma mask mesh sync failed")
                 _overlay.reset_viewport_background_to_theme(bpy.context)
-                _overlay.apply_bname_shading_mode(bpy.context)
+                _overlay.apply_bmanga_shading_mode(bpy.context)
                 coma_camera.schedule_coma_view_camera()
                 try:
                     from ..ui import sidebar as _sidebar
 
-                    _sidebar.schedule_open_bname_sidebar()
+                    _sidebar.schedule_open_bmanga_sidebar()
                 except Exception:  # noqa: BLE001
-                    _logger.exception("load_post: B-Name sidebar open failed")
+                    _logger.exception("load_post: B-MANGA sidebar open failed")
                 _restore_coma_user_view_layer(scene, active_view_layer_name)
         except ValueError:
             pass
-        _logger.info("B-Name: load_post synced for %s", blend_path)
+        _logger.info("B-MANGA: load_post synced for %s", blend_path)
     except Exception:  # noqa: BLE001
-        _logger.exception("B-Name load_post handler failed")
+        _logger.exception("B-MANGA load_post handler failed")
 
 
 @persistent
-def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender handlers
-    """通常の .blend 保存前に B-Name の JSON メタデータも同期する."""
+def _bmanga_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+    """通常の .blend 保存前に B-MANGA の JSON メタデータも同期する."""
     try:
         try:
             from ..core.work import get_work as _get_work
@@ -591,13 +599,13 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
                 _get_work(bpy.context),
             )
         except Exception:  # noqa: BLE001
-            _logger.exception("B-Name page content visibility restore failed")
+            _logger.exception("B-MANGA page content visibility restore failed")
         try:
             from . import coma_camera
 
             coma_camera.capture_camera_runtime_settings(bpy.context)
         except Exception:  # noqa: BLE001
-            _logger.exception("B-Name coma camera save_pre sync failed")
+            _logger.exception("B-MANGA coma camera save_pre sync failed")
         try:
             blend_path = Path(bpy.data.filepath)
             work_dir = _find_work_root(blend_path) if str(blend_path) else None
@@ -630,27 +638,27 @@ def _bname_on_save_pre(filepath_arg) -> None:  # signature: (str,) in Blender ha
                         active_view_layer_name,
                     )
         except Exception:  # noqa: BLE001
-            _logger.exception("B-Name thumb output save_pre sync failed")
+            _logger.exception("B-MANGA thumb output save_pre sync failed")
         try:
             from ..operators import raster_layer_op
 
             raster_layer_op.save_dirty_raster_layers(bpy.context)
         except Exception:  # noqa: BLE001
-            _logger.exception("B-Name raster save_pre failed")
+            _logger.exception("B-MANGA raster save_pre failed")
         save_scene_work_to_disk(bpy.context, reason="save_pre")
     except Exception:  # noqa: BLE001
-        _logger.exception("B-Name save_pre handler failed")
+        _logger.exception("B-MANGA save_pre handler failed")
 
 
 @persistent
-def _bname_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
+def _bmanga_on_save_post(filepath_arg) -> None:  # signature: (str,) in Blender handlers
     """保存後にページ一覧用の軽量表示を戻す."""
     try:
         from . import page_content_visibility
 
         page_content_visibility.schedule_apply(bpy.context)
     except Exception:  # noqa: BLE001
-        _logger.exception("B-Name page content visibility reapply failed")
+        _logger.exception("B-MANGA page content visibility reapply failed")
 
 
 def _remove_named_handler(handler_list, name: str) -> None:
@@ -663,7 +671,7 @@ def _remove_named_handler(handler_list, name: str) -> None:
 
 
 @persistent
-def _bname_on_undo_post(*_args) -> None:
+def _bmanga_on_undo_post(*_args) -> None:
     """undo/redo 後にモーダルツールの参照を無効化し、再起動する."""
     try:
         from ..operators import coma_modal_state as _modal_state
@@ -679,21 +687,21 @@ def _bname_on_undo_post(*_args) -> None:
 def register() -> None:
     """ハンドラを重複なく登録."""
     # 既存の同名ハンドラを除去 (reload 対策)
-    _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
-    _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
-    _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
-    _remove_named_handler(bpy.app.handlers.undo_post, _bname_on_undo_post.__name__)
-    _remove_named_handler(bpy.app.handlers.redo_post, _bname_on_undo_post.__name__)
-    bpy.app.handlers.load_post.append(_bname_on_load_post)
-    bpy.app.handlers.save_pre.append(_bname_on_save_pre)
-    bpy.app.handlers.save_post.append(_bname_on_save_post)
-    bpy.app.handlers.undo_post.append(_bname_on_undo_post)
-    bpy.app.handlers.redo_post.append(_bname_on_undo_post)
+    _remove_named_handler(bpy.app.handlers.load_post, _bmanga_on_load_post.__name__)
+    _remove_named_handler(bpy.app.handlers.save_pre, _bmanga_on_save_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.save_post, _bmanga_on_save_post.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
+    bpy.app.handlers.load_post.append(_bmanga_on_load_post)
+    bpy.app.handlers.save_pre.append(_bmanga_on_save_pre)
+    bpy.app.handlers.save_post.append(_bmanga_on_save_post)
+    bpy.app.handlers.undo_post.append(_bmanga_on_undo_post)
+    bpy.app.handlers.redo_post.append(_bmanga_on_undo_post)
     _logger.debug("handlers registered")
 
 
 def schedule_current_file_sync(retries: int = 3, interval: float = 0.15) -> None:
-    """アドオン再読込時に、現在開いている B-Name .blend を load_post 相当に同期する."""
+    """アドオン再読込時に、現在開いている B-MANGA .blend を load_post 相当に同期する."""
     global _current_file_sync_generation
     _current_file_sync_generation += 1
     generation = _current_file_sync_generation
@@ -703,7 +711,7 @@ def schedule_current_file_sync(retries: int = 3, interval: float = 0.15) -> None
         if generation != _current_file_sync_generation:
             return None
         try:
-            _bname_on_load_post(str(getattr(bpy.data, "filepath", "") or ""))
+            _bmanga_on_load_post(str(getattr(bpy.data, "filepath", "") or ""))
         except Exception:  # noqa: BLE001
             _logger.exception("scheduled current file sync failed")
         state["left"] -= 1
@@ -728,9 +736,9 @@ def unregister() -> None:
         )
     except Exception:  # noqa: BLE001
         pass
-    _remove_named_handler(bpy.app.handlers.load_post, _bname_on_load_post.__name__)
-    _remove_named_handler(bpy.app.handlers.save_pre, _bname_on_save_pre.__name__)
-    _remove_named_handler(bpy.app.handlers.save_post, _bname_on_save_post.__name__)
-    _remove_named_handler(bpy.app.handlers.undo_post, _bname_on_undo_post.__name__)
-    _remove_named_handler(bpy.app.handlers.redo_post, _bname_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.load_post, _bmanga_on_load_post.__name__)
+    _remove_named_handler(bpy.app.handlers.save_pre, _bmanga_on_save_pre.__name__)
+    _remove_named_handler(bpy.app.handlers.save_post, _bmanga_on_save_post.__name__)
+    _remove_named_handler(bpy.app.handlers.undo_post, _bmanga_on_undo_post.__name__)
+    _remove_named_handler(bpy.app.handlers.redo_post, _bmanga_on_undo_post.__name__)
     _logger.debug("handlers unregistered")

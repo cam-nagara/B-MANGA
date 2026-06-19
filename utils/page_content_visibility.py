@@ -11,27 +11,27 @@ from . import gp_layer_parenting, object_naming as on, page_range
 from .layer_hierarchy import OUTSIDE_STACK_KEY
 
 DETAIL_RADIUS = 1
-PROP_VIRTUAL_HIDDEN = "bname_page_list_virtual_hidden"
-PROP_PREVIOUS_HIDE_VIEWPORT = "bname_page_list_previous_hide_viewport"
-GP_HIDE_MAP_PROP = "bname_page_list_gp_hide_original_map_json"
+PROP_VIRTUAL_HIDDEN = "bmanga_page_list_virtual_hidden"
+PROP_PREVIOUS_HIDE_VIEWPORT = "bmanga_page_list_previous_hide_viewport"
+GP_HIDE_MAP_PROP = "bmanga_page_list_gp_hide_original_map_json"
 
 _APPLY_SCHEDULED = False
 
 
 def is_work_blend_scene(scene=None) -> bool:
     scene = scene or getattr(bpy.context, "scene", None)
-    if scene is None or not bool(getattr(scene, "bname_overview_mode", False)):
+    if scene is None or not bool(getattr(scene, "bmanga_overview_mode", False)):
         return False
     try:
         from . import paths
 
         raw_path = str(getattr(bpy.data, "filepath", "") or "")
         if not raw_path:
-            return bool(getattr(scene, "bname_overview_mode", False))
+            return bool(getattr(scene, "bmanga_overview_mode", False))
         filepath = Path(raw_path)
         return filepath.name == paths.WORK_BLEND_NAME
     except Exception:  # noqa: BLE001
-        return bool(getattr(scene, "bname_overview_mode", False))
+        return bool(getattr(scene, "bmanga_overview_mode", False))
 
 
 def schedule_apply(context=None) -> None:
@@ -88,7 +88,7 @@ def _detail_page_ids(work) -> set[str]:
 
 def detail_page_ids(context=None, work=None) -> set[str]:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
-    work = work or getattr(scene, "bname_work", None)
+    work = work or getattr(scene, "bmanga_work", None)
     try:
         from . import page_file_scene
 
@@ -169,13 +169,13 @@ def _is_content_object(obj) -> bool:
     if kind.startswith("effect_"):
         return True
     balloon_owner_props = (
-        "bname_balloon_fill_mesh_owner_id",
-        "bname_balloon_line_mesh_owner_id",
-        "bname_balloon_fill_owner_id",
-        "bname_balloon_source_owner_id",
-        "bname_balloon_clip_mask_owner_id",
-        "bname_balloon_merge_group_id",
-        "bname_balloon_merge_source_ids",
+        "bmanga_balloon_fill_mesh_owner_id",
+        "bmanga_balloon_line_mesh_owner_id",
+        "bmanga_balloon_fill_owner_id",
+        "bmanga_balloon_source_owner_id",
+        "bmanga_balloon_clip_mask_owner_id",
+        "bmanga_balloon_merge_group_id",
+        "bmanga_balloon_merge_source_ids",
     )
     return any(str(obj.get(prop, "") or "") for prop in balloon_owner_props)
 
@@ -195,17 +195,17 @@ def _object_page_id(
     if page_id:
         return page_id
     for prop in (
-        "bname_balloon_fill_mesh_owner_id",
-        "bname_balloon_line_mesh_owner_id",
-        "bname_balloon_fill_owner_id",
-        "bname_balloon_source_owner_id",
-        "bname_balloon_clip_mask_owner_id",
-        "bname_balloon_merge_group_id",
+        "bmanga_balloon_fill_mesh_owner_id",
+        "bmanga_balloon_line_mesh_owner_id",
+        "bmanga_balloon_fill_owner_id",
+        "bmanga_balloon_source_owner_id",
+        "bmanga_balloon_clip_mask_owner_id",
+        "bmanga_balloon_merge_group_id",
     ):
         owner = str(obj.get(prop, "") or "")
         if owner in balloon_pages:
             return balloon_pages[owner]
-    raw_sources = str(obj.get("bname_balloon_merge_source_ids", "") or "")
+    raw_sources = str(obj.get("bmanga_balloon_merge_source_ids", "") or "")
     if raw_sources:
         for source_id in raw_sources.replace(",", " ").split():
             if source_id in balloon_pages:
@@ -317,7 +317,7 @@ def raster_entry_in_detail_window(context, entry) -> bool:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     if scene is None or not is_work_blend_scene(scene):
         return True
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     parent_key = str(getattr(entry, "parent_key", "") or "")
     page_ids = _page_lookup(work)
     page_id = _page_from_parent_key(parent_key, page_ids, _folder_page_lookup(work, page_ids))
@@ -331,7 +331,7 @@ def apply_page_content_visibility(context=None, work=None) -> int:
     scene = getattr(context, "scene", None)
     if scene is None:
         return 0
-    work = work or getattr(scene, "bname_work", None)
+    work = work or getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return 0
     page_ids = _page_lookup(work)
@@ -372,7 +372,7 @@ def restore_all_virtual_hidden(context=None, work=None) -> int:
     scene = getattr(context, "scene", None)
     if scene is None:
         return 0
-    work = work or getattr(scene, "bname_work", None)
+    work = work or getattr(scene, "bmanga_work", None)
     page_ids = _page_lookup(work) if work is not None else set()
     folder_pages = _folder_page_lookup(work, page_ids) if work is not None else {}
     changed = 0

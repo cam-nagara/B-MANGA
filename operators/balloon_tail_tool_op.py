@@ -28,7 +28,7 @@ TOOL_NAME = "balloon_tail_tool"
 
 def _selected_tail_preset_name(context) -> str:
     wm = getattr(context, "window_manager", None)
-    name = str(getattr(wm, "bname_tail_preset_selector", "") or "") if wm is not None else ""
+    name = str(getattr(wm, "bmanga_tail_preset_selector", "") or "") if wm is not None else ""
     return "" if name in {"", "NONE"} else name
 
 
@@ -50,10 +50,10 @@ def _apply_selected_preset(context, tail) -> None:
         _logger.exception("tail tool: preset apply failed")
 
 
-class BNAME_OT_balloon_tail_tool(Operator):
+class BMANGA_OT_balloon_tail_tool(Operator):
     """しっぽツール (クリックでポイント追加、ダブルクリックで確定)."""
 
-    bl_idname = "bname.balloon_tail_tool"
+    bl_idname = "bmanga.balloon_tail_tool"
     bl_label = "しっぽツール"
 
     @classmethod
@@ -212,7 +212,7 @@ class BNAME_OT_balloon_tail_tool(Operator):
         object_tool_balloon_tail.clear_pending(self)
         if created:
             try:
-                bpy.ops.ed.undo_push(message="B-Name: しっぽ作成")
+                bpy.ops.ed.undo_push(message="B-MANGA: しっぽ作成")
             except Exception:  # noqa: BLE001
                 pass
             self.report({"INFO"}, "しっぽを確定しました")
@@ -233,7 +233,7 @@ class BNAME_OT_balloon_tail_tool(Operator):
             try:
                 # クリックごとの undo 履歴の上に「取り消し後」を積み、Ctrl+Z で
                 # 作りかけが復活して見えないようにする
-                bpy.ops.ed.undo_push(message="B-Name: しっぽ作成を取り消し")
+                bpy.ops.ed.undo_push(message="B-MANGA: しっぽ作成を取り消し")
             except Exception:  # noqa: BLE001
                 pass
         object_tool_balloon_tail.clear_pending(self)
@@ -256,7 +256,7 @@ class BNAME_OT_balloon_tail_tool(Operator):
         self._externally_finished = True
 
 
-_CLASSES = (BNAME_OT_balloon_tail_tool,)
+_CLASSES = (BMANGA_OT_balloon_tail_tool,)
 
 
 def register() -> None:

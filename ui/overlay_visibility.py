@@ -60,28 +60,28 @@ def rect_may_be_visible_in_region(
     )
 
 
-def _walk_layer_collection(layer_coll, bname_id: str):
-    """LayerCollection ツリーから ``bname_id`` を持つ LayerCollection を探す."""
-    if layer_coll is None or not bname_id:
+def _walk_layer_collection(layer_coll, bmanga_id: str):
+    """LayerCollection ツリーから ``bmanga_id`` を持つ LayerCollection を探す."""
+    if layer_coll is None or not bmanga_id:
         return None
     coll = getattr(layer_coll, "collection", None)
-    if coll is not None and str(coll.get("bname_id") or "") == bname_id:
+    if coll is not None and str(coll.get("bmanga_id") or "") == bmanga_id:
         return layer_coll
     for child in layer_coll.children:
-        found = _walk_layer_collection(child, bname_id)
+        found = _walk_layer_collection(child, bmanga_id)
         if found is not None:
             return found
     return None
 
 
-def _layer_collection_visible(bname_id: str) -> bool:
-    """``bname_id`` の Collection が現在の view_layer で表示状態にあるか.
+def _layer_collection_visible(bmanga_id: str) -> bool:
+    """``bmanga_id`` の Collection が現在の view_layer で表示状態にあるか.
 
     LayerCollection.exclude (チェックボックス) または hide_viewport (目アイコン)
     が立っていたら非表示扱い。Collection が見つからない / scene 取得不可は
     True (表示) で fallback。
     """
-    if not bname_id:
+    if not bmanga_id:
         return True
     try:
         scene = bpy.context.scene
@@ -90,7 +90,7 @@ def _layer_collection_visible(bname_id: str) -> bool:
         view_layer = bpy.context.view_layer
         if view_layer is None:
             return True
-        lc = _walk_layer_collection(view_layer.layer_collection, bname_id)
+        lc = _walk_layer_collection(view_layer.layer_collection, bmanga_id)
         if lc is None:
             return True
         if bool(getattr(lc, "exclude", False)):
@@ -121,7 +121,7 @@ def coma_visible(panel, *, page=None) -> bool:
     coma_id = str(getattr(panel, "id", "") or "")
     if not coma_id:
         return True
-    # コマ Collection の bname_id は "<page_id>:<coma_id>" 形式
+    # コマ Collection の bmanga_id は "<page_id>:<coma_id>" 形式
     page_id = ""
     if page is not None:
         page_id = str(getattr(page, "id", "") or "")
@@ -129,7 +129,7 @@ def coma_visible(panel, *, page=None) -> bool:
         # page 不明: 全 page を走査して panel を含むページを探す
         try:
             scene = bpy.context.scene
-            work = getattr(scene, "bname_work", None) if scene is not None else None
+            work = getattr(scene, "bmanga_work", None) if scene is not None else None
             if work is not None:
                 for p in getattr(work, "pages", []):
                     for c in getattr(p, "comas", []):
@@ -141,8 +141,8 @@ def coma_visible(panel, *, page=None) -> bool:
         except Exception:  # noqa: BLE001
             pass
     if page_id:
-        bname_id = f"{page_id}:{coma_id}"
-        if not _layer_collection_visible(bname_id):
+        bmanga_id = f"{page_id}:{coma_id}"
+        if not _layer_collection_visible(bmanga_id):
             return False
     return True
 

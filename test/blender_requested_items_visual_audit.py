@@ -17,19 +17,19 @@ from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_REQUESTED_VISUAL_OUT", "")
+    os.environ.get("BMANGA_REQUESTED_VISUAL_OUT", "")
     or (ROOT / ".codex" / "visual" / "requested_items_visual_audit")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_requested_visual",
+        "bmanga_dev_requested_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_requested_visual"] = mod
+    sys.modules["bmanga_dev_requested_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -75,7 +75,7 @@ def _write_preview_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     width = 360
     height = 240
-    image = bpy.data.images.new(f"BName_VisualPreview_{path.stem}", width=width, height=height, alpha=True)
+    image = bpy.data.images.new(f"BManga_VisualPreview_{path.stem}", width=width, height=height, alpha=True)
     pixels = [0.0] * (width * height * 4)
     for y in range(height):
         for x in range(width):
@@ -129,7 +129,7 @@ def _dismiss_splash() -> None:
 
 
 def _set_top_view() -> None:
-    from bname_dev_requested_visual.utils.geom import mm_to_m
+    from bmanga_dev_requested_visual.utils.geom import mm_to_m
 
     with _view3d_override():
         bpy.ops.view3d.view_axis(type="TOP", align_active=False)
@@ -146,10 +146,10 @@ def _set_top_view() -> None:
 
 
 def _active_stack_item(context, kind: str, key: str):
-    from bname_dev_requested_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_requested_visual.utils import layer_stack as layer_stack_utils
 
     uid = layer_stack_utils.target_uid(kind, key)
-    for item in context.scene.bname_layer_stack:
+    for item in context.scene.bmanga_layer_stack:
         if layer_stack_utils.stack_item_uid(item) == uid:
             return item
     raise AssertionError(f"stack item not found: {uid}")
@@ -157,14 +157,14 @@ def _active_stack_item(context, kind: str, key: str):
 
 def _configure_scene(temp_root: Path):
     mod = _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "RequestedVisual.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "RequestedVisual.bmanga"))
     assert "FINISHED" in result, result
     for _ in range(3):
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
 
-    from bname_dev_requested_visual.io import border_presets
-    from bname_dev_requested_visual.operators import coma_op
-    from bname_dev_requested_visual.utils import (
+    from bmanga_dev_requested_visual.io import border_presets
+    from bmanga_dev_requested_visual.operators import coma_op
+    from bmanga_dev_requested_visual.utils import (
         balloon_curve_object,
         coma_border_object,
         layer_object_sync,
@@ -178,7 +178,7 @@ def _configure_scene(temp_root: Path):
 
     context = bpy.context
     scene = context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.paper.canvas_width_mm = 210.0
     work.paper.canvas_height_mm = 297.0
     work.paper.start_side = "right"
@@ -262,8 +262,8 @@ def _configure_scene(temp_root: Path):
 
 
 def _assert_requested_state(work) -> dict[str, object]:
-    from bname_dev_requested_visual.utils import balloon_shapes, coma_border_object, paper_guide_object
-    from bname_dev_requested_visual.utils.geom import Rect
+    from bmanga_dev_requested_visual.utils import balloon_shapes, coma_border_object, paper_guide_object
+    from bmanga_dev_requested_visual.utils.geom import Rect
 
     scene = bpy.context.scene
     line_none = work.pages[0].comas[0]
@@ -279,7 +279,7 @@ def _assert_requested_state(work) -> dict[str, object]:
 
     dither_mats = [
         mat for mat in bpy.data.materials
-        if mat.name.startswith("BName_ComaPlane_")
+        if mat.name.startswith("BManga_ComaPlane_")
         and getattr(mat, "surface_render_method", "") == "DITHERED"
     ]
     if not dither_mats:
@@ -336,9 +336,9 @@ def _assert_requested_state(work) -> dict[str, object]:
             continue
         name = str(getattr(obj, "name", "") or "")
         if not (
-            name.startswith(("page_", "coma_", "B-Name"))
-            or bool(obj.get("bname_paper_guide_page_id"))
-            or bool(obj.get("bname_coma_border_owner_id"))
+            name.startswith(("page_", "coma_", "B-MANGA"))
+            or bool(obj.get("bmanga_paper_guide_page_id"))
+            or bool(obj.get("bmanga_coma_border_owner_id"))
         ):
             continue
         try:
@@ -389,7 +389,7 @@ def _assert_requested_state(work) -> dict[str, object]:
         "cloud_corners": len(cloud_corners),
         "thorn_curve_corners": len(thorn_corners),
         "guide_curve_objects": len(guide_objects),
-        "overview_mode": bool(scene.bname_overview_mode),
+        "overview_mode": bool(scene.bmanga_overview_mode),
         "coma_border_values": [
             {
                 "page": i,
@@ -416,21 +416,21 @@ def _make_contact_sheet(paths: list[str], summary: dict[str, object]) -> str:
     height = 110 + len(thumbs) * 480
     sheet = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(sheet)
-    draw.text((24, 22), "B-Name requested items visual audit", fill=(0, 0, 0), font=font)
+    draw.text((24, 22), "B-MANGA requested items visual audit", fill=(0, 0, 0), font=font)
     draw.text((24, 50), json.dumps(summary, ensure_ascii=False), fill=(0, 0, 0), font=font)
     y = 90
     for path, image in thumbs:
         draw.text((24, y), Path(path).name, fill=(0, 0, 0), font=font)
         sheet.paste(image, (24, y + 24))
         y += 480
-    out = OUT_DIR / "bname_requested_items_contact.png"
+    out = OUT_DIR / "bmanga_requested_items_contact.png"
     sheet.save(out)
     return str(out)
 
 
 def _run_visual_audit() -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_requested_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_requested_visual_work_"))
     mod = None
     try:
         mod, work = _configure_scene(temp_root)
@@ -438,15 +438,15 @@ def _run_visual_audit() -> None:
         _dismiss_splash()
         shots: list[str] = []
         with _view3d_override():
-            bpy.ops.bname.view_fit_all("EXEC_DEFAULT")
+            bpy.ops.bmanga.view_fit_all("EXEC_DEFAULT")
             if bpy.context.space_data.shading.type != "MATERIAL":
                 raise AssertionError("輪郭ぼかし使用時にマテリアルプレビューへ切り替わっていません")
         shots.append(_screenshot("01_all_pages_fit.png"))
 
         with _view3d_override():
             work.active_page_index = 1
-            bpy.context.scene.bname_overview_mode = False
-            bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            bpy.context.scene.bmanga_overview_mode = False
+            bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             if bpy.context.space_data.shading.type != "MATERIAL":
                 raise AssertionError("ページに合わせる後にマテリアルプレビューへ切り替わっていません")
             rv3d = bpy.context.space_data.region_3d
@@ -455,15 +455,15 @@ def _run_visual_audit() -> None:
 
         with _view3d_override():
             work.active_page_index = 3
-            bpy.context.scene.bname_overview_mode = False
-            bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            bpy.context.scene.bmanga_overview_mode = False
+            bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             rv3d = bpy.context.space_data.region_3d
             rv3d.view_distance = max(0.01, float(rv3d.view_distance) * 0.45)
         shots.append(_screenshot("03_balloon_shapes_zoom.png"))
 
         with _view3d_override():
             bpy.ops.view3d.view_camera("EXEC_DEFAULT")
-            from bname_dev_requested_visual.utils import camera_overview_sync
+            from bmanga_dev_requested_visual.utils import camera_overview_sync
 
             camera_overview_sync._apply()
         shots.append(_screenshot("04_camera_switch_overview.png"))
@@ -475,9 +475,9 @@ def _run_visual_audit() -> None:
             "screenshots": shots,
             "summary": summary,
         }
-        result_path = OUT_DIR / "bname_requested_items_visual_audit.json"
+        result_path = OUT_DIR / "bmanga_requested_items_visual_audit.json"
         result_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"BNAME_REQUESTED_ITEMS_VISUAL_OK visual={contact}", flush=True)
+        print(f"BMANGA_REQUESTED_ITEMS_VISUAL_OK visual={contact}", flush=True)
     finally:
         if mod is not None:
             try:

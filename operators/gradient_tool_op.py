@@ -47,7 +47,7 @@ def _circle_verts(cx, cy, r, segments=_CIRCLE_SEGMENTS):
     return verts
 
 
-def _draw_callback(op: "BNAME_OT_gradient_tool") -> None:
+def _draw_callback(op: "BMANGA_OT_gradient_tool") -> None:
     if op._press_px is None or op._cursor_px is None:
         return
     shader = gpu.shader.from_builtin("UNIFORM_COLOR")
@@ -79,10 +79,10 @@ def _draw_callback(op: "BNAME_OT_gradient_tool") -> None:
             pass
 
 
-class BNAME_OT_gradient_tool(Operator):
+class BMANGA_OT_gradient_tool(Operator):
     """グラデーションツール: ドラッグ方向と範囲でグラデーションレイヤーを作成"""
 
-    bl_idname = "bname.gradient_tool"
+    bl_idname = "bmanga.gradient_tool"
     bl_label = "グラデーション"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -250,7 +250,7 @@ class BNAME_OT_gradient_tool(Operator):
         return True
 
     def _create_gradient(self, context, sx, sy, ex, ey) -> None:
-        coll = getattr(context.scene, "bname_fill_layers", None)
+        coll = getattr(context.scene, "bmanga_fill_layers", None)
         if coll is None:
             return
         used = {entry.id for entry in coll}
@@ -281,8 +281,8 @@ class BNAME_OT_gradient_tool(Operator):
             preset_op.apply_gradient_preset_to_entry(context, entry)
         except Exception:  # noqa: BLE001
             pass
-        context.scene.bname_active_fill_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "fill"
+        context.scene.bmanga_active_fill_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "fill"
         try:
             from ..utils import fill_real_object as _fro
 
@@ -322,7 +322,7 @@ class BNAME_OT_gradient_tool(Operator):
         coma_modal_state.clear_active(TOOL_NAME, self, context)
 
 
-_CLASSES = (BNAME_OT_gradient_tool,)
+_CLASSES = (BMANGA_OT_gradient_tool,)
 
 
 def register() -> None:

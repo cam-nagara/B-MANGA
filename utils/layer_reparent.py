@@ -6,7 +6,7 @@
 
 フェーズ A/B 範囲:
 - 末端レイヤー (gp / gp_folder / effect / balloon / text / image / raster) の親変更
-- コマの別ページ移動 (既存 ``BNAME_OT_coma_move_to_page`` を呼び出すか、共通化)
+- コマの別ページ移動 (既存 ``BMANGA_OT_coma_move_to_page`` を呼び出すか、共通化)
 - 「ページ外」(parent_kind="none") への昇格/復帰
 
 公開関数:
@@ -223,7 +223,7 @@ def reparent_stack_item(
     """1 つの stack item を ``target`` に reparent する.
 
     Args:
-        item: ``BNameLayerStackItem``
+        item: ``BMangaLayerStackItem``
         target: 行先コンテナ
         new_world_xy_mm: ドラッグ落下位置 (世界座標 mm)。
             None のときは「位置を動かさない」。
@@ -284,11 +284,11 @@ def reparent_selected(
     アクティブ行 + ``selected`` フラグが立っている行を対象。
     """
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None:
         return 0
     selected_uids: list[str] = []
-    active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     for i, item in enumerate(stack):
         if i == active_idx or layer_stack_utils.is_item_selected(context, item):
             selected_uids.append(layer_stack_utils.stack_item_uid(item))
@@ -297,7 +297,7 @@ def reparent_selected(
     changed = 0
     for uid in selected_uids:
         # stack の参照が並び替えで変わる可能性があるので毎回再解決
-        for item in (getattr(scene, "bname_layer_stack", None) or []):
+        for item in (getattr(scene, "bmanga_layer_stack", None) or []):
             if layer_stack_utils.stack_item_uid(item) == uid:
                 if reparent_stack_item(
                     context,
@@ -867,7 +867,7 @@ def _reparent_image(context, item, target: ClickTarget, new_parent_key: str, new
     scene = getattr(context, "scene", None)
     if scene is None:
         return False
-    coll = getattr(scene, "bname_image_layers", None)
+    coll = getattr(scene, "bmanga_image_layers", None)
     if coll is None:
         return False
     work = get_work(context)
@@ -900,7 +900,7 @@ def _reparent_image(context, item, target: ClickTarget, new_parent_key: str, new
 
 def _reparent_raster(context, item, target: ClickTarget, new_parent_key: str) -> bool:
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if coll is None:
         return False
     raster_id = str(getattr(item, "key", "") or "")
@@ -983,12 +983,12 @@ def _move_page_coma_children_to_outside(context, work, src_page, old_parent_key:
         src_page.texts.remove(idx)
 
     scene = getattr(context, "scene", None)
-    for entry in getattr(scene, "bname_raster_layers", []) or []:
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if str(getattr(entry, "parent_key", "") or "") == old_parent_key:
             entry.scope = "master"
             entry.parent_kind = "none"
             entry.parent_key = ""
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if str(getattr(entry, "parent_key", "") or "") == old_parent_key:
             entry.parent_kind = "none"
             entry.parent_key = ""
@@ -1104,12 +1104,12 @@ def _retarget_coma_scene_layers_to_page(
     new_parent_key: str,
 ) -> None:
     scene = getattr(context, "scene", None)
-    for entry in getattr(scene, "bname_raster_layers", []) or []:
+    for entry in getattr(scene, "bmanga_raster_layers", []) or []:
         if _entry_parent_matches_coma(entry, src_page, src_panel_stem, src_panel_id, old_parent_key):
             entry.scope = "page"
             entry.parent_kind = "coma"
             entry.parent_key = new_parent_key
-    for entry in getattr(scene, "bname_image_layers", []) or []:
+    for entry in getattr(scene, "bmanga_image_layers", []) or []:
         if _entry_parent_matches_coma(entry, src_page, src_panel_stem, src_panel_id, old_parent_key):
             entry.parent_kind = "coma"
             entry.parent_key = new_parent_key
@@ -1234,13 +1234,13 @@ def _reparent_coma(context, item, target: ClickTarget) -> bool:
             pass
         return True
 
-    # 既存 BNAME_OT_coma_move_to_page をそのまま活用するため、active_coma を一時設定して invoke
+    # 既存 BMANGA_OT_coma_move_to_page をそのまま活用するため、active_coma を一時設定して invoke
     # ただし direct API がないので、operator を呼ぶ
     target_page_before = {coma_stack_key(target.page, panel) for panel in getattr(target.page, "comas", [])}
     work.active_page_index = src_page_idx
     src_page.active_coma_index = coma_index
     try:
-        ret = bpy.ops.bname.coma_move_to_page(
+        ret = bpy.ops.bmanga.coma_move_to_page(
             "EXEC_DEFAULT",
             target_page_id=str(getattr(target.page, "id", "") or ""),
         )

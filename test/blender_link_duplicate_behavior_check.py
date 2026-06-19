@@ -10,7 +10,7 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_NAME = "bname_dev_link_duplicate"
+MODULE_NAME = "bmanga_dev_link_duplicate"
 
 
 def _load_addon():
@@ -28,7 +28,7 @@ def _load_addon():
 
 
 def _select_stack(kind: str, key_suffix: str = ""):
-    from bname_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -44,7 +44,7 @@ def _select_stack(kind: str, key_suffix: str = ""):
 
 
 def _select_stack_uid(uid: str):
-    from bname_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -56,7 +56,7 @@ def _select_stack_uid(uid: str):
 
 
 def _multi_select_stack_uids(uids: list[str], active_uid: str) -> None:
-    from bname_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_stack
 
     stack = layer_stack.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -79,8 +79,8 @@ def _multi_select_stack_uids(uids: list[str], active_uid: str) -> None:
 
 
 def _balloon_uid(page, entry) -> str:
-    from bname_dev_link_duplicate.utils import layer_stack
-    from bname_dev_link_duplicate.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
+    from bmanga_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils.layer_hierarchy import OUTSIDE_STACK_KEY, page_stack_key
 
     page_key = OUTSIDE_STACK_KEY if page is None else page_stack_key(page)
     return layer_stack.target_uid("balloon", f"{page_key}:{entry.id}")
@@ -94,19 +94,19 @@ def _assert_pair(value, expected, label: str) -> None:
 
 
 def _effect_key(layer) -> str:
-    from bname_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_stack
 
     return layer_stack._node_stack_key(layer)
 
 
 def _effect_uid(layer) -> str:
-    from bname_dev_link_duplicate.utils import layer_stack
+    from bmanga_dev_link_duplicate.utils import layer_stack
 
     return layer_stack.target_uid("effect", _effect_key(layer))
 
 
 def _select_effect(obj, layer) -> None:
-    from bname_dev_link_duplicate.operators import effect_line_op
+    from bmanga_dev_link_duplicate.operators import effect_line_op
 
     _select_stack("effect", _effect_key(layer))
     effect_line_op._select_effect_layer(bpy.context, obj, layer)
@@ -120,9 +120,9 @@ def _effect_meta_entry(effect_line_op, obj, layer) -> dict:
 
 
 def _resolve_effect_by_id(effect_id: str):
-    from bname_dev_link_duplicate.utils import object_naming as on
+    from bmanga_dev_link_duplicate.utils import object_naming as on
 
-    obj = on.find_object_by_bname_id(effect_id, kind="effect")
+    obj = on.find_object_by_bmanga_id(effect_id, kind="effect")
     if obj is None:
         raise AssertionError(f"効果線が見つかりません: {effect_id}")
     layers = getattr(getattr(obj, "data", None), "layers", None)
@@ -135,10 +135,10 @@ def _resolve_effect_by_id(effect_id: str):
 
 
 def _test_balloon_link_duplicate(page) -> None:
-    from bname_dev_link_duplicate.operators import balloon_op, layer_link_duplicate_op
-    from bname_dev_link_duplicate.panels import gpencil_panel
-    from bname_dev_link_duplicate.utils import free_transform, layer_links
-    from bname_dev_link_duplicate.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_link_duplicate.operators import balloon_op, layer_link_duplicate_op
+    from bmanga_dev_link_duplicate.panels import gpencil_panel
+    from bmanga_dev_link_duplicate.utils import free_transform, layer_links
+    from bmanga_dev_link_duplicate.utils import layer_stack as layer_stack_utils
 
     source = balloon_op._create_balloon_entry(
         bpy.context,
@@ -165,13 +165,13 @@ def _test_balloon_link_duplicate(page) -> None:
     )
 
     _select_stack("balloon", f":{source.id}")
-    assert bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
     normal = page.balloons[-1]
     if abs(float(normal.x_mm) - 32.0) > 1.0e-6 or abs(float(normal.y_mm) - 44.0) > 1.0e-6:
         raise AssertionError("フキダシの通常複製で位置がずれています")
 
     _select_stack("balloon", f":{source.id}")
-    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
     linked = page.balloons[-1]
     if abs(float(linked.x_mm) - float(source.x_mm)) > 1.0e-6 or abs(float(linked.y_mm) - float(source.y_mm)) > 1.0e-6:
         raise AssertionError("フキダシのリンク複製で位置がずれています")
@@ -215,13 +215,13 @@ def _test_balloon_link_duplicate(page) -> None:
         raise AssertionError("リンクフキダシの自由変形線幅が共有されていません")
 
     _select_stack("balloon", f":{source.id}")
-    assert bpy.ops.bname.reset_center_point("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.reset_center_point("EXEC_DEFAULT") == {"FINISHED"}
     if float(source.center_offset_x_mm) != 0.0 or float(linked.center_offset_x_mm) != 0.0:
         raise AssertionError("中心点リセットがリンクフキダシに反映されていません")
     source.center_offset_x_mm = 3.0
     source.center_offset_y_mm = 3.0
     layer_link_duplicate_op.propagate_linked_balloon_center_free(bpy.context, page, source)
-    assert bpy.ops.bname.reset_free_transform("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.reset_free_transform("EXEC_DEFAULT") == {"FINISHED"}
     if bool(source.free_transform_enabled) or bool(linked.free_transform_enabled):
         raise AssertionError("自由変形リセットがリンクフキダシに反映されていません")
     if (
@@ -261,7 +261,7 @@ def _test_balloon_link_duplicate(page) -> None:
     uid_a = _balloon_uid(page, manual_a)
     uid_b = _balloon_uid(page, manual_b)
     _multi_select_stack_uids([uid_a, uid_b], uid_a)
-    assert bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
     if abs(float(manual_b.x_mm) - float(manual_a.x_mm)) > 1.0e-6 or abs(float(manual_b.y_mm) - float(manual_a.y_mm)) > 1.0e-6:
         raise AssertionError("通常リンクしたフキダシの位置が共有されていません")
     if abs(float(manual_b.rotation_deg) - 18.0) > 1.0e-6:
@@ -280,7 +280,7 @@ def _test_balloon_link_duplicate(page) -> None:
     if abs(float(manual_b.center_offset_x_mm) - 2.5) > 1.0e-6 or abs(float(manual_b.center_offset_y_mm) + 1.5) > 1.0e-6:
         raise AssertionError("通常リンク後のフキダシ中心点変更が共有されていません")
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     shared = work.shared_balloons.add()
     shared.id = "shared_balloon_link_source"
     shared.title = "ページ外リンク元"
@@ -292,7 +292,7 @@ def _test_balloon_link_duplicate(page) -> None:
     shared.parent_kind = "none"
     shared.parent_key = ""
     _select_stack_uid(_balloon_uid(None, shared))
-    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
     shared_linked = work.shared_balloons[-1]
     if shared_linked is shared or not str(getattr(shared_linked, "id", "") or "").startswith("shared_balloon"):
         raise AssertionError("ページ外フキダシのリンク複製が作成されていません")
@@ -304,8 +304,8 @@ def _test_balloon_link_duplicate(page) -> None:
 
 
 def _test_effect_link_duplicate() -> None:
-    from bname_dev_link_duplicate.operators import effect_line_op
-    from bname_dev_link_duplicate.utils import free_transform, layer_links
+    from bmanga_dev_link_duplicate.operators import effect_line_op
+    from bmanga_dev_link_duplicate.utils import free_transform, layer_links
 
     obj, source = effect_line_op._create_effect_layer(
         bpy.context,
@@ -330,24 +330,24 @@ def _test_effect_link_duplicate() -> None:
     )
     meta[key] = entry
     effect_line_op._write_effect_meta(obj, meta)
-    source_effect_id = str(obj.get("bname_id", "") or "")
+    source_effect_id = str(obj.get("bmanga_id", "") or "")
     source_bounds = effect_line_op.effect_layer_bounds(obj, source)
 
     _select_effect(obj, source)
-    assert bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_duplicate("EXEC_DEFAULT") == {"FINISHED"}
     normal_obj, normal, _normal_bounds = effect_line_op.active_effect_layer_bounds(bpy.context)
     normal_bounds = effect_line_op.effect_layer_bounds(normal_obj, normal)
     if normal_bounds != source_bounds:
         debug = []
         for candidate in bpy.data.objects:
-            if str(candidate.get("bname_kind", "") or "") != "effect":
+            if str(candidate.get("bmanga_kind", "") or "") != "effect":
                 continue
             layers = getattr(getattr(candidate, "data", None), "layers", None)
             layer_keys = [effect_line_op._layer_meta_key(layer) for layer in (layers or [])]
             debug.append(
                 {
                     "obj": candidate.name,
-                    "id": str(candidate.get("bname_id", "") or ""),
+                    "id": str(candidate.get("bmanga_id", "") or ""),
                     "layers": layer_keys,
                     "meta": list(effect_line_op._effect_meta(candidate).keys()),
                 }
@@ -358,9 +358,9 @@ def _test_effect_link_duplicate() -> None:
 
     obj, source = _resolve_effect_by_id(source_effect_id)
     _select_effect(obj, source)
-    assert bpy.ops.bname.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_link_duplicate("EXEC_DEFAULT") == {"FINISHED"}
     linked_obj, linked, _linked_bounds = effect_line_op.active_effect_layer_bounds(bpy.context)
-    linked_effect_id = str(linked_obj.get("bname_id", "") or "")
+    linked_effect_id = str(linked_obj.get("bmanga_id", "") or "")
     linked_uids = layer_links.linked_uids_for_uid(bpy.context, _effect_uid(source))
     if _effect_uid(linked) not in linked_uids:
         raise AssertionError("効果線のリンク複製でリンク状態が作られていません")
@@ -432,7 +432,7 @@ def _test_effect_link_duplicate() -> None:
     uid_a = _effect_uid(manual_layer_a)
     uid_b = _effect_uid(manual_layer_b)
     _multi_select_stack_uids([uid_a, uid_b], uid_a)
-    assert bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
+    assert bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT") == {"FINISHED"}
     manual_entry_a = _effect_meta_entry(effect_line_op, manual_obj_a, manual_layer_a)
     manual_entry_b = _effect_meta_entry(effect_line_op, manual_obj_b, manual_layer_b)
     for field in ("x", "y", "w", "h", "center_x", "center_y"):
@@ -469,27 +469,27 @@ def _test_effect_link_duplicate() -> None:
 
 
 def _test_white_outline_order() -> None:
-    from bname_dev_link_duplicate.utils import balloon_line_mesh
+    from bmanga_dev_link_duplicate.utils import balloon_line_mesh
 
     if not (balloon_line_mesh.FLASH_WHITE_LINE_Z_OFFSET_M < balloon_line_mesh.LINE_Z_OFFSET_M):
         raise AssertionError("フキダシ白抜き線の白線が主線より下になっていません")
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_link_duplicate_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_link_duplicate_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LinkDuplicate.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LinkDuplicate.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result
-        page = bpy.context.scene.bname_work.pages[0]
+        page = bpy.context.scene.bmanga_work.pages[0]
         _test_balloon_link_duplicate(page)
         _test_effect_link_duplicate()
         _test_white_outline_order()
-        print("BNAME_LINK_DUPLICATE_BEHAVIOR_OK")
+        print("BMANGA_LINK_DUPLICATE_BEHAVIOR_OK")
     finally:
         if mod is not None:
             try:

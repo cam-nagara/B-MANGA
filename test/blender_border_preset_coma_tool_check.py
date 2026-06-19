@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
+        "bmanga_dev", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -31,40 +31,40 @@ def main() -> None:
     failures: list[str] = []
 
     # 1. 輪郭ぼかし線種 + blur_amount
-    from bname_dev.core import coma_border
+    from bmanga_dev.core import coma_border
 
     styles = {s[0] for s in coma_border._LINE_STYLE_ITEMS}
     if "brush" not in styles:
         failures.append("線種に brush が無い")
-    if not hasattr(coma_border.BNameComaBorder.bl_rna.properties, "__contains__") or (
-        "blur_amount" not in coma_border.BNameComaBorder.bl_rna.properties
+    if not hasattr(coma_border.BMangaComaBorder.bl_rna.properties, "__contains__") or (
+        "blur_amount" not in coma_border.BMangaComaBorder.bl_rna.properties
     ):
-        failures.append("BNameComaBorder.blur_amount が無い")
+        failures.append("BMangaComaBorder.blur_amount が無い")
 
     # 2. 枠線プリセット WM セレクタ + 同梱プリセット
-    if not hasattr(bpy.types.WindowManager, "bname_border_preset_selector"):
-        failures.append("WindowManager.bname_border_preset_selector が無い")
-    from bname_dev.io import border_presets, schema
+    if not hasattr(bpy.types.WindowManager, "bmanga_border_preset_selector"):
+        failures.append("WindowManager.bmanga_border_preset_selector が無い")
+    from bmanga_dev.io import border_presets, schema
 
     gp = {p.name for p in border_presets.list_global_presets()}
     for need in ("線無し", "標準", "極太", "輪郭ぼかし"):
         if need not in gp:
             failures.append(f"同梱枠線プリセット {need} が見つからない (見つかった={sorted(gp)})")
     for opid in ("border_preset_apply", "border_preset_save_local"):
-        if not hasattr(bpy.types, f"BNAME_OT_{opid}".upper().replace("BNAME_OT_", "BNAME_OT_")):
+        if not hasattr(bpy.types, f"BMANGA_OT_{opid}".upper().replace("BMANGA_OT_", "BMANGA_OT_")):
             pass  # operator class名はクラス参照で確認しないため省略
-    if not hasattr(bpy.ops.bname, "border_preset_apply"):
-        failures.append("operator bname.border_preset_apply 未登録")
+    if not hasattr(bpy.ops.bmanga, "border_preset_apply"):
+        failures.append("operator bmanga.border_preset_apply 未登録")
 
     # 3. コマ作成ツール operator
-    if not hasattr(bpy.ops.bname, "coma_create_tool"):
-        failures.append("operator bname.coma_create_tool 未登録")
+    if not hasattr(bpy.ops.bmanga, "coma_create_tool"):
+        failures.append("operator bmanga.coma_create_tool 未登録")
 
     # 4. 効果線 入り抜き範囲 プロパティ
-    from bname_dev.core import effect_line as el
-    from bname_dev.operators import effect_line_gen as elg
+    from bmanga_dev.core import effect_line as el
+    from bmanga_dev.operators import effect_line_gen as elg
 
-    props = el.BNameEffectLineParams.bl_rna.properties
+    props = el.BMangaEffectLineParams.bl_rna.properties
     for need in (
         "inout_range_mode",
         "in_range_percent",
@@ -152,7 +152,7 @@ def main() -> None:
         failures.append(f"新入り抜きプロファイル不一致: {pn(0.0)},{pn(L*0.5)},{pn(L*0.7)},{pn(L)}")
 
     # 4d. _apply_inout_profile が 2点線にブレークポイントを挿入する
-    from bname_dev.operators.effect_line_gen import EffectLineStroke
+    from bmanga_dev.operators.effect_line_gen import EffectLineStroke
 
     s = EffectLineStroke(
         points_xyz=[(0.0, 0.0, 0.0), (L, 0.0, 0.0)], radius=base_r, role="line"
@@ -169,8 +169,8 @@ def main() -> None:
             failures.append(f"半径プロファイル不正: {rad}")
 
     # 5. プリセット往復: 標準/輪郭ぼかし を coma に適用して値確認
-    bpy.context.scene.bname_work  # noqa: B018  -- 存在確認
-    work = bpy.context.scene.bname_work
+    bpy.context.scene.bmanga_work  # noqa: B018  -- 存在確認
+    work = bpy.context.scene.bmanga_work
     page = work.pages.add()
     coma = page.comas.add()
     if not bool(coma.white_margin.enabled):

@@ -10,7 +10,7 @@ def _call_selection_menu(context, event=None) -> bool:
         return False
     # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
     return detail_popup.call_menu_right_of_cursor(
-        context, event, "BNAME_MT_selection_context"
+        context, event, "BMANGA_MT_selection_context"
     )
 
 

@@ -14,26 +14,26 @@ from ..utils import object_naming as on
 _logger = log.get_logger(__name__)
 
 
-def _make_effect_bname_id() -> str:
+def _make_effect_bmanga_id() -> str:
     for _ in range(10):
         candidate = f"effect_{uuid.uuid4().hex[:12]}"
-        if on.find_object_by_bname_id(candidate, kind="effect") is None:
+        if on.find_object_by_bmanga_id(candidate, kind="effect") is None:
             return candidate
     full = f"effect_{uuid.uuid4().hex}"
-    if on.find_object_by_bname_id(full, kind="effect") is None:
+    if on.find_object_by_bmanga_id(full, kind="effect") is None:
         return full
-    raise RuntimeError("effect bname_id 生成に失敗しました (UUID 衝突)")
+    raise RuntimeError("effect bmanga_id 生成に失敗しました (UUID 衝突)")
 
 
 def _resolve_active_coma(context):
     """gp_layer_op._resolve_active_coma と同じ優先度でアクティブコマを解決.
 
-    優先順位: scene.bname_current_coma_id > page.active_coma_index > 0。
+    優先順位: scene.bmanga_current_coma_id > page.active_coma_index > 0。
     """
     scene = getattr(context, "scene", None)
     if scene is None:
         return None, None
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return None, None
     pages = getattr(work, "pages", None)
@@ -48,8 +48,8 @@ def _resolve_active_coma(context):
     if not comas:
         return page_id, None
 
-    # 1. scene.bname_current_coma_id (cNN.blend 編集中) 最優先
-    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    # 1. scene.bmanga_current_coma_id (cNN.blend 編集中) 最優先
+    current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     if current_coma_id:
         for coma in comas:
             if str(getattr(coma, "id", "") or "") == current_coma_id:
@@ -62,10 +62,10 @@ def _resolve_active_coma(context):
     return page_id, str(getattr(comas[coma_idx], "id", "") or "")
 
 
-class BNAME_OT_effect_line_create_object(bpy.types.Operator):
+class BMANGA_OT_effect_line_create_object(bpy.types.Operator):
     """新規効果線 GP Object を作成."""
 
-    bl_idname = "bname.effect_line_create_object"
+    bl_idname = "bmanga.effect_line_create_object"
     bl_label = "新 効果線レイヤーを作成"
     bl_description = (
         "アクティブコマ直下に新 effect GP Object を生成し、Outliner 階層に登録"
@@ -80,7 +80,7 @@ class BNAME_OT_effect_line_create_object(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         scene = getattr(context, "scene", None)
-        work = getattr(scene, "bname_work", None) if scene is not None else None
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
         return bool(work and getattr(work, "loaded", False))
 
     def execute(self, context):
@@ -91,10 +91,10 @@ class BNAME_OT_effect_line_create_object(bpy.types.Operator):
         if page is None:
             self.report({"WARNING"}, "アクティブページが見つかりません")
             return {"CANCELLED"}
-        bname_id = _make_effect_bname_id()
+        bmanga_id = _make_effect_bmanga_id()
         obj = elo.create_effect_line_object(
             scene=scene,
-            bname_id=bname_id,
+            bmanga_id=bmanga_id,
             title=self.title,
             z_index=int(self.z_index),
             parent_kind=parent_kind,
@@ -116,7 +116,7 @@ class BNAME_OT_effect_line_create_object(bpy.types.Operator):
 
 
 _CLASSES = (
-    BNAME_OT_effect_line_create_object,
+    BMANGA_OT_effect_line_create_object,
 )
 
 

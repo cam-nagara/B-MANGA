@@ -3,7 +3,7 @@
 計画書 ``docs/outliner_object_layer_plan_2026-04-30.md`` Phase 0/1。
 
 責務:
-    1. ``BNameWorkData`` (page / coma / layer_folder / image / raster / GP) を
+    1. ``BMangaWorkData`` (page / coma / layer_folder / image / raster / GP) を
        読み、対応する Collection / Object を ``utils/outliner_model.py`` 経由で
        生成・整合させる (mirror)。
     2. depsgraph_update_post / msgbus / timer scan で Outliner D&D を検出し、
@@ -36,7 +36,7 @@ _SYNC_IN_PROGRESS = False
 
 @contextmanager
 def suppress_sync():
-    """B-Name operator 実行中の depsgraph 再帰を抑止するコンテキスト.
+    """B-MANGA operator 実行中の depsgraph 再帰を抑止するコンテキスト.
 
     使用例:
         with suppress_sync():
@@ -62,13 +62,13 @@ def is_sync_in_progress() -> bool:
 # ---------- 差分キャッシュ (再 fire 抑止) ----------
 
 # 前回 scan 時の (parent_collection_name, location_z, parent_key, folder_id) を
-# **bname_id** キーで保持する。obj.name キーだとリネームでリーク + 同名再生成で
+# **bmanga_id** キーで保持する。obj.name キーだとリネームでリーク + 同名再生成で
 # 偶発継承する事故が起きるため安定 ID を採用。
 _LAST_SNAPSHOT: dict[str, tuple] = {}
 
 
 def _snapshot_key(obj: bpy.types.Object) -> str:
-    """snapshot のキー。bname_id 優先、無ければ obj.name fallback."""
+    """snapshot のキー。bmanga_id 優先、無ければ obj.name fallback."""
     bid = str(obj.get(on.PROP_ID, "") or "")
     if str(obj.get(on.PROP_KIND, "") or "") == "text" and bid:
         return f"{bid}|{obj.get(on.PROP_PARENT_KEY, '')}"
@@ -97,9 +97,9 @@ def clear_snapshots() -> None:
     _LAST_SNAPSHOT.clear()
 
 
-def prune_snapshots(valid_bname_ids: set[str]) -> int:
-    """指定された有効 bname_id 以外の snapshot を削除. orphan 解消用."""
-    stale = [k for k in _LAST_SNAPSHOT if not k.startswith("@name:") and k not in valid_bname_ids]
+def prune_snapshots(valid_bmanga_ids: set[str]) -> int:
+    """指定された有効 bmanga_id 以外の snapshot を削除. orphan 解消用."""
+    stale = [k for k in _LAST_SNAPSHOT if not k.startswith("@name:") and k not in valid_bmanga_ids]
     for k in stale:
         del _LAST_SNAPSHOT[k]
     return len(stale)
@@ -114,7 +114,7 @@ def prune_snapshots(valid_bname_ids: set[str]) -> int:
 # レイヤー (フキダシ z_index=1010) が world z=101m に飛んでいた。
 # 2026-05-04: ユーザー要望で 0.1 → 0.01 に縮小 (coma_plane Z も同期して
 # 0.1 → 0.01 に変更し、 paper_bg Z=0 との隙間を維持)。
-BNAME_Z_STEP_M = 0.01
+BMANGA_Z_STEP_M = 0.01
 
 
 def z_for_index(z_index: int) -> float:
@@ -140,16 +140,16 @@ def apply_z_index(obj: bpy.types.Object, z_index: int) -> None:
     except Exception:  # noqa: BLE001
         pass
     kind = on.get_kind(obj)
-    bname_id = on.get_bname_id(obj)
+    bmanga_id = on.get_bmanga_id(obj)
     title = str(obj.get(on.PROP_TITLE, "") or "")
-    if kind and bname_id:
+    if kind and bmanga_id:
         on.assign_canonical_name(
             obj, kind=kind, z_index=int(z_index), sub_id=kind, title=title
         )
 
 
 def _resolve_page_id_for_object(obj: bpy.types.Object) -> str:
-    """Object が属するページの id を ``bname_parent_key`` から解決.
+    """Object が属するページの id を ``bmanga_parent_key`` から解決.
 
     parent_key の形式:
         - ``""`` → outside (ページなし)
@@ -157,7 +157,7 @@ def _resolve_page_id_for_object(obj: bpy.types.Object) -> str:
         - ``"pNNNN:cNN"`` → coma 配下 (コロン左側がページ)
         - その他 (folder_xxx) → folder Collection を引いて再帰解決
     """
-    parent_key = str(obj.get("bname_parent_key", "") or "")
+    parent_key = str(obj.get("bmanga_parent_key", "") or "")
     if not parent_key:
         return ""
     if ":" in parent_key:
@@ -169,9 +169,9 @@ def _resolve_page_id_for_object(obj: bpy.types.Object) -> str:
     # folder の場合: Collection から親を辿る
     from . import object_naming as _on
 
-    folder_coll = _on.find_collection_by_bname_id(parent_key, kind="folder")
+    folder_coll = _on.find_collection_by_bmanga_id(parent_key, kind="folder")
     if folder_coll is not None:
-        pkey = str(folder_coll.get("bname_parent_key", "") or "")
+        pkey = str(folder_coll.get("bmanga_parent_key", "") or "")
         if pkey:
             if ":" in pkey:
                 return pkey.split(":", 1)[0]
@@ -252,23 +252,23 @@ def _set_object_z(obj: bpy.types.Object, new_z: float) -> bool:
 
 def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
     kind = str(obj.get(on.PROP_KIND, "") or "")
-    bname_id = str(obj.get(on.PROP_ID, "") or "")
-    if not kind or not bname_id:
+    bmanga_id = str(obj.get(on.PROP_ID, "") or "")
+    if not kind or not bmanga_id:
         return ""
     try:
         from . import layer_stack as ls
 
         if kind in {"balloon", "text"}:
-            return ls.target_uid(kind, f"{page_id}:{bname_id}")
+            return ls.target_uid(kind, f"{page_id}:{bmanga_id}")
         if kind in {"image", "raster", "fill"}:
-            return ls.target_uid(kind, bname_id)
+            return ls.target_uid(kind, bmanga_id)
         if kind == "effect":
             layers = getattr(getattr(obj, "data", None), "layers", None)
             if layers is None or len(layers) == 0:
                 return ""
             return ls.target_uid("effect", ls._node_stack_key(layers[0]))
         if kind in {"gp", "gp_folder"}:
-            return ls.target_uid(kind, bname_id)
+            return ls.target_uid(kind, bmanga_id)
     except Exception:  # noqa: BLE001
         return ""
     return ""
@@ -278,7 +278,7 @@ def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
     try:
         from . import layer_stack as ls
 
-        stack = getattr(scene, "bname_layer_stack", None)
+        stack = getattr(scene, "bmanga_layer_stack", None)
         if stack is None:
             return [], ""
         preview_uid = ls.target_uid(ls.COMA_PREVIEW_KIND, ls.coma_preview_key(coma_key))
@@ -296,7 +296,7 @@ def _coma_stack_order(scene, coma_key: str) -> tuple[list[str], str]:
 def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int, bpy.types.Object]]) -> int:
     page_id = coma_key.split(":", 1)[0]
     order, preview_uid = _coma_stack_order(scene, coma_key)
-    if not order or preview_uid not in order:
+    if not order:
         items.sort(key=lambda x: (x[0], x[1].name))
         count = len(items)
         updated = 0
@@ -306,7 +306,26 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
         return updated
 
     index_by_uid = {uid: i for i, uid in enumerate(order)}
-    preview_index = index_by_uid[preview_uid]
+    preview_index = index_by_uid.get(preview_uid)
+
+    if preview_index is None:
+        sorted_items: list[tuple[int, int, bpy.types.Object]] = []
+        for z_index, obj in items:
+            uid = _stack_uid_for_coma_object(obj, page_id)
+            stack_index = index_by_uid.get(uid)
+            if stack_index is not None:
+                sorted_items.append((stack_index, z_index, obj))
+            else:
+                sorted_items.append((10_000, -z_index, obj))
+        sorted_items.sort(key=lambda x: (x[0], x[1], x[2].name))
+        count = len(sorted_items)
+        updated = 0
+        for i, (_si, _zi, obj) in enumerate(sorted_items):
+            rank = count - i
+            if _set_object_z(obj, coma_z_order.content_z(coma, rank, count)):
+                updated += 1
+        return updated
+
     front: list[tuple[int, int, bpy.types.Object]] = []
     back: list[tuple[int, int, bpy.types.Object]] = []
     fallback: list[tuple[int, int, bpy.types.Object]] = []
@@ -314,9 +333,6 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
         uid = _stack_uid_for_coma_object(obj, page_id)
         stack_index = index_by_uid.get(uid)
         if stack_index is None:
-            # レイヤーリストに現れない互換 Object は、従来どおり z_index が
-            # 大きいものほど前面として扱う。リスト上の実アイテムより後ろの
-            # グループに置きつつ、fallback 同士では降順に並べる。
             fallback.append((10_000, -z_index, obj))
         elif stack_index < preview_index:
             front.append((stack_index, z_index, obj))
@@ -338,6 +354,24 @@ def _assign_coma_item_z(scene, work, coma_key: str, coma, items: list[tuple[int,
         if _set_object_z(obj, coma_z_order.content_behind_plane_z(coma, i, back_count)):
             updated += 1
     return updated
+
+
+def _page_level_stack_order(scene, page_key: str) -> list[str]:
+    """ページ直下レイヤーの stack 順序 (前面→背面) を返す."""
+    try:
+        from . import layer_stack as ls
+
+        stack = getattr(scene, "bmanga_layer_stack", None)
+        if stack is None:
+            return []
+        return [
+            ls.stack_item_uid(item)
+            for item in stack
+            if str(getattr(item, "parent_key", "") or "") == page_key
+            and str(getattr(item, "kind", "") or "") in ls.COMA_REORDER_KINDS
+        ]
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def assign_per_page_z_ranks(scene, work) -> int:
@@ -384,11 +418,30 @@ def assign_per_page_z_ranks(scene, work) -> int:
 
     updated = 0
     for page_id, items in page_groups.items():
-        items.sort(key=lambda x: (x[0], x[1].name))  # z_index 昇順, tie は name
-        for rank, (_zi, obj) in enumerate(items, start=1):
-            new_z = page_front_base.get(page_id, 0.0) + rank * BNAME_Z_STEP_M
-            if _set_object_z(obj, new_z):
-                updated += 1
+        stack_order = _page_level_stack_order(scene, page_id)
+        if stack_order:
+            index_by_uid = {uid: i for i, uid in enumerate(stack_order)}
+            sorted_items: list[tuple[int, int, bpy.types.Object]] = []
+            for z_index, obj in items:
+                uid = _stack_uid_for_coma_object(obj, page_id)
+                si = index_by_uid.get(uid)
+                if si is not None:
+                    sorted_items.append((si, z_index, obj))
+                else:
+                    sorted_items.append((10_000, -z_index, obj))
+            sorted_items.sort(key=lambda x: (x[0], x[1], x[2].name))
+            count = len(sorted_items)
+            for i, (_si, _zi, obj) in enumerate(sorted_items):
+                rank = count - i
+                new_z = page_front_base.get(page_id, 0.0) + rank * BMANGA_Z_STEP_M
+                if _set_object_z(obj, new_z):
+                    updated += 1
+        else:
+            items.sort(key=lambda x: (x[0], x[1].name))
+            for rank, (_zi, obj) in enumerate(items, start=1):
+                new_z = page_front_base.get(page_id, 0.0) + rank * BMANGA_Z_STEP_M
+                if _set_object_z(obj, new_z):
+                    updated += 1
     for coma_key, items in coma_items.items():
         coma = comas_by_key.get(coma_key)
         if coma is None:
@@ -490,7 +543,7 @@ def _purge_content_for_filter(scene, page_filter: set[str] | None) -> None:
 
 
 def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None) -> None:
-    """全 BNameImageLayer / BNameTextEntry に対応する表示 Object を ensure."""
+    """全 BMangaImageLayer / BMangaTextEntry に対応する表示 Object を ensure."""
     try:
         from . import empty_layer_object as elo
         from . import image_real_object as iro
@@ -506,7 +559,7 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
         if page_filter is None:
             iro.sync_all_image_real_objects(scene, work)
         elif page_filter:
-            for entry in getattr(scene, "bname_image_layers", []) or []:
+            for entry in getattr(scene, "bmanga_image_layers", []) or []:
                 if not _entry_in_page_filter(entry, work, page_filter):
                     continue
                 page = iro.page_for_entry(scene, work, entry)
@@ -531,7 +584,7 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
         if page_filter is None:
             fro.sync_all_fill_real_objects(scene, work)
         elif page_filter:
-            for entry in getattr(scene, "bname_fill_layers", []) or []:
+            for entry in getattr(scene, "bmanga_fill_layers", []) or []:
                 if not _entry_in_page_filter(entry, work, page_filter):
                     continue
                 page = fro.page_for_entry(scene, work, entry)
@@ -562,9 +615,9 @@ def _saved_runtime_objects_look_current(
     border_owners: set[str] = set()
     for obj in bpy.data.objects:
         kind = str(obj.get(on.PROP_KIND, "") or "")
-        bname_id = str(obj.get(on.PROP_ID, "") or "")
-        if kind and bname_id:
-            object_ids_by_kind.setdefault(kind, set()).add(bname_id)
+        bmanga_id = str(obj.get(on.PROP_ID, "") or "")
+        if kind and bmanga_id:
+            object_ids_by_kind.setdefault(kind, set()).add(bmanga_id)
         owner = str(obj.get(_cp.PROP_COMA_PLANE_OWNER_ID, "") or "")
         if owner:
             plane_owners.add(owner)
@@ -600,7 +653,7 @@ def _saved_runtime_objects_look_current(
             for entry in getattr(page, "texts", []) or []:
                 text_id = str(getattr(entry, "id", "") or "")
                 if text_id:
-                    expected_texts.add(_tro.text_object_bname_id_for_values(page_id, text_id))
+                    expected_texts.add(_tro.text_object_bmanga_id_for_values(page_id, text_id))
     # 作品直下 (親なし) の共有レイヤーもページ編集中は実体が必要。
     # ここに入れないと「ページ側は揃っている」と誤判定して全件ミラーが
     # スキップされ、作品直下へ移した直後のレイヤーが実体化されない。
@@ -613,7 +666,7 @@ def _saved_runtime_objects_look_current(
             text_id = str(getattr(entry, "id", "") or "")
             if text_id:
                 expected_texts.add(
-                    _tro.text_object_bname_id_for_values(_tro.OUTSIDE_PAGE_ID, text_id)
+                    _tro.text_object_bmanga_id_for_values(_tro.OUTSIDE_PAGE_ID, text_id)
                 )
     if coma_page_filter is None or coma_page_filter:
         for coma in getattr(work, "shared_comas", []) or []:
@@ -634,7 +687,7 @@ def _saved_runtime_objects_look_current(
         return False
 
     if page_filter is None or page_filter:
-        scene_image_layers = getattr(scene, "bname_image_layers", None)
+        scene_image_layers = getattr(scene, "bmanga_image_layers", None)
         expected_images = {
             str(getattr(entry, "id", "") or "")
             for entry in (scene_image_layers or [])
@@ -649,18 +702,18 @@ def _saved_runtime_objects_look_current(
 def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
     """``work`` の page/coma/folder 配列から Collection 階層を生成・整合.
 
-    既存 Collection は ``bname_id`` で逆引きして再利用する。
+    既存 Collection は ``bmanga_id`` で逆引きして再利用する。
     work が未ロード (``loaded`` False) の場合は何もしない (Outliner に
-    意味のない空の B-Name 階層を作らない)。
+    意味のない空の B-MANGA 階層を作らない)。
     """
     if scene is None or work is None:
         return
     if not bool(getattr(work, "loaded", False)):
         return
     # コマ編集モード (cNN.blend が mainfile) では Outliner mirror をスキップする。
-    # ここで B-Name root / 全ページ Collection を再構築すると、その後の
+    # ここで B-MANGA root / 全ページ Collection を再構築すると、その後の
     # save_as_mainfile で cNN.blend に overview 構造が丸ごと書き込まれ、
-    # 「コマファイルの中に B-Name コレクションが居座る」問題の真因になる。
+    # 「コマファイルの中に B-MANGA コレクションが居座る」問題の真因になる。
     # 復帰経路: exit_coma_mode → work.blend を open → load_post で overview
     # モードになり、その load_post 内の mirror_work_to_outliner は再生成される。
     try:
@@ -668,9 +721,9 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
 
         # NOTE: ``get_mode`` は ``context`` を受け取り ``context.scene`` を読む
         # API なので、scene そのものを渡すと内部で None 扱いされて MODE_PAGE
-        # にフォールバックする。bpy.context を渡すか、Scene の bname_mode を
+        # にフォールバックする。bpy.context を渡すか、Scene の bmanga_mode を
         # 直接見る必要がある。ここでは Scene プロパティを直接参照する。
-        if str(getattr(scene, "bname_mode", "") or "") == MODE_COMA:
+        if str(getattr(scene, "bmanga_mode", "") or "") == MODE_COMA:
             return
     except Exception:  # noqa: BLE001
         pass
@@ -732,7 +785,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         _purge_content_for_filter(scene, content_page_filter)
         return
     with suppress_sync():
-        # 既存実体が Blender 標準機能で動かされていた場合は、B-Name 側の
+        # 既存実体が Blender 標準機能で動かされていた場合は、B-MANGA 側の
         # 同期で上書きする前に現在の状態を作品データへ反映する。
         try:
             from . import object_state_sync
@@ -743,7 +796,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
             _logger.exception("mirror pre object state sync failed")
         om.ensure_root_collection(scene)
         om.ensure_outside_collection(scene)
-        # 全テキストレイヤー集約用 Collection (B-Name 直下、最上位 z_index)
+        # 全テキストレイヤー集約用 Collection (B-MANGA 直下、最上位 z_index)
         om.ensure_text_collection(scene)
         om.ensure_work_info_collection(scene)
         for page in _iter_filtered_pages(work, structure_page_filter):
@@ -905,13 +958,13 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("apply_masks_to_all_managed failed")
 
-        # 旧設計の集約 GP Object (BName_EffectLines / BName_EffectLines_data)
+        # 旧設計の集約 GP Object (BManga_EffectLines / BManga_EffectLines_data)
         # は新設計 (1 effect = 1 GP Object @ コマ Collection) で完全置換された
         # ため、 viewport から強制 hide する。 中身 (effect_focus 等の旧 layer
         # stroke) は user data として残し、 ユーザーが必要なら manual で
         # 復活できる。 過去 file 互換のために削除はしない。
         try:
-            for legacy_name in ("BName_EffectLines", "BName_EffectLines_data"):
+            for legacy_name in ("BManga_EffectLines", "BManga_EffectLines_data"):
                 lo = bpy.data.objects.get(legacy_name)
                 if lo is not None and not lo.hide_viewport:
                     lo.hide_viewport = True
@@ -958,7 +1011,7 @@ def _resolve_page_world_offset_mm(scene, parent_key: str) -> tuple[float, float]
     page_id = parent_key.split(":", 1)[0] if parent_key else ""
     if not page_id:
         return (0.0, 0.0)
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return (0.0, 0.0)
     pages = list(getattr(work, "pages", []))
@@ -981,7 +1034,7 @@ def stamp_layer_object(
     obj: bpy.types.Object,
     *,
     kind: str,
-    bname_id: str,
+    bmanga_id: str,
     title: str,
     z_index: int,
     parent_kind: str,
@@ -990,7 +1043,7 @@ def stamp_layer_object(
     scene: Optional[bpy.types.Scene] = None,
     apply_page_offset: bool = True,
 ) -> None:
-    """既存の Object に B-Name メタデータを書き込み、所属 Collection を整合.
+    """既存の Object に B-MANGA メタデータを書き込み、所属 Collection を整合.
 
     呼出側は既に ``bpy.data.objects.new()`` 等で Object を生成済みであることを
     前提とする。ここでは custom property 設定と link 整合を行う。
@@ -1005,7 +1058,7 @@ def stamp_layer_object(
     on.stamp_identity(
         obj,
         kind=kind,
-        bname_id=bname_id,
+        bmanga_id=bmanga_id,
         title=title,
         z_index=z_index,
         parent_key=parent_key,
@@ -1041,7 +1094,7 @@ def stamp_layer_object(
 
 
 def detect_outliner_changes(scene: bpy.types.Scene) -> list[tuple[bpy.types.Object, str, str]]:
-    """B-Name 管理 Object のうち、現所属 Collection が ``parent_key`` と
+    """B-MANGA 管理 Object のうち、現所属 Collection が ``parent_key`` と
     乖離しているものを返す.
 
     Phase 0 では呼出側 (timer scan) でこの戻り値を見て警告ログを出すだけ。

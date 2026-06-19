@@ -18,13 +18,13 @@ _ROTATE_ZONE_OUTER_MM = 8.0
 def mode_key(context) -> str:
     """右クリックメニュー「自由変形」で指定された対象キーを返す."""
     wm = getattr(context, "window_manager", None) if context is not None else None
-    return str(getattr(wm, "bname_free_transform_key", "") or "")
+    return str(getattr(wm, "bmanga_free_transform_key", "") or "")
 
 
 def clear_mode(context) -> None:
     wm = getattr(context, "window_manager", None) if context is not None else None
-    if wm is not None and str(getattr(wm, "bname_free_transform_key", "") or ""):
-        wm.bname_free_transform_key = ""
+    if wm is not None and str(getattr(wm, "bmanga_free_transform_key", "") or ""):
+        wm.bmanga_free_transform_key = ""
 
 
 def free_action_for_hit(hit: dict | None, *, ctrl: bool, context=None) -> str:

@@ -1,4 +1,4 @@
-"""Write Blender object transforms back to B-Name balloon entries."""
+"""Write Blender object transforms back to B-MANGA balloon entries."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def sync_entry_transform_from_object(scene: bpy.types.Scene, obj: bpy.types.Obje
     page, entry = balloon_curve_object.find_balloon_entry(scene, balloon_id)
     if entry is None:
         return False
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     ox_mm, oy_mm = _page_offset_mm(scene, work, page)
     old_w = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
     old_h = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))

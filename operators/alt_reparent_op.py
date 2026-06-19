@@ -1,9 +1,9 @@
 """ビューポート Alt 系 reparent オペレーター.
 
 3 つのオペレーターを提供:
-- ``BNAME_OT_alt_reparent_drag``: Alt+ドラッグ → ドロップ位置のコンテナへ移動 + 位置追従
-- ``BNAME_OT_alt_reparent_into``: Alt+クリック → クリック位置の最深コンテナへ (位置維持)
-- ``BNAME_OT_alt_reparent_out``: Alt+Shift+クリック → 1 段浅い親へ (位置維持)
+- ``BMANGA_OT_alt_reparent_drag``: Alt+ドラッグ → ドロップ位置のコンテナへ移動 + 位置追従
+- ``BMANGA_OT_alt_reparent_into``: Alt+クリック → クリック位置の最深コンテナへ (位置維持)
+- ``BMANGA_OT_alt_reparent_out``: Alt+Shift+クリック → 1 段浅い親へ (位置維持)
 
 選択中のレイヤー (アクティブ + ``selected`` フラグ) を一括で reparent する。
 GPU ドロップインジケーターは ``ui/reparent_overlay`` に状態を渡すことで実現。
@@ -38,10 +38,10 @@ _DRAG_THRESHOLD_PX = 4.0
 
 def _has_selected_targets(context) -> bool:
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None or len(stack) == 0:
         return False
-    active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= active_idx < len(stack):
         return True
     for item in stack:
@@ -52,10 +52,10 @@ def _has_selected_targets(context) -> bool:
 
 def _selected_count(context) -> int:
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None:
         return 0
-    active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     seen_uids: set[str] = set()
     if 0 <= active_idx < len(stack):
         seen_uids.add(layer_stack_utils.stack_item_uid(stack[active_idx]))
@@ -123,10 +123,10 @@ def _set_error_for_target(target) -> None:
 # ---------- Alt+クリック (位置維持で 1 段深く) ----------
 
 
-class BNAME_OT_alt_reparent_into(Operator):
+class BMANGA_OT_alt_reparent_into(Operator):
     """Alt+クリック: 選択中のレイヤーをクリック地点の最深コンテナへ reparent (位置維持)."""
 
-    bl_idname = "bname.alt_reparent_into"
+    bl_idname = "bmanga.alt_reparent_into"
     bl_label = "Alt クリックでコマ/ページに入れる"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -156,10 +156,10 @@ class BNAME_OT_alt_reparent_into(Operator):
 # ---------- Alt+Shift+クリック (位置維持で 1 段浅く) ----------
 
 
-class BNAME_OT_alt_reparent_out(Operator):
+class BMANGA_OT_alt_reparent_out(Operator):
     """Alt+Shift+クリック: 選択中のレイヤーを 1 段浅い親 (コマ→ページ) へ reparent."""
 
-    bl_idname = "bname.alt_reparent_out"
+    bl_idname = "bmanga.alt_reparent_out"
     bl_label = "Alt+Shift クリックでコマ/ページから出す"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -173,8 +173,8 @@ class BNAME_OT_alt_reparent_out(Operator):
         click_target = layer_reparent.find_click_target(context, event)
         # 選択中の各レイヤーごとに「1 段浅い親」を計算し、最初の有効ターゲットを採用
         scene = context.scene
-        stack = scene.bname_layer_stack
-        active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        stack = scene.bmanga_layer_stack
+        active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
         candidates = []
         if 0 <= active_idx < len(stack):
             candidates.append(stack[active_idx])
@@ -209,10 +209,10 @@ class BNAME_OT_alt_reparent_out(Operator):
 # ---------- Alt+ドラッグ (位置追従 + 親変更) ----------
 
 
-class BNAME_OT_alt_reparent_drag(Operator):
+class BMANGA_OT_alt_reparent_drag(Operator):
     """Alt+ドラッグ: 選択レイヤーを引きずって、ドロップ先のコンテナへ reparent + 位置追従."""
 
-    bl_idname = "bname.alt_reparent_drag"
+    bl_idname = "bmanga.alt_reparent_drag"
     bl_label = "Alt ドラッグでレイヤーを移動 + reparent"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -308,9 +308,9 @@ class BNAME_OT_alt_reparent_drag(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_alt_reparent_into,
-    BNAME_OT_alt_reparent_out,
-    BNAME_OT_alt_reparent_drag,
+    BMANGA_OT_alt_reparent_into,
+    BMANGA_OT_alt_reparent_out,
+    BMANGA_OT_alt_reparent_drag,
 )
 
 

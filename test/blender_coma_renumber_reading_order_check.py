@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_renumber",
+        "bmanga_dev_coma_renumber",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_renumber"] = mod
+    sys.modules["bmanga_dev_coma_renumber"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -68,9 +68,9 @@ def _assert_order(page, expected: list[tuple[str, float, float]]) -> None:
 
 
 def _add_parented_entries(context, page, page_id: str) -> None:
-    from bname_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
-    from bname_dev_coma_renumber.utils import gpencil as gp_utils
-    from bname_dev_coma_renumber.utils import object_naming as on
+    from bmanga_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev_coma_renumber.utils import gpencil as gp_utils
+    from bmanga_dev_coma_renumber.utils import object_naming as on
 
     balloon = page.balloons.add()
     balloon.id = "balloon_read_order"
@@ -82,16 +82,16 @@ def _add_parented_entries(context, page, page_id: str) -> None:
     text.parent_kind = "coma"
     text.parent_key = f"{page_id}:c90"
 
-    folder = context.scene.bname_work.layer_folders.add()
+    folder = context.scene.bmanga_work.layer_folders.add()
     folder.id = "folder_read_order"
     folder.parent_key = f"{page_id}:c50"
 
-    image = context.scene.bname_image_layers.add()
+    image = context.scene.bmanga_image_layers.add()
     image.id = "image_read_order"
     image.parent_kind = "coma"
     image.parent_key = f"{page_id}:c50"
 
-    raster = context.scene.bname_raster_layers.add()
+    raster = context.scene.bmanga_raster_layers.add()
     raster.id = "raster_read_order"
     raster.parent_kind = "coma"
     raster.parent_key = f"{page_id}:c50"
@@ -107,15 +107,15 @@ def _add_parented_entries(context, page, page_id: str) -> None:
 
 
 def _assert_parented_entries(context, page, page_id: str) -> None:
-    from bname_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
-    from bname_dev_coma_renumber.utils import gpencil as gp_utils
-    from bname_dev_coma_renumber.utils import object_naming as on
+    from bmanga_dev_coma_renumber.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev_coma_renumber.utils import gpencil as gp_utils
+    from bmanga_dev_coma_renumber.utils import object_naming as on
 
     assert page.balloons[0].parent_key == f"{page_id}:c01"
     assert page.texts[0].parent_key == f"{page_id}:c02"
-    assert context.scene.bname_work.layer_folders[0].parent_key == f"{page_id}:c04"
-    assert context.scene.bname_image_layers[0].parent_key == f"{page_id}:c04"
-    assert context.scene.bname_raster_layers[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bmanga_work.layer_folders[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bmanga_image_layers[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bmanga_raster_layers[0].parent_key == f"{page_id}:c04"
 
     gp_obj = gp_utils.get_master_gpencil()
     layer = gp_obj.data.layers.get("gp_read_order")
@@ -126,35 +126,35 @@ def _assert_parented_entries(context, page, page_id: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_renumber_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_renumber_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaRenumber.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaRenumber.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_coma_renumber.utils import object_naming as on
+        from bmanga_dev_coma_renumber.utils import object_naming as on
 
         context = bpy.context
-        work = context.scene.bname_work
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        work = context.scene.bmanga_work
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
 
         work.paper.read_direction = "left"
         page = work.pages[0]
         _build_four_comas(page)
         work.paper.read_direction = "right"
         _build_four_comas(work.pages[1])
-        assert not bpy.ops.bname.coma_renumber_active_page.poll()
+        assert not bpy.ops.bmanga.coma_renumber_active_page.poll()
 
-        assert "FINISHED" in bpy.ops.bname.open_page_file(index=0)
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file(index=0)
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         page_id = str(page.id)
         work.paper.read_direction = "left"
         _add_parented_entries(context, page, page_id)
-        assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.coma_renumber_active_page("EXEC_DEFAULT")
         _assert_order(
             page,
             [
@@ -165,19 +165,19 @@ def main() -> None:
             ],
         )
         _assert_parented_entries(context, page, page_id)
-        assert on.find_collection_by_bname_id(f"{page_id}:c01", kind="coma") is not None
+        assert on.find_collection_by_bmanga_id(f"{page_id}:c01", kind="coma") is not None
         assert not [
             coll.name for coll in bpy.data.collections
             if str(coll.get(on.PROP_ID, "") or "").find("__coma_renumber_tmp__") >= 0
         ]
 
-        assert "FINISHED" in bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
-        assert "FINISHED" in bpy.ops.bname.open_page_file(index=1)
+        assert "FINISHED" in bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.open_page_file(index=1)
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[1]
         work.paper.read_direction = "right"
-        assert "FINISHED" in bpy.ops.bname.coma_renumber_active_page("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.coma_renumber_active_page("EXEC_DEFAULT")
         _assert_order(
             page,
             [
@@ -188,7 +188,7 @@ def main() -> None:
             ],
         )
 
-        print("BNAME_COMA_RENUMBER_READING_ORDER_OK")
+        print("BMANGA_COMA_RENUMBER_READING_ORDER_OK")
     finally:
         if mod is not None:
             try:

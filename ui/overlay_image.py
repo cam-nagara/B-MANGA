@@ -63,7 +63,7 @@ def _get_image_layer_shader():
         }
     """
     try:
-        interface = gpu.types.GPUStageInterfaceInfo("bname_image_layer_iface")
+        interface = gpu.types.GPUStageInterfaceInfo("bmanga_image_layer_iface")
         interface.smooth("VEC2", "uvInterp")
         shader_info = gpu.types.GPUShaderCreateInfo()
         shader_info.push_constant("MAT4", "ModelViewProjectionMatrix")
@@ -114,7 +114,7 @@ def image_quad_points_mm(entry) -> list[tuple[float, float]]:
 
 def draw_image_layers(scene) -> None:
     """画像レイヤーを gpu.texture 経由でオーバーレイ描画."""
-    coll = getattr(scene, "bname_image_layers", None)
+    coll = getattr(scene, "bmanga_image_layers", None)
     if coll is None or not len(coll):
         return
     if not _HAS_GPU_TEXTURE:

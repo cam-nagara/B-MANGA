@@ -2,7 +2,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_multi_line_count_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_multi_line_count_check.py"
 """
 
 from __future__ import annotations
@@ -17,18 +17,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_MULTILINE_COUNT_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_multiline_count_"))
+_OUT_ENV = os.environ.get("BMANGA_MULTILINE_COUNT_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_multiline_count_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_multiline_count",
+        "bmanga_dev_multiline_count",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_multiline_count"] = mod
+    sys.modules["bmanga_dev_multiline_count"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -71,18 +71,18 @@ def _delete_all_balloons(page) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_multiline_count_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_multiline_count_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "MultiCountCheck.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MultiCountCheck.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_multiline_count.core.work import get_work
-    from bname_dev_multiline_count.operators import balloon_op
-    from bname_dev_multiline_count.utils import balloon_curve_object
-    from bname_dev_multiline_count.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_multiline_count.core.work import get_work
+    from bmanga_dev_multiline_count.operators import balloon_op
+    from bmanga_dev_multiline_count.utils import balloon_curve_object
+    from bmanga_dev_multiline_count.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     work = get_work(context)

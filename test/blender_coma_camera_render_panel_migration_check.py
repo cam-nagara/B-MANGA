@@ -1,4 +1,4 @@
-"""Blender実機用: コマ編集カメラ設定のB-Name-Render移動確認."""
+"""Blender実機用: コマ編集カメラ設定のB-MANGA Render移動確認."""
 
 from __future__ import annotations
 
@@ -103,7 +103,7 @@ def _draw_panel(panel_cls, context):
 
 
 def _prepare_coma_context() -> None:
-    from bname_panel_migration.core.mode import MODE_COMA, set_mode
+    from bmanga_panel_migration.core.mode import MODE_COMA, set_mode
 
     scene = bpy.context.scene
     cam_data = bpy.data.cameras.new("MigrationCamera")
@@ -113,10 +113,10 @@ def _prepare_coma_context() -> None:
     set_mode(MODE_COMA, bpy.context)
 
 
-def _check_bname_panel() -> None:
-    from bname_panel_migration.panels import coma_camera_panel
+def _check_bmanga_panel() -> None:
+    from bmanga_panel_migration.panels import coma_camera_panel
 
-    labels, operators = _draw_panel(coma_camera_panel.BNAME_PT_coma_camera, bpy.context)
+    labels, operators = _draw_panel(coma_camera_panel.BMANGA_PT_coma_camera, bpy.context)
     text_blob = "\n".join(labels)
     for forbidden in (
         "カメラアングル一覧",
@@ -131,23 +131,23 @@ def _check_bname_panel() -> None:
     ):
         assert forbidden not in text_blob, forbidden
     assert "カメラプリセット" in labels
-    assert "bname.coma_camera_angle_duplicate" in operators
+    assert "bmanga.coma_camera_angle_duplicate" in operators
     assert "グレースケール表示" in labels and "背景を透過" in labels
     assert labels.index("グレースケール表示") < labels.index("背景を透過")
-    assert getattr(bpy.types, "BNAME_OT_fisheye_save_pencil4_widths", None) is None
-    assert getattr(bpy.types, "BNAME_OT_coma_camera_toggle_all_backgrounds", None) is None
-    assert getattr(bpy.types, "BNAME_OT_coma_camera_toggle_koma_backgrounds", None) is None
-    assert getattr(bpy.types, "BNAME_OT_coma_camera_resolution_add", None) is None
+    assert getattr(bpy.types, "BMANGA_OT_fisheye_save_pencil4_widths", None) is None
+    assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_all_backgrounds", None) is None
+    assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_koma_backgrounds", None) is None
+    assert getattr(bpy.types, "BMANGA_OT_coma_camera_resolution_add", None) is None
 
 
 def _check_camera_preset_duplicate() -> None:
     scene = bpy.context.scene
-    settings = scene.bname_coma_camera_settings
+    settings = scene.bmanga_coma_camera_settings
     scene.camera.location = (1.0, 2.0, 3.0)
     scene.camera.data.shift_x = 0.125
-    assert bpy.ops.bname.coma_camera_angle_add() == {"FINISHED"}
+    assert bpy.ops.bmanga.coma_camera_angle_add() == {"FINISHED"}
     settings.camera_angles[0].name = "正面"
-    assert bpy.ops.bname.coma_camera_angle_duplicate() == {"FINISHED"}
+    assert bpy.ops.bmanga.coma_camera_angle_duplicate() == {"FINISHED"}
     assert len(settings.camera_angles) == 2
     assert settings.camera_angles_index == 1
     assert settings.camera_angles[1].name.startswith("正面 コピー")
@@ -155,11 +155,11 @@ def _check_camera_preset_duplicate() -> None:
 
 
 def _check_render_panel() -> None:
-    from bname_render_panel_migration import core
-    from bname_render_panel_migration import panels as render_panels
+    from bmanga_render_panel_migration import core
+    from bmanga_render_panel_migration import panels as render_panels
 
-    assert bpy.ops.bname_render.load_builtin_presets(reset=True) == {"FINISHED"}
-    labels, operators = _draw_panel(render_panels.BNAME_RENDER_PT_main, bpy.context)
+    assert bpy.ops.bmanga_render.load_builtin_presets(reset=True) == {"FINISHED"}
+    labels, operators = _draw_panel(render_panels.BMANGA_RENDER_PT_main, bpy.context)
     text_blob = "\n".join(labels)
     for required in (
         "魚眼モード",
@@ -169,8 +169,8 @@ def _check_render_panel() -> None:
         "Pencil+4 線幅を保存",
     ):
         assert required in text_blob, required
-    assert "bname_render.save_pencil4_widths" in operators
-    assert operators.count("bname_render.set_reduction_scale") >= 4
+    assert "bmanga_render.save_pencil4_widths" in operators
+    assert operators.count("bmanga_render.set_reduction_scale") >= 4
 
     scene = bpy.context.scene
     scene.render.resolution_x = 1200
@@ -179,36 +179,36 @@ def _check_render_panel() -> None:
     scene.original_resolution_y = 800
     scene.fisheye_layout_mode = True
     scene.fisheye_fov = 2.6
-    assert scene.bname_coma_camera_fisheye_layout_mode is True
-    assert abs(float(scene.bname_coma_camera_fisheye_fov) - 2.6) < 1.0e-6
+    assert scene.bmanga_coma_camera_fisheye_layout_mode is True
+    assert abs(float(scene.bmanga_coma_camera_fisheye_fov) - 2.6) < 1.0e-6
     assert scene.camera.data.type == "PANO"
     scene.reduction_mode = True
-    assert scene.bname_coma_camera_reduction_mode is True
-    assert bpy.ops.bname_render.set_reduction_scale(percentage=25.0) == {"FINISHED"}
-    assert abs(float(scene.bname_coma_camera_preview_scale_percentage) - 25.0) < 1.0e-6
+    assert scene.bmanga_coma_camera_reduction_mode is True
+    assert bpy.ops.bmanga_render.set_reduction_scale(percentage=25.0) == {"FINISHED"}
+    assert abs(float(scene.bmanga_coma_camera_preview_scale_percentage) - 25.0) < 1.0e-6
     assert scene.render.resolution_x == scene.render.resolution_y == 300
     scene.my_tool.bg_images_scale = 1.75
-    assert abs(float(scene.bname_coma_camera_settings.bg_images_scale) - 1.75) < 1.0e-6
+    assert abs(float(scene.bmanga_coma_camera_settings.bg_images_scale) - 1.75) < 1.0e-6
     assert core.fisheye_enabled(scene) is True
 
 
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bname = None
+    bmanga = None
     render = None
     try:
-        bname = _load_package("bname_panel_migration", ROOT)
-        render = _load_package("bname_render_panel_migration", ROOT / "addons" / "b_name_render")
+        bmanga = _load_package("bmanga_panel_migration", ROOT)
+        render = _load_package("bmanga_render_panel_migration", ROOT / "addons" / "b_manga_render")
         _prepare_coma_context()
-        _check_bname_panel()
+        _check_bmanga_panel()
         _check_camera_preset_duplicate()
         _check_render_panel()
-        print("BNAME_COMA_CAMERA_RENDER_PANEL_MIGRATION_OK")
+        print("BMANGA_COMA_CAMERA_RENDER_PANEL_MIGRATION_OK")
     finally:
         if render is not None:
             render.unregister()
-        if bname is not None:
-            bname.unregister()
+        if bmanga is not None:
+            bmanga.unregister()
 
 
 if __name__ == "__main__":

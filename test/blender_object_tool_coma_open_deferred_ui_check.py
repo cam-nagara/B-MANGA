@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_deferred_coma_open_ui",
+        "bmanga_dev_deferred_coma_open_ui",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_deferred_coma_open_ui"] = mod
+    sys.modules["bmanga_dev_deferred_coma_open_ui"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -30,7 +30,7 @@ def _load_addon():
 
 
 def _assert_object_tool_page_open_route() -> None:
-    from bname_dev_deferred_coma_open_ui.operators import mode_op, object_tool_op
+    from bmanga_dev_deferred_coma_open_ui.operators import mode_op, object_tool_op
 
     fake_tool = SimpleNamespace(finished=False, keep_selection=False)
 
@@ -46,7 +46,7 @@ def _assert_object_tool_page_open_route() -> None:
         mode_op.page_file_index_from_viewport_event = lambda _context, _event: 1
         mode_op.schedule_open_page_file = lambda page_index: scheduled.append(int(page_index)) or True
         event = SimpleNamespace(type="LEFTMOUSE", value="DOUBLE_CLICK")
-        assert object_tool_op.BNAME_OT_object_tool._try_open_page_file_from_event(
+        assert object_tool_op.BMANGA_OT_object_tool._try_open_page_file_from_event(
             fake_tool,
             bpy.context,
             event,
@@ -59,24 +59,24 @@ def _assert_object_tool_page_open_route() -> None:
 
 
 def _start_check(temp_root: Path) -> Path:
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "DeferredOpen.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "DeferredOpen.bmanga"))
     assert result == {"FINISHED"}, result
 
-    from bname_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
-    from bname_dev_deferred_coma_open_ui.operators import object_tool_op
-    from bname_dev_deferred_coma_open_ui.utils import object_selection
+    from bmanga_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
+    from bmanga_dev_deferred_coma_open_ui.operators import object_tool_op
+    from bmanga_dev_deferred_coma_open_ui.utils import object_selection
 
     state = keymap_mod.get_state()
     assert state is not None
-    item_ids = {str(getattr(kmi, "idname", "") or "") for kmi in state.bname_items}
-    assert "bname.enter_coma_mode_from_viewport" in item_ids
-    assert "bname.enter_coma_mode" not in item_ids
+    item_ids = {str(getattr(kmi, "idname", "") or "") for kmi in state.bmanga_items}
+    assert "bmanga.enter_coma_mode_from_viewport" in item_ids
+    assert "bmanga.enter_coma_mode" not in item_ids
     _assert_object_tool_page_open_route()
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     for _ in range(3):
-        result = bpy.ops.bname.coma_add()
+        result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
     coma_index = next(
         index
@@ -90,7 +90,7 @@ def _start_check(temp_root: Path) -> Path:
 
     fake_tool = SimpleNamespace(finished=False, keep_selection=False)
     fake_tool._try_enter_coma_from_hit = MethodType(
-        object_tool_op.BNAME_OT_object_tool._try_enter_coma_from_hit,
+        object_tool_op.BMANGA_OT_object_tool._try_enter_coma_from_hit,
         fake_tool,
     )
 
@@ -110,18 +110,18 @@ def _start_check(temp_root: Path) -> Path:
     assert fake_tool.finished and fake_tool.keep_selection
     assert keymap_mod.is_visibility_update_suspended()
     assert Path(bpy.data.filepath).resolve() == work_path, "イベント中にコマファイルを開いています"
-    return temp_root / "DeferredOpen.bname" / "p0001" / "c04" / "c04.blend"
+    return temp_root / "DeferredOpen.bmanga" / "p0001" / "c04" / "c04.blend"
 
 
 def _assert_opened(expected: Path) -> None:
     assert Path(bpy.data.filepath).resolve() == expected.resolve(), bpy.data.filepath
-    assert bpy.context.scene.bname_current_coma_id == "c04"
+    assert bpy.context.scene.bmanga_current_coma_id == "c04"
 
 
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_deferred_coma_open_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_deferred_coma_open_"))
     attempts = {"count": 0}
 
     def _timer():
@@ -154,10 +154,10 @@ def main() -> None:
             def _stability_timer():
                 stable_attempts["count"] += 1
                 try:
-                    from bname_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
+                    from bmanga_dev_deferred_coma_open_ui.keymap import keymap as keymap_mod
 
                     _assert_opened(expected)
-                    keymap_mod._watch_bname_tab()
+                    keymap_mod._watch_bmanga_tab()
                     for window in getattr(bpy.context.window_manager, "windows", []):
                         screen = getattr(window, "screen", None)
                         if screen is None:
@@ -170,7 +170,7 @@ def main() -> None:
                 except Exception:  # noqa: BLE001
                     traceback.print_exc()
                     os._exit(1)
-                print("BNAME_OBJECT_TOOL_COMA_OPEN_DEFERRED_UI_CHECK_OK")
+                print("BMANGA_OBJECT_TOOL_COMA_OPEN_DEFERRED_UI_CHECK_OK")
                 sys.stdout.flush()
                 os._exit(0)
                 return None

@@ -70,7 +70,7 @@ def _update_grayscale_view(self, context) -> None:
     from ..utils import display_settings
 
     display_settings.apply_grayscale_view(
-        scene, bool(getattr(scene, "bname_coma_grayscale_view", False))
+        scene, bool(getattr(scene, "bmanga_coma_grayscale_view", False))
     )
 
 
@@ -146,7 +146,7 @@ def _update_resolution_index(self, context) -> None:
     coma_camera.apply_selected_resolution_setting(context)
 
 
-class BNameComaCameraAngleItem(bpy.types.PropertyGroup):
+class BMangaComaCameraAngleItem(bpy.types.PropertyGroup):
     """カメラ位置・画角・下絵スケールを保存するアングルプリセット."""
 
     name: StringProperty(name="アングル名", default="Angle")  # type: ignore[valid-type]
@@ -160,7 +160,7 @@ class BNameComaCameraAngleItem(bpy.types.PropertyGroup):
     bg_images_scale: FloatProperty(name="ページ画像スケール", default=1.0, min=0.1, max=10.0)  # type: ignore[valid-type]
 
 
-class BNameComaCameraResolutionSetting(bpy.types.PropertyGroup):
+class BMangaComaCameraResolutionSetting(bpy.types.PropertyGroup):
     """カメラ出力解像度プリセット."""
 
     name: StringProperty(name="名前", default="新規原稿サイズ")  # type: ignore[valid-type]
@@ -168,10 +168,10 @@ class BNameComaCameraResolutionSetting(bpy.types.PropertyGroup):
     resolution_y: IntProperty(name="高さ", default=1080, min=1)  # type: ignore[valid-type]
 
 
-class BNameComaCameraSettings(bpy.types.PropertyGroup):
+class BMangaComaCameraSettings(bpy.types.PropertyGroup):
     """参照スクリプトのカメラ操作パネル相当の Scene 設定."""
 
-    camera_angles: CollectionProperty(type=BNameComaCameraAngleItem)  # type: ignore[valid-type]
+    camera_angles: CollectionProperty(type=BMangaComaCameraAngleItem)  # type: ignore[valid-type]
     camera_angles_index: IntProperty(name="アングルIndex", default=0, min=0)  # type: ignore[valid-type]
 
     bg_images_opacity: FloatProperty(
@@ -262,52 +262,52 @@ class BNameComaCameraSettings(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
-    BNameComaCameraAngleItem,
-    BNameComaCameraResolutionSetting,
-    BNameComaCameraSettings,
+    BMangaComaCameraAngleItem,
+    BMangaComaCameraResolutionSetting,
+    BMangaComaCameraSettings,
 )
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bname_coma_camera_settings = PointerProperty(type=BNameComaCameraSettings)
-    bpy.types.Scene.bname_coma_camera_resolution_settings = CollectionProperty(
-        type=BNameComaCameraResolutionSetting
+    bpy.types.Scene.bmanga_coma_camera_settings = PointerProperty(type=BMangaComaCameraSettings)
+    bpy.types.Scene.bmanga_coma_camera_resolution_settings = CollectionProperty(
+        type=BMangaComaCameraResolutionSetting
     )
-    bpy.types.Scene.bname_coma_camera_resolution_settings_index = IntProperty(
+    bpy.types.Scene.bmanga_coma_camera_resolution_settings_index = IntProperty(
         name="Index",
         default=0,
         min=0,
         update=_update_resolution_index,
     )
-    bpy.types.Scene.bname_coma_camera_fisheye_layout_mode = BoolProperty(
+    bpy.types.Scene.bmanga_coma_camera_fisheye_layout_mode = BoolProperty(
         name="魚眼モード",
         default=False,
         update=_update_fisheye_mode,
     )
-    bpy.types.Scene.bname_coma_camera_reduction_mode = BoolProperty(
+    bpy.types.Scene.bmanga_coma_camera_reduction_mode = BoolProperty(
         name="縮小モード",
         default=False,
         update=_update_reduction_mode,
     )
-    bpy.types.Scene.bname_coma_grayscale_view = BoolProperty(
+    bpy.types.Scene.bmanga_coma_grayscale_view = BoolProperty(
         name="グレースケール表示",
         description="オンでビュー変換を AgX (露出1.0)、オフで標準にする (表示は常に sRGB)",
         default=False,
         update=_update_grayscale_view,
     )
-    bpy.types.Scene.bname_coma_camera_original_resolution_x = IntProperty(
+    bpy.types.Scene.bmanga_coma_camera_original_resolution_x = IntProperty(
         name="Original Resolution X",
         default=0,
         min=0,
     )
-    bpy.types.Scene.bname_coma_camera_original_resolution_y = IntProperty(
+    bpy.types.Scene.bmanga_coma_camera_original_resolution_y = IntProperty(
         name="Original Resolution Y",
         default=0,
         min=0,
     )
-    bpy.types.Scene.bname_coma_camera_preview_scale_percentage = FloatProperty(
+    bpy.types.Scene.bmanga_coma_camera_preview_scale_percentage = FloatProperty(
         name="縮小率",
         default=12.5,
         min=1.0,
@@ -315,13 +315,13 @@ def register() -> None:
         subtype="PERCENTAGE",
         update=_update_preview_scale,
     )
-    bpy.types.Scene.bname_coma_camera_lens = FloatProperty(
+    bpy.types.Scene.bmanga_coma_camera_lens = FloatProperty(
         name="透視投影の焦点距離",
         default=35.0,
         min=1.0,
         max=1000.0,
     )
-    bpy.types.Scene.bname_coma_camera_fisheye_fov = FloatProperty(
+    bpy.types.Scene.bmanga_coma_camera_fisheye_fov = FloatProperty(
         name="魚眼視野角",
         default=3.1415927,
         min=1.7453293,
@@ -334,17 +334,17 @@ def register() -> None:
 
 def unregister() -> None:
     for attr in (
-        "bname_coma_camera_fisheye_fov",
-        "bname_coma_camera_lens",
-        "bname_coma_camera_preview_scale_percentage",
-        "bname_coma_camera_original_resolution_y",
-        "bname_coma_camera_original_resolution_x",
-        "bname_coma_grayscale_view",
-        "bname_coma_camera_reduction_mode",
-        "bname_coma_camera_fisheye_layout_mode",
-        "bname_coma_camera_resolution_settings_index",
-        "bname_coma_camera_resolution_settings",
-        "bname_coma_camera_settings",
+        "bmanga_coma_camera_fisheye_fov",
+        "bmanga_coma_camera_lens",
+        "bmanga_coma_camera_preview_scale_percentage",
+        "bmanga_coma_camera_original_resolution_y",
+        "bmanga_coma_camera_original_resolution_x",
+        "bmanga_coma_grayscale_view",
+        "bmanga_coma_camera_reduction_mode",
+        "bmanga_coma_camera_fisheye_layout_mode",
+        "bmanga_coma_camera_resolution_settings_index",
+        "bmanga_coma_camera_resolution_settings",
+        "bmanga_coma_camera_settings",
     ):
         try:
             delattr(bpy.types.Scene, attr)

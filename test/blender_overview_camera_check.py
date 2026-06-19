@@ -13,12 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_overview_camera",
+        "bmanga_dev_overview_camera",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_overview_camera"] = mod
+    sys.modules["bmanga_dev_overview_camera"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,17 +28,17 @@ def _load_addon():
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    from bname_dev_overview_camera.utils import overview_camera, page_grid
+    from bmanga_dev_overview_camera.utils import overview_camera, page_grid
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.loaded = True
     work.paper.canvas_width_mm = 210.0
     work.paper.canvas_height_mm = 297.0
     work.paper.start_side = "right"
     work.paper.read_direction = "left"
-    scene.bname_overview_cols = 4
-    scene.bname_overview_gap_mm = 30.0
+    scene.bmanga_overview_cols = 4
+    scene.bmanga_overview_gap_mm = 30.0
     scene.render.resolution_x = 1920
     scene.render.resolution_y = 1080
 
@@ -67,14 +67,14 @@ def main() -> None:
     assert abs(camera.location.y - cy * 0.001) < 1.0e-6
     assert camera.data.ortho_scale >= h * 0.001
 
-    scene.bname_overview_gap_mm = 8.0
+    scene.bmanga_overview_gap_mm = 8.0
     camera.rotation_euler = (0.0, 0.0, 0.4)
     page_grid.apply_page_collection_transforms(bpy.context, work)
     assert scene.camera is camera, "ページ一覧用カメラが再利用されていません"
     assert abs(float(camera.rotation_euler.z) - 0.4) < 1.0e-6, "ページ一覧用カメラの回転が更新時に失われています"
     assert camera.data.ortho_scale > 0.0
 
-    print("BNAME_OVERVIEW_CAMERA_CHECK_OK")
+    print("BMANGA_OVERVIEW_CAMERA_CHECK_OK")
 
 
 main()

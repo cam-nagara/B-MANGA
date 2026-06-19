@@ -39,8 +39,8 @@ def _active_stack_item(context):
     scene = getattr(context, "scene", None)
     if scene is None:
         return None
-    stack = getattr(scene, "bname_layer_stack", None)
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1) or -1)
+    stack = getattr(scene, "bmanga_layer_stack", None)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1) or -1)
     if stack is not None and 0 <= idx < len(stack):
         return stack[idx]
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
@@ -292,21 +292,21 @@ def _create_linked_balloon_duplicate(context, item) -> bool:
         _logger.exception("linked balloon duplicate display sync failed")
     if page is not None:
         page.active_balloon_index = len(collection) - 1
-    context.scene.bname_active_layer_kind = "balloon"
+    context.scene.bmanga_active_layer_kind = "balloon"
     dest_uid = _balloon_uid(page, dst)
     if source_uid and dest_uid:
         layer_links.link_uids(context, [source_uid, dest_uid])
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     if dest_uid:
-        for index, row in enumerate(context.scene.bname_layer_stack):
+        for index, row in enumerate(context.scene.bmanga_layer_stack):
             if layer_stack_utils.stack_item_uid(row) == dest_uid:
                 layer_stack_utils.select_stack_index(context, index)
                 break
     return True
 
 
-class BNAME_OT_layer_stack_link_duplicate(Operator):
-    bl_idname = "bname.layer_stack_link_duplicate"
+class BMANGA_OT_layer_stack_link_duplicate(Operator):
+    bl_idname = "bmanga.layer_stack_link_duplicate"
     bl_label = "リンク複製"
     bl_description = "選択中のフキダシまたは効果線をリンク複製します"
     bl_options = {"REGISTER", "UNDO"}
@@ -326,11 +326,11 @@ class BNAME_OT_layer_stack_link_duplicate(Operator):
             self.report({"ERROR"}, "リンク複製するフキダシが見つかりません")
             return {"CANCELLED"}
         if kind in {"effect", "effect_legacy"}:
-            return bpy.ops.bname.effect_line_create_linked("EXEC_DEFAULT")
+            return bpy.ops.bmanga.effect_line_create_linked("EXEC_DEFAULT")
         return {"CANCELLED"}
 
 
-_CLASSES = (BNAME_OT_layer_stack_link_duplicate,)
+_CLASSES = (BMANGA_OT_layer_stack_link_duplicate,)
 
 
 def register() -> None:

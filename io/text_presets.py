@@ -1,8 +1,8 @@
 """テキストプリセット管理.
 
 フォント・サイズ・行間・色・縦横・白フチなどのテキスト設定をプリセットとして保存/読込する。
-- グローバル: <addon>/presets/text/
-- 作品ローカル: MyWork.bname/assets/text_presets/
+- 同梱: <addon>/presets/text/
+- 共通: Blender ユーザー設定配下の B-MANGA 共通プリセット
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils import json_io, log, paths
+from . import shared_presets
 
 _logger = log.get_logger(__name__)
 
@@ -76,15 +77,20 @@ def list_global_presets() -> list[TextPreset]:
 
 
 def list_local_presets(work_dir: Path) -> list[TextPreset]:
-    target = paths.assets_dir(Path(work_dir)) / "text_presets"
-    return _list_in_dir(target, source="local")
+    _migrate_work_presets(work_dir)
+    return list_user_presets()
+
+
+def list_user_presets() -> list[TextPreset]:
+    return _list_in_dir(shared_presets.preset_dir("text"), source="user")
 
 
 def list_all_presets(work_dir: Path | None) -> list[TextPreset]:
     presets = {p.name: p for p in list_global_presets()}
     if work_dir is not None:
-        for p in list_local_presets(work_dir):
-            presets[p.name] = p
+        _migrate_work_presets(work_dir)
+    for p in list_user_presets():
+        presets[p.name] = p
     return list(presets.values())
 
 
@@ -149,6 +155,14 @@ def save_local_preset(
     description: str,
     entry_data: dict[str, Any],
 ) -> Path:
-    target = paths.assets_dir(Path(work_dir)) / "text_presets"
+    del work_dir
+    target = shared_presets.preset_dir("text")
     filename = name.replace("/", "_").replace("\\", "_") + PRESET_SUFFIX
     return save_preset(target / filename, name, description, entry_data)
+
+
+def _migrate_work_presets(work_dir: Path | None) -> None:
+    if work_dir is None:
+        return
+    legacy_dir = paths.assets_dir(Path(work_dir)) / "text_presets"
+    shared_presets.copy_json_presets_once(legacy_dir, shared_presets.preset_dir("text"))

@@ -1,7 +1,7 @@
 """カメラビュー切替時に「全ページを一覧」状態へ自動で合わせる.
 
 ユーザーが 3D ビューポートをカメラビュー (Numpad0 等) に切り替えると、
-B-Name 作品 (ページモード) では全ページ一覧モードを ON にして全ページを
+B-MANGA 作品 (ページモード) では全ページ一覧モードを ON にして全ページを
 ビューポート枠にフィット表示する。カメラビュー以外の通常視点へ手動で
 切り替えたら、自動 ON する前の一覧モード状態へ戻す。
 
@@ -67,7 +67,7 @@ def _apply() -> None:
         for win, area, region, rv3d in view_items
         if str(getattr(rv3d, "view_perspective", "")) == "CAMERA"
     ]
-    cur_overview = bool(getattr(scene, "bname_overview_mode", False))
+    cur_overview = bool(getattr(scene, "bmanga_overview_mode", False))
     if camera_items:
         if _PREV_OVERVIEW is not None:
             # カメラビューへの一覧フィットは既に適用済み。ここで再適用すると
@@ -104,11 +104,11 @@ def _apply() -> None:
                 except Exception:  # noqa: BLE001
                     pass
                 area.tag_redraw()
-            scene.bname_overview_mode = True
+            scene.bmanga_overview_mode = True
             try:
                 from ..ui import overlay as _overlay
 
-                _overlay.apply_bname_shading_mode(ctx)
+                _overlay.apply_bmanga_shading_mode(ctx)
             except Exception:  # noqa: BLE001
                 pass
         except Exception:  # noqa: BLE001
@@ -117,7 +117,7 @@ def _apply() -> None:
     # カメラビュー以外へ切替: 自動介入していたら元の状態へ戻す
     if _PREV_OVERVIEW is not None:
         try:
-            scene.bname_overview_mode = bool(_PREV_OVERVIEW)
+            scene.bmanga_overview_mode = bool(_PREV_OVERVIEW)
         except Exception:  # noqa: BLE001
             pass
         _PREV_OVERVIEW = None

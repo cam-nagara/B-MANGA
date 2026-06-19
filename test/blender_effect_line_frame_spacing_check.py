@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_effect_spacing",
+        "bmanga_dev_effect_spacing",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_effect_spacing"] = mod
+    sys.modules["bmanga_dev_effect_spacing"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -349,7 +349,7 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        params = bpy.context.scene.bname_effect_line_params
+        params = bpy.context.scene.bmanga_effect_line_params
         assert abs(float(params.brush_size_mm) - 0.3) <= 1.0e-6
         assert params.bl_rna.properties["brush_size_mm"].name == "線幅 (mm)"
         assert abs(float(params.out_percent) - 0.0) <= 1.0e-6
@@ -359,11 +359,11 @@ def main() -> None:
             raise AssertionError("角丸率が効果線設定に残っています")
         assert params.spacing_density_compensation is True
 
-        from bname_dev_effect_spacing.core import balloon, effect_line
-        from bname_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op, effect_line_op
-        from bname_dev_effect_spacing.ui import overlay_effect_line
-        from bname_dev_effect_spacing.utils import balloon_shapes, effect_line_object
-        from bname_dev_effect_spacing.utils.geom import m_to_mm
+        from bmanga_dev_effect_spacing.core import balloon, effect_line
+        from bmanga_dev_effect_spacing.operators import effect_line_gen, effect_line_link_op, effect_line_op
+        from bmanga_dev_effect_spacing.ui import overlay_effect_line
+        from bmanga_dev_effect_spacing.utils import balloon_shapes, effect_line_object
+        from bmanga_dev_effect_spacing.utils.geom import m_to_mm
 
         old_shapes = {"polygon", "pill", "hexagon", "diamond", "star", "spike_straight", "spike_curve"}
         effect_shape_ids = {
@@ -688,8 +688,8 @@ def main() -> None:
             _drag_orig_center_x=46.0,
             _drag_orig_center_y=48.0,
         )
-        drag_bounds = effect_line_op.BNAME_OT_effect_line_tool._drag_result_bounds(drag, 5.0, -3.0)
-        drag_center = effect_line_op.BNAME_OT_effect_line_tool._drag_result_center(drag, drag_bounds, 5.0, -3.0)
+        drag_bounds = effect_line_op.BMANGA_OT_effect_line_tool._drag_result_bounds(drag, 5.0, -3.0)
+        drag_center = effect_line_op.BMANGA_OT_effect_line_tool._drag_result_center(drag, drag_bounds, 5.0, -3.0)
         if drag_bounds != (10.0, 20.0, 40.0, 24.0) or drag_center != (51.0, 45.0):
             raise AssertionError(f"中心点ドラッグで終点形状が動いています: bounds={drag_bounds}, center={drag_center}")
         fills = []
@@ -739,7 +739,7 @@ def main() -> None:
         assert linked_params["white_outline_black_line_count"] == 4
         assert linked_params["white_outline_black_direction"] == "outside"
         assert linked_params["white_outline_angle_deg"] == 0.0
-        print("BNAME_EFFECT_LINE_FRAME_SPACING_OK")
+        print("BMANGA_EFFECT_LINE_FRAME_SPACING_OK")
     finally:
         mod.unregister()
 

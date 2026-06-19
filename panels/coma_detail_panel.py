@@ -17,47 +17,48 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
 
     row = layout.row(align=True)
     row.operator(
-        "bname.coma_edit_vertices",
+        "bmanga.coma_edit_vertices",
         text="頂点/辺をドラッグ編集",
         icon="EDITMODE_HLT",
     )
 
     row = layout.row(align=True)
     if entry.shape_type == "rect":
-        row.operator("bname.coma_to_polygon", text="多角形化", icon="MESH_DATA")
+        row.operator("bmanga.coma_to_polygon", text="多角形化", icon="MESH_DATA")
     else:
-        row.operator("bname.coma_to_rect", text="矩形化 (外接)", icon="MESH_PLANE")
+        row.operator("bmanga.coma_to_rect", text="矩形化 (外接)", icon="MESH_PLANE")
     if object_selection.selected_coma_count(context) >= 2:
-        layout.operator("bname.coma_merge_selected", text="コマ結合", icon="AUTOMERGE_ON")
+        layout.operator("bmanga.coma_merge_selected", text="コマ結合", icon="AUTOMERGE_ON")
 
     row = layout.row(align=True)
     row.prop(entry, "paper_visible", text="背景")
     row.prop(entry, "background_color", text="背景色")
+    layout.prop(entry, "snap_gutter_to_finish")
 
 
 def draw_coma_border_settings(layout, context, entry) -> None:
     b = entry.border
     wm = getattr(context, "window_manager", None)
-    if wm is not None and hasattr(wm, "bname_border_preset_selector"):
+    if wm is not None and hasattr(wm, "bmanga_border_preset_selector"):
         row = layout.row(align=True)
         preset = row.row(align=True)
         preset.label(text="プリセット", icon="PRESET")
-        preset.prop(wm, "bname_border_preset_selector", text="")
-        selected = str(getattr(wm, "bname_border_preset_selector", "") or "")
+        preset.prop(wm, "bmanga_border_preset_selector", text="")
+        selected = str(getattr(wm, "bmanga_border_preset_selector", "") or "")
         tools = row.row(align=True)
         tools.alignment = "RIGHT"
-        tools.operator("bname.border_preset_add_local", text="", icon="ADD")
-        op = tools.operator("bname.border_preset_rename", text="", icon="GREASEPENCIL")
+        tools.operator("bmanga.border_preset_add_local", text="", icon="ADD")
+        op = tools.operator("bmanga.border_preset_rename", text="", icon="GREASEPENCIL")
         op.preset_name = selected
-        op = tools.operator("bname.border_preset_duplicate", text="", icon="DUPLICATE")
+        op = tools.operator("bmanga.border_preset_duplicate", text="", icon="DUPLICATE")
         op.preset_name = selected
-        op = tools.operator("bname.border_preset_delete", text="", icon="TRASH")
+        op = tools.operator("bmanga.border_preset_delete", text="", icon="TRASH")
         op.preset_name = selected
         tools.separator()
-        op = tools.operator("bname.border_preset_move", text="", icon="TRIA_UP")
+        op = tools.operator("bmanga.border_preset_move", text="", icon="TRIA_UP")
         op.preset_name = selected
         op.direction = "UP"
-        op = tools.operator("bname.border_preset_move", text="", icon="TRIA_DOWN")
+        op = tools.operator("bmanga.border_preset_move", text="", icon="TRIA_DOWN")
         op.preset_name = selected
         op.direction = "DOWN"
     row = layout.row(align=True)

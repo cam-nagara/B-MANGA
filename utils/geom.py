@@ -1,7 +1,7 @@
 """幾何計算ユーティリティ.
 
 mm → Blender 座標 (m) 変換、ピクセル→mm、矩形計算など。
-B-Name は原稿座標を mm で扱うが、Blender ビューポートは Blender unit
+B-MANGA は原稿座標を mm で扱うが、Blender ビューポートは Blender unit
 (メートル既定) で描画する。座標系変換は 1 mm = 0.001 m として扱う。
 """
 

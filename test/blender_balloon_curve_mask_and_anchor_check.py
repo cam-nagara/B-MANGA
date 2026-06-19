@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_curve_mask_anchor",
+        "bmanga_dev_balloon_curve_mask_anchor",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_curve_mask_anchor"] = mod
+    sys.modules["bmanga_dev_balloon_curve_mask_anchor"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -208,7 +208,7 @@ def _modifier_mask_values(obj, nodes_mod):
 
 
 def _assert_curve_uses_opacity_mask(obj) -> None:
-    from bname_dev_balloon_curve_mask_anchor.utils import mask_apply
+    from bmanga_dev_balloon_curve_mask_anchor.utils import mask_apply
 
     assert obj.modifiers.get(mask_apply.MOD_NAME_COMA_MASK) is None, "フキダシに古いコマ切り抜きが残っています"
     assert obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK) is None, "フキダシに古いページ切り抜きが残っています"
@@ -235,24 +235,24 @@ def _modifier_socket_value(obj, nodes_mod, socket_name: str):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_curve_mask_anchor_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_curve_mask_anchor_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonMaskAnchor.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMaskAnchor.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_curve_mask_anchor.core.work import get_work
-        from bname_dev_balloon_curve_mask_anchor.utils import balloon_curve_object
-        from bname_dev_balloon_curve_mask_anchor.utils import balloon_curve_render_nodes
-        from bname_dev_balloon_curve_mask_anchor.utils import coma_border_object
-        from bname_dev_balloon_curve_mask_anchor.utils import coma_plane
-        from bname_dev_balloon_curve_mask_anchor.utils import geom
-        from bname_dev_balloon_curve_mask_anchor.utils import mask_apply
-        from bname_dev_balloon_curve_mask_anchor.utils import page_grid
-        from bname_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import coma_stack_key
-        from bname_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_curve_mask_anchor.core.work import get_work
+        from bmanga_dev_balloon_curve_mask_anchor.utils import balloon_curve_object
+        from bmanga_dev_balloon_curve_mask_anchor.utils import balloon_curve_render_nodes
+        from bmanga_dev_balloon_curve_mask_anchor.utils import coma_border_object
+        from bmanga_dev_balloon_curve_mask_anchor.utils import coma_plane
+        from bmanga_dev_balloon_curve_mask_anchor.utils import geom
+        from bmanga_dev_balloon_curve_mask_anchor.utils import mask_apply
+        from bmanga_dev_balloon_curve_mask_anchor.utils import page_grid
+        from bmanga_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import coma_stack_key
+        from bmanga_dev_balloon_curve_mask_anchor.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         scene = context.scene
@@ -486,7 +486,7 @@ def main() -> None:
         assert 0.00046 <= border_width_05 <= 0.00054, (
             f"コマ枠線の0.5mm線幅が設定値通りではありません: width={border_width_05}"
         )
-        print("BNAME_BALLOON_CURVE_MASK_ANCHOR_OK")
+        print("BMANGA_BALLOON_CURVE_MASK_ANCHOR_OK")
     finally:
         if mod is not None:
             try:

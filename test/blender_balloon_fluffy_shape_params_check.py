@@ -11,7 +11,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ADDON_NAME = "bname_dev_fluffy_shape_params"
+ADDON_NAME = "bmanga_dev_fluffy_shape_params"
 
 
 def _load_addon():
@@ -54,7 +54,7 @@ def main() -> None:
     geom = _import("utils.geom")
 
     scene = bpy.context.scene
-    page = scene.bname_work.pages.add()
+    page = scene.bmanga_work.pages.add()
     page.id = "p0001"
     entry = page.balloons.add()
     entry.id = "fluffy_shape_param_test"
@@ -85,7 +85,7 @@ def main() -> None:
     if jitter_sig == sub_sig:
         raise AssertionError("乱れの設定が、もやもやフキダシの表示用曲線へ反映されていません")
 
-    print("BNAME_BALLOON_FLUFFY_SHAPE_PARAMS_CHECK_OK")
+    print("BMANGA_BALLOON_FLUFFY_SHAPE_PARAMS_CHECK_OK")
 
 
 if __name__ == "__main__":

@@ -1,10 +1,10 @@
-"""B-Name Object/Collection 名の prefix 生成と UTF-8 安全切詰め.
+"""B-MANGA Object/Collection 名の prefix 生成と UTF-8 安全切詰め.
 
 計画書 ``docs/outliner_object_layer_plan_2026-04-30.md`` §3.2 を実装。
 
 Object/Collection 名はユーザーが Outliner からリネーム可能なので、真の安定 ID
-は ``object["bname_id"]`` (custom property) に保持し、Object 名は派生表示
-として B-Name から自動生成する。
+は ``object["bmanga_id"]`` (custom property) に保持し、Object 名は派生表示
+として B-MANGA から自動生成する。
 
 Blender 5.1.1 実機で確認した制約:
     - ID name の上限は 255 バイト (UTF-8)。超過分は内部で黙って切り詰められる。
@@ -13,8 +13,8 @@ Blender 5.1.1 実機で確認した制約:
 そのためここでは:
     1. prefix (例: ``L0040__text__``) を生成する。
     2. タイトル部分を UTF-8 安全 (文字境界) に切り詰める。
-    3. 結果が 255 バイトを超える場合は ``bname_title_truncated`` フラグを立てる。
-    4. ``bname_id`` から既存 Object を逆引きする。
+    3. 結果が 255 バイトを超える場合は ``bmanga_title_truncated`` フラグを立てる。
+    4. ``bmanga_id`` から既存 Object を逆引きする。
 """
 
 from __future__ import annotations
@@ -45,15 +45,15 @@ KIND_PREFIX = {
 }
 
 # Object/Collection の custom property キー
-PROP_KIND = "bname_kind"
-PROP_ID = "bname_id"
-PROP_PARENT_KEY = "bname_parent_key"
-PROP_FOLDER_ID = "bname_folder_id"
-PROP_Z_INDEX = "bname_z_index"
-PROP_TITLE = "bname_title"
-PROP_MANAGED = "bname_managed"
-PROP_NO_NORMALIZE = "bname_no_normalize"
-PROP_TITLE_TRUNCATED = "bname_title_truncated"
+PROP_KIND = "bmanga_kind"
+PROP_ID = "bmanga_id"
+PROP_PARENT_KEY = "bmanga_parent_key"
+PROP_FOLDER_ID = "bmanga_folder_id"
+PROP_Z_INDEX = "bmanga_z_index"
+PROP_TITLE = "bmanga_title"
+PROP_MANAGED = "bmanga_managed"
+PROP_NO_NORMALIZE = "bmanga_no_normalize"
+PROP_TITLE_TRUNCATED = "bmanga_title_truncated"
 
 
 def _truncate_utf8(text: str, max_bytes: int) -> tuple[str, bool]:
@@ -129,7 +129,7 @@ def parse_canonical_name(name: str) -> Optional[tuple[str, str, str]]:
 
     Blender 自動付加の ``.001`` `.002` はここでは除去しない。タイトル末尾に
     ユーザーが意図して `.123` を入れたケースを誤除去しないため。Object 同定は
-    ``bname_id`` custom property で行うので、Blender の自動付加サフィックスは
+    ``bmanga_id`` custom property で行うので、Blender の自動付加サフィックスは
     parse 結果に含まれていても支障がない。
     """
     parts = name.split("__", 2)
@@ -144,8 +144,8 @@ def parse_canonical_name(name: str) -> Optional[tuple[str, str, str]]:
 def assign_canonical_name(obj, kind: str, z_index: int, sub_id: str, title: str) -> str:
     """Object/Collection に正規名を付け直す.
 
-    切詰め発生時は ``bname_title_truncated`` を立てる。Object 名衝突は
-    Blender が ``.001`` を自動付加するため気にしない (``bname_id`` で逆引きする)。
+    切詰め発生時は ``bmanga_title_truncated`` を立てる。Object 名衝突は
+    Blender が ``.001`` を自動付加するため気にしない (``bmanga_id`` で逆引きする)。
 
     library override / linked Object は名前変更が拒否されるため、リネームを
     試みず custom property のみ更新する。
@@ -175,20 +175,20 @@ def stamp_identity(
     obj,
     *,
     kind: str,
-    bname_id: str,
+    bmanga_id: str,
     title: str = "",
     z_index: int = 0,
     parent_key: str = "",
     folder_id: str = "",
     managed: bool = True,
 ) -> None:
-    """Object/Collection に B-Name 安定 ID と関連メタを書き込む.
+    """Object/Collection に B-MANGA 安定 ID と関連メタを書き込む.
 
-    既存値を上書きする。``bname_managed`` を False にしたい場合は呼出側で
+    既存値を上書きする。``bmanga_managed`` を False にしたい場合は呼出側で
     後から書き換えるか、``managed=False`` を指定する。
     """
     obj[PROP_KIND] = kind
-    obj[PROP_ID] = bname_id
+    obj[PROP_ID] = bmanga_id
     obj[PROP_TITLE] = title
     obj[PROP_Z_INDEX] = int(z_index)
     obj[PROP_PARENT_KEY] = parent_key
@@ -197,16 +197,16 @@ def stamp_identity(
 
 
 def is_managed(obj) -> bool:
-    """B-Name 管理対象かどうか."""
+    """B-MANGA 管理対象かどうか."""
     return bool(obj.get(PROP_MANAGED, False))
 
 
 def should_skip_normalize(obj) -> bool:
-    """``bname_no_normalize`` 退避フラグが立っているか."""
+    """``bmanga_no_normalize`` 退避フラグが立っているか."""
     return bool(obj.get(PROP_NO_NORMALIZE, False))
 
 
-def get_bname_id(obj) -> str:
+def get_bmanga_id(obj) -> str:
     return str(obj.get(PROP_ID, "") or "")
 
 
@@ -214,32 +214,32 @@ def get_kind(obj) -> str:
     return str(obj.get(PROP_KIND, "") or "")
 
 
-def find_object_by_bname_id(bname_id: str, kind: str = "") -> Optional[bpy.types.Object]:
-    """``bname_id`` から Object を逆引きする (``.001`` 付き名にも対応).
+def find_object_by_bmanga_id(bmanga_id: str, kind: str = "") -> Optional[bpy.types.Object]:
+    """``bmanga_id`` から Object を逆引きする (``.001`` 付き名にも対応).
 
-    同 ``bname_id`` を持つ Object が複数あれば最初に見つかったもの。
+    同 ``bmanga_id`` を持つ Object が複数あれば最初に見つかったもの。
     """
-    if not bname_id:
+    if not bmanga_id:
         return None
     for obj in bpy.data.objects:
-        if obj.get(PROP_ID) != bname_id:
+        if obj.get(PROP_ID) != bmanga_id:
             continue
         if kind and obj.get(PROP_KIND) != kind:
             continue
-        if bool(obj.get("bname_preserved_external_object", False)):
+        if bool(obj.get("bmanga_preserved_external_object", False)):
             continue
         return obj
     return None
 
 
-def find_collection_by_bname_id(
-    bname_id: str, kind: str = ""
+def find_collection_by_bmanga_id(
+    bmanga_id: str, kind: str = ""
 ) -> Optional[bpy.types.Collection]:
-    """``bname_id`` から Collection を逆引きする."""
-    if not bname_id:
+    """``bmanga_id`` から Collection を逆引きする."""
+    if not bmanga_id:
         return None
     for coll in bpy.data.collections:
-        if coll.get(PROP_ID) != bname_id:
+        if coll.get(PROP_ID) != bmanga_id:
             continue
         if kind and coll.get(PROP_KIND) != kind:
             continue
@@ -248,7 +248,7 @@ def find_collection_by_bname_id(
 
 
 def iter_managed_objects(kind: str = "") -> Iterable[bpy.types.Object]:
-    """B-Name 管理 Object を列挙する."""
+    """B-MANGA 管理 Object を列挙する."""
     for obj in bpy.data.objects:
         if not is_managed(obj):
             continue
@@ -258,7 +258,7 @@ def iter_managed_objects(kind: str = "") -> Iterable[bpy.types.Object]:
 
 
 def iter_managed_collections(kind: str = "") -> Iterable[bpy.types.Collection]:
-    """B-Name 管理 Collection を列挙する."""
+    """B-MANGA 管理 Collection を列挙する."""
     for coll in bpy.data.collections:
         if not is_managed(coll):
             continue

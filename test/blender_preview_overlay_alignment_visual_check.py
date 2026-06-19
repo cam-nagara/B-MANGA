@@ -16,19 +16,19 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_PREVIEW_OVERLAY_VISUAL_OUT", "")
-    or tempfile.mkdtemp(prefix="bname_preview_overlay_visual_")
+    os.environ.get("BMANGA_PREVIEW_OVERLAY_VISUAL_OUT", "")
+    or tempfile.mkdtemp(prefix="bmanga_preview_overlay_visual_")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_preview_visual",
+        "bmanga_dev_preview_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_preview_visual"] = mod
+    sys.modules["bmanga_dev_preview_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -62,7 +62,7 @@ def _view3d_context():
 
 def _screen_point_for_mm(region, rv3d, x_mm: float, y_mm: float):
     from bpy_extras.view3d_utils import location_3d_to_region_2d
-    from bname_dev_preview_visual.utils.geom import mm_to_m
+    from bmanga_dev_preview_visual.utils.geom import mm_to_m
 
     return location_3d_to_region_2d(
         region,
@@ -129,7 +129,7 @@ def _draw_contact_sheet(items: list[dict]) -> Path:
     row_h = 480
     sheet = Image.new("RGB", (width, 80 + row_h * len(items)), "white")
     draw = ImageDraw.Draw(sheet)
-    draw.text((24, 20), "B-Name コマプレビュー/ハンドル位置 AI目視シート", fill=(0, 0, 0), font=font)
+    draw.text((24, 20), "B-MANGA コマプレビュー/ハンドル位置 AI目視シート", fill=(0, 0, 0), font=font)
     y = 70
     for item, thumb in zip(items, thumbs):
         draw.text(
@@ -147,30 +147,30 @@ def _draw_contact_sheet(items: list[dict]) -> Path:
 
 def _setup_scene(temp_root: Path):
     mod = _load_addon()
-    from bname_dev_preview_visual.ui import overlay_image
+    from bmanga_dev_preview_visual.ui import overlay_image
 
     image_shader = overlay_image._get_image_layer_shader()
     if image_shader is None:
         raise AssertionError("画像レイヤーの描画シェーダーを作成できません")
 
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PreviewOverlayVisual.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PreviewOverlayVisual.bmanga"))
     assert result == {"FINISHED"}, result
     for _ in range(2):
-        result = bpy.ops.bname.page_add()
+        result = bpy.ops.bmanga.page_add()
         assert result == {"FINISHED"}, result
 
-    from bname_dev_preview_visual.core.work import get_work
-    from bname_dev_preview_visual.operators import balloon_op, effect_line_op, text_op
-    from bname_dev_preview_visual.utils import layer_hierarchy, object_selection, page_grid, paths
+    from bmanga_dev_preview_visual.core.work import get_work
+    from bmanga_dev_preview_visual.operators import balloon_op, effect_line_op, text_op
+    from bmanga_dev_preview_visual.utils import layer_hierarchy, object_selection, page_grid, paths
 
     context = bpy.context
     work = get_work(context)
     assert work is not None
     work.paper.canvas_width_mm = 210.0
     work.paper.canvas_height_mm = 297.0
-    context.scene.bname_overview_cols = 4
-    context.scene.bname_overview_gap_mm = 32.0
-    context.scene.bname_overview_mode = True
+    context.scene.bmanga_overview_cols = 4
+    context.scene.bmanga_overview_gap_mm = 32.0
+    context.scene.bmanga_overview_mode = True
 
     page_index = 2
     page = work.pages[page_index]
@@ -227,14 +227,14 @@ def _setup_scene(temp_root: Path):
 
 
 def _check_case(context, work, page_index: int, panel, *, start_side: str, read_direction: str) -> dict:
-    from bname_dev_preview_visual.operators import effect_line_op, object_tool_selection
-    from bname_dev_preview_visual.utils import object_selection, page_grid
+    from bmanga_dev_preview_visual.operators import effect_line_op, object_tool_selection
+    from bmanga_dev_preview_visual.utils import object_selection, page_grid
 
     work.paper.start_side = start_side
     work.paper.read_direction = read_direction
     page_grid.apply_page_collection_transforms(context, work)
     work.active_page_index = page_index
-    result = bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
     assert "FINISHED" in result, result
     area, region, rv3d = _view3d_context()
     _ = area
@@ -296,7 +296,7 @@ def _run_visual_check() -> None:
         bpy.context.preferences.view.show_splash = False
     except Exception:
         pass
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_preview_overlay_visual_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_preview_overlay_visual_"))
     mod = None
     try:
         mod, work, page_index, _page, panel, _effect_obj, _effect_layer = _setup_scene(temp_root)
@@ -323,7 +323,7 @@ def _run_visual_check() -> None:
             json.dumps({"contact_sheet": str(contact), "items": items}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        print(f"BNAME_PREVIEW_OVERLAY_VISUAL_OK visual={contact}", flush=True)
+        print(f"BMANGA_PREVIEW_OVERLAY_VISUAL_OK visual={contact}", flush=True)
     finally:
         if mod is not None:
             try:

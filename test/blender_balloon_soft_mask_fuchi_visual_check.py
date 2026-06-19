@@ -13,19 +13,19 @@ from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_SOFT_MASK_FUCHI_VISUAL_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_balloon_soft_mask_fuchi_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_SOFT_MASK_FUCHI_VISUAL_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_balloon_soft_mask_fuchi_"))
 OUTPUT_PATH = _OUT_PATH if _OUT_PATH.suffix.lower() == ".png" else _OUT_PATH / "balloon_soft_mask_fuchi_visual.png"
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_soft_mask_fuchi",
+        "bmanga_dev_balloon_soft_mask_fuchi",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_soft_mask_fuchi"] = mod
+    sys.modules["bmanga_dev_balloon_soft_mask_fuchi"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -81,7 +81,7 @@ def _set_polygon(coma, points: list[tuple[float, float]]) -> None:
 
 
 def _sync_coma(scene, work, page, coma) -> None:
-    from bname_dev_balloon_soft_mask_fuchi.utils import coma_border_object, coma_plane
+    from bmanga_dev_balloon_soft_mask_fuchi.utils import coma_border_object, coma_plane
 
     coma_plane.ensure_coma_plane(scene, work, page, coma)
     coma_plane.ensure_coma_mask(scene, work, page, coma)
@@ -194,19 +194,19 @@ def _multi_line_visible_lengths(obj) -> list[float]:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_soft_mask_fuchi_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_soft_mask_fuchi_work_"))
     mod = None
     try:
         OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonSoftMaskFuchi.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonSoftMaskFuchi.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_soft_mask_fuchi.core.work import get_work
-        from bname_dev_balloon_soft_mask_fuchi.operators import balloon_op
-        from bname_dev_balloon_soft_mask_fuchi.utils import balloon_curve_object, geom, page_grid
-        from bname_dev_balloon_soft_mask_fuchi.utils.layer_hierarchy import coma_stack_key
+        from bmanga_dev_balloon_soft_mask_fuchi.core.work import get_work
+        from bmanga_dev_balloon_soft_mask_fuchi.operators import balloon_op
+        from bmanga_dev_balloon_soft_mask_fuchi.utils import balloon_curve_object, geom, page_grid
+        from bmanga_dev_balloon_soft_mask_fuchi.utils.layer_hierarchy import coma_stack_key
 
         context = bpy.context
         scene = context.scene
@@ -298,19 +298,19 @@ def main() -> None:
         assert not clip_masks, f"透明度マスク方式なのに古い切り抜きメッシュが残っています: {[obj.name for obj in clip_masks]}"
 
         ranges = _evaluated_material_z_ranges(obj)
-        line_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
-        edge_z = max(value[1] for name, value in ranges.items() if "BName_Balloon_Outer_Edge_" in name or "BName_Balloon_Inner_Edge_" in name)
+        line_z = max(value[1] for name, value in ranges.items() if "BManga_Balloon_Curve_" in name)
+        edge_z = max(value[1] for name, value in ranges.items() if "BManga_Balloon_Outer_Edge_" in name or "BManga_Balloon_Inner_Edge_" in name)
         assert line_z > edge_z, f"主線がフチより前面になっていません: line={line_z}, edge={edge_z}"
-        fill_top = max(value[1] for name, value in ranges.items() if "BName_Balloon_Fill_" in name)
-        multi_bottom = min(value[0] for name, value in ranges.items() if "BName_Balloon_Curve_" in name)
+        fill_top = max(value[1] for name, value in ranges.items() if "BManga_Balloon_Fill_" in name)
+        multi_bottom = min(value[0] for name, value in ranges.items() if "BManga_Balloon_Curve_" in name)
         assert fill_top < edge_z < line_z, f"塗り・フチ・主線の前後関係が不正です: {ranges}"
         assert fill_top < multi_bottom, f"塗りが多重線より前面にあります: {ranges}"
         assert max(value[1] - value[0] for value in ranges.values()) < 0.0007, f"フキダシ内部の前後差が大きすぎます: {ranges}"
 
         back_world = _evaluated_material_world_z_ranges(obj)
         front_world = _evaluated_material_world_z_ranges(front_obj)
-        back_line_z = max(value[1] for name, value in back_world.items() if "BName_Balloon_Curve_" in name)
-        front_fill_z = min(value[0] for name, value in front_world.items() if "BName_Balloon_Fill_" in name)
+        back_line_z = max(value[1] for name, value in back_world.items() if "BManga_Balloon_Curve_" in name)
+        front_fill_z = min(value[0] for name, value in front_world.items() if "BManga_Balloon_Fill_" in name)
         assert front_fill_z > back_line_z, (
             f"前面フキダシの塗りが背面フキダシの線を隠せる前後関係になっていません: "
             f"front_fill={front_fill_z}, back_line={back_line_z}"
@@ -359,7 +359,7 @@ def main() -> None:
             )
 
         print(
-            "BNAME_BALLOON_SOFT_MASK_FUCHI_VISUAL_OK "
+            "BMANGA_BALLOON_SOFT_MASK_FUCHI_VISUAL_OK "
             f"inside={tuple(round(v, 1) for v in inside)} "
             f"outside={tuple(round(v, 1) for v in outside)} "
             f"side={tuple(round(v, 1) for v in side)} "

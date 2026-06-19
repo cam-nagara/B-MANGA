@@ -85,10 +85,10 @@ def _active_text_tool_matches(page_id: str, text_id: str) -> bool:
     )
 
 
-class BNAME_OT_text_selection_style_popup(Operator):
+class BMANGA_OT_text_selection_style_popup(Operator):
     """選択中のインラインテキスト範囲へ文字スタイルを適用する."""
 
-    bl_idname = "bname.text_selection_style_popup"
+    bl_idname = "bmanga.text_selection_style_popup"
     bl_label = "選択文字設定"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -147,7 +147,7 @@ class BNAME_OT_text_selection_style_popup(Operator):
         row.prop(self, "font_size_value", text="サイズ")
         layout.prop(self, "font_choice")
         layout.separator()
-        ruby = layout.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="FONT_DATA")
+        ruby = layout.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="FONT_DATA")
         ruby.page_id = self.page_id
         ruby.text_id = self.text_id
         ruby.start = self.start
@@ -205,7 +205,7 @@ class BNAME_OT_text_selection_style_popup(Operator):
         return True
 
 
-_CLASSES = (BNAME_OT_text_selection_style_popup,)
+_CLASSES = (BMANGA_OT_text_selection_style_popup,)
 
 
 def register() -> None:

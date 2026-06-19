@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_preview_scale",
+        "bmanga_dev_coma_preview_scale",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_preview_scale"] = mod
+    sys.modules["bmanga_dev_coma_preview_scale"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,14 +29,14 @@ def _load_addon():
 
 def main() -> None:
     mod = _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_preview_scale_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_preview_scale_"))
     try:
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PreviewScale.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PreviewScale.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev_coma_preview_scale.core.work import get_work
-        from bname_dev_coma_preview_scale.io import export_pipeline, schema
-        from bname_dev_coma_preview_scale.utils import coma_plane, coma_preview, paths
+        from bmanga_dev_coma_preview_scale.core.work import get_work
+        from bmanga_dev_coma_preview_scale.io import export_pipeline, schema
+        from bmanga_dev_coma_preview_scale.utils import coma_plane, coma_preview, paths
 
         work = get_work(bpy.context)
         assert work is not None
@@ -79,7 +79,7 @@ def main() -> None:
         assert resolved is not None
         assert tuple(int(v) for v in resolved.size) == (73, 19)
 
-        mesh = bpy.data.meshes.new("BName_TestComaPreviewFitMesh")
+        mesh = bpy.data.meshes.new("BManga_TestComaPreviewFitMesh")
         coma_plane._build_mesh_geometry(mesh, entry)  # noqa: SLF001
         uv_layer = mesh.uv_layers.get(coma_plane.COMA_PLANE_UV_NAME)
         assert uv_layer is not None
@@ -89,7 +89,7 @@ def main() -> None:
         assert min(ys) == 0.0 and max(ys) == 1.0
         bpy.data.meshes.remove(mesh)
 
-        preview_probe = bpy.data.images.new("BName_TestComaPreviewTransparent", width=2, height=2, alpha=True)
+        preview_probe = bpy.data.images.new("BManga_TestComaPreviewTransparent", width=2, height=2, alpha=True)
         preview_probe.pixels.foreach_set([
             1.0, 0.0, 0.0, 0.0,
             0.0, 1.0, 0.0, 1.0,
@@ -97,7 +97,7 @@ def main() -> None:
             1.0, 1.0, 1.0, 1.0,
         ])
         preview_probe.update()
-        mat = bpy.data.materials.new("BName_TestComaPreviewTransparentMaterial")
+        mat = bpy.data.materials.new("BManga_TestComaPreviewTransparentMaterial")
         mat.use_nodes = True
         coma_plane._apply_material(  # noqa: SLF001 - material node contract check
             mat,
@@ -119,7 +119,7 @@ def main() -> None:
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    print("BNAME_COMA_PREVIEW_SCALE_CHECK_OK")
+    print("BMANGA_COMA_PREVIEW_SCALE_CHECK_OK")
 
 
 main()

@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -30,9 +30,9 @@ def _load_addon():
 
 
 def _new_work(work_dir: Path):
-    result = bpy.ops.bname.work_new(filepath=str(work_dir))
+    result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     assert work is not None and len(work.pages) > 0
     return work, work.pages[0]
 
@@ -71,7 +71,7 @@ def _move_first_curve_point_x(obj, delta: float) -> None:
 
 
 def _assert_orphan_balloon_is_preserved(scene, page) -> None:
-    from bname_dev.utils import balloon_curve_object, object_naming, object_preserve
+    from bmanga_dev.utils import balloon_curve_object, object_naming, object_preserve
 
     entry = _add_balloon(page, "preserve_orphan_balloon")
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -88,7 +88,7 @@ def _assert_orphan_balloon_is_preserved(scene, page) -> None:
 
 
 def _assert_preserved_balloon_band_meshes_survive_explicit_delete() -> None:
-    from bname_dev.utils import balloon_curve_object, balloon_fill_mesh, balloon_line_mesh, object_preserve
+    from bmanga_dev.utils import balloon_curve_object, balloon_fill_mesh, balloon_line_mesh, object_preserve
 
     balloon_id = "preserved_band_mesh_skip"
     line_mesh = bpy.data.meshes.new("preserved_band_line_mesh")
@@ -105,7 +105,7 @@ def _assert_preserved_balloon_band_meshes_survive_explicit_delete() -> None:
 
 
 def _assert_wrong_type_balloon_is_preserved(scene, page) -> None:
-    from bname_dev.utils import balloon_curve_object, object_naming, object_preserve
+    from bmanga_dev.utils import balloon_curve_object, object_naming, object_preserve
 
     entry = _add_balloon(page, "wrong_type_balloon")
     mesh = bpy.data.meshes.new("wrong_type_balloon_mesh")
@@ -114,7 +114,7 @@ def _assert_wrong_type_balloon_is_preserved(scene, page) -> None:
     object_naming.stamp_identity(
         legacy,
         kind="balloon",
-        bname_id=entry.id,
+        bmanga_id=entry.id,
         title="旧フキダシ",
         z_index=10,
         parent_key=str(page.id),
@@ -126,8 +126,8 @@ def _assert_wrong_type_balloon_is_preserved(scene, page) -> None:
 
 
 def _assert_explicit_balloon_delete_still_removes_current_object(scene, page) -> None:
-    from bname_dev.operators import balloon_op
-    from bname_dev.utils import balloon_curve_object
+    from bmanga_dev.operators import balloon_op
+    from bmanga_dev.utils import balloon_curve_object
 
     entry = _add_balloon(page, "explicit_delete_balloon")
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -139,7 +139,7 @@ def _assert_explicit_balloon_delete_still_removes_current_object(scene, page) ->
 
 
 def _assert_preserved_object_does_not_write_back(scene, page) -> None:
-    from bname_dev.utils import balloon_curve_object, object_preserve, object_state_sync
+    from bmanga_dev.utils import balloon_curve_object, object_preserve, object_state_sync
 
     entry = _add_balloon(page, "preserved_writeback_skip")
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -153,7 +153,7 @@ def _assert_preserved_object_does_not_write_back(scene, page) -> None:
 
 
 def _assert_legacy_text_is_preserved(scene, work, page) -> None:
-    from bname_dev.utils import object_naming, object_preserve, text_real_object
+    from bmanga_dev.utils import object_naming, object_preserve, text_real_object
 
     entry = page.texts.add()
     entry.id = "legacy_text_keep"
@@ -167,7 +167,7 @@ def _assert_legacy_text_is_preserved(scene, work, page) -> None:
     object_naming.stamp_identity(
         legacy,
         kind="text",
-        bname_id=entry.id,
+        bmanga_id=entry.id,
         title="旧テキスト",
         z_index=10,
         parent_key=str(page.id),
@@ -180,7 +180,7 @@ def _assert_legacy_text_is_preserved(scene, work, page) -> None:
 
 
 def _assert_legacy_plane_is_preserved(scene) -> None:
-    from bname_dev.utils import empty_layer_object, object_preserve
+    from bmanga_dev.utils import empty_layer_object, object_preserve
 
     mesh = bpy.data.meshes.new("text_mesh_legacy_plane")
     legacy = bpy.data.objects.new("text_plane_legacy_plane", mesh)
@@ -192,14 +192,14 @@ def _assert_legacy_plane_is_preserved(scene) -> None:
 
 
 def _assert_effect_source_is_preserved(scene) -> None:
-    from bname_dev.utils import effect_line_object, object_naming, object_preserve
+    from bmanga_dev.utils import effect_line_object, object_naming, object_preserve
 
     controller = bpy.data.objects.new("effect_controller_preserve", None)
     bpy.context.scene.collection.objects.link(controller)
     object_naming.stamp_identity(
         controller,
         kind="effect",
-        bname_id="effect_source_preserve",
+        bmanga_id="effect_source_preserve",
         title="効果線",
         z_index=10,
         parent_key="",
@@ -218,7 +218,7 @@ def _assert_effect_source_is_preserved(scene) -> None:
 
 
 def _assert_old_balloon_curve_is_not_rebuilt(scene, page) -> None:
-    from bname_dev.utils import balloon_curve_object, balloon_curve_source_state
+    from bmanga_dev.utils import balloon_curve_object, balloon_curve_source_state
 
     entry = _add_balloon(page, "old_curve_keep")
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -237,7 +237,7 @@ def _assert_old_balloon_curve_is_not_rebuilt(scene, page) -> None:
 
 
 def _assert_balloon_transform_writeback(scene, page) -> None:
-    from bname_dev.utils import balloon_curve_object, balloon_object_writeback
+    from bmanga_dev.utils import balloon_curve_object, balloon_object_writeback
 
     entry = _add_balloon(page, "transform_writeback_balloon")
     obj = balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
@@ -256,9 +256,9 @@ def _assert_balloon_transform_writeback(scene, page) -> None:
 
 
 def _assert_image_transform_writeback(scene, work, page) -> None:
-    from bname_dev.utils import empty_layer_object, image_real_object
+    from bmanga_dev.utils import empty_layer_object, image_real_object
 
-    entry = scene.bname_image_layers.add()
+    entry = scene.bmanga_image_layers.add()
     entry.id = "image_transform_writeback"
     entry.title = "画像"
     entry.parent_kind = "page"
@@ -278,12 +278,12 @@ def _assert_image_transform_writeback(scene, work, page) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_object_preservation_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_object_preservation_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        work, page = _new_work(temp_root / "ObjectPreservation.bname")
+        work, page = _new_work(temp_root / "ObjectPreservation.bmanga")
         scene = bpy.context.scene
         _assert_orphan_balloon_is_preserved(scene, page)
         _assert_preserved_balloon_band_meshes_survive_explicit_delete()
@@ -296,7 +296,7 @@ def main() -> None:
         _assert_old_balloon_curve_is_not_rebuilt(scene, page)
         _assert_balloon_transform_writeback(scene, page)
         _assert_image_transform_writeback(scene, work, page)
-        print("BNAME_OBJECT_PRESERVATION_OK")
+        print("BMANGA_OBJECT_PRESERVATION_OK")
     finally:
         if mod is not None:
             try:

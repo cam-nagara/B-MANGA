@@ -6,7 +6,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_band_mesh_image_mask_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_band_mesh_image_mask_check.py"
 """
 
 from __future__ import annotations
@@ -21,18 +21,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BAND_MASK_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_band_image_mask_"))
+_OUT_ENV = os.environ.get("BMANGA_BAND_MASK_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_band_image_mask_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_band_image_mask",
+        "bmanga_dev_band_image_mask",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_band_image_mask"] = mod
+    sys.modules["bmanga_dev_band_image_mask"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -70,18 +70,18 @@ def _render_to(path: Path, *, width_px: int = 900, height_px: int = 900) -> None
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_band_image_mask_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_band_image_mask_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "BandImageMask.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BandImageMask.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_band_image_mask.core.work import get_work
-    from bname_dev_band_image_mask.utils import balloon_curve_object
-    from bname_dev_band_image_mask.utils import coma_plane
-    from bname_dev_band_image_mask.utils.layer_hierarchy import coma_stack_key
+    from bmanga_dev_band_image_mask.core.work import get_work
+    from bmanga_dev_band_image_mask.utils import balloon_curve_object
+    from bmanga_dev_band_image_mask.utils import coma_plane
+    from bmanga_dev_band_image_mask.utils.layer_hierarchy import coma_stack_key
 
     context = bpy.context
     scene = context.scene
@@ -161,7 +161,7 @@ def main() -> None:
         print(f"  [OK] {name}: modifiers={[]} image-mask=接続済")
 
     # ページの world offset を取得し、コマ + フキダシ全体が収まる範囲でレンダリング
-    from bname_dev_band_image_mask.utils import page_grid
+    from bmanga_dev_band_image_mask.utils import page_grid
     page_off_x_mm, page_off_y_mm = page_grid.page_total_offset_mm(work, scene, 0)
     print(f"[DUMP] page offset: ({page_off_x_mm}, {page_off_y_mm}) mm")
 

@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_effect_mask_visibility",
+        "bmanga_dev_effect_mask_visibility",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_effect_mask_visibility"] = mod
+    sys.modules["bmanga_dev_effect_mask_visibility"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,7 +28,7 @@ def _load_addon():
 
 
 def _assert_coma_objects_visible(page) -> None:
-    from bname_dev_effect_mask_visibility.utils import coma_border_object, coma_plane
+    from bmanga_dev_effect_mask_visibility.utils import coma_border_object, coma_plane
 
     for coma in page.comas:
         border = bpy.data.objects.get(
@@ -42,7 +42,7 @@ def _assert_coma_objects_visible(page) -> None:
 
 
 def _assert_page_background_not_promoted(page) -> None:
-    from bname_dev_effect_mask_visibility.utils import mask_apply, paper_bg_object
+    from bmanga_dev_effect_mask_visibility.utils import mask_apply, paper_bg_object
 
     bg = bpy.data.objects.get(f"{paper_bg_object.PAPER_BG_NAME_PREFIX}{page.id}")
     assert bg is not None, "用紙背景がありません"
@@ -60,7 +60,7 @@ def _assert_page_background_not_promoted(page) -> None:
 def _assert_effect_not_masked(obj) -> None:
     layers = getattr(getattr(obj, "data", None), "layers", None)
     assert layers is not None
-    mask_layer = layers.get("__bname_mask")
+    mask_layer = layers.get("__bmanga_mask")
     assert mask_layer is None, "効果線に不要なコマ内マスクがあります"
     content_layers = list(layers)
     assert content_layers, "効果線本体のレイヤーがありません"
@@ -73,11 +73,11 @@ def _assert_effect_not_masked(obj) -> None:
         for frame in getattr(layer, "frames", []) or []:
             drawing = getattr(frame, "drawing", None)
             stroke_count += len(getattr(drawing, "strokes", []) or []) if drawing is not None else 0
-    assert stroke_count == 0, "効果線の制御用レイヤーにB-Name生成ストロークが残っています"
+    assert stroke_count == 0, "効果線の制御用レイヤーにB-MANGA生成ストロークが残っています"
 
 
 def _assert_display_uses_opacity_mask(display) -> None:
-    from bname_dev_effect_mask_visibility.utils import mask_apply
+    from bmanga_dev_effect_mask_visibility.utils import mask_apply
 
     assert display.modifiers.get(mask_apply.MOD_NAME_COMA_MASK) is None, "効果線表示に古いコマ切り抜きが残っています"
     assert display.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK) is None, "効果線表示に古いページ切り抜きが残っています"
@@ -127,26 +127,26 @@ def _assert_bounds_inside(inner, outer, label: str, eps: float = 1.0e-5) -> None
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_effect_mask_visibility_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_mask_visibility_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "EffectMask.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "EffectMask.bmanga"))
         assert "FINISHED" in result, result
         # 現行仕様: コマ・効果線の編集と用紙背景の実体はページファイル側にある
         # (作品ファイルはページ一覧のみ)。ページファイルを開いてから検証する。
-        result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+        result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
         assert "FINISHED" in result, result
 
-        from bname_dev_effect_mask_visibility.operators import coma_op, effect_line_op
-        from bname_dev_effect_mask_visibility.utils import coma_border_object, coma_plane
-        from bname_dev_effect_mask_visibility.utils import effect_line_object
-        from bname_dev_effect_mask_visibility.utils.layer_hierarchy import coma_stack_key
+        from bmanga_dev_effect_mask_visibility.operators import coma_op, effect_line_op
+        from bmanga_dev_effect_mask_visibility.utils import coma_border_object, coma_plane
+        from bmanga_dev_effect_mask_visibility.utils import effect_line_object
+        from bmanga_dev_effect_mask_visibility.utils.layer_hierarchy import coma_stack_key
 
         context = bpy.context
         scene = context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page = work.pages[0]
         first = page.comas[0]
         first.shape_type = "rect"
@@ -155,7 +155,7 @@ def main() -> None:
         first.rect_width_mm = 120.0
         first.rect_height_mm = 135.0
 
-        result = bpy.ops.bname.coma_add()
+        result = bpy.ops.bmanga.coma_add()
         assert "FINISHED" in result, result
         second = page.comas[1]
         second.shape_type = "rect"
@@ -171,7 +171,7 @@ def main() -> None:
 
         _assert_coma_objects_visible(page)
         _assert_page_background_not_promoted(page)
-        from bname_dev_effect_mask_visibility.utils import mask_apply, paper_bg_object
+        from bmanga_dev_effect_mask_visibility.utils import mask_apply, paper_bg_object
 
         bg = bpy.data.objects.get(f"{paper_bg_object.PAPER_BG_NAME_PREFIX}{page.id}")
         assert bg is not None
@@ -189,7 +189,7 @@ def main() -> None:
         assert display is not None, "効果線の表示実体がありません"
         assert obj.hide_viewport, "効果線の制御用レイヤーが表示対象のままです"
         assert not display.hide_viewport, "効果線の表示実体が非表示です"
-        assert display.modifiers.get("B-Name Geometry Nodes") is None, "効果線の表示実体に重い生成ノードが残っています"
+        assert display.modifiers.get("B-MANGA Geometry Nodes") is None, "効果線の表示実体に重い生成ノードが残っています"
         _assert_display_uses_opacity_mask(display)
         assert len(display.data.polygons) > 0, "効果線の表示実体メッシュが空です"
         assert _evaluated_polygon_count(display) > 0, "効果線の表示結果が空です"
@@ -197,7 +197,7 @@ def main() -> None:
         _assert_coma_objects_visible(page)
         _assert_page_background_not_promoted(page)
         _assert_effect_not_masked(obj)
-        print("BNAME_EFFECT_LINE_MASK_VISIBILITY_OK")
+        print("BMANGA_EFFECT_LINE_MASK_VISIBILITY_OK")
     finally:
         if mod is not None:
             try:

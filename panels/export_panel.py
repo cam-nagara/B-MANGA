@@ -10,16 +10,16 @@ from ..core.work import get_work
 from ..io import export_pipeline
 from ..utils import page_file_scene
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_PT_export(Panel):
-    bl_idname = "BNAME_PT_export"
+class BMANGA_PT_export(Panel):
+    bl_idname = "BMANGA_PT_export"
     bl_label = "ページ出力"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 20
+    bl_order = 30
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -38,16 +38,16 @@ class BNAME_PT_export(Panel):
             layout.label(text="Pillow 未同梱 - ページ出力無効", icon="ERROR")
             layout.label(text="wheels/ に Pillow を同梱後に有効化", icon="INFO")
             return
-        layout.operator("bname.export_page", icon="RENDER_STILL")
-        layout.operator("bname.export_all_pages", icon="RENDER_ANIMATION")
-        layout.operator("bname.export_pdf", icon="FILE")
+        layout.operator("bmanga.export_page", icon="RENDER_STILL")
+        layout.operator("bmanga.export_all_pages", icon="RENDER_ANIMATION")
+        layout.operator("bmanga.export_pdf", icon="FILE")
         if not export_pipeline.has_pypdf():
             layout.label(text="(pypdf 未同梱のため Pillow 簡易 PDF)", icon="INFO")
         if not export_pipeline.can_write_layered_psd():
             layout.label(text="(PSD レイヤー出力を利用できません)", icon="INFO")
 
 
-_CLASSES = (BNAME_PT_export,)
+_CLASSES = (BMANGA_PT_export,)
 
 
 def register() -> None:

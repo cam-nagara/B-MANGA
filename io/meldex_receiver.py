@@ -80,7 +80,7 @@ class _MeldexHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{"status":"ok","app":"B-Name"}')
+        self.wfile.write(b'{"status":"ok","app":"B-MANGA"}')
 
 
 # ---------- サーバー起動・停止 ----------
@@ -107,7 +107,7 @@ def start(port: int = _DEFAULT_PORT) -> bool:
         _logger.error("no available port in range %d..%d", port, port + _MAX_PORT_TRIES - 1)
         return False
     _server_thread = threading.Thread(
-        target=_server.serve_forever, name="BName-MeldexReceiver", daemon=True
+        target=_server.serve_forever, name="BManga-MeldexReceiver", daemon=True
     )
     _server_thread.start()
     # メインスレッド poll を bpy.app.timers で実行

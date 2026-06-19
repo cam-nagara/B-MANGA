@@ -9,7 +9,7 @@ from ..core import balloon as balloon_core
 from ..core.work import get_active_page
 from ..utils import balloon_shapes
 from . import corner_radius_ui, effect_line_panel
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
 def draw_white_outline_line_settings(box, entry, columns=None) -> None:
@@ -81,8 +81,8 @@ def draw_white_outline_line_settings(box, entry, columns=None) -> None:
     effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
 
 
-class BNAME_UL_balloons(UIList):
-    bl_idname = "BNAME_UL_balloons"
+class BMANGA_UL_balloons(UIList):
+    bl_idname = "BMANGA_UL_balloons"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
@@ -92,8 +92,8 @@ class BNAME_UL_balloons(UIList):
             row.prop(item, "shape", text="", emboss=False)
 
 
-class BNAME_UL_texts(UIList):
-    bl_idname = "BNAME_UL_texts"
+class BMANGA_UL_texts(UIList):
+    bl_idname = "BMANGA_UL_texts"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
@@ -107,8 +107,8 @@ class BNAME_UL_texts(UIList):
                 row.label(text="独立", icon="UNLINKED")
 
 
-class BNAME_PT_balloons(Panel):
-    bl_idname = "BNAME_PT_balloons"
+class BMANGA_PT_balloons(Panel):
+    bl_idname = "BMANGA_PT_balloons"
     bl_label = "フキダシ"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -134,7 +134,7 @@ class BNAME_PT_balloons(Panel):
 
         row = layout.row()
         row.template_list(
-            BNAME_UL_balloons.bl_idname,
+            BMANGA_UL_balloons.bl_idname,
             "",
             page,
             "balloons",
@@ -143,17 +143,17 @@ class BNAME_PT_balloons(Panel):
             rows=4,
         )
         col = row.column(align=True)
-        col.operator("bname.balloon_add", text="", icon="ADD")
-        col.operator("bname.balloon_remove", text="", icon="REMOVE")
-        # 自分で描いたパス (B-Name 管理外カーブ) を選択した状態で押すと
+        col.operator("bmanga.balloon_add", text="", icon="ADD")
+        col.operator("bmanga.balloon_remove", text="", icon="REMOVE")
+        # 自分で描いたパス (B-MANGA 管理外カーブ) を選択した状態で押すと
         # 自由形状フキダシとして取り込める (右クリックメニューにも同項目あり)
         layout.operator(
-            "bname.balloon_register_selected_curve",
+            "bmanga.balloon_register_selected_curve",
             text="選択カーブをフキダシに登録",
             icon="MOD_CURVE",
         )
         if sum(1 for balloon in page.balloons if getattr(balloon, "selected", False)) >= 2:
-            layout.operator("bname.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
+            layout.operator("bmanga.balloon_merge_selected", text="フキダシを結合", icon="FILE_FOLDER")
 
         idx = page.active_balloon_index
         if not (0 <= idx < len(page.balloons)):
@@ -195,13 +195,13 @@ class BNAME_PT_balloons(Panel):
         box = layout.box()
         box.label(text="親子連動移動 (子テキストも追随)", icon="CON_TRACKTO")
         row = box.row(align=True)
-        op = row.operator("bname.balloon_move", text="← 5mm")
+        op = row.operator("bmanga.balloon_move", text="← 5mm")
         op.delta_x_mm = -5.0
-        op = row.operator("bname.balloon_move", text="→ 5mm")
+        op = row.operator("bmanga.balloon_move", text="→ 5mm")
         op.delta_x_mm = 5.0
-        op = row.operator("bname.balloon_move", text="↑ 5mm")
+        op = row.operator("bmanga.balloon_move", text="↑ 5mm")
         op.delta_y_mm = 5.0
-        op = row.operator("bname.balloon_move", text="↓ 5mm")
+        op = row.operator("bmanga.balloon_move", text="↓ 5mm")
         op.delta_y_mm = -5.0
 
         box = layout.box()
@@ -342,18 +342,18 @@ class BNAME_PT_balloons(Panel):
         box = layout.box()
         row = box.row(align=True)
         row.label(text=f"尻尾 ({len(entry.tails)})")
-        add_op = row.operator("bname.balloon_tail_add_target", text="", icon="ADD")
+        add_op = row.operator("bmanga.balloon_tail_add_target", text="", icon="ADD")
         add_op.page_id = str(getattr(page, "id", "") or "")
         add_op.balloon_id = str(getattr(entry, "id", "") or "")
         detail_op = box.operator(
-            "bname.balloon_tail_detail_open", text="しっぽの詳細設定...", icon="PREFERENCES"
+            "bmanga.balloon_tail_detail_open", text="しっぽの詳細設定...", icon="PREFERENCES"
         )
         detail_op.page_id = str(getattr(page, "id", "") or "")
         detail_op.balloon_id = str(getattr(entry, "id", "") or "")
 
 
-class BNAME_PT_texts(Panel):
-    bl_idname = "BNAME_PT_texts"
+class BMANGA_PT_texts(Panel):
+    bl_idname = "BMANGA_PT_texts"
     bl_label = "テキスト"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -379,7 +379,7 @@ class BNAME_PT_texts(Panel):
 
         row = layout.row()
         row.template_list(
-            BNAME_UL_texts.bl_idname,
+            BMANGA_UL_texts.bl_idname,
             "",
             page,
             "texts",
@@ -388,8 +388,8 @@ class BNAME_PT_texts(Panel):
             rows=4,
         )
         col = row.column(align=True)
-        col.operator("bname.text_add", text="", icon="ADD")
-        col.operator("bname.text_remove", text="", icon="REMOVE")
+        col.operator("bmanga.text_add", text="", icon="ADD")
+        col.operator("bmanga.text_remove", text="", icon="REMOVE")
 
         idx = page.active_text_index
         if not (0 <= idx < len(page.texts)):
@@ -435,17 +435,17 @@ class BNAME_PT_texts(Panel):
         box.label(text="親フキダシ", icon="LINKED")
         row = box.row(align=True)
         row.prop(entry, "parent_balloon_id", text="ID")
-        box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
+        box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
         # 既存フキダシ一覧からのクイック選択
         if len(page.balloons) > 0:
             row = box.row(align=True)
             row.label(text="紐付け:")
             for b in page.balloons:
-                op = row.operator("bname.text_attach_to_balloon", text=b.id)
+                op = row.operator("bmanga.text_attach_to_balloon", text=b.id)
                 op.balloon_id = b.id
             # 独立化ボタン
             op = box.operator(
-                "bname.text_attach_to_balloon",
+                "bmanga.text_attach_to_balloon",
                 text="独立テキストにする",
                 icon="UNLINKED",
             )
@@ -453,10 +453,10 @@ class BNAME_PT_texts(Panel):
 
 
 _CLASSES = (
-    BNAME_UL_balloons,
-    BNAME_UL_texts,
-    BNAME_PT_balloons,
-    BNAME_PT_texts,
+    BMANGA_UL_balloons,
+    BMANGA_UL_texts,
+    BMANGA_PT_balloons,
+    BMANGA_PT_texts,
 )
 
 

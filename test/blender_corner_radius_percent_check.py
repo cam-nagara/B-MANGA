@@ -11,7 +11,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-ADDON_NAME = "bname_dev_corner_radius_percent"
+ADDON_NAME = "bmanga_dev_corner_radius_percent"
 
 
 def _load_addon():
@@ -56,7 +56,7 @@ def main() -> None:
     schema = _import("io.schema")
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages.add()
     page.id = "p0001"
     entry = page.balloons.add()
@@ -91,7 +91,7 @@ def main() -> None:
         raise AssertionError("フキダシ読込: 単位が復元されていません")
     _assert_close(restored.rounded_corner_radius_percent, 50.0, "フキダシ読込: %")
 
-    params = scene.bname_effect_line_params
+    params = scene.bmanga_effect_line_params
     params.start_shape = "rect"
     params.start_rounded_corner_enabled = True
     params.start_rounded_corner_radius_unit = "percent"
@@ -123,7 +123,7 @@ def main() -> None:
     if effect_line_gen._shape_guide_uses_smooth_bezier(params, "start"):
         raise AssertionError("効果線始点: 0%の角丸が曲線扱いになっています")
 
-    print("BNAME_CORNER_RADIUS_PERCENT_OK")
+    print("BMANGA_CORNER_RADIUS_PERCENT_OK")
 
 
 if __name__ == "__main__":

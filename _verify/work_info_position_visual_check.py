@@ -13,10 +13,10 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / ".codex" / "visual" / "work_info_position_check"
-WORK_DIR = OUT_DIR / "WorkInfoPosition.bname"
+WORK_DIR = OUT_DIR / "WorkInfoPosition.bmanga"
 SCREENSHOT = OUT_DIR / "work_info_position_overview_ui.png"
 SUMMARY = OUT_DIR / "work_info_position_summary.json"
-MODULE_NAME = "bname_dev_work_info_position_visual"
+MODULE_NAME = "bmanga_dev_work_info_position_visual"
 
 
 def _load_addon():
@@ -98,21 +98,21 @@ def _run() -> None:
     shutil.rmtree(WORK_DIR, ignore_errors=True)
     mod = _load_addon()
     try:
-        result = bpy.ops.bname.work_new(filepath=str(WORK_DIR))
+        result = bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
         if "FINISHED" not in result:
             raise RuntimeError(f"work_new failed: {result}")
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.work_info.work_name = "左下確認"
         work.work_info.display_work_name.enabled = True
         work.work_info.display_work_name.position = "bottom-left"
-        from bname_dev_work_info_position_visual.ui import overlay_shared
-        from bname_dev_work_info_position_visual.utils import page_grid, work_info_text_object
-        from bname_dev_work_info_position_visual.utils.geom import m_to_mm
+        from bmanga_dev_work_info_position_visual.ui import overlay_shared
+        from bmanga_dev_work_info_position_visual.utils import page_grid, work_info_text_object
+        from bmanga_dev_work_info_position_visual.utils.geom import m_to_mm
 
         page_grid.apply_page_collection_transforms(bpy.context, work)
         work_info_text_object.regenerate_all_work_info_texts(bpy.context.scene, work)
         try:
-            bpy.ops.bname.view_fit_all("INVOKE_DEFAULT")
+            bpy.ops.bmanga.view_fit_all("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             pass
 
@@ -138,7 +138,7 @@ def _run() -> None:
             ),
         }
         SUMMARY.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-        print("BNAME_WORK_INFO_POSITION_VISUAL_CHECK", json.dumps(summary, ensure_ascii=False), flush=True)
+        print("BMANGA_WORK_INFO_POSITION_VISUAL_CHECK", json.dumps(summary, ensure_ascii=False), flush=True)
         ok = (
             summary["position"] == "bottom-left"
             and abs(x_mm - expected_x) < 0.001

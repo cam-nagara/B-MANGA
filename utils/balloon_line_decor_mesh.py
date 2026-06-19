@@ -30,7 +30,7 @@ KIND_LINE_SHAPE = "balloon_line_shape_mesh"
 KIND_LINE_IMAGE = "balloon_line_image_mesh"
 _SHAPE_OBJ_PREFIX = "balloon_line_shape_"
 _IMAGE_OBJ_PREFIX = "balloon_line_image_"
-_IMAGE_MATERIAL_PREFIX = "BName_BalloonLineImage_"
+_IMAGE_MATERIAL_PREFIX = "BManga_BalloonLineImage_"
 
 
 def _decor_outline_m(entry, body_object) -> list[tuple[float, float]]:

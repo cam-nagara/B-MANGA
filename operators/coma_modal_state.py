@@ -1,4 +1,4 @@
-"""B-Name modal ツールのアクティブ状態管理."""
+"""B-MANGA modal ツールのアクティブ状態管理."""
 
 from __future__ import annotations
 
@@ -129,12 +129,12 @@ def finish_active(tool_name: str, context, *, keep_selection: bool = False) -> b
 
 
 def any_tool_active() -> bool:
-    """いずれかの B-Name モーダルツールが稼働中か返す."""
+    """いずれかの B-MANGA モーダルツールが稼働中か返す."""
     return any(get_active(tool_name) is not None for tool_name in tuple(_ACTIVE_REFS.keys()))
 
 
 def finish_all(context, *, except_tool: str = "") -> bool:
-    """アクティブな B-Name モーダルツールをまとめて終了する."""
+    """アクティブな B-MANGA モーダルツールをまとめて終了する."""
     changed = False
     for tool_name in tuple(_ACTIVE_REFS.keys()):
         if tool_name == except_tool:
@@ -190,7 +190,7 @@ def exit_drawing_mode(context) -> bool:
 
     モーダルツール (枠線カット / フキダシ / テキスト / 効果線等) を起動する
     直前に呼び、 「描画開始 → 別ツール選択 → 描画終了」 を自動化する。
-    TEXTURE_PAINT は ``bname.raster_layer_paint_exit`` を経由し、 PNG 自動保存と
+    TEXTURE_PAINT は ``bmanga.raster_layer_paint_exit`` を経由し、 PNG 自動保存と
     paper_bg 再表示も併せて行う。
     """
     obj = getattr(getattr(context, "view_layer", None), "objects", None)
@@ -202,7 +202,7 @@ def exit_drawing_mode(context) -> bool:
         return False
     if mode == "TEXTURE_PAINT":
         try:
-            bpy.ops.bname.raster_layer_paint_exit("EXEC_DEFAULT")
+            bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
             return True
         except Exception:  # noqa: BLE001
             pass

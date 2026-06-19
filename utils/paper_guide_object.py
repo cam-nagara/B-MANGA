@@ -22,13 +22,13 @@ PAPER_SAFE_FILL_PREFIX = "page_safe_area_fill_"
 PAPER_GUIDE_CURVE_PREFIX = "paper_guide_curve_"
 PAPER_GUIDE_GP_DATA_PREFIX = "paper_guide_gp_"
 PAPER_SAFE_FILL_MESH_PREFIX = "paper_safe_area_mesh_"
-PAPER_GUIDE_MATERIAL_PREFIX = "BName_PaperGuide_"
-_OLD_SAFE_FILL_MATERIAL = "BName_SafeAreaFill"
-PAPER_SAFE_FILL_VIEW_MATERIAL = "BName_SafeAreaFill_View"
+PAPER_GUIDE_MATERIAL_PREFIX = "BManga_PaperGuide_"
+_OLD_SAFE_FILL_MATERIAL = "BManga_SafeAreaFill"
+PAPER_SAFE_FILL_VIEW_MATERIAL = "BManga_SafeAreaFill_View"
 
-PROP_GUIDE_KIND = "bname_paper_guide_kind"
-PROP_GUIDE_OWNER_ID = "bname_paper_guide_page_id"
-PROP_GUIDE_SIGNATURE = "bname_paper_guide_signature"
+PROP_GUIDE_KIND = "bmanga_paper_guide_kind"
+PROP_GUIDE_OWNER_ID = "bmanga_paper_guide_page_id"
+PROP_GUIDE_SIGNATURE = "bmanga_paper_guide_signature"
 GUIDE_KIND_LINES = "guides"
 _OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 
@@ -558,7 +558,7 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     mesh.materials.append(_safe_fill_view_material(tuple(obj.color)))
     _remove_old_safe_fill_material_if_unused()
     try:
-        # B-Name のページ一覧ビューはコマプレビュー表示のためテクスチャ表示にする。
+        # B-MANGA のページ一覧ビューはコマプレビュー表示のためテクスチャ表示にする。
         # この面だけはビュー表示カラーを使うので、オブジェクト側をソリッド表示へ固定する。
         obj.display_type = "SOLID"
     except Exception:  # noqa: BLE001
@@ -601,7 +601,7 @@ def _set_page_location_by_index(scene, work, obj: bpy.types.Object, page_index: 
 
 
 def _set_page_location(scene, obj: bpy.types.Object, page) -> None:
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return
     target_id = str(getattr(page, "id", "") or "")
@@ -848,7 +848,7 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
         grid_page_index = page_index
     is_left = _is_left_page(paper, grid_page_index, work=work)
     rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left)
-    page_coll = on.find_collection_by_bname_id(page_id, kind="page")
+    page_coll = on.find_collection_by_bmanga_id(page_id, kind="page")
     if page_coll is None:
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
     in_range = bool(getattr(page, "in_page_range", True))
@@ -1193,7 +1193,7 @@ def repair_loaded_work_paper_guides(scene=None, work=None) -> bool:
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return False
-    work = work or getattr(scene, "bname_work", None)
+    work = work or getattr(scene, "bmanga_work", None)
     if work is None or not bool(getattr(work, "loaded", False)):
         return False
     needs_rebuild = False

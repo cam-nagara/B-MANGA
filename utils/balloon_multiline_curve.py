@@ -252,7 +252,7 @@ def _add_filled_band_bezier(
     role_radius: float,
     material_index: int,
 ) -> None:
-    """B-Name 側で算出した外周/内周点列を、滑らかなベジエ閉ループ 2 本として
+    """B-MANGA 側で算出した外周/内周点列を、滑らかなベジエ閉ループ 2 本として
     追加する。Fill Curve が「外周 - 内周」の穴あき面 (= 帯) として塗る。"""
     if len(outer) < 3 or len(inner) < 3:
         return
@@ -820,7 +820,7 @@ def append_main_line_fill_paths(
     if shape_name == "ellipse":
         return
     if shape_name not in {"rect", "octagon", "thorn"}:
-        # 滑らか形状 (雲・モフモフ・トゲ曲線) は B-Name 側で外周/内周を算出し、
+        # 滑らか形状 (雲・モフモフ・トゲ曲線) は B-MANGA 側で外周/内周を算出し、
         # 滑らかなベジエ閉ループ 2 本として追加する (Fill Curve が穴あき帯にする).
         # 鋭い谷を持つ body でも線幅が一定になるよう、広がる側は円弧で丸め、
         # 狭まる側は隣接オフセット線の交点で詰める (右直角・自己交差を回避).

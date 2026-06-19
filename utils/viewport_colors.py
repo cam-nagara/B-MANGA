@@ -1,4 +1,4 @@
-"""Shared viewport overlay colors for B-Name."""
+"""Shared viewport overlay colors for B-MANGA."""
 
 from __future__ import annotations
 

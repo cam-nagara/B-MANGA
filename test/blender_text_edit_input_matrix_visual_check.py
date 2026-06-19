@@ -13,7 +13,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = Path(os.environ.get("BNAME_TEXT_EDIT_MATRIX_OUT", "") or tempfile.mkdtemp(prefix="bname_text_edit_matrix_"))
+OUT_DIR = Path(os.environ.get("BMANGA_TEXT_EDIT_MATRIX_OUT", "") or tempfile.mkdtemp(prefix="bmanga_text_edit_matrix_"))
 _MOD = None
 _TEMP_ROOT: Path | None = None
 _PROBE = None
@@ -34,8 +34,8 @@ class _InlineTextProbe:
     def _touch_current_text(self, context, page, entry, idx) -> None:
         _ = page
         _ = idx
-        from bname_dev.operators import text_edit_runtime
-        from bname_dev.utils import layer_stack as layer_stack_utils, text_real_object
+        from bmanga_dev.operators import text_edit_runtime
+        from bmanga_dev.utils import layer_stack as layer_stack_utils, text_real_object
 
         with text_real_object.suspend_auto_sync():
             text_edit_runtime.fit_text_rect_to_body(
@@ -50,12 +50,12 @@ class _InlineTextProbe:
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -110,13 +110,13 @@ def _setup() -> None:
 
         shutil.rmtree(_TEMP_ROOT, ignore_errors=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    result = bpy.ops.bname.work_new(filepath=str(_TEMP_ROOT / "Text_Edit_Matrix.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_Edit_Matrix.bmanga"))
     if "FINISHED" not in result:
         raise RuntimeError(f"work_new failed: {result}")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     page.texts.clear()
-    from bname_dev.utils import text_real_object, text_style
+    from bmanga_dev.utils import text_real_object, text_style
 
     specs = [
         ("横書き 選択", "ABCDE", "horizontal", 26.0, 190.0, 130.0, 28.0, 2, 0),
@@ -137,29 +137,29 @@ def _setup() -> None:
         entry.font_size_q = 32.0 if index != 1 else 26.0
         text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
         text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
-    from bname_dev.io import page_io
+    from bmanga_dev.io import page_io
 
     page_io.save_page_json(Path(work.work_dir), page)
     page_io.save_pages_json(Path(work.work_dir), work)
     page.active_text_index = 0
     work.active_page_index = 0
     _PROBE = _InlineTextProbe()
-    from bname_dev.operators import coma_modal_state
+    from bmanga_dev.operators import coma_modal_state
 
     coma_modal_state.set_active("text_tool", _PROBE, bpy.context)
     override = _view3d_override()
     if override:
         with bpy.context.temp_override(**override):
-            bpy.ops.bname.view_fit_page()
-    _STATE["blend"] = str(_TEMP_ROOT / "Text_Edit_Matrix.bname" / "work.blend")
+            bpy.ops.bmanga.view_fit_page()
+    _STATE["blend"] = str(_TEMP_ROOT / "Text_Edit_Matrix.bmanga" / "work.blend")
     _write_state()
 
 
 def _activate_case(index: int, *, composition: str = "") -> None:
-    from bname_dev.operators import text_edit_runtime
-    from bname_dev.operators import coma_modal_state
+    from bmanga_dev.operators import text_edit_runtime
+    from bmanga_dev.operators import coma_modal_state
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = page.texts[index]
     cursors = [2, 3, 2, 5]
@@ -215,7 +215,7 @@ def _make_montage() -> None:
 def _finish() -> None:
     try:
         _make_montage()
-        print("BNAME_TEXT_EDIT_INPUT_MATRIX_VISUAL_OK", flush=True)
+        print("BMANGA_TEXT_EDIT_INPUT_MATRIX_VISUAL_OK", flush=True)
         print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True), flush=True)
     finally:
         os._exit(0)
@@ -256,10 +256,10 @@ def _capture3():
 
 def _step4():
     _activate_case(3)
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     entry = page.texts[3]
-    result = bpy.ops.bname.text_selection_style_popup(
+    result = bpy.ops.bmanga.text_selection_style_popup(
         "EXEC_DEFAULT",
         page_id=getattr(page, "id", ""),
         text_id=getattr(entry, "id", ""),
@@ -273,7 +273,7 @@ def _step4():
     )
     if "FINISHED" not in result:
         raise RuntimeError(f"text style change failed: {result}")
-    from bname_dev.utils import text_real_object
+    from bmanga_dev.utils import text_real_object
 
     assert not text_real_object.has_visible_text_object(entry, page=page)
     bpy.app.timers.register(_capture4, first_interval=0.35)

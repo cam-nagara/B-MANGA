@@ -21,7 +21,7 @@ def _on_layer_folder_title_changed(_self, context) -> None:
         pass
 
 
-class BNameLayerFolder(bpy.types.PropertyGroup):
+class BMangaLayerFolder(bpy.types.PropertyGroup):
     """画像/ラスター/フキダシ/テキストをまとめる UI 用フォルダ."""
 
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
@@ -31,7 +31,7 @@ class BNameLayerFolder(bpy.types.PropertyGroup):
     selected: BoolProperty(name="マルチ選択", default=False, options={"SKIP_SAVE"})  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameLayerFolder,)
+_CLASSES = (BMangaLayerFolder,)
 
 
 def register() -> None:

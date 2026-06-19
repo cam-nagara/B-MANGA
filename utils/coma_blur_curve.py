@@ -9,12 +9,12 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Blender外のJSON処理用
     bpy = None  # type: ignore[assignment]
 
-CURVE_NODE_NAME = "BName_ComaBlurCurve"
-CURVE_MATERIAL_PROP = "bname_blur_curve_source"
-UI_MATERIAL_NAME = "BName_ComaBlurCurve_UI"
-UI_NODE_NAME = "BName_ComaBlurCurve_UINode"
-UI_CURVE_SOURCE_PROP = "bname_blur_curve_ui_source"
-UI_OWNER_PROP = "bname_blur_curve_ui_owner"
+CURVE_NODE_NAME = "BManga_ComaBlurCurve"
+CURVE_MATERIAL_PROP = "bmanga_blur_curve_source"
+UI_MATERIAL_NAME = "BManga_ComaBlurCurve_UI"
+UI_NODE_NAME = "BManga_ComaBlurCurve_UINode"
+UI_CURVE_SOURCE_PROP = "bmanga_blur_curve_ui_source"
+UI_OWNER_PROP = "bmanga_blur_curve_ui_owner"
 DEFAULT_CURVE_TEXT = "0.0000,0.0000;0.2500,0.0950;0.5000,0.5000;0.7500,0.9050;1.0000,1.0000"
 DEFAULT_POINTS: tuple[tuple[float, float], ...] = (
     (0.0, 0.0),
@@ -262,7 +262,7 @@ def active_curve_material_for_coma(coma):
         try:
             if obj.type != "MESH" or not str(obj.name).startswith("coma_plane_"):
                 continue
-            owner = str(obj.get("bname_coma_plane_owner_id", "") or "")
+            owner = str(obj.get("bmanga_coma_plane_owner_id", "") or "")
             if exact_owner and owner != exact_owner:
                 continue
             if not exact_owner and not owner.endswith(f":{coma_id}"):
@@ -282,7 +282,7 @@ def active_curve_material_for_coma(coma):
         try:
             if obj.type != "MESH" or not str(obj.name).startswith("coma_plane_"):
                 continue
-            if str(obj.get("bname_coma_plane_owner_id", "") or "") != exact_owner:
+            if str(obj.get("bmanga_coma_plane_owner_id", "") or "") != exact_owner:
                 continue
             return obj.data.materials[0] if obj.data.materials else None
         except Exception:  # noqa: BLE001
@@ -298,7 +298,7 @@ def _owner_id_for_coma(coma) -> str:
     if not target_ptr:
         return ""
     scene = getattr(bpy.context, "scene", None)
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return ""
     for page in getattr(work, "pages", []) or []:

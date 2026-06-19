@@ -19,19 +19,19 @@ from mathutils import Quaternion
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_TOOL_VISUAL_OUT", "")
-    or tempfile.mkdtemp(prefix="bname_tool_visual_audit_")
+    os.environ.get("BMANGA_TOOL_VISUAL_OUT", "")
+    or tempfile.mkdtemp(prefix="bmanga_tool_visual_audit_")
 ).resolve()
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_tool_visual",
+        "bmanga_dev_tool_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_tool_visual"] = mod
+    sys.modules["bmanga_dev_tool_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -58,8 +58,8 @@ def _view3d_override():
 
 def _screen_event_for_world(x_mm: float, y_mm: float, *, event_type: str = "LEFTMOUSE", value: str = "PRESS"):
     from bpy_extras.view3d_utils import location_3d_to_region_2d
-    from bname_dev_tool_visual.operators import coma_picker
-    from bname_dev_tool_visual.utils.geom import mm_to_m
+    from bmanga_dev_tool_visual.operators import coma_picker
+    from bmanga_dev_tool_visual.utils.geom import mm_to_m
 
     _window, _screen, _area, region, rv3d = _view3d_context()
     point = location_3d_to_region_2d(region, rv3d, (mm_to_m(x_mm), mm_to_m(y_mm), 0.0))
@@ -205,7 +205,7 @@ def _create_png(path: Path) -> None:
             elif 28 <= x <= 150 and 80 <= y <= 92:
                 rgba = (0.12, 0.12, 0.12, 1.0)
             pixels.extend(rgba)
-    image = bpy.data.images.new("B-Name監査画像", width=width, height=height, alpha=True)
+    image = bpy.data.images.new("B-MANGA監査画像", width=width, height=height, alpha=True)
     image.pixels.foreach_set(pixels)
     image.filepath_raw = str(path)
     image.file_format = "PNG"
@@ -230,7 +230,7 @@ def _make_contact_sheet(items: list[dict], summary: dict) -> str:
             f'font-size="{size}" font-weight="{weight}" fill="{fill}">{escaped}</text>'
         )
 
-    text(22, 38, "B-Name ツール挙動 / 右クリック / ショートカット AI目視監査", 22, "700", "#000")
+    text(22, 38, "B-MANGA ツール挙動 / 右クリック / ショートカット AI目視監査", 22, "700", "#000")
     text(22, 68, f"ショートカットOK: {summary['shortcut_ok']} / 右クリックOK: {summary['menu_ok']} / 選択編集OK: {summary['selection_edit_ok']}", 16, "500", "#000")
     y = 88
     for line in summary["shortcut_lines"][:5]:
@@ -251,9 +251,9 @@ def _make_contact_sheet(items: list[dict], summary: dict) -> str:
 
 
 def _add_gp_layer(context, parent_key: str):
-    from bname_dev_tool_visual.utils import gp_layer_parenting as gp_parent
-    from bname_dev_tool_visual.utils import gpencil as gp_utils
-    from bname_dev_tool_visual.utils.geom import mm_to_m
+    from bmanga_dev_tool_visual.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev_tool_visual.utils import gpencil as gp_utils
+    from bmanga_dev_tool_visual.utils.geom import mm_to_m
 
     obj = gp_utils.ensure_master_gpencil(context.scene)
     layer = obj.data.layers.new("visual_gp")
@@ -273,15 +273,15 @@ def _add_gp_layer(context, parent_key: str):
 
 def _setup_scene(temp_root: Path):
     mod = _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "ToolVisualAudit.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ToolVisualAudit.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_tool_visual.operators import effect_line_op, raster_layer_op
-    from bname_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
-    from bname_dev_tool_visual.utils.geom import mm_to_px
+    from bmanga_dev_tool_visual.operators import effect_line_op, raster_layer_op
+    from bmanga_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
+    from bmanga_dev_tool_visual.utils.geom import mm_to_px
 
     context = bpy.context
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     work.paper.canvas_width_mm = 210.0
     work.paper.canvas_height_mm = 297.0
     page = work.pages[0]
@@ -300,9 +300,9 @@ def _setup_scene(temp_root: Path):
         parent_key=parent_key,
     )
     _ = effect_obj
-    raster_result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    raster_result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
     assert "FINISHED" in raster_result, raster_result
-    raster = context.scene.bname_raster_layers[context.scene.bname_active_raster_layer_index]
+    raster = context.scene.bmanga_raster_layers[context.scene.bmanga_active_raster_layer_index]
     raster.parent_kind = "coma"
     raster.parent_key = parent_key
     raster_image = raster_layer_op.ensure_raster_image(context, raster, create_missing=True)
@@ -320,7 +320,7 @@ def _setup_scene(temp_root: Path):
 
     image_path = temp_root / "visual_image.png"
     _create_png(image_path)
-    image = context.scene.bname_image_layers.add()
+    image = context.scene.bmanga_image_layers.add()
     image.id = "visual_image"
     image.title = "画像"
     image.filepath = str(image_path)
@@ -366,14 +366,14 @@ def _setup_scene(temp_root: Path):
 
 
 def _assert_shortcuts() -> tuple[bool, list[str]]:
-    from bname_dev_tool_visual.keymap import keymap as keymap_mod
-    from bname_dev_tool_visual.ui import sidebar
-    from bname_dev_tool_visual.utils import shortcut_visibility
+    from bmanga_dev_tool_visual.keymap import keymap as keymap_mod
+    from bmanga_dev_tool_visual.ui import sidebar
+    from bmanga_dev_tool_visual.utils import shortcut_visibility
 
     state = keymap_mod.get_state()
     assert state is not None
-    sidebar.open_bname_sidebar(bpy.context)
-    shortcut_visibility.mark_bname_panel_drawn(bpy.context)
+    sidebar.open_bmanga_sidebar(bpy.context)
+    shortcut_visibility.mark_bmanga_panel_drawn(bpy.context)
     try:
         keymap_mod._apply_visibility_state(state, True)
     except Exception:
@@ -387,10 +387,10 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
             bool(getattr(kmi, "alt", False)),
             bool(getattr(kmi, "active", False)),
         )
-        for kmi in getattr(state, "bname_items", []) or []
+        for kmi in getattr(state, "bmanga_items", []) or []
     ]
     window_actual = []
-    for km in getattr(state, "bname_keymaps", []) or []:
+    for km in getattr(state, "bmanga_keymaps", []) or []:
         if str(getattr(km, "name", "") or "") != "Window":
             continue
         for kmi in getattr(km, "keymap_items", []) or []:
@@ -405,18 +405,18 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
                 )
             )
     expected = [
-        ("オブジェクトツール", "bname.set_mode_object", "O", False, False, False),
-        ("描画ツール", "bname.set_mode_draw", "P", False, False, False),
-        ("枠線カットツール", "bname.coma_knife_cut", "F", False, False, False),
-        ("レイヤー移動ツール", "bname.layer_move_tool", "K", False, False, False),
-        ("テキストツール", "bname.text_tool", "T", False, False, False),
-        ("ナビゲート", "bname.view_navigate", "SPACE", False, False, False),
-        ("ブラシサイズ", "bname.brush_size_drag", "LEFTMOUSE", False, True, True),
-        ("レイヤー選択", "bname.page_pick_viewport", "LEFTMOUSE", True, True, False),
-        ("Alt移動", "bname.alt_reparent_drag", "LEFTMOUSE", False, False, True),
-        ("Alt+Shift移動", "bname.alt_reparent_out", "LEFTMOUSE", True, False, True),
-        ("次のページ", "bname.page_next", "COMMA", False, False, False),
-        ("前のページ", "bname.page_prev", "PERIOD", False, False, False),
+        ("オブジェクトツール", "bmanga.set_mode_object", "O", False, False, False),
+        ("描画ツール", "bmanga.set_mode_draw", "P", False, False, False),
+        ("枠線カットツール", "bmanga.coma_knife_cut", "F", False, False, False),
+        ("レイヤー移動ツール", "bmanga.layer_move_tool", "K", False, False, False),
+        ("テキストツール", "bmanga.text_tool", "T", False, False, False),
+        ("ナビゲート", "bmanga.view_navigate", "SPACE", False, False, False),
+        ("ブラシサイズ", "bmanga.brush_size_drag", "LEFTMOUSE", False, True, True),
+        ("レイヤー選択", "bmanga.page_pick_viewport", "LEFTMOUSE", True, True, False),
+        ("Alt移動", "bmanga.alt_reparent_drag", "LEFTMOUSE", False, False, True),
+        ("Alt+Shift移動", "bmanga.alt_reparent_out", "LEFTMOUSE", True, False, True),
+        ("次のページ", "bmanga.page_next", "COMMA", False, False, False),
+        ("前のページ", "bmanga.page_prev", "PERIOD", False, False, False),
     ]
     lines = []
     for label, op_id, key, shift, ctrl, alt in expected:
@@ -434,7 +434,7 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         mods = "+".join(part for part, enabled in (("Shift", shift), ("Ctrl", ctrl), ("Alt", alt)) if enabled)
         lines.append(f"{label}: {mods + '+' if mods else ''}{key}")
     if not any(
-        item[0] == "bname.set_mode_object"
+        item[0] == "bmanga.set_mode_object"
         and item[1] == "O"
         and not item[2]
         and not item[3]
@@ -442,13 +442,13 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         and item[5]
         for item in window_actual
     ):
-        raise AssertionError("B-Nameパネル上で使うオブジェクトツールショートカットがWindow側にありません")
+        raise AssertionError("B-MANGAパネル上で使うオブジェクトツールショートカットがWindow側にありません")
     return True, lines
 
 
 def _assert_menu_items(context) -> bool:
-    from bname_dev_tool_visual.ui import context_menu
-    from bname_dev_tool_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_tool_visual.ui import context_menu
+    from bmanga_dev_tool_visual.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context)
     assert stack is not None
@@ -481,10 +481,10 @@ def _assert_menu_items(context) -> bool:
 
 
 def _assert_click_and_edit(context, data) -> bool:
-    from bname_dev_tool_visual.operators import object_tool_op, object_tool_selection, view_op
-    from bname_dev_tool_visual.operators import coma_edge_drag_session
-    from bname_dev_tool_visual.utils import object_selection, page_browser, page_grid
-    from bname_dev_tool_visual.utils.geom import Rect
+    from bmanga_dev_tool_visual.operators import object_tool_op, object_tool_selection, view_op
+    from bmanga_dev_tool_visual.operators import coma_edge_drag_session
+    from bmanga_dev_tool_visual.utils import object_selection, page_browser, page_grid
+    from bmanga_dev_tool_visual.utils.geom import Rect
 
     work = data["work"]
     page = data["page"]
@@ -606,8 +606,8 @@ def _assert_click_and_edit(context, data) -> bool:
         coma_extra.rect_y_mm = 48.0
         coma_extra.rect_width_mm = 120.0
         coma_extra.rect_height_mm = 160.0
-    context.scene.bname_overview_cols = 1
-    context.scene.bname_page_browser_fit = True
+    context.scene.bmanga_overview_cols = 1
+    context.scene.bmanga_page_browser_fit = True
     page_browser.mark_workspace(context.workspace, "LEFT")
     browser_bbox = page_browser.layout_bbox_mm(work, context.scene, area)
     if browser_bbox is None:
@@ -670,7 +670,7 @@ def _assert_click_and_edit(context, data) -> bool:
     )
     move_event = _screen_event_for_world(vertex_world[0] + 6.0, vertex_world[1] + 4.0, event_type="MOUSEMOVE")
     session.apply(move_event)
-    session.finish("B-Name: 枠線移動")
+    session.finish("B-MANGA: 枠線移動")
     if str(getattr(browser_coma, "shape_type", "")) != "polygon" or len(browser_coma.vertices) < 1:
         raise AssertionError("ページ一覧の頂点ドラッグがコマ形状に反映されません")
     moved_v = browser_coma.vertices[int(selection["vertex"])]
@@ -693,7 +693,7 @@ def _assert_click_and_edit(context, data) -> bool:
     for kind in ("gp", "effect", "raster", "image", "balloon", "text"):
         key = keys[kind]
         fake_op = SimpleNamespace(_drag_action="move")
-        snapshots = object_tool_op.BNAME_OT_object_tool._make_snapshots(
+        snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
             fake_op,
             context,
             [key],
@@ -704,9 +704,9 @@ def _assert_click_and_edit(context, data) -> bool:
             raise AssertionError(f"ドラッグ編集の準備ができません: {kind}")
         before = object_tool_selection.selection_bounds_for_key(context, key)
         fake_op._snapshots = snapshots
-        object_tool_op.BNAME_OT_object_tool._apply_snapshots(fake_op, context, 3.0, 2.0)
+        object_tool_op.BMANGA_OT_object_tool._apply_snapshots(fake_op, context, 3.0, 2.0)
         if kind == "raster":
-            if not bool(data["raster"].get("bname_raster_dirty", False)):
+            if not bool(data["raster"].get("bmanga_raster_dirty", False)):
                 raise AssertionError("ラスターのドラッグ編集が反映されていません")
             continue
         after = object_tool_selection.selection_bounds_for_key(context, key)
@@ -721,11 +721,11 @@ def _invoke_tool(label: str, op_id: str, operator_context: str, props: dict | No
     op = getattr(getattr(bpy.ops, namespace), name)
     with _view3d_override():
         try:
-            from bname_dev_tool_visual.ui import sidebar
-            from bname_dev_tool_visual.utils import shortcut_visibility
+            from bmanga_dev_tool_visual.ui import sidebar
+            from bmanga_dev_tool_visual.utils import shortcut_visibility
 
-            sidebar.open_bname_sidebar(bpy.context)
-            shortcut_visibility.mark_bname_panel_drawn(bpy.context)
+            sidebar.open_bmanga_sidebar(bpy.context)
+            shortcut_visibility.mark_bmanga_panel_drawn(bpy.context)
         except Exception:
             pass
         try:
@@ -739,8 +739,8 @@ def _invoke_tool(label: str, op_id: str, operator_context: str, props: dict | No
 
 
 def _select_stack_for_key(context, key: str) -> bool:
-    from bname_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
-    from bname_dev_tool_visual.utils import object_selection
+    from bmanga_dev_tool_visual.utils import layer_hierarchy, layer_stack as layer_stack_utils
+    from bmanga_dev_tool_visual.utils import object_selection
 
     kind, page_id, item_id = object_selection.parse_key(key)
     if kind == "page":
@@ -761,18 +761,18 @@ def _select_stack_for_key(context, key: str) -> bool:
 
 
 def _run_tool_visuals(context, data) -> list[dict]:
-    from bname_dev_tool_visual.utils import layer_stack as layer_stack_utils
-    from bname_dev_tool_visual.utils import object_selection
+    from bmanga_dev_tool_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_tool_visual.utils import object_selection
 
     tool_specs = [
-        ("オブジェクトツール", "bname.object_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
-        ("GP描画", "bname.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "PAINT_GREASE_PENCIL"}, object_selection.gp_key(data["gp"])),
-        ("ラスター描画", "bname.raster_layer_mode_set", "EXEC_DEFAULT", {"mode": "TEXTURE_PAINT"}, object_selection.raster_key(data["raster"])),
-        ("枠線カットツール", "bname.coma_knife_cut", "INVOKE_DEFAULT", {}, object_selection.coma_key(data["page"], data["panel"])),
-        ("レイヤー移動ツール", "bname.layer_move_tool", "INVOKE_DEFAULT", {}, object_selection.image_key(data["image"])),
-        ("フキダシツール", "bname.balloon_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
-        ("テキストツール", "bname.text_tool", "INVOKE_DEFAULT", {}, object_selection.text_key(data["page"], data["text"])),
-        ("効果線ツール", "bname.effect_line_tool", "INVOKE_DEFAULT", {}, object_selection.effect_key(data["effect"])),
+        ("オブジェクトツール", "bmanga.object_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
+        ("GP描画", "bmanga.gpencil_master_mode_set", "EXEC_DEFAULT", {"mode": "PAINT_GREASE_PENCIL"}, object_selection.gp_key(data["gp"])),
+        ("ラスター描画", "bmanga.raster_layer_mode_set", "EXEC_DEFAULT", {"mode": "TEXTURE_PAINT"}, object_selection.raster_key(data["raster"])),
+        ("枠線カットツール", "bmanga.coma_knife_cut", "INVOKE_DEFAULT", {}, object_selection.coma_key(data["page"], data["panel"])),
+        ("レイヤー移動ツール", "bmanga.layer_move_tool", "INVOKE_DEFAULT", {}, object_selection.image_key(data["image"])),
+        ("フキダシツール", "bmanga.balloon_tool", "INVOKE_DEFAULT", {}, object_selection.balloon_key(data["page"], data["balloon"])),
+        ("テキストツール", "bmanga.text_tool", "INVOKE_DEFAULT", {}, object_selection.text_key(data["page"], data["text"])),
+        ("効果線ツール", "bmanga.effect_line_tool", "INVOKE_DEFAULT", {}, object_selection.effect_key(data["effect"])),
     ]
     items = []
     for index, (label, op_id, op_context, props, select_key) in enumerate(tool_specs):
@@ -782,9 +782,9 @@ def _run_tool_visuals(context, data) -> list[dict]:
         object_selection.set_keys(context, [select_key])
         select_kind, _page_id, _item_id = object_selection.parse_key(select_key)
         if select_kind == "raster":
-            context.scene.bname_active_layer_kind = "raster"
+            context.scene.bmanga_active_layer_kind = "raster"
         elif select_kind == "gp":
-            context.scene.bname_active_layer_kind = "gp"
+            context.scene.bmanga_active_layer_kind = "gp"
         result = _invoke_tool(label, op_id, op_context, props)
         shot = _screenshot(f"tool_{index:02d}.png")
         items.append({
@@ -802,7 +802,7 @@ def _run_visual_audit() -> None:
         bpy.context.preferences.view.show_splash = False
     except Exception:
         pass
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_tool_visual_audit_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_tool_visual_audit_"))
     mod = None
     try:
         mod, data = _setup_scene(temp_root)
@@ -812,7 +812,7 @@ def _run_visual_audit() -> None:
             rv3d = getattr(bpy.context.space_data, "region_3d", None)
             if rv3d is not None:
                 rv3d.view_perspective = "ORTHO"
-            bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             rv3d = getattr(bpy.context.space_data, "region_3d", None)
             if rv3d is not None:
                 rv3d.view_perspective = "ORTHO"
@@ -843,7 +843,7 @@ def _run_visual_audit() -> None:
             ),
             encoding="utf-8",
         )
-        print(f"BNAME_TOOL_BEHAVIOR_VISUAL_OK visual={contact}", flush=True)
+        print(f"BMANGA_TOOL_BEHAVIOR_VISUAL_OK visual={contact}", flush=True)
     finally:
         if mod is not None:
             try:

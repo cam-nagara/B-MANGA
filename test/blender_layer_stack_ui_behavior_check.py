@@ -15,17 +15,17 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = Path(os.environ.get("BNAME_LAYER_STACK_VISUAL_OUT", "") or tempfile.mkdtemp(prefix="bname_layer_stack_visual_"))
+OUT_DIR = Path(os.environ.get("BMANGA_LAYER_STACK_VISUAL_OUT", "") or tempfile.mkdtemp(prefix="bmanga_layer_stack_visual_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -38,7 +38,7 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
 
 
 def _first_gp_point(layer):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
 
     for point in gp_parent.iter_points(layer):
         return point
@@ -46,7 +46,7 @@ def _first_gp_point(layer):
 
 
 def _gp_point_world_mm(obj, point) -> tuple[float, float]:
-    from bname_dev.utils.geom import m_to_mm
+    from bmanga_dev.utils.geom import m_to_mm
 
     return (
         m_to_mm(float(obj.location.x) + float(point.position.x)),
@@ -55,9 +55,9 @@ def _gp_point_world_mm(obj, point) -> tuple[float, float]:
 
 
 def _add_test_gp_layer(context, parent_key: str):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import gpencil as gp_utils
-    from bname_dev.utils.geom import mm_to_m
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils.geom import mm_to_m
 
     obj = gp_utils.ensure_master_gpencil(context.scene)
     layer = obj.data.layers.new("dnd_gp")
@@ -76,12 +76,12 @@ def _add_test_gp_layer(context, parent_key: str):
 
 
 def _add_test_raster_layer(context, parent_key: str):
-    from bname_dev.operators import raster_layer_op
+    from bmanga_dev.operators import raster_layer_op
 
-    result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8")
+    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8")
     assert "FINISHED" in result, result
-    coll = context.scene.bname_raster_layers
-    entry = coll[context.scene.bname_active_raster_layer_index]
+    coll = context.scene.bmanga_raster_layers
+    entry = coll[context.scene.bmanga_active_raster_layer_index]
     entry.parent_kind = "coma" if ":" in parent_key else "page"
     entry.parent_key = parent_key
     image = raster_layer_op.ensure_raster_image(context, entry, create_missing=False)
@@ -135,7 +135,7 @@ def _add_order_coma(page, coma_id: str, x_mm: float):
 
 
 def _stack(context):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -145,7 +145,7 @@ def _stack(context):
 
 def _find_stack_item(context, uid: str):
     for index, item in enumerate(_stack(context)):
-        from bname_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
 
         if layer_stack_utils.stack_item_uid(item) == uid:
             return index, item
@@ -153,7 +153,7 @@ def _find_stack_item(context, uid: str):
 
 
 def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
@@ -169,7 +169,7 @@ def _move_uid_below_parent(context, uid: str, parent_uid: str) -> None:
 
 
 def _move_uid_before(context, uid: str, before_uid: str) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = _stack(context)
     from_index = next(i for i, item in enumerate(stack) if layer_stack_utils.stack_item_uid(item) == uid)
@@ -190,8 +190,8 @@ def _assert_parent(context, uid: str, parent_key: str) -> None:
 
 
 def _assert_coma_order_buttons(context, page) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
-    from bname_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
 
     target = _add_order_coma(page, "c_order_a", 15.0)
     _add_order_coma(page, "c_order_b", 28.0)
@@ -201,7 +201,7 @@ def _assert_coma_order_buttons(context, page) -> None:
 
     index, _item = _find_stack_item(context, uid)
     layer_stack_utils.set_active_stack_index_silently(context, index)
-    assert "FINISHED" in bpy.ops.bname.layer_stack_move("EXEC_DEFAULT", direction="BACK")
+    assert "FINISHED" in bpy.ops.bmanga.layer_stack_move("EXEC_DEFAULT", direction="BACK")
     target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
     if int(target.z_order) != 0:
         order = [
@@ -212,7 +212,7 @@ def _assert_coma_order_buttons(context, page) -> None:
 
     index, _item = _find_stack_item(context, uid)
     layer_stack_utils.set_active_stack_index_silently(context, index)
-    assert "FINISHED" in bpy.ops.bname.layer_stack_move("EXEC_DEFAULT", direction="FRONT")
+    assert "FINISHED" in bpy.ops.bmanga.layer_stack_move("EXEC_DEFAULT", direction="FRONT")
     target = next(coma for coma in page.comas if str(coma.coma_id) == target_id)
     max_z = max(int(getattr(coma, "z_order", -1)) for coma in page.comas)
     if int(target.z_order) != max_z:
@@ -252,9 +252,9 @@ def _alpha_hits_all(image, limit: int = 20) -> list[tuple[int, int, float]]:
 
 
 def _simulate_coma_move(context, page, panel, dx_mm: float, dy_mm: float) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
-    from bname_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
-    from bname_dev.operators import layer_move_op
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils.layer_hierarchy import COMA_KIND, coma_stack_key
+    from bmanga_dev.operators import layer_move_op
 
     uid = layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, panel))
     _index, item = _find_stack_item(context, uid)
@@ -263,16 +263,16 @@ def _simulate_coma_move(context, page, panel, dx_mm: float, dy_mm: float) -> Non
     resolved_panel = resolved.get("target")
     assert str(getattr(resolved_panel, "coma_id", "") or "") == str(getattr(panel, "coma_id", "") or "")
     mover = SimpleNamespace(_target=resolved, _snapshots=[])
-    layer_move_op.BNAME_OT_layer_move_tool._capture_snapshot(mover, context, "coma", resolved)
-    assert layer_move_op.BNAME_OT_layer_move_tool._apply_delta(mover, context, dx_mm, dy_mm)
+    layer_move_op.BMANGA_OT_layer_move_tool._capture_snapshot(mover, context, "coma", resolved)
+    assert layer_move_op.BMANGA_OT_layer_move_tool._apply_delta(mover, context, dx_mm, dy_mm)
 
 
 def _simulate_page_move(context, page, dx_mm: float, dy_mm: float) -> None:
-    from bname_dev.core.work import get_work
-    from bname_dev.utils import layer_stack as layer_stack_utils
-    from bname_dev.utils import page_grid
-    from bname_dev.utils.layer_hierarchy import PAGE_KIND, page_stack_key
-    from bname_dev.operators import layer_move_op
+    from bmanga_dev.core.work import get_work
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import page_grid
+    from bmanga_dev.utils.layer_hierarchy import PAGE_KIND, page_stack_key
+    from bmanga_dev.operators import layer_move_op
 
     uid = layer_stack_utils.target_uid(PAGE_KIND, page_stack_key(page))
     _index, item = _find_stack_item(context, uid)
@@ -281,8 +281,8 @@ def _simulate_page_move(context, page, dx_mm: float, dy_mm: float) -> None:
     resolved_page = resolved.get("target")
     assert str(getattr(resolved_page, "id", "") or "") == str(getattr(page, "id", "") or "")
     mover = SimpleNamespace(_target=resolved, _snapshots=[])
-    layer_move_op.BNAME_OT_layer_move_tool._capture_snapshot(mover, context, "page", resolved)
-    assert layer_move_op.BNAME_OT_layer_move_tool._apply_delta(mover, context, dx_mm, dy_mm)
+    layer_move_op.BMANGA_OT_layer_move_tool._capture_snapshot(mover, context, "page", resolved)
+    assert layer_move_op.BMANGA_OT_layer_move_tool._apply_delta(mover, context, dx_mm, dy_mm)
     page_grid.apply_page_collection_transforms(context, get_work(context))
 
 
@@ -296,7 +296,7 @@ def _write_visual_report(state: dict) -> None:
     image = Image.new("RGB", (920, 560), "white")
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
-    draw.text((24, 18), "B-Name Layer Stack UI Behavior Check", fill=(0, 0, 0), font=font)
+    draw.text((24, 18), "B-MANGA Layer Stack UI Behavior Check", fill=(0, 0, 0), font=font)
     y = 58
     for row in state.get("stack_rows", []):
         depth = int(row.get("depth", 0))
@@ -349,29 +349,29 @@ def _write_visual_report(state: dict) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_layer_stack_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_stack_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerStack.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LayerStack.bmanga"))
         assert "FINISHED" in result, result
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert "FINISHED" in result, result
 
-        from bname_dev.operators import effect_line_op
-        from bname_dev.operators import layer_stack_op
-        from bname_dev.operators import raster_layer_op
-        from bname_dev.utils import gp_layer_parenting as gp_parent
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils import layer_object_sync
-        from bname_dev.utils import object_naming as on
-        from bname_dev.utils import outliner_model
-        from bname_dev.utils.geom import m_to_mm, mm_to_px
-        from bname_dev.utils.layer_hierarchy import COMA_KIND, PAGE_KIND, coma_stack_key, page_stack_key
+        from bmanga_dev.operators import effect_line_op
+        from bmanga_dev.operators import layer_stack_op
+        from bmanga_dev.operators import raster_layer_op
+        from bmanga_dev.utils import gp_layer_parenting as gp_parent
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import layer_object_sync
+        from bmanga_dev.utils import object_naming as on
+        from bmanga_dev.utils import outliner_model
+        from bmanga_dev.utils.geom import m_to_mm, mm_to_px
+        from bmanga_dev.utils.layer_hierarchy import COMA_KIND, PAGE_KIND, coma_stack_key, page_stack_key
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         panel = page.comas[0]
         page_key = page_stack_key(page)
@@ -395,17 +395,17 @@ def main() -> None:
         text_b = _add_test_text(page, "dnd_text_b", page_key)
         layer_object_sync.mirror_work_to_outliner(context.scene, work)
 
-        assert hasattr(bpy.types, "BNAME_UL_layer_stack")
-        assert hasattr(bpy.types, "BNAME_PT_layer_stack")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_move")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_detail")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_toggle_visibility")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_duplicate")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_multi_select")
-        assert hasattr(bpy.types, "BNAME_OT_layer_stack_link_selected")
-        assert hasattr(bpy.types, "BNAME_MT_layer_stack_add")
-        assert not hasattr(bpy.types, "BNAME_OT_layer_stack_drag")
-        assert hasattr(context.scene, "bname_layer_stack_inline_edit_uid")
+        assert hasattr(bpy.types, "BMANGA_UL_layer_stack")
+        assert hasattr(bpy.types, "BMANGA_PT_layer_stack")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_move")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_detail")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_toggle_visibility")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_duplicate")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_multi_select")
+        assert hasattr(bpy.types, "BMANGA_OT_layer_stack_link_selected")
+        assert hasattr(bpy.types, "BMANGA_MT_layer_stack_add")
+        assert not hasattr(bpy.types, "BMANGA_OT_layer_stack_drag")
+        assert hasattr(context.scene, "bmanga_layer_stack_inline_edit_uid")
         text_coll = outliner_model.ensure_text_collection(context.scene)
         root_coll = outliner_model.ensure_root_collection(context.scene)
         assert text_coll.name == "text"
@@ -437,8 +437,8 @@ def main() -> None:
 
         def _invoke_multi(index: int, *, shift: bool = False, ctrl: bool = False):
             op = SimpleNamespace(index=index, mode="SET")
-            op.execute = lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(op, ctx)
-            return layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+            op.execute = lambda ctx: layer_stack_op.BMANGA_OT_layer_stack_multi_select.execute(op, ctx)
+            return layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(
                 op,
                 context,
                 SimpleNamespace(value="PRESS", shift=shift, ctrl=ctrl, oskey=False),
@@ -463,51 +463,51 @@ def main() -> None:
             raise AssertionError("Shiftクリックで範囲選択の終端が選択されません")
 
         rename_op = SimpleNamespace(index=text_a_index, mode="SET")
-        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+        assert "FINISHED" in layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(
             rename_op,
             context,
             SimpleNamespace(value="DOUBLE_CLICK", shift=False, ctrl=False, oskey=False),
         )
-        assert context.scene.bname_layer_stack_inline_edit_uid == text_a_uid
+        assert context.scene.bmanga_layer_stack_inline_edit_uid == text_a_uid
         layer_stack_utils.clear_all_selection(context)
-        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_a_index,
             mode="SET",
         )
-        assert context.scene.bname_layer_stack_inline_edit_uid == ""
+        assert context.scene.bmanga_layer_stack_inline_edit_uid == ""
         press_event = SimpleNamespace(value="PRESS", shift=False, ctrl=False, oskey=False)
         first_press = SimpleNamespace(index=text_b_index, mode="SET")
         first_press.execute = (
-            lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(first_press, ctx)
+            lambda ctx: layer_stack_op.BMANGA_OT_layer_stack_multi_select.execute(first_press, ctx)
         )
-        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(first_press, context, press_event)
-        assert context.scene.bname_layer_stack_inline_edit_uid == ""
+        assert "FINISHED" in layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(first_press, context, press_event)
+        assert context.scene.bmanga_layer_stack_inline_edit_uid == ""
         second_press = SimpleNamespace(index=text_b_index, mode="SET")
         second_press.execute = (
-            lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(second_press, ctx)
+            lambda ctx: layer_stack_op.BMANGA_OT_layer_stack_multi_select.execute(second_press, ctx)
         )
-        assert "FINISHED" in layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(second_press, context, press_event)
-        assert context.scene.bname_layer_stack_inline_edit_uid == text_b_uid
-        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+        assert "FINISHED" in layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(second_press, context, press_event)
+        assert context.scene.bmanga_layer_stack_inline_edit_uid == text_b_uid
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_a_index,
             mode="SET",
         )
-        assert context.scene.bname_layer_stack_inline_edit_uid == ""
-        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+        assert context.scene.bmanga_layer_stack_inline_edit_uid == ""
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_b_index,
             mode="TOGGLE",
         )
-        assert "FINISHED" in bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
-        from bname_dev.utils import layer_links
-        from bname_dev.utils import object_selection
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT")
+        from bmanga_dev.utils import layer_links
+        from bmanga_dev.utils import object_selection
 
         linked = layer_links.linked_uids_for_uid(context, text_a_uid)
         assert text_a_uid in linked and text_b_uid in linked
         layer_stack_utils.clear_all_selection(context)
-        assert "FINISHED" in bpy.ops.bname.layer_stack_multi_select(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_multi_select(
             "EXEC_DEFAULT",
             index=text_a_index,
             mode="SET",
@@ -547,7 +547,7 @@ def main() -> None:
                 f"effect={effect_index}, balloon={balloon_index}"
             )
 
-        from bname_dev.panels import gpencil_panel
+        from bmanga_dev.panels import gpencil_panel
 
         if gpencil_panel._layer_stack_template_rows(0) != 1:
             raise AssertionError("レイヤー一覧の空状態の高さが不正です")
@@ -557,11 +557,11 @@ def main() -> None:
             raise AssertionError("多数レイヤー時に一覧を縮められない高さになっています")
 
         fake_ui = SimpleNamespace(bitflag_filter_item=1)
-        flags, _order = gpencil_panel.BNAME_UL_layer_stack.filter_items(
+        flags, _order = gpencil_panel.BMANGA_UL_layer_stack.filter_items(
             fake_ui,
             context,
             context.scene,
-            "bname_layer_stack",
+            "bmanga_layer_stack",
         )
         visible_rows = [
             item for item, flag in zip(stack, flags, strict=False)
@@ -650,7 +650,7 @@ def main() -> None:
         before_page_gp_world = _gp_point_world_mm(_gp_obj, _first_gp_point(gp_layer))
         before_page_effect_world = effect_line_op.effect_layer_world_bounds(context, _eff_obj, effect_layer)
         assert before_page_effect_world is not None
-        raster_obj = on.find_object_by_bname_id(raster.id, kind="raster")
+        raster_obj = on.find_object_by_bmanga_id(raster.id, kind="raster")
         assert raster_obj is not None
         before_raster_object = tuple(float(v) for v in raster_obj.location)
         before_page_balloon = (float(balloon.x_mm), float(balloon.y_mm))
@@ -658,7 +658,7 @@ def main() -> None:
 
         page_dx_mm, page_dy_mm = 7.0, -2.0
         _simulate_page_move(context, page, page_dx_mm, page_dy_mm)
-        from bname_dev.utils import page_file_scene
+        from bmanga_dev.utils import page_file_scene
 
         expected_page_content_dx = 0.0 if page_file_scene.is_page_edit_scene(context.scene) else page_dx_mm
         expected_page_content_dy = 0.0 if page_file_scene.is_page_edit_scene(context.scene) else page_dy_mm
@@ -733,7 +733,7 @@ def main() -> None:
             "preview_visible_rows": preview_visible_rows,
         }
         _write_visual_report(state)
-        print(f"BNAME_LAYER_STACK_UI_BEHAVIOR_OK visual={OUT_DIR}")
+        print(f"BMANGA_LAYER_STACK_UI_BEHAVIOR_OK visual={OUT_DIR}")
     finally:
         if mod is not None:
             try:

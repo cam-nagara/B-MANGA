@@ -1,7 +1,7 @@
 """紙面編集モード / コマ編集モードの状態管理 (計画書 3.4 参照).
 
-Scene.bname_mode に現在のモード文字列を保持。切り替えは operators の
-bname.mode_toggle で行い、描画ハンドラ側 (ui/overlay.py) がモードを
+Scene.bmanga_mode に現在のモード文字列を保持。切り替えは operators の
+bmanga.mode_toggle で行い、描画ハンドラ側 (ui/overlay.py) がモードを
 見て紙面 / 個別コマのどちらを描くかを判定する。
 
 Phase 2 段階では状態保持のみ。実際の Scene 差し替え・3D シーン切替は
@@ -29,43 +29,43 @@ _MODE_ITEMS = (
 
 
 def _interaction_enabled_update(self, context) -> None:
-    if bool(getattr(self, "bname_interaction_enabled", True)):
+    if bool(getattr(self, "bmanga_interaction_enabled", True)):
         return
     try:
         from ..operators import coma_modal_state
 
         coma_modal_state.finish_all(context)
     except Exception:  # noqa: BLE001
-        _logger.exception("failed to finish B-Name modal tools")
+        _logger.exception("failed to finish B-MANGA modal tools")
     try:
         from ..keymap import keymap
 
         keymap.force_shortcuts_disabled()
     except Exception:  # noqa: BLE001
-        _logger.exception("failed to disable B-Name shortcuts")
+        _logger.exception("failed to disable B-MANGA shortcuts")
 
 
 def register() -> None:
-    bpy.types.Scene.bname_mode = EnumProperty(
-        name="B-Name モード",
+    bpy.types.Scene.bmanga_mode = EnumProperty(
+        name="B-MANGA モード",
         items=_MODE_ITEMS,
         default=MODE_PAGE,
     )
-    bpy.types.Scene.bname_interaction_enabled = BoolProperty(
-        name="B-Name操作",
-        description="B-Nameのビューポート操作と専用ショートカットを有効にする",
+    bpy.types.Scene.bmanga_interaction_enabled = BoolProperty(
+        name="B-MANGA操作",
+        description="B-MANGAのビューポート操作と専用ショートカットを有効にする",
         default=True,
         update=_interaction_enabled_update,
     )
-    bpy.types.Scene.bname_current_coma_id = StringProperty(
+    bpy.types.Scene.bmanga_current_coma_id = StringProperty(
         name="現在編集中のコマ ID",
         default="",
     )
-    bpy.types.Scene.bname_current_coma_page_id = StringProperty(
+    bpy.types.Scene.bmanga_current_coma_page_id = StringProperty(
         name="現在編集中のコマ page_id",
         default="",
     )
-    bpy.types.Scene.bname_current_page_id = StringProperty(
+    bpy.types.Scene.bmanga_current_page_id = StringProperty(
         name="現在編集中のページ ID",
         default="",
     )
@@ -74,23 +74,23 @@ def register() -> None:
 
 def unregister() -> None:
     try:
-        del bpy.types.Scene.bname_interaction_enabled
+        del bpy.types.Scene.bmanga_interaction_enabled
     except AttributeError:
         pass
     try:
-        del bpy.types.Scene.bname_mode
+        del bpy.types.Scene.bmanga_mode
     except AttributeError:
         pass
     try:
-        del bpy.types.Scene.bname_current_coma_id
+        del bpy.types.Scene.bmanga_current_coma_id
     except AttributeError:
         pass
     try:
-        del bpy.types.Scene.bname_current_coma_page_id
+        del bpy.types.Scene.bmanga_current_coma_page_id
     except AttributeError:
         pass
     try:
-        del bpy.types.Scene.bname_current_page_id
+        del bpy.types.Scene.bmanga_current_page_id
     except AttributeError:
         pass
 
@@ -98,7 +98,7 @@ def unregister() -> None:
 def _find_work_root(blend_path: Path) -> Path | None:
     p = blend_path.parent
     for _ in range(6):
-        if p.suffix == ".bname":
+        if p.suffix == ".bmanga":
             return p
         if p.parent == p:
             break
@@ -113,7 +113,7 @@ def _infer_mode_from_filepath(scene) -> tuple[str, str, str] | None:
     blend_path = Path(path_text)
     if blend_path.name == "":
         return None
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     work_dir_text = str(getattr(work, "work_dir", "") or "")
     work_dir = Path(work_dir_text) if work_dir_text else _find_work_root(blend_path)
     if work_dir is None:
@@ -149,17 +149,17 @@ def _infer_mode_from_filepath(scene) -> tuple[str, str, str] | None:
 
 def _sync_scene_state_from_filepath(scene, mode: str, page_id: str, coma_id: str) -> None:
     try:
-        if getattr(scene, "bname_mode", MODE_PAGE) != mode:
-            scene.bname_mode = mode
+        if getattr(scene, "bmanga_mode", MODE_PAGE) != mode:
+            scene.bmanga_mode = mode
     except Exception:  # noqa: BLE001
         return
     if mode == MODE_COMA:
         try:
-            if str(getattr(scene, "bname_current_coma_page_id", "") or "") != page_id:
-                scene.bname_current_coma_page_id = page_id
-            if str(getattr(scene, "bname_current_coma_id", "") or "") != coma_id:
-                scene.bname_current_coma_id = coma_id
-            work = getattr(scene, "bname_work", None)
+            if str(getattr(scene, "bmanga_current_coma_page_id", "") or "") != page_id:
+                scene.bmanga_current_coma_page_id = page_id
+            if str(getattr(scene, "bmanga_current_coma_id", "") or "") != coma_id:
+                scene.bmanga_current_coma_id = coma_id
+            work = getattr(scene, "bmanga_work", None)
             for page_index, page in enumerate(getattr(work, "pages", []) or []):
                 if str(getattr(page, "id", "") or "") != page_id:
                     continue
@@ -181,14 +181,14 @@ def _sync_scene_state_from_filepath(scene, mode: str, page_id: str, coma_id: str
             pass
     elif mode == MODE_PAGE:
         try:
-            if str(getattr(scene, "bname_current_coma_page_id", "") or ""):
-                scene.bname_current_coma_page_id = ""
-            if str(getattr(scene, "bname_current_coma_id", "") or ""):
-                scene.bname_current_coma_id = ""
+            if str(getattr(scene, "bmanga_current_coma_page_id", "") or ""):
+                scene.bmanga_current_coma_page_id = ""
+            if str(getattr(scene, "bmanga_current_coma_id", "") or ""):
+                scene.bmanga_current_coma_id = ""
             if paths.is_valid_page_id(page_id):
-                if str(getattr(scene, "bname_current_page_id", "") or "") != page_id:
-                    scene.bname_current_page_id = page_id
-                work = getattr(scene, "bname_work", None)
+                if str(getattr(scene, "bmanga_current_page_id", "") or "") != page_id:
+                    scene.bmanga_current_page_id = page_id
+                work = getattr(scene, "bmanga_work", None)
                 for page_index, page in enumerate(getattr(work, "pages", []) or []):
                     if str(getattr(page, "id", "") or "") == page_id:
                         try:
@@ -197,13 +197,13 @@ def _sync_scene_state_from_filepath(scene, mode: str, page_id: str, coma_id: str
                         except Exception:  # noqa: BLE001
                             pass
                         break
-                if hasattr(scene, "bname_overview_mode") and not bool(scene.bname_overview_mode):
-                    scene.bname_overview_mode = True
+                if hasattr(scene, "bmanga_overview_mode") and not bool(scene.bmanga_overview_mode):
+                    scene.bmanga_overview_mode = True
             else:
-                if str(getattr(scene, "bname_current_page_id", "") or ""):
-                    scene.bname_current_page_id = ""
-                if hasattr(scene, "bname_overview_mode") and not bool(scene.bname_overview_mode):
-                    scene.bname_overview_mode = True
+                if str(getattr(scene, "bmanga_current_page_id", "") or ""):
+                    scene.bmanga_current_page_id = ""
+                if hasattr(scene, "bmanga_overview_mode") and not bool(scene.bmanga_overview_mode):
+                    scene.bmanga_overview_mode = True
         except Exception:  # noqa: BLE001
             pass
 
@@ -218,7 +218,7 @@ def get_mode(context: bpy.types.Context | None = None) -> str:
         mode, page_id, coma_id = inferred
         _sync_scene_state_from_filepath(scene, mode, page_id, coma_id)
         return mode
-    return getattr(scene, "bname_mode", MODE_PAGE)
+    return getattr(scene, "bmanga_mode", MODE_PAGE)
 
 
 def set_mode(mode: str, context: bpy.types.Context | None = None) -> None:
@@ -228,4 +228,4 @@ def set_mode(mode: str, context: bpy.types.Context | None = None) -> None:
         return
     if mode not in (MODE_PAGE, MODE_COMA):
         raise ValueError(f"invalid mode: {mode}")
-    scene.bname_mode = mode
+    scene.bmanga_mode = mode

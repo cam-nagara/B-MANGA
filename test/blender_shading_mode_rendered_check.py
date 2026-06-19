@@ -1,9 +1,9 @@
-"""B-Name 作品を開いたとき、 ビューポートのシェーディングが RENDERED に
+"""B-MANGA 作品を開いたとき、 ビューポートのシェーディングが RENDERED に
 切り替わることを確認する.
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --factory-startup --python ^
-    "d:/Develop/Blender/B-Name/test/blender_shading_mode_rendered_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_shading_mode_rendered_check.py"
 """
 
 from __future__ import annotations
@@ -22,12 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_shading",
+        "bmanga_dev_shading",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_shading"] = mod
+    sys.modules["bmanga_dev_shading"] = mod
     spec.loader.exec_module(mod)
     mod.register()
     return mod
@@ -59,8 +59,8 @@ def main():
     _set_initial_shading_to_solid()
     print(f"  factory startup direct: {_get_shading_types()}")
 
-    tmp = Path(tempfile.mkdtemp(prefix="bname_shading_"))
-    res = bpy.ops.bname.work_new(filepath=str(tmp / "ShadingCheck.bname"))
+    tmp = Path(tempfile.mkdtemp(prefix="bmanga_shading_"))
+    res = bpy.ops.bmanga.work_new(filepath=str(tmp / "ShadingCheck.bmanga"))
     assert "FINISHED" in res, res
 
     print(f"  after work_new: {_get_shading_types()}")

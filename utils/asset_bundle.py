@@ -1,9 +1,9 @@
-"""B-Name layer bundle assets.
+"""B-MANGA layer bundle assets.
 
-This module keeps B-Name layer assets as ordinary Blender collection assets
+This module keeps B-MANGA layer assets as ordinary Blender collection assets
 with a JSON payload.  Dragging such a collection asset back into the viewport
 creates a collection instance; ``asset_drop_runtime`` converts that instance
-into normal B-Name layers.
+into normal B-MANGA layers.
 """
 
 from __future__ import annotations
@@ -30,12 +30,12 @@ from .layer_hierarchy import coma_containing_point, coma_stack_key
 
 _logger = log.get_logger(__name__)
 
-ASSET_PAYLOAD_PROP = "bname_asset_payload"
-ASSET_KIND_PROP = "bname_asset_kind"
+ASSET_PAYLOAD_PROP = "bmanga_asset_payload"
+ASSET_KIND_PROP = "bmanga_asset_kind"
 ASSET_KIND_LAYER_BUNDLE = "layer_bundle"
-ASSET_PROTOTYPE_PROP = "bname_asset_preview"
-ASSET_INSTANCE_DONE_PROP = "bname_asset_instance_imported"
-ASSET_FILE_NAME = "B-Name Assets.blend"
+ASSET_PROTOTYPE_PROP = "bmanga_asset_preview"
+ASSET_INSTANCE_DONE_PROP = "bmanga_asset_instance_imported"
+ASSET_FILE_NAME = "B-MANGA Assets.blend"
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
 
 SUPPORTED_LAYER_KINDS = {"coma", "balloon", "text", "effect", "raster", "gp"}
@@ -114,7 +114,7 @@ def register_selected_objects_as_asset(context, *, name: str = "", event=None) -
         clone = _clone_preview_object(obj, origin_mm=_object_group_origin_mm(objects))
         if clone is not None:
             coll.objects.link(clone)
-    _mark_collection_asset(coll, target=target, description="B-Name オブジェクトアセット")
+    _mark_collection_asset(coll, target=target, description="B-MANGA オブジェクトアセット")
     asset_preview.set_collection_asset_preview(coll)
     _write_external_library_if_needed(coll, target, context=context)
     if target.is_local:
@@ -153,7 +153,7 @@ def create_collection_asset(
     target: AssetBrowserTarget | None = None,
 ) -> bpy.types.Collection:
     target = target or AssetBrowserTarget()
-    coll = _new_asset_collection(_unique_asset_name(str(payload.get("name") or "B-Nameアセット")))
+    coll = _new_asset_collection(_unique_asset_name(str(payload.get("name") or "B-MANGAアセット")))
     coll[ASSET_KIND_PROP] = ASSET_KIND_LAYER_BUNDLE
     coll[ASSET_PAYLOAD_PROP] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     origin = payload.get("origin") if isinstance(payload.get("origin"), dict) else {}
@@ -162,7 +162,7 @@ def create_collection_asset(
         clone = _clone_preview_object(obj, origin_mm=origin_mm)
         if clone is not None:
             coll.objects.link(clone)
-    _mark_collection_asset(coll, target=target, description="B-Name レイヤーアセット")
+    _mark_collection_asset(coll, target=target, description="B-MANGA レイヤーアセット")
     asset_preview.set_collection_asset_preview(coll, payload=payload)
     _write_external_library_if_needed(coll, target, context=context, payload=payload)
     if target.is_local:
@@ -291,7 +291,7 @@ def process_dropped_collection_instance(context, obj) -> bool:
         return True
     except Exception:  # noqa: BLE001
         obj[ASSET_INSTANCE_DONE_PROP] = True
-        _logger.exception("B-Name asset instance import failed")
+        _logger.exception("B-MANGA asset instance import failed")
         return False
 
 
@@ -592,7 +592,7 @@ def _instantiate_effect(context, entry: dict, dx: float, dy: float, parent_key: 
     from ..core import effect_line
     from ..operators import effect_line_op
 
-    params = getattr(context.scene, "bname_effect_line_params", None)
+    params = getattr(context.scene, "bmanga_effect_line_params", None)
     meta = dict(entry.get("meta") or {})
     params_data = dict(meta.get("params") or {})
     if params is not None and params_data:
@@ -712,7 +712,7 @@ def _preview_objects_for_payload(context, payload: dict) -> list[bpy.types.Objec
             page_id = _page_id_for_source_uid(str(entry.get("source_uid", "")))
             obj = text_real_object.find_text_object(page_id, source_id)
         elif kind == "effect":
-            obj = on.find_object_by_bname_id(source_id, kind="effect")
+            obj = on.find_object_by_bmanga_id(source_id, kind="effect")
             if obj is not None:
                 from . import effect_line_object
 
@@ -862,7 +862,7 @@ def _safe_asset_file_stem(name: str) -> str:
 
 
 def _unique_asset_name(base: str) -> str:
-    clean = str(base or "B-Nameアセット").strip() or "B-Nameアセット"
+    clean = str(base or "B-MANGAアセット").strip() or "B-MANGAアセット"
     name = clean
     i = 1
     while name in bpy.data.collections:

@@ -1,6 +1,6 @@
 """ビューポート操作モーダルオペレータ (CSP 準拠).
 
-CLIP STUDIO PAINT のショートカット規約を Blender の N パネル B-Name タブ
+CLIP STUDIO PAINT のショートカット規約を Blender の N パネル B-MANGA タブ
 アクティブ時に再現する。Blender 標準 ``view3d.move`` / ``view3d.zoom`` /
 ``view3d.rotate`` は「マウスドラッグ前提」の挙動が噛み合わないため自前で
 modal 実装する。
@@ -118,7 +118,7 @@ def _nav_mode_from_event(event) -> str:
     return _NAV_MODE_PAN
 
 
-class BNAME_OT_view_navigate(Operator):
+class BMANGA_OT_view_navigate(Operator):
     """Space 押下中の統合ナビゲートモーダル.
 
     Space 単体で起動し、modal 中の修飾キー状態に応じてパン/回転/ズームを
@@ -142,8 +142,8 @@ class BNAME_OT_view_navigate(Operator):
     Space リリースで modal 終了。
     """
 
-    bl_idname = "bname.view_navigate"
-    bl_label = "B-Name ビューナビゲート"
+    bl_idname = "bmanga.view_navigate"
+    bl_label = "B-MANGA ビューナビゲート"
     bl_options = {"REGISTER"}
 
     # ズームの感度 (1px ドラッグあたりの log スケール).
@@ -165,14 +165,14 @@ class BNAME_OT_view_navigate(Operator):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
         print(
-            f"[B-Name][OP] view_navigate.invoke shift={event.shift} ctrl={event.ctrl}"
+            f"[B-MANGA][OP] view_navigate.invoke shift={event.shift} ctrl={event.ctrl}"
         )
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None:
             # 3D View 外で発火した場合 (Window キーマップ層から呼ばれた等) は
             # 標準ショートカットに譲る。CANCELLED だと Blender はキーマップ評価
             # を打ち切ってしまうので PASS_THROUGH を返す。
-            print("[B-Name][OP] view_navigate: VIEW_3D not in context -> PASS_THROUGH")
+            print("[B-MANGA][OP] view_navigate: VIEW_3D not in context -> PASS_THROUGH")
             return {"PASS_THROUGH"}
         self._area = area
         self._region = region
@@ -226,7 +226,7 @@ class BNAME_OT_view_navigate(Operator):
         # ダブルクリック (Blender 由来) は modal 中はほぼ発火しないが、
         # 念のため拾えれば即リセット
         if event.type == "LEFTMOUSE" and event.value == "DOUBLE_CLICK":
-            print(f"[B-Name][OP] view_navigate: DOUBLE_CLICK(blender) mode={self._mode}")
+            print(f"[B-MANGA][OP] view_navigate: DOUBLE_CLICK(blender) mode={self._mode}")
             self._dragging = False
             self._dispatch_reset(context)
             return {"RUNNING_MODAL"}
@@ -236,7 +236,7 @@ class BNAME_OT_view_navigate(Operator):
                 # 自前ダブルクリック検出: 前回 PRESS から短時間内なら reset
                 now = time.monotonic()
                 if (now - self._last_press_time) < self._DOUBLE_CLICK_INTERVAL:
-                    print(f"[B-Name][OP] view_navigate: DOUBLE_CLICK(synth) mode={self._mode}")
+                    print(f"[B-MANGA][OP] view_navigate: DOUBLE_CLICK(synth) mode={self._mode}")
                     self._dragging = False
                     self._last_press_time = 0.0
                     self._dispatch_reset(context)
@@ -363,7 +363,7 @@ class BNAME_OT_view_navigate(Operator):
             _logger.exception("view_navigate.pan: apply failed")
 
     def _reset_view(self, context) -> None:
-        print("[B-Name][OP] view_navigate._reset_view called")
+        print("[B-MANGA][OP] view_navigate._reset_view called")
         rv3d = self._rv3d
         if camera_view_navigation.reset_view(rv3d):
             self._region.tag_redraw()
@@ -374,11 +374,11 @@ class BNAME_OT_view_navigate(Operator):
             with bpy.context.temp_override(
                 window=context.window, area=self._area, region=self._region
             ):
-                result = bpy.ops.bname.view_fit_page("INVOKE_DEFAULT")
+                result = bpy.ops.bmanga.view_fit_page("INVOKE_DEFAULT")
                 fit_ok = "FINISHED" in result
-                print(f"[B-Name][OP] view_fit_page result={result}")
+                print(f"[B-MANGA][OP] view_fit_page result={result}")
         except Exception as exc:  # noqa: BLE001
-            print(f"[B-Name][OP] view_fit_page failed: {exc!r}")
+            print(f"[B-MANGA][OP] view_fit_page failed: {exc!r}")
         if not fit_ok:
             # フォールバック: 経験的な ortho 距離 (mm スケール換算で約ページ高さ)
             try:
@@ -410,7 +410,7 @@ class BNAME_OT_view_navigate(Operator):
             _logger.exception("view_navigate.rotate: apply failed")
 
     def _reset_rotation(self, context) -> None:
-        print("[B-Name][OP] view_navigate._reset_rotation called")
+        print("[B-MANGA][OP] view_navigate._reset_rotation called")
         rv3d = self._rv3d
         if camera_view_navigation.reset_overview_camera_rotation(rv3d):
             self._region.tag_redraw()
@@ -420,11 +420,11 @@ class BNAME_OT_view_navigate(Operator):
                 window=context.window, area=self._area, region=self._region
             ):
                 result = bpy.ops.view3d.view_axis(type="TOP")
-                print(f"[B-Name][OP] view_axis TOP result={result}")
+                print(f"[B-MANGA][OP] view_axis TOP result={result}")
             if rv3d.view_perspective != "ORTHO":
                 rv3d.view_perspective = "ORTHO"
         except Exception as exc:  # noqa: BLE001
-            print(f"[B-Name][OP] view_axis TOP failed: {exc!r}")
+            print(f"[B-MANGA][OP] view_axis TOP failed: {exc!r}")
             _logger.exception("view_navigate.rotate: reset failed")
         self._region.tag_redraw()
 
@@ -522,20 +522,20 @@ class BNAME_OT_view_navigate(Operator):
 # ---------- 旧パン (互換のため残置 / 未登録) ----------
 
 
-class BNAME_OT_view_pan(Operator):
-    """[deprecated] BNAME_OT_view_navigate に統合済み。クラス本体は維持."""
+class BMANGA_OT_view_pan(Operator):
+    """[deprecated] BMANGA_OT_view_navigate に統合済み。クラス本体は維持."""
 
-    bl_idname = "bname.view_pan"
-    bl_label = "B-Name ビューパン (旧)"
+    bl_idname = "bmanga.view_pan"
+    bl_label = "B-MANGA ビューパン (旧)"
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] view_pan.invoke event.type={event.type} value={event.value}")
+        print(f"[B-MANGA][OP] view_pan.invoke event.type={event.type} value={event.value}")
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None:
-            print("[B-Name][OP] view_pan.invoke: VIEW_3D area not found -> CANCELLED")
+            print("[B-MANGA][OP] view_pan.invoke: VIEW_3D area not found -> CANCELLED")
             return {"CANCELLED"}
         self._area = area
         self._region = region
@@ -595,7 +595,7 @@ class BNAME_OT_view_pan(Operator):
             with bpy.context.temp_override(
                 window=context.window, area=self._area, region=self._region
             ):
-                bpy.ops.bname.view_fit_page("INVOKE_DEFAULT")
+                bpy.ops.bmanga.view_fit_page("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             # フィットが使えない状況ではビュー距離のみ既定へ
             try:
@@ -615,7 +615,7 @@ class BNAME_OT_view_pan(Operator):
 # ---------- ズーム ----------
 
 
-class BNAME_OT_view_zoom_drag(Operator):
+class BMANGA_OT_view_zoom_drag(Operator):
     """Ctrl+Space 押下中、LMB ドラッグでズーム.
 
     - 左右ドラッグ量で倍率調整 (右=ズームイン、左=ズームアウト)
@@ -623,8 +623,8 @@ class BNAME_OT_view_zoom_drag(Operator):
     - Ctrl / Space いずれかのリリースで modal 終了
     """
 
-    bl_idname = "bname.view_zoom_drag"
-    bl_label = "B-Name ビューズーム (ドラッグ)"
+    bl_idname = "bmanga.view_zoom_drag"
+    bl_label = "B-MANGA ビューズーム (ドラッグ)"
     bl_options = {"REGISTER"}
 
     # CSP 風の感度 (大きいほど少しのドラッグで大きく変化)
@@ -633,11 +633,11 @@ class BNAME_OT_view_zoom_drag(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] view_zoom_drag.invoke event.type={event.type} value={event.value}"
+        print(f"[B-MANGA][OP] view_zoom_drag.invoke event.type={event.type} value={event.value}"
               f" shift={event.shift} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None:
-            print("[B-Name][OP] view_zoom_drag: VIEW_3D area not found -> CANCELLED")
+            print("[B-MANGA][OP] view_zoom_drag: VIEW_3D area not found -> CANCELLED")
             return {"CANCELLED"}
         self._area = area
         self._region = region
@@ -730,7 +730,7 @@ class BNAME_OT_view_zoom_drag(Operator):
 # ---------- 回転 ----------
 
 
-class BNAME_OT_view_rotate(Operator):
+class BMANGA_OT_view_rotate(Operator):
     """Shift+Space 押下中、LMB ドラッグでビューを中心軸回転.
 
     - ドラッグ位置とビュー中心を結ぶベクトルの角度変化をそのまま view_rotation
@@ -739,14 +739,14 @@ class BNAME_OT_view_rotate(Operator):
     - Shift / Space いずれかのリリースで modal 終了
     """
 
-    bl_idname = "bname.view_rotate"
-    bl_label = "B-Name ビュー回転"
+    bl_idname = "bmanga.view_rotate"
+    bl_label = "B-MANGA ビュー回転"
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] view_rotate.invoke event.type={event.type} value={event.value}"
+        print(f"[B-MANGA][OP] view_rotate.invoke event.type={event.type} value={event.value}"
               f" shift={event.shift} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None:
@@ -841,11 +841,11 @@ class BNAME_OT_view_rotate(Operator):
 # ---------- 1 ステップズーム (ホイール系) ----------
 
 
-class BNAME_OT_view_zoom_step(Operator):
+class BMANGA_OT_view_zoom_step(Operator):
     """Ctrl+ホイールで 1 ステップズーム (方向引数)."""
 
-    bl_idname = "bname.view_zoom_step"
-    bl_label = "B-Name ビューズーム (1 ステップ)"
+    bl_idname = "bmanga.view_zoom_step"
+    bl_label = "B-MANGA ビューズーム (1 ステップ)"
     bl_options = {"REGISTER"}
 
     direction: EnumProperty(  # type: ignore[valid-type]
@@ -856,11 +856,11 @@ class BNAME_OT_view_zoom_step(Operator):
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] view_zoom_step.invoke direction={self.direction}"
+        print(f"[B-MANGA][OP] view_zoom_step.invoke direction={self.direction}"
               f" event.type={event.type} ctrl={event.ctrl}")
         area, region, rv3d = _find_view3d_window_region(context)
         if area is None or rv3d is None:
-            print("[B-Name][OP] view_zoom_step: VIEW_3D not found -> CANCELLED")
+            print("[B-MANGA][OP] view_zoom_step: VIEW_3D not found -> CANCELLED")
             return {"CANCELLED"}
         # Ctrl+ホイールではマウス位置ピボットでズーム
         mx, my = _to_region_local(region, event.mouse_x, event.mouse_y)
@@ -901,25 +901,25 @@ class BNAME_OT_view_zoom_step(Operator):
 # ---------- レイヤー選択 (既存) ----------
 
 
-class BNAME_OT_view_layer_pick(Operator):
+class BMANGA_OT_view_layer_pick(Operator):
     """Ctrl+Shift+クリックで viewport 上の Object またはコマを選択.
 
     優先順位:
-        1. クリック位置で raycast → B-Name 管理 Object (raster / GP / image
+        1. クリック位置で raycast → B-MANGA 管理 Object (raster / GP / image
            plane / balloon / text / effect 等) が hit したら、 その Object を
            viewport で選択 (Outliner でもハイライト) し、 同コマも active に
         2. raycast hit なし (or 非管理) → 従来のコマ矩形判定でコマを active に
            (Outliner でもコマ Collection を選択)
     """
 
-    bl_idname = "bname.view_layer_pick"
-    bl_label = "B-Name レイヤー選択"
+    bl_idname = "bmanga.view_layer_pick"
+    bl_label = "B-MANGA レイヤー選択"
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
         if not _shortcuts_allowed(context):
             return {"PASS_THROUGH"}
-        print(f"[B-Name][OP] view_layer_pick.invoke event.type={event.type}"
+        print(f"[B-MANGA][OP] view_layer_pick.invoke event.type={event.type}"
               f" shift={event.shift} ctrl={event.ctrl}")
         from ..core.work import get_active_page, get_work
         from ..utils.geom import m_to_mm
@@ -943,7 +943,7 @@ class BNAME_OT_view_layer_pick(Operator):
 
         coord = (event.mouse_region_x, event.mouse_region_y)
 
-        # 1. Object raycast を試行 (B-Name 管理 Object なら直接選択)
+        # 1. Object raycast を試行 (B-MANGA 管理 Object なら直接選択)
         try:
             ray_origin = region_2d_to_origin_3d(region, rv3d, coord)
             ray_dir = region_2d_to_vector_3d(region, rv3d, coord)
@@ -967,7 +967,7 @@ class BNAME_OT_view_layer_pick(Operator):
                     view_layer.objects.active = hit_obj
                 except Exception:  # noqa: BLE001
                     pass
-                # 該当 Object の parent_key から page/coma を解決し B-Name &
+                # 該当 Object の parent_key から page/coma を解決し B-MANGA &
                 # Outliner Collection も同期
                 parent_key = str(hit_obj.get(_on.PROP_PARENT_KEY, "") or "")
                 page_id = ""
@@ -980,7 +980,7 @@ class BNAME_OT_view_layer_pick(Operator):
                 if page_id:
                     work = get_work(context)
                     if work is not None:
-                        # focus_active_coma / focus_active_page で B-Name 側
+                        # focus_active_coma / focus_active_page で B-MANGA 側
                         # active を確実に切替えてから Outliner 同期
                         page_index = -1
                         for i, p in enumerate(getattr(work, "pages", []) or []):
@@ -1043,11 +1043,11 @@ class BNAME_OT_view_layer_pick(Operator):
         return {"CANCELLED"}
 
 
-class BNAME_OT_view_context_menu(Operator):
-    """通常選択状態で B-Name の右クリックメニューを開く."""
+class BMANGA_OT_view_context_menu(Operator):
+    """通常選択状態で B-MANGA の右クリックメニューを開く."""
 
-    bl_idname = "bname.view_context_menu"
-    bl_label = "B-Name 右クリックメニュー"
+    bl_idname = "bmanga.view_context_menu"
+    bl_label = "B-MANGA 右クリックメニュー"
     bl_options = {"REGISTER"}
 
     @classmethod
@@ -1075,11 +1075,11 @@ class BNAME_OT_view_context_menu(Operator):
 # ---------- スポイト ----------
 
 
-class BNAME_OT_view_eyedropper(Operator):
+class BMANGA_OT_view_eyedropper(Operator):
     """スポイト (Blender 標準ペイントモード時の色取得を呼び出す)."""
 
-    bl_idname = "bname.view_eyedropper"
-    bl_label = "B-Name スポイト"
+    bl_idname = "bmanga.view_eyedropper"
+    bl_label = "B-MANGA スポイト"
     bl_options = {"REGISTER"}
 
     def invoke(self, context, event):
@@ -1099,14 +1099,14 @@ class BNAME_OT_view_eyedropper(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_view_navigate,
-    BNAME_OT_view_pan,
-    BNAME_OT_view_rotate,
-    BNAME_OT_view_zoom_drag,
-    BNAME_OT_view_zoom_step,
-    BNAME_OT_view_layer_pick,
-    BNAME_OT_view_context_menu,
-    BNAME_OT_view_eyedropper,
+    BMANGA_OT_view_navigate,
+    BMANGA_OT_view_pan,
+    BMANGA_OT_view_rotate,
+    BMANGA_OT_view_zoom_drag,
+    BMANGA_OT_view_zoom_step,
+    BMANGA_OT_view_layer_pick,
+    BMANGA_OT_view_context_menu,
+    BMANGA_OT_view_eyedropper,
 )
 
 

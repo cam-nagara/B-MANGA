@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_multiline_freeform",
+        "bmanga_dev_balloon_multiline_freeform",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_multiline_freeform"] = mod
+    sys.modules["bmanga_dev_balloon_multiline_freeform"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -149,20 +149,20 @@ def _evaluated_material_z_range(obj, material_index: int) -> tuple[float, float]
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_multiline_freeform_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_multiline_freeform_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonMultiLine.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonMultiLine.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev_balloon_multiline_freeform.core.work import get_work
-        from bname_dev_balloon_multiline_freeform.io import schema
-        from bname_dev_balloon_multiline_freeform.operators import balloon_op, layer_detail_op
-        from bname_dev_balloon_multiline_freeform.utils import balloon_curve_object
-        from bname_dev_balloon_multiline_freeform.utils import balloon_curve_render_nodes
-        from bname_dev_balloon_multiline_freeform.utils import balloon_curve_source_state
+        from bmanga_dev_balloon_multiline_freeform.core.work import get_work
+        from bmanga_dev_balloon_multiline_freeform.io import schema
+        from bmanga_dev_balloon_multiline_freeform.operators import balloon_op, layer_detail_op
+        from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_object
+        from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_render_nodes
+        from bmanga_dev_balloon_multiline_freeform.utils import balloon_curve_source_state
 
         context = bpy.context
         work = get_work(context)
@@ -363,9 +363,9 @@ def main() -> None:
         balloon_op._set_balloon_rect(page, freeform, 80.0, 20.0, 80.0, 50.0)  # noqa: SLF001
         edited_after = _first_anchor_xy(free_obj)
         assert balloon_curve_source_state.detect_state(free_obj) == balloon_curve_source_state.STATE_FREEFORM
-        assert edited_after != edited_before, "B-Nameハンドル変形で自由形状カーブが変形していません"
+        assert edited_after != edited_before, "B-MANGAハンドル変形で自由形状カーブが変形していません"
         after_location = tuple(float(v) for v in free_obj.location)
-        assert after_location != before_location, "B-Nameハンドル変形で自由形状フキダシの位置が追従していません"
+        assert after_location != before_location, "B-MANGAハンドル変形で自由形状フキダシの位置が追従していません"
         _assert_close(float(freeform.width_mm), 80.0, "自由変形後の幅")
         _assert_close(float(freeform.height_mm), 50.0, "自由変形後の高さ")
     finally:
@@ -375,7 +375,7 @@ def main() -> None:
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 
-    print("BNAME_BALLOON_MULTILINE_FREEFORM_OK")
+    print("BMANGA_BALLOON_MULTILINE_FREEFORM_OK")
 
 
 main()

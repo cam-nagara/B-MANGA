@@ -3,8 +3,8 @@
 各種レイヤー作成 op で「ユーザーが今選択している階層」を統一して取得する
 ためのユーティリティ。優先順位:
 
-    1. ``scene.bname_current_coma_id`` (cNN.blend 編集中)
-    2. ``BNamePageEntry.active_coma_index`` (page browser でコマ選択)
+    1. ``scene.bmanga_current_coma_id`` (cNN.blend 編集中)
+    2. ``BMangaPageEntry.active_coma_index`` (page browser でコマ選択)
     3. それ以外は page 直下
 
 新規レイヤー作成時に Outliner Collection の親を決定する基準として使う。
@@ -22,7 +22,7 @@ def focus_active_coma(scene, work, page_index: int, coma_index: int) -> None:
     PropertyGroup 上の active 階層にも反映する.
 
     新規レイヤー追加 (``resolve_active_target``) は ``page.active_coma_index``
-    と ``scene.bname_current_coma_id`` を参照するため、 viewport クリック
+    と ``scene.bmanga_current_coma_id`` を参照するため、 viewport クリック
     だけで「このコマを active にする」状態にしないとレイヤー追加時に
     ページ直下にしか入らない。 本関数はそのギャップを埋める。
 
@@ -51,14 +51,14 @@ def focus_active_coma(scene, work, page_index: int, coma_index: int) -> None:
     if scene is None or not coma_id:
         return
     try:
-        if str(getattr(scene, "bname_current_coma_id", "") or "") != coma_id:
-            scene.bname_current_coma_id = coma_id
+        if str(getattr(scene, "bmanga_current_coma_id", "") or "") != coma_id:
+            scene.bmanga_current_coma_id = coma_id
     except Exception:  # noqa: BLE001
         pass
-    if hasattr(scene, "bname_active_layer_kind"):
+    if hasattr(scene, "bmanga_active_layer_kind"):
         try:
-            if str(getattr(scene, "bname_active_layer_kind", "") or "") != "coma":
-                scene.bname_active_layer_kind = "coma"
+            if str(getattr(scene, "bmanga_active_layer_kind", "") or "") != "coma":
+                scene.bmanga_active_layer_kind = "coma"
         except Exception:  # noqa: BLE001
             pass
     # Outliner の active_layer_collection も即同期 (depsgraph_update_post を
@@ -96,14 +96,14 @@ def focus_active_page(scene, work, page_index: int) -> None:
         pass
     if scene is not None:
         try:
-            if str(getattr(scene, "bname_current_coma_id", "") or "") != "":
-                scene.bname_current_coma_id = ""
+            if str(getattr(scene, "bmanga_current_coma_id", "") or "") != "":
+                scene.bmanga_current_coma_id = ""
         except Exception:  # noqa: BLE001
             pass
-        if hasattr(scene, "bname_active_layer_kind"):
+        if hasattr(scene, "bmanga_active_layer_kind"):
             try:
-                if str(getattr(scene, "bname_active_layer_kind", "") or "") != "page":
-                    scene.bname_active_layer_kind = "page"
+                if str(getattr(scene, "bmanga_active_layer_kind", "") or "") != "page":
+                    scene.bmanga_active_layer_kind = "page"
             except Exception:  # noqa: BLE001
                 pass
     try:
@@ -163,12 +163,12 @@ def resolve_active_target(
         ``(parent_kind, parent_key, page_entry)``:
             - parent_kind: ``"page"`` or ``"coma"``
             - parent_key: ``"<page_id>"`` または ``"<page_id>:<coma_id>"``
-            - page_entry: 解決したページの ``BNamePageEntry`` (取得不可なら None)
+            - page_entry: 解決したページの ``BMangaPageEntry`` (取得不可なら None)
     """
     scene = getattr(context, "scene", None)
     if scene is None:
         return ("page", "", None)
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return ("page", "", None)
     pages = getattr(work, "pages", None)
@@ -191,8 +191,8 @@ def resolve_active_target(
     if not comas:
         return ("page", page_id, page)
 
-    # 1. scene.bname_current_coma_id 最優先 (cNN.blend 編集中)
-    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    # 1. scene.bmanga_current_coma_id 最優先 (cNN.blend 編集中)
+    current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     if current_coma_id:
         for coma in comas:
             if str(getattr(coma, "id", "") or "") == current_coma_id:

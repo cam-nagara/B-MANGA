@@ -83,7 +83,7 @@ def read_homefile() -> bool:
 
 
 def save_work_blend(work_dir: Path) -> bool:
-    """現在の mainfile を ``<work>.bname/work.blend`` に保存."""
+    """現在の mainfile を ``<work>.bmanga/work.blend`` に保存."""
     return save_current_as(paths.work_blend_path(Path(work_dir)))
 
 

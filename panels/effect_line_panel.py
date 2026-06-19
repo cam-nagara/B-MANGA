@@ -8,7 +8,7 @@ from bpy.types import Panel
 from ..utils import balloon_shapes, effect_inout_curve
 from . import corner_radius_ui
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
 def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggle: bool = False) -> None:
@@ -144,7 +144,7 @@ def draw_effect_params(
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
 
     ``with_generate_button=True`` で末尾に「効果線を追加」 ボタンを追加。
-    ``params`` は ``scene.bname_effect_line_params`` (BNameEffectLineParams)。
+    ``params`` は ``scene.bmanga_effect_line_params`` (BMangaEffectLineParams)。
     ``columns`` に複数の column を渡すと、設定群を列に分配する
     (縦長になりすぎる詳細設定ダイアログ用。None なら従来どおり縦一列)。
     """
@@ -174,7 +174,7 @@ def draw_effect_params(
         _draw_shape_settings(_col(0), params, "end", "終点形状")
         _draw_white_outline_settings(_col(1), params)
         if with_generate_button:
-            _col(0).operator("bname.effect_line_generate", icon="STROKE")
+            _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return
 
     if effect_type != "speed":
@@ -268,11 +268,11 @@ def draw_effect_params(
         box.prop(params, "speed_line_count")
 
     if with_generate_button:
-        _col(0).operator("bname.effect_line_generate", icon="STROKE")
+        _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
 
 
-class BNAME_PT_effect_line(Panel):
-    bl_idname = "BNAME_PT_effect_line"
+class BMANGA_PT_effect_line(Panel):
+    bl_idname = "BMANGA_PT_effect_line"
     bl_label = "効果線"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -282,11 +282,11 @@ class BNAME_PT_effect_line(Panel):
 
     def draw(self, context):
         layout = self.layout
-        params = getattr(context.scene, "bname_effect_line_params", None)
+        params = getattr(context.scene, "bmanga_effect_line_params", None)
         draw_effect_params(layout, params)
 
 
-_CLASSES = (BNAME_PT_effect_line,)
+_CLASSES = (BMANGA_PT_effect_line,)
 
 
 def register() -> None:

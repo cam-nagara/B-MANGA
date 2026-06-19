@@ -111,7 +111,7 @@ def _on_display_font_size_pt_changed(self, _context) -> None:
 def _sync_work_info_text_objects(context) -> None:
     try:
         scene = getattr(context, "scene", None)
-        work = getattr(scene, "bname_work", None) if scene is not None else None
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
         if work is None or not bool(getattr(work, "loaded", False)):
             return
         from ..utils import work_info_text_object
@@ -139,7 +139,7 @@ def _set_display_font_size_value(self, value: float) -> None:
         self.font_size_q = size
 
 
-class BNameDisplayItem(bpy.types.PropertyGroup):
+class BMangaDisplayItem(bpy.types.PropertyGroup):
     """原稿上に焼き込む 1 項目 (作品名/話数/サブタイトル/作者名) の表示設定."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
@@ -199,7 +199,7 @@ class BNameDisplayItem(bpy.types.PropertyGroup):
     )
 
 
-class BNameWorkInfo(bpy.types.PropertyGroup):
+class BMangaWorkInfo(bpy.types.PropertyGroup):
     """作品の書誌情報と、各項目の原稿上表示設定."""
 
     work_name: StringProperty(  # type: ignore[valid-type]
@@ -225,12 +225,12 @@ class BNameWorkInfo(bpy.types.PropertyGroup):
         update=_on_work_info_changed,
     )
 
-    display_work_name: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]
-    display_episode: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]
-    display_subtitle: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]
-    display_author: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]
+    display_work_name: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
+    display_episode: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
+    display_subtitle: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
+    display_author: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
     # 「原稿上の表示」のページ番号項目 (旧ノンブルの UI 後継)
-    display_page_number: PointerProperty(type=BNameDisplayItem)  # type: ignore[valid-type]
+    display_page_number: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
     page_number_start: IntProperty(  # type: ignore[valid-type]
         name="開始番号",
         description="ページ番号表示の開始値 (active_page_index=0 のページに割り当てる番号)",
@@ -249,7 +249,7 @@ class BNameWorkInfo(bpy.types.PropertyGroup):
     )
 
 
-class BNameNombre(bpy.types.PropertyGroup):
+class BMangaNombre(bpy.types.PropertyGroup):
     """ノンブル (ページ番号) の表示設定.
 
     既定値は計画書 3.7.3 / 4.6 に従う (I-OTFアンチックStd B / 9.0pt /
@@ -333,9 +333,9 @@ class BNameNombre(bpy.types.PropertyGroup):
 
 _CLASSES = (
     # PointerProperty の依存順: 参照先 → 参照元
-    BNameDisplayItem,
-    BNameWorkInfo,
-    BNameNombre,
+    BMangaDisplayItem,
+    BMangaWorkInfo,
+    BMangaNombre,
 )
 
 

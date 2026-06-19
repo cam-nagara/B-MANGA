@@ -27,9 +27,9 @@ def _stack_item_uid(item) -> str:
 
 def collapsed_balloon_group_keys(context) -> set[str]:
     scene = getattr(context, "scene", None)
-    if scene is None or not hasattr(scene, "bname_collapsed_balloon_group_keys"):
+    if scene is None or not hasattr(scene, "bmanga_collapsed_balloon_group_keys"):
         return set()
-    raw = str(getattr(scene, "bname_collapsed_balloon_group_keys", "") or "")
+    raw = str(getattr(scene, "bmanga_collapsed_balloon_group_keys", "") or "")
     return {line.strip() for line in raw.splitlines() if line.strip()}
 
 
@@ -39,7 +39,7 @@ def is_balloon_group_collapsed(context, key: str) -> bool:
 
 def set_balloon_group_collapsed(context, key: str, collapsed: bool) -> None:
     scene = getattr(context, "scene", None)
-    if scene is None or not hasattr(scene, "bname_collapsed_balloon_group_keys"):
+    if scene is None or not hasattr(scene, "bmanga_collapsed_balloon_group_keys"):
         return
     keys = collapsed_balloon_group_keys(context)
     text_key = str(key or "")
@@ -49,7 +49,7 @@ def set_balloon_group_collapsed(context, key: str, collapsed: bool) -> None:
         keys.add(text_key)
     else:
         keys.discard(text_key)
-    scene.bname_collapsed_balloon_group_keys = "\n".join(sorted(keys))
+    scene.bmanga_collapsed_balloon_group_keys = "\n".join(sorted(keys))
 
 
 def _copy_stack_item_values(dst, src) -> bool:
@@ -107,7 +107,7 @@ def visible_layer_stack_entries(context, stack=None) -> list[tuple[int, object]]
     scene = getattr(context, "scene", None)
     if scene is None:
         return []
-    stack = stack if stack is not None else getattr(scene, "bname_layer_stack", None)
+    stack = stack if stack is not None else getattr(scene, "bmanga_layer_stack", None)
     if stack is None:
         return []
     work = get_work(context)
@@ -136,7 +136,7 @@ def visible_layer_stack_signature(context, stack=None) -> tuple[str, ...]:
 
 
 def current_visible_layer_stack_signature(scene) -> tuple[str, ...]:
-    visible = getattr(scene, "bname_layer_stack_visible", None)
+    visible = getattr(scene, "bmanga_layer_stack_visible", None)
     if visible is None:
         return ()
     return tuple(_stack_item_uid(item) for item in visible)
@@ -154,9 +154,9 @@ def visible_layer_stack_is_current(context, stack=None) -> bool:
 
 def set_active_visible_stack_index_silently(context, index: int) -> None:
     scene = getattr(context, "scene", None)
-    if scene is None or not hasattr(scene, "bname_active_layer_stack_visible_index"):
+    if scene is None or not hasattr(scene, "bmanga_active_layer_stack_visible_index"):
         return
-    if int(getattr(scene, "bname_active_layer_stack_visible_index", -1)) == int(index):
+    if int(getattr(scene, "bmanga_active_layer_stack_visible_index", -1)) == int(index):
         return
     core_layer_stack = None
     try:
@@ -166,7 +166,7 @@ def set_active_visible_stack_index_silently(context, index: int) -> None:
     except Exception:  # noqa: BLE001
         core_layer_stack = None
     try:
-        scene.bname_active_layer_stack_visible_index = int(index)
+        scene.bmanga_active_layer_stack_visible_index = int(index)
     finally:
         if core_layer_stack is not None:
             core_layer_stack._visible_index_update_depth = max(
@@ -180,10 +180,10 @@ def sync_visible_layer_stack(context, *, stack=None) -> bool:
     scene = getattr(context, "scene", None)
     if scene is None:
         return False
-    visible = getattr(scene, "bname_layer_stack_visible", None)
+    visible = getattr(scene, "bmanga_layer_stack_visible", None)
     if visible is None:
         return False
-    stack = stack if stack is not None else getattr(scene, "bname_layer_stack", None)
+    stack = stack if stack is not None else getattr(scene, "bmanga_layer_stack", None)
     entries = visible_layer_stack_entries(context, stack)
     changed = False
     while len(visible) > len(entries):
@@ -195,7 +195,7 @@ def sync_visible_layer_stack(context, *, stack=None) -> bool:
             changed = True
         changed = _copy_stack_item_values(visible[visible_index], source_item) or changed
 
-    active_source_index = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    active_source_index = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     active_visible_index = -1
     for visible_index, (source_index, _source_item) in enumerate(entries):
         if source_index == active_source_index:

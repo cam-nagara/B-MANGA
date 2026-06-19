@@ -51,12 +51,12 @@ class _RecordingLayout:
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_detail_margin",
+        "bmanga_dev_coma_detail_margin",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_detail_margin"] = mod
+    sys.modules["bmanga_dev_coma_detail_margin"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -88,7 +88,7 @@ def _make_coma(page):
 
 
 def _assert_detail_ui(context, coma) -> None:
-    from bname_dev_coma_detail_margin.panels import layer_stack_detail_ui
+    from bmanga_dev_coma_detail_margin.panels import layer_stack_detail_ui
 
     records: list[tuple[str, str, str]] = []
     layout = _RecordingLayout(records)
@@ -142,7 +142,7 @@ def _bounds_mm(obj):
 
 
 def _assert_margin_geometry(context, work, page, coma) -> None:
-    from bname_dev_coma_detail_margin.utils import coma_border_object
+    from bmanga_dev_coma_detail_margin.utils import coma_border_object
 
     expected = {
         "outside": (-8.0, -8.0, 108.0, 88.0),
@@ -165,7 +165,7 @@ def _assert_margin_geometry(context, work, page, coma) -> None:
 
 
 def _assert_schema_and_export(coma) -> None:
-    from bname_dev_coma_detail_margin.io import export_pipeline, schema
+    from bmanga_dev_coma_detail_margin.io import export_pipeline, schema
 
     coma.white_margin.placement = "inside"
     data = schema.coma_white_margin_to_dict(coma.white_margin)
@@ -182,22 +182,22 @@ def _assert_schema_and_export(coma) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_detail_margin_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_detail_margin_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaDetailMargin.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaDetailMargin.bmanga"))
         assert "FINISHED" in result, result
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         coma = _make_coma(page)
         _assert_detail_ui(context, coma)
         _assert_margin_geometry(context, work, page, coma)
         _assert_schema_and_export(coma)
-        print("BNAME_COMA_DETAIL_UI_MARGIN_OK")
+        print("BMANGA_COMA_DETAIL_UI_MARGIN_OK")
     finally:
         if mod is not None:
             try:

@@ -19,8 +19,8 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / ".codex" / "visual" / "uni_flash_ui_visual_check"
-WORK_DIR = OUT_DIR / "UniFlashUI.bname"
-MODULE_NAME = "bname_dev_uni_flash_ui"
+WORK_DIR = OUT_DIR / "UniFlashUI.bmanga"
+MODULE_NAME = "bmanga_dev_uni_flash_ui"
 
 
 FORBIDDEN_UI_PROPS = {
@@ -85,9 +85,9 @@ def _first_window_screen():
 
 def _view3d_override():
     try:
-        from bname_dev_uni_flash_ui.ui import sidebar as bname_sidebar
+        from bmanga_dev_uni_flash_ui.ui import sidebar as bmanga_sidebar
 
-        bname_sidebar.open_bname_sidebar(bpy.context, select_category=True)
+        bmanga_sidebar.open_bmanga_sidebar(bpy.context, select_category=True)
     except Exception:  # noqa: BLE001
         pass
     window, screen = _first_window_screen()
@@ -141,7 +141,7 @@ def _screenshot(name: str) -> str:
 
 
 def _call_layer_detail_dialog(context, entry, screenshot_name: str) -> str:
-    from bname_dev_uni_flash_ui.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_uni_flash_ui.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     index = -1
@@ -157,10 +157,10 @@ def _call_layer_detail_dialog(context, entry, screenshot_name: str) -> str:
         raise RuntimeError("balloon layer stack item not found")
     override = _view3d_override()
     if override is None:
-        result = bpy.ops.bname.layer_stack_detail("INVOKE_DEFAULT", index=index)
+        result = bpy.ops.bmanga.layer_stack_detail("INVOKE_DEFAULT", index=index)
     else:
         with bpy.context.temp_override(**override):
-            result = bpy.ops.bname.layer_stack_detail("INVOKE_DEFAULT", index=index)
+            result = bpy.ops.bmanga.layer_stack_detail("INVOKE_DEFAULT", index=index)
     if "FINISHED" not in result and "RUNNING_MODAL" not in result:
         raise RuntimeError(f"layer detail dialog failed: {result}")
     _redraw(12)
@@ -271,15 +271,15 @@ def _collect_draw(group: str, draw_fn, *args, panel_method: bool = False) -> lis
 
 
 def _create_uni_flash_scene(context):
-    from bname_dev_uni_flash_ui.core import balloon as balloon_core
-    from bname_dev_uni_flash_ui.operators import balloon_op
-    from bname_dev_uni_flash_ui.utils import balloon_curve_object
-    from bname_dev_uni_flash_ui.utils import layer_stack as layer_stack_utils
-    from bname_dev_uni_flash_ui.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_uni_flash_ui.core import balloon as balloon_core
+    from bmanga_dev_uni_flash_ui.operators import balloon_op
+    from bmanga_dev_uni_flash_ui.utils import balloon_curve_object
+    from bmanga_dev_uni_flash_ui.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_uni_flash_ui.utils.layer_hierarchy import page_stack_key
 
-    result = bpy.ops.bname.work_new(filepath=str(WORK_DIR))
+    result = bpy.ops.bmanga.work_new(filepath=str(WORK_DIR))
     assert result == {"FINISHED"}, result
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     page = work.pages[0]
     work.active_page_index = 0
     entry = balloon_op._create_balloon_entry(
@@ -301,16 +301,16 @@ def _create_uni_flash_scene(context):
     entry.spacing_jitter_enabled = True
     entry.fill_base_shape = True
     page.active_balloon_index = 0
-    context.scene.bname_active_layer_kind = "balloon"
+    context.scene.bmanga_active_layer_kind = "balloon"
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     balloon_curve_object.ensure_balloon_curve_object(scene=context.scene, entry=entry, page=page)
     return work, page, entry
 
 
 def _collect_records(context, page, entry) -> tuple[list[dict], dict]:
-    from bname_dev_uni_flash_ui.core import effect_line as effect_line_core
-    from bname_dev_uni_flash_ui.panels import balloon_panel, effect_line_panel, layer_stack_detail_ui
-    from bname_dev_uni_flash_ui.operators import layer_detail_op
+    from bmanga_dev_uni_flash_ui.core import effect_line as effect_line_core
+    from bmanga_dev_uni_flash_ui.panels import balloon_panel, effect_line_panel, layer_stack_detail_ui
+    from bmanga_dev_uni_flash_ui.operators import layer_detail_op
 
     records: list[dict] = []
 
@@ -332,7 +332,7 @@ def _collect_records(context, page, entry) -> tuple[list[dict], dict]:
             show_type=False,
         )
 
-    focus_params = context.scene.bname_effect_line_params
+    focus_params = context.scene.bmanga_effect_line_params
     focus_params.effect_type = "focus"
     focus_params.start_shape = entry.start_shape
     focus_params.end_shape = entry.end_shape
@@ -354,7 +354,7 @@ def _collect_records(context, page, entry) -> tuple[list[dict], dict]:
     )
     panel_records = _collect_draw(
         "フキダシパネル / ウニフラ",
-        balloon_panel.BNAME_PT_balloons.draw,
+        balloon_panel.BMANGA_PT_balloons.draw,
         context,
         panel_method=True,
     )
@@ -520,7 +520,7 @@ def _run() -> None:
             and not summary["missing_required_labels"]
             and not summary["forbidden_ui_props"]
         )
-        print("BNAME_UNI_FLASH_UI_VISUAL_CHECK", json.dumps(summary, ensure_ascii=False), flush=True)
+        print("BMANGA_UNI_FLASH_UI_VISUAL_CHECK", json.dumps(summary, ensure_ascii=False), flush=True)
         os._exit(0 if ok else 2)
     finally:
         try:

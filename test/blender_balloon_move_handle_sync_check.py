@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_move_sync",
+        "bmanga_dev_balloon_move_sync",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_move_sync"] = mod
+    sys.modules["bmanga_dev_balloon_move_sync"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -56,17 +56,17 @@ def _assert_quad_shift(before: dict[str, tuple[float, float]], after: dict[str, 
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_move_sync_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_move_sync_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "MoveSync.bname"))
+        bpy.context.scene.bmanga_overview_mode = True
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "MoveSync.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_balloon_move_sync.operators import balloon_op, object_tool_selection
-        from bname_dev_balloon_move_sync.utils import (
+        from bmanga_dev_balloon_move_sync.operators import balloon_op, object_tool_selection
+        from bmanga_dev_balloon_move_sync.utils import (
             balloon_curve_object,
             balloon_fill_mesh,
             balloon_line_mesh,
@@ -77,7 +77,7 @@ def main() -> None:
         )
 
         scene = bpy.context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page = work.pages[0]
         balloon = page.balloons.add()
         balloon.id = "balloon_move_sync"
@@ -147,7 +147,7 @@ def main() -> None:
         if abs(latest_rect.x - (ox_mm + balloon.x_mm)) > 1.0e-4 or abs(latest_rect.y - (oy_mm + balloon.y_mm)) > 1.0e-4:
             raise AssertionError("取り込み後の操作枠が作品データと一致していません")
 
-        print("BNAME_BALLOON_MOVE_HANDLE_SYNC_OK", flush=True)
+        print("BMANGA_BALLOON_MOVE_HANDLE_SYNC_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -56,7 +56,7 @@ def _add_test_balloon(page, balloon_id: str, parent_key: str):
 
 
 def _stack(context):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -65,7 +65,7 @@ def _stack(context):
 
 
 def _find_stack_item(context, uid: str):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     for index, item in enumerate(_stack(context)):
         if layer_stack_utils.stack_item_uid(item) == uid:
@@ -74,23 +74,23 @@ def _find_stack_item(context, uid: str):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_layer_stack_group_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_layer_stack_group_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "LayerStackGroup.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "LayerStackGroup.bmanga"))
         assert "FINISHED" in result, result
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert "FINISHED" in result, result
 
-        from bname_dev.operators import layer_stack_op
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils import layer_stack_visible
-        from bname_dev.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev.operators import layer_stack_op
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import layer_stack_visible
+        from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         page_key = page_stack_key(page)
         text_a = _add_test_text(page, "selection_text_a", page_key)
@@ -107,8 +107,8 @@ def main() -> None:
 
         def _invoke_multi(index: int, *, shift: bool = False, ctrl: bool = False):
             op = SimpleNamespace(index=index, mode="SET")
-            op.execute = lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(op, ctx)
-            return layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+            op.execute = lambda ctx: layer_stack_op.BMANGA_OT_layer_stack_multi_select.execute(op, ctx)
+            return layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(
                 op,
                 context,
                 SimpleNamespace(value="PRESS", shift=shift, ctrl=ctrl, oskey=False),
@@ -156,7 +156,7 @@ def main() -> None:
             raise AssertionError("フキダシ結合フォルダがレイヤー一覧に表示されません")
         if f"{page_key}:{group_a.id}" not in visible_keys or f"{page_key}:{group_b.id}" not in visible_keys:
             raise AssertionError("開いたフキダシ結合フォルダの中身が表示されません")
-        assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_expanded(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_expanded(
             "EXEC_DEFAULT",
             index=group_index,
         )
@@ -169,24 +169,24 @@ def main() -> None:
             raise AssertionError("閉じたフキダシ結合フォルダ自体が消えています")
         if f"{page_key}:{group_a.id}" in collapsed_keys or f"{page_key}:{group_b.id}" in collapsed_keys:
             raise AssertionError("閉じたフキダシ結合フォルダの中身が表示されています")
-        assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_expanded(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_expanded(
             "EXEC_DEFAULT",
             index=group_index,
         )
-        assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_visibility(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_visibility(
             "EXEC_DEFAULT",
             index=group_index,
         )
         if bool(group_a.visible) or bool(group_b.visible):
             raise AssertionError("フキダシ結合フォルダの非表示が中身へ反映されません")
-        assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_visibility(
+        assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_visibility(
             "EXEC_DEFAULT",
             index=group_index,
         )
         if not bool(group_a.visible) or not bool(group_b.visible):
             raise AssertionError("フキダシ結合フォルダの再表示が中身へ反映されません")
 
-        print("BNAME_LAYER_STACK_BALLOON_GROUP_SELECTION_OK")
+        print("BMANGA_LAYER_STACK_BALLOON_GROUP_SELECTION_OK")
     finally:
         if mod is not None:
             try:

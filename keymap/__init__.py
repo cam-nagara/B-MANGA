@@ -1,4 +1,4 @@
-"""keymap — B-Name 専用キーマップとビューポート操作モーダルオペレータ.
+"""keymap — B-MANGA 専用キーマップとビューポート操作モーダルオペレータ.
 
 register 順序は 5.3 に従い最後。依存する Preferences / utils.log は先に
 register 済みである前提。

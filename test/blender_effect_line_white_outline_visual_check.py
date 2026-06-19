@@ -17,12 +17,12 @@ REFERENCE_PATH = ROOT / "_verify" / "effect_line_white_outline_reference_like.pn
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_white_outline_visual",
+        "bmanga_dev_white_outline_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_white_outline_visual"] = mod
+    sys.modules["bmanga_dev_white_outline_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     return mod
@@ -205,7 +205,7 @@ def _render_reference_like(effect_line_gen, effect_line_object) -> None:
         seed=18,
     )
     _assert_white_outline_strokes(strokes, (center_mm[0] / 1000.0, center_mm[1] / 1000.0))
-    _build_display(effect_line_object, strokes, "B-Name 白抜き線 比較用")
+    _build_display(effect_line_object, strokes, "B-MANGA 白抜き線 比較用")
     _background_plane()
     _setup_camera(center=(0.105, 0.095), ortho_scale=0.24)
     _render_png(REFERENCE_PATH)
@@ -213,8 +213,8 @@ def _render_reference_like(effect_line_gen, effect_line_object) -> None:
 
 def main() -> None:
     _load_addon()
-    from bname_dev_white_outline_visual.operators import effect_line_gen
-    from bname_dev_white_outline_visual.utils import effect_line_object
+    from bmanga_dev_white_outline_visual.operators import effect_line_gen
+    from bmanga_dev_white_outline_visual.utils import effect_line_object
 
     _clear_scene()
     params = _white_outline_params()
@@ -226,14 +226,14 @@ def main() -> None:
     )
     _assert_white_outline_strokes(strokes, (0.105, 0.105))
 
-    _build_display(effect_line_object, strokes, "B-Name 白抜き線 スクショ")
+    _build_display(effect_line_object, strokes, "B-MANGA 白抜き線 スクショ")
 
     _background_plane()
     _setup_camera()
     _render_png(OUT_PATH)
     _render_reference_like(effect_line_gen, effect_line_object)
     print(
-        "BNAME_EFFECT_LINE_WHITE_OUTLINE_VISUAL_OK "
+        "BMANGA_EFFECT_LINE_WHITE_OUTLINE_VISUAL_OK "
         f"screenshot={OUT_PATH} reference={REFERENCE_PATH}",
         flush=True,
     )

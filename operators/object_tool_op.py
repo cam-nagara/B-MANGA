@@ -1,4 +1,4 @@
-"""B-Name object tool for viewport selection, moving and box resizing."""
+"""B-MANGA object tool for viewport selection, moving and box resizing."""
 
 from __future__ import annotations
 
@@ -268,7 +268,7 @@ def _edge_hit_close_in_world(context, work, edge_hit: dict, area, region, rv3d, 
 
 
 def hit_object_at_event(context, event) -> dict | None:
-    """Return the selectable B-Name object under a viewport event."""
+    """Return the selectable B-MANGA object under a viewport event."""
     work = get_work(context)
     if work is None:
         return None
@@ -441,7 +441,7 @@ def _hit_gradient_handle_at_event(context, event) -> dict | None:
         if dist < best_dist:
             best_dist = dist
             fill_id = str(obj.get(_on.PROP_ID, "") or "")
-            end_tag = str(obj.get("bname_handle_end", "") or "")
+            end_tag = str(obj.get("bmanga_handle_end", "") or "")
             best = {
                 "kind": "gradient_handle",
                 "fill_id": fill_id,
@@ -535,7 +535,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         page = work.pages[page_index]
         # 新規レイヤー追加 (resolve_active_target) もこのコマを active として
         # 扱えるよう、active_page_index / active_coma_index に加えて
-        # bname_current_coma_id も同期する
+        # bmanga_current_coma_id も同期する
         from ..utils import active_target as _at
 
         _at.focus_active_coma(context.scene, work, page_index, coma_index)
@@ -610,24 +610,24 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
         if entry is not None:
             _focus_parent_coma_for_entry_by_key(context, work, entry)
             if not _select_stack_target(context, "image", getattr(entry, "id", "")):
-                context.scene.bname_active_image_layer_index = index
-                context.scene.bname_active_layer_kind = "image"
+                context.scene.bmanga_active_image_layer_index = index
+                context.scene.bmanga_active_layer_kind = "image"
         edge_selection.clear_selection(context)
     elif kind == "raster":
         index, entry = _find_raster_by_key(context, object_selection.parse_key(key)[2])
         if entry is not None:
             _focus_parent_coma_for_entry_by_key(context, work, entry)
             if not _select_stack_target(context, "raster", getattr(entry, "id", "")):
-                context.scene.bname_active_raster_layer_index = index
-                context.scene.bname_active_layer_kind = "raster"
+                context.scene.bmanga_active_raster_layer_index = index
+                context.scene.bmanga_active_layer_kind = "raster"
         edge_selection.clear_selection(context)
     elif kind == "fill":
         index, entry = _find_fill_by_key(context, object_selection.parse_key(key)[2])
         if entry is not None:
             _focus_parent_coma_for_entry_by_key(context, work, entry)
             if not _select_stack_target(context, "fill", getattr(entry, "id", "")):
-                context.scene.bname_active_fill_layer_index = index
-                context.scene.bname_active_layer_kind = "fill"
+                context.scene.bmanga_active_fill_layer_index = index
+                context.scene.bmanga_active_layer_kind = "fill"
         edge_selection.clear_selection(context)
     elif kind == "gp":
         obj, layer = _find_gp_layer(hit.get("layer_key", object_selection.parse_key(key)[2]))
@@ -640,7 +640,7 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
                     obj.data.layers.active = layer
                 except Exception:  # noqa: BLE001
                     pass
-                context.scene.bname_active_layer_kind = "gp"
+                context.scene.bmanga_active_layer_kind = "gp"
         edge_selection.clear_selection(context)
     if kind == "gradient_handle":
         edge_selection.clear_selection(context)
@@ -662,7 +662,7 @@ def enter_coma_from_hit(context, hit: dict) -> bool:
         # この文脈では機能せず RUNNING_MODAL のまま何も開かない。
         # ダブルクリックでは確実にコマを開くため、プロンプトは抑止し
         # 既存 cNN.blend / 解決済みテンプレート / 空シーンから開く。
-        result = bpy.ops.bname.enter_coma_mode(
+        result = bpy.ops.bmanga.enter_coma_mode(
             "EXEC_DEFAULT", prompt_template_if_missing=False
         )
     except Exception:  # noqa: BLE001
@@ -745,8 +745,8 @@ def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
                     if region is None:
                         continue
                     with bpy.context.temp_override(window=window, area=area, region=region):
-                        if bpy.ops.bname.object_tool.poll():
-                            bpy.ops.bname.object_tool("INVOKE_DEFAULT")
+                        if bpy.ops.bmanga.object_tool.poll():
+                            bpy.ops.bmanga.object_tool("INVOKE_DEFAULT")
                     return None
         except Exception:  # noqa: BLE001
             _logger.exception("object tool relaunch failed")
@@ -758,8 +758,8 @@ def _schedule_object_tool_relaunch(delay_seconds: float = 0.3) -> None:
         _logger.exception("object tool relaunch scheduling failed")
 
 
-class BNAME_OT_object_tool(Operator):
-    bl_idname = "bname.object_tool"
+class BMANGA_OT_object_tool(Operator):
+    bl_idname = "bmanga.object_tool"
     bl_label = "オブジェクトツール"
     bl_options = {"REGISTER"}
 
@@ -1252,7 +1252,7 @@ class BNAME_OT_object_tool(Operator):
 
     def _try_start_layer_drag(self, context, event) -> bool:
         scene = getattr(context, "scene", None)
-        if scene is None or getattr(scene, "bname_active_layer_kind", "") not in {"gp", "image"}:
+        if scene is None or getattr(scene, "bmanga_active_layer_kind", "") not in {"gp", "image"}:
             return False
         item = layer_stack_utils.active_stack_item(context)
         if item is None or getattr(item, "kind", "") not in {"gp", "image"}:
@@ -1295,10 +1295,10 @@ class BNAME_OT_object_tool(Operator):
     def _do_reparent_out(self, context, event) -> None:
         click_target = layer_reparent.find_click_target(context, event)
         scene = context.scene
-        stack = getattr(scene, "bname_layer_stack", None)
+        stack = getattr(scene, "bmanga_layer_stack", None)
         if stack is None:
             return
-        active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
         candidates = []
         if 0 <= active_idx < len(stack):
             candidates.append(stack[active_idx])
@@ -1321,7 +1321,7 @@ class BNAME_OT_object_tool(Operator):
         if changed > 0:
             _reparent_set_confirm(target)
             try:
-                bpy.ops.ed.undo_push(message="B-Name: Alt+Shift で外へ移動")
+                bpy.ops.ed.undo_push(message="B-MANGA: Alt+Shift で外へ移動")
             except Exception:  # noqa: BLE001
                 pass
             layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
@@ -1342,7 +1342,7 @@ class BNAME_OT_object_tool(Operator):
         if changed > 0:
             _reparent_set_confirm(target)
             try:
-                bpy.ops.ed.undo_push(message="B-Name: Alt+ドラッグで移動")
+                bpy.ops.ed.undo_push(message="B-MANGA: Alt+ドラッグで移動")
             except Exception:  # noqa: BLE001
                 pass
             layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
@@ -1391,7 +1391,7 @@ class BNAME_OT_object_tool(Operator):
                 })
         elif kind == "effect":
             scene = getattr(context, "scene", None)
-            params = getattr(scene, "bname_effect_line_params", None) if scene else None
+            params = getattr(scene, "bmanga_effect_line_params", None) if scene else None
             if params is not None:
                 self._rotate_snapshots.append({
                     "entry": params,
@@ -1940,7 +1940,7 @@ class BNAME_OT_object_tool(Operator):
             if self._drag_moved:
                 self._clear_click_state()
                 try:
-                    bpy.ops.ed.undo_push(message="B-Name: 回転")
+                    bpy.ops.ed.undo_push(message="B-MANGA: 回転")
                 except Exception:  # noqa: BLE001
                     pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
@@ -1971,7 +1971,7 @@ class BNAME_OT_object_tool(Operator):
             if moved:
                 self._clear_click_state()
                 try:
-                    bpy.ops.ed.undo_push(message="B-Name: しっぽ制御点移動")
+                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽ制御点移動")
                 except Exception:  # noqa: BLE001
                     pass
                 layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
@@ -1992,7 +1992,7 @@ class BNAME_OT_object_tool(Operator):
         if changed:
             if not edge_session and not layer_session:
                 try:
-                    bpy.ops.ed.undo_push(message="B-Name: オブジェクト編集")
+                    bpy.ops.ed.undo_push(message="B-MANGA: オブジェクト編集")
                 except Exception:  # noqa: BLE001
                     pass
             if not layer_session:
@@ -2091,8 +2091,8 @@ class BNAME_OT_object_tool(Operator):
         self._ft_key = key
         self._ft_snapshot = snapshot
         wm = context.window_manager
-        if hasattr(wm, "bname_free_transform_key"):
-            wm.bname_free_transform_key = key
+        if hasattr(wm, "bmanga_free_transform_key"):
+            wm.bmanga_free_transform_key = key
         context.workspace.status_text_set("自由変形: Enter で確定 / Esc でキャンセル")
         layer_stack_utils.tag_view3d_redraw(context)
 
@@ -2103,7 +2103,7 @@ class BNAME_OT_object_tool(Operator):
         object_tool_free_transform.clear_mode(context)
         context.workspace.status_text_set(None)
         try:
-            bpy.ops.ed.undo_push(message="B-Name: 自由変形")
+            bpy.ops.ed.undo_push(message="B-MANGA: 自由変形")
         except Exception:  # noqa: BLE001
             pass
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
@@ -2236,11 +2236,11 @@ class BNAME_OT_object_tool(Operator):
         coma_modal_state.clear_active("object_tool", self, context)
 
 
-_CLASSES = (BNAME_OT_object_tool,)
+_CLASSES = (BMANGA_OT_object_tool,)
 
 
 def register() -> None:
-    bpy.types.WindowManager.bname_object_selection_keys = StringProperty(default="")
+    bpy.types.WindowManager.bmanga_object_selection_keys = StringProperty(default="")
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -2252,6 +2252,6 @@ def unregister() -> None:
         except RuntimeError:
             pass
     try:
-        del bpy.types.WindowManager.bname_object_selection_keys
+        del bpy.types.WindowManager.bmanga_object_selection_keys
     except AttributeError:
         pass

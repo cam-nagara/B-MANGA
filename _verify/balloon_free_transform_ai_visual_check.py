@@ -12,10 +12,10 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULE_NAME = "bname_dev_ai_visual"
+MODULE_NAME = "bmanga_dev_ai_visual"
 OUT_PATH = Path(
     os.environ.get(
-        "BNAME_BALLOON_FREE_TRANSFORM_AI_VISUAL_OUT",
+        "BMANGA_BALLOON_FREE_TRANSFORM_AI_VISUAL_OUT",
         str(ROOT / "_verify" / "balloon_free_transform_ai_visual_check.png"),
     )
 )
@@ -36,7 +36,7 @@ def _load_addon():
 
 
 def _select_stack_item(context, kind: str, key: str) -> int:
-    from bname_dev_ai_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_ai_visual.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     for index, item in enumerate(stack or []):
@@ -47,7 +47,7 @@ def _select_stack_item(context, kind: str, key: str) -> int:
 
 
 def _find_stack_uid(context, uid: str):
-    from bname_dev_ai_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_ai_visual.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     for index, item in enumerate(stack or []):
@@ -73,8 +73,8 @@ def _font(size: int):
 
 
 def _create_balloon(context, page, parent_key: str, name: str, x: float, y: float):
-    from bname_dev_ai_visual.operators import balloon_op
-    from bname_dev_ai_visual.utils import balloon_curve_object
+    from bmanga_dev_ai_visual.operators import balloon_op
+    from bmanga_dev_ai_visual.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -100,7 +100,7 @@ def _create_balloon(context, page, parent_key: str, name: str, x: float, y: floa
 
 def _render_balloon(entry):
     from PIL import Image
-    from bname_dev_ai_visual.io import export_balloon
+    from bmanga_dev_ai_visual.io import export_balloon
 
     layer = export_balloon.render_balloon_layer(entry, canvas_height_px=1200, dpi=144)
     if layer is None:
@@ -139,8 +139,8 @@ def _draw_layer_rows(draw, x, y, title, rows, body_font, title_font):
 
 
 def _stack_rows(context):
-    from bname_dev_ai_visual.utils import layer_stack as layer_stack_utils
-    from bname_dev_ai_visual.utils import layer_stack_visible
+    from bmanga_dev_ai_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_ai_visual.utils import layer_stack_visible
 
     names = {
         "balloon": "フキダシ",
@@ -163,8 +163,8 @@ def _stack_rows(context):
 
 
 def _stack_rows_for_keys(context, wanted_keys: list[str]):
-    from bname_dev_ai_visual.utils import layer_stack as layer_stack_utils
-    from bname_dev_ai_visual.utils import layer_stack_visible
+    from bmanga_dev_ai_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_ai_visual.utils import layer_stack_visible
 
     names = {
         "balloon": "フキダシ",
@@ -191,11 +191,11 @@ def _stack_rows_for_keys(context, wanted_keys: list[str]):
 
 
 def _invoke_multi_select(context, index: int, *, shift: bool = False, ctrl: bool = False):
-    from bname_dev_ai_visual.operators import layer_stack_op
+    from bmanga_dev_ai_visual.operators import layer_stack_op
 
     op = SimpleNamespace(index=index, mode="SET")
-    op.execute = lambda ctx: layer_stack_op.BNAME_OT_layer_stack_multi_select.execute(op, ctx)
-    return layer_stack_op.BNAME_OT_layer_stack_multi_select.invoke(
+    op.execute = lambda ctx: layer_stack_op.BMANGA_OT_layer_stack_multi_select.execute(op, ctx)
+    return layer_stack_op.BMANGA_OT_layer_stack_multi_select.invoke(
         op,
         context,
         SimpleNamespace(value="PRESS", shift=shift, ctrl=ctrl, oskey=False),
@@ -203,14 +203,14 @@ def _invoke_multi_select(context, index: int, *, shift: bool = False, ctrl: bool
 
 
 def _visual_summary(context, page):
-    from bname_dev_ai_visual.io import export_balloon
-    from bname_dev_ai_visual.operators import layer_link_duplicate_op
-    from bname_dev_ai_visual.ui import context_menu
-    from bname_dev_ai_visual.utils import balloon_line_mesh
-    from bname_dev_ai_visual.utils import layer_links
-    from bname_dev_ai_visual.utils import layer_stack as layer_stack_utils
-    from bname_dev_ai_visual.utils import layer_stack_visible
-    from bname_dev_ai_visual.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_ai_visual.io import export_balloon
+    from bmanga_dev_ai_visual.operators import layer_link_duplicate_op
+    from bmanga_dev_ai_visual.ui import context_menu
+    from bmanga_dev_ai_visual.utils import balloon_line_mesh
+    from bmanga_dev_ai_visual.utils import layer_links
+    from bmanga_dev_ai_visual.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_ai_visual.utils import layer_stack_visible
+    from bmanga_dev_ai_visual.utils.layer_hierarchy import page_stack_key
 
     page_key = page_stack_key(page)
 
@@ -220,21 +220,21 @@ def _visual_summary(context, page):
     rotated = _create_balloon(context, page, page_key, "回転", 135.0, 30.0)
 
     _select_stack_item(context, "balloon", f"{page_key}:{keep.id}")
-    assert bpy.ops.bname.balloon_free_transform_scale(
+    assert bpy.ops.bmanga.balloon_free_transform_scale(
         "EXEC_DEFAULT",
         scale_percent=190.0,
         keep_line_width=True,
     ) == {"FINISHED"}
 
     _select_stack_item(context, "balloon", f"{page_key}:{thick.id}")
-    assert bpy.ops.bname.balloon_free_transform_scale(
+    assert bpy.ops.bmanga.balloon_free_transform_scale(
         "EXEC_DEFAULT",
         scale_percent=190.0,
         keep_line_width=False,
     ) == {"FINISHED"}
 
     _select_stack_item(context, "balloon", f"{page_key}:{rotated.id}")
-    assert bpy.ops.bname.balloon_free_transform_rotate("EXEC_DEFAULT", angle_deg=28.0) == {"FINISHED"}
+    assert bpy.ops.bmanga.balloon_free_transform_rotate("EXEC_DEFAULT", angle_deg=28.0) == {"FINISHED"}
 
     linked_a = _create_balloon(context, page, page_key, "リンク元", 15.0, 75.0)
     linked_b = _create_balloon(context, page, page_key, "リンク先", 55.0, 75.0)
@@ -243,7 +243,7 @@ def _visual_summary(context, page):
     group_id, count = layer_links.link_uids(context, [uid_a, uid_b])
     assert group_id and count == 2
     _select_stack_item(context, "balloon", f"{page_key}:{linked_a.id}")
-    assert bpy.ops.bname.balloon_free_transform_scale(
+    assert bpy.ops.bmanga.balloon_free_transform_scale(
         "EXEC_DEFAULT",
         scale_percent=160.0,
         keep_line_width=False,
@@ -285,7 +285,7 @@ def _visual_summary(context, page):
             f"{page_key}:{group_b.id}",
         ],
     )
-    assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_expanded("EXEC_DEFAULT", index=group_index)
+    assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_expanded("EXEC_DEFAULT", index=group_index)
     layer_stack_visible.sync_visible_layer_stack(context)
     rows_group_collapsed = _stack_rows_for_keys(
         context,
@@ -299,7 +299,7 @@ def _visual_summary(context, page):
     assert group_key in visible_keys
     assert f"{page_key}:{group_a.id}" not in visible_keys
     assert f"{page_key}:{group_b.id}" not in visible_keys
-    assert "FINISHED" in bpy.ops.bname.layer_stack_toggle_visibility("EXEC_DEFAULT", index=group_index)
+    assert "FINISHED" in bpy.ops.bmanga.layer_stack_toggle_visibility("EXEC_DEFAULT", index=group_index)
     assert not bool(group_a.visible) and not bool(group_b.visible)
 
     _select_stack_item(context, "balloon", f"{page_key}:{normal.id}")
@@ -344,7 +344,7 @@ def _write_image(summary: dict):
     draw.text((32, 28), "フキダシ自由変形・リンク・レイヤー一覧 AI目視チェック", fill=(0, 0, 0), font=title_font)
     draw.text(
         (34, 68),
-        "実機で作成したフキダシをB-Nameの書き出し処理で描画。右クリック項目・線幅維持・リンク共有・一覧操作を1枚で確認。",
+        "実機で作成したフキダシをB-MANGAの書き出し処理で描画。右クリック項目・線幅維持・リンク共有・一覧操作を1枚で確認。",
         fill=(60, 60, 60),
         font=subtitle_font,
     )
@@ -387,20 +387,20 @@ def _write_image(summary: dict):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_ai_visual_free_transform_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_ai_visual_free_transform_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "AIVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AIVisual.bmanga"))
         assert result == {"FINISHED"}, result
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         work.active_page_index = 0
         summary = _visual_summary(context, page)
         out = _write_image(summary)
-        print(f"BNAME_BALLOON_FREE_TRANSFORM_AI_VISUAL_OK {out}")
+        print(f"BMANGA_BALLOON_FREE_TRANSFORM_AI_VISUAL_OK {out}")
     finally:
         if mod is not None:
             try:

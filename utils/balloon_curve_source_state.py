@@ -7,9 +7,9 @@ from typing import Any
 
 import bpy
 
-PROP_SOURCE_STATE = "bname_balloon_curve_source_state"
-PROP_BASE_SNAPSHOT = "bname_balloon_curve_base_snapshot"
-PROP_SOURCE_SIGNATURE = "bname_balloon_curve_signature"
+PROP_SOURCE_STATE = "bmanga_balloon_curve_source_state"
+PROP_BASE_SNAPSHOT = "bmanga_balloon_curve_base_snapshot"
+PROP_SOURCE_SIGNATURE = "bmanga_balloon_curve_signature"
 
 STATE_GENERATED = "generated"
 STATE_MANUAL = "manual"

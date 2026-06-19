@@ -1,4 +1,4 @@
-"""B-Name logical parenting for Grease Pencil layers."""
+"""B-MANGA logical parenting for Grease Pencil layers."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import bpy
 from .geom import mm_to_m
 from .layer_hierarchy import page_stack_key, coma_stack_key, split_child_key
 
-PARENT_KEY_PROP = "bname_parent_key"
-PARENT_MAP_PROP = "bname_layer_parent_map_json"
+PARENT_KEY_PROP = "bmanga_parent_key"
+PARENT_MAP_PROP = "bmanga_layer_parent_map_json"
 _RUNTIME_PARENT_BY_PTR: dict[int, str] = {}
 
 
@@ -79,7 +79,7 @@ def _idprop_parent_key(node) -> str:
 
 
 def parent_key(node) -> str:
-    """Return the B-Name page/panel parent key stored on a GP layer."""
+    """Return the B-MANGA page/panel parent key stored on a GP layer."""
     if node is None:
         return ""
     runtime = _RUNTIME_PARENT_BY_PTR.get(_runtime_key(node), "")
@@ -93,7 +93,7 @@ def parent_key(node) -> str:
 
 
 def set_parent_key(node, key: str) -> None:
-    """Persist or clear a B-Name page/panel parent key on a GP layer."""
+    """Persist or clear a B-MANGA page/panel parent key on a GP layer."""
     if node is None:
         return
     value = str(key or "")

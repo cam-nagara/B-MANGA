@@ -37,6 +37,7 @@ _logger = log.get_logger(__name__)
 
 _TEXT_DEFAULT_WIDTH_MM = 20.0
 _TEXT_DEFAULT_HEIGHT_MM = 20.0
+_TEXT_DEFAULT_LONG_SIDE_SCALE = 1.5
 _TEXT_HANDLE_HIT_MM = 2.5
 _TEXT_MIN_SIZE_MM = 2.0
 _TEXT_DRAG_EPS_MM = 0.05
@@ -64,6 +65,31 @@ _SPEAKER_TYPE_ITEMS = (
     ("monologue", "モノローグ", ""),
     ("sfx", "擬音", ""),
 )
+
+
+def _text_tool_initial_writing_mode(context) -> str:
+    try:
+        if not preset_op.selected_text_preset_name(context):
+            return "vertical"
+        return "vertical" if preset_op.text_tool_cursor_type(context) == "vertical" else "horizontal"
+    except Exception:  # noqa: BLE001
+        return "vertical"
+
+
+def _default_text_rect_for_click(
+    writing_mode: str,
+    x_mm: float,
+    y_mm: float,
+) -> tuple[float, float, float, float]:
+    base_w = _TEXT_DEFAULT_WIDTH_MM
+    base_h = _TEXT_DEFAULT_HEIGHT_MM
+    if writing_mode == "horizontal":
+        width = base_w * _TEXT_DEFAULT_LONG_SIDE_SCALE
+        height = base_h
+        return x_mm - base_w / 2.0, y_mm - base_h / 2.0, width, height
+    width = base_w
+    height = base_h * _TEXT_DEFAULT_LONG_SIDE_SCALE
+    return x_mm - base_w / 2.0, y_mm + base_h / 2.0 - height, width, height
 
 
 def _allocate_text_id(page) -> str:
@@ -238,8 +264,8 @@ def _create_text_entry(
                 pass
 
     page.active_text_index = len(page.texts) - 1
-    if hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "text"
+    if hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "text"
     try:
         from . import preset_op
         preset_op.apply_text_preset_to_entry(context, entry)
@@ -277,8 +303,8 @@ def _remove_text_by_id(context, page_id: str, text_id: str) -> None:
     page.texts.remove(idx)
     _remove_text_real_object(page_id, text_id)
     page.active_text_index = min(idx, len(page.texts) - 1) if len(page.texts) else -1
-    if len(page.texts) == 0 and hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "gp"
+    if len(page.texts) == 0 and hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "gp"
     layer_stack_utils.sync_layer_stack_after_data_change(context)
 
 
@@ -333,10 +359,10 @@ def _select_text_index(context, work, page, text_index: int) -> bool:
                 work.active_page_index = page_index
                 break
     scene = context.scene
-    if hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "text"
-    if hasattr(scene, "bname_active_gp_folder_key"):
-        scene.bname_active_gp_folder_key = ""
+    if hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "text"
+    if hasattr(scene, "bmanga_active_gp_folder_key"):
+        scene.bmanga_active_gp_folder_key = ""
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     uid = layer_stack_utils.target_uid(
         "text",
@@ -452,7 +478,7 @@ def start_editing_existing_from_object_tool(context, page_id: str, text_id: str)
     op = coma_modal_state.get_active("text_tool")
     if op is None:
         try:
-            result = bpy.ops.bname.text_tool("INVOKE_DEFAULT")
+            result = bpy.ops.bmanga.text_tool("INVOKE_DEFAULT")
         except Exception:  # noqa: BLE001
             _logger.exception("text_tool: start from object tool failed")
             return False
@@ -481,10 +507,10 @@ def _rect_from_points(x0: float, y0: float, x1: float, y1: float) -> tuple[float
     )
 
 
-class BNAME_OT_text_add(Operator):
+class BMANGA_OT_text_add(Operator):
     """アクティブページにテキストを追加. マウス位置から座標決定."""
 
-    bl_idname = "bname.text_add"
+    bl_idname = "bmanga.text_add"
     bl_label = "テキストを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -500,7 +526,7 @@ class BNAME_OT_text_add(Operator):
     height_mm: FloatProperty(name="高さ (mm)", default=15.0, min=0.1)  # type: ignore[valid-type]
     parent_balloon_id: StringProperty(  # type: ignore[valid-type]
         name="親フキダシ ID",
-        description="同じページの BNameBalloonEntry.id を指定 (空で独立テキスト)",
+        description="同じページの BMangaBalloonEntry.id を指定 (空で独立テキスト)",
         default="",
     )
     use_explicit_position: BoolProperty(default=False, options={"HIDDEN"})  # type: ignore[valid-type]
@@ -561,8 +587,8 @@ class BNAME_OT_text_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_text_remove(Operator):
-    bl_idname = "bname.text_remove"
+class BMANGA_OT_text_remove(Operator):
+    bl_idname = "bmanga.text_remove"
     bl_label = "テキストを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -588,20 +614,20 @@ class BNAME_OT_text_remove(Operator):
             page.active_text_index = -1
         elif idx >= len(page.texts):
             page.active_text_index = len(page.texts) - 1
-        if len(page.texts) == 0 and hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+        if len(page.texts) == 0 and hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         self.report({"INFO"}, f"テキスト削除: {tid}")
         return {"FINISHED"}
 
 
-class BNAME_OT_text_attach_to_balloon(Operator):
+class BMANGA_OT_text_attach_to_balloon(Operator):
     """アクティブテキストをアクティブフキダシへ attach (親子連動対象化).
 
     空文字でも実行: 現在の親子連携を解除して独立テキスト化する。
     """
 
-    bl_idname = "bname.text_attach_to_balloon"
+    bl_idname = "bmanga.text_attach_to_balloon"
     bl_label = "テキストをフキダシに紐付け"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -648,10 +674,10 @@ class BNAME_OT_text_attach_to_balloon(Operator):
         return {"CANCELLED"}
 
 
-class BNAME_OT_text_apply_font_to_selection(Operator):
+class BMANGA_OT_text_apply_font_to_selection(Operator):
     """テキスト編集中の選択範囲へフォントを適用する."""
 
-    bl_idname = "bname.text_apply_font_to_selection"
+    bl_idname = "bmanga.text_apply_font_to_selection"
     bl_label = "選択範囲にフォントを適用"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -710,7 +736,7 @@ _VCUR_COLOR = (0.0, 0.0, 0.0, 1.0)
 _VCUR_SHADOW = (1.0, 1.0, 1.0, 0.5)
 
 
-def _draw_vertical_cursor(op: "BNAME_OT_text_tool") -> None:
+def _draw_vertical_cursor(op: "BMANGA_OT_text_tool") -> None:
     cx = getattr(op, "_vcur_x", -1)
     cy = getattr(op, "_vcur_y", -1)
     if cx < 0 or cy < 0:
@@ -733,10 +759,10 @@ def _draw_vertical_cursor(op: "BNAME_OT_text_tool") -> None:
     gpu.state.blend_set("NONE")
 
 
-class BNAME_OT_text_tool(Operator):
+class BMANGA_OT_text_tool(Operator):
     """クリック位置へテキストレイヤーを作成し、インライン入力を開始する."""
 
-    bl_idname = "bname.text_tool"
+    bl_idname = "bmanga.text_tool"
     bl_label = "テキストツール"
     bl_options = {"REGISTER"}
 
@@ -918,10 +944,11 @@ class BNAME_OT_text_tool(Operator):
             return {"RUNNING_MODAL"}
         if not can_create or lx is None or ly is None:
             return {"PASS_THROUGH"}
-        width = _TEXT_DEFAULT_WIDTH_MM
-        height = _TEXT_DEFAULT_HEIGHT_MM
-        x_mm = lx - width / 2.0
-        y_mm = ly - height / 2.0
+        x_mm, y_mm, width, height = _default_text_rect_for_click(
+            _text_tool_initial_writing_mode(context),
+            lx,
+            ly,
+        )
         if _creation_blocked(context, page, x_mm, y_mm, width, height):
             self.report({"ERROR"}, "このモードではその位置にテキストを作成できません")
             return {"RUNNING_MODAL"}
@@ -1064,8 +1091,25 @@ class BNAME_OT_text_tool(Operator):
         self._clear_selection_drag_state()
         text_edit_runtime.end_ime_capture()
 
-    def _finish_current_text_edit(self, context) -> None:
+    def _finish_current_text_edit(self, context, *, fit_to_body: bool = True) -> None:
         _page, entry, _idx = self._current_text_entry(context)
+        if entry is not None and fit_to_body:
+            body_changed = str(getattr(entry, "body", "")) != str(
+                getattr(self, "_edit_original_body", "")
+            )
+            spans_changed_for_fit = text_style.all_spans_snapshot(entry) != getattr(
+                self,
+                "_edit_original_font_spans",
+                (),
+            )
+            if body_changed or spans_changed_for_fit or bool(getattr(self, "_editing_created_new", False)):
+                with text_real_object.suspend_auto_sync():
+                    text_edit_runtime.fit_text_rect_to_body(
+                        entry,
+                        min_width=_TEXT_MIN_SIZE_MM,
+                        min_height=_TEXT_MIN_SIZE_MM,
+                        allow_shrink=True,
+                    )
         rect_changed = entry is not None and (
             float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)
         ) != getattr(self, "_edit_original_rect", (0.0, 0.0, 0.0, 0.0))
@@ -1081,7 +1125,7 @@ class BNAME_OT_text_tool(Operator):
                 or rect_changed
             )
         ):
-            self._push_undo_step("B-Name: テキスト編集")
+            self._push_undo_step("B-MANGA: テキスト編集")
         if entry is not None and _page is not None:
             text_real_object.set_text_object_preview_hidden(entry, _page, hidden=False)
             _sync_text_real_object(context, _page, entry)
@@ -1114,7 +1158,7 @@ class BNAME_OT_text_tool(Operator):
                 if page is not None:
                     page.active_text_index = idx
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
-        self._finish_current_text_edit(context)
+        self._finish_current_text_edit(context, fit_to_body=False)
 
     def _start_editing_existing(self, context, page, entry) -> None:
         with text_real_object.suspend_auto_sync():
@@ -1246,7 +1290,7 @@ class BNAME_OT_text_tool(Operator):
                     self._clear_drag_state()
                     return {"RUNNING_MODAL"}
                 if moved:
-                    self._push_undo_step("B-Name: テキスト作成")
+                    self._push_undo_step("B-MANGA: テキスト作成")
                     _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
                 self._start_editing_created(context, page, entry)
@@ -1254,7 +1298,7 @@ class BNAME_OT_text_tool(Operator):
                 self._clear_drag_state()
                 if moved:
                     self._clear_click_state()
-                    self._push_undo_step("B-Name: テキスト移動/リサイズ")
+                    self._push_undo_step("B-MANGA: テキスト移動/リサイズ")
                     _sync_text_real_object(context, page, entry)
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
                 else:
@@ -1303,8 +1347,8 @@ class BNAME_OT_text_tool(Operator):
         _set_text_rect(entry, x, y, w, h)
         page.active_text_index = idx
         work.active_page_index = next((i for i, p in enumerate(work.pages) if p == page), work.active_page_index)
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "text"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "text"
         layer_stack_utils.tag_view3d_redraw(context)
 
     def _drag_result_rect(self, dx: float, dy: float) -> tuple[float, float, float, float]:
@@ -1462,7 +1506,7 @@ class BNAME_OT_text_tool(Operator):
             return
         start, end = bounds
         try:
-            bpy.ops.bname.text_selection_style_popup(
+            bpy.ops.bmanga.text_selection_style_popup(
                 "INVOKE_DEFAULT",
                 page_id=getattr(page, "id", ""),
                 text_id=getattr(entry, "id", ""),
@@ -1475,8 +1519,8 @@ class BNAME_OT_text_tool(Operator):
     def _touch_current_text(self, context, page, entry, idx: int) -> None:
         self._cursor_index = text_edit_runtime.clamp_cursor(entry, self._cursor_index)
         page.active_text_index = idx
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "text"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "text"
         with text_real_object.suspend_auto_sync():
             text_edit_runtime.fit_text_rect_to_body(
                 entry,
@@ -1651,11 +1695,11 @@ class BNAME_OT_text_tool(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_text_add,
-    BNAME_OT_text_remove,
-    BNAME_OT_text_attach_to_balloon,
-    BNAME_OT_text_apply_font_to_selection,
-    BNAME_OT_text_tool,
+    BMANGA_OT_text_add,
+    BMANGA_OT_text_remove,
+    BMANGA_OT_text_attach_to_balloon,
+    BMANGA_OT_text_apply_font_to_selection,
+    BMANGA_OT_text_tool,
 )
 
 

@@ -1,4 +1,4 @@
-"""panels — N-Panel (View3D > UI region) の B-Name タブ."""
+"""panels — N-Panel (View3D > UI region) の B-MANGA タブ."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from . import (
     export_panel,
     gpencil_panel,
     layer_panel as _legacy_layer_panel,
-    page_panel as _legacy_page_panel,
+    page_panel,
     coma_camera_panel,
     coma_detail_panel,
     coma_list_panel as _legacy_coma_list_panel,
@@ -25,6 +25,7 @@ from . import (
 _MODULES = (
     work_panel,
     paper_panel,
+    page_panel,
     tool_panel,
     view_panel,
     coma_camera_panel,
@@ -41,7 +42,7 @@ def _unregister_legacy_image_layer_panel() -> None:
         _legacy_layer_panel.unregister()
     except Exception:
         pass
-    for class_name in ("BNAME_PT_image_layers", "BNAME_UL_image_layers"):
+    for class_name in ("BMANGA_PT_image_layers", "BMANGA_UL_image_layers"):
         cls = getattr(bpy.types, class_name, None)
         if cls is None:
             continue
@@ -56,7 +57,6 @@ def _unregister_legacy_tool_panels() -> None:
     for module in (
         _legacy_balloon_panel,
         _legacy_effect_line_panel,
-        _legacy_page_panel,
         _legacy_coma_list_panel,
         _legacy_coma_tools_panel,
     ):
@@ -65,20 +65,18 @@ def _unregister_legacy_tool_panels() -> None:
         except Exception:
             pass
     for class_name in (
-        "BNAME_UL_balloons",
-        "BNAME_UL_texts",
-        "BNAME_PT_balloons",
-        "BNAME_PT_texts",
-        "BNAME_PT_effect_line",
-        "BNAME_UL_pages",
-        "BNAME_PT_pages",
-        "BNAME_OT_coma_enter_from_list",
-        "BNAME_UL_comas",
-        "BNAME_PT_comas",
-        "BNAME_PT_coma_tools",
-        "BNAME_PT_coma_shape",
-        "BNAME_PT_coma_border",
-        "BNAME_PT_coma_white_margin",
+        "BMANGA_UL_balloons",
+        "BMANGA_UL_texts",
+        "BMANGA_PT_balloons",
+        "BMANGA_PT_texts",
+        "BMANGA_PT_effect_line",
+        "BMANGA_OT_coma_enter_from_list",
+        "BMANGA_UL_comas",
+        "BMANGA_PT_comas",
+        "BMANGA_PT_coma_tools",
+        "BMANGA_PT_coma_shape",
+        "BMANGA_PT_coma_border",
+        "BMANGA_PT_coma_white_margin",
     ):
         cls = getattr(bpy.types, class_name, None)
         if cls is None:

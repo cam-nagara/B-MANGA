@@ -1,7 +1,7 @@
 """Blender UI check: ページ一覧での連続クリック (PRESS x2) でページファイルが開く.
 
 ペンタブレット等では Blender の DOUBLE_CLICK イベントが発生しないため、
-- 通常クリック経路 (bname.page_pick_viewport) の自前連続クリック判定
+- 通常クリック経路 (bmanga.page_pick_viewport) の自前連続クリック判定
 - 常駐オブジェクトツール経路 (_handle_left_press) のページ優先判定
 の両方を検証する。
 """
@@ -21,7 +21,7 @@ from mathutils import Vector
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_NAME = "bname_dev_page_open_manual_dc"
+MOD_NAME = "bmanga_dev_page_open_manual_dc"
 
 
 def _load_addon():
@@ -71,7 +71,7 @@ def _press_event_for_page(page_index: int):
         raise RuntimeError("VIEW_3D が見つかりません")
     window, screen, area, region, space, rv3d = view
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     ox, oy = page_grid.page_total_offset_mm(work, scene, page_index)
     center_x = ox + float(work.paper.canvas_width_mm) * 0.5
     center_y = oy + float(work.paper.canvas_height_mm) * 0.5
@@ -128,7 +128,7 @@ def _check_object_tool_manual_page_open(event) -> None:
         "_coma_open_hit_from_hit",
         "_handle_left_press",
     ):
-        setattr(tool, name, MethodType(getattr(object_tool_op.BNAME_OT_object_tool, name), tool))
+        setattr(tool, name, MethodType(getattr(object_tool_op.BMANGA_OT_object_tool, name), tool))
     tool._clear_click_state()
     opened = []
     tool._try_open_page_file_from_event = lambda _ctx, _event: opened.append(True) or True
@@ -179,8 +179,8 @@ def _check_pick_viewport_manual_open(event, expected_index: int) -> None:
             window=window, screen=screen, area=area, region=region,
             space_data=space, region_data=rv3d,
         ):
-            page_op.BNAME_OT_page_pick_viewport.invoke(fake_op, bpy.context, event)
-            r2 = page_op.BNAME_OT_page_pick_viewport.invoke(fake_op, bpy.context, event)
+            page_op.BMANGA_OT_page_pick_viewport.invoke(fake_op, bpy.context, event)
+            r2 = page_op.BMANGA_OT_page_pick_viewport.invoke(fake_op, bpy.context, event)
         assert r2 == {"FINISHED"}, r2
         assert scheduled == [expected_index], scheduled
     finally:
@@ -194,7 +194,7 @@ def _check_spread_right_half_hit() -> None:
     page_grid = _submodule("utils.page_grid")
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[1]
     page.spread = True
     try:
@@ -211,14 +211,14 @@ def _check_spread_right_half_hit() -> None:
 
 
 def _start_check(temp_root: Path) -> None:
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PageOpenManualDC.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PageOpenManualDC.bmanga"))
     assert result == {"FINISHED"}, result
-    result = bpy.ops.bname.page_add()
+    result = bpy.ops.bmanga.page_add()
     assert result == {"FINISHED"}, result
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.active_page_index = 0
-    scene.bname_overview_mode = True
+    scene.bmanga_overview_mode = True
 
     _check_spread_right_half_hit()
     event = _press_event_for_page(1)
@@ -233,7 +233,7 @@ def main() -> None:
     except Exception:
         pass
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_open_manual_dc_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_open_manual_dc_"))
     attempts = {"count": 0}
 
     def _timer():
@@ -245,7 +245,7 @@ def main() -> None:
         except Exception:
             traceback.print_exc()
             os._exit(1)
-        print("BNAME_PAGE_OPEN_MANUAL_DOUBLE_CLICK_CHECK_OK", flush=True)
+        print("BMANGA_PAGE_OPEN_MANUAL_DOUBLE_CLICK_CHECK_OK", flush=True)
         os._exit(0)
         return None
 

@@ -14,7 +14,7 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 OUT_PATH = Path(
     os.environ.get(
-        "BNAME_BALLOON_FLASH_SAMPLE_OUT",
+        "BMANGA_BALLOON_FLASH_SAMPLE_OUT",
         str(ROOT / "_verify" / "balloon_flash_shape_samples.png"),
     )
 )
@@ -22,12 +22,12 @@ OUT_PATH = Path(
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_flash_sample",
+        "bmanga_dev_balloon_flash_sample",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_flash_sample"] = mod
+    sys.modules["bmanga_dev_balloon_flash_sample"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -123,9 +123,9 @@ def _configure_shape_params(entry, *, height: float = 10.0, width: float = 4.0) 
 
 
 def _create_sample(context, page, parent_key, *, line_style: str, x: float, y: float, variant: str):
-    from bname_dev_balloon_flash_sample.core import balloon as balloon_core
-    from bname_dev_balloon_flash_sample.operators import balloon_op
-    from bname_dev_balloon_flash_sample.utils import balloon_curve_object
+    from bmanga_dev_balloon_flash_sample.core import balloon as balloon_core
+    from bmanga_dev_balloon_flash_sample.operators import balloon_op
+    from bmanga_dev_balloon_flash_sample.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -223,17 +223,17 @@ def _render(path: Path) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_flash_sample_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_flash_sample_"))
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonFlashSample.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonFlashSample.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_flash_sample.core.work import get_work
-        from bname_dev_balloon_flash_sample.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_flash_sample.core.work import get_work
+        from bmanga_dev_balloon_flash_sample.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -264,7 +264,7 @@ def main() -> None:
         _add_background(objects + col_objects)
         _set_camera(objects + col_objects)
         _render(OUT_PATH)
-        print(f"BNAME_BALLOON_FLASH_SAMPLE_OK {OUT_PATH}")
+        print(f"BMANGA_BALLOON_FLASH_SAMPLE_OK {OUT_PATH}")
     finally:
         if mod is not None:
             try:

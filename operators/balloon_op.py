@@ -2,9 +2,9 @@
 
 - 各ページの ``page.balloons`` CollectionProperty にフキダシを追加/削除
 - invoke ではマウス直下のページを逆引きして active に追随 (overview 対応)
-- 親子連動: 子テキスト (``BNameTextEntry.parent_balloon_id`` でリンク) は
+- 親子連動: 子テキスト (``BMangaTextEntry.parent_balloon_id`` でリンク) は
   フキダシの移動に合わせて同じ delta で追随する
-- 旧 ``Scene.bname_balloons`` (グローバル) は廃止
+- 旧 ``Scene.bmanga_balloons`` (グローバル) は廃止
 """
 
 from __future__ import annotations
@@ -199,7 +199,7 @@ def _resolve_page_from_event(context, event):
     if page_idx is not None and 0 <= page_idx < len(work.pages):
         work.active_page_index = page_idx
         page = work.pages[page_idx]
-        cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = page_grid.resolve_gap_mm(scene)
         cw = work.paper.canvas_width_mm
         ch = work.paper.canvas_height_mm
@@ -556,10 +556,10 @@ def _select_balloon_index(context, work, page, index: int, *, mode: str = "singl
             if candidate == page or getattr(candidate, "id", "") == getattr(page, "id", ""):
                 work.active_page_index = page_index
                 break
-    if hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "balloon"
-    if hasattr(context.scene, "bname_active_gp_folder_key"):
-        context.scene.bname_active_gp_folder_key = ""
+    if hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "balloon"
+    if hasattr(context.scene, "bmanga_active_gp_folder_key"):
+        context.scene.bmanga_active_gp_folder_key = ""
     _sync_active_balloon_stack_item(context, page, entry)
     _set_balloon_object_selection(context, page, entry, mode=mode)
     return True
@@ -743,8 +743,8 @@ def _create_balloon_entry(
         page.active_balloon_index = len(page.balloons) - 1
     _clear_all_balloon_selections(work)
     entry.selected = True
-    if hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "balloon"
+    if hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "balloon"
     object_selection.set_keys(context, [object_selection.balloon_key(page, entry)])
     layer_stack_utils.sync_layer_stack_after_data_change(context)
     _sync_active_balloon_stack_item(context, page, entry)
@@ -889,8 +889,8 @@ def _event_in_view3d_window(context, event) -> bool:
     return view_event_region.is_view3d_window_event(context, event)
 
 
-class BNAME_OT_balloon_add(Operator):
-    bl_idname = "bname.balloon_add"
+class BMANGA_OT_balloon_add(Operator):
+    bl_idname = "bmanga.balloon_add"
     bl_label = "フキダシを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -948,8 +948,8 @@ class BNAME_OT_balloon_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_remove(Operator):
-    bl_idname = "bname.balloon_remove"
+class BMANGA_OT_balloon_remove(Operator):
+    bl_idname = "bmanga.balloon_remove"
     bl_label = "フキダシを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -983,15 +983,15 @@ class BNAME_OT_balloon_remove(Operator):
             page.active_balloon_index = -1
         elif idx >= len(page.balloons):
             page.active_balloon_index = len(page.balloons) - 1
-        if len(page.balloons) == 0 and hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+        if len(page.balloons) == 0 and hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         self.report({"INFO"}, f"フキダシ削除: {bid}")
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_add(Operator):
-    bl_idname = "bname.balloon_tail_add"
+class BMANGA_OT_balloon_tail_add(Operator):
+    bl_idname = "bmanga.balloon_tail_add"
     bl_label = "尻尾を追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1018,7 +1018,7 @@ class BNAME_OT_balloon_tail_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_move(Operator):
+class BMANGA_OT_balloon_move(Operator):
     """アクティブフキダシを delta だけ平行移動. 子テキストも連動.
 
     UI の数値ドラッグではなく、親子連動を保証するための専用オペレータ。
@@ -1026,7 +1026,7 @@ class BNAME_OT_balloon_move(Operator):
     連動しない (ユーザーが意図的に独立移動したとみなす)。
     """
 
-    bl_idname = "bname.balloon_move"
+    bl_idname = "bmanga.balloon_move"
     bl_label = "フキダシを平行移動"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1061,8 +1061,8 @@ class BNAME_OT_balloon_move(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_merge_selected(Operator):
-    bl_idname = "bname.balloon_merge_selected"
+class BMANGA_OT_balloon_merge_selected(Operator):
+    bl_idname = "bmanga.balloon_merge_selected"
     bl_label = "フキダシを結合"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1088,8 +1088,8 @@ class BNAME_OT_balloon_merge_selected(Operator):
             (i for i, item in enumerate(page.balloons) if getattr(item, "id", "") == first_id),
             page.active_balloon_index,
         )
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "balloon"
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "balloon"
         try:
             from ..utils import balloon_merge_object
 
@@ -1101,8 +1101,8 @@ class BNAME_OT_balloon_merge_selected(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tool(Operator):
-    bl_idname = "bname.balloon_tool"
+class BMANGA_OT_balloon_tool(Operator):
+    bl_idname = "bmanga.balloon_tool"
     bl_label = "フキダシツール"
     bl_options = {"REGISTER"}
 
@@ -1278,7 +1278,7 @@ class BNAME_OT_balloon_tool(Operator):
             if hit_part.startswith("tail_segment:"):
                 _prefix, tail_index, insert_index = hit_part.split(":")
                 if _insert_tail_point_page(hit_entry, int(tail_index), int(insert_index), lx, ly) >= 0:
-                    self._push_undo_step("B-Name: しっぽ制御点追加")
+                    self._push_undo_step("B-MANGA: しっぽ制御点追加")
                     layer_stack_utils.sync_layer_stack_after_data_change(context)
                 return {"RUNNING_MODAL"}
             if hit_part.startswith("tail_point:"):
@@ -1442,7 +1442,7 @@ class BNAME_OT_balloon_tool(Operator):
                 return False
             self._pending_tail_index = tail_index
             self._pending_tail_points = points
-            self._push_undo_step("B-Name: しっぽ作成")
+            self._push_undo_step("B-MANGA: しっぽ作成")
         else:
             appended = _append_tail_point_page(entry, tail_index, x_mm, y_mm)
             if appended < 0:
@@ -1451,7 +1451,7 @@ class BNAME_OT_balloon_tool(Operator):
                 (float(getattr(point, "x_mm", 0.0) or 0.0) + float(entry.x_mm), float(getattr(point, "y_mm", 0.0) or 0.0) + float(entry.y_mm))
                 for point in entry.tails[tail_index].points
             ]
-            self._push_undo_step("B-Name: しっぽ制御点追加")
+            self._push_undo_step("B-MANGA: しっぽ制御点追加")
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return True
 
@@ -1608,10 +1608,10 @@ class BNAME_OT_balloon_tool(Operator):
         elif action == "tail" and page is not None and entry is not None and bool(getattr(self, "_tail_start_at_pointer", False)):
             self._start_pending_tail_click(context, page, entry, self._drag_start_x, self._drag_start_y)
         elif action == "tail_point" and moved:
-            self._push_undo_step("B-Name: しっぽ制御点移動")
+            self._push_undo_step("B-MANGA: しっぽ制御点移動")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
         elif moved:
-            self._push_undo_step("B-Name: フキダシ編集")
+            self._push_undo_step("B-MANGA: フキダシ編集")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
         else:
             layer_stack_utils.tag_view3d_redraw(context)
@@ -1627,13 +1627,13 @@ class BNAME_OT_balloon_tool(Operator):
             tail_index = _add_tail_polyline(entry, [(self._drag_start_x, self._drag_start_y), (float(lx), float(ly))])
             if tail_index >= 0:
                 self._clear_tail_polyline_state()
-                self._push_undo_step("B-Name: しっぽ作成")
+                self._push_undo_step("B-MANGA: しっぽ作成")
                 layer_stack_utils.sync_layer_stack_after_data_change(context)
             return
         if _point_in_balloon_rect(entry, lx, ly):
             return
         if _add_tail_to_point(entry, lx, ly):
-            self._push_undo_step("B-Name: フキダシしっぽ作成")
+            self._push_undo_step("B-MANGA: フキダシしっぽ作成")
             layer_stack_utils.sync_layer_stack_after_data_change(context)
 
     def _start_pending_tail_click(self, context, page, entry, x_mm: float, y_mm: float) -> None:
@@ -1780,7 +1780,7 @@ class BNAME_OT_balloon_tool(Operator):
                     if preset_custom and hasattr(entry, "custom_preset_name"):
                         entry.custom_preset_name = preset_custom
                     _attach_texts_enclosed_by_balloon(context, page, entry)
-                    self._push_undo_step("B-Name: フキダシ作成")
+                    self._push_undo_step("B-MANGA: フキダシ作成")
         else:
             layer_stack_utils.tag_view3d_redraw(context)
         self._clear_drag_state()
@@ -1795,10 +1795,10 @@ class BNAME_OT_balloon_tool(Operator):
         coma_modal_state.clear_active("balloon_tool", self, context)
 
 
-class BNAME_OT_balloon_save_preset(Operator):
+class BMANGA_OT_balloon_save_preset(Operator):
     """選択中フキダシの形状をカスタムプリセット JSON として保存."""
 
-    bl_idname = "bname.balloon_save_preset"
+    bl_idname = "bmanga.balloon_save_preset"
     bl_label = "カスタム形状として保存"
     bl_options = {"REGISTER"}
 
@@ -1806,9 +1806,10 @@ class BNAME_OT_balloon_save_preset(Operator):
     description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
     absolute_coords: BoolProperty(name="絶対座標で登録", default=False)  # type: ignore[valid-type]
     to_global: BoolProperty(  # type: ignore[valid-type]
-        name="グローバルに登録",
-        description="ON: <addon>/presets/balloons/ に保存 / OFF: 作品ローカル",
-        default=False,
+        name="共通プリセットとして保存",
+        description="全作品で使える共通プリセットとして保存します",
+        default=True,
+        options={"HIDDEN"},
     )
 
     @classmethod
@@ -1835,22 +1836,9 @@ class BNAME_OT_balloon_save_preset(Operator):
             (entry.x_mm, entry.y_mm + entry.height_mm),
         ]
         try:
-            if self.to_global:
-                out = balloon_presets.save_global_preset(
-                    self.preset_name, self.description, verts, self.absolute_coords
-                )
-            else:
-                work = get_work(context)
-                if work is None or not work.loaded or not work.work_dir:
-                    self.report({"ERROR"}, "ローカル保存には作品を開く必要があります")
-                    return {"CANCELLED"}
-                out = balloon_presets.save_local_preset(
-                    Path(work.work_dir),
-                    self.preset_name,
-                    self.description,
-                    verts,
-                    self.absolute_coords,
-                )
+            out = balloon_presets.save_global_preset(
+                self.preset_name, self.description, verts, self.absolute_coords
+            )
         except Exception as exc:  # noqa: BLE001
             _logger.exception("balloon_save_preset failed")
             self.report({"ERROR"}, f"保存失敗: {exc}")
@@ -1860,13 +1848,13 @@ class BNAME_OT_balloon_save_preset(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_balloon_add,
-    BNAME_OT_balloon_remove,
-    BNAME_OT_balloon_tail_add,
-    BNAME_OT_balloon_move,
-    BNAME_OT_balloon_merge_selected,
-    BNAME_OT_balloon_tool,
-    BNAME_OT_balloon_save_preset,
+    BMANGA_OT_balloon_add,
+    BMANGA_OT_balloon_remove,
+    BMANGA_OT_balloon_tail_add,
+    BMANGA_OT_balloon_move,
+    BMANGA_OT_balloon_merge_selected,
+    BMANGA_OT_balloon_tool,
+    BMANGA_OT_balloon_save_preset,
 )
 
 

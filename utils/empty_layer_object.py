@@ -3,13 +3,13 @@
 現在の画像 / テキストは透明画像付き Mesh 平面として Blender データに残す。
 このモジュールは旧 Empty API からの呼び出しを新しい実体同期へ橋渡しする。
 
-export pipeline (`io/export_pipeline.py`) は **PropertyGroup (BNameImageLayer
-/ BNameTextEntry) を直接読んで Pillow 合成** しているため、Empty 化しても
+export pipeline (`io/export_pipeline.py`) は **PropertyGroup (BMangaImageLayer
+/ BMangaTextEntry) を直接読んで Pillow 合成** しているため、Empty 化しても
 PNG / PSD 出力結果には影響しない。
 
 旧 Empty Object の役割:
-    - `bname_kind` / `bname_id` / `bname_managed` / `bname_parent_key` /
-      `bname_z_index` / `bname_title` を保持
+    - `bmanga_kind` / `bmanga_id` / `bmanga_managed` / `bmanga_parent_key` /
+      `bmanga_z_index` / `bmanga_title` を保持
     - location は entry の x_mm / y_mm から mm→m 換算で同期
     - empty_display_type で視認性確保 (PLAIN_AXES + 小さい size)
 """
@@ -46,7 +46,7 @@ def _resolve_page_offset(scene, page) -> tuple[float, float]:
     """
     if scene is None or page is None:
         return (0.0, 0.0)
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return (0.0, 0.0)
     target_id = str(getattr(page, "id", "") or "")
@@ -104,7 +104,7 @@ def _stamp_and_link(
     obj: bpy.types.Object,
     *,
     kind: str,
-    bname_id: str,
+    bmanga_id: str,
     title: str,
     z_index: int,
     parent_kind: str,
@@ -116,7 +116,7 @@ def _stamp_and_link(
     los.stamp_layer_object(
         obj,
         kind=kind,
-        bname_id=bname_id,
+        bmanga_id=bmanga_id,
         title=title,
         z_index=z_index,
         parent_kind=parent_kind,
@@ -175,7 +175,7 @@ def cleanup_legacy_plane_objects() -> int:
     """旧 Plane 方式 (text_plane_*, image_plane_*) の Object を保持対象にする.
 
     古いファイルを開いた時やアドオンを再有効化した時に、実体を消さず
-    B-Name の自動同期対象からだけ外す。戻り値は保持対象にした Object 数。
+    B-MANGA の自動同期対象からだけ外す。戻り値は保持対象にした Object 数。
     """
     removed = 0
     legacy_obj_prefixes = ("text_plane_", "image_plane_", "balloon_plane_")
@@ -192,7 +192,7 @@ def cleanup_legacy_plane_objects() -> int:
 
 
 def find_image_entry(scene, image_id: str):
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if coll is None:
         return None
     for e in coll:
@@ -210,7 +210,7 @@ def find_text_entry(scene, text_id: str):
             return page, entry
     except Exception:  # noqa: BLE001
         pass
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return None, None
     for page in getattr(work, "pages", []):
@@ -233,20 +233,20 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
     kind = on.get_kind(obj)
     if kind not in {"image", "text"}:
         return False
-    bname_id = on.get_bname_id(obj)
-    if not bname_id:
+    bmanga_id = on.get_bmanga_id(obj)
+    if not bmanga_id:
         return False
 
     new_x_mm = obj.location.x * 1000.0  # m → mm
     new_y_mm = obj.location.y * 1000.0
 
     if kind == "image":
-        entry = find_image_entry(scene, bname_id)
+        entry = find_image_entry(scene, bmanga_id)
         if entry is None:
             return False
         page = None
         try:
-            work = getattr(scene, "bname_work", None)
+            work = getattr(scene, "bmanga_work", None)
             from . import image_real_object
 
             page = image_real_object.page_for_entry(scene, work, entry)
@@ -275,9 +275,9 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
         if page is None and parent_kind not in {"", "none", "outside"}:
             return False
     else:  # text
-        if obj.get("bname_text_preview_hidden", False):
+        if obj.get("bmanga_text_preview_hidden", False):
             return False
-        page, entry = find_text_entry(scene, bname_id)
+        page, entry = find_text_entry(scene, bmanga_id)
         if entry is None:
             return False
         ox_mm, oy_mm = _resolve_page_offset(scene, page)
@@ -332,6 +332,6 @@ def sync_entry_position_from_object(scene: bpy.types.Scene, obj: bpy.types.Objec
                 obj.scale.z = 1.0
                 text_real_object.ensure_text_real_object(scene=scene, entry=entry, page=page)
         except Exception:  # noqa: BLE001
-            _logger.exception("sync entry position failed: %s", bname_id)
+            _logger.exception("sync entry position failed: %s", bmanga_id)
             return False
     return True

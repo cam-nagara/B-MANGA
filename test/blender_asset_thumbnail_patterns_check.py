@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_asset_thumbnail",
+        "bmanga_dev_asset_thumbnail",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_asset_thumbnail"] = mod
+    sys.modules["bmanga_dev_asset_thumbnail"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _item_by_uid(context):
-    from bname_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     return {layer_stack_utils.stack_item_uid(item): item for item in stack}
@@ -95,8 +95,8 @@ def _find_entry_by_title(collection, title: str):
 
 
 def _register_payload(context, uids: list[str], name: str, target):
-    from bname_dev_asset_thumbnail.utils import asset_bundle
-    from bname_dev_asset_thumbnail.utils import asset_preview
+    from bmanga_dev_asset_thumbnail.utils import asset_bundle
+    from bmanga_dev_asset_thumbnail.utils import asset_preview
 
     items = _item_by_uid(context)
     missing = [uid for uid in uids if uid not in items]
@@ -126,8 +126,8 @@ def _register_payload(context, uids: list[str], name: str, target):
 
 
 def _register_objects_with_capture(context, name: str):
-    from bname_dev_asset_thumbnail.utils import asset_bundle
-    from bname_dev_asset_thumbnail.utils import asset_preview
+    from bmanga_dev_asset_thumbnail.utils import asset_bundle
+    from bmanga_dev_asset_thumbnail.utils import asset_preview
 
     original_capture = asset_preview._capture_objects_preview_pixels
     captured = {"ok": False}
@@ -150,11 +150,11 @@ def _register_objects_with_capture(context, name: str):
 
 
 def _make_balloon(context, page, *, title: str, shape: str, x: float, y: float, w: float, h: float):
-    from bname_dev_asset_thumbnail.operators import balloon_op
-    from bname_dev_asset_thumbnail.utils import balloon_curve_object
+    from bmanga_dev_asset_thumbnail.operators import balloon_op
+    from bmanga_dev_asset_thumbnail.utils import balloon_curve_object
 
     entry = page.balloons.add()
-    entry.id = balloon_op._allocate_balloon_id(page, context.scene.bname_work)
+    entry.id = balloon_op._allocate_balloon_id(page, context.scene.bmanga_work)
     entry.title = title
     entry.shape = shape
     entry.x_mm = x
@@ -177,8 +177,8 @@ def _make_balloon(context, page, *, title: str, shape: str, x: float, y: float, 
 
 
 def _make_text(context, page, *, title: str, body: str, x: float, y: float, w: float, h: float, mode: str):
-    from bname_dev_asset_thumbnail.operators import text_op
-    from bname_dev_asset_thumbnail.utils import text_real_object
+    from bmanga_dev_asset_thumbnail.operators import text_op
+    from bmanga_dev_asset_thumbnail.utils import text_real_object
 
     entry = page.texts.add()
     entry.id = text_op._allocate_text_id(page)
@@ -196,7 +196,7 @@ def _make_text(context, page, *, title: str, body: str, x: float, y: float, w: f
 
 
 def _make_effect(context, page, *, title: str, x: float, y: float, w: float, h: float):
-    from bname_dev_asset_thumbnail.operators import effect_line_op
+    from bmanga_dev_asset_thumbnail.operators import effect_line_op
 
     obj, layer = effect_line_op._create_effect_layer(
         context,
@@ -210,19 +210,19 @@ def _make_effect(context, page, *, title: str, x: float, y: float, w: float, h: 
 
 
 def _balloon_uid(page, entry) -> str:
-    from bname_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
     return layer_stack_utils.target_uid("balloon", f"{page.id}:{entry.id}")
 
 
 def _text_uid(page, entry) -> str:
-    from bname_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
     return layer_stack_utils.target_uid("text", f"{page.id}:{entry.id}")
 
 
 def _effect_uid(layer) -> str:
-    from bname_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
+    from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
 
     return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
 
@@ -237,7 +237,7 @@ def _select_objects(objects: list[bpy.types.Object]) -> None:
 
 def _fake_asset_browser_context(objects: list[bpy.types.Object], library_path: Path):
     params = SimpleNamespace(
-        asset_library_reference="BNameThumb",
+        asset_library_reference="BMangaThumb",
         catalog_id="11111111-1111-1111-1111-111111111111",
     )
     area = SimpleNamespace(
@@ -254,7 +254,7 @@ def _fake_asset_browser_context(objects: list[bpy.types.Object], library_path: P
         screen=SimpleNamespace(areas=[area]),
         preferences=SimpleNamespace(
             filepaths=SimpleNamespace(
-                asset_libraries=[SimpleNamespace(name="BNameThumb", path=str(library_path))]
+                asset_libraries=[SimpleNamespace(name="BMangaThumb", path=str(library_path))]
             )
         ),
     )
@@ -273,27 +273,27 @@ def _assert_saved_libraries(paths: list[tuple[Path, str]]) -> None:
 
 def main() -> None:
     mod = None
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_asset_thumbnail_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_asset_thumbnail_"))
     saved: list[tuple[Path, str]] = []
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        from bname_dev_asset_thumbnail.utils import asset_bundle
-        from bname_dev_asset_thumbnail.utils import balloon_curve_object
-        from bname_dev_asset_thumbnail.utils import effect_line_object
-        from bname_dev_asset_thumbnail.utils import layer_links
-        from bname_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
-        from bname_dev_asset_thumbnail.utils import text_real_object
+        from bmanga_dev_asset_thumbnail.utils import asset_bundle
+        from bmanga_dev_asset_thumbnail.utils import balloon_curve_object
+        from bmanga_dev_asset_thumbnail.utils import effect_line_object
+        from bmanga_dev_asset_thumbnail.utils import layer_links
+        from bmanga_dev_asset_thumbnail.utils import layer_stack as layer_stack_utils
+        from bmanga_dev_asset_thumbnail.utils import text_real_object
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "AssetThumbnail.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AssetThumbnail.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         external_root = temp_root / "AssetLibrary"
-        external_target = asset_bundle.AssetBrowserTarget("BNameThumb", "", str(external_root), True)
+        external_target = asset_bundle.AssetBrowserTarget("BMangaThumb", "", str(external_root), True)
 
         balloon_specs = [
             ("楕円フキダシ", "ellipse", 16, 24, 42, 22),
@@ -399,7 +399,7 @@ def main() -> None:
         saved.append((new_files[0], "オブジェクト複数"))
 
         _assert_saved_libraries(saved)
-        print("BNAME_ASSET_THUMBNAIL_PATTERNS_OK")
+        print("BMANGA_ASSET_THUMBNAIL_PATTERNS_OK")
     finally:
         if mod is not None:
             try:

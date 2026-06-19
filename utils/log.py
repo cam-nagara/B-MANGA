@@ -1,8 +1,8 @@
-"""B-Name ログ基盤.
+"""B-MANGA ログ基盤.
 
 全モジュールが ``log.get_logger(__name__)`` で取得する。Blender 本体の
 stdout にハンドラ 1 本のみで出力し、多重登録を防ぐためアドオンルート
-(``b_name``) にのみハンドラを付ける。
+(``b_manga``) にのみハンドラを付ける。
 """
 
 from __future__ import annotations
@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 import os
 
-ROOT_NAME = "b_name"
-_DEFAULT_FORMAT = "[B-Name][%(levelname)s][%(name)s] %(message)s"
-_HANDLER_ATTR = "_b_name_handler"
+ROOT_NAME = "b_manga"
+_DEFAULT_FORMAT = "[B-MANGA][%(levelname)s][%(name)s] %(message)s"
+_HANDLER_ATTR = "_b_manga_handler"
 
 
 def _parse_level(value: str | None, fallback: int = logging.INFO) -> int:
@@ -27,13 +27,13 @@ def _parse_level(value: str | None, fallback: int = logging.INFO) -> int:
 def get_logger(name: str | None = None) -> logging.Logger:
     """アドオンルート配下のロガーを返す.
 
-    引数の name がアドオン配下（``b_name``/``B-Name.*`` 等）でない場合は、
+    引数の name がアドオン配下（``b_manga``/``B-MANGA.*`` 等）でない場合は、
     そのまま末端名としてルート配下にぶら下げる。
     """
 
     if not name or name == ROOT_NAME:
         return logging.getLogger(ROOT_NAME)
-    # パッケージ内呼び出し（例: "B-Name.utils.log"）の末尾だけ利用する
+    # パッケージ内呼び出し（例: "B-MANGA.utils.log"）の末尾だけ利用する
     short = name.rsplit(".", 1)[-1]
     return logging.getLogger(f"{ROOT_NAME}.{short}")
 
@@ -64,7 +64,7 @@ def set_level(level: int | str) -> None:
 
 
 def register() -> None:
-    level = _parse_level(os.environ.get("B_NAME_LOG_LEVEL"))
+    level = _parse_level(os.environ.get("B_MANGA_LOG_LEVEL"))
     _ensure_handler(level)
     get_logger(__name__).debug("log registered (level=%s)", logging.getLevelName(level))
 

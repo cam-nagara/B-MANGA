@@ -9,8 +9,8 @@ from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
 
-OVERVIEW_CAMERA_NAME = "B-Name ページ一覧カメラ"
-PROP_OVERVIEW_CAMERA = "bname_overview_camera"
+OVERVIEW_CAMERA_NAME = "B-MANGA ページ一覧カメラ"
+PROP_OVERVIEW_CAMERA = "bmanga_overview_camera"
 _CAMERA_FIT_MARGIN = 2.50
 
 

@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -44,7 +44,7 @@ def _page_by_id(work, page_id: str):
 
 
 def _page_offset(context, work, page_id: str) -> tuple[float, float]:
-    from bname_dev.utils import page_grid
+    from bmanga_dev.utils import page_grid
 
     return page_grid.page_total_offset_mm(work, context.scene, _page_index(work, page_id))
 
@@ -55,7 +55,7 @@ def _object_page_local_mm(context, work, page_id: str, obj) -> tuple[float, floa
 
 
 def _first_gp_point(layer):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
 
     for point in gp_parent.iter_points(layer):
         return point
@@ -78,7 +78,7 @@ def _raster_marker_alpha(image, marker: tuple[int, int]) -> float:
 
 
 def _write_test_image(path: Path) -> None:
-    image = bpy.data.images.new("bname_page_stability_image_src", width=8, height=8, alpha=True)
+    image = bpy.data.images.new("bmanga_page_stability_image_src", width=8, height=8, alpha=True)
     pixels = [0.0] * (8 * 8 * 4)
     for y in range(2, 6):
         for x in range(2, 6):
@@ -91,10 +91,10 @@ def _write_test_image(path: Path) -> None:
 
 
 def _add_gp(context, work, page, local_xy: tuple[float, float]):
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import gpencil as gp_utils
-    from bname_dev.utils.geom import mm_to_m
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils.geom import mm_to_m
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     page_id = str(getattr(page, "id", "") or "")
     ox, oy = _page_offset(context, work, page_id)
@@ -115,9 +115,9 @@ def _add_gp(context, work, page, local_xy: tuple[float, float]):
 
 
 def _add_balloon(context, page, local_xy: tuple[float, float]):
-    from bname_dev.operators import balloon_op
-    from bname_dev.utils import balloon_curve_object
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.operators import balloon_op
+    from bmanga_dev.utils import balloon_curve_object
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     page_id = str(getattr(page, "id", "") or "")
     entry = balloon_op._create_balloon_entry(
@@ -138,8 +138,8 @@ def _add_balloon(context, page, local_xy: tuple[float, float]):
 
 
 def _add_text(context, page, local_xy: tuple[float, float]):
-    from bname_dev.utils import text_real_object
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.utils import text_real_object
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     page_id = str(getattr(page, "id", "") or "")
     entry = page.texts.add()
@@ -157,11 +157,11 @@ def _add_text(context, page, local_xy: tuple[float, float]):
 
 
 def _add_image(context, image_path: Path, page, local_xy: tuple[float, float]):
-    from bname_dev.utils import image_real_object
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.utils import image_real_object
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     page_id = str(getattr(page, "id", "") or "")
-    entry = context.scene.bname_image_layers.add()
+    entry = context.scene.bmanga_image_layers.add()
     entry.id = f"stability_image_{page_id}"
     entry.title = "画像"
     entry.filepath = str(image_path)
@@ -177,12 +177,12 @@ def _add_image(context, image_path: Path, page, local_xy: tuple[float, float]):
 
 
 def _add_raster(context, page, marker: tuple[int, int]):
-    from bname_dev.operators import raster_layer_op
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.operators import raster_layer_op
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
-    result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
     assert "FINISHED" in result, result
-    entry = context.scene.bname_raster_layers[context.scene.bname_active_raster_layer_index]
+    entry = context.scene.bmanga_raster_layers[context.scene.bmanga_active_raster_layer_index]
     page_id = str(getattr(page, "id", "") or "")
     entry.id = f"stability_raster_{page_id}"
     entry.image_name = raster_layer_op.raster_image_name(entry.id)
@@ -202,8 +202,8 @@ def _add_raster(context, page, marker: tuple[int, int]):
 
 
 def _add_effect(context, page, bounds: tuple[float, float, float, float]):
-    from bname_dev.operators import effect_line_op
-    from bname_dev.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev.operators import effect_line_op
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
 
     obj, layer = effect_line_op._create_effect_layer(context, bounds, parent_key=page_stack_key(page))
     assert obj is not None and layer is not None
@@ -247,10 +247,10 @@ def _entry_by_id(collection, entry_id: str):
 
 def _snapshot_content(context, work, refs):
     """ページ編集シーン上で、各レイヤーの実体を ID から取り直して位置を採取する."""
-    from bname_dev.operators import effect_line_op
-    from bname_dev.utils import balloon_curve_object, effect_line_object
-    from bname_dev.utils import gpencil as gp_utils
-    from bname_dev.utils import object_naming as on
+    from bmanga_dev.operators import effect_line_op
+    from bmanga_dev.utils import balloon_curve_object, effect_line_object
+    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils import object_naming as on
 
     page_id = refs["page_id"]
     page = _page_by_id(work, page_id)
@@ -267,17 +267,17 @@ def _snapshot_content(context, work, refs):
 
     text_entry = _entry_by_id(page.texts, refs["text_id"])
     assert text_entry is not None, "テキストのデータがありません"
-    from bname_dev.utils import text_real_object
+    from bmanga_dev.utils import text_real_object
 
     text_obj = text_real_object.find_text_object(page_id, refs["text_id"])
     assert text_obj is not None, "テキストの実体がありません"
 
-    image_entry = _entry_by_id(context.scene.bname_image_layers, refs["image_id"])
+    image_entry = _entry_by_id(context.scene.bmanga_image_layers, refs["image_id"])
     assert image_entry is not None, "画像レイヤーのデータがありません"
-    image_obj = on.find_object_by_bname_id(refs["image_id"], kind="image")
+    image_obj = on.find_object_by_bmanga_id(refs["image_id"], kind="image")
     assert image_obj is not None, "画像レイヤーの実体がありません"
 
-    raster_obj = on.find_object_by_bname_id(refs["raster_id"], kind="raster")
+    raster_obj = on.find_object_by_bmanga_id(refs["raster_id"], kind="raster")
     assert raster_obj is not None, "ラスターレイヤーの実体がありません"
     raster_image = bpy.data.images.get(refs["raster_image"])
     assert raster_image is not None, "ラスターレイヤーの画像がありません"
@@ -286,8 +286,8 @@ def _snapshot_content(context, work, refs):
         (
             o
             for o in bpy.data.objects
-            if str(o.get("bname_kind", "") or "") == "effect"
-            and str(o.get("bname_parent_key", "") or "").split(":", 1)[0] == page_id
+            if str(o.get("bmanga_kind", "") or "") == "effect"
+            and str(o.get("bmanga_parent_key", "") or "").split(":", 1)[0] == page_id
         ),
         None,
     )
@@ -348,16 +348,16 @@ def _assert_stable(context, work, refs, expected, label: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_ops_stability_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_ops_stability_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PageOpsStability.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PageOpsStability.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.utils import page_file_scene
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.utils import page_file_scene
 
         context = bpy.context
         work = get_work(context)
@@ -377,13 +377,13 @@ def main() -> None:
         def _open_page(page_id: str):
             work_now = get_work(bpy.context)
             index = _page_index(work_now, page_id)
-            result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=index)
+            result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=index)
             assert result == {"FINISHED"}, f"ページを開けません: {page_id} {result}"
             assert page_file_scene.is_page_edit_scene(bpy.context.scene)
             return bpy.context, get_work(bpy.context)
 
         def _close_page() -> None:
-            result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+            result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
             assert "FINISHED" in result, f"ページ一覧へ戻れません: {result}"
 
         def _build(page_id: str, base_x: float):
@@ -421,26 +421,26 @@ def main() -> None:
 
         work = get_work(bpy.context)
         work.active_page_index = _page_index(work, page_a_id)
-        assert bpy.ops.bname.page_move("EXEC_DEFAULT", direction=1) == {"FINISHED"}
+        assert bpy.ops.bmanga.page_move("EXEC_DEFAULT", direction=1) == {"FINISHED"}
         bpy.context.view_layer.update()
         _verify(refs_a, expected_a, "ページ入れ替え 元1ページ目")
         _verify(refs_b, expected_b, "ページ入れ替え 元2ページ目")
 
         work = get_work(bpy.context)
         work.active_page_index = 0
-        assert bpy.ops.bname.page_duplicate("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga.page_duplicate("EXEC_DEFAULT") == {"FINISHED"}
         bpy.context.view_layer.update()
         _verify(refs_a, expected_a, "ページ複製後 元1ページ目")
         _verify(refs_b, expected_b, "ページ複製後 元2ページ目")
 
         work = get_work(bpy.context)
         work.active_page_index = len(work.pages) - 1
-        assert bpy.ops.bname.page_remove("EXEC_DEFAULT") == {"FINISHED"}
+        assert bpy.ops.bmanga.page_remove("EXEC_DEFAULT") == {"FINISHED"}
         bpy.context.view_layer.update()
         _verify(refs_a, expected_a, "ページ削除後 元1ページ目")
         _verify(refs_b, expected_b, "ページ削除後 元2ページ目")
 
-        print("BNAME_PAGE_OPERATION_LAYER_STABILITY_OK")
+        print("BMANGA_PAGE_OPERATION_LAYER_STABILITY_OK")
     finally:
         if mod is not None:
             try:

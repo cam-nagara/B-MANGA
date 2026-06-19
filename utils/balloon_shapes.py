@@ -410,7 +410,7 @@ def outline_with_corners_for_shape(
         return _outline_ellipse(rect), []
     if s == "octagon":
         return _outline_octagon(rect), list(range(8))
-    # Legacy B-Name shapes kept for existing files.
+    # Legacy B-MANGA shapes kept for existing files.
     if s == "pill":
         return _outline_pill(rect), []
     if s == "diamond":

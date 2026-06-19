@@ -1,4 +1,4 @@
-"""Blender実機用: ページ一覧/ページ編集ファイル別のB-Nameパネル整理確認."""
+"""Blender実機用: ページ一覧/ページ編集ファイル別のB-MANGAパネル整理確認."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_panel_role",
+        "bmanga_dev_page_panel_role",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_panel_role"] = mod
+    sys.modules["bmanga_dev_page_panel_role"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -137,17 +137,17 @@ def _assert_absent(records: list[tuple[str, str]], *values: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_panel_role_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_panel_role_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PanelRole.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PanelRole.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.page_add()
+        result = bpy.ops.bmanga.page_add()
         assert result == {"FINISHED"}, result
 
-        from bname_dev_page_panel_role.panels import (
+        from bmanga_dev_page_panel_role.panels import (
             export_panel,
             gpencil_panel,
             outliner_layer_panel,
@@ -156,106 +156,106 @@ def main() -> None:
             view_panel,
             work_panel,
         )
-        from bname_dev_page_panel_role.utils import page_file_scene
+        from bmanga_dev_page_panel_role.utils import page_file_scene
 
         context = bpy.context
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_WORK
-        assert not tool_panel.BNAME_PT_tools.poll(context)
-        assert export_panel.BNAME_PT_export.poll(context)
+        assert not tool_panel.BMANGA_PT_tools.poll(context)
+        assert export_panel.BMANGA_PT_export.poll(context)
 
-        work_records = _draw_records(work_panel.BNAME_PT_work, context)
+        work_records = _draw_records(work_panel.BMANGA_PT_work, context)
         _assert_present(work_records, "作品情報", "ページ数", "ページ一覧プレビュー", "コマ用blendファイル (この作品のみ)")
-        layer_records = _draw_records(gpencil_panel.BNAME_PT_layer_stack, context)
-        _assert_present(layer_records, "BNAME_UL_layer_panel_pages:pages", "bname.page_add", "bname.open_page_file")
-        _assert_absent(layer_records, "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
+        layer_records = _draw_records(gpencil_panel.BMANGA_PT_layer_stack, context)
+        _assert_present(layer_records, "BMANGA_UL_layer_panel_pages:pages", "bmanga.page_add", "bmanga.open_page_file")
+        _assert_absent(layer_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
         row_records = _draw_ui_list_item_records(
-            gpencil_panel.BNAME_UL_layer_panel_pages,
+            gpencil_panel.BMANGA_UL_layer_panel_pages,
             context,
-            context.scene.bname_work,
-            context.scene.bname_work.pages[1],
+            context.scene.bmanga_work,
+            context.scene.bmanga_work.pages[1],
             1,
         )
-        _assert_present(row_records, "bname.open_page_file")
+        _assert_present(row_records, "bmanga.open_page_file")
         page_row_records = _draw_ui_list_item_records(
-            page_panel.BNAME_UL_pages,
+            page_panel.BMANGA_UL_pages,
             context,
-            context.scene.bname_work,
-            context.scene.bname_work.pages[1],
+            context.scene.bmanga_work,
+            context.scene.bmanga_work.pages[1],
             1,
         )
-        _assert_present(page_row_records, "bname.open_page_file")
-        maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
-        _assert_present(maintenance_records, "bname.organize_data_names")
+        _assert_present(page_row_records, "bmanga.open_page_file")
+        maintenance_records = _draw_records(outliner_layer_panel.BMANGA_PT_outliner_layers, context)
+        _assert_present(maintenance_records, "bmanga.organize_data_names")
         _assert_absent(
             maintenance_records,
-            "bname.repair_hierarchy",
-            "bname.coma_renumber_active_page",
-            "bname.mask_regenerate_all",
-            "bname.mask_remove_orphans",
+            "bmanga.repair_hierarchy",
+            "bmanga.coma_renumber_active_page",
+            "bmanga.mask_regenerate_all",
+            "bmanga.mask_remove_orphans",
         )
-        assert not bpy.ops.bname.repair_hierarchy.poll()
-        assert not bpy.ops.bname.coma_renumber_active_page.poll()
-        assert not bpy.ops.bname.mask_regenerate_all.poll()
-        assert not bpy.ops.bname.mask_remove_orphans.poll()
-        assert bpy.ops.bname.organize_data_names.poll()
+        assert not bpy.ops.bmanga.repair_hierarchy.poll()
+        assert not bpy.ops.bmanga.coma_renumber_active_page.poll()
+        assert not bpy.ops.bmanga.mask_regenerate_all.poll()
+        assert not bpy.ops.bmanga.mask_remove_orphans.poll()
+        assert bpy.ops.bmanga.organize_data_names.poll()
 
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         context = bpy.context
         role, page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_PAGE
         assert page_id == "p0001"
-        assert tool_panel.BNAME_PT_tools.poll(context)
-        assert not export_panel.BNAME_PT_export.poll(context)
-        assert not work_panel.BNAME_PT_work.poll(context)
+        assert tool_panel.BMANGA_PT_tools.poll(context)
+        assert not export_panel.BMANGA_PT_export.poll(context)
+        assert not work_panel.BMANGA_PT_work.poll(context)
 
-        transition_records = _draw_records(work_panel.BNAME_PT_coma_return, context)
+        transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "ページ一覧に戻る", "ページ一覧ビュー", "フィット")
         _assert_absent(transition_records, "作品情報", "ページ数", "コマ用blendファイル (この作品のみ)")
-        view_records = _draw_records(view_panel.BNAME_PT_view, context)
+        view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(view_records, "ページ一覧表示", "前後ページ数", "画像解像度%", "列数", "間隔mm")
         _assert_absent(view_records, "全ページを一覧", "選択ページ")
-        layer_records = _draw_records(gpencil_panel.BNAME_PT_layer_stack, context)
-        _assert_present(layer_records, "BNAME_UL_layer_stack:bname_layer_stack_visible", "wm.call_menu")
+        layer_records = _draw_records(gpencil_panel.BMANGA_PT_layer_stack, context)
+        _assert_present(layer_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
         _assert_absent(
             layer_records,
-            "BNAME_UL_layer_panel_pages:pages",
-            "bname.page_add",
-            "bname.page_duplicate",
-            "bname.page_remove",
-            "bname.open_page_file",
+            "BMANGA_UL_layer_panel_pages:pages",
+            "bmanga.page_add",
+            "bmanga.page_duplicate",
+            "bmanga.page_remove",
+            "bmanga.open_page_file",
         )
-        maintenance_records = _draw_records(outliner_layer_panel.BNAME_PT_outliner_layers, context)
-        _assert_present(maintenance_records, "bname.repair_hierarchy", "bname.mask_regenerate_all", "bname.mask_remove_orphans", "bname.coma_renumber_active_page")
-        _assert_absent(maintenance_records, "bname.organize_data_names")
-        assert bpy.ops.bname.repair_hierarchy.poll()
-        assert bpy.ops.bname.coma_renumber_active_page.poll()
-        assert bpy.ops.bname.mask_regenerate_all.poll()
-        assert bpy.ops.bname.mask_remove_orphans.poll()
-        assert not bpy.ops.bname.organize_data_names.poll()
+        maintenance_records = _draw_records(outliner_layer_panel.BMANGA_PT_outliner_layers, context)
+        _assert_present(maintenance_records, "bmanga.repair_hierarchy", "bmanga.mask_regenerate_all", "bmanga.mask_remove_orphans", "bmanga.coma_renumber_active_page")
+        _assert_absent(maintenance_records, "bmanga.organize_data_names")
+        assert bpy.ops.bmanga.repair_hierarchy.poll()
+        assert bpy.ops.bmanga.coma_renumber_active_page.poll()
+        assert bpy.ops.bmanga.mask_regenerate_all.poll()
+        assert bpy.ops.bmanga.mask_remove_orphans.poll()
+        assert not bpy.ops.bmanga.organize_data_names.poll()
 
-        active_before = int(getattr(context.scene.bname_work, "active_page_index", -1))
-        context.scene.bname_active_page_number = 2
-        assert int(getattr(context.scene.bname_work, "active_page_index", -1)) == active_before
+        active_before = int(getattr(context.scene.bmanga_work, "active_page_index", -1))
+        context.scene.bmanga_active_page_number = 2
+        assert int(getattr(context.scene.bmanga_work, "active_page_index", -1)) == active_before
 
-        context.scene.bname_work.active_page_index = 0
-        context.scene.bname_work.pages[0].active_coma_index = 0
-        result = bpy.ops.bname.enter_coma_mode()
+        context.scene.bmanga_work.active_page_index = 0
+        context.scene.bmanga_work.pages[0].active_coma_index = 0
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         context = bpy.context
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_COMA
-        assert work_panel.BNAME_PT_coma_return.poll(context)
-        transition_records = _draw_records(work_panel.BNAME_PT_coma_return, context)
+        assert work_panel.BMANGA_PT_coma_return.poll(context)
+        transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "ページに戻る", "保存フォルダを開く", "ページ一覧ビュー", "フィット")
         _assert_absent(
             transition_records,
             "ページ一覧位置",
             "ページ一覧ビューを開く",
         )
-        assert view_panel.BNAME_PT_view.poll(context)
-        view_records = _draw_records(view_panel.BNAME_PT_view, context)
+        assert view_panel.BMANGA_PT_view.poll(context)
+        view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(view_records, "ページ一覧ビュー", "位置", "サイズ", "フィット", "専用ワークスペース")
         _assert_absent(
             view_records,
@@ -265,7 +265,7 @@ def main() -> None:
             "全ページを一覧",
             "選択ページ",
         )
-        print("BNAME_PAGE_FILE_PANEL_ROLE_OK")
+        print("BMANGA_PAGE_FILE_PANEL_ROLE_OK")
     finally:
         if mod is not None:
             try:

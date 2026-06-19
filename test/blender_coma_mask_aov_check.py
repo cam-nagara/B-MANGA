@@ -1,4 +1,4 @@
-"""B-Name コマ用 blend のマスクメッシュ + AOV 同期テスト.
+"""B-MANGA コマ用 blend のマスクメッシュ + AOV 同期テスト.
 
 実行:
     "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" \
@@ -21,7 +21,7 @@ import types
 import bpy
 
 
-ROOT = r"D:/Develop/Blender/B-Name/.claude/worktrees/mystifying-jennings-c43858"
+ROOT = r"D:/Develop/Blender/B-MANGA/.claude/worktrees/mystifying-jennings-c43858"
 
 
 def _load_module(qualname: str, path: str):
@@ -32,29 +32,29 @@ def _load_module(qualname: str, path: str):
     return mod
 
 
-def _bootstrap_b_name_packages() -> None:
+def _bootstrap_b_manga_packages() -> None:
     """Build a minimal package skeleton so relative imports resolve."""
-    pkg = types.ModuleType("b_name_test")
+    pkg = types.ModuleType("b_manga_test")
     pkg.__path__ = [ROOT]
-    sys.modules["b_name_test"] = pkg
+    sys.modules["b_manga_test"] = pkg
     for sub in ("utils", "core"):
-        m = types.ModuleType(f"b_name_test.{sub}")
+        m = types.ModuleType(f"b_manga_test.{sub}")
         m.__path__ = [f"{ROOT}/{sub}"]
-        sys.modules[f"b_name_test.{sub}"] = m
+        sys.modules[f"b_manga_test.{sub}"] = m
     # log は単独ファイル
-    _load_module("b_name_test.utils.log", f"{ROOT}/utils/log.py")
-    _load_module("b_name_test.utils.geom", f"{ROOT}/utils/geom.py")
+    _load_module("b_manga_test.utils.log", f"{ROOT}/utils/log.py")
+    _load_module("b_manga_test.utils.geom", f"{ROOT}/utils/geom.py")
 
 
 def main() -> int:
-    _bootstrap_b_name_packages()
+    _bootstrap_b_manga_packages()
     cmo = _load_module(
-        "b_name_test.utils.coma_mask_object", f"{ROOT}/utils/coma_mask_object.py"
+        "b_manga_test.utils.coma_mask_object", f"{ROOT}/utils/coma_mask_object.py"
     )
 
     scene = bpy.context.scene
 
-    # 仮の B-Name データ (rect コマ)
+    # 仮の B-MANGA データ (rect コマ)
     work_rect = types.SimpleNamespace(
         pages=[
             types.SimpleNamespace(

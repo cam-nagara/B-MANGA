@@ -17,18 +17,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_BALLOON_FULL_FEATURE_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_balloon_full_feature_"))
+_OUT_ENV = os.environ.get("BMANGA_BALLOON_FULL_FEATURE_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_balloon_full_feature_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_full_feature_check",
+        "bmanga_dev_full_feature_check",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_full_feature_check"] = mod
+    sys.modules["bmanga_dev_full_feature_check"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -99,19 +99,19 @@ def _do_render(scene, path):
 
 
 def main():
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_full_feature_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_full_feature_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "FullFeatureCheck.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FullFeatureCheck.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_full_feature_check.core.work import get_work
-        from bname_dev_full_feature_check.operators import balloon_op
-        from bname_dev_full_feature_check.utils import balloon_curve_object
-        from bname_dev_full_feature_check.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_full_feature_check.core.work import get_work
+        from bmanga_dev_full_feature_check.operators import balloon_op
+        from bmanga_dev_full_feature_check.utils import balloon_curve_object
+        from bmanga_dev_full_feature_check.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         scene = context.scene

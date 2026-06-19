@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,14 +28,14 @@ def _load_addon():
 
 
 def _load_render_addon():
-    package_root = ROOT / "addons" / "b_name_render"
+    package_root = ROOT / "addons" / "b_manga_render"
     spec = importlib.util.spec_from_file_location(
-        "bname_render_dev_fisheye",
+        "bmanga_render_dev_fisheye",
         package_root / "__init__.py",
         submodule_search_locations=[str(package_root)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_render_dev_fisheye"] = mod
+    sys.modules["bmanga_render_dev_fisheye"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -60,13 +60,13 @@ class _FakePencil4Node:
 
 def _check_fisheye_panorama_sync(coma_camera) -> None:
     scene = bpy.context.scene
-    cam_data = bpy.data.cameras.new("bname_fisheye_test_camera")
-    cam = bpy.data.objects.new("bname_fisheye_test_camera", cam_data)
+    cam_data = bpy.data.cameras.new("bmanga_fisheye_test_camera")
+    cam = bpy.data.objects.new("bmanga_fisheye_test_camera", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
-    scene.bname_coma_camera_original_resolution_x = 800
-    scene.bname_coma_camera_original_resolution_y = 600
-    scene.bname_coma_camera_fisheye_layout_mode = True
+    scene.bmanga_coma_camera_original_resolution_x = 800
+    scene.bmanga_coma_camera_original_resolution_y = 600
+    scene.bmanga_coma_camera_fisheye_layout_mode = True
 
     cam.data.type = "PANO"
     cam.data.panorama_type = "FISHEYE_EQUIDISTANT"
@@ -117,13 +117,13 @@ def _check_pencil4_save_operator_while_reduced(pencil4_link) -> None:
         )
     )
     scene = bpy.context.scene
-    scene.bname_mode = "COMA"
-    scene.bname_coma_camera_reduction_mode = True
-    scene.bname_coma_camera_preview_scale_percentage = 50.0
+    scene.bmanga_mode = "COMA"
+    scene.bmanga_coma_camera_reduction_mode = True
+    scene.bmanga_coma_camera_preview_scale_percentage = 50.0
     real_bpy = pencil4_link.bpy
     pencil4_link.bpy = fake_bpy
     try:
-        result = bpy.ops.bname_render.save_pencil4_widths()
+        result = bpy.ops.bmanga_render.save_pencil4_widths()
         assert result == {"FINISHED"}, result
         assert node["original_size"] == 8.0
         assert node.size == 4.0
@@ -135,13 +135,13 @@ def main() -> None:
     mod = _load_addon()
     render = _load_render_addon()
     try:
-        from bname_dev.core.fisheye import pencil4_link
-        from bname_dev.utils import coma_camera
+        from bmanga_dev.core.fisheye import pencil4_link
+        from bmanga_dev.utils import coma_camera
 
         _check_fisheye_panorama_sync(coma_camera)
         _check_pencil4_link(pencil4_link)
         _check_pencil4_save_operator_while_reduced(pencil4_link)
-        print("BNAME_FISHEYE_F1F2_OK")
+        print("BMANGA_FISHEYE_F1F2_OK")
     finally:
         render.unregister()
         mod.unregister()

@@ -6,7 +6,7 @@ from pathlib import Path
 
 def _load_paths():
     root = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location("bname_paths", root / "utils" / "paths.py")
+    spec = importlib.util.spec_from_file_location("bmanga_paths", root / "utils" / "paths.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -45,7 +45,7 @@ def test_invalid_ids_raise():
 
 def test_new_layout_paths():
     paths = _load_paths()
-    root = Path("D:/work/Test.bname")
+    root = Path("D:/work/Test.bmanga")
     assert paths.page_dir(root, "p0001") == root / "p0001"
     assert paths.coma_dir(root, "p0001", "c01") == root / "p0001" / "c01"
     assert paths.coma_blend_path(root, "p0001", "c01") == root / "p0001" / "c01" / "c01.blend"

@@ -3,7 +3,7 @@
 実行方法 (バックアップは別途取得しておくこと):
 
     "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background ^
-        "D:/TM Dropbox/Share/B-Name/c_file/c00.blend" ^
+        "D:/TM Dropbox/Share/B-MANGA/c_file/c00.blend" ^
         --python test/blender_c00_mask_aov_migration.py
 
 変更内容:

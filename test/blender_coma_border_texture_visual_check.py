@@ -17,10 +17,10 @@ RENDER_PATH = OUT_DIR / "coma_border_texture_preview_render.png"
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_border_texture_visual", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
+        "bmanga_dev_border_texture_visual", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_border_texture_visual"] = mod
+    sys.modules["bmanga_dev_border_texture_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -31,7 +31,7 @@ def _write_preview_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     width = 360
     height = 240
-    image = bpy.data.images.new("BName_TestPreview_Texture", width=width, height=height, alpha=True)
+    image = bpy.data.images.new("BManga_TestPreview_Texture", width=width, height=height, alpha=True)
     pixels = [0.0] * (width * height * 4)
     for y in range(height):
         for x in range(width):
@@ -57,7 +57,7 @@ def _save_composited_preview(source: bpy.types.Image, alpha: bpy.types.Image, pa
     source_h = int(source.size[1])
     source_pixels = list(source.pixels[:])
     alpha_pixels = list(alpha.pixels[:])
-    out = bpy.data.images.new("BName_TestPreview_Composited", width=width, height=height, alpha=True)
+    out = bpy.data.images.new("BManga_TestPreview_Composited", width=width, height=height, alpha=True)
     pixels = [0.0] * (width * height * 4)
     bg = (0.88, 0.88, 0.88)
     for y in range(height):
@@ -81,12 +81,12 @@ def _save_composited_preview(source: bpy.types.Image, alpha: bpy.types.Image, pa
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    from bname_dev_border_texture_visual.utils import coma_border_object, coma_border_texture, coma_plane, paths
+    from bmanga_dev_border_texture_visual.utils import coma_border_object, coma_border_texture, coma_plane, paths
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.loaded = True
-    work_dir = Path(tempfile.mkdtemp(prefix="bname_border_texture_visual_")) / "Visual.bname"
+    work_dir = Path(tempfile.mkdtemp(prefix="bmanga_border_texture_visual_")) / "Visual.bmanga"
     work.work_dir = str(work_dir)
     page = work.pages.add()
     page.id = "p0001"
@@ -116,12 +116,12 @@ def main() -> None:
     attr = plane.data.attributes.get(coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
     assert attr is not None, "コマ面メッシュに輪郭ぼかし濃度がありません"
     mat = plane.data.materials[0]
-    assert mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+    assert mat.node_tree.nodes.get("BManga_ComaSoftMask") is not None, (
         "コマ面素材に輪郭ぼかし濃度ノードがありません"
     )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print("BNAME_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK")
+    print("BMANGA_COMA_BORDER_TEXTURE_VISUAL_CHECK_OK")
 
 
 main()

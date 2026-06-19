@@ -4,11 +4,11 @@
 複雑な設定のフキダシで、線無しや輪郭ぼかしのコマでテストを行い、
 コマ範囲外がマスクで切られているか確認する。
 
-シナリオは BNAME_SCENARIO 環境変数で切替 (1 シナリオ = 1 プロセス).
+シナリオは BMANGA_SCENARIO 環境変数で切替 (1 シナリオ = 1 プロセス).
 
 走らせ方:
-  BNAME_SCENARIO=01_solid_thin & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_image_mask_complex_repro.py"
+  BMANGA_SCENARIO=01_solid_thin & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_image_mask_complex_repro.py"
 """
 
 from __future__ import annotations
@@ -23,19 +23,19 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_COMPLEX_MASK_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_complex_mask_"))
-_SCENARIO_NAME = os.environ.get("BNAME_SCENARIO", "01_solid_thin")
+_OUT_ENV = os.environ.get("BMANGA_COMPLEX_MASK_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_complex_mask_"))
+_SCENARIO_NAME = os.environ.get("BMANGA_SCENARIO", "01_solid_thin")
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_complex_mask",
+        "bmanga_dev_complex_mask",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_complex_mask"] = mod
+    sys.modules["bmanga_dev_complex_mask"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -181,14 +181,14 @@ def main():
     case_fn = CASES.get(_SCENARIO_NAME)
     assert case_fn is not None, f"unknown scenario: {_SCENARIO_NAME}"
 
-    from bname_dev_complex_mask.core.work import get_work
-    from bname_dev_complex_mask.utils import balloon_curve_object
-    from bname_dev_complex_mask.utils import coma_plane, coma_border_object
-    from bname_dev_complex_mask.utils.layer_hierarchy import coma_stack_key
-    from bname_dev_complex_mask.utils import page_grid
+    from bmanga_dev_complex_mask.core.work import get_work
+    from bmanga_dev_complex_mask.utils import balloon_curve_object
+    from bmanga_dev_complex_mask.utils import coma_plane, coma_border_object
+    from bmanga_dev_complex_mask.utils.layer_hierarchy import coma_stack_key
+    from bmanga_dev_complex_mask.utils import page_grid
 
-    temp_root = Path(tempfile.mkdtemp(prefix=f"bname_complex_{_SCENARIO_NAME}_"))
-    res = bpy.ops.bname.work_new(filepath=str(temp_root / f"{_SCENARIO_NAME}.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix=f"bmanga_complex_{_SCENARIO_NAME}_"))
+    res = bpy.ops.bmanga.work_new(filepath=str(temp_root / f"{_SCENARIO_NAME}.bmanga"))
     assert "FINISHED" in res, res
 
     scene = bpy.context.scene

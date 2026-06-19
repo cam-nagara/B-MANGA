@@ -117,7 +117,7 @@ def _mm_to_region_2d(region, rv3d, x_mm: float, y_mm: float):
 def _compute_page_offset(context) -> tuple[float, float]:
     """overview モード時の active ページの grid offset (mm) を返す."""
     scene = context.scene if context else bpy.context.scene
-    if scene is None or not getattr(scene, "bname_overview_mode", False):
+    if scene is None or not getattr(scene, "bmanga_overview_mode", False):
         return (0.0, 0.0)
     work = get_work(context)
     if work is None or not work.loaded:
@@ -125,7 +125,7 @@ def _compute_page_offset(context) -> tuple[float, float]:
     idx = work.active_page_index
     if not (0 <= idx < len(work.pages)):
         return (0.0, 0.0)
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
@@ -187,10 +187,10 @@ def _snap_value(value_mm: float, candidates, threshold_mm: float):
 # ---- オペレータ ----
 
 
-class BNAME_OT_coma_edit_vertices(Operator):
+class BMANGA_OT_coma_edit_vertices(Operator):
     """選択中コマの頂点・辺をビューポート上でドラッグ編集."""
 
-    bl_idname = "bname.coma_edit_vertices"
+    bl_idname = "bmanga.coma_edit_vertices"
     bl_label = "コマ枠を編集 (頂点/辺ドラッグ)"
     bl_options = {"REGISTER"}
 
@@ -626,7 +626,7 @@ class BNAME_OT_coma_edit_vertices(Operator):
 # ---- 描画 (POST_PIXEL) ----
 
 
-def _draw_callback(op: "BNAME_OT_coma_edit_vertices") -> None:
+def _draw_callback(op: "BMANGA_OT_coma_edit_vertices") -> None:
     """modal 中の頂点/辺ハンドルとスナップガイドを描画."""
     try:
         entry = op._entry
@@ -747,7 +747,7 @@ def _draw_snap_line(
 
 # ---- 登録 ----
 
-_CLASSES = (BNAME_OT_coma_edit_vertices,)
+_CLASSES = (BMANGA_OT_coma_edit_vertices,)
 
 
 def register() -> None:

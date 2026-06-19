@@ -1,8 +1,8 @@
-"""B-Name と B-Name-Render の共通設定を双方向同期する.
+"""B-MANGA と B-MANGA Render の共通設定を双方向同期する.
 
 両アドオンは同じ Scene に、同じ意味の設定を別名で二重に登録している
 (魚眼FOV / ページ画像スケール / 魚眼モード / 縮小モード / 縮小率 /
-元解像度X / 元解像度Y)。本モジュールは B-Name 側に常駐し、短い周期の
+元解像度X / 元解像度Y)。本モジュールは B-MANGA 側に常駐し、短い周期の
 タイマーで「前回値からどちらが変わったか」を判定して、変わった側の値を
 もう片方へ反映する。値が一致していれば何もしない。
 
@@ -11,10 +11,10 @@
   プロパティでは ``depsgraph_update_post`` も発火しないため、どちらも
   単独では信頼できない。タイマー巡回 + 前回値スナップショット差分なら、
   更新コールバックの有無やプロパティの種類に依存せず確実に同期できる。
-- 同期は Scene 上の属性名を通して行う。B-Name-Render 側にも即時反映の
+- 同期は Scene 上の属性名を通して行う。B-MANGA Render 側にも即時反映の
   更新処理があるが、ファイル読込直後や片方だけ先に有効化された場合に備え、
-  B-Name 側のタイマーでも差分を補正する。
-- ファイルを開いた直後は B-Name 側の値を正として B-Name-Render へ揃える。
+  B-MANGA 側のタイマーでも差分を補正する。
+- ファイルを開いた直後は B-MANGA 側の値を正として B-MANGA Render へ揃える。
 """
 
 from __future__ import annotations
@@ -34,32 +34,32 @@ _BUSY = False
 _snapshot: dict[str, object] = {}
 # スナップショットはアクティブシーン 1 つぶんの履歴。シーンが切り替わったら
 # 前シーンの記録で誤った向きに同期しないよう破棄し、新シーンは読込時と同じく
-# B-Name 側を正として扱う。
+# B-MANGA 側を正として扱う。
 _last_scene_ptr: int | None = None
 
-# (キー名, kind, bname=(pointer, prop), render=(pointer, prop))
+# (キー名, kind, bmanga=(pointer, prop), render=(pointer, prop))
 #   pointer=None  → scene 直下、 pointer="xxx" → scene.xxx.<prop>
 _PAIRS: tuple[tuple, ...] = (
     ("fisheye_fov", "float",
-     (None, "bname_coma_camera_fisheye_fov"),
+     (None, "bmanga_coma_camera_fisheye_fov"),
      (None, "fisheye_fov")),
     ("bg_images_scale", "float",
-     ("bname_coma_camera_settings", "bg_images_scale"),
+     ("bmanga_coma_camera_settings", "bg_images_scale"),
      ("my_tool", "bg_images_scale")),
     ("fisheye_layout_mode", "bool",
-     (None, "bname_coma_camera_fisheye_layout_mode"),
+     (None, "bmanga_coma_camera_fisheye_layout_mode"),
      (None, "fisheye_layout_mode")),
     ("reduction_mode", "bool",
-     (None, "bname_coma_camera_reduction_mode"),
+     (None, "bmanga_coma_camera_reduction_mode"),
      (None, "reduction_mode")),
     ("preview_scale_percentage", "float",
-     (None, "bname_coma_camera_preview_scale_percentage"),
+     (None, "bmanga_coma_camera_preview_scale_percentage"),
      (None, "preview_scale_percentage")),
     ("original_resolution_x", "int",
-     (None, "bname_coma_camera_original_resolution_x"),
+     (None, "bmanga_coma_camera_original_resolution_x"),
      (None, "original_resolution_x")),
     ("original_resolution_y", "int",
-     (None, "bname_coma_camera_original_resolution_y"),
+     (None, "bmanga_coma_camera_original_resolution_y"),
      (None, "original_resolution_y")),
 )
 
@@ -110,10 +110,10 @@ def _equal(kind: str, a, b) -> bool:
     return bool(a) == bool(b)
 
 
-def _reconcile(scene, *, force_bname_canonical: bool = False) -> None:
+def _reconcile(scene, *, force_bmanga_canonical: bool = False) -> None:
     """共通設定を 1 回ぶん突き合わせて同期する.
 
-    ``force_bname_canonical`` のときは差分判定をせず B-Name 側を正とする
+    ``force_bmanga_canonical`` のときは差分判定をせず B-MANGA 側を正とする
     (ファイル読込直後など)。
     """
     global _BUSY, _last_scene_ptr
@@ -125,10 +125,10 @@ def _reconcile(scene, *, force_bname_canonical: bool = False) -> None:
         ptr = None
     if ptr != _last_scene_ptr:
         # アクティブシーンが変わった (or 初回)。前シーンの履歴は使わず、
-        # この新シーンは B-Name 側を正として一度揃える。
+        # この新シーンは B-MANGA 側を正として一度揃える。
         _snapshot.clear()
         _last_scene_ptr = ptr
-        force_bname_canonical = True
+        force_bmanga_canonical = True
     _BUSY = True
     try:
         for name, kind, b_spec, r_spec in _PAIRS:
@@ -143,7 +143,7 @@ def _reconcile(scene, *, force_bname_canonical: bool = False) -> None:
                 snap = _snapshot.get(name)
                 b_changed = snap is None or not _equal(kind, b_val, snap)
                 r_changed = snap is None or not _equal(kind, r_val, snap)
-                if force_bname_canonical or (b_changed and r_changed) or (
+                if force_bmanga_canonical or (b_changed and r_changed) or (
                     b_changed and not r_changed
                 ):
                     _set(scene, r_spec, kind, b_val)
@@ -161,10 +161,10 @@ def _reconcile(scene, *, force_bname_canonical: bool = False) -> None:
         _BUSY = False
 
 
-def reconcile_now(*, force_bname_canonical: bool = False) -> None:
+def reconcile_now(*, force_bmanga_canonical: bool = False) -> None:
     _reconcile(
         getattr(bpy.context, "scene", None),
-        force_bname_canonical=force_bname_canonical,
+        force_bmanga_canonical=force_bmanga_canonical,
     )
 
 
@@ -184,7 +184,7 @@ def _on_load_post(_filepath) -> None:
     try:
         _reconcile(
             getattr(bpy.context, "scene", None),
-            force_bname_canonical=True,
+            force_bmanga_canonical=True,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("cross-addon settings load reconcile failed")

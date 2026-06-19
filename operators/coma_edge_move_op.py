@@ -33,6 +33,7 @@ from ..utils import (
     page_browser,
     page_grid,
     page_range,
+    coma_gutter_snap,
     coma_edge_adjacency,
     coma_vertex_edit,
     object_selection,
@@ -317,7 +318,7 @@ def _all_coma_edges_world(
     返値: [(page_idx, coma_idx, edge_idx, (x1,y1), (x2,y2)), ...]
     """
     scene = getattr(context, "scene", None) or bpy.context.scene
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
@@ -351,7 +352,7 @@ def _all_coma_edges_world(
 
 def _page_offset(work, page_idx: int) -> tuple[float, float]:
     scene = bpy.context.scene
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
@@ -698,7 +699,7 @@ def find_selected_handle_at_event(context, event) -> dict | None:
     """現在の枠線/コマ選択から ▲ ハンドルをイベント位置で解決する.
 
     解決の優先順位:
-    1. WM の ``bname_edge_select_*`` (kind: edge / border / vertex)
+    1. WM の ``bmanga_edge_select_*`` (kind: edge / border / vertex)
     2. ``page.active_coma_index`` (専用ツールを通っていなくても、
        オブジェクトツールやアウトライナーでコマがアクティブなら ▲ を反応させる)
 
@@ -718,9 +719,9 @@ def find_selected_handle_at_event(context, event) -> dict | None:
     area, region, rv3d, mx, my = view
 
     candidates: list[dict] = []
-    kind = getattr(wm, "bname_edge_select_kind", "none")
-    page_index = int(getattr(wm, "bname_edge_select_page", -1))
-    coma_index = int(getattr(wm, "bname_edge_select_coma", -1))
+    kind = getattr(wm, "bmanga_edge_select_kind", "none")
+    page_index = int(getattr(wm, "bmanga_edge_select_page", -1))
+    coma_index = int(getattr(wm, "bmanga_edge_select_coma", -1))
     if kind in {"edge", "border", "vertex"} and 0 <= page_index < len(work.pages):
         page_obj = work.pages[page_index]
         comas = list(getattr(page_obj, "comas", []) or [])
@@ -730,7 +731,7 @@ def find_selected_handle_at_event(context, event) -> dict | None:
                     "type": kind if kind in {"edge", "border", "vertex"} else "border",
                     "page": page_index,
                     "coma": coma_index,
-                    "edge": int(getattr(wm, "bname_edge_select_edge", -1)),
+                    "edge": int(getattr(wm, "bmanga_edge_select_edge", -1)),
                 }
             )
     # フォールバック: page.active_coma_index (オブジェクトツール / アウト
@@ -770,13 +771,13 @@ def find_selected_handle_at_event(context, event) -> dict | None:
 # ---------- Modal Operator ----------
 
 
-class BNAME_OT_coma_edge_move(Operator):
+class BMANGA_OT_coma_edge_move(Operator):
     """コマ枠編集の内部オペレーター: 辺/頂点を選択 → ドラッグ移動 + 色/太さ編集.
 
     シングルクリックで辺、ダブルクリックで枠線全体を選択する。
     """
 
-    bl_idname = "bname.coma_edge_move"
+    bl_idname = "bmanga.coma_edge_move"
     bl_label = "コマ枠編集（内部）"
     bl_options = {"REGISTER", "UNDO", "INTERNAL"}
 
@@ -979,7 +980,7 @@ class BNAME_OT_coma_edge_move(Operator):
             self.finish_from_external(context, keep_selection=True)
             try:
                 with context.temp_override(area=self._area, region=self._region):
-                    bpy.ops.bname.coma_knife_cut("INVOKE_DEFAULT")
+                    bpy.ops.bmanga.coma_knife_cut("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 _logger.exception("edge_move: failed to switch to knife_cut")
             return {"FINISHED"}
@@ -996,12 +997,12 @@ class BNAME_OT_coma_edge_move(Operator):
             self.finish_from_external(context, keep_selection=True)
             try:
                 with context.temp_override(area=self._area, region=self._region):
-                    bpy.ops.bname.layer_move_tool("INVOKE_DEFAULT")
+                    bpy.ops.bmanga.layer_move_tool("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 _logger.exception("edge_move: failed to switch to layer_move")
             return {"FINISHED"}
 
-        # B-Name の他ツール/モード切替ショートカットで modal を終了して譲る
+        # B-MANGA の他ツール/モード切替ショートカットで modal を終了して譲る
         if (
             event.value == "PRESS"
             and event.type in {"O", "P", "COMMA", "PERIOD", "Z", "X"}
@@ -1239,7 +1240,7 @@ class BNAME_OT_coma_edge_move(Operator):
                     # 単純クリック (PRESS-RELEASE) では save を走らせない
                     if changed:
                         self._save_changes()
-                        self._push_undo_step("B-Name: 枠線移動")
+                        self._push_undo_step("B-MANGA: 枠線移動")
                     elif not moved:
                         self._tag_redraw()
                     self._tag_redraw()
@@ -1611,6 +1612,12 @@ class BNAME_OT_coma_edge_move(Operator):
             ((ifr.x2, ifr.y2), (ifr.x, ifr.y2), "inner"),
             ((ifr.x, ifr.y2), (ifr.x, ifr.y), "inner"),
         ])
+        if bool(getattr(panel, "snap_gutter_to_finish", False)):
+            fg_a, fg_b = coma_gutter_snap.finish_gutter_line_for_page(
+                self._work,
+                int(sel["page"]),
+            )
+            candidate_lines.append((fg_a, fg_b, "finish_gutter"))
         # 他 panel の edge (同 panel の対辺は拡張先として不適切なので除外)
         for panel_i2, p2 in enumerate(page.comas):
             if panel_i2 == sel["coma"]:
@@ -1757,6 +1764,7 @@ class BNAME_OT_coma_edge_move(Operator):
                 kind_label = {
                     "bleed_outer": "裁ち落とし枠の線幅分外側",
                     "inner": "基本枠",
+                    "finish_gutter": "ノド側の仕上がり枠",
                     "coma": "隣接コマ辺にピッタリ",
                 }.get(kind, "拡張先")
                 break
@@ -1769,7 +1777,7 @@ class BNAME_OT_coma_edge_move(Operator):
             self._save_changes()
         except Exception:  # noqa: BLE001
             _logger.exception("edge_move: extend save failed")
-        self._push_undo_step("B-Name: 枠線拡張")
+        self._push_undo_step("B-MANGA: 枠線拡張")
         self.report({"INFO"}, f"枠線を拡張: {kind_label}")
 
     # ---- 形状変化検出 ----
@@ -1897,13 +1905,13 @@ def extend_selected_handle_at_event(context, event) -> bool:
     panel = page.comas[coma_index]
     # クリック前の選択 kind を保持 (extend 後にこの kind へ戻す)
     wm = getattr(context, "window_manager", None)
-    pre_kind = str(getattr(wm, "bname_edge_select_kind", "none") or "none") if wm is not None else "none"
-    pre_edge_index = int(getattr(wm, "bname_edge_select_edge", -1)) if wm is not None else -1
+    pre_kind = str(getattr(wm, "bmanga_edge_select_kind", "none") or "none") if wm is not None else "none"
+    pre_edge_index = int(getattr(wm, "bmanga_edge_select_edge", -1)) if wm is not None else -1
     work.active_page_index = page_index
     page.active_coma_index = coma_index
     scene = getattr(context, "scene", None)
-    if scene is not None and hasattr(scene, "bname_active_layer_kind"):
-        scene.bname_active_layer_kind = "coma"
+    if scene is not None and hasattr(scene, "bmanga_active_layer_kind"):
+        scene.bmanga_active_layer_kind = "coma"
     object_selection.select_key(
         context,
         object_selection.coma_key(page, panel),
@@ -1925,7 +1933,7 @@ def extend_selected_handle_at_event(context, event) -> bool:
         "edge": edge_index,
     }
     shim = _EdgeExtendShim(context, work, selection)
-    BNAME_OT_coma_edge_move._do_extend(shim, int(hit["direction"]))
+    BMANGA_OT_coma_edge_move._do_extend(shim, int(hit["direction"]))
     # クリック前の kind を復元 (border 選択中なら border に戻し、 4 辺全ての
     # ▲ ハンドルを再表示できるようにする → 連続で別辺をクリック可能)
     if pre_kind == "edge" and 0 <= pre_edge_index:
@@ -1952,7 +1960,7 @@ def extend_selected_handle_at_event(context, event) -> bool:
 # ---------- POST_PIXEL 描画 ----------
 
 
-def _hover_pointer_for_modal(op: "BNAME_OT_coma_edge_move") -> tuple[int, int] | None:
+def _hover_pointer_for_modal(op: "BMANGA_OT_coma_edge_move") -> tuple[int, int] | None:
     """modal の draw_callback 用に WM 経由で hover カーソル位置を取得."""
     try:
         return edge_selection.get_overlay_pointer(bpy.context)
@@ -1982,7 +1990,7 @@ def _vertex_marker_color(point, pointer, *, selected: bool) -> tuple[float, floa
     return COLOR_VERTEX_ACTIVE if selected else COLOR_SELECTED_VERTEX
 
 
-def _draw_callback(op: "BNAME_OT_coma_edge_move") -> None:
+def _draw_callback(op: "BMANGA_OT_coma_edge_move") -> None:
     sel = op._selection
     if sel is None:
         return
@@ -2252,7 +2260,7 @@ def _draw_square_marker(
 
 
 _CLASSES = (
-    BNAME_OT_coma_edge_move,
+    BMANGA_OT_coma_edge_move,
 )
 
 

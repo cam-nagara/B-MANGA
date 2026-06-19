@@ -1,9 +1,9 @@
 """カスタム右クリックコンテキストメニュー.
 
 Outliner / 3D ビュー / 各ツール (フキダシ/テキスト/効果線/Object/枠線) で
-右クリック時に B-Name レイヤーの「詳細設定」ダイアログを開けるようにする。
-active_object の ``bname_kind`` / ``bname_id`` を見て kind ごとの詳細を
-``bname.layer_detail_open`` operator で表示する。
+右クリック時に B-MANGA レイヤーの「詳細設定」ダイアログを開けるようにする。
+active_object の ``bmanga_kind`` / ``bmanga_id`` を見て kind ごとの詳細を
+``bmanga.layer_detail_open`` operator で表示する。
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ def _selected_balloon_count(context) -> int:
 
 
 def _active_managed_object(context):
-    """B-Name 管理下のレイヤー Object を解決する.
+    """B-MANGA 管理下のレイヤー Object を解決する.
 
     優先順位:
         1. ``context.active_object`` (3D ビューでの選択)
@@ -76,7 +76,7 @@ def _managed_object_matches_stack_item(obj, item) -> bool:
     kind = str(getattr(item, "kind", "") or "")
     key = str(getattr(item, "key", "") or "")
     obj_kind = on.get_kind(obj)
-    obj_id = on.get_bname_id(obj)
+    obj_id = on.get_bmanga_id(obj)
     if kind == "effect_legacy":
         kind = "effect"
     if obj_kind == "effect_legacy":
@@ -98,10 +98,10 @@ def _active_managed_object_for_stack_item(context, item):
 
 def _active_stack_item_no_sync(context):
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None:
         return None
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
@@ -139,10 +139,10 @@ def selection_command_items(context) -> list[dict]:
     except Exception:  # noqa: BLE001
         selected_linkable_count = 0
         selected_any_linked = False
-    detail_operator = "bname.layer_stack_detail"
+    detail_operator = "bmanga.layer_stack_detail"
     if kind in {"image", "raster", "fill", "balloon", "text", "gp", "effect", "effect_legacy"}:
         if _active_managed_object_for_stack_item(context, item) is not None:
-            detail_operator = "bname.layer_detail_open"
+            detail_operator = "bmanga.layer_detail_open"
     items = [
         {
             "label": "詳細設定",
@@ -152,37 +152,37 @@ def selection_command_items(context) -> list[dict]:
         },
         {
             "label": "コピー",
-            "operator": "bname.layer_clipboard_copy",
+            "operator": "bmanga.layer_clipboard_copy",
             "icon": "COPYDOWN",
             "enabled": has_item and normalized_kind in copyable_kinds,
         },
         {
             "label": "貼り付け",
-            "operator": "bname.layer_clipboard_paste",
+            "operator": "bmanga.layer_clipboard_paste",
             "icon": "PASTEDOWN",
             "enabled": has_layer_clipboard,
         },
         {
             "label": "複製",
-            "operator": "bname.layer_stack_duplicate",
+            "operator": "bmanga.layer_stack_duplicate",
             "icon": "DUPLICATE",
             "enabled": has_item,
         },
         {
             "label": "リンク複製",
-            "operator": "bname.layer_stack_link_duplicate",
+            "operator": "bmanga.layer_stack_link_duplicate",
             "icon": "LINKED",
             "enabled": has_item and normalized_kind in {"balloon", "effect"},
         },
         {
             "label": "選択レイヤーをリンク",
-            "operator": "bname.layer_stack_link_selected",
+            "operator": "bmanga.layer_stack_link_selected",
             "icon": "LINKED",
             "enabled": has_item and selected_linkable_count >= 2,
         },
         {
             "label": "リンクを解除",
-            "operator": "bname.layer_stack_unlink_selected",
+            "operator": "bmanga.layer_stack_unlink_selected",
             "icon": "UNLINKED",
             "enabled": has_item and selected_any_linked,
         },
@@ -192,7 +192,7 @@ def selection_command_items(context) -> list[dict]:
             5,
             {
                 "label": "中心点を中心へ戻す",
-                "operator": "bname.reset_center_point",
+                "operator": "bmanga.reset_center_point",
                 "icon": "PIVOT_BOUNDBOX",
                 "enabled": has_item,
             },
@@ -202,7 +202,7 @@ def selection_command_items(context) -> list[dict]:
             6,
             {
                 "label": "自由変形",
-                "operator": "bname.free_transform_mode",
+                "operator": "bmanga.free_transform_mode",
                 "icon": "MOD_LATTICE",
                 "enabled": has_item,
             },
@@ -239,7 +239,7 @@ def selection_command_items(context) -> list[dict]:
             7 if normalized_kind in {"balloon", "effect"} else 5,
             {
                 "label": "自由変形をリセット",
-                "operator": "bname.reset_free_transform",
+                "operator": "bmanga.reset_free_transform",
                 "icon": "LOOP_BACK",
                 "enabled": has_item and ft_has_transform,
             },
@@ -249,7 +249,7 @@ def selection_command_items(context) -> list[dict]:
             8,
             {
                 "label": "拡大・縮小・回転",
-                "operator": "bname.balloon_free_transform_scale_rotate",
+                "operator": "bmanga.balloon_free_transform_scale_rotate",
                 "icon": "FULLSCREEN_ENTER",
                 "enabled": has_item,
             },
@@ -257,7 +257,7 @@ def selection_command_items(context) -> list[dict]:
         items.append(
             {
                 "label": "フキダシを結合",
-                "operator": "bname.balloon_merge_selected",
+                "operator": "bmanga.balloon_merge_selected",
                 "icon": "FILE_FOLDER",
                 "enabled": _selected_balloon_count(context) >= 2,
             }
@@ -265,13 +265,13 @@ def selection_command_items(context) -> list[dict]:
         items.extend([
             {
                 "label": "しっぽをコピー",
-                "operator": "bname.balloon_tail_clipboard_copy",
+                "operator": "bmanga.balloon_tail_clipboard_copy",
                 "icon": "COPYDOWN",
                 "enabled": balloon_has_tails,
             },
             {
                 "label": "しっぽを貼り付け",
-                "operator": "bname.balloon_tail_clipboard_paste",
+                "operator": "bmanga.balloon_tail_clipboard_paste",
                 "icon": "PASTEDOWN",
                 "enabled": has_tail_clipboard,
             },
@@ -279,7 +279,7 @@ def selection_command_items(context) -> list[dict]:
     items.append(
         {
             "label": "削除",
-            "operator": "bname.layer_stack_delete",
+            "operator": "bmanga.layer_stack_delete",
             "icon": "TRASH",
             "enabled": has_item,
         }
@@ -301,12 +301,12 @@ def _draw_selection_command_items(layout, context) -> bool:
         if not op_id:
             row.label(text=label, icon=icon)
             continue
-        if op_id == "bname.layer_stack_detail":
+        if op_id == "bmanga.layer_stack_detail":
             row.operator_context = "INVOKE_DEFAULT"
             op = row.operator(op_id, text=label, icon=icon)
-            op.index = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+            op.index = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
             op.offset_from_selection = True
-        elif op_id == "bname.layer_detail_open":
+        elif op_id == "bmanga.layer_detail_open":
             row.operator_context = "INVOKE_DEFAULT"
             row.operator(op_id, text=label, icon=icon)
         else:
@@ -322,7 +322,7 @@ def _draw_layer_commands(layout, context) -> None:
         plain_curve = _active_plain_curve_object(context)
         if plain_curve is not None:
             layout.label(text=str(getattr(plain_curve, "name", "") or "カーブ"), icon="CURVE_BEZCURVE")
-            layout.operator("bname.balloon_register_selected_curve", text="選択カーブをフキダシに登録", icon="MOD_CURVE")
+            layout.operator("bmanga.balloon_register_selected_curve", text="選択カーブをフキダシに登録", icon="MOD_CURVE")
             return
         item = _active_stack_item_no_sync(context)
         if item is not None:
@@ -330,7 +330,7 @@ def _draw_layer_commands(layout, context) -> None:
             layout.separator()
             _draw_selection_command_items(layout, context)
             return
-        layout.label(text="B-Name レイヤーを選択してください", icon="INFO")
+        layout.label(text="B-MANGA レイヤーを選択してください", icon="INFO")
         return
     kind = on.get_kind(obj)
     title = str(obj.get(on.PROP_TITLE, "") or obj.name)
@@ -340,14 +340,14 @@ def _draw_layer_commands(layout, context) -> None:
         detail_row = layout.row()
         detail_row.operator_context = "INVOKE_DEFAULT"
         detail_row.operator(
-            "bname.layer_detail_open", text="詳細設定", icon="PREFERENCES"
+            "bmanga.layer_detail_open", text="詳細設定", icon="PREFERENCES"
         )
         # フキダシ / 効果線の場合はリンク複製も
         if kind in {"balloon", "effect", "effect_legacy"}:
-            link_op = getattr(bpy.ops.bname, "layer_stack_link_duplicate", None)
+            link_op = getattr(bpy.ops.bmanga, "layer_stack_link_duplicate", None)
             if link_op is not None:
                 layout.operator(
-                    "bname.layer_stack_link_duplicate",
+                    "bmanga.layer_stack_link_duplicate",
                     text="リンク複製",
                     icon="LINKED",
                 )
@@ -360,11 +360,11 @@ def _draw_layer_commands(layout, context) -> None:
     )
 
 
-class BNAME_MT_layer_context(Menu):
-    """B-Name レイヤー Object 用サブメニュー (3D ビュー / Outliner 共通)."""
+class BMANGA_MT_layer_context(Menu):
+    """B-MANGA レイヤー Object 用サブメニュー (3D ビュー / Outliner 共通)."""
 
-    bl_idname = "BNAME_MT_layer_context"
-    bl_label = "B-Name"
+    bl_idname = "BMANGA_MT_layer_context"
+    bl_label = "B-MANGA"
 
     def draw(self, context):
         _draw_layer_commands(self.layout, context)
@@ -373,68 +373,68 @@ class BNAME_MT_layer_context(Menu):
 def open_layer_context_menu() -> bool:
     """ツール側の modal operator から呼び出すヘルパ."""
     try:
-        bpy.ops.wm.call_menu(name=BNAME_MT_layer_context.bl_idname)
+        bpy.ops.wm.call_menu(name=BMANGA_MT_layer_context.bl_idname)
         return True
     except Exception:  # noqa: BLE001
         return False
 
 
 # 旧 idname を維持して既存ツール側の呼出を壊さない (内容は新メニューと同じ)
-class BNAME_MT_selection_context(Menu):
-    bl_idname = "BNAME_MT_selection_context"
-    bl_label = "B-Name"
+class BMANGA_MT_selection_context(Menu):
+    bl_idname = "BMANGA_MT_selection_context"
+    bl_label = "B-MANGA"
 
     def draw(self, context):
         _draw_layer_commands(self.layout, context)
 
 
-class BNAME_MT_object_context(Menu):
+class BMANGA_MT_object_context(Menu):
     """3D ビューの Object 右クリックに append されるサブメニュー."""
 
-    bl_idname = "BNAME_MT_object_context"
-    bl_label = "B-Name"
+    bl_idname = "BMANGA_MT_object_context"
+    bl_label = "B-MANGA"
 
     def draw(self, context):
         layout = self.layout
         _draw_layer_commands(layout, context)
         layout.separator()
-        op_link = getattr(bpy.ops.bname, "open_link_source", None)
+        op_link = getattr(bpy.ops.bmanga, "open_link_source", None)
         if op_link is not None:
-            layout.operator("bname.open_link_source", icon="FILE_BLEND")
-        op_record = getattr(bpy.ops.bname, "record_asset_link", None)
+            layout.operator("bmanga.open_link_source", icon="FILE_BLEND")
+        op_record = getattr(bpy.ops.bmanga, "record_asset_link", None)
         if op_record is not None:
-            layout.operator("bname.record_asset_link", icon="LINKED")
+            layout.operator("bmanga.record_asset_link", icon="LINKED")
 
 
 def _draw_in_object_context(self, context):
-    """3D ビュー Object 右クリックメニューに B-Name サブメニューを差し込む."""
+    """3D ビュー Object 右クリックメニューに B-MANGA サブメニューを差し込む."""
     obj = _active_managed_object(context)
     if obj is None and _active_plain_curve_object(context) is None:
         return
     self.layout.separator()
     self.layout.menu(
-        BNAME_MT_object_context.bl_idname,
+        BMANGA_MT_object_context.bl_idname,
         icon="OUTLINER_OB_GROUP_INSTANCE",
     )
 
 
 def _draw_in_outliner_context(self, context):
-    """Outliner 右クリックメニューに B-Name サブメニューを差し込む.
+    """Outliner 右クリックメニューに B-MANGA サブメニューを差し込む.
 
     Outliner では Object 未選択でも常にサブメニューを出す (選択中の場合は
     詳細設定が有効、未選択は案内ラベルのみ)。
     """
     self.layout.separator()
     self.layout.menu(
-        BNAME_MT_object_context.bl_idname,
+        BMANGA_MT_object_context.bl_idname,
         icon="OUTLINER_OB_GROUP_INSTANCE",
     )
 
 
 _CLASSES = (
-    BNAME_MT_layer_context,
-    BNAME_MT_selection_context,
-    BNAME_MT_object_context,
+    BMANGA_MT_layer_context,
+    BMANGA_MT_selection_context,
+    BMANGA_MT_object_context,
 )
 
 

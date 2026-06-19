@@ -1,7 +1,7 @@
 """Blender 実機用: ``paper.paper_color`` 変更が paper_bg Material に即時反映されるかの回帰テスト.
 
 期待: 用紙パネルで ``paper_color`` を変えると、 共有 Material
-``BName_PaperBackground`` の Emission Color と ``mat.diffuse_color`` が
+``BManga_PaperBackground`` の Emission Color と ``mat.diffuse_color`` が
 即時に追従する (Solid 表示 + color_type=MATERIAL でビューポートに反映)。
 """
 
@@ -20,12 +20,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -37,7 +37,7 @@ def _emission_color(mat) -> tuple[float, float, float, float]:
         if node.type == "EMISSION":
             c = node.inputs["Color"].default_value
             return (float(c[0]), float(c[1]), float(c[2]), float(c[3]))
-    raise AssertionError("Emission node not found in BName_PaperBackground")
+    raise AssertionError("Emission node not found in BManga_PaperBackground")
 
 
 def _approx_equal(a, b, tol: float = 1e-5) -> bool:
@@ -45,24 +45,24 @@ def _approx_equal(a, b, tol: float = 1e-5) -> bool:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_paper_color_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_paper_color_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PaperColor.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PaperColor.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.core.work import get_work
-        from bname_dev.utils import paper_bg_object as pbg
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.utils import paper_bg_object as pbg
 
         work = get_work(bpy.context)
         assert work is not None
         paper = work.paper
 
         mat = bpy.data.materials.get(pbg.PAPER_BG_MATERIAL_NAME)
-        assert mat is not None, "BName_PaperBackground material should exist after work_new"
+        assert mat is not None, "BManga_PaperBackground material should exist after work_new"
         assert _approx_equal(mat.diffuse_color, (1.0, 1.0, 1.0, 1.0)), tuple(mat.diffuse_color)
         assert _approx_equal(_emission_color(mat), (1.0, 1.0, 1.0, 1.0)), _emission_color(mat)
 
@@ -98,7 +98,7 @@ def main() -> None:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_PAPER_COLOR_OK")
+    print("BMANGA_PAPER_COLOR_OK")
 
 
 if __name__ == "__main__":

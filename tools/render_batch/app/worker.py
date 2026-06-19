@@ -105,7 +105,7 @@ class Worker:
             return
         self._emit("job_started", job=job)
 
-        work = Path(tempfile.mkdtemp(prefix="bname_batch_"))
+        work = Path(tempfile.mkdtemp(prefix="bmanga_batch_"))
         result_path = work / "result.json"
         timing_path = work / "timing.json"
         log_path = work / "blender.log"
@@ -130,7 +130,7 @@ class Worker:
             str(result_path),
         ]
         env = dict(os.environ)
-        env["BNAME_BATCH_LOG"] = str(timing_path)
+        env["BMANGA_BATCH_LOG"] = str(timing_path)
 
         timeout_seconds = self.cfg.job_timeout_minutes * 60.0
         heartbeat_seconds = max(5.0, float(self.cfg.heartbeat_seconds))
@@ -220,7 +220,7 @@ class Worker:
 
 def list_presets(cfg: Config, blend_path: str, timeout: float = 180.0) -> list[str]:
     """指定 .blend のプリセット名一覧を取得（GUI のジョブ追加で使う）。"""
-    work = Path(tempfile.mkdtemp(prefix="bname_list_"))
+    work = Path(tempfile.mkdtemp(prefix="bmanga_list_"))
     result_path = work / "list.json"
     blender = blender_locator.find(cfg.blender_exe)
     if not blender:

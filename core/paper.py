@@ -177,11 +177,11 @@ def _display_setter(mm_attr: str):
     return _set
 
 
-class BNamePaperSettings(bpy.types.PropertyGroup):
+class BMangaPaperSettings(bpy.types.PropertyGroup):
     """用紙寸法・解像度・基本枠・セーフライン設定."""
 
     # --- キャンバス全体 ---
-    # 単位は B-Name 独自の ``unit`` プロパティで管理するため、Blender の
+    # 単位は B-MANGA 独自の ``unit`` プロパティで管理するため、Blender の
     # シーン単位に依存する ``unit="LENGTH"`` は使わない (FloatProperty の
     # 既定 ``unit="NONE"`` にする)。
     canvas_width_mm: FloatProperty(  # type: ignore[valid-type]
@@ -546,7 +546,7 @@ class BNamePaperSettings(bpy.types.PropertyGroup):
     )
 
 
-_CLASSES = (BNamePaperSettings,)
+_CLASSES = (BMangaPaperSettings,)
 
 
 def register() -> None:

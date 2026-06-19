@@ -10,10 +10,10 @@ from ..utils import snap
 from ..utils.geom import Rect
 
 
-class BNAME_OT_snap_active_coma(Operator):
+class BMANGA_OT_snap_active_coma(Operator):
     """選択中コマを用紙/他コマへスナップ (4 辺一括)."""
 
-    bl_idname = "bname.snap_active_coma"
+    bl_idname = "bmanga.snap_active_coma"
     bl_label = "選択コマをスナップ"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -54,7 +54,7 @@ class BNAME_OT_snap_active_coma(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_snap_active_coma,)
+_CLASSES = (BMANGA_OT_snap_active_coma,)
 
 
 def register() -> None:

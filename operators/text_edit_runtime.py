@@ -1,4 +1,4 @@
-"""Runtime helpers for B-Name inline text editing."""
+"""Runtime helpers for B-MANGA inline text editing."""
 
 from __future__ import annotations
 
@@ -67,12 +67,12 @@ _IME_COMPOSITION_ACTIVE = False
 _USER32 = None
 _IMM32 = None
 _VIEW_EDIT_STATE_KEYS = (
-    "bname_text_edit_active",
-    "bname_text_edit_filepath",
-    "bname_text_edit_page_id",
-    "bname_text_edit_text_id",
-    "bname_text_edit_cursor_index",
-    "bname_text_edit_selection_anchor",
+    "bmanga_text_edit_active",
+    "bmanga_text_edit_filepath",
+    "bmanga_text_edit_page_id",
+    "bmanga_text_edit_text_id",
+    "bmanga_text_edit_cursor_index",
+    "bmanga_text_edit_selection_anchor",
 )
 
 
@@ -151,17 +151,17 @@ def set_view_edit_state(
     wm = getattr(context, "window_manager", None) if context is not None else None
     if wm is None:
         return
-    wm["bname_text_edit_active"] = 1
+    wm["bmanga_text_edit_active"] = 1
     try:
         import bpy
 
-        wm["bname_text_edit_filepath"] = str(getattr(bpy.data, "filepath", "") or "")
+        wm["bmanga_text_edit_filepath"] = str(getattr(bpy.data, "filepath", "") or "")
     except Exception:  # noqa: BLE001
-        wm["bname_text_edit_filepath"] = ""
-    wm["bname_text_edit_page_id"] = str(page_id or "")
-    wm["bname_text_edit_text_id"] = str(text_id or "")
-    wm["bname_text_edit_cursor_index"] = int(cursor_index)
-    wm["bname_text_edit_selection_anchor"] = int(selection_anchor)
+        wm["bmanga_text_edit_filepath"] = ""
+    wm["bmanga_text_edit_page_id"] = str(page_id or "")
+    wm["bmanga_text_edit_text_id"] = str(text_id or "")
+    wm["bmanga_text_edit_cursor_index"] = int(cursor_index)
+    wm["bmanga_text_edit_selection_anchor"] = int(selection_anchor)
 
 
 def clear_view_edit_state(context) -> None:
@@ -177,25 +177,25 @@ def clear_view_edit_state(context) -> None:
 
 def view_edit_state_for_entry(context, page, entry):
     wm = getattr(context, "window_manager", None) if context is not None else None
-    if wm is None or int(wm.get("bname_text_edit_active", 0) or 0) != 1:
+    if wm is None or int(wm.get("bmanga_text_edit_active", 0) or 0) != 1:
         return None
     try:
         import bpy
 
-        if str(wm.get("bname_text_edit_filepath", "") or "") != str(getattr(bpy.data, "filepath", "") or ""):
+        if str(wm.get("bmanga_text_edit_filepath", "") or "") != str(getattr(bpy.data, "filepath", "") or ""):
             return None
     except Exception:  # noqa: BLE001
         pass
-    if str(wm.get("bname_text_edit_page_id", "") or "") != str(getattr(page, "id", "") or ""):
+    if str(wm.get("bmanga_text_edit_page_id", "") or "") != str(getattr(page, "id", "") or ""):
         return None
-    if str(wm.get("bname_text_edit_text_id", "") or "") != str(getattr(entry, "id", "") or ""):
+    if str(wm.get("bmanga_text_edit_text_id", "") or "") != str(getattr(entry, "id", "") or ""):
         return None
     return SimpleNamespace(
         _editing=True,
-        _page_id=str(wm.get("bname_text_edit_page_id", "") or ""),
-        _text_id=str(wm.get("bname_text_edit_text_id", "") or ""),
-        _cursor_index=int(wm.get("bname_text_edit_cursor_index", 0)),
-        _selection_anchor=int(wm.get("bname_text_edit_selection_anchor", -1)),
+        _page_id=str(wm.get("bmanga_text_edit_page_id", "") or ""),
+        _text_id=str(wm.get("bmanga_text_edit_text_id", "") or ""),
+        _cursor_index=int(wm.get("bmanga_text_edit_cursor_index", 0)),
+        _selection_anchor=int(wm.get("bmanga_text_edit_selection_anchor", -1)),
     )
 
 

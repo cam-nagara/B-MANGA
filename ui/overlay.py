@@ -255,7 +255,7 @@ def _free_transform_quad_for_key(context, key: str, rect: Rect):
         return None
     kind, page_id, item_id = object_selection.parse_key(key)
     if kind in {"balloon", "text"}:
-        work = getattr(context.scene, "bname_work", None)
+        work = getattr(context.scene, "bmanga_work", None)
         if kind == "balloon":
             if page_id == OUTSIDE_STACK_KEY:
                 _idx, entry = object_tool_selection.find_shared_balloon_by_key(work, item_id)
@@ -318,7 +318,7 @@ def _draw_object_tool_layer_bounds(context) -> None:
         if kind == "balloon":
             _kind, page_id, item_id = object_selection.parse_key(key)
             try:
-                work = getattr(context.scene, "bname_work", None)
+                work = getattr(context.scene, "bmanga_work", None)
                 _page_index, _page, _idx, entry = object_tool_op._find_balloon_by_key(work, page_id, item_id)
             except Exception:  # noqa: BLE001
                 entry = None
@@ -695,7 +695,7 @@ def _draw_shared_layers(work) -> None:
         context=bpy.context,
         ox_mm=0.0,
         oy_mm=0.0,
-        active=getattr(bpy.context.scene, "bname_active_layer_kind", "") == "text",
+        active=getattr(bpy.context.scene, "bmanga_active_layer_kind", "") == "text",
         entry_visible=lambda entry: bool(getattr(entry, "visible", True)),
         draw_rect_fill=_draw_rect_fill,
         draw_rect_outline=_draw_rect_outline,
@@ -1006,12 +1006,12 @@ def _draw_rect_fill_pixel(context, rect: Rect, color: tuple[float, float, float,
 def _edge_selection_targets_coma(work, page, wm) -> bool:
     if (
         wm is None
-        or getattr(wm, "bname_edge_select_kind", "none")
+        or getattr(wm, "bmanga_edge_select_kind", "none")
         not in {"edge", "border", "vertex"}
     ):
         return False
-    page_index = int(getattr(wm, "bname_edge_select_page", -1))
-    coma_index = int(getattr(wm, "bname_edge_select_coma", -1))
+    page_index = int(getattr(wm, "bmanga_edge_select_page", -1))
+    coma_index = int(getattr(wm, "bmanga_edge_select_coma", -1))
     if not (0 <= page_index < len(work.pages)):
         return False
     selected_page = work.pages[page_index]
@@ -1036,7 +1036,7 @@ def _draw_comas(
     """
     active_stem = ""
     scene = getattr(bpy.context, "scene", None)
-    active_kind = getattr(scene, "bname_active_layer_kind", "") if scene is not None else ""
+    active_kind = getattr(scene, "bmanga_active_layer_kind", "") if scene is not None else ""
     active_page_idx = int(getattr(work, "active_page_index", -1))
     active_page = work.pages[active_page_idx] if 0 <= active_page_idx < len(work.pages) else None
     wm = getattr(bpy.context, "window_manager", None)
@@ -1187,10 +1187,10 @@ def _draw_page_overlay(
     if mode in (MODE_PAGE, MODE_COMA) and page is not None:
         skip_stem = ""
         if mode == MODE_COMA:
-            skip_stem = getattr(context.scene, "bname_current_coma_id", "")
+            skip_stem = getattr(context.scene, "bmanga_current_coma_id", "")
         _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm, skip_preview_stem=skip_stem)
         active_text_guides = False
-        if getattr(context.scene, "bname_active_layer_kind", "") == "text":
+        if getattr(context.scene, "bmanga_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))
             if 0 <= active_idx < len(work.pages):
                 active_page = work.pages[active_idx]
@@ -1227,7 +1227,7 @@ def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
     if cw <= 0 or ch <= 0:
         return work.active_page_index
     from ..utils.page_grid import page_grid_offset_mm as _pg_offset, resolve_gap_mm as _resolve_gap
-    cols = max(1, int(getattr(bpy.context.scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(bpy.context.scene, "bmanga_overview_cols", 4)))
     gap_x, gap_y = _resolve_gap(bpy.context.scene)
     start_side = getattr(paper, "start_side", "right")
     read_direction = getattr(paper, "read_direction", "left")
@@ -1418,9 +1418,9 @@ def _draw_page_header_number_pixel(
 
 def _should_highlight_active_page(context) -> bool:
     scene = getattr(context, "scene", None)
-    if scene is None or not hasattr(scene, "bname_active_layer_kind"):
+    if scene is None or not hasattr(scene, "bmanga_active_layer_kind"):
         return True
-    return getattr(scene, "bname_active_layer_kind", "") == "page"
+    return getattr(scene, "bmanga_active_layer_kind", "") == "page"
 
 
 def _page_highlight_rect(rects, ox_mm: float, oy_mm: float) -> Rect:
@@ -1451,10 +1451,10 @@ def _draw_callback(phase: str = "post") -> None:
     work = get_work(context)
     if work is None or not work.loaded:
         return
-    # B-Name オーバーレイ全体の表示切替 (Phase 3c: Object 表示モード時は OFF)
+    # B-MANGA オーバーレイ全体の表示切替 (Phase 3c: Object 表示モード時は OFF)
     scene_root = context.scene
     if scene_root is not None and not bool(
-        getattr(scene_root, "bname_overlay_enabled", True)
+        getattr(scene_root, "bmanga_overlay_enabled", True)
     ):
         return
     mode = get_mode(context)
@@ -1475,7 +1475,7 @@ def _draw_callback(phase: str = "post") -> None:
         if (
             (
                 mode == MODE_PAGE
-                and getattr(scene, "bname_overview_mode", False)
+                and getattr(scene, "bmanga_overview_mode", False)
             )
             or is_page_browser
         ) and len(work.pages) > 0:
@@ -1487,7 +1487,7 @@ def _draw_callback(phase: str = "post") -> None:
                 resolve_gap_mm as _resolve_gap,
             )
 
-            cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+            cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
             gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
@@ -1535,7 +1535,7 @@ def _draw_callback(phase: str = "post") -> None:
                 resolve_gap_mm as _resolve_gap,
             )
 
-            cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
+            cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
             gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
@@ -1584,7 +1584,7 @@ def _draw_callback(phase: str = "post") -> None:
             page = get_active_page(context)
             if page is not None and not overlay_visibility.page_visible(page):
                 return
-            cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
+            cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
             gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
@@ -1629,10 +1629,10 @@ def _draw_callback(phase: str = "post") -> None:
             pass
 
 
-def apply_bname_shading_mode(context=None) -> int:
-    """全ウィンドウの全 VIEW_3D を B-Name のモード別シェーディングに切替.
+def apply_bmanga_shading_mode(context=None) -> int:
+    """全ウィンドウの全 VIEW_3D を B-MANGA のモード別シェーディングに切替.
 
-    B-Name 作品 UI の見え方を統一する目的:
+    B-MANGA 作品 UI の見え方を統一する目的:
     - 紙面編集 (ページ一覧) も コマ編集 もどちらも shading.type = "RENDERED"。
       フキダシの画像マスクや、 コマ枠のぼかし枠線、 コマ平面のテクスチャ表示が
       すべて同じシェーダーパスで見えるようにする。
@@ -1666,7 +1666,7 @@ def apply_bname_shading_mode(context=None) -> int:
                     shading.type = "RENDERED"
                     count += 1
             except Exception:  # noqa: BLE001
-                _logger.exception("apply_bname_shading_mode: set failed")
+                _logger.exception("apply_bmanga_shading_mode: set failed")
     return count
 
 
@@ -1780,7 +1780,7 @@ def _draw_callback_pixel() -> None:
     # オーバーレイ表示切替 (Phase 3c)
     scene_root = context.scene
     if scene_root is not None and not bool(
-        getattr(scene_root, "bname_overlay_enabled", True)
+        getattr(scene_root, "bmanga_overlay_enabled", True)
     ):
         return
     paper = work.paper
@@ -1795,7 +1795,7 @@ def _draw_callback_pixel() -> None:
 
     if (
         (
-            getattr(scene, "bname_overview_mode", False)
+            getattr(scene, "bmanga_overview_mode", False)
             and mode == MODE_PAGE
         )
         or is_page_browser
@@ -1804,7 +1804,7 @@ def _draw_callback_pixel() -> None:
             is_left_half_page as _is_left_half,
             resolve_gap_mm as _resolve_gap,
         )
-        cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
+        cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm
@@ -1854,7 +1854,7 @@ def _draw_callback_pixel() -> None:
             page_grid_offset_mm as _pg_offset,
             resolve_gap_mm as _resolve_gap,
         )
-        cols = max(2, int(getattr(scene, "bname_overview_cols", 4)))
+        cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm

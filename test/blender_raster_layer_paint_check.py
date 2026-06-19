@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -41,23 +41,23 @@ def _alpha_value_node(material) -> float:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_raster_paint_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_raster_paint_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
 
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "Raster_Paint.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Raster_Paint.bmanga"))
         assert result == {"FINISHED"}, result
-        result = bpy.ops.bname.raster_layer_add(dpi=150, bit_depth="gray8")
+        result = bpy.ops.bmanga.raster_layer_add(dpi=150, bit_depth="gray8")
         assert result == {"FINISHED"}, result
 
         scene = bpy.context.scene
-        entry = scene.bname_raster_layers[0]
+        entry = scene.bmanga_raster_layers[0]
 
-        from bname_dev.operators import raster_layer_op
-        from bname_dev.core.work import get_work
-        from bname_dev.utils import object_naming as on
+        from bmanga_dev.operators import raster_layer_op
+        from bmanga_dev.core.work import get_work
+        from bmanga_dev.utils import object_naming as on
 
         work = get_work(bpy.context)
         assert work is not None
@@ -87,7 +87,7 @@ def main() -> None:
         finally:
             bpy.data.images.remove(saved_image)
 
-        obj = on.find_object_by_bname_id(entry.id, kind="raster")
+        obj = on.find_object_by_bmanga_id(entry.id, kind="raster")
         if obj is None:
             obj = bpy.data.objects.get(raster_layer_op.raster_plane_name(entry.id))
         assert obj is not None
@@ -120,12 +120,12 @@ def main() -> None:
         assert sorted(node.as_pointer() for node in mat.node_tree.nodes) == node_ptrs
         assert abs(_alpha_value_node(mat) - 0.375) < 1e-5
 
-        result = bpy.ops.bname.raster_layer_paint_enter()
+        result = bpy.ops.bmanga.raster_layer_paint_enter()
         assert result == {"FINISHED"}, result
         assert bpy.context.object is obj
         assert obj.mode == "TEXTURE_PAINT"
-        from bname_dev.ui import overlay
-        from bname_dev.utils import paper_bg_object
+        from bmanga_dev.ui import overlay
+        from bmanga_dev.utils import paper_bg_object
 
         paper_bgs = [
             bg for bg in bpy.data.objects
@@ -151,9 +151,9 @@ def main() -> None:
         assert sorted(node.as_pointer() for node in mat.node_tree.nodes) == node_ptrs
         assert abs(_alpha_value_node(mat) - 0.25) < 1e-5
 
-        from bname_dev.operators import brush_size_op
+        from bmanga_dev.operators import brush_size_op
 
-        assert brush_size_op.BNAME_OT_brush_size_drag.poll(bpy.context)
+        assert brush_size_op.BMANGA_OT_brush_size_drag.poll(bpy.context)
         paint.brush.size = 12
         assert brush_size_op._active_brush(bpy.context) is paint.brush
 
@@ -165,32 +165,32 @@ def main() -> None:
             0.333333,
         )
 
-        result = bpy.ops.bname.raster_layer_paint_exit()
+        result = bpy.ops.bmanga.raster_layer_paint_exit()
         assert result == {"FINISHED"}, result
         assert obj.mode == "OBJECT"
 
-        result = bpy.ops.bname.raster_layer_mode_set(mode="TEXTURE_PAINT")
+        result = bpy.ops.bmanga.raster_layer_mode_set(mode="TEXTURE_PAINT")
         assert result == {"FINISHED"}, result
         assert bpy.context.object is obj
         assert obj.mode == "TEXTURE_PAINT"
-        result = bpy.ops.bname.raster_layer_mode_set(mode="OBJECT")
+        result = bpy.ops.bmanga.raster_layer_mode_set(mode="OBJECT")
         assert result == {"FINISHED"}, result
         assert obj.mode == "OBJECT"
 
         entry.locked = True
-        result = bpy.ops.bname.raster_layer_paint_enter()
+        result = bpy.ops.bmanga.raster_layer_paint_enter()
         assert result == {"CANCELLED"}, result
         entry.locked = False
 
         entry.visible = False
-        result = bpy.ops.bname.raster_layer_paint_enter()
+        result = bpy.ops.bmanga.raster_layer_paint_enter()
         assert result == {"CANCELLED"}, result
         entry.visible = True
     finally:
         if mod is not None:
             mod.unregister()
 
-    print("BNAME_RASTER_LAYER_PAINT_OK")
+    print("BMANGA_RASTER_LAYER_PAINT_OK")
 
 
 if __name__ == "__main__":

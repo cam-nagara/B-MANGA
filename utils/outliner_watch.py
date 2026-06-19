@@ -4,7 +4,7 @@
 
 Phase 1 では「**検出と警告ログ**」までを担当し、Outliner で D&D された Object
 の親 Collection 変化を 5 秒以上の低頻度 timer scan で拾う。実 entry
-(`BNameImageLayer.parent_key` 等) への書戻しは Phase 3 (画像/raster Object
+(`BMangaImageLayer.parent_key` 等) への書戻しは Phase 3 (画像/raster Object
 化完了) と同時にこの timer のコールバック内で行う想定。
 
 **再帰抑止**: ``layer_object_sync.suppress_sync()`` ガードと差分キャッシュで
@@ -40,7 +40,7 @@ _LAST_ENTRY_COUNTS: tuple[int, int, int] = (0, 0, 0)
 
 def _collect_entry_counts(scene) -> tuple[int, int, int]:
     """work.pages / 各 page.comas / work.layer_folders の合計件数を返す."""
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return (0, 0, 0)
     pages = list(getattr(work, "pages", []))
@@ -66,22 +66,22 @@ def mark_entry_counts_synced(scene=None) -> None:
 
 
 def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
-    """Outliner D&D を ``BNameRasterLayer`` に書き戻す (Phase 3a).
+    """Outliner D&D を ``BMangaRasterLayer`` に書き戻す (Phase 3a).
 
     対応する parent_kind マッピング:
         - "page" → ``parent_kind="page"``
         - "coma" → ``parent_kind="coma"``
         - "outside" / "none" → ``parent_kind="none"`` / ``parent_key=""``
-        - "folder" → 未対応 (BNameRasterLayer.parent_kind に folder enum が無い)。
+        - "folder" → 未対応 (BMangaRasterLayer.parent_kind に folder enum が無い)。
                     警告ログのみ。
 
     Returns:
         書戻しを実行したら True。
     """
-    raster_id = str(obj.get("bname_id", "") or "")
+    raster_id = str(obj.get("bmanga_id", "") or "")
     if not raster_id:
         return False
-    coll = getattr(scene, "bname_raster_layers", None)
+    coll = getattr(scene, "bmanga_raster_layers", None)
     if coll is None:
         return False
     entry = None
@@ -122,7 +122,7 @@ def _writeback_raster_parent(scene, obj, new_kind: str, new_key: str) -> bool:
             _logger.exception("raster writeback: parent_key set failed")
             return False
         try:
-            obj["bname_parent_key"] = new_parent_key
+            obj["bmanga_parent_key"] = new_parent_key
         except Exception:  # noqa: BLE001
             pass
         los.update_snapshot(obj)
@@ -165,13 +165,13 @@ def _resolve_parent_kind_key_folder(new_kind: str, new_key: str) -> tuple[str, s
     if new_kind == "coma":
         return "coma", new_key, ""
     if new_kind == "folder":
-        folder_coll = on.find_collection_by_bname_id(new_key, kind="folder")
+        folder_coll = on.find_collection_by_bmanga_id(new_key, kind="folder")
         if folder_coll is not None:
             for parent_coll in bpy.data.collections:
                 if any(cc is folder_coll for cc in parent_coll.children):
                     pkind = on.get_kind(parent_coll)
                     if pkind in {"page", "coma"}:
-                        return pkind, on.get_bname_id(parent_coll), new_key
+                        return pkind, on.get_bmanga_id(parent_coll), new_key
         # 親の page/coma が辿れなかった: writeback skip
         return "", "", ""
     return "", "", ""
@@ -182,13 +182,13 @@ def _writeback_empty_layer_parent(
 ) -> bool:
     """画像 / テキスト Empty の Outliner D&D を entry に書戻す.
 
-    BNameImageLayer / BNameTextEntry の parent_kind / parent_key / folder_key
+    BMangaImageLayer / BMangaTextEntry の parent_kind / parent_key / folder_key
     を更新し、オーバーレイ描画でこの所属に基づく親子追従が反映されるように
     する。
     """
     from . import empty_layer_object as elo
 
-    bid = str(obj.get("bname_id", "") or "")
+    bid = str(obj.get("bmanga_id", "") or "")
     if not bid:
         return False
     if kind == "text":
@@ -219,8 +219,8 @@ def _writeback_empty_layer_parent(
             entry.parent_kind = new_pk
             entry.parent_key = new_pkey
             entry.folder_key = new_fk
-            obj["bname_parent_key"] = new_pkey
-            obj["bname_folder_id"] = new_fk
+            obj["bmanga_parent_key"] = new_pkey
+            obj["bmanga_folder_id"] = new_fk
             los.update_snapshot(obj)
         except Exception:  # noqa: BLE001
             _logger.exception("%s writeback failed", kind)
@@ -236,21 +236,21 @@ def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     """効果線 GP Object の Outliner D&D を反映 (Phase 5b).
 
     効果線は実 entry を持たず、Object custom property
-    (``bname_parent_key``) のみが正。watch 検出時に Object 側を最新化する
+    (``bmanga_parent_key``) のみが正。watch 検出時に Object 側を最新化する
     だけで write-back 完了。
     """
     new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
     if not new_pk:
         return False
     if (
-        str(obj.get("bname_parent_key", "") or "") == new_pkey
-        and str(obj.get("bname_folder_id", "") or "") == new_fk
+        str(obj.get("bmanga_parent_key", "") or "") == new_pkey
+        and str(obj.get("bmanga_folder_id", "") or "") == new_fk
     ):
         return False
     with los.suppress_sync():
         try:
-            obj["bname_parent_key"] = new_pkey
-            obj["bname_folder_id"] = new_fk
+            obj["bmanga_parent_key"] = new_pkey
+            obj["bmanga_folder_id"] = new_fk
             los.update_snapshot(obj)
         except Exception:  # noqa: BLE001
             _logger.exception("effect writeback failed")
@@ -264,7 +264,7 @@ def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
             pass
     _logger.info(
         "effect writeback: %s parent → %s/%s folder=%s",
-        obj.get("bname_id", ""), new_pk, new_pkey, new_fk,
+        obj.get("bmanga_id", ""), new_pk, new_pkey, new_fk,
     )
     return True
 
@@ -286,7 +286,7 @@ def _writeback_outliner_changes(scene) -> int:
         return 0
     n = 0
     for obj, new_kind, new_key in changes:
-        kind = str(obj.get("bname_kind", "") or "")
+        kind = str(obj.get("bmanga_kind", "") or "")
         ok = False
         if kind == "raster":
             ok = _writeback_raster_parent(scene, obj, new_kind, new_key)
@@ -309,7 +309,7 @@ def _scan_once() -> float | None:
     """1 回分の scan。差分があれば実 entry へ反映する.
 
     対応 kind:
-        - raster: BNameRasterLayer.parent_kind/parent_key を書戻し
+        - raster: BMangaRasterLayer.parent_kind/parent_key を書戻し
         - effect / effect_legacy / gp: Object custom property を書戻し
     """
     global _LAST_ENTRY_COUNTS
@@ -323,7 +323,7 @@ def _scan_once() -> float | None:
         # Outliner Collection 階層を最新化 (例: 枠線カットで新コマ追加直後)
         current_counts = _collect_entry_counts(scene)
         if current_counts != _LAST_ENTRY_COUNTS:
-            work = getattr(scene, "bname_work", None)
+            work = getattr(scene, "bmanga_work", None)
             if work is not None and getattr(work, "loaded", False):
                 try:
                     los.mirror_work_to_outliner(scene, work)

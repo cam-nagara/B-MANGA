@@ -178,8 +178,8 @@ def _move_would_violate_layer_scope(context, page, entry, dx_mm: float, dy_mm: f
     return False
 
 
-class BNAME_OT_layer_move_tool(Operator):
-    bl_idname = "bname.layer_move_tool"
+class BMANGA_OT_layer_move_tool(Operator):
+    bl_idname = "bmanga.layer_move_tool"
     bl_label = "レイヤー移動ツール"
     bl_options = {"REGISTER"}
 
@@ -197,7 +197,7 @@ class BNAME_OT_layer_move_tool(Operator):
         return bool(
             work
             and work.loaded
-            and getattr(context.scene, "bname_layer_stack", None) is not None
+            and getattr(context.scene, "bmanga_layer_stack", None) is not None
             and page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
             and shortcut_visibility.shortcuts_allowed(context)
         )
@@ -268,7 +268,7 @@ class BNAME_OT_layer_move_tool(Operator):
         ):
             self.finish_from_external(context, keep_selection=True)
             try:
-                bpy.ops.bname.coma_knife_cut("INVOKE_DEFAULT")
+                bpy.ops.bmanga.coma_knife_cut("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 pass
             return {"FINISHED"}
@@ -281,7 +281,7 @@ class BNAME_OT_layer_move_tool(Operator):
         ):
             self.finish_from_external(context, keep_selection=True)
             try:
-                bpy.ops.bname.text_tool("INVOKE_DEFAULT")
+                bpy.ops.bmanga.text_tool("INVOKE_DEFAULT")
             except Exception:  # noqa: BLE001
                 pass
             return {"FINISHED"}
@@ -370,7 +370,7 @@ class BNAME_OT_layer_move_tool(Operator):
 
     def _push_undo_step(self) -> None:
         try:
-            bpy.ops.ed.undo_push(message="B-Name: レイヤー移動")
+            bpy.ops.ed.undo_push(message="B-MANGA: レイヤー移動")
         except Exception:  # noqa: BLE001
             pass
 
@@ -590,7 +590,7 @@ class BNAME_OT_layer_move_tool(Operator):
         return False
 
 
-_CLASSES = (BNAME_OT_layer_move_tool,)
+_CLASSES = (BMANGA_OT_layer_move_tool,)
 
 
 def register() -> None:

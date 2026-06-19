@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_paper_guide_visibility",
+        "bmanga_dev_paper_guide_visibility",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_paper_guide_visibility"] = mod
+    sys.modules["bmanga_dev_paper_guide_visibility"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -140,7 +140,7 @@ def _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         paper_guide_object._last_mpp = -1.0
         paper_guide_object._thickness_timer()
         if abs(float(sample.data.bevel_depth) - manual_depth) > 1.0e-9:
-            raise AssertionError("B-Nameタブ非表示扱いでも用紙ガイド線の太さが戻されています")
+            raise AssertionError("B-MANGAタブ非表示扱いでも用紙ガイド線の太さが戻されています")
     finally:
         sample.data.bevel_depth = original_depth
         paper_guide_object._live_guide_updates_allowed = original_allowed
@@ -187,16 +187,16 @@ def _assert_repair_check_does_not_create_materials(paper_guide_object, scene, wo
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_paper_guide_visibility_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_paper_guide_visibility_"))
     mod = None
     try:
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PaperGuideVisibility.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PaperGuideVisibility.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
-        from bname_dev_paper_guide_visibility.core.work import get_work
-        from bname_dev_paper_guide_visibility.utils import coma_z_order, paper_guide_object
+        from bmanga_dev_paper_guide_visibility.core.work import get_work
+        from bmanga_dev_paper_guide_visibility.utils import coma_z_order, paper_guide_object
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -240,7 +240,7 @@ def main() -> None:
             raise AssertionError("重なり順変更後の用紙ガイド線/セーフライン外塗りがありません")
         _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
 
-        print("BNAME_PAPER_GUIDE_VISIBILITY_OK", flush=True)
+        print("BMANGA_PAPER_GUIDE_VISIBILITY_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

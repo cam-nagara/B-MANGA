@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_export",
+        "bmanga_dev_page_export",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_export"] = mod
+    sys.modules["bmanga_dev_page_export"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,10 +29,10 @@ def _load_addon():
 
 def _setup_work(tmp_dir: Path):
     scene = bpy.context.scene
-    scene.bname_mode = "PAGE"
-    work = scene.bname_work
+    scene.bmanga_mode = "PAGE"
+    work = scene.bmanga_work
     work.loaded = True
-    work.work_dir = str(tmp_dir / "ExportRange.bname")
+    work.work_dir = str(tmp_dir / "ExportRange.bmanga")
     work.work_info.work_name = "ExportRange"
     work.work_info.episode_number = 1
     work.work_info.page_number_start = 1
@@ -60,13 +60,13 @@ def _setup_work(tmp_dir: Path):
 
 
 def _assert_range_operator(work, out_dir: Path, io_op) -> None:
-    assert bpy.types.BNAME_OT_export_all_pages.bl_label == "指定範囲を書き出し"
+    assert bpy.types.BMANGA_OT_export_all_pages.bl_label == "指定範囲を書き出し"
     assert io_op._scaled_dpi(work, 12.5) == 12, "12.5% のDPI換算が不正です"
-    op_rna = bpy.ops.bname.export_all_pages.get_rna_type()
+    op_rna = bpy.ops.bmanga.export_all_pages.get_rna_type()
     assert op_rna.properties["flat_scale_percent"].default == 100.0
     assert "TIFF" in {item.name for item in op_rna.properties["flat_format"].enum_items}
     assert io_op._resolve_filename("{pageStart}-{pageEnd}", work, work.pages[0], 3, page_end=4) == "0003-0004"
-    result = bpy.ops.bname.export_all_pages(
+    result = bpy.ops.bmanga.export_all_pages(
         filepath=str(out_dir),
         output_start=2,
         output_end=3,
@@ -83,7 +83,7 @@ def _assert_range_operator(work, out_dir: Path, io_op) -> None:
     assert names == ["page_0002.png", "page_0003.png"], f"指定範囲以外が出力されています: {names}"
 
     tiff_dir = out_dir.parent / "range_tiff"
-    result = bpy.ops.bname.export_all_pages(
+    result = bpy.ops.bmanga.export_all_pages(
         filepath=str(tiff_dir),
         output_start=2,
         output_end=2,
@@ -108,7 +108,7 @@ def _assert_range_operator(work, out_dir: Path, io_op) -> None:
 def _assert_pdf_operator(work) -> None:
     exports_dir = Path(work.work_dir) / "exports"
     before = {path for path in exports_dir.glob("**/*.pdf")} if exports_dir.exists() else set()
-    result = bpy.ops.bname.export_pdf(
+    result = bpy.ops.bmanga.export_pdf(
         output_start=2,
         output_end=3,
         split_spreads=False,
@@ -179,12 +179,12 @@ def _assert_latest_coma_export(work, export_pipeline) -> None:
 
 
 def main() -> None:
-    tmp_dir = Path(tempfile.mkdtemp(prefix="bname_page_export_"))
+    tmp_dir = Path(tempfile.mkdtemp(prefix="bmanga_page_export_"))
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         _load_addon()
-        from bname_dev_page_export.io import export_pipeline
-        from bname_dev_page_export.operators import io_op
+        from bmanga_dev_page_export.io import export_pipeline
+        from bmanga_dev_page_export.operators import io_op
 
         work = _setup_work(tmp_dir)
         out_dir = tmp_dir / "range_out"
@@ -192,10 +192,10 @@ def main() -> None:
         _assert_pdf_operator(work)
         _assert_scale_render(work, export_pipeline, io_op)
         _assert_latest_coma_export(work, export_pipeline)
-        assert bpy.types.BNAME_OT_export_pdf.bl_label == "PDF 結合書き出し"
+        assert bpy.types.BMANGA_OT_export_pdf.bl_label == "PDF 結合書き出し"
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-    print("BNAME_PAGE_EXPORT_RANGE_SCALE_OK")
+    print("BMANGA_PAGE_EXPORT_RANGE_SCALE_OK")
 
 
 main()

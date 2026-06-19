@@ -1,4 +1,4 @@
-"""Runtime conversion for B-Name collection assets dropped in the viewport."""
+"""Runtime conversion for B-MANGA collection assets dropped in the viewport."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def _timer():
     try:
         asset_bundle.process_pending_dropped_assets(bpy.context)
     except Exception:  # noqa: BLE001
-        _logger.exception("B-Name asset drop processing failed")
+        _logger.exception("B-MANGA asset drop processing failed")
     return _TIMER_INTERVAL if _registered else None
 
 
@@ -28,7 +28,7 @@ def register() -> None:
         bpy.app.timers.register(_timer, first_interval=_TIMER_INTERVAL, persistent=True)
     except Exception:  # noqa: BLE001
         _registered = False
-        _logger.exception("B-Name asset drop timer register failed")
+        _logger.exception("B-MANGA asset drop timer register failed")
 
 
 def unregister() -> None:

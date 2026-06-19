@@ -496,7 +496,7 @@ def save_flat_image_as_psd(img, out_path: Path) -> bool:
     from types import SimpleNamespace
 
     layer = SimpleNamespace(
-        name="B-Name",
+        name="B-MANGA",
         image=img.convert("RGBA"),
         left=0,
         top=0,

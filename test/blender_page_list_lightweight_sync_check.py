@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_lightweight_sync",
+        "bmanga_dev_page_lightweight_sync",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_lightweight_sync"] = mod
+    sys.modules["bmanga_dev_page_lightweight_sync"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,19 +28,19 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_lightweight_sync_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_lightweight_sync_"))
     mod = None
     try:
         mod = _load_addon()
-        bpy.context.scene.bname_overview_mode = True
-        if "FINISHED" not in bpy.ops.bname.work_new(
-            filepath=str(temp_root / "PageLightweightSync.bname")
+        bpy.context.scene.bmanga_overview_mode = True
+        if "FINISHED" not in bpy.ops.bmanga.work_new(
+            filepath=str(temp_root / "PageLightweightSync.bmanga")
         ):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_page_lightweight_sync.core.work import get_work
-        from bname_dev_page_lightweight_sync.utils import page_grid, page_range
-        from bname_dev_page_lightweight_sync.utils import paper_guide_object, work_info_text_object
+        from bmanga_dev_page_lightweight_sync.core.work import get_work
+        from bmanga_dev_page_lightweight_sync.utils import page_grid, page_range
+        from bmanga_dev_page_lightweight_sync.utils import paper_guide_object, work_info_text_object
 
         work = get_work(bpy.context)
         info = work.work_info
@@ -76,7 +76,7 @@ def main() -> None:
         if heavy_calls["info"] != 0:
             raise AssertionError("ページ位置更新で作品情報テキストを全ページ再生成しています")
 
-        print("BNAME_PAGE_LIST_LIGHTWEIGHT_SYNC_OK", flush=True)
+        print("BMANGA_PAGE_LIST_LIGHTWEIGHT_SYNC_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

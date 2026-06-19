@@ -59,7 +59,7 @@ def _on_raster_title_changed(_self, context) -> None:
         pass
 
 
-class BNameRasterLayer(bpy.types.PropertyGroup):
+class BMangaRasterLayer(bpy.types.PropertyGroup):
     id: StringProperty(name="ID", default="")  # type: ignore[valid-type]
     title: StringProperty(name="表示名", default="", update=_on_raster_title_changed)  # type: ignore[valid-type]
     image_name: StringProperty(name="Image名", default="")  # type: ignore[valid-type]
@@ -109,21 +109,21 @@ class BNameRasterLayer(bpy.types.PropertyGroup):
     folder_key: StringProperty(name="レイヤーフォルダ", default="")  # type: ignore[valid-type]
 
 
-_CLASSES = (BNameRasterLayer,)
+_CLASSES = (BMangaRasterLayer,)
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bname_raster_layers = CollectionProperty(type=BNameRasterLayer)
-    bpy.types.Scene.bname_active_raster_layer_index = IntProperty(default=-1, min=-1)
+    bpy.types.Scene.bmanga_raster_layers = CollectionProperty(type=BMangaRasterLayer)
+    bpy.types.Scene.bmanga_active_raster_layer_index = IntProperty(default=-1, min=-1)
     _logger.debug("raster_layer registered")
 
 
 def unregister() -> None:
     for attr in (
-        "bname_active_raster_layer_index",
-        "bname_raster_layers",
+        "bmanga_active_raster_layer_index",
+        "bmanga_raster_layers",
     ):
         try:
             delattr(bpy.types.Scene, attr)

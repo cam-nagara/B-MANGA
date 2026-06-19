@@ -36,7 +36,7 @@ def _is_work_overview(context) -> bool:
     return (
         role == page_file_scene.ROLE_WORK
         and get_mode(context) == MODE_PAGE
-        and bool(getattr(context.scene, "bname_overview_mode", False))
+        and bool(getattr(context.scene, "bmanga_overview_mode", False))
     )
 
 
@@ -134,10 +134,10 @@ def _reorder_pages(context, work, src_indices: list[int], dst_index: int) -> boo
     return True
 
 
-class BNAME_OT_page_reorder_drag(Operator):
+class BMANGA_OT_page_reorder_drag(Operator):
     """Ctrl+ドラッグで選択ページを別の位置へ移動."""
 
-    bl_idname = "bname.page_reorder_drag"
+    bl_idname = "bmanga.page_reorder_drag"
     bl_label = "ページ並べ替え"
     bl_options = {"INTERNAL"}
 
@@ -264,7 +264,7 @@ class BNAME_OT_page_reorder_drag(Operator):
         try:
             if _reorder_pages(context, work, src, target):
                 try:
-                    bpy.ops.ed.undo_push(message="B-Name: ページ並べ替え")
+                    bpy.ops.ed.undo_push(message="B-MANGA: ページ並べ替え")
                 except Exception:  # noqa: BLE001
                     pass
                 self._sync_after_reorder(context)
@@ -304,7 +304,7 @@ class BNAME_OT_page_reorder_drag(Operator):
         layer_stack_utils.tag_view3d_redraw(context)
 
 
-_CLASSES = (BNAME_OT_page_reorder_drag,)
+_CLASSES = (BMANGA_OT_page_reorder_drag,)
 
 
 def register() -> None:

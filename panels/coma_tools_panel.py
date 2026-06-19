@@ -1,4 +1,4 @@
-"""N-Panel の B-Name タブ: コマ枠線ツール."""
+"""N-Panel の B-MANGA タブ: コマ枠線ツール."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from bpy.types import Panel
 
 from ..core.work import get_active_page
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_PT_coma_tools(Panel):
-    bl_idname = "BNAME_PT_coma_tools"
+class BMANGA_PT_coma_tools(Panel):
+    bl_idname = "BMANGA_PT_coma_tools"
     bl_label = "枠線ツール"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -24,16 +24,16 @@ class BNAME_PT_coma_tools(Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator("bname.coma_split_template", text="縦横均等分割", icon="GRID")
+        layout.operator("bmanga.coma_split_template", text="縦横均等分割", icon="GRID")
         layout.operator(
-            "bname.coma_knife_cut",
+            "bmanga.coma_knife_cut",
             text="枠線カットツール (F)",
             icon="SCULPTMODE_HLT",
         )
 
 
 _CLASSES = (
-    BNAME_PT_coma_tools,
+    BMANGA_PT_coma_tools,
 )
 
 

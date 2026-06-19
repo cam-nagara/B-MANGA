@@ -33,7 +33,7 @@ def coma_number_from_id(value: str) -> int:
 
 
 def find_page_for_coma(context, target_coma):
-    work = getattr(getattr(context, "scene", None), "bname_work", None)
+    work = getattr(getattr(context, "scene", None), "bmanga_work", None)
     if work is None:
         return None, None, -1, -1
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
@@ -99,10 +99,10 @@ def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
         for collection_name in ("balloons", "texts"):
             for entry in getattr(page, collection_name, []) or []:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
-        work = getattr(scene, "bname_work", None) if scene is not None else None
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
         for folder in getattr(work, "layer_folders", []) or []:
             _replace_parent_key_on_entry(folder, old_key, new_key)
-        for collection_name in ("bname_raster_layers", "bname_image_layers"):
+        for collection_name in ("bmanga_raster_layers", "bmanga_image_layers"):
             for entry in getattr(scene, collection_name, []) or []:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
         for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):
@@ -120,7 +120,7 @@ def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
 def _retarget_coma_collections(page_id: str, remaps: list[tuple[str, str]]) -> None:
     pairs = []
     for index, (old_key, _new_key) in enumerate(remaps):
-        coll = on.find_collection_by_bname_id(old_key, kind="coma")
+        coll = on.find_collection_by_bmanga_id(old_key, kind="coma")
         if coll is not None:
             temp_key = f"{page_id}:{_TEMP_KEY_PREFIX}{index}"
             coll[on.PROP_ID] = temp_key
@@ -140,8 +140,8 @@ def _update_current_coma_id(context, old_id: str, new_id: str) -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
-    if str(getattr(scene, "bname_current_coma_id", "") or "") == old_id:
-        scene.bname_current_coma_id = new_id
+    if str(getattr(scene, "bmanga_current_coma_id", "") or "") == old_id:
+        scene.bmanga_current_coma_id = new_id
 
 
 def rename_coma_to_number(context, target_coma, number: int) -> bool:

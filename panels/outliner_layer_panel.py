@@ -8,18 +8,18 @@ from bpy.types import Panel
 from ..core.work import get_work
 from ..utils import page_file_scene
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
-class BNAME_PT_outliner_layers(Panel):
-    """B-Name のメンテナンス操作パネル."""
+class BMANGA_PT_outliner_layers(Panel):
+    """B-MANGA のメンテナンス操作パネル."""
 
-    bl_idname = "BNAME_PT_outliner_layers"
+    bl_idname = "BMANGA_PT_outliner_layers"
     bl_label = "メンテナンス"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 12
+    bl_order = 22
 
     @classmethod
     def poll(cls, context):
@@ -35,20 +35,20 @@ class BNAME_PT_outliner_layers(Panel):
 
         col = layout.column(align=True)
         if role == page_file_scene.ROLE_PAGE:
-            col.operator("bname.coma_split_ratio", icon="MOD_EDGESPLIT")
-            col.operator("bname.auto_ruby_apply", icon="FONT_DATA")
+            col.operator("bmanga.coma_split_ratio", icon="MOD_EDGESPLIT")
+            col.operator("bmanga.auto_ruby_apply", icon="FONT_DATA")
             col.separator()
-            col.operator("bname.repair_hierarchy", icon="MODIFIER_DATA")
-            col.operator("bname.mask_regenerate_all", icon="FILE_REFRESH")
-            col.operator("bname.mask_remove_orphans", icon="TRASH")
+            col.operator("bmanga.repair_hierarchy", icon="MODIFIER_DATA")
+            col.operator("bmanga.mask_regenerate_all", icon="FILE_REFRESH")
+            col.operator("bmanga.mask_remove_orphans", icon="TRASH")
             col.operator(
-                "bname.coma_renumber_active_page", icon="LINENUMBERS_ON"
+                "bmanga.coma_renumber_active_page", icon="LINENUMBERS_ON"
             )
         elif role == page_file_scene.ROLE_WORK:
-            col.operator("bname.organize_data_names", icon="FILE_REFRESH")
+            col.operator("bmanga.organize_data_names", icon="FILE_REFRESH")
 
 
-_CLASSES = (BNAME_PT_outliner_layers,)
+_CLASSES = (BMANGA_PT_outliner_layers,)
 
 
 def register() -> None:

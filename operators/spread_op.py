@@ -282,8 +282,8 @@ def _merge_page_gpencil(
     if b_obj is not None:
         # name の衝突を避けるため、先に a を一時名に退避
         if a_obj is not None:
-            tmp_obj_name = f"__bname_tmp_{a_old_id}_R_obj"
-            tmp_data_name = f"__bname_tmp_{a_old_id}_R_data"
+            tmp_obj_name = f"__bmanga_tmp_{a_old_id}_R_obj"
+            tmp_data_name = f"__bmanga_tmp_{a_old_id}_R_data"
             gp_utils.rename_gp_object_and_data(a_obj, tmp_obj_name, tmp_data_name)
         # b を spread の主 GP 名にリネーム
         gp_utils.rename_gp_object_and_data(
@@ -501,9 +501,9 @@ def _split_page_gpencil(
     - 見開き Collection を削除、左/右 Collection を新設して各 GP を再リンク
     """
     primary_name = gp_utils.page_gp_object_name(spread_id)
-    sub_name = _subpage_gp_name(spread_id, "_R")
+    sub_manga = _subpage_gp_name(spread_id, "_R")
     primary = bpy.data.objects.get(primary_name)
-    sub = bpy.data.objects.get(sub_name)
+    sub = bpy.data.objects.get(sub_manga)
     spread_coll = gp_utils.get_page_collection(spread_id)
 
     # primary → left_id 用 GP
@@ -553,10 +553,10 @@ def _split_page_gpencil(
 # ---------- Operator ----------
 
 
-class BNAME_OT_pages_merge_spread(Operator):
+class BMANGA_OT_pages_merge_spread(Operator):
     """連続 2 ページを見開きに統合 (データ保持つき)."""
 
-    bl_idname = "bname.pages_merge_spread"
+    bl_idname = "bmanga.pages_merge_spread"
     bl_label = "見開きに変更"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -695,10 +695,10 @@ class BNAME_OT_pages_merge_spread(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_pages_split_spread(Operator):
+class BMANGA_OT_pages_split_spread(Operator):
     """見開きを 2 ページに解除 (データ保持つき)."""
 
-    bl_idname = "bname.pages_split_spread"
+    bl_idname = "bmanga.pages_split_spread"
     bl_label = "見開きを解除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -830,8 +830,8 @@ class BNAME_OT_pages_split_spread(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_pages_merge_spread,
-    BNAME_OT_pages_split_spread,
+    BMANGA_OT_pages_merge_spread,
+    BMANGA_OT_pages_split_spread,
 )
 
 

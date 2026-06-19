@@ -1,8 +1,8 @@
 """フキダシしっぽプリセット管理.
 
-2 層で保持 (`io/border_presets.py` を踏襲):
-- グローバル: アドオン同梱の ``presets/tails/``
-- 作品ローカル: ``MyWork.bname/assets/tails/``
+2 層で保持:
+- 同梱: アドオン同梱の ``presets/tails/``
+- 共通: Blender ユーザー設定配下の B-MANGA 共通プリセット
 
 しっぽの形状 (直線/曲線/付箋・折れ線/曲線つなぎ)・線種 (三角/楕円)・
 太さ・長さなど、しっぽの設定一式を保存する。
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils import json_io, log, paths
+from . import shared_presets
 
 _logger = log.get_logger(__name__)
 
@@ -50,7 +51,7 @@ class TailPreset:
     name: str
     description: str
     path: Path
-    source: str  # "global" | "local"
+    source: str  # "global" | "user"
     data: dict[str, Any]
 
 
@@ -72,23 +73,25 @@ def _list_in_dir(base: Path, *, source: str) -> list[TailPreset]:
     return out
 
 
-def _local_dir(work_dir: Path) -> Path:
-    return paths.assets_dir(Path(work_dir)) / paths.ASSETS_TAILS_DIR
-
-
 def list_global_presets() -> list[TailPreset]:
     return _list_in_dir(GLOBAL_TAILS_DIR, source="global")
 
 
 def list_local_presets(work_dir: Path) -> list[TailPreset]:
-    return _list_in_dir(_local_dir(work_dir), source="local")
+    _migrate_work_presets(work_dir)
+    return list_user_presets()
+
+
+def list_user_presets() -> list[TailPreset]:
+    return _list_in_dir(shared_presets.preset_dir("tails"), source="user")
 
 
 def list_all_presets(work_dir: Path | None) -> list[TailPreset]:
     presets = {p.name: p for p in list_global_presets()}
     if work_dir is not None:
-        for p in list_local_presets(work_dir):
-            presets[p.name] = p
+        _migrate_work_presets(work_dir)
+    for p in list_user_presets():
+        presets[p.name] = p
     return sorted(presets.values(), key=lambda p: (0 if p.source == "global" else 1, p.name))
 
 
@@ -138,8 +141,8 @@ def preset_dict_from_tail(tail, name: str, description: str = "") -> dict[str, A
     }
 
 
-def _local_preset_by_name(work_dir: Path, name: str) -> TailPreset | None:
-    for preset in list_local_presets(work_dir):
+def _local_preset_by_name(_work_dir: Path | None, name: str) -> TailPreset | None:
+    for preset in list_user_presets():
         if preset.name == name:
             return preset
     return None
@@ -169,18 +172,20 @@ def unique_preset_name(work_dir: Path, base: str) -> str:
 
 
 def save_local_preset(work_dir: Path, tail, name: str, description: str = "") -> Path:
-    target_dir = _local_dir(work_dir)
+    del work_dir
+    target_dir = shared_presets.preset_dir("tails")
     target_dir.mkdir(parents=True, exist_ok=True)
-    existing = _local_preset_by_name(work_dir, name)
+    existing = _local_preset_by_name(None, name)
     out = existing.path if existing is not None else target_dir / f"{_sanitize_filename(name)}{PRESET_SUFFIX}"
     payload = copy.deepcopy(preset_dict_from_tail(tail, name, description))
     json_io.write_json(out, payload)
-    _logger.info("local tail preset saved: %s", out)
+    _logger.info("shared tail preset saved: %s", out)
     return out
 
 
 def delete_local_preset(work_dir: Path, name: str) -> bool:
-    preset = _local_preset_by_name(work_dir, name)
+    del work_dir
+    preset = _local_preset_by_name(None, name)
     if preset is None:
         return False
     try:
@@ -188,3 +193,10 @@ def delete_local_preset(work_dir: Path, name: str) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def _migrate_work_presets(work_dir: Path | None) -> None:
+    if work_dir is None:
+        return
+    legacy_dir = paths.assets_dir(Path(work_dir)) / paths.ASSETS_TAILS_DIR
+    shared_presets.copy_json_presets_once(legacy_dir, shared_presets.preset_dir("tails"))

@@ -13,10 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_border_texture", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
+        "bmanga_dev_border_texture", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)]
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_border_texture"] = mod
+    sys.modules["bmanga_dev_border_texture"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -43,18 +43,18 @@ def _material_transparent_enabled(mat) -> bool:
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    from bname_dev_border_texture.io import export_pipeline
-    from bname_dev_border_texture.utils import (
+    from bmanga_dev_border_texture.io import export_pipeline
+    from bmanga_dev_border_texture.utils import (
         coma_border_object,
         coma_border_texture,
         coma_blur_curve,
         coma_plane,
         coma_z_order,
     )
-    from bname_dev_border_texture.utils.geom import mm_to_m
+    from bmanga_dev_border_texture.utils.geom import mm_to_m
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.loaded = True
     page = work.pages.add()
     page.id = "p0001"
@@ -97,10 +97,10 @@ def main() -> None:
         for node in mat.node_tree.nodes
     ), "コマ面素材に透明シェーダーがありません"
     assert not any(
-        node.name == "BName_ComaAlphaMask"
+        node.name == "BManga_ComaAlphaMask"
         for node in mat.node_tree.nodes
     ), "コマ面素材に透明マスク画像が接続されています"
-    attr_node = mat.node_tree.nodes.get("BName_ComaSoftMask")
+    attr_node = mat.node_tree.nodes.get("BManga_ComaSoftMask")
     assert attr_node is not None, "コマ面素材に輪郭ぼかし濃度ノードがありません"
     assert attr_node.attribute_name == coma_plane.COMA_PLANE_SOFT_MASK_ATTR, (
         "コマ面素材がメッシュ側の輪郭ぼかし濃度を参照していません"
@@ -160,7 +160,7 @@ def main() -> None:
     for actual, expected in zip(guard_points, coma_blur_curve.DEFAULT_POINTS, strict=False):
         assert abs(float(actual[0]) - float(expected[0])) < 1.0e-4
         assert abs(float(actual[1]) - float(expected[1])) < 1.0e-4
-    preview_probe = bpy.data.images.new("BName_TestPreviewAlphaProbe", width=2, height=2, alpha=True)
+    preview_probe = bpy.data.images.new("BManga_TestPreviewAlphaProbe", width=2, height=2, alpha=True)
     preview_probe.pixels.foreach_set([
         1.0, 0.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 0.5,
@@ -168,7 +168,7 @@ def main() -> None:
         1.0, 1.0, 1.0, 1.0,
     ])
     preview_probe.update()
-    probe_mat = bpy.data.materials.new("BName_TestMaskedComaMaterial")
+    probe_mat = bpy.data.materials.new("BManga_TestMaskedComaMaterial")
     probe_mat.use_nodes = True
     coma_plane._apply_material(  # noqa: SLF001 - Blender実機で材質ノード構成を確認する
         probe_mat,
@@ -184,13 +184,13 @@ def main() -> None:
         node.bl_idname == "ShaderNodeBsdfTransparent"
         for node in probe_mat.node_tree.nodes
     ), "画像付きボカシ素材に透明シェーダーがありません"
-    assert probe_mat.node_tree.nodes.get("BName_ComaPreviewAlphaMask") is not None, (
+    assert probe_mat.node_tree.nodes.get("BManga_ComaPreviewAlphaMask") is not None, (
         "画像アルファと輪郭ぼかし濃度が合成されていません"
     )
-    assert probe_mat.node_tree.nodes.get("BName_ComaDither") is not None, (
+    assert probe_mat.node_tree.nodes.get("BManga_ComaDither") is not None, (
         "ディザが素材ノードで生成されていません"
     )
-    assert probe_mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+    assert probe_mat.node_tree.nodes.get("BManga_ComaSoftMask") is not None, (
         "画像付きボカシ素材がメッシュ側の輪郭ぼかし濃度を参照していません"
     )
     bpy.data.materials.remove(probe_mat)
@@ -208,23 +208,23 @@ def main() -> None:
     _assert_no_plane_alpha_images(coma_border_texture.COMA_PLANE_ALPHA_IMAGE_PREFIX)
     values = _soft_mask_values(plane.data, coma_plane.COMA_PLANE_SOFT_MASK_ATTR)
     assert min(values) == 0.0 and max(values) == 1.0, "輪郭ぼかし濃度の範囲が不正です"
-    assert mat.node_tree.nodes.get("BName_ComaDither") is not None, (
+    assert mat.node_tree.nodes.get("BManga_ComaDither") is not None, (
         "ディザ用の素材ノードがありません"
     )
-    assert mat.node_tree.nodes.get("BName_ComaDitherThreshold") is not None, (
+    assert mat.node_tree.nodes.get("BManga_ComaDitherThreshold") is not None, (
         "ディザのしきい値ノードがありません"
     )
-    scale_node = mat.node_tree.nodes.get("BName_ComaDitherScale")
+    scale_node = mat.node_tree.nodes.get("BManga_ComaDitherScale")
     if scale_node is not None and "Scale" in scale_node.inputs:
         scale = tuple(float(v) for v in scale_node.inputs["Scale"].default_value[:2])
         assert min(scale) >= 500.0, f"ディザの細かさが不足しています: {scale}"
     else:
-        noise_node = mat.node_tree.nodes.get("BName_ComaDither")
+        noise_node = mat.node_tree.nodes.get("BManga_ComaDither")
         if noise_node is not None and "Scale" in noise_node.inputs:
             assert float(noise_node.inputs["Scale"].default_value) >= 500.0, (
                 "ディザの細かさが不足しています"
             )
-    assert mat.node_tree.nodes.get("BName_ComaSoftMask") is not None, (
+    assert mat.node_tree.nodes.get("BManga_ComaSoftMask") is not None, (
         "ディザ切替後に輪郭ぼかし濃度ノードがありません"
     )
     front = page.comas.add()
@@ -292,7 +292,7 @@ def main() -> None:
         "実線へ戻したあとコマ面の透明マスク画像が残っています"
     )
 
-    print("BNAME_COMA_BORDER_TEXTURE_CHECK_OK")
+    print("BMANGA_COMA_BORDER_TEXTURE_CHECK_OK")
 
 
 main()

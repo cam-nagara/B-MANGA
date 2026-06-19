@@ -1,4 +1,4 @@
-"""Blender 実機用: B-Name パネル表示中の O/F キー競合確認."""
+"""Blender 実機用: B-MANGA パネル表示中の O/F キー競合確認."""
 
 from __future__ import annotations
 
@@ -13,34 +13,34 @@ from bpy.types import Operator
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class WM_OT_bname_test_fluent_pie(Operator):
-    bl_idname = "wm.bname_test_fluent_pie"
-    bl_label = "B-Name Test Fluent Pie"
+class WM_OT_bmanga_test_fluent_pie(Operator):
+    bl_idname = "wm.bmanga_test_fluent_pie"
+    bl_label = "B-MANGA Test Fluent Pie"
 
     def execute(self, context):
-        context.window_manager["bname_test_fluent_triggered"] = True
+        context.window_manager["bmanga_test_fluent_triggered"] = True
         return {"FINISHED"}
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_shortcut_conflict",
+        "bmanga_dev_shortcut_conflict",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_shortcut_conflict"] = mod
+    sys.modules["bmanga_dev_shortcut_conflict"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
     return mod
 
 
-def _active_bname_items(keymap_mod) -> int:
+def _active_bmanga_items(keymap_mod) -> int:
     state = keymap_mod.get_state()
     if state is None:
         return 0
-    return sum(1 for item in state.bname_items if bool(getattr(item, "active", False)))
+    return sum(1 for item in state.bmanga_items if bool(getattr(item, "active", False)))
 
 
 def _add_conflict_keymaps():
@@ -49,7 +49,7 @@ def _add_conflict_keymaps():
     kc_user = wm.keyconfigs.user
     kc_addon = wm.keyconfigs.addon
     km_o = kc_user.keymaps.new(
-        name="B-Name Test 3D View Object Conflict",
+        name="B-MANGA Test 3D View Object Conflict",
         space_type="VIEW_3D",
         region_type="WINDOW",
     )
@@ -60,12 +60,12 @@ def _add_conflict_keymaps():
     except Exception:
         pass
     km_f = kc_addon.keymaps.new(
-        name="B-Name Test 3D View Fluent Conflict",
+        name="B-MANGA Test 3D View Fluent Conflict",
         space_type="VIEW_3D",
         region_type="WINDOW",
     )
     created.append((kc_addon, km_f))
-    kmi_f = km_f.keymap_items.new("wm.bname_test_fluent_pie", "F", "PRESS")
+    kmi_f = km_f.keymap_items.new("wm.bmanga_test_fluent_pie", "F", "PRESS")
     return created, kmi_o, kmi_f
 
 
@@ -101,52 +101,52 @@ def main() -> None:
         bpy.context.preferences.view.show_splash = False
     except Exception:
         pass
-    bpy.utils.register_class(WM_OT_bname_test_fluent_pie)
+    bpy.utils.register_class(WM_OT_bmanga_test_fluent_pie)
     mod = _load_addon()
-    from bname_dev_shortcut_conflict.keymap import keymap as keymap_mod
-    from bname_dev_shortcut_conflict.utils import shortcut_visibility
+    from bmanga_dev_shortcut_conflict.keymap import keymap as keymap_mod
+    from bmanga_dev_shortcut_conflict.utils import shortcut_visibility
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work.loaded = True
-    work.work_dir = str(ROOT / "_shortcut_conflict_test.bname")
-    bpy.context.scene.bname_mode = "PAGE"
+    work.work_dir = str(ROOT / "_shortcut_conflict_test.bmanga")
+    bpy.context.scene.bmanga_mode = "PAGE"
 
-    original_panel_visible = shortcut_visibility.bname_panel_visible
-    original_any_panel_visible = shortcut_visibility.any_bname_panel_visible
+    original_panel_visible = shortcut_visibility.bmanga_panel_visible
+    original_any_panel_visible = shortcut_visibility.any_bmanga_panel_visible
     created = []
     try:
         created, kmi_o, kmi_f = _add_conflict_keymaps()
         assert bool(kmi_o.active), "O競合キーが作成直後に無効です"
         assert bool(kmi_f.active), "F競合キーが作成直後に無効です"
 
-        shortcut_visibility.bname_panel_visible = lambda _context=None: True
-        shortcut_visibility.any_bname_panel_visible = lambda _context=None: True
-        keymap_mod._watch_bname_tab()
-        assert _active_bname_items(keymap_mod) > 0, "B-Nameパネル表示中のショートカットが有効になりません"
+        shortcut_visibility.bmanga_panel_visible = lambda _context=None: True
+        shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: True
+        keymap_mod._watch_bmanga_tab()
+        assert _active_bmanga_items(keymap_mod) > 0, "B-MANGAパネル表示中のショートカットが有効になりません"
         assert not bool(kmi_o.active), "Oの標準系競合が退避されません"
         assert not bool(kmi_f.active), "Fの他アドオン系競合が退避されません"
 
         if not bool(getattr(bpy.app, "background", False)):
             bpy.context.scene.tool_settings.use_proportional_edit_objects = False
-            bpy.context.window_manager["bname_test_fluent_triggered"] = False
+            bpy.context.window_manager["bmanga_test_fluent_triggered"] = False
             _simulate_key("O")
             assert not bool(bpy.context.scene.tool_settings.use_proportional_edit_objects), (
                 "Oキーでプロポーショナル編集が反応しています"
             )
             _simulate_key("F")
-            assert not bool(bpy.context.window_manager.get("bname_test_fluent_triggered", False)), (
+            assert not bool(bpy.context.window_manager.get("bmanga_test_fluent_triggered", False)), (
                 "Fキーで他アドオン相当のパイメニューが反応しています"
             )
 
-        shortcut_visibility.bname_panel_visible = lambda _context=None: False
-        shortcut_visibility.any_bname_panel_visible = lambda _context=None: False
-        keymap_mod._watch_bname_tab()
-        assert _active_bname_items(keymap_mod) == 0, "B-Nameパネル非表示後もB-Nameキーが有効です"
-        assert bool(kmi_o.active), "B-Nameパネル非表示後にO競合キーが復元されません"
-        assert bool(kmi_f.active), "B-Nameパネル非表示後にF競合キーが復元されません"
+        shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
+        shortcut_visibility.any_bmanga_panel_visible = lambda _context=None: False
+        keymap_mod._watch_bmanga_tab()
+        assert _active_bmanga_items(keymap_mod) == 0, "B-MANGAパネル非表示後もB-MANGAキーが有効です"
+        assert bool(kmi_o.active), "B-MANGAパネル非表示後にO競合キーが復元されません"
+        assert bool(kmi_f.active), "B-MANGAパネル非表示後にF競合キーが復元されません"
     finally:
-        shortcut_visibility.bname_panel_visible = original_panel_visible
-        shortcut_visibility.any_bname_panel_visible = original_any_panel_visible
+        shortcut_visibility.bmanga_panel_visible = original_panel_visible
+        shortcut_visibility.any_bmanga_panel_visible = original_any_panel_visible
         mod.unregister()
         for kc, km in reversed(created):
             try:
@@ -154,11 +154,11 @@ def main() -> None:
             except Exception:
                 pass
         try:
-            bpy.utils.unregister_class(WM_OT_bname_test_fluent_pie)
+            bpy.utils.unregister_class(WM_OT_bmanga_test_fluent_pie)
         except RuntimeError:
             pass
 
-    print("BNAME_SHORTCUT_KEY_CONFLICT_CHECK_OK")
+    print("BMANGA_SHORTCUT_KEY_CONFLICT_CHECK_OK")
     if not bool(getattr(bpy.app, "background", False)):
         sys.stdout.flush()
         os._exit(0)

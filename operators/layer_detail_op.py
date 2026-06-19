@@ -1,7 +1,7 @@
 """選択中レイヤー Object の詳細設定ダイアログを開く operator.
 
 Outliner / 3D ビュー / 各種ツールから右クリックで呼べる単一エントリポイント。
-active_object の ``bname_kind`` / ``bname_id`` から対応 entry を逆引きし、
+active_object の ``bmanga_kind`` / ``bmanga_id`` から対応 entry を逆引きし、
 kind ごとのフィールドを ``invoke_props_dialog`` で編集可能に表示する。
 """
 
@@ -40,17 +40,17 @@ def _draw_balloon_regenerate_buttons(layout, entry, page) -> str:
     row = layout.row(align=True)
     row.label(text=f"編集状態: {label}")
     row = layout.row(align=True)
-    op = row.operator("bname.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
+    op = row.operator("bmanga.balloon_regenerate_keep_edit", text="手編集を維持して再生成", icon="MOD_CURVE")
     op.page_id = str(getattr(page, "id", "") or "")
     op.balloon_id = str(getattr(entry, "id", "") or "")
-    op = row.operator("bname.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
+    op = row.operator("bmanga.balloon_regenerate_discard_edit", text="手編集を破棄して再生成", icon="TRASH")
     op.page_id = str(getattr(page, "id", "") or "")
     op.balloon_id = str(getattr(entry, "id", "") or "")
     return state
 
 
 def _resolve_active_managed_object(context) -> Optional[bpy.types.Object]:
-    """B-Name 管理下のレイヤー Object を解決する.
+    """B-MANGA 管理下のレイヤー Object を解決する.
 
     優先順位: active_object → selected_objects → selected_ids (Outliner) →
     view_layer.active。Outliner で選択中の Object も拾えるよう全経路を確認する。
@@ -75,7 +75,7 @@ def _resolve_active_managed_object(context) -> Optional[bpy.types.Object]:
 
 
 def _find_image_entry(scene, bid: str):
-    coll = getattr(scene, "bname_image_layers", None)
+    coll = getattr(scene, "bmanga_image_layers", None)
     if coll is None:
         return None
     for e in coll:
@@ -85,7 +85,7 @@ def _find_image_entry(scene, bid: str):
 
 
 def _find_raster_entry(scene, bid: str):
-    coll = getattr(scene, "bname_raster_layers", None)
+    coll = getattr(scene, "bmanga_raster_layers", None)
     if coll is None:
         return None
     for e in coll:
@@ -95,7 +95,7 @@ def _find_raster_entry(scene, bid: str):
 
 
 def _find_balloon_entry(scene, bid: str):
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return None, None
     for page in getattr(work, "pages", []):
@@ -117,7 +117,7 @@ def _find_text_entry(scene, bid: str):
             return page, entry
     except Exception:  # noqa: BLE001
         pass
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return None, None
     for page in getattr(work, "pages", []):
@@ -184,7 +184,7 @@ def _draw_balloon_tails(layout, entry, page) -> None:
     box = layout.box()
     row = box.row(align=True)
     row.label(text=f"しっぽ ({len(entry.tails)})")
-    open_op = row.operator("bname.balloon_tail_detail_open", text="しっぽの詳細設定", icon="PREFERENCES")
+    open_op = row.operator("bmanga.balloon_tail_detail_open", text="しっぽの詳細設定", icon="PREFERENCES")
     open_op.page_id = str(getattr(page, "id", "") or "")
     open_op.balloon_id = str(getattr(entry, "id", "") or "")
 
@@ -475,8 +475,8 @@ def _draw_text_detail(layout, entry) -> None:
     row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
     row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
     row = box.row(align=True)
-    row.operator("bname.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
-    row.operator("bname.text_ruby_clear", text="ルビを削除", icon="TRASH")
+    row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
+    row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
 
     box = layout.box()
     box.label(text="表示・所属")
@@ -485,15 +485,15 @@ def _draw_text_detail(layout, entry) -> None:
     box.prop(entry, "parent_kind")
     box.prop(entry, "parent_key")
     box.prop(entry, "folder_key")
-    box.operator("bname.text_meta_dialog", text="メタ情報を編集", icon="INFO")
+    box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
 
 
 def _draw_gp_detail(layout, obj) -> None:
     """GP レイヤー Object の詳細."""
     box = layout.box()
     box.label(text="基本")
-    box.prop(obj, '["bname_title"]', text="表示名")
-    box.prop(obj, '["bname_z_index"]', text="z_index")
+    box.prop(obj, '["bmanga_title"]', text="表示名")
+    box.prop(obj, '["bmanga_z_index"]', text="z_index")
     box.prop(obj, "hide_viewport", text="非表示 (ビューポート)")
     box.prop(obj, "hide_render", text="非表示 (レンダー)")
 
@@ -521,17 +521,17 @@ def _draw_effect_detail(layout, context, obj) -> None:
     """効果線 Object の詳細 (params 全表示)."""
     box = layout.box()
     box.label(text="基本")
-    box.prop(obj, '["bname_title"]', text="表示名")
-    box.prop(obj, '["bname_z_index"]', text="z_index")
-    if "bname_effect_target" in obj.keys():
-        box.prop(obj, '["bname_effect_target"]', text="参照対象")
+    box.prop(obj, '["bmanga_title"]', text="表示名")
+    box.prop(obj, '["bmanga_z_index"]', text="z_index")
+    if "bmanga_effect_target" in obj.keys():
+        box.prop(obj, '["bmanga_effect_target"]', text="参照対象")
 
     # アクティブ GP レイヤーを解決して params をシーン側 PropertyGroup に同期
     gp_data = getattr(obj, "data", None)
     layers = getattr(gp_data, "layers", None) if gp_data is not None else None
     active_layer = getattr(layers, "active", None) if layers is not None else None
     scene = getattr(context, "scene", None)
-    params = getattr(scene, "bname_effect_line_params", None) if scene is not None else None
+    params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
 
     if params is None:
         layout.label(text="効果線パラメータ未初期化", icon="ERROR")
@@ -559,23 +559,23 @@ def _draw_effect_detail(layout, context, obj) -> None:
 
 
 def _draw_object_meta(layout, obj) -> None:
-    """Object 自身の B-Name メタを表示 (Custom Property 直接編集)."""
+    """Object 自身の B-MANGA メタを表示 (Custom Property 直接編集)."""
     box = layout.box()
     box.label(text="Outliner メタ", icon="OUTLINER")
     row = box.row(align=True)
     row.label(text=f"kind: {on.get_kind(obj)}")
-    row.label(text=f"id: {on.get_bname_id(obj)}")
+    row.label(text=f"id: {on.get_bmanga_id(obj)}")
     row = box.row(align=True)
-    row.label(text=f"親: {obj.get('bname_parent_key', '')}")
-    if obj.get("bname_folder_id"):
-        row.label(text=f"フォルダ: {obj['bname_folder_id']}")
-    box.label(text=f"z_index: {obj.get('bname_z_index', 0)}")
+    row.label(text=f"親: {obj.get('bmanga_parent_key', '')}")
+    if obj.get("bmanga_folder_id"):
+        row.label(text=f"フォルダ: {obj['bmanga_folder_id']}")
+    box.label(text=f"z_index: {obj.get('bmanga_z_index', 0)}")
 
 
-class BNAME_OT_layer_detail_open(Operator):
-    """選択中の B-Name レイヤー Object の詳細設定ダイアログを開く."""
+class BMANGA_OT_layer_detail_open(Operator):
+    """選択中の B-MANGA レイヤー Object の詳細設定ダイアログを開く."""
 
-    bl_idname = "bname.layer_detail_open"
+    bl_idname = "bmanga.layer_detail_open"
     bl_label = "詳細設定"
     bl_description = (
         "選択中のレイヤー Object (画像/ラスター/フキダシ/テキスト/GP/効果線) "
@@ -584,7 +584,7 @@ class BNAME_OT_layer_detail_open(Operator):
     )
     bl_options = {"REGISTER", "UNDO"}
 
-    bname_id: StringProperty(name="bname_id", default="", options={"HIDDEN"})  # type: ignore[valid-type]
+    bmanga_id: StringProperty(name="bmanga_id", default="", options={"HIDDEN"})  # type: ignore[valid-type]
     kind: StringProperty(name="kind", default="", options={"HIDDEN"})  # type: ignore[valid-type]
 
     @classmethod
@@ -594,12 +594,12 @@ class BNAME_OT_layer_detail_open(Operator):
     def invoke(self, context, event):
         obj = _resolve_active_managed_object(context)
         if obj is None:
-            self.report({"WARNING"}, "B-Name 管理レイヤー Object を選択してください")
+            self.report({"WARNING"}, "B-MANGA 管理レイヤー Object を選択してください")
             return {"CANCELLED"}
-        self.bname_id = on.get_bname_id(obj)
+        self.bmanga_id = on.get_bmanga_id(obj)
         self.kind = on.get_kind(obj)
-        if not self.bname_id or not self.kind:
-            self.report({"WARNING"}, "選択 Object に B-Name ID / kind がありません")
+        if not self.bmanga_id or not self.kind:
+            self.report({"WARNING"}, "選択 Object に B-MANGA ID / kind がありません")
             return {"CANCELLED"}
         from ..utils import detail_popup
 
@@ -610,7 +610,7 @@ class BNAME_OT_layer_detail_open(Operator):
             width = 560
             try:
                 scene = getattr(context, "scene", None)
-                _page, entry = _find_balloon_entry(scene, self.bname_id)
+                _page, entry = _find_balloon_entry(scene, self.bmanga_id)
                 if entry is not None and balloon_shapes.normalize_line_style(
                     str(getattr(entry, "line_style", "") or "")
                 ) in {"uni_flash", "white_outline"}:
@@ -626,7 +626,7 @@ class BNAME_OT_layer_detail_open(Operator):
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        obj = on.find_object_by_bname_id(self.bname_id, kind=self.kind)
+        obj = on.find_object_by_bmanga_id(self.bmanga_id, kind=self.kind)
         if obj is None:
             layout.label(text="対応する Object が見つかりません", icon="ERROR")
             return
@@ -637,13 +637,13 @@ class BNAME_OT_layer_detail_open(Operator):
         entry = None
         page = None
         if kind == "image":
-            entry = _find_image_entry(scene, self.bname_id)
+            entry = _find_image_entry(scene, self.bmanga_id)
         elif kind == "raster":
-            entry = _find_raster_entry(scene, self.bname_id)
+            entry = _find_raster_entry(scene, self.bmanga_id)
         elif kind == "balloon":
-            page, entry = _find_balloon_entry(scene, self.bname_id)
+            page, entry = _find_balloon_entry(scene, self.bmanga_id)
         elif kind == "text":
-            page, entry = _find_text_entry(scene, self.bname_id)
+            page, entry = _find_text_entry(scene, self.bmanga_id)
         elif kind == "gp":
             _draw_gp_detail(layout, obj)
             return
@@ -678,7 +678,7 @@ class BNAME_OT_layer_detail_open(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_layer_detail_open,)
+_CLASSES = (BMANGA_OT_layer_detail_open,)
 
 
 def register() -> None:

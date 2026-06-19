@@ -12,18 +12,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_COMA_CONTENT_OPACITY_MASK_OUT", "")
+_OUT_ENV = os.environ.get("BMANGA_COMA_CONTENT_OPACITY_MASK_OUT", "")
 OUTPUT_PATH = Path(_OUT_ENV) if _OUT_ENV else None
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_content_mask",
+        "bmanga_dev_coma_content_mask",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_content_mask"] = mod
+    sys.modules["bmanga_dev_coma_content_mask"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -31,7 +31,7 @@ def _load_addon():
 
 
 def _point_px(work, dpi: int, x_mm: float, y_mm: float) -> tuple[int, int]:
-    from bname_dev_coma_content_mask.utils.geom import mm_to_px
+    from bmanga_dev_coma_content_mask.utils.geom import mm_to_px
 
     return (
         int(round(mm_to_px(x_mm, dpi))),
@@ -57,22 +57,22 @@ def _assert_material_mask(obj) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_content_mask_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_content_mask_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "ComaContentMask.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ComaContentMask.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_coma_content_mask.io import export_pipeline
-        from bname_dev_coma_content_mask.io import export_soft_mask
-        from bname_dev_coma_content_mask.utils import balloon_curve_object, coma_content_mask
-        from bname_dev_coma_content_mask.utils.layer_hierarchy import coma_stack_key
+        from bmanga_dev_coma_content_mask.io import export_pipeline
+        from bmanga_dev_coma_content_mask.io import export_soft_mask
+        from bmanga_dev_coma_content_mask.utils import balloon_curve_object, coma_content_mask
+        from bmanga_dev_coma_content_mask.utils.layer_hierarchy import coma_stack_key
         from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
         scene = bpy.context.scene
-        work = scene.bname_work
+        work = scene.bmanga_work
         page = work.pages[0]
         coma = page.comas[0]
         coma.shape_type = "rect"
@@ -167,7 +167,7 @@ def main() -> None:
         outside = _rgb_at(image, *_point_px(work, 72, 135.0, 85.0))
         assert max(inside) < 40, f"コマ内のフキダシが表示されていません: rgb={inside}"
         assert min(outside) > 210, f"コマ外のフキダシが透明度マスクで消えていません: rgb={outside}"
-        print(f"BNAME_COMA_CONTENT_OPACITY_MASK_OK mask={mask.name} inside={inside} outside={outside}")
+        print(f"BMANGA_COMA_CONTENT_OPACITY_MASK_OK mask={mask.name} inside={inside} outside={outside}")
     finally:
         if mod is not None:
             try:

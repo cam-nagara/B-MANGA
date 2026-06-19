@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_vertex",
+        "bmanga_dev_coma_vertex",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_vertex"] = mod
+    sys.modules["bmanga_dev_coma_vertex"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -43,11 +43,11 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_coma_vertex.operators import coma_edge_move_op
-        from bname_dev_coma_vertex.utils import coma_vertex_edit, edge_selection
+        from bmanga_dev_coma_vertex.operators import coma_edge_move_op
+        from bmanga_dev_coma_vertex.utils import coma_vertex_edit, edge_selection
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         work.loaded = True
         page = work.pages.add()
         page.id = "p0001"
@@ -97,12 +97,12 @@ def main() -> None:
             _drag_moved=False,
         )
         fake._to_window = lambda event: (event.mouse_x, event.mouse_y)
-        coma_edge_move_op.BNAME_OT_coma_edge_move._capture_original_geometry(fake)
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._capture_original_geometry(fake)
         original_region_to_world = coma_edge_move_op._region_to_world_mm
         try:
             coma_edge_move_op._region_to_world_mm = lambda _region, _rv3d, mx, my: (float(mx), float(my))
             event = SimpleNamespace(mouse_x=2, mouse_y=3)
-            coma_edge_move_op.BNAME_OT_coma_edge_move._apply_drag(fake, event)
+            coma_edge_move_op.BMANGA_OT_coma_edge_move._apply_drag(fake, event)
         finally:
             coma_edge_move_op._region_to_world_mm = original_region_to_world
         assert _poly(coma) == [(2.0, 3.0), (20.0, 0.0), (20.0, 20.0), (2.0, 23.0)], _poly(coma)
@@ -123,7 +123,7 @@ def main() -> None:
         )
         assert (0, 1, 0) in extended or (0, 1, 2) in extended, extended
 
-        print("BNAME_COMA_VERTEX_SELECTION_SNAP_CHECK_OK")
+        print("BMANGA_COMA_VERTEX_SELECTION_SNAP_CHECK_OK")
     finally:
         mod.unregister()
         bpy.ops.wm.read_factory_settings(use_empty=True)

@@ -21,12 +21,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_effect_gp_hidden",
+        "bmanga_dev_effect_gp_hidden",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_effect_gp_hidden"] = mod
+    sys.modules["bmanga_dev_effect_gp_hidden"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -34,15 +34,15 @@ def _load_addon():
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_effect_gp_hidden_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_gp_hidden_"))
     mod = None
     try:
         mod = _load_addon()
-        if "FINISHED" not in bpy.ops.bname.work_new(filepath=str(temp_root / "EffectGPHidden.bname")):
+        if "FINISHED" not in bpy.ops.bmanga.work_new(filepath=str(temp_root / "EffectGPHidden.bmanga")):
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_effect_gp_hidden.core.work import get_work
-        from bname_dev_effect_gp_hidden.utils import effect_line_object as elo
+        from bmanga_dev_effect_gp_hidden.core.work import get_work
+        from bmanga_dev_effect_gp_hidden.utils import effect_line_object as elo
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -52,7 +52,7 @@ def main() -> None:
         # 効果線の編集用 GP を作成。
         controller = elo.create_effect_line_object(
             scene=scene,
-            bname_id="effect_test_0001",
+            bmanga_id="effect_test_0001",
             title="効果線テスト",
             z_index=210,
             parent_kind="page",
@@ -81,7 +81,7 @@ def main() -> None:
                 "(sync_effect_display_transform で非表示へ戻していない)"
             )
 
-        print("BNAME_EFFECT_CONTROLLER_GP_HIDDEN_OK", flush=True)
+        print("BMANGA_EFFECT_CONTROLLER_GP_HIDDEN_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

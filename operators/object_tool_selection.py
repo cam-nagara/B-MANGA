@@ -1,4 +1,4 @@
-"""Selection bounds and hit helpers for the B-Name object tool."""
+"""Selection bounds and hit helpers for the B-MANGA object tool."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def find_shared_text_by_key(work, item_id: str):
 
 
 def find_image_by_key(context, item_id: str):
-    coll = getattr(getattr(context, "scene", None), "bname_image_layers", None)
+    coll = getattr(getattr(context, "scene", None), "bmanga_image_layers", None)
     if coll is None:
         return -1, None
     for i, entry in enumerate(coll):
@@ -107,7 +107,7 @@ def find_image_by_key(context, item_id: str):
 
 
 def find_raster_by_key(context, item_id: str):
-    coll = getattr(getattr(context, "scene", None), "bname_raster_layers", None)
+    coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
     if coll is None:
         return -1, None
     for i, entry in enumerate(coll):
@@ -117,7 +117,7 @@ def find_raster_by_key(context, item_id: str):
 
 
 def find_fill_by_key(context, item_id: str):
-    coll = getattr(getattr(context, "scene", None), "bname_fill_layers", None)
+    coll = getattr(getattr(context, "scene", None), "bmanga_fill_layers", None)
     if coll is None:
         return -1, None
     for i, entry in enumerate(coll):
@@ -170,7 +170,7 @@ def _managed_object_for_key(context, key: str):
     if scene is None:
         return None
     if kind == "image":
-        obj = on.find_object_by_bname_id(item_id, kind="image")
+        obj = on.find_object_by_bmanga_id(item_id, kind="image")
         if obj is not None:
             return obj
         _idx, entry = find_image_by_key(context, item_id)
@@ -179,13 +179,13 @@ def _managed_object_for_key(context, key: str):
     if kind == "text":
         from ..utils import text_real_object
 
-        bname_page_id = (
+        bmanga_page_id = (
             text_real_object.OUTSIDE_PAGE_ID
             if page_id == OUTSIDE_STACK_KEY
             else page_id
         )
-        obj = on.find_object_by_bname_id(
-            text_real_object.text_object_bname_id_for_values(bname_page_id, item_id),
+        obj = on.find_object_by_bmanga_id(
+            text_real_object.text_object_bmanga_id_for_values(bmanga_page_id, item_id),
             kind="text",
         )
         if obj is not None:
@@ -197,7 +197,7 @@ def _managed_object_for_key(context, key: str):
             _page_index, page, _idx, entry = find_text_by_key(work, page_id, item_id)
         return text_real_object.ensure_text_real_object(scene=scene, entry=entry, page=page)
     if kind == "balloon":
-        obj = on.find_object_by_bname_id(item_id, kind="balloon")
+        obj = on.find_object_by_bmanga_id(item_id, kind="balloon")
         if obj is not None:
             return obj
         if page_id == OUTSIDE_STACK_KEY:
@@ -207,7 +207,7 @@ def _managed_object_for_key(context, key: str):
             _page_index, page, _idx, entry = find_balloon_by_key(work, page_id, item_id)
         return balloon_curve_object.ensure_balloon_curve_object(scene=scene, entry=entry, page=page)
     if kind == "raster":
-        obj = on.find_object_by_bname_id(item_id, kind="raster")
+        obj = on.find_object_by_bmanga_id(item_id, kind="raster")
         if obj is not None:
             return obj
         _idx, entry = find_raster_by_key(context, item_id)
@@ -217,7 +217,7 @@ def _managed_object_for_key(context, key: str):
 
         return raster_layer_op.ensure_raster_plane(context, entry)
     if kind == "fill":
-        obj = on.find_object_by_bname_id(item_id, kind="fill")
+        obj = on.find_object_by_bmanga_id(item_id, kind="fill")
         if obj is not None:
             return obj
         _idx, entry = find_fill_by_key(context, item_id)
@@ -541,7 +541,7 @@ def gp_layer_world_rect(context, work, layer) -> Rect | None:
 def hit_image_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     work = get_work(context)
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if work is None or coll is None:
         return None
     for index in reversed(range(len(coll))):
@@ -594,7 +594,7 @@ def hit_gp_at_world(context, x_mm: float, y_mm: float) -> dict | None:
 def hit_raster_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     work = get_work(context)
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_raster_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     if work is None or coll is None:
         return None
     for index in reversed(range(len(coll))):
@@ -642,7 +642,7 @@ def fill_world_rect(context, work, entry) -> Rect | None:
 def hit_fill_at_world(context, x_mm: float, y_mm: float) -> dict | None:
     work = get_work(context)
     scene = getattr(context, "scene", None)
-    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     if work is None or coll is None:
         return None
     fullcanvas_hit = None
@@ -963,7 +963,7 @@ def _iter_rect_select_candidates(context):
             },
         }
     scene = getattr(context, "scene", None)
-    for entry in reversed(list(getattr(scene, "bname_image_layers", []) or [])):
+    for entry in reversed(list(getattr(scene, "bmanga_image_layers", []) or [])):
         if not bool(getattr(entry, "visible", True)):
             continue
         key = object_selection.image_key(entry)
@@ -989,7 +989,7 @@ def _iter_rect_select_candidates(context):
                     "key": key,
                 },
             }
-    for entry in reversed(list(getattr(scene, "bname_raster_layers", []) or [])):
+    for entry in reversed(list(getattr(scene, "bmanga_raster_layers", []) or [])):
         if not bool(getattr(entry, "visible", True)):
             continue
         key = object_selection.raster_key(entry)
@@ -997,7 +997,7 @@ def _iter_rect_select_candidates(context):
         if rect is None:
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "raster", "part": "move", "key": key}}
-    for entry in reversed(list(getattr(scene, "bname_fill_layers", []) or [])):
+    for entry in reversed(list(getattr(scene, "bmanga_fill_layers", []) or [])):
         if not bool(getattr(entry, "visible", True)):
             continue
         key = object_selection.fill_key(entry)

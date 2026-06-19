@@ -1,6 +1,6 @@
 """効果線ストローク生成ロジック (計画書 3.1.6).
 
-BNameEffectLineParams を受け取り、放射状 / 流線の頂点列を算出する。
+BMangaEffectLineParams を受け取り、放射状 / 流線の頂点列を算出する。
 Grease Pencil v3 への書き込みは utils/gpencil.py を経由する。
 
 このモジュールは純粋計算 (点列生成) と GP 統合を担う。Operator は

@@ -33,7 +33,7 @@ class ComaEdgeDragSession:
         self._original_geometry = None
         self._restore_states = []
         self._drag_moved = False
-        coma_edge_move_op.BNAME_OT_coma_edge_move._capture_original_geometry(self)
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._capture_original_geometry(self)
         self._restore_states = self._capture_restore_states()
 
     def _to_window(self, ev):
@@ -54,14 +54,14 @@ class ComaEdgeDragSession:
 
     def apply(self, event) -> bool:
         before = bool(getattr(self, "_drag_moved", False))
-        coma_edge_move_op.BNAME_OT_coma_edge_move._apply_drag(self, event)
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._apply_drag(self, event)
         self._tag_redraw()
         return bool(getattr(self, "_drag_moved", False)) or before
 
-    def finish(self, message: str = "B-Name: 枠線移動") -> bool:
-        changed = coma_edge_move_op.BNAME_OT_coma_edge_move._geometry_changed(self)
+    def finish(self, message: str = "B-MANGA: 枠線移動") -> bool:
+        changed = coma_edge_move_op.BMANGA_OT_coma_edge_move._geometry_changed(self)
         if changed:
-            coma_edge_move_op.BNAME_OT_coma_edge_move._save_changes(self)
+            coma_edge_move_op.BMANGA_OT_coma_edge_move._save_changes(self)
             self._push_undo_step(message)
         self._tag_redraw()
         return bool(changed)

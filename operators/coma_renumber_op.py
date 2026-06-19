@@ -1,7 +1,7 @@
 """コマ ID を順番通り (c01, c02, ...) に振り直す operator.
 
 枠線カット等で coma_id に飛び番が出たとき、ユーザー操作で順番通りに
-リネームする。``BNameComaEntry.id`` / ``BNameComaEntry.coma_id`` の両方を
+リネームする。``BMangaComaEntry.id`` / ``BMangaComaEntry.coma_id`` の両方を
 更新し、Outliner Collection 名 (mirror 経由) も追従する。
 
 注意: 物理ファイル名 (cNN.blend / cNN フォルダ) はリネームしない。
@@ -125,9 +125,9 @@ def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
         for collection_name in ("balloons", "texts"):
             for entry in getattr(page, collection_name, []) or []:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
-        for folder in getattr(getattr(scene, "bname_work", None), "layer_folders", []) or []:
+        for folder in getattr(getattr(scene, "bmanga_work", None), "layer_folders", []) or []:
             _replace_parent_key_on_entry(folder, old_key, new_key)
-        for collection_name in ("bname_raster_layers", "bname_image_layers"):
+        for collection_name in ("bmanga_raster_layers", "bmanga_image_layers"):
             for entry in getattr(scene, collection_name, []) or []:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
         for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):
@@ -147,7 +147,7 @@ def _retarget_coma_collections(page_id: str, remaps: list[tuple[str, str]]) -> N
 
     pairs = []
     for index, (old_key, _new_key) in enumerate(remaps):
-        coll = on.find_collection_by_bname_id(old_key, kind="coma")
+        coll = on.find_collection_by_bmanga_id(old_key, kind="coma")
         if coll is not None:
             temp_key = f"{page_id}:{_TEMP_KEY_PREFIX}{index}"
             coll[on.PROP_ID] = temp_key
@@ -174,7 +174,7 @@ def _renumber_page_comas(context, page, read_direction: str) -> int:
         page.active_coma_index = ordered_indices.index(active_original)
     page_id = str(getattr(page, "id", "") or "")
     scene = getattr(context, "scene", None)
-    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     remaps: list[tuple[str, str]] = []
     changed = 0
     for i, original_index in enumerate(ordered_indices):
@@ -197,17 +197,17 @@ def _renumber_page_comas(context, page, read_direction: str) -> int:
         if page_id and old_stems[original_index] and old_stems[original_index] != new_id:
             remaps.append((f"{page_id}:{old_stems[original_index]}", f"{page_id}:{new_id}"))
         if scene is not None and current_coma_id and current_coma_id == old_stems[original_index]:
-            scene.bname_current_coma_id = new_id
+            scene.bmanga_current_coma_id = new_id
     if remaps:
         _retarget_parent_keys(context, page, remaps)
         _retarget_coma_collections(page_id, remaps)
     return changed
 
 
-class BNAME_OT_coma_renumber_active_page(Operator):
+class BMANGA_OT_coma_renumber_active_page(Operator):
     """アクティブページのコマ ID を順番通りに振り直す."""
 
-    bl_idname = "bname.coma_renumber_active_page"
+    bl_idname = "bmanga.coma_renumber_active_page"
     bl_label = "コマ ID を順番通り再採番"
     bl_description = (
         "現在のページのコマ番号を読む順番に振り直します。"
@@ -262,7 +262,7 @@ class BNAME_OT_coma_renumber_active_page(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_coma_renumber_active_page,)
+_CLASSES = (BMANGA_OT_coma_renumber_active_page,)
 
 
 def register() -> None:

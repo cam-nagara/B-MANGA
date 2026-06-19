@@ -17,7 +17,7 @@ import bpy
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
     os.environ.get(
-        "BNAME_COMA_CAMERA_ROUNDTRIP_OUT",
+        "BMANGA_COMA_CAMERA_ROUNDTRIP_OUT",
         str(ROOT / ".codex" / "visual" / "coma_camera_roundtrip"),
     )
 )
@@ -25,12 +25,12 @@ OUT_DIR = Path(
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_camera_roundtrip",
+        "bmanga_dev_coma_camera_roundtrip",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_camera_roundtrip"] = mod
+    sys.modules["bmanga_dev_coma_camera_roundtrip"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -42,7 +42,7 @@ def _assert_close(actual: float, expected: float, label: str) -> None:
 
 
 def _image_evidence(path: Path) -> dict:
-    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+    from bmanga_dev_coma_camera_roundtrip.io import export_pipeline
 
     Image = export_pipeline.Image
     assert Image is not None
@@ -60,14 +60,14 @@ def _image_evidence(path: Path) -> dict:
 
 
 def _write_visual_sheet(evidence: dict, preview_path: Path) -> Path:
-    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+    from bmanga_dev_coma_camera_roundtrip.io import export_pipeline
 
     Image = export_pipeline.Image
     ImageDraw = export_pipeline.ImageDraw
     assert Image is not None and ImageDraw is not None
     sheet = Image.new("RGBA", (920, 520), (248, 248, 248, 255))
     draw = ImageDraw.Draw(sheet)
-    draw.text((24, 20), "B-Name coma camera roundtrip visual check", fill=(0, 0, 0, 255))
+    draw.text((24, 20), "B-MANGA coma camera roundtrip visual check", fill=(0, 0, 0, 255))
     y = 58
     for label, value in (
         ("fisheye FOV", evidence["fisheye_fov_deg"]),
@@ -99,8 +99,8 @@ def _write_visual_sheet(evidence: dict, preview_path: Path) -> Path:
 
 
 def _current_page_and_coma(work, scene):
-    page_id = str(getattr(scene, "bname_current_coma_page_id", "") or "")
-    coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    page_id = str(getattr(scene, "bmanga_current_coma_page_id", "") or "")
+    coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     for page in getattr(work, "pages", []):
         if str(getattr(page, "id", "") or "") != page_id:
             continue
@@ -111,7 +111,7 @@ def _current_page_and_coma(work, scene):
 
 
 def _create_roundtrip_work(temp_root: Path, get_work):
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "Roundtrip.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Roundtrip.bmanga"))
     assert result == {"FINISHED"}, result
     work = get_work(bpy.context)
     assert work is not None
@@ -130,7 +130,7 @@ def _create_roundtrip_work(temp_root: Path, get_work):
 
 
 def _enter_configured_coma(get_mode, get_work, coma_camera):
-    result = bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
     assert get_mode(bpy.context) == "COMA"
     scene = bpy.context.scene
@@ -139,13 +139,13 @@ def _enter_configured_coma(get_mode, get_work, coma_camera):
     page, entry = _current_page_and_coma(work, scene)
     cam = scene.camera
     assert cam is not None
-    settings = scene.bname_coma_camera_settings
-    scene.bname_coma_camera_original_resolution_x = 1200
-    scene.bname_coma_camera_original_resolution_y = 900
-    scene.bname_coma_camera_fisheye_layout_mode = True
-    scene.bname_coma_camera_reduction_mode = True
-    scene.bname_coma_camera_preview_scale_percentage = 28.0
-    scene.bname_coma_camera_fisheye_fov = math.radians(330.0)
+    settings = scene.bmanga_coma_camera_settings
+    scene.bmanga_coma_camera_original_resolution_x = 1200
+    scene.bmanga_coma_camera_original_resolution_y = 900
+    scene.bmanga_coma_camera_fisheye_layout_mode = True
+    scene.bmanga_coma_camera_reduction_mode = True
+    scene.bmanga_coma_camera_preview_scale_percentage = 28.0
+    scene.bmanga_coma_camera_fisheye_fov = math.radians(330.0)
     cam.data.fisheye_fov = math.radians(360.0)
     cam.data.shift_x = 0.019
     cam.data.shift_y = 0.060
@@ -175,13 +175,13 @@ def _enter_configured_coma(get_mode, get_work, coma_camera):
     settings.use_solid_background_color = True
     settings.solid_background_color = (0.12, 0.18, 0.24)
     coma_camera.capture_camera_runtime_settings(bpy.context)
-    _assert_close(scene.bname_coma_camera_fisheye_fov, math.radians(360.0), "保存用FOV同期")
+    _assert_close(scene.bmanga_coma_camera_fisheye_fov, math.radians(360.0), "保存用FOV同期")
     coma_camera.resync_coma_camera_output_layout(bpy.context)
     return work, page, entry
 
 
 def _write_thumb(paths, work, page, entry) -> tuple[Path, dict]:
-    from bname_dev_coma_camera_roundtrip.io import export_pipeline
+    from bmanga_dev_coma_camera_roundtrip.io import export_pipeline
 
     Image = export_pipeline.Image
     ImageDraw = export_pipeline.ImageDraw
@@ -254,7 +254,7 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
         # 適用して出力する。ここではレンダー成否を検証したいだけなので、
         # 100% に固定して縮尺の影響を外す。
         work.page_preview_scale_percentage = 100.0
-        from bname_dev_coma_camera_roundtrip.utils import coma_thumb_output as _cto
+        from bmanga_dev_coma_camera_roundtrip.utils import coma_thumb_output as _cto
 
         scene.render.resolution_x = 16
         scene.render.resolution_y = 16
@@ -276,24 +276,24 @@ def _assert_thumb_output_renders(paths, work, page, entry) -> None:
 
 def _save_and_reopen_coma() -> None:
     coma_path = Path(bpy.data.filepath).resolve()
-    result = bpy.ops.bname.work_save()
+    result = bpy.ops.bmanga.work_save()
     assert result == {"FINISHED"}, result
     bpy.ops.wm.open_mainfile(filepath=str(coma_path))
 
 
 def _collect_reopened_checks(preview_evidence: dict) -> dict:
     scene = bpy.context.scene
-    settings = scene.bname_coma_camera_settings
+    settings = scene.bmanga_coma_camera_settings
     cam = scene.camera
     return {
-        "fisheye_fov_deg": round(math.degrees(float(scene.bname_coma_camera_fisheye_fov)), 3),
+        "fisheye_fov_deg": round(math.degrees(float(scene.bmanga_coma_camera_fisheye_fov)), 3),
         "camera_fov_deg": round(math.degrees(float(cam.data.fisheye_fov)), 3),
-        "fisheye_layout_mode": bool(scene.bname_coma_camera_fisheye_layout_mode),
-        "reduction_mode": bool(scene.bname_coma_camera_reduction_mode),
-        "preview_scale_percentage": float(scene.bname_coma_camera_preview_scale_percentage),
+        "fisheye_layout_mode": bool(scene.bmanga_coma_camera_fisheye_layout_mode),
+        "reduction_mode": bool(scene.bmanga_coma_camera_reduction_mode),
+        "preview_scale_percentage": float(scene.bmanga_coma_camera_preview_scale_percentage),
         "original_resolution": [
-            int(scene.bname_coma_camera_original_resolution_x),
-            int(scene.bname_coma_camera_original_resolution_y),
+            int(scene.bmanga_coma_camera_original_resolution_x),
+            int(scene.bmanga_coma_camera_original_resolution_y),
         ],
         "render_resolution": [int(scene.render.resolution_x), int(scene.render.resolution_y)],
         "render_resolution_percentage": int(scene.render.resolution_percentage),
@@ -337,7 +337,7 @@ def _assert_reopened_checks(checks: dict) -> None:
 
 
 def _verify_page_list_preview(get_work, coma_plane, checks: dict, preview_path: Path) -> None:
-    result = bpy.ops.bname.exit_coma_mode_safe("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.exit_coma_mode_safe("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
     work = get_work(bpy.context)
     page = work.pages[0]
@@ -350,12 +350,12 @@ def _verify_page_list_preview(get_work, coma_plane, checks: dict, preview_path: 
 
 def main() -> None:
     mod = _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_coma_camera_roundtrip_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_coma_camera_roundtrip_"))
     try:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        from bname_dev_coma_camera_roundtrip.core.mode import get_mode
-        from bname_dev_coma_camera_roundtrip.core.work import get_work
-        from bname_dev_coma_camera_roundtrip.utils import (
+        from bmanga_dev_coma_camera_roundtrip.core.mode import get_mode
+        from bmanga_dev_coma_camera_roundtrip.core.work import get_work
+        from bmanga_dev_coma_camera_roundtrip.utils import (
             coma_camera,
             coma_plane,
             coma_thumb_output,
@@ -380,7 +380,7 @@ def main() -> None:
             mod.unregister()
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
-    print(f"BNAME_COMA_CAMERA_ROUNDTRIP_OK visual={OUT_DIR / 'coma_camera_roundtrip_sheet.png'}")
+    print(f"BMANGA_COMA_CAMERA_ROUNDTRIP_OK visual={OUT_DIR / 'coma_camera_roundtrip_sheet.png'}")
 
 
 if __name__ == "__main__":

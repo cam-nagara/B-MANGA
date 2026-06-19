@@ -1,8 +1,8 @@
 """用紙プリセット管理.
 
-2 層で保持 (計画書 3.2.3 / 4.3):
-- グローバル: アドオン同梱の ``presets/paper/`` (B-Name/presets/paper/)
-- 作品ローカル: ``MyWork.bname/assets/templates/``
+2 層で保持:
+- 同梱: アドオン同梱の ``presets/paper/`` (B-MANGA/presets/paper/)
+- 共通: Blender ユーザー設定配下の B-MANGA 共通プリセット
 
 既定プリセット「集英社マンガ誌汎用」は同梱 JSON として配布する。
 """
@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils import json_io, log, paths
+from . import shared_presets
 from . import schema
 
 _logger = log.get_logger(__name__)
@@ -30,7 +31,7 @@ class PaperPreset:
     name: str
     description: str
     path: Path
-    source: str  # "global" | "local"
+    source: str  # "global" | "user"
     data: dict[str, Any]
 
 
@@ -42,16 +43,21 @@ def list_global_presets() -> list[PaperPreset]:
 
 
 def list_local_presets(work_dir: Path) -> list[PaperPreset]:
-    templates = paths.assets_dir(Path(work_dir)) / paths.ASSETS_TEMPLATES_DIR
-    return _list_presets_in_dir(templates, source="local")
+    _migrate_work_presets(work_dir)
+    return list_user_presets()
+
+
+def list_user_presets() -> list[PaperPreset]:
+    return _list_presets_in_dir(shared_presets.preset_dir("paper"), source="user")
 
 
 def list_all_presets(work_dir: Path | None) -> list[PaperPreset]:
-    """グローバル → 作品ローカルの順で返す (同名があればローカル優先で上書き)."""
+    """同梱 → 共通の順で返す (同名があれば共通優先で上書き)."""
     presets = {p.name: p for p in list_global_presets()}
     if work_dir is not None:
-        for p in list_local_presets(work_dir):
-            presets[p.name] = p
+        _migrate_work_presets(work_dir)
+    for p in list_user_presets():
+        presets[p.name] = p
     return list(presets.values())
 
 
@@ -118,8 +124,9 @@ def apply_preset_to_work(preset: PaperPreset, work) -> None:
 
 
 def save_local_preset(work_dir: Path, work, name: str, description: str = "") -> Path:
-    """現在の用紙関連設定を作品ローカルプリセットとして保存."""
-    templates = paths.assets_dir(Path(work_dir)) / paths.ASSETS_TEMPLATES_DIR
+    """現在の用紙関連設定を全作品共通プリセットとして保存."""
+    del work_dir
+    templates = shared_presets.preset_dir("paper")
     templates.mkdir(parents=True, exist_ok=True)
     safe_name = _sanitize_filename(name)
     out = templates / f"{safe_name}{PRESET_SUFFIX}"
@@ -135,7 +142,7 @@ def save_local_preset(work_dir: Path, work, name: str, description: str = "") ->
         "comaGap": schema.coma_gap_to_dict(work.coma_gap),
     }
     json_io.write_json(out, data)
-    _logger.info("local preset saved: %s", out)
+    _logger.info("shared paper preset saved: %s", out)
     return out
 
 
@@ -175,3 +182,10 @@ def _sanitize_filename(name: str) -> str:
     cleaned = "".join("_" if ch in _FORBIDDEN_CHARS else ch for ch in name.strip())
     cleaned = cleaned.rstrip(". ")
     return cleaned or "preset"
+
+
+def _migrate_work_presets(work_dir: Path | None) -> None:
+    if work_dir is None:
+        return
+    legacy_dir = paths.assets_dir(Path(work_dir)) / paths.ASSETS_TEMPLATES_DIR
+    shared_presets.copy_json_presets_once(legacy_dir, shared_presets.preset_dir("paper"))

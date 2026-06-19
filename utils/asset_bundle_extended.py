@@ -1,4 +1,4 @@
-"""Extended B-Name asset payload helpers."""
+"""Extended B-MANGA asset payload helpers."""
 
 from __future__ import annotations
 
@@ -65,7 +65,7 @@ def preview_objects_for_entry(entry: dict) -> list[bpy.types.Object]:
     kind = str(entry.get("kind", "") or "")
     source_id = str(entry.get("source_id", "") or "")
     if kind == "raster":
-        obj = on.find_object_by_bname_id(source_id, kind="raster")
+        obj = on.find_object_by_bmanga_id(source_id, kind="raster")
         return [obj] if obj is not None else []
     if kind != "coma":
         return []
@@ -122,7 +122,7 @@ def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key:
     from ..operators import raster_layer_op
 
     work = get_work(context)
-    coll = getattr(getattr(context, "scene", None), "bname_raster_layers", None)
+    coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
     if work is None or coll is None or not getattr(work, "work_dir", ""):
         return None
     data = dict(entry.get("data") or {})
@@ -145,8 +145,8 @@ def instantiate_raster(context, page, entry: dict, parent_kind: str, parent_key:
     if image is not None and not png_b64:
         raster_layer_op.save_raster_png(context, raster, force=True)
     raster_layer_op.ensure_raster_plane(context, raster)
-    context.scene.bname_active_raster_layer_index = len(coll) - 1
-    context.scene.bname_active_layer_kind = "raster"
+    context.scene.bmanga_active_raster_layer_index = len(coll) - 1
+    context.scene.bmanga_active_layer_kind = "raster"
     return raster
 
 
@@ -203,7 +203,7 @@ def instantiate_gp_layer(
         obj.data.layers.active = layer
     except Exception:  # noqa: BLE001
         pass
-    context.scene.bname_active_layer_kind = "gp"
+    context.scene.bmanga_active_layer_kind = "gp"
     return obj, layer
 
 

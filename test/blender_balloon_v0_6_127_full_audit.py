@@ -2,7 +2,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_v0_6_127_full_audit.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_v0_6_127_full_audit.py"
 """
 
 from __future__ import annotations
@@ -17,18 +17,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_V127_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_v127_"))
+_OUT_ENV = os.environ.get("BMANGA_V127_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_v127_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_v127",
+        "bmanga_dev_v127",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_v127"] = mod
+    sys.modules["bmanga_dev_v127"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -111,17 +111,17 @@ def _create_entry(context, page, parent_key, shape: str, balloon_op):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_v127_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_v127_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "V127Check.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "V127Check.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_v127.core.work import get_work
-    from bname_dev_v127.operators import balloon_op
-    from bname_dev_v127.utils import balloon_curve_object
-    from bname_dev_v127.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_v127.core.work import get_work
+    from bmanga_dev_v127.operators import balloon_op
+    from bmanga_dev_v127.utils import balloon_curve_object
+    from bmanga_dev_v127.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     work = get_work(context)

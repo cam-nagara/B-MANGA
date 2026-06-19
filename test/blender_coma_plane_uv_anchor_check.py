@@ -6,7 +6,7 @@
         --python test/blender_coma_plane_uv_anchor_check.py
 
 検証観点:
-1. メッシュを初回構築すると、 UV アンカー (``mesh["bname_uv_ref"]``) が
+1. メッシュを初回構築すると、 UV アンカー (``mesh["bmanga_uv_ref"]``) が
    外接矩形と一致する。
 2. メッシュを拡張サイズで再構築しても、 アンカーは初回値のまま保たれる
    (= プレビューは変形しない)。
@@ -23,7 +23,7 @@ import types
 import bpy
 
 
-ROOT = r"D:/Develop/Blender/B-Name/.claude/worktrees/mystifying-jennings-c43858"
+ROOT = r"D:/Develop/Blender/B-MANGA/.claude/worktrees/mystifying-jennings-c43858"
 
 
 def _load_module(qualname, path):
@@ -36,16 +36,16 @@ def _load_module(qualname, path):
 
 def _bootstrap_minimal():
     """coma_plane.py が必要とする最小限の依存だけセットアップする."""
-    pkg = types.ModuleType("b_name_t")
+    pkg = types.ModuleType("b_manga_t")
     pkg.__path__ = [ROOT]
-    sys.modules["b_name_t"] = pkg
+    sys.modules["b_manga_t"] = pkg
     for sub in ("utils", "core"):
-        m = types.ModuleType(f"b_name_t.{sub}")
+        m = types.ModuleType(f"b_manga_t.{sub}")
         m.__path__ = [f"{ROOT}/{sub}"]
-        sys.modules[f"b_name_t.{sub}"] = m
-    _load_module("b_name_t.utils.log", f"{ROOT}/utils/log.py")
-    _load_module("b_name_t.utils.geom", f"{ROOT}/utils/geom.py")
-    _load_module("b_name_t.utils.border_geom", f"{ROOT}/utils/border_geom.py")
+        sys.modules[f"b_manga_t.{sub}"] = m
+    _load_module("b_manga_t.utils.log", f"{ROOT}/utils/log.py")
+    _load_module("b_manga_t.utils.geom", f"{ROOT}/utils/geom.py")
+    _load_module("b_manga_t.utils.border_geom", f"{ROOT}/utils/border_geom.py")
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
     # 必要な関数だけ抽出して exec
     # シンプルに直接モジュールをロードしてみる
     try:
-        mod = _load_module("b_name_t.utils.coma_plane", f"{ROOT}/utils/coma_plane.py")
+        mod = _load_module("b_manga_t.utils.coma_plane", f"{ROOT}/utils/coma_plane.py")
     except Exception as exc:
         # 一部の import が失敗しても、 UV ヘルパは独立しているので fallback で
         # 関数を再定義する。
@@ -80,7 +80,7 @@ def main():
     mesh.update()
 
     mod._ensure_uv(mesh)
-    ref = list(mesh["bname_uv_ref"])
+    ref = list(mesh["bmanga_uv_ref"])
     print(f"[case 1] initial anchor stored: {ref}")
     assert abs(ref[2] - 0.1) < 1e-5, f"expected w≈0.1, got {ref[2]}"
     assert abs(ref[3] - 0.08) < 1e-5, f"expected h≈0.08, got {ref[3]}"
@@ -92,7 +92,7 @@ def main():
     mesh.from_pydata(verts2, [], [(0, 1, 2, 3)])
     mesh.update()
     mod._ensure_uv(mesh)
-    ref2 = list(mesh["bname_uv_ref"])
+    ref2 = list(mesh["bmanga_uv_ref"])
     assert ref2 == ref, f"anchor changed unexpectedly: {ref} -> {ref2}"
     print(f"[ok] anchor preserved after geometry expand: {ref2}")
 
@@ -119,16 +119,16 @@ def main():
             return self._data.get(key, default)
 
     img = MockImage()
-    img._data["_bname_mtime"] = 1.0  # initial
+    img._data["_bmanga_mtime"] = 1.0  # initial
     mod._refresh_uv_anchor_for_image(mesh, img)
-    ref3 = list(mesh["bname_uv_ref"])
+    ref3 = list(mesh["bmanga_uv_ref"])
     assert ref3 != ref, f"anchor should reset to current bbox after fresh image mtime"
     assert abs(ref3[2] - 0.2) < 1e-5, f"expected w≈0.2 (new bbox), got {ref3[2]}"
     print(f"[ok] anchor re-locked after fresh image mtime: {ref3}")
 
     # Same mtime → no change
     mod._refresh_uv_anchor_for_image(mesh, img)
-    ref4 = list(mesh["bname_uv_ref"])
+    ref4 = list(mesh["bmanga_uv_ref"])
     assert ref4 == ref3, "anchor should not change for same mtime"
     print("[ok] anchor stable when image mtime unchanged")
 
@@ -137,9 +137,9 @@ def main():
     mesh.from_pydata([(-0.15, -0.04, 0.0), (0.15, -0.04, 0.0), (0.15, 0.04, 0.0), (-0.15, 0.04, 0.0)], [], [(0,1,2,3)])
     mesh.update()
     mod._ensure_uv(mesh)
-    img._data["_bname_mtime"] = 2.0  # newer mtime
+    img._data["_bmanga_mtime"] = 2.0  # newer mtime
     mod._refresh_uv_anchor_for_image(mesh, img)
-    ref5 = list(mesh["bname_uv_ref"])
+    ref5 = list(mesh["bmanga_uv_ref"])
     assert abs(ref5[2] - 0.3) < 1e-5, f"expected w≈0.3 (re-rendered), got {ref5[2]}"
     print(f"[ok] anchor follows re-render: {ref5}")
 
@@ -152,10 +152,10 @@ def main():
         rect_width_mm=80, rect_height_mm=60, vertices=[],
         border=types.SimpleNamespace(corner_type="square", corner_radius_mm=0),
     )
-    img2 = types.SimpleNamespace(_data={"_bname_mtime": 50.0})
+    img2 = types.SimpleNamespace(_data={"_bmanga_mtime": 50.0})
     img2.get = lambda k, d=None: img2._data.get(k, d)
     mod._refresh_uv_anchor_for_image(fallback_mesh, img2, coma=coma)
-    ref6 = list(fallback_mesh.get("bname_uv_ref", []))
+    ref6 = list(fallback_mesh.get("bmanga_uv_ref", []))
     assert ref6 and abs(ref6[2] - 0.08) < 1e-4, \
         f"fallback mesh should use coma bbox (0.08m), got {ref6[2] if ref6 else None}"
     print(f"[ok] fallback mesh → anchor uses coma data: {ref6}")
@@ -164,12 +164,12 @@ def main():
     full_mesh = bpy.data.meshes.new("test_recover")
     full_mesh.from_pydata([(0, 0, 0), (0.08, 0, 0), (0.08, 0.06, 0), (0, 0.06, 0)], [], [(0, 1, 2, 3)])
     full_mesh.update()
-    full_mesh["bname_uv_ref"] = [0, 0, 0.001, 0.001]  # bad legacy state
-    full_mesh["bname_uv_ref_mtime"] = 100.0
-    img3 = types.SimpleNamespace(_data={"_bname_mtime": 100.0})  # SAME mtime
+    full_mesh["bmanga_uv_ref"] = [0, 0, 0.001, 0.001]  # bad legacy state
+    full_mesh["bmanga_uv_ref_mtime"] = 100.0
+    img3 = types.SimpleNamespace(_data={"_bmanga_mtime": 100.0})  # SAME mtime
     img3.get = lambda k, d=None: img3._data.get(k, d)
     mod._refresh_uv_anchor_for_image(full_mesh, img3, coma=coma)
-    ref7 = list(full_mesh["bname_uv_ref"])
+    ref7 = list(full_mesh["bmanga_uv_ref"])
     assert abs(ref7[2] - 0.08) < 1e-4, \
         f"degenerate stored anchor should be force-corrected; got w={ref7[2]}"
     print(f"[ok] degenerate stored anchor auto-corrected: {ref7}")

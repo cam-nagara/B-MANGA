@@ -7,7 +7,7 @@
   B) 出力エンジン (export_pipeline.render_page = ページ一覧サムネイル/ページ出力と同じ)
 を同じ画角で描き、横並び画像にして AI 目視レビューする。
 
-出力: D:/Develop/Blender/B-Name/_verify/thumb_audit/*.png
+出力: D:/Develop/Blender/B-MANGA/_verify/thumb_audit/*.png
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "_verify" / "thumb_audit"
-MOD = "bname_thumb_fidelity_audit"
+MOD = "bmanga_thumb_fidelity_audit"
 DPI = 150
 FONT_PATH = "C:/Windows/Fonts/YuGothM.ttc"
 
@@ -135,7 +135,7 @@ def _build_patterns(page) -> list[tuple[float, float, str]]:
     rd.rectangle((0, 2, 95, 17), fill=(255, 170, 60, 255), outline=(120, 60, 0, 255))
     for sx in range(-20, 96, 14):
         rd.line((sx, 20, sx + 20, 0), fill=(200, 90, 20, 255), width=3)
-    ribbon_path = Path(tempfile.gettempdir()) / "bname_audit_ribbon.png"
+    ribbon_path = Path(tempfile.gettempdir()) / "bmanga_audit_ribbon.png"
     ribbon.save(ribbon_path)
     b = _add_balloon(page, shape="rect", x=62, y=104, w=44, h=36, corner_type="rounded",
                      line_style="image", line_width_mm=2.5)
@@ -166,7 +166,7 @@ def _build_patterns(page) -> list[tuple[float, float, str]]:
     nurbs_mod = _sub("operators.balloon_nurbs_tool_op")
     geom = _sub("utils.geom")
     page_grid = _sub("utils.page_grid")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     ox, oy = page_grid.page_total_offset_mm(work, bpy.context.scene, 0)
     pts = [(120, 64), (142, 70), (158, 52), (148, 30), (124, 32)]
     controls = nurbs_mod._interpolating_controls([(ox + x, oy + y) for x, y in pts])
@@ -184,7 +184,7 @@ def _build_patterns(page) -> list[tuple[float, float, str]]:
         sel.select_set(False)
     obj.select_set(True)
     bpy.context.view_layer.objects.active = obj
-    result = bpy.ops.bname.balloon_register_selected_curve()
+    result = bpy.ops.bmanga.balloon_register_selected_curve()
     assert "FINISHED" in result, result
     captions.append((139, 16, "NURBSフキダシ"))
 
@@ -203,7 +203,7 @@ def _ensure_all(page) -> None:
 def _render_scene(out_path: Path, page_index: int, page_w_mm: float, page_h_mm: float) -> None:
     """実機 (EEVEE) レンダー: ビューポートのメッシュの見た目をそのまま写す."""
     page_grid = _sub("utils.page_grid")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     ox, oy = page_grid.page_total_offset_mm(work, bpy.context.scene, page_index)
     cx_m = (ox + page_w_mm * 0.5) * 0.001
     cy_m = (oy + page_h_mm * 0.5) * 0.001
@@ -249,7 +249,7 @@ def _render_scene(out_path: Path, page_index: int, page_w_mm: float, page_h_mm: 
 
 def _render_export(out_path: Path, page) -> None:
     export_pipeline = _sub("io.export_pipeline")
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     options = export_pipeline.ExportOptions(
         area="canvas",
         dpi_override=DPI,
@@ -299,16 +299,16 @@ def _side_by_side(scene_png: Path, export_png: Path, captions, page_h_mm: float,
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_thumb_audit_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "ThumbAudit.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_thumb_audit_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "ThumbAudit.bmanga"))
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     work.paper.canvas_width_mm = 220.0
     work.paper.canvas_height_mm = 310.0
     work.paper.dpi = 600
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     page.comas.clear()
     # コマの実体オブジェクトも除去 (実アプリではコマ削除オペレーターが行う)

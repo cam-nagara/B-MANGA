@@ -11,7 +11,7 @@ _CAMERA_ZOOM_MAX = 600.0
 _CAMERA_ZOOM_DRAG_SCALE = 0.18
 _CAMERA_ZOOM_STEP = 8.0
 _CAMERA_ZOOM_DEADZONE_PX = 3.0
-_OVERVIEW_CAMERA_PROP = "bname_overview_camera"
+_OVERVIEW_CAMERA_PROP = "bmanga_overview_camera"
 
 
 def is_camera_view(rv3d) -> bool:

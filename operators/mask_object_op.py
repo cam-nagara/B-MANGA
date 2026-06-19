@@ -10,8 +10,8 @@ from ..utils import mask_object as mask_obj
 _logger = log.get_logger(__name__)
 
 
-class BNAME_OT_mask_regenerate_all(bpy.types.Operator):
-    bl_idname = "bname.mask_regenerate_all"
+class BMANGA_OT_mask_regenerate_all(bpy.types.Operator):
+    bl_idname = "bmanga.mask_regenerate_all"
     bl_label = "全マスクを再生成"
     bl_description = "現在のページの表示範囲を作り直し、コマ外が隠れる状態を整えます"
     bl_options = {"REGISTER", "UNDO"}
@@ -57,8 +57,8 @@ class BNAME_OT_mask_regenerate_all(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_mask_remove_orphans(bpy.types.Operator):
-    bl_idname = "bname.mask_remove_orphans"
+class BMANGA_OT_mask_remove_orphans(bpy.types.Operator):
+    bl_idname = "bmanga.mask_remove_orphans"
     bl_label = "孤立マスクを削除"
     bl_description = "現在のページで不要になった古いマスクを削除します"
     bl_options = {"REGISTER", "UNDO"}
@@ -93,8 +93,8 @@ class BNAME_OT_mask_remove_orphans(bpy.types.Operator):
 
 
 _CLASSES = (
-    BNAME_OT_mask_regenerate_all,
-    BNAME_OT_mask_remove_orphans,
+    BMANGA_OT_mask_regenerate_all,
+    BMANGA_OT_mask_remove_orphans,
 )
 
 

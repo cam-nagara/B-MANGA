@@ -11,10 +11,10 @@ from .geom import mm_to_m, q_to_mm
 _logger = log.get_logger(__name__)
 
 WORK_INFO_TEXT_PREFIX = "work_info_text_"
-WORK_INFO_MATERIAL_PREFIX = "BName_WorkInfoText_"
-PROP_WORK_INFO_KIND = "bname_work_info_text_kind"
-PROP_WORK_INFO_OWNER_ID = "bname_work_info_text_owner_id"
-PROP_WORK_INFO_SIGNATURE = "bname_work_info_text_signature"
+WORK_INFO_MATERIAL_PREFIX = "BManga_WorkInfoText_"
+PROP_WORK_INFO_KIND = "bmanga_work_info_text_kind"
+PROP_WORK_INFO_OWNER_ID = "bmanga_work_info_text_owner_id"
+PROP_WORK_INFO_SIGNATURE = "bmanga_work_info_text_signature"
 TEXT_Z_M = 0.032
 # Blender の FONT オブジェクトの ``size`` は文字の外枠そのものではなく
 # フォント内部の em サイズとして扱われる。Yu Gothic など日本語フォントでは

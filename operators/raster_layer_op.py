@@ -39,15 +39,15 @@ RASTER_Z_LIFT_M = 0.0
 # Boolean Intersect) に切替えるため shader マスクを撤回し simple な構成に
 # 戻す。 マスクは Boolean Modifier (mask_apply 経由) で実現する。
 RASTER_MATERIAL_VERSION = 6
-RASTER_MATERIAL_VERSION_PROP = "bname_raster_material_version"
-RASTER_IMAGE_NODE = "BName Raster Image"
-RASTER_EMISSION_NODE = "BName Raster Emission"
-RASTER_TRANSPARENT_NODE = "BName Raster Transparent"
-RASTER_ALPHA_SCALE_NODE = "BName Raster Alpha Scale"
-RASTER_ALPHA_MULTIPLY_NODE = "BName Raster Alpha Multiply"
-RASTER_MIX_NODE = "BName Raster Mix"
-RASTER_OUTPUT_NODE = "BName Raster Output"
-RASTER_BRUSH_INITIALIZED_PROP = "bname_raster_brush_initialized"
+RASTER_MATERIAL_VERSION_PROP = "bmanga_raster_material_version"
+RASTER_IMAGE_NODE = "BManga Raster Image"
+RASTER_EMISSION_NODE = "BManga Raster Emission"
+RASTER_TRANSPARENT_NODE = "BManga Raster Transparent"
+RASTER_ALPHA_SCALE_NODE = "BManga Raster Alpha Scale"
+RASTER_ALPHA_MULTIPLY_NODE = "BManga Raster Alpha Multiply"
+RASTER_MIX_NODE = "BManga Raster Mix"
+RASTER_OUTPUT_NODE = "BManga Raster Output"
+RASTER_BRUSH_INITIALIZED_PROP = "bmanga_raster_brush_initialized"
 _RASTER_RUNTIME_BULK_DEPTH = 0
 
 
@@ -86,7 +86,7 @@ def raster_filepath_rel(raster_id: str) -> str:
 
 
 def _raster_collection(scene):
-    return getattr(scene, "bname_raster_layers", None)
+    return getattr(scene, "bmanga_raster_layers", None)
 
 
 def find_raster_entry(scene, raster_id: str):
@@ -104,7 +104,7 @@ def active_raster_entry(context):
     if scene is None:
         return None, -1
     coll = _raster_collection(scene)
-    idx = int(getattr(scene, "bname_active_raster_layer_index", -1))
+    idx = int(getattr(scene, "bmanga_active_raster_layer_index", -1))
     if coll is None or not (0 <= idx < len(coll)):
         return None, -1
     return coll[idx], idx
@@ -168,7 +168,7 @@ def _image_path_is_current(image, abs_path: Path) -> bool:
 
 def _entry_has_unsaved_pixels(entry, image) -> bool:
     try:
-        if bool(entry.get("bname_raster_dirty", False)):
+        if bool(entry.get("bmanga_raster_dirty", False)):
             return True
     except Exception:  # noqa: BLE001
         pass
@@ -403,7 +403,7 @@ def sync_raster_runtime_display(context, entry) -> None:
         return
     from ..utils import object_naming as _on
 
-    obj = _on.find_object_by_bname_id(raster_id, kind="raster")
+    obj = _on.find_object_by_bmanga_id(raster_id, kind="raster")
     if obj is None:
         obj = bpy.data.objects.get(raster_plane_name(raster_id))
     if obj is not None:
@@ -481,13 +481,13 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
     if image is None:
         return None
     mesh = _ensure_raster_mesh(work, raster_id)
-    # bname_id (= raster_id) で既存 Object を逆引き。stamp_layer_object 経由で
+    # bmanga_id (= raster_id) で既存 Object を逆引き。stamp_layer_object 経由で
     # canonical 名 (L0010__raster__title) にリネームされた後でも同 Object を
     # 再利用できる。これがないと毎回 raster_plane_<id> 名で新規 Object を
     # 作ってしまい、Object と Image の二重存在 + 描画対象のズレを招く。
     from ..utils import object_naming as _on
 
-    obj = _on.find_object_by_bname_id(raster_id, kind="raster")
+    obj = _on.find_object_by_bmanga_id(raster_id, kind="raster")
     if obj is None:
         # 旧名で残置されている可能性 (mirror 前のレガシー) を救出
         obj = bpy.data.objects.get(raster_plane_name(raster_id))
@@ -508,8 +508,8 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
 
     mat = ensure_raster_material(entry, image, mask_info=mask_info)
     _assign_raster_material(obj, mat)
-    obj["bname_raster_id"] = raster_id
-    obj["bname_raster_parent_page"] = getattr(page, "id", "")
+    obj["bmanga_raster_id"] = raster_id
+    obj["bmanga_raster_parent_page"] = getattr(page, "id", "")
     obj.hide_viewport = not bool(getattr(entry, "visible", True))
     obj.hide_render = not bool(getattr(entry, "visible", True))
     coll = gp_utils.ensure_page_collection(context.scene, page.id)
@@ -517,7 +517,7 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
     # 注意: page world offset の location 設定は stamp_layer_object 側で
     # apply_page_offset=True により自動適用される (この後 stamp が呼ばれる)。
 
-    # Phase 3a: raster Object に B-Name 安定 ID と parent を stamp し、
+    # Phase 3a: raster Object に B-MANGA 安定 ID と parent を stamp し、
     # Outliner mirror の管理下に取り込む。Phase 1 で実装した
     # stamp_layer_object 経由で Outliner Collection 階層にも link 同期する。
     try:
@@ -540,12 +540,12 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
             stamp_parent_kind = "page"
             stamp_parent_key = entry_parent_key or str(getattr(page, "id", "") or "")
 
-        # BNameRasterLayer には z_index フィールドが無いため、scene 内の
+        # BMangaRasterLayer には z_index フィールドが無いため、scene 内の
         # raster 配列での index に 10 を掛けて sequential な z_index を採番。
         # これにより複数 raster が異なる prefix を持ち、Outliner alpha sort で
         # 順序破綻しない。
         z_index = 0
-        coll = getattr(context.scene, "bname_raster_layers", None)
+        coll = getattr(context.scene, "bmanga_raster_layers", None)
         if coll is not None:
             for i, e in enumerate(coll):
                 if str(getattr(e, "id", "") or "") == raster_id:
@@ -555,7 +555,7 @@ def ensure_raster_plane(context, entry, *, mark_missing: bool = False):
         _los.stamp_layer_object(
             obj,
             kind="raster",
-            bname_id=str(raster_id),
+            bmanga_id=str(raster_id),
             title=str(getattr(entry, "title", "") or raster_id),
             z_index=z_index,
             parent_kind=stamp_parent_kind,
@@ -591,7 +591,7 @@ def save_raster_png(context, entry, *, force: bool = False) -> bool:
         return False
     custom_dirty = False
     try:
-        custom_dirty = bool(entry.get("bname_raster_dirty", False))
+        custom_dirty = bool(entry.get("bmanga_raster_dirty", False))
     except Exception:  # noqa: BLE001
         custom_dirty = False
     if not force and not bool(getattr(image, "is_dirty", False)) and not custom_dirty:
@@ -607,7 +607,7 @@ def save_raster_png(context, entry, *, force: bool = False) -> bool:
         image.save_render(str(abs_path))
     _set_image_relative_path(image, entry.id, abs_path)
     try:
-        entry["bname_raster_dirty"] = False
+        entry["bmanga_raster_dirty"] = False
     except Exception:  # noqa: BLE001
         pass
     return True
@@ -615,7 +615,7 @@ def save_raster_png(context, entry, *, force: bool = False) -> bool:
 
 def mark_raster_dirty(entry) -> None:
     try:
-        entry["bname_raster_dirty"] = True
+        entry["bmanga_raster_dirty"] = True
     except Exception:  # noqa: BLE001
         pass
 
@@ -773,7 +773,7 @@ def remove_raster_by_index(context, index: int) -> bool:
                 _logger.exception("raster png trash move failed: %s", src)
     purge_raster_runtime(entry)
     coll.remove(index)
-    scene.bname_active_raster_layer_index = min(index, len(coll) - 1) if len(coll) else -1
+    scene.bmanga_active_raster_layer_index = min(index, len(coll) - 1) if len(coll) else -1
     return True
 
 
@@ -782,7 +782,7 @@ def _active_image_paint_brush(context):
     brush = getattr(paint, "brush", None) if paint is not None else None
     if brush is None:
         try:
-            brush = bpy.data.brushes.new("B-Name Raster Brush", mode="TEXTURE_PAINT")
+            brush = bpy.data.brushes.new("B-MANGA Raster Brush", mode="TEXTURE_PAINT")
             paint.brush = brush
         except Exception:  # noqa: BLE001
             brush = None
@@ -818,7 +818,7 @@ def _brush_grayscale_timer():
     try:
         context = bpy.context
         scene = getattr(context, "scene", None)
-        active_kind = getattr(scene, "bname_active_layer_kind", "") if scene is not None else ""
+        active_kind = getattr(scene, "bmanga_active_layer_kind", "") if scene is not None else ""
         obj = getattr(getattr(context, "view_layer", None), "objects", None)
         active = getattr(obj, "active", None) if obj is not None else None
         if active_kind != "raster" or getattr(active, "mode", "") != "TEXTURE_PAINT":
@@ -843,8 +843,8 @@ def _start_brush_grayscale_timer() -> None:
     bpy.app.timers.register(_brush_grayscale_timer, first_interval=0.05)
 
 
-class BNAME_OT_raster_layer_add(Operator):
-    bl_idname = "bname.raster_layer_add"
+class BMANGA_OT_raster_layer_add(Operator):
+    bl_idname = "bmanga.raster_layer_add"
     bl_label = "ラスター描画レイヤーを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -921,15 +921,15 @@ class BNAME_OT_raster_layer_add(Operator):
         )
         entry.parent_kind = parent_kind
         entry.parent_key = parent_key or page.id
-        context.scene.bname_active_raster_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "raster"
+        context.scene.bmanga_active_raster_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "raster"
         if ensure_raster_plane(context, entry) is None:
             coll.remove(len(coll) - 1)
             self.report({"ERROR"}, "ラスター実体の作成に失敗しました")
             return {"CANCELLED"}
         save_raster_png(context, entry, force=True)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         uid = layer_stack_utils.target_uid("raster", raster_id)
         if stack is not None:
             for i, item in enumerate(stack):
@@ -939,7 +939,7 @@ class BNAME_OT_raster_layer_add(Operator):
         # 作成完了後に自動的に Texture Paint モードへ入る (enter_paint=True 時)
         if bool(self.enter_paint):
             try:
-                bpy.ops.bname.raster_layer_paint_enter(
+                bpy.ops.bmanga.raster_layer_paint_enter(
                     "INVOKE_DEFAULT", raster_id=raster_id
                 )
             except Exception:  # noqa: BLE001
@@ -947,8 +947,8 @@ class BNAME_OT_raster_layer_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_raster_layer_remove(Operator):
-    bl_idname = "bname.raster_layer_remove"
+class BMANGA_OT_raster_layer_remove(Operator):
+    bl_idname = "bmanga.raster_layer_remove"
     bl_label = "ラスター描画レイヤーを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -965,8 +965,8 @@ class BNAME_OT_raster_layer_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_raster_layer_select(Operator):
-    bl_idname = "bname.raster_layer_select"
+class BMANGA_OT_raster_layer_select(Operator):
+    bl_idname = "bmanga.raster_layer_select"
     bl_label = "ラスター描画レイヤーを選択"
     bl_options = {"REGISTER"}
 
@@ -980,13 +980,13 @@ class BNAME_OT_raster_layer_select(Operator):
         coll = _raster_collection(context.scene)
         if coll is None or not (0 <= idx < len(coll)):
             return {"CANCELLED"}
-        context.scene.bname_active_raster_layer_index = idx
-        context.scene.bname_active_layer_kind = "raster"
+        context.scene.bmanga_active_raster_layer_index = idx
+        context.scene.bmanga_active_layer_kind = "raster"
         return {"FINISHED"}
 
 
-class BNAME_OT_raster_layer_paint_enter(Operator):
-    bl_idname = "bname.raster_layer_paint_enter"
+class BMANGA_OT_raster_layer_paint_enter(Operator):
+    bl_idname = "bmanga.raster_layer_paint_enter"
     bl_label = "Texture Paint へ入る"
     bl_options = {"REGISTER"}
 
@@ -1026,8 +1026,8 @@ class BNAME_OT_raster_layer_paint_enter(Operator):
                 selected.select_set(False)
         context.view_layer.objects.active = obj
         obj.select_set(True)
-        context.scene.bname_active_raster_layer_index = idx
-        context.scene.bname_active_layer_kind = "raster"
+        context.scene.bmanga_active_raster_layer_index = idx
+        context.scene.bmanga_active_layer_kind = "raster"
         paint = getattr(context.tool_settings, "image_paint", None)
         if paint is not None:
             try:
@@ -1074,8 +1074,8 @@ class BNAME_OT_raster_layer_paint_enter(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_raster_layer_paint_exit(Operator):
-    bl_idname = "bname.raster_layer_paint_exit"
+class BMANGA_OT_raster_layer_paint_exit(Operator):
+    bl_idname = "bmanga.raster_layer_paint_exit"
     bl_label = "Texture Paint を終了"
     bl_options = {"REGISTER"}
 
@@ -1099,8 +1099,8 @@ class BNAME_OT_raster_layer_paint_exit(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_raster_layer_mode_set(Operator):
-    bl_idname = "bname.raster_layer_mode_set"
+class BMANGA_OT_raster_layer_mode_set(Operator):
+    bl_idname = "bmanga.raster_layer_mode_set"
     bl_label = "ラスター描画モード切替"
     bl_options = {"REGISTER", "INTERNAL"}
 
@@ -1119,14 +1119,14 @@ class BNAME_OT_raster_layer_mode_set(Operator):
                     _cms.exit_drawing_mode(context)
             except Exception:  # noqa: BLE001
                 pass
-            return bpy.ops.bname.raster_layer_paint_enter("EXEC_DEFAULT")
+            return bpy.ops.bmanga.raster_layer_paint_enter("EXEC_DEFAULT")
         if self.mode == "OBJECT":
-            return bpy.ops.bname.raster_layer_paint_exit("EXEC_DEFAULT")
+            return bpy.ops.bmanga.raster_layer_paint_exit("EXEC_DEFAULT")
         return {"CANCELLED"}
 
 
-class BNAME_OT_raster_layer_save_png(Operator):
-    bl_idname = "bname.raster_layer_save_png"
+class BMANGA_OT_raster_layer_save_png(Operator):
+    bl_idname = "bmanga.raster_layer_save_png"
     bl_label = "ラスターPNGを書き出し"
     bl_options = {"REGISTER"}
 
@@ -1146,8 +1146,8 @@ class BNAME_OT_raster_layer_save_png(Operator):
         return {"CANCELLED"}
 
 
-class BNAME_OT_raster_layer_resample(Operator):
-    bl_idname = "bname.raster_layer_resample"
+class BMANGA_OT_raster_layer_resample(Operator):
+    bl_idname = "bmanga.raster_layer_resample"
     bl_label = "ラスターをリサンプル"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1156,8 +1156,8 @@ class BNAME_OT_raster_layer_resample(Operator):
         return {"CANCELLED"}
 
 
-class BNAME_OT_raster_layer_set_bit_depth(Operator):
-    bl_idname = "bname.raster_layer_set_bit_depth"
+class BMANGA_OT_raster_layer_set_bit_depth(Operator):
+    bl_idname = "bmanga.raster_layer_set_bit_depth"
     bl_label = "ラスター階調を変更"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1175,15 +1175,15 @@ class BNAME_OT_raster_layer_set_bit_depth(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_raster_layer_add,
-    BNAME_OT_raster_layer_remove,
-    BNAME_OT_raster_layer_select,
-    BNAME_OT_raster_layer_paint_enter,
-    BNAME_OT_raster_layer_paint_exit,
-    BNAME_OT_raster_layer_mode_set,
-    BNAME_OT_raster_layer_save_png,
-    BNAME_OT_raster_layer_resample,
-    BNAME_OT_raster_layer_set_bit_depth,
+    BMANGA_OT_raster_layer_add,
+    BMANGA_OT_raster_layer_remove,
+    BMANGA_OT_raster_layer_select,
+    BMANGA_OT_raster_layer_paint_enter,
+    BMANGA_OT_raster_layer_paint_exit,
+    BMANGA_OT_raster_layer_mode_set,
+    BMANGA_OT_raster_layer_save_png,
+    BMANGA_OT_raster_layer_resample,
+    BMANGA_OT_raster_layer_set_bit_depth,
 )
 
 

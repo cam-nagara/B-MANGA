@@ -1,4 +1,4 @@
-"""Fallback preview drawing for extended B-Name asset payloads."""
+"""Fallback preview drawing for extended B-MANGA asset payloads."""
 
 from __future__ import annotations
 

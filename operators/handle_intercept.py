@@ -295,7 +295,7 @@ def finish_drag(context, event, operator) -> bool:
     if moved:
         import bpy
         try:
-            bpy.ops.ed.undo_push(message="B-Name: ハンドル操作")
+            bpy.ops.ed.undo_push(message="B-MANGA: ハンドル操作")
         except Exception:  # noqa: BLE001
             pass
         from ..utils import layer_stack as _ls
@@ -386,7 +386,7 @@ def _capture_rotation_snapshots(context, keys: list[str]) -> list[dict]:
                 })
         elif kind == "effect":
             scene = getattr(context, "scene", None)
-            params = getattr(scene, "bname_effect_line_params", None) if scene else None
+            params = getattr(scene, "bmanga_effect_line_params", None) if scene else None
             if params is not None:
                 snapshots.append({
                     "entry": params,

@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_page_file_stage",
+        "bmanga_dev_page_file_stage",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_page_file_stage"] = mod
+    sys.modules["bmanga_dev_page_file_stage"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -35,8 +35,8 @@ def _managed_kind_count(kind: str) -> int:
     return sum(
         1
         for obj in bpy.data.objects
-        if str(obj.get("bname_kind", "") or "") == kind
-        and bool(obj.get("bname_managed", False))
+        if str(obj.get("bmanga_kind", "") or "") == kind
+        and bool(obj.get("bmanga_managed", False))
     )
 
 
@@ -44,7 +44,7 @@ def _page_preview_objects() -> list[bpy.types.Object]:
     return [
         obj
         for obj in bpy.data.objects
-        if str(obj.get("bname_kind", "") or "") == "page_preview"
+        if str(obj.get("bmanga_kind", "") or "") == "page_preview"
     ]
 
 
@@ -53,33 +53,33 @@ def _visible_page_preview_objects() -> list[bpy.types.Object]:
 
 
 _WORK_FILE_FORBIDDEN_OBJECT_PROPS = {
-    "bname_coma_plane_kind",
-    "bname_coma_mask_kind",
-    "bname_coma_border_kind",
-    "bname_coma_white_margin_kind",
-    "bname_coma_plane_owner_id",
-    "bname_coma_mask_owner_id",
-    "bname_coma_border_owner_id",
-    "bname_coma_white_margin_owner_id",
-    "bname_paper_bg_kind",
-    "bname_paper_guide_kind",
-    "bname_work_info_text_kind",
+    "bmanga_coma_plane_kind",
+    "bmanga_coma_mask_kind",
+    "bmanga_coma_border_kind",
+    "bmanga_coma_white_margin_kind",
+    "bmanga_coma_plane_owner_id",
+    "bmanga_coma_mask_owner_id",
+    "bmanga_coma_border_owner_id",
+    "bmanga_coma_white_margin_owner_id",
+    "bmanga_paper_bg_kind",
+    "bmanga_paper_guide_kind",
+    "bmanga_work_info_text_kind",
 }
 
 _COMA_RUNTIME_OBJECT_PROPS = {
-    "bname_coma_plane_kind",
-    "bname_coma_mask_kind",
-    "bname_coma_border_kind",
-    "bname_coma_white_margin_kind",
-    "bname_coma_plane_owner_id",
-    "bname_coma_mask_owner_id",
-    "bname_coma_border_owner_id",
-    "bname_coma_white_margin_owner_id",
+    "bmanga_coma_plane_kind",
+    "bmanga_coma_mask_kind",
+    "bmanga_coma_border_kind",
+    "bmanga_coma_white_margin_kind",
+    "bmanga_coma_plane_owner_id",
+    "bmanga_coma_mask_owner_id",
+    "bmanga_coma_border_owner_id",
+    "bmanga_coma_white_margin_owner_id",
 }
 
 _WORK_FILE_FORBIDDEN_OBJECT_NAMES = {
-    "bname_master_sketch",
-    "BName_EffectLines",
+    "bmanga_master_sketch",
+    "BManga_EffectLines",
 }
 
 _PAGE_CONTENT_KINDS = {
@@ -97,21 +97,21 @@ _PAGE_CONTENT_KINDS = {
 
 
 def _owner_page_id(obj) -> str:
-    parent_key = str(obj.get("bname_parent_key", "") or "")
+    parent_key = str(obj.get("bmanga_parent_key", "") or "")
     if ":" in parent_key:
         return parent_key.split(":", 1)[0]
     if parent_key.startswith("p") and len(parent_key) >= 5:
         return parent_key
-    for prop in ("bname_paper_bg_page_id", "bname_paper_guide_page_id"):
+    for prop in ("bmanga_paper_bg_page_id", "bmanga_paper_guide_page_id"):
         page_id = str(obj.get(prop, "") or "")
         if page_id:
             return page_id
     for prop in (
-        "bname_coma_plane_owner_id",
-        "bname_coma_mask_owner_id",
-        "bname_coma_border_owner_id",
-        "bname_coma_white_margin_owner_id",
-        "bname_work_info_text_owner_id",
+        "bmanga_coma_plane_owner_id",
+        "bmanga_coma_mask_owner_id",
+        "bmanga_coma_border_owner_id",
+        "bmanga_coma_white_margin_owner_id",
+        "bmanga_work_info_text_owner_id",
     ):
         owner = str(obj.get(prop, "") or "")
         if ":" in owner:
@@ -124,12 +124,12 @@ def _owner_page_id(obj) -> str:
 def _forbidden_work_file_objects() -> list[str]:
     out = []
     for obj in bpy.data.objects:
-        if str(obj.get("bname_kind", "") or "") == "page_preview":
+        if str(obj.get("bmanga_kind", "") or "") == "page_preview":
             continue
         if obj.name in _WORK_FILE_FORBIDDEN_OBJECT_NAMES:
             out.append(obj.name)
             continue
-        if str(obj.get("bname_kind", "") or "") in _PAGE_CONTENT_KINDS:
+        if str(obj.get("bmanga_kind", "") or "") in _PAGE_CONTENT_KINDS:
             out.append(obj.name)
             continue
         if any(str(obj.get(prop, "") or "") for prop in _WORK_FILE_FORBIDDEN_OBJECT_PROPS):
@@ -151,11 +151,11 @@ def _coma_runtime_owner_pages() -> set[str]:
 def _forbidden_work_file_collections() -> list[str]:
     out = []
     for coll in bpy.data.collections:
-        kind = str(coll.get("bname_kind", "") or "")
+        kind = str(coll.get("bmanga_kind", "") or "")
         if kind == "page_preview":
             continue
-        coll_id = str(coll.get("bname_id", "") or "")
-        parent_key = str(coll.get("bname_parent_key", "") or "")
+        coll_id = str(coll.get("bmanga_id", "") or "")
+        parent_key = str(coll.get("bmanga_parent_key", "") or "")
         if kind in {"page", "coma", "folder"}:
             out.append(coll.name)
         elif coll.name.startswith("p") and len(coll.name) >= 5:
@@ -178,9 +178,9 @@ def _assert_work_file_preview_only() -> None:
 def _assert_page_file_current_page_runtime_only(page_id: str) -> None:
     offenders = []
     for obj in bpy.data.objects:
-        if str(obj.get("bname_kind", "") or "") == "page_preview":
+        if str(obj.get("bmanga_kind", "") or "") == "page_preview":
             continue
-        kind = str(obj.get("bname_kind", "") or "")
+        kind = str(obj.get("bmanga_kind", "") or "")
         has_runtime_prop = any(str(obj.get(prop, "") or "") for prop in _WORK_FILE_FORBIDDEN_OBJECT_PROPS)
         if kind not in _PAGE_CONTENT_KINDS and not has_runtime_prop:
             continue
@@ -193,10 +193,10 @@ def _assert_page_file_current_page_runtime_only(page_id: str) -> None:
 
 
 def _assert_current_page_runtime_aligned(page_index: int) -> None:
-    from bname_dev_page_file_stage.utils import page_grid
+    from bmanga_dev_page_file_stage.utils import page_grid
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[page_index]
     page_id = str(getattr(page, "id", "") or "")
     ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_index)
@@ -214,8 +214,8 @@ def _assert_current_page_runtime_aligned(page_index: int) -> None:
     page_objects = [
         obj
         for obj in bpy.data.objects
-        if str(obj.get("bname_paper_bg_page_id", "") or "") == page_id
-        or str(obj.get("bname_paper_guide_page_id", "") or "") == page_id
+        if str(obj.get("bmanga_paper_bg_page_id", "") or "") == page_id
+        or str(obj.get("bmanga_paper_guide_page_id", "") or "") == page_id
     ]
     assert page_objects, f"{page_id} の用紙実体がありません"
     for obj in page_objects:
@@ -231,29 +231,29 @@ def _assert_current_page_runtime_aligned(page_index: int) -> None:
         coma_objects = [
             obj
             for obj in bpy.data.objects
-            if str(obj.get("bname_coma_plane_owner_id", "") or "") == owner
-            or str(obj.get("bname_coma_mask_owner_id", "") or "") == owner
-            or str(obj.get("bname_coma_border_owner_id", "") or "") == owner
-            or str(obj.get("bname_coma_white_margin_owner_id", "") or "") == owner
+            if str(obj.get("bmanga_coma_plane_owner_id", "") or "") == owner
+            or str(obj.get("bmanga_coma_mask_owner_id", "") or "") == owner
+            or str(obj.get("bmanga_coma_border_owner_id", "") or "") == owner
+            or str(obj.get("bmanga_coma_white_margin_owner_id", "") or "") == owner
         ]
         assert coma_objects, f"{owner} のコマ実体がありません"
         for obj in coma_objects:
             assert_xy(obj, ox_mm + local_x, oy_mm + local_y)
 
 
-def _managed_object(kind: str, bname_id: str):
+def _managed_object(kind: str, bmanga_id: str):
     for obj in bpy.data.objects:
         if (
-            str(obj.get("bname_kind", "") or "") == kind
-            and str(obj.get("bname_id", "") or "") == bname_id
-            and bool(obj.get("bname_managed", False))
+            str(obj.get("bmanga_kind", "") or "") == kind
+            and str(obj.get("bmanga_id", "") or "") == bmanga_id
+            and bool(obj.get("bmanga_managed", False))
         ):
             return obj
     return None
 
 
 def _add_page_only_probe() -> None:
-    from bname_dev_page_file_stage.utils import object_naming as on
+    from bmanga_dev_page_file_stage.utils import object_naming as on
 
     obj = bpy.data.objects.new("page_only_balloon_probe", None)
     bpy.context.scene.collection.objects.link(obj)
@@ -286,9 +286,9 @@ def _add_other_page_balloon_entry() -> None:
     v0.6.279 以降、作品ファイルは他ページの詳細を保持しない (保存ガードで
     page.json にも書かれない) ため、対象ページを開いて作成する。
     """
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=1)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=1)
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     entry = work.pages[1].balloons.add()
     entry.id = "other_page_balloon"
     entry.title = "other_page_balloon"
@@ -297,7 +297,7 @@ def _add_other_page_balloon_entry() -> None:
     entry.y_mm = 20.0
     entry.width_mm = 40.0
     entry.height_mm = 30.0
-    result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
 
 
@@ -315,35 +315,35 @@ def _image_has_red_area(path: Path) -> bool:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_page_file_stage_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_file_stage_"))
     mod = None
     try:
         mod = _load_addon()
-        work_dir = temp_root / "PageFileStage.bname"
-        result = bpy.ops.bname.work_new(filepath=str(work_dir))
+        work_dir = temp_root / "PageFileStage.bmanga"
+        result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
-        assert bpy.context.scene.bname_work.work_info.display_work_name.position == "bottom-left"
+        assert bpy.context.scene.bmanga_work.work_info.display_work_name.position == "bottom-left"
         assert _mainfile() == (work_dir / "work.blend").resolve()
         _assert_work_file_preview_only()
 
         for _ in range(3):
-            result = bpy.ops.bname.page_add()
+            result = bpy.ops.bmanga.page_add()
             assert result == {"FINISHED"}, result
         _assert_work_file_preview_only()
 
         _add_other_page_balloon_entry()
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
-        assert bool(getattr(bpy.context.scene, "bname_overview_mode", False)) is True
-        assert str(getattr(bpy.context.scene, "bname_current_page_id", "")) == "p0001"
+        assert bool(getattr(bpy.context.scene, "bmanga_overview_mode", False)) is True
+        assert str(getattr(bpy.context.scene, "bmanga_current_page_id", "")) == "p0001"
         assert bpy.data.collections.get("p0002") is None
         assert _managed_object("balloon", "other_page_balloon") is None
         _assert_page_file_current_page_runtime_only("p0001")
         _assert_current_page_runtime_aligned(0)
-        from bname_dev_page_file_stage.utils import coma_border_object, coma_plane, layer_object_sync
+        from bmanga_dev_page_file_stage.utils import coma_border_object, coma_plane, layer_object_sync
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         other_page = work.pages[1]
         # 現行仕様ではページ用 blend に他ページの詳細データは無いため、
         # 汚染プローブ用に一時的なコマデータを直接作って実体を生成する
@@ -367,30 +367,30 @@ def main() -> None:
         assert len(previews) == 3
         assert len(_visible_page_preview_objects()) == 3
         assert (work_dir / "p0002" / "page_preview.png").is_file()
-        assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 3
-        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
-        assert bpy.ops.bname.coma_knife_cut.poll()
-        assert bpy.ops.bname.coma_create_tool.poll()
-        assert bpy.ops.bname.balloon_tool.poll()
-        assert bpy.ops.bname.text_tool.poll()
-        assert bpy.ops.bname.effect_line_tool.poll()
-        assert bpy.ops.bname.layer_move_tool.poll()
-        assert bpy.ops.bname.mask_regenerate_all.poll()
-        assert bpy.ops.bname.mask_remove_orphans.poll()
-        assert bpy.ops.bname.repair_hierarchy.poll()
-        assert "FINISHED" in bpy.ops.bname.mask_regenerate_all("EXEC_DEFAULT")
+        assert int(getattr(bpy.context.scene, "bmanga_page_preview_page_radius", -1)) == 3
+        assert abs(float(getattr(bpy.context.scene, "bmanga_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
+        assert bpy.ops.bmanga.coma_knife_cut.poll()
+        assert bpy.ops.bmanga.coma_create_tool.poll()
+        assert bpy.ops.bmanga.balloon_tool.poll()
+        assert bpy.ops.bmanga.text_tool.poll()
+        assert bpy.ops.bmanga.effect_line_tool.poll()
+        assert bpy.ops.bmanga.layer_move_tool.poll()
+        assert bpy.ops.bmanga.mask_regenerate_all.poll()
+        assert bpy.ops.bmanga.mask_remove_orphans.poll()
+        assert bpy.ops.bmanga.repair_hierarchy.poll()
+        assert "FINISHED" in bpy.ops.bmanga.mask_regenerate_all("EXEC_DEFAULT")
         _assert_page_file_current_page_runtime_only("p0001")
-        assert "FINISHED" in bpy.ops.bname.mask_remove_orphans("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.mask_remove_orphans("EXEC_DEFAULT")
         _assert_page_file_current_page_runtime_only("p0001")
-        assert "FINISHED" in bpy.ops.bname.repair_hierarchy("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.repair_hierarchy("EXEC_DEFAULT")
         _assert_page_file_current_page_runtime_only("p0001")
 
-        from bname_dev_page_file_stage.utils import page_preview_object
-        from bname_dev_page_file_stage.utils import page_grid
-        from bname_dev_page_file_stage.ui import overlay
-        from bname_dev_page_file_stage.operators import coma_knife_cut_op
+        from bmanga_dev_page_file_stage.utils import page_preview_object
+        from bmanga_dev_page_file_stage.utils import page_grid
+        from bmanga_dev_page_file_stage.ui import overlay
+        from bmanga_dev_page_file_stage.operators import coma_knife_cut_op
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1, 2, 3}  # noqa: SLF001
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert "p0002" in rects
@@ -429,12 +429,12 @@ def main() -> None:
             other_oy + float(other_rect.get("y", 0.0)) + float(other_rect.get("heightMm", 0.0)) * 0.5,
         )
         assert other_hit is None, f"ページファイル上で他ページのコマを検出しています: {other_hit}"
-        bpy.context.scene.bname_page_preview_enabled = False
+        bpy.context.scene.bmanga_page_preview_enabled = False
         assert all(obj.hide_viewport for obj in _page_preview_objects())
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0}  # noqa: SLF001
-        bpy.context.scene.bname_page_preview_enabled = True
+        bpy.context.scene.bmanga_page_preview_enabled = True
         assert any(not obj.hide_viewport for obj in _page_preview_objects())
-        bpy.context.scene.bname_page_preview_page_radius = 1
+        bpy.context.scene.bmanga_page_preview_page_radius = 1
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert set(rects) == {"p0001", "p0002"}
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1}  # noqa: SLF001
@@ -464,7 +464,7 @@ def main() -> None:
         # 非表示 (半径0) にする前に確認する。「画像解像度%」はページ実解像度
         # (用紙サイズ×DPI) に対する割合・長辺1536px上限なので、上限未満になる
         # 10% を指定し、期待サイズは実装と同じ計算で求める。
-        bpy.context.scene.bname_page_preview_resolution_percentage = 10.0
+        bpy.context.scene.bmanga_page_preview_resolution_percentage = 10.0
         expected_preview_size = page_preview_object._image_size(  # noqa: SLF001
             work, bpy.context.scene, work.pages[1]
         )
@@ -479,32 +479,32 @@ def main() -> None:
         preview_image = Image.open(work_dir / "p0002" / "page_preview.png").convert("RGBA")
         r, g, b, a = preview_image.getpixel((preview_image.width // 2, preview_image.height // 2))
         assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
-        bpy.context.scene.bname_overview_cols = 6
-        bpy.context.scene.bname_overview_gap_mm = 0.0
-        bpy.context.scene.bname_page_preview_page_radius = 0
+        bpy.context.scene.bmanga_overview_cols = 6
+        bpy.context.scene.bmanga_overview_gap_mm = 0.0
+        bpy.context.scene.bmanga_page_preview_page_radius = 0
         assert len(_visible_page_preview_objects()) == 0
 
         _add_current_page_preview_balloon(work)
         _add_page_only_probe()
-        result = bpy.ops.bname.work_save()
+        result = bpy.ops.bmanga.work_save()
         assert result == {"FINISHED"}, result
         assert _managed_kind_count("balloon") >= 1
         assert _image_has_red_area(work_dir / "p0001" / "page_preview.png")
 
-        result = bpy.ops.bname.exit_page_file()
+        result = bpy.ops.bmanga.exit_page_file()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "work.blend").resolve()
         _assert_work_file_preview_only()
         assert _managed_kind_count("balloon") == 0
         assert _image_has_red_area(work_dir / "p0001" / "page_preview.png")
-        assert not bpy.ops.bname.coma_knife_cut.poll()
-        assert not bpy.ops.bname.coma_create_tool.poll()
-        assert not bpy.ops.bname.balloon_tool.poll()
-        assert not bpy.ops.bname.text_tool.poll()
-        assert not bpy.ops.bname.effect_line_tool.poll()
-        assert not bpy.ops.bname.layer_move_tool.poll()
+        assert not bpy.ops.bmanga.coma_knife_cut.poll()
+        assert not bpy.ops.bmanga.coma_create_tool.poll()
+        assert not bpy.ops.bmanga.balloon_tool.poll()
+        assert not bpy.ops.bmanga.text_tool.poll()
+        assert not bpy.ops.bmanga.effect_line_tool.poll()
+        assert not bpy.ops.bmanga.layer_move_tool.poll()
 
-        result = bpy.ops.bname.open_page_file(index=0)
+        result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
         assert _managed_kind_count("balloon") >= 1
@@ -512,17 +512,17 @@ def main() -> None:
         assert bpy.data.collections.get("p0002") is None
         _assert_page_file_current_page_runtime_only("p0001")
         assert len(_page_preview_objects()) >= 1
-        assert int(getattr(bpy.context.scene, "bname_overview_cols", -1)) == 6
-        assert abs(float(getattr(bpy.context.scene, "bname_overview_gap_mm", -1.0))) < 0.001
-        assert int(getattr(bpy.context.scene, "bname_page_preview_page_radius", -1)) == 0
-        assert abs(float(getattr(bpy.context.scene, "bname_page_preview_resolution_percentage", 0.0)) - 10.0) < 0.001
+        assert int(getattr(bpy.context.scene, "bmanga_overview_cols", -1)) == 6
+        assert abs(float(getattr(bpy.context.scene, "bmanga_overview_gap_mm", -1.0))) < 0.001
+        assert int(getattr(bpy.context.scene, "bmanga_page_preview_page_radius", -1)) == 0
+        assert abs(float(getattr(bpy.context.scene, "bmanga_page_preview_resolution_percentage", 0.0)) - 10.0) < 0.001
 
-        result = bpy.ops.bname.page_select(index=1)
+        result = bpy.ops.bmanga.page_select(index=1)
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "page.blend").resolve()
-        assert str(getattr(bpy.context.scene, "bname_current_page_id", "")) == "p0002"
-        assert int(getattr(bpy.context.scene.bname_work, "active_page_index", -1)) == 1
-        assert bool(getattr(bpy.context.scene, "bname_overview_mode", False)) is True
+        assert str(getattr(bpy.context.scene, "bmanga_current_page_id", "")) == "p0002"
+        assert int(getattr(bpy.context.scene.bmanga_work, "active_page_index", -1)) == 1
+        assert bool(getattr(bpy.context.scene, "bmanga_overview_mode", False)) is True
         assert bpy.data.collections.get("p0001") is None
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None
@@ -530,18 +530,18 @@ def main() -> None:
         _assert_page_file_current_page_runtime_only("p0002")
         _assert_current_page_runtime_aligned(1)
 
-        work = bpy.context.scene.bname_work
+        work = bpy.context.scene.bmanga_work
         work.active_page_index = 1
         work.pages[1].active_coma_index = 0
-        result = bpy.ops.bname.enter_coma_mode()
+        result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "c01" / "c01.blend").resolve()
 
-        result = bpy.ops.bname.exit_coma_mode()
+        result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "page.blend").resolve()
 
-        print("BNAME_PAGE_FILE_STAGE_OK", flush=True)
+        print("BMANGA_PAGE_FILE_STAGE_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

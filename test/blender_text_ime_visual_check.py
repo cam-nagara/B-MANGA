@@ -15,7 +15,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = Path(os.environ.get("BNAME_TEXT_IME_VISUAL_OUT", "") or tempfile.mkdtemp(prefix="bname_text_ime_visual_"))
+OUT_DIR = Path(os.environ.get("BMANGA_TEXT_IME_VISUAL_OUT", "") or tempfile.mkdtemp(prefix="bmanga_text_ime_visual_"))
 _MOD = None
 _TEMP_ROOT: Path | None = None
 _FAKE_OP = None
@@ -41,12 +41,12 @@ class _Event:
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -102,7 +102,7 @@ def _view3d_override() -> dict[str, object]:
 
 
 def _current_entry():
-    work = getattr(bpy.context.scene, "bname_work", None)
+    work = getattr(bpy.context.scene, "bmanga_work", None)
     if work is None:
         return None
     for page in getattr(work, "pages", []):
@@ -118,22 +118,22 @@ def _create_work_scene() -> None:
     global _MOD, _TEMP_ROOT
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _MOD = _load_addon()
-    _TEMP_ROOT = Path(tempfile.mkdtemp(prefix="bname_text_ime_work_"))
+    _TEMP_ROOT = Path(tempfile.mkdtemp(prefix="bmanga_text_ime_work_"))
     override = _view3d_override()
     if override:
         with bpy.context.temp_override(**override):
-            result = bpy.ops.bname.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bname"))
+            result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bmanga"))
     else:
-        result = bpy.ops.bname.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(_TEMP_ROOT / "Text_IME_Visual.bmanga"))
     if "FINISHED" not in result:
         raise RuntimeError(f"work_new failed: {result}")
 
 
 def _install_text_probe() -> None:
     global _FAKE_OP, _PAGE_ID, _TEXT_ID
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     if work is None or len(work.pages) == 0:
-        raise RuntimeError("B-Name work/page is not ready")
+        raise RuntimeError("B-MANGA work/page is not ready")
     page = work.pages[0]
     page.texts.clear()
     entry = page.texts.add()
@@ -150,8 +150,8 @@ def _install_text_probe() -> None:
     _PAGE_ID = str(page.id)
     _TEXT_ID = str(entry.id)
 
-    from bname_dev.io import page_io
-    from bname_dev.operators import coma_modal_state, text_edit_runtime, text_op
+    from bmanga_dev.io import page_io
+    from bmanga_dev.operators import coma_modal_state, text_edit_runtime, text_op
 
     page_io.save_page_json(Path(work.work_dir), page)
     page_io.save_pages_json(Path(work.work_dir), work)
@@ -193,9 +193,9 @@ def _install_text_probe() -> None:
         override = _view3d_override()
         if override:
             with bpy.context.temp_override(**override):
-                bpy.ops.bname.view_fit_page()
+                bpy.ops.bmanga.view_fit_page()
         else:
-            bpy.ops.bname.view_fit_page()
+            bpy.ops.bmanga.view_fit_page()
     except Exception:
         pass
     _tag_view3d_redraw()
@@ -218,7 +218,7 @@ def _commit_text() -> None:
     if _COMMITTED:
         return
     try:
-        from bname_dev.operators import text_edit_runtime
+        from bmanga_dev.operators import text_edit_runtime
 
         entry = _current_entry()
         assert entry is not None
@@ -241,7 +241,7 @@ def _capture_commit():
     _commit_text()
     _STATE["commit_screenshot"] = _screenshot("text_ime_committed.png")
     _write_state()
-    print("BNAME_TEXT_IME_VISUAL_OK", flush=True)
+    print("BMANGA_TEXT_IME_VISUAL_OK", flush=True)
     print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True), flush=True)
     sys.stdout.flush()
     _cleanup()
@@ -256,7 +256,7 @@ def _external_commit():
 
 def _cleanup() -> None:
     try:
-        from bname_dev.operators import text_edit_runtime
+        from bmanga_dev.operators import text_edit_runtime
 
         text_edit_runtime.end_ime_capture()
     except Exception:
@@ -305,7 +305,7 @@ def _external_probe_tick():
 
 
 def main() -> None:
-    if os.environ.get("BNAME_TEXT_IME_VISUAL_EXTERNAL"):
+    if os.environ.get("BMANGA_TEXT_IME_VISUAL_EXTERNAL"):
         bpy.app.timers.register(_external_setup_tick, first_interval=0.25)
         return
     _setup_scene()

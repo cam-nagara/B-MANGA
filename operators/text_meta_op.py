@@ -13,8 +13,8 @@ def _resolve_text_entry(context):
     scene = getattr(context, "scene", None)
     if scene is None:
         return None, None
-    stack = getattr(scene, "bname_layer_stack", None)
-    idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+    stack = getattr(scene, "bmanga_layer_stack", None)
+    idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
     item = stack[idx] if stack is not None and 0 <= idx < len(stack) else None
     resolved = layer_stack_utils.resolve_stack_item(context, item) if item is not None else None
     if resolved is not None and resolved.get("kind") == "text" and resolved.get("target") is not None:
@@ -25,11 +25,11 @@ def _resolve_text_entry(context):
         try:
             from ..utils import text_real_object
 
-            return text_real_object.find_text_entry(scene, on.get_bname_id(obj))
+            return text_real_object.find_text_entry(scene, on.get_bmanga_id(obj))
         except Exception:  # noqa: BLE001
             return None, None
 
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return None, None
     idx = int(getattr(work, "active_page_index", -1))
@@ -41,10 +41,10 @@ def _resolve_text_entry(context):
     return None, None
 
 
-class BNAME_OT_text_meta_dialog(Operator):
+class BMANGA_OT_text_meta_dialog(Operator):
     """テキストのセリフ種別や話者を編集する."""
 
-    bl_idname = "bname.text_meta_dialog"
+    bl_idname = "bmanga.text_meta_dialog"
     bl_label = "テキストメタ情報"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -86,7 +86,7 @@ class BNAME_OT_text_meta_dialog(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_text_meta_dialog,)
+_CLASSES = (BMANGA_OT_text_meta_dialog,)
 
 
 def register() -> None:

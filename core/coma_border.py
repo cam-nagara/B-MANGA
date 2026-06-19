@@ -40,7 +40,7 @@ def _on_border_changed(self, _context) -> None:
         pass
 
 
-class BNameComaBorder(bpy.types.PropertyGroup):
+class BMangaComaBorder(bpy.types.PropertyGroup):
     """コマ枠線スタイル."""
 
     style: EnumProperty(  # type: ignore[valid-type]
@@ -112,7 +112,7 @@ class BNameComaBorder(bpy.types.PropertyGroup):
     )
 
 
-class BNameComaWhiteMargin(bpy.types.PropertyGroup):
+class BMangaComaWhiteMargin(bpy.types.PropertyGroup):
     """コマ枠のフチ."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
@@ -163,8 +163,8 @@ class BNameComaWhiteMargin(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
-    BNameComaBorder,
-    BNameComaWhiteMargin,
+    BMangaComaBorder,
+    BMangaComaWhiteMargin,
 )
 
 

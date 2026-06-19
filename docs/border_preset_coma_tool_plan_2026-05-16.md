@@ -5,7 +5,7 @@
 ## 1. 枠線にボカシブラシ線種 + ボカシ量
 
 - `core/coma_border.py` `_LINE_STYLE_ITEMS` に `("brush", "ブラシ", "")` 追加。
-- `BNameComaBorder` に `blur_amount` (0..1, 既定 0.5) を追加。
+- `BMangaComaBorder` に `blur_amount` (0..1, 既定 0.5) を追加。
 - `utils/coma_border_object.py`: `style == "brush"` のとき、芯となる閉路カーブ +
   外側に向かって幅を広げ不透明度を下げたハロー用カーブを数本重ねて輪郭をぼかす。
   ハロー用は Transparent+Emission Mix のソフトマテリアル (BLEND)。
@@ -20,13 +20,13 @@
   `coma_white_margin_to_dict/from_dict` を再利用。グローバル `presets/borders/`、
   作品ローカル `assets/borders/`。
 - `operators/preset_op.py` に枠線プリセット適用/保存オペレータ + WM セレクタ
-  `bname_border_preset_selector` を追加。対象は選択中のコマ。
+  `bmanga_border_preset_selector` を追加。対象は選択中のコマ。
 - パネル: 枠線セクション先頭にプリセット選択 + 保存ボタン。
 - 同梱プリセット: 標準 / 極太 / ブラシ。
 
 ## 3. コマ作成ツール
 
-- `operators/coma_create_op.py` 新規 modal `BNAME_OT_coma_create_tool`。
+- `operators/coma_create_op.py` 新規 modal `BMANGA_OT_coma_create_tool`。
 - 起動: `panels/coma_tools_panel.py` にボタン (枠線プリセット選択付き)。
 - 操作で自動判別: 最初の押下から閾値以上ドラッグ→矩形、クリック連打→折れ線。
   折れ線は始点付近を再クリックで閉じて確定。ESC/右クリックで取消。

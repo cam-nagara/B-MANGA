@@ -15,12 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_flash_perf",
+        "bmanga_dev_balloon_flash_perf",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_flash_perf"] = mod
+    sys.modules["bmanga_dev_balloon_flash_perf"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -28,9 +28,9 @@ def _load_addon():
 
 
 def _make_flash_balloon(context, page, page_key: str, style: str):
-    from bname_dev_balloon_flash_perf.core import balloon as balloon_core
-    from bname_dev_balloon_flash_perf.operators import balloon_op
-    from bname_dev_balloon_flash_perf.utils import balloon_curve_object
+    from bmanga_dev_balloon_flash_perf.core import balloon as balloon_core
+    from bmanga_dev_balloon_flash_perf.operators import balloon_op
+    from bmanga_dev_balloon_flash_perf.utils import balloon_curve_object
 
     entry = balloon_op._create_balloon_entry(
         context,
@@ -75,9 +75,9 @@ def _flash_object(entry, flash_mesh_module):
 
 
 def _assert_cached_and_move_light(style: str, context, page, page_key: str) -> None:
-    from bname_dev_balloon_flash_perf.operators import balloon_op
-    from bname_dev_balloon_flash_perf.utils import balloon_curve_object
-    from bname_dev_balloon_flash_perf.utils import balloon_flash_effect_line_mesh
+    from bmanga_dev_balloon_flash_perf.operators import balloon_op
+    from bmanga_dev_balloon_flash_perf.utils import balloon_curve_object
+    from bmanga_dev_balloon_flash_perf.utils import balloon_flash_effect_line_mesh
 
     entry, body = _make_flash_balloon(context, page, page_key, style)
     flash_obj = _flash_object(entry, balloon_flash_effect_line_mesh)
@@ -134,17 +134,17 @@ def _assert_cached_and_move_light(style: str, context, page, page_key: str) -> N
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_flash_perf_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_flash_perf_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonFlashPerf.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonFlashPerf.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError("作品作成に失敗しました")
 
-        from bname_dev_balloon_flash_perf.core.work import get_work
-        from bname_dev_balloon_flash_perf.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_flash_perf.core.work import get_work
+        from bmanga_dev_balloon_flash_perf.utils.layer_hierarchy import page_stack_key
 
         context = bpy.context
         work = get_work(context)
@@ -155,7 +155,7 @@ def main() -> None:
 
         _assert_cached_and_move_light("uni_flash", context, page, page_key)
         _assert_cached_and_move_light("white_outline", context, page, page_key)
-        print("BNAME_BALLOON_FLASH_PERFORMANCE_OK", flush=True)
+        print("BMANGA_BALLOON_FLASH_PERFORMANCE_OK", flush=True)
     finally:
         if mod is not None:
             try:

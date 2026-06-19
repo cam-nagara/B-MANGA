@@ -22,10 +22,10 @@ from ..utils import asset_bundle, bpy_link, log, paths
 _logger = log.get_logger(__name__)
 
 
-class BNAME_OT_open_link_source(Operator):
+class BMANGA_OT_open_link_source(Operator):
     """選択中オブジェクトのリンク元 .blend を新しい Blender で開く."""
 
-    bl_idname = "bname.open_link_source"
+    bl_idname = "bmanga.open_link_source"
     bl_label = "リンク元ファイルを開く"
     bl_options = {"REGISTER"}
 
@@ -54,10 +54,10 @@ class BNAME_OT_open_link_source(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_record_asset_link(Operator):
+class BMANGA_OT_record_asset_link(Operator):
     """コマ編集モード中、選択中オブジェクトのリンク参照を cNN.json に記録."""
 
-    bl_idname = "bname.record_asset_link"
+    bl_idname = "bmanga.record_asset_link"
     bl_label = "このリンクを記録"
     bl_options = {"REGISTER"}
 
@@ -70,8 +70,8 @@ class BNAME_OT_record_asset_link(Operator):
 
     def execute(self, context):
         work = get_work(context)
-        stem = getattr(context.scene, "bname_current_coma_id", "")
-        page_id = getattr(context.scene, "bname_current_coma_page_id", "")
+        stem = getattr(context.scene, "bmanga_current_coma_id", "")
+        page_id = getattr(context.scene, "bmanga_current_coma_page_id", "")
         page = find_page_by_id(work, page_id)
         if work is None or page is None or not stem:
             self.report({"ERROR"}, "コマ編集モード + アクティブコマが必要です")
@@ -105,10 +105,10 @@ class BNAME_OT_record_asset_link(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_asset_register_layers(Operator):
-    """選択中のB-Nameレイヤーをアセット登録する。"""
+class BMANGA_OT_asset_register_layers(Operator):
+    """選択中のB-MANGAレイヤーをアセット登録する。"""
 
-    bl_idname = "bname.asset_register_layers"
+    bl_idname = "bmanga.asset_register_layers"
     bl_label = "アセットに登録"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -128,7 +128,7 @@ class BNAME_OT_asset_register_layers(Operator):
                 name=str(self.name or ""),
             )
         except Exception as exc:  # noqa: BLE001
-            _logger.exception("register B-Name layer asset failed")
+            _logger.exception("register B-MANGA layer asset failed")
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         self.report({"INFO"}, f"アセットに登録: {coll.name}")
@@ -143,17 +143,17 @@ class BNAME_OT_asset_register_layers(Operator):
                 event=event,
             )
         except Exception as exc:  # noqa: BLE001
-            _logger.exception("register B-Name layer asset failed")
+            _logger.exception("register B-MANGA layer asset failed")
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         self.report({"INFO"}, f"アセットに登録: {coll.name}")
         return {"FINISHED"}
 
 
-class BNAME_OT_asset_register_selected_objects(Operator):
+class BMANGA_OT_asset_register_selected_objects(Operator):
     """選択中のBlenderオブジェクトをアセット登録する。"""
 
-    bl_idname = "bname.asset_register_selected_objects"
+    bl_idname = "bmanga.asset_register_selected_objects"
     bl_label = "選択オブジェクトをアセットに登録"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -191,19 +191,19 @@ class BNAME_OT_asset_register_selected_objects(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_asset_import_dropped(Operator):
-    """配置済みのB-NameアセットをB-Nameレイヤーに変換する。"""
+class BMANGA_OT_asset_import_dropped(Operator):
+    """配置済みのB-MANGAアセットをB-MANGAレイヤーに変換する。"""
 
-    bl_idname = "bname.asset_import_dropped"
-    bl_label = "配置したB-Nameアセットを取り込む"
+    bl_idname = "bmanga.asset_import_dropped"
+    bl_label = "配置したB-MANGAアセットを取り込む"
     bl_options = {"REGISTER", "UNDO"}
 
     def execute(self, context):
         count = asset_bundle.process_pending_dropped_assets(context)
         if count <= 0:
-            self.report({"INFO"}, "取り込むB-Nameアセットはありません")
+            self.report({"INFO"}, "取り込むB-MANGAアセットはありません")
             return {"CANCELLED"}
-        self.report({"INFO"}, f"B-Nameアセットを取り込み: {count}")
+        self.report({"INFO"}, f"B-MANGAアセットを取り込み: {count}")
         return {"FINISHED"}
 
 
@@ -222,11 +222,11 @@ def _make_link_id(obj: bpy.types.Object) -> str:
 
 
 _CLASSES = (
-    BNAME_OT_open_link_source,
-    BNAME_OT_record_asset_link,
-    BNAME_OT_asset_register_layers,
-    BNAME_OT_asset_register_selected_objects,
-    BNAME_OT_asset_import_dropped,
+    BMANGA_OT_open_link_source,
+    BMANGA_OT_record_asset_link,
+    BMANGA_OT_asset_register_layers,
+    BMANGA_OT_asset_register_selected_objects,
+    BMANGA_OT_asset_import_dropped,
 )
 
 
@@ -234,7 +234,7 @@ def _draw_outliner_asset_menu(self, context) -> None:
     layout = self.layout
     layout.separator()
     layout.operator(
-        BNAME_OT_asset_register_selected_objects.bl_idname,
+        BMANGA_OT_asset_register_selected_objects.bl_idname,
         text="アセットに登録",
         icon="ASSET_MANAGER",
     )

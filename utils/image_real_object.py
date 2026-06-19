@@ -24,8 +24,8 @@ _logger = log.get_logger(__name__)
 
 IMAGE_OBJECT_NAME_PREFIX = "image_"
 IMAGE_MESH_NAME_PREFIX = "image_mesh_"
-IMAGE_DATA_NAME_PREFIX = "bname_image_layer_"
-IMAGE_MATERIAL_NAME_PREFIX = "BName_Image_"
+IMAGE_DATA_NAME_PREFIX = "bmanga_image_layer_"
+IMAGE_MATERIAL_NAME_PREFIX = "BManga_Image_"
 IMAGE_Z_BASE = 300
 _AUTO_SYNC_SUSPEND_DEPTH = 0
 
@@ -168,7 +168,7 @@ def entry_page_offset_mm(scene, work, entry, fallback_page=None) -> tuple[float,
 
 
 def _image_z_index(scene, image_id: str) -> int:
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if coll is not None:
         for i, entry in enumerate(coll):
             if str(getattr(entry, "id", "") or "") == image_id:
@@ -423,7 +423,7 @@ def ensure_image_real_object(
     if parent_kind == "coma" and parent_key and ":" in parent_key:
         try:
             from . import coma_content_mask
-            work = getattr(scene, "bname_work", None)
+            work = getattr(scene, "bmanga_work", None)
             mask_info = coma_content_mask.ensure_viewport_mask_for_parent(
                 scene, work, parent_key,
             )
@@ -442,7 +442,7 @@ def ensure_image_real_object(
         mesh.materials[0] = mat
 
     obj_name = _object_name(image_id)
-    obj = on.find_object_by_bname_id(image_id, kind="image")
+    obj = on.find_object_by_bmanga_id(image_id, kind="image")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
     if object_preserve.is_preserved(obj):
@@ -455,7 +455,7 @@ def ensure_image_real_object(
     elif obj.data is not mesh:
         obj.data = mesh
 
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
     width_mm = max(0.1, float(getattr(entry, "width_mm", 0.1) or 0.1))
     height_mm = max(0.1, float(getattr(entry, "height_mm", 0.1) or 0.1))
@@ -467,7 +467,7 @@ def ensure_image_real_object(
     los.stamp_layer_object(
         obj,
         kind="image",
-        bname_id=image_id,
+        bmanga_id=image_id,
         title=str(getattr(entry, "title", "") or image_id),
         z_index=_image_z_index(scene, image_id),
         parent_kind=parent_kind,
@@ -483,7 +483,7 @@ def ensure_image_real_object(
 
 
 def find_image_entry(scene, image_id: str):
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     if coll is None:
         return None
     for entry in coll:
@@ -493,7 +493,7 @@ def find_image_entry(scene, image_id: str):
 
 
 def cleanup_orphan_image_objects(scene: bpy.types.Scene) -> int:
-    coll = getattr(scene, "bname_image_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
     valid = {str(getattr(entry, "id", "") or "") for entry in coll or []}
     removed = 0
     for obj in list(bpy.data.objects):
@@ -528,7 +528,7 @@ def remove_image_real_object(image_id: str) -> bool:
 def sync_all_image_real_objects(scene: bpy.types.Scene, work) -> int:
     if scene is None or work is None:
         return 0
-    coll = getattr(scene, "bname_image_layers", None)
+    coll = getattr(scene, "bmanga_image_layers", None)
     if coll is None:
         return 0
     count = 0
@@ -546,7 +546,7 @@ def on_image_entry_changed(entry) -> bool:
     if auto_sync_suspended():
         return False
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
     image_id = str(getattr(entry, "id", "") or "")
@@ -555,7 +555,7 @@ def on_image_entry_changed(entry) -> bool:
         target_ptr = int(entry.as_pointer())
     except Exception:  # noqa: BLE001
         pass
-    coll = getattr(scene, "bname_image_layers", None) or []
+    coll = getattr(scene, "bmanga_image_layers", None) or []
     for candidate in coll:
         same_id = bool(image_id) and str(getattr(candidate, "id", "") or "") == image_id
         try:

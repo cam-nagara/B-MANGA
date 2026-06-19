@@ -1,4 +1,4 @@
-"""N-Panel の B-Name タブ: 用紙設定・セーフラインオーバーレイ."""
+"""N-Panel の B-MANGA タブ: 用紙設定・セーフラインオーバーレイ."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import page_file_scene
 
-B_NAME_CATEGORY = "B-Name"
+B_NAME_CATEGORY = "B-MANGA"
 
 
 def _paper_unit_label(paper) -> str:
@@ -21,13 +21,13 @@ def _paper_unit_label(paper) -> str:
     return "mm"
 
 
-class BNAME_PT_paper(Panel):
-    bl_idname = "BNAME_PT_paper"
+class BMANGA_PT_paper(Panel):
+    bl_idname = "BMANGA_PT_paper"
     bl_label = "用紙"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 2
+    bl_order = 12
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
@@ -52,8 +52,8 @@ class BNAME_PT_paper(Panel):
         row = layout.row(align=True)
         row.label(text="プリセット", icon="PRESET")
         wm = context.window_manager
-        row.prop(wm, "bname_paper_preset_selector", text="")
-        row.operator("bname.paper_preset_save_local", text="", icon="FILE_TICK")
+        row.prop(wm, "bmanga_paper_preset_selector", text="")
+        row.operator("bmanga.paper_preset_save_local", text="", icon="FILE_TICK")
 
         box = layout.box()
         box.label(text="キャンバス")
@@ -112,7 +112,7 @@ class BNAME_PT_paper(Panel):
 
         box = layout.box()
         box.label(text="原稿上の表示")
-        box.operator("bname.work_meta_dialog", text="作品情報を編集", icon="INFO")
+        box.operator("bmanga.work_meta_dialog", text="作品情報を編集", icon="INFO")
         info = work.work_info
         _draw_display_item(box, "作品名", info.display_work_name)
         _draw_display_item(box, "話数", info.display_episode)
@@ -145,15 +145,15 @@ def _draw_paper_visibility_section(layout, paper) -> None:
     row.prop(paper, "show_trim_marks")
 
 
-class BNAME_PT_page_paper_visibility(Panel):
+class BMANGA_PT_page_paper_visibility(Panel):
     """ページファイル上でも用紙要素の表示を切り替えられるようにする."""
 
-    bl_idname = "BNAME_PT_page_paper_visibility"
+    bl_idname = "BMANGA_PT_page_paper_visibility"
     bl_label = "用紙要素の表示"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 2
+    bl_order = 12
 
     @classmethod
     def poll(cls, context):
@@ -182,8 +182,8 @@ def _draw_display_item(layout, label: str, item) -> None:
 
 
 _CLASSES = (
-    BNAME_PT_paper,
-    BNAME_PT_page_paper_visibility,
+    BMANGA_PT_paper,
+    BMANGA_PT_page_paper_visibility,
 )
 
 

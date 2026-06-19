@@ -1,4 +1,4 @@
-"""B-Name 実体表示用 Geometry Nodes ブリッジ."""
+"""B-MANGA 実体表示用 Geometry Nodes ブリッジ."""
 
 from __future__ import annotations
 
@@ -12,16 +12,16 @@ from . import corner_radius, log
 
 _logger = log.get_logger(__name__)
 
-MODIFIER_NAME = "B-Name Geometry Nodes"
-GROUP_PREFIX = "BName_GN_"
-PROP_GN_KIND = "bname_geometry_nodes_kind"
-PROP_GROUP_VERSION = "bname_geometry_nodes_version"
+MODIFIER_NAME = "B-MANGA Geometry Nodes"
+GROUP_PREFIX = "BManga_GN_"
+PROP_GN_KIND = "bmanga_geometry_nodes_kind"
+PROP_GROUP_VERSION = "bmanga_geometry_nodes_version"
 _GROUP_VERSION = 35
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
 _COMMON_SHAPE_OUTPUT_NAME = "形状係数"
-EFFECT_ALPHA_ATTR = "bname_effect_alpha"
+EFFECT_ALPHA_ATTR = "bmanga_effect_alpha"
 LINE_WIDTH_MM_SOCKET = "線幅 (mm)"
 EFFECT_SPACING_DISTANCE_MM_SOCKET = "線の間隔 (距離 mm)"
 BUNDLE_GAP_MM_SOCKET = "まとまり間隔 (mm)"
@@ -499,7 +499,7 @@ def _link(group, output_socket, input_socket) -> None:
 
 
 def _group_input_output(group):
-    input_node = _node(group, "NodeGroupInput", label="B-Name パネル入力", location=(-1050, 0))
+    input_node = _node(group, "NodeGroupInput", label="B-MANGA パネル入力", location=(-1050, 0))
     output_node = _node(group, "NodeGroupOutput", label="生成結果", location=(760, 0))
     return input_node, output_node
 
@@ -1317,7 +1317,7 @@ def _radial_line_geometry(
 
 
 def _radial_rect_metric_socket(group, rx, ry, *, location: tuple[float, float]):
-    """旧B-Nameの距離指定に近い矩形枠の半径積算長をノード内で算出する。"""
+    """旧B-MANGAの距離指定に近い矩形枠の半径積算長をノード内で算出する。"""
     import math
 
     rx2 = _math_binary(group, "MULTIPLY", rx, rx, label="矩形密度 横二乗", location=location)
@@ -2612,7 +2612,7 @@ def _group_needs_rebuild(group, kind: str) -> bool:
 
 
 def ensure_node_group(kind: str) -> bpy.types.NodeTree:
-    """B-Name 用 Geometry Nodes グループを取得または作成する."""
+    """B-MANGA 用 Geometry Nodes グループを取得または作成する."""
     group = bpy.data.node_groups.get(_group_name(kind))
     if group is None:
         group = bpy.data.node_groups.new(_group_name(kind), "GeometryNodeTree")
@@ -2640,7 +2640,7 @@ def _work_is_loaded(context=None) -> bool:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     if scene is None:
         return False
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return False
     if not bool(getattr(work, "loaded", False)):
@@ -2649,7 +2649,7 @@ def _work_is_loaded(context=None) -> bool:
 
 
 def ensure_effect_line_node_group_for_work(context=None) -> bool:
-    """B-Name作品を開いている時だけ、効果線表示用ノードを準備する."""
+    """B-MANGA作品を開いている時だけ、効果線表示用ノードを準備する."""
     if not _work_is_loaded(context):
         return False
     try:
@@ -2732,7 +2732,7 @@ def _set_modifier_value(modifier, identifier: str, spec: SocketSpec, value: Any)
 
 
 def ensure_modifier(obj: bpy.types.Object | None, kind: str, values: Mapping[str, Any] | None = None):
-    """対象オブジェクトへ B-Name 用 Geometry Nodes モディファイアを同期する."""
+    """対象オブジェクトへ B-MANGA 用 Geometry Nodes モディファイアを同期する."""
     if obj is None:
         return None
     group = ensure_node_group(kind)

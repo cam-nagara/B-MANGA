@@ -12,8 +12,8 @@ from bpy.types import Operator
 from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
 
-_LAYER_CLIPBOARD_KEY = "bname_layer_clipboard_json"
-_TAIL_CLIPBOARD_KEY = "bname_balloon_tail_clipboard_json"
+_LAYER_CLIPBOARD_KEY = "bmanga_layer_clipboard_json"
+_TAIL_CLIPBOARD_KEY = "bmanga_balloon_tail_clipboard_json"
 _COPYABLE_KINDS = {"balloon", "text", "raster", "gp", "effect", "effect_legacy"}
 
 
@@ -21,10 +21,10 @@ def _active_stack_item(context, *, sync: bool = False):
     if sync:
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     else:
-        stack = getattr(getattr(context, "scene", None), "bname_layer_stack", None)
+        stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
     if stack is None:
         return None
-    idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
@@ -124,7 +124,7 @@ def duplicate_raster_item(context, item) -> bool:
 
     resolved = layer_stack_utils.resolve_stack_item(context, item)
     src = resolved.get("target") if resolved is not None else None
-    coll = getattr(context.scene, "bname_raster_layers", None)
+    coll = getattr(context.scene, "bmanga_raster_layers", None)
     work = get_work(context)
     if src is None or coll is None or work is None or not getattr(work, "work_dir", ""):
         return False
@@ -137,8 +137,8 @@ def duplicate_raster_item(context, item) -> bool:
     dst.title = _unique_title(coll, dst, f"{getattr(src, 'title', '') or 'ラスター'} 複製")
     dst.image_name = raster_layer_op.raster_image_name(raster_id)
     dst.filepath_rel = raster_layer_op.raster_filepath_rel(raster_id)
-    context.scene.bname_active_raster_layer_index = len(coll) - 1
-    context.scene.bname_active_layer_kind = "raster"
+    context.scene.bmanga_active_raster_layer_index = len(coll) - 1
+    context.scene.bmanga_active_layer_kind = "raster"
 
     dst_image = raster_layer_op.ensure_raster_image(context, dst, create_missing=True)
     if src_image is not None and dst_image is not None:
@@ -196,8 +196,8 @@ def _append_tail_from_dict(entry, data: dict) -> None:
     tail.curve_bend = float(data.get("curveBend", 0.0))
 
 
-class BNAME_OT_layer_clipboard_copy(Operator):
-    bl_idname = "bname.layer_clipboard_copy"
+class BMANGA_OT_layer_clipboard_copy(Operator):
+    bl_idname = "bmanga.layer_clipboard_copy"
     bl_label = "コピー"
     bl_description = "選択中のレイヤーをコピーします"
     bl_options = {"REGISTER"}
@@ -224,8 +224,8 @@ class BNAME_OT_layer_clipboard_copy(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_clipboard_paste(Operator):
-    bl_idname = "bname.layer_clipboard_paste"
+class BMANGA_OT_layer_clipboard_paste(Operator):
+    bl_idname = "bmanga.layer_clipboard_paste"
     bl_label = "貼り付け"
     bl_description = "コピーしたレイヤーを貼り付けます"
     bl_options = {"REGISTER", "UNDO"}
@@ -248,7 +248,7 @@ class BNAME_OT_layer_clipboard_paste(Operator):
         if kind == "raster":
             ok = duplicate_raster_item(context, item)
         else:
-            result = bpy.ops.bname.layer_stack_duplicate("EXEC_DEFAULT")
+            result = bpy.ops.bmanga.layer_stack_duplicate("EXEC_DEFAULT")
             ok = "FINISHED" in result
         if not ok:
             self.report({"WARNING"}, "貼り付けできません")
@@ -257,8 +257,8 @@ class BNAME_OT_layer_clipboard_paste(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_clipboard_copy(Operator):
-    bl_idname = "bname.balloon_tail_clipboard_copy"
+class BMANGA_OT_balloon_tail_clipboard_copy(Operator):
+    bl_idname = "bmanga.balloon_tail_clipboard_copy"
     bl_label = "しっぽをコピー"
     bl_description = "選択中のフキダシのしっぽをコピーします"
     bl_options = {"REGISTER"}
@@ -282,8 +282,8 @@ class BNAME_OT_balloon_tail_clipboard_copy(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_clipboard_paste(Operator):
-    bl_idname = "bname.balloon_tail_clipboard_paste"
+class BMANGA_OT_balloon_tail_clipboard_paste(Operator):
+    bl_idname = "bmanga.balloon_tail_clipboard_paste"
     bl_label = "しっぽを貼り付け"
     bl_description = "コピーしたしっぽを選択中のフキダシへ追加します"
     bl_options = {"REGISTER", "UNDO"}
@@ -314,10 +314,10 @@ class BNAME_OT_balloon_tail_clipboard_paste(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_layer_clipboard_copy,
-    BNAME_OT_layer_clipboard_paste,
-    BNAME_OT_balloon_tail_clipboard_copy,
-    BNAME_OT_balloon_tail_clipboard_paste,
+    BMANGA_OT_layer_clipboard_copy,
+    BMANGA_OT_layer_clipboard_paste,
+    BMANGA_OT_balloon_tail_clipboard_copy,
+    BMANGA_OT_balloon_tail_clipboard_paste,
 )
 
 

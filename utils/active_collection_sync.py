@@ -1,10 +1,10 @@
-"""Outliner ⇔ B-Name の active page/coma 双方向同期.
+"""Outliner ⇔ B-MANGA の active page/coma 双方向同期.
 
 3 つの「アクティブ階層」表現の同期を取る:
 - Outliner 側: ``view_layer.active_layer_collection``
-- B-Name 側: ``work.active_page_index`` / ``page.active_coma_index`` /
-  ``scene.bname_current_coma_id``
-- (副) ``scene.bname_active_layer_kind`` も連動
+- B-MANGA 側: ``work.active_page_index`` / ``page.active_coma_index`` /
+  ``scene.bmanga_current_coma_id``
+- (副) ``scene.bmanga_active_layer_kind`` も連動
 
 仕組:
 - ``bpy.msgbus.subscribe_rna`` で ``ViewLayer.active_layer_collection`` を
@@ -12,16 +12,16 @@
   (Blender 5.1.1 では ``LayerCollection.active`` プロパティは存在しないため
   このキーを使用する。msgbus 購読は best-effort で、失敗しても下記
   depsgraph フォールバックが同期を担う。)
-- ``depsgraph_update_post`` フォールバック (msgbus 失効時 / B-Name 側変化を
+- ``depsgraph_update_post`` フォールバック (msgbus 失効時 / B-MANGA 側変化を
   Outliner に反映する逆方向 sync の駆動)。
 - ``_LAST_SYNCED`` キャッシュで「直近で揃えた状態」を記憶し、Outliner と
-  B-Name のどちらが先に変わったかを判定:
-    Outliner != _LAST_SYNCED → Outliner が変わった → B-Name に反映
-    上記でなければ B-Name != _LAST_SYNCED → B-Name が変わった → Outliner に反映
+  B-MANGA のどちらが先に変わったかを判定:
+    Outliner != _LAST_SYNCED → Outliner が変わった → B-MANGA に反映
+    上記でなければ B-MANGA != _LAST_SYNCED → B-MANGA が変わった → Outliner に反映
 - ``_SYNCING`` 再入禁止フラグで depsgraph 再帰を防ぐ。
 
 設計:
-- B-Name 管理外 Collection の active 変化は無視 (read-only ガード)。
+- B-MANGA 管理外 Collection の active 変化は無視 (read-only ガード)。
 - コマ編集モード (cNN.blend) では同期しない (1 コマ前提)。
 """
 
@@ -85,34 +85,34 @@ def _resolve_coma_index(page, coma_id: str) -> int:
 def _outliner_active_state(context) -> tuple[str, str]:
     """Outliner の active Collection から (page_id, coma_id) を抽出.
 
-    B-Name 管理 Collection でなければ ``("", "")`` を返す (= "未確定")。
-    その場合は B-Name 側を正と見て逆方向 sync が走る。
+    B-MANGA 管理 Collection でなければ ``("", "")`` を返す (= "未確定")。
+    その場合は B-MANGA 側を正と見て逆方向 sync が走る。
     """
     coll = _resolve_active_collection(context)
     if coll is None:
         return "", ""
-    if not bool(coll.get("bname_managed", False)):
+    if not bool(coll.get("bmanga_managed", False)):
         return "", ""
-    kind = str(coll.get("bname_kind", "") or "")
-    bname_id = str(coll.get("bname_id", "") or "")
-    if not kind or not bname_id:
+    kind = str(coll.get("bmanga_kind", "") or "")
+    bmanga_id = str(coll.get("bmanga_id", "") or "")
+    if not kind or not bmanga_id:
         return "", ""
     if kind == "page":
-        return bname_id, ""
+        return bmanga_id, ""
     if kind == "coma":
-        if ":" in bname_id:
-            page_id, coma_id = bname_id.split(":", 1)
+        if ":" in bmanga_id:
+            page_id, coma_id = bmanga_id.split(":", 1)
             return page_id, coma_id
-        parent_key = str(coll.get("bname_parent_key", "") or "")
-        return parent_key, bname_id
+        parent_key = str(coll.get("bmanga_parent_key", "") or "")
+        return parent_key, bmanga_id
     return "", ""
 
 
-def _bname_active_state(scene, work) -> tuple[str, str]:
-    """B-Name 側プロパティから (page_id, coma_id) を抽出.
+def _bmanga_active_state(scene, work) -> tuple[str, str]:
+    """B-MANGA 側プロパティから (page_id, coma_id) を抽出.
 
     優先順位:
-        1. ``scene.bname_current_coma_id`` が空でなく、active page にその
+        1. ``scene.bmanga_current_coma_id`` が空でなく、active page にその
            coma があれば coma_id 採用
         2. ``page.active_coma_index >= 0`` ならそのコマの id
         3. coma なし (ページ直下)
@@ -129,7 +129,7 @@ def _bname_active_state(scene, work) -> tuple[str, str]:
         return "", ""
     comas = getattr(page, "comas", None) or []
 
-    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     if current_coma_id:
         for cm in comas:
             if str(getattr(cm, "id", "") or "") == current_coma_id:
@@ -142,10 +142,10 @@ def _bname_active_state(scene, work) -> tuple[str, str]:
     return page_id, ""
 
 
-# ---------- forward sync (Outliner → B-Name) ----------
+# ---------- forward sync (Outliner → B-MANGA) ----------
 
-def _apply_to_bname(scene, work, page_id: str, coma_id: str) -> None:
-    """B-Name 側プロパティを (page_id, coma_id) に揃える."""
+def _apply_to_bmanga(scene, work, page_id: str, coma_id: str) -> None:
+    """B-MANGA 側プロパティを (page_id, coma_id) に揃える."""
     page_idx = _resolve_page_index(work, page_id)
     if page_idx < 0:
         return
@@ -170,20 +170,20 @@ def _apply_to_bname(scene, work, page_id: str, coma_id: str) -> None:
             except Exception:  # noqa: BLE001
                 _logger.exception("active_coma_index リセット失敗")
     try:
-        if str(getattr(scene, "bname_current_coma_id", "") or "") != coma_id:
-            scene.bname_current_coma_id = coma_id
+        if str(getattr(scene, "bmanga_current_coma_id", "") or "") != coma_id:
+            scene.bmanga_current_coma_id = coma_id
     except Exception:  # noqa: BLE001
         pass
-    if hasattr(scene, "bname_active_layer_kind"):
+    if hasattr(scene, "bmanga_active_layer_kind"):
         desired = "coma" if coma_id else "page"
         try:
-            if str(getattr(scene, "bname_active_layer_kind", "") or "") != desired:
-                scene.bname_active_layer_kind = desired
+            if str(getattr(scene, "bmanga_active_layer_kind", "") or "") != desired:
+                scene.bmanga_active_layer_kind = desired
         except Exception:  # noqa: BLE001
             pass
 
 
-# ---------- reverse sync (B-Name → Outliner) ----------
+# ---------- reverse sync (B-MANGA → Outliner) ----------
 
 def _find_layer_collection(root_lc, target_coll):
     """LayerCollection ツリーから target Collection を探す."""
@@ -208,11 +208,11 @@ def _apply_to_outliner(view_layer, page_id: str, coma_id: str) -> None:
         return
     target_coll = None
     if coma_id:
-        target_coll = on.find_collection_by_bname_id(
+        target_coll = on.find_collection_by_bmanga_id(
             f"{page_id}:{coma_id}", kind="coma"
         )
     if target_coll is None and page_id:
-        target_coll = on.find_collection_by_bname_id(page_id, kind="page")
+        target_coll = on.find_collection_by_bmanga_id(page_id, kind="page")
     if target_coll is None:
         return
     target_lc = _find_layer_collection(view_layer.layer_collection, target_coll)
@@ -230,7 +230,7 @@ def _apply_to_outliner(view_layer, page_id: str, coma_id: str) -> None:
 # ---------- 双方向同期エントリポイント ----------
 
 def _sync(context=None) -> None:
-    """Outliner ⇔ B-Name の双方向同期メイン.
+    """Outliner ⇔ B-MANGA の双方向同期メイン.
 
     どちらが新しく変わったかは ``_LAST_SYNCED`` キャッシュとの差分で判定。
     """
@@ -246,40 +246,40 @@ def _sync(context=None) -> None:
         scene = getattr(ctx, "scene", None)
         if scene is None:
             return
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
         if work is None or not getattr(work, "loaded", False):
             return
 
         out_state = _outliner_active_state(ctx)  # Outliner が指す状態
-        b_state = _bname_active_state(scene, work)  # B-Name 側状態
+        b_state = _bmanga_active_state(scene, work)  # B-MANGA 側状態
 
         # どちらかが _LAST_SYNCED と異なれば、その「異なる側」が新しく変わった
         # 側だと判定して、もう片方を追従させる。
-        # ただし Outliner 側が ("", "") (= B-Name 管理外/未選択) の場合、
-        # 「ユーザーが他の Collection を選んだ」という解釈で B-Name 側は
+        # ただし Outliner 側が ("", "") (= B-MANGA 管理外/未選択) の場合、
+        # 「ユーザーが他の Collection を選んだ」という解釈で B-MANGA 側は
         # 触らない (read-only ガード)。
         outliner_changed = bool(out_state[0]) and out_state != _LAST_SYNCED
-        bname_changed = bool(b_state[0]) and b_state != _LAST_SYNCED
+        bmanga_changed = bool(b_state[0]) and b_state != _LAST_SYNCED
 
-        if not outliner_changed and not bname_changed:
+        if not outliner_changed and not bmanga_changed:
             return
 
         _SYNCING = True
         try:
             if outliner_changed:
-                # Outliner 側を正として B-Name に反映
-                _apply_to_bname(scene, work, out_state[0], out_state[1])
+                # Outliner 側を正として B-MANGA に反映
+                _apply_to_bmanga(scene, work, out_state[0], out_state[1])
                 _LAST_SYNCED = out_state
                 _logger.debug(
-                    "sync Outliner→B-Name: page=%s coma=%s",
+                    "sync Outliner→B-MANGA: page=%s coma=%s",
                     out_state[0], out_state[1],
                 )
-            elif bname_changed:
-                # B-Name 側を正として Outliner に反映
+            elif bmanga_changed:
+                # B-MANGA 側を正として Outliner に反映
                 _apply_to_outliner(ctx.view_layer, b_state[0], b_state[1])
                 _LAST_SYNCED = b_state
                 _logger.debug(
-                    "sync B-Name→Outliner: page=%s coma=%s",
+                    "sync B-MANGA→Outliner: page=%s coma=%s",
                     b_state[0], b_state[1],
                 )
         finally:
@@ -296,11 +296,11 @@ _sync_from_active_collection = _sync
 # ---------- 公開 API: knife cut 等から「アクティブを X コマに固定」したいとき ----------
 
 def request_active_coma(context, page_id: str, coma_id: str) -> None:
-    """指定の page/coma を Outliner & B-Name 両方の active にセット.
+    """指定の page/coma を Outliner & B-MANGA 両方の active にセット.
 
     ``coma_knife_cut`` 等で新規コマを作った直後に「カット直後の右側コマ
     (active_coma_index で指定したコマ) を Outliner でも選択状態に」したい
-    ケース向け。``__masks__`` Collection や ``bname_master_sketch`` が
+    ケース向け。``__masks__`` Collection や ``bmanga_master_sketch`` が
     自動 active になってしまう副作用を上書きで打ち消す。
     """
     global _LAST_SYNCED, _SYNCING
@@ -309,20 +309,20 @@ def request_active_coma(context, page_id: str, coma_id: str) -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return
     _SYNCING = True
     try:
-        # 先に B-Name 側を確実にする
-        _apply_to_bname(scene, work, page_id, coma_id)
+        # 先に B-MANGA 側を確実にする
+        _apply_to_bmanga(scene, work, page_id, coma_id)
         # 続けて Outliner を該当 Collection に
         _apply_to_outliner(context.view_layer, page_id, coma_id)
-        # ``bname_master_sketch`` が誤って active になっていたら解除
+        # ``bmanga_master_sketch`` が誤って active になっていたら解除
         try:
             view_layer = context.view_layer
             cur_active = getattr(view_layer.objects, "active", None)
-            if cur_active is not None and getattr(cur_active, "name", "") == "bname_master_sketch":
+            if cur_active is not None and getattr(cur_active, "name", "") == "bmanga_master_sketch":
                 view_layer.objects.active = None
                 cur_active.select_set(False)
         except Exception:  # noqa: BLE001

@@ -5,7 +5,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_v0_6_114_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_v0_6_114_check.py"
 """
 
 from __future__ import annotations
@@ -20,18 +20,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_V114_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_v114_"))
+_OUT_ENV = os.environ.get("BMANGA_V114_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_v114_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_v114",
+        "bmanga_dev_v114",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_v114"] = mod
+    sys.modules["bmanga_dev_v114"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -74,17 +74,17 @@ def _delete_all_balloons(page) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_v114_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_v114_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "V114Check.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "V114Check.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_v114.core.work import get_work
-    from bname_dev_v114.operators import balloon_op
-    from bname_dev_v114.utils import balloon_curve_object
-    from bname_dev_v114.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_v114.core.work import get_work
+    from bmanga_dev_v114.operators import balloon_op
+    from bmanga_dev_v114.utils import balloon_curve_object
+    from bmanga_dev_v114.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     work = get_work(context)

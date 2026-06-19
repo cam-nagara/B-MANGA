@@ -23,8 +23,8 @@ from bpy.props import (
 
 from ..utils import log
 from .coma_border import (
-    BNameComaBorder,
-    BNameComaWhiteMargin,
+    BMangaComaBorder,
+    BMangaComaWhiteMargin,
 )
 
 _logger = log.get_logger(__name__)
@@ -77,7 +77,7 @@ def _on_coma_background_color_changed(self, context) -> None:
 
         scene = getattr(context, "scene", None)
         if scene is not None and get_mode(context) == MODE_COMA:
-            stem = str(getattr(scene, "bname_current_coma_id", "") or "")
+            stem = str(getattr(scene, "bmanga_current_coma_id", "") or "")
             if stem == str(getattr(self, "coma_id", "") or ""):
                 coma_camera.sync_world_background_color(context, panel=self)
     except Exception:  # noqa: BLE001
@@ -136,7 +136,7 @@ def _on_coma_geometry_changed(self, context) -> None:
 
 
 def _on_coma_vertex_changed(self, context) -> None:
-    """``BNameComaVertex.x_mm`` / ``y_mm`` 変更で coma_plane Mesh を即時更新."""
+    """``BMangaComaVertex.x_mm`` / ``y_mm`` 変更で coma_plane Mesh を即時更新."""
     try:
         from ..utils import coma_plane as _cp
 
@@ -146,7 +146,7 @@ def _on_coma_vertex_changed(self, context) -> None:
     _tag_view3d_redraw(context)
 
 
-class BNameComaVertex(bpy.types.PropertyGroup):
+class BMangaComaVertex(bpy.types.PropertyGroup):
     """コマ枠の頂点 (mm)."""
 
     x_mm: FloatProperty(  # type: ignore[valid-type]
@@ -157,13 +157,13 @@ class BNameComaVertex(bpy.types.PropertyGroup):
     )
 
 
-class BNameLayerRef(bpy.types.PropertyGroup):
+class BMangaLayerRef(bpy.types.PropertyGroup):
     """作画レイヤー ID 参照 (Grease Pencil / 画像レイヤー / フキダシ)."""
 
     layer_id: StringProperty(name="Layer ID", default="")  # type: ignore[valid-type]
 
 
-class BNameComaEntry(bpy.types.PropertyGroup):
+class BMangaComaEntry(bpy.types.PropertyGroup):
     """コマ 1 件分のメタデータ (cNN.json 相当)."""
 
     # --- 識別子 ---
@@ -217,7 +217,7 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         items=_SHAPE_TYPE_ITEMS,
         default="rect",
     )
-    vertices: CollectionProperty(type=BNameComaVertex)  # type: ignore[valid-type]
+    vertices: CollectionProperty(type=BMangaComaVertex)  # type: ignore[valid-type]
 
     # 矩形ショートカット (shape_type='rect' のときに使用)
     rect_x_mm: FloatProperty(  # type: ignore[valid-type]
@@ -256,6 +256,11 @@ class BNameComaEntry(bpy.types.PropertyGroup):
         default=True,
         update=_on_coma_paper_visible_changed,
     )
+    snap_gutter_to_finish: BoolProperty(  # type: ignore[valid-type]
+        name="ノド側は仕上がり枠にもスナップ",
+        description="三角ハンドルでノド側へ広げる時、仕上がり枠も候補にします",
+        default=False,
+    )
     selected: BoolProperty(  # type: ignore[valid-type]
         name="マルチ選択",
         default=False,
@@ -273,11 +278,11 @@ class BNameComaEntry(bpy.types.PropertyGroup):
     )
 
     # --- 枠線・フチ ---
-    border: PointerProperty(type=BNameComaBorder)  # type: ignore[valid-type]
-    white_margin: PointerProperty(type=BNameComaWhiteMargin)  # type: ignore[valid-type]
+    border: PointerProperty(type=BMangaComaBorder)  # type: ignore[valid-type]
+    white_margin: PointerProperty(type=BMangaComaWhiteMargin)  # type: ignore[valid-type]
 
     # --- 紐づけ ---
-    layer_refs: CollectionProperty(type=BNameLayerRef)  # type: ignore[valid-type]
+    layer_refs: CollectionProperty(type=BMangaLayerRef)  # type: ignore[valid-type]
     coma_gap_vertical_mm: FloatProperty(  # type: ignore[valid-type]
         name="上下スキマ",
         default=-1.0,
@@ -291,9 +296,9 @@ class BNameComaEntry(bpy.types.PropertyGroup):
 
 
 _CLASSES = (
-    BNameComaVertex,
-    BNameLayerRef,
-    BNameComaEntry,
+    BMangaComaVertex,
+    BMangaLayerRef,
+    BMangaComaEntry,
 )
 
 

@@ -38,21 +38,21 @@ BALLOON_CURVE_NAME_PREFIX = "balloon_"
 BALLOON_FILL_NAME_PREFIX = "balloon_fill_"
 BALLOON_SOURCE_NAME_PREFIX = "balloon_source_"
 BALLOON_CLIP_MASK_NAME_PREFIX = "balloon_clip_mask_"
-BALLOON_CURVE_MATERIAL_PREFIX = "BName_Balloon_Curve_"
-BALLOON_FILL_MATERIAL_PREFIX = "BName_Balloon_Fill_"
-BALLOON_OUTER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Outer_Edge_"
-BALLOON_INNER_EDGE_MATERIAL_PREFIX = "BName_Balloon_Inner_Edge_"
-BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX = "BName_Balloon_Flash_White_Line_"
-BALLOON_FLASH_UNDERLAY_MATERIAL_PREFIX = "BName_Balloon_Flash_Underlay_"
-PROP_BALLOON_FILL_KIND = "bname_balloon_fill_kind"
-PROP_BALLOON_FILL_OWNER_ID = "bname_balloon_fill_owner_id"
-PROP_BALLOON_FILL_SOURCE_MATERIAL = "bname_balloon_fill_source_material"
-PROP_BALLOON_SOURCE_KIND = "bname_balloon_source_kind"
-PROP_BALLOON_SOURCE_OWNER_ID = "bname_balloon_source_owner_id"
-PROP_BALLOON_CLIP_MASK_KIND = "bname_balloon_clip_mask_kind"
-PROP_BALLOON_CLIP_MASK_OWNER_ID = "bname_balloon_clip_mask_owner_id"
-PROP_BALLOON_GEOMETRY_KEY = "bname_balloon_geometry_key"
-PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bname_balloon_curve_resolution_initialized"
+BALLOON_CURVE_MATERIAL_PREFIX = "BManga_Balloon_Curve_"
+BALLOON_FILL_MATERIAL_PREFIX = "BManga_Balloon_Fill_"
+BALLOON_OUTER_EDGE_MATERIAL_PREFIX = "BManga_Balloon_Outer_Edge_"
+BALLOON_INNER_EDGE_MATERIAL_PREFIX = "BManga_Balloon_Inner_Edge_"
+BALLOON_FLASH_WHITE_LINE_MATERIAL_PREFIX = "BManga_Balloon_Flash_White_Line_"
+BALLOON_FLASH_UNDERLAY_MATERIAL_PREFIX = "BManga_Balloon_Flash_Underlay_"
+PROP_BALLOON_FILL_KIND = "bmanga_balloon_fill_kind"
+PROP_BALLOON_FILL_OWNER_ID = "bmanga_balloon_fill_owner_id"
+PROP_BALLOON_FILL_SOURCE_MATERIAL = "bmanga_balloon_fill_source_material"
+PROP_BALLOON_SOURCE_KIND = "bmanga_balloon_source_kind"
+PROP_BALLOON_SOURCE_OWNER_ID = "bmanga_balloon_source_owner_id"
+PROP_BALLOON_CLIP_MASK_KIND = "bmanga_balloon_clip_mask_kind"
+PROP_BALLOON_CLIP_MASK_OWNER_ID = "bmanga_balloon_clip_mask_owner_id"
+PROP_BALLOON_GEOMETRY_KEY = "bmanga_balloon_geometry_key"
+PROP_BALLOON_CURVE_RESOLUTION_INITIALIZED = "bmanga_balloon_curve_resolution_initialized"
 DEFAULT_BALLOON_CURVE_RESOLUTION_U = 64
 CURVE_GEOMETRY_VERSION = 10
 CLIPPED_FILL_ROLE_RADIUS = render_contract.CLIPPED_FILL_ROLE_RADIUS
@@ -261,13 +261,13 @@ def _fill_material_for_entry(material_name: str, entry=None) -> tuple[bpy.types.
     return mat, False
 
 
-PROP_BALLOON_LINE_USER_SOURCE = "bname_balloon_line_user_source"
+PROP_BALLOON_LINE_USER_SOURCE = "bmanga_balloon_line_user_source"
 
 
 def _line_material_override(entry, balloon_id: str, fallback):
     """線種「マテリアル」のとき、主線帯に使うユーザーマテリアルを返す.
 
-    ユーザーのマテリアル本体を直接使うと B-Name 側の刻印で汚すため、
+    ユーザーのマテリアル本体を直接使うと B-MANGA 側の刻印で汚すため、
     フキダシごとにコピーを保持する (元マテリアル名が変わったら作り直す)。
     見つからない場合は従来の線色マテリアルへフォールバック。
     """
@@ -280,7 +280,7 @@ def _line_material_override(entry, balloon_id: str, fallback):
         source = bpy.data.materials.get(source_name) if source_name else None
         if source is None:
             return fallback
-        copy_name = f"BName_Balloon_LineUser_{balloon_id}"
+        copy_name = f"BManga_Balloon_LineUser_{balloon_id}"
         mat = bpy.data.materials.get(copy_name)
         if mat is not None and str(mat.get(PROP_BALLOON_LINE_USER_SOURCE, "") or "") != source_name:
             try:
@@ -663,11 +663,11 @@ def transform_manual_curve_to_rect(
     old_rect: tuple[float, float, float, float],
     new_rect: tuple[float, float, float, float],
 ) -> bool:
-    """手編集済み/自由形状のフキダシを、B-Nameのハンドル変形に追従させる."""
+    """手編集済み/自由形状のフキダシを、B-MANGAのハンドル変形に追従させる."""
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return False
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is None or getattr(obj, "type", "") != "CURVE":
         return False
     state = balloon_curve_source_state.detect_state(obj)
@@ -702,7 +702,7 @@ def _ensure_curve_object_for_entry(
     inner_mat: Optional[bpy.types.Material] = None,
 ) -> bpy.types.Object:
     obj_name = f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}"
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
     curve_data = _ensure_balloon_curve_data(balloon_id, line_mat, fill_mat, outer_mat, inner_mat)
@@ -774,7 +774,7 @@ def _stamp_values_for_entry(entry, page, folder_id: str) -> tuple[str, str, str]
 
 def _balloon_z_index(scene: bpy.types.Scene, page, balloon_id: str) -> int:
     z_base = 1000
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     balloons = getattr(page, "balloons", None) if page is not None else getattr(work, "shared_balloons", None)
     if balloons is None:
         return z_base
@@ -1096,7 +1096,7 @@ def _ensure_balloon_curve_object_impl(
     force_regenerate: bool = False,
     preserve_manual_delta: bool = False,
 ) -> Optional[bpy.types.Object]:
-    """``BNameBalloonEntry`` から balloon Curve Object を生成・更新する.
+    """``BMangaBalloonEntry`` から balloon Curve Object を生成・更新する.
 
     rect/ellipse/cloud/fluffy/thorn 等の Meldex 共通形状と尻尾を Curve として
     描画する。
@@ -1107,7 +1107,7 @@ def _ensure_balloon_curve_object_impl(
     if not balloon_id:
         return None
 
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     mask_info = coma_content_mask.ensure_viewport_mask_for_entry(scene, work, page, entry)
     line_mat = _ensure_balloon_curve_material(
         None,
@@ -1144,7 +1144,7 @@ def _ensure_balloon_curve_object_impl(
     los.stamp_layer_object(
         obj,
         kind="balloon",
-        bname_id=balloon_id,
+        bmanga_id=balloon_id,
         title=str(getattr(entry, "title", "") or balloon_id),
         z_index=_balloon_z_index(scene, page, balloon_id),
         parent_kind=stamp_kind,
@@ -1687,7 +1687,7 @@ def _sync_existing_balloon_object_lightweight_impl(scene, work, page, entry) -> 
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return False
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
     if obj is None:
@@ -1741,7 +1741,7 @@ def _sync_existing_balloon_object_lightweight_impl(scene, work, page, entry) -> 
 
 def find_balloon_entry(scene, balloon_id: str):
     """全 page の balloons から id で逆引き."""
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return None, None
     for page in getattr(work, "pages", []):
@@ -1757,7 +1757,7 @@ def find_balloon_entry(scene, balloon_id: str):
 def find_balloon_object(balloon_id: str) -> Optional[bpy.types.Object]:
     if not balloon_id:
         return None
-    obj = on.find_object_by_bname_id(balloon_id, kind="balloon")
+    obj = on.find_object_by_bmanga_id(balloon_id, kind="balloon")
     if obj is None:
         obj = bpy.data.objects.get(f"{BALLOON_CURVE_NAME_PREFIX}{balloon_id}")
     return obj
@@ -1870,7 +1870,7 @@ def source_state_for_entry(entry) -> str:
 
 
 def cleanup_orphan_balloon_objects(scene) -> int:
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return 0
     valid: set[str] = set()
@@ -1947,7 +1947,7 @@ def remove_balloon_objects_by_id(balloon_id: str) -> bool:
 
 def on_balloon_entry_changed(entry) -> bool:
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
     try:

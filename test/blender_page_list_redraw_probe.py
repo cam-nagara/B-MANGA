@@ -1,8 +1,8 @@
-"""Interactive redraw/depsgraph probe for the B-Name page list flicker.
+"""Interactive redraw/depsgraph probe for the B-MANGA page list flicker.
 
-Run this from Blender's Text Editor or Python console while the B-Name sidebar
+Run this from Blender's Text Editor or Python console while the B-MANGA sidebar
 panel is visible and the flicker is happening. The script waits briefly, then
-measures draw callbacks, depsgraph updates, and selected B-Name maintenance
+measures draw callbacks, depsgraph updates, and selected B-MANGA maintenance
 calls for a few seconds. It restores all monkey patches automatically.
 """
 
@@ -16,7 +16,7 @@ import bpy
 
 DURATION_SECONDS = 3.0
 START_DELAY_SECONDS = 0.5
-KEY = "_bname_page_list_redraw_probe_cleanup"
+KEY = "_bmanga_page_list_redraw_probe_cleanup"
 
 
 old_cleanup = bpy.app.driver_namespace.get(KEY)
@@ -144,7 +144,7 @@ def _print_results() -> None:
     draw = int(state["draw"])
     deps_events = int(state["depsgraph_events"])
     deps_updates = int(state["depsgraph_updates"])
-    print("=== BNAME_PAGE_LIST_REDRAW_PROBE_RESULT ===")
+    print("=== BMANGA_PAGE_LIST_REDRAW_PROBE_RESULT ===")
     print(f"elapsed_sec={elapsed:.2f}")
     print(f"draw_calls={draw} ({draw / elapsed:.2f}/sec)")
     print(f"depsgraph_events={deps_events} ({deps_events / elapsed:.2f}/sec)")
@@ -167,7 +167,7 @@ def _print_results() -> None:
         print("diagnosis=depsgraph_update_loop_possible")
     else:
         print("diagnosis=no_idle_redraw_seen")
-    print("=== END_BNAME_PAGE_LIST_REDRAW_PROBE_RESULT ===")
+    print("=== END_BMANGA_PAGE_LIST_REDRAW_PROBE_RESULT ===")
 
 
 def _finish() -> None:
@@ -181,7 +181,7 @@ def _finish() -> None:
 def _begin() -> None:
     state["start"] = time.perf_counter()
     state["running"] = True
-    print("BNAME_PAGE_LIST_REDRAW_PROBE_STARTED")
+    print("BMANGA_PAGE_LIST_REDRAW_PROBE_STARTED")
     bpy.app.timers.register(_finish, first_interval=DURATION_SECONDS)
     return None
 
@@ -193,4 +193,4 @@ state["draw_handle"] = bpy.types.SpaceView3D.draw_handler_add(
 )
 bpy.app.driver_namespace[KEY] = cleanup
 bpy.app.timers.register(_begin, first_interval=START_DELAY_SECONDS)
-print("BNAME_PAGE_LIST_REDRAW_PROBE_ARMED")
+print("BMANGA_PAGE_LIST_REDRAW_PROBE_ARMED")

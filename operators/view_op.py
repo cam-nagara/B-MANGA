@@ -1,9 +1,9 @@
 """ビューポート視点制御オペレータ.
 
-- bname.view_fit_page: 全ページ一覧モードのままアクティブページへフォーカス
-- bname.view_fit_all: 全ページ一覧モードを ON にして全ページを収める
+- bmanga.view_fit_page: 全ページ一覧モードのままアクティブページへフォーカス
+- bmanga.view_fit_all: 全ページ一覧モードを ON にして全ページを収める
 
-全ページ一覧モードでは、ui/overlay.py 側で ``scene.bname_overview_mode``
+全ページ一覧モードでは、ui/overlay.py 側で ``scene.bmanga_overview_mode``
 を参照し、全ページを grid レイアウトで並べて描画する。
 """
 
@@ -72,11 +72,11 @@ def _window_screen_for_area(context, area):
     return window, screen
 
 
-def _refresh_bname_shading(context) -> None:
+def _refresh_bmanga_shading(context) -> None:
     try:
         from ..ui import overlay as _overlay
 
-        _overlay.apply_bname_shading_mode(context)
+        _overlay.apply_bmanga_shading_mode(context)
     except Exception:  # noqa: BLE001
         _logger.exception("view: shading refresh failed")
 
@@ -89,7 +89,7 @@ def schedule_fit_active_page(retries: int = 8, interval: float = 0.15) -> None:
 
     def _tick():
         try:
-            result = bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            result = bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             if "FINISHED" in result:
                 return None
         except Exception:  # noqa: BLE001
@@ -277,7 +277,7 @@ def _fit_view_to_rect_mm(
         (geom.mm_to_m(x_mm), geom.mm_to_m(y_mm + h_mm), 0.0),
     ]
     for i, loc in enumerate(corners_m):
-        e = bpy.data.objects.new(f"_bname_fit_{i}", None)
+        e = bpy.data.objects.new(f"_bmanga_fit_{i}", None)
         e.location = loc
         e.empty_display_size = 0.0001
         e.hide_render = True
@@ -354,7 +354,7 @@ def _overview_layout_bbox(work) -> tuple[float, float, float, float] | None:
     if n == 0:
         return None
     scene = bpy.context.scene
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     from ..utils import page_grid
     gap_x, gap_y = page_grid.resolve_gap_mm(scene)
     cw = work.paper.canvas_width_mm
@@ -422,10 +422,10 @@ def _page_fit_rect_mm(scene, work) -> tuple[tuple[float, float, float, float] | 
 # ---------- オペレータ ----------
 
 
-class BNAME_OT_view_fit_page(Operator):
+class BMANGA_OT_view_fit_page(Operator):
     """全ページ一覧モードのままアクティブページを画面にフィット."""
 
-    bl_idname = "bname.view_fit_page"
+    bl_idname = "bmanga.view_fit_page"
     bl_label = "ページに合わせる"
     bl_options = {"REGISTER"}
 
@@ -452,7 +452,7 @@ class BNAME_OT_view_fit_page(Operator):
         if get_mode(context) == MODE_COMA:
             return self._execute_coma_fit(context, scene, work)
 
-        scene.bname_overview_mode = True
+        scene.bmanga_overview_mode = True
         info = _find_view3d_region(context)
         if info is None:
             self.report({"ERROR"}, "3D ビューポートが見つかりません")
@@ -472,7 +472,7 @@ class BNAME_OT_view_fit_page(Operator):
         if not ok:
             self.report({"ERROR"}, "フィットに失敗しました")
             return {"CANCELLED"}
-        _refresh_bname_shading(context)
+        _refresh_bmanga_shading(context)
         # 画面リドロー
         for a in context.screen.areas:
             if a.type == "VIEW_3D":
@@ -520,10 +520,10 @@ class BNAME_OT_view_fit_page(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_view_fit_all(Operator):
+class BMANGA_OT_view_fit_all(Operator):
     """全ページ一覧モードを ON にして、全ページが収まるよう画面にフィット."""
 
-    bl_idname = "bname.view_fit_all"
+    bl_idname = "bmanga.view_fit_all"
     bl_label = "全ページを一覧表示"
     bl_options = {"REGISTER"}
 
@@ -542,7 +542,7 @@ class BNAME_OT_view_fit_all(Operator):
         if work is None or len(work.pages) == 0:
             return {"CANCELLED"}
         scene = context.scene
-        scene.bname_overview_mode = True
+        scene.bmanga_overview_mode = True
         bbox = _overview_layout_bbox(work)
         if bbox is None:
             self.report({"ERROR"}, "ページがありません")
@@ -557,7 +557,7 @@ class BNAME_OT_view_fit_all(Operator):
         if not ok:
             self.report({"ERROR"}, "フィットに失敗しました")
             return {"CANCELLED"}
-        _refresh_bname_shading(context)
+        _refresh_bmanga_shading(context)
         for a in context.screen.areas:
             if a.type == "VIEW_3D":
                 a.tag_redraw()
@@ -565,10 +565,10 @@ class BNAME_OT_view_fit_all(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_view_overview_toggle(Operator):
+class BMANGA_OT_view_overview_toggle(Operator):
     """互換用: 全ページ一覧モードを ON に戻す."""
 
-    bl_idname = "bname.view_overview_toggle"
+    bl_idname = "bmanga.view_overview_toggle"
     bl_label = "一覧モードに戻す"
     bl_options = {"REGISTER"}
 
@@ -579,17 +579,17 @@ class BNAME_OT_view_overview_toggle(Operator):
 
     def execute(self, context):
         scene = context.scene
-        scene.bname_overview_mode = True
+        scene.bmanga_overview_mode = True
         for a in context.screen.areas:
             if a.type == "VIEW_3D":
                 a.tag_redraw()
         return {"FINISHED"}
 
 
-class BNAME_OT_page_browser_workspace(Operator):
+class BMANGA_OT_page_browser_workspace(Operator):
     """ページ一覧専用ワークスペースを作成/表示し、3D View をページ一覧ビューにする."""
 
-    bl_idname = "bname.page_browser_workspace"
+    bl_idname = "bmanga.page_browser_workspace"
     bl_label = "ページ一覧ワークスペースを開く"
     bl_options = {"REGISTER"}
 
@@ -606,13 +606,13 @@ class BNAME_OT_page_browser_workspace(Operator):
 
     def invoke(self, context, _event):
         self.position = page_browser.normalize_position(
-            getattr(context.scene, "bname_page_browser_position", "LEFT")
+            getattr(context.scene, "bmanga_page_browser_position", "LEFT")
         )
         return self.execute(context)
 
     def execute(self, context):
         position = page_browser.normalize_position(self.position)
-        context.scene.bname_page_browser_position = position
+        context.scene.bmanga_page_browser_position = position
         workspace = _activate_or_create_page_workspace(context, position)
         if workspace is not None:
             page_browser.mark_workspace(workspace, position)
@@ -621,7 +621,7 @@ class BNAME_OT_page_browser_workspace(Operator):
         if screen is None:
             self.report({"ERROR"}, "画面レイアウトが見つかりません")
             return {"CANCELLED"}
-        ratio = float(getattr(context.scene, "bname_page_browser_size", _PAGE_BROWSER_DEFAULT_RATIO))
+        ratio = float(getattr(context.scene, "bmanga_page_browser_size", _PAGE_BROWSER_DEFAULT_RATIO))
         view_areas = page_browser.view3d_areas(screen)
         marked = page_browser.marked_view3d_areas(screen)
         current_browser = marked[0] if marked else None
@@ -658,10 +658,10 @@ class BNAME_OT_page_browser_workspace(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_browser_mark_area(Operator):
+class BMANGA_OT_page_browser_mark_area(Operator):
     """現在の 3D View をページ一覧ビューとして扱う."""
 
-    bl_idname = "bname.page_browser_mark_area"
+    bl_idname = "bmanga.page_browser_mark_area"
     bl_label = "この3Dビューをページ一覧にする"
     bl_options = {"REGISTER"}
 
@@ -679,7 +679,7 @@ class BNAME_OT_page_browser_mark_area(Operator):
         area = context.area
         screen = getattr(context, "screen", None)
         position = page_browser.normalize_position(
-            getattr(context.scene, "bname_page_browser_position", "LEFT")
+            getattr(context.scene, "bmanga_page_browser_position", "LEFT")
         )
         if screen is not None:
             page_browser.clear_screen_marks(screen)
@@ -692,11 +692,11 @@ class BNAME_OT_page_browser_mark_area(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_view_fit_page,
-    BNAME_OT_view_fit_all,
-    BNAME_OT_view_overview_toggle,
-    BNAME_OT_page_browser_workspace,
-    BNAME_OT_page_browser_mark_area,
+    BMANGA_OT_view_fit_page,
+    BMANGA_OT_view_fit_all,
+    BMANGA_OT_view_overview_toggle,
+    BMANGA_OT_page_browser_workspace,
+    BMANGA_OT_page_browser_mark_area,
 )
 
 
@@ -785,7 +785,7 @@ def _on_overview_cols_changed(self, context) -> None:
     端数を切り上げて偶数に丸める。
     """
     try:
-        cols = int(getattr(context.scene, "bname_overview_cols", 4))
+        cols = int(getattr(context.scene, "bmanga_overview_cols", 4))
         if cols < 2:
             target = 2
         elif cols % 2 != 0:
@@ -794,7 +794,7 @@ def _on_overview_cols_changed(self, context) -> None:
             target = cols
         if target != cols:
             # 再帰 update を避けるため値が違うときだけ書き戻す
-            context.scene.bname_overview_cols = target
+            context.scene.bmanga_overview_cols = target
             return  # 書き戻しの update で _on_overview_layout_changed が呼ばれる
     except Exception:  # noqa: BLE001
         pass
@@ -803,12 +803,12 @@ def _on_overview_cols_changed(self, context) -> None:
 
 def register() -> None:
     # Scene プロパティ登録 (overview 用)
-    bpy.types.Scene.bname_overview_mode = BoolProperty(
+    bpy.types.Scene.bmanga_overview_mode = BoolProperty(
         name="全ページ一覧モード",
         description="ON で全ページを grid レイアウトで表示 (描画専用、保存に影響しない)",
         default=True,
     )
-    bpy.types.Scene.bname_overview_cols = IntProperty(
+    bpy.types.Scene.bmanga_overview_cols = IntProperty(
         name="一覧の列数",
         description="全ページ一覧時の横方向ページ数 (見開みかいペアが分断されないよう偶数刻み)",
         default=8,
@@ -817,7 +817,7 @@ def register() -> None:
         step=2,
         update=_on_overview_cols_changed,
     )
-    bpy.types.Scene.bname_overview_gap_mm = FloatProperty(
+    bpy.types.Scene.bmanga_overview_gap_mm = FloatProperty(
         name="一覧のページ間隔 (mm)",
         description="全ページ一覧時のページ同士の余白",
         default=30.0,
@@ -825,7 +825,7 @@ def register() -> None:
         soft_max=200.0,
         update=_on_overview_layout_changed,
     )
-    bpy.types.Scene.bname_overview_gap_x_mm = FloatProperty(
+    bpy.types.Scene.bmanga_overview_gap_x_mm = FloatProperty(
         name="横間隔 (mm)",
         description="全ページ一覧時の横方向の余白",
         default=30.0,
@@ -833,7 +833,7 @@ def register() -> None:
         soft_max=200.0,
         update=_on_overview_layout_changed,
     )
-    bpy.types.Scene.bname_overview_gap_y_mm = FloatProperty(
+    bpy.types.Scene.bmanga_overview_gap_y_mm = FloatProperty(
         name="縦間隔 (mm)",
         description="全ページ一覧時の縦方向の余白",
         default=30.0,
@@ -841,13 +841,13 @@ def register() -> None:
         soft_max=200.0,
         update=_on_overview_layout_changed,
     )
-    bpy.types.Scene.bname_page_browser_position = EnumProperty(
+    bpy.types.Scene.bmanga_page_browser_position = EnumProperty(
         name="ページ一覧の位置",
         description="ページ一覧専用ビューを表示する位置",
         items=page_browser.POSITION_ITEMS,
         default="LEFT",
     )
-    bpy.types.Scene.bname_page_browser_size = FloatProperty(
+    bpy.types.Scene.bmanga_page_browser_size = FloatProperty(
         name="ページ一覧の幅",
         description="ページ一覧専用ビューの分割比率",
         default=_PAGE_BROWSER_DEFAULT_RATIO,
@@ -855,7 +855,7 @@ def register() -> None:
         max=0.5,
         subtype="FACTOR",
     )
-    bpy.types.Scene.bname_page_browser_fit = BoolProperty(
+    bpy.types.Scene.bmanga_page_browser_fit = BoolProperty(
         name="フィット",
         description="ページ一覧ビューをパネルの縦横比に合わせて表示",
         default=True,
@@ -881,14 +881,14 @@ def unregister() -> None:
         except RuntimeError:
             pass
     for prop in (
-        "bname_overview_mode",
-        "bname_overview_cols",
-        "bname_overview_gap_mm",
-        "bname_overview_gap_x_mm",
-        "bname_overview_gap_y_mm",
-        "bname_page_browser_position",
-        "bname_page_browser_size",
-        "bname_page_browser_fit",
+        "bmanga_overview_mode",
+        "bmanga_overview_cols",
+        "bmanga_overview_gap_mm",
+        "bmanga_overview_gap_x_mm",
+        "bmanga_overview_gap_y_mm",
+        "bmanga_page_browser_position",
+        "bmanga_page_browser_size",
+        "bmanga_page_browser_fit",
     ):
         try:
             delattr(bpy.types.Scene, prop)

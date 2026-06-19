@@ -176,10 +176,10 @@ def _ensure_drawable_brush_size(brush) -> int:
     return current_size
 
 
-class BNAME_OT_brush_size_drag(Operator):
+class BMANGA_OT_brush_size_drag(Operator):
     """Ctrl+Alt+ドラッグで Grease Pencil ブラシサイズを変更する."""
 
-    bl_idname = "bname.brush_size_drag"
+    bl_idname = "bmanga.brush_size_drag"
     bl_label = "ブラシサイズドラッグ調整"
     bl_options = {"REGISTER", "BLOCKING"}
 
@@ -323,7 +323,7 @@ class BNAME_OT_brush_size_drag(Operator):
         self._tag_redraw(context)
 
 
-_CLASSES = (BNAME_OT_brush_size_drag,)
+_CLASSES = (BMANGA_OT_brush_size_drag,)
 
 
 def register() -> None:

@@ -49,12 +49,12 @@ class _RecordingLayout:
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_border_preset_manage",
+        "bmanga_dev_border_preset_manage",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_border_preset_manage"] = mod
+    sys.modules["bmanga_dev_border_preset_manage"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -106,18 +106,18 @@ def _assert_rejected(callable_op, message: str) -> None:
 
 
 def _assert_detail_ui(context, coma) -> None:
-    from bname_dev_border_preset_manage.panels import coma_detail_panel
+    from bmanga_dev_border_preset_manage.panels import coma_detail_panel
 
     records: list[tuple[str, str, str]] = []
     coma_detail_panel.draw_coma_border_settings(_RecordingLayout(records), context, coma)
     coma_detail_panel.draw_coma_white_margin_settings(_RecordingLayout(records), coma)
     ops = {op_id for kind, op_id, _text in records if kind == "operator"}
     for op_id in (
-        "bname.border_preset_add_local",
-        "bname.border_preset_rename",
-        "bname.border_preset_duplicate",
-        "bname.border_preset_delete",
-        "bname.border_preset_move",
+        "bmanga.border_preset_add_local",
+        "bmanga.border_preset_rename",
+        "bmanga.border_preset_duplicate",
+        "bmanga.border_preset_delete",
+        "bmanga.border_preset_move",
     ):
         assert op_id in ops, f"コマ詳細設定に操作ボタンがありません: {op_id}"
     props = {prop_name for kind, prop_name, _text in records if kind == "prop"}
@@ -126,7 +126,7 @@ def _assert_detail_ui(context, coma) -> None:
 
 
 def _assert_white_margin_material_colors(context, work, page, coma) -> None:
-    from bname_dev_border_preset_manage.utils import coma_border_object
+    from bmanga_dev_border_preset_manage.utils import coma_border_object
 
     coma.border.visible = True
     coma.border.style = "solid"
@@ -150,7 +150,7 @@ def _assert_white_margin_material_colors(context, work, page, coma) -> None:
 
 
 def _assert_management_ops(context, work, page, coma) -> None:
-    from bname_dev_border_preset_manage.io import border_presets
+    from bmanga_dev_border_preset_manage.io import border_presets
 
     work_dir = Path(work.work_dir)
     wm = context.window_manager
@@ -158,37 +158,37 @@ def _assert_management_ops(context, work, page, coma) -> None:
     for required in ("標準", "線無し", "極太", "輪郭ぼかし"):
         assert required in initial, f"同梱プリセットが見つかりません: {required}"
 
-    wm.bname_border_preset_selector = "輪郭ぼかし"
-    assert wm.bname_border_preset_selector == "輪郭ぼかし"
+    wm.bmanga_border_preset_selector = "輪郭ぼかし"
+    assert wm.bmanga_border_preset_selector == "輪郭ぼかし"
     assert coma.border.preset_name == "輪郭ぼかし"
     assert coma.border.style == "brush"
-    wm.bname_border_preset_selector = "線無し"
-    assert wm.bname_border_preset_selector == "線無し"
+    wm.bmanga_border_preset_selector = "線無し"
+    assert wm.bmanga_border_preset_selector == "線無し"
     assert coma.border.preset_name == "線無し"
     assert not bool(coma.border.visible)
 
-    result = bpy.ops.bname.border_preset_add_local(
+    result = bpy.ops.bmanga.border_preset_add_local(
         preset_name="管理A",
         description="追加テスト",
     )
     assert "FINISHED" in result, result
     assert "管理A" in _names(border_presets, work_dir)
     assert _source(border_presets, work_dir, "管理A") == "local"
-    assert wm.bname_border_preset_selector == "管理A"
+    assert wm.bmanga_border_preset_selector == "管理A"
     assert coma.border.preset_name == "管理A"
 
-    result = bpy.ops.bname.border_preset_rename(
+    result = bpy.ops.bmanga.border_preset_rename(
         preset_name="管理A",
         new_name="管理B",
     )
     assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert "管理A" not in names and "管理B" in names
-    assert wm.bname_border_preset_selector == "管理B"
+    assert wm.bmanga_border_preset_selector == "管理B"
     assert coma.border.preset_name == "管理B"
 
-    wm.bname_border_preset_selector = "標準"
-    result = bpy.ops.bname.border_preset_duplicate(
+    wm.bmanga_border_preset_selector = "標準"
+    result = bpy.ops.bmanga.border_preset_duplicate(
         preset_name="標準",
         new_name="標準コピー管理",
     )
@@ -198,7 +198,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     assert _source(border_presets, work_dir, "標準コピー管理") == "local"
 
     _assert_rejected(
-        lambda: bpy.ops.bname.border_preset_rename(
+        lambda: bpy.ops.bmanga.border_preset_rename(
             preset_name="標準コピー管理",
             new_name="標準",
         ),
@@ -206,8 +206,8 @@ def _assert_management_ops(context, work, page, coma) -> None:
     )
     assert "標準コピー管理" in _names(border_presets, work_dir)
 
-    wm.bname_border_preset_selector = "輪郭ぼかし"
-    result = bpy.ops.bname.border_preset_rename(
+    wm.bmanga_border_preset_selector = "輪郭ぼかし"
+    result = bpy.ops.bmanga.border_preset_rename(
         preset_name="輪郭ぼかし",
         new_name="ぼかし改名管理",
     )
@@ -217,13 +217,13 @@ def _assert_management_ops(context, work, page, coma) -> None:
     assert "輪郭ぼかし" in {preset.name for preset in border_presets.list_global_presets()}
     assert _source(border_presets, work_dir, "ぼかし改名管理") == "local"
 
-    result = bpy.ops.bname.border_preset_delete(preset_name="管理B")
+    result = bpy.ops.bmanga.border_preset_delete(preset_name="管理B")
     assert "FINISHED" in result, result
     assert "管理B" not in _names(border_presets, work_dir)
-    assert wm.bname_border_preset_selector == "ぼかし改名管理", wm.bname_border_preset_selector
+    assert wm.bmanga_border_preset_selector == "ぼかし改名管理", wm.bmanga_border_preset_selector
     assert coma.border.preset_name == "ぼかし改名管理", coma.border.preset_name
 
-    wm.bname_border_preset_selector = "線無し"
+    wm.bmanga_border_preset_selector = "線無し"
     names_before_delete = _names(border_presets, work_dir)
     deleted_index = names_before_delete.index("線無し")
     expected_fallback = (
@@ -231,19 +231,19 @@ def _assert_management_ops(context, work, page, coma) -> None:
         if deleted_index + 1 < len(names_before_delete)
         else names_before_delete[deleted_index - 1]
     )
-    result = bpy.ops.bname.border_preset_delete(preset_name="線無し")
+    result = bpy.ops.bmanga.border_preset_delete(preset_name="線無し")
     assert "FINISHED" in result, result
     assert "線無し" not in _names(border_presets, work_dir)
     assert "線無し" in {preset.name for preset in border_presets.list_global_presets()}
-    assert wm.bname_border_preset_selector == expected_fallback
+    assert wm.bmanga_border_preset_selector == expected_fallback
     assert coma.border.preset_name == expected_fallback
 
     _assert_rejected(
-        lambda: bpy.ops.bname.border_preset_delete(preset_name="存在しないプリセット"),
+        lambda: bpy.ops.bmanga.border_preset_delete(preset_name="存在しないプリセット"),
         "存在しないプリセットの削除が拒否されていません",
     )
 
-    result = bpy.ops.bname.border_preset_add_local(preset_name="削除対象")
+    result = bpy.ops.bmanga.border_preset_add_local(preset_name="削除対象")
     assert "FINISHED" in result, result
     names_before_delete = _names(border_presets, work_dir)
     deleted_index = names_before_delete.index("削除対象")
@@ -252,29 +252,29 @@ def _assert_management_ops(context, work, page, coma) -> None:
         if deleted_index + 1 < len(names_before_delete)
         else names_before_delete[deleted_index - 1]
     )
-    result = bpy.ops.bname.border_preset_delete(preset_name="削除対象")
+    result = bpy.ops.bmanga.border_preset_delete(preset_name="削除対象")
     assert "FINISHED" in result, result
     assert "削除対象" not in _names(border_presets, work_dir)
-    assert wm.bname_border_preset_selector == expected_fallback
+    assert wm.bmanga_border_preset_selector == expected_fallback
     assert coma.border.preset_name == expected_fallback
 
     for name in ("並べ替えA", "並べ替えB", "並べ替えC"):
-        result = bpy.ops.bname.border_preset_add_local(preset_name=name)
+        result = bpy.ops.bmanga.border_preset_add_local(preset_name=name)
         assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert names.index("並べ替えA") < names.index("並べ替えB") < names.index("並べ替えC")
 
-    result = bpy.ops.bname.border_preset_move(preset_name="並べ替えC", direction="UP")
+    result = bpy.ops.bmanga.border_preset_move(preset_name="並べ替えC", direction="UP")
     assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert names.index("並べ替えA") < names.index("並べ替えC") < names.index("並べ替えB")
 
-    result = bpy.ops.bname.border_preset_move(preset_name="並べ替えC", direction="UP")
+    result = bpy.ops.bmanga.border_preset_move(preset_name="並べ替えC", direction="UP")
     assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert names.index("並べ替えC") < names.index("並べ替えA") < names.index("並べ替えB")
 
-    result = bpy.ops.bname.border_preset_move(preset_name="並べ替えC", direction="DOWN")
+    result = bpy.ops.bmanga.border_preset_move(preset_name="並べ替えC", direction="DOWN")
     assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert names.index("並べ替えA") < names.index("並べ替えC") < names.index("並べ替えB")
@@ -283,7 +283,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     assert index_path.is_file(), "プリセットの並び順ファイルがありません"
     assert "並べ替えC" in _names(border_presets, work_dir)
 
-    from bname_dev_border_preset_manage.utils import json_io
+    from bmanga_dev_border_preset_manage.utils import json_io
 
     json_io.write_json(index_path, {"schemaVersion": 1, "order": "bad", "hidden": 42})
     names = _names(border_presets, work_dir)
@@ -291,22 +291,22 @@ def _assert_management_ops(context, work, page, coma) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_border_preset_manage_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_border_preset_manage_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BorderPresetManage.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BorderPresetManage.bmanga"))
         assert "FINISHED" in result, result
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         coma = _make_coma(page)
         _assert_detail_ui(context, coma)
         _assert_white_margin_material_colors(context, work, page, coma)
         _assert_management_ops(context, work, page, coma)
-        print("BNAME_BORDER_PRESET_MANAGEMENT_OK")
+        print("BMANGA_BORDER_PRESET_MANAGEMENT_OK")
     finally:
         if mod is not None:
             try:

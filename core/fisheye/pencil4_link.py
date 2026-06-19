@@ -1,4 +1,4 @@
-"""Pencil+4 line-width synchronization for B-Name fisheye reduction mode."""
+"""Pencil+4 line-width synchronization for B-MANGA fisheye reduction mode."""
 
 from __future__ import annotations
 

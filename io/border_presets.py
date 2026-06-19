@@ -1,8 +1,8 @@
 """枠線プリセット管理 (枠線セクション + フチセクション).
 
-2 層で保持 (`io/presets.py` / `io/balloon_presets.py` を踏襲):
-- グローバル: アドオン同梱の ``presets/borders/``
-- 作品ローカル: ``MyWork.bname/assets/borders/``
+2 層で保持:
+- 同梱: アドオン同梱の ``presets/borders/``
+- 共通: Blender ユーザー設定配下の B-MANGA 共通プリセット
 
 プリセットには枠線とフチの全体設定を ``io/schema.py`` の dict 変換を介して保存する。
 """
@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils import json_io, log, paths
+from . import shared_presets
 from . import schema
 
 _logger = log.get_logger(__name__)
@@ -34,7 +35,7 @@ class BorderPreset:
     name: str
     description: str
     path: Path
-    source: str  # "global" | "local"
+    source: str  # "global" | "user"
     data: dict[str, Any]
 
 
@@ -76,16 +77,20 @@ def _list_in_dir(base: Path, *, source: str) -> list[BorderPreset]:
     return out
 
 
-def _local_dir(work_dir: Path) -> Path:
+def _local_dir(_work_dir: Path | None = None) -> Path:
+    return shared_presets.preset_dir("borders")
+
+
+def _legacy_dir(work_dir: Path) -> Path:
     return paths.assets_dir(Path(work_dir)) / paths.ASSETS_BORDERS_DIR
 
 
-def _local_index_path(work_dir: Path) -> Path:
-    return _local_dir(work_dir) / PRESET_INDEX_FILENAME
+def _local_index_path(_work_dir: Path | None = None) -> Path:
+    return _local_dir() / PRESET_INDEX_FILENAME
 
 
-def _read_local_index(work_dir: Path) -> dict[str, Any]:
-    path = _local_index_path(work_dir)
+def _read_local_index(_work_dir: Path | None = None) -> dict[str, Any]:
+    path = _local_index_path()
     if not path.is_file():
         return {"order": [], "hidden": []}
     try:
@@ -100,8 +105,8 @@ def _read_local_index(work_dir: Path) -> dict[str, Any]:
     return {"order": order, "hidden": hidden}
 
 
-def _write_local_index(work_dir: Path, index: dict[str, Any]) -> None:
-    target = _local_index_path(work_dir)
+def _write_local_index(_work_dir: Path | None, index: dict[str, Any]) -> None:
+    target = _local_index_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     order = _string_list(index.get("order", []))
     hidden = _string_list(index.get("hidden", []))
@@ -142,9 +147,13 @@ def list_global_presets() -> list[BorderPreset]:
 
 
 def list_local_presets(work_dir: Path) -> list[BorderPreset]:
-    target = _local_dir(work_dir)
-    index = _read_local_index(work_dir)
-    return _order_presets(_list_in_dir(target, source="local"), index.get("order", []))
+    _migrate_work_presets(work_dir)
+    return list_user_presets()
+
+
+def list_user_presets() -> list[BorderPreset]:
+    index = _read_local_index()
+    return _order_presets(_list_in_dir(_local_dir(), source="user"), index.get("order", []))
 
 
 def list_all_presets(work_dir: Path | None) -> list[BorderPreset]:
@@ -152,11 +161,12 @@ def list_all_presets(work_dir: Path | None) -> list[BorderPreset]:
     order: list[str] = []
     hidden: set[str] = set()
     if work_dir is not None:
-        index = _read_local_index(work_dir)
-        order = list(index.get("order", []))
-        hidden = set(index.get("hidden", []))
-        for p in list_local_presets(work_dir):
-            presets[p.name] = p
+        _migrate_work_presets(work_dir)
+    index = _read_local_index()
+    order = list(index.get("order", []))
+    hidden = set(index.get("hidden", []))
+    for p in list_user_presets():
+        presets[p.name] = p
     visible = [p for p in presets.values() if p.name not in hidden]
     return _order_presets(visible, order)
 
@@ -209,8 +219,8 @@ def preset_dict_from_coma(coma, name: str, description: str = "") -> dict[str, A
     }
 
 
-def _local_preset_by_name(work_dir: Path, name: str) -> BorderPreset | None:
-    for preset in _list_in_dir(_local_dir(work_dir), source="local"):
+def _local_preset_by_name(_work_dir: Path | None, name: str) -> BorderPreset | None:
+    for preset in _list_in_dir(_local_dir(), source="user"):
         if preset.name == name:
             return preset
     return None
@@ -224,8 +234,8 @@ def _global_preset_by_name(name: str) -> BorderPreset | None:
     return None
 
 
-def _safe_local_path(work_dir: Path, name: str) -> Path:
-    return _local_dir(work_dir) / f"{_sanitize_filename(name)}{PRESET_SUFFIX}"
+def _safe_local_path(_work_dir: Path | None, name: str) -> Path:
+    return _local_dir() / f"{_sanitize_filename(name)}{PRESET_SUFFIX}"
 
 
 def _write_local_preset_data(
@@ -235,7 +245,7 @@ def _write_local_preset_data(
     *,
     description: str | None = None,
 ) -> Path:
-    target_dir = _local_dir(work_dir)
+    target_dir = _local_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     existing = _local_preset_by_name(work_dir, name)
     out = existing.path if existing is not None else _safe_local_path(work_dir, name)
@@ -255,7 +265,7 @@ def _visible_order_names(work_dir: Path) -> list[str]:
 
 
 def _insert_order_name(work_dir: Path, name: str, *, after_name: str = "") -> None:
-    index = _read_local_index(work_dir)
+    index = _read_local_index()
     order = [item for item in _visible_order_names(work_dir) if item != name]
     if after_name and after_name in order:
         order.insert(order.index(after_name) + 1, name)
@@ -282,7 +292,7 @@ def save_local_preset(
     )
     if is_new:
         _insert_order_name(work_dir, name, after_name=insert_after)
-    _logger.info("local border preset saved: %s", out)
+    _logger.info("shared border preset saved: %s", out)
     return out
 
 
@@ -325,7 +335,7 @@ def rename_preset(work_dir: Path, old_name: str, new_name: str) -> BorderPreset:
     if preset.source == "global":
         hidden.add(old_name)
     out = _write_local_preset_data(work_dir, preset.data, new_name)
-    if preset.source == "local" and preset.path != out:
+    if preset.source == "user" and preset.path != out:
         try:
             preset.path.unlink()
         except FileNotFoundError:
@@ -408,3 +418,26 @@ _FORBIDDEN = '<>:"/\\|?*'
 def _sanitize_filename(name: str) -> str:
     cleaned = "".join("_" if ch in _FORBIDDEN else ch for ch in name.strip())
     return cleaned.rstrip(". ") or "preset"
+
+
+def _migrate_work_presets(work_dir: Path | None) -> None:
+    if work_dir is None:
+        return
+    legacy_dir = _legacy_dir(Path(work_dir))
+    shared_presets.copy_json_presets_once(legacy_dir, _local_dir())
+    legacy_index_path = legacy_dir / PRESET_INDEX_FILENAME
+    if not legacy_index_path.is_file():
+        return
+    try:
+        legacy_index = json_io.read_json(legacy_index_path)
+    except (OSError, ValueError):
+        return
+    if not isinstance(legacy_index, dict):
+        return
+    current = _read_local_index()
+    order = _string_list(current.get("order", []))
+    for name in _string_list(legacy_index.get("order", [])):
+        if name not in order:
+            order.append(name)
+    current["order"] = order
+    _write_local_index(None, current)

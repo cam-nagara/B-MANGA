@@ -1,4 +1,4 @@
-"""Move selected B-Name layers to another page."""
+"""Move selected B-MANGA layers to another page."""
 
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ def _page_label(work, page, index: int) -> str:
 
 
 def _has_movable_selection(context) -> bool:
-    stack = getattr(getattr(context, "scene", None), "bname_layer_stack", None)
+    stack = getattr(getattr(context, "scene", None), "bmanga_layer_stack", None)
     if stack is None:
         return False
-    active = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+    active = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= active < len(stack) and str(getattr(stack[active], "kind", "") or "") != "page":
         return True
     return any(
@@ -55,8 +55,8 @@ def _has_movable_selection(context) -> bool:
     )
 
 
-class BNAME_OT_layer_move_to_page(Operator):
-    bl_idname = "bname.layer_move_to_page"
+class BMANGA_OT_layer_move_to_page(Operator):
+    bl_idname = "bmanga.layer_move_to_page"
     bl_label = "別ページへ移動"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -110,15 +110,15 @@ class BNAME_OT_layer_move_to_page(Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_layer_move_to_page,)
+_CLASSES = (BMANGA_OT_layer_move_to_page,)
 
 
 def _draw_layer_move_menu(self, context) -> None:
-    if not BNAME_OT_layer_move_to_page.poll(context):
+    if not BMANGA_OT_layer_move_to_page.poll(context):
         return
     layout = self.layout
     layout.separator()
-    layout.operator(BNAME_OT_layer_move_to_page.bl_idname, text="別ページへ移動", icon="FILE_PARENT")
+    layout.operator(BMANGA_OT_layer_move_to_page.bl_idname, text="別ページへ移動", icon="FILE_PARENT")
 
 
 def register() -> None:

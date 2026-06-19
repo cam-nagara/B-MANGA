@@ -12,18 +12,18 @@
 
 **結果サマリ**:
 - フキダシ本体カーブから geometry node modifier が完全に消えた
-- ノードグループ `BName_GN_BalloonCurveRender` も完全消滅 (旧 .blend からは load_post で削除)
+- ノードグループ `BManga_GN_BalloonCurveRender` も完全消滅 (旧 .blend からは load_post で削除)
 - 全描画責務 (塗り / 主線 / 外側フチ / 内側フチ / 多重線 / しっぽ主線) が Python メッシュで完結
 - `utils/balloon_curve_render_nodes.py`: 1393 行 → 78 行 (-94%)
 - 移動・サイズ変更・詳細設定変更でノードグループ評価コストがゼロに
 
 ## 目的
 
-フキダシのジオメトリノードグループ (`BName_GN_BalloonCurveRender`, 1393 行で構築) が、画像マスク統一後も残骸 (Raycast マスククリップ / 外フチ・内フチ・多重線 CurveToMesh 系統 / 形状ごとの分岐) を抱えたまま肥大化し、移動・サイズ変更・詳細設定変更の重さの原因になっている。
+フキダシのジオメトリノードグループ (`BManga_GN_BalloonCurveRender`, 1393 行で構築) が、画像マスク統一後も残骸 (Raycast マスククリップ / 外フチ・内フチ・多重線 CurveToMesh 系統 / 形状ごとの分岐) を抱えたまま肥大化し、移動・サイズ変更・詳細設定変更の重さの原因になっている。
 
 この計画では、次の方針へ収束させる。
 
-- **形状の計算とそのアウトラインのカーブ生成** はすべて B-Name (Python) 側で実施する。
+- **形状の計算とそのアウトラインのカーブ生成** はすべて B-MANGA (Python) 側で実施する。
 - **塗り面 / 主線 / 外側フチ / 内側フチ / 多重線** のメッシュも、すべて Python (Shapely + earcut) 側で焼き込む。
 - **ジオメトリノード** は「すでにある閉じたメッシュ (主線/フチ/多重線) とすでにある塗り面メッシュに、マテリアルを割り当てて Z を整える」だけに縮小する。
 - **コマ内マスク** は引き続き画像マスク方式 (マテリアル α) のみで切る。ノード側の Raycast クリップは完全に削除する。
@@ -43,7 +43,7 @@
 - 旧 Raycast マスククリップ / 外フチ / 内フチ / 多重線 / clipped_fill / main_line_fill / role_radius 分離 ノード経路を完全に削除する。
 - 全形状 (楕円・矩形・八角形・カスタム・雲・もやもや・トゲ直線・トゲ曲線・自由形状) で、主線・フチ・多重線・塗りを Python メッシュとして同一経路で焼き込む。
 - ユーザーが Blender 標準機能でカーブ制御点を編集した場合、「編集確定 → 再焼き」操作が走るまでメッシュは追従しない (主線/フチ/多重線と同じ挙動)。
-- B-Name 無効状態でも、保存済みの Curve + Mesh + マテリアルだけでレンダリングが成立する。
+- B-MANGA 無効状態でも、保存済みの Curve + Mesh + マテリアルだけでレンダリングが成立する。
 - 一つのフキダシは引き続き 1 つの管理単位として扱う (補助メッシュは内部詳細)。
 
 ## 非目標
@@ -218,9 +218,9 @@
 | 87 | 制御点直接編集 → 確定操作で再焼き | (O) 「手編集を維持して再生成」「手編集を破棄して再生成」 |
 | 88 | start_side 切替 → 位置追従 | (H) 既存 `page_grid` 経路 |
 | 89 | ページ複製 → レイヤー追従 | (O) 既存複製オペレータ |
-| 90 | 保存前同期 | (H) `_bname_on_save_pre` |
+| 90 | 保存前同期 | (H) `_bmanga_on_save_pre` |
 
-### B-Name 無効時のレンダリング
+### B-MANGA 無効時のレンダリング
 
 | # | 機能 | 新方式 |
 |---|------|--------|
@@ -234,11 +234,11 @@
 
 | # | 機能 | 新方式 |
 |---|------|--------|
-| 96 | フキダシ追加 (`BNAME_OT_balloon_add`) | (O) 既存維持 |
-| 97 | フキダシ削除 (`BNAME_OT_balloon_remove`) | (O) 既存維持 + 補助 Mesh も一緒に削除 |
-| 98 | フキダシ移動 (`BNAME_OT_balloon_move`) | (O) Curve + Mesh を同じ親で動かす |
+| 96 | フキダシ追加 (`BMANGA_OT_balloon_add`) | (O) 既存維持 |
+| 97 | フキダシ削除 (`BMANGA_OT_balloon_remove`) | (O) 既存維持 + 補助 Mesh も一緒に削除 |
+| 98 | フキダシ移動 (`BMANGA_OT_balloon_move`) | (O) Curve + Mesh を同じ親で動かす |
 | 99 | フキダシツール (modal) | (O) 既存維持 |
-| 100 | フキダシを結合 (`BNAME_OT_balloon_merge_selected`) | (O) + (P) `balloon_merge_object` 既存維持 |
+| 100 | フキダシを結合 (`BMANGA_OT_balloon_merge_selected`) | (O) + (P) `balloon_merge_object` 既存維持 |
 | 101 | しっぽ追加/削除/制御点削除/角タイプ切替 | (O) 既存維持 |
 | 102 | 手編集を維持して再生成 / 手編集を破棄して再生成 / 選択カーブをフキダシに登録 | (O) 既存維持 |
 
@@ -273,7 +273,7 @@ Geometry input
         ├── 外側フチ素材を 外側フチ Mesh 要素に割当
         ├── 内側フチ素材を 内側フチ Mesh 要素に割当
         └── 線素材を 主線/多重線 Mesh 要素に割当
-  └── (必要なら) Store Named Attribute "bname_fill_blur_alpha"
+  └── (必要なら) Store Named Attribute "bmanga_fill_blur_alpha"
 Geometry output
 ```
 
@@ -315,7 +315,7 @@ Geometry output
 - フキダシの最終的な外形 (主線が削った穴も含む) を Shapely Polygon として確定し、earcut (`mapbox_earcut` などの wheel か、純 Python 実装) で三角分割。
 - できた Mesh オブジェクトを `<balloon>__fill` のような命名で本体 Curve に親付け / コレクション登録 / Z 順 / マテリアル割当 する。
 - ノードグループ側からは Fill Curve / clipped_fill 経路を削除。
-- 塗り輪郭ぼかしの alpha は、Shapely 輪郭からの距離フィールドとして Python 側で計算し、Mesh の頂点属性 `bname_fill_blur_alpha` に書き込む。
+- 塗り輪郭ぼかしの alpha は、Shapely 輪郭からの距離フィールドとして Python 側で計算し、Mesh の頂点属性 `bmanga_fill_blur_alpha` に書き込む。
 - 塗りぼかしをディザ化する処理 (マテリアル側) はそのまま流用。
 
 ### Phase D: マスク経路完全撤去とノードグループの最小化
@@ -371,7 +371,7 @@ Geometry output
 - コマ内フキダシが画像マスクで正しく見切れる。
 - ページ直下フキダシは見切れない。
 - 不透明度・グラデーション・塗りぼかし+ディザ・破線/点線がすべて現状と一致。
-- B-Name アドオン disable 状態でも、開いた .blend がそのままレンダリングできる。
+- B-MANGA アドオン disable 状態でも、開いた .blend がそのままレンダリングできる。
 - start_side 切替・ページ複製でフキダシが追従する。
 - しっぽが追加/削除/制御点編集/角タイプ切替できる。
 - 保存→開き直しで形状/設定が完全に復元される。

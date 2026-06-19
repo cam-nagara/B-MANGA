@@ -203,7 +203,7 @@ def _resolve_page_offset_mm(work, page) -> tuple[float, float]:
     scene = getattr(bpy.context, "scene", None)
     if scene is None:
         return (0.0, 0.0)
-    cols = max(1, int(getattr(scene, "bname_overview_cols", 4)))
+    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     from ..utils.page_grid import resolve_gap_mm
     gap_x, gap_y = resolve_gap_mm(scene)
     index = _resolve_page_index(work, page)
@@ -1353,7 +1353,7 @@ def _render_gp_object_layers(
     layers = getattr(data, "layers", None)
     if layers is None:
         return out
-    object_parent_key = str(getattr(obj, "get", lambda *_: "")("bname_parent_key", "") or "")
+    object_parent_key = str(getattr(obj, "get", lambda *_: "")("bmanga_parent_key", "") or "")
     try:
         from ..utils import gpencil as gp_utils
         from ..utils import gp_layer_parenting as gp_parent
@@ -1481,7 +1481,7 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
             )
         )
     # 新設計: 各 effect_line は独立した GP Object として該当 page/coma の
-    # Collection 配下に配置されている。 bname_kind="effect" + bname_parent_key
+    # Collection 配下に配置されている。 bmanga_kind="effect" + bmanga_parent_key
     # が現ページに属する Object を全て出力する。
     page_id = str(getattr(page, "id", "") or "")
     for obj in bpy.data.objects:
@@ -1490,13 +1490,13 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
         if getattr(obj, "type", "") != "GREASEPENCIL":
             continue
         try:
-            if str(obj.get("bname_kind", "") or "") != "effect":
+            if str(obj.get("bmanga_kind", "") or "") != "effect":
                 continue
         except Exception:  # noqa: BLE001
             continue
         # parent_key は "<page_id>:<coma_id>" or "<page_id>" 形式
         try:
-            parent_key = str(obj.get("bname_parent_key", "") or "")
+            parent_key = str(obj.get("bmanga_parent_key", "") or "")
         except Exception:  # noqa: BLE001
             parent_key = ""
         if parent_key:
@@ -1519,10 +1519,10 @@ def _gp_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> list[Expor
             )
         )
 
-    # 旧設計の集約 GP Object (BName_EffectLines) は新設計移行後、 mirror で
+    # 旧設計の集約 GP Object (BManga_EffectLines) は新設計移行後、 mirror で
     # hide されるが、 過去 file 互換のためここでは active page のみ出力する
     # (新設計の Object に移行済みの場合は中身が空になっているはず)。
-    legacy_effect_obj = bpy.data.objects.get("BName_EffectLines")
+    legacy_effect_obj = bpy.data.objects.get("BManga_EffectLines")
     if (
         legacy_effect_obj is not None
         and legacy_effect_obj is not master
@@ -1573,7 +1573,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
     try:
         import bpy
 
-        image_layers = getattr(bpy.context.scene, "bname_image_layers", None)
+        image_layers = getattr(bpy.context.scene, "bmanga_image_layers", None)
     except Exception:  # pragma: no cover - bpy unavailable outside Blender
         image_layers = None
     page_id_for_filter = str(getattr(page, "id", "") or "")
@@ -1609,7 +1609,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
                     layers.append(layer)
 
     try:
-        fill_layers_coll = getattr(bpy.context.scene, "bname_fill_layers", None)
+        fill_layers_coll = getattr(bpy.context.scene, "bmanga_fill_layers", None)
     except Exception:  # pragma: no cover
         fill_layers_coll = None
     _fill_layers_by_coma: dict[str, list[ExportLayer]] = {}

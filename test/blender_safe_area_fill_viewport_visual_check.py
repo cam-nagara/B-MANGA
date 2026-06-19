@@ -16,19 +16,19 @@ from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_SAFE_AREA_VISUAL_OUT", "")
-    or tempfile.mkdtemp(prefix="bname_safe_area_visual_")
+    os.environ.get("BMANGA_SAFE_AREA_VISUAL_OUT", "")
+    or tempfile.mkdtemp(prefix="bmanga_safe_area_visual_")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_safe_area_visual",
+        "bmanga_dev_safe_area_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_safe_area_visual"] = mod
+    sys.modules["bmanga_dev_safe_area_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -53,7 +53,7 @@ def _view3d_override():
 
 def _screen_point_for_mm(region, rv3d, x_mm: float, y_mm: float):
     from bpy_extras.view3d_utils import location_3d_to_region_2d
-    from bname_dev_safe_area_visual.utils.geom import mm_to_m
+    from bmanga_dev_safe_area_visual.utils.geom import mm_to_m
 
     return location_3d_to_region_2d(region, rv3d, (mm_to_m(x_mm), mm_to_m(y_mm), 0.0))
 
@@ -91,7 +91,7 @@ def _sample_rgb(path: Path, x: int, y: int, radius: int = 5) -> tuple[float, flo
 
 
 def _apply_safe_area(work, opacity: float) -> None:
-    from bname_dev_safe_area_visual.utils import paper_guide_object
+    from bmanga_dev_safe_area_visual.utils import paper_guide_object
 
     work.safe_area_overlay.enabled = True
     work.safe_area_overlay.color = (1.0, 0.0, 0.85)
@@ -104,7 +104,7 @@ def _run_visual_check() -> None:
     if bpy.app.background:
         raise RuntimeError("このチェックは --background なしで実行してください")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_safe_area_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_safe_area_visual_work_"))
     mod = None
     try:
         bpy.context.preferences.view.show_splash = False
@@ -112,19 +112,19 @@ def _run_visual_check() -> None:
         pass
     try:
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "SafeAreaVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "SafeAreaVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_safe_area_visual.core.work import get_work
-        from bname_dev_safe_area_visual.ui import overlay
-        from bname_dev_safe_area_visual.ui import overlay_shared
-        from bname_dev_safe_area_visual.utils import page_grid, paper_guide_object
+        from bmanga_dev_safe_area_visual.core.work import get_work
+        from bmanga_dev_safe_area_visual.ui import overlay
+        from bmanga_dev_safe_area_visual.ui import overlay_shared
+        from bmanga_dev_safe_area_visual.utils import page_grid, paper_guide_object
 
         context = bpy.context
         work = get_work(context)
         assert work is not None and work.loaded
         page = work.pages[0]
-        overlay.apply_bname_shading_mode(context)
+        overlay.apply_bmanga_shading_mode(context)
         with _view3d_override():
             bpy.ops.view3d.view_axis(type="TOP", align_active=False)
             space = bpy.context.space_data
@@ -139,7 +139,7 @@ def _run_visual_check() -> None:
                 space.shading.type = "SOLID"
             space.shading.light = "FLAT"
             space.shading.color_type = "TEXTURE"
-            fit = bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            fit = bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             assert "FINISHED" in fit, fit
 
         rects = overlay_shared.compute_paper_rects(work.paper)
@@ -188,7 +188,7 @@ def _run_visual_check() -> None:
             raise AssertionError(f"不透明度0でセーフライン外の塗りが残っています: RGB={zero_rgb}")
 
         print(
-            "BNAME_SAFE_AREA_FILL_VIEWPORT_VISUAL_OK "
+            "BMANGA_SAFE_AREA_FILL_VIEWPORT_VISUAL_OK "
             f"full={tuple(round(v, 1) for v in full_rgb)} "
             f"quarter={tuple(round(v, 1) for v in quarter_rgb)} "
             f"zero={tuple(round(v, 1) for v in zero_rgb)} "

@@ -1,4 +1,4 @@
-"""B-Name page browser workspace/area helpers."""
+"""B-MANGA page browser workspace/area helpers."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from typing import Iterable
 
 import bpy
 
-WORKSPACE_NAME = "B-Name Pages"
-WORKSPACE_PROP = "bname_page_browser_workspace"
-WORKSPACE_POSITION_PROP = "bname_page_browser_position"
+WORKSPACE_NAME = "B-MANGA Pages"
+WORKSPACE_PROP = "bmanga_page_browser_workspace"
+WORKSPACE_POSITION_PROP = "bmanga_page_browser_position"
 
 POSITION_ITEMS = (
     ("LEFT", "左", "ページ一覧を左側に表示"),
@@ -396,7 +396,7 @@ def fit_enabled(scene=None) -> bool:
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return True
-    return bool(getattr(scene, "bname_page_browser_fit", True))
+    return bool(getattr(scene, "bmanga_page_browser_fit", True))
 
 
 def is_vertical_area(area) -> bool:
@@ -433,7 +433,7 @@ def layout_cols_for_area(work, area, scene=None) -> int:
     """
     scene = scene or getattr(bpy.context, "scene", None)
     if not fit_enabled(scene):
-        return max(1, int(getattr(scene, "bname_overview_cols", 4)))
+        return max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
     paper = getattr(work, "paper", None)
     if getattr(paper, "read_direction", "left") == "down":
         return 1

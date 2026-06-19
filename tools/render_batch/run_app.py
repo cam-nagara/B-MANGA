@@ -2,7 +2,7 @@
 
     <Blender同梱python> run_app.py
 
-（B-Name-Render パネルの「連続実行アプリを開く…」ボタン、または
+（B-MANGA Render パネルの「連続実行アプリを開く…」ボタン、または
  連続実行アプリ.vbs のダブルクリックから起動される）
 
 ローカルWebサーバを起動し、ブラウザ(Edge/Chrome のアプリ窓)でUIを開く。

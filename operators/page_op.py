@@ -107,8 +107,8 @@ def _sync_page_number_range(work_dir: Path, work) -> None:
 
 
 def _set_page_layer_active(context) -> None:
-    if hasattr(context.scene, "bname_active_layer_kind"):
-        context.scene.bname_active_layer_kind = "page"
+    if hasattr(context.scene, "bmanga_active_layer_kind"):
+        context.scene.bmanga_active_layer_kind = "page"
     edge_selection.clear_selection(context)
 
 
@@ -235,10 +235,10 @@ def _pick_object_layer_at_event(context, event) -> tuple[dict | None, object | N
     return hit, object_tool_op
 
 
-class BNAME_OT_page_add(Operator):
+class BMANGA_OT_page_add(Operator):
     """新規ページを末尾に追加."""
 
-    bl_idname = "bname.page_add"
+    bl_idname = "bmanga.page_add"
     bl_label = "ページを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -276,10 +276,10 @@ class BNAME_OT_page_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_remove(Operator):
+class BMANGA_OT_page_remove(Operator):
     """選択中のページを削除 (ディレクトリごと)."""
 
-    bl_idname = "bname.page_remove"
+    bl_idname = "bmanga.page_remove"
     bl_label = "ページを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -338,10 +338,10 @@ class BNAME_OT_page_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_duplicate(Operator):
+class BMANGA_OT_page_duplicate(Operator):
     """選択中のページを複製 (ディレクトリごとコピー)."""
 
-    bl_idname = "bname.page_duplicate"
+    bl_idname = "bmanga.page_duplicate"
     bl_label = "ページを複製"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -412,10 +412,10 @@ class BNAME_OT_page_duplicate(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_move(Operator):
+class BMANGA_OT_page_move(Operator):
     """選択ページを前後に移動."""
 
-    bl_idname = "bname.page_move"
+    bl_idname = "bmanga.page_move"
     bl_label = "ページ移動"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -475,10 +475,10 @@ def _switch_to_page(context, work, work_dir: Path, new_index: int) -> bool:
         return False
     work.active_page_index = new_index
     role, _page_id, _coma_id = page_file_scene.current_role(context)
-    context.scene.bname_overview_mode = True
+    context.scene.bmanga_overview_mode = True
     set_mode(MODE_PAGE, context)
-    context.scene.bname_current_coma_id = ""
-    context.scene.bname_current_coma_page_id = ""
+    context.scene.bmanga_current_coma_id = ""
+    context.scene.bmanga_current_coma_page_id = ""
     return True
 
 
@@ -492,7 +492,7 @@ def _tag_screen_redraw(context) -> None:
 
 def _set_stack_row_for_page_selection(context, work, page_index: int, coma_index: int | None = None) -> bool:
     scene = getattr(context, "scene", None)
-    stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+    stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
     if stack is None or work is None or not (0 <= int(page_index) < len(work.pages)):
         return False
     from ..utils.layer_hierarchy import coma_stack_key, page_stack_key
@@ -527,10 +527,10 @@ def _sync_light_page_selection(context, work, page_index: int, coma_index: int |
     _tag_screen_redraw(context)
 
 
-class BNAME_OT_page_select(Operator):
+class BMANGA_OT_page_select(Operator):
     """ページ一覧のクリックで active_page_index を設定."""
 
-    bl_idname = "bname.page_select"
+    bl_idname = "bmanga.page_select"
     bl_label = "ページ選択"
     bl_options = {"REGISTER"}
 
@@ -554,15 +554,15 @@ class BNAME_OT_page_select(Operator):
             current_page_index = page_file_scene.find_page_index(work, current_page_id)
             if self.index == current_page_index:
                 work.active_page_index = int(self.index)
-                context.scene.bname_overview_mode = True
+                context.scene.bmanga_overview_mode = True
                 _set_page_layer_active(context)
                 _sync_light_page_selection(context, work, int(self.index))
                 return {"FINISHED"}
-            result = bpy.ops.bname.open_page_file(index=int(self.index))
+            result = bpy.ops.bmanga.open_page_file(index=int(self.index))
             return result if result == {"FINISHED"} else {"CANCELLED"}
         if self.index == work.active_page_index:
-            if not bool(getattr(context.scene, "bname_overview_mode", True)):
-                context.scene.bname_overview_mode = True
+            if not bool(getattr(context.scene, "bmanga_overview_mode", True)):
+                context.scene.bmanga_overview_mode = True
                 _tag_screen_redraw(context)
             _set_page_layer_active(context)
             _sync_light_page_selection(context, work, int(self.index))
@@ -578,10 +578,10 @@ class BNAME_OT_page_select(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_page_pick_viewport(Operator):
+class BMANGA_OT_page_pick_viewport(Operator):
     """オブジェクトモードのビューポートクリックでページをアクティブ化."""
 
-    bl_idname = "bname.page_pick_viewport"
+    bl_idname = "bmanga.page_pick_viewport"
     bl_label = "ビューポートページ選択"
     bl_options = {"REGISTER"}
 
@@ -626,13 +626,13 @@ class BNAME_OT_page_pick_viewport(Operator):
         else:
             _clear_page_open_click_state()
         is_browser = page_browser.is_page_browser_area(context)
-        previous_overview = bool(getattr(context.scene, "bname_overview_mode", False))
+        previous_overview = bool(getattr(context.scene, "bmanga_overview_mode", False))
         try:
             from . import coma_picker
             from . import coma_edge_move_op
 
             if is_browser:
-                context.scene.bname_overview_mode = True
+                context.scene.bmanga_overview_mode = True
             layer_hit, object_tool_op = _pick_object_layer_at_event(context, event)
             if layer_hit is not None and object_tool_op is not None:
                 object_tool_op.activate_hit(context, layer_hit, mode=multi_mode)
@@ -655,7 +655,7 @@ class BNAME_OT_page_pick_viewport(Operator):
             return {"PASS_THROUGH"}
         finally:
             if is_browser:
-                context.scene.bname_overview_mode = previous_overview
+                context.scene.bmanga_overview_mode = previous_overview
         if page_index is None or not (0 <= page_index < len(work.pages)):
             return {"PASS_THROUGH"}
         if not page_range.page_in_range(work.pages[page_index]):
@@ -688,9 +688,9 @@ class BNAME_OT_page_pick_viewport(Operator):
         if (
             not is_browser
             and not in_page_file
-            and not bool(getattr(context.scene, "bname_overview_mode", True))
+            and not bool(getattr(context.scene, "bmanga_overview_mode", True))
         ):
-            context.scene.bname_overview_mode = True
+            context.scene.bmanga_overview_mode = True
             changed = True
         if page_index != work.active_page_index:
             if is_browser:
@@ -704,8 +704,8 @@ class BNAME_OT_page_pick_viewport(Operator):
                 if page.active_coma_index != coma_index:
                     page.active_coma_index = coma_index
                     changed = True
-                if hasattr(context.scene, "bname_active_layer_kind"):
-                    context.scene.bname_active_layer_kind = "coma"
+                if hasattr(context.scene, "bmanga_active_layer_kind"):
+                    context.scene.bmanga_active_layer_kind = "coma"
                 # アクティブコマ自身も object_selection に登録 (リストの RADIO を点灯)
                 object_selection.select_key(
                     context,
@@ -740,12 +740,12 @@ class BNAME_OT_page_pick_viewport(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_page_add,
-    BNAME_OT_page_remove,
-    BNAME_OT_page_duplicate,
-    BNAME_OT_page_move,
-    BNAME_OT_page_select,
-    BNAME_OT_page_pick_viewport,
+    BMANGA_OT_page_add,
+    BMANGA_OT_page_remove,
+    BMANGA_OT_page_duplicate,
+    BMANGA_OT_page_move,
+    BMANGA_OT_page_select,
+    BMANGA_OT_page_pick_viewport,
 )
 
 

@@ -25,7 +25,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_NAME = "bname_dev_work_slim"
+MOD_NAME = "bmanga_dev_work_slim"
 
 
 def _load_addon():
@@ -48,27 +48,27 @@ def _sub(path: str):
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_work_slim_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "SlimWork.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_work_slim_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "SlimWork.bmanga"))
     assert result == {"FINISHED"}, result
-    work_dir = temp_root / "SlimWork.bname"
+    work_dir = temp_root / "SlimWork.bmanga"
 
     page_file_scene = _sub("utils.page_file_scene")
     page_detail = _sub("utils.page_detail")
     handlers = _sub("utils.handlers")
 
     # --- 列数の初期値 ---
-    assert int(bpy.context.scene.bname_overview_cols) == 8, bpy.context.scene.bname_overview_cols
-    work = bpy.context.scene.bname_work
+    assert int(bpy.context.scene.bmanga_overview_cols) == 8, bpy.context.scene.bmanga_overview_cols
+    work = bpy.context.scene.bmanga_work
     assert int(work.view_overview_cols) == 8, work.view_overview_cols
     print("OVERVIEW_COLS_DEFAULT_OK", flush=True)
 
     # --- ページを増やし、ページ側でコマ/フキダシ入りの page.json を作る ---
-    assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     assert page_file_scene.is_page_edit_scene(bpy.context.scene)
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     # ページ用 blend では「自分のページ」の詳細だけが読み込まれている (v0.6.280)
     assert bool(page.detail_loaded), "自ページの詳細が読み込まれていません"
@@ -89,10 +89,10 @@ def main() -> None:
     print("PAGE_SCENE_DETAIL_OK", flush=True)
 
     # --- 作品ファイルへ戻る: 詳細を持たない ---
-    result = bpy.ops.bname.exit_page_file("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.exit_page_file("EXEC_DEFAULT")
     assert "FINISHED" in result, result
     assert page_file_scene.is_work_list_scene(bpy.context.scene), "作品ファイルに戻れていません"
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     assert not bool(page.detail_loaded), "作品ファイルで詳細読込フラグが立っています"
     assert len(page.comas) == 0, f"作品ファイルがコマを保持: {len(page.comas)}"
@@ -140,7 +140,7 @@ def main() -> None:
     page_detail.clear_page_detail(page)  # スリム状態へ戻す
     coma_count_p1 = len(json.loads((work_dir / "p0001" / "page.json").read_text(encoding="utf-8")).get("comas", []))
     coma_count_p2 = len(json.loads((work_dir / "p0002" / "page.json").read_text(encoding="utf-8")).get("comas", []))
-    result = bpy.ops.bname.pages_merge_spread("EXEC_DEFAULT", left_index=0)
+    result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
     assert "FINISHED" in result, result
     merged = work.pages[0]
     assert merged.spread
@@ -170,7 +170,7 @@ def main() -> None:
     assert hit is None, "作品ファイルでコマがヒットしています"
     print("WORK_PICK_GUARD_OK", flush=True)
 
-    print("BNAME_WORK_FILE_SLIM_CHECK_OK", flush=True)
+    print("BMANGA_WORK_FILE_SLIM_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

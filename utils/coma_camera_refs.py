@@ -426,7 +426,7 @@ def _render_page_reference_from_work_blend(
 
 def _loaded_page_scene(loaded_scenes, work_dir: Path, page_id: str):
     for scene in loaded_scenes:
-        work = getattr(scene, "bname_work", None)
+        work = getattr(scene, "bmanga_work", None)
         if work is None:
             continue
         try:

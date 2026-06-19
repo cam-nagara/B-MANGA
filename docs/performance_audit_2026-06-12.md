@@ -1,4 +1,4 @@
-# B-Name 高速化余地の調査報告 (2026-06-12, v0.6.279 時点)
+# B-MANGA 高速化余地の調査報告 (2026-06-12, v0.6.279 時点)
 
 ## 標準分量での実測 (追記)
 
@@ -49,7 +49,7 @@
 
 ### A-4. 出力時の `bpy.data.objects` 全走査を Collection 参照に
 - 場所: `io/export_pipeline.py:_gp_layers` (効果線オブジェクト探索)、ほか `for obj in bpy.data.objects` 箇所全般
-- 現状: 1 ページ出力ごとに全オブジェクトを走査して `bname_kind=="effect"` を選別。
+- 現状: 1 ページ出力ごとに全オブジェクトを走査して `bmanga_kind=="effect"` を選別。
 - 改善案: 効果線はページ Collection 配下に置かれているので、**ページ Collection からの限定走査**に変更 (または kind→objects の索引を保持)。
 - 効果: オブジェクト数の多いシーンでの出力・プレビュー再生成の定数コスト削減。
 

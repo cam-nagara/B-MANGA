@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_creation_drag",
+        "bmanga_dev_creation_drag",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_creation_drag"] = mod
+    sys.modules["bmanga_dev_creation_drag"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -33,7 +33,7 @@ def _event(x: float, y: float):
 
 
 def _effect_layer_count():
-    from bname_dev_creation_drag.utils import object_naming
+    from bmanga_dev_creation_drag.utils import object_naming
 
     return sum(1 for obj in bpy.data.objects if str(obj.get(object_naming.PROP_KIND, "") or "") == "effect")
 
@@ -62,22 +62,22 @@ def _operator_proxy(cls, method_names: tuple[str, ...], **attrs):
 
 def main() -> None:
     mod = None
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_creation_drag_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_creation_drag_"))
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "CreationDrag.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "CreationDrag.bmanga"))
         if "FINISHED" not in result:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
-        from bname_dev_creation_drag.operators import balloon_op, effect_line_op, text_op
-        from bname_dev_creation_drag.ui import overlay_creation_range
-        from bname_dev_creation_drag.utils import coma_border_object, layer_hierarchy, layer_object_sync
-        from bname_dev_creation_drag.utils import layer_stack as layer_stack_utils
-        from bname_dev_creation_drag.utils import object_naming, page_grid
+        from bmanga_dev_creation_drag.operators import balloon_op, effect_line_op, text_op
+        from bmanga_dev_creation_drag.ui import overlay_creation_range
+        from bmanga_dev_creation_drag.utils import coma_border_object, layer_hierarchy, layer_object_sync
+        from bmanga_dev_creation_drag.utils import layer_stack as layer_stack_utils
+        from bmanga_dev_creation_drag.utils import object_naming, page_grid
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         coma = page.comas[0]
         coma.shape_type = "rect"
@@ -102,7 +102,7 @@ def main() -> None:
         balloon_op._event_world_xy_mm = lambda _ctx, ev: (float(ev.world_x), float(ev.world_y))
         try:
             effect_tool = _operator_proxy(
-                effect_line_op.BNAME_OT_effect_line_tool,
+                effect_line_op.BMANGA_OT_effect_line_tool,
                 (
                     "_clear_drag_state",
                     "_start_create_preview",
@@ -143,7 +143,7 @@ def main() -> None:
                 raise AssertionError("ページ外の効果線作成ができません")
 
             balloon_tool = _operator_proxy(
-                balloon_op.BNAME_OT_balloon_tool,
+                balloon_op.BMANGA_OT_balloon_tool,
                 (
                     "_clear_drag_state",
                     "_clear_tail_polyline_state",
@@ -247,7 +247,7 @@ def main() -> None:
                 raise AssertionError("ページ外のフキダシ作成ができません")
 
             layer_object_sync.assign_per_page_z_ranks(context.scene, work)
-            page_balloon_obj = object_naming.find_object_by_bname_id(created.id, kind="balloon")
+            page_balloon_obj = object_naming.find_object_by_bmanga_id(created.id, kind="balloon")
             if page_balloon_obj is None:
                 raise AssertionError("作成したフキダシの実体がありません")
             if not (float(page_balloon_obj.location.z) > float(border.location.z)):
@@ -294,7 +294,7 @@ def main() -> None:
             effect_line_op._event_world_xy_mm = original_effect_event
             balloon_op._event_world_xy_mm = original_balloon_event
 
-        print("BNAME_CREATION_TOOL_DRAG_BEHAVIOR_OK", flush=True)
+        print("BMANGA_CREATION_TOOL_DRAG_BEHAVIOR_OK", flush=True)
     finally:
         if mod is not None:
             mod.unregister()

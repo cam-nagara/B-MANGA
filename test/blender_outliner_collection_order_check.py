@@ -13,12 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_outliner_order",
+        "bmanga_dev_outliner_order",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_outliner_order"] = mod
+    sys.modules["bmanga_dev_outliner_order"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,9 +29,9 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_outliner_order.core.work import get_work
-        from bname_dev_outliner_order.io import schema
-        from bname_dev_outliner_order.utils import layer_object_sync, layer_stack, outliner_model
+        from bmanga_dev_outliner_order.core.work import get_work
+        from bmanga_dev_outliner_order.io import schema
+        from bmanga_dev_outliner_order.utils import layer_object_sync, layer_stack, outliner_model
 
         context = bpy.context
         work = get_work(context)
@@ -87,7 +87,7 @@ def main() -> None:
             raise AssertionError(f"自動ページ名が空になっていません: {loaded_page.title!r}")
         if loaded_page.comas[0].title != "":
             raise AssertionError(f"自動コマ名が空になっていません: {loaded_page.comas[0].title!r}")
-        print("BNAME_OUTLINER_COLLECTION_ORDER_OK")
+        print("BMANGA_OUTLINER_COLLECTION_ORDER_OK")
     finally:
         mod.unregister()
         bpy.ops.wm.read_factory_settings(use_empty=True)

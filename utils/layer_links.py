@@ -6,7 +6,7 @@ import json
 import uuid
 
 
-LINK_PROP = "bname_layer_link_groups"
+LINK_PROP = "bmanga_layer_link_groups"
 LINKABLE_KINDS = {"gp", "effect", "raster", "image", "balloon", "text"}
 
 
@@ -70,7 +70,7 @@ def selected_linkable_uids(context, stack=None, *, sync: bool = True) -> list[st
 
     if stack is None:
         scene = _scene(context)
-        stack = getattr(scene, "bname_layer_stack", None) if scene is not None else None
+        stack = getattr(scene, "bmanga_layer_stack", None) if scene is not None else None
         if stack is None and sync:
             stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is None:

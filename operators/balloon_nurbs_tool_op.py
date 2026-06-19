@@ -81,10 +81,10 @@ def _interpolating_controls(points: list[tuple[float, float]]) -> list[tuple[flo
         return list(points)
 
 
-class BNAME_OT_balloon_nurbs_tool(Operator):
+class BMANGA_OT_balloon_nurbs_tool(Operator):
     """NURBSフキダシツール (クリックで輪郭ポイント追加、ダブルクリックで確定)."""
 
-    bl_idname = "bname.balloon_nurbs_tool"
+    bl_idname = "bmanga.balloon_nurbs_tool"
     bl_label = "NURBSフキダシツール"
 
     @classmethod
@@ -217,7 +217,7 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
                 selected.select_set(False)
             obj.select_set(True)
             context.view_layer.objects.active = obj
-            result = bpy.ops.bname.balloon_register_selected_curve()
+            result = bpy.ops.bmanga.balloon_register_selected_curve()
             if "FINISHED" not in result:
                 bpy.data.objects.remove(obj, do_unlink=True)
                 bpy.data.curves.remove(curve)
@@ -227,7 +227,7 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
             # クリック位置の重心からコマを特定し、親を修正する
             self._fix_parent_from_points(context, points)
             try:
-                bpy.ops.ed.undo_push(message="B-Name: NURBSフキダシ作成")
+                bpy.ops.ed.undo_push(message="B-MANGA: NURBSフキダシ作成")
             except Exception:  # noqa: BLE001
                 pass
             self.report({"INFO"}, "NURBSフキダシを作成しました")
@@ -282,7 +282,7 @@ class BNAME_OT_balloon_nurbs_tool(Operator):
         self._externally_finished = True
 
 
-_CLASSES = (BNAME_OT_balloon_nurbs_tool,)
+_CLASSES = (BMANGA_OT_balloon_nurbs_tool,)
 
 
 def register() -> None:

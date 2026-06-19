@@ -23,6 +23,7 @@ _logger = log.get_logger(__name__)
 # 動的 EnumProperty の項目文字列は参照を保持しないと文字化けするため、
 # 直近の項目リストをモジュール側で保持する (Blender の既知の挙動への対策)。
 _ENUM_ITEMS_CACHE: dict[str, list] = {}
+_SUPPRESS_TAIL_PRESET_REMEMBER = False
 
 
 def _work_dir(context) -> Path | None:
@@ -35,7 +36,7 @@ def _tail_preset_enum_items(_self, context):
     items = []
     try:
         for preset in tail_presets.list_all_presets(_work_dir(context)):
-            label = preset.name if preset.source == "local" else f"{preset.name} (同梱)"
+            label = preset.name if preset.source == "user" else f"{preset.name} (同梱)"
             items.append((preset.name, label, preset.description or ""))
     except Exception:  # noqa: BLE001
         _logger.exception("tail preset enum build failed")
@@ -43,6 +44,55 @@ def _tail_preset_enum_items(_self, context):
         items.append(("NONE", "—", ""))
     _ENUM_ITEMS_CACHE["all"] = items
     return items
+
+
+def _remember_tail_preset(context, value: str) -> None:
+    if _SUPPRESS_TAIL_PRESET_REMEMBER:
+        return
+    try:
+        from .. import preferences as addon_preferences
+
+        prefs = addon_preferences.get_preferences(context)
+        if prefs is None:
+            return
+        prefs.last_tail_preset = str(value or "")
+        addon_preferences.request_user_preferences_save()
+    except Exception:  # noqa: BLE001
+        _logger.debug("tail preset selection remember failed", exc_info=True)
+
+
+def _on_tail_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_tail_preset_selector", "") or "")
+    _remember_tail_preset(context, value)
+
+
+def restore_tail_preset_selector(context) -> None:
+    """前回選んだしっぽプリセットを選択欄へ戻す."""
+    global _SUPPRESS_TAIL_PRESET_REMEMBER
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bmanga_tail_preset_selector"):
+        return
+    try:
+        from .. import preferences as addon_preferences
+
+        prefs = addon_preferences.get_preferences(context)
+    except Exception:  # noqa: BLE001
+        prefs = None
+    value = str(getattr(prefs, "last_tail_preset", "") or "") if prefs is not None else ""
+    if not value:
+        return
+    try:
+        valid = {str(item[0]) for item in _tail_preset_enum_items(None, context)}
+    except Exception:  # noqa: BLE001
+        _logger.debug("tail preset restore items failed", exc_info=True)
+        return
+    if value not in valid or str(getattr(wm, "bmanga_tail_preset_selector", "") or "") == value:
+        return
+    _SUPPRESS_TAIL_PRESET_REMEMBER = True
+    try:
+        wm.bmanga_tail_preset_selector = value
+    finally:
+        _SUPPRESS_TAIL_PRESET_REMEMBER = False
 
 
 def _local_tail_preset_enum_items(_self, context):
@@ -59,8 +109,8 @@ def _local_tail_preset_enum_items(_self, context):
     return items
 
 
-class BNAME_OT_balloon_tail_preset_apply(Operator):
-    bl_idname = "bname.balloon_tail_preset_apply"
+class BMANGA_OT_balloon_tail_preset_apply(Operator):
+    bl_idname = "bmanga.balloon_tail_preset_apply"
     bl_label = "しっぽプリセットを適用"
     bl_description = "選んだプリセットの設定をこのしっぽへ適用します (位置とポイントは保持)"
     bl_options = {"REGISTER", "UNDO"}
@@ -88,10 +138,10 @@ class BNAME_OT_balloon_tail_preset_apply(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_preset_save(Operator):
-    bl_idname = "bname.balloon_tail_preset_save"
+class BMANGA_OT_balloon_tail_preset_save(Operator):
+    bl_idname = "bmanga.balloon_tail_preset_save"
     bl_label = "しっぽプリセットとして保存"
-    bl_description = "このしっぽの設定一式を、この作品のしっぽプリセットとして保存します"
+    bl_description = "このしっぽの設定一式を、全作品共通のしっぽプリセットとして保存します"
     bl_options = {"REGISTER"}
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
@@ -125,10 +175,10 @@ class BNAME_OT_balloon_tail_preset_save(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_balloon_tail_preset_delete(Operator):
-    bl_idname = "bname.balloon_tail_preset_delete"
+class BMANGA_OT_balloon_tail_preset_delete(Operator):
+    bl_idname = "bmanga.balloon_tail_preset_delete"
     bl_label = "しっぽプリセットを削除"
-    bl_description = "この作品に保存したしっぽプリセットを削除します (同梱プリセットは削除できません)"
+    bl_description = "共通保存したしっぽプリセットを削除します (同梱プリセットは削除できません)"
     bl_options = {"REGISTER"}
     bl_property = "preset_name"
 
@@ -152,7 +202,7 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     box = layout.box()
     header = box.row(align=True)
     header.label(text=f"しっぽ {tail_index + 1}", icon="SHARPCURVE")
-    remove = header.operator("bname.balloon_tail_remove", text="", icon="X")
+    remove = header.operator("bmanga.balloon_tail_remove", text="", icon="X")
     remove.page_id = page_id
     remove.balloon_id = balloon_id
     remove.tail_index = tail_index
@@ -189,7 +239,7 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
 
     preset_row = box.row(align=True)
     apply_op = preset_row.operator_menu_enum(
-        BNAME_OT_balloon_tail_preset_apply.bl_idname,
+        BMANGA_OT_balloon_tail_preset_apply.bl_idname,
         "preset_name",
         text="プリセットを適用",
         icon="PRESET",
@@ -198,7 +248,7 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     apply_op.balloon_id = balloon_id
     apply_op.tail_index = tail_index
     save_op = preset_row.operator(
-        BNAME_OT_balloon_tail_preset_save.bl_idname,
+        BMANGA_OT_balloon_tail_preset_save.bl_idname,
         text="",
         icon="FILE_TICK",
     )
@@ -207,8 +257,8 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     save_op.tail_index = tail_index
 
 
-class BNAME_OT_balloon_tail_detail_open(Operator):
-    bl_idname = "bname.balloon_tail_detail_open"
+class BMANGA_OT_balloon_tail_detail_open(Operator):
+    bl_idname = "bmanga.balloon_tail_detail_open"
     bl_label = "しっぽの詳細設定"
     bl_description = "しっぽの形状・線種・プリセットを編集します"
     bl_options = {"REGISTER"}
@@ -232,7 +282,7 @@ class BNAME_OT_balloon_tail_detail_open(Operator):
             return
         title = str(getattr(entry, "title", "") or getattr(entry, "id", "") or "フキダシ")
         layout.label(text=f"{title} のしっぽ", icon="MOD_FLUID")
-        add = layout.operator("bname.balloon_tail_add_target", text="しっぽを追加", icon="ADD")
+        add = layout.operator("bmanga.balloon_tail_add_target", text="しっぽを追加", icon="ADD")
         add.page_id = str(getattr(page, "id", "") or "")
         add.balloon_id = str(getattr(entry, "id", "") or "")
         tails = list(getattr(entry, "tails", []) or [])
@@ -243,7 +293,7 @@ class BNAME_OT_balloon_tail_detail_open(Operator):
         note = layout.box()
         note.label(text="線の色・太さ・下地はフキダシの設定に従います", icon="INFO")
         layout.operator_menu_enum(
-            BNAME_OT_balloon_tail_preset_delete.bl_idname,
+            BMANGA_OT_balloon_tail_preset_delete.bl_idname,
             "preset_name",
             text="プリセットを削除",
             icon="TRASH",
@@ -254,26 +304,31 @@ class BNAME_OT_balloon_tail_detail_open(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_balloon_tail_preset_apply,
-    BNAME_OT_balloon_tail_preset_save,
-    BNAME_OT_balloon_tail_preset_delete,
-    BNAME_OT_balloon_tail_detail_open,
+    BMANGA_OT_balloon_tail_preset_apply,
+    BMANGA_OT_balloon_tail_preset_save,
+    BMANGA_OT_balloon_tail_preset_delete,
+    BMANGA_OT_balloon_tail_detail_open,
 )
 
 
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.WindowManager.bname_tail_preset_selector = bpy.props.EnumProperty(
+    bpy.types.WindowManager.bmanga_tail_preset_selector = bpy.props.EnumProperty(
         name="しっぽプリセット",
         description="しっぽツールで新しく作るしっぽに適用するプリセット",
         items=_tail_preset_enum_items,
+        update=_on_tail_preset_selector_change,
     )
+    try:
+        restore_tail_preset_selector(bpy.context)
+    except Exception:  # noqa: BLE001
+        _logger.exception("tail preset selector restore failed")
 
 
 def unregister() -> None:
     try:
-        del bpy.types.WindowManager.bname_tail_preset_selector
+        del bpy.types.WindowManager.bmanga_tail_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

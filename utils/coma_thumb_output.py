@@ -13,7 +13,7 @@ _logger = log.get_logger(__name__)
 THUMB_FILE_NAME = "thumb.png"
 THUMB_SOCKET_NAME = "thumb"
 THUMB_NODE_NAME = THUMB_FILE_NAME
-THUMB_SCALE_NODE_NAME = "BName_ThumbScale"
+THUMB_SCALE_NODE_NAME = "BManga_ThumbScale"
 DEFAULT_THUMB_SCALE_PERCENTAGE = 12.5
 
 
@@ -44,11 +44,11 @@ def ensure_thumb_output_node(scene=None) -> bool:
 
 
 def resolve_thumb_scale_percentage(scene) -> float:
-    """B-Name の「コマ画像縮小率」を % 値として返す.
+    """B-MANGA の「コマ画像縮小率」を % 値として返す.
 
     値が読めない / 範囲外なら 12.5% を採用する。
     """
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None:
         return DEFAULT_THUMB_SCALE_PERCENTAGE
     try:
@@ -79,7 +79,7 @@ def _ensure_compositor_tree(scene):
     tree = getattr(scene, "compositing_node_group", None)
     if tree is None:
         try:
-            tree = bpy.data.node_groups.new("B-Name Thumbnail", "CompositorNodeTree")
+            tree = bpy.data.node_groups.new("B-MANGA Thumbnail", "CompositorNodeTree")
             scene.compositing_node_group = tree
         except Exception:  # noqa: BLE001
             _logger.exception("thumb output: compositor tree create failed")
@@ -184,7 +184,7 @@ def _legacy_thumb_socket(node):
 def _ensure_link(tree, render_layers, socket) -> None:
     """``thumb`` ソケットへ既定の接続を確保する.
 
-    既にユーザーが任意のソースを接続している場合は温存する。B-Name が以前
+    既にユーザーが任意のソースを接続している場合は温存する。B-MANGA が以前
     追加していた縮小用 Scale ノードから来ている場合だけ、Scale 入力側の
     ソースへバイパスする。
     """

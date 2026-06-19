@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_balloon_curve_source",
+        "bmanga_dev_balloon_curve_source",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_balloon_curve_source"] = mod
+    sys.modules["bmanga_dev_balloon_curve_source"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -42,22 +42,22 @@ def _render_mesh_objects(module_prefixes, balloon_id: str):
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_balloon_curve_source_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_curve_source_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "BalloonCurveSource.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "BalloonCurveSource.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_balloon_curve_source.core.work import get_work
-        from bname_dev_balloon_curve_source.operators import balloon_op
-        from bname_dev_balloon_curve_source.utils import balloon_curve_object
-        from bname_dev_balloon_curve_source.utils import balloon_curve_render_nodes
-        from bname_dev_balloon_curve_source.utils import balloon_curve_source_state
-        from bname_dev_balloon_curve_source.utils import balloon_fill_mesh, balloon_line_mesh
-        from bname_dev_balloon_curve_source.utils import object_naming
-        from bname_dev_balloon_curve_source.utils.layer_hierarchy import page_stack_key
+        from bmanga_dev_balloon_curve_source.core.work import get_work
+        from bmanga_dev_balloon_curve_source.operators import balloon_op
+        from bmanga_dev_balloon_curve_source.utils import balloon_curve_object
+        from bmanga_dev_balloon_curve_source.utils import balloon_curve_render_nodes
+        from bmanga_dev_balloon_curve_source.utils import balloon_curve_source_state
+        from bmanga_dev_balloon_curve_source.utils import balloon_fill_mesh, balloon_line_mesh
+        from bmanga_dev_balloon_curve_source.utils import object_naming
+        from bmanga_dev_balloon_curve_source.utils.layer_hierarchy import page_stack_key
 
         mesh_prefixes = (
             balloon_fill_mesh.BALLOON_FILL_MESH_NAME_PREFIX,
@@ -163,12 +163,12 @@ def main() -> None:
         raw_obj.select_set(True)
         context.view_layer.objects.active = raw_obj
         before_count = len(page.balloons)
-        result = bpy.ops.bname.balloon_register_selected_curve()
+        result = bpy.ops.bmanga.balloon_register_selected_curve()
         assert "FINISHED" in result, result
         assert len(page.balloons) == before_count + 1, "選択カーブからフキダシが追加されていません"
         free_entry = page.balloons[-1]
         assert object_naming.get_kind(raw_obj) == "balloon", "選択カーブがフキダシ実体として登録されていません"
-        assert object_naming.get_bname_id(raw_obj) == free_entry.id, "登録フキダシのIDが一致しません"
+        assert object_naming.get_bmanga_id(raw_obj) == free_entry.id, "登録フキダシのIDが一致しません"
         assert balloon_curve_source_state.detect_state(raw_obj) == balloon_curve_source_state.STATE_FREEFORM
         assert raw_obj.modifiers.get(balloon_curve_render_nodes.MODIFIER_NAME) is None, (
             "登録カーブに旧ジオメトリノードの表示補助が付いています"
@@ -186,7 +186,7 @@ def main() -> None:
         assert abs(float(raw_obj.data.splines[0].bezier_points[0].co.x) - free_point_x) < 1.0e-6, (
             "自由形状の制御点が詳細設定変更で上書きされました"
         )
-        print("BNAME_BALLOON_CURVE_SOURCE_OK")
+        print("BMANGA_BALLOON_CURVE_SOURCE_OK")
     finally:
         if mod is not None:
             try:

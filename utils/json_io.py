@@ -4,7 +4,7 @@
 - 書込み: UTF-8 (BOM なし) / インデント 2 / 非 ASCII をエスケープしない
 - アトミック書込み: 同ディレクトリの一時ファイルへ書いてから rename
 
-JSON ファイルは .bname フォルダ内の work.json / pages.json / page.json /
+JSON ファイルは .bmanga フォルダ内の work.json / pages.json / page.json /
 cNN.json / imported.json で共通利用する。
 """
 

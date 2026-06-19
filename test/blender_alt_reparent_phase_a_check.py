@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _stack_item(context, kind: str, key: str):
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     assert stack is not None
@@ -73,22 +73,22 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_alt_reparent_phase_a_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_alt_reparent_phase_a_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "AltReparent.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "AltReparent.bmanga"))
         assert "FINISHED" in result, result
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
 
-        from bname_dev.utils import layer_reparent
-        from bname_dev.utils import layer_stack as layer_stack_utils
-        from bname_dev.utils import page_grid
-        from bname_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
+        from bmanga_dev.utils import layer_reparent
+        from bmanga_dev.utils import layer_stack as layer_stack_utils
+        from bmanga_dev.utils import page_grid
+        from bmanga_dev.utils.layer_hierarchy import coma_stack_key, page_stack_key
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page1 = work.pages[0]
         page2 = work.pages[1]
         coma1 = page1.comas[0]
@@ -140,13 +140,13 @@ def main() -> None:
         moved_text.parent_kind = "page"
         moved_text.parent_key = page2_key
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        for item in context.scene.bname_layer_stack:
+        for item in context.scene.bmanga_layer_stack:
             layer_stack_utils.set_item_selected(context, item, False)
         _idx, moved_text_item = _stack_item(context, "text", f"{page2_key}:alt_text")
         _idx, moved_balloon_item = _stack_item(context, "balloon", f"{page2_key}:{moved_balloon.id}")
         layer_stack_utils.set_item_selected(context, moved_text_item, True)
         layer_stack_utils.set_item_selected(context, moved_balloon_item, True)
-        context.scene.bname_active_layer_stack_index = -1
+        context.scene.bmanga_active_layer_stack_index = -1
         changed = layer_reparent.reparent_selected(
             context,
             layer_reparent.ClickTarget("coma", page2, coma2, 1, None, None),
@@ -157,7 +157,7 @@ def main() -> None:
         assert current_text.parent_kind == "coma" and current_text.parent_key == coma2_key
         assert current_balloon.parent_kind == "coma" and current_balloon.parent_key == coma2_key
 
-        print("BNAME_ALT_REPARENT_PHASE_A_OK")
+        print("BMANGA_ALT_REPARENT_PHASE_A_OK")
     finally:
         if mod is not None:
             try:

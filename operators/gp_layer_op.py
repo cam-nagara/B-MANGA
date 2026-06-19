@@ -1,9 +1,9 @@
-"""1 GP Object = 1 B-Name レイヤー operators.
+"""1 GP Object = 1 B-MANGA レイヤー operators.
 
 提供 operator:
-    - ``bname.gp_layer_create_per_object``: 現在のアクティブコマ直下に新規
+    - ``bmanga.gp_layer_create_per_object``: 現在のアクティブコマ直下に新規
       GP Object を生成し、Outliner Collection 階層に正規 link する。
-    - ``bname.gp_layer_draw_enter`` / ``bname.gp_layer_draw_exit``: 選択中
+    - ``bmanga.gp_layer_draw_enter`` / ``bmanga.gp_layer_draw_exit``: 選択中
       の GP Object を Paint モード (PAINT_GREASE_PENCIL) へ切替/退出。
 """
 
@@ -22,26 +22,26 @@ from ..utils import object_naming as on
 _logger = log.get_logger(__name__)
 
 
-def _make_gp_bname_id() -> str:
+def _make_gp_bmanga_id() -> str:
     """``gp_<uuid12>`` 形式の安定 ID を生成 (衝突時はフル UUID へ拡張)."""
     for _ in range(10):
         candidate = f"gp_{uuid.uuid4().hex[:12]}"
-        if on.find_object_by_bname_id(candidate, kind="gp") is None:
+        if on.find_object_by_bmanga_id(candidate, kind="gp") is None:
             return candidate
     # 10 回連続衝突 (天文学的低確率) はフル uuid hex で再試行
     full = f"gp_{uuid.uuid4().hex}"
-    if on.find_object_by_bname_id(full, kind="gp") is None:
+    if on.find_object_by_bmanga_id(full, kind="gp") is None:
         return full
-    raise RuntimeError("gp bname_id 生成に失敗しました (UUID 衝突)")
+    raise RuntimeError("gp bmanga_id 生成に失敗しました (UUID 衝突)")
 
 
 def _resolve_active_coma(context):
     """アクティブページとコマを (page_id, coma_id, title) で返す.
 
     優先順位:
-        1. ``scene.bname_current_coma_id`` が設定されていれば、そのコマ ID を
+        1. ``scene.bmanga_current_coma_id`` が設定されていれば、そのコマ ID を
            採用 (cNN.blend 編集中などコマ単独編集モード)。
-        2. ``page.active_coma_index`` (BNamePageEntry の IntProperty) を使う。
+        2. ``page.active_coma_index`` (BMangaPageEntry の IntProperty) を使う。
         3. それ以外は最初のコマ (0 番目)。
 
     アクティブコマが特定できない場合 ``coma_id=None`` を返し、呼出側で
@@ -50,7 +50,7 @@ def _resolve_active_coma(context):
     scene = getattr(context, "scene", None)
     if scene is None:
         return None, None, None
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return None, None, None
     pages = getattr(work, "pages", None)
@@ -65,15 +65,15 @@ def _resolve_active_coma(context):
     if not comas:
         return page_id, None, None
 
-    # 1. scene.bname_current_coma_id (cNN.blend 編集中) を最優先
-    current_coma_id = str(getattr(scene, "bname_current_coma_id", "") or "")
+    # 1. scene.bmanga_current_coma_id (cNN.blend 編集中) を最優先
+    current_coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     if current_coma_id:
         for coma in comas:
             if str(getattr(coma, "id", "") or "") == current_coma_id:
                 title = str(getattr(coma, "title", "") or current_coma_id)
                 return page_id, current_coma_id, title
 
-    # 2. page.active_coma_index (BNamePageEntry.active_coma_index)
+    # 2. page.active_coma_index (BMangaPageEntry.active_coma_index)
     coma_idx = int(getattr(page, "active_coma_index", 0))
     if not (0 <= coma_idx < len(comas)):
         coma_idx = 0
@@ -83,14 +83,14 @@ def _resolve_active_coma(context):
     return page_id, coma_id, coma_title
 
 
-class BNAME_OT_gp_layer_create_per_object(bpy.types.Operator):
+class BMANGA_OT_gp_layer_create_per_object(bpy.types.Operator):
     """新規 GP Object を 1 レイヤーとしてアクティブコマに作成 (Phase 2)."""
 
-    bl_idname = "bname.gp_layer_create_per_object"
+    bl_idname = "bmanga.gp_layer_create_per_object"
     bl_label = "新 GP レイヤーを作成"
     bl_description = (
-        "アクティブコマ直下に新規 GP Object を生成し、B-Name 安定 ID を付与"
-        "して Outliner 階層に登録します (Phase 2: 1 GP Object = 1 B-Name "
+        "アクティブコマ直下に新規 GP Object を生成し、B-MANGA 安定 ID を付与"
+        "して Outliner 階層に登録します (Phase 2: 1 GP Object = 1 B-MANGA "
         "レイヤー モデル)。"
     )
     bl_options = {"REGISTER", "UNDO"}
@@ -108,7 +108,7 @@ class BNAME_OT_gp_layer_create_per_object(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         scene = getattr(context, "scene", None)
-        work = getattr(scene, "bname_work", None) if scene is not None else None
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
         return bool(work and getattr(work, "loaded", False))
 
     def execute(self, context):
@@ -119,10 +119,10 @@ class BNAME_OT_gp_layer_create_per_object(bpy.types.Operator):
         if page is None:
             self.report({"WARNING"}, "アクティブページが見つかりません")
             return {"CANCELLED"}
-        bname_id = _make_gp_bname_id()
+        bmanga_id = _make_gp_bmanga_id()
         obj = gpol.create_layer_gp_object(
             scene=scene,
-            bname_id=bname_id,
+            bmanga_id=bmanga_id,
             title=self.title,
             z_index=int(self.z_index),
             parent_kind=parent_kind,
@@ -148,45 +148,45 @@ def _resolve_active_gp_object(context):
 
     優先順位:
         1. ``context.view_layer.objects.active`` が GP Object かつ
-           ``bname_kind == "gp"`` ならそれ。
-        2. ``context.selected_objects`` の中で B-Name 管理 GP Object 1 つ目。
-        3. ``scene.bname_active_layer_kind == "gp"`` の場合のみ、最初に
-           見つかった B-Name 管理 GP Object (フォールバック)。
+           ``bmanga_kind == "gp"`` ならそれ。
+        2. ``context.selected_objects`` の中で B-MANGA 管理 GP Object 1 つ目。
+        3. ``scene.bmanga_active_layer_kind == "gp"`` の場合のみ、最初に
+           見つかった B-MANGA 管理 GP Object (フォールバック)。
     見つからなければ None。
     """
-    def _is_bname_gp(obj):
+    def _is_bmanga_gp(obj):
         return (
             obj is not None
             and getattr(obj, "type", "") == "GREASEPENCIL"
-            and bool(obj.get("bname_managed", False))
-            and str(obj.get("bname_kind", "")) == "gp"
+            and bool(obj.get("bmanga_managed", False))
+            and str(obj.get("bmanga_kind", "")) == "gp"
         )
 
     view_layer = getattr(context, "view_layer", None)
     if view_layer is not None:
         active = getattr(view_layer.objects, "active", None)
-        if _is_bname_gp(active):
+        if _is_bmanga_gp(active):
             return active
 
     for sel in tuple(getattr(context, "selected_objects", []) or []):
-        if _is_bname_gp(sel):
+        if _is_bmanga_gp(sel):
             return sel
 
     scene = getattr(context, "scene", None)
-    if scene is not None and getattr(scene, "bname_active_layer_kind", "") == "gp":
+    if scene is not None and getattr(scene, "bmanga_active_layer_kind", "") == "gp":
         for obj in bpy.data.objects:
-            if _is_bname_gp(obj):
+            if _is_bmanga_gp(obj):
                 return obj
     return None
 
 
-class BNAME_OT_gp_layer_draw_enter(Operator):
+class BMANGA_OT_gp_layer_draw_enter(Operator):
     """選択中の GP レイヤーを描画モード (PAINT_GREASE_PENCIL) へ切替."""
 
-    bl_idname = "bname.gp_layer_draw_enter"
+    bl_idname = "bmanga.gp_layer_draw_enter"
     bl_label = "GP 描画モードへ"
     bl_description = (
-        "選択中の B-Name GP レイヤーを描画モード (PAINT_GREASE_PENCIL) に"
+        "選択中の B-MANGA GP レイヤーを描画モード (PAINT_GREASE_PENCIL) に"
         "切替えます。3D ビューを Material Preview に切替えて即座に描画内容を"
         "確認できる状態にします。"
     )
@@ -195,7 +195,7 @@ class BNAME_OT_gp_layer_draw_enter(Operator):
     @classmethod
     def poll(cls, context):
         scene = getattr(context, "scene", None)
-        work = getattr(scene, "bname_work", None) if scene is not None else None
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
         return bool(work and getattr(work, "loaded", False))
 
     def execute(self, context):
@@ -255,16 +255,16 @@ class BNAME_OT_gp_layer_draw_enter(Operator):
         except Exception:  # noqa: BLE001
             pass
         try:
-            context.scene.bname_active_layer_kind = "gp"
+            context.scene.bmanga_active_layer_kind = "gp"
         except Exception:  # noqa: BLE001
             pass
         return {"FINISHED"}
 
 
-class BNAME_OT_gp_layer_draw_exit(Operator):
+class BMANGA_OT_gp_layer_draw_exit(Operator):
     """GP 描画モードから Object モードへ戻る."""
 
-    bl_idname = "bname.gp_layer_draw_exit"
+    bl_idname = "bmanga.gp_layer_draw_exit"
     bl_label = "GP 描画モードを終了"
     bl_options = {"REGISTER"}
 
@@ -289,9 +289,9 @@ class BNAME_OT_gp_layer_draw_exit(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_gp_layer_create_per_object,
-    BNAME_OT_gp_layer_draw_enter,
-    BNAME_OT_gp_layer_draw_exit,
+    BMANGA_OT_gp_layer_create_per_object,
+    BMANGA_OT_gp_layer_draw_enter,
+    BMANGA_OT_gp_layer_draw_exit,
 )
 
 

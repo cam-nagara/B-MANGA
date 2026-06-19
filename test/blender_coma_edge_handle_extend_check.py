@@ -14,12 +14,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_coma_edge_extend",
+        "bmanga_dev_coma_edge_extend",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_coma_edge_extend"] = mod
+    sys.modules["bmanga_dev_coma_edge_extend"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -37,7 +37,7 @@ def _shim(work, selection):
 
 
 def _add_panel(page, coma_id: str, points, width_mm: float, *, style: str = "solid", blur_amount: float = 0.0):
-    from bname_dev_coma_edge_extend.operators import coma_edge_move_op
+    from bmanga_dev_coma_edge_extend.operators import coma_edge_move_op
 
     panel = page.comas.add()
     panel.id = coma_id
@@ -59,9 +59,10 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
-        from bname_dev_coma_edge_extend.core.work import get_work
-        from bname_dev_coma_edge_extend.operators import coma_edge_move_op
-        from bname_dev_coma_edge_extend.utils import coma_border_texture, geom
+        from bmanga_dev_coma_edge_extend.core.work import get_work
+        from bmanga_dev_coma_edge_extend.io import schema
+        from bmanga_dev_coma_edge_extend.operators import coma_edge_move_op
+        from bmanga_dev_coma_edge_extend.utils import coma_border_texture, geom
 
         work = get_work(bpy.context)
         work.loaded = True
@@ -75,10 +76,13 @@ def main() -> None:
         paper.inner_frame_height_mm = 60.0
         paper.inner_frame_offset_x_mm = 0.0
         paper.inner_frame_offset_y_mm = 0.0
+        paper.start_side = "right"
+        paper.read_direction = "left"
 
         page = work.pages.add()
         page.id = "p1"
         br = geom.bleed_rect(paper)
+        fr = geom.finish_rect(paper)
         ir = geom.inner_frame_rect(paper)
         width_mm = 4.0
         panel = _add_panel(
@@ -87,7 +91,7 @@ def main() -> None:
             [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
             width_mm,
         )
-        coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 2}),
             2,
         )
@@ -95,9 +99,88 @@ def main() -> None:
         _assert_close(top_y, br.y2 + width_mm * 0.5, "基本枠から裁ち落とし枠外への拡張")
 
         page.comas.clear()
+        gutter_default = _add_panel(
+            page,
+            "gutter_default",
+            [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
+            width_mm,
+        )
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
+            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 3}),
+            2,
+        )
+        left_x_default = min(x for x, _y in coma_edge_move_op._coma_polygon(gutter_default))
+        _assert_close(
+            left_x_default,
+            br.x - width_mm * 0.5,
+            "初期値ではノド側も裁ち落とし枠外へ拡張",
+        )
+
+        page.comas.clear()
+        gutter_finish = _add_panel(
+            page,
+            "gutter_finish",
+            [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
+            width_mm,
+        )
+        gutter_finish.snap_gutter_to_finish = True
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
+            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 3}),
+            2,
+        )
+        left_x_finish = min(x for x, _y in coma_edge_move_op._coma_polygon(gutter_finish))
+        _assert_close(left_x_finish, fr.x, "ノド側は仕上がり枠にスナップ")
+        payload = schema.coma_entry_to_dict(gutter_finish)
+        if payload.get("snapGutterToFinish") is not True:
+            raise AssertionError("ノド側スナップ設定が保存データに入りません")
+        restored = page.comas.add()
+        schema.coma_entry_from_dict(restored, payload)
+        if not bool(getattr(restored, "snap_gutter_to_finish", False)):
+            raise AssertionError("ノド側スナップ設定が読み込み後に戻りません")
+        page.comas.remove(len(page.comas) - 1)
+
+        page.comas.clear()
+        fore_edge = _add_panel(
+            page,
+            "fore_edge",
+            [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
+            width_mm,
+        )
+        fore_edge.snap_gutter_to_finish = True
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
+            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
+            2,
+        )
+        right_x_fore = max(x for x, _y in coma_edge_move_op._coma_polygon(fore_edge))
+        _assert_close(
+            right_x_fore,
+            br.x2 + width_mm * 0.5,
+            "小口側は裁ち落とし枠外へ拡張",
+        )
+
+        paper.start_side = "left"
+        paper.read_direction = "right"
+        page.comas.clear()
+        left_page_gutter = _add_panel(
+            page,
+            "left_page_gutter",
+            [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
+            width_mm,
+        )
+        left_page_gutter.snap_gutter_to_finish = True
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
+            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
+            2,
+        )
+        right_x_finish = max(x for x, _y in coma_edge_move_op._coma_polygon(left_page_gutter))
+        _assert_close(right_x_finish, fr.x2, "左ページのノド側は仕上がり枠にスナップ")
+        paper.start_side = "right"
+        paper.read_direction = "left"
+
+        page.comas.clear()
         left = _add_panel(page, "left", [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)], width_mm)
         _add_panel(page, "right", [(50.0, 10.0), (90.0, 10.0), (90.0, 50.0), (50.0, 50.0)], width_mm)
-        coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
             2,
         )
@@ -119,7 +202,7 @@ def main() -> None:
             [(50.0, 10.0), (90.0, 10.0), (90.0, 50.0), (50.0, 50.0)],
             width_mm,
         )
-        coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
             2,
         )
@@ -143,7 +226,7 @@ def main() -> None:
             blur_amount=1.0,
         )
         try:
-            coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+            coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
                 _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 2}),
                 2,
             )
@@ -164,7 +247,7 @@ def main() -> None:
         )
         _add_panel(page, "brush_right", [(50.0, 10.0), (90.0, 10.0), (90.0, 50.0), (50.0, 50.0)], width_mm)
         try:
-            coma_edge_move_op.BNAME_OT_coma_edge_move._do_extend(
+            coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
                 _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
                 2,
             )
@@ -172,7 +255,7 @@ def main() -> None:
             _assert_close(brush_right_x, 50.0 + width_mm * 0.5, "輪郭ぼかしの隣接コマ内側拡張量")
         finally:
             coma_border_texture.brush_total_width_mm = original_brush_total
-        print("BNAME_COMA_EDGE_HANDLE_EXTEND_OK")
+        print("BMANGA_COMA_EDGE_HANDLE_EXTEND_OK")
     finally:
         mod.unregister()
 

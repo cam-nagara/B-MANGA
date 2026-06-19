@@ -14,7 +14,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = Path(os.environ.get("BNAME_TEXT_IME_TOGGLE_OUT", "") or ".")
+OUT_DIR = Path(os.environ.get("BMANGA_TEXT_IME_TOGGLE_OUT", "") or ".")
 _MOD = None
 _STATE: dict[str, object] = {}
 
@@ -107,12 +107,12 @@ def _ime_debug_state(text_edit_runtime) -> list[dict[str, object]]:
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -137,7 +137,7 @@ def _setup_tick():
     if not _has_window():
         return 0.25
     _MOD = _load_addon()
-    from bname_dev.operators import text_edit_runtime
+    from bmanga_dev.operators import text_edit_runtime
 
     text_edit_runtime.begin_ime_capture()
     text_edit_runtime.set_ime_open_status(False)
@@ -155,7 +155,7 @@ def _setup_tick():
 
 
 def _finish_tick():
-    from bname_dev.operators import text_edit_runtime
+    from bmanga_dev.operators import text_edit_runtime
 
     _STATE["after"] = text_edit_runtime.ime_open_status()
     _STATE["debug_after"] = _ime_debug_state(text_edit_runtime)

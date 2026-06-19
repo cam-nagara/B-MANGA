@@ -1,9 +1,9 @@
-"""B-Name 標準分量 (55ページ×コマ5+フキダシ+テキスト) パフォーマンス計測.
+"""B-MANGA 標準分量 (55ページ×コマ5+フキダシ+テキスト) パフォーマンス計測.
 
 ユーザーの標準分量: 55 ページ / 各ページ コマ 4+1 / 全コマにフキダシor効果線 /
 全フキダシにテキスト。これを合成し、主要処理の時間を計測する。
 
-使い方: blender --background --factory-startup --python bname_perf_bench.py
+使い方: blender --background --factory-startup --python bmanga_perf_bench.py
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 import bpy
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD = "bname_perf_benchmark"
+MOD = "bmanga_perf_benchmark"
 PAGES = 55
 COMAS_PER_PAGE = 5
 RESULTS: list[tuple[str, float]] = []
@@ -92,10 +92,10 @@ def _fill_page_data(work, page, page_no: int) -> None:
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_perf_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "Perf.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_perf_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "Perf.bmanga"))
     assert result == {"FINISHED"}, result
-    work_dir = temp_root / "Perf.bname"
+    work_dir = temp_root / "Perf.bmanga"
 
     page_io = _sub("io.page_io")
     handlers = _sub("utils.handlers")
@@ -103,14 +103,14 @@ def main() -> None:
     page_preview_object = _sub("utils.page_preview_object")
     export_pipeline = _sub("io.export_pipeline")
 
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
 
     # --- 55 ページ作成 + データ充填 ---
     t0 = time.perf_counter()
     while len(work.pages) < PAGES:
-        assert "FINISHED" in bpy.ops.bname.page_add("EXEC_DEFAULT")
+        assert "FINISHED" in bpy.ops.bmanga.page_add("EXEC_DEFAULT")
     print(f"BENCH setup_pages: {(time.perf_counter()-t0)*1000:.1f} ms", flush=True)
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     for i, page in enumerate(work.pages):
         page_detail.ensure_page_detail(work, page)
         _fill_page_data(work, page, i + 1)
@@ -146,9 +146,9 @@ def main() -> None:
     _timeit("export_render_page_220dpi", lambda: export_pipeline.render_page(work, page0, options), repeat=2)
 
     # --- 計測 5: ページ用 blend でのフキダシ同期 (スライダー相当) ---
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     bco = _sub("utils.balloon_curve_object")
     balloon_op = _sub("operators.balloon_op")
@@ -191,7 +191,7 @@ def main() -> None:
     print("==== RESULTS ====", flush=True)
     for label, sec in RESULTS:
         print(f"{label}\t{sec*1000:.1f}", flush=True)
-    print("BNAME_PERF_BENCH_DONE", flush=True)
+    print("BMANGA_PERF_BENCH_DONE", flush=True)
 
 
 if __name__ == "__main__":

@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,7 +29,7 @@ def _load_addon():
 
 
 def _select_stack_item(context, kind: str, key: str) -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(context)
     for index, item in enumerate(stack or []):
@@ -40,20 +40,20 @@ def _select_stack_item(context, kind: str, key: str) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_free_transform_reset_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_free_transform_reset_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "FreeTransformReset.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FreeTransformReset.bmanga"))
         assert result == {"FINISHED"}, result
 
-        from bname_dev.operators import balloon_op, coma_modal_state, effect_line_op, text_op
-        from bname_dev.utils import balloon_line_mesh, free_transform, layer_hierarchy, layer_stack as layer_stack_utils
-        from bname_dev.utils import text_real_object
+        from bmanga_dev.operators import balloon_op, coma_modal_state, effect_line_op, text_op
+        from bmanga_dev.utils import balloon_line_mesh, free_transform, layer_hierarchy, layer_stack as layer_stack_utils
+        from bmanga_dev.utils import text_real_object
 
         context = bpy.context
-        work = context.scene.bname_work
+        work = context.scene.bmanga_work
         page = work.pages[0]
         offsets = free_transform.zero_offsets()
         offsets[free_transform.TOP_RIGHT] = (8.0, 5.0)
@@ -71,13 +71,13 @@ def main() -> None:
         )
         free_transform.set_entry_offsets(balloon, offsets, enabled=True)
         page.active_balloon_index = 0
-        context.scene.bname_active_layer_kind = "balloon"
+        context.scene.bmanga_active_layer_kind = "balloon"
         _select_stack_item(context, "balloon", f"{page.id}:{balloon.id}")
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(balloon)
 
         balloon.line_width_mm = 1.0
-        assert bpy.ops.bname.balloon_free_transform_scale(
+        assert bpy.ops.bmanga.balloon_free_transform_scale(
             "EXEC_DEFAULT",
             scale_percent=200.0,
             keep_line_width=True,
@@ -91,8 +91,8 @@ def main() -> None:
         if abs(balloon_line_mesh.scaled_entry_width_mm(balloon, "line_width_mm", 0.3) - 1.0) > 1.0e-6:
             raise AssertionError("線幅を維持した拡大で描画線幅が変わっています")
 
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
-        assert bpy.ops.bname.balloon_free_transform_scale(
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.balloon_free_transform_scale(
             "EXEC_DEFAULT",
             scale_percent=200.0,
             keep_line_width=False,
@@ -101,13 +101,13 @@ def main() -> None:
             raise AssertionError("線幅を維持しない拡大で線幅倍率が反映されていません")
         if abs(balloon_line_mesh.scaled_entry_width_mm(balloon, "line_width_mm", 0.3) - 2.0) > 1.0e-6:
             raise AssertionError("線幅を維持しない拡大で描画線幅が太くなっていません")
-        assert bpy.ops.bname.balloon_free_transform_rotate(
+        assert bpy.ops.bmanga.balloon_free_transform_rotate(
             "EXEC_DEFAULT",
             angle_deg=90.0,
         ) == {"FINISHED"}
         if not free_transform.entry_enabled(balloon):
             raise AssertionError("フキダシ回転で自由変形が有効になっていません")
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(balloon)
         if abs(float(balloon.free_transform_line_width_scale) - 1.0) > 1.0e-6:
             raise AssertionError("自由変形リセットで線幅倍率が戻っていません")
@@ -127,9 +127,9 @@ def main() -> None:
         assert not missing
         free_transform.set_entry_offsets(text, offsets, enabled=True)
         page.active_text_index = 0
-        context.scene.bname_active_layer_kind = "text"
+        context.scene.bmanga_active_layer_kind = "text"
         _select_stack_item(context, "text", f"{page.id}:{text.id}")
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(text)
 
         class TextEditProbe:
@@ -148,7 +148,7 @@ def main() -> None:
         assert text_real_object.has_visible_text_object(text, page=page)
         edit_probe = TextEditProbe(page.id, text.id)
         coma_modal_state.set_active("text_tool", edit_probe, context)
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.entry_enabled(text)
         assert not text_real_object.has_visible_text_object(text, page=page)
         coma_modal_state.clear_active("text_tool", edit_probe, context)
@@ -165,13 +165,13 @@ def main() -> None:
         free_transform.set_effect_payload_on_meta_entry(entry, {"enabled": True, "offsets": offsets})
         meta[meta_key] = entry
         effect_line_op._write_effect_meta(effect_obj, meta)
-        context.scene.bname_active_layer_kind = "effect"
-        context.scene.bname_active_effect_layer_name = layer_stack_utils._node_stack_key(effect_layer)
+        context.scene.bmanga_active_layer_kind = "effect"
+        context.scene.bmanga_active_effect_layer_name = layer_stack_utils._node_stack_key(effect_layer)
         _select_stack_item(context, "effect", layer_stack_utils._node_stack_key(effect_layer))
-        assert bpy.ops.bname.reset_free_transform() == {"FINISHED"}
+        assert bpy.ops.bmanga.reset_free_transform() == {"FINISHED"}
         assert not free_transform.effect_payload_enabled(free_transform.effect_payload_for_layer(effect_obj, effect_layer))
 
-        print("BNAME_FREE_TRANSFORM_RESET_OK")
+        print("BMANGA_FREE_TRANSFORM_RESET_OK")
     finally:
         if mod is not None:
             try:

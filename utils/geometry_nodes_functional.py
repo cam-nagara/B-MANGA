@@ -1,4 +1,4 @@
-"""Functional Geometry Nodes builders for B-Name visible objects."""
+"""Functional Geometry Nodes builders for B-MANGA visible objects."""
 
 from __future__ import annotations
 

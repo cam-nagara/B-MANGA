@@ -1,4 +1,4 @@
-"""B-Name オーバーレイ表示の切替 operator (Phase 3c).
+"""B-MANGA オーバーレイ表示の切替 operator (Phase 3c).
 
 GPU オーバーレイ (画像 / フキダシ / テキスト等の独自描画) を一括 ON/OFF。
 Object 化されたレイヤー (raster Mesh / balloon Curve / text plane) のみを
@@ -14,11 +14,11 @@ from ..utils import log
 _logger = log.get_logger(__name__)
 
 
-class BNAME_OT_overlay_toggle(bpy.types.Operator):
-    bl_idname = "bname.overlay_toggle"
+class BMANGA_OT_overlay_toggle(bpy.types.Operator):
+    bl_idname = "bmanga.overlay_toggle"
     bl_label = "オーバーレイ表示切替"
     bl_description = (
-        "B-Name 独自の GPU オーバーレイ描画 (画像/フキダシ/テキスト等) を"
+        "B-MANGA 独自の GPU オーバーレイ描画 (画像/フキダシ/テキスト等) を"
         "一括 ON/OFF します。OFF にすると Blender 標準 Object 描画 (raster"
         " メッシュ/フキダシ Curve/テキスト Plane) のみが見えます。"
     )
@@ -26,8 +26,8 @@ class BNAME_OT_overlay_toggle(bpy.types.Operator):
 
     def execute(self, context):
         scene = context.scene
-        new_val = not bool(getattr(scene, "bname_overlay_enabled", True))
-        scene.bname_overlay_enabled = new_val
+        new_val = not bool(getattr(scene, "bmanga_overlay_enabled", True))
+        scene.bmanga_overlay_enabled = new_val
         try:
             from ..core.work import get_work
             from ..utils import view_settings
@@ -49,13 +49,13 @@ class BNAME_OT_overlay_toggle(bpy.types.Operator):
         return {"FINISHED"}
 
 
-_CLASSES = (BNAME_OT_overlay_toggle,)
+_CLASSES = (BMANGA_OT_overlay_toggle,)
 
 
 def register() -> None:
-    bpy.types.Scene.bname_overlay_enabled = bpy.props.BoolProperty(
+    bpy.types.Scene.bmanga_overlay_enabled = bpy.props.BoolProperty(
         name="オーバーレイ表示",
-        description="B-Name 独自オーバーレイ描画の表示切替 (Phase 3c)",
+        description="B-MANGA 独自オーバーレイ描画の表示切替 (Phase 3c)",
         default=True,
     )
     for cls in _CLASSES:
@@ -69,6 +69,6 @@ def unregister() -> None:
         except RuntimeError:
             pass
     try:
-        del bpy.types.Scene.bname_overlay_enabled
+        del bpy.types.Scene.bmanga_overlay_enabled
     except AttributeError:
         pass

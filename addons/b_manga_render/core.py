@@ -1,0 +1,571 @@
+"""B-MANGA Render data model."""
+
+from __future__ import annotations
+
+import sys
+
+import bpy
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
+
+COMMAND_TYPE_ITEMS = (
+    ("STATE_BEGIN", "出力状態を退避して初期化", "現在のレンダー・出力状態を退避し、プリセット用に初期化する (出力ブロックの開始)"),
+    ("STATE_END", "出力状態を復元", "退避した状態を元に戻す (出力ブロックの終了)"),
+    ("SET_VIEW_LAYER", "ビューレイヤー", "指定した名前のビューレイヤーを有効/無効にする"),
+    ("SET_COLLECTION_EXCLUDE", "コレクション除外", "ビューレイヤー内のコレクションを除外/表示する"),
+    ("SET_NODE_MUTE", "ノードミュート", "名前またはラベルが完全一致するノードをミュート/解除する"),
+    ("SET_OUTPUT_GROUP", "ファイル出力切替", "グループ内で検出ワードを含むファイル出力ノードをまとめて切り替える (部分一致)"),
+    ("SET_AOV_INPUT", "AOV入力", "グループの入力値を数値で設定する"),
+    ("SET_OUTPUT_NAME", "出力画像名", "出力する画像のファイル名を設定する"),
+    ("SET_OUTPUT_FOLDER", "出力フォルダ", "出力先フォルダを設定する"),
+    ("RELOAD_IMAGES", "画像ノード再読み込み", "すべての画像ノードを再読み込みする"),
+    ("RENDER", "レンダー", "現在の設定のままレンダーする"),
+    ("RENDER_LAYER", "レンダー：ワード検出", "検出ワードを含む出力ノードだけ有効化してレンダーする (部分一致)"),
+    ("FISHEYE_RENDER_IMAGE_OR_LAYER", "魚眼/通常レンダー", "魚眼モードONなら魚眼レンダー、OFFならワード検出レンダーに自動分岐する"),
+    ("FISHEYE_RENDER_FACES_OR_LAYER", "魚眼方向/通常レンダー", "魚眼モードONなら方向画像レンダー、OFFならワード検出レンダーに自動分岐する"),
+    ("FISHEYE_ASSEMBLE_OR_LAYER", "魚眼合成/通常レンダー", "魚眼モードONなら魚眼合成、OFFならワード検出レンダーに自動分岐する"),
+    ("EEVR_SETUP", "魚眼設定", "魚眼レンダーの準備をする (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_RENDER_IMAGE", "魚眼レンダー", "魚眼レンダーを実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_RENDER_FACES", "方向画像レンダー", "方向画像レンダーを実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("EEVR_ASSEMBLE", "魚眼合成", "魚眼合成を実行する (旧形式: 自動分岐版の使用を推奨)"),
+    ("OPERATOR", "Blenderオペレータ", "任意のBlenderオペレーターを実行する"),
+    ("RUN_PRESET", "プリセット実行", "別のプリセットを丸ごと実行する (親プリセットの組み立てに使う)"),
+)
+
+# 「コマンドを追加」で選べる種類。旧形式 (EEVR_*) は自動分岐版で代替できる
+# ため新規追加からは隠す。既存プリセット内の旧形式は従来どおり動作・表示する。
+ADD_COMMAND_TYPE_ITEMS = tuple(
+    item for item in COMMAND_TYPE_ITEMS if not item[0].startswith("EEVR_")
+)
+
+ENGINE_ITEMS = (
+    ("CYCLES", "Cycles", ""),
+    ("BLENDER_EEVEE_NEXT", "EEVEE", ""),  # 識別子は版互換のため保持。表記は5.1のUI(EEVEE)に合わせる
+    ("BLENDER_WORKBENCH", "Workbench", ""),
+)
+
+
+def _bmanga_coma_camera_module():
+    for name, module in tuple(sys.modules.items()):
+        if name.endswith(".utils.coma_camera"):
+            return module
+    return None
+
+
+def _on_bg_images_scale_changed(self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    value = float(getattr(self, "bg_images_scale", 1.0) or 1.0)
+    synced_to_bmanga = False
+    settings = getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
+    if settings is not None and hasattr(settings, "bg_images_scale"):
+        try:
+            if abs(float(settings.bg_images_scale) - value) > 1.0e-6:
+                settings.bg_images_scale = value
+            synced_to_bmanga = True
+        except Exception:  # noqa: BLE001
+            synced_to_bmanga = False
+    if synced_to_bmanga:
+        return
+    module = _bmanga_coma_camera_module()
+    if module is None:
+        return
+    try:
+        module.set_background_images_scale(context, value, kind_filter="name")
+        module.update_render_border_from_current_coma(context)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+class BMangaRenderToolSettings(bpy.types.PropertyGroup):
+    bg_images_scale: FloatProperty(
+        name="ページ画像のスケール",
+        default=1.0,
+        min=0.1,
+        max=10.0,
+        update=_on_bg_images_scale_changed,
+    )  # type: ignore[valid-type]
+
+
+class BMangaRenderCommand(bpy.types.PropertyGroup):
+    name: StringProperty(name="コマンド名", default="レンダー")  # type: ignore[valid-type]
+    name_auto: BoolProperty(name="名前を自動生成", default=True)  # type: ignore[valid-type]
+    command_type: EnumProperty(name="種類", items=COMMAND_TYPE_ITEMS, default="RENDER")  # type: ignore[valid-type]
+    enabled: BoolProperty(name="有効", default=True)  # type: ignore[valid-type]
+    collapsed: BoolProperty(name="折りたたみ", default=False)  # type: ignore[valid-type]
+
+    view_layer_name: StringProperty(name="ビューレイヤー", default="")  # type: ignore[valid-type]
+    view_layer_enabled: BoolProperty(name="有効化", default=True)  # type: ignore[valid-type]
+
+    collection_name: StringProperty(name="コレクション", default="")  # type: ignore[valid-type]
+    exclude_collection: BoolProperty(name="除外", default=True)  # type: ignore[valid-type]
+
+    node_name: StringProperty(name="ノード名", default="")  # type: ignore[valid-type]
+    node_group_name: StringProperty(name="対象", default="")  # type: ignore[valid-type]
+    label_contains: StringProperty(name="検出ワード", default="")  # type: ignore[valid-type]
+    mute: BoolProperty(name="ミュート", default=False)  # type: ignore[valid-type]
+
+    input_name: StringProperty(name="入力名", default="")  # type: ignore[valid-type]
+    float_value: FloatProperty(name="値", default=0.0)  # type: ignore[valid-type]
+    text_value: StringProperty(name="文字列", default="")  # type: ignore[valid-type]
+    folder_path: StringProperty(name="フォルダ", subtype="DIR_PATH", default="//passes/")  # type: ignore[valid-type]
+
+    sample_count: IntProperty(name="サンプル数", default=1, min=1, soft_max=1024)  # type: ignore[valid-type]
+    engine: EnumProperty(name="レンダーエンジン", items=ENGINE_ITEMS, default="CYCLES")  # type: ignore[valid-type]
+    operator_idname: StringProperty(name="オペレータ", default="")  # type: ignore[valid-type]
+
+    target_preset_name: StringProperty(name="実行するプリセット", default="")  # type: ignore[valid-type]
+
+
+# カテゴリはユーザー定義 (state.categories) で、各プリセットに category 名を
+# 割り当てる。未作成/未割り当てのときは下記の既定カテゴリと名前推定で補う。
+_DEFAULT_CATEGORIES = ("まとめ", "キャラ", "背景", "旧出力シーン互換", "その他")
+_ALL_CATEGORY = "ALL"  # 「すべて」フィルタの内部識別子 (カテゴリ名としては使わない)
+
+
+def preset_category_of(name: str) -> str:
+    """(後方互換) プリセット名の接頭辞からカテゴリコードを返す。"""
+    n = str(name or "")
+    if n.startswith("旧出力シーン互換"):
+        return "LEGACY"
+    if n.startswith("キャラ"):
+        return "CHARA"
+    if n.startswith("背景"):
+        return "BG"
+    return "OTHER"
+
+
+def default_category_for_name(name: str) -> str:
+    """プリセット名から既定カテゴリ名 (日本語) を推定 (未割り当て時の移行用)。"""
+    n = str(name or "")
+    if n.startswith("旧出力シーン互換"):
+        return "旧出力シーン互換"
+    if n.startswith("キャラ"):
+        return "キャラ"
+    if n.startswith("背景"):
+        return "背景"
+    return "その他"
+
+
+def preset_is_group(preset) -> bool:
+    """「プリセット実行」コマンドを含む = 親プリセットかを返す (補助用)。"""
+    commands = getattr(preset, "commands", None)
+    if not commands:
+        return False
+    return any(getattr(c, "command_type", "") == "RUN_PRESET" for c in commands)
+
+
+def category_names(state) -> list[str]:
+    """利用可能なカテゴリ名一覧。未作成時は既定カテゴリを返す (表示用)。"""
+    cats = getattr(state, "categories", None) if state is not None else None
+    if cats and len(cats):
+        return [str(getattr(c, "name", "") or "") for c in cats if str(getattr(c, "name", "") or "")]
+    return list(_DEFAULT_CATEGORIES)
+
+
+def ensure_default_categories(state) -> None:
+    """カテゴリ未作成なら既定カテゴリをデータとして用意する。"""
+    if state is None:
+        return
+    cats = getattr(state, "categories", None)
+    if cats is None or len(cats):
+        return
+    for nm in _DEFAULT_CATEGORIES:
+        cats.add().name = nm
+
+
+def effective_preset_category(preset) -> str:
+    """プリセットの実効カテゴリ名。未割り当ては名前から推定 (後方互換)。"""
+    explicit = str(getattr(preset, "category", "") or "")
+    if explicit:
+        return explicit
+    return default_category_for_name(getattr(preset, "name", ""))
+
+
+def migrate_preset_categories(state) -> None:
+    """カテゴリ未割り当てのプリセットに、名前から推定したカテゴリを割り当てる。"""
+    if state is None:
+        return
+    for preset in getattr(state, "presets", []) or []:
+        if not str(getattr(preset, "category", "") or ""):
+            preset.category = default_category_for_name(getattr(preset, "name", ""))
+
+
+def preset_matches_category(preset, category: str) -> bool:
+    """プリセットが表示カテゴリに合致するか。"""
+    if not category or category == _ALL_CATEGORY:
+        return True
+    return effective_preset_category(preset) == category
+
+
+_PRESET_CATEGORY_ENUM_CACHE: list[tuple[str, str, str]] = []
+
+
+def _preset_category_enum_items(_self, context):
+    """フィルタタブ用の動的 enum (すべて + ユーザーカテゴリ)。
+
+    EnumProperty callback は返した文字列への参照を保持しないと GC でクラッシュ
+    することがあるため、モジュールレベルでキャッシュを保持する。
+    """
+    global _PRESET_CATEGORY_ENUM_CACHE
+    state = get_state(context)
+    items = [(_ALL_CATEGORY, "すべて", "すべてのプリセットを表示")]
+    for nm in category_names(state):
+        items.append((nm, nm, f"カテゴリ「{nm}」のプリセットを表示"))
+    _PRESET_CATEGORY_ENUM_CACHE = items
+    return _PRESET_CATEGORY_ENUM_CACHE
+
+
+def _on_preset_category_update(self, context) -> None:
+    """フィルタ変更時、選択中プリセットも表示中カテゴリへ追従させる.
+
+    ``self`` は WindowManager (選択状態は WM 上)。プリセット本体は Scene 側。
+    """
+    scene = getattr(context, "scene", None) if context is not None else None
+    state = getattr(scene, "bmanga_render_state", None) if scene is not None else None
+    presets = getattr(state, "presets", None) if state is not None else None
+    category = str(getattr(self, "bmanga_render_preset_category", _ALL_CATEGORY) or _ALL_CATEGORY)
+    if category == _ALL_CATEGORY or not presets:
+        return
+    cur = max(0, min(int(getattr(self, "bmanga_render_active_preset_index", 0)), len(presets) - 1))
+    if preset_matches_category(presets[cur], category):
+        return
+    for i, preset in enumerate(presets):
+        if preset_matches_category(preset, category):
+            self.bmanga_render_active_preset_index = i
+            return
+
+
+# 選択 index の実体は WindowManager (Scene プロパティをクリック毎に書き換える
+# と重いシーンで依存グラフ再評価が走り遅いため)。UI/template_list は WM を直接
+# 参照する。下記の get/set プロキシは、テストや外部から従来通り
+# ``state.active_preset_index`` / ``preset.active_command_index`` でアクセス
+# できるようにするための後方互換シム (実体は常に WM を読み書きする)。
+def _api_wm():
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is not None:
+        return wm
+    wms = getattr(bpy.data, "window_managers", None)
+    return wms[0] if wms and len(wms) else None
+
+
+def _api_get_preset_index(_self) -> int:
+    wm = _api_wm()
+    return int(getattr(wm, "bmanga_render_active_preset_index", 0) or 0) if wm is not None else 0
+
+
+def _api_set_preset_index(_self, value: int) -> None:
+    wm = _api_wm()
+    if wm is not None:
+        wm.bmanga_render_active_preset_index = max(0, int(value))
+
+
+def _api_get_command_index(_self) -> int:
+    wm = _api_wm()
+    return int(getattr(wm, "bmanga_render_active_command_index", 0) or 0) if wm is not None else 0
+
+
+def _api_set_command_index(_self, value: int) -> None:
+    wm = _api_wm()
+    if wm is not None:
+        wm.bmanga_render_active_command_index = max(0, int(value))
+
+
+class BMangaRenderCategory(bpy.types.PropertyGroup):
+    name: StringProperty(name="カテゴリ名", default="カテゴリ")  # type: ignore[valid-type]
+
+
+class BMangaRenderPreset(bpy.types.PropertyGroup):
+    name: StringProperty(name="プリセット名", default="新規プリセット")  # type: ignore[valid-type]
+    commands: CollectionProperty(type=BMangaRenderCommand)  # type: ignore[valid-type]
+    category: StringProperty(name="カテゴリ", default="")  # type: ignore[valid-type]
+    active_command_index: IntProperty(  # type: ignore[valid-type]
+        name="コマンド", get=_api_get_command_index, set=_api_set_command_index
+    )
+
+
+class BMangaRenderState(bpy.types.PropertyGroup):
+    presets: CollectionProperty(type=BMangaRenderPreset)  # type: ignore[valid-type]
+    categories: CollectionProperty(type=BMangaRenderCategory)  # type: ignore[valid-type]
+    active_preset_index: IntProperty(  # type: ignore[valid-type]
+        name="プリセット", get=_api_get_preset_index, set=_api_set_preset_index
+    )
+    # 表示カテゴリ (フィルタ) は WindowManager 側 (テスト等からの直接利用は無い)。
+    last_card_click_index: IntProperty(name="前回コマンド", default=-1)  # type: ignore[valid-type]
+    last_card_click_time: FloatProperty(name="前回クリック時刻", default=0.0)  # type: ignore[valid-type]
+    sound_enabled: BoolProperty(name="出力完了時アラーム再生", default=False)  # type: ignore[valid-type]
+
+
+_CLASSES = (
+    BMangaRenderToolSettings,
+    BMangaRenderCommand,
+    BMangaRenderCategory,
+    BMangaRenderPreset,
+    BMangaRenderState,
+)
+
+_REGISTERED_SCENE_PROPS: list[str] = []
+
+
+def _ensure_original_resolution(scene) -> tuple[int, int]:
+    current_x = max(1, int(getattr(scene.render, "resolution_x", 1) or 1))
+    current_y = max(1, int(getattr(scene.render, "resolution_y", 1) or 1))
+    original_x = int(getattr(scene, "original_resolution_x", 0) or 0)
+    original_y = int(getattr(scene, "original_resolution_y", 0) or 0)
+    if original_x <= 0 or original_y <= 0:
+        scene.original_resolution_x = current_x
+        scene.original_resolution_y = current_y
+        return current_x, current_y
+    return original_x, original_y
+
+
+def fisheye_enabled(scene) -> bool:
+    if scene is None:
+        return False
+    return bool(
+        getattr(scene, "fisheye_layout_mode", False)
+        or getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False)
+    )
+
+
+def fisheye_fov(scene) -> float:
+    if scene is None:
+        return 3.1415927
+    if bool(getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False)):
+        return float(getattr(scene, "bmanga_coma_camera_fisheye_fov", 3.1415927) or 3.1415927)
+    return float(getattr(scene, "fisheye_fov", 3.1415927) or 3.1415927)
+
+
+def reduction_enabled(scene) -> bool:
+    if scene is None:
+        return False
+    return bool(
+        getattr(scene, "reduction_mode", False)
+        or getattr(scene, "bmanga_coma_camera_reduction_mode", False)
+    )
+
+
+def preview_scale_percentage(scene) -> float:
+    if scene is None:
+        return 100.0
+    if bool(getattr(scene, "bmanga_coma_camera_reduction_mode", False)):
+        return float(getattr(scene, "bmanga_coma_camera_preview_scale_percentage", 100.0) or 100.0)
+    return float(getattr(scene, "preview_scale_percentage", 100.0) or 100.0)
+
+
+def original_resolution(scene) -> tuple[int, int]:
+    if scene is None or getattr(scene, "render", None) is None:
+        return 1, 1
+    bmanga_x = int(getattr(scene, "bmanga_coma_camera_original_resolution_x", 0) or 0)
+    bmanga_y = int(getattr(scene, "bmanga_coma_camera_original_resolution_y", 0) or 0)
+    if bmanga_x > 0 and bmanga_y > 0:
+        return bmanga_x, bmanga_y
+    return _ensure_original_resolution(scene)
+
+
+def _set_camera_projection_for_fisheye(scene, enabled: bool) -> None:
+    camera = getattr(scene, "camera", None)
+    camera_data = getattr(camera, "data", None)
+    if camera_data is None or not hasattr(camera_data, "type"):
+        return
+    try:
+        camera_data.type = "PANO" if enabled else "PERSP"
+        if enabled:
+            if hasattr(camera_data, "fisheye_fov"):
+                camera_data.fisheye_fov = fisheye_fov(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _apply_output_resolution_mode(scene) -> None:
+    if scene is None or getattr(scene, "render", None) is None:
+        return
+    original_x, original_y = original_resolution(scene)
+    scale = max(0.01, min(1.0, preview_scale_percentage(scene) / 100.0))
+    fisheye = fisheye_enabled(scene)
+    reduction = reduction_enabled(scene)
+    _set_camera_projection_for_fisheye(scene, fisheye)
+    if fisheye:
+        edge = max(original_x, original_y)
+        if reduction:
+            edge = max(1, int(round(edge * scale)))
+        scene.render.resolution_x = edge
+        scene.render.resolution_y = edge
+        return
+    if reduction:
+        scene.render.resolution_x = max(1, int(round(original_x * scale)))
+        scene.render.resolution_y = max(1, int(round(original_y * scale)))
+        return
+    scene.render.resolution_x = original_x
+    scene.render.resolution_y = original_y
+
+
+def _mirror_render_setting_to_bmanga(scene, render_name: str, bmanga_name: str) -> None:
+    if hasattr(scene, render_name) and hasattr(scene, bmanga_name):
+        try:
+            setattr(scene, bmanga_name, getattr(scene, render_name))
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _on_output_mode_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        if scene is not None:
+            _mirror_render_setting_to_bmanga(scene, "fisheye_layout_mode", "bmanga_coma_camera_fisheye_layout_mode")
+            _mirror_render_setting_to_bmanga(scene, "fisheye_fov", "bmanga_coma_camera_fisheye_fov")
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_reduction_mode_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        if scene is not None:
+            _mirror_render_setting_to_bmanga(scene, "reduction_mode", "bmanga_coma_camera_reduction_mode")
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _on_preview_scale_changed(_self, context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    try:
+        if scene is not None:
+            _mirror_render_setting_to_bmanga(scene, "preview_scale_percentage", "bmanga_coma_camera_preview_scale_percentage")
+        _apply_output_resolution_mode(scene)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def get_state(context) -> BMangaRenderState | None:
+    scene = getattr(context, "scene", None)
+    return getattr(scene, "bmanga_render_state", None) if scene is not None else None
+
+
+# 選択状態 (プリセット/コマンドの index) は WindowManager に置く。
+# Scene プロパティをクリックの度に書き換えると、重いシーンで Blender の
+# 依存グラフ再評価 (COW) が毎回走り、一覧の選択切替が一拍遅れるため。
+def get_active_preset_index(context) -> int:
+    wm = getattr(context, "window_manager", None)
+    return int(getattr(wm, "bmanga_render_active_preset_index", 0) or 0) if wm is not None else 0
+
+
+def set_active_preset_index(context, value: int) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is not None:
+        wm.bmanga_render_active_preset_index = max(0, int(value))
+
+
+def get_active_command_index(context) -> int:
+    wm = getattr(context, "window_manager", None)
+    return int(getattr(wm, "bmanga_render_active_command_index", 0) or 0) if wm is not None else 0
+
+
+def set_active_command_index(context, value: int) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is not None:
+        wm.bmanga_render_active_command_index = max(0, int(value))
+
+
+def active_preset(context) -> BMangaRenderPreset | None:
+    state = get_state(context)
+    if state is None or not state.presets:
+        return None
+    # 読み取り専用アクセサ。index は WindowManager 側。クランプはローカル
+    # 変数だけで行い、描画中に書き戻さない (ID 書き込み禁止)。
+    idx = max(0, min(get_active_preset_index(context), len(state.presets) - 1))
+    return state.presets[idx]
+
+
+def active_command(context) -> BMangaRenderCommand | None:
+    preset = active_preset(context)
+    if preset is None or not preset.commands:
+        return None
+    idx = max(0, min(get_active_command_index(context), len(preset.commands) - 1))
+    return preset.commands[idx]
+
+
+_WM_PROPS = (
+    "bmanga_render_active_preset_index",
+    "bmanga_render_active_command_index",
+    "bmanga_render_preset_category",
+)
+
+
+def register() -> None:
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
+    bpy.types.Scene.bmanga_render_state = PointerProperty(type=BMangaRenderState)
+    # 選択状態は WindowManager に置く (Scene だと重いシーンで依存グラフ
+    # 再評価が走り選択切替が遅くなるため)。ファイル間で保存はされない。
+    bpy.types.WindowManager.bmanga_render_active_preset_index = IntProperty(
+        name="プリセット", default=0, min=0
+    )
+    bpy.types.WindowManager.bmanga_render_active_command_index = IntProperty(
+        name="コマンド", default=0, min=0
+    )
+    bpy.types.WindowManager.bmanga_render_preset_category = EnumProperty(
+        name="表示", items=_preset_category_enum_items,
+        update=_on_preset_category_update,
+    )
+    _register_scene_props()
+
+
+def unregister() -> None:
+    _unregister_scene_props()
+    for name in _WM_PROPS:
+        if hasattr(bpy.types.WindowManager, name):
+            delattr(bpy.types.WindowManager, name)
+    if hasattr(bpy.types.Scene, "bmanga_render_state"):
+        del bpy.types.Scene.bmanga_render_state
+    for cls in reversed(_CLASSES):
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
+
+
+def _register_scene_prop(name: str, prop) -> None:
+    if hasattr(bpy.types.Scene, name):
+        return
+    setattr(bpy.types.Scene, name, prop)
+    _REGISTERED_SCENE_PROPS.append(name)
+
+
+def _register_scene_props() -> None:
+    _register_scene_prop("my_tool", PointerProperty(type=BMangaRenderToolSettings))
+    _register_scene_prop("fisheye_layout_mode", BoolProperty(name="魚眼モード", default=False, update=_on_output_mode_changed))
+    _register_scene_prop(
+        "fisheye_fov",
+        FloatProperty(
+            name="魚眼FOV",
+            description="魚眼モード時の視野角",
+            default=3.1415927,
+            min=1.7453293,
+            max=6.2831855,
+            subtype="ANGLE",
+            update=_on_output_mode_changed,
+        ),
+    )
+    _register_scene_prop("reduction_mode", BoolProperty(name="縮小モード", default=False, update=_on_reduction_mode_changed))
+    _register_scene_prop("original_resolution_x", IntProperty(name="元解像度X", default=0, min=0))
+    _register_scene_prop("original_resolution_y", IntProperty(name="元解像度Y", default=0, min=0))
+    _register_scene_prop(
+        "preview_scale_percentage",
+        FloatProperty(name="縮小率", default=12.5, min=1.0, max=100.0, subtype="PERCENTAGE", update=_on_preview_scale_changed),
+    )
+
+
+def _unregister_scene_props() -> None:
+    while _REGISTERED_SCENE_PROPS:
+        name = _REGISTERED_SCENE_PROPS.pop()
+        if hasattr(bpy.types.Scene, name):
+            delattr(bpy.types.Scene, name)

@@ -20,7 +20,7 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MOD_NAME = "bname_dev_preview_res_tail"
+MOD_NAME = "bmanga_dev_preview_res_tail"
 
 
 def _load_addon():
@@ -44,21 +44,21 @@ def _sub(path: str):
 def _check_image_size() -> None:
     ppo = _sub("utils.page_preview_object")
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     work.paper.canvas_width_mm = 257.0
     work.paper.canvas_height_mm = 364.0
     work.paper.dpi = 600
 
     # 実解像度 長辺 = 364 / 25.4 * 600 ≈ 8598px
-    scene.bname_page_preview_resolution_percentage = 12.5
+    scene.bmanga_page_preview_resolution_percentage = 12.5
     w, h = ppo._image_size(work, scene)
     assert h == 1075 and w == 759, (w, h)
 
-    scene.bname_page_preview_resolution_percentage = 25.0
+    scene.bmanga_page_preview_resolution_percentage = 25.0
     w, h = ppo._image_size(work, scene)
     assert h == 1536, (w, h)  # 2150 → 上限 1536 へクランプ
 
-    scene.bname_page_preview_resolution_percentage = 5.0
+    scene.bmanga_page_preview_resolution_percentage = 5.0
     w, h = ppo._image_size(work, scene)
     assert h == 430, (w, h)
     print("IMAGE_SIZE_OK", flush=True)
@@ -97,7 +97,7 @@ def _check_preview_png_tail_carve(temp_root: Path) -> None:
     from PIL import Image
 
     scene = bpy.context.scene
-    work = scene.bname_work
+    work = scene.bmanga_work
     page = work.pages[0]
 
     entry = page.balloons.add()
@@ -118,7 +118,7 @@ def _check_preview_png_tail_carve(temp_root: Path) -> None:
     )
     assert tail_index >= 0, "しっぽ作成に失敗"
 
-    scene.bname_page_preview_resolution_percentage = 12.5
+    scene.bmanga_page_preview_resolution_percentage = 12.5
     path = ppo.ensure_preview_png(work, page, 0, current=False, scene=scene, force=True)
     assert path is not None and Path(path).is_file(), path
 
@@ -157,7 +157,7 @@ def _check_tail_point_plain_press() -> None:
     page_file_scene = _sub("utils.page_file_scene")
 
     context = bpy.context
-    work = context.scene.bname_work
+    work = context.scene.bmanga_work
     page = work.pages[0]
     entry = page.balloons[0]
     object_selection.select_key(context, object_selection.balloon_key(page, entry), mode="single")
@@ -203,17 +203,17 @@ def _check_tail_point_plain_press() -> None:
 
 def main() -> None:
     _load_addon()
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_preview_res_tail_"))
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "PreviewResTail.bname"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_preview_res_tail_"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PreviewResTail.bmanga"))
     assert result == {"FINISHED"}, result
     _check_merged_outline()
     # フキダシ実体としっぽ操作はページ編集シーンで検証する
-    result = bpy.ops.bname.open_page_file("EXEC_DEFAULT", index=0)
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
     assert result == {"FINISHED"}, result
     _check_image_size()
     _check_preview_png_tail_carve(temp_root)
     _check_tail_point_plain_press()
-    print("BNAME_PAGE_PREVIEW_RESOLUTION_AND_TAIL_CHECK_OK", flush=True)
+    print("BMANGA_PAGE_PREVIEW_RESOLUTION_AND_TAIL_CHECK_OK", flush=True)
 
 
 if __name__ == "__main__":

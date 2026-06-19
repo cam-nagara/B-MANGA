@@ -5,7 +5,7 @@ surface_render_method=BLENDED は depth を書き込まないため、 z_index �
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_mask_overlap_repro.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_mask_overlap_repro.py"
 """
 
 from __future__ import annotations
@@ -20,18 +20,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_OVERLAP_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_overlap_"))
+_OUT_ENV = os.environ.get("BMANGA_OVERLAP_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_overlap_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_overlap",
+        "bmanga_dev_overlap",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_overlap"] = mod
+    sys.modules["bmanga_dev_overlap"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -76,13 +76,13 @@ def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
 
-    from bname_dev_overlap.core.work import get_work
-    from bname_dev_overlap.utils import balloon_curve_object, coma_plane, coma_border_object
-    from bname_dev_overlap.utils.layer_hierarchy import coma_stack_key
-    from bname_dev_overlap.utils import page_grid
+    from bmanga_dev_overlap.core.work import get_work
+    from bmanga_dev_overlap.utils import balloon_curve_object, coma_plane, coma_border_object
+    from bmanga_dev_overlap.utils.layer_hierarchy import coma_stack_key
+    from bmanga_dev_overlap.utils import page_grid
 
-    tmp = Path(tempfile.mkdtemp(prefix="bname_overlap_"))
-    res = bpy.ops.bname.work_new(filepath=str(tmp / "Overlap.bname"))
+    tmp = Path(tempfile.mkdtemp(prefix="bmanga_overlap_"))
+    res = bpy.ops.bmanga.work_new(filepath=str(tmp / "Overlap.bmanga"))
     assert "FINISHED" in res, res
 
     scene = bpy.context.scene
@@ -159,8 +159,8 @@ def main():
     print(f"[OUT viewport] {out_vp}")
 
     print(f"[DONE] 出力: {_OUT_PATH}")
-    print(f"  A (奥) z_index = {obj_a.get('bname_z_index', 'n/a')}")
-    print(f"  B (手前) z_index = {obj_b.get('bname_z_index', 'n/a')}")
+    print(f"  A (奥) z_index = {obj_a.get('bmanga_z_index', 'n/a')}")
+    print(f"  B (手前) z_index = {obj_b.get('bmanga_z_index', 'n/a')}")
 
 
 if __name__ == "__main__":

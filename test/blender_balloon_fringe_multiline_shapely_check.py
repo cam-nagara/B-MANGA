@@ -4,9 +4,9 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_fringe_multiline_shapely_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_fringe_multiline_shapely_check.py"
 
-出力先 (デフォルト): 一時ディレクトリ。 BNAME_FRINGE_SHAPELY_OUT 環境変数で固定可。
+出力先 (デフォルト): 一時ディレクトリ。 BMANGA_FRINGE_SHAPELY_OUT 環境変数で固定可。
 """
 
 from __future__ import annotations
@@ -21,18 +21,18 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_FRINGE_SHAPELY_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_fringe_shapely_"))
+_OUT_ENV = os.environ.get("BMANGA_FRINGE_SHAPELY_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_fringe_shapely_"))
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_fringe_shapely_check",
+        "bmanga_dev_fringe_shapely_check",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_fringe_shapely_check"] = mod
+    sys.modules["bmanga_dev_fringe_shapely_check"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -101,18 +101,18 @@ def _enable_multi_line(entry, *, count: int, direction: str, width_mm: float, sp
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_fringe_shapely_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_fringe_shapely_work_"))
     _OUT_PATH.mkdir(parents=True, exist_ok=True)
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     _load_addon()
-    result = bpy.ops.bname.work_new(filepath=str(temp_root / "FringeShapelyCheck.bname"))
+    result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "FringeShapelyCheck.bmanga"))
     assert "FINISHED" in result, result
 
-    from bname_dev_fringe_shapely_check.core.work import get_work
-    from bname_dev_fringe_shapely_check.operators import balloon_op
-    from bname_dev_fringe_shapely_check.utils import balloon_curve_object
-    from bname_dev_fringe_shapely_check.utils.layer_hierarchy import page_stack_key
+    from bmanga_dev_fringe_shapely_check.core.work import get_work
+    from bmanga_dev_fringe_shapely_check.operators import balloon_op
+    from bmanga_dev_fringe_shapely_check.utils import balloon_curve_object
+    from bmanga_dev_fringe_shapely_check.utils.layer_hierarchy import page_stack_key
 
     context = bpy.context
     work = get_work(context)

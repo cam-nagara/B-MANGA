@@ -16,19 +16,19 @@ from mathutils import Quaternion, Vector
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = Path(
-    os.environ.get("BNAME_PAPER_GUIDE_VISUAL_OUT", "")
-    or tempfile.mkdtemp(prefix="bname_paper_guide_visual_")
+    os.environ.get("BMANGA_PAPER_GUIDE_VISUAL_OUT", "")
+    or tempfile.mkdtemp(prefix="bmanga_paper_guide_visual_")
 )
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_paper_guide_visual",
+        "bmanga_dev_paper_guide_visual",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_paper_guide_visual"] = mod
+    sys.modules["bmanga_dev_paper_guide_visual"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -101,7 +101,7 @@ def _run_visual_check() -> None:
     if bpy.app.background:
         raise RuntimeError("このチェックは --background なしで実行してください")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_paper_guide_visual_work_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_paper_guide_visual_work_"))
     mod = None
     try:
         try:
@@ -109,13 +109,13 @@ def _run_visual_check() -> None:
         except Exception:
             pass
         mod = _load_addon()
-        result = bpy.ops.bname.work_new(filepath=str(temp_root / "PaperGuideVisual.bname"))
+        result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PaperGuideVisual.bmanga"))
         assert "FINISHED" in result, result
 
-        from bname_dev_paper_guide_visual.core.work import get_work
-        from bname_dev_paper_guide_visual.ui import overlay
-        from bname_dev_paper_guide_visual.ui import overlay_shared
-        from bname_dev_paper_guide_visual.utils import page_grid, paper_guide_object
+        from bmanga_dev_paper_guide_visual.core.work import get_work
+        from bmanga_dev_paper_guide_visual.ui import overlay
+        from bmanga_dev_paper_guide_visual.ui import overlay_shared
+        from bmanga_dev_paper_guide_visual.utils import page_grid, paper_guide_object
 
         context = bpy.context
         work = get_work(context)
@@ -128,7 +128,7 @@ def _run_visual_check() -> None:
         paper.show_inner_frame = True
         paper.show_safe_line = True
         paper.show_trim_marks = True
-        overlay.apply_bname_shading_mode(context)
+        overlay.apply_bmanga_shading_mode(context)
 
         with _view3d_override():
             bpy.ops.view3d.view_axis(type="TOP", align_active=False)
@@ -144,7 +144,7 @@ def _run_visual_check() -> None:
                 space.shading.type = "SOLID"
             space.shading.light = "FLAT"
             space.shading.color_type = "TEXTURE"
-            fit = bpy.ops.bname.view_fit_page("EXEC_DEFAULT")
+            fit = bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             assert "FINISHED" in fit, fit
 
         paper_guide_object.apply_view_constant_thickness()
@@ -159,7 +159,7 @@ def _run_visual_check() -> None:
             raise AssertionError(f"セーフラインが画面に十分出ていません: hits={green_hits} rgb={green_strongest} image={path}")
 
         print(
-            "BNAME_PAPER_GUIDE_VIEWPORT_VISUAL_OK "
+            "BMANGA_PAPER_GUIDE_VIEWPORT_VISUAL_OK "
             f"cyan_hits={cyan_hits}:rgb={cyan_strongest} "
             f"green_hits={green_hits}:rgb={green_strongest} "
             + f" out={OUT_DIR}",

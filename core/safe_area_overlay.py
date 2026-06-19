@@ -40,7 +40,7 @@ def _on_safe_area_changed(_self, context) -> None:
                 area.tag_redraw()
 
 
-class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
+class BMangaSafeAreaOverlay(bpy.types.PropertyGroup):
     """セーフライン外側を実体オブジェクトのビュー表示カラーで塗る設定."""
 
     enabled: BoolProperty(  # type: ignore[valid-type]
@@ -70,7 +70,7 @@ class BNameSafeAreaOverlay(bpy.types.PropertyGroup):
     )
 
 
-_CLASSES = (BNameSafeAreaOverlay,)
+_CLASSES = (BMangaSafeAreaOverlay,)
 
 
 def register() -> None:

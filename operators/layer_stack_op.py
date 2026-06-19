@@ -61,7 +61,7 @@ def _active_stack_item(context):
     stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
     if stack is None:
         return None
-    idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+    idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
@@ -168,7 +168,7 @@ def _find_panel(context, coma_key: str):
 def _active_or_anchor_page(context, anchor_uid: str):
     from ..core.work import get_active_page, get_work
 
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     anchor = None
     if stack is not None and anchor_uid:
         for item in stack:
@@ -222,7 +222,7 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
     - gp_folder 選択中: フォルダの中に追加 (返り値 = フォルダの key)
     - 他レイヤー選択中: その兄弟として追加 (返り値 = 行の parent_key)
     """
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not anchor_uid:
         return ""
     from ..core.work import get_work
@@ -270,7 +270,7 @@ def _folder_key_for_anchor_item(context, item) -> str:
 
 
 def _folder_key_for_anchor(context, anchor_uid: str) -> str:
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not anchor_uid:
         return ""
     for item in stack:
@@ -280,7 +280,7 @@ def _folder_key_for_anchor(context, anchor_uid: str) -> str:
 
 
 def _parent_key_for_new_layer_folder(context, anchor_uid: str) -> str:
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not anchor_uid:
         return OUTSIDE_STACK_KEY
     for item in stack:
@@ -313,7 +313,7 @@ def _place_new_item(context, new_uid: str, anchor_uid: str) -> bool:
             stack.move(new_idx, target_idx)
     layer_stack_utils.apply_stack_order(context)
     layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-    for i, item in enumerate(context.scene.bname_layer_stack):
+    for i, item in enumerate(context.scene.bmanga_layer_stack):
         if layer_stack_utils.stack_item_uid(item) == new_uid:
             layer_stack_utils.select_stack_index(context, i)
             layer_stack_utils.remember_layer_stack_signature(context)
@@ -369,7 +369,7 @@ def _active_row_in_visible_subtree(stack, active_index: int, parent_index: int) 
 
 
 def _select_stack_uid(context, uid: str) -> bool:
-    stack = getattr(context.scene, "bname_layer_stack", None)
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
     if stack is None or not uid:
         return False
     for i, item in enumerate(stack):
@@ -432,15 +432,15 @@ def _should_begin_inline_rename(context, item, index: int, event) -> bool:
 
 
 def _begin_inline_rename(context, item, index: int) -> None:
-    context.scene.bname_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
+    context.scene.bmanga_layer_stack_inline_edit_uid = layer_stack_utils.stack_item_uid(item)
     layer_stack_utils.clear_all_selection(context)
     layer_stack_utils.set_item_selected(context, item, True)
     layer_stack_utils.select_stack_index(context, index)
     layer_stack_utils.tag_view3d_redraw(context)
 
 
-class BNAME_OT_layer_stack_select(Operator):
-    bl_idname = "bname.layer_stack_select"
+class BMANGA_OT_layer_stack_select(Operator):
+    bl_idname = "bmanga.layer_stack_select"
     bl_label = "レイヤーを選択"
     bl_options = {"REGISTER"}
 
@@ -448,7 +448,7 @@ class BNAME_OT_layer_stack_select(Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def execute(self, context):
         if not layer_stack_utils.select_stack_index(context, self.index):
@@ -456,10 +456,10 @@ class BNAME_OT_layer_stack_select(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_multi_select(Operator):
+class BMANGA_OT_layer_stack_multi_select(Operator):
     """レイヤーリストの複数選択。Ctrl=トグル / Shift=範囲 / 通常=単独選択."""
 
-    bl_idname = "bname.layer_stack_multi_select"
+    bl_idname = "bmanga.layer_stack_multi_select"
     bl_label = "レイヤーを複数選択"
     bl_options = {"REGISTER"}
 
@@ -477,11 +477,11 @@ class BNAME_OT_layer_stack_multi_select(Operator):
 
     @classmethod
     def poll(cls, context):
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         return stack is not None and len(stack) > 0
 
     def invoke(self, context, event):
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is not None and 0 <= self.index < len(stack):
             item = stack[self.index]
             if _should_begin_inline_rename(context, item, self.index, event):
@@ -507,8 +507,8 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
         scene = context.scene
-        scene.bname_layer_stack_inline_edit_uid = ""
-        active_idx = int(getattr(scene, "bname_active_layer_stack_index", -1))
+        scene.bmanga_layer_stack_inline_edit_uid = ""
+        active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
         anchor_idx = int(getattr(self, "anchor_index", -1))
         if not (0 <= anchor_idx < len(stack)):
             anchor_idx = active_idx
@@ -590,8 +590,8 @@ class BNAME_OT_layer_stack_multi_select(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_move(Operator):
-    bl_idname = "bname.layer_stack_move"
+class BMANGA_OT_layer_stack_move(Operator):
+    bl_idname = "bmanga.layer_stack_move"
     bl_label = "レイヤー順を変更"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -607,13 +607,13 @@ class BNAME_OT_layer_stack_move(Operator):
 
     @classmethod
     def poll(cls, context):
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         return stack is not None and len(stack) > 0
 
     def execute(self, context):
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        stack = context.scene.bname_layer_stack
-        idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        stack = context.scene.bmanga_layer_stack
+        idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         if not (0 <= idx < len(stack)):
             return {"CANCELLED"}
         if not layer_stack_utils.move_stack_item(context, idx, direction=self.direction):
@@ -621,8 +621,8 @@ class BNAME_OT_layer_stack_move(Operator):
         return {"FINISHED"}
 
 
-class BNAME_MT_layer_stack_add(Menu):
-    bl_idname = "BNAME_MT_layer_stack_add"
+class BMANGA_MT_layer_stack_add(Menu):
+    bl_idname = "BMANGA_MT_layer_stack_add"
     bl_label = "レイヤーを追加"
 
     def draw(self, _context):
@@ -630,34 +630,34 @@ class BNAME_MT_layer_stack_add(Menu):
         for kind, label, _desc in _ADD_KIND_ITEMS:
             if kind == "raster":
                 layout.menu(
-                    "BNAME_MT_layer_stack_add_raster",
+                    "BMANGA_MT_layer_stack_add_raster",
                     text=label,
                     icon=_ADD_KIND_ICONS.get(kind, "ADD"),
                 )
                 continue
             if kind == "fill":
                 layout.menu(
-                    "BNAME_MT_layer_stack_add_fill",
+                    "BMANGA_MT_layer_stack_add_fill",
                     text=label,
                     icon=_ADD_KIND_ICONS.get(kind, "ADD"),
                 )
                 continue
             op = layout.operator(
-                "bname.layer_stack_add",
+                "bmanga.layer_stack_add",
                 text=label,
                 icon=_ADD_KIND_ICONS.get(kind, "ADD"),
             )
             op.kind = kind
 
 
-class BNAME_MT_layer_stack_add_raster(Menu):
-    bl_idname = "BNAME_MT_layer_stack_add_raster"
+class BMANGA_MT_layer_stack_add_raster(Menu):
+    bl_idname = "BMANGA_MT_layer_stack_add_raster"
     bl_label = "ラスターを追加"
 
     def draw(self, _context):
         layout = self.layout
         op = layout.operator(
-            "bname.layer_stack_add",
+            "bmanga.layer_stack_add",
             text="300dpi / グレー 8bit",
             icon="BRUSH_DATA",
         )
@@ -665,7 +665,7 @@ class BNAME_MT_layer_stack_add_raster(Menu):
         op.dpi = 300
         op.bit_depth = "gray8"
         op = layout.operator(
-            "bname.layer_stack_add",
+            "bmanga.layer_stack_add",
             text="150dpi / グレー 8bit",
             icon="BRUSH_DATA",
         )
@@ -674,28 +674,28 @@ class BNAME_MT_layer_stack_add_raster(Menu):
         op.bit_depth = "gray8"
 
 
-class BNAME_MT_layer_stack_add_fill(Menu):
-    bl_idname = "BNAME_MT_layer_stack_add_fill"
+class BMANGA_MT_layer_stack_add_fill(Menu):
+    bl_idname = "BMANGA_MT_layer_stack_add_fill"
     bl_label = "塗りを追加"
 
     def draw(self, _context):
         layout = self.layout
         op = layout.operator(
-            "bname.layer_stack_add",
+            "bmanga.layer_stack_add",
             text="ベタ塗り",
             icon="NODE_TEXTURE",
         )
         op.kind = "fill"
         op.fill_type = "solid"
         op = layout.operator(
-            "bname.layer_stack_add",
+            "bmanga.layer_stack_add",
             text="線形グラデーション",
             icon="NODE_TEXTURE",
         )
         op.kind = "fill"
         op.fill_type = "gradient_linear"
         op = layout.operator(
-            "bname.layer_stack_add",
+            "bmanga.layer_stack_add",
             text="円形グラデーション",
             icon="NODE_TEXTURE",
         )
@@ -703,8 +703,8 @@ class BNAME_MT_layer_stack_add_fill(Menu):
         op.fill_type = "gradient_radial"
 
 
-class BNAME_OT_layer_stack_add(Operator, ImportHelper):
-    bl_idname = "bname.layer_stack_add"
+class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
+    bl_idname = "bmanga.layer_stack_add"
     bl_label = "レイヤーを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -724,7 +724,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def invoke(self, context, _event):
         self.anchor_uid = _placement_anchor_uid(context, self.kind)
@@ -791,7 +791,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         page_io.save_pages_json(work_dir, work)
         page_range.sync_end_number_to_page_count(work)
         work_io.save_work_json(work_dir, work)
-        context.scene.bname_active_layer_kind = PAGE_KIND
+        context.scene.bmanga_active_layer_kind = PAGE_KIND
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_page_order=True)
         return layer_stack_utils.target_uid(PAGE_KIND, page_stack_key(entry))
 
@@ -808,7 +808,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         y_mm = (p.canvas_height_mm - 40.0) / 2.0
         entry = create_rect_coma(work, page, Path(work.work_dir), x_mm, y_mm, 60.0, 40.0)
         page_io.save_pages_json(Path(work.work_dir), work)
-        context.scene.bname_active_layer_kind = COMA_KIND
+        context.scene.bmanga_active_layer_kind = COMA_KIND
         layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
         return layer_stack_utils.target_uid(COMA_KIND, coma_stack_key(page, entry))
 
@@ -832,7 +832,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         gp_data.layers.active = layer
         gp_utils.ensure_active_frame(layer)
         gp_utils.ensure_layer_material(obj, layer, activate=True, assign_existing=True)
-        context.scene.bname_active_layer_kind = "gp"
+        context.scene.bmanga_active_layer_kind = "gp"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("gp", layer_stack_utils._node_stack_key(layer))
 
@@ -851,8 +851,8 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         if parent is not None:
             gp_utils.move_group_to_group(gp_data, group, parent)
         group.is_expanded = True
-        context.scene.bname_active_layer_kind = "gp_folder"
-        context.scene.bname_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
+        context.scene.bmanga_active_layer_kind = "gp_folder"
+        context.scene.bmanga_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("gp_folder", layer_stack_utils._node_stack_key(group))
 
@@ -869,9 +869,9 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         entry.title = "フォルダ"
         entry.parent_key = _parent_key_for_new_layer_folder(context, anchor_uid)
         entry.expanded = True
-        context.scene.bname_active_layer_kind = "layer_folder"
-        if hasattr(context.scene, "bname_active_layer_folder_key"):
-            context.scene.bname_active_layer_folder_key = entry.id
+        context.scene.bmanga_active_layer_kind = "layer_folder"
+        if hasattr(context.scene, "bmanga_active_layer_folder_key"):
+            context.scene.bmanga_active_layer_folder_key = entry.id
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("layer_folder", entry.id)
 
@@ -880,7 +880,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         if not path.is_file():
             self.report({"ERROR"}, f"ファイルが見つかりません: {path}")
             return ""
-        coll = getattr(context.scene, "bname_image_layers", None)
+        coll = getattr(context.scene, "bmanga_image_layers", None)
         if coll is None:
             self.report({"ERROR"}, "画像レイヤーが未初期化です")
             return ""
@@ -905,24 +905,24 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
             entry.height_mm = max(1.0, img.size[1] / 6.0)
         except Exception:  # noqa: BLE001
             pass
-        context.scene.bname_active_image_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "image"
+        context.scene.bmanga_active_image_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "image"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("image", entry.id)
 
     def _add_raster(self, context, anchor_uid: str) -> str:
         before = {
             getattr(entry, "id", "")
-            for entry in (getattr(context.scene, "bname_raster_layers", None) or [])
+            for entry in (getattr(context.scene, "bmanga_raster_layers", None) or [])
         }
-        result = bpy.ops.bname.raster_layer_add(
+        result = bpy.ops.bmanga.raster_layer_add(
             "EXEC_DEFAULT",
             dpi=int(getattr(self, "dpi", 300)),
             bit_depth=str(getattr(self, "bit_depth", "gray8") or "gray8"),
         )
         if "FINISHED" not in result:
             return ""
-        coll = getattr(context.scene, "bname_raster_layers", None)
+        coll = getattr(context.scene, "bmanga_raster_layers", None)
         if coll is None:
             return ""
         for entry in coll:
@@ -934,7 +934,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
                     entry.parent_kind = "coma" if ":" in parent_key else "page"
                     entry.parent_key = parent_key
                 elif folder_key and layer_folder_utils.semantic_parent_key_for_folder(
-                    getattr(context.scene, "bname_work", None),
+                    getattr(context.scene, "bmanga_work", None),
                     folder_key,
                 ) == OUTSIDE_STACK_KEY:
                     entry.scope = "master"
@@ -943,13 +943,13 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
                 if folder_key:
                     entry.folder_key = folder_key
                 return layer_stack_utils.target_uid("raster", entry.id)
-        idx = int(getattr(context.scene, "bname_active_raster_layer_index", -1))
+        idx = int(getattr(context.scene, "bmanga_active_raster_layer_index", -1))
         if 0 <= idx < len(coll):
             return layer_stack_utils.target_uid("raster", coll[idx].id)
         return ""
 
     def _add_fill(self, context, anchor_uid: str) -> str:
-        coll = getattr(context.scene, "bname_fill_layers", None)
+        coll = getattr(context.scene, "bmanga_fill_layers", None)
         if coll is None:
             self.report({"ERROR"}, "塗りレイヤーが未初期化です")
             return ""
@@ -978,8 +978,8 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         folder_key = _folder_key_for_anchor(context, anchor_uid)
         if folder_key:
             entry.folder_key = folder_key
-        context.scene.bname_active_fill_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "fill"
+        context.scene.bmanga_active_fill_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "fill"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("fill", entry.id)
 
@@ -1003,7 +1003,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
             entry.parent_kind = "none"
             entry.parent_key = ""
             entry.folder_key = folder_key
-            context.scene.bname_active_layer_kind = "balloon"
+            context.scene.bmanga_active_layer_kind = "balloon"
             layer_stack_utils.sync_layer_stack_after_data_change(context)
             return layer_stack_utils.target_uid("balloon", outside_child_key(entry.id))
         if work is None or page is None:
@@ -1030,7 +1030,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         if folder_key:
             entry.folder_key = folder_key
         page.active_balloon_index = len(page.balloons) - 1
-        context.scene.bname_active_layer_kind = "balloon"
+        context.scene.bmanga_active_layer_kind = "balloon"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("balloon", f"{page_stack_key(page)}:{entry.id}")
 
@@ -1051,7 +1051,7 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
             entry.parent_kind = "none"
             entry.parent_key = ""
             entry.folder_key = folder_key
-            context.scene.bname_active_layer_kind = "text"
+            context.scene.bmanga_active_layer_kind = "text"
             layer_stack_utils.sync_layer_stack_after_data_change(context)
             return layer_stack_utils.target_uid("text", outside_child_key(entry.id))
         if work is None or page is None:
@@ -1088,20 +1088,20 @@ class BNAME_OT_layer_stack_add(Operator, ImportHelper):
         return layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
 
 
-class BNAME_OT_layer_stack_duplicate(Operator):
-    bl_idname = "bname.layer_stack_duplicate"
+class BMANGA_OT_layer_stack_duplicate(Operator):
+    bl_idname = "bmanga.layer_stack_duplicate"
     bl_label = "レイヤーを複製"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        stack = getattr(context.scene, "bname_layer_stack", None)
-        idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
+        idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         return stack is not None and 0 <= idx < len(stack)
 
     def execute(self, context):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         if stack is None or not (0 <= idx < len(stack)):
             return {"CANCELLED"}
         anchor_uid = layer_stack_utils.stack_item_uid(stack[idx])
@@ -1115,7 +1115,7 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         return {"FINISHED"}
 
     def _new_uid_after_duplicate(self, context, before: set[str]) -> str:
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None:
             return ""
         for item in stack:
@@ -1128,11 +1128,11 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         if item.kind in {PAGE_KIND, COMA_KIND}:
             if not layer_stack_utils.select_stack_index(
                 context,
-                int(getattr(context.scene, "bname_active_layer_stack_index", -1)),
+                int(getattr(context.scene, "bmanga_active_layer_stack_index", -1)),
             ):
                 return False
             op_name = "page_duplicate" if item.kind == PAGE_KIND else "coma_duplicate"
-            return "FINISHED" in getattr(bpy.ops.bname, op_name)("EXEC_DEFAULT")
+            return "FINISHED" in getattr(bpy.ops.bmanga, op_name)("EXEC_DEFAULT")
         if item.kind in {"gp", "effect"}:
             return self._duplicate_gp_layer(context, item)
         if item.kind == "gp_folder":
@@ -1154,7 +1154,7 @@ class BNAME_OT_layer_stack_duplicate(Operator):
     def _duplicate_gp_layer(self, context, item) -> bool:
         if not layer_stack_utils.select_stack_index(
             context,
-            int(getattr(context.scene, "bname_active_layer_stack_index", -1)),
+            int(getattr(context.scene, "bmanga_active_layer_stack_index", -1)),
         ):
             return False
         try:
@@ -1206,8 +1206,8 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         parent = getattr(target, "parent_group", None)
         if parent is not None:
             gp_utils.move_group_to_group(obj.data, group, parent)
-        context.scene.bname_active_layer_kind = "gp_folder"
-        context.scene.bname_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
+        context.scene.bmanga_active_layer_kind = "gp_folder"
+        context.scene.bmanga_active_gp_folder_key = layer_stack_utils._node_stack_key(group)
         return True
 
     def _duplicate_layer_folder(self, context, item) -> bool:
@@ -1227,15 +1227,15 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         )
         dst.parent_key = str(getattr(src, "parent_key", "") or OUTSIDE_STACK_KEY)
         dst.expanded = bool(getattr(src, "expanded", True))
-        context.scene.bname_active_layer_kind = "layer_folder"
-        if hasattr(context.scene, "bname_active_layer_folder_key"):
-            context.scene.bname_active_layer_folder_key = dst.id
+        context.scene.bmanga_active_layer_kind = "layer_folder"
+        if hasattr(context.scene, "bmanga_active_layer_folder_key"):
+            context.scene.bmanga_active_layer_folder_key = dst.id
         return True
 
     def _duplicate_image(self, context, item) -> bool:
         resolved = layer_stack_utils.resolve_stack_item(context, item)
         src = resolved.get("target") if resolved is not None else None
-        coll = getattr(context.scene, "bname_image_layers", None)
+        coll = getattr(context.scene, "bmanga_image_layers", None)
         if src is None or coll is None:
             return False
         used = {entry.id for entry in coll}
@@ -1246,8 +1246,8 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         dst.id = f"image_{i:04d}"
         _copy_image_entry(src, dst)
         dst.title = _unique_name({entry.title for entry in coll if entry is not dst}, f"{src.title} 複製")
-        context.scene.bname_active_image_layer_index = len(coll) - 1
-        context.scene.bname_active_layer_kind = "image"
+        context.scene.bmanga_active_image_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "image"
         return True
 
     def _duplicate_balloon(self, context, item) -> bool:
@@ -1263,7 +1263,7 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         schema.balloon_entry_from_dict(dst, schema.balloon_entry_to_dict(src))
         dst.id = _allocate_balloon_id(page)
         page.active_balloon_index = len(page.balloons) - 1
-        context.scene.bname_active_layer_kind = "balloon"
+        context.scene.bmanga_active_layer_kind = "balloon"
         return True
 
     def _duplicate_text(self, context, item) -> bool:
@@ -1281,12 +1281,12 @@ class BNAME_OT_layer_stack_duplicate(Operator):
         dst.x_mm += 5.0
         dst.y_mm -= 5.0
         page.active_text_index = len(page.texts) - 1
-        context.scene.bname_active_layer_kind = "text"
+        context.scene.bmanga_active_layer_kind = "text"
         return True
 
 
-class BNAME_OT_layer_stack_toggle_visibility(Operator):
-    bl_idname = "bname.layer_stack_toggle_visibility"
+class BMANGA_OT_layer_stack_toggle_visibility(Operator):
+    bl_idname = "bmanga.layer_stack_toggle_visibility"
     bl_label = "レイヤー表示を切替"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1294,11 +1294,11 @@ class BNAME_OT_layer_stack_toggle_visibility(Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def execute(self, context):
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
         item = stack[self.index]
@@ -1363,8 +1363,8 @@ class BNAME_OT_layer_stack_toggle_visibility(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_toggle_expanded(Operator):
-    bl_idname = "bname.layer_stack_toggle_expanded"
+class BMANGA_OT_layer_stack_toggle_expanded(Operator):
+    bl_idname = "bmanga.layer_stack_toggle_expanded"
     bl_label = "レイヤー階層を開閉"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -1372,11 +1372,11 @@ class BNAME_OT_layer_stack_toggle_expanded(Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def execute(self, context):
         layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None or not (0 <= self.index < len(stack)):
             return {"CANCELLED"}
         item = stack[self.index]
@@ -1387,7 +1387,7 @@ class BNAME_OT_layer_stack_toggle_expanded(Operator):
         parent_uid = layer_stack_utils.stack_item_uid(item)
         active_will_be_hidden = _active_row_in_visible_subtree(
             stack,
-            int(getattr(context.scene, "bname_active_layer_stack_index", -1)),
+            int(getattr(context.scene, "bmanga_active_layer_stack_index", -1)),
             self.index,
         )
         if item.kind == PAGE_KIND and hasattr(target, "stack_expanded"):
@@ -1418,29 +1418,29 @@ class BNAME_OT_layer_stack_toggle_expanded(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_delete(Operator):
-    bl_idname = "bname.layer_stack_delete"
+class BMANGA_OT_layer_stack_delete(Operator):
+    bl_idname = "bmanga.layer_stack_delete"
     bl_label = "レイヤーを削除"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
     def poll(cls, context):
-        stack = getattr(context.scene, "bname_layer_stack", None)
-        idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
+        idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         return stack is not None and 0 <= idx < len(stack)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
-        idx = int(getattr(context.scene, "bname_active_layer_stack_index", -1))
+        idx = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
         if not layer_stack_utils.delete_stack_index(context, idx):
             return {"CANCELLED"}
         return {"FINISHED"}
 
 
-class BNAME_OT_layer_stack_enter_coma(Operator):
-    bl_idname = "bname.layer_stack_enter_coma"
+class BMANGA_OT_layer_stack_enter_coma(Operator):
+    bl_idname = "bmanga.layer_stack_enter_coma"
     bl_label = "コマ編集へ"
     bl_options = {"REGISTER"}
 
@@ -1448,7 +1448,7 @@ class BNAME_OT_layer_stack_enter_coma(Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def execute(self, context):
         if not layer_stack_utils.select_stack_index(context, self.stack_index):
@@ -1456,11 +1456,11 @@ class BNAME_OT_layer_stack_enter_coma(Operator):
         item = layer_stack_utils.active_stack_item(context)
         if item is None or item.kind != "coma":
             return {"CANCELLED"}
-        return bpy.ops.bname.enter_coma_mode("EXEC_DEFAULT")
+        return bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
 
 
-class BNAME_OT_layer_stack_detail(Operator):
-    bl_idname = "bname.layer_stack_detail"
+class BMANGA_OT_layer_stack_detail(Operator):
+    bl_idname = "bmanga.layer_stack_detail"
     bl_label = "詳細設定"
     bl_options = {"REGISTER"}
 
@@ -1471,7 +1471,7 @@ class BNAME_OT_layer_stack_detail(Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.scene, "bname_layer_stack", None) is not None
+        return getattr(context.scene, "bmanga_layer_stack", None) is not None
 
     def invoke(self, context, event):
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
@@ -1512,7 +1512,7 @@ class BNAME_OT_layer_stack_detail(Operator):
 
     def draw(self, context):
         layout = self.layout
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None:
             layout.label(text="レイヤー一覧が未初期化です", icon="ERROR")
             return
@@ -1548,7 +1548,7 @@ class BNAME_OT_layer_stack_detail(Operator):
         return None
 
     def _sync_coma_detail_curve(self, context) -> None:
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None:
             return
         item = self._resolve_item(stack)
@@ -1569,7 +1569,7 @@ class BNAME_OT_layer_stack_detail(Operator):
             pass
 
     def _sync_effect_detail_curve(self, context) -> None:
-        stack = getattr(context.scene, "bname_layer_stack", None)
+        stack = getattr(context.scene, "bmanga_layer_stack", None)
         if stack is None:
             return
         item = self._resolve_item(stack)
@@ -1604,7 +1604,7 @@ class BNAME_OT_layer_stack_detail(Operator):
         if item is None:
             return None
         if item.kind in {"effect", "effect_legacy"}:
-            return getattr(context.scene, "bname_effect_line_params", None)
+            return getattr(context.scene, "bmanga_effect_line_params", None)
         if item.kind != "balloon":
             return None
         resolved = layer_stack_utils.resolve_stack_item(context, item)
@@ -1643,11 +1643,11 @@ class BNAME_OT_layer_stack_detail(Operator):
         if wm is None:
             return ("none", -1, -1, -1, -1)
         return (
-            str(getattr(wm, "bname_edge_select_kind", "none") or "none"),
-            int(getattr(wm, "bname_edge_select_page", -1)),
-            int(getattr(wm, "bname_edge_select_coma", -1)),
-            int(getattr(wm, "bname_edge_select_edge", -1)),
-            int(getattr(wm, "bname_edge_select_vertex", -1)),
+            str(getattr(wm, "bmanga_edge_select_kind", "none") or "none"),
+            int(getattr(wm, "bmanga_edge_select_page", -1)),
+            int(getattr(wm, "bmanga_edge_select_coma", -1)),
+            int(getattr(wm, "bmanga_edge_select_edge", -1)),
+            int(getattr(wm, "bmanga_edge_select_vertex", -1)),
         )
 
     def _restore_edge_selection_if_needed(self, context, item, edge_state) -> None:
@@ -1679,19 +1679,19 @@ class BNAME_OT_layer_stack_detail(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_layer_stack_select,
-    BNAME_OT_layer_stack_multi_select,
-    BNAME_OT_layer_stack_move,
-    BNAME_MT_layer_stack_add,
-    BNAME_MT_layer_stack_add_raster,
-    BNAME_MT_layer_stack_add_fill,
-    BNAME_OT_layer_stack_add,
-    BNAME_OT_layer_stack_duplicate,
-    BNAME_OT_layer_stack_toggle_visibility,
-    BNAME_OT_layer_stack_toggle_expanded,
-    BNAME_OT_layer_stack_delete,
-    BNAME_OT_layer_stack_enter_coma,
-    BNAME_OT_layer_stack_detail,
+    BMANGA_OT_layer_stack_select,
+    BMANGA_OT_layer_stack_multi_select,
+    BMANGA_OT_layer_stack_move,
+    BMANGA_MT_layer_stack_add,
+    BMANGA_MT_layer_stack_add_raster,
+    BMANGA_MT_layer_stack_add_fill,
+    BMANGA_OT_layer_stack_add,
+    BMANGA_OT_layer_stack_duplicate,
+    BMANGA_OT_layer_stack_toggle_visibility,
+    BMANGA_OT_layer_stack_toggle_expanded,
+    BMANGA_OT_layer_stack_delete,
+    BMANGA_OT_layer_stack_enter_coma,
+    BMANGA_OT_layer_stack_detail,
 )
 
 

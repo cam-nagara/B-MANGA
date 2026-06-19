@@ -52,13 +52,13 @@ def blank_generated_coma_title() -> str:
 
 def _selected_edge_coma_target(context):
     wm = context.window_manager
-    if getattr(wm, "bname_edge_select_kind", "none") == "none":
+    if getattr(wm, "bmanga_edge_select_kind", "none") == "none":
         return None
     work = get_work(context)
     if work is None or not work.loaded:
         return None
-    page_index = int(getattr(wm, "bname_edge_select_page", -1))
-    coma_index = int(getattr(wm, "bname_edge_select_coma", -1))
+    page_index = int(getattr(wm, "bmanga_edge_select_page", -1))
+    coma_index = int(getattr(wm, "bmanga_edge_select_coma", -1))
     if not (0 <= page_index < len(work.pages)):
         return None
     page = work.pages[page_index]
@@ -418,10 +418,10 @@ def create_basic_frame_coma(work, page, work_dir: Path):
 # ---------- コマ追加 ----------
 
 
-class BNAME_OT_coma_add(Operator):
+class BMANGA_OT_coma_add(Operator):
     """現在のページに矩形コマを追加."""
 
-    bl_idname = "bname.coma_add"
+    bl_idname = "bmanga.coma_add"
     bl_label = "コマを追加"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -442,8 +442,8 @@ class BNAME_OT_coma_add(Operator):
             entry = create_rect_coma(work, page, work_dir, x_mm, y_mm, 60.0, 40.0)
             stem = entry.coma_id
             page_io.save_pages_json(work_dir, work)
-            if hasattr(context.scene, "bname_active_layer_kind"):
-                context.scene.bname_active_layer_kind = "coma"
+            if hasattr(context.scene, "bmanga_active_layer_kind"):
+                context.scene.bmanga_active_layer_kind = "coma"
             _sync_layer_stack_after_coma_change(context)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("panel_add failed")
@@ -453,10 +453,10 @@ class BNAME_OT_coma_add(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_remove(Operator):
+class BMANGA_OT_coma_remove(Operator):
     """選択中のコマを削除."""
 
-    bl_idname = "bname.coma_remove"
+    bl_idname = "bmanga.coma_remove"
     bl_label = "コマを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -508,10 +508,10 @@ class BNAME_OT_coma_remove(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_duplicate(Operator):
+class BMANGA_OT_coma_duplicate(Operator):
     """選択中のコマを同ページ内で複製."""
 
-    bl_idname = "bname.coma_duplicate"
+    bl_idname = "bmanga.coma_duplicate"
     bl_label = "コマを複製"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -544,8 +544,8 @@ class BNAME_OT_coma_duplicate(Operator):
             if new_index != idx + 1:
                 page.comas.move(new_index, idx + 1)
             page.active_coma_index = idx + 1
-            if hasattr(context.scene, "bname_active_layer_kind"):
-                context.scene.bname_active_layer_kind = "coma"
+            if hasattr(context.scene, "bmanga_active_layer_kind"):
+                context.scene.bmanga_active_layer_kind = "coma"
             coma_io.save_coma_meta(work_dir, page.id, new_entry)
             _save_page_and_pages(work, page, work_dir)
             _sync_layer_stack_after_coma_change(context)
@@ -599,10 +599,10 @@ def _other_page_enum_items(_self, context):
 _OTHER_PAGE_CACHE: list[tuple[str, str, str]] = []
 
 
-class BNAME_OT_coma_move_to_page(Operator):
+class BMANGA_OT_coma_move_to_page(Operator):
     """選択中のコマを別のページへ移動."""
 
-    bl_idname = "bname.coma_move_to_page"
+    bl_idname = "bmanga.coma_move_to_page"
     bl_label = "コマを他ページへ移動"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -696,10 +696,10 @@ class BNAME_OT_coma_move_to_page(Operator):
 # ---------- Z順序 ----------
 
 
-class BNAME_OT_coma_z_order(Operator):
+class BMANGA_OT_coma_z_order(Operator):
     """選択中のコマの Z 順序を変更."""
 
-    bl_idname = "bname.coma_z_order"
+    bl_idname = "bmanga.coma_z_order"
     bl_label = "Z順序変更"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -746,10 +746,10 @@ class BNAME_OT_coma_z_order(Operator):
         return {"FINISHED"}
 
 
-class BNAME_OT_coma_merge_selected(Operator):
+class BMANGA_OT_coma_merge_selected(Operator):
     """複数選択中のコマ枠を 1 つの多角形コマへ結合."""
 
-    bl_idname = "bname.coma_merge_selected"
+    bl_idname = "bmanga.coma_merge_selected"
     bl_label = "コマ結合"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -833,10 +833,10 @@ class BNAME_OT_coma_merge_selected(Operator):
 # ---------- 分割テンプレート ----------
 
 
-class BNAME_OT_coma_split_template(Operator):
+class BMANGA_OT_coma_split_template(Operator):
     """選択中コマを縦横に均等分割して置き換える."""
 
-    bl_idname = "bname.coma_split_template"
+    bl_idname = "bmanga.coma_split_template"
     bl_label = "分割テンプレートで一括生成"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -988,13 +988,13 @@ class BNAME_OT_coma_split_template(Operator):
 
 
 _CLASSES = (
-    BNAME_OT_coma_add,
-    BNAME_OT_coma_remove,
-    BNAME_OT_coma_duplicate,
-    BNAME_OT_coma_move_to_page,
-    BNAME_OT_coma_z_order,
-    BNAME_OT_coma_merge_selected,
-    BNAME_OT_coma_split_template,
+    BMANGA_OT_coma_add,
+    BMANGA_OT_coma_remove,
+    BMANGA_OT_coma_duplicate,
+    BMANGA_OT_coma_move_to_page,
+    BMANGA_OT_coma_z_order,
+    BMANGA_OT_coma_merge_selected,
+    BMANGA_OT_coma_split_template,
 )
 
 

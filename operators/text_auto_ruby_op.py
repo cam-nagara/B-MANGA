@@ -8,16 +8,16 @@ import bpy
 from bpy.types import Operator, UIList
 
 from ..core.work import get_active_page, get_work
-from ..preferences import get_preferences
+from ..preferences import get_preferences, request_user_preferences_save
 from ..utils import auto_ruby, log, page_file_scene
 
 _logger = log.get_logger(__name__)
 
 
-class BNAME_UL_ruby_dict_list(UIList):
+class BMANGA_UL_ruby_dict_list(UIList):
     """プリファレンス内の自動ルビ辞書リスト."""
 
-    bl_idname = "BNAME_UL_ruby_dict_list"
+    bl_idname = "BMANGA_UL_ruby_dict_list"
 
     def draw_item(self, context, layout, data, item, icon, active_data, active_property, index):
         row = layout.row(align=True)
@@ -25,10 +25,10 @@ class BNAME_UL_ruby_dict_list(UIList):
         row.prop(item, "path", text="")
 
 
-class BNAME_OT_ruby_dict_add(Operator):
+class BMANGA_OT_ruby_dict_add(Operator):
     """自動ルビ辞書を追加."""
 
-    bl_idname = "bname.ruby_dict_add"
+    bl_idname = "bmanga.ruby_dict_add"
     bl_label = "辞書を追加"
 
     def execute(self, context):
@@ -38,13 +38,14 @@ class BNAME_OT_ruby_dict_add(Operator):
         entry = prefs.ruby_dictionaries.add()
         entry.enabled = True
         prefs.ruby_dict_active_index = len(prefs.ruby_dictionaries) - 1
+        request_user_preferences_save()
         return {"FINISHED"}
 
 
-class BNAME_OT_ruby_dict_remove(Operator):
+class BMANGA_OT_ruby_dict_remove(Operator):
     """選択中の辞書を削除."""
 
-    bl_idname = "bname.ruby_dict_remove"
+    bl_idname = "bmanga.ruby_dict_remove"
     bl_label = "辞書を削除"
 
     @classmethod
@@ -61,13 +62,14 @@ class BNAME_OT_ruby_dict_remove(Operator):
         idx = prefs.ruby_dict_active_index
         prefs.ruby_dictionaries.remove(idx)
         prefs.ruby_dict_active_index = min(idx, len(prefs.ruby_dictionaries) - 1)
+        request_user_preferences_save()
         return {"FINISHED"}
 
 
-class BNAME_OT_auto_ruby_apply(Operator):
+class BMANGA_OT_auto_ruby_apply(Operator):
     """IME辞書を使って全テキストに自動ルビを設定."""
 
-    bl_idname = "bname.auto_ruby_apply"
+    bl_idname = "bmanga.auto_ruby_apply"
     bl_label = "自動ルビ"
     bl_description = "登録済みの辞書から漢字の読みを自動で設定します"
     bl_options = {"REGISTER", "UNDO"}
@@ -133,10 +135,10 @@ class BNAME_OT_auto_ruby_apply(Operator):
 
 
 _CLASSES = (
-    BNAME_UL_ruby_dict_list,
-    BNAME_OT_ruby_dict_add,
-    BNAME_OT_ruby_dict_remove,
-    BNAME_OT_auto_ruby_apply,
+    BMANGA_UL_ruby_dict_list,
+    BMANGA_OT_ruby_dict_add,
+    BMANGA_OT_ruby_dict_remove,
+    BMANGA_OT_auto_ruby_apply,
 )
 
 

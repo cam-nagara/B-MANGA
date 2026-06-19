@@ -1,4 +1,4 @@
-"""Blender 実機用: B-Name 右クリックメニュー項目の確認."""
+"""Blender 実機用: B-MANGA 右クリックメニュー項目の確認."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev",
+        "bmanga_dev",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev"] = mod
+    sys.modules["bmanga_dev"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -29,11 +29,11 @@ def _load_addon():
 
 
 def _create_work(work_dir: Path):
-    result = bpy.ops.bname.work_new(filepath=str(work_dir))
+    result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
-    work = bpy.context.scene.bname_work
+    work = bpy.context.scene.bmanga_work
     page = work.pages[0]
-    result = bpy.ops.bname.coma_add()
+    result = bpy.ops.bmanga.coma_add()
     assert result == {"FINISHED"}, result
 
     balloon = page.balloons.add()
@@ -51,10 +51,10 @@ def _create_work(work_dir: Path):
     text.width_mm = 30.0
     text.height_mm = 20.0
 
-    from bname_dev.operators import effect_line_op
-    from bname_dev.utils import gp_layer_parenting as gp_parent
-    from bname_dev.utils import gpencil as gp_utils
-    from bname_dev.utils.geom import mm_to_m
+    from bmanga_dev.operators import effect_line_op
+    from bmanga_dev.utils import gp_layer_parenting as gp_parent
+    from bmanga_dev.utils import gpencil as gp_utils
+    from bmanga_dev.utils.geom import mm_to_m
 
     effect_line_op._create_effect_layer(
         bpy.context,
@@ -75,10 +75,10 @@ def _create_work(work_dir: Path):
         ],
     )
 
-    raster_result = bpy.ops.bname.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
+    raster_result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
     assert "FINISHED" in raster_result, raster_result
 
-    image = bpy.context.scene.bname_image_layers.add()
+    image = bpy.context.scene.bmanga_image_layers.add()
     image.id = "menu_image"
     image.title = "画像"
     image.x_mm = 100.0
@@ -86,14 +86,14 @@ def _create_work(work_dir: Path):
     image.width_mm = 20.0
     image.height_mm = 15.0
 
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     layer_stack_utils.sync_layer_stack_after_data_change(bpy.context)
     return work
 
 
 def _stack_index_for_kind(kind: str) -> int:
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     stack = layer_stack_utils.sync_layer_stack(bpy.context)
     assert stack is not None
@@ -104,16 +104,16 @@ def _stack_index_for_kind(kind: str) -> int:
 
 
 def _clear_layer_selection() -> None:
-    from bname_dev.utils import layer_stack as layer_stack_utils
-    from bname_dev.utils import object_selection
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import object_selection
 
     object_selection.clear(bpy.context)
     layer_stack_utils.clear_all_selection(bpy.context)
 
 
 def _assert_menu_for_kind(kind: str) -> None:
-    from bname_dev.ui import context_menu
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     _clear_layer_selection()
     index = _stack_index_for_kind(kind)
@@ -162,8 +162,8 @@ def _assert_menu_for_kind(kind: str) -> None:
 
 
 def _assert_link_selected_menu() -> None:
-    from bname_dev.ui import context_menu
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     _clear_layer_selection()
     stack = layer_stack_utils.sync_layer_stack(bpy.context)
@@ -184,23 +184,23 @@ def _assert_link_selected_menu() -> None:
     enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
     assert enabled["選択レイヤーをリンク"] is True, enabled
     assert enabled["リンクを解除"] is False, enabled
-    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
     # リンク後はメニューの「リンクを解除」が有効になり、
     # リンクボタン (同オペレーター) の再実行で解除される (トグル)
     items = context_menu.selection_command_items(bpy.context)
     enabled = {str(item.get("label", "")): bool(item.get("enabled", False)) for item in items}
     assert enabled["リンクを解除"] is True, enabled
-    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
-    from bname_dev.utils import layer_links
+    from bmanga_dev.utils import layer_links
 
     assert not layer_links.selected_any_linked(bpy.context), "トグルでリンクが解除されていません"
     # 再リンクして解除オペレーター単体も確認
-    result = bpy.ops.bname.layer_stack_link_selected("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_link_selected("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
     assert layer_links.selected_any_linked(bpy.context)
-    result = bpy.ops.bname.layer_stack_unlink_selected("EXEC_DEFAULT")
+    result = bpy.ops.bmanga.layer_stack_unlink_selected("EXEC_DEFAULT")
     assert result == {"FINISHED"}, result
     assert not layer_links.selected_any_linked(bpy.context), "リンク解除オペレーターが効いていません"
 
@@ -227,8 +227,8 @@ class _FakeLayout:
 
 
 def _assert_menu_draw_does_not_resync() -> None:
-    from bname_dev.ui import context_menu
-    from bname_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
 
     _clear_layer_selection()
     index = _stack_index_for_kind("effect")
@@ -243,18 +243,18 @@ def _assert_menu_draw_does_not_resync() -> None:
         layout = _FakeLayout()
         context_menu._draw_layer_commands(layout, bpy.context)
         labels = [op_id for op_id, _kwargs in layout.ops]
-        assert "bname.layer_stack_detail" in labels or "bname.layer_detail_open" in labels, labels
-        assert "bname.layer_clipboard_copy" in labels, labels
-        assert "bname.layer_stack_duplicate" in labels, labels
-        assert "bname.layer_stack_delete" in labels, labels
+        assert "bmanga.layer_stack_detail" in labels or "bmanga.layer_detail_open" in labels, labels
+        assert "bmanga.layer_clipboard_copy" in labels, labels
+        assert "bmanga.layer_stack_duplicate" in labels, labels
+        assert "bmanga.layer_stack_delete" in labels, labels
     finally:
         layer_stack_utils.sync_layer_stack = original_sync
 
 
 def _assert_viewport_tool_menu_paths(work) -> None:
-    from bname_dev.operators import object_tool_op, selection_context_menu
-    from bname_dev.utils import layer_stack as layer_stack_utils
-    from bname_dev.utils import object_selection
+    from bmanga_dev.operators import object_tool_op, selection_context_menu
+    from bmanga_dev.utils import layer_stack as layer_stack_utils
+    from bmanga_dev.utils import object_selection
 
     class _Event:
         ctrl = False
@@ -301,19 +301,19 @@ def _assert_viewport_tool_menu_paths(work) -> None:
 
 
 def main() -> None:
-    temp_root = Path(tempfile.mkdtemp(prefix="bname_context_menu_"))
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_context_menu_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
-        work = _create_work(temp_root / "Context_Menu.bname")
+        work = _create_work(temp_root / "Context_Menu.bmanga")
         for kind in ("page", "coma", "gp", "effect", "raster", "image", "balloon", "text"):
             _assert_menu_for_kind(kind)
-        assert hasattr(bpy.types, "BNAME_OT_view_context_menu")
+        assert hasattr(bpy.types, "BMANGA_OT_view_context_menu")
         _assert_link_selected_menu()
         _assert_menu_draw_does_not_resync()
         _assert_viewport_tool_menu_paths(work)
-        print("BNAME_CONTEXT_MENU_COMMANDS_OK")
+        print("BMANGA_CONTEXT_MENU_COMMANDS_OK")
     finally:
         if mod is not None:
             try:

@@ -15,7 +15,7 @@ _logger = log.get_logger(__name__)
 
 
 def _get_collection(scene):
-    return getattr(scene, "bname_image_layers", None)
+    return getattr(scene, "bmanga_image_layers", None)
 
 
 def _allocate_image_id(coll) -> str:
@@ -28,7 +28,7 @@ def _allocate_image_id(coll) -> str:
         i += 1
 
 
-class BNAME_OT_image_layer_add(Operator, ImportHelper):
+class BMANGA_OT_image_layer_add(Operator, ImportHelper):
     """画像ファイルを選択して新規画像レイヤーを追加.
 
     ``bl_label`` はファイル選択ダイアログの確定ボタン表記にも流用される
@@ -36,7 +36,7 @@ class BNAME_OT_image_layer_add(Operator, ImportHelper):
     (text="") で呼び出しているので、このラベル変更は UI に悪影響しない。
     """
 
-    bl_idname = "bname.image_layer_add"
+    bl_idname = "bmanga.image_layer_add"
     bl_label = "画像を選択"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -67,9 +67,9 @@ class BNAME_OT_image_layer_add(Operator, ImportHelper):
         entry.id = _allocate_image_id(coll)
         entry.title = path.stem
         entry.filepath = str(path)
-        context.scene.bname_active_image_layer_index = len(coll) - 1
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "image"
+        context.scene.bmanga_active_image_layer_index = len(coll) - 1
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "image"
 
         # Blender 側に Image を読み込み (draw_handler 側で gpu.texture として使う)
         try:
@@ -98,7 +98,7 @@ class BNAME_OT_image_layer_add(Operator, ImportHelper):
             blocked = False
         if blocked:
             coll.remove(len(coll) - 1)
-            context.scene.bname_active_image_layer_index = len(coll) - 1 if len(coll) else -1
+            context.scene.bmanga_active_image_layer_index = len(coll) - 1 if len(coll) else -1
             self.report({"ERROR"}, "このモードではその位置に画像レイヤーを作成できません")
             return {"CANCELLED"}
 
@@ -106,8 +106,8 @@ class BNAME_OT_image_layer_add(Operator, ImportHelper):
         return {"FINISHED"}
 
 
-class BNAME_OT_image_layer_remove(Operator):
-    bl_idname = "bname.image_layer_remove"
+class BMANGA_OT_image_layer_remove(Operator):
+    bl_idname = "bmanga.image_layer_remove"
     bl_label = "画像レイヤーを削除"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -116,28 +116,28 @@ class BNAME_OT_image_layer_remove(Operator):
         coll = _get_collection(context.scene)
         if coll is None:
             return False
-        idx = getattr(context.scene, "bname_active_image_layer_index", -1)
+        idx = getattr(context.scene, "bmanga_active_image_layer_index", -1)
         return 0 <= idx < len(coll)
 
     def execute(self, context):
         coll = _get_collection(context.scene)
-        idx = context.scene.bname_active_image_layer_index
+        idx = context.scene.bmanga_active_image_layer_index
         if not (0 <= idx < len(coll)):
             return {"CANCELLED"}
         name = coll[idx].title
         coll.remove(idx)
         if len(coll) == 0:
-            context.scene.bname_active_image_layer_index = -1
+            context.scene.bmanga_active_image_layer_index = -1
         elif idx >= len(coll):
-            context.scene.bname_active_image_layer_index = len(coll) - 1
-        if len(coll) == 0 and hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "gp"
+            context.scene.bmanga_active_image_layer_index = len(coll) - 1
+        if len(coll) == 0 and hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "gp"
         self.report({"INFO"}, f"画像レイヤー削除: {name}")
         return {"FINISHED"}
 
 
-class BNAME_OT_image_layer_select(Operator):
-    bl_idname = "bname.image_layer_select"
+class BMANGA_OT_image_layer_select(Operator):
+    bl_idname = "bmanga.image_layer_select"
     bl_label = "画像レイヤーを選択"
     bl_options = {"REGISTER"}
 
@@ -151,24 +151,24 @@ class BNAME_OT_image_layer_select(Operator):
         coll = _get_collection(context.scene)
         if coll is None or not (0 <= self.index < len(coll)):
             return {"CANCELLED"}
-        context.scene.bname_active_image_layer_index = self.index
-        if hasattr(context.scene, "bname_active_layer_kind"):
-            context.scene.bname_active_layer_kind = "image"
+        context.scene.bmanga_active_image_layer_index = self.index
+        if hasattr(context.scene, "bmanga_active_layer_kind"):
+            context.scene.bmanga_active_layer_kind = "image"
         return {"FINISHED"}
 
 
 _CLASSES = (
-    BNAME_OT_image_layer_add,
-    BNAME_OT_image_layer_remove,
-    BNAME_OT_image_layer_select,
+    BMANGA_OT_image_layer_add,
+    BMANGA_OT_image_layer_remove,
+    BMANGA_OT_image_layer_select,
 )
 
 
 def register() -> None:
-    from ..core.image_layer import BNameImageLayer
+    from ..core.image_layer import BMangaImageLayer
 
-    bpy.types.Scene.bname_image_layers = bpy.props.CollectionProperty(type=BNameImageLayer)
-    bpy.types.Scene.bname_active_image_layer_index = bpy.props.IntProperty(default=-1, min=-1)
+    bpy.types.Scene.bmanga_image_layers = bpy.props.CollectionProperty(type=BMangaImageLayer)
+    bpy.types.Scene.bmanga_active_image_layer_index = bpy.props.IntProperty(default=-1, min=-1)
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
 
@@ -180,8 +180,8 @@ def unregister() -> None:
         except RuntimeError:
             pass
     for attr in (
-        "bname_active_image_layer_index",
-        "bname_image_layers",
+        "bmanga_active_image_layer_index",
+        "bmanga_image_layers",
     ):
         try:
             delattr(bpy.types.Scene, attr)

@@ -1,6 +1,6 @@
 """テキストレイヤーの実オブジェクト同期.
 
-B-Name のテキストは、編集時のカーソルや選択範囲だけをオーバーレイで描き、
+B-MANGA のテキストは、編集時のカーソルや選択範囲だけをオーバーレイで描き、
 本文そのものは透明画像付き Mesh 平面として Blender データに残す。
 """
 
@@ -25,14 +25,14 @@ _logger = log.get_logger(__name__)
 
 TEXT_OBJECT_NAME_PREFIX = "text_"
 TEXT_MESH_NAME_PREFIX = "text_mesh_"
-TEXT_IMAGE_NAME_PREFIX = "bname_text_image_"
-TEXT_MATERIAL_NAME_PREFIX = "BName_Text_"
+TEXT_IMAGE_NAME_PREFIX = "bmanga_text_image_"
+TEXT_MATERIAL_NAME_PREFIX = "BManga_Text_"
 TEXT_REAL_DPI = 300
 TEXT_RENDER_PAD_MM = 1.5
 TEXT_Z_BASE = 2000
 OUTSIDE_PAGE_ID = "outside"
-_TEXT_RENDER_SIGNATURE_PROP = "bname_text_render_signature"
-_TEXT_PREVIEW_HIDDEN_PROP = "bname_text_preview_hidden"
+_TEXT_RENDER_SIGNATURE_PROP = "bmanga_text_render_signature"
+_TEXT_PREVIEW_HIDDEN_PROP = "bmanga_text_preview_hidden"
 _AUTO_SYNC_SUSPEND_DEPTH = 0
 
 
@@ -51,7 +51,7 @@ def auto_sync_suspended() -> bool:
     return _AUTO_SYNC_SUSPEND_DEPTH > 0
 
 
-def text_object_bname_id_for_values(page_id: str, text_id: str) -> str:
+def text_object_bmanga_id_for_values(page_id: str, text_id: str) -> str:
     page_id = str(page_id or "").strip()
     text_id = str(text_id or "").strip()
     if page_id and text_id:
@@ -59,26 +59,26 @@ def text_object_bname_id_for_values(page_id: str, text_id: str) -> str:
     return text_id
 
 
-def text_object_bname_id(page, entry) -> str:
-    return text_object_bname_id_for_values(
+def text_object_bmanga_id(page, entry) -> str:
+    return text_object_bmanga_id_for_values(
         _page_id_for_entry(page, entry),
         str(getattr(entry, "id", "") or ""),
     )
 
 
-def split_text_object_bname_id(bname_id: str) -> tuple[str, str]:
-    raw = str(bname_id or "")
+def split_text_object_bmanga_id(bmanga_id: str) -> tuple[str, str]:
+    raw = str(bmanga_id or "")
     if ":" in raw:
         page_id, text_id = raw.split(":", 1)
         return page_id, text_id
     return "", raw
 
 
-def find_text_entry(scene, bname_id: str):
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+def find_text_entry(scene, bmanga_id: str):
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if work is None:
         return None, None
-    page_id, text_id = split_text_object_bname_id(bname_id)
+    page_id, text_id = split_text_object_bmanga_id(bmanga_id)
     if _is_outside_page_id(page_id):
         for entry in getattr(work, "shared_texts", []):
             if str(getattr(entry, "id", "") or "") == text_id:
@@ -98,19 +98,19 @@ def find_text_entry(scene, bname_id: str):
 
 
 def find_text_object(page_id: str, text_id: str) -> Optional[bpy.types.Object]:
-    full_id = text_object_bname_id_for_values(page_id, text_id)
-    obj = on.find_object_by_bname_id(full_id, kind="text")
+    full_id = text_object_bmanga_id_for_values(page_id, text_id)
+    obj = on.find_object_by_bmanga_id(full_id, kind="text")
     if obj is not None:
         return obj
     if not str(page_id or ""):
-        obj = on.find_object_by_bname_id(
-            text_object_bname_id_for_values(OUTSIDE_PAGE_ID, text_id),
+        obj = on.find_object_by_bmanga_id(
+            text_object_bmanga_id_for_values(OUTSIDE_PAGE_ID, text_id),
             kind="text",
         )
         if obj is not None:
             return obj
     # 旧バージョンの単独 ID オブジェクト。ensure 時に置き換える。
-    return on.find_object_by_bname_id(text_id, kind="text")
+    return on.find_object_by_bmanga_id(text_id, kind="text")
 
 
 def has_visible_text_object(entry, page=None) -> bool:
@@ -535,9 +535,9 @@ def _remove_duplicate_text_objects(
 
 
 def _find_existing_text_object(full_id: str, text_id: str, obj_name: str) -> Optional[bpy.types.Object]:
-    obj = on.find_object_by_bname_id(full_id, kind="text")
+    obj = on.find_object_by_bmanga_id(full_id, kind="text")
     if obj is None:
-        legacy_obj = on.find_object_by_bname_id(text_id, kind="text")
+        legacy_obj = on.find_object_by_bmanga_id(text_id, kind="text")
         if legacy_obj is not None and legacy_obj.type == "MESH":
             obj = legacy_obj
         elif legacy_obj is not None:
@@ -580,7 +580,7 @@ def _apply_text_object_state(
     text_id: str,
     folder_id: str,
 ) -> None:
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     ox_mm, oy_mm = _page_offset_mm(scene, work, page)
     obj.location.x = mm_to_m(float(getattr(entry, "x_mm", 0.0) or 0.0) + ox_mm)
     obj.location.y = mm_to_m(float(getattr(entry, "y_mm", 0.0) or 0.0) + oy_mm)
@@ -589,7 +589,7 @@ def _apply_text_object_state(
     los.stamp_layer_object(
         obj,
         kind="text",
-        bname_id=full_id,
+        bmanga_id=full_id,
         title=str(getattr(entry, "title", "") or getattr(entry, "body", "") or text_id)[:40],
         z_index=_text_z_index(page, text_id),
         parent_kind=parent_kind,
@@ -618,7 +618,7 @@ def ensure_text_real_object(
     if not text_id or not page_id:
         return None
 
-    full_id = text_object_bname_id(page, entry)
+    full_id = text_object_bmanga_id(page, entry)
     obj_name = _object_name(page_id, text_id)
     obj = _find_existing_text_object(full_id, text_id, obj_name)
     signature = _entry_render_signature(entry)
@@ -648,7 +648,7 @@ def ensure_text_real_object(
         try:
             from . import coma_content_mask
             mask_info = coma_content_mask.ensure_viewport_mask_for_parent(
-                scene, getattr(scene, "bname_work", None), parent_key_hint,
+                scene, getattr(scene, "bmanga_work", None), parent_key_hint,
             )
         except Exception:  # noqa: BLE001
             pass
@@ -703,7 +703,7 @@ def on_text_entry_changed(entry) -> bool:
     if auto_sync_suspended():
         return False
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
     try:
@@ -752,7 +752,7 @@ def _refresh_existing_text_mesh(scene, entry, page) -> bool:
 
 def on_text_free_transform_changed(entry) -> bool:
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
     try:
@@ -782,7 +782,7 @@ def on_text_free_transform_changed(entry) -> bool:
 
 def remove_text_real_object(page_id: str, text_id: str) -> bool:
     removed = False
-    full_id = text_object_bname_id_for_values(page_id, text_id)
+    full_id = text_object_bmanga_id_for_values(page_id, text_id)
     for obj in list(bpy.data.objects):
         if object_preserve.is_preserved(obj):
             continue
@@ -812,10 +812,10 @@ def cleanup_orphan_text_objects(scene: bpy.types.Scene, work) -> int:
     valid_simple: set[str] = set()
     for page in getattr(work, "pages", []) if work is not None else []:
         for entry in getattr(page, "texts", []):
-            valid.add(text_object_bname_id(page, entry))
+            valid.add(text_object_bmanga_id(page, entry))
             valid_simple.add(str(getattr(entry, "id", "") or ""))
     for entry in getattr(work, "shared_texts", []) if work is not None else []:
-        valid.add(text_object_bname_id_for_values(OUTSIDE_PAGE_ID, str(getattr(entry, "id", "") or "")))
+        valid.add(text_object_bmanga_id_for_values(OUTSIDE_PAGE_ID, str(getattr(entry, "id", "") or "")))
         valid_simple.add(str(getattr(entry, "id", "") or ""))
     removed = 0
     for obj in list(bpy.data.objects):

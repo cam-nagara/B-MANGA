@@ -40,8 +40,8 @@ BALLOON_OUTER_EDGE_MESH_NAME_PREFIX = "balloon_outer_edge_mesh_"
 BALLOON_INNER_EDGE_MESH_NAME_PREFIX = "balloon_inner_edge_mesh_"
 BALLOON_MULTI_LINE_MESH_NAME_PREFIX = "balloon_multi_line_mesh_"
 BALLOON_FLASH_WHITE_LINE_MESH_NAME_PREFIX = "balloon_flash_white_line_mesh_"
-PROP_BALLOON_LINE_MESH_KIND = "bname_balloon_line_mesh_kind"
-PROP_BALLOON_LINE_MESH_OWNER_ID = "bname_balloon_line_mesh_owner_id"
+PROP_BALLOON_LINE_MESH_KIND = "bmanga_balloon_line_mesh_kind"
+PROP_BALLOON_LINE_MESH_OWNER_ID = "bmanga_balloon_line_mesh_owner_id"
 
 # kind タグ
 _KIND_LINE = "balloon_line_mesh"
@@ -81,9 +81,9 @@ FLASH_WHITE_LINE_Z_OFFSET_M = 0.000050
 _EDGE_OVERLAP_RATIO = 0.06
 
 # コマ内マスク用 Geometry Nodes group
-MASK_CLIP_GROUP_NAME = "BName_GN_BalloonLineMeshClip"
+MASK_CLIP_GROUP_NAME = "BManga_GN_BalloonLineMeshClip"
 MASK_CLIP_GROUP_VERSION = 1
-PROP_GROUP_VERSION = "bname_group_version"
+PROP_GROUP_VERSION = "bmanga_group_version"
 
 # 主線・外側フチ・内側フチを Shapely buffer + earcut で外部 Mesh として描画する形状。
 # 全ての Meldex フキダシ形状とカスタム形状で同じ方式に統一する。
@@ -2706,7 +2706,7 @@ def _rebuild_band_mesh(
     mesh.update()
 
 
-RIBBON_UV_LAYER_NAME = "BNameRibbon"
+RIBBON_UV_LAYER_NAME = "BMangaRibbon"
 
 
 def _line_material_texture_size(entry) -> tuple[int, int]:
@@ -2862,7 +2862,7 @@ def _flash_white_line_mesh_data_name(balloon_id: str) -> str:
 
 
 # 帯メッシュのジオメトリ署名: 一致すれば shapely/earcut の再構築を丸ごとスキップする
-PROP_BAND_GEOMETRY_SIG = "bname_band_geometry_sig"
+PROP_BAND_GEOMETRY_SIG = "bmanga_band_geometry_sig"
 
 
 def band_geometry_cache_hit(obj_name: str, geometry_sig) -> Optional[bpy.types.Object]:
@@ -3731,7 +3731,7 @@ def ensure_balloon_multi_line_mesh(
 
 BALLOON_TAIL_MAIN_LINE_MESH_NAME_PREFIX = "balloon_tail_main_line_mesh_"
 # 「結合済みで独立しっぽ線メッシュ無し」を記憶する署名 (本体オブジェクトに保持)
-_PROP_TAIL_MAIN_ABSENT_SIG = "bname_tail_main_absent_sig"
+_PROP_TAIL_MAIN_ABSENT_SIG = "bmanga_tail_main_absent_sig"
 
 
 def _tail_main_line_mesh_data_name(balloon_id: str) -> str:
@@ -4010,7 +4010,7 @@ def _sync_mask_clip_modifier(obj: bpy.types.Object, mask_object: Optional[bpy.ty
 
     mask_object が None の場合は modifier を撤去する。
     """
-    modifier_name = "BName コマ内マスククリップ"
+    modifier_name = "BManga コマ内マスククリップ"
     existing = obj.modifiers.get(modifier_name)
     if mask_object is None:
         if existing is not None:

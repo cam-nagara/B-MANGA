@@ -1,4 +1,4 @@
-"""Runtime activity policy for B-Name background work."""
+"""Runtime activity policy for B-MANGA background work."""
 
 from __future__ import annotations
 
@@ -26,19 +26,19 @@ def work_loaded(context=None) -> bool:
         return False
 
 
-def bname_panel_visible(context=None) -> bool:
+def bmanga_panel_visible(context=None) -> bool:
     if is_background():
         return True
     try:
         from . import shortcut_visibility
 
-        return shortcut_visibility.any_bname_panel_visible(context or bpy.context)
+        return shortcut_visibility.any_bmanga_panel_visible(context or bpy.context)
     except Exception:  # noqa: BLE001
         return False
 
 
 def live_view_updates_allowed(context=None) -> bool:
-    return bname_panel_visible(context)
+    return bmanga_panel_visible(context)
 
 
 def interval_for_loaded_work(

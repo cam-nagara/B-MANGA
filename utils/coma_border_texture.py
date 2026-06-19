@@ -15,18 +15,18 @@ from .geom import mm_to_m
 _logger = log.get_logger(__name__)
 
 COMA_BORDER_TEXTURE_MESH_PREFIX = "coma_border_texture_mesh_"
-COMA_BORDER_TEXTURE_MATERIAL_PREFIX = "BName_ComaBorderTexture_"
-COMA_BORDER_TEXTURE_IMAGE_PREFIX = "BName_ComaBorderAlpha_"
-COMA_PLANE_ALPHA_IMAGE_PREFIX = "BName_ComaPlaneAlpha_"
-COMA_BORDER_TEXTURE_UV_NAME = "BNameComaBorderTextureUV"
+COMA_BORDER_TEXTURE_MATERIAL_PREFIX = "BManga_ComaBorderTexture_"
+COMA_BORDER_TEXTURE_IMAGE_PREFIX = "BManga_ComaBorderAlpha_"
+COMA_PLANE_ALPHA_IMAGE_PREFIX = "BManga_ComaPlaneAlpha_"
+COMA_BORDER_TEXTURE_UV_NAME = "BMangaComaBorderTextureUV"
 
-PROP_COMA_BORDER_KIND = "bname_coma_border_kind"
-PROP_COMA_BORDER_OWNER_ID = "bname_coma_border_owner_id"
+PROP_COMA_BORDER_KIND = "bmanga_coma_border_kind"
+PROP_COMA_BORDER_OWNER_ID = "bmanga_coma_border_owner_id"
 
 _PX_PER_MM = 3.0
 _MIN_IMAGE_SIZE = 64
 _MAX_IMAGE_SIZE = 1024
-_SIGNATURE_PROP = "bname_border_alpha_signature"
+_SIGNATURE_PROP = "bmanga_border_alpha_signature"
 
 
 def object_name(page_id: str, coma_id: str) -> str:

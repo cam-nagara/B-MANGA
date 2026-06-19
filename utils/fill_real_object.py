@@ -21,7 +21,7 @@ _logger = log.get_logger(__name__)
 
 FILL_OBJECT_NAME_PREFIX = "fill_"
 FILL_MESH_NAME_PREFIX = "fill_mesh_"
-FILL_MATERIAL_NAME_PREFIX = "BName_Fill_"
+FILL_MATERIAL_NAME_PREFIX = "BManga_Fill_"
 GRADIENT_HANDLE_KIND = "gradient_handle"
 _HANDLE_DISPLAY_SIZE = 0.008
 _HANDLE_MESH_ARM_M = 0.0025
@@ -192,7 +192,7 @@ def entry_page_offset_mm(scene, work, entry, page):
 
 
 def _fill_z_index(scene, fill_id: str) -> int:
-    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     if coll is None:
         return FILL_Z_BASE
     for i, entry in enumerate(coll):
@@ -518,7 +518,7 @@ def ensure_fill_real_object(
     if not fill_id:
         return None
 
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     paper = getattr(work, "paper", None) if work is not None else None
     canvas_w_mm = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0)
     canvas_h_mm = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0)
@@ -580,7 +580,7 @@ def ensure_fill_real_object(
         mesh.materials[0] = mat
 
     obj_name = _object_name(fill_id)
-    obj = on.find_object_by_bname_id(fill_id, kind="fill")
+    obj = on.find_object_by_bmanga_id(fill_id, kind="fill")
     if obj is None:
         obj = bpy.data.objects.get(obj_name)
     if object_preserve.is_preserved(obj):
@@ -605,7 +605,7 @@ def ensure_fill_real_object(
     los.stamp_layer_object(
         obj,
         kind="fill",
-        bname_id=fill_id,
+        bmanga_id=fill_id,
         title=str(getattr(entry, "title", "") or fill_id),
         z_index=_fill_z_index(scene, fill_id),
         parent_kind=parent_kind,
@@ -654,7 +654,7 @@ def _ensure_handle_mesh(name: str) -> bpy.types.Mesh:
 
 
 def _ensure_handle_material(end_tag: str) -> bpy.types.Material:
-    mat_name = f"BName_GradHandle_{end_tag}"
+    mat_name = f"BManga_GradHandle_{end_tag}"
     mat = bpy.data.materials.get(mat_name)
     if mat is not None:
         return mat
@@ -708,7 +708,7 @@ def _ensure_gradient_handles(
         obj.show_in_front = True
         obj[on.PROP_KIND] = GRADIENT_HANDLE_KIND
         obj[on.PROP_ID] = fill_id
-        obj["bname_handle_end"] = end_tag
+        obj["bmanga_handle_end"] = end_tag
         obj[on.PROP_MANAGED] = True
         obj.location.x = mm_to_m(lx + ox_mm)
         obj.location.y = mm_to_m(ly + oy_mm)
@@ -729,7 +729,7 @@ def _find_gradient_handle(fill_id: str, end: str):
         if (
             obj.get(on.PROP_KIND) == GRADIENT_HANDLE_KIND
             and str(obj.get(on.PROP_ID, "") or "") == fill_id
-            and str(obj.get("bname_handle_end", "") or "") == end
+            and str(obj.get("bmanga_handle_end", "") or "") == end
             and not object_preserve.is_preserved(obj)
         ):
             return obj
@@ -798,7 +798,7 @@ def gradient_handle_positions_mm(context, fill_id: str):
     entry = find_fill_entry(scene, fill_id)
     if entry is None:
         return None
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     page = page_for_entry(scene, work, entry) if work else None
     ox_mm, oy_mm = entry_page_offset_mm(scene, work, entry, page)
     sx = float(getattr(entry, "gradient_start_x_mm", 0.0) or 0.0) + ox_mm
@@ -812,7 +812,7 @@ def _on_depsgraph_update_post_handles(scene, depsgraph) -> None:
     global _HANDLE_WRITEBACK_GUARD
     if _HANDLE_WRITEBACK_GUARD or auto_sync_suspended():
         return
-    work = getattr(scene, "bname_work", None)
+    work = getattr(scene, "bmanga_work", None)
     if work is None or not getattr(work, "loaded", False):
         return
     for update in depsgraph.updates:
@@ -822,7 +822,7 @@ def _on_depsgraph_update_post_handles(scene, depsgraph) -> None:
         if obj.get(on.PROP_KIND) != GRADIENT_HANDLE_KIND:
             continue
         fill_id = str(obj.get(on.PROP_ID, "") or "")
-        end_tag = str(obj.get("bname_handle_end", "") or "")
+        end_tag = str(obj.get("bmanga_handle_end", "") or "")
         if not fill_id or end_tag not in {"start", "end"}:
             continue
         entry = find_fill_entry(scene, fill_id)
@@ -846,7 +846,7 @@ def _on_depsgraph_update_post_handles(scene, depsgraph) -> None:
 
 
 def find_fill_entry(scene, fill_id: str):
-    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     if coll is None:
         return None
     for entry in coll:
@@ -856,7 +856,7 @@ def find_fill_entry(scene, fill_id: str):
 
 
 def cleanup_orphan_fill_objects(scene: bpy.types.Scene) -> int:
-    coll = getattr(scene, "bname_fill_layers", None) if scene is not None else None
+    coll = getattr(scene, "bmanga_fill_layers", None) if scene is not None else None
     valid = {str(getattr(entry, "id", "") or "") for entry in coll or []}
     removed = 0
     for obj in list(bpy.data.objects):
@@ -918,7 +918,7 @@ def remove_fill_real_object(fill_id: str) -> bool:
 def sync_all_fill_real_objects(scene: bpy.types.Scene, work) -> int:
     if scene is None or work is None:
         return 0
-    coll = getattr(scene, "bname_fill_layers", None)
+    coll = getattr(scene, "bmanga_fill_layers", None)
     if coll is None:
         return 0
     count = 0
@@ -936,7 +936,7 @@ def on_fill_entry_changed(entry) -> bool:
     if _HANDLE_WRITEBACK_GUARD:
         return False
     scene = bpy.context.scene if bpy.context is not None else None
-    work = getattr(scene, "bname_work", None) if scene is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
     if scene is None or work is None or entry is None:
         return False
     fill_id = str(getattr(entry, "id", "") or "")

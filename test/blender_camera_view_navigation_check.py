@@ -1,4 +1,4 @@
-"""Blender 実機(UI)用: カメラビュー中のB-Name座標変換とビュー操作確認."""
+"""Blender 実機(UI)用: カメラビュー中のB-MANGA座標変換とビュー操作確認."""
 
 from __future__ import annotations
 
@@ -17,12 +17,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_camera_view_nav",
+        "bmanga_dev_camera_view_nav",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_camera_view_nav"] = mod
+    sys.modules["bmanga_dev_camera_view_nav"] = mod
     assert spec.loader is not None
     spec.loader.exec_module(mod)
     mod.register()
@@ -42,14 +42,14 @@ def _view3d_context():
 
 def _setup_camera(rv3d):
     scene = bpy.context.scene
-    cam_data = bpy.data.cameras.new("B-Name camera view test")
-    cam = bpy.data.objects.new("B-Name camera view test", cam_data)
+    cam_data = bpy.data.cameras.new("B-MANGA camera view test")
+    cam = bpy.data.objects.new("B-MANGA camera view test", cam_data)
     scene.collection.objects.link(cam)
     cam_data.type = "ORTHO"
     cam_data.ortho_scale = 1.0
     cam.location = (0.0, 0.0, 10.0)
     cam.rotation_euler = (0.0, 0.0, 0.0)
-    cam["bname_overview_camera"] = True
+    cam["bmanga_overview_camera"] = True
     scene.camera = cam
     rv3d.view_perspective = "CAMERA"
     rv3d.view_camera_offset = (0.0, 0.0)
@@ -74,8 +74,8 @@ def _assert_camera_round_trip(region, rv3d) -> None:
 
 def _run() -> None:
     mod = _load_addon()
-    from bname_dev_camera_view_nav.utils import camera_view_navigation
-    from bname_dev_camera_view_nav.keymap import viewport_ops
+    from bmanga_dev_camera_view_nav.utils import camera_view_navigation
+    from bmanga_dev_camera_view_nav.keymap import viewport_ops
 
     try:
         _area, region, rv3d = _view3d_context()
@@ -114,18 +114,18 @@ def _run() -> None:
         assert abs(float(bpy.context.scene.camera.rotation_euler.z)) < 1.0e-6, "ページ一覧用カメラの回転がリセットされません"
 
         op = SimpleNamespace(_rv3d=rv3d, _region=region)
-        viewport_ops.BNAME_OT_view_navigate._apply_rotation(op, 0.25)
+        viewport_ops.BMANGA_OT_view_navigate._apply_rotation(op, 0.25)
         assert abs(float(bpy.context.scene.camera.rotation_euler.z) + 0.25) < 1.0e-5, (
             "Shift+Space回転の実行経路でページ一覧用カメラが回りません"
         )
-        viewport_ops.BNAME_OT_view_navigate._reset_rotation(op, bpy.context)
+        viewport_ops.BMANGA_OT_view_navigate._reset_rotation(op, bpy.context)
         assert abs(float(bpy.context.scene.camera.rotation_euler.z)) < 1.0e-6, (
             "Shift+Space回転リセットの実行経路でページ一覧用カメラが戻りません"
         )
 
         assert camera_view_navigation.reset_view(rv3d), "カメラビューのリセットが実行されません"
         assert tuple(rv3d.view_camera_offset) == (0.0, 0.0), "カメラビューの表示位置がリセットされません"
-        print("BNAME_CAMERA_VIEW_NAVIGATION_CHECK_OK", flush=True)
+        print("BMANGA_CAMERA_VIEW_NAVIGATION_CHECK_OK", flush=True)
     finally:
         mod.unregister()
 

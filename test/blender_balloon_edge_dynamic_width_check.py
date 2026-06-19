@@ -11,7 +11,7 @@
 
 走らせ方:
   & "C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe" --background --python ^
-    "d:/Develop/Blender/B-Name/test/blender_balloon_edge_dynamic_width_check.py"
+    "d:/Develop/Blender/B-MANGA/test/blender_balloon_edge_dynamic_width_check.py"
 """
 
 from __future__ import annotations
@@ -26,19 +26,19 @@ import bpy
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_OUT_ENV = os.environ.get("BNAME_EDGE_DYN_OUT", "")
-_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bname_edge_dyn_"))
-_SCENARIO = os.environ.get("BNAME_SCENARIO", "peak_100_valley_100")
+_OUT_ENV = os.environ.get("BMANGA_EDGE_DYN_OUT", "")
+_OUT_PATH = Path(_OUT_ENV) if _OUT_ENV else Path(tempfile.mkdtemp(prefix="bmanga_edge_dyn_"))
+_SCENARIO = os.environ.get("BMANGA_SCENARIO", "peak_100_valley_100")
 
 
 def _load_addon():
     spec = importlib.util.spec_from_file_location(
-        "bname_dev_edge_dyn",
+        "bmanga_dev_edge_dyn",
         ROOT / "__init__.py",
         submodule_search_locations=[str(ROOT)],
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["bname_dev_edge_dyn"] = mod
+    sys.modules["bmanga_dev_edge_dyn"] = mod
     spec.loader.exec_module(mod)
     mod.register()
     return mod
@@ -85,13 +85,13 @@ def main():
 
     peak_pct, valley_pct = CASES[_SCENARIO]
 
-    from bname_dev_edge_dyn.core.work import get_work
-    from bname_dev_edge_dyn.utils import balloon_curve_object, coma_plane, coma_border_object
-    from bname_dev_edge_dyn.utils.layer_hierarchy import coma_stack_key
-    from bname_dev_edge_dyn.utils import page_grid
+    from bmanga_dev_edge_dyn.core.work import get_work
+    from bmanga_dev_edge_dyn.utils import balloon_curve_object, coma_plane, coma_border_object
+    from bmanga_dev_edge_dyn.utils.layer_hierarchy import coma_stack_key
+    from bmanga_dev_edge_dyn.utils import page_grid
 
-    tmp = Path(tempfile.mkdtemp(prefix=f"bname_edge_dyn_{_SCENARIO}_"))
-    res = bpy.ops.bname.work_new(filepath=str(tmp / f"{_SCENARIO}.bname"))
+    tmp = Path(tempfile.mkdtemp(prefix=f"bmanga_edge_dyn_{_SCENARIO}_"))
+    res = bpy.ops.bmanga.work_new(filepath=str(tmp / f"{_SCENARIO}.bmanga"))
     assert "FINISHED" in res, res
 
     scene = bpy.context.scene
@@ -114,7 +114,7 @@ def main():
     coma_plane.ensure_coma_mask(scene, work, page, coma)
     coma_border_object.ensure_coma_border_object(scene, work, page, coma)
 
-    # トゲ (直線) フキダシ、 ユーザー報告 (test108.bname) と同じ設定
+    # トゲ (直線) フキダシ、 ユーザー報告 (test108.bmanga) と同じ設定
     entry = page.balloons.add()
     entry.id = f"balloon_{_SCENARIO}"
     entry.title = "尖り検証"
