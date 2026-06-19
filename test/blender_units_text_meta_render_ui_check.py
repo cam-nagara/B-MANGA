@@ -45,6 +45,9 @@ class _CaptureLayout:
     def row(self, *args, **kwargs):
         return _CaptureLayout(bool(self.enabled), self.sink)
 
+    def box(self, *args, **kwargs):
+        return _CaptureLayout(bool(self.enabled), self.sink)
+
 
 def _assert_paper_units() -> None:
     from bmanga_units_meta_dev.io import schema

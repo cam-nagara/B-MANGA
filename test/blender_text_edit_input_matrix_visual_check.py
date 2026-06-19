@@ -20,6 +20,34 @@ _PROBE = None
 _STATE: dict[str, object] = {"captures": []}
 
 
+def _record_step(name: str) -> None:
+    _STATE["last_step"] = str(name)
+    _write_state()
+
+
+def _abort_with_error(exc: BaseException) -> None:
+    import traceback
+
+    _STATE["error"] = repr(exc)
+    _STATE["traceback"] = traceback.format_exc()
+    _write_state()
+    print("BMANGA_TEXT_EDIT_INPUT_MATRIX_VISUAL_ERROR", repr(exc), flush=True)
+    print(json.dumps(_STATE, ensure_ascii=False, sort_keys=True), flush=True)
+    os._exit(1)
+
+
+def _timer_guard(fn):
+    def _wrapped():
+        try:
+            _record_step(fn.__name__)
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            _abort_with_error(exc)
+            return None
+
+    return _wrapped
+
+
 class _InlineTextProbe:
     _editing = True
     _page_id = ""
@@ -115,32 +143,7 @@ def _setup() -> None:
         raise RuntimeError(f"work_new failed: {result}")
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
-    page.texts.clear()
-    from bmanga_dev.utils import text_real_object, text_style
-
-    specs = [
-        ("横書き 選択", "ABCDE", "horizontal", 26.0, 190.0, 130.0, 28.0, 2, 0),
-        ("縦書き 選択", "日本語テスト", "vertical", 118.0, 128.0, 42.0, 70.0, 3, 0),
-        ("IME 変換中", "入力", "horizontal", 38.0, 92.0, 120.0, 26.0, 2, -1),
-        ("装飾変更", "太字色サイズ", "horizontal", 34.0, 54.0, 150.0, 28.0, 5, 0),
-    ]
-    for index, (title, body, mode, x, y, w, h, cursor, anchor) in enumerate(specs):
-        entry = page.texts.add()
-        entry.id = f"text_matrix_{index + 1}"
-        entry.title = title
-        entry.body = body
-        entry.writing_mode = mode
-        entry.x_mm = x
-        entry.y_mm = y
-        entry.width_mm = w
-        entry.height_mm = h
-        entry.font_size_q = 32.0 if index != 1 else 26.0
-        text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
-        text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
-    from bmanga_dev.io import page_io
-
-    page_io.save_page_json(Path(work.work_dir), page)
-    page_io.save_pages_json(Path(work.work_dir), work)
+    _ensure_text_cases(work, page)
     page.active_text_index = 0
     work.active_page_index = 0
     _PROBE = _InlineTextProbe()
@@ -155,12 +158,47 @@ def _setup() -> None:
     _write_state()
 
 
+def _text_case_specs():
+    return [
+        ("横書き 選択", "ABCDE", "horizontal", 26.0, 190.0, 130.0, 28.0),
+        ("縦書き 選択", "日本語テスト", "vertical", 118.0, 128.0, 42.0, 70.0),
+        ("IME 変換中", "入力", "horizontal", 38.0, 92.0, 120.0, 26.0),
+        ("装飾変更", "太字色サイズ", "horizontal", 34.0, 54.0, 150.0, 28.0),
+    ]
+
+
+def _ensure_text_cases(work, page) -> None:
+    from bmanga_dev.io import page_io
+    from bmanga_dev.utils import text_real_object
+
+    expected_ids = [f"text_matrix_{index + 1}" for index in range(len(_text_case_specs()))]
+    current_ids = [str(getattr(entry, "id", "") or "") for entry in getattr(page, "texts", [])]
+    if current_ids != expected_ids:
+        page.texts.clear()
+        for index, (title, body, mode, x, y, w, h) in enumerate(_text_case_specs()):
+            entry = page.texts.add()
+            entry.id = f"text_matrix_{index + 1}"
+            entry.title = title
+            entry.body = body
+            entry.writing_mode = mode
+            entry.x_mm = x
+            entry.y_mm = y
+            entry.width_mm = w
+            entry.height_mm = h
+            entry.font_size_q = 32.0 if index != 1 else 26.0
+            text_real_object.ensure_text_real_object(scene=bpy.context.scene, entry=entry, page=page)
+            text_real_object.set_text_object_preview_hidden(entry, page=page, hidden=True)
+        page_io.save_page_json(Path(work.work_dir), page)
+        page_io.save_pages_json(Path(work.work_dir), work)
+
+
 def _activate_case(index: int, *, composition: str = "") -> None:
     from bmanga_dev.operators import text_edit_runtime
     from bmanga_dev.operators import coma_modal_state
 
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
+    _ensure_text_cases(work, page)
     entry = page.texts[index]
     cursors = [2, 3, 2, 5]
     anchors = [0, 0, -1, 0]
@@ -222,8 +260,11 @@ def _finish() -> None:
 
 
 def _run_sequence():
+    work = bpy.context.scene.bmanga_work
+    page = work.pages[0]
+    _ensure_text_cases(work, page)
     _activate_case(0)
-    bpy.app.timers.register(_capture1, first_interval=0.4)
+    bpy.app.timers.register(_timer_guard(_capture1), first_interval=0.4)
 
 
 def _capture1():
@@ -234,7 +275,7 @@ def _capture1():
 
 def _step2():
     _activate_case(1)
-    bpy.app.timers.register(_capture2, first_interval=0.35)
+    bpy.app.timers.register(_timer_guard(_capture2), first_interval=0.35)
 
 
 def _capture2():
@@ -245,7 +286,7 @@ def _capture2():
 
 def _step3():
     _activate_case(2, composition="日本")
-    bpy.app.timers.register(_capture3, first_interval=0.35)
+    bpy.app.timers.register(_timer_guard(_capture3), first_interval=0.35)
 
 
 def _capture3():
@@ -276,7 +317,7 @@ def _step4():
     from bmanga_dev.utils import text_real_object
 
     assert not text_real_object.has_visible_text_object(entry, page=page)
-    bpy.app.timers.register(_capture4, first_interval=0.35)
+    bpy.app.timers.register(_timer_guard(_capture4), first_interval=0.35)
 
 
 def _capture4():
@@ -288,7 +329,7 @@ def _capture4():
 def main() -> None:
     try:
         _setup()
-        bpy.app.timers.register(_run_sequence, first_interval=0.5)
+        bpy.app.timers.register(_timer_guard(_run_sequence), first_interval=0.5)
     except Exception as exc:  # noqa: BLE001
         _STATE["error"] = repr(exc)
         _write_state()
