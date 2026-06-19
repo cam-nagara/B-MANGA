@@ -70,6 +70,13 @@ class BMANGA_PT_paper(Panel):
         row.prop(p, "finish_width_value", text=f"幅 ({unit_label})")
         row.prop(p, "finish_height_value", text=f"高さ ({unit_label})")
         box.prop(p, "bleed_value", text=f"裁ち落とし幅 ({unit_label})")
+        sa = work.safe_area_overlay
+        row = box.row(align=True)
+        row.prop(sa, "bleed_outer_enabled", text="裁ち落とし枠外を塗る")
+        sub = box.row(align=True)
+        sub.enabled = sa.bleed_outer_enabled
+        sub.prop(sa, "bleed_outer_color", text="")
+        sub.prop(sa, "bleed_outer_opacity", text="不透明度", slider=True)
 
         box = layout.box()
         box.label(text="基本枠")
@@ -90,7 +97,6 @@ class BMANGA_PT_paper(Panel):
         row.prop(p, "safe_gutter_value", text=f"ノド ({unit_label})")
         row.prop(p, "safe_fore_edge_value", text=f"小口 ({unit_label})")
         # セーフライン外塗り (旧「セーフライン外オーバーレイ」パネル) を統合
-        sa = work.safe_area_overlay
         row = box.row(align=True)
         row.prop(sa, "enabled", text="セーフライン外を塗る")
         sub = box.row(align=True)

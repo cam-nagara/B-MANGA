@@ -59,19 +59,23 @@ def _assert_guide_materials_are_opaque(guide_objects) -> None:
                 raise AssertionError(f"用紙ガイド線の素材が半透明表示方式です: {mat.name}")
 
 
-def _assert_stable_viewport_order(guide_objects, safe_fill) -> None:
+def _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill) -> None:
     if bool(getattr(safe_fill, "show_in_front", False)):
         raise AssertionError(f"セーフライン外塗りが最前面ワイヤ表示に依存しています: {safe_fill.name}")
+    if bool(getattr(bleed_outer_fill, "show_in_front", False)):
+        raise AssertionError(f"裁ち落とし枠外塗りが最前面ワイヤ表示に依存しています: {bleed_outer_fill.name}")
+    if not (float(bleed_outer_fill.location.z) > float(safe_fill.location.z)):
+        raise AssertionError("裁ち落とし枠外塗りがセーフライン外塗りより奥にあります")
     for obj in guide_objects:
         if bool(getattr(obj, "show_in_front", False)):
             raise AssertionError(f"用紙ガイド線が最前面ワイヤ表示に依存しています: {obj.name}")
         if bool(getattr(obj, "show_transparent", False)):
             raise AssertionError(f"用紙ガイド線が透明表示になっています: {obj.name}")
-        if float(obj.location.z) <= float(safe_fill.location.z):
-            raise AssertionError(f"用紙ガイド線がセーフライン外塗りより奥にあります: {obj.name}")
+        if float(obj.location.z) <= max(float(safe_fill.location.z), float(bleed_outer_fill.location.z)):
+            raise AssertionError(f"用紙ガイド線が塗りより奥にあります: {obj.name}")
 
 
-def _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order) -> None:
+def _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order) -> None:
     if len(getattr(page, "comas", []) or []) == 0:
         return
     # コマ面だけでなく、最も手前に来るコマ要素 (コマ枠線・白フチ) より確実に前面であることを確認する。
@@ -90,6 +94,11 @@ def _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_orde
         raise AssertionError(
             f"セーフライン外塗りが最も手前のコマ要素と同一深度かそれより奥にあります: "
             f"fill={safe_fill.location.z}, coma_top={highest_coma_z}"
+        )
+    if not (float(bleed_outer_fill.location.z) > highest_coma_z + coplanar_eps):
+        raise AssertionError(
+            f"裁ち落とし枠外塗りが最も手前のコマ要素と同一深度かそれより奥にあります: "
+            f"fill={bleed_outer_fill.location.z}, coma_top={highest_coma_z}"
         )
     for obj in guide_objects:
         if not (float(obj.location.z) > highest_coma_z + coplanar_eps):
@@ -219,10 +228,13 @@ def main() -> None:
         safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         if safe_fill is None:
             raise AssertionError("セーフライン外塗りが作られていません")
+        bleed_outer_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
+        if bleed_outer_fill is None:
+            raise AssertionError("裁ち落とし枠外塗りが作られていません")
 
         _assert_guide_materials_are_opaque(guide_objects)
-        _assert_stable_viewport_order(guide_objects, safe_fill)
-        _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
+        _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill)
+        _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order)
         _assert_constant_thickness(paper_guide_object, guide_objects)
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)
         _assert_timer_idles_when_view_is_stable(paper_guide_object)
@@ -236,9 +248,10 @@ def main() -> None:
         paper_guide_object.regenerate_all_paper_guides(scene, work)
         guide_objects = _guide_objects(paper_guide_object, page)
         safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
-        if not guide_objects or safe_fill is None:
-            raise AssertionError("重なり順変更後の用紙ガイド線/セーフライン外塗りがありません")
-        _assert_guides_above_coma_planes(guide_objects, safe_fill, page, coma_z_order)
+        bleed_outer_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
+        if not guide_objects or safe_fill is None or bleed_outer_fill is None:
+            raise AssertionError("重なり順変更後の用紙ガイド線/塗りがありません")
+        _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order)
 
         print("BMANGA_PAPER_GUIDE_VISIBILITY_OK", flush=True)
     finally:

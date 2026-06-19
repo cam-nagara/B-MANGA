@@ -4,10 +4,9 @@
 ここではデータモデルと既定値のみ保持する。
 
 仕様:
-- セーフライン外の塗りは全コマより上に配置し、ビュー表示の「最前面」で見えるようにする
+- セーフライン外 / 裁ち落とし枠外の塗りは全コマより上に配置し、
+  ビュー表示の「最前面」で見えるようにする
 - 塗り色と不透明度は、実体オブジェクトのビュー表示カラーで指定する
-- 初期不透明度は 30%
-- 表示専用 — 書き出しには含めない
 """
 
 from __future__ import annotations
@@ -15,11 +14,15 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty
 
-from ..utils import log
+from ..utils import color_space, log
 
 _logger = log.get_logger(__name__)
 
 _DEFAULT_OPACITY = 30.0
+_DEFAULT_BLEED_OUTER_OPACITY = 100.0
+_DEFAULT_BLEED_OUTER_COLOR = color_space.srgb_to_linear_rgb(
+    (0x40 / 255.0, 0x40 / 255.0, 0x40 / 255.0)
+)
 
 
 def _on_safe_area_changed(_self, context) -> None:
@@ -64,6 +67,31 @@ class BMangaSafeAreaOverlay(bpy.types.PropertyGroup):
         subtype="COLOR",
         size=3,
         default=(0.0, 0.0, 0.0),
+        min=0.0,
+        max=1.0,
+        update=_on_safe_area_changed,
+    )
+    bleed_outer_enabled: BoolProperty(  # type: ignore[valid-type]
+        name="裁ち落とし枠外",
+        description="裁ち落とし枠の外側を塗ります",
+        default=True,
+        update=_on_safe_area_changed,
+    )
+    bleed_outer_opacity: FloatProperty(  # type: ignore[valid-type]
+        name="不透明度",
+        description="裁ち落とし枠外の塗りの不透明度",
+        default=_DEFAULT_BLEED_OUTER_OPACITY,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_on_safe_area_changed,
+    )
+    bleed_outer_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="色",
+        description="裁ち落とし枠外の塗り色",
+        subtype="COLOR",
+        size=3,
+        default=_DEFAULT_BLEED_OUTER_COLOR,
         min=0.0,
         max=1.0,
         update=_on_safe_area_changed,

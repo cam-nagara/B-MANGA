@@ -412,11 +412,23 @@ def safe_area_to_dict(sa) -> dict[str, Any]:
         color_hex = "#B3B3B3"
     else:
         color_hex = color_to_hex(color)
+    bleed_color = color_space.linear_to_srgb_rgb(
+        tuple(float(c) for c in getattr(sa, "bleed_outer_color", (0.0, 0.0, 0.0))[:3])
+    )
     return {
         "enabled": bool(sa.enabled),
         "color": color_hex,
         "opacity": _opacity_to_data(getattr(sa, "opacity", 30.0), 30.0),
         "opacityUnit": "percent",
+        "bleedOuterFill": {
+            "enabled": bool(getattr(sa, "bleed_outer_enabled", True)),
+            "color": color_to_hex(bleed_color),
+            "opacity": _opacity_to_data(
+                getattr(sa, "bleed_outer_opacity", 100.0),
+                100.0,
+            ),
+            "opacityUnit": "percent",
+        },
     }
 
 
@@ -445,6 +457,16 @@ def safe_area_from_dict(sa, data: dict[str, Any]) -> None:
         sa.color = color_space.srgb_to_linear_rgb((0.7, 0.7, 0.7))
     if hasattr(sa, "opacity"):
         sa.opacity = _opacity_from_data(data, "opacity", 30.0)
+    bleed = data.get("bleedOuterFill", {})
+    if not isinstance(bleed, dict):
+        bleed = {}
+    if hasattr(sa, "bleed_outer_enabled"):
+        sa.bleed_outer_enabled = bool(bleed.get("enabled", True))
+    if hasattr(sa, "bleed_outer_color"):
+        rgba = hex_to_rgba(str(bleed.get("color", "#404040FF")))
+        sa.bleed_outer_color = color_space.srgb_to_linear_rgb(rgba[:3])
+    if hasattr(sa, "bleed_outer_opacity"):
+        sa.bleed_outer_opacity = _opacity_from_data(bleed, "opacity", 100.0)
     # 旧 blendMode フィールドが残っていても無視 (互換読込)
 
 

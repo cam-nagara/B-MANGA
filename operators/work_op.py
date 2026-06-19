@@ -14,7 +14,7 @@ from ..core.work import get_work
 from ..core.work_info import suppress_page_number_range_update
 from ..io import blend_io, page_io, presets, work_io
 from ..utils import gpencil as gp_utils
-from ..utils import log, page_grid, page_range, paths, view_settings
+from ..utils import color_space, log, page_grid, page_range, paths, view_settings
 
 _logger = log.get_logger(__name__)
 
@@ -65,6 +65,11 @@ def _apply_phase1_defaults(work) -> None:
     work.safe_area_overlay.enabled = True
     work.safe_area_overlay.opacity = 30.0
     work.safe_area_overlay.color = (0.0, 0.0, 0.0)
+    work.safe_area_overlay.bleed_outer_enabled = True
+    work.safe_area_overlay.bleed_outer_opacity = 100.0
+    work.safe_area_overlay.bleed_outer_color = color_space.srgb_to_linear_rgb(
+        (0x40 / 255.0, 0x40 / 255.0, 0x40 / 255.0)
+    )
 
 
 def _cleanup_default_scene_objects() -> None:

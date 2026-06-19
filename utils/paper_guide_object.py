@@ -19,12 +19,15 @@ _logger = log.get_logger(__name__)
 
 PAPER_GUIDE_PREFIX = "page_paper_guide_"
 PAPER_SAFE_FILL_PREFIX = "page_safe_area_fill_"
+PAPER_BLEED_OUTER_FILL_PREFIX = "page_bleed_outer_fill_"
 PAPER_GUIDE_CURVE_PREFIX = "paper_guide_curve_"
 PAPER_GUIDE_GP_DATA_PREFIX = "paper_guide_gp_"
 PAPER_SAFE_FILL_MESH_PREFIX = "paper_safe_area_mesh_"
+PAPER_BLEED_OUTER_FILL_MESH_PREFIX = "paper_bleed_outer_mesh_"
 PAPER_GUIDE_MATERIAL_PREFIX = "BManga_PaperGuide_"
 _OLD_SAFE_FILL_MATERIAL = "BManga_SafeAreaFill"
 PAPER_SAFE_FILL_VIEW_MATERIAL = "BManga_SafeAreaFill_View"
+PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL = "BManga_BleedOuterFill_View"
 
 PROP_GUIDE_KIND = "bmanga_paper_guide_kind"
 PROP_GUIDE_OWNER_ID = "bmanga_paper_guide_page_id"
@@ -434,6 +437,24 @@ def _safe_fill_view_color(work) -> tuple[float, float, float, float]:
     return (_clamp01(r), _clamp01(g), _clamp01(b), _clamp01(float(opacity or 0.0)))
 
 
+def _bleed_outer_fill_view_color(work) -> tuple[float, float, float, float]:
+    overlay = getattr(work, "safe_area_overlay", None)
+    color = (
+        getattr(overlay, "bleed_outer_color", (0.0, 0.0, 0.0))
+        if overlay is not None
+        else (0.0, 0.0, 0.0)
+    )
+    opacity = percentage.percent_to_factor(
+        getattr(overlay, "bleed_outer_opacity", 100.0) if overlay is not None else 100.0,
+        100.0,
+    )
+    try:
+        r, g, b = float(color[0]), float(color[1]), float(color[2])
+    except Exception:  # noqa: BLE001
+        r, g, b = 0.0, 0.0, 0.0
+    return (_clamp01(r), _clamp01(g), _clamp01(b), _clamp01(float(opacity or 0.0)))
+
+
 def _clear_material_slots(data) -> None:
     mats = getattr(data, "materials", None)
     if mats is None or len(mats) == 0:
@@ -460,10 +481,13 @@ def _remove_old_safe_fill_material_if_unused() -> None:
         pass
 
 
-def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.types.Material:
-    mat = bpy.data.materials.get(PAPER_SAFE_FILL_VIEW_MATERIAL)
+def _transparent_fill_view_material(
+    name: str,
+    rgba: tuple[float, float, float, float],
+) -> bpy.types.Material:
+    mat = bpy.data.materials.get(name)
     if mat is None:
-        mat = bpy.data.materials.new(PAPER_SAFE_FILL_VIEW_MATERIAL)
+        mat = bpy.data.materials.new(name)
     r, g, b, a = (
         _clamp01(float(rgba[0])),
         _clamp01(float(rgba[1])),
@@ -506,6 +530,14 @@ def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.typ
         except Exception:  # noqa: BLE001
             _logger.exception("safe area fill material setup failed")
     return mat
+
+
+def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    return _transparent_fill_view_material(PAPER_SAFE_FILL_VIEW_MATERIAL, rgba)
+
+
+def _bleed_outer_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.types.Material:
+    return _transparent_fill_view_material(PAPER_BLEED_OUTER_FILL_VIEW_MATERIAL, rgba)
 
 
 def _safe_fill_faces(canvas: Rect, safe: Rect) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
@@ -575,6 +607,64 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj.hide_viewport = not (
         bool(getattr(page, "in_page_range", True))
         and bool(getattr(work.safe_area_overlay, "enabled", True))
+        and obj.color[3] > 0.0
+    )
+    obj.location.z = z_m
+    _set_page_location(scene, obj, page)
+    _link_to_page_collection(obj, page_coll)
+    return obj
+
+
+def _ensure_bleed_outer_fill_object(
+    scene,
+    work,
+    page,
+    page_coll,
+    canvas: Rect,
+    bleed: Rect,
+    z_m: float,
+) -> bpy.types.Object:
+    page_id = str(getattr(page, "id", "") or "")
+    mesh_name = f"{PAPER_BLEED_OUTER_FILL_MESH_PREFIX}{page_id}"
+    obj_name = f"{PAPER_BLEED_OUTER_FILL_PREFIX}{page_id}"
+    mesh = bpy.data.meshes.get(mesh_name)
+    if mesh is None:
+        mesh = bpy.data.meshes.new(mesh_name)
+    verts, faces = _safe_fill_faces(canvas, bleed)
+    mesh.clear_geometry()
+    if verts and faces:
+        mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    _clear_material_slots(mesh)
+
+    obj = bpy.data.objects.get(obj_name)
+    if obj is None:
+        obj = bpy.data.objects.new(obj_name, mesh)
+    elif obj.data is not mesh:
+        obj.data = mesh
+    obj[PROP_GUIDE_KIND] = "bleed_outer_fill"
+    obj[PROP_GUIDE_OWNER_ID] = page_id
+    obj[on.PROP_MANAGED] = False
+    obj.hide_select = True
+    obj.color = _bleed_outer_fill_view_color(work)
+    mesh.materials.append(_bleed_outer_fill_view_material(tuple(obj.color)))
+    try:
+        obj.display_type = "SOLID"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.show_in_front = False
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.show_transparent = True
+    except Exception:  # noqa: BLE001
+        pass
+    overlay = getattr(work, "safe_area_overlay", None)
+    obj.hide_render = True
+    obj.hide_viewport = not (
+        bool(getattr(page, "in_page_range", True))
+        and bool(getattr(overlay, "bleed_outer_enabled", True))
         and obj.color[3] > 0.0
     )
     obj.location.z = z_m
@@ -794,6 +884,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
             value = round(value, 6)
         paper_values.append(value)
     safe_color = _safe_fill_view_color(work)
+    bleed_outer_color = _bleed_outer_fill_view_color(work)
     return repr((
         int(page_index),
         str(getattr(page, "id", "") or ""),
@@ -801,10 +892,16 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
         tuple(paper_values),
         tuple(round(float(c), 6) for c in safe_color),
         bool(getattr(overlay, "enabled", True)) if overlay is not None else True,
+        tuple(round(float(c), 6) for c in bleed_outer_color),
+        bool(getattr(overlay, "bleed_outer_enabled", True)) if overlay is not None else True,
         round(float(rects.canvas.x), 6),
         round(float(rects.canvas.y), 6),
         round(float(rects.canvas.width), 6),
         round(float(rects.canvas.height), 6),
+        round(float(rects.bleed.x), 6),
+        round(float(rects.bleed.y), 6),
+        round(float(rects.bleed.width), 6),
+        round(float(rects.bleed.height), 6),
         round(float(rects.safe.x), 6),
         round(float(rects.safe.y), 6),
         round(float(rects.safe.width), 6),
@@ -858,6 +955,17 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     guide_sets = _paper_guide_sets(paper, rects)
     objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
     objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, rects.canvas, rects.safe, safe_z))
+    objects.append(
+        _ensure_bleed_outer_fill_object(
+            scene,
+            work,
+            page,
+            page_coll,
+            rects.canvas,
+            rects.bleed,
+            safe_z + 0.0005,
+        )
+    )
     for obj in objects:
         try:
             obj[PROP_GUIDE_SIGNATURE] = signature
@@ -905,11 +1013,14 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
         signature = _paper_guide_signature(work, grid_page_index, page, rects)
         line_obj = _line_guide_object(page_id)
         safe_obj = _safe_fill_object(page_id)
+        bleed_outer_obj = _bleed_outer_fill_object(page_id)
         if (
             line_obj is None
             or safe_obj is None
+            or bleed_outer_obj is None
             or str(line_obj.get(PROP_GUIDE_SIGNATURE, "") or "") != signature
             or str(safe_obj.get(PROP_GUIDE_SIGNATURE, "") or "") != signature
+            or str(bleed_outer_obj.get(PROP_GUIDE_SIGNATURE, "") or "") != signature
             or _guide_curve_objects(page_id)
         ):
             changed += len(ensure_paper_guides_for_page(scene, work, page_index))
@@ -930,9 +1041,21 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
                 safe_obj.hide_viewport = not visible_safe
         except Exception:  # noqa: BLE001
             pass
+        try:
+            overlay = getattr(work, "safe_area_overlay", None)
+            visible_bleed_outer = (
+                in_range
+                and bool(getattr(overlay, "bleed_outer_enabled", True))
+                and float(bleed_outer_obj.color[3]) > 0.0
+            )
+            if bleed_outer_obj.hide_viewport == visible_bleed_outer:
+                bleed_outer_obj.hide_viewport = not visible_bleed_outer
+        except Exception:  # noqa: BLE001
+            pass
         _set_page_location_by_index(scene, work, line_obj, page_index)
         _set_page_location_by_index(scene, work, safe_obj, page_index)
-        changed += 2
+        _set_page_location_by_index(scene, work, bleed_outer_obj, page_index)
+        changed += 3
     _remove_stale_guide_objects(valid_ids)
     return changed
 
@@ -1113,6 +1236,10 @@ def _safe_fill_object(page_id: str) -> Optional[bpy.types.Object]:
     return bpy.data.objects.get(f"{PAPER_SAFE_FILL_PREFIX}{page_id}")
 
 
+def _bleed_outer_fill_object(page_id: str) -> Optional[bpy.types.Object]:
+    return bpy.data.objects.get(f"{PAPER_BLEED_OUTER_FILL_PREFIX}{page_id}")
+
+
 def _guide_front_order_needs_repair(work, page) -> bool:
     page_id = str(getattr(page, "id", "") or "")
     if not page_id:
@@ -1120,12 +1247,18 @@ def _guide_front_order_needs_repair(work, page) -> bool:
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
     line_obj = _line_guide_object(page_id)
     safe_obj = _safe_fill_object(page_id)
+    bleed_outer_obj = _bleed_outer_fill_object(page_id)
     if line_obj is not None and abs(float(getattr(line_obj.location, "z", 0.0) or 0.0) - guide_z) > 1.0e-6:
         return True
     if safe_obj is not None:
         if abs(float(getattr(safe_obj.location, "z", 0.0) or 0.0) - safe_z) > 1.0e-6:
             return True
         if bool(getattr(safe_obj, "show_in_front", False)):
+            return True
+    if bleed_outer_obj is not None:
+        if abs(float(getattr(bleed_outer_obj.location, "z", 0.0) or 0.0) - (safe_z + 0.0005)) > 1.0e-6:
+            return True
+        if bool(getattr(bleed_outer_obj, "show_in_front", False)):
             return True
     return False
 
@@ -1166,8 +1299,12 @@ def _paper_guide_needs_repair(work, page) -> bool:
         return False
     curve_objects = _guide_curve_objects(page_id)
     line_obj = _line_guide_object(page_id)
+    safe_obj = _safe_fill_object(page_id)
+    bleed_outer_obj = _bleed_outer_fill_object(page_id)
     should_have_geometry = _line_guide_should_have_geometry(work, page)
     if curve_objects:
+        return True
+    if safe_obj is None or bleed_outer_obj is None:
         return True
     if line_obj is not None and getattr(line_obj, "type", "") != "CURVE":
         return True

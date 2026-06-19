@@ -14,7 +14,7 @@ from typing import Any, Sequence
 
 from . import export_group_masks, export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, log, coma_content_mask, coma_preview, percentage
+from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, percentage
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -1212,6 +1212,156 @@ def _tombo_layer(work, page, canvas_size: tuple[int, int], dpi: int) -> ExportLa
     return ExportLayer("tombo", canvas.image, canvas.left, canvas.top, group_path=("tombo",))
 
 
+def _overlay_fill_color255(
+    work,
+    color_attr: str,
+    opacity_attr: str,
+    default_opacity: float,
+) -> tuple[int, int, int, int]:
+    overlay = getattr(work, "safe_area_overlay", None)
+    if overlay is None:
+        return (0, 0, 0, 0)
+    color = getattr(overlay, color_attr, (0.0, 0.0, 0.0))
+    try:
+        rgb = color_space.linear_to_srgb_rgb(tuple(float(color[i]) for i in range(3)))
+    except Exception:  # noqa: BLE001
+        rgb = (0.0, 0.0, 0.0)
+    alpha = int(round(
+        percentage.percent_to_factor(
+            getattr(overlay, opacity_attr, default_opacity),
+            default_opacity,
+        ) * 255
+    ))
+    return (
+        max(0, min(255, int(round(rgb[0] * 255.0)))),
+        max(0, min(255, int(round(rgb[1] * 255.0)))),
+        max(0, min(255, int(round(rgb[2] * 255.0)))),
+        max(0, min(255, alpha)),
+    )
+
+
+def _draw_outside_rect_px(
+    draw,
+    *,
+    page_left: int,
+    page_width: int,
+    page_height: int,
+    rect: Rect,
+    paper_height_mm: float,
+    dpi: int,
+    fill: tuple[int, int, int, int],
+) -> bool:
+    page_right = page_left + page_width
+    left = page_left + int(round(mm_to_px(rect.x, dpi)))
+    right = page_left + int(round(mm_to_px(rect.x2, dpi)))
+    top = int(round(mm_to_px(paper_height_mm - rect.y2, dpi)))
+    bottom = int(round(mm_to_px(paper_height_mm - rect.y, dpi)))
+    left = max(page_left, min(page_right, left))
+    right = max(page_left, min(page_right, right))
+    top = max(0, min(page_height, top))
+    bottom = max(0, min(page_height, bottom))
+    changed = False
+    if top > 0:
+        draw.rectangle([page_left, 0, page_right - 1, top - 1], fill=fill)
+        changed = True
+    if bottom < page_height:
+        draw.rectangle([page_left, bottom, page_right - 1, page_height - 1], fill=fill)
+        changed = True
+    if left > page_left and bottom > top:
+        draw.rectangle([page_left, top, left - 1, bottom - 1], fill=fill)
+        changed = True
+    if right < page_right and bottom > top:
+        draw.rectangle([right, top, page_right - 1, bottom - 1], fill=fill)
+        changed = True
+    return changed
+
+
+def _page_overlay_fill_layer(
+    work,
+    page,
+    options: ExportOptions,
+    canvas_size: tuple[int, int],
+    *,
+    name: str,
+    enabled_attr: str,
+    color_attr: str,
+    opacity_attr: str,
+    default_opacity: float,
+    rect_attr: str,
+) -> ExportLayer | None:
+    overlay = getattr(work, "safe_area_overlay", None)
+    if overlay is None or not bool(getattr(overlay, enabled_attr, True)):
+        return None
+    fill = _overlay_fill_color255(work, color_attr, opacity_attr, default_opacity)
+    if fill[3] <= 0:
+        return None
+    image = _empty_rgba(canvas_size)
+    draw = ImageDraw.Draw(image)
+    paper = work.paper
+    page_width, page_height = _canvas_size_px(paper, options)
+    if bool(getattr(page, "spread", False)):
+        targets = [(0, True), (page_width, False)]
+    else:
+        targets = [(0, _is_left_half_page(work, page))]
+    changed = False
+    for page_left, is_left_half in targets:
+        rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left_half)
+        rect = getattr(rects, rect_attr)
+        changed = _draw_outside_rect_px(
+            draw,
+            page_left=page_left,
+            page_width=page_width,
+            page_height=page_height,
+            rect=rect,
+            paper_height_mm=float(paper.canvas_height_mm),
+            dpi=_dpi(paper, options),
+            fill=fill,
+        ) or changed
+    if not changed:
+        return None
+    return ExportLayer(name, image, 0, 0)
+
+
+def _page_overlay_fill_layers(
+    work,
+    page,
+    options: ExportOptions,
+    canvas_size: tuple[int, int],
+) -> list[ExportLayer]:
+    if str(getattr(options, "format", "") or "").lower() != "psd":
+        return []
+    layers: list[ExportLayer] = []
+    safe = _page_overlay_fill_layer(
+        work,
+        page,
+        options,
+        canvas_size,
+        name="セーフライン外の塗り",
+        enabled_attr="enabled",
+        color_attr="color",
+        opacity_attr="opacity",
+        default_opacity=30.0,
+        rect_attr="safe",
+    )
+    if safe is not None:
+        layers.append(safe)
+    bleed = _page_overlay_fill_layer(
+        work,
+        page,
+        options,
+        canvas_size,
+        name="裁ち落とし枠外の塗り",
+        enabled_attr="bleed_outer_enabled",
+        color_attr="bleed_outer_color",
+        opacity_attr="bleed_outer_opacity",
+        default_opacity=100.0,
+        rect_attr="bleed",
+    )
+    if bleed is not None:
+        layers.append(bleed)
+    return layers
+
+
 def _gp_material_info(obj, stroke) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int], bool]:
     color = (0, 0, 0, 255)
     fill = (0, 0, 0, 255)
@@ -1754,6 +1904,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         nombre = _nombre_layer(work, page, canvas_size, dpi)
         if nombre is not None:
             layers.append(nombre)
+    layers.extend(_page_overlay_fill_layers(work, page, options, canvas_size))
     return layers
 
 
