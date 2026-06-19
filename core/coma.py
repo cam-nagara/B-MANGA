@@ -256,11 +256,6 @@ class BMangaComaEntry(bpy.types.PropertyGroup):
         default=True,
         update=_on_coma_paper_visible_changed,
     )
-    snap_gutter_to_finish: BoolProperty(  # type: ignore[valid-type]
-        name="ノド側は仕上がり枠にもスナップ",
-        description="三角ハンドルでノド側へ広げる時、仕上がり枠も候補にします",
-        default=False,
-    )
     selected: BoolProperty(  # type: ignore[valid-type]
         name="マルチ選択",
         default=False,

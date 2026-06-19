@@ -65,6 +65,18 @@ COLOR_VERTEX_HIGHLIGHT = (1.0, 0.85, 0.2, 1.0)
 COLOR_VERTEX_ACTIVE = viewport_colors.SELECTION_STRONG
 
 
+def _snap_gutter_to_finish_enabled(context=None) -> bool:
+    try:
+        from ..preferences import get_preferences
+
+        prefs = get_preferences(context)
+        if prefs is None:
+            return True
+        return bool(getattr(prefs, "snap_gutter_to_finish", True))
+    except Exception:  # noqa: BLE001
+        return True
+
+
 def _find_view3d(context):
     area = context.area if context.area and context.area.type == "VIEW_3D" else None
     if area is None:
@@ -1612,7 +1624,16 @@ class BMANGA_OT_coma_edge_move(Operator):
             ((ifr.x2, ifr.y2), (ifr.x, ifr.y2), "inner"),
             ((ifr.x, ifr.y2), (ifr.x, ifr.y), "inner"),
         ])
-        if bool(getattr(panel, "snap_gutter_to_finish", False)):
+        if (
+            _snap_gutter_to_finish_enabled(getattr(self, "_context", None))
+            and coma_gutter_snap.is_gutter_extension_direction(
+                self._work,
+                int(sel["page"]),
+                nx,
+                ny,
+                sign,
+            )
+        ):
             fg_a, fg_b = coma_gutter_snap.finish_gutter_line_for_page(
                 self._work,
                 int(sel["page"]),

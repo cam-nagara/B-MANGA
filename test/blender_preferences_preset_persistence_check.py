@@ -103,6 +103,7 @@ def _main_impl(temp_root: Path) -> None:
         last_text_tool_preset="",
         last_fill_tool_preset="",
         last_gradient_tool_preset="",
+        snap_gutter_to_finish=True,
         ruby_dictionaries=_FakeRubyDictionaries(),
         ruby_dict_active_index=0,
     )
@@ -200,14 +201,17 @@ def _main_impl(temp_root: Path) -> None:
             },
         )
         prefs.last_fill_tool_preset = "black50"
+        prefs.snap_gutter_to_finish = False
         bundle_path = temp_root / "bmanga_settings.zip"
         out = settings_bundle.export_bundle(bpy.context, bundle_path)
         assert Path(out).is_file()
         preset_file.unlink()
         prefs.last_fill_tool_preset = ""
+        prefs.snap_gutter_to_finish = True
         result = settings_bundle.import_bundle(bpy.context, bundle_path)
         assert preset_file.is_file(), "共通プリセットがインポートされていません"
         assert prefs.last_fill_tool_preset == "black50"
+        assert prefs.snap_gutter_to_finish is False
         assert int(result.get("preset_files", 0)) >= 1
 
         legacy_a = temp_root / "work_a" / "assets" / "templates"

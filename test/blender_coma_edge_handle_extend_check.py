@@ -61,11 +61,18 @@ def main() -> None:
     try:
         from bmanga_dev_coma_edge_extend.core.work import get_work
         from bmanga_dev_coma_edge_extend.io import schema
+        from bmanga_dev_coma_edge_extend import preferences
         from bmanga_dev_coma_edge_extend.operators import coma_edge_move_op
         from bmanga_dev_coma_edge_extend.utils import coma_border_texture, geom
 
         work = get_work(bpy.context)
         work.loaded = True
+        original_get_preferences = preferences.get_preferences
+        preferences.get_preferences = lambda _context=None: None
+        if not coma_edge_move_op._snap_gutter_to_finish_enabled(bpy.context):
+            raise AssertionError("プリファレンス未設定時のノド側スナップ初期値がオンではありません")
+        fake_prefs = SimpleNamespace(snap_gutter_to_finish=True)
+        preferences.get_preferences = lambda _context=None: fake_prefs
         paper = work.paper
         paper.canvas_width_mm = 100.0
         paper.canvas_height_mm = 120.0
@@ -112,18 +119,37 @@ def main() -> None:
         left_x_default = min(x for x, _y in coma_edge_move_op._coma_polygon(gutter_default))
         _assert_close(
             left_x_default,
-            br.x - width_mm * 0.5,
-            "初期値ではノド側も裁ち落とし枠外へ拡張",
+            fr.x,
+            "初期値ではノド側が仕上がり枠へ拡張",
         )
 
         page.comas.clear()
+        fake_prefs.snap_gutter_to_finish = False
+        gutter_off = _add_panel(
+            page,
+            "gutter_off",
+            [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
+            width_mm,
+        )
+        coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
+            _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 3}),
+            2,
+        )
+        left_x_off = min(x for x, _y in coma_edge_move_op._coma_polygon(gutter_off))
+        _assert_close(
+            left_x_off,
+            br.x - width_mm * 0.5,
+            "プリファレンスをオフにするとノド側も裁ち落とし枠外へ拡張",
+        )
+
+        page.comas.clear()
+        fake_prefs.snap_gutter_to_finish = True
         gutter_finish = _add_panel(
             page,
             "gutter_finish",
             [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
             width_mm,
         )
-        gutter_finish.snap_gutter_to_finish = True
         coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 3}),
             2,
@@ -131,13 +157,8 @@ def main() -> None:
         left_x_finish = min(x for x, _y in coma_edge_move_op._coma_polygon(gutter_finish))
         _assert_close(left_x_finish, fr.x, "ノド側は仕上がり枠にスナップ")
         payload = schema.coma_entry_to_dict(gutter_finish)
-        if payload.get("snapGutterToFinish") is not True:
-            raise AssertionError("ノド側スナップ設定が保存データに入りません")
-        restored = page.comas.add()
-        schema.coma_entry_from_dict(restored, payload)
-        if not bool(getattr(restored, "snap_gutter_to_finish", False)):
-            raise AssertionError("ノド側スナップ設定が読み込み後に戻りません")
-        page.comas.remove(len(page.comas) - 1)
+        if "snapGutterToFinish" in payload:
+            raise AssertionError("ノド側スナップ設定がコマ個別データに残っています")
 
         page.comas.clear()
         fore_edge = _add_panel(
@@ -146,7 +167,6 @@ def main() -> None:
             [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
             width_mm,
         )
-        fore_edge.snap_gutter_to_finish = True
         coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
             2,
@@ -167,7 +187,6 @@ def main() -> None:
             [(ir.x, ir.y), (ir.x2, ir.y), (ir.x2, ir.y2), (ir.x, ir.y2)],
             width_mm,
         )
-        left_page_gutter.snap_gutter_to_finish = True
         coma_edge_move_op.BMANGA_OT_coma_edge_move._do_extend(
             _shim(work, {"type": "edge", "page": 0, "coma": 0, "edge": 1}),
             2,
@@ -257,6 +276,8 @@ def main() -> None:
             coma_border_texture.brush_total_width_mm = original_brush_total
         print("BMANGA_COMA_EDGE_HANDLE_EXTEND_OK")
     finally:
+        if "preferences" in locals() and "original_get_preferences" in locals():
+            preferences.get_preferences = original_get_preferences
         mod.unregister()
 
 

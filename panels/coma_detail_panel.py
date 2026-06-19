@@ -33,7 +33,6 @@ def draw_coma_shape_settings(layout, context, entry) -> None:
     row = layout.row(align=True)
     row.prop(entry, "paper_visible", text="背景")
     row.prop(entry, "background_color", text="背景色")
-    layout.prop(entry, "snap_gutter_to_finish")
 
 
 def draw_coma_border_settings(layout, context, entry) -> None:

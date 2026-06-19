@@ -29,3 +29,17 @@ def finish_gutter_line_for_page(work, page_index: int) -> tuple[tuple[float, flo
     rect = finish_rect(paper)
     x = rect.x2 if is_left_half_page_for_work(work, page_index) else rect.x
     return (x, rect.y), (x, rect.y2)
+
+
+def is_gutter_extension_direction(
+    work,
+    page_index: int,
+    normal_x: float,
+    normal_y: float,
+    sign: float,
+) -> bool:
+    """Return True when a triangle handle expands toward the page gutter."""
+    move_x = float(normal_x) * float(sign)
+    move_y = float(normal_y) * float(sign)
+    gutter_x = 1.0 if is_left_half_page_for_work(work, page_index) else -1.0
+    return move_x * gutter_x > 0.5 and abs(move_x) >= abs(move_y)

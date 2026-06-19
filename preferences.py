@@ -244,6 +244,13 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         update=_on_preferences_changed,
     )
 
+    snap_gutter_to_finish: BoolProperty(  # type: ignore[valid-type]
+        name="ノド側は仕上がり枠にもスナップ",
+        description="コマ枠の三角ハンドルでノド側へ広げる時、仕上がり枠も候補にします",
+        default=True,
+        update=_on_preferences_changed,
+    )
+
     ruby_dictionaries: CollectionProperty(  # type: ignore[valid-type]
         name="自動ルビ辞書",
         type=BMangaRubyDictEntry,
@@ -421,6 +428,10 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box = layout.box()
         box.label(text="ページ一覧プレビュー")
         box.prop(self, "page_preview_resolution_percentage", text="プレビュー画像縮小率")
+
+        box = layout.box()
+        box.label(text="コマ枠編集")
+        box.prop(self, "snap_gutter_to_finish")
 
         # ショートカットキー カスタマイズ
         kbox = layout.box()
