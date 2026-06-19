@@ -233,10 +233,11 @@ def _render_pad_mm(entry) -> float:
     pad = max(TEXT_RENDER_PAD_MM, stroke_pad + 0.75)
     if len(getattr(entry, "ruby_spans", []) or []) > 0:
         try:
-            base_em = q_to_mm(float(getattr(entry, "font_size_q", 20.0) or 20.0))
+            from ..typography import ruby as text_ruby
+
+            pad = text_ruby.render_pad_mm_for_entry(entry, minimum=pad)
         except Exception:  # noqa: BLE001
-            base_em = q_to_mm(20.0)
-        pad = max(pad, base_em * 0.75 + 1.0)
+            pad = max(pad, q_to_mm(float(getattr(entry, "font_size_q", 20.0) or 20.0)) * 0.75 + 1.0)
     return pad
 
 
@@ -269,11 +270,7 @@ def _render_entry_to_pillow(entry):
         inner.width,
         inner.height,
     )
-    ruby_placements = text_ruby.compute_ruby_placements(
-        result.placements,
-        getattr(entry, "ruby_spans", []) or [],
-        writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
-    )
+    ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)
     if bool(getattr(entry, "stroke_enabled", False)):
@@ -346,6 +343,11 @@ def _entry_render_signature(entry) -> str:
         _rgba_sig(getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))),
         _float_sig(getattr(entry, "line_height", 1.4)),
         _float_sig(getattr(entry, "letter_spacing", 0.0)),
+        _float_sig(getattr(entry, "ruby_line_height", 1.8)),
+        _float_sig(getattr(entry, "ruby_gap_mm", 0.3)),
+        _float_sig(getattr(entry, "ruby_letter_spacing", 0.0)),
+        _float_sig(getattr(entry, "ruby_size_percent", 50.0)),
+        str(getattr(entry, "ruby_font", "") or ""),
         bool(getattr(entry, "stroke_enabled", False)),
         _float_sig(getattr(entry, "stroke_width_mm", 0.0)),
         _rgba_sig(getattr(entry, "stroke_color", (1.0, 1.0, 1.0, 1.0))),

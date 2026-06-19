@@ -970,7 +970,9 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
     body = (getattr(entry, "body", "") or "").strip()
     if not body:
         return None
-    pad_mm = 1.5
+    from ..typography import ruby as text_ruby
+
+    pad_mm = text_ruby.render_pad_mm_for_entry(entry, minimum=1.5)
     canvas = _canvas_for_bbox(
         (
             float(entry.x_mm),
@@ -984,16 +986,12 @@ def _render_text_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | 
     )
     if canvas is None:
         return None
-    from ..typography import export_renderer, layout as text_layout, ruby as text_ruby
+    from ..typography import export_renderer, layout as text_layout
     from ..utils import text_style
 
     font_path = _resolve_font_path(str(getattr(entry, "font", "")))
     result = text_layout.typeset(entry, pad_mm, pad_mm, float(entry.width_mm), float(entry.height_mm))
-    ruby_placements = text_ruby.compute_ruby_placements(
-        result.placements,
-        getattr(entry, "ruby_spans", []) or [],
-        writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
-    )
+    ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
     stroke_width_px = 0
     stroke_color = (255, 255, 255, 255)
     if getattr(entry, "stroke_enabled", False):

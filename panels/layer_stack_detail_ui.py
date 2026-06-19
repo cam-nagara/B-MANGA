@@ -467,6 +467,13 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     ruby_box.label(text="ルビ", icon="FONT_DATA")
     ruby_box.label(text=f"{len(getattr(entry, 'ruby_spans', ()) or ())} 件")
     row = ruby_box.row(align=True)
+    row.prop(entry, "ruby_line_height")
+    row.prop(entry, "ruby_gap_mm")
+    row = ruby_box.row(align=True)
+    row.prop(entry, "ruby_letter_spacing")
+    row.prop(entry, "ruby_size_percent")
+    ruby_box.prop(entry, "ruby_font")
+    row = ruby_box.row(align=True)
     row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
     row.operator("bmanga.text_ruby_clear", text="すべて削除", icon="TRASH")
 

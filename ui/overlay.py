@@ -845,11 +845,7 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             padded.width,
             padded.height,
         )
-        ruby_placements = text_ruby.compute_ruby_placements(
-            result.placements,
-            getattr(entry, "ruby_spans", []) or [],
-            writing_mode=str(getattr(entry, "writing_mode", "vertical") or "vertical"),
-        )
+        ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
     except Exception:  # noqa: BLE001
         _logger.exception("text layout failed")
         return
@@ -942,9 +938,11 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
                 blf.draw(glyph_font_id, glyph.ch)
         if rotated:
             blf.disable(glyph_font_id, blf.ROTATION)
-    ruby_font_id = _get_font_id_for_path(str(getattr(entry, "font", "") or ""))
     ruby_color = getattr(entry, "color", (0.0, 0.0, 0.0, 1.0))
     for ruby_glyph in ruby_placements:
+        ruby_font_id = _get_font_id_for_path(
+            str(getattr(ruby_glyph, "font_path", "") or getattr(entry, "font", "") or "")
+        )
         coord = location_3d_to_region_2d(
             region,
             rv3d,

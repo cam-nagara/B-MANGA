@@ -127,7 +127,8 @@ def render_to_image(
         if size_pt <= 0.0:
             continue
         size_px = max(1, int(size_pt * px_per_mm * 25.4 / 72.0))
-        font = font_for(font_path, size_px)
+        ruby_font_path = str(getattr(r, "font_path", "") or font_path)
+        font = font_for(ruby_font_path, size_px)
         x = origin_xy_px[0] + float(getattr(r, "x_mm", 0.0)) * px_per_mm
         y = origin_xy_px[1] + float(getattr(r, "y_mm", 0.0)) * px_per_mm
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)

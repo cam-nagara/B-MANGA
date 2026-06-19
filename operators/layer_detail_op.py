@@ -475,6 +475,13 @@ def _draw_text_detail(layout, entry) -> None:
     row.label(text=f"部分スタイル: {len(getattr(entry, 'style_spans', ()) or ())} 件")
     row.label(text=f"縦中横: {len(getattr(entry, 'tatechuyoko_ranges', ()) or ())} 件")
     row = box.row(align=True)
+    row.prop(entry, "ruby_line_height")
+    row.prop(entry, "ruby_gap_mm")
+    row = box.row(align=True)
+    row.prop(entry, "ruby_letter_spacing")
+    row.prop(entry, "ruby_size_percent")
+    box.prop(entry, "ruby_font")
+    row = box.row(align=True)
     row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
     row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
 

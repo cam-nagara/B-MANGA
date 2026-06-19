@@ -42,6 +42,42 @@ def _mm_per_em_at(size_pt: float) -> float:
     return size_pt * 25.4 / 72.0
 
 
+def _ruby_parent_indices(ruby_spans) -> set[int]:
+    indices: set[int] = set()
+    for span in ruby_spans or ():
+        try:
+            start = int(getattr(span, "start", 0))
+            length = max(1, int(getattr(span, "length", 1)))
+        except Exception:  # noqa: BLE001
+            continue
+        indices.update(range(start, start + length))
+    return indices
+
+
+def _logical_line_ruby_flags(text: str, ruby_indices: set[int]) -> list[bool]:
+    flags = [False]
+    line_index = 0
+    for text_index, ch in enumerate(text or ""):
+        if ch == "\n":
+            line_index += 1
+            flags.append(False)
+            continue
+        if text_index in ruby_indices:
+            flags[line_index] = True
+    return flags
+
+
+def _line_advance_mm(base_em_mm: float, line_height: float, ruby_line_height: float, has_ruby: bool) -> float:
+    height = ruby_line_height if has_ruby else line_height
+    return base_em_mm * max(0.1, float(height))
+
+
+def _line_flag(flags: list[bool], logical_line_index: int) -> bool:
+    if 0 <= logical_line_index < len(flags):
+        return bool(flags[logical_line_index])
+    return False
+
+
 def typeset_vertical(
     text: str,
     region_x_mm: float,
@@ -51,6 +87,8 @@ def typeset_vertical(
     font_size_pt: float = 9.0,
     line_height: float = 1.4,
     letter_spacing: float = 0.0,
+    ruby_line_height: float | None = None,
+    ruby_spans=None,
     font_size_pt_for_index=None,
 ) -> TypesetResult:
     """縦書きで文字を配置.
@@ -62,17 +100,30 @@ def typeset_vertical(
     """
     placements: list[GlyphPlacement] = []
     base_em_mm = _mm_per_em_at(font_size_pt)
-    line_pitch_mm = base_em_mm * line_height
+    ruby_line_height = float(ruby_line_height if ruby_line_height is not None else line_height)
+    ruby_flags = _logical_line_ruby_flags(text, _ruby_parent_indices(ruby_spans))
 
     # 右上から始まる: 1 行目 = 右端列
-    col_index = 0
+    col_offset_mm = 0.0
+    logical_line_index = 0
     y_cursor = region_y_mm + region_height_mm
     overflow = False
 
+    def advance_column(*, new_logical_line: bool) -> None:
+        nonlocal col_offset_mm, logical_line_index, y_cursor
+        if new_logical_line:
+            logical_line_index += 1
+        col_offset_mm += _line_advance_mm(
+            base_em_mm,
+            line_height,
+            ruby_line_height,
+            _line_flag(ruby_flags, logical_line_index),
+        )
+        y_cursor = region_y_mm + region_height_mm
+
     for text_index, ch in enumerate(text):
         if ch == "\n":
-            col_index += 1
-            y_cursor = region_y_mm + region_height_mm
+            advance_column(new_logical_line=True)
             continue
         glyph_size_pt = (
             float(font_size_pt_for_index(text_index))
@@ -82,7 +133,7 @@ def typeset_vertical(
         em_mm = _mm_per_em_at(glyph_size_pt)
         char_pitch_mm = em_mm * (1.0 + letter_spacing)
         # 現在の列 X 座標 (右端から左へ)
-        x = region_x_mm + region_width_mm - em_mm / 2.0 - col_index * line_pitch_mm
+        x = region_x_mm + region_width_mm - em_mm / 2.0 - col_offset_mm
         # 現在の行 Y 座標 (上端から下へ)
         y = y_cursor - em_mm
 
@@ -90,9 +141,8 @@ def typeset_vertical(
             overflow = True
             break
         if y < region_y_mm:
-            col_index += 1
-            y_cursor = region_y_mm + region_height_mm
-            x = region_x_mm + region_width_mm - em_mm / 2.0 - col_index * line_pitch_mm
+            advance_column(new_logical_line=False)
+            x = region_x_mm + region_width_mm - em_mm / 2.0 - col_offset_mm
             y = y_cursor - em_mm
             if x < region_x_mm:
                 overflow = True
@@ -140,20 +190,36 @@ def typeset_horizontal(
     font_size_pt: float = 9.0,
     line_height: float = 1.4,
     letter_spacing: float = 0.0,
+    ruby_line_height: float | None = None,
+    ruby_spans=None,
     font_size_pt_for_index=None,
 ) -> TypesetResult:
     """横書きで文字を配置 (左→右、上→下)."""
     placements: list[GlyphPlacement] = []
     base_em_mm = _mm_per_em_at(font_size_pt)
-    line_pitch_mm = base_em_mm * line_height
+    ruby_line_height = float(ruby_line_height if ruby_line_height is not None else line_height)
+    ruby_flags = _logical_line_ruby_flags(text, _ruby_parent_indices(ruby_spans))
 
-    row = 0
+    row_offset_mm = 0.0
+    logical_line_index = 0
     x_cursor = region_x_mm
     overflow = False
+
+    def advance_row(*, new_logical_line: bool) -> None:
+        nonlocal row_offset_mm, logical_line_index, x_cursor
+        if new_logical_line:
+            logical_line_index += 1
+        row_offset_mm += _line_advance_mm(
+            base_em_mm,
+            line_height,
+            ruby_line_height,
+            _line_flag(ruby_flags, logical_line_index),
+        )
+        x_cursor = region_x_mm
+
     for text_index, ch in enumerate(text):
         if ch == "\n":
-            row += 1
-            x_cursor = region_x_mm
+            advance_row(new_logical_line=True)
             continue
         glyph_size_pt = (
             float(font_size_pt_for_index(text_index))
@@ -163,15 +229,14 @@ def typeset_horizontal(
         em_mm = _mm_per_em_at(glyph_size_pt)
         char_pitch_mm = em_mm * (1.0 + letter_spacing)
         x = x_cursor
-        y = region_y_mm + region_height_mm - em_mm - row * line_pitch_mm
+        y = region_y_mm + region_height_mm - em_mm - row_offset_mm
         if y < region_y_mm:
             overflow = True
             break
         if x + char_pitch_mm > region_x_mm + region_width_mm:
-            row += 1
-            x_cursor = region_x_mm
+            advance_row(new_logical_line=False)
             x = x_cursor
-            y = region_y_mm + region_height_mm - em_mm - row * line_pitch_mm
+            y = region_y_mm + region_height_mm - em_mm - row_offset_mm
             if y < region_y_mm:
                 overflow = True
                 break
@@ -212,6 +277,8 @@ def typeset(
             font_size_pt=font_size_pt,
             line_height=text_entry.line_height,
             letter_spacing=text_entry.letter_spacing,
+            ruby_line_height=getattr(text_entry, "ruby_line_height", text_entry.line_height),
+            ruby_spans=getattr(text_entry, "ruby_spans", []) or [],
             font_size_pt_for_index=lambda index: q_to_pt(text_style.font_size_q_for_index(text_entry, index)),
         )
     return typeset_vertical(
@@ -223,5 +290,7 @@ def typeset(
         font_size_pt=font_size_pt,
         line_height=text_entry.line_height,
         letter_spacing=text_entry.letter_spacing,
+        ruby_line_height=getattr(text_entry, "ruby_line_height", text_entry.line_height),
+        ruby_spans=getattr(text_entry, "ruby_spans", []) or [],
         font_size_pt_for_index=lambda index: q_to_pt(text_style.font_size_q_for_index(text_entry, index)),
     )

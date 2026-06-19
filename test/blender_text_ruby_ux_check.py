@@ -70,20 +70,107 @@ def main() -> None:
         work, page, entry = _new_entry(temp_root / "Text_Ruby_UX.bmanga")
 
         from bmanga_dev.io import schema
+        from bmanga_dev.io import export_pipeline
+        from bmanga_dev.io import text_presets
         from bmanga_dev.operators import text_edit_history, text_edit_runtime
         from bmanga_dev.typography import layout as text_layout, ruby as text_ruby
+        from bmanga_dev.utils.geom import q_to_mm
         from bmanga_dev.utils import text_real_object, text_style
 
+        ruby_font = ""
+        for candidate in (
+            r"C:\Windows\Fonts\meiryo.ttc",
+            r"C:\Windows\Fonts\YuGothM.ttc",
+            r"C:\Windows\Fonts\msgothic.ttc",
+        ):
+            if Path(candidate).is_file():
+                ruby_font = candidate
+                break
+        entry.ruby_line_height = 2.2
+        entry.ruby_gap_mm = 1.1
+        entry.ruby_letter_spacing = 0.35
+        entry.ruby_size_percent = 62.0
+        entry.ruby_font = ruby_font
         assert text_style.apply_ruby_span(entry, 0, 2, "かんじ", "group")
         assert text_style.ruby_spans_snapshot(entry) == ((0, 2, "かんじ", "group"),)
 
         data = schema.text_entry_to_dict(entry)
+        assert data["rubyLineHeight"] == 2.2
+        assert data["rubyGapMm"] == 1.1
+        assert data["rubyLetterSpacing"] == 0.35
+        assert data["rubySizePercent"] == 62.0
+        assert data["rubyFont"] == ruby_font
         assert data["rubySpans"][0]["rubyText"] == "かんじ"
         clone = page.texts.add()
         schema.text_entry_from_dict(clone, data)
+        assert abs(clone.ruby_line_height - 2.2) < 1.0e-6
+        assert abs(clone.ruby_gap_mm - 1.1) < 1.0e-6
+        assert abs(clone.ruby_letter_spacing - 0.35) < 1.0e-6
+        assert abs(clone.ruby_size_percent - 62.0) < 1.0e-6
+        assert clone.ruby_font == ruby_font
         assert text_style.ruby_spans_snapshot(clone) == ((0, 2, "かんじ", "group"),)
         page.texts.remove(len(page.texts) - 1)
 
+        preset_data = text_presets.snapshot_from_entry(entry)
+        preset_target = page.texts.add()
+        text_presets.apply_to_entry(preset_target, preset_data)
+        assert abs(preset_target.ruby_line_height - 2.2) < 1.0e-6
+        assert abs(preset_target.ruby_gap_mm - 1.1) < 1.0e-6
+        assert abs(preset_target.ruby_letter_spacing - 0.35) < 1.0e-6
+        assert abs(preset_target.ruby_size_percent - 62.0) < 1.0e-6
+        assert preset_target.ruby_font == ruby_font
+        page.texts.remove(len(page.texts) - 1)
+
+        entry.body = "A\n漢字"
+        text_style.clear_ruby_spans(entry)
+        text_style.apply_ruby_span(entry, 2, 4, "かんじ", "group")
+        entry.writing_mode = "horizontal"
+        entry.line_height = 1.0
+        entry.ruby_line_height = 2.2
+        entry.ruby_letter_spacing = 0.0
+        em_mm = q_to_mm(entry.font_size_q)
+        result = text_layout.typeset(entry, 0.0, 0.0, 80.0, 60.0)
+        by_char = {g.ch: g for g in result.placements}
+        assert abs((by_char["A"].y_mm - by_char["漢"].y_mm) - (em_mm * 2.2)) < 0.01
+        ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
+        assert len(ruby_placements) == 3
+        parent = [g for g in result.placements if g.ch in {"漢", "字"}]
+        parent_left = min(g.x_mm for g in parent)
+        parent_right = max(g.x_mm + (g.size_pt * 25.4 / 72.0) for g in parent)
+        ruby_size_mm = ruby_placements[0].size_pt * 25.4 / 72.0
+        assert abs(ruby_placements[0].x_mm - parent_left) < 0.01
+        assert abs((ruby_placements[-1].x_mm + ruby_size_mm) - parent_right) < 0.01
+        parent_top = max(g.y_mm + (g.size_pt * 25.4 / 72.0) for g in parent)
+        assert abs(ruby_placements[0].y_mm - (parent_top + entry.ruby_gap_mm)) < 0.01
+        assert abs(ruby_placements[0].size_pt - parent[0].size_pt * 0.62) < 0.01
+        assert ruby_placements[0].font_path == ruby_font
+        assert text_ruby.render_pad_mm_for_entry(entry, minimum=1.5) >= entry.ruby_gap_mm + ruby_size_mm
+        export_layer = export_pipeline._render_text_layer(entry, canvas_height_px=2000, dpi=300)
+        assert export_layer is not None
+        fixed_pad_width = int(round((entry.width_mm + 3.0) * 300 / 25.4))
+        assert export_layer.image.size[0] > fixed_pad_width
+        entry.ruby_letter_spacing = 0.5
+        spaced = text_ruby.compute_for_entry(result.placements, entry)
+        assert spaced[1].x_mm - spaced[0].x_mm > ruby_placements[1].x_mm - ruby_placements[0].x_mm
+
+        entry.body = "漢字"
+        text_style.clear_ruby_spans(entry)
+        text_style.apply_ruby_span(entry, 0, 2, "かんじ", "group")
+        entry.writing_mode = "vertical"
+        entry.ruby_letter_spacing = 0.0
+        result = text_layout.typeset(entry, 0.0, 0.0, 80.0, 60.0)
+        ruby_placements = text_ruby.compute_for_entry(result.placements, entry)
+        parent = result.placements
+        parent_top = max(g.y_mm + (g.size_pt * 25.4 / 72.0) for g in parent)
+        parent_bottom = min(g.y_mm for g in parent)
+        ruby_size_mm = ruby_placements[0].size_pt * 25.4 / 72.0
+        assert ruby_placements[0].y_mm > ruby_placements[-1].y_mm
+        assert abs((ruby_placements[0].y_mm + ruby_size_mm) - parent_top) < 0.01
+        assert abs(ruby_placements[-1].y_mm - parent_bottom) < 0.01
+
+        entry.body = "漢字ABC\n東京"
+        entry.writing_mode = "vertical"
+        entry.line_height = 1.4
         before = text_real_object._render_entry_to_pillow(entry)[0]
         text_style.clear_ruby_spans(entry)
         without_ruby = text_real_object._render_entry_to_pillow(entry)[0]

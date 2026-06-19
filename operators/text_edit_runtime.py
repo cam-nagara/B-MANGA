@@ -669,6 +669,13 @@ def text_line_height(entry) -> float:
         return 1.4
 
 
+def text_ruby_line_height(entry) -> float:
+    try:
+        return max(0.1, float(getattr(entry, "ruby_line_height", text_line_height(entry))))
+    except Exception:  # noqa: BLE001
+        return text_line_height(entry)
+
+
 def text_letter_spacing(entry) -> float:
     try:
         return float(getattr(entry, "letter_spacing", 0.0))
@@ -696,6 +703,38 @@ def _glyph_em_mm(entry, index: int) -> float:
         return text_em_mm(entry)
 
 
+def _ruby_parent_indices(entry) -> set[int]:
+    indices: set[int] = set()
+    for span in getattr(entry, "ruby_spans", []) or []:
+        try:
+            start = int(getattr(span, "start", 0))
+            length = max(1, int(getattr(span, "length", 1)))
+        except Exception:  # noqa: BLE001
+            continue
+        indices.update(range(start, start + length))
+    return indices
+
+
+def _line_ruby_flags(entry) -> list[bool]:
+    body = text_body(entry)
+    ruby_indices = _ruby_parent_indices(entry)
+    flags = [False]
+    line_index = 0
+    for index, ch in enumerate(body):
+        if ch == "\n":
+            line_index += 1
+            flags.append(False)
+            continue
+        if index in ruby_indices:
+            flags[line_index] = True
+    return flags
+
+
+def _line_advance(entry, base_em: float, has_ruby: bool) -> float:
+    height = text_ruby_line_height(entry) if has_ruby else text_line_height(entry)
+    return base_em * height
+
+
 def natural_text_outer_size(entry) -> tuple[float, float]:
     """Return the unwrapped text bounds including the editor padding."""
     body = text_body(entry)
@@ -703,11 +742,13 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
     if not body:
         size = base_em + _TEXT_PADDING_MM * 2.0
         return size, size
-    line_pitch = base_em * text_line_height(entry)
     char_scale = max(0.1, 1.0 + text_letter_spacing(entry))
+    ruby_flags = _line_ruby_flags(entry)
     if getattr(entry, "writing_mode", "vertical") == "horizontal":
         widths: list[float] = []
         line_ems: list[float] = []
+        line_advances: list[float] = []
+        line_index = 0
         current_advance = 0.0
         current_width = base_em
         current_em = base_em
@@ -715,6 +756,8 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
             if ch == "\n":
                 widths.append(max(base_em, current_width))
                 line_ems.append(current_em)
+                line_index += 1
+                line_advances.append(_line_advance(entry, base_em, ruby_flags[line_index] if line_index < len(ruby_flags) else False))
                 current_advance = 0.0
                 current_width = base_em
                 current_em = base_em
@@ -726,10 +769,12 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
         widths.append(max(base_em, current_width))
         line_ems.append(current_em)
         content_w = max(widths) if widths else base_em
-        content_h = (len(line_ems) - 1) * line_pitch + max(base_em, line_ems[-1])
+        content_h = sum(line_advances) + max(base_em, line_ems[-1])
     else:
         heights: list[float] = []
         column_ems: list[float] = []
+        column_advances: list[float] = []
+        line_index = 0
         current_advance = 0.0
         current_height = base_em
         current_em = base_em
@@ -737,6 +782,8 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
             if ch == "\n":
                 heights.append(max(base_em, current_height))
                 column_ems.append(current_em)
+                line_index += 1
+                column_advances.append(_line_advance(entry, base_em, ruby_flags[line_index] if line_index < len(ruby_flags) else False))
                 current_advance = 0.0
                 current_height = base_em
                 current_em = base_em
@@ -747,7 +794,7 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
             current_em = max(current_em, em)
         heights.append(max(base_em, current_height))
         column_ems.append(current_em)
-        content_w = (len(column_ems) - 1) * line_pitch + max(base_em, max(column_ems))
+        content_w = sum(column_advances) + max(base_em, max(column_ems))
         content_h = max(heights) if heights else base_em
     return content_w + _TEXT_PADDING_MM * 2.0, content_h + _TEXT_PADDING_MM * 2.0
 

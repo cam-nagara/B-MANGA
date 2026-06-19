@@ -1612,6 +1612,11 @@ def text_entry_to_dict(entry) -> dict[str, Any]:
         "writingMode": entry.writing_mode,
         "lineHeight": round(entry.line_height, 3),
         "letterSpacing": round(entry.letter_spacing, 3),
+        "rubyLineHeight": round(float(getattr(entry, "ruby_line_height", 1.8)), 3),
+        "rubyGapMm": round(float(getattr(entry, "ruby_gap_mm", 0.3)), 3),
+        "rubyLetterSpacing": round(float(getattr(entry, "ruby_letter_spacing", 0.0)), 3),
+        "rubySizePercent": round(float(getattr(entry, "ruby_size_percent", 50.0)), 3),
+        "rubyFont": str(getattr(entry, "ruby_font", "") or ""),
         "strokeEnabled": bool(entry.stroke_enabled),
         "strokeWidthMm": round(entry.stroke_width_mm, 3),
         "strokeColor": color_to_hex(entry.stroke_color),
@@ -1694,6 +1699,16 @@ def text_entry_from_dict(entry, data: dict[str, Any]) -> None:
     entry.writing_mode = data.get("writingMode", "vertical")
     entry.line_height = float(data.get("lineHeight", 1.4))
     entry.letter_spacing = float(data.get("letterSpacing", 0.0))
+    if hasattr(entry, "ruby_line_height"):
+        entry.ruby_line_height = float(data.get("rubyLineHeight", data.get("ruby_line_height", 1.8)))
+    if hasattr(entry, "ruby_gap_mm"):
+        entry.ruby_gap_mm = float(data.get("rubyGapMm", data.get("ruby_gap_mm", 0.3)))
+    if hasattr(entry, "ruby_letter_spacing"):
+        entry.ruby_letter_spacing = float(data.get("rubyLetterSpacing", data.get("ruby_letter_spacing", 0.0)))
+    if hasattr(entry, "ruby_size_percent"):
+        entry.ruby_size_percent = float(data.get("rubySizePercent", data.get("ruby_size_percent", 50.0)))
+    if hasattr(entry, "ruby_font"):
+        entry.ruby_font = str(data.get("rubyFont", data.get("ruby_font", "")) or "")
     entry.stroke_enabled = bool(data.get("strokeEnabled", False))
     entry.stroke_width_mm = float(data.get("strokeWidthMm", 0.2))
     alpha = float(data.get("strokeColorAlpha", 1.0))
