@@ -23,6 +23,23 @@ DEFAULT_SPREAD_TOMBO_ALIGNED = True
 DEFAULT_SPREAD_TOMBO_GAP_MM = -9.6
 
 
+def page_spread_tombo_aligned(page) -> bool:
+    value = getattr(page, "tombo_aligned", DEFAULT_SPREAD_TOMBO_ALIGNED)
+    if value is None:
+        return DEFAULT_SPREAD_TOMBO_ALIGNED
+    return bool(value)
+
+
+def page_spread_tombo_gap_mm(page) -> float:
+    value = getattr(page, "tombo_gap_mm", DEFAULT_SPREAD_TOMBO_GAP_MM)
+    if value is None or value == "":
+        return DEFAULT_SPREAD_TOMBO_GAP_MM
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_SPREAD_TOMBO_GAP_MM
+
+
 def _logical_slot_index(
     page_index: int,
     start_side: str = "right",
@@ -73,8 +90,8 @@ def spread_right_page_offset_mm_for_values(
 def spread_right_page_offset_mm(page, canvas_width_mm: float) -> float:
     return spread_right_page_offset_mm_for_values(
         canvas_width_mm,
-        bool(getattr(page, "tombo_aligned", DEFAULT_SPREAD_TOMBO_ALIGNED)),
-        float(getattr(page, "tombo_gap_mm", DEFAULT_SPREAD_TOMBO_GAP_MM) or 0.0),
+        page_spread_tombo_aligned(page),
+        page_spread_tombo_gap_mm(page),
     )
 
 

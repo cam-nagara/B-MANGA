@@ -128,6 +128,25 @@ def _assert_default_merge_case(work) -> None:
         raise AssertionError(f"初期値見開きの解除に失敗しました: {result}")
 
 
+def _assert_missing_value_fallbacks() -> None:
+    page_grid = _sub("utils.page_grid")
+
+    class MinimalPage:
+        spread = True
+
+    page = MinimalPage()
+    _assert_close(page_grid.spread_right_page_offset_mm(page, 100.0), 90.4, "未設定時の右ページ開始位置")
+    page.tombo_aligned = None
+    page.tombo_gap_mm = None
+    _assert_close(page_grid.spread_right_page_offset_mm(page, 100.0), 90.4, "None時の右ページ開始位置")
+    page.tombo_aligned = True
+    page.tombo_gap_mm = 0.0
+    _assert_close(page_grid.spread_right_page_offset_mm(page, 100.0), 100.0, "0mm指定時の右ページ開始位置")
+    page.tombo_aligned = False
+    page.tombo_gap_mm = None
+    _assert_close(page_grid.spread_right_page_offset_mm(page, 100.0), 100.0, "トンボ合わせオフ時の右ページ開始位置")
+
+
 def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     page_grid = _sub("utils.page_grid")
     export_page_regions = _sub("io.export_page_regions")
@@ -213,6 +232,7 @@ def main() -> None:
         work.paper.canvas_height_mm = 150.0
 
         _assert_default_values(work)
+        _assert_missing_value_fallbacks()
         _assert_default_merge_case(work)
         _assert_tombo_merge_case(work, aligned=True, gap_mm=-10.0)
         _assert_tombo_merge_case(work, aligned=False, gap_mm=-10.0)

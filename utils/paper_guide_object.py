@@ -1000,6 +1000,14 @@ def _paper_guide_sets_for_page(work, page_index: int, page):
 def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     paper = getattr(work, "paper", None)
     overlay = getattr(work, "safe_area_overlay", None)
+    try:
+        from . import page_grid
+
+        tombo_aligned = page_grid.page_spread_tombo_aligned(page)
+        tombo_gap_mm = page_grid.page_spread_tombo_gap_mm(page)
+    except Exception:  # noqa: BLE001
+        tombo_aligned = bool(getattr(page, "tombo_aligned", True))
+        tombo_gap_mm = -9.6
     attrs = (
         "canvas_width_mm",
         "canvas_height_mm",
@@ -1037,8 +1045,8 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
         int(page_index),
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),
-        bool(getattr(page, "tombo_aligned", True)),
-        round(float(getattr(page, "tombo_gap_mm", -9.6) or 0.0), 6),
+        bool(tombo_aligned),
+        round(float(tombo_gap_mm), 6),
         bool(getattr(page, "in_page_range", True)),
         tuple(paper_values),
         tuple(round(float(c), 6) for c in safe_color),
