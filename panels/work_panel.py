@@ -56,25 +56,7 @@ class BMANGA_PT_work(Panel):
         mode = get_mode(context)
 
         box = layout.box()
-        box.label(text="作品情報", icon="WORDWRAP_ON")
-        info = work.work_info
-        box.prop(info, "work_name")
-        box.prop(info, "episode_number")
-        box.prop(info, "subtitle")
-        box.prop(info, "author")
-        box.operator("bmanga.work_meta_dialog", text="作品情報を編集", icon="INFO")
-        box.label(text="ページ数")
-        row = box.row(align=True)
-        row.enabled = mode == MODE_PAGE
-        row.prop(info, "page_number_start", text="開始")
-        row.prop(info, "page_number_end", text="終了")
-        # 綴じ方向 / 読む方向 (paper の設定だが、作品単位で決める情報なので
-        # 作品情報パネルから直接編集できるようにする)
-        sub = box.column(align=True)
-        sub.enabled = mode == MODE_PAGE
-        sub.prop(work.paper, "start_side", text="開始ページ")
-        sub.prop(work.paper, "read_direction", text="読む方向")
-        box.label(text="ページ一覧プレビュー")
+        box.label(text="ページ一覧プレビュー", icon="RENDERLAYERS")
         preview = box.column(align=True)
         preview.enabled = mode == MODE_PAGE
         preview.prop(work, "auto_render_coma_thumb_on_return", text="戻る時に更新")

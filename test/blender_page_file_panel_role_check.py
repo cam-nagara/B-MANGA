@@ -171,6 +171,7 @@ def main() -> None:
             gpencil_panel,
             outliner_layer_panel,
             page_panel,
+            paper_panel,
             tool_panel,
             view_panel,
             work_panel,
@@ -182,9 +183,27 @@ def main() -> None:
         assert role == page_file_scene.ROLE_WORK
         assert not tool_panel.BMANGA_PT_tools.poll(context)
         assert export_panel.BMANGA_PT_export.poll(context)
+        assert "work_meta_dialog" not in dir(bpy.ops.bmanga)
 
         work_records = _draw_records(work_panel.BMANGA_PT_work, context)
-        _assert_present(work_records, "作品情報", "ページ数", "ページ一覧プレビュー", "コマ用blendファイル (この作品のみ)")
+        _assert_present(work_records, "ページ一覧プレビュー", "コマ用blendファイル (この作品のみ)")
+        _assert_absent(work_records, "作品情報", "ページ数", "作品情報を編集")
+        paper_records = _draw_records(paper_panel.BMANGA_PT_paper, context)
+        _assert_present(
+            paper_records,
+            "作品情報",
+            "作品名",
+            "話数",
+            "サブタイトル",
+            "作者名",
+            "ページ数",
+            "キャンバス",
+            "仕上がり / 裁ち落とし",
+            "原稿上の表示",
+            "色",
+            "サイズ",
+        )
+        _assert_absent(paper_records, "作品情報を編集")
         work_view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(work_view_records, "全ページ", "前後ページ", "列数", "横間隔mm", "縦間隔mm")
         _assert_absent(work_view_records, "前後ページ数")

@@ -63,7 +63,6 @@ from . import (
     text_op,
     text_meta_op,
     view_op,
-    work_meta_op,
     work_op,
 )
 
@@ -128,7 +127,6 @@ _MODULES = (
     gp_layer_op,
     view_op,
     shortcut_op,
-    work_meta_op,
 )
 
 

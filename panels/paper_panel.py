@@ -5,7 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel
 
-from ..core.mode import MODE_COMA, get_mode
+from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import page_file_scene
 
@@ -47,6 +47,8 @@ class BMANGA_PT_paper(Panel):
             return
         p = work.paper
         unit_label = _paper_unit_label(p)
+        mode = get_mode(context)
+        info = work.work_info
 
         # プリセット操作 (ドロップダウンから選択 → 即時適用)
         row = layout.row(align=True)
@@ -54,6 +56,18 @@ class BMANGA_PT_paper(Panel):
         wm = context.window_manager
         row.prop(wm, "bmanga_paper_preset_selector", text="")
         row.operator("bmanga.paper_preset_save_local", text="", icon="FILE_TICK")
+
+        box = layout.box()
+        box.label(text="作品情報", icon="WORDWRAP_ON")
+        box.prop(info, "work_name", text="作品名")
+        box.prop(info, "episode_number", text="話数")
+        box.prop(info, "subtitle", text="サブタイトル")
+        box.prop(info, "author", text="作者名")
+        box.label(text="ページ数")
+        row = box.row(align=True)
+        row.enabled = mode == MODE_PAGE
+        row.prop(info, "page_number_start", text="開始")
+        row.prop(info, "page_number_end", text="終了")
 
         box = layout.box()
         box.label(text="キャンバス")
@@ -118,8 +132,6 @@ class BMANGA_PT_paper(Panel):
 
         box = layout.box()
         box.label(text="原稿上の表示")
-        box.operator("bmanga.work_meta_dialog", text="作品情報を編集", icon="INFO")
-        info = work.work_info
         _draw_display_item(box, "作品名", info.display_work_name)
         _draw_display_item(box, "話数", info.display_episode)
         _draw_display_item(box, "サブタイトル", info.display_subtitle)
@@ -183,6 +195,9 @@ def _draw_display_item(layout, label: str, item) -> None:
     sub = layout.row(align=True)
     sub.enabled = item.enabled
     sub.prop(item, "position", text="")
+    sub.prop(item, "color", text="色")
+    sub = layout.row(align=True)
+    sub.enabled = item.enabled
     sub.prop(item, "font_size_unit", text="")
     sub.prop(item, "font_size_value", text="サイズ")
 

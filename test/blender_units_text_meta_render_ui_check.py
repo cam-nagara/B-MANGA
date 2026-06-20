@@ -83,7 +83,7 @@ def _assert_paper_units() -> None:
     schema.display_item_from_dict(restored, data)
     assert restored.font_size_unit == "pt"
     assert abs(restored.font_size_pt - 12.0) < 0.001
-    assert bpy.ops.bmanga.work_meta_dialog() == {"FINISHED"}
+    assert "work_meta_dialog" not in dir(bpy.ops.bmanga)
 
 
 def _assert_text_size_and_meta_dialog() -> None:
