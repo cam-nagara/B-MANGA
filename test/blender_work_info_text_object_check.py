@@ -37,6 +37,7 @@ def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_addon()
     try:
+        from bmanga_dev_work_info_text.io import schema
         from bmanga_dev_work_info_text.ui import overlay, overlay_shared
         from bmanga_dev_work_info_text.utils import outliner_model, page_grid, work_info_text_object
         from bmanga_dev_work_info_text.utils.geom import m_to_mm, q_to_mm
@@ -62,6 +63,16 @@ def main() -> None:
             page.title = f"{idx + 1}ページ"
 
         info = work.work_info
+        for item in (
+            info.display_work_name,
+            info.display_episode,
+            info.display_subtitle,
+            info.display_author,
+            info.display_page_number,
+        ):
+            assert tuple(round(float(c), 6) for c in item.color[:4]) == (1.0, 1.0, 1.0, 1.0)
+        schema.display_item_from_dict(info.display_subtitle, {})
+        assert tuple(round(float(c), 6) for c in info.display_subtitle.color[:4]) == (1.0, 1.0, 1.0, 1.0)
         info.work_name = "作品テスト"
         info.author = "作者"
         info.page_number_start = 5
@@ -77,6 +88,11 @@ def main() -> None:
         workinfo_coll = outliner_model.ensure_work_info_collection(scene)
         assert len(objs) == 6, f"作品情報テキスト数が不正です: {len(objs)}"
         assert all(obj.type == "FONT" for obj in objs), "作品情報がテキストオブジェクトではありません"
+        assert all(
+            tuple(round(float(c), 6) for c in obj.active_material.diffuse_color[:4])
+            == (1.0, 1.0, 1.0, 1.0)
+            for obj in objs
+        ), "作品情報テキストの初期色が白ではありません"
         assert workinfo_coll.name == "workinfo"
         for obj in objs:
             if list(obj.users_collection) != [workinfo_coll]:

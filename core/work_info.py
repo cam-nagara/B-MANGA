@@ -192,7 +192,7 @@ class BMangaDisplayItem(bpy.types.PropertyGroup):
         name="色",
         subtype="COLOR",
         size=4,
-        default=(0.0, 0.0, 0.0, 1.0),
+        default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
         update=_on_work_info_changed,

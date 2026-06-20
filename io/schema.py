@@ -321,7 +321,7 @@ def display_item_from_dict(item, data: dict[str, Any]) -> None:
             item.font_size_pt = float(q_to_pt(float(item.font_size_q)))
     if hasattr(item, "font_size_unit"):
         item.font_size_unit = unit
-    item.color = hex_to_rgba(data.get("color", "#000000"))
+    item.color = hex_to_rgba(data.get("color", "#FFFFFF"))
 
 
 def work_info_to_dict(info) -> dict[str, Any]:

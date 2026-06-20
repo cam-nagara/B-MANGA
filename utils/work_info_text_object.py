@@ -161,7 +161,7 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
         curve.align_y = align_y
     except Exception:  # noqa: BLE001
         pass
-    mat = _material(owner_id.replace(":", "_"), getattr(item, "color", (0.0, 0.0, 0.0, 1.0)))
+    mat = _material(owner_id.replace(":", "_"), getattr(item, "color", (1.0, 1.0, 1.0, 1.0)))
     if not curve.materials:
         curve.materials.append(mat)
     elif curve.materials[0] is not mat:
@@ -179,9 +179,9 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
 
 def _item_signature(page_id: str, page_index: int, item_key: str, item, text: str) -> str:
     try:
-        color = tuple(round(float(c), 6) for c in getattr(item, "color", (0.0, 0.0, 0.0, 1.0))[:4])
+        color = tuple(round(float(c), 6) for c in getattr(item, "color", (1.0, 1.0, 1.0, 1.0))[:4])
     except Exception:  # noqa: BLE001
-        color = (0.0, 0.0, 0.0, 1.0)
+        color = (1.0, 1.0, 1.0, 1.0)
     return repr((
         page_id,
         int(page_index),
