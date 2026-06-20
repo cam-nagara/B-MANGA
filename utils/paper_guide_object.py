@@ -585,14 +585,72 @@ def _safe_fill_faces(canvas: Rect, safe: Rect) -> tuple[list[tuple[float, float,
     return verts, faces
 
 
-def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: Rect, z_m: float) -> bpy.types.Object:
+def _shift_rect(rect: Rect, dx_mm: float) -> Rect:
+    return Rect(
+        float(rect.x) + float(dx_mm),
+        float(rect.y),
+        float(rect.width),
+        float(rect.height),
+    )
+
+
+def _fill_faces_from_rect_pairs(
+    rect_pairs: Iterable[tuple[Rect, Rect]],
+) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    for canvas, inner in rect_pairs:
+        part_verts, part_faces = _safe_fill_faces(canvas, inner)
+        base = len(verts)
+        verts.extend(part_verts)
+        faces.extend(tuple(base + index for index in face) for face in part_faces)
+    return verts, faces
+
+
+def _fill_rect_pairs_for_page(work, page_index: int, page, rects):
+    if not bool(getattr(page, "spread", False)):
+        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
+    try:
+        from . import page_grid
+
+        left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
+        right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
+        right_offset = page_grid.spread_right_page_offset_mm(
+            page,
+            float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("spread fill rect calculation failed")
+        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
+    safe_pairs = [
+        (left_rects.canvas, left_rects.safe),
+        (_shift_rect(right_rects.canvas, right_offset), _shift_rect(right_rects.safe, right_offset)),
+    ]
+    bleed_pairs = [
+        (left_rects.canvas, left_rects.bleed),
+        (_shift_rect(right_rects.canvas, right_offset), _shift_rect(right_rects.bleed, right_offset)),
+    ]
+    return safe_pairs, bleed_pairs
+
+
+def _ensure_safe_fill_object(
+    scene,
+    work,
+    page,
+    page_coll,
+    rect_pairs: Iterable[tuple[Rect, Rect]],
+    z_m: float,
+) -> bpy.types.Object:
     page_id = str(getattr(page, "id", "") or "")
     mesh_name = f"{PAPER_SAFE_FILL_MESH_PREFIX}{page_id}"
     obj_name = f"{PAPER_SAFE_FILL_PREFIX}{page_id}"
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    verts, faces = _safe_fill_faces(canvas, safe)
+    verts, faces = _fill_faces_from_rect_pairs(rect_pairs)
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
@@ -643,8 +701,7 @@ def _ensure_bleed_outer_fill_object(
     work,
     page,
     page_coll,
-    canvas: Rect,
-    bleed: Rect,
+    rect_pairs: Iterable[tuple[Rect, Rect]],
     z_m: float,
 ) -> bpy.types.Object:
     page_id = str(getattr(page, "id", "") or "")
@@ -653,7 +710,7 @@ def _ensure_bleed_outer_fill_object(
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
-    verts, faces = _safe_fill_faces(canvas, bleed)
+    verts, faces = _fill_faces_from_rect_pairs(rect_pairs)
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
@@ -976,6 +1033,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     safe_color = _safe_fill_view_color(work)
     bleed_outer_color = _bleed_outer_fill_view_color(work)
     return repr((
+        "paper_guide_spread_fill_v2",
         int(page_index),
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),
@@ -1037,17 +1095,17 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     in_range = bool(getattr(page, "in_page_range", True))
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
     signature = _paper_guide_signature(work, grid_page_index, page, rects)
+    safe_fill_rect_pairs, bleed_outer_fill_rect_pairs = _fill_rect_pairs_for_page(work, page_index, page, rects)
 
     objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
-    objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, rects.canvas, rects.safe, safe_z))
+    objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, safe_fill_rect_pairs, safe_z))
     objects.append(
         _ensure_bleed_outer_fill_object(
             scene,
             work,
             page,
             page_coll,
-            rects.canvas,
-            rects.bleed,
+            bleed_outer_fill_rect_pairs,
             safe_z + 0.0005,
         )
     )
