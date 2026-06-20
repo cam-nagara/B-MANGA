@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-21 — 前回徹底チェック以降の修正内容を再検証
+
+### 対象
+
+- 前回の徹底チェック後に入った、作品情報の初期色、作品情報ダイアログ廃止と用紙セクション統合、ページ用blendファイルの戻り先表記、作品ファイルのページ複数選択、ページ一覧プレビューとガイド線・塗り表示、右クリックメニューの見開き設定、見開き化のトンボ合わせをまとめて確認した。
+
+### 確認
+
+- 対象差分を棚卸しし、作品ファイル、ページ用blendファイル、見開き化・解除、ページ一覧プレビュー、用紙ガイド、セーフライン外/裁ち落とし枠外の塗り、作品情報表示、右クリックメニュー、ページ選択の操作経路を確認した。
+- 見開き化の確認画像をAI目視し、選択ページの中までピンクに染まらず、見開き化後は横長表示、解除後は単ページ表示へ戻ることを確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile` で、前回徹底チェック後に変更された Python ファイルの構文を確認。
+- `git diff --check f02eb5c..HEAD` で、対象範囲の空白エラーがないことを確認。
+- `test/blender_work_info_text_object_check.py` で、作品情報テキストの初期色と保存値を確認。
+- `test/blender_page_file_panel_role_check.py` で、ページ用blendファイルの戻り先表記が「作品ファイルに戻る」へ統一されていることを確認。
+- `test/blender_units_text_meta_render_ui_check.py` で、作品情報ダイアログ廃止後の用紙セクション統合と表示項目を確認。
+- `test/blender_page_selection_reorder_check.py` で、作品ファイルの Shift/Ctrl 複数ページ選択を確認。
+- `test/blender_paper_guide_visibility_check.py` で、ページ一覧プレビューが用紙ガイドや作品情報を隠さないこと、セーフライン外/裁ち落とし枠外の塗りが設定変更で即時反映されることを確認。
+- `test/blender_context_menu_commands_check.py` で、ページ右クリックメニューからの見開き化・解除を確認。
+- `test/blender_spread_context_menu_visual_check.py` で、見開き化・解除の確認画像を生成し、AI目視でページ状態を確認。
+- `test/blender_spread_tombo_align_check.py` で、「トンボを合わせる」オン/オフそれぞれの見開き化・解除、見開き幅、ガイド、書き出し範囲を確認。
+- `test/blender_ui_micro_behavior_matrix_check.py` で、UI表示と主要操作の回帰確認を197項目・失敗0で確認。
+- `test/blender_work_file_slim_check.py` で、作品ファイル、ページ用blendファイル、見開き操作、保存まわりを確認。
+- `test/blender_page_open_manual_double_click_check.py` で、ページ一覧からページを開く導線を確認。
+
 ## 2026-06-21 — v0.6.349 見開き化のトンボ合わせを実際の配置へ反映
 
 ### 症状
