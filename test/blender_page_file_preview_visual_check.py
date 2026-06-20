@@ -123,7 +123,7 @@ def _run() -> None:
 def _after_page_open() -> None:
     scene = bpy.context.scene
     scene.bmanga_page_preview_enabled = True
-    scene.bmanga_page_preview_page_radius = 3
+    scene.bmanga_page_preview_range_mode = "ALL"
     scene.bmanga_page_preview_resolution_percentage = 50.0
     from bmanga_dev_page_preview_visual.utils import page_preview_object
 
@@ -145,7 +145,7 @@ def _after_page_open() -> None:
         ),
         "screenshot": str(SCREENSHOT),
         "current_page_id": str(getattr(scene, "bmanga_current_page_id", "")),
-        "preview_radius": int(getattr(scene, "bmanga_page_preview_page_radius", -1)),
+        "preview_range_mode": str(getattr(scene, "bmanga_page_preview_range_mode", "")),
         "preview_resolution_percentage": float(
             getattr(scene, "bmanga_page_preview_resolution_percentage", 0.0)
         ),

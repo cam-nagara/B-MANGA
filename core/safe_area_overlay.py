@@ -28,12 +28,13 @@ _DEFAULT_BLEED_OUTER_COLOR = color_space.srgb_to_linear_rgb(
 def _on_safe_area_changed(_self, context) -> None:
     try:
         from ..core.work import get_work
-        from ..utils import paper_guide_object
+        from ..utils import page_preview_object, paper_guide_object
 
         work = get_work(context)
         scene = getattr(context, "scene", None) if context is not None else None
         if scene is not None and work is not None and work.loaded:
             paper_guide_object.regenerate_all_paper_guides(scene, work)
+            page_preview_object.schedule_sync_page_previews(force=True)
     except Exception:  # noqa: BLE001
         pass
     screen = getattr(context, "screen", None) if context is not None else None

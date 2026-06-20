@@ -153,7 +153,8 @@ def _check_bmanga_view_panel() -> None:
     for required in (
         "ページ一覧",
         "ページ一覧表示",
-        "前後ページ数",
+        "全ページ",
+        "前後ページ",
         "列数",
         "横間隔mm",
         "縦間隔mm",
@@ -171,7 +172,9 @@ def _check_bmanga_view_panel() -> None:
         "ビューを更新",
     ):
         assert required in text_blob, required
+    assert "前後ページ数" not in text_blob
     assert "bmanga.coma_camera_toggle_name_backgrounds" in operators
+    assert "bmanga.page_preview_range_mode_set" in operators
 
 
 def _check_camera_preset_duplicate() -> None:

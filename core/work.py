@@ -118,9 +118,14 @@ class BMangaWorkData(bpy.types.PropertyGroup):
         default=True,
     )
     view_page_preview_page_radius: IntProperty(  # type: ignore[valid-type]
-        name="前後ページ数",
+        name="旧ページ一覧半径",
         default=3,
         min=0,
+        options={"HIDDEN"},
+    )
+    view_page_preview_range_mode: StringProperty(  # type: ignore[valid-type]
+        name="ページ一覧表示範囲",
+        default="ALL",
     )
     view_page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="画像解像度",

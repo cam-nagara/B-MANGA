@@ -202,7 +202,7 @@ def _after_coma_open() -> None:
     _mark("after_coma_open")
     scene = bpy.context.scene
     scene.bmanga_page_preview_enabled = True
-    scene.bmanga_page_preview_page_radius = 3
+    scene.bmanga_page_preview_range_mode = "ALL"
     scene.bmanga_page_preview_resolution_percentage = 40.0
     scene.bmanga_overview_cols = 4
     if hasattr(scene, "bmanga_overview_gap_x_mm"):
@@ -232,7 +232,7 @@ def _after_coma_open() -> None:
         "role": role,
         "current_page_id": str(getattr(scene, "bmanga_current_coma_page_id", "")),
         "current_coma_id": str(getattr(scene, "bmanga_current_coma_id", "")),
-        "preview_radius": int(getattr(scene, "bmanga_page_preview_page_radius", -1)),
+        "preview_range_mode": str(getattr(scene, "bmanga_page_preview_range_mode", "")),
         "preview_resolution_percentage": float(
             getattr(scene, "bmanga_page_preview_resolution_percentage", 0.0)
         ),

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import bpy
-from bpy.types import Panel
+from bpy.props import StringProperty
+from bpy.types import Operator, Panel
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
 from ..core.work import get_work
@@ -11,6 +12,8 @@ from ..utils import page_file_scene
 
 
 B_NAME_CATEGORY = "B-MANGA"
+PAGE_PREVIEW_RANGE_ALL = "ALL"
+PAGE_PREVIEW_RANGE_NEAR = "NEAR"
 
 
 def _active_page_number_get(scene) -> int:
@@ -90,14 +93,31 @@ def _page_preview_enabled_update(scene, context) -> None:
         pass
 
 
+def _draw_page_preview_range_buttons(layout, scene, *, respect_enabled: bool = True) -> None:
+    current = str(getattr(scene, "bmanga_page_preview_range_mode", PAGE_PREVIEW_RANGE_ALL) or PAGE_PREVIEW_RANGE_ALL)
+    row = layout.row(align=True)
+    if respect_enabled:
+        row.enabled = bool(getattr(scene, "bmanga_page_preview_enabled", True))
+    op = row.operator(
+        "bmanga.page_preview_range_mode_set",
+        text="全ページ",
+        depress=current == PAGE_PREVIEW_RANGE_ALL,
+    )
+    op.mode = PAGE_PREVIEW_RANGE_ALL
+    op = row.operator(
+        "bmanga.page_preview_range_mode_set",
+        text="前後ページ",
+        depress=current == PAGE_PREVIEW_RANGE_NEAR,
+    )
+    op.mode = PAGE_PREVIEW_RANGE_NEAR
+
+
 def _draw_coma_page_preview_controls(layout, scene, settings) -> None:
     box = layout.box()
     box.label(text="ページ一覧", icon="IMGDISPLAY")
     row = box.row(align=True)
     row.prop(scene, "bmanga_page_preview_enabled", text="ページ一覧表示")
-    row = box.row(align=True)
-    row.enabled = bool(getattr(scene, "bmanga_page_preview_enabled", True))
-    row.prop(scene, "bmanga_page_preview_page_radius", text="前後ページ数")
+    _draw_page_preview_range_buttons(box, scene)
     row = box.row(align=True)
     row.prop(scene, "bmanga_overview_cols", text="列数")
     row = box.row(align=True)
@@ -154,6 +174,24 @@ def _draw_coma_display_controls(layout, scene, settings) -> None:
 
 
 
+class BMANGA_OT_page_preview_range_mode_set(Operator):
+    bl_idname = "bmanga.page_preview_range_mode_set"
+    bl_label = "ページ一覧の表示範囲を切り替え"
+    bl_description = "ページ一覧を全ページ分表示するか、現在ページの前後1ページだけ表示するかを切り替えます"
+
+    mode: StringProperty(default=PAGE_PREVIEW_RANGE_ALL)  # type: ignore[valid-type]
+
+    def execute(self, context):
+        scene = getattr(context, "scene", None)
+        if scene is None:
+            return {"CANCELLED"}
+        mode = str(self.mode or PAGE_PREVIEW_RANGE_ALL).upper()
+        if mode not in {PAGE_PREVIEW_RANGE_ALL, PAGE_PREVIEW_RANGE_NEAR}:
+            mode = PAGE_PREVIEW_RANGE_ALL
+        scene.bmanga_page_preview_range_mode = mode
+        return {"FINISHED"}
+
+
 class BMANGA_PT_view(Panel):
     bl_idname = "BMANGA_PT_view"
     bl_label = "ビュー"
@@ -196,9 +234,7 @@ class BMANGA_PT_view(Panel):
                 col = layout.column(align=True)
                 row = col.row(align=True)
                 row.prop(scene, "bmanga_page_preview_enabled", text="ページ一覧表示")
-                row = col.row(align=True)
-                row.enabled = bool(getattr(scene, "bmanga_page_preview_enabled", True))
-                row.prop(scene, "bmanga_page_preview_page_radius", text="前後ページ数")
+                _draw_page_preview_range_buttons(col, scene, respect_enabled=False)
                 row = col.row(align=True)
                 row.prop(scene, "bmanga_overview_cols", text="列数")
                 row = col.row(align=True)
@@ -208,6 +244,7 @@ class BMANGA_PT_view(Panel):
                 col = layout.column(align=True)
                 row = col.row(align=True)
                 row.operator("bmanga.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
+                _draw_page_preview_range_buttons(col, scene, respect_enabled=False)
                 row = col.row(align=True)
                 row.prop(scene, "bmanga_overview_cols", text="列数")
                 row = col.row(align=True)
@@ -218,6 +255,7 @@ class BMANGA_PT_view(Panel):
 
 
 _CLASSES = (
+    BMANGA_OT_page_preview_range_mode_set,
     BMANGA_PT_view,
 )
 
@@ -242,11 +280,22 @@ def register() -> None:
         update=_page_preview_enabled_update,
     )
     bpy.types.Scene.bmanga_page_preview_page_radius = bpy.props.IntProperty(
-        name="前後ページ数",
-        description="ページ編集中に、現在のページの前後何ページ分を表示するかを指定します",
+        name="旧ページ一覧半径",
+        description="旧バージョンの保存データを読み込むための互換用設定です",
         default=3,
         min=0,
         soft_max=20,
+        options={"HIDDEN"},
+        update=_page_preview_enabled_update,
+    )
+    bpy.types.Scene.bmanga_page_preview_range_mode = bpy.props.EnumProperty(
+        name="ページ一覧表示範囲",
+        description="ページ一覧を全ページ分表示するか、現在ページの前後1ページだけ表示するかを選びます",
+        items=(
+            (PAGE_PREVIEW_RANGE_ALL, "全ページ", "全ページ分を表示します"),
+            (PAGE_PREVIEW_RANGE_NEAR, "前後ページ", "現在ページの前後1ページだけ表示します"),
+        ),
+        default=PAGE_PREVIEW_RANGE_ALL,
         update=_page_preview_enabled_update,
     )
     bpy.types.Scene.bmanga_page_preview_resolution_percentage = bpy.props.FloatProperty(
@@ -279,6 +328,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bmanga_page_preview_page_radius
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bmanga_page_preview_range_mode
     except AttributeError:
         pass
     try:

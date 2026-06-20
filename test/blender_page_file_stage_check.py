@@ -373,7 +373,7 @@ def main() -> None:
         assert len(previews) == 3
         assert len(_visible_page_preview_objects()) == 3
         assert (work_dir / "p0002" / "page_preview.png").is_file()
-        assert int(getattr(bpy.context.scene, "bmanga_page_preview_page_radius", -1)) == 3
+        assert str(getattr(bpy.context.scene, "bmanga_page_preview_range_mode", "")) == "ALL"
         assert abs(float(getattr(bpy.context.scene, "bmanga_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
         assert bpy.ops.bmanga.coma_knife_cut.poll()
         assert bpy.ops.bmanga.coma_create_tool.poll()
@@ -439,7 +439,7 @@ def main() -> None:
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0}  # noqa: SLF001
         bpy.context.scene.bmanga_page_preview_enabled = True
         assert any(not obj.hide_viewport for obj in _page_preview_objects())
-        bpy.context.scene.bmanga_page_preview_page_radius = 1
+        bpy.context.scene.bmanga_page_preview_range_mode = "NEAR"
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert set(rects) == {"p0001", "p0002"}
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1}  # noqa: SLF001
@@ -468,9 +468,9 @@ def main() -> None:
         assert len(work.pages[0].comas) == before_cut + 1
         assert len(_visible_page_preview_objects()) == 1
         _assert_page_file_current_page_runtime_only("p0001")
-        # 解像度%の変更は、表示中 (半径1 → p0002 が見えている) のプレビューを
+        # 解像度%の変更は、表示中 (前後ページ → p0002 が見えている) のプレビューを
         # 新しいサイズで再生成する。v0.6.280 以降は表示対象だけ再生成するため、
-        # 非表示 (半径0) にする前に確認する。「画像解像度%」はページ実解像度
+        # 非表示にする前に確認する。「画像解像度%」はページ実解像度
         # (用紙サイズ×DPI) に対する割合・長辺1536px上限なので、上限未満になる
         # 10% を指定し、期待サイズは実装と同じ計算で求める。
         bpy.context.scene.bmanga_page_preview_resolution_percentage = 10.0
@@ -490,7 +490,7 @@ def main() -> None:
         assert a == 255 and max(r, g, b) > 200, (r, g, b, a)
         bpy.context.scene.bmanga_overview_cols = 6
         bpy.context.scene.bmanga_overview_gap_mm = 0.0
-        bpy.context.scene.bmanga_page_preview_page_radius = 0
+        bpy.context.scene.bmanga_page_preview_enabled = False
         assert len(_visible_page_preview_objects()) == 0
 
         _add_current_page_preview_balloon(work)
@@ -503,6 +503,11 @@ def main() -> None:
         result = bpy.ops.bmanga.exit_page_file()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "work.blend").resolve()
+        work = bpy.context.scene.bmanga_work
+        bpy.context.scene.bmanga_page_preview_range_mode = "NEAR"
+        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == {0, 1}
+        bpy.context.scene.bmanga_page_preview_range_mode = "ALL"
+        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == set(range(len(work.pages)))
         _assert_work_file_preview_only()
         assert _managed_kind_count("balloon") == 0
         assert _image_has_red_area(work_dir / "p0001" / "page_preview.png")
@@ -523,7 +528,8 @@ def main() -> None:
         assert len(_page_preview_objects()) >= 1
         assert int(getattr(bpy.context.scene, "bmanga_overview_cols", -1)) == 6
         assert abs(float(getattr(bpy.context.scene, "bmanga_overview_gap_mm", -1.0))) < 0.001
-        assert int(getattr(bpy.context.scene, "bmanga_page_preview_page_radius", -1)) == 0
+        assert not bool(getattr(bpy.context.scene, "bmanga_page_preview_enabled", True))
+        assert str(getattr(bpy.context.scene, "bmanga_page_preview_range_mode", "")) == "ALL"
         assert abs(float(getattr(bpy.context.scene, "bmanga_page_preview_resolution_percentage", 0.0)) - 10.0) < 0.001
 
         result = bpy.ops.bmanga.page_select(index=1)
@@ -545,6 +551,12 @@ def main() -> None:
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "c01" / "c01.blend").resolve()
+        work = bpy.context.scene.bmanga_work
+        bpy.context.scene.bmanga_page_preview_enabled = True
+        bpy.context.scene.bmanga_page_preview_range_mode = "NEAR"
+        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == {0, 1, 2}
+        bpy.context.scene.bmanga_page_preview_range_mode = "ALL"
+        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == set(range(len(work.pages)))
         bpy.context.scene.bmanga_coma_camera_settings.name_bg_images_opacity = 25.0
         assert abs(page_preview_object._preview_opacity_factor(bpy.context.scene) - 0.25) < 0.001  # noqa: SLF001
 

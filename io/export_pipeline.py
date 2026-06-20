@@ -70,6 +70,7 @@ class ExportOptions:
     include_tombo: bool = False
     include_paper_color: bool = True
     include_coma_previews: bool = True
+    include_page_overlay_fills: bool = False
     icc_profile_path: str = ""
 
 
@@ -1328,7 +1329,10 @@ def _page_overlay_fill_layers(
     options: ExportOptions,
     canvas_size: tuple[int, int],
 ) -> list[ExportLayer]:
-    if str(getattr(options, "format", "") or "").lower() != "psd":
+    if (
+        str(getattr(options, "format", "") or "").lower() != "psd"
+        and not bool(getattr(options, "include_page_overlay_fills", False))
+    ):
         return []
     layers: list[ExportLayer] = []
     safe = _page_overlay_fill_layer(

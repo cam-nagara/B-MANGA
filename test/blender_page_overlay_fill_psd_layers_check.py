@@ -66,6 +66,7 @@ def main() -> None:
         from bmanga_dev_overlay_fill_psd.io import export_pipeline
         from bmanga_dev_overlay_fill_psd.ui import overlay_shared
         from bmanga_dev_overlay_fill_psd.utils import color_space
+        from bmanga_dev_overlay_fill_psd.utils import page_preview_object
         from bmanga_dev_overlay_fill_psd.utils import paper_guide_object
 
         work = get_work(bpy.context)
@@ -146,6 +147,40 @@ def main() -> None:
         ]
         if "セーフライン外の塗り" in png_names or "裁ち落とし枠外の塗り" in png_names:
             raise AssertionError("PSD以外に塗りレイヤーが追加されています")
+
+        preview_path = page_preview_object.ensure_preview_png(
+            work,
+            page,
+            0,
+            current=False,
+            scene=bpy.context.scene,
+            force=True,
+        )
+        if preview_path is None or not Path(preview_path).is_file():
+            raise AssertionError("ページ一覧プレビュー画像が作られていません")
+        preview = export_pipeline.Image.open(str(preview_path)).convert("RGBA")
+
+        def preview_pixel_at(point: tuple[float, float]) -> tuple[int, int, int, int]:
+            x = int(round(point[0] / float(work.paper.canvas_width_mm) * preview.width))
+            y = preview.height - int(round(point[1] / float(work.paper.canvas_height_mm) * preview.height)) - 1
+            x = max(0, min(preview.width - 1, x))
+            y = max(0, min(preview.height - 1, y))
+            return tuple(int(v) for v in preview.getpixel((x, y)))
+
+        safe_px = preview_pixel_at(between_safe_and_bleed_top)
+        inner_px = preview_pixel_at(inside_safe)
+        dark_bleed_pixels = 0
+        for r, g, b, a in preview.getdata():
+            if a == 255 and 45 <= r <= 90 and 45 <= g <= 90 and 45 <= b <= 90:
+                dark_bleed_pixels += 1
+        if dark_bleed_pixels <= 0:
+            raise AssertionError(
+                f"ページ一覧プレビューに裁ち落とし枠外の塗りが反映されていません: dark={dark_bleed_pixels}"
+            )
+        if not (safe_px[2] > safe_px[0] and safe_px[1] > safe_px[0] and safe_px[3] == 255):
+            raise AssertionError(f"ページ一覧プレビューにセーフライン外の塗りが反映されていません: {safe_px}")
+        if not (inner_px[0] > 220 and inner_px[1] > 220 and inner_px[2] > 220):
+            raise AssertionError(f"ページ一覧プレビューのセーフライン内まで塗られています: {inner_px}")
 
         work.safe_area_overlay.bleed_outer_enabled = True
         paper_guide_object.regenerate_all_paper_guides(bpy.context.scene, work)

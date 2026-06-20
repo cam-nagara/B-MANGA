@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 DEFAULT_PAGE_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
+DEFAULT_PAGE_PREVIEW_RANGE_MODE = "ALL"
 
 
 def _clamp_float(value, default: float, minimum: float, maximum: float) -> float:
@@ -24,6 +25,11 @@ def _clamp_int(value, default: int, minimum: int, maximum: int) -> int:
 def _page_browser_position(value) -> str:
     text = str(value or "LEFT").upper()
     return text if text in {"LEFT", "RIGHT", "TOP", "BOTTOM"} else "LEFT"
+
+
+def _page_preview_range_mode(value) -> str:
+    text = str(value or DEFAULT_PAGE_PREVIEW_RANGE_MODE).upper()
+    return text if text in {"ALL", "NEAR"} else DEFAULT_PAGE_PREVIEW_RANGE_MODE
 
 
 def default_page_preview_resolution_percentage(context=None) -> float:
@@ -98,6 +104,10 @@ def copy_scene_to_work(scene, work) -> None:
         work.view_page_preview_page_radius = _clamp_int(
             getattr(scene, "bmanga_page_preview_page_radius", 3), 3, 0, 200
         )
+    if hasattr(work, "view_page_preview_range_mode"):
+        work.view_page_preview_range_mode = _page_preview_range_mode(
+            getattr(scene, "bmanga_page_preview_range_mode", DEFAULT_PAGE_PREVIEW_RANGE_MODE)
+        )
     if hasattr(work, "view_page_preview_resolution_percentage"):
         default_resolution = default_page_preview_resolution_percentage()
         work.view_page_preview_resolution_percentage = _clamp_float(
@@ -132,6 +142,11 @@ def apply_work_to_scene(scene, work) -> None:
         ("bmanga_page_preview_enabled", "view_page_preview_enabled", True),
         ("bmanga_page_preview_page_radius", "view_page_preview_page_radius", 3),
         (
+            "bmanga_page_preview_range_mode",
+            "view_page_preview_range_mode",
+            DEFAULT_PAGE_PREVIEW_RANGE_MODE,
+        ),
+        (
             "bmanga_page_preview_resolution_percentage",
             "view_page_preview_resolution_percentage",
             default_resolution,
@@ -147,6 +162,8 @@ def apply_work_to_scene(scene, work) -> None:
         value = getattr(work, work_attr, default)
         if scene_attr == "bmanga_page_browser_position":
             value = _page_browser_position(value)
+        if scene_attr == "bmanga_page_preview_range_mode":
+            value = _page_preview_range_mode(value)
         resolved.append((scene_attr, value))
 
     for scene_attr, value in resolved:

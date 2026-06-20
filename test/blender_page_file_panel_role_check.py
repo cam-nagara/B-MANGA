@@ -185,6 +185,9 @@ def main() -> None:
 
         work_records = _draw_records(work_panel.BMANGA_PT_work, context)
         _assert_present(work_records, "作品情報", "ページ数", "ページ一覧プレビュー", "コマ用blendファイル (この作品のみ)")
+        work_view_records = _draw_records(view_panel.BMANGA_PT_view, context)
+        _assert_present(work_view_records, "全ページ", "前後ページ", "列数", "横間隔mm", "縦間隔mm")
+        _assert_absent(work_view_records, "前後ページ数")
         assert gpencil_panel.BMANGA_PT_page_list.poll(context)
         assert not gpencil_panel.BMANGA_PT_layer_stack.poll(context)
         page_list_records = _draw_records(gpencil_panel.BMANGA_PT_page_list, context)
@@ -238,11 +241,13 @@ def main() -> None:
         _assert_present(
             view_records,
             "ページ一覧表示",
-            "前後ページ数",
+            "全ページ",
+            "前後ページ",
             "列数",
             "横間隔mm",
             "縦間隔mm",
         )
+        _assert_absent(view_records, "前後ページ数")
         _assert_absent(view_records, "全ページを一覧", "選択ページ")
         layer_records = _draw_records(gpencil_panel.BMANGA_PT_layer_stack, context)
         _assert_present(layer_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
@@ -289,7 +294,8 @@ def main() -> None:
         _assert_present(
             view_records,
             "ページ一覧表示",
-            "前後ページ数",
+            "全ページ",
+            "前後ページ",
             "列数",
             "横間隔mm",
             "縦間隔mm",
@@ -299,6 +305,7 @@ def main() -> None:
         )
         _assert_absent(
             view_records,
+            "前後ページ数",
             "画像解像度%",
             "全ページを一覧",
             "選択ページ",

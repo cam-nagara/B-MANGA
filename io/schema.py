@@ -746,6 +746,18 @@ def _page_preview_resolution_percentage_from_data(value: object, default: float 
     return max(5.0, min(200.0, resolution))
 
 
+def _page_preview_range_mode_from_data(value: object, legacy_radius: object | None = None) -> str:
+    text = str(value or "").upper()
+    if text in {"ALL", "NEAR"}:
+        return text
+    if legacy_radius is not None:
+        try:
+            return "NEAR" if int(legacy_radius) <= 1 else "ALL"
+        except (TypeError, ValueError):
+            pass
+    return "ALL"
+
+
 def _view_settings_to_dict(work) -> dict[str, Any]:
     default_resolution = _page_preview_resolution_percentage_default()
     return {
@@ -754,6 +766,9 @@ def _view_settings_to_dict(work) -> dict[str, Any]:
         "overviewGapMm": round(float(getattr(work, "view_overview_gap_mm", 30.0)), 3),
         "pagePreviewEnabled": bool(getattr(work, "view_page_preview_enabled", True)),
         "pagePreviewPageRadius": int(getattr(work, "view_page_preview_page_radius", 3)),
+        "pagePreviewRangeMode": _page_preview_range_mode_from_data(
+            getattr(work, "view_page_preview_range_mode", "ALL")
+        ),
         "pagePreviewResolutionPercentage": round(
             _page_preview_resolution_percentage_from_data(
                 getattr(
@@ -799,6 +814,11 @@ def _view_settings_from_dict(work, data: dict[str, Any]) -> None:
         except (TypeError, ValueError):
             radius = 3
         work.view_page_preview_page_radius = max(0, radius)
+    if hasattr(work, "view_page_preview_range_mode"):
+        work.view_page_preview_range_mode = _page_preview_range_mode_from_data(
+            settings.get("pagePreviewRangeMode"),
+            settings.get("pagePreviewPageRadius"),
+        )
     if hasattr(work, "view_page_preview_resolution_percentage"):
         work.view_page_preview_resolution_percentage = (
             _page_preview_resolution_percentage_from_data(

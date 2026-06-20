@@ -25,6 +25,9 @@ PREVIEW_MAX_LONG_PX = 1536
 # 用紙 DPI が取れない場合のフォールバック解像度基準。
 PREVIEW_FALLBACK_LONG_PX = 1536
 DEFAULT_PREVIEW_PAGE_RADIUS = 3
+PREVIEW_RANGE_ALL = "ALL"
+PREVIEW_RANGE_NEAR = "NEAR"
+DEFAULT_PREVIEW_RANGE_MODE = PREVIEW_RANGE_ALL
 DEFAULT_PREVIEW_RESOLUTION_PERCENTAGE = 25.0
 PREVIEW_RENDER_SUPERSAMPLE = 2
 # 目標サイズがこれ以上なら、スーパーサンプリング無しで直接描画する。
@@ -55,6 +58,15 @@ def preview_page_radius(scene=None) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return DEFAULT_PREVIEW_PAGE_RADIUS
+
+
+def preview_range_mode(scene=None) -> str:
+    scene = scene or getattr(bpy.context, "scene", None)
+    value = str(
+        getattr(scene, "bmanga_page_preview_range_mode", DEFAULT_PREVIEW_RANGE_MODE)
+        or DEFAULT_PREVIEW_RANGE_MODE
+    ).upper()
+    return value if value in {PREVIEW_RANGE_ALL, PREVIEW_RANGE_NEAR} else DEFAULT_PREVIEW_RANGE_MODE
 
 
 def preview_resolution_percentage(scene=None) -> float:
@@ -428,6 +440,7 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
+            include_page_overlay_fills=True,
         )
         image = export_pipeline.render_page(work, page, options)
         if image is None:
@@ -730,7 +743,7 @@ def _preview_page_indices(scene, work) -> set[int]:
     if not pages:
         return set()
     role, current_page_id = _preview_scene_role(scene)
-    if role == "work":
+    if preview_range_mode(scene) == PREVIEW_RANGE_ALL:
         return set(range(len(pages)))
     if role != "coma":
         _is_page_scene, current_page_id = _is_page_edit_scene(scene)
@@ -744,7 +757,7 @@ def _preview_page_indices(scene, work) -> set[int]:
             current_index = max(0, min(len(pages) - 1, int(getattr(work, "active_page_index", 0))))
         except (TypeError, ValueError):
             current_index = 0
-    radius = preview_page_radius(scene)
+    radius = 1
     first = max(0, current_index - radius)
     last = min(len(pages) - 1, current_index + radius)
     return set(range(first, last + 1))
@@ -820,6 +833,9 @@ def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
         from . import coma_preview
 
         work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+        work_meta = paths.work_meta_path(work_dir)
+        if work_meta.is_file() and work_meta.stat().st_mtime > png_mtime:
+            return False
         page_id = str(getattr(page, "id", "") or "")
         meta = paths.page_meta_path(work_dir, page_id)
         if meta.is_file() and meta.stat().st_mtime > png_mtime:

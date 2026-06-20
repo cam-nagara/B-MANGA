@@ -1302,11 +1302,15 @@ def _page_file_current_page_index(scene, work) -> int:
 def _page_file_overview_indices(scene, work) -> set[int] | None:
     """ページファイルで補助表示を許可するページ index 群を返す.
 
-    None は通常のページ一覧ファイルを表し、従来どおり全ページが対象。
-    ページファイルでは、現在ページに加えて「ページ一覧表示」で指定された
-    前後ページだけを対象にする。
+    None は通常のページ一覧ファイルで全ページを表す。
+    作品ファイルで「前後ページ」が選ばれた場合と、ページファイルでは、
+    「全ページ / 前後ページ」で選ばれた範囲だけを対象にする。
     """
     try:
+        if page_file_scene.is_work_list_scene(scene):
+            if page_preview_object.preview_range_mode(scene) == page_preview_object.PREVIEW_RANGE_NEAR:
+                return page_preview_object.preview_page_indices(scene, work)
+            return None
         if not page_file_scene.is_page_edit_scene(scene):
             return None
     except Exception:  # noqa: BLE001
@@ -1511,6 +1515,7 @@ def _draw_callback(phase: str = "post") -> None:
                 if page_file_indices is not None
                 else -1
             )
+            page_file_current_only = bool(page_file_indices is not None and page_file_scene.is_page_edit_scene(scene))
             for i, page in enumerate(work.pages):
                 if page_file_indices is not None and i not in page_file_indices:
                     continue
@@ -1526,7 +1531,7 @@ def _draw_callback(phase: str = "post") -> None:
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
                 ):
                     continue
-                if page_file_indices is not None and i != page_file_current_index:
+                if page_file_current_only and i != page_file_current_index:
                     continue
                 left_half = _is_left_half(i, start_side, read_direction, work=work)
                 _draw_page_overlay(
@@ -1561,6 +1566,7 @@ def _draw_callback(phase: str = "post") -> None:
                 if page_file_indices is not None
                 else -1
             )
+            page_file_current_only = bool(page_file_indices is not None and page_file_scene.is_page_edit_scene(scene))
             for i, page in enumerate(work.pages):
                 if page_file_indices is not None and i not in page_file_indices:
                     continue
@@ -1575,7 +1581,7 @@ def _draw_callback(phase: str = "post") -> None:
                     _translate_rect(rects.canvas, ox, oy), region, rv3d,
                 ):
                     continue
-                if page_file_indices is not None and i != page_file_current_index:
+                if page_file_current_only and i != page_file_current_index:
                     continue
                 left_half = _is_left_half(i, start_side, read_direction, work=work)
                 _draw_page_overlay(
@@ -1829,6 +1835,7 @@ def _draw_callback_pixel() -> None:
             if page_file_indices is not None
             else -1
         )
+        page_file_current_only = bool(page_file_indices is not None and page_file_scene.is_page_edit_scene(scene))
         for i, page in enumerate(work.pages):
             if page_file_indices is not None and i not in page_file_indices:
                 continue
@@ -1848,7 +1855,7 @@ def _draw_callback_pixel() -> None:
             page = work.pages[i] if 0 <= i < len(work.pages) else None
             if (
                 page is not None
-                and (page_file_indices is None or i == page_file_current_index)
+                and (not page_file_current_only or i == page_file_current_index)
             ):
                 overlay_text.draw_text_pixels(
                     context,
@@ -1859,7 +1866,7 @@ def _draw_callback_pixel() -> None:
                     draw_text_in_rect=_draw_text_in_rect,
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
-            if page_file_indices is None or i == page_file_current_index:
+            if not page_file_current_only or i == page_file_current_index:
                 _draw_page_header_number_pixel(context, paper, i, ox, oy)
     else:
         from ..utils.page_grid import (
