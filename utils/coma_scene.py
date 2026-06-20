@@ -123,7 +123,7 @@ def bootstrap_new_coma_blend(
             work=work,
             page_id=page_id,
             coma_id=coma_id,
-            generate_references=True,
+            generate_references=False,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("bootstrap_new_coma_blend: panel camera setup failed")

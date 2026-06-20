@@ -68,12 +68,29 @@ def _create_template(path: Path, marker_suffix: str = "") -> None:
 
     cam_data = bpy.data.cameras.new("Camera")
     cam_data.type = "PANO"
+    if hasattr(cam_data, "show_limits"):
+        cam_data.show_limits = False
     cam = bpy.data.objects.new("Camera", cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
 
     path.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(path), check_existing=False, compress=True)
+
+
+def _assert_camera_limits_enabled() -> None:
+    cam = getattr(bpy.context.scene, "camera", None)
+    assert cam is not None
+    if hasattr(cam.data, "show_limits"):
+        assert bool(cam.data.show_limits) is True
+
+
+def _first_page_with_detail(work):
+    from bmanga_dev.utils import page_detail
+
+    page = work.pages[0]
+    page_detail.ensure_page_detail(work, page)
+    return page
 
 
 def main() -> None:
@@ -107,6 +124,7 @@ def main() -> None:
         assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
         assert bpy.context.scene.camera is not None
         assert bpy.context.scene.camera.data.type == "PANO"
+        _assert_camera_limits_enabled()
         assert bpy.context.scene.view_layers.get("コマ枠") is not None
         assert bpy.context.view_layer.name == "レイアウト", bpy.context.view_layer.name
 
@@ -115,21 +133,24 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
-        work.pages[0].active_coma_index = 0
+        page = _first_page_with_detail(work)
+        page.active_coma_index = 0
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert bpy.data.collections.get("BMANGA_TEMPLATE_MARKER_COLLECTION") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
         assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
+        _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
+        _first_page_with_detail(work)
         result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
-        page = work.pages[0]
+        page = _first_page_with_detail(work)
         assert len(page.comas) >= 2
         coma_index = next(
             idx for idx, candidate in enumerate(page.comas)
@@ -153,6 +174,7 @@ def main() -> None:
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
         assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP_COMA") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is None
+        _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
@@ -163,7 +185,7 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
-        page = work.pages[0]
+        page = _first_page_with_detail(work)
         page.active_coma_index = coma_index
         page.comas[coma_index].coma_blend_template_path = str(replacement_template_path)
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
@@ -172,6 +194,7 @@ def main() -> None:
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c02" / "c02.blend").resolve()
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is None
+        _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
@@ -182,13 +205,14 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
-        page = work.pages[0]
+        page = _first_page_with_detail(work)
         page.active_coma_index = coma_index
         page.comas[coma_index].coma_blend_template_path = ""
         assert page.comas[coma_index].coma_blend_template_needs_apply is True
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_REPLACE") is not None
+        _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
@@ -199,9 +223,10 @@ def main() -> None:
 
         work = bpy.context.scene.bmanga_work
         work.active_page_index = 0
+        _first_page_with_detail(work)
         result = bpy.ops.bmanga.coma_add()
         assert result == {"FINISHED"}, result
-        page = work.pages[0]
+        page = _first_page_with_detail(work)
         coma_index = next(
             idx for idx, candidate in enumerate(page.comas)
             if str(getattr(candidate, "coma_id", "") or "") == "c03"
@@ -212,6 +237,7 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         assert Path(bpy.data.filepath).resolve() == (work_dir / "p0001" / "c03" / "c03.blend").resolve()
         assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT_COMA") is not None
+        _assert_camera_limits_enabled()
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result
@@ -241,7 +267,7 @@ def main() -> None:
             assert error == "", error
             assert resolved == template_path.resolve(), resolved
 
-            page = work.pages[0]
+            page = _first_page_with_detail(work)
             coma = page.comas[0]
             hit = {
                 "kind": "coma",
@@ -256,6 +282,7 @@ def main() -> None:
             ).resolve()
             assert bpy.data.objects.get("BMANGA_TEMPLATE_MARKER_OBJECT") is not None
             assert bpy.data.node_groups.get("BMANGA_TEMPLATE_MARKER_NODE_GROUP") is not None
+            _assert_camera_limits_enabled()
         finally:
             preferences.get_preferences = original_get_preferences
 

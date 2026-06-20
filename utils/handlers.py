@@ -553,7 +553,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 coma_camera.ensure_coma_camera_scene(
                     bpy.context,
                     work=work,
-                    generate_references=True,
+                    generate_references=False,
                 )
                 try:
                     from . import coma_thumb_output

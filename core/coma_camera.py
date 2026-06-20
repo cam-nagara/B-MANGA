@@ -27,17 +27,24 @@ def _update_all_bg_opacity(self, context) -> None:
 
 def _update_all_bg_scale(self, context) -> None:
     from ..utils import coma_camera
+    from ..utils import page_preview_object
 
     coma_camera.set_background_images_scale(context, float(self.bg_images_scale), kind_filter="name")
     coma_camera.update_render_border_from_current_coma(context)
+    page_preview_object.set_preview_scale(context, float(self.bg_images_scale))
 
 
 def _update_name_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
+    from ..utils import page_preview_object
     from ..utils import percentage
 
     coma_camera.set_background_images_properties(
         context, "ネーム", opacity=percentage.percent_to_factor(self.name_bg_images_opacity, 50.0), kind_filter="name"
+    )
+    page_preview_object.set_preview_opacity(
+        context,
+        percentage.percent_to_factor(self.name_bg_images_opacity, 50.0),
     )
 
 

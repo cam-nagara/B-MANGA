@@ -91,9 +91,9 @@ def ensure_coma_camera_scene(
     page_id: str = "",
     coma_id: str = "",
     *,
-    generate_references: bool = True,
+    generate_references: bool = False,
 ) -> None:
-    """cNN.blend 内にカメラと下絵背景を整備する."""
+    """cNN.blend 内にカメラと表示設定を整備する."""
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     if scene is None:
         return
@@ -118,7 +118,8 @@ def ensure_coma_camera_scene(
     if generate_references and work is not None and getattr(work, "work_dir", ""):
         refs = ensure_reference_images(work, page_id, coma_id)
     _restore_scene_camera(scene, camera)
-    configure_camera_backgrounds(scene, camera, refs, page_id, coma_id)
+    if generate_references:
+        configure_camera_backgrounds(scene, camera, refs, page_id, coma_id)
     ensure_hatching_background(context)
     _restore_scene_camera(scene, camera)
     resync_coma_camera_output_layout(context)
@@ -179,8 +180,8 @@ def ensure_coma_camera(scene):
         # ただし clip_start が 0 以下だと描画されないため、不正値のみ補正。
         if getattr(cam_data, "clip_start", 0.0) <= 0.0:
             cam_data.clip_start = 0.01
-    if hasattr(cam_data, "show_background_images"):
-        cam_data.show_background_images = True
+    if hasattr(cam_data, "show_limits"):
+        cam_data.show_limits = True
     return cam_obj
 
 
@@ -231,12 +232,12 @@ def configure_render_for_current_coma(scene, work, page_id: str, coma_id: str) -
         int(getattr(scene, "bmanga_coma_camera_original_resolution_x", 0) or 0) > 0
         and int(getattr(scene, "bmanga_coma_camera_original_resolution_y", 0) or 0) > 0
     )
-    if has_saved_resolution:
-        return
     paper = getattr(work, "paper", None) if work is not None else None
     width_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0) if paper is not None else 0.0
     height_mm = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0) if paper is not None else 0.0
     dpi = int(getattr(paper, "dpi", 0) or 0) if paper is not None else 0
+    if paper is None and has_saved_resolution:
+        return
     if width_mm <= 0.0 or height_mm <= 0.0:
         _page_count, _render_side, width_mm, height_mm = _reference_frame_info(work, page_id, coma_id)
     if width_mm <= 0.0 or height_mm <= 0.0:

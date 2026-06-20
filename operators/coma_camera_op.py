@@ -10,7 +10,6 @@ from bpy.types import Operator
 from mathutils import Vector
 
 from ..core.mode import MODE_COMA, get_mode
-from ..core.work import get_work
 from ..utils import log, coma_camera
 
 _logger = log.get_logger(__name__)
@@ -66,35 +65,11 @@ class BMANGA_OT_coma_camera_ensure(Operator):
 
     def execute(self, context):
         try:
-            coma_camera.ensure_coma_camera_scene(context)
+            coma_camera.ensure_coma_camera_scene(context, generate_references=False)
         except Exception as exc:  # noqa: BLE001
             _logger.exception("panel camera ensure failed")
             self.report({"ERROR"}, f"カメラ準備に失敗: {exc}")
             return {"CANCELLED"}
-        return {"FINISHED"}
-
-
-class BMANGA_OT_coma_camera_sync_references(Operator):
-    bl_idname = "bmanga.coma_camera_sync_references"
-    bl_label = "下絵を生成・同期"
-    bl_options = {"REGISTER", "UNDO"}
-
-    @classmethod
-    def poll(cls, context):
-        work = get_work(context)
-        return _is_coma_mode(context) and work is not None and work.loaded
-
-    def execute(self, context):
-        try:
-            coma_camera.ensure_coma_camera_scene(context, generate_references=True)
-        except Exception as exc:  # noqa: BLE001
-            _logger.exception("panel camera reference sync failed")
-            self.report({"ERROR"}, f"下絵同期に失敗: {exc}")
-            return {"CANCELLED"}
-        if coma_camera.camera_background_count(context) <= 0 and not coma_camera.can_render_references():
-            self.report({"WARNING"}, "Pillow が無いため下絵を生成できません。既存PNGも見つかりませんでした")
-            return {"CANCELLED"}
-        self.report({"INFO"}, "コマ編集カメラの下絵を同期しました")
         return {"FINISHED"}
 
 
@@ -340,7 +315,6 @@ class BMANGA_OT_coma_camera_shift_drag(Operator):
 
 _CLASSES = (
     BMANGA_OT_coma_camera_ensure,
-    BMANGA_OT_coma_camera_sync_references,
     BMANGA_OT_coma_camera_toggle_name_backgrounds,
     BMANGA_OT_coma_camera_update_view,
     BMANGA_OT_coma_camera_angle_add,

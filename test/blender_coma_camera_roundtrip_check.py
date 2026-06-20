@@ -282,15 +282,23 @@ def _save_and_reopen_coma() -> None:
 
 
 def _collect_reopened_checks(preview_evidence: dict) -> dict:
+    from bmanga_dev_coma_camera_roundtrip.utils.geom import mm_to_px
+
     scene = bpy.context.scene
     settings = scene.bmanga_coma_camera_settings
     cam = scene.camera
+    paper = scene.bmanga_work.paper
+    expected_paper_resolution = [
+        int(round(mm_to_px(float(paper.canvas_width_mm), int(paper.dpi)))),
+        int(round(mm_to_px(float(paper.canvas_height_mm), int(paper.dpi)))),
+    ]
     return {
         "fisheye_fov_deg": round(math.degrees(float(scene.bmanga_coma_camera_fisheye_fov)), 3),
         "camera_fov_deg": round(math.degrees(float(cam.data.fisheye_fov)), 3),
         "fisheye_layout_mode": bool(scene.bmanga_coma_camera_fisheye_layout_mode),
         "reduction_mode": bool(scene.bmanga_coma_camera_reduction_mode),
         "preview_scale_percentage": float(scene.bmanga_coma_camera_preview_scale_percentage),
+        "paper_resolution": expected_paper_resolution,
         "original_resolution": [
             int(scene.bmanga_coma_camera_original_resolution_x),
             int(scene.bmanga_coma_camera_original_resolution_y),
@@ -300,6 +308,7 @@ def _collect_reopened_checks(preview_evidence: dict) -> dict:
         "camera_shift": [round(float(cam.data.shift_x), 3), round(float(cam.data.shift_y), 3)],
         "camera_rotation_y_deg": round(math.degrees(float(cam.rotation_euler[1])), 3),
         "clip": [round(float(cam.data.clip_start), 3), round(float(cam.data.clip_end), 3)],
+        "camera_limits": bool(getattr(cam.data, "show_limits", False)),
         "background_scale": round(float(settings.bg_images_scale), 3),
         "name_opacity": round(float(settings.name_bg_images_opacity), 3),
         "koma_opacity": round(float(settings.koma_bg_images_opacity), 3),
@@ -319,12 +328,14 @@ def _assert_reopened_checks(checks: dict) -> None:
     _assert_close(checks["fisheye_fov_deg"], 360.0, "再読込後FOV")
     _assert_close(checks["camera_fov_deg"], 360.0, "再読込後カメラFOV")
     _assert_close(checks["preview_scale_percentage"], 28.0, "再読込後縮小率")
-    assert checks["original_resolution"] == [1200, 900], checks
-    assert checks["render_resolution"] == [1200, 1200], checks
+    assert checks["original_resolution"] == checks["paper_resolution"], checks
+    expected_edge = max(checks["paper_resolution"])
+    assert checks["render_resolution"] == [expected_edge, expected_edge], checks
     assert checks["render_resolution_percentage"] == 28, checks
     assert checks["camera_shift"] == [0.019, 0.06], checks
     _assert_close(checks["camera_rotation_y_deg"], 8.881, "再読込後カメラ回転")
     assert checks["clip"] == [0.001, 10000.0], checks
+    assert checks["camera_limits"] is True, checks
     _assert_close(checks["background_scale"], 0.28, "再読込後下絵スケール")
     _assert_close(checks["name_opacity"], 37.0, "再読込後ページ画像不透明度")
     _assert_close(checks["koma_opacity"], 82.0, "再読込後コマ下絵不透明度")
@@ -341,6 +352,9 @@ def _verify_page_list_preview(get_work, coma_plane, checks: dict, preview_path: 
     assert result == {"FINISHED"}, result
     work = get_work(bpy.context)
     page = work.pages[0]
+    from bmanga_dev_coma_camera_roundtrip.utils import page_detail
+
+    page_detail.ensure_page_detail(work, page)
     entry = page.comas[0]
     image = coma_plane._resolve_preview_image(work, page, entry)
     assert image is not None, "ページ一覧でコマプレビュー画像を読み込めません"

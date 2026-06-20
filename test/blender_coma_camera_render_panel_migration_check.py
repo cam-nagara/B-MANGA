@@ -129,16 +129,20 @@ def _check_bmanga_panel() -> None:
         "全下絵を表示/非表示",
         "下絵_コマ",
         "すべての下絵を再読込",
+        "下絵同期",
+        "背景画像:",
     ):
         assert forbidden not in text_blob, forbidden
     assert "カメラプリセット" in labels
     assert "魚眼モード" in labels
     assert "魚眼FOV" in labels
+    assert "bmanga.coma_camera_sync_references" not in operators
     assert "bmanga.coma_camera_angle_duplicate" in operators
     assert getattr(bpy.types, "BMANGA_OT_fisheye_save_pencil4_widths", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_all_backgrounds", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_koma_backgrounds", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_resolution_add", None) is None
+    assert getattr(bpy.types, "BMANGA_OT_coma_camera_sync_references", None) is None
 
 
 def _check_bmanga_view_panel() -> None:

@@ -454,13 +454,6 @@ class BMANGA_OT_enter_coma_mode(Operator):
             elif cur is not None and cur == expected_page:
                 blend_io.save_current_as(expected_page)
 
-            try:
-                from ..utils import coma_camera
-
-                coma_camera.ensure_reference_images(work, page_id, stem)
-            except Exception:  # noqa: BLE001
-                _logger.exception("enter_coma_mode: panel camera references failed")
-
             # 2) cNN.blend を開く。未作成なら現シーンを新規保存して遷移。
             if blend_io.coma_blend_exists(work_dir, page_id, stem):
                 changed_template = self._pending_coma_template_path(work, work_dir, page, entry)
@@ -531,7 +524,7 @@ class BMANGA_OT_enter_coma_mode(Operator):
                         bpy.context,
                         page_id=page_id,
                         coma_id=stem,
-                        generate_references=True,
+                        generate_references=False,
                     )
                 except Exception:  # noqa: BLE001
                     _logger.exception("enter_coma_mode: initial panel camera setup failed")
@@ -584,7 +577,7 @@ class BMANGA_OT_enter_coma_mode(Operator):
                 ctx,
                 page_id=page_id,
                 coma_id=stem,
-                generate_references=True,
+                generate_references=False,
             )
         except Exception:  # noqa: BLE001
             _logger.exception("enter_coma_mode: final panel camera setup failed")

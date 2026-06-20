@@ -17,6 +17,8 @@ PREVIEW_IMAGE_PREFIX = "BManga_PagePreview_"
 PREVIEW_MESH_PREFIX = "page_preview_mesh_"
 PREVIEW_OBJECT_PREFIX = "page_preview_"
 PREVIEW_MATERIAL_PREFIX = "BManga_PagePreview_"
+PREVIEW_OPACITY_NODE = "B-MANGA Preview Opacity"
+PREVIEW_OPACITY_MATH_NODE = "B-MANGA Preview Opacity Multiply"
 PREVIEW_PAGE_ID_PROP = "bmanga_page_preview_page_id"
 # プレビュー画像 (長辺) の上限。GPU メモリ保護のための安全弁。
 PREVIEW_MAX_LONG_PX = 1536
@@ -142,6 +144,26 @@ def remove_page_previews() -> int:
             except Exception:  # noqa: BLE001
                 pass
     return removed
+
+
+def _preview_opacity_factor(scene=None) -> float:
+    scene = scene or getattr(bpy.context, "scene", None)
+    settings = getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
+    try:
+        value = float(getattr(settings, "name_bg_images_opacity", 100.0) or 100.0)
+    except (TypeError, ValueError):
+        value = 100.0
+    return max(0.0, min(1.0, value / 100.0))
+
+
+def _preview_scale_factor(scene=None) -> float:
+    scene = scene or getattr(bpy.context, "scene", None)
+    settings = getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
+    try:
+        value = float(getattr(settings, "bg_images_scale", 1.0) or 1.0)
+    except (TypeError, ValueError):
+        value = 1.0
+    return max(0.1, min(10.0, value))
 
 
 def _linear_to_srgb(value: float) -> float:
@@ -522,12 +544,13 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
                 for node in mat.node_tree.nodes
             )
         ):
+            _apply_material_opacity(mat, _preview_opacity_factor())
             return mat
     except Exception:  # noqa: BLE001
         pass
     mat.use_nodes = True
     try:
-        mat.blend_method = "OPAQUE"
+        mat.blend_method = "BLEND"
         mat.show_transparent_back = False
     except Exception:  # noqa: BLE001
         pass
@@ -539,11 +562,21 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
     transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
     mix = nt.nodes.new("ShaderNodeMixShader")
     tex = nt.nodes.new("ShaderNodeTexImage")
+    alpha = nt.nodes.new("ShaderNodeValue")
+    alpha.name = PREVIEW_OPACITY_NODE
+    alpha.label = PREVIEW_OPACITY_NODE
+    alpha.outputs[0].default_value = _preview_opacity_factor()
+    multiply = nt.nodes.new("ShaderNodeMath")
+    multiply.name = PREVIEW_OPACITY_MATH_NODE
+    multiply.label = PREVIEW_OPACITY_MATH_NODE
+    multiply.operation = "MULTIPLY"
     tex.image = image
     try:
         emission.inputs["Strength"].default_value = 1.0
         nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        nt.links.new(tex.outputs["Alpha"], multiply.inputs[0])
+        nt.links.new(alpha.outputs[0], multiply.inputs[1])
+        nt.links.new(multiply.outputs[0], mix.inputs["Fac"])
         nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
         emission_out = emission.outputs.get("Emission") or next(iter(emission.outputs), None)
         if emission_out is not None:
@@ -551,12 +584,76 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("page preview material link failed")
-    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    _apply_material_opacity(mat, _preview_opacity_factor())
     try:
         mat["_bmanga_preview_image"] = str(getattr(image, "name", "") or "")
     except Exception:  # noqa: BLE001
         pass
     return mat
+
+
+def _apply_material_opacity(mat: bpy.types.Material | None, opacity: float) -> None:
+    if mat is None:
+        return
+    opacity = max(0.0, min(1.0, float(opacity)))
+    try:
+        mat.blend_method = "BLEND"
+        mat.show_transparent_back = False
+        mat.diffuse_color = (1.0, 1.0, 1.0, opacity)
+    except Exception:  # noqa: BLE001
+        pass
+    node_tree = getattr(mat, "node_tree", None)
+    if node_tree is None:
+        return
+    nodes = node_tree.nodes
+    value = nodes.get(PREVIEW_OPACITY_NODE)
+    if value is not None and getattr(value, "type", "") == "VALUE":
+        try:
+            value.outputs[0].default_value = opacity
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    tex = next((node for node in nodes if getattr(node, "type", "") == "TEX_IMAGE"), None)
+    mix = next((node for node in nodes if getattr(node, "type", "") == "MIX_SHADER"), None)
+    if tex is None or mix is None:
+        return
+    value = nodes.new("ShaderNodeValue")
+    value.name = PREVIEW_OPACITY_NODE
+    value.label = PREVIEW_OPACITY_NODE
+    value.outputs[0].default_value = opacity
+    multiply = nodes.new("ShaderNodeMath")
+    multiply.name = PREVIEW_OPACITY_MATH_NODE
+    multiply.label = PREVIEW_OPACITY_MATH_NODE
+    multiply.operation = "MULTIPLY"
+    try:
+        for link in list(node_tree.links):
+            if link.to_node is mix and link.to_socket == mix.inputs["Fac"]:
+                node_tree.links.remove(link)
+        node_tree.links.new(tex.outputs["Alpha"], multiply.inputs[0])
+        node_tree.links.new(value.outputs[0], multiply.inputs[1])
+        node_tree.links.new(multiply.outputs[0], mix.inputs["Fac"])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def set_preview_opacity(context=None, opacity: float | None = None) -> None:
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    factor = _preview_opacity_factor(scene) if opacity is None else max(0.0, min(1.0, float(opacity)))
+    for obj in _iter_preview_objects():
+        for mat in getattr(getattr(obj, "data", None), "materials", []) or []:
+            _apply_material_opacity(mat, factor)
+
+
+def set_preview_scale(context=None, scale: float | None = None) -> None:
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    factor = _preview_scale_factor(scene) if scale is None else max(0.1, min(10.0, float(scale)))
+    for obj in _iter_preview_objects():
+        try:
+            obj.scale.x = factor
+            obj.scale.y = factor
+            obj.scale.z = 1.0
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _ensure_plane_mesh(page_id: str, width_mm: float, height_mm: float) -> bpy.types.Mesh:
@@ -680,6 +777,9 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
     obj.location.x = mm_to_m((x0 + x1) * 0.5)
     obj.location.y = mm_to_m((y0 + y1) * 0.5)
     obj.location.z = PREVIEW_Z_M
+    obj.scale.x = _preview_scale_factor(scene)
+    obj.scale.y = _preview_scale_factor(scene)
+    obj.scale.z = 1.0
     obj.hide_viewport = False
     obj.hide_render = True
     obj.hide_select = True

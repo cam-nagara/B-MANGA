@@ -6,7 +6,6 @@ import bpy
 from bpy.types import Panel
 
 from ..core.mode import MODE_COMA, get_mode
-from ..utils import coma_camera
 
 B_NAME_CATEGORY = "B-MANGA"
 
@@ -100,7 +99,6 @@ class BMANGA_PT_coma_camera(Panel):
 
         row = layout.row(align=True)
         row.operator("bmanga.coma_camera_ensure", text="カメラを整備", icon="CAMERA_DATA")
-        row.operator("bmanga.coma_camera_sync_references", text="下絵同期", icon="IMAGE_DATA")
 
         cam = _camera(context)
         if cam is None:
@@ -114,9 +112,6 @@ class BMANGA_PT_coma_camera(Panel):
         row.enabled = bool(getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False))
         row.prop(scene, "bmanga_coma_camera_fisheye_fov", text="魚眼FOV")
         _draw_angle_list(layout, context, settings)
-
-        count = coma_camera.camera_background_count(context)
-        layout.label(text=f"背景画像: {count}件")
 
 
 _CLASSES = (BMANGA_PT_coma_camera,)
