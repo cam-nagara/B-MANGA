@@ -14,7 +14,7 @@ from typing import Any, Sequence
 
 from . import export_group_masks, export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, page_grid, percentage
+from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, page_grid, percentage, spread_merge_geometry
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -586,10 +586,59 @@ def _draw_styled_loop(
         _draw_styled_segment(draw, pts[i], pts[(i + 1) % len(pts)], color, width_px, style)
 
 
-def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLayer | None:
-    if export_soft_mask.brush_edge_enabled(entry):
+def _spread_basic_frame_info_for_export(work, page, entry):
+    try:
+        return spread_merge_geometry.basic_frame_info(work, page, entry)
+    except Exception:  # noqa: BLE001
+        return "", None
+
+
+def _draw_spread_basic_frame_border(
+    draw,
+    canvas,
+    entry,
+    side: str,
+    combined_rect,
+    color: tuple[int, int, int, int],
+    width_px: int,
+    style_name: str,
+) -> ExportLayer | None:
+    if side == "right" or combined_rect is None:
+        return None
+    poly_mm = [
+        (float(combined_rect.x), float(combined_rect.y)),
+        (float(combined_rect.x2), float(combined_rect.y)),
+        (float(combined_rect.x2), float(combined_rect.y2)),
+        (float(combined_rect.x), float(combined_rect.y2)),
+    ]
+    if len(poly_mm) < 4:
+        return None
+    poly_px = canvas.points_px(poly_mm)
+    draw_style = "solid" if style_name == "brush" else style_name
+    for i in range(len(poly_px)):
+        _draw_styled_segment(
+            draw,
+            poly_px[i],
+            poly_px[(i + 1) % len(poly_px)],
+            color,
+            width_px,
+            draw_style,
+        )
+    return ExportLayer("border", canvas.image, canvas.left, canvas.top)
+
+
+def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int, *, work=None, page=None) -> ExportLayer | None:
+    spread_basic_side, spread_basic_rect = _spread_basic_frame_info_for_export(work, page, entry)
+    if not spread_basic_side and export_soft_mask.brush_edge_enabled(entry):
         return None
     poly_mm = _coma_polygon_mm(entry)
+    if spread_basic_side == "left" and spread_basic_rect is not None:
+        poly_mm = [
+            (float(spread_basic_rect.x), float(spread_basic_rect.y)),
+            (float(spread_basic_rect.x2), float(spread_basic_rect.y)),
+            (float(spread_basic_rect.x2), float(spread_basic_rect.y2)),
+            (float(spread_basic_rect.x), float(spread_basic_rect.y2)),
+        ]
     bbox = _points_bbox(poly_mm)
     if bbox is None:
         return None
@@ -600,8 +649,20 @@ def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLay
     draw = ImageDraw.Draw(canvas.image)
     base_color = _rgb255(border.color)
     base_width = max(1, int(round(mm_to_px(float(border.width_mm), dpi))))
+    style_name = getattr(border, "style", "solid")
+    if spread_basic_side:
+        return _draw_spread_basic_frame_border(
+            draw,
+            canvas,
+            entry,
+            spread_basic_side,
+            spread_basic_rect,
+            base_color,
+            base_width,
+            style_name,
+        )
     if (
-        getattr(border, "style", "solid") == "solid"
+        style_name == "solid"
     ):
         path_mm = poly_mm
         loops = border_geom.stroke_loops_mm(path_mm, float(border.width_mm))
@@ -618,7 +679,6 @@ def _draw_coma_border_layer(entry, canvas_height_px: int, dpi: int) -> ExportLay
 
     poly_px = canvas.points_px(poly_mm)
     for i in range(len(poly_px)):
-        style_name = getattr(border, "style", "solid")
         color = base_color
         width = base_width
         _draw_styled_segment(
@@ -1869,7 +1929,7 @@ def build_page_layers(work, page, options: ExportOptions) -> list[ExportLayer]:
         for rl in _raster_layers_by_coma.get(coma_gn, []):
             layers.append(rl)
         if options.include_border and getattr(panel.border, "visible", False):
-            border_layer = _draw_coma_border_layer(panel, canvas_size[1], dpi)
+            border_layer = _draw_coma_border_layer(panel, canvas_size[1], dpi, work=work, page=page)
             if border_layer is not None:
                 layers.append(replace(border_layer, group_path=coma_group))
 

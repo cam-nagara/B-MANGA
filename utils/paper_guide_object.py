@@ -12,6 +12,7 @@ from . import log, runtime_activity
 from . import object_naming as on
 from . import outliner_model as om
 from . import percentage
+from . import spread_merge_geometry
 from . import viewport_colors
 from .geom import Rect, mm_to_m
 
@@ -585,15 +586,6 @@ def _safe_fill_faces(canvas: Rect, safe: Rect) -> tuple[list[tuple[float, float,
     return verts, faces
 
 
-def _shift_rect(rect: Rect, dx_mm: float) -> Rect:
-    return Rect(
-        float(rect.x) + float(dx_mm),
-        float(rect.y),
-        float(rect.width),
-        float(rect.height),
-    )
-
-
 def _fill_faces_from_rect_pairs(
     rect_pairs: Iterable[tuple[Rect, Rect]],
 ) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
@@ -614,26 +606,11 @@ def _fill_rect_pairs_for_page(work, page_index: int, page, rects):
     if paper is None:
         return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
     try:
-        from . import page_grid
-
-        left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
-        right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
-        right_offset = page_grid.spread_right_page_offset_mm(
-            page,
-            float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
-        )
+        combined = spread_merge_geometry.combined_spread_rects(paper, page)
     except Exception:  # noqa: BLE001
         _logger.exception("spread fill rect calculation failed")
         return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
-    safe_pairs = [
-        (left_rects.canvas, left_rects.safe),
-        (_shift_rect(right_rects.canvas, right_offset), _shift_rect(right_rects.safe, right_offset)),
-    ]
-    bleed_pairs = [
-        (left_rects.canvas, left_rects.bleed),
-        (_shift_rect(right_rects.canvas, right_offset), _shift_rect(right_rects.bleed, right_offset)),
-    ]
-    return safe_pairs, bleed_pairs
+    return [(combined.canvas, combined.safe)], [(combined.canvas, combined.bleed)]
 
 
 def _ensure_safe_fill_object(
@@ -977,18 +954,8 @@ def _paper_guide_sets_for_page(work, page_index: int, page):
         page_grid = None
         grid_page_index = page_index
     if bool(getattr(page, "spread", False)) and page_grid is not None:
-        left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
-        right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
-        right_offset = page_grid.spread_right_page_offset_mm(
-            page,
-            float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
-        )
-        guide_sets = _merge_guide_sets(
-            _paper_guide_sets(paper, left_rects),
-            _shift_guide_sets(_paper_guide_sets(paper, right_rects), right_offset),
-        )
-        signature_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
-        return guide_sets, signature_rects, grid_page_index
+        combined_rects = spread_merge_geometry.combined_spread_rects(paper, page)
+        return _paper_guide_sets(paper, combined_rects), combined_rects, grid_page_index
 
     rects = overlay_shared.compute_paper_rects(
         paper,
@@ -1041,7 +1008,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     safe_color = _safe_fill_view_color(work)
     bleed_outer_color = _bleed_outer_fill_view_color(work)
     return repr((
-        "paper_guide_spread_fill_v2",
+        "paper_guide_spread_fill_v3",
         int(page_index),
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),

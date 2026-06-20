@@ -6,7 +6,7 @@ from pathlib import Path
 
 import bpy
 
-from . import log, object_naming as on, page_grid, page_range, paths
+from . import log, object_naming as on, page_grid, page_range, paths, spread_merge_geometry
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -34,6 +34,8 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
+PREVIEW_RENDER_VERSION = "3"
+PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 _DEFERRED_SYNC_FORCE = False
 
 
@@ -239,9 +241,9 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
-# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA)。
+# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA, 生成仕様版)。
 # 毎回 PIL で開き直すとページ数分の固定コストになるため。
-_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int]]] = {}
+_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int], str]] = {}
 
 
 def _preview_png_usable(
@@ -263,20 +265,23 @@ def _preview_png_usable(
     key = str(path)
     cached = _PNG_USABLE_CACHE.get(key)
     if cached is not None and cached[0] == mtime:
-        size, (r, g, b, a) = cached[1], cached[2]
+        size, (r, g, b, a), version = cached[1], cached[2], cached[3]
     else:
         try:
             from PIL import Image
 
             with Image.open(path) as image:
                 size = tuple(image.size)
+                version = str(image.info.get(PREVIEW_RENDER_VERSION_KEY, "") or "")
                 rgba = image.convert("RGBA")
                 r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
         except Exception:  # noqa: BLE001
             return False
         if len(_PNG_USABLE_CACHE) > 512:
             _PNG_USABLE_CACHE.clear()
-        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a))
+        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a), version)
+    if version != PREVIEW_RENDER_VERSION:
+        return False
     if tuple(size) != tuple(expected_size):
         return False
     if a < 200 or r > 120:
@@ -406,13 +411,32 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         line_w_mm = max(0.2, float(getattr(border, "width_mm", 0.5) or 0.5))
         px_per_mm = max(width / content_width_mm, height / ch)
         line_w = max(1, int(round(line_w_mm * px_per_mm)))
-        closed = pts_px + [pts_px[0]]
-        draw.line(closed, fill=border_color, width=line_w, joint="curve")
+        spread_basic_side = ""
+        spread_basic_rect = None
+        try:
+            spread_basic_side, spread_basic_rect = spread_merge_geometry.basic_frame_info(work, page, coma)
+        except Exception:  # noqa: BLE001
+            spread_basic_side = ""
+            spread_basic_rect = None
+        if spread_basic_side == "left" and spread_basic_rect is not None:
+            merged_pts = [
+                (float(spread_basic_rect.x), float(spread_basic_rect.y)),
+                (float(spread_basic_rect.x2), float(spread_basic_rect.y)),
+                (float(spread_basic_rect.x2), float(spread_basic_rect.y2)),
+                (float(spread_basic_rect.x), float(spread_basic_rect.y2)),
+            ]
+            merged_pts_px = [point_px(p) for p in merged_pts]
+            closed = merged_pts_px + [merged_pts_px[0]]
+            draw.line(closed, fill=border_color, width=line_w, joint="curve")
+        elif spread_basic_side == "right":
+            continue
+        else:
+            closed = pts_px + [pts_px[0]]
+            draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
     img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
-    draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
     return img
 
 
@@ -432,8 +456,8 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
             dpi_override=dpi,
             include_border=True,
             include_white_margin=True,
-            include_nombre=True,
-            include_work_info=True,
+            include_nombre=False,
+            include_work_info=False,
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
@@ -476,11 +500,23 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
                 page_detail.clear_page_detail(page)
         if image is None:
             return None
-        image.save(path)
+        _save_preview_png(image, path)
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
         return None
+
+
+def _save_preview_png(image, path: Path) -> None:
+    try:
+        from PIL import PngImagePlugin
+
+        metadata = PngImagePlugin.PngInfo()
+        metadata.add_text(PREVIEW_RENDER_VERSION_KEY, PREVIEW_RENDER_VERSION)
+        image.save(path, pnginfo=metadata)
+        return
+    except Exception:  # noqa: BLE001
+        image.save(path)
 
 
 def _load_image(path: Path, expected_size: tuple[int, int] | None = None) -> bpy.types.Image | None:

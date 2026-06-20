@@ -12,6 +12,7 @@ from . import coma_z_order
 from . import log
 from . import object_naming as on
 from . import outliner_model as om
+from . import spread_merge_geometry
 from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -426,7 +427,58 @@ def _styled_segment_paths(
     return paths
 
 
-def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
+def _spread_basic_frame_info(work, page, coma):
+    try:
+        return spread_merge_geometry.basic_frame_info(work, page, coma)
+    except Exception:  # noqa: BLE001
+        return "", None
+
+
+def _spread_basic_frame_side(work, page, coma) -> str:
+    side, _combined_rect = _spread_basic_frame_info(work, page, coma)
+    return side
+
+
+def _spread_basic_frame_groups(
+    coma,
+    side: str,
+    combined_rect=None,
+    *,
+    style: str,
+    width_mm: float,
+    color: tuple[float, float, float, float],
+) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
+    if side not in {"left", "right"} or width_mm <= 0.0:
+        return []
+    if side == "right" or combined_rect is None:
+        return []
+    local_x = float(combined_rect.x) - float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
+    local_y = float(combined_rect.y) - float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
+    local_w = max(0.001, float(combined_rect.width))
+    local_h = max(0.001, float(combined_rect.height))
+    base = [
+        (local_x, local_y),
+        (local_x + local_w, local_y),
+        (local_x + local_w, local_y + local_h),
+        (local_x, local_y + local_h),
+    ]
+    draw_style = "solid" if style == "brush" else style
+    paths: list[list[tuple[float, float]]] = []
+    for edge_index, start in enumerate(base):
+        end = base[(edge_index + 1) % len(base)]
+        paths.extend(_styled_segment_paths(start, end, style=draw_style, width_mm=width_mm))
+    if not paths:
+        return []
+    return [(paths, width_mm, color, "spread_basic_frame")]
+
+
+def _border_paths_by_material(
+    coma,
+    *,
+    work=None,
+    page=None,
+    spread_basic_frame_side: str = "",
+) -> list[tuple[list[list[tuple[float, float]]], float, tuple[float, float, float, float], str]]:
     border = getattr(coma, "border", None)
     if border is None or not bool(getattr(border, "visible", True)):
         return []
@@ -435,6 +487,19 @@ def _border_paths_by_material(coma) -> list[tuple[list[list[tuple[float, float]]
         return []
     base_style = str(getattr(border, "style", "solid") or "solid")
     base_width = max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0))
+    if spread_basic_frame_side:
+        side, combined_rect = spread_basic_frame_side, _spread_basic_frame_info(work, page, coma)[1]
+    else:
+        side, combined_rect = _spread_basic_frame_info(work, page, coma)
+    if side:
+        return _spread_basic_frame_groups(
+            coma,
+            side,
+            combined_rect,
+            style=base_style,
+            width_mm=base_width,
+            color=_rgba_from_border(coma),
+        )
     if base_style == "solid":
         path = _outline_points(coma)
         return [([path], base_width, _rgba_from_border(coma), "solid_closed")]
@@ -605,9 +670,15 @@ def ensure_coma_border_object(scene, work, page, coma) -> Optional[bpy.types.Obj
     if not page_id or not coma_id:
         return None
     border = getattr(coma, "border", None)
-    if _uses_brush_texture(coma):
+    spread_basic_frame_side = _spread_basic_frame_side(work, page, coma)
+    if not spread_basic_frame_side and _uses_brush_texture(coma):
         return _ensure_brush_texture_border(scene, work, page, coma, page_id, coma_id)
-    groups = _border_paths_by_material(coma)
+    groups = _border_paths_by_material(
+        coma,
+        work=work,
+        page=page,
+        spread_basic_frame_side=spread_basic_frame_side,
+    )
     if not groups:
         groups = [([], max(0.0, float(getattr(border, "width_mm", 0.5) or 0.0)), _rgba_from_border(coma), "solid")]
     keep_names: set[str] = set()

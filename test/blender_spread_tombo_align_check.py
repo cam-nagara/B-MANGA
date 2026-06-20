@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import os
 import shutil
 import sys
 import tempfile
@@ -204,8 +205,8 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
 
     paper_guide_object.ensure_paper_guides_for_page(bpy.context.scene, work, 0)
     xs = _guide_x_values_mm(spread_id)
-    if not any(abs(x - expected_offset) < 0.1 for x in xs):
-        raise AssertionError(f"右半分ガイドが右ページ開始位置にありません: offset={expected_offset}, xs={xs[:12]}")
+    if not any(abs(x - expected_width) < 0.1 for x in xs):
+        raise AssertionError(f"見開きガイドの右端が見開き全体幅にありません: width={expected_width}, xs={xs[:12]}")
 
     result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
     if "FINISHED" not in result:
@@ -220,6 +221,7 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
 def main() -> None:
     mod = None
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_spread_tombo_"))
+    success = False
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
@@ -237,6 +239,7 @@ def main() -> None:
         _assert_tombo_merge_case(work, aligned=True, gap_mm=-10.0)
         _assert_tombo_merge_case(work, aligned=False, gap_mm=-10.0)
         print("BMANGA_SPREAD_TOMBO_ALIGN_OK", flush=True)
+        success = True
     finally:
         if mod is not None:
             try:
@@ -245,6 +248,7 @@ def main() -> None:
                 pass
         bpy.ops.wm.read_factory_settings(use_empty=True)
         shutil.rmtree(temp_root, ignore_errors=True)
+        os._exit(0 if success else 1)
 
 
 if __name__ == "__main__":
