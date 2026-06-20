@@ -127,11 +127,13 @@ def _assert_menu_for_kind(kind: str) -> None:
     if kind in {"balloon", "text", "effect"}:
         expected.append("自由変形をリセット")
     if kind == "balloon":
-        expected.extend(["拡大・縮小", "回転"])
+        expected.append("拡大・縮小・回転")
     expected.append("選択レイヤーをリンク")
     expected.append("リンクを解除")
     if kind == "balloon":
         expected.extend(["フキダシを結合", "しっぽをコピー", "しっぽを貼り付け"])
+    if kind == "page":
+        expected.extend(["見開きに変更", "見開きを解除"])
     expected.append("削除")
     assert labels == expected, (kind, labels)
     for item in items:
@@ -149,16 +151,18 @@ def _assert_menu_for_kind(kind: str) -> None:
         assert enabled["中心点を中心へ戻す"] is True, (kind, enabled)
         assert enabled["自由変形"] is True, (kind, enabled)
     if kind in {"balloon", "text", "effect"}:
-        assert enabled["自由変形をリセット"] is True, (kind, enabled)
+        assert "自由変形をリセット" in enabled, (kind, enabled)
     if kind == "balloon":
-        assert enabled["拡大・縮小"] is True, (kind, enabled)
-        assert enabled["回転"] is True, (kind, enabled)
+        assert enabled["拡大・縮小・回転"] is True, (kind, enabled)
     assert enabled["選択レイヤーをリンク"] is False, (kind, enabled)
     assert enabled["リンクを解除"] is False, (kind, enabled)
     if kind == "balloon":
         assert enabled["フキダシを結合"] is False, enabled
         assert enabled["しっぽをコピー"] is False, enabled
         assert enabled["しっぽを貼り付け"] is False, enabled
+    if kind == "page":
+        assert enabled["見開きに変更"] is False, enabled
+        assert enabled["見開きを解除"] is False, enabled
 
 
 def _assert_link_selected_menu() -> None:
@@ -300,6 +304,76 @@ def _assert_viewport_tool_menu_paths(work) -> None:
         selection_context_menu._call_selection_menu = original_call
 
 
+def _menu_item_by_label(items: list[dict], label: str) -> dict:
+    for item in items:
+        if str(item.get("label", "") or "") == label:
+            return item
+    raise AssertionError(f"右クリックメニューに項目がありません: {label}")
+
+
+def _assert_page_spread_context_menu_commands(work) -> None:
+    from bmanga_dev.operators import object_tool_op, selection_context_menu
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import object_selection
+
+    while len(work.pages) < 3:
+        result = bpy.ops.bmanga.page_add()
+        assert result == {"FINISHED"}, result
+
+    class _Event:
+        ctrl = False
+        shift = False
+
+    original_hit = object_tool_op.hit_object_at_event
+    original_call = selection_context_menu._call_selection_menu
+    try:
+        object_tool_op.hit_object_at_event = lambda _context, _event: {
+            "kind": "page",
+            "page": 0,
+            "part": "body",
+            "key": object_selection.page_key(work.pages[0]),
+        }
+        selection_context_menu._call_selection_menu = lambda _context, _event=None: True
+        assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
+        assert int(work.active_page_index) == 0
+
+        items = context_menu.selection_command_items(bpy.context)
+        merge_item = _menu_item_by_label(items, "見開きに変更")
+        split_item = _menu_item_by_label(items, "見開きを解除")
+        assert bool(merge_item.get("enabled", False)), items
+        assert not bool(split_item.get("enabled", False)), items
+        assert dict(merge_item.get("props", {})).get("left_index") == 0
+
+        result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", **dict(merge_item.get("props", {})))
+        assert result == {"FINISHED"}, result
+        assert work.pages[0].spread
+        assert int(work.active_page_index) == 0
+
+        object_tool_op.hit_object_at_event = lambda _context, _event: {
+            "kind": "page",
+            "page": 0,
+            "part": "body",
+            "key": object_selection.page_key(work.pages[0]),
+        }
+        assert selection_context_menu.open_for_viewport_object(bpy.context, _Event())
+
+        items = context_menu.selection_command_items(bpy.context)
+        merge_item = _menu_item_by_label(items, "見開きに変更")
+        split_item = _menu_item_by_label(items, "見開きを解除")
+        assert not bool(merge_item.get("enabled", False)), items
+        assert bool(split_item.get("enabled", False)), items
+        assert dict(split_item.get("props", {})).get("spread_index") == 0
+
+        result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", **dict(split_item.get("props", {})))
+        assert result == {"FINISHED"}, result
+        assert not work.pages[0].spread
+        assert [str(page.id) for page in work.pages[:3]] == ["p0001", "p0002", "p0003"]
+        assert int(work.active_page_index) == 0
+    finally:
+        object_tool_op.hit_object_at_event = original_hit
+        selection_context_menu._call_selection_menu = original_call
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_context_menu_"))
     mod = None
@@ -313,6 +387,7 @@ def main() -> None:
         _assert_link_selected_menu()
         _assert_menu_draw_does_not_resync()
         _assert_viewport_tool_menu_paths(work)
+        _assert_page_spread_context_menu_commands(work)
         print("BMANGA_CONTEXT_MENU_COMMANDS_OK")
     finally:
         if mod is not None:

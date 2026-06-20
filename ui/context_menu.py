@@ -114,6 +114,33 @@ def _active_stack_target(context):
     return resolved.get("target") if resolved else None, resolved
 
 
+def _active_page_spread_state(context) -> dict:
+    work = getattr(getattr(context, "scene", None), "bmanga_work", None)
+    target, resolved = _active_stack_target(context)
+    if work is None or not bool(getattr(work, "loaded", False)):
+        return {"page": None, "index": -1, "can_merge": False, "can_split": False}
+    if not resolved or str(resolved.get("kind", "") or "") != "page" or target is None:
+        return {"page": None, "index": -1, "can_merge": False, "can_split": False}
+    page_index = int(resolved.get("index", -1))
+    pages = getattr(work, "pages", []) or []
+    if not (0 <= page_index < len(pages)):
+        return {"page": None, "index": -1, "can_merge": False, "can_split": False}
+    page = pages[page_index]
+    next_page = pages[page_index + 1] if page_index + 1 < len(pages) else None
+    can_split = bool(getattr(page, "spread", False))
+    can_merge = bool(
+        next_page is not None
+        and not getattr(page, "spread", False)
+        and not getattr(next_page, "spread", False)
+    )
+    return {
+        "page": page,
+        "index": page_index,
+        "can_merge": can_merge,
+        "can_split": can_split,
+    }
+
+
 def selection_command_items(context) -> list[dict]:
     """選択中レイヤー向け右クリックメニュー項目を返す.
 
@@ -197,6 +224,25 @@ def selection_command_items(context) -> list[dict]:
                 "enabled": has_item,
             },
         )
+    if normalized_kind == "page":
+        spread_state = _active_page_spread_state(context)
+        page_index = int(spread_state.get("index", -1))
+        items.extend([
+            {
+                "label": "見開きに変更",
+                "operator": "bmanga.pages_merge_spread",
+                "icon": "ARROW_LEFTRIGHT",
+                "enabled": bool(spread_state.get("can_merge", False)),
+                "props": {"left_index": page_index},
+            },
+            {
+                "label": "見開きを解除",
+                "operator": "bmanga.pages_split_spread",
+                "icon": "UNLINKED",
+                "enabled": bool(spread_state.get("can_split", False)),
+                "props": {"spread_index": page_index},
+            },
+        ])
     if normalized_kind in {"balloon", "effect"}:
         items.insert(
             6,
@@ -287,6 +333,14 @@ def selection_command_items(context) -> list[dict]:
     return items
 
 
+def _apply_menu_operator_props(op, item: dict) -> None:
+    for prop_name, value in dict(item.get("props", {}) or {}).items():
+        try:
+            setattr(op, str(prop_name), value)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _draw_selection_command_items(layout, context) -> bool:
     items = selection_command_items(context)
     if not any(bool(item.get("enabled", False)) for item in items):
@@ -306,12 +360,15 @@ def _draw_selection_command_items(layout, context) -> bool:
             op = row.operator(op_id, text=label, icon=icon)
             op.index = int(getattr(context.scene, "bmanga_active_layer_stack_index", -1))
             op.offset_from_selection = True
+            _apply_menu_operator_props(op, item)
         elif op_id == "bmanga.layer_detail_open":
             row.operator_context = "INVOKE_DEFAULT"
-            row.operator(op_id, text=label, icon=icon)
+            op = row.operator(op_id, text=label, icon=icon)
+            _apply_menu_operator_props(op, item)
         else:
             row.operator_context = "INVOKE_DEFAULT"
-            row.operator(op_id, text=label, icon=icon)
+            op = row.operator(op_id, text=label, icon=icon)
+            _apply_menu_operator_props(op, item)
     return True
 
 

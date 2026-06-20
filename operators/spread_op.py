@@ -57,6 +57,22 @@ def _shift_text_entry_x(entry, dx_mm: float) -> None:
     entry.x_mm = entry.x_mm + dx_mm
 
 
+def _reset_split_page_identity(entry, page_id: str) -> None:
+    entry.id = page_id
+    entry.title = ""
+    entry.dir_rel = f"{page_id}/"
+    entry.spread = False
+    entry.original_pages.clear()
+
+
+def _split_page_entries(work, index: int, reading_first_id: str, reading_second_id: str):
+    right_half = work.pages[index]
+    left_half = work.pages[index + 1]
+    _reset_split_page_identity(right_half, reading_first_id)
+    _reset_split_page_identity(left_half, reading_second_id)
+    return right_half, left_half
+
+
 def _copy_coma_entry(src, dst) -> None:
     """ComaEntry の内容を schema 経由で複製. coma_id は呼出側で上書き."""
     data = schema.coma_entry_to_dict(src)
@@ -322,7 +338,7 @@ def _merge_page_gpencil(
 
 
 def _split_page_assign_entries(
-    spread_entry,
+    spread_data: dict,
     left_entry,
     right_entry,
     canvas_width_mm: float,
@@ -338,20 +354,24 @@ def _split_page_assign_entries(
     left_comas: list[dict] = []
     right_comas: list[dict] = []
     right_coma_ids: list[str] = []
-    for p in spread_entry.comas:
-        if p.shape_type == "rect":
-            center_x = p.rect_x_mm + p.rect_width_mm / 2.0
-        elif p.shape_type == "polygon" and len(p.vertices) > 0:
-            xs = [v.x_mm for v in p.vertices]
-            center_x = (min(xs) + max(xs)) / 2.0
+    for coma_data in spread_data.get("comas", []) or []:
+        data = dict(coma_data)
+        shape = data.get("shape", {}) if isinstance(data.get("shape", {}), dict) else {}
+        shape_type = str(shape.get("type", "rect") or "rect")
+        if shape_type == "rect":
+            rect = shape.get("rect", {}) if isinstance(shape.get("rect", {}), dict) else {}
+            center_x = float(rect.get("x", 0.0)) + float(rect.get("widthMm", 0.0)) / 2.0
+        elif shape_type == "polygon" and len(shape.get("vertices", []) or []) > 0:
+            xs = [float(pair[0]) for pair in shape.get("vertices", []) if len(pair) > 0]
+            center_x = (min(xs) + max(xs)) / 2.0 if xs else 0.0
         else:
-            center_x = p.rect_x_mm
-        data = schema.coma_entry_to_dict(p)
+            rect = shape.get("rect", {}) if isinstance(shape.get("rect", {}), dict) else {}
+            center_x = float(rect.get("x", 0.0))
         if center_x < W:
             left_comas.append(data)
         else:
             right_comas.append(data)
-            right_coma_ids.append(p.coma_id)
+            right_coma_ids.append(str(data.get("comaId", "") or data.get("id", "") or ""))
 
     # 左右ページの panels に再構築
     left_entry.comas.clear()
@@ -376,17 +396,18 @@ def _split_page_assign_entries(
     balloon_to_page: dict[str, str] = {}  # balloon_id -> "L" or "R"
     left_balloons: list[dict] = []
     right_balloons: list[dict] = []
-    for b in spread_entry.balloons:
-        center_x = b.x_mm + b.width_mm / 2.0
-        data = schema.balloon_entry_to_dict(b)
+    for balloon_data in spread_data.get("balloons", []) or []:
+        data = dict(balloon_data)
+        balloon_id = str(data.get("id", "") or "")
+        center_x = float(data.get("xMm", 0.0)) + float(data.get("widthMm", 0.0)) / 2.0
         if center_x < W:
             left_balloons.append(data)
-            balloon_to_page[b.id] = "L"
-            left_balloon_ids.add(b.id)
+            balloon_to_page[balloon_id] = "L"
+            left_balloon_ids.add(balloon_id)
         else:
             right_balloons.append(data)
-            balloon_to_page[b.id] = "R"
-            right_balloon_ids.add(b.id)
+            balloon_to_page[balloon_id] = "R"
+            right_balloon_ids.add(balloon_id)
 
     left_entry.balloons.clear()
     right_entry.balloons.clear()
@@ -403,13 +424,14 @@ def _split_page_assign_entries(
     # text 振り分け. parent_balloon_id がついていれば親の所属ページに従う
     left_texts: list[dict] = []
     right_texts: list[dict] = []
-    for t in spread_entry.texts:
-        if t.parent_balloon_id and t.parent_balloon_id in balloon_to_page:
-            page_side = balloon_to_page[t.parent_balloon_id]
+    for text_data in spread_data.get("texts", []) or []:
+        data = dict(text_data)
+        parent_balloon_id = str(data.get("parentBalloonId", "") or "")
+        if parent_balloon_id and parent_balloon_id in balloon_to_page:
+            page_side = balloon_to_page[parent_balloon_id]
         else:
-            center_x = t.x_mm + t.width_mm / 2.0
+            center_x = float(data.get("xMm", 0.0)) + float(data.get("widthMm", 0.0)) / 2.0
             page_side = "L" if center_x < W else "R"
-        data = schema.text_entry_to_dict(t)
         if page_side == "L":
             left_texts.append(data)
         else:
@@ -753,29 +775,26 @@ class BMANGA_OT_pages_split_spread(Operator):
             work.pages.remove(idx)
 
             right_half = work.pages.add()
-            right_half.id = reading_first_id
-            right_half.title = ""
-            right_half.dir_rel = f"{reading_first_id}/"
-            right_half.spread = False
+            _reset_split_page_identity(right_half, reading_first_id)
             work.pages.move(len(work.pages) - 1, idx)
 
             left_half = work.pages.add()
-            left_half.id = reading_second_id
-            left_half.title = ""
-            left_half.dir_rel = f"{reading_second_id}/"
-            left_half.spread = False
+            _reset_split_page_identity(left_half, reading_second_id)
             work.pages.move(len(work.pages) - 1, idx + 1)
 
-            # 一時 spread entry を再構築して振り分け元にする
-            tmp_spread = work.pages.add()
-            schema.page_from_dict(tmp_spread, spread_data)
+            # CollectionProperty は add/remove/move 後に Python 側の参照が古くなり得る。
+            # 振り分け直前に、必ずページ一覧から取り直す。
+            right_half, left_half = _split_page_entries(
+                work, idx, reading_first_id, reading_second_id
+            )
 
             # 振り分け: 中心 x < W → 物理左半分 = left_half, それ以上 → 物理右半分 = right_half
-            assignment = _split_page_assign_entries(tmp_spread, left_half, right_half, W)
+            assignment = _split_page_assign_entries(spread_data, left_half, right_half, W)
             right_coma_ids = assignment["right_coma_ids"]
 
-            # 一時 spread entry を削除
-            work.pages.remove(len(work.pages) - 1)
+            right_half, left_half = _split_page_entries(
+                work, idx, reading_first_id, reading_second_id
+            )
 
             # 3) ファイル操作: spread/ → 物理左ページ (reading_second_id) dir に rename、
             #    物理右ページ (reading_first_id) 用に panel files を move
@@ -792,6 +811,9 @@ class BMANGA_OT_pages_split_spread(Operator):
             work.active_page_index = idx
 
             # 6) coma_count 再計算
+            right_half, left_half = _split_page_entries(
+                work, idx, reading_first_id, reading_second_id
+            )
             left_half.coma_count = len(left_half.comas)
             right_half.coma_count = len(right_half.comas)
 
@@ -801,6 +823,11 @@ class BMANGA_OT_pages_split_spread(Operator):
             # 8) JSON 保存
             #    page.json がロード時のソース・オブ・トゥルース。panel_*.json
             #    も座標不整合を避けるため左右ページ分を個別に書き直す。
+            right_half, left_half = _split_page_entries(
+                work, idx, reading_first_id, reading_second_id
+            )
+            left_half.coma_count = len(left_half.comas)
+            right_half.coma_count = len(right_half.comas)
             for e in left_half.comas:
                 if e.coma_id and paths.is_valid_coma_id(e.coma_id):
                     try:
