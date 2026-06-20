@@ -463,6 +463,8 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         expected_size = _image_size(work, scene, page)
+        if not force and not _preview_png_fresh_for_page(work, page, path):
+            force = True
         if not force and _preview_png_usable(path, expected_size, current=current):
             return path
         # 作品ファイルではページ詳細を常駐させないため、プレビュー再生成の

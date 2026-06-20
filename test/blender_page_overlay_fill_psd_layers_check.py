@@ -6,6 +6,7 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import bpy
@@ -64,6 +65,7 @@ def main() -> None:
 
         from bmanga_dev_overlay_fill_psd.core.work import get_work
         from bmanga_dev_overlay_fill_psd.io import export_pipeline
+        from bmanga_dev_overlay_fill_psd.io import work_io
         from bmanga_dev_overlay_fill_psd.ui import overlay_shared
         from bmanga_dev_overlay_fill_psd.utils import color_space
         from bmanga_dev_overlay_fill_psd.utils import page_preview_object
@@ -148,6 +150,7 @@ def main() -> None:
         if "セーフライン外の塗り" in png_names or "裁ち落とし枠外の塗り" in png_names:
             raise AssertionError("PSD以外に塗りレイヤーが追加されています")
 
+        work.safe_area_overlay.bleed_outer_enabled = True
         preview_path = page_preview_object.ensure_preview_png(
             work,
             page,
@@ -181,6 +184,22 @@ def main() -> None:
             raise AssertionError(f"ページ一覧プレビューにセーフライン外の塗りが反映されていません: {safe_px}")
         if not (inner_px[0] > 220 and inner_px[1] > 220 and inner_px[2] > 220):
             raise AssertionError(f"ページ一覧プレビューのセーフライン内まで塗られています: {inner_px}")
+
+        old_preview_mtime = Path(preview_path).stat().st_mtime
+        time.sleep(1.1)
+        work.safe_area_overlay.opacity = 55.0
+        work_io.save_work_json(Path(work.work_dir), work)
+        refreshed_preview_path = page_preview_object.ensure_preview_png(
+            work,
+            page,
+            0,
+            current=False,
+            scene=bpy.context.scene,
+            force=False,
+        )
+        refreshed_mtime = Path(refreshed_preview_path).stat().st_mtime if refreshed_preview_path else 0.0
+        if refreshed_mtime <= old_preview_mtime:
+            raise AssertionError("作品設定の更新後にページ一覧プレビュー画像が再生成されていません")
 
         work.safe_area_overlay.bleed_outer_enabled = True
         paper_guide_object.regenerate_all_paper_guides(bpy.context.scene, work)
