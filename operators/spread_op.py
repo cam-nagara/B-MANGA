@@ -7,17 +7,19 @@
   ページに振り分けて保持
 
 **座標規約**:
-- 見開きキャンバスは幅 2 * ``canvas_width_mm`` の横長矩形として扱う
+- 見開きキャンバスは左ページ幅 + 右ページ開始位置として扱う。
+  「トンボを合わせる」が有効な場合は右ページ開始位置に間隔を反映する
 - 原点 (0, 0) はキャンバスの左下 = 左ページの原点
 - 左ページ (b = 0002) の内容は x ∈ [0, W] に配置
-- 右ページ (a = 0001) の内容は x ∈ [W, 2W] に配置
-  - メタデータ (panels / balloons / texts) は PropertyGroup 上の x に ``+W`` を加算
-  - GP オブジェクトは subpage offset custom property で ``+W`` の位置ずらしを表現
+- 右ページ (a = 0001) の内容は x ∈ [R, R+W] に配置
+  - メタデータ (panels / balloons / texts) は PropertyGroup 上の x に ``+R`` を加算
+  - GP オブジェクトは subpage offset custom property で ``+R`` の位置ずらしを表現
     (strokes 自体は触らず、obj.location のみで移動 → stroke データを破壊しない)
 
 **見開き解除**:
-- 各エンティティの中心 x を見て W 未満なら左ページ (0002)、W 以上なら右ページ (0001) に振り分け
-- 右ページに振り分けた panels / balloons / texts は x を ``-W`` 戻す
+- 各エンティティの中心 x を見て、右ページ開始位置より左なら左ページ (0002)、
+  それ以上なら右ページ (0001) に振り分け
+- 右ページに振り分けた panels / balloons / texts は右ページ開始位置ぶん x を戻す
 - GP は subpage-offset 付きの右サブ GP (``*_R``) を右ページ用として切り出し、
   主 GP を左ページ用として切り出す
 """
@@ -127,22 +129,22 @@ def _subpage_gp_data_name(page_id: str, suffix: str = "") -> str:
 
 
 def _merge_pages_pp_groups(
-    merged_entry, b_entry, canvas_width_mm: float
+    merged_entry, b_entry, right_page_offset_mm: float
 ) -> None:
-    """merged_entry (元 a) の panels/balloons/texts を +W シフト、b の内容を追加.
+    """merged_entry (元 a) の panels/balloons/texts を右ページ位置へシフト、b の内容を追加.
 
-    - merged.comas: 既存 a の panels を x += W。続いて b の panels を x + 0 で append
+    - merged.comas: 既存 a の panels を右ページ位置へ移動。続いて b の panels を append
       (coma_id 衝突は後段でリネーム処理)
     - balloons / texts も同様。b の balloon id / text id は merged 内で衝突する可能性が
       あるため採番し直し。text の parent_balloon_id は新 id に追随させる。
     """
-    # a の既存 panels/balloons/texts を +W シフト (右半分へ)
+    # a の既存 panels/balloons/texts を右半分へシフト
     for panel in merged_entry.comas:
-        _shift_coma_entry_x(panel, canvas_width_mm)
+        _shift_coma_entry_x(panel, right_page_offset_mm)
     for balloon in merged_entry.balloons:
-        _shift_balloon_entry_x(balloon, canvas_width_mm)
+        _shift_balloon_entry_x(balloon, right_page_offset_mm)
     for text in merged_entry.texts:
-        _shift_text_entry_x(text, canvas_width_mm)
+        _shift_text_entry_x(text, right_page_offset_mm)
 
     # b の balloon id → merged 内でユニーク化するためのマップ
     merged_balloon_ids = {b.id for b in merged_entry.balloons}
@@ -191,7 +193,7 @@ def _merge_coma_files(
     3. b の panel PropertyGroup を merged.comas に copy し、coma_id を新 stem に差替
     4. ``pages/{b_old_id}/`` ディレクトリ (panels 空のはず) を remove
 
-    merged_entry の panels は既に +W シフト済 (呼出側で実施)。
+    merged_entry の panels は既に右ページ位置へシフト済 (呼出側で実施)。
     """
     work_dir = Path(work_dir)
     a_dir = paths.page_dir(work_dir, a_old_id)
@@ -274,14 +276,14 @@ def _merge_page_gpencil(
     a_old_id: str,
     b_old_id: str,
     spread_id: str,
-    canvas_width_mm: float,
+    right_page_offset_mm: float,
 ) -> None:
     """a / b の GP オブジェクトを見開きページ Collection に再配置.
 
     - b (左) の GP → 主 GP として ``page_{spread_id}_sketch`` にリネーム。
       obj.location は grid offset のみ (subpage_offset = 0)。
     - a (右) の GP → 副 GP として ``page_{spread_id}_sketch_R`` にリネーム。
-      subpage_offset_x_mm = canvas_width_mm を custom property にセット。
+      subpage_offset_x_mm = 右ページ開始位置を custom property にセット。
     - 元 Collection ``page_{a_old_id}`` / ``page_{b_old_id}`` は削除。
     - Collection ``page_{spread_id}`` を新設して両 GP を収容。
     """
@@ -321,7 +323,7 @@ def _merge_page_gpencil(
             _subpage_gp_data_name(spread_id, "_R"),
         )
         gp_utils.relink_object_to_page(scene, a_obj, spread_id)
-        a_obj[page_grid.SUBPAGE_OFFSET_X_PROP] = float(canvas_width_mm)
+        a_obj[page_grid.SUBPAGE_OFFSET_X_PROP] = float(right_page_offset_mm)
         a_obj[page_grid.SUBPAGE_OFFSET_Y_PROP] = 0.0
 
     # 旧 Collection (a / b) を削除
@@ -341,14 +343,14 @@ def _split_page_assign_entries(
     spread_data: dict,
     left_entry,
     right_entry,
-    canvas_width_mm: float,
+    right_page_offset_mm: float,
 ) -> dict:
     """spread の panels/balloons/texts を中心 x で左右ページに振り分け.
 
     戻り値: ``{"right_coma_ids": [...], "balloon_id_map_right": {...}}``
     右ページ用のコマ stem リスト (ファイル操作の入力に使う) 等。
     """
-    W = float(canvas_width_mm)
+    right_offset = float(right_page_offset_mm)
 
     # 振り分け: panel
     left_comas: list[dict] = []
@@ -367,7 +369,7 @@ def _split_page_assign_entries(
         else:
             rect = shape.get("rect", {}) if isinstance(shape.get("rect", {}), dict) else {}
             center_x = float(rect.get("x", 0.0))
-        if center_x < W:
+        if center_x < right_offset:
             left_comas.append(data)
         else:
             right_comas.append(data)
@@ -383,8 +385,8 @@ def _split_page_assign_entries(
     for d in right_comas:
         e = right_entry.comas.add()
         schema.coma_entry_from_dict(e, d)
-        # 右ページは x を -W シフト
-        _shift_coma_entry_x(e, -W)
+        # 右ページは x を右ページ開始位置ぶん戻す
+        _shift_coma_entry_x(e, -right_offset)
     left_entry.active_coma_index = 0 if len(left_entry.comas) > 0 else -1
     right_entry.active_coma_index = 0 if len(right_entry.comas) > 0 else -1
     left_entry.coma_count = len(left_entry.comas)
@@ -400,7 +402,7 @@ def _split_page_assign_entries(
         data = dict(balloon_data)
         balloon_id = str(data.get("id", "") or "")
         center_x = float(data.get("xMm", 0.0)) + float(data.get("widthMm", 0.0)) / 2.0
-        if center_x < W:
+        if center_x < right_offset:
             left_balloons.append(data)
             balloon_to_page[balloon_id] = "L"
             left_balloon_ids.add(balloon_id)
@@ -417,7 +419,7 @@ def _split_page_assign_entries(
     for d in right_balloons:
         e = right_entry.balloons.add()
         schema.balloon_entry_from_dict(e, d)
-        _shift_balloon_entry_x(e, -W)
+        _shift_balloon_entry_x(e, -right_offset)
     left_entry.active_balloon_index = 0 if len(left_entry.balloons) > 0 else -1
     right_entry.active_balloon_index = 0 if len(right_entry.balloons) > 0 else -1
 
@@ -431,7 +433,7 @@ def _split_page_assign_entries(
             page_side = balloon_to_page[parent_balloon_id]
         else:
             center_x = float(data.get("xMm", 0.0)) + float(data.get("widthMm", 0.0)) / 2.0
-            page_side = "L" if center_x < W else "R"
+            page_side = "L" if center_x < right_offset else "R"
         if page_side == "L":
             left_texts.append(data)
         else:
@@ -448,7 +450,7 @@ def _split_page_assign_entries(
     for d in right_texts:
         e = right_entry.texts.add()
         schema.text_entry_from_dict(e, d)
-        _shift_text_entry_x(e, -W)
+        _shift_text_entry_x(e, -right_offset)
         if e.parent_balloon_id and e.parent_balloon_id not in right_balloon_ids:
             e.parent_balloon_id = ""
     left_entry.active_text_index = 0 if len(left_entry.texts) > 0 else -1
@@ -456,7 +458,19 @@ def _split_page_assign_entries(
 
     return {
         "right_coma_ids": right_coma_ids,
+        "left_page": schema.page_to_dict(left_entry),
+        "right_page": schema.page_to_dict(right_entry),
     }
+
+
+def _restore_split_assignment(assignment: dict, left_entry, right_entry) -> None:
+    """CollectionProperty の参照取り直し後に左右ページの詳細を戻す."""
+    left_data = assignment.get("left_page", {})
+    right_data = assignment.get("right_page", {})
+    if isinstance(left_data, dict):
+        schema.page_from_dict(left_entry, left_data)
+    if isinstance(right_data, dict):
+        schema.page_from_dict(right_entry, right_data)
 
 
 def _split_coma_files(
@@ -632,7 +646,7 @@ class BMANGA_OT_pages_merge_spread(Operator):
         col.label(text=summary, icon="INFO")
         col.separator()
         col.label(
-            text="右ページの内容は X 座標が +W シフトされ見開き右半分に配置されます",
+            text="右ページの内容はトンボ合わせの間隔を反映して配置されます",
             icon="ARROW_LEFTRIGHT",
         )
         col.separator()
@@ -670,16 +684,21 @@ class BMANGA_OT_pages_merge_spread(Operator):
         a_old_id = a.id
         b_old_id = b.id
         W = float(work.paper.canvas_width_mm)
+        right_offset = page_grid.spread_right_page_offset_mm_for_values(
+            W,
+            bool(self.tombo_aligned),
+            float(self.tombo_gap_mm),
+        )
 
         try:
-            # 1) メタデータ統合: a の panels/balloons/texts を +W、b を +0 で追加
-            _merge_pages_pp_groups(a, b, W)
+            # 1) メタデータ統合: a の panels/balloons/texts を +R、b を +0 で追加
+            _merge_pages_pp_groups(a, b, right_offset)
 
             # 2) ファイル操作: a dir を spread_id にリネームし、b の panels をコピー統合
             _merge_coma_files(work_dir, a, b, a_old_id, b_old_id, spread_id)
 
             # 3) GP: 左/右 GP を spread Collection に再配置、subpage_offset を設定
-            _merge_page_gpencil(context.scene, a_old_id, b_old_id, spread_id, W)
+            _merge_page_gpencil(context.scene, a_old_id, b_old_id, spread_id, right_offset)
 
             # 4) pages コレクション: b を削除し、a を spread_id にリブランド
             work.pages.remove(left + 1)
@@ -764,6 +783,7 @@ class BMANGA_OT_pages_split_spread(Operator):
         reading_second_id = entry.original_pages[1].page_id  # = "0002" 側 = 物理左半分
 
         W = float(work.paper.canvas_width_mm)
+        right_offset = page_grid.spread_right_page_offset_mm(entry, W)
 
         try:
             # 1) spread entry の内容を dict で snapshot (後で振り分けに使う)
@@ -788,13 +808,14 @@ class BMANGA_OT_pages_split_spread(Operator):
                 work, idx, reading_first_id, reading_second_id
             )
 
-            # 振り分け: 中心 x < W → 物理左半分 = left_half, それ以上 → 物理右半分 = right_half
-            assignment = _split_page_assign_entries(spread_data, left_half, right_half, W)
+            # 振り分け: 左右ページの境目を、ノド側の重なり/空き込みで扱う
+            assignment = _split_page_assign_entries(spread_data, left_half, right_half, right_offset)
             right_coma_ids = assignment["right_coma_ids"]
 
             right_half, left_half = _split_page_entries(
                 work, idx, reading_first_id, reading_second_id
             )
+            _restore_split_assignment(assignment, left_half, right_half)
 
             # 3) ファイル操作: spread/ → 物理左ページ (reading_second_id) dir に rename、
             #    物理右ページ (reading_first_id) 用に panel files を move
@@ -814,6 +835,7 @@ class BMANGA_OT_pages_split_spread(Operator):
             right_half, left_half = _split_page_entries(
                 work, idx, reading_first_id, reading_second_id
             )
+            _restore_split_assignment(assignment, left_half, right_half)
             left_half.coma_count = len(left_half.comas)
             right_half.coma_count = len(right_half.comas)
 
@@ -826,6 +848,7 @@ class BMANGA_OT_pages_split_spread(Operator):
             right_half, left_half = _split_page_entries(
                 work, idx, reading_first_id, reading_second_id
             )
+            _restore_split_assignment(assignment, left_half, right_half)
             left_half.coma_count = len(left_half.comas)
             right_half.coma_count = len(right_half.comas)
             for e in left_half.comas:

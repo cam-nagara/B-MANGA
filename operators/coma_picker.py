@@ -384,7 +384,7 @@ def _find_coma_at_world_mm_page_browser(context, work, x_mm: float, y_mm: float)
         ox, oy = page_browser.page_offset_mm(work, context.scene, area, i)
         local_x = x_mm - ox
         local_y = y_mm - oy
-        if not _hit_test_canvas(local_x, local_y, cw, ch):
+        if not _hit_test_canvas(local_x, local_y, page_grid.page_content_width_mm(work, i, cw), ch):
             continue
         hit = _hit_test_page(page, local_x, local_y)
         if hit is not None:

@@ -1439,6 +1439,24 @@ def _page_highlight_rect(rects, ox_mm: float, oy_mm: float) -> Rect:
     return canvas_r.inset(-5.0)
 
 
+def _page_content_rect(work, page_index: int, paper, ox_mm: float, oy_mm: float) -> Rect:
+    try:
+        from ..utils import page_grid
+
+        width_mm = page_grid.page_content_width_mm(
+            work,
+            page_index,
+            float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
+        )
+    except Exception:  # noqa: BLE001
+        width_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
+    return Rect(ox_mm, oy_mm, width_mm, float(getattr(paper, "canvas_height_mm", 0.0) or 0.0))
+
+
+def _page_content_highlight_rect(work, page_index: int, paper, ox_mm: float, oy_mm: float) -> Rect:
+    return _page_content_rect(work, page_index, paper, ox_mm, oy_mm).inset(-5.0)
+
+
 def _draw_page_highlight(rect: Rect | None) -> None:
     if rect is None:
         return
@@ -1528,7 +1546,7 @@ def _draw_callback(phase: str = "post") -> None:
                     gap_y=gap_y,
                 )
                 if not overlay_visibility.rect_may_be_visible_in_region(
-                    _translate_rect(rects.canvas, ox, oy), region, rv3d,
+                    _page_content_rect(work, i, paper, ox, oy), region, rv3d,
                 ):
                     continue
                 if page_file_current_only and i != page_file_current_index:
@@ -1541,7 +1559,7 @@ def _draw_callback(phase: str = "post") -> None:
                 )
                 page_id = str(getattr(page, "id", "") or "")
                 if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
-                    highlight_rects.append(_page_highlight_rect(rects, ox, oy))
+                    highlight_rects.append(_page_content_highlight_rect(work, i, paper, ox, oy))
             for rect in highlight_rects:
                 _draw_page_highlight(rect)
         elif mode == MODE_COMA and len(work.pages) > 0:
@@ -1578,7 +1596,7 @@ def _draw_callback(phase: str = "post") -> None:
                     gap_y=gap_y,
                 )
                 if not overlay_visibility.rect_may_be_visible_in_region(
-                    _translate_rect(rects.canvas, ox, oy), region, rv3d,
+                    _page_content_rect(work, i, paper, ox, oy), region, rv3d,
                 ):
                     continue
                 if page_file_current_only and i != page_file_current_index:
@@ -1591,7 +1609,7 @@ def _draw_callback(phase: str = "post") -> None:
                 )
                 page_id = str(getattr(page, "id", "") or "")
                 if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
-                    highlight_rects.append(_page_highlight_rect(rects, ox, oy))
+                    highlight_rects.append(_page_content_highlight_rect(work, i, paper, ox, oy))
             for rect in highlight_rects:
                 _draw_page_highlight(rect)
         else:
@@ -1847,7 +1865,7 @@ def _draw_callback_pixel() -> None:
                 gap_y=gap_y,
             )
             if not overlay_visibility.rect_may_be_visible_in_region(
-                _translate_rect(rects.canvas, ox, oy), region, rv3d,
+                _page_content_rect(work, i, paper, ox, oy), region, rv3d,
             ):
                 continue
             left_half = _is_left_half(i, start_side, read_direction, work=work)

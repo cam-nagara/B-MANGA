@@ -14,7 +14,7 @@ from typing import Any, Sequence
 
 from . import export_group_masks, export_psd, export_raster, export_soft_mask
 from ..ui import overlay_shared
-from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, percentage
+from ..utils import border_geom, color_space, log, coma_content_mask, coma_preview, page_grid, percentage
 from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
@@ -141,7 +141,12 @@ def _canvas_size_px(paper, options: ExportOptions) -> tuple[int, int]:
 def _page_canvas_size_px(work, page, options: ExportOptions) -> tuple[int, int]:
     w, h = _canvas_size_px(work.paper, options)
     if bool(getattr(page, "spread", False)):
-        return (w * 2, h)
+        dpi = _dpi(work.paper, options)
+        width_mm = page_grid.spread_content_width_mm(
+            page,
+            float(getattr(work.paper, "canvas_width_mm", 0.0) or 0.0),
+        )
+        return (int(round(mm_to_px(width_mm, dpi))), h)
     return (w, h)
 
 
@@ -1301,7 +1306,11 @@ def _page_overlay_fill_layer(
     paper = work.paper
     page_width, page_height = _canvas_size_px(paper, options)
     if bool(getattr(page, "spread", False)):
-        targets = [(0, True), (page_width, False)]
+        right_left = int(round(mm_to_px(
+            page_grid.spread_right_page_offset_mm(page, float(paper.canvas_width_mm)),
+            _dpi(paper, options),
+        )))
+        targets = [(0, True), (right_left, False)]
     else:
         targets = [(0, _is_left_half_page(work, page))]
     changed = False
@@ -1499,7 +1508,11 @@ def _render_gp_object_layers(
     group_root: str,
     page_offset_mm: tuple[float, float],
 ) -> list[ExportLayer]:
-    canvas_bbox = (0.0, 0.0, float(work.paper.canvas_width_mm), float(work.paper.canvas_height_mm))
+    canvas_width_mm = page_grid.spread_content_width_mm(
+        page,
+        float(work.paper.canvas_width_mm),
+    )
+    canvas_bbox = (0.0, 0.0, canvas_width_mm, float(work.paper.canvas_height_mm))
     out: list[ExportLayer] = []
     data = getattr(obj, "data", None)
     layers = getattr(data, "layers", None)

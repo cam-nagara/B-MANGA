@@ -500,9 +500,10 @@ def layout_bbox_mm(work, scene, area) -> tuple[float, float, float, float] | Non
         if not page_range.page_in_range(_page):
             continue
         ox, oy = page_offset_mm(work, scene, area, i)
+        page_w = page_grid.page_content_width_mm(work, i, cw)
         min_x = ox if min_x is None else min(min_x, ox)
         min_y = oy if min_y is None else min(min_y, oy)
-        max_x = ox + cw if max_x is None else max(max_x, ox + cw)
+        max_x = ox + page_w if max_x is None else max(max_x, ox + page_w)
         max_y = oy + ch if max_y is None else max(max_y, oy + ch)
 
     if min_x is None or min_y is None or max_x is None or max_y is None:

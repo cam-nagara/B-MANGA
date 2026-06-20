@@ -207,9 +207,8 @@ def _rgba255(rgba, fallback=(255, 255, 255, 255)) -> tuple[int, int, int, int]:
 def _image_size(work, scene=None, page=None) -> tuple[int, int]:
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-    if page is not None and bool(getattr(page, "spread", False)):
-        # 見開きは 2 ページ分の横長タイルとして描く
-        cw *= 2.0
+    if page is not None:
+        cw = page_grid.spread_content_width_mm(page, cw)
     # 「画像解像度%」はページ実解像度 (用紙サイズ × DPI) に対する割合。
     # 長辺は PREVIEW_MAX_LONG_PX を上限にしてメモリを保護する。
     try:
@@ -364,8 +363,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     target_width, target_height = _image_size(work, scene, page)
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-    spread = bool(getattr(page, "spread", False))
-    content_width_mm = cw * (2.0 if spread else 1.0)
+    content_width_mm = page_grid.spread_content_width_mm(page, cw)
     # 大きい目標サイズではスーパーサンプリング不要 (生成時間とメモリの節約)
     scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
     if max(target_width, target_height) >= PREVIEW_SUPERSAMPLE_MAX_TARGET_PX:
@@ -427,8 +425,7 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
             return None
         cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
         ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-        if bool(getattr(page, "spread", False)):
-            cw *= 2.0
+        cw = page_grid.spread_content_width_mm(page, cw)
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
         options = export_pipeline.ExportOptions(
             area="canvas",

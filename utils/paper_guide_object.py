@@ -874,6 +874,72 @@ def _paper_guide_sets(paper, rects) -> list[tuple[str, list, list, bpy.types.Mat
     ]
 
 
+def _shift_loop(loop, dx_mm: float) -> list[tuple[float, float]]:
+    return [(float(x) + dx_mm, float(y)) for x, y in loop]
+
+
+def _shift_segments(segments, dx_mm: float):
+    return [
+        ((float(a[0]) + dx_mm, float(a[1])), (float(b[0]) + dx_mm, float(b[1])))
+        for a, b in segments
+    ]
+
+
+def _shift_guide_sets(guide_sets, dx_mm: float):
+    shifted = []
+    for label, loops, segments, material in guide_sets:
+        shifted.append((
+            label,
+            [_shift_loop(loop, dx_mm) for loop in loops],
+            _shift_segments(segments, dx_mm),
+            material,
+        ))
+    return shifted
+
+
+def _merge_guide_sets(*sets):
+    merged: dict[str, list] = {}
+    order: list[str] = []
+    for guide_sets in sets:
+        for label, loops, segments, material in guide_sets:
+            if label not in merged:
+                merged[label] = [[], [], material]
+                order.append(label)
+            merged[label][0].extend(loops)
+            merged[label][1].extend(segments)
+    return [(label, merged[label][0], merged[label][1], merged[label][2]) for label in order]
+
+
+def _paper_guide_sets_for_page(work, page_index: int, page):
+    paper = getattr(work, "paper", None)
+    try:
+        from . import page_grid
+
+        grid_page_index = page_grid.original_page_index(work, page_index)
+    except Exception:  # noqa: BLE001
+        page_grid = None
+        grid_page_index = page_index
+    if bool(getattr(page, "spread", False)) and page_grid is not None:
+        left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
+        right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
+        right_offset = page_grid.spread_right_page_offset_mm(
+            page,
+            float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
+        )
+        guide_sets = _merge_guide_sets(
+            _paper_guide_sets(paper, left_rects),
+            _shift_guide_sets(_paper_guide_sets(paper, right_rects), right_offset),
+        )
+        signature_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
+        return guide_sets, signature_rects, grid_page_index
+
+    rects = overlay_shared.compute_paper_rects(
+        paper,
+        is_left_half=_is_left_page(paper, grid_page_index, work=work),
+    )
+    return _paper_guide_sets(paper, rects), rects, grid_page_index
+
+
 def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     paper = getattr(work, "paper", None)
     overlay = getattr(work, "safe_area_overlay", None)
@@ -912,6 +978,9 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     return repr((
         int(page_index),
         str(getattr(page, "id", "") or ""),
+        bool(getattr(page, "spread", False)),
+        bool(getattr(page, "tombo_aligned", True)),
+        round(float(getattr(page, "tombo_gap_mm", 0.0) or 0.0), 6),
         bool(getattr(page, "in_page_range", True)),
         tuple(paper_values),
         tuple(round(float(c), 6) for c in safe_color),
@@ -961,14 +1030,7 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     if not page_id:
         return []
     paper = work.paper
-    try:
-        from . import page_grid
-
-        grid_page_index = page_grid.original_page_index(work, page_index)
-    except Exception:  # noqa: BLE001
-        grid_page_index = page_index
-    is_left = _is_left_page(paper, grid_page_index, work=work)
-    rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left)
+    guide_sets, rects, grid_page_index = _paper_guide_sets_for_page(work, page_index, page)
     page_coll = on.find_collection_by_bmanga_id(page_id, kind="page")
     if page_coll is None:
         page_coll = om.ensure_page_collection(scene, page_id, str(getattr(page, "title", "") or page_id))
@@ -976,7 +1038,6 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     safe_z, guide_z, _ = _page_z_levels(work, page_id)
     signature = _paper_guide_signature(work, grid_page_index, page, rects)
 
-    guide_sets = _paper_guide_sets(paper, rects)
     objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
     objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, rects.canvas, rects.safe, safe_z))
     objects.append(
@@ -1024,16 +1085,7 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             continue
         valid_ids.add(page_id)
         paper = work.paper
-        try:
-            from . import page_grid
-
-            grid_page_index = page_grid.original_page_index(work, page_index)
-        except Exception:  # noqa: BLE001
-            grid_page_index = page_index
-        rects = overlay_shared.compute_paper_rects(
-            paper,
-            is_left_half=_is_left_page(paper, grid_page_index, work=work),
-        )
+        _guide_sets, rects, grid_page_index = _paper_guide_sets_for_page(work, page_index, page)
         signature = _paper_guide_signature(work, grid_page_index, page, rects)
         line_obj = _line_guide_object(page_id)
         safe_obj = _safe_fill_object(page_id)

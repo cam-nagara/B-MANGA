@@ -46,6 +46,42 @@ def _work_spread_flags(work) -> list[bool]:
     return [bool(getattr(p, "spread", False)) for p in getattr(work, "pages", []) or []]
 
 
+def spread_right_page_offset_mm_for_values(
+    canvas_width_mm: float,
+    tombo_aligned: bool,
+    tombo_gap_mm: float,
+) -> float:
+    """見開き内で右半分ページが始まる X 位置を返す.
+
+    「トンボを合わせる」がオンのときは、CLIP STUDIO PAINT の見開き化に
+    近い扱いとして、単ページ幅に「間隔」を足した位置に右ページを置く。
+    負値の間隔はノド側の重なり、正値はノド側の空きとして扱う。
+    """
+    width = max(0.0, float(canvas_width_mm))
+    if not bool(tombo_aligned):
+        return width
+    try:
+        gap = float(tombo_gap_mm)
+    except (TypeError, ValueError):
+        gap = 0.0
+    return max(0.0, width + gap)
+
+
+def spread_right_page_offset_mm(page, canvas_width_mm: float) -> float:
+    return spread_right_page_offset_mm_for_values(
+        canvas_width_mm,
+        bool(getattr(page, "tombo_aligned", True)),
+        float(getattr(page, "tombo_gap_mm", 0.0) or 0.0),
+    )
+
+
+def spread_content_width_mm(page, canvas_width_mm: float) -> float:
+    width = max(0.0, float(canvas_width_mm))
+    if not bool(getattr(page, "spread", False)):
+        return width
+    return max(width, spread_right_page_offset_mm(page, width) + width)
+
+
 def slot_for_page_in_work(
     work,
     page_index: int,
@@ -158,7 +194,7 @@ def page_grid_offset_mm(
             else False
         )
         if is_spread and read_direction == "left":
-            ox -= canvas_width_mm
+            ox -= spread_right_page_offset_mm(pages[page_index], canvas_width_mm)
         return ox, oy
     slot = _logical_slot_index(page_index, start_side, read_direction)
     return slot_grid_offset_mm(
@@ -175,8 +211,8 @@ def page_grid_offset_mm(
 def page_content_width_mm(work, page_index: int, canvas_width_mm: float) -> float:
     """ページ内容の横幅 (mm)。見開きは 2 ページ分."""
     pages = getattr(work, "pages", []) or []
-    if 0 <= int(page_index) < len(pages) and bool(getattr(pages[page_index], "spread", False)):
-        return float(canvas_width_mm) * 2.0
+    if 0 <= int(page_index) < len(pages):
+        return spread_content_width_mm(pages[page_index], canvas_width_mm)
     return float(canvas_width_mm)
 
 

@@ -170,7 +170,15 @@ def _page_browser_fit_rect_mm(context, area, region, work) -> tuple[float, float
     pad = max(10.0, min(_gx, _gy) * 0.5)
     aspect = max(0.01, float(getattr(region, "width", 1)) / max(1.0, float(getattr(region, "height", 1))))
     if page_browser.is_vertical_area(area):
-        target_w = max(1.0, min(max(w, cw), cw * 2.0) + pad * 2.0)
+        max_page_w = cw
+        try:
+            from ..utils import page_grid
+
+            for i, _page in enumerate(getattr(work, "pages", []) or []):
+                max_page_w = max(max_page_w, page_grid.page_content_width_mm(work, i, cw))
+        except Exception:  # noqa: BLE001
+            max_page_w = max(cw, cw * 2.0)
+        target_w = max(1.0, min(max(w, cw), max_page_w) + pad * 2.0)
         target_h = target_w / aspect
         return (x - pad, y + h + pad - target_h, target_w, target_h)
     target_h = max(1.0, ch + pad * 2.0)
@@ -409,7 +417,8 @@ def _active_page_rect_mm(scene, work) -> tuple[float, float, float, float] | Non
     from ..utils import page_grid
 
     ox, oy = page_grid.page_total_offset_mm(work, scene, idx)
-    return (ox, oy, float(p.canvas_width_mm), float(p.canvas_height_mm))
+    width = page_grid.page_content_width_mm(work, idx, float(p.canvas_width_mm))
+    return (ox, oy, width, float(p.canvas_height_mm))
 
 
 def _page_fit_rect_mm(scene, work) -> tuple[tuple[float, float, float, float] | None, bool]:

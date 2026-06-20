@@ -123,9 +123,16 @@ def _ensure_paper_material(paper) -> bpy.types.Material:
 
 
 def _ensure_paper_mesh(width_m: float, height_m: float) -> bpy.types.Mesh:
-    """用紙サイズの Mesh Plane を ensure (各ページで共用可能だが、サイズが
-    変わる可能性は低いので 1 つを使い回す)."""
-    mesh_name = f"{PAPER_BG_MESH_PREFIX}main"
+    """用紙サイズの Mesh Plane を ensure.
+
+    見開きは「トンボを合わせる」の間隔で幅が変わるため、サイズごとに
+    Mesh を分ける。
+    """
+    mesh_name = (
+        f"{PAPER_BG_MESH_PREFIX}"
+        f"{int(round(max(0.0, width_m) * 1_000_000)):08d}_"
+        f"{int(round(max(0.0, height_m) * 1_000_000)):08d}"
+    )
     mesh = bpy.data.meshes.get(mesh_name)
     if mesh is None:
         mesh = bpy.data.meshes.new(mesh_name)
@@ -163,7 +170,13 @@ def ensure_paper_bg_for_page(
         return None
     in_range = bool(getattr(page, "in_page_range", True))
     paper = work.paper
-    width_mm = float(getattr(paper, "canvas_width_mm", 257.0) or 257.0)
+    base_width_mm = float(getattr(paper, "canvas_width_mm", 257.0) or 257.0)
+    try:
+        from . import page_grid
+
+        width_mm = page_grid.page_content_width_mm(work, page_index, base_width_mm)
+    except Exception:  # noqa: BLE001
+        width_mm = base_width_mm
     height_mm = float(getattr(paper, "canvas_height_mm", 364.0) or 364.0)
     mesh = _ensure_paper_mesh(mm_to_m(width_mm), mm_to_m(height_mm))
     # 材質は paper.paper_color に追従させる

@@ -28,7 +28,7 @@ def _full_canvas_box(work, page, options: ExportOptions) -> tuple[int, int, int,
     return 0, 0, width, height
 
 
-def _spread_side_crop_box(work, options: ExportOptions, side: str) -> tuple[int, int, int, int]:
+def _spread_side_crop_box(work, page, options: ExportOptions, side: str) -> tuple[int, int, int, int]:
     page_width, page_height = export_pipeline._canvas_size_px(work.paper, options)
     if options.area == "canvas":
         box = (0, 0, page_width, page_height)
@@ -39,7 +39,14 @@ def _spread_side_crop_box(work, options: ExportOptions, side: str) -> tuple[int,
             is_left_half=(side == "left"),
         )
     if side == "right":
-        box = _shift_box(box, page_width)
+        offset_px = int(round(export_pipeline.mm_to_px(
+            export_pipeline.page_grid.spread_right_page_offset_mm(
+                page,
+                float(work.paper.canvas_width_mm),
+            ),
+            export_pipeline._dpi(work.paper, options),
+        )))
+        box = _shift_box(box, offset_px)
     return box
 
 
@@ -53,14 +60,14 @@ def page_crop_box(
     """Return the pixel crop box for a page or a spread half."""
     is_spread = bool(getattr(page, "spread", False))
     if is_spread and spread_side in {"left", "right"}:
-        return _spread_side_crop_box(work, options, spread_side)
+        return _spread_side_crop_box(work, page, options, spread_side)
     if is_spread:
         if options.area == "canvas":
             return _full_canvas_box(work, page, options)
         return _union_box(
             [
-                _spread_side_crop_box(work, options, "left"),
-                _spread_side_crop_box(work, options, "right"),
+                _spread_side_crop_box(work, page, options, "left"),
+                _spread_side_crop_box(work, page, options, "right"),
             ]
         )
     if options.area == "canvas":
