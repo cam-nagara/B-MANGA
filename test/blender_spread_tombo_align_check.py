@@ -84,6 +84,50 @@ def _ensure_page_coma(work, page_index: int) -> None:
         raise AssertionError(f"確認用コマの追加に失敗しました: {result}")
 
 
+def _assert_default_values(work) -> None:
+    op_rna = bpy.ops.bmanga.pages_merge_spread.get_rna_type()
+    if bool(op_rna.properties["tombo_aligned"].default) is not True:
+        raise AssertionError("「トンボを合わせる」の実行初期値がオンではありません")
+    _assert_close(
+        float(op_rna.properties["tombo_gap_mm"].default),
+        -9.6,
+        "「間隔」の実行初期値",
+    )
+    if bool(getattr(work.pages[0], "tombo_aligned", False)) is not True:
+        raise AssertionError("ページデータの「トンボを合わせる」初期値がオンではありません")
+    _assert_close(float(getattr(work.pages[0], "tombo_gap_mm", 0.0)), -9.6, "ページデータの「間隔」初期値")
+
+
+def _assert_default_merge_case(work) -> None:
+    page_grid = _sub("utils.page_grid")
+
+    _ensure_two_pages(work)
+    _ensure_page_coma(work, 0)
+    _ensure_page_coma(work, 1)
+    work.active_page_index = 0
+    work.pages[0].comas[0].rect_x_mm = 35.0
+    work.pages[0].comas[0].rect_width_mm = 20.0
+    work.pages[1].comas[0].rect_x_mm = 10.0
+    work.pages[1].comas[0].rect_width_mm = 20.0
+    right_before_x = _first_coma_x(work.pages[0])
+    base_width = float(work.paper.canvas_width_mm)
+    expected_offset = base_width - 9.6
+
+    result = bpy.ops.bmanga.pages_merge_spread("EXEC_DEFAULT", left_index=0)
+    if "FINISHED" not in result:
+        raise AssertionError(f"初期値での見開き化に失敗しました: {result}")
+    spread = work.pages[0]
+    if bool(getattr(spread, "tombo_aligned", False)) is not True:
+        raise AssertionError("見開き化後の「トンボを合わせる」初期値がオンではありません")
+    _assert_close(float(getattr(spread, "tombo_gap_mm", 0.0)), -9.6, "見開き化後の「間隔」初期値")
+    _assert_close(page_grid.spread_right_page_offset_mm(spread, base_width), expected_offset, "初期値の右ページ開始位置")
+    _assert_close(_first_coma_x(spread), right_before_x + expected_offset, "初期値の右ページ側コマ位置")
+
+    result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
+    if "FINISHED" not in result:
+        raise AssertionError(f"初期値見開きの解除に失敗しました: {result}")
+
+
 def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     page_grid = _sub("utils.page_grid")
     export_page_regions = _sub("io.export_page_regions")
@@ -168,6 +212,8 @@ def main() -> None:
         work.paper.canvas_width_mm = 100.0
         work.paper.canvas_height_mm = 150.0
 
+        _assert_default_values(work)
+        _assert_default_merge_case(work)
         _assert_tombo_merge_case(work, aligned=True, gap_mm=-10.0)
         _assert_tombo_merge_case(work, aligned=False, gap_mm=-10.0)
         print("BMANGA_SPREAD_TOMBO_ALIGN_OK", flush=True)

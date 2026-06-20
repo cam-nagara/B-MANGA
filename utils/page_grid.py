@@ -19,6 +19,9 @@ from .geom import mm_to_m
 
 _logger = log.get_logger(__name__)
 
+DEFAULT_SPREAD_TOMBO_ALIGNED = True
+DEFAULT_SPREAD_TOMBO_GAP_MM = -9.6
+
 
 def _logical_slot_index(
     page_index: int,
@@ -70,8 +73,8 @@ def spread_right_page_offset_mm_for_values(
 def spread_right_page_offset_mm(page, canvas_width_mm: float) -> float:
     return spread_right_page_offset_mm_for_values(
         canvas_width_mm,
-        bool(getattr(page, "tombo_aligned", True)),
-        float(getattr(page, "tombo_gap_mm", 0.0) or 0.0),
+        bool(getattr(page, "tombo_aligned", DEFAULT_SPREAD_TOMBO_ALIGNED)),
+        float(getattr(page, "tombo_gap_mm", DEFAULT_SPREAD_TOMBO_GAP_MM) or 0.0),
     )
 
 

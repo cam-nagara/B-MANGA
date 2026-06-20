@@ -1038,7 +1038,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),
         bool(getattr(page, "tombo_aligned", True)),
-        round(float(getattr(page, "tombo_gap_mm", 0.0) or 0.0), 6),
+        round(float(getattr(page, "tombo_gap_mm", -9.6) or 0.0), 6),
         bool(getattr(page, "in_page_range", True)),
         tuple(paper_values),
         tuple(round(float(c), 6) for c in safe_color),
