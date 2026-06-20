@@ -151,6 +151,9 @@ def remove_page_previews() -> int:
 
 def _preview_opacity_factor(scene=None) -> float:
     scene = scene or getattr(bpy.context, "scene", None)
+    role, _page_id = _preview_scene_role(scene)
+    if role != "coma":
+        return 1.0
     settings = getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
     try:
         value = float(getattr(settings, "name_bg_images_opacity", 100.0) or 100.0)
@@ -553,7 +556,6 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         pass
     mat.use_nodes = True
     try:
-        mat.blend_method = "BLEND"
         mat.show_transparent_back = False
     except Exception:  # noqa: BLE001
         pass
@@ -600,7 +602,7 @@ def _apply_material_opacity(mat: bpy.types.Material | None, opacity: float) -> N
         return
     opacity = max(0.0, min(1.0, float(opacity)))
     try:
-        mat.blend_method = "BLEND"
+        mat.blend_method = "OPAQUE" if opacity >= 0.999 else "BLEND"
         mat.show_transparent_back = False
         mat.diffuse_color = (1.0, 1.0, 1.0, opacity)
     except Exception:  # noqa: BLE001

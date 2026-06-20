@@ -126,6 +126,30 @@ def _check_multi_select_reorder(context) -> None:
     assert overlay._selected_page_ids(bpy.context) == {before[1], before[2]}
 
 
+def _check_page_highlight_outline_only() -> None:
+    from bmanga_dev_page_select_reorder.ui import overlay
+
+    calls: list[str] = []
+    original_gpu = overlay.gpu
+    original_fill = overlay._draw_rect_fill
+    original_outline = overlay._draw_rect_outline
+    try:
+        overlay.gpu = SimpleNamespace(
+            state=SimpleNamespace(
+                depth_test_get=lambda: "LESS_EQUAL",
+                depth_test_set=lambda _value: None,
+            ),
+        )
+        overlay._draw_rect_fill = lambda *_args, **_kwargs: calls.append("fill")
+        overlay._draw_rect_outline = lambda *_args, **_kwargs: calls.append("outline")
+        overlay._draw_page_highlight(overlay.Rect(0.0, 0.0, 100.0, 100.0))
+    finally:
+        overlay.gpu = original_gpu
+        overlay._draw_rect_fill = original_fill
+        overlay._draw_rect_outline = original_outline
+    assert calls == ["outline", "outline"], calls
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_select_reorder_"))
     mod = None
@@ -140,6 +164,7 @@ def main() -> None:
         fake_context = _fake_context(scene)
         _check_alt_invoke_accepts_page_reorder(fake_context)
         _check_multi_select_reorder(fake_context)
+        _check_page_highlight_outline_only()
         print("BMANGA_PAGE_SELECTION_REORDER_OK")
     finally:
         if mod is not None:

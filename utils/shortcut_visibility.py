@@ -10,6 +10,7 @@ import bpy
 from . import paths
 
 BMANGA_PANEL_CATEGORY = "B-MANGA"
+_OLD_PANEL_CATEGORIES = {"マンガ", "Manga", "B-NAME"}
 PANEL_DRAW_GRACE_SECONDS = 0.35
 
 _panel_categories_cache: frozenset[str] | None = None
@@ -33,7 +34,7 @@ def _bmanga_panel_categories() -> frozenset[str]:
         cls = getattr(bpy.types, name, None)
         if cls is not None:
             cat = getattr(cls, "bl_category", None)
-            if cat:
+            if cat and cat not in _OLD_PANEL_CATEGORIES:
                 cats.add(cat)
     _panel_categories_cache = frozenset(cats)
     _panel_categories_time = now

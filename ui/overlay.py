@@ -1445,7 +1445,6 @@ def _draw_page_highlight(rect: Rect | None) -> None:
         previous_depth = None
     try:
         gpu.state.depth_test_set("NONE")
-        _draw_rect_fill(rect, viewport_colors.SELECTION_FILL)
         _draw_rect_outline(rect.inset(-1.8), viewport_colors.SELECTION_STRONG, width_mm=1.80)
         _draw_rect_outline(rect, viewport_colors.SELECTION, width_mm=1.00)
     finally:

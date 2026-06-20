@@ -322,6 +322,10 @@ def main() -> None:
         work_dir = temp_root / "PageFileStage.bmanga"
         result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
         assert result == {"FINISHED"}, result
+        from bmanga_dev_page_file_stage.utils import page_preview_object
+
+        bpy.context.scene.bmanga_coma_camera_settings.name_bg_images_opacity = 25.0
+        assert abs(page_preview_object._preview_opacity_factor(bpy.context.scene) - 1.0) < 0.001  # noqa: SLF001
         assert bpy.context.scene.bmanga_work.work_info.display_work_name.position == "bottom-left"
         assert _mainfile() == (work_dir / "work.blend").resolve()
         _assert_work_file_preview_only()
@@ -337,6 +341,8 @@ def main() -> None:
         assert _mainfile() == (work_dir / "p0001" / "page.blend").resolve()
         assert bool(getattr(bpy.context.scene, "bmanga_overview_mode", False)) is True
         assert str(getattr(bpy.context.scene, "bmanga_current_page_id", "")) == "p0001"
+        bpy.context.scene.bmanga_coma_camera_settings.name_bg_images_opacity = 25.0
+        assert abs(page_preview_object._preview_opacity_factor(bpy.context.scene) - 1.0) < 0.001  # noqa: SLF001
         assert bpy.data.collections.get("p0002") is None
         assert _managed_object("balloon", "other_page_balloon") is None
         _assert_page_file_current_page_runtime_only("p0001")
@@ -385,7 +391,6 @@ def main() -> None:
         assert "FINISHED" in bpy.ops.bmanga.repair_hierarchy("EXEC_DEFAULT")
         _assert_page_file_current_page_runtime_only("p0001")
 
-        from bmanga_dev_page_file_stage.utils import page_preview_object
         from bmanga_dev_page_file_stage.utils import page_grid
         from bmanga_dev_page_file_stage.ui import overlay
         from bmanga_dev_page_file_stage.operators import coma_knife_cut_op
@@ -442,6 +447,10 @@ def main() -> None:
         mat = _visible_page_preview_objects()[0].active_material
         assert mat is not None and mat.node_tree is not None
         assert any(getattr(node, "type", "") == "EMISSION" for node in mat.node_tree.nodes)
+        opacity_node = mat.node_tree.nodes.get(page_preview_object.PREVIEW_OPACITY_NODE)
+        assert opacity_node is not None
+        assert abs(float(opacity_node.outputs[0].default_value) - 1.0) < 0.001
+        assert abs(float(getattr(mat, "diffuse_color", (1.0, 1.0, 1.0, 0.0))[3]) - 1.0) < 0.001
         before_cut = len(work.pages[0].comas)
         cut_target = work.pages[0].comas[0]
         cut_x = float(cut_target.rect_x_mm) + float(cut_target.rect_width_mm) * 0.5
@@ -536,6 +545,8 @@ def main() -> None:
         result = bpy.ops.bmanga.enter_coma_mode()
         assert result == {"FINISHED"}, result
         assert _mainfile() == (work_dir / "p0002" / "c01" / "c01.blend").resolve()
+        bpy.context.scene.bmanga_coma_camera_settings.name_bg_images_opacity = 25.0
+        assert abs(page_preview_object._preview_opacity_factor(bpy.context.scene) - 0.25) < 0.001  # noqa: SLF001
 
         result = bpy.ops.bmanga.exit_coma_mode()
         assert result == {"FINISHED"}, result

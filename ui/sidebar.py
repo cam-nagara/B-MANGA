@@ -7,6 +7,7 @@ import bpy
 from ..utils import page_browser
 
 B_NAME_CATEGORY = "B-MANGA"
+_OLD_PANEL_CATEGORIES = {"マンガ", "Manga", "B-NAME"}
 
 
 def open_bmanga_sidebar(context=None, *, select_category: bool = True) -> int:
@@ -68,6 +69,8 @@ def _bmanga_tab_name() -> str:
     if cls is not None:
         cat = getattr(cls, "bl_category", None)
         if cat:
+            if cat in _OLD_PANEL_CATEGORIES:
+                return B_NAME_CATEGORY
             return cat
     return B_NAME_CATEGORY
 

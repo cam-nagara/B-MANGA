@@ -136,12 +136,31 @@ def _assert_absent(records: list[tuple[str, str]], *values: str) -> None:
         raise AssertionError(f"この状態では不要な項目が残っています: {extras}")
 
 
+def _assert_bmanga_panels_in_single_tab() -> None:
+    offenders = []
+    for class_name in dir(bpy.types):
+        if not class_name.startswith("BMANGA_PT_"):
+            continue
+        cls = getattr(bpy.types, class_name, None)
+        if cls is None:
+            continue
+        if (
+            getattr(cls, "bl_space_type", "") == "VIEW_3D"
+            and getattr(cls, "bl_region_type", "") == "UI"
+            and getattr(cls, "bl_category", "") != "B-MANGA"
+        ):
+            offenders.append((class_name, getattr(cls, "bl_category", "")))
+    if offenders:
+        raise AssertionError(f"B-MANGA以外のタブに残ったパネルがあります: {offenders}")
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_panel_role_"))
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         mod = _load_addon()
+        _assert_bmanga_panels_in_single_tab()
         result = bpy.ops.bmanga.work_new(filepath=str(temp_root / "PanelRole.bmanga"))
         assert result == {"FINISHED"}, result
         result = bpy.ops.bmanga.page_add()

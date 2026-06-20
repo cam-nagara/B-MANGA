@@ -35,6 +35,45 @@ _MODULES = (
     export_panel,
 )
 
+_CANONICAL_PANEL_CATEGORY = "B-MANGA"
+_OWNED_PANEL_PREFIXES = (
+    "BMANGA_PT_",
+    "BNAME_PT_",
+    "B_NAME_PT_",
+)
+
+
+def _unregister_stale_bmanga_panel_classes() -> None:
+    """旧タブ名や再読込残りのB-MANGAパネルを登録前に外す."""
+    for class_name in list(dir(bpy.types)):
+        if not class_name.startswith(_OWNED_PANEL_PREFIXES):
+            continue
+        cls = getattr(bpy.types, class_name, None)
+        if cls is None:
+            continue
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
+
+
+def _normalize_bmanga_panel_categories() -> None:
+    """登録済みB-MANGAパネルをB-MANGAタブへ統一する."""
+    for class_name in dir(bpy.types):
+        if not class_name.startswith("BMANGA_PT_"):
+            continue
+        cls = getattr(bpy.types, class_name, None)
+        if cls is None:
+            continue
+        try:
+            if (
+                getattr(cls, "bl_space_type", "") == "VIEW_3D"
+                and getattr(cls, "bl_region_type", "") == "UI"
+            ):
+                cls.bl_category = _CANONICAL_PANEL_CATEGORY
+        except Exception:
+            pass
+
 
 def _unregister_legacy_image_layer_panel() -> None:
     """旧「画像レイヤー」独立パネルを登録済みクラス名からも確実に外す."""
@@ -91,10 +130,12 @@ def register() -> None:
     # 旧「画像レイヤー」/「フキダシ」/「テキスト」/「効果線」独立パネルは
     # 新 UI では登録しない。
     # Reload Addons 時に前回登録分が残っている場合もここで外す。
+    _unregister_stale_bmanga_panel_classes()
     _unregister_legacy_image_layer_panel()
     _unregister_legacy_tool_panels()
     for module in _MODULES:
         module.register()
+    _normalize_bmanga_panel_categories()
 
 
 def unregister() -> None:
@@ -105,3 +146,4 @@ def unregister() -> None:
             pass
     _unregister_legacy_image_layer_panel()
     _unregister_legacy_tool_panels()
+    _unregister_stale_bmanga_panel_classes()
