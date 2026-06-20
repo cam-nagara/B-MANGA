@@ -413,6 +413,7 @@ def _assert_shortcuts() -> tuple[bool, list[str]]:
         ("ナビゲート", "bmanga.view_navigate", "SPACE", False, False, False),
         ("ブラシサイズ", "bmanga.brush_size_drag", "LEFTMOUSE", False, True, True),
         ("レイヤー選択", "bmanga.page_pick_viewport", "LEFTMOUSE", True, True, False),
+        ("ページ並べ替え", "bmanga.page_reorder_drag", "LEFTMOUSE", False, False, True),
         ("Alt移動", "bmanga.alt_reparent_drag", "LEFTMOUSE", False, False, True),
         ("Alt+Shift移動", "bmanga.alt_reparent_out", "LEFTMOUSE", True, False, True),
         ("次のページ", "bmanga.page_next", "COMMA", False, False, False),

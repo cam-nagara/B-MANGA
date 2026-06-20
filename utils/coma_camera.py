@@ -50,6 +50,7 @@ from .coma_camera_refs import (
 
 _logger = log.get_logger(__name__)
 _OPACITY_PERCENT_MIGRATION_PROP = "bmanga_coma_camera_opacity_percent_units_v1"
+HATCHING_IMAGE_NAME = "ハッチング間隔.png"
 
 
 def ensure_opacity_percent_units(scene) -> None:
@@ -118,6 +119,7 @@ def ensure_coma_camera_scene(
         refs = ensure_reference_images(work, page_id, coma_id)
     _restore_scene_camera(scene, camera)
     configure_camera_backgrounds(scene, camera, refs, page_id, coma_id)
+    ensure_hatching_background(context)
     _restore_scene_camera(scene, camera)
     resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
@@ -463,9 +465,11 @@ def _background_scale_offset_for_image(img, base_scale: float) -> tuple[float, t
 
 
 def _ref_is_page_image(ref: ReferenceImage) -> bool:
+    if bool(ref.full_page_mask):
+        return True
     if str(ref.kind or "") == "koma":
         return False
-    return bool(ref.full_page_mask) or str(ref.kind or "") == "name"
+    return str(ref.kind or "") == "name"
 
 
 def _image_is_page_image(img) -> bool:
@@ -473,10 +477,10 @@ def _image_is_page_image(img) -> bool:
         return False
     try:
         kind = str(img.get("bmanga_kind", "") or "")
-        if kind == "koma":
-            return False
         if bool(img.get("bmanga_full_page_mask", False)):
             return True
+        if kind == "koma":
+            return False
         if kind == "name":
             return True
     except Exception:  # noqa: BLE001
@@ -493,6 +497,11 @@ def _background_matches_kind(bg, kind: str) -> bool:
         return is_page_image
     if kind == "koma":
         return not is_page_image and "コマ" in getattr(img, "name", "")
+    if kind == "hatching":
+        try:
+            return str(img.get("bmanga_kind", "") or "") == "hatching"
+        except Exception:  # noqa: BLE001
+            return HATCHING_IMAGE_NAME in getattr(img, "name", "")
     return False
 
 
@@ -509,6 +518,12 @@ def set_background_images_scale(context, scale: float, *, kind_filter: str = "")
         bg_scale, bg_offset = _background_scale_offset_for_image(img, float(scale))
         _set_bg_attr(bg, "scale", bg_scale)
         _set_bg_attr(bg, "offset", bg_offset)
+
+
+def set_background_kind_visibility(context, kind: str, visible: bool) -> None:
+    for bg in _iter_camera_backgrounds(context):
+        if _background_matches_kind(bg, kind):
+            _set_bg_attr(bg, "show_background_image", bool(visible))
 
 
 def camera_background_count(context) -> int:
@@ -578,6 +593,81 @@ def set_background_image_rotation(context, name_filter: str, rotation: float) ->
             _set_bg_attr(bg, "rotation", float(rotation))
 
 
+def _ensure_hatching_image():
+    img = bpy.data.images.get(HATCHING_IMAGE_NAME)
+    if img is not None:
+        try:
+            img[MANAGED_IMAGE_PROP] = True
+            img["bmanga_kind"] = "hatching"
+        except Exception:  # noqa: BLE001
+            pass
+        return img
+    width = 256
+    height = 256
+    img = bpy.data.images.new(HATCHING_IMAGE_NAME, width=width, height=height, alpha=True)
+    pixels: list[float] = []
+    for y in range(height):
+        wave = int(round(math.sin(y / 11.0) * 5.0))
+        for x in range(width):
+            phase = (x + y + wave) % 24
+            alpha = 0.58 if phase <= 1 or phase >= 23 else 0.0
+            pixels.extend((0.02, 0.02, 0.02, alpha))
+    try:
+        img.pixels.foreach_set(pixels)
+        img.update()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        img[MANAGED_IMAGE_PROP] = True
+        img["bmanga_kind"] = "hatching"
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        img.colorspace_settings.name = "sRGB"
+    except Exception:  # noqa: BLE001
+        pass
+    return img
+
+
+def ensure_hatching_background(context):
+    scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
+    if scene is None:
+        return None
+    cam = getattr(scene, "camera", None)
+    if cam is None or getattr(cam, "type", "") != "CAMERA":
+        cam = ensure_coma_camera(scene)
+        scene.camera = cam
+    data = getattr(cam, "data", None)
+    if data is None:
+        return None
+    img = _ensure_hatching_image()
+    bg = None
+    for candidate in getattr(data, "background_images", []) or []:
+        candidate_img = getattr(candidate, "image", None)
+        if candidate_img is img or (
+            candidate_img is not None
+            and HATCHING_IMAGE_NAME in getattr(candidate_img, "name", "")
+        ):
+            bg = candidate
+            break
+    if bg is None:
+        bg = data.background_images.new()
+    bg.image = img
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    visible = bool(getattr(settings, "hatching_visible", True))
+    rotation = float(getattr(settings, "hatching_rotation", 0.0) or 0.0)
+    _set_bg_attr(bg, "alpha", 0.72)
+    _set_bg_attr(bg, "scale", 1.0)
+    _set_bg_attr(bg, "offset", (0.0, 0.0))
+    _set_bg_attr(bg, "rotation", rotation)
+    _set_bg_attr(bg, "display_depth", "FRONT")
+    _set_bg_attr(bg, "frame_method", "FIT")
+    _set_bg_attr(bg, "show_background_image", visible)
+    if hasattr(data, "show_background_images"):
+        data.show_background_images = True
+    return bg
+
+
 def set_koma_background_depth(context, *, back: bool) -> None:
     depth = "BACK" if back else "FRONT"
     for bg in _iter_camera_backgrounds(context):
@@ -590,8 +680,13 @@ def toggle_backgrounds_by_kind(context, kind: str) -> bool:
     if settings is None:
         return False
     if kind == "name":
-        settings.name_visible = not bool(settings.name_visible)
-        visible = settings.name_visible
+        scene = getattr(context, "scene", None)
+        if scene is not None and hasattr(scene, "bmanga_page_preview_enabled"):
+            scene.bmanga_page_preview_enabled = not bool(scene.bmanga_page_preview_enabled)
+            visible = bool(scene.bmanga_page_preview_enabled)
+        else:
+            settings.name_visible = not bool(settings.name_visible)
+            visible = bool(settings.name_visible)
     else:
         settings.koma_visible = not bool(settings.koma_visible)
         visible = settings.koma_visible

@@ -376,6 +376,19 @@ class KeymapState:
                 print(f"[B-MANGA][KEYMAP] + bmanga.alt_reparent_out ({km_name}) LEFTMOUSE alt=1 shift=1")
             except Exception as exc:  # noqa: BLE001
                 print(f"[B-MANGA][KEYMAP] {km_name} alt_reparent_out failed: {exc!r}")
+            if km_name == "Object Mode":
+                try:
+                    kmi = km.keymap_items.new(
+                        "bmanga.page_reorder_drag",
+                        "LEFTMOUSE",
+                        "PRESS",
+                        alt=True,
+                        head=True,
+                    )
+                    self.bmanga_items.append(kmi)
+                    print(f"[B-MANGA][KEYMAP] + bmanga.page_reorder_drag ({km_name}) LEFTMOUSE alt=1")
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[B-MANGA][KEYMAP] {km_name} page_reorder_drag failed: {exc!r}")
 
     def _populate_window_overrides(self, km) -> None:
         """Window キーマップに修飾キー操作と主要ツールキーを先取り登録.
@@ -540,8 +553,6 @@ class KeymapState:
         # オブジェクトモードのクリック → ページをアクティブ化。
         # operator 側で PASS_THROUGH し、Blender 標準のオブジェクト選択は妨げない。
         _add("bmanga.page_pick_viewport", "LEFTMOUSE")
-        # Ctrl+ドラッグ → 作品ファイル上で選択ページを並べ替え (head で先行判定)
-        _add("bmanga.page_reorder_drag", "LEFTMOUSE", ctrl=True, head=True)
         # Ctrl+クリック / Shift+クリック → ページ/コマのマルチセレクト
         # operator 内で event の修飾キーを参照し、object_selection に toggle/add する.
         _add("bmanga.page_pick_viewport", "LEFTMOUSE", ctrl=True)
@@ -552,6 +563,8 @@ class KeymapState:
         # Alt+Shift+クリック → 選択中レイヤーを 1 段浅い親へ (位置維持)
         # operator 内でドラッグ判定をしないため、PRESS 即発火扱い.
         _add("bmanga.alt_reparent_out", "LEFTMOUSE", alt=True, shift=True, head=True)
+        # Alt+ドラッグ → 作品ファイル上で選択ページを並べ替え (ページ選択時だけ成立)
+        _add("bmanga.page_reorder_drag", "LEFTMOUSE", alt=True, head=True)
         # ダブルクリック → コマ編集モードへ (固定)。ファイル選択用の
         # プロパティを持つ本体 operator を keymap から直接呼ぶと、
         # mainfile 切替後の keymap 再構築で Blender 本体が落ちる場合が

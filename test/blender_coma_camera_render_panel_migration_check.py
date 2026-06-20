@@ -1,4 +1,4 @@
-"""Blender実機用: コマ編集カメラ設定のB-MANGA Render移動確認."""
+"""Blender実機用: コマ編集カメラ/ビュー設定のB-MANGA側表示確認."""
 
 from __future__ import annotations
 
@@ -116,28 +116,58 @@ def _prepare_coma_context() -> None:
 def _check_bmanga_panel() -> None:
     from bmanga_panel_migration.panels import coma_camera_panel
 
+    assert coma_camera_panel.BMANGA_PT_coma_camera.bl_label == "カメラ設定"
     labels, operators = _draw_panel(coma_camera_panel.BMANGA_PT_coma_camera, bpy.context)
     text_blob = "\n".join(labels)
     for forbidden in (
         "カメラアングル一覧",
         "出力解像度",
-        "魚眼モード",
         "縮小モード",
         "Pencil+4 線幅を保存",
-        "ページ画像のスケール",
+        "ページ一覧不透明度",
+        "グレースケール表示",
         "全下絵を表示/非表示",
         "下絵_コマ",
         "すべての下絵を再読込",
     ):
         assert forbidden not in text_blob, forbidden
     assert "カメラプリセット" in labels
+    assert "魚眼モード" in labels
+    assert "魚眼FOV" in labels
     assert "bmanga.coma_camera_angle_duplicate" in operators
-    assert "グレースケール表示" in labels and "背景を透過" in labels
-    assert labels.index("グレースケール表示") < labels.index("背景を透過")
     assert getattr(bpy.types, "BMANGA_OT_fisheye_save_pencil4_widths", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_all_backgrounds", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_toggle_koma_backgrounds", None) is None
     assert getattr(bpy.types, "BMANGA_OT_coma_camera_resolution_add", None) is None
+
+
+def _check_bmanga_view_panel() -> None:
+    from bmanga_panel_migration.panels import view_panel
+
+    labels, operators = _draw_panel(view_panel.BMANGA_PT_view, bpy.context)
+    text_blob = "\n".join(labels)
+    for required in (
+        "ページ一覧",
+        "ページ一覧表示",
+        "前後ページ数",
+        "列数",
+        "横間隔mm",
+        "縦間隔mm",
+        "ページ一覧不透明度",
+        "ページ画像のスケール",
+        "コマ内レイヤー",
+        "グレースケール表示",
+        "背景を透過",
+        "ワールド背景色を被写体に影響させない",
+        "ソリッド背景色",
+        "サブディビジョンサーフェス",
+        "コマを後ろにする",
+        "ハッチング間隔を表示",
+        "ハッチング回転",
+        "ビューを更新",
+    ):
+        assert required in text_blob, required
+    assert "bmanga.coma_camera_toggle_name_backgrounds" in operators
 
 
 def _check_camera_preset_duplicate() -> None:
@@ -159,13 +189,17 @@ def _check_render_panel() -> None:
     from bmanga_render_panel_migration import panels as render_panels
 
     assert bpy.ops.bmanga_render.load_builtin_presets(reset=True) == {"FINISHED"}
-    labels, operators = _draw_panel(render_panels.BMANGA_RENDER_PT_main, bpy.context)
+    labels, operators = _draw_panel(render_panels.BMANGA_RENDER_PT_fisheye, bpy.context)
     text_blob = "\n".join(labels)
-    for required in (
+    for forbidden in (
         "魚眼モード",
+        "魚眼FOV",
+        "ページ画像のスケール",
+    ):
+        assert forbidden not in text_blob, forbidden
+    for required in (
         "縮小モード",
         "縮小率",
-        "ページ画像のスケール",
         "Pencil+4 線幅を保存",
     ):
         assert required in text_blob, required
@@ -201,9 +235,10 @@ def main() -> None:
         render = _load_package("bmanga_render_panel_migration", ROOT / "addons" / "b_manga_render")
         _prepare_coma_context()
         _check_bmanga_panel()
+        _check_bmanga_view_panel()
         _check_camera_preset_duplicate()
         _check_render_panel()
-        print("BMANGA_COMA_CAMERA_RENDER_PANEL_MIGRATION_OK")
+        print("BMANGA_COMA_CAMERA_RENDER_PANEL_RETURN_OK")
     finally:
         if render is not None:
             render.unregister()

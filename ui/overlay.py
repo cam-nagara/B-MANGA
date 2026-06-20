@@ -1421,6 +1421,15 @@ def _should_highlight_active_page(context) -> bool:
     return getattr(scene, "bmanga_active_layer_kind", "") == "page"
 
 
+def _selected_page_ids(context) -> set[str]:
+    ids: set[str] = set()
+    for key in object_selection.get_keys(context):
+        kind, _page_id, item_id = object_selection.parse_key(key)
+        if kind == "page" and item_id:
+            ids.add(str(item_id))
+    return ids
+
+
 def _page_highlight_rect(rects, ox_mm: float, oy_mm: float) -> Rect:
     canvas_r = _translate_rect(rects.canvas, ox_mm, oy_mm)
     return canvas_r.inset(-5.0)
@@ -1436,6 +1445,8 @@ def _draw_page_highlight(rect: Rect | None) -> None:
         previous_depth = None
     try:
         gpu.state.depth_test_set("NONE")
+        _draw_rect_fill(rect, viewport_colors.SELECTION_FILL)
+        _draw_rect_outline(rect.inset(-1.8), viewport_colors.SELECTION_STRONG, width_mm=1.80)
         _draw_rect_outline(rect, viewport_colors.SELECTION, width_mm=1.00)
     finally:
         try:
@@ -1493,7 +1504,8 @@ def _draw_callback(phase: str = "post") -> None:
             read_direction = getattr(paper, "read_direction", "left")
             active_idx = work.active_page_index
             highlight_active_page = _should_highlight_active_page(context)
-            active_highlight_rect = None
+            selected_page_ids = _selected_page_ids(context)
+            highlight_rects: list[Rect] = []
             page_file_indices = None if is_page_browser else _page_file_overview_indices(scene, work)
             page_file_current_index = (
                 _page_file_current_page_index(scene, work)
@@ -1523,10 +1535,11 @@ def _draw_callback(phase: str = "post") -> None:
                     ox_mm=ox, oy_mm=oy, draw_image_layers=False,
                     is_left_half=left_half, phase=phase,
                 )
-                # アクティブページにハイライト枠 (ズーム連動)
-                if highlight_active_page and i == active_idx:
-                    active_highlight_rect = _page_highlight_rect(rects, ox, oy)
-            _draw_page_highlight(active_highlight_rect)
+                page_id = str(getattr(page, "id", "") or "")
+                if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
+                    highlight_rects.append(_page_highlight_rect(rects, ox, oy))
+            for rect in highlight_rects:
+                _draw_page_highlight(rect)
         elif mode == MODE_COMA and len(work.pages) > 0:
             from ..utils.page_grid import (
                 is_left_half_page as _is_left_half,
@@ -1541,7 +1554,8 @@ def _draw_callback(phase: str = "post") -> None:
             read_direction = getattr(paper, "read_direction", "left")
             active_idx = work.active_page_index
             highlight_active_page = _should_highlight_active_page(context)
-            active_highlight_rect = None
+            selected_page_ids = _selected_page_ids(context)
+            highlight_rects: list[Rect] = []
             page_file_indices = None if is_page_browser else _page_file_overview_indices(scene, work)
             page_file_current_index = (
                 _page_file_current_page_index(scene, work)
@@ -1570,9 +1584,11 @@ def _draw_callback(phase: str = "post") -> None:
                     ox_mm=ox, oy_mm=oy, draw_image_layers=False,
                     is_left_half=left_half, phase=phase,
                 )
-                if highlight_active_page and i == active_idx:
-                    active_highlight_rect = _page_highlight_rect(rects, ox, oy)
-            _draw_page_highlight(active_highlight_rect)
+                page_id = str(getattr(page, "id", "") or "")
+                if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
+                    highlight_rects.append(_page_highlight_rect(rects, ox, oy))
+            for rect in highlight_rects:
+                _draw_page_highlight(rect)
         else:
             from ..utils.page_grid import (
                 is_left_half_page as _is_left_half,

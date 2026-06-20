@@ -59,6 +59,21 @@ def _update_name_show_all_pages(self, context) -> None:
     )
 
 
+def _update_name_visible(self, context) -> None:
+    from ..utils import coma_camera
+
+    coma_camera.set_page_reference_visibility(
+        context,
+        show_all=bool(getattr(self, "name_show_all_pages", False)),
+    )
+
+
+def _update_koma_visible(self, context) -> None:
+    from ..utils import coma_camera
+
+    coma_camera.set_background_kind_visibility(context, "koma", bool(self.koma_visible))
+
+
 def _update_white_background(self, context) -> None:
     scene = getattr(context, "scene", None)
     if scene is not None:
@@ -84,6 +99,7 @@ def _update_subsurf_realtime(self, _context) -> None:
 def _update_hatching_visible(self, context) -> None:
     from ..utils import coma_camera
 
+    coma_camera.ensure_hatching_background(context)
     coma_camera.set_background_image_visibility(
         context, "ハッチング間隔.png", bool(self.hatching_visible)
     )
@@ -92,6 +108,7 @@ def _update_hatching_visible(self, context) -> None:
 def _update_hatching_rotation(self, context) -> None:
     from ..utils import coma_camera
 
+    coma_camera.ensure_hatching_background(context)
     coma_camera.set_background_image_rotation(
         context, "ハッチング間隔.png", float(self.hatching_rotation)
     )
@@ -190,7 +207,7 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
         update=_update_all_bg_scale,
     )  # type: ignore[valid-type]
     name_bg_images_opacity: FloatProperty(
-        name="ページ画像の不透明度",
+        name="ページ一覧不透明度",
         min=0.0,
         max=100.0,
         default=50.0,
@@ -198,27 +215,35 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
         update=_update_name_bg_opacity,
     )  # type: ignore[valid-type]
     koma_bg_images_opacity: FloatProperty(
-        name="コマの不透明度",
+        name="コマ内レイヤーの不透明度",
         min=0.0,
         max=100.0,
         default=100.0,
         subtype="PERCENTAGE",
         update=_update_koma_bg_opacity,
     )  # type: ignore[valid-type]
-    name_visible: BoolProperty(name="ページ画像表示", default=True)  # type: ignore[valid-type]
+    name_visible: BoolProperty(
+        name="ページ一覧表示",
+        default=True,
+        update=_update_name_visible,
+    )  # type: ignore[valid-type]
     name_show_all_pages: BoolProperty(
         name="全ページのページ画像を表示",
         default=False,
         update=_update_name_show_all_pages,
     )  # type: ignore[valid-type]
-    koma_visible: BoolProperty(name="コマ下絵表示", default=True)  # type: ignore[valid-type]
+    koma_visible: BoolProperty(
+        name="コマ内レイヤー表示",
+        default=True,
+        update=_update_koma_visible,
+    )  # type: ignore[valid-type]
     white_background: BoolProperty(
         name="背景を透過",
         default=True,
         update=_update_white_background,
     )  # type: ignore[valid-type]
     subsurf_realtime: BoolProperty(
-        name="細分割曲面",
+        name="サブディビジョンサーフェス",
         default=False,
         update=_update_subsurf_realtime,
     )  # type: ignore[valid-type]
@@ -322,7 +347,7 @@ def register() -> None:
         max=1000.0,
     )
     bpy.types.Scene.bmanga_coma_camera_fisheye_fov = FloatProperty(
-        name="魚眼視野角",
+        name="魚眼FOV",
         default=3.1415927,
         min=1.7453293,
         max=6.2831855,

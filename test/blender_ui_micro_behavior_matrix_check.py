@@ -689,7 +689,7 @@ def _force_coma_file_mode(context) -> None:
 
 
 def _collect_coma_panel_props(records: list[dict[str, Any]], context) -> None:
-    from bmanga_dev_ui_micro.panels import coma_camera_panel, work_panel
+    from bmanga_dev_ui_micro.panels import coma_camera_panel, view_panel, work_panel
     from bmanga_dev_ui_micro.utils import coma_camera
 
     _force_coma_file_mode(context)
@@ -705,6 +705,7 @@ def _collect_coma_panel_props(records: list[dict[str, Any]], context) -> None:
     for cls, group in (
         (work_panel.BMANGA_PT_coma_return, "コマ編集B-MANGAパネル / ページ一覧に戻る"),
         (coma_camera_panel.BMANGA_PT_coma_camera, "コマ編集B-MANGAパネル / カメラ"),
+        (view_panel.BMANGA_PT_view, "コマ編集B-MANGAパネル / ビュー"),
     ):
         layout = _RecordingLayout(records, group)
         dummy = SimpleNamespace(layout=layout)
@@ -776,9 +777,10 @@ def _check_bool_controls(context, targets) -> list[dict[str, Any]]:
         "ページ / 表示",
         "レイヤー詳細 / コマ / 枠線を表示",
         "レイヤー詳細 / コマ / フチ",
-        "コマ編集B-MANGAパネル / カメラ / グレースケール表示",
-        "コマ編集B-MANGAパネル / カメラ / 背景を透過",
-        "コマ編集B-MANGAパネル / カメラ / ハッチング間隔を表示",
+        "コマ編集B-MANGAパネル / カメラ / 魚眼モード",
+        "コマ編集B-MANGAパネル / ビュー / グレースケール表示",
+        "コマ編集B-MANGAパネル / ビュー / 背景を透過",
+        "コマ編集B-MANGAパネル / ビュー / ハッチング間隔を表示",
     )
     missing = [fragment for fragment in required_fragments if not any(fragment in label for label in labels)]
     results.append({"group": "必須項目", "label": "主要チェックボックス検出", "ok": not missing, "missing": missing})
@@ -929,6 +931,48 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
         "group": "コマ編集B-MANGAパネル",
         "label": "コマを後ろにする",
         "ok": all(depth == "BACK" for depth in depths_back) and all(depth == "FRONT" for depth in depths_front),
+    })
+
+    _mark("coma_camera_subsurf")
+    mesh = bpy.data.meshes.new("サブディビジョン確認メッシュ")
+    obj = bpy.data.objects.new("サブディビジョン確認", mesh)
+    context.scene.collection.objects.link(obj)
+    mod = obj.modifiers.new("サブディビジョンサーフェス確認", "SUBSURF")
+    settings.subsurf_realtime = True
+    settings.subsurf_realtime = False
+    subsurf_off = bool(mod.show_viewport)
+    settings.subsurf_realtime = True
+    subsurf_on = bool(mod.show_viewport)
+    results.append({
+        "group": "コマ編集B-MANGAパネル",
+        "label": "サブディビジョンサーフェス",
+        "ok": subsurf_off is False and subsurf_on is True,
+        "off": subsurf_off,
+        "on": subsurf_on,
+    })
+
+    _mark("coma_camera_hatching")
+    settings.hatching_visible = True
+    settings.hatching_rotation = 0.25
+    hatching_bg = next(
+        (
+            bg
+            for bg in context.scene.camera.data.background_images
+            if getattr(bg, "image", None) is not None
+            and "ハッチング間隔.png" in getattr(bg.image, "name", "")
+        ),
+        None,
+    )
+    settings.hatching_visible = False
+    hatching_hidden = hatching_bg is not None and bool(hatching_bg.show_background_image) is False
+    results.append({
+        "group": "コマ編集B-MANGAパネル",
+        "label": "ハッチング間隔を表示/回転",
+        "ok": hatching_bg is not None
+        and abs(float(hatching_bg.rotation) - 0.25) < 0.001
+        and hatching_hidden,
+        "rotation": None if hatching_bg is None else round(float(hatching_bg.rotation), 3),
+        "hidden": hatching_hidden,
     })
 
     _mark("coma_camera_reduction")

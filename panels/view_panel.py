@@ -58,25 +58,24 @@ def _active_page_number_set(scene, value: int) -> None:
 
 def _coma_content_visible_update(scene, context) -> None:
     visible = bool(scene.bmanga_coma_content_visible)
-    cam = getattr(scene, "camera", None)
-    cam_data = getattr(cam, "data", None)
-    if cam_data is None:
-        return
-    for bg in cam_data.background_images:
-        img = getattr(bg, "image", None)
-        if img is None:
-            continue
-        if "コマ" in getattr(img, "name", ""):
-            try:
-                bg.show_background_image = visible
-            except Exception:  # noqa: BLE001
-                pass
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
     if settings is not None:
         settings.koma_visible = visible
+    try:
+        from ..utils import coma_camera
+
+        coma_camera.set_background_kind_visibility(context, "koma", visible)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _page_preview_enabled_update(scene, context) -> None:
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    if settings is not None:
+        try:
+            settings.name_visible = bool(getattr(scene, "bmanga_page_preview_enabled", True))
+        except Exception:  # noqa: BLE001
+            pass
     try:
         from ..utils import view_settings
 
@@ -89,6 +88,69 @@ def _page_preview_enabled_update(scene, context) -> None:
         page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None))
     except Exception:  # noqa: BLE001
         pass
+
+
+def _draw_coma_page_preview_controls(layout, scene, settings) -> None:
+    box = layout.box()
+    box.label(text="ページ一覧", icon="IMGDISPLAY")
+    row = box.row(align=True)
+    row.prop(scene, "bmanga_page_preview_enabled", text="ページ一覧表示")
+    row = box.row(align=True)
+    row.enabled = bool(getattr(scene, "bmanga_page_preview_enabled", True))
+    row.prop(scene, "bmanga_page_preview_page_radius", text="前後ページ数")
+    row = box.row(align=True)
+    row.prop(scene, "bmanga_overview_cols", text="列数")
+    row = box.row(align=True)
+    row.prop(scene, "bmanga_overview_gap_x_mm", text="横間隔mm")
+    row.prop(scene, "bmanga_overview_gap_y_mm", text="縦間隔mm")
+    if settings is None:
+        return
+    row = box.row(align=True)
+    row.label(text="ページ一覧不透明度")
+    row.prop(settings, "name_bg_images_opacity", text="")
+    name_vis = bool(getattr(settings, "name_visible", False))
+    row.operator(
+        "bmanga.coma_camera_toggle_name_backgrounds",
+        text="",
+        icon="HIDE_OFF" if name_vis else "HIDE_ON",
+    )
+    box.prop(settings, "bg_images_scale", text="ページ画像のスケール")
+
+
+def _draw_coma_content_controls(layout, scene, settings) -> None:
+    box = layout.box()
+    row = box.row(align=True)
+    content_vis = bool(getattr(scene, "bmanga_coma_content_visible", True))
+    row.prop(
+        scene,
+        "bmanga_coma_content_visible",
+        text="コマ内レイヤー",
+        icon="HIDE_OFF" if content_vis else "HIDE_ON",
+        toggle=True,
+    )
+    if settings is not None:
+        row.prop(settings, "koma_bg_images_opacity", text="")
+
+
+def _draw_coma_display_controls(layout, scene, settings) -> None:
+    if settings is None:
+        return
+    box = layout.box()
+    box.prop(scene, "bmanga_coma_grayscale_view", text="グレースケール表示")
+    box.prop(settings, "white_background", text="背景を透過")
+    box.prop(settings, "world_background_camera_only", text="ワールド背景色を被写体に影響させない")
+    row = box.row(align=True)
+    row.prop(settings, "use_solid_background_color", text="ソリッド背景色")
+    sub = row.row(align=True)
+    sub.enabled = bool(settings.use_solid_background_color)
+    sub.prop(settings, "solid_background_color", text="")
+    box.prop(settings, "subsurf_realtime", text="サブディビジョンサーフェス")
+    box.prop(settings, "koma_depth", text="コマを後ろにする")
+    box.prop(settings, "hatching_visible", text="ハッチング間隔を表示")
+    row = box.row()
+    row.enabled = bool(settings.hatching_visible)
+    row.prop(settings, "hatching_rotation", text="ハッチング回転")
+    box.operator("bmanga.coma_camera_update_view", text="ビューを更新")
 
 
 
@@ -124,25 +186,9 @@ class BMANGA_PT_view(Panel):
 
         if is_coma_mode:
             settings = getattr(scene, "bmanga_coma_camera_settings", None)
-            if settings is not None:
-                box = layout.box()
-                row = box.row(align=True)
-                row.label(text="ページ画像")
-                row.prop(settings, "name_bg_images_opacity", text="")
-                name_vis = bool(getattr(settings, "name_visible", False))
-                row.operator(
-                    "bmanga.coma_camera_toggle_name_backgrounds",
-                    text="",
-                    icon="HIDE_OFF" if name_vis else "HIDE_ON",
-                )
-            content_vis = bool(getattr(scene, "bmanga_coma_content_visible", True))
-            row = layout.row(align=True)
-            row.prop(
-                scene, "bmanga_coma_content_visible",
-                text="コマ内レイヤー",
-                icon="HIDE_OFF" if content_vis else "HIDE_ON",
-                toggle=True,
-            )
+            _draw_coma_page_preview_controls(layout, scene, settings)
+            _draw_coma_content_controls(layout, scene, settings)
+            _draw_coma_display_controls(layout, scene, settings)
 
         if not is_coma_mode:
             in_page_file = page_file_scene.is_page_edit_scene(scene)

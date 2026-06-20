@@ -1,8 +1,7 @@
-"""作品ファイル上でのページ並べ替え Ctrl+D&D Operator.
+"""作品ファイル上でのページ並べ替え Alt+D&D Operator.
 
-Ctrl+ドラッグで選択ページを別の位置へ移動する。
+Alt+ドラッグで選択ページを別の位置へ移動する。
 複数ページ選択時はまとめて移動。
-ドラッグしなかった場合は Ctrl+クリック (ページトグル選択) として動作。
 """
 
 from __future__ import annotations
@@ -53,6 +52,14 @@ def _selected_page_indices(context, work) -> list[int]:
                 indices.append(i)
                 break
     return sorted(set(indices))
+
+
+def _selection_is_page_reorder_ready(context) -> bool:
+    keys = object_selection.get_keys(context)
+    if keys:
+        return all(object_selection.parse_key(key)[0] == "page" for key in keys)
+    scene = getattr(context, "scene", None)
+    return str(getattr(scene, "bmanga_active_layer_kind", "") or "") == "page"
 
 
 def _page_index_for_id(work, page_id: str) -> int:
@@ -135,7 +142,7 @@ def _reorder_pages(context, work, src_indices: list[int], dst_index: int) -> boo
 
 
 class BMANGA_OT_page_reorder_drag(Operator):
-    """Ctrl+ドラッグで選択ページを別の位置へ移動."""
+    """Alt+ドラッグで選択ページを別の位置へ移動."""
 
     bl_idname = "bmanga.page_reorder_drag"
     bl_label = "ページ並べ替え"
@@ -155,11 +162,11 @@ class BMANGA_OT_page_reorder_drag(Operator):
     def invoke(self, context, event):
         if event.value != "PRESS":
             return {"PASS_THROUGH"}
-        if not bool(getattr(event, "ctrl", False)):
+        if not bool(getattr(event, "alt", False)):
+            return {"PASS_THROUGH"}
+        if bool(getattr(event, "ctrl", False)):
             return {"PASS_THROUGH"}
         if bool(getattr(event, "shift", False)):
-            return {"PASS_THROUGH"}
-        if bool(getattr(event, "alt", False)):
             return {"PASS_THROUGH"}
         work = get_work(context)
         if work is None or not work.loaded:
@@ -170,6 +177,8 @@ class BMANGA_OT_page_reorder_drag(Operator):
         if page_index is None or not (0 <= page_index < len(work.pages)):
             return {"PASS_THROUGH"}
         if not page_range.page_in_range(work.pages[page_index]):
+            return {"PASS_THROUGH"}
+        if not _selection_is_page_reorder_ready(context):
             return {"PASS_THROUGH"}
         self._start_page_index = page_index
         self._start_xy = (float(event.mouse_x), float(event.mouse_y))
@@ -197,8 +206,6 @@ class BMANGA_OT_page_reorder_drag(Operator):
             if self._drag_moved:
                 self._update_target(context, event)
                 self._execute_reorder(context)
-            else:
-                self._do_ctrl_click(context)
             reparent_overlay.clear_hover()
             layer_stack_utils.tag_view3d_redraw(context)
             return {"FINISHED"}
@@ -289,20 +296,6 @@ class BMANGA_OT_page_reorder_drag(Operator):
                 page_preview_object.sync_page_previews(context, work)
         except Exception:  # noqa: BLE001
             _logger.exception("page_reorder_drag: preview sync failed")
-
-    def _do_ctrl_click(self, context) -> None:
-        """ドラッグしなかった場合 = Ctrl+クリックによるトグル選択."""
-        work = get_work(context)
-        if work is None or not work.loaded:
-            return
-        page_index = self._start_page_index
-        if not (0 <= page_index < len(work.pages)):
-            return
-        page = work.pages[page_index]
-        key = object_selection.page_key(page)
-        object_selection.select_key(context, key, mode="toggle")
-        layer_stack_utils.tag_view3d_redraw(context)
-
 
 _CLASSES = (BMANGA_OT_page_reorder_drag,)
 

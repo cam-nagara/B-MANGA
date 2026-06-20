@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import bpy
 from bpy.types import Panel, UIList
 
@@ -116,7 +114,7 @@ class BMANGA_RENDER_PT_fisheye(Panel):
     """魚眼・縮小などの出力環境設定。毎回は触らないため折りたたみにする."""
 
     bl_idname = "BMANGA_RENDER_PT_fisheye"
-    bl_label = "魚眼・縮小設定"
+    bl_label = "縮小設定"
     bl_parent_id = "BMANGA_RENDER_PT_main"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -145,7 +143,7 @@ class BMANGA_RENDER_PT_node(Panel):
 
 class BMANGA_RENDER_PT_node_fisheye(Panel):
     bl_idname = "BMANGA_RENDER_PT_node_fisheye"
-    bl_label = "魚眼・縮小設定"
+    bl_label = "縮小設定"
     bl_parent_id = "BMANGA_RENDER_PT_node"
     bl_space_type = "NODE_EDITOR"
     bl_region_type = "UI"
@@ -192,15 +190,7 @@ def draw_main_panel(layout, context) -> None:
 
 def draw_fisheye_panel(layout, context) -> None:
     scene = context.scene
-    settings = getattr(scene, "my_tool", None)
     fish = layout.column()
-    fisheye_on = core.fisheye_enabled(scene)
-    fish.prop(scene, "fisheye_layout_mode", text="魚眼モード")
-    fov = fish.row(align=True)
-    fov.enabled = fisheye_on
-    fov.prop(scene, "fisheye_fov", text="魚眼FOV")
-    if fisheye_on:
-        fish.label(text=f"現在の魚眼FOV: {round(math.degrees(float(core.fisheye_fov(scene))))}°")
     row = fish.row(align=True)
     row.prop(scene, "reduction_mode", text="縮小モード")
     sub = fish.row(align=True)
@@ -211,8 +201,6 @@ def draw_fisheye_panel(layout, context) -> None:
     for percentage in (12.5, 25.0, 50.0, 100.0):
         op = quick.operator("bmanga_render.set_reduction_scale", text=f"{percentage:g}%")
         op.percentage = percentage
-    if settings is not None:
-        fish.prop(settings, "bg_images_scale", text="ページ画像のスケール")
     fish.operator("bmanga_render.save_pencil4_widths", text="Pencil+4 線幅を保存")
     fish.label(text=f"現在の出力解像度: {scene.render.resolution_x} x {scene.render.resolution_y}")
     original_x, original_y = core.original_resolution(scene)

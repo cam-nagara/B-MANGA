@@ -166,9 +166,11 @@ def main() -> None:
 
         work_records = _draw_records(work_panel.BMANGA_PT_work, context)
         _assert_present(work_records, "作品情報", "ページ数", "ページ一覧プレビュー", "コマ用blendファイル (この作品のみ)")
-        layer_records = _draw_records(gpencil_panel.BMANGA_PT_layer_stack, context)
-        _assert_present(layer_records, "BMANGA_UL_layer_panel_pages:pages", "bmanga.page_add", "bmanga.open_page_file")
-        _assert_absent(layer_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
+        assert gpencil_panel.BMANGA_PT_page_list.poll(context)
+        assert not gpencil_panel.BMANGA_PT_layer_stack.poll(context)
+        page_list_records = _draw_records(gpencil_panel.BMANGA_PT_page_list, context)
+        _assert_present(page_list_records, "BMANGA_UL_layer_panel_pages:pages", "bmanga.page_add", "bmanga.open_page_file")
+        _assert_absent(page_list_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
         row_records = _draw_ui_list_item_records(
             gpencil_panel.BMANGA_UL_layer_panel_pages,
             context,
@@ -214,7 +216,14 @@ def main() -> None:
         _assert_present(transition_records, "ページ一覧に戻る", "ページ一覧ビュー", "フィット")
         _assert_absent(transition_records, "作品情報", "ページ数", "コマ用blendファイル (この作品のみ)")
         view_records = _draw_records(view_panel.BMANGA_PT_view, context)
-        _assert_present(view_records, "ページ一覧表示", "前後ページ数", "画像解像度%", "列数", "間隔mm")
+        _assert_present(
+            view_records,
+            "ページ一覧表示",
+            "前後ページ数",
+            "列数",
+            "横間隔mm",
+            "縦間隔mm",
+        )
         _assert_absent(view_records, "全ページを一覧", "選択ページ")
         layer_records = _draw_records(gpencil_panel.BMANGA_PT_layer_stack, context)
         _assert_present(layer_records, "BMANGA_UL_layer_stack:bmanga_layer_stack_visible", "wm.call_menu")
@@ -248,22 +257,37 @@ def main() -> None:
         assert role == page_file_scene.ROLE_COMA
         assert work_panel.BMANGA_PT_coma_return.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
-        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く", "ページ一覧ビュー", "フィット")
+        _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
         _assert_absent(
             transition_records,
+            "ページ一覧ビュー",
+            "フィット",
             "ページ一覧位置",
             "ページ一覧ビューを開く",
         )
         assert view_panel.BMANGA_PT_view.poll(context)
         view_records = _draw_records(view_panel.BMANGA_PT_view, context)
-        _assert_present(view_records, "ページ一覧ビュー", "位置", "サイズ", "フィット", "専用ワークスペース")
-        _assert_absent(
+        _assert_present(
             view_records,
             "ページ一覧表示",
             "前後ページ数",
+            "列数",
+            "横間隔mm",
+            "縦間隔mm",
+            "ページ一覧不透明度",
+            "コマ内レイヤー",
+            "サブディビジョンサーフェス",
+        )
+        _assert_absent(
+            view_records,
             "画像解像度%",
             "全ページを一覧",
             "選択ページ",
+            "ページ一覧ビュー",
+            "位置",
+            "サイズ",
+            "フィット",
+            "専用ワークスペース",
         )
         print("BMANGA_PAGE_FILE_PANEL_ROLE_OK")
     finally:

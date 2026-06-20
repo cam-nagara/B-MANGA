@@ -78,19 +78,9 @@ def _draw_angle_list(layout, context, settings) -> None:
     box.operator("bmanga.coma_camera_angle_apply", text="適用")
 
 
-def _draw_background_section(layout, context, settings, label: str, kind: str, opacity_prop: str) -> None:
-    box = layout.box()
-    row = box.row(align=True)
-    row.label(text=label)
-    row.prop(settings, opacity_prop, text="")
-    visible = bool(getattr(settings, f"{kind}_visible", False))
-    icon = "HIDE_OFF" if visible else "HIDE_ON"
-    row.operator(f"bmanga.coma_camera_toggle_{kind}_backgrounds", text="", icon=icon)
-
-
 class BMANGA_PT_coma_camera(Panel):
     bl_idname = "BMANGA_PT_coma_camera"
-    bl_label = "コマ編集: カメラ"
+    bl_label = "カメラ設定"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
@@ -118,26 +108,12 @@ class BMANGA_PT_coma_camera(Panel):
             return
 
         _draw_camera_settings(layout, context, cam)
-        _draw_angle_list(layout, context, settings)
-
         box = layout.box()
-        box.prop(scene, "bmanga_coma_grayscale_view", text="グレースケール表示")
-        box.prop(settings, "white_background", text="背景を透過")
-        box.prop(settings, "world_background_camera_only", text="ワールド背景色を被写体に影響させない")
+        box.prop(scene, "bmanga_coma_camera_fisheye_layout_mode", text="魚眼モード")
         row = box.row(align=True)
-        row.prop(settings, "use_solid_background_color", text="ソリッド背景色")
-        sub = row.row(align=True)
-        sub.enabled = bool(settings.use_solid_background_color)
-        sub.prop(settings, "solid_background_color", text="")
-        box.prop(settings, "subsurf_realtime", text="細分割曲面")
-        box.prop(settings, "koma_depth", text="コマを後ろにする")
-        box.prop(settings, "hatching_visible", text="ハッチング間隔を表示")
-        row = box.row()
-        row.enabled = bool(settings.hatching_visible)
-        row.prop(settings, "hatching_rotation", text="ハッチング回転")
-        box.operator("bmanga.coma_camera_update_view", text="ビューを更新")
-
-        _draw_background_section(layout, context, settings, "ページ画像", "name", "name_bg_images_opacity")
+        row.enabled = bool(getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False))
+        row.prop(scene, "bmanga_coma_camera_fisheye_fov", text="魚眼FOV")
+        _draw_angle_list(layout, context, settings)
 
         count = coma_camera.camera_background_count(context)
         layout.label(text=f"背景画像: {count}件")
