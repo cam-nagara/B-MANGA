@@ -703,7 +703,7 @@ def _collect_coma_panel_props(records: list[dict[str, Any]], context) -> None:
     _make_background(context, "ハッチング間隔.png", kind="koma")
 
     for cls, group in (
-        (work_panel.BMANGA_PT_coma_return, "コマ編集B-MANGAパネル / ページ一覧に戻る"),
+        (work_panel.BMANGA_PT_coma_return, "コマ編集B-MANGAパネル / 作品ファイルに戻る"),
         (coma_camera_panel.BMANGA_PT_coma_camera, "コマ編集B-MANGAパネル / カメラ"),
         (view_panel.BMANGA_PT_view, "コマ編集B-MANGAパネル / ビュー"),
     ):

@@ -672,11 +672,19 @@ class BMANGA_OT_page_pick_viewport(Operator):
             page = work.pages[page_index]
             from ..utils import object_selection
 
+            if page_index != work.active_page_index:
+                work.active_page_index = page_index
             if coma_index is not None and 0 <= coma_index < len(page.comas):
                 key = object_selection.coma_key(page, page.comas[coma_index])
+                if page.active_coma_index != coma_index:
+                    page.active_coma_index = coma_index
+                if hasattr(context.scene, "bmanga_active_layer_kind"):
+                    context.scene.bmanga_active_layer_kind = "coma"
             else:
                 key = object_selection.page_key(page)
+                _set_page_layer_active(context)
             object_selection.select_key(context, key, mode=multi_mode)
+            _sync_light_page_selection(context, work, page_index, coma_index)
             _tag_screen_redraw(context)
             return {"FINISHED"}
         # --- single (修飾キーなし) クリック: 従来動作 ---

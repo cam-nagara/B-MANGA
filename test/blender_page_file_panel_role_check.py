@@ -254,7 +254,7 @@ def main() -> None:
         assert not work_panel.BMANGA_PT_work.poll(context)
 
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
-        _assert_present(transition_records, "ページ一覧に戻る", "ページ一覧ビュー", "フィット")
+        _assert_present(transition_records, "作品ファイルに戻る", "ページ一覧ビュー", "フィット")
         _assert_absent(transition_records, "作品情報", "ページ数", "コマ用blendファイル (この作品のみ)")
         view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(

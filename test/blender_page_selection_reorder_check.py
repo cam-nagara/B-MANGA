@@ -46,7 +46,7 @@ def _fake_context(scene):
         window_manager=SimpleNamespace(modal_handler_add=lambda _op: None),
         view_layer=bpy.context.view_layer,
         screen=getattr(bpy.context, "screen", None),
-        area=getattr(bpy.context, "area", None),
+        area=getattr(bpy.context, "area", None) or SimpleNamespace(type="VIEW_3D"),
     )
 
 
@@ -126,6 +126,66 @@ def _check_multi_select_reorder(context) -> None:
     assert overlay._selected_page_ids(bpy.context) == {before[1], before[2]}
 
 
+def _check_viewport_shift_pick_updates_active(context) -> None:
+    from bmanga_dev_page_select_reorder.operators import coma_picker, page_op
+    from bmanga_dev_page_select_reorder.utils import object_selection
+
+    work = context.scene.bmanga_work
+    original_wm = context.window_manager
+    original_pick = page_op._pick_object_layer_at_event
+    original_edge = coma_picker.find_coma_edge_at_event
+    original_coma = coma_picker.find_coma_at_event
+    original_page = coma_picker.find_page_at_event
+    try:
+        context.window_manager = bpy.context.window_manager
+        page_op._pick_object_layer_at_event = lambda _context, _event: (None, None)
+        coma_picker.find_coma_edge_at_event = lambda _context, _event: None
+        coma_picker.find_coma_at_event = lambda _context, _event: None
+        page_hit = {"index": 2}
+        coma_picker.find_page_at_event = lambda _context, _event: page_hit["index"]
+
+        work.active_page_index = 0
+        object_selection.set_keys(context, [object_selection.page_key(work.pages[0])])
+        event_shift = SimpleNamespace(
+            value="PRESS",
+            alt=False,
+            ctrl=False,
+            shift=True,
+            oskey=False,
+            mouse_x=100,
+            mouse_y=100,
+        )
+        result = page_op.BMANGA_OT_page_pick_viewport.invoke(SimpleNamespace(), context, event_shift)
+        assert result == {"FINISHED"}, result
+        assert work.active_page_index == 2, work.active_page_index
+        keys = object_selection.get_keys(context)
+        assert object_selection.page_key(work.pages[0]) in keys
+        assert object_selection.page_key(work.pages[2]) in keys
+
+        page_hit["index"] = 0
+        event_ctrl = SimpleNamespace(
+            value="PRESS",
+            alt=False,
+            ctrl=True,
+            shift=False,
+            oskey=False,
+            mouse_x=100,
+            mouse_y=100,
+        )
+        result = page_op.BMANGA_OT_page_pick_viewport.invoke(SimpleNamespace(), context, event_ctrl)
+        assert result == {"FINISHED"}, result
+        assert work.active_page_index == 0, work.active_page_index
+        keys = object_selection.get_keys(context)
+        assert object_selection.page_key(work.pages[0]) not in keys
+        assert object_selection.page_key(work.pages[2]) in keys
+    finally:
+        page_op._pick_object_layer_at_event = original_pick
+        coma_picker.find_coma_edge_at_event = original_edge
+        coma_picker.find_coma_at_event = original_coma
+        coma_picker.find_page_at_event = original_page
+        context.window_manager = original_wm
+
+
 def _check_page_highlight_outline_only() -> None:
     from bmanga_dev_page_select_reorder.ui import overlay
 
@@ -163,6 +223,7 @@ def main() -> None:
         scene.bmanga_overview_mode = True
         fake_context = _fake_context(scene)
         _check_alt_invoke_accepts_page_reorder(fake_context)
+        _check_viewport_shift_pick_updates_active(fake_context)
         _check_multi_select_reorder(fake_context)
         _check_page_highlight_outline_only()
         print("BMANGA_PAGE_SELECTION_REORDER_OK")

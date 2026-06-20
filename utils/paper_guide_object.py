@@ -529,7 +529,29 @@ def _transparent_fill_view_material(
             nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
         except Exception:  # noqa: BLE001
             _logger.exception("safe area fill material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
+
+
+def _tag_fill_object_updated(obj: bpy.types.Object) -> None:
+    mesh = getattr(obj, "data", None)
+    try:
+        if mesh is not None:
+            mesh.update()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        if mesh is not None:
+            mesh.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.update_tag(refresh={"OBJECT", "DATA"})
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _safe_fill_view_material(rgba: tuple[float, float, float, float]) -> bpy.types.Material:
@@ -612,6 +634,7 @@ def _ensure_safe_fill_object(scene, work, page, page_coll, canvas: Rect, safe: R
     obj.location.z = z_m
     _set_page_location(scene, obj, page)
     _link_to_page_collection(obj, page_coll)
+    _tag_fill_object_updated(obj)
     return obj
 
 
@@ -670,6 +693,7 @@ def _ensure_bleed_outer_fill_object(
     obj.location.z = z_m
     _set_page_location(scene, obj, page)
     _link_to_page_collection(obj, page_coll)
+    _tag_fill_object_updated(obj)
     return obj
 
 

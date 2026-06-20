@@ -35,6 +35,12 @@ def _on_safe_area_changed(_self, context) -> None:
         if scene is not None and work is not None and work.loaded:
             paper_guide_object.regenerate_all_paper_guides(scene, work)
             page_preview_object.schedule_sync_page_previews(force=True)
+            view_layer = getattr(context, "view_layer", None)
+            if view_layer is not None:
+                try:
+                    view_layer.update()
+                except Exception:  # noqa: BLE001
+                    pass
     except Exception:  # noqa: BLE001
         pass
     screen = getattr(context, "screen", None) if context is not None else None

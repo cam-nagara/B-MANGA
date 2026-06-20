@@ -108,7 +108,7 @@ class BMANGA_PT_coma_return(Panel):
             row = layout.row(align=True)
             row.operator(
                 "bmanga.exit_page_file",
-                text="ページ一覧に戻る",
+                text="作品ファイルに戻る",
                 icon="BACK",
             )
             row.operator("bmanga.work_save", text="", icon="FILE_TICK")

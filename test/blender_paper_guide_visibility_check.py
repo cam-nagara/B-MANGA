@@ -75,6 +75,85 @@ def _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill) ->
             raise AssertionError(f"用紙ガイド線が塗りより奥にあります: {obj.name}")
 
 
+def _assert_page_preview_is_behind_guides(
+    page_preview_object,
+    work_info_text_object,
+    page,
+    guide_objects,
+    safe_fill,
+    bleed_outer_fill,
+) -> None:
+    preview = bpy.data.objects.get(f"{page_preview_object.PREVIEW_OBJECT_PREFIX}{page.id}")
+    if preview is None:
+        raise AssertionError("ページ一覧のプレビュー画像が作られていません")
+    preview_z = float(preview.location.z)
+    if preview_z <= 0.0:
+        raise AssertionError(f"ページ一覧のプレビュー画像が用紙背景より奥にあります: {preview_z}")
+    front_fill_z = min(float(safe_fill.location.z), float(bleed_outer_fill.location.z))
+    if not (preview_z < front_fill_z):
+        raise AssertionError(
+            f"ページ一覧のプレビュー画像が塗りより手前にあります: preview={preview_z}, fill={front_fill_z}"
+        )
+    guide_z = min(float(obj.location.z) for obj in guide_objects)
+    if not (preview_z < guide_z):
+        raise AssertionError(
+            f"ページ一覧のプレビュー画像が用紙ガイド線より手前にあります: preview={preview_z}, guide={guide_z}"
+        )
+    info_objects = [
+        obj
+        for obj in bpy.data.objects
+        if obj.get(work_info_text_object.PROP_WORK_INFO_KIND) == "work_info_text"
+    ]
+    if not info_objects:
+        raise AssertionError("作品情報テキストが作られていません")
+    for obj in info_objects:
+        if not (preview_z < float(obj.location.z)):
+            raise AssertionError(
+                f"ページ一覧のプレビュー画像が作品情報より手前にあります: {obj.name} preview={preview_z}, info={obj.location.z}"
+            )
+
+
+def _mix_shader_alpha(obj) -> float:
+    mat = next((mat for mat in getattr(obj.data, "materials", []) or [] if mat is not None), None)
+    if mat is None:
+        raise AssertionError(f"塗り素材がありません: {obj.name}")
+    nt = getattr(mat, "node_tree", None)
+    if nt is not None:
+        for node in nt.nodes:
+            if getattr(node, "bl_idname", "") == "ShaderNodeMixShader":
+                return float(node.inputs["Fac"].default_value)
+    return float(mat.diffuse_color[3])
+
+
+def _assert_fill_settings_update_immediately(paper_guide_object, work, page) -> None:
+    overlay = work.safe_area_overlay
+    overlay.enabled = True
+    overlay.bleed_outer_enabled = True
+    overlay.opacity = 42.0
+    overlay.bleed_outer_opacity = 73.0
+    safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+    bleed_outer_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
+    if safe_fill is None or bleed_outer_fill is None:
+        raise AssertionError("塗り設定変更後の実体がありません")
+    if abs(float(safe_fill.color[3]) - 0.42) > 1.0e-6:
+        raise AssertionError(f"セーフライン外塗りの不透明度が即時反映されていません: {safe_fill.color[3]}")
+    if abs(_mix_shader_alpha(safe_fill) - 0.42) > 1.0e-6:
+        raise AssertionError("セーフライン外塗りの素材が即時更新されていません")
+    if abs(float(bleed_outer_fill.color[3]) - 0.73) > 1.0e-6:
+        raise AssertionError(f"裁ち落とし枠外塗りの不透明度が即時反映されていません: {bleed_outer_fill.color[3]}")
+    if abs(_mix_shader_alpha(bleed_outer_fill) - 0.73) > 1.0e-6:
+        raise AssertionError("裁ち落とし枠外塗りの素材が即時更新されていません")
+
+    overlay.opacity = 0.0
+    safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+    if safe_fill is None or not bool(safe_fill.hide_viewport):
+        raise AssertionError("不透明度0への変更直後にセーフライン外塗りが非表示になっていません")
+    overlay.opacity = 31.0
+    safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
+    if safe_fill is None or bool(safe_fill.hide_viewport):
+        raise AssertionError("不透明度を戻した直後にセーフライン外塗りが再表示されていません")
+
+
 def _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order) -> None:
     if len(getattr(page, "comas", []) or []) == 0:
         return
@@ -205,7 +284,12 @@ def main() -> None:
             raise AssertionError(f"作品作成に失敗しました: {result}")
 
         from bmanga_dev_paper_guide_visibility.core.work import get_work
-        from bmanga_dev_paper_guide_visibility.utils import coma_z_order, paper_guide_object
+        from bmanga_dev_paper_guide_visibility.utils import (
+            coma_z_order,
+            page_preview_object,
+            paper_guide_object,
+            work_info_text_object,
+        )
 
         scene = bpy.context.scene
         work = get_work(bpy.context)
@@ -231,9 +315,20 @@ def main() -> None:
         bleed_outer_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
         if bleed_outer_fill is None:
             raise AssertionError("裁ち落とし枠外塗りが作られていません")
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
+        work_info_text_object.regenerate_all_work_info_texts(scene, work)
 
         _assert_guide_materials_are_opaque(guide_objects)
         _assert_stable_viewport_order(guide_objects, safe_fill, bleed_outer_fill)
+        _assert_page_preview_is_behind_guides(
+            page_preview_object,
+            work_info_text_object,
+            page,
+            guide_objects,
+            safe_fill,
+            bleed_outer_fill,
+        )
+        _assert_fill_settings_update_immediately(paper_guide_object, work, page)
         _assert_guides_above_coma_planes(guide_objects, safe_fill, bleed_outer_fill, page, coma_z_order)
         _assert_constant_thickness(paper_guide_object, guide_objects)
         _assert_timer_does_not_touch_closed_panel(paper_guide_object, guide_objects)

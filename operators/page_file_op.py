@@ -230,10 +230,10 @@ class BMANGA_OT_open_page_file(Operator):
 
 
 class BMANGA_OT_exit_page_file(Operator):
-    """ページ用blendファイルを保存してページ一覧へ戻る."""
+    """ページ用blendファイルを保存して作品ファイルへ戻る."""
 
     bl_idname = "bmanga.exit_page_file"
-    bl_label = "ページ一覧に戻る"
+    bl_label = "作品ファイルに戻る"
     bl_options = {"REGISTER"}
 
     @classmethod
@@ -271,7 +271,7 @@ class BMANGA_OT_exit_page_file(Operator):
         ctx = bpy.context
         set_mode(MODE_PAGE, ctx)
         page_file_scene.set_work_list_state(ctx)
-        self.report({"INFO"}, "ページ一覧に戻りました")
+        self.report({"INFO"}, "作品ファイルに戻りました")
         return {"FINISHED"}
 
 
