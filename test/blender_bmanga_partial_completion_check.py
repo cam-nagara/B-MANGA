@@ -137,6 +137,19 @@ def _assert_text_collection(context) -> None:
             raise AssertionError(f"text object is outside text collection: {obj.name}")
 
 
+def _force_full_outliner_mirror(scene, work) -> None:
+    """作品一覧軽量化をテスト内だけ外し、実体同期そのものを検証する."""
+    from bmanga_dev.utils import layer_object_sync
+    from bmanga_dev.utils import page_file_scene
+
+    original = page_file_scene.is_work_list_scene
+    page_file_scene.is_work_list_scene = lambda _scene=None: False
+    try:
+        layer_object_sync.mirror_work_to_outliner(scene, work)
+    finally:
+        page_file_scene.is_work_list_scene = original
+
+
 def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     from bmanga_dev.core.mode import MODE_PAGE
     from bmanga_dev.ui import overlay
@@ -556,7 +569,7 @@ def main() -> None:
         assert page_text.parent_kind == "page" and page_text.parent_key == page2_key
         _assert_text_create_drag_rect(text_op, page2, page_text, page_local_x, page_local_y)
 
-        layer_object_sync.mirror_work_to_outliner(scene, work)
+        _force_full_outliner_mirror(scene, work)
         _assert_text_collection(context)
 
         work.active_page_index = 1
@@ -604,7 +617,7 @@ def main() -> None:
         )
         assert len(work.shared_balloons) >= 1
         assert work.shared_balloons[-1].parent_kind == "none"
-        layer_object_sync.mirror_work_to_outliner(scene, work)
+        _force_full_outliner_mirror(scene, work)
         shared_balloon_obj = on.find_object_by_bmanga_id(work.shared_balloons[-1].id, kind="balloon")
         if shared_balloon_obj is None or shared_balloon_obj.hide_viewport:
             raise AssertionError("page-outside balloon object is not visible")

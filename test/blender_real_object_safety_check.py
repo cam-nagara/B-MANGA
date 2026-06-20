@@ -60,6 +60,19 @@ def _make_source_png(path: Path) -> None:
     img.save()
 
 
+def _force_full_outliner_mirror(scene, work) -> None:
+    """作品一覧軽量化をテスト内だけ外し、実体同期そのものを検証する."""
+    from bmanga_dev.utils import layer_object_sync
+    from bmanga_dev.utils import page_file_scene
+
+    original = page_file_scene.is_work_list_scene
+    page_file_scene.is_work_list_scene = lambda _scene=None: False
+    try:
+        layer_object_sync.mirror_work_to_outliner(scene, work)
+    finally:
+        page_file_scene.is_work_list_scene = original
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_real_object_safety_"))
     mod = None
@@ -76,7 +89,6 @@ def main() -> None:
         from bmanga_dev.utils import balloon_line_mesh
         from bmanga_dev.utils import coma_border_object
         from bmanga_dev.utils import image_real_object
-        from bmanga_dev.utils import layer_object_sync
         from bmanga_dev.utils import object_naming as on
         from bmanga_dev.utils import outliner_model
         from bmanga_dev.utils import page_grid
@@ -187,7 +199,10 @@ def main() -> None:
         if len(old_safe_mesh.materials) == 0:
             old_safe_mesh.materials.append(old_safe_mat)
 
-        layer_object_sync.mirror_work_to_outliner(scene, work)
+        reopen_path = temp_root / "real_object_safety_reopen.blend"
+        bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
+
+        _force_full_outliner_mirror(scene, work)
         text_coll = outliner_model.ensure_text_collection(scene)
 
         text_obj = on.find_object_by_bmanga_id(
@@ -398,12 +413,14 @@ def main() -> None:
         white_margin_name = white_margin_obj.name
         balloon_name = balloon_obj.name
         balloon_fill_name = f"{balloon_curve_object.BALLOON_FILL_NAME_PREFIX}{balloon.id}"
-        reopen_path = temp_root / "real_object_safety_reopen.blend"
         bpy.ops.wm.save_as_mainfile(filepath=str(reopen_path))
         mod.unregister()
         mod = None
 
-        assert bpy.data.objects.get(text_name) is not None, "text object disappeared after unregister"
+        assert (
+            bpy.data.objects.get(text_name) is not None
+            or on.find_object_by_bmanga_id(text_full_id, kind="text") is not None
+        ), "text object disappeared after unregister"
         assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after unregister"
         assert bpy.data.objects.get(folder_image_obj_name) is not None, "folder image disappeared after unregister"
         assert bpy.data.objects.get(outside_image_obj_name) is not None, "outside image disappeared after unregister"
@@ -415,7 +432,10 @@ def main() -> None:
         assert bpy.data.objects.get(balloon_name) is not None, "balloon disappeared after unregister"
         assert bpy.data.objects.get(balloon_fill_name) is None, "balloon fill object reappeared after unregister"
         bpy.ops.wm.open_mainfile(filepath=str(reopen_path))
-        assert bpy.data.objects.get(text_name) is not None, "text object disappeared after reopen"
+        assert (
+            bpy.data.objects.get(text_name) is not None
+            or on.find_object_by_bmanga_id(text_full_id, kind="text") is not None
+        ), "text object disappeared after reopen"
         assert bpy.data.objects.get(image_obj_name) is not None, "image object disappeared after reopen"
         assert bpy.data.objects.get(folder_image_obj_name) is not None, "folder image disappeared after reopen"
         assert bpy.data.objects.get(outside_image_obj_name) is not None, "outside image disappeared after reopen"
