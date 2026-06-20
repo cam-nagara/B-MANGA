@@ -556,6 +556,12 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     generate_references=False,
                 )
                 try:
+                    from . import page_preview_object
+
+                    page_preview_object.schedule_sync_page_previews()
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: coma page preview setup failed")
+                try:
                     from . import coma_thumb_output
 
                     coma_thumb_output.ensure_thumb_output_node(scene)

@@ -31,6 +31,7 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.25
 PREVIEW_FILENAME = "page_preview.png"
+_DEFERRED_SYNC_FORCE = False
 
 
 def preview_enabled(scene=None) -> bool:
@@ -89,6 +90,8 @@ def _preview_scene_role(scene) -> tuple[str, str]:
         role, page_id, _coma_id = page_file_scene.current_role(bpy.context)
         if role == page_file_scene.ROLE_PAGE and paths.is_valid_page_id(page_id):
             return "page", page_id
+        if role == page_file_scene.ROLE_COMA and paths.is_valid_page_id(page_id):
+            return "coma", page_id
         if role == page_file_scene.ROLE_WORK:
             return "work", ""
         page_id = page_file_scene.current_page_id(scene)
@@ -724,10 +727,11 @@ def _preview_page_indices(scene, work) -> set[int]:
     pages = list(getattr(work, "pages", []) or [])
     if not pages:
         return set()
-    role, _current_page_id = _preview_scene_role(scene)
+    role, current_page_id = _preview_scene_role(scene)
     if role == "work":
         return set(range(len(pages)))
-    _is_page_scene, current_page_id = _is_page_edit_scene(scene)
+    if role != "coma":
+        _is_page_scene, current_page_id = _is_page_edit_scene(scene)
     current_index = -1
     for i, page in enumerate(pages):
         if str(getattr(page, "id", "") or "") == current_page_id:
@@ -835,7 +839,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     if work is None:
         work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
-    if role not in {"page", "work"} or not preview_enabled(scene):
+    if role not in {"page", "work", "coma"} or not preview_enabled(scene):
         hide_page_previews(scene)
         return 0
     if work is None or not getattr(work, "loaded", False):
@@ -886,3 +890,31 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     except Exception:  # noqa: BLE001
         pass
     return updated
+
+
+def _run_deferred_sync_page_previews():
+    global _DEFERRED_SYNC_FORCE
+    force = bool(_DEFERRED_SYNC_FORCE)
+    _DEFERRED_SYNC_FORCE = False
+    try:
+        scene = getattr(bpy.context, "scene", None)
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
+        sync_page_previews(bpy.context, work, force=force)
+    except Exception:  # noqa: BLE001
+        _logger.exception("deferred page preview setup failed")
+    return None
+
+
+def schedule_sync_page_previews(*, force: bool = False, delay: float = 0.2) -> None:
+    """次のUI更新後にページ一覧プレビューを同期する."""
+    global _DEFERRED_SYNC_FORCE
+    _DEFERRED_SYNC_FORCE = bool(_DEFERRED_SYNC_FORCE or force)
+    try:
+        if bpy.app.timers.is_registered(_run_deferred_sync_page_previews):
+            return
+        bpy.app.timers.register(
+            _run_deferred_sync_page_previews,
+            first_interval=max(0.01, float(delay)),
+        )
+    except Exception:  # noqa: BLE001
+        _logger.exception("page preview deferred sync registration failed")

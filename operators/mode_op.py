@@ -582,6 +582,12 @@ class BMANGA_OT_enter_coma_mode(Operator):
         except Exception:  # noqa: BLE001
             _logger.exception("enter_coma_mode: final panel camera setup failed")
         try:
+            from ..utils import page_preview_object
+
+            page_preview_object.schedule_sync_page_previews()
+        except Exception:  # noqa: BLE001
+            _logger.exception("enter_coma_mode: page preview setup failed")
+        try:
             from ..utils import coma_mask_object
 
             coma_mask_object.restore_preferred_user_view_layer(
