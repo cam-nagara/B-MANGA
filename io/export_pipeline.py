@@ -1342,6 +1342,70 @@ def _draw_outside_rect_px(
     return changed
 
 
+def _draw_rect_ring_px(
+    draw,
+    *,
+    page_left: int,
+    page_width: int,
+    page_height: int,
+    outer: Rect,
+    inner: Rect,
+    paper_height_mm: float,
+    dpi: int,
+    fill: tuple[int, int, int, int],
+) -> bool:
+    page_right = page_left + page_width
+
+    def bounds_px(rect: Rect) -> tuple[int, int, int, int]:
+        left = page_left + int(round(mm_to_px(rect.x, dpi)))
+        right = page_left + int(round(mm_to_px(rect.x2, dpi)))
+        top = int(round(mm_to_px(paper_height_mm - rect.y2, dpi)))
+        bottom = int(round(mm_to_px(paper_height_mm - rect.y, dpi)))
+        return (
+            max(page_left, min(page_right, left)),
+            max(0, min(page_height, top)),
+            max(page_left, min(page_right, right)),
+            max(0, min(page_height, bottom)),
+        )
+
+    outer_left, outer_top, outer_right, outer_bottom = bounds_px(outer)
+    inner_left, inner_top, inner_right, inner_bottom = bounds_px(inner)
+    inner_left = max(outer_left, min(outer_right, inner_left))
+    inner_right = max(outer_left, min(outer_right, inner_right))
+    inner_top = max(outer_top, min(outer_bottom, inner_top))
+    inner_bottom = max(outer_top, min(outer_bottom, inner_bottom))
+    if outer_right <= outer_left or outer_bottom <= outer_top:
+        return False
+
+    changed = False
+    if inner_top > outer_top:
+        draw.rectangle([outer_left, outer_top, outer_right - 1, inner_top - 1], fill=fill)
+        changed = True
+    if inner_bottom < outer_bottom:
+        draw.rectangle([outer_left, inner_bottom, outer_right - 1, outer_bottom - 1], fill=fill)
+        changed = True
+    if inner_left > outer_left and inner_bottom > inner_top:
+        draw.rectangle([outer_left, inner_top, inner_left - 1, inner_bottom - 1], fill=fill)
+        changed = True
+    if inner_right < outer_right and inner_bottom > inner_top:
+        draw.rectangle([inner_right, inner_top, outer_right - 1, inner_bottom - 1], fill=fill)
+        changed = True
+    return changed
+
+
+def _overlay_fill_visible(
+    work,
+    *,
+    enabled_attr: str,
+    opacity_attr: str,
+    default_opacity: float,
+) -> bool:
+    overlay = getattr(work, "safe_area_overlay", None)
+    if overlay is None or not bool(getattr(overlay, enabled_attr, True)):
+        return False
+    return _percent_opacity_to_alpha(getattr(overlay, opacity_attr, default_opacity), default_opacity) > 0
+
+
 def _page_overlay_fill_layer(
     work,
     page,
@@ -1354,6 +1418,7 @@ def _page_overlay_fill_layer(
     opacity_attr: str,
     default_opacity: float,
     rect_attr: str,
+    outer_rect_attr: str = "canvas",
 ) -> ExportLayer | None:
     overlay = getattr(work, "safe_area_overlay", None)
     if overlay is None or not bool(getattr(overlay, enabled_attr, True)):
@@ -1366,27 +1431,36 @@ def _page_overlay_fill_layer(
     paper = work.paper
     page_width, page_height = _canvas_size_px(paper, options)
     if bool(getattr(page, "spread", False)):
-        right_left = int(round(mm_to_px(
-            page_grid.spread_right_page_offset_mm(page, float(paper.canvas_width_mm)),
-            _dpi(paper, options),
-        )))
-        targets = [(0, True), (right_left, False)]
+        try:
+            combined_rects = spread_merge_geometry.combined_spread_rects(paper, page)
+            changed = _draw_rect_ring_px(
+                draw,
+                page_left=0,
+                page_width=canvas_size[0],
+                page_height=page_height,
+                outer=getattr(combined_rects, outer_rect_attr),
+                inner=getattr(combined_rects, rect_attr),
+                paper_height_mm=float(paper.canvas_height_mm),
+                dpi=_dpi(paper, options),
+                fill=fill,
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("spread overlay fill layer failed")
+            changed = False
     else:
-        targets = [(0, _is_left_half_page(work, page))]
-    changed = False
-    for page_left, is_left_half in targets:
+        is_left_half = _is_left_half_page(work, page)
         rects = overlay_shared.compute_paper_rects(paper, is_left_half=is_left_half)
-        rect = getattr(rects, rect_attr)
-        changed = _draw_outside_rect_px(
+        changed = _draw_rect_ring_px(
             draw,
-            page_left=page_left,
+            page_left=0,
             page_width=page_width,
             page_height=page_height,
-            rect=rect,
+            outer=getattr(rects, outer_rect_attr),
+            inner=getattr(rects, rect_attr),
             paper_height_mm=float(paper.canvas_height_mm),
             dpi=_dpi(paper, options),
             fill=fill,
-        ) or changed
+        )
     if not changed:
         return None
     return ExportLayer(name, image, 0, 0)
@@ -1404,6 +1478,16 @@ def _page_overlay_fill_layers(
     ):
         return []
     layers: list[ExportLayer] = []
+    safe_outer_rect_attr = (
+        "bleed"
+        if _overlay_fill_visible(
+            work,
+            enabled_attr="bleed_outer_enabled",
+            opacity_attr="bleed_outer_opacity",
+            default_opacity=100.0,
+        )
+        else "canvas"
+    )
     safe = _page_overlay_fill_layer(
         work,
         page,
@@ -1415,6 +1499,7 @@ def _page_overlay_fill_layers(
         opacity_attr="opacity",
         default_opacity=30.0,
         rect_attr="safe",
+        outer_rect_attr=safe_outer_rect_attr,
     )
     if safe is not None:
         layers.append(safe)

@@ -113,6 +113,7 @@ def _mesh_bounds_mm(obj) -> tuple[float, float, float, float]:
 
 def _assert_spread_fill_meshes(work, page_index: int, right_offset: float) -> tuple[object, object]:
     paper_guide_object = _sub("utils.paper_guide_object")
+    spread_merge_geometry = _sub("utils.spread_merge_geometry")
     scene = bpy.context.scene
     paper_guide_object.ensure_paper_guides_for_page(scene, work, page_index)
     spread = work.pages[page_index]
@@ -131,17 +132,45 @@ def _assert_spread_fill_meshes(work, page_index: int, right_offset: float) -> tu
     if len(getattr(bleed_obj.data, "polygons", []) or []) != 4:
         raise AssertionError("見開きの裁ち落とし枠外塗りが1つの合体矩形として作られていません")
 
-    canvas_width = float(work.paper.canvas_width_mm)
-    expected_x2 = right_offset + canvas_width
-    for label, obj in (("セーフライン外", safe_obj), ("裁ち落とし枠外", bleed_obj)):
-        x1, x2, y1, y2 = _mesh_bounds_mm(obj)
-        _assert_close(x1, 0.0, f"{label}塗りの左端")
-        _assert_close(x2, expected_x2, f"{label}塗りの右端")
-        _assert_close(y1, 0.0, f"{label}塗りの下端")
-        _assert_close(y2, float(work.paper.canvas_height_mm), f"{label}塗りの上端")
     if not (float(bleed_obj.location.z) > float(safe_obj.location.z)):
         raise AssertionError("裁ち落とし枠外塗りがセーフライン外塗りより手前にありません")
+    combined = spread_merge_geometry.combined_spread_rects(work.paper, spread)
+    bleed_x1, bleed_x2, bleed_y1, bleed_y2 = _mesh_bounds_mm(bleed_obj)
+    _assert_close(bleed_x1, combined.canvas.x, "裁ち落とし枠外塗りの左端")
+    _assert_close(bleed_x2, combined.canvas.x2, "裁ち落とし枠外塗りの右端")
+    _assert_close(bleed_y1, combined.canvas.y, "裁ち落とし枠外塗りの下端")
+    _assert_close(bleed_y2, combined.canvas.y2, "裁ち落とし枠外塗りの上端")
+    expected_safe_outer = combined.bleed
+    safe_x1, safe_x2, safe_y1, safe_y2 = _mesh_bounds_mm(safe_obj)
+    _assert_close(safe_x1, expected_safe_outer.x, "セーフライン外塗りの左端")
+    _assert_close(safe_x2, expected_safe_outer.x2, "セーフライン外塗りの右端")
+    _assert_close(safe_y1, expected_safe_outer.y, "セーフライン外塗りの下端")
+    _assert_close(safe_y2, expected_safe_outer.y2, "セーフライン外塗りの上端")
     return safe_obj, bleed_obj
+
+
+def _assert_page_pair_guides(work, guide_obj, right_offset: float) -> None:
+    overlay_shared = _sub("ui.overlay_shared")
+    left = overlay_shared.compute_paper_rects(work.paper, is_left_half=True)
+    right = overlay_shared.compute_paper_rects(work.paper, is_left_half=False)
+    xs = [
+        round(float(point.co.x) * 1000.0, 3)
+        for spline in getattr(guide_obj.data, "splines", []) or []
+        for point in spline.points
+    ]
+    required = {
+        "左ページ裁ち落とし枠の右端": left.bleed.x2,
+        "右ページ裁ち落とし枠の左端": right_offset + right.bleed.x,
+        "左ページ仕上がり枠の右端": left.finish.x2,
+        "右ページ仕上がり枠の左端": right_offset + right.finish.x,
+    }
+    missing = [
+        label
+        for label, expected in required.items()
+        if not any(abs(float(x) - float(expected)) < 0.1 for x in xs)
+    ]
+    if missing:
+        raise AssertionError(f"見開きの仕上がり枠/裁ち落とし枠が左右ページ別に残っていません: {missing} xs={xs[:24]}")
 
 
 def _world_bounds_xy(objects) -> tuple[float, float, float, float]:
@@ -246,7 +275,6 @@ def _assert_render_samples(path: Path, meta: dict[str, float], safe_obj, right_o
         "right_bleed_outer": (right_offset + 60.0, 2.5),
         "left_inside": (60.0, 85.0),
         "right_inside": (right_offset + 60.0, 85.0),
-        "spread_center_inside": (right_offset * 0.5 + 60.0, 85.0),
     }
     samples = {}
     for label, (x_mm, y_mm) in samples_mm.items():
@@ -261,7 +289,7 @@ def _assert_render_samples(path: Path, meta: dict[str, float], safe_obj, right_o
         rgb = samples[label]
         if not (35.0 <= rgb[0] <= 110.0 and 35.0 <= rgb[1] <= 110.0 and 35.0 <= rgb[2] <= 110.0):
             raise AssertionError(f"{label} に裁ち落とし枠外塗りのグレーが出ていません: {rgb} image={path}")
-    for label in ("left_inside", "right_inside", "spread_center_inside"):
+    for label in ("left_inside", "right_inside"):
         rgb = samples[label]
         if not (rgb[0] > 210.0 and rgb[1] > 210.0 and rgb[2] > 210.0):
             raise AssertionError(f"{label} のセーフライン内側まで塗られています: {rgb} image={path}")
@@ -303,13 +331,16 @@ def _assert_spread_fill_case(work, *, gap_mm: float, render: bool) -> Path | Non
     right_offset = page_grid.spread_right_page_offset_mm(spread, float(work.paper.canvas_width_mm))
     safe_obj, bleed_obj = _assert_spread_fill_meshes(work, 0, right_offset)
     signature = str(safe_obj.get(paper_guide_object.PROP_GUIDE_SIGNATURE, "") or "")
-    if "paper_guide_spread_fill_v3" not in signature:
+    if "paper_guide_spread_fill_v4" not in signature:
         raise AssertionError("見開き塗りの再生成署名が更新されていません")
+    guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{spread.id}")
+    if guide_obj is None:
+        raise AssertionError("見開き用紙ガイドが作られていません")
+    _assert_page_pair_guides(work, guide_obj, right_offset)
 
     image_path = None
     if render:
         coma_border_object.regenerate_all_coma_borders(bpy.context.scene, work)
-        guide_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_GUIDE_PREFIX}{spread.id}")
         border_objs = [
             obj
             for obj in bpy.data.objects

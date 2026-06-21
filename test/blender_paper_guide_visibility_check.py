@@ -122,7 +122,38 @@ def _mix_shader_alpha(obj) -> float:
         for node in nt.nodes:
             if getattr(node, "bl_idname", "") == "ShaderNodeMixShader":
                 return float(node.inputs["Fac"].default_value)
+            if getattr(node, "bl_idname", "") == "ShaderNodeBsdfPrincipled" and "Alpha" in node.inputs:
+                return float(node.inputs["Alpha"].default_value)
     return float(mat.diffuse_color[3])
+
+
+def _mesh_bounds_mm(obj) -> tuple[float, float, float, float]:
+    xs = [float(vertex.co.x) * 1000.0 for vertex in obj.data.vertices]
+    ys = [float(vertex.co.y) * 1000.0 for vertex in obj.data.vertices]
+    if not xs or not ys:
+        raise AssertionError(f"塗りメッシュに頂点がありません: {obj.name}")
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def _assert_close(actual: float, expected: float, label: str, eps: float = 0.01) -> None:
+    if abs(float(actual) - float(expected)) > eps:
+        raise AssertionError(f"{label}: actual={actual:.4f} expected={expected:.4f}")
+
+
+def _assert_fill_meshes_do_not_overlap(work, safe_fill, bleed_outer_fill) -> None:
+    from bmanga_dev_paper_guide_visibility.ui import overlay_shared
+
+    rects = overlay_shared.compute_paper_rects(work.paper, is_left_half=False)
+    sx1, sx2, sy1, sy2 = _mesh_bounds_mm(safe_fill)
+    bx1, bx2, by1, by2 = _mesh_bounds_mm(bleed_outer_fill)
+    _assert_close(sx1, rects.bleed.x, "セーフライン外塗りの外側左端")
+    _assert_close(sx2, rects.bleed.x2, "セーフライン外塗りの外側右端")
+    _assert_close(sy1, rects.bleed.y, "セーフライン外塗りの外側下端")
+    _assert_close(sy2, rects.bleed.y2, "セーフライン外塗りの外側上端")
+    _assert_close(bx1, rects.canvas.x, "裁ち落とし枠外塗りの外側左端")
+    _assert_close(bx2, rects.canvas.x2, "裁ち落とし枠外塗りの外側右端")
+    _assert_close(by1, rects.canvas.y, "裁ち落とし枠外塗りの外側下端")
+    _assert_close(by2, rects.canvas.y2, "裁ち落とし枠外塗りの外側上端")
 
 
 def _assert_fill_settings_update_immediately(paper_guide_object, work, page) -> None:
@@ -143,6 +174,7 @@ def _assert_fill_settings_update_immediately(paper_guide_object, work, page) -> 
         raise AssertionError(f"裁ち落とし枠外塗りの不透明度が即時反映されていません: {bleed_outer_fill.color[3]}")
     if abs(_mix_shader_alpha(bleed_outer_fill) - 0.73) > 1.0e-6:
         raise AssertionError("裁ち落とし枠外塗りの素材が即時更新されていません")
+    _assert_fill_meshes_do_not_overlap(work, safe_fill, bleed_outer_fill)
 
     overlay.opacity = 0.0
     safe_fill = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")

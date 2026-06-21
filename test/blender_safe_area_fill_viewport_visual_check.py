@@ -90,12 +90,19 @@ def _sample_rgb(path: Path, x: int, y: int, radius: int = 5) -> tuple[float, flo
     return tuple(sum(pixel[i] for pixel in pixels) / len(pixels) for i in range(3))
 
 
-def _apply_safe_area(work, opacity: float) -> None:
+def _max_rgb_delta(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return max(abs(float(a[i]) - float(b[i])) for i in range(3))
+
+
+def _apply_overlay_fills(work, *, safe_opacity: float, bleed_opacity: float) -> None:
     from bmanga_dev_safe_area_visual.utils import paper_guide_object
 
     work.safe_area_overlay.enabled = True
     work.safe_area_overlay.color = (1.0, 0.0, 0.85)
-    work.safe_area_overlay.opacity = opacity
+    work.safe_area_overlay.opacity = safe_opacity
+    work.safe_area_overlay.bleed_outer_enabled = True
+    work.safe_area_overlay.bleed_outer_color = (0.0, 0.9, 1.0)
+    work.safe_area_overlay.bleed_outer_opacity = bleed_opacity
     paper_guide_object.regenerate_all_paper_guides(bpy.context.scene, work)
     _redraw(4)
 
@@ -139,17 +146,26 @@ def _run_visual_check() -> None:
                 space.shading.type = "SOLID"
             space.shading.light = "FLAT"
             space.shading.color_type = "TEXTURE"
+            try:
+                space.shading.background_type = "VIEWPORT"
+                space.shading.background_color = (1.0, 1.0, 1.0)
+            except Exception:
+                pass
             fit = bpy.ops.bmanga.view_fit_page("EXEC_DEFAULT")
             assert "FINISHED" in fit, fit
 
         rects = overlay_shared.compute_paper_rects(work.paper)
         ox, oy = page_grid.page_total_offset_mm(work, context.scene, 0)
-        sample_x = ox + (rects.canvas.x + rects.canvas.x2) * 0.5
-        sample_y = oy + (rects.safe.y2 + rects.canvas.y2) * 0.5
+        safe_sample_x = ox + (rects.canvas.x + rects.canvas.x2) * 0.5
+        safe_sample_y = oy + (rects.safe.y2 + rects.bleed.y2) * 0.5
+        bleed_sample_x = ox + (rects.canvas.x + rects.bleed.x) * 0.5
+        bleed_sample_y = oy + rects.bleed.y + rects.bleed.height * 0.37
 
-        _apply_safe_area(work, 100.0)
+        _apply_overlay_fills(work, safe_opacity=100.0, bleed_opacity=100.0)
         safe_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_SAFE_FILL_PREFIX}{page.id}")
         assert safe_obj is not None, "セーフライン外の塗り実体がありません"
+        bleed_obj = bpy.data.objects.get(f"{paper_guide_object.PAPER_BLEED_OUTER_FILL_PREFIX}{page.id}")
+        assert bleed_obj is not None, "裁ち落とし枠外の塗り実体がありません"
         assert getattr(safe_obj, "display_type", "") == "SOLID", "表示方法がソリッドではありません"
         assert not bool(getattr(safe_obj, "show_in_front", False)), "最前面ワイヤ表示に依存しています"
         mat = safe_obj.data.materials[0] if safe_obj.data.materials else None
@@ -161,37 +177,63 @@ def _run_visual_check() -> None:
         )
         area, region, rv3d = _view3d_context()
         _ = area
-        point = _screen_point_for_mm(region, rv3d, sample_x, sample_y)
-        if point is None:
+        safe_point = _screen_point_for_mm(region, rv3d, safe_sample_x, safe_sample_y)
+        bleed_point = _screen_point_for_mm(region, rv3d, bleed_sample_x, bleed_sample_y)
+        if safe_point is None or bleed_point is None:
             raise AssertionError("サンプル地点が画面外です")
         full_path = _screenshot("safe_area_opacity_100.png")
         from PIL import Image
 
         with Image.open(full_path) as opened:
             image_h = opened.height
-        px = int(round(region.x + float(point.x)))
-        py = int(round(image_h - (region.y + float(point.y))))
-        full_rgb = _sample_rgb(full_path, px, py)
+        safe_px = int(round(region.x + float(safe_point.x)))
+        safe_py = int(round(image_h - (region.y + float(safe_point.y))))
+        bleed_px = int(round(region.x + float(bleed_point.x)))
+        bleed_py = int(round(image_h - (region.y + float(bleed_point.y))))
+        full_rgb = _sample_rgb(full_path, safe_px, safe_py)
+        bleed_full_rgb = _sample_rgb(full_path, bleed_px, bleed_py)
         if not (full_rgb[0] > 180.0 and full_rgb[1] < 100.0 and full_rgb[2] > 130.0):
             raise AssertionError(f"セーフライン外の色が画面に出ていません: RGB={full_rgb}")
+        if not (bleed_full_rgb[0] < 100.0 and bleed_full_rgb[1] > 140.0 and bleed_full_rgb[2] > 140.0):
+            raise AssertionError(f"裁ち落とし枠外の色が画面に出ていません: RGB={bleed_full_rgb}")
 
-        _apply_safe_area(work, 25.0)
+        _apply_overlay_fills(work, safe_opacity=25.0, bleed_opacity=100.0)
         quarter_path = _screenshot("safe_area_opacity_025.png")
-        quarter_rgb = _sample_rgb(quarter_path, px, py)
-        if not (quarter_rgb[1] > full_rgb[1] + 45.0 and quarter_rgb[2] > full_rgb[2]):
+        quarter_rgb = _sample_rgb(quarter_path, safe_px, safe_py)
+        if _max_rgb_delta(quarter_rgb, full_rgb) <= 30.0:
             raise AssertionError(f"セーフライン外の不透明度が画面で薄くなっていません: 100={full_rgb} 25={quarter_rgb}")
 
-        _apply_safe_area(work, 0.0)
+        _apply_overlay_fills(work, safe_opacity=0.0, bleed_opacity=100.0)
         zero_path = _screenshot("safe_area_opacity_000.png")
-        zero_rgb = _sample_rgb(zero_path, px, py)
-        if not (zero_rgb[0] > 200.0 and zero_rgb[1] > 200.0 and zero_rgb[2] > 200.0):
+        zero_rgb = _sample_rgb(zero_path, safe_px, safe_py)
+        zero_neutral = max(zero_rgb) - min(zero_rgb)
+        if not (zero_neutral <= 35.0 and sum(zero_rgb) / 3.0 > 120.0):
             raise AssertionError(f"不透明度0でセーフライン外の塗りが残っています: RGB={zero_rgb}")
+
+        _apply_overlay_fills(work, safe_opacity=0.0, bleed_opacity=25.0)
+        bleed_quarter_path = _screenshot("bleed_outer_opacity_025.png")
+        bleed_quarter_rgb = _sample_rgb(bleed_quarter_path, bleed_px, bleed_py)
+        if _max_rgb_delta(bleed_quarter_rgb, bleed_full_rgb) <= 8.0:
+            raise AssertionError(
+                f"裁ち落とし枠外の不透明度が画面で薄くなっていません: "
+                f"100={bleed_full_rgb} 25={bleed_quarter_rgb}"
+            )
+
+        _apply_overlay_fills(work, safe_opacity=0.0, bleed_opacity=0.0)
+        bleed_zero_path = _screenshot("bleed_outer_opacity_000.png")
+        bleed_zero_rgb = _sample_rgb(bleed_zero_path, bleed_px, bleed_py)
+        bleed_zero_neutral = max(bleed_zero_rgb) - min(bleed_zero_rgb)
+        if not (bleed_zero_neutral <= 20.0 and sum(bleed_zero_rgb) / 3.0 > 40.0):
+            raise AssertionError(f"不透明度0で裁ち落とし枠外の塗りが残っています: RGB={bleed_zero_rgb}")
 
         print(
             "BMANGA_SAFE_AREA_FILL_VIEWPORT_VISUAL_OK "
             f"full={tuple(round(v, 1) for v in full_rgb)} "
             f"quarter={tuple(round(v, 1) for v in quarter_rgb)} "
             f"zero={tuple(round(v, 1) for v in zero_rgb)} "
+            f"bleed_full={tuple(round(v, 1) for v in bleed_full_rgb)} "
+            f"bleed_quarter={tuple(round(v, 1) for v in bleed_quarter_rgb)} "
+            f"bleed_zero={tuple(round(v, 1) for v in bleed_zero_rgb)} "
             f"out={OUT_DIR}",
             flush=True,
         )

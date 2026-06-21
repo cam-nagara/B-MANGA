@@ -599,18 +599,29 @@ def _fill_faces_from_rect_pairs(
     return verts, faces
 
 
+def _bleed_outer_fill_is_visible(work) -> bool:
+    overlay = getattr(work, "safe_area_overlay", None)
+    if overlay is None or not bool(getattr(overlay, "bleed_outer_enabled", True)):
+        return False
+    return _bleed_outer_fill_view_color(work)[3] > 0.0
+
+
 def _fill_rect_pairs_for_page(work, page_index: int, page, rects):
     if not bool(getattr(page, "spread", False)):
-        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
+        safe_outer = rects.bleed if _bleed_outer_fill_is_visible(work) else rects.canvas
+        return [(safe_outer, rects.safe)], [(rects.canvas, rects.bleed)]
     paper = getattr(work, "paper", None)
     if paper is None:
-        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
+        safe_outer = rects.bleed if _bleed_outer_fill_is_visible(work) else rects.canvas
+        return [(safe_outer, rects.safe)], [(rects.canvas, rects.bleed)]
     try:
         combined = spread_merge_geometry.combined_spread_rects(paper, page)
     except Exception:  # noqa: BLE001
         _logger.exception("spread fill rect calculation failed")
-        return [(rects.canvas, rects.safe)], [(rects.canvas, rects.bleed)]
-    return [(combined.canvas, combined.safe)], [(combined.canvas, combined.bleed)]
+        safe_outer = rects.bleed if _bleed_outer_fill_is_visible(work) else rects.canvas
+        return [(safe_outer, rects.safe)], [(rects.canvas, rects.bleed)]
+    safe_outer = combined.bleed if _bleed_outer_fill_is_visible(work) else combined.canvas
+    return [(safe_outer, combined.safe)], [(combined.canvas, combined.bleed)]
 
 
 def _ensure_safe_fill_object(
@@ -944,6 +955,30 @@ def _merge_guide_sets(*sets):
     return [(label, merged[label][0], merged[label][1], merged[label][2]) for label in order]
 
 
+def _spread_page_guide_sets(paper, page):
+    from . import page_grid
+
+    canvas_width = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
+    right_offset = page_grid.spread_right_page_offset_mm(page, canvas_width)
+    left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
+    right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
+    page_pair_sets = _merge_guide_sets(
+        _paper_guide_sets(paper, left_rects),
+        _shift_guide_sets(_paper_guide_sets(paper, right_rects), right_offset),
+    )
+    combined_rects = spread_merge_geometry.combined_spread_rects(paper, page)
+    combined_sets = _paper_guide_sets(paper, combined_rects)
+    page_pair_labels = {"dim", "light"}
+    combined_by_label = {label: (label, loops, segments, material) for label, loops, segments, material in combined_sets}
+    guide_sets = []
+    for label, loops, segments, material in page_pair_sets:
+        if label in page_pair_labels:
+            guide_sets.append((label, loops, segments, material))
+        else:
+            guide_sets.append(combined_by_label.get(label, (label, loops, segments, material)))
+    return guide_sets, combined_rects
+
+
 def _paper_guide_sets_for_page(work, page_index: int, page):
     paper = getattr(work, "paper", None)
     try:
@@ -954,8 +989,8 @@ def _paper_guide_sets_for_page(work, page_index: int, page):
         page_grid = None
         grid_page_index = page_index
     if bool(getattr(page, "spread", False)) and page_grid is not None:
-        combined_rects = spread_merge_geometry.combined_spread_rects(paper, page)
-        return _paper_guide_sets(paper, combined_rects), combined_rects, grid_page_index
+        guide_sets, combined_rects = _spread_page_guide_sets(paper, page)
+        return guide_sets, combined_rects, grid_page_index
 
     rects = overlay_shared.compute_paper_rects(
         paper,
@@ -1008,7 +1043,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     safe_color = _safe_fill_view_color(work)
     bleed_outer_color = _bleed_outer_fill_view_color(work)
     return repr((
-        "paper_guide_spread_fill_v3",
+        "paper_guide_spread_fill_v4",
         int(page_index),
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),

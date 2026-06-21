@@ -122,6 +122,7 @@ def main() -> None:
         _assert_fill_sample(bleed_layer, outside_bleed_top, dpi, (64, 64, 64, 255))
         _assert_fill_sample(bleed_layer, between_safe_and_bleed_top, dpi, (0, 0, 0, 0))
         _assert_fill_sample(bleed_layer, inside_safe, dpi, (0, 0, 0, 0))
+        _assert_fill_sample(safe_layer, outside_bleed_top, dpi, (0, 0, 0, 0))
         _assert_fill_sample(safe_layer, between_safe_and_bleed_top, dpi, (51, 153, 204, 128))
         _assert_fill_sample(safe_layer, inside_safe, dpi, (0, 0, 0, 0))
 
@@ -142,6 +143,8 @@ def main() -> None:
             raise AssertionError("裁ち落とし枠外の塗りをオフにしてもPSDレイヤーが出ています")
         if "セーフライン外の塗り" not in names:
             raise AssertionError("裁ち落とし枠外の塗りをオフにしただけでセーフライン外の塗りが消えました")
+        safe_only_layer = _layer_by_name(export_pipeline.build_page_layers(work, page, options), "セーフライン外の塗り")
+        _assert_fill_sample(safe_only_layer, outside_bleed_top, dpi, (51, 153, 204, 128))
 
         png_names = [
             layer.name

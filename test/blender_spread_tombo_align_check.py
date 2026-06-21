@@ -150,6 +150,7 @@ def _assert_missing_value_fallbacks() -> None:
 
 def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     page_grid = _sub("utils.page_grid")
+    overlay_shared = _sub("ui.overlay_shared")
     export_page_regions = _sub("io.export_page_regions")
     export_pipeline = _sub("io.export_pipeline")
     paper_bg_object = _sub("utils.paper_bg_object")
@@ -207,6 +208,21 @@ def _assert_tombo_merge_case(work, *, aligned: bool, gap_mm: float) -> None:
     xs = _guide_x_values_mm(spread_id)
     if not any(abs(x - expected_width) < 0.1 for x in xs):
         raise AssertionError(f"見開きガイドの右端が見開き全体幅にありません: width={expected_width}, xs={xs[:12]}")
+    left_rects = overlay_shared.compute_paper_rects(work.paper, is_left_half=True)
+    right_rects = overlay_shared.compute_paper_rects(work.paper, is_left_half=False)
+    page_pair_edges = {
+        "左ページ裁ち落とし枠の右端": left_rects.bleed.x2,
+        "右ページ裁ち落とし枠の左端": expected_offset + right_rects.bleed.x,
+        "左ページ仕上がり枠の右端": left_rects.finish.x2,
+        "右ページ仕上がり枠の左端": expected_offset + right_rects.finish.x,
+    }
+    missing = [
+        label
+        for label, expected in page_pair_edges.items()
+        if not any(abs(x - expected) < 0.1 for x in xs)
+    ]
+    if missing:
+        raise AssertionError(f"見開きガイドが左右ページ別に残っていません: {missing} xs={xs[:24]}")
 
     result = bpy.ops.bmanga.pages_split_spread("EXEC_DEFAULT", spread_index=0)
     if "FINISHED" not in result:
