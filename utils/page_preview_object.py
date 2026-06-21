@@ -20,6 +20,8 @@ PREVIEW_MATERIAL_PREFIX = "BManga_PagePreview_"
 PREVIEW_OPACITY_NODE = "B-MANGA Preview Opacity"
 PREVIEW_OPACITY_MATH_NODE = "B-MANGA Preview Opacity Multiply"
 PREVIEW_PAGE_ID_PROP = "bmanga_page_preview_page_id"
+PREVIEW_CAMERA_FOLLOW_PROP = "bmanga_page_preview_camera_follow"
+PREVIEW_CAMERA_ANCHOR_PROP = "bmanga_page_preview_camera_anchor"
 # プレビュー画像 (長辺) の上限。GPU メモリ保護のための安全弁。
 PREVIEW_MAX_LONG_PX = 1536
 # 用紙 DPI が取れない場合のフォールバック解像度基準。
@@ -138,6 +140,61 @@ def _iter_preview_objects():
     for obj in list(bpy.data.objects):
         if str(obj.get(on.PROP_KIND, "") or "") == PREVIEW_KIND:
             yield obj
+
+
+def _clear_preview_camera_follow(obj: bpy.types.Object, *, clear_anchor: bool = True) -> None:
+    if obj is None or not bool(obj.get(PREVIEW_CAMERA_FOLLOW_PROP, False)):
+        return
+    matrix = obj.matrix_world.copy()
+    try:
+        obj.parent = None
+        obj.matrix_parent_inverse.identity()
+        obj.matrix_world = matrix
+        obj[PREVIEW_CAMERA_FOLLOW_PROP] = False
+        if clear_anchor and PREVIEW_CAMERA_ANCHOR_PROP in obj:
+            del obj[PREVIEW_CAMERA_ANCHOR_PROP]
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _preview_camera_delta(obj: bpy.types.Object, scene: bpy.types.Scene) -> tuple[float, float, float]:
+    camera = getattr(scene, "camera", None) if scene is not None else None
+    if obj is None or camera is None or getattr(camera, "type", "") != "CAMERA":
+        return 0.0, 0.0, 0.0
+    location = camera.matrix_world.to_translation()
+    anchor = obj.get(PREVIEW_CAMERA_ANCHOR_PROP)
+    try:
+        if anchor is None or len(anchor) < 3:
+            return 0.0, 0.0, 0.0
+        return (
+            float(location.x) - float(anchor[0]),
+            float(location.y) - float(anchor[1]),
+            float(location.z) - float(anchor[2]),
+        )
+    except Exception:  # noqa: BLE001
+        return 0.0, 0.0, 0.0
+
+
+def _apply_preview_camera_follow(obj: bpy.types.Object, scene: bpy.types.Scene) -> None:
+    camera = getattr(scene, "camera", None) if scene is not None else None
+    if obj is None or camera is None or getattr(camera, "type", "") != "CAMERA":
+        _clear_preview_camera_follow(obj)
+        return
+    matrix = obj.matrix_world.copy()
+    try:
+        if PREVIEW_CAMERA_ANCHOR_PROP not in obj:
+            location = camera.matrix_world.to_translation()
+            obj[PREVIEW_CAMERA_ANCHOR_PROP] = (
+                float(location.x),
+                float(location.y),
+                float(location.z),
+            )
+        obj.parent = camera
+        obj.matrix_parent_inverse = camera.matrix_world.inverted()
+        obj.matrix_world = matrix
+        obj[PREVIEW_CAMERA_FOLLOW_PROP] = True
+    except Exception:  # noqa: BLE001
+        _clear_preview_camera_follow(obj)
 
 
 def hide_page_previews(scene=None) -> None:
@@ -813,6 +870,8 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
 
 
 def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False) -> None:
+    role, _current_page_id = _preview_scene_role(scene)
+    follow_camera = role == "coma"
     page_id = str(getattr(page, "id", "") or "")
     path = ensure_preview_png(work, page, page_index, current=current, scene=scene, force=force)
     image = _load_image(path, _image_size(work, scene, page)) if path is not None else None
@@ -828,9 +887,11 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
         obj = bpy.data.objects.new(f"{PREVIEW_OBJECT_PREFIX}{page_id}", mesh)
     elif obj.data is not mesh:
         obj.data = mesh
-    obj.location.x = mm_to_m((x0 + x1) * 0.5)
-    obj.location.y = mm_to_m((y0 + y1) * 0.5)
-    obj.location.z = PREVIEW_Z_M
+    _clear_preview_camera_follow(obj, clear_anchor=not follow_camera)
+    delta_x, delta_y, delta_z = _preview_camera_delta(obj, scene) if follow_camera else (0.0, 0.0, 0.0)
+    obj.location.x = mm_to_m((x0 + x1) * 0.5) + delta_x
+    obj.location.y = mm_to_m((y0 + y1) * 0.5) + delta_y
+    obj.location.z = PREVIEW_Z_M + delta_z
     obj.scale.x = _preview_scale_factor(scene)
     obj.scale.y = _preview_scale_factor(scene)
     obj.scale.z = 1.0
@@ -856,6 +917,8 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
             users_coll.objects.unlink(obj)
         except Exception:  # noqa: BLE001
             pass
+    if follow_camera:
+        _apply_preview_camera_follow(obj, scene)
 
 
 def _preview_png_fresh_for_page(work, page, path: Path) -> bool:
