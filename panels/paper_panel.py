@@ -13,6 +13,41 @@ from ..utils import shortcut_visibility
 B_NAME_CATEGORY = "B-MANGA"
 
 
+def _role(context) -> str:
+    try:
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        return role
+    except Exception:  # noqa: BLE001
+        return page_file_scene.ROLE_UNKNOWN
+
+
+def _is_work_file_context(context) -> bool:
+    role = _role(context)
+    if role == page_file_scene.ROLE_WORK:
+        return True
+    if role in {page_file_scene.ROLE_PAGE, page_file_scene.ROLE_COMA}:
+        return False
+    return page_file_scene.is_work_list_scene(getattr(context, "scene", None))
+
+
+def _is_page_file_context(context) -> bool:
+    role = _role(context)
+    if role == page_file_scene.ROLE_PAGE:
+        return True
+    if role in {page_file_scene.ROLE_WORK, page_file_scene.ROLE_COMA}:
+        return False
+    return page_file_scene.is_page_edit_scene(getattr(context, "scene", None))
+
+
+def _is_coma_file_context(context) -> bool:
+    role = _role(context)
+    if role == page_file_scene.ROLE_COMA:
+        return True
+    if role in {page_file_scene.ROLE_WORK, page_file_scene.ROLE_PAGE}:
+        return False
+    return get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend()
+
+
 def _paper_unit_label(paper) -> str:
     unit = str(getattr(paper, "unit", "mm") or "mm")
     if unit == "px":
@@ -34,12 +69,7 @@ class BMANGA_PT_paper(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(
-            w
-            and w.loaded
-            and get_mode(context) != MODE_COMA
-            and not page_file_scene.is_page_edit_scene(context.scene)
-        )
+        return bool(w and w.loaded and _is_work_file_context(context))
 
     def draw(self, context):
         layout = self.layout
@@ -151,12 +181,7 @@ class BMANGA_PT_work_paper_visibility(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(
-            w
-            and w.loaded
-            and get_mode(context) != MODE_COMA
-            and not page_file_scene.is_page_edit_scene(context.scene)
-        )
+        return bool(w and w.loaded and _is_work_file_context(context))
 
     def draw(self, context):
         work = get_work(context)
@@ -178,11 +203,7 @@ class BMANGA_PT_page_paper_visibility(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(
-            w
-            and w.loaded
-            and page_file_scene.is_page_edit_scene(context.scene)
-        )
+        return bool(w and w.loaded and _is_page_file_context(context))
 
     def draw(self, context):
         work = get_work(context)
@@ -204,14 +225,7 @@ class BMANGA_PT_coma_paper_visibility(Panel):
     @classmethod
     def poll(cls, context):
         w = get_work(context)
-        return bool(
-            w
-            and w.loaded
-            and (
-                get_mode(context) == MODE_COMA
-                or shortcut_visibility.current_blend_is_coma_blend()
-            )
-        )
+        return bool(w and w.loaded and _is_coma_file_context(context))
 
     def draw(self, context):
         work = get_work(context)

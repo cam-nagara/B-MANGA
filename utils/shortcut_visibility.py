@@ -127,7 +127,7 @@ def _area_has_bmanga_panel_category(area, screen=None) -> bool:
     status = _area_bmanga_status(area)
     if status == "bmanga":
         return True
-    if status in ("unknown", "other"):
+    if status == "unknown":
         return _recent_bmanga_panel_drawn(area, screen)
     return False
 

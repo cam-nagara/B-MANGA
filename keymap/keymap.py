@@ -975,7 +975,8 @@ def _watch_bmanga_tab() -> Optional[float]:
     その瞬間の 1 tick だけで「タブが閉じた」と確定すると、選択クリック直後の
     ドラッグ中などに常駐オブジェクトツールが黙って終了し、以後のドラッグが
     Blender 素の挙動に落ちて「ハンドルと実体の位置がズレる」誤動作になる。
-    判定不能 (ambiguous) でツール稼働中なら現状維持し、確定 off も連続 2 tick
+    判定不能 (ambiguous) でツール稼働中なら現状維持する。ツール稼働中に
+    確定 off になった場合は即時に終了し、ツール未稼働時だけ連続 2 tick
     待ってから無効化する。
     """
     global _DISABLE_PENDING_TICKS
@@ -1009,8 +1010,19 @@ def _watch_bmanga_tab() -> Optional[float]:
             if keymap_pref_enabled and _disable_is_ambiguous():
                 # タブ名が読めないだけの可能性が高い。ツールを殺さず次 tick へ
                 return _WATCH_INTERVAL
+            disable_immediately = False
+            try:
+                from ..operators import coma_modal_state
+                from ..utils import shortcut_visibility
+
+                disable_immediately = (
+                    coma_modal_state.any_tool_active()
+                    or not shortcut_visibility.shortcut_file_scope_allowed(bpy.context)
+                )
+            except Exception:  # noqa: BLE001
+                disable_immediately = False
             _DISABLE_PENDING_TICKS += 1
-            if _DISABLE_PENDING_TICKS >= 2:
+            if disable_immediately or _DISABLE_PENDING_TICKS >= 2:
                 _apply_visibility_state(state, False)
     except Exception:  # noqa: BLE001
         _logger.exception("watch_bmanga_tab failed")

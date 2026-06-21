@@ -41,6 +41,8 @@ _OWNED_PANEL_PREFIXES = (
     "BNAME_PT_",
     "B_NAME_PT_",
 )
+_CATEGORY_NORMALIZER_ENABLED = False
+_CATEGORY_NORMALIZER_INTERVAL = 1.0
 
 
 def _unregister_stale_bmanga_panel_classes() -> None:
@@ -57,8 +59,9 @@ def _unregister_stale_bmanga_panel_classes() -> None:
             pass
 
 
-def _normalize_bmanga_panel_categories() -> None:
+def _normalize_bmanga_panel_categories() -> bool:
     """登録済みB-MANGAパネルをB-MANGAタブへ統一する."""
+    changed = False
     for class_name in dir(bpy.types):
         if not class_name.startswith("BMANGA_PT_"):
             continue
@@ -69,10 +72,45 @@ def _normalize_bmanga_panel_categories() -> None:
             if (
                 getattr(cls, "bl_space_type", "") == "VIEW_3D"
                 and getattr(cls, "bl_region_type", "") == "UI"
+                and getattr(cls, "bl_category", "") != _CANONICAL_PANEL_CATEGORY
             ):
                 cls.bl_category = _CANONICAL_PANEL_CATEGORY
+                changed = True
         except Exception:
             pass
+    return changed
+
+
+def _run_panel_category_normalizer():
+    if not _CATEGORY_NORMALIZER_ENABLED:
+        return None
+    _normalize_bmanga_panel_categories()
+    return _CATEGORY_NORMALIZER_INTERVAL
+
+
+def _start_panel_category_normalizer() -> None:
+    global _CATEGORY_NORMALIZER_ENABLED
+    _CATEGORY_NORMALIZER_ENABLED = True
+    _normalize_bmanga_panel_categories()
+    try:
+        if not bpy.app.timers.is_registered(_run_panel_category_normalizer):
+            bpy.app.timers.register(
+                _run_panel_category_normalizer,
+                first_interval=_CATEGORY_NORMALIZER_INTERVAL,
+                persistent=True,
+            )
+    except Exception:
+        pass
+
+
+def _stop_panel_category_normalizer() -> None:
+    global _CATEGORY_NORMALIZER_ENABLED
+    _CATEGORY_NORMALIZER_ENABLED = False
+    try:
+        if bpy.app.timers.is_registered(_run_panel_category_normalizer):
+            bpy.app.timers.unregister(_run_panel_category_normalizer)
+    except Exception:
+        pass
 
 
 def _unregister_legacy_image_layer_panel() -> None:
@@ -135,10 +173,11 @@ def register() -> None:
     _unregister_legacy_tool_panels()
     for module in _MODULES:
         module.register()
-    _normalize_bmanga_panel_categories()
+    _start_panel_category_normalizer()
 
 
 def unregister() -> None:
+    _stop_panel_category_normalizer()
     for module in reversed(_MODULES):
         try:
             module.unregister()

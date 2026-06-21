@@ -154,6 +154,19 @@ def _assert_bmanga_panels_in_single_tab() -> None:
         raise AssertionError(f"B-MANGA以外のタブに残ったパネルがあります: {offenders}")
 
 
+def _force_bmanga_panel_category(category: str) -> None:
+    for class_name in dir(bpy.types):
+        if not class_name.startswith("BMANGA_PT_"):
+            continue
+        cls = getattr(bpy.types, class_name, None)
+        if (
+            cls is not None
+            and getattr(cls, "bl_space_type", "") == "VIEW_3D"
+            and getattr(cls, "bl_region_type", "") == "UI"
+        ):
+            cls.bl_category = category
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_panel_role_"))
     mod = None
@@ -176,14 +189,31 @@ def main() -> None:
             view_panel,
             work_panel,
         )
+        import bmanga_dev_page_panel_role.panels as panels_pkg
         from bmanga_dev_page_panel_role.utils import page_file_scene
 
         context = bpy.context
+        _force_bmanga_panel_category("マンガ")
+        panels_pkg._normalize_bmanga_panel_categories()  # noqa: SLF001
+        _assert_bmanga_panels_in_single_tab()
+
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_WORK
+        assert work_panel.BMANGA_PT_work.poll(context)
+        assert paper_panel.BMANGA_PT_paper.poll(context)
+        assert paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
+        assert not paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
+        assert not paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
         assert not tool_panel.BMANGA_PT_tools.poll(context)
         assert export_panel.BMANGA_PT_export.poll(context)
         assert "work_meta_dialog" not in dir(bpy.ops.bmanga)
+
+        original_work_dir = str(context.scene.bmanga_work.work_dir)
+        context.scene.bmanga_work.work_dir = str(temp_root / "MovedElsewhere.bmanga")
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        assert role == page_file_scene.ROLE_WORK
+        assert paper_panel.BMANGA_PT_paper.poll(context)
+        context.scene.bmanga_work.work_dir = original_work_dir
 
         work_records = _draw_records(work_panel.BMANGA_PT_work, context)
         _assert_present(
@@ -275,6 +305,10 @@ def main() -> None:
         assert tool_panel.BMANGA_PT_tools.poll(context)
         assert not export_panel.BMANGA_PT_export.poll(context)
         assert not work_panel.BMANGA_PT_work.poll(context)
+        assert not paper_panel.BMANGA_PT_paper.poll(context)
+        assert not paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
+        assert paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
+        assert not paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
 
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "作品ファイルに戻る", "保存フォルダを開く")
@@ -323,6 +357,10 @@ def main() -> None:
         role, _page_id, _coma_id = page_file_scene.current_role(context)
         assert role == page_file_scene.ROLE_COMA
         assert work_panel.BMANGA_PT_coma_return.poll(context)
+        assert not paper_panel.BMANGA_PT_paper.poll(context)
+        assert not paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
+        assert not paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
+        assert paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
         _assert_absent(

@@ -34,7 +34,16 @@ def relative_parts(blend_path: Path, work_dir: Path | None = None) -> tuple[str,
     try:
         return blend_path.resolve().relative_to(root.resolve()).parts
     except ValueError:
-        return ()
+        # 保存済みファイルを別PC/別フォルダで開いた直後など、Scene 側に残った
+        # work_dir が現在の .blend の場所とずれている場合がある。ファイルパスから
+        # 見つかる .bmanga ルートを優先して、作品/ページ/コマの判定を復旧する。
+        fallback = find_work_root(blend_path)
+        if fallback is None:
+            return ()
+        try:
+            return blend_path.resolve().relative_to(fallback.resolve()).parts
+        except ValueError:
+            return ()
 
 
 def role_from_parts(parts: tuple[str, ...]) -> tuple[str, str, str]:
