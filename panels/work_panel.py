@@ -54,6 +54,27 @@ class BMANGA_PT_work(Panel):
             return
 
         mode = get_mode(context)
+        info = work.work_info
+
+        box = layout.box()
+        box.label(text="作品情報", icon="WORDWRAP_ON")
+        box.prop(info, "work_name", text="作品名")
+        box.prop(info, "episode_number", text="話数")
+        box.prop(info, "subtitle", text="サブタイトル")
+        box.prop(info, "author", text="作者名")
+        box.label(text="ページ数")
+        row = box.row(align=True)
+        row.enabled = mode == MODE_PAGE
+        row.prop(info, "page_number_start", text="開始")
+        row.prop(info, "page_number_end", text="終了")
+
+        box = layout.box()
+        box.label(text="原稿上の表示")
+        _draw_display_item(box, "作品名", info.display_work_name)
+        _draw_display_item(box, "話数", info.display_episode)
+        _draw_display_item(box, "サブタイトル", info.display_subtitle)
+        _draw_display_item(box, "作者名", info.display_author)
+        _draw_display_item(box, "ページ番号", info.display_page_number)
 
         box = layout.box()
         box.label(text="ページ一覧プレビュー", icon="RENDERLAYERS")
@@ -94,7 +115,6 @@ class BMANGA_PT_coma_return(Panel):
     def draw(self, context):
         shortcut_visibility.mark_bmanga_panel_drawn(context)
         layout = self.layout
-        scene = getattr(context, "scene", None)
         if get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend():
             layout.operator(
                 "bmanga.exit_coma_mode_safe",
@@ -112,18 +132,22 @@ class BMANGA_PT_coma_return(Panel):
                 icon="BACK",
             )
             row.operator("bmanga.work_save", text="", icon="FILE_TICK")
-            _draw_page_browser_fit(layout, scene)
             op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return
 
 
-def _draw_page_browser_fit(layout, scene) -> None:
-    if scene is None or not hasattr(scene, "bmanga_page_browser_fit"):
-        return
-    box = layout.box()
-    box.label(text="ページ一覧ビュー", icon="WINDOW")
-    box.prop(scene, "bmanga_page_browser_fit", text="フィット")
+def _draw_display_item(layout, label: str, item) -> None:
+    row = layout.row(align=True)
+    row.prop(item, "enabled", text=label)
+    sub = layout.row(align=True)
+    sub.enabled = item.enabled
+    sub.prop(item, "position", text="")
+    sub.prop(item, "color", text="色")
+    sub = layout.row(align=True)
+    sub.enabled = item.enabled
+    sub.prop(item, "font_size_unit", text="")
+    sub.prop(item, "font_size_value", text="サイズ")
 
 
 _CLASSES = (

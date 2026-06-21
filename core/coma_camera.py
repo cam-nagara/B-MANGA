@@ -256,7 +256,7 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
     hatching_visible: BoolProperty(
         name="ハッチング間隔を表示",
-        default=True,
+        default=False,
         update=_update_hatching_visible,
     )  # type: ignore[valid-type]
     hatching_rotation: FloatProperty(

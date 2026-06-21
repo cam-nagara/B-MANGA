@@ -51,6 +51,7 @@ from .coma_camera_refs import (
 _logger = log.get_logger(__name__)
 _OPACITY_PERCENT_MIGRATION_PROP = "bmanga_coma_camera_opacity_percent_units_v1"
 HATCHING_IMAGE_NAME = "ハッチング間隔.png"
+HATCHING_ASSET_PATH = Path(__file__).resolve().parents[1] / "assets" / HATCHING_IMAGE_NAME
 
 
 def ensure_opacity_percent_units(scene) -> None:
@@ -597,12 +598,32 @@ def set_background_image_rotation(context, name_filter: str, rotation: float) ->
 def _ensure_hatching_image():
     img = bpy.data.images.get(HATCHING_IMAGE_NAME)
     if img is not None:
+        if HATCHING_ASSET_PATH.is_file():
+            try:
+                img.filepath = str(HATCHING_ASSET_PATH)
+                img.source = "FILE"
+                img.reload()
+            except Exception:  # noqa: BLE001
+                pass
         try:
             img[MANAGED_IMAGE_PROP] = True
             img["bmanga_kind"] = "hatching"
         except Exception:  # noqa: BLE001
             pass
         return img
+    if HATCHING_ASSET_PATH.is_file():
+        try:
+            img = bpy.data.images.load(str(HATCHING_ASSET_PATH), check_existing=True)
+            img.name = HATCHING_IMAGE_NAME
+            img[MANAGED_IMAGE_PROP] = True
+            img["bmanga_kind"] = "hatching"
+            try:
+                img.colorspace_settings.name = "sRGB"
+            except Exception:  # noqa: BLE001
+                pass
+            return img
+        except Exception:  # noqa: BLE001
+            _logger.warning("hatching image load failed: %s", HATCHING_ASSET_PATH, exc_info=True)
     width = 256
     height = 256
     img = bpy.data.images.new(HATCHING_IMAGE_NAME, width=width, height=height, alpha=True)
@@ -655,7 +676,7 @@ def ensure_hatching_background(context):
         bg = data.background_images.new()
     bg.image = img
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
-    visible = bool(getattr(settings, "hatching_visible", True))
+    visible = bool(getattr(settings, "hatching_visible", False))
     rotation = float(getattr(settings, "hatching_rotation", 0.0) or 0.0)
     _set_bg_attr(bg, "alpha", 0.72)
     _set_bg_attr(bg, "scale", 1.0)

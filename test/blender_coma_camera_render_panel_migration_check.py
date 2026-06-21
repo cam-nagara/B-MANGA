@@ -177,6 +177,21 @@ def _check_bmanga_view_panel() -> None:
     assert "bmanga.page_preview_range_mode_set" in operators
 
 
+def _check_hatching_default_and_image() -> None:
+    from bmanga_panel_migration.utils import coma_camera
+
+    scene = bpy.context.scene
+    settings = scene.bmanga_coma_camera_settings
+    assert bool(settings.hatching_visible) is False
+    bg = coma_camera.ensure_hatching_background(bpy.context)
+    assert bg is not None
+    assert bool(bg.show_background_image) is False
+    image = getattr(bg, "image", None)
+    assert image is not None
+    assert str(image.get("bmanga_kind", "") or "") == "hatching"
+    assert Path(bpy.path.abspath(image.filepath)).resolve() == (ROOT / "assets" / "ハッチング間隔.png").resolve()
+
+
 def _check_camera_preset_duplicate() -> None:
     scene = bpy.context.scene
     settings = scene.bmanga_coma_camera_settings
@@ -243,6 +258,7 @@ def main() -> None:
         _prepare_coma_context()
         _check_bmanga_panel()
         _check_bmanga_view_panel()
+        _check_hatching_default_and_image()
         _check_camera_preset_duplicate()
         _check_render_panel()
         print("BMANGA_COMA_CAMERA_RENDER_PANEL_RETURN_OK")

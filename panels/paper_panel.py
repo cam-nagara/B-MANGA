@@ -5,9 +5,10 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel
 
-from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
+from ..core.mode import MODE_COMA, get_mode
 from ..core.work import get_work
 from ..utils import page_file_scene
+from ..utils import shortcut_visibility
 
 B_NAME_CATEGORY = "B-MANGA"
 
@@ -47,8 +48,6 @@ class BMANGA_PT_paper(Panel):
             return
         p = work.paper
         unit_label = _paper_unit_label(p)
-        mode = get_mode(context)
-        info = work.work_info
 
         # プリセット操作 (ドロップダウンから選択 → 即時適用)
         row = layout.row(align=True)
@@ -56,18 +55,6 @@ class BMANGA_PT_paper(Panel):
         wm = context.window_manager
         row.prop(wm, "bmanga_paper_preset_selector", text="")
         row.operator("bmanga.paper_preset_save_local", text="", icon="FILE_TICK")
-
-        box = layout.box()
-        box.label(text="作品情報", icon="WORDWRAP_ON")
-        box.prop(info, "work_name", text="作品名")
-        box.prop(info, "episode_number", text="話数")
-        box.prop(info, "subtitle", text="サブタイトル")
-        box.prop(info, "author", text="作者名")
-        box.label(text="ページ数")
-        row = box.row(align=True)
-        row.enabled = mode == MODE_PAGE
-        row.prop(info, "page_number_start", text="開始")
-        row.prop(info, "page_number_end", text="終了")
 
         box = layout.box()
         box.label(text="キャンバス")
@@ -122,21 +109,11 @@ class BMANGA_PT_paper(Panel):
         box.label(text="色")
         box.prop(p, "paper_color", text="用紙色")
 
-        _draw_paper_visibility_section(layout, p)
-
         # 綴じ / 読む方向
         box = layout.box()
         box.label(text="綴じ / 読む方向")
         box.prop(p, "start_side")
         box.prop(p, "read_direction")
-
-        box = layout.box()
-        box.label(text="原稿上の表示")
-        _draw_display_item(box, "作品名", info.display_work_name)
-        _draw_display_item(box, "話数", info.display_episode)
-        _draw_display_item(box, "サブタイトル", info.display_subtitle)
-        _draw_display_item(box, "作者名", info.display_author)
-        _draw_display_item(box, "ページ番号", info.display_page_number)
 
         box = layout.box()
         box.label(text="コマ間隔")
@@ -146,11 +123,9 @@ class BMANGA_PT_paper(Panel):
         row.prop(g, "horizontal_mm")
 
 
-def _draw_paper_visibility_section(layout, paper) -> None:
-    box = layout.box()
-    box.label(text="用紙要素の表示")
-    box.prop(paper, "show_guides")
-    guide_box = box.column()
+def draw_paper_visibility_controls(layout, paper) -> None:
+    layout.prop(paper, "show_guides")
+    guide_box = layout.column()
     guide_box.enabled = bool(getattr(paper, "show_guides", True))
     row = guide_box.row(align=True)
     row.prop(paper, "show_canvas_frame")
@@ -163,6 +138,33 @@ def _draw_paper_visibility_section(layout, paper) -> None:
     row.prop(paper, "show_trim_marks")
 
 
+class BMANGA_PT_work_paper_visibility(Panel):
+    """作品ファイル上の用紙要素表示を用紙セクション外に出す."""
+
+    bl_idname = "BMANGA_PT_work_paper_visibility"
+    bl_label = "用紙要素の表示"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = B_NAME_CATEGORY
+    bl_order = 13
+
+    @classmethod
+    def poll(cls, context):
+        w = get_work(context)
+        return bool(
+            w
+            and w.loaded
+            and get_mode(context) != MODE_COMA
+            and not page_file_scene.is_page_edit_scene(context.scene)
+        )
+
+    def draw(self, context):
+        work = get_work(context)
+        if work is None:
+            return
+        draw_paper_visibility_controls(self.layout, work.paper)
+
+
 class BMANGA_PT_page_paper_visibility(Panel):
     """ページファイル上でも用紙要素の表示を切り替えられるようにする."""
 
@@ -171,7 +173,7 @@ class BMANGA_PT_page_paper_visibility(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = B_NAME_CATEGORY
-    bl_order = 12
+    bl_order = 13
 
     @classmethod
     def poll(cls, context):
@@ -186,25 +188,43 @@ class BMANGA_PT_page_paper_visibility(Panel):
         work = get_work(context)
         if work is None:
             return
-        _draw_paper_visibility_section(self.layout, work.paper)
+        draw_paper_visibility_controls(self.layout, work.paper)
 
 
-def _draw_display_item(layout, label: str, item) -> None:
-    row = layout.row(align=True)
-    row.prop(item, "enabled", text=label)
-    sub = layout.row(align=True)
-    sub.enabled = item.enabled
-    sub.prop(item, "position", text="")
-    sub.prop(item, "color", text="色")
-    sub = layout.row(align=True)
-    sub.enabled = item.enabled
-    sub.prop(item, "font_size_unit", text="")
-    sub.prop(item, "font_size_value", text="サイズ")
+class BMANGA_PT_coma_paper_visibility(Panel):
+    """コマファイル上でも用紙要素の表示を切り替えられるようにする."""
+
+    bl_idname = "BMANGA_PT_coma_paper_visibility"
+    bl_label = "用紙要素の表示"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = B_NAME_CATEGORY
+    bl_order = 15
+
+    @classmethod
+    def poll(cls, context):
+        w = get_work(context)
+        return bool(
+            w
+            and w.loaded
+            and (
+                get_mode(context) == MODE_COMA
+                or shortcut_visibility.current_blend_is_coma_blend()
+            )
+        )
+
+    def draw(self, context):
+        work = get_work(context)
+        if work is None:
+            return
+        draw_paper_visibility_controls(self.layout, work.paper)
 
 
 _CLASSES = (
     BMANGA_PT_paper,
+    BMANGA_PT_work_paper_visibility,
     BMANGA_PT_page_paper_visibility,
+    BMANGA_PT_coma_paper_visibility,
 )
 
 
