@@ -69,14 +69,6 @@ class BMANGA_PT_work(Panel):
         row.prop(info, "page_number_end", text="終了")
 
         box = layout.box()
-        box.label(text="原稿上の表示")
-        _draw_display_item(box, "作品名", info.display_work_name)
-        _draw_display_item(box, "話数", info.display_episode)
-        _draw_display_item(box, "サブタイトル", info.display_subtitle)
-        _draw_display_item(box, "作者名", info.display_author)
-        _draw_display_item(box, "ページ番号", info.display_page_number)
-
-        box = layout.box()
         box.label(text="ページ一覧プレビュー", icon="RENDERLAYERS")
         preview = box.column(align=True)
         preview.enabled = mode == MODE_PAGE
@@ -135,19 +127,6 @@ class BMANGA_PT_coma_return(Panel):
             op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return
-
-
-def _draw_display_item(layout, label: str, item) -> None:
-    row = layout.row(align=True)
-    row.prop(item, "enabled", text=label)
-    sub = layout.row(align=True)
-    sub.enabled = item.enabled
-    sub.prop(item, "position", text="")
-    sub.prop(item, "color", text="色")
-    sub = layout.row(align=True)
-    sub.enabled = item.enabled
-    sub.prop(item, "font_size_unit", text="")
-    sub.prop(item, "font_size_value", text="サイズ")
 
 
 _CLASSES = (

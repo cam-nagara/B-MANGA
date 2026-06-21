@@ -201,9 +201,6 @@ def main() -> None:
         assert role == page_file_scene.ROLE_WORK
         assert work_panel.BMANGA_PT_work.poll(context)
         assert paper_panel.BMANGA_PT_paper.poll(context)
-        assert paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
-        assert not paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
-        assert not paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
         assert not tool_panel.BMANGA_PT_tools.poll(context)
         assert export_panel.BMANGA_PT_export.poll(context)
         assert "work_meta_dialog" not in dir(bpy.ops.bmanga)
@@ -224,7 +221,6 @@ def main() -> None:
             "サブタイトル",
             "作者名",
             "ページ数",
-            "原稿上の表示",
             "ページ一覧プレビュー",
             "コマ用blendファイル (この作品のみ)",
         )
@@ -236,20 +232,8 @@ def main() -> None:
             "仕上がり / 裁ち落とし",
             "色",
         )
-        _assert_absent(
-            paper_records,
-            "作品情報",
-            "作品名",
-            "ページ数",
-            "原稿上の表示",
-            "作品情報を編集",
-            "用紙要素の表示",
-        )
-        assert paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
-        paper_visibility_records = _draw_records(paper_panel.BMANGA_PT_work_paper_visibility, context)
         _assert_present(
-            paper_visibility_records,
-            "show_guides",
+            paper_records,
             "show_canvas_frame",
             "show_bleed_frame",
             "show_finish_frame",
@@ -306,10 +290,6 @@ def main() -> None:
         assert not export_panel.BMANGA_PT_export.poll(context)
         assert not work_panel.BMANGA_PT_work.poll(context)
         assert not paper_panel.BMANGA_PT_paper.poll(context)
-        assert not paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
-        assert paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
-        assert not paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
-
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "作品ファイルに戻る", "保存フォルダを開く")
         _assert_absent(transition_records, "ページ一覧ビュー", "フィット")
@@ -358,9 +338,6 @@ def main() -> None:
         assert role == page_file_scene.ROLE_COMA
         assert work_panel.BMANGA_PT_coma_return.poll(context)
         assert not paper_panel.BMANGA_PT_paper.poll(context)
-        assert not paper_panel.BMANGA_PT_work_paper_visibility.poll(context)
-        assert not paper_panel.BMANGA_PT_page_paper_visibility.poll(context)
-        assert paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
         transition_records = _draw_records(work_panel.BMANGA_PT_coma_return, context)
         _assert_present(transition_records, "ページに戻る", "保存フォルダを開く")
         _assert_absent(
@@ -374,6 +351,8 @@ def main() -> None:
         view_records = _draw_records(view_panel.BMANGA_PT_view, context)
         _assert_present(
             view_records,
+            "作品情報",
+            "用紙ガイド",
             "ページ一覧表示",
             "全ページ",
             "前後ページ",
@@ -395,18 +374,6 @@ def main() -> None:
             "サイズ",
             "フィット",
             "専用ワークスペース",
-        )
-        assert paper_panel.BMANGA_PT_coma_paper_visibility.poll(context)
-        coma_paper_visibility_records = _draw_records(paper_panel.BMANGA_PT_coma_paper_visibility, context)
-        _assert_present(
-            coma_paper_visibility_records,
-            "show_guides",
-            "show_canvas_frame",
-            "show_bleed_frame",
-            "show_finish_frame",
-            "show_inner_frame",
-            "show_safe_line",
-            "show_trim_marks",
         )
         print("BMANGA_PAGE_FILE_PANEL_ROLE_OK")
     finally:

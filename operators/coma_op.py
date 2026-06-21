@@ -400,9 +400,21 @@ def create_rect_coma(
 
 
 def create_basic_frame_coma(work, page, work_dir: Path):
-    """基本枠 (用紙の inner_frame) サイズの矩形コマを 1 個生成して返す."""
+    """基本枠 (用紙の inner_frame) サイズの矩形コマを 1 個生成して返す.
+
+    見開きページの場合は左右ページの基本枠を結合した全幅コマを生成する。
+    """
     p = work.paper
-    x_mm = (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 + p.inner_frame_offset_x_mm
+    if bool(getattr(page, "spread", False)):
+        right_offset = page_grid.spread_right_page_offset_mm(page, p.canvas_width_mm)
+        ox = p.inner_frame_offset_x_mm
+        left_x = (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 - ox
+        right_x_end = right_offset + (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 + ox + p.inner_frame_width_mm
+        x_mm = left_x
+        width_mm = right_x_end - left_x
+    else:
+        x_mm = (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 + p.inner_frame_offset_x_mm
+        width_mm = p.inner_frame_width_mm
     y_mm = (p.canvas_height_mm - p.inner_frame_height_mm) / 2.0 + p.inner_frame_offset_y_mm
     return create_rect_coma(
         work,
@@ -410,7 +422,7 @@ def create_basic_frame_coma(work, page, work_dir: Path):
         work_dir,
         x_mm,
         y_mm,
-        p.inner_frame_width_mm,
+        width_mm,
         p.inner_frame_height_mm,
     )
 

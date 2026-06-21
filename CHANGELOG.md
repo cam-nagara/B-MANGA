@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-22 — v0.6.358 コマ用blendのオーバーレイ表示とUI整理
+
+### 変更点
+
+- **コマ用blendでページ一覧・用紙ガイド・作品情報をカメラビューに対応**
+  - ページ一覧プレビューをコマカメラの XZ 平面に配置し、カメラビューで正しく表示されるようにした。
+  - 用紙ガイド線と作品情報テキストもコマモードで生成・表示されるようにした。
+  - 現在ページの中心を原点に合わせ、ページにぴったり合うスケールで表示。
+  - モード切替時（コマ→ページ）に回転角がリセットされない不具合を修正。
+
+- **「用紙要素の表示」パネルを廃止し、トグルボタンに統合**
+  - 作品ファイル・ページファイル・コマ用blendそれぞれにあった「用紙要素の表示」パネル 3 つを削除。
+  - ビューセクションに「作品情報」「用紙ガイド」トグルボタンを追加。
+  - ガイド個別表示チェック（断ち切り枠・仕上がり枠・セーフライン・トンボ等）は「用紙」セクション内の「ガイド表示設定」に移動。
+
+- **オーバーレイ塗りの不透明度二重化を修正**
+  - セーフエリア・裁ち落とし外側の塗りマテリアルで `show_transparent_back = False` を設定し、表裏両面が重なって不透明度が倍になる現象を解消。
+
+### 修正ファイル
+
+- `utils/page_preview_object.py` — コマモード XZ 配置・回転
+- `utils/work_info_text_object.py` — コマモード対応・回転リセット修正
+- `utils/paper_guide_object.py` — コマモード対応・回転リセット修正
+- `utils/coma_camera.py` — オーバーレイ生成の初回呼び出し
+- `panels/paper_panel.py` — 3 パネル削除・ガイド表示設定追加
+- `panels/view_panel.py` — トグルボタン追加
+- `test/blender_page_file_panel_role_check.py` — テスト更新
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender_coma_mask_sync_check.py` — コママスク同期 OK
+- `blender_coma_page_preview_camera_follow_check.py` — カメラ追従 OK
+- `blender_page_file_panel_role_check.py` — パネル表示条件 OK
+- `blender_spread_overlay_fill_visual_check.py` — 見開きオーバーレイ塗り OK
+- 見開きページの Boolean マスク動作（内側保持・外側切断）をレンダリング画像で検証
+
 ## 2026-06-22 — v0.6.357 SYMPLE TABS 後のB-MANGAタブ補正を強化
 
 ### 症状

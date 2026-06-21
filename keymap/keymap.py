@@ -1012,12 +1012,10 @@ def _watch_bmanga_tab() -> Optional[float]:
                 return _WATCH_INTERVAL
             disable_immediately = False
             try:
-                from ..operators import coma_modal_state
                 from ..utils import shortcut_visibility
 
                 disable_immediately = (
-                    coma_modal_state.any_tool_active()
-                    or not shortcut_visibility.shortcut_file_scope_allowed(bpy.context)
+                    not shortcut_visibility.shortcut_file_scope_allowed(bpy.context)
                 )
             except Exception:  # noqa: BLE001
                 disable_immediately = False

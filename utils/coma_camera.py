@@ -126,6 +126,7 @@ def ensure_coma_camera_scene(
     resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
+    _ensure_coma_overlay_objects(scene, work)
 
 
 def _restore_scene_camera(scene, camera) -> None:
@@ -1142,3 +1143,27 @@ def _update_node_tree(node_tree) -> None:
         node_tree.update_tag()
     except Exception:  # noqa: BLE001
         pass
+
+
+_COMA_OVERLAY_GENERATED_KEY = "_bmanga_coma_overlay_generated"
+
+
+def _ensure_coma_overlay_objects(scene, work) -> None:
+    """コマモード時に用紙ガイド線と作品情報テキストを生成する."""
+    if scene is None or work is None or not bool(getattr(work, "loaded", False)):
+        return
+    if scene.get(_COMA_OVERLAY_GENERATED_KEY):
+        return
+    try:
+        from . import paper_guide_object
+
+        paper_guide_object.regenerate_all_paper_guides(scene, work)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from . import work_info_text_object
+
+        work_info_text_object.regenerate_all_work_info_texts(scene, work)
+    except Exception:  # noqa: BLE001
+        pass
+    scene[_COMA_OVERLAY_GENERATED_KEY] = True

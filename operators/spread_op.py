@@ -176,6 +176,62 @@ def _merge_pages_pp_groups(
             new_entry.parent_balloon_id = balloon_id_map[b_text.parent_balloon_id]
 
 
+def _merge_basic_frame_comas(merged_entry, work, right_offset: float) -> None:
+    """見開き統合後、左右の基本枠コマが揃っていたら 1 つのフル幅コマに統合する."""
+    from ..utils import geom as _geom
+
+    paper = work.paper
+    cw = paper.canvas_width_mm
+    eps = 1.5
+
+    left_rect = _geom.inner_frame_rect(paper, is_left_half=True)
+    legacy_rect = _geom.inner_frame_rect(paper, is_left_half=False)
+    right_rect = _geom.Rect(
+        right_offset + (cw - paper.inner_frame_width_mm) / 2.0 + paper.inner_frame_offset_x_mm,
+        (paper.canvas_height_mm - paper.inner_frame_height_mm) / 2.0 + paper.inner_frame_offset_y_mm,
+        paper.inner_frame_width_mm,
+        paper.inner_frame_height_mm,
+    )
+
+    def _matches(coma, rect):
+        return (
+            abs(getattr(coma, "rect_x_mm", -999) - rect.x) < eps
+            and abs(getattr(coma, "rect_y_mm", -999) - rect.y) < eps
+            and abs(getattr(coma, "rect_width_mm", -999) - rect.width) < eps
+            and abs(getattr(coma, "rect_height_mm", -999) - rect.height) < eps
+        )
+
+    def _matches_left(coma):
+        return _matches(coma, left_rect) or _matches(coma, legacy_rect)
+
+    left_idx = None
+    right_idx = None
+    for i, coma in enumerate(merged_entry.comas):
+        if left_idx is None and _matches_left(coma):
+            left_idx = i
+        if right_idx is None and _matches(coma, right_rect):
+            right_idx = i
+
+    if left_idx is None or right_idx is None:
+        return
+
+    actual_left = merged_entry.comas[left_idx]
+    actual_left_x = float(getattr(actual_left, "rect_x_mm", left_rect.x))
+    span_x = actual_left_x
+    span_width = (right_rect.x + right_rect.width) - actual_left_x
+
+    keep_idx = min(left_idx, right_idx)
+    remove_idx = max(left_idx, right_idx)
+    merged_entry.comas.remove(remove_idx)
+    keep = merged_entry.comas[keep_idx]
+    keep.shape_type = "rect"
+    keep.rect_x_mm = span_x
+    keep.rect_y_mm = left_rect.y
+    keep.rect_width_mm = span_width
+    keep.rect_height_mm = left_rect.height
+    keep.vertices.clear()
+
+
 def _merge_coma_files(
     work_dir: Path,
     merged_entry,
@@ -693,6 +749,9 @@ class BMANGA_OT_pages_merge_spread(Operator):
         try:
             # 1) メタデータ統合: a の panels/balloons/texts を +R、b を +0 で追加
             _merge_pages_pp_groups(a, b, right_offset)
+
+            # 1.5) 左右の基本枠コマをフル幅 1 コマに統合
+            _merge_basic_frame_comas(a, work, right_offset)
 
             # 2) ファイル操作: a dir を spread_id にリネームし、b の panels をコピー統合
             _merge_coma_files(work_dir, a, b, a_old_id, b_old_id, spread_id)

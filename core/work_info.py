@@ -202,6 +202,12 @@ class BMangaDisplayItem(bpy.types.PropertyGroup):
 class BMangaWorkInfo(bpy.types.PropertyGroup):
     """作品の書誌情報と、各項目の原稿上表示設定."""
 
+    display_visible: BoolProperty(  # type: ignore[valid-type]
+        name="作品情報表示",
+        description="原稿上の作品情報 (作品名・話数・作者名・ノンブルなど) をまとめて表示 / 非表示にします",
+        default=True,
+        update=_on_work_info_changed,
+    )
     work_name: StringProperty(  # type: ignore[valid-type]
         name="作品名",
         default="",

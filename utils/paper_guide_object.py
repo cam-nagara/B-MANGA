@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from typing import Iterable, Optional
 
@@ -502,7 +503,7 @@ def _transparent_fill_view_material(
     try:
         mat.use_nodes = True
         mat.blend_method = "BLEND"
-        mat.show_transparent_back = True
+        mat.show_transparent_back = False
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -742,6 +743,41 @@ def _ensure_bleed_outer_fill_object(
     return obj
 
 
+def _is_coma_mode_guide(scene) -> bool:
+    try:
+        from . import page_file_scene
+        role, _pid, _cid = page_file_scene.current_role(bpy.context)
+        return role == page_file_scene.ROLE_COMA
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _coma_origin_mm_guide(scene, work):
+    """コマモード時の現在ページの中心座標 (mm) を返す."""
+    try:
+        from . import page_file_scene, page_grid as _pg
+
+        _role, page_id, _cid = page_file_scene.current_role(bpy.context)
+        cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
+        ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4) or 4))
+        gap_x, gap_y = _pg.resolve_gap_mm(scene)
+        start_side = getattr(work.paper, "start_side", "right")
+        read_direction = getattr(work.paper, "read_direction", "left")
+        for i, p in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(p, "id", "") or "") == page_id:
+                ox, oy = _pg.page_grid_offset_mm(
+                    i, cols, gap_x, cw, ch, start_side, read_direction,
+                    work=work, gap_y_mm=gap_y,
+                )
+                add_x, add_y = _pg.page_manual_offset_mm(p)
+                pw = _pg.page_content_width_mm(work, i, cw)
+                return (ox + add_x + pw * 0.5, oy + add_y + ch * 0.5)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _set_page_location_by_index(scene, work, obj: bpy.types.Object, page_index: int) -> None:
     if scene is None or work is None or obj is None:
         return
@@ -749,12 +785,27 @@ def _set_page_location_by_index(scene, work, obj: bpy.types.Object, page_index: 
         from . import page_grid
 
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_index)
+
+        if _is_coma_mode_guide(scene):
+            origin = _coma_origin_mm_guide(scene, work)
+            if origin is not None:
+                org_x, org_y = origin
+                x_m = mm_to_m(ox_mm - org_x)
+                z_m = mm_to_m(oy_mm - org_y)
+                depth = float(obj.location.y)
+                obj.location = (x_m, depth, z_m)
+                obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+                return
+
         x_m = mm_to_m(ox_mm)
         y_m = mm_to_m(oy_mm)
         loc = obj.location
-        if abs(float(loc.x) - x_m) <= 1.0e-9 and abs(float(loc.y) - y_m) <= 1.0e-9:
+        needs_rot_reset = (abs(float(obj.rotation_euler.x)) > 1.0e-6)
+        if abs(float(loc.x) - x_m) <= 1.0e-9 and abs(float(loc.y) - y_m) <= 1.0e-9 and not needs_rot_reset:
             return
         obj.location = (x_m, y_m, loc.z)
+        if needs_rot_reset:
+            obj.rotation_euler = (0.0, 0.0, 0.0)
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide page offset failed")
 
@@ -775,8 +826,22 @@ def _set_page_location(scene, obj: bpy.types.Object, page) -> None:
         from . import page_grid
 
         ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, page_index)
+
+        if _is_coma_mode_guide(scene):
+            origin = _coma_origin_mm_guide(scene, work)
+            if origin is not None:
+                org_x, org_y = origin
+                depth = float(obj.location.z)
+                obj.location.x = mm_to_m(ox_mm - org_x)
+                obj.location.y = depth
+                obj.location.z = mm_to_m(oy_mm - org_y)
+                obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+                return
+
         obj.location.x = mm_to_m(ox_mm)
         obj.location.y = mm_to_m(oy_mm)
+        if abs(float(obj.rotation_euler.x)) > 1.0e-6:
+            obj.rotation_euler = (0.0, 0.0, 0.0)
     except Exception:  # noqa: BLE001
         _logger.exception("paper guide page offset failed")
 
@@ -1178,6 +1243,7 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
         try:
             visible_safe = (
                 in_range
+                and bool(getattr(paper, "show_guides", True))
                 and bool(getattr(work.safe_area_overlay, "enabled", True))
                 and float(safe_obj.color[3]) > 0.0
             )
@@ -1189,6 +1255,7 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             overlay = getattr(work, "safe_area_overlay", None)
             visible_bleed_outer = (
                 in_range
+                and bool(getattr(paper, "show_guides", True))
                 and bool(getattr(overlay, "bleed_outer_enabled", True))
                 and float(bleed_outer_obj.color[3]) > 0.0
             )

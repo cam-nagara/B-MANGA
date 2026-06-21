@@ -521,13 +521,14 @@ def _find_coma_at_world(
             allowed_page_indices = {current_index} if current_index >= 0 else set()
     except Exception:  # noqa: BLE001
         allowed_page_indices = None
-    cw = work.paper.canvas_width_mm
+    canvas_w = work.paper.canvas_width_mm
     ch = work.paper.canvas_height_mm
     for i, page in enumerate(work.pages):
         if allowed_page_indices is not None and i not in allowed_page_indices:
             continue
         if not page_range.page_in_range(page):
             continue
+        cw = page_grid.page_content_width_mm(work, i, canvas_w)
         ox, oy = _page_world_offset_mm(work, i, scene)
         local_x = x_mm - ox
         local_y = y_mm - oy

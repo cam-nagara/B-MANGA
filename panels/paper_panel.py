@@ -152,93 +152,43 @@ class BMANGA_PT_paper(Panel):
         row.prop(g, "vertical_mm")
         row.prop(g, "horizontal_mm")
 
+        box = layout.box()
+        box.label(text="ガイド表示設定")
+        row = box.row(align=True)
+        row.prop(p, "show_canvas_frame")
+        row.prop(p, "show_bleed_frame")
+        row = box.row(align=True)
+        row.prop(p, "show_finish_frame")
+        row.prop(p, "show_inner_frame")
+        row = box.row(align=True)
+        row.prop(p, "show_safe_line")
+        row.prop(p, "show_trim_marks")
 
-def draw_paper_visibility_controls(layout, paper) -> None:
-    layout.prop(paper, "show_guides")
-    guide_box = layout.column()
-    guide_box.enabled = bool(getattr(paper, "show_guides", True))
-    row = guide_box.row(align=True)
-    row.prop(paper, "show_canvas_frame")
-    row.prop(paper, "show_bleed_frame")
-    row = guide_box.row(align=True)
-    row.prop(paper, "show_finish_frame")
-    row.prop(paper, "show_inner_frame")
-    row = guide_box.row(align=True)
-    row.prop(paper, "show_safe_line")
-    row.prop(paper, "show_trim_marks")
-
-
-class BMANGA_PT_work_paper_visibility(Panel):
-    """作品ファイル上の用紙要素表示を用紙セクション外に出す."""
-
-    bl_idname = "BMANGA_PT_work_paper_visibility"
-    bl_label = "用紙要素の表示"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = B_NAME_CATEGORY
-    bl_order = 13
-
-    @classmethod
-    def poll(cls, context):
-        w = get_work(context)
-        return bool(w and w.loaded and _is_work_file_context(context))
-
-    def draw(self, context):
-        work = get_work(context)
-        if work is None:
-            return
-        draw_paper_visibility_controls(self.layout, work.paper)
+        info = work.work_info
+        box = layout.box()
+        box.label(text="原稿上の表示")
+        _draw_display_item(box, "作品名", info.display_work_name)
+        _draw_display_item(box, "話数", info.display_episode)
+        _draw_display_item(box, "サブタイトル", info.display_subtitle)
+        _draw_display_item(box, "作者名", info.display_author)
+        _draw_display_item(box, "ページ番号", info.display_page_number)
 
 
-class BMANGA_PT_page_paper_visibility(Panel):
-    """ページファイル上でも用紙要素の表示を切り替えられるようにする."""
-
-    bl_idname = "BMANGA_PT_page_paper_visibility"
-    bl_label = "用紙要素の表示"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = B_NAME_CATEGORY
-    bl_order = 13
-
-    @classmethod
-    def poll(cls, context):
-        w = get_work(context)
-        return bool(w and w.loaded and _is_page_file_context(context))
-
-    def draw(self, context):
-        work = get_work(context)
-        if work is None:
-            return
-        draw_paper_visibility_controls(self.layout, work.paper)
-
-
-class BMANGA_PT_coma_paper_visibility(Panel):
-    """コマファイル上でも用紙要素の表示を切り替えられるようにする."""
-
-    bl_idname = "BMANGA_PT_coma_paper_visibility"
-    bl_label = "用紙要素の表示"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = B_NAME_CATEGORY
-    bl_order = 15
-
-    @classmethod
-    def poll(cls, context):
-        w = get_work(context)
-        return bool(w and w.loaded and _is_coma_file_context(context))
-
-    def draw(self, context):
-        work = get_work(context)
-        if work is None:
-            return
-        draw_paper_visibility_controls(self.layout, work.paper)
+def _draw_display_item(layout, label: str, item) -> None:
+    row = layout.row(align=True)
+    row.prop(item, "enabled", text=label)
+    sub = layout.row(align=True)
+    sub.enabled = item.enabled
+    sub.prop(item, "position", text="")
+    sub.prop(item, "color", text="色")
+    sub = layout.row(align=True)
+    sub.enabled = item.enabled
+    sub.prop(item, "font_size_unit", text="")
+    sub.prop(item, "font_size_value", text="サイズ")
 
 
 _CLASSES = (
     BMANGA_PT_paper,
-    BMANGA_PT_work_paper_visibility,
-    BMANGA_PT_page_paper_visibility,
-    BMANGA_PT_coma_paper_visibility,
 )
 
 

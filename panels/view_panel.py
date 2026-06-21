@@ -222,6 +222,27 @@ class BMANGA_PT_view(Panel):
 
         layout.operator("bmanga.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
 
+        work = get_work(context)
+        if work is not None and work.loaded:
+            row = layout.row(align=True)
+            info = work.work_info
+            info_vis = bool(getattr(info, "display_visible", True))
+            row.prop(
+                info,
+                "display_visible",
+                text="作品情報",
+                icon="HIDE_OFF" if info_vis else "HIDE_ON",
+                toggle=True,
+            )
+            guides_vis = bool(getattr(work.paper, "show_guides", True))
+            row.prop(
+                work.paper,
+                "show_guides",
+                text="用紙ガイド",
+                icon="HIDE_OFF" if guides_vis else "HIDE_ON",
+                toggle=True,
+            )
+
         if is_coma_mode:
             settings = getattr(scene, "bmanga_coma_camera_settings", None)
             _draw_coma_page_preview_controls(layout, scene, settings)

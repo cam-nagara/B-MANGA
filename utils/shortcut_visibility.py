@@ -127,7 +127,7 @@ def _area_has_bmanga_panel_category(area, screen=None) -> bool:
     status = _area_bmanga_status(area)
     if status == "bmanga":
         return True
-    if status == "unknown":
+    if status in ("unknown", "other"):
         return _recent_bmanga_panel_drawn(area, screen)
     return False
 
@@ -179,7 +179,7 @@ def any_bmanga_panel_status(context=None) -> str:
             status = _area_bmanga_status(area)
             if status == "bmanga":
                 return "bmanga"
-            if status == "unknown":
+            if status in ("unknown", "other"):
                 if _recent_bmanga_panel_drawn(area, screen):
                     return "bmanga"
                 ambiguous = True

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import bpy
 
 from ..ui import overlay_shared
@@ -102,20 +104,75 @@ def _anchor_rect(work):
     return overlay_shared.compute_paper_rects(work.paper).bleed
 
 
+def _is_coma_mode(scene) -> bool:
+    try:
+        from . import page_file_scene
+        role, _pid, _cid = page_file_scene.current_role(bpy.context)
+        return role == page_file_scene.ROLE_COMA
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _coma_origin_mm(scene, work):
+    """コマモード時の現在ページの中心座標 (mm) を返す."""
+    try:
+        from . import page_file_scene, page_grid as _pg
+
+        _role, page_id, _cid = page_file_scene.current_role(bpy.context)
+        cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
+        ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4) or 4))
+        gap_x, gap_y = _pg.resolve_gap_mm(scene)
+        start_side = getattr(work.paper, "start_side", "right")
+        read_direction = getattr(work.paper, "read_direction", "left")
+        for i, p in enumerate(getattr(work, "pages", []) or []):
+            if str(getattr(p, "id", "") or "") == page_id:
+                ox, oy = _pg.page_grid_offset_mm(
+                    i, cols, gap_x, cw, ch, start_side, read_direction,
+                    work=work, gap_y_mm=gap_y,
+                )
+                add_x, add_y = _pg.page_manual_offset_mm(p)
+                pw = _pg.page_content_width_mm(work, i, cw)
+                return (ox + add_x + pw * 0.5, oy + add_y + ch * 0.5)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _set_page_location(obj: bpy.types.Object, scene, work, page_index: int, x_mm: float, y_mm: float) -> None:
     from . import page_grid
 
     ox, oy = page_grid.page_total_offset_mm(work, scene, page_index)
-    x_m = mm_to_m(ox + x_mm)
-    y_m = mm_to_m(oy + y_mm)
+    abs_x = ox + x_mm
+    abs_y = oy + y_mm
+
+    if _is_coma_mode(scene):
+        origin = _coma_origin_mm(scene, work)
+        if origin is not None:
+            org_x, org_y = origin
+            x_m = mm_to_m(abs_x - org_x)
+            z_m = mm_to_m(abs_y - org_y)
+            loc = obj.location
+            if abs(float(loc.x) - x_m) > 1.0e-9 or abs(float(loc.z) - z_m) > 1.0e-9 or abs(float(loc.y) - TEXT_Z_M) > 1.0e-9:
+                obj.location = (x_m, TEXT_Z_M, z_m)
+            obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+            return
+
+    x_m = mm_to_m(abs_x)
+    y_m = mm_to_m(abs_y)
     loc = obj.location
-    if (
-        abs(float(loc.x) - x_m) <= 1.0e-9
-        and abs(float(loc.y) - y_m) <= 1.0e-9
-        and abs(float(loc.z) - TEXT_Z_M) <= 1.0e-9
-    ):
+    rot = obj.rotation_euler
+    needs_move = (
+        abs(float(loc.x) - x_m) > 1.0e-9
+        or abs(float(loc.y) - y_m) > 1.0e-9
+        or abs(float(loc.z) - TEXT_Z_M) > 1.0e-9
+    )
+    needs_rot_reset = (abs(float(rot.x)) > 1.0e-6 or abs(float(rot.y)) > 1.0e-6 or abs(float(rot.z)) > 1.0e-6)
+    if not needs_move and not needs_rot_reset:
         return
     obj.location = (x_m, y_m, TEXT_Z_M)
+    if needs_rot_reset:
+        obj.rotation_euler = (0.0, 0.0, 0.0)
 
 
 def _link_to_work_info_collection(obj: bpy.types.Object, scene) -> None:
@@ -228,6 +285,7 @@ def regenerate_all_work_info_texts(scene, work) -> int:
     info = getattr(work, "work_info", None)
     if info is None:
         return 0
+    master_visible = bool(getattr(info, "display_visible", True))
     valid: set[str] = set()
     count = 0
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
@@ -236,7 +294,7 @@ def regenerate_all_work_info_texts(scene, work) -> int:
             continue
         for item_key, item, text in _text_items(info, page_index):
             owner_id = f"{page_id}:{item_key}"
-            if item is None or not bool(getattr(item, "enabled", False)) or not text:
+            if not master_visible or item is None or not bool(getattr(item, "enabled", False)) or not text:
                 continue
             valid.add(owner_id)
             obj = _ensure_text_object(scene, work, page, page_index, item_key, item, text)
@@ -256,6 +314,7 @@ def sync_work_info_texts_after_page_transform(scene, work) -> int:
     info = getattr(work, "work_info", None)
     if info is None:
         return 0
+    master_visible = bool(getattr(info, "display_visible", True))
     valid: set[str] = set()
     count = 0
     for page_index, page in enumerate(getattr(work, "pages", []) or []):
@@ -264,7 +323,7 @@ def sync_work_info_texts_after_page_transform(scene, work) -> int:
             continue
         for item_key, item, text in _text_items(info, page_index):
             owner_id = f"{page_id}:{item_key}"
-            if item is None or not bool(getattr(item, "enabled", False)) or not text:
+            if not master_visible or item is None or not bool(getattr(item, "enabled", False)) or not text:
                 continue
             valid.add(owner_id)
             signature = _item_signature(page_id, page_index, item_key, item, text)

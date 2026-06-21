@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import bpy
@@ -869,7 +870,7 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
     return None
 
 
-def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False) -> None:
+def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False, coma_origin_mm=None) -> None:
     role, _current_page_id = _preview_scene_role(scene)
     follow_camera = role == "coma"
     page_id = str(getattr(page, "id", "") or "")
@@ -889,9 +890,19 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
         obj.data = mesh
     _clear_preview_camera_follow(obj, clear_anchor=not follow_camera)
     delta_x, delta_y, delta_z = _preview_camera_delta(obj, scene) if follow_camera else (0.0, 0.0, 0.0)
-    obj.location.x = mm_to_m((x0 + x1) * 0.5) + delta_x
-    obj.location.y = mm_to_m((y0 + y1) * 0.5) + delta_y
-    obj.location.z = PREVIEW_Z_M + delta_z
+    center_x_mm = (x0 + x1) * 0.5
+    center_y_mm = (y0 + y1) * 0.5
+    if follow_camera and coma_origin_mm is not None:
+        origin_x, origin_y = coma_origin_mm
+        obj.location.x = mm_to_m(center_x_mm - origin_x) + delta_x
+        obj.location.z = mm_to_m(center_y_mm - origin_y) + delta_z
+        obj.location.y = PREVIEW_Z_M + delta_y
+        obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+    else:
+        obj.location.x = mm_to_m(center_x_mm) + delta_x
+        obj.location.y = mm_to_m(center_y_mm) + delta_y
+        obj.location.z = PREVIEW_Z_M + delta_z
+        obj.rotation_euler = (0.0, 0.0, 0.0)
     obj.scale.x = _preview_scale_factor(scene)
     obj.scale.y = _preview_scale_factor(scene)
     obj.scale.z = 1.0
@@ -983,6 +994,12 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
         if page_id not in valid_page_ids or (role == "page" and page_id == current_page_id):
             obj.hide_viewport = True
             obj.hide_render = True
+    coma_origin_mm = None
+    if role == "coma" and current_page_id:
+        current_rect = rects.get(current_page_id)
+        if current_rect is not None:
+            _ci, cx0, cy0, cx1, cy1 = current_rect
+            coma_origin_mm = ((cx0 + cx1) * 0.5, (cy0 + cy1) * 0.5)
     updated = 0
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
@@ -997,6 +1014,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
             rect,
             current=page_id == current_page_id,
             force=force,
+            coma_origin_mm=coma_origin_mm,
         )
         updated += 1
     try:
