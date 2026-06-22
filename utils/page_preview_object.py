@@ -24,9 +24,9 @@ PREVIEW_PAGE_ID_PROP = "bmanga_page_preview_page_id"
 PREVIEW_CAMERA_FOLLOW_PROP = "bmanga_page_preview_camera_follow"
 PREVIEW_CAMERA_ANCHOR_PROP = "bmanga_page_preview_camera_anchor"
 # プレビュー画像 (長辺) の上限。GPU メモリ保護のための安全弁。
-PREVIEW_MAX_LONG_PX = 1536
+PREVIEW_MAX_LONG_PX = 4096
 # 用紙 DPI が取れない場合のフォールバック解像度基準。
-PREVIEW_FALLBACK_LONG_PX = 1536
+PREVIEW_FALLBACK_LONG_PX = 2560
 DEFAULT_PREVIEW_PAGE_RADIUS = 3
 PREVIEW_RANGE_ALL = "ALL"
 PREVIEW_RANGE_NEAR = "NEAR"
@@ -1009,18 +1009,37 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
             current_index = int(current_rect[0])
             try:
                 page = getattr(work, "pages", [])[current_index]
-                # 毎回の強制再生成はやめ、保存内容 (page.json / コマ画像) より
-                # 古いときだけ作り直す。ページを閉じるときは別途強制再生成される
-                # ため、ページ一覧へ戻った時点の見た目は常に最新になる。
                 png_path = _preview_png_path(work, current_page_id)
                 needs = png_path is None or not _preview_png_fresh_for_page(work, page, png_path)
                 if needs:
                     ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
             except Exception:  # noqa: BLE001
                 _logger.exception("current page preview update failed: %s", current_page_id)
+    # ── ページファイル: カメラ下絵方式 ──
+    if role == "page":
+        hide_page_previews(scene)
+        for page in getattr(work, "pages", []) or []:
+            page_id = str(getattr(page, "id", "") or "")
+            rect = rects.get(page_id)
+            if rect is None or page_id == current_page_id:
+                continue
+            ensure_preview_png(work, page, int(rect[0]), current=False, scene=scene, force=force)
+        try:
+            from . import coma_camera
+            coma_camera.add_page_file_overview_backgrounds(scene, work)
+        except Exception:  # noqa: BLE001
+            _logger.exception("page file overview backgrounds failed")
+        try:
+            for area in getattr(context, "screen", None).areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
+        return len(rects) - (1 if current_page_id in rects else 0)
+    # ── 作品ファイル: 従来のメッシュ平面方式 ──
     for obj in _iter_preview_objects():
         page_id = str(obj.get(PREVIEW_PAGE_ID_PROP, "") or "")
-        if page_id not in valid_page_ids or (role == "page" and page_id == current_page_id):
+        if page_id not in valid_page_ids:
             obj.hide_viewport = True
             obj.hide_render = True
     coma_origin_mm = None
@@ -1033,7 +1052,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     for page in getattr(work, "pages", []) or []:
         page_id = str(getattr(page, "id", "") or "")
         rect = rects.get(page_id)
-        if rect is None or (role == "page" and page_id == current_page_id):
+        if rect is None:
             continue
         _ensure_preview_object(
             scene,

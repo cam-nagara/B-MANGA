@@ -150,7 +150,7 @@ def is_page_edit_scene(scene=None) -> bool:
     role, page_id, _coma_id = current_role(bpy.context)
     if role == ROLE_PAGE and paths.is_valid_page_id(page_id):
         return True
-    if role == ROLE_WORK:
+    if role in {ROLE_WORK, ROLE_COMA}:
         return False
     return bool(current_page_id(scene))
 

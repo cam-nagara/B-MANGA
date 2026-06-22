@@ -79,7 +79,7 @@ def ensure_reference_images(work, current_page_id: str, coma_id: str) -> list[Re
                 ReferenceImage(
                     masked_page,
                     f"{KOMA_REF_PREFIX}_{page.id}_{coma_id}",
-                    "koma",
+                    "own_page",
                     page.id,
                     visible=True,
                     full_page_mask=True,
@@ -104,15 +104,16 @@ def _collect_existing_reference_images(work, current_page_id: str, coma_id: str)
     legacy_crop = ref_dir / f"{KOMA_REF_PREFIX}_{current_page_id}_{coma_id}.png"
     crop = masked_page if masked_page.is_file() else legacy_crop
     if crop.is_file():
+        is_full_mask = (crop == masked_page)
         refs.insert(
             0,
             ReferenceImage(
                 crop,
                 f"{KOMA_REF_PREFIX}_{current_page_id}_{coma_id}",
-                "koma",
+                "own_page" if is_full_mask else "koma",
                 current_page_id,
                 visible=True,
-                full_page_mask=crop == masked_page,
+                full_page_mask=is_full_mask,
                 page_count=page_count,
                 render_side=render_side,
             ),

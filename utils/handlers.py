@@ -532,6 +532,14 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: B-MANGA sidebar open failed")
                 try:
+                    from . import cross_page_transfer
+
+                    n = cross_page_transfer.process_staged_imports(bpy.context)
+                    if n > 0:
+                        _logger.info("load_post: imported %d staged effects", n)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: staged import processing failed")
+                try:
                     from ..operators import view_op
 
                     view_op.schedule_fit_active_page()

@@ -87,6 +87,10 @@ def ensure_overview_camera(scene, work) -> bpy.types.Object | None:
     """全ページ一覧を収める正投影カメラを作成・更新する."""
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
         return None
+    from . import page_file_scene
+    role, _, _ = page_file_scene.current_role(bpy.context)
+    if role in {page_file_scene.ROLE_COMA, page_file_scene.ROLE_PAGE}:
+        return None
     bbox = _visible_pages_bbox_mm(work, scene)
     if bbox is None:
         return None

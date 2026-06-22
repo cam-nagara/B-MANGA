@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-23 — v0.6.363 コマ編集: ページ画像のコマ領域透明化とコマ内レイヤー分離
+
+### 新機能
+
+- **ページ画像のコマ領域を自動透明化**
+  - コマファイルを開くと、ページ画像内の該当コマ部分が透明に表示される。
+    これにより編集中のコマ内容が下絵に覆われず見やすくなる。
+- **コマ内レイヤーを独立した下絵として表示**
+  - コマ内のフキダシ・効果線・テキストなどを、ページ画像とは別に
+    カメラ下絵として読み込み。コマ内レイヤーのみの表示/非表示と
+    不透明度を独立して調節可能に。
+- **「ページ画像」セクションをコマ所属ページ専用に変更**
+  - ビューパネルの「ページ画像（他ページ）」を「ページ画像」に改称。
+    コマが所属するページの表示と不透明度を、ページ一覧とは独立して管理。
+  - 新プロパティ `own_page_visible` / `own_page_opacity` で個別制御。
+
+### 修正
+
+- **コマモードのページ概要で現在ページが最前面に重なるバグを修正**
+  - `_add_page_overview_backgrounds` が現在ページをスキップせず、
+    `display_depth="FRONT"` で追加していたためコマ内容が覆われていた。
+- **「背景を白にする」がコマ背景色変更時に解除されるバグを修正**
+  - `sync_world_background_color` に白背景モードガードを追加。
+    白背景モード中はワールドノードを上書きしない。
+- **`_ROLE_LABELS` を `work_panel.py` のモジュールレベルに移動**
+  - `draw()` 内で毎フレーム辞書を再作成していた非効率を修正。
+
+### 修正ファイル
+
+- `__init__.py` — バージョン 0.6.363
+- `core/coma_camera.py` — `own_page_visible`, `own_page_opacity` プロパティ追加
+- `utils/coma_camera.py` — `_add_own_page_backgrounds()`, `_resolve_coma_points_mm()`,
+  `_mm_to_image_px()` 追加、`_background_matches_kind()` に "own_page" 対応、
+  `configure_camera_backgrounds()` で own_page 分岐追加、
+  `sync_world_background_color()` に白背景ガード追加
+- `utils/coma_camera_refs.py` — masked page reference の kind を "own_page" に変更
+- `panels/view_panel.py` — 「ページ画像」セクションを own_page プロパティに接続
+- `panels/work_panel.py` — `_ROLE_LABELS` をモジュールレベルに移動
+
+---
+
 ## 2026-06-22 — v0.6.362 ページプレビューのクリック選択ハイライト
 
 ### 変更点

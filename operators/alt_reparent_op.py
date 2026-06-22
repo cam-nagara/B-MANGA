@@ -282,6 +282,12 @@ class BMANGA_OT_alt_reparent_drag(Operator):
     def _commit(self, context, event):
         target = layer_reparent.find_target_for_drop(context, event)
         self._cleanup_overlay()
+
+        # ── ページファイル: 別ページへのクロスファイル転送 ──
+        cross_result = self._try_cross_page_transfer(context, target)
+        if cross_result is not None:
+            return cross_result
+
         # ドラッグせずに離した場合 (= ほぼクリック扱い) でも、位置をドロップ位置に移動
         new_world_xy = target.world_xy_mm if self._moved else None
         changed = layer_reparent.reparent_selected(
@@ -297,6 +303,77 @@ class BMANGA_OT_alt_reparent_drag(Operator):
             # 位置移動だけは試みる
             self.report({"INFO"}, "親変更なし (同じコンテナ)")
         _set_error_for_target(target)
+        return {"CANCELLED"}
+
+    def _try_cross_page_transfer(self, context, target):
+        """ページファイルモードで別ページへの転送を試みる。対象外なら None を返す。"""
+        from ..core.work import get_work
+        from ..utils import page_file_scene
+
+        if target.kind not in ("page", "coma"):
+            return None
+        role, cur_page_id, _ = page_file_scene.current_role(context)
+        if role != page_file_scene.ROLE_PAGE:
+            return None
+        target_page_id = str(getattr(target.page, "id", "") or "")
+        if not target_page_id or target_page_id == cur_page_id:
+            return None
+
+        work = get_work(context)
+        if work is None or not getattr(work, "loaded", False):
+            return None
+
+        # ソースページ取得
+        source_page = None
+        for p in getattr(work, "pages", []) or []:
+            if str(getattr(p, "id", "") or "") == cur_page_id:
+                source_page = p
+                break
+        if source_page is None:
+            return None
+
+        # 選択レイヤーを収集
+        scene = context.scene
+        stack = getattr(scene, "bmanga_layer_stack", None)
+        if stack is None:
+            return None
+        active_idx = int(getattr(scene, "bmanga_active_layer_stack_index", -1))
+        items = []
+        seen: set[str] = set()
+        for i, item in enumerate(stack):
+            uid = layer_stack_utils.stack_item_uid(item)
+            if uid in seen:
+                continue
+            if i == active_idx or layer_stack_utils.is_item_selected(context, item):
+                seen.add(uid)
+                items.append(item)
+        if not items:
+            return None
+
+        from ..utils import cross_page_transfer
+
+        unsupported = cross_page_transfer.unsupported_layer_kinds(items)
+        if unsupported:
+            self.report({"WARNING"}, "レイヤーフォルダはページ間移動に対応していません (中身は個別に移動できます)")
+
+        drop_xy = getattr(target, "world_xy_mm", None)
+        changed = cross_page_transfer.transfer_layers_to_page(
+            context,
+            work,
+            source_page,
+            target_page_id,
+            items,
+            target_parent_kind="page",
+            drop_world_xy_mm=drop_xy,
+        )
+        if changed > 0:
+            layer_stack_utils.sync_layer_stack(context, preserve_active_index=False)
+            layer_stack_utils.tag_view3d_redraw(context)
+            _set_confirm_for_target(target)
+            self.report({"INFO"}, f"{changed} レイヤーを {target_page_id} へ転送しました")
+            return {"FINISHED"}
+        _set_error_for_target(target)
+        self.report({"WARNING"}, "転送できるレイヤーがありませんでした")
         return {"CANCELLED"}
 
     def _cleanup_overlay(self) -> None:

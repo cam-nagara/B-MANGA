@@ -9,9 +9,9 @@ from typing import Iterable
 import bpy
 
 from ..core.mode import MODE_COMA, get_mode
-from ..core.work import get_work
+from ..core.work import find_page_by_id, get_work
 from ..io import export_pipeline
-from . import log, page_browser, percentage
+from . import log, page_browser, paths, percentage
 from .geom import mm_to_px
 from .coma_camera_constants import (
     DEFAULT_CAMERA_DISTANCE,
@@ -108,12 +108,21 @@ def ensure_coma_camera_scene(
     camera = ensure_coma_camera(scene)
     scene.camera = camera
     ensure_opacity_percent_units(scene)
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    white_bg_on = bool(getattr(scene, "bmanga_coma_white_background", False))
+    if white_bg_on:
+        scene.render.film_transparent = False
+    elif settings is not None:
+        scene.render.film_transparent = bool(getattr(settings, "white_background", True))
     # コマ用blendファイルの色管理 (ビュー変換/露出/ルック) はユーザーに
     # 委ねる。以前はここで毎回 Standard へ戻していたため、コマで設定した
     # 色管理が開く/閉じるたびに失われていた。
     configure_render_for_current_coma(scene, work, page_id, coma_id)
     capture_camera_runtime_settings(context, prefer_camera_fisheye=False)
-    sync_world_background_color(context, work=work, page_id=page_id, coma_id=coma_id)
+    if white_bg_on:
+        apply_white_world_background(scene)
+    else:
+        sync_world_background_color(context, work=work, page_id=page_id, coma_id=coma_id)
 
     refs: list[ReferenceImage] = []
     if generate_references and work is not None and getattr(work, "work_dir", ""):
@@ -277,8 +286,10 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
     name_visible = bool(getattr(settings, "name_visible", False))
     name_show_all_pages = bool(getattr(settings, "name_show_all_pages", False))
     koma_visible = bool(getattr(settings, "koma_visible", True))
+    own_page_vis = bool(getattr(settings, "own_page_visible", True))
     name_alpha = percentage.percent_to_factor(getattr(settings, "name_bg_images_opacity", 50.0), 50.0)
     koma_alpha = percentage.percent_to_factor(getattr(settings, "koma_bg_images_opacity", 100.0), 100.0)
+    own_page_alpha = percentage.percent_to_factor(getattr(settings, "own_page_opacity", 50.0), 50.0)
     scale = float(getattr(settings, "bg_images_scale", 1.0))
     koma_depth_back = bool(getattr(settings, "koma_depth", False))
 
@@ -293,7 +304,7 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
         try:
             img["bmanga_kind"] = ref.kind
             img["bmanga_page_id"] = ref.page_id
-            img["bmanga_coma_id"] = coma_id if ref.kind == "koma" else ""
+            img["bmanga_coma_id"] = coma_id if ref.kind in {"koma", "own_page"} else ""
             img["bmanga_full_page_mask"] = bool(ref.full_page_mask)
             img["bmanga_page_count"] = int(ref.page_count)
             img["bmanga_render_side"] = ref.render_side
@@ -302,13 +313,17 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
         bg = data.background_images.new()
         bg.image = img
         is_page_image = _ref_is_page_image(ref)
-        alpha = name_alpha if is_page_image else koma_alpha
-        if ref.kind == "koma" and not is_page_image:
+        if ref.kind == "own_page":
+            alpha = own_page_alpha
+            visible = own_page_vis and ref.visible
+        elif ref.kind == "koma" and not is_page_image:
+            alpha = koma_alpha
             visible = koma_visible and ref.visible
         else:
+            alpha = name_alpha
             visible = name_visible and (ref.visible or name_show_all_pages)
         depth = "BACK" if ref.kind == "koma" and not is_page_image and koma_depth_back else "FRONT"
-        bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale if is_page_image else 1.0)
+        bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale if is_page_image or ref.kind == "own_page" else 1.0)
         _set_bg_attr(bg, "alpha", alpha)
         _set_bg_attr(bg, "scale", bg_scale)
         _set_bg_attr(bg, "rotation", 0.0)
@@ -323,6 +338,9 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
 def sync_world_background_color(context, *, panel=None, work=None, page_id: str = "", coma_id: str = "") -> None:
     scene = getattr(context, "scene", None) if context is not None else bpy.context.scene
     if scene is None:
+        return
+    if bool(getattr(scene, "bmanga_coma_white_background", False)):
+        apply_white_world_background(scene)
         return
     if panel is None:
         if work is None:
@@ -364,6 +382,65 @@ def sync_world_background_color(context, *, panel=None, work=None, page_id: str 
     except Exception:  # noqa: BLE001
         pass
     _configure_world_background_nodes(world, rgba, camera_only)
+
+
+def apply_white_world_background(scene) -> None:
+    """ワールドの Background ノードを白色 (1,1,1) に設定する.
+
+    既存ワールドが管理外の場合、ユーザーのワールドを保持したまま
+    管理用ワールドを新規作成して差し替える。
+    """
+    if scene is None:
+        return
+    _SAVED_WORLD_KEY = "bmanga_saved_world_before_white"
+    world = scene.world
+    if world is not None and world.get("bmanga_managed") is not True:
+        try:
+            scene[_SAVED_WORLD_KEY] = world.name
+        except Exception:  # noqa: BLE001
+            pass
+        managed = bpy.data.worlds.get("B-MANGA White BG")
+        if managed is None:
+            managed = bpy.data.worlds.new("B-MANGA White BG")
+        try:
+            managed["bmanga_managed"] = True
+        except Exception:  # noqa: BLE001
+            pass
+        scene.world = managed
+        world = managed
+    elif world is None:
+        world = bpy.data.worlds.new("B-MANGA White BG")
+        try:
+            world["bmanga_managed"] = True
+        except Exception:  # noqa: BLE001
+            pass
+        scene.world = world
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    camera_only = bool(getattr(settings, "world_background_camera_only", False))
+    white = (1.0, 1.0, 1.0, 1.0)
+    try:
+        world.color = white[:3]
+    except Exception:  # noqa: BLE001
+        pass
+    _configure_world_background_nodes(world, white, camera_only)
+
+
+def _restore_world_before_white(scene) -> None:
+    """apply_white_world_background で退避したワールドを復元する."""
+    _SAVED_WORLD_KEY = "bmanga_saved_world_before_white"
+    saved_name = None
+    try:
+        saved_name = str(scene.get(_SAVED_WORLD_KEY, "") or "")
+    except Exception:  # noqa: BLE001
+        pass
+    if saved_name:
+        original = bpy.data.worlds.get(saved_name)
+        if original is not None:
+            scene.world = original
+    try:
+        del scene[_SAVED_WORLD_KEY]
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _configure_world_background_nodes(world, rgba, camera_only: bool) -> None:
@@ -468,6 +545,8 @@ def _background_scale_offset_for_image(img, base_scale: float) -> tuple[float, t
 
 
 def _ref_is_page_image(ref: ReferenceImage) -> bool:
+    if str(ref.kind or "") == "own_page":
+        return True
     if bool(ref.full_page_mask):
         return True
     if str(ref.kind or "") == "koma":
@@ -480,6 +559,8 @@ def _image_is_page_image(img) -> bool:
         return False
     try:
         kind = str(img.get("bmanga_kind", "") or "")
+        if kind == "own_page":
+            return True
         if bool(img.get("bmanga_full_page_mask", False)):
             return True
         if kind == "koma":
@@ -495,21 +576,30 @@ def _background_matches_kind(bg, kind: str) -> bool:
     img = getattr(bg, "image", None)
     if img is None:
         return False
+    try:
+        img_kind = str(img.get("bmanga_kind", "") or "")
+    except Exception:  # noqa: BLE001
+        img_kind = ""
+    if kind == "own_page":
+        return img_kind == "own_page"
     is_page_image = _image_is_page_image(img)
     if kind == "name":
+        if img_kind == "own_page":
+            return False
         return is_page_image
     if kind == "koma":
+        if img_kind == "koma":
+            return True
         return not is_page_image and "コマ" in getattr(img, "name", "")
     if kind == "hatching":
-        try:
-            return str(img.get("bmanga_kind", "") or "") == "hatching"
-        except Exception:  # noqa: BLE001
-            return HATCHING_IMAGE_NAME in getattr(img, "name", "")
+        return img_kind == "hatching" or HATCHING_IMAGE_NAME in getattr(img, "name", "")
     return False
 
 
 def set_background_images_opacity(context, opacity: float) -> None:
     for bg in _iter_camera_backgrounds(context):
+        if _background_matches_kind(bg, "own_page") or _background_matches_kind(bg, "koma"):
+            continue
         _set_bg_attr(bg, "alpha", opacity)
 
 
@@ -686,7 +776,7 @@ def ensure_hatching_background(context):
     _set_bg_attr(bg, "offset", (0.0, 0.0))
     _set_bg_attr(bg, "rotation", rotation)
     _set_bg_attr(bg, "display_depth", "FRONT")
-    _set_bg_attr(bg, "frame_method", "FIT")
+    _set_bg_attr(bg, "frame_method", "CROP")
     _set_bg_attr(bg, "show_background_image", visible)
     if hasattr(data, "show_background_images"):
         data.show_background_images = True
@@ -1180,6 +1270,8 @@ def _add_page_overview_backgrounds(scene, work) -> None:
 
     各ページ画像を scale=1.0 で追加し、出力解像度にピッタリ合わせる。
     offset でグリッド位置に配置する。カメラの設定は一切変更しない。
+    現在ページはコマ領域を透明にした自ページ画像 (own_page) と
+    コマ内レイヤー画像 (koma) に分離して追加する。
     """
     cam = getattr(scene, "camera", None)
     if cam is None:
@@ -1211,7 +1303,27 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     user_scale = max(0.1, float(getattr(settings, "bg_images_scale", 1.0))) if settings else 1.0
     name_visible = bool(getattr(settings, "name_visible", True)) if settings else True
 
+    own_page_alpha = percentage.percent_to_factor(
+        getattr(settings, "own_page_opacity", 50.0), 50.0,
+    ) if settings else 0.5
+    own_page_visible = bool(getattr(settings, "own_page_visible", True)) if settings else True
+    koma_alpha = percentage.percent_to_factor(
+        getattr(settings, "koma_bg_images_opacity", 100.0), 100.0,
+    ) if settings else 1.0
+    koma_visible = bool(getattr(settings, "koma_visible", True)) if settings else True
+
+    coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
+    coma_points_mm = _resolve_coma_points_mm(work, current_page_id, coma_id)
+
     for page_id, (idx, x0, y0, x1, y1) in rects.items():
+        if page_id == current_page_id:
+            _add_own_page_backgrounds(
+                cam_data, work, page_id, coma_id, coma_points_mm,
+                canvas_w_mm, canvas_h_mm, user_scale,
+                own_page_alpha, own_page_visible,
+                koma_alpha, koma_visible,
+            )
+            continue
         png_path = page_preview_object._preview_png_path(work, page_id)
         if png_path is None or not png_path.is_file():
             continue
@@ -1238,11 +1350,126 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         _set_bg_attr(bg, "scale", float(page_scale))
         _set_bg_attr(bg, "rotation", 0.0)
         _set_bg_attr(bg, "offset", (offset_x, offset_y))
-        _set_bg_attr(bg, "display_depth", "BACK")
+        _set_bg_attr(bg, "display_depth", "FRONT")
         _set_bg_attr(bg, "frame_method", "FIT")
         _set_bg_attr(bg, "show_background_image", bool(name_visible))
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
+
+
+def _resolve_coma_points_mm(work, page_id: str, coma_id: str) -> list[tuple[float, float]]:
+    """コマのポリゴン頂点を mm 座標で返す."""
+    if not work or not page_id or not coma_id:
+        return []
+    page = find_page_by_id(work, page_id)
+    if page is None:
+        return []
+    for panel in getattr(page, "comas", []):
+        if getattr(panel, "coma_id", "") != coma_id:
+            continue
+        if getattr(panel, "shape_type", "") == "rect":
+            x = float(getattr(panel, "rect_x_mm", 0.0))
+            y = float(getattr(panel, "rect_y_mm", 0.0))
+            w = float(getattr(panel, "rect_width_mm", 0.0))
+            h = float(getattr(panel, "rect_height_mm", 0.0))
+            if w <= 0.0 or h <= 0.0:
+                return []
+            return [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+        return [(float(v.x_mm), float(v.y_mm)) for v in getattr(panel, "vertices", [])]
+    return []
+
+
+def _add_own_page_backgrounds(
+    cam_data, work, page_id, coma_id, coma_points_mm,
+    canvas_w_mm, canvas_h_mm, user_scale,
+    own_page_alpha, own_page_visible,
+    koma_alpha, koma_visible,
+) -> None:
+    """現在ページをコマ領域透明の自ページ画像とコマ内レイヤーに分けて追加."""
+    from . import page_preview_object
+
+    png_path = page_preview_object._preview_png_path(work, page_id)
+    if png_path is None or not png_path.is_file():
+        return
+    if not export_pipeline.has_pillow():
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        return
+    Image = export_pipeline.Image
+    ImageDraw = export_pipeline.ImageDraw
+    if Image is None or ImageDraw is None:
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        return
+    try:
+        with Image.open(str(png_path)) as opened:
+            src = opened.convert("RGBA")
+    except Exception:  # noqa: BLE001
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        return
+    w, h = src.size
+    points_px = _mm_to_image_px(coma_points_mm, canvas_w_mm, canvas_h_mm, w, h)
+    work_dir = Path(str(getattr(work, "work_dir", "") or ""))
+    cache_dir = paths.assets_dir(work_dir) / "_coma_bg_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    if points_px and len(points_px) >= 3:
+        masked_path = cache_dir / f"own_page_{page_id}_{coma_id}.png"
+        masked = src.copy()
+        mask = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(mask).polygon(points_px, fill=255)
+        alpha_ch = masked.getchannel("A")
+        alpha_ch.paste(0, mask=mask)
+        masked.putalpha(alpha_ch)
+        masked.save(str(masked_path))
+        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible)
+        content_path = cache_dir / f"koma_content_{page_id}_{coma_id}.png"
+        content = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        content.paste(src, mask=mask)
+        content.save(str(content_path))
+        _load_overview_bg(cam_data, content_path, page_id, "koma", user_scale, koma_alpha, koma_visible)
+    else:
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+
+
+def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible) -> None:
+    """コマ座標が取得できない時はフル画像をそのまま追加."""
+    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible)
+
+
+def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible) -> None:
+    """カメラ下絵として画像を追加するユーティリティ."""
+    try:
+        img = bpy.data.images.load(str(Path(png_path).resolve()), check_existing=True)
+        img.reload()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        img[_PAGE_OVERVIEW_BG_PROP] = True
+        img["bmanga_kind"] = kind
+        img["bmanga_page_id"] = page_id
+    except Exception:  # noqa: BLE001
+        pass
+    bg = cam_data.background_images.new()
+    bg.image = img
+    _set_bg_attr(bg, "alpha", float(alpha))
+    _set_bg_attr(bg, "scale", float(scale))
+    _set_bg_attr(bg, "rotation", 0.0)
+    _set_bg_attr(bg, "offset", (0.0, 0.0))
+    _set_bg_attr(bg, "display_depth", "FRONT")
+    _set_bg_attr(bg, "frame_method", "FIT")
+    _set_bg_attr(bg, "show_background_image", bool(visible))
+
+
+def _mm_to_image_px(
+    points_mm: list[tuple[float, float]],
+    canvas_w_mm: float, canvas_h_mm: float,
+    img_w: int, img_h: int,
+) -> list[tuple[int, int]]:
+    """mm 座標を画像ピクセル座標に変換する."""
+    out: list[tuple[int, int]] = []
+    for x_mm, y_mm in points_mm:
+        px = int(round(x_mm / canvas_w_mm * img_w))
+        py = img_h - int(round(y_mm / canvas_h_mm * img_h))
+        out.append((px, py))
+    return out
 
 
 def _is_overview_background(img) -> bool:
@@ -1291,5 +1518,104 @@ def _any_view3d_in_camera_view(context) -> bool:
         if rv3d is not None and getattr(rv3d, "view_perspective", "") == "CAMERA":
             return True
     return False
+
+
+# ── ページファイル ページ概要表示（カメラ下絵方式） ─────────────────
+
+
+def add_page_file_overview_backgrounds(scene, work) -> None:
+    """ページファイルの他ページプレビューをカメラ下絵として追加する.
+
+    ページファイル (ROLE_PAGE) 用。overview カメラの ortho_scale に合わせて
+    各ページ画像の scale / offset を計算し、カメラ下絵として配置する。
+    現在編集中のページはスキップする。
+    """
+    from .geom import m_to_mm
+
+    cam = getattr(scene, "camera", None)
+    if cam is None:
+        return
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return
+    _remove_page_overview_backgrounds(scene)
+
+    from . import page_preview_object
+
+    rects = page_preview_object.preview_rects_mm(scene, work)
+    if not rects:
+        return
+
+    _role, current_page_id = page_preview_object._preview_scene_role(scene)
+
+    paper = getattr(work, "paper", None)
+    canvas_w_mm = max(1.0, float(getattr(paper, "canvas_width_mm", 182) or 182)) if paper else 182.0
+    canvas_h_mm = max(1.0, float(getattr(paper, "canvas_height_mm", 257) or 257)) if paper else 257.0
+
+    cam_cx_mm = m_to_mm(float(cam.location.x))
+    cam_cy_mm = m_to_mm(float(cam.location.y))
+    cam_ortho_mm = m_to_mm(float(cam_data.ortho_scale))
+    if cam_ortho_mm <= 0:
+        return
+    base_scale = canvas_h_mm / cam_ortho_mm
+
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    alpha = percentage.percent_to_factor(
+        getattr(settings, "name_bg_images_opacity", 50.0), 50.0,
+    ) if settings else 0.5
+    name_visible = bool(getattr(settings, "name_visible", True)) if settings else True
+
+    for page_id, (idx, x0, y0, x1, y1) in rects.items():
+        if page_id == current_page_id:
+            continue
+        png_path = page_preview_object._preview_png_path(work, page_id)
+        if png_path is None or not png_path.is_file():
+            continue
+        try:
+            img = bpy.data.images.load(str(png_path.resolve()), check_existing=True)
+            img.reload()
+        except Exception:  # noqa: BLE001
+            continue
+        try:
+            img[_PAGE_OVERVIEW_BG_PROP] = True
+            img["bmanga_kind"] = "name"
+            img["bmanga_page_id"] = page_id
+        except Exception:  # noqa: BLE001
+            pass
+        page_cx = (x0 + x1) * 0.5
+        page_cy = (y0 + y1) * 0.5
+        page_w_mm = max(1.0, x1 - x0)
+        page_scale = (page_w_mm / canvas_w_mm) * base_scale
+        offset_x = (page_cx - cam_cx_mm) / canvas_w_mm * base_scale
+        offset_y = -(page_cy - cam_cy_mm) / canvas_h_mm * base_scale
+        bg = cam_data.background_images.new()
+        bg.image = img
+        _set_bg_attr(bg, "alpha", float(alpha))
+        _set_bg_attr(bg, "scale", float(page_scale))
+        _set_bg_attr(bg, "rotation", 0.0)
+        _set_bg_attr(bg, "offset", (offset_x, offset_y))
+        _set_bg_attr(bg, "display_depth", "BACK")
+        _set_bg_attr(bg, "frame_method", "FIT")
+        _set_bg_attr(bg, "show_background_image", bool(name_visible))
+    if hasattr(cam_data, "show_background_images"):
+        cam_data.show_background_images = True
+
+
+def remove_page_file_overview_backgrounds(scene) -> None:
+    """ページファイルの概要下絵を除去する (公開 API)."""
+    _remove_page_overview_backgrounds(scene)
+
+
+def refresh_page_file_overview(context) -> None:
+    """ページファイルの概要下絵を再構築する."""
+    from ..core.mode import MODE_PAGE
+
+    scene = getattr(context, "scene", None)
+    if scene is None or get_mode(context) != MODE_PAGE:
+        return
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False):
+        return
+    add_page_file_overview_backgrounds(scene, work)
 
 

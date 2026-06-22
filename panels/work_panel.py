@@ -12,6 +12,12 @@ from ..utils import shortcut_visibility
 
 B_NAME_CATEGORY = "B-MANGA"
 
+_ROLE_LABELS = {
+    "work": ("作品ファイル", "HOME"),
+    "page": ("ページファイル", "FILE"),
+    "coma": ("コマファイル", "OUTLINER_OB_CAMERA"),
+}
+
 
 class BMANGA_PT_work(Panel):
     bl_idname = "BMANGA_PT_work"
@@ -95,18 +101,21 @@ class BMANGA_PT_coma_return(Panel):
     @classmethod
     def poll(cls, context):
         work = get_work(context)
-        if work and work.loaded and page_file_scene.is_page_edit_scene(context.scene):
+        if work and work.loaded:
             return True
-        # 通常: モードが MODE_COMA + work.loaded
-        if work and work.loaded and get_mode(context) == MODE_COMA:
-            return True
-        # フォールバック: load_post の遅延等でモードが同期できなくても、
-        # 開いている .blend のパスが cNN.blend ならパネルを表示する。
         return shortcut_visibility.current_blend_is_coma_blend()
 
     def draw(self, context):
         shortcut_visibility.mark_bmanga_panel_drawn(context)
         layout = self.layout
+
+        role, _pid, _cid = page_file_scene.current_role(context)
+        label, icon = _ROLE_LABELS.get(role, ("不明", "QUESTION"))
+        row = layout.row()
+        row.alignment = "CENTER"
+        row.label(text=label, icon=icon)
+        layout.separator(factor=0.5)
+
         if get_mode(context) == MODE_COMA or shortcut_visibility.current_blend_is_coma_blend():
             layout.operator(
                 "bmanga.exit_coma_mode_safe",

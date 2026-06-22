@@ -49,6 +49,21 @@ def _update_name_bg_opacity(self, context) -> None:
     )
 
 
+def _update_own_page_visible(self, context) -> None:
+    from ..utils import coma_camera
+
+    coma_camera.set_background_kind_visibility(context, "own_page", bool(self.own_page_visible))
+
+
+def _update_own_page_opacity(self, context) -> None:
+    from ..utils import coma_camera
+    from ..utils import percentage
+
+    coma_camera.set_background_images_properties(
+        context, "", opacity=percentage.percent_to_factor(self.own_page_opacity, 50.0), kind_filter="own_page"
+    )
+
+
 def _update_koma_bg_opacity(self, context) -> None:
     from ..utils import coma_camera
     from ..utils import percentage
@@ -85,8 +100,29 @@ def _update_koma_visible(self, context) -> None:
 
 def _update_white_background(self, context) -> None:
     scene = getattr(context, "scene", None)
-    if scene is not None:
-        scene.render.film_transparent = bool(self.white_background)
+    if scene is None:
+        return
+    if bool(getattr(scene, "bmanga_coma_white_background", False)):
+        scene.render.film_transparent = False
+        return
+    scene.render.film_transparent = bool(self.white_background)
+
+
+def _update_white_bg_toggle(self, context) -> None:
+    scene = getattr(context, "scene", None) or self
+    enabled = bool(getattr(scene, "bmanga_coma_white_background", False))
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    if settings is None:
+        return
+    from ..utils import coma_camera
+
+    if enabled:
+        scene.render.film_transparent = False
+        coma_camera.apply_white_world_background(scene)
+    else:
+        coma_camera._restore_world_before_white(scene)
+        scene.render.film_transparent = bool(getattr(settings, "white_background", True))
+        coma_camera.sync_world_background_color(context)
 
 
 def _update_grayscale_view(self, context) -> None:
@@ -223,6 +259,19 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
         subtype="PERCENTAGE",
         update=_update_name_bg_opacity,
     )  # type: ignore[valid-type]
+    own_page_visible: BoolProperty(
+        name="ページ画像表示",
+        default=True,
+        update=_update_own_page_visible,
+    )  # type: ignore[valid-type]
+    own_page_opacity: FloatProperty(
+        name="ページ画像不透明度",
+        min=0.0,
+        max=100.0,
+        default=50.0,
+        subtype="PERCENTAGE",
+        update=_update_own_page_opacity,
+    )  # type: ignore[valid-type]
     koma_bg_images_opacity: FloatProperty(
         name="コマ内レイヤーの不透明度",
         min=0.0,
@@ -331,6 +380,12 @@ def register() -> None:
         default=False,
         update=_update_grayscale_view,
     )
+    bpy.types.Scene.bmanga_coma_white_background = BoolProperty(
+        name="背景を白にする",
+        description="ソリッド背景色を白に設定し、背景を不透明にします",
+        default=False,
+        update=_update_white_bg_toggle,
+    )
     bpy.types.Scene.bmanga_coma_camera_original_resolution_x = IntProperty(
         name="Original Resolution X",
         default=0,
@@ -373,6 +428,7 @@ def unregister() -> None:
         "bmanga_coma_camera_preview_scale_percentage",
         "bmanga_coma_camera_original_resolution_y",
         "bmanga_coma_camera_original_resolution_x",
+        "bmanga_coma_white_background",
         "bmanga_coma_grayscale_view",
         "bmanga_coma_camera_reduction_mode",
         "bmanga_coma_camera_fisheye_layout_mode",

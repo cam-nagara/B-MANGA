@@ -149,6 +149,23 @@ def _draw_coma_page_preview_controls(layout, scene, settings) -> None:
     box.prop(settings, "bg_images_scale", text="ページ画像のスケール")
 
 
+def _draw_coma_page_image_controls(layout, scene, settings) -> None:
+    if settings is None:
+        return
+    box = layout.box()
+    box.label(text="ページ画像", icon="IMAGE_DATA")
+    row = box.row(align=True)
+    own_vis = bool(getattr(settings, "own_page_visible", True))
+    row.prop(
+        settings,
+        "own_page_visible",
+        text="表示" if own_vis else "非表示",
+        icon="HIDE_OFF" if own_vis else "HIDE_ON",
+        toggle=True,
+    )
+    row.prop(settings, "own_page_opacity", text="")
+
+
 def _draw_coma_content_controls(layout, scene, settings) -> None:
     box = layout.box()
     row = box.row(align=True)
@@ -169,6 +186,7 @@ def _draw_coma_display_controls(layout, scene, settings) -> None:
         return
     box = layout.box()
     box.prop(scene, "bmanga_coma_grayscale_view", text="グレースケール表示")
+    box.prop(scene, "bmanga_coma_white_background", text="背景を白にする")
     box.prop(settings, "white_background", text="背景を透過")
     box.prop(settings, "world_background_camera_only", text="ワールド背景色を被写体に影響させない")
     row = box.row(align=True)
@@ -258,6 +276,7 @@ class BMANGA_PT_view(Panel):
         if is_coma_mode:
             settings = getattr(scene, "bmanga_coma_camera_settings", None)
             _draw_coma_page_preview_controls(layout, scene, settings)
+            _draw_coma_page_image_controls(layout, scene, settings)
             _draw_coma_content_controls(layout, scene, settings)
             _draw_coma_display_controls(layout, scene, settings)
 
