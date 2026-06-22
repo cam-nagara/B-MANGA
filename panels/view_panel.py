@@ -98,11 +98,9 @@ def _page_preview_enabled_update(scene, context) -> None:
             from ..utils import coma_camera
 
             if bool(getattr(scene, "bmanga_page_preview_enabled", True)):
-                if coma_camera._any_view3d_in_camera_view(context):
-                    work = getattr(scene, "bmanga_work", None)
-                    coma_camera._enter_coma_page_overview(scene, work)
+                coma_camera.refresh_coma_page_overview(context)
             else:
-                coma_camera._leave_coma_page_overview(scene)
+                coma_camera._remove_page_overview_backgrounds(scene)
     except Exception:  # noqa: BLE001
         pass
 

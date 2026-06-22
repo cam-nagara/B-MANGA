@@ -126,7 +126,7 @@ def ensure_coma_camera_scene(
     resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
-    start_coma_page_overview_poll()
+    _add_page_overview_backgrounds(scene, work)
 
 
 def _restore_scene_camera(scene, camera) -> None:
@@ -1172,9 +1172,7 @@ def _ensure_coma_overlay_objects(scene, work) -> None:
 
 
 # ── コマファイル ページ概要表示（カメラ下絵方式） ─────────────────
-_COMA_PAGE_OVERVIEW_KEY = "_bmanga_coma_page_overview_active"
 _PAGE_OVERVIEW_BG_PROP = "_bmanga_page_overview_bg"
-_OVERVIEW_POLL_REGISTERED = False
 
 
 def _add_page_overview_backgrounds(scene, work) -> None:
@@ -1255,11 +1253,9 @@ def _is_overview_background(img) -> bool:
 
 
 def refresh_coma_page_overview(context) -> None:
-    """概要下絵がアクティブなら再構築する (スケール・表示範囲変更時用)."""
+    """概要下絵を再構築する (スケール・表示範囲変更時用)."""
     scene = getattr(context, "scene", None)
-    if scene is None:
-        return
-    if not bool(scene.get(_COMA_PAGE_OVERVIEW_KEY, False)):
+    if scene is None or get_mode(context) != MODE_COMA:
         return
     work = get_work(context)
     if work is None or not getattr(work, "loaded", False):
@@ -1297,51 +1293,3 @@ def _any_view3d_in_camera_view(context) -> bool:
     return False
 
 
-def _enter_coma_page_overview(scene, work) -> None:
-    """カメラビューに入った: ページプレビューを下絵として表示する."""
-    scene[_COMA_PAGE_OVERVIEW_KEY] = True
-    _add_page_overview_backgrounds(scene, work)
-
-
-def _leave_coma_page_overview(scene) -> None:
-    """カメラビューから離れた: ページ概要の下絵を除去する."""
-    scene[_COMA_PAGE_OVERVIEW_KEY] = False
-    _remove_page_overview_backgrounds(scene)
-
-
-def _poll_coma_page_overview() -> float | None:
-    """カメラビューの状態を監視してページ概要の表示を切り替える."""
-    global _OVERVIEW_POLL_REGISTERED  # noqa: PLW0603
-    try:
-        context = bpy.context
-        scene = getattr(context, "scene", None)
-        if scene is None or get_mode(context) != MODE_COMA:
-            _OVERVIEW_POLL_REGISTERED = False
-            return None
-        in_camera = _any_view3d_in_camera_view(context)
-        was_showing = bool(scene.get(_COMA_PAGE_OVERVIEW_KEY, False))
-        settings = getattr(scene, "bmanga_coma_camera_settings", None)
-        enabled = bool(getattr(settings, "name_visible", True)) if settings else True
-        if in_camera and not was_showing and enabled:
-            work = get_work(context)
-            _enter_coma_page_overview(scene, work)
-        elif (not in_camera or not enabled) and was_showing:
-            _leave_coma_page_overview(scene)
-        return 0.2
-    except Exception:  # noqa: BLE001
-        return 0.5
-
-
-def start_coma_page_overview_poll() -> None:
-    """ページ概要の表示切替ポーリングを開始する."""
-    global _OVERVIEW_POLL_REGISTERED  # noqa: PLW0603
-    if _OVERVIEW_POLL_REGISTERED:
-        return
-    try:
-        if bpy.app.timers.is_registered(_poll_coma_page_overview):
-            _OVERVIEW_POLL_REGISTERED = True
-            return
-        bpy.app.timers.register(_poll_coma_page_overview, first_interval=0.3)
-        _OVERVIEW_POLL_REGISTERED = True
-    except Exception:  # noqa: BLE001
-        pass
