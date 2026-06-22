@@ -48,7 +48,32 @@ def _hit_is_selected_in_layer_stack(context, key: str) -> bool:
     return False
 
 
+def _on_other_page_preview(context, event) -> bool:
+    """ページファイルモードで他ページプレビュー上なら True."""
+    try:
+        from ..utils import page_file_scene
+        from . import mode_op
+
+        role, current_page_id, _coma_id = page_file_scene.current_role(context)
+        if role != page_file_scene.ROLE_PAGE:
+            return False
+        idx = mode_op.page_file_index_from_viewport_event(context, event)
+        if idx is None:
+            return False
+        from ..core.work import get_work
+
+        work = get_work(context)
+        if work is None:
+            return False
+        cur_idx = page_file_scene.find_page_index(work, current_page_id)
+        return idx != cur_idx
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def open_for_viewport_object(context, event) -> bool:
+    if _on_other_page_preview(context, event):
+        return False
     from . import object_tool_op
 
     hit = object_tool_op.hit_object_at_event(context, event)
