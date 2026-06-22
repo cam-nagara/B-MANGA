@@ -1015,28 +1015,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
                     ensure_preview_png(work, page, current_index, current=True, scene=scene, force=True)
             except Exception:  # noqa: BLE001
                 _logger.exception("current page preview update failed: %s", current_page_id)
-    # ── ページファイル: カメラ下絵方式 ──
-    if role == "page":
-        hide_page_previews(scene)
-        for page in getattr(work, "pages", []) or []:
-            page_id = str(getattr(page, "id", "") or "")
-            rect = rects.get(page_id)
-            if rect is None or page_id == current_page_id:
-                continue
-            ensure_preview_png(work, page, int(rect[0]), current=False, scene=scene, force=force)
-        try:
-            from . import coma_camera
-            coma_camera.add_page_file_overview_backgrounds(scene, work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("page file overview backgrounds failed")
-        try:
-            for area in getattr(context, "screen", None).areas:
-                if area.type == "VIEW_3D":
-                    area.tag_redraw()
-        except Exception:  # noqa: BLE001
-            pass
-        return len(rects) - (1 if current_page_id in rects else 0)
-    # ── 作品ファイル: 従来のメッシュ平面方式 ──
+    # ── メッシュ平面方式 (ページファイル・作品ファイル共通) ──
     for obj in _iter_preview_objects():
         page_id = str(obj.get(PREVIEW_PAGE_ID_PROP, "") or "")
         if page_id not in valid_page_ids:
