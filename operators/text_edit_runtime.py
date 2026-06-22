@@ -64,6 +64,7 @@ _IME_LAST_APPEND = ("", 0.0)
 _IME_LAST_TOGGLE_TIME = 0.0
 _IME_COMPOSITION_TEXT = ""
 _IME_COMPOSITION_ACTIVE = False
+_IME_SUPPRESS_COUNT = 0
 _USER32 = None
 _IMM32 = None
 _VIEW_EDIT_STATE_KEYS = (
@@ -114,8 +115,23 @@ def _end_ime_composition() -> None:
     _IME_COMPOSITION_ACTIVE = False
 
 
+def suppress_ime_text() -> None:
+    """Suppress IME text insertion while a popup/dialog is open."""
+    global _IME_SUPPRESS_COUNT
+    _IME_SUPPRESS_COUNT += 1
+
+
+def unsuppress_ime_text() -> None:
+    """Re-enable IME text insertion after popup/dialog closes."""
+    global _IME_SUPPRESS_COUNT
+    _IME_SUPPRESS_COUNT = max(0, _IME_SUPPRESS_COUNT - 1)
+
+
 def poll_ime_text() -> str:
     """Return committed IME text captured outside Blender modal key events."""
+    if _IME_SUPPRESS_COUNT > 0:
+        _IME_TEXT_QUEUE.clear()
+        return ""
     if not _IME_TEXT_QUEUE:
         return ""
     text = "".join(_IME_TEXT_QUEUE)
@@ -523,7 +539,8 @@ def begin_ime_capture() -> None:
 
 def end_ime_capture() -> None:
     """Restore the Blender window procedure after inline text editing."""
-    global _IME_CAPTURE_HWND, _IME_CAPTURE_OLD_PROC, _IME_CAPTURE_PROC
+    global _IME_CAPTURE_HWND, _IME_CAPTURE_OLD_PROC, _IME_CAPTURE_PROC, _IME_SUPPRESS_COUNT
+    _IME_SUPPRESS_COUNT = 0
     _release_capture_ime_context()
     if _USER32 is not None and _IME_CAPTURE_HWND and _IME_CAPTURE_OLD_PROC:
         try:
@@ -794,7 +811,7 @@ def natural_text_outer_size(entry) -> tuple[float, float]:
             current_em = max(current_em, em)
         heights.append(max(base_em, current_height))
         column_ems.append(current_em)
-        content_w = sum(column_advances) + max(base_em, max(column_ems))
+        content_w = sum(column_advances) + max(base_em, column_ems[-1])
         content_h = max(heights) if heights else base_em
     return content_w + _TEXT_PADDING_MM * 2.0, content_h + _TEXT_PADDING_MM * 2.0
 

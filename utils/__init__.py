@@ -59,4 +59,9 @@ def unregister() -> None:
         layer_object_sync.clear_snapshots()
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from . import text_style
+        text_style.reset_font_dropdown_cache()
+    except Exception:  # noqa: BLE001
+        pass
     log.unregister()

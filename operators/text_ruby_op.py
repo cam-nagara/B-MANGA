@@ -10,6 +10,7 @@ from ..core.work import get_work
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import text_real_object, text_style
 from . import coma_modal_state
+from . import text_edit_runtime
 from .text_meta_op import _resolve_text_entry
 
 _RUBY_STYLE_ITEMS = (
@@ -142,6 +143,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
                     self.ruby_text = ruby_text
                     self.style = style
                     break
+        text_edit_runtime.suppress_ime_text()
         return context.window_manager.invoke_props_dialog(self, width=320)
 
     def draw(self, context):
@@ -157,6 +159,7 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
         layout.prop(self, "style")
 
     def execute(self, context):
+        text_edit_runtime.unsuppress_ime_text()
         page, entry = self._resolve_target(context)
         if entry is None:
             self.report({"ERROR"}, "テキストが選択されていません")
@@ -171,6 +174,9 @@ class BMANGA_OT_text_ruby_add_dialog(Operator):
         _sync_after_ruby_change(context, page, entry, start, end)
         self.report({"INFO"}, "ルビを更新しました")
         return {"FINISHED"}
+
+    def cancel(self, context):
+        text_edit_runtime.unsuppress_ime_text()
 
 
 class BMANGA_OT_text_ruby_clear(Operator):

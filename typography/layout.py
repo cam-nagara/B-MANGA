@@ -132,8 +132,8 @@ def typeset_vertical(
         )
         em_mm = _mm_per_em_at(glyph_size_pt)
         char_pitch_mm = em_mm * (1.0 + letter_spacing)
-        # 現在の列 X 座標 (右端から左へ)
-        x = region_x_mm + region_width_mm - em_mm / 2.0 - col_offset_mm
+        # 現在の列 X 座標 (右端から左へ) — 文字セルの左端
+        x = region_x_mm + region_width_mm - em_mm - col_offset_mm
         # 現在の行 Y 座標 (上端から下へ)
         y = y_cursor - em_mm
 
@@ -142,7 +142,7 @@ def typeset_vertical(
             break
         if y < region_y_mm:
             advance_column(new_logical_line=False)
-            x = region_x_mm + region_width_mm - em_mm / 2.0 - col_offset_mm
+            x = region_x_mm + region_width_mm - em_mm - col_offset_mm
             y = y_cursor - em_mm
             if x < region_x_mm:
                 overflow = True

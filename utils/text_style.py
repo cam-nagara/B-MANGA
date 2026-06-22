@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import struct
 from pathlib import Path
 
 StyleTuple = tuple[str, float, tuple[float, float, float, float], bool, bool]
@@ -55,13 +56,17 @@ def _font_search_dirs() -> list[Path]:
     ]
 
 
+def _dedup_key(path: Path) -> str:
+    return str(path).lower() if os.name == "nt" else str(path)
+
+
 def available_font_paths() -> list[str]:
     """Return stable font paths for UI dropdowns."""
     paths: dict[str, str] = {}
     for candidate in font_candidates():
         path = _abspath_maybe(candidate)
         if path and Path(path).is_file():
-            paths[str(Path(path))] = str(Path(path))
+            paths[_dedup_key(Path(path))] = str(Path(path))
     for directory in _font_search_dirs():
         if not directory.exists():
             continue
@@ -72,10 +77,10 @@ def available_font_paths() -> list[str]:
         for path in files:
             if path.suffix.lower() not in {".ttf", ".ttc", ".otf"}:
                 continue
-            paths[str(path)] = str(path)
-            if len(paths) >= 300:
+            paths[_dedup_key(path)] = str(path)
+            if len(paths) >= 1000:
                 break
-        if len(paths) >= 300:
+        if len(paths) >= 1000:
             break
     return sorted(paths.values(), key=lambda item: (Path(item).stem.lower(), item.lower()))
 
@@ -85,6 +90,75 @@ def _font_choice_key(path: str) -> str:
     return f"FONT_{digest}"
 
 
+def _parse_font_family_name(path: str) -> str:
+    """TrueType/OpenType ファイルからフォントファミリー名を取得する."""
+    try:
+        with open(path, "rb") as f:
+            header = f.read(16)
+            if len(header) < 12:
+                return ""
+            font_offset = 0
+            if header[:4] == b"ttcf":
+                if len(header) < 16:
+                    return ""
+                font_offset = struct.unpack_from(">I", header, 12)[0]
+            f.seek(font_offset)
+            font_header = f.read(12)
+            if len(font_header) < 12:
+                return ""
+            num_tables = struct.unpack_from(">H", font_header, 4)[0]
+            table_data = f.read(num_tables * 16)
+            if len(table_data) < num_tables * 16:
+                return ""
+            name_offset = 0
+            name_length = 0
+            for i in range(num_tables):
+                off = i * 16
+                if table_data[off:off + 4] == b"name":
+                    name_offset = struct.unpack_from(">I", table_data, off + 8)[0]
+                    name_length = struct.unpack_from(">I", table_data, off + 12)[0]
+                    break
+            if name_offset == 0:
+                return ""
+            f.seek(name_offset)
+            name_table = f.read(min(name_length, 65536))
+            if len(name_table) < 6:
+                return ""
+            count = struct.unpack_from(">H", name_table, 2)[0]
+            string_base = struct.unpack_from(">H", name_table, 4)[0]
+            ja_name = ""
+            en_name = ""
+            fallback = ""
+            for i in range(count):
+                rec = 6 + i * 12
+                if rec + 12 > len(name_table):
+                    break
+                pid, eid, lid, nid, slen, soff = struct.unpack_from(">HHHHHH", name_table, rec)
+                if nid != 1:
+                    continue
+                abs_off = string_base + soff
+                if abs_off + slen > len(name_table):
+                    continue
+                raw = name_table[abs_off:abs_off + slen]
+                if pid == 3 and eid == 1:
+                    try:
+                        decoded = raw.decode("utf-16-be")
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if lid == 0x0411 and not ja_name:
+                        ja_name = decoded
+                    elif lid == 0x0409 and not en_name:
+                        en_name = decoded
+                elif pid == 1 and not fallback:
+                    try:
+                        fallback = raw.decode("mac-roman")
+                    except Exception:  # noqa: BLE001
+                        pass
+            return ja_name or en_name or fallback
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def font_dropdown_items(_self=None, _context=None) -> list[tuple[str, str, str]]:
     """EnumProperty items for selecting installed fonts from a dropdown."""
     global _FONT_DROPDOWN_ITEMS
@@ -92,13 +166,27 @@ def font_dropdown_items(_self=None, _context=None) -> list[tuple[str, str, str]]
         return _FONT_DROPDOWN_ITEMS
     items = [(_DEFAULT_FONT_CHOICE, "基本フォント", "テキストレイヤーの基本フォントを使う")]
     _FONT_DROPDOWN_PATHS.clear()
+    seen_labels: dict[str, int] = {}
+    raw_items: list[tuple[str, str, str]] = []
     for path in available_font_paths():
         key = _font_choice_key(path)
         _FONT_DROPDOWN_PATHS[key] = path
-        label = Path(path).stem
+        label = _parse_font_family_name(path) or Path(path).stem
+        seen_labels[label] = seen_labels.get(label, 0) + 1
+        raw_items.append((key, label, path))
+    for key, label, path in raw_items:
+        if seen_labels.get(label, 0) > 1:
+            label = f"{label} ({Path(path).stem})"
         items.append((key, label, path))
     _FONT_DROPDOWN_ITEMS = items
     return items
+
+
+def reset_font_dropdown_cache() -> None:
+    """フォントキャッシュをリセットする (アドオン再読み込み時用)."""
+    global _FONT_DROPDOWN_ITEMS
+    _FONT_DROPDOWN_ITEMS = None
+    _FONT_DROPDOWN_PATHS.clear()
 
 
 def font_path_from_dropdown_choice(choice: str) -> str:
