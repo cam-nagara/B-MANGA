@@ -845,7 +845,7 @@ def register() -> None:
     bpy.types.Scene.bmanga_overview_gap_y_mm = FloatProperty(
         name="縦間隔 (mm)",
         description="全ページ一覧時の縦方向の余白",
-        default=30.0,
+        default=50.0,
         min=0.0,
         soft_max=200.0,
         update=_on_overview_layout_changed,

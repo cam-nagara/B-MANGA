@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "presetType": "paper",
-  "presetName": "集英社マンガ誌汎用",
-  "description": "集英社マンガ誌汎用 (少年誌・少女誌・青年誌共通/新書・B6判単行本化)。CLIP STUDIO PAINT 同名プリセット準拠。",
+  "presetName": "商業誌B4マンガ原稿用紙",
+  "description": "商業誌B4マンガ原稿用紙 (少年誌・少女誌・青年誌共通/新書・B6判単行本化)。CLIP STUDIO PAINT 同名プリセット準拠。",
   "paper": {
     "canvasWidthMm": 257.00,
     "canvasHeightMm": 364.00,
@@ -31,38 +31,38 @@
     "showSafeLine": true,
     "showTrimMarks": true,
     "colorProfile": "sRGB IEC61966-2.1",
-    "presetName": "集英社マンガ誌汎用"
+    "presetName": "商業誌B4マンガ原稿用紙"
   },
   "displayOnCanvas": {
     "workName": {
       "enabled": true,
       "position": "bottom-left",
       "fontSizeQ": 20.0,
-      "color": "#000000"
+      "color": "#FFFFFF"
     },
     "episode": {
       "enabled": false,
       "position": "top-center",
       "fontSizeQ": 20.0,
-      "color": "#000000"
+      "color": "#FFFFFF"
     },
     "subtitle": {
       "enabled": false,
       "position": "top-right",
       "fontSizeQ": 20.0,
-      "color": "#000000"
+      "color": "#FFFFFF"
     },
     "author": {
       "enabled": true,
       "position": "bottom-right",
       "fontSizeQ": 20.0,
-      "color": "#000000"
+      "color": "#FFFFFF"
     },
     "pageNumber": {
       "enabled": true,
       "position": "bottom-center",
       "fontSizeQ": 20.0,
-      "color": "#000000"
+      "color": "#FFFFFF"
     }
   },
   "panelGap": {

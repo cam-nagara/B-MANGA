@@ -484,7 +484,13 @@ def page_world_rect(context, work, page_index: int) -> Rect | None:
     paper = getattr(work, "paper", None)
     if paper is None:
         return None
-    return Rect(ox, oy, float(paper.canvas_width_mm), float(paper.canvas_height_mm))
+    cw = float(paper.canvas_width_mm)
+    try:
+        from ..utils.page_grid import page_content_width_mm
+        w = page_content_width_mm(work, int(page_index), cw)
+    except Exception:  # noqa: BLE001
+        w = cw
+    return Rect(ox, oy, w, float(paper.canvas_height_mm))
 
 
 def raster_world_rect(context, work, entry) -> Rect | None:

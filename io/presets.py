@@ -4,7 +4,7 @@
 - 同梱: アドオン同梱の ``presets/paper/`` (B-MANGA/presets/paper/)
 - 共通: Blender ユーザー設定配下の B-MANGA 共通プリセット
 
-既定プリセット「集英社マンガ誌汎用」は同梱 JSON として配布する。
+既定プリセット「商業誌B4マンガ原稿用紙」は同梱 JSON として配布する。
 """
 
 from __future__ import annotations
@@ -97,18 +97,24 @@ def _apply_display_on_canvas(data: dict[str, Any], work_info) -> None:
     schema.display_item_from_dict(work_info.display_subtitle, data.get("subtitle", {}))
     schema.display_item_from_dict(work_info.display_author, data.get("author", {}))
     schema.display_item_from_dict(work_info.display_page_number, data.get("pageNumber", {}))
+    if hasattr(work_info, "font"):
+        work_info.font = data.get("font", "")
 
 
 def _display_on_canvas_to_dict(work_info) -> dict[str, Any]:
     if work_info is None:
         return {}
-    return {
+    d: dict[str, Any] = {
         "workName": schema.display_item_to_dict(work_info.display_work_name),
         "episode": schema.display_item_to_dict(work_info.display_episode),
         "subtitle": schema.display_item_to_dict(work_info.display_subtitle),
         "author": schema.display_item_to_dict(work_info.display_author),
         "pageNumber": schema.display_item_to_dict(work_info.display_page_number),
     }
+    font = str(getattr(work_info, "font", "") or "")
+    if font:
+        d["font"] = font
+    return d
 
 
 def apply_preset_to_paper(preset: PaperPreset, paper) -> None:
@@ -154,22 +160,22 @@ def load_preset_by_name(name: str, work_dir: Path | None) -> PaperPreset | None:
 
 
 def load_default_preset(paper) -> PaperPreset | None:
-    """既定の「集英社マンガ誌汎用」を PaperSettings に適用."""
+    """既定の「商業誌B4マンガ原稿用紙」を PaperSettings に適用."""
     for preset in list_global_presets():
-        if preset.name == "集英社マンガ誌汎用":
+        if preset.name == "商業誌B4マンガ原稿用紙":
             apply_preset_to_paper(preset, paper)
             return preset
-    _logger.warning("default preset '集英社マンガ誌汎用' not found under %s", GLOBAL_PRESETS_DIR)
+    _logger.warning("default preset '商業誌B4マンガ原稿用紙' not found under %s", GLOBAL_PRESETS_DIR)
     return None
 
 
 def load_default_preset_for_work(work) -> PaperPreset | None:
-    """既定の「集英社マンガ誌汎用」を用紙関連設定全体に適用."""
+    """既定の「商業誌B4マンガ原稿用紙」を用紙関連設定全体に適用."""
     for preset in list_global_presets():
-        if preset.name == "集英社マンガ誌汎用":
+        if preset.name == "商業誌B4マンガ原稿用紙":
             apply_preset_to_work(preset, work)
             return preset
-    _logger.warning("default preset '集英社マンガ誌汎用' not found under %s", GLOBAL_PRESETS_DIR)
+    _logger.warning("default preset '商業誌B4マンガ原稿用紙' not found under %s", GLOBAL_PRESETS_DIR)
     return None
 
 

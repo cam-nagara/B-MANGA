@@ -746,8 +746,7 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     try:
         from . import work_info_text_object as _work_info_text
 
-        if not is_work_list_scene:
-            _work_info_text.sync_work_info_texts_after_page_transform(scene, real_work)
+        _work_info_text.regenerate_all_work_info_texts(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: work info text update failed")
     try:

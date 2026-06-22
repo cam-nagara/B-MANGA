@@ -231,6 +231,17 @@ class BMangaWorkInfo(bpy.types.PropertyGroup):
         update=_on_work_info_changed,
     )
 
+    font: StringProperty(  # type: ignore[valid-type]
+        name="フォント",
+        description=(
+            "作品情報 (作品名・話数・作者名・ノンブルなど) の表示に使うフォント。"
+            "空欄の場合はシステムの基本フォントが使われます"
+        ),
+        default="",
+        subtype="FILE_PATH",
+        update=_on_work_info_changed,
+    )
+
     display_work_name: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
     display_episode: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
     display_subtitle: PointerProperty(type=BMangaDisplayItem)  # type: ignore[valid-type]
@@ -302,7 +313,7 @@ class BMangaNombre(bpy.types.PropertyGroup):
         name="色",
         subtype="COLOR",
         size=4,
-        default=(0.0, 0.0, 0.0, 1.0),
+        default=(1.0, 1.0, 1.0, 1.0),
         min=0.0,
         max=1.0,
     )

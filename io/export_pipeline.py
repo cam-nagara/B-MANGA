@@ -1142,7 +1142,8 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
         (info.display_page_number, page_text, "page_number"),
     ]
     pad_mm = 2.0
-    font_path = _resolve_font_path("")
+    work_info_font = str(getattr(info, "font", "") or "")
+    font_path = _resolve_font_path(work_info_font)
     for item, text, name in items:
         if item is None or not getattr(item, "enabled", False) or not text:
             continue
@@ -1189,7 +1190,12 @@ def _nombre_layer(work, page, canvas_size: tuple[int, int], dpi: int) -> ExportL
     page_number = _resolve_page_number(work, page)
     text = overlay_shared.format_nombre_text(nombre, page_number)
     x_mm, y_mm = overlay_shared.nombre_anchor(work.paper, nombre, is_left_half=_is_left_half_page(work, page))
-    font_path = _resolve_font_path(str(getattr(nombre, "font", "")))
+    nombre_font = str(getattr(nombre, "font", "") or "")
+    if not nombre_font:
+        _wi = getattr(work, "work_info", None)
+        if _wi is not None:
+            nombre_font = str(getattr(_wi, "font", "") or "")
+    font_path = _resolve_font_path(nombre_font)
     anchor_x = "center"
     pos = getattr(nombre, "position", "bottom-center")
     if pos.endswith("left"):

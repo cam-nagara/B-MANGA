@@ -167,6 +167,7 @@ class BMANGA_PT_paper(Panel):
         info = work.work_info
         box = layout.box()
         box.label(text="原稿上の表示")
+        box.prop(info, "font", text="フォント")
         _draw_display_item(box, "作品名", info.display_work_name)
         _draw_display_item(box, "話数", info.display_episode)
         _draw_display_item(box, "サブタイトル", info.display_subtitle)

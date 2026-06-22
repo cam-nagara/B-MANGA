@@ -269,7 +269,7 @@ def paper_from_dict(paper, data: dict[str, Any]) -> None:
     paper.color_profile = data.get("colorProfile", "sRGB IEC61966-2.1")
     paper.start_side = data.get("startSide", "left")
     paper.read_direction = data.get("readDirection", "left")
-    paper.preset_name = data.get("presetName", "集英社マンガ誌汎用")
+    paper.preset_name = data.get("presetName", "商業誌B4マンガ原稿用紙")
 
 
 # ---------- WorkInfo / DisplayItem / Nombre ----------
@@ -325,7 +325,7 @@ def display_item_from_dict(item, data: dict[str, Any]) -> None:
 
 
 def work_info_to_dict(info) -> dict[str, Any]:
-    return {
+    d: dict[str, Any] = {
         "workName": info.work_name,
         "episodeNumber": int(info.episode_number),
         "subtitle": info.subtitle,
@@ -340,6 +340,10 @@ def work_info_to_dict(info) -> dict[str, Any]:
         "pageNumberStart": int(info.page_number_start),
         "pageNumberEnd": int(getattr(info, "page_number_end", info.page_number_start)),
     }
+    font = str(getattr(info, "font", "") or "")
+    if font:
+        d["font"] = font
+    return d
 
 
 def work_info_from_dict(info, data: dict[str, Any]) -> None:
@@ -348,6 +352,7 @@ def work_info_from_dict(info, data: dict[str, Any]) -> None:
     info.episode_number = int(data.get("episodeNumber", 1))
     info.subtitle = data.get("subtitle", "")
     info.author = data.get("author", "")
+    info.font = data.get("font", "")
     disp = data.get("displayOnCanvas", {})
     display_item_from_dict(info.display_work_name, disp.get("workName", {}))
     display_item_from_dict(info.display_episode, disp.get("episode", {}))
@@ -389,7 +394,7 @@ def nombre_from_dict(n, data: dict[str, Any]) -> None:
     n.position = data.get("position", "bottom-center")
     n.gap_vertical_mm = float(data.get("gapVerticalMm", 5.0))
     n.gap_horizontal_mm = float(data.get("gapHorizontalMm", 0.0))
-    n.color = hex_to_rgba(data.get("color", "#000000"))
+    n.color = hex_to_rgba(data.get("color", "#FFFFFF"))
     border = data.get("border", {})
     n.border_enabled = bool(border.get("enabled", False))
     n.border_width_mm = float(border.get("widthMm", 0.3))

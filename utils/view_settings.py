@@ -94,7 +94,7 @@ def copy_scene_to_work(scene, work) -> None:
         )
     if hasattr(work, "view_overview_gap_y_mm"):
         work.view_overview_gap_y_mm = _clamp_float(
-            getattr(scene, "bmanga_overview_gap_y_mm", 30.0), 30.0, 0.0, 1000.0
+            getattr(scene, "bmanga_overview_gap_y_mm", 50.0), 50.0, 0.0, 1000.0
         )
     if hasattr(work, "view_page_preview_enabled"):
         work.view_page_preview_enabled = bool(
@@ -138,7 +138,7 @@ def apply_work_to_scene(scene, work) -> None:
         ("bmanga_overview_cols", "view_overview_cols", 4),
         ("bmanga_overview_gap_mm", "view_overview_gap_mm", 30.0),
         ("bmanga_overview_gap_x_mm", "view_overview_gap_x_mm", 30.0),
-        ("bmanga_overview_gap_y_mm", "view_overview_gap_y_mm", 30.0),
+        ("bmanga_overview_gap_y_mm", "view_overview_gap_y_mm", 50.0),
         ("bmanga_page_preview_enabled", "view_page_preview_enabled", True),
         ("bmanga_page_preview_page_radius", "view_page_preview_page_radius", 3),
         (

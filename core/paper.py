@@ -1,7 +1,7 @@
 """用紙設定 PropertyGroup.
 
 work.json の ``paper`` セクションに対応するデータモデル。既定値は計画書
-3.2.4「集英社マンガ誌汎用」プリセット (257×364mm / 600dpi) に合わせる。
+3.2.4「商業誌B4マンガ原稿用紙」プリセット (257×364mm / 600dpi) に合わせる。
 """
 
 from __future__ import annotations
@@ -542,7 +542,7 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
     # --- プリセット参照 ---
     preset_name: StringProperty(  # type: ignore[valid-type]
         name="使用プリセット名",
-        default="集英社マンガ誌汎用",
+        default="商業誌B4マンガ原稿用紙",
     )
 
 

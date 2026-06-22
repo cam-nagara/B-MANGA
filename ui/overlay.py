@@ -1302,14 +1302,11 @@ def _page_file_current_page_index(scene, work) -> int:
 def _page_file_overview_indices(scene, work) -> set[int] | None:
     """ページファイルで補助表示を許可するページ index 群を返す.
 
-    None は通常のページ一覧ファイルで全ページを表す。
-    作品ファイルで「前後ページ」が選ばれた場合と、ページファイルでは、
-    「全ページ / 前後ページ」で選ばれた範囲だけを対象にする。
+    None は作品ファイルで全ページを表す。
+    ページファイルでは「全ページ / 前後ページ」で選ばれた範囲だけを対象にする。
     """
     try:
         if page_file_scene.is_work_list_scene(scene):
-            if page_preview_object.preview_range_mode(scene) == page_preview_object.PREVIEW_RANGE_NEAR:
-                return page_preview_object.preview_page_indices(scene, work)
             return None
         if not page_file_scene.is_page_edit_scene(scene):
             return None

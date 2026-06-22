@@ -359,7 +359,6 @@ class BMANGA_PT_view(Panel):
                 col = layout.column(align=True)
                 row = col.row(align=True)
                 row.operator("bmanga.view_fit_all", text="全ページを一覧", icon="IMGDISPLAY")
-                _draw_page_preview_range_buttons(col, scene, respect_enabled=False)
                 row = col.row(align=True)
                 row.prop(scene, "bmanga_overview_cols", text="列数")
                 row = col.row(align=True)

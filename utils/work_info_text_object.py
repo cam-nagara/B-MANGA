@@ -52,9 +52,18 @@ def _material(owner_id: str, color) -> bpy.types.Material:
     return mat
 
 
-def _assign_default_font(curve: bpy.types.Curve) -> None:
+def _work_info_font_path(work=None) -> str:
+    preferred = ""
+    if work is not None:
+        info = getattr(work, "work_info", None)
+        if info is not None:
+            preferred = str(getattr(info, "font", "") or "")
+    return text_style.resolve_font_path(preferred)
+
+
+def _assign_default_font(curve: bpy.types.Curve, work=None) -> None:
     try:
-        font_path = text_style.resolve_font_path("")
+        font_path = _work_info_font_path(work)
         if font_path:
             curve.font = bpy.data.fonts.load(font_path, check_existing=True)
     except Exception:  # noqa: BLE001
@@ -199,7 +208,7 @@ def _ensure_text_object(scene, work, page, page_index: int, item_key: str, item,
     curve.body = text
     q_size = max(0.1, float(getattr(item, "font_size_q", 20.0) or 20.0))
     curve.size = mm_to_m(q_to_mm(q_size) * TEXT_OBJECT_Q_VISIBLE_HEIGHT_COMPENSATION)
-    _assign_default_font(curve)
+    _assign_default_font(curve, work)
     obj = bpy.data.objects.get(obj_name)
     if obj is not None and obj.type != "FONT":
         try:

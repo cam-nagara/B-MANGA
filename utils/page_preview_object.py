@@ -37,7 +37,7 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "5"
+PREVIEW_RENDER_VERSION = "6"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 _DEFERRED_SYNC_FORCE = False
 
@@ -853,6 +853,12 @@ def _preview_page_indices(scene, work) -> set[int]:
     pages = list(getattr(work, "pages", []) or [])
     if not pages:
         return set()
+    try:
+        from . import page_file_scene as _pfs
+        if _pfs.is_work_list_scene(scene):
+            return set(range(len(pages)))
+    except Exception:  # noqa: BLE001
+        pass
     role, current_page_id = _preview_scene_role(scene)
     if preview_range_mode(scene) == PREVIEW_RANGE_ALL:
         return set(range(len(pages)))

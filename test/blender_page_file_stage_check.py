@@ -505,7 +505,7 @@ def main() -> None:
         assert _mainfile() == (work_dir / "work.blend").resolve()
         work = bpy.context.scene.bmanga_work
         bpy.context.scene.bmanga_page_preview_range_mode = "NEAR"
-        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == {0, 1}
+        assert page_preview_object.preview_page_indices(bpy.context.scene, work) == set(range(len(work.pages)))
         bpy.context.scene.bmanga_page_preview_range_mode = "ALL"
         assert page_preview_object.preview_page_indices(bpy.context.scene, work) == set(range(len(work.pages)))
         _assert_work_file_preview_only()
