@@ -3,6 +3,22 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-23 — v0.6.366 セーフライン外・裁ち落とし枠外の塗り不透明度二重適用を修正
+
+### 修正
+
+- **セーフライン外を塗る・裁ち落とし枠外を塗るの不透明度が倍になる問題を修正**
+  - `_transparent_fill_view_material()` で非推奨の `show_transparent_back = False` のみ
+    設定し、Blender 5.x の後継プロパティ `use_transparency_overlap = False` を設定して
+    いなかった。EEVEE が前面・背面の両方を透明描画し、不透明度が二重適用されていた。
+
+### 修正ファイル
+
+- `__init__.py` / `blender_manifest.toml` — バージョン 0.6.366
+- `utils/paper_guide_object.py` — `use_transparency_overlap = False` を追加
+
+---
+
 ## 2026-06-23 — v0.6.365 コマプレビュー下絵の3件修正
 
 ### 修正

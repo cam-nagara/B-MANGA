@@ -511,6 +511,10 @@ def _transparent_fill_view_material(
         mat.surface_render_method = "BLENDED"
     except (AttributeError, TypeError):
         pass
+    try:
+        mat.use_transparency_overlap = False
+    except (AttributeError, TypeError):
+        pass
     nt = mat.node_tree
     if nt is not None:
         for node in list(nt.nodes):
