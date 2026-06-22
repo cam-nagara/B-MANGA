@@ -204,6 +204,12 @@ def hide_page_previews(scene=None) -> None:
         obj.hide_render = True
 
 
+def show_page_previews() -> None:
+    """全プレビューオブジェクトをビューポートに表示する."""
+    for obj in _iter_preview_objects():
+        obj.hide_viewport = False
+
+
 def remove_page_previews() -> int:
     removed = 0
     for obj in list(_iter_preview_objects()):
@@ -836,6 +842,8 @@ def _preview_page_indices(scene, work) -> set[int]:
     if not pages:
         return set()
     role, current_page_id = _preview_scene_role(scene)
+    if role == "coma":
+        return set(range(len(pages)))
     if preview_range_mode(scene) == PREVIEW_RANGE_ALL:
         return set(range(len(pages)))
     if role != "coma":
@@ -872,7 +880,7 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
 
 def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False, coma_origin_mm=None) -> None:
     role, _current_page_id = _preview_scene_role(scene)
-    follow_camera = role == "coma"
+    is_coma = role == "coma"
     page_id = str(getattr(page, "id", "") or "")
     path = ensure_preview_png(work, page, page_index, current=current, scene=scene, force=force)
     image = _load_image(path, _image_size(work, scene, page)) if path is not None else None
@@ -888,20 +896,19 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
         obj = bpy.data.objects.new(f"{PREVIEW_OBJECT_PREFIX}{page_id}", mesh)
     elif obj.data is not mesh:
         obj.data = mesh
-    _clear_preview_camera_follow(obj, clear_anchor=not follow_camera)
-    delta_x, delta_y, delta_z = _preview_camera_delta(obj, scene) if follow_camera else (0.0, 0.0, 0.0)
+    _clear_preview_camera_follow(obj, clear_anchor=True)
     center_x_mm = (x0 + x1) * 0.5
     center_y_mm = (y0 + y1) * 0.5
-    if follow_camera and coma_origin_mm is not None:
+    if is_coma and coma_origin_mm is not None:
         origin_x, origin_y = coma_origin_mm
-        obj.location.x = mm_to_m(center_x_mm - origin_x) + delta_x
-        obj.location.z = mm_to_m(center_y_mm - origin_y) + delta_z
-        obj.location.y = PREVIEW_Z_M + delta_y
+        obj.location.x = mm_to_m(center_x_mm - origin_x)
+        obj.location.z = mm_to_m(center_y_mm - origin_y)
+        obj.location.y = PREVIEW_Z_M
         obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
     else:
-        obj.location.x = mm_to_m(center_x_mm) + delta_x
-        obj.location.y = mm_to_m(center_y_mm) + delta_y
-        obj.location.z = PREVIEW_Z_M + delta_z
+        obj.location.x = mm_to_m(center_x_mm)
+        obj.location.y = mm_to_m(center_y_mm)
+        obj.location.z = PREVIEW_Z_M
         obj.rotation_euler = (0.0, 0.0, 0.0)
     obj.scale.x = _preview_scale_factor(scene)
     obj.scale.y = _preview_scale_factor(scene)
@@ -928,8 +935,6 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
             users_coll.objects.unlink(obj)
         except Exception:  # noqa: BLE001
             pass
-    if follow_camera:
-        _apply_preview_camera_follow(obj, scene)
 
 
 def _preview_png_fresh_for_page(work, page, path: Path) -> bool:

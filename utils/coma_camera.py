@@ -127,6 +127,12 @@ def ensure_coma_camera_scene(
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
     _ensure_coma_overlay_objects(scene, work)
+    try:
+        from . import page_preview_object
+        page_preview_object.schedule_sync_page_previews(force=True)
+    except Exception:  # noqa: BLE001
+        pass
+    start_coma_page_overview_poll()
 
 
 def _restore_scene_camera(scene, camera) -> None:
@@ -1167,3 +1173,153 @@ def _ensure_coma_overlay_objects(scene, work) -> None:
     except Exception:  # noqa: BLE001
         pass
     scene[_COMA_OVERLAY_GENERATED_KEY] = True
+
+
+# ── コマファイル ページ概要表示（カメラ下絵方式） ─────────────────
+_COMA_PAGE_OVERVIEW_KEY = "_bmanga_coma_page_overview_active"
+_PAGE_OVERVIEW_BG_PROP = "_bmanga_page_overview_bg"
+_OVERVIEW_POLL_REGISTERED = False
+
+
+def _add_page_overview_backgrounds(scene, work) -> None:
+    """ページプレビュー画像を個別カメラ下絵として追加する.
+
+    各ページ画像を scale=1.0 で追加し、出力解像度にピッタリ合わせる。
+    offset でグリッド位置に配置する。カメラの設定は一切変更しない。
+    """
+    cam = getattr(scene, "camera", None)
+    if cam is None:
+        return
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return
+    _remove_page_overview_backgrounds(scene)
+    from . import page_preview_object
+
+    rects = page_preview_object.preview_rects_mm(scene, work)
+    if not rects:
+        return
+    _role, current_page_id = page_preview_object._preview_scene_role(scene)
+    current_rect = rects.get(current_page_id)
+    if current_rect is None:
+        return
+    _ci, cx0, cy0, cx1, cy1 = current_rect
+    current_cx = (cx0 + cx1) * 0.5
+    current_cy = (cy0 + cy1) * 0.5
+    paper = getattr(work, "paper", None)
+    canvas_w_mm = max(1.0, float(getattr(paper, "canvas_width_mm", 182) or 182)) if paper else 182.0
+    canvas_h_mm = max(1.0, float(getattr(paper, "canvas_height_mm", 257) or 257)) if paper else 257.0
+
+    settings = getattr(scene, "bmanga_coma_camera_settings", None)
+    alpha = percentage.percent_to_factor(
+        getattr(settings, "name_bg_images_opacity", 50.0), 50.0,
+    ) if settings else 0.5
+
+    for page_id, (idx, x0, y0, x1, y1) in rects.items():
+        png_path = page_preview_object._preview_png_path(work, page_id)
+        if png_path is None or not png_path.is_file():
+            continue
+        try:
+            img = bpy.data.images.load(str(png_path.resolve()), check_existing=True)
+            img.reload()
+        except Exception:  # noqa: BLE001
+            continue
+        try:
+            img[_PAGE_OVERVIEW_BG_PROP] = True
+        except Exception:  # noqa: BLE001
+            pass
+        page_cx = (x0 + x1) * 0.5
+        page_cy = (y0 + y1) * 0.5
+        page_w_mm = max(1.0, x1 - x0)
+        page_scale = page_w_mm / canvas_w_mm
+        offset_x = (page_cx - current_cx) / canvas_w_mm
+        offset_y = -(page_cy - current_cy) / canvas_h_mm
+        bg = cam_data.background_images.new()
+        bg.image = img
+        _set_bg_attr(bg, "alpha", float(alpha))
+        _set_bg_attr(bg, "scale", float(page_scale))
+        _set_bg_attr(bg, "rotation", 0.0)
+        _set_bg_attr(bg, "offset", (offset_x, offset_y))
+        _set_bg_attr(bg, "display_depth", "BACK")
+        _set_bg_attr(bg, "frame_method", "FIT")
+        _set_bg_attr(bg, "show_background_image", True)
+    if hasattr(cam_data, "show_background_images"):
+        cam_data.show_background_images = True
+
+
+def _remove_page_overview_backgrounds(scene) -> None:
+    """ページ概要の下絵を除去する."""
+    cam = getattr(scene, "camera", None)
+    if cam is None:
+        return
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return
+    for bg in reversed(tuple(getattr(cam_data, "background_images", []))):
+        img = getattr(bg, "image", None)
+        if img is not None:
+            try:
+                is_overview = bool(img.get(_PAGE_OVERVIEW_BG_PROP, False))
+            except Exception:  # noqa: BLE001
+                is_overview = False
+            if is_overview:
+                try:
+                    cam_data.background_images.remove(bg)
+                except Exception:  # noqa: BLE001
+                    pass
+
+
+def _any_view3d_in_camera_view(context) -> bool:
+    for space in _iter_view3d_spaces(context):
+        rv3d = getattr(space, "region_3d", None)
+        if rv3d is not None and getattr(rv3d, "view_perspective", "") == "CAMERA":
+            return True
+    return False
+
+
+def _enter_coma_page_overview(scene, work) -> None:
+    """カメラビューに入った: ページプレビューを下絵として表示する."""
+    scene[_COMA_PAGE_OVERVIEW_KEY] = True
+    _add_page_overview_backgrounds(scene, work)
+
+
+def _leave_coma_page_overview(scene) -> None:
+    """カメラビューから離れた: ページ概要の下絵を除去する."""
+    scene[_COMA_PAGE_OVERVIEW_KEY] = False
+    _remove_page_overview_backgrounds(scene)
+
+
+def _poll_coma_page_overview() -> float | None:
+    """カメラビューの状態を監視してページ概要の表示を切り替える."""
+    global _OVERVIEW_POLL_REGISTERED  # noqa: PLW0603
+    try:
+        context = bpy.context
+        scene = getattr(context, "scene", None)
+        if scene is None or get_mode(context) != MODE_COMA:
+            _OVERVIEW_POLL_REGISTERED = False
+            return None
+        in_camera = _any_view3d_in_camera_view(context)
+        was_showing = bool(scene.get(_COMA_PAGE_OVERVIEW_KEY, False))
+        if in_camera and not was_showing:
+            work = get_work(context)
+            _enter_coma_page_overview(scene, work)
+        elif not in_camera and was_showing:
+            _leave_coma_page_overview(scene)
+        return 0.2
+    except Exception:  # noqa: BLE001
+        return 0.5
+
+
+def start_coma_page_overview_poll() -> None:
+    """ページ概要の表示切替ポーリングを開始する."""
+    global _OVERVIEW_POLL_REGISTERED  # noqa: PLW0603
+    if _OVERVIEW_POLL_REGISTERED:
+        return
+    try:
+        if bpy.app.timers.is_registered(_poll_coma_page_overview):
+            _OVERVIEW_POLL_REGISTERED = True
+            return
+        bpy.app.timers.register(_poll_coma_page_overview, first_interval=0.3)
+        _OVERVIEW_POLL_REGISTERED = True
+    except Exception:  # noqa: BLE001
+        pass
