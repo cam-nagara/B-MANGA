@@ -11,6 +11,8 @@
   "color": [0.0, 0.0, 0.0, 1.0],
   "font_bold": false,
   "font_italic": false,
+  "ruby_align": "center",
+  "ruby_small_kana": "keep",
   "stroke_enabled": false,
   "speaker_type": "narration"
 }

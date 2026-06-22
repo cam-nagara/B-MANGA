@@ -36,6 +36,8 @@ _TEXT_KEYS = (
     "ruby_letter_spacing",
     "ruby_size_percent",
     "ruby_font",
+    "ruby_align",
+    "ruby_small_kana",
     "stroke_enabled",
     "stroke_width_mm",
     "stroke_color",

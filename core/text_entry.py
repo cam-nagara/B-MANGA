@@ -38,6 +38,16 @@ _SPEAKER_TYPE_ITEMS = (
     ("custom", "カスタム", ""),
 )
 
+_RUBY_ALIGN_ITEMS = (
+    ("center", "中付き", "ルビと親文字の中心を揃える（JIS標準）"),
+    ("start", "肩付き", "ルビと親文字の先頭を揃える"),
+)
+
+_RUBY_SMALL_KANA_ITEMS = (
+    ("keep", "小書きのまま", "ゃゅょっ等をそのまま表示"),
+    ("fullsize", "直音に変換", "ゃ→や、ゅ→ゆ 等に変換して表示"),
+)
+
 _FONT_SIZE_UNIT_ITEMS = (
     ("q", "Q", "Q 数"),
     ("pt", "pt", "ポイント"),
@@ -267,11 +277,13 @@ class BMangaTextEntry(bpy.types.PropertyGroup):
     writing_mode: EnumProperty(items=_WRITING_MODE_ITEMS, default="vertical", update=_on_text_entry_changed)  # type: ignore[valid-type]
     line_height: FloatProperty(name="行間", default=1.4, min=0.5, soft_max=3.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
     letter_spacing: FloatProperty(name="字間", default=0.0, soft_min=-1.0, soft_max=1.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_line_height: FloatProperty(name="ルビ行間", default=1.8, min=0.5, soft_max=4.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_gap_mm: FloatProperty(name="ルビとの隙間", default=0.3, min=0.0, soft_max=10.0, unit="LENGTH", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_letter_spacing: FloatProperty(name="ルビ字間", default=0.0, soft_min=-0.9, soft_max=3.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_size_percent: FloatProperty(name="ルビサイズ", default=50.0, min=5.0, soft_max=200.0, subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
-    ruby_font: StringProperty(name="ルビフォント", default="", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_line_height: FloatProperty(name="ルビ行の行間", default=1.8, min=0.5, soft_max=4.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_gap_mm: FloatProperty(name="親文字との間隔", default=0.0, min=0.0, soft_max=5.0, unit="LENGTH", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_letter_spacing: FloatProperty(name="ルビの字間", default=0.0, soft_min=-0.9, soft_max=3.0, update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_size_percent: FloatProperty(name="サイズ（親文字比%）", default=50.0, min=5.0, soft_max=200.0, subtype="PERCENTAGE", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_font: StringProperty(name="ルビ用フォント", default="", subtype="FILE_PATH", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_align: EnumProperty(name="配置方法", items=_RUBY_ALIGN_ITEMS, default="center", update=_on_text_entry_changed)  # type: ignore[valid-type]
+    ruby_small_kana: EnumProperty(name="小書き仮名", items=_RUBY_SMALL_KANA_ITEMS, default="keep", update=_on_text_entry_changed)  # type: ignore[valid-type]
 
     # 白フチ (計画書 3.1.4.4)
     stroke_enabled: BoolProperty(name="白フチ", default=False, update=_on_text_entry_changed)  # type: ignore[valid-type]
