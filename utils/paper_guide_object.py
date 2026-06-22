@@ -504,6 +504,7 @@ def _transparent_fill_view_material(
         mat.use_nodes = True
         mat.blend_method = "BLEND"
         mat.show_transparent_back = False
+        mat.use_backface_culling = True
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -1108,7 +1109,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
     safe_color = _safe_fill_view_color(work)
     bleed_outer_color = _bleed_outer_fill_view_color(work)
     return repr((
-        "paper_guide_spread_fill_v4",
+        "paper_guide_spread_fill_v5",
         int(page_index),
         str(getattr(page, "id", "") or ""),
         bool(getattr(page, "spread", False)),
