@@ -1196,6 +1196,9 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
 def regenerate_all_paper_guides(scene, work) -> int:
     if scene is None or work is None or not getattr(work, "loaded", False):
         return 0
+    from ..core.mode import MODE_COMA, get_mode
+    if get_mode() == MODE_COMA:
+        return 0
     valid_ids: set[str] = set()
     count = 0
     for i, page in enumerate(getattr(work, "pages", []) or []):

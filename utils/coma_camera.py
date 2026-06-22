@@ -126,12 +126,6 @@ def ensure_coma_camera_scene(
     resync_coma_camera_output_layout(context)
     view_camera_in_viewports(context)
     schedule_coma_view_camera()
-    _ensure_coma_overlay_objects(scene, work)
-    try:
-        from . import page_preview_object
-        page_preview_object.schedule_sync_page_previews(force=True)
-    except Exception:  # noqa: BLE001
-        pass
     start_coma_page_overview_poll()
 
 

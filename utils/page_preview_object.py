@@ -971,7 +971,10 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     if work is None:
         work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
-    if role not in {"page", "work", "coma"} or not preview_enabled(scene):
+    if role == "coma":
+        hide_page_previews(scene)
+        return 0
+    if role not in {"page", "work"} or not preview_enabled(scene):
         hide_page_previews(scene)
         return 0
     if work is None or not getattr(work, "loaded", False):

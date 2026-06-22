@@ -282,6 +282,9 @@ def regenerate_all_work_info_texts(scene, work) -> int:
     """作品情報・ページ番号の実体テキストを再生成する."""
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
         return 0
+    from ..core.mode import MODE_COMA, get_mode
+    if get_mode() == MODE_COMA:
+        return 0
     info = getattr(work, "work_info", None)
     if info is None:
         return 0
