@@ -110,7 +110,7 @@ def _kind_icon(kind: str) -> str:
 
 
 def _show_stack_item_in_layer_list(item) -> bool:
-    return getattr(item, "kind", "") != layer_stack_utils.COMA_PREVIEW_KIND
+    return True
 
 
 def _layer_stack_template_rows(visible_rows: int) -> int:

@@ -122,7 +122,7 @@ def visible_layer_stack_entries(context, stack=None) -> list[tuple[int, object]]
     collapsed_groups = collapsed_balloon_group_keys(context)
     for index, item in enumerate(stack):
         kind = str(getattr(item, "kind", "") or "")
-        if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_PREVIEW_KIND}:
+        if kind in {OUTSIDE_KIND, PAGE_KIND}:
             continue
         if kind == "balloon" and str(getattr(item, "parent_key", "") or "") in collapsed_groups:
             continue

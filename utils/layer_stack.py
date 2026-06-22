@@ -96,8 +96,6 @@ def _target_has_stack_row(target: LayerTarget) -> bool:
     kind = str(target.kind or "").strip()
     if not kind:
         return False
-    if kind == COMA_PREVIEW_KIND:
-        return False
     if kind in {OUTSIDE_KIND, PAGE_KIND, COMA_KIND}:
         return True
     return bool(str(target.label or "").strip())
@@ -1344,8 +1342,6 @@ def _parent_key_exists_for_child(context, child_kind: str, parent_key: str) -> b
         return True
     if parent_key == OUTSIDE_STACK_KEY:
         return child_kind in PAGE_COMA_CHILD_KINDS or child_kind in {COMA_KIND, "gp_folder", LAYER_FOLDER_KIND}
-    if child_kind == COMA_PREVIEW_KIND:
-        return False
     if layer_folder_utils.is_folder_key(context, parent_key):
         return child_kind in layer_folder_utils.FOLDER_CONTAINER_CHILD_KINDS
     if child_kind == COMA_KIND:

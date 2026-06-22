@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-23 — v0.6.364 コマプレビューのレイヤーリスト表示復活
+
+### 修正
+
+- **コマプレビューがレイヤーリストに表示されるよう復活**
+  - `_target_has_stack_row`, `visible_layer_stack_entries`,
+    `_show_stack_item_in_layer_list`, `_parent_key_exists_for_child` の
+    4箇所で `coma_preview` kind が除外されていたフィルタを解除。
+  - コマプレビュー行はコマ内の最背面（子の末尾）に挿入される。
+- **コマプレビューの重ね順の初期値を BACK（最背面）に変更**
+  - `_load_overview_bg` に `depth` パラメータを追加。
+  - own_page / koma 下絵を `depth="BACK"` で追加するよう変更。
+  - `configure_camera_backgrounds` でも own_page を常に BACK に設定。
+
+### 修正ファイル
+
+- `__init__.py` — バージョン 0.6.364
+- `utils/layer_stack.py` — 3箇所の coma_preview フィルタ解除
+- `utils/layer_stack_visible.py` — coma_preview のスキップ除外を削除
+- `panels/gpencil_panel.py` — UIフィルタ関数の coma_preview 除外を削除
+- `utils/coma_camera.py` — `_load_overview_bg` に depth パラメータ追加、own_page/koma を BACK に
+
+---
+
 ## 2026-06-23 — v0.6.363 コマ編集: ページ画像のコマ領域透明化とコマ内レイヤー分離
 
 ### 新機能

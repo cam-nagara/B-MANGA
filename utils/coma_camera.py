@@ -322,7 +322,12 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
         else:
             alpha = name_alpha
             visible = name_visible and (ref.visible or name_show_all_pages)
-        depth = "BACK" if ref.kind == "koma" and not is_page_image and koma_depth_back else "FRONT"
+        if ref.kind == "own_page":
+            depth = "BACK"
+        elif ref.kind == "koma" and not is_page_image and koma_depth_back:
+            depth = "BACK"
+        else:
+            depth = "FRONT"
         bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale if is_page_image or ref.kind == "own_page" else 1.0)
         _set_bg_attr(bg, "alpha", alpha)
         _set_bg_attr(bg, "scale", bg_scale)
@@ -1419,22 +1424,22 @@ def _add_own_page_backgrounds(
         alpha_ch.paste(0, mask=mask)
         masked.putalpha(alpha_ch)
         masked.save(str(masked_path))
-        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible)
+        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible, depth="BACK")
         content_path = cache_dir / f"koma_content_{page_id}_{coma_id}.png"
         content = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         content.paste(src, mask=mask)
         content.save(str(content_path))
-        _load_overview_bg(cam_data, content_path, page_id, "koma", user_scale, koma_alpha, koma_visible)
+        _load_overview_bg(cam_data, content_path, page_id, "koma", user_scale, koma_alpha, koma_visible, depth="BACK")
     else:
         _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
 
 
 def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible) -> None:
     """コマ座標が取得できない時はフル画像をそのまま追加."""
-    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible)
+    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible, depth="BACK")
 
 
-def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible) -> None:
+def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible, *, depth="FRONT") -> None:
     """カメラ下絵として画像を追加するユーティリティ."""
     try:
         img = bpy.data.images.load(str(Path(png_path).resolve()), check_existing=True)
@@ -1453,7 +1458,7 @@ def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible) 
     _set_bg_attr(bg, "scale", float(scale))
     _set_bg_attr(bg, "rotation", 0.0)
     _set_bg_attr(bg, "offset", (0.0, 0.0))
-    _set_bg_attr(bg, "display_depth", "FRONT")
+    _set_bg_attr(bg, "display_depth", depth)
     _set_bg_attr(bg, "frame_method", "FIT")
     _set_bg_attr(bg, "show_background_image", bool(visible))
 
