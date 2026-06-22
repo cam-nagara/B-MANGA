@@ -133,6 +133,9 @@ class BMANGA_PT_coma_return(Panel):
                 icon="BACK",
             )
             row.operator("bmanga.work_save", text="", icon="FILE_TICK")
+            nav = layout.row(align=True)
+            nav.operator("bmanga.page_file_prev", text="前のページへ", icon="TRIA_LEFT")
+            nav.operator("bmanga.page_file_next", text="次のページへ", icon="TRIA_RIGHT")
             op = layout.operator("bmanga.open_current_folder", text="保存フォルダを開く", icon="FILEBROWSER")
             op.target = "WORK"
             return

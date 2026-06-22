@@ -227,9 +227,14 @@ def update_drag(context, event, operator) -> bool:
         for snap in session.snapshots:
             kind = snap.get("kind", "")
             x, y, w, h = snap["x"], snap["y"], snap["w"], snap["h"]
-            nx, ny, nw, nh = object_tool_op._uniform_scale_result(
-                session.action, x, y, w, h, dx, dy, 2.0,
-            )
+            if kind == "balloon":
+                nx, ny, nw, nh = object_tool_op._rect_resize_result(
+                    session.action, x, y, w, h, dx, dy, 2.0,
+                )
+            else:
+                nx, ny, nw, nh = object_tool_op._uniform_scale_result(
+                    session.action, x, y, w, h, dx, dy, 2.0,
+                )
             if kind == "balloon":
                 entry = snap.get("entry")
                 page = snap.get("page")

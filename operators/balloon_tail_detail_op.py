@@ -114,23 +114,24 @@ class BMANGA_OT_balloon_tail_preset_apply(Operator):
     bl_label = "しっぽプリセットを適用"
     bl_description = "選んだプリセットの設定をこのしっぽへ適用します (位置とポイントは保持)"
     bl_options = {"REGISTER", "UNDO"}
-    bl_property = "preset_name"
 
     page_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     balloon_id: StringProperty(default="", options={"HIDDEN"})  # type: ignore[valid-type]
     tail_index: IntProperty(default=-1, options={"HIDDEN"})  # type: ignore[valid-type]
-    preset_name: bpy.props.EnumProperty(name="プリセット", items=_tail_preset_enum_items)  # type: ignore[valid-type]
 
     def execute(self, context):
         page, entry = _find_balloon(context, self.page_id, self.balloon_id)
         if entry is None or not (0 <= self.tail_index < len(entry.tails)):
             self.report({"WARNING"}, "しっぽが見つかりません")
             return {"CANCELLED"}
-        if str(self.preset_name or "NONE") == "NONE":
+        wm = getattr(context, "window_manager", None)
+        preset_name = str(getattr(wm, "bmanga_tail_preset_selector", "") or "") if wm else ""
+        if not preset_name or preset_name == "NONE":
+            self.report({"WARNING"}, "プリセットを選んでください")
             return {"CANCELLED"}
-        preset = tail_presets.load_preset_by_name(str(self.preset_name), _work_dir(context))
+        preset = tail_presets.load_preset_by_name(preset_name, _work_dir(context))
         if preset is None:
-            self.report({"WARNING"}, f"プリセットが見つかりません: {self.preset_name}")
+            self.report({"WARNING"}, f"プリセットが見つかりません: {preset_name}")
             return {"CANCELLED"}
         tail_presets.apply_preset_to_tail(preset, entry.tails[self.tail_index])
         _sync_after_tail_change(context, page, entry)
@@ -238,10 +239,10 @@ def _draw_tail_box(layout, context, page, entry, tail, tail_index: int) -> None:
     row.prop(tail, "tip_width_mm")
 
     preset_row = box.row(align=True)
-    apply_op = preset_row.operator_menu_enum(
+    preset_row.prop(context.window_manager, "bmanga_tail_preset_selector", text="")
+    apply_op = preset_row.operator(
         BMANGA_OT_balloon_tail_preset_apply.bl_idname,
-        "preset_name",
-        text="プリセットを適用",
+        text="適用",
         icon="PRESET",
     )
     apply_op.page_id = page_id

@@ -556,7 +556,7 @@ class BMangaBalloonTail(bpy.types.PropertyGroup):
     sharp_corners: BoolProperty(  # type: ignore[valid-type]
         name="角を尖らせる",
         description="しっぽの角 (先端や折れ角) を鋭く尖らせる (OFF: 線幅分だけ丸まる)",
-        default=False,
+        default=True,
         update=_on_balloon_tail_changed,
     )
     taper_in_percent: FloatProperty(  # type: ignore[valid-type]

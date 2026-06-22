@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
   "presetType": "balloon_tail",
-  "presetName": "なめらか曲線",
+  "presetName": "曲線",
   "description": "ポイントをなめらかな曲線でつなぐ三角のしっぽ",
+  "sortOrder": 1,
   "tail": {
     "type": "straight",
     "curveMode": "curve",
@@ -10,7 +11,7 @@
     "ellipseGapMm": 1.5,
     "ellipseAngleDeg": 0.0,
     "ellipseOrient": "start_end",
-    "sharpCorners": false,
+    "sharpCorners": true,
     "taperInPercent": 0.0,
     "taperOutPercent": 0.0,
     "directionDeg": 270.0,

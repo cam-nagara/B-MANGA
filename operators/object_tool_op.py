@@ -1792,10 +1792,7 @@ class BMANGA_OT_object_tool(Operator):
                     except Exception:  # noqa: BLE001
                         pass
                     continue
-                if self._drag_action in _CORNER_PARTS:
-                    nx, ny, nw, nh = _uniform_scale_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
-                else:
-                    nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
+                nx, ny, nw, nh = _rect_resize_result(self._drag_action, x, y, w, h, dx, dy, 2.0)
                 balloon_op._set_balloon_rect(page, entry, nx, ny, nw, nh)
             elif kind == "text":
                 _page_index, _page, _idx, entry = _find_text_by_key(

@@ -1,8 +1,9 @@
-"""しっぽツール: クリックでポイントを追加し、ダブルクリックで確定する常駐ツール.
+"""しっぽツール: クリックでポイントを追加、ダブルクリックで確定する常駐ツール.
 
 - 1 クリック目: フキダシの上でクリックして起点を決める
 - 2 クリック目以降: ポイントを追加 (折れ線のように伸ばす)
 - ダブルクリック: しっぽを確定
+- ドラッグ: フキダシ上 → 始点+終点で 2 点しっぽ作成 / ポイント上 → ポイント移動
 - ESC: 作成中のしっぽを取り消し / 何もなければツール終了
 - 右クリック: 作成中なら確定。しっぽポイント上ならメニュー、それ以外はツール終了
 """
@@ -73,18 +74,23 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         self._externally_finished = False
         self._last_press_time = 0.0
         self._last_press_xy = (-1.0e9, -1.0e9)
+        self._dragging = False
+        self._drag_action = ""
         object_tool_balloon_tail.clear_pending(self)
         self._cursor_modal_set = coma_modal_state.set_modal_cursor(context, "CROSSHAIR")
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active(TOOL_NAME, self, context)
-        self.report({"INFO"}, "しっぽツール: フキダシをクリックして開始、クリックでポイント追加、ダブルクリックで決定")
+        self.report({"INFO"}, "しっぽツール: フキダシをクリックして開始、ドラッグで作成、ダブルクリックで確定")
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
         if getattr(self, "_externally_finished", False):
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED", "PASS_THROUGH"}
+
         from . import handle_intercept
+
+        # handle_intercept ドラッグ中 (コマ枠線・自由変形など)
         if handle_intercept.is_dragging(self):
             if event.type == "MOUSEMOVE":
                 handle_intercept.update_drag(context, event, self)
@@ -96,6 +102,24 @@ class BMANGA_OT_balloon_tail_tool(Operator):
                 handle_intercept.cancel_drag(context, self)
                 return {"RUNNING_MODAL"}
             return {"RUNNING_MODAL"}
+
+        # しっぽツール自前のドラッグ中 (ポイント移動・ドラッグ作成)
+        if getattr(self, "_dragging", False):
+            if event.type == "MOUSEMOVE":
+                object_tool_balloon_tail.update_drag(self, context, event)
+                return {"RUNNING_MODAL"}
+            if event.type == "LEFTMOUSE" and event.value == "RELEASE":
+                return self._finish_own_drag(context)
+            if event.type == "ESC" and event.value == "PRESS":
+                action = str(getattr(self, "_drag_action", "") or "")
+                if action == "balloon_tail_point":
+                    object_tool_balloon_tail.cancel_point_drag(self, context)
+                self._dragging = False
+                self._drag_action = ""
+                layer_stack_utils.tag_view3d_redraw(context)
+                return {"RUNNING_MODAL"}
+            return {"RUNNING_MODAL"}
+
         if view_event_region.toggle_modal_sidebar_if_requested(context, event):
             return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
@@ -117,17 +141,118 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         if event.value == "PRESS" and event.type in {"RET", "NUMPAD_ENTER"}:
             self._finalize_pending(context)
             return {"RUNNING_MODAL"}
-        if (
-            event.type == "LEFTMOUSE"
-            and event.value == "PRESS"
-            and handle_intercept.try_intercept_press(context, event, self)
-        ):
-            return {"RUNNING_MODAL"}
+
+        # LEFTMOUSE
         if event.type == "LEFTMOUSE" and event.value in {"PRESS", "DOUBLE_CLICK"}:
-            return self._handle_press(context, event)
+            if self._has_pending():
+                return self._handle_press(context, event)
+            return self._handle_non_pending_press(context, event)
+
         return {"PASS_THROUGH"}
 
-    # ---------- クリック処理 ----------
+    # ---------- ドラッグ完了 ----------
+
+    def _finish_own_drag(self, context):
+        action = str(getattr(self, "_drag_action", "") or "")
+        if action == "balloon_tail_create":
+            # 1mm 未満のドラッグはクリック (pending 開始) として扱う
+            if bool(getattr(self, "_drag_moved", False)):
+                last = getattr(self, "_last_tail_xy", None)
+                if last is not None:
+                    dx = float(last[0]) - float(getattr(self, "_drag_start_x", 0.0))
+                    dy = float(last[1]) - float(getattr(self, "_drag_start_y", 0.0))
+                    if (dx * dx + dy * dy) ** 0.5 < 1.0:
+                        self._drag_moved = False
+            object_tool_balloon_tail.finish_create_drag(self, context)
+            if bool(getattr(self, "_drag_moved", False)):
+                self._apply_preset_to_last_created_tail(context)
+        elif action == "balloon_tail_point":
+            if bool(getattr(self, "_drag_moved", False)):
+                try:
+                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽポイント移動")
+                except Exception:  # noqa: BLE001
+                    pass
+            layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+        self._dragging = False
+        self._drag_action = ""
+        return {"RUNNING_MODAL"}
+
+    def _apply_preset_to_last_created_tail(self, context) -> None:
+        """ドラッグ作成直後のしっぽにプリセットを適用する."""
+        work = get_work(context)
+        if work is None:
+            return
+        page_id = str(getattr(self, "_drag_page_id", "") or "")
+        balloon_id = str(getattr(self, "_drag_balloon_id", "") or "")
+        for page in getattr(work, "pages", []) or []:
+            if str(getattr(page, "id", "") or "") != page_id:
+                continue
+            idx = balloon_op._find_balloon_index(page, balloon_id)
+            if idx < 0:
+                return
+            entry = page.balloons[idx]
+            if len(entry.tails) > 0:
+                tail = entry.tails[len(entry.tails) - 1]
+                _apply_selected_preset(context, tail)
+                try:
+                    from ..utils import balloon_curve_object
+
+                    balloon_curve_object.ensure_balloon_curve_object(
+                        scene=context.scene, entry=entry, page=page,
+                    )
+                except Exception:  # noqa: BLE001
+                    _logger.exception("tail tool: curve sync after drag preset failed")
+            return
+
+    # ---------- pending なしのクリック ----------
+
+    def _handle_non_pending_press(self, context, event):
+        """pending なしのクリック: ポイントドラッグ / ドラッグ作成 / 他ハンドル."""
+        work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
+        if work is None or page is None or lx is None or ly is None:
+            from . import handle_intercept
+
+            if handle_intercept.try_intercept_press(context, event, self):
+                return {"RUNNING_MODAL"}
+            return {"PASS_THROUGH"}
+
+        hit_index, entry, part = balloon_op._hit_balloon_entry(page, lx, ly)
+        if entry is None or hit_index < 0:
+            from . import handle_intercept
+
+            if handle_intercept.try_intercept_press(context, event, self):
+                return {"RUNNING_MODAL"}
+            self.report({"INFO"}, "フキダシの上をクリックして、しっぽの起点を決めてください")
+            return {"RUNNING_MODAL"}
+
+        part_str = str(part or "")
+
+        # 既存しっぽポイント → ポイントドラッグ開始
+        if part_str.startswith("tail_point:"):
+            _prefix, tail_idx_s, pt_idx_s = part_str.split(":")
+            object_tool_balloon_tail.start_point_drag(
+                self, page, entry,
+                int(tail_idx_s), int(pt_idx_s),
+                float(lx), float(ly),
+            )
+            return {"RUNNING_MODAL"}
+
+        # Ctrl+しっぽ線分 → 制御点挿入
+        if part_str.startswith("tail_segment:") and bool(getattr(event, "ctrl", False)):
+            _prefix, tail_idx_s, ins_idx_s = part_str.split(":")
+            if balloon_op._insert_tail_point_page(entry, int(tail_idx_s), int(ins_idx_s), lx, ly) >= 0:
+                try:
+                    bpy.ops.ed.undo_push(message="B-MANGA: しっぽ制御点追加")
+                except Exception:  # noqa: BLE001
+                    pass
+                layer_stack_utils.sync_layer_stack_after_data_change(context, align_coma_order=True)
+            return {"RUNNING_MODAL"}
+
+        # フキダシ本体 → ドラッグで 2 点しっぽ作成 / クリックで pending 開始
+        object_tool_balloon_tail.start_create_drag(self, page, entry, float(lx), float(ly))
+        return {"RUNNING_MODAL"}
+
+    # ---------- pending 中のクリック ----------
 
     def _handle_press(self, context, event):
         now = time.monotonic()
@@ -145,36 +270,17 @@ class BMANGA_OT_balloon_tail_tool(Operator):
         self._last_press_time = now
         self._last_press_xy = (mx, my)
         if is_double:
-            # ダブルクリック: 直前のクリックで追加済みのポイントを終点として確定
             self._finalize_pending(context)
-            # 確定直後の素早い次クリックを誤ってダブルクリック扱いしない
             self._last_press_time = 0.0
             return {"RUNNING_MODAL"}
-        if not self._has_pending():
-            return self._start_pending(context, event)
         work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
         del work
         if page is None or lx is None or ly is None:
-            # ページの外をクリックしてもポイントは追加しない
             return {"RUNNING_MODAL"}
         had_tail = int(getattr(self, "_pending_tail_index", -1)) >= 0
         if object_tool_balloon_tail.append_pending_click(self, context, page, float(lx), float(ly)):
             if not had_tail and int(getattr(self, "_pending_tail_index", -1)) >= 0:
                 self._apply_preset_to_pending(context)
-        return {"RUNNING_MODAL"}
-
-    def _start_pending(self, context, event):
-        work, page, lx, ly = balloon_op._resolve_page_from_event(context, event)
-        if work is None or page is None or lx is None or ly is None:
-            return {"RUNNING_MODAL"}
-        hit_index, entry, _part = balloon_op._hit_balloon_entry(page, lx, ly)
-        if entry is None or hit_index < 0:
-            self.report({"INFO"}, "フキダシの上をクリックして、しっぽの起点を決めてください")
-            return {"RUNNING_MODAL"}
-        self._pending_tail_page_id = str(getattr(page, "id", "") or "")
-        self._pending_tail_balloon_id = str(getattr(entry, "id", "") or "")
-        self._pending_tail_points = [(float(lx), float(ly))]
-        self._pending_tail_index = -1
         return {"RUNNING_MODAL"}
 
     def _has_pending(self) -> bool:
@@ -231,8 +337,6 @@ class BMANGA_OT_balloon_tail_tool(Operator):
                 pass
             layer_stack_utils.sync_layer_stack_after_data_change(context)
             try:
-                # クリックごとの undo 履歴の上に「取り消し後」を積み、Ctrl+Z で
-                # 作りかけが復活して見えないようにする
                 bpy.ops.ed.undo_push(message="B-MANGA: しっぽ作成を取り消し")
             except Exception:  # noqa: BLE001
                 pass

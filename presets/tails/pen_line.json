@@ -3,6 +3,7 @@
   "presetType": "balloon_tail",
   "presetName": "ペン線 (抜き)",
   "description": "先端へ抜く 1 本のペン線のしっぽ",
+  "sortOrder": 2,
   "tail": {
     "type": "straight",
     "curveMode": "polyline",
@@ -10,7 +11,7 @@
     "ellipseGapMm": 1.5,
     "ellipseAngleDeg": 0.0,
     "ellipseOrient": "start_end",
-    "sharpCorners": false,
+    "sharpCorners": true,
     "taperInPercent": 0.0,
     "taperOutPercent": 60.0,
     "directionDeg": 270.0,

@@ -3,6 +3,7 @@
   "presetType": "balloon_tail",
   "presetName": "標準 (三角)",
   "description": "根元から先端へ細くなる三角のしっぽ",
+  "sortOrder": 0,
   "tail": {
     "type": "straight",
     "curveMode": "polyline",
@@ -10,7 +11,7 @@
     "ellipseGapMm": 1.5,
     "ellipseAngleDeg": 0.0,
     "ellipseOrient": "start_end",
-    "sharpCorners": false,
+    "sharpCorners": true,
     "taperInPercent": 0.0,
     "taperOutPercent": 0.0,
     "directionDeg": 270.0,

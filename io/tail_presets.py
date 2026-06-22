@@ -53,6 +53,7 @@ class TailPreset:
     path: Path
     source: str  # "global" | "user"
     data: dict[str, Any]
+    sort_order: int = 999
 
 
 def _list_in_dir(base: Path, *, source: str) -> list[TailPreset]:
@@ -69,7 +70,8 @@ def _list_in_dir(base: Path, *, source: str) -> list[TailPreset]:
             continue
         name = str(data.get("presetName") or path.stem)
         description = str(data.get("description", "") or "")
-        out.append(TailPreset(name=name, description=description, path=path, source=source, data=data))
+        sort_order = int(data.get("sortOrder", 999))
+        out.append(TailPreset(name=name, description=description, path=path, source=source, data=data, sort_order=sort_order))
     return out
 
 
@@ -92,7 +94,7 @@ def list_all_presets(work_dir: Path | None) -> list[TailPreset]:
         _migrate_work_presets(work_dir)
     for p in list_user_presets():
         presets[p.name] = p
-    return sorted(presets.values(), key=lambda p: (0 if p.source == "global" else 1, p.name))
+    return sorted(presets.values(), key=lambda p: (0 if p.source == "global" else 1, p.sort_order, p.name))
 
 
 def load_preset_by_name(name: str, work_dir: Path | None) -> TailPreset | None:

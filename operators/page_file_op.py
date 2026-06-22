@@ -275,9 +275,144 @@ class BMANGA_OT_exit_page_file(Operator):
         return {"FINISHED"}
 
 
+def _current_page_index_in_work(work) -> int:
+    """現在開いているページファイルのインデックスを返す (-1 = 不明)."""
+    page_id = page_file_scene.current_page_id()
+    if not page_id:
+        return -1
+    for i, p in enumerate(getattr(work, "pages", []) or []):
+        if str(getattr(p, "id", "") or "") == page_id:
+            return i
+    return -1
+
+
+class BMANGA_OT_page_file_next(Operator):
+    """ページファイルから次のページへ移動する."""
+
+    bl_idname = "bmanga.page_file_next"
+    bl_label = "次のページへ"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        if not page_file_scene.is_page_edit_scene(getattr(context, "scene", None)):
+            return False
+        work = get_work(context)
+        if work is None or not work.loaded or not work.work_dir:
+            return False
+        idx = _current_page_index_in_work(work)
+        return 0 <= idx < len(work.pages) - 1
+
+    def execute(self, context):
+        coma_modal_state.finish_all(context)
+        work = get_work(context)
+        if work is None or not work.loaded or not work.work_dir:
+            return {"CANCELLED"}
+        idx = _current_page_index_in_work(work)
+        if idx < 0 or idx >= len(work.pages) - 1:
+            return {"CANCELLED"}
+        new_idx = idx + 1
+        next_page = work.pages[new_idx]
+        next_page_id = str(getattr(next_page, "id", "") or "")
+        if not paths.is_valid_page_id(next_page_id):
+            self.report({"WARNING"}, "次のページが見つかりません")
+            return {"CANCELLED"}
+        work_dir = Path(work.work_dir)
+        try:
+            cur_page_id = page_file_scene.current_page_id()
+            if cur_page_id:
+                blend_io.save_page_blend(work_dir, cur_page_id)
+            page_io.ensure_page_dir(work_dir, next_page_id)
+            work.active_page_index = new_idx
+            _save_metadata(context, reason="page_file_next")
+            if blend_io.page_blend_exists(work_dir, next_page_id):
+                blend_io.open_page_blend(work_dir, next_page_id)
+            else:
+                _create_page_blend(work_dir, next_page_id)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("page_file_next failed")
+            self.report({"ERROR"}, f"次のページを開けませんでした: {exc}")
+            return {"CANCELLED"}
+        try:
+            from ..ui import sidebar as _sidebar
+            _sidebar.schedule_open_bmanga_sidebar()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from . import view_op
+            view_op.schedule_fit_active_page()
+        except Exception:  # noqa: BLE001
+            pass
+        self.report({"INFO"}, "次のページを開きました")
+        return {"FINISHED"}
+
+
+class BMANGA_OT_page_file_prev(Operator):
+    """ページファイルから前のページへ移動する."""
+
+    bl_idname = "bmanga.page_file_prev"
+    bl_label = "前のページへ"
+    bl_options = {"REGISTER"}
+
+    @classmethod
+    def poll(cls, context):
+        if not page_file_scene.is_page_edit_scene(getattr(context, "scene", None)):
+            return False
+        work = get_work(context)
+        if work is None or not work.loaded or not work.work_dir:
+            return False
+        idx = _current_page_index_in_work(work)
+        return idx > 0
+
+    def execute(self, context):
+        coma_modal_state.finish_all(context)
+        work = get_work(context)
+        if work is None or not work.loaded or not work.work_dir:
+            return {"CANCELLED"}
+        idx = _current_page_index_in_work(work)
+        if idx <= 0:
+            return {"CANCELLED"}
+        new_idx = idx - 1
+        prev_page = work.pages[new_idx]
+        prev_page_id = str(getattr(prev_page, "id", "") or "")
+        if not paths.is_valid_page_id(prev_page_id):
+            self.report({"WARNING"}, "前のページが見つかりません")
+            return {"CANCELLED"}
+        work_dir = Path(work.work_dir)
+        try:
+            cur_page_id = page_file_scene.current_page_id()
+            if cur_page_id:
+                blend_io.save_page_blend(work_dir, cur_page_id)
+            page_io.ensure_page_dir(work_dir, prev_page_id)
+            work.active_page_index = new_idx
+            _save_metadata(context, reason="page_file_prev")
+            if blend_io.page_blend_exists(work_dir, prev_page_id):
+                blend_io.open_page_blend(work_dir, prev_page_id)
+            else:
+                _create_page_blend(work_dir, prev_page_id)
+        except Exception as exc:  # noqa: BLE001
+            _logger.exception("page_file_prev failed")
+            self.report({"ERROR"}, f"前のページを開けませんでした: {exc}")
+            return {"CANCELLED"}
+        try:
+            from ..ui import sidebar as _sidebar
+            _sidebar.schedule_open_bmanga_sidebar()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from . import view_op
+            view_op.schedule_fit_active_page()
+        except Exception:  # noqa: BLE001
+            pass
+        self.report({"INFO"}, "前のページを開きました")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BMANGA_OT_open_page_file,
     BMANGA_OT_exit_page_file,
+    BMANGA_OT_page_file_next,
+    BMANGA_OT_page_file_prev,
 )
 
 

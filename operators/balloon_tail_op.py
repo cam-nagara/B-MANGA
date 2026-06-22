@@ -226,15 +226,15 @@ class BMANGA_MT_balloon_tail_point_context(Menu):
         balloon_id = str(_TAIL_POINT_CONTEXT["balloon_id"])
         tail_index = int(_TAIL_POINT_CONTEXT["tail_index"])
         point_index = int(_TAIL_POINT_CONTEXT["point_index"])
-        can_delete = False
+        can_delete_point = False
         try:
             _page, entry = _find_balloon(context, page_id, balloon_id)
             if entry is not None and 0 <= tail_index < len(entry.tails):
-                can_delete = 0 < point_index < len(entry.tails[tail_index].points) - 1
+                can_delete_point = 0 < point_index < len(entry.tails[tail_index].points) - 1
         except Exception:  # noqa: BLE001
-            can_delete = False
+            can_delete_point = False
         row = layout.row()
-        row.enabled = can_delete
+        row.enabled = can_delete_point
         op = row.operator(BMANGA_OT_balloon_tail_point_delete.bl_idname, text="制御点を削除", icon="X")
         op.page_id = page_id
         op.balloon_id = balloon_id
@@ -245,7 +245,6 @@ class BMANGA_MT_balloon_tail_point_context(Menu):
         op.balloon_id = balloon_id
         op.tail_index = tail_index
         op.point_index = point_index
-        # 折れ線 ⇔ 曲線 の相互変換
         try:
             _page, entry = _find_balloon(context, page_id, balloon_id)
             tail = entry.tails[tail_index] if entry is not None and 0 <= tail_index < len(entry.tails) else None
@@ -263,6 +262,15 @@ class BMANGA_MT_balloon_tail_point_context(Menu):
             op.balloon_id = balloon_id
             op.tail_index = tail_index
             op.mode = "polyline" if is_curve else "curve"
+        layout.separator()
+        op = layout.operator(BMANGA_OT_balloon_tail_remove.bl_idname, text="しっぽを削除", icon="TRASH")
+        op.page_id = page_id
+        op.balloon_id = balloon_id
+        op.tail_index = tail_index
+        layout.separator()
+        op = layout.operator("bmanga.balloon_tail_detail_open", text="しっぽの詳細設定…", icon="PREFERENCES")
+        op.page_id = page_id
+        op.balloon_id = balloon_id
 
 
 _CLASSES = (

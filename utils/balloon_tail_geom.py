@@ -427,6 +427,52 @@ def _round_cap_points(
     ]
 
 
+def _seg_intersect(
+    p1: tuple[float, float], p2: tuple[float, float],
+    p3: tuple[float, float], p4: tuple[float, float],
+) -> tuple[float, float] | None:
+    """2線分 p1-p2 と p3-p4 の交点を返す (交差なし → None)."""
+    dx1 = p2[0] - p1[0]
+    dy1 = p2[1] - p1[1]
+    dx2 = p4[0] - p3[0]
+    dy2 = p4[1] - p3[1]
+    denom = dx1 * dy2 - dy1 * dx2
+    if abs(denom) < 1e-12:
+        return None
+    t = ((p3[0] - p1[0]) * dy2 - (p3[1] - p1[1]) * dx2) / denom
+    u = ((p3[0] - p1[0]) * dy1 - (p3[1] - p1[1]) * dx1) / denom
+    if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0:
+        return (p1[0] + t * dx1, p1[1] + t * dy1)
+    return None
+
+
+def _remove_self_intersections(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """オフセット曲線の自己交差を除去して滑らかにする."""
+    if len(pts) < 3:
+        return pts
+    result = [pts[0]]
+    i = 0
+    while i < len(pts) - 1:
+        seg_a = (pts[i], pts[i + 1])
+        skip_to = -1
+        best_j = -1
+        for j in range(i + 2, len(pts) - 1):
+            ix = _seg_intersect(seg_a[0], seg_a[1], pts[j], pts[j + 1])
+            if ix is not None:
+                best_j = j
+                skip_to = j
+                result.append(ix)
+                break
+        if skip_to >= 0:
+            i = skip_to
+        else:
+            result.append(pts[i + 1])
+            i += 1
+    if result[-1] != pts[-1]:
+        result.append(pts[-1])
+    return result
+
+
 def _variable_width_stroke_polygon(
     centerline: list[tuple[float, float]],
     distances: list[float],
@@ -465,6 +511,8 @@ def _variable_width_stroke_polygon(
         halves.append(half_width)
     if len(left) < 2 or len(right) < 2:
         return []
+    left = _remove_self_intersections(left)
+    right = _remove_self_intersections(right)
     if not round_caps:
         return left + list(reversed(right))
     # 先端キャップ: 左端 (+n) から右端 (-n) へ進行方向側を通る半円

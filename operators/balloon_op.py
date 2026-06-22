@@ -646,6 +646,7 @@ def _attach_texts_enclosed_by_balloon(context, page, entry) -> int:
         return 0
     balloon_rect = _balloon_rect(entry)
     changed = 0
+    linked_text_ids: list[str] = []
     for text in getattr(page, "texts", []) or []:
         if not bool(getattr(text, "visible", True)):
             continue
@@ -654,10 +655,40 @@ def _attach_texts_enclosed_by_balloon(context, page, entry) -> int:
         if not _rect_contains_rect(balloon_rect, _text_rect(text)):
             continue
         text.parent_balloon_id = balloon_id
+        linked_text_ids.append(str(getattr(text, "id", "") or ""))
         changed += 1
     if changed:
         layer_stack_utils.sync_layer_stack_after_data_change(context)
+        _ensure_texts_above_balloon_in_stack(context, page, balloon_id, linked_text_ids)
     return changed
+
+
+def _ensure_texts_above_balloon_in_stack(context, page, balloon_id: str, text_ids: list[str]) -> None:
+    """リンクされたテキストレイヤーをフキダシレイヤーより前面に移動する."""
+    stack = getattr(context.scene, "bmanga_layer_stack", None)
+    if stack is None or not text_ids:
+        return
+    page_key = str(getattr(page, "id", "") or "")
+    balloon_uid = layer_stack_utils.target_uid("balloon", f"{page_key}:{balloon_id}")
+    balloon_idx = -1
+    for i, item in enumerate(stack):
+        if layer_stack_utils.stack_item_uid(item) == balloon_uid:
+            balloon_idx = i
+            break
+    if balloon_idx < 0:
+        return
+    for tid in text_ids:
+        text_uid = layer_stack_utils.target_uid("text", f"{page_key}:{tid}")
+        text_idx = -1
+        for i, item in enumerate(stack):
+            if layer_stack_utils.stack_item_uid(item) == text_uid:
+                text_idx = i
+                break
+        if text_idx < 0:
+            continue
+        if text_idx > balloon_idx:
+            stack.move(text_idx, balloon_idx)
+            balloon_idx += 1
 
 
 def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: float, *, propagate_link: bool = True) -> None:
@@ -674,10 +705,23 @@ def _set_balloon_rect(page, entry, x: float, y: float, width: float, height: flo
         max(_BALLOON_MIN_SIZE_MM, float(height)),
     )
     transformed_curve = balloon_curve_object.transform_manual_curve_to_rect(entry, old_rect, new_rect)
+    old_cx = old_rect[0] + old_rect[2] * 0.5
+    old_cy = old_rect[1] + old_rect[3] * 0.5
+    new_cx = new_rect[0] + new_rect[2] * 0.5
+    new_cy = new_rect[1] + new_rect[3] * 0.5
+    center_dx = new_cx - old_cx
+    center_dy = new_cy - old_cy
     with balloon_curve_object.defer_auto_sync():
-        _move_balloon_with_texts(page, entry, new_rect[0], new_rect[1])
+        entry.x_mm = new_rect[0]
+        entry.y_mm = new_rect[1]
         entry.width_mm = new_rect[2]
         entry.height_mm = new_rect[3]
+    bid = str(getattr(entry, "id", "") or "")
+    if abs(center_dx) > 1.0e-9 or abs(center_dy) > 1.0e-9:
+        for text in getattr(page, "texts", []):
+            if getattr(text, "parent_balloon_id", "") == bid:
+                text.x_mm += center_dx
+                text.y_mm += center_dy
     with balloon_curve_object.suspend_auto_sync():
         balloon_curve_object.on_balloon_entry_changed(entry)
     _sync_balloon_merge_display_if_needed(page, entry)
@@ -728,17 +772,19 @@ def _create_balloon_entry(
         entry.id = _allocate_balloon_id(page, work)
         default_parent_kind = "page"
         default_parent_key = page_stack_key(page)
-    entry.shape = balloon_shapes.normalize_shape(shape)
-    balloon_core.apply_balloon_shape_defaults(entry, force=True)
-    entry.x_mm = float(x)
-    entry.y_mm = float(y)
-    entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))
-    entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(h))
-    entry.rounded_corner_enabled = (entry.shape == "rect")
-    entry.corner_type = "rounded" if entry.rounded_corner_enabled else "square"
-    entry.corner_type_initialized = True
-    entry.parent_kind = str(parent_kind or default_parent_kind)
-    entry.parent_key = "" if entry.parent_kind in {"outside", "none"} else str(parent_key or default_parent_key)
+    with balloon_curve_object.defer_auto_sync():
+        entry.shape = balloon_shapes.normalize_shape(shape)
+        balloon_core.apply_balloon_shape_defaults(entry, force=True)
+        entry.x_mm = float(x)
+        entry.y_mm = float(y)
+        entry.width_mm = max(_BALLOON_MIN_SIZE_MM, float(w))
+        entry.height_mm = max(_BALLOON_MIN_SIZE_MM, float(h))
+        entry.rounded_corner_enabled = (entry.shape == "rect")
+        entry.corner_type = "rounded" if entry.rounded_corner_enabled else "square"
+        entry.corner_type_initialized = True
+        entry.parent_kind = str(parent_kind or default_parent_kind)
+        entry.parent_key = "" if entry.parent_kind in {"outside", "none"} else str(parent_key or default_parent_key)
+    balloon_curve_object.on_balloon_entry_changed(entry)
     if page is not None:
         page.active_balloon_index = len(page.balloons) - 1
     _clear_all_balloon_selections(work)
@@ -1780,6 +1826,7 @@ class BMANGA_OT_balloon_tool(Operator):
                     if preset_custom and hasattr(entry, "custom_preset_name"):
                         entry.custom_preset_name = preset_custom
                     _attach_texts_enclosed_by_balloon(context, page, entry)
+                    balloon_curve_object.on_balloon_entry_changed(entry)
                     self._push_undo_step("B-MANGA: フキダシ作成")
         else:
             layer_stack_utils.tag_view3d_redraw(context)
