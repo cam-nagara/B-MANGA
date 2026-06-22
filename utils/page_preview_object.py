@@ -842,8 +842,6 @@ def _preview_page_indices(scene, work) -> set[int]:
     if not pages:
         return set()
     role, current_page_id = _preview_scene_role(scene)
-    if role == "coma":
-        return set(range(len(pages)))
     if preview_range_mode(scene) == PREVIEW_RANGE_ALL:
         return set(range(len(pages)))
     if role != "coma":
