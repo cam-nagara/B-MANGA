@@ -37,7 +37,7 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "3"
+PREVIEW_RENDER_VERSION = "4"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 _DEFERRED_SYNC_FORCE = False
 
@@ -444,6 +444,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         exported = _resize_preview_image(exported, target_width, target_height)
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
+        draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
         return exported
 
     img = Image.new("RGBA", (width, height), (250, 250, 250, 255))
@@ -501,6 +502,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
+    draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
     return img
 
 

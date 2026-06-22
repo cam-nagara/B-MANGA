@@ -50,6 +50,13 @@ def _save_current_work_metadata(work, page) -> None:
         page_io.save_page_json(work_dir, page)
 
 
+def _find_page_by_id(work, page_id: str):
+    for pg in getattr(work, "pages", []) or []:
+        if str(getattr(pg, "id", "") or "") == page_id:
+            return pg
+    return None
+
+
 def _auto_render_thumb_before_return(context, work) -> None:
     if work is None or not bool(getattr(work, "auto_render_coma_thumb_on_return", True)):
         return
@@ -771,6 +778,10 @@ class BMANGA_OT_exit_coma_mode(Operator):
                 _auto_render_thumb_before_return(context, work)
                 if cur is not None and cur == expected_panel:
                     blend_io.save_current_as(expected_panel)
+                # メタデータを JSON へ書き出してから戻り先 blend を開く。
+                # enter_coma_mode と同様、load_post で古い JSON に巻き戻るのを防ぐ。
+                page = _find_page_by_id(work, page_id)
+                _save_current_work_metadata(work, page)
                 # ページ用blendがあればページ編集へ戻る。無い場合だけページ一覧へ戻る。
                 if blend_io.page_blend_exists(work_dir, page_id):
                     _suspend_keymap_visibility_updates()
