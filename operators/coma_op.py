@@ -406,7 +406,7 @@ def create_basic_frame_coma(work, page, work_dir: Path):
     """
     p = work.paper
     if bool(getattr(page, "spread", False)):
-        right_offset = page_grid.spread_right_page_offset_mm(page, p.canvas_width_mm)
+        right_offset = page_grid.spread_right_page_offset_mm(page, p.canvas_width_mm, p.finish_width_mm)
         ox = p.inner_frame_offset_x_mm
         left_x = (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 - ox
         right_x_end = right_offset + (p.canvas_width_mm - p.inner_frame_width_mm) / 2.0 + ox + p.inner_frame_width_mm

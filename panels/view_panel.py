@@ -59,6 +59,50 @@ def _active_page_number_set(scene, value: int) -> None:
         pass
 
 
+def _current_page_id_for_update(scene, context) -> str:
+    page_id = page_file_scene.current_page_id(scene) or ""
+    if not page_id:
+        from ..core.mode import MODE_COMA, get_mode
+        if get_mode(context) == MODE_COMA:
+            page_id = str(getattr(scene, "bmanga_current_coma_page_id", "") or "")
+    return page_id
+
+
+def _page_work_info_visible_update(scene, context) -> None:
+    visible = bool(getattr(scene, "bmanga_page_work_info_visible", True))
+    try:
+        from ..utils import work_info_text_object as wito
+        page_id = _current_page_id_for_update(scene, context)
+        if not page_id:
+            return
+        prefix = wito.WORK_INFO_TEXT_PREFIX + page_id + "_"
+        for obj in bpy.data.objects:
+            if obj.name.startswith(prefix):
+                obj.hide_viewport = not visible
+                obj.hide_render = not visible
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _page_guides_visible_update(scene, context) -> None:
+    visible = bool(getattr(scene, "bmanga_page_guides_visible", True))
+    try:
+        from ..utils import paper_guide_object as pgo
+        page_id = _current_page_id_for_update(scene, context)
+        if not page_id:
+            return
+        guide_name = pgo.PAPER_GUIDE_PREFIX + page_id
+        safe_name = pgo.PAPER_SAFE_FILL_PREFIX + page_id
+        bleed_name = pgo.PAPER_BLEED_OUTER_FILL_PREFIX + page_id
+        for obj in bpy.data.objects:
+            n = obj.name
+            if n == guide_name or n.startswith(guide_name + "_") or n == safe_name or n == bleed_name:
+                obj.hide_viewport = not visible
+                obj.hide_render = not visible
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _coma_content_visible_update(scene, context) -> None:
     visible = bool(scene.bmanga_coma_content_visible)
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
@@ -253,25 +297,44 @@ class BMANGA_PT_view(Panel):
         layout.operator("bmanga.view_fit_page", text="ページに合わせる", icon="ZOOM_SELECTED")
 
         work = get_work(context)
+        in_sub_file = page_file_scene.is_page_edit_scene(scene) or is_coma_mode
         if work is not None and work.loaded:
             row = layout.row(align=True)
-            info = work.work_info
-            info_vis = bool(getattr(info, "display_visible", True))
-            row.prop(
-                info,
-                "display_visible",
-                text="作品情報",
-                icon="HIDE_OFF" if info_vis else "HIDE_ON",
-                toggle=True,
-            )
-            guides_vis = bool(getattr(work.paper, "show_guides", True))
-            row.prop(
-                work.paper,
-                "show_guides",
-                text="用紙ガイド",
-                icon="HIDE_OFF" if guides_vis else "HIDE_ON",
-                toggle=True,
-            )
+            if in_sub_file:
+                wi_vis = bool(getattr(scene, "bmanga_page_work_info_visible", True))
+                row.prop(
+                    scene,
+                    "bmanga_page_work_info_visible",
+                    text="作品情報",
+                    icon="HIDE_OFF" if wi_vis else "HIDE_ON",
+                    toggle=True,
+                )
+                gd_vis = bool(getattr(scene, "bmanga_page_guides_visible", True))
+                row.prop(
+                    scene,
+                    "bmanga_page_guides_visible",
+                    text="用紙ガイド",
+                    icon="HIDE_OFF" if gd_vis else "HIDE_ON",
+                    toggle=True,
+                )
+            else:
+                info = work.work_info
+                info_vis = bool(getattr(info, "display_visible", True))
+                row.prop(
+                    info,
+                    "display_visible",
+                    text="作品情報",
+                    icon="HIDE_OFF" if info_vis else "HIDE_ON",
+                    toggle=True,
+                )
+                guides_vis = bool(getattr(work.paper, "show_guides", True))
+                row.prop(
+                    work.paper,
+                    "show_guides",
+                    text="用紙ガイド",
+                    icon="HIDE_OFF" if guides_vis else "HIDE_ON",
+                    toggle=True,
+                )
 
         if is_coma_mode:
             settings = getattr(scene, "bmanga_coma_camera_settings", None)
@@ -313,6 +376,18 @@ _CLASSES = (
 
 
 def register() -> None:
+    bpy.types.Scene.bmanga_page_work_info_visible = bpy.props.BoolProperty(
+        name="作品情報表示",
+        description="このページの作品情報 (作品名・話数・作者名・ノンブルなど) の表示を切り替えます",
+        default=True,
+        update=_page_work_info_visible_update,
+    )
+    bpy.types.Scene.bmanga_page_guides_visible = bpy.props.BoolProperty(
+        name="用紙ガイド表示",
+        description="このページの用紙ガイド (セーフライン・裁ち落とし枠・基本枠など) の表示を切り替えます",
+        default=True,
+        update=_page_guides_visible_update,
+    )
     bpy.types.Scene.bmanga_coma_content_visible = bpy.props.BoolProperty(
         name="コマ内レイヤー表示",
         description="コマ内のフキダシ・フィル・テキストなどのレイヤーの表示を切り替えます",
@@ -392,5 +467,13 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bmanga_coma_content_visible
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bmanga_page_work_info_visible
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bmanga_page_guides_visible
     except AttributeError:
         pass

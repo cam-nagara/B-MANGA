@@ -663,7 +663,7 @@ class BMANGA_OT_pages_merge_spread(Operator):
     )
     tombo_gap_mm: FloatProperty(  # type: ignore[valid-type]
         name="間隔 (mm)",
-        description="負値はページを重ねる方向",
+        description="仕上がり枠間のギャップ。負値はノド側を重ねる方向",
         default=-9.60,
     )
 
@@ -740,10 +740,12 @@ class BMANGA_OT_pages_merge_spread(Operator):
         a_old_id = a.id
         b_old_id = b.id
         W = float(work.paper.canvas_width_mm)
+        FW = float(work.paper.finish_width_mm)
         right_offset = page_grid.spread_right_page_offset_mm_for_values(
             W,
             bool(self.tombo_aligned),
             float(self.tombo_gap_mm),
+            finish_width_mm=FW,
         )
 
         try:
@@ -842,7 +844,8 @@ class BMANGA_OT_pages_split_spread(Operator):
         reading_second_id = entry.original_pages[1].page_id  # = "0002" 側 = 物理左半分
 
         W = float(work.paper.canvas_width_mm)
-        right_offset = page_grid.spread_right_page_offset_mm(entry, W)
+        FW = float(work.paper.finish_width_mm)
+        right_offset = page_grid.spread_right_page_offset_mm(entry, W, FW)
 
         try:
             # 1) spread entry の内容を dict で snapshot (後で振り分けに使う)

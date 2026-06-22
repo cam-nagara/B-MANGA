@@ -29,6 +29,7 @@ def combined_spread_rects(paper, page):
     right_offset = page_grid.spread_right_page_offset_mm(
         page,
         float(getattr(paper, "canvas_width_mm", 0.0) or 0.0),
+        float(getattr(paper, "finish_width_mm", 0.0) or 0.0),
     )
     shifted_right = overlay_shared.PaperRects(
         canvas=shift_rect(right_rects.canvas, right_offset),
@@ -69,7 +70,8 @@ def basic_frame_info(work, page, coma) -> tuple[str, Rect | None]:
     if paper is None:
         return "", None
     canvas_width = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
-    right_offset = page_grid.spread_right_page_offset_mm(page, canvas_width)
+    finish_width = float(getattr(paper, "finish_width_mm", 0.0) or 0.0)
+    right_offset = page_grid.spread_right_page_offset_mm(page, canvas_width, finish_width)
     if right_offset > canvas_width + 0.05:
         return "", None
 

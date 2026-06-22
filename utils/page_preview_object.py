@@ -37,7 +37,7 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "4"
+PREVIEW_RENDER_VERSION = "5"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 _DEFERRED_SYNC_FORCE = False
 
@@ -274,7 +274,8 @@ def _image_size(work, scene=None, page=None) -> tuple[int, int]:
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
     if page is not None:
-        cw = page_grid.spread_content_width_mm(page, cw)
+        fw = max(1.0, float(getattr(work.paper, "finish_width_mm", 1.0) or 1.0))
+        cw = page_grid.spread_content_width_mm(page, cw, fw)
     # 「画像解像度%」はページ実解像度 (用紙サイズ × DPI) に対する割合。
     # 長辺は PREVIEW_MAX_LONG_PX を上限にしてメモリを保護する。
     try:
@@ -432,14 +433,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     target_width, target_height = _image_size(work, scene, page)
     cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
     ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-    content_width_mm = page_grid.spread_content_width_mm(page, cw)
+    fw = max(1.0, float(getattr(work.paper, "finish_width_mm", 1.0) or 1.0))
+    content_width_mm = page_grid.spread_content_width_mm(page, cw, fw)
     # 大きい目標サイズではスーパーサンプリング不要 (生成時間とメモリの節約)
     scale = max(1, int(PREVIEW_RENDER_SUPERSAMPLE))
     if max(target_width, target_height) >= PREVIEW_SUPERSAMPLE_MAX_TARGET_PX:
         scale = 1
     width = max(1, target_width * scale)
     height = max(1, target_height * scale)
-    exported = _render_preview_image_from_export(work, page, width, height)
+    exported = _render_preview_image_from_export(work, page, width, height, scene=scene)
     if exported is not None:
         exported = _resize_preview_image(exported, target_width, target_height)
         draw = ImageDraw.Draw(exported)
@@ -506,7 +508,7 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     return img
 
 
-def _render_preview_image_from_export(work, page, width: int, height: int):
+def _render_preview_image_from_export(work, page, width: int, height: int, *, scene=None):
     try:
         from PIL import Image
         from ..io import export_pipeline
@@ -515,19 +517,27 @@ def _render_preview_image_from_export(work, page, width: int, height: int):
             return None
         cw = max(1.0, float(getattr(work.paper, "canvas_width_mm", 1.0) or 1.0))
         ch = max(1.0, float(getattr(work.paper, "canvas_height_mm", 1.0) or 1.0))
-        cw = page_grid.spread_content_width_mm(page, cw)
+        fw = max(1.0, float(getattr(work.paper, "finish_width_mm", 1.0) or 1.0))
+        cw = page_grid.spread_content_width_mm(page, cw, fw)
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
+        in_page_or_coma = False
+        try:
+            from . import page_file_scene as _pfs
+            s = scene or bpy.context.scene
+            in_page_or_coma = not _pfs.is_work_list_scene(s)
+        except Exception:  # noqa: BLE001
+            pass
         options = export_pipeline.ExportOptions(
             area="canvas",
             dpi_override=dpi,
             include_border=True,
             include_white_margin=True,
             include_nombre=False,
-            include_work_info=False,
+            include_work_info=in_page_or_coma,
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
-            include_page_overlay_fills=True,
+            include_page_overlay_fills=in_page_or_coma,
         )
         image = export_pipeline.render_page(work, page, options)
         if image is None:

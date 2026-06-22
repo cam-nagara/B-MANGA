@@ -70,11 +70,12 @@ def spread_right_page_offset_mm_for_values(
     canvas_width_mm: float,
     tombo_aligned: bool,
     tombo_gap_mm: float,
+    finish_width_mm: float | None = None,
 ) -> float:
     """見開き内で右半分ページが始まる X 位置を返す.
 
-    「トンボを合わせる」がオンのときは、CLIP STUDIO PAINT の見開き化に
-    近い扱いとして、単ページ幅に「間隔」を足した位置に右ページを置く。
+    「トンボを合わせる」がオンのときは CLIP STUDIO PAINT と同じく
+    仕上がり枠を基準に合わせる。間隔は仕上がり枠間のギャップ。
     負値の間隔はノド側の重なり、正値はノド側の空きとして扱う。
     """
     width = max(0.0, float(canvas_width_mm))
@@ -84,22 +85,32 @@ def spread_right_page_offset_mm_for_values(
         gap = float(tombo_gap_mm)
     except (TypeError, ValueError):
         gap = 0.0
-    return max(0.0, width + gap)
+    fw = float(finish_width_mm) if finish_width_mm is not None else width
+    return max(0.0, fw + gap)
 
 
-def spread_right_page_offset_mm(page, canvas_width_mm: float) -> float:
+def spread_right_page_offset_mm(
+    page,
+    canvas_width_mm: float,
+    finish_width_mm: float | None = None,
+) -> float:
     return spread_right_page_offset_mm_for_values(
         canvas_width_mm,
         page_spread_tombo_aligned(page),
         page_spread_tombo_gap_mm(page),
+        finish_width_mm=finish_width_mm,
     )
 
 
-def spread_content_width_mm(page, canvas_width_mm: float) -> float:
+def spread_content_width_mm(
+    page,
+    canvas_width_mm: float,
+    finish_width_mm: float | None = None,
+) -> float:
     width = max(0.0, float(canvas_width_mm))
     if not bool(getattr(page, "spread", False)):
         return width
-    return max(width, spread_right_page_offset_mm(page, width) + width)
+    return max(width, spread_right_page_offset_mm(page, width, finish_width_mm) + width)
 
 
 def slot_for_page_in_work(
@@ -214,7 +225,9 @@ def page_grid_offset_mm(
             else False
         )
         if is_spread and read_direction == "left":
-            ox -= spread_right_page_offset_mm(pages[page_index], canvas_width_mm)
+            fw = float(getattr(getattr(work, "paper", None), "finish_width_mm", 0) or 0) or None
+            R = spread_right_page_offset_mm(pages[page_index], canvas_width_mm, fw)
+            ox -= (R + canvas_width_mm) / 2.0
         return ox, oy
     slot = _logical_slot_index(page_index, start_side, read_direction)
     return slot_grid_offset_mm(
@@ -228,11 +241,20 @@ def page_grid_offset_mm(
     )
 
 
-def page_content_width_mm(work, page_index: int, canvas_width_mm: float) -> float:
+def page_content_width_mm(
+    work, page_index: int, canvas_width_mm: float,
+    finish_width_mm: float | None = None,
+) -> float:
     """ページ内容の横幅 (mm)。見開きは 2 ページ分."""
     pages = getattr(work, "pages", []) or []
+    if finish_width_mm is None:
+        paper = getattr(work, "paper", None)
+        if paper is not None:
+            fw = float(getattr(paper, "finish_width_mm", 0) or 0)
+            if fw > 0:
+                finish_width_mm = fw
     if 0 <= int(page_index) < len(pages):
-        return spread_content_width_mm(pages[page_index], canvas_width_mm)
+        return spread_content_width_mm(pages[page_index], canvas_width_mm, finish_width_mm)
     return float(canvas_width_mm)
 
 

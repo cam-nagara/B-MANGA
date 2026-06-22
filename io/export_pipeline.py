@@ -145,6 +145,7 @@ def _page_canvas_size_px(work, page, options: ExportOptions) -> tuple[int, int]:
         width_mm = page_grid.spread_content_width_mm(
             page,
             float(getattr(work.paper, "canvas_width_mm", 0.0) or 0.0),
+            float(getattr(work.paper, "finish_width_mm", 0.0) or 0.0),
         )
         return (int(round(mm_to_px(width_mm, dpi))), h)
     return (w, h)
@@ -1656,6 +1657,7 @@ def _render_gp_object_layers(
     canvas_width_mm = page_grid.spread_content_width_mm(
         page,
         float(work.paper.canvas_width_mm),
+        float(work.paper.finish_width_mm),
     )
     canvas_bbox = (0.0, 0.0, canvas_width_mm, float(work.paper.canvas_height_mm))
     out: list[ExportLayer] = []

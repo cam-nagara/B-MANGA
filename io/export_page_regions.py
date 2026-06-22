@@ -43,6 +43,7 @@ def _spread_side_crop_box(work, page, options: ExportOptions, side: str) -> tupl
             export_pipeline.page_grid.spread_right_page_offset_mm(
                 page,
                 float(work.paper.canvas_width_mm),
+                float(work.paper.finish_width_mm),
             ),
             export_pipeline._dpi(work.paper, options),
         )))

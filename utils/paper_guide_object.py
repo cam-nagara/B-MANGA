@@ -1029,7 +1029,8 @@ def _spread_page_guide_sets(paper, page):
     from . import page_grid
 
     canvas_width = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
-    right_offset = page_grid.spread_right_page_offset_mm(page, canvas_width)
+    finish_width = float(getattr(paper, "finish_width_mm", 0.0) or 0.0)
+    right_offset = page_grid.spread_right_page_offset_mm(page, canvas_width, finish_width)
     left_rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
     right_rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
     page_pair_sets = _merge_guide_sets(
