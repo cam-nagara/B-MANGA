@@ -656,16 +656,36 @@ class BMANGA_OT_page_pick_viewport(Operator):
         finally:
             if is_browser:
                 context.scene.bmanga_overview_mode = previous_overview
+        role, current_page_id, _coma_id = page_file_scene.current_role(context)
+        in_page_file = role == page_file_scene.ROLE_PAGE
         if page_index is None or not (0 <= page_index < len(work.pages)):
+            if in_page_file:
+                from ..utils import page_preview_object
+
+                page_preview_object.highlight_preview_page(
+                    context.scene, work, None,
+                )
+                _tag_screen_redraw(context)
             return {"PASS_THROUGH"}
         if not page_range.page_in_range(work.pages[page_index]):
             return {"PASS_THROUGH"}
-        role, current_page_id, _coma_id = page_file_scene.current_role(context)
-        in_page_file = role == page_file_scene.ROLE_PAGE
         if in_page_file:
             current_page_index = page_file_scene.find_page_index(work, current_page_id)
             if page_index != current_page_index:
+                from ..utils import page_preview_object
+
+                page_preview_object.highlight_preview_page(
+                    context.scene, work, page_index,
+                )
+                _tag_screen_redraw(context)
                 return {"FINISHED"}
+            else:
+                from ..utils import page_preview_object
+
+                page_preview_object.highlight_preview_page(
+                    context.scene, work, None,
+                )
+                _tag_screen_redraw(context)
         # マルチ選択モード時は object_selection キーセットへトグル/追加するだけで
         # アクティブやページ切替は行わない (CSP/PS のレイヤー複数選択と同じ感覚)
         if multi_mode != "single":

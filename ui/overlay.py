@@ -1534,6 +1534,7 @@ def _draw_callback(phase: str = "post") -> None:
                 else -1
             )
             page_file_current_only = bool(page_file_indices is not None and page_file_scene.is_page_edit_scene(scene))
+            _preview_hl = page_preview_object.highlighted_page_id()
             for i, page in enumerate(work.pages):
                 if page_file_indices is not None and i not in page_file_indices:
                     continue
@@ -1549,16 +1550,22 @@ def _draw_callback(phase: str = "post") -> None:
                     _page_content_rect(work, i, paper, ox, oy), region, rv3d,
                 ):
                     continue
-                if page_file_current_only and i != page_file_current_index:
-                    continue
-                left_half = _is_left_half(i, start_side, read_direction, work=work)
-                _draw_page_overlay(
-                    context, work, paper, rects, page, mode,
-                    ox_mm=ox, oy_mm=oy, draw_image_layers=False,
-                    is_left_half=left_half, phase=phase,
-                )
                 page_id = str(getattr(page, "id", "") or "")
-                if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
+                _is_preview_hl = bool(_preview_hl) and page_id == _preview_hl
+                if page_file_current_only and i != page_file_current_index and not _is_preview_hl:
+                    continue
+                if not (page_file_current_only and i != page_file_current_index):
+                    left_half = _is_left_half(i, start_side, read_direction, work=work)
+                    _draw_page_overlay(
+                        context, work, paper, rects, page, mode,
+                        ox_mm=ox, oy_mm=oy, draw_image_layers=False,
+                        is_left_half=left_half, phase=phase,
+                    )
+                if (
+                    page_id in selected_page_ids
+                    or (highlight_active_page and i == active_idx)
+                    or _is_preview_hl
+                ):
                     highlight_rects.append(_page_content_highlight_rect(work, i, paper, ox, oy))
             for rect in highlight_rects:
                 _draw_page_highlight(rect)

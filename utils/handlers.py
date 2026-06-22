@@ -509,6 +509,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                 try:
                     from . import page_preview_object
 
+                    page_preview_object.highlight_preview_page(scene, work, None)
                     page_preview_object.sync_page_previews(bpy.context, work)
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: page preview setup failed")

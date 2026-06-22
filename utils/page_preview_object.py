@@ -878,6 +878,27 @@ def page_index_at_world_mm(scene, work, x_mm: float, y_mm: float) -> int | None:
     return None
 
 
+_highlighted_page_id: str = ""
+
+
+def highlighted_page_id() -> str:
+    """現在ハイライト中のページIDを返す."""
+    return _highlighted_page_id
+
+
+def highlight_preview_page(scene, work, page_index: int | None) -> None:
+    """指定ページのプレビューオブジェクトをハイライトする."""
+    global _highlighted_page_id  # noqa: PLW0603
+    if work is None:
+        _highlighted_page_id = ""
+        return
+    pages = list(getattr(work, "pages", []) or [])
+    if page_index is not None and 0 <= page_index < len(pages):
+        _highlighted_page_id = str(getattr(pages[page_index], "id", "") or "")
+    else:
+        _highlighted_page_id = ""
+
+
 def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current: bool, force: bool = False, coma_origin_mm=None) -> None:
     role, _current_page_id = _preview_scene_role(scene)
     is_coma = role == "coma"
