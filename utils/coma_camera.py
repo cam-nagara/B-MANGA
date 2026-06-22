@@ -518,6 +518,8 @@ def set_background_images_scale(context, scale: float, *, kind_filter: str = "")
         if kind_filter and not _background_matches_kind(bg, kind_filter):
             continue
         img = getattr(bg, "image", None)
+        if img is not None and _is_overview_background(img):
+            continue
         bg_scale, bg_offset = _background_scale_offset_for_image(img, float(scale))
         _set_bg_attr(bg, "scale", bg_scale)
         _set_bg_attr(bg, "offset", bg_offset)
@@ -576,7 +578,7 @@ def set_background_images_properties(context, name_filter: str, *, opacity=None,
             continue
         if opacity is not None:
             _set_bg_attr(bg, "alpha", float(opacity))
-        if scale is not None:
+        if scale is not None and not _is_overview_background(img):
             bg_scale, bg_offset = _background_scale_offset_for_image(img, float(scale))
             _set_bg_attr(bg, "scale", bg_scale)
             _set_bg_attr(bg, "offset", bg_offset)
@@ -1208,6 +1210,8 @@ def _add_page_overview_backgrounds(scene, work) -> None:
     alpha = percentage.percent_to_factor(
         getattr(settings, "name_bg_images_opacity", 50.0), 50.0,
     ) if settings else 0.5
+    user_scale = max(0.1, float(getattr(settings, "bg_images_scale", 1.0))) if settings else 1.0
+    name_visible = bool(getattr(settings, "name_visible", True)) if settings else True
 
     for page_id, (idx, x0, y0, x1, y1) in rects.items():
         png_path = page_preview_object._preview_png_path(work, page_id)
@@ -1220,14 +1224,16 @@ def _add_page_overview_backgrounds(scene, work) -> None:
             continue
         try:
             img[_PAGE_OVERVIEW_BG_PROP] = True
+            img["bmanga_kind"] = "name"
+            img["bmanga_page_id"] = page_id
         except Exception:  # noqa: BLE001
             pass
         page_cx = (x0 + x1) * 0.5
         page_cy = (y0 + y1) * 0.5
         page_w_mm = max(1.0, x1 - x0)
-        page_scale = page_w_mm / canvas_w_mm
-        offset_x = (page_cx - current_cx) / canvas_w_mm
-        offset_y = -(page_cy - current_cy) / canvas_h_mm
+        page_scale = (page_w_mm / canvas_w_mm) * user_scale
+        offset_x = ((page_cx - current_cx) / canvas_w_mm) * user_scale
+        offset_y = (-(page_cy - current_cy) / canvas_h_mm) * user_scale
         bg = cam_data.background_images.new()
         bg.image = img
         _set_bg_attr(bg, "alpha", float(alpha))
@@ -1236,9 +1242,29 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         _set_bg_attr(bg, "offset", (offset_x, offset_y))
         _set_bg_attr(bg, "display_depth", "BACK")
         _set_bg_attr(bg, "frame_method", "FIT")
-        _set_bg_attr(bg, "show_background_image", True)
+        _set_bg_attr(bg, "show_background_image", bool(name_visible))
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
+
+
+def _is_overview_background(img) -> bool:
+    try:
+        return bool(img.get(_PAGE_OVERVIEW_BG_PROP, False))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def refresh_coma_page_overview(context) -> None:
+    """概要下絵がアクティブなら再構築する (スケール・表示範囲変更時用)."""
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return
+    if not bool(scene.get(_COMA_PAGE_OVERVIEW_KEY, False)):
+        return
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False):
+        return
+    _add_page_overview_backgrounds(scene, work)
 
 
 def _remove_page_overview_backgrounds(scene) -> None:
@@ -1294,10 +1320,12 @@ def _poll_coma_page_overview() -> float | None:
             return None
         in_camera = _any_view3d_in_camera_view(context)
         was_showing = bool(scene.get(_COMA_PAGE_OVERVIEW_KEY, False))
-        if in_camera and not was_showing:
+        settings = getattr(scene, "bmanga_coma_camera_settings", None)
+        enabled = bool(getattr(settings, "name_visible", True)) if settings else True
+        if in_camera and not was_showing and enabled:
             work = get_work(context)
             _enter_coma_page_overview(scene, work)
-        elif not in_camera and was_showing:
+        elif (not in_camera or not enabled) and was_showing:
             _leave_coma_page_overview(scene)
         return 0.2
     except Exception:  # noqa: BLE001

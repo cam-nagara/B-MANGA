@@ -30,6 +30,7 @@ def _update_all_bg_scale(self, context) -> None:
     from ..utils import page_preview_object
 
     coma_camera.set_background_images_scale(context, float(self.bg_images_scale), kind_filter="name")
+    coma_camera.refresh_coma_page_overview(context)
     coma_camera.update_render_border_from_current_coma(context)
     page_preview_object.set_preview_scale(context, float(self.bg_images_scale))
 
@@ -64,6 +65,7 @@ def _update_name_show_all_pages(self, context) -> None:
         context,
         show_all=bool(self.name_show_all_pages),
     )
+    coma_camera.refresh_coma_page_overview(context)
 
 
 def _update_name_visible(self, context) -> None:

@@ -91,6 +91,20 @@ def _page_preview_enabled_update(scene, context) -> None:
         page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None))
     except Exception:  # noqa: BLE001
         pass
+    try:
+        from ..core.mode import MODE_COMA, get_mode
+
+        if get_mode(context) == MODE_COMA:
+            from ..utils import coma_camera
+
+            if bool(getattr(scene, "bmanga_page_preview_enabled", True)):
+                if coma_camera._any_view3d_in_camera_view(context):
+                    work = getattr(scene, "bmanga_work", None)
+                    coma_camera._enter_coma_page_overview(scene, work)
+            else:
+                coma_camera._leave_coma_page_overview(scene)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _draw_page_preview_range_buttons(layout, scene, *, respect_enabled: bool = True) -> None:
