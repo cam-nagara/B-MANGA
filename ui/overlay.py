@@ -41,13 +41,17 @@ from ..utils import (
     text_style,
     viewport_colors,
 )
-from ..utils.geom import Rect, bleed_rect, mm_to_m
+from ..utils.geom import Rect, mm_to_m
 from . import overlay_effect_line
 from . import overlay_image
 from . import overlay_coma_selection
 from . import overlay_creation_range
+from . import overlay_page_preview
+from . import overlay_paper_bg
+from . import overlay_paper_guide
 from . import overlay_shared
 from . import overlay_text
+from . import overlay_work_info
 from . import overlay_visibility
 
 _logger = log.get_logger(__name__)
@@ -1094,51 +1098,6 @@ def _translate_rect(r: Rect, ox_mm: float, oy_mm: float) -> Rect:
     return Rect(r.x + ox_mm, r.y + oy_mm, r.width, r.height)
 
 
-def _draw_canvas_fill_only(paper, rects, ox_mm: float, oy_mm: float) -> None:
-    """キャンバス塗り (用紙背景の白) を POST_VIEW で描画する.
-
-    `paper_color` は Blender COLOR プロパティ (scene-linear) なので UI 表示
-    相当の sRGB に戻し、不透明 (alpha=1.0) で描く。
-
-    深度テストは ``LESS_EQUAL`` を維持。raster 材質は DITHERED で depth を
-    書込むため、ラスター画素では canvas (z=0) の depth (= 大きい値) が
-    ラスター (z=0.005, depth = 小さい値) との LESS_EQUAL に失敗して却下
-    される → ラスター画素は用紙塗りに上書きされない。
-    """
-    canvas_r = _translate_rect(rects.canvas, ox_mm, oy_mm)
-    r, g, b = color_space.linear_to_srgb_rgb(paper.paper_color[:3])
-    canvas_color = (
-        r,
-        g,
-        b,
-        1.0,
-    )
-    try:
-        previous_depth = gpu.state.depth_test_get()
-    except Exception:  # noqa: BLE001
-        previous_depth = "NONE"
-    try:
-        gpu.state.depth_test_set("LESS_EQUAL")
-        _draw_rect_fill(canvas_r, canvas_color)
-    finally:
-        try:
-            gpu.state.depth_test_set(previous_depth)
-        except Exception:  # noqa: BLE001
-            pass
-
-
-def _paint_mode_hides_paper_bg(context) -> bool:
-    mode = str(getattr(context, "mode", "") or "")
-    return mode in {
-        "TEXTURE_PAINT",
-        "PAINT_TEXTURE",
-        "PAINT_GREASE_PENCIL",
-        "EDIT_GREASE_PENCIL",
-        "SCULPT_GREASE_PENCIL",
-        "VERTEX_GREASE_PENCIL",
-        "WEIGHT_GREASE_PENCIL",
-    }
-
 
 def _draw_page_overlay(
     context,
@@ -1169,15 +1128,37 @@ def _draw_page_overlay(
     if is_left_half:
         rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
 
-    # 通常時の用紙白背景は paper_bg_object.py の opaque な Mesh が表示する。
-    # 描画モード中だけ paper_bg を raycast 回避で隠すため、同じ見た目を保つ
-    # 代替として深度つきの GPU 塗りを入れる。
-    if _paint_mode_hides_paper_bg(context):
-        _draw_canvas_fill_only(paper, rects, ox_mm, oy_mm)
+    # 用紙白背景 (depth書込み)
+    is_spread = bool(getattr(page, "spread", False))
+    spread_w = 0.0
+    if is_spread:
+        try:
+            from ..utils import page_grid as _pg_bg
+            spread_w = _pg_bg.page_content_width_mm(
+                work, _resolve_page_index(work, ox_mm, oy_mm),
+                float(getattr(paper, "canvas_width_mm", 257.0) or 257.0),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    overlay_paper_bg.draw_for_page(paper, rects, ox_mm, oy_mm, is_spread=is_spread, spread_width_mm=spread_w)
 
-    # 用紙の基本枠 / 仕上がり・裁ち落とし枠 / セーフライン / トンボ /
-    # セーフライン外の暗い表示は実体オブジェクトが描画するため、
-    # オーバーレイ側では二重描画しない。
+    # ページプレビュー画像
+    _pi = _resolve_page_index(work, ox_mm, oy_mm)
+    _is_current = False
+    try:
+        _is_current = (_pi == int(getattr(work, "active_page_index", -1)))
+    except Exception:  # noqa: BLE001
+        pass
+    if page is not None:
+        overlay_page_preview.draw_for_page(context, work, page, _pi, ox_mm, oy_mm, is_current_page=_is_current)
+
+    # ガイド線 + セーフ外 / 断ち切り外塗り
+    _region, _rv3d = _resolve_active_region(context)
+    if _region is not None and _rv3d is not None and page is not None:
+        overlay_paper_guide.draw_for_page(
+            work, paper, rects, page, _pi,
+            ox_mm, oy_mm, is_left_half, _region, _rv3d,
+        )
 
     # 画像レイヤー (アクティブページのみ — 全ページ一覧時は負荷とレイヤーの per-scene 制約で省略)
     if mode == MODE_PAGE and draw_image_layers:
@@ -1211,7 +1192,6 @@ def _draw_page_overlay(
             draw_rect_outline=_draw_rect_outline,
         )
 
-    # 作品情報とページ番号は実体のテキストオブジェクトで表示する。
 
 
 def _resolve_page_index(work, ox_mm: float, oy_mm: float) -> int:
@@ -1791,10 +1771,7 @@ def schedule_viewport_overlays_enabled(*, enabled: bool, retries: int = 6, inter
 def reset_viewport_background_to_theme(context=None) -> int:
     """全ウィンドウの全 VIEW_3D の solid shading 背景をテーマ色 (Blender 既定) に戻す.
 
-    旧実装 (apply_paper_background_color) は Blender 自身の solid 背景色を
-    paper_color (白) に書き換えていたため、用紙の外側まで真っ白になり
-    「ビューポート全体が白」状態を招いていた。現行では用紙領域だけを
-    POST_VIEW の最初に不透明塗りし (``_draw_canvas_fill_only``)、
+    用紙領域は overlay_paper_bg が POST_VIEW で不透明塗りする。
     ビューポート背景はテーマ既定の灰色に保つ。
 
     過去に白く書き換えられて .blend に保存されているファイルも、ロード時に
@@ -1896,7 +1873,6 @@ def _draw_callback_pixel() -> None:
             ):
                 continue
             left_half = _is_left_half(i, start_side, read_direction, work=work)
-            inner = bleed_rect(paper)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
             if (
                 page is not None
@@ -1913,6 +1889,8 @@ def _draw_callback_pixel() -> None:
                 )
             if not page_file_current_only or i == page_file_current_index:
                 _draw_page_header_number_pixel(context, paper, i, ox, oy, page_entry=page)
+            if page is not None and (not page_file_current_only or i == page_file_current_index):
+                overlay_work_info.draw_for_page(context, work, paper, page, i, ox, oy, region, rv3d)
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
@@ -1932,7 +1910,6 @@ def _draw_callback_pixel() -> None:
         )
         ox, oy = _with_page_manual_offset(work, idx, ox, oy)
         left_half = _is_left_half(idx, start_side, read_direction, work=work)
-        inner = bleed_rect(paper)
         page = get_active_page(context)
         if page is not None and overlay_visibility.page_visible(page):
             if mode == MODE_PAGE:
@@ -1946,6 +1923,7 @@ def _draw_callback_pixel() -> None:
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
             _draw_page_header_number_pixel(context, paper, idx, ox, oy, page_entry=page)
+            overlay_work_info.draw_for_page(context, work, paper, page, idx, ox, oy, region, rv3d)
         elif mode == MODE_COMA and 0 <= idx < len(work.pages):
             _draw_page_header_number_pixel(context, paper, idx, ox, oy,
                                            page_entry=work.pages[idx])

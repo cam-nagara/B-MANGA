@@ -124,7 +124,6 @@ def main() -> None:
         assert result == {"FINISHED"}, result
         assert bpy.context.object is obj
         assert obj.mode == "TEXTURE_PAINT"
-        from bmanga_dev.ui import overlay
         from bmanga_dev.utils import paper_bg_object
 
         paper_bgs = [
@@ -132,8 +131,7 @@ def main() -> None:
             if bg.get(paper_bg_object.PROP_BG_KIND) == "page"
         ]
         assert paper_bgs, "paper background object was not created"
-        assert all(bg.hide_viewport for bg in paper_bgs), "paper background should be hidden only as paint raycast guard"
-        assert overlay._paint_mode_hides_paper_bg(bpy.context), "paint-mode canvas fallback is not active"
+        assert all(bg.hide_viewport for bg in paper_bgs), "paper background should be hidden in overlay mode"
         paint = bpy.context.tool_settings.image_paint
         assert paint.canvas is image
         assert paint.brush is not None

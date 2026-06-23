@@ -109,16 +109,6 @@ def _on_display_font_size_pt_changed(self, _context) -> None:
 
 
 def _sync_work_info_text_objects(context) -> None:
-    try:
-        scene = getattr(context, "scene", None)
-        work = getattr(scene, "bmanga_work", None) if scene is not None else None
-        if work is None or not bool(getattr(work, "loaded", False)):
-            return
-        from ..utils import work_info_text_object
-
-        work_info_text_object.regenerate_all_work_info_texts(scene, work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("work info text object sync failed")
     _tag_view3d_redraw(context)
 
 

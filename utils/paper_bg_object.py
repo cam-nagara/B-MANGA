@@ -200,19 +200,9 @@ def ensure_paper_bg_for_page(
     obj[PROP_BG_OWNER_ID] = page_id
     obj[PROP_BG_IN_RANGE] = bool(in_range)
     obj[on.PROP_MANAGED] = False  # Outliner mirror 正規化対象外
-    obj.hide_select = True  # ユーザーが触って動かさないように
-    obj.hide_render = True  # B-MANGA の export は別 path で行うため render off
-    # ページ範囲外なら viewport から隠す (paint mode hide が立っていない限り)
-    if not _LAST_PAINT_HIDDEN:
-        try:
-            obj.hide_viewport = not in_range
-        except Exception:  # noqa: BLE001
-            pass
-    # display_type = TEXTURED で普通に塗りが見える状態に
-    try:
-        obj.display_type = "TEXTURED"
-    except Exception:  # noqa: BLE001
-        pass
+    obj.hide_select = True
+    obj.hide_render = True
+    obj.hide_viewport = True
 
     # ページの world オフセットに配置 (page_grid)
     try:
@@ -250,16 +240,7 @@ def ensure_paper_bg_for_page(
 
 
 def refresh_paper_bg_visibility(scene: bpy.types.Scene, work) -> int:
-    """既存 paper_bg Object の ``PROP_BG_IN_RANGE`` と ``hide_viewport`` を、
-    ``work.pages[*].in_page_range`` の現在値に合わせて再同期する.
-
-    ``page_number_start`` / ``page_number_end`` 変更時に
-    ``update_page_range_visibility`` が page entry の ``in_page_range`` を
-    切替えた直後にこの関数を呼ぶことで、 Mesh / Material は触らずに
-    可視性だけを軽量更新する。
-
-    Returns: 触れた Object 数。
-    """
+    """paper_bg Object の ``PROP_BG_IN_RANGE`` を更新する."""
     if scene is None or work is None:
         return 0
     page_in_range_map: dict[str, bool] = {}
@@ -274,13 +255,9 @@ def refresh_paper_bg_visibility(scene: bpy.types.Scene, work) -> int:
         pid = str(obj.get(PROP_BG_OWNER_ID, "") or "")
         if pid not in page_in_range_map:
             continue
-        in_range = page_in_range_map[pid]
         try:
-            obj[PROP_BG_IN_RANGE] = in_range
-            # paint mode hide が有効な間は触らない (paint exit 時に
-            # set_paper_bg_visible(True) が改めて反映する)
-            if not _LAST_PAINT_HIDDEN:
-                obj.hide_viewport = not in_range
+            obj[PROP_BG_IN_RANGE] = page_in_range_map[pid]
+            obj.hide_viewport = True
             count += 1
         except Exception:  # noqa: BLE001
             pass
@@ -373,82 +350,9 @@ def purge_legacy_papers_collection(scene: bpy.types.Scene) -> int:
     return removed
 
 
-def set_paper_bg_visible(visible: bool) -> int:
-    """全 paper_bg の hide_viewport を切替.
-
-    Texture Paint / Grease Pencil Paint モード中は paper_bg が ray cast に
-    干渉して active raster mesh の UV 取得が失敗 → 「何も描けない」現象が
-    起きる。paint モード入退出時にこの関数で表示切替する。
-
-    ``visible=True`` (paint mode 退出時の復帰) では、 ``PROP_BG_IN_RANGE``
-    custom property が False (= ページ範囲外) の Object は隠したままにする。
-    これにより、 ``page_number_end`` を縮めて範囲外にしたページの白紙が
-    paint exit で viewport に再表示されてしまう問題を防ぐ。
-
-    Returns: 切替えた Object 数。
-    """
-    count = 0
-    for obj in bpy.data.objects:
-        if obj.get(PROP_BG_KIND) != "page":
-            continue
-        try:
-            if not visible:
-                obj.hide_viewport = True
-            else:
-                # 復帰: ページ範囲内なら表示、 範囲外なら隠したまま
-                in_range = bool(obj.get(PROP_BG_IN_RANGE, True))
-                obj.hide_viewport = not in_range
-            count += 1
-        except Exception:  # noqa: BLE001
-            pass
-    return count
-
-
-# ---------- mode watcher: paint モード中は自動で paper_bg を隠す ----------
-
-_PAINT_MODES = frozenset({
-    "PAINT_TEXTURE",
-    "PAINT_VERTEX",
-    "PAINT_WEIGHT",
-    "SCULPT",
-    "PAINT_GREASE_PENCIL",
-    "EDIT_GREASE_PENCIL",
-    "SCULPT_GREASE_PENCIL",
-    "VERTEX_GREASE_PENCIL",
-    "WEIGHT_GREASE_PENCIL",
-})
-
-_LAST_PAINT_HIDDEN: bool = False
-
-
-def _on_depsgraph_update_post(scene, depsgraph) -> None:
-    """``bpy.context.mode`` が paint 系のとき自動で paper_bg を hide.
-
-    ユーザーが B-MANGA の operator を経由せず Tab / Pie menu / mode dropdown
-    などから直接 Texture Paint / GP Paint に入った場合でも、 raycast 干渉
-    で「何も描けない」状態にならないように自動でガード。
-    """
-    global _LAST_PAINT_HIDDEN
-    try:
-        mode = getattr(bpy.context, "mode", "OBJECT")
-        in_paint = mode in _PAINT_MODES
-        if in_paint and not _LAST_PAINT_HIDDEN:
-            set_paper_bg_visible(False)
-            _LAST_PAINT_HIDDEN = True
-        elif not in_paint and _LAST_PAINT_HIDDEN:
-            set_paper_bg_visible(True)
-            _LAST_PAINT_HIDDEN = False
-    except Exception:  # noqa: BLE001
-        _logger.exception("paper_bg mode watcher failed")
-
-
 def register() -> None:
-    if _on_depsgraph_update_post not in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph_update_post)
+    pass
 
 
 def unregister() -> None:
-    try:
-        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph_update_post)
-    except (ValueError, RuntimeError):
-        pass
+    pass

@@ -312,6 +312,22 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
         _saving_work_metadata = False
 
 
+def _hide_legacy_overlay_objects() -> None:
+    _PREFIXES = (
+        "page_paper_guide_",
+        "page_safe_area_fill_",
+        "page_bleed_outer_fill_",
+        "work_info_text_",
+    )
+    for obj in bpy.data.objects:
+        name = obj.name
+        if any(name.startswith(p) for p in _PREFIXES):
+            try:
+                obj.hide_viewport = True
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def _reconcile_gpencil_collections(context, work, *, include_page_content: bool = True) -> None:
     """master GP とページ Collection × pages の整合をとる (新仕様).
 
@@ -355,6 +371,10 @@ def _reconcile_gpencil_collections(context, work, *, include_page_content: bool 
         page_grid.apply_page_collection_transforms(context, work)
     except Exception:  # noqa: BLE001
         _logger.exception("load_post: apply_page_collection_transforms failed")
+    try:
+        _hide_legacy_overlay_objects()
+    except Exception:  # noqa: BLE001
+        _logger.exception("load_post: hide legacy overlay objects failed")
     if include_page_content:
         try:
             from ..operators import raster_layer_op

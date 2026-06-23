@@ -731,24 +731,11 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: coma_border location update failed")
     try:
-        from . import paper_guide_object as _pgo
-
-        if not is_work_list_scene:
-            _pgo.sync_paper_guides_after_page_transform(scene, real_work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("apply_page_collection_transforms: paper guide update failed")
-    try:
         from . import overview_camera as _overview_camera
 
         _overview_camera.ensure_overview_camera(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: overview camera update failed")
-    try:
-        from . import work_info_text_object as _work_info_text
-
-        _work_info_text.regenerate_all_work_info_texts(scene, real_work)
-    except Exception:  # noqa: BLE001
-        _logger.exception("apply_page_collection_transforms: work info text update failed")
     try:
         from . import page_content_visibility as _page_content_visibility
 

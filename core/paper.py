@@ -55,69 +55,26 @@ def _tag_view3d_redraw(context) -> None:
 
 
 def _on_paper_visual_changed(_self, context) -> None:
-    try:
-        from ..core.work import get_work
-        from ..utils import paper_guide_object
-
-        work = get_work(context)
-        scene = getattr(context, "scene", None) if context is not None else None
-        if scene is not None and work is not None and work.loaded:
-            paper_guide_object.regenerate_all_paper_guides(scene, work)
-    except Exception:  # noqa: BLE001
-        pass
     _tag_view3d_redraw(context)
 
 
 def _on_paper_color_changed(self, context) -> None:
-    """``paper_color`` 変更時に paper_bg Mesh のマテリアル色を即時反映.
-
-    ``_ensure_paper_material`` は呼び直すたびに material のノード木 (Emission
-    の Color) と ``mat.diffuse_color`` (Solid 表示用) を ``paper.paper_color``
-    から更新するので、 既存の paper_bg Object の Material slot がそのまま
-    新色を表示する (Mesh / Object 自体には触らない)。
-    ``mat.update_tag()`` で depsgraph に材質変更を通知し、 Material Preview /
-    Rendered だけでなく Solid モードのビューポートも即時に再描画する。
-    """
-    try:
-        from ..utils import paper_bg_object as _pbg
-
-        mat = _pbg._ensure_paper_material(self)
-        if mat is not None:
-            try:
-                mat.update_tag()
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception:  # noqa: BLE001
-        _logger.exception("paper_color update: material refresh failed")
+    """``paper_color`` 変更時にビューポートを再描画."""
     _tag_view3d_redraw(context)
 
 
 def _on_page_number_format_changed(_self, context) -> None:
-    try:
-        from ..core.work import get_work
-        from ..utils import work_info_text_object
-
-        work = get_work(context)
-        scene = getattr(context, "scene", None) if context is not None else None
-        if scene is not None and work is not None and work.loaded:
-            work_info_text_object.regenerate_all_work_info_texts(scene, work)
-    except Exception:  # noqa: BLE001
-        pass
     _tag_view3d_redraw(context)
 
 
 def _on_paper_layout_changed(_self, context) -> None:
     try:
         from ..core.work import get_work
-        from ..utils import page_grid, paper_bg_object, paper_guide_object
+        from ..utils import page_grid
 
         work = get_work(context)
         if work is not None and work.loaded:
             page_grid.apply_page_collection_transforms(context, work)
-            scene = getattr(context, "scene", None) if context is not None else None
-            if scene is not None:
-                paper_bg_object.regenerate_all_paper_bgs(scene, work)
-                paper_guide_object.regenerate_all_paper_guides(scene, work)
     except Exception:  # noqa: BLE001
         pass
     _tag_view3d_redraw(context)
@@ -126,7 +83,7 @@ def _on_paper_layout_changed(_self, context) -> None:
 def _on_coma_border_width_changed(self, context) -> None:
     try:
         from ..core.work import get_work
-        from ..utils import coma_border_object, coma_plane, page_file_scene, paper_guide_object
+        from ..utils import coma_border_object, coma_plane, page_file_scene
 
         work = get_work(context)
         scene = getattr(context, "scene", None) if context is not None else None
@@ -143,8 +100,6 @@ def _on_coma_border_width_changed(self, context) -> None:
                 if scene is not None and page_file_scene.is_current_page_edit_scene(scene, page.id):
                     coma_plane.ensure_coma_plane(scene, work, page, coma)
                     coma_border_object.ensure_coma_border_object(scene, work, page, coma)
-        if scene is not None:
-            paper_guide_object.regenerate_all_paper_guides(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("coma border width update failed")
     _tag_view3d_redraw(context)

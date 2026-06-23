@@ -69,36 +69,19 @@ def _current_page_id_for_update(scene, context) -> str:
 
 
 def _page_work_info_visible_update(scene, context) -> None:
-    visible = bool(getattr(scene, "bmanga_page_work_info_visible", True))
     try:
-        from ..utils import work_info_text_object as wito
-        page_id = _current_page_id_for_update(scene, context)
-        if not page_id:
-            return
-        prefix = wito.WORK_INFO_TEXT_PREFIX + page_id + "_"
-        for obj in bpy.data.objects:
-            if obj.name.startswith(prefix):
-                obj.hide_viewport = not visible
-                obj.hide_render = not visible
+        for area in (context.screen.areas if context.screen else ()):
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
     except Exception:  # noqa: BLE001
         pass
 
 
 def _page_guides_visible_update(scene, context) -> None:
-    visible = bool(getattr(scene, "bmanga_page_guides_visible", True))
     try:
-        from ..utils import paper_guide_object as pgo
-        page_id = _current_page_id_for_update(scene, context)
-        if not page_id:
-            return
-        guide_name = pgo.PAPER_GUIDE_PREFIX + page_id
-        safe_name = pgo.PAPER_SAFE_FILL_PREFIX + page_id
-        bleed_name = pgo.PAPER_BLEED_OUTER_FILL_PREFIX + page_id
-        for obj in bpy.data.objects:
-            n = obj.name
-            if n == guide_name or n.startswith(guide_name + "_") or n == safe_name or n == bleed_name:
-                obj.hide_viewport = not visible
-                obj.hide_render = not visible
+        for area in (context.screen.areas if context.screen else ()):
+            if area.type == "VIEW_3D":
+                area.tag_redraw()
     except Exception:  # noqa: BLE001
         pass
 

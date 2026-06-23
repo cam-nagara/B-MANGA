@@ -1614,21 +1614,8 @@ def _thickness_timer():
 
 
 def register() -> None:
-    if not bpy.app.timers.is_registered(_thickness_timer):
-        # persistent=True が無いと最初のファイル切替 (ページ一覧⇄ページ⇄コマ) で
-        # タイマーが消え、以後ズームしてもガイド線の太さが更新されなくなる。
-        bpy.app.timers.register(
-            _thickness_timer,
-            first_interval=_GUIDE_THICKNESS_INTERVAL,
-            persistent=True,
-        )
+    pass
 
 
 def unregister() -> None:
-    global _last_mpp
-    _last_mpp = -1.0
-    try:
-        if bpy.app.timers.is_registered(_thickness_timer):
-            bpy.app.timers.unregister(_thickness_timer)
-    except Exception:  # noqa: BLE001
-        pass
+    pass

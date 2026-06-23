@@ -804,12 +804,6 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         coma_runtime_page_filter,
     ):
         try:
-            from . import paper_bg_object as _pbg
-
-            _pbg.regenerate_all_paper_bgs(scene, structure_work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("mirror fast path paper backgrounds failed")
-        try:
             from . import page_file_scene
 
             if structure_page_filter is not None and len(structure_page_filter) == 1:
@@ -919,16 +913,6 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("mirror balloon curve top-level failed")
 
-        # 用紙背景 (opaque Mesh) を全ページ分 ensure。BLENDED ラスター
-        # 材質の depth 不在を補い、ラスター paint の上に被さらないように
-        # する。GPU overlay 用紙塗りの代替。
-        try:
-            from . import paper_bg_object as _pbg
-
-            _pbg.regenerate_all_paper_bgs(scene, structure_work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("mirror paper backgrounds failed")
-
         # コマ Collection 直下に coma_plane Mesh を ensure
         # (背景色 + Boolean マスク兼用 / 旧 __masks__ Collection の置き換え)
         try:
@@ -970,14 +954,6 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
         except Exception:  # noqa: BLE001
             _logger.exception("assign_per_page_z_ranks failed")
 
-        # 用紙ガイド線群とセーフライン外塗りは、作品要素の実体が並んだ後に
-        # z を決める。どちらもビュー上では最前面表示を使う。
-        try:
-            from . import paper_guide_object as _pgo
-
-            _pgo.regenerate_all_paper_guides(scene, structure_work)
-        except Exception:  # noqa: BLE001
-            _logger.exception("mirror paper guides failed")
         _purge_content_for_filter(scene, content_page_filter)
         try:
             from . import page_file_scene
