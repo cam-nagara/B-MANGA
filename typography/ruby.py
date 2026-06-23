@@ -144,6 +144,66 @@ def _distributed_starts(
     return [first + step * i for i in range(count)]
 
 
+def _ruby_extent(ruby_em: float, count: int, letter_spacing: float) -> float:
+    if count <= 1:
+        return ruby_em
+    pitch = ruby_em * max(0.1, 1.0 + float(letter_spacing))
+    return ruby_em + pitch * (count - 1)
+
+
+def _ls_for_target_extent(target: float, ruby_em: float, count: int) -> float:
+    if count <= 1 or ruby_em < 1e-9:
+        return 0.0
+    pitch = (target - ruby_em) / (count - 1)
+    return max(0.0, pitch / ruby_em - 1.0)
+
+
+def _ruby_rp_range(info: dict, align: str) -> tuple[float, float]:
+    actual = max(info['parent_span'], info['ext'])
+    if align == "start":
+        return info['rp_lo'], info['rp_lo'] + actual
+    c = info['rp_center']
+    return c - actual * 0.5, c + actual * 0.5
+
+
+def _resolve_ruby_overlaps(infos: list[dict], align: str) -> None:
+    for i in range(len(infos) - 1):
+        a, b = infos[i], infos[i + 1]
+        _, a_hi = _ruby_rp_range(a, align)
+        b_lo, _ = _ruby_rp_range(b, align)
+        if a_hi <= b_lo + 1e-6:
+            continue
+        overlap = a_hi - b_lo
+        if align == "start":
+            max_ext = b['rp_lo'] - a['rp_lo']
+            a['ext'] = max(a['min_ext'], min(a['ext'], max_ext))
+            a['eff_ls'] = _ls_for_target_extent(a['ext'], a['ruby_em'], a['count'])
+            continue
+        needed = 2.0 * overlap
+        a_of = max(0.0, a['ext'] - a['parent_span'])
+        b_of = max(0.0, b['ext'] - b['parent_span'])
+        total_of = a_of + b_of
+        if total_of < 1e-9:
+            continue
+        a_share = needed * a_of / total_of
+        b_share = needed * b_of / total_of
+        a_room = max(0.0, a['ext'] - a['min_ext'])
+        b_room = max(0.0, b['ext'] - b['min_ext'])
+        a_cut = min(a_share, a_room)
+        b_cut = min(b_share, b_room)
+        left = needed - a_cut - b_cut
+        if left > 1e-6:
+            extra = min(left, a_room - a_cut)
+            a_cut += extra
+            left -= extra
+        if left > 1e-6:
+            b_cut += min(left, b_room - b_cut)
+        a['ext'] -= a_cut
+        b['ext'] -= b_cut
+        a['eff_ls'] = _ls_for_target_extent(a['ext'], a['ruby_em'], a['count'])
+        b['eff_ls'] = _ls_for_target_extent(b['ext'], b['ruby_em'], b['count'])
+
+
 def compute_ruby_placements(
     parent_glyphs: list[GlyphPlacement],
     ruby_spans,
@@ -157,16 +217,19 @@ def compute_ruby_placements(
 ) -> list[RubyPlacement]:
     """親文字の配置とルビスパンからルビ座標を計算.
 
-    縦書きでは親文字の右側、横書きでは親文字の上側へ小さく並べる。
+    隣接スパンのルビが重なる場合は字間を自動圧縮して回避する。
     """
-    out: list[RubyPlacement] = []
+    is_horiz = str(writing_mode or "vertical") == "horizontal"
+
+    # ── Phase 1: スパン情報を収集 ──
+    infos: list[dict] = []
     for span in ruby_spans:
-        start = int(_span_value(span, "start", 0))
+        start_idx = int(_span_value(span, "start", 0))
         length = max(1, int(_span_value(span, "length", 1)))
-        end = start + length
+        end_idx = start_idx + length
         covered = [
-            glyph for glyph in parent_glyphs
-            if start <= int(getattr(glyph, "index", -1)) < end
+            g for g in parent_glyphs
+            if start_idx <= int(getattr(g, "index", -1)) < end_idx
         ]
         if not covered:
             continue
@@ -174,60 +237,75 @@ def compute_ruby_placements(
         if not ruby_text:
             continue
         ruby_text = _normalize_small_kana(ruby_text, ruby_small_kana)
-        parent_size = covered[0].size_pt
-        ruby_size = parent_size * max(0.05, float(ruby_size_ratio))
+        ruby_size = covered[0].size_pt * max(0.05, float(ruby_size_ratio))
         ruby_em = ruby_size * 25.4 / 72.0
         count = len(ruby_text)
-        if count == 0:
+        if count <= 0:
             continue
-        if str(writing_mode or "vertical") == "horizontal":
-            left_x = min(g.x_mm for g in covered)
-            right_x = max(g.x_mm + _glyph_em_mm(g) for g in covered)
-            top_y = max(g.y_mm + _glyph_em_mm(g) for g in covered)
-            starts = _distributed_starts(
-                parent_start=left_x,
-                parent_end=right_x,
-                ruby_em=ruby_em,
-                count=count,
-                letter_spacing=ruby_letter_spacing,
-                align=ruby_align,
-            )
-            ruby_y = top_y + ruby_offset_mm
-            for rch, rx in zip(ruby_text, starts):
-                out.append(
-                    RubyPlacement(
-                        ch=rch,
-                        x_mm=rx,
-                        y_mm=ruby_y,
-                        size_pt=ruby_size,
-                        font_path=str(ruby_font_path or ""),
-                    )
-                )
+        if is_horiz:
+            rp_lo = min(g.x_mm for g in covered)
+            rp_hi = max(g.x_mm + _glyph_em_mm(g) for g in covered)
         else:
-            top_y = max(g.y_mm + _glyph_em_mm(g) for g in covered)
-            bottom_y = min(g.y_mm for g in covered)
-            parent_right = max(g.x_mm + _glyph_em_mm(g) for g in covered)
-            ruby_x = parent_right + ruby_offset_mm
+            rp_lo = -max(g.y_mm + _glyph_em_mm(g) for g in covered)
+            rp_hi = -min(g.y_mm for g in covered)
+        infos.append({
+            'covered': covered, 'ruby_text': ruby_text,
+            'ruby_size': ruby_size, 'ruby_em': ruby_em, 'count': count,
+            'rp_lo': rp_lo, 'rp_hi': rp_hi,
+            'rp_center': (rp_lo + rp_hi) * 0.5,
+            'parent_span': rp_hi - rp_lo,
+            'ext': _ruby_extent(ruby_em, count, ruby_letter_spacing),
+            'min_ext': _ruby_extent(ruby_em, count, 0.0),
+            'eff_ls': float(ruby_letter_spacing),
+        })
+
+    if not infos:
+        return []
+
+    # ── Phase 2: 隣接ルビの重なりを字間圧縮で解消 ──
+    if len(infos) >= 2:
+        infos.sort(key=lambda s: s['rp_lo'])
+        _resolve_ruby_overlaps(infos, ruby_align)
+
+    # ── Phase 3: 配置を生成 ──
+    out: list[RubyPlacement] = []
+    font = str(ruby_font_path or "")
+    for info in infos:
+        ls = info['eff_ls']
+        em = info['ruby_em']
+        cnt = info['count']
+        txt = info['ruby_text']
+        sz = info['ruby_size']
+        if is_horiz:
+            left_x = min(g.x_mm for g in info['covered'])
+            right_x = max(g.x_mm + _glyph_em_mm(g) for g in info['covered'])
+            top_y = max(g.y_mm + _glyph_em_mm(g) for g in info['covered'])
             starts = _distributed_starts(
-                parent_start=bottom_y,
-                parent_end=top_y,
-                ruby_em=ruby_em,
-                count=count,
-                letter_spacing=ruby_letter_spacing,
-                align=ruby_align,
+                parent_start=left_x, parent_end=right_x,
+                ruby_em=em, count=cnt,
+                letter_spacing=ls, align=ruby_align,
+            )
+            ry = top_y + ruby_offset_mm
+            for rch, rx in zip(txt, starts):
+                out.append(RubyPlacement(
+                    ch=rch, x_mm=rx, y_mm=ry, size_pt=sz, font_path=font,
+                ))
+        else:
+            top_y = max(g.y_mm + _glyph_em_mm(g) for g in info['covered'])
+            bot_y = min(g.y_mm for g in info['covered'])
+            p_right = max(g.x_mm + _glyph_em_mm(g) for g in info['covered'])
+            rx = p_right + ruby_offset_mm
+            starts = _distributed_starts(
+                parent_start=bot_y, parent_end=top_y,
+                ruby_em=em, count=cnt,
+                letter_spacing=ls, align=ruby_align,
             )
             if ruby_align == "start" and starts:
-                shift = (top_y - ruby_em) - starts[-1]
+                shift = (top_y - em) - starts[-1]
                 if abs(shift) > 1e-6:
                     starts = [s + shift for s in starts]
-            for rch, ry in zip(ruby_text, reversed(starts)):
-                out.append(
-                    RubyPlacement(
-                        ch=rch,
-                        x_mm=ruby_x,
-                        y_mm=ry,
-                        size_pt=ruby_size,
-                        font_path=str(ruby_font_path or ""),
-                    )
-                )
+            for rch, ry in zip(txt, reversed(starts)):
+                out.append(RubyPlacement(
+                    ch=rch, x_mm=rx, y_mm=ry, size_pt=sz, font_path=font,
+                ))
     return out

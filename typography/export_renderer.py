@@ -105,7 +105,7 @@ def render_to_image(
         # layout.py の y は文字の下端、Pillow は左上原点の上端指定。
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
         glyph_color = color_for_index(g.index) if color_for_index is not None else color
-        kwargs: dict = {"fill": glyph_color}
+        kwargs: dict = {"fill": glyph_color, "stroke_width": 1, "stroke_fill": glyph_color}
         if stroke_width_px > 0:
             kwargs["stroke_width"] = stroke_width_px
             kwargs["stroke_fill"] = stroke_color
@@ -132,7 +132,7 @@ def render_to_image(
         x = origin_xy_px[0] + float(getattr(r, "x_mm", 0.0)) * px_per_mm
         y = origin_xy_px[1] + float(getattr(r, "y_mm", 0.0)) * px_per_mm
         y_px = _layout_bottom_to_pillow_top(image.height, y, size_px)
-        kwargs: dict = {"fill": color}
+        kwargs: dict = {"fill": color, "stroke_width": 1, "stroke_fill": color}
         if stroke_width_px > 0:
             kwargs["stroke_width"] = max(1, stroke_width_px // 2)
             kwargs["stroke_fill"] = stroke_color
