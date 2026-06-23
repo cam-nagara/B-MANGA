@@ -6,7 +6,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 
 from . import overlay_shared
-from ..utils import color_space, percentage, spread_merge_geometry, viewport_colors
+from ..utils import percentage, spread_merge_geometry, viewport_colors
 from ..utils.geom import Rect, mm_to_m
 
 GUIDE_SCREEN_PX = 1.0

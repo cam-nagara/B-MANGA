@@ -29,7 +29,6 @@ from ..core.work import get_active_page, get_work
 from ..utils import (
     balloon_shapes,
     border_geom,
-    color_space,
     free_transform,
     log,
     object_selection,
@@ -1111,6 +1110,7 @@ def _draw_page_overlay(
     draw_image_layers: bool = True,
     is_left_half: bool = False,
     phase: str = "post",
+    page_index: int = -1,
 ) -> None:
     """1 ページ分のガイド/コマ枠を (ox_mm, oy_mm) オフセットで描画.
 
@@ -1128,6 +1128,9 @@ def _draw_page_overlay(
     if is_left_half:
         rects = overlay_shared.compute_paper_rects(paper, is_left_half=True)
 
+    # page_index が渡されなかった場合のみ逆引き
+    _pi = page_index if page_index >= 0 else _resolve_page_index(work, ox_mm, oy_mm)
+
     # 用紙白背景 (depth書込み)
     is_spread = bool(getattr(page, "spread", False))
     spread_w = 0.0
@@ -1135,7 +1138,7 @@ def _draw_page_overlay(
         try:
             from ..utils import page_grid as _pg_bg
             spread_w = _pg_bg.page_content_width_mm(
-                work, _resolve_page_index(work, ox_mm, oy_mm),
+                work, _pi,
                 float(getattr(paper, "canvas_width_mm", 257.0) or 257.0),
             )
         except Exception:  # noqa: BLE001
@@ -1143,7 +1146,6 @@ def _draw_page_overlay(
     overlay_paper_bg.draw_for_page(paper, rects, ox_mm, oy_mm, is_spread=is_spread, spread_width_mm=spread_w)
 
     # ページプレビュー画像
-    _pi = _resolve_page_index(work, ox_mm, oy_mm)
     _is_current = False
     try:
         _is_current = (_pi == int(getattr(work, "active_page_index", -1)))
@@ -1559,7 +1561,7 @@ def _draw_callback(phase: str = "post") -> None:
                     _draw_page_overlay(
                         context, work, paper, rects, page, mode,
                         ox_mm=ox, oy_mm=oy, draw_image_layers=False,
-                        is_left_half=left_half, phase=phase,
+                        is_left_half=left_half, phase=phase, page_index=i,
                     )
                 if (
                     page_id in selected_page_ids
@@ -1612,7 +1614,7 @@ def _draw_callback(phase: str = "post") -> None:
                 _draw_page_overlay(
                     context, work, paper, rects, page, mode,
                     ox_mm=ox, oy_mm=oy, draw_image_layers=False,
-                    is_left_half=left_half, phase=phase,
+                    is_left_half=left_half, phase=phase, page_index=i,
                 )
                 page_id = str(getattr(page, "id", "") or "")
                 if page_id in selected_page_ids or (highlight_active_page and i == active_idx):
@@ -1646,7 +1648,7 @@ def _draw_callback(phase: str = "post") -> None:
             _draw_page_overlay(
                 context, work, paper, rects, page, mode,
                 ox_mm=ox, oy_mm=oy, draw_image_layers=True,
-                is_left_half=left_half, phase=phase,
+                is_left_half=left_half, phase=phase, page_index=max(0, idx),
             )
         try:
             gpu.state.depth_test_set("NONE")
