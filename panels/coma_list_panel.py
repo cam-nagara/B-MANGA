@@ -6,7 +6,8 @@ import bpy
 from bpy.types import Panel, UIList
 
 from ..core.mode import MODE_PAGE, MODE_COMA, get_mode
-from ..core.work import get_active_page
+from ..core.paper import format_coma_display_label
+from ..core.work import get_active_page, get_work
 
 B_NAME_CATEGORY = "B-MANGA"
 
@@ -50,10 +51,16 @@ class BMANGA_UL_comas(UIList):
     ):
         if self.layout_type in {"DEFAULT", "COMPACT"}:
             row = layout.row(align=True)
-            row.label(text=item.coma_id, icon="IMAGE_DATA")
+            work = get_work(context)
+            paper = getattr(work, "paper", None) if work is not None else None
+            coma_num = int(getattr(item, "coma_number", 0) or 0)
+            if coma_num < 1:
+                from ..utils.coma_id_edit import coma_number_from_id
+                coma_num = coma_number_from_id(item.coma_id)
+            coma_label = format_coma_display_label(paper, coma_num) if paper is not None else item.coma_id
+            row.label(text=coma_label, icon="IMAGE_DATA")
             row.prop(item, "title", text="", emboss=False)
             row.label(text=f"z={item.z_order}")
-            # 行内「コマ編集へ」ボタン (overview ダブルクリックと同等の導線)
             op = row.operator(
                 "bmanga.coma_enter_from_list",
                 text="",
@@ -63,7 +70,14 @@ class BMANGA_UL_comas(UIList):
             op.index = index
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
-            layout.label(text=item.coma_id)
+            work = get_work(context)
+            paper = getattr(work, "paper", None) if work is not None else None
+            coma_num = int(getattr(item, "coma_number", 0) or 0)
+            if coma_num < 1:
+                from ..utils.coma_id_edit import coma_number_from_id
+                coma_num = coma_number_from_id(item.coma_id)
+            coma_label = format_coma_display_label(paper, coma_num) if paper is not None else item.coma_id
+            layout.label(text=coma_label)
 
 
 class BMANGA_PT_comas(Panel):
@@ -98,7 +112,14 @@ class BMANGA_PT_comas(Panel):
             row.operator("bmanga.enter_coma_mode", text="コマ編集へ", icon="PLAY")
         else:
             stem = getattr(context.scene, "bmanga_current_coma_id", "")
-            row.label(text=f"コマ編集モード: {stem}", icon="IMAGE_DATA")
+            work_mode = get_work(context)
+            paper_mode = getattr(work_mode, "paper", None) if work_mode is not None else None
+            if paper_mode is not None and stem:
+                from ..utils.coma_id_edit import coma_number_from_id
+                stem_label = format_coma_display_label(paper_mode, coma_number_from_id(stem))
+            else:
+                stem_label = stem
+            row.label(text=f"コマ編集モード: {stem_label}", icon="IMAGE_DATA")
             row.operator("bmanga.exit_coma_mode", text="戻る (Esc)", icon="BACK")
 
         row = layout.row()

@@ -883,19 +883,23 @@ def _layout_cursor_state(entry, rect: Rect, cursor_index: int) -> tuple[Rect, fl
     return region, em, char_pitch, row, col
 
 
-def caret_rect(entry, rect: Rect, cursor_index: int) -> Rect:
+def caret_rect(entry, rect: Rect, cursor_index: int) -> Rect | None:
     region, em, char_pitch, row, col = _layout_cursor_state(entry, rect, cursor_index)
     line_pitch = em * text_line_height(entry)
     thickness = max(_TEXT_CARET_MIN_THICKNESS_MM, em * 0.08)
     if getattr(entry, "writing_mode", "vertical") == "horizontal":
         x = region.x + col * char_pitch
         y = region.y2 - em - row * line_pitch
+        if y < region.y - em:
+            return None
         x = max(region.x, min(region.x2, x)) - thickness * 0.5
         y = max(region.y, min(region.y2 - em, y))
         return Rect(x, y, thickness, min(em, region.height))
 
     x_center = region.x2 - em * 0.5 - col * line_pitch
     y = region.y2 - row * char_pitch
+    if x_center < region.x - em:
+        return None
     half_width = min(em * 0.45, max(0.6, region.width * 0.5))
     x = max(region.x, min(region.x2, x_center))
     y = max(region.y, min(region.y2, y)) - thickness * 0.5
@@ -908,6 +912,8 @@ def cursor_index_from_point(entry, x_mm: float, y_mm: float) -> int:
     best_distance = math.inf
     for index in range(len(text_body(entry)) + 1):
         caret = caret_rect(entry, rect, index)
+        if caret is None:
+            continue
         cx, cy = caret.center
         distance = math.hypot(float(x_mm) - cx, float(y_mm) - cy)
         if distance < best_distance:

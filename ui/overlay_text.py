@@ -121,7 +121,7 @@ def _horizontal_caret_rect(entry, rect: Rect) -> Rect:
     return Rect(x, y, thickness, min(em, region.height))
 
 
-def text_caret_rect(entry, rect: Rect, cursor_index: int | None = None) -> Rect:
+def text_caret_rect(entry, rect: Rect, cursor_index: int | None = None) -> Rect | None:
     if cursor_index is None:
         cursor_index = len(text_edit_runtime.text_body(entry))
     return text_edit_runtime.caret_rect(entry, rect, cursor_index)
@@ -160,8 +160,10 @@ def _selection_rects(entry, rect: Rect, cursor_index: int, selection_anchor: int
         if body[index] == "\n":
             continue
         caret = text_edit_runtime.caret_rect(entry, rect, index)
+        if caret is None:
+            continue
         if vertical:
-            rects.append(Rect(caret.x, caret.y - char_pitch, caret.width, char_pitch))
+            rects.append(Rect(caret.x - caret.width * 0.5, caret.y - char_pitch, caret.width, char_pitch))
         else:
             rects.append(Rect(caret.x, caret.y, char_pitch, caret.height))
     return rects
@@ -219,7 +221,8 @@ def draw_text_guides(
                 for composition_rect in _selection_rects(preview_entry, rect, end, start):
                     draw_rect_fill(composition_rect, _text_selection_color(context))
             caret = text_caret_rect(preview_entry, rect, preview_cursor)
-            draw_rect_fill(caret, _TEXT_CARET_COLOR)
+            if caret is not None:
+                draw_rect_fill(caret, _TEXT_CARET_COLOR)
 
 
 def draw_text_pixels(
@@ -272,7 +275,8 @@ def draw_text_pixels(
             draw_text_in_rect(context, rect, preview_entry)
             if draw_rect_fill_pixel is not None:
                 caret = text_caret_rect(preview_entry, rect, preview_cursor)
-                draw_rect_fill_pixel(context, caret, _TEXT_CARET_COLOR)
+                if caret is not None:
+                    draw_rect_fill_pixel(context, caret, _TEXT_CARET_COLOR)
             continue
         draw_text_in_rect(context, rect, entry)
 

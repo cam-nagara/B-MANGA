@@ -74,10 +74,19 @@ def _assign_default_font(curve: bpy.types.Curve, work=None) -> None:
         pass
 
 
-def _text_items(info, page_index: int) -> list[tuple[str, object, str]]:
+def _text_items(info, page_index: int, paper=None, page_entry=None) -> list[tuple[str, object, str]]:
     page_text = ""
     try:
-        page_text = f"ページ{int(info.page_number_start) + int(page_index):04d}"
+        if paper is not None and page_entry is not None:
+            from ..core.paper import format_page_entry_display_label
+            page_text = format_page_entry_display_label(paper, page_entry)
+        else:
+            page_number = int(info.page_number_start) + int(page_index)
+            if paper is not None:
+                from ..core.paper import format_page_display_label
+                page_text = format_page_display_label(paper, page_number)
+            else:
+                page_text = f"ページ{page_number:04d}"
     except Exception:  # noqa: BLE001
         page_text = ""
     return [
@@ -308,7 +317,8 @@ def regenerate_all_work_info_texts(scene, work) -> int:
         page_id = str(getattr(page, "id", "") or "")
         if not page_id or not page_range.page_in_range(page):
             continue
-        for item_key, item, text in _text_items(info, page_index):
+        paper = getattr(work, "paper", None)
+        for item_key, item, text in _text_items(info, page_index, paper, page_entry=page):
             owner_id = f"{page_id}:{item_key}"
             if not master_visible or item is None or not bool(getattr(item, "enabled", False)) or not text:
                 continue
@@ -337,7 +347,8 @@ def sync_work_info_texts_after_page_transform(scene, work) -> int:
         page_id = str(getattr(page, "id", "") or "")
         if not page_id or not page_range.page_in_range(page):
             continue
-        for item_key, item, text in _text_items(info, page_index):
+        paper = getattr(work, "paper", None)
+        for item_key, item, text in _text_items(info, page_index, paper, page_entry=page):
             owner_id = f"{page_id}:{item_key}"
             if not master_visible or item is None or not bool(getattr(item, "enabled", False)) or not text:
                 continue

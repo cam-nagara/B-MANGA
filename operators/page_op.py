@@ -359,6 +359,9 @@ class BMANGA_OT_page_duplicate(Operator):
             return {"CANCELLED"}
         idx = work.active_page_index
         src = work.pages[idx]
+        if getattr(src, "spread", False):
+            self.report({"WARNING"}, "見開きページは複製できません。先に見開きを解除してください")
+            return {"CANCELLED"}
         work_dir = Path(work.work_dir)
         try:
             old_offsets = _page_offsets_by_id(context, work)

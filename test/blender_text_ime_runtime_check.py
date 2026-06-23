@@ -99,7 +99,8 @@ def main() -> None:
         assert abs(vertical_caret.x - expected_x) < 1e-6, (vertical_caret.x, expected_x)
         assert abs(vertical_caret.x - first_glyph.x_mm) < 1e-6, (vertical_caret.x, first_glyph.x_mm)
         selection_rect = overlay_text._selection_rects(entry, vertical_rect, 1, 0)[0]
-        assert abs(selection_rect.x - first_glyph.x_mm) < 1e-6, (selection_rect.x, first_glyph.x_mm)
+        expected_sel_x = vertical_caret.x - vertical_caret.width * 0.5
+        assert abs(selection_rect.x - expected_sel_x) < 1e-6, (selection_rect.x, expected_sel_x)
 
         entry.body = "abcdef"
         entry.writing_mode = "horizontal"

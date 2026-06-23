@@ -230,6 +230,12 @@ def paper_to_dict(paper) -> dict[str, Any]:
         "showSafeLine": bool(getattr(paper, "show_safe_line", True)),
         "showTrimMarks": bool(getattr(paper, "show_trim_marks", True)),
         "colorProfile": paper.color_profile,
+        "pageNumberDigits": int(getattr(paper, "page_number_digits", 4) or 4),
+        "pageNumberPrefix": str(getattr(paper, "page_number_prefix", "p") or ""),
+        "pageNumberSuffix": str(getattr(paper, "page_number_suffix", "") or ""),
+        "comaNumberDigits": int(getattr(paper, "coma_number_digits", 2) or 2),
+        "comaNumberPrefix": str(getattr(paper, "coma_number_prefix", "c") or ""),
+        "comaNumberSuffix": str(getattr(paper, "coma_number_suffix", "") or ""),
         "startSide": paper.start_side,
         "readDirection": paper.read_direction,
         "presetName": paper.preset_name,
@@ -267,6 +273,18 @@ def paper_from_dict(paper, data: dict[str, Any]) -> None:
     paper.show_safe_line = bool(data.get("showSafeLine", True))
     paper.show_trim_marks = bool(data.get("showTrimMarks", True))
     paper.color_profile = data.get("colorProfile", "sRGB IEC61966-2.1")
+    if hasattr(paper, "page_number_digits"):
+        paper.page_number_digits = int(data.get("pageNumberDigits", 4))
+    if hasattr(paper, "page_number_prefix"):
+        paper.page_number_prefix = data.get("pageNumberPrefix", "p")
+    if hasattr(paper, "page_number_suffix"):
+        paper.page_number_suffix = data.get("pageNumberSuffix", "")
+    if hasattr(paper, "coma_number_digits"):
+        paper.coma_number_digits = int(data.get("comaNumberDigits", 2))
+    if hasattr(paper, "coma_number_prefix"):
+        paper.coma_number_prefix = data.get("comaNumberPrefix", "c")
+    if hasattr(paper, "coma_number_suffix"):
+        paper.coma_number_suffix = data.get("comaNumberSuffix", "")
     paper.start_side = data.get("startSide", "left")
     paper.read_direction = data.get("readDirection", "left")
     paper.preset_name = data.get("presetName", "商業誌B4マンガ原稿用紙")

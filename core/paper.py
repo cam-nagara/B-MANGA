@@ -92,6 +92,20 @@ def _on_paper_color_changed(self, context) -> None:
     _tag_view3d_redraw(context)
 
 
+def _on_page_number_format_changed(_self, context) -> None:
+    try:
+        from ..core.work import get_work
+        from ..utils import work_info_text_object
+
+        work = get_work(context)
+        scene = getattr(context, "scene", None) if context is not None else None
+        if scene is not None and work is not None and work.loaded:
+            work_info_text_object.regenerate_all_work_info_texts(scene, work)
+    except Exception:  # noqa: BLE001
+        pass
+    _tag_view3d_redraw(context)
+
+
 def _on_paper_layout_changed(_self, context) -> None:
     try:
         from ..core.work import get_work
@@ -523,6 +537,50 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
         default="sRGB IEC61966-2.1",
     )
 
+    # --- ページ番号書式 ---
+    page_number_digits: IntProperty(  # type: ignore[valid-type]
+        name="桁数",
+        description="ページ番号のゼロ埋め桁数",
+        default=4,
+        min=1,
+        max=8,
+        update=_on_page_number_format_changed,
+    )
+    page_number_prefix: StringProperty(  # type: ignore[valid-type]
+        name="前",
+        description="ページ番号の前に付ける文字列 (例: 'p', 'ページ')",
+        default="p",
+        update=_on_page_number_format_changed,
+    )
+    page_number_suffix: StringProperty(  # type: ignore[valid-type]
+        name="後",
+        description="ページ番号の後に付ける文字列 (例: '頁')",
+        default="",
+        update=_on_page_number_format_changed,
+    )
+
+    # --- コマ番号書式 ---
+    coma_number_digits: IntProperty(  # type: ignore[valid-type]
+        name="桁数",
+        description="コマ番号のゼロ埋め桁数",
+        default=2,
+        min=1,
+        max=4,
+        update=_on_page_number_format_changed,
+    )
+    coma_number_prefix: StringProperty(  # type: ignore[valid-type]
+        name="前",
+        description="コマ番号の前に付ける文字列 (例: 'c', 'コマ')",
+        default="c",
+        update=_on_page_number_format_changed,
+    )
+    coma_number_suffix: StringProperty(  # type: ignore[valid-type]
+        name="後",
+        description="コマ番号の後に付ける文字列 (例: '')",
+        default="",
+        update=_on_page_number_format_changed,
+    )
+
     # --- 綴じ / 読む方向 ---
     start_side: EnumProperty(  # type: ignore[valid-type]
         name="開始ページの位置",
@@ -544,6 +602,59 @@ class BMangaPaperSettings(bpy.types.PropertyGroup):
         name="使用プリセット名",
         default="商業誌B4マンガ原稿用紙",
     )
+
+
+# ---------- ページ・コマ番号の表示書式ヘルパー ----------
+
+
+def format_page_display_label(paper, page_number: int) -> str:
+    """用紙設定に従ってページ番号を表示用文字列に整形する。"""
+    digits = max(1, int(getattr(paper, "page_number_digits", 4) or 4))
+    prefix = str(getattr(paper, "page_number_prefix", "p") or "")
+    suffix = str(getattr(paper, "page_number_suffix", "") or "")
+    return f"{prefix}{page_number:0{digits}d}{suffix}"
+
+
+def format_spread_display_label(paper, left_number: int, right_number: int) -> str:
+    """見開きページの表示ラベルを生成する (例: p0002-0003)。"""
+    digits = max(1, int(getattr(paper, "page_number_digits", 4) or 4))
+    prefix = str(getattr(paper, "page_number_prefix", "p") or "")
+    suffix = str(getattr(paper, "page_number_suffix", "") or "")
+    left_str = f"{left_number:0{digits}d}"
+    right_str = f"{right_number:0{digits}d}"
+    return f"{prefix}{left_str}-{right_str}{suffix}"
+
+
+def format_page_entry_display_label(paper, page_entry) -> str:
+    """ページエントリの表示ラベルを生成する。見開きなら両方の番号を維持。"""
+    page_id = str(getattr(page_entry, "id", "") or "")
+    if getattr(page_entry, "spread", False):
+        original_pages = getattr(page_entry, "original_pages", None)
+        if original_pages and len(original_pages) >= 2:
+            nums = []
+            for ref in original_pages:
+                ref_id = str(getattr(ref, "page_id", "") or "")
+                head = ref_id.split("-", 1)[0]
+                if head.startswith("p"):
+                    head = head[1:]
+                if head.isdigit():
+                    nums.append(int(head))
+            if len(nums) >= 2:
+                return format_spread_display_label(paper, nums[0], nums[1])
+    head = page_id.split("-", 1)[0]
+    if head.startswith("p"):
+        head = head[1:]
+    if head.isdigit():
+        return format_page_display_label(paper, int(head))
+    return page_id
+
+
+def format_coma_display_label(paper, coma_number: int) -> str:
+    """用紙設定に従ってコマ番号を表示用文字列に整形する。"""
+    digits = max(1, int(getattr(paper, "coma_number_digits", 2) or 2))
+    prefix = str(getattr(paper, "coma_number_prefix", "c") or "")
+    suffix = str(getattr(paper, "coma_number_suffix", "") or "")
+    return f"{prefix}{coma_number:0{digits}d}{suffix}"
 
 
 _CLASSES = (BMangaPaperSettings,)

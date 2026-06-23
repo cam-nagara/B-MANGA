@@ -139,6 +139,30 @@ class BMANGA_PT_paper(Panel):
         box.label(text="色")
         box.prop(p, "paper_color", text="用紙色")
 
+        # ページ番号書式
+        box = layout.box()
+        box.label(text="ページ番号書式")
+        row = box.row(align=True)
+        row.prop(p, "page_number_prefix", text="前")
+        row.prop(p, "page_number_digits", text="桁数")
+        row.prop(p, "page_number_suffix", text="後")
+        _preview = _format_number_preview(
+            p.page_number_prefix, p.page_number_digits, p.page_number_suffix, 1
+        )
+        box.label(text=f"例: {_preview}", icon="INFO")
+
+        # コマ番号書式
+        box = layout.box()
+        box.label(text="コマ番号書式")
+        row = box.row(align=True)
+        row.prop(p, "coma_number_prefix", text="前")
+        row.prop(p, "coma_number_digits", text="桁数")
+        row.prop(p, "coma_number_suffix", text="後")
+        _cpreview = _format_number_preview(
+            p.coma_number_prefix, p.coma_number_digits, p.coma_number_suffix, 1
+        )
+        box.label(text=f"例: {_cpreview}", icon="INFO")
+
         # 綴じ / 読む方向
         box = layout.box()
         box.label(text="綴じ / 読む方向")
@@ -173,6 +197,11 @@ class BMANGA_PT_paper(Panel):
         _draw_display_item(box, "サブタイトル", info.display_subtitle)
         _draw_display_item(box, "作者名", info.display_author)
         _draw_display_item(box, "ページ番号", info.display_page_number)
+
+
+def _format_number_preview(prefix: str, digits: int, suffix: str, number: int) -> str:
+    d = max(1, int(digits or 1))
+    return f"{prefix}{number:0{d}d}{suffix}"
 
 
 def _draw_display_item(layout, label: str, item) -> None:

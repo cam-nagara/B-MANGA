@@ -6,6 +6,7 @@ import bpy
 from bpy.types import Panel, UIList
 
 from ..core.mode import MODE_COMA, get_mode
+from ..core.paper import format_page_entry_display_label
 from ..core.work import get_work
 from ..utils import page_file_scene
 
@@ -32,7 +33,10 @@ class BMANGA_UL_pages(UIList):
             row = layout.row(align=True)
             row.operator_context = "EXEC_DEFAULT"
             icon_name = "FILE_IMAGE" if not item.spread else "IMGDISPLAY"
-            row.label(text=f"{item.id}", icon=icon_name)
+            work = get_work(context)
+            paper = getattr(work, "paper", None) if work is not None else None
+            label = format_page_entry_display_label(paper, item) if paper is not None else item.id
+            row.label(text=label, icon=icon_name)
             row.prop(item, "title", text="", emboss=False)
             if item.spread:
                 row.label(text="見開き", icon="ARROW_LEFTRIGHT")
@@ -40,7 +44,10 @@ class BMANGA_UL_pages(UIList):
             op.index = index
         elif self.layout_type == "GRID":
             layout.alignment = "CENTER"
-            layout.label(text=item.id)
+            work = get_work(context)
+            paper = getattr(work, "paper", None) if work is not None else None
+            label = format_page_entry_display_label(paper, item) if paper is not None else item.id
+            layout.label(text=label)
 
 
 class BMANGA_PT_pages(Panel):

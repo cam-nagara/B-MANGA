@@ -790,6 +790,7 @@ def page_index_at_world_mm(
         if not page_range.page_in_range(page):
             continue
         ox_mm, oy_mm = page_total_offset_mm(work, scene, i)
-        if ox_mm <= x_mm <= ox_mm + cw and oy_mm <= y_mm <= oy_mm + ch:
+        pw = page_content_width_mm(work, i, cw)
+        if ox_mm <= x_mm <= ox_mm + pw and oy_mm <= y_mm <= oy_mm + ch:
             return i
     return None

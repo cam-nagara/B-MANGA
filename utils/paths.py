@@ -190,11 +190,14 @@ def next_available_page_index(existing_ids: Iterable[str]) -> int:
     """既存ページ ID から空き番号の最小値を採番."""
     used: set[int] = set()
     for page_id in existing_ids:
-        head = str(page_id).split("-", 1)[0]  # 見開きは左ページ番号を使う
+        parts = str(page_id).split("-", 1)
+        head = parts[0]
         if head.startswith("p"):
             head = head[1:]
         if head.isdigit():
             used.add(int(head))
+        if len(parts) > 1 and parts[1].isdigit():
+            used.add(int(parts[1]))
     i = 1
     while i in used:
         i += 1

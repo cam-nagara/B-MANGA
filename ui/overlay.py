@@ -930,6 +930,9 @@ def _draw_text_in_rect(context, rect, entry_or_text, color=(0, 0, 0, 1)) -> None
             pass
         blf.draw(glyph_font_id, glyph.ch)
         if not rotated:
+            thicken_offset = max(0.5, size_px * 0.018)
+            blf.position(glyph_font_id, x_px + thicken_offset, y_px, 0.0)
+            blf.draw(glyph_font_id, glyph.ch)
             if text_style.bold_for_index(entry, glyph.index):
                 blf.position(glyph_font_id, x_px + max(1.0, size_px * 0.035), y_px, 0.0)
                 blf.draw(glyph_font_id, glyph.ch)
@@ -1325,12 +1328,24 @@ def _page_file_overview_indices(scene, work) -> set[int] | None:
 
 
 def _format_page_header_number(page_index: int, work=None) -> str:
-    """作品の開始番号に従って、ページ番号を 001 形式にする。"""
+    """作品の開始番号と用紙設定の書式に従って、ページ番号を整形する。"""
     try:
         start = int(getattr(getattr(work, "work_info", None), "page_number_start", 1))
     except Exception:  # noqa: BLE001
         start = 1
-    return f"{max(0, start + int(page_index)):03d}"
+    page_number = max(0, start + int(page_index))
+    try:
+        paper = getattr(work, "paper", None) if work is not None else None
+        pages = getattr(work, "pages", None) if work is not None else None
+        if paper is not None and pages is not None and 0 <= int(page_index) < len(pages):
+            from ..core.paper import format_page_entry_display_label
+            return format_page_entry_display_label(paper, pages[int(page_index)])
+        if paper is not None:
+            from ..core.paper import format_page_display_label
+            return format_page_display_label(paper, page_number)
+    except Exception:  # noqa: BLE001
+        pass
+    return f"{page_number:04d}"
 
 
 def _draw_bold_pixel_text(
@@ -1372,6 +1387,7 @@ def _draw_page_header_number_pixel(
     page_index: int,
     ox_mm: float,
     oy_mm: float,
+    page_entry=None,
 ) -> None:
     """ページキャンバス上端の外側に 001 形式の大きな番号を描画する。"""
     from bpy_extras.view3d_utils import location_3d_to_region_2d
@@ -1381,7 +1397,14 @@ def _draw_page_header_number_pixel(
     if region is None or rv3d is None:
         return
     rects = overlay_shared.compute_paper_rects(paper)
-    x_mm = rects.canvas.x + rects.canvas.width * 0.5 + ox_mm
+    content_w = rects.canvas.width
+    if page_entry is not None and getattr(page_entry, "spread", False):
+        try:
+            from ..utils.page_grid import page_content_width_mm
+            content_w = page_content_width_mm(paper, page_entry)
+        except Exception:  # noqa: BLE001
+            pass
+    x_mm = rects.canvas.x + content_w * 0.5 + ox_mm
     y_mm = rects.canvas.y2 + _PAGE_HEADER_GAP_MM + oy_mm
     coord = location_3d_to_region_2d(
         region,
@@ -1831,7 +1854,7 @@ def _draw_callback_pixel() -> None:
     is_page_browser = page_browser.is_page_browser_area(context)
     region, rv3d = _resolve_active_region(context)
 
-    if mode != MODE_PAGE and not is_page_browser:
+    if mode not in (MODE_PAGE, MODE_COMA) and not is_page_browser:
         return
 
     if (
@@ -1889,7 +1912,7 @@ def _draw_callback_pixel() -> None:
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
             if not page_file_current_only or i == page_file_current_index:
-                _draw_page_header_number_pixel(context, paper, i, ox, oy)
+                _draw_page_header_number_pixel(context, paper, i, ox, oy, page_entry=page)
     else:
         from ..utils.page_grid import (
             is_left_half_page as _is_left_half,
@@ -1912,16 +1935,20 @@ def _draw_callback_pixel() -> None:
         inner = bleed_rect(paper)
         page = get_active_page(context)
         if page is not None and overlay_visibility.page_visible(page):
-            overlay_text.draw_text_pixels(
-                context,
-                page,
-                ox_mm=ox,
-                oy_mm=oy,
-                entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
-                draw_text_in_rect=_draw_text_in_rect,
-                draw_rect_fill_pixel=_draw_rect_fill_pixel,
-            )
-            _draw_page_header_number_pixel(context, paper, idx, ox, oy)
+            if mode == MODE_PAGE:
+                overlay_text.draw_text_pixels(
+                    context,
+                    page,
+                    ox_mm=ox,
+                    oy_mm=oy,
+                    entry_visible=lambda entry: overlay_visibility.entry_in_visible_coma(page, entry),
+                    draw_text_in_rect=_draw_text_in_rect,
+                    draw_rect_fill_pixel=_draw_rect_fill_pixel,
+                )
+            _draw_page_header_number_pixel(context, paper, idx, ox, oy, page_entry=page)
+        elif mode == MODE_COMA and 0 <= idx < len(work.pages):
+            _draw_page_header_number_pixel(context, paper, idx, ox, oy,
+                                           page_entry=work.pages[idx])
     overlay_coma_selection.draw(context, work, region, rv3d)
 def register() -> None:
     global _handle, _handle_pixel, _handle_pre

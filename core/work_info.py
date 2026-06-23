@@ -119,6 +119,16 @@ def _sync_work_info_text_objects(context) -> None:
         work_info_text_object.regenerate_all_work_info_texts(scene, work)
     except Exception:  # noqa: BLE001
         _logger.exception("work info text object sync failed")
+    _tag_view3d_redraw(context)
+
+
+def _tag_view3d_redraw(context) -> None:
+    screen = getattr(context, "screen", None) if context is not None else None
+    if screen is None:
+        return
+    for area in screen.areas:
+        if area.type == "VIEW_3D":
+            area.tag_redraw()
 
 
 def _on_work_info_changed(self, context) -> None:

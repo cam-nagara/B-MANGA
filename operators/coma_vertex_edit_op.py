@@ -125,13 +125,8 @@ def _compute_page_offset(context) -> tuple[float, float]:
     idx = work.active_page_index
     if not (0 <= idx < len(work.pages)):
         return (0.0, 0.0)
-    cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
-    gap_x, gap_y = page_grid.resolve_gap_mm(scene)
-    cw = work.paper.canvas_width_mm
-    ch = work.paper.canvas_height_mm
-    col = idx % cols
-    row = idx // cols
-    return (-col * (cw + gap_x), -row * (ch + gap_y))
+    ox, oy = page_grid.page_total_offset_mm(work, scene, idx)
+    return (-ox, -oy)
 
 
 def _collect_snap_lines(work, page, current_entry) -> tuple[list[float], list[float]]:
