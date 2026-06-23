@@ -966,7 +966,7 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
     obj.scale.x = _preview_scale_factor(scene)
     obj.scale.y = _preview_scale_factor(scene)
     obj.scale.z = 1.0
-    obj.hide_viewport = current
+    obj.hide_viewport = True
     obj.hide_render = True
     obj.hide_select = True
     obj.show_name = False

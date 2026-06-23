@@ -50,18 +50,23 @@ def draw_for_page(
 
     safe_pairs, bleed_pairs = _fill_rect_pairs_for_page(work, page, fill_rects)
 
-    _draw_bleed_outer_fills(work, bleed_pairs, ox_mm, oy_mm)
-    _draw_safe_area_fills(work, safe_pairs, ox_mm, oy_mm)
+    prev_depth = gpu.state.depth_test_get()
+    gpu.state.depth_test_set("NONE")
+    try:
+        _draw_bleed_outer_fills(work, bleed_pairs, ox_mm, oy_mm)
+        _draw_safe_area_fills(work, safe_pairs, ox_mm, oy_mm)
 
-    width_mm = _mm_width_for_screen_px(GUIDE_SCREEN_PX, mpp)
-    width_mm = max(0.005, min(3.0, width_mm))
-    for label, loops, segments in guide_sets:
-        color = _GUIDE_COLORS.get(label, viewport_colors.PAPER_GUIDE)
-        for loop in loops:
-            if loop:
-                _draw_loop_outline(loop, color, width_mm, ox_mm, oy_mm)
-        if segments:
-            _draw_segments(segments, color, width_mm, ox_mm, oy_mm)
+        width_mm = _mm_width_for_screen_px(GUIDE_SCREEN_PX, mpp)
+        width_mm = max(0.005, min(3.0, width_mm))
+        for label, loops, segments in guide_sets:
+            color = _GUIDE_COLORS.get(label, viewport_colors.PAPER_GUIDE)
+            for loop in loops:
+                if loop:
+                    _draw_loop_outline(loop, color, width_mm, ox_mm, oy_mm)
+            if segments:
+                _draw_segments(segments, color, width_mm, ox_mm, oy_mm)
+    finally:
+        gpu.state.depth_test_set(prev_depth)
 
 
 # -- 幾何計算 (paper_guide_object.py から移植) --

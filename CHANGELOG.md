@@ -3,6 +3,17 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-23 — v0.6.376 オーバーレイ全ページ表示修正
+
+### 修正
+
+- **ガイド線・セーフ外塗り・断ち切り外塗りがp0001以外のページに表示されない問題を修正**
+  - 原因: `page_preview` Meshオブジェクトが `hide_viewport=False` でビューポートに描画され、depth bufferを汚染。POST_VIEWコールバックのガイド描画がdepth test (`LESS_EQUAL`) で不合格
+  - 修正1: `overlay_paper_guide.py` — 塗りつぶし・ガイド線描画時にdepth testを一時無効化
+  - 修正2: `overlay_page_preview.py` — テクスチャ描画時にdepth testを無効化
+  - 修正3: `page_preview_object.py` — プレビューMeshオブジェクトを常に `hide_viewport=True` に変更（GPUオーバーレイ描画に移行済みのため不要）
+  - 修正4: `handlers.py` — `_hide_legacy_overlay_objects` に `page_preview_` プレフィックスを追加（既存ファイル読み込み時の対策）
+
 ## 2026-06-23 — v0.6.375 用紙表示のGPUオーバーレイ化
 
 ### アーキテクチャ変更

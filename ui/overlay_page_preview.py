@@ -165,8 +165,11 @@ def _draw_textured_quad(
     if shader is not None:
         active_shader.uniform_float("opacity", opacity)
     prev_blend = gpu.state.blend_get()
+    prev_depth = gpu.state.depth_test_get()
     try:
         gpu.state.blend_set("ALPHA")
+        gpu.state.depth_test_set("NONE")
         batch.draw(active_shader)
     finally:
         gpu.state.blend_set(prev_blend)
+        gpu.state.depth_test_set(prev_depth)

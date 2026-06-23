@@ -318,6 +318,7 @@ def _hide_legacy_overlay_objects() -> None:
         "page_safe_area_fill_",
         "page_bleed_outer_fill_",
         "work_info_text_",
+        "page_preview_",
     )
     for obj in bpy.data.objects:
         name = obj.name
