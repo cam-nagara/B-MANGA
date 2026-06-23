@@ -450,6 +450,10 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=N
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("text real object: material link failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

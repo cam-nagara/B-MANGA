@@ -49,6 +49,10 @@ def _material(owner_id: str, color) -> bpy.types.Material:
         nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("work info text material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

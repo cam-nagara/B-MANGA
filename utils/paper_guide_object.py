@@ -90,6 +90,10 @@ def _gp_material(name: str, rgba: tuple[float, float, float, float]) -> bpy.type
         except Exception:  # noqa: BLE001
             pass
     _setup_guide_view_material(mat, rgba)
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

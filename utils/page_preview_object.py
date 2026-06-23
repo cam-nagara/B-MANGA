@@ -718,6 +718,10 @@ def _ensure_material(page_id: str, image: bpy.types.Image | None) -> bpy.types.M
         mat["_bmanga_preview_image"] = str(getattr(image, "name", "") or "")
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -733,12 +737,20 @@ def _apply_material_opacity(mat: bpy.types.Material | None, opacity: float) -> N
         pass
     node_tree = getattr(mat, "node_tree", None)
     if node_tree is None:
+        try:
+            mat.update_tag()
+        except Exception:  # noqa: BLE001
+            pass
         return
     nodes = node_tree.nodes
     value = nodes.get(PREVIEW_OPACITY_NODE)
     if value is not None and getattr(value, "type", "") == "VALUE":
         try:
             value.outputs[0].default_value = opacity
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            mat.update_tag()
         except Exception:  # noqa: BLE001
             pass
         return
@@ -761,6 +773,10 @@ def _apply_material_opacity(mat: bpy.types.Material | None, opacity: float) -> N
         node_tree.links.new(tex.outputs["Alpha"], multiply.inputs[0])
         node_tree.links.new(value.outputs[0], multiply.inputs[1])
         node_tree.links.new(multiply.outputs[0], mix.inputs["Fac"])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
 
@@ -950,7 +966,7 @@ def _ensure_preview_object(scene, work, page, page_index: int, rect, *, current:
     obj.scale.x = _preview_scale_factor(scene)
     obj.scale.y = _preview_scale_factor(scene)
     obj.scale.z = 1.0
-    obj.hide_viewport = False
+    obj.hide_viewport = current
     obj.hide_render = True
     obj.hide_select = True
     obj.show_name = False

@@ -470,6 +470,10 @@ def _ensure_effect_material(obj, name: str, color: tuple[float, float, float, fl
         mat.diffuse_color = color
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return _material_slot_index(obj, mat)
 
 
@@ -493,6 +497,10 @@ def _ensure_effect_fill_material(obj, name: str, color: tuple[float, float, floa
             pass
     try:
         mat.diffuse_color = color
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
     return _material_slot_index(obj, mat)
@@ -536,6 +544,10 @@ def _apply_material_settings(obj, layer, params) -> int:
         pass
     try:
         mat.diffuse_color = tuple(getattr(gp_style, "color", mat.diffuse_color))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
     return _material_slot_index(obj, mat)

@@ -143,6 +143,10 @@ def _ensure_mask_material():
     except Exception:  # noqa: BLE001
         pass
     nt.links.new(value_one.outputs[0], out_aov.inputs[0])
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

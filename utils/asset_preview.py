@@ -418,6 +418,10 @@ def _preview_image_material(image: bpy.types.Image) -> bpy.types.Material:
     except Exception:  # noqa: BLE001
         mat.use_nodes = False
         mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

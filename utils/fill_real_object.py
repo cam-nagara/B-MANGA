@@ -314,6 +314,10 @@ def _ensure_solid_material(
         mat.diffuse_color = (r, g, b, fac)
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -457,6 +461,10 @@ def _ensure_gradient_material(
     r1, g1, b1 = float(color1[0]), float(color1[1]), float(color1[2])
     try:
         mat.diffuse_color = (r1, g1, b1, alpha)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        mat.update_tag()
     except Exception:  # noqa: BLE001
         pass
     return mat
@@ -671,6 +679,10 @@ def _ensure_handle_material(end_tag: str) -> bpy.types.Material:
     out = tree.nodes.new("ShaderNodeOutputMaterial")
     tree.links.new(emit.outputs[0], out.inputs[0])
     mat.diffuse_color = (0.1, 0.5, 0.9, 1.0) if end_tag == "start" else (0.9, 0.2, 0.2, 1.0)
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

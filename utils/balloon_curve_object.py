@@ -316,6 +316,10 @@ def _apply_fill_material_basics(mat: bpy.types.Material, fill: tuple[float, floa
                     node.inputs["Alpha"].default_value = fill[3]
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _clear_material_nodes(mat: bpy.types.Material):
@@ -510,6 +514,10 @@ def _setup_emission_alpha_material(
             mat.surface_render_method = "BLENDED"
         mat.show_transparent_back = True
     except (AttributeError, TypeError):
+        pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
         pass
 
 

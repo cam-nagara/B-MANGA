@@ -3,6 +3,20 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-23 — v0.6.373 マテリアル変更の即時反映・選択ハイライト修正
+
+### 修正
+
+- **マテリアル変更がビューポートに即座に反映されない問題を修正**
+  - コマ背景色、フキダシ塗り色、画像レイヤー、テキスト、効果線、塗りつぶし、枠線テクスチャ、用紙背景、プレビューなど全マテリアル構築関数に `mat.update_tag()` を追加
+  - 詳細設定ダイアログでのプロパティ変更時にビューポート再描画が走るよう `check()` メソッドを追加（画像/ラスター/フキダシ/テキスト/効果線の詳細ダイアログ）
+  - 対象ファイル: coma_plane, balloon_curve_object, image_real_object, text_real_object, effect_line_object, fill_real_object, coma_border_object, coma_border_texture, balloon_line_decor_mesh, page_preview_object, paper_bg_object, paper_guide_object, work_info_text_object, asset_preview, coma_mask_object, material_opacity_mask, gpencil, effect_line_op, raster_layer_op, layer_detail_op (計20ファイル)
+- **編集中のページのプレビュー画像がビューポートに表示される問題を修正**
+  - ページ一覧表示で、現在編集中のページのプレビューも表示されてしまっていた
+  - 現在ページは自動的に非表示にするよう修正
+- **ページ選択ハイライトの内側に細い透明線が出る問題を修正**
+  - 外側バンドと内側バンドの間に0.4mmの隙間があったのを解消
+
 ## 2026-06-23 — v0.6.372 ルビ重なり回避・フォント太さ改善
 
 ### 改善

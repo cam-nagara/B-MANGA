@@ -102,6 +102,10 @@ def _ensure_material(page_id: str, coma_id: str, coma) -> bpy.types.Material:
         nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("coma border material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -128,6 +132,10 @@ def _ensure_color_material(name: str, rgba: tuple[float, float, float, float]) -
         nt.links.new(emission.outputs["Emission"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("coma color material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
@@ -178,6 +186,10 @@ def _ensure_soft_material(
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("coma border soft material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

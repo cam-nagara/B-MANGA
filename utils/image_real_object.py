@@ -363,6 +363,10 @@ def _ensure_material(name: str, image: Optional[bpy.types.Image], *, mask_info=N
         mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

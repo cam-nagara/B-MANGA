@@ -162,3 +162,7 @@ def setup_flat_emission_material(
         mat.show_transparent_back = True
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass

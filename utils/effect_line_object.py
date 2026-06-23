@@ -84,6 +84,10 @@ def _configure_line_material_nodes(
     except Exception:  # noqa: BLE001
         mat.use_nodes = False
         mat.blend_method = "BLEND" if rgba[3] < 1.0 else "OPAQUE"
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _resolve_unique_data_name(base: str) -> str:

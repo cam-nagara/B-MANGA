@@ -382,6 +382,10 @@ def ensure_raster_material(entry, image, mask_info=None):
     except Exception:  # noqa: BLE001
         alpha_scale.outputs[0].default_value = 1.0
     mat.node_tree.nodes.active = tex
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

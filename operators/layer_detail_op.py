@@ -674,8 +674,16 @@ class BMANGA_OT_layer_detail_open(Operator):
         elif kind == "text":
             _draw_text_detail(layout, entry)
 
+    def check(self, context):
+        try:
+            for area in context.screen.areas if context.screen else ():
+                if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:
+                    area.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
     def execute(self, context):
-        # ダイアログ側で prop を直接編集するので execute では何もしない
         try:
             for area in context.screen.areas if context.screen else ():
                 if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:

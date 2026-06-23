@@ -607,6 +607,10 @@ def _ensure_material(
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("coma border texture material setup failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

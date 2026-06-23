@@ -656,6 +656,10 @@ def _apply_material(
         mat.surface_render_method = "DITHERED" if dither else "BLENDED"
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _create_dither_value_nodes(nt: bpy.types.NodeTree):

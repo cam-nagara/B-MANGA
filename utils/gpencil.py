@@ -292,6 +292,10 @@ def ensure_layer_material(
             pass
     if assign_existing:
         _assign_material_to_layer_strokes(layer, material_index)
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

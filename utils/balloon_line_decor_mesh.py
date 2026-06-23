@@ -169,6 +169,10 @@ def _ensure_image_material(name: str, image: bpy.types.Image) -> bpy.types.Mater
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
     except Exception:  # noqa: BLE001
         _logger.exception("balloon line image material link failed")
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 

@@ -119,6 +119,10 @@ def _ensure_paper_material(paper) -> bpy.types.Material:
         mat.diffuse_color = color_rgba
     except Exception:  # noqa: BLE001
         pass
+    try:
+        mat.update_tag()
+    except Exception:  # noqa: BLE001
+        pass
     return mat
 
 
