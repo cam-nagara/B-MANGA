@@ -401,7 +401,7 @@ def register() -> None:
     bpy.types.Scene.bmanga_page_preview_opacity = bpy.props.FloatProperty(
         name="ページ一覧不透明度",
         description="ページファイルでのページ一覧プレビュー画像の不透明度です",
-        default=50.0,
+        default=100.0,
         min=0.0,
         max=100.0,
         subtype="PERCENTAGE",

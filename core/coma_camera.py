@@ -41,11 +41,11 @@ def _update_name_bg_opacity(self, context) -> None:
     from ..utils import percentage
 
     coma_camera.set_background_images_properties(
-        context, "ネーム", opacity=percentage.percent_to_factor(self.name_bg_images_opacity, 50.0), kind_filter="name"
+        context, "ネーム", opacity=percentage.percent_to_factor(self.name_bg_images_opacity, 100.0), kind_filter="name"
     )
     page_preview_object.set_preview_opacity(
         context,
-        percentage.percent_to_factor(self.name_bg_images_opacity, 50.0),
+        percentage.percent_to_factor(self.name_bg_images_opacity, 100.0),
     )
 
 
@@ -255,7 +255,7 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
         name="ページ一覧不透明度",
         min=0.0,
         max=100.0,
-        default=50.0,
+        default=100.0,
         subtype="PERCENTAGE",
         update=_update_name_bg_opacity,
     )  # type: ignore[valid-type]
