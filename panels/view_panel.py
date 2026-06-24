@@ -151,51 +151,23 @@ def _draw_page_preview_range_buttons(layout, scene, *, respect_enabled: bool = T
     op.mode = PAGE_PREVIEW_RANGE_NEAR
 
 
-def _draw_coma_page_preview_controls(layout, scene, settings) -> None:
-    box = layout.box()
-    box.label(text="ページ一覧", icon="IMGDISPLAY")
-    row = box.row(align=True)
-    row.prop(scene, "bmanga_page_preview_enabled", text="ページ一覧表示")
-    _draw_page_preview_range_buttons(box, scene)
-    row = box.row(align=True)
-    row.prop(scene, "bmanga_overview_cols", text="列数")
-    row = box.row(align=True)
-    row.prop(scene, "bmanga_overview_gap_x_mm", text="横間隔mm")
-    row.prop(scene, "bmanga_overview_gap_y_mm", text="縦間隔mm")
+def _draw_page_image_row(layout, settings) -> None:
     if settings is None:
         return
-    row = box.row(align=True)
-    row.label(text="ページ一覧不透明度")
-    row.prop(settings, "name_bg_images_opacity", text="")
-    name_vis = bool(getattr(settings, "name_visible", False))
-    row.operator(
-        "bmanga.coma_camera_toggle_name_backgrounds",
-        text="",
-        icon="HIDE_OFF" if name_vis else "HIDE_ON",
-    )
-    box.prop(settings, "bg_images_scale", text="ページ画像のスケール")
-
-
-def _draw_coma_page_image_controls(layout, scene, settings) -> None:
-    if settings is None:
-        return
-    box = layout.box()
-    box.label(text="ページ画像", icon="IMAGE_DATA")
-    row = box.row(align=True)
+    row = layout.row(align=True)
     own_vis = bool(getattr(settings, "own_page_visible", True))
     row.prop(
         settings,
         "own_page_visible",
-        text="表示" if own_vis else "非表示",
+        text="ページ画像",
         icon="HIDE_OFF" if own_vis else "HIDE_ON",
         toggle=True,
     )
     row.prop(settings, "own_page_opacity", text="")
 
 
-def _draw_coma_content_controls(layout, scene, settings) -> None:
-    box = layout.box()
-    row = box.row(align=True)
+def _draw_coma_content_row(layout, scene, settings) -> None:
+    row = layout.row(align=True)
     content_vis = bool(getattr(scene, "bmanga_coma_content_visible", True))
     row.prop(
         scene,
@@ -206,6 +178,33 @@ def _draw_coma_content_controls(layout, scene, settings) -> None:
     )
     if settings is not None:
         row.prop(settings, "koma_bg_images_opacity", text="")
+
+
+def _draw_page_list_section(layout, scene, settings=None) -> None:
+    row = layout.row(align=True)
+    preview_vis = bool(getattr(scene, "bmanga_page_preview_enabled", True))
+    row.prop(
+        scene,
+        "bmanga_page_preview_enabled",
+        text="ページ一覧",
+        icon="HIDE_OFF" if preview_vis else "HIDE_ON",
+        toggle=True,
+    )
+    if settings is not None:
+        row.prop(settings, "name_bg_images_opacity", text="")
+    else:
+        row.prop(scene, "bmanga_page_preview_opacity", text="")
+
+    col = layout.column(align=True)
+    col.enabled = preview_vis
+    _draw_page_preview_range_buttons(col, scene, respect_enabled=False)
+    row = col.row(align=True)
+    row.prop(scene, "bmanga_overview_cols", text="列数")
+    row = col.row(align=True)
+    row.prop(scene, "bmanga_overview_gap_x_mm", text="横間隔mm")
+    row.prop(scene, "bmanga_overview_gap_y_mm", text="縦間隔mm")
+    if settings is not None:
+        col.prop(settings, "bg_images_scale", text="ページ画像のスケール")
 
 
 def _draw_coma_display_controls(layout, scene, settings) -> None:
@@ -321,23 +320,15 @@ class BMANGA_PT_view(Panel):
 
         if is_coma_mode:
             settings = getattr(scene, "bmanga_coma_camera_settings", None)
-            _draw_coma_page_preview_controls(layout, scene, settings)
-            _draw_coma_page_image_controls(layout, scene, settings)
-            _draw_coma_content_controls(layout, scene, settings)
+            _draw_page_image_row(layout, settings)
+            _draw_coma_content_row(layout, scene, settings)
+            _draw_page_list_section(layout, scene, settings)
             _draw_coma_display_controls(layout, scene, settings)
 
         if not is_coma_mode:
             in_page_file = page_file_scene.is_page_edit_scene(scene)
             if in_page_file:
-                col = layout.column(align=True)
-                row = col.row(align=True)
-                row.prop(scene, "bmanga_page_preview_enabled", text="ページ一覧表示")
-                _draw_page_preview_range_buttons(col, scene, respect_enabled=False)
-                row = col.row(align=True)
-                row.prop(scene, "bmanga_overview_cols", text="列数")
-                row = col.row(align=True)
-                row.prop(scene, "bmanga_overview_gap_x_mm", text="横間隔mm")
-                row.prop(scene, "bmanga_overview_gap_y_mm", text="縦間隔mm")
+                _draw_page_list_section(layout, scene)
             else:
                 col = layout.column(align=True)
                 row = col.row(align=True)
@@ -407,6 +398,15 @@ def register() -> None:
         default=PAGE_PREVIEW_RANGE_ALL,
         update=_page_preview_enabled_update,
     )
+    bpy.types.Scene.bmanga_page_preview_opacity = bpy.props.FloatProperty(
+        name="ページ一覧不透明度",
+        description="ページファイルでのページ一覧プレビュー画像の不透明度です",
+        default=50.0,
+        min=0.0,
+        max=100.0,
+        subtype="PERCENTAGE",
+        update=_page_preview_enabled_update,
+    )
     bpy.types.Scene.bmanga_page_preview_resolution_percentage = bpy.props.FloatProperty(
         name="画像解像度%",
         description="ページプレビュー画像の細かさ。ページ実解像度 (用紙サイズ×DPI) に対する割合で指定します (長辺1536pxが上限)",
@@ -441,6 +441,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.Scene.bmanga_page_preview_range_mode
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.Scene.bmanga_page_preview_opacity
     except AttributeError:
         pass
     try:

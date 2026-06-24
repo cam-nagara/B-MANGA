@@ -73,10 +73,14 @@ def _preview_opacity(context) -> float:
     scene = getattr(context, "scene", None)
     if scene is None:
         return 1.0
-    settings = getattr(scene, "bmanga_coma_camera_settings", None)
-    if settings is None:
-        return 1.0
-    pct = float(getattr(settings, "name_bg_images_opacity", 50.0) or 50.0)
+    from ..utils import page_file_scene
+    if page_file_scene.is_page_edit_scene(scene):
+        pct = float(getattr(scene, "bmanga_page_preview_opacity", 50.0) or 50.0)
+    else:
+        settings = getattr(scene, "bmanga_coma_camera_settings", None)
+        if settings is None:
+            return 1.0
+        pct = float(getattr(settings, "name_bg_images_opacity", 50.0) or 50.0)
     from ..utils import percentage
     return max(0.0, min(1.0, percentage.percent_to_factor(pct, 50.0)))
 
