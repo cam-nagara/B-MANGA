@@ -532,6 +532,7 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
 
                     page_preview_object.highlight_preview_page(scene, work, None)
                     page_preview_object.sync_page_previews(bpy.context, work)
+                    page_preview_object.exclude_preview_collection_from_view_layer(scene)
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: page preview setup failed")
                 display_settings.apply_standard_color_management(scene)

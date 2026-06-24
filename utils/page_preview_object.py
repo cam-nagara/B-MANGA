@@ -210,6 +210,25 @@ def show_page_previews() -> None:
         obj.hide_viewport = False
 
 
+def exclude_preview_collection_from_view_layer(scene=None) -> None:
+    """ページファイルでプレビューコレクションをビューレイヤーから除外する."""
+    scene = scene or getattr(bpy.context, "scene", None)
+    if scene is None:
+        return
+    coll = bpy.data.collections.get(PREVIEW_COLLECTION_NAME)
+    if coll is None:
+        return
+    vl = getattr(bpy.context, "view_layer", None)
+    if vl is None:
+        return
+    try:
+        lc = vl.layer_collection.children.get(PREVIEW_COLLECTION_NAME)
+        if lc is not None:
+            lc.exclude = True
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def remove_page_previews() -> int:
     removed = 0
     for obj in list(_iter_preview_objects()):

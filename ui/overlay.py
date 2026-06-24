@@ -1733,6 +1733,8 @@ def apply_bmanga_shading_mode(context=None) -> int:
                 if getattr(shading, "type", None) != "RENDERED":
                     shading.type = "RENDERED"
                     count += 1
+                if not getattr(shading, "show_object_outline", True):
+                    shading.show_object_outline = True
             except Exception:  # noqa: BLE001
                 _logger.exception("apply_bmanga_shading_mode: set failed")
     return count
@@ -1912,7 +1914,7 @@ def _draw_callback_pixel() -> None:
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
             _draw_page_header_number_pixel(context, paper, i, ox, oy, page_entry=page)
-            if page is not None and (not page_file_current_only or _is_current_pixel):
+            if page is not None:
                 overlay_work_info.draw_for_page(context, work, paper, page, i, ox, oy, region, rv3d)
     else:
         from ..utils.page_grid import (
