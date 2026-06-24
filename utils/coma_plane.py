@@ -882,6 +882,23 @@ def _resolve_page_index(work, page) -> int:
     return -1
 
 
+def _resolve_page_index_full_work(work, page) -> tuple[int, object]:
+    """完全な work からページインデックスを解決する.
+
+    軽量 work (page_file_scene.work_for_pages) はフィルタ済みで
+    ページ数が少ないため、grid offset 計算に使うと位置がずれる。
+    完全な work を取得してインデックスを探す。
+    """
+    from ..core.work import get_work as _get_work
+    full_work = _get_work(bpy.context)
+    if full_work is not None and getattr(full_work, "loaded", False):
+        idx = _resolve_page_index(full_work, page)
+        if idx >= 0:
+            return idx, full_work
+    idx = _resolve_page_index(work, page)
+    return idx, work
+
+
 def _set_obj_location(
     obj: bpy.types.Object,
     scene: bpy.types.Scene,
@@ -889,14 +906,14 @@ def _set_obj_location(
     page,
     coma,
 ) -> None:
-    page_index = _resolve_page_index(work, page)
+    page_index, offset_work = _resolve_page_index_full_work(work, page)
     page_ox_mm = 0.0
     page_oy_mm = 0.0
     if page_index >= 0 and scene is not None:
         try:
             from . import page_grid as _pg
 
-            page_ox_mm, page_oy_mm = _pg.page_total_offset_mm(work, scene, page_index)
+            page_ox_mm, page_oy_mm = _pg.page_total_offset_mm(offset_work, scene, page_index)
         except Exception:  # noqa: BLE001
             _logger.exception("coma_plane: page_total_offset_mm failed")
     shape_type = str(getattr(coma, "shape_type", "rect") or "rect")

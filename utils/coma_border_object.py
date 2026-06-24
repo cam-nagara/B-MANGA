@@ -364,15 +364,27 @@ def _page_index(work, page) -> int:
     return -1
 
 
+def _page_index_full_work(work, page) -> tuple[int, object]:
+    """完全な work からページインデックスを解決する."""
+    from ..core.work import get_work as _get_work
+    full_work = _get_work(bpy.context)
+    if full_work is not None and getattr(full_work, "loaded", False):
+        idx = _page_index(full_work, page)
+        if idx >= 0:
+            return idx, full_work
+    idx = _page_index(work, page)
+    return idx, work
+
+
 def _set_location(obj: bpy.types.Object, scene, work, page, coma) -> None:
     page_ox = 0.0
     page_oy = 0.0
-    page_i = _page_index(work, page)
+    page_i, offset_work = _page_index_full_work(work, page)
     if page_i >= 0 and scene is not None:
         try:
             from . import page_grid
 
-            page_ox, page_oy = page_grid.page_total_offset_mm(work, scene, page_i)
+            page_ox, page_oy = page_grid.page_total_offset_mm(offset_work, scene, page_i)
         except Exception:  # noqa: BLE001
             _logger.exception("coma border page offset failed")
     local_x = 0.0
