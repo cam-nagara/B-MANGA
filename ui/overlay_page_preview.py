@@ -161,6 +161,8 @@ def _draw_textured_quad(
         indices=indices,
     )
     active_shader.bind()
+    mvp = gpu.matrix.get_projection_matrix() @ gpu.matrix.get_model_view_matrix()
+    active_shader.uniform_float("ModelViewProjectionMatrix", mvp)
     active_shader.uniform_sampler("image", tex)
     if shader is not None:
         active_shader.uniform_float("opacity", opacity)

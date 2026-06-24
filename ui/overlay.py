@@ -1567,9 +1567,14 @@ def _draw_callback(phase: str = "post") -> None:
                     continue
                 page_id = str(getattr(page, "id", "") or "")
                 _is_preview_hl = bool(_preview_hl) and page_id == _preview_hl
-                if page_file_current_only and i != page_file_current_index and not _is_preview_hl:
+                _is_current_iter = (i == page_file_current_index)
+                if page_file_current_only and not _is_current_iter and not _is_preview_hl:
+                    if page is not None:
+                        overlay_page_preview.draw_for_page(
+                            context, work, page, i, ox, oy, is_current_page=False,
+                        )
                     continue
-                if not (page_file_current_only and i != page_file_current_index):
+                if not (page_file_current_only and not _is_current_iter):
                     left_half = _is_left_half(i, start_side, read_direction, work=work)
                     _draw_page_overlay(
                         context, work, paper, rects, page, mode,
@@ -1622,6 +1627,10 @@ def _draw_callback(phase: str = "post") -> None:
                 ):
                     continue
                 if page_file_current_only and i != page_file_current_index:
+                    if page is not None:
+                        overlay_page_preview.draw_for_page(
+                            context, work, page, i, ox, oy, is_current_page=False,
+                        )
                     continue
                 left_half = _is_left_half(i, start_side, read_direction, work=work)
                 _draw_page_overlay(
@@ -1888,9 +1897,10 @@ def _draw_callback_pixel() -> None:
                 continue
             left_half = _is_left_half(i, start_side, read_direction, work=work)
             page = work.pages[i] if 0 <= i < len(work.pages) else None
+            _is_current_pixel = (i == page_file_current_index)
             if (
                 page is not None
-                and (not page_file_current_only or i == page_file_current_index)
+                and (not page_file_current_only or _is_current_pixel)
             ):
                 overlay_text.draw_text_pixels(
                     context,
@@ -1901,9 +1911,8 @@ def _draw_callback_pixel() -> None:
                     draw_text_in_rect=_draw_text_in_rect,
                     draw_rect_fill_pixel=_draw_rect_fill_pixel,
                 )
-            if not page_file_current_only or i == page_file_current_index:
-                _draw_page_header_number_pixel(context, paper, i, ox, oy, page_entry=page)
-            if page is not None and (not page_file_current_only or i == page_file_current_index):
+            _draw_page_header_number_pixel(context, paper, i, ox, oy, page_entry=page)
+            if page is not None and (not page_file_current_only or _is_current_pixel):
                 overlay_work_info.draw_for_page(context, work, paper, page, i, ox, oy, region, rv3d)
     else:
         from ..utils.page_grid import (
