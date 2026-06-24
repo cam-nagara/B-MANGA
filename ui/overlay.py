@@ -78,6 +78,16 @@ _PAGE_HEADER_COLOR = (0.0, 0.0, 0.0, 0.95)
 _PAGE_HEADER_OUTLINE_COLOR = (1.0, 1.0, 1.0, 0.9)
 
 
+def _blf_font_alive(font_id: int) -> bool:
+    """blf のフォントスロットがまだ有効か確認する."""
+    try:
+        blf.size(font_id, 10)
+        w, _ = blf.dimensions(font_id, "A")
+        return w > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _get_jp_font_id() -> int:
     """日本語表示用 blf font_id を返す (load 失敗時は 0).
 
@@ -85,8 +95,12 @@ def _get_jp_font_id() -> int:
     ロードを試みる。失敗なら font_id=0 (ASCII のみ) を返す。
     """
     global _JP_FONT_ID
-    if _JP_FONT_ID is not None:
-        return _JP_FONT_ID if _JP_FONT_ID >= 0 else 0
+    if _JP_FONT_ID is not None and _JP_FONT_ID >= 0:
+        if _blf_font_alive(_JP_FONT_ID):
+            return _JP_FONT_ID
+        _JP_FONT_ID = None
+    elif _JP_FONT_ID is not None:
+        return 0
     import os
     candidates = []
     if os.name == "nt":
@@ -126,8 +140,12 @@ def _get_font_id_for_path(font_path: str) -> int:
         return _get_jp_font_id()
     key = resolved.lower()
     cached = _FONT_ID_BY_PATH.get(key)
-    if cached is not None:
-        return cached if cached >= 0 else _get_jp_font_id()
+    if cached is not None and cached >= 0:
+        if _blf_font_alive(cached):
+            return cached
+        del _FONT_ID_BY_PATH[key]
+    elif cached is not None:
+        return _get_jp_font_id()
     try:
         fid = blf.load(resolved)
         if fid is not None and fid != -1:
@@ -1029,8 +1047,6 @@ def _draw_comas(
     page,
     ox_mm: float = 0.0,
     oy_mm: float = 0.0,
-    *,
-    skip_preview_stem: str = "",
 ) -> None:
     """ページ内のコマ枠・白フチを Z 順に従って描画.
 
@@ -1169,10 +1185,7 @@ def _draw_page_overlay(
 
     # コマ枠 / フキダシ / テキスト。コマ編集モードでは参照表示として描く。
     if mode in (MODE_PAGE, MODE_COMA) and page is not None:
-        skip_stem = ""
-        if mode == MODE_COMA:
-            skip_stem = getattr(context.scene, "bmanga_current_coma_id", "")
-        _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm, skip_preview_stem=skip_stem)
+        _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm)
         active_text_guides = False
         if getattr(context.scene, "bmanga_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))
@@ -1827,7 +1840,6 @@ def _draw_callback_pixel() -> None:
     ):
         return
     paper = work.paper
-    rects = overlay_shared.compute_paper_rects(paper)
     mode = get_mode(context)
     scene = context.scene
     is_page_browser = page_browser.is_page_browser_area(context)
@@ -1847,7 +1859,7 @@ def _draw_callback_pixel() -> None:
             is_left_half_page as _is_left_half,
             resolve_gap_mm as _resolve_gap,
         )
-        cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm
@@ -1899,7 +1911,7 @@ def _draw_callback_pixel() -> None:
             page_grid_offset_mm as _pg_offset,
             resolve_gap_mm as _resolve_gap,
         )
-        cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
+        cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
         gap_x, gap_y = _resolve_gap(scene)
         cw = paper.canvas_width_mm
         ch = paper.canvas_height_mm
