@@ -129,7 +129,7 @@ def _on_camera_comp_changed(self, context):
             mod = owner.modifiers.get(MODIFIER_NAME)
             base_t = owner.get(PROP_BASE_THICKNESS)
             if mod is not None and base_t is not None:
-                mod.thickness = -abs(base_t)
+                mod.thickness = abs(base_t)
     _propagate(self, context, "use_camera_compensation")
 
 
@@ -193,7 +193,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     outline_thickness: FloatProperty(
         name="線幅",
         description="アウトラインの太さ（内部値）",
-        default=0.002,
+        default=0.0003,
         min=0.0001,
         max=0.1,
         precision=4,

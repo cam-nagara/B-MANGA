@@ -32,14 +32,26 @@ def _is_outline_material(mat: bpy.types.Material) -> bool:
 
 
 def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
-    """マテリアルノードツリーを構築（EEVEE + Cycles 両対応 + AOV 出力）."""
+    """マテリアルノードツリーを構築（背面法 + AOV 出力）.
+
+    背面法（Inverted Hull Method）:
+    Solidify の use_flip_normals でシェル法線を反転。
+    EEVEE: use_backface_culling でシェル正面側をカリング。
+    Cycles: Light Path + Backfacing の 2段 MixShader で制御:
+      外側 MixShader — Is Camera Ray で分岐:
+        非カメラレイ（影等）→ Transparent（影を落とさない）
+        カメラレイ → 内側 MixShader へ
+      内側 MixShader — Backfacing で分岐:
+        Factor=0（アウトライン面）→ Emission
+        Factor=1（カリング対象面）→ Transparent
+    """
     mat.use_nodes = True
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     nodes.clear()
 
     output = nodes.new("ShaderNodeOutputMaterial")
-    output.location = (400, 0)
+    output.location = (800, 0)
 
     rgb = nodes.new("ShaderNodeRGB")
     rgb.location = (-400, 100)
@@ -47,33 +59,45 @@ def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> N
     rgb.label = "BML_Color"
 
     emission = nodes.new("ShaderNodeEmission")
-    emission.location = (0, 100)
+    emission.location = (200, 100)
     links.new(rgb.outputs[0], emission.inputs["Color"])
     emission.inputs["Strength"].default_value = 1.0
 
-    transparent = nodes.new("ShaderNodeBsdfTransparent")
-    transparent.location = (0, -100)
+    trans_bf = nodes.new("ShaderNodeBsdfTransparent")
+    trans_bf.location = (200, -100)
 
     geom = nodes.new("ShaderNodeNewGeometry")
-    geom.location = (-200, 0)
+    geom.location = (-400, -100)
 
-    mix = nodes.new("ShaderNodeMixShader")
-    mix.location = (200, 0)
+    lightpath = nodes.new("ShaderNodeLightPath")
+    lightpath.location = (-400, 300)
 
-    links.new(geom.outputs["Backfacing"], mix.inputs["Fac"])
-    links.new(emission.outputs["Emission"], mix.inputs[1])
-    links.new(transparent.outputs["BSDF"], mix.inputs[2])
-    links.new(mix.outputs["Shader"], output.inputs["Surface"])
+    trans_lp = nodes.new("ShaderNodeBsdfTransparent")
+    trans_lp.location = (200, 300)
+
+    mix_bf = nodes.new("ShaderNodeMixShader")
+    mix_bf.location = (400, 0)
+    links.new(geom.outputs["Backfacing"], mix_bf.inputs[0])
+    links.new(emission.outputs["Emission"], mix_bf.inputs[1])
+    links.new(trans_bf.outputs["BSDF"], mix_bf.inputs[2])
+
+    mix_lp = nodes.new("ShaderNodeMixShader")
+    mix_lp.location = (600, 0)
+    links.new(lightpath.outputs["Is Camera Ray"], mix_lp.inputs[0])
+    links.new(trans_lp.outputs["BSDF"], mix_lp.inputs[1])
+    links.new(mix_bf.outputs["Shader"], mix_lp.inputs[2])
+
+    links.new(mix_lp.outputs["Shader"], output.inputs["Surface"])
 
     # --- AOV 出力 ---
     aov = nodes.new("ShaderNodeOutputAOV")
-    aov.location = (400, -250)
+    aov.location = (800, -250)
     aov.aov_name = AOV_NAME
 
     links.new(rgb.outputs[0], aov.inputs["Color"])
 
     invert = nodes.new("ShaderNodeMath")
-    invert.location = (200, -250)
+    invert.location = (600, -250)
     invert.operation = "SUBTRACT"
     invert.inputs[0].default_value = 1.0
     links.new(geom.outputs["Backfacing"], invert.inputs[1])
@@ -178,7 +202,7 @@ def _ensure_color_attribute(obj: bpy.types.Object):
 
 def apply_outline(
     obj: bpy.types.Object,
-    thickness: float = 0.002,
+    thickness: float = 0.0003,
     color: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0),
     use_vertex_color: bool = False,
     even_thickness: bool = True,
@@ -192,6 +216,13 @@ def apply_outline(
         return False
     if not obj.data.polygons:
         return False
+
+    # 元メッシュ面用のマテリアルがなければ追加
+    # （アウトライン専用マテリアルがスロット0に来ると元面もアウトライン化する）
+    if not obj.data.materials:
+        surface_mat = bpy.data.materials.new(name=obj.name)
+        surface_mat.use_nodes = True
+        obj.data.materials.append(surface_mat)
 
     mat = get_or_create_material(obj, color)
 
@@ -211,7 +242,7 @@ def apply_outline(
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is None:
         mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
-    mod.thickness = -abs(thickness)
+    mod.thickness = abs(thickness)
     mod.offset = -1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
@@ -287,7 +318,7 @@ def remove_outline(obj: bpy.types.Object) -> bool:
 def update_modifier_thickness(obj: bpy.types.Object, thickness: float) -> None:
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is not None:
-        mod.thickness = -abs(thickness)
+        mod.thickness = abs(thickness)
 
 
 # ------------------------------------------------------------------

@@ -135,7 +135,7 @@ def _update_camera_compensation(scene, camera):
         if ref_fov and ref_fov > 0:
             factor *= current_fov / ref_fov
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
-        mod.thickness = -abs(adjusted)
+        mod.thickness = abs(adjusted)
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd):
@@ -244,7 +244,8 @@ def store_reference(obj, scene):
         return False
     dist = (camera.matrix_world.translation - obj.matrix_world.translation).length
     obj[PROP_REF_DISTANCE] = max(dist, 0.001)
-    obj[PROP_BASE_THICKNESS] = abs(mod.thickness)
+    settings = getattr(obj, "bmanga_line_settings", None)
+    obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     return True
 
