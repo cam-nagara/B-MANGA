@@ -17,6 +17,7 @@ from .core import (
     MODIFIER_NAME,
     PROP_BASE_THICKNESS,
     PROP_REF_DISTANCE,
+    PROP_REF_FOV_TAN,
 )
 
 
@@ -89,11 +90,31 @@ def _get_object_bound_radius(obj) -> float:
 
 
 # ------------------------------------------------------------------
+# FOV スケール
+# ------------------------------------------------------------------
+
+def _get_fov_factor(cam_data, scene) -> float:
+    """カメラの FOV に比例するスケール値を返す.
+
+    PERSP/PANO: tan(半画角) — 広角ほど大きい
+    ORTHO: ortho_scale — ビュー範囲が広いほど大きい
+    """
+    if cam_data.type == "ORTHO":
+        return cam_data.ortho_scale
+    half = _get_camera_half_angle(cam_data, scene)
+    t = math.tan(half)
+    return t if t > 1e-6 else 1.0
+
+
+# ------------------------------------------------------------------
 # 各機能の更新ロジック（オブジェクトごとの設定を参照）
 # ------------------------------------------------------------------
 
-def _update_camera_compensation(scene, cam_loc):
-    """カメラ距離に応じて Solidify thickness を補正."""
+def _update_camera_compensation(scene, camera):
+    """カメラ距離 + FOV に応じて Solidify thickness を補正."""
+    cam_loc = camera.matrix_world.translation
+    current_fov = _get_fov_factor(camera.data, scene)
+
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
@@ -110,6 +131,9 @@ def _update_camera_compensation(scene, cam_loc):
             continue
         dist = (cam_loc - obj.matrix_world.translation).length
         factor = dist / ref_d
+        ref_fov = obj.get(PROP_REF_FOV_TAN)
+        if ref_fov and ref_fov > 0:
+            factor *= current_fov / ref_fov
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
         mod.thickness = -abs(adjusted)
 
@@ -178,9 +202,9 @@ def _on_frame_change(scene, depsgraph=None):
         if camera is None:
             return
 
-        cam_loc = camera.matrix_world.translation
-        _update_camera_compensation(scene, cam_loc)
+        _update_camera_compensation(scene, camera)
 
+        cam_loc = camera.matrix_world.translation
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
         _update_visibility(scene, camera, cam_loc, cam_fwd)
     finally:
@@ -202,8 +226,8 @@ def refresh(context):
         camera = scene.camera
         if camera is None:
             return
+        _update_camera_compensation(scene, camera)
         cam_loc = camera.matrix_world.translation
-        _update_camera_compensation(scene, cam_loc)
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
         _update_visibility(scene, camera, cam_loc, cam_fwd)
     finally:
@@ -211,7 +235,7 @@ def refresh(context):
 
 
 def store_reference(obj, scene):
-    """現在のカメラ距離と厚みを基準値として保存."""
+    """現在のカメラ距離・厚み・FOV を基準値として保存."""
     camera = scene.camera
     if camera is None:
         return False
@@ -221,6 +245,7 @@ def store_reference(obj, scene):
     dist = (camera.matrix_world.translation - obj.matrix_world.translation).length
     obj[PROP_REF_DISTANCE] = max(dist, 0.001)
     obj[PROP_BASE_THICKNESS] = abs(mod.thickness)
+    obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     return True
 
 

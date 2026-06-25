@@ -79,7 +79,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
 
     def execute(self, context):
         from . import outline_setup, inner_lines
-        from .core import PROP_BASE_THICKNESS, PROP_REF_DISTANCE
+        from .core import PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN
 
         count = 0
         for obj in context.selected_objects:
@@ -89,7 +89,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             inner_lines.remove_inner_lines(obj)
             if removed_outline:
                 count += 1
-            for key in (PROP_BASE_THICKNESS, PROP_REF_DISTANCE):
+            for key in (PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN):
                 if key in obj:
                     del obj[key]
 

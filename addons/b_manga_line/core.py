@@ -25,6 +25,7 @@ AO_ATTR_NAME = "BML_AO"
 AOV_NAME = "BML_Line"
 PROP_BASE_THICKNESS = "bml_base_thickness"
 PROP_REF_DISTANCE = "bml_ref_distance"
+PROP_REF_FOV_TAN = "bml_ref_fov_tan"
 
 
 # ------------------------------------------------------------------

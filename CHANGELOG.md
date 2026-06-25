@@ -3,6 +3,20 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-26 — B-MANGA Line v0.2.1 FOV線幅補正
+
+### 修正
+
+- **FOV（画角）に応じた線幅補正を実装**: カメラ距離補正に画角変化の補正を統合。広角レンズでは線を太く、望遠では細くし、画面上の見かけの線幅を維持する
+- `camera_comp.py` — `_get_fov_factor()` を追加。PERSP/PANO は `tan(半画角)` ベース、ORTHO は `ortho_scale` ベースでFOVスケールを計算
+- `camera_comp.py` — `_update_camera_compensation()` の補正式に `current_fov / ref_fov` 項を乗算
+- `camera_comp.py` — `store_reference()` が基準FOVタンジェント値も保存（`bml_ref_fov_tan`）
+- `core.py` — `PROP_REF_FOV_TAN` 定数を追加
+- `operators.py` — ライン削除時に `bml_ref_fov_tan` カスタムプロパティもクリーンアップ
+- `__init__.py` — バージョンを `(0, 2, 1)` に更新
+
+---
+
 ## 2026-06-25 — B-MANGA Line v0.2.0 設定アーキテクチャ刷新
 
 ### アーキテクチャ変更
