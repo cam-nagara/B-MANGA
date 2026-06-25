@@ -161,6 +161,29 @@ def _on_inner_distance_changed(self, context):
 
 
 # ------------------------------------------------------------------
+# mm ↔ Blender unit 変換（1 BU = 1 m = 1000 mm）
+# ------------------------------------------------------------------
+
+_BU_PER_MM = 0.001  # 1mm = 0.001 Blender units
+
+
+def _get_outline_mm(self):
+    return self.outline_thickness / _BU_PER_MM
+
+
+def _set_outline_mm(self, value):
+    self.outline_thickness = value * _BU_PER_MM
+
+
+def _get_inner_mm(self):
+    return self.inner_line_thickness / _BU_PER_MM
+
+
+def _set_inner_mm(self, value):
+    self.inner_line_thickness = value * _BU_PER_MM
+
+
+# ------------------------------------------------------------------
 # プロパティグループ
 # ------------------------------------------------------------------
 
@@ -169,13 +192,24 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     outline_thickness: FloatProperty(
         name="線幅",
-        description="アウトラインの太さ",
+        description="アウトラインの太さ（内部値）",
         default=0.002,
         min=0.0001,
         max=0.1,
         precision=4,
         step=0.1,
         update=_on_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    outline_thickness_mm: FloatProperty(
+        name="線幅 (mm)",
+        description="印刷時のアウトラインの太さ (mm)",
+        get=_get_outline_mm,
+        set=_set_outline_mm,
+        min=0.1,
+        max=100.0,
+        precision=2,
+        step=5,
     )  # type: ignore[valid-type]
 
     outline_color: FloatVectorProperty(
@@ -229,13 +263,24 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_line_thickness: FloatProperty(
         name="内部線の太さ",
-        description="内部線ジオメトリの半径",
+        description="内部線ジオメトリの半径（内部値）",
         default=0.0005,
         min=0.0001,
         max=0.05,
         precision=4,
         step=0.01,
         update=_on_inner_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    inner_line_thickness_mm: FloatProperty(
+        name="内部線の太さ (mm)",
+        description="印刷時の内部線の太さ (mm)",
+        get=_get_inner_mm,
+        set=_set_inner_mm,
+        min=0.1,
+        max=50.0,
+        precision=2,
+        step=5,
     )  # type: ignore[valid-type]
 
     # --- カメラ距離補正 ---

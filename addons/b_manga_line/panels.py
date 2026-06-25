@@ -7,6 +7,19 @@ import bpy
 from .core import AOV_NAME, has_outline
 
 
+def _get_paper_dpi(scene) -> int:
+    """用紙のDPIを取得。取得できなければ 600 を返す。"""
+    work = getattr(scene, "bmanga_work", None)
+    paper = getattr(work, "paper", None) if work else None
+    dpi = int(getattr(paper, "dpi", 0) or 0) if paper else 0
+    return dpi if dpi > 0 else 600
+
+
+def _mm_to_px_label(mm: float, dpi: int) -> str:
+    px = mm * dpi / 25.4
+    return f"≈ {px:.1f} px ({dpi} DPI)"
+
+
 class BMANGA_LINE_PT_main(bpy.types.Panel):
     """B-MANGA Line メインパネル"""
 
@@ -26,11 +39,17 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         settings = obj.bmanga_line_settings
         has_any = any(has_outline(o) for o in context.selected_objects)
 
+        dpi = _get_paper_dpi(context.scene)
+
         # --- アウトライン設定 ---
         box = layout.box()
         box.label(text="アウトライン設定", icon="MOD_SOLIDIFY")
         col = box.column(align=True)
-        col.prop(settings, "outline_thickness")
+        row = col.row(align=True)
+        row.prop(settings, "outline_thickness_mm")
+        sub_label = row.row(align=True)
+        sub_label.alignment = "RIGHT"
+        sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
         col.prop(settings, "outline_color")
         col.prop(settings, "even_thickness")
         col.prop(settings, "use_rim")
@@ -83,7 +102,11 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         sub = col.column(align=True)
         sub.enabled = settings.inner_line_enabled
         sub.prop(settings, "inner_line_angle")
-        sub.prop(settings, "inner_line_thickness")
+        row = sub.row(align=True)
+        row.prop(settings, "inner_line_thickness_mm")
+        sub_label = row.row(align=True)
+        sub_label.alignment = "RIGHT"
+        sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
         col.separator()
         sub_dist = col.column(align=True)
         sub_dist.enabled = settings.inner_line_enabled
