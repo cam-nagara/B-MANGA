@@ -79,6 +79,8 @@ def _on_thickness_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         outline_setup.update_modifier_thickness(owner, self.outline_thickness)
+        if self.use_camera_compensation and PROP_BASE_THICKNESS in owner:
+            owner[PROP_BASE_THICKNESS] = self.outline_thickness
     _propagate(self, context, "outline_thickness")
 
 
