@@ -243,7 +243,7 @@ def apply_outline(
     if mod is None:
         mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
     mod.thickness = abs(thickness)
-    mod.offset = -1.0
+    mod.offset = 1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
     mod.use_rim = use_rim

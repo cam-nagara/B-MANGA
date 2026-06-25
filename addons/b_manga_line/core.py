@@ -102,6 +102,23 @@ def _on_rim_changed(self, context):
     _propagate(self, context, "use_rim")
 
 
+def _on_inner_line_enabled_changed(self, context):
+    from . import inner_lines, outline_setup
+    owner = self.id_data
+    if owner.type == "MESH":
+        if self.inner_line_enabled:
+            mat = outline_setup.get_outline_material(owner)
+            inner_lines.apply_inner_lines(
+                owner,
+                angle=self.inner_line_angle,
+                thickness=self.inner_line_thickness,
+                material=mat,
+            )
+        else:
+            inner_lines.remove_inner_lines(owner)
+    _propagate(self, context, "inner_line_enabled")
+
+
 def _on_inner_angle_changed(self, context):
     from . import inner_lines
     owner = self.id_data
@@ -248,7 +265,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="内部線を追加",
         description="折れ目（稜線・谷線）を検出して線を追加する",
         default=False,
-        update=_make_propagator("inner_line_enabled"),
+        update=_on_inner_line_enabled_changed,
     )  # type: ignore[valid-type]
 
     inner_line_angle: FloatProperty(
