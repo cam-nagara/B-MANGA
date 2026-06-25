@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from .core import AOV_NAME, get_settings, has_outline
+from .core import AOV_NAME, has_outline
 
 
 class BMANGA_LINE_PT_main(bpy.types.Panel):
@@ -18,12 +18,13 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        settings = get_settings(context)
-        if settings is None:
-            layout.label(text="設定が見つかりません")
+        obj = context.active_object
+        if obj is None or obj.type != "MESH":
+            layout.label(text="メッシュオブジェクトを選択してください", icon="INFO")
             return
 
-        has_any = any(has_outline(obj) for obj in context.selected_objects)
+        settings = obj.bmanga_line_settings
+        has_any = any(has_outline(o) for o in context.selected_objects)
 
         # --- アウトライン設定 ---
         box = layout.box()
@@ -32,6 +33,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         col.prop(settings, "outline_thickness")
         col.prop(settings, "outline_color")
         col.prop(settings, "even_thickness")
+        col.prop(settings, "use_rim")
         col.prop(settings, "use_vertex_color")
 
         # --- カメラ設定 ---

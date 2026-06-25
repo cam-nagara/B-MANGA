@@ -28,10 +28,7 @@ _updating = False
 # ------------------------------------------------------------------
 
 def _get_camera_half_angle(cam_data, scene) -> float:
-    """カメラの有効な半画角（対角線ベース, ラジアン）を取得.
-
-    パースペクティブ・魚眼・エクイレクタングラー等に対応。
-    """
+    """カメラの有効な半画角（対角線ベース, ラジアン）を取得."""
     if cam_data.type == "PERSP":
         fov = cam_data.angle
         res_x = scene.render.resolution_x
@@ -92,17 +89,18 @@ def _get_object_bound_radius(obj) -> float:
 
 
 # ------------------------------------------------------------------
-# 各機能の更新ロジック
+# 各機能の更新ロジック（オブジェクトごとの設定を参照）
 # ------------------------------------------------------------------
 
-def _update_camera_compensation(scene, settings, cam_loc):
+def _update_camera_compensation(scene, cam_loc):
     """カメラ距離に応じて Solidify thickness を補正."""
-    if not settings.use_camera_compensation:
-        return
-    influence = settings.camera_compensation_influence
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is None or not settings.use_camera_compensation:
+            continue
+        influence = settings.camera_compensation_influence
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
             continue
@@ -116,25 +114,20 @@ def _update_camera_compensation(scene, settings, cam_loc):
         mod.thickness = -abs(adjusted)
 
 
-def _update_visibility(scene, settings, camera, cam_loc, cam_fwd):
+def _update_visibility(scene, camera, cam_loc, cam_fwd):
     """ビューカリングと内部線距離制限を統合処理."""
-    do_culling = settings.use_camera_culling
-    do_distance = settings.use_inner_line_distance_limit
-
-    if not do_culling and not do_distance:
-        return
-
-    half_angle = margin = 0.0
-    if do_culling:
-        half_angle = _get_camera_half_angle(camera.data, scene)
-        margin = settings.culling_margin
-
-    max_dist = 0.0
-    if do_distance:
-        max_dist = settings.inner_line_max_distance
+    half_angle_cache = None
 
     for obj in scene.objects:
         if obj.type != "MESH":
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is None:
+            continue
+
+        do_culling = settings.use_camera_culling
+        do_distance = settings.use_inner_line_distance_limit
+        if not do_culling and not do_distance:
             continue
 
         outline_mod = obj.modifiers.get(MODIFIER_NAME)
@@ -148,15 +141,18 @@ def _update_visibility(scene, settings, camera, cam_loc, cam_fwd):
         # ビューカリング判定
         in_view = True
         if do_culling and dist >= 0.001:
+            if half_angle_cache is None:
+                half_angle_cache = _get_camera_half_angle(camera.data, scene)
+            margin = settings.culling_margin
             angle = cam_fwd.angle(to_obj)
             bound_r = _get_object_bound_radius(obj)
             angular_r = math.atan2(bound_r, dist)
-            in_view = (angle - angular_r) < (half_angle + margin)
+            in_view = (angle - angular_r) < (half_angle_cache + margin)
 
         # 内部線距離判定
         inner_in_range = True
         if do_distance:
-            inner_in_range = dist <= max_dist
+            inner_in_range = dist <= settings.inner_line_max_distance
 
         if outline_mod is not None:
             outline_mod.show_viewport = in_view
@@ -178,18 +174,15 @@ def _on_frame_change(scene, depsgraph=None):
         return
     _updating = True
     try:
-        settings = getattr(scene, "bmanga_line_settings", None)
-        if settings is None:
-            return
         camera = scene.camera
         if camera is None:
             return
 
         cam_loc = camera.matrix_world.translation
-        _update_camera_compensation(scene, settings, cam_loc)
+        _update_camera_compensation(scene, cam_loc)
 
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
-        _update_visibility(scene, settings, camera, cam_loc, cam_fwd)
+        _update_visibility(scene, camera, cam_loc, cam_fwd)
     finally:
         _updating = False
 
@@ -206,16 +199,13 @@ def refresh(context):
     _updating = True
     try:
         scene = context.scene
-        settings = getattr(scene, "bmanga_line_settings", None)
-        if settings is None:
-            return
         camera = scene.camera
         if camera is None:
             return
         cam_loc = camera.matrix_world.translation
-        _update_camera_compensation(scene, settings, cam_loc)
+        _update_camera_compensation(scene, cam_loc)
         cam_fwd = camera.matrix_world.to_quaternion() @ Vector((0, 0, -1))
-        _update_visibility(scene, settings, camera, cam_loc, cam_fwd)
+        _update_visibility(scene, camera, cam_loc, cam_fwd)
     finally:
         _updating = False
 

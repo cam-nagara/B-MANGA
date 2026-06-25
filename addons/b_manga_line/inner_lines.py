@@ -10,7 +10,7 @@ import math
 
 import bpy
 
-from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MATERIAL_NAME, VG_LINE_WIDTH
+from .core import GN_MODIFIER_NAME, GN_TREE_NAME, VG_LINE_WIDTH
 
 
 # ------------------------------------------------------------------
@@ -44,6 +44,10 @@ def _create_node_tree() -> bpy.types.NodeTree:
     radius_sock.min_value = 0.0001
     radius_sock.max_value = 0.05
 
+    tree.interface.new_socket(
+        name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial"
+    )
+
     nodes = tree.nodes
     links = tree.links
 
@@ -76,7 +80,6 @@ def _create_node_tree() -> bpy.types.NodeTree:
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.location = (-200, -400)
     circle.mode = "RADIUS"
-    # Resolution (RADIUS mode): index 4, Radius: index 5 (Blender 4.3+)
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
             inp.default_value = 4
@@ -90,13 +93,11 @@ def _create_node_tree() -> bpy.types.NodeTree:
     if len(c2m.inputs) > 2:
         c2m.inputs[2].default_value = True  # Fill Caps
 
-    # Set Material: アウトラインマテリアルを割り当て
+    # Set Material: マテリアル入力ソケットから割り当て
     setmat = nodes.new("GeometryNodeSetMaterial")
     setmat.location = (200, -200)
     links.new(c2m.outputs[0], setmat.inputs[0])
-    mat = bpy.data.materials.get(MATERIAL_NAME)
-    if mat is not None:
-        setmat.inputs["Material"].default_value = mat
+    links.new(gin.outputs[3], setmat.inputs["Material"])
 
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
     join = nodes.new("GeometryNodeJoinGeometry")
@@ -112,6 +113,9 @@ def _create_node_tree() -> bpy.types.NodeTree:
 def _get_or_create_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.get(GN_TREE_NAME)
     if tree is not None:
+        if _find_socket_id(tree, "マテリアル") is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         return tree
     return _create_node_tree()
 
@@ -132,20 +136,13 @@ def apply_inner_lines(
     obj: bpy.types.Object,
     angle: float = 0.5236,
     thickness: float = 0.0005,
+    material: bpy.types.Material | None = None,
 ) -> bool:
     """内部線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
         return False
 
     tree = _get_or_create_tree()
-
-    # マテリアル参照を更新
-    mat = bpy.data.materials.get(MATERIAL_NAME)
-    if mat is not None:
-        for node in tree.nodes:
-            if node.type == "SET_MATERIAL":
-                node.inputs["Material"].default_value = mat
-                break
 
     # 既存モディファイアを更新 or 新規作成
     mod = obj.modifiers.get(GN_MODIFIER_NAME)
@@ -161,9 +158,13 @@ def apply_inner_lines(
     if sid_thickness is not None:
         mod[sid_thickness] = thickness
 
+    # マテリアル
+    if material is not None:
+        sid_mat = _find_socket_id(tree, "マテリアル")
+        if sid_mat is not None:
+            mod[sid_mat] = material
+
     # 頂点グループ: 元メッシュ頂点 = weight 1.0
-    # GN で追加される内部線頂点は VG に含まれないため weight 0
-    # → Solidify は元メッシュだけに適用される
     vg = obj.vertex_groups.get(VG_LINE_WIDTH)
     if vg is None:
         vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)

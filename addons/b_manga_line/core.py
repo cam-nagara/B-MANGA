@@ -28,87 +28,133 @@ PROP_REF_DISTANCE = "bml_ref_distance"
 
 
 # ------------------------------------------------------------------
+# マルチセレクト伝搬
+# ------------------------------------------------------------------
+
+_propagating = False
+
+
+def _propagate(self, context, prop_name):
+    """変更されたプロパティを選択中の他オブジェクトにも反映."""
+    global _propagating
+    if _propagating:
+        return
+    _propagating = True
+    try:
+        owner = self.id_data
+        raw = getattr(self, prop_name)
+        value = tuple(raw) if hasattr(raw, "__iter__") and not isinstance(raw, str) else raw
+        for obj in context.selected_objects:
+            if obj == owner or obj.type != "MESH":
+                continue
+            s = getattr(obj, "bmanga_line_settings", None)
+            if s is not None:
+                setattr(s, prop_name, value)
+    finally:
+        _propagating = False
+
+
+def _make_propagator(prop_name):
+    """伝搬のみ行うコールバックを生成."""
+    def _callback(self, context):
+        _propagate(self, context, prop_name)
+    return _callback
+
+
+# ------------------------------------------------------------------
 # 設定変更時のコールバック
 # ------------------------------------------------------------------
 
-def _on_color_changed(self, _context):
+def _on_color_changed(self, context):
     from . import outline_setup
-    outline_setup.update_material_color(tuple(self.outline_color))
+    owner = self.id_data
+    if owner.type == "MESH":
+        outline_setup.update_material_color(owner, tuple(self.outline_color))
+    _propagate(self, context, "outline_color")
 
 
 def _on_thickness_changed(self, context):
     from . import outline_setup
-    for obj in context.selected_objects:
-        if obj.type == "MESH":
-            outline_setup.update_modifier_thickness(obj, self.outline_thickness)
+    owner = self.id_data
+    if owner.type == "MESH":
+        outline_setup.update_modifier_thickness(owner, self.outline_thickness)
+    _propagate(self, context, "outline_thickness")
 
 
 def _on_even_thickness_changed(self, context):
-    for obj in context.selected_objects:
-        if obj.type != "MESH":
-            continue
-        mod = obj.modifiers.get(MODIFIER_NAME)
+    owner = self.id_data
+    if owner.type == "MESH":
+        mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
             mod.use_even_offset = self.even_thickness
+    _propagate(self, context, "even_thickness")
+
+
+def _on_rim_changed(self, context):
+    owner = self.id_data
+    if owner.type == "MESH":
+        mod = owner.modifiers.get(MODIFIER_NAME)
+        if mod is not None:
+            mod.use_rim = self.use_rim
+    _propagate(self, context, "use_rim")
 
 
 def _on_inner_angle_changed(self, context):
     from . import inner_lines
-    for obj in context.selected_objects:
-        if obj.type == "MESH":
-            inner_lines.update_parameters(obj, angle=self.inner_line_angle)
+    owner = self.id_data
+    if owner.type == "MESH":
+        inner_lines.update_parameters(owner, angle=self.inner_line_angle)
+    _propagate(self, context, "inner_line_angle")
 
 
 def _on_inner_thickness_changed(self, context):
     from . import inner_lines
-    for obj in context.selected_objects:
-        if obj.type == "MESH":
-            inner_lines.update_parameters(obj, thickness=self.inner_line_thickness)
+    owner = self.id_data
+    if owner.type == "MESH":
+        inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+    _propagate(self, context, "inner_line_thickness")
 
 
 def _on_camera_comp_changed(self, context):
     from . import camera_comp
+    owner = self.id_data
     if self.use_camera_compensation:
-        for obj in context.selected_objects:
-            if obj.type == "MESH":
-                camera_comp.store_reference(obj, context.scene)
+        if owner.type == "MESH":
+            camera_comp.store_reference(owner, context.scene)
     else:
-        for obj in context.selected_objects:
-            if obj.type != "MESH":
-                continue
-            mod = obj.modifiers.get(MODIFIER_NAME)
-            base_t = obj.get(PROP_BASE_THICKNESS)
+        if owner.type == "MESH":
+            mod = owner.modifiers.get(MODIFIER_NAME)
+            base_t = owner.get(PROP_BASE_THICKNESS)
             if mod is not None and base_t is not None:
                 mod.thickness = -abs(base_t)
+    _propagate(self, context, "use_camera_compensation")
 
 
 def _on_culling_changed(self, context):
     from . import camera_comp
-    if not self.use_camera_culling:
-        for obj in context.scene.objects:
-            if obj.type != "MESH":
-                continue
-            for mod_name in (MODIFIER_NAME, GN_MODIFIER_NAME):
-                mod = obj.modifiers.get(mod_name)
-                if mod is not None:
-                    mod.show_viewport = True
-                    mod.show_render = True
+    owner = self.id_data
+    if not self.use_camera_culling and owner.type == "MESH":
+        for mod_name in (MODIFIER_NAME, GN_MODIFIER_NAME):
+            mod = owner.modifiers.get(mod_name)
+            if mod is not None:
+                mod.show_viewport = True
+                mod.show_render = True
         if self.use_inner_line_distance_limit:
             camera_comp.refresh(context)
+    _propagate(self, context, "use_camera_culling")
 
 
 def _on_inner_distance_changed(self, context):
     from . import camera_comp
-    if not self.use_inner_line_distance_limit:
-        for obj in context.scene.objects:
-            if obj.type != "MESH":
-                continue
-            mod = obj.modifiers.get(GN_MODIFIER_NAME)
-            if mod is not None:
-                mod.show_viewport = True
-                mod.show_render = True
+    owner = self.id_data
+    if not self.use_inner_line_distance_limit and owner.type == "MESH":
+        mod = owner.modifiers.get(GN_MODIFIER_NAME)
+        if mod is not None:
+            mod.show_viewport = True
+            mod.show_render = True
         if self.use_camera_culling:
             camera_comp.refresh(context)
+    _propagate(self, context, "use_inner_line_distance_limit")
 
 
 # ------------------------------------------------------------------
@@ -116,7 +162,7 @@ def _on_inner_distance_changed(self, context):
 # ------------------------------------------------------------------
 
 class BMangaLineSettings(bpy.types.PropertyGroup):
-    """シーンごとの B-MANGA Line 設定."""
+    """オブジェクトごとの B-MANGA Line 設定."""
 
     outline_thickness: FloatProperty(
         name="線幅",
@@ -144,6 +190,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="頂点カラーで線幅を制御",
         description="頂点カラーの明度で線幅の強弱をつける",
         default=False,
+        update=_make_propagator("use_vertex_color"),
     )  # type: ignore[valid-type]
 
     even_thickness: BoolProperty(
@@ -153,10 +200,18 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_on_even_thickness_changed,
     )  # type: ignore[valid-type]
 
+    use_rim: BoolProperty(
+        name="リム面を生成",
+        description="開いた辺にリム面を生成する（OFFで開いたメッシュのアーティファクト防止）",
+        default=True,
+        update=_on_rim_changed,
+    )  # type: ignore[valid-type]
+
     inner_line_enabled: BoolProperty(
         name="内部線を追加",
         description="折れ目（稜線・谷線）を検出して線を追加する",
         default=False,
+        update=_make_propagator("inner_line_enabled"),
     )  # type: ignore[valid-type]
 
     inner_line_angle: FloatProperty(
@@ -196,6 +251,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
+        update=_make_propagator("camera_compensation_influence"),
     )  # type: ignore[valid-type]
 
     # --- AO 線幅制御 ---
@@ -204,6 +260,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="AOで線幅を制御",
         description="焼き付けたAOの暗い部分で線を太くする",
         default=False,
+        update=_make_propagator("use_ao_influence"),
     )  # type: ignore[valid-type]
 
     ao_influence_strength: FloatProperty(
@@ -213,6 +270,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
+        update=_make_propagator("ao_influence_strength"),
     )  # type: ignore[valid-type]
 
     # --- エッジ角度による線幅調整 ---
@@ -224,6 +282,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=-1.0,
         max=1.0,
         subtype="FACTOR",
+        update=_make_propagator("edge_smooth_factor"),
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---
@@ -242,6 +301,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=math.radians(90),
         subtype="ANGLE",
+        update=_make_propagator("culling_margin"),
     )  # type: ignore[valid-type]
 
     # --- 内部線距離制限 ---
@@ -260,6 +320,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.1,
         max=1000.0,
         subtype="DISTANCE",
+        update=_make_propagator("inner_line_max_distance"),
     )  # type: ignore[valid-type]
 
 
@@ -271,8 +332,11 @@ _CLASSES = (BMangaLineSettings,)
 
 
 def get_settings(context) -> BMangaLineSettings | None:
-    scene = getattr(context, "scene", None)
-    return getattr(scene, "bmanga_line_settings", None) if scene is not None else None
+    """アクティブオブジェクトの設定を取得."""
+    obj = getattr(context, "active_object", None)
+    if obj is None:
+        return None
+    return getattr(obj, "bmanga_line_settings", None)
 
 
 def has_outline(obj: bpy.types.Object) -> bool:
@@ -286,12 +350,12 @@ def has_outline(obj: bpy.types.Object) -> bool:
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
-    bpy.types.Scene.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
+    bpy.types.Object.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
 
 
 def unregister() -> None:
-    if hasattr(bpy.types.Scene, "bmanga_line_settings"):
-        del bpy.types.Scene.bmanga_line_settings
+    if hasattr(bpy.types.Object, "bmanga_line_settings"):
+        del bpy.types.Object.bmanga_line_settings
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

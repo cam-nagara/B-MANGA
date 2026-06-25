@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from .core import AOV_NAME, get_settings, has_outline
+from .core import AOV_NAME, has_outline
 
 
 class BMANGA_LINE_OT_apply(bpy.types.Operator):
@@ -21,27 +21,23 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
     def execute(self, context):
         from . import outline_setup, inner_lines, camera_comp, vertex_analysis
 
-        settings = get_settings(context)
-        if settings is None:
-            self.report({"ERROR"}, "設定が見つかりません")
-            return {"CANCELLED"}
-
-        use_vg = (
-            settings.use_vertex_color
-            or settings.use_ao_influence
-            or abs(settings.edge_smooth_factor) > 0.001
-        )
-
         count = 0
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
+            settings = obj.bmanga_line_settings
+            use_vg = (
+                settings.use_vertex_color
+                or settings.use_ao_influence
+                or abs(settings.edge_smooth_factor) > 0.001
+            )
             ok = outline_setup.apply_outline(
                 obj,
                 thickness=settings.outline_thickness,
                 color=tuple(settings.outline_color),
                 use_vertex_color=settings.use_vertex_color,
                 even_thickness=settings.even_thickness,
+                use_rim=settings.use_rim,
                 use_vertex_group=use_vg,
                 scene=context.scene,
             )
@@ -50,25 +46,21 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
             count += 1
 
             if settings.inner_line_enabled:
+                mat = outline_setup.get_outline_material(obj)
                 inner_lines.apply_inner_lines(
                     obj,
                     angle=settings.inner_line_angle,
                     thickness=settings.inner_line_thickness,
+                    material=mat,
                 )
             else:
                 inner_lines.remove_inner_lines(obj)
 
-        # カメラ補正が有効なら基準値を保存
-        if settings.use_camera_compensation:
-            for obj in context.selected_objects:
-                if obj.type == "MESH":
-                    camera_comp.store_reference(obj, context.scene)
+            if settings.use_camera_compensation:
+                camera_comp.store_reference(obj, context.scene)
 
-        # 頂点グループが必要な場合はウェイトを初期計算
-        if use_vg:
-            for obj in context.selected_objects:
-                if obj.type == "MESH":
-                    vertex_analysis.compute_and_apply_weights(obj, settings)
+            if use_vg:
+                vertex_analysis.compute_and_apply_weights(obj, settings)
 
         self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
         return {"FINISHED"}
@@ -97,7 +89,6 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             inner_lines.remove_inner_lines(obj)
             if removed_outline:
                 count += 1
-            # カメラ補正のカスタムプロパティを削除
             for key in (PROP_BASE_THICKNESS, PROP_REF_DISTANCE):
                 if key in obj:
                     del obj[key]
@@ -120,15 +111,13 @@ class BMANGA_LINE_OT_sync_weights(bpy.types.Operator):
     def execute(self, context):
         from . import vertex_analysis
 
-        settings = get_settings(context)
-        if settings is None:
-            return {"CANCELLED"}
-
         total = 0
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
-            total += vertex_analysis.compute_and_apply_weights(obj, settings)
+            total += vertex_analysis.compute_and_apply_weights(
+                obj, obj.bmanga_line_settings
+            )
 
         self.report({"INFO"}, f"{total} 頂点のウェイトを更新しました")
         return {"FINISHED"}
@@ -151,7 +140,6 @@ class BMANGA_LINE_OT_bake_ao(bpy.types.Operator):
     def execute(self, context):
         from . import vertex_analysis
 
-        settings = get_settings(context)
         prev_active = context.view_layer.objects.active
         meshes = [o for o in context.selected_objects if o.type == "MESH"]
 
@@ -164,10 +152,11 @@ class BMANGA_LINE_OT_bake_ao(bpy.types.Operator):
 
         context.view_layer.objects.active = prev_active
 
-        # 焼き付け後にウェイトを再計算
-        if count > 0 and settings is not None and settings.use_ao_influence:
+        if count > 0:
             for obj in meshes:
-                vertex_analysis.compute_and_apply_weights(obj, settings)
+                settings = obj.bmanga_line_settings
+                if settings.use_ao_influence:
+                    vertex_analysis.compute_and_apply_weights(obj, settings)
 
         self.report({"INFO"}, f"{count} オブジェクトにAOを焼き付けました")
         return {"FINISHED"}
@@ -182,12 +171,7 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        settings = get_settings(context)
-        return (
-            settings is not None
-            and settings.use_camera_compensation
-            and context.scene.camera is not None
-        )
+        return context.scene.camera is not None
 
     def execute(self, context):
         from . import camera_comp

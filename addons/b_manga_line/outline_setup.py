@@ -25,6 +25,12 @@ from .core import (
 # マテリアル
 # ------------------------------------------------------------------
 
+def _is_outline_material(mat: bpy.types.Material) -> bool:
+    """BML アウトラインマテリアルかどうか."""
+    name = mat.name
+    return name == MATERIAL_NAME or name.startswith(MATERIAL_NAME + ".")
+
+
 def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
     """マテリアルノードツリーを構築（EEVEE + Cycles 両対応 + AOV 出力）."""
     mat.use_nodes = True
@@ -35,7 +41,6 @@ def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> N
     output = nodes.new("ShaderNodeOutputMaterial")
     output.location = (400, 0)
 
-    # RGB ノードで色を一元管理（Emission と AOV で共有）
     rgb = nodes.new("ShaderNodeRGB")
     rgb.location = (-400, 100)
     rgb.outputs[0].default_value = (color[0], color[1], color[2], 1.0)
@@ -55,22 +60,18 @@ def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> N
     mix = nodes.new("ShaderNodeMixShader")
     mix.location = (200, 0)
 
-    # Backfacing=0 (front face of flipped shell = outline visible) → Emission
-    # Backfacing=1 (back face of flipped shell = hidden) → Transparent
     links.new(geom.outputs["Backfacing"], mix.inputs["Fac"])
     links.new(emission.outputs["Emission"], mix.inputs[1])
     links.new(transparent.outputs["BSDF"], mix.inputs[2])
     links.new(mix.outputs["Shader"], output.inputs["Surface"])
 
-    # --- AOV 出力（コンポジットで線画を分離可能） ---
+    # --- AOV 出力 ---
     aov = nodes.new("ShaderNodeOutputAOV")
     aov.location = (400, -250)
     aov.aov_name = AOV_NAME
 
-    # Color = ラインの色
     links.new(rgb.outputs[0], aov.inputs["Color"])
 
-    # Value = 可視マスク (1 = 線が見える面, 0 = 裏面で非表示)
     invert = nodes.new("ShaderNodeMath")
     invert.location = (200, -250)
     invert.operation = "SUBTRACT"
@@ -88,52 +89,63 @@ def _has_aov_node(mat: bpy.types.Material) -> bool:
     return False
 
 
-def get_or_create_material(
-    color: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0),
-) -> bpy.types.Material:
-    """アウトライン用共有マテリアルを取得または作成."""
-    mat = bpy.data.materials.get(MATERIAL_NAME)
-    if mat is None:
-        mat = bpy.data.materials.new(name=MATERIAL_NAME)
-        _build_outline_nodes(mat, color)
-    elif not _has_aov_node(mat):
-        _build_outline_nodes(mat, color)
-    else:
-        _update_emission_color(mat, color)
-
-    # EEVEE での背面カリング（Cycles はシェーダーで処理）
+def _configure_material(mat: bpy.types.Material) -> None:
     if hasattr(mat, "use_backface_culling"):
         mat.use_backface_culling = True
-
-    # 影を落とさない
     try:
         mat.shadow_method = "NONE"
     except (AttributeError, TypeError):
         pass
 
+
+def get_or_create_material(
+    obj: bpy.types.Object,
+    color: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0),
+) -> bpy.types.Material:
+    """オブジェクト専用のアウトラインマテリアルを取得または作成."""
+    for slot in obj.material_slots:
+        if slot.material and _is_outline_material(slot.material):
+            mat = slot.material
+            if not _has_aov_node(mat):
+                _build_outline_nodes(mat, color)
+            else:
+                _update_emission_color(mat, color)
+            _configure_material(mat)
+            return mat
+
+    mat = bpy.data.materials.new(name=MATERIAL_NAME)
+    _build_outline_nodes(mat, color)
+    _configure_material(mat)
     return mat
+
+
+def get_outline_material(obj: bpy.types.Object) -> bpy.types.Material | None:
+    """オブジェクトのアウトラインマテリアルを取得."""
+    for slot in obj.material_slots:
+        if slot.material and _is_outline_material(slot.material):
+            return slot.material
+    return None
 
 
 def _update_emission_color(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
     if not mat.use_nodes:
         return
-    # 新形式: RGB ノードで色を管理
     for node in mat.node_tree.nodes:
         if node.type == "RGB" and node.label == "BML_Color":
             node.outputs[0].default_value = (color[0], color[1], color[2], 1.0)
             return
-    # 旧形式フォールバック: Emission ノードに直接設定
     for node in mat.node_tree.nodes:
         if node.type == "EMISSION" and node.label == "BML_Color":
             node.inputs["Color"].default_value = (color[0], color[1], color[2], 1.0)
             return
 
 
-def update_material_color(color: tuple[float, ...]) -> None:
-    """共有マテリアルの色を更新."""
-    mat = bpy.data.materials.get(MATERIAL_NAME)
-    if mat is not None:
-        _update_emission_color(mat, color)
+def update_material_color(obj: bpy.types.Object, color: tuple[float, ...]) -> None:
+    """オブジェクトのアウトラインマテリアルの色を更新."""
+    for slot in obj.material_slots:
+        if slot.material and _is_outline_material(slot.material):
+            _update_emission_color(slot.material, color)
+            return
 
 
 # ------------------------------------------------------------------
@@ -170,36 +182,32 @@ def apply_outline(
     color: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0),
     use_vertex_color: bool = False,
     even_thickness: bool = True,
+    use_rim: bool = True,
     *,
     use_vertex_group: bool = False,
     scene=None,
 ) -> bool:
-    """オブジェクトに背面法アウトラインを適用. 成功時 True.
-
-    use_vertex_group: AO やエッジ角度など、頂点カラー以外でも頂点グループが必要な場合 True.
-    scene: カメラ距離補正の基準値保存に使用.
-    """
+    """オブジェクトに背面法アウトラインを適用. 成功時 True."""
     if obj.type != "MESH" or obj.data is None:
         return False
     if not obj.data.polygons:
         return False
 
-    mat = get_or_create_material(color)
+    mat = get_or_create_material(obj, color)
 
     # マテリアルスロット — 既にあれば再利用
     num_mats_before = len(obj.data.materials)
     existing_slot = None
     for i, slot in enumerate(obj.material_slots):
-        if slot.material == mat:
+        if slot.material and _is_outline_material(slot.material):
             existing_slot = i
             break
     if existing_slot is None:
         obj.data.materials.append(mat)
 
-    # material_offset: 全フェイスが outline マテリアルを使うように
     material_offset = num_mats_before if existing_slot is None else existing_slot
 
-    # Solidify モディファイア — 既存を更新 or 新規作成
+    # Solidify モディファイア
     mod = obj.modifiers.get(MODIFIER_NAME)
     if mod is None:
         mod = obj.modifiers.new(name=MODIFIER_NAME, type="SOLIDIFY")
@@ -207,6 +215,7 @@ def apply_outline(
     mod.offset = -1.0
     mod.use_flip_normals = True
     mod.use_even_offset = even_thickness
+    mod.use_rim = use_rim
     mod.material_offset = material_offset
 
     # 頂点グループによる線幅制御
@@ -253,14 +262,15 @@ def remove_outline(obj: bpy.types.Object) -> bool:
         obj.modifiers.remove(mod)
         removed = True
 
-    # マテリアルスロットを除去
-    mat = bpy.data.materials.get(MATERIAL_NAME)
-    if mat is not None:
-        for i in range(len(obj.data.materials) - 1, -1, -1):
-            if obj.data.materials[i] == mat:
-                obj.data.materials.pop(index=i)
-                removed = True
-                break
+    # マテリアルスロットを除去（オブジェクト専用マテリアル）
+    for i in range(len(obj.data.materials) - 1, -1, -1):
+        mat = obj.data.materials[i]
+        if mat and _is_outline_material(mat):
+            obj.data.materials.pop(index=i)
+            if mat.users == 0:
+                bpy.data.materials.remove(mat)
+            removed = True
+            break
 
     # 頂点グループ
     vg = obj.vertex_groups.get(VG_LINE_WIDTH)
