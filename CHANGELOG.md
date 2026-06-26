@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line の内部線と外側線の重なりを修正 (v0.3.2)
+
+### 症状
+
+- B-MANGA Line で内部線を追加し、中間頂点の線幅を細くした状態で確認すると、外側線や交差線が白っぽく弱くなり、黒線として安定して見えないことがあった。
+
+### 原因
+
+- 内部線が外側線より前の段階で生成されていたため、内部線ジオメトリまで外側線処理に巻き込まれていた。
+
+### 修正
+
+- 内部線は外側線の後ろで生成するようにした。
+- 内部線の検出元は元メッシュ面だけに限定し、外側線用に太らせた面を内部線検出から除外した。
+- 古い内部線生成設定が残っている場合も、新しい設定へ作り直すようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\inner_lines.py _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- `blender.exe --factory-startup --background --python _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- AI目視: キューブ + 大きめ円錐に交差線・内部線を表示し、中間頂点を細くした状態で、外側線と交差線が黒線として残ることを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line の交差対象ライン厚みを塗りつぶし (v0.3.1)
 
 ### 症状

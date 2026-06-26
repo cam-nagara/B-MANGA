@@ -58,6 +58,28 @@ def _create_node_tree() -> bpy.types.NodeTree:
     gout = nodes.new("NodeGroupOutput")
     gout.location = (800, 0)
 
+    # Solidify 後に実行しても、検出元は元メッシュ面だけに限定する。
+    mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
+    mat_idx.location = (-760, -420)
+
+    is_original = nodes.new("FunctionNodeCompare")
+    is_original.location = (-600, -420)
+    is_original.data_type = "INT"
+    is_original.operation = "EQUAL"
+    is_original.inputs[3].default_value = 0
+    links.new(mat_idx.outputs[0], is_original.inputs[2])
+
+    not_original = nodes.new("FunctionNodeBooleanMath")
+    not_original.location = (-440, -420)
+    not_original.operation = "NOT"
+    links.new(is_original.outputs[0], not_original.inputs[0])
+
+    del_shell = nodes.new("GeometryNodeDeleteGeometry")
+    del_shell.location = (-280, -420)
+    del_shell.domain = "FACE"
+    links.new(gin.outputs[0], del_shell.inputs["Geometry"])
+    links.new(not_original.outputs[0], del_shell.inputs["Selection"])
+
     # Edge Angle: エッジの二面角を取得
     edge_angle = nodes.new("GeometryNodeInputMeshEdgeAngle")
     edge_angle.location = (-600, -200)
@@ -73,7 +95,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     # Mesh to Curve: 選択エッジをカーブに変換
     m2c = nodes.new("GeometryNodeMeshToCurve")
     m2c.location = (-200, -200)
-    links.new(gin.outputs[0], m2c.inputs[0])  # Geometry → Mesh
+    links.new(del_shell.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
     links.new(compare.outputs[0], m2c.inputs[1])  # Selection
 
     # Curve Circle: チューブ断面
@@ -114,6 +136,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
     tree = bpy.data.node_groups.get(GN_TREE_NAME)
     if tree is not None:
         if _find_socket_id(tree, "マテリアル") is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         return tree
@@ -170,8 +195,9 @@ def apply_inner_lines(
         vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
     vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
-    # 内部線は Solidify（アウトライン）の前に配置する
-    # 後だとシェルのエッジまで検出してしまう
+    # 内部線は Solidify（アウトライン）の後ろに配置する。
+    # 検出元はノード内で元メッシュ面だけに限定し、内部線自体が再度
+    # Solidify されて白っぽく崩れるのを防ぐ。
     outline_idx = None
     inner_idx = None
     for i, m in enumerate(obj.modifiers):
@@ -179,7 +205,7 @@ def apply_inner_lines(
             outline_idx = i
         elif m.name == GN_MODIFIER_NAME:
             inner_idx = i
-    if outline_idx is not None and inner_idx is not None and inner_idx > outline_idx:
+    if outline_idx is not None and inner_idx is not None and inner_idx < outline_idx:
         obj.modifiers.move(inner_idx, outline_idx)
 
     return True
