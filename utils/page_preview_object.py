@@ -37,9 +37,10 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "7"
+PREVIEW_RENDER_VERSION = "8"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
+PREVIEW_RENDER_SIGNATURE_KEY = "BMangaPreviewSignature"
 PREVIEW_RENDER_VARIANT_WORK = "work"
 PREVIEW_RENDER_VARIANT_DETAIL = "detail"
 _DEFERRED_SYNC_FORCE = False
@@ -341,9 +342,9 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
-# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA, 生成仕様版, 用途)。
+# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA, 生成仕様版, 用途, 表示状態)。
 # 毎回 PIL で開き直すとページ数分の固定コストになるため。
-_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int], str, str]] = {}
+_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int], str, str, str]] = {}
 
 
 def _preview_render_variant(scene=None) -> str:
@@ -357,12 +358,28 @@ def _preview_render_variant(scene=None) -> str:
     return PREVIEW_RENDER_VARIANT_WORK
 
 
+def _preview_render_signature(work, scene=None) -> str:
+    variant = _preview_render_variant(scene)
+    if variant != PREVIEW_RENDER_VARIANT_DETAIL:
+        return PREVIEW_RENDER_VARIANT_WORK
+    try:
+        from . import page_preview_decor
+
+        guides = int(page_preview_decor.page_guides_visible(work, scene))
+        work_info = int(page_preview_decor.page_work_info_visible(work, scene))
+    except Exception:  # noqa: BLE001
+        guides = 1
+        work_info = 1
+    return f"{variant}:guides={guides}:work_info={work_info}"
+
+
 def _preview_png_usable(
     path: Path,
     expected_size: tuple[int, int],
     *,
     current: bool,
     variant: str,
+    signature: str,
 ) -> bool:
     """既存プレビュー PNG を使い回せるか。
 
@@ -379,6 +396,7 @@ def _preview_png_usable(
     if cached is not None and cached[0] == mtime:
         size, (r, g, b, a), version = cached[1], cached[2], cached[3]
         png_variant = cached[4] if len(cached) > 4 else ""
+        png_signature = cached[5] if len(cached) > 5 else ""
     else:
         try:
             from PIL import Image
@@ -387,16 +405,19 @@ def _preview_png_usable(
                 size = tuple(image.size)
                 version = str(image.info.get(PREVIEW_RENDER_VERSION_KEY, "") or "")
                 png_variant = str(image.info.get(PREVIEW_RENDER_VARIANT_KEY, "") or "")
+                png_signature = str(image.info.get(PREVIEW_RENDER_SIGNATURE_KEY, "") or "")
                 rgba = image.convert("RGBA")
                 r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
         except Exception:  # noqa: BLE001
             return False
         if len(_PNG_USABLE_CACHE) > 512:
             _PNG_USABLE_CACHE.clear()
-        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a), version, png_variant)
+        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a), version, png_variant, png_signature)
     if version != PREVIEW_RENDER_VERSION:
         return False
     if png_variant != variant:
+        return False
+    if png_signature != signature:
         return False
     if tuple(size) != tuple(expected_size):
         return False
@@ -593,13 +614,14 @@ def _render_preview_image_from_export(work, page, width: int, height: int, *, sc
 
         detail_preview = _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
         page_overlay_visible = detail_preview and page_preview_decor.page_guides_visible(work, scene)
+        work_info_visible = detail_preview and page_preview_decor.page_work_info_visible(work, scene)
         options = export_pipeline.ExportOptions(
             area="canvas",
             dpi_override=dpi,
             include_border=True,
             include_white_margin=True,
             include_nombre=False,
-            include_work_info=detail_preview,
+            include_work_info=work_info_visible,
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
@@ -629,7 +651,14 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         if not force and not _preview_png_fresh_for_page(work, page, path):
             force = True
         variant = _preview_render_variant(scene)
-        if not force and _preview_png_usable(path, expected_size, current=current, variant=variant):
+        signature = _preview_render_signature(work, scene)
+        if not force and _preview_png_usable(
+            path,
+            expected_size,
+            current=current,
+            variant=variant,
+            signature=signature,
+        ):
             return path
         # 作品ファイルではページ詳細を常駐させないため、プレビュー再生成の
         # 間だけ page.json から読み込み、使用後に破棄する
@@ -643,20 +672,21 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
                 page_detail.clear_page_detail(page)
         if image is None:
             return None
-        _save_preview_png(image, path, variant=variant)
+        _save_preview_png(image, path, variant=variant, signature=signature)
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
         return None
 
 
-def _save_preview_png(image, path: Path, *, variant: str) -> None:
+def _save_preview_png(image, path: Path, *, variant: str, signature: str) -> None:
     try:
         from PIL import PngImagePlugin
 
         metadata = PngImagePlugin.PngInfo()
         metadata.add_text(PREVIEW_RENDER_VERSION_KEY, PREVIEW_RENDER_VERSION)
         metadata.add_text(PREVIEW_RENDER_VARIANT_KEY, str(variant or PREVIEW_RENDER_VARIANT_WORK))
+        metadata.add_text(PREVIEW_RENDER_SIGNATURE_KEY, str(signature or ""))
         image.save(path, pnginfo=metadata)
         return
     except Exception:  # noqa: BLE001

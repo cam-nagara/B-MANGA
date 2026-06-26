@@ -43,6 +43,15 @@ def page_guides_visible(work, scene=None) -> bool:
     return True
 
 
+def page_work_info_visible(work, scene=None) -> bool:
+    info = getattr(work, "work_info", None) if work is not None else None
+    if info is not None and not bool(getattr(info, "display_visible", True)):
+        return False
+    if preview_detail_variant(scene):
+        return bool(getattr(scene, "bmanga_page_work_info_visible", True))
+    return True
+
+
 def draw_preview_decoration(
     image: Image.Image,
     work,

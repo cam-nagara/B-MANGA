@@ -68,11 +68,23 @@ def _current_page_id_for_update(scene, context) -> str:
     return page_id
 
 
-def _page_work_info_visible_update(scene, context) -> None:
+def _refresh_page_preview_content(scene, context, *, force: bool = True) -> None:
     try:
         from ..utils import page_preview_object
 
-        page_preview_object.schedule_sync_page_previews(force=True)
+        page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None), force=force)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from ..core.mode import MODE_COMA, get_mode
+
+        if get_mode(context) == MODE_COMA:
+            from ..utils import coma_camera
+
+            if bool(getattr(scene, "bmanga_page_preview_enabled", True)):
+                coma_camera.refresh_coma_page_overview(context)
+            else:
+                coma_camera._remove_page_overview_backgrounds(scene)
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -81,21 +93,14 @@ def _page_work_info_visible_update(scene, context) -> None:
                 area.tag_redraw()
     except Exception:  # noqa: BLE001
         pass
+
+
+def _page_work_info_visible_update(scene, context) -> None:
+    _refresh_page_preview_content(scene, context, force=True)
 
 
 def _page_guides_visible_update(scene, context) -> None:
-    try:
-        from ..utils import page_preview_object
-
-        page_preview_object.schedule_sync_page_previews(force=True)
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        for area in (context.screen.areas if context.screen else ()):
-            if area.type == "VIEW_3D":
-                area.tag_redraw()
-    except Exception:  # noqa: BLE001
-        pass
+    _refresh_page_preview_content(scene, context, force=True)
 
 
 def _coma_content_visible_update(scene, context) -> None:
@@ -127,7 +132,7 @@ def _page_preview_enabled_update(scene, context) -> None:
     try:
         from ..utils import page_preview_object
 
-        page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None))
+        page_preview_object.sync_page_previews(context, getattr(scene, "bmanga_work", None), force=True)
     except Exception:  # noqa: BLE001
         pass
     try:

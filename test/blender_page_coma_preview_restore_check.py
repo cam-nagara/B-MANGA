@@ -58,7 +58,7 @@ def _metadata(path: Path) -> dict[str, str]:
         return {str(k): str(v) for k, v in opened.info.items()}
 
 
-def _assert_safe_guide_pixel(path: Path, work) -> None:
+def _safe_guide_pixel_exists(path: Path, work) -> bool:
     from PIL import Image
     from bmanga_dev_page_coma_preview_restore.ui import overlay_shared
 
@@ -74,12 +74,18 @@ def _assert_safe_guide_pixel(path: Path, work) -> None:
             for xx in range(max(0, x - 3), min(width, x + 4)):
                 r, g, b, a = image.getpixel((xx, yy))
                 if a > 180 and g > 170 and b > 170 and r < 150:
-                    found = True
-                    break
-            if found:
-                break
-    if not found:
+                    return True
+    return False
+
+
+def _assert_safe_guide_pixel(path: Path, work) -> None:
+    if not _safe_guide_pixel_exists(path, work):
         raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が見つかりません")
+
+
+def _assert_no_safe_guide_pixel(path: Path, work) -> None:
+    if _safe_guide_pixel_exists(path, work):
+        raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が残っています")
 
 
 def _visible_border_owner_ids() -> set[str]:
@@ -89,6 +95,39 @@ def _visible_border_owner_ids() -> set[str]:
         if str(obj.get("bmanga_coma_border_owner_id", "") or "")
         and not bool(getattr(obj, "hide_viewport", False))
     }
+
+
+def _assert_current_page_runtime_aligned(work) -> None:
+    from bmanga_dev_page_coma_preview_restore.utils import page_grid
+
+    scene = bpy.context.scene
+    page = work.pages[0]
+    page_id = str(getattr(page, "id", "") or "")
+    ox_mm, oy_mm = page_grid.page_total_offset_mm(work, scene, 0)
+    for coma in getattr(page, "comas", []) or []:
+        owner = f"{page_id}:{getattr(coma, 'id', '')}"
+        local_x = float(getattr(coma, "rect_x_mm", 0.0) or 0.0)
+        local_y = float(getattr(coma, "rect_y_mm", 0.0) or 0.0)
+        expected_x = ox_mm + local_x
+        expected_y = oy_mm + local_y
+        objs = [
+            obj
+            for obj in bpy.data.objects
+            if str(obj.get("bmanga_coma_plane_owner_id", "") or "") == owner
+            or str(obj.get("bmanga_coma_border_owner_id", "") or "") == owner
+            or str(obj.get("bmanga_coma_white_margin_owner_id", "") or "") == owner
+        ]
+        if not objs:
+            raise AssertionError(f"{owner} のコマ実体が見つかりません")
+        for obj in objs:
+            actual_x = float(obj.location.x) * 1000.0
+            actual_y = float(obj.location.y) * 1000.0
+            if abs(actual_x - expected_x) > 0.01 or abs(actual_y - expected_y) > 0.01:
+                raise AssertionError(
+                    f"{obj.name} の位置がページ一覧プレビューとずれています: "
+                    f"expected=({expected_x:.3f}, {expected_y:.3f}), "
+                    f"actual=({actual_x:.3f}, {actual_y:.3f})"
+                )
 
 
 def main() -> None:
@@ -165,10 +204,27 @@ def main() -> None:
         _mark("page_file_check_guide_pixels")
         _assert_safe_guide_pixel(preview_path, work)
         work.safe_area_overlay.enabled = True
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
+
+        _mark("page_file_toggle_work_info")
+        scene.bmanga_page_work_info_visible = False
+        magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
+        if magenta > 0:
+            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像に作品情報が残っています")
+        scene.bmanga_page_work_info_visible = True
+
+        _mark("page_file_toggle_guides")
+        scene.bmanga_page_guides_visible = False
+        green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
+        if green > 0:
+            raise AssertionError("用紙ガイドOFFでもページ一覧プレビュー画像にセーフライン外の塗りが残っています")
+        _assert_no_safe_guide_pixel(preview_path, work)
+        scene.bmanga_page_guides_visible = True
 
         _mark("page_file_check_border_objects")
         if not any(owner.startswith("p0001:") for owner in _visible_border_owner_ids()):
             raise AssertionError("ページファイルを開いた直後にコマ枠線が表示されていません")
+        _assert_current_page_runtime_aligned(work)
 
         work.pages[0].active_coma_index = 0
         _mark("enter_coma_mode")
@@ -193,6 +249,19 @@ def main() -> None:
         ]
         if not page_backgrounds:
             raise AssertionError("コマファイルのページ一覧プレビュー下絵が作られていません")
+        work = scene.bmanga_work
+        preview_path = Path(str(work.work_dir)) / "p0002" / "page_preview.png"
+        _mark("coma_file_toggle_guides")
+        scene.bmanga_page_guides_visible = False
+        green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
+        if green > 0:
+            raise AssertionError("コマファイルの用紙ガイドOFF後もページ一覧下絵に塗りが残っています")
+        _assert_no_safe_guide_pixel(preview_path, work)
+        _mark("coma_file_toggle_work_info")
+        scene.bmanga_page_work_info_visible = False
+        magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
+        if magenta > 0:
+            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵に作品情報が残っています")
 
         print(f"BMANGA_PAGE_COMA_PREVIEW_RESTORE_OK work={work_dir}", flush=True)
         _mark("done")
