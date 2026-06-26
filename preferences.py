@@ -426,10 +426,6 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         box.prop(self, "text_selection_color", text="選択ハイライト色")
 
         box = layout.box()
-        box.label(text="ページ一覧プレビュー")
-        box.prop(self, "page_preview_resolution_percentage", text="プレビュー画像縮小率")
-
-        box = layout.box()
         box.label(text="コマ枠編集")
         box.prop(self, "snap_gutter_to_finish")
 

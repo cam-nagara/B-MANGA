@@ -232,6 +232,7 @@ def exclude_preview_collection_from_view_layer(scene=None) -> None:
 def remove_page_previews() -> int:
     removed = 0
     for obj in list(_iter_preview_objects()):
+        mats = [s.material for s in getattr(obj, "material_slots", []) if s.material]
         data = getattr(obj, "data", None)
         try:
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -243,6 +244,18 @@ def remove_page_previews() -> int:
                 bpy.data.meshes.remove(data)
             except Exception:  # noqa: BLE001
                 pass
+        for mat in mats:
+            if getattr(mat, "users", 0) == 0:
+                try:
+                    bpy.data.materials.remove(mat)
+                except Exception:  # noqa: BLE001
+                    pass
+    coll = bpy.data.collections.get(PREVIEW_COLLECTION_NAME)
+    if coll is not None:
+        try:
+            bpy.data.collections.remove(coll)
+        except Exception:  # noqa: BLE001
+            pass
     return removed
 
 
@@ -1043,6 +1056,9 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     if work is None:
         work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
+    if role == "page":
+        remove_page_previews()
+        return 0
     if role == "coma":
         hide_page_previews(scene)
         return 0

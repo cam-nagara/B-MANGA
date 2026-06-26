@@ -102,7 +102,6 @@ def _get_preview_shader():
         void main()
         {
             vec4 color = texture(image, uvInterp);
-            color.rgb = pow(max(color.rgb, vec3(0.0)), vec3(1.0 / 2.2));
             color.a *= opacity;
             fragColor = color;
         }

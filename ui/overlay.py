@@ -1595,11 +1595,11 @@ def _draw_callback(phase: str = "post") -> None:
                 resolve_gap_mm as _resolve_gap,
             )
 
-            cols = max(2, int(getattr(scene, "bmanga_overview_cols", 4)))
+            cols = max(1, int(getattr(scene, "bmanga_overview_cols", 4)))
             gap_x, gap_y = _resolve_gap(scene)
             cw = paper.canvas_width_mm
             ch = paper.canvas_height_mm
-            start_side = getattr(paper, "start_side", "left")
+            start_side = getattr(paper, "start_side", "right")
             read_direction = getattr(paper, "read_direction", "left")
             active_idx = work.active_page_index
             highlight_active_page = _should_highlight_active_page(context)

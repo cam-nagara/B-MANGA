@@ -461,7 +461,8 @@ def _sync_layer_stack_after_cut(context) -> None:
         work = get_work(context)
         if scene is not None and work is not None and getattr(work, "loaded", False):
             _los.mirror_work_to_outliner(scene, work)
-            # 新コマのマスク Mesh も再生成
+            from ..utils import coma_border_object as _cbo
+            _cbo.regenerate_all_coma_borders(scene, work)
             current_page_id = page_file_scene.current_page_id(scene)
             mask_work = (
                 page_file_scene.work_for_pages(work, {current_page_id})
