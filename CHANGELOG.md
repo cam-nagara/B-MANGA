@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line の交差線と内部線ゼロ幅確認を修正 (v0.3.4)
+
+### 症状
+
+- B-MANGA Line で内部線を追加したあとに交差線をオンにすると、キューブに円錐を重ねた確認条件で交差線が表示されないことがあった。
+- 内部線の確認テストが「中間頂点を細くする」判定に留まっており、中間頂点の線幅がゼロになることを確認できていなかった。
+
+### 原因
+
+- 交差線が内部線の後ろで評価される順番になり、交差検出が内部線ジオメトリの影響を受ける場合があった。
+- 内部線・交差線の線素材がオブジェクトの素材欄に登録されない場合があり、後続の線生成で元の面と追加線を安定して分離できなかった。
+- 中間頂点の線幅調整が、折れ目の辺だけでなく面の中心まで含めた距離で計算されていたため、キューブの辺の中間頂点がゼロまで細くならなかった。
+- 実機テストの中間頂点サンプルがゼロ幅ではなく、細い値を許容していた。
+
+### 修正
+
+- 交差線は外側線の後ろ、内部線の前で生成するようにした。
+- 内部線・交差線の線素材を、適用時にオブジェクトの素材欄へ登録するようにした。
+- 中間頂点の線幅調整は、折れ目の辺ごとに中間度を計算するようにした。
+- 内部線の実機テストを、中間頂点の線幅がゼロまで落ちる判定に変更した。
+- キューブと少し大きめの円錐を重ね、両方にラインを付け、交差線オンの状態で確認する目視用画像を更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\vertex_analysis.py test\blender_b_manga_line_inner_width_check.py test\blender_b_manga_line_intersection_fill_check.py _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- 実機生成結果で、内部線の半径が端で 0.040、中間頂点で 0.000 になることを確認。
+- AI目視: キューブ + 少し大きめの円錐にラインを付け、交差線が円錐との交差部分に表示されることを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line の内部線に中間頂点の細りを反映 (v0.3.3)
 
 ### 症状

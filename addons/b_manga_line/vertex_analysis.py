@@ -116,45 +116,75 @@ def _calc_midpoint_factor(obj, forced_anchors: set[int] | None = None) -> dict[i
     bm.verts.ensure_lookup_table()
 
     n = len(bm.verts)
-    is_anchor = [False] * n
+    sharp_neighbors: list[set[int]] = [set() for _ in range(n)]
+    for edge in bm.edges:
+        is_sharp = False
+        if len(edge.link_faces) >= 2:
+            try:
+                is_sharp = edge.calc_face_angle() >= threshold
+            except ValueError:
+                is_sharp = False
+        elif len(edge.link_faces) == 1:
+            is_sharp = True
+        if is_sharp:
+            v1 = edge.verts[0].index
+            v2 = edge.verts[1].index
+            sharp_neighbors[v1].add(v2)
+            sharp_neighbors[v2].add(v1)
 
-    if forced_anchors:
-        for i in forced_anchors:
-            if i < n:
-                is_anchor[i] = True
-    else:
-        for vert in bm.verts:
-            for edge in vert.link_edges:
-                if len(edge.link_faces) >= 2:
-                    try:
-                        if edge.calc_face_angle() >= threshold:
-                            is_anchor[vert.index] = True
-                            break
-                    except ValueError:
-                        pass
+    graph_anchors = {
+        i for i, neighbors in enumerate(sharp_neighbors)
+        if neighbors and len(neighbors) != 2
+    }
+    if not graph_anchors and forced_anchors:
+        graph_anchors = {i for i in forced_anchors if i < n}
 
-    if not any(is_anchor):
+    if not graph_anchors:
         bm.free()
         return {i: 0.0 for i in range(n)}
 
     from collections import deque
-    dist = [n] * n
-    queue = deque()
-    for i in range(n):
-        if is_anchor[i]:
-            dist[i] = 0
-            queue.append(i)
+    result = {i: 0.0 for i in range(n)}
+    seen: set[int] = set()
+    for start in range(n):
+        if start in seen or not sharp_neighbors[start]:
+            continue
+        component: set[int] = set()
+        stack = [start]
+        seen.add(start)
+        while stack:
+            vi = stack.pop()
+            component.add(vi)
+            for other in sharp_neighbors[vi]:
+                if other not in seen:
+                    seen.add(other)
+                    stack.append(other)
 
-    while queue:
-        vi = queue.popleft()
-        for edge in bm.verts[vi].link_edges:
-            other = edge.other_vert(bm.verts[vi]).index
-            if dist[vi] + 1 < dist[other]:
-                dist[other] = dist[vi] + 1
-                queue.append(other)
+        anchors = component & graph_anchors
+        if not anchors:
+            continue
 
-    max_dist = max(dist) if max(dist) > 0 else 1
-    result = {i: dist[i] / max_dist for i in range(n)}
+        dist = {vi: n for vi in component}
+        queue = deque()
+        for vi in anchors:
+            dist[vi] = 0
+            queue.append(vi)
+
+        while queue:
+            vi = queue.popleft()
+            for other in sharp_neighbors[vi]:
+                if other not in component:
+                    continue
+                if dist[vi] + 1 < dist[other]:
+                    dist[other] = dist[vi] + 1
+                    queue.append(other)
+
+        max_dist = max((d for d in dist.values() if d < n), default=0)
+        if max_dist <= 0:
+            continue
+        for vi, d in dist.items():
+            if d < n:
+                result[vi] = d / max_dist
 
     bm.free()
     return result

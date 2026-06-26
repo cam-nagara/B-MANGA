@@ -24,6 +24,8 @@ from __future__ import annotations
 import bpy
 
 from .core import (
+    GENERATED_LINE_ATTR,
+    GN_MODIFIER_NAME,
     INTERSECTION_MODIFIER_NAME,
     INTERSECTION_TREE_BOOLEAN,
     INTERSECTION_TREE_SDF,
@@ -32,6 +34,7 @@ from .core import (
 
 
 _FILL_NODE_LABEL = "BML_TargetLineFill"
+_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 
 
 # ------------------------------------------------------------------
@@ -55,11 +58,28 @@ def _add_shell_strip_nodes(nodes, links, gin):
     not_orig.operation = "NOT"
     links.new(cmp_mat.outputs[0], not_orig.inputs[0])
 
+    generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    generated_attr.location = (-1050, -540)
+    generated_attr.data_type = "BOOLEAN"
+    generated_attr.inputs["Name"].default_value = GENERATED_LINE_ATTR
+
+    generated_marked = nodes.new("FunctionNodeBooleanMath")
+    generated_marked.location = (-900, -540)
+    generated_marked.operation = "AND"
+    links.new(generated_attr.outputs["Exists"], generated_marked.inputs[0])
+    links.new(generated_attr.outputs["Attribute"], generated_marked.inputs[1])
+
+    delete_selection = nodes.new("FunctionNodeBooleanMath")
+    delete_selection.location = (-900, -380)
+    delete_selection.operation = "OR"
+    links.new(not_orig.outputs[0], delete_selection.inputs[0])
+    links.new(generated_marked.outputs[0], delete_selection.inputs[1])
+
     del_shell = nodes.new("GeometryNodeDeleteGeometry")
     del_shell.location = (-900, -200)
     del_shell.domain = "FACE"
     links.new(gin.outputs[0], del_shell.inputs["Geometry"])
-    links.new(not_orig.outputs[0], del_shell.inputs["Selection"])
+    links.new(delete_selection.outputs[0], del_shell.inputs["Selection"])
 
     return del_shell
 
@@ -181,13 +201,22 @@ def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
     if len(c2m.inputs) > 2:
         c2m.inputs[2].default_value = True
 
+    mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
+    mark_generated.label = _GENERATED_LINE_NODE_LABEL
+    mark_generated.location = (x_offset + 320, -470)
+    mark_generated.data_type = "BOOLEAN"
+    mark_generated.domain = "FACE"
+    mark_generated.inputs["Name"].default_value = GENERATED_LINE_ATTR
+    mark_generated.inputs["Value"].default_value = True
+    links.new(c2m.outputs[0], mark_generated.inputs["Geometry"])
+
     setmat = nodes.new("GeometryNodeSetMaterial")
-    setmat.location = (x_offset + 400, -300)
-    links.new(c2m.outputs[0], setmat.inputs[0])
+    setmat.location = (x_offset + 500, -300)
+    links.new(mark_generated.outputs["Geometry"], setmat.inputs[0])
     links.new(gin.outputs["マテリアル"], setmat.inputs["Material"])
 
     join = nodes.new("GeometryNodeJoinGeometry")
-    join.location = (x_offset + 700, 0)
+    join.location = (x_offset + 800, 0)
     links.new(gin.outputs[0], join.inputs[0])
     links.new(setmat.outputs[0], join.inputs[0])
 
@@ -431,6 +460,9 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if not any(getattr(n, "label", "") == _FILL_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return creator()
+        if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return creator()
         return tree
     return creator()
 
@@ -444,6 +476,17 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
         ):
             return item.identifier
     return None
+
+
+def _ensure_material_slot(
+    obj: bpy.types.Object,
+    material: bpy.types.Material | None,
+) -> None:
+    """生成した線素材を後続処理でも素材番号として扱えるようにする."""
+    if material is None:
+        return
+    if not any(slot_mat == material for slot_mat in obj.data.materials):
+        obj.data.materials.append(material)
 
 
 def _target_outline_thickness(target: bpy.types.Object | None) -> float:
@@ -493,16 +536,22 @@ def apply_intersection_lines(
         mod[sid_target_thickness] = _target_outline_thickness(target)
 
     if material is not None:
+        _ensure_material_slot(obj, material)
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
             mod[sid_mat] = material
 
-    # Solidify（アウトライン）の後ろに配置する
+    # Solidify（アウトライン）の後ろ、内部線の前に配置する。
+    # 内部線の生成後に交差線を追加しても、交差検出が内部線ジオメトリに
+    # 巻き込まれないようにする。
     outline_idx = None
+    inner_idx = None
     intersect_idx = None
     for i, m in enumerate(obj.modifiers):
         if m.name == MODIFIER_NAME:
             outline_idx = i
+        elif m.name == GN_MODIFIER_NAME:
+            inner_idx = i
         elif m.name == INTERSECTION_MODIFIER_NAME:
             intersect_idx = i
     if (
@@ -511,6 +560,15 @@ def apply_intersection_lines(
         and intersect_idx < outline_idx
     ):
         obj.modifiers.move(intersect_idx, outline_idx)
+        intersect_idx = outline_idx
+        if inner_idx is not None and inner_idx > intersect_idx:
+            inner_idx -= 1
+    if (
+        inner_idx is not None
+        and intersect_idx is not None
+        and intersect_idx > inner_idx
+    ):
+        obj.modifiers.move(intersect_idx, inner_idx)
 
     return True
 

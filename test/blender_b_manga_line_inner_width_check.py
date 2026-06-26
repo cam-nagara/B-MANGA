@@ -63,7 +63,7 @@ def _make_folded_strip() -> bpy.types.Object:
     for i in range(levels):
         t = i / (levels - 1)
         midpoint = 1.0 - abs(t - 0.5) * 2.0
-        weight = 1.0 - midpoint * 0.8
+        weight = 1.0 - midpoint
         for offset in range(3):
             vg.add([i * 3 + offset], weight, "REPLACE")
     obj.data.update()
@@ -110,8 +110,8 @@ def main() -> None:
 
     assert abs(radii[-2.0] - 0.04) < 0.005, radii
     assert abs(radii[2.0] - 0.04) < 0.005, radii
-    assert radii[0.0] < radii[-2.0] * 0.35, radii
-    print(f"[PASS] inner line midpoint radius is thinner: {radii}")
+    assert radii[0.0] < 0.001, radii
+    print(f"[PASS] inner line midpoint radius reaches zero: {radii}")
 
 
 if __name__ == "__main__":

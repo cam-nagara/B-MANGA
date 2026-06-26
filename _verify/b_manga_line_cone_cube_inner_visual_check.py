@@ -24,9 +24,10 @@ from b_manga_line import (  # noqa: E402
 
 OUT_DIR = ROOT / "_verify" / "b_manga_line_cone_cube_visual"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-OUT_FULL = OUT_DIR / "cone_cube_corner_inner_taper_full.png"
-OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_taper_zoom.png"
-OUT_LINES = OUT_DIR / "cone_cube_corner_inner_taper_lines_only.png"
+OUT_FULL = OUT_DIR / "cone_cube_all_lines_intersection_full.png"
+OUT_INTERSECTION = OUT_DIR / "cone_cube_intersection_ring_confirm.png"
+OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_zero_zoom.png"
+OUT_LINES = OUT_DIR / "cone_cube_corner_inner_zero_lines_only.png"
 
 CUBE_SIZE = 2.6
 CUBE_HEIGHT = 1.45
@@ -86,6 +87,21 @@ def _make_black_material(name: str, *, emission: bool = False):
     return mat
 
 
+def _make_white_emission_material(name: str):
+    mat = bpy.data.materials.new(name)
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    out = nodes.new("ShaderNodeOutputMaterial")
+    shader = nodes.new("ShaderNodeEmission")
+    shader.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    shader.inputs["Strength"].default_value = 1.0
+    links.new(shader.outputs["Emission"], out.inputs["Surface"])
+    return mat
+
+
 def _look_at(obj: bpy.types.Object, target: Vector) -> None:
     direction = target - obj.location
     obj.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
@@ -130,7 +146,7 @@ def _add_camera_backdrop(camera: bpy.types.Object, *, size: float) -> None:
     mesh.update()
     plane = bpy.data.objects.new("AI目視_白背景", mesh)
     bpy.context.collection.objects.link(plane)
-    plane.data.materials.append(_make_surface_material("AI目視_白背景", (1.0, 1.0, 1.0, 1.0)))
+    plane.data.materials.append(_make_white_emission_material("AI目視_白背景"))
 
 
 def _setup_render() -> None:
@@ -144,10 +160,11 @@ def _setup_render() -> None:
     scene.render.resolution_x = 1600
     scene.render.resolution_y = 1100
     scene.view_settings.view_transform = "Standard"
-    scene.view_settings.look = "Medium High Contrast"
+    scene.view_settings.look = "None"
     scene.view_settings.exposure = 0.0
     scene.view_settings.gamma = 1.0
-    scene.world.color = (0.78, 0.78, 0.78)
+    scene.world.color = (1.0, 1.0, 1.0)
+    scene.render.film_transparent = False
 
 
 def _distance_to_segment(point: Vector, start: Vector, end: Vector) -> float:
@@ -244,14 +261,47 @@ def _render_scene(path: Path, *, location, target, ortho_scale) -> bpy.types.Obj
     return bpy.context.scene.camera
 
 
-def _extract_near_corner_inner_lines(cube: bpy.types.Object) -> bpy.types.Object:
+def _evaluated_mesh(obj: bpy.types.Object) -> bpy.types.Mesh:
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    src_mesh = bpy.data.meshes.new_from_object(cube.evaluated_get(depsgraph))
-    selected_materials = {
+    return bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+
+
+def _material_indices(mesh: bpy.types.Mesh, prefix: str) -> set[int]:
+    return {
         index
-        for index, mat in enumerate(src_mesh.materials)
-        if mat and mat.name.startswith("AI目視_キューブ内部線_黒")
+        for index, mat in enumerate(mesh.materials)
+        if mat and mat.name.startswith(prefix)
     }
+
+
+def _assert_intersection_faces(cube: bpy.types.Object) -> None:
+    mesh = _evaluated_mesh(cube)
+    indices = _material_indices(mesh, "BML_Outline")
+    assert indices, "交差線の素材が評価後メッシュにありません"
+    face_count = 0
+    for poly in mesh.polygons:
+        if poly.material_index not in indices:
+            continue
+        center = sum((mesh.vertices[vi].co for vi in poly.vertices), Vector())
+        center /= len(poly.vertices)
+        if abs(center.z - (CUBE_HEIGHT * 0.5)) < 0.20 and center.xy.length < 1.05:
+            face_count += 1
+    assert face_count > 0, "交差線が評価後メッシュに生成されていません"
+    print(f"[INTERSECTION] 交差線フェイス数: {face_count}", flush=True)
+
+
+def _assert_inner_faces(cube: bpy.types.Object) -> None:
+    mesh = _evaluated_mesh(cube)
+    indices = _material_indices(mesh, "AI目視_キューブ内部線_黒")
+    assert indices, "内部線の素材が評価後メッシュにありません"
+    face_count = sum(1 for poly in mesh.polygons if poly.material_index in indices)
+    assert face_count > 0, "内部線が評価後メッシュに生成されていません"
+    print(f"[INNER] 内部線フェイス数: {face_count}", flush=True)
+
+
+def _extract_near_corner_inner_lines(cube: bpy.types.Object) -> bpy.types.Object:
+    src_mesh = _evaluated_mesh(cube)
+    selected_materials = _material_indices(src_mesh, "AI目視_キューブ内部線_黒")
     assert selected_materials, "キューブ内部線の素材が見つかりません"
 
     used: dict[int, int] = {}
@@ -265,7 +315,7 @@ def _extract_near_corner_inner_lines(cube: bpy.types.Object) -> bpy.types.Object
         if min(
             _distance_to_segment(center, start, end)
             for start, end in NEAR_CORNER_EDGES
-        ) > 0.085:
+        ) > 0.16:
             continue
         face = []
         for vi in poly.vertices:
@@ -286,11 +336,8 @@ def _extract_near_corner_inner_lines(cube: bpy.types.Object) -> bpy.types.Object
 
 
 def _print_near_corner_line_widths(line_obj: bpy.types.Object) -> None:
-    bins = {
-        "角付近": [],
-        "中間": [],
-        "反対側": [],
-    }
+    endpoint_radii = []
+    midpoint_radii = []
     for vertex in line_obj.data.vertices:
         co = vertex.co
         best = None
@@ -307,15 +354,24 @@ def _print_near_corner_line_widths(line_obj: bpy.types.Object) -> None:
         if best is None:
             continue
         dist, t = best
-        if t < 0.12:
-            bins["角付近"].append(dist)
-        elif 0.45 <= t <= 0.55:
-            bins["中間"].append(dist)
-        elif t > 0.88:
-            bins["反対側"].append(dist)
-    for label, values in bins.items():
-        if values:
-            print(f"[LINE_WIDTH] {label}: radius={max(values):.5f}", flush=True)
+        if t < 0.02:
+            endpoint_radii.append(dist)
+        elif abs(t - 0.5) < 0.01:
+            midpoint_radii.append(dist)
+    assert endpoint_radii, "角付近の線幅を測定できません"
+    assert midpoint_radii, "中間頂点の線幅を測定できません"
+    endpoint = max(endpoint_radii)
+    midpoint_min = min(midpoint_radii)
+    midpoint_max = max(midpoint_radii)
+    print(f"[LINE_WIDTH] 角付近: radius={endpoint:.5f}", flush=True)
+    print(
+        f"[LINE_WIDTH] 中間頂点: min={midpoint_min:.5f} max={midpoint_max:.5f}",
+        flush=True,
+    )
+    assert endpoint > 0.07, f"角付近の線幅が想定より細いです: {endpoint}"
+    assert midpoint_min < 0.001, (
+        f"中間頂点の線幅がゼロになっていません: {midpoint_min}"
+    )
 
 
 def _render_extracted_lines(cube: bpy.types.Object) -> None:
@@ -352,22 +408,30 @@ def main() -> None:
     assert intersection_lines.apply_intersection_lines(
         cube,
         target=cone,
-        thickness=0.020,
+        thickness=0.045,
         material=line_mat,
         method="BOOLEAN",
     )
+    _assert_intersection_faces(cube)
+    _assert_inner_faces(cube)
 
     _render_scene(
         OUT_FULL,
-        location=(3.3, -6.1, 2.7),
+        location=(3.0, -5.4, 3.15),
         target=(0.0, 0.0, 0.22),
-        ortho_scale=4.6,
+        ortho_scale=4.35,
+    )
+    _render_scene(
+        OUT_INTERSECTION,
+        location=(0.0, -0.1, 5.2),
+        target=(0.0, 0.0, 0.72),
+        ortho_scale=2.25,
     )
     _render_scene(
         OUT_CORNER,
-        location=(4.1, -5.5, 2.9),
-        target=(0.78, -0.78, 0.35),
-        ortho_scale=1.85,
+        location=(4.1, -5.7, 3.0),
+        target=(0.92, -0.92, 0.46),
+        ortho_scale=2.15,
     )
     _render_extracted_lines(cube)
 

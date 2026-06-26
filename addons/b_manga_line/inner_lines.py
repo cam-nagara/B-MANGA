@@ -11,6 +11,10 @@ import math
 import bpy
 
 from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MODIFIER_NAME, VG_LINE_WIDTH
+from .core import GENERATED_LINE_ATTR
+
+
+_GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
 
 
 # ------------------------------------------------------------------
@@ -74,11 +78,28 @@ def _create_node_tree() -> bpy.types.NodeTree:
     not_original.operation = "NOT"
     links.new(is_original.outputs[0], not_original.inputs[0])
 
+    generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    generated_attr.location = (-440, -600)
+    generated_attr.data_type = "BOOLEAN"
+    generated_attr.inputs["Name"].default_value = GENERATED_LINE_ATTR
+
+    generated_marked = nodes.new("FunctionNodeBooleanMath")
+    generated_marked.location = (-260, -620)
+    generated_marked.operation = "AND"
+    links.new(generated_attr.outputs["Exists"], generated_marked.inputs[0])
+    links.new(generated_attr.outputs["Attribute"], generated_marked.inputs[1])
+
+    delete_selection = nodes.new("FunctionNodeBooleanMath")
+    delete_selection.location = (-260, -500)
+    delete_selection.operation = "OR"
+    links.new(not_original.outputs[0], delete_selection.inputs[0])
+    links.new(generated_marked.outputs[0], delete_selection.inputs[1])
+
     del_shell = nodes.new("GeometryNodeDeleteGeometry")
     del_shell.location = (-280, -420)
     del_shell.domain = "FACE"
     links.new(gin.outputs[0], del_shell.inputs["Geometry"])
-    links.new(not_original.outputs[0], del_shell.inputs["Selection"])
+    links.new(delete_selection.outputs[0], del_shell.inputs["Selection"])
 
     # Edge Angle: エッジの二面角を取得
     edge_angle = nodes.new("GeometryNodeInputMeshEdgeAngle")
@@ -142,10 +163,19 @@ def _create_node_tree() -> bpy.types.NodeTree:
     if "Fill Caps" in c2m.inputs:
         c2m.inputs["Fill Caps"].default_value = True
 
+    mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
+    mark_generated.label = _GENERATED_LINE_NODE_LABEL
+    mark_generated.location = (120, -360)
+    mark_generated.data_type = "BOOLEAN"
+    mark_generated.domain = "FACE"
+    mark_generated.inputs["Name"].default_value = GENERATED_LINE_ATTR
+    mark_generated.inputs["Value"].default_value = True
+    links.new(c2m.outputs[0], mark_generated.inputs["Geometry"])
+
     # Set Material: マテリアル入力ソケットから割り当て
     setmat = nodes.new("GeometryNodeSetMaterial")
-    setmat.location = (200, -200)
-    links.new(c2m.outputs[0], setmat.inputs[0])
+    setmat.location = (300, -200)
+    links.new(mark_generated.outputs["Geometry"], setmat.inputs[0])
     links.new(gin.outputs[3], setmat.inputs["Material"])
 
     # Join Geometry: 元メッシュ + 内部線ジオメトリ
@@ -171,6 +201,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if not any(n.bl_idname == "GeometryNodeInputNamedAttribute" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -184,6 +217,17 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
         if getattr(item, "name", None) == name and getattr(item, "in_out", None) == "INPUT":
             return item.identifier
     return None
+
+
+def _ensure_material_slot(
+    obj: bpy.types.Object,
+    material: bpy.types.Material | None,
+) -> None:
+    """生成した線素材を後続処理でも素材番号として扱えるようにする."""
+    if material is None:
+        return
+    if not any(slot_mat == material for slot_mat in obj.data.materials):
+        obj.data.materials.append(material)
 
 
 # ------------------------------------------------------------------
@@ -218,6 +262,7 @@ def apply_inner_lines(
 
     # マテリアル
     if material is not None:
+        _ensure_material_slot(obj, material)
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
             mod[sid_mat] = material
