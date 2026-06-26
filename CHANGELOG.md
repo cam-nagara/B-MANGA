@@ -3,6 +3,17 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-26 — B-MANGA Line v0.3.1 SubSurf対応の中間頂点線幅調整
+
+### 新機能
+
+- **SubSurfモディファイア対応**: 中間頂点の線幅調整がSubdivision Surfaceモディファイア（Catmull-Clark / Simple）による再分割メッシュでも機能するように拡張
+- SubSurf適用前にベースメッシュの鋭角アンカー頂点を検出し、SubSurfを永続化（メッシュ置換＋モディファイア除去）した上でBFS距離計算を実行
+- アンカー情報をカスタムプロパティ（`bml_subsurf_anchors`）に保存し、スライダー再操作時も正しく動作
+- `vertex_analysis.py` — `_apply_subsurf_for_midpoint()`, `_get_saved_anchors()` を追加、`_calc_midpoint_factor()` に `forced_anchors` パラメータを追加
+
+---
+
 ## 2026-06-26 — B-MANGA Line v0.3.0 線幅mm単位設定
 
 ### 新機能

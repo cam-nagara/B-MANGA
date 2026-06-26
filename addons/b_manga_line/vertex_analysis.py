@@ -19,14 +19,92 @@ from .core import (
 
 
 # ------------------------------------------------------------------
+# SubSurf 適用
+# ------------------------------------------------------------------
+
+_ANCHOR_PROP = "bml_subsurf_anchors"
+
+
+def _apply_subsurf_for_midpoint(obj) -> set[int]:
+    """SubSurfがあれば適用して頂点密度を確保.
+
+    適用前にベースメッシュのアンカー頂点（≥90°エッジ）を検出し、
+    カスタムプロパティに保存。SubSurf後はエッジ角度が平滑化
+    されるため、適用前の情報が必要。
+    戻り値: アンカー頂点インデックスのset（SubSurfなしなら空set）
+    """
+    subsurf_names = [
+        m.name for m in obj.modifiers
+        if m.type == "SUBSURF" and (m.show_viewport or m.show_render)
+    ]
+    if not subsurf_names:
+        return set()
+
+    threshold = math.pi / 2 - 0.001
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.edges.ensure_lookup_table()
+    bm.verts.ensure_lookup_table()
+    base_anchors = set()
+    for vert in bm.verts:
+        for edge in vert.link_edges:
+            if len(edge.link_faces) >= 2:
+                try:
+                    if edge.calc_face_angle() >= threshold:
+                        base_anchors.add(vert.index)
+                        break
+                except ValueError:
+                    pass
+    bm.free()
+
+    disabled = {}
+    for m in obj.modifiers:
+        if m.type != "SUBSURF" and m.show_viewport:
+            disabled[m.name] = True
+            m.show_viewport = False
+
+    try:
+        depsgraph = bpy.context.evaluated_depsgraph_get()
+        new_mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+    finally:
+        for name in disabled:
+            m = obj.modifiers.get(name)
+            if m:
+                m.show_viewport = True
+
+    old_mesh = obj.data
+    old_name = old_mesh.name
+    obj.data = new_mesh
+    new_mesh.name = old_name
+    if old_mesh.users == 0:
+        bpy.data.meshes.remove(old_mesh)
+
+    for name in subsurf_names:
+        m = obj.modifiers.get(name)
+        if m:
+            obj.modifiers.remove(m)
+
+    obj[_ANCHOR_PROP] = list(base_anchors)
+    return base_anchors
+
+
+def _get_saved_anchors(obj) -> set[int] | None:
+    """カスタムプロパティに保存されたアンカーインデックスを取得."""
+    raw = obj.get(_ANCHOR_PROP)
+    if raw is not None:
+        return set(int(i) for i in raw)
+    return None
+
+
+# ------------------------------------------------------------------
 # エッジ角度解析
 # ------------------------------------------------------------------
 
-def _calc_midpoint_factor(obj) -> dict[int, float]:
+def _calc_midpoint_factor(obj, forced_anchors: set[int] | None = None) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
-    90°以上の鋭角を持つ頂点をアンカーとし、各頂点のアンカーまでの
-    エッジホップ距離を正規化して返す。
+    forced_anchors が指定された場合、エッジ角度検出をスキップして
+    そのインデックスをアンカーとして使用する（SubSurf適用後に使用）。
     戻り値: {vertex_index: midpoint_factor}
     0.0 = アンカー頂点（鋭角）, 1.0 = アンカー間の最も遠い中間点
     """
@@ -39,15 +117,21 @@ def _calc_midpoint_factor(obj) -> dict[int, float]:
 
     n = len(bm.verts)
     is_anchor = [False] * n
-    for vert in bm.verts:
-        for edge in vert.link_edges:
-            if len(edge.link_faces) >= 2:
-                try:
-                    if edge.calc_face_angle() >= threshold:
-                        is_anchor[vert.index] = True
-                        break
-                except ValueError:
-                    pass
+
+    if forced_anchors:
+        for i in forced_anchors:
+            if i < n:
+                is_anchor[i] = True
+    else:
+        for vert in bm.verts:
+            for edge in vert.link_edges:
+                if len(edge.link_faces) >= 2:
+                    try:
+                        if edge.calc_face_angle() >= threshold:
+                            is_anchor[vert.index] = True
+                            break
+                    except ValueError:
+                        pass
 
     if not any(is_anchor):
         bm.free()
@@ -120,7 +204,27 @@ def compute_and_apply_weights(obj, settings) -> int:
     # 3. 中間頂点の線幅調整
     factor = settings.edge_smooth_factor
     if abs(factor) > 0.001:
-        midpoint = _calc_midpoint_factor(obj)
+        base_anchors = _apply_subsurf_for_midpoint(obj) or _get_saved_anchors(obj)
+        if base_anchors:
+            mesh = obj.data
+            n = len(mesh.vertices)
+            weights = [1.0] * n
+            if settings.use_vertex_color:
+                attr = mesh.color_attributes.get(COLOR_ATTR_NAME)
+                if attr is not None and attr.domain == "POINT":
+                    for i in range(min(n, len(attr.data))):
+                        c = attr.data[i].color
+                        weights[i] = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+            if settings.use_ao_influence:
+                attr_ao = mesh.color_attributes.get(AO_ATTR_NAME)
+                if attr_ao is not None and attr_ao.domain == "POINT":
+                    strength = settings.ao_influence_strength
+                    for i in range(min(n, len(attr_ao.data))):
+                        c = attr_ao.data[i].color
+                        ao_lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
+                        ao_thick = 1.0 - ao_lum
+                        weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
+        midpoint = _calc_midpoint_factor(obj, base_anchors or None)
         for i in range(n):
             m = midpoint.get(i, 0.0)
             if factor >= 0:
