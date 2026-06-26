@@ -163,7 +163,7 @@ def _assert_spread_overview_background_aligned(scene, work, spread_page_id: str)
     user_scale = max(0.1, float(getattr(settings, "bg_images_scale", 1.0))) if settings else 1.0
     expected_scale = ((sx1 - sx0) / canvas_w) * user_scale
     expected_offset_x = ((spread_cx - current_cx) / canvas_w) * user_scale
-    expected_offset_y = ((spread_cy - current_cy) / canvas_h) * user_scale
+    expected_offset_y = ((spread_cy - current_cy) / canvas_h) * expected_scale
     if expected_offset_y >= -0.1:
         raise AssertionError("見開き下絵を下段に置く検証条件になっていません")
     actual_scale = float(getattr(bg, "scale", 0.0) or 0.0)
@@ -257,6 +257,10 @@ def main() -> None:
         work.work_info.display_work_name.position = "top-left"
         work.work_info.display_work_name.font_size_q = 64.0
         work.work_info.display_work_name.color = (1.0, 0.0, 1.0, 1.0)
+        work.work_info.display_page_number.enabled = True
+        work.work_info.display_page_number.position = "top-center"
+        work.work_info.display_page_number.font_size_q = 64.0
+        work.work_info.display_page_number.color = (1.0, 0.0, 0.0, 1.0)
         work.safe_area_overlay.enabled = True
         work.safe_area_overlay.opacity = 100.0
         work.safe_area_overlay.color = (0.0, 1.0, 0.0)
@@ -298,6 +302,9 @@ def main() -> None:
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
         if magenta <= 0:
             raise AssertionError("ページ一覧プレビュー画像に作品情報が表示されていません")
+        red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
+        if red <= 0:
+            raise AssertionError("ページ一覧プレビュー画像にページ番号が表示されていません")
         _mark("page_file_check_fill_pixels")
         green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
         if green <= 0:
@@ -316,6 +323,9 @@ def main() -> None:
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
         if magenta > 0:
             raise AssertionError("作品情報OFFでもページ一覧プレビュー画像に作品情報が残っています")
+        red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
+        if red > 0:
+            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像にページ番号が残っています")
         scene.bmanga_page_work_info_visible = True
 
         _mark("page_file_toggle_guides")
@@ -376,6 +386,9 @@ def main() -> None:
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
         if magenta > 0:
             raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵に作品情報が残っています")
+        red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
+        if red > 0:
+            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵にページ番号が残っています")
 
         print(f"BMANGA_PAGE_COMA_PREVIEW_RESTORE_OK work={work_dir}", flush=True)
         _mark("done")

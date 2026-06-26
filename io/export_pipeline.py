@@ -19,6 +19,10 @@ from ..utils.geom import Rect, m_to_mm, mm_to_px, q_to_mm
 
 _logger = log.get_logger(__name__)
 
+# FONT オブジェクト側の作品情報表示と同じ見た目に寄せるための補正。
+# 日本語フォントでは Q 数をそのまま mm 換算すると字面が小さく出る。
+_WORK_INFO_Q_VISIBLE_HEIGHT_COMPENSATION = 1.78
+
 try:
     from PIL import Image, ImageChops, ImageCms, ImageDraw, ImageEnhance, ImageFilter, ImageFont  # type: ignore
 
@@ -1130,10 +1134,12 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
     info = getattr(work, "work_info", None)
     if info is None:
         return []
+    if not bool(getattr(info, "display_visible", True)):
+        return []
     layers: list[ExportLayer] = []
     rects = overlay_shared.compute_paper_rects(work.paper, is_left_half=_is_left_half_page(work, page))
     anchor_rect = rects.bleed
-    page_text = f"ページ{int(getattr(info, 'page_number_start', 1)) + _resolve_page_index(work, page):04d}"
+    page_text = _work_info_page_label(work, page, info)
     items = [
         (info.display_work_name, info.work_name, "work_name"),
         (info.display_episode, f"第{info.episode_number}話" if info.episode_number else "", "episode"),
@@ -1163,7 +1169,10 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
         else:
             y_mm = anchor_rect.y - pad_mm
             anchor_y = "bottom"
-        font_size_mm = q_to_mm(float(getattr(item, "font_size_q", 20.0)))
+        font_size_mm = (
+            q_to_mm(float(getattr(item, "font_size_q", 20.0)))
+            * _WORK_INFO_Q_VISIBLE_HEIGHT_COMPENSATION
+        )
         layer = _render_simple_text_layer(
             text,
             left_mm=x_mm,
@@ -1181,6 +1190,23 @@ def _work_info_layers(work, page, canvas_size: tuple[int, int], dpi: int) -> lis
         if layer is not None:
             layers.append(layer)
     return layers
+
+
+def _work_info_page_label(work, page, info) -> str:
+    paper = getattr(work, "paper", None)
+    try:
+        if paper is not None and page is not None:
+            from ..core.paper import format_page_entry_display_label
+
+            return format_page_entry_display_label(paper, page)
+        page_number = int(getattr(info, "page_number_start", 1) or 1) + _resolve_page_index(work, page)
+        if paper is not None:
+            from ..core.paper import format_page_display_label
+
+            return format_page_display_label(paper, page_number)
+        return f"ページ{page_number:04d}"
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _nombre_layer(work, page, canvas_size: tuple[int, int], dpi: int) -> ExportLayer | None:

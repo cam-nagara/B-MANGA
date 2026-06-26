@@ -1339,7 +1339,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         page_w_mm = max(1.0, x1 - x0)
         page_scale = (page_w_mm / canvas_w_mm) * user_scale
         offset_x = ((page_cx - current_cx) / canvas_w_mm) * user_scale
-        offset_y = ((page_cy - current_cy) / canvas_h_mm) * user_scale
+        offset_y = ((page_cy - current_cy) / canvas_h_mm) * page_scale
         bg = cam_data.background_images.new()
         bg.image = img
         _set_bg_attr(bg, "alpha", float(alpha))
@@ -1577,7 +1577,7 @@ def add_page_file_overview_backgrounds(scene, work) -> None:
         page_w_mm = max(1.0, x1 - x0)
         page_scale = (page_w_mm / canvas_w_mm) * base_scale
         offset_x = (page_cx - cam_cx_mm) / canvas_w_mm * base_scale
-        offset_y = (page_cy - cam_cy_mm) / canvas_h_mm * base_scale
+        offset_y = (page_cy - cam_cy_mm) / canvas_h_mm * page_scale
         bg = cam_data.background_images.new()
         bg.image = img
         _set_bg_attr(bg, "alpha", float(alpha))

@@ -1091,9 +1091,7 @@ def _draw_comas(
         # ページオフセットを加算
         if ox_mm != 0.0 or oy_mm != 0.0:
             poly = [(x + ox_mm, y + oy_mm) for x, y in poly]
-        # コマの背景・枠線・白フチは実体オブジェクト側で表示する。
-        # オーバーレイ側は選択中コマの補助線だけを描き、実体表示と二重に
-        # ならないようにする。
+        _draw_coma_border_overlay(entry, poly)
         is_active_coma = (
             bool(active_stem)
             and str(getattr(entry, "coma_id", "") or "") == active_stem
@@ -1104,6 +1102,30 @@ def _draw_comas(
                 for i in range(len(poly))
             ]
             _draw_segments_mm(segs, viewport_colors.SELECTION_STRONG, width_mm=1.20)
+
+
+def _draw_coma_border_overlay(entry, poly: list[tuple[float, float]]) -> None:
+    border = getattr(entry, "border", None)
+    if border is None or len(poly) < 2:
+        return
+    if not bool(getattr(border, "visible", True)):
+        return
+    width_mm = max(0.0, float(getattr(border, "width_mm", 0.0) or 0.0))
+    if width_mm <= 0.0:
+        return
+    color_src = getattr(border, "color", (0.0, 0.0, 0.0, 1.0))
+    try:
+        color = tuple(float(c) for c in color_src[:4])
+    except Exception:  # noqa: BLE001
+        color = (0.0, 0.0, 0.0, 1.0)
+    if len(color) < 4:
+        color = (*color[:3], 1.0)
+    if color[3] <= 0.0:
+        return
+    style = str(getattr(border, "style", "solid") or "solid")
+    if style == "brush":
+        style = "solid"
+    _draw_styled_path_mm(poly, color, width_mm, style, closed=True)
 
 
 def _translate_rect(r: Rect, ox_mm: float, oy_mm: float) -> Rect:
