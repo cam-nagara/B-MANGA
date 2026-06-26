@@ -45,6 +45,7 @@ from . import overlay_effect_line
 from . import overlay_image
 from . import overlay_coma_selection
 from . import overlay_creation_range
+from . import overlay_coma_page_labels
 from . import overlay_page_preview
 from . import overlay_paper_bg
 from . import overlay_paper_guide
@@ -1417,8 +1418,12 @@ def _draw_page_header_number_pixel(
     content_w = rects.canvas.width
     if page_entry is not None and getattr(page_entry, "spread", False):
         try:
-            from ..utils.page_grid import page_content_width_mm
-            content_w = page_content_width_mm(paper, page_entry)
+            from ..utils import page_grid
+            content_w = page_grid.spread_content_width_mm(
+                page_entry,
+                float(getattr(paper, "canvas_width_mm", content_w) or content_w),
+                float(getattr(paper, "finish_width_mm", content_w) or content_w),
+            )
         except Exception:  # noqa: BLE001
             pass
     x_mm = rects.canvas.x + content_w * 0.5 + ox_mm
@@ -1879,6 +1884,11 @@ def _draw_callback_pixel() -> None:
     region, rv3d = _resolve_active_region(context)
 
     if mode not in (MODE_PAGE, MODE_COMA) and not is_page_browser:
+        return
+
+    if mode == MODE_COMA and not is_page_browser and len(work.pages) > 0:
+        overlay_coma_page_labels.draw(context, work, paper, scene, region, rv3d)
+        overlay_coma_selection.draw(context, work, region, rv3d)
         return
 
     if (

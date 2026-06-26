@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — コマファイルのページ番号表示とページ画像不透明度を修正 (v0.6.387)
+
+### 症状
+
+- コマファイルを開いた時、ページ一覧プレビューのページ上部のページ番号と作品情報が表示されない状態が残っていた。
+- コマファイルの「ページ画像」不透明度が、開いた直後に 50% になっていた。
+
+### 原因
+
+- コマファイルではページ一覧プレビューをカメラ下絵として表示しているが、ページ番号と作品情報の画面上の重ね表示が、通常のページ一覧側だけを対象にしていた。
+- 「ページ画像」の既定値と、旧ファイルを開いた時の補正値が 50% のままだった。
+
+### 修正
+
+- コマファイルのカメラ下絵位置に合わせ、ページ上部のページ番号と作品情報を画面上に重ねて表示するようにした。
+- 「ページ画像」不透明度の初期値を 100% にし、旧初期値 50% が保存済みファイルに残っている場合も一度だけ 100% へ移行するようにした。
+- 設計意図に、コマファイルでは画像焼き込みだけに依存せず画面上にもページ番号・作品情報を表示する仕様を追記した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py core/coma_camera.py utils/coma_camera.py ui/overlay.py ui/overlay_work_info.py ui/overlay_coma_page_labels.py test/blender_page_coma_preview_restore_check.py test/blender_coma_camera_roundtrip_check.py`
+- `blender.exe --factory-startup --background --python test/blender_page_coma_preview_restore_check.py`
+- `blender.exe --factory-startup --background --python test/blender_coma_camera_roundtrip_check.py`
+
+---
+
 ## 2026-06-27 — ページ/コマファイルの表示残課題を再修正 (v0.6.386)
 
 ### 症状

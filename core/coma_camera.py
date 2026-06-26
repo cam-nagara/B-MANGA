@@ -60,7 +60,7 @@ def _update_own_page_opacity(self, context) -> None:
     from ..utils import percentage
 
     coma_camera.set_background_images_properties(
-        context, "", opacity=percentage.percent_to_factor(self.own_page_opacity, 50.0), kind_filter="own_page"
+        context, "", opacity=percentage.percent_to_factor(self.own_page_opacity, 100.0), kind_filter="own_page"
     )
 
 
@@ -268,7 +268,7 @@ class BMangaComaCameraSettings(bpy.types.PropertyGroup):
         name="ページ画像不透明度",
         min=0.0,
         max=100.0,
-        default=50.0,
+        default=100.0,
         subtype="PERCENTAGE",
         update=_update_own_page_opacity,
     )  # type: ignore[valid-type]

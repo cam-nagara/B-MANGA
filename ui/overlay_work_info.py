@@ -56,6 +56,49 @@ def draw_for_page(
         )
 
 
+def draw_for_page_screen_rect(
+    context,
+    work,
+    paper,
+    page,
+    page_index: int,
+    page_rect_px: tuple[float, float, float, float],
+    page_width_mm: float,
+    page_height_mm: float,
+) -> None:
+    import bpy as _bpy
+    scene = getattr(_bpy.context, "scene", None)
+    if scene is not None and not bool(getattr(scene, "bmanga_page_work_info_visible", True)):
+        return
+    info = getattr(work, "work_info", None)
+    if info is None:
+        return
+    if not bool(getattr(info, "display_visible", True)):
+        return
+    if not page_range.page_in_range(page):
+        return
+
+    x0, y0, x1, y1 = page_rect_px
+    width_px = max(1.0, x1 - x0)
+    height_px = max(1.0, y1 - y0)
+    page_width_mm = max(1.0, float(page_width_mm))
+    page_height_mm = max(1.0, float(page_height_mm))
+    bleed_rect = overlay_shared.compute_paper_rects(paper).bleed
+    font_id = _get_font_id(_work_info_font_path(work))
+
+    for item_key, item, text in _text_items(info, page_index, paper, page):
+        if item is None or not bool(getattr(item, "enabled", False)) or not text:
+            continue
+        position = str(getattr(item, "position", "bottom-left") or "bottom-left")
+        x_mm, y_mm, align_x, align_y = _anchor(bleed_rect, position)
+        px_x = x0 + (float(x_mm) / page_width_mm) * width_px
+        px_y = y0 + (float(y_mm) / page_height_mm) * height_px
+        q_size = max(0.1, float(getattr(item, "font_size_q", 20.0) or 20.0))
+        px_size = max(1.0, q_to_mm(q_size) * width_px / page_width_mm)
+        item_color = getattr(item, "color", (1.0, 1.0, 1.0, 1.0))
+        _draw_text_item_pixel(font_id, text, px_x, px_y, px_size, item_color, align_x, align_y)
+
+
 def _draw_text_item(
     font_id, text, x_mm, y_mm,
     font_size_q, color, align_x, align_y,
@@ -79,6 +122,13 @@ def _draw_text_item(
         return
     px_size = max(1.0, abs(float(p1.x) - float(p0.x)))
 
+    _draw_text_item_pixel(font_id, text, px_x, px_y, px_size, color, align_x, align_y)
+
+
+def _draw_text_item_pixel(
+    font_id, text, px_x, px_y,
+    px_size, color, align_x, align_y,
+) -> None:
     try:
         blf.size(font_id, px_size)
     except Exception:  # noqa: BLE001

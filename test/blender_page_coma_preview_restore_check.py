@@ -356,6 +356,9 @@ def main() -> None:
             raise AssertionError("コマファイルのカメラで外枠がオンになっています")
         if abs(float(getattr(cam_data, "passepartout_alpha", 0.0) or 0.0)) > 0.001:
             raise AssertionError("コマファイルのカメラ外枠の濃さが残っています")
+        settings = scene.bmanga_coma_camera_settings
+        if abs(float(getattr(settings, "own_page_opacity", 0.0) or 0.0) - 100.0) > 0.001:
+            raise AssertionError("コマファイルのページ画像不透明度の初期値が100%ではありません")
         page_backgrounds = [
             bg
             for bg in getattr(cam_data, "background_images", [])
@@ -364,6 +367,17 @@ def main() -> None:
         ]
         if not page_backgrounds:
             raise AssertionError("コマファイルのページ一覧プレビュー下絵が作られていません")
+        own_page_backgrounds = [
+            bg
+            for bg in getattr(cam_data, "background_images", [])
+            if getattr(bg, "image", None) is not None
+            and str(bg.image.get("bmanga_kind", "") or "") == "own_page"
+        ]
+        if not own_page_backgrounds:
+            raise AssertionError("コマファイルのページ画像下絵が作られていません")
+        for bg in own_page_backgrounds:
+            if abs(float(getattr(bg, "alpha", 0.0) or 0.0) - 1.0) > 0.001:
+                raise AssertionError("コマファイルのページ画像下絵が100%不透明ではありません")
         work = scene.bmanga_work
         spread_page = work.pages[1]
         spread_page_id = str(getattr(spread_page, "id", "") or spread_page_id)

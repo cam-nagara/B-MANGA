@@ -50,6 +50,7 @@ from .coma_camera_refs import (
 
 _logger = log.get_logger(__name__)
 _OPACITY_PERCENT_MIGRATION_PROP = "bmanga_coma_camera_opacity_percent_units_v1"
+_OWN_PAGE_DEFAULT_OPACITY_MIGRATION_PROP = "bmanga_coma_camera_own_page_opacity_default_v1"
 HATCHING_IMAGE_NAME = "ハッチング間隔.png"
 HATCHING_ASSET_PATH = Path(__file__).resolve().parents[1] / "assets" / HATCHING_IMAGE_NAME
 
@@ -58,30 +59,40 @@ def ensure_opacity_percent_units(scene) -> None:
     """旧ファイルの下絵不透明度 0..1 値を UI の % 値へ一度だけ移行する。"""
     if scene is None:
         return
+    percent_done = False
     try:
-        if bool(scene.get(_OPACITY_PERCENT_MIGRATION_PROP, False)):
-            return
+        percent_done = bool(scene.get(_OPACITY_PERCENT_MIGRATION_PROP, False))
     except Exception:  # noqa: BLE001
         return
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
     if settings is None:
         return
-    for attr in (
-        "bg_images_opacity",
-        "name_bg_images_opacity",
-        "koma_bg_images_opacity",
-    ):
-        try:
-            value = float(getattr(settings, attr))
-        except Exception:  # noqa: BLE001
-            continue
-        if 0.0 <= value <= 1.0:
+    if not percent_done:
+        for attr in (
+            "bg_images_opacity",
+            "name_bg_images_opacity",
+            "own_page_opacity",
+            "koma_bg_images_opacity",
+        ):
             try:
-                setattr(settings, attr, value * 100.0)
+                value = float(getattr(settings, attr))
             except Exception:  # noqa: BLE001
-                pass
+                continue
+            if 0.0 <= value <= 1.0:
+                try:
+                    setattr(settings, attr, value * 100.0)
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            scene[_OPACITY_PERCENT_MIGRATION_PROP] = True
+        except Exception:  # noqa: BLE001
+            pass
     try:
-        scene[_OPACITY_PERCENT_MIGRATION_PROP] = True
+        if not bool(scene.get(_OWN_PAGE_DEFAULT_OPACITY_MIGRATION_PROP, False)):
+            value = float(getattr(settings, "own_page_opacity", 100.0))
+            if abs(value - 50.0) <= 1.0e-6:
+                settings.own_page_opacity = 100.0
+            scene[_OWN_PAGE_DEFAULT_OPACITY_MIGRATION_PROP] = True
     except Exception:  # noqa: BLE001
         pass
 
@@ -291,9 +302,9 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
     name_show_all_pages = bool(getattr(settings, "name_show_all_pages", False))
     koma_visible = bool(getattr(settings, "koma_visible", True))
     own_page_vis = bool(getattr(settings, "own_page_visible", True))
-    name_alpha = percentage.percent_to_factor(getattr(settings, "name_bg_images_opacity", 50.0), 50.0)
+    name_alpha = percentage.percent_to_factor(getattr(settings, "name_bg_images_opacity", 100.0), 100.0)
     koma_alpha = percentage.percent_to_factor(getattr(settings, "koma_bg_images_opacity", 100.0), 100.0)
-    own_page_alpha = percentage.percent_to_factor(getattr(settings, "own_page_opacity", 50.0), 50.0)
+    own_page_alpha = percentage.percent_to_factor(getattr(settings, "own_page_opacity", 100.0), 100.0)
     scale = float(getattr(settings, "bg_images_scale", 1.0))
     koma_depth_back = bool(getattr(settings, "koma_depth", False))
 
@@ -1295,14 +1306,14 @@ def _add_page_overview_backgrounds(scene, work) -> None:
 
     settings = getattr(scene, "bmanga_coma_camera_settings", None)
     alpha = percentage.percent_to_factor(
-        getattr(settings, "name_bg_images_opacity", 50.0), 50.0,
-    ) if settings else 0.5
+        getattr(settings, "name_bg_images_opacity", 100.0), 100.0,
+    ) if settings else 1.0
     user_scale = max(0.1, float(getattr(settings, "bg_images_scale", 1.0))) if settings else 1.0
     name_visible = bool(getattr(settings, "name_visible", True)) if settings else True
 
     own_page_alpha = percentage.percent_to_factor(
-        getattr(settings, "own_page_opacity", 50.0), 50.0,
-    ) if settings else 0.5
+        getattr(settings, "own_page_opacity", 100.0), 100.0,
+    ) if settings else 1.0
     own_page_visible = bool(getattr(settings, "own_page_visible", True)) if settings else True
     koma_alpha = percentage.percent_to_factor(
         getattr(settings, "koma_bg_images_opacity", 100.0), 100.0,

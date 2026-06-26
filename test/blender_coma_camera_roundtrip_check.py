@@ -156,12 +156,17 @@ def _enter_configured_coma(get_mode, get_work, coma_camera):
     migration_prop = getattr(coma_camera, "_OPACITY_PERCENT_MIGRATION_PROP")
     if migration_prop in scene:
         del scene[migration_prop]
+    own_default_prop = getattr(coma_camera, "_OWN_PAGE_DEFAULT_OPACITY_MIGRATION_PROP")
+    if own_default_prop in scene:
+        del scene[own_default_prop]
     settings.bg_images_opacity = 0.5
     settings.name_bg_images_opacity = 0.37
+    settings.own_page_opacity = 0.5
     settings.koma_bg_images_opacity = 0.82
     coma_camera.ensure_opacity_percent_units(scene)
     _assert_close(settings.bg_images_opacity, 50.0, "下絵不透明度の旧値移行")
     _assert_close(settings.name_bg_images_opacity, 37.0, "ページ画像不透明度の旧値移行")
+    _assert_close(settings.own_page_opacity, 100.0, "ページ画像不透明度の初期値移行")
     _assert_close(settings.koma_bg_images_opacity, 82.0, "コマ下絵不透明度の旧値移行")
     settings.name_bg_images_opacity = 37.0
     settings.koma_bg_images_opacity = 82.0
