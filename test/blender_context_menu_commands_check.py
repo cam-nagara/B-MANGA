@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -255,6 +256,34 @@ def _assert_menu_draw_does_not_resync() -> None:
         layer_stack_utils.sync_layer_stack = original_sync
 
 
+def _assert_context_menu_does_not_warp_cursor() -> None:
+    from bmanga_dev.utils import detail_popup
+
+    class _FakeWindow:
+        def __init__(self):
+            self.warps = []
+
+        def cursor_warp(self, x, y):
+            self.warps.append((int(x), int(y)))
+
+    fake_window = _FakeWindow()
+    fake_context = SimpleNamespace(window=fake_window)
+    event = SimpleNamespace(mouse_x=240, mouse_y=320)
+    calls = []
+    original_call = detail_popup._call_blender_menu
+    try:
+        detail_popup._call_blender_menu = lambda menu_idname: calls.append(str(menu_idname))
+        assert detail_popup.call_menu_right_of_cursor(
+            fake_context,
+            event,
+            "BMANGA_MT_selection_context",
+        )
+    finally:
+        detail_popup._call_blender_menu = original_call
+    assert calls == ["BMANGA_MT_selection_context"], calls
+    assert fake_window.warps == [], fake_window.warps
+
+
 def _assert_viewport_tool_menu_paths(work) -> None:
     from bmanga_dev.operators import object_tool_op, selection_context_menu
     from bmanga_dev.utils import layer_stack as layer_stack_utils
@@ -386,6 +415,7 @@ def main() -> None:
         assert hasattr(bpy.types, "BMANGA_OT_view_context_menu")
         _assert_link_selected_menu()
         _assert_menu_draw_does_not_resync()
+        _assert_context_menu_does_not_warp_cursor()
         _assert_viewport_tool_menu_paths(work)
         _assert_page_spread_context_menu_commands(work)
         print("BMANGA_CONTEXT_MENU_COMMANDS_OK")

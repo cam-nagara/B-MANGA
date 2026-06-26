@@ -3,6 +3,29 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — 右クリックメニュー表示時のカーソル移動を廃止 (v0.6.390)
+
+### 症状
+
+- ページやレイヤーなどを右クリックすると、ポップアップメニュー表示前にカーソルが一瞬右へ飛び、元の位置へ戻ってからメニューが表示されていた。
+
+### 原因
+
+- 右クリックメニューをカーソルの右側へ寄せるため、メニュー表示直前にカーソルを一時的に右へ移動し、タイマーで元の位置へ戻していた。
+
+### 修正
+
+- 右クリックメニュー表示ではカーソルを一切移動せず、クリックした位置のままメニューを開くようにした。
+- 選択中レイヤーの右クリックメニューと、フキダシしっぽポイントの右クリックメニューの説明も新仕様に合わせた。
+- 設計意図に、右クリックメニュー表示前後でカーソル位置を維持する仕様を追記した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py utils/detail_popup.py operators/selection_context_menu.py operators/balloon_tail_op.py test/blender_context_menu_commands_check.py`
+- `blender.exe --factory-startup --background --python test/blender_context_menu_commands_check.py`
+
+---
+
 ## 2026-06-27 — ページプレビュー選択時の画像消失と断ち落とし枠外色を修正 (v0.6.389)
 
 ### 症状

@@ -36,6 +36,10 @@ def _clamp_to_window(window, x: int, y: int) -> tuple[int, int]:
     return int(x), int(y)
 
 
+def _call_blender_menu(menu_idname: str) -> None:
+    bpy.ops.wm.call_menu(name=menu_idname)
+
+
 def position_dialog_cursor(context, event, *, key: str = "layer_detail", offset_x: int = 0) -> bool:
     """詳細設定ダイアログを前回位置に出すため、一時的にカーソルを移動する."""
     window = getattr(context, "window", None)
@@ -75,52 +79,19 @@ def position_dialog_cursor(context, event, *, key: str = "layer_detail", offset_
 
 
 def call_menu_right_of_cursor(context, event, menu_idname: str, *, half_width_px: int = 130) -> bool:
-    """ポップアップメニューをカーソルの右側に出して開く.
+    """ポップアップメニューを現在のカーソル位置で開く.
 
-    Blender の ``wm.call_menu`` はカーソルが水平中央に来るようにメニューを
-    出すため、そのままだと半分がカーソルの左へ被さる。メニュー半幅ぶん
-    カーソルを一時的に右へ動かしてから開き、直後に元の位置へ戻す。
+    以前はメニューを右側へ寄せるためにカーソルを一時移動していたが、
+    その移動が画面上で見えてしまうため、右クリックメニューではマウス位置を
+    変更しない。
     """
-    window = getattr(context, "window", None) if context is not None else None
-    if window is None or event is None:
-        try:
-            bpy.ops.wm.call_menu(name=menu_idname)
-            return True
-        except Exception:  # noqa: BLE001
-            return False
-    original_x = int(getattr(event, "mouse_x", 0))
-    original_y = int(getattr(event, "mouse_y", 0))
+    _ = context, event, half_width_px
     try:
-        ui_scale = float(
-            getattr(getattr(bpy.context.preferences, "system", None), "ui_scale", 1.0) or 1.0
-        )
-    except Exception:  # noqa: BLE001
-        ui_scale = 1.0
-    shift = max(0, int(round(float(half_width_px) * ui_scale)))
-    warped = False
-    try:
-        if shift > 0 and (original_x > 0 or original_y > 0):
-            window.cursor_warp(original_x + shift, original_y)
-            warped = True
-        bpy.ops.wm.call_menu(name=menu_idname)
+        _call_blender_menu(menu_idname)
         return True
     except Exception:  # noqa: BLE001
         _logger.exception("context menu: call_menu failed: %s", menu_idname)
         return False
-    finally:
-        if warped:
-
-            def _restore_cursor():
-                try:
-                    window.cursor_warp(original_x, original_y)
-                except Exception:  # noqa: BLE001
-                    pass
-                return None
-
-            try:
-                bpy.app.timers.register(_restore_cursor, first_interval=0.05)
-            except Exception:  # noqa: BLE001
-                pass
 
 
 def _active_detail_index(context) -> int:

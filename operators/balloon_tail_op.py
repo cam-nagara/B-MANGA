@@ -75,7 +75,7 @@ def open_tail_point_context_menu(
     set_tail_point_context(page_id, balloon_id, tail_index, point_index)
     from ..utils import detail_popup
 
-    # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
+    # メニューはカーソルを移動させず、右クリック位置で開く。
     return detail_popup.call_menu_right_of_cursor(
         context, event, BMANGA_MT_balloon_tail_point_context.bl_idname, half_width_px=110
     )

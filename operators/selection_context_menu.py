@@ -8,7 +8,7 @@ from ..utils import detail_popup, layer_stack as layer_stack_utils, object_selec
 def _call_selection_menu(context, event=None) -> bool:
     if layer_stack_utils.active_stack_item(context) is None:
         return False
-    # メニューはカーソルの右側に出す (call_menu 標準は水平中央配置)
+    # メニューはカーソルを移動させず、右クリック位置で開く。
     return detail_popup.call_menu_right_of_cursor(
         context, event, "BMANGA_MT_selection_context"
     )
