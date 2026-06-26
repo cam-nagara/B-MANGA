@@ -465,6 +465,19 @@ def purge_other_page_data(scene, page_id: str) -> int:
     return removed
 
 
+def resync_page_runtime_objects(scene, work, page_id: str) -> int:
+    """ページ用 blend で表示するコマ背景・枠線を現在ページ分だけ再同期する."""
+    if scene is None or work is None or not paths.is_valid_page_id(page_id):
+        return 0
+    scoped_work = work_for_pages(work, {page_id})
+    from . import coma_border_object, coma_plane
+
+    count = 0
+    count += coma_plane.regenerate_all_coma_planes(scene, scoped_work)
+    count += coma_border_object.regenerate_all_coma_borders(scene, scoped_work)
+    return count
+
+
 _WORK_LIST_RUNTIME_KIND_PROPS = {
     "bmanga_coma_plane_kind",
     "bmanga_coma_mask_kind",

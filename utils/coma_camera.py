@@ -193,6 +193,10 @@ def ensure_coma_camera(scene):
             cam_data.clip_start = 0.01
     if hasattr(cam_data, "show_limits"):
         cam_data.show_limits = True
+    if hasattr(cam_data, "show_passepartout"):
+        cam_data.show_passepartout = False
+    if hasattr(cam_data, "passepartout_alpha"):
+        cam_data.passepartout_alpha = 0.0
     return cam_obj
 
 
@@ -1269,6 +1273,11 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         return
     _remove_page_overview_backgrounds(scene)
     from . import page_preview_object
+
+    try:
+        page_preview_object.sync_page_previews(bpy.context, work, force=False)
+    except Exception:  # noqa: BLE001
+        _logger.exception("page overview preview image sync failed")
 
     rects = page_preview_object.preview_rects_mm(scene, work)
     if not rects:

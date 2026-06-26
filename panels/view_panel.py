@@ -70,6 +70,12 @@ def _current_page_id_for_update(scene, context) -> str:
 
 def _page_work_info_visible_update(scene, context) -> None:
     try:
+        from ..utils import page_preview_object
+
+        page_preview_object.schedule_sync_page_previews(force=True)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         for area in (context.screen.areas if context.screen else ()):
             if area.type == "VIEW_3D":
                 area.tag_redraw()
@@ -78,6 +84,12 @@ def _page_work_info_visible_update(scene, context) -> None:
 
 
 def _page_guides_visible_update(scene, context) -> None:
+    try:
+        from ..utils import page_preview_object
+
+        page_preview_object.schedule_sync_page_previews(force=True)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         for area in (context.screen.areas if context.screen else ()):
             if area.type == "VIEW_3D":

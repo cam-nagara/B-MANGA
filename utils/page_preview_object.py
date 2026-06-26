@@ -37,8 +37,11 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "6"
+PREVIEW_RENDER_VERSION = "7"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
+PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
+PREVIEW_RENDER_VARIANT_WORK = "work"
+PREVIEW_RENDER_VARIANT_DETAIL = "detail"
 _DEFERRED_SYNC_FORCE = False
 
 
@@ -338,9 +341,20 @@ def _resize_preview_image(image, width: int, height: int):
     return image.resize((int(width), int(height)), resampling)
 
 
-# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA, 生成仕様版)。
+# PNG 判定のキャッシュ: path -> (mtime, size, 角ピクセル RGBA, 生成仕様版, 用途)。
 # 毎回 PIL で開き直すとページ数分の固定コストになるため。
-_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int], str]] = {}
+_PNG_USABLE_CACHE: dict[str, tuple[float, tuple[int, int], tuple[int, int, int, int], str, str]] = {}
+
+
+def _preview_render_variant(scene=None) -> str:
+    try:
+        from . import page_preview_decor
+
+        if page_preview_decor.preview_detail_variant(scene or bpy.context.scene):
+            return PREVIEW_RENDER_VARIANT_DETAIL
+    except Exception:  # noqa: BLE001
+        pass
+    return PREVIEW_RENDER_VARIANT_WORK
 
 
 def _preview_png_usable(
@@ -348,6 +362,7 @@ def _preview_png_usable(
     expected_size: tuple[int, int],
     *,
     current: bool,
+    variant: str,
 ) -> bool:
     """既存プレビュー PNG を使い回せるか。
 
@@ -363,6 +378,7 @@ def _preview_png_usable(
     cached = _PNG_USABLE_CACHE.get(key)
     if cached is not None and cached[0] == mtime:
         size, (r, g, b, a), version = cached[1], cached[2], cached[3]
+        png_variant = cached[4] if len(cached) > 4 else ""
     else:
         try:
             from PIL import Image
@@ -370,14 +386,17 @@ def _preview_png_usable(
             with Image.open(path) as image:
                 size = tuple(image.size)
                 version = str(image.info.get(PREVIEW_RENDER_VERSION_KEY, "") or "")
+                png_variant = str(image.info.get(PREVIEW_RENDER_VARIANT_KEY, "") or "")
                 rgba = image.convert("RGBA")
                 r, g, b, a = rgba.getpixel((min(1, rgba.width - 1), min(1, rgba.height - 1)))
         except Exception:  # noqa: BLE001
             return False
         if len(_PNG_USABLE_CACHE) > 512:
             _PNG_USABLE_CACHE.clear()
-        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a), version)
+        _PNG_USABLE_CACHE[key] = (mtime, size, (r, g, b, a), version, png_variant)
     if version != PREVIEW_RENDER_VERSION:
+        return False
+    if png_variant != variant:
         return False
     if tuple(size) != tuple(expected_size):
         return False
@@ -476,6 +495,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     exported = _render_preview_image_from_export(work, page, width, height, scene=scene)
     if exported is not None:
         exported = _resize_preview_image(exported, target_width, target_height)
+        from . import page_preview_decor
+
+        page_preview_decor.draw_preview_decoration(
+            exported,
+            work,
+            page,
+            scene=scene,
+            include_fills=False,
+        )
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
         draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
@@ -533,6 +561,15 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
             closed = pts_px + [pts_px[0]]
             draw.line(closed, fill=border_color, width=line_w, joint="curve")
 
+    from . import page_preview_decor
+
+    page_preview_decor.draw_preview_decoration(
+        img,
+        work,
+        page,
+        scene=scene,
+        include_fills=True,
+    )
     img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
@@ -552,24 +589,21 @@ def _render_preview_image_from_export(work, page, width: int, height: int, *, sc
         fw = max(1.0, float(getattr(work.paper, "finish_width_mm", 1.0) or 1.0))
         cw = page_grid.spread_content_width_mm(page, cw, fw)
         dpi = max(8, int(round(max(width / cw, height / ch) * 25.4)))
-        in_page_or_coma = False
-        try:
-            from . import page_file_scene as _pfs
-            s = scene or bpy.context.scene
-            in_page_or_coma = not _pfs.is_work_list_scene(s)
-        except Exception:  # noqa: BLE001
-            pass
+        from . import page_preview_decor
+
+        detail_preview = _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
+        page_overlay_visible = detail_preview and page_preview_decor.page_guides_visible(work, scene)
         options = export_pipeline.ExportOptions(
             area="canvas",
             dpi_override=dpi,
             include_border=True,
             include_white_margin=True,
             include_nombre=False,
-            include_work_info=in_page_or_coma,
+            include_work_info=detail_preview,
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
-            include_page_overlay_fills=in_page_or_coma,
+            include_page_overlay_fills=page_overlay_visible,
         )
         image = export_pipeline.render_page(work, page, options)
         if image is None:
@@ -594,7 +628,8 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
         expected_size = _image_size(work, scene, page)
         if not force and not _preview_png_fresh_for_page(work, page, path):
             force = True
-        if not force and _preview_png_usable(path, expected_size, current=current):
+        variant = _preview_render_variant(scene)
+        if not force and _preview_png_usable(path, expected_size, current=current, variant=variant):
             return path
         # 作品ファイルではページ詳細を常駐させないため、プレビュー再生成の
         # 間だけ page.json から読み込み、使用後に破棄する
@@ -608,19 +643,20 @@ def ensure_preview_png(work, page, page_index: int, *, current: bool, scene=None
                 page_detail.clear_page_detail(page)
         if image is None:
             return None
-        _save_preview_png(image, path)
+        _save_preview_png(image, path, variant=variant)
         return path
     except Exception:  # noqa: BLE001
         _logger.exception("page preview render failed: %s", page_id)
         return None
 
 
-def _save_preview_png(image, path: Path) -> None:
+def _save_preview_png(image, path: Path, *, variant: str) -> None:
     try:
         from PIL import PngImagePlugin
 
         metadata = PngImagePlugin.PngInfo()
         metadata.add_text(PREVIEW_RENDER_VERSION_KEY, PREVIEW_RENDER_VERSION)
+        metadata.add_text(PREVIEW_RENDER_VARIANT_KEY, str(variant or PREVIEW_RENDER_VARIANT_WORK))
         image.save(path, pnginfo=metadata)
         return
     except Exception:  # noqa: BLE001
@@ -1056,13 +1092,7 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
     if work is None:
         work = getattr(scene, "bmanga_work", None)
     role, current_page_id = _preview_scene_role(scene)
-    if role == "page":
-        remove_page_previews()
-        return 0
-    if role == "coma":
-        hide_page_previews(scene)
-        return 0
-    if role not in {"page", "work"} or not preview_enabled(scene):
+    if role not in {"page", "work", "coma"} or not preview_enabled(scene):
         hide_page_previews(scene)
         return 0
     if work is None or not getattr(work, "loaded", False):
@@ -1070,6 +1100,30 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
         return 0
     rects = preview_rects_mm(scene, work)
     valid_page_ids = set(rects)
+    if role == "coma":
+        updated = 0
+        for page in getattr(work, "pages", []) or []:
+            page_id = str(getattr(page, "id", "") or "")
+            rect = rects.get(page_id)
+            if rect is None:
+                continue
+            ensure_preview_png(
+                work,
+                page,
+                int(rect[0]),
+                current=page_id == current_page_id,
+                scene=scene,
+                force=force,
+            )
+            updated += 1
+        hide_page_previews(scene)
+        try:
+            for area in getattr(context, "screen", None).areas:
+                if area.type == "VIEW_3D":
+                    area.tag_redraw()
+        except Exception:  # noqa: BLE001
+            pass
+        return updated
     if role == "page" and current_page_id:
         current_rect = rects.get(current_page_id)
         if current_rect is not None:

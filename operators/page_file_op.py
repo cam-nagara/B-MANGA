@@ -96,6 +96,7 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
         _logger.exception("page file: page transform setup failed")
     try:
         page_file_scene.purge_other_page_data(context.scene, page_id)
+        page_file_scene.resync_page_runtime_objects(context.scene, work, page_id)
     except Exception:  # noqa: BLE001
         _logger.exception("page file: purge other page data failed")
     try:

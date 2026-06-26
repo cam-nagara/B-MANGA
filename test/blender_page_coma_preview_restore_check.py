@@ -1,0 +1,212 @@
+"""Blender実機チェック: ページ/コマファイルのページ一覧プレビュー復旧."""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MOD_NAME = "bmanga_dev_page_coma_preview_restore"
+OUT_DIR = ROOT / ".codex" / "test_artifacts" / "page_coma_preview_restore"
+STAGE_FILE = OUT_DIR / "stage.txt"
+
+
+def _mark(stage: str) -> None:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    STAGE_FILE.write_text(stage, encoding="utf-8")
+
+
+def _load_addon():
+    spec = importlib.util.spec_from_file_location(
+        MOD_NAME,
+        ROOT / "__init__.py",
+        submodule_search_locations=[str(ROOT)],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[MOD_NAME] = mod
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    mod.register()
+    return mod
+
+
+def _count_pixels(path: Path, predicate) -> int:
+    from PIL import Image
+
+    with Image.open(str(path)) as opened:
+        image = opened.convert("RGBA")
+        step = max(1, min(image.width, image.height) // 160)
+        count = 0
+        for y in range(0, image.height, step):
+            for x in range(0, image.width, step):
+                if predicate(image.getpixel((x, y))):
+                    count += 1
+        return count
+
+
+def _metadata(path: Path) -> dict[str, str]:
+    from PIL import Image
+
+    with Image.open(str(path)) as opened:
+        return {str(k): str(v) for k, v in opened.info.items()}
+
+
+def _assert_safe_guide_pixel(path: Path, work) -> None:
+    from PIL import Image
+    from bmanga_dev_page_coma_preview_restore.ui import overlay_shared
+
+    paper = work.paper
+    rects = overlay_shared.compute_paper_rects(paper, is_left_half=False)
+    with Image.open(str(path)) as opened:
+        image = opened.convert("RGBA")
+        width, height = image.size
+        x = int(round(rects.safe.x / float(paper.canvas_width_mm) * width))
+        y = int(round(height - (rects.safe.y + rects.safe.height * 0.5) / float(paper.canvas_height_mm) * height))
+        found = False
+        for yy in range(max(0, y - 3), min(height, y + 4)):
+            for xx in range(max(0, x - 3), min(width, x + 4)):
+                r, g, b, a = image.getpixel((xx, yy))
+                if a > 180 and g > 170 and b > 170 and r < 150:
+                    found = True
+                    break
+            if found:
+                break
+    if not found:
+        raise AssertionError("ページ一覧プレビュー画像に用紙ガイド線が見つかりません")
+
+
+def _visible_border_owner_ids() -> set[str]:
+    return {
+        str(obj.get("bmanga_coma_border_owner_id", "") or "")
+        for obj in bpy.data.objects
+        if str(obj.get("bmanga_coma_border_owner_id", "") or "")
+        and not bool(getattr(obj, "hide_viewport", False))
+    }
+
+
+def main() -> None:
+    temp_root = Path(tempfile.mkdtemp(prefix="bmanga_page_coma_preview_restore_"))
+    mod = None
+    success = False
+    try:
+        _mark("factory_settings")
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        _mark("load_addon")
+        mod = _load_addon()
+        work_dir = temp_root / "PreviewRestore.bmanga"
+        _mark("work_new")
+        result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
+        if result != {"FINISHED"}:
+            raise AssertionError(f"作品作成に失敗しました: {result}")
+        for _ in range(2):
+            result = bpy.ops.bmanga.page_add()
+            if result != {"FINISHED"}:
+                raise AssertionError(f"ページ追加に失敗しました: {result}")
+
+        work = bpy.context.scene.bmanga_work
+        work.work_info.work_name = "MAGENTA_PREVIEW_INFO"
+        work.work_info.display_work_name.enabled = True
+        work.work_info.display_work_name.position = "top-left"
+        work.work_info.display_work_name.font_size_q = 64.0
+        work.work_info.display_work_name.color = (1.0, 0.0, 1.0, 1.0)
+        work.safe_area_overlay.enabled = True
+        work.safe_area_overlay.opacity = 100.0
+        work.safe_area_overlay.color = (0.0, 1.0, 0.0)
+        work.safe_area_overlay.bleed_outer_enabled = False
+        work.paper.show_guides = True
+        work.paper.show_safe_line = True
+        work.paper.show_inner_frame = True
+
+        _mark("work_save")
+        result = bpy.ops.bmanga.work_save()
+        if result != {"FINISHED"}:
+            raise AssertionError(f"作品保存に失敗しました: {result}")
+
+        _mark("open_page_file")
+        result = bpy.ops.bmanga.open_page_file(index=0)
+        if result != {"FINISHED"}:
+            raise AssertionError(f"ページファイルを開けません: {result}")
+
+        _mark("page_file_assertions")
+        _mark("page_file_import_preview_module")
+        from bmanga_dev_page_coma_preview_restore.utils import page_preview_object
+
+        _mark("page_file_sync_previews")
+        scene = bpy.context.scene
+        work = scene.bmanga_work
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
+        preview_path = work_dir / "p0002" / "page_preview.png"
+        _mark("page_file_check_preview_file")
+        if not preview_path.is_file():
+            raise AssertionError("ページ一覧プレビュー画像が作られていません")
+        _mark("page_file_check_metadata")
+        meta = _metadata(preview_path)
+        if meta.get(page_preview_object.PREVIEW_RENDER_VARIANT_KEY) != page_preview_object.PREVIEW_RENDER_VARIANT_DETAIL:
+            raise AssertionError("ページ/コマ用のページ一覧プレビュー画像として保存されていません")
+        _mark("page_file_check_work_info_pixels")
+        magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
+        if magenta <= 0:
+            raise AssertionError("ページ一覧プレビュー画像に作品情報が表示されていません")
+        _mark("page_file_check_fill_pixels")
+        green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
+        if green <= 0:
+            raise AssertionError("ページ一覧プレビュー画像にセーフライン外の塗りが表示されていません")
+
+        _mark("page_file_regenerate_guides_only")
+        work.safe_area_overlay.enabled = False
+        page_preview_object.sync_page_previews(bpy.context, work, force=True)
+        _mark("page_file_check_guide_pixels")
+        _assert_safe_guide_pixel(preview_path, work)
+        work.safe_area_overlay.enabled = True
+
+        _mark("page_file_check_border_objects")
+        if not any(owner.startswith("p0001:") for owner in _visible_border_owner_ids()):
+            raise AssertionError("ページファイルを開いた直後にコマ枠線が表示されていません")
+
+        work.pages[0].active_coma_index = 0
+        _mark("enter_coma_mode")
+        result = bpy.ops.bmanga.enter_coma_mode("EXEC_DEFAULT")
+        if result != {"FINISHED"}:
+            raise AssertionError(f"コマファイルを開けません: {result}")
+        _mark("coma_file_assertions")
+        scene = bpy.context.scene
+        camera = scene.camera
+        if camera is None or getattr(camera, "type", "") != "CAMERA":
+            raise AssertionError("コマファイルのカメラが見つかりません")
+        cam_data = camera.data
+        if bool(getattr(cam_data, "show_passepartout", False)):
+            raise AssertionError("コマファイルのカメラで外枠がオンになっています")
+        if abs(float(getattr(cam_data, "passepartout_alpha", 0.0) or 0.0)) > 0.001:
+            raise AssertionError("コマファイルのカメラ外枠の濃さが残っています")
+        page_backgrounds = [
+            bg
+            for bg in getattr(cam_data, "background_images", [])
+            if getattr(bg, "image", None) is not None
+            and str(bg.image.get("bmanga_kind", "") or "") == "name"
+        ]
+        if not page_backgrounds:
+            raise AssertionError("コマファイルのページ一覧プレビュー下絵が作られていません")
+
+        print(f"BMANGA_PAGE_COMA_PREVIEW_RESTORE_OK work={work_dir}", flush=True)
+        _mark("done")
+        success = True
+    finally:
+        if mod is not None:
+            try:
+                mod.unregister()
+            except Exception:
+                pass
+        bpy.ops.wm.read_factory_settings(use_empty=True)
+        shutil.rmtree(temp_root, ignore_errors=True)
+        os._exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()
