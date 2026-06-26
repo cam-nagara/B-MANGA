@@ -115,6 +115,21 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         sub_dist2.enabled = settings.use_inner_line_distance_limit
         sub_dist2.prop(settings, "inner_line_max_distance")
 
+        # --- 交差線設定 ---
+        box = layout.box()
+        box.label(text="交差線（オブジェクト間）", icon="MOD_BOOLEAN")
+        col = box.column(align=True)
+        col.prop(settings, "intersection_enabled")
+        sub = col.column(align=True)
+        sub.enabled = settings.intersection_enabled
+        sub.prop(settings, "intersection_method")
+        sub.prop(settings, "intersection_target")
+        row = sub.row(align=True)
+        row.prop(settings, "intersection_thickness_mm")
+        sub_label = row.row(align=True)
+        sub_label.alignment = "RIGHT"
+        sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
+
         # --- コンポジット出力 ---
         box = layout.box()
         box.label(text="コンポジット出力", icon="NODE_COMPOSITING")

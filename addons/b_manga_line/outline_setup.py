@@ -256,7 +256,7 @@ def apply_outline(
         if use_vertex_color:
             _ensure_color_attribute(obj)
         mod.vertex_group = vg.name
-        mod.thickness_vertex_group = 1.0
+        mod.thickness_vertex_group = 0.0
     else:
         mod.vertex_group = ""
 

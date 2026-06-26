@@ -7,6 +7,7 @@ import math
 import bpy
 from bpy.props import (
     BoolProperty,
+    EnumProperty,
     FloatProperty,
     FloatVectorProperty,
     PointerProperty,
@@ -21,6 +22,9 @@ VG_LINE_WIDTH = "BML_LineWidth"
 COLOR_ATTR_NAME = "BML_LineWidth"
 GN_MODIFIER_NAME = "BML_InnerLines"
 GN_TREE_NAME = "BML_InnerLines"
+INTERSECTION_MODIFIER_NAME = "BML_IntersectionLines"
+INTERSECTION_TREE_BOOLEAN = "BML_Intersection_Boolean"
+INTERSECTION_TREE_SDF = "BML_Intersection_SDF"
 AO_ATTR_NAME = "BML_AO"
 AOV_NAME = "BML_Line"
 PROP_BASE_THICKNESS = "bml_base_thickness"
@@ -135,6 +139,83 @@ def _on_inner_thickness_changed(self, context):
     _propagate(self, context, "inner_line_thickness")
 
 
+def _on_intersection_enabled_changed(self, context):
+    from . import intersection_lines, outline_setup
+    owner = self.id_data
+    if owner.type == "MESH":
+        if self.intersection_enabled:
+            mat = outline_setup.get_outline_material(owner)
+            intersection_lines.apply_intersection_lines(
+                owner,
+                target=self.intersection_target,
+                thickness=self.intersection_thickness,
+                material=mat,
+                method=self.intersection_method,
+            )
+        else:
+            intersection_lines.remove_intersection_lines(owner)
+    _propagate(self, context, "intersection_enabled")
+
+
+def _on_intersection_method_changed(self, context):
+    from . import intersection_lines, outline_setup
+    owner = self.id_data
+    if owner.type == "MESH" and self.intersection_enabled:
+        mat = outline_setup.get_outline_material(owner)
+        intersection_lines.apply_intersection_lines(
+            owner,
+            target=self.intersection_target,
+            thickness=self.intersection_thickness,
+            material=mat,
+            method=self.intersection_method,
+        )
+    _propagate(self, context, "intersection_method")
+
+
+def _on_intersection_target_changed(self, context):
+    from . import intersection_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        intersection_lines.update_parameters(
+            owner, target=self.intersection_target,
+        )
+    _propagate(self, context, "intersection_target")
+
+
+def _on_intersection_thickness_changed(self, context):
+    from . import intersection_lines
+    owner = self.id_data
+    if owner.type == "MESH":
+        intersection_lines.update_parameters(
+            owner, thickness=self.intersection_thickness,
+        )
+    _propagate(self, context, "intersection_thickness")
+
+
+def _on_edge_smooth_changed(self, context):
+    from . import vertex_analysis
+    owner = self.id_data
+    if owner.type == "MESH":
+        mod = owner.modifiers.get(MODIFIER_NAME)
+        if mod is not None:
+            need_vg = (
+                abs(self.edge_smooth_factor) > 0.001
+                or self.use_vertex_color
+                or self.use_ao_influence
+            )
+            if need_vg:
+                vg = owner.vertex_groups.get(VG_LINE_WIDTH)
+                if vg is None:
+                    vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
+                    vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
+                mod.vertex_group = vg.name
+                mod.thickness_vertex_group = 0.0
+                vertex_analysis.compute_and_apply_weights(owner, self)
+            else:
+                mod.vertex_group = ""
+    _propagate(self, context, "edge_smooth_factor")
+
+
 def _on_camera_comp_changed(self, context):
     from . import camera_comp
     owner = self.id_data
@@ -198,6 +279,14 @@ def _get_inner_mm(self):
 
 def _set_inner_mm(self, value):
     self.inner_line_thickness = value * _BU_PER_MM
+
+
+def _get_intersection_mm(self):
+    return self.intersection_thickness / _BU_PER_MM
+
+
+def _set_intersection_mm(self, value):
+    self.intersection_thickness = value * _BU_PER_MM
 
 
 # ------------------------------------------------------------------
@@ -300,6 +389,57 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         step=5,
     )  # type: ignore[valid-type]
 
+    # --- 交差線設定 ---
+
+    intersection_method: EnumProperty(
+        name="検出方式",
+        description="交差線の検出に使用するアルゴリズム",
+        items=[
+            ("BOOLEAN", "Boolean（精密）",
+             "Mesh Boolean で正確な交差曲線を生成。低密度メッシュでも滑らか"),
+            ("SDF", "SDF（高速）",
+             "SDF で交差を検出。トポロジーエラーが起きない。高密度メッシュ向き"),
+        ],
+        default="BOOLEAN",
+        update=_on_intersection_method_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_enabled: BoolProperty(
+        name="交差線を追加",
+        description="他のオブジェクトとの交差部分に線を描画する",
+        default=False,
+        update=_on_intersection_enabled_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_target: PointerProperty(
+        type=bpy.types.Object,
+        name="交差対象",
+        description="交差線を検出する対象オブジェクト",
+        update=_on_intersection_target_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_thickness: FloatProperty(
+        name="交差線の太さ",
+        description="交差線ジオメトリの半径（内部値）",
+        default=0.0005,
+        min=0.0001,
+        max=0.05,
+        precision=4,
+        step=0.01,
+        update=_on_intersection_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_thickness_mm: FloatProperty(
+        name="交差線の太さ (mm)",
+        description="印刷時の交差線の太さ (mm)",
+        get=_get_intersection_mm,
+        set=_set_intersection_mm,
+        min=0.1,
+        max=50.0,
+        precision=2,
+        step=5,
+    )  # type: ignore[valid-type]
+
     # --- カメラ距離補正 ---
 
     use_camera_compensation: BoolProperty(
@@ -347,7 +487,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=-1.0,
         max=1.0,
         subtype="FACTOR",
-        update=_make_propagator("edge_smooth_factor"),
+        update=_on_edge_smooth_changed,
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---

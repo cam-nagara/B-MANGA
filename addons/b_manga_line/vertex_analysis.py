@@ -22,30 +22,55 @@ from .core import (
 # エッジ角度解析
 # ------------------------------------------------------------------
 
-def _calc_vertex_sharpness(obj) -> dict[int, float]:
-    """各頂点の鋭角度を計算.
+def _calc_midpoint_factor(obj) -> dict[int, float]:
+    """鋭角アンカー頂点間の中間度を計算.
 
-    戻り値: {vertex_index: sharpness}
-    sharpness = 0.0 (平坦) 〜 1.0 (90° 以上の鋭角)
+    90°以上の鋭角を持つ頂点をアンカーとし、各頂点のアンカーまでの
+    エッジホップ距離を正規化して返す。
+    戻り値: {vertex_index: midpoint_factor}
+    0.0 = アンカー頂点（鋭角）, 1.0 = アンカー間の最も遠い中間点
     """
-    threshold = math.pi / 2  # 90° = 直方体の角
+    threshold = math.pi / 2 - 0.001
 
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.edges.ensure_lookup_table()
     bm.verts.ensure_lookup_table()
 
-    result = {}
+    n = len(bm.verts)
+    is_anchor = [False] * n
     for vert in bm.verts:
-        max_angle = 0.0
         for edge in vert.link_edges:
             if len(edge.link_faces) >= 2:
                 try:
-                    angle = edge.calc_face_angle()
-                    max_angle = max(max_angle, angle)
+                    if edge.calc_face_angle() >= threshold:
+                        is_anchor[vert.index] = True
+                        break
                 except ValueError:
                     pass
-        result[vert.index] = min(1.0, max_angle / threshold)
+
+    if not any(is_anchor):
+        bm.free()
+        return {i: 0.0 for i in range(n)}
+
+    from collections import deque
+    dist = [n] * n
+    queue = deque()
+    for i in range(n):
+        if is_anchor[i]:
+            dist[i] = 0
+            queue.append(i)
+
+    while queue:
+        vi = queue.popleft()
+        for edge in bm.verts[vi].link_edges:
+            other = edge.other_vert(bm.verts[vi]).index
+            if dist[vi] + 1 < dist[other]:
+                dist[other] = dist[vi] + 1
+                queue.append(other)
+
+    max_dist = max(dist) if max(dist) > 0 else 1
+    result = {i: dist[i] / max_dist for i in range(n)}
 
     bm.free()
     return result
@@ -92,18 +117,18 @@ def compute_and_apply_weights(obj, settings) -> int:
                 ao_thick = 1.0 - ao_lum
                 weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
 
-    # 3. エッジ角度
+    # 3. 中間頂点の線幅調整
     factor = settings.edge_smooth_factor
     if abs(factor) > 0.001:
-        sharpness = _calc_vertex_sharpness(obj)
+        midpoint = _calc_midpoint_factor(obj)
         for i in range(n):
-            s = sharpness.get(i, 0.0)
+            m = midpoint.get(i, 0.0)
             if factor >= 0:
-                # 正: 鋭角頂点を細くして平坦部を相対的に太くする
-                edge_mult = 1.0 - s * factor
+                # 正: アンカー(鋭角)を細くし中間部を相対的に太く見せる
+                edge_mult = 1.0 - (1.0 - m) * factor
             else:
-                # 負: 平坦頂点を細くする
-                edge_mult = 1.0 - (1.0 - s) * abs(factor)
+                # 負: 中間部を細くしアンカー(鋭角)を太いまま残す
+                edge_mult = 1.0 - m * abs(factor)
             weights[i] = max(0.0, min(1.0, weights[i] * edge_mult))
 
     # 頂点グループに書き込み

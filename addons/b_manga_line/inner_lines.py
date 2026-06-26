@@ -10,7 +10,7 @@ import math
 
 import bpy
 
-from .core import GN_MODIFIER_NAME, GN_TREE_NAME, VG_LINE_WIDTH
+from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MODIFIER_NAME, VG_LINE_WIDTH
 
 
 # ------------------------------------------------------------------
@@ -169,6 +169,18 @@ def apply_inner_lines(
     if vg is None:
         vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
     vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+
+    # 内部線は Solidify（アウトライン）の前に配置する
+    # 後だとシェルのエッジまで検出してしまう
+    outline_idx = None
+    inner_idx = None
+    for i, m in enumerate(obj.modifiers):
+        if m.name == MODIFIER_NAME:
+            outline_idx = i
+        elif m.name == GN_MODIFIER_NAME:
+            inner_idx = i
+    if outline_idx is not None and inner_idx is not None and inner_idx > outline_idx:
+        obj.modifiers.move(inner_idx, outline_idx)
 
     return True
 
