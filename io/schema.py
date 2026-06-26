@@ -21,6 +21,7 @@ from ..utils import (
     free_transform,
     percentage,
     view_settings,
+    viewport_colors,
 )
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
@@ -435,8 +436,18 @@ def safe_area_to_dict(sa) -> dict[str, Any]:
         color_hex = "#B3B3B3"
     else:
         color_hex = color_to_hex(color)
+    bleed_raw = tuple(
+        float(c)
+        for c in getattr(
+            sa,
+            "bleed_outer_color",
+            viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR,
+        )[:3]
+    )
+    if all(abs(c) < 1e-8 for c in bleed_raw):
+        bleed_raw = viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
     bleed_color = color_space.linear_to_srgb_rgb(
-        tuple(float(c) for c in getattr(sa, "bleed_outer_color", (0.0, 0.0, 0.0))[:3])
+        bleed_raw
     )
     return {
         "enabled": bool(sa.enabled),
@@ -486,8 +497,15 @@ def safe_area_from_dict(sa, data: dict[str, Any]) -> None:
     if hasattr(sa, "bleed_outer_enabled"):
         sa.bleed_outer_enabled = bool(bleed.get("enabled", True))
     if hasattr(sa, "bleed_outer_color"):
-        rgba = hex_to_rgba(str(bleed.get("color", "#404040FF")))
-        sa.bleed_outer_color = color_space.srgb_to_linear_rgb(rgba[:3])
+        color_code = str(bleed.get("color", "") or "").strip().upper()
+        if color_code in {"", "#000000", "000000", "#000000FF", "000000FF"}:
+            sa.bleed_outer_color = viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
+        else:
+            try:
+                rgba = hex_to_rgba(color_code)
+                sa.bleed_outer_color = color_space.srgb_to_linear_rgb(rgba[:3])
+            except ValueError:
+                sa.bleed_outer_color = viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
     if hasattr(sa, "bleed_outer_opacity"):
         sa.bleed_outer_opacity = _opacity_from_data(bleed, "opacity", 100.0)
     # 旧 blendMode フィールドが残っていても無視 (互換読込)

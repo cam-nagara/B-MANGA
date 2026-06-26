@@ -446,9 +446,9 @@ def _safe_fill_view_color(work) -> tuple[float, float, float, float]:
 def _bleed_outer_fill_view_color(work) -> tuple[float, float, float, float]:
     overlay = getattr(work, "safe_area_overlay", None)
     color = (
-        getattr(overlay, "bleed_outer_color", (0.0, 0.0, 0.0))
+        getattr(overlay, "bleed_outer_color", viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR)
         if overlay is not None
-        else (0.0, 0.0, 0.0)
+        else viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
     )
     opacity = percentage.percent_to_factor(
         getattr(overlay, "bleed_outer_opacity", 100.0) if overlay is not None else 100.0,

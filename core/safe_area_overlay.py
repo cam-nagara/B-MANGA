@@ -14,15 +14,13 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty, FloatProperty, FloatVectorProperty
 
-from ..utils import color_space, log
+from ..utils import log, viewport_colors
 
 _logger = log.get_logger(__name__)
 
 _DEFAULT_OPACITY = 30.0
 _DEFAULT_BLEED_OUTER_OPACITY = 100.0
-_DEFAULT_BLEED_OUTER_COLOR = color_space.srgb_to_linear_rgb(
-    (0x40 / 255.0, 0x40 / 255.0, 0x40 / 255.0)
-)
+_DEFAULT_BLEED_OUTER_COLOR = viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
 
 
 def _on_safe_area_changed(_self, context) -> None:

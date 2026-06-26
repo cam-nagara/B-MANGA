@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — ページプレビュー選択時の画像消失と断ち落とし枠外色を修正 (v0.6.389)
+
+### 症状
+
+- 作品ファイルの全ページとページファイルの編集中ページで、断ち落とし枠外の塗りつぶしが黒く見えていた。
+- ページファイルで周辺ページのページ一覧プレビューをクリック選択すると、そのページ画像が消え、選択枠だけが残っていた。
+
+### 原因
+
+- 画面上の塗り描画で、Blender の色プロパティ内部値を表示用の色に変換せず使っていたため、初期色が黒寄りに出る経路があった。
+- ページファイルの非編集ページを選択状態にした時、ページプレビュー画像を描画する分岐から外れ、選択枠だけを描いていた。
+
+### 修正
+
+- 断ち落とし枠外の初期色を Blender 標準背景色相当へ統一し、未保存データや旧初期値の黒を標準背景色へ補正するようにした。
+- セーフライン外/断ち落とし枠外の画面描画では、Blender の色プロパティ内部値を画面表示色へ変換してから描くようにした。
+- ページファイルの周辺ページは、クリック選択中でもページ画像を先に描き、その上に選択枠だけを重ねるようにした。
+- 設計意図に、今回の表示仕様を追記した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py core/safe_area_overlay.py io/schema.py ui/overlay.py ui/overlay_paper_guide.py utils/viewport_colors.py utils/paper_guide_object.py utils/page_preview_decor.py test/blender_bleed_outer_default_color_check.py test/blender_page_preview_click_visual_check.py`
+- `blender.exe --factory-startup --background --python test/blender_bleed_outer_default_color_check.py`
+- `blender.exe --factory-startup --window-geometry 40 40 1700 1050 --python test/blender_page_preview_click_visual_check.py`
+- `blender.exe --factory-startup --window-geometry 60 60 1500 1000 --python test/blender_safe_area_fill_viewport_visual_check.py`
+- `blender.exe --factory-startup --background --python test/blender_page_coma_preview_restore_check.py`
+- AI目視: `.codex/visual/page_preview_click_visual/page_preview_click_screen.png` で、クリック選択した p0006 のページ画像が白い用紙・枠線込みで残り、その上に選択枠だけが表示されることを確認。
+
+---
+
 ## 2026-06-27 — コマファイルのページ情報を実画面で目視確認 (v0.6.388)
 
 ### 症状

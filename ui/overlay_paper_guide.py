@@ -6,7 +6,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 
 from . import overlay_shared
-from ..utils import percentage, spread_merge_geometry, viewport_colors
+from ..utils import color_space, percentage, spread_merge_geometry, viewport_colors
 from ..utils.geom import Rect, mm_to_m
 
 GUIDE_SCREEN_PX = 1.0
@@ -228,29 +228,39 @@ def _clamp01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
 
 
+def _display_rgb_from_linear(color) -> tuple[float, float, float]:
+    try:
+        return tuple(
+            _clamp01(c)
+            for c in color_space.linear_to_srgb_rgb(
+                (float(color[0]), float(color[1]), float(color[2]))
+            )
+        )
+    except Exception:  # noqa: BLE001
+        return (0.0, 0.0, 0.0)
+
+
 def _safe_fill_color(work) -> tuple[float, float, float, float]:
     overlay = getattr(work, "safe_area_overlay", None)
     color = getattr(overlay, "color", (0.0, 0.0, 0.0)) if overlay else (0.0, 0.0, 0.0)
     opacity = percentage.percent_to_factor(
         getattr(overlay, "opacity", 30.0) if overlay else 30.0, 30.0,
     )
-    try:
-        r, g, b = float(color[0]), float(color[1]), float(color[2])
-    except Exception:  # noqa: BLE001
-        r, g, b = 0.0, 0.0, 0.0
+    r, g, b = _display_rgb_from_linear(color)
     return (_clamp01(r), _clamp01(g), _clamp01(b), _clamp01(float(opacity or 0.0)))
 
 
 def _bleed_outer_fill_color(work) -> tuple[float, float, float, float]:
     overlay = getattr(work, "safe_area_overlay", None)
-    color = getattr(overlay, "bleed_outer_color", (0.0, 0.0, 0.0)) if overlay else (0.0, 0.0, 0.0)
+    color = (
+        getattr(overlay, "bleed_outer_color", viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR)
+        if overlay
+        else viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
+    )
     opacity = percentage.percent_to_factor(
         getattr(overlay, "bleed_outer_opacity", 100.0) if overlay else 100.0, 100.0,
     )
-    try:
-        r, g, b = float(color[0]), float(color[1]), float(color[2])
-    except Exception:  # noqa: BLE001
-        r, g, b = 0.0, 0.0, 0.0
+    r, g, b = _display_rgb_from_linear(color)
     return (_clamp01(r), _clamp01(g), _clamp01(b), _clamp01(float(opacity or 0.0)))
 
 

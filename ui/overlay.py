@@ -1595,11 +1595,13 @@ def _draw_callback(phase: str = "post") -> None:
                 page_id = str(getattr(page, "id", "") or "")
                 _is_preview_hl = bool(_preview_hl) and page_id == _preview_hl
                 _is_current_iter = (i == page_file_current_index)
-                if page_file_current_only and not _is_current_iter and not _is_preview_hl:
+                if page_file_current_only and not _is_current_iter:
                     if page is not None:
                         overlay_page_preview.draw_for_page(
                             context, work, page, i, ox, oy, is_current_page=False,
                         )
+                    if _is_preview_hl or page_id in selected_page_ids:
+                        highlight_rects.append(_page_content_highlight_rect(work, i, paper, ox, oy))
                     continue
                 if not (page_file_current_only and not _is_current_iter):
                     left_half = _is_left_half(i, start_side, read_direction, work=work)

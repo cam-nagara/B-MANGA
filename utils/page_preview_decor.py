@@ -5,7 +5,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from ..ui import overlay_shared
-from . import page_grid, percentage, spread_merge_geometry
+from . import page_grid, percentage, spread_merge_geometry, viewport_colors
 from .geom import Rect
 
 _GUIDE_COLORS = {
@@ -269,7 +269,11 @@ def _safe_fill_color(work) -> tuple[int, int, int, int]:
 
 def _bleed_outer_fill_color(work) -> tuple[int, int, int, int]:
     overlay = getattr(work, "safe_area_overlay", None)
-    color = getattr(overlay, "bleed_outer_color", (0.0, 0.0, 0.0)) if overlay else (0.0, 0.0, 0.0)
+    color = (
+        getattr(overlay, "bleed_outer_color", viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR)
+        if overlay
+        else viewport_colors.BLENDER_BACKGROUND_DEFAULT_LINEAR
+    )
     opacity = percentage.percent_to_factor(
         getattr(overlay, "bleed_outer_opacity", 100.0) if overlay else 100.0,
         100.0,
