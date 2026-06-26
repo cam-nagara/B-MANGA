@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line の内部線に中間頂点の細りを反映 (v0.3.3)
+
+### 症状
+
+- B-MANGA Line で内部線を追加し、中間頂点の線幅を細くしても、内部線自体は一定の太さのまま表示されていた。
+
+### 原因
+
+- 中間頂点の線幅調整は外側線には反映されていたが、内部線の太さ生成ではその値を参照していなかった。
+- 内部線をオンにし直す時、既存の線幅調整値を初期値へ戻す処理が走ることがあった。
+
+### 修正
+
+- 内部線の太さにも中間頂点の線幅調整を反映するようにした。
+- 既存の線幅調整値がある場合は、内部線の再適用時に上書きしないようにした。
+- 古い内部線生成設定が残っている場合も、新しい設定へ作り直すようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\inner_lines.py test\blender_b_manga_line_inner_width_check.py _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- 実機生成結果で、内部線の半径が端で 0.040、中間で 0.008 になり、中間頂点が細くなることを確認。
+- AI目視: キューブ + 大きめ円錐に交差線・内部線を表示し、円錐の内部線が上下の端を太く残して中央側で細く見えること、交差部の黒い塗りつぶしが保たれることを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line の内部線と外側線の重なりを修正 (v0.3.2)
 
 ### 症状

@@ -98,6 +98,31 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(del_shell.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
     links.new(compare.outputs[0], m2c.inputs[1])  # Selection
 
+    # 頂点グループの線幅値を内部線にも反映する。
+    width_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    width_attr.location = (-220, 120)
+    width_attr.data_type = "FLOAT"
+    width_attr.inputs["Name"].default_value = VG_LINE_WIDTH
+
+    width_switch = nodes.new("GeometryNodeSwitch")
+    width_switch.location = (-20, 120)
+    width_switch.input_type = "FLOAT"
+    width_switch.inputs["False"].default_value = 1.0
+    links.new(width_attr.outputs["Exists"], width_switch.inputs["Switch"])
+    links.new(width_attr.outputs["Attribute"], width_switch.inputs["True"])
+
+    width_min = nodes.new("ShaderNodeMath")
+    width_min.location = (160, 120)
+    width_min.operation = "MAXIMUM"
+    width_min.inputs[1].default_value = 0.0
+    links.new(width_switch.outputs["Output"], width_min.inputs[0])
+
+    width_max = nodes.new("ShaderNodeMath")
+    width_max.location = (340, 120)
+    width_max.operation = "MINIMUM"
+    width_max.inputs[1].default_value = 1.0
+    links.new(width_min.outputs[0], width_max.inputs[0])
+
     # Curve Circle: チューブ断面
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.location = (-200, -400)
@@ -112,8 +137,10 @@ def _create_node_tree() -> bpy.types.NodeTree:
     c2m.location = (0, -200)
     links.new(m2c.outputs[0], c2m.inputs[0])  # Curve
     links.new(circle.outputs[0], c2m.inputs[1])  # Profile Curve
-    if len(c2m.inputs) > 2:
-        c2m.inputs[2].default_value = True  # Fill Caps
+    if "Scale" in c2m.inputs:
+        links.new(width_max.outputs[0], c2m.inputs["Scale"])  # 頂点ごとの太さ倍率
+    if "Fill Caps" in c2m.inputs:
+        c2m.inputs["Fill Caps"].default_value = True
 
     # Set Material: マテリアル入力ソケットから割り当て
     setmat = nodes.new("GeometryNodeSetMaterial")
@@ -139,6 +166,12 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(n.bl_idname == "GeometryNodeInputNamedAttribute" for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         return tree
@@ -193,7 +226,7 @@ def apply_inner_lines(
     vg = obj.vertex_groups.get(VG_LINE_WIDTH)
     if vg is None:
         vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
-    vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
     # 内部線は Solidify（アウトライン）の後ろに配置する。
     # 検出元はノード内で元メッシュ面だけに限定し、内部線自体が再度
