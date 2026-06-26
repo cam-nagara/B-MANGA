@@ -12,6 +12,7 @@ _PAGE_HEADER_GAP_MM = 6.0
 _PAGE_HEADER_FONT_SIZE_PX = 34
 _PAGE_HEADER_COLOR = (0.0, 0.0, 0.0, 0.95)
 _PAGE_HEADER_OUTLINE_COLOR = (1.0, 1.0, 1.0, 0.9)
+_PAGE_OVERVIEW_BG_PROP = "_bmanga_page_overview_bg"
 
 
 def draw(context, work, paper, scene, region, rv3d) -> None:
@@ -39,9 +40,10 @@ def draw(context, work, paper, scene, region, rv3d) -> None:
         try:
             kind = str(image.get("bmanga_kind", "") or "")
             page_id = str(image.get("bmanga_page_id", "") or "")
+            is_page_overview = bool(image.get(_PAGE_OVERVIEW_BG_PROP, False))
         except Exception:  # noqa: BLE001
             continue
-        if kind not in {"name", "own_page"} or not page_id:
+        if kind not in {"name", "own_page"} or not page_id or not is_page_overview:
             continue
         page_info = pages_by_id.get(page_id)
         rect_info = rects.get(page_id)

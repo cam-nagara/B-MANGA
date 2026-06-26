@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — コマファイルのページ情報を実画面で目視確認 (v0.6.388)
+
+### 症状
+
+- コマファイルの通常画面を実際に撮影すると、ページ一覧プレビュー上のページ番号・作品情報が画像焼き込み分と画面上の重ね表示で二重に見えることがあった。
+
+### 原因
+
+- ページ一覧プレビュー画像へ作品情報・ページ番号を焼き込みつつ、コマファイル画面でも同じ情報を重ね表示していた。
+
+### 修正
+
+- ページ一覧プレビュー画像には用紙・コマ枠・用紙ガイド・範囲外の塗りだけを持たせ、ページ上部のページ番号と作品情報は画面上の重ね表示に一本化した。
+- ページ一覧プレビュー画像の生成仕様版を更新し、二重表示の原因になる保存済み画像を再生成対象にした。
+- Blender通常画面を自動で開いてスクリーンショットを撮る目視用テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile test/blender_coma_page_labels_visual_check.py ui/overlay_coma_page_labels.py utils/page_preview_object.py`
+- `python -m py_compile __init__.py utils/page_preview_object.py ui/overlay_coma_page_labels.py ui/overlay_work_info.py ui/overlay.py test/blender_page_coma_preview_restore_check.py test/blender_coma_camera_roundtrip_check.py test/blender_coma_page_labels_visual_check.py`
+- `blender.exe --factory-startup --background --python test/blender_page_coma_preview_restore_check.py`
+- `blender.exe --factory-startup --background --python test/blender_coma_camera_roundtrip_check.py`
+- `blender.exe --factory-startup --window-geometry 40 40 1600 1000 --python test/blender_coma_page_labels_visual_check.py`
+- AI目視: `.codex/visual/coma_page_labels/coma_page_labels_visual.png` で、見開きページが単ページと同じ上下位置に並ぶこと、ページ上部のページ番号、ページ下部の作品情報・ページ番号・作者表示、ページ画像100%表示、二重焼き込みがないことを確認。
+
+---
+
 ## 2026-06-27 — コマファイルのページ番号表示とページ画像不透明度を修正 (v0.6.387)
 
 ### 症状

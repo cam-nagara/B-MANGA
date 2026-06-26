@@ -298,13 +298,13 @@ def main() -> None:
         meta = _metadata(preview_path)
         if meta.get(page_preview_object.PREVIEW_RENDER_VARIANT_KEY) != page_preview_object.PREVIEW_RENDER_VARIANT_DETAIL:
             raise AssertionError("ページ/コマ用のページ一覧プレビュー画像として保存されていません")
-        _mark("page_file_check_work_info_pixels")
+        _mark("page_file_check_no_baked_labels")
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
-        if magenta <= 0:
-            raise AssertionError("ページ一覧プレビュー画像に作品情報が表示されていません")
+        if magenta > 0:
+            raise AssertionError("ページ一覧プレビュー画像に作品情報が焼き込まれています")
         red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
-        if red <= 0:
-            raise AssertionError("ページ一覧プレビュー画像にページ番号が表示されていません")
+        if red > 0:
+            raise AssertionError("ページ一覧プレビュー画像にページ番号が焼き込まれています")
         _mark("page_file_check_fill_pixels")
         green = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] < 90 and px[1] > 160 and px[2] < 90)
         if green <= 0:
@@ -322,10 +322,10 @@ def main() -> None:
         scene.bmanga_page_work_info_visible = False
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
         if magenta > 0:
-            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像に作品情報が残っています")
+            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像に作品情報が焼き込まれています")
         red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
         if red > 0:
-            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像にページ番号が残っています")
+            raise AssertionError("作品情報OFFでもページ一覧プレビュー画像にページ番号が焼き込まれています")
         scene.bmanga_page_work_info_visible = True
 
         _mark("page_file_toggle_guides")
@@ -399,10 +399,10 @@ def main() -> None:
         scene.bmanga_page_work_info_visible = False
         magenta = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] > 180)
         if magenta > 0:
-            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵に作品情報が残っています")
+            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵に作品情報が焼き込まれています")
         red = _count_pixels(preview_path, lambda px: px[3] > 180 and px[0] > 180 and px[1] < 90 and px[2] < 90)
         if red > 0:
-            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵にページ番号が残っています")
+            raise AssertionError("コマファイルの作品情報OFF後もページ一覧下絵にページ番号が焼き込まれています")
 
         print(f"BMANGA_PAGE_COMA_PREVIEW_RESTORE_OK work={work_dir}", flush=True)
         _mark("done")

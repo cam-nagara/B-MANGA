@@ -37,7 +37,7 @@ PREVIEW_RENDER_SUPERSAMPLE = 2
 PREVIEW_SUPERSAMPLE_MAX_TARGET_PX = 1024
 PREVIEW_Z_M = 0.006
 PREVIEW_FILENAME = "page_preview.png"
-PREVIEW_RENDER_VERSION = "9"
+PREVIEW_RENDER_VERSION = "10"
 PREVIEW_RENDER_VERSION_KEY = "BMangaPreviewVersion"
 PREVIEW_RENDER_VARIANT_KEY = "BMangaPreviewVariant"
 PREVIEW_RENDER_SIGNATURE_KEY = "BMangaPreviewSignature"
@@ -366,11 +366,9 @@ def _preview_render_signature(work, scene=None) -> str:
         from . import page_preview_decor
 
         guides = int(page_preview_decor.page_guides_visible(work, scene))
-        work_info = int(page_preview_decor.page_work_info_visible(work, scene))
     except Exception:  # noqa: BLE001
         guides = 1
-        work_info = 1
-    return f"{variant}:guides={guides}:work_info={work_info}"
+    return f"{variant}:guides={guides}:labels=overlay"
 
 
 def _preview_png_usable(
@@ -527,7 +525,6 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
         )
         draw = ImageDraw.Draw(exported)
         _draw_preview_frame(draw, target_width, target_height, current=current)
-        draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
         return exported
 
     img = Image.new("RGBA", (width, height), (250, 250, 250, 255))
@@ -594,7 +591,6 @@ def _render_preview_image(work, page, page_index: int, *, current: bool, scene=N
     img = _resize_preview_image(img, target_width, target_height)
     draw = ImageDraw.Draw(img)
     _draw_preview_frame(draw, target_width, target_height, current=current)
-    draw.text((8, 6), _page_number(work, page_index), fill=(40, 40, 40, 255))
     return img
 
 
@@ -614,14 +610,13 @@ def _render_preview_image_from_export(work, page, width: int, height: int, *, sc
 
         detail_preview = _preview_render_variant(scene) == PREVIEW_RENDER_VARIANT_DETAIL
         page_overlay_visible = detail_preview and page_preview_decor.page_guides_visible(work, scene)
-        work_info_visible = detail_preview and page_preview_decor.page_work_info_visible(work, scene)
         options = export_pipeline.ExportOptions(
             area="canvas",
             dpi_override=dpi,
             include_border=True,
             include_white_margin=True,
             include_nombre=False,
-            include_work_info=work_info_visible,
+            include_work_info=False,
             include_tombo=False,
             include_paper_color=True,
             include_coma_previews=True,
