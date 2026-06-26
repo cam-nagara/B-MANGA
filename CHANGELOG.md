@@ -3,6 +3,29 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line の交差対象ライン厚みを塗りつぶし (v0.3.1)
+
+### 症状
+
+- B-MANGA Line で交差線をオンにした時、交差対象のライン厚み部分で、元の面と太らせたライン面が別々に拾われ、二重線のように見えていた。
+
+### 原因
+
+- 交差対象側に B-MANGA Line の厚み面がある場合でも、交差線の太さは固定値のままだったため、元の面側の線と外側ライン面側の線の間に白い隙間が残っていた。
+
+### 修正
+
+- 交差対象に B-MANGA Line の厚み面がある場合は、交差対象の実際のライン幅を交差線生成へ渡すようにした。
+- 2本に分かれる交差線が互いに重なる太さへ自動調整し、ライン厚み部分が線色で塗りつぶされるようにした。
+- 既存の交差対象に古い交差線設定が残っている場合も、新しい生成設定へ作り直すようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\intersection_lines.py test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+
+---
+
 ## 2026-06-27 — 右クリックメニュー表示時のカーソル移動を廃止 (v0.6.390)
 
 ### 症状

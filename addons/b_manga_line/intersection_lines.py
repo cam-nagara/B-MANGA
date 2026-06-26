@@ -13,6 +13,10 @@ SDF 法:
   SDF 値をサンプリングして交差境界を検出する。
   トポロジーエラーが原理的に発生しないが、
   ソースメッシュの頂点密度に精度が依存する。
+
+交差対象に B-MANGA Line の厚みがある場合:
+  元メッシュと太らせたライン面の間を線色で塗る。
+  交差対象のライン厚みだけが 2 本線に見えるのを防ぐ。
 """
 
 from __future__ import annotations
@@ -25,6 +29,9 @@ from .core import (
     INTERSECTION_TREE_SDF,
     MODIFIER_NAME,
 )
+
+
+_FILL_NODE_LABEL = "BML_TargetLineFill"
 
 
 # ------------------------------------------------------------------
@@ -105,10 +112,59 @@ def _add_target_solidify(nodes, links, target_geo_output, offset_scale, loc):
 
 
 # ------------------------------------------------------------------
+# 共通: 交差対象ライン厚みに合わせた半径を構築
+# ------------------------------------------------------------------
+
+def _add_target_has_line_faces(nodes, links, target_geo_output, loc):
+    """交差対象が B-MANGA Line の厚み面を持つかを返す."""
+    mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
+    mat_idx.location = (loc[0] - 420, loc[1] - 420)
+
+    stat = nodes.new("GeometryNodeAttributeStatistic")
+    stat.location = (loc[0] - 220, loc[1] - 420)
+    stat.data_type = "FLOAT"
+    stat.domain = "FACE"
+    links.new(target_geo_output, stat.inputs[0])
+    links.new(mat_idx.outputs[0], stat.inputs[2])
+
+    has_line_faces = nodes.new("FunctionNodeCompare")
+    has_line_faces.location = (loc[0], loc[1] - 420)
+    has_line_faces.data_type = "FLOAT"
+    has_line_faces.operation = "GREATER_THAN"
+    has_line_faces.inputs[1].default_value = 0.5
+    links.new(stat.outputs["Max"], has_line_faces.inputs[0])
+    return has_line_faces.outputs[0]
+
+
+def _add_effective_radius(nodes, links, gin, has_line_faces, loc):
+    """対象にライン厚みがある場合、2本線の間が埋まる半径へ広げる."""
+    fill_radius = nodes.new("ShaderNodeMath")
+    fill_radius.label = _FILL_NODE_LABEL
+    fill_radius.location = loc
+    fill_radius.operation = "MULTIPLY"
+    fill_radius.inputs[1].default_value = 0.55
+    links.new(gin.outputs["交差対象の線幅"], fill_radius.inputs[0])
+
+    maximum = nodes.new("ShaderNodeMath")
+    maximum.location = (loc[0] + 200, loc[1])
+    maximum.operation = "MAXIMUM"
+    links.new(gin.outputs["線の太さ"], maximum.inputs[0])
+    links.new(fill_radius.outputs[0], maximum.inputs[1])
+
+    switch = nodes.new("GeometryNodeSwitch")
+    switch.location = (loc[0] + 420, loc[1])
+    switch.input_type = "FLOAT"
+    links.new(has_line_faces, switch.inputs[0])
+    links.new(gin.outputs["線の太さ"], switch.inputs[1])
+    links.new(maximum.outputs[0], switch.inputs[2])
+    return switch.outputs[0]
+
+
+# ------------------------------------------------------------------
 # 共通: チューブ生成ノード群を構築
 # ------------------------------------------------------------------
 
-def _add_tube_nodes(nodes, links, curve_output, gin, x_offset=0):
+def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
     """カーブ → チューブメッシュ → マテリアル設定 → Join を構築して join ノードを返す."""
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.location = (x_offset + 0, -550)
@@ -116,7 +172,7 @@ def _add_tube_nodes(nodes, links, curve_output, gin, x_offset=0):
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
             inp.default_value = 4
-    links.new(gin.outputs[2], circle.inputs["Radius"])
+    links.new(radius_output, circle.inputs["Radius"])
 
     c2m = nodes.new("GeometryNodeCurveToMesh")
     c2m.location = (x_offset + 200, -300)
@@ -128,7 +184,7 @@ def _add_tube_nodes(nodes, links, curve_output, gin, x_offset=0):
     setmat = nodes.new("GeometryNodeSetMaterial")
     setmat.location = (x_offset + 400, -300)
     links.new(c2m.outputs[0], setmat.inputs[0])
-    links.new(gin.outputs[3], setmat.inputs["Material"])
+    links.new(gin.outputs["マテリアル"], setmat.inputs["Material"])
 
     join = nodes.new("GeometryNodeJoinGeometry")
     join.location = (x_offset + 700, 0)
@@ -159,6 +215,12 @@ def _setup_interface(tree):
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.0001
     radius_sock.max_value = 0.05
+    target_radius_sock = tree.interface.new_socket(
+        name="交差対象の線幅", in_out="INPUT", socket_type="NodeSocketFloat",
+    )
+    target_radius_sock.default_value = 0.0
+    target_radius_sock.min_value = 0.0
+    target_radius_sock.max_value = 0.1
     tree.interface.new_socket(
         name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial",
     )
@@ -196,6 +258,10 @@ def _create_boolean_tree() -> bpy.types.NodeTree:
     target_geo = _add_target_solidify(
         nodes, links, obj_info.outputs[4], 0.0001, (-700, -500),
     )
+    has_line_faces = _add_target_has_line_faces(
+        nodes, links, target_geo, (-500, -520),
+    )
+    radius = _add_effective_radius(nodes, links, gin, has_line_faces, (100, -720))
 
     # Mesh Boolean (DIFFERENCE, EXACT)
     boolean = nodes.new("GeometryNodeMeshBoolean")
@@ -218,7 +284,7 @@ def _create_boolean_tree() -> bpy.types.NodeTree:
     links.new(separate.outputs["Selection"], m2c.inputs[0])
 
     # チューブ生成 + Join
-    join = _add_tube_nodes(nodes, links, m2c.outputs[0], gin, x_offset=100)
+    join = _add_tube_nodes(nodes, links, m2c.outputs[0], gin, radius, x_offset=100)
     links.new(join.outputs[0], gout.inputs[0])
 
     return tree
@@ -262,6 +328,10 @@ def _create_sdf_tree() -> bpy.types.NodeTree:
     target_geo = _add_target_solidify(
         nodes, links, obj_info.outputs[4], 0.05, (-700, -550),
     )
+    has_line_faces = _add_target_has_line_faces(
+        nodes, links, target_geo, (-500, -600),
+    )
+    radius = _add_effective_radius(nodes, links, gin, has_line_faces, (750, -920))
 
     # 対象メッシュ → SDF Grid
     mesh_to_sdf = nodes.new("GeometryNodeMeshToSDFGrid")
@@ -328,7 +398,7 @@ def _create_sdf_tree() -> bpy.types.NodeTree:
     links.new(spline_type.outputs[0], spline_res.inputs[0])
 
     # チューブ生成 + Join
-    join = _add_tube_nodes(nodes, links, spline_res.outputs[0], gin, x_offset=650)
+    join = _add_tube_nodes(nodes, links, spline_res.outputs[0], gin, radius, x_offset=650)
     links.new(join.outputs[0], gout.inputs[0])
 
     return tree
@@ -352,7 +422,13 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if _find_socket_id(tree, "交差対象") is None:
             bpy.data.node_groups.remove(tree)
             return creator()
+        if _find_socket_id(tree, "交差対象の線幅") is None:
+            bpy.data.node_groups.remove(tree)
+            return creator()
         if not any(n.bl_idname == "GeometryNodeExtrudeMesh" for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return creator()
+        if not any(getattr(n, "label", "") == _FILL_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return creator()
         return tree
@@ -368,6 +444,16 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
         ):
             return item.identifier
     return None
+
+
+def _target_outline_thickness(target: bpy.types.Object | None) -> float:
+    """交差対象の B-MANGA Line 線幅を取得する."""
+    if target is None or target.type != "MESH":
+        return 0.0
+    mod = target.modifiers.get(MODIFIER_NAME)
+    if mod is None:
+        return 0.0
+    return max(0.0, abs(float(mod.thickness)))
 
 
 # ------------------------------------------------------------------
@@ -401,6 +487,10 @@ def apply_intersection_lines(
     sid_thickness = _find_socket_id(tree, "線の太さ")
     if sid_thickness is not None:
         mod[sid_thickness] = thickness
+
+    sid_target_thickness = _find_socket_id(tree, "交差対象の線幅")
+    if sid_target_thickness is not None:
+        mod[sid_target_thickness] = _target_outline_thickness(target)
 
     if material is not None:
         sid_mat = _find_socket_id(tree, "マテリアル")
@@ -450,6 +540,9 @@ def update_parameters(
         sid = _find_socket_id(tree, "交差対象")
         if sid is not None:
             mod[sid] = target
+        sid_target_thickness = _find_socket_id(tree, "交差対象の線幅")
+        if sid_target_thickness is not None:
+            mod[sid_target_thickness] = _target_outline_thickness(target)
     if thickness is not None:
         sid = _find_socket_id(tree, "線の太さ")
         if sid is not None:
