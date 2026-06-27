@@ -16,7 +16,7 @@ MODIFIER_NAME = "B-MANGA Geometry Nodes"
 GROUP_PREFIX = "BManga_GN_"
 PROP_GN_KIND = "bmanga_geometry_nodes_kind"
 PROP_GROUP_VERSION = "bmanga_geometry_nodes_version"
-_GROUP_VERSION = 35
+_GROUP_VERSION = 36
 _BALLOON_TAIL_SOCKET_COUNT = 8
 _SETTING_OUTPUT_PREFIX = "設定接続確認: "
 _COMMON_SHAPE_GROUP_NAME = f"{GROUP_PREFIX}CommonCloudThornShape"
@@ -124,6 +124,8 @@ _EFFECT_FIELD_SPECS: dict[str, SocketSpec] = {
     "bundle_jagged_enabled": SocketSpec("ギザギザにする", "NodeSocketBool", False),
     "bundle_jagged_height_percent": SocketSpec("ギザギザ高さ (%)", "NodeSocketFloat", 100.0),
     "inout_apply": SocketSpec("適用先", "NodeSocketInt", 1),
+    "inout_apply_brush_size": SocketSpec("入り抜き 線幅", "NodeSocketBool", True),
+    "inout_apply_opacity": SocketSpec("入り抜き 不透明度", "NodeSocketBool", False),
     "in_percent": SocketSpec("入り (%)", "NodeSocketFloat", 100.0),
     "out_percent": SocketSpec("抜き (%)", "NodeSocketFloat", 0.0),
     "in_start_percent": SocketSpec("入り始点 (%)", "NodeSocketFloat", 0.0),
@@ -1698,7 +1700,7 @@ def _effect_shape_factor(
 
 
 def _effect_taper_half_widths(group, input_node, line_half_m, *, label: str, location: tuple[float, float]):
-    is_width = _compare_int_socket(group, input_node.outputs["適用先"], 1, label=f"{label} 線幅適用", location=location)
+    is_width = input_node.outputs["入り抜き 線幅"]
     in_scale = _math_binary(group, "MULTIPLY", input_node.outputs["入り (%)"], b_value=0.01, label=f"{label} 入り率", location=(location[0] + 200, location[1] + 120))
     out_scale = _math_binary(group, "MULTIPLY", input_node.outputs["抜き (%)"], b_value=0.01, label=f"{label} 抜き率", location=(location[0] + 200, location[1] - 40))
     outer_raw = _math_binary(group, "MULTIPLY", line_half_m, in_scale, label=f"{label} 入り線幅", location=(location[0] + 400, location[1] + 120))
@@ -1709,7 +1711,7 @@ def _effect_taper_half_widths(group, input_node, line_half_m, *, label: str, loc
 
 
 def _effect_taper_alphas(group, input_node, *, label: str, location: tuple[float, float]):
-    is_opacity = _compare_int_socket(group, input_node.outputs["適用先"], 2, label=f"{label} 不透明度適用", location=location)
+    is_opacity = input_node.outputs["入り抜き 不透明度"]
     one = _constant_float(group, 1.0, label=f"{label} 不透明度通常", location=(location[0] + 200, location[1] - 200))
     in_scale = _math_binary(group, "MULTIPLY", input_node.outputs["入り (%)"], b_value=0.01, label=f"{label} 入り不透明度", location=(location[0] + 200, location[1] + 120))
     out_scale = _math_binary(group, "MULTIPLY", input_node.outputs["抜き (%)"], b_value=0.01, label=f"{label} 抜き不透明度", location=(location[0] + 200, location[1] - 40))
@@ -2854,6 +2856,9 @@ def effect_values(
     }
     for field, spec in _EFFECT_FIELD_SPECS.items():
         raw = getattr(params, field, spec.default) if params is not None else spec.default
+        if params is not None and field in {"inout_apply_brush_size", "inout_apply_opacity"} and not hasattr(params, field):
+            legacy_apply = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
+            raw = legacy_apply == ("brush_size" if field == "inout_apply_brush_size" else "opacity")
         values[spec.name] = _socket_value_for_spec(field, spec, raw)
     if params is not None:
         values["始点 角半径"] = corner_radius.radius_for_effect_params(params, "start", width, height)

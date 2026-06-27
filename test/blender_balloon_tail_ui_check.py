@@ -47,6 +47,10 @@ class _FakeLayout:
 
     def column(self, align: bool = False):  # noqa: ARG002
         return self
+
+    def grid_flow(self, **_kwargs):
+        return self
+
     def split(self, factor: float = 0.5, align: bool = False):  # noqa: ARG002
         return self
 

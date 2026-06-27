@@ -234,7 +234,7 @@ def draw_effect_params(
 
     box = _col(2).box()
     box.label(text="入り抜き")
-    box.prop(params, "inout_apply")
+    line_effect_settings_ui.draw_inout_apply_toggles(box, params)
     row = box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")

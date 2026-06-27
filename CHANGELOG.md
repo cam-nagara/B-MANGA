@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 入り抜き適用先と詳細設定表示を修正 (v0.6.402)
+
+### 症状
+
+- 効果線とフキダシ線の入り抜きで、適用先が「線幅」か「不透明度」の単一選択になっており、両方へ同時に適用できなかった。
+- ページ用blendファイルで、そのページの用紙ガイドだけ太く表示されることがあった。
+- 詳細設定ダイアログで、フキダシや効果線の状態によって列幅が不揃いに見えていた。
+
+### 原因
+
+- 入り抜きの適用先をひとつの選択値として保存し、描画側も線幅 / 不透明度のどちらか一方だけを参照していた。
+- 用紙ガイドのビュー倍率追従処理が、ズームアウト時にガイド線を既定より大きく太らせる上限になっていた。
+- 詳細設定ダイアログの複数列表示が、通常分割と手動列追加に分かれており、状態ごとに列幅計算が揃っていなかった。
+
+### 修正
+
+- 入り抜きの適用先に「線幅」「不透明度」の個別トグルを追加し、両方を同時にオンにできるようにした。
+- 既存データはこれまでの単一選択から新しいトグルへ読み替え、同じ見た目を保つようにした。
+- 用紙ガイドの太さ追従に既定幅の上限を設定し、ページ用blendファイルでも現在ページだけ太くならないようにした。
+- 詳細設定ダイアログの複数列表示を均等列へ統一し、通常フキダシ / ウニフラ / 白抜き線 / 効果線で列幅を揃えた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\line_effect_schema.py core\effect_line.py core\balloon.py operators\effect_line_gen.py panels\line_effect_settings_ui.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py operators\layer_detail_op.py utils\geometry_nodes_bridge.py utils\paper_guide_object.py utils\balloon_flash_effect_line_mesh.py test\blender_border_preset_coma_tool_check.py test\blender_paper_guide_visibility_check.py test\blender_balloon_uni_flash_check.py test\blender_balloon_center_seed_selection_check.py test\blender_balloon_multiline_freeform_check.py test\blender_balloon_tail_ui_check.py`
+- `git diff --check`
+- `blender.exe --factory-startup --background --python test\blender_border_preset_coma_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_paper_guide_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_geometry_nodes_bridge_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_tail_ui_check.py`
+- 既存のユーザー設定を読むBlender起動はローカル設定側で停止したため、実機テストは `--factory-startup` で実施。
+
+---
+
 ## 2026-06-28 — パス線に生成形状と色入り抜きを追加 (v0.6.401)
 
 ### 症状

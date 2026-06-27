@@ -47,6 +47,9 @@ class _FakeLayout:
     def column(self, align: bool = False):  # noqa: ARG002
         return self
 
+    def grid_flow(self, **_kwargs):
+        return self
+
     def label(self, text: str = "", icon: str = ""):  # noqa: ARG002
         self.labels.append(str(text or ""))
 

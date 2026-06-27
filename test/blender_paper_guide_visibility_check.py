@@ -231,16 +231,17 @@ def _assert_constant_thickness(paper_guide_object, guide_objects) -> None:
         paper_guide_object._active_view3d_region = lambda: (object(), object())
         paper_guide_object._meters_per_pixel = lambda _region, _rv3d: mpp
         paper_guide_object.apply_view_constant_thickness()
-        expected_radius = (
-            paper_guide_object.GUIDE_SCREEN_PX
-            * mpp
-            * 0.5
-            * paper_guide_object._GUIDE_CURVE_RADIUS_SCALE
+        expected_radius = paper_guide_object._guide_half_width_m(
+            mpp,
+            paper_guide_object._GUIDE_CURVE_RADIUS_SCALE,
         )
         for obj in guide_objects:
             radius = float(getattr(obj.data, "bevel_depth", 0.0) or 0.0)
             if abs(radius - expected_radius) > 1.0e-9:
-                raise AssertionError(f"用紙ガイド線の太さが1px相当ではありません: {radius} != {expected_radius}")
+                raise AssertionError(f"用紙ガイド線の太さ上限が反映されていません: {radius} != {expected_radius}")
+            max_radius = paper_guide_object.mm_to_m(paper_guide_object.GUIDE_MAX_WIDTH_MM) * 0.5
+            if radius > max_radius + 1.0e-9:
+                raise AssertionError(f"用紙ガイド線が太くなりすぎています: {radius} > {max_radius}")
     finally:
         paper_guide_object._active_view3d_region = original_region
         paper_guide_object._meters_per_pixel = original_mpp
@@ -275,7 +276,7 @@ def _assert_timer_idles_when_view_is_stable(paper_guide_object) -> None:
     try:
         paper_guide_object._live_guide_updates_allowed = lambda: True
         paper_guide_object._active_view3d_region = lambda: (object(), object())
-        paper_guide_object._meters_per_pixel = lambda _region, _rv3d: 0.004
+        paper_guide_object._meters_per_pixel = lambda _region, _rv3d: 0.00001
         paper_guide_object.repair_loaded_work_paper_guides = lambda *args, **kwargs: False
         paper_guide_object._last_mpp = -1.0
         paper_guide_object._last_repair_time = time.monotonic()

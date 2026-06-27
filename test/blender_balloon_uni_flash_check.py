@@ -97,6 +97,9 @@ class _RecordingLayout:
     def split(self, factor: float = 0.5, align: bool = False):
         return _RecordingLayout(self.props)
 
+    def grid_flow(self, **_kwargs):
+        return _RecordingLayout(self.props)
+
     def separator(self, **_kwargs):
         return None
 
@@ -304,7 +307,8 @@ def main() -> None:
                     "white_outline_black_attenuation",
                     "white_outline_black_length_scale_near_percent",
                     "white_outline_black_length_scale_far_percent",
-                    "inout_apply",
+                    "inout_apply_brush_size",
+                    "inout_apply_opacity",
                     "in_percent",
                     "out_percent",
                     "in_start_percent",

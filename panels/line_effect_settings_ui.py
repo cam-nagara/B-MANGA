@@ -65,6 +65,8 @@ BALLOON_WHITE_OUTLINE_UI_FIELDS: FieldMap = {
     "black_far": "white_outline_black_length_scale_far_percent",
     "black_attenuation": "white_outline_black_attenuation",
     "inout_apply": "inout_apply",
+    "inout_apply_brush_size": "inout_apply_brush_size",
+    "inout_apply_opacity": "inout_apply_opacity",
     "in_percent": "in_percent",
     "out_percent": "out_percent",
     "in_start": "in_start_percent",
@@ -86,6 +88,21 @@ def _value(owner: Any, fields: FieldMap, key: str, default: Any = None) -> Any:
 
 def _prop(layout: Any, owner: Any, fields: FieldMap, key: str, **kwargs: Any) -> None:
     layout.prop(owner, _attr(fields, key), **kwargs)
+
+
+def draw_inout_apply_toggles(layout: Any, owner: Any, fields: FieldMap | None = None) -> None:
+    field_map = fields or {}
+    width_attr = field_map.get("inout_apply_brush_size", "inout_apply_brush_size")
+    opacity_attr = field_map.get("inout_apply_opacity", "inout_apply_opacity")
+    if not hasattr(owner, width_attr) or not hasattr(owner, opacity_attr):
+        legacy_attr = field_map.get("inout_apply", "inout_apply")
+        if hasattr(owner, legacy_attr):
+            layout.prop(owner, legacy_attr)
+        return
+    row = layout.row(align=True)
+    row.label(text="適用先")
+    row.prop(owner, width_attr, text="線幅", toggle=True)
+    row.prop(owner, opacity_attr, text="不透明度", toggle=True)
 
 
 def _columns(base: Any, columns: Sequence[Any] | None) -> list[Any]:
@@ -214,7 +231,7 @@ def _draw_balloon_inout_settings(
 ) -> None:
     inout_box = layout.box()
     inout_box.label(text="入り抜き")
-    _prop(inout_box, entry, fields, "inout_apply")
+    draw_inout_apply_toggles(inout_box, entry, fields)
     row = inout_box.row(align=True)
     _prop(row, entry, fields, "in_percent")
     _prop(row, entry, fields, "out_percent")

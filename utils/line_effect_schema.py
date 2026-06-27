@@ -40,6 +40,9 @@ INOUT_APPLY_ITEMS = (
     ("opacity", "不透明度", ""),
 )
 
+INOUT_APPLY_BRUSH_SIZE_FIELD = "inout_apply_brush_size"
+INOUT_APPLY_OPACITY_FIELD = "inout_apply_opacity"
+
 INOUT_RANGE_MODE_ITEMS = (
     ("percent", "％指定", "線全体に対する割合で入り抜きの範囲を指定"),
     ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
@@ -135,6 +138,8 @@ EFFECT_STROKE_FIELDS = (
 
 EFFECT_INOUT_FIELDS = (
     "inout_apply",
+    INOUT_APPLY_BRUSH_SIZE_FIELD,
+    INOUT_APPLY_OPACITY_FIELD,
     "in_percent",
     "out_percent",
     "in_start_percent",
@@ -147,6 +152,51 @@ EFFECT_INOUT_FIELDS = (
     "in_range_mm",
     "out_range_mm",
 )
+
+
+def bool_value(value, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"", "0", "false", "off", "none", "なし", "no"}:
+            return False
+        if text in {"1", "true", "on", "yes", "あり"}:
+            return True
+    return bool(value)
+
+
+def normalize_inout_apply_flags(data: dict, *, default_apply: str = "brush_size") -> dict:
+    """Convert the legacy single in/out target into independent target flags."""
+    normalized = dict(data or {})
+    legacy = str(normalized.get("inout_apply", default_apply) or default_apply)
+    if legacy == "length":
+        legacy = "brush_size"
+    if legacy not in {"brush_size", "opacity"}:
+        legacy = "brush_size"
+
+    has_width = INOUT_APPLY_BRUSH_SIZE_FIELD in normalized
+    has_opacity = INOUT_APPLY_OPACITY_FIELD in normalized
+    if not has_width and not has_opacity:
+        normalized[INOUT_APPLY_BRUSH_SIZE_FIELD] = legacy != "opacity"
+        normalized[INOUT_APPLY_OPACITY_FIELD] = legacy == "opacity"
+    else:
+        normalized[INOUT_APPLY_BRUSH_SIZE_FIELD] = bool_value(
+            normalized.get(INOUT_APPLY_BRUSH_SIZE_FIELD),
+            legacy == "brush_size",
+        )
+        normalized[INOUT_APPLY_OPACITY_FIELD] = bool_value(
+            normalized.get(INOUT_APPLY_OPACITY_FIELD),
+            legacy == "opacity",
+        )
+
+    if normalized[INOUT_APPLY_BRUSH_SIZE_FIELD]:
+        normalized["inout_apply"] = "brush_size"
+    elif normalized[INOUT_APPLY_OPACITY_FIELD]:
+        normalized["inout_apply"] = "opacity"
+    else:
+        normalized["inout_apply"] = "brush_size"
+    return normalized
 
 EFFECT_COLOR_FIELDS = (
     "opacity",

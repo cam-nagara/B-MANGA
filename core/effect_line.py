@@ -70,7 +70,7 @@ _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 15
+EFFECT_PARAM_SCHEMA_VERSION = 16
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -121,9 +121,34 @@ def _color_value(value) -> list[float]:
 
 
 def _density_compensation_enabled(value) -> bool:
-    if isinstance(value, str):
-        return value.strip().lower() not in {"", "0", "false", "off", "none", "なし"}
-    return bool(value)
+    return line_effect_schema.bool_value(value)
+
+
+def _inout_apply_value_from_flags(params) -> str:
+    legacy = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
+    width = line_effect_schema.bool_value(
+        getattr(params, line_effect_schema.INOUT_APPLY_BRUSH_SIZE_FIELD, None),
+        legacy == "brush_size",
+    )
+    opacity = line_effect_schema.bool_value(
+        getattr(params, line_effect_schema.INOUT_APPLY_OPACITY_FIELD, None),
+        legacy == "opacity",
+    )
+    if width:
+        return "brush_size"
+    if opacity:
+        return "opacity"
+    return "brush_size"
+
+
+def _on_inout_apply_changed(self, context) -> None:
+    legacy = str(getattr(self, "inout_apply", "brush_size") or "brush_size")
+    try:
+        self.inout_apply_brush_size = legacy != "opacity"
+        self.inout_apply_opacity = legacy == "opacity"
+    except Exception:  # noqa: BLE001
+        pass
+    _on_params_changed(self, context)
 
 
 def _normalize_start_percent_pair(data: dict) -> None:
@@ -173,7 +198,7 @@ def effect_params_to_dict(params) -> dict:
         }:
             data[field] = _color_value(value)
         elif field == "inout_apply":
-            data[field] = str(value) if str(value) in {"brush_size", "opacity"} else "brush_size"
+            data[field] = _inout_apply_value_from_flags(params)
         elif isinstance(value, bool):
             data[field] = bool(value)
         elif isinstance(value, int):
@@ -197,8 +222,7 @@ def effect_params_from_dict(params, data: dict) -> None:
     for shape_field in ("start_shape", "end_shape"):
         if shape_field in data:
             data[shape_field] = _LEGACY_SHAPE_TO_CURRENT.get(str(data[shape_field]), data[shape_field])
-    if str(data.get("inout_apply", "")) == "length":
-        data["inout_apply"] = "brush_size"
+    data = line_effect_schema.normalize_inout_apply_flags(data)
     if (
         schema_version < EFFECT_PARAM_SCHEMA_VERSION
         and int(data.get("max_line_count", _LEGACY_DEFAULT_MAX_LINE_COUNT) or 0)
@@ -335,7 +359,9 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     bundle_jagged_enabled: BoolProperty(name="ギザギザにする", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     bundle_jagged_height_percent: FloatProperty(name="ギザギザ高さ (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
 
-    inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_params_changed)  # type: ignore[valid-type]
+    inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_inout_apply_changed)  # type: ignore[valid-type]
+    inout_apply_brush_size: BoolProperty(name="線幅", default=True, update=_on_params_changed)  # type: ignore[valid-type]
+    inout_apply_opacity: BoolProperty(name="不透明度", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=_DEFAULT_IN_START_PERCENT, min=0.0, max=100.0, update=_on_in_start_changed)  # type: ignore[valid-type]

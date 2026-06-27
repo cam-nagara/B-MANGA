@@ -141,6 +141,8 @@ def uni_flash_params_to_dict(entry) -> dict:
         value = getattr(entry, field)
         if field in {"line_color", "fill_color", "white_underlay_color"}:
             data[field] = _color_value(value)
+        elif field == "inout_apply":
+            data[field] = _inout_apply_value_from_flags(entry)
         elif isinstance(value, bool):
             data[field] = bool(value)
         elif isinstance(value, int):
@@ -156,6 +158,7 @@ def uni_flash_params_to_dict(entry) -> dict:
 def uni_flash_params_from_dict(entry, data: dict) -> None:
     if entry is None or not isinstance(data, dict):
         return
+    data = line_effect_schema.normalize_inout_apply_flags(data)
     for field in UNI_FLASH_PARAM_FIELDS:
         if field == "effect_type" or not hasattr(entry, field) or field not in data:
             continue
@@ -211,6 +214,33 @@ def _on_balloon_entry_changed(_self, context) -> None:
     _sync_balloon_curve(_self)
     _sync_linked_balloon_transform(_self, context)
     _tag_balloon_redraw(context)
+
+
+def _inout_apply_value_from_flags(entry) -> str:
+    legacy = str(getattr(entry, "inout_apply", "brush_size") or "brush_size")
+    width = line_effect_schema.bool_value(
+        getattr(entry, line_effect_schema.INOUT_APPLY_BRUSH_SIZE_FIELD, None),
+        legacy == "brush_size",
+    )
+    opacity = line_effect_schema.bool_value(
+        getattr(entry, line_effect_schema.INOUT_APPLY_OPACITY_FIELD, None),
+        legacy == "opacity",
+    )
+    if width:
+        return "brush_size"
+    if opacity:
+        return "opacity"
+    return "brush_size"
+
+
+def _on_balloon_inout_apply_changed(self, context) -> None:
+    legacy = str(getattr(self, "inout_apply", "brush_size") or "brush_size")
+    try:
+        self.inout_apply_brush_size = legacy != "opacity"
+        self.inout_apply_opacity = legacy == "opacity"
+    except Exception:  # noqa: BLE001
+        pass
+    _on_balloon_entry_changed(self, context)
 
 
 def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
@@ -702,7 +732,9 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
     bundle_gap_jitter_amount: FloatProperty(name="まとまり間隔の乱れ", default=0.5, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     bundle_jagged_enabled: BoolProperty(name="ギザギザにする", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     bundle_jagged_height_percent: FloatProperty(name="ギザギザ高さ (%)", default=100.0, min=0.0, max=100.0, subtype="PERCENTAGE", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
-    inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inout_apply: EnumProperty(name="適用先", items=_INOUT_APPLY_ITEMS, default="brush_size", update=_on_balloon_inout_apply_changed)  # type: ignore[valid-type]
+    inout_apply_brush_size: BoolProperty(name="線幅", default=True, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    inout_apply_opacity: BoolProperty(name="不透明度", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     in_percent: FloatProperty(name="入り (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     out_percent: FloatProperty(name="抜き (%)", default=0.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     in_start_percent: FloatProperty(name="入り始点 (%)", description="線の始点側から、線幅が一定になる位置を指定します", default=50.0, min=0.0, max=100.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

@@ -39,6 +39,8 @@ _OLD_LINE_KINDS = {"dim", "light", "inner", "safe"}
 
 # 実体ガイド線をビュー上で一定の太さ (おおよそこのピクセル幅) に保つ。
 GUIDE_SCREEN_PX = 1.0
+GUIDE_MIN_WIDTH_MM = 0.005
+GUIDE_MAX_WIDTH_MM = 0.12
 # Grease Pencil v3 の point.radius はビューポート上で指定 world 半径より太く出るため、
 # 実機スクリーンショットで 1px に見える係数へ補正する。
 _GUIDE_GP_RADIUS_SCALE = 0.1
@@ -273,9 +275,15 @@ def _append_segment(
 
 def _guide_curve_radius_m() -> float:
     if _last_mpp > 0.0:
-        half = GUIDE_SCREEN_PX * _last_mpp * 0.5 * _GUIDE_CURVE_RADIUS_SCALE
-        return max(mm_to_m(0.005) * 0.5, min(half, mm_to_m(3.0) * 0.5))
-    return mm_to_m(0.12) * 0.5
+        return _guide_half_width_m(_last_mpp, _GUIDE_CURVE_RADIUS_SCALE)
+    return mm_to_m(GUIDE_MAX_WIDTH_MM) * 0.5
+
+
+def _guide_half_width_m(meters_per_pixel: float, scale: float) -> float:
+    half = GUIDE_SCREEN_PX * float(meters_per_pixel) * 0.5 * float(scale)
+    min_half = mm_to_m(GUIDE_MIN_WIDTH_MM) * 0.5
+    max_half = mm_to_m(GUIDE_MAX_WIDTH_MM) * 0.5
+    return max(min_half, min(half, max_half))
 
 
 def _gp_data_blocks():
@@ -1382,11 +1390,8 @@ def apply_view_constant_thickness() -> bool:
         return False
     _last_mpp = mpp
     # 異常な視点 (極端なズーム/パース) で bevel が暴れないようクランプ。
-    # 0.005mm 〜 3mm 相当の線幅に収める。
-    curve_half = GUIDE_SCREEN_PX * mpp * 0.5 * _GUIDE_CURVE_RADIUS_SCALE
-    curve_half = max(mm_to_m(0.005) * 0.5, min(curve_half, mm_to_m(3.0) * 0.5))
-    gp_half = GUIDE_SCREEN_PX * mpp * 0.5 * _GUIDE_GP_RADIUS_SCALE
-    gp_half = max(mm_to_m(0.005) * 0.5, min(gp_half, mm_to_m(3.0) * 0.5))
+    curve_half = _guide_half_width_m(mpp, _GUIDE_CURVE_RADIUS_SCALE)
+    gp_half = _guide_half_width_m(mpp, _GUIDE_GP_RADIUS_SCALE)
     changed = False
     for curve in bpy.data.curves:
         if not curve.name.startswith(PAPER_GUIDE_CURVE_PREFIX):

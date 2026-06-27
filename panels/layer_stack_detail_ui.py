@@ -673,7 +673,7 @@ def _draw_effect_tail_settings(box, params) -> None:
 
     inout_box = box.box()
     inout_box.label(text="入り抜き")
-    inout_box.prop(params, "inout_apply")
+    line_effect_settings_ui.draw_inout_apply_toggles(inout_box, params)
     row = inout_box.row(align=True)
     row.prop(params, "in_percent")
     row.prop(params, "out_percent")

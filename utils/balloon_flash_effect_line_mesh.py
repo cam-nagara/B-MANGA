@@ -90,6 +90,8 @@ def _effect_params_signature(entry, line_style: str) -> dict:
             "white_outline_black_attenuation": float(getattr(entry, "white_outline_black_attenuation", 0.0) or 0.0),
             # 入り抜き (ウニフラと同じ機構を白抜き線にも適用)
             "inout_apply": str(getattr(entry, "inout_apply", "brush_size") or "brush_size"),
+            "inout_apply_brush_size": bool(getattr(entry, "inout_apply_brush_size", True)),
+            "inout_apply_opacity": bool(getattr(entry, "inout_apply_opacity", False)),
             "in_percent": float(getattr(entry, "in_percent", 0.0) or 0.0),
             "out_percent": float(getattr(entry, "out_percent", 0.0) or 0.0),
             "in_start_percent": float(getattr(entry, "in_start_percent", 50.0) or 0.0),

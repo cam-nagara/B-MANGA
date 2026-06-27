@@ -14,7 +14,7 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..utils import balloon_shapes, corner_radius, effect_inout_curve, log
+from ..utils import balloon_shapes, corner_radius, effect_inout_curve, line_effect_schema, log
 from ..utils.geom import Rect, mm_to_m
 from . import effect_line_radial_spacing
 _logger = log.get_logger(__name__)
@@ -44,6 +44,26 @@ def _jitter(base: float, amount: float, rng: random.Random) -> float:
 
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
+
+
+def _inout_apply_flags(params) -> tuple[bool, bool]:
+    legacy = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
+    width_raw = getattr(params, "inout_apply_brush_size", None)
+    opacity_raw = getattr(params, "inout_apply_opacity", None)
+    if width_raw is None and opacity_raw is None:
+        return legacy == "brush_size", legacy == "opacity"
+    return (
+        line_effect_schema.bool_value(width_raw, legacy == "brush_size"),
+        line_effect_schema.bool_value(opacity_raw, legacy == "opacity"),
+    )
+
+
+def _inout_brush_size_enabled(params) -> bool:
+    return _inout_apply_flags(params)[0]
+
+
+def _inout_opacity_enabled(params) -> bool:
+    return _inout_apply_flags(params)[1]
 
 
 def _max_line_count(params) -> int:
@@ -402,7 +422,7 @@ def _focus_end_point(
 
 def _stroke_radii(params, radius_mm: float, point_count: int = 2) -> tuple[float, list[float] | None]:
     base = mm_to_m(max(0.01, radius_mm) / 2.0)
-    if getattr(params, "inout_apply", "brush_size") != "brush_size" or point_count < 2:
+    if not _inout_brush_size_enabled(params) or point_count < 2:
         return base, None
     start = base * (_clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0))
     end = base * (_clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0))
@@ -416,7 +436,7 @@ def _stroke_radii(params, radius_mm: float, point_count: int = 2) -> tuple[float
 
 
 def _stroke_opacities(params, point_count: int = 2) -> list[float] | None:
-    if getattr(params, "inout_apply", "brush_size") != "opacity" or point_count < 2:
+    if not _inout_opacity_enabled(params) or point_count < 2:
         return None
     start = _clamp01(float(getattr(params, "in_percent", 100.0)) / 100.0)
     end = _clamp01(float(getattr(params, "out_percent", 0.0)) / 100.0)
@@ -503,8 +523,8 @@ def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
     既定は従来どおり role=='line' のみ。白抜き線では
     ("line", "white_outline_white", "white_outline_black") を渡す。
     """
-    apply = str(getattr(params, "inout_apply", "brush_size") or "brush_size")
-    if apply not in {"brush_size", "opacity"}:
+    apply_width, apply_opacity = _inout_apply_flags(params)
+    if not (apply_width or apply_opacity):
         return strokes
     out: list[EffectLineStroke] = []
     for stroke in strokes:
@@ -560,8 +580,8 @@ def _apply_inout_profile(strokes, params, roles: tuple[str, ...] = ("line",)):
                 points_xyz=new_pts,
                 radius=stroke.radius,
                 cyclic=stroke.cyclic,
-                radii=radii if apply == "brush_size" else None,
-                opacities=opac if apply == "opacity" else None,
+                radii=radii if apply_width else None,
+                opacities=opac if apply_opacity else None,
                 role=stroke.role,
                 curve_type=stroke.curve_type,
                 bezier_smooth=stroke.bezier_smooth,

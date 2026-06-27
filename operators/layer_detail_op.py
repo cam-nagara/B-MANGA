@@ -276,6 +276,18 @@ def _draw_corner_radius(layout, owner, *, prefix: str = "rounded_corner", text: 
     row.prop(owner, unit_attr, text="")
 
 
+def _equal_columns(layout, count: int):
+    column_count = max(1, int(count))
+    grid = layout.grid_flow(
+        row_major=True,
+        columns=column_count,
+        even_columns=True,
+        even_rows=False,
+        align=True,
+    )
+    return tuple(grid.column(align=True) for _ in range(column_count))
+
+
 def _draw_balloon_detail(layout, entry, page=None) -> None:
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
@@ -286,16 +298,10 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     dialog_line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
     effect_cols = None
     if dialog_line_style in {"uni_flash", "white_outline"}:
-        flow = layout.row()
-        left_col = flow.column()
-        right_col = flow.column()
-        effect_col3 = flow.column()
-        effect_col4 = flow.column()
+        left_col, right_col, effect_col3, effect_col4 = _equal_columns(layout, 4)
         effect_cols = (effect_col3, effect_col4)
     else:
-        split = layout.split(factor=0.5)
-        left_col = split.column()
-        right_col = split.column()
+        left_col, right_col = _equal_columns(layout, 2)
 
     # 配置 (mm) を Outliner メタ の次 (最上段) に配置
     box = left_col.box()
@@ -638,8 +644,7 @@ def _draw_effect_detail(layout, context, obj) -> None:
     from ..panels import effect_line_panel as _elp
 
     layout.separator()
-    flow = layout.row()
-    cols = (flow.column(), flow.column(), flow.column())
+    cols = _equal_columns(layout, 3)
     _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 

@@ -67,6 +67,8 @@ def main() -> None:
     props = el.BMangaEffectLineParams.bl_rna.properties
     for need in (
         "inout_range_mode",
+        "inout_apply_brush_size",
+        "inout_apply_opacity",
         "in_range_percent",
         "out_range_percent",
         "in_range_mm",
@@ -167,6 +169,23 @@ def main() -> None:
         mid_i = len(rad) // 2
         if abs(rad[0]) > 1e-6 or abs(rad[mid_i] - base_r) > 1e-6:
             failures.append(f"半径プロファイル不正: {rad}")
+
+    # 4e. 入り抜きの適用先は線幅と不透明度を同時に使える
+    p_both = SimpleNamespace(
+        inout_apply="brush_size",
+        inout_apply_brush_size=True,
+        inout_apply_opacity=True,
+        in_percent=0.0,
+        out_percent=0.0,
+        inout_range_mode="percent",
+        in_range_percent=20.0,
+        out_range_percent=20.0,
+        in_range_mm=10.0,
+        out_range_mm=10.0,
+    )
+    both = elg._apply_inout_profile([s], p_both)
+    if not both or both[0].radii is None or both[0].opacities is None:
+        failures.append("入り抜きの線幅/不透明度同時適用ができない")
 
     # 5. プリセット往復: 標準/輪郭ぼかし を coma に適用して値確認
     bpy.context.scene.bmanga_work  # noqa: B018  -- 存在確認
