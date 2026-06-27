@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 入り抜きを線幅グラフで編集できるように修正 (v0.6.403)
+
+### 症状
+
+- 入り抜きのグラフが「入りカーブ」「抜きカーブ」に分かれており、始点から終点までの線幅変化として直感的に確認できなかった。
+- グラフと「入り (%)」「抜き (%)」「入り始点 (%)」「抜き始点 (%)」の数値が、同じ1本の線幅変化として連動していなかった。
+
+### 原因
+
+- 既存のグラフは左右それぞれの変化率だけを表す部品で、横軸を線の始点から終点までとして扱う共通グラフがなかった。
+- 詳細設定の入り抜きUIが、グラフ側の点列から4つの数値へ戻す経路を持っていなかった。
+
+### 修正
+
+- 入り抜き設定に「線幅グラフ」を表示し、左端を始点、右端を終点、縦方向を線幅として扱うようにした。
+- 線幅グラフの左端 / 右端 / 上端に到達する位置を、「入り (%)」「抜き (%)」「入り始点 (%)」「抜き始点 (%)」へ同期するようにした。
+- 数値欄を直接変更した場合も、次の描画で線幅グラフへ反映されるようにした。
+- 効果線、フキダシ線、画像パスの詳細設定で、同じ線幅グラフ表示を使うようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\effect_inout_curve.py panels\effect_line_panel.py test\test_line_effect_schema.py test\blender_border_preset_coma_tool_check.py`
+- `python test\test_line_effect_schema.py`
+- `git diff --check`
+- `blender.exe --factory-startup --background --python test\blender_border_preset_coma_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_check.py`
+
+---
+
 ## 2026-06-28 — 入り抜き適用先と詳細設定表示を修正 (v0.6.402)
 
 ### 症状

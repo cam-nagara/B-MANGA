@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load_schema():
@@ -21,6 +23,18 @@ def _load_settings_ui():
     spec = importlib.util.spec_from_file_location(
         "line_effect_settings_ui",
         root / "panels" / "line_effect_settings_ui.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_inout_curve():
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "effect_inout_curve",
+        root / "utils" / "effect_inout_curve.py",
     )
     module = importlib.util.module_from_spec(spec)
     assert spec is not None and spec.loader is not None
@@ -112,6 +126,45 @@ def test_white_outline_ui_maps_stay_in_shared_field_contract():
         assert field in balloon_ui_fields
 
 
+def test_inout_profile_graph_points_follow_numeric_values():
+    curve = _load_inout_curve()
+    params = SimpleNamespace(
+        in_percent=25.0,
+        out_percent=10.0,
+        in_start_percent=40.0,
+        out_start_percent=30.0,
+        in_easing_curve=curve.DEFAULT_CURVE_TEXT,
+        out_easing_curve=curve.DEFAULT_CURVE_TEXT,
+    )
+    points = curve.profile_points_from_params(params)
+    assert math.isclose(points[0][0], 0.0, abs_tol=1e-6)
+    assert math.isclose(points[0][1], 0.25, abs_tol=1e-6)
+    assert any(math.isclose(x, 0.4, abs_tol=1e-6) and math.isclose(y, 1.0, abs_tol=1e-6) for x, y in points)
+    assert any(math.isclose(x, 0.7, abs_tol=1e-6) and math.isclose(y, 1.0, abs_tol=1e-6) for x, y in points)
+    assert math.isclose(points[-1][0], 1.0, abs_tol=1e-6)
+    assert math.isclose(points[-1][1], 0.10, abs_tol=1e-6)
+
+
+def test_inout_profile_graph_points_update_numeric_values():
+    curve = _load_inout_curve()
+    params = SimpleNamespace(
+        in_percent=100.0,
+        out_percent=100.0,
+        in_start_percent=0.0,
+        out_start_percent=0.0,
+        in_easing_curve="",
+        out_easing_curve="",
+    )
+    changed = curve.profile_points_to_params(params, ((0.0, 0.2), (0.35, 1.0), (0.75, 1.0), (1.0, 0.05)))
+    assert changed
+    assert math.isclose(params.in_percent, 20.0, abs_tol=1e-4)
+    assert math.isclose(params.out_percent, 5.0, abs_tol=1e-4)
+    assert math.isclose(params.in_start_percent, 35.0, abs_tol=1e-4)
+    assert math.isclose(params.out_start_percent, 25.0, abs_tol=1e-4)
+    assert params.in_easing_curve == curve.DEFAULT_CURVE_TEXT
+    assert params.out_easing_curve == curve.DEFAULT_CURVE_TEXT
+
+
 if __name__ == "__main__":
     test_path_image_choices_are_shared_ui_contract()
     test_effect_param_fields_have_no_duplicates()
@@ -119,3 +172,5 @@ if __name__ == "__main__":
     test_linked_effect_fields_do_not_sync_uni_flash_offset()
     test_balloon_flash_fields_match_shared_effect_basics()
     test_white_outline_ui_maps_stay_in_shared_field_contract()
+    test_inout_profile_graph_points_follow_numeric_values()
+    test_inout_profile_graph_points_update_numeric_values()

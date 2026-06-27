@@ -52,28 +52,22 @@ def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True) -
     )
 
 
-def _inout_curve_nodes_for_draw(params):
+def _inout_profile_node_for_draw(params):
     try:
-        effect_inout_curve.sync_ui_nodes_to_params(params)
+        effect_inout_curve.sync_profile_node_to_params(params)
     except Exception:  # noqa: BLE001
         pass
-    in_node, out_node = effect_inout_curve.get_ui_nodes()
-    if in_node is not None or out_node is not None:
-        return in_node, out_node
     try:
-        return effect_inout_curve.ensure_ui_nodes(params)
+        return effect_inout_curve.ensure_profile_node(params)
     except Exception:  # noqa: BLE001
-        return effect_inout_curve.get_ui_nodes()
+        return effect_inout_curve.get_profile_node()
 
 
 def draw_inout_curve_mapping(layout, params) -> None:
-    in_node, out_node = _inout_curve_nodes_for_draw(params)
-    if in_node is not None:
-        layout.label(text="入りカーブ")
-        layout.template_curve_mapping(in_node, "mapping", type="NONE")
-    if out_node is not None:
-        layout.label(text="抜きカーブ")
-        layout.template_curve_mapping(out_node, "mapping", type="NONE")
+    node = _inout_profile_node_for_draw(params)
+    if node is not None:
+        layout.label(text="線幅グラフ")
+        layout.template_curve_mapping(node, "mapping", type="NONE")
 
 
 def draw_effect_path_settings(layout, params) -> None:

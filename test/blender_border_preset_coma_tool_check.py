@@ -63,6 +63,7 @@ def main() -> None:
     # 4. 効果線 入り抜き範囲 プロパティ
     from bmanga_dev.core import effect_line as el
     from bmanga_dev.operators import effect_line_gen as elg
+    from bmanga_dev.utils import effect_inout_curve as eic
 
     props = el.BMangaEffectLineParams.bl_rna.properties
     for need in (
@@ -152,6 +153,40 @@ def main() -> None:
         failures.append(f"入り始点/抜き始点の距離不一致: {dni},{dno}")
     if not (abs(pn(0.0)) < 1e-6 and abs(pn(L * 0.5) - 1.0) < 1e-6 and abs(pn(L * 0.7) - 1.0) < 1e-6 and abs(pn(L)) < 1e-6):
         failures.append(f"新入り抜きプロファイル不一致: {pn(0.0)},{pn(L*0.5)},{pn(L*0.7)},{pn(L)}")
+
+    graph_points = eic.profile_points_from_params(p_new)
+    if not (
+        abs(graph_points[0][0]) < 1e-6
+        and abs(graph_points[0][1]) < 1e-6
+        and any(abs(x - 0.5) < 1e-6 and abs(y - 1.0) < 1e-6 for x, y in graph_points)
+        and any(abs(x - 0.7) < 1e-6 and abs(y - 1.0) < 1e-6 for x, y in graph_points)
+        and abs(graph_points[-1][0] - 1.0) < 1e-6
+        and abs(graph_points[-1][1]) < 1e-6
+    ):
+        failures.append(f"線幅グラフ点列が数値と一致しない: {graph_points}")
+
+    p_graph = SimpleNamespace(
+        in_percent=100.0,
+        out_percent=100.0,
+        in_start_percent=0.0,
+        out_start_percent=0.0,
+        in_easing_curve="",
+        out_easing_curve="",
+    )
+    eic.profile_points_to_params(p_graph, ((0.0, 0.25), (0.35, 1.0), (0.80, 1.0), (1.0, 0.10)))
+    if not (
+        abs(p_graph.in_percent - 25.0) < 1e-4
+        and abs(p_graph.out_percent - 10.0) < 1e-4
+        and abs(p_graph.in_start_percent - 35.0) < 1e-4
+        and abs(p_graph.out_start_percent - 20.0) < 1e-4
+    ):
+        failures.append(
+            "線幅グラフから数値へ反映できない: "
+            f"{p_graph.in_percent},{p_graph.out_percent},{p_graph.in_start_percent},{p_graph.out_start_percent}"
+        )
+    profile_node = eic.ensure_profile_node(p_new)
+    if profile_node is None or getattr(profile_node, "label", "") != "線幅グラフ":
+        failures.append("線幅グラフのUIノードを作成できない")
 
     # 4d. _apply_inout_profile が 2点線にブレークポイントを挿入する
     from bmanga_dev.operators.effect_line_gen import EffectLineStroke
