@@ -1180,6 +1180,12 @@ class BMANGA_OT_balloon_tool(Operator):
         )
 
     def invoke(self, context, _event):
+        from . import preset_op
+
+        if preset_op.selected_balloon_tool_creation_mode(context) == "nurbs":
+            if coma_modal_state.get_active("balloon_nurbs_tool") is not None:
+                return {"FINISHED"}
+            return bpy.ops.bmanga.balloon_nurbs_tool("INVOKE_DEFAULT")
         if coma_modal_state.get_active("balloon_tool") is not None:
             return {"FINISHED"}
         coma_modal_state.exit_drawing_mode(context)
@@ -1807,7 +1813,6 @@ class BMANGA_OT_balloon_tool(Operator):
             if page is not None and _creation_violates_layer_scope(context, page, x, y, w, h):
                 self.report({"ERROR"}, "このモードではその位置にフキダシを作成できません")
             else:
-                # ツールのプリセット選択 (基本形状 / カスタム形状) を新規作成へ反映
                 from . import preset_op
 
                 preset_shape, preset_custom = preset_op.selected_balloon_tool_shape(context)

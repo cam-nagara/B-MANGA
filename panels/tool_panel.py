@@ -138,13 +138,10 @@ class BMANGA_PT_tools(Panel):
             "bmanga.balloon_tool",
             text="",
             icon="MESH_CIRCLE",
-            depress=coma_modal_state.is_active("balloon_tool"),
-        )
-        row.operator(
-            "bmanga.balloon_nurbs_tool",
-            text="",
-            icon="CURVE_NCIRCLE",
-            depress=coma_modal_state.is_active("balloon_nurbs_tool"),
+            depress=(
+                coma_modal_state.is_active("balloon_tool")
+                or coma_modal_state.is_active("balloon_nurbs_tool")
+            ),
         )
         row.operator(
             "bmanga.balloon_tail_tool",
@@ -197,9 +194,12 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         prow.label(text="コマ作成の枠線", icon="MESH_PLANE")
         prow.prop(wm, "bmanga_border_preset_selector", text="")
         return
-    if coma_modal_state.is_active("balloon_tool") and hasattr(wm, "bmanga_balloon_tool_preset_selector"):
+    if (
+        coma_modal_state.is_active("balloon_tool")
+        or coma_modal_state.is_active("balloon_nurbs_tool")
+    ) and hasattr(wm, "bmanga_balloon_tool_preset_selector"):
         prow = layout.row(align=True)
-        prow.label(text="フキダシ形状", icon="MESH_CIRCLE")
+        prow.label(text="フキダシプリセット", icon="MESH_CIRCLE")
         prow.prop(wm, "bmanga_balloon_tool_preset_selector", text="")
         return
     if coma_modal_state.is_active("balloon_tail_tool") and hasattr(wm, "bmanga_tail_preset_selector"):

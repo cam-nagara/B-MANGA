@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — NURBSフキダシをフキダシツールのプリセットへ統合 (v0.6.399)
+
+### 症状
+
+- フキダシツールとNURBSフキダシツールが別ボタンとして並び、同じフキダシ作成なのに入口が分かれていた。
+- ツール下のプリセット選択は通常フキダシだけに出ており、NURBSフキダシはプリセットとして選べなかった。
+
+### 原因
+
+- NURBSフキダシが独立した作成ツールとして追加されており、フキダシツールのプリセット選択とは別経路になっていた。
+
+### 修正
+
+- フキダシツールのプリセットに「なめらか自由形状」を追加した。
+- 「なめらか自由形状」を選んでフキダシツールを押すと、従来のNURBSフキダシ作成を開始するようにした。
+- ツール欄のNURBS専用ボタンを外し、NURBS作成中もフキダシツールボタンとフキダシプリセット行がアクティブ表示になるようにした。
+- 既存のNURBSフキダシ操作は互換用として残した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\preset_op.py operators\balloon_op.py panels\tool_panel.py test\blender_balloon_tool_unification_check.py`
+- `blender.exe --background --python test\blender_balloon_tool_unification_check.py`
+- `blender.exe --background --python test\blender_tail_and_line_decor_check.py`
+- フキダシプリセットに「なめらか自由形状」が表示され、通常形状とNURBS作成の選択が切り替わることを確認。
+- NURBSフキダシの互換操作と、自由形状フキダシの線装飾 / 画像線 / 保存復元が動作することを確認。
+
+---
+
 ## 2026-06-28 — フキダシと効果線の線設定共通化準備 (v0.6.398)
 
 ### 症状

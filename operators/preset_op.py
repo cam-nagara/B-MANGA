@@ -259,11 +259,15 @@ def _set_border_preset_selector(context, name: str, *, apply: bool) -> None:
 
 _BALLOON_TOOL_ENUM_CACHE: dict[str, list] = {}
 _TEXT_PRESET_ENUM_CACHE: list[tuple[str, str, str]] = []
+BALLOON_TOOL_NURBS_PRESET = "mode:nurbs"
 
 
 def _balloon_tool_preset_enum_items(_self, context):
     """フキダシツール用: 基本形状 + カスタム形状プリセットの選択肢."""
-    items = [("DEFAULT", "標準", "既定の形状で作成する")]
+    items = [
+        ("DEFAULT", "標準", "既定の形状で作成する"),
+        (BALLOON_TOOL_NURBS_PRESET, "なめらか自由形状", "クリックした点を通るなめらかなフキダシを作成する"),
+    ]
     try:
         from ..core.balloon import _SHAPE_ITEMS
 
@@ -295,11 +299,20 @@ def selected_balloon_tool_shape(context) -> tuple[str, str]:
     """フキダシツールのプリセット選択を (shape, custom_preset_name) で返す."""
     wm = getattr(context, "window_manager", None)
     value = str(getattr(wm, "bmanga_balloon_tool_preset_selector", "") or "") if wm is not None else ""
+    if value == BALLOON_TOOL_NURBS_PRESET:
+        return "", ""
     if value.startswith("shape:"):
         return value.split(":", 1)[1], ""
     if value.startswith("custom:"):
         return "custom", value.split(":", 1)[1]
     return "", ""
+
+
+def selected_balloon_tool_creation_mode(context) -> str:
+    """フキダシツールの作成方式を返す。通常はドラッグ作成。"""
+    wm = getattr(context, "window_manager", None)
+    value = str(getattr(wm, "bmanga_balloon_tool_preset_selector", "") or "") if wm is not None else ""
+    return "nurbs" if value == BALLOON_TOOL_NURBS_PRESET else "drag"
 
 
 def _text_preset_enum_items(_self, context):
