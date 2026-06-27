@@ -67,6 +67,14 @@ def _make_propagator(prop_name):
     return _callback
 
 
+def _make_weight_refresh_propagator(prop_name):
+    """線幅ウェイトを再計算してから選択中オブジェクトへ伝搬."""
+    def _callback(self, context):
+        _refresh_line_width_weights(self, context)
+        _propagate(self, context, prop_name)
+    return _callback
+
+
 # ------------------------------------------------------------------
 # 設定変更時のコールバック
 # ------------------------------------------------------------------
@@ -510,6 +518,36 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         step=5,
         subtype="PERCENTAGE",
         update=_on_edge_midpoint_jitter_changed,
+    )  # type: ignore[valid-type]
+
+    edge_width_curve_25: FloatProperty(
+        name="25%",
+        description="角から中間頂点まで25%進んだ地点の細り具合",
+        default=0.25,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_make_weight_refresh_propagator("edge_width_curve_25"),
+    )  # type: ignore[valid-type]
+
+    edge_width_curve_50: FloatProperty(
+        name="50%",
+        description="角から中間頂点まで50%進んだ地点の細り具合",
+        default=0.50,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_make_weight_refresh_propagator("edge_width_curve_50"),
+    )  # type: ignore[valid-type]
+
+    edge_width_curve_75: FloatProperty(
+        name="75%",
+        description="角から中間頂点まで75%進んだ地点の細り具合",
+        default=0.75,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_make_weight_refresh_propagator("edge_width_curve_75"),
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---

@@ -24,10 +24,10 @@ from b_manga_line import (  # noqa: E402
 
 OUT_DIR = ROOT / "_verify" / "b_manga_line_cone_cube_visual"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-OUT_FULL = OUT_DIR / "cone_cube_all_lines_intersection_jitter_full.png"
-OUT_INTERSECTION = OUT_DIR / "cone_cube_intersection_ring_jitter_confirm.png"
-OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_jitter_zoom.png"
-OUT_LINES = OUT_DIR / "cone_cube_corner_inner_jitter_lines_only.png"
+OUT_FULL = OUT_DIR / "cone_cube_all_lines_intersection_curve_full.png"
+OUT_INTERSECTION = OUT_DIR / "cone_cube_intersection_ring_curve_confirm.png"
+OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_curve_zoom.png"
+OUT_LINES = OUT_DIR / "cone_cube_corner_inner_curve_lines_only.png"
 
 CUBE_SIZE = 2.6
 CUBE_HEIGHT = 1.45
@@ -212,6 +212,9 @@ def _make_cube(surface_mat: bpy.types.Material) -> bpy.types.Object:
     settings = cube.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_jitter_percent = 30.0
+    settings.edge_width_curve_25 = 0.05
+    settings.edge_width_curve_50 = 0.20
+    settings.edge_width_curve_75 = 0.70
     settings.use_vertex_color = False
     settings.use_ao_influence = False
     vertex_analysis.compute_and_apply_weights(cube, settings)
@@ -371,6 +374,7 @@ def _print_near_corner_line_widths(line_obj: bpy.types.Object) -> None:
     assert endpoint > 0.07, f"角付近の線幅が想定より細いです: {endpoint}"
     assert all(0.2 <= t <= 0.8 for t in zero_unique), zero_unique
     assert any(abs(t - 0.5) > 0.03 for t in zero_unique), zero_unique
+    assert len(zero_unique) >= 2, zero_unique
 
 
 def _render_extracted_lines(cube: bpy.types.Object) -> None:

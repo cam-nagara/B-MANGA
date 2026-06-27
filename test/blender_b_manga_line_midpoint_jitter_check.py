@@ -76,10 +76,24 @@ def _zero_t_values(obj: bpy.types.Object, corner_offset: int) -> list[float]:
     return values
 
 
-def _apply_weights(obj: bpy.types.Object, jitter_percent: float) -> None:
+def _weight_at_t(obj: bpy.types.Object, corner_offset: int, t: float) -> float:
+    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    assert vg is not None, "線幅用の頂点グループがありません"
+    index = round(t * (LEVELS - 1))
+    return vg.weight(_edge_indices(corner_offset)[index])
+
+
+def _apply_weights(
+    obj: bpy.types.Object,
+    jitter_percent: float,
+    curve_points: tuple[float, float, float] = (0.25, 0.50, 0.75),
+) -> None:
     settings = obj.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_jitter_percent = jitter_percent
+    settings.edge_width_curve_25 = curve_points[0]
+    settings.edge_width_curve_50 = curve_points[1]
+    settings.edge_width_curve_75 = curve_points[2]
     settings.use_vertex_color = False
     settings.use_ao_influence = False
     vertex_analysis.compute_and_apply_weights(obj, settings)
@@ -99,11 +113,22 @@ def main() -> None:
     edge_zero_sets = [_zero_t_values(jittered, offset) for offset in range(4)]
     flat = [value for values in edge_zero_sets for value in values]
     assert flat, "乱れありでゼロ幅の中間頂点が見つかりません"
+    assert all(len(values) == 1 for values in edge_zero_sets), edge_zero_sets
     assert all(0.2 <= value <= 0.8 for value in flat), edge_zero_sets
     assert any(abs(value - 0.5) > 1e-6 for value in flat), edge_zero_sets
+    assert len({round(value, 4) for value in flat}) == len(flat), edge_zero_sets
+
+    early = _make_segmented_box("BML_midpoint_curve_early")
+    _apply_weights(early, 0.0, (1.0, 1.0, 1.0))
+    assert _weight_at_t(early, 3, 0.25) < 1e-6
+
+    late = _make_segmented_box("BML_midpoint_curve_late")
+    _apply_weights(late, 0.0, (0.0, 0.0, 0.0))
+    assert _weight_at_t(late, 3, 0.25) > 0.99
+    assert _weight_at_t(late, 3, 0.5) < 1e-6
 
     print(
-        "[PASS] midpoint jitter selects zero-width vertices in range: "
+        "[PASS] midpoint jitter and width curve: "
         f"{edge_zero_sets}",
         flush=True,
     )

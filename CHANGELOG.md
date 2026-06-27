@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line の中間頂点乱れをライン別にし、変化グラフを追加 (v0.3.6)
+
+### 症状
+
+- 中間頂点の乱れは設定できたが、角と角の間のラインごとに必ず別々の位置になる確認が不足していた。
+- 角から中間頂点へ向けた線幅変化は直線的で、急に細くしてからなだらかにする、または最後に急に細くする、といった変化を指定できなかった。
+
+### 原因
+
+- 中間頂点のランダム位置はライン単位で計算していたが、同じ位置を避ける処理がなかった。
+- 線幅変化は角から中間頂点までの距離をそのまま直線的に使っていた。
+
+### 修正
+
+- 角と角の間のラインごとに、中間頂点の乱れ位置が重ならないように選ぶ処理を追加した。
+- 線幅の詳細制御に「中間頂点への変化グラフ」を追加し、25% / 50% / 75% 地点の細り具合を全内部線へ一括適用できるようにした。
+- 既定値は従来と同じ直線変化になるよう、25% = 0.25、50% = 0.50、75% = 0.75 にした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\panels.py addons\b_manga_line\vertex_analysis.py test\blender_b_manga_line_midpoint_jitter_check.py _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- 実機生成結果で、乱れ30%時に複数の内部線が別々の中間頂点位置を選ぶことを確認。
+- 変化グラフを早く細る設定 / 最後に細る設定へ振り、線幅が設定どおり変わることを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line に中間頂点の乱れを追加 (v0.3.5)
 
 ### 症状

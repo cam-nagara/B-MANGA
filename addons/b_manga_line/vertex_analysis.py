@@ -125,8 +125,9 @@ def _build_sharp_graph(bm, threshold: float) -> list[set[int]]:
 def _stable_random_01(obj, chain: list[int]) -> float:
     start = obj.data.vertices[chain[0]].co
     end = obj.data.vertices[chain[-1]].co
+    chain_key = ",".join(str(i) for i in chain)
     payload = (
-        f"{obj.name}|{chain[0]}:{chain[-1]}|"
+        f"{obj.name}|{chain_key}|"
         f"{start.x:.6f},{start.y:.6f},{start.z:.6f}|"
         f"{end.x:.6f},{end.y:.6f},{end.z:.6f}"
     )
@@ -188,6 +189,7 @@ def _select_midpoint_vertex(
     chain: list[int],
     positions: dict[int, float],
     jitter_percent: float,
+    used_position_bins: set[int] | None = None,
 ) -> tuple[int, float]:
     internal = chain[1:-1]
     if not internal:
@@ -207,8 +209,22 @@ def _select_midpoint_vertex(
     ]
     if not candidates:
         candidates = internal
+    if jitter > 0.0 and used_position_bins is not None:
+        unused = [
+            vi for vi in candidates
+            if _position_bin(positions.get(vi, 0.5)) not in used_position_bins
+        ]
+        if unused:
+            candidates = unused
     selected = min(candidates, key=lambda vi: abs(positions.get(vi, 0.5) - target))
-    return selected, positions.get(selected, 0.5)
+    selected_position = positions.get(selected, 0.5)
+    if jitter > 0.0 and used_position_bins is not None:
+        used_position_bins.add(_position_bin(selected_position))
+    return selected, selected_position
+
+
+def _position_bin(position: float) -> int:
+    return int(round(max(0.0, min(1.0, position)) * 1000000.0))
 
 
 def _chain_factor(position: float, midpoint: float) -> float:
@@ -221,10 +237,48 @@ def _chain_factor(position: float, midpoint: float) -> float:
     return (1.0 - position) / (1.0 - midpoint)
 
 
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _curve_points_from_settings(settings) -> tuple[float, float, float]:
+    return (
+        _clamp01(getattr(settings, "edge_width_curve_25", 0.25)),
+        _clamp01(getattr(settings, "edge_width_curve_50", 0.50)),
+        _clamp01(getattr(settings, "edge_width_curve_75", 0.75)),
+    )
+
+
+def _apply_width_curve(
+    progress: float,
+    curve_points: tuple[float, float, float] | None,
+) -> float:
+    if curve_points is None:
+        return _clamp01(progress)
+
+    points = (
+        (0.00, 0.00),
+        (0.25, curve_points[0]),
+        (0.50, curve_points[1]),
+        (0.75, curve_points[2]),
+        (1.00, 1.00),
+    )
+    t = _clamp01(progress)
+    for i in range(len(points) - 1):
+        x0, y0 = points[i]
+        x1, y1 = points[i + 1]
+        if t <= x1 + 1e-8:
+            span = x1 - x0
+            local = 0.0 if span <= 1e-8 else (t - x0) / span
+            return _clamp01(y0 + (y1 - y0) * local)
+    return 1.0
+
+
 def _calc_midpoint_factor(
     obj,
     forced_anchors: set[int] | None = None,
     jitter_percent: float = 0.0,
+    curve_points: tuple[float, float, float] | None = None,
 ) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
@@ -258,13 +312,15 @@ def _calc_midpoint_factor(
         return {i: 0.0 for i in range(n)}
 
     result = {i: 0.0 for i in range(n)}
+    used_midpoint_bins: set[int] = set()
     for chain in _iter_anchor_chains(sharp_neighbors, graph_anchors):
         positions = _chain_positions(obj, chain)
         _, midpoint = _select_midpoint_vertex(
-            obj, chain, positions, jitter_percent,
+            obj, chain, positions, jitter_percent, used_midpoint_bins,
         )
         for vi in chain:
-            value = max(0.0, min(1.0, _chain_factor(positions[vi], midpoint)))
+            raw = _chain_factor(positions[vi], midpoint)
+            value = _apply_width_curve(raw, curve_points)
             result[vi] = max(result[vi], value)
 
     bm.free()
@@ -336,7 +392,10 @@ def compute_and_apply_weights(obj, settings) -> int:
                         ao_thick = 1.0 - ao_lum
                         weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
         jitter = getattr(settings, "edge_midpoint_jitter_percent", 0.0)
-        midpoint = _calc_midpoint_factor(obj, base_anchors or None, jitter)
+        curve_points = _curve_points_from_settings(settings)
+        midpoint = _calc_midpoint_factor(
+            obj, base_anchors or None, jitter, curve_points,
+        )
         for i in range(n):
             m = midpoint.get(i, 0.0)
             if factor >= 0:
