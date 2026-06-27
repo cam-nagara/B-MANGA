@@ -121,7 +121,7 @@ def _draw_image_selected_settings(box, entry) -> None:
 
 def _draw_image_path_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
-    settings.label(text=f"選択中: {entry.title or entry.id} (画像パス)", icon="CURVE_BEZCURVE")
+    settings.label(text=f"選択中: {entry.title or entry.id} (パターンカーブ)", icon="CURVE_BEZCURVE")
     settings.prop(entry, "title", text="名前")
     settings.prop(entry, "visible", text="表示")
     settings.prop(entry, "locked", text="ロック")
@@ -180,7 +180,7 @@ def _draw_image_path_selected_settings(box, context, entry) -> None:
     wm = getattr(context, "window_manager", None)
     if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
         preset_box = box.box()
-        preset_box.label(text="画像パスプリセット", icon="PRESET")
+        preset_box.label(text="パターンカーブプリセット", icon="PRESET")
         preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
         row = preset_box.row(align=True)
         row.operator("bmanga.image_path_preset_add_local", text="", icon="ADD")

@@ -219,7 +219,7 @@ def _draw_image_path_detail(layout, entry) -> None:
 
     _effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
     preset_box = layout.box()
-    preset_box.label(text="画像パスプリセット")
+    preset_box.label(text="パターンカーブプリセット")
     wm = getattr(bpy.context, "window_manager", None)
     if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
         preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")

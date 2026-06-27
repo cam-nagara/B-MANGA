@@ -978,7 +978,7 @@ def apply_fill_preset_to_entry(context, entry) -> bool:
 
 
 def apply_image_path_preset_to_entry(context, entry) -> bool:
-    """選択中の画像パスプリセットを画像パスエントリに適用."""
+    """選択中のパターンカーブプリセットをパターンカーブエントリに適用."""
     work_dir = _image_path_preset_work_dir(context)
     name = _selected_image_path_preset_name(context)
     preset = image_path_presets.load_preset_by_name(name, work_dir) if name else None
@@ -1008,14 +1008,14 @@ def apply_gradient_preset_to_entry(context, entry) -> bool:
 
 
 class BMANGA_OT_image_path_preset_add_local(Operator):
-    """現在の画像パス設定を新しい共通プリセットとして追加する."""
+    """現在のパターンカーブ設定を新しい共通プリセットとして追加する."""
 
     bl_idname = "bmanga.image_path_preset_add_local"
-    bl_label = "画像パスプリセットを追加"
-    bl_description = "現在の画像パス設定を、新しい共通プリセットとして追加します"
+    bl_label = "パターンカーブプリセットを追加"
+    bl_description = "現在のパターンカーブ設定を、新しい共通プリセットとして追加します"
     bl_options = {"REGISTER", "UNDO"}
 
-    preset_name: StringProperty(name="プリセット名", default="新規画像パスプリセット")  # type: ignore[valid-type]
+    preset_name: StringProperty(name="プリセット名", default="新規パターンカーブプリセット")  # type: ignore[valid-type]
     description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
 
     @classmethod
@@ -1024,17 +1024,17 @@ class BMANGA_OT_image_path_preset_add_local(Operator):
 
     def invoke(self, context, event):
         work_dir = _image_path_preset_work_dir(context)
-        self.preset_name = image_path_presets.unique_preset_name(work_dir, "新規画像パスプリセット")
+        self.preset_name = image_path_presets.unique_preset_name(work_dir, "新規パターンカーブプリセット")
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
         entry = _active_image_path_entry(context)
         if entry is None:
-            self.report({"ERROR"}, "画像パスが選択されていません")
+            self.report({"ERROR"}, "パターンカーブが選択されていません")
             return {"CANCELLED"}
         work_dir = _image_path_preset_work_dir(context)
         name = image_path_presets.unique_preset_name(
-            work_dir, self.preset_name.strip() or "新規画像パスプリセット"
+            work_dir, self.preset_name.strip() or "新規パターンカーブプリセット"
         )
         try:
             image_path_presets.save_local_preset(
@@ -1048,16 +1048,16 @@ class BMANGA_OT_image_path_preset_add_local(Operator):
             self.report({"ERROR"}, f"追加失敗: {exc}")
             return {"CANCELLED"}
         _set_image_path_preset_selector(context, name)
-        self.report({"INFO"}, f"画像パスプリセット追加: {name}")
+        self.report({"INFO"}, f"パターンカーブプリセット追加: {name}")
         return {"FINISHED"}
 
 
 class BMANGA_OT_image_path_preset_rename(Operator):
-    """選択中の画像パスプリセットを改名する."""
+    """選択中のパターンカーブプリセットを改名する."""
 
     bl_idname = "bmanga.image_path_preset_rename"
-    bl_label = "画像パスプリセットを改名"
-    bl_description = "選択中の画像パスプリセットを改名します"
+    bl_label = "パターンカーブプリセットを改名"
+    bl_description = "選択中のパターンカーブプリセットを改名します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="現在の名前", default="")  # type: ignore[valid-type]
@@ -1083,16 +1083,16 @@ class BMANGA_OT_image_path_preset_rename(Operator):
             self.report({"ERROR"}, f"改名失敗: {exc}")
             return {"CANCELLED"}
         _set_image_path_preset_selector(context, preset.name)
-        self.report({"INFO"}, f"画像パスプリセット改名: {preset.name}")
+        self.report({"INFO"}, f"パターンカーブプリセット改名: {preset.name}")
         return {"FINISHED"}
 
 
 class BMANGA_OT_image_path_preset_duplicate(Operator):
-    """選択中の画像パスプリセットを複製する."""
+    """選択中のパターンカーブプリセットを複製する."""
 
     bl_idname = "bmanga.image_path_preset_duplicate"
-    bl_label = "画像パスプリセットを複製"
-    bl_description = "選択中の画像パスプリセットを共通プリセットとして複製します"
+    bl_label = "パターンカーブプリセットを複製"
+    bl_description = "選択中のパターンカーブプリセットを共通プリセットとして複製します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="複製元", default="")  # type: ignore[valid-type]
@@ -1119,16 +1119,16 @@ class BMANGA_OT_image_path_preset_duplicate(Operator):
             self.report({"ERROR"}, f"複製失敗: {exc}")
             return {"CANCELLED"}
         _set_image_path_preset_selector(context, preset.name)
-        self.report({"INFO"}, f"画像パスプリセット複製: {preset.name}")
+        self.report({"INFO"}, f"パターンカーブプリセット複製: {preset.name}")
         return {"FINISHED"}
 
 
 class BMANGA_OT_image_path_preset_delete(Operator):
-    """選択中の画像パスプリセットを削除する."""
+    """選択中のパターンカーブプリセットを削除する."""
 
     bl_idname = "bmanga.image_path_preset_delete"
-    bl_label = "画像パスプリセットを削除"
-    bl_description = "選択中の画像パスプリセットを共通一覧から削除します"
+    bl_label = "パターンカーブプリセットを削除"
+    bl_description = "選択中のパターンカーブプリセットを共通一覧から削除します"
     bl_options = {"REGISTER", "UNDO"}
 
     preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
@@ -1159,7 +1159,7 @@ class BMANGA_OT_image_path_preset_delete(Operator):
         target = fallback if fallback in after_names else (presets_after[0].name if presets_after else "")
         if target:
             _set_image_path_preset_selector(context, target)
-        self.report({"INFO"}, f"画像パスプリセット削除: {name}")
+        self.report({"INFO"}, f"パターンカーブプリセット削除: {name}")
         return {"FINISHED"}
 
 
@@ -1268,8 +1268,8 @@ def register() -> None:
         update=_on_gradient_tool_preset_selector_change,
     )
     bpy.types.WindowManager.bmanga_image_path_tool_preset_selector = EnumProperty(
-        name="画像パスプリセット",
-        description="画像パスツールで新しく作る画像パスの設定",
+        name="パターンカーブプリセット",
+        description="パターンカーブツールで新しく作るパターンカーブの設定",
         items=_image_path_tool_preset_enum_items,
         update=_on_image_path_tool_preset_selector_change,
     )

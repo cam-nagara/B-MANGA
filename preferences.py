@@ -308,7 +308,7 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         options={"HIDDEN"},
     )
     last_image_path_tool_preset: StringProperty(  # type: ignore[valid-type]
-        name="前回の画像パスプリセット",
+        name="前回のパターンカーブプリセット",
         default="標準スタンプ",
         options={"HIDDEN"},
     )

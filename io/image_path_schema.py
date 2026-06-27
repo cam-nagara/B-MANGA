@@ -1,4 +1,4 @@
-"""画像パスレイヤーの保存復元."""
+"""パターンカーブレイヤーの保存復元."""
 
 from __future__ import annotations
 

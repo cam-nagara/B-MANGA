@@ -1,4 +1,4 @@
-"""画像パスレイヤーの PropertyGroup."""
+"""パターンカーブレイヤーの PropertyGroup."""
 
 from __future__ import annotations
 

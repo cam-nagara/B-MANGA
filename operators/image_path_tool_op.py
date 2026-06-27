@@ -1,4 +1,4 @@
-"""画像パスツール: ストロークで画像パスレイヤーを作成."""
+"""パターンカーブツール: ストロークでパターンカーブレイヤーを作成."""
 
 from __future__ import annotations
 
@@ -89,10 +89,10 @@ def _draw_callback(op: "BMANGA_OT_image_path_tool") -> None:
 
 
 class BMANGA_OT_image_path_tool(Operator):
-    """画像パスツール: ドラッグしたストロークに画像を表示するレイヤーを作成"""
+    """パターンカーブツール: ドラッグしたストロークに画像や生成形状を表示するレイヤーを作成"""
 
     bl_idname = "bmanga.image_path_tool"
-    bl_label = "画像パス"
+    bl_label = "パターンカーブ"
     bl_options = {"REGISTER", "UNDO"}
 
     @classmethod
@@ -124,7 +124,7 @@ class BMANGA_OT_image_path_tool(Operator):
         )
         context.window_manager.modal_handler_add(self)
         coma_modal_state.set_active(TOOL_NAME, self, context)
-        self.report({"INFO"}, "画像パス: ドラッグでパスを描く | ESC/右クリックで終了")
+        self.report({"INFO"}, "パターンカーブ: ドラッグでパスを描く | ESC/右クリックで終了")
         return {"RUNNING_MODAL"}
 
     def modal(self, context, event):
@@ -227,7 +227,7 @@ class BMANGA_OT_image_path_tool(Operator):
         if len(simplified) < _MIN_POINTS:
             return {"RUNNING_MODAL"}
         self._create_image_path(context, simplified)
-        bpy.ops.ed.undo_push(message="画像パス")
+        bpy.ops.ed.undo_push(message="パターンカーブ")
         return {"RUNNING_MODAL"}
 
     def _lock_page(self, context, world_x_mm, world_y_mm) -> bool:
@@ -262,7 +262,7 @@ class BMANGA_OT_image_path_tool(Operator):
             i += 1
         entry = coll.add()
         entry.id = f"image_path_{i:04d}"
-        entry.title = f"画像パス {i}"
+        entry.title = f"パターンカーブ {i}"
         entry.path_points_json = json.dumps(points_mm)
         if self._coma_key:
             entry.parent_kind = "coma"

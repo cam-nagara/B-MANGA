@@ -33,7 +33,7 @@ _ADD_KIND_ITEMS = (
     ("coma", "コマ", ""),
     ("gp", "グリースペンシル", ""),
     ("image", "画像 (配置)", ""),
-    ("image_path", "画像パス", ""),
+    ("image_path", "パターンカーブ", ""),
     ("raster", "ラスター (描画)", ""),
     ("fill", "塗り", ""),
     ("balloon", "フキダシ", ""),
@@ -920,7 +920,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
 
         coll = getattr(context.scene, "bmanga_image_path_layers", None)
         if coll is None:
-            self.report({"ERROR"}, "画像パスが未初期化です")
+            self.report({"ERROR"}, "パターンカーブが未初期化です")
             return ""
         used = {entry.id for entry in coll}
         i = 1
@@ -932,7 +932,7 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
         cy = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0) * 0.5
         entry = coll.add()
         entry.id = f"image_path_{i:04d}"
-        entry.title = f"画像パス {i}"
+        entry.title = f"パターンカーブ {i}"
         entry.path_points_json = json.dumps([(cx - 30.0, cy), (cx + 30.0, cy)])
         parent_key = _parent_key_for_new_item(context, anchor_uid, "image_path")
         if parent_key:

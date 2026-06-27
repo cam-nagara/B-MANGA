@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 画像パスツールをパターンカーブツールへ改名しリボン表示を検証 (v0.6.405)
+
+### 症状
+
+- 画像だけでなく生成形状にも対応したあとも、ツール名やプリセット管理の表示が「画像パス」のままで、機能の実態と合わなくなっていた。
+- リボン表示について、繰り返し / 伸ばし / 角度 / 入り抜き / マスク付き表示をまとめて実機画像で確認する決定的なテストがなかった。
+
+### 原因
+
+- 互換性のため内部データ名は維持していたが、ユーザー向けの表示名を新しい機能範囲へ合わせる更新が未実施だった。
+- 既存の実機テストはUV、保存復元、マスク、プリセットを数値で確認していた一方、リボンの見た目をAI目視できる画像生成ケースがなかった。
+
+### 修正
+
+- ツールボタン、ツール下プリセット欄、詳細設定、選択詳細、レイヤー種別、新規作成時の表示名、プリセット管理のユーザー向け表示を「パターンカーブ」に統一した。
+- 既存作品・既存プリセットとの互換性を保つため、保存データ上の内部識別子は変更しないままにした。
+- パターンカーブのリボン表示について、以下の5パターンを同一画像へレンダーする実機目視テストを追加した。
+  - ブラシサイズの画像を直線上で連続表示
+  - 始点から終点まで画像ひとつを曲線状に伸ばして表示
+  - 画像角度を付けた繰り返しリボン
+  - サイズ・不透明度・色の入り抜きを同時適用した繰り返しリボン
+  - コマ内マスク付きの伸ばしリボン
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\image_path_tool_op.py operators\preset_op.py operators\layer_detail_op.py operators\layer_stack_op.py panels\tool_panel.py panels\layer_stack_detail_ui.py core\image_path_layer.py core\layer_stack.py io\image_path_presets.py io\image_path_schema.py preferences.py test\blender_pattern_curve_ribbon_visual_check.py`
+- `python test\test_line_effect_schema.py`
+- `git diff --check`
+- `blender.exe --factory-startup --background --python test\blender_pattern_curve_ribbon_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_check.py`
+- AI目視: `_verify\pattern_curve_ribbon_visual\pattern_curve_ribbon_visual.png` で、下から順に繰り返し直線、曲線伸ばし、角度付き繰り返し、入り抜き付き繰り返し、コマ内マスク付き伸ばしが描画されていることを確認した。
+
+---
+
 ## 2026-06-28 — 詳細設定のプリセット管理と効果線レイアウトを修正 (v0.6.404)
 
 ### 症状

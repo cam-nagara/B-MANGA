@@ -1,4 +1,4 @@
-"""画像パスプリセット管理."""
+"""パターンカーブプリセット管理."""
 
 from __future__ import annotations
 
@@ -421,7 +421,7 @@ def preset_name_exists(work_dir: Path | None, name: str) -> bool:
 
 
 def unique_preset_name(work_dir: Path | None, base: str) -> str:
-    base = (base or "新規画像パスプリセット").strip() or "新規画像パスプリセット"
+    base = (base or "新規パターンカーブプリセット").strip() or "新規パターンカーブプリセット"
     if not preset_name_exists(work_dir, base):
         return base
     for i in range(2, 1000):

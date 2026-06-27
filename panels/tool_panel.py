@@ -238,7 +238,7 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         return
     if coma_modal_state.is_active("image_path_tool") and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
         prow = layout.row(align=True)
-        prow.label(text="画像パス", icon="CURVE_BEZCURVE")
+        prow.label(text="パターンカーブ", icon="CURVE_BEZCURVE")
         prow.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
         return
 
