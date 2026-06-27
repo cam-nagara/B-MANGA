@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 
 import bmesh
@@ -100,7 +101,131 @@ def _get_saved_anchors(obj) -> set[int] | None:
 # エッジ角度解析
 # ------------------------------------------------------------------
 
-def _calc_midpoint_factor(obj, forced_anchors: set[int] | None = None) -> dict[int, float]:
+def _edge_is_sharp(edge, threshold: float) -> bool:
+    if len(edge.link_faces) >= 2:
+        try:
+            return edge.calc_face_angle() >= threshold
+        except ValueError:
+            return False
+    return len(edge.link_faces) == 1
+
+
+def _build_sharp_graph(bm, threshold: float) -> list[set[int]]:
+    sharp_neighbors: list[set[int]] = [set() for _ in range(len(bm.verts))]
+    for edge in bm.edges:
+        if not _edge_is_sharp(edge, threshold):
+            continue
+        v1 = edge.verts[0].index
+        v2 = edge.verts[1].index
+        sharp_neighbors[v1].add(v2)
+        sharp_neighbors[v2].add(v1)
+    return sharp_neighbors
+
+
+def _stable_random_01(obj, chain: list[int]) -> float:
+    start = obj.data.vertices[chain[0]].co
+    end = obj.data.vertices[chain[-1]].co
+    payload = (
+        f"{obj.name}|{chain[0]}:{chain[-1]}|"
+        f"{start.x:.6f},{start.y:.6f},{start.z:.6f}|"
+        f"{end.x:.6f},{end.y:.6f},{end.z:.6f}"
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") / float(1 << 64)
+
+
+def _trace_anchor_chain(
+    sharp_neighbors: list[set[int]],
+    anchors: set[int],
+    start: int,
+    next_vert: int,
+) -> list[int]:
+    chain = [start, next_vert]
+    prev = start
+    current = next_vert
+    while current not in anchors and len(sharp_neighbors[current]) == 2:
+        candidates = [vi for vi in sharp_neighbors[current] if vi != prev]
+        if not candidates:
+            break
+        prev, current = current, candidates[0]
+        chain.append(current)
+    return chain
+
+
+def _iter_anchor_chains(
+    sharp_neighbors: list[set[int]],
+    anchors: set[int],
+) -> list[list[int]]:
+    chains: list[list[int]] = []
+    visited_edges: set[tuple[int, int]] = set()
+    for start in sorted(anchors):
+        for next_vert in sorted(sharp_neighbors[start]):
+            edge_key = tuple(sorted((start, next_vert)))
+            if edge_key in visited_edges:
+                continue
+            chain = _trace_anchor_chain(sharp_neighbors, anchors, start, next_vert)
+            for i in range(len(chain) - 1):
+                visited_edges.add(tuple(sorted((chain[i], chain[i + 1]))))
+            if len(chain) >= 3 and chain[-1] in anchors:
+                chains.append(chain)
+    return chains
+
+
+def _chain_positions(obj, chain: list[int]) -> dict[int, float]:
+    distances = [0.0]
+    total = 0.0
+    vertices = obj.data.vertices
+    for i in range(1, len(chain)):
+        total += (vertices[chain[i]].co - vertices[chain[i - 1]].co).length
+        distances.append(total)
+    if total <= 1e-8:
+        return {vi: 0.0 for vi in chain}
+    return {vi: distances[i] / total for i, vi in enumerate(chain)}
+
+
+def _select_midpoint_vertex(
+    obj,
+    chain: list[int],
+    positions: dict[int, float],
+    jitter_percent: float,
+) -> tuple[int, float]:
+    internal = chain[1:-1]
+    if not internal:
+        center = chain[len(chain) // 2]
+        return center, positions.get(center, 0.5)
+
+    jitter = max(0.0, min(50.0, float(jitter_percent))) / 100.0
+    target = 0.5
+    if jitter > 0.0:
+        target += (_stable_random_01(obj, chain) * 2.0 - 1.0) * jitter
+    low = 0.5 - jitter
+    high = 0.5 + jitter
+
+    candidates = [
+        vi for vi in internal
+        if low - 1e-8 <= positions.get(vi, 0.5) <= high + 1e-8
+    ]
+    if not candidates:
+        candidates = internal
+    selected = min(candidates, key=lambda vi: abs(positions.get(vi, 0.5) - target))
+    return selected, positions.get(selected, 0.5)
+
+
+def _chain_factor(position: float, midpoint: float) -> float:
+    if midpoint <= 1e-8:
+        return 1.0 - position
+    if midpoint >= 1.0 - 1e-8:
+        return position
+    if position <= midpoint:
+        return position / midpoint
+    return (1.0 - position) / (1.0 - midpoint)
+
+
+def _calc_midpoint_factor(
+    obj,
+    forced_anchors: set[int] | None = None,
+    jitter_percent: float = 0.0,
+) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
     forced_anchors が指定された場合、エッジ角度検出をスキップして
@@ -116,75 +241,31 @@ def _calc_midpoint_factor(obj, forced_anchors: set[int] | None = None) -> dict[i
     bm.verts.ensure_lookup_table()
 
     n = len(bm.verts)
-    sharp_neighbors: list[set[int]] = [set() for _ in range(n)]
-    for edge in bm.edges:
-        is_sharp = False
-        if len(edge.link_faces) >= 2:
-            try:
-                is_sharp = edge.calc_face_angle() >= threshold
-            except ValueError:
-                is_sharp = False
-        elif len(edge.link_faces) == 1:
-            is_sharp = True
-        if is_sharp:
-            v1 = edge.verts[0].index
-            v2 = edge.verts[1].index
-            sharp_neighbors[v1].add(v2)
-            sharp_neighbors[v2].add(v1)
+    sharp_neighbors = _build_sharp_graph(bm, threshold)
 
     graph_anchors = {
         i for i, neighbors in enumerate(sharp_neighbors)
         if neighbors and len(neighbors) != 2
     }
-    if not graph_anchors and forced_anchors:
-        graph_anchors = {i for i in forced_anchors if i < n}
+    if forced_anchors:
+        graph_anchors |= {
+            i for i in forced_anchors
+            if i < n and sharp_neighbors[i]
+        }
 
     if not graph_anchors:
         bm.free()
         return {i: 0.0 for i in range(n)}
 
-    from collections import deque
     result = {i: 0.0 for i in range(n)}
-    seen: set[int] = set()
-    for start in range(n):
-        if start in seen or not sharp_neighbors[start]:
-            continue
-        component: set[int] = set()
-        stack = [start]
-        seen.add(start)
-        while stack:
-            vi = stack.pop()
-            component.add(vi)
-            for other in sharp_neighbors[vi]:
-                if other not in seen:
-                    seen.add(other)
-                    stack.append(other)
-
-        anchors = component & graph_anchors
-        if not anchors:
-            continue
-
-        dist = {vi: n for vi in component}
-        queue = deque()
-        for vi in anchors:
-            dist[vi] = 0
-            queue.append(vi)
-
-        while queue:
-            vi = queue.popleft()
-            for other in sharp_neighbors[vi]:
-                if other not in component:
-                    continue
-                if dist[vi] + 1 < dist[other]:
-                    dist[other] = dist[vi] + 1
-                    queue.append(other)
-
-        max_dist = max((d for d in dist.values() if d < n), default=0)
-        if max_dist <= 0:
-            continue
-        for vi, d in dist.items():
-            if d < n:
-                result[vi] = d / max_dist
+    for chain in _iter_anchor_chains(sharp_neighbors, graph_anchors):
+        positions = _chain_positions(obj, chain)
+        _, midpoint = _select_midpoint_vertex(
+            obj, chain, positions, jitter_percent,
+        )
+        for vi in chain:
+            value = max(0.0, min(1.0, _chain_factor(positions[vi], midpoint)))
+            result[vi] = max(result[vi], value)
 
     bm.free()
     return result
@@ -254,7 +335,8 @@ def compute_and_apply_weights(obj, settings) -> int:
                         ao_lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
                         ao_thick = 1.0 - ao_lum
                         weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
-        midpoint = _calc_midpoint_factor(obj, base_anchors or None)
+        jitter = getattr(settings, "edge_midpoint_jitter_percent", 0.0)
+        midpoint = _calc_midpoint_factor(obj, base_anchors or None, jitter)
         for i in range(n):
             m = midpoint.get(i, 0.0)
             if factor >= 0:

@@ -24,10 +24,10 @@ from b_manga_line import (  # noqa: E402
 
 OUT_DIR = ROOT / "_verify" / "b_manga_line_cone_cube_visual"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
-OUT_FULL = OUT_DIR / "cone_cube_all_lines_intersection_full.png"
-OUT_INTERSECTION = OUT_DIR / "cone_cube_intersection_ring_confirm.png"
-OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_zero_zoom.png"
-OUT_LINES = OUT_DIR / "cone_cube_corner_inner_zero_lines_only.png"
+OUT_FULL = OUT_DIR / "cone_cube_all_lines_intersection_jitter_full.png"
+OUT_INTERSECTION = OUT_DIR / "cone_cube_intersection_ring_jitter_confirm.png"
+OUT_CORNER = OUT_DIR / "cone_cube_corner_inner_jitter_zoom.png"
+OUT_LINES = OUT_DIR / "cone_cube_corner_inner_jitter_lines_only.png"
 
 CUBE_SIZE = 2.6
 CUBE_HEIGHT = 1.45
@@ -211,6 +211,7 @@ def _make_cube(surface_mat: bpy.types.Material) -> bpy.types.Object:
 
     settings = cube.bmanga_line_settings
     settings.edge_smooth_factor = -1.0
+    settings.edge_midpoint_jitter_percent = 30.0
     settings.use_vertex_color = False
     settings.use_ao_influence = False
     vertex_analysis.compute_and_apply_weights(cube, settings)
@@ -337,7 +338,7 @@ def _extract_near_corner_inner_lines(cube: bpy.types.Object) -> bpy.types.Object
 
 def _print_near_corner_line_widths(line_obj: bpy.types.Object) -> None:
     endpoint_radii = []
-    midpoint_radii = []
+    zero_positions = []
     for vertex in line_obj.data.vertices:
         co = vertex.co
         best = None
@@ -356,22 +357,20 @@ def _print_near_corner_line_widths(line_obj: bpy.types.Object) -> None:
         dist, t = best
         if t < 0.02:
             endpoint_radii.append(dist)
-        elif abs(t - 0.5) < 0.01:
-            midpoint_radii.append(dist)
+        elif 0.02 < t < 0.98 and dist < 0.001:
+            zero_positions.append(round(t, 3))
     assert endpoint_radii, "角付近の線幅を測定できません"
-    assert midpoint_radii, "中間頂点の線幅を測定できません"
+    assert zero_positions, "乱れ後の中間頂点を測定できません"
     endpoint = max(endpoint_radii)
-    midpoint_min = min(midpoint_radii)
-    midpoint_max = max(midpoint_radii)
+    zero_unique = sorted(set(zero_positions))
     print(f"[LINE_WIDTH] 角付近: radius={endpoint:.5f}", flush=True)
     print(
-        f"[LINE_WIDTH] 中間頂点: min={midpoint_min:.5f} max={midpoint_max:.5f}",
+        f"[LINE_WIDTH] 乱れ後の中間頂点位置: {zero_unique}",
         flush=True,
     )
     assert endpoint > 0.07, f"角付近の線幅が想定より細いです: {endpoint}"
-    assert midpoint_min < 0.001, (
-        f"中間頂点の線幅がゼロになっていません: {midpoint_min}"
-    )
+    assert all(0.2 <= t <= 0.8 for t in zero_unique), zero_unique
+    assert any(abs(t - 0.5) > 0.03 for t in zero_unique), zero_unique
 
 
 def _render_extracted_lines(cube: bpy.types.Object) -> None:

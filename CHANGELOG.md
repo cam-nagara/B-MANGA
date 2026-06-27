@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line に中間頂点の乱れを追加 (v0.3.5)
+
+### 症状
+
+- 中間頂点の線幅調整では、角と角をつなぐラインの中央だけを細くできたが、細くなる位置を辺ごとにずらせなかった。
+
+### 原因
+
+- 中間頂点の位置は常に辺の中央として計算しており、ランダムな位置ずれを指定する設定がなかった。
+
+### 修正
+
+- 線幅の詳細制御に「中間頂点の乱れ (%)」を追加した。
+- 乱れの値は、辺の中央から前後何%の範囲で中間頂点をランダムに選ぶかとして扱うようにした。
+- 乱れ0%では従来どおり中央、乱れありでは範囲内の既存頂点から安定したランダム位置を選び、その頂点がゼロ幅になるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\panels.py addons\b_manga_line\vertex_analysis.py test\blender_b_manga_line_midpoint_jitter_check.py _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python _verify\b_manga_line_cone_cube_inner_visual_check.py`
+- 実機生成結果で、乱れ30%時にゼロ幅の中間頂点が中央から前後30%内へ移動することを確認。
+- AI目視: キューブ + 少し大きめの円錐にラインを付け、交差線オンのまま、こちらを向く角から伸びる三本の内部線がそれぞれ違う位置で細くなることを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line の交差線と内部線ゼロ幅確認を修正 (v0.3.4)
 
 ### 症状

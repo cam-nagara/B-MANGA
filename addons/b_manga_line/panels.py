@@ -82,6 +82,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         box.label(text="線幅の詳細制御", icon="BRUSHES_ALL")
         col = box.column(align=True)
         col.prop(settings, "edge_smooth_factor")
+        col.prop(settings, "edge_midpoint_jitter_percent")
         col.separator()
         col.prop(settings, "use_ao_influence")
         sub = col.column(align=True)

@@ -193,7 +193,7 @@ def _on_intersection_thickness_changed(self, context):
     _propagate(self, context, "intersection_thickness")
 
 
-def _on_edge_smooth_changed(self, context):
+def _refresh_line_width_weights(self, context) -> None:
     from . import vertex_analysis
     owner = self.id_data
     if owner.type == "MESH":
@@ -214,7 +214,16 @@ def _on_edge_smooth_changed(self, context):
                 vertex_analysis.compute_and_apply_weights(owner, self)
             else:
                 mod.vertex_group = ""
+
+
+def _on_edge_smooth_changed(self, context):
+    _refresh_line_width_weights(self, context)
     _propagate(self, context, "edge_smooth_factor")
+
+
+def _on_edge_midpoint_jitter_changed(self, context):
+    _refresh_line_width_weights(self, context)
+    _propagate(self, context, "edge_midpoint_jitter_percent")
 
 
 def _on_camera_comp_changed(self, context):
@@ -489,6 +498,18 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1.0,
         subtype="FACTOR",
         update=_on_edge_smooth_changed,
+    )  # type: ignore[valid-type]
+
+    edge_midpoint_jitter_percent: FloatProperty(
+        name="中間頂点の乱れ (%)",
+        description="辺の中央から前後何%の範囲で中間頂点の位置をランダムにずらす",
+        default=0.0,
+        min=0.0,
+        max=50.0,
+        precision=1,
+        step=5,
+        subtype="PERCENTAGE",
+        update=_on_edge_midpoint_jitter_changed,
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---
