@@ -105,16 +105,20 @@ def _page_guides_visible_update(scene, context) -> None:
 
         work = getattr(scene, "bmanga_work", None) if scene is not None else None
         if work is not None and bool(getattr(work, "loaded", False)):
-            page_ids = None
-            if page_file_scene.is_page_edit_scene(scene):
+            if page_file_scene.is_work_list_scene(scene):
+                page_file_scene.purge_work_list_runtime_data(scene)
+            elif page_file_scene.is_page_edit_scene(scene):
                 page_id = page_file_scene.current_page_id(scene)
+                if not page_id:
+                    role, path_page_id, _coma_id = page_file_scene.current_role(context)
+                    if role == page_file_scene.ROLE_PAGE:
+                        page_id = path_page_id
                 if page_id:
-                    page_ids = {page_id}
-            paper_guide_object.regenerate_all_paper_guides(
-                scene,
-                page_file_scene.work_for_pages(work, page_ids),
-            )
-            paper_guide_object.apply_view_constant_thickness()
+                    paper_guide_object.regenerate_all_paper_guides(
+                        scene,
+                        page_file_scene.work_for_pages(work, {page_id}),
+                    )
+                    paper_guide_object.apply_view_constant_thickness()
     except Exception:  # noqa: BLE001
         pass
     _refresh_page_preview_content(scene, context, force=True)

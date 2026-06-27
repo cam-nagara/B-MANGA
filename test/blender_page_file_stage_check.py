@@ -540,6 +540,9 @@ def main() -> None:
         assert not bpy.ops.bmanga.text_tool.poll()
         assert not bpy.ops.bmanga.effect_line_tool.poll()
         assert not bpy.ops.bmanga.layer_move_tool.poll()
+        work.paper.show_guides = not bool(work.paper.show_guides)
+        work.safe_area_overlay.bleed_outer_enabled = not bool(work.safe_area_overlay.bleed_outer_enabled)
+        _assert_work_file_preview_only()
 
         result = bpy.ops.bmanga.open_page_file(index=0)
         assert result == {"FINISHED"}, result

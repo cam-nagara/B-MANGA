@@ -31,21 +31,27 @@ def _on_safe_area_changed(_self, context) -> None:
     except Exception:  # noqa: BLE001
         pass
     try:
-        from ..utils import page_file_scene, paper_guide_object
+        from ..utils import page_file_scene, page_preview_object, paper_guide_object
 
         scene = getattr(context, "scene", None) if context is not None else None
         work = getattr(scene, "bmanga_work", None) if scene is not None else None
         if scene is not None and work is not None and bool(getattr(work, "loaded", False)):
-            page_ids = None
-            if page_file_scene.is_page_edit_scene(scene):
+            if page_file_scene.is_work_list_scene(scene):
+                page_file_scene.purge_work_list_runtime_data(scene)
+                page_preview_object.sync_page_previews(context, work, force=True)
+                page_file_scene.purge_work_list_runtime_data(scene)
+            elif page_file_scene.is_page_edit_scene(scene):
                 page_id = page_file_scene.current_page_id(scene)
+                if not page_id:
+                    role, path_page_id, _coma_id = page_file_scene.current_role(context)
+                    if role == page_file_scene.ROLE_PAGE:
+                        page_id = path_page_id
                 if page_id:
-                    page_ids = {page_id}
-            paper_guide_object.regenerate_all_paper_guides(
-                scene,
-                page_file_scene.work_for_pages(work, page_ids),
-            )
-            paper_guide_object.apply_view_constant_thickness()
+                    paper_guide_object.regenerate_all_paper_guides(
+                        scene,
+                        page_file_scene.work_for_pages(work, {page_id}),
+                    )
+                    paper_guide_object.apply_view_constant_thickness()
     except Exception:  # noqa: BLE001
         _logger.exception("safe area runtime object sync failed")
     screen = getattr(context, "screen", None) if context is not None else None

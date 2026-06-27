@@ -60,14 +60,24 @@ def _sync_paper_runtime_objects(context) -> None:
     if scene is None or work is None or not bool(getattr(work, "loaded", False)):
         return
     try:
-        from ..utils import page_file_scene, paper_bg_object, paper_guide_object
+        from ..utils import page_file_scene, page_preview_object, paper_bg_object, paper_guide_object
 
-        page_ids = None
-        if page_file_scene.is_page_edit_scene(scene):
-            page_id = page_file_scene.current_page_id(scene)
-            if page_id:
-                page_ids = {page_id}
-        scoped_work = page_file_scene.work_for_pages(work, page_ids)
+        if page_file_scene.is_work_list_scene(scene):
+            page_file_scene.purge_work_list_runtime_data(scene)
+            page_preview_object.sync_page_previews(context, work, force=True)
+            page_file_scene.purge_work_list_runtime_data(scene)
+            return
+        if not page_file_scene.is_page_edit_scene(scene):
+            page_preview_object.schedule_sync_page_previews(force=True)
+            return
+        page_id = page_file_scene.current_page_id(scene)
+        if not page_id:
+            role, path_page_id, _coma_id = page_file_scene.current_role(context)
+            if role == page_file_scene.ROLE_PAGE:
+                page_id = path_page_id
+        if not page_id:
+            return
+        scoped_work = page_file_scene.work_for_pages(work, {page_id})
         paper_bg_object.regenerate_all_paper_bgs(scene, scoped_work)
         paper_guide_object.regenerate_all_paper_guides(scene, scoped_work)
         paper_guide_object.apply_view_constant_thickness()
