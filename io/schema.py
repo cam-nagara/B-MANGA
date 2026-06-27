@@ -13,6 +13,7 @@ from __future__ import annotations
 from contextlib import ExitStack, contextmanager
 from typing import Any
 
+from .image_path_schema import image_path_layer_from_dict, image_path_layer_to_dict
 from ..core import balloon as balloon_core
 from ..utils import (
     balloon_shapes,
@@ -25,7 +26,7 @@ from ..utils import (
 )
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
-WORK_SCHEMA_VERSION = 7
+WORK_SCHEMA_VERSION = 8
 PAGES_SCHEMA_VERSION = 1
 PAGE_SCHEMA_VERSION = 3
 COMA_SCHEMA_VERSION = 2
@@ -740,62 +741,6 @@ def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool =
     if curve_pts and isinstance(curve_pts, list) and len(curve_pts) >= 2:
         import json as _json
         entry["_pending_curve_points"] = _json.dumps(curve_pts)
-
-
-# ---------- ImagePathLayer ----------
-
-
-def image_path_layer_to_dict(entry) -> dict[str, Any]:
-    return {
-        "id": str(getattr(entry, "id", "") or ""),
-        "title": str(getattr(entry, "title", "") or ""),
-        "filepath": str(getattr(entry, "filepath", "") or ""),
-        "pathPointsJson": str(getattr(entry, "path_points_json", "") or ""),
-        "drawMode": str(getattr(entry, "draw_mode", "stamp") or "stamp"),
-        "brushSizeMm": round(float(getattr(entry, "brush_size_mm", 10.0) or 10.0), 4),
-        "aspectRatio": round(float(getattr(entry, "aspect_ratio", 1.0) or 1.0), 4),
-        "imageAngleDeg": round(float(getattr(entry, "image_angle_deg", 0.0) or 0.0), 4),
-        "spacingPercent": round(float(getattr(entry, "spacing_percent", 100.0) or 100.0), 4),
-        "stampAngleMode": str(getattr(entry, "stamp_angle_mode", "line") or "line"),
-        "stampAngleObjectName": str(getattr(entry, "stamp_angle_object_name", "") or ""),
-        "ribbonRepeatMode": str(getattr(entry, "ribbon_repeat_mode", "repeat") or "repeat"),
-        "visible": bool(getattr(entry, "visible", True)),
-        "locked": bool(getattr(entry, "locked", False)),
-        "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
-        "opacityUnit": "percent",
-        "parentKind": str(getattr(entry, "parent_kind", "page") or "page"),
-        "parentKey": str(getattr(entry, "parent_key", "") or ""),
-        "folderKey": str(getattr(entry, "folder_key", "") or ""),
-    }
-
-
-def image_path_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
-    data = data or {}
-    entry.id = str(data.get("id", "") or "")
-    entry.title = str(data.get("title", "") or "")
-    entry.filepath = str(data.get("filepath", data.get("imagePath", "")) or "")
-    entry.path_points_json = str(data.get("pathPointsJson", data.get("path_points_json", "")) or "")
-    entry.parent_kind = str(data.get("parentKind", data.get("parent_kind", "page")) or "page")
-    entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
-    if hasattr(entry, "folder_key"):
-        entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
-    entry.draw_mode = str(data.get("drawMode", data.get("draw_mode", "stamp")) or "stamp")
-    entry.brush_size_mm = float(data.get("brushSizeMm", data.get("brush_size_mm", 10.0)) or 10.0)
-    entry.aspect_ratio = float(data.get("aspectRatio", data.get("aspect_ratio", 1.0)) or 1.0)
-    entry.image_angle_deg = float(data.get("imageAngleDeg", data.get("image_angle_deg", 0.0)) or 0.0)
-    entry.spacing_percent = float(data.get("spacingPercent", data.get("spacing_percent", 100.0)) or 100.0)
-    entry.stamp_angle_mode = str(
-        data.get("stampAngleMode", data.get("stamp_angle_mode", "line")) or "line"
-    )
-    entry.stamp_angle_object_name = str(
-        data.get("stampAngleObjectName", data.get("stamp_angle_object_name", "")) or ""
-    )
-    entry.ribbon_repeat_mode = str(
-        data.get("ribbonRepeatMode", data.get("ribbon_repeat_mode", "repeat")) or "repeat"
-    )
-    entry.visible = bool(data.get("visible", True))
-    entry.locked = bool(data.get("locked", False))
-    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
 
 
 # ---------- LayerFolder ----------

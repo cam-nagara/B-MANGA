@@ -59,6 +59,8 @@ _INOUT_APPLY_ITEMS = line_effect_schema.INOUT_APPLY_ITEMS
 _INOUT_RANGE_MODE_ITEMS = line_effect_schema.INOUT_RANGE_MODE_ITEMS
 _WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = line_effect_schema.WHITE_OUTLINE_BLACK_DIRECTION_ITEMS
 _LINE_IMAGE_DRAW_MODE_ITEMS = line_effect_schema.PATH_IMAGE_DRAW_MODE_ITEMS
+_LINE_IMAGE_SOURCE_ITEMS = line_effect_schema.PATH_CONTENT_SOURCE_ITEMS
+_LINE_IMAGE_SHAPE_ITEMS = line_effect_schema.PATH_GENERATED_SHAPE_ITEMS
 _LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS = line_effect_schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS
 _LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS = line_effect_schema.PATH_IMAGE_RIBBON_REPEAT_MODE_ITEMS
 
@@ -161,7 +163,14 @@ def effect_params_to_dict(params) -> dict:
         if field == "spacing_density_compensation":
             spacing_mode = str(getattr(params, "spacing_mode", "") or "")
             data[field] = True if spacing_mode == "distance" else _density_compensation_enabled(value)
-        elif field in {"line_color", "fill_color", "white_underlay_color"}:
+        elif field in {
+            "line_color",
+            "fill_color",
+            "white_underlay_color",
+            "line_image_color",
+            "line_image_inout_start_color",
+            "line_image_inout_end_color",
+        }:
             data[field] = _color_value(value)
         elif field == "inout_apply":
             data[field] = str(value) if str(value) in {"brush_size", "opacity"} else "brush_size"
@@ -230,7 +239,14 @@ def effect_params_from_dict(params, data: dict) -> None:
             continue
         value = data[field]
         try:
-            if field in {"line_color", "fill_color", "white_underlay_color"}:
+            if field in {
+                "line_color",
+                "fill_color",
+                "white_underlay_color",
+                "line_image_color",
+                "line_image_inout_start_color",
+                "line_image_inout_end_color",
+            }:
                 setattr(params, field, tuple(float(v) for v in value[:4]))
             else:
                 setattr(params, field, value)
@@ -278,7 +294,11 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     brush_size_mm: FloatProperty(name="線幅 (mm)", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
     base_path_enabled: BoolProperty(name="基準パスを編集", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     base_path_points_json: StringProperty(name="基準パス", default="", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_source: EnumProperty(name="内容", items=_LINE_IMAGE_SOURCE_ITEMS, default="image", update=_on_params_changed)  # type: ignore[valid-type]
     line_image_path: StringProperty(name="画像", default="", subtype="FILE_PATH", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_shape_kind: EnumProperty(name="生成形状", items=_LINE_IMAGE_SHAPE_ITEMS, default="circle", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_shape_sides: IntProperty(name="角数", default=6, min=3, max=16, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_color: FloatVectorProperty(name="色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     line_image_draw_mode: EnumProperty(name="画像の表示方法", items=_LINE_IMAGE_DRAW_MODE_ITEMS, default="ribbon", update=_on_params_changed)  # type: ignore[valid-type]
     line_image_brush_size_mm: FloatProperty(name="画像ブラシサイズ", default=3.0, min=0.1, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
     line_image_aspect_ratio: FloatProperty(name="画像の縦横比", default=1.0, min=0.01, soft_min=0.1, soft_max=10.0, update=_on_params_changed)  # type: ignore[valid-type]
@@ -287,6 +307,11 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     line_image_stamp_angle_mode: EnumProperty(name="画像の角度", items=_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS, default="line", update=_on_params_changed)  # type: ignore[valid-type]
     line_image_stamp_angle_object_name: StringProperty(name="方向オブジェクト", default="", update=_on_params_changed)  # type: ignore[valid-type]
     line_image_ribbon_repeat_mode: EnumProperty(name="リボン", items=_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS, default="repeat", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_inout_size_enabled: BoolProperty(name="サイズ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_inout_opacity_enabled: BoolProperty(name="不透明度", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_inout_color_enabled: BoolProperty(name="色", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_inout_start_color: FloatVectorProperty(name="入り色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_inout_end_color: FloatVectorProperty(name="抜き色", subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]

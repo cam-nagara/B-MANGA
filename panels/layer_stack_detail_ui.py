@@ -126,18 +126,27 @@ def _draw_image_path_selected_settings(box, context, entry) -> None:
     settings.prop(entry, "visible", text="表示")
     settings.prop(entry, "locked", text="ロック")
     settings.prop(entry, "opacity", text="不透明度", slider=True)
-    settings.prop(entry, "filepath", text="画像")
-    settings.prop(entry, "draw_mode", text="表示方法")
+    settings.prop(entry, "content_source", text="内容")
+    source = str(getattr(entry, "content_source", "image") or "image")
+    if source == "shape":
+        row = settings.row(align=True)
+        row.prop(entry, "shape_kind", text="生成形状")
+        if str(getattr(entry, "shape_kind", "") or "") == "polygon":
+            row.prop(entry, "shape_sides", text="角数")
+    else:
+        settings.prop(entry, "filepath", text="画像")
+        settings.prop(entry, "draw_mode", text="表示方法")
 
     row = settings.row(align=True)
     row.prop(entry, "brush_size_mm", text="ブラシサイズ")
     row.prop(entry, "aspect_ratio", text="縦横比")
     row = settings.row(align=True)
-    row.prop(entry, "image_angle_deg", text="画像の角度")
+    row.prop(entry, "image_angle_deg", text="角度")
     row.prop(entry, "spacing_percent", text="間隔")
+    settings.prop(entry, "color", text="色")
 
     mode = str(getattr(entry, "draw_mode", "stamp") or "stamp")
-    if mode == "stamp":
+    if source == "image" and mode == "stamp":
         settings.prop(entry, "stamp_angle_mode", text="角度")
         if str(getattr(entry, "stamp_angle_mode", "") or "") == "object":
             settings.prop_search(
@@ -147,8 +156,26 @@ def _draw_image_path_selected_settings(box, context, entry) -> None:
                 "objects",
                 text="方向オブジェクト",
             )
-    else:
+    elif source == "image":
         settings.prop(entry, "ribbon_repeat_mode", text="リボン")
+
+    inout_box = settings.box()
+    inout_box.label(text="入り抜き")
+    row = inout_box.row(align=True)
+    row.prop(entry, "inout_size_enabled", toggle=True)
+    row.prop(entry, "inout_opacity_enabled", toggle=True)
+    row.prop(entry, "inout_color_enabled", toggle=True)
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_percent")
+    row.prop(entry, "out_percent")
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_start_percent")
+    row.prop(entry, "out_start_percent")
+    color_row = inout_box.row(align=True)
+    color_row.enabled = bool(getattr(entry, "inout_color_enabled", False))
+    color_row.prop(entry, "inout_start_color", text="入り色")
+    color_row.prop(entry, "inout_end_color", text="抜き色")
+    effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
 
     wm = getattr(context, "window_manager", None)
     if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):

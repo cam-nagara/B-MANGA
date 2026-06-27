@@ -21,7 +21,11 @@ _BUILTIN_PRESETS: tuple[dict[str, Any], ...] = (
         "presetType": "image_path",
         "presetName": "標準スタンプ",
         "description": "線の向きに沿って画像を連続表示",
+        "contentSource": "image",
         "drawMode": "stamp",
+        "shapeKind": "circle",
+        "shapeSides": 6,
+        "color": [1.0, 1.0, 1.0, 1.0],
         "brushSizeMm": 10.0,
         "aspectRatio": 1.0,
         "imageAngleDeg": 0.0,
@@ -31,13 +35,28 @@ _BUILTIN_PRESETS: tuple[dict[str, Any], ...] = (
         "ribbonRepeatMode": "repeat",
         "imagePath": "",
         "opacity": 100.0,
+        "inoutSizeEnabled": False,
+        "inoutOpacityEnabled": False,
+        "inoutColorEnabled": False,
+        "inPercent": 100.0,
+        "outPercent": 100.0,
+        "inStartPercent": 0.0,
+        "outStartPercent": 0.0,
+        "inEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "outEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "inoutStartColor": [1.0, 1.0, 1.0, 1.0],
+        "inoutEndColor": [1.0, 1.0, 1.0, 1.0],
     },
     {
         "schemaVersion": 1,
         "presetType": "image_path",
         "presetName": "標準リボン",
         "description": "ブラシサイズの画像をリボン状に連続表示",
+        "contentSource": "image",
         "drawMode": "ribbon",
+        "shapeKind": "circle",
+        "shapeSides": 6,
+        "color": [1.0, 1.0, 1.0, 1.0],
         "brushSizeMm": 10.0,
         "aspectRatio": 1.0,
         "imageAngleDeg": 0.0,
@@ -47,13 +66,28 @@ _BUILTIN_PRESETS: tuple[dict[str, Any], ...] = (
         "ribbonRepeatMode": "repeat",
         "imagePath": "",
         "opacity": 100.0,
+        "inoutSizeEnabled": False,
+        "inoutOpacityEnabled": False,
+        "inoutColorEnabled": False,
+        "inPercent": 100.0,
+        "outPercent": 100.0,
+        "inStartPercent": 0.0,
+        "outStartPercent": 0.0,
+        "inEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "outEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "inoutStartColor": [1.0, 1.0, 1.0, 1.0],
+        "inoutEndColor": [1.0, 1.0, 1.0, 1.0],
     },
     {
         "schemaVersion": 1,
         "presetType": "image_path",
         "presetName": "一枚リボン",
         "description": "始点から終点まで画像ひとつを伸ばして表示",
+        "contentSource": "image",
         "drawMode": "ribbon",
+        "shapeKind": "circle",
+        "shapeSides": 6,
+        "color": [1.0, 1.0, 1.0, 1.0],
         "brushSizeMm": 10.0,
         "aspectRatio": 1.0,
         "imageAngleDeg": 0.0,
@@ -63,6 +97,48 @@ _BUILTIN_PRESETS: tuple[dict[str, Any], ...] = (
         "ribbonRepeatMode": "stretch",
         "imagePath": "",
         "opacity": 100.0,
+        "inoutSizeEnabled": False,
+        "inoutOpacityEnabled": False,
+        "inoutColorEnabled": False,
+        "inPercent": 100.0,
+        "outPercent": 100.0,
+        "inStartPercent": 0.0,
+        "outStartPercent": 0.0,
+        "inEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "outEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "inoutStartColor": [1.0, 1.0, 1.0, 1.0],
+        "inoutEndColor": [1.0, 1.0, 1.0, 1.0],
+    },
+    {
+        "schemaVersion": 1,
+        "presetType": "image_path",
+        "presetName": "円形スタンプ",
+        "description": "円形の生成形状を連続表示",
+        "contentSource": "shape",
+        "drawMode": "stamp",
+        "shapeKind": "circle",
+        "shapeSides": 6,
+        "color": [0.0, 0.0, 0.0, 1.0],
+        "brushSizeMm": 10.0,
+        "aspectRatio": 1.0,
+        "imageAngleDeg": 0.0,
+        "spacingPercent": 100.0,
+        "stampAngleMode": "line",
+        "stampAngleObjectName": "",
+        "ribbonRepeatMode": "repeat",
+        "imagePath": "",
+        "opacity": 100.0,
+        "inoutSizeEnabled": False,
+        "inoutOpacityEnabled": False,
+        "inoutColorEnabled": False,
+        "inPercent": 100.0,
+        "outPercent": 100.0,
+        "inStartPercent": 0.0,
+        "outStartPercent": 0.0,
+        "inEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "outEasingCurve": "0.0000,0.0000;1.0000,1.0000",
+        "inoutStartColor": [0.0, 0.0, 0.0, 1.0],
+        "inoutEndColor": [0.0, 0.0, 0.0, 1.0],
     },
 )
 
@@ -223,8 +299,16 @@ def load_preset_by_name(name: str, work_dir: Path | None = None) -> ImagePathPre
 
 def apply_preset_to_entry(preset: ImagePathPreset, entry) -> None:
     data = preset.data
+    if hasattr(entry, "content_source"):
+        entry.content_source = str(data.get("contentSource", getattr(entry, "content_source", "image")) or "image")
     if hasattr(entry, "filepath"):
         entry.filepath = str(data.get("imagePath", getattr(entry, "filepath", "")) or "")
+    if hasattr(entry, "shape_kind"):
+        entry.shape_kind = str(data.get("shapeKind", getattr(entry, "shape_kind", "circle")) or "circle")
+    if hasattr(entry, "shape_sides"):
+        entry.shape_sides = int(data.get("shapeSides", getattr(entry, "shape_sides", 6)) or 6)
+    if hasattr(entry, "color"):
+        entry.color = _color_tuple(data.get("color", getattr(entry, "color", (1.0, 1.0, 1.0, 1.0))))
     entry.draw_mode = str(data.get("drawMode", getattr(entry, "draw_mode", "stamp")) or "stamp")
     entry.brush_size_mm = float(data.get("brushSizeMm", getattr(entry, "brush_size_mm", 10.0)) or 10.0)
     entry.aspect_ratio = float(data.get("aspectRatio", getattr(entry, "aspect_ratio", 1.0)) or 1.0)
@@ -238,6 +322,32 @@ def apply_preset_to_entry(preset: ImagePathPreset, entry) -> None:
         data.get("ribbonRepeatMode", getattr(entry, "ribbon_repeat_mode", "repeat")) or "repeat"
     )
     entry.opacity = float(data.get("opacity", getattr(entry, "opacity", 100.0)) or 100.0)
+    for attr, key, default in (
+        ("inout_size_enabled", "inoutSizeEnabled", False),
+        ("inout_opacity_enabled", "inoutOpacityEnabled", False),
+        ("inout_color_enabled", "inoutColorEnabled", False),
+    ):
+        if hasattr(entry, attr):
+            setattr(entry, attr, bool(data.get(key, getattr(entry, attr, default))))
+    for attr, key, default in (
+        ("in_percent", "inPercent", 100.0),
+        ("out_percent", "outPercent", 100.0),
+        ("in_start_percent", "inStartPercent", 0.0),
+        ("out_start_percent", "outStartPercent", 0.0),
+    ):
+        if hasattr(entry, attr):
+            setattr(entry, attr, float(data.get(key, getattr(entry, attr, default)) or default))
+    for attr, key in (("in_easing_curve", "inEasingCurve"), ("out_easing_curve", "outEasingCurve")):
+        if hasattr(entry, attr):
+            setattr(entry, attr, str(data.get(key, getattr(entry, attr, "")) or ""))
+    if hasattr(entry, "inout_start_color"):
+        entry.inout_start_color = _color_tuple(
+            data.get("inoutStartColor", getattr(entry, "inout_start_color", (1.0, 1.0, 1.0, 1.0)))
+        )
+    if hasattr(entry, "inout_end_color"):
+        entry.inout_end_color = _color_tuple(
+            data.get("inoutEndColor", getattr(entry, "inout_end_color", (1.0, 1.0, 1.0, 1.0)))
+        )
 
 
 def preset_dict_from_entry(entry, name: str, description: str = "") -> dict[str, Any]:
@@ -246,6 +356,10 @@ def preset_dict_from_entry(entry, name: str, description: str = "") -> dict[str,
         "presetType": "image_path",
         "presetName": name,
         "description": description,
+        "contentSource": str(getattr(entry, "content_source", "image") or "image"),
+        "shapeKind": str(getattr(entry, "shape_kind", "circle") or "circle"),
+        "shapeSides": int(getattr(entry, "shape_sides", 6) or 6),
+        "color": _rounded_color(getattr(entry, "color", (1.0, 1.0, 1.0, 1.0))),
         "drawMode": str(getattr(entry, "draw_mode", "stamp") or "stamp"),
         "brushSizeMm": round(float(getattr(entry, "brush_size_mm", 10.0) or 10.0), 4),
         "aspectRatio": round(float(getattr(entry, "aspect_ratio", 1.0) or 1.0), 4),
@@ -256,7 +370,32 @@ def preset_dict_from_entry(entry, name: str, description: str = "") -> dict[str,
         "ribbonRepeatMode": str(getattr(entry, "ribbon_repeat_mode", "repeat") or "repeat"),
         "imagePath": str(getattr(entry, "filepath", "") or ""),
         "opacity": round(float(getattr(entry, "opacity", 100.0) or 100.0), 4),
+        "inoutSizeEnabled": bool(getattr(entry, "inout_size_enabled", False)),
+        "inoutOpacityEnabled": bool(getattr(entry, "inout_opacity_enabled", False)),
+        "inoutColorEnabled": bool(getattr(entry, "inout_color_enabled", False)),
+        "inPercent": round(float(getattr(entry, "in_percent", 100.0) or 100.0), 4),
+        "outPercent": round(float(getattr(entry, "out_percent", 100.0) or 100.0), 4),
+        "inStartPercent": round(float(getattr(entry, "in_start_percent", 0.0) or 0.0), 4),
+        "outStartPercent": round(float(getattr(entry, "out_start_percent", 0.0) or 0.0), 4),
+        "inEasingCurve": str(getattr(entry, "in_easing_curve", "") or ""),
+        "outEasingCurve": str(getattr(entry, "out_easing_curve", "") or ""),
+        "inoutStartColor": _rounded_color(getattr(entry, "inout_start_color", (1.0, 1.0, 1.0, 1.0))),
+        "inoutEndColor": _rounded_color(getattr(entry, "inout_end_color", (1.0, 1.0, 1.0, 1.0))),
     }
+
+
+def _rounded_color(value) -> list[float]:
+    return [round(float(v), 4) for v in _color_tuple(value)]
+
+
+def _color_tuple(value) -> tuple[float, float, float, float]:
+    try:
+        vals = [float(value[i]) for i in range(min(4, len(value)))]
+    except Exception:  # noqa: BLE001
+        vals = [1.0, 1.0, 1.0, 1.0]
+    while len(vals) < 4:
+        vals.append(1.0)
+    return tuple(max(0.0, min(1.0, v)) for v in vals[:4])
 
 
 def _local_preset_by_name(name: str) -> ImagePathPreset | None:

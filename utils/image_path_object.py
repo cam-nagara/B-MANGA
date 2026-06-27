@@ -14,6 +14,7 @@ from . import layer_object_sync as los
 from . import log
 from . import object_naming as on
 from . import object_preserve
+from . import path_content
 from .geom import m_to_mm, mm_to_m
 from .image_real_object import entry_page_offset_mm, page_for_entry
 
@@ -200,8 +201,6 @@ def _build_stamp_mesh(
     brush = max(0.1, float(getattr(entry, "brush_size_mm", 10.0) or 10.0))
     aspect = max(0.01, float(getattr(entry, "aspect_ratio", 1.0) or 1.0))
     spacing = max(0.1, brush * max(1.0, float(getattr(entry, "spacing_percent", 100.0) or 100.0)) / 100.0)
-    width = brush * aspect
-    height = brush
     distances = [0.0]
     d = spacing
     while d < total:
@@ -211,26 +210,37 @@ def _build_stamp_mesh(
         distances.append(total)
 
     verts: list[tuple[float, float, float]] = []
-    faces: list[tuple[int, int, int, int]] = []
+    faces: list[tuple[int, ...]] = []
     uvs: list[tuple[float, float]] = []
+    colors: list[tuple[float, float, float, float]] = []
     cx, cy = center
-    half_w = width * 0.5
-    half_h = height * 0.5
-    base_corners = [(-half_w, -half_h), (half_w, -half_h), (half_w, half_h), (-half_w, half_h)]
+    source = str(getattr(entry, "content_source", "image") or "image")
+    base_shape = path_content.unit_shape_points(
+        getattr(entry, "shape_kind", "circle"),
+        sides=int(getattr(entry, "shape_sides", 6) or 6),
+    )
+    base_corners = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]
     face_uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     for distance in distances:
         x, y, path_angle = _interpolate_at(points, cumulative, distance)
+        profile = path_content.inout_profile_value(entry, distance, total)
+        scale = path_content.size_factor(entry, profile)
+        rgba = path_content.color_for_path_distance(entry, distance, total)
         angle = _stamp_angle(entry, path_angle)
         ca = math.cos(angle)
         sa = math.sin(angle)
         start = len(verts)
-        for lx, ly in base_corners:
+        shape = base_shape if source == "shape" else base_corners
+        for ux, uy in shape:
+            lx = ux * brush * aspect * scale
+            ly = uy * brush * scale
             vx = x + lx * ca - ly * sa - cx
             vy = y + lx * sa + ly * ca - cy
             verts.append((mm_to_m(vx), mm_to_m(vy), 0.0))
-        faces.append((start, start + 1, start + 2, start + 3))
-        uvs.extend(face_uvs)
-    _assign_mesh(mesh, verts, faces, uvs)
+            colors.append(rgba)
+        faces.append(tuple(range(start, start + len(shape))))
+        uvs.extend(face_uvs if source != "shape" else [(0.0, 0.0)] * len(shape))
+    _assign_mesh(mesh, verts, faces, uvs, colors)
 
 
 def _ribbon_tangent(points: list[tuple[float, float]], index: int) -> tuple[float, float]:
@@ -264,16 +274,21 @@ def _build_ribbon_mesh(
     angle = math.radians(float(getattr(entry, "image_angle_deg", 0.0) or 0.0))
 
     verts: list[tuple[float, float, float]] = []
-    faces: list[tuple[int, int, int, int]] = []
+    faces: list[tuple[int, ...]] = []
     uvs: list[tuple[float, float]] = []
+    colors: list[tuple[float, float, float, float]] = []
     cx, cy = center
     for i, (x, y) in enumerate(points):
+        profile = path_content.inout_profile_value(entry, cumulative[i], total)
+        local_half = half * path_content.size_factor(entry, profile)
+        rgba = path_content.color_for_path_distance(entry, cumulative[i], total)
         tx, ty = _ribbon_tangent(points, i)
         nx, ny = -ty, tx
-        left = (x + nx * half - cx, y + ny * half - cy)
-        right = (x - nx * half - cx, y - ny * half - cy)
+        left = (x + nx * local_half - cx, y + ny * local_half - cy)
+        right = (x - nx * local_half - cx, y - ny * local_half - cy)
         verts.append((mm_to_m(left[0]), mm_to_m(left[1]), 0.0))
         verts.append((mm_to_m(right[0]), mm_to_m(right[1]), 0.0))
+        colors.extend([rgba, rgba])
         if stretch:
             u = cumulative[i] / total if total > 1e-9 else 0.0
         else:
@@ -283,14 +298,15 @@ def _build_ribbon_mesh(
     for i in range(len(points) - 1):
         start = i * 2
         faces.append((start, start + 1, start + 3, start + 2))
-    _assign_mesh(mesh, verts, faces, uvs)
+    _assign_mesh(mesh, verts, faces, uvs, colors)
 
 
 def _assign_mesh(
     mesh: bpy.types.Mesh,
     verts: list[tuple[float, float, float]],
-    faces: list[tuple[int, int, int, int]],
+    faces: list[tuple[int, ...]],
     uvs: list[tuple[float, float]],
+    colors: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     mesh.clear_geometry()
     mesh.from_pydata(verts, [], faces)
@@ -302,16 +318,20 @@ def _assign_mesh(
                 vertex_index = mesh.loops[loop_index].vertex_index
                 if 0 <= vertex_index < len(uvs):
                     uv_layer.data[loop_index].uv = uvs[vertex_index]
-        return
-    uv_index = 0
-    for poly in mesh.polygons:
-        for loop_index in poly.loop_indices:
-            if uv_index < len(uvs):
-                uv_layer.data[loop_index].uv = uvs[uv_index]
-            uv_index += 1
+    else:
+        uv_index = 0
+        for poly in mesh.polygons:
+            for loop_index in poly.loop_indices:
+                if uv_index < len(uvs):
+                    uv_layer.data[loop_index].uv = uvs[uv_index]
+                uv_index += 1
+    path_content.write_color_attribute(mesh, colors)
+    mesh.update()
 
 
 def _load_image(entry) -> Optional[bpy.types.Image]:
+    if str(getattr(entry, "content_source", "image") or "image") != "image":
+        return None
     filepath = str(getattr(entry, "filepath", "") or "")
     if not filepath:
         return None
@@ -330,82 +350,21 @@ def _load_image(entry) -> Optional[bpy.types.Image]:
         return None
 
 
-def _ensure_material(name: str, image: Optional[bpy.types.Image], opacity: float, *, mask_info=None) -> bpy.types.Material:
-    mat = bpy.data.materials.get(name)
-    if mat is None:
-        mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
-    try:
-        mat.blend_method = "BLEND"
-        mat.show_transparent_back = True
-    except Exception:  # noqa: BLE001
-        pass
-    nt = mat.node_tree
-    for node in list(nt.nodes):
-        nt.nodes.remove(node)
-
-    out = nt.nodes.new("ShaderNodeOutputMaterial")
-    out.location = (520, 0)
-    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-    transparent.location = (40, -140)
-    emission = nt.nodes.new("ShaderNodeEmission")
-    emission.location = (40, 80)
-    mix = nt.nodes.new("ShaderNodeMixShader")
-    mix.location = (300, 0)
-    alpha_factor = max(0.0, min(1.0, float(opacity or 0.0) / 100.0))
-
-    if image is not None:
-        tex = nt.nodes.new("ShaderNodeTexImage")
-        tex.location = (-420, 60)
-        tex.image = image
-        try:
-            tex.extension = "REPEAT"
-        except Exception:  # noqa: BLE001
-            pass
-        nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-        alpha_socket = tex.outputs["Alpha"]
-    else:
-        value = nt.nodes.new("ShaderNodeValue")
-        value.location = (-420, -160)
-        value.outputs[0].default_value = 0.0
-        emission.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
-        alpha_socket = value.outputs[0]
-
-    if mask_info is not None:
-        try:
-            from . import material_opacity_mask
-
-            masked = material_opacity_mask.multiply_alpha_by_mask(
-                nt,
-                alpha_socket,
-                mask_object=getattr(mask_info, "space_object", None),
-                mask_image=getattr(mask_info, "image", None),
-            )
-            if masked is not None:
-                alpha_socket = masked
-        except Exception:  # noqa: BLE001
-            pass
-
-    opacity_node = nt.nodes.new("ShaderNodeValue")
-    opacity_node.location = (-180, -220)
-    opacity_node.outputs[0].default_value = alpha_factor
-    alpha_mul = nt.nodes.new("ShaderNodeMath")
-    alpha_mul.operation = "MULTIPLY"
-    alpha_mul.location = (40, -240)
-    nt.links.new(alpha_socket, alpha_mul.inputs[0])
-    nt.links.new(opacity_node.outputs[0], alpha_mul.inputs[1])
-
-    emission.inputs["Strength"].default_value = 1.0
-    nt.links.new(alpha_mul.outputs[0], mix.inputs["Fac"])
-    nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
-    nt.links.new(emission.outputs["Emission"], mix.inputs[2])
-    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    try:
-        mat.diffuse_color = (1.0, 1.0, 1.0, alpha_factor)
-        mat.update_tag()
-    except Exception:  # noqa: BLE001
-        pass
-    return mat
+def _ensure_material(
+    name: str,
+    image: Optional[bpy.types.Image],
+    opacity: float,
+    *,
+    mask_info=None,
+    fallback_alpha: float = 1.0,
+) -> bpy.types.Material:
+    return path_content.ensure_material(
+        name,
+        image,
+        opacity,
+        mask_info=mask_info,
+        fallback_alpha=fallback_alpha,
+    )
 
 
 def _remove_object(obj: bpy.types.Object) -> None:
@@ -443,7 +402,8 @@ def ensure_image_path_object(
 
     if len(points) >= 2:
         center = _points_center(points)
-        if str(getattr(entry, "draw_mode", "stamp") or "stamp") == "ribbon":
+        source = str(getattr(entry, "content_source", "image") or "image")
+        if source == "image" and str(getattr(entry, "draw_mode", "stamp") or "stamp") == "ribbon":
             _build_ribbon_mesh(mesh, entry, points, center)
         else:
             _build_stamp_mesh(mesh, entry, points, center)
@@ -466,6 +426,7 @@ def ensure_image_path_object(
         _load_image(entry),
         float(getattr(entry, "opacity", 100.0) or 100.0),
         mask_info=mask_info,
+        fallback_alpha=1.0 if str(getattr(entry, "content_source", "image") or "image") == "shape" else 0.0,
     )
     if not mesh.materials:
         mesh.materials.append(mat)

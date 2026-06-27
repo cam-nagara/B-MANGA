@@ -70,6 +70,22 @@ def _uv_values(obj) -> list[tuple[float, float]]:
     return [(round(float(data.uv.x), 4), round(float(data.uv.y), 4)) for data in layer.active.data]
 
 
+def _point_colors(obj) -> list[tuple[float, float, float, float]]:
+    attr = getattr(getattr(obj, "data", None), "attributes", None)
+    assert attr is not None, "色属性コンテナがありません"
+    layer = attr.get("bmanga_path_content_color")
+    assert layer is not None, "色属性がありません"
+    return [tuple(data.color) for data in layer.data]
+
+
+def _polygon_widths(obj) -> list[float]:
+    widths: list[float] = []
+    for poly in obj.data.polygons:
+        xs = [float(obj.data.vertices[i].co.x) for i in poly.vertices]
+        widths.append(max(xs) - min(xs))
+    return widths
+
+
 def _set_curve_points(source, points_mm: list[tuple[float, float]]) -> None:
     curve = source.data
     while len(curve.splines):
@@ -174,18 +190,36 @@ def main() -> None:
         direction_obj.rotation_euler[2] = math.radians(45.0)
         effect_line_op._set_scene_params_syncing(scene, True)
         try:
+            params.line_image_source = "image"
             params.line_image_draw_mode = "stamp"
             params.line_image_stamp_angle_mode = "object"
             params.line_image_stamp_angle_object_name = direction_obj.name
             params.line_image_angle_deg = 30.0
+            params.line_image_inout_size_enabled = True
+            params.line_image_inout_opacity_enabled = True
+            params.line_image_inout_color_enabled = True
+            params.in_percent = 25.0
+            params.out_percent = 35.0
+            params.in_start_percent = 50.0
+            params.out_start_percent = 50.0
+            params.line_image_inout_start_color = (1.0, 0.0, 0.0, 1.0)
+            params.line_image_inout_end_color = (0.0, 0.0, 1.0, 0.35)
         finally:
             effect_line_op._set_scene_params_syncing(scene, False)
         effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 65.0, 70.0, 60.0), params_override=params)
         image_obj = effect_line_path.find_effect_line_image_object(obj)
         assert image_obj is not None and _poly_count(image_obj) > 0, "スタンプ画像線が表示されていません"
+        image_colors = _point_colors(image_obj)
+        assert min(c[3] for c in image_colors) < max(c[3] for c in image_colors), "画像線の不透明度入り抜きが効いていません"
+        assert any(c[0] > c[2] + 0.2 for c in image_colors), "画像線の入り色が反映されていません"
+        assert any(c[2] > c[0] + 0.2 for c in image_colors), "画像線の抜き色が反映されていません"
+        assert min(_polygon_widths(image_obj)) < max(_polygon_widths(image_obj)), "画像線のサイズ入り抜きが効いていません"
 
         effect_line_op._set_scene_params_syncing(scene, True)
         try:
+            params.line_image_inout_size_enabled = False
+            params.line_image_inout_opacity_enabled = False
+            params.line_image_inout_color_enabled = False
             params.line_image_draw_mode = "ribbon"
             params.line_image_ribbon_repeat_mode = "stretch"
             params.line_image_angle_deg = 0.0
@@ -195,6 +229,55 @@ def main() -> None:
         image_obj = effect_line_path.find_effect_line_image_object(obj)
         assert image_obj is not None and _poly_count(image_obj) > 0, "リボン画像線が表示されていません"
         assert len(set(_uv_values(image_obj))) > 2, "リボン画像線のUVが更新されていません"
+
+        effect_line_op._set_scene_params_syncing(scene, True)
+        try:
+            params.line_image_source = "shape"
+            params.line_image_draw_mode = "stamp"
+            params.line_image_shape_kind = "circle"
+            params.line_image_shape_sides = 6
+            params.line_image_color = (0.0, 0.0, 0.0, 1.0)
+            params.line_image_inout_size_enabled = True
+            params.line_image_inout_opacity_enabled = True
+            params.line_image_inout_color_enabled = True
+            params.in_percent = 10.0
+            params.out_percent = 40.0
+            params.in_start_percent = 50.0
+            params.out_start_percent = 50.0
+            params.line_image_inout_start_color = (0.0, 1.0, 0.0, 1.0)
+            params.line_image_inout_end_color = (1.0, 0.0, 1.0, 0.3)
+        finally:
+            effect_line_op._set_scene_params_syncing(scene, False)
+        expected_vertices = {"circle": 16, "square": 4, "polygon": 6, "star": 10, "heart": 20}
+        for kind, vertex_count in expected_vertices.items():
+            effect_line_op._set_scene_params_syncing(scene, True)
+            try:
+                params.line_image_shape_kind = kind
+                params.line_image_shape_sides = 6
+            finally:
+                effect_line_op._set_scene_params_syncing(scene, False)
+            effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 65.0, 70.0, 60.0), params_override=params)
+            image_obj = effect_line_path.find_effect_line_image_object(obj)
+            assert image_obj is not None and _poly_count(image_obj) > 0, f"{kind} の生成形状線が表示されていません"
+            assert len(image_obj.data.polygons[0].vertices) == vertex_count, f"{kind} の頂点数が不正です"
+        effect_line_op._set_scene_params_syncing(scene, True)
+        try:
+            params.line_image_shape_kind = "polygon"
+            params.line_image_shape_sides = 7
+        finally:
+            effect_line_op._set_scene_params_syncing(scene, False)
+        effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 65.0, 70.0, 60.0), params_override=params)
+        image_obj = effect_line_path.find_effect_line_image_object(obj)
+        assert image_obj is not None
+        assert len(image_obj.data.polygons[0].vertices) == 7, "効果線の多角形角数が反映されていません"
+        shape_colors = _point_colors(image_obj)
+        assert min(c[3] for c in shape_colors) < max(c[3] for c in shape_colors), "生成形状線の不透明度入り抜きが効いていません"
+        assert any(c[1] > c[0] + 0.2 and c[1] > c[2] + 0.2 for c in shape_colors), "生成形状線の入り色が反映されていません"
+        assert any(c[0] > c[1] + 0.2 and c[2] > c[1] + 0.2 for c in shape_colors), "生成形状線の抜き色が反映されていません"
+        assert min(_polygon_widths(image_obj)) < max(_polygon_widths(image_obj)), "生成形状線のサイズ入り抜きが効いていません"
+        saved_params = effect_line_op._layer_params_data(obj, layer)
+        assert saved_params["line_image_source"] == "shape"
+        assert saved_params["line_image_shape_sides"] == 7
 
         layer.hide = True
         effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 65.0, 70.0, 60.0), params_override=params)

@@ -86,16 +86,25 @@ def draw_effect_path_settings(layout, params) -> None:
     edit.operator("bmanga.effect_line_base_path_edit", text="編集", icon="CURVE_BEZCURVE")
 
     image_box = layout.box()
-    image_box.label(text="画像線")
-    image_box.prop(params, "line_image_path", text="画像")
-    image_box.prop(params, "line_image_draw_mode", text="表示方法")
+    image_box.label(text="パス線")
+    image_box.prop(params, "line_image_source", text="内容")
+    source = str(getattr(params, "line_image_source", "image") or "image")
+    if source == "shape":
+        row = image_box.row(align=True)
+        row.prop(params, "line_image_shape_kind", text="生成形状")
+        if str(getattr(params, "line_image_shape_kind", "") or "") == "polygon":
+            row.prop(params, "line_image_shape_sides", text="角数")
+    else:
+        image_box.prop(params, "line_image_path", text="画像")
+        image_box.prop(params, "line_image_draw_mode", text="表示方法")
     row = image_box.row(align=True)
     row.prop(params, "line_image_brush_size_mm", text="ブラシサイズ")
     row.prop(params, "line_image_aspect_ratio", text="縦横比")
     row = image_box.row(align=True)
-    row.prop(params, "line_image_angle_deg", text="画像の角度")
+    row.prop(params, "line_image_angle_deg", text="角度")
     row.prop(params, "line_image_spacing_percent", text="間隔")
-    if str(getattr(params, "line_image_draw_mode", "ribbon") or "ribbon") == "stamp":
+    image_box.prop(params, "line_image_color", text="色")
+    if source == "image" and str(getattr(params, "line_image_draw_mode", "ribbon") or "ribbon") == "stamp":
         image_box.prop(params, "line_image_stamp_angle_mode", text="角度")
         if str(getattr(params, "line_image_stamp_angle_mode", "") or "") == "object":
             image_box.prop_search(
@@ -105,8 +114,18 @@ def draw_effect_path_settings(layout, params) -> None:
                 "objects",
                 text="方向オブジェクト",
             )
-    else:
+    elif source == "image":
         image_box.prop(params, "line_image_ribbon_repeat_mode", text="リボン")
+    inout = image_box.box()
+    inout.label(text="入り抜き")
+    row = inout.row(align=True)
+    row.prop(params, "line_image_inout_size_enabled", toggle=True)
+    row.prop(params, "line_image_inout_opacity_enabled", toggle=True)
+    row.prop(params, "line_image_inout_color_enabled", toggle=True)
+    color_row = inout.row(align=True)
+    color_row.enabled = bool(getattr(params, "line_image_inout_color_enabled", False))
+    color_row.prop(params, "line_image_inout_start_color", text="入り色")
+    color_row.prop(params, "line_image_inout_end_color", text="抜き色")
 
 
 def draw_effect_params(

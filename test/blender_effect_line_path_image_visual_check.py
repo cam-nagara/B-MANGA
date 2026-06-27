@@ -75,6 +75,40 @@ def _set_curve_points(source, points_mm: list[tuple[float, float]]) -> None:
         point.co = (x_mm * 0.001, y_mm * 0.001, 0.0, 1.0)
 
 
+def _target_bounds(scene) -> tuple[float, float, float, float] | None:
+    points = []
+    for obj in scene.objects:
+        if getattr(obj, "type", "") != "MESH" or obj.hide_render:
+            continue
+        if "画像線" not in obj.name:
+            continue
+        if len(getattr(getattr(obj, "data", None), "vertices", [])) == 0:
+            continue
+        points.extend(obj.matrix_world @ Vector(corner) for corner in obj.bound_box)
+    if not points:
+        return None
+    return (
+        min(float(point.x) for point in points),
+        min(float(point.y) for point in points),
+        max(float(point.x) for point in points),
+        max(float(point.y) for point in points),
+    )
+
+
+def _target_view(scene) -> tuple[float, float, float]:
+    bounds = _target_bounds(scene)
+    if bounds is None:
+        return 0.105, 0.1485, 0.25
+    min_x, min_y, max_x, max_y = bounds
+    center_x = (min_x + max_x) * 0.5
+    center_y = (min_y + max_y) * 0.5
+    height = max(max_y - min_y, 0.05)
+    width = max(max_x - min_x, 0.05)
+    aspect = 1200.0 / 1500.0
+    ortho_scale = max(height * 1.25, width * 1.25 / aspect, 0.08)
+    return center_x, center_y, ortho_scale
+
+
 def _prepare_camera(scene) -> None:
     try:
         scene.view_settings.view_transform = "Standard"
@@ -86,10 +120,12 @@ def _prepare_camera(scene) -> None:
     camera_data = bpy.data.cameras.new("B-MANGA_目視確認カメラ")
     camera = bpy.data.objects.new("B-MANGA_目視確認カメラ", camera_data)
     scene.collection.objects.link(camera)
-    camera.location = (0.105, 0.1485, 1.0)
+    bpy.context.view_layer.update()
+    center_x, center_y, ortho_scale = _target_view(scene)
+    camera.location = (center_x, center_y, 1.0)
     camera.rotation_euler = (0.0, 0.0, 0.0)
     camera_data.type = "ORTHO"
-    camera_data.ortho_scale = 0.25
+    camera_data.ortho_scale = ortho_scale
     scene.camera = camera
     scene.render.resolution_x = 1200
     scene.render.resolution_y = 1500
@@ -100,6 +136,7 @@ def _prepare_camera(scene) -> None:
         pass
     if scene.world is not None:
         scene.world.color = (1.0, 1.0, 1.0)
+    bpy.context.view_layer.update()
 
 
 def _view3d_context():
@@ -115,10 +152,9 @@ def _view3d_context():
 
 
 def _set_viewport_for_capture() -> None:
-    from bmanga_dev_effect_path_image_visual.utils.geom import mm_to_m
-
     window, screen, area, region, space = _view3d_context()
     rv3d = space.region_3d
+    center_x, center_y, _ortho_scale = _target_view(bpy.context.scene)
     with bpy.context.temp_override(
         window=window,
         screen=screen,
@@ -130,7 +166,7 @@ def _set_viewport_for_capture() -> None:
         bpy.ops.view3d.view_axis(type="TOP", align_active=False)
         rv3d.view_perspective = "ORTHO"
         rv3d.view_rotation = Quaternion((1.0, 0.0, 0.0, 0.0))
-        rv3d.view_location = Vector((mm_to_m(105.0), mm_to_m(138.0), 0.0))
+        rv3d.view_location = Vector((center_x, center_y, 0.0))
         rv3d.view_distance = 0.7
         space.overlay.show_floor = False
         space.overlay.show_axis_x = False
@@ -165,6 +201,33 @@ def _capture_viewport(scene) -> None:
     scene.render.filepath = previous_path
     if "FINISHED" not in result:
         raise RuntimeError(f"viewport render failed: {result}")
+
+
+def _assert_png_has_foreground(path: Path) -> None:
+    image = bpy.data.images.load(str(path), check_existing=False)
+    try:
+        width, height = image.size
+        pixels = image.pixels[:]
+        bg = pixels[0:3]
+        step = max(1, (width * height) // 250000)
+        foreground = 0
+        generated_shape = 0
+        sample_count = 0
+        for pixel_index in range(0, width * height, step):
+            base = pixel_index * 4
+            rgb = pixels[base : base + 3]
+            alpha = pixels[base + 3]
+            if alpha > 0.1 and sum(abs(float(rgb[i]) - float(bg[i])) for i in range(3)) > 0.12:
+                foreground += 1
+            if alpha > 0.1 and rgb[1] > 0.5 and rgb[0] < 0.35 and rgb[2] < 0.45:
+                generated_shape += 1
+            sample_count += 1
+        ratio = foreground / max(sample_count, 1)
+        shape_ratio = generated_shape / max(sample_count, 1)
+        assert ratio > 0.01, f"目視確認画像に表示対象がほとんど写っていません foreground={ratio:.4f}"
+        assert shape_ratio > 0.0002, f"生成形状の表示色が目視確認画像に見つかりません shape={shape_ratio:.4f}"
+    finally:
+        bpy.data.images.remove(image)
 
 
 def _create_coma(scene, work, page) -> object:
@@ -258,6 +321,41 @@ def _create_stamp_effect(context, image_path: Path, parent_key: str):
     return obj, layer
 
 
+def _create_shape_effect(context, parent_key: str):
+    from bmanga_dev_effect_path_image_visual.operators import effect_line_op
+
+    scene = context.scene
+    params = scene.bmanga_effect_line_params
+    effect_line_op._set_scene_params_syncing(scene, True)
+    try:
+        params.effect_type = "speed"
+        params.speed_angle_deg = 0.0
+        params.speed_line_count = 10
+        params.brush_size_mm = 0.7
+        params.base_path_enabled = False
+        params.base_path_points_json = ""
+        params.line_image_source = "shape"
+        params.line_image_shape_kind = "star"
+        params.line_image_shape_sides = 6
+        params.line_image_color = (0.0, 1.0, 0.25, 1.0)
+        params.line_image_draw_mode = "stamp"
+        params.line_image_brush_size_mm = 6.0
+        params.line_image_aspect_ratio = 1.0
+        params.line_image_angle_deg = 0.0
+        params.line_image_spacing_percent = 120.0
+        params.line_image_inout_size_enabled = True
+        params.line_image_inout_opacity_enabled = True
+        params.in_percent = 20.0
+        params.out_percent = 20.0
+        params.in_start_percent = 45.0
+        params.out_start_percent = 45.0
+    finally:
+        effect_line_op._set_scene_params_syncing(scene, False)
+    obj, layer = effect_line_op._create_effect_layer(context, (38.0, 202.0, 104.0, 34.0), parent_key=parent_key)
+    assert obj is not None and layer is not None
+    return obj, layer
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_effect_path_image_visual_"))
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -284,6 +382,7 @@ def main() -> None:
         parent_key = coma_stack_key(page, coma)
         _create_ribbon_effect(context, image_path, parent_key)
         _create_stamp_effect(context, image_path, parent_key)
+        _create_shape_effect(context, parent_key)
         _prepare_camera(scene)
         if bpy.app.background:
             scene.render.filepath = str(OUTPUT_PATH)
@@ -292,6 +391,7 @@ def main() -> None:
             _set_viewport_for_capture()
             _capture_viewport(scene)
         assert OUTPUT_PATH.is_file(), "目視確認画像が生成されていません"
+        _assert_png_has_foreground(OUTPUT_PATH)
         print(f"BMANGA_EFFECT_LINE_PATH_IMAGE_VISUAL_OK {OUTPUT_PATH}", flush=True)
     finally:
         if mod is not None:

@@ -7,6 +7,8 @@ from bpy.props import (
     BoolProperty,
     EnumProperty,
     FloatProperty,
+    FloatVectorProperty,
+    IntProperty,
     StringProperty,
 )
 
@@ -15,6 +17,8 @@ from ..utils import line_effect_schema, log
 _logger = log.get_logger(__name__)
 
 IMAGE_PATH_DRAW_MODE_ITEMS = line_effect_schema.PATH_IMAGE_DRAW_MODE_ITEMS
+IMAGE_PATH_SOURCE_ITEMS = line_effect_schema.PATH_CONTENT_SOURCE_ITEMS
+IMAGE_PATH_SHAPE_ITEMS = line_effect_schema.PATH_GENERATED_SHAPE_ITEMS
 IMAGE_PATH_STAMP_ANGLE_MODE_ITEMS = line_effect_schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS
 IMAGE_PATH_RIBBON_REPEAT_MODE_ITEMS = line_effect_schema.PATH_IMAGE_RIBBON_REPEAT_MODE_ITEMS
 
@@ -56,6 +60,25 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
         update=_on_image_path_changed,
     )
     path_points_json: StringProperty(name="パス頂点", default="", update=_on_image_path_changed)  # type: ignore[valid-type]
+    content_source: EnumProperty(  # type: ignore[valid-type]
+        name="内容",
+        items=IMAGE_PATH_SOURCE_ITEMS,
+        default="image",
+        update=_on_image_path_changed,
+    )
+    shape_kind: EnumProperty(  # type: ignore[valid-type]
+        name="生成形状",
+        items=IMAGE_PATH_SHAPE_ITEMS,
+        default="circle",
+        update=_on_image_path_changed,
+    )
+    shape_sides: IntProperty(  # type: ignore[valid-type]
+        name="角数",
+        default=6,
+        min=3,
+        max=16,
+        update=_on_image_path_changed,
+    )
 
     draw_mode: EnumProperty(  # type: ignore[valid-type]
         name="表示方法",
@@ -109,6 +132,42 @@ class BMangaImagePathLayer(bpy.types.PropertyGroup):
         name="リボン",
         items=IMAGE_PATH_RIBBON_REPEAT_MODE_ITEMS,
         default="repeat",
+        update=_on_image_path_changed,
+    )
+    color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="色",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=_on_image_path_changed,
+    )
+    inout_size_enabled: BoolProperty(name="サイズ", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_opacity_enabled: BoolProperty(name="不透明度", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_color_enabled: BoolProperty(name="色", default=False, update=_on_image_path_changed)  # type: ignore[valid-type]
+    in_percent: FloatProperty(name="入り (%)", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    out_percent: FloatProperty(name="抜き (%)", default=100.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    in_start_percent: FloatProperty(name="入り始点 (%)", default=0.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    out_start_percent: FloatProperty(name="抜き始点 (%)", default=0.0, min=0.0, max=100.0, update=_on_image_path_changed)  # type: ignore[valid-type]
+    in_easing_curve: StringProperty(name="入りカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_image_path_changed)  # type: ignore[valid-type]
+    out_easing_curve: StringProperty(name="抜きカーブ", default="0.0000,0.0000;1.0000,1.0000", update=_on_image_path_changed)  # type: ignore[valid-type]
+    inout_start_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="入り色",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
+        update=_on_image_path_changed,
+    )
+    inout_end_color: FloatVectorProperty(  # type: ignore[valid-type]
+        name="抜き色",
+        subtype="COLOR",
+        size=4,
+        default=(1.0, 1.0, 1.0, 1.0),
+        min=0.0,
+        max=1.0,
         update=_on_image_path_changed,
     )
 

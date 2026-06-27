@@ -11,6 +11,19 @@ PATH_IMAGE_DRAW_MODE_ITEMS = (
     ("ribbon", "リボン", "パスに沿って画像を滑らかに変形します"),
 )
 
+PATH_CONTENT_SOURCE_ITEMS = (
+    ("image", "画像", "画像ファイルを使います"),
+    ("shape", "生成形状", "円形などの生成形状を使います"),
+)
+
+PATH_GENERATED_SHAPE_ITEMS = (
+    ("circle", "円形", ""),
+    ("square", "四角形", ""),
+    ("polygon", "多角形", ""),
+    ("star", "星型", ""),
+    ("heart", "ハート", ""),
+)
+
 PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS = (
     ("fixed", "固定", "指定した角度で固定します"),
     ("line", "線の向き", "パスの向きに合わせます"),
@@ -76,7 +89,11 @@ EFFECT_END_SHAPE_FIELDS = (
 EFFECT_PATH_IMAGE_FIELDS = (
     "base_path_enabled",
     "base_path_points_json",
+    "line_image_source",
     "line_image_path",
+    "line_image_shape_kind",
+    "line_image_shape_sides",
+    "line_image_color",
     "line_image_draw_mode",
     "line_image_brush_size_mm",
     "line_image_aspect_ratio",
@@ -85,6 +102,11 @@ EFFECT_PATH_IMAGE_FIELDS = (
     "line_image_stamp_angle_mode",
     "line_image_stamp_angle_object_name",
     "line_image_ribbon_repeat_mode",
+    "line_image_inout_size_enabled",
+    "line_image_inout_opacity_enabled",
+    "line_image_inout_color_enabled",
+    "line_image_inout_start_color",
+    "line_image_inout_end_color",
 )
 
 EFFECT_STROKE_FIELDS = (

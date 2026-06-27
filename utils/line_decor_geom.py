@@ -37,6 +37,18 @@ def _unit_triangle() -> list[tuple[float, float]]:
     ]
 
 
+def _unit_square() -> list[tuple[float, float]]:
+    return [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]
+
+
+def _unit_polygon(sides: int = 6) -> list[tuple[float, float]]:
+    count = max(3, min(16, int(sides or 6)))
+    return [
+        (0.5 * math.cos(math.pi / 2.0 + i / count * math.tau), 0.5 * math.sin(math.pi / 2.0 + i / count * math.tau))
+        for i in range(count)
+    ]
+
+
 def _unit_diamond() -> list[tuple[float, float]]:
     return [(0.0, 0.5), (-0.35, 0.0), (0.0, -0.5), (0.35, 0.0)]
 
@@ -53,6 +65,8 @@ def _unit_heart() -> list[tuple[float, float]]:
 
 _UNIT_SHAPES = {
     "circle": _unit_circle(),
+    "square": _unit_square(),
+    "polygon": _unit_polygon(),
     "star": _unit_star(),
     "triangle": _unit_triangle(),
     "diamond": _unit_diamond(),
@@ -60,7 +74,9 @@ _UNIT_SHAPES = {
 }
 
 
-def unit_shape_points(kind: str) -> list[tuple[float, float]]:
+def unit_shape_points(kind: str, *, sides: int = 6) -> list[tuple[float, float]]:
+    if str(kind or "") == "polygon":
+        return _unit_polygon(sides)
     return list(_UNIT_SHAPES.get(str(kind or "circle"), _UNIT_SHAPES["circle"]))
 
 

@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — パス線に生成形状と色入り抜きを追加 (v0.6.401)
+
+### 症状
+
+- パスに設定できる内容が画像だけで、円形 / 四角形 / 多角形 / 星型 / ハートを画像なしで使えなかった。
+- パス線の入り抜きはサイズ中心で、不透明度や色を同じグラフで確認しながら調整できなかった。
+- 画像パスと効果線の画像線で、同じ「パスに沿う内容」の保存項目が増えるほど、保存復元と表示の差分が出るリスクがあった。
+
+### 原因
+
+- 画像を貼る処理と生成形状を並べる処理が分かれておらず、パス線の素材は画像ファイルが前提になっていた。
+- 入り抜きの値は線幅用の係数として扱われており、色 / 不透明度を表示素材へ渡す経路がなかった。
+- 画像パスの保存復元が大きい保存処理ファイル内にあり、項目追加時の影響範囲が広かった。
+
+### 修正
+
+- パス線の内容に「画像」と「生成形状」を追加し、生成形状として円形 / 四角形 / 多角形 / 星型 / ハートを選べるようにした。
+- 画像パスと効果線のパス線で、サイズ / 不透明度 / 色の入り抜きを同じグラフ設定から反映するようにした。
+- 色の入り抜きは、入り側の色と抜き側の色がそれぞれ始点側 / 終点側へ出るようにした。
+- 画像と生成形状の表示素材へ色と不透明度を渡す共通処理を追加し、コマ / ページのマスクも従来どおり通るようにした。
+- 画像パスの保存復元を専用ファイルへ分離し、生成形状 / 入り抜き / プリセット項目を保存対象に追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile core\effect_line.py core\image_path_layer.py io\image_path_presets.py io\schema.py io\image_path_schema.py operators\layer_detail_op.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py test\blender_effect_line_path_image_check.py test\blender_effect_line_path_image_visual_check.py test\blender_image_path_tool_check.py test\test_line_effect_schema.py utils\effect_line_path.py utils\image_path_object.py utils\line_decor_geom.py utils\line_effect_schema.py utils\path_content.py`
+- `python test\test_line_effect_schema.py`
+- `blender.exe --factory-startup --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_visual_check.py`
+- 画像パス単体で、画像 / 円形 / 四角形 / 多角形 / 星型 / ハート、角数変更、サイズ / 不透明度 / 入り色 / 抜き色、保存復元、プリセットを確認。
+- 効果線のパス線で、画像 / 生成形状、角数変更、サイズ / 不透明度 / 入り色 / 抜き色、非表示追従を確認。
+- AI目視用PNGで、画像のスタンプ / リボンと生成形状がコマ枠内に表示されることを確認。
+
+---
+
 ## 2026-06-28 — 白抜き線設定UIを共通部品化 (v0.6.400)
 
 ### 症状

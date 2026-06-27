@@ -12,8 +12,8 @@ from mathutils import Vector
 
 from . import layer_object_sync as los
 from . import log
-from . import material_opacity_mask
 from . import object_naming as on
+from . import path_content
 from .geom import m_to_mm, mm_to_m
 
 _logger = log.get_logger(__name__)
@@ -389,6 +389,8 @@ def _image_path(params_data: dict) -> Path | None:
 
 
 def line_image_active(params_data: dict) -> bool:
+    if str(params_data.get("line_image_source", "image") or "image") == "shape":
+        return True
     return _image_path(params_data) is not None
 
 
@@ -399,6 +401,8 @@ def solid_strokes_for_display(params_data: dict, strokes):
 
 
 def _load_image(params_data: dict) -> bpy.types.Image | None:
+    if str(params_data.get("line_image_source", "image") or "image") != "image":
+        return None
     path = _image_path(params_data)
     if path is None:
         return None
@@ -411,43 +415,21 @@ def _load_image(params_data: dict) -> bpy.types.Image | None:
         return None
 
 
-def _ensure_image_material(name: str, image: bpy.types.Image, opacity_percent: float, *, mask_info=None) -> bpy.types.Material:
-    mat = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    mat.use_nodes = True
-    mat.blend_method = "BLEND"
-    mat.show_transparent_back = False
-    nt = mat.node_tree
-    nt.nodes.clear()
-    out = nt.nodes.new("ShaderNodeOutputMaterial")
-    mix = nt.nodes.new("ShaderNodeMixShader")
-    transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-    emission = nt.nodes.new("ShaderNodeEmission")
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = image
-    tex.extension = "REPEAT"
-    tex.interpolation = "Linear"
-    alpha_socket = tex.outputs["Alpha"]
-    if mask_info is not None:
-        masked = material_opacity_mask.multiply_alpha_by_mask(
-            nt,
-            alpha_socket,
-            mask_object=getattr(mask_info, "space_object", None),
-            mask_image=getattr(mask_info, "image", None),
-        )
-        alpha_socket = masked if masked is not None else alpha_socket
-    opacity = nt.nodes.new("ShaderNodeValue")
-    opacity.outputs[0].default_value = max(0.0, min(1.0, float(opacity_percent) / 100.0))
-    mul = nt.nodes.new("ShaderNodeMath")
-    mul.operation = "MULTIPLY"
-    nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-    nt.links.new(alpha_socket, mul.inputs[0])
-    nt.links.new(opacity.outputs[0], mul.inputs[1])
-    nt.links.new(mul.outputs[0], mix.inputs["Fac"])
-    nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
-    nt.links.new(emission.outputs["Emission"], mix.inputs[2])
-    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
-    mat.diffuse_color = (1.0, 1.0, 1.0, max(0.0, min(1.0, float(opacity_percent) / 100.0)))
-    return mat
+def _ensure_image_material(
+    name: str,
+    image: bpy.types.Image | None,
+    opacity_percent: float,
+    *,
+    mask_info=None,
+    fallback_alpha: float = 1.0,
+) -> bpy.types.Material:
+    return path_content.ensure_material(
+        name,
+        image,
+        opacity_percent,
+        mask_info=mask_info,
+        fallback_alpha=fallback_alpha,
+    )
 
 
 def _path_lengths(points: list[tuple[float, float, float]]) -> tuple[list[float], float]:
@@ -483,27 +465,47 @@ def _stamp_angle(params_data: dict, path_angle: float) -> float:
     return base
 
 
-def _append_stamp_mesh(verts, faces, uvs, stroke, params_data: dict, *, max_faces: int) -> None:
+def _append_stamp_mesh(verts, faces, uvs, colors, stroke, params_data: dict, *, max_faces: int) -> None:
     points = _stroke_points_m(stroke)
     cumulative, total = _path_lengths(points)
     brush = mm_to_m(max(0.1, float(params_data.get("line_image_brush_size_mm", 3.0) or 3.0)))
     aspect = max(0.01, float(params_data.get("line_image_aspect_ratio", 1.0) or 1.0))
     spacing = max(mm_to_m(0.1), brush * max(1.0, float(params_data.get("line_image_spacing_percent", 100.0) or 100.0)) / 100.0)
-    half_w, half_h = brush * aspect * 0.5, brush * 0.5
-    corners = [(-half_w, -half_h), (half_w, -half_h), (half_w, half_h), (-half_w, half_h)]
+    source = str(params_data.get("line_image_source", "image") or "image")
+    corners = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)]
+    shape = path_content.unit_shape_points(
+        str(params_data.get("line_image_shape_kind", "circle") or "circle"),
+        sides=int(params_data.get("line_image_shape_sides", 6) or 6),
+    )
     face_uvs = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     distance = 0.0
     while True:
         if len(faces) >= max_faces:
             break
         x, y, z, path_angle = _point_at_distance(points, cumulative, distance)
+        profile = path_content.inout_profile_value(params_data, distance, total)
+        size_factor = path_content.size_factor(params_data, profile, "line_image_inout_size_enabled")
+        rgba = path_content.color_for_path_distance(
+            params_data,
+            distance,
+            total,
+            color_field="line_image_color",
+            start_field="line_image_inout_start_color",
+            end_field="line_image_inout_end_color",
+            color_enabled="line_image_inout_color_enabled",
+            opacity_enabled="line_image_inout_opacity_enabled",
+        )
         angle = _stamp_angle(params_data, path_angle)
         ca, sa = math.cos(angle), math.sin(angle)
         base = len(verts)
-        for lx, ly in corners:
+        base_shape = shape if source == "shape" else corners
+        for ux, uy in base_shape:
+            lx = ux * brush * aspect * size_factor
+            ly = uy * brush * size_factor
             verts.append((x + lx * ca - ly * sa, y + lx * sa + ly * ca, z))
-        faces.append((base, base + 1, base + 2, base + 3))
-        uvs.extend(face_uvs)
+            colors.append(rgba)
+        faces.append(tuple(range(base, base + len(base_shape))))
+        uvs.extend(face_uvs if source != "shape" else [(0.0, 0.0)] * len(base_shape))
         next_distance = distance + spacing
         if next_distance < total:
             distance = next_distance
@@ -524,7 +526,7 @@ def _uv_rotated(u: float, v: float, angle: float, *, repeat: bool) -> tuple[floa
     return du * ca - dv * sa + 0.5 + tile, du * sa + dv * ca + 0.5
 
 
-def _append_ribbon_mesh(verts, faces, uvs, stroke, params_data: dict) -> None:
+def _append_ribbon_mesh(verts, faces, uvs, colors, stroke, params_data: dict) -> None:
     points = _stroke_points_m(stroke)
     cumulative, total = _path_lengths(points)
     brush = mm_to_m(max(0.1, float(params_data.get("line_image_brush_size_mm", 3.0) or 3.0)))
@@ -534,11 +536,26 @@ def _append_ribbon_mesh(verts, faces, uvs, stroke, params_data: dict) -> None:
     angle = math.radians(float(params_data.get("line_image_angle_deg", 0.0) or 0.0))
     base = len(verts)
     for i, (x, y, z) in enumerate(points):
+        profile = path_content.inout_profile_value(params_data, cumulative[i], total)
+        profile_factor = path_content.size_factor(params_data, profile, "line_image_inout_size_enabled")
+        if getattr(stroke, "radii", None) is not None:
+            profile_factor = 1.0
+        rgba = path_content.color_for_path_distance(
+            params_data,
+            cumulative[i],
+            total,
+            color_field="line_image_color",
+            start_field="line_image_inout_start_color",
+            end_field="line_image_inout_end_color",
+            color_enabled="line_image_inout_color_enabled",
+            opacity_enabled="line_image_inout_opacity_enabled",
+        )
         tx, ty = _ribbon_tangent(points, i)
-        width = brush * _width_factor(stroke, i)
+        width = brush * _width_factor(stroke, i) * profile_factor
         nx, ny = -ty, tx
         verts.append((x + nx * width * 0.5, y + ny * width * 0.5, z))
         verts.append((x - nx * width * 0.5, y - ny * width * 0.5, z))
+        colors.extend([rgba, rgba])
         u = cumulative[i] / total if stretch and total > 1.0e-9 else cumulative[i] / spacing
         uvs.append(_uv_rotated(u, 1.0, angle, repeat=not stretch))
         uvs.append(_uv_rotated(u, 0.0, angle, repeat=not stretch))
@@ -567,7 +584,7 @@ def _width_factor(stroke, index: int) -> float:
     return 1.0
 
 
-def _assign_mesh(mesh: bpy.types.Mesh, verts, faces, uvs) -> None:
+def _assign_mesh(mesh: bpy.types.Mesh, verts, faces, uvs, colors=None) -> None:
     mesh.clear_geometry()
     if verts and faces:
         mesh.from_pydata(verts, [], faces)
@@ -579,34 +596,36 @@ def _assign_mesh(mesh: bpy.types.Mesh, verts, faces, uvs) -> None:
                 vertex_index = mesh.loops[loop_index].vertex_index
                 if 0 <= vertex_index < len(uvs):
                     uv_layer.data[loop_index].uv = uvs[vertex_index]
-        mesh.update()
-        return
-    uv_index = 0
-    for poly in mesh.polygons:
-        for loop_index in poly.loop_indices:
-            if uv_index < len(uvs):
-                uv_layer.data[loop_index].uv = uvs[uv_index]
-            uv_index += 1
+    else:
+        uv_index = 0
+        for poly in mesh.polygons:
+            for loop_index in poly.loop_indices:
+                if uv_index < len(uvs):
+                    uv_layer.data[loop_index].uv = uvs[uv_index]
+                uv_index += 1
+    path_content.write_color_attribute(mesh, colors)
     mesh.update()
 
 
 def _build_image_mesh(mesh: bpy.types.Mesh, params_data: dict, strokes) -> bool:
     verts: list[tuple[float, float, float]] = []
-    faces: list[tuple[int, int, int, int]] = []
+    faces: list[tuple[int, ...]] = []
     uvs: list[tuple[float, float]] = []
-    mode = str(params_data.get("line_image_draw_mode", "ribbon") or "ribbon")
+    colors: list[tuple[float, float, float, float]] = []
+    source = str(params_data.get("line_image_source", "image") or "image")
+    mode = str(params_data.get("line_image_draw_mode", "ribbon") or "ribbon") if source == "image" else "stamp"
     for stroke in strokes or ():
         if _line_role(stroke) not in _IMAGE_LINE_ROLES or bool(getattr(stroke, "cyclic", False)):
             continue
         if len(_stroke_points_m(stroke)) < 2:
             continue
         if mode == "stamp":
-            _append_stamp_mesh(verts, faces, uvs, stroke, params_data, max_faces=_MAX_IMAGE_LINE_FACES)
+            _append_stamp_mesh(verts, faces, uvs, colors, stroke, params_data, max_faces=_MAX_IMAGE_LINE_FACES)
         else:
-            _append_ribbon_mesh(verts, faces, uvs, stroke, params_data)
+            _append_ribbon_mesh(verts, faces, uvs, colors, stroke, params_data)
         if len(faces) >= _MAX_IMAGE_LINE_FACES:
             break
-    _assign_mesh(mesh, verts, faces, uvs)
+    _assign_mesh(mesh, verts, faces, uvs, colors)
     return bool(faces)
 
 
@@ -618,8 +637,9 @@ def sync_effect_line_image_object(
     strokes,
     visible: bool = True,
 ) -> Optional[bpy.types.Object]:
+    source = str(params_data.get("line_image_source", "image") or "image")
     image = _load_image(params_data)
-    if image is None:
+    if image is None and source != "shape":
         delete_effect_line_image_object(controller_obj)
         return None
     image_id = _line_image_id(controller_obj)
@@ -684,6 +704,7 @@ def _apply_image_material(scene, obj, controller_obj, image, params_data: dict) 
         image,
         float(params_data.get("opacity", 100.0) or 100.0),
         mask_info=mask_info,
+        fallback_alpha=1.0 if str(params_data.get("line_image_source", "image") or "image") == "shape" else 0.0,
     )
     if len(obj.data.materials) == 0:
         obj.data.materials.append(mat)

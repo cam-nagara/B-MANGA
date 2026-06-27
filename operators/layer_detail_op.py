@@ -175,10 +175,19 @@ def _draw_image_detail(layout, entry) -> None:
 
 def _draw_image_path_detail(layout, entry) -> None:
     layout.prop(entry, "title", text="表示名")
-    layout.prop(entry, "filepath", text="画像")
+    layout.prop(entry, "content_source", text="内容")
+    source = str(getattr(entry, "content_source", "image") or "image")
+    if source == "shape":
+        row = layout.row(align=True)
+        row.prop(entry, "shape_kind", text="生成形状")
+        if str(getattr(entry, "shape_kind", "") or "") == "polygon":
+            row.prop(entry, "shape_sides", text="角数")
+    else:
+        layout.prop(entry, "filepath", text="画像")
     box = layout.box()
     box.label(text="表示")
-    box.prop(entry, "draw_mode", text="表示方法")
+    if source == "image":
+        box.prop(entry, "draw_mode", text="表示方法")
     box.prop(entry, "visible", text="表示")
     box.prop(entry, "locked", text="ロック")
     box.prop(entry, "opacity", text="不透明度")
@@ -186,14 +195,34 @@ def _draw_image_path_detail(layout, entry) -> None:
     row.prop(entry, "brush_size_mm", text="ブラシサイズ")
     row.prop(entry, "aspect_ratio", text="縦横比")
     row = box.row(align=True)
-    row.prop(entry, "image_angle_deg", text="画像の角度")
+    row.prop(entry, "image_angle_deg", text="角度")
     row.prop(entry, "spacing_percent", text="間隔")
-    if str(getattr(entry, "draw_mode", "stamp") or "stamp") == "stamp":
+    box.prop(entry, "color", text="色")
+    if source == "image" and str(getattr(entry, "draw_mode", "stamp") or "stamp") == "stamp":
         box.prop(entry, "stamp_angle_mode", text="角度")
         if str(getattr(entry, "stamp_angle_mode", "") or "") == "object":
             box.prop_search(entry, "stamp_angle_object_name", bpy.data, "objects", text="方向オブジェクト")
-    else:
+    elif source == "image":
         box.prop(entry, "ribbon_repeat_mode", text="リボン")
+    inout_box = layout.box()
+    inout_box.label(text="入り抜き")
+    row = inout_box.row(align=True)
+    row.prop(entry, "inout_size_enabled", toggle=True)
+    row.prop(entry, "inout_opacity_enabled", toggle=True)
+    row.prop(entry, "inout_color_enabled", toggle=True)
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_percent")
+    row.prop(entry, "out_percent")
+    row = inout_box.row(align=True)
+    row.prop(entry, "in_start_percent")
+    row.prop(entry, "out_start_percent")
+    color_row = inout_box.row(align=True)
+    color_row.enabled = bool(getattr(entry, "inout_color_enabled", False))
+    color_row.prop(entry, "inout_start_color", text="入り色")
+    color_row.prop(entry, "inout_end_color", text="抜き色")
+    from ..panels import effect_line_panel as _effect_line_panel
+
+    _effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
     preset_box = layout.box()
     preset_box.label(text="画像パスプリセット")
     wm = getattr(bpy.context, "window_manager", None)

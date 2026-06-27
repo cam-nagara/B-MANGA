@@ -30,6 +30,14 @@ def _load_settings_ui():
 
 def test_path_image_choices_are_shared_ui_contract():
     schema = _load_schema()
+    assert [item[0] for item in schema.PATH_CONTENT_SOURCE_ITEMS] == ["image", "shape"]
+    assert [item[0] for item in schema.PATH_GENERATED_SHAPE_ITEMS] == [
+        "circle",
+        "square",
+        "polygon",
+        "star",
+        "heart",
+    ]
     assert [item[0] for item in schema.PATH_IMAGE_DRAW_MODE_ITEMS] == ["stamp", "ribbon"]
     assert [item[0] for item in schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS] == [
         "fixed",
@@ -57,6 +65,18 @@ def test_path_image_fields_are_saved_and_linked():
     for field in schema.EFFECT_PATH_IMAGE_FIELDS:
         assert field in saved
         assert field in linked
+    for field in (
+        "line_image_source",
+        "line_image_shape_kind",
+        "line_image_shape_sides",
+        "line_image_color",
+        "line_image_inout_size_enabled",
+        "line_image_inout_opacity_enabled",
+        "line_image_inout_color_enabled",
+        "line_image_inout_start_color",
+        "line_image_inout_end_color",
+    ):
+        assert field in schema.EFFECT_PATH_IMAGE_FIELDS
 
 
 def test_linked_effect_fields_do_not_sync_uni_flash_offset():
