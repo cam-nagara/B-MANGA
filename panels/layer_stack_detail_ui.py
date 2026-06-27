@@ -721,6 +721,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     settings.prop(params, "opacity", text="不透明度", slider=True)
     if active_layer is not None and hasattr(active_layer, "hide"):
         settings.prop(active_layer, "hide", text="非表示")
+    effect_line_panel.draw_effect_line_preset_management(box, context)
 
     _draw_effect_type_settings(box, params)
     if params.effect_type == "white_outline":

@@ -312,6 +312,11 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         default="標準スタンプ",
         options={"HIDDEN"},
     )
+    last_effect_line_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回の効果線プリセット",
+        default="集中線",
+        options={"HIDDEN"},
+    )
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="プレビュー画像縮小率",

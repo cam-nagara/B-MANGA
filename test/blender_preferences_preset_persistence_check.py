@@ -90,6 +90,7 @@ def _main_impl(temp_root: Path) -> None:
 
     preferences = _sub("preferences")
     preset_op = _sub("operators.preset_op")
+    effect_line_preset_op = _sub("operators.effect_line_preset_op")
     tail_detail = _sub("operators.balloon_tail_detail_op")
     text_auto_ruby_op = _sub("operators.text_auto_ruby_op")
     settings_bundle = _sub("io.settings_bundle")
@@ -103,6 +104,8 @@ def _main_impl(temp_root: Path) -> None:
         last_text_tool_preset="",
         last_fill_tool_preset="",
         last_gradient_tool_preset="",
+        last_image_path_tool_preset="",
+        last_effect_line_tool_preset="",
         snap_gutter_to_finish=True,
         ruby_dictionaries=_FakeRubyDictionaries(),
         ruby_dict_active_index=0,
@@ -130,6 +133,10 @@ def _main_impl(temp_root: Path) -> None:
         )
         fill_value = "black50"
         gradient_value = "bw50"
+        effect_line_value = _first_valid(
+            effect_line_preset_op._effect_line_tool_preset_enum_items(None, bpy.context),
+            skip={"集中線"},
+        )
         tail_value = _first_valid(
             tail_detail._tail_preset_enum_items(None, bpy.context),
             skip={"NONE"},
@@ -140,6 +147,7 @@ def _main_impl(temp_root: Path) -> None:
         wm.bmanga_text_tool_preset_selector = text_value
         wm.bmanga_fill_tool_preset_selector = fill_value
         wm.bmanga_gradient_tool_preset_selector = gradient_value
+        wm.bmanga_effect_line_tool_preset_selector = effect_line_value
         wm.bmanga_tail_preset_selector = tail_value
 
         _mark("main: assert remembered")
@@ -147,20 +155,24 @@ def _main_impl(temp_root: Path) -> None:
         assert prefs.last_text_tool_preset == text_value
         assert prefs.last_fill_tool_preset == fill_value
         assert prefs.last_gradient_tool_preset == gradient_value
+        assert prefs.last_effect_line_tool_preset == effect_line_value
         assert prefs.last_tail_preset == tail_value
-        assert len(save_calls) >= 5, f"保存予約が呼ばれていません: {save_calls!r}"
+        assert len(save_calls) >= 6, f"保存予約が呼ばれていません: {save_calls!r}"
 
         wm.bmanga_balloon_tool_preset_selector = "DEFAULT"
         wm.bmanga_fill_tool_preset_selector = "black"
         wm.bmanga_gradient_tool_preset_selector = "bw_linear"
+        wm.bmanga_effect_line_tool_preset_selector = "集中線"
         prefs.last_balloon_tool_preset = balloon_value
         prefs.last_text_tool_preset = text_value
         prefs.last_fill_tool_preset = fill_value
         prefs.last_gradient_tool_preset = gradient_value
+        prefs.last_effect_line_tool_preset = effect_line_value
         prefs.last_tail_preset = tail_value
 
         _mark("main: restore selectors")
         preset_op.restore_tool_preset_selectors(bpy.context)
+        effect_line_preset_op.restore_effect_line_preset_selector(bpy.context)
         tail_detail.restore_tail_preset_selector(bpy.context)
 
         _mark("main: assert restored")
@@ -170,12 +182,14 @@ def _main_impl(temp_root: Path) -> None:
             f"text={wm.bmanga_text_tool_preset_selector!r}/{text_value!r}, "
             f"fill={wm.bmanga_fill_tool_preset_selector!r}/{fill_value!r}, "
             f"gradient={wm.bmanga_gradient_tool_preset_selector!r}/{gradient_value!r}, "
+            f"effect={wm.bmanga_effect_line_tool_preset_selector!r}/{effect_line_value!r}, "
             f"tail={wm.bmanga_tail_preset_selector!r}/{tail_value!r}"
         )
         assert wm.bmanga_balloon_tool_preset_selector == balloon_value
         assert wm.bmanga_text_tool_preset_selector == text_value
         assert wm.bmanga_fill_tool_preset_selector == fill_value
         assert wm.bmanga_gradient_tool_preset_selector == gradient_value
+        assert wm.bmanga_effect_line_tool_preset_selector == effect_line_value
         assert wm.bmanga_tail_preset_selector == tail_value
 
         before = len(save_calls)

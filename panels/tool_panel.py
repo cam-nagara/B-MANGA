@@ -221,6 +221,11 @@ def _draw_active_tool_preset_row(layout, context) -> None:
             except (IndexError, AttributeError):
                 pass
         return
+    if coma_modal_state.is_active("effect_line_tool") and hasattr(wm, "bmanga_effect_line_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="効果線プリセット", icon="FORCE_FORCE")
+        prow.prop(wm, "bmanga_effect_line_tool_preset_selector", text="")
+        return
     if coma_modal_state.is_active("fill_tool") and hasattr(wm, "bmanga_fill_tool_preset_selector"):
         prow = layout.row(align=True)
         prow.label(text="囲い塗りプリセット", icon="MESH_PLANE")

@@ -166,11 +166,6 @@ def _draw_image_detail(layout, entry) -> None:
     box.prop(entry, "binarize_enabled")
     if getattr(entry, "binarize_enabled", False):
         box.prop(entry, "binarize_threshold")
-    box = layout.box()
-    box.label(text="所属")
-    box.prop(entry, "parent_kind")
-    box.prop(entry, "parent_key")
-    box.prop(entry, "folder_key")
 
 
 def _draw_image_path_detail(layout, entry) -> None:
@@ -233,11 +228,6 @@ def _draw_image_path_detail(layout, entry) -> None:
         row.operator("bmanga.image_path_preset_rename", text="", icon="GREASEPENCIL")
         row.operator("bmanga.image_path_preset_duplicate", text="", icon="DUPLICATE")
         row.operator("bmanga.image_path_preset_delete", text="", icon="TRASH")
-    box = layout.box()
-    box.label(text="所属")
-    box.prop(entry, "parent_kind")
-    box.prop(entry, "parent_key")
-    box.prop(entry, "folder_key")
 
 
 def _draw_raster_detail(layout, entry) -> None:
@@ -251,9 +241,6 @@ def _draw_raster_detail(layout, entry) -> None:
     layout.prop(entry, "visible")
     layout.prop(entry, "locked")
     layout.prop(entry, "scope")
-    layout.prop(entry, "parent_kind")
-    layout.prop(entry, "parent_key")
-    layout.prop(entry, "folder_key")
 
 
 def _draw_balloon_tails(layout, entry, page) -> None:
@@ -503,14 +490,6 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
 
     _draw_balloon_tails(left_col, entry, page)
 
-    box = right_col.box()
-    box.label(text="表示・所属")
-    box.prop(entry, "visible")
-    box.prop(entry, "parent_kind")
-    box.prop(entry, "parent_key")
-    box.prop(entry, "folder_key")
-    box.prop(entry, "merge_group_id")
-
 
 def _draw_text_detail(layout, entry) -> None:
     box = layout.box()
@@ -568,14 +547,6 @@ def _draw_text_detail(layout, entry) -> None:
     row = box.row(align=True)
     row.operator("bmanga.text_ruby_add_dialog", text="ルビを付ける", icon="ADD")
     row.operator("bmanga.text_ruby_clear", text="ルビを削除", icon="TRASH")
-
-    box = layout.box()
-    box.label(text="表示・所属")
-    box.prop(entry, "visible")
-    box.prop(entry, "parent_balloon_id")
-    box.prop(entry, "parent_kind")
-    box.prop(entry, "parent_key")
-    box.prop(entry, "folder_key")
     box.operator("bmanga.text_meta_dialog", text="メタ情報を編集", icon="INFO")
 
 
@@ -644,7 +615,8 @@ def _draw_effect_detail(layout, context, obj) -> None:
     from ..panels import effect_line_panel as _elp
 
     layout.separator()
-    cols = _equal_columns(layout, 3)
+    _elp.draw_effect_line_preset_management(layout, context)
+    cols = _equal_columns(layout, 4)
     _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 
@@ -709,8 +681,8 @@ class BMANGA_OT_layer_detail_open(Operator):
             except Exception:  # noqa: BLE001
                 pass
         elif self.kind in {"effect", "effect_legacy"}:
-            # 効果線は設定群を 3 列に分配して開く
-            width = 840
+            # 効果線は設定群を 4 列に分配して開く
+            width = 1080
         return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):

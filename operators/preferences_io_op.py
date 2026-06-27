@@ -67,10 +67,11 @@ class BMANGA_OT_preferences_import(Operator):
             self.report({"ERROR"}, f"インポート失敗: {exc}")
             return {"CANCELLED"}
         try:
-            from . import balloon_tail_detail_op, preset_op
+            from . import balloon_tail_detail_op, effect_line_preset_op, preset_op
 
             preset_op.restore_tool_preset_selectors(context)
             balloon_tail_detail_op.restore_tail_preset_selector(context)
+            effect_line_preset_op.restore_effect_line_preset_selector(context)
         except Exception:  # noqa: BLE001
             _logger.warning("preset selector restore after import failed", exc_info=True)
         self.report(

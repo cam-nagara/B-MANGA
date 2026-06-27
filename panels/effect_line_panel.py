@@ -70,6 +70,20 @@ def draw_inout_curve_mapping(layout, params) -> None:
         layout.template_curve_mapping(node, "mapping", type="NONE")
 
 
+def draw_effect_line_preset_management(layout, context) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bmanga_effect_line_tool_preset_selector"):
+        return
+    preset_box = layout.box()
+    preset_box.label(text="効果線プリセット", icon="PRESET")
+    preset_box.prop(wm, "bmanga_effect_line_tool_preset_selector", text="")
+    row = preset_box.row(align=True)
+    row.operator("bmanga.effect_line_preset_add_local", text="", icon="ADD")
+    row.operator("bmanga.effect_line_preset_rename", text="", icon="GREASEPENCIL")
+    row.operator("bmanga.effect_line_preset_duplicate", text="", icon="DUPLICATE")
+    row.operator("bmanga.effect_line_preset_delete", text="", icon="TRASH")
+
+
 def draw_effect_path_settings(layout, params) -> None:
     path_box = layout.box()
     path_box.label(text="パス")
@@ -151,6 +165,10 @@ def draw_effect_params(
         return cols[min(int(index), len(cols) - 1)]
 
     effect_type = str(fixed_effect_type or getattr(params, "effect_type", "focus") or "focus")
+    line_col = 1 if len(cols) > 1 else 0
+    inout_col = 2 if len(cols) > 2 else line_col
+    side_col = 3 if len(cols) > 3 else line_col
+    path_col = 3 if len(cols) > 3 else inout_col
     if show_type:
         box = _col(0).box()
         box.label(text="種類")
@@ -165,9 +183,10 @@ def draw_effect_params(
     if effect_type == "white_outline":
         _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(_col(0), params, "end", "終点形状")
-        _draw_white_outline_settings(_col(1), params, show_opacity=show_opacity)
+        _draw_white_outline_settings(_col(line_col), params, show_opacity=show_opacity)
         if show_path_settings:
-            draw_effect_path_settings(_col(2), params)
+            white_path_col = 2 if len(cols) > 2 else path_col
+            draw_effect_path_settings(_col(white_path_col), params)
         if with_generate_button:
             _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return
@@ -176,7 +195,7 @@ def draw_effect_params(
         _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(_col(0), params, "end", "終点形状")
 
-    box = _col(1).box()
+    box = _col(line_col).box()
     box.label(text="線")
     box.prop(params, "brush_size_mm")
     row = box.row(align=True)
@@ -209,7 +228,7 @@ def draw_effect_params(
         sub.prop(params, "spacing_jitter_amount", text="")
         box.prop(params, "max_line_count")
 
-        bundle_box = _col(1).box()
+        bundle_box = _col(line_col).box()
         bundle_box.label(text="まとまり")
         bundle_box.prop(params, "bundle_enabled")
         sub = bundle_box.column(align=True)
@@ -226,7 +245,7 @@ def draw_effect_params(
         jag.enabled = params.bundle_jagged_enabled
         jag.prop(params, "bundle_jagged_height_percent", text="高さ")
 
-    box = _col(2).box()
+    box = _col(inout_col).box()
     box.label(text="入り抜き")
     line_effect_settings_ui.draw_inout_apply_toggles(box, params)
     row = box.row(align=True)
@@ -237,9 +256,9 @@ def draw_effect_params(
     row.prop(params, "out_start_percent")
     draw_inout_curve_mapping(box, params)
     if show_path_settings:
-        draw_effect_path_settings(_col(2), params)
+        draw_effect_path_settings(_col(path_col), params)
 
-    box = _col(1).box()
+    box = _col(side_col).box()
     box.label(text="色")
     if show_opacity:
         box.prop(params, "opacity", slider=True)
@@ -259,7 +278,7 @@ def draw_effect_params(
         box.prop(params, "uni_flash_offset_percent")
 
     if effect_type == "speed":
-        box = _col(1).box()
+        box = _col(side_col).box()
         box.label(text="流線")
         box.prop(params, "speed_angle_deg")
         box.prop(params, "speed_line_count")
@@ -280,6 +299,7 @@ class BMANGA_PT_effect_line(Panel):
     def draw(self, context):
         layout = self.layout
         params = getattr(context.scene, "bmanga_effect_line_params", None)
+        draw_effect_line_preset_management(layout, context)
         draw_effect_params(layout, params)
 
 

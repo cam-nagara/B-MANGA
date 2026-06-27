@@ -260,6 +260,17 @@ def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
             except Exception:  # noqa: BLE001
                 pass
 
+    def _set_bool_if_default(attr: str, value: bool, default: bool = False) -> None:
+        try:
+            current = bool(getattr(entry, attr, default))
+        except Exception:  # noqa: BLE001
+            current = bool(default)
+        if force or current == bool(default):
+            try:
+                setattr(entry, attr, bool(value))
+            except Exception:  # noqa: BLE001
+                pass
+
     _set_if_default("line_valley_width_pct", 0.0)
     _set_if_default("line_peak_width_pct", 100.0)
     _set_if_default("thorn_multi_line_valley_width_pct", 0.0)
@@ -273,6 +284,8 @@ def apply_balloon_line_style_defaults(entry, *, force: bool = False) -> None:
     _set_if_default("flash_white_line_width_percent", 100.0)
     _set_if_default("flash_white_line_valley_width_pct", 0.0)
     _set_if_default("flash_white_line_peak_width_pct", 100.0)
+    if str(getattr(entry, "line_style", "") or "") == "uni_flash":
+        _set_bool_if_default("length_jitter_enabled", True, default=False)
     try:
         if force or not bool(getattr(entry, "flash_white_line_enabled", True)):
             entry.flash_white_line_enabled = True

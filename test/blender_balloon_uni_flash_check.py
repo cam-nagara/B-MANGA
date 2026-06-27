@@ -231,6 +231,7 @@ def main() -> None:
                 assert int(entry.max_line_count) == 1000
                 assert entry.spacing_mode == "distance"
                 assert abs(float(entry.spacing_distance_mm) - 1.0) < 1.0e-6
+                assert bool(entry.length_jitter_enabled), "ウニフラの始点乱れ初期値がオンではありません"
                 assert abs(float(entry.in_percent) - 0.0) < 1.0e-6
                 assert abs(float(entry.out_percent) - 0.0) < 1.0e-6
                 assert abs(float(entry.in_start_percent) - 50.0) < 1.0e-6

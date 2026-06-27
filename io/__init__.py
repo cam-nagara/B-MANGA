@@ -11,6 +11,7 @@ from __future__ import annotations
 from . import (  # noqa: F401
     blend_io,
     coma_io,
+    effect_line_presets,
     meldex_receiver,
     page_io,
     presets,

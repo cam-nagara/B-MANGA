@@ -133,7 +133,9 @@ def main() -> None:
             key="test_detail",
             offset_x=50,
         )
-        assert fake_window.warps[-1] == (150, 200)
+        assert fake_wm["bmanga_detail_popup_pos_test_detail_x"] == 150
+        assert fake_wm["bmanga_detail_popup_pos_test_detail_y"] == 200
+        assert fake_window.warps == []
     finally:
         if mod is not None:
             mod.unregister()

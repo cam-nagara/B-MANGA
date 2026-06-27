@@ -3,6 +3,45 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 詳細設定のプリセット管理と効果線レイアウトを修正 (v0.6.404)
+
+### 症状
+
+- 効果線ツールを選んでも、ツールボタン下に効果線プリセットが表示されなくなっていた。
+- 効果線の詳細設定でプリセット管理ができず、設定項目が縦に長く画面へ収まりにくかった。
+- 各種詳細設定ダイアログの下部に、上部表示と重複する「表示・所属」または所属欄が残っていた。
+- フキダシのウニフラで、線の始点乱れの初期値がオフになっていた。
+
+### 原因
+
+- フキダシ / NURBSフキダシ / 効果線の整理後、効果線用のツールプリセット選択欄と管理操作が再接続されていなかった。
+- 効果線の詳細設定は、線幅グラフとパス線設定の追加後も3列のままで、設定群の分配が足りなかった。
+- 所属情報は上部メタ表示へ移した一方で、旧来の下部セクションが一部の詳細設定に残っていた。
+- フキダシのウニフラ線種の初期値適用で、始点乱れだけは従来既定のままだった。
+
+### 修正
+
+- 効果線プリセットの選択・追加・改名・複製・削除を復旧し、効果線パネル、選択詳細、詳細設定ダイアログから管理できるようにした。
+- 効果線ツールを選んだとき、ツールボタン下に効果線プリセットを表示するようにした。
+- 効果線の詳細設定ダイアログを4列に分割し、入り抜きグラフ、色、パス線設定が縦に詰まりすぎないようにした。
+- 画像、画像パス、ラスター、フキダシ、テキストの詳細設定から、下部の重複した所属欄を削除した。
+- フキダシのウニフラでは、線の始点乱れを初期値でオンにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile io\effect_line_presets.py operators\effect_line_preset_op.py panels\effect_line_panel.py panels\tool_panel.py panels\layer_stack_detail_ui.py operators\layer_detail_op.py core\balloon.py preferences.py operators\preferences_io_op.py test\blender_effect_line_preset_ui_check.py test\blender_preferences_preset_persistence_check.py test\blender_balloon_uni_flash_check.py test\blender_detail_settings_runtime_check.py`
+- `git diff --check`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --factory-startup --background --python test\blender_preferences_preset_persistence_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `blender.exe --factory-startup --background --python test\blender_layer_detail_and_mask_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_frame_spacing_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_white_outline_visual_check.py`
+
+---
+
 ## 2026-06-28 — 入り抜きを線幅グラフで編集できるように修正 (v0.6.403)
 
 ### 症状
