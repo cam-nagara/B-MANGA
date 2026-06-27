@@ -264,7 +264,11 @@ def sync_base_path_source(scene, controller_obj, layer, params_data: dict, strok
     if len(points) < 2:
         return False
     params_data["base_path_points_json"] = _points_json(points)
-    _ensure_base_path_curve(controller_obj, layer, points)
+    obj = _ensure_base_path_curve(controller_obj, layer, points)
+    if obj is not None:
+        hidden = bool(getattr(layer, "hide", False))
+        obj.hide_viewport = hidden
+        obj.hide_select = hidden
     return True
 
 

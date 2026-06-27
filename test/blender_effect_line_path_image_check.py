@@ -200,6 +200,8 @@ def main() -> None:
         effect_line_op._write_effect_strokes(context, obj, layer, (45.0, 65.0, 70.0, 60.0), params_override=params)
         image_obj = effect_line_path.find_effect_line_image_object(obj)
         assert image_obj is not None and image_obj.hide_viewport, "効果線非表示が画像線へ反映されていません"
+        source = effect_line_path.find_effect_base_path_object(obj)
+        assert source is not None and source.hide_viewport and source.hide_select, "効果線非表示が基準パスへ反映されていません"
         assert display.hide_viewport, "効果線非表示が表示実体へ反映されていません"
 
         print("BMANGA_EFFECT_LINE_PATH_IMAGE_OK", flush=True)

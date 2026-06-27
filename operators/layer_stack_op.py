@@ -1414,6 +1414,10 @@ class BMANGA_OT_layer_stack_toggle_visibility(Operator):
                     if image is not None:
                         image.hide_viewport = bool(target.hide)
                         image.hide_render = bool(target.hide)
+                    source = _elp.find_effect_base_path_object(resolved.get("object"))
+                    if source is not None:
+                        source.hide_viewport = bool(target.hide)
+                        source.hide_select = bool(target.hide)
                 except Exception:  # noqa: BLE001
                     pass
         else:

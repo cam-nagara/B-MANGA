@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 効果線の基準パス非表示追従と目視確認を強化 (v0.6.397)
+
+### 症状
+
+- 効果線を非表示にした時、画像線と表示本体は隠れるが、編集用の基準パスが画面に残る経路があった。
+- 基準パス編集、リボン、スタンプが画面上で期待通り見えるかを、実機画像で確認する専用手順がなかった。
+
+### 原因
+
+- 効果線の非表示操作で、画像線までは追従していたが、基準パスの表示状態を同じタイミングで更新していなかった。
+- 既存の実機テストはデータと生成物の検証が中心で、ビューポート上の見え方を確認する画像生成が不足していた。
+
+### 修正
+
+- 効果線の非表示操作と再生成時に、基準パスも表示 / 非表示へ追従するようにした。
+- 基準パス、リボン画像線、スタンプ画像線を同じページ上に作成し、ビューポート画像として保存する実機目視テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py core\effect_line.py operators\effect_line_op.py operators\effect_line_path_op.py operators\effect_line_link_op.py operators\layer_stack_op.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py utils\effect_line_object.py utils\effect_line_path.py utils\object_state_sync.py utils\outliner_watch.py test\blender_effect_line_path_image_check.py test\blender_effect_line_path_image_visual_check.py`
+- `blender.exe --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --background --python test\blender_effect_line_end_fill_check.py`
+- `blender.exe --background --python test\blender_effect_line_mask_visibility_check.py`
+- `blender.exe --background --python test\blender_geometry_nodes_bridge_check.py`
+- `blender.exe --python test\blender_effect_line_path_image_visual_check.py`
+- 基準パス、画像線、表示本体が非表示へ揃って追従することを確認。
+- AI目視で、リボン画像線とスタンプ画像線がビューポート上で表示され、コマ内の表示範囲で見えていることを確認。
+
+---
+
 ## 2026-06-28 — 効果線に基準パス編集と画像線を追加 (v0.6.396)
 
 ### 症状
