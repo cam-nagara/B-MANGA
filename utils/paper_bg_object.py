@@ -202,7 +202,14 @@ def ensure_paper_bg_for_page(
     obj[on.PROP_MANAGED] = False  # Outliner mirror 正規化対象外
     obj.hide_select = True
     obj.hide_render = True
-    obj.hide_viewport = True
+    visible_in_viewport = False
+    try:
+        from . import page_file_scene
+
+        visible_in_viewport = page_file_scene.is_current_page_edit_scene(scene, page_id)
+    except Exception:  # noqa: BLE001
+        visible_in_viewport = False
+    obj.hide_viewport = not (bool(in_range) and visible_in_viewport)
 
     # ページの world オフセットに配置 (page_grid)
     try:
@@ -257,7 +264,14 @@ def refresh_paper_bg_visibility(scene: bpy.types.Scene, work) -> int:
             continue
         try:
             obj[PROP_BG_IN_RANGE] = page_in_range_map[pid]
-            obj.hide_viewport = True
+            visible_in_viewport = False
+            try:
+                from . import page_file_scene
+
+                visible_in_viewport = page_file_scene.is_current_page_edit_scene(scene, pid)
+            except Exception:  # noqa: BLE001
+                visible_in_viewport = False
+            obj.hide_viewport = not (bool(page_in_range_map[pid]) and visible_in_viewport)
             count += 1
         except Exception:  # noqa: BLE001
             pass

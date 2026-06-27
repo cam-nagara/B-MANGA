@@ -55,6 +55,24 @@ def _live_guide_updates_allowed() -> bool:
     return runtime_activity.work_loaded(bpy.context) and runtime_activity.live_view_updates_allowed(bpy.context)
 
 
+def _scene_guides_visible(scene=None) -> bool:
+    scene = scene or getattr(bpy.context, "scene", None)
+    if scene is None:
+        return True
+    return bool(getattr(scene, "bmanga_page_guides_visible", True))
+
+
+def _paper_guides_enabled(work) -> bool:
+    paper = getattr(work, "paper", None)
+    if paper is None:
+        return False
+    return bool(getattr(paper, "show_guides", True))
+
+
+def _paper_guides_visible(work, scene=None) -> bool:
+    return _paper_guides_enabled(work) and _scene_guides_visible(scene)
+
+
 def _opaque_rgba(rgba: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
     try:
         return (
@@ -361,6 +379,7 @@ def _guide_sets_have_geometry(guide_sets) -> bool:
 
 def _ensure_single_curve_guide_object(
     scene,
+    work,
     page,
     page_coll,
     guide_sets,
@@ -417,7 +436,7 @@ def _ensure_single_curve_guide_object(
         obj.display_type = "TEXTURED"
     except Exception:  # noqa: BLE001
         pass
-    obj.hide_viewport = not (visible and has_geometry)
+    obj.hide_viewport = not (visible and has_geometry and _paper_guides_visible(work, scene))
     obj.location.z = z_m
     _set_page_location(scene, obj, page)
     _link_to_page_collection(obj, page_coll)
@@ -684,6 +703,7 @@ def _ensure_safe_fill_object(
     obj.hide_render = True
     obj.hide_viewport = not (
         bool(getattr(page, "in_page_range", True))
+        and _paper_guides_visible(work, scene)
         and bool(getattr(work.safe_area_overlay, "enabled", True))
         and obj.color[3] > 0.0
     )
@@ -742,6 +762,7 @@ def _ensure_bleed_outer_fill_object(
     obj.hide_render = True
     obj.hide_viewport = not (
         bool(getattr(page, "in_page_range", True))
+        and _paper_guides_visible(work, scene)
         and bool(getattr(overlay, "bleed_outer_enabled", True))
         and obj.color[3] > 0.0
     )
@@ -1147,6 +1168,7 @@ def _paper_guide_signature(work, page_index: int, page, rects) -> str:
 
 def _ensure_curve_guides(
     scene,
+    work,
     page,
     page_coll,
     guide_sets,
@@ -1156,6 +1178,7 @@ def _ensure_curve_guides(
 ) -> list[bpy.types.Object]:
     obj = _ensure_single_curve_guide_object(
         scene,
+        work,
         page,
         page_coll,
         guide_sets,
@@ -1182,7 +1205,7 @@ def ensure_paper_guides_for_page(scene, work, page_index: int) -> list[bpy.types
     signature = _paper_guide_signature(work, grid_page_index, page, rects)
     safe_fill_rect_pairs, bleed_outer_fill_rect_pairs = _fill_rect_pairs_for_page(work, page_index, page, rects)
 
-    objects = _ensure_curve_guides(scene, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
+    objects = _ensure_curve_guides(scene, work, page, page_coll, guide_sets, guide_z=guide_z, visible=in_range)
     objects.append(_ensure_safe_fill_object(scene, work, page, page_coll, safe_fill_rect_pairs, safe_z))
     objects.append(
         _ensure_bleed_outer_fill_object(
@@ -1249,14 +1272,15 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             continue
         in_range = bool(getattr(page, "in_page_range", True))
         try:
-            if line_obj.hide_viewport == in_range:
-                line_obj.hide_viewport = not in_range
+            visible_line = in_range and _paper_guides_visible(work, scene)
+            if bool(line_obj.hide_viewport) == visible_line:
+                line_obj.hide_viewport = not visible_line
         except Exception:  # noqa: BLE001
             pass
         try:
             visible_safe = (
                 in_range
-                and bool(getattr(paper, "show_guides", True))
+                and _paper_guides_visible(work, scene)
                 and bool(getattr(work.safe_area_overlay, "enabled", True))
                 and float(safe_obj.color[3]) > 0.0
             )
@@ -1268,7 +1292,7 @@ def sync_paper_guides_after_page_transform(scene, work) -> int:
             overlay = getattr(work, "safe_area_overlay", None)
             visible_bleed_outer = (
                 in_range
-                and bool(getattr(paper, "show_guides", True))
+                and _paper_guides_visible(work, scene)
                 and bool(getattr(overlay, "bleed_outer_enabled", True))
                 and float(bleed_outer_obj.color[3]) > 0.0
             )
@@ -1487,11 +1511,11 @@ def _guide_front_order_needs_repair(work, page) -> bool:
     return False
 
 
-def _line_guide_should_have_geometry(work, page) -> bool:
+def _line_guide_should_have_geometry(work, page, scene=None) -> bool:
     paper = getattr(work, "paper", None)
     if paper is None:
         return False
-    if not bool(getattr(paper, "show_guides", True)):
+    if not _paper_guides_enabled(work):
         return False
     if not bool(getattr(page, "in_page_range", True)):
         return False
@@ -1517,7 +1541,7 @@ def _guide_curve_objects(page_id: str) -> list[bpy.types.Object]:
     return objects
 
 
-def _paper_guide_needs_repair(work, page) -> bool:
+def _paper_guide_needs_repair(work, page, scene=None) -> bool:
     page_id = str(getattr(page, "id", "") or "")
     if not page_id:
         return False
@@ -1525,17 +1549,20 @@ def _paper_guide_needs_repair(work, page) -> bool:
     line_obj = _line_guide_object(page_id)
     safe_obj = _safe_fill_object(page_id)
     bleed_outer_obj = _bleed_outer_fill_object(page_id)
-    should_have_geometry = _line_guide_should_have_geometry(work, page)
+    should_have_geometry = _line_guide_should_have_geometry(work, page, scene)
     if curve_objects:
         return True
     if safe_obj is None or bleed_outer_obj is None:
         return True
     if line_obj is not None and getattr(line_obj, "type", "") != "CURVE":
         return True
+    line_should_be_visible = should_have_geometry and _paper_guides_visible(work, scene)
     if should_have_geometry:
         if line_obj is None:
             return True
-        if bool(getattr(line_obj, "hide_viewport", False)) or not _curve_has_visible_geometry(line_obj):
+        if not _curve_has_visible_geometry(line_obj):
+            return True
+        if bool(getattr(line_obj, "hide_viewport", False)) == line_should_be_visible:
             return True
         if _curve_display_needs_rebuild(line_obj):
             return True
@@ -1545,6 +1572,30 @@ def _paper_guide_needs_repair(work, page) -> bool:
         if _curve_has_visible_geometry(line_obj) or not bool(getattr(line_obj, "hide_viewport", False)):
             return True
     if _guide_front_order_needs_repair(work, page):
+        return True
+    in_range = bool(getattr(page, "in_page_range", True))
+    overlay = getattr(work, "safe_area_overlay", None)
+    try:
+        safe_visible = (
+            in_range
+            and _paper_guides_visible(work, scene)
+            and bool(getattr(overlay, "enabled", True))
+            and float(safe_obj.color[3]) > 0.0
+        )
+        if bool(getattr(safe_obj, "hide_viewport", False)) == safe_visible:
+            return True
+    except Exception:  # noqa: BLE001
+        return True
+    try:
+        bleed_outer_visible = (
+            in_range
+            and _paper_guides_visible(work, scene)
+            and bool(getattr(overlay, "bleed_outer_enabled", True))
+            and float(bleed_outer_obj.color[3]) > 0.0
+        )
+        if bool(getattr(bleed_outer_obj, "hide_viewport", False)) == bleed_outer_visible:
+            return True
+    except Exception:  # noqa: BLE001
         return True
     return False
 
@@ -1559,7 +1610,7 @@ def repair_loaded_work_paper_guides(scene=None, work=None) -> bool:
         return False
     needs_rebuild = False
     for page in getattr(work, "pages", []) or []:
-        if _paper_guide_needs_repair(work, page):
+        if _paper_guide_needs_repair(work, page, scene):
             needs_rebuild = True
             break
     if not needs_rebuild:

@@ -1,9 +1,4 @@
-"""B-MANGA オーバーレイ表示の切替 operator (Phase 3c).
-
-GPU オーバーレイ (画像 / フキダシ / テキスト等の独自描画) を一括 ON/OFF。
-Object 化されたレイヤー (raster Mesh / balloon Curve / text plane) のみを
-見たいときに OFF にする。
-"""
+"""B-MANGA オーバーレイ表示の切替 operator."""
 
 from __future__ import annotations
 
@@ -18,9 +13,8 @@ class BMANGA_OT_overlay_toggle(bpy.types.Operator):
     bl_idname = "bmanga.overlay_toggle"
     bl_label = "オーバーレイ表示切替"
     bl_description = (
-        "B-MANGA 独自の GPU オーバーレイ描画 (画像/フキダシ/テキスト等) を"
-        "一括 ON/OFF します。OFF にすると Blender 標準 Object 描画 (raster"
-        " メッシュ/フキダシ Curve/テキスト Plane) のみが見えます。"
+        "ページ番号・作品情報・選択枠・編集ハンドルなどの補助表示を"
+        "一括 ON/OFF します。"
     )
     bl_options = {"REGISTER"}
 
@@ -55,7 +49,7 @@ _CLASSES = (BMANGA_OT_overlay_toggle,)
 def register() -> None:
     bpy.types.Scene.bmanga_overlay_enabled = bpy.props.BoolProperty(
         name="オーバーレイ表示",
-        description="B-MANGA 独自オーバーレイ描画の表示切替 (Phase 3c)",
+        description="ページ番号・作品情報・選択枠・編集ハンドルなどの補助表示を切り替えます",
         default=True,
     )
     for cls in _CLASSES:

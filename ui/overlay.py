@@ -1048,12 +1048,12 @@ def _draw_comas(
     page,
     ox_mm: float = 0.0,
     oy_mm: float = 0.0,
+    draw_borders: bool = True,
 ) -> None:
-    """ページ内のコマ枠・白フチを Z 順に従って描画.
+    """ページ内のコマ選択補助を描画し、必要な場面だけ枠線を補助描画する.
 
-    Z順序昇順 (背面→手前) で描画することで重なり時も正しく表示される。
-    rect / polygon の両形状をサポート (枠線カット後は polygon になる)。
-    自動くり抜きは Phase 2 段階では未実装。
+    ページファイルの現在ページではコマ枠線が実オブジェクトとして表示されるため、
+    通常の枠線は描かず、選択中コマの強調表示だけを残す。
     """
     active_stem = ""
     scene = getattr(bpy.context, "scene", None)
@@ -1092,7 +1092,8 @@ def _draw_comas(
         # ページオフセットを加算
         if ox_mm != 0.0 or oy_mm != 0.0:
             poly = [(x + ox_mm, y + oy_mm) for x, y in poly]
-        _draw_coma_border_overlay(entry, poly)
+        if draw_borders:
+            _draw_coma_border_overlay(entry, poly)
         is_active_coma = (
             bool(active_stem)
             and str(getattr(entry, "coma_id", "") or "") == active_stem
@@ -1136,6 +1137,20 @@ def _translate_rect(r: Rect, ox_mm: float, oy_mm: float) -> Rect:
     return Rect(r.x + ox_mm, r.y + oy_mm, r.width, r.height)
 
 
+def _page_uses_real_page_objects(context, page) -> bool:
+    """ページファイルの現在ページは実オブジェクト表示を正とする."""
+    scene = getattr(context, "scene", None)
+    if scene is None or page is None:
+        return False
+    try:
+        if not page_file_scene.is_page_edit_scene(scene):
+            return False
+        page_id = str(getattr(page, "id", "") or "")
+        return bool(page_id and page_file_scene.current_page_id(scene) == page_id)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 
 def _draw_page_overlay(
     context,
@@ -1169,6 +1184,7 @@ def _draw_page_overlay(
 
     # page_index が渡されなかった場合のみ逆引き
     _pi = page_index if page_index >= 0 else _resolve_page_index(work, ox_mm, oy_mm)
+    use_real_page_objects = _page_uses_real_page_objects(context, page)
 
     # 用紙白背景 (depth書込み)
     is_spread = bool(getattr(page, "spread", False))
@@ -1182,7 +1198,8 @@ def _draw_page_overlay(
             )
         except Exception:  # noqa: BLE001
             pass
-    overlay_paper_bg.draw_for_page(paper, rects, ox_mm, oy_mm, is_spread=is_spread, spread_width_mm=spread_w)
+    if not use_real_page_objects:
+        overlay_paper_bg.draw_for_page(paper, rects, ox_mm, oy_mm, is_spread=is_spread, spread_width_mm=spread_w)
 
     # ページプレビュー画像
     _is_current = False
@@ -1190,25 +1207,31 @@ def _draw_page_overlay(
         _is_current = (_pi == int(getattr(work, "active_page_index", -1)))
     except Exception:  # noqa: BLE001
         pass
-    if page is not None:
+    if page is not None and not use_real_page_objects:
         overlay_page_preview.draw_for_page(context, work, page, _pi, ox_mm, oy_mm, is_current_page=_is_current)
 
     # ガイド線 + セーフ外 / 断ち切り外塗り
     _region, _rv3d = _resolve_active_region(context)
-    if _region is not None and _rv3d is not None and page is not None:
+    if _region is not None and _rv3d is not None and page is not None and not use_real_page_objects:
         overlay_paper_guide.draw_for_page(
             work, paper, rects, page, _pi,
             ox_mm, oy_mm, is_left_half, _region, _rv3d,
         )
 
     # 画像レイヤー (アクティブページのみ — 全ページ一覧時は負荷とレイヤーの per-scene 制約で省略)
-    if mode == MODE_PAGE and draw_image_layers:
+    if mode == MODE_PAGE and draw_image_layers and not use_real_page_objects:
         overlay_image.draw_image_layers(context.scene)
         _draw_shared_layers(work)
 
     # コマ枠 / フキダシ / テキスト。コマ編集モードでは参照表示として描く。
     if mode in (MODE_PAGE, MODE_COMA) and page is not None:
-        _draw_comas(work, page, ox_mm=ox_mm, oy_mm=oy_mm)
+        _draw_comas(
+            work,
+            page,
+            ox_mm=ox_mm,
+            oy_mm=oy_mm,
+            draw_borders=not use_real_page_objects,
+        )
         active_text_guides = False
         if getattr(context.scene, "bmanga_active_layer_kind", "") == "text":
             active_idx = int(getattr(work, "active_page_index", -1))
@@ -1826,7 +1849,8 @@ def schedule_viewport_overlays_enabled(*, enabled: bool, retries: int = 6, inter
 def reset_viewport_background_to_theme(context=None) -> int:
     """全ウィンドウの全 VIEW_3D の solid shading 背景をテーマ色 (Blender 既定) に戻す.
 
-    用紙領域は overlay_paper_bg が POST_VIEW で不透明塗りする。
+    ページファイルの現在ページは実体の用紙背景を使い、それ以外のプレビュー表示だけ
+    overlay_paper_bg が POST_VIEW で不透明塗りする。
     ビューポート背景はテーマ既定の灰色に保つ。
 
     過去に白く書き換えられて .blend に保存されているファイルも、ロード時に

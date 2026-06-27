@@ -155,10 +155,25 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     from bmanga_dev.ui import overlay
     from bmanga_dev.ui import overlay_text
     from bmanga_dev.ui import overlay_image
+    from bmanga_dev.utils import page_file_scene
+    from bmanga_dev.utils import paper_bg_object
     from bmanga_dev.utils import paper_guide_object
 
     calls: list[str] = []
     original = {
+        "scene_current_page_id": str(getattr(context.scene, "bmanga_current_page_id", "") or ""),
+        "current_coma_id": str(getattr(context.scene, "bmanga_current_coma_id", "") or ""),
+        "current_coma_page_id": str(getattr(context.scene, "bmanga_current_coma_page_id", "") or ""),
+        "overview_mode": bool(getattr(context.scene, "bmanga_overview_mode", False)),
+        "active_layer_kind": str(getattr(context.scene, "bmanga_active_layer_kind", "") or ""),
+        "active_page_index": int(getattr(work, "active_page_index", -1)),
+        "page_guides_visible": bool(getattr(context.scene, "bmanga_page_guides_visible", True)),
+        "is_page_edit_scene": page_file_scene.is_page_edit_scene,
+        "current_page_id_func": page_file_scene.current_page_id,
+        "current_role_func": page_file_scene.current_role,
+        "paper_bg": overlay.overlay_paper_bg.draw_for_page,
+        "paper_guide": overlay.overlay_paper_guide.draw_for_page,
+        "page_preview": overlay.overlay_page_preview.draw_for_page,
         "draw_rect_outline": overlay._draw_rect_outline,
         "draw_trim_marks": overlay._draw_trim_marks,
         "draw_frame_with_hole": overlay._draw_frame_with_hole,
@@ -181,11 +196,28 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
     def safe_overlay(_outer, _inner, color):
         calls.append("safe_overlay")
 
+    def draw_comas(*_args, **kwargs):
+        calls.append(f"coma_borders:{bool(kwargs.get('draw_borders', True))}")
+
+    page_id = str(getattr(page, "id", "") or "")
     try:
+        page_file_scene.is_page_edit_scene = lambda _scene=None: True
+        page_file_scene.current_page_id = lambda _scene=None: page_id
+        page_file_scene.current_role = lambda _context=None: (page_file_scene.ROLE_PAGE, page_id, "")
+        if not page_file_scene.set_page_edit_state(context, page_id):
+            raise AssertionError(f"page edit state could not be set: {page_id}")
+        page_file_scene.resync_page_runtime_objects(context.scene, work, page_id)
+        context.scene.bmanga_page_guides_visible = True
+        paper_guide_object.regenerate_all_paper_guides(context.scene, page_file_scene.work_for_pages(work, {page_id}))
+        paper_guide_object.apply_view_constant_thickness()
+
+        overlay.overlay_paper_bg.draw_for_page = mark("paper_bg_overlay")
+        overlay.overlay_paper_guide.draw_for_page = mark("paper_guide_overlay")
+        overlay.overlay_page_preview.draw_for_page = mark("page_preview_overlay")
         overlay._draw_rect_outline = mark("paper")
         overlay._draw_trim_marks = mark("paper")
         overlay._draw_frame_with_hole = safe_overlay
-        overlay._draw_comas = mark("coma")
+        overlay._draw_comas = draw_comas
         overlay_text.draw_text_guides = mark("text")
         overlay_image.draw_image_layers = mark("image")
         overlay._draw_shared_layers = mark("shared")
@@ -201,6 +233,19 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
             draw_image_layers=True,
         )
     finally:
+        context.scene.bmanga_current_page_id = original["scene_current_page_id"]
+        context.scene.bmanga_current_coma_id = original["current_coma_id"]
+        context.scene.bmanga_current_coma_page_id = original["current_coma_page_id"]
+        context.scene.bmanga_overview_mode = original["overview_mode"]
+        context.scene.bmanga_active_layer_kind = original["active_layer_kind"]
+        context.scene.bmanga_page_guides_visible = original["page_guides_visible"]
+        work.active_page_index = original["active_page_index"]
+        page_file_scene.is_page_edit_scene = original["is_page_edit_scene"]
+        page_file_scene.current_page_id = original["current_page_id_func"]
+        page_file_scene.current_role = original["current_role_func"]
+        overlay.overlay_paper_bg.draw_for_page = original["paper_bg"]
+        overlay.overlay_paper_guide.draw_for_page = original["paper_guide"]
+        overlay.overlay_page_preview.draw_for_page = original["page_preview"]
         overlay._draw_rect_outline = original["draw_rect_outline"]
         overlay._draw_trim_marks = original["draw_trim_marks"]
         overlay._draw_frame_with_hole = original["draw_frame_with_hole"]
@@ -211,26 +256,39 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
         overlay.gpu.state.depth_test_set = original["depth_test_set"]
         overlay.gpu.state.blend_set = original["blend_set"]
 
-    for required in ("image", "shared", "coma", "text"):
+    page_file_scene.is_page_edit_scene = lambda _scene=None: True
+    page_file_scene.current_page_id = lambda _scene=None: page_id
+    page_file_scene.current_role = lambda _context=None: (page_file_scene.ROLE_PAGE, page_id, "")
+    if not page_file_scene.set_page_edit_state(context, page_id):
+        raise AssertionError(f"page edit state could not be restored: {page_id}")
+    page_file_scene.resync_page_runtime_objects(context.scene, work, page_id)
+
+    for required in ("coma_borders:False", "text"):
         if required not in calls:
             raise AssertionError(f"{required} draw marker missing: {calls}")
-    if "balloon" in calls:
-        raise AssertionError(f"balloons must not be drawn by overlay: {calls}")
+    for forbidden in ("paper_bg_overlay", "paper_guide_overlay", "page_preview_overlay", "image", "shared", "coma_borders:True"):
+        if forbidden in calls:
+            raise AssertionError(f"current page must use real objects instead of {forbidden}: {calls}")
     if "paper" in calls:
         raise AssertionError(f"paper guides must not be drawn by overlay: {calls}")
     if "safe_overlay" in calls:
         raise AssertionError(f"safe area fill must not be drawn by overlay: {calls}")
 
-    page_id = str(getattr(page, "id", "") or "")
+    bg_obj = bpy.data.objects.get(f"{paper_bg_object.PAPER_BG_NAME_PREFIX}{page_id}")
+    if bg_obj is None:
+        raise AssertionError("paper background real object is missing")
+    if bool(getattr(bg_obj, "hide_viewport", True)):
+        raise AssertionError("paper background real object is hidden on current page")
+
     guide_objs = [
         obj
         for obj in bpy.data.objects
         if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
     ]
     guide_kinds = {str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") for obj in guide_objs}
-    expected = {paper_guide_object.GUIDE_KIND_LINES, "safe_fill"}
-    if not expected.issubset(guide_kinds):
-        raise AssertionError(f"missing paper guide objects: expected={expected}, actual={guide_kinds}")
+    expected_kinds = {paper_guide_object.GUIDE_KIND_LINES, "safe_fill", "bleed_outer_fill"}
+    if not expected_kinds.issubset(guide_kinds):
+        raise AssertionError(f"missing paper guide objects: expected={expected_kinds}, actual={guide_kinds}")
     guide_line_objs = [
         obj for obj in guide_objs
         if str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") == paper_guide_object.GUIDE_KIND_LINES
@@ -271,6 +329,34 @@ def _assert_paper_guides_use_real_objects(context, work, page) -> list[str]:
                 f"safe area fill viewport material color mismatch: "
                 f"{tuple(safe_fill.active_material.diffuse_color)} != {expected_color}"
             )
+    try:
+        if not page_file_scene.set_page_edit_state(context, page_id):
+            raise AssertionError(f"page edit state could not be restored for guide toggle: {page_id}")
+        context.scene.bmanga_page_guides_visible = False
+        paper_guide_object.regenerate_all_paper_guides(context.scene, page_file_scene.work_for_pages(work, {page_id}))
+        hidden_objs = [
+            obj for obj in bpy.data.objects
+            if str(obj.get(paper_guide_object.PROP_GUIDE_OWNER_ID, "") or "") == page_id
+            and str(obj.get(paper_guide_object.PROP_GUIDE_KIND, "") or "") in expected_kinds
+        ]
+        if any(not bool(getattr(obj, "hide_viewport", False)) for obj in hidden_objs):
+            raise AssertionError("paper guide real objects remained visible after guide toggle off")
+        bg_after_toggle = bpy.data.objects.get(f"{paper_bg_object.PAPER_BG_NAME_PREFIX}{page_id}")
+        if bg_after_toggle is None or bool(getattr(bg_after_toggle, "hide_viewport", True)):
+            raise AssertionError("paper background should remain visible when only guides are hidden")
+        context.scene.bmanga_page_guides_visible = True
+        paper_guide_object.regenerate_all_paper_guides(context.scene, page_file_scene.work_for_pages(work, {page_id}))
+    finally:
+        context.scene.bmanga_current_page_id = original["scene_current_page_id"]
+        context.scene.bmanga_current_coma_id = original["current_coma_id"]
+        context.scene.bmanga_current_coma_page_id = original["current_coma_page_id"]
+        context.scene.bmanga_overview_mode = original["overview_mode"]
+        context.scene.bmanga_active_layer_kind = original["active_layer_kind"]
+        context.scene.bmanga_page_guides_visible = original["page_guides_visible"]
+        work.active_page_index = original["active_page_index"]
+        page_file_scene.is_page_edit_scene = original["is_page_edit_scene"]
+        page_file_scene.current_page_id = original["current_page_id_func"]
+        page_file_scene.current_role = original["current_role_func"]
     return calls
 
 
@@ -330,7 +416,7 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         overlay._draw_segments_mm = mark("coma_selection_or_border")
         overlay._draw_styled_segment_mm = mark("coma_styled_border")
         overlay._draw_frame_with_hole = mark("coma_white_margin_frame")
-        overlay._draw_comas(work, page)
+        overlay._draw_comas(work, page, draw_borders=False)
         forbidden = {
             "coma_white_margin_rect",
             "coma_stroke_band",
@@ -345,7 +431,7 @@ def _assert_coma_overlay_cleanup(context, work, page) -> None:
         coma.white_margin.enabled = False
         coma.background_color = (0.2, 0.4, 0.8, 1.0)
         overlay._draw_polygon_fill = mark("coma_background")
-        overlay._draw_comas(work, page)
+        overlay._draw_comas(work, page, draw_borders=False)
         if "coma_background" in calls:
             raise AssertionError(f"coma background overlay should not be drawn: {calls}")
 

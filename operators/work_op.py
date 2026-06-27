@@ -257,6 +257,7 @@ class BMANGA_OT_work_new(Operator, ExportHelper):
 
                 page_file_scene.purge_work_list_runtime_data(context.scene)
                 page_preview_object.sync_page_previews(context, work)
+                page_file_scene.purge_work_list_runtime_data(context.scene)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_new: page preview setup failed")
             blend_io.save_work_blend(work_dir)
@@ -558,6 +559,7 @@ class BMANGA_OT_work_save(Operator):
                 elif file_role == "work":
                     page_file_scene.purge_work_list_runtime_data(context.scene)
                     page_preview_object.sync_page_previews(context, work, force=True)
+                    page_file_scene.purge_work_list_runtime_data(context.scene)
             except Exception:  # noqa: BLE001
                 _logger.exception("work_save: page preview refresh failed")
 

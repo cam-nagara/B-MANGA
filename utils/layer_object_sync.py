@@ -781,6 +781,7 @@ def mirror_work_to_outliner(scene: bpy.types.Scene, work) -> None:
                     from . import page_preview_object
 
                     page_preview_object.sync_page_previews(bpy.context, work)
+                    page_file_scene.purge_work_list_runtime_data(scene)
                 except Exception:  # noqa: BLE001
                     _logger.exception("work list page previews failed")
                 try:

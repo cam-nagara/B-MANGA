@@ -1190,6 +1190,13 @@ def sync_page_previews(context=None, work=None, *, force: bool = False) -> int:
             coma_origin_mm=coma_origin_mm,
         )
         updated += 1
+    if role == "work":
+        try:
+            from . import page_file_scene
+
+            page_file_scene.purge_work_list_runtime_data(scene)
+        except Exception:  # noqa: BLE001
+            _logger.exception("work list runtime cleanup after page previews failed")
     try:
         for area in getattr(context, "screen", None).areas:
             if area.type == "VIEW_3D":

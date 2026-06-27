@@ -41,7 +41,7 @@ def _call_blender_menu(menu_idname: str) -> None:
 
 
 def position_dialog_cursor(context, event, *, key: str = "layer_detail", offset_x: int = 0) -> bool:
-    """詳細設定ダイアログを前回位置に出すため、一時的にカーソルを移動する."""
+    """詳細設定ダイアログ用の位置候補を記録する。カーソル自体は動かさない。"""
     window = getattr(context, "window", None)
     window_manager = getattr(context, "window_manager", None)
     if window is None or window_manager is None or event is None:
@@ -60,18 +60,6 @@ def position_dialog_cursor(context, event, *, key: str = "layer_detail", offset_
         window_manager[_pos_key(key, "x")] = int(target_x)
         window_manager[_pos_key(key, "y")] = int(target_y)
         window_manager[_pos_key(key, "valid")] = True
-        if target_x == original_x and target_y == original_y:
-            return True
-        window.cursor_warp(target_x, target_y)
-
-        def _restore_cursor():
-            try:
-                window.cursor_warp(original_x, original_y)
-            except Exception:  # noqa: BLE001
-                pass
-            return None
-
-        bpy.app.timers.register(_restore_cursor, first_interval=0.05)
         return True
     except Exception:  # noqa: BLE001
         _logger.exception("detail popup: failed to position dialog cursor")

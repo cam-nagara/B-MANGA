@@ -3,6 +3,49 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — ページファイル現在ページの表示を実体オブジェクトへ整理 (v0.6.391)
+
+### 症状
+
+- ページファイルで現在ページのコマ枠線が、レイヤーには存在するのに画面上で見えない場合があった。
+- オーバーレイを表示すると、透明部分が黒く見える場合があった。
+- ページ一覧プレビューで、用紙ガイド、セーフライン外、断ち落とし枠外の塗り、ページ番号、作品情報の表示が場面により欠ける場合があった。
+- ページプレビュー画像をクリックで選択すると、ページ画像が消える場合があった。
+- 右クリックからメニューや詳細設定を開く時、カーソルが一瞬移動してから戻る場合があった。
+
+### 原因
+
+- ページファイルの現在ページでは紙面やコマ枠などを実体として持つ一方、オーバーレイ側も同じ要素を描こうとしており、表示責務が重複していた。
+- ページ一覧プレビュー画像の更新時に、一時的に作ったコマ枠などの実体が作品ファイル側へ残る経路があった。
+- 用紙ガイドを非表示にした状態を、壊れた表示状態として扱って再生成する場合があった。
+
+### 修正
+
+- ページファイルの現在ページは、紙面、用紙ガイド、セーフライン外、断ち落とし枠外の塗り、コマ枠、画像、テキスト、塗りを実体表示へ統一した。
+- オーバーレイは、ページ番号、作品情報、選択枠、編集ハンドルなどの補助表示に限定した。
+- ページファイルを開いた時、用紙設定や表示設定を変えた時に、現在ページの実体表示を再同期するようにした。
+- ページ一覧プレビュー画像の更新後、作品ファイル側へ残ってはいけない一時実体を掃除するようにした。
+- 用紙ガイドを非表示にした状態は、正常な非表示状態として扱うようにした。
+- 現在ページだけを表示対象に絞った時も、元の作品内のページ順を基準に配置計算するようにした。
+- 右クリック関連のポップアップ補助処理から、カーソルを一時移動する処理を削除した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile ui\overlay.py utils\page_file_scene.py utils\page_grid.py utils\paper_bg_object.py utils\paper_guide_object.py utils\page_preview_object.py utils\layer_object_sync.py utils\detail_popup.py core\paper.py core\safe_area_overlay.py panels\view_panel.py operators\overlay_toggle_op.py operators\page_file_op.py operators\work_op.py operators\layer_detail_op.py operators\layer_stack_op.py test\blender_bmanga_partial_completion_check.py test\blender_page_file_stage_check.py test\blender_paper_guide_visibility_check.py test\blender_page_file_real_object_overlay_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_bmanga_partial_completion_check.py`
+- `blender.exe --factory-startup --background --python test\blender_paper_guide_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_file_stage_check.py`
+- `blender.exe --factory-startup --background --python test\blender_bleed_outer_default_color_check.py`
+- `blender.exe --factory-startup --background --python test\blender_context_menu_commands_check.py`
+- `blender.exe --factory-startup --python test\blender_page_file_real_object_overlay_visual_check.py`
+- `blender.exe --factory-startup --python test\blender_page_preview_click_visual_check.py`
+- `blender.exe --factory-startup --python test\blender_page_file_preview_visual_check.py`
+- AI目視で、オーバーレイ表示中も透明部分が黒くならず、オーバーレイを消しても紙面・用紙ガイド・セーフライン外・断ち落とし枠外の塗り・コマ枠が残ることを確認。
+- AI目視で、ページプレビュー画像をクリック選択してもページ画像が消えないことを確認。
+- AI目視で、ページファイル内の周辺ページプレビューが同じ高さ基準で並び、見開きページが下へずれないことを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line プリセット適用後の表示判定を追加検証 (v0.3.8)
 
 ### 症状

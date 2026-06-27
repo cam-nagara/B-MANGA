@@ -54,12 +54,35 @@ def _tag_view3d_redraw(context) -> None:
             area.tag_redraw()
 
 
+def _sync_paper_runtime_objects(context) -> None:
+    scene = getattr(context, "scene", None) if context is not None else None
+    work = getattr(scene, "bmanga_work", None) if scene is not None else None
+    if scene is None or work is None or not bool(getattr(work, "loaded", False)):
+        return
+    try:
+        from ..utils import page_file_scene, paper_bg_object, paper_guide_object
+
+        page_ids = None
+        if page_file_scene.is_page_edit_scene(scene):
+            page_id = page_file_scene.current_page_id(scene)
+            if page_id:
+                page_ids = {page_id}
+        scoped_work = page_file_scene.work_for_pages(work, page_ids)
+        paper_bg_object.regenerate_all_paper_bgs(scene, scoped_work)
+        paper_guide_object.regenerate_all_paper_guides(scene, scoped_work)
+        paper_guide_object.apply_view_constant_thickness()
+    except Exception:  # noqa: BLE001
+        _logger.exception("paper runtime object sync failed")
+
+
 def _on_paper_visual_changed(_self, context) -> None:
+    _sync_paper_runtime_objects(context)
     _tag_view3d_redraw(context)
 
 
 def _on_paper_color_changed(self, context) -> None:
     """``paper_color`` 変更時にビューポートを再描画."""
+    _sync_paper_runtime_objects(context)
     _tag_view3d_redraw(context)
 
 
@@ -77,6 +100,7 @@ def _on_paper_layout_changed(_self, context) -> None:
             page_grid.apply_page_collection_transforms(context, work)
     except Exception:  # noqa: BLE001
         pass
+    _sync_paper_runtime_objects(context)
     _tag_view3d_redraw(context)
 
 

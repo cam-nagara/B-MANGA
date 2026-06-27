@@ -466,15 +466,27 @@ def purge_other_page_data(scene, page_id: str) -> int:
 
 
 def resync_page_runtime_objects(scene, work, page_id: str) -> int:
-    """ページ用 blend で表示するコマ背景・枠線を現在ページ分だけ再同期する."""
+    """ページ用 blend で表示する紙面・コマ背景・枠線を現在ページ分だけ再同期する."""
     if scene is None or work is None or not paths.is_valid_page_id(page_id):
         return 0
+    page_index = find_page_index(work, page_id)
     scoped_work = work_for_pages(work, {page_id})
-    from . import coma_border_object, coma_plane
+    from . import coma_border_object, coma_plane, layer_object_sync, paper_bg_object, paper_guide_object
 
     count = 0
+    if page_index >= 0:
+        if paper_bg_object.ensure_paper_bg_for_page(scene, work, page_index) is not None:
+            count += 1
+        count += len(paper_guide_object.ensure_paper_guides_for_page(scene, work, page_index))
+    count += paper_bg_object.regenerate_all_paper_bgs(scene, scoped_work)
+    count += paper_guide_object.regenerate_all_paper_guides(scene, scoped_work)
+    try:
+        paper_guide_object.apply_view_constant_thickness()
+    except Exception:  # noqa: BLE001
+        pass
     count += coma_plane.regenerate_all_coma_planes(scene, scoped_work)
     count += coma_border_object.regenerate_all_coma_borders(scene, scoped_work)
+    layer_object_sync._mirror_image_text_objects(scene, work, {page_id})
     return count
 
 

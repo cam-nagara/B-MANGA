@@ -52,6 +52,26 @@ def _visible_page_preview_objects() -> list[bpy.types.Object]:
     return [obj for obj in _page_preview_objects() if not bool(getattr(obj, "hide_viewport", False))]
 
 
+def _page_preview_object_ids() -> set[str]:
+    return {
+        str(obj.get("bmanga_page_preview_page_id", "") or obj.get("bmanga_id", "") or "")
+        for obj in _page_preview_objects()
+    }
+
+
+def _page_preview_object_for(page_id: str):
+    page_id = str(page_id or "")
+    for obj in _page_preview_objects():
+        if str(obj.get("bmanga_page_preview_page_id", "") or obj.get("bmanga_id", "") or "") == page_id:
+            return obj
+    return None
+
+
+def _assert_preview_cache_hidden() -> None:
+    visible = _visible_page_preview_objects()
+    assert not visible, f"ページプレビュー平面は表示に使わず非表示キャッシュにします: {[obj.name for obj in visible]}"
+
+
 _WORK_FILE_FORBIDDEN_OBJECT_PROPS = {
     "bmanga_coma_plane_kind",
     "bmanga_coma_mask_kind",
@@ -370,8 +390,9 @@ def main() -> None:
         _assert_page_file_current_page_runtime_only("p0001")
         assert bpy.data.collections.get("p0002") is None
         previews = _page_preview_objects()
-        assert len(previews) == 3
-        assert len(_visible_page_preview_objects()) == 3
+        assert len(previews) == 4, _page_preview_object_ids()
+        assert _page_preview_object_ids() == {"p0001", "p0002", "p0003", "p0004"}
+        _assert_preview_cache_hidden()
         assert (work_dir / "p0002" / "page_preview.png").is_file()
         assert str(getattr(bpy.context.scene, "bmanga_page_preview_range_mode", "")) == "ALL"
         assert abs(float(getattr(bpy.context.scene, "bmanga_page_preview_resolution_percentage", 0.0)) - 25.0) < 0.001
@@ -438,13 +459,15 @@ def main() -> None:
         assert all(obj.hide_viewport for obj in _page_preview_objects())
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0}  # noqa: SLF001
         bpy.context.scene.bmanga_page_preview_enabled = True
-        assert any(not obj.hide_viewport for obj in _page_preview_objects())
+        _assert_preview_cache_hidden()
         bpy.context.scene.bmanga_page_preview_range_mode = "NEAR"
         rects = page_preview_object.preview_rects_mm(bpy.context.scene, work)
         assert set(rects) == {"p0001", "p0002"}
         assert overlay._page_file_overview_indices(bpy.context.scene, work) == {0, 1}  # noqa: SLF001
-        assert len(_visible_page_preview_objects()) == 1
-        mat = _visible_page_preview_objects()[0].active_material
+        _assert_preview_cache_hidden()
+        preview_obj = _page_preview_object_for("p0002")
+        assert preview_obj is not None
+        mat = preview_obj.active_material
         assert mat is not None and mat.node_tree is not None
         assert any(getattr(node, "type", "") == "EMISSION" for node in mat.node_tree.nodes)
         opacity_node = mat.node_tree.nodes.get(page_preview_object.PREVIEW_OPACITY_NODE)
@@ -466,7 +489,7 @@ def main() -> None:
         )
         coma_knife_cut_op._sync_layer_stack_after_cut(bpy.context)
         assert len(work.pages[0].comas) == before_cut + 1
-        assert len(_visible_page_preview_objects()) == 1
+        _assert_preview_cache_hidden()
         _assert_page_file_current_page_runtime_only("p0001")
         # 解像度%の変更は、表示中 (前後ページ → p0002 が見えている) のプレビューを
         # 新しいサイズで再生成する。v0.6.280 以降は表示対象だけ再生成するため、
@@ -491,7 +514,7 @@ def main() -> None:
         bpy.context.scene.bmanga_overview_cols = 6
         bpy.context.scene.bmanga_overview_gap_mm = 0.0
         bpy.context.scene.bmanga_page_preview_enabled = False
-        assert len(_visible_page_preview_objects()) == 0
+        _assert_preview_cache_hidden()
 
         _add_current_page_preview_balloon(work)
         _add_page_only_probe()
@@ -541,7 +564,7 @@ def main() -> None:
         assert bpy.data.collections.get("p0001") is None
         assert _managed_object("balloon", "page_only_balloon_probe") is None
         assert _managed_object("balloon", "other_page_balloon") is not None
-        assert len(_visible_page_preview_objects()) == 0
+        _assert_preview_cache_hidden()
         _assert_page_file_current_page_runtime_only("p0002")
         _assert_current_page_runtime_aligned(1)
 

@@ -272,6 +272,13 @@ class BMANGA_OT_exit_page_file(Operator):
         ctx = bpy.context
         set_mode(MODE_PAGE, ctx)
         page_file_scene.set_work_list_state(ctx)
+        try:
+            from ..utils import page_preview_object
+
+            page_preview_object.sync_page_previews(ctx, get_work(ctx), force=True)
+            page_file_scene.purge_work_list_runtime_data(ctx.scene)
+        except Exception:  # noqa: BLE001
+            _logger.exception("exit_page_file: work list cleanup failed")
         self.report({"INFO"}, "作品ファイルに戻りました")
         return {"FINISHED"}
 

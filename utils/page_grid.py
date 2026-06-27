@@ -345,10 +345,11 @@ def page_total_offset_mm(
     cols, gap_x, gap_y, cw, ch = _resolve_overview_params(scene, work)
     start_side = getattr(work.paper, "start_side", "right")
     read_direction = getattr(work.paper, "read_direction", "left")
+    grid_work = getattr(work, "_source_work", work)
     grid_page_index = original_page_index(work, page_index)
     ox_mm, oy_mm = page_grid_offset_mm(
         grid_page_index, cols, gap_x, cw, ch, start_side, read_direction,
-        work=work, gap_y_mm=gap_y,
+        work=grid_work, gap_y_mm=gap_y,
     )
     add_x, add_y = page_manual_offset_for_scene_mm(scene, work.pages[page_index])
     return ox_mm + add_x, oy_mm + add_y

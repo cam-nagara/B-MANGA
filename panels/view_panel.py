@@ -100,6 +100,23 @@ def _page_work_info_visible_update(scene, context) -> None:
 
 
 def _page_guides_visible_update(scene, context) -> None:
+    try:
+        from ..utils import page_file_scene, paper_guide_object
+
+        work = getattr(scene, "bmanga_work", None) if scene is not None else None
+        if work is not None and bool(getattr(work, "loaded", False)):
+            page_ids = None
+            if page_file_scene.is_page_edit_scene(scene):
+                page_id = page_file_scene.current_page_id(scene)
+                if page_id:
+                    page_ids = {page_id}
+            paper_guide_object.regenerate_all_paper_guides(
+                scene,
+                page_file_scene.work_for_pages(work, page_ids),
+            )
+            paper_guide_object.apply_view_constant_thickness()
+    except Exception:  # noqa: BLE001
+        pass
     _refresh_page_preview_content(scene, context, force=True)
 
 
