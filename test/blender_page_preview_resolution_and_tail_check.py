@@ -1,7 +1,7 @@
 """Blender 実機チェック: ページ一覧プレビューの解像度としっぽ結合.
 
 1. プレビュー画像サイズが「ページ実解像度 (用紙サイズ×DPI) × 画像解像度%」
-   (長辺 1536px 上限) になること。
+   (長辺は page_preview_object.PREVIEW_MAX_LONG_PX 上限) になること。
 2. 外から内へえぐるしっぽが、出力系 (プレビュー含む) でも本体から
    えぐられた形に結合されること。
 """
@@ -54,13 +54,18 @@ def _check_image_size() -> None:
     w, h = ppo._image_size(work, scene)
     assert h == 1075 and w == 759, (w, h)
 
-    scene.bmanga_page_preview_resolution_percentage = 25.0
-    w, h = ppo._image_size(work, scene)
-    assert h == 1536, (w, h)  # 2150 → 上限 1536 へクランプ
-
     scene.bmanga_page_preview_resolution_percentage = 5.0
     w, h = ppo._image_size(work, scene)
     assert h == 430, (w, h)
+
+    scene.bmanga_page_preview_resolution_percentage = 25.0
+    w, h = ppo._image_size(work, scene)
+    assert h == 2150 and w == 1518, (w, h)
+
+    scene.bmanga_page_preview_resolution_percentage = 100.0
+    w, h = ppo._image_size(work, scene)
+    assert h == ppo.PREVIEW_MAX_LONG_PX, (w, h)
+    assert w == int(round(ppo.PREVIEW_MAX_LONG_PX * 257.0 / 364.0)), (w, h)
     print("IMAGE_SIZE_OK", flush=True)
 
 

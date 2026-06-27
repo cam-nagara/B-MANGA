@@ -256,10 +256,11 @@ def _rgb255(vec: Sequence[float], alpha: float | None = None) -> tuple[int, int,
     a = float(vec[3]) if len(vec) > 3 else 1.0
     if alpha is not None:
         a *= alpha
+    r, g, b = color_space.linear_to_srgb_rgb((float(vec[0]), float(vec[1]), float(vec[2])))
     return (
-        int(round(max(0.0, min(1.0, float(vec[0]))) * 255)),
-        int(round(max(0.0, min(1.0, float(vec[1]))) * 255)),
-        int(round(max(0.0, min(1.0, float(vec[2]))) * 255)),
+        int(round(max(0.0, min(1.0, r)) * 255)),
+        int(round(max(0.0, min(1.0, g)) * 255)),
+        int(round(max(0.0, min(1.0, b)) * 255)),
         int(round(max(0.0, min(1.0, a)) * 255)),
     )
 

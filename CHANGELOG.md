@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — ページ一覧プレビュー画像の色を画面表示に合わせる (v0.6.393)
+
+### 症状
+
+- ページ一覧プレビュー画像の用紙色、コマ背景色、線色などが、実際のページ表示より濃く暗い色で表示される場合があった。
+
+### 原因
+
+- ページ一覧プレビュー画像を作る時に、Blender の色設定を画面で見える色へ変換する前の値のまま PNG に焼き込んでいた。
+
+### 修正
+
+- ページ一覧プレビュー画像を生成する共通の色処理で、画面表示相当の色へ変換してから PNG に書き込むようにした。
+- 用紙色、コマ背景色、コマ枠線、フチ、文字色など、同じ経路を通る要素の暗化をまとめて補正した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile io\export_pipeline.py utils\page_preview_object.py utils\page_preview_decor.py test\blender_page_preview_color_fidelity_check.py test\blender_page_preview_resolution_and_tail_check.py test\blender_page_export_range_scale_check.py test\blender_page_file_stage_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_preview_color_fidelity_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_preview_resolution_and_tail_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_export_range_scale_check.py`
+- `blender.exe --factory-startup --background --python test\blender_bleed_outer_default_color_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_file_stage_check.py`
+- `blender.exe --factory-startup --python test\blender_page_file_preview_visual_check.py`
+- 50% グレーのコマ背景がプレビュー画像上で 128 前後、70% グレーの用紙色が 178 前後になり、暗く焼き込まれないことを確認。
+- AI目視で、ページファイルの周辺ページプレビューの淡い色が黒く沈まず、現在ページと同じ明るさの系統で見えることを確認。
+
+---
+
 ## 2026-06-27 — 作品ファイルの設定変更後もページ一覧をプレビュー専用に維持 (v0.6.392)
 
 ### 症状
