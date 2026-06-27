@@ -68,6 +68,7 @@
 
 (着手前にユーザーへ確認推奨)
 
+- **フキダシ / NURBSフキダシ / 効果線の入口・線設定統合 (進行中 / 2026-06-28 Codex, v0.6.398)**。フキダシツールとNURBSフキダシツールを画面上は統合し、NURBSフキダシをフキダシツールのプリセット項目として扱う。効果線とフキダシのウニフラ / 白抜き線は、共通定義と共通UI部品を使う方針。Phase 0 の共通定義化は完了済み。詳細: [`docs/balloon_effect_tool_unification_plan_2026-06-28.md`](docs/balloon_effect_tool_unification_plan_2026-06-28.md)
 - **B-MANGA Render 分離 (進行中 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)**。 B-MANGA 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_manga_render/` へ分離する。
   - **済**: 独立アドオン土台 (`addons/b_manga_render/`, 10 ファイル / 約 2336 行) / カード型プリセット UI / eeVR 連携。
   - **未 (Phase R4 + R1 一部)**: B-MANGA 本体に出力系がまだ現役登録されている — 「ページ出力」パネル (`panels/__init__.py` `_MODULES` 内 `export_panel`) / `bmanga.export_page`・`export_all_pages`・`export_pdf` (`operators/io_op.py`, `operators/__init__.py` 内 `io_op`) / `io/export_*.py`。 魚眼モード / 縮小モード / Pencil+4 線幅保存 / ページ画像スケールは 2026-06-02 に B-MANGA Render へ移動済み。 残りを B-MANGA Render へ移植し本体側を未登録化する作業が残っている。
