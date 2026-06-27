@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line プリセット適用後の表示判定を追加検証 (v0.3.8)
+
+### 症状
+
+- ラインプリセットを適用した直後、「カメラ範囲外を非表示」や「距離で内部線を制限」の判定が次の更新まで画面へ反映されない可能性があった。
+
+### 原因
+
+- プリセット適用後にライン自体の表示状態は更新していたが、カメラ位置や距離に基づく自動判定を同じタイミングで再評価していなかった。
+
+### 修正
+
+- プリセット適用後、カメラ補正・カメラ範囲外非表示・距離で内部線を制限のいずれかが有効な場合は、表示判定をその場で再計算するようにした。
+- 「カメラ範囲外を非表示」「距離で内部線を制限」を切り替えた時も、現在のカメラ状態へ即時反映するようにした。
+- 手動の「ラインを非表示」は引き続き優先され、自動判定の更新で勝手に再表示されないことを確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- ラインプリセット適用直後に、距離で内部線を制限した内部線だけが非表示になり、アウトラインと交差線は表示されたままになることを確認。
+- ラインプリセット適用直後に、カメラ範囲外のアウトライン・内部線・交差線が自動判定で非表示になり、手動の非表示状態とは混同されないことを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line にラインプリセット管理と表示切替を追加 (v0.3.7)
 
 ### 症状

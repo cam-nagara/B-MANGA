@@ -145,6 +145,13 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     else:
         core.set_line_visibility(obj, True)
 
+    if (
+        settings.use_camera_compensation
+        or settings.use_camera_culling
+        or settings.use_inner_line_distance_limit
+    ):
+        camera_comp.refresh(context)
+
     return True
 
 

@@ -27,6 +27,13 @@ def _make_cube(name: str, location=(0.0, 0.0, 0.0)) -> bpy.types.Object:
     return obj
 
 
+def _make_camera() -> bpy.types.Object:
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 0.0))
+    camera = bpy.context.object
+    bpy.context.scene.camera = camera
+    return camera
+
+
 def _select(active: bpy.types.Object, objects: list[bpy.types.Object]) -> None:
     bpy.ops.object.select_all(action="DESELECT")
     for obj in objects:
@@ -45,6 +52,22 @@ def _assert_line_state(obj: bpy.types.Object, *, visible: bool) -> None:
     assert core.INTERSECTION_MODIFIER_NAME in mods, f"{obj.name}: 交差線がありません"
     assert all(mod.show_viewport == visible for mod in mods.values()), mods
     assert all(mod.show_render == visible for mod in mods.values()), mods
+
+
+def _assert_distance_limited_inner(obj: bpy.types.Object) -> None:
+    mods = _line_mods(obj)
+    assert mods[core.MODIFIER_NAME].show_viewport
+    assert mods[core.MODIFIER_NAME].show_render
+    assert mods[core.INTERSECTION_MODIFIER_NAME].show_viewport
+    assert mods[core.INTERSECTION_MODIFIER_NAME].show_render
+    assert not mods[core.GN_MODIFIER_NAME].show_viewport
+    assert not mods[core.GN_MODIFIER_NAME].show_render
+    assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+
+
+def _assert_camera_culled_line(obj: bpy.types.Object) -> None:
+    _assert_line_state(obj, visible=False)
+    assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
 
 def main() -> None:
@@ -113,11 +136,42 @@ def main() -> None:
         _assert_line_state(obj, visible=True)
         assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
+    _make_camera()
+    _select(source, [source])
+    settings.use_inner_line_distance_limit = True
+    settings.inner_line_max_distance = 0.5
+    scene.bmanga_line_preset_name = "距離制限テスト"
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    _select(first, [first, second])
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    for obj in (first, second):
+        assert obj.bmanga_line_settings.use_inner_line_distance_limit
+        assert abs(obj.bmanga_line_settings.inner_line_max_distance - 0.5) < 1.0e-7
+        _assert_distance_limited_inner(obj)
+
+    _select(source, [source])
+    settings.use_inner_line_distance_limit = False
+    settings.use_camera_culling = True
+    settings.culling_margin = 0.0
+    scene.bmanga_line_preset_name = "範囲外テスト"
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    _select(first, [first, second])
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    for obj in (first, second):
+        assert obj.bmanga_line_settings.use_camera_culling
+        _assert_camera_culled_line(obj)
+
     assert bpy.ops.bmanga_line.remove() == {"FINISHED"}
     for obj in (first, second):
         assert not core.has_line(obj), f"{obj.name}: ラインが残っています"
         assert core.PROP_LINES_HIDDEN not in obj
 
+    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 2
+    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 1
     assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 0
 

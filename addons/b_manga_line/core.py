@@ -258,29 +258,35 @@ def _on_camera_comp_changed(self, context):
 def _on_culling_changed(self, context):
     from . import camera_comp
     owner = self.id_data
-    if not self.use_camera_culling and owner.type == "MESH":
-        visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-        for mod_name in LINE_MODIFIER_NAMES:
-            mod = owner.modifiers.get(mod_name)
-            if mod is not None:
-                mod.show_viewport = visible
-                mod.show_render = visible
-        if self.use_inner_line_distance_limit:
+    if owner.type == "MESH":
+        if self.use_camera_culling:
             camera_comp.refresh(context)
+        else:
+            visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
+            for mod_name in LINE_MODIFIER_NAMES:
+                mod = owner.modifiers.get(mod_name)
+                if mod is not None:
+                    mod.show_viewport = visible
+                    mod.show_render = visible
+            if self.use_inner_line_distance_limit:
+                camera_comp.refresh(context)
     _propagate(self, context, "use_camera_culling")
 
 
 def _on_inner_distance_changed(self, context):
     from . import camera_comp
     owner = self.id_data
-    if not self.use_inner_line_distance_limit and owner.type == "MESH":
-        mod = owner.modifiers.get(GN_MODIFIER_NAME)
-        if mod is not None:
-            visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-            mod.show_viewport = visible
-            mod.show_render = visible
-        if self.use_camera_culling:
+    if owner.type == "MESH":
+        if self.use_inner_line_distance_limit:
             camera_comp.refresh(context)
+        else:
+            mod = owner.modifiers.get(GN_MODIFIER_NAME)
+            if mod is not None:
+                visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
+                mod.show_viewport = visible
+                mod.show_render = visible
+            if self.use_camera_culling:
+                camera_comp.refresh(context)
     _propagate(self, context, "use_inner_line_distance_limit")
 
 

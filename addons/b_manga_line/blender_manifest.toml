@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "b_manga_line"
-version = "0.3.7"
+version = "0.3.8"
 name = "B-MANGA Line"
 tagline = "背面法（反転ハル）によるマンガ風アウトライン"
 maintainer = "B-MANGA Project"
