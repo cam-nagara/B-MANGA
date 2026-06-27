@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 白抜き線設定UIを共通部品化 (v0.6.400)
+
+### 症状
+
+- 効果線の白抜き線、フキダシの白抜き線、選択中レイヤーの詳細表示で、同じ意味の白線 / 黒線 / 入り抜き設定が別々に描画されていた。
+- 片方へ項目を追加した時、もう片方の詳細表示だけ古い項目構成のまま残るリスクがあった。
+
+### 原因
+
+- 効果線とフキダシで保存名が一部異なるため、画面表示の共通化が後回しになり、表示処理が複数箇所に分散していた。
+
+### 修正
+
+- 白抜き線の設定表示を共通部品へ集約した。
+- 効果線側とフキダシ側で保存名が異なる項目は、表示用の対応表で吸収するようにした。
+- フキダシ側の白抜き線詳細でも、パネル / レイヤー詳細 / 詳細設定ダイアログで同じ白線 / 黒線 / 入り抜き設定を表示するようにした。
+- フキダシ側へ効果線専用の基準パス / 画像線設定が混ざらない確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile panels\line_effect_settings_ui.py panels\effect_line_panel.py panels\balloon_panel.py panels\layer_stack_detail_ui.py test\test_line_effect_schema.py test\blender_balloon_uni_flash_check.py`
+- `python test\test_line_effect_schema.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_white_outline_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_path_image_check.py`
+- フキダシの白抜き線設定が各入口で同じ項目になり、効果線専用項目が混ざらないことを確認。
+- 効果線の白抜き線と画像線が従来どおり生成されることを確認。
+
+---
+
 ## 2026-06-28 — NURBSフキダシをフキダシツールのプリセットへ統合 (v0.6.399)
 
 ### 症状

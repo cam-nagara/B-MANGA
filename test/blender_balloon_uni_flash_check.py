@@ -150,6 +150,7 @@ def main() -> None:
         from bmanga_dev_balloon_uni_flash.io import export_balloon, schema
         from bmanga_dev_balloon_uni_flash.operators import layer_detail_op
         from bmanga_dev_balloon_uni_flash.operators import balloon_op
+        from bmanga_dev_balloon_uni_flash.panels import balloon_panel
         from bmanga_dev_balloon_uni_flash.panels import effect_line_panel
         from bmanga_dev_balloon_uni_flash.panels import layer_stack_detail_ui
         from bmanga_dev_balloon_uni_flash.utils import (
@@ -281,6 +282,54 @@ def main() -> None:
                         "inner_white_margin_enabled",
                     ):
                         assert old_attr not in detail_props, f"ウニフラ詳細に余分な項目 {old_attr} が出ています"
+            else:
+                white_outline_props = {
+                    "flash_white_outline_count",
+                    "white_outline_angle_deg",
+                    "flash_white_outline_width_mm",
+                    "white_outline_black_direction",
+                    "white_outline_width_jitter_enabled",
+                    "white_outline_width_min_percent",
+                    "white_outline_length_jitter_enabled",
+                    "white_outline_length_min_percent",
+                    "white_outline_white_line_count_auto",
+                    "flash_white_outline_white_line_count",
+                    "flash_white_outline_spacing_mm",
+                    "white_outline_white_ratio_percent",
+                    "white_outline_white_attenuation",
+                    "white_outline_black_line_count_auto",
+                    "flash_white_outline_black_line_count",
+                    "flash_white_outline_black_spacing_mm",
+                    "white_outline_black_width_scale_percent",
+                    "white_outline_black_attenuation",
+                    "white_outline_black_length_scale_near_percent",
+                    "white_outline_black_length_scale_far_percent",
+                    "inout_apply",
+                    "in_percent",
+                    "out_percent",
+                    "in_start_percent",
+                    "out_start_percent",
+                }
+                forbidden_white_outline_props = set(effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS) | {
+                    "white_outline_white_brush_mm",
+                    "white_outline_white_inout_range_mode",
+                    "white_outline_white_in_range_percent",
+                    "white_outline_white_out_range_percent",
+                    "white_outline_white_in_range_mm",
+                    "white_outline_white_out_range_mm",
+                }
+                panel_layout = _RecordingLayout()
+                balloon_panel.draw_white_outline_line_settings(panel_layout, entry)
+                popup_layout = _RecordingLayout()
+                layer_detail_op._draw_balloon_detail(popup_layout, entry, page)
+                stack_layout = _RecordingLayout()
+                layer_stack_detail_ui._draw_balloon_selected_settings(stack_layout, context, entry)
+                for detail_props in (panel_layout.props, popup_layout.props, stack_layout.props):
+                    prop_set = set(detail_props)
+                    missing = white_outline_props - prop_set
+                    assert not missing, f"白抜き線詳細に必要な項目がありません: {sorted(missing)}"
+                    extra = forbidden_white_outline_props & prop_set
+                    assert not extra, f"白抜き線詳細に効果線専用項目が混ざっています: {sorted(extra)}"
             assert int(entry.flash_line_count) == 120
             assert abs(float(entry.flash_line_spacing_mm) - 1.0) < 1.0e-6
             assert bool(entry.flash_white_line_enabled), "白線が初期状態で有効ではありません"

@@ -12,7 +12,7 @@ from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
 from ..utils import balloon_shapes
 from ..utils import gpencil as gp_utils
-from . import corner_radius_ui, effect_line_panel
+from . import corner_radius_ui, effect_line_panel, line_effect_settings_ui
 
 
 def _zero_based_layer_name(prefix: str, value: str, width: int) -> str:
@@ -306,15 +306,11 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         row.prop(entry, "line_valley_width_pct", text="入り・抜き")
         row.prop(entry, "line_peak_width_pct", text="中間線幅")
         if line_style == "white_outline":
-            # 「束の幅」は本数×間隔で決まる配置に対して効かないため出さない
-            row = line_box.row(align=True)
-            row.prop(entry, "flash_white_outline_count")
-            row = line_box.row(align=True)
-            row.prop(entry, "flash_white_outline_white_line_count")
-            row.prop(entry, "flash_white_outline_spacing_mm")
-            row = line_box.row(align=True)
-            row.prop(entry, "flash_white_outline_black_line_count")
-            row.prop(entry, "flash_white_outline_black_spacing_mm")
+            line_effect_settings_ui.draw_balloon_white_outline_settings(
+                line_box,
+                entry,
+                draw_inout_curve=effect_line_panel.draw_inout_curve_mapping,
+            )
     elif balloon_shapes.is_dynamic_meldex_shape(shape_norm_for_line):
         row = line_box.row(align=True)
         row.prop(entry, "line_valley_width_pct")
@@ -678,64 +674,11 @@ def _draw_effect_tail_settings(box, params) -> None:
 
 
 def _draw_effect_white_outline_settings(box, params) -> None:
-    outline_box = box.box()
-    outline_box.label(text="白抜き線")
-    row = outline_box.row(align=True)
-    row.prop(params, "white_outline_count")
-    row.prop(params, "white_outline_angle_deg")
-    outline_box.prop(params, "white_outline_width_mm")
-    row = outline_box.row(align=True)
-    row.prop(params, "white_outline_width_jitter_enabled")
-    sub = row.row()
-    sub.enabled = params.white_outline_width_jitter_enabled
-    sub.prop(params, "white_outline_width_min_percent", text="最小")
-    row = outline_box.row(align=True)
-    row.prop(params, "white_outline_length_jitter_enabled")
-    sub = row.row()
-    sub.enabled = params.white_outline_length_jitter_enabled
-    sub.prop(params, "white_outline_length_min_percent", text="最小")
-
-    white_box = box.box()
-    white_box.label(text="白線")
-    white_box.prop(params, "white_outline_white_ratio_percent")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_white_line_count_auto", toggle=True)
-    count_row = row.row()
-    count_row.enabled = not bool(params.white_outline_white_line_count_auto)
-    count_row.prop(params, "white_outline_white_line_count", text="本数")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_spacing_mm")
-    row.prop(params, "white_outline_white_brush_mm")
-    white_box.prop(params, "white_outline_white_attenuation")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_white_in_percent")
-    row.prop(params, "white_outline_white_out_percent")
-    white_box.prop(params, "white_outline_white_inout_range_mode")
-    range_row = white_box.row(align=True)
-    if params.white_outline_white_inout_range_mode == "length":
-        range_row.prop(params, "white_outline_white_in_range_mm")
-        range_row.prop(params, "white_outline_white_out_range_mm")
-    else:
-        range_row.prop(params, "white_outline_white_in_range_percent")
-        range_row.prop(params, "white_outline_white_out_range_percent")
-
-    black_box = box.box()
-    black_box.label(text="黒線")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_line_count_auto", toggle=True)
-    count_row = row.row()
-    count_row.enabled = not bool(params.white_outline_black_line_count_auto)
-    count_row.prop(params, "white_outline_black_line_count", text="本数")
-    black_box.prop(params, "white_outline_black_direction")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_brush_mm")
-    row.prop(params, "white_outline_black_spacing_mm")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_width_scale_percent")
-    row.prop(params, "white_outline_black_attenuation")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_length_scale_near_percent")
-    row.prop(params, "white_outline_black_length_scale_far_percent")
+    line_effect_settings_ui.draw_effect_white_outline_settings(
+        box,
+        params,
+        show_opacity=False,
+    )
 
 
 def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:

@@ -6,7 +6,7 @@ import bpy
 from bpy.types import Panel
 
 from ..utils import balloon_shapes, effect_inout_curve
-from . import corner_radius_ui
+from . import corner_radius_ui, line_effect_settings_ui
 
 B_NAME_CATEGORY = "B-MANGA"
 
@@ -44,66 +44,12 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
         row.prop(params, f"{prefix}_cloud_sub_height_jitter", text="乱れ")
 
 
-def _draw_white_outline_settings(layout, params) -> None:
-    box = layout.box()
-    box.label(text="白抜き線")
-    box.prop(params, "opacity", slider=True)
-    row = box.row(align=True)
-    row.prop(params, "white_outline_count")
-    row.prop(params, "white_outline_angle_deg")
-    box.prop(params, "white_outline_width_mm")
-    row = box.row(align=True)
-    row.prop(params, "white_outline_width_jitter_enabled")
-    sub = row.row()
-    sub.enabled = params.white_outline_width_jitter_enabled
-    sub.prop(params, "white_outline_width_min_percent", text="最小")
-    row = box.row(align=True)
-    row.prop(params, "white_outline_length_jitter_enabled")
-    sub = row.row()
-    sub.enabled = params.white_outline_length_jitter_enabled
-    sub.prop(params, "white_outline_length_min_percent", text="最小")
-
-    white_box = layout.box()
-    white_box.label(text="白線")
-    white_box.prop(params, "white_outline_white_ratio_percent")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_white_line_count_auto", toggle=True)
-    count_row = row.row()
-    count_row.enabled = not bool(params.white_outline_white_line_count_auto)
-    count_row.prop(params, "white_outline_white_line_count", text="本数")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_spacing_mm")
-    row.prop(params, "white_outline_white_brush_mm")
-    white_box.prop(params, "white_outline_white_attenuation")
-    row = white_box.row(align=True)
-    row.prop(params, "white_outline_white_in_percent")
-    row.prop(params, "white_outline_white_out_percent")
-    white_box.prop(params, "white_outline_white_inout_range_mode")
-    range_row = white_box.row(align=True)
-    if params.white_outline_white_inout_range_mode == "length":
-        range_row.prop(params, "white_outline_white_in_range_mm")
-        range_row.prop(params, "white_outline_white_out_range_mm")
-    else:
-        range_row.prop(params, "white_outline_white_in_range_percent")
-        range_row.prop(params, "white_outline_white_out_range_percent")
-
-    black_box = layout.box()
-    black_box.label(text="黒線")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_line_count_auto", toggle=True)
-    count_row = row.row()
-    count_row.enabled = not bool(params.white_outline_black_line_count_auto)
-    count_row.prop(params, "white_outline_black_line_count", text="本数")
-    black_box.prop(params, "white_outline_black_direction")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_brush_mm")
-    row.prop(params, "white_outline_black_spacing_mm")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_width_scale_percent")
-    row.prop(params, "white_outline_black_attenuation")
-    row = black_box.row(align=True)
-    row.prop(params, "white_outline_black_length_scale_near_percent")
-    row.prop(params, "white_outline_black_length_scale_far_percent")
+def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True) -> None:
+    line_effect_settings_ui.draw_effect_white_outline_settings(
+        layout,
+        params,
+        show_opacity=show_opacity,
+    )
 
 
 def _inout_curve_nodes_for_draw(params):
@@ -206,7 +152,7 @@ def draw_effect_params(
     if effect_type == "white_outline":
         _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(_col(0), params, "end", "終点形状")
-        _draw_white_outline_settings(_col(1), params)
+        _draw_white_outline_settings(_col(1), params, show_opacity=show_opacity)
         if show_path_settings:
             draw_effect_path_settings(_col(2), params)
         if with_generate_button:

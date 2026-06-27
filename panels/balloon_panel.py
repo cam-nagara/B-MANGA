@@ -8,7 +8,7 @@ from bpy.types import Panel, UIList
 from ..core import balloon as balloon_core
 from ..core.work import get_active_page
 from ..utils import balloon_shapes
-from . import corner_radius_ui, effect_line_panel
+from . import corner_radius_ui, effect_line_panel, line_effect_settings_ui
 B_NAME_CATEGORY = "B-MANGA"
 
 
@@ -18,67 +18,12 @@ def draw_white_outline_line_settings(box, entry, columns=None) -> None:
     フキダシのパネルと詳細設定ダイアログで共用する。``columns`` を渡すと
     白線/黒線/入り抜きを列に分配する (縦長になりすぎるダイアログ用)。
     """
-    cols = [c for c in (columns or ()) if c is not None] or [box]
-
-    def _col(index: int):
-        return cols[min(int(index), len(cols) - 1)]
-
-    row = box.row(align=True)
-    row.prop(entry, "flash_white_outline_count")
-    row.prop(entry, "white_outline_angle_deg")
-    row = box.row(align=True)
-    row.prop(entry, "flash_white_outline_width_mm")
-    row.prop(entry, "white_outline_black_direction", text="")
-    row = box.row(align=True)
-    row.prop(entry, "white_outline_width_jitter_enabled")
-    sub = row.row(align=True)
-    sub.enabled = bool(getattr(entry, "white_outline_width_jitter_enabled", False))
-    sub.prop(entry, "white_outline_width_min_percent", text="最小")
-    row = box.row(align=True)
-    row.prop(entry, "white_outline_length_jitter_enabled")
-    sub = row.row(align=True)
-    sub.enabled = bool(getattr(entry, "white_outline_length_jitter_enabled", False))
-    sub.prop(entry, "white_outline_length_min_percent", text="最小")
-
-    white_box = _col(1).box()
-    white_box.label(text="白線")
-    row = white_box.row(align=True)
-    row.prop(entry, "white_outline_white_line_count_auto", toggle=True)
-    sub = row.row(align=True)
-    sub.enabled = not bool(getattr(entry, "white_outline_white_line_count_auto", False))
-    sub.prop(entry, "flash_white_outline_white_line_count")
-    row = white_box.row(align=True)
-    row.prop(entry, "flash_white_outline_spacing_mm")
-    ratio = row.row(align=True)
-    ratio.enabled = bool(getattr(entry, "white_outline_white_line_count_auto", False))
-    ratio.prop(entry, "white_outline_white_ratio_percent")
-    white_box.prop(entry, "white_outline_white_attenuation", text="減衰")
-
-    black_box = _col(1).box()
-    black_box.label(text="黒線")
-    row = black_box.row(align=True)
-    row.prop(entry, "white_outline_black_line_count_auto", toggle=True)
-    sub = row.row(align=True)
-    sub.enabled = not bool(getattr(entry, "white_outline_black_line_count_auto", False))
-    sub.prop(entry, "flash_white_outline_black_line_count")
-    black_box.prop(entry, "flash_white_outline_black_spacing_mm")
-    row = black_box.row(align=True)
-    row.prop(entry, "white_outline_black_width_scale_percent")
-    row.prop(entry, "white_outline_black_attenuation", text="減衰")
-    row = black_box.row(align=True)
-    row.prop(entry, "white_outline_black_length_scale_near_percent")
-    row.prop(entry, "white_outline_black_length_scale_far_percent")
-
-    inout_box = _col(2).box()
-    inout_box.label(text="入り抜き")
-    inout_box.prop(entry, "inout_apply")
-    row = inout_box.row(align=True)
-    row.prop(entry, "in_percent")
-    row.prop(entry, "out_percent")
-    row = inout_box.row(align=True)
-    row.prop(entry, "in_start_percent")
-    row.prop(entry, "out_start_percent")
-    effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
+    line_effect_settings_ui.draw_balloon_white_outline_settings(
+        box,
+        entry,
+        columns=columns,
+        draw_inout_curve=effect_line_panel.draw_inout_curve_mapping,
+    )
 
 
 class BMANGA_UL_balloons(UIList):

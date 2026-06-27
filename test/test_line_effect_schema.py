@@ -16,6 +16,18 @@ def _load_schema():
     return module
 
 
+def _load_settings_ui():
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "line_effect_settings_ui",
+        root / "panels" / "line_effect_settings_ui.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None and spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_path_image_choices_are_shared_ui_contract():
     schema = _load_schema()
     assert [item[0] for item in schema.PATH_IMAGE_DRAW_MODE_ITEMS] == ["stamp", "ribbon"]
@@ -62,9 +74,28 @@ def test_balloon_flash_fields_match_shared_effect_basics():
         assert field in balloon_fields
 
 
+def test_white_outline_ui_maps_stay_in_shared_field_contract():
+    schema = _load_schema()
+    settings_ui = _load_settings_ui()
+    effect_ui_fields = set(settings_ui.EFFECT_WHITE_OUTLINE_UI_FIELDS.values())
+    balloon_ui_fields = set(settings_ui.BALLOON_WHITE_OUTLINE_UI_FIELDS.values())
+    assert effect_ui_fields <= set(schema.EFFECT_WHITE_OUTLINE_FIELDS)
+    assert not (balloon_ui_fields & set(schema.EFFECT_PATH_IMAGE_FIELDS))
+    assert "white_outline_white_brush_mm" not in balloon_ui_fields
+    assert "white_outline_white_inout_range_mode" not in balloon_ui_fields
+    for field in (
+        "white_outline_angle_deg",
+        "white_outline_white_line_count_auto",
+        "white_outline_black_direction",
+        "white_outline_black_width_scale_percent",
+    ):
+        assert field in balloon_ui_fields
+
+
 if __name__ == "__main__":
     test_path_image_choices_are_shared_ui_contract()
     test_effect_param_fields_have_no_duplicates()
     test_path_image_fields_are_saved_and_linked()
     test_linked_effect_fields_do_not_sync_uni_flash_offset()
     test_balloon_flash_fields_match_shared_effect_basics()
+    test_white_outline_ui_maps_stay_in_shared_field_contract()
