@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import vertex_analysis  # noqa: E402
+from b_manga_line import outline_setup, vertex_analysis  # noqa: E402
 from b_manga_line.core import VG_LINE_WIDTH  # noqa: E402
 
 
@@ -99,6 +99,58 @@ def _apply_weights(
     vertex_analysis.compute_and_apply_weights(obj, settings)
 
 
+def _select_objects(active: bpy.types.Object, others: list[bpy.types.Object]) -> None:
+    bpy.ops.object.select_all(action="DESELECT")
+    active.select_set(True)
+    for obj in others:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = active
+
+
+def _apply_outline_for_update_test(obj: bpy.types.Object) -> None:
+    assert outline_setup.apply_outline(
+        obj,
+        thickness=0.02,
+        color=(0.0, 0.0, 0.0, 1.0),
+        use_vertex_group=True,
+        scene=bpy.context.scene,
+    )
+
+
+def _assert_multiselect_curve_update() -> None:
+    first = _make_segmented_box("BML_curve_update_active")
+    second = _make_segmented_box("BML_curve_update_selected")
+    _apply_outline_for_update_test(first)
+    _apply_outline_for_update_test(second)
+    _select_objects(first, [second])
+
+    settings = first.bmanga_line_settings
+    settings.edge_smooth_factor = -1.0
+    settings.edge_midpoint_jitter_percent = 0.0
+    settings.edge_width_curve_25 = 1.0
+    settings.edge_width_curve_50 = 1.0
+    settings.edge_width_curve_75 = 1.0
+
+    for obj in (first, second):
+        s = obj.bmanga_line_settings
+        assert s.edge_width_curve_25 == 1.0
+        assert s.edge_width_curve_50 == 1.0
+        assert s.edge_width_curve_75 == 1.0
+        assert _weight_at_t(obj, 3, 0.25) < 1e-6
+
+    settings.edge_width_curve_25 = 0.0
+    settings.edge_width_curve_50 = 0.0
+    settings.edge_width_curve_75 = 0.0
+
+    for obj in (first, second):
+        s = obj.bmanga_line_settings
+        assert s.edge_width_curve_25 == 0.0
+        assert s.edge_width_curve_50 == 0.0
+        assert s.edge_width_curve_75 == 0.0
+        assert _weight_at_t(obj, 3, 0.25) > 0.99
+        assert _weight_at_t(obj, 3, 0.5) < 1e-6
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -126,6 +178,8 @@ def main() -> None:
     _apply_weights(late, 0.0, (0.0, 0.0, 0.0))
     assert _weight_at_t(late, 3, 0.25) > 0.99
     assert _weight_at_t(late, 3, 0.5) < 1e-6
+
+    _assert_multiselect_curve_update()
 
     print(
         "[PASS] midpoint jitter and width curve: "
