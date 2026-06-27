@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from .core import AOV_NAME, has_outline
+from .core import AOV_NAME, has_line, has_outline
 
 
 def _get_paper_dpi(scene) -> int:
@@ -38,8 +38,32 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
 
         settings = obj.bmanga_line_settings
         has_any = any(has_outline(o) for o in context.selected_objects)
+        has_line_any = any(has_line(o) for o in context.selected_objects)
 
         dpi = _get_paper_dpi(context.scene)
+
+        # --- プリセット管理 ---
+        box = layout.box()
+        box.label(text="ラインプリセット", icon="PRESET")
+        col = box.column(align=True)
+        col.prop(context.scene, "bmanga_line_preset_name")
+        col.operator("bmanga_line.preset_save", icon="ADD")
+        presets = context.scene.bmanga_line_presets
+        if presets:
+            col.template_list(
+                "UI_UL_list",
+                "bmanga_line_presets",
+                context.scene,
+                "bmanga_line_presets",
+                context.scene,
+                "bmanga_line_preset_index",
+                rows=3,
+            )
+            row = col.row(align=True)
+            row.operator("bmanga_line.preset_apply_selected", icon="CHECKMARK")
+            row.operator("bmanga_line.preset_delete", icon="TRASH")
+        else:
+            col.label(text="保存されたプリセットはありません", icon="INFO")
 
         # --- アウトライン設定 ---
         box = layout.box()
@@ -157,7 +181,14 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         row.operator("bmanga_line.apply", icon="ADD")
 
         row = layout.row(align=True)
-        row.enabled = has_any
+        row.enabled = has_line_any
+        op = row.operator("bmanga_line.set_visibility", text="ラインを表示", icon="HIDE_OFF")
+        op.visible = True
+        op = row.operator("bmanga_line.set_visibility", text="ラインを非表示", icon="HIDE_ON")
+        op.visible = False
+
+        row = layout.row(align=True)
+        row.enabled = has_line_any
         row.operator("bmanga_line.remove", icon="REMOVE")
 
         # --- 選択情報 ---

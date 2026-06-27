@@ -28,9 +28,15 @@ INTERSECTION_TREE_BOOLEAN = "BML_Intersection_Boolean"
 INTERSECTION_TREE_SDF = "BML_Intersection_SDF"
 AO_ATTR_NAME = "BML_AO"
 AOV_NAME = "BML_Line"
+PROP_LINES_HIDDEN = "bml_lines_hidden"
 PROP_BASE_THICKNESS = "bml_base_thickness"
 PROP_REF_DISTANCE = "bml_ref_distance"
 PROP_REF_FOV_TAN = "bml_ref_fov_tan"
+LINE_MODIFIER_NAMES = (
+    MODIFIER_NAME,
+    GN_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_NAME,
+)
 
 
 # ------------------------------------------------------------------
@@ -253,11 +259,12 @@ def _on_culling_changed(self, context):
     from . import camera_comp
     owner = self.id_data
     if not self.use_camera_culling and owner.type == "MESH":
-        for mod_name in (MODIFIER_NAME, GN_MODIFIER_NAME):
+        visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
+        for mod_name in LINE_MODIFIER_NAMES:
             mod = owner.modifiers.get(mod_name)
             if mod is not None:
-                mod.show_viewport = True
-                mod.show_render = True
+                mod.show_viewport = visible
+                mod.show_render = visible
         if self.use_inner_line_distance_limit:
             camera_comp.refresh(context)
     _propagate(self, context, "use_camera_culling")
@@ -269,8 +276,9 @@ def _on_inner_distance_changed(self, context):
     if not self.use_inner_line_distance_limit and owner.type == "MESH":
         mod = owner.modifiers.get(GN_MODIFIER_NAME)
         if mod is not None:
-            mod.show_viewport = True
-            mod.show_render = True
+            visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
+            mod.show_viewport = visible
+            mod.show_render = visible
         if self.use_camera_culling:
             camera_comp.refresh(context)
     _propagate(self, context, "use_inner_line_distance_limit")
@@ -606,6 +614,30 @@ def get_settings(context) -> BMangaLineSettings | None:
 
 def has_outline(obj: bpy.types.Object) -> bool:
     return obj.type == "MESH" and obj.modifiers.get(MODIFIER_NAME) is not None
+
+
+def iter_line_modifiers(obj: bpy.types.Object):
+    if obj.type != "MESH":
+        return
+    for name in LINE_MODIFIER_NAMES:
+        mod = obj.modifiers.get(name)
+        if mod is not None:
+            yield mod
+
+
+def has_line(obj: bpy.types.Object) -> bool:
+    return obj.type == "MESH" and any(iter_line_modifiers(obj))
+
+
+def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
+    mods = list(iter_line_modifiers(obj))
+    if not mods:
+        return False
+    for mod in mods:
+        mod.show_viewport = visible
+        mod.show_render = visible
+    obj[PROP_LINES_HIDDEN] = not visible
+    return True
 
 
 # ------------------------------------------------------------------

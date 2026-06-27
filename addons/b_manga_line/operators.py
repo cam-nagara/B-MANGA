@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import bpy
+from bpy.props import BoolProperty
 
-from .core import AOV_NAME, has_outline
+from .core import AOV_NAME, PROP_LINES_HIDDEN, has_line, has_outline
 
 
 class BMANGA_LINE_OT_apply(bpy.types.Operator):
@@ -19,55 +20,21 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
         return any(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import outline_setup, inner_lines, camera_comp, vertex_analysis
+        from .presets import apply_line_settings
 
         count = 0
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
-            settings = obj.bmanga_line_settings
-            use_vg = (
-                settings.use_vertex_color
-                or settings.use_ao_influence
-                or abs(settings.edge_smooth_factor) > 0.001
-            )
-            ok = outline_setup.apply_outline(
-                obj,
-                thickness=settings.outline_thickness,
-                color=tuple(settings.outline_color),
-                use_vertex_color=settings.use_vertex_color,
-                even_thickness=settings.even_thickness,
-                use_rim=settings.use_rim,
-                use_vertex_group=use_vg,
-                scene=context.scene,
-            )
-            if not ok:
-                continue
-            count += 1
-
-            if settings.inner_line_enabled:
-                mat = outline_setup.get_outline_material(obj)
-                inner_lines.apply_inner_lines(
-                    obj,
-                    angle=settings.inner_line_angle,
-                    thickness=settings.inner_line_thickness,
-                    material=mat,
-                )
-            else:
-                inner_lines.remove_inner_lines(obj)
-
-            if settings.use_camera_compensation:
-                camera_comp.store_reference(obj, context.scene)
-
-            if use_vg:
-                vertex_analysis.compute_and_apply_weights(obj, settings)
+            if apply_line_settings(obj, context):
+                count += 1
 
         self.report({"INFO"}, f"{count} オブジェクトにラインを適用しました")
         return {"FINISHED"}
 
 
 class BMANGA_LINE_OT_remove(bpy.types.Operator):
-    """選択オブジェクトからアウトラインを削除"""
+    """選択オブジェクトからラインを削除"""
 
     bl_idname = "bmanga_line.remove"
     bl_label = "ラインを削除"
@@ -75,25 +42,54 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return any(has_outline(obj) for obj in context.selected_objects)
+        return any(has_line(obj) for obj in context.selected_objects)
 
     def execute(self, context):
-        from . import outline_setup, inner_lines
+        from . import intersection_lines, outline_setup, inner_lines
         from .core import PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN
 
         count = 0
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
-            removed_outline = outline_setup.remove_outline(obj)
-            inner_lines.remove_inner_lines(obj)
-            if removed_outline:
+            removed_any = False
+            removed_any |= outline_setup.remove_outline(obj)
+            removed_any |= inner_lines.remove_inner_lines(obj)
+            removed_any |= intersection_lines.remove_intersection_lines(obj)
+            if removed_any:
                 count += 1
             for key in (PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN):
                 if key in obj:
                     del obj[key]
+            if PROP_LINES_HIDDEN in obj:
+                del obj[PROP_LINES_HIDDEN]
 
         self.report({"INFO"}, f"{count} オブジェクトからラインを削除しました")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_set_visibility(bpy.types.Operator):
+    """選択オブジェクトのライン表示を切り替え"""
+
+    bl_idname = "bmanga_line.set_visibility"
+    bl_label = "ライン表示を切り替え"
+    bl_options = {"REGISTER", "UNDO"}
+
+    visible: BoolProperty(default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(has_line(obj) for obj in context.selected_objects)
+
+    def execute(self, context):
+        from .core import set_line_visibility
+
+        count = 0
+        for obj in context.selected_objects:
+            if set_line_visibility(obj, self.visible):
+                count += 1
+        action = "表示" if self.visible else "非表示"
+        self.report({"INFO"}, f"{count} オブジェクトのラインを{action}にしました")
         return {"FINISHED"}
 
 
@@ -230,6 +226,7 @@ class BMANGA_LINE_OT_add_aov(bpy.types.Operator):
 _CLASSES = (
     BMANGA_LINE_OT_apply,
     BMANGA_LINE_OT_remove,
+    BMANGA_LINE_OT_set_visibility,
     BMANGA_LINE_OT_sync_weights,
     BMANGA_LINE_OT_bake_ao,
     BMANGA_LINE_OT_refresh_camera,

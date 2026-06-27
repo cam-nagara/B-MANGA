@@ -5,7 +5,7 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Line",
     "author": "B-MANGA Project",
-    "version": (0, 3, 6),
+    "version": (0, 3, 7),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
@@ -14,12 +14,14 @@ bl_info = {
 from . import core
 from . import camera_comp
 from . import operators
+from . import presets
 from . import panels
 
 _MODULES = (
     core,
     camera_comp,
     operators,
+    presets,
     panels,
 )
 

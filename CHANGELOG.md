@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — B-MANGA Line にラインプリセット管理と表示切替を追加 (v0.3.7)
+
+### 症状
+
+- アウトライン、内部線、交差線、線幅制御などの設定をまとめて保存し、別オブジェクトへ一括適用できなかった。
+- 選択中のラインを一時的に非表示にする操作がなく、削除操作も交差線までまとめて消す経路になっていなかった。
+
+### 原因
+
+- ライン設定はオブジェクトごとの設定値としてのみ保持しており、シーン内プリセットとして管理するデータ構造と操作がなかった。
+- 表示制御はカメラ範囲外判定などの内部更新だけで、ユーザーが明示的にライン表示を切り替える状態を持っていなかった。
+
+### 修正
+
+- B-MANGA Line パネルに「ラインプリセット」を追加し、現在のライン設定を保存/更新、削除、選択中の全メッシュへ適用できるようにした。
+- プリセットにはアウトライン、内部線、交差線、カメラ設定、AO、線幅の詳細制御、距離制限をまとめて保存するようにした。
+- 「ラインを表示」「ラインを非表示」を追加し、アウトライン・内部線・交差線をまとめて切り替えられるようにした。
+- 「ラインを削除」でアウトライン・内部線・交差線をまとめて削除し、非表示状態も解除するようにした。
+- 通常の「ラインを適用」も、交差線を含む全ライン設定を一括反映する経路へ統一した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- ラインプリセットの保存、同名更新、選択中2メッシュへの一括適用、表示/非表示、削除、プリセット削除を確認。
+- 手動で非表示にしたラインが、カメラ範囲外設定や距離制限の切り替えで勝手に再表示されないことを確認。
+- 削除後に交差線モディファイアが残らないことを確認。
+
+---
+
 ## 2026-06-27 — B-MANGA Line の中間頂点乱れをライン別にし、変化グラフを追加 (v0.3.6)
 
 ### 症状
