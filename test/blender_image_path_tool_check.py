@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -86,9 +87,11 @@ def main() -> None:
 
         from bmanga_dev_image_path.io import image_path_presets, schema
         from bmanga_dev_image_path.utils import image_path_object, layer_stack as layer_stack_utils
+        from bmanga_dev_image_path.utils import mask_apply
         from bmanga_dev_image_path.utils import object_selection, object_state_sync
         from bmanga_dev_image_path.utils.geom import mm_to_m
         from bmanga_dev_image_path.utils.layer_hierarchy import coma_stack_key, page_stack_key
+        from bmanga_dev_image_path.operators import object_tool_op, object_tool_selection
 
         image_path = temp_root / "source.png"
         _write_png(image_path)
@@ -127,6 +130,10 @@ def main() -> None:
         assert len(obj.data.polygons) >= 8, f"スタンプ数が少なすぎます: {len(obj.data.polygons)}"
         assert object_state_sync.is_sync_candidate(obj), "画像パスが標準移動の同期対象ではありません"
         assert obj.data.materials and obj.data.materials[0] is not None, "画像パスのマテリアルがありません"
+        page_mod = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
+        assert page_mod is not None and getattr(page_mod, "object", None) is not None, (
+            "ページ直下の画像パスにページマスクがありません"
+        )
 
         stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
         assert stack is not None
@@ -134,6 +141,24 @@ def main() -> None:
         assert any(layer_stack_utils.stack_item_uid(item) == uid for item in stack), "レイヤー一覧に画像パスがありません"
         key = object_selection.image_path_key(entry)
         assert object_selection.parse_key(key) == ("image_path", "", entry.id)
+        bounds = object_tool_selection.selection_bounds_for_key(context, key)
+        assert bounds is not None and bounds.width > 0.0 and bounds.height > 0.0, "画像パスの選択枠が取れません"
+
+        fake_op = SimpleNamespace(_drag_action="move")
+        snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
+            fake_op,
+            context,
+            [key],
+            primary_key=key,
+            action="move",
+        )
+        assert snapshots, "画像パスの移動準備ができません"
+        fake_op._snapshots = snapshots
+        handle_before_points = json.loads(entry.path_points_json)
+        object_tool_op.BMANGA_OT_object_tool._apply_snapshots(fake_op, context, 4.0, -2.5)
+        handle_after_points = json.loads(entry.path_points_json)
+        _assert_close(handle_after_points[0][0], handle_before_points[0][0] + 4.0, "ハンドル移動後 X")
+        _assert_close(handle_after_points[0][1], handle_before_points[0][1] - 2.5, "ハンドル移動後 Y")
 
         before_points = json.loads(entry.path_points_json)
         obj.location.x += mm_to_m(7.0)
@@ -168,6 +193,10 @@ def main() -> None:
         coma_entry.draw_mode = "stamp"
         coma_obj = image_path_object.ensure_image_path_object(scene=scene, entry=coma_entry, page=page)
         assert coma_obj is not None
+        coma_mod = coma_obj.modifiers.get(mask_apply.MOD_NAME_COMA_MASK)
+        assert coma_mod is not None and getattr(coma_mod, "object", None) is not None, (
+            "コマ内画像パスにコママスクがありません"
+        )
         assert coma_obj.data.materials and _material_has_content_mask(coma_obj.data.materials[0]), (
             "コマ内画像パスにコマ内容マスクがありません"
         )

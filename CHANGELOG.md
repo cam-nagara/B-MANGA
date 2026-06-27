@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 画像パスとフキダシ画像線のマスク・操作確認を強化 (v0.6.395)
+
+### 症状
+
+- フキダシの線に画像を使った場合、コマ内の表示範囲からはみ出す部分まで見えることがあった。
+- 画像パスのページ範囲、コマ内の表示範囲、選択枠と移動操作をまとめて確認する実機テストが不足していた。
+
+### 原因
+
+- フキダシの画像線は、コマ内の表示範囲情報を受け取っていたが、画像素材の透明度へ反映していなかった。
+- 前回の画像パス確認は、スタンプ / リボン生成、保存復元、プリセット、コマ内表示が中心で、ページ範囲と選択枠の確認が明示的ではなかった。
+
+### 修正
+
+- フキダシの線に画像を使う場合も、コマ内ではコマ内容の表示範囲で切り抜かれるようにした。
+- NURBSフキダシでも画像線が生成され、UV付きの画像線として扱えることを実機テストへ追加した。
+- 画像パスにページ範囲のマスク、コマ内の表示範囲、選択枠、移動操作の確認を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile __init__.py utils\balloon_line_decor_mesh.py test\blender_tail_and_line_decor_check.py test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_tail_and_line_decor_check.py`
+- `blender.exe --factory-startup --background --python test\blender_image_path_tool_check.py`
+- フキダシの画像線、NURBSフキダシの画像線、画像パスのページ範囲、コマ内の表示範囲、選択枠、移動操作が動作することを確認。
+
+---
+
 ## 2026-06-27 — 画像パスツールとスタンプ/リボン表示を追加 (v0.6.394)
 
 ### 症状

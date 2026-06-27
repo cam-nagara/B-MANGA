@@ -132,7 +132,7 @@ def _load_line_image(entry) -> bpy.types.Image | None:
         return None
 
 
-def _ensure_image_material(name: str, image: bpy.types.Image) -> bpy.types.Material:
+def _ensure_image_material(name: str, image: bpy.types.Image, *, mask_info=None) -> bpy.types.Material:
     mat = bpy.data.materials.get(name)
     if mat is None:
         mat = bpy.data.materials.new(name)
@@ -163,7 +163,22 @@ def _ensure_image_material(name: str, image: bpy.types.Image) -> bpy.types.Mater
         pass
     try:
         nt.links.new(tex.outputs["Color"], emission.inputs["Color"])
-        nt.links.new(tex.outputs["Alpha"], mix.inputs["Fac"])
+        alpha_socket = tex.outputs["Alpha"]
+        if mask_info is not None:
+            try:
+                from . import material_opacity_mask
+
+                masked = material_opacity_mask.multiply_alpha_by_mask(
+                    nt,
+                    alpha_socket,
+                    mask_object=getattr(mask_info, "space_object", None),
+                    mask_image=getattr(mask_info, "image", None),
+                )
+                if masked is not None:
+                    alpha_socket = masked
+            except Exception:  # noqa: BLE001
+                _logger.exception("balloon line image mask setup failed")
+        nt.links.new(alpha_socket, mix.inputs["Fac"])
         nt.links.new(transparent.outputs["BSDF"], mix.inputs[1])
         nt.links.new(emission.outputs["Emission"], mix.inputs[2])
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
@@ -249,9 +264,9 @@ def ensure_balloon_line_image_mesh(
     """線種「画像」の帯メッシュを生成・更新する.
 
     画像は線に沿って引き延ばされ、「画像の間隔」ごとに 1 枚分を繰り返す。
-    (コマ内容マスクには現状未対応: 画像線はコマ外でも表示される)
+    コマ内では素材の透明度にコマ内容マスクを掛ける。
     """
-    del work, page, mask_info
+    del work, page
     balloon_id = str(getattr(entry, "id", "") or "")
     if not balloon_id:
         return None
@@ -259,7 +274,11 @@ def ensure_balloon_line_image_mesh(
     if cached is not None:
         image = _load_line_image(entry)
         if image is not None:
-            material = _ensure_image_material(f"{_IMAGE_MATERIAL_PREFIX}{balloon_id}", image)
+            material = _ensure_image_material(
+                f"{_IMAGE_MATERIAL_PREFIX}{balloon_id}",
+                image,
+                mask_info=mask_info,
+            )
             return _attach_band_mesh_object(
                 obj_name=f"{_IMAGE_OBJ_PREFIX}{balloon_id}",
                 mesh=cached.data,
@@ -269,7 +288,7 @@ def ensure_balloon_line_image_mesh(
                 kind=KIND_LINE_IMAGE,
                 balloon_id=balloon_id,
                 visible=bool(getattr(entry, "visible", True)),
-                mask_info=None,
+                mask_info=mask_info,
                 geometry_sig=geometry_sig,
             )
     image = _load_line_image(entry)
@@ -291,7 +310,11 @@ def ensure_balloon_line_image_mesh(
         math.radians(float(getattr(entry, "line_image_angle_deg", 0.0) or 0.0)),
         float(getattr(entry, "line_image_jitter", 0.0) or 0.0),
     )
-    material = _ensure_image_material(f"{_IMAGE_MATERIAL_PREFIX}{balloon_id}", image)
+    material = _ensure_image_material(
+        f"{_IMAGE_MATERIAL_PREFIX}{balloon_id}",
+        image,
+        mask_info=mask_info,
+    )
     return _attach_band_mesh_object(
         obj_name=f"{_IMAGE_OBJ_PREFIX}{balloon_id}",
         mesh=mesh,
@@ -301,7 +324,7 @@ def ensure_balloon_line_image_mesh(
         kind=KIND_LINE_IMAGE,
         balloon_id=balloon_id,
         visible=bool(getattr(entry, "visible", True)),
-        mask_info=None,
+        mask_info=mask_info,
         geometry_sig=geometry_sig,
     )
 

@@ -50,6 +50,44 @@ def _poly_count(name: str) -> int:
     return len(obj.data.polygons)
 
 
+def _make_line_image_path() -> Path:
+    from PIL import Image
+
+    img_path = Path(tempfile.gettempdir()) / "bmanga_line_decor_test.png"
+    Image.new("RGBA", (64, 16), (255, 0, 0, 255)).save(img_path)
+    return img_path
+
+
+def _material_has_content_mask(mat) -> bool:
+    nt = getattr(mat, "node_tree", None)
+    if nt is None:
+        return False
+    has_tex = False
+    has_coord = False
+    for node in nt.nodes:
+        if (
+            node.bl_idname == "ShaderNodeTexImage"
+            and node.label == "コマ内容マスク"
+            and getattr(node, "image", None) is not None
+        ):
+            has_tex = True
+        if (
+            node.bl_idname == "ShaderNodeTexCoord"
+            and node.label == "コマ内容マスク座標"
+            and getattr(node, "object", None) is not None
+        ):
+            has_coord = True
+    return has_tex and has_coord
+
+
+def _assert_line_image_has_mask(balloon_id: str) -> None:
+    image_obj = bpy.data.objects.get(f"balloon_line_image_{balloon_id}")
+    assert image_obj is not None, "画像線メッシュがありません"
+    mats = list(getattr(getattr(image_obj, "data", None), "materials", []) or [])
+    assert mats and mats[0] is not None, "画像線メッシュに素材がありません"
+    assert _material_has_content_mask(mats[0]), "画像線メッシュにコマ内容マスクが接続されていません"
+
+
 def _make_balloon(page, balloon_op, *, x=60.0, y=150.0, w=50.0, h=40.0):
     entry = balloon_op._create_balloon_entry(
         bpy.context,
@@ -157,10 +195,7 @@ def _check_line_decor(page, entry) -> None:
     assert _poly_count(f"balloon_line_mesh_{bid}") <= 0, "図形線種で従来の主線が残っています"
 
     # 画像線種: テスト用 PNG を作って指定
-    from PIL import Image
-
-    img_path = Path(tempfile.gettempdir()) / "bmanga_line_decor_test.png"
-    Image.new("RGBA", (64, 16), (255, 0, 0, 255)).save(img_path)
+    img_path = _make_line_image_path()
     entry.line_style = "image"
     entry.line_image_path = str(img_path)
     balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
@@ -169,6 +204,32 @@ def _check_line_decor(page, entry) -> None:
     assert image_obj.data.uv_layers.active is not None, "画像線メッシュに UV がありません"
     assert _poly_count(f"balloon_line_shape_{bid}") == -1, "画像線種で図形メッシュが残っています"
 
+    # コマ内フキダシでは、画像線にもコマ内容マスクが必要。
+    from bmanga_dev_tail_line_decor.utils import coma_plane
+    from bmanga_dev_tail_line_decor.utils.layer_hierarchy import coma_stack_key
+
+    work = bpy.context.scene.bmanga_work
+    coma = page.comas[0]
+    if not str(getattr(coma, "id", "") or ""):
+        coma.id = "c01"
+    if hasattr(coma, "coma_id") and not str(getattr(coma, "coma_id", "") or ""):
+        coma.coma_id = "c01"
+    coma.shape_type = "rect"
+    coma.rect_x_mm = 10.0
+    coma.rect_y_mm = 120.0
+    coma.rect_width_mm = 70.0
+    coma.rect_height_mm = 55.0
+    coma_key = coma_stack_key(page, coma)
+    coma_plane.ensure_coma_mask(bpy.context.scene, work, page, coma)
+    with balloon_curve_object.suspend_auto_sync():
+        entry.parent_kind = "coma"
+        entry.parent_key = coma_key
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+    _assert_line_image_has_mask(bid)
+
+    with balloon_curve_object.suspend_auto_sync():
+        entry.parent_kind = "page"
+        entry.parent_key = str(page.id)
     entry.line_style = "solid"
     balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
     assert _poly_count(f"balloon_line_image_{bid}") == -1, "実線に戻しても画像線メッシュが残っています"
@@ -226,6 +287,14 @@ def _check_nurbs_balloon(page) -> None:
     bid = str(entry.id)
     assert _poly_count(f"balloon_fill_mesh_{bid}") > 0, "NURBSフキダシの塗りが空です"
     assert _poly_count(f"balloon_line_mesh_{bid}") > 0, "NURBSフキダシの主線が空です"
+    entry.line_style = "image"
+    entry.line_image_path = str(_make_line_image_path())
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+    image_obj = bpy.data.objects.get(f"balloon_line_image_{bid}")
+    assert image_obj is not None and len(image_obj.data.polygons) > 0, "NURBSフキダシの画像線が空です"
+    assert image_obj.data.uv_layers.active is not None, "NURBSフキダシの画像線に UV がありません"
+    entry.line_style = "solid"
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
     # 自由形状の輪郭キャッシュが保存され、出力用の輪郭計算が実形状を返す
     cached = str(getattr(entry, "custom_outline_json", "") or "")
     assert cached, "自由形状の輪郭キャッシュがありません"
