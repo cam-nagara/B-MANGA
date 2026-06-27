@@ -526,13 +526,31 @@ def _collect_layer_stack_details(records: list[dict[str, Any]], context, targets
 
 def _collect_right_click_details(records: list[dict[str, Any]], context, targets) -> None:
     from bmanga_dev_ui_inventory.operators import layer_detail_op
+    from bmanga_dev_ui_inventory.utils import gpencil as gp_utils
+    from bmanga_dev_ui_inventory.utils import object_naming as on
+
+    def _audit_gp_object(name: str, kind: str):
+        data = gp_utils.ensure_gpencil(f"{name}_data")
+        obj = bpy.data.objects.new(name, data)
+        context.scene.collection.objects.link(obj)
+        layer = data.layers.new("詳細")
+        gp_utils.ensure_active_frame(layer)
+        data.layers.active = layer
+        obj[on.PROP_KIND] = kind
+        obj[on.PROP_ID] = name
+        obj[on.PROP_TITLE] = name
+        obj[on.PROP_Z_INDEX] = 1000
+        return obj
+
+    gp_obj = _audit_gp_object("ui_inventory_gp_detail", "gp")
+    effect_obj = _audit_gp_object("ui_inventory_effect_detail", "effect")
 
     groups = (
         ("右クリック詳細設定 / 画像", layer_detail_op._draw_image_detail, targets["image"]),
         ("右クリック詳細設定 / ラスター", layer_detail_op._draw_raster_detail, targets["raster"]),
         ("右クリック詳細設定 / フキダシ", layer_detail_op._draw_balloon_detail, targets["balloon"]),
         ("右クリック詳細設定 / テキスト", layer_detail_op._draw_text_detail, targets["text"]),
-        ("右クリック詳細設定 / GP", layer_detail_op._draw_gp_detail, targets["gp_obj"]),
+        ("右クリック詳細設定 / GP", layer_detail_op._draw_gp_detail, gp_obj),
     )
     targets["balloon"].shape = "cloud"
     for group, fn, target in groups:
@@ -548,7 +566,7 @@ def _collect_right_click_details(records: list[dict[str, Any]], context, targets
             f"右クリック詳細設定 / 効果線 / {effect_type}",
             layer_detail_op._draw_effect_detail,
             context,
-            targets["effect_obj"],
+            effect_obj,
         )
 
 
@@ -591,13 +609,13 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "コマ用blendファイル (この作品のみ)",
         "プリセット",
         "キャンバス",
-        "用紙要素の表示",
+        "ガイド表示設定",
         "原稿上の表示",
         "選択ページ",
         "レイヤー",
         "B-MANGA 階層を修復",
         "カメラプリセット",
-        "ページ画像",
+        "ページ一覧",
         "配置 (mm)",
         "線・塗り",
         "白フチ",
@@ -606,7 +624,7 @@ def _required_labels_missing(records: list[dict[str, Any]]) -> list[str]:
         "終点形状",
         "白抜き線",
         "流線",
-        "レイヤーフォルダ",
+        "選択中: 監査フォルダ (汎用フォルダ)",
         "現在のページを書き出し",
         "指定範囲を書き出し",
         "PDF 結合書き出し",

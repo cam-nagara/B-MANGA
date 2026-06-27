@@ -23,6 +23,19 @@ from ..utils import balloon_curve_source_state
 _logger = log.get_logger(__name__)
 
 
+def _has_safe_gp_layer_prop(layer, prop_name: str) -> bool:
+    if prop_name == "tint_factor":
+        return False
+    props = getattr(getattr(layer, "bl_rna", None), "properties", None)
+    if props is None:
+        return False
+    try:
+        props[prop_name]
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _balloon_source_state_label(entry) -> tuple[str, str]:
     try:
         state = balloon_curve_object.source_state_for_entry(entry)
@@ -566,16 +579,14 @@ def _draw_gp_detail(layout, obj) -> None:
         if active_layer is not None:
             box = layout.box()
             box.label(text=f"アクティブ GP レイヤー: {active_layer.name}")
-            if hasattr(active_layer, "opacity"):
+            if _has_safe_gp_layer_prop(active_layer, "opacity"):
                 box.prop(active_layer, "opacity")
-            if hasattr(active_layer, "tint_color"):
+            if _has_safe_gp_layer_prop(active_layer, "tint_color"):
                 box.prop(active_layer, "tint_color")
-            if hasattr(active_layer, "tint_factor"):
-                box.prop(active_layer, "tint_factor")
             row = box.row(align=True)
-            if hasattr(active_layer, "hide"):
+            if _has_safe_gp_layer_prop(active_layer, "hide"):
                 row.prop(active_layer, "hide", text="非表示")
-            if hasattr(active_layer, "lock"):
+            if _has_safe_gp_layer_prop(active_layer, "lock"):
                 row.prop(active_layer, "lock", text="ロック")
 
 

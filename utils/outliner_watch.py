@@ -233,7 +233,7 @@ def _writeback_empty_layer_parent(
 
 
 def _writeback_image_path_parent(scene, obj, new_kind: str, new_key: str) -> bool:
-    """画像パス Object の Outliner D&D を entry に書き戻す."""
+    """パターンカーブ Object の Outliner D&D を entry に書き戻す."""
     from . import image_path_object
 
     bid = str(obj.get("bmanga_id", "") or "")

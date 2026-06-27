@@ -376,7 +376,7 @@ _LAYER_KIND_JP = {
     "balloon": "フキダシ",
     "text": "テキスト",
     "image": "画像",
-    "image_path": "画像パス",
+    "image_path": "パターンカーブ",
     "raster": "ラスター",
     "fill": "塗り",
     "effect": "効果線",

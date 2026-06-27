@@ -3,6 +3,49 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — セッション全体の実機AI目視と詳細設定安全化 (v0.6.406)
+
+### 症状
+
+- パターンカーブへの改名後も、表示名が空のレイヤー一覧フォールバックや一部の保持理由で旧名称が出る可能性があった。
+- 下書きレイヤーの詳細設定監査中、Blender 5.1.2 が「色合い量」の値取得で落ちる経路があった。
+- パターンカーブ、効果線、フキダシ統合、入り抜き、用紙ガイド、詳細設定の一連の変更について、まとめて実機AI目視と全体チェックを通す必要があった。
+
+### 原因
+
+- ユーザー向け表示の大半は更新済みだったが、レイヤー一覧の種別フォールバックと一部説明文が旧表記のままだった。
+- 下書きレイヤーの一部プロパティは、存在確認やUI表示のための値取得だけでもBlender側で不安定になる場合があった。
+
+### 修正
+
+- 表示名が空のパターンカーブも、レイヤー一覧で「パターンカーブ」と表示されるように統一した。
+- パターンカーブ実体を保持する際の説明文も新名称へ統一した。
+- 下書きレイヤーの詳細設定では、Blender側で不安定な「色合い量」を表示対象から外し、他の項目は安全なプロパティ確認で表示するようにした。
+- UI棚卸し監査を現在の表示文言と再生成される詳細対象に合わせて更新した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `blender.exe --background --python test\blender_bmanga_ui_inventory_visual_audit.py`
+- `blender.exe --background --python test\blender_pattern_curve_ribbon_visual_check.py`
+- `blender.exe --background --python test\blender_effect_line_path_image_visual_check.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --background --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --background --python test\blender_preferences_preset_persistence_check.py`
+- `blender.exe --background --python test\blender_balloon_tool_unification_check.py`
+- `blender.exe --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --background --python test\blender_layer_detail_and_mask_check.py`
+- `blender.exe --background --python test\blender_effect_line_frame_spacing_check.py`
+- `blender.exe --background --python test\blender_effect_line_white_outline_visual_check.py`
+- `blender.exe --background --python test\blender_paper_guide_visibility_check.py`
+- `blender.exe --factory-startup --python test\blender_paper_guide_viewport_visual_check.py`
+- AI目視: パターンカーブのリボン、効果線へのパターン適用、白抜き線、用紙ガイド、UI棚卸し画像を確認し、破綻がないことを確認した。
+- 全体チェック: スクリプト560件・約20万行を読み込み、Python AST 556件、JSON 12件、TOML 3件、競合マーカー、旧表記、下書きレイヤーの危険な表示経路を確認した。
+- `py_compile` 556件、`python test\test_paths.py`、`python test\test_stroke_style.py`、`python test\test_view_event_region.py`、`python test\test_line_effect_schema.py`、`git diff --check`
+
+---
+
 ## 2026-06-28 — 画像パスツールをパターンカーブツールへ改名しリボン表示を検証 (v0.6.405)
 
 ### 症状

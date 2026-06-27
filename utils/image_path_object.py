@@ -1,4 +1,4 @@
-"""画像パスレイヤーの実体同期."""
+"""パターンカーブレイヤーの実体同期."""
 
 from __future__ import annotations
 
@@ -440,7 +440,7 @@ def ensure_image_path_object(
     if object_preserve.is_preserved(obj):
         obj = None
     if obj is not None and obj.type != "MESH":
-        object_preserve.preserve_object(obj, "古い画像パス実体を保持")
+        object_preserve.preserve_object(obj, "古いパターンカーブ実体を保持")
         obj = None
     if obj is None:
         obj = bpy.data.objects.new(obj_name, mesh)
@@ -494,7 +494,7 @@ def cleanup_orphan_image_path_objects(scene: bpy.types.Scene) -> int:
         bid = str(obj.get(on.PROP_ID, "") or "")
         if bid in valid:
             continue
-        object_preserve.preserve_object(obj, "作品データにない画像パス実体を保持")
+        object_preserve.preserve_object(obj, "作品データにないパターンカーブ実体を保持")
         removed += 1
     return removed
 

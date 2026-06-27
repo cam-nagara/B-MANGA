@@ -15,6 +15,19 @@ from ..utils import gpencil as gp_utils
 from . import corner_radius_ui, effect_line_panel, line_effect_settings_ui
 
 
+def _has_safe_gp_layer_prop(layer, prop_name: str) -> bool:
+    if prop_name == "tint_factor":
+        return False
+    props = getattr(getattr(layer, "bl_rna", None), "properties", None)
+    if props is None:
+        return False
+    try:
+        props[prop_name]
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _zero_based_layer_name(prefix: str, value: str, width: int) -> str:
     text = str(value or "")
     match = re.search(r"(\d+)(?!.*\d)", text)
@@ -56,9 +69,9 @@ def _draw_gp_selected_settings(box, obj, active_layer) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {active_layer.name}")
     settings.prop(active_layer, "name", text="名前")
-    if hasattr(active_layer, "hide"):
+    if _has_safe_gp_layer_prop(active_layer, "hide"):
         settings.prop(active_layer, "hide", text="非表示")
-    if hasattr(active_layer, "opacity"):
+    if _has_safe_gp_layer_prop(active_layer, "opacity"):
         settings.prop(active_layer, "opacity", text="不透明度", slider=True)
 
     mat = None
@@ -82,12 +95,10 @@ def _draw_gp_selected_settings(box, obj, active_layer) -> None:
             flag_row.prop(gp_style, "show_fill", text="塗りを描く")
     else:
         settings.label(text="(レイヤー色を取得できません)", icon="ERROR")
-    if hasattr(active_layer, "blend_mode"):
+    if _has_safe_gp_layer_prop(active_layer, "blend_mode"):
         settings.prop(active_layer, "blend_mode", text="ブレンド")
-    if hasattr(active_layer, "tint_color"):
+    if _has_safe_gp_layer_prop(active_layer, "tint_color"):
         settings.prop(active_layer, "tint_color", text="色合い")
-    if hasattr(active_layer, "tint_factor"):
-        settings.prop(active_layer, "tint_factor", text="色合い量")
 
 
 def _draw_image_selected_settings(box, entry) -> None:
