@@ -20,7 +20,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from ..utils import corner_radius, log
+from ..utils import corner_radius, line_effect_schema, log
 
 _logger = log.get_logger(__name__)
 
@@ -121,104 +121,9 @@ _SPACING_MODE_ITEMS = (
     ("angle", "角度指定", ""),
     ("distance", "距離指定", ""),
 )
-_INOUT_APPLY_ITEMS = (
-    ("brush_size", "線幅", ""),
-    ("opacity", "不透明度", ""),
-)
-_INOUT_RANGE_MODE_ITEMS = (
-    ("percent", "％指定", "線全体に対する割合で入り抜きの範囲を指定"),
-    ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
-)
-UNI_FLASH_PARAM_FIELDS = (
-    "effect_type",
-    "rotation_deg",
-    "start_shape",
-    "start_to_coma_frame",
-    "start_rounded_corner_enabled",
-    "start_rounded_corner_radius_mm",
-    "start_rounded_corner_radius_unit",
-    "start_rounded_corner_radius_percent",
-    "start_cloud_bump_width_mm",
-    "start_cloud_bump_width_jitter",
-    "start_cloud_bump_height_mm",
-    "start_cloud_bump_height_jitter",
-    "start_cloud_offset_percent",
-    "start_cloud_sub_width_ratio",
-    "start_cloud_sub_width_jitter",
-    "start_cloud_sub_height_ratio",
-    "start_cloud_sub_height_jitter",
-    "end_shape",
-    "end_rounded_corner_enabled",
-    "end_rounded_corner_radius_mm",
-    "end_rounded_corner_radius_unit",
-    "end_rounded_corner_radius_percent",
-    "end_cloud_bump_width_mm",
-    "end_cloud_bump_width_jitter",
-    "end_cloud_bump_height_mm",
-    "end_cloud_bump_height_jitter",
-    "end_cloud_offset_percent",
-    "end_cloud_sub_width_ratio",
-    "end_cloud_sub_width_jitter",
-    "end_cloud_sub_height_ratio",
-    "end_cloud_sub_height_jitter",
-    "brush_size_mm",
-    "brush_jitter_enabled",
-    "brush_jitter_amount",
-    "length_jitter_enabled",
-    "length_jitter_amount",
-    "end_length_jitter_enabled",
-    "end_length_jitter_amount",
-    "spacing_mode",
-    "spacing_angle_deg",
-    "spacing_distance_mm",
-    "spacing_density_compensation",
-    "spacing_jitter_enabled",
-    "spacing_jitter_amount",
-    "max_line_count",
-    "bundle_enabled",
-    "bundle_line_count",
-    "bundle_line_count_jitter",
-    "bundle_gap_mm",
-    "bundle_gap_jitter_amount",
-    "bundle_jagged_enabled",
-    "bundle_jagged_height_percent",
-    "inout_apply",
-    "in_percent",
-    "out_percent",
-    "in_start_percent",
-    "out_start_percent",
-    "in_easing_curve",
-    "out_easing_curve",
-    "inout_range_mode",
-    "in_range_percent",
-    "out_range_percent",
-    "in_range_mm",
-    "out_range_mm",
-    "opacity",
-    "line_color",
-    "fill_color",
-    "fill_opacity",
-    "fill_base_shape",
-    "white_underlay_enabled",
-    "white_underlay_width_percent",
-    "white_underlay_color",
-    "uni_flash_offset_percent",
-    # 白抜き線の詳細 (線種 white_outline でも同じ dict で保存する)
-    "white_outline_angle_deg",
-    "white_outline_width_jitter_enabled",
-    "white_outline_width_min_percent",
-    "white_outline_length_jitter_enabled",
-    "white_outline_length_min_percent",
-    "white_outline_white_line_count_auto",
-    "white_outline_black_line_count_auto",
-    "white_outline_white_ratio_percent",
-    "white_outline_white_attenuation",
-    "white_outline_black_direction",
-    "white_outline_black_width_scale_percent",
-    "white_outline_black_length_scale_near_percent",
-    "white_outline_black_length_scale_far_percent",
-    "white_outline_black_attenuation",
-)
+_INOUT_APPLY_ITEMS = line_effect_schema.INOUT_APPLY_ITEMS
+_INOUT_RANGE_MODE_ITEMS = line_effect_schema.INOUT_RANGE_MODE_ITEMS
+UNI_FLASH_PARAM_FIELDS = line_effect_schema.BALLOON_UNI_FLASH_PARAM_FIELDS
 
 
 def _color_value(value) -> list[float]:

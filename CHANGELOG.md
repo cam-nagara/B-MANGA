@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — フキダシと効果線の線設定共通化準備 (v0.6.398)
+
+### 症状
+
+- 画像パス、効果線の画像線、フキダシのウニフラ / 白抜き線で、同じ意味の選択肢や保存対象一覧が別々に定義されていた。
+- 効果線側に追加された基準パス / 画像線の設定が、フキダシ側のウニフラ設定表示へ混ざる可能性があった。
+
+### 原因
+
+- 線に画像を使う設定、入り抜き、白抜き線の保存対象が各機能に分散しており、後から追加した項目の扱いを一箇所で確認できなかった。
+- フキダシ側が効果線の設定表示を一部借りている一方で、効果線専用項目を非表示にする明示分岐がなかった。
+
+### 修正
+
+- 画像パス、効果線、フキダシ線で共有する選択肢と保存対象一覧を共通定義に集約した。
+- フキダシのウニフラ設定では、効果線専用の基準パス / 画像線設定を表示しないようにした。
+- 共有定義の重複、画像線の保存 / リンク対象、ウニフラ専用のズラし量がリンク連動しないことを確認する単体テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\line_effect_schema.py core\effect_line.py core\balloon.py core\image_path_layer.py operators\effect_line_link_op.py panels\effect_line_panel.py panels\balloon_panel.py test\test_line_effect_schema.py test\blender_balloon_uni_flash_check.py`
+- `python test\test_line_effect_schema.py`
+- `python test\test_stroke_style.py`
+- `python test\test_paths.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --background --python test\blender_balloon_uni_flash_check.py`
+- 画像パス、効果線の基準パス / 画像線、フキダシのウニフラ / 白抜き線が従来どおり作成されることを確認。
+- フキダシ側のウニフラ設定に、効果線専用の基準パス / 画像線設定が混ざらないことを確認。
+
+---
+
 ## 2026-06-28 — 効果線の基準パス非表示追従と目視確認を強化 (v0.6.397)
 
 ### 症状

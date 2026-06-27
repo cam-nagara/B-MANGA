@@ -296,6 +296,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
             with_generate_button=False,
             fixed_effect_type="uni_flash",
             show_type=False,
+            show_path_settings=False,
         )
     elif balloon_shapes.is_flash_line_style(line_style):
         row = line_box.row(align=True)

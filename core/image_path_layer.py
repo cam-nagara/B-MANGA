@@ -10,25 +10,13 @@ from bpy.props import (
     StringProperty,
 )
 
-from ..utils import log
+from ..utils import line_effect_schema, log
 
 _logger = log.get_logger(__name__)
 
-IMAGE_PATH_DRAW_MODE_ITEMS = (
-    ("stamp", "スタンプ", "パスに沿って画像をそのまま連続表示します"),
-    ("ribbon", "リボン", "パスに沿って画像を滑らかに変形します"),
-)
-
-IMAGE_PATH_STAMP_ANGLE_MODE_ITEMS = (
-    ("fixed", "固定", "指定した角度で固定します"),
-    ("line", "線の向き", "パスの向きに合わせます"),
-    ("object", "指定オブジェクト方向", "指定したオブジェクトの向きに合わせます"),
-)
-
-IMAGE_PATH_RIBBON_REPEAT_MODE_ITEMS = (
-    ("repeat", "ブラシサイズの画像を連続", "ブラシサイズを基準に画像を繰り返します"),
-    ("stretch", "画像ひとつを伸ばす", "始点から終点まで画像ひとつを伸ばします"),
-)
+IMAGE_PATH_DRAW_MODE_ITEMS = line_effect_schema.PATH_IMAGE_DRAW_MODE_ITEMS
+IMAGE_PATH_STAMP_ANGLE_MODE_ITEMS = line_effect_schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS
+IMAGE_PATH_RIBBON_REPEAT_MODE_ITEMS = line_effect_schema.PATH_IMAGE_RIBBON_REPEAT_MODE_ITEMS
 
 
 def _on_image_path_changed(_self, context) -> None:

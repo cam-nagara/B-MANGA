@@ -17,7 +17,7 @@ from bpy.props import (
 )
 
 from . import balloon
-from ..utils import corner_radius, log
+from ..utils import corner_radius, line_effect_schema, log
 
 _logger = log.get_logger(__name__)
 
@@ -55,37 +55,12 @@ _SPACING_MODE_ITEMS = (
     ("distance", "距離指定", ""),
 )
 
-_INOUT_APPLY_ITEMS = (
-    ("brush_size", "線幅", ""),
-    ("opacity", "不透明度", ""),
-)
-
-_INOUT_RANGE_MODE_ITEMS = (
-    ("percent", "％指定", "線全体に対する割合で入り抜きの範囲を指定"),
-    ("length", "長さ指定", "mm の長さで入り抜きの範囲を指定"),
-)
-
-_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = (
-    ("outside", "外側", "白線群の外側へ黒線を重ねる"),
-    ("inside", "内側", "白線群の内側へ黒線を重ねる"),
-    ("both", "両側", "白線群の外側と内側へ黒線を重ねる"),
-)
-
-_LINE_IMAGE_DRAW_MODE_ITEMS = (
-    ("stamp", "スタンプ", "パスに沿って画像をそのまま連続表示します"),
-    ("ribbon", "リボン", "パスに沿って画像を滑らかに変形します"),
-)
-
-_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS = (
-    ("fixed", "固定", "指定した角度で固定します"),
-    ("line", "線の向き", "パスの向きに合わせます"),
-    ("object", "指定オブジェクト方向", "指定したオブジェクトの向きに合わせます"),
-)
-
-_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS = (
-    ("repeat", "ブラシサイズの画像を連続", "ブラシサイズを基準に画像を繰り返します"),
-    ("stretch", "画像ひとつを伸ばす", "始点から終点まで画像ひとつを伸ばします"),
-)
+_INOUT_APPLY_ITEMS = line_effect_schema.INOUT_APPLY_ITEMS
+_INOUT_RANGE_MODE_ITEMS = line_effect_schema.INOUT_RANGE_MODE_ITEMS
+_WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = line_effect_schema.WHITE_OUTLINE_BLACK_DIRECTION_ITEMS
+_LINE_IMAGE_DRAW_MODE_ITEMS = line_effect_schema.PATH_IMAGE_DRAW_MODE_ITEMS
+_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS = line_effect_schema.PATH_IMAGE_STAMP_ANGLE_MODE_ITEMS
+_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS = line_effect_schema.PATH_IMAGE_RIBBON_REPEAT_MODE_ITEMS
 
 _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "rect": "rect",
@@ -105,123 +80,7 @@ _DEFAULT_SPEED_LINE_COUNT = 300
 _DEFAULT_IN_START_PERCENT = 50.0
 _DEFAULT_OUT_START_PERCENT = 100.0
 
-EFFECT_PARAM_FIELDS = (
-    "effect_type",
-    "rotation_deg",
-    "start_shape",
-    "start_to_coma_frame",
-    "start_rounded_corner_enabled",
-    "start_rounded_corner_radius_mm",
-    "start_rounded_corner_radius_unit",
-    "start_rounded_corner_radius_percent",
-    "start_cloud_bump_width_mm",
-    "start_cloud_bump_width_jitter",
-    "start_cloud_bump_height_mm",
-    "start_cloud_bump_height_jitter",
-    "start_cloud_offset_percent",
-    "start_cloud_sub_width_ratio",
-    "start_cloud_sub_width_jitter",
-    "start_cloud_sub_height_ratio",
-    "start_cloud_sub_height_jitter",
-    "end_shape",
-    "end_rounded_corner_enabled",
-    "end_rounded_corner_radius_mm",
-    "end_rounded_corner_radius_unit",
-    "end_rounded_corner_radius_percent",
-    "end_cloud_bump_width_mm",
-    "end_cloud_bump_width_jitter",
-    "end_cloud_bump_height_mm",
-    "end_cloud_bump_height_jitter",
-    "end_cloud_offset_percent",
-    "end_cloud_sub_width_ratio",
-    "end_cloud_sub_width_jitter",
-    "end_cloud_sub_height_ratio",
-    "end_cloud_sub_height_jitter",
-    "brush_size_mm",
-    "base_path_enabled",
-    "base_path_points_json",
-    "line_image_path",
-    "line_image_draw_mode",
-    "line_image_brush_size_mm",
-    "line_image_aspect_ratio",
-    "line_image_angle_deg",
-    "line_image_spacing_percent",
-    "line_image_stamp_angle_mode",
-    "line_image_stamp_angle_object_name",
-    "line_image_ribbon_repeat_mode",
-    "brush_jitter_enabled",
-    "brush_jitter_amount",
-    "length_jitter_enabled",
-    "length_jitter_amount",
-    "end_length_jitter_enabled",
-    "end_length_jitter_amount",
-    "spacing_mode",
-    "spacing_angle_deg",
-    "spacing_distance_mm",
-    "spacing_density_compensation",
-    "spacing_jitter_enabled",
-    "spacing_jitter_amount",
-    "max_line_count",
-    "bundle_enabled",
-    "bundle_line_count",
-    "bundle_line_count_jitter",
-    "bundle_gap_mm",
-    "bundle_gap_jitter_amount",
-    "bundle_jagged_enabled",
-    "bundle_jagged_height_percent",
-    "inout_apply",
-    "in_percent",
-    "out_percent",
-    "in_start_percent",
-    "out_start_percent",
-    "in_easing_curve",
-    "out_easing_curve",
-    "inout_range_mode",
-    "in_range_percent",
-    "out_range_percent",
-    "in_range_mm",
-    "out_range_mm",
-    "opacity",
-    "line_color",
-    "fill_color",
-    "fill_opacity",
-    "fill_base_shape",
-    "white_underlay_enabled",
-    "white_underlay_width_percent",
-    "white_underlay_color",
-    "uni_flash_offset_percent",
-    "speed_angle_deg",
-    "speed_line_count",
-    "white_outline_count",
-    "white_outline_spacing_mm",
-    "white_outline_white_line_count_auto",
-    "white_outline_white_line_count",
-    "white_outline_width_mm",
-    "white_outline_width_jitter_enabled",
-    "white_outline_width_min_percent",
-    "white_outline_length_jitter_enabled",
-    "white_outline_length_min_percent",
-    "white_outline_white_ratio_percent",
-    "white_outline_white_brush_mm",
-    "white_outline_white_attenuation",
-    "white_outline_white_in_percent",
-    "white_outline_white_out_percent",
-    "white_outline_white_inout_range_mode",
-    "white_outline_white_in_range_percent",
-    "white_outline_white_out_range_percent",
-    "white_outline_white_in_range_mm",
-    "white_outline_white_out_range_mm",
-    "white_outline_black_line_count_auto",
-    "white_outline_black_line_count",
-    "white_outline_black_direction",
-    "white_outline_black_brush_mm",
-    "white_outline_black_spacing_mm",
-    "white_outline_black_width_scale_percent",
-    "white_outline_black_length_scale_near_percent",
-    "white_outline_black_length_scale_far_percent",
-    "white_outline_black_attenuation",
-    "white_outline_angle_deg",
-)
+EFFECT_PARAM_FIELDS = line_effect_schema.EFFECT_PARAM_FIELDS
 
 
 def _on_params_changed(self, context) -> None:

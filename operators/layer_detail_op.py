@@ -392,6 +392,7 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
             fixed_effect_type="uni_flash",
             show_type=False,
             columns=uni_columns,
+            show_path_settings=False,
         )
     elif balloon_shapes.is_flash_line_style(line_style):
         row = box.row(align=True)

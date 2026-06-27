@@ -122,7 +122,7 @@ class _RecordingOperator:
     pass
 
 
-def _effect_setting_props(effect_line_panel, params, effect_type: str) -> list[str]:
+def _effect_setting_props(effect_line_panel, params, effect_type: str, *, show_path_settings: bool = True) -> list[str]:
     layout = _RecordingLayout()
     effect_line_panel.draw_effect_params(
         layout,
@@ -130,6 +130,7 @@ def _effect_setting_props(effect_line_panel, params, effect_type: str) -> list[s
         with_generate_button=False,
         fixed_effect_type=effect_type,
         show_type=False,
+        show_path_settings=show_path_settings,
     )
     return layout.props
 
@@ -175,10 +176,12 @@ def main() -> None:
         assert balloon_shapes.normalize_shape("white_outline") == "ellipse"
         assert balloon_shapes.normalize_line_style("uni_flash") == "uni_flash"
         assert balloon_shapes.normalize_line_style("white_outline") == "white_outline"
+        effect_only_fields = set(effect_line_core.line_effect_schema.EFFECT_PATH_IMAGE_FIELDS)
         expected_uni_flash_fields = tuple(
             field
             for field in effect_line_core.EFFECT_PARAM_FIELDS
             if field not in {"speed_angle_deg", "speed_line_count"}
+            and field not in effect_only_fields
             and not field.startswith("white_outline_")
         )
         # v0.6.290: 白抜き線の詳細フィールドもフキダシ側の同じ保存リストに同居する
@@ -243,8 +246,14 @@ def main() -> None:
                     effect_line_panel,
                     focus_params,
                     "focus",
+                    show_path_settings=False,
                 )
-                uni_props = _effect_setting_props(effect_line_panel, entry, "uni_flash")
+                uni_props = _effect_setting_props(
+                    effect_line_panel,
+                    entry,
+                    "uni_flash",
+                    show_path_settings=False,
+                )
                 # 「ズラし量」はウニフラ専用なので、それ以外が集中線と一致していればよい
                 assert set(uni_props) - {"uni_flash_offset_percent"} == set(focus_props), (
                     "ウニフラ線種の表示項目が集中線と一致していません"

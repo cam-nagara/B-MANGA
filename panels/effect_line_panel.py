@@ -172,6 +172,7 @@ def draw_effect_params(
     show_type: bool = True,
     show_rotation: bool = True,
     show_opacity: bool = True,
+    show_path_settings: bool = True,
     columns=None,
 ) -> None:
     """効果線パラメータを ``layout`` に描画 (パネル / 詳細設定ダイアログ共通).
@@ -206,7 +207,8 @@ def draw_effect_params(
         _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(_col(0), params, "end", "終点形状")
         _draw_white_outline_settings(_col(1), params)
-        draw_effect_path_settings(_col(2), params)
+        if show_path_settings:
+            draw_effect_path_settings(_col(2), params)
         if with_generate_button:
             _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return
@@ -275,7 +277,8 @@ def draw_effect_params(
     row.prop(params, "in_start_percent")
     row.prop(params, "out_start_percent")
     draw_inout_curve_mapping(box, params)
-    draw_effect_path_settings(_col(2), params)
+    if show_path_settings:
+        draw_effect_path_settings(_col(2), params)
 
     box = _col(1).box()
     box.label(text="色")

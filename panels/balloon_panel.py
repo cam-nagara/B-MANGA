@@ -245,6 +245,7 @@ class BMANGA_PT_balloons(Panel):
                 with_generate_button=False,
                 fixed_effect_type="uni_flash",
                 show_type=False,
+                show_path_settings=False,
             )
         elif balloon_shapes.is_flash_line_style(line_style):
             row = box.row(align=True)
