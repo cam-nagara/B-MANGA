@@ -2,7 +2,7 @@
 
 このファイルは **Claude Code / Codex / Gemini CLI など複数の AI コーディングツールで本プロジェクトを共有開発する** ための連携ハブです。**新しいセッションを開始したらまずこのファイルを読み、最後に「コミット前チェックリスト」を満たしてから書き込みを行ってください。**
 
-最終更新: 2026-06-02 (Codex)
+最終更新: 2026-06-28 (Codex)
 
 ---
 
@@ -53,6 +53,7 @@
 - **(完了 / 2026-05-27 Claude Code, v0.6.129〜v0.6.133)** フキダシ ジオメトリノード最小化 (Phase A〜E)。 全描画責務 (塗り / 主線 / 外側フチ / 内側フチ / 多重線 / しっぽ主線) を Python メッシュ (Shapely + mapbox_earcut) で焼き込み、 ジオメトリノードグループ `BManga_GN_BalloonCurveRender` を完全撤去。 フキダシ本体カーブから geometry node modifier も消えた (commits `8cda170`, `02dd661`, `aab0d34`, `c3061a8`)。 `utils/balloon_curve_render_nodes.py`: 1393 行 → 70 行 (-95%)。 移動・サイズ変更・詳細設定変更でのノードグループ評価コストがゼロに。 詳細: [`docs/balloon_node_minimization_plan_2026-05-27.md`](docs/balloon_node_minimization_plan_2026-05-27.md)
 - **(完了 / 2026-05-27〜28 Claude Code, v0.6.103〜v0.6.143)** フキダシのフチ・多重線・主線を Shapely buffer 方式に統一 + 主線「谷/山の線幅」動的化。 外側フチ / 内側フチ / 多重線も Shapely buffer ベースの Mesh band に作り直し (`docs/plans/fringe_multiline_shapely_2026-05-27.md` の計画完了)。 さらに 主線 dynamic で 「ベース太さを保ったまま 谷頂点だけ pinch + 辺は直線」 を実現 (`utils/balloon_line_mesh.py` の `_build_dynamic_multi_line_polygons` を外側アライメント sample-direct 化)。 関連実装は `utils/balloon_line_mesh.py` に集約。 詳細は CHANGELOG 冒頭 (v0.6.138〜v0.6.143)。
 - **(完了 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)** 作品要素の実体化 第一段階。 テキスト (`utils/text_real_object.py`: Pillow 画像を貼った Mesh 平面, 旧 Empty 削除) / 画像レイヤー (`utils/image_real_object.py`: 透明テクスチャ平面) / コマ枠線 (`utils/coma_border_object.py`: 実カーブ, 通常線・破線・点線・二重線・白フチ) / フキダシ本体・塗り・しっぽ / 用紙背景・ガイド線・セーフライン外塗り を Blender 実オブジェクトとして同期済み。 mirror 同期は `utils/layer_object_sync.py` `_mirror_image_text_objects` 経由で配線済み。 アドオン無効時も作品要素が Blender データに残る。 詳細: [`docs/bmanga_real_object_safety_plan_2026-05-05.md`](docs/bmanga_real_object_safety_plan_2026-05-05.md)
+- **(完了 / 2026-06-28 Codex, v0.6.398〜v0.6.400)** フキダシ / NURBSフキダシ / 効果線の入口・線設定統合。フキダシツールとNURBSフキダシツールを画面上は統合し、NURBSフキダシをフキダシツールの「なめらか自由形状」プリセットとして扱うようにした。画像パス、効果線、フキダシ線の共有選択肢と保存対象を共通定義へ集約し、効果線とフキダシの白抜き線設定UIを共通部品化した。既存のNURBSフキダシ操作は互換用として維持。詳細: [`docs/balloon_effect_tool_unification_plan_2026-06-28.md`](docs/balloon_effect_tool_unification_plan_2026-06-28.md)
 
 ### 2.2 直近のバグ修正トピック (2026-05-01 まで)
 
@@ -68,7 +69,6 @@
 
 (着手前にユーザーへ確認推奨)
 
-- **フキダシ / NURBSフキダシ / 効果線の入口・線設定統合 (進行中 / 2026-06-28 Codex, v0.6.398)**。フキダシツールとNURBSフキダシツールを画面上は統合し、NURBSフキダシをフキダシツールのプリセット項目として扱う。効果線とフキダシのウニフラ / 白抜き線は、共通定義と共通UI部品を使う方針。Phase 0 の共通定義化は完了済み。詳細: [`docs/balloon_effect_tool_unification_plan_2026-06-28.md`](docs/balloon_effect_tool_unification_plan_2026-06-28.md)
 - **B-MANGA Render 分離 (進行中 / 2026-05-05 Codex 起点, コード検証 2026-05-28 Claude Code)**。 B-MANGA 本体はページ一覧での作画 + コマ用blendファイルでの 3D 配置までに限定し、 出力プリセット / 魚眼レンダリング / PSD・PDF 等の完成画像書き出しは `addons/b_manga_render/` へ分離する。
   - **済**: 独立アドオン土台 (`addons/b_manga_render/`, 10 ファイル / 約 2336 行) / カード型プリセット UI / eeVR 連携。
   - **未 (Phase R4 + R1 一部)**: B-MANGA 本体に出力系がまだ現役登録されている — 「ページ出力」パネル (`panels/__init__.py` `_MODULES` 内 `export_panel`) / `bmanga.export_page`・`export_all_pages`・`export_pdf` (`operators/io_op.py`, `operators/__init__.py` 内 `io_op`) / `io/export_*.py`。 魚眼モード / 縮小モード / Pencil+4 線幅保存 / ページ画像スケールは 2026-06-02 に B-MANGA Render へ移動済み。 残りを B-MANGA Render へ移植し本体側を未登録化する作業が残っている。
