@@ -25,6 +25,17 @@ LINK_ID_PROP = "link_id"
 
 _LINKED_SHAPE_FIELDS = {
     "rotation_deg",
+    "base_path_enabled",
+    "base_path_points_json",
+    "line_image_path",
+    "line_image_draw_mode",
+    "line_image_brush_size_mm",
+    "line_image_aspect_ratio",
+    "line_image_angle_deg",
+    "line_image_spacing_percent",
+    "line_image_stamp_angle_mode",
+    "line_image_stamp_angle_object_name",
+    "line_image_ribbon_repeat_mode",
     "start_shape",
     "start_to_coma_frame",
     "start_rounded_corner_enabled",

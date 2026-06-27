@@ -1405,10 +1405,15 @@ class BMANGA_OT_layer_stack_toggle_visibility(Operator):
             if item.kind == "effect":
                 try:
                     from ..utils import effect_line_object as _elo
+                    from ..utils import effect_line_path as _elp
 
                     display = _elo.find_effect_display_object(resolved.get("object"))
                     if display is not None:
                         display.hide_viewport = bool(target.hide)
+                    image = _elp.find_effect_line_image_object(resolved.get("object"))
+                    if image is not None:
+                        image.hide_viewport = bool(target.hide)
+                        image.hide_render = bool(target.hide)
                 except Exception:  # noqa: BLE001
                     pass
         else:

@@ -798,12 +798,41 @@ def _write_effect_strokes(
             (float(x), float(y), w, h),
             free_transform.effect_payload_from_meta_entry(_effect_meta(obj).get(_layer_meta_key(layer))),
         )
+        try:
+            from ..utils import effect_line_path as _elp
+
+            if _elp.sync_base_path_source(context.scene, obj, layer, params_data, strokes):
+                _set_layer_bounds(
+                    obj,
+                    layer,
+                    (float(x), float(y), w, h),
+                    seed=seed_value,
+                    params_data=params_data,
+                    center_xy_mm=focus_center_xy,
+                )
+            strokes = _elp.apply_base_path_to_strokes(strokes, params_data)
+            display_strokes = _elp.solid_strokes_for_display(params_data, strokes)
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect_line: path settings sync failed")
+            display_strokes = strokes
         display = _elo.ensure_effect_display_object(
             scene=context.scene,
             controller_obj=obj,
             values=values,
-            strokes=strokes,
+            strokes=display_strokes,
         )
+        try:
+            from ..utils import effect_line_path as _elp
+
+            _elp.sync_effect_line_image_object(
+                scene=context.scene,
+                controller_obj=obj,
+                params_data=params_data,
+                strokes=strokes,
+                visible=not bool(getattr(layer, "hide", False)),
+            )
+        except Exception:  # noqa: BLE001
+            _logger.exception("effect_line: image line sync failed")
         if display is not None:
             try:
                 display.hide_viewport = bool(getattr(layer, "hide", False))

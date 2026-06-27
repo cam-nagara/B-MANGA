@@ -3,6 +3,36 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 効果線に基準パス編集と画像線を追加 (v0.6.396)
+
+### 症状
+
+- 効果線の線を、一本の基準パスとして編集し、同じ効果線内の他の線へ反映する仕組みがなかった。
+- 効果線の線には、スタンプ / リボン形式の画像を直接設定できなかった。
+
+### 原因
+
+- 効果線は生成結果の線を表示用メッシュへ焼き込むだけで、ユーザーが編集する基準パスを別オブジェクトとして保持していなかった。
+- 画像パスの表示方式は通常の画像パスレイヤーに限定され、効果線の各線へ適用する経路がなかった。
+
+### 修正
+
+- 効果線に「基準パス」を追加し、選択した一本のパス編集を同じ効果線内の線へ反映できるようにした。
+- 効果線の線へ「画像線」を追加し、スタンプ / リボン、ブラシサイズ、縦横比、画像の角度、間隔、スタンプの向き、リボンの繰り返し方式を設定できるようにした。
+- 画像線にもコマ内容の表示範囲を反映し、効果線の非表示、複製、リンク、削除時に基準パスと画像線が追従するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile core\effect_line.py operators\effect_line_op.py operators\effect_line_path_op.py operators\effect_line_link_op.py operators\layer_stack_op.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py utils\effect_line_object.py utils\effect_line_path.py utils\object_state_sync.py utils\outliner_watch.py test\blender_effect_line_path_image_check.py`
+- `blender.exe --background --python test\blender_effect_line_path_image_check.py`
+- `blender.exe --background --python test\blender_effect_line_end_fill_check.py`
+- `blender.exe --background --python test\blender_effect_line_mask_visibility_check.py`
+- `blender.exe --background --python test\blender_geometry_nodes_bridge_check.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- 基準パス編集、リボン表示、リボンの一枚伸ばし、スタンプ表示、指定オブジェクト方向、コマ内容の表示範囲、非表示反映、既存の効果線表示が動作することを確認。
+
+---
+
 ## 2026-06-28 — 画像パスとフキダシ画像線のマスク・操作確認を強化 (v0.6.395)
 
 ### 症状

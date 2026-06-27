@@ -13,6 +13,7 @@ from bpy.props import (
     FloatProperty,
     FloatVectorProperty,
     IntProperty,
+    StringProperty,
 )
 
 from . import balloon
@@ -70,13 +71,29 @@ _WHITE_OUTLINE_BLACK_DIRECTION_ITEMS = (
     ("both", "両側", "白線群の外側と内側へ黒線を重ねる"),
 )
 
+_LINE_IMAGE_DRAW_MODE_ITEMS = (
+    ("stamp", "スタンプ", "パスに沿って画像をそのまま連続表示します"),
+    ("ribbon", "リボン", "パスに沿って画像を滑らかに変形します"),
+)
+
+_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS = (
+    ("fixed", "固定", "指定した角度で固定します"),
+    ("line", "線の向き", "パスの向きに合わせます"),
+    ("object", "指定オブジェクト方向", "指定したオブジェクトの向きに合わせます"),
+)
+
+_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS = (
+    ("repeat", "ブラシサイズの画像を連続", "ブラシサイズを基準に画像を繰り返します"),
+    ("stretch", "画像ひとつを伸ばす", "始点から終点まで画像ひとつを伸ばします"),
+)
+
 _LEGACY_BASE_SHAPE_TO_EFFECT_SHAPE = {
     "rect": "rect",
     "ellipse": "ellipse",
     "polygon": "octagon",
 }
 
-EFFECT_PARAM_SCHEMA_VERSION = 14
+EFFECT_PARAM_SCHEMA_VERSION = 15
 _LEGACY_DEFAULT_MAX_LINE_COUNT = 300
 _DEFAULT_MAX_LINE_COUNT = 1000
 _LEGACY_DEFAULT_SPEED_LINE_COUNT = 20
@@ -121,6 +138,17 @@ EFFECT_PARAM_FIELDS = (
     "end_cloud_sub_height_ratio",
     "end_cloud_sub_height_jitter",
     "brush_size_mm",
+    "base_path_enabled",
+    "base_path_points_json",
+    "line_image_path",
+    "line_image_draw_mode",
+    "line_image_brush_size_mm",
+    "line_image_aspect_ratio",
+    "line_image_angle_deg",
+    "line_image_spacing_percent",
+    "line_image_stamp_angle_mode",
+    "line_image_stamp_angle_object_name",
+    "line_image_ribbon_repeat_mode",
     "brush_jitter_enabled",
     "brush_jitter_amount",
     "length_jitter_enabled",
@@ -389,6 +417,17 @@ class BMangaEffectLineParams(bpy.types.PropertyGroup):
     end_cloud_sub_height_jitter: FloatProperty(name="小山高 乱れ", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_params_changed)  # type: ignore[valid-type]
 
     brush_size_mm: FloatProperty(name="線幅 (mm)", default=0.30, min=0.01, soft_max=5.0, update=_on_params_changed)  # type: ignore[valid-type]
+    base_path_enabled: BoolProperty(name="基準パスを編集", default=False, update=_on_params_changed)  # type: ignore[valid-type]
+    base_path_points_json: StringProperty(name="基準パス", default="", options={"HIDDEN"}, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_path: StringProperty(name="画像", default="", subtype="FILE_PATH", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_draw_mode: EnumProperty(name="画像の表示方法", items=_LINE_IMAGE_DRAW_MODE_ITEMS, default="ribbon", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_brush_size_mm: FloatProperty(name="画像ブラシサイズ", default=3.0, min=0.1, soft_max=100.0, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_aspect_ratio: FloatProperty(name="画像の縦横比", default=1.0, min=0.01, soft_min=0.1, soft_max=10.0, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_angle_deg: FloatProperty(name="画像の角度", default=0.0, soft_min=-360.0, soft_max=360.0, update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_spacing_percent: FloatProperty(name="画像の間隔 (%)", default=100.0, min=1.0, soft_max=400.0, subtype="PERCENTAGE", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_stamp_angle_mode: EnumProperty(name="画像の角度", items=_LINE_IMAGE_STAMP_ANGLE_MODE_ITEMS, default="line", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_stamp_angle_object_name: StringProperty(name="方向オブジェクト", default="", update=_on_params_changed)  # type: ignore[valid-type]
+    line_image_ribbon_repeat_mode: EnumProperty(name="リボン", items=_LINE_IMAGE_RIBBON_REPEAT_MODE_ITEMS, default="repeat", update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_enabled: BoolProperty(name="乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]
     brush_jitter_amount: FloatProperty(name="乱れ量", default=0.2, min=0.0, max=1.0, update=_on_params_changed)  # type: ignore[valid-type]
     length_jitter_enabled: BoolProperty(name="始点乱れ", default=False, update=_on_params_changed)  # type: ignore[valid-type]

@@ -283,6 +283,12 @@ def preserve_effect_density_source_object(controller_obj: bpy.types.Object | Non
 
 
 def delete_effect_display_object(controller_obj: bpy.types.Object | None) -> None:
+    try:
+        from . import effect_line_path
+
+        effect_line_path.delete_effect_line_helpers(controller_obj)
+    except Exception:  # noqa: BLE001
+        pass
     delete_effect_frame_source_object(controller_obj)
     delete_effect_shape_source_object(controller_obj, "start")
     delete_effect_shape_source_object(controller_obj, "end")
@@ -1095,6 +1101,12 @@ def sync_effect_display_transform(controller_obj: bpy.types.Object | None) -> No
             density_source.scale = tuple(controller_obj.scale)
         except Exception:  # noqa: BLE001
             pass
+    try:
+        from . import effect_line_path
+
+        effect_line_path.sync_effect_line_helpers_transform(controller_obj)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def sync_controller_transform_from_display(display_obj: bpy.types.Object | None) -> bool:

@@ -756,6 +756,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
         _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
         _draw_effect_shape_settings(box, params, "end", "終点形状")
         _draw_effect_white_outline_settings(box, params)
+        effect_line_panel.draw_effect_path_settings(box, params)
         box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
         return
     if params.effect_type != "speed":
@@ -765,6 +766,7 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     if params.effect_type != "beta_flash":
         _draw_effect_interval_settings(box, params)
     _draw_effect_tail_settings(box, params)
+    effect_line_panel.draw_effect_path_settings(box, params)
     box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
 
 

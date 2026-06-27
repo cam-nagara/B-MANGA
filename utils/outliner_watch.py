@@ -437,11 +437,14 @@ def _on_depsgraph_update_post(scene, depsgraph) -> None:
         from . import object_state_sync
 
         for update in depsgraph.updates:
-            if not update.is_updated_transform:
+            if not update.is_updated_transform and not update.is_updated_geometry:
                 continue
             obj_id = update.id
             if not isinstance(obj_id, bpy.types.Object):
                 continue
+            if update.is_updated_geometry and not update.is_updated_transform:
+                if str(obj_id.get("bmanga_kind", "") or "") != "effect_base_path":
+                    continue
             if not object_state_sync.is_sync_candidate(obj_id):
                 continue
             # 名前で生 Object を引き直す (depsgraph の id は eval 版の場合あり)

@@ -56,6 +56,10 @@ def sync_from_blender_object(scene: bpy.types.Scene, obj: bpy.types.Object | Non
         from . import balloon_merge_object
 
         return balloon_merge_object.sync_display_transform_from_object(scene, obj)
+    if kind == "effect_base_path":
+        from . import effect_line_path
+
+        return effect_line_path.sync_from_base_path_object(scene, obj)
     if kind.startswith("effect_"):
         from . import effect_line_object
 
