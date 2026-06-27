@@ -298,6 +298,7 @@ _CONTENT_KINDS = {
     "balloon",
     "text",
     "image",
+    "image_path",
     "raster",
     "gp",
     "effect",

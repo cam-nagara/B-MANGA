@@ -59,6 +59,10 @@ def image_key(entry) -> str:
     return make_key("image", "", str(getattr(entry, "id", "") or ""))
 
 
+def image_path_key(entry) -> str:
+    return make_key("image_path", "", str(getattr(entry, "id", "") or ""))
+
+
 def raster_key(entry) -> str:
     return make_key("raster", "", str(getattr(entry, "id", "") or ""))
 
@@ -211,6 +215,10 @@ def is_image_selected(context, entry) -> bool:
     return image_key(entry) in set(get_keys(context))
 
 
+def is_image_path_selected(context, entry) -> bool:
+    return image_path_key(entry) in set(get_keys(context))
+
+
 def is_raster_selected(context, entry) -> bool:
     return raster_key(entry) in set(get_keys(context))
 
@@ -270,6 +278,9 @@ def _sync_balloon_flags(context, keys: list[str]) -> None:
         for entry in getattr(scene, "bmanga_image_layers", []) or []:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("image", "", getattr(entry, "id", "")) in key_set
+        for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+            if hasattr(entry, "selected"):
+                entry.selected = make_key("image_path", "", getattr(entry, "id", "")) in key_set
         for entry in getattr(scene, "bmanga_raster_layers", []) or []:
             if hasattr(entry, "selected"):
                 entry.selected = make_key("raster", "", getattr(entry, "id", "")) in key_set

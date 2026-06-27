@@ -22,6 +22,7 @@ PRESET_CATEGORIES = {
     "balloons": "balloons",
     "tails": "tails",
     "text": "text",
+    "image_paths": "image_paths",
 }
 
 

@@ -32,7 +32,7 @@ from .layer_hierarchy import (
 _logger = log.get_logger(__name__)
 
 EFFECT_GP_OBJECT_NAME = "BManga_EffectLines"
-PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "fill", "balloon", "text"}
+PAGE_COMA_CHILD_KINDS = {"gp", "effect", "raster", "image", "image_path", "fill", "balloon", "text"}
 COMA_PREVIEW_KIND = "coma_preview"
 COMA_REORDER_KINDS = PAGE_COMA_CHILD_KINDS
 LAYER_FOLDER_KIND = layer_folder_utils.LAYER_FOLDER_KIND
@@ -376,13 +376,15 @@ _LAYER_KIND_JP = {
     "balloon": "フキダシ",
     "text": "テキスト",
     "image": "画像",
+    "image_path": "画像パス",
     "raster": "ラスター",
+    "fill": "塗り",
     "effect": "効果線",
     "gp": "下書き",
 }
 
 _LAYER_ID_NUMBER_RE = re.compile(
-    r"^(?:shared_)?(?:balloon|text|image|raster|effect|gp)[_-]?0*(\d+)$"
+    r"^(?:shared_)?(?:balloon|text|image|image_path|raster|fill|effect|gp)[_-]?0*(\d+)$"
 )
 
 
@@ -484,6 +486,31 @@ def _collect_fill_targets_for_page(page, panels_by_key: dict[str, object]):
     return page_children, panel_children
 
 
+def _collect_image_path_targets_for_page(page, panels_by_key: dict[str, object]):
+    scene = getattr(bpy.context, "scene", None)
+    coll = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    if coll is None:
+        return [], {}
+    page_key = page_stack_key(page)
+    page_children: list[LayerTarget] = []
+    panel_children: dict[str, list[LayerTarget]] = {}
+    for entry in reversed(list(coll)):
+        parent_kind = str(getattr(entry, "parent_kind", "") or "page")
+        parent_key = str(getattr(entry, "parent_key", "") or "")
+        label = getattr(entry, "title", "") or _jp_layer_label("image_path", getattr(entry, "id", ""))
+        if parent_kind == "page" and parent_key in {getattr(page, "id", ""), page_key}:
+            page_children.append(LayerTarget("image_path", entry.id, label, page_key, 1))
+            continue
+        if parent_kind == "coma":
+            for coma_key, panel in panels_by_key.items():
+                if _coma_parent_key_matches(entry, page, coma_key, panel):
+                    panel_children.setdefault(coma_key, []).append(
+                        LayerTarget("image_path", entry.id, label, coma_key, 2)
+                    )
+                    break
+    return page_children, panel_children
+
+
 def _retarget_root_subtree_to_outside(targets: list[LayerTarget]) -> list[LayerTarget]:
     """GP/Effect の root 階層を UI 上の「ページ外」配下へ載せ替える."""
     folder_keys = {target.key for target in targets if target.kind == "gp_folder"}
@@ -550,6 +577,18 @@ def _collect_outside_layer_targets(
             label = getattr(entry, "title", "") or _jp_layer_label("image", key)
             targets.append(LayerTarget("image", key, label, OUTSIDE_STACK_KEY, 1))
 
+    image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    if image_path_layers is not None:
+        used_image_path: set[str] = set()
+        for entry in reversed(list(image_path_layers)):
+            parent_kind = str(getattr(entry, "parent_kind", "") or "none")
+            parent_key = str(getattr(entry, "parent_key", "") or "")
+            if parent_kind != "none" and parent_key:
+                continue
+            key = _ensure_unique_id(entry, used_image_path, "image_path")
+            label = getattr(entry, "title", "") or _jp_layer_label("image_path", key)
+            targets.append(LayerTarget("image_path", key, label, OUTSIDE_STACK_KEY, 1))
+
     used_balloon: set[str] = set()
     for entry in reversed(list(getattr(work, "shared_balloons", []))):
         bid = _ensure_unique_id(entry, used_balloon, "shared_balloon")
@@ -595,6 +634,13 @@ def _collect_page_layer_targets(
     )
     page_children.extend(image_page_children)
     for coma_key, children in image_panel_children.items():
+        panel_children.setdefault(coma_key, []).extend(children)
+    image_path_page_children, image_path_panel_children = _collect_image_path_targets_for_page(
+        page,
+        panels_by_key,
+    )
+    page_children.extend(image_path_page_children)
+    for coma_key, children in image_path_panel_children.items():
         panel_children.setdefault(coma_key, []).extend(children)
     fill_page_children, fill_panel_children = _collect_fill_targets_for_page(
         page,
@@ -1417,7 +1463,7 @@ def _stack_item_page_key(item, context=None) -> str:
     """スタック行が属するページキーを返す。ページ非依存なら "" を返す.
 
     - coma / balloon / text / balloon_group: 行 key が ``page_id:child_id`` 形式
-    - raster / image: 永続化された ``parent_key`` のページプレフィックス
+    - raster / image / image_path: 永続化された ``parent_key`` のページプレフィックス
     - gp / effect / gp_folder: ``parent_key`` のページプレフィックス
     """
     kind = getattr(item, "kind", "")
@@ -1430,7 +1476,7 @@ def _stack_item_page_key(item, context=None) -> str:
         if page_key == OUTSIDE_STACK_KEY:
             return ""
         return page_key
-    if kind in {"raster", "image", "gp", "gp_folder", "effect"}:
+    if kind in {"raster", "image", "image_path", "gp", "gp_folder", "effect"}:
         page_key, _ = split_child_key(parent_key)
         if page_key == OUTSIDE_STACK_KEY:
             return ""
@@ -1467,7 +1513,7 @@ def _apply_stack_drop_hint(context, moved_uid: str, *, nesting_delta: int = 0) -
     kind = getattr(item, "kind", "")
     if kind == COMA_PREVIEW_KIND:
         return False
-    if kind not in {COMA_KIND, "gp", "gp_folder", "effect", "raster", "image", "balloon", "text", LAYER_FOLDER_KIND}:
+    if kind not in {COMA_KIND, "gp", "gp_folder", "effect", "raster", "image", "image_path", "balloon", "text", LAYER_FOLDER_KIND}:
         return False
     parent_key = _drop_parent_from_nesting_delta(stack, item, moved_index, nesting_delta)
     old_parent_key = str(getattr(item, "parent_key", "") or "")
@@ -1751,6 +1797,11 @@ def _active_key_from_scene(context) -> tuple[str, str] | None:
         idx = int(getattr(scene, "bmanga_active_image_layer_index", -1))
         if coll is not None and 0 <= idx < len(coll):
             return "image", getattr(coll[idx], "id", "")
+    if kind == "image_path":
+        coll = getattr(scene, "bmanga_image_path_layers", None)
+        idx = int(getattr(scene, "bmanga_active_image_path_layer_index", -1))
+        if coll is not None and 0 <= idx < len(coll):
+            return "image_path", getattr(coll[idx], "id", "")
     if kind == "raster":
         coll = getattr(scene, "bmanga_raster_layers", None)
         idx = int(getattr(scene, "bmanga_active_raster_layer_index", -1))
@@ -2263,6 +2314,12 @@ def resolve_stack_item(context, item):
             return None
         idx, entry = _find_by_id(coll, key)
         return {"kind": kind, "target": entry, "object": None, "index": idx}
+    if kind == "image_path":
+        coll = getattr(scene, "bmanga_image_path_layers", None)
+        if coll is None:
+            return None
+        idx, entry = _find_by_id(coll, key)
+        return {"kind": kind, "target": entry, "object": None, "index": idx}
     if kind == "raster":
         coll = getattr(scene, "bmanga_raster_layers", None)
         if coll is None:
@@ -2503,6 +2560,8 @@ def _object_selection_key_for_stack_item(item, resolved) -> str:
         return object_selection.text_key(resolved.get("page"), target)
     if kind == "image":
         return object_selection.image_key(target)
+    if kind == "image_path":
+        return object_selection.image_path_key(target)
     if kind == "raster":
         return object_selection.raster_key(target)
     if kind == "fill":
@@ -2702,6 +2761,11 @@ def select_stack_index(context, index: int, *, sync_object_selection: bool = Tru
         scene.bmanga_active_image_layer_index = int(resolved.get("index", -1))
         scene.bmanga_active_gp_folder_key = ""
         scene.bmanga_active_layer_kind = "image"
+        edge_selection.clear_selection(context)
+    elif kind == "image_path":
+        scene.bmanga_active_image_path_layer_index = int(resolved.get("index", -1))
+        scene.bmanga_active_gp_folder_key = ""
+        scene.bmanga_active_layer_kind = "image_path"
         edge_selection.clear_selection(context)
     elif kind == "raster":
         page_idx = int(resolved.get("page_index", -1))
@@ -2988,6 +3052,19 @@ def _apply_simple_collection_orders(context, stack) -> None:
                 scene, "bmanga_active_image_layer_index", image_layers, active_key
             )
 
+    image_path_layers = getattr(scene, "bmanga_image_path_layers", None)
+    if image_path_layers is not None:
+        active_key = ""
+        idx = int(getattr(scene, "bmanga_active_image_path_layer_index", -1))
+        if 0 <= idx < len(image_path_layers):
+            active_key = getattr(image_path_layers[idx], "id", "")
+        front = [item.key for item in stack if item.kind == "image_path"]
+        _reorder_collection(image_path_layers, list(reversed(front)), lambda entry: entry.id)
+        if active_key:
+            _restore_active_collection_index(
+                scene, "bmanga_active_image_path_layer_index", image_path_layers, active_key
+            )
+
     raster_layers = getattr(scene, "bmanga_raster_layers", None)
     if raster_layers is not None:
         active_key = ""
@@ -3253,6 +3330,33 @@ def _apply_image_parenting(context, stack) -> None:
             pass
 
 
+def _apply_image_path_parenting(context, stack) -> None:
+    scene = getattr(context, "scene", None)
+    coll = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    if coll is None:
+        return
+    work = get_work(context)
+    by_key = {
+        str(getattr(item, "key", "") or ""): str(getattr(item, "parent_key", "") or "")
+        for item in stack
+        if getattr(item, "kind", "") == "image_path"
+    }
+    for entry in coll:
+        key = str(getattr(entry, "id", "") or "")
+        if key not in by_key:
+            continue
+        parent_key = by_key[key]
+        try:
+            if parent_key == OUTSIDE_STACK_KEY or not parent_key:
+                entry.parent_kind = "none"
+                entry.parent_key = ""
+            elif gp_parent.parent_key_exists(work, parent_key):
+                entry.parent_kind = "coma" if ":" in parent_key else "page"
+                entry.parent_key = parent_key
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _apply_raster_parenting(context, stack) -> None:
     scene = getattr(context, "scene", None)
     coll = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
@@ -3407,6 +3511,7 @@ def apply_stack_order(context) -> None:
         _apply_gp_order(effect_obj, stack, effect=True)
     _apply_effect_object_parenting(context, stack, get_work(context))
     _apply_image_parenting(context, stack)
+    _apply_image_path_parenting(context, stack)
     _apply_raster_parenting(context, stack)
     _apply_balloon_parenting(context, stack)
     _apply_text_parenting(context, stack)
@@ -3487,6 +3592,20 @@ def delete_stack_index(context, index: int) -> bool:
         except Exception:  # noqa: BLE001
             _logger.exception("delete image real object from layer stack failed")
         scene.bmanga_active_image_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
+    elif kind == "image_path":
+        coll = getattr(scene, "bmanga_image_path_layers", None)
+        idx = int(resolved.get("index", -1))
+        if coll is None or not (0 <= idx < len(coll)):
+            return False
+        image_path_id = str(getattr(coll[idx], "id", "") or "")
+        coll.remove(idx)
+        try:
+            from . import image_path_object
+
+            image_path_object.remove_image_path_object(image_path_id)
+        except Exception:  # noqa: BLE001
+            _logger.exception("delete image path object from layer stack failed")
+        scene.bmanga_active_image_path_layer_index = min(idx, len(coll) - 1) if len(coll) else -1
     elif kind == "raster":
         idx = int(resolved.get("index", -1))
         try:

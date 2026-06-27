@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -32,6 +33,7 @@ _ADD_KIND_ITEMS = (
     ("coma", "コマ", ""),
     ("gp", "グリースペンシル", ""),
     ("image", "画像 (配置)", ""),
+    ("image_path", "画像パス", ""),
     ("raster", "ラスター (描画)", ""),
     ("fill", "塗り", ""),
     ("balloon", "フキダシ", ""),
@@ -46,6 +48,7 @@ _ADD_KIND_ICONS = {
     "coma": "MOD_WIREFRAME",
     "gp": "OUTLINER_OB_GREASEPENCIL",
     "image": "IMAGE_DATA",
+    "image_path": "CURVE_BEZCURVE",
     "raster": "BRUSH_DATA",
     "fill": "NODE_TEXTURE",
     "balloon_group": "FILE_FOLDER",
@@ -229,12 +232,12 @@ def _parent_key_for_new_item(context, anchor_uid: str, kind: str) -> str:
     from ..utils import gp_layer_parenting as gp_parent
 
     work = get_work(context)
-    logical_child_kinds = {"gp", "effect", "raster", "image", "fill", "balloon", "text"}
+    logical_child_kinds = {"gp", "effect", "raster", "image", "image_path", "fill", "balloon", "text"}
     for item in stack:
         if layer_stack_utils.stack_item_uid(item) != anchor_uid:
             continue
         folder_key = _folder_key_for_anchor_item(context, item)
-        if kind in {"image", "raster", "fill", "balloon", "text"} and folder_key:
+        if kind in {"image", "image_path", "raster", "fill", "balloon", "text"} and folder_key:
             semantic_parent = layer_folder_utils.semantic_parent_key_for_folder(work, folder_key)
             return "" if semantic_parent == OUTSIDE_STACK_KEY else semantic_parent
         # Page / Coma 行を選択中: そのコンテナの中へ
@@ -388,7 +391,7 @@ def _editable_name_prop_for_item(context, item) -> str | None:
     target = resolved.get("target") if resolved is not None else None
     if target is None:
         return None
-    if kind in {"layer_folder", "image", "raster", "fill", "balloon", "text"} and hasattr(
+    if kind in {"layer_folder", "image", "image_path", "raster", "fill", "balloon", "text"} and hasattr(
         target, "title"
     ):
         return "title"
@@ -755,6 +758,8 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
             return self._add_gp_layer(context, anchor_uid)
         if self.kind == "image":
             return self._add_image(context, anchor_uid)
+        if self.kind == "image_path":
+            return self._add_image_path(context, anchor_uid)
         if self.kind == "raster":
             return self._add_raster(context, anchor_uid)
         if self.kind == "fill":
@@ -909,6 +914,55 @@ class BMANGA_OT_layer_stack_add(Operator, ImportHelper):
         context.scene.bmanga_active_layer_kind = "image"
         layer_stack_utils.sync_layer_stack_after_data_change(context)
         return layer_stack_utils.target_uid("image", entry.id)
+
+    def _add_image_path(self, context, anchor_uid: str) -> str:
+        from ..core.work import get_work
+
+        coll = getattr(context.scene, "bmanga_image_path_layers", None)
+        if coll is None:
+            self.report({"ERROR"}, "画像パスが未初期化です")
+            return ""
+        used = {entry.id for entry in coll}
+        i = 1
+        while f"image_path_{i:04d}" in used:
+            i += 1
+        work = get_work(context)
+        paper = getattr(work, "paper", None) if work is not None else None
+        cx = float(getattr(paper, "canvas_width_mm", 182.0) or 182.0) * 0.5
+        cy = float(getattr(paper, "canvas_height_mm", 257.0) or 257.0) * 0.5
+        entry = coll.add()
+        entry.id = f"image_path_{i:04d}"
+        entry.title = f"画像パス {i}"
+        entry.path_points_json = json.dumps([(cx - 30.0, cy), (cx + 30.0, cy)])
+        parent_key = _parent_key_for_new_item(context, anchor_uid, "image_path")
+        if parent_key:
+            entry.parent_kind = "coma" if ":" in parent_key else "page"
+            entry.parent_key = parent_key
+        elif work is not None and getattr(work, "pages", None):
+            page_index = int(getattr(work, "active_page_index", 0) or 0)
+            if 0 <= page_index < len(work.pages):
+                entry.parent_kind = "page"
+                entry.parent_key = str(getattr(work.pages[page_index], "id", "") or "")
+        folder_key = _folder_key_for_anchor(context, anchor_uid)
+        if folder_key:
+            entry.folder_key = folder_key
+        try:
+            from . import preset_op
+
+            preset_op.apply_image_path_preset_to_entry(context, entry)
+        except Exception:  # noqa: BLE001
+            pass
+        context.scene.bmanga_active_image_path_layer_index = len(coll) - 1
+        context.scene.bmanga_active_layer_kind = "image_path"
+        try:
+            from ..utils import image_path_object
+
+            page = image_path_object.page_for_entry(context.scene, work, entry) if work is not None else None
+            image_path_object.ensure_image_path_object(scene=context.scene, entry=entry, page=page)
+        except Exception:  # noqa: BLE001
+            pass
+        layer_stack_utils.sync_layer_stack_after_data_change(context)
+        return layer_stack_utils.target_uid("image_path", entry.id)
 
     def _add_raster(self, context, anchor_uid: str) -> str:
         before = {
@@ -1342,7 +1396,7 @@ class BMANGA_OT_layer_stack_toggle_visibility(Operator):
                     pass
         elif item.kind in {PAGE_KIND, COMA_KIND} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
-        elif item.kind in {"image", "raster", "fill"} and hasattr(target, "visible"):
+        elif item.kind in {"image", "image_path", "raster", "fill"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)
         elif item.kind in {"balloon", "text"} and hasattr(target, "visible"):
             target.visible = not bool(target.visible)

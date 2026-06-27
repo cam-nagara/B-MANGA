@@ -232,6 +232,54 @@ def _writeback_empty_layer_parent(
     return True
 
 
+def _writeback_image_path_parent(scene, obj, new_kind: str, new_key: str) -> bool:
+    """画像パス Object の Outliner D&D を entry に書き戻す."""
+    from . import image_path_object
+
+    bid = str(obj.get("bmanga_id", "") or "")
+    if not bid:
+        return False
+    entry = image_path_object.find_image_path_entry(scene, bid)
+    if entry is None:
+        return False
+    new_pk, new_pkey, new_fk = _resolve_parent_kind_key_folder(new_kind, new_key)
+    if not new_pk:
+        return False
+    if (
+        str(getattr(entry, "parent_kind", "") or "") == new_pk
+        and str(getattr(entry, "parent_key", "") or "") == new_pkey
+        and str(getattr(entry, "folder_key", "") or "") == new_fk
+    ):
+        return False
+
+    work = getattr(scene, "bmanga_work", None)
+    old_page = image_path_object.page_for_entry(scene, work, entry)
+    old_ox, old_oy = image_path_object.entry_page_offset_mm(scene, work, entry, old_page)
+    with los.suppress_sync(), image_path_object.suspend_auto_sync():
+        try:
+            entry.parent_kind = new_pk
+            entry.parent_key = new_pkey
+            entry.folder_key = new_fk
+            new_page = image_path_object.page_for_entry(scene, work, entry)
+            new_ox, new_oy = image_path_object.entry_page_offset_mm(scene, work, entry, new_page)
+            image_path_object.translate_entry_points(entry, old_ox - new_ox, old_oy - new_oy)
+            obj["bmanga_parent_key"] = new_pkey
+            obj["bmanga_folder_id"] = new_fk
+            los.update_snapshot(obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("image path writeback failed")
+            return False
+    image_path_object.on_image_path_entry_changed(entry)
+    _logger.info(
+        "image path writeback: %s parent → %s/%s folder=%s",
+        bid,
+        new_pk,
+        new_pkey,
+        new_fk,
+    )
+    return True
+
+
 def _writeback_effect_parent(scene, obj, new_kind: str, new_key: str) -> bool:
     """効果線 GP Object の Outliner D&D を反映 (Phase 5b).
 
@@ -292,6 +340,8 @@ def _writeback_outliner_changes(scene) -> int:
             ok = _writeback_raster_parent(scene, obj, new_kind, new_key)
         elif kind in {"effect", "effect_legacy", "gp"}:
             ok = _writeback_effect_parent(scene, obj, new_kind, new_key)
+        elif kind == "image_path":
+            ok = _writeback_image_path_parent(scene, obj, new_kind, new_key)
         elif kind in {"image", "text"}:
             ok = _writeback_empty_layer_parent(scene, obj, kind, new_kind, new_key)
         else:

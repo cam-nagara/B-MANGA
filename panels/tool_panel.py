@@ -25,6 +25,7 @@ _MODAL_TOOL_NAMES = (
     "coma_create",
     "fill_tool",
     "gradient_tool",
+    "image_path_tool",
 )
 
 
@@ -176,6 +177,12 @@ class BMANGA_PT_tools(Panel):
             icon="NODE_TEXTURE",
             depress=coma_modal_state.is_active("gradient_tool"),
         )
+        row.operator(
+            "bmanga.image_path_tool",
+            text="",
+            icon="CURVE_BEZCURVE",
+            depress=coma_modal_state.is_active("image_path_tool"),
+        )
 
         _draw_active_tool_preset_row(layout, context)
 
@@ -223,6 +230,11 @@ def _draw_active_tool_preset_row(layout, context) -> None:
         prow = layout.row(align=True)
         prow.label(text="グラデーション", icon="NODE_TEXTURE")
         prow.prop(wm, "bmanga_gradient_tool_preset_selector", text="")
+        return
+    if coma_modal_state.is_active("image_path_tool") and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
+        prow = layout.row(align=True)
+        prow.label(text="画像パス", icon="CURVE_BEZCURVE")
+        prow.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
         return
 
 

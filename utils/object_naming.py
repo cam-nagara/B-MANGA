@@ -37,6 +37,7 @@ KIND_PREFIX = {
     "folder": "F",
     "outside": "P",  # outside は P0000 固定で alpha ソートで先頭に来るようにする
     "image": "L",
+    "image_path": "L",
     "raster": "L",
     "gp": "L",
     "balloon": "L",

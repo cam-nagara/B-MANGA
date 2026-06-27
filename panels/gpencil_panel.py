@@ -187,7 +187,7 @@ def _draw_visibility_slot(row, item, target, index: int) -> None:
         _visibility_button(row, index, not bool(target.paper_visible))
     elif item.kind in {"page", "coma"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
-    elif item.kind in {"image", "raster", "fill"} and hasattr(target, "visible"):
+    elif item.kind in {"image", "image_path", "raster", "fill"} and hasattr(target, "visible"):
         _visibility_button(row, index, not bool(target.visible))
     elif item.kind == "balloon_group":
         _visibility_button(row, index, _balloon_group_hidden(item, target))
@@ -289,7 +289,7 @@ def _editable_name_prop(item, target) -> str | None:
     kind = str(getattr(item, "kind", "") or "")
     if kind in {"page", "coma", "coma_preview", "outside_group"}:
         return None
-    if kind in {"layer_folder", "image", "raster", "fill", "balloon", "text"} and hasattr(
+    if kind in {"layer_folder", "image", "image_path", "raster", "fill", "balloon", "text"} and hasattr(
         target, "title"
     ):
         return "title"

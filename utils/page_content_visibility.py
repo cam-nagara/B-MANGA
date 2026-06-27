@@ -164,7 +164,7 @@ def _page_from_parent_key(
 
 def _is_content_object(obj) -> bool:
     kind = str(obj.get(on.PROP_KIND, "") or "")
-    if kind in {"balloon", "balloon_group", "image", "text", "raster", "gp", "effect"}:
+    if kind in {"balloon", "balloon_group", "image", "image_path", "text", "raster", "gp", "effect"}:
         return True
     if kind.startswith("effect_"):
         return True

@@ -31,6 +31,7 @@ _ACTIVE_REFS: dict[str, weakref.ReferenceType | None] = {
     "coma_vertex_edit": None,
     "fill_tool": None,
     "gradient_tool": None,
+    "image_path_tool": None,
 }
 
 _DEFAULT_KEEP_SELECTION: dict[str, bool] = {
@@ -47,6 +48,7 @@ _DEFAULT_KEEP_SELECTION: dict[str, bool] = {
     "coma_vertex_edit": True,
     "fill_tool": True,
     "gradient_tool": True,
+    "image_path_tool": True,
 }
 
 

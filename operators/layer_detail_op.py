@@ -84,6 +84,16 @@ def _find_image_entry(scene, bid: str):
     return None
 
 
+def _find_image_path_entry(scene, bid: str):
+    coll = getattr(scene, "bmanga_image_path_layers", None)
+    if coll is None:
+        return None
+    for e in coll:
+        if str(getattr(e, "id", "") or "") == bid:
+            return e
+    return None
+
+
 def _find_raster_entry(scene, bid: str):
     coll = getattr(scene, "bmanga_raster_layers", None)
     if coll is None:
@@ -156,6 +166,44 @@ def _draw_image_detail(layout, entry) -> None:
     box.prop(entry, "binarize_enabled")
     if getattr(entry, "binarize_enabled", False):
         box.prop(entry, "binarize_threshold")
+    box = layout.box()
+    box.label(text="所属")
+    box.prop(entry, "parent_kind")
+    box.prop(entry, "parent_key")
+    box.prop(entry, "folder_key")
+
+
+def _draw_image_path_detail(layout, entry) -> None:
+    layout.prop(entry, "title", text="表示名")
+    layout.prop(entry, "filepath", text="画像")
+    box = layout.box()
+    box.label(text="表示")
+    box.prop(entry, "draw_mode", text="表示方法")
+    box.prop(entry, "visible", text="表示")
+    box.prop(entry, "locked", text="ロック")
+    box.prop(entry, "opacity", text="不透明度")
+    row = box.row(align=True)
+    row.prop(entry, "brush_size_mm", text="ブラシサイズ")
+    row.prop(entry, "aspect_ratio", text="縦横比")
+    row = box.row(align=True)
+    row.prop(entry, "image_angle_deg", text="画像の角度")
+    row.prop(entry, "spacing_percent", text="間隔")
+    if str(getattr(entry, "draw_mode", "stamp") or "stamp") == "stamp":
+        box.prop(entry, "stamp_angle_mode", text="角度")
+        if str(getattr(entry, "stamp_angle_mode", "") or "") == "object":
+            box.prop_search(entry, "stamp_angle_object_name", bpy.data, "objects", text="方向オブジェクト")
+    else:
+        box.prop(entry, "ribbon_repeat_mode", text="リボン")
+    preset_box = layout.box()
+    preset_box.label(text="画像パスプリセット")
+    wm = getattr(bpy.context, "window_manager", None)
+    if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
+        preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
+        row = preset_box.row(align=True)
+        row.operator("bmanga.image_path_preset_add_local", text="", icon="ADD")
+        row.operator("bmanga.image_path_preset_rename", text="", icon="GREASEPENCIL")
+        row.operator("bmanga.image_path_preset_duplicate", text="", icon="DUPLICATE")
+        row.operator("bmanga.image_path_preset_delete", text="", icon="TRASH")
     box = layout.box()
     box.label(text="所属")
     box.prop(entry, "parent_kind")
@@ -645,6 +693,8 @@ class BMANGA_OT_layer_detail_open(Operator):
         page = None
         if kind == "image":
             entry = _find_image_entry(scene, self.bmanga_id)
+        elif kind == "image_path":
+            entry = _find_image_path_entry(scene, self.bmanga_id)
         elif kind == "raster":
             entry = _find_raster_entry(scene, self.bmanga_id)
         elif kind == "balloon":
@@ -667,6 +717,8 @@ class BMANGA_OT_layer_detail_open(Operator):
 
         if kind == "image":
             _draw_image_detail(layout, entry)
+        elif kind == "image_path":
+            _draw_image_path_detail(layout, entry)
         elif kind == "raster":
             _draw_raster_detail(layout, entry)
         elif kind == "balloon":

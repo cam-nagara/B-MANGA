@@ -127,7 +127,7 @@ def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
         for folder in getattr(getattr(scene, "bmanga_work", None), "layer_folders", []) or []:
             _replace_parent_key_on_entry(folder, old_key, new_key)
-        for collection_name in ("bmanga_raster_layers", "bmanga_image_layers"):
+        for collection_name in ("bmanga_raster_layers", "bmanga_image_layers", "bmanga_image_path_layers"):
             for entry in getattr(scene, collection_name, []) or []:
                 _replace_parent_key_on_entry(entry, old_key, new_key)
         for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):

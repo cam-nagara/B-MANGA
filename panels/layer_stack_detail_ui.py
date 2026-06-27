@@ -119,6 +119,49 @@ def _draw_image_selected_settings(box, entry) -> None:
     sub.prop(entry, "binarize_threshold")
 
 
+def _draw_image_path_selected_settings(box, context, entry) -> None:
+    settings = box.column(align=True)
+    settings.label(text=f"選択中: {entry.title or entry.id} (画像パス)", icon="CURVE_BEZCURVE")
+    settings.prop(entry, "title", text="名前")
+    settings.prop(entry, "visible", text="表示")
+    settings.prop(entry, "locked", text="ロック")
+    settings.prop(entry, "opacity", text="不透明度", slider=True)
+    settings.prop(entry, "filepath", text="画像")
+    settings.prop(entry, "draw_mode", text="表示方法")
+
+    row = settings.row(align=True)
+    row.prop(entry, "brush_size_mm", text="ブラシサイズ")
+    row.prop(entry, "aspect_ratio", text="縦横比")
+    row = settings.row(align=True)
+    row.prop(entry, "image_angle_deg", text="画像の角度")
+    row.prop(entry, "spacing_percent", text="間隔")
+
+    mode = str(getattr(entry, "draw_mode", "stamp") or "stamp")
+    if mode == "stamp":
+        settings.prop(entry, "stamp_angle_mode", text="角度")
+        if str(getattr(entry, "stamp_angle_mode", "") or "") == "object":
+            settings.prop_search(
+                entry,
+                "stamp_angle_object_name",
+                bpy.data,
+                "objects",
+                text="方向オブジェクト",
+            )
+    else:
+        settings.prop(entry, "ribbon_repeat_mode", text="リボン")
+
+    wm = getattr(context, "window_manager", None)
+    if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
+        preset_box = box.box()
+        preset_box.label(text="画像パスプリセット", icon="PRESET")
+        preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
+        row = preset_box.row(align=True)
+        row.operator("bmanga.image_path_preset_add_local", text="", icon="ADD")
+        row.operator("bmanga.image_path_preset_rename", text="", icon="GREASEPENCIL")
+        row.operator("bmanga.image_path_preset_duplicate", text="", icon="DUPLICATE")
+        row.operator("bmanga.image_path_preset_delete", text="", icon="TRASH")
+
+
 def _draw_raster_selected_settings(box, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {entry.title or entry.id} (ラスター)", icon="BRUSH_DATA")
@@ -791,6 +834,8 @@ def draw_stack_item_detail(layout, context, item, resolved) -> bool:
         _draw_gp_selected_settings(box, obj, target)
     elif kind == "image":
         _draw_image_selected_settings(box, target)
+    elif kind == "image_path":
+        _draw_image_path_selected_settings(box, context, target)
     elif kind == "raster":
         _draw_raster_selected_settings(box, target)
     elif kind == "fill":

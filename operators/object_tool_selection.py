@@ -106,6 +106,16 @@ def find_image_by_key(context, item_id: str):
     return -1, None
 
 
+def find_image_path_by_key(context, item_id: str):
+    coll = getattr(getattr(context, "scene", None), "bmanga_image_path_layers", None)
+    if coll is None:
+        return -1, None
+    for i, entry in enumerate(coll):
+        if str(getattr(entry, "id", "") or "") == str(item_id or ""):
+            return i, entry
+    return -1, None
+
+
 def find_raster_by_key(context, item_id: str):
     coll = getattr(getattr(context, "scene", None), "bmanga_raster_layers", None)
     if coll is None:
@@ -176,6 +186,17 @@ def _managed_object_for_key(context, key: str):
         _idx, entry = find_image_by_key(context, item_id)
         page = _page_for_image_entry(work, entry) if entry is not None else None
         return empty_layer_object.ensure_image_empty_object(scene=scene, entry=entry, page=page)
+    if kind == "image_path":
+        obj = on.find_object_by_bmanga_id(item_id, kind="image_path")
+        if obj is not None:
+            return obj
+        _idx, entry = find_image_path_by_key(context, item_id)
+        if entry is not None:
+            from ..utils import image_path_object
+
+            page = image_path_object.page_for_entry(scene, work, entry)
+            return image_path_object.ensure_image_path_object(scene=scene, entry=entry, page=page)
+        return None
     if kind == "text":
         from ..utils import text_real_object
 
@@ -311,6 +332,24 @@ def rect_contains_point(rect: Rect, x_mm: float, y_mm: float, pad: float = 0.0) 
     )
 
 
+def object_world_rect_mm(obj) -> Rect | None:
+    if obj is None:
+        return None
+    try:
+        from mathutils import Vector
+
+        coords = [obj.matrix_world @ Vector(corner) for corner in getattr(obj, "bound_box", [])]
+    except Exception:  # noqa: BLE001
+        coords = []
+    if not coords:
+        return None
+    xs = [float(co.x) * 1000.0 for co in coords]
+    ys = [float(co.y) * 1000.0 for co in coords]
+    min_x = min(xs)
+    min_y = min(ys)
+    return Rect(min_x, min_y, max(xs) - min_x, max(ys) - min_y)
+
+
 def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
     work = get_work(context)
     kind, page_id, item_id = object_selection.parse_key(key)
@@ -326,6 +365,9 @@ def _parent_for_hit_key(context, key: str) -> tuple[str, str]:
         return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
     if kind == "image":
         _idx, entry = find_image_by_key(context, item_id)
+        return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
+    if kind == "image_path":
+        _idx, entry = find_image_path_by_key(context, item_id)
         return str(getattr(entry, "parent_kind", "") or ""), str(getattr(entry, "parent_key", "") or "")
     if kind == "raster":
         _idx, entry = find_raster_by_key(context, item_id)
@@ -778,6 +820,28 @@ def hit_image_at_event(context, event, event_world_xy: Callable) -> dict | None:
     return hit_image_at_world(context, x_mm, y_mm)
 
 
+def hit_image_path_at_world(context, x_mm: float, y_mm: float) -> dict | None:
+    scene = getattr(context, "scene", None)
+    coll = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    if coll is None:
+        return None
+    for entry in reversed(list(coll)):
+        if not bool(getattr(entry, "visible", True)):
+            continue
+        key = object_selection.image_path_key(entry)
+        rect = selection_bounds_for_key(context, key)
+        if rect is not None and rect_contains_point(rect, x_mm, y_mm, pad=1.0):
+            return {"kind": "image_path", "part": "move", "key": key}
+    return None
+
+
+def hit_image_path_at_event(context, event, event_world_xy: Callable) -> dict | None:
+    x_mm, y_mm = event_world_xy(context, event)
+    if x_mm is None or y_mm is None:
+        return None
+    return hit_image_path_at_world(context, x_mm, y_mm)
+
+
 def hit_shared_text_at_event(context, event, event_world_xy: Callable) -> dict | None:
     x_mm, y_mm = event_world_xy(context, event)
     if x_mm is None or y_mm is None:
@@ -847,6 +911,9 @@ def selection_bounds_for_key(context, key: str) -> Rect | None:
         if page_index < 0:
             return Rect(float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm))
         return world_rect_for_page_entry(context, work, page_index, entry)
+    if kind == "image_path":
+        obj = on.find_object_by_bmanga_id(item_id, kind="image_path")
+        return object_world_rect_mm(obj)
     if kind == "raster":
         _idx, entry = find_raster_by_key(context, item_id)
         return raster_world_rect(context, work, entry) if entry is not None else None
@@ -977,6 +1044,14 @@ def _iter_rect_select_candidates(context):
         if rect is None:
             continue
         yield {"key": key, "rect": rect, "hit": {"kind": "image", "part": "move", "key": key}}
+    for entry in reversed(list(getattr(scene, "bmanga_image_path_layers", []) or [])):
+        if not bool(getattr(entry, "visible", True)):
+            continue
+        key = object_selection.image_path_key(entry)
+        rect = selection_bounds_for_key(context, key)
+        if rect is None:
+            continue
+        yield {"key": key, "rect": rect, "hit": {"kind": "image_path", "part": "move", "key": key}}
     obj = layer_stack_utils.gp_utils.get_master_gpencil()
     layers = getattr(getattr(obj, "data", None), "layers", None) if obj is not None else None
     if layers is not None:
@@ -1099,6 +1174,8 @@ def active_selection_key(context) -> str:
         return object_selection.gp_key(target)
     if kind == "image":
         return object_selection.image_key(target)
+    if kind == "image_path":
+        return object_selection.image_path_key(target)
     if kind == "raster":
         return object_selection.raster_key(target)
     if kind == "effect":

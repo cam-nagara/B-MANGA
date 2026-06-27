@@ -25,7 +25,7 @@ from ..utils import (
 )
 
 # ファイルフォーマットのバージョン (破壊的変更があったら繰り上げる)
-WORK_SCHEMA_VERSION = 6
+WORK_SCHEMA_VERSION = 7
 PAGES_SCHEMA_VERSION = 1
 PAGE_SCHEMA_VERSION = 3
 COMA_SCHEMA_VERSION = 2
@@ -63,6 +63,12 @@ def _suspend_load_property_side_effects():
             from ..utils import fill_real_object
 
             stack.enter_context(fill_real_object.suspend_auto_sync())
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from ..utils import image_path_object
+
+            stack.enter_context(image_path_object.suspend_auto_sync())
         except Exception:  # noqa: BLE001
             pass
 
@@ -736,6 +742,62 @@ def fill_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool =
         entry["_pending_curve_points"] = _json.dumps(curve_pts)
 
 
+# ---------- ImagePathLayer ----------
+
+
+def image_path_layer_to_dict(entry) -> dict[str, Any]:
+    return {
+        "id": str(getattr(entry, "id", "") or ""),
+        "title": str(getattr(entry, "title", "") or ""),
+        "filepath": str(getattr(entry, "filepath", "") or ""),
+        "pathPointsJson": str(getattr(entry, "path_points_json", "") or ""),
+        "drawMode": str(getattr(entry, "draw_mode", "stamp") or "stamp"),
+        "brushSizeMm": round(float(getattr(entry, "brush_size_mm", 10.0) or 10.0), 4),
+        "aspectRatio": round(float(getattr(entry, "aspect_ratio", 1.0) or 1.0), 4),
+        "imageAngleDeg": round(float(getattr(entry, "image_angle_deg", 0.0) or 0.0), 4),
+        "spacingPercent": round(float(getattr(entry, "spacing_percent", 100.0) or 100.0), 4),
+        "stampAngleMode": str(getattr(entry, "stamp_angle_mode", "line") or "line"),
+        "stampAngleObjectName": str(getattr(entry, "stamp_angle_object_name", "") or ""),
+        "ribbonRepeatMode": str(getattr(entry, "ribbon_repeat_mode", "repeat") or "repeat"),
+        "visible": bool(getattr(entry, "visible", True)),
+        "locked": bool(getattr(entry, "locked", False)),
+        "opacity": _opacity_to_data(getattr(entry, "opacity", 100.0)),
+        "opacityUnit": "percent",
+        "parentKind": str(getattr(entry, "parent_kind", "page") or "page"),
+        "parentKey": str(getattr(entry, "parent_key", "") or ""),
+        "folderKey": str(getattr(entry, "folder_key", "") or ""),
+    }
+
+
+def image_path_layer_from_dict(entry, data: dict[str, Any], *, opacity_percent: bool = False) -> None:
+    data = data or {}
+    entry.id = str(data.get("id", "") or "")
+    entry.title = str(data.get("title", "") or "")
+    entry.filepath = str(data.get("filepath", data.get("imagePath", "")) or "")
+    entry.path_points_json = str(data.get("pathPointsJson", data.get("path_points_json", "")) or "")
+    entry.parent_kind = str(data.get("parentKind", data.get("parent_kind", "page")) or "page")
+    entry.parent_key = str(data.get("parentKey", data.get("parent_key", "")) or "")
+    if hasattr(entry, "folder_key"):
+        entry.folder_key = str(data.get("folderKey", data.get("folder_key", "")) or "")
+    entry.draw_mode = str(data.get("drawMode", data.get("draw_mode", "stamp")) or "stamp")
+    entry.brush_size_mm = float(data.get("brushSizeMm", data.get("brush_size_mm", 10.0)) or 10.0)
+    entry.aspect_ratio = float(data.get("aspectRatio", data.get("aspect_ratio", 1.0)) or 1.0)
+    entry.image_angle_deg = float(data.get("imageAngleDeg", data.get("image_angle_deg", 0.0)) or 0.0)
+    entry.spacing_percent = float(data.get("spacingPercent", data.get("spacing_percent", 100.0)) or 100.0)
+    entry.stamp_angle_mode = str(
+        data.get("stampAngleMode", data.get("stamp_angle_mode", "line")) or "line"
+    )
+    entry.stamp_angle_object_name = str(
+        data.get("stampAngleObjectName", data.get("stamp_angle_object_name", "")) or ""
+    )
+    entry.ribbon_repeat_mode = str(
+        data.get("ribbonRepeatMode", data.get("ribbon_repeat_mode", "repeat")) or "repeat"
+    )
+    entry.visible = bool(data.get("visible", True))
+    entry.locked = bool(data.get("locked", False))
+    entry.opacity = _opacity_from_data(data, "opacity", 100.0, percent_schema=opacity_percent)
+
+
 # ---------- LayerFolder ----------
 
 
@@ -888,6 +950,7 @@ def work_to_dict(work) -> dict[str, Any]:
     scene = _scene_from_work(work)
     raster_layers = getattr(scene, "bmanga_raster_layers", None) if scene is not None else None
     image_layers = getattr(scene, "bmanga_image_layers", None) if scene is not None else None
+    image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
     return {
         "schemaVersion": WORK_SCHEMA_VERSION,
         "balloonIdCounter": int(getattr(work, "balloon_id_counter", 0) or 0),
@@ -918,6 +981,10 @@ def work_to_dict(work) -> dict[str, Any]:
         "fill_layers": [
             fill_layer_to_dict(entry)
             for entry in (getattr(scene, "bmanga_fill_layers", None) or [])
+        ],
+        "image_path_layers": [
+            image_path_layer_to_dict(entry)
+            for entry in (image_path_layers or [])
         ],
         "shared_balloons": [
             balloon_entry_to_dict(entry)
@@ -996,6 +1063,15 @@ def work_from_dict(work, data: dict[str, Any]) -> None:
                 fill_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
         if hasattr(scene, "bmanga_active_fill_layer_index"):
             scene.bmanga_active_fill_layer_index = 0 if len(fill_layers) else -1
+    image_path_layers = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    if image_path_layers is not None:
+        image_path_layers.clear()
+        with _suspend_load_property_side_effects():
+            for item in data.get("image_path_layers", data.get("imagePathLayers", [])) or []:
+                entry = image_path_layers.add()
+                image_path_layer_from_dict(entry, item, opacity_percent=opacity_percent_schema)
+        if hasattr(scene, "bmanga_active_image_path_layer_index"):
+            scene.bmanga_active_image_path_layer_index = 0 if len(image_path_layers) else -1
     if hasattr(work, "shared_balloons"):
         work.shared_balloons.clear()
         with _suspend_load_property_side_effects():

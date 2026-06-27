@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Optional
 
@@ -261,6 +262,8 @@ def reparent_stack_item(
         return _reparent_text(context, item, target, new_parent_key, new_world_xy_mm)
     if kind == "image":
         return _reparent_image(context, item, target, new_parent_key, new_world_xy_mm)
+    if kind == "image_path":
+        return _reparent_image_path(context, item, target, new_parent_key, new_world_xy_mm)
     if kind == "raster":
         return _reparent_raster(context, item, target, new_parent_key)
     if kind in {"gp", "gp_folder", "effect"}:
@@ -895,6 +898,62 @@ def _reparent_image(context, item, target: ClickTarget, new_parent_key: str, new
         _set_entry_top_left_world(context, work, new_page, entry, old_world)
         _move_entry_center_world(context, work, new_page, entry, new_world_xy_mm)
     image_real_object.on_image_entry_changed(entry)
+    return True
+
+
+def _translate_image_path_points(entry, dx_mm: float, dy_mm: float) -> None:
+    try:
+        points = json.loads(str(getattr(entry, "path_points_json", "") or "[]"))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return
+    moved = []
+    for point in points if isinstance(points, list) else []:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            continue
+        try:
+            moved.append([float(point[0]) + dx_mm, float(point[1]) + dy_mm])
+        except (TypeError, ValueError):
+            continue
+    if moved:
+        entry.path_points_json = json.dumps(moved)
+
+
+def _reparent_image_path(context, item, target: ClickTarget, new_parent_key: str, new_world_xy_mm) -> bool:
+    from ..core.work import get_work
+    from . import image_path_object
+
+    scene = getattr(context, "scene", None)
+    if scene is None:
+        return False
+    coll = getattr(scene, "bmanga_image_path_layers", None)
+    if coll is None:
+        return False
+    image_path_id = str(getattr(item, "key", "") or "")
+    entry = None
+    for e in coll:
+        if str(getattr(e, "id", "") or "") == image_path_id:
+            entry = e
+            break
+    if entry is None:
+        return False
+    work = get_work(context)
+    old_page = image_path_object.page_for_entry(scene, work, entry)
+    old_ox, old_oy = image_path_object.entry_page_offset_mm(scene, work, entry, old_page)
+    with image_path_object.suspend_auto_sync():
+        if target.kind == "outside":
+            entry.parent_kind = "none"
+            entry.parent_key = ""
+            item.parent_key = OUTSIDE_STACK_KEY
+            new_page = None
+        else:
+            entry.parent_kind = "coma" if target.kind == "coma" else "page"
+            entry.parent_key = new_parent_key
+            item.parent_key = new_parent_key
+            new_page = target.page
+        new_ox, new_oy = image_path_object.entry_page_offset_mm(scene, work, entry, new_page)
+        _translate_image_path_points(entry, old_ox - new_ox, old_oy - new_oy)
+        _ = new_world_xy_mm
+    image_path_object.on_image_path_entry_changed(entry)
     return True
 
 

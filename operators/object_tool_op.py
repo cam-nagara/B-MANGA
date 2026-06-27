@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import bpy
@@ -178,6 +179,10 @@ def _find_image_by_key(context, item_id: str):
     return object_tool_selection.find_image_by_key(context, item_id)
 
 
+def _find_image_path_by_key(context, item_id: str):
+    return object_tool_selection.find_image_path_by_key(context, item_id)
+
+
 def _find_raster_by_key(context, item_id: str):
     return object_tool_selection.find_raster_by_key(context, item_id)
 
@@ -302,6 +307,7 @@ def hit_object_at_event(context, event) -> dict | None:
         _hit_shared_balloon_at_event,
         _hit_effect_at_event,
         _hit_image_at_event,
+        _hit_image_path_at_event,
         _hit_gp_at_event,
         _hit_raster_at_event,
         _hit_fill_at_event,
@@ -402,6 +408,10 @@ def _hit_effect_at_event(context, event) -> dict | None:
 
 def _hit_image_at_event(context, event) -> dict | None:
     return object_tool_selection.hit_image_at_event(context, event, _event_world_xy_mm)
+
+
+def _hit_image_path_at_event(context, event) -> dict | None:
+    return object_tool_selection.hit_image_path_at_event(context, event, _event_world_xy_mm)
 
 
 def _hit_gp_at_event(context, event) -> dict | None:
@@ -612,6 +622,14 @@ def activate_hit(context, hit: dict, *, mode: str) -> None:
             if not _select_stack_target(context, "image", getattr(entry, "id", "")):
                 context.scene.bmanga_active_image_layer_index = index
                 context.scene.bmanga_active_layer_kind = "image"
+        edge_selection.clear_selection(context)
+    elif kind == "image_path":
+        index, entry = _find_image_path_by_key(context, object_selection.parse_key(key)[2])
+        if entry is not None:
+            _focus_parent_coma_for_entry_by_key(context, work, entry)
+            if not _select_stack_target(context, "image_path", getattr(entry, "id", "")):
+                context.scene.bmanga_active_image_path_layer_index = index
+                context.scene.bmanga_active_layer_kind = "image_path"
         edge_selection.clear_selection(context)
     elif kind == "raster":
         index, entry = _find_raster_by_key(context, object_selection.parse_key(key)[2])
@@ -1147,7 +1165,7 @@ class BMANGA_OT_object_tool(Operator):
             return None
         kind, page_id, item_id = object_selection.parse_key(key)
         if kind not in {
-            "balloon", "text", "effect", "image", "raster", "fill", "gp",
+            "balloon", "text", "effect", "image", "image_path", "raster", "fill", "gp",
             "gradient_handle",
         }:
             return None
@@ -1172,6 +1190,8 @@ class BMANGA_OT_object_tool(Operator):
         elif kind == "effect":
             hit["layer_name"] = item_id
         elif kind == "image":
+            hit["item_id"] = item_id
+        elif kind == "image_path":
             hit["item_id"] = item_id
         elif kind == "raster":
             hit["item_id"] = item_id
@@ -1506,6 +1526,15 @@ class BMANGA_OT_object_tool(Operator):
                     "kind": "image",
                     "item_id": item_id,
                     "rect": (float(entry.x_mm), float(entry.y_mm), float(entry.width_mm), float(entry.height_mm)),
+                })
+            elif kind == "image_path":
+                _idx, entry = _find_image_path_by_key(context, item_id)
+                if entry is None:
+                    continue
+                snapshots.append({
+                    "kind": "image_path",
+                    "item_id": item_id,
+                    "path_points_json": str(getattr(entry, "path_points_json", "") or ""),
                 })
             elif kind == "raster":
                 _idx, entry = _find_raster_by_key(context, item_id)
@@ -1856,6 +1885,21 @@ class BMANGA_OT_object_tool(Operator):
                 entry.y_mm = ny
                 entry.width_mm = nw
                 entry.height_mm = nh
+            elif kind == "image_path":
+                _idx, entry = _find_image_path_by_key(context, snapshot["item_id"])
+                if entry is None or self._drag_action != "move":
+                    continue
+                try:
+                    points = json.loads(str(snapshot.get("path_points_json", "") or "[]"))
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    points = []
+                moved = []
+                for point in points if isinstance(points, list) else []:
+                    if not isinstance(point, (list, tuple)) or len(point) < 2:
+                        continue
+                    moved.append([float(point[0]) + dx, float(point[1]) + dy])
+                if moved:
+                    entry.path_points_json = json.dumps(moved)
             elif kind == "raster":
                 _idx, entry = _find_raster_by_key(context, snapshot["item_id"])
                 if entry is None:

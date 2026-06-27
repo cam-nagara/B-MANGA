@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-27 — 画像パスツールとスタンプ/リボン表示を追加 (v0.6.394)
+
+### 症状
+
+- パスに画像を沿わせて、スタンプ状またはリボン状に表示する専用ツールと設定管理がなかった。
+
+### 原因
+
+- 画像は矩形配置、線への画像適用は既存の線飾り用途に限定されており、ストロークで描いたパスを画像表示の正本として保存・編集する仕組みがなかった。
+
+### 修正
+
+- 画像パスレイヤーを追加し、スタンプ / リボン、ブラシサイズ、縦横比、画像の角度、間隔、スタンプの向き、リボンの繰り返し方式を設定できるようにした。
+- 画像パスツールを追加し、ストロークで描いたパスに、ツール下のプリセット選択を反映して画像パスを作成できるようにした。
+- 詳細設定から、画像パスプリセットの追加・改名・複製・削除をできるようにした。
+- レイヤー一覧、フォルダ、選択、移動、親変更、保存復元、コマ内の表示範囲へ画像パスを統合した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile core\__init__.py core\layer_stack.py core\image_path_layer.py io\schema.py io\shared_presets.py io\image_path_presets.py operators\__init__.py operators\coma_modal_state.py operators\coma_renumber_op.py operators\image_path_tool_op.py operators\layer_detail_op.py operators\layer_stack_op.py operators\object_tool_op.py operators\object_tool_selection.py operators\preset_op.py panels\gpencil_panel.py panels\layer_stack_detail_ui.py panels\tool_panel.py preferences.py utils\image_path_object.py utils\layer_folder.py utils\layer_object_sync.py utils\layer_reparent.py utils\layer_stack.py utils\layer_stack_dnd.py utils\layer_stack_visible.py utils\object_naming.py utils\object_selection.py utils\object_state_sync.py utils\outliner_watch.py utils\page_content_visibility.py utils\page_file_scene.py utils\page_grid.py test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_layer_detail_and_mask_check.py`
+- スタンプ表示、リボン表示、リボンの一枚伸ばし、保存復元、プリセット管理、画像パスの移動、コマ内の表示範囲が動作することを確認。
+
+---
+
 ## 2026-06-27 — ページ一覧プレビュー画像の色を画面表示に合わせる (v0.6.393)
 
 ### 症状

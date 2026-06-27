@@ -8,7 +8,7 @@ from ..core.work import get_work
 from .layer_hierarchy import OUTSIDE_STACK_KEY, outside_child_key, page_stack_key, split_child_key
 
 LAYER_FOLDER_KIND = "layer_folder"
-FOLDER_CHILD_KINDS = {"image", "raster", "fill", "balloon", "text"}
+FOLDER_CHILD_KINDS = {"image", "image_path", "raster", "fill", "balloon", "text"}
 FOLDER_CONTAINER_CHILD_KINDS = FOLDER_CHILD_KINDS | {LAYER_FOLDER_KIND}
 
 
@@ -145,6 +145,8 @@ def _entry_for_kind_key(context, kind: str, key: str):
     key = str(key or "")
     if kind == "image":
         return _find_by_id(getattr(scene, "bmanga_image_layers", None), key)
+    if kind == "image_path":
+        return _find_by_id(getattr(scene, "bmanga_image_path_layers", None), key)
     if kind == "raster":
         return _find_by_id(getattr(scene, "bmanga_raster_layers", None), key)
     if kind in {"balloon", "text"}:
@@ -182,6 +184,11 @@ def _iter_entries_for_identity(context, kind: str, key: str, preferred_parent_ke
     preferred_parent_key = str(preferred_parent_key or "")
     if kind == "image":
         for entry in getattr(scene, "bmanga_image_layers", []) or []:
+            if str(getattr(entry, "id", "") or "") == key:
+                yield entry
+        return
+    if kind == "image_path":
+        for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
             if str(getattr(entry, "id", "") or "") == key:
                 yield entry
         return

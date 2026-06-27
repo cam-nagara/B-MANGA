@@ -307,6 +307,11 @@ class BMangaPreferences(bpy.types.AddonPreferences):
         default="bw_linear",
         options={"HIDDEN"},
     )
+    last_image_path_tool_preset: StringProperty(  # type: ignore[valid-type]
+        name="前回の画像パスプリセット",
+        default="標準スタンプ",
+        options={"HIDDEN"},
+    )
 
     page_preview_resolution_percentage: FloatProperty(  # type: ignore[valid-type]
         name="プレビュー画像縮小率",

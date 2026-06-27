@@ -9,7 +9,7 @@ from bpy.props import EnumProperty, StringProperty
 from bpy.types import Operator
 
 from ..core.work import get_active_page, get_work
-from ..io import border_presets, page_io, presets, work_io
+from ..io import border_presets, image_path_presets, page_io, presets, work_io
 from ..io import coma_io
 from ..utils import log
 from . import coma_modal_state
@@ -847,6 +847,7 @@ def _unique_border_preset_name(context, base: str) -> str:
 
 _FILL_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
 _GRADIENT_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
+_IMAGE_PATH_TOOL_ENUM_CACHE: list[tuple[str, str, str]] = []
 
 _FILL_PRESETS = [
     {"id": "black", "label": "ベタ塗り (黒)", "color": (0, 0, 0, 1), "opacity": 100},
@@ -875,6 +876,18 @@ def _gradient_tool_preset_enum_items(_self, _context):
     return _GRADIENT_TOOL_ENUM_CACHE
 
 
+def _image_path_tool_preset_enum_items(_self, context):
+    global _IMAGE_PATH_TOOL_ENUM_CACHE
+    work = get_work(context)
+    work_dir = Path(work.work_dir) if (work and work.loaded and work.work_dir) else None
+    preset_list = image_path_presets.list_all_presets(work_dir)
+    cache = [(p.name, p.name if p.source == "global" else f"{p.name} (共通)", p.description) for p in preset_list]
+    if not cache:
+        cache.append(("", "(プリセットなし)", ""))
+    _IMAGE_PATH_TOOL_ENUM_CACHE = cache
+    return _IMAGE_PATH_TOOL_ENUM_CACHE
+
+
 def _on_fill_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_fill_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_fill_tool_preset", value)
@@ -883,6 +896,11 @@ def _on_fill_tool_preset_selector_change(self, context):
 def _on_gradient_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_gradient_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_gradient_tool_preset", value)
+
+
+def _on_image_path_tool_preset_selector_change(self, context):
+    value = str(getattr(self, "bmanga_image_path_tool_preset_selector", "") or "")
+    _remember_tool_preset(context, "last_image_path_tool_preset", value)
 
 
 def _find_fill_preset(preset_id: str) -> dict | None:
@@ -899,6 +917,39 @@ def _find_gradient_preset(preset_id: str) -> dict | None:
     return None
 
 
+def _image_path_preset_work_dir(context) -> Path | None:
+    work = get_work(context)
+    if work is None or not work.loaded or not work.work_dir:
+        return None
+    return Path(work.work_dir)
+
+
+def _selected_image_path_preset_name(context) -> str:
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bmanga_image_path_tool_preset_selector"):
+        return ""
+    return str(getattr(wm, "bmanga_image_path_tool_preset_selector", "") or "")
+
+
+def _set_image_path_preset_selector(context, name: str) -> None:
+    wm = getattr(context, "window_manager", None)
+    if wm is None or not hasattr(wm, "bmanga_image_path_tool_preset_selector") or not name:
+        return
+    valid = {item[0] for item in _image_path_tool_preset_enum_items(None, context)}
+    if name not in valid:
+        return
+    setattr(wm, "bmanga_image_path_tool_preset_selector", name)
+
+
+def _active_image_path_entry(context):
+    scene = getattr(context, "scene", None)
+    coll = getattr(scene, "bmanga_image_path_layers", None) if scene is not None else None
+    idx = int(getattr(scene, "bmanga_active_image_path_layer_index", -1)) if scene is not None else -1
+    if coll is not None and 0 <= idx < len(coll):
+        return coll[idx]
+    return None
+
+
 def apply_fill_preset_to_entry(context, entry) -> bool:
     """選択中の囲い塗りプリセットをフィルエントリに適用."""
     wm = getattr(context, "window_manager", None)
@@ -910,6 +961,20 @@ def apply_fill_preset_to_entry(context, entry) -> bool:
         return False
     entry.color = preset["color"]
     entry.opacity = preset["opacity"]
+    return True
+
+
+def apply_image_path_preset_to_entry(context, entry) -> bool:
+    """選択中の画像パスプリセットを画像パスエントリに適用."""
+    work_dir = _image_path_preset_work_dir(context)
+    name = _selected_image_path_preset_name(context)
+    preset = image_path_presets.load_preset_by_name(name, work_dir) if name else None
+    if preset is None:
+        preset_list = image_path_presets.list_all_presets(work_dir)
+        preset = preset_list[0] if preset_list else None
+    if preset is None:
+        return False
+    image_path_presets.apply_preset_to_entry(preset, entry)
     return True
 
 
@@ -929,6 +994,162 @@ def apply_gradient_preset_to_entry(context, entry) -> bool:
     return True
 
 
+class BMANGA_OT_image_path_preset_add_local(Operator):
+    """現在の画像パス設定を新しい共通プリセットとして追加する."""
+
+    bl_idname = "bmanga.image_path_preset_add_local"
+    bl_label = "画像パスプリセットを追加"
+    bl_description = "現在の画像パス設定を、新しい共通プリセットとして追加します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="プリセット名", default="新規画像パスプリセット")  # type: ignore[valid-type]
+    description: StringProperty(name="説明", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return _active_image_path_entry(context) is not None
+
+    def invoke(self, context, event):
+        work_dir = _image_path_preset_work_dir(context)
+        self.preset_name = image_path_presets.unique_preset_name(work_dir, "新規画像パスプリセット")
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        entry = _active_image_path_entry(context)
+        if entry is None:
+            self.report({"ERROR"}, "画像パスが選択されていません")
+            return {"CANCELLED"}
+        work_dir = _image_path_preset_work_dir(context)
+        name = image_path_presets.unique_preset_name(
+            work_dir, self.preset_name.strip() or "新規画像パスプリセット"
+        )
+        try:
+            image_path_presets.save_local_preset(
+                work_dir,
+                entry,
+                name,
+                self.description,
+                insert_after=_selected_image_path_preset_name(context),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"追加失敗: {exc}")
+            return {"CANCELLED"}
+        _set_image_path_preset_selector(context, name)
+        self.report({"INFO"}, f"画像パスプリセット追加: {name}")
+        return {"FINISHED"}
+
+
+class BMANGA_OT_image_path_preset_rename(Operator):
+    """選択中の画像パスプリセットを改名する."""
+
+    bl_idname = "bmanga.image_path_preset_rename"
+    bl_label = "画像パスプリセットを改名"
+    bl_description = "選択中の画像パスプリセットを改名します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="現在の名前", default="")  # type: ignore[valid-type]
+    new_name: StringProperty(name="新しい名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_selected_image_path_preset_name(context))
+
+    def invoke(self, context, event):
+        selected = _selected_image_path_preset_name(context)
+        self.preset_name = selected
+        self.new_name = selected
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        work_dir = _image_path_preset_work_dir(context)
+        old_name = self.preset_name.strip() or _selected_image_path_preset_name(context)
+        new_name = self.new_name.strip()
+        try:
+            preset = image_path_presets.rename_preset(work_dir, old_name, new_name)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"改名失敗: {exc}")
+            return {"CANCELLED"}
+        _set_image_path_preset_selector(context, preset.name)
+        self.report({"INFO"}, f"画像パスプリセット改名: {preset.name}")
+        return {"FINISHED"}
+
+
+class BMANGA_OT_image_path_preset_duplicate(Operator):
+    """選択中の画像パスプリセットを複製する."""
+
+    bl_idname = "bmanga.image_path_preset_duplicate"
+    bl_label = "画像パスプリセットを複製"
+    bl_description = "選択中の画像パスプリセットを共通プリセットとして複製します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="複製元", default="")  # type: ignore[valid-type]
+    new_name: StringProperty(name="複製後の名前", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_selected_image_path_preset_name(context))
+
+    def invoke(self, context, event):
+        work_dir = _image_path_preset_work_dir(context)
+        selected = _selected_image_path_preset_name(context)
+        self.preset_name = selected
+        self.new_name = image_path_presets.unique_preset_name(work_dir, f"{selected} コピー")
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        work_dir = _image_path_preset_work_dir(context)
+        source_name = self.preset_name.strip() or _selected_image_path_preset_name(context)
+        new_name = self.new_name.strip()
+        try:
+            preset = image_path_presets.duplicate_preset(work_dir, source_name, new_name)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"複製失敗: {exc}")
+            return {"CANCELLED"}
+        _set_image_path_preset_selector(context, preset.name)
+        self.report({"INFO"}, f"画像パスプリセット複製: {preset.name}")
+        return {"FINISHED"}
+
+
+class BMANGA_OT_image_path_preset_delete(Operator):
+    """選択中の画像パスプリセットを削除する."""
+
+    bl_idname = "bmanga.image_path_preset_delete"
+    bl_label = "画像パスプリセットを削除"
+    bl_description = "選択中の画像パスプリセットを共通一覧から削除します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    preset_name: StringProperty(name="プリセット名", default="")  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_selected_image_path_preset_name(context))
+
+    def invoke(self, context, event):
+        self.preset_name = self.preset_name or _selected_image_path_preset_name(context)
+        return context.window_manager.invoke_confirm(self, event)
+
+    def execute(self, context):
+        work_dir = _image_path_preset_work_dir(context)
+        name = self.preset_name.strip() or _selected_image_path_preset_name(context)
+        names_before = [preset.name for preset in image_path_presets.list_all_presets(work_dir)]
+        fallback = ""
+        if name in names_before and len(names_before) > 1:
+            index = names_before.index(name)
+            fallback = names_before[index + 1] if index + 1 < len(names_before) else names_before[index - 1]
+        try:
+            image_path_presets.delete_preset(work_dir, name)
+        except Exception as exc:  # noqa: BLE001
+            self.report({"ERROR"}, f"削除失敗: {exc}")
+            return {"CANCELLED"}
+        presets_after = image_path_presets.list_all_presets(work_dir)
+        after_names = {preset.name for preset in presets_after}
+        target = fallback if fallback in after_names else (presets_after[0].name if presets_after else "")
+        if target:
+            _set_image_path_preset_selector(context, target)
+        self.report({"INFO"}, f"画像パスプリセット削除: {name}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     BMANGA_OT_paper_preset_apply,
     BMANGA_OT_paper_preset_save_local,
@@ -939,6 +1160,10 @@ _CLASSES = (
     BMANGA_OT_border_preset_duplicate,
     BMANGA_OT_border_preset_delete,
     BMANGA_OT_border_preset_move,
+    BMANGA_OT_image_path_preset_add_local,
+    BMANGA_OT_image_path_preset_rename,
+    BMANGA_OT_image_path_preset_duplicate,
+    BMANGA_OT_image_path_preset_delete,
 )
 
 
@@ -979,6 +1204,12 @@ def restore_tool_preset_selectors(context) -> None:
             "bmanga_gradient_tool_preset_selector",
             getattr(prefs, "last_gradient_tool_preset", ""),
             _gradient_tool_preset_enum_items,
+        )
+        _restore_selector_if_valid(
+            context,
+            "bmanga_image_path_tool_preset_selector",
+            getattr(prefs, "last_image_path_tool_preset", ""),
+            _image_path_tool_preset_enum_items,
         )
     finally:
         _SUPPRESS_TOOL_PRESET_REMEMBER = False
@@ -1023,6 +1254,12 @@ def register() -> None:
         items=_gradient_tool_preset_enum_items,
         update=_on_gradient_tool_preset_selector_change,
     )
+    bpy.types.WindowManager.bmanga_image_path_tool_preset_selector = EnumProperty(
+        name="画像パスプリセット",
+        description="画像パスツールで新しく作る画像パスの設定",
+        items=_image_path_tool_preset_enum_items,
+        update=_on_image_path_tool_preset_selector_change,
+    )
     try:
         restore_tool_preset_selectors(bpy.context)
     except Exception:  # noqa: BLE001
@@ -1052,6 +1289,10 @@ def unregister() -> None:
         pass
     try:
         del bpy.types.WindowManager.bmanga_gradient_tool_preset_selector
+    except AttributeError:
+        pass
+    try:
+        del bpy.types.WindowManager.bmanga_image_path_tool_preset_selector
     except AttributeError:
         pass
     for cls in reversed(_CLASSES):

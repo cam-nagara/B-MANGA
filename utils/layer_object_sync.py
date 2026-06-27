@@ -260,7 +260,7 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
 
         if kind in {"balloon", "text"}:
             return ls.target_uid(kind, f"{page_id}:{bmanga_id}")
-        if kind in {"image", "raster", "fill"}:
+        if kind in {"image", "image_path", "raster", "fill"}:
             return ls.target_uid(kind, bmanga_id)
         if kind == "effect":
             layers = getattr(getattr(obj, "data", None), "layers", None)
@@ -546,6 +546,7 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
     """全 BMangaImageLayer / BMangaTextEntry に対応する表示 Object を ensure."""
     try:
         from . import empty_layer_object as elo
+        from . import image_path_object as ipo
         from . import image_real_object as iro
         from . import text_real_object as tro
 
@@ -565,6 +566,17 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
                 page = iro.page_for_entry(scene, work, entry)
                 iro.ensure_image_real_object(scene=scene, entry=entry, page=page)
             iro.cleanup_orphan_image_objects(scene)
+
+        # image_path_layers (scene 直下): パスに沿った画像表示を実体化する。
+        if page_filter is None:
+            ipo.sync_all_image_path_objects(scene, work)
+        elif page_filter:
+            for entry in getattr(scene, "bmanga_image_path_layers", []) or []:
+                if not _entry_in_page_filter(entry, work, page_filter):
+                    continue
+                page = ipo.page_for_entry(scene, work, entry)
+                ipo.ensure_image_path_object(scene=scene, entry=entry, page=page)
+            ipo.cleanup_orphan_image_path_objects(scene)
 
         # texts (page.texts): 空 Object ではなく、透明画像平面として実体化する。
         if page_filter is None:
@@ -591,7 +603,7 @@ def _mirror_image_text_objects(scene, work, page_filter: set[str] | None = None)
                 fro.ensure_fill_real_object(scene=scene, entry=entry, page=page)
             fro.cleanup_orphan_fill_objects(scene)
     except Exception:  # noqa: BLE001
-        _logger.exception("mirror image/text/fill objects failed")
+        _logger.exception("mirror image/text/fill/image path objects failed")
 
 
 def _saved_runtime_objects_look_current(
@@ -728,6 +740,15 @@ def _saved_runtime_objects_look_current(
             and _entry_in_page_filter(entry, work, page_filter)
         }
         if expected_images and not expected_images.issubset(object_ids_by_kind.get("image", set())):
+            return False
+        scene_image_path_layers = getattr(scene, "bmanga_image_path_layers", None)
+        expected_image_paths = {
+            str(getattr(entry, "id", "") or "")
+            for entry in (scene_image_path_layers or [])
+            if str(getattr(entry, "id", "") or "")
+            and _entry_in_page_filter(entry, work, page_filter)
+        }
+        if expected_image_paths and not expected_image_paths.issubset(object_ids_by_kind.get("image_path", set())):
             return False
         scene_fill_layers = getattr(scene, "bmanga_fill_layers", None)
         expected_fills = {

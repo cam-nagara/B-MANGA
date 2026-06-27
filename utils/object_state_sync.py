@@ -12,7 +12,7 @@ def is_sync_candidate(obj: bpy.types.Object | None) -> bool:
     if obj is None:
         return False
     kind = str(obj.get(on.PROP_KIND, "") or "")
-    if kind in {"image", "text", "balloon"} or kind.startswith("effect_"):
+    if kind in {"image", "image_path", "text", "balloon"} or kind.startswith("effect_"):
         return True
     if kind == "balloon_group":
         return True
@@ -40,6 +40,10 @@ def sync_from_blender_object(scene: bpy.types.Scene, obj: bpy.types.Object | Non
 
         if balloon_curve_object.sync_generated_display_transform_from_object(scene, obj):
             return True
+    if kind == "image_path":
+        from . import image_path_object
+
+        return image_path_object.sync_entry_points_from_object(scene, obj)
     if kind in {"image", "text"}:
         from . import empty_layer_object
 

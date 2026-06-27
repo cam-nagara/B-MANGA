@@ -750,6 +750,13 @@ def _apply_page_collection_transforms_impl(context, work) -> int:
             _fro.sync_all_fill_real_objects(scene, real_work)
     except Exception:  # noqa: BLE001
         _logger.exception("apply_page_collection_transforms: fill object location update failed")
+    try:
+        from . import image_path_object as _ipo
+
+        if not is_work_list_scene:
+            _ipo.sync_all_image_path_objects(scene, real_work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("apply_page_collection_transforms: image path object location update failed")
     if is_work_list_scene:
         try:
             from . import page_preview_object
