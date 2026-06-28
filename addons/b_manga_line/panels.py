@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import edge_width_curve
+from . import edge_width_curve, registration
 from .core import PROP_LINE_ONLY, has_line, has_outline
 
 
@@ -267,7 +267,7 @@ _CLASSES = (BMANGA_LINE_PT_main,)
 
 def register() -> None:
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        registration.register_class(cls)
 
 
 def unregister() -> None:

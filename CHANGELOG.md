@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line有効化とB-MANGA Renderタブ表示を修正 (B-MANGA Line v0.3.16 / B-MANGA Render v0.1.33)
+
+### 症状
+
+- プリファレンスのアドオン一覧でB-MANGA Lineを有効化すると、登録済み設定が残っている扱いになり、有効化できない場合があった。
+- B-MANGA Renderが有効化済みでも、コマファイル以外のファイルではサイドバーに「B-MANGA Render」タブが出ず、未インストールのように見える場合があった。
+
+### 原因
+
+- B-MANGA Lineの有効化時に、前回の登録がBlender側へ残った状態を吸収していなかった。
+- B-MANGA Renderのサイドバーはコマファイル判定が通る時だけ表示される条件になっていた。
+
+### 修正
+
+- B-MANGA Lineの有効化時に、残っている古い登録を外してから登録し直すようにした。
+- B-MANGA Renderのタブは通常のファイルでも表示し、コマファイルではない場合は「コマファイルで使用します」と案内するようにした。
+
+### 検証 (Blender 5.1.1 実機)
+
+- `python -m py_compile addons\b_manga_line\__init__.py addons\b_manga_line\core.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py addons\b_manga_line\registration.py addons\b_manga_render\__init__.py addons\b_manga_render\panels.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_render_ui_audit.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_render_ui_audit.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — コマファイルの用紙ガイド前面表示を修正 (v0.6.415)
 
 ### 症状

@@ -14,7 +14,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from . import core
+from . import core, registration
 
 
 _SETTING_FIELDS = (
@@ -330,8 +330,15 @@ _CLASSES = (
 
 
 def register() -> None:
+    for attr in (
+        "bmanga_line_preset_name",
+        "bmanga_line_preset_index",
+        "bmanga_line_presets",
+    ):
+        if hasattr(bpy.types.Scene, attr):
+            delattr(bpy.types.Scene, attr)
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        registration.register_class(cls)
     bpy.types.Scene.bmanga_line_presets = CollectionProperty(type=BMangaLinePreset)
     bpy.types.Scene.bmanga_line_preset_index = IntProperty(default=-1)
     bpy.types.Scene.bmanga_line_preset_name = StringProperty(

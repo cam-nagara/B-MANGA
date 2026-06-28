@@ -5,6 +5,7 @@ from __future__ import annotations
 import bpy
 from bpy.props import BoolProperty
 
+from . import registration
 from .core import AOV_NAME, PROP_LINES_HIDDEN, has_line, has_outline
 
 
@@ -375,7 +376,7 @@ _CLASSES = (
 
 def register() -> None:
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        registration.register_class(cls)
 
 
 def unregister() -> None:

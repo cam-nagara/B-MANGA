@@ -13,6 +13,8 @@ from bpy.props import (
     PointerProperty,
 )
 
+from . import registration
+
 # ------------------------------------------------------------------
 # 命名規則 — モディファイア・マテリアル・頂点グループ等の識別子
 # ------------------------------------------------------------------
@@ -786,8 +788,12 @@ def _camera_poll(self, obj):
 # ------------------------------------------------------------------
 
 def register() -> None:
+    if hasattr(bpy.types.Scene, "bmanga_line_camera"):
+        del bpy.types.Scene.bmanga_line_camera
+    if hasattr(bpy.types.Object, "bmanga_line_settings"):
+        del bpy.types.Object.bmanga_line_settings
     for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+        registration.register_class(cls)
     bpy.types.Object.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
     bpy.types.Scene.bmanga_line_camera = PointerProperty(
         type=bpy.types.Object,
