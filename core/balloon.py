@@ -103,6 +103,12 @@ _MULTI_LINE_DIRECTION_ITEMS = (
     ("both", "両方向", ""),
 )
 
+_FILL_BLUR_AXIS_ITEMS = (
+    ("inside", "内側", "輪郭から内側だけへぼかす"),
+    ("center", "輪郭", "輪郭を中心に内外へぼかす"),
+    ("outside", "外側", "輪郭から外側だけへぼかす"),
+)
+
 _BLEND_MODE_ITEMS = (
     ("normal", "通常", ""),
     ("lighten", "比較 (明)", ""),
@@ -811,6 +817,7 @@ class BMangaBalloonEntry(bpy.types.PropertyGroup):
         update=_on_balloon_entry_changed,
     )  # type: ignore[valid-type]
     fill_blur_amount: FloatProperty(name="塗り輪郭ぼかし", default=0.0, min=0.0, max=1.0, subtype="FACTOR", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
+    fill_blur_axis: EnumProperty(name="ぼかす軸", items=_FILL_BLUR_AXIS_ITEMS, default="inside", update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_blur_dither: BoolProperty(name="塗りぼかしをディザ化", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_enabled: BoolProperty(name="塗りグラデーション", default=False, update=_on_balloon_entry_changed)  # type: ignore[valid-type]
     fill_gradient_start_color: FloatVectorProperty(subtype="COLOR", size=4, default=(1.0, 1.0, 1.0, 1.0), min=0.0, max=1.0, update=_on_balloon_entry_changed)  # type: ignore[valid-type]

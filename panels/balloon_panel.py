@@ -236,6 +236,7 @@ class BMANGA_PT_balloons(Panel):
             box.prop_search(entry, "fill_material_name", bpy.data, "materials")
             row = box.row(align=True)
             row.prop(entry, "fill_blur_amount", slider=True)
+            row.prop(entry, "fill_blur_axis", text="")
             row.prop(entry, "fill_blur_dither", toggle=True)
             box.prop(entry, "fill_gradient_enabled")
             sub = box.column(align=True)

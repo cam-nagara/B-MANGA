@@ -3,6 +3,45 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — パターンカーブの滑らかさとフキダシぼかしを改善 (v0.6.408)
+
+### 症状
+
+- パターンカーブの表示が、入力点を直線で結んだようにカクカク見える場合があった。
+- パターンカーブを描いたあと、カーブ形状として直接編集できなかった。
+- パターンカーブやフキダシ線に使う円形・ハートなどの生成形状の輪郭が粗く見える場合があった。
+- 塗り輪郭ぼかしの不透明度変化が段階的に見えやすく、ぼかす方向も内側固定だった。
+- フキダシの線・塗りで、図形の向きを「中心点」にしても、ユーザーが動かした中心点ではなく輪郭平均に近い向きになる場合があった。
+
+### 原因
+
+- パターンカーブの描画メッシュが、保存点列をそのまま折れ線として使っていた。
+- パターンカーブには編集用のカーブ実体がなく、表示メッシュの移動同期だけに対応していた。
+- 生成形状の円形・ハートのサンプル数が少なく、拡大時に角が目立った。
+- 塗り輪郭ぼかしはリング段数とオフセット基準が固定で、ぼかし軸を保存・表示・書き出しへ通す設定がなかった。
+- 図形向きの中心点計算で、フキダシの中心点設定を参照していなかった。
+
+### 修正
+
+- パターンカーブの表示用点列を滑らかに補間し、スタンプとリボンの両方で曲線が自然につながるようにした。
+- パターンカーブに編集用カーブを生成し、カーブ編集後にパターンカーブの点列へ反映できるようにした。
+- 円形とハートの生成形状を高密度化し、輪郭が滑らかに見えるようにした。
+- 塗り輪郭ぼかしの段数を増やし、ぼかす軸を「内側」「輪郭」「外側」から選べるようにした。詳細設定、保存読込、書き出しにも対応した。
+- フキダシの線・塗りで「中心点」を選んだ場合、実際の中心点設定を基準に図形の向きを計算するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile core\balloon.py io\export_balloon.py io\schema.py operators\layer_detail_op.py panels\balloon_panel.py panels\layer_stack_detail_ui.py utils\balloon_curve_object.py utils\balloon_fill_mesh.py utils\balloon_line_decor_mesh.py utils\image_path_object.py utils\line_decor_geom.py utils\object_state_sync.py test\blender_balloon_curve_render_visual_check.py test\blender_image_path_tool_check.py test\blender_pattern_curve_ribbon_visual_check.py test\blender_tail_and_line_decor_check.py test\blender_tail_line_sharp_orient_check.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --background --python test\blender_pattern_curve_ribbon_visual_check.py`
+- `blender.exe --background --python test\blender_tail_and_line_decor_check.py`
+- `blender.exe --background --python test\blender_tail_line_sharp_orient_check.py`
+- `blender.exe --background --python test\blender_balloon_curve_render_visual_check.py`
+- AI目視: パターンカーブのリボン表示とフキダシの塗り・輪郭画像を確認し、曲線と輪郭が破綻していないことを確認した。
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — 詳細設定のプリセット管理とフキダシ入り抜きグラフを修正 (v0.6.407)
 
 ### 症状

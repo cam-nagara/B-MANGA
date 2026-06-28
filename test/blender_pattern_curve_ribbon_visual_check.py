@@ -242,8 +242,8 @@ def _ensure_entry_object(scene, work, page, entry):
 
     obj = image_path_object.ensure_image_path_object(scene=scene, entry=entry, page=page)
     assert obj is not None, f"{entry.title} の実体が作成されません"
-    assert len(obj.data.polygons) == len(json.loads(entry.path_points_json)) - 1, (
-        f"{entry.title} のリボン面数が不正です"
+    assert len(obj.data.polygons) >= len(json.loads(entry.path_points_json)) - 1, (
+        f"{entry.title} のリボン面数が不足しています"
     )
     assert obj.data.materials and _material_has_image(obj.data.materials[0]), (
         f"{entry.title} の画像素材が読み込まれていません"
@@ -526,8 +526,9 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+        os._exit(0)
     except Exception:
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        os._exit(1)

@@ -231,38 +231,62 @@ def _write_fill_blur_alpha_attribute(mesh: bpy.types.Mesh, alpha: Sequence[float
             pass
 
 
-def _shrink_polygon_rings(poly, *, blur_width_m: float) -> list:
-    """blur 効果のために、 外周から内側に向けて段階的に縮小したリング群を返す.
+_FILL_BLUR_RING_STEPS = 24
+_FILL_BLUR_AXES = {"inside", "center", "outside"}
+
+
+def _fill_blur_axis_value(axis: str | None) -> str:
+    value = str(axis or "inside")
+    return value if value in _FILL_BLUR_AXES else "inside"
+
+
+def _offset_polygon(poly, distance_m: float):
+    if abs(distance_m) <= 1.0e-10:
+        return poly
+    try:
+        shifted = poly.buffer(float(distance_m))
+        if shifted.is_empty:
+            return None
+        if shifted.geom_type == "MultiPolygon":
+            geoms = sorted(shifted.geoms, key=lambda p: p.area, reverse=True)
+            shifted = geoms[0] if geoms else None
+        if shifted is None or shifted.is_empty or shifted.area <= 0:
+            return None
+        return shifted
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _fill_blur_polygon_rings(poly, *, blur_width_m: float, axis: str) -> list[tuple[object, float]]:
+    """blur 効果のために、段階的にオフセットしたリング群と alpha を返す.
 
     earcut は boundary 頂点のみしか出力しないため、 内部の距離フィールド
     (= boundary からの距離) が得られない。 各リングを「境界線」として与えると、
     earcut の出力に内側リング頂点が含まれ、 そこに正しい alpha 値を計算できる。
 
-    返り値: [poly_0, poly_1, ...] (poly_0 = 元の poly。 リング数は blur_width に応じる)
+    返り値: [(poly, alpha), ...]。alpha は外側ほど 0、内側ほど 1。
     """
     python_deps.ensure_bundled_wheels_on_path()
-    try:
-        from shapely.geometry import Polygon  # type: ignore
-    except Exception:  # noqa: BLE001
-        return [poly]
     if blur_width_m <= 1.0e-9:
-        return [poly]
-    # 4 段階に shrink: blur_width の 25%, 50%, 75%, 100% (内側 100% = 完全不透明)
-    fractions = [0.25, 0.5, 0.75, 1.0]
-    rings = [poly]
-    for frac in fractions:
-        try:
-            shrunk = poly.buffer(-blur_width_m * frac)
-            if shrunk.is_empty:
-                break
-            if shrunk.geom_type == "MultiPolygon":
-                geoms = sorted(shrunk.geoms, key=lambda p: p.area, reverse=True)
-                shrunk = geoms[0] if geoms else None
-            if shrunk is None or shrunk.is_empty or shrunk.area <= 0:
-                break
-            rings.append(shrunk)
-        except Exception:  # noqa: BLE001
+        return [(poly, 1.0)]
+    axis = _fill_blur_axis_value(axis)
+    steps = _FILL_BLUR_RING_STEPS
+    rings: list[tuple[object, float]] = []
+    for step in range(steps + 1):
+        frac = float(step) / float(steps)
+        if axis == "outside":
+            offset = blur_width_m * (1.0 - frac)
+        elif axis == "center":
+            offset = blur_width_m * (0.5 - frac)
+        else:
+            offset = -blur_width_m * frac
+        ring = _offset_polygon(poly, offset)
+        if ring is None:
             break
+        rings.append((ring, frac))
+    if not rings:
+        return [(poly, 1.0)]
+    rings[-1] = (rings[-1][0], 1.0)
     return rings
 
 
@@ -434,6 +458,7 @@ def _build_fill_mesh_with_blur_rings(
     z_m: float,
     *,
     blur_width_m: float,
+    blur_axis: str,
 ) -> tuple[list[tuple[float, float]], list[float]]:
     """blur 用の同心リング群を含む塗り面メッシュを構築する.
 
@@ -442,26 +467,23 @@ def _build_fill_mesh_with_blur_rings(
 
     返り値: (verts_2d, blur_alpha_per_vertex)
     """
-    rings = _shrink_polygon_rings(union_poly, blur_width_m=blur_width_m)
+    rings = _fill_blur_polygon_rings(
+        union_poly,
+        blur_width_m=blur_width_m,
+        axis=blur_axis,
+    )
     all_verts: list[tuple[float, float]] = []
     all_faces: list[tuple[int, int, int]] = []
     all_alpha: list[float] = []
     # 外側リングのみで earcut し、 内側リングを hole として与えると、 リング間の
     # 帯のみ三角分割される。 さらに内側リングを単独で三角分割すると、 内部 fill が
     # 得られる。 リング 0 = 元の外周。 alpha は: 外側=0, 各リング上=対応 alpha, 最内=1。
-    n_rings = len(rings)
-    for i, ring_poly in enumerate(rings):
+    for ring_poly, ring_alpha in rings:
         outer, holes = _polygon_to_outer_holes(ring_poly)
         # このリングを単独で earcut すると、 全頂点はリング境界上にある。
         pts_i, faces_i = balloon_line_mesh._triangulate_polygon(outer, holes)
         if not faces_i or len(pts_i) < 3:
             continue
-        # alpha = i / (n_rings - 1) (外側 = 0, 最内 = 1)
-        # ただし n_rings=1 なら 1.0 固定 (blur 不可)
-        if n_rings <= 1:
-            ring_alpha = 1.0
-        else:
-            ring_alpha = float(i) / float(n_rings - 1)
         offset = len(all_verts)
         all_verts.extend(pts_i)
         all_alpha.extend([ring_alpha] * len(pts_i))
@@ -624,7 +646,14 @@ def ensure_balloon_fill_mesh(
             _line_width_mm(entry) * (_FILL_BLUR_BASE + _FILL_BLUR_SCALE * blur_amount),
         )
         width_m = width_mm * 0.001
-        _build_fill_mesh_with_blur_rings(mesh, union_poly, FILL_Z_M, blur_width_m=width_m)
+        blur_axis = _fill_blur_axis_value(getattr(entry, "fill_blur_axis", "inside"))
+        _build_fill_mesh_with_blur_rings(
+            mesh,
+            union_poly,
+            FILL_Z_M,
+            blur_width_m=width_m,
+            blur_axis=blur_axis,
+        )
     else:
         # blur 無効: シンプルな earcut のみ + 全頂点 alpha=1.0
         _build_fill_mesh(mesh, outer_ring, holes, FILL_Z_M, blur_alpha=None)

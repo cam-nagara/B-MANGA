@@ -12,7 +12,7 @@ from typing import Optional
 
 import bpy
 
-from . import line_decor_geom, log
+from . import free_transform, line_decor_geom, log
 from .balloon_line_mesh import (
     LINE_Z_OFFSET_M,
     SAMPLES_PER_SEGMENT,
@@ -39,6 +39,31 @@ def _decor_outline_m(entry, body_object) -> list[tuple[float, float]]:
         return []
     samples, _merged = _outline_samples_with_tails(entry, samples)
     return [(float(x), float(y)) for x, y, *_rest in samples]
+
+
+def _entry_center_point_m(entry, body_samples) -> tuple[float, float] | None:
+    """線種「図形」の中心点向きで使う、フキダシ中心点のローカル座標."""
+    try:
+        width_mm = max(0.0, float(getattr(entry, "width_mm", 0.0) or 0.0))
+        height_mm = max(0.0, float(getattr(entry, "height_mm", 0.0) or 0.0))
+        local_x = width_mm * 0.5
+        local_y = height_mm * 0.5
+        if free_transform.entry_enabled(entry):
+            local_x, local_y = free_transform.transform_entry_local_point(entry, local_x, local_y)
+        center_x_mm = float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0)
+        center_y_mm = float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0)
+        return (
+            (local_x + center_x_mm - width_mm * 0.5) * 0.001,
+            (local_y + center_y_mm - height_mm * 0.5) * 0.001,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    if body_samples:
+        return (
+            sum(float(s[0]) for s in body_samples) / len(body_samples),
+            sum(float(s[1]) for s in body_samples) / len(body_samples),
+        )
+    return None
 
 
 def ensure_balloon_line_shape_mesh(
@@ -76,15 +101,9 @@ def ensure_balloon_line_shape_mesh(
     if len(loop) < 3 or line_width_mm <= 1.0e-6:
         remove_balloon_line_shape_mesh(balloon_id)
         return None
-    # 「中心点」向きの基準: フキダシ本体 (しっぽ結合前) の中心
+    # 「中心点」向きの基準: 形状の平均ではなく、ユーザーが動かす中心点。
     body_samples = _body_samples_for_line_mesh(entry, body_object)
-    if body_samples:
-        center = (
-            sum(float(s[0]) for s in body_samples) / len(body_samples),
-            sum(float(s[1]) for s in body_samples) / len(body_samples),
-        )
-    else:
-        center = None
+    center = _entry_center_point_m(entry, body_samples)
     polygons = line_decor_geom.decorations_along_loop(
         loop,
         kind=str(getattr(entry, "line_shape_kind", "circle") or "circle"),

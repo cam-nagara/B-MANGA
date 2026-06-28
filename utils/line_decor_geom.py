@@ -10,7 +10,8 @@ import math
 import random
 from typing import Sequence
 
-_CIRCLE_SEGMENTS = 16
+_CIRCLE_SEGMENTS = 64
+_HEART_SEGMENTS = 64
 
 
 def _unit_circle() -> list[tuple[float, float]]:
@@ -55,8 +56,8 @@ def _unit_diamond() -> list[tuple[float, float]]:
 
 def _unit_heart() -> list[tuple[float, float]]:
     pts: list[tuple[float, float]] = []
-    for i in range(20):
-        t = i / 20.0 * math.tau
+    for i in range(_HEART_SEGMENTS):
+        t = i / _HEART_SEGMENTS * math.tau
         x = 16.0 * math.sin(t) ** 3
         y = 13.0 * math.cos(t) - 5.0 * math.cos(2 * t) - 2.0 * math.cos(3 * t) - math.cos(4 * t)
         pts.append((x / 34.0, y / 34.0))

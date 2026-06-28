@@ -1388,6 +1388,7 @@ def balloon_entry_to_dict(entry) -> dict[str, Any]:
         "lineMaterialStretchSingle": bool(getattr(entry, "line_material_stretch_single", False)),
         "lineMaterialSeamFix": str(getattr(entry, "line_material_seam_fix", "none") or "none"),
         "fillBlurAmount": round(float(getattr(entry, "fill_blur_amount", 0.0)), 3),
+        "fillBlurAxis": str(getattr(entry, "fill_blur_axis", "inside") or "inside"),
         "fillBlurDither": bool(getattr(entry, "fill_blur_dither", False)),
         "fillGradientEnabled": bool(getattr(entry, "fill_gradient_enabled", False)),
         "fillGradientStartColor": color_to_hex(getattr(entry, "fill_gradient_start_color", entry.fill_color)),
@@ -1590,6 +1591,9 @@ def balloon_entry_from_dict(entry, data: dict[str, Any], *, opacity_percent: boo
     seam_fix = str(data.get("lineMaterialSeamFix", "none") or "none")
     entry.line_material_seam_fix = seam_fix if seam_fix in {"none", "mirror", "crossfade"} else "none"
     entry.fill_blur_amount = float(data.get("fillBlurAmount", 0.0))
+    if hasattr(entry, "fill_blur_axis"):
+        axis = str(data.get("fillBlurAxis", "inside") or "inside")
+        entry.fill_blur_axis = axis if axis in {"inside", "center", "outside"} else "inside"
     entry.fill_blur_dither = bool(data.get("fillBlurDither", False))
     entry.fill_gradient_enabled = bool(data.get("fillGradientEnabled", False))
     alpha = float(data.get("fillGradientStartColorAlpha", 1.0))

@@ -193,6 +193,24 @@ def _apply_entry_free_transform(
     return out
 
 
+def _entry_center_point_mm(
+    entry,
+    rect: Rect,
+    flip_h: bool,
+    flip_v: bool,
+    rotation_deg: float,
+) -> tuple[float, float]:
+    local_x = rect.width * 0.5
+    local_y = rect.height * 0.5
+    if free_transform.entry_enabled(entry):
+        local_x, local_y = free_transform.transform_entry_local_point(entry, local_x, local_y)
+    center = (
+        rect.x + local_x + float(getattr(entry, "center_offset_x_mm", 0.0) or 0.0),
+        rect.y + local_y + float(getattr(entry, "center_offset_y_mm", 0.0) or 0.0),
+    )
+    return _apply_balloon_transforms([center], rect, flip_h, flip_v, rotation_deg)[0]
+
+
 def _balloon_tail_polygon(rect: Rect, tail) -> list[tuple[float, float]]:
     return balloon_tail_geom.polygon_for_tail(rect, tail)
 
@@ -728,8 +746,14 @@ def _draw_fill_layer(canvas, entry, polygons_px: list[list[tuple[int, int]]], dp
     if blur > 0.0 and ep.ImageFilter is not None and ep.ImageChops is not None:
         line_w = max(0.3, _scaled_width_mm(entry, "line_width_mm", 0.3))
         radius_px = max(1, int(round(mm_to_px(max(0.15, line_w * (0.65 + 3.35 * blur)), dpi) * 0.35)))
-        mask = hard.filter(ep.ImageFilter.GaussianBlur(radius=radius_px))
-        mask = ep.ImageChops.multiply(mask, hard)
+        blurred = hard.filter(ep.ImageFilter.GaussianBlur(radius=radius_px))
+        axis = str(getattr(entry, "fill_blur_axis", "inside") or "inside")
+        if axis == "outside":
+            mask = ep.ImageChops.lighter(hard, blurred)
+        elif axis == "center":
+            mask = blurred
+        else:
+            mask = ep.ImageChops.multiply(blurred, hard)
         if bool(getattr(entry, "fill_blur_dither", False)):
             mask = mask.convert("1", dither=ep.Image.FLOYDSTEINBERG).convert("L")
     fill_alpha = float(getattr(entry, "fill_color", (1, 1, 1, 1))[3])
@@ -1084,13 +1108,8 @@ def render_balloon_layer(entry, canvas_height_px: int, dpi: int):
             if len(pts) >= 3:
                 ellipse_outlines.append(pts)
     merged_ellipses, ellipse_outlines = _split_ellipse_outlines_by_body(outline, ellipse_outlines)
-    # 「中心点」向き図形の基準: 本体 (しっぽ結合前) の輪郭の中心
-    body_center_mm = None
-    if outline:
-        body_center_mm = (
-            sum(x for x, _y in outline) / len(outline),
-            sum(y for _x, y in outline) / len(outline),
-        )
+    # 「中心点」向き図形の基準: 輪郭平均ではなく、ユーザーが動かす中心点。
+    body_center_mm = _entry_center_point_mm(entry, rect, flip_h, flip_v, rotation_deg)
     # ビューポートと同じ結合 (外しっぽは結合 / 内しっぽはえぐり) を出力側にも適用
     merged_outline = _merged_outline_with_tails(outline, tail_outlines, merged_ellipses)
     if merged_outline is not None:

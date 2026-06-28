@@ -237,6 +237,47 @@ def _check_line_decor(page, entry) -> None:
     print("LINE_DECOR_OK", flush=True)
 
 
+def _mesh_bounds_xy(obj) -> tuple[float, float, float, float]:
+    xs = [float(v.co.x) for v in obj.data.vertices]
+    ys = [float(v.co.y) for v in obj.data.vertices]
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def _fill_blur_alpha_values(obj) -> list[float]:
+    attr = getattr(obj.data, "attributes", None)
+    assert attr is not None, "塗り輪郭ぼかしの頂点属性がありません"
+    layer = attr.get("bmanga_fill_blur_alpha")
+    assert layer is not None, "塗り輪郭ぼかしの不透明度がありません"
+    return [round(float(data.value), 4) for data in layer.data]
+
+
+def _check_fill_blur_axis(page, entry) -> None:
+    balloon_curve_object = _sub("utils.balloon_curve_object")
+    bid = str(entry.id)
+    entry.shape = "ellipse"
+    entry.line_style = "solid"
+    entry.line_width_mm = 2.0
+    entry.fill_blur_amount = 0.8
+    entry.fill_blur_dither = False
+    widths = {}
+    unique_alpha_count = 0
+    for axis in ("inside", "center", "outside"):
+        entry.fill_blur_axis = axis
+        balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+        obj = bpy.data.objects.get(f"balloon_fill_mesh_{bid}")
+        assert obj is not None and len(obj.data.polygons) > 0, f"{axis} の塗りメッシュがありません"
+        min_x, max_x, _min_y, _max_y = _mesh_bounds_xy(obj)
+        widths[axis] = max_x - min_x
+        unique_alpha_count = max(unique_alpha_count, len(set(_fill_blur_alpha_values(obj))))
+    assert widths["center"] > widths["inside"] + 0.001, widths
+    assert widths["outside"] > widths["center"] + 0.001, widths
+    assert unique_alpha_count >= 20, f"塗り輪郭ぼかしの段階が粗すぎます: {unique_alpha_count}"
+    entry.fill_blur_amount = 0.0
+    entry.fill_blur_axis = "inside"
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+    print("FILL_BLUR_AXIS_OK", flush=True)
+
+
 def _check_export(page, entry) -> None:
     export_balloon = _sub("io.export_balloon")
     # 楕円しっぽ + 実線
@@ -339,17 +380,21 @@ def _check_schema_roundtrip(page, entry) -> None:
     entry.tails[0].curve_mode = "curve"
     entry.line_style = "shape"
     entry.line_shape_kind = "heart"
+    entry.fill_blur_axis = "outside"
     data = schema.balloon_entry_to_dict(entry)
     assert data["tails"][0]["lineType"] == "ellipse_chain"
     assert abs(float(data["tails"][0]["ellipseGapMm"]) - 2.5) < 1.0e-4
     assert data["tails"][0]["curveMode"] == "curve"
     assert data["lineShapeKind"] == "heart"
+    assert data["fillBlurAxis"] == "outside"
     clone = page.balloons.add()
     schema.balloon_entry_from_dict(clone, data)
     assert str(clone.tails[0].line_type) == "ellipse_chain"
     assert str(clone.tails[0].curve_mode) == "curve"
     assert str(clone.line_shape_kind) == "heart"
+    assert str(clone.fill_blur_axis) == "outside"
     page.balloons.remove(len(page.balloons) - 1)
+    entry.fill_blur_axis = "inside"
     entry.line_style = "solid"
     print("SCHEMA_ROUNDTRIP_OK", flush=True)
 
@@ -370,6 +415,7 @@ def main() -> None:
     _check_curve_mode(page, entry, balloon_op)
     _check_tail_presets(page, entry)
     _check_line_decor(page, entry)
+    _check_fill_blur_axis(page, entry)
     _check_export(page, entry)
     _check_nurbs_balloon(page)
     _check_tool_icons_and_presets()

@@ -260,6 +260,32 @@ def _check_shape_orient() -> None:
     print("SHAPE_ORIENT_OK", flush=True)
 
 
+def _check_shape_center_point_entry(page, entry) -> None:
+    balloon_curve_object = _sub("utils.balloon_curve_object")
+    balloon_line_decor_mesh = _sub("utils.balloon_line_decor_mesh")
+    balloon_line_mesh = _sub("utils.balloon_line_mesh")
+    entry.line_style = "shape"
+    entry.line_shape_kind = "triangle"
+    entry.line_shape_orient = "center"
+    entry.line_shape_angle_deg = 0.0
+    entry.center_offset_x_mm = 12.0
+    entry.center_offset_y_mm = -7.0
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+    body_obj = balloon_curve_object.find_balloon_object(str(entry.id))
+    assert body_obj is not None, "フキダシ本体が見つかりません"
+    samples = balloon_line_mesh._body_samples_for_line_mesh(entry, body_obj)
+    center = balloon_line_decor_mesh._entry_center_point_m(entry, samples)
+    assert center is not None, "中心点が取得できません"
+    assert abs(center[0] - 0.012) < 1.0e-6 and abs(center[1] + 0.007) < 1.0e-6, center
+    assert _poly_count(f"balloon_line_shape_{entry.id}") > 0, "中心点向きの図形線メッシュがありません"
+    entry.center_offset_x_mm = 0.0
+    entry.center_offset_y_mm = 0.0
+    entry.line_shape_orient = "line"
+    entry.line_style = "solid"
+    balloon_curve_object.ensure_balloon_curve_object(scene=bpy.context.scene, entry=entry, page=page)
+    print("SHAPE_CENTER_POINT_ENTRY_OK", flush=True)
+
+
 def _check_schema_and_presets(page, entry) -> None:
     schema = _sub("io.schema")
     tail_presets = _sub("io.tail_presets")
@@ -328,6 +354,7 @@ def main() -> None:
     _check_sharp_corners(page, entry, balloon_op)
     _check_ellipse_merge_and_orient(page, entry, balloon_op)
     _check_shape_orient()
+    _check_shape_center_point_entry(page, entry)
     _check_schema_and_presets(page, entry)
     print("BMANGA_TAIL_SHARP_ORIENT_CHECK_OK", flush=True)
 

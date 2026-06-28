@@ -187,6 +187,10 @@ def main() -> None:
         assert obj is not None, "画像パス実体が作成されません"
         assert len(obj.data.polygons) >= 8, f"スタンプ数が少なすぎます: {len(obj.data.polygons)}"
         assert object_state_sync.is_sync_candidate(obj), "画像パスが標準移動の同期対象ではありません"
+        curve_obj = bpy.data.objects.get(f"image_path_curve_{entry.id}")
+        assert curve_obj is not None and curve_obj.type == "CURVE", "編集用カーブが作成されません"
+        assert object_state_sync.is_sync_candidate(curve_obj), "編集用カーブが同期対象ではありません"
+        assert curve_obj.hide_render, "編集用カーブがレンダー対象になっています"
         assert obj.data.materials and obj.data.materials[0] is not None, "画像パスのマテリアルがありません"
         assert _point_colors(obj), "画像パスに色属性がありません"
         page_mod = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
@@ -202,6 +206,15 @@ def main() -> None:
         assert object_selection.parse_key(key) == ("image_path", "", entry.id)
         bounds = object_tool_selection.selection_bounds_for_key(context, key)
         assert bounds is not None and bounds.width > 0.0 and bounds.height > 0.0, "画像パスの選択枠が取れません"
+
+        spline = curve_obj.data.splines[0]
+        spline.bezier_points[1].co.y += mm_to_m(8.0)
+        assert image_path_object.sync_entry_points_from_object(scene, curve_obj), "編集用カーブの変更が反映されません"
+        edited_points = json.loads(entry.path_points_json)
+        assert len(edited_points) > 3, "編集用カーブから滑らかな点列が生成されていません"
+        assert any(40.0 <= x <= 60.0 and y > 25.0 for x, y in edited_points), (
+            "編集用カーブの制御点移動がパターンカーブに反映されていません"
+        )
 
         fake_op = SimpleNamespace(_drag_action="move")
         snapshots = object_tool_op.BMANGA_OT_object_tool._make_snapshots(
@@ -233,7 +246,7 @@ def main() -> None:
         entry.spacing_percent = 100.0
         entry.image_angle_deg = 0.0
         obj = image_path_object.ensure_image_path_object(scene=scene, entry=entry, page=page)
-        assert len(obj.data.polygons) == 2, f"リボン面数が不正です: {len(obj.data.polygons)}"
+        assert len(obj.data.polygons) > 2, f"リボンの曲線分割が少なすぎます: {len(obj.data.polygons)}"
         repeat_uvs = _uv_values(obj)
         assert max(u for u, _v in repeat_uvs) > 4.0, repeat_uvs
 
@@ -278,7 +291,7 @@ def main() -> None:
         shape_entry.out_start_percent = 45.0
         shape_entry.inout_start_color = (0.0, 1.0, 0.0, 1.0)
         shape_entry.inout_end_color = (1.0, 0.0, 1.0, 0.35)
-        expected_vertices = {"circle": 16, "square": 4, "polygon": 6, "star": 10, "heart": 20}
+        expected_vertices = {"circle": 64, "square": 4, "polygon": 6, "star": 10, "heart": 64}
         for kind, vertex_count in expected_vertices.items():
             shape_entry.shape_kind = kind
             shape_entry.shape_sides = 6
@@ -377,8 +390,9 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
+        os._exit(0)
     except Exception:
         import traceback
 
         traceback.print_exc()
-        sys.exit(1)
+        os._exit(1)

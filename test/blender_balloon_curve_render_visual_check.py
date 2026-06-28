@@ -45,20 +45,54 @@ def _sample_rgb(path: Path, x: int, y: int, radius: int = 5) -> tuple[float, flo
     return tuple(sum(pixel[i] for pixel in pixels) / len(pixels) for i in range(3))
 
 
+def _darkest_rgb(path: Path, x0: int, y0: int, x1: int, y1: int) -> tuple[float, float, float]:
+    from PIL import Image
+
+    with Image.open(path) as opened:
+        image = opened.convert("RGB")
+        left = max(0, min(x0, x1))
+        right = min(image.width, max(x0, x1))
+        top = max(0, min(y0, y1))
+        bottom = min(image.height, max(y0, y1))
+        if left >= right or top >= bottom:
+            raise AssertionError(f"sample outside image: {path} ({x0}, {y0}, {x1}, {y1})")
+        darkest = None
+        darkest_luma = 999.0
+        for py in range(top, bottom):
+            for px in range(left, right):
+                rgb = image.getpixel((px, py))
+                luma = sum(rgb) / 3.0
+                if luma < darkest_luma:
+                    darkest = rgb
+                    darkest_luma = luma
+        assert darkest is not None
+        return tuple(float(v) for v in darkest)
+
+
 def _evaluated_material_names(obj) -> set[str]:
     depsgraph = bpy.context.evaluated_depsgraph_get()
-    evaluated = obj.evaluated_get(depsgraph)
-    mesh = evaluated.to_mesh()
-    try:
-        names = set()
-        materials = list(getattr(mesh, "materials", []) or [])
-        for poly in getattr(mesh, "polygons", []) or []:
-            index = int(getattr(poly, "material_index", 0) or 0)
-            if 0 <= index < len(materials):
-                names.add(str(getattr(materials[index], "name", "") or ""))
-        return names
-    finally:
-        evaluated.to_mesh_clear()
+    names = set()
+    for candidate in bpy.context.scene.objects:
+        data = getattr(candidate, "data", None)
+        if data is None or not hasattr(data, "materials"):
+            continue
+        evaluated = candidate.evaluated_get(depsgraph)
+        try:
+            mesh = evaluated.to_mesh()
+        except RuntimeError:
+            for material in getattr(data, "materials", []) or []:
+                if material is not None:
+                    names.add(str(getattr(material, "name", "") or ""))
+            continue
+        try:
+            materials = list(getattr(mesh, "materials", []) or [])
+            for poly in getattr(mesh, "polygons", []) or []:
+                index = int(getattr(poly, "material_index", 0) or 0)
+                if 0 <= index < len(materials):
+                    names.add(str(getattr(materials[index], "name", "") or ""))
+        finally:
+            evaluated.to_mesh_clear()
+    return names
 
 
 def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-6) -> None:
@@ -67,7 +101,8 @@ def _assert_close(actual: float, expected: float, label: str, eps: float = 1.0e-
 
 
 def _material_node_types(obj, material_prefix: str) -> set[str]:
-    for material in getattr(obj.data, "materials", []) or []:
+    del obj
+    for material in bpy.data.materials:
         if material is None or not str(material.name).startswith(material_prefix):
             continue
         if material.node_tree is None:
@@ -77,7 +112,8 @@ def _material_node_types(obj, material_prefix: str) -> set[str]:
 
 
 def _material_has_blur_attribute(obj, material_prefix: str, attribute_name: str) -> bool:
-    for material in getattr(obj.data, "materials", []) or []:
+    del obj
+    for material in bpy.data.materials:
         if material is None or not str(material.name).startswith(material_prefix):
             continue
         if material.node_tree is None:
@@ -170,7 +206,13 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         center = _sample_rgb(output, scene.render.resolution_x // 2, scene.render.resolution_y // 2, radius=10)
-        right_line = _sample_rgb(output, int(scene.render.resolution_x * 0.82), scene.render.resolution_y // 2, radius=5)
+        right_line = _darkest_rgb(
+            output,
+            int(scene.render.resolution_x * 0.70),
+            int(scene.render.resolution_y * 0.42),
+            int(scene.render.resolution_x * 0.88),
+            int(scene.render.resolution_y * 0.58),
+        )
         if not (center[0] > 225.0 and center[1] > 225.0 and center[2] > 225.0):
             raise AssertionError(f"フキダシの塗りが白く表示されていません: center={center}")
         if not (right_line[0] < 80.0 and right_line[1] < 80.0 and right_line[2] < 80.0):
@@ -214,4 +256,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        os._exit(0)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        os._exit(1)

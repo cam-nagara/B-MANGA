@@ -375,6 +375,7 @@ def _draw_balloon_selected_settings(box, context, entry) -> None:
         line_box.prop_search(entry, "fill_material_name", bpy.data, "materials")
         row = line_box.row(align=True)
         row.prop(entry, "fill_blur_amount", slider=True)
+        row.prop(entry, "fill_blur_axis", text="")
         row.prop(entry, "fill_blur_dither", toggle=True)
         line_box.prop(entry, "fill_gradient_enabled")
         sub = line_box.column(align=True)
