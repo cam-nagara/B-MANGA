@@ -209,10 +209,12 @@ def _draw_intersection(layout, context, settings) -> None:
 
 
 def _draw_actions(layout, context, obj) -> None:
+    from . import viewport_aov
+
     has_line_any = any(has_line(o) for o in context.selected_objects)
     line_only_any = any(
         bool(o.get(PROP_LINE_ONLY, False)) for o in context.selected_objects
-    )
+    ) or viewport_aov.is_line_aov_active(context)
     row = layout.row(align=True)
     row.scale_y = 1.4
     row.operator("bmanga_line.apply", icon="ADD")

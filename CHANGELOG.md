@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineのラインのみ表示をAOV表示へ変更 (B-MANGA Line v0.3.22)
+
+### 症状
+
+- 「ラインのみを表示」は、元の素材を一時的に白い確認用素材へ差し替える方式だった。
+- そのため、画面確認用の状態がオブジェクトの素材構成に入り込み、AOVとして出している線画だけを見る操作になっていなかった。
+
+### 原因
+
+- BML_Line AOVは出力用には作成していたが、ビューポートの表示パスをBML_Line AOVへ切り替える処理がなかった。
+
+### 修正
+
+- 「ラインのみを表示」は、通常の3DビューではBML_Line AOVだけを表示する画面状態へ切り替えるようにした。
+- 「通常表示に戻す」では、ラインのみ表示へ入る前のビューポート表示へ戻すようにした。
+- 選択中のラインが非表示状態でも、ラインのみ表示を押した時はアウトライン、内部線、交差線を表示状態へ戻してからAOV表示へ切り替えるようにした。
+- 画面がないバックグラウンド実行では、既存の素材差し替え方式を自動テスト用のフォールバックとして残した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\viewport_aov.py addons\b_manga_line\__init__.py test\blender_b_manga_line_camera_aov_line_only_check.py test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの線幅均一化トグルを復旧 (B-MANGA Line v0.3.21)
 
 ### 症状

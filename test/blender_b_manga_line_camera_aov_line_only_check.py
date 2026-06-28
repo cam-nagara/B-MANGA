@@ -12,7 +12,14 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import camera_comp, core, inner_lines, outline_setup, presets  # noqa: E402
+from b_manga_line import (  # noqa: E402
+    camera_comp,
+    core,
+    inner_lines,
+    outline_setup,
+    presets,
+    viewport_aov,
+)
 
 
 def _clear_scene() -> None:
@@ -114,8 +121,13 @@ def _test_line_only_restore() -> None:
         assert mod is not None
         assert mod.show_viewport and mod.show_render
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
-    assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
-    assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None
+    if viewport_aov.is_line_aov_active(bpy.context):
+        assert hidden == before, hidden
+        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
+        assert not bool(obj.get(core.PROP_LINE_ONLY, False))
+    else:
+        assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
+        assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None
     assert any(
         mat and mat.name.startswith(core.MATERIAL_NAME)
         for mat in obj.data.materials
