@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line の遠距離ライン非表示表記を明確化 (v0.3.14)
+
+### 症状
+
+- 「カメラ距離で非表示」と「最大表示距離」の関係が分かりにくく、別々の機能のように見えていた。
+- 指定距離以上で非表示にする意図に対して、境界距離ちょうどの扱いが表示側に残っていた。
+
+### 原因
+
+- チェックボックスは機能のON/OFF、数値欄は非表示にする距離しきい値だったが、UI上の表記がその関係を十分に示していなかった。
+
+### 修正
+
+- チェックボックス名を「遠距離ラインを非表示」に変更した。
+- 数値欄名を「非表示にする距離 (m)」に変更した。
+- カメラから指定距離以上離れた場合に、アウトライン / 内部線 / 交差線を線種別に非表示にするよう境界判定を揃えた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\__init__.py test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line の透明面越しの塗りつぶしを抑制 (v0.3.13)
 
 ### 症状

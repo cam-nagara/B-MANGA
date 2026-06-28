@@ -683,15 +683,15 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     # --- カメラ距離による線種別非表示 ---
 
     use_outline_distance_limit: BoolProperty(
-        name="カメラ距離で非表示",
-        description="カメラから指定距離以上離れたオブジェクトのアウトラインを非表示にする",
+        name="遠距離ラインを非表示",
+        description="カメラから指定距離以上離れたオブジェクトのアウトラインを非表示にして軽くする",
         default=False,
         update=_on_outline_distance_changed,
     )  # type: ignore[valid-type]
 
     outline_max_distance: FloatProperty(
-        name="最大表示距離",
-        description="この距離を超えたオブジェクトのアウトラインを非表示にする",
+        name="非表示にする距離 (m)",
+        description="この距離以上離れたオブジェクトのアウトラインを非表示にする",
         default=20.0,
         min=0.1,
         max=1000.0,
@@ -700,15 +700,15 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     use_inner_line_distance_limit: BoolProperty(
-        name="カメラ距離で非表示",
-        description="カメラから指定距離以上離れたオブジェクトの内部線を非表示にする",
+        name="遠距離ラインを非表示",
+        description="カメラから指定距離以上離れたオブジェクトの内部線を非表示にして軽くする",
         default=False,
         update=_on_inner_distance_changed,
     )  # type: ignore[valid-type]
 
     inner_line_max_distance: FloatProperty(
-        name="最大表示距離",
-        description="この距離を超えたオブジェクトの内部線を非表示にする",
+        name="非表示にする距離 (m)",
+        description="この距離以上離れたオブジェクトの内部線を非表示にする",
         default=20.0,
         min=0.1,
         max=1000.0,
@@ -717,15 +717,15 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     use_intersection_distance_limit: BoolProperty(
-        name="カメラ距離で非表示",
-        description="カメラから指定距離以上離れたオブジェクトの交差線を非表示にする",
+        name="遠距離ラインを非表示",
+        description="カメラから指定距離以上離れたオブジェクトの交差線を非表示にして軽くする",
         default=False,
         update=_on_intersection_distance_changed,
     )  # type: ignore[valid-type]
 
     intersection_max_distance: FloatProperty(
-        name="最大表示距離",
-        description="この距離を超えたオブジェクトの交差線を非表示にする",
+        name="非表示にする距離 (m)",
+        description="この距離以上離れたオブジェクトの交差線を非表示にする",
         default=20.0,
         min=0.1,
         max=1000.0,

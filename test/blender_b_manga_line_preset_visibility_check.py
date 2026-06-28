@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core  # noqa: E402
+from b_manga_line import core, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -79,6 +79,23 @@ def _assert_distance_limited_outline_and_intersection(obj: bpy.types.Object) -> 
 def _assert_camera_culled_line(obj: bpy.types.Object) -> None:
     _assert_line_state(obj, visible=False)
     assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+
+
+def _assert_distance_threshold_hides_at_exact_distance(target: bpy.types.Object) -> None:
+    obj = _make_cube("BML_距離境界", (0.5, 0.0, 0.0))
+    settings = obj.bmanga_line_settings
+    settings.inner_line_enabled = True
+    settings.intersection_enabled = True
+    settings.intersection_target = target
+    settings.use_outline_distance_limit = True
+    settings.outline_max_distance = 0.5
+    settings.use_inner_line_distance_limit = True
+    settings.inner_line_max_distance = 0.5
+    settings.use_intersection_distance_limit = True
+    settings.intersection_max_distance = 0.5
+    assert presets.apply_line_settings(obj, bpy.context)
+    _assert_line_state(obj, visible=False)
+    bpy.data.objects.remove(obj, do_unlink=True)
 
 
 def main() -> None:
@@ -152,6 +169,7 @@ def main() -> None:
         assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
     _make_camera()
+    _assert_distance_threshold_hides_at_exact_distance(target)
     _select(source, [source])
     settings.use_inner_line_distance_limit = True
     settings.inner_line_max_distance = 0.5

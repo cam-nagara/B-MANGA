@@ -318,14 +318,14 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd):
             in_view = (angle - angular_r) < (half_angle_cache + margin)
 
         outline_in_range = (
-            not do_outline_distance or dist <= settings.outline_max_distance
+            not do_outline_distance or dist < settings.outline_max_distance
         )
         inner_in_range = (
-            not do_inner_distance or dist <= settings.inner_line_max_distance
+            not do_inner_distance or dist < settings.inner_line_max_distance
         )
         intersection_in_range = (
             not do_intersection_distance
-            or dist <= settings.intersection_max_distance
+            or dist < settings.intersection_max_distance
         )
 
         if outline_mod is not None:
