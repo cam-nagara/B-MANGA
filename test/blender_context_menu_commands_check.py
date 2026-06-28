@@ -32,10 +32,15 @@ def _load_addon():
 def _create_work(work_dir: Path):
     result = bpy.ops.bmanga.work_new(filepath=str(work_dir))
     assert result == {"FINISHED"}, result
+    result = bpy.ops.bmanga.open_page_file("EXEC_DEFAULT", index=0)
+    assert result == {"FINISHED"}, result
     work = bpy.context.scene.bmanga_work
     page = work.pages[0]
     result = bpy.ops.bmanga.coma_add()
     assert result == {"FINISHED"}, result
+    from bmanga_dev.utils.layer_hierarchy import page_stack_key
+
+    page_key = page_stack_key(page)
 
     balloon = page.balloons.add()
     balloon.id = "menu_balloon"
@@ -43,6 +48,8 @@ def _create_work(work_dir: Path):
     balloon.y_mm = 20.0
     balloon.width_mm = 30.0
     balloon.height_mm = 20.0
+    balloon.parent_kind = "page"
+    balloon.parent_key = page_key
 
     text = page.texts.add()
     text.id = "menu_text"
@@ -51,6 +58,8 @@ def _create_work(work_dir: Path):
     text.y_mm = 20.0
     text.width_mm = 30.0
     text.height_mm = 20.0
+    text.parent_kind = "page"
+    text.parent_key = page_key
 
     from bmanga_dev.operators import effect_line_op
     from bmanga_dev.utils import gp_layer_parenting as gp_parent
@@ -60,12 +69,12 @@ def _create_work(work_dir: Path):
     effect_line_op._create_effect_layer(
         bpy.context,
         (20.0, 60.0, 35.0, 35.0),
-        parent_key="",
+        parent_key=page_key,
     )
 
     gp_obj = gp_utils.ensure_master_gpencil(bpy.context.scene)
     gp_layer = gp_obj.data.layers.new("menu_gp")
-    gp_parent.set_parent_key(gp_layer, "")
+    gp_parent.set_parent_key(gp_layer, page_key)
     frame = gp_utils.ensure_active_frame(gp_layer)
     assert frame is not None and getattr(frame, "drawing", None) is not None
     assert gp_utils.add_stroke_to_drawing(
@@ -78,6 +87,11 @@ def _create_work(work_dir: Path):
 
     raster_result = bpy.ops.bmanga.raster_layer_add("EXEC_DEFAULT", dpi=30, bit_depth="gray8", enter_paint=False)
     assert "FINISHED" in raster_result, raster_result
+    raster_index = int(bpy.context.scene.bmanga_active_raster_layer_index)
+    assert raster_index >= 0
+    raster = bpy.context.scene.bmanga_raster_layers[raster_index]
+    raster.parent_kind = "page"
+    raster.parent_key = page_key
 
     image = bpy.context.scene.bmanga_image_layers.add()
     image.id = "menu_image"
@@ -86,6 +100,8 @@ def _create_work(work_dir: Path):
     image.y_mm = 70.0
     image.width_mm = 20.0
     image.height_mm = 15.0
+    image.parent_kind = "page"
+    image.parent_key = page_key
 
     from bmanga_dev.utils import layer_stack as layer_stack_utils
 

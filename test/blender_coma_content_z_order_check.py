@@ -195,7 +195,15 @@ def main() -> None:
         if empty_rows:
             raise AssertionError(f"レイヤーリストに空行が残っています: {empty_rows}")
         if preview_uid in initial_uids:
-            raise AssertionError("レイヤー一覧にコマの内部表示行が残っています")
+            preview_item = next(
+                item
+                for item in stack
+                if layer_stack_utils.stack_item_uid(item) == preview_uid
+            )
+            if str(getattr(preview_item, "label", "") or "") != "コマプレビュー":
+                raise AssertionError("コマプレビュー行の表示名が空、または想定外です")
+            if str(getattr(preview_item, "parent_key", "") or "") != parent_key:
+                raise AssertionError("コマプレビュー行が対象コマの配下にありません")
         if balloon_uid not in initial_uids or effect_uid not in initial_uids:
             raise AssertionError(
                 "コマ内で新規作成したフキダシ/効果線がレイヤー一覧に作成されていません"

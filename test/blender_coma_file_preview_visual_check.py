@@ -95,6 +95,25 @@ def _visible_preview_objects() -> list[bpy.types.Object]:
     ]
 
 
+def _visible_preview_backgrounds() -> list[object]:
+    scene = bpy.context.scene
+    camera = getattr(scene, "camera", None)
+    data = getattr(camera, "data", None)
+    if data is None:
+        return []
+    visible = []
+    for bg in getattr(data, "background_images", []) or []:
+        image = getattr(bg, "image", None)
+        if image is None or not bool(getattr(bg, "show_background_image", False)):
+            continue
+        try:
+            if bool(image.get("_bmanga_page_overview_bg", False)):
+                visible.append(bg)
+        except Exception:  # noqa: BLE001
+            continue
+    return visible
+
+
 def _first_window_screen():
     window = next(iter(bpy.context.window_manager.windows), None)
     screen = getattr(window, "screen", None)
@@ -119,10 +138,31 @@ def _view3d_area():
 def _fit_visible_previews() -> None:
     visible = _visible_preview_objects()
     window, screen, area, region, space = _view3d_area()
-    if not visible or window is None or screen is None or area is None or region is None:
+    if window is None or screen is None or area is None or region is None:
         return
     rv3d = getattr(space, "region_3d", None)
     if rv3d is None:
+        return
+    if not visible:
+        try:
+            space.shading.type = "MATERIAL"
+            space.overlay.show_overlays = False
+            space.overlay.show_floor = False
+            space.overlay.show_axis_x = False
+            space.overlay.show_axis_y = False
+        except Exception:  # noqa: BLE001
+            pass
+        with bpy.context.temp_override(
+            window=window,
+            screen=screen,
+            area=area,
+            region=region,
+            space_data=space,
+            region_data=rv3d,
+        ):
+            if bpy.ops.view3d.view_camera.poll():
+                bpy.ops.view3d.view_camera()
+        rv3d.view_perspective = "CAMERA"
         return
     points: list[Vector] = []
     for obj in visible:
@@ -150,18 +190,13 @@ def _fit_visible_previews() -> None:
 
 
 def _capture_screenshot() -> None:
-    scene = bpy.context.scene
     window, screen, area, region, space = _view3d_area()
     if window is None or screen is None or area is None or region is None:
         return
     rv3d = getattr(space, "region_3d", None)
     if rv3d is None:
         return
-    scene.render.filepath = str(SCREENSHOT)
-    scene.render.image_settings.file_format = "PNG"
-    scene.render.resolution_x = 1600
-    scene.render.resolution_y = 1000
-    scene.render.resolution_percentage = 100
+    rv3d.view_perspective = "CAMERA"
     with bpy.context.temp_override(
         window=window,
         screen=screen,
@@ -172,7 +207,8 @@ def _capture_screenshot() -> None:
     ):
         if bpy.ops.wm.redraw_timer.poll():
             bpy.ops.wm.redraw_timer(type="DRAW_WIN_SWAP", iterations=2)
-        bpy.ops.render.opengl(view_context=True, write_still=True)
+    with bpy.context.temp_override(window=window, screen=screen):
+        bpy.ops.screen.screenshot(filepath=str(SCREENSHOT))
 
 
 def _run() -> None:
@@ -213,17 +249,21 @@ def _after_coma_open() -> None:
     if settings is not None:
         settings.name_bg_images_opacity = 92.0
         settings.bg_images_scale = 1.0
+        settings.name_visible = True
     from bmanga_dev_coma_file_preview_visual.utils import page_file_scene
+    from bmanga_dev_coma_file_preview_visual.utils import coma_camera
     from bmanga_dev_coma_file_preview_visual.utils import page_preview_object
 
     _mark("sync_page_previews")
     page_preview_object.sync_page_previews(bpy.context, scene.bmanga_work, force=True)
+    coma_camera.refresh_coma_page_overview(bpy.context)
     _mark("fit_visible_previews")
     _fit_visible_previews()
     _mark("capture_screenshot")
     _capture_screenshot()
     _mark("collect_summary")
     visible = _visible_preview_objects()
+    visible_backgrounds = _visible_preview_backgrounds()
     role, page_id, coma_id = page_file_scene.current_role(bpy.context)
     data = {
         "work_blend": str(WORK_DIR / "work.blend"),
@@ -237,8 +277,14 @@ def _after_coma_open() -> None:
             getattr(scene, "bmanga_page_preview_resolution_percentage", 0.0)
         ),
         "overview_cols": int(getattr(scene, "bmanga_overview_cols", -1)),
-        "visible_preview_count": len(visible),
+        "visible_preview_count": len(visible) + len(visible_backgrounds),
+        "visible_preview_object_count": len(visible),
+        "visible_preview_background_count": len(visible_backgrounds),
         "visible_preview_ids": [str(obj.get("bmanga_id", "") or obj.name) for obj in visible],
+        "visible_preview_background_ids": [
+            str(getattr(getattr(bg, "image", None), "get", lambda *_: "")("bmanga_page_id", ""))
+            for bg in visible_backgrounds
+        ],
         "preview_locations": [
             [
                 str(obj.get("bmanga_id", "") or obj.name),
@@ -253,7 +299,7 @@ def _after_coma_open() -> None:
     SUMMARY.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     if role != "coma":
         raise AssertionError(f"コマ用blendファイルではありません: {role}")
-    if len(visible) == 0:
+    if len(visible) + len(visible_backgrounds) == 0:
         raise AssertionError("コマ用blendファイルでページ一覧プレビューが表示されていません")
     if not SCREENSHOT.is_file():
         raise AssertionError(f"スクリーンショットを保存できません: {SCREENSHOT}")

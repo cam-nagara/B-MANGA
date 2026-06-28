@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — 直近修正の実機AI目視監査を追加
+
+### 症状
+
+- 直近修正した、アドオン有効化、Renderタブ表示、コマ用blendファイルの右クリックメニュー、ツールプリセット切替、レイヤーリスト順、効果線詳細設定、ページ画像更新をまとめてAI目視できる証跡がなかった。
+- 既存の右クリックメニュー、コマ内前後関係、コマ用blendファイルのページ画像表示テストが、現在のページファイル構成やコマプレビュー行、カメラ下絵方式とずれていた。
+
+### 原因
+
+- 古いテストの一部が、作品ファイル内で直接作画する前提や、ページ画像をビューポート上の平面として扱う前提のままだった。
+- コマ内レイヤーリストに追加された「コマプレビュー」行を、古いテストでは異常な残行として扱っていた。
+
+### 修正
+
+- 直近修正7項目を1枚のAI目視チェックシートへまとめる実機テストを追加した。
+- 右クリックメニュー、コマ内前後関係、コマ用blendファイルのページ画像表示テストを、現在のページファイル構成とカメラ下絵方式に合わせて更新した。
+- コマ内の「コマプレビュー」行は、表示名と所属コマが正しければ正常として検証するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --factory-startup --background --python test\blender_recent_fixes_visual_audit.py`
+- AI目視スクショ: `D:\Develop\Blender\B-MANGA\_verify\recent_fixes_visual_audit\recent_fixes_ai_visual_contact.png`
+- 確認済み: 7項目すべて OK / NG 0
+- 確認済み: コマ用blendファイルの用紙ガイド、作品情報、ページ画像表示、ページファイルのオーバーレイON/OFFスクショをAI目視
+- `blender.exe --factory-startup --background --python test\blender_coma_content_z_order_check.py`
+- `blender.exe --background --python test\blender_context_menu_commands_check.py`
+- `blender.exe --background --python test\blender_coma_file_preview_visual_check.py`
+- `python -m py_compile test\blender_recent_fixes_visual_audit.py test\blender_context_menu_commands_check.py test\blender_coma_content_z_order_check.py test\blender_coma_file_preview_visual_check.py`
+
+---
+
 ## 2026-06-29 — 効果線詳細設定と線幅グラフ連動を再修正 (v0.6.420)
 
 ### 症状
