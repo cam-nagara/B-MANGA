@@ -135,7 +135,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         intersection_lines.remove_intersection_lines(obj)
 
     if settings.use_camera_compensation:
-        camera_comp.store_reference(obj, context.scene)
+        camera_comp.store_unit_reference(obj, context.scene)
 
     if use_vg:
         vertex_analysis.compute_and_apply_weights(obj, settings)
@@ -151,6 +151,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         or settings.use_inner_line_distance_limit
     ):
         camera_comp.refresh(context)
+    outline_setup.ensure_aov_passes(context.scene)
 
     return True
 

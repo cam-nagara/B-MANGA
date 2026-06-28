@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import bpy
 
-from .core import AOV_NAME, has_line, has_outline
+from .core import PROP_LINE_ONLY, has_line, has_outline
 
 
 def _get_paper_dpi(scene) -> int:
@@ -30,6 +30,9 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     bl_category = "B-MANGA Line"
 
     def draw(self, context):
+        from . import outline_setup
+
+        outline_setup.ensure_aov_passes(context.scene)
         layout = self.layout
         obj = context.active_object
         if obj is None or obj.type != "MESH":
@@ -39,6 +42,9 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         settings = obj.bmanga_line_settings
         has_any = any(has_outline(o) for o in context.selected_objects)
         has_line_any = any(has_line(o) for o in context.selected_objects)
+        line_only_any = any(
+            bool(o.get(PROP_LINE_ONLY, False)) for o in context.selected_objects
+        )
 
         dpi = _get_paper_dpi(context.scene)
 
@@ -85,6 +91,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
 
         # 距離補正
         col = box.column(align=True)
+        col.prop(context.scene, "bmanga_line_camera")
         col.prop(settings, "use_camera_compensation")
         sub = col.column(align=True)
         sub.enabled = settings.use_camera_compensation
@@ -161,18 +168,6 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         sub_label.alignment = "RIGHT"
         sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
 
-        # --- コンポジット出力 ---
-        box = layout.box()
-        box.label(text="コンポジット出力", icon="NODE_COMPOSITING")
-        col = box.column(align=True)
-        aov_exists = any(
-            aov.name == AOV_NAME for aov in context.view_layer.aovs
-        )
-        if aov_exists:
-            col.label(text=f"AOV: {AOV_NAME} (設定済み)", icon="CHECKMARK")
-        else:
-            col.operator("bmanga_line.add_aov", icon="ADD")
-
         # --- 操作ボタン ---
         layout.separator()
 
@@ -186,6 +181,17 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         op.visible = True
         op = row.operator("bmanga_line.set_visibility", text="ラインを非表示", icon="HIDE_ON")
         op.visible = False
+
+        row = layout.row(align=True)
+        row.enabled = has_line_any or line_only_any
+        op = row.operator("bmanga_line.set_line_only", text="ラインのみを表示", icon="OVERLAY")
+        op.line_only = True
+        op = row.operator(
+            "bmanga_line.set_line_only",
+            text="通常表示に戻す",
+            icon="MATERIAL",
+        )
+        op.line_only = False
 
         row = layout.row(align=True)
         row.enabled = has_line_any

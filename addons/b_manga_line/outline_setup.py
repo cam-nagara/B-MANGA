@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+
 import bpy
 
 from .core import (
@@ -15,10 +17,15 @@ from .core import (
     COLOR_ATTR_NAME,
     MATERIAL_NAME,
     MODIFIER_NAME,
+    PROP_LINE_ONLY,
+    PROP_LINE_ONLY_MATERIALS,
     PROP_BASE_THICKNESS,
     PROP_REF_DISTANCE,
     VG_LINE_WIDTH,
 )
+
+
+LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
 
 
 # ------------------------------------------------------------------
@@ -143,6 +150,31 @@ def get_or_create_material(
     return mat
 
 
+def _first_outline_slot(obj: bpy.types.Object) -> int | None:
+    for i, slot in enumerate(obj.material_slots):
+        if slot.material and _is_outline_material(slot.material):
+            return i
+    return None
+
+
+def _ensure_outline_material_slots(
+    obj: bpy.types.Object,
+    mat: bpy.types.Material,
+) -> int:
+    """Solidify の素材ずらし先を、元素材数ぶんライン素材で埋める."""
+    first = _first_outline_slot(obj)
+    if first is None:
+        first = len(obj.data.materials)
+
+    source_count = max(1, first)
+    needed = first + source_count
+    while len(obj.data.materials) < needed:
+        obj.data.materials.append(mat)
+    for index in range(first, needed):
+        obj.data.materials[index] = mat
+    return first
+
+
 def get_outline_material(obj: bpy.types.Object) -> bpy.types.Material | None:
     """オブジェクトのアウトラインマテリアルを取得."""
     for slot in obj.material_slots:
@@ -226,17 +258,7 @@ def apply_outline(
 
     mat = get_or_create_material(obj, color)
 
-    # マテリアルスロット — 既にあれば再利用
-    num_mats_before = len(obj.data.materials)
-    existing_slot = None
-    for i, slot in enumerate(obj.material_slots):
-        if slot.material and _is_outline_material(slot.material):
-            existing_slot = i
-            break
-    if existing_slot is None:
-        obj.data.materials.append(mat)
-
-    material_offset = num_mats_before if existing_slot is None else existing_slot
+    material_offset = _ensure_outline_material_slots(obj, mat)
 
     # Solidify モディファイア
     mod = obj.modifiers.get(MODIFIER_NAME)
@@ -267,6 +289,9 @@ def apply_outline(
         obj[PROP_BASE_THICKNESS] = abs(thickness)
         obj[PROP_REF_DISTANCE] = max(dist, 0.001)
 
+    if scene is not None:
+        ensure_aov_passes(scene)
+
     return True
 
 
@@ -281,6 +306,19 @@ def ensure_aov_pass(view_layer) -> bool:
     return True
 
 
+def ensure_aov_passes(scene=None) -> int:
+    """指定シーン、または全シーンの BML_Line AOV を保証する."""
+    scenes = [scene] if scene is not None else list(bpy.data.scenes)
+    count = 0
+    for scn in scenes:
+        if scn is None:
+            continue
+        for view_layer in scn.view_layers:
+            if ensure_aov_pass(view_layer):
+                count += 1
+    return count
+
+
 def remove_outline(obj: bpy.types.Object) -> bool:
     """オブジェクトからアウトラインを削除. 削除した場合 True."""
     if obj.type != "MESH":
@@ -293,6 +331,8 @@ def remove_outline(obj: bpy.types.Object) -> bool:
         obj.modifiers.remove(mod)
         removed = True
 
+    set_line_only(obj, False)
+
     # マテリアルスロットを除去（オブジェクト専用マテリアル）
     for i in range(len(obj.data.materials) - 1, -1, -1):
         mat = obj.data.materials[i]
@@ -301,7 +341,6 @@ def remove_outline(obj: bpy.types.Object) -> bool:
             if mat.users == 0:
                 bpy.data.materials.remove(mat)
             removed = True
-            break
 
     # 頂点グループ
     vg = obj.vertex_groups.get(VG_LINE_WIDTH)
@@ -343,3 +382,80 @@ def sync_vertex_colors_to_weights(obj: bpy.types.Object) -> int:
         vg.add([i], max(0.0, min(1.0, luminance)), "REPLACE")
         count += 1
     return count
+
+
+def _get_line_only_material() -> bpy.types.Material:
+    mat = bpy.data.materials.get(LINE_ONLY_MATERIAL_NAME)
+    if mat is None:
+        mat = bpy.data.materials.new(LINE_ONLY_MATERIAL_NAME)
+    mat.use_nodes = True
+    mat.diffuse_color = (1.0, 1.0, 1.0, 0.0)
+    try:
+        mat.blend_method = "BLEND"
+    except (AttributeError, TypeError):
+        pass
+    try:
+        mat.surface_render_method = "BLENDED"
+    except (AttributeError, TypeError):
+        pass
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+    output = nodes.new("ShaderNodeOutputMaterial")
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    links.new(transparent.outputs["BSDF"], output.inputs["Surface"])
+    return mat
+
+
+def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
+    """元の面素材を一時的に透明化し、ラインだけを見える状態にする."""
+    if obj.type != "MESH":
+        return False
+    mesh = obj.data
+    if enabled:
+        if bool(obj.get(PROP_LINE_ONLY, False)):
+            return True
+        stored = []
+        hidden = _get_line_only_material()
+        for index, mat in enumerate(mesh.materials):
+            if mat is not None and _is_outline_material(mat):
+                continue
+            stored.append({"index": index, "material": mat.name if mat else ""})
+            mesh.materials[index] = hidden
+        obj[PROP_LINE_ONLY_MATERIALS] = json.dumps(stored, ensure_ascii=False)
+        obj[PROP_LINE_ONLY] = True
+        return bool(stored)
+
+    if not bool(obj.get(PROP_LINE_ONLY, False)):
+        return True
+    raw = obj.get(PROP_LINE_ONLY_MATERIALS, "[]")
+    try:
+        stored = json.loads(raw)
+    except (TypeError, ValueError):
+        stored = []
+    for item in stored:
+        index = int(item.get("index", -1))
+        mat_name = item.get("material") or ""
+        if 0 <= index < len(mesh.materials):
+            mesh.materials[index] = bpy.data.materials.get(mat_name)
+    if PROP_LINE_ONLY_MATERIALS in obj:
+        del obj[PROP_LINE_ONLY_MATERIALS]
+    if PROP_LINE_ONLY in obj:
+        del obj[PROP_LINE_ONLY]
+    return True
+
+
+@bpy.app.handlers.persistent
+def _on_load_post(_dummy):
+    ensure_aov_passes()
+
+
+def register() -> None:
+    ensure_aov_passes()
+    if _on_load_post not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load_post)
+
+
+def unregister() -> None:
+    if _on_load_post in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load_post)

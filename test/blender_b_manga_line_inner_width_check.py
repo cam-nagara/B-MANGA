@@ -108,8 +108,8 @@ def main() -> None:
     mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
     radii = _sample_line_radii(mesh)
 
-    assert abs(radii[-2.0] - 0.04) < 0.005, radii
-    assert abs(radii[2.0] - 0.04) < 0.005, radii
+    assert abs(radii[-2.0] - 0.02) < 0.005, radii
+    assert abs(radii[2.0] - 0.02) < 0.005, radii
     assert radii[0.0] < 0.001, radii
     print(f"[PASS] inner line midpoint radius reaches zero: {radii}")
 

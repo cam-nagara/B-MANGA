@@ -10,11 +10,12 @@ import math
 
 import bpy
 
-from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MODIFIER_NAME, VG_LINE_WIDTH
+from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MATERIAL_NAME, MODIFIER_NAME, VG_LINE_WIDTH
 from .core import GENERATED_LINE_ATTR
 
 
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
+_RADIUS_HALF_NODE_LABEL = "BML_InnerLineRadiusHalf"
 
 
 # ------------------------------------------------------------------
@@ -51,6 +52,11 @@ def _create_node_tree() -> bpy.types.NodeTree:
     tree.interface.new_socket(
         name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial"
     )
+    line_material_sock = tree.interface.new_socket(
+        name="ライン素材番号", in_out="INPUT", socket_type="NodeSocketInt"
+    )
+    line_material_sock.default_value = 999
+    line_material_sock.min_value = 0
 
     nodes = tree.nodes
     links = tree.links
@@ -66,17 +72,12 @@ def _create_node_tree() -> bpy.types.NodeTree:
     mat_idx = nodes.new("GeometryNodeInputMaterialIndex")
     mat_idx.location = (-760, -420)
 
-    is_original = nodes.new("FunctionNodeCompare")
-    is_original.location = (-600, -420)
-    is_original.data_type = "INT"
-    is_original.operation = "EQUAL"
-    is_original.inputs[3].default_value = 0
-    links.new(mat_idx.outputs[0], is_original.inputs[2])
-
-    not_original = nodes.new("FunctionNodeBooleanMath")
-    not_original.location = (-440, -420)
-    not_original.operation = "NOT"
-    links.new(is_original.outputs[0], not_original.inputs[0])
+    is_line_material = nodes.new("FunctionNodeCompare")
+    is_line_material.location = (-600, -420)
+    is_line_material.data_type = "INT"
+    is_line_material.operation = "GREATER_EQUAL"
+    links.new(mat_idx.outputs[0], is_line_material.inputs[2])
+    links.new(gin.outputs[4], is_line_material.inputs[3])
 
     generated_attr = nodes.new("GeometryNodeInputNamedAttribute")
     generated_attr.location = (-440, -600)
@@ -92,7 +93,7 @@ def _create_node_tree() -> bpy.types.NodeTree:
     delete_selection = nodes.new("FunctionNodeBooleanMath")
     delete_selection.location = (-260, -500)
     delete_selection.operation = "OR"
-    links.new(not_original.outputs[0], delete_selection.inputs[0])
+    links.new(is_line_material.outputs[0], delete_selection.inputs[0])
     links.new(generated_marked.outputs[0], delete_selection.inputs[1])
 
     del_shell = nodes.new("GeometryNodeDeleteGeometry")
@@ -151,7 +152,13 @@ def _create_node_tree() -> bpy.types.NodeTree:
     for inp in circle.inputs:
         if inp.name == "Resolution" and inp.enabled:
             inp.default_value = 4
-    links.new(gin.outputs[2], circle.inputs["Radius"])  # 線の太さ → Radius
+    radius_half = nodes.new("ShaderNodeMath")
+    radius_half.label = _RADIUS_HALF_NODE_LABEL
+    radius_half.location = (-400, -360)
+    radius_half.operation = "MULTIPLY"
+    radius_half.inputs[1].default_value = 0.5
+    links.new(gin.outputs[2], radius_half.inputs[0])
+    links.new(radius_half.outputs[0], circle.inputs["Radius"])  # 線の太さ → 半径
 
     # Curve to Mesh: カーブをチューブメッシュに変換
     c2m = nodes.new("GeometryNodeCurveToMesh")
@@ -195,6 +202,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if _find_socket_id(tree, "マテリアル") is None:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if _find_socket_id(tree, "ライン素材番号") is None:
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if not any(n.bl_idname == "GeometryNodeDeleteGeometry" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -202,6 +212,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
+        if not any(getattr(n, "label", "") == _RADIUS_HALF_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
         if any(n.bl_idname == "GeometryNodeSetCurveRadius" for n in tree.nodes):
@@ -222,12 +235,18 @@ def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
 def _ensure_material_slot(
     obj: bpy.types.Object,
     material: bpy.types.Material | None,
-) -> None:
+) -> int:
     """生成した線素材を後続処理でも素材番号として扱えるようにする."""
     if material is None:
-        return
-    if not any(slot_mat == material for slot_mat in obj.data.materials):
-        obj.data.materials.append(material)
+        for index, slot_mat in enumerate(obj.data.materials):
+            if slot_mat and slot_mat.name.startswith(MATERIAL_NAME):
+                return index
+        return 999
+    for index, slot_mat in enumerate(obj.data.materials):
+        if slot_mat == material or (slot_mat and slot_mat.name.startswith(MATERIAL_NAME)):
+            return index
+    obj.data.materials.append(material)
+    return len(obj.data.materials) - 1
 
 
 # ------------------------------------------------------------------
@@ -261,11 +280,17 @@ def apply_inner_lines(
         mod[sid_thickness] = thickness
 
     # マテリアル
+    line_material_index = 999
     if material is not None:
-        _ensure_material_slot(obj, material)
+        line_material_index = _ensure_material_slot(obj, material)
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
             mod[sid_mat] = material
+    else:
+        line_material_index = _ensure_material_slot(obj, None)
+    sid_line_material = _find_socket_id(tree, "ライン素材番号")
+    if sid_line_material is not None:
+        mod[sid_line_material] = line_material_index
 
     # 頂点グループ: 元メッシュ頂点 = weight 1.0
     vg = obj.vertex_groups.get(VG_LINE_WIDTH)

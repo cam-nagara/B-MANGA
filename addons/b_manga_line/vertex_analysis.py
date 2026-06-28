@@ -309,7 +309,7 @@ def _calc_midpoint_factor(
 
     if not graph_anchors:
         bm.free()
-        return {i: 0.0 for i in range(n)}
+        return {i: (0.0 if sharp_neighbors[i] else 1.0) for i in range(n)}
 
     result = {i: 0.0 for i in range(n)}
     used_midpoint_bins: set[int] = set()

@@ -26,6 +26,14 @@ from .core import (
 _updating = False
 
 
+def get_line_camera(scene) -> bpy.types.Object | None:
+    """B-MANGA Line が基準にするカメラを返す."""
+    camera = getattr(scene, "bmanga_line_camera", None)
+    if camera is not None and getattr(camera, "type", None) == "CAMERA":
+        return camera
+    return scene.camera
+
+
 # ------------------------------------------------------------------
 # カメラ画角ユーティリティ
 # ------------------------------------------------------------------
@@ -114,6 +122,8 @@ def _get_fov_factor(cam_data, scene) -> float:
 
 def _update_camera_compensation(scene, camera):
     """カメラ距離 + FOV に応じて Solidify thickness を補正."""
+    from . import inner_lines, intersection_lines
+
     cam_loc = camera.matrix_world.translation
     current_fov = _get_fov_factor(camera.data, scene)
 
@@ -127,10 +137,10 @@ def _update_camera_compensation(scene, camera):
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
             continue
-        base_t = obj.get(PROP_BASE_THICKNESS)
-        ref_d = obj.get(PROP_REF_DISTANCE)
-        if base_t is None or ref_d is None or ref_d <= 0:
-            continue
+        base_t = settings.outline_thickness
+        ref_d = obj.get(PROP_REF_DISTANCE, 1.0)
+        if ref_d <= 0:
+            ref_d = 1.0
         dist = (cam_loc - obj.matrix_world.translation).length
         factor = dist / ref_d
         ref_fov = obj.get(PROP_REF_FOV_TAN)
@@ -138,6 +148,15 @@ def _update_camera_compensation(scene, camera):
             factor *= current_fov / ref_fov
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
         mod.thickness = abs(adjusted)
+
+        inner_adjusted = settings.inner_line_thickness * (
+            1.0 + (factor - 1.0) * influence
+        )
+        intersection_adjusted = settings.intersection_thickness * (
+            1.0 + (factor - 1.0) * influence
+        )
+        inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
+        intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd):
@@ -212,7 +231,7 @@ def _on_frame_change(scene, depsgraph=None):
         return
     _updating = True
     try:
-        camera = scene.camera
+        camera = get_line_camera(scene)
         if camera is None:
             return
 
@@ -237,7 +256,7 @@ def refresh(context):
     _updating = True
     try:
         scene = context.scene
-        camera = scene.camera
+        camera = get_line_camera(scene)
         if camera is None:
             return
         _update_camera_compensation(scene, camera)
@@ -250,7 +269,7 @@ def refresh(context):
 
 def store_reference(obj, scene):
     """現在のカメラ距離・厚み・FOV を基準値として保存."""
-    camera = scene.camera
+    camera = get_line_camera(scene)
     if camera is None:
         return False
     mod = obj.modifiers.get(MODIFIER_NAME)
@@ -259,6 +278,21 @@ def store_reference(obj, scene):
     dist = (camera.matrix_world.translation - obj.matrix_world.translation).length
     obj[PROP_REF_DISTANCE] = max(dist, 0.001)
     settings = getattr(obj, "bmanga_line_settings", None)
+    obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
+    obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
+    return True
+
+
+def store_unit_reference(obj, scene):
+    """現在のカメラ画角で、1m距離を補正基準として保存."""
+    camera = get_line_camera(scene)
+    if camera is None:
+        return False
+    mod = obj.modifiers.get(MODIFIER_NAME)
+    if mod is None:
+        return False
+    settings = getattr(obj, "bmanga_line_settings", None)
+    obj[PROP_REF_DISTANCE] = 1.0
     obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
     return True

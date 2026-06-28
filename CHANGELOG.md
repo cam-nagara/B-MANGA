@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line の基準カメラとライン表示を修正 (v0.3.9)
+
+### 症状
+
+- 遠景のリンク素材や大きな街アセットでは、カメラ補正を有効にしてもラインが細すぎて見える場合があった。
+- どのカメラを基準にライン幅や表示判定を行うか選べなかった。
+- 内部線を有効にすると、複数素材を持つ街アセットでテクスチャ面がライン生成に巻き込まれ、面が隠れたように見える場合があった。
+- AOV は手動追加が必要で、B-MANGA Line パネルにコンポジット出力欄が残っていた。
+- ラインだけを確認する表示切替がなかった。
+
+### 原因
+
+- カメラ補正は、現在のシーンカメラだけを参照し、ライン適用時の現在距離を基準にしていたため、適用直後の遠景オブジェクトでは太くならなかった。
+- 内部線の生成元判定が素材番号 0 の面だけを元メッシュとして扱い、素材番号 1 以降の通常テクスチャ面を除外していた。
+- 内部線の「太さ」が内部的に半径として扱われ、画面上の指定値より太くなりやすかった。
+- AOV 追加が手動操作に残っていた。
+
+### 修正
+
+- B-MANGA Line のカメラ設定に「基準カメラ」を追加し、未指定時だけシーンカメラを使うようにした。
+- カメラ補正を有効にしたラインは、基準カメラとの距離と画角からライン幅・内部線・交差線を更新するようにした。
+- 内部線はライン用素材だけを生成元から除外し、複数素材のテクスチャ面を維持するようにした。
+- 内部線の太さを画面上の「線の全幅」として扱うようにした。
+- AOV をアドオン登録・ファイル読込・ライン適用時に自動で追加し、コンポジット出力欄を削除した。
+- 「ラインのみを表示」「通常表示に戻す」を追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\outline_setup.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py addons\b_manga_line\vertex_analysis.py addons\b_manga_line\__init__.py test\blender_b_manga_line_camera_aov_line_only_check.py test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — コマファイルのページ画像表示と魚眼オーバーレイを修正 (v0.6.414)
 
 ### 症状

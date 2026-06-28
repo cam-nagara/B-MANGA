@@ -29,6 +29,8 @@ INTERSECTION_TREE_SDF = "BML_Intersection_SDF"
 AO_ATTR_NAME = "BML_AO"
 AOV_NAME = "BML_Line"
 PROP_LINES_HIDDEN = "bml_lines_hidden"
+PROP_LINE_ONLY = "bml_line_only"
+PROP_LINE_ONLY_MATERIALS = "bml_line_only_materials"
 PROP_BASE_THICKNESS = "bml_base_thickness"
 PROP_REF_DISTANCE = "bml_ref_distance"
 PROP_REF_FOV_TAN = "bml_ref_fov_tan"
@@ -245,13 +247,18 @@ def _on_camera_comp_changed(self, context):
     owner = self.id_data
     if self.use_camera_compensation:
         if owner.type == "MESH":
-            camera_comp.store_reference(owner, context.scene)
+            camera_comp.store_unit_reference(owner, context.scene)
+            camera_comp.refresh(context)
     else:
         if owner.type == "MESH":
             mod = owner.modifiers.get(MODIFIER_NAME)
-            base_t = owner.get(PROP_BASE_THICKNESS)
-            if mod is not None and base_t is not None:
-                mod.thickness = abs(base_t)
+            if mod is not None:
+                mod.thickness = abs(self.outline_thickness)
+            from . import inner_lines, intersection_lines
+            inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+            intersection_lines.update_parameters(
+                owner, thickness=self.intersection_thickness,
+            )
     _propagate(self, context, "use_camera_compensation")
 
 
@@ -646,6 +653,10 @@ def set_line_visibility(obj: bpy.types.Object, visible: bool) -> bool:
     return True
 
 
+def _camera_poll(self, obj):
+    return obj is None or getattr(obj, "type", None) == "CAMERA"
+
+
 # ------------------------------------------------------------------
 # 登録
 # ------------------------------------------------------------------
@@ -654,9 +665,17 @@ def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Object.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
+    bpy.types.Scene.bmanga_line_camera = PointerProperty(
+        type=bpy.types.Object,
+        name="基準カメラ",
+        description="ライン幅補正と表示判定に使うカメラ。未指定ならシーンのカメラを使います",
+        poll=_camera_poll,
+    )
 
 
 def unregister() -> None:
+    if hasattr(bpy.types.Scene, "bmanga_line_camera"):
+        del bpy.types.Scene.bmanga_line_camera
     if hasattr(bpy.types.Object, "bmanga_line_settings"):
         del bpy.types.Object.bmanga_line_settings
     for cls in reversed(_CLASSES):

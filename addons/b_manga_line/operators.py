@@ -21,6 +21,9 @@ class BMANGA_LINE_OT_apply(bpy.types.Operator):
 
     def execute(self, context):
         from .presets import apply_line_settings
+        from . import outline_setup
+
+        outline_setup.ensure_aov_passes(context.scene)
 
         count = 0
         for obj in context.selected_objects:
@@ -90,6 +93,39 @@ class BMANGA_LINE_OT_set_visibility(bpy.types.Operator):
                 count += 1
         action = "表示" if self.visible else "非表示"
         self.report({"INFO"}, f"{count} オブジェクトのラインを{action}にしました")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
+    """選択オブジェクトをラインのみ表示に切り替え"""
+
+    bl_idname = "bmanga_line.set_line_only"
+    bl_label = "ラインのみ表示を切り替え"
+    bl_options = {"REGISTER", "UNDO"}
+
+    line_only: BoolProperty(default=True)  # type: ignore[valid-type]
+
+    @classmethod
+    def poll(cls, context):
+        return any(has_line(obj) for obj in context.selected_objects)
+
+    def execute(self, context):
+        from . import outline_setup
+
+        count = 0
+        failed = 0
+        for obj in context.selected_objects:
+            if not has_line(obj):
+                continue
+            try:
+                if outline_setup.set_line_only(obj, self.line_only):
+                    count += 1
+            except Exception:
+                failed += 1
+        if failed:
+            self.report({"WARNING"}, f"{failed} オブジェクトは素材を変更できませんでした")
+        action = "ラインのみ表示" if self.line_only else "通常表示"
+        self.report({"INFO"}, f"{count} オブジェクトを{action}にしました")
         return {"FINISHED"}
 
 
@@ -167,7 +203,9 @@ class BMANGA_LINE_OT_refresh_camera(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.scene.camera is not None
+        from . import camera_comp
+
+        return camera_comp.get_line_camera(context.scene) is not None
 
     def execute(self, context):
         from . import camera_comp
@@ -186,8 +224,10 @@ class BMANGA_LINE_OT_reset_camera_ref(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
+        from . import camera_comp
+
         return (
-            context.scene.camera is not None
+            camera_comp.get_line_camera(context.scene) is not None
             and any(has_outline(obj) for obj in context.selected_objects)
         )
 
@@ -215,7 +255,7 @@ class BMANGA_LINE_OT_add_aov(bpy.types.Operator):
     def execute(self, context):
         from . import outline_setup
 
-        added = outline_setup.ensure_aov_pass(context.view_layer)
+        added = outline_setup.ensure_aov_passes(context.scene)
         if added:
             self.report({"INFO"}, f"AOV '{AOV_NAME}' を追加しました")
         else:
@@ -227,6 +267,7 @@ _CLASSES = (
     BMANGA_LINE_OT_apply,
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,
+    BMANGA_LINE_OT_set_line_only,
     BMANGA_LINE_OT_sync_weights,
     BMANGA_LINE_OT_bake_ao,
     BMANGA_LINE_OT_refresh_camera,
