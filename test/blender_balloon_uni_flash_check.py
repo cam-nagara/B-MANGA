@@ -81,24 +81,26 @@ def _configure_shape_params(entry) -> None:
 
 
 class _RecordingLayout:
-    def __init__(self, props: list[str] | None = None):
+    def __init__(self, props: list[str] | None = None, grid_columns: list[int] | None = None):
         self.props = [] if props is None else props
+        self.grid_columns = [] if grid_columns is None else grid_columns
         self.enabled = True
 
     def box(self):
-        return _RecordingLayout(self.props)
+        return _RecordingLayout(self.props, self.grid_columns)
 
     def row(self, align: bool = False):
-        return _RecordingLayout(self.props)
+        return _RecordingLayout(self.props, self.grid_columns)
 
     def column(self, align: bool = False):
-        return _RecordingLayout(self.props)
+        return _RecordingLayout(self.props, self.grid_columns)
 
     def split(self, factor: float = 0.5, align: bool = False):
-        return _RecordingLayout(self.props)
+        return _RecordingLayout(self.props, self.grid_columns)
 
-    def grid_flow(self, **_kwargs):
-        return _RecordingLayout(self.props)
+    def grid_flow(self, **kwargs):
+        self.grid_columns.append(int(kwargs.get("columns", 0) or 0))
+        return _RecordingLayout(self.props, self.grid_columns)
 
     def separator(self, **_kwargs):
         return None
@@ -178,6 +180,15 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     assert any(abs(x - 1.0) < 1.0e-4 and abs(y - 0.20) < 1.0e-4 for x, y in points), (
         "フキダシの抜き(%)が線幅グラフの右端へ反映されていません"
     )
+
+
+def _assert_balloon_detail_columns_stay_wide(context, page, entry, layer_detail_op) -> None:
+    assert layer_detail_op._detail_dialog_width_for_kind(context, "balloon", entry.id) == 1080
+    for line_style in ("solid", "uni_flash", "white_outline"):
+        entry.line_style = line_style
+        layout = _RecordingLayout()
+        layer_detail_op._draw_balloon_detail(layout, context, entry, page)
+        assert 4 in layout.grid_columns, f"線種 {line_style} でフキダシ詳細設定が4列幅になっていません"
 
 
 def main() -> None:
@@ -266,6 +277,8 @@ def main() -> None:
                 layer_detail_op,
                 effect_inout_curve,
             )
+            if graph_index == 0:
+                _assert_balloon_detail_columns_stay_wide(context, page, graph_entry, layer_detail_op)
             page.balloons.remove(len(page.balloons) - 1)
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):

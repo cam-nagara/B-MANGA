@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 詳細設定ダイアログの列幅を安定化 (v0.6.411)
+
+### 症状
+
+- フキダシの詳細設定ダイアログで線種を通常線からウニフラや白抜き線へ変えると、表示列数が増え、開いた時のダイアログ幅では窮屈になる場合があった。
+
+### 原因
+
+- Blender の標準プロパティダイアログは、開いた後にダイアログ幅を変更できない。
+- フキダシ詳細設定は、開いた時点の線種に応じて2列または4列を切り替えていたため、ダイアログを開いた後の線種変更で必要幅が変わっていた。
+
+### 修正
+
+- フキダシ詳細設定ダイアログを、線種に関係なく4列分の幅で開くようにした。
+- 通常線でも4列レイアウトを使い、線種をウニフラや白抜き線へ切り替えても幅不足にならないようにした。
+- 効果線詳細設定の幅判定も共通化し、5列幅で開くことを実機テストで確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\layer_detail_op.py test\blender_balloon_uni_flash_check.py test\blender_effect_line_detail_graph_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_detail_graph_check.py`
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — 効果線詳細設定と線幅グラフ連動を修正 (v0.6.410)
 
 ### 症状

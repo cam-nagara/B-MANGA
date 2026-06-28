@@ -21,6 +21,9 @@ from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
 
 _logger = log.get_logger(__name__)
+_DETAIL_DIALOG_DEFAULT_WIDTH = 260
+_DETAIL_DIALOG_BALLOON_WIDTH = 1080
+_DETAIL_DIALOG_EFFECT_WIDTH = 1320
 
 
 def _has_safe_gp_layer_prop(layer, prop_name: str) -> bool:
@@ -284,6 +287,17 @@ def _equal_columns(layout, count: int):
     return tuple(grid.column(align=True) for _ in range(column_count))
 
 
+def _detail_dialog_width_for_kind(_context, kind: str, _bmanga_id: str) -> int:
+    if kind == "balloon":
+        # Blender の標準プロパティダイアログは、開いた後に幅を変更できない。
+        # フキダシは線種変更で通常線からウニフラ/白抜き線へ列数が増えるため、
+        # 最初から最大列数に合う幅で開く。
+        return _DETAIL_DIALOG_BALLOON_WIDTH
+    if kind in {"effect", "effect_legacy"}:
+        return _DETAIL_DIALOG_EFFECT_WIDTH
+    return _DETAIL_DIALOG_DEFAULT_WIDTH
+
+
 def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
     if entry is None or not hasattr(context, "scene"):
         old_entry = context
@@ -297,16 +311,13 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
 
     preset_management_ui.draw_balloon_preset_management(layout, context)
 
-    # 縦長になりすぎるため複数列に分ける
-    # (左: 配置・形状・しっぽ / 右: 線・塗り・表示)。
-    # ウニフラは線種の設定群が特に長いため、さらに 2 列足して 4 列にする
+    # 縦長になりすぎるため複数列に分ける。
+    # 標準ダイアログは表示中に幅を変えられないため、線種切替で列数が増えても
+    # 幅不足にならないよう常に 4 列分の幅で描画する。
     dialog_line_style = balloon_shapes.normalize_line_style(str(getattr(entry, "line_style", "") or ""))
-    effect_cols = None
-    if dialog_line_style in {"uni_flash", "white_outline"}:
-        left_col, right_col, effect_col3, effect_col4 = _equal_columns(layout, 4)
-        effect_cols = (effect_col3, effect_col4)
-    else:
-        left_col, right_col = _equal_columns(layout, 2)
+    left_col, right_col, effect_col3, effect_col4 = _equal_columns(layout, 4)
+    effect_cols = (effect_col3, effect_col4)
+    tail_col = left_col if dialog_line_style in {"uni_flash", "white_outline"} else effect_col3
 
     # 配置 (mm) を Outliner メタ の次 (最上段) に配置
     box = left_col.box()
@@ -507,7 +518,7 @@ def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
         sub.prop(entry, "inner_white_margin_color", text="")
         box.prop(entry, "opacity", slider=True)
 
-    _draw_balloon_tails(left_col, entry, page)
+    _draw_balloon_tails(tail_col, entry, page)
 
 
 def _draw_text_detail(layout, context, entry=None) -> None:
@@ -783,23 +794,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         from ..utils import detail_popup
 
         detail_popup.position_dialog_cursor(context, event, key="layer_detail")
-        # 項目が多いレイヤー種別は複数列レイアウト + 広い幅で開く
-        width = 260
-        if self.kind == "balloon":
-            width = 560
-            try:
-                scene = getattr(context, "scene", None)
-                _page, entry = _find_balloon_entry(scene, self.bmanga_id)
-                if entry is not None and balloon_shapes.normalize_line_style(
-                    str(getattr(entry, "line_style", "") or "")
-                ) in {"uni_flash", "white_outline"}:
-                    # ウニフラ/白抜き線は線種の設定群が長いため 4 列で開く
-                    width = 1080
-            except Exception:  # noqa: BLE001
-                pass
-        elif self.kind in {"effect", "effect_legacy"}:
-            # 効果線は設定群を 5 列に分配して開く
-            width = 1320
+        width = _detail_dialog_width_for_kind(context, self.kind, self.bmanga_id)
         return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):

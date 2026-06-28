@@ -308,6 +308,7 @@ def main() -> None:
         obj, layer = _create_test_effect(context, scene, page, effect_line_op, page_stack_key)
         assert obj is not None and layer is not None
         bmanga_id = object_naming.get_bmanga_id(obj)
+        assert layer_detail_op._detail_dialog_width_for_kind(context, "effect", bmanga_id) == 1320
 
         _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj)
         node = _assert_graph_numeric_to_curve(
