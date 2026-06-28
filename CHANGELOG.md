@@ -3,6 +3,39 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 効果線詳細設定と線幅グラフ連動を修正 (v0.6.410)
+
+### 症状
+
+- 効果線の詳細設定ダイアログが縦に長くなり、画面内に収まりにくかった。
+- 効果線の線幅グラフを動かしても、「入り (%)」「抜き (%)」「入り始点 (%)」「抜き始点 (%)」へ反映されず、効果線レイヤーにも保存されない場合があった。
+
+### 原因
+
+- 効果線の詳細設定は開いている間も保存済み設定を再読み込みしており、線幅グラフの編集中の値が再描画で戻ることがあった。
+- 線幅グラフは直接編集されるUI部品のため、数値設定と同じ更新コールバックだけでは効果線レイヤーへ書き戻されなかった。
+- 白抜き線の詳細項目とパス線設定が同じ列に重なり、列数に対して縦方向の分散が不足していた。
+
+### 修正
+
+- 効果線の詳細設定ダイアログを5列構成にし、「白抜き線」「白線」「黒線」「パス線」を別列へ分割した。
+- 効果線詳細設定の保存済み設定読み込みを開いた直後だけにし、編集中の線幅グラフが再描画で戻らないようにした。
+- 線幅グラフの変更を「入り (%)」「抜き (%)」「入り始点 (%)」「抜き始点 (%)」へ同期し、OK時に効果線レイヤーへ保存・再生成するようにした。
+- フキダシ側の線幅グラフについても、数値からグラフ、グラフから数値の双方向連動を実機テストで確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\layer_detail_op.py panels\effect_line_panel.py panels\line_effect_settings_ui.py test\blender_effect_line_detail_graph_check.py test\blender_balloon_uni_flash_check.py`
+- `python test\test_line_effect_schema.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_detail_graph_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --factory-startup --background --python test\blender_border_preset_coma_tool_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — パターンカーブの編集ハンドル表示を修正 (v0.6.409)
 
 ### 症状

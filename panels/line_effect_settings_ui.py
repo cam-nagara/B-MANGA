@@ -174,9 +174,16 @@ def _draw_effect_black_settings(layout: Any, params: Any, fields: FieldMap) -> N
     _prop(row, params, fields, "black_far")
 
 
-def draw_effect_white_outline_settings(layout: Any, params: Any, *, show_opacity: bool = True) -> None:
+def draw_effect_white_outline_settings(
+    layout: Any,
+    params: Any,
+    *,
+    show_opacity: bool = True,
+    columns: Sequence[Any] | None = None,
+) -> None:
     fields = EFFECT_WHITE_OUTLINE_UI_FIELDS
-    box = layout.box()
+    cols = _columns(layout, columns)
+    box = _column(cols, 0).box()
     box.label(text="白抜き線")
     if show_opacity:
         box.prop(params, "opacity", slider=True)
@@ -185,8 +192,8 @@ def draw_effect_white_outline_settings(layout: Any, params: Any, *, show_opacity
     _prop(row, params, fields, "angle")
     _prop(box, params, fields, "width")
     _draw_outline_jitter_settings(box, params, fields)
-    _draw_effect_white_settings(layout, params, fields)
-    _draw_effect_black_settings(layout, params, fields)
+    _draw_effect_white_settings(_column(cols, 1), params, fields)
+    _draw_effect_black_settings(_column(cols, 2), params, fields)
 
 
 def _draw_balloon_white_settings(layout: Any, entry: Any, fields: FieldMap) -> None:

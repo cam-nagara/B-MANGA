@@ -602,7 +602,74 @@ def _draw_gp_detail(layout, obj) -> None:
                 row.prop(active_layer, "lock", text="ロック")
 
 
-def _draw_effect_detail(layout, context, obj) -> None:
+def _active_gp_layer(obj):
+    gp_data = getattr(obj, "data", None)
+    layers = getattr(gp_data, "layers", None) if gp_data is not None else None
+    return getattr(layers, "active", None) if layers is not None else None
+
+
+def _mark_effect_detail_target(context, obj, active_layer) -> None:
+    scene = getattr(context, "scene", None)
+    if scene is None or obj is None or active_layer is None:
+        return
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        scene.bmanga_active_layer_kind = "effect"
+        scene.bmanga_active_effect_layer_name = layer_stack_utils._node_stack_key(active_layer)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        obj.data.layers.active = active_layer
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _effect_detail_target_key(obj, active_layer) -> str:
+    if obj is None or active_layer is None:
+        return ""
+    try:
+        from ..utils import layer_stack as layer_stack_utils
+
+        return f"{on.get_bmanga_id(obj)}:{layer_stack_utils._node_stack_key(active_layer)}"
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _load_effect_detail_params_from_layer(context, obj, active_layer) -> bool:
+    if obj is None or active_layer is None:
+        return False
+    try:
+        from . import effect_line_op as _elo
+
+        _elo._load_layer_params_to_scene(context, obj, active_layer)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect detail: load params failed")
+    return False
+
+
+def _apply_effect_detail_params_to_layer(context, obj, active_layer) -> bool:
+    scene = getattr(context, "scene", None)
+    params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
+    if obj is None or active_layer is None or params is None:
+        return False
+    try:
+        from . import effect_line_op as _elo
+        from ..utils import layer_stack as layer_stack_utils
+
+        bounds = _elo.effect_layer_bounds(obj, active_layer)
+        if bounds is None:
+            return False
+        _elo._write_effect_strokes(context, obj, active_layer, bounds, params_override=params)
+        layer_stack_utils.tag_view3d_redraw(context)
+        return True
+    except Exception:  # noqa: BLE001
+        _logger.exception("effect detail: apply params failed")
+    return False
+
+
+def _draw_effect_detail(layout, context, obj, *, load_from_layer: bool = True) -> None:
     """効果線 Object の詳細 (params 全表示)."""
     box = layout.box()
     box.label(text="基本")
@@ -612,9 +679,7 @@ def _draw_effect_detail(layout, context, obj) -> None:
         box.prop(obj, '["bmanga_effect_target"]', text="参照対象")
 
     # アクティブ GP レイヤーを解決して params をシーン側 PropertyGroup に同期
-    gp_data = getattr(obj, "data", None)
-    layers = getattr(gp_data, "layers", None) if gp_data is not None else None
-    active_layer = getattr(layers, "active", None) if layers is not None else None
+    active_layer = _active_gp_layer(obj)
     scene = getattr(context, "scene", None)
     params = getattr(scene, "bmanga_effect_line_params", None) if scene is not None else None
 
@@ -625,21 +690,21 @@ def _draw_effect_detail(layout, context, obj) -> None:
         layout.label(text="(GP レイヤー未選択)", icon="INFO")
         return
 
-    # Object の保存済み params を読み込んで scene 側 PropertyGroup に反映
-    try:
-        from . import effect_line_op as _elo
+    _mark_effect_detail_target(context, obj, active_layer)
 
-        _elo._load_layer_params_to_scene(context, obj, active_layer)
-    except Exception:  # noqa: BLE001
-        _logger.exception("effect detail: load params failed")
+    # 保存済み設定の読み込みは開いた直後だけにする。
+    # 線幅グラフは PropertyGroup ではなく CurveMapping を直接編集するため、
+    # 再描画のたびに読み直すと、OK 前のグラフ編集が保存済み値で戻ってしまう。
+    if load_from_layer:
+        _load_effect_detail_params_from_layer(context, obj, active_layer)
 
     # effect_line_panel の draw_effect_params を再利用。
-    # 縦長になりすぎるため 3 列に分配する
+    # 縦長になりすぎるため、種類/形状・線・入り抜き・色・パス線の 5 列に分配する
     from ..panels import effect_line_panel as _elp
 
     layout.separator()
     _elp.draw_effect_line_preset_management(layout, context)
-    cols = _equal_columns(layout, 4)
+    cols = _equal_columns(layout, 5)
     _elp.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
 
 
@@ -657,12 +722,20 @@ def _draw_object_meta(layout, obj) -> None:
     box.label(text=f"z_index: {obj.get('bmanga_z_index', 0)}")
 
 
-def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> None:
+def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
     try:
         from ..utils import effect_inout_curve
 
         if kind in {"effect", "effect_legacy"}:
             params = getattr(context.scene, "bmanga_effect_line_params", None)
+            if params is not None:
+                from . import effect_line_op as _elo
+
+                _elo._set_scene_params_syncing(context.scene, True)
+                try:
+                    return bool(effect_inout_curve.sync_profile_node_to_params(params))
+                finally:
+                    _elo._set_scene_params_syncing(context.scene, False)
         elif kind == "balloon":
             _page, params = _find_balloon_entry(context.scene, bmanga_id)
             if params is not None and balloon_shapes.normalize_line_style(
@@ -672,9 +745,10 @@ def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> None:
         else:
             params = None
         if params is not None:
-            effect_inout_curve.sync_profile_node_to_params(params)
+            return bool(effect_inout_curve.sync_profile_node_to_params(params))
     except Exception:  # noqa: BLE001
         _logger.exception("detail profile curve sync failed")
+    return False
 
 
 class BMANGA_OT_layer_detail_open(Operator):
@@ -724,8 +798,8 @@ class BMANGA_OT_layer_detail_open(Operator):
             except Exception:  # noqa: BLE001
                 pass
         elif self.kind in {"effect", "effect_legacy"}:
-            # 効果線は設定群を 4 列に分配して開く
-            width = 1080
+            # 効果線は設定群を 5 列に分配して開く
+            width = 1320
         return context.window_manager.invoke_props_dialog(self, width=width)
 
     def draw(self, context):
@@ -755,7 +829,17 @@ class BMANGA_OT_layer_detail_open(Operator):
             _draw_gp_detail(layout, obj)
             return
         elif kind in {"effect", "effect_legacy"}:
-            _draw_effect_detail(layout, context, obj)
+            active_layer = _active_gp_layer(obj)
+            target_key = _effect_detail_target_key(obj, active_layer)
+            loaded_key = str(getattr(self, "_effect_detail_loaded_key", "") or "")
+            _draw_effect_detail(
+                layout,
+                context,
+                obj,
+                load_from_layer=bool(target_key and target_key != loaded_key),
+            )
+            if target_key:
+                self._effect_detail_loaded_key = target_key
             return
         else:
             layout.label(text=f"kind={kind} の詳細表示は未対応", icon="INFO")
@@ -777,6 +861,12 @@ class BMANGA_OT_layer_detail_open(Operator):
             _draw_text_detail(layout, context, entry)
 
     def check(self, context):
+        profile_changed = _sync_detail_profile_curve(context, self.kind, self.bmanga_id)
+        if profile_changed and self.kind in {"effect", "effect_legacy"}:
+            obj = on.find_object_by_bmanga_id(self.bmanga_id, kind=self.kind)
+            active_layer = _active_gp_layer(obj)
+            _mark_effect_detail_target(context, obj, active_layer)
+            _apply_effect_detail_params_to_layer(context, obj, active_layer)
         try:
             for area in context.screen.areas if context.screen else ():
                 if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:
@@ -787,6 +877,11 @@ class BMANGA_OT_layer_detail_open(Operator):
 
     def execute(self, context):
         _sync_detail_profile_curve(context, self.kind, self.bmanga_id)
+        if self.kind in {"effect", "effect_legacy"}:
+            obj = on.find_object_by_bmanga_id(self.bmanga_id, kind=self.kind)
+            active_layer = _active_gp_layer(obj)
+            _mark_effect_detail_target(context, obj, active_layer)
+            _apply_effect_detail_params_to_layer(context, obj, active_layer)
         try:
             for area in context.screen.areas if context.screen else ():
                 if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:

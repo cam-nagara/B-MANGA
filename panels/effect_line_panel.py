@@ -44,11 +44,12 @@ def _draw_shape_settings(layout, params, prefix: str, label: str, *, frame_toggl
         row.prop(params, f"{prefix}_cloud_sub_height_jitter", text="乱れ")
 
 
-def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True) -> None:
+def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True, columns=None) -> None:
     line_effect_settings_ui.draw_effect_white_outline_settings(
         layout,
         params,
         show_opacity=show_opacity,
+        columns=columns,
     )
 
 
@@ -158,7 +159,7 @@ def draw_effect_params(
     line_col = 1 if len(cols) > 1 else 0
     inout_col = 2 if len(cols) > 2 else line_col
     side_col = 3 if len(cols) > 3 else line_col
-    path_col = 3 if len(cols) > 3 else inout_col
+    path_col = 4 if len(cols) > 4 else (3 if len(cols) > 3 else inout_col)
     if show_type:
         box = _col(0).box()
         box.label(text="種類")
@@ -173,10 +174,19 @@ def draw_effect_params(
     if effect_type == "white_outline":
         _draw_shape_settings(_col(0), params, "start", "始点形状", frame_toggle=True)
         _draw_shape_settings(_col(0), params, "end", "終点形状")
-        _draw_white_outline_settings(_col(line_col), params, show_opacity=show_opacity)
+        white_cols = (
+            (_col(line_col), _col(inout_col), _col(side_col))
+            if len(cols) > 2
+            else None
+        )
+        _draw_white_outline_settings(
+            _col(line_col),
+            params,
+            show_opacity=show_opacity,
+            columns=white_cols,
+        )
         if show_path_settings:
-            white_path_col = 2 if len(cols) > 2 else path_col
-            draw_effect_path_settings(_col(white_path_col), params)
+            draw_effect_path_settings(_col(path_col), params)
         if with_generate_button:
             _col(0).operator("bmanga.effect_line_generate", icon="STROKE")
         return

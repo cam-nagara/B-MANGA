@@ -157,6 +157,28 @@ def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, eff
     assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に反映されていません"
     assert abs(float(entry.out_start_percent) - 35.0) < 1.0e-4, "線幅グラフの抜き始点が数値に反映されていません"
 
+    entry.in_percent = 30.0
+    entry.out_percent = 20.0
+    entry.in_start_percent = 40.0
+    entry.out_start_percent = 25.0
+    layout = _RecordingLayout()
+    layer_detail_op._draw_balloon_detail(layout, context, entry, page)
+    node = effect_inout_curve.get_profile_node()
+    assert node is not None, "フキダシ詳細設定の線幅グラフが再作成されていません"
+    points = effect_inout_curve.read_node_points(node)
+    assert any(abs(x - 0.0) < 1.0e-4 and abs(y - 0.30) < 1.0e-4 for x, y in points), (
+        "フキダシの入り(%)が線幅グラフの左端へ反映されていません"
+    )
+    assert any(abs(x - 0.40) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
+        "フキダシの入り始点(%)が線幅グラフへ反映されていません"
+    )
+    assert any(abs(x - 0.75) < 1.0e-4 and abs(y - 1.0) < 1.0e-4 for x, y in points), (
+        "フキダシの抜き始点(%)が線幅グラフへ反映されていません"
+    )
+    assert any(abs(x - 1.0) < 1.0e-4 and abs(y - 0.20) < 1.0e-4 for x, y in points), (
+        "フキダシの抜き(%)が線幅グラフの右端へ反映されていません"
+    )
+
 
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_uni_flash_"))
