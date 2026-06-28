@@ -3,6 +3,42 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — 効果線詳細設定と線幅グラフ連動を再修正 (v0.6.420)
+
+### 症状
+
+- レイヤーリストから開く効果線の詳細設定が縦長で、画面内に収まらない場合があった。
+- 線幅グラフでポイントを追加したり位置を動かしたりしても、効果線へ反映されない場合があった。
+- 入り抜きの数値を変更しても、線幅グラフの表示が最新値へ追従しない場合があった。
+
+### 原因
+
+- 右クリックから開く詳細設定は複数列化されていたが、レイヤーリストから開く詳細設定は従来の狭い縦一列ダイアログのままだった。
+- 線幅グラフは Blender のグラフ部品を使っており、通常の数値プロパティと違って編集直後の更新通知だけでは取りこぼす場合があった。
+- 数値からグラフ、グラフから数値の同期処理が別々に呼ばれており、操作順によって片方向だけが反映される状態が残っていた。
+
+### 修正
+
+- レイヤーリストから開く効果線の詳細設定も、ダイアログ時は5列表示にした。
+- サイドバー内の通常表示は狭い領域用に縦表示のまま残した。
+- 線幅グラフと入り抜き数値を双方向同期する共通処理にまとめた。
+- 線幅グラフ表示中は短周期で同期し、ポイント追加やドラッグ後にも数値と効果線へ反映されるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --background --factory-startup --python test\blender_effect_line_detail_graph_check.py`
+- 確認済み: 右クリックの詳細設定が5列表示になること
+- 確認済み: レイヤーリストから開く効果線詳細設定が5列表示になること
+- 確認済み: サイドバー内の詳細表示は縦表示のまま残ること
+- 確認済み: 入り抜き数値を変えると線幅グラフへ反映されること
+- 確認済み: 線幅グラフのポイント追加・移動が入り抜き数値と効果線データへ反映されること
+- `blender.exe --background --factory-startup --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --background --factory-startup --python test\blender_tool_preset_switching_check.py`
+- `blender.exe --background --factory-startup --python test\blender_balloon_uni_flash_check.py`
+- `python -m py_compile utils\effect_inout_curve.py panels\effect_line_panel.py operators\layer_detail_op.py operators\layer_stack_op.py panels\layer_stack_detail_ui.py panels\gpencil_panel.py test\blender_effect_line_detail_graph_check.py`
+
+---
+
 ## 2026-06-29 — レイヤーリスト順とページ画像更新を修正 (v0.6.419)
 
 ### 症状

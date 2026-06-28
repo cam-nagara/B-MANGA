@@ -26,6 +26,8 @@ from ..utils.layer_hierarchy import (
 
 _INLINE_RENAME_DOUBLE_CLICK_SEC = 0.45
 _LAST_INLINE_RENAME_CLICK = {"index": -1, "uid": "", "time": 0.0}
+_DETAIL_DIALOG_DEFAULT_WIDTH = 360
+_DETAIL_DIALOG_EFFECT_WIDTH = 1320
 
 
 _ADD_KIND_ITEMS = (
@@ -68,6 +70,12 @@ def _active_stack_item(context):
     if 0 <= idx < len(stack):
         return stack[idx]
     return None
+
+
+def _detail_dialog_width_for_item(_context, item) -> int:
+    if item is not None and str(getattr(item, "kind", "") or "") in {"effect", "effect_legacy"}:
+        return _DETAIL_DIALOG_EFFECT_WIDTH
+    return _DETAIL_DIALOG_DEFAULT_WIDTH
 
 
 def _active_stack_uid(context) -> str:
@@ -1557,7 +1565,8 @@ class BMANGA_OT_layer_stack_detail(Operator):
         self._ensure_effect_detail_curve(context, stack[index])
         layer_stack_utils.tag_view3d_redraw(context)
         self._offset_cursor_for_selection_popup(context, event)
-        return context.window_manager.invoke_props_dialog(self, width=360)
+        width = _detail_dialog_width_for_item(context, stack[index])
+        return context.window_manager.invoke_props_dialog(self, width=width)
 
     def execute(self, context):
         self._sync_coma_detail_curve(context)
@@ -1587,7 +1596,7 @@ class BMANGA_OT_layer_stack_detail(Operator):
         try:
             from ..panels import gpencil_panel
 
-            if not gpencil_panel.draw_stack_item_detail(layout, context, item, resolved):
+            if not gpencil_panel.draw_stack_item_detail(layout, context, item, resolved, wide=True):
                 layout.label(text="このレイヤーの詳細を表示できません", icon="ERROR")
         except Exception as exc:  # noqa: BLE001
             layout.label(text="詳細設定を描画できません", icon="ERROR")
@@ -1645,7 +1654,7 @@ class BMANGA_OT_layer_stack_detail(Operator):
             from ..utils import effect_inout_curve
 
             curve_changed = effect_inout_curve.sync_ui_nodes_to_params(params)
-            curve_changed |= effect_inout_curve.sync_profile_node_to_params(params)
+            curve_changed |= effect_inout_curve.sync_profile_node_bidirectional(params)
             if curve_changed:
                 if item.kind in {"effect", "effect_legacy"}:
                     from ..operators import effect_line_op

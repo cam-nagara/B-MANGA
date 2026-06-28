@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
+import time
 
 try:
     import bpy
@@ -19,6 +20,10 @@ IN_SOURCE_PROP = "bmanga_effect_in_curve_source"
 OUT_SOURCE_PROP = "bmanga_effect_out_curve_source"
 PROFILE_SOURCE_PROP = "bmanga_effect_profile_curve_source"
 _EPSILON = 1.0e-6
+_LIVE_PROFILE_PARAMS = None
+_LIVE_PROFILE_RUNNING = False
+_LIVE_PROFILE_LAST_REQUEST = 0.0
+_LIVE_PROFILE_TIMEOUT_SEC = 300.0
 
 
 def parse_points(value: object) -> tuple[tuple[float, float], ...]:
@@ -179,6 +184,29 @@ def get_profile_node():
     return _get_curve_node(nt, PROFILE_NODE_NAME)
 
 
+def sync_profile_node_bidirectional(params) -> bool:
+    """線幅グラフと数値を現在の差分方向に合わせて同期する."""
+    changed = sync_profile_node_to_params(params)
+    ensure_profile_node(params)
+    return changed
+
+
+def request_live_profile_sync(params) -> None:
+    """CurveMapping の操作をプロパティへ反映する短周期同期を開始する."""
+    if bpy is None or params is None:
+        return
+    global _LIVE_PROFILE_PARAMS, _LIVE_PROFILE_RUNNING, _LIVE_PROFILE_LAST_REQUEST
+    _LIVE_PROFILE_PARAMS = params
+    _LIVE_PROFILE_LAST_REQUEST = time.monotonic()
+    if _LIVE_PROFILE_RUNNING:
+        return
+    _LIVE_PROFILE_RUNNING = True
+    try:
+        bpy.app.timers.register(_live_profile_sync_tick, first_interval=0.15)
+    except Exception:  # noqa: BLE001
+        _LIVE_PROFILE_RUNNING = False
+
+
 def sync_ui_nodes_to_params(params) -> bool:
     if bpy is None or params is None:
         return False
@@ -200,6 +228,35 @@ def sync_ui_nodes_to_params(params) -> bool:
             changed = True
         mat[prop_name] = text
     return changed
+
+
+def _live_profile_sync_tick():
+    global _LIVE_PROFILE_PARAMS, _LIVE_PROFILE_RUNNING
+    if bpy is None:
+        _LIVE_PROFILE_RUNNING = False
+        return None
+    if time.monotonic() - _LIVE_PROFILE_LAST_REQUEST > _LIVE_PROFILE_TIMEOUT_SEC:
+        _LIVE_PROFILE_PARAMS = None
+        _LIVE_PROFILE_RUNNING = False
+        return None
+    params = _LIVE_PROFILE_PARAMS
+    if params is None:
+        _LIVE_PROFILE_RUNNING = False
+        return None
+    try:
+        changed = sync_profile_node_bidirectional(params)
+        if changed:
+            screen = getattr(bpy.context, "screen", None)
+            for area in getattr(screen, "areas", ()) or ():
+                if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:
+                    area.tag_redraw()
+    except ReferenceError:
+        _LIVE_PROFILE_PARAMS = None
+        _LIVE_PROFILE_RUNNING = False
+        return None
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.15
 
 
 def sync_profile_node_to_params(params) -> bool:

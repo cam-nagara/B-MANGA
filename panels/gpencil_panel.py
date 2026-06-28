@@ -669,8 +669,8 @@ class BMANGA_UL_layer_panel_pages(UIList):
         open_op.index = index
 
 
-def draw_stack_item_detail(layout, context, item, resolved) -> bool:
-    return layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved)
+def draw_stack_item_detail(layout, context, item, resolved, *, wide: bool = False) -> bool:
+    return layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=wide)
 
 
 def _draw_page_list_box(layout, context) -> None:

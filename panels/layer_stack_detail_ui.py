@@ -714,7 +714,7 @@ def _draw_effect_white_outline_settings(box, params) -> None:
     )
 
 
-def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
+def _draw_effect_selected_settings(box, context, obj, active_layer, *, wide: bool = False) -> None:
     settings = box.column(align=True)
     name = getattr(active_layer, "name", "効果線")
     settings.label(text=f"選択中: {name} (効果線)")
@@ -727,25 +727,36 @@ def _draw_effect_selected_settings(box, context, obj, active_layer) -> None:
     settings.prop(params, "opacity", text="不透明度", slider=True)
     if active_layer is not None and hasattr(active_layer, "hide"):
         settings.prop(active_layer, "hide", text="非表示")
-    effect_line_panel.draw_effect_line_preset_management(box, context)
-
-    _draw_effect_type_settings(box, params)
-    if params.effect_type == "white_outline":
-        _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
-        _draw_effect_shape_settings(box, params, "end", "終点形状")
-        _draw_effect_white_outline_settings(box, params)
+    if wide:
+        grid = box.grid_flow(
+            row_major=True,
+            columns=5,
+            even_columns=True,
+            even_rows=False,
+            align=True,
+        )
+        cols = tuple(grid.column(align=True) for _ in range(5))
+        effect_line_panel.draw_effect_line_preset_management(cols[0], context)
+        effect_line_panel.draw_effect_params(cols[0], params, with_generate_button=True, columns=cols)
+    else:
+        effect_line_panel.draw_effect_line_preset_management(box, context)
+        _draw_effect_type_settings(box, params)
+        if params.effect_type == "white_outline":
+            _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
+            _draw_effect_shape_settings(box, params, "end", "終点形状")
+            _draw_effect_white_outline_settings(box, params)
+            effect_line_panel.draw_effect_path_settings(box, params)
+            box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
+            return
+        if params.effect_type != "speed":
+            _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
+            _draw_effect_shape_settings(box, params, "end", "終点形状")
+        _draw_effect_line_settings(box, params)
+        if params.effect_type != "beta_flash":
+            _draw_effect_interval_settings(box, params)
+        _draw_effect_tail_settings(box, params)
         effect_line_panel.draw_effect_path_settings(box, params)
         box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
-        return
-    if params.effect_type != "speed":
-        _draw_effect_shape_settings(box, params, "start", "始点形状", frame_toggle=True)
-        _draw_effect_shape_settings(box, params, "end", "終点形状")
-    _draw_effect_line_settings(box, params)
-    if params.effect_type != "beta_flash":
-        _draw_effect_interval_settings(box, params)
-    _draw_effect_tail_settings(box, params)
-    effect_line_panel.draw_effect_path_settings(box, params)
-    box.operator("bmanga.effect_line_generate", text="効果線を追加", icon="STROKE")
 
 
 def _draw_layer_folder_selected_settings(box, entry) -> None:
@@ -799,7 +810,7 @@ def _draw_coma_selected_settings(box, context, entry) -> None:
     coma_detail_panel.draw_coma_white_margin_settings(white_box, entry)
 
 
-def draw_stack_item_detail(layout, context, item, resolved) -> bool:
+def draw_stack_item_detail(layout, context, item, resolved, *, wide: bool = False) -> bool:
     if resolved is None or resolved.get("target") is None:
         return False
     box = layout.box()
@@ -825,7 +836,7 @@ def draw_stack_item_detail(layout, context, item, resolved) -> bool:
     elif kind == "text":
         _draw_text_selected_settings(box, context, target)
     elif kind == "effect":
-        _draw_effect_selected_settings(box, context, obj, target)
+        _draw_effect_selected_settings(box, context, obj, target, wide=wide)
     elif kind == "layer_folder":
         _draw_layer_folder_selected_settings(box, target)
     elif kind == "gp_folder":

@@ -55,7 +55,8 @@ def _draw_white_outline_settings(layout, params, *, show_opacity: bool = True, c
 
 def _inout_profile_node_for_draw(params):
     try:
-        effect_inout_curve.sync_profile_node_to_params(params)
+        effect_inout_curve.sync_profile_node_bidirectional(params)
+        effect_inout_curve.request_live_profile_sync(params)
     except Exception:  # noqa: BLE001
         pass
     try:

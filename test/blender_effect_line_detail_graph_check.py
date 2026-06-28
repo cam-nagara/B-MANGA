@@ -213,6 +213,40 @@ def _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj) 
     )
 
 
+def _assert_layer_stack_dialog_layout(
+    layer_stack_detail_ui,
+    layer_stack_op,
+    layer_stack_utils,
+    effect_line_op,
+    context,
+    scene,
+    layer,
+) -> None:
+    stack = layer_stack_utils.sync_layer_stack(context, preserve_active_index=True)
+    uid = layer_stack_utils.target_uid("effect", layer_stack_utils._node_stack_key(layer))
+    item = next((candidate for candidate in stack if layer_stack_utils.stack_item_uid(candidate) == uid), None)
+    assert item is not None, "レイヤーリスト上の効果線行が見つかりません"
+    assert layer_stack_op._detail_dialog_width_for_item(context, item) == 1320
+    resolved = layer_stack_utils.resolve_stack_item(context, item)
+
+    def focus_values(p):
+        p.effect_type = "focus"
+
+    _set_params_silently(scene, effect_line_op, focus_values)
+    layout = _Layout()
+    layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=True)
+    assert 5 in layout.grid_columns, f"レイヤーリスト詳細の効果線設定が5列で描画されていません: {layout.grid_columns}"
+    assert "effect_type" in layout.props_by_column.get("col0", ()), "種類が1列目にありません"
+    assert "brush_size_mm" in layout.props_by_column.get("col1", ()), "線設定が2列目にありません"
+    assert "in_percent" in layout.props_by_column.get("col2", ()), "入り抜きが3列目にありません"
+    assert "line_color" in layout.props_by_column.get("col3", ()), "色設定が4列目にありません"
+    assert "line_image_source" in layout.props_by_column.get("col4", ()), "パス線設定が5列目にありません"
+
+    layout = _Layout()
+    layer_stack_detail_ui.draw_stack_item_detail(layout, context, item, resolved, wide=False)
+    assert 5 not in layout.grid_columns, "サイドバー内の詳細表示まで5列になっています"
+
+
 def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout_curve, context, scene, obj):
     def numeric_values(p):
         p.effect_type = "focus"
@@ -239,14 +273,29 @@ def _assert_graph_numeric_to_curve(layer_detail_op, effect_line_op, effect_inout
 def _assert_graph_curve_to_numeric(layer_detail_op, effect_inout_curve, context, obj, params, node) -> None:
     effect_inout_curve._apply_points_to_node(
         node,
-        ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
+        ((0.0, 0.2), (0.2, 0.65), (0.35, 1.0), (0.65, 1.0), (0.85, 0.7), (1.0, 0.4)),
     )
-    layout = _Layout()
-    layer_detail_op._draw_effect_detail(layout, context, obj, load_from_layer=False)
+    assert layer_detail_op._sync_detail_profile_curve(context, "effect", obj.get("bmanga_id", ""))
     _assert_close(params.in_percent, 20.0, "線幅グラフの左端が入り(%)へ反映されていません")
     _assert_close(params.out_percent, 40.0, "線幅グラフの右端が抜き(%)へ反映されていません")
     _assert_close(params.in_start_percent, 35.0, "線幅グラフの山位置が入り始点(%)へ反映されていません")
     _assert_close(params.out_start_percent, 35.0, "線幅グラフの山位置が抜き始点(%)へ反映されていません")
+
+
+def _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node) -> None:
+    effect_inout_curve.request_live_profile_sync(params)
+    effect_inout_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.15), (0.25, 0.7), (0.45, 1.0), (0.75, 1.0), (1.0, 0.35)),
+    )
+    effect_inout_curve._live_profile_sync_tick()
+    _assert_close(params.in_percent, 15.0, "線幅グラフの追加ポイントが入り(%)へ即時反映されていません")
+    _assert_close(params.out_percent, 35.0, "線幅グラフの追加ポイントが抜き(%)へ即時反映されていません")
+    _assert_close(params.in_start_percent, 45.0, "線幅グラフの追加ポイントが入り始点(%)へ即時反映されていません")
+    _assert_close(params.out_start_percent, 25.0, "線幅グラフの追加ポイントが抜き始点(%)へ即時反映されていません")
+    saved = effect_line_op._layer_params_data(obj, layer)
+    _assert_close(saved["in_percent"], 15.0, "同期タイマー後の入り(%)が効果線へ保存されていません")
+    _assert_close(saved["out_percent"], 35.0, "同期タイマー後の抜き(%)が効果線へ保存されていません")
 
 
 def _assert_graph_saved_and_generated(
@@ -292,9 +341,12 @@ def main() -> None:
 
         effect_line_gen = _sub("operators.effect_line_gen")
         effect_line_op = _sub("operators.effect_line_op")
+        layer_stack_op = _sub("operators.layer_stack_op")
+        layer_stack_detail_ui = _sub("panels.layer_stack_detail_ui")
         layer_detail_op = _sub("operators.layer_detail_op")
         get_work = _sub("core.work").get_work
         effect_inout_curve = _sub("utils.effect_inout_curve")
+        layer_stack_utils = _sub("utils.layer_stack")
         object_naming = _sub("utils.object_naming")
         page_stack_key = _sub("utils.layer_hierarchy").page_stack_key
 
@@ -311,6 +363,15 @@ def main() -> None:
         assert layer_detail_op._detail_dialog_width_for_kind(context, "effect", bmanga_id) == 1320
 
         _assert_detail_layout(layer_detail_op, effect_line_op, context, scene, obj)
+        _assert_layer_stack_dialog_layout(
+            layer_stack_detail_ui,
+            layer_stack_op,
+            layer_stack_utils,
+            effect_line_op,
+            context,
+            scene,
+            layer,
+        )
         node = _assert_graph_numeric_to_curve(
             layer_detail_op,
             effect_line_op,
@@ -330,6 +391,7 @@ def main() -> None:
             layer,
             bmanga_id,
         )
+        _assert_graph_live_sync(effect_inout_curve, effect_line_op, params, obj, layer, node)
     finally:
         if mod is not None:
             try:

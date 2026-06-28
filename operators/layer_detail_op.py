@@ -744,7 +744,7 @@ def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
 
                 _elo._set_scene_params_syncing(context.scene, True)
                 try:
-                    return bool(effect_inout_curve.sync_profile_node_to_params(params))
+                    return bool(effect_inout_curve.sync_profile_node_bidirectional(params))
                 finally:
                     _elo._set_scene_params_syncing(context.scene, False)
         elif kind == "balloon":
@@ -756,7 +756,7 @@ def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> bool:
         else:
             params = None
         if params is not None:
-            return bool(effect_inout_curve.sync_profile_node_to_params(params))
+            return bool(effect_inout_curve.sync_profile_node_bidirectional(params))
     except Exception:  # noqa: BLE001
         _logger.exception("detail profile curve sync failed")
     return False
