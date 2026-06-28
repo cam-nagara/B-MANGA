@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import bpy
 
+from . import edge_width_curve
 from .core import PROP_LINE_ONLY, has_line, has_outline
 
 
@@ -18,6 +19,20 @@ def _get_paper_dpi(scene) -> int:
 def _mm_to_px_label(mm: float, dpi: int) -> str:
     px = mm * dpi / 25.4
     return f"≈ {px:.1f} px ({dpi} DPI)"
+
+
+def _is_linked_line_object(obj: bpy.types.Object) -> bool:
+    data = getattr(obj, "data", None)
+    return (
+        obj.type == "MESH"
+        and has_line(obj)
+        and (
+            obj.library is not None
+            or getattr(data, "library", None) is not None
+            or getattr(obj, "override_library", None) is not None
+            or getattr(data, "override_library", None) is not None
+        )
+    )
 
 
 class BMANGA_LINE_PT_main(bpy.types.Panel):
@@ -85,6 +100,11 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         col.prop(settings, "use_uniform_line_width")
         col.prop(settings, "use_rim")
         col.prop(settings, "use_vertex_color")
+        col.separator()
+        col.prop(settings, "use_outline_distance_limit")
+        sub = col.column(align=True)
+        sub.enabled = settings.use_outline_distance_limit
+        sub.prop(settings, "outline_max_distance")
 
         # --- カメラ設定 ---
         box = layout.box()
@@ -122,10 +142,12 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         col.prop(settings, "edge_midpoint_jitter_percent")
         curve = col.column(align=True)
         curve.label(text="中間頂点への変化グラフ")
-        row = curve.row(align=True)
-        row.prop(settings, "edge_width_curve_25")
-        row.prop(settings, "edge_width_curve_50")
-        row.prop(settings, "edge_width_curve_75")
+        edge_width_curve.sync_node_to_settings(settings)
+        curve_node = edge_width_curve.ensure_node(settings)
+        if curve_node is not None:
+            curve.template_curve_mapping(curve_node, "mapping", type="NONE")
+        else:
+            curve.label(text="グラフを表示できません", icon="ERROR")
         col.separator()
         col.prop(settings, "use_ao_influence")
         sub = col.column(align=True)
@@ -173,6 +195,11 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         sub_label = row.row(align=True)
         sub_label.alignment = "RIGHT"
         sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
+        sub.separator()
+        sub.prop(settings, "use_intersection_distance_limit")
+        sub_dist = sub.column(align=True)
+        sub_dist.enabled = settings.use_intersection_distance_limit
+        sub_dist.prop(settings, "intersection_max_distance")
 
         # --- 操作ボタン ---
         layout.separator()
@@ -180,6 +207,22 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         row = layout.row(align=True)
         row.scale_y = 1.4
         row.operator("bmanga_line.apply", icon="ADD")
+
+        linked_line_count = sum(
+            1 for linked_obj in context.scene.objects
+            if _is_linked_line_object(linked_obj)
+        )
+        row = layout.row(align=True)
+        row.enabled = linked_line_count > 0
+        row.operator("bmanga_line.refresh_linked", text="リンク素材のラインを補正", icon="FILE_REFRESH")
+
+        row = layout.row(align=True)
+        row.enabled = linked_line_count > 0 and has_line(obj)
+        row.operator(
+            "bmanga_line.apply_active_to_linked",
+            text="リンク素材へ選択設定を上書き",
+            icon="LINKED",
+        )
 
         row = layout.row(align=True)
         row.enabled = has_line_any

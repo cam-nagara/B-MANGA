@@ -2,7 +2,7 @@
 
 - カメラ距離による線幅補正
 - カメラビュー外のライン非表示（パフォーマンス最適化）
-- カメラ距離による内部線の表示制限
+- カメラ距離による線種別の表示制限
 """
 
 from __future__ import annotations
@@ -268,7 +268,7 @@ def _update_camera_compensation(scene, camera):
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd):
-    """ビューカリングと内部線距離制限を統合処理."""
+    """ビューカリングと線種別の距離制限を統合処理."""
     half_angle_cache = None
 
     for obj in scene.objects:
@@ -279,8 +279,15 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd):
             continue
 
         do_culling = settings.use_camera_culling
-        do_distance = settings.use_inner_line_distance_limit
-        if not do_culling and not do_distance:
+        do_outline_distance = settings.use_outline_distance_limit
+        do_inner_distance = settings.use_inner_line_distance_limit
+        do_intersection_distance = settings.use_intersection_distance_limit
+        if not (
+            do_culling
+            or do_outline_distance
+            or do_inner_distance
+            or do_intersection_distance
+        ):
             continue
 
         outline_mod = obj.modifiers.get(MODIFIER_NAME)
@@ -310,22 +317,31 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd):
             angular_r = math.atan2(bound_r, dist)
             in_view = (angle - angular_r) < (half_angle_cache + margin)
 
-        # 内部線距離判定
-        inner_in_range = True
-        if do_distance:
-            inner_in_range = dist <= settings.inner_line_max_distance
+        outline_in_range = (
+            not do_outline_distance or dist <= settings.outline_max_distance
+        )
+        inner_in_range = (
+            not do_inner_distance or dist <= settings.inner_line_max_distance
+        )
+        intersection_in_range = (
+            not do_intersection_distance
+            or dist <= settings.intersection_max_distance
+        )
 
         if outline_mod is not None:
-            outline_mod.show_viewport = in_view
-            outline_mod.show_render = in_view
+            visible = in_view and outline_in_range
+            outline_mod.show_viewport = visible
+            outline_mod.show_render = visible
 
         if intersection_mod is not None:
-            intersection_mod.show_viewport = in_view
-            intersection_mod.show_render = in_view
+            visible = in_view and intersection_in_range
+            intersection_mod.show_viewport = visible
+            intersection_mod.show_render = visible
 
         if inner_mod is not None:
-            inner_mod.show_viewport = in_view and inner_in_range
-            inner_mod.show_render = in_view and inner_in_range
+            visible = in_view and inner_in_range
+            inner_mod.show_viewport = visible
+            inner_mod.show_render = visible
 
 
 # ------------------------------------------------------------------

@@ -42,8 +42,12 @@ _SETTING_FIELDS = (
     "edge_width_curve_75",
     "use_camera_culling",
     "culling_margin",
+    "use_outline_distance_limit",
+    "outline_max_distance",
     "use_inner_line_distance_limit",
     "inner_line_max_distance",
+    "use_intersection_distance_limit",
+    "intersection_max_distance",
 )
 
 
@@ -78,6 +82,19 @@ def copy_preset_to_settings(preset, settings) -> None:
     try:
         for name in _SETTING_FIELDS:
             setattr(settings, name, getattr(preset, name))
+    finally:
+        core._propagating = old
+
+
+def copy_settings_to_settings(source, target) -> None:
+    old = core._propagating
+    core._propagating = True
+    try:
+        for name in _SETTING_FIELDS:
+            value = getattr(source, name)
+            if name == "outline_color":
+                value = tuple(value)
+            setattr(target, name, value)
     finally:
         core._propagating = old
 
@@ -151,7 +168,9 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         settings.use_uniform_line_width
         or settings.use_camera_compensation
         or settings.use_camera_culling
+        or settings.use_outline_distance_limit
         or settings.use_inner_line_distance_limit
+        or settings.use_intersection_distance_limit
     ):
         camera_comp.refresh(context)
     outline_setup.ensure_aov_passes(context.scene)
@@ -205,8 +224,14 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     use_camera_culling: BoolProperty(default=False)
     culling_margin: FloatProperty(default=0.1745329252, min=0.0, max=1.5707963268)
 
+    use_outline_distance_limit: BoolProperty(default=False)
+    outline_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
+
     use_inner_line_distance_limit: BoolProperty(default=False)
     inner_line_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
+
+    use_intersection_distance_limit: BoolProperty(default=False)
+    intersection_max_distance: FloatProperty(default=20.0, min=0.1, max=1000.0)
 
 
 class BMANGA_LINE_OT_preset_save(bpy.types.Operator):

@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line の線幅グラフとリンク素材一括補正を追加 (v0.3.12)
+
+### 症状
+
+- 「中間頂点への変化グラフ」が実際には 25% / 50% / 75% の数値入力で、線幅変化を視覚的に調整しづらかった。
+- カメラから遠いオブジェクトの線を消す設定が内部線だけにあり、アウトラインや交差線を線種別に整理できなかった。
+- コマ用blendファイルでリンク読み込みした素材に対し、コマ側のカメラや用途に合わせてライン設定をまとめて補正・上書きする入口がなかった。
+
+### 原因
+
+- 中間頂点の線幅変化は内部的にはカーブ値として扱っていたが、UI は代表点の数値入力に留まっていた。
+- 表示距離の判定が内部線専用の処理として実装され、アウトライン・交差線の表示判定へ分岐していなかった。
+- リンク素材のライン更新は個別オブジェクト操作かカメラ更新に依存しており、コマファイル全体のリンク素材を対象にする操作がなかった。
+
+### 修正
+
+- 「線幅の詳細制御」の「中間頂点への変化グラフ」を、Blender 標準のカーブ編集UIで操作できるようにした。
+- アウトライン、内部線、交差線それぞれに「カメラ距離で非表示」と「最大表示距離」を追加し、m単位の距離で線種別に表示を切り替えられるようにした。
+- 線種別の距離非表示をラインプリセットの保存・適用対象に追加した。
+- 「リンク素材のラインを補正」と「リンク素材へ選択設定を上書き」を追加し、コマ用blendファイル内のリンク読み込み済みラインを一括更新できるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py addons\b_manga_line\operators.py addons\b_manga_line\edge_width_curve.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python-expr "import bpy; items=bpy.types.UILayout.bl_rna.functions['operator'].parameters['icon'].enum_items.keys(); assert 'LINKED' in items"`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line に線幅の均一化を追加 (v0.3.11)
 
 ### 症状

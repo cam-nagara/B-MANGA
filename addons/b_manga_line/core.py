@@ -314,10 +314,43 @@ def _on_uniform_line_width_changed(self, context):
 
 
 def _on_culling_changed(self, context):
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "use_camera_culling")
+
+
+def _on_inner_distance_changed(self, context):
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "use_inner_line_distance_limit")
+
+
+def _on_outline_distance_changed(self, context):
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "use_outline_distance_limit")
+
+
+def _on_intersection_distance_changed(self, context):
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "use_intersection_distance_limit")
+
+
+def _make_visibility_value_propagator(prop_name):
+    """表示距離の数値変更を即時反映してから選択中へ伝搬."""
+    def _callback(self, context):
+        _refresh_visibility_rules(self, context)
+        _propagate(self, context, prop_name)
+    return _callback
+
+
+def _refresh_visibility_rules(self, context):
     from . import camera_comp
     owner = self.id_data
     if owner.type == "MESH":
-        if self.use_camera_culling:
+        if (
+            self.use_camera_culling
+            or self.use_outline_distance_limit
+            or self.use_inner_line_distance_limit
+            or self.use_intersection_distance_limit
+        ):
             camera_comp.refresh(context)
         else:
             visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
@@ -326,26 +359,6 @@ def _on_culling_changed(self, context):
                 if mod is not None:
                     mod.show_viewport = visible
                     mod.show_render = visible
-            if self.use_inner_line_distance_limit:
-                camera_comp.refresh(context)
-    _propagate(self, context, "use_camera_culling")
-
-
-def _on_inner_distance_changed(self, context):
-    from . import camera_comp
-    owner = self.id_data
-    if owner.type == "MESH":
-        if self.use_inner_line_distance_limit:
-            camera_comp.refresh(context)
-        else:
-            mod = owner.modifiers.get(GN_MODIFIER_NAME)
-            if mod is not None:
-                visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-                mod.show_viewport = visible
-                mod.show_render = visible
-            if self.use_camera_culling:
-                camera_comp.refresh(context)
-    _propagate(self, context, "use_inner_line_distance_limit")
 
 
 # ------------------------------------------------------------------
@@ -648,23 +661,57 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         update=_make_propagator("culling_margin"),
     )  # type: ignore[valid-type]
 
-    # --- 内部線距離制限 ---
+    # --- カメラ距離による線種別非表示 ---
+
+    use_outline_distance_limit: BoolProperty(
+        name="カメラ距離で非表示",
+        description="カメラから指定距離以上離れたオブジェクトのアウトラインを非表示にする",
+        default=False,
+        update=_on_outline_distance_changed,
+    )  # type: ignore[valid-type]
+
+    outline_max_distance: FloatProperty(
+        name="最大表示距離",
+        description="この距離を超えたオブジェクトのアウトラインを非表示にする",
+        default=20.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_make_visibility_value_propagator("outline_max_distance"),
+    )  # type: ignore[valid-type]
 
     use_inner_line_distance_limit: BoolProperty(
-        name="距離で内部線を制限",
+        name="カメラ距離で非表示",
         description="カメラから指定距離以上離れたオブジェクトの内部線を非表示にする",
         default=False,
         update=_on_inner_distance_changed,
     )  # type: ignore[valid-type]
 
     inner_line_max_distance: FloatProperty(
-        name="内部線の最大表示距離",
+        name="最大表示距離",
         description="この距離を超えたオブジェクトの内部線を非表示にする",
         default=20.0,
         min=0.1,
         max=1000.0,
         subtype="DISTANCE",
-        update=_make_propagator("inner_line_max_distance"),
+        update=_make_visibility_value_propagator("inner_line_max_distance"),
+    )  # type: ignore[valid-type]
+
+    use_intersection_distance_limit: BoolProperty(
+        name="カメラ距離で非表示",
+        description="カメラから指定距離以上離れたオブジェクトの交差線を非表示にする",
+        default=False,
+        update=_on_intersection_distance_changed,
+    )  # type: ignore[valid-type]
+
+    intersection_max_distance: FloatProperty(
+        name="最大表示距離",
+        description="この距離を超えたオブジェクトの交差線を非表示にする",
+        default=20.0,
+        min=0.1,
+        max=1000.0,
+        subtype="DISTANCE",
+        update=_make_visibility_value_propagator("intersection_max_distance"),
     )  # type: ignore[valid-type]
 
 

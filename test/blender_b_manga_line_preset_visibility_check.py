@@ -65,6 +65,17 @@ def _assert_distance_limited_inner(obj: bpy.types.Object) -> None:
     assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
 
+def _assert_distance_limited_outline_and_intersection(obj: bpy.types.Object) -> None:
+    mods = _line_mods(obj)
+    assert not mods[core.MODIFIER_NAME].show_viewport
+    assert not mods[core.MODIFIER_NAME].show_render
+    assert mods[core.GN_MODIFIER_NAME].show_viewport
+    assert mods[core.GN_MODIFIER_NAME].show_render
+    assert not mods[core.INTERSECTION_MODIFIER_NAME].show_viewport
+    assert not mods[core.INTERSECTION_MODIFIER_NAME].show_render
+    assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
+
+
 def _assert_camera_culled_line(obj: bpy.types.Object) -> None:
     _assert_line_state(obj, visible=False)
     assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
@@ -126,8 +137,12 @@ def main() -> None:
 
     first.bmanga_line_settings.use_camera_culling = True
     first.bmanga_line_settings.use_camera_culling = False
+    first.bmanga_line_settings.use_outline_distance_limit = True
+    first.bmanga_line_settings.use_outline_distance_limit = False
     first.bmanga_line_settings.use_inner_line_distance_limit = True
     first.bmanga_line_settings.use_inner_line_distance_limit = False
+    first.bmanga_line_settings.use_intersection_distance_limit = True
+    first.bmanga_line_settings.use_intersection_distance_limit = False
     for obj in (first, second):
         _assert_line_state(obj, visible=False)
 
@@ -152,6 +167,26 @@ def main() -> None:
 
     _select(source, [source])
     settings.use_inner_line_distance_limit = False
+    settings.use_outline_distance_limit = True
+    settings.outline_max_distance = 0.5
+    settings.use_intersection_distance_limit = True
+    settings.intersection_max_distance = 0.5
+    scene.bmanga_line_preset_name = "線種別距離制限テスト"
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    _select(first, [first, second])
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    for obj in (first, second):
+        applied = obj.bmanga_line_settings
+        assert applied.use_outline_distance_limit
+        assert abs(applied.outline_max_distance - 0.5) < 1.0e-7
+        assert applied.use_intersection_distance_limit
+        assert abs(applied.intersection_max_distance - 0.5) < 1.0e-7
+        _assert_distance_limited_outline_and_intersection(obj)
+
+    _select(source, [source])
+    settings.use_outline_distance_limit = False
+    settings.use_intersection_distance_limit = False
     settings.use_camera_culling = True
     settings.culling_margin = 0.0
     scene.bmanga_line_preset_name = "範囲外テスト"
@@ -168,6 +203,8 @@ def main() -> None:
         assert not core.has_line(obj), f"{obj.name}: ラインが残っています"
         assert core.PROP_LINES_HIDDEN not in obj
 
+    assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
+    assert len(scene.bmanga_line_presets) == 3
     assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}
     assert len(scene.bmanga_line_presets) == 2
     assert bpy.ops.bmanga_line.preset_delete() == {"FINISHED"}

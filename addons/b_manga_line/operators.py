@@ -8,6 +8,24 @@ from bpy.props import BoolProperty
 from .core import AOV_NAME, PROP_LINES_HIDDEN, has_line, has_outline
 
 
+def _is_linked_line_object(obj: bpy.types.Object) -> bool:
+    data = getattr(obj, "data", None)
+    return (
+        obj.type == "MESH"
+        and has_line(obj)
+        and (
+            obj.library is not None
+            or getattr(data, "library", None) is not None
+            or getattr(obj, "override_library", None) is not None
+            or getattr(data, "override_library", None) is not None
+        )
+    )
+
+
+def _linked_line_objects(scene) -> list[bpy.types.Object]:
+    return [obj for obj in scene.objects if _is_linked_line_object(obj)]
+
+
 class BMANGA_LINE_OT_apply(bpy.types.Operator):
     """選択オブジェクトにアウトラインを適用"""
 
@@ -136,6 +154,70 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
             self.report({"WARNING"}, f"{failed} オブジェクトは素材を変更できませんでした")
         action = "ラインのみ表示" if self.line_only else "通常表示"
         self.report({"INFO"}, f"{count} オブジェクトを{action}にしました")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_refresh_linked(bpy.types.Operator):
+    """リンク読み込み素材のラインを現在のコマカメラで再補正"""
+
+    bl_idname = "bmanga_line.refresh_linked"
+    bl_label = "リンク素材のラインを補正"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return bool(_linked_line_objects(context.scene))
+
+    def execute(self, context):
+        from . import camera_comp, outline_setup
+
+        linked = _linked_line_objects(context.scene)
+        outline_setup.ensure_aov_passes(context.scene)
+        camera_comp.refresh(context)
+        self.report({"INFO"}, f"{len(linked)} オブジェクトのラインを補正しました")
+        return {"FINISHED"}
+
+
+class BMANGA_LINE_OT_apply_active_to_linked(bpy.types.Operator):
+    """アクティブオブジェクトのライン設定をリンク読み込み素材へ適用"""
+
+    bl_idname = "bmanga_line.apply_active_to_linked"
+    bl_label = "リンク素材へ選択設定を上書き"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and has_line(obj) and bool(_linked_line_objects(context.scene))
+
+    def execute(self, context):
+        from . import presets
+
+        source = context.active_object
+        if source is None or not has_line(source):
+            self.report({"WARNING"}, "ライン設定のあるオブジェクトを選択してください")
+            return {"CANCELLED"}
+
+        linked = _linked_line_objects(context.scene)
+        applied = 0
+        failed = 0
+        source_settings = source.bmanga_line_settings
+        for obj in linked:
+            try:
+                presets.copy_settings_to_settings(source_settings, obj.bmanga_line_settings)
+                if presets.apply_line_settings(obj, context):
+                    applied += 1
+                else:
+                    failed += 1
+            except Exception:  # noqa: BLE001
+                failed += 1
+
+        if failed:
+            self.report(
+                {"WARNING"},
+                f"{failed} オブジェクトは上書きできませんでした。ライブラリオーバーライドが必要な可能性があります",
+            )
+        self.report({"INFO"}, f"{applied} オブジェクトへライン設定を上書きしました")
         return {"FINISHED"}
 
 
@@ -278,6 +360,8 @@ _CLASSES = (
     BMANGA_LINE_OT_remove,
     BMANGA_LINE_OT_set_visibility,
     BMANGA_LINE_OT_set_line_only,
+    BMANGA_LINE_OT_refresh_linked,
+    BMANGA_LINE_OT_apply_active_to_linked,
     BMANGA_LINE_OT_sync_weights,
     BMANGA_LINE_OT_bake_ao,
     BMANGA_LINE_OT_refresh_camera,

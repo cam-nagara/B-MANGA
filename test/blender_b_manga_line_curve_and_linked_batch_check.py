@@ -1,0 +1,132 @@
+"""B-MANGA Line: graph UI backing data and linked-object batch operations."""
+
+from __future__ import annotations
+
+import math
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "addons"))
+
+import b_manga_line  # noqa: E402
+from b_manga_line import core, edge_width_curve, presets  # noqa: E402
+
+
+def _clear_scene() -> None:
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete()
+
+
+def _make_camera() -> bpy.types.Object:
+    bpy.ops.object.camera_add(location=(0.0, -6.0, 0.0), rotation=(math.radians(90), 0.0, 0.0))
+    camera = bpy.context.object
+    bpy.context.scene.camera = camera
+    return camera
+
+
+def _make_cube(name: str, location=(0.0, 0.0, 0.0)) -> bpy.types.Object:
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=location)
+    obj = bpy.context.object
+    obj.name = name
+    return obj
+
+
+def _select(obj: bpy.types.Object) -> None:
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+
+def _test_edge_width_curve_sync() -> None:
+    _clear_scene()
+    obj = _make_cube("BML_curve_source")
+    settings = obj.bmanga_line_settings
+    node = edge_width_curve.ensure_node(settings)
+    assert node is not None
+
+    edge_width_curve._apply_points_to_node(
+        node,
+        (
+            (0.0, 0.0),
+            (0.25, 0.80),
+            (0.50, 0.20),
+            (0.75, 0.60),
+            (1.0, 1.0),
+        ),
+    )
+    assert edge_width_curve.sync_node_to_settings(settings)
+    assert abs(settings.edge_width_curve_25 - 0.80) < 1.0e-4
+    assert abs(settings.edge_width_curve_50 - 0.20) < 1.0e-4
+    assert abs(settings.edge_width_curve_75 - 0.60) < 1.0e-4
+
+
+def _save_link_source(path: Path) -> None:
+    _clear_scene()
+    _make_camera()
+    linked_source = _make_cube("BML_linked_line_source")
+    _select(linked_source)
+    settings = linked_source.bmanga_line_settings
+    settings.outline_thickness_mm = 0.2
+    settings.use_uniform_line_width = True
+    assert presets.apply_line_settings(linked_source, bpy.context)
+    bpy.ops.wm.save_as_mainfile(filepath=str(path))
+
+
+def _link_source(path: Path) -> bpy.types.Object:
+    with bpy.data.libraries.load(str(path), link=True) as (data_from, data_to):
+        assert "BML_linked_line_source" in data_from.objects
+        data_to.objects = ["BML_linked_line_source"]
+    linked = data_to.objects[0]
+    bpy.context.scene.collection.objects.link(linked)
+    return linked
+
+
+def _test_linked_batch_apply() -> None:
+    source_path = Path(tempfile.gettempdir()) / "bml_linked_batch_source.blend"
+    _save_link_source(source_path)
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    _make_camera()
+    linked = _link_source(source_path)
+
+    local_source = _make_cube("BML_local_batch_source", (2.0, 0.0, 0.0))
+    _select(local_source)
+    settings = local_source.bmanga_line_settings
+    settings.outline_thickness_mm = 0.7
+    settings.inner_line_enabled = True
+    settings.inner_line_thickness_mm = 0.3
+    settings.use_uniform_line_width = True
+    settings.use_outline_distance_limit = True
+    settings.outline_max_distance = 3.0
+    assert presets.apply_line_settings(local_source, bpy.context)
+
+    assert bpy.ops.bmanga_line.refresh_linked() == {"FINISHED"}
+    assert bpy.ops.bmanga_line.apply_active_to_linked() == {"FINISHED"}
+    linked_settings = linked.bmanga_line_settings
+    assert abs(linked_settings.outline_thickness_mm - 0.7) < 1.0e-4
+    assert linked_settings.inner_line_enabled
+    assert abs(linked_settings.inner_line_thickness_mm - 0.3) < 1.0e-4
+    assert linked_settings.use_uniform_line_width
+    assert linked_settings.use_outline_distance_limit
+    assert abs(linked_settings.outline_max_distance - 3.0) < 1.0e-4
+    assert core.has_line(linked)
+
+    try:
+        source_path.unlink()
+    except OSError:
+        pass
+
+
+def main() -> None:
+    b_manga_line.register()
+    _test_edge_width_curve_sync()
+    _test_linked_batch_apply()
+    print("[PASS] B-MANGA Line curve graph and linked batch operations work")
+
+
+if __name__ == "__main__":
+    main()
