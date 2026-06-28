@@ -61,6 +61,8 @@ def _scene_guides_visible(scene=None) -> bool:
     scene = scene or getattr(bpy.context, "scene", None)
     if scene is None:
         return True
+    if not bool(getattr(scene, "bmanga_overlay_enabled", True)):
+        return False
     return bool(getattr(scene, "bmanga_page_guides_visible", True))
 
 

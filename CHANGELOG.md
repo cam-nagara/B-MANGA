@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — コマファイルのページ画像表示と魚眼オーバーレイを修正 (v0.6.414)
+
+### 症状
+
+- コマファイルで「ページ一覧」をOFFにすると、「ページ画像」のプレビューまで消えてしまっていた。
+- B-MANGAの「オーバーレイ表示」をOFFにしても、ページ画像・コマ内レイヤー・ページ一覧・用紙ガイドの一部が残る場合があった。
+- 魚眼モードの灰色帯がカメラビューのズームや移動に追従せず、画面端のビューポートギズモ側まで覆う場合があった。
+
+### 原因
+
+- コマファイルのページ一覧スイッチが、ページ一覧だけでなく現在ページ画像を含むカメラ下絵全体の再生成・削除条件として使われていた。
+- カメラ下絵と用紙ガイド実体が、B-MANGAの全体オーバーレイ表示状態を表示判定に含めていなかった。
+- 魚眼モードの灰色帯を、実際のカメラフレームではなくビューポート領域の幅と高さから推定していた。
+
+### 修正
+
+- コマファイルの「ページ画像」「コマ内レイヤー」「ページ一覧」を、種類ごとの表示設定として分離した。
+- B-MANGAの「オーバーレイ表示」OFF時に、作品情報・用紙ガイド・ページ画像・コマ内レイヤー・ページ一覧がまとめて非表示になるようにした。
+- 魚眼モードの灰色帯を、現在のカメラフレームを画面座標に変換した範囲へ描画するようにし、カメラビューのズーム・移動へ追従させた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile panels\view_panel.py utils\page_preview_object.py utils\paper_guide_object.py utils\coma_camera.py operators\overlay_toggle_op.py ui\coma_fisheye_overlay.py test\blender_coma_overlay_visibility_visual_check.py`
+- `blender.exe --factory-startup --python test\blender_coma_overlay_visibility_visual_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_fisheye_overlay_check.py`
+- `blender.exe --factory-startup --background --python test\blender_page_coma_preview_restore_check.py`
+- `git diff --check`
+- 生成スクリーンショットをAI目視し、魚眼モードの灰色帯がカメラフレーム内に収まり、右上のビューポートギズモ側へ伸びていないことを確認。
+
+---
+
 ## 2026-06-28 — 枠線カット後の実体階層と再採番を修正 (v0.6.413)
 
 ### 症状

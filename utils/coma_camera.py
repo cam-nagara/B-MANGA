@@ -348,6 +348,7 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
         _set_bg_attr(bg, "show_background_image", bool(visible))
     if hasattr(data, "show_background_images"):
         data.show_background_images = True
+    apply_coma_overlay_background_visibility(scene=scene)
 
 
 def sync_world_background_color(context, *, panel=None, work=None, page_id: str = "", coma_id: str = "") -> None:
@@ -634,6 +635,7 @@ def set_background_kind_visibility(context, kind: str, visible: bool) -> None:
     for bg in _iter_camera_backgrounds(context):
         if _background_matches_kind(bg, kind):
             _set_bg_attr(bg, "show_background_image", bool(visible))
+    apply_coma_overlay_background_visibility(context)
 
 
 def camera_background_count(context) -> int:
@@ -823,6 +825,7 @@ def toggle_backgrounds_by_kind(context, kind: str) -> bool:
     for bg in _iter_camera_backgrounds(context):
         if _background_matches_kind(bg, kind):
             _set_bg_attr(bg, "show_background_image", bool(visible))
+    apply_coma_overlay_background_visibility(context)
     return visible
 
 
@@ -844,6 +847,7 @@ def set_page_reference_visibility(context, *, show_all: bool) -> None:
             "show_background_image",
             bool(name_visible and (show_all or page_id == current_page_id)),
         )
+    apply_coma_overlay_background_visibility(context)
 
 
 def reload_background_images(context) -> int:
@@ -1362,6 +1366,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         _set_bg_attr(bg, "show_background_image", bool(name_visible))
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
+    apply_coma_overlay_background_visibility(scene=scene)
 
 
 def _resolve_coma_points_mm(work, page_id: str, coma_id: str) -> list[tuple[float, float]]:
@@ -1478,6 +1483,82 @@ def _is_overview_background(img) -> bool:
         return bool(img.get(_PAGE_OVERVIEW_BG_PROP, False))
     except Exception:  # noqa: BLE001
         return False
+
+
+def _scene_overlay_enabled(scene) -> bool:
+    if scene is None:
+        return True
+    return bool(getattr(scene, "bmanga_overlay_enabled", True))
+
+
+def _background_page_id(bg) -> str:
+    img = getattr(bg, "image", None)
+    if img is None:
+        return ""
+    try:
+        return str(img.get("bmanga_page_id", "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _background_is_bmanga_overlay(bg) -> bool:
+    img = getattr(bg, "image", None)
+    if img is None:
+        return False
+    if _is_managed_background(bg):
+        return True
+    if _is_overview_background(img):
+        return True
+    try:
+        if str(img.get("bmanga_kind", "") or "") in {"name", "own_page", "koma", "hatching"}:
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    return False
+
+
+def _base_background_visible(scene, bg) -> bool:
+    settings = getattr(scene, "bmanga_coma_camera_settings", None) if scene is not None else None
+    if _background_matches_kind(bg, "own_page"):
+        return bool(getattr(settings, "own_page_visible", True))
+    if _background_matches_kind(bg, "koma"):
+        return bool(getattr(settings, "koma_visible", True))
+    if _background_matches_kind(bg, "name"):
+        if settings is not None:
+            name_visible = bool(getattr(settings, "name_visible", True))
+            if _is_overview_background(getattr(bg, "image", None)):
+                return name_visible
+            show_all = bool(getattr(settings, "name_show_all_pages", False))
+            current_page_id = str(getattr(scene, "bmanga_current_coma_page_id", "") or "")
+            page_id = _background_page_id(bg)
+            return bool(name_visible and (show_all or not current_page_id or page_id == current_page_id))
+        return bool(getattr(scene, "bmanga_page_preview_enabled", True)) if scene is not None else True
+    try:
+        img = getattr(bg, "image", None)
+        if img is not None and str(img.get("bmanga_kind", "") or "") == "hatching":
+            return bool(getattr(settings, "hatching_visible", False))
+    except Exception:  # noqa: BLE001
+        pass
+    return bool(getattr(bg, "show_background_image", True))
+
+
+def apply_coma_overlay_background_visibility(context=None, *, scene=None) -> int:
+    """B-MANGA の全体表示と下絵ごとの表示設定をカメラ下絵へ反映する."""
+    scene = scene or (getattr(context, "scene", None) if context is not None else bpy.context.scene)
+    cam = getattr(scene, "camera", None) if scene is not None else None
+    cam_data = getattr(cam, "data", None)
+    if cam_data is None:
+        return 0
+    overlay_visible = _scene_overlay_enabled(scene)
+    changed = 0
+    for bg in getattr(cam_data, "background_images", []) or []:
+        if not _background_is_bmanga_overlay(bg):
+            continue
+        desired = bool(overlay_visible and _base_background_visible(scene, bg))
+        if bool(getattr(bg, "show_background_image", False)) != desired:
+            _set_bg_attr(bg, "show_background_image", desired)
+            changed += 1
+    return changed
 
 
 def refresh_coma_page_overview(context) -> None:
@@ -1600,6 +1681,7 @@ def add_page_file_overview_backgrounds(scene, work) -> None:
         _set_bg_attr(bg, "show_background_image", bool(name_visible))
     if hasattr(cam_data, "show_background_images"):
         cam_data.show_background_images = True
+    apply_coma_overlay_background_visibility(scene=scene)
 
 
 def remove_page_file_overview_backgrounds(scene) -> None:

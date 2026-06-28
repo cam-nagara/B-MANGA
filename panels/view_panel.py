@@ -81,10 +81,7 @@ def _refresh_page_preview_content(scene, context, *, force: bool = True) -> None
         if get_mode(context) == MODE_COMA:
             from ..utils import coma_camera
 
-            if bool(getattr(scene, "bmanga_page_preview_enabled", True)):
-                coma_camera.refresh_coma_page_overview(context)
-            else:
-                coma_camera._remove_page_overview_backgrounds(scene)
+            coma_camera.refresh_coma_page_overview(context)
     except Exception:  # noqa: BLE001
         pass
     try:
@@ -162,10 +159,7 @@ def _page_preview_enabled_update(scene, context) -> None:
         if get_mode(context) == MODE_COMA:
             from ..utils import coma_camera
 
-            if bool(getattr(scene, "bmanga_page_preview_enabled", True)):
-                coma_camera.refresh_coma_page_overview(context)
-            else:
-                coma_camera._remove_page_overview_backgrounds(scene)
+            coma_camera.refresh_coma_page_overview(context)
     except Exception:  # noqa: BLE001
         pass
 

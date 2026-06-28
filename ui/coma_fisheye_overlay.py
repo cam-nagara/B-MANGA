@@ -60,6 +60,8 @@ def _draw_callback_impl() -> None:
     scene = getattr(context, "scene", None)
     if scene is None:
         return
+    if not bool(getattr(scene, "bmanga_overlay_enabled", True)):
+        return
     if not bool(getattr(scene, "bmanga_coma_camera_fisheye_layout_mode", False)):
         return
     if not _is_coma_blend_file():
@@ -73,6 +75,9 @@ def _draw_callback_impl() -> None:
     # カメラを覗いている時のみ描画する。 自由視点ではレターボックス位置が
     # 安定しないし、 ユーザーが意図的に外している可能性が高いため。
     if getattr(space, "type", "") != "VIEW_3D":
+        return
+    overlay = getattr(space, "overlay", None)
+    if overlay is not None and not bool(getattr(overlay, "show_overlays", True)):
         return
     if getattr(rv3d, "view_perspective", "") != "CAMERA":
         return
@@ -92,36 +97,10 @@ def _draw_callback_impl() -> None:
     if paper_w_mm <= 0.0 or paper_h_mm <= 0.0:
         return
 
-    # カメラフレームのスクリーン座標を、 region 寸法とレンダーアスペクトから
-    # 直接計算する。 ``camera.data.view_frame()`` は PANO カメラだと内部 PERSP
-    # フォーマットの矩形 (50mm 既定レンズ) を返してしまい、 魚眼モードで実際
-    # に表示される正方形フレームと一致しない。 代わりにレンダーアスペクト
-    # (= ``scene.render.resolution_x / resolution_y``、 魚眼レイアウトでは 1.0)
-    # で region に内接する矩形をカメラフレームとして扱う。 これは
-    # ``view_camera_zoom`` を考慮しないので非既定ズームでは多少ずれるが、
-    # Blender 既定の camera view ではほぼ一致する。
-    res_x = float(getattr(scene.render, "resolution_x", 0) or 0)
-    res_y = float(getattr(scene.render, "resolution_y", 0) or 0)
-    if res_x <= 0.0 or res_y <= 0.0:
+    frame_rect = _camera_frame_pixel_rect(scene, camera, region, rv3d)
+    if frame_rect is None:
         return
-    render_aspect = res_x / res_y
-    region_w_f = float(region.width)
-    region_h_f = float(region.height)
-    if region_w_f <= 1.0 or region_h_f <= 1.0:
-        return
-    region_aspect = region_w_f / region_h_f
-    if region_aspect > render_aspect:
-        # region がカメラフレームより横長 → 高さフィット
-        frame_h = region_h_f
-        frame_w = frame_h * render_aspect
-    else:
-        # region がカメラフレームより縦長 → 幅フィット
-        frame_w = region_w_f
-        frame_h = frame_w / render_aspect
-    cam_min_x = (region_w_f - frame_w) * 0.5
-    cam_max_x = cam_min_x + frame_w
-    cam_min_y = (region_h_f - frame_h) * 0.5
-    cam_max_y = cam_min_y + frame_h
+    cam_min_x, cam_min_y, cam_max_x, cam_max_y = frame_rect
     cam_w = cam_max_x - cam_min_x
     cam_h = cam_max_y - cam_min_y
     if cam_w <= 1.0 or cam_h <= 1.0:
@@ -181,6 +160,37 @@ def _draw_callback_impl() -> None:
         gpu.state.blend_set("NONE")
     except Exception:  # noqa: BLE001
         _logger.exception("coma fisheye overlay draw failed")
+
+
+def _camera_frame_pixel_rect(scene, camera, region, rv3d) -> tuple[float, float, float, float] | None:
+    try:
+        from bpy_extras.view3d_utils import location_3d_to_region_2d
+    except Exception:  # noqa: BLE001
+        return None
+    cam_data = getattr(camera, "data", None)
+    if cam_data is None:
+        return None
+    try:
+        frame = cam_data.view_frame(scene=scene)
+        matrix = camera.matrix_world
+    except Exception:  # noqa: BLE001
+        return None
+    coords = []
+    for corner in frame:
+        try:
+            coord = location_3d_to_region_2d(region, rv3d, matrix @ corner)
+        except Exception:  # noqa: BLE001
+            coord = None
+        if coord is None:
+            return None
+        coords.append(coord)
+    xs = [float(c.x) for c in coords]
+    ys = [float(c.y) for c in coords]
+    x0, x1 = min(xs), max(xs)
+    y0, y1 = min(ys), max(ys)
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
 
 
 def register() -> None:
