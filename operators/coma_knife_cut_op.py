@@ -446,7 +446,7 @@ def _sync_layer_stack_after_cut(context) -> None:
     try:
         layer_stack_utils.sync_layer_stack_after_data_change(
             context,
-            align_coma_order=True,
+            align_coma_order=False,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: layer stack sync failed")

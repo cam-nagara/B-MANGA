@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 枠線カット後のレイヤー順維持を修正 (v0.6.412)
+
+### 症状
+
+- 枠線カットツールでコマを分割すると、ユーザーがレイヤーリストで並べ替えていたコマ順が、コマ番号順に戻ってしまう場合があった。
+
+### 原因
+
+- 枠線カット後のレイヤーリスト再同期で、カットにより再計算されたコマの前後順へ強制的に揃える指定を渡していた。
+
+### 修正
+
+- 枠線カット後は追加されたコマだけをレイヤーリストへ反映し、既存コマのレイヤーリスト上の相対順を維持するようにした。
+- コマ番号の読む順割り当ては従来どおり維持したまま、レイヤーリストの並び替えだけが上書きされないことを実機テストで確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\coma_knife_cut_op.py test\blender_coma_knife_cut_layer_order_check.py test\blender_coma_knife_cut_reading_order_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_layer_order_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_reading_order_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — 詳細設定ダイアログの列幅を安定化 (v0.6.411)
 
 ### 症状
