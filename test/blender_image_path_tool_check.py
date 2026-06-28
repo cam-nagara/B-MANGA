@@ -190,7 +190,20 @@ def main() -> None:
         curve_obj = bpy.data.objects.get(f"image_path_curve_{entry.id}")
         assert curve_obj is not None and curve_obj.type == "CURVE", "編集用カーブが作成されません"
         assert object_state_sync.is_sync_candidate(curve_obj), "編集用カーブが同期対象ではありません"
+        assert not curve_obj.hide_select, "編集用カーブが選択できません"
+        assert curve_obj.show_in_front, "編集用カーブが前面表示されていません"
         assert curve_obj.hide_render, "編集用カーブがレンダー対象になっています"
+        spline = curve_obj.data.splines[0]
+        curve_points = list(spline.bezier_points)
+        visible_handle_count = 0
+        for point in curve_points:
+            assert point.handle_left_type != "AUTO", "編集用カーブの左ハンドルが自動表示のままです"
+            assert point.handle_right_type != "AUTO", "編集用カーブの右ハンドルが自動表示のままです"
+            if (point.handle_left - point.co).length > 1.0e-7:
+                visible_handle_count += 1
+            if (point.handle_right - point.co).length > 1.0e-7:
+                visible_handle_count += 1
+        assert visible_handle_count >= 4, f"編集用カーブの表示ハンドルが少なすぎます: {visible_handle_count}"
         assert obj.data.materials and obj.data.materials[0] is not None, "画像パスのマテリアルがありません"
         assert _point_colors(obj), "画像パスに色属性がありません"
         page_mod = obj.modifiers.get(mask_apply.MOD_NAME_PAGE_MASK)
@@ -207,7 +220,6 @@ def main() -> None:
         bounds = object_tool_selection.selection_bounds_for_key(context, key)
         assert bounds is not None and bounds.width > 0.0 and bounds.height > 0.0, "画像パスの選択枠が取れません"
 
-        spline = curve_obj.data.splines[0]
         spline.bezier_points[1].co.y += mm_to_m(8.0)
         assert image_path_object.sync_entry_points_from_object(scene, curve_obj), "編集用カーブの変更が反映されません"
         edited_points = json.loads(entry.path_points_json)

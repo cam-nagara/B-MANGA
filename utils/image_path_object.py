@@ -464,6 +464,28 @@ def _ensure_curve_material() -> bpy.types.Material:
     return mat
 
 
+def _edit_curve_handle_positions(
+    coords: list[Vector],
+    index: int,
+) -> tuple[Vector, Vector]:
+    co = coords[index]
+    count = len(coords)
+    if count < 2:
+        return co.copy(), co.copy()
+    if count == 2:
+        other = coords[1 - index]
+        delta = (other - co) / 3.0
+        if index == 0:
+            return co.copy(), co + delta
+        return co + delta, co.copy()
+    if index == 0:
+        return co.copy(), co + (coords[1] - co) / 3.0
+    if index == count - 1:
+        return co - (co - coords[index - 1]) / 3.0, co.copy()
+    tangent = (coords[index + 1] - coords[index - 1]) / 6.0
+    return co - tangent, co + tangent
+
+
 def _rebuild_edit_curve_data(curve: bpy.types.Curve, points: list[tuple[float, float]], center) -> None:
     while len(curve.splines) > 0:
         curve.splines.remove(curve.splines[0])
@@ -478,10 +500,17 @@ def _rebuild_edit_curve_data(curve: bpy.types.Curve, points: list[tuple[float, f
     spline = curve.splines.new("BEZIER")
     spline.bezier_points.add(len(points) - 1)
     cx, cy = center
-    for bp, (x, y) in zip(spline.bezier_points, points, strict=False):
-        bp.co = (mm_to_m(float(x) - cx), mm_to_m(float(y) - cy), mm_to_m(0.15))
-        bp.handle_left_type = "AUTO"
-        bp.handle_right_type = "AUTO"
+    coords = [
+        Vector((mm_to_m(float(x) - cx), mm_to_m(float(y) - cy), mm_to_m(0.15)))
+        for x, y in points
+    ]
+    for index, bp in enumerate(spline.bezier_points):
+        bp.co = coords[index]
+        left, right = _edit_curve_handle_positions(coords, index)
+        bp.handle_left_type = "FREE"
+        bp.handle_right_type = "FREE"
+        bp.handle_left = left
+        bp.handle_right = right
         bp.radius = 1.0
     spline.use_cyclic_u = False
 

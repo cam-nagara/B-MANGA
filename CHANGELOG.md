@@ -3,6 +3,30 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — パターンカーブの編集ハンドル表示を修正 (v0.6.409)
+
+### 症状
+
+- パターンカーブをカーブ編集状態にしても、制御点の左右ハンドルが画面上で分かりにくく、曲線を直接調整しづらい場合があった。
+
+### 原因
+
+- 編集用カーブを自動ハンドルで作成しており、Blenderの編集画面でユーザーが掴む左右ハンドルとして明確に表示されにくかった。
+
+### 修正
+
+- パターンカーブの編集用カーブに左右ハンドルを明示生成し、前面表示・選択可能な編集対象として扱うようにした。
+- 実機テストで、編集用カーブが前面表示され、レンダー対象外で、左右ハンドルを持つことを確認するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile utils\image_path_object.py test\blender_image_path_tool_check.py test\blender_pattern_curve_handle_visual_check.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --python test\blender_pattern_curve_handle_visual_check.py`
+- AI目視: パターンカーブの編集モードで、制御線と左右ハンドルが表示されることをスクリーンショットで確認した。
+
+---
+
 ## 2026-06-28 — 前回徹底チェック以降の実機AI目視と全体チェック (v0.6.408)
 
 ### 症状
