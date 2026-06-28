@@ -26,6 +26,7 @@ from .core import (
 
 
 LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
+PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 
 
 # ------------------------------------------------------------------
@@ -38,7 +39,12 @@ def _is_outline_material(mat: bpy.types.Material) -> bool:
     return name == MATERIAL_NAME or name.startswith(MATERIAL_NAME + ".")
 
 
-def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> None:
+def _build_outline_nodes(
+    mat: bpy.types.Material,
+    color: tuple[float, ...],
+    *,
+    hide_through_transparent: bool = False,
+) -> None:
     """マテリアルノードツリーを構築（背面法 + AOV 出力）.
 
     背面法（Inverted Hull Method）:
@@ -88,11 +94,31 @@ def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> N
     links.new(emission.outputs["Emission"], mix_bf.inputs[1])
     links.new(trans_bf.outputs["BSDF"], mix_bf.inputs[2])
 
+    camera_shader = mix_bf.outputs["Shader"]
+    transparent_depth_mask = None
+    if hide_through_transparent:
+        depth_cmp = nodes.new("ShaderNodeMath")
+        depth_cmp.location = (390, -260)
+        depth_cmp.operation = "GREATER_THAN"
+        links.new(lightpath.outputs["Transparent Depth"], depth_cmp.inputs[0])
+        depth_cmp.inputs[1].default_value = 1.0
+        transparent_depth_mask = depth_cmp.outputs[0]
+
+        trans_td = nodes.new("ShaderNodeBsdfTransparent")
+        trans_td.location = (400, -430)
+
+        mix_td = nodes.new("ShaderNodeMixShader")
+        mix_td.location = (600, -180)
+        links.new(transparent_depth_mask, mix_td.inputs[0])
+        links.new(mix_bf.outputs["Shader"], mix_td.inputs[1])
+        links.new(trans_td.outputs["BSDF"], mix_td.inputs[2])
+        camera_shader = mix_td.outputs["Shader"]
+
     mix_lp = nodes.new("ShaderNodeMixShader")
     mix_lp.location = (600, 0)
     links.new(lightpath.outputs["Is Camera Ray"], mix_lp.inputs[0])
     links.new(trans_lp.outputs["BSDF"], mix_lp.inputs[1])
-    links.new(mix_bf.outputs["Shader"], mix_lp.inputs[2])
+    links.new(camera_shader, mix_lp.inputs[2])
 
     links.new(mix_lp.outputs["Shader"], output.inputs["Surface"])
 
@@ -108,7 +134,23 @@ def _build_outline_nodes(mat: bpy.types.Material, color: tuple[float, ...]) -> N
     invert.operation = "SUBTRACT"
     invert.inputs[0].default_value = 1.0
     links.new(geom.outputs["Backfacing"], invert.inputs[1])
-    links.new(invert.outputs[0], aov.inputs["Value"])
+    aov_value = invert.outputs[0]
+    if transparent_depth_mask is not None:
+        not_depth = nodes.new("ShaderNodeMath")
+        not_depth.location = (760, -430)
+        not_depth.operation = "SUBTRACT"
+        not_depth.inputs[0].default_value = 1.0
+        links.new(transparent_depth_mask, not_depth.inputs[1])
+
+        visible_value = nodes.new("ShaderNodeMath")
+        visible_value.location = (940, -350)
+        visible_value.operation = "MULTIPLY"
+        links.new(invert.outputs[0], visible_value.inputs[0])
+        links.new(not_depth.outputs[0], visible_value.inputs[1])
+        aov_value = visible_value.outputs[0]
+
+    links.new(aov_value, aov.inputs["Value"])
+    mat[PROP_HIDE_THROUGH_TRANSPARENT] = bool(hide_through_transparent)
 
 
 def _has_aov_node(mat: bpy.types.Material) -> bool:
@@ -132,20 +174,31 @@ def _configure_material(mat: bpy.types.Material) -> None:
 def get_or_create_material(
     obj: bpy.types.Object,
     color: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0),
+    *,
+    hide_through_transparent: bool = False,
 ) -> bpy.types.Material:
     """オブジェクト専用のアウトラインマテリアルを取得または作成."""
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
             mat = slot.material
-            if not _has_aov_node(mat):
-                _build_outline_nodes(mat, color)
+            current = bool(mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False))
+            if not _has_aov_node(mat) or current != hide_through_transparent:
+                _build_outline_nodes(
+                    mat,
+                    color,
+                    hide_through_transparent=hide_through_transparent,
+                )
             else:
                 _update_emission_color(mat, color)
             _configure_material(mat)
             return mat
 
     mat = bpy.data.materials.new(name=MATERIAL_NAME)
-    _build_outline_nodes(mat, color)
+    _build_outline_nodes(
+        mat,
+        color,
+        hide_through_transparent=hide_through_transparent,
+    )
     _configure_material(mat)
     return mat
 
@@ -204,6 +257,23 @@ def update_material_color(obj: bpy.types.Object, color: tuple[float, ...]) -> No
             return
 
 
+def update_transparent_protection(
+    obj: bpy.types.Object,
+    enabled: bool,
+    color: tuple[float, ...],
+) -> None:
+    """透明面越しに見える裏面ラインの抑制設定を更新."""
+    for slot in obj.material_slots:
+        if slot.material and _is_outline_material(slot.material):
+            _build_outline_nodes(
+                slot.material,
+                color,
+                hide_through_transparent=enabled,
+            )
+            _configure_material(slot.material)
+            return
+
+
 # ------------------------------------------------------------------
 # 頂点グループ / カラーアトリビュート
 # ------------------------------------------------------------------
@@ -241,6 +311,7 @@ def apply_outline(
     use_rim: bool = True,
     *,
     use_vertex_group: bool = False,
+    hide_through_transparent: bool = False,
     scene=None,
 ) -> bool:
     """オブジェクトに背面法アウトラインを適用. 成功時 True."""
@@ -256,7 +327,11 @@ def apply_outline(
         surface_mat.use_nodes = True
         obj.data.materials.append(surface_mat)
 
-    mat = get_or_create_material(obj, color)
+    mat = get_or_create_material(
+        obj,
+        color,
+        hide_through_transparent=hide_through_transparent,
+    )
 
     material_offset = _ensure_outline_material_slots(obj, mat)
 

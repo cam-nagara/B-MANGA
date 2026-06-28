@@ -24,6 +24,7 @@ _SETTING_FIELDS = (
     "even_thickness",
     "use_uniform_line_width",
     "use_rim",
+    "hide_through_transparent",
     "inner_line_enabled",
     "inner_line_angle",
     "inner_line_thickness",
@@ -126,6 +127,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         even_thickness=settings.even_thickness,
         use_rim=settings.use_rim,
         use_vertex_group=use_vg,
+        hide_through_transparent=settings.hide_through_transparent,
         scene=context.scene,
     )
     if not ok:
@@ -193,6 +195,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     even_thickness: BoolProperty(default=True)
     use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=True)
+    hide_through_transparent: BoolProperty(default=False)
 
     inner_line_enabled: BoolProperty(default=False)
     inner_line_angle: FloatProperty(default=0.5235987756, min=0.0174532925, max=3.1415926536)

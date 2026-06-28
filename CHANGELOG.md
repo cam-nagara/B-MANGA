@@ -3,6 +3,34 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line の透明面越しの塗りつぶしを抑制 (v0.3.13)
+
+### 症状
+
+- 透明・半透明のメッシュに B-MANGA Line を設定すると、反転ハルの裏面側のライン面が透明面越しに見え、透明であるはずの面がライン色で塗りつぶされたように見える場合があった。
+
+### 原因
+
+- 背面法のアウトラインは、元メッシュが不透明であることを前提に、奥側のライン面を元メッシュで隠している。
+- 元メッシュが透明の場合は奥側のライン面を隠せないため、透明面越しにライン素材が見えていた。
+
+### 修正
+
+- アウトライン設定に「透明面の塗りつぶしを防ぐ」を追加した。
+- 有効時は、透明面を通過した後に見える裏面側のアウトラインを透明化し、透明面の内側がライン色で塗りつぶされないようにした。
+- B-MANGA Line の AOV 出力でも、透明面越しに消したラインは線画として出ないようにした。
+- この設定をラインプリセットの保存・適用対象に追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py addons\b_manga_line\core.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_transparent_surface_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_transparent_surface_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line の線幅グラフとリンク素材一括補正を追加 (v0.3.12)
 
 ### 症状

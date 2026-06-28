@@ -138,6 +138,18 @@ def _on_rim_changed(self, context):
     _propagate(self, context, "use_rim")
 
 
+def _on_transparent_protection_changed(self, context):
+    from . import outline_setup
+    owner = self.id_data
+    if owner.type == "MESH":
+        outline_setup.update_transparent_protection(
+            owner,
+            self.hide_through_transparent,
+            tuple(self.outline_color),
+        )
+    _propagate(self, context, "hide_through_transparent")
+
+
 def _on_inner_line_enabled_changed(self, context):
     from . import inner_lines, outline_setup
     owner = self.id_data
@@ -458,6 +470,13 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="開いた辺にリム面を生成する（OFFで開いたメッシュのアーティファクト防止）",
         default=True,
         update=_on_rim_changed,
+    )  # type: ignore[valid-type]
+
+    hide_through_transparent: BoolProperty(
+        name="透明面の塗りつぶしを防ぐ",
+        description="透明・半透明の面越しに見える裏面側のラインを透明にする",
+        default=False,
+        update=_on_transparent_protection_changed,
     )  # type: ignore[valid-type]
 
     inner_line_enabled: BoolProperty(

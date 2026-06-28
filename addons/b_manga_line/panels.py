@@ -99,6 +99,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         col.prop(settings, "even_thickness")
         col.prop(settings, "use_uniform_line_width")
         col.prop(settings, "use_rim")
+        col.prop(settings, "hide_through_transparent")
         col.prop(settings, "use_vertex_color")
         col.separator()
         col.prop(settings, "use_outline_distance_limit")
