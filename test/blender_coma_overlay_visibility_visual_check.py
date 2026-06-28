@@ -190,27 +190,35 @@ def _exercise_visibility(scene, coma_camera) -> dict[str, dict[str, int]]:
     coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
     states["bmanga_overlay_on_again"] = _assert_visible(scene, "B-MANGAオーバーレイ再ON", own=True, koma=True, name=True)
     name_depths = _display_depths(scene, "name")
-    own_depths = _display_depths(scene, "own_page")
     if not name_depths or not all(depth == "FRONT" for depth in name_depths):
         raise AssertionError(f"ページ一覧が前面になっていません: {name_depths}")
-    if not own_depths or not all(depth == "FRONT" for depth in own_depths):
-        raise AssertionError(f"ページ画像が前面になっていません: {own_depths}")
     depths_front = _display_depths(scene, "koma")
+    own_depths_front = _display_depths(scene, "own_page")
     settings.koma_depth = True
     coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
     depths_back = _display_depths(scene, "koma")
+    own_depths_back = _display_depths(scene, "own_page")
     settings.koma_depth = False
     coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
     depths_front_again = _display_depths(scene, "koma")
+    own_depths_front_again = _display_depths(scene, "own_page")
     if not depths_front or not all(depth == "FRONT" for depth in depths_front):
         raise AssertionError(f"コマ内レイヤーが既定で前面になっていません: {depths_front}")
+    if not own_depths_front or not all(depth == "FRONT" for depth in own_depths_front):
+        raise AssertionError(f"ページ画像が既定で前面になっていません: {own_depths_front}")
     if not depths_back or not all(depth == "BACK" for depth in depths_back):
         raise AssertionError(f"コマを後ろにするONでコマ内レイヤーが背面になっていません: {depths_back}")
+    if not own_depths_back or not all(depth == "BACK" for depth in own_depths_back):
+        raise AssertionError(f"コマを後ろにするONでページ画像が背面になっていません: {own_depths_back}")
     if not depths_front_again or not all(depth == "FRONT" for depth in depths_front_again):
         raise AssertionError(f"コマを後ろにするOFFでコマ内レイヤーが前面へ戻っていません: {depths_front_again}")
+    if not own_depths_front_again or not all(depth == "FRONT" for depth in own_depths_front_again):
+        raise AssertionError(f"コマを後ろにするOFFでページ画像が前面へ戻っていません: {own_depths_front_again}")
     states["koma_depth"] = {
         "name_front": len(name_depths),
-        "own_page_front": len(own_depths),
+        "own_page_front": len(own_depths_front),
+        "own_page_back": len(own_depths_back),
+        "own_page_front_again": len(own_depths_front_again),
         "front": len(depths_front),
         "back": len(depths_back),
         "front_again": len(depths_front_again),

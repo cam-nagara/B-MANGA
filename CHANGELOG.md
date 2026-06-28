@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — コマを後ろにする時のページ画像表示順を修正 (v0.6.417)
+
+### 症状
+
+- コマファイルで「コマを後ろにする」をONにしても、コマ内レイヤーだけが背面になり、ページ画像は前面に残っていた。
+
+### 原因
+
+- 「コマを後ろにする」の表示順変更対象が、下絵_コマだけに限定されていた。
+- コマファイルを開いた直後に作るページ画像も、常に前面として追加していた。
+
+### 修正
+
+- 「コマを後ろにする」がONの時は、コマ内レイヤーとページ画像の両方を背面にするようにした。
+- OFFに戻した時は、コマ内レイヤーとページ画像の両方を前面へ戻すようにした。
+- ページ一覧、作品情報、用紙ガイドは前面表示のまま維持した。
+
+### 検証 (Blender 5.1 実機)
+
+- `python -m py_compile __init__.py utils\coma_camera.py test\blender_coma_overlay_visibility_visual_check.py test\blender_ui_micro_behavior_matrix_check.py`
+- `blender.exe --factory-startup --background --python test\blender_ui_micro_behavior_matrix_check.py`
+- `blender.exe --factory-startup --python test\blender_coma_overlay_visibility_visual_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — コマファイルの右クリックメニューを整理 (v0.6.416)
 
 ### 症状

@@ -847,6 +847,15 @@ def _koma_backgrounds(context):
     ]
 
 
+def _own_page_backgrounds(context):
+    return [
+        bg
+        for bg in context.scene.camera.data.background_images
+        if getattr(bg, "image", None) is not None
+        and str(bg.image.get("bmanga_kind", "")) == "own_page"
+    ]
+
+
 def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     from bmanga_dev_ui_micro.core.mode import get_mode
     from bmanga_dev_ui_micro.utils import coma_camera
@@ -925,12 +934,21 @@ def _check_coma_camera_side_effects(context) -> list[dict[str, Any]]:
     _mark("coma_camera_depth")
     settings.koma_depth = True
     depths_back = [str(bg.display_depth) for bg in _koma_backgrounds(context)]
+    own_depths_back = [str(bg.display_depth) for bg in _own_page_backgrounds(context)]
     settings.koma_depth = False
     depths_front = [str(bg.display_depth) for bg in _koma_backgrounds(context)]
+    own_depths_front = [str(bg.display_depth) for bg in _own_page_backgrounds(context)]
     results.append({
         "group": "コマ編集B-MANGAパネル",
         "label": "コマを後ろにする",
-        "ok": all(depth == "BACK" for depth in depths_back) and all(depth == "FRONT" for depth in depths_front),
+        "ok": all(depth == "BACK" for depth in depths_back)
+        and all(depth == "BACK" for depth in own_depths_back)
+        and all(depth == "FRONT" for depth in depths_front)
+        and all(depth == "FRONT" for depth in own_depths_front),
+        "koma_back": depths_back,
+        "page_back": own_depths_back,
+        "koma_front": depths_front,
+        "page_front": own_depths_front,
     })
 
     _mark("coma_camera_subsurf")

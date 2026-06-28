@@ -337,7 +337,7 @@ def configure_camera_backgrounds(scene, camera, refs: Iterable[ReferenceImage], 
         else:
             alpha = name_alpha
             visible = name_visible and (ref.visible or name_show_all_pages)
-        depth = "BACK" if ref.kind == "koma" and not is_page_image and koma_depth_back else "FRONT"
+        depth = "BACK" if ref.kind in {"koma", "own_page"} and koma_depth_back else "FRONT"
         bg_scale, bg_offset = _background_scale_offset_for_ref(ref, scale if is_page_image or ref.kind == "own_page" else 1.0)
         _set_bg_attr(bg, "alpha", alpha)
         _set_bg_attr(bg, "scale", bg_scale)
@@ -803,7 +803,7 @@ def ensure_hatching_background(context):
 def set_koma_background_depth(context, *, back: bool) -> None:
     depth = "BACK" if back else "FRONT"
     for bg in _iter_camera_backgrounds(context):
-        if _background_matches_kind(bg, "koma"):
+        if _background_matches_kind(bg, "koma") or _background_matches_kind(bg, "own_page"):
             _set_bg_attr(bg, "display_depth", depth)
 
 
@@ -1323,6 +1323,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
         getattr(settings, "koma_bg_images_opacity", 100.0), 100.0,
     ) if settings else 1.0
     koma_visible = bool(getattr(settings, "koma_visible", True)) if settings else True
+    koma_depth_back = bool(getattr(settings, "koma_depth", False)) if settings else False
 
     coma_id = str(getattr(scene, "bmanga_current_coma_id", "") or "")
     coma_points_mm = _resolve_coma_points_mm(work, current_page_id, coma_id)
@@ -1333,6 +1334,7 @@ def _add_page_overview_backgrounds(scene, work) -> None:
                 cam_data, work, page_id, coma_id, coma_points_mm,
                 canvas_w_mm, canvas_h_mm, user_scale,
                 own_page_alpha, own_page_visible,
+                "BACK" if koma_depth_back else "FRONT",
             )
             continue
         png_path = page_preview_object._preview_png_path(work, page_id)
@@ -1395,6 +1397,7 @@ def _add_own_page_backgrounds(
     cam_data, work, page_id, coma_id, coma_points_mm,
     canvas_w_mm, canvas_h_mm, user_scale,
     own_page_alpha, own_page_visible,
+    depth,
 ) -> None:
     """現在ページをコマ領域透明にして自ページ画像として追加."""
     from . import page_preview_object
@@ -1403,18 +1406,18 @@ def _add_own_page_backgrounds(
     if png_path is None or not png_path.is_file():
         return
     if not export_pipeline.has_pillow():
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     Image = export_pipeline.Image
     ImageDraw = export_pipeline.ImageDraw
     if Image is None or ImageDraw is None:
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     try:
         with Image.open(str(png_path)) as opened:
             src = opened.convert("RGBA")
     except Exception:  # noqa: BLE001
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
         return
     w, h = src.size
     points_px = _mm_to_image_px(coma_points_mm, canvas_w_mm, canvas_h_mm, w, h)
@@ -1430,14 +1433,14 @@ def _add_own_page_backgrounds(
         alpha_ch.paste(0, mask=mask)
         masked.putalpha(alpha_ch)
         masked.save(str(masked_path))
-        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible)
+        _load_overview_bg(cam_data, masked_path, page_id, "own_page", user_scale, own_page_alpha, own_page_visible, depth=depth)
     else:
-        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible)
+        _add_own_page_fallback(cam_data, png_path, page_id, user_scale, own_page_alpha, own_page_visible, depth)
 
 
-def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible) -> None:
+def _add_own_page_fallback(cam_data, png_path, page_id, user_scale, alpha, visible, depth) -> None:
     """コマ座標が取得できない時はフル画像をそのまま追加."""
-    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible)
+    _load_overview_bg(cam_data, png_path, page_id, "own_page", user_scale, alpha, visible, depth=depth)
 
 
 def _load_overview_bg(cam_data, png_path, page_id, kind, scale, alpha, visible, *, depth="FRONT") -> None:
