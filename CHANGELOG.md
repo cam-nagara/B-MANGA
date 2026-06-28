@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの線幅mm仕様と複数選択反映を再修正 (B-MANGA Line v0.3.20)
+
+### 症状
+
+- 複数選択中に線幅などのライン設定を変更しても、選択中の他オブジェクトへ実際のライン更新が反映されない場合があった。
+- 「線幅 (mm)」が印刷上のmmではなく、Blender内部長さの単純換算として扱われる経路が残っていた。
+- 内部線と交差線の太さが50mmで止まり、それ以上入力できなかった。
+- 内部線と交差線が初期状態でオフだった。
+- 「ラインのみを表示」が、非表示状態の内部線/交差線をまとめて表示状態へ戻さない場合があった。
+
+### 原因
+
+- 複数選択への反映時、値コピー後にコピー先オブジェクトのライン全体を再適用していなかった。
+- 印刷上のmmとして描く計算が「線幅の均一化」設定に依存しており、通常設定では内部長さがそのまま使われていた。
+- 内部線/交差線のUI値とノード入力値の上限が50mm相当に固定されていた。
+
+### 修正
+
+- 「線幅 (mm)」「内部線の太さ (mm)」「交差線の太さ (mm)」を常に印刷上のmmとして描画するようにした。
+- 複数選択中の設定変更では、選択中の他オブジェクトへ値をコピーした後、各オブジェクトのラインを再適用するようにした。
+- 複数選択で線幅を変更した時、コピー先の実際のライン幅も印刷mm基準で更新される実機テストを追加した。
+- 内部線/交差線の太さ上限を1000mmまで上げ、ノード側の入力上限も更新した。
+- 内部線と交差線の初期値をオンにした。
+- 「ラインのみを表示」は、アウトライン、内部線、交差線をまとめて表示状態にしてから切り替えるようにした。
+- 任意切替だった「線幅の均一化」はパネルから外し、互換用設定として残した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの複数選択設定反映を修正 (B-MANGA Line v0.3.19)
 
 ### 症状

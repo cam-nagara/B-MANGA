@@ -59,6 +59,13 @@ def _select(obj: bpy.types.Object) -> None:
     bpy.context.view_layer.objects.active = obj
 
 
+def _select_many(active: bpy.types.Object, objects: list[bpy.types.Object]) -> None:
+    bpy.ops.object.select_all(action="DESELECT")
+    for obj in objects:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = active
+
+
 def _target_pixels(width_mm: float) -> float:
     return width_mm * 600.0 / 25.4
 
@@ -99,8 +106,6 @@ def _test_uniform_width_depth_and_resolution() -> None:
     settings.outline_thickness_mm = 0.5
     settings.inner_line_enabled = True
     settings.inner_line_thickness_mm = 0.25
-    settings.use_uniform_line_width = True
-
     assert presets.apply_line_settings(obj, bpy.context)
     mod = obj.modifiers[core.MODIFIER_NAME]
     near = _expected_world_width(scene, 2.0, 0.5)
@@ -128,9 +133,11 @@ def _test_uniform_width_depth_and_resolution() -> None:
     )
 
     settings.use_uniform_line_width = False
-    assert math.isclose(mod.thickness, settings.outline_thickness, rel_tol=0.001)
-    assert all(math.isclose(value, 1.0, rel_tol=0.001) for value in _weights(obj))
-    assert math.isclose(_inner_thickness(obj), settings.inner_line_thickness, rel_tol=0.001)
+    assert math.isclose(mod.thickness, far_thick, rel_tol=0.001), (
+        mod.thickness,
+        far_thick,
+    )
+    assert math.isclose(_inner_thickness(obj), far_thick * 0.25, rel_tol=0.001)
 
 
 def _test_uniform_width_saved_in_preset() -> None:
@@ -141,7 +148,6 @@ def _test_uniform_width_saved_in_preset() -> None:
     source = _make_depth_quad()
     _select(source)
     source.bmanga_line_settings.outline_thickness_mm = 0.4
-    source.bmanga_line_settings.use_uniform_line_width = True
     scene.bmanga_line_preset_name = "均一化テスト"
     assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
 
@@ -150,8 +156,33 @@ def _test_uniform_width_saved_in_preset() -> None:
     _select(target)
     scene.bmanga_line_preset_index = 0
     assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
-    assert target.bmanga_line_settings.use_uniform_line_width
     expected = _expected_world_width(scene, 8.0, 0.4)
+    actual = target.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
+
+
+def _test_multi_select_mm_change_updates_all_modifiers() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(-1.5, 0.0, -4.0))
+    source = bpy.context.object
+    source.name = "BML_multi_width_source"
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(1.5, 0.0, -4.0))
+    target = bpy.context.object
+    target.name = "BML_multi_width_target"
+
+    for obj in (source, target):
+        _select(obj)
+        obj.bmanga_line_settings.outline_thickness_mm = 0.5
+        assert presets.apply_line_settings(obj, bpy.context)
+
+    _select_many(source, [source, target])
+    source.bmanga_line_settings.outline_thickness_mm = 1.2
+
+    assert math.isclose(target.bmanga_line_settings.outline_thickness_mm, 1.2, rel_tol=0.001)
+    expected = _expected_world_width(scene, 4.5, 1.2)
     actual = target.modifiers[core.MODIFIER_NAME].thickness
     assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
 
@@ -183,7 +214,6 @@ def _test_evaluated_orthographic_width() -> None:
     obj.data.materials.append(mat)
     settings = obj.bmanga_line_settings
     settings.outline_thickness_mm = 0.5
-    settings.use_uniform_line_width = True
     _select(obj)
     assert presets.apply_line_settings(obj, bpy.context)
 
@@ -219,7 +249,6 @@ def _test_linked_uniform_width_refresh_does_not_crash() -> None:
     source_obj = _make_depth_quad()
     _select(source_obj)
     source_obj.bmanga_line_settings.outline_thickness_mm = 0.5
-    source_obj.bmanga_line_settings.use_uniform_line_width = True
     assert presets.apply_line_settings(source_obj, bpy.context)
 
     source_path = Path(tempfile.gettempdir()) / "bml_uniform_link_source.blend"
@@ -247,6 +276,7 @@ def main() -> None:
     _clear_scene()
     _test_uniform_width_depth_and_resolution()
     _test_uniform_width_saved_in_preset()
+    _test_multi_select_mm_change_updates_all_modifiers()
     _test_evaluated_orthographic_width()
     _test_linked_uniform_width_refresh_does_not_crash()
     print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")

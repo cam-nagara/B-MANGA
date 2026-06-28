@@ -108,8 +108,22 @@ def _propagate(self, context, prop_name):
             s = getattr(obj, "bmanga_line_settings", None)
             if s is not None:
                 setattr(s, prop_name, value)
+                _refresh_full_line_settings(obj, context)
     finally:
         _propagating = False
+    _refresh_print_widths(context)
+
+
+def _refresh_full_line_settings(obj: bpy.types.Object, context) -> None:
+    if not has_line(obj):
+        return
+    from . import presets
+    presets.apply_line_settings(obj, context)
+
+
+def _refresh_print_widths(context) -> None:
+    from . import camera_comp
+    camera_comp.refresh(context)
 
 
 def _make_propagator(prop_name):
@@ -128,12 +142,7 @@ def _make_weight_refresh_propagator(prop_name):
 
 
 def _needs_line_width_weights(settings) -> bool:
-    return (
-        settings.use_uniform_line_width
-        or abs(settings.edge_smooth_factor) > 0.001
-        or settings.use_vertex_color
-        or settings.use_ao_influence
-    )
+    return True
 
 
 # ------------------------------------------------------------------
@@ -155,9 +164,7 @@ def _on_thickness_changed(self, context):
         outline_setup.update_modifier_thickness(owner, self.outline_thickness)
         if self.use_camera_compensation and PROP_BASE_THICKNESS in owner:
             owner[PROP_BASE_THICKNESS] = self.outline_thickness
-        if self.use_uniform_line_width:
-            from . import camera_comp
-            camera_comp.refresh(context)
+        _refresh_print_widths(context)
     _propagate(self, context, "outline_thickness")
 
 
@@ -221,9 +228,7 @@ def _on_inner_thickness_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
-        if self.use_uniform_line_width:
-            from . import camera_comp
-            camera_comp.refresh(context)
+        _refresh_print_widths(context)
     _propagate(self, context, "inner_line_thickness")
 
 
@@ -277,9 +282,7 @@ def _on_intersection_thickness_changed(self, context):
         intersection_lines.update_parameters(
             owner, thickness=self.intersection_thickness,
         )
-        if self.use_uniform_line_width:
-            from . import camera_comp
-            camera_comp.refresh(context)
+        _refresh_print_widths(context)
     _propagate(self, context, "intersection_thickness")
 
 
@@ -297,10 +300,12 @@ def _refresh_line_width_weights(self, context) -> None:
                     vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
                 mod.vertex_group = vg.name
                 mod.thickness_vertex_group = 0.0
-                if self.use_uniform_line_width:
-                    from . import camera_comp
-                    camera_comp.refresh(context)
-                else:
+                _refresh_print_widths(context)
+                if (
+                    abs(self.edge_smooth_factor) > 0.001
+                    or self.use_vertex_color
+                    or self.use_ao_influence
+                ):
                     vertex_analysis.compute_and_apply_weights(owner, self)
             else:
                 mod.vertex_group = ""
@@ -320,20 +325,9 @@ def _on_edge_midpoint_jitter_changed(self, context):
 def _on_camera_comp_changed(self, context):
     from . import camera_comp
     owner = self.id_data
-    if self.use_camera_compensation:
-        if owner.type == "MESH":
-            camera_comp.store_unit_reference(owner, context.scene)
-            camera_comp.refresh(context)
-    else:
-        if owner.type == "MESH":
-            mod = owner.modifiers.get(MODIFIER_NAME)
-            if mod is not None:
-                mod.thickness = abs(self.outline_thickness)
-            from . import inner_lines, intersection_lines
-            inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
-            intersection_lines.update_parameters(
-                owner, thickness=self.intersection_thickness,
-            )
+    if owner.type == "MESH" and self.use_camera_compensation:
+        camera_comp.store_unit_reference(owner, context.scene)
+    _refresh_print_widths(context)
     _propagate(self, context, "use_camera_compensation")
 
 
@@ -346,31 +340,26 @@ def _on_camera_influence_changed(self, context):
 
 
 def _on_uniform_line_width_changed(self, context):
-    from . import camera_comp, vertex_analysis
+    from . import vertex_analysis
     owner = self.id_data
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
-            if self.use_uniform_line_width:
-                vg = owner.vertex_groups.get(VG_LINE_WIDTH)
-                if vg is None:
-                    vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
-                    vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
-                mod.vertex_group = vg.name
-                mod.thickness_vertex_group = 0.0
-                camera_comp.refresh(context)
+            vg = owner.vertex_groups.get(VG_LINE_WIDTH)
+            if vg is None:
+                vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
+                vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
+            mod.vertex_group = vg.name
+            mod.thickness_vertex_group = 0.0
+            if (
+                abs(self.edge_smooth_factor) > 0.001
+                or self.use_vertex_color
+                or self.use_ao_influence
+            ):
+                vertex_analysis.compute_and_apply_weights(owner, self)
             else:
-                mod.thickness = abs(self.outline_thickness)
-                if _needs_line_width_weights(self):
-                    vertex_analysis.compute_and_apply_weights(owner, self)
-                else:
-                    mod.vertex_group = ""
-                    vertex_analysis.reset_width_weights(owner)
-                from . import inner_lines, intersection_lines
-                inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
-                intersection_lines.update_parameters(
-                    owner, thickness=self.intersection_thickness,
-                )
+                vertex_analysis.reset_width_weights(owner)
+            _refresh_print_widths(context)
     _propagate(self, context, "use_uniform_line_width")
 
 
@@ -428,10 +417,10 @@ def _refresh_visibility_rules(self, context):
 
 
 # ------------------------------------------------------------------
-# mm ↔ Blender unit 変換（1 BU = 1 m = 1000 mm）
+# 線幅UI値
 # ------------------------------------------------------------------
 
-_BU_PER_MM = 0.001  # 1mm = 0.001 Blender units
+_BU_PER_MM = 0.001
 
 
 def _get_outline_mm(self):
@@ -467,10 +456,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     outline_thickness: FloatProperty(
         name="線幅",
-        description="アウトラインの太さ（内部値）",
+        description="印刷時のアウトラインの太さを保持する内部値",
         default=0.0003,
         min=0.0001,
-        max=0.1,
+        max=1.0,
         precision=4,
         step=0.1,
         update=_on_thickness_changed,
@@ -482,7 +471,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         get=_get_outline_mm,
         set=_set_outline_mm,
         min=0.1,
-        max=100.0,
+        max=1000.0,
         precision=2,
         step=5,
     )  # type: ignore[valid-type]
@@ -514,8 +503,8 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     use_uniform_line_width: BoolProperty(
         name="線幅の均一化",
-        description="カメラビューと出力解像度に合わせて、指定したmm幅で描画する",
-        default=False,
+        description="互換用設定。線幅 (mm) は常に印刷上の太さで描画する",
+        default=True,
         update=_on_uniform_line_width_changed,
     )  # type: ignore[valid-type]
 
@@ -536,7 +525,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     inner_line_enabled: BoolProperty(
         name="内部線を追加",
         description="折れ目（稜線・谷線）を検出して線を追加する",
-        default=False,
+        default=True,
         update=_on_inner_line_enabled_changed,
     )  # type: ignore[valid-type]
 
@@ -552,10 +541,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     inner_line_thickness: FloatProperty(
         name="内部線の太さ",
-        description="内部線ジオメトリの半径（内部値）",
+        description="印刷時の内部線の太さを保持する内部値",
         default=0.0005,
         min=0.0001,
-        max=0.05,
+        max=1.0,
         precision=4,
         step=0.01,
         update=_on_inner_thickness_changed,
@@ -567,7 +556,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         get=_get_inner_mm,
         set=_set_inner_mm,
         min=0.1,
-        max=50.0,
+        max=1000.0,
         precision=2,
         step=5,
     )  # type: ignore[valid-type]
@@ -590,7 +579,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     intersection_enabled: BoolProperty(
         name="交差線を追加",
         description="他のオブジェクトとの交差部分に線を描画する",
-        default=False,
+        default=True,
         update=_on_intersection_enabled_changed,
     )  # type: ignore[valid-type]
 
@@ -603,10 +592,10 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
 
     intersection_thickness: FloatProperty(
         name="交差線の太さ",
-        description="交差線ジオメトリの半径（内部値）",
+        description="印刷時の交差線の太さを保持する内部値",
         default=0.0005,
         min=0.0001,
-        max=0.05,
+        max=1.0,
         precision=4,
         step=0.01,
         update=_on_intersection_thickness_changed,
@@ -618,7 +607,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         get=_get_intersection_mm,
         set=_set_intersection_mm,
         min=0.1,
-        max=50.0,
+        max=1000.0,
         precision=2,
         step=5,
     )  # type: ignore[valid-type]

@@ -16,8 +16,8 @@ from .core import (
     GN_MODIFIER_NAME,
     INTERSECTION_MODIFIER_NAME,
     MODIFIER_NAME,
-    PROP_BASE_THICKNESS,
     PROP_LINES_HIDDEN,
+    PROP_BASE_THICKNESS,
     PROP_REF_DISTANCE,
     PROP_REF_FOV_TAN,
     PROP_REF_MODE,
@@ -221,12 +221,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
 # ------------------------------------------------------------------
 
 def _update_camera_compensation(scene, camera):
-    """カメラ距離 + FOV に応じて Solidify thickness を補正."""
-    from . import inner_lines, intersection_lines
-
-    cam_loc = camera.matrix_world.translation
-    current_fov = _get_fov_factor(camera.data, scene)
-
+    """線幅 (mm) を出力上の太さとして各オブジェクトへ反映."""
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
@@ -236,35 +231,7 @@ def _update_camera_compensation(scene, camera):
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
             continue
-        if settings.use_uniform_line_width:
-            _apply_uniform_line_width(scene, camera, obj, settings, mod)
-            continue
-        if not settings.use_camera_compensation:
-            continue
-        influence = settings.camera_compensation_influence
-        base_t = settings.outline_thickness
-        ref_d = obj.get(PROP_REF_DISTANCE, 1.0)
-        if ref_d <= 0:
-            ref_d = 1.0
-        dist = (cam_loc - obj.matrix_world.translation).length
-        factor = dist / ref_d
-        mode = obj.get(PROP_REF_MODE)
-        if mode is None:
-            mode = REF_MODE_VIEW if abs(ref_d - 1.0) < 1e-6 else REF_MODE_LOCKED
-        ref_fov = obj.get(PROP_REF_FOV_TAN)
-        if mode == REF_MODE_LOCKED and ref_fov and ref_fov > 0:
-            factor *= current_fov / ref_fov
-        adjusted = base_t * (1.0 + (factor - 1.0) * influence)
-        mod.thickness = abs(adjusted)
-
-        inner_adjusted = settings.inner_line_thickness * (
-            1.0 + (factor - 1.0) * influence
-        )
-        intersection_adjusted = settings.intersection_thickness * (
-            1.0 + (factor - 1.0) * influence
-        )
-        inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
-        intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
+        _apply_uniform_line_width(scene, camera, obj, settings, mod)
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd):

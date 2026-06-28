@@ -243,13 +243,13 @@ def _setup_interface(tree):
     )
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.0001
-    radius_sock.max_value = 0.05
+    radius_sock.max_value = 1.0
     target_radius_sock = tree.interface.new_socket(
         name="交差対象の線幅", in_out="INPUT", socket_type="NodeSocketFloat",
     )
     target_radius_sock.default_value = 0.0
     target_radius_sock.min_value = 0.0
-    target_radius_sock.max_value = 0.1
+    target_radius_sock.max_value = 1.0
     tree.interface.new_socket(
         name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial",
     )
@@ -463,8 +463,22 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return creator()
+        radius_socket = _find_interface_socket(tree, "線の太さ")
+        if radius_socket is not None and getattr(radius_socket, "max_value", 0.0) < 1.0:
+            bpy.data.node_groups.remove(tree)
+            return creator()
         return tree
     return creator()
+
+
+def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
+    for item in tree.interface.items_tree:
+        if (
+            getattr(item, "name", None) == name
+            and getattr(item, "in_out", None) == "INPUT"
+        ):
+            return item
+    return None
 
 
 def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:

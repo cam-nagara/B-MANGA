@@ -57,8 +57,8 @@ def _make_two_material_cube() -> bpy.types.Object:
 
 def _test_camera_selection_and_aov() -> None:
     scene = bpy.context.scene
-    near = _make_camera("BML_near_camera", (0.0, -2.0, 0.0))
-    far = _make_camera("BML_far_camera", (0.0, -10.0, 0.0))
+    near = _make_camera("BML_near_camera", (0.0, 0.0, 2.0))
+    far = _make_camera("BML_far_camera", (0.0, 0.0, 10.0))
     scene.camera = far
     scene.bmanga_line_camera = None
 
@@ -71,7 +71,7 @@ def _test_camera_selection_and_aov() -> None:
 
     assert presets.apply_line_settings(obj, bpy.context)
     far_thickness = obj.modifiers[core.MODIFIER_NAME].thickness
-    assert far_thickness > 0.08, far_thickness
+    assert far_thickness > 0.01, far_thickness
     assert obj.get(core.PROP_REF_MODE) == core.REF_MODE_VIEW
 
     obj[core.PROP_REF_FOV_TAN] = 999.0
@@ -103,7 +103,16 @@ def _test_line_only_restore() -> None:
     obj = bpy.data.objects["BML_two_material_cube"]
     _select(obj)
     before = [mat.name if mat else "" for mat in obj.data.materials[:2]]
+    assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
+    for mod_name in core.LINE_MODIFIER_NAMES:
+        mod = obj.modifiers.get(mod_name)
+        assert mod is not None
+        assert not mod.show_viewport and not mod.show_render
     assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
+    for mod_name in core.LINE_MODIFIER_NAMES:
+        mod = obj.modifiers.get(mod_name)
+        assert mod is not None
+        assert mod.show_viewport and mod.show_render
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
     assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
     assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None

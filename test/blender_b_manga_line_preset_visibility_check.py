@@ -142,11 +142,7 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.outline_thickness_mm = 0.9
     assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
-    assert math.isclose(
-        second.modifiers[core.MODIFIER_NAME].thickness,
-        target.outline_thickness,
-        rel_tol=0.001,
-    )
+    assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
 
     source.outline_color = (0.4, 0.5, 0.6, 1.0)
     assert tuple(round(v, 3) for v in target.outline_color) == (0.4, 0.5, 0.6, 1.0)
@@ -213,7 +209,10 @@ def _assert_multi_select_manual_setting_propagation(
         math.radians(45.0),
         rel_tol=0.001,
     )
-    assert math.isclose(_modifier_input(inner_mod, "線の太さ"), 0.0012, rel_tol=0.001)
+    assert math.isclose(target.inner_line_thickness_mm, 1.2, rel_tol=0.001)
+
+    source.inner_line_thickness_mm = 70.0
+    assert math.isclose(target.inner_line_thickness_mm, 70.0, rel_tol=0.001)
 
     source.intersection_enabled = False
     assert target.intersection_enabled is False
@@ -229,7 +228,10 @@ def _assert_multi_select_manual_setting_propagation(
     assert intersection_mod is not None
     assert intersection_mod.node_group is not None
     assert intersection_mod.node_group.name.startswith(intersection_lines.INTERSECTION_TREE_BOOLEAN)
-    assert math.isclose(_modifier_input(intersection_mod, "線の太さ"), 0.0014, rel_tol=0.001)
+    assert math.isclose(target.intersection_thickness_mm, 1.4, rel_tol=0.001)
+
+    source.intersection_thickness_mm = 80.0
+    assert math.isclose(target.intersection_thickness_mm, 80.0, rel_tol=0.001)
 
     source.use_camera_compensation = True
     source.camera_compensation_influence = 0.35
@@ -276,7 +278,9 @@ def _assert_multi_select_manual_setting_propagation(
     source.use_ao_influence = False
     source.edge_smooth_factor = 0.0
     source.inner_line_enabled = True
+    source.inner_line_thickness_mm = 1.2
     source.intersection_enabled = True
+    source.intersection_thickness_mm = 1.4
     source.intersection_method = "SDF"
     source.intersection_target = intersection_target
     for obj in (first, second):

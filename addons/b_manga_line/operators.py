@@ -143,6 +143,7 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
 
     def execute(self, context):
         from . import outline_setup
+        from .core import set_line_visibility
 
         count = 0
         failed = 0
@@ -150,6 +151,8 @@ class BMANGA_LINE_OT_set_line_only(bpy.types.Operator):
             if not has_line(obj):
                 continue
             try:
+                if self.line_only:
+                    set_line_visibility(obj, True)
                 if outline_setup.set_line_only(obj, self.line_only):
                     count += 1
             except Exception:
