@@ -13,6 +13,7 @@ from bpy.types import Menu
 
 from ..utils import layer_stack as layer_stack_utils
 from ..utils import object_naming as on
+from ..utils import page_file_scene, shortcut_visibility
 
 
 def _selected_balloon_count(context) -> int:
@@ -67,6 +68,38 @@ def _active_plain_curve_object(context):
     for obj in selected:
         if getattr(obj, "type", "") == "CURVE" and not on.is_managed(obj):
             return obj
+    return None
+
+
+def _is_coma_file_context(context) -> bool:
+    try:
+        role, _page_id, _coma_id = page_file_scene.current_role(context)
+        if role == page_file_scene.ROLE_COMA:
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        return shortcut_visibility.current_blend_is_coma_blend()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _active_or_selected_object(context):
+    obj = getattr(context, "active_object", None)
+    if isinstance(obj, bpy.types.Object):
+        return obj
+    selected = getattr(context, "selected_objects", None) or ()
+    for obj in selected:
+        if isinstance(obj, bpy.types.Object):
+            return obj
+    selected_ids = getattr(context, "selected_ids", None) or ()
+    for sid in selected_ids:
+        if isinstance(sid, bpy.types.Object):
+            return sid
+    view_layer = getattr(context, "view_layer", None)
+    active = getattr(view_layer, "active", None) if view_layer is not None else None
+    if isinstance(active, bpy.types.Object):
+        return active
     return None
 
 
@@ -417,6 +450,48 @@ def _draw_layer_commands(layout, context) -> None:
     )
 
 
+def _operator_exists(op_id: str):
+    try:
+        namespace, name = op_id.split(".", 1)
+        return getattr(getattr(bpy.ops, namespace), name, None)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _operator_poll(op_id: str) -> bool:
+    op = _operator_exists(op_id)
+    if op is None:
+        return False
+    try:
+        return bool(op.poll())
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def _draw_link_file_commands(layout, context) -> bool:
+    _ = context
+    drew = False
+    if _operator_exists("bmanga.open_link_source") is not None:
+        row = layout.row()
+        row.enabled = _operator_poll("bmanga.open_link_source")
+        row.operator(
+            "bmanga.open_link_source",
+            text="リンク元ファイルを開く",
+            icon="FILE_BLEND",
+        )
+        drew = True
+    if _operator_exists("bmanga.record_asset_link") is not None:
+        row = layout.row()
+        row.enabled = _operator_poll("bmanga.record_asset_link")
+        row.operator(
+            "bmanga.record_asset_link",
+            text="このリンクを記録",
+            icon="LINKED",
+        )
+        drew = True
+    return drew
+
+
 class BMANGA_MT_layer_context(Menu):
     """B-MANGA レイヤー Object 用サブメニュー (3D ビュー / Outliner 共通)."""
 
@@ -453,18 +528,31 @@ class BMANGA_MT_object_context(Menu):
 
     def draw(self, context):
         layout = self.layout
+        if _is_coma_file_context(context):
+            _draw_link_file_commands(layout, context)
+            return
         _draw_layer_commands(layout, context)
-        layout.separator()
-        op_link = getattr(bpy.ops.bmanga, "open_link_source", None)
-        if op_link is not None:
-            layout.operator("bmanga.open_link_source", icon="FILE_BLEND")
-        op_record = getattr(bpy.ops.bmanga, "record_asset_link", None)
-        if op_record is not None:
-            layout.operator("bmanga.record_asset_link", icon="LINKED")
+        if (
+            _operator_exists("bmanga.open_link_source") is not None
+            or _operator_exists("bmanga.record_asset_link") is not None
+        ):
+            layout.separator()
+            _draw_link_file_commands(layout, context)
 
 
 def _draw_in_object_context(self, context):
     """3D ビュー Object 右クリックメニューに B-MANGA サブメニューを差し込む."""
+    if _is_coma_file_context(context):
+        if not shortcut_visibility.bmanga_panel_visible(context):
+            return
+        if _active_or_selected_object(context) is None:
+            return
+        self.layout.separator()
+        self.layout.menu(
+            BMANGA_MT_object_context.bl_idname,
+            icon="OUTLINER_OB_GROUP_INSTANCE",
+        )
+        return
     obj = _active_managed_object(context)
     if obj is None and _active_plain_curve_object(context) is None:
         return
@@ -478,9 +566,11 @@ def _draw_in_object_context(self, context):
 def _draw_in_outliner_context(self, context):
     """Outliner 右クリックメニューに B-MANGA サブメニューを差し込む.
 
-    Outliner では Object 未選択でも常にサブメニューを出す (選択中の場合は
-    詳細設定が有効、未選択は案内ラベルのみ)。
+    Outliner の Object 右クリックメニューにだけ差し込む。コマ用blendファイルでは
+    サブメニュー内をリンク操作だけにする。
     """
+    if _active_or_selected_object(context) is None:
+        return
     self.layout.separator()
     self.layout.menu(
         BMANGA_MT_object_context.bl_idname,
@@ -495,8 +585,14 @@ _CLASSES = (
 )
 
 
-# Outliner の append 候補メニュー (Blender 5.1 で存在するもののみ append される)
-_OUTLINER_MENUS = (
+# Outliner の append 先。Object 以外にも同じ関数を入れると、Blender 側で
+# 複数メニューが合成された時に B-MANGA サブメニューが二重に出る。
+_OUTLINER_APPEND_MENUS = (
+    "OUTLINER_MT_object",
+)
+
+# 旧バージョンが append していた候補。register/unregister 時に掃除する。
+_OUTLINER_CLEANUP_MENUS = (
     "OUTLINER_MT_object",
     "OUTLINER_MT_collection",
     "OUTLINER_MT_context_menu",
@@ -504,12 +600,24 @@ _OUTLINER_MENUS = (
 )
 
 
+def _remove_menu_callback(menu, callback) -> None:
+    for _ in range(8):
+        try:
+            menu.remove(callback)
+        except (ValueError, AttributeError, TypeError):
+            break
+
+
 def register() -> None:
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
+    _remove_menu_callback(bpy.types.VIEW3D_MT_object_context_menu, _draw_in_object_context)
     bpy.types.VIEW3D_MT_object_context_menu.append(_draw_in_object_context)
-    # Outliner の各種右クリックメニューにも同じサブメニューを差し込む
-    for menu_name in _OUTLINER_MENUS:
+    for menu_name in _OUTLINER_CLEANUP_MENUS:
+        menu = getattr(bpy.types, menu_name, None)
+        if menu is not None:
+            _remove_menu_callback(menu, _draw_in_outliner_context)
+    for menu_name in _OUTLINER_APPEND_MENUS:
         menu = getattr(bpy.types, menu_name, None)
         if menu is not None:
             try:
@@ -519,18 +627,12 @@ def register() -> None:
 
 
 def unregister() -> None:
-    try:
-        bpy.types.VIEW3D_MT_object_context_menu.remove(_draw_in_object_context)
-    except (ValueError, AttributeError):
-        pass
-    for menu_name in _OUTLINER_MENUS:
+    _remove_menu_callback(bpy.types.VIEW3D_MT_object_context_menu, _draw_in_object_context)
+    for menu_name in _OUTLINER_CLEANUP_MENUS:
         menu = getattr(bpy.types, menu_name, None)
         if menu is None:
             continue
-        try:
-            menu.remove(_draw_in_outliner_context)
-        except (ValueError, AttributeError):
-            pass
+        _remove_menu_callback(menu, _draw_in_outliner_context)
     for cls in reversed(_CLASSES):
         try:
             bpy.utils.unregister_class(cls)

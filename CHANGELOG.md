@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — コマファイルの右クリックメニューを整理 (v0.6.416)
+
+### 症状
+
+- アウトライナーでオブジェクトを右クリックした時、B-MANGAのサブメニューが2つ表示される場合があった。
+- コマファイルのアウトライナー右クリックで、リンク操作以外のB-MANGAコマンドまで表示されていた。
+- コマファイルでB-MANGAパネルを表示していても、ビューポート上のオブジェクト右クリックからリンク元ファイルを開く操作やリンク記録を選べない場合があった。
+
+### 原因
+
+- アウトライナーの複数種類の右クリックメニューに同じB-MANGAサブメニューを差し込んでいた。
+- コマファイルでも通常のB-MANGAレイヤー操作メニューと同じ内容を描画していた。
+- ビューポート右クリックではB-MANGA管理下のレイヤーだけを対象にしており、コマファイル内のリンクオブジェクトを対象にしていなかった。
+
+### 修正
+
+- アウトライナーではオブジェクト右クリックメニューだけへB-MANGAサブメニューを差し込み、登録時に古い差し込みを掃除するようにした。
+- コマファイルではB-MANGAサブメニュー内を「リンク元ファイルを開く」「このリンクを記録」だけにした。
+- コマファイルでB-MANGAパネルが表示されている時は、ビューポート上のオブジェクト右クリックから同じ2項目を選べるようにした。
+
+### 検証 (Blender 5.1.1 実機)
+
+- `python -m py_compile __init__.py ui\context_menu.py test\blender_context_menu_commands_check.py test\blender_coma_context_menu_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_context_menu_check.py`
+- `blender.exe --factory-startup --background --python test\blender_context_menu_commands_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line有効化とB-MANGA Renderタブ表示を修正 (B-MANGA Line v0.3.16 / B-MANGA Render v0.1.33)
 
 ### 症状

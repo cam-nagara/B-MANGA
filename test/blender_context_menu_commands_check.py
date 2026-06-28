@@ -215,6 +215,7 @@ class _FakeLayout:
         self.operator_context = "EXEC_DEFAULT"
         self.enabled = True
         self.ops = []
+        self.menus = []
 
     def row(self, align=False):
         _ = align
@@ -225,6 +226,9 @@ class _FakeLayout:
 
     def separator(self):
         pass
+
+    def menu(self, menu_idname, **kwargs):
+        self.menus.append((menu_idname, kwargs))
 
     def operator(self, op_id, **kwargs):
         self.ops.append((op_id, kwargs))
@@ -333,6 +337,53 @@ def _assert_viewport_tool_menu_paths(work) -> None:
         selection_context_menu._call_selection_menu = original_call
 
 
+def _assert_coma_file_object_context_menu() -> None:
+    from bmanga_dev.ui import context_menu
+    from bmanga_dev.utils import page_file_scene, shortcut_visibility
+
+    original_current_role = page_file_scene.current_role
+    original_current_blend_is_coma = shortcut_visibility.current_blend_is_coma_blend
+    original_panel_visible = shortcut_visibility.bmanga_panel_visible
+    try:
+        page_file_scene.current_role = lambda _context=None: (page_file_scene.ROLE_COMA, "p0001", "c01")
+        shortcut_visibility.current_blend_is_coma_blend = lambda: True
+        shortcut_visibility.bmanga_panel_visible = lambda _context=None: True
+
+        layout = _FakeLayout()
+        context_menu.BMANGA_MT_object_context.draw(SimpleNamespace(layout=layout), bpy.context)
+        assert [op_id for op_id, _kwargs in layout.ops] == [
+            "bmanga.open_link_source",
+            "bmanga.record_asset_link",
+        ], layout.ops
+        assert [kwargs.get("text") for _op_id, kwargs in layout.ops] == [
+            "リンク元ファイルを開く",
+            "このリンクを記録",
+        ], layout.ops
+
+        assert context_menu._OUTLINER_APPEND_MENUS == ("OUTLINER_MT_object",)
+        assert "OUTLINER_MT_context_menu" in context_menu._OUTLINER_CLEANUP_MENUS
+        assert "OUTLINER_MT_collection" in context_menu._OUTLINER_CLEANUP_MENUS
+
+        bpy.ops.mesh.primitive_cube_add(size=1.0)
+        try:
+            with_panel = SimpleNamespace(layout=_FakeLayout())
+            context_menu._draw_in_object_context(with_panel, bpy.context)
+            assert [menu_id for menu_id, _kwargs in with_panel.layout.menus] == [
+                context_menu.BMANGA_MT_object_context.bl_idname
+            ], with_panel.layout.menus
+
+            shortcut_visibility.bmanga_panel_visible = lambda _context=None: False
+            without_panel = SimpleNamespace(layout=_FakeLayout())
+            context_menu._draw_in_object_context(without_panel, bpy.context)
+            assert without_panel.layout.menus == [], without_panel.layout.menus
+        finally:
+            bpy.ops.object.delete()
+    finally:
+        page_file_scene.current_role = original_current_role
+        shortcut_visibility.current_blend_is_coma_blend = original_current_blend_is_coma
+        shortcut_visibility.bmanga_panel_visible = original_panel_visible
+
+
 def _menu_item_by_label(items: list[dict], label: str) -> dict:
     for item in items:
         if str(item.get("label", "") or "") == label:
@@ -417,6 +468,7 @@ def main() -> None:
         _assert_menu_draw_does_not_resync()
         _assert_context_menu_does_not_warp_cursor()
         _assert_viewport_tool_menu_paths(work)
+        _assert_coma_file_object_context_menu()
         _assert_page_spread_context_menu_commands(work)
         print("BMANGA_CONTEXT_MENU_COMMANDS_OK")
     finally:
