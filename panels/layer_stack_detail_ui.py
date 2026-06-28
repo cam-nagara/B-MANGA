@@ -12,7 +12,7 @@ from ..utils import balloon_curve_object
 from ..utils import balloon_curve_source_state
 from ..utils import balloon_shapes
 from ..utils import gpencil as gp_utils
-from . import corner_radius_ui, effect_line_panel, line_effect_settings_ui
+from . import corner_radius_ui, effect_line_panel, line_effect_settings_ui, preset_management_ui
 
 
 def _has_safe_gp_layer_prop(layer, prop_name: str) -> bool:
@@ -188,16 +188,7 @@ def _draw_image_path_selected_settings(box, context, entry) -> None:
     color_row.prop(entry, "inout_end_color", text="抜き色")
     effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
 
-    wm = getattr(context, "window_manager", None)
-    if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
-        preset_box = box.box()
-        preset_box.label(text="パターンカーブプリセット", icon="PRESET")
-        preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
-        row = preset_box.row(align=True)
-        row.operator("bmanga.image_path_preset_add_local", text="", icon="ADD")
-        row.operator("bmanga.image_path_preset_rename", text="", icon="GREASEPENCIL")
-        row.operator("bmanga.image_path_preset_duplicate", text="", icon="DUPLICATE")
-        row.operator("bmanga.image_path_preset_delete", text="", icon="TRASH")
+    preset_management_ui.draw_image_path_preset_management(box, context)
 
 
 def _draw_raster_selected_settings(box, entry) -> None:
@@ -229,11 +220,12 @@ def _draw_raster_selected_settings(box, entry) -> None:
     op.force = True
 
 
-def _draw_fill_selected_settings(box, entry) -> None:
+def _draw_fill_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
     fill_type = str(getattr(entry, "fill_type", "solid") or "solid")
     type_label = "グラデーション" if fill_type == "gradient" else "ベタ塗り"
     settings.label(text=f"選択中: {entry.title or entry.id} ({type_label})", icon="NODE_TEXTURE")
+    preset_management_ui.draw_fill_preset_selection(box, context, gradient=fill_type == "gradient")
     settings.prop(entry, "title", text="名前")
     settings.prop(entry, "visible", text="表示")
     settings.prop(entry, "locked", text="ロック")
@@ -275,6 +267,7 @@ def _draw_fill_selected_settings(box, entry) -> None:
 def _draw_balloon_selected_settings(box, context, entry) -> None:
     settings = box.column(align=True)
     settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (フキダシ)")
+    preset_management_ui.draw_balloon_preset_management(box, context)
     settings.prop(entry, "title", text="名前")
     source_state = _balloon_source_state(entry)
     settings.label(text=f"編集状態: {_balloon_source_state_label(source_state)}")
@@ -517,6 +510,7 @@ def _draw_text_selected_settings(box, context, entry) -> None:
     page = get_active_page(context)
     settings = box.column(align=True)
     settings.label(text=f"選択中: {getattr(entry, 'title', '') or entry.id} (テキスト)")
+    preset_management_ui.draw_text_preset_selection(box, context)
     settings.prop(entry, "title", text="名前")
     settings.prop(entry, "speaker_type")
     row = settings.row(align=True)
@@ -824,7 +818,7 @@ def draw_stack_item_detail(layout, context, item, resolved) -> bool:
     elif kind == "raster":
         _draw_raster_selected_settings(box, target)
     elif kind == "fill":
-        _draw_fill_selected_settings(box, target)
+        _draw_fill_selected_settings(box, context, target)
     elif kind == "balloon":
         _draw_balloon_selected_settings(box, context, target)
     elif kind == "text":

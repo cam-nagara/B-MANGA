@@ -6,7 +6,7 @@ import bpy
 from bpy.types import Panel
 
 from ..utils import balloon_shapes, effect_inout_curve
-from . import corner_radius_ui, line_effect_settings_ui
+from . import corner_radius_ui, line_effect_settings_ui, preset_management_ui
 
 B_NAME_CATEGORY = "B-MANGA"
 
@@ -71,17 +71,7 @@ def draw_inout_curve_mapping(layout, params) -> None:
 
 
 def draw_effect_line_preset_management(layout, context) -> None:
-    wm = getattr(context, "window_manager", None)
-    if wm is None or not hasattr(wm, "bmanga_effect_line_tool_preset_selector"):
-        return
-    preset_box = layout.box()
-    preset_box.label(text="効果線プリセット", icon="PRESET")
-    preset_box.prop(wm, "bmanga_effect_line_tool_preset_selector", text="")
-    row = preset_box.row(align=True)
-    row.operator("bmanga.effect_line_preset_add_local", text="", icon="ADD")
-    row.operator("bmanga.effect_line_preset_rename", text="", icon="GREASEPENCIL")
-    row.operator("bmanga.effect_line_preset_duplicate", text="", icon="DUPLICATE")
-    row.operator("bmanga.effect_line_preset_delete", text="", icon="TRASH")
+    preset_management_ui.draw_effect_line_preset_management(layout, context)
 
 
 def draw_effect_path_settings(layout, params) -> None:

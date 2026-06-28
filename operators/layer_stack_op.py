@@ -1644,7 +1644,9 @@ class BMANGA_OT_layer_stack_detail(Operator):
         try:
             from ..utils import effect_inout_curve
 
-            if effect_inout_curve.sync_ui_nodes_to_params(params):
+            curve_changed = effect_inout_curve.sync_ui_nodes_to_params(params)
+            curve_changed |= effect_inout_curve.sync_profile_node_to_params(params)
+            if curve_changed:
                 if item.kind in {"effect", "effect_legacy"}:
                     from ..operators import effect_line_op
 
@@ -1660,6 +1662,7 @@ class BMANGA_OT_layer_stack_detail(Operator):
             from ..utils import effect_inout_curve
 
             effect_inout_curve.ensure_ui_nodes(params)
+            effect_inout_curve.ensure_profile_node(params)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1677,7 +1680,7 @@ class BMANGA_OT_layer_stack_detail(Operator):
         try:
             from ..utils import balloon_shapes
 
-            if balloon_shapes.normalize_line_style(getattr(entry, "line_style", "")) == "uni_flash":
+            if balloon_shapes.normalize_line_style(getattr(entry, "line_style", "")) in {"uni_flash", "white_outline"}:
                 return entry
         except Exception:  # noqa: BLE001
             return None

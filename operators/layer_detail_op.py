@@ -181,7 +181,10 @@ def _draw_image_detail(layout, entry) -> None:
         box.prop(entry, "binarize_threshold")
 
 
-def _draw_image_path_detail(layout, entry) -> None:
+def _draw_image_path_detail(layout, context, entry=None) -> None:
+    if entry is None:
+        entry = context
+        context = bpy.context
     layout.prop(entry, "title", text="表示名")
     layout.prop(entry, "content_source", text="内容")
     source = str(getattr(entry, "content_source", "image") or "image")
@@ -231,16 +234,9 @@ def _draw_image_path_detail(layout, entry) -> None:
     from ..panels import effect_line_panel as _effect_line_panel
 
     _effect_line_panel.draw_inout_curve_mapping(inout_box, entry)
-    preset_box = layout.box()
-    preset_box.label(text="パターンカーブプリセット")
-    wm = getattr(bpy.context, "window_manager", None)
-    if wm is not None and hasattr(wm, "bmanga_image_path_tool_preset_selector"):
-        preset_box.prop(wm, "bmanga_image_path_tool_preset_selector", text="")
-        row = preset_box.row(align=True)
-        row.operator("bmanga.image_path_preset_add_local", text="", icon="ADD")
-        row.operator("bmanga.image_path_preset_rename", text="", icon="GREASEPENCIL")
-        row.operator("bmanga.image_path_preset_duplicate", text="", icon="DUPLICATE")
-        row.operator("bmanga.image_path_preset_delete", text="", icon="TRASH")
+    from ..panels import preset_management_ui
+
+    preset_management_ui.draw_image_path_preset_management(layout, context)
 
 
 def _draw_raster_detail(layout, entry) -> None:
@@ -288,9 +284,18 @@ def _equal_columns(layout, count: int):
     return tuple(grid.column(align=True) for _ in range(column_count))
 
 
-def _draw_balloon_detail(layout, entry, page=None) -> None:
+def _draw_balloon_detail(layout, context, entry=None, page=None) -> None:
+    if entry is None or not hasattr(context, "scene"):
+        old_entry = context
+        old_page = entry
+        context = bpy.context
+        entry = old_entry
+        page = old_page
     if hasattr(entry, "title"):
         layout.prop(entry, "title", text="表示名")
+    from ..panels import preset_management_ui
+
+    preset_management_ui.draw_balloon_preset_management(layout, context)
 
     # 縦長になりすぎるため複数列に分ける
     # (左: 配置・形状・しっぽ / 右: 線・塗り・表示)。
@@ -504,7 +509,13 @@ def _draw_balloon_detail(layout, entry, page=None) -> None:
     _draw_balloon_tails(left_col, entry, page)
 
 
-def _draw_text_detail(layout, entry) -> None:
+def _draw_text_detail(layout, context, entry=None) -> None:
+    if entry is None:
+        entry = context
+        context = bpy.context
+    from ..panels import preset_management_ui
+
+    preset_management_ui.draw_text_preset_selection(layout, context)
     box = layout.box()
     box.label(text="配置 (mm)")
     row = box.row(align=True)
@@ -645,6 +656,26 @@ def _draw_object_meta(layout, obj) -> None:
     box.label(text=f"z_index: {obj.get('bmanga_z_index', 0)}")
 
 
+def _sync_detail_profile_curve(context, kind: str, bmanga_id: str) -> None:
+    try:
+        from ..utils import effect_inout_curve
+
+        if kind in {"effect", "effect_legacy"}:
+            params = getattr(context.scene, "bmanga_effect_line_params", None)
+        elif kind == "balloon":
+            _page, params = _find_balloon_entry(context.scene, bmanga_id)
+            if params is not None and balloon_shapes.normalize_line_style(
+                str(getattr(params, "line_style", "") or "")
+            ) not in {"uni_flash", "white_outline"}:
+                params = None
+        else:
+            params = None
+        if params is not None:
+            effect_inout_curve.sync_profile_node_to_params(params)
+    except Exception:  # noqa: BLE001
+        _logger.exception("detail profile curve sync failed")
+
+
 class BMANGA_OT_layer_detail_open(Operator):
     """選択中の B-MANGA レイヤー Object の詳細設定ダイアログを開く."""
 
@@ -736,13 +767,13 @@ class BMANGA_OT_layer_detail_open(Operator):
         if kind == "image":
             _draw_image_detail(layout, entry)
         elif kind == "image_path":
-            _draw_image_path_detail(layout, entry)
+            _draw_image_path_detail(layout, context, entry)
         elif kind == "raster":
             _draw_raster_detail(layout, entry)
         elif kind == "balloon":
-            _draw_balloon_detail(layout, entry, page)
+            _draw_balloon_detail(layout, context, entry, page)
         elif kind == "text":
-            _draw_text_detail(layout, entry)
+            _draw_text_detail(layout, context, entry)
 
     def check(self, context):
         try:
@@ -754,6 +785,7 @@ class BMANGA_OT_layer_detail_open(Operator):
         return True
 
     def execute(self, context):
+        _sync_detail_profile_curve(context, self.kind, self.bmanga_id)
         try:
             for area in context.screen.areas if context.screen else ():
                 if area.type in {"VIEW_3D", "PROPERTIES", "OUTLINER"}:

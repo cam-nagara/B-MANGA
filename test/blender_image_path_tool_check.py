@@ -89,6 +89,47 @@ def _assert_close(actual: float, expected: float, label: str, tol: float = 1.0e-
     assert abs(float(actual) - float(expected)) <= tol, f"{label}: expected {expected}, got {actual}"
 
 
+class _RecordingLayout:
+    def __init__(self, props=None, labels=None, ops=None, op_instances=None):
+        self.props = [] if props is None else props
+        self.labels = [] if labels is None else labels
+        self.ops = [] if ops is None else ops
+        self.op_instances = [] if op_instances is None else op_instances
+        self.enabled = True
+
+    def box(self):
+        return _RecordingLayout(self.props, self.labels, self.ops, self.op_instances)
+
+    def row(self, align: bool = False):
+        return _RecordingLayout(self.props, self.labels, self.ops, self.op_instances)
+
+    def column(self, align: bool = False):
+        return _RecordingLayout(self.props, self.labels, self.ops, self.op_instances)
+
+    def label(self, text: str = "", **_kwargs):
+        self.labels.append(str(text))
+        return None
+
+    def prop(self, _owner, attr: str, **_kwargs):
+        self.props.append(str(attr))
+        return None
+
+    def prop_search(self, _owner, attr: str, *_args, **_kwargs):
+        self.props.append(str(attr))
+        return None
+
+    def operator(self, op_id: str, **_kwargs):
+        self.ops.append(str(op_id))
+        op = _RecordingOperator(str(op_id))
+        self.op_instances.append(op)
+        return op
+
+
+class _RecordingOperator:
+    def __init__(self, op_id: str):
+        self.op_id = op_id
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_image_path_"))
     os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
@@ -102,6 +143,7 @@ def main() -> None:
         assert "FINISHED" in result, result
 
         from bmanga_dev_image_path.io import image_path_presets, schema
+        from bmanga_dev_image_path.panels import preset_management_ui
         from bmanga_dev_image_path.utils import image_path_object, layer_stack as layer_stack_utils
         from bmanga_dev_image_path.utils import mask_apply
         from bmanga_dev_image_path.utils import object_selection, object_state_sync
@@ -304,6 +346,16 @@ def main() -> None:
         assert restored_shape.shape_kind == "circle"
 
         image_path_presets.save_local_preset(None, restored, "テスト画像パス", insert_after="一枚リボン")
+        context.window_manager.bmanga_image_path_tool_preset_selector = "テスト画像パス"
+        preset_layout = _RecordingLayout()
+        preset_management_ui.draw_image_path_preset_management(preset_layout, context)
+        assert "bmanga_image_path_tool_preset_selector" in preset_layout.props
+        op_by_id = {op.op_id: op for op in preset_layout.op_instances}
+        assert op_by_id["bmanga.image_path_preset_rename"].preset_name == "テスト画像パス"
+        assert op_by_id["bmanga.image_path_preset_rename"].new_name == "テスト画像パス"
+        assert op_by_id["bmanga.image_path_preset_duplicate"].preset_name == "テスト画像パス"
+        assert op_by_id["bmanga.image_path_preset_duplicate"].new_name.startswith("テスト画像パス コピー")
+        assert op_by_id["bmanga.image_path_preset_delete"].preset_name == "テスト画像パス"
         renamed = image_path_presets.rename_preset(None, "テスト画像パス", "テスト画像パス改")
         assert renamed.name == "テスト画像パス改"
         duplicated = image_path_presets.duplicate_preset(None, "テスト画像パス改", "テスト画像パス複製")

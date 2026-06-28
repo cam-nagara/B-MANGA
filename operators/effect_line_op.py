@@ -596,6 +596,7 @@ def _params_for_write(context, obj, layer, params_override=None):
         from ..utils import effect_inout_curve
 
         effect_inout_curve.sync_ui_nodes_to_params(scene_params)
+        effect_inout_curve.sync_profile_node_to_params(scene_params)
     except Exception:  # noqa: BLE001
         pass
     data = _layer_params_data(obj, layer)

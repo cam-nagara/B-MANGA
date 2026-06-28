@@ -3,6 +3,35 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 詳細設定のプリセット管理とフキダシ入り抜きグラフを修正 (v0.6.407)
+
+### 症状
+
+- 各種レイヤーの詳細設定ダイアログ内で、プリセットの改名・複製・削除を押したとき、選択中プリセット名が渡らず管理操作が失敗する場合があった。
+- フキダシのウニフラ / 白抜き線で、線幅グラフを編集しても入り・抜きの数値へ反映されない経路が残っていた。
+
+### 原因
+
+- 詳細設定ダイアログ内のボタンから別ダイアログを開く場合、Blender側で入れ子ダイアログが省略され、プリセット名の初期化処理に届かないことがあった。
+- フキダシ詳細のOK時に、線幅グラフから入り・抜き数値へ戻す同期処理を呼んでいなかった。
+
+### 修正
+
+- 詳細設定ダイアログ用のプリセット表示を共通化し、パターンカーブ / 効果線の改名・複製・削除ボタンへ選択中プリセット名を直接渡すようにした。
+- フキダシ、テキスト、囲い塗り、グラデーションの詳細設定にも、該当プリセットの選択・保存入口を復帰した。
+- フキダシのウニフラ / 白抜き線と効果線の詳細設定OK時に、線幅グラフを入り・抜き、入り始点、抜き始点へ同期するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile panels\preset_management_ui.py panels\effect_line_panel.py panels\layer_stack_detail_ui.py operators\layer_detail_op.py operators\layer_stack_op.py operators\effect_line_op.py test\blender_effect_line_preset_ui_check.py test\blender_image_path_tool_check.py test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --factory-startup --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `blender.exe --factory-startup --background --python test\blender_bmanga_ui_inventory_visual_audit.py`
+
+---
+
 ## 2026-06-28 — セッション全体の実機AI目視と詳細設定安全化 (v0.6.406)
 
 ### 症状

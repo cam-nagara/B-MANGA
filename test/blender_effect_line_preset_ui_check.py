@@ -35,23 +35,24 @@ def _sub(path: str):
 
 
 class _Layout:
-    def __init__(self, props=None, labels=None, ops=None):
+    def __init__(self, props=None, labels=None, ops=None, op_instances=None):
         self.props = [] if props is None else props
         self.labels = [] if labels is None else labels
         self.ops = [] if ops is None else ops
+        self.op_instances = [] if op_instances is None else op_instances
         self.enabled = True
 
     def box(self):
-        return _Layout(self.props, self.labels, self.ops)
+        return _Layout(self.props, self.labels, self.ops, self.op_instances)
 
     def row(self, align: bool = False):
-        return _Layout(self.props, self.labels, self.ops)
+        return _Layout(self.props, self.labels, self.ops, self.op_instances)
 
     def column(self, align: bool = False):
-        return _Layout(self.props, self.labels, self.ops)
+        return _Layout(self.props, self.labels, self.ops, self.op_instances)
 
     def grid_flow(self, **_kwargs):
-        return _Layout(self.props, self.labels, self.ops)
+        return _Layout(self.props, self.labels, self.ops, self.op_instances)
 
     def separator(self, **_kwargs):
         return None
@@ -70,14 +71,17 @@ class _Layout:
 
     def operator(self, op_id: str, **_kwargs):
         self.ops.append(str(op_id))
-        return _Op()
+        op = _Op(str(op_id))
+        self.op_instances.append(op)
+        return op
 
     def template_curve_mapping(self, *_args, **_kwargs):
         return None
 
 
 class _Op:
-    pass
+    def __init__(self, op_id: str):
+        self.op_id = op_id
 
 
 class _DummyTool:
@@ -132,6 +136,12 @@ def main() -> None:
             "bmanga.effect_line_preset_duplicate",
             "bmanga.effect_line_preset_delete",
         } <= set(layout.ops)
+        op_by_id = {op.op_id: op for op in layout.op_instances}
+        assert op_by_id["bmanga.effect_line_preset_rename"].preset_name == name
+        assert op_by_id["bmanga.effect_line_preset_rename"].new_name == name
+        assert op_by_id["bmanga.effect_line_preset_duplicate"].preset_name == name
+        assert op_by_id["bmanga.effect_line_preset_duplicate"].new_name.startswith(f"{name} コピー")
+        assert op_by_id["bmanga.effect_line_preset_delete"].preset_name == name
 
         tool = _DummyTool()
         coma_modal_state.set_active("effect_line_tool", tool, bpy.context)

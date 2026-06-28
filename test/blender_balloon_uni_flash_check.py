@@ -138,6 +138,26 @@ def _effect_setting_props(effect_line_panel, params, effect_type: str, *, show_p
     return layout.props
 
 
+def _assert_detail_profile_graph_sync(context, page, entry, layer_detail_op, effect_inout_curve) -> None:
+    entry.in_percent = 0.0
+    entry.out_percent = 0.0
+    entry.in_start_percent = 50.0
+    entry.out_start_percent = 50.0
+    layout = _RecordingLayout()
+    layer_detail_op._draw_balloon_detail(layout, context, entry, page)
+    node = effect_inout_curve.get_profile_node()
+    assert node is not None, "フキダシ詳細設定に線幅グラフが作成されていません"
+    effect_inout_curve._apply_points_to_node(
+        node,
+        ((0.0, 0.2), (0.35, 1.0), (0.65, 1.0), (1.0, 0.4)),
+    )
+    layer_detail_op._sync_detail_profile_curve(context, "balloon", entry.id)
+    assert abs(float(entry.in_percent) - 20.0) < 1.0e-4, "線幅グラフの入りが数値に反映されていません"
+    assert abs(float(entry.out_percent) - 40.0) < 1.0e-4, "線幅グラフの抜きが数値に反映されていません"
+    assert abs(float(entry.in_start_percent) - 35.0) < 1.0e-4, "線幅グラフの入り始点が数値に反映されていません"
+    assert abs(float(entry.out_start_percent) - 35.0) < 1.0e-4, "線幅グラフの抜き始点が数値に反映されていません"
+
+
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_balloon_uni_flash_"))
     mod = None
@@ -161,6 +181,7 @@ def main() -> None:
             balloon_flash_effect_line_mesh,
             balloon_line_mesh,
             balloon_shapes,
+            effect_inout_curve,
         )
         from bmanga_dev_balloon_uni_flash.utils.geom import Rect
         from bmanga_dev_balloon_uni_flash.utils.layer_hierarchy import page_stack_key
@@ -201,6 +222,29 @@ def main() -> None:
             field.startswith("white_outline_")
             for field in balloon_core.UNI_FLASH_PARAM_FIELDS
         ), "白抜き線の詳細フィールドが保存リストにありません"
+
+        for graph_index, line_style in enumerate(("uni_flash", "white_outline")):
+            graph_entry = balloon_op._create_balloon_entry(
+                context,
+                page,
+                shape="ellipse",
+                x=16.0 + graph_index * 36.0,
+                y=12.0,
+                w=24.0,
+                h=18.0,
+                parent_kind="page",
+                parent_key=page_key,
+            )
+            graph_entry.line_style = line_style
+            balloon_core.apply_balloon_line_style_defaults(graph_entry, force=True)
+            _assert_detail_profile_graph_sync(
+                context,
+                page,
+                graph_entry,
+                layer_detail_op,
+                effect_inout_curve,
+            )
+            page.balloons.remove(len(page.balloons) - 1)
 
         for index, line_style in enumerate(("uni_flash", "white_outline")):
             entry = balloon_op._create_balloon_entry(
