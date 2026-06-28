@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — コマファイルの用紙ガイド前面表示を修正 (v0.6.415)
+
+### 症状
+
+- コマファイルで、ページ画像上の用紙ガイドが3Dオブジェクトより背面に見える場合があった。
+- 「コマを後ろにする」がOFFでも、確認用オブジェクトの上に出てほしい案内表示が一部隠れていた。
+
+### 原因
+
+- コマファイルではページ番号と作品情報は画面上に前面表示していたが、用紙ガイドはページ画像側の表示に依存していた。
+- そのため、コマファイル内の3Dオブジェクトとの前後関係に影響される余地があった。
+
+### 修正
+
+- コマファイルのページ画像位置に合わせて、用紙ガイドとセーフライン外表示を画面上へ前面描画するようにした。
+- ページ一覧、ページ画像、作品情報、用紙ガイドは常に前面に残し、「コマを後ろにする」がONの時だけコマ内レイヤーを背面へ送る確認を追加した。
+
+### 検証 (Blender 5.1.1 実機)
+
+- `python -m py_compile __init__.py ui\overlay_coma_page_labels.py test\blender_coma_overlay_visibility_visual_check.py`
+- `blender.exe --factory-startup --python test\blender_coma_overlay_visibility_visual_check.py`
+- `blender.exe --factory-startup --python test\blender_coma_page_labels_visual_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line のラインのみ表示と遠距離表示復帰を修正 (v0.3.15)
 
 ### 症状

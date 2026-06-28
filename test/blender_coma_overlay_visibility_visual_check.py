@@ -19,6 +19,7 @@ MOD_NAME = "bmanga_dev_coma_overlay_visibility"
 OUT_DIR = ROOT / ".codex" / "visual" / "coma_overlay_visibility"
 WORK_DIR = OUT_DIR / "ComaOverlayVisibility.bmanga"
 SCREENSHOT = OUT_DIR / "fisheye_overlay_follow.png"
+GUIDE_SCREENSHOT = OUT_DIR / "paper_guide_front.png"
 SUMMARY = OUT_DIR / "summary.json"
 STAGE = OUT_DIR / "stage.txt"
 
@@ -37,6 +38,8 @@ def _fail(stage: str, exc: BaseException) -> None:
         "traceback": traceback.format_exc(),
         "screenshot": str(SCREENSHOT),
         "screenshot_exists": SCREENSHOT.is_file(),
+        "guide_screenshot": str(GUIDE_SCREENSHOT),
+        "guide_screenshot_exists": GUIDE_SCREENSHOT.is_file(),
     }
     SUMMARY.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     print("BMANGA_COMA_OVERLAY_VISIBILITY_ERROR", json.dumps(data, ensure_ascii=False), flush=True)
@@ -80,6 +83,14 @@ def _visible_counts(scene) -> dict[str, int]:
         if kind in counts and bool(getattr(bg, "show_background_image", False)):
             counts[kind] += 1
     return counts
+
+
+def _display_depths(scene, kind_name: str) -> list[str]:
+    depths = []
+    for bg in _camera_backgrounds(scene):
+        if _kind(bg) == kind_name and bool(getattr(bg, "show_background_image", False)):
+            depths.append(str(getattr(bg, "display_depth", "") or ""))
+    return depths
 
 
 def _assert_visible(scene, label: str, *, own: bool, koma: bool, name: bool) -> dict[str, int]:
@@ -178,6 +189,32 @@ def _exercise_visibility(scene, coma_camera) -> dict[str, dict[str, int]]:
     scene.bmanga_overlay_enabled = True
     coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
     states["bmanga_overlay_on_again"] = _assert_visible(scene, "B-MANGAオーバーレイ再ON", own=True, koma=True, name=True)
+    name_depths = _display_depths(scene, "name")
+    own_depths = _display_depths(scene, "own_page")
+    if not name_depths or not all(depth == "FRONT" for depth in name_depths):
+        raise AssertionError(f"ページ一覧が前面になっていません: {name_depths}")
+    if not own_depths or not all(depth == "FRONT" for depth in own_depths):
+        raise AssertionError(f"ページ画像が前面になっていません: {own_depths}")
+    depths_front = _display_depths(scene, "koma")
+    settings.koma_depth = True
+    coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
+    depths_back = _display_depths(scene, "koma")
+    settings.koma_depth = False
+    coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
+    depths_front_again = _display_depths(scene, "koma")
+    if not depths_front or not all(depth == "FRONT" for depth in depths_front):
+        raise AssertionError(f"コマ内レイヤーが既定で前面になっていません: {depths_front}")
+    if not depths_back or not all(depth == "BACK" for depth in depths_back):
+        raise AssertionError(f"コマを後ろにするONでコマ内レイヤーが背面になっていません: {depths_back}")
+    if not depths_front_again or not all(depth == "FRONT" for depth in depths_front_again):
+        raise AssertionError(f"コマを後ろにするOFFでコマ内レイヤーが前面へ戻っていません: {depths_front_again}")
+    states["koma_depth"] = {
+        "name_front": len(name_depths),
+        "own_page_front": len(own_depths),
+        "front": len(depths_front),
+        "back": len(depths_back),
+        "front_again": len(depths_front_again),
+    }
     return states
 
 
@@ -216,13 +253,169 @@ def _exercise_fisheye(scene, coma_camera, fisheye_overlay) -> dict:
     }
 
 
+def _find_page_and_coma(work, page_id: str, coma_id: str):
+    for page in getattr(work, "pages", []) or []:
+        if str(getattr(page, "id", "") or "") != str(page_id):
+            continue
+        for coma in getattr(page, "comas", []) or []:
+            if str(getattr(coma, "coma_id", "") or "") == str(coma_id):
+                return page, coma
+    raise AssertionError("現在のページとコマが見つかりません")
+
+
+def _expand_coma_to_canvas(work, page, coma) -> None:
+    paper = work.paper
+    coma.shape_type = "rect"
+    coma.rect_x_mm = 0.0
+    coma.rect_y_mm = 0.0
+    coma.rect_width_mm = float(getattr(paper, "canvas_width_mm", 0.0) or 0.0)
+    coma.rect_height_mm = float(getattr(paper, "canvas_height_mm", 0.0) or 0.0)
+    try:
+        page.active_coma_index = max(0, list(getattr(page, "comas", []) or []).index(coma))
+    except Exception:
+        pass
+
+
+def _add_black_camera_plane(scene) -> None:
+    camera = getattr(scene, "camera", None)
+    if camera is None:
+        raise AssertionError("確認用カメラがありません")
+    mesh = bpy.data.meshes.new("BManga_GuideFront_BlackPlaneMesh")
+    mesh.from_pydata(
+        [(-3.0, -3.0, 0.0), (3.0, -3.0, 0.0), (3.0, 3.0, 0.0), (-3.0, 3.0, 0.0)],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    mesh.update()
+    mat = bpy.data.materials.new("BManga_GuideFront_Black")
+    mat.diffuse_color = (0.0, 0.0, 0.0, 1.0)
+    try:
+        mat.use_nodes = True
+        bsdf = mat.node_tree.nodes.get("Principled BSDF")
+        if bsdf is not None:
+            bsdf.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+            bsdf.inputs["Roughness"].default_value = 1.0
+    except Exception:
+        pass
+    obj = bpy.data.objects.new("BManga_GuideFront_BlackPlane", mesh)
+    scene.collection.objects.link(obj)
+    obj.parent = camera
+    obj.location = (0.0, 0.0, -2.0)
+    obj.rotation_euler = (0.0, 0.0, 0.0)
+    obj.data.materials.append(mat)
+
+
+def _own_page_screen_rect(scene, region, rv3d, overlay_labels, page_id: str):
+    frame_rect = overlay_labels._camera_frame_pixel_rect(scene, region, rv3d)
+    if frame_rect is None:
+        raise AssertionError("カメラ枠を画面座標へ変換できません")
+    for bg in _camera_backgrounds(scene):
+        image = getattr(bg, "image", None)
+        if image is None or not bool(getattr(bg, "show_background_image", False)):
+            continue
+        try:
+            kind = str(image.get("bmanga_kind", "") or "")
+            bg_page_id = str(image.get("bmanga_page_id", "") or "")
+        except Exception:
+            continue
+        if kind == "own_page" and bg_page_id == str(page_id):
+            rect = overlay_labels._background_screen_rect(frame_rect, bg)
+            if rect is not None:
+                return rect
+    raise AssertionError("ページ画像の画面範囲を取得できません")
+
+
+def _green_pixels_in_region(path: Path, region, rect_px) -> int:
+    from PIL import Image
+
+    with Image.open(str(path)) as opened:
+        image = opened.convert("RGB")
+        width, height = image.size
+        x0, y0, x1, y1 = rect_px
+        sx0 = max(0, int(region.x + max(0.0, min(x0, x1))))
+        sx1 = min(width, int(region.x + min(float(region.width), max(x0, x1))))
+        sy0 = max(0, int(height - (region.y + min(float(region.height), max(y0, y1)))))
+        sy1 = min(height, int(height - (region.y + max(0.0, min(y0, y1)))))
+        green = 0
+        for py in range(sy0, sy1):
+            for px in range(sx0, sx1):
+                r, g, b = image.getpixel((px, py))
+                if g > 150 and r < 100 and b < 100:
+                    green += 1
+    return green
+
+
+def _exercise_paper_guide_front(scene, work, page_id: str, coma_id: str, coma_camera, overlay_labels) -> dict:
+    page, coma = _find_page_and_coma(work, page_id, coma_id)
+    _expand_coma_to_canvas(work, page, coma)
+    overlay = work.safe_area_overlay
+    overlay.enabled = True
+    overlay.opacity = 100.0
+    overlay.color = (0.0, 1.0, 0.0)
+    overlay.bleed_outer_enabled = False
+    paper = work.paper
+    paper.show_guides = True
+    paper.show_safe_line = True
+    scene.bmanga_page_guides_visible = True
+    scene.bmanga_overlay_enabled = True
+    scene.bmanga_page_preview_enabled = True
+    scene.bmanga_coma_content_visible = True
+    settings = scene.bmanga_coma_camera_settings
+    settings.own_page_visible = True
+    settings.name_visible = True
+    settings.koma_visible = True
+    settings.own_page_opacity = 0.0
+    settings.koma_depth = False
+    coma_camera.ensure_coma_camera_scene(
+        bpy.context,
+        work=work,
+        page_id=page_id,
+        coma_id=coma_id,
+        generate_references=True,
+    )
+    coma_camera.refresh_coma_page_overview(bpy.context)
+    coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
+    _add_black_camera_plane(scene)
+    coma_camera.view_camera_in_viewports(bpy.context)
+    window, screen, area, region, space, rv3d = _first_view3d()
+    with bpy.context.temp_override(
+        window=window,
+        screen=screen,
+        area=area,
+        region=region,
+        space_data=space,
+        region_data=rv3d,
+    ):
+        space.overlay.show_overlays = True
+        space.show_gizmo = False
+        try:
+            space.shading.type = "MATERIAL"
+            space.shading.color_type = "MATERIAL"
+        except Exception:
+            pass
+        rv3d.view_perspective = "CAMERA"
+        rv3d.view_camera_zoom = -35.0
+        rv3d.view_camera_offset = (0.0, 0.0)
+        _redraw(6)
+        page_rect = _own_page_screen_rect(scene, region, rv3d, overlay_labels, page_id)
+        _capture(GUIDE_SCREENSHOT)
+    green = _green_pixels_in_region(GUIDE_SCREENSHOT, region, page_rect)
+    if green < 100:
+        raise AssertionError(f"用紙ガイドがコマファイルのオブジェクトより前面に表示されていません: green={green}")
+    return {
+        "green_pixels": green,
+        "page_rect": [round(float(v), 2) for v in page_rect],
+        "screenshot": str(GUIDE_SCREENSHOT),
+    }
+
+
 def _after_coma_open() -> None:
     try:
         _mark("after_coma_open")
         scene = bpy.context.scene
         work = scene.bmanga_work
         from bmanga_dev_coma_overlay_visibility.utils import coma_camera, page_file_scene
-        from bmanga_dev_coma_overlay_visibility.ui import coma_fisheye_overlay
+        from bmanga_dev_coma_overlay_visibility.ui import coma_fisheye_overlay, overlay_coma_page_labels
 
         role, page_id, coma_id = page_file_scene.current_role(bpy.context)
         if role != page_file_scene.ROLE_COMA:
@@ -249,6 +442,9 @@ def _after_coma_open() -> None:
         _add_dummy_koma_background(scene, page_id, coma_id)
         coma_camera.apply_coma_overlay_background_visibility(bpy.context, scene=scene)
         states = _exercise_visibility(scene, coma_camera)
+        guide = _exercise_paper_guide_front(
+            scene, work, page_id, coma_id, coma_camera, overlay_coma_page_labels,
+        )
         fisheye = _exercise_fisheye(scene, coma_camera, coma_fisheye_overlay)
         data = {
             "ok": True,
@@ -257,8 +453,10 @@ def _after_coma_open() -> None:
             "page_id": page_id,
             "coma_id": coma_id,
             "states": states,
+            "guide": guide,
             "fisheye": fisheye,
             "screenshot_exists": SCREENSHOT.is_file(),
+            "guide_screenshot_exists": GUIDE_SCREENSHOT.is_file(),
         }
         SUMMARY.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         print("BMANGA_COMA_OVERLAY_VISIBILITY_OK", json.dumps(data, ensure_ascii=False), flush=True)
