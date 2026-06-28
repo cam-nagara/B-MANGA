@@ -22,6 +22,7 @@ _SETTING_FIELDS = (
     "outline_color",
     "use_vertex_color",
     "even_thickness",
+    "use_uniform_line_width",
     "use_rim",
     "inner_line_enabled",
     "inner_line_angle",
@@ -95,7 +96,8 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
 
     settings = obj.bmanga_line_settings
     use_vg = (
-        settings.use_vertex_color
+        settings.use_uniform_line_width
+        or settings.use_vertex_color
         or settings.use_ao_influence
         or abs(settings.edge_smooth_factor) > 0.001
     )
@@ -146,7 +148,8 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
         core.set_line_visibility(obj, True)
 
     if (
-        settings.use_camera_compensation
+        settings.use_uniform_line_width
+        or settings.use_camera_compensation
         or settings.use_camera_culling
         or settings.use_inner_line_distance_limit
     ):
@@ -169,6 +172,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     use_vertex_color: BoolProperty(default=False)
     even_thickness: BoolProperty(default=True)
+    use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=True)
 
     inner_line_enabled: BoolProperty(default=False)

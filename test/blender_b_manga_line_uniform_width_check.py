@@ -1,0 +1,256 @@
+"""B-MANGA Line: uniform line width follows camera, DPI, and resolution."""
+
+from __future__ import annotations
+
+import math
+import sys
+import tempfile
+from pathlib import Path
+
+import bpy
+from mathutils import Vector
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "addons"))
+
+import b_manga_line  # noqa: E402
+from b_manga_line import camera_comp, core, inner_lines, presets  # noqa: E402
+
+
+def _clear_scene() -> None:
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete()
+
+
+def _make_camera() -> bpy.types.Object:
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0))
+    camera = bpy.context.object
+    camera.name = "BML_uniform_camera"
+    bpy.context.scene.camera = camera
+    camera.data.type = "PERSP"
+    camera.data.angle = math.radians(50.0)
+    return camera
+
+
+def _make_depth_quad() -> bpy.types.Object:
+    mesh = bpy.data.meshes.new("BML_uniform_depth_quad_mesh")
+    mesh.from_pydata(
+        [
+            (-1.0, -0.5, -2.0),
+            (1.0, -0.5, -2.0),
+            (1.0, 0.5, -8.0),
+            (-1.0, 0.5, -8.0),
+        ],
+        [],
+        [(0, 1, 2, 3)],
+    )
+    mesh.update()
+    obj = bpy.data.objects.new("BML_uniform_depth_quad", mesh)
+    bpy.context.collection.objects.link(obj)
+    mat = bpy.data.materials.new("BML_uniform_surface")
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    obj.data.materials.append(mat)
+    return obj
+
+
+def _select(obj: bpy.types.Object) -> None:
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.context.view_layer.objects.active = obj
+
+
+def _target_pixels(width_mm: float) -> float:
+    return width_mm * 600.0 / 25.4
+
+
+def _expected_world_width(scene: bpy.types.Scene, depth: float, width_mm: float) -> float:
+    camera = scene.camera
+    height = scene.render.resolution_y * scene.render.resolution_percentage / 100.0
+    view_height = 2.0 * depth * math.tan(camera.data.angle_y * 0.5)
+    return _target_pixels(width_mm) * view_height / height
+
+
+def _weights(obj: bpy.types.Object) -> list[float]:
+    vg = obj.vertex_groups[core.VG_LINE_WIDTH]
+    return [vg.weight(i) for i in range(len(obj.data.vertices))]
+
+
+def _inner_thickness(obj: bpy.types.Object) -> float:
+    mod = obj.modifiers[core.GN_MODIFIER_NAME]
+    sid = inner_lines._find_socket_id(mod.node_group, "線の太さ")
+    assert sid is not None
+    return float(mod[sid])
+
+
+def _configure_scene(scene: bpy.types.Scene) -> None:
+    scene.render.resolution_x = 1000
+    scene.render.resolution_y = 1000
+    scene.render.resolution_percentage = 100
+    _make_camera()
+
+
+def _test_uniform_width_depth_and_resolution() -> None:
+    scene = bpy.context.scene
+    _configure_scene(scene)
+    obj = _make_depth_quad()
+    _select(obj)
+
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.5
+    settings.inner_line_enabled = True
+    settings.inner_line_thickness_mm = 0.25
+    settings.use_uniform_line_width = True
+
+    assert presets.apply_line_settings(obj, bpy.context)
+    mod = obj.modifiers[core.MODIFIER_NAME]
+    near = _expected_world_width(scene, 2.0, 0.5)
+    far = _expected_world_width(scene, 8.0, 0.5)
+    assert math.isclose(mod.thickness, far, rel_tol=0.001), (mod.thickness, far)
+    values = _weights(obj)
+    assert math.isclose(values[0], near / far, rel_tol=0.001), values
+    assert math.isclose(values[2], 1.0, rel_tol=0.001), values
+    assert math.isclose(_inner_thickness(obj), far * 0.5, rel_tol=0.001)
+
+    scene.render.resolution_y = 2000
+    camera_comp.refresh(bpy.context)
+    far_high_res = _expected_world_width(scene, 8.0, 0.5)
+    assert math.isclose(mod.thickness, far_high_res, rel_tol=0.001), (
+        mod.thickness,
+        far_high_res,
+    )
+    assert far_high_res < far * 0.51
+
+    settings.outline_thickness_mm = 1.0
+    far_thick = _expected_world_width(scene, 8.0, 1.0)
+    assert math.isclose(mod.thickness, far_thick, rel_tol=0.001), (
+        mod.thickness,
+        far_thick,
+    )
+
+    settings.use_uniform_line_width = False
+    assert math.isclose(mod.thickness, settings.outline_thickness, rel_tol=0.001)
+    assert all(math.isclose(value, 1.0, rel_tol=0.001) for value in _weights(obj))
+    assert math.isclose(_inner_thickness(obj), settings.inner_line_thickness, rel_tol=0.001)
+
+
+def _test_uniform_width_saved_in_preset() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+
+    source = _make_depth_quad()
+    _select(source)
+    source.bmanga_line_settings.outline_thickness_mm = 0.4
+    source.bmanga_line_settings.use_uniform_line_width = True
+    scene.bmanga_line_preset_name = "均一化テスト"
+    assert bpy.ops.bmanga_line.preset_save() == {"FINISHED"}
+
+    target = _make_depth_quad()
+    target.name = "BML_uniform_preset_target"
+    _select(target)
+    scene.bmanga_line_preset_index = 0
+    assert bpy.ops.bmanga_line.preset_apply_selected() == {"FINISHED"}
+    assert target.bmanga_line_settings.use_uniform_line_width
+    expected = _expected_world_width(scene, 8.0, 0.4)
+    actual = target.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(actual, expected, rel_tol=0.001), (actual, expected)
+
+
+def _test_evaluated_orthographic_width() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    scene.render.resolution_x = 420
+    scene.render.resolution_y = 420
+    scene.render.resolution_percentage = 100
+    scene.view_settings.view_transform = "Standard"
+    scene.view_settings.look = "None"
+    scene.view_settings.exposure = 0.0
+    scene.view_settings.gamma = 1.0
+    if scene.world:
+        scene.world.color = (1.0, 1.0, 1.0)
+
+    bpy.ops.object.camera_add(location=(0.0, 0.0, 5.0), rotation=(0.0, 0.0, 0.0))
+    camera = bpy.context.object
+    camera.data.type = "ORTHO"
+    camera.data.ortho_scale = 4.0
+    scene.camera = camera
+
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
+    obj = bpy.context.object
+    obj.name = "BML_uniform_render_cube"
+    mat = bpy.data.materials.new("BML_uniform_white")
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    obj.data.materials.append(mat)
+    settings = obj.bmanga_line_settings
+    settings.outline_thickness_mm = 0.5
+    settings.use_uniform_line_width = True
+    _select(obj)
+    assert presets.apply_line_settings(obj, bpy.context)
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    mesh = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph))
+    try:
+        line_slot_start = min(
+            i for i, mat in enumerate(mesh.materials)
+            if mat and mat.name.startswith(core.MATERIAL_NAME)
+        )
+        line_x = [
+            mesh.vertices[vi].co.x
+            for poly in mesh.polygons
+            if poly.material_index >= line_slot_start
+            for vi in poly.vertices
+        ]
+        assert line_x, "評価済みメッシュからアウトライン面を検出できませんでした"
+        original_left = min((obj.matrix_world @ vertex.co).x for vertex in obj.data.vertices)
+        shell_left = min((obj.matrix_world @ Vector((x, 0.0, 0.0))).x for x in line_x)
+        world_width = abs(original_left - shell_left)
+    finally:
+        bpy.data.meshes.remove(mesh)
+
+    measured = world_width / (camera.data.ortho_scale / scene.render.resolution_y)
+    expected = _target_pixels(0.5)
+    assert abs(measured - expected) <= 1.0, (measured, expected)
+
+
+def _test_linked_uniform_width_refresh_does_not_crash() -> None:
+    scene = bpy.context.scene
+    _clear_scene()
+    _configure_scene(scene)
+    source_obj = _make_depth_quad()
+    _select(source_obj)
+    source_obj.bmanga_line_settings.outline_thickness_mm = 0.5
+    source_obj.bmanga_line_settings.use_uniform_line_width = True
+    assert presets.apply_line_settings(source_obj, bpy.context)
+
+    source_path = Path(tempfile.gettempdir()) / "bml_uniform_link_source.blend"
+    bpy.ops.wm.save_as_mainfile(filepath=str(source_path))
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    scene = bpy.context.scene
+    _configure_scene(scene)
+    with bpy.data.libraries.load(str(source_path), link=True) as (data_from, data_to):
+        assert "BML_uniform_depth_quad" in data_from.objects
+        data_to.objects = ["BML_uniform_depth_quad"]
+    linked = data_to.objects[0]
+    scene.collection.objects.link(linked)
+    scene.view_layers[0].objects.active = linked
+    linked.select_set(True)
+    camera_comp.refresh(bpy.context)
+    try:
+        source_path.unlink()
+    except OSError:
+        pass
+
+
+def main() -> None:
+    b_manga_line.register()
+    _clear_scene()
+    _test_uniform_width_depth_and_resolution()
+    _test_uniform_width_saved_in_preset()
+    _test_evaluated_orthographic_width()
+    _test_linked_uniform_width_refresh_does_not_crash()
+    print("[PASS] B-MANGA Line uniform width follows mm, DPI, and resolution")
+
+
+if __name__ == "__main__":
+    main()

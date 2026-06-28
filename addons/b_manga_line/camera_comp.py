@@ -23,10 +23,12 @@ from .core import (
     PROP_REF_MODE,
     REF_MODE_LOCKED,
     REF_MODE_VIEW,
+    VG_LINE_WIDTH,
 )
 
 
 _updating = False
+_FALLBACK_DPI = 600
 
 
 def get_line_camera(scene) -> bpy.types.Object | None:
@@ -119,6 +121,101 @@ def _get_fov_factor(cam_data, scene) -> float:
     return t if t > 1e-6 else 1.0
 
 
+def _effective_render_size(scene) -> tuple[float, float]:
+    render = scene.render
+    scale = max(0.001, float(getattr(render, "resolution_percentage", 100)) / 100.0)
+    width = max(1.0, float(getattr(render, "resolution_x", 1)) * scale)
+    height = max(1.0, float(getattr(render, "resolution_y", 1)) * scale)
+    return width, height
+
+
+def _get_scene_dpi(scene) -> float:
+    work = getattr(scene, "bmanga_work", None)
+    paper = getattr(work, "paper", None) if work else None
+    dpi = float(getattr(paper, "dpi", 0.0) or 0.0) if paper else 0.0
+    return dpi if dpi > 0.0 else float(_FALLBACK_DPI)
+
+
+def _target_pixels(scene, width_m: float) -> float:
+    width_mm = max(0.0, float(width_m) * 1000.0)
+    return max(0.001, width_mm * _get_scene_dpi(scene) / 25.4)
+
+
+def _world_per_pixel(scene, camera, world_co: Vector) -> float:
+    _, height = _effective_render_size(scene)
+    cam_data = camera.data
+    if cam_data.type == "ORTHO":
+        return max(1.0e-9, float(cam_data.ortho_scale) / height)
+
+    local = camera.matrix_world.inverted() @ world_co
+    depth = max(0.001, -float(local.z))
+    if cam_data.type == "PERSP":
+        angle_y = float(getattr(cam_data, "angle_y", cam_data.angle))
+        view_height = 2.0 * depth * math.tan(angle_y * 0.5)
+        return max(1.0e-9, view_height / height)
+
+    width, _ = _effective_render_size(scene)
+    half = _get_camera_half_angle(cam_data, scene)
+    view_diag = 2.0 * depth * math.tan(half)
+    pixel_diag = math.hypot(width, height)
+    return max(1.0e-9, view_diag / pixel_diag)
+
+
+def _uniform_widths_for_mesh(scene, camera, obj, width_m: float) -> list[float]:
+    target_px = _target_pixels(scene, width_m)
+    matrix = obj.matrix_world
+    return [
+        target_px * _world_per_pixel(scene, camera, matrix @ vertex.co)
+        for vertex in obj.data.vertices
+    ]
+
+
+def _has_style_width_weights(settings) -> bool:
+    return (
+        settings.use_vertex_color
+        or settings.use_ao_influence
+        or abs(settings.edge_smooth_factor) > 0.001
+    )
+
+
+def _prepare_style_weights(obj, settings) -> None:
+    from . import vertex_analysis
+
+    if _has_style_width_weights(settings):
+        vertex_analysis.compute_and_apply_weights(obj, settings)
+    else:
+        vertex_analysis.reset_width_weights(obj)
+
+
+def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
+    from . import inner_lines, intersection_lines, vertex_analysis
+
+    if not obj.data.vertices:
+        return
+
+    _prepare_style_weights(obj, settings)
+    outline_widths = _uniform_widths_for_mesh(
+        scene, camera, obj, settings.outline_thickness,
+    )
+    max_outline = max(max(outline_widths), 1.0e-9)
+    mod.thickness = max_outline
+    mod.vertex_group = VG_LINE_WIDTH
+    mod.thickness_vertex_group = 0.0
+    vertex_analysis.multiply_width_weights(
+        obj,
+        [width / max_outline for width in outline_widths],
+    )
+
+    outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
+    inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
+    intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+    inner_lines.update_parameters(obj, thickness=max_outline * inner_scale)
+    intersection_lines.update_parameters(
+        obj,
+        thickness=max_outline * intersection_scale,
+    )
+
+
 # ------------------------------------------------------------------
 # 各機能の更新ロジック（オブジェクトごとの設定を参照）
 # ------------------------------------------------------------------
@@ -134,12 +231,17 @@ def _update_camera_compensation(scene, camera):
         if obj.type != "MESH":
             continue
         settings = getattr(obj, "bmanga_line_settings", None)
-        if settings is None or not settings.use_camera_compensation:
+        if settings is None:
             continue
-        influence = settings.camera_compensation_influence
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
             continue
+        if settings.use_uniform_line_width:
+            _apply_uniform_line_width(scene, camera, obj, settings, mod)
+            continue
+        if not settings.use_camera_compensation:
+            continue
+        influence = settings.camera_compensation_influence
         base_t = settings.outline_thickness
         ref_d = obj.get(PROP_REF_DISTANCE, 1.0)
         if ref_d <= 0:

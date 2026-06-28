@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line に線幅の均一化を追加 (v0.3.11)
+
+### 症状
+
+- 背面法のラインは、同じmm指定でもカメラ距離やメッシュ内の奥行き差によって画面上の太さが変わり、コマ枠線・フキダシ・効果線のような解像度基準の線幅と揃わない場合があった。
+- 既存の「面の厚みを均一に」はソリッド化の形状補正であり、カメラビュー上の見かけの線幅を指定mmへ揃える機能ではなかった。
+
+### 原因
+
+- 従来のカメラ補正はオブジェクト中心からの距離を使っており、ひとつの街アセット内で手前と奥が大きく離れる場合、頂点ごとの見かけ線幅までは揃えられなかった。
+- B-MANGA Line のmm指定は内部のワールド厚みに変換されるだけで、出力DPIとレンダー解像度から必要な画面上のピクセル幅へ変換していなかった。
+
+### 修正
+
+- アウトライン設定に「線幅の均一化」を追加した。
+- 「線幅の均一化」オン時は、カメラビュー、出力解像度、DPIから指定mm相当のピクセル幅を計算し、各頂点のカメラ深度に応じた線幅重みを自動更新するようにした。
+- オブジェクト内の最も太く必要な箇所をソリッド化の厚みにし、近い頂点は線幅用の重みで細くして、同一メッシュ内の手前・奥でも見かけの線幅が揃うようにした。
+- 頂点カラー、AO、中間頂点の線幅調整は、線幅の均一化と掛け合わせて使えるようにした。
+- 内部線も同じ距離重みを参照し、線幅の均一化をオフに戻した時は古い距離重みを残さないようにした。
+- 既存の「均一な厚み」は、用途が分かるように「面の厚みを均一に」へ表示名を変更した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py addons\b_manga_line\vertex_analysis.py addons\b_manga_line\__init__.py test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line のリンク素材カメラ基準を自動化 (v0.3.10)
 
 ### 症状

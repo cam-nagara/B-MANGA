@@ -241,6 +241,53 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def _write_vertex_group_weights(
+    obj: bpy.types.Object,
+    weights: list[float],
+) -> int:
+    """線幅用頂点グループへウェイトを書き込む."""
+    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    if vg is None:
+        vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
+    for i, value in enumerate(weights):
+        vg.add([i], _clamp01(value), "REPLACE")
+    return len(weights)
+
+
+def reset_width_weights(obj: bpy.types.Object, value: float = 1.0) -> int:
+    """線幅用頂点グループを均一値に戻す."""
+    if obj.type != "MESH" or obj.data is None:
+        return 0
+    count = len(obj.data.vertices)
+    if count == 0:
+        return 0
+    return _write_vertex_group_weights(obj, [_clamp01(value)] * count)
+
+
+def multiply_width_weights(
+    obj: bpy.types.Object,
+    multipliers: list[float],
+) -> int:
+    """既存の線幅ウェイトへ追加倍率を掛けて書き戻す."""
+    if obj.type != "MESH" or obj.data is None:
+        return 0
+    count = len(obj.data.vertices)
+    if count == 0:
+        return 0
+    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    weights = []
+    for i in range(count):
+        base = 1.0
+        if vg is not None:
+            try:
+                base = vg.weight(i)
+            except RuntimeError:
+                base = 1.0
+        mult = multipliers[i] if i < len(multipliers) else 1.0
+        weights.append(base * mult)
+    return _write_vertex_group_weights(obj, weights)
+
+
 def _curve_points_from_settings(settings) -> tuple[float, float, float]:
     return (
         _clamp01(getattr(settings, "edge_width_curve_25", 0.25)),
@@ -407,13 +454,7 @@ def compute_and_apply_weights(obj, settings) -> int:
             weights[i] = max(0.0, min(1.0, weights[i] * edge_mult))
 
     # 頂点グループに書き込み
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
-    if vg is None:
-        vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
-    for i in range(n):
-        vg.add([i], max(0.0, min(1.0, weights[i])), "REPLACE")
-
-    return n
+    return _write_vertex_group_weights(obj, weights)
 
 
 # ------------------------------------------------------------------

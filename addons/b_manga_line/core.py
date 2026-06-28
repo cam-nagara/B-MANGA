@@ -86,6 +86,15 @@ def _make_weight_refresh_propagator(prop_name):
     return _callback
 
 
+def _needs_line_width_weights(settings) -> bool:
+    return (
+        settings.use_uniform_line_width
+        or abs(settings.edge_smooth_factor) > 0.001
+        or settings.use_vertex_color
+        or settings.use_ao_influence
+    )
+
+
 # ------------------------------------------------------------------
 # 設定変更時のコールバック
 # ------------------------------------------------------------------
@@ -105,6 +114,9 @@ def _on_thickness_changed(self, context):
         outline_setup.update_modifier_thickness(owner, self.outline_thickness)
         if self.use_camera_compensation and PROP_BASE_THICKNESS in owner:
             owner[PROP_BASE_THICKNESS] = self.outline_thickness
+        if self.use_uniform_line_width:
+            from . import camera_comp
+            camera_comp.refresh(context)
     _propagate(self, context, "outline_thickness")
 
 
@@ -156,6 +168,9 @@ def _on_inner_thickness_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+        if self.use_uniform_line_width:
+            from . import camera_comp
+            camera_comp.refresh(context)
     _propagate(self, context, "inner_line_thickness")
 
 
@@ -209,6 +224,9 @@ def _on_intersection_thickness_changed(self, context):
         intersection_lines.update_parameters(
             owner, thickness=self.intersection_thickness,
         )
+        if self.use_uniform_line_width:
+            from . import camera_comp
+            camera_comp.refresh(context)
     _propagate(self, context, "intersection_thickness")
 
 
@@ -218,11 +236,7 @@ def _refresh_line_width_weights(self, context) -> None:
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
-            need_vg = (
-                abs(self.edge_smooth_factor) > 0.001
-                or self.use_vertex_color
-                or self.use_ao_influence
-            )
+            need_vg = _needs_line_width_weights(self)
             if need_vg:
                 vg = owner.vertex_groups.get(VG_LINE_WIDTH)
                 if vg is None:
@@ -230,9 +244,14 @@ def _refresh_line_width_weights(self, context) -> None:
                     vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
                 mod.vertex_group = vg.name
                 mod.thickness_vertex_group = 0.0
-                vertex_analysis.compute_and_apply_weights(owner, self)
+                if self.use_uniform_line_width:
+                    from . import camera_comp
+                    camera_comp.refresh(context)
+                else:
+                    vertex_analysis.compute_and_apply_weights(owner, self)
             else:
                 mod.vertex_group = ""
+                vertex_analysis.reset_width_weights(owner)
 
 
 def _on_edge_smooth_changed(self, context):
@@ -263,6 +282,35 @@ def _on_camera_comp_changed(self, context):
                 owner, thickness=self.intersection_thickness,
             )
     _propagate(self, context, "use_camera_compensation")
+
+
+def _on_uniform_line_width_changed(self, context):
+    from . import camera_comp, vertex_analysis
+    owner = self.id_data
+    if owner.type == "MESH":
+        mod = owner.modifiers.get(MODIFIER_NAME)
+        if mod is not None:
+            if self.use_uniform_line_width:
+                vg = owner.vertex_groups.get(VG_LINE_WIDTH)
+                if vg is None:
+                    vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
+                    vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
+                mod.vertex_group = vg.name
+                mod.thickness_vertex_group = 0.0
+                camera_comp.refresh(context)
+            else:
+                mod.thickness = abs(self.outline_thickness)
+                if _needs_line_width_weights(self):
+                    vertex_analysis.compute_and_apply_weights(owner, self)
+                else:
+                    mod.vertex_group = ""
+                    vertex_analysis.reset_width_weights(owner)
+                from . import inner_lines, intersection_lines
+                inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
+                intersection_lines.update_parameters(
+                    owner, thickness=self.intersection_thickness,
+                )
+    _propagate(self, context, "use_uniform_line_width")
 
 
 def _on_culling_changed(self, context):
@@ -379,10 +427,17 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
     )  # type: ignore[valid-type]
 
     even_thickness: BoolProperty(
-        name="均一な厚み",
+        name="面の厚みを均一に",
         description="凸凹した面でも均一な線幅にする",
         default=True,
         update=_on_even_thickness_changed,
+    )  # type: ignore[valid-type]
+
+    use_uniform_line_width: BoolProperty(
+        name="線幅の均一化",
+        description="カメラビューと出力解像度に合わせて、指定したmm幅で描画する",
+        default=False,
+        update=_on_uniform_line_width_changed,
     )  # type: ignore[valid-type]
 
     use_rim: BoolProperty(
