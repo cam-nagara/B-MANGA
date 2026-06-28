@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — 直近修正の実機AI目視と徹底チェックを実施 (v0.6.417)
+
+### 症状
+
+- コマファイルの表示順、右クリックメニュー、B-MANGA Line有効化、B-MANGA Renderタブ表示の直近修正を、組み合わせ込みで実機確認する必要があった。
+
+### 原因
+
+- 個別修正と個別テストは完了していたが、AI目視を含む一連の監査結果がまだまとめて記録されていなかった。
+
+### 修正
+
+- 動作変更はなし。
+- 直近修正の対象操作を一つずつ実機テストし、生成画像をAI目視で確認した。
+- 「コマを後ろにする」、ページ画像、コマ内レイヤー、ページ一覧、作品情報、用紙ガイド、アウトライナー右クリック、ビューポート右クリック、B-MANGA Line再有効化、B-MANGA Renderタブ表示の処理経路を徹底チェックした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_render_ui_audit.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_context_menu_check.py`
+- `blender.exe --factory-startup --background --python test\blender_context_menu_commands_check.py`
+- `blender.exe --factory-startup --background --python test\blender_ui_micro_behavior_matrix_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_full_visual_audit_check.py`
+- `blender.exe --factory-startup --python test\blender_coma_overlay_visibility_visual_check.py`
+- AI目視: `.codex\visual\coma_overlay_visibility\paper_guide_front.png`
+- AI目視: `.codex\visual\coma_overlay_visibility\fisheye_overlay_follow.png`
+- AI目視: `_verify\b_manga_line_full_visual_audit\01_outline_inner_intersection.png`
+- AI目視: `_verify\b_manga_line_full_visual_audit\02_uniform_line_only_distance.png`
+- AI目視: `_verify\b_manga_line_full_visual_audit\03_transparent_protection.png`
+- AI目視: `.codex\visual\bmanga_render_ui_audit\b_manga_render_ui_audit.svg`
+- `python -m py_compile utils\coma_camera.py core\coma_camera.py panels\view_panel.py ui\context_menu.py ui\overlay_coma_page_labels.py addons\b_manga_line\__init__.py addons\b_manga_line\registration.py addons\b_manga_line\core.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\presets.py addons\b_manga_render\__init__.py addons\b_manga_render\panels.py test\blender_coma_overlay_visibility_visual_check.py test\blender_coma_context_menu_check.py test\blender_context_menu_commands_check.py test\blender_b_manga_line_register_reenable_check.py test\blender_b_manga_render_ui_audit.py test\blender_ui_micro_behavior_matrix_check.py test\blender_b_manga_line_full_visual_audit_check.py`
+
+---
+
 ## 2026-06-29 — コマを後ろにする時のページ画像表示順を修正 (v0.6.417)
 
 ### 症状
