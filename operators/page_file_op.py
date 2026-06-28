@@ -114,7 +114,7 @@ def _finalize_page_scene(context, work, page_id: str) -> bool:
     try:
         from ..utils import layer_stack
 
-        layer_stack.sync_layer_stack(context)
+        layer_stack.sync_layer_stack_after_data_change(context)
         layer_stack.schedule_layer_stack_sync()
     except Exception:  # noqa: BLE001
         _logger.exception("page file: layer stack setup failed")
@@ -257,8 +257,8 @@ class BMANGA_OT_exit_page_file(Operator):
             if not _save_metadata(context, reason="exit_page_file"):
                 self.report({"ERROR"}, "作品情報の保存に失敗しました")
                 return {"CANCELLED"}
-            _update_page_preview_png(work, page_id)
             blend_io.save_page_blend(work_dir, page_id)
+            _update_page_preview_png(work, page_id)
             if not blend_io.work_blend_exists(work_dir):
                 self.report({"ERROR"}, "ページ一覧ファイルが見つかりません")
                 return {"CANCELLED"}
@@ -275,7 +275,7 @@ class BMANGA_OT_exit_page_file(Operator):
         try:
             from ..utils import page_preview_object
 
-            page_preview_object.sync_page_previews(ctx, get_work(ctx), force=True)
+            page_preview_object.sync_page_previews(ctx, get_work(ctx), force=False)
             page_file_scene.purge_work_list_runtime_data(ctx.scene)
         except Exception:  # noqa: BLE001
             _logger.exception("exit_page_file: work list cleanup failed")
@@ -330,6 +330,7 @@ class BMANGA_OT_page_file_next(Operator):
             cur_page_id = page_file_scene.current_page_id()
             if cur_page_id:
                 blend_io.save_page_blend(work_dir, cur_page_id)
+                _update_page_preview_png(work, cur_page_id)
             page_io.ensure_page_dir(work_dir, next_page_id)
             work.active_page_index = new_idx
             _save_metadata(context, reason="page_file_next")
@@ -391,6 +392,7 @@ class BMANGA_OT_page_file_prev(Operator):
             cur_page_id = page_file_scene.current_page_id()
             if cur_page_id:
                 blend_io.save_page_blend(work_dir, cur_page_id)
+                _update_page_preview_png(work, cur_page_id)
             page_io.ensure_page_dir(work_dir, prev_page_id)
             work.active_page_index = new_idx
             _save_metadata(context, reason="page_file_prev")

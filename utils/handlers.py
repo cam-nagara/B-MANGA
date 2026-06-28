@@ -262,6 +262,15 @@ def save_scene_work_to_disk(context, *, reason: str = "") -> bool:
 
     _saving_work_metadata = True
     try:
+        try:
+            from . import object_state_sync
+
+            scene = getattr(context, "scene", None)
+            if scene is not None:
+                for obj in bpy.data.objects:
+                    object_state_sync.sync_from_blender_object(scene, obj)
+        except Exception:  # noqa: BLE001
+            _logger.exception("object state save writeback failed")
         page_range.update_page_range_visibility(work)
         try:
             from . import view_settings
@@ -528,6 +537,12 @@ def _bmanga_on_load_post(filepath_arg) -> None:  # signature: (str,) in Blender 
                     page_file_scene.resync_page_runtime_objects(scene, work, str(rel.parts[0]))
                 except Exception:  # noqa: BLE001
                     _logger.exception("load_post: purge other page data failed")
+                try:
+                    from . import layer_stack as _layer_stack
+
+                    _layer_stack.sync_layer_stack_after_data_change(bpy.context)
+                except Exception:  # noqa: BLE001
+                    _logger.exception("load_post: page layer order refresh failed")
                 try:
                     from . import page_preview_object
 

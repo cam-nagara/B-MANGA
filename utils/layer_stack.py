@@ -1699,6 +1699,7 @@ def sync_layer_stack_after_data_change(
             align_coma_order=align_coma_order,
         )
         _remember_stack_signature(context)
+        _sync_real_objects_after_stack_order(context)
         tag_view3d_redraw(context)
     except Exception:  # noqa: BLE001
         _logger.exception("layer stack sync after data change failed")
@@ -3753,6 +3754,8 @@ def schedule_layer_stack_sync(
             sync_layer_stack(bpy.context)
             after_sig = _stack_signature(scene) if scene is not None else None
             _remember_stack_signature(bpy.context)
+            if _sync_should_apply_order or after_sig != before_sig:
+                _sync_real_objects_after_stack_order(bpy.context)
             # 一覧が前回 tick から変化しなければ収束とみなし、残りの tick と
             # 再描画を打ち切る (読込直後の連続再構築・連続再描画を抑える)
             converged = (

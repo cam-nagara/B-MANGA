@@ -469,10 +469,10 @@ def _draw_stack_coma_row(row, controls, item, resolved, index: int) -> None:
         return
     title = str(getattr(target, "title", "") or "").strip()
     _draw_type_icon(row, index, "MOD_WIREFRAME")
+    _select_name(row, index, title or "コマ", item=item, target=target)
     number_cell = row.row(align=True)
     number_cell.ui_units_x = 1.8
     number_cell.prop(target, "coma_number", text="")
-    _select_name(row, index, title or "コマ", item=item, target=target)
     controls["aux"] = "coma_enter"
 
 

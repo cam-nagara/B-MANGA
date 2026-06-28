@@ -258,7 +258,11 @@ def _stack_uid_for_coma_object(obj: bpy.types.Object, page_id: str) -> str:
     try:
         from . import layer_stack as ls
 
-        if kind in {"balloon", "text"}:
+        if kind == "balloon":
+            return ls.target_uid(kind, f"{page_id}:{bmanga_id}")
+        if kind == "text":
+            if bmanga_id.startswith(f"{page_id}:"):
+                return ls.target_uid(kind, bmanga_id)
             return ls.target_uid(kind, f"{page_id}:{bmanga_id}")
         if kind in {"image", "image_path", "raster", "fill"}:
             return ls.target_uid(kind, bmanga_id)
