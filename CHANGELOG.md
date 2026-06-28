@@ -3,6 +3,31 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの複数選択設定反映を修正 (B-MANGA Line v0.3.19)
+
+### 症状
+
+- 複数のオブジェクトを選択した状態でB-MANGA Lineの設定を変更しても、選択中の他オブジェクトへ同じ設定が反映されない場合があった。
+
+### 原因
+
+- パネル更新中の状況によって、設定変更時に渡される選択情報がアクティブオブジェクトだけに見える場合があった。
+- 一部の線幅制御や表示距離の設定は、値のコピーだけで表示更新まで走らない経路が残っていた。
+
+### 修正
+
+- 設定変更時は、パネルから渡される選択情報だけでなく、現在のシーン上で実際に選択されているメッシュも拾って反映するようにした。
+- 頂点カラー、AO、線幅の詳細制御、カメラ補正、カメラ範囲外非表示の余白も、複数選択時に値と表示更新が揃うようにした。
+- 複数選択で線幅、線の色、リム面、線幅の均一化、線幅詳細、遠距離ライン非表示が選択中へ反映される実機テストを追加した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\__init__.py test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineパネルの項目表示を整理 (B-MANGA Line v0.3.18)
 
 ### 症状

@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -98,6 +99,56 @@ def _assert_distance_threshold_hides_at_exact_distance(target: bpy.types.Object)
     bpy.data.objects.remove(obj, do_unlink=True)
 
 
+def _assert_multi_select_manual_setting_propagation(
+    scene: bpy.types.Scene,
+    first: bpy.types.Object,
+    second: bpy.types.Object,
+) -> None:
+    _select(first, [first, second])
+    source = first.bmanga_line_settings
+    target = second.bmanga_line_settings
+
+    source.outline_thickness_mm = 0.9
+    assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
+    assert math.isclose(
+        second.modifiers[core.MODIFIER_NAME].thickness,
+        target.outline_thickness,
+        rel_tol=0.001,
+    )
+
+    source.outline_color = (0.4, 0.5, 0.6, 1.0)
+    assert tuple(round(v, 3) for v in target.outline_color) == (0.4, 0.5, 0.6, 1.0)
+
+    source.use_rim = True
+    assert target.use_rim is True
+    assert second.modifiers[core.MODIFIER_NAME].use_rim is True
+
+    source.use_uniform_line_width = True
+    assert target.use_uniform_line_width is True
+    assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
+
+    source.edge_smooth_factor = -0.75
+    source.edge_midpoint_jitter_percent = 12.0
+    assert math.isclose(target.edge_smooth_factor, -0.75, rel_tol=0.001)
+    assert math.isclose(target.edge_midpoint_jitter_percent, 12.0, rel_tol=0.001)
+
+    source.use_outline_distance_limit = True
+    source.outline_max_distance = 0.25
+    assert target.use_outline_distance_limit is True
+    assert math.isclose(target.outline_max_distance, 0.25, rel_tol=0.001)
+
+    old = core._propagating
+    core._propagating = True
+    try:
+        source.outline_thickness = 0.006
+        target.outline_thickness = 0.002
+    finally:
+        core._propagating = old
+    fake_context = SimpleNamespace(selected_objects=[first], scene=scene)
+    core._propagate(source, fake_context, "outline_thickness")
+    assert math.isclose(target.outline_thickness, 0.006, rel_tol=0.001)
+
+
 def main() -> None:
     b_manga_line.register()
     _clear_scene()
@@ -146,6 +197,8 @@ def main() -> None:
         assert applied.intersection_target == target
         assert abs(applied.edge_width_curve_50 - 0.4) < 1.0e-7
         _assert_line_state(obj, visible=True)
+
+    _assert_multi_select_manual_setting_propagation(scene, first, second)
 
     assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
     for obj in (first, second):

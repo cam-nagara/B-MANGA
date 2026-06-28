@@ -53,6 +53,45 @@ LINE_MODIFIER_NAMES = (
 _propagating = False
 
 
+def _add_unique_mesh_object(items: list[bpy.types.Object], obj) -> None:
+    if obj is None or getattr(obj, "type", None) != "MESH":
+        return
+    if obj not in items:
+        items.append(obj)
+
+
+def _selected_mesh_objects(context, owner: bpy.types.Object) -> list[bpy.types.Object]:
+    """パネル更新中の制限付き context でも実選択メッシュを拾う."""
+    items: list[bpy.types.Object] = []
+    for obj in getattr(context, "selected_objects", ()) or ():
+        _add_unique_mesh_object(items, obj)
+
+    global_context = getattr(bpy, "context", None)
+    for obj in getattr(global_context, "selected_objects", ()) or ():
+        _add_unique_mesh_object(items, obj)
+
+    scenes = []
+    for scene in (
+        getattr(context, "scene", None),
+        getattr(global_context, "scene", None),
+    ):
+        if scene is not None and scene not in scenes:
+            scenes.append(scene)
+    for scene in getattr(owner, "users_scene", ()) or ():
+        if scene is not None and scene not in scenes:
+            scenes.append(scene)
+
+    for scene in scenes:
+        for obj in getattr(scene, "objects", ()) or ():
+            try:
+                selected = obj.select_get()
+            except (ReferenceError, RuntimeError):
+                selected = False
+            if selected:
+                _add_unique_mesh_object(items, obj)
+    return items
+
+
 def _propagate(self, context, prop_name):
     """変更されたプロパティを選択中の他オブジェクトにも反映."""
     global _propagating
@@ -63,7 +102,7 @@ def _propagate(self, context, prop_name):
         owner = self.id_data
         raw = getattr(self, prop_name)
         value = tuple(raw) if hasattr(raw, "__iter__") and not isinstance(raw, str) else raw
-        for obj in context.selected_objects:
+        for obj in _selected_mesh_objects(context, owner):
             if obj == owner or obj.type != "MESH":
                 continue
             s = getattr(obj, "bmanga_line_settings", None)
@@ -298,6 +337,14 @@ def _on_camera_comp_changed(self, context):
     _propagate(self, context, "use_camera_compensation")
 
 
+def _on_camera_influence_changed(self, context):
+    from . import camera_comp
+    owner = self.id_data
+    if owner.type == "MESH" and self.use_camera_compensation:
+        camera_comp.refresh(context)
+    _propagate(self, context, "camera_compensation_influence")
+
+
 def _on_uniform_line_width_changed(self, context):
     from . import camera_comp, vertex_analysis
     owner = self.id_data
@@ -330,6 +377,11 @@ def _on_uniform_line_width_changed(self, context):
 def _on_culling_changed(self, context):
     _refresh_visibility_rules(self, context)
     _propagate(self, context, "use_camera_culling")
+
+
+def _on_culling_margin_changed(self, context):
+    _refresh_visibility_rules(self, context)
+    _propagate(self, context, "culling_margin")
 
 
 def _on_inner_distance_changed(self, context):
@@ -450,7 +502,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="頂点カラーで線幅を制御",
         description="頂点カラーの明度で線幅の強弱をつける",
         default=False,
-        update=_make_propagator("use_vertex_color"),
+        update=_make_weight_refresh_propagator("use_vertex_color"),
     )  # type: ignore[valid-type]
 
     even_thickness: BoolProperty(
@@ -587,7 +639,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
-        update=_make_propagator("camera_compensation_influence"),
+        update=_on_camera_influence_changed,
     )  # type: ignore[valid-type]
 
     # --- AO 線幅制御 ---
@@ -596,7 +648,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         name="AOで線幅を制御",
         description="焼き付けたAOの暗い部分で線を太くする",
         default=False,
-        update=_make_propagator("use_ao_influence"),
+        update=_make_weight_refresh_propagator("use_ao_influence"),
     )  # type: ignore[valid-type]
 
     ao_influence_strength: FloatProperty(
@@ -606,7 +658,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
         subtype="FACTOR",
-        update=_make_propagator("ao_influence_strength"),
+        update=_make_weight_refresh_propagator("ao_influence_strength"),
     )  # type: ignore[valid-type]
 
     # --- エッジ角度による線幅調整 ---
@@ -679,7 +731,7 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=math.radians(90),
         subtype="ANGLE",
-        update=_make_propagator("culling_margin"),
+        update=_on_culling_margin_changed,
     )  # type: ignore[valid-type]
 
     # --- カメラ距離による線種別非表示 ---
