@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import (  # noqa: E402
+    camera_comp,
     core,
     intersection_lines,
     outline_setup,
@@ -142,7 +143,17 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.outline_thickness_mm = 0.9
     assert math.isclose(target.outline_thickness_mm, 0.9, rel_tol=0.001)
-    assert second.modifiers[core.MODIFIER_NAME].vertex_group == core.VG_LINE_WIDTH
+    expected = camera_comp._reference_width_for_mesh(
+        scene,
+        scene.camera,
+        second,
+        target.outline_thickness,
+    )
+    assert math.isclose(
+        second.modifiers[core.MODIFIER_NAME].thickness,
+        expected,
+        rel_tol=0.001,
+    )
 
     source.outline_color = (0.4, 0.5, 0.6, 1.0)
     assert tuple(round(v, 3) for v in target.outline_color) == (0.4, 0.5, 0.6, 1.0)

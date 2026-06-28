@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの線幅均一化トグルを復旧 (B-MANGA Line v0.3.21)
+
+### 症状
+
+- v0.3.20で「線幅の均一化」を常時オン相当として扱い、アウトライン設定から切り替え項目を外してしまった。
+- その結果、ユーザーが意図的に「線幅の均一化」をオン/オフする運用ができなくなっていた。
+
+### 原因
+
+- 「線幅 (mm)」を印刷上の太さとして扱う要件と、「線幅の均一化」でオブジェクト内の奥行き差まで揃える要件を混同していた。
+- v0.3.11の追加履歴では、「線幅の均一化」はオン時にカメラビュー、出力解像度、DPIから各頂点の線幅を補正する切替機能として定義されていた。
+
+### 修正
+
+- アウトライン設定に「線幅の均一化」を戻し、オン/オフを切り替えられるようにした。
+- 「線幅の均一化」オン時だけ、各頂点の奥行き差まで使って見かけの線幅を揃えるように戻した。
+- 「線幅の均一化」オフ時は、B-MANGA Lineパネルのmm値をカメラビュー基準の太さへ反映しつつ、頂点ごとの奥行き均一化は行わないようにした。
+- プリセット保存側のアウトライン線幅上限も、パネル側と同じ1000mm相当に揃えた。
+- 複数選択で線幅を変えた時、均一化オフ/オンの両方で選択中オブジェクトの実際のライン幅が更新される実機テストへ修正した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの線幅mm仕様と複数選択反映を再修正 (B-MANGA Line v0.3.20)
 
 ### 症状

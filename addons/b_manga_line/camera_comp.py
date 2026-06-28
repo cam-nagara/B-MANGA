@@ -170,6 +170,23 @@ def _uniform_widths_for_mesh(scene, camera, obj, width_m: float) -> list[float]:
     ]
 
 
+def _reference_point_for_mesh(obj) -> Vector:
+    if obj.bound_box:
+        corners = [Vector(corner) for corner in obj.bound_box]
+        local_center = sum(corners, Vector()) / 8
+        return obj.matrix_world @ local_center
+    return obj.matrix_world.translation
+
+
+def _reference_width_for_mesh(scene, camera, obj, width_m: float) -> float:
+    target_px = _target_pixels(scene, width_m)
+    return target_px * _world_per_pixel(
+        scene,
+        camera,
+        _reference_point_for_mesh(obj),
+    )
+
+
 def _has_style_width_weights(settings) -> bool:
     return (
         settings.use_vertex_color
@@ -216,12 +233,43 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     )
 
 
+def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
+    from . import inner_lines, intersection_lines
+
+    outline_width = max(
+        _reference_width_for_mesh(scene, camera, obj, settings.outline_thickness),
+        1.0e-9,
+    )
+    mod.thickness = outline_width
+
+    if _has_style_width_weights(settings):
+        _prepare_style_weights(obj, settings)
+        mod.vertex_group = VG_LINE_WIDTH
+        mod.thickness_vertex_group = 0.0
+    else:
+        mod.vertex_group = ""
+
+    outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
+    inner_scale = abs(float(settings.inner_line_thickness)) / outline_base
+    intersection_scale = abs(float(settings.intersection_thickness)) / outline_base
+    inner_lines.update_parameters(obj, thickness=outline_width * inner_scale)
+    intersection_lines.update_parameters(
+        obj,
+        thickness=outline_width * intersection_scale,
+    )
+
+
 # ------------------------------------------------------------------
 # 各機能の更新ロジック（オブジェクトごとの設定を参照）
 # ------------------------------------------------------------------
 
 def _update_camera_compensation(scene, camera):
-    """線幅 (mm) を出力上の太さとして各オブジェクトへ反映."""
+    """線幅 (mm) をカメラビュー基準の太さとして各オブジェクトへ反映."""
+    from . import inner_lines, intersection_lines
+
+    cam_loc = camera.matrix_world.translation
+    current_fov = _get_fov_factor(camera.data, scene)
+
     for obj in scene.objects:
         if obj.type != "MESH":
             continue
@@ -231,7 +279,37 @@ def _update_camera_compensation(scene, camera):
         mod = obj.modifiers.get(MODIFIER_NAME)
         if mod is None:
             continue
-        _apply_uniform_line_width(scene, camera, obj, settings, mod)
+        if settings.use_uniform_line_width:
+            _apply_uniform_line_width(scene, camera, obj, settings, mod)
+            continue
+        if not settings.use_camera_compensation:
+            _apply_reference_line_width(scene, camera, obj, settings, mod)
+            continue
+
+        influence = settings.camera_compensation_influence
+        base_t = settings.outline_thickness
+        ref_d = obj.get(PROP_REF_DISTANCE, 1.0)
+        if ref_d <= 0:
+            ref_d = 1.0
+        dist = (cam_loc - obj.matrix_world.translation).length
+        factor = dist / ref_d
+        mode = obj.get(PROP_REF_MODE)
+        if mode is None:
+            mode = REF_MODE_VIEW if abs(ref_d - 1.0) < 1e-6 else REF_MODE_LOCKED
+        ref_fov = obj.get(PROP_REF_FOV_TAN)
+        if mode == REF_MODE_LOCKED and ref_fov and ref_fov > 0:
+            factor *= current_fov / ref_fov
+        adjusted = base_t * (1.0 + (factor - 1.0) * influence)
+        mod.thickness = abs(adjusted)
+
+        inner_adjusted = settings.inner_line_thickness * (
+            1.0 + (factor - 1.0) * influence
+        )
+        intersection_adjusted = settings.intersection_thickness * (
+            1.0 + (factor - 1.0) * influence
+        )
+        inner_lines.update_parameters(obj, thickness=abs(inner_adjusted))
+        intersection_lines.update_parameters(obj, thickness=abs(intersection_adjusted))
 
 
 def _update_visibility(scene, camera, cam_loc, cam_fwd):

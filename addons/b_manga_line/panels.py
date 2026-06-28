@@ -105,6 +105,7 @@ def _draw_outline(layout, context, settings) -> None:
     sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
     col.prop(settings, "outline_color")
     col.prop(settings, "even_thickness")
+    col.prop(settings, "use_uniform_line_width")
     col.prop(settings, "use_rim")
     col.prop(settings, "hide_through_transparent")
     col.prop(settings, "use_vertex_color")
@@ -127,7 +128,7 @@ def _draw_camera(layout, context, settings) -> None:
     col.prop(context.scene, "bmanga_line_camera")
     col.prop(settings, "use_camera_compensation")
     sub = col.column(align=True)
-    sub.enabled = settings.use_camera_compensation
+    sub.enabled = settings.use_camera_compensation and not settings.use_uniform_line_width
     sub.prop(settings, "camera_compensation_influence")
     row = sub.row(align=True)
     row.operator("bmanga_line.reset_camera_ref", icon="FILE_REFRESH")

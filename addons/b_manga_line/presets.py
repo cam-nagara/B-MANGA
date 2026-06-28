@@ -113,7 +113,12 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     )
 
     settings = obj.bmanga_line_settings
-    use_vg = True
+    use_vg = (
+        settings.use_uniform_line_width
+        or settings.use_vertex_color
+        or settings.use_ao_influence
+        or abs(settings.edge_smooth_factor) > 0.001
+    )
     ok = outline_setup.apply_outline(
         obj,
         thickness=settings.outline_thickness,
@@ -170,7 +175,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
 class BMangaLinePreset(bpy.types.PropertyGroup):
     """Saved B-MANGA Line settings."""
 
-    outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=0.1)
+    outline_thickness: FloatProperty(default=0.0003, min=0.0001, max=1.0)
     outline_color: FloatVectorProperty(
         subtype="COLOR",
         size=4,
@@ -180,7 +185,7 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     )
     use_vertex_color: BoolProperty(default=False)
     even_thickness: BoolProperty(default=True)
-    use_uniform_line_width: BoolProperty(default=True)
+    use_uniform_line_width: BoolProperty(default=False)
     use_rim: BoolProperty(default=True)
     hide_through_transparent: BoolProperty(default=False)
 
