@@ -202,6 +202,10 @@ def main() -> None:
         assert abs(applied.intersection_max_distance - 0.5) < 1.0e-7
         _assert_distance_limited_outline_and_intersection(obj)
 
+    assert bpy.ops.bmanga_line.set_visibility(visible=True) == {"FINISHED"}
+    for obj in (first, second):
+        _assert_distance_limited_outline_and_intersection(obj)
+
     _select(source, [source])
     settings.use_outline_distance_limit = False
     settings.use_intersection_distance_limit = False

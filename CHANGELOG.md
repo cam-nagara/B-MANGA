@@ -3,6 +3,41 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line のラインのみ表示と遠距離表示復帰を修正 (v0.3.15)
+
+### 症状
+
+- 「ラインを表示」を押すと、遠距離ライン非表示で消えるべきラインが次のカメラ更新まで一時的に表示される場合があった。
+- 「ラインのみを表示」では元の面を透明化していたため、Blender 5.1 の実レンダーで背面法のラインまで奥行きで隠れ、対象がほぼ消えて見える場合があった。
+
+### 原因
+
+- ライン表示ボタンはモディファイアの表示状態だけを戻し、遠距離ライン非表示やカメラ範囲外非表示の再判定を直後に行っていなかった。
+- 透明面で素材を差し替える方式は、背面法アウトラインが元メッシュの面をマスクとして使う仕組みと相性が悪く、線のシルエットも透明面側に隠れていた。
+
+### 修正
+
+- 「ラインを表示」後に、カメラ基準の表示判定を即時再実行するようにした。
+- 「ラインのみを表示」は、元の面を白い確認面へ置き換え、確認用の黒線オーバーレイを一時追加する方式に変更した。
+- 通常表示へ戻すときは、元の面素材、ライン素材、確認用黒線をすべて復帰・削除するようにした。
+- AI目視用のB-MANGA Line監査レンダーを追加し、アウトライン / 内部線 / 交差線 / 線幅の均一化 / ラインのみ表示 / 遠距離ライン非表示 / 透明面保護を画像で確認できるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\operators.py addons\b_manga_line\outline_setup.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_camera_aov_line_only_check.py test\blender_b_manga_line_full_visual_audit_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_intersection_fill_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_transparent_surface_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_full_visual_audit_check.py`
+- AI目視: `_verify\b_manga_line_full_visual_audit\01_outline_inner_intersection.png` / `02_uniform_line_only_distance.png` / `03_transparent_protection.png`
+
+---
+
 ## 2026-06-28 — B-MANGA Line の遠距離ライン非表示表記を明確化 (v0.3.14)
 
 ### 症状

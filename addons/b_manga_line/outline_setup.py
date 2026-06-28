@@ -26,6 +26,7 @@ from .core import (
 
 
 LINE_ONLY_MATERIAL_NAME = "BML_LineOnly_SurfaceHidden"
+LINE_ONLY_WIREFRAME_NAME = "BML_LineOnly_Wire"
 PROP_HIDE_THROUGH_TRANSPARENT = "bml_hide_through_transparent"
 
 
@@ -151,6 +152,49 @@ def _build_outline_nodes(
 
     links.new(aov_value, aov.inputs["Value"])
     mat[PROP_HIDE_THROUGH_TRANSPARENT] = bool(hide_through_transparent)
+
+
+def _build_line_only_outline_nodes(
+    mat: bpy.types.Material,
+    color: tuple[float, ...],
+) -> None:
+    """ライン確認中は背面判定を使わず、線素材を常に黒く描く."""
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    nodes.clear()
+
+    output = nodes.new("ShaderNodeOutputMaterial")
+    output.location = (700, 0)
+
+    rgb = nodes.new("ShaderNodeRGB")
+    rgb.location = (-300, 100)
+    rgb.outputs[0].default_value = (color[0], color[1], color[2], 1.0)
+    rgb.label = "BML_Color"
+
+    emission = nodes.new("ShaderNodeEmission")
+    emission.location = (100, 100)
+    emission.inputs["Strength"].default_value = 1.0
+    links.new(rgb.outputs[0], emission.inputs["Color"])
+
+    lightpath = nodes.new("ShaderNodeLightPath")
+    lightpath.location = (-300, -120)
+
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (100, -120)
+
+    mix = nodes.new("ShaderNodeMixShader")
+    mix.location = (420, 0)
+    links.new(lightpath.outputs["Is Camera Ray"], mix.inputs[0])
+    links.new(transparent.outputs["BSDF"], mix.inputs[1])
+    links.new(emission.outputs["Emission"], mix.inputs[2])
+    links.new(mix.outputs["Shader"], output.inputs["Surface"])
+
+    aov = nodes.new("ShaderNodeOutputAOV")
+    aov.location = (700, -220)
+    aov.aov_name = AOV_NAME
+    links.new(rgb.outputs[0], aov.inputs["Color"])
+    aov.inputs["Value"].default_value = 1.0
 
 
 def _has_aov_node(mat: bpy.types.Material) -> bool:
@@ -345,6 +389,7 @@ def apply_outline(
     mod.use_even_offset = even_thickness
     mod.use_rim = use_rim
     mod.material_offset = material_offset
+    mod.material_offset_rim = material_offset
 
     # 頂点グループによる線幅制御
     need_vg = use_vertex_color or use_vertex_group
@@ -464,26 +509,87 @@ def _get_line_only_material() -> bpy.types.Material:
     if mat is None:
         mat = bpy.data.materials.new(LINE_ONLY_MATERIAL_NAME)
     mat.use_nodes = True
-    mat.diffuse_color = (1.0, 1.0, 1.0, 0.0)
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
     try:
-        mat.blend_method = "BLEND"
+        mat.blend_method = "OPAQUE"
     except (AttributeError, TypeError):
         pass
     try:
-        mat.surface_render_method = "BLENDED"
+        mat.surface_render_method = "DITHERED"
+    except (AttributeError, TypeError):
+        pass
+    try:
+        mat.show_transparent_back = False
+    except (AttributeError, TypeError):
+        pass
+    try:
+        mat.use_transparent_shadow = False
     except (AttributeError, TypeError):
         pass
     nodes = mat.node_tree.nodes
     links = mat.node_tree.links
     nodes.clear()
     output = nodes.new("ShaderNodeOutputMaterial")
-    transparent = nodes.new("ShaderNodeBsdfTransparent")
-    links.new(transparent.outputs["BSDF"], output.inputs["Surface"])
+    emission = nodes.new("ShaderNodeEmission")
+    emission.inputs["Color"].default_value = (1.0, 1.0, 1.0, 1.0)
+    emission.inputs["Strength"].default_value = 1.0
+    links.new(emission.outputs["Emission"], output.inputs["Surface"])
     return mat
 
 
+def _line_only_color(obj: bpy.types.Object) -> tuple[float, ...]:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    return tuple(getattr(settings, "outline_color", (0.0, 0.0, 0.0, 1.0)))
+
+
+def _set_outline_materials_for_line_only(
+    mesh: bpy.types.Mesh,
+    color: tuple[float, ...],
+) -> None:
+    for mat in mesh.materials:
+        if mat is not None and _is_outline_material(mat):
+            _build_line_only_outline_nodes(mat, color)
+            try:
+                mat.use_backface_culling = False
+            except (AttributeError, TypeError):
+                pass
+
+
+def _restore_outline_materials(obj: bpy.types.Object, mesh: bpy.types.Mesh) -> None:
+    settings = getattr(obj, "bmanga_line_settings", None)
+    color = _line_only_color(obj)
+    hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
+    for mat in mesh.materials:
+        if mat is not None and _is_outline_material(mat):
+            _build_outline_nodes(
+                mat,
+                color,
+                hide_through_transparent=hide_transparent,
+            )
+            _configure_material(mat)
+
+
+def _ensure_line_only_wire(obj: bpy.types.Object) -> None:
+    outline_slot = _first_outline_slot(obj)
+    if outline_slot is None:
+        return
+    wire = obj.modifiers.get(LINE_ONLY_WIREFRAME_NAME)
+    if wire is None:
+        wire = obj.modifiers.new(name=LINE_ONLY_WIREFRAME_NAME, type="WIREFRAME")
+    wire.use_replace = False
+    wire.use_even_offset = True
+    wire.thickness = 0.025
+    wire.material_offset = max(0, outline_slot)
+
+
+def _remove_line_only_wire(obj: bpy.types.Object) -> None:
+    wire = obj.modifiers.get(LINE_ONLY_WIREFRAME_NAME)
+    if wire is not None:
+        obj.modifiers.remove(wire)
+
+
 def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
-    """元の面素材を一時的に透明化し、ラインだけを見える状態にする."""
+    """元の面素材を一時的に白い確認面へ置き換え、ラインを見やすくする."""
     if obj.type != "MESH":
         return False
     mesh = obj.data
@@ -492,11 +598,16 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
             return True
         stored = []
         hidden = _get_line_only_material()
+        _set_outline_materials_for_line_only(mesh, _line_only_color(obj))
         for index, mat in enumerate(mesh.materials):
             if mat is not None and _is_outline_material(mat):
                 continue
             stored.append({"index": index, "material": mat.name if mat else ""})
             mesh.materials[index] = hidden
+        mod = obj.modifiers.get(MODIFIER_NAME)
+        if mod is not None and hasattr(mod, "material_offset_rim"):
+            mod.material_offset_rim = mod.material_offset
+        _ensure_line_only_wire(obj)
         obj[PROP_LINE_ONLY_MATERIALS] = json.dumps(stored, ensure_ascii=False)
         obj[PROP_LINE_ONLY] = True
         return bool(stored)
@@ -513,6 +624,8 @@ def set_line_only(obj: bpy.types.Object, enabled: bool) -> bool:
         mat_name = item.get("material") or ""
         if 0 <= index < len(mesh.materials):
             mesh.materials[index] = bpy.data.materials.get(mat_name)
+    _restore_outline_materials(obj, mesh)
+    _remove_line_only_wire(obj)
     if PROP_LINE_ONLY_MATERIALS in obj:
         del obj[PROP_LINE_ONLY_MATERIALS]
     if PROP_LINE_ONLY in obj:

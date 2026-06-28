@@ -106,6 +106,7 @@ def _test_line_only_restore() -> None:
     assert bpy.ops.bmanga_line.set_line_only(line_only=True) == {"FINISHED"}
     hidden = [mat.name if mat else "" for mat in obj.data.materials[:2]]
     assert hidden == [outline_setup.LINE_ONLY_MATERIAL_NAME] * 2, hidden
+    assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is not None
     assert any(
         mat and mat.name.startswith(core.MATERIAL_NAME)
         for mat in obj.data.materials
@@ -113,6 +114,7 @@ def _test_line_only_restore() -> None:
     assert bpy.ops.bmanga_line.set_line_only(line_only=False) == {"FINISHED"}
     restored = [mat.name if mat else "" for mat in obj.data.materials[:2]]
     assert restored == before, (restored, before)
+    assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
 
 
 def _test_inner_line_keeps_multimaterial_source() -> None:

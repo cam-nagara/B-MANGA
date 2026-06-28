@@ -114,11 +114,14 @@ class BMANGA_LINE_OT_set_visibility(bpy.types.Operator):
 
     def execute(self, context):
         from .core import set_line_visibility
+        from . import camera_comp
 
         count = 0
         for obj in context.selected_objects:
             if set_line_visibility(obj, self.visible):
                 count += 1
+        if self.visible:
+            camera_comp.refresh(context)
         action = "表示" if self.visible else "非表示"
         self.report({"INFO"}, f"{count} オブジェクトのラインを{action}にしました")
         return {"FINISHED"}
