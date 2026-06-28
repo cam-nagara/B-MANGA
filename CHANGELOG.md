@@ -3,6 +3,47 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 前回徹底チェック以降の実機AI目視と全体チェック (v0.6.408)
+
+### 症状
+
+- 前回の徹底チェック以降に修正した、詳細設定のプリセット管理、フキダシの入り抜きグラフ、パターンカーブ、生成形状、塗り輪郭ぼかし、用紙ガイド表示について、まとめて実機AI目視と全体チェックを通す必要があった。
+- 一部の実機監査テストが、検証自体は終わってもBlenderプロセスを閉じず、タイムアウト扱いになる場合があった。
+
+### 原因
+
+- 対象範囲が複数の詳細設定ダイアログ、フキダシ、効果線、パターンカーブ、ページ表示にまたがっていた。
+- 一部の古い監査テストが、成功時またはタイマー完了時にBlenderへ終了を明示していなかった。
+
+### 修正
+
+- 実機監査テストの終了処理を安定化し、成功・失敗のどちらでもBlenderプロセスが残らないようにした。
+- 前回徹底チェック以降の依頼範囲を再棚卸しし、プリセット管理、入り抜きグラフ、パターンカーブのリボン表示、生成形状、塗り輪郭ぼかし、中心点方向、用紙ガイドを実機テストとAI目視で再確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --background --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --factory-startup --background --python test\blender_detail_settings_runtime_check.py`
+- `blender.exe --factory-startup --background --python test\blender_balloon_uni_flash_check.py`
+- `blender.exe --background --python test\blender_image_path_tool_check.py`
+- `blender.exe --background --python test\blender_pattern_curve_ribbon_visual_check.py`
+- `blender.exe --background --python test\blender_tail_and_line_decor_check.py`
+- `blender.exe --background --python test\blender_tail_line_sharp_orient_check.py`
+- `blender.exe --background --python test\blender_balloon_curve_render_visual_check.py`
+- `blender.exe --background --python test\blender_bmanga_ui_inventory_visual_audit.py`
+- `blender.exe --background --python test\blender_paper_guide_visibility_check.py`
+- `blender.exe --factory-startup --python test\blender_paper_guide_viewport_visual_check.py`
+- AI目視: パターンカーブのリボン表示、フキダシの塗り・輪郭、詳細設定UI棚卸し画像、用紙ガイドの実ビュー画像を確認し、対象依頼の表示破綻がないことを確認した。
+- 全体チェック: 追跡対象スクリプト 560 ファイル / 200,225 行を全行読み込み、競合マーカー・NUL・読取不能が 0 件であることを確認した。
+- `python -m py_compile` 相当の厳密構文チェックを、追跡対象 Python 556 ファイルすべてに実行。
+- `python test\test_paths.py`
+- `python test\test_stroke_style.py`
+- `python test\test_view_event_region.py`
+- `python test\test_line_effect_schema.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — パターンカーブの滑らかさとフキダシぼかしを改善 (v0.6.408)
 
 ### 症状

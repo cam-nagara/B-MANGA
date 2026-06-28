@@ -167,4 +167,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        os._exit(0)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        os._exit(1)

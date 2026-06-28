@@ -175,13 +175,17 @@ def _run_visual_check() -> None:
 
 
 def _visual_check_tick():
+    ok = False
     try:
         _run_visual_check()
+        ok = True
     except Exception:
         traceback.print_exc()
-        sys.exit(1)
     finally:
-        bpy.ops.wm.quit_blender()
+        try:
+            bpy.ops.wm.quit_blender()
+        finally:
+            os._exit(0 if ok else 1)
     return None
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import sys
 import tempfile
@@ -392,4 +393,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        os._exit(0)
+    except Exception:
+        import traceback
+
+        traceback.print_exc()
+        os._exit(1)
