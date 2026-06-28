@@ -645,6 +645,7 @@ def _on_load_post(_dummy):
 
 
 def register() -> None:
+    ensure_aov_passes()
     if _on_load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load_post)
 

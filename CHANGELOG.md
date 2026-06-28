@@ -3,6 +3,32 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineパネルの項目表示を整理 (B-MANGA Line v0.3.18)
+
+### 症状
+
+- B-MANGA Lineパネルが縦に長くなり、下側の内部線、交差線、操作ボタンなどが画面内で見つけにくい状態になっていた。
+
+### 原因
+
+- ラインプリセット、アウトライン、カメラ、線幅詳細、内部線、交差線、操作ボタンを1つの巨大なパネルへ縦積みしていた。
+
+### 修正
+
+- 操作ボタンをB-MANGA Lineパネル上部へ移動した。
+- ラインプリセット、アウトライン設定、カメラ設定、線幅の詳細制御、内部線、交差線を個別の折りたたみパネルへ分割した。
+- 主要なアウトライン設定は開いた状態にし、詳細項目は必要な時だけ開けるようにした。
+- 通常のシーンではライン用の表示準備を登録時に行い、プリファレンスの制限状態では何もしない安全化も維持した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\panels.py addons\b_manga_line\outline_setup.py addons\b_manga_line\__init__.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineをプリファレンスで有効化できない問題を修正 (B-MANGA Line v0.3.17)
 
 ### 症状

@@ -45,7 +45,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     bl_category = "B-MANGA Line"
 
     def draw(self, context):
-        from . import camera_comp, outline_setup
+        from . import outline_setup
 
         outline_setup.ensure_aov_passes(context.scene)
         layout = self.layout
@@ -53,216 +53,278 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
         if obj is None or obj.type != "MESH":
             layout.label(text="メッシュオブジェクトを選択してください", icon="INFO")
             return
+        _draw_actions(layout, context, obj)
 
-        settings = obj.bmanga_line_settings
-        has_any = any(has_outline(o) for o in context.selected_objects)
-        has_line_any = any(has_line(o) for o in context.selected_objects)
-        line_only_any = any(
-            bool(o.get(PROP_LINE_ONLY, False)) for o in context.selected_objects
+
+class _BMangaLineMeshPanel:
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "B-MANGA Line"
+    bl_parent_id = "BMANGA_LINE_PT_main"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == "MESH"
+
+
+def _active_settings(context):
+    obj = context.active_object
+    return getattr(obj, "bmanga_line_settings", None) if obj is not None else None
+
+
+def _draw_presets(layout, context) -> None:
+    col = layout.column(align=True)
+    col.prop(context.scene, "bmanga_line_preset_name")
+    col.operator("bmanga_line.preset_save", icon="ADD")
+    presets = context.scene.bmanga_line_presets
+    if presets:
+        col.template_list(
+            "UI_UL_list",
+            "bmanga_line_presets",
+            context.scene,
+            "bmanga_line_presets",
+            context.scene,
+            "bmanga_line_preset_index",
+            rows=3,
         )
-
-        dpi = _get_paper_dpi(context.scene)
-
-        # --- プリセット管理 ---
-        box = layout.box()
-        box.label(text="ラインプリセット", icon="PRESET")
-        col = box.column(align=True)
-        col.prop(context.scene, "bmanga_line_preset_name")
-        col.operator("bmanga_line.preset_save", icon="ADD")
-        presets = context.scene.bmanga_line_presets
-        if presets:
-            col.template_list(
-                "UI_UL_list",
-                "bmanga_line_presets",
-                context.scene,
-                "bmanga_line_presets",
-                context.scene,
-                "bmanga_line_preset_index",
-                rows=3,
-            )
-            row = col.row(align=True)
-            row.operator("bmanga_line.preset_apply_selected", icon="CHECKMARK")
-            row.operator("bmanga_line.preset_delete", icon="TRASH")
-        else:
-            col.label(text="保存されたプリセットはありません", icon="INFO")
-
-        # --- アウトライン設定 ---
-        box = layout.box()
-        box.label(text="アウトライン設定", icon="MOD_SOLIDIFY")
-        col = box.column(align=True)
         row = col.row(align=True)
-        row.prop(settings, "outline_thickness_mm")
-        sub_label = row.row(align=True)
-        sub_label.alignment = "RIGHT"
-        sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
-        col.prop(settings, "outline_color")
-        col.prop(settings, "even_thickness")
-        col.prop(settings, "use_uniform_line_width")
-        col.prop(settings, "use_rim")
-        col.prop(settings, "hide_through_transparent")
-        col.prop(settings, "use_vertex_color")
-        col.separator()
-        col.prop(settings, "use_outline_distance_limit")
-        sub = col.column(align=True)
-        sub.enabled = settings.use_outline_distance_limit
-        sub.prop(settings, "outline_max_distance")
+        row.operator("bmanga_line.preset_apply_selected", icon="CHECKMARK")
+        row.operator("bmanga_line.preset_delete", icon="TRASH")
+    else:
+        col.label(text="保存されたプリセットはありません", icon="INFO")
 
-        # --- カメラ設定 ---
-        box = layout.box()
-        box.label(text="カメラ設定", icon="CAMERA_DATA")
 
-        # 距離補正
-        col = box.column(align=True)
-        line_camera = camera_comp.get_line_camera(context.scene)
-        camera_name = line_camera.name if line_camera else "未設定"
-        override_camera = getattr(context.scene, "bmanga_line_camera", None)
-        basis = "別カメラ指定" if override_camera else "カメラビュー"
-        col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
-        col.prop(context.scene, "bmanga_line_camera")
-        col.prop(settings, "use_camera_compensation")
-        sub = col.column(align=True)
-        sub.enabled = settings.use_camera_compensation and not settings.use_uniform_line_width
-        sub.prop(settings, "camera_compensation_influence")
-        row = sub.row(align=True)
-        row.operator("bmanga_line.reset_camera_ref", icon="FILE_REFRESH")
-        row.operator("bmanga_line.refresh_camera", icon="PLAY")
+def _draw_outline(layout, context, settings) -> None:
+    dpi = _get_paper_dpi(context.scene)
+    col = layout.column(align=True)
+    row = col.row(align=True)
+    row.prop(settings, "outline_thickness_mm")
+    sub_label = row.row(align=True)
+    sub_label.alignment = "RIGHT"
+    sub_label.label(text=_mm_to_px_label(settings.outline_thickness_mm, dpi))
+    col.prop(settings, "outline_color")
+    col.prop(settings, "even_thickness")
+    col.prop(settings, "use_uniform_line_width")
+    col.prop(settings, "use_rim")
+    col.prop(settings, "hide_through_transparent")
+    col.prop(settings, "use_vertex_color")
+    col.separator()
+    col.prop(settings, "use_outline_distance_limit")
+    sub = col.column(align=True)
+    sub.enabled = settings.use_outline_distance_limit
+    sub.prop(settings, "outline_max_distance")
 
-        col.separator()
 
-        # ビューカリング
-        col.prop(settings, "use_camera_culling")
-        sub = col.column(align=True)
-        sub.enabled = settings.use_camera_culling
-        sub.prop(settings, "culling_margin")
+def _draw_camera(layout, context, settings) -> None:
+    from . import camera_comp
 
-        # --- 線幅の詳細制御 ---
-        box = layout.box()
-        box.label(text="線幅の詳細制御", icon="BRUSHES_ALL")
-        col = box.column(align=True)
-        col.prop(settings, "edge_smooth_factor")
-        col.prop(settings, "edge_midpoint_jitter_percent")
-        curve = col.column(align=True)
-        curve.label(text="中間頂点への変化グラフ")
-        edge_width_curve.sync_node_to_settings(settings)
-        curve_node = edge_width_curve.ensure_node(settings)
-        if curve_node is not None:
-            curve.template_curve_mapping(curve_node, "mapping", type="NONE")
-        else:
-            curve.label(text="グラフを表示できません", icon="ERROR")
-        col.separator()
-        col.prop(settings, "use_ao_influence")
-        sub = col.column(align=True)
-        sub.enabled = settings.use_ao_influence
-        sub.prop(settings, "ao_influence_strength")
-        row = sub.row(align=True)
-        row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
-        col.separator()
-        row = col.row(align=True)
-        row.enabled = has_any
-        row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
+    col = layout.column(align=True)
+    line_camera = camera_comp.get_line_camera(context.scene)
+    camera_name = line_camera.name if line_camera else "未設定"
+    override_camera = getattr(context.scene, "bmanga_line_camera", None)
+    basis = "別カメラ指定" if override_camera else "カメラビュー"
+    col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
+    col.prop(context.scene, "bmanga_line_camera")
+    col.prop(settings, "use_camera_compensation")
+    sub = col.column(align=True)
+    sub.enabled = settings.use_camera_compensation and not settings.use_uniform_line_width
+    sub.prop(settings, "camera_compensation_influence")
+    row = sub.row(align=True)
+    row.operator("bmanga_line.reset_camera_ref", icon="FILE_REFRESH")
+    row.operator("bmanga_line.refresh_camera", icon="PLAY")
 
-        # --- 内部線設定 ---
-        box = layout.box()
-        box.label(text="内部線（稜線・谷線）", icon="MOD_EDGESPLIT")
-        col = box.column(align=True)
-        col.prop(settings, "inner_line_enabled")
-        sub = col.column(align=True)
-        sub.enabled = settings.inner_line_enabled
-        sub.prop(settings, "inner_line_angle")
-        row = sub.row(align=True)
-        row.prop(settings, "inner_line_thickness_mm")
-        sub_label = row.row(align=True)
-        sub_label.alignment = "RIGHT"
-        sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
-        col.separator()
-        sub_dist = col.column(align=True)
-        sub_dist.enabled = settings.inner_line_enabled
-        sub_dist.prop(settings, "use_inner_line_distance_limit")
-        sub_dist2 = sub_dist.column(align=True)
-        sub_dist2.enabled = settings.use_inner_line_distance_limit
-        sub_dist2.prop(settings, "inner_line_max_distance")
+    col.separator()
+    col.prop(settings, "use_camera_culling")
+    sub = col.column(align=True)
+    sub.enabled = settings.use_camera_culling
+    sub.prop(settings, "culling_margin")
 
-        # --- 交差線設定 ---
-        box = layout.box()
-        box.label(text="交差線（オブジェクト間）", icon="MOD_BOOLEAN")
-        col = box.column(align=True)
-        col.prop(settings, "intersection_enabled")
-        sub = col.column(align=True)
-        sub.enabled = settings.intersection_enabled
-        sub.prop(settings, "intersection_method")
-        sub.prop(settings, "intersection_target")
-        row = sub.row(align=True)
-        row.prop(settings, "intersection_thickness_mm")
-        sub_label = row.row(align=True)
-        sub_label.alignment = "RIGHT"
-        sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
-        sub.separator()
-        sub.prop(settings, "use_intersection_distance_limit")
-        sub_dist = sub.column(align=True)
-        sub_dist.enabled = settings.use_intersection_distance_limit
-        sub_dist.prop(settings, "intersection_max_distance")
 
-        # --- 操作ボタン ---
+def _draw_width_details(layout, context, settings) -> None:
+    has_any = any(has_outline(o) for o in context.selected_objects)
+    col = layout.column(align=True)
+    col.prop(settings, "edge_smooth_factor")
+    col.prop(settings, "edge_midpoint_jitter_percent")
+    curve = col.column(align=True)
+    curve.label(text="中間頂点への変化グラフ")
+    edge_width_curve.sync_node_to_settings(settings)
+    curve_node = edge_width_curve.ensure_node(settings)
+    if curve_node is not None:
+        curve.template_curve_mapping(curve_node, "mapping", type="NONE")
+    else:
+        curve.label(text="グラフを表示できません", icon="ERROR")
+    col.separator()
+    col.prop(settings, "use_ao_influence")
+    sub = col.column(align=True)
+    sub.enabled = settings.use_ao_influence
+    sub.prop(settings, "ao_influence_strength")
+    row = sub.row(align=True)
+    row.operator("bmanga_line.bake_ao", icon="SHADING_RENDERED")
+    col.separator()
+    row = col.row(align=True)
+    row.enabled = has_any
+    row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
+
+
+def _draw_inner_line(layout, context, settings) -> None:
+    dpi = _get_paper_dpi(context.scene)
+    col = layout.column(align=True)
+    col.prop(settings, "inner_line_enabled")
+    sub = col.column(align=True)
+    sub.enabled = settings.inner_line_enabled
+    sub.prop(settings, "inner_line_angle")
+    row = sub.row(align=True)
+    row.prop(settings, "inner_line_thickness_mm")
+    sub_label = row.row(align=True)
+    sub_label.alignment = "RIGHT"
+    sub_label.label(text=_mm_to_px_label(settings.inner_line_thickness_mm, dpi))
+    col.separator()
+    sub_dist = col.column(align=True)
+    sub_dist.enabled = settings.inner_line_enabled
+    sub_dist.prop(settings, "use_inner_line_distance_limit")
+    sub_dist2 = sub_dist.column(align=True)
+    sub_dist2.enabled = settings.use_inner_line_distance_limit
+    sub_dist2.prop(settings, "inner_line_max_distance")
+
+
+def _draw_intersection(layout, context, settings) -> None:
+    dpi = _get_paper_dpi(context.scene)
+    col = layout.column(align=True)
+    col.prop(settings, "intersection_enabled")
+    sub = col.column(align=True)
+    sub.enabled = settings.intersection_enabled
+    sub.prop(settings, "intersection_method")
+    sub.prop(settings, "intersection_target")
+    row = sub.row(align=True)
+    row.prop(settings, "intersection_thickness_mm")
+    sub_label = row.row(align=True)
+    sub_label.alignment = "RIGHT"
+    sub_label.label(text=_mm_to_px_label(settings.intersection_thickness_mm, dpi))
+    sub.separator()
+    sub.prop(settings, "use_intersection_distance_limit")
+    sub_dist = sub.column(align=True)
+    sub_dist.enabled = settings.use_intersection_distance_limit
+    sub_dist.prop(settings, "intersection_max_distance")
+
+
+def _draw_actions(layout, context, obj) -> None:
+    has_line_any = any(has_line(o) for o in context.selected_objects)
+    line_only_any = any(
+        bool(o.get(PROP_LINE_ONLY, False)) for o in context.selected_objects
+    )
+    row = layout.row(align=True)
+    row.scale_y = 1.4
+    row.operator("bmanga_line.apply", icon="ADD")
+
+    linked_line_count = sum(
+        1 for linked_obj in context.scene.objects
+        if _is_linked_line_object(linked_obj)
+    )
+    row = layout.row(align=True)
+    row.enabled = linked_line_count > 0
+    row.operator("bmanga_line.refresh_linked", text="リンク素材のラインを補正", icon="FILE_REFRESH")
+
+    row = layout.row(align=True)
+    row.enabled = linked_line_count > 0 and has_line(obj)
+    row.operator(
+        "bmanga_line.apply_active_to_linked",
+        text="リンク素材へ選択設定を上書き",
+        icon="LINKED",
+    )
+
+    row = layout.row(align=True)
+    row.enabled = has_line_any
+    op = row.operator("bmanga_line.set_visibility", text="ラインを表示", icon="HIDE_OFF")
+    op.visible = True
+    op = row.operator("bmanga_line.set_visibility", text="ラインを非表示", icon="HIDE_ON")
+    op.visible = False
+
+    row = layout.row(align=True)
+    row.enabled = has_line_any or line_only_any
+    op = row.operator("bmanga_line.set_line_only", text="ラインのみを表示", icon="OVERLAY")
+    op.line_only = True
+    op = row.operator("bmanga_line.set_line_only", text="通常表示に戻す", icon="MATERIAL")
+    op.line_only = False
+
+    row = layout.row(align=True)
+    row.enabled = has_line_any
+    row.operator("bmanga_line.remove", icon="REMOVE")
+
+    mesh_count = sum(1 for selected in context.selected_objects if selected.type == "MESH")
+    outline_count = sum(1 for selected in context.selected_objects if has_outline(selected))
+    if mesh_count > 0:
         layout.separator()
-
-        row = layout.row(align=True)
-        row.scale_y = 1.4
-        row.operator("bmanga_line.apply", icon="ADD")
-
-        linked_line_count = sum(
-            1 for linked_obj in context.scene.objects
-            if _is_linked_line_object(linked_obj)
-        )
-        row = layout.row(align=True)
-        row.enabled = linked_line_count > 0
-        row.operator("bmanga_line.refresh_linked", text="リンク素材のラインを補正", icon="FILE_REFRESH")
-
-        row = layout.row(align=True)
-        row.enabled = linked_line_count > 0 and has_line(obj)
-        row.operator(
-            "bmanga_line.apply_active_to_linked",
-            text="リンク素材へ選択設定を上書き",
-            icon="LINKED",
+        info = layout.column(align=True)
+        info.scale_y = 0.8
+        info.label(
+            text=f"選択メッシュ: {mesh_count}  ライン適用済み: {outline_count}",
+            icon="INFO",
         )
 
-        row = layout.row(align=True)
-        row.enabled = has_line_any
-        op = row.operator("bmanga_line.set_visibility", text="ラインを表示", icon="HIDE_OFF")
-        op.visible = True
-        op = row.operator("bmanga_line.set_visibility", text="ラインを非表示", icon="HIDE_ON")
-        op.visible = False
 
-        row = layout.row(align=True)
-        row.enabled = has_line_any or line_only_any
-        op = row.operator("bmanga_line.set_line_only", text="ラインのみを表示", icon="OVERLAY")
-        op.line_only = True
-        op = row.operator(
-            "bmanga_line.set_line_only",
-            text="通常表示に戻す",
-            icon="MATERIAL",
-        )
-        op.line_only = False
+class BMANGA_LINE_PT_presets(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "ラインプリセット"
+    bl_idname = "BMANGA_LINE_PT_presets"
+    bl_options = {"DEFAULT_CLOSED"}
 
-        row = layout.row(align=True)
-        row.enabled = has_line_any
-        row.operator("bmanga_line.remove", icon="REMOVE")
-
-        # --- 選択情報 ---
-        mesh_count = sum(1 for obj in context.selected_objects if obj.type == "MESH")
-        outline_count = sum(
-            1 for obj in context.selected_objects if has_outline(obj)
-        )
-        if mesh_count > 0:
-            layout.separator()
-            info = layout.column(align=True)
-            info.scale_y = 0.8
-            info.label(
-                text=f"選択メッシュ: {mesh_count}  ライン適用済み: {outline_count}",
-                icon="INFO",
-            )
+    def draw(self, context):
+        _draw_presets(self.layout, context)
 
 
-_CLASSES = (BMANGA_LINE_PT_main,)
+class BMANGA_LINE_PT_outline(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "アウトライン設定"
+    bl_idname = "BMANGA_LINE_PT_outline"
+
+    def draw(self, context):
+        _draw_outline(self.layout, context, _active_settings(context))
+
+
+class BMANGA_LINE_PT_camera(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "カメラ設定"
+    bl_idname = "BMANGA_LINE_PT_camera"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        _draw_camera(self.layout, context, _active_settings(context))
+
+
+class BMANGA_LINE_PT_width_details(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "線幅の詳細制御"
+    bl_idname = "BMANGA_LINE_PT_width_details"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        _draw_width_details(self.layout, context, _active_settings(context))
+
+
+class BMANGA_LINE_PT_inner_line(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "内部線（稜線・谷線）"
+    bl_idname = "BMANGA_LINE_PT_inner_line"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        _draw_inner_line(self.layout, context, _active_settings(context))
+
+
+class BMANGA_LINE_PT_intersection(_BMangaLineMeshPanel, bpy.types.Panel):
+    bl_label = "交差線（オブジェクト間）"
+    bl_idname = "BMANGA_LINE_PT_intersection"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        _draw_intersection(self.layout, context, _active_settings(context))
+
+
+_CLASSES = (
+    BMANGA_LINE_PT_main,
+    BMANGA_LINE_PT_presets,
+    BMANGA_LINE_PT_outline,
+    BMANGA_LINE_PT_camera,
+    BMANGA_LINE_PT_width_details,
+    BMANGA_LINE_PT_inner_line,
+    BMANGA_LINE_PT_intersection,
+)
 
 
 def register() -> None:

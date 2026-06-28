@@ -6,6 +6,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import bpy
 
@@ -34,6 +35,18 @@ def _assert_registered() -> None:
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is not None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is not None
     assert getattr(bpy.types, "BMANGA_LINE_PT_main", None) is not None
+    subpanels = (
+        "BMANGA_LINE_PT_presets",
+        "BMANGA_LINE_PT_outline",
+        "BMANGA_LINE_PT_camera",
+        "BMANGA_LINE_PT_width_details",
+        "BMANGA_LINE_PT_inner_line",
+        "BMANGA_LINE_PT_intersection",
+    )
+    for name in subpanels:
+        panel = getattr(bpy.types, name, None)
+        assert panel is not None, f"{name} が登録されていません"
+        assert panel.bl_parent_id == "BMANGA_LINE_PT_main"
 
 
 def _assert_unregistered() -> None:
@@ -42,6 +55,82 @@ def _assert_unregistered() -> None:
     assert not bool(getattr(core.BMangaLineSettings, "is_registered", False))
     assert getattr(bpy.types.Object, "bmanga_line_settings", None) is None
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is None
+
+
+class _CaptureLayout:
+    def __init__(self, records: dict[str, list[str]] | None = None) -> None:
+        self.records = records or {"props": [], "operators": [], "labels": [], "curves": []}
+        self.enabled = True
+        self.alignment = "LEFT"
+        self.scale_y = 1.0
+
+    def row(self, **_kwargs):
+        return _CaptureLayout(self.records)
+
+    def column(self, **_kwargs):
+        return _CaptureLayout(self.records)
+
+    def box(self):
+        return _CaptureLayout(self.records)
+
+    def separator(self) -> None:
+        return None
+
+    def label(self, text: str = "", **_kwargs) -> None:
+        self.records["labels"].append(text)
+
+    def prop(self, _data, prop_name: str, **_kwargs) -> None:
+        self.records["props"].append(prop_name)
+
+    def operator(self, operator_id: str, **_kwargs):
+        self.records["operators"].append(operator_id)
+        return SimpleNamespace()
+
+    def template_list(self, *_args, **_kwargs) -> None:
+        self.records["labels"].append("template_list")
+
+    def template_curve_mapping(self, *_args, **_kwargs) -> None:
+        self.records["curves"].append("template_curve_mapping")
+
+
+def _assert_panels_draw_items() -> None:
+    from b_manga_line_reenable_check import panels
+
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.ops.mesh.primitive_cube_add()
+    obj = bpy.context.object
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+
+    records = {"props": [], "operators": [], "labels": [], "curves": []}
+    dummy = SimpleNamespace(layout=_CaptureLayout(records))
+    for panel_cls in (
+        panels.BMANGA_LINE_PT_main,
+        panels.BMANGA_LINE_PT_presets,
+        panels.BMANGA_LINE_PT_outline,
+        panels.BMANGA_LINE_PT_camera,
+        panels.BMANGA_LINE_PT_width_details,
+        panels.BMANGA_LINE_PT_inner_line,
+        panels.BMANGA_LINE_PT_intersection,
+    ):
+        assert panel_cls.poll(bpy.context) if hasattr(panel_cls, "poll") else True
+        panel_cls.draw(dummy, bpy.context)
+
+    for prop_name in (
+        "outline_thickness_mm",
+        "outline_color",
+        "use_camera_compensation",
+        "edge_smooth_factor",
+        "inner_line_enabled",
+        "intersection_enabled",
+    ):
+        assert prop_name in records["props"], f"{prop_name} がパネルにありません"
+    for operator_id in (
+        "bmanga_line.apply",
+        "bmanga_line.set_visibility",
+        "bmanga_line.remove",
+    ):
+        assert operator_id in records["operators"], f"{operator_id} がパネルにありません"
 
 
 def _assert_restricted_data_register_safe() -> None:
@@ -71,6 +160,7 @@ def main() -> None:
         _assert_restricted_data_register_safe()
         mod.register()
         _assert_registered()
+        _assert_panels_draw_items()
         mod.register()
         _assert_registered()
         mod.unregister()
