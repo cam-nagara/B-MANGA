@@ -49,7 +49,12 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
 
     def execute(self, context):
         from . import intersection_lines, outline_setup, inner_lines
-        from .core import PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN
+        from .core import (
+            PROP_BASE_THICKNESS,
+            PROP_REF_DISTANCE,
+            PROP_REF_FOV_TAN,
+            PROP_REF_MODE,
+        )
 
         count = 0
         for obj in context.selected_objects:
@@ -61,7 +66,12 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             removed_any |= intersection_lines.remove_intersection_lines(obj)
             if removed_any:
                 count += 1
-            for key in (PROP_BASE_THICKNESS, PROP_REF_DISTANCE, PROP_REF_FOV_TAN):
+            for key in (
+                PROP_BASE_THICKNESS,
+                PROP_REF_DISTANCE,
+                PROP_REF_FOV_TAN,
+                PROP_REF_MODE,
+            ):
                 if key in obj:
                     del obj[key]
             if PROP_LINES_HIDDEN in obj:

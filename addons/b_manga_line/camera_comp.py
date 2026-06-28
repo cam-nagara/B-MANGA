@@ -20,6 +20,9 @@ from .core import (
     PROP_LINES_HIDDEN,
     PROP_REF_DISTANCE,
     PROP_REF_FOV_TAN,
+    PROP_REF_MODE,
+    REF_MODE_LOCKED,
+    REF_MODE_VIEW,
 )
 
 
@@ -143,8 +146,11 @@ def _update_camera_compensation(scene, camera):
             ref_d = 1.0
         dist = (cam_loc - obj.matrix_world.translation).length
         factor = dist / ref_d
+        mode = obj.get(PROP_REF_MODE)
+        if mode is None:
+            mode = REF_MODE_VIEW if abs(ref_d - 1.0) < 1e-6 else REF_MODE_LOCKED
         ref_fov = obj.get(PROP_REF_FOV_TAN)
-        if ref_fov and ref_fov > 0:
+        if mode == REF_MODE_LOCKED and ref_fov and ref_fov > 0:
             factor *= current_fov / ref_fov
         adjusted = base_t * (1.0 + (factor - 1.0) * influence)
         mod.thickness = abs(adjusted)
@@ -280,11 +286,12 @@ def store_reference(obj, scene):
     settings = getattr(obj, "bmanga_line_settings", None)
     obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
     obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
+    obj[PROP_REF_MODE] = REF_MODE_LOCKED
     return True
 
 
 def store_unit_reference(obj, scene):
-    """現在のカメラ画角で、1m距離を補正基準として保存."""
+    """カメラビューのカメラを基準に、1m距離を補正基準として保存."""
     camera = get_line_camera(scene)
     if camera is None:
         return False
@@ -294,7 +301,8 @@ def store_unit_reference(obj, scene):
     settings = getattr(obj, "bmanga_line_settings", None)
     obj[PROP_REF_DISTANCE] = 1.0
     obj[PROP_BASE_THICKNESS] = settings.outline_thickness if settings else abs(mod.thickness)
-    obj[PROP_REF_FOV_TAN] = _get_fov_factor(camera.data, scene)
+    obj[PROP_REF_FOV_TAN] = 1.0
+    obj[PROP_REF_MODE] = REF_MODE_VIEW
     return True
 
 

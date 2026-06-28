@@ -34,6 +34,9 @@ PROP_LINE_ONLY_MATERIALS = "bml_line_only_materials"
 PROP_BASE_THICKNESS = "bml_base_thickness"
 PROP_REF_DISTANCE = "bml_ref_distance"
 PROP_REF_FOV_TAN = "bml_ref_fov_tan"
+PROP_REF_MODE = "bml_ref_mode"
+REF_MODE_VIEW = "VIEW"
+REF_MODE_LOCKED = "LOCKED"
 LINE_MODIFIER_NAMES = (
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
@@ -667,8 +670,8 @@ def register() -> None:
     bpy.types.Object.bmanga_line_settings = PointerProperty(type=BMangaLineSettings)
     bpy.types.Scene.bmanga_line_camera = PointerProperty(
         type=bpy.types.Object,
-        name="基準カメラ",
-        description="ライン幅補正と表示判定に使うカメラ。未指定ならシーンのカメラを使います",
+        name="別カメラ指定",
+        description="通常はカメラビューのカメラを使います。別カメラで判定したい場合だけ指定します",
         poll=_camera_poll,
     )
 

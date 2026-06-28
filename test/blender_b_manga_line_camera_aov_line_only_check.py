@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
-from b_manga_line import core, inner_lines, outline_setup, presets  # noqa: E402
+from b_manga_line import camera_comp, core, inner_lines, outline_setup, presets  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -59,8 +59,8 @@ def _test_camera_selection_and_aov() -> None:
     scene = bpy.context.scene
     near = _make_camera("BML_near_camera", (0.0, -2.0, 0.0))
     far = _make_camera("BML_far_camera", (0.0, -10.0, 0.0))
-    scene.camera = near
-    scene.bmanga_line_camera = far
+    scene.camera = far
+    scene.bmanga_line_camera = None
 
     obj = _make_two_material_cube()
     _select(obj)
@@ -72,13 +72,30 @@ def _test_camera_selection_and_aov() -> None:
     assert presets.apply_line_settings(obj, bpy.context)
     far_thickness = obj.modifiers[core.MODIFIER_NAME].thickness
     assert far_thickness > 0.08, far_thickness
+    assert obj.get(core.PROP_REF_MODE) == core.REF_MODE_VIEW
 
-    scene.bmanga_line_camera = near
-    from b_manga_line import camera_comp  # noqa: WPS433
+    obj[core.PROP_REF_FOV_TAN] = 999.0
+    camera_comp.refresh(bpy.context)
+    old_fov_ignored_thickness = obj.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(
+        old_fov_ignored_thickness,
+        far_thickness,
+        rel_tol=0.01,
+    ), (old_fov_ignored_thickness, far_thickness)
 
+    scene.camera = near
     camera_comp.refresh(bpy.context)
     near_thickness = obj.modifiers[core.MODIFIER_NAME].thickness
     assert near_thickness < far_thickness * 0.35, (near_thickness, far_thickness)
+
+    scene.bmanga_line_camera = far
+    camera_comp.refresh(bpy.context)
+    override_thickness = obj.modifiers[core.MODIFIER_NAME].thickness
+    assert math.isclose(override_thickness, far_thickness, rel_tol=0.01), (
+        override_thickness,
+        far_thickness,
+    )
+    scene.bmanga_line_camera = None
     _assert_aov(scene)
 
 

@@ -3,6 +3,33 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — B-MANGA Line のリンク素材カメラ基準を自動化 (v0.3.10)
+
+### 症状
+
+- リンク元ファイルで B-MANGA Line の線画設定を行った素材をコマファイルへ読み込む運用で、各リンク素材ごとにコマファイル内のカメラを基準指定する必要があるように見えていた。
+- リンク元ファイルで保存された画角基準が残ると、コマファイル側のカメラビューだけを見ているつもりでも、線幅補正がリンク元の状態に引っ張られる余地があった。
+
+### 原因
+
+- 通常のカメラ補正でも、リンク元で保存された画角基準を補正計算に使っていた。
+- パネル上の「基準カメラ」が必須設定のように見え、未指定時にカメラビューのカメラを使うことが分かりにくかった。
+
+### 修正
+
+- 通常のカメラ補正は、リンク先のコマファイルで使っているカメラビューのカメラを自動基準にするようにした。
+- リンク元で保存された古い画角値は、通常のカメラビュー基準では線幅補正へ影響しないようにした。
+- 別カメラを使いたい場合だけ任意指定する表示に変更し、現在の基準カメラをパネル上に表示するようにした。
+- 「基準距離をリセット」を押した場合だけ、その時点の基準を固定扱いにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\camera_comp.py addons\b_manga_line\operators.py addons\b_manga_line\panels.py addons\b_manga_line\__init__.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — B-MANGA Line の基準カメラとライン表示を修正 (v0.3.9)
 
 ### 症状

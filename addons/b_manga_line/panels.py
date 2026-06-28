@@ -30,7 +30,7 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
     bl_category = "B-MANGA Line"
 
     def draw(self, context):
-        from . import outline_setup
+        from . import camera_comp, outline_setup
 
         outline_setup.ensure_aov_passes(context.scene)
         layout = self.layout
@@ -91,6 +91,11 @@ class BMANGA_LINE_PT_main(bpy.types.Panel):
 
         # 距離補正
         col = box.column(align=True)
+        line_camera = camera_comp.get_line_camera(context.scene)
+        camera_name = line_camera.name if line_camera else "未設定"
+        override_camera = getattr(context.scene, "bmanga_line_camera", None)
+        basis = "別カメラ指定" if override_camera else "カメラビュー"
+        col.label(text=f"基準: {basis} ({camera_name})", icon="CAMERA_DATA")
         col.prop(context.scene, "bmanga_line_camera")
         col.prop(settings, "use_camera_compensation")
         sub = col.column(align=True)
