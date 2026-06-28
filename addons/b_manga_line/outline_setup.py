@@ -428,7 +428,13 @@ def ensure_aov_pass(view_layer) -> bool:
 
 def ensure_aov_passes(scene=None) -> int:
     """指定シーン、または全シーンの BML_Line AOV を保証する."""
-    scenes = [scene] if scene is not None else list(bpy.data.scenes)
+    if scene is not None:
+        scenes = [scene]
+    else:
+        scene_collection = getattr(bpy.data, "scenes", None)
+        if scene_collection is None:
+            return 0
+        scenes = list(scene_collection)
     count = 0
     for scn in scenes:
         if scn is None:
@@ -639,7 +645,6 @@ def _on_load_post(_dummy):
 
 
 def register() -> None:
-    ensure_aov_passes()
     if _on_load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_on_load_post)
 

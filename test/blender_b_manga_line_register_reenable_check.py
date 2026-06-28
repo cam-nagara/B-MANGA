@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import bpy
@@ -43,10 +44,31 @@ def _assert_unregistered() -> None:
     assert getattr(bpy.types.Scene, "bmanga_line_camera", None) is None
 
 
+def _assert_restricted_data_register_safe() -> None:
+    from b_manga_line_reenable_check import outline_setup
+
+    real_bpy = outline_setup.bpy
+    fake_handlers = types.SimpleNamespace(load_post=[])
+    fake_bpy = types.SimpleNamespace(
+        app=types.SimpleNamespace(handlers=fake_handlers),
+        data=types.SimpleNamespace(),
+    )
+    outline_setup.bpy = fake_bpy
+    try:
+        assert outline_setup.ensure_aov_passes() == 0
+        outline_setup.register()
+        assert outline_setup._on_load_post in fake_handlers.load_post
+        outline_setup.unregister()
+        assert outline_setup._on_load_post not in fake_handlers.load_post
+    finally:
+        outline_setup.bpy = real_bpy
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     mod = _load_package("b_manga_line_reenable_check")
     try:
+        _assert_restricted_data_register_safe()
         mod.register()
         _assert_registered()
         mod.register()

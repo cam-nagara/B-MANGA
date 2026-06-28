@@ -3,6 +3,28 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineをプリファレンスで有効化できない問題を修正 (B-MANGA Line v0.3.17)
+
+### 症状
+
+- プリファレンスのアドオン一覧でB-MANGA Lineを有効化しようとすると、エラーが出てオンにできない場合があった。
+
+### 原因
+
+- B-MANGA Lineの有効化中に、Blenderがまだ通常のシーン一覧へ触れない状態でライン用の表示準備を実行していた。
+
+### 修正
+
+- B-MANGA Lineの有効化時はシーン一覧へ触れず、ラインを使う画面や操作で現在のシーンだけ準備するようにした。
+- シーン一覧へ触れない状態で呼ばれても、エラーにせず何もしないようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\outline_setup.py addons\b_manga_line\__init__.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+
+---
+
 ## 2026-06-29 — 直近修正の実機AI目視監査を追加
 
 ### 症状
