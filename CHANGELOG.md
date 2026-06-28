@@ -3,6 +3,37 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの交差対象を自動化 (B-MANGA Line v0.3.24)
+
+### 症状
+
+- 交差線は「交差対象」欄で1つのオブジェクトを手動指定する必要があった。
+- 複数のオブジェクトが交差している場面で、交差線を出したい対象を個別に選ぶ必要があり、実際の街・背景素材のような多数オブジェクトでは運用しにくかった。
+
+### 原因
+
+- 交差線の生成が、1つの対象オブジェクトだけを受け取る単一モディファイア構成になっていた。
+- 表示、距離非表示、削除、プリセット適用も単一の交差線モディファイアを前提にしていた。
+
+### 修正
+
+- 「交差対象」欄を削除し、ライン設定済みの他メッシュを交差線の自動対象にした。
+- 交差線は対象ごとに自動生成し、実際に交差している部分だけ線として表示されるようにした。
+- 全オブジェクトが互いを読み合う依存サイクルを避けるため、交差ペアは片方向だけで生成し、同じ交差線が二重生成されないようにした。
+- 表示、非表示、ラインのみ表示、距離非表示、削除、プリセット適用、カメラ補正で、複数の交差線をまとめて扱うようにした。
+- ライン削除後やプリセット適用後に、他オブジェクト側へ古い交差対象が残らないよう、シーン内の交差線を再同期するようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py addons\b_manga_line\operators.py addons\b_manga_line\__init__.py test\blender_b_manga_line_auto_intersection_targets_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの中間頂点線幅調整を線種別に分離 (B-MANGA Line v0.3.23)
 
 ### 症状

@@ -26,16 +26,21 @@ import bpy
 from .core import (
     GENERATED_LINE_ATTR,
     GN_MODIFIER_NAME,
-    INTERSECTION_MODIFIER_NAME,
+    INTERSECTION_MODIFIER_PREFIX,
     INTERSECTION_TREE_BOOLEAN,
     INTERSECTION_TREE_SDF,
     MODIFIER_NAME,
     VG_INTERSECTION_LINE_WIDTH,
+    iter_intersection_modifiers,
 )
 
 
 _FILL_NODE_LABEL = "BML_TargetLineFill"
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
+_TARGET_SOCKET = "交差対象"
+_THICKNESS_SOCKET = "線の太さ"
+_TARGET_THICKNESS_SOCKET = "交差対象の線幅"
+_MATERIAL_SOCKET = "マテリアル"
 
 
 # ------------------------------------------------------------------
@@ -265,22 +270,22 @@ def _setup_interface(tree):
         name="Geometry", in_out="OUTPUT", socket_type="NodeSocketGeometry",
     )
     tree.interface.new_socket(
-        name="交差対象", in_out="INPUT", socket_type="NodeSocketObject",
+        name=_TARGET_SOCKET, in_out="INPUT", socket_type="NodeSocketObject",
     )
     radius_sock = tree.interface.new_socket(
-        name="線の太さ", in_out="INPUT", socket_type="NodeSocketFloat",
+        name=_THICKNESS_SOCKET, in_out="INPUT", socket_type="NodeSocketFloat",
     )
     radius_sock.default_value = 0.0005
     radius_sock.min_value = 0.0001
     radius_sock.max_value = 1.0
     target_radius_sock = tree.interface.new_socket(
-        name="交差対象の線幅", in_out="INPUT", socket_type="NodeSocketFloat",
+        name=_TARGET_THICKNESS_SOCKET, in_out="INPUT", socket_type="NodeSocketFloat",
     )
     target_radius_sock.default_value = 0.0
     target_radius_sock.min_value = 0.0
     target_radius_sock.max_value = 1.0
     tree.interface.new_socket(
-        name="マテリアル", in_out="INPUT", socket_type="NodeSocketMaterial",
+        name=_MATERIAL_SOCKET, in_out="INPUT", socket_type="NodeSocketMaterial",
     )
 
 
@@ -477,10 +482,10 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
 
     tree = bpy.data.node_groups.get(name)
     if tree is not None:
-        if _find_socket_id(tree, "交差対象") is None:
+        if _find_socket_id(tree, _TARGET_SOCKET) is None:
             bpy.data.node_groups.remove(tree)
             return creator()
-        if _find_socket_id(tree, "交差対象の線幅") is None:
+        if _find_socket_id(tree, _TARGET_THICKNESS_SOCKET) is None:
             bpy.data.node_groups.remove(tree)
             return creator()
         if not any(n.bl_idname == "GeometryNodeExtrudeMesh" for n in tree.nodes):
@@ -495,7 +500,7 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if not _uses_named_attribute(tree, VG_INTERSECTION_LINE_WIDTH):
             bpy.data.node_groups.remove(tree)
             return creator()
-        radius_socket = _find_interface_socket(tree, "線の太さ")
+        radius_socket = _find_interface_socket(tree, _THICKNESS_SOCKET)
         if radius_socket is not None and getattr(radius_socket, "max_value", 0.0) < 1.0:
             bpy.data.node_groups.remove(tree)
             return creator()
@@ -555,6 +560,138 @@ def _target_outline_thickness(target: bpy.types.Object | None) -> float:
     return max(0.0, abs(float(mod.thickness)))
 
 
+def _iter_source_scenes(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None,
+) -> list[bpy.types.Scene]:
+    scenes: list[bpy.types.Scene] = []
+    if scene is not None:
+        scenes.append(scene)
+    for item in getattr(obj, "users_scene", ()) or ():
+        if item is not None and item not in scenes:
+            scenes.append(item)
+    return scenes
+
+
+def _auto_targets(
+    obj: bpy.types.Object,
+    scene: bpy.types.Scene | None = None,
+) -> list[bpy.types.Object]:
+    targets: list[bpy.types.Object] = []
+    source_key = obj.name_full
+    for src_scene in _iter_source_scenes(obj, scene):
+        for candidate in src_scene.objects:
+            if candidate == obj or candidate.type != "MESH" or candidate.data is None:
+                continue
+            if not getattr(candidate.data, "polygons", None):
+                continue
+            if candidate.modifiers.get(MODIFIER_NAME) is None:
+                continue
+            candidate_settings = getattr(candidate, "bmanga_line_settings", None)
+            candidate_enabled = bool(
+                getattr(candidate_settings, "intersection_enabled", False)
+            )
+            if candidate_enabled and source_key >= candidate.name_full:
+                continue
+            if candidate not in targets:
+                targets.append(candidate)
+    targets.sort(key=lambda item: item.name_full)
+    return targets
+
+
+def _modifier_suffix(target: bpy.types.Object) -> str:
+    raw = target.name_full or target.name or "Object"
+    cleaned = "".join(ch if ch.isalnum() else "_" for ch in raw)
+    cleaned = cleaned.strip("_") or "Object"
+    return cleaned[:48]
+
+
+def _modifier_name_for_target(target: bpy.types.Object) -> str:
+    return f"{INTERSECTION_MODIFIER_PREFIX}{_modifier_suffix(target)}"
+
+
+def _modifier_target(mod: bpy.types.Modifier):
+    tree = getattr(mod, "node_group", None)
+    sid = _find_socket_id(tree, _TARGET_SOCKET) if tree is not None else None
+    if sid is None:
+        return None
+    try:
+        return mod[sid]
+    except (KeyError, TypeError):
+        return None
+
+
+def _set_modifier_parameters(
+    mod: bpy.types.Modifier,
+    target: bpy.types.Object | None,
+    thickness: float | None,
+    material: bpy.types.Material | None,
+) -> None:
+    tree = mod.node_group
+    if tree is None:
+        return
+    sid_target = _find_socket_id(tree, _TARGET_SOCKET)
+    if sid_target is not None and target is not None:
+        mod[sid_target] = target
+    sid_thickness = _find_socket_id(tree, _THICKNESS_SOCKET)
+    if sid_thickness is not None and thickness is not None:
+        mod[sid_thickness] = thickness
+    sid_target_thickness = _find_socket_id(tree, _TARGET_THICKNESS_SOCKET)
+    if sid_target_thickness is not None:
+        mod[sid_target_thickness] = _target_outline_thickness(target)
+    sid_mat = _find_socket_id(tree, _MATERIAL_SOCKET)
+    if sid_mat is not None and material is not None:
+        mod[sid_mat] = material
+
+
+def _ensure_intersection_width_group(obj: bpy.types.Object) -> None:
+    vg = obj.vertex_groups.get(VG_INTERSECTION_LINE_WIDTH)
+    if vg is None:
+        vg = obj.vertex_groups.new(name=VG_INTERSECTION_LINE_WIDTH)
+        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+
+
+def _position_intersection_modifiers(obj: bpy.types.Object) -> None:
+    for mod in list(iter_intersection_modifiers(obj)):
+        outline_idx = None
+        inner_idx = None
+        mod_idx = None
+        for i, item in enumerate(obj.modifiers):
+            if item.name == MODIFIER_NAME:
+                outline_idx = i
+            elif item.name == GN_MODIFIER_NAME:
+                inner_idx = i
+            elif item == mod:
+                mod_idx = i
+        if mod_idx is None:
+            continue
+        if outline_idx is not None and mod_idx < outline_idx:
+            obj.modifiers.move(mod_idx, outline_idx)
+        for i, item in enumerate(obj.modifiers):
+            if item.name == GN_MODIFIER_NAME:
+                inner_idx = i
+            elif item == mod:
+                mod_idx = i
+        if inner_idx is not None and mod_idx is not None and mod_idx > inner_idx:
+            obj.modifiers.move(mod_idx, inner_idx)
+
+
+def _apply_intersection_modifier(
+    obj: bpy.types.Object,
+    target: bpy.types.Object,
+    tree: bpy.types.NodeTree,
+    thickness: float,
+    material: bpy.types.Material | None,
+) -> bool:
+    name = _modifier_name_for_target(target)
+    mod = obj.modifiers.get(name)
+    if mod is None:
+        mod = obj.modifiers.new(name=name, type="NODES")
+    mod.node_group = tree
+    _set_modifier_parameters(mod, target, thickness, material)
+    return True
+
+
 # ------------------------------------------------------------------
 # 適用 / 削除 / 更新
 # ------------------------------------------------------------------
@@ -565,71 +702,26 @@ def apply_intersection_lines(
     thickness: float = 0.0005,
     material: bpy.types.Material | None = None,
     method: str = "BOOLEAN",
+    scene: bpy.types.Scene | None = None,
 ) -> bool:
     """交差線 GN モディファイアを適用. 成功時 True."""
     if obj.type != "MESH":
         return False
 
     tree = _get_or_create_tree(method)
-
-    mod = obj.modifiers.get(INTERSECTION_MODIFIER_NAME)
-    if mod is None:
-        mod = obj.modifiers.new(name=INTERSECTION_MODIFIER_NAME, type="NODES")
-    mod.node_group = tree
-
-    # パラメータ設定
-    if target is not None:
-        sid_target = _find_socket_id(tree, "交差対象")
-        if sid_target is not None:
-            mod[sid_target] = target
-
-    sid_thickness = _find_socket_id(tree, "線の太さ")
-    if sid_thickness is not None:
-        mod[sid_thickness] = thickness
-
-    sid_target_thickness = _find_socket_id(tree, "交差対象の線幅")
-    if sid_target_thickness is not None:
-        mod[sid_target_thickness] = _target_outline_thickness(target)
-
     if material is not None:
         _ensure_material_slot(obj, material)
-        sid_mat = _find_socket_id(tree, "マテリアル")
-        if sid_mat is not None:
-            mod[sid_mat] = material
+    _ensure_intersection_width_group(obj)
 
-    vg = obj.vertex_groups.get(VG_INTERSECTION_LINE_WIDTH)
-    if vg is None:
-        vg = obj.vertex_groups.new(name=VG_INTERSECTION_LINE_WIDTH)
-        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
+    targets = [target] if target is not None else _auto_targets(obj, scene)
+    expected_names = {_modifier_name_for_target(item) for item in targets}
+    for mod in list(iter_intersection_modifiers(obj)):
+        if mod.name not in expected_names:
+            obj.modifiers.remove(mod)
 
-    # Solidify（アウトライン）の後ろ、内部線の前に配置する。
-    # 内部線の生成後に交差線を追加しても、交差検出が内部線ジオメトリに
-    # 巻き込まれないようにする。
-    outline_idx = None
-    inner_idx = None
-    intersect_idx = None
-    for i, m in enumerate(obj.modifiers):
-        if m.name == MODIFIER_NAME:
-            outline_idx = i
-        elif m.name == GN_MODIFIER_NAME:
-            inner_idx = i
-        elif m.name == INTERSECTION_MODIFIER_NAME:
-            intersect_idx = i
-    if (
-        outline_idx is not None
-        and intersect_idx is not None
-        and intersect_idx < outline_idx
-    ):
-        obj.modifiers.move(intersect_idx, outline_idx)
-        intersect_idx = outline_idx
-        if inner_idx is not None and inner_idx > intersect_idx:
-            inner_idx -= 1
-    if (
-        inner_idx is not None
-        and intersect_idx is not None
-        and intersect_idx > inner_idx
-    ):
-        obj.modifiers.move(intersect_idx, inner_idx)
+    for item in targets:
+        _apply_intersection_modifier(obj, item, tree, thickness, material)
+    _position_intersection_modifiers(obj)
 
     return True
 
@@ -638,11 +730,11 @@ def remove_intersection_lines(obj: bpy.types.Object) -> bool:
     """交差線 GN モディファイアを削除."""
     if obj.type != "MESH":
         return False
-    mod = obj.modifiers.get(INTERSECTION_MODIFIER_NAME)
-    if mod is None:
-        return False
-    obj.modifiers.remove(mod)
-    return True
+    removed = False
+    for mod in list(iter_intersection_modifiers(obj)):
+        obj.modifiers.remove(mod)
+        removed = True
+    return removed
 
 
 def update_parameters(
@@ -651,19 +743,35 @@ def update_parameters(
     thickness: float | None = None,
 ) -> bool:
     """既存モディファイアのパラメータを更新."""
-    mod = obj.modifiers.get(INTERSECTION_MODIFIER_NAME)
-    if mod is None or mod.node_group is None:
-        return False
-    tree = mod.node_group
-    if target is not ...:
-        sid = _find_socket_id(tree, "交差対象")
-        if sid is not None:
-            mod[sid] = target
-        sid_target_thickness = _find_socket_id(tree, "交差対象の線幅")
-        if sid_target_thickness is not None:
-            mod[sid_target_thickness] = _target_outline_thickness(target)
-    if thickness is not None:
-        sid = _find_socket_id(tree, "線の太さ")
-        if sid is not None:
-            mod[sid] = thickness
-    return True
+    changed = False
+    for mod in iter_intersection_modifiers(obj):
+        if mod.node_group is None:
+            continue
+        item_target = target if target is not ... else _modifier_target(mod)
+        _set_modifier_parameters(mod, item_target, thickness, None)
+        changed = True
+    return changed
+
+
+def refresh_scene_intersections(scene: bpy.types.Scene) -> None:
+    """シーン内の交差線を、現在のメッシュ構成に合わせて作り直す."""
+    from . import outline_setup
+
+    for obj in scene.objects:
+        if obj.type != "MESH":
+            continue
+        if obj.modifiers.get(MODIFIER_NAME) is None:
+            continue
+        settings = getattr(obj, "bmanga_line_settings", None)
+        if settings is None:
+            continue
+        if not getattr(settings, "intersection_enabled", False):
+            remove_intersection_lines(obj)
+            continue
+        apply_intersection_lines(
+            obj,
+            thickness=settings.intersection_thickness,
+            material=outline_setup.get_outline_material(obj),
+            method=settings.intersection_method,
+            scene=scene,
+        )

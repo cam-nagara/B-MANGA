@@ -52,11 +52,14 @@ def _line_mods(obj: bpy.types.Object):
     return {mod.name: mod for mod in core.iter_line_modifiers(obj)}
 
 
+def _intersection_mods(obj: bpy.types.Object):
+    return list(core.iter_intersection_modifiers(obj))
+
+
 def _assert_line_state(obj: bpy.types.Object, *, visible: bool) -> None:
     mods = _line_mods(obj)
     assert core.MODIFIER_NAME in mods, f"{obj.name}: アウトラインがありません"
     assert core.GN_MODIFIER_NAME in mods, f"{obj.name}: 内部線がありません"
-    assert core.INTERSECTION_MODIFIER_NAME in mods, f"{obj.name}: 交差線がありません"
     assert all(mod.show_viewport == visible for mod in mods.values()), mods
     assert all(mod.show_render == visible for mod in mods.values()), mods
 
@@ -65,8 +68,8 @@ def _assert_distance_limited_inner(obj: bpy.types.Object) -> None:
     mods = _line_mods(obj)
     assert mods[core.MODIFIER_NAME].show_viewport
     assert mods[core.MODIFIER_NAME].show_render
-    assert mods[core.INTERSECTION_MODIFIER_NAME].show_viewport
-    assert mods[core.INTERSECTION_MODIFIER_NAME].show_render
+    assert all(mod.show_viewport for mod in _intersection_mods(obj))
+    assert all(mod.show_render for mod in _intersection_mods(obj))
     assert not mods[core.GN_MODIFIER_NAME].show_viewport
     assert not mods[core.GN_MODIFIER_NAME].show_render
     assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
@@ -78,8 +81,8 @@ def _assert_distance_limited_outline_and_intersection(obj: bpy.types.Object) -> 
     assert not mods[core.MODIFIER_NAME].show_render
     assert mods[core.GN_MODIFIER_NAME].show_viewport
     assert mods[core.GN_MODIFIER_NAME].show_render
-    assert not mods[core.INTERSECTION_MODIFIER_NAME].show_viewport
-    assert not mods[core.INTERSECTION_MODIFIER_NAME].show_render
+    assert all(not mod.show_viewport for mod in _intersection_mods(obj))
+    assert all(not mod.show_render for mod in _intersection_mods(obj))
     assert not bool(obj.get(core.PROP_LINES_HIDDEN, False))
 
 
@@ -93,7 +96,6 @@ def _assert_distance_threshold_hides_at_exact_distance(target: bpy.types.Object)
     settings = obj.bmanga_line_settings
     settings.inner_line_enabled = True
     settings.intersection_enabled = True
-    settings.intersection_target = target
     settings.use_outline_distance_limit = True
     settings.outline_max_distance = 0.5
     settings.use_inner_line_distance_limit = True
@@ -133,7 +135,6 @@ def _assert_multi_select_manual_setting_propagation(
     scene: bpy.types.Scene,
     first: bpy.types.Object,
     second: bpy.types.Object,
-    intersection_target: bpy.types.Object,
 ) -> None:
     if scene.camera is None:
         _make_camera()
@@ -249,18 +250,19 @@ def _assert_multi_select_manual_setting_propagation(
 
     source.intersection_enabled = False
     assert target.intersection_enabled is False
-    assert core.INTERSECTION_MODIFIER_NAME not in second.modifiers
+    assert not _intersection_mods(second)
     source.intersection_enabled = True
     source.intersection_method = "BOOLEAN"
-    source.intersection_target = intersection_target
     source.intersection_thickness_mm = 1.4
     assert target.intersection_enabled is True
     assert target.intersection_method == "BOOLEAN"
-    assert target.intersection_target == intersection_target
-    intersection_mod = second.modifiers.get(core.INTERSECTION_MODIFIER_NAME)
-    assert intersection_mod is not None
-    assert intersection_mod.node_group is not None
-    assert intersection_mod.node_group.name.startswith(intersection_lines.INTERSECTION_TREE_BOOLEAN)
+    intersection_mods = _intersection_mods(first) + _intersection_mods(second)
+    assert intersection_mods
+    assert any(
+        mod.node_group is not None
+        and mod.node_group.name.startswith(intersection_lines.INTERSECTION_TREE_BOOLEAN)
+        for mod in intersection_mods
+    )
     assert math.isclose(target.intersection_thickness_mm, 1.4, rel_tol=0.001)
 
     source.intersection_thickness_mm = 80.0
@@ -315,7 +317,6 @@ def _assert_multi_select_manual_setting_propagation(
     source.intersection_enabled = True
     source.intersection_thickness_mm = 1.4
     source.intersection_method = "SDF"
-    source.intersection_target = intersection_target
     for obj in (first, second):
         core.set_line_visibility(obj, True)
         _assert_line_state(obj, visible=True)
@@ -327,6 +328,7 @@ def main() -> None:
 
     source = _make_cube("BML_プリセット元", (-2.0, 0.0, 0.0))
     target = _make_cube("BML_交差対象", (0.0, 0.0, 0.0))
+    assert presets.apply_line_settings(target, bpy.context)
     settings = source.bmanga_line_settings
     settings.outline_thickness = 0.012
     settings.outline_color = (0.1, 0.2, 0.3, 1.0)
@@ -336,7 +338,6 @@ def main() -> None:
     settings.inner_line_thickness = 0.021
     settings.intersection_enabled = True
     settings.intersection_method = "SDF"
-    settings.intersection_target = target
     settings.intersection_thickness = 0.017
     settings.edge_smooth_factor = -1.0
     settings.edge_midpoint_jitter_percent = 20.0
@@ -370,7 +371,6 @@ def main() -> None:
         assert applied.inner_line_enabled
         assert applied.intersection_enabled
         assert applied.intersection_method == "SDF"
-        assert applied.intersection_target == target
         assert abs(applied.edge_width_curve_50 - 0.4) < 1.0e-7
         assert abs(applied.inner_edge_smooth_factor + 0.55) < 1.0e-7
         assert abs(applied.inner_edge_width_curve_50 - 0.45) < 1.0e-7
@@ -378,7 +378,7 @@ def main() -> None:
         assert abs(applied.intersection_edge_width_curve_50 - 0.35) < 1.0e-7
         _assert_line_state(obj, visible=True)
 
-    _assert_multi_select_manual_setting_propagation(scene, first, second, target)
+    _assert_multi_select_manual_setting_propagation(scene, first, second)
 
     assert bpy.ops.bmanga_line.set_visibility(visible=False) == {"FINISHED"}
     for obj in (first, second):

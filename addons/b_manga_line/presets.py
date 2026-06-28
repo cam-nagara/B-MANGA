@@ -10,7 +10,6 @@ from bpy.props import (
     FloatProperty,
     FloatVectorProperty,
     IntProperty,
-    PointerProperty,
     StringProperty,
 )
 
@@ -30,7 +29,6 @@ _SETTING_FIELDS = (
     "inner_line_thickness",
     "intersection_method",
     "intersection_enabled",
-    "intersection_target",
     "intersection_thickness",
     "use_camera_compensation",
     "camera_compensation_influence",
@@ -155,10 +153,10 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     if settings.intersection_enabled:
         intersection_lines.apply_intersection_lines(
             obj,
-            target=settings.intersection_target,
             thickness=settings.intersection_thickness,
             material=mat,
             method=settings.intersection_method,
+            scene=context.scene,
         )
     else:
         intersection_lines.remove_intersection_lines(obj)
@@ -179,6 +177,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     else:
         core.set_line_visibility(obj, True)
 
+    intersection_lines.refresh_scene_intersections(context.scene)
     camera_comp.refresh(context)
     outline_setup.ensure_aov_passes(context.scene)
 
@@ -214,7 +213,6 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
         default="BOOLEAN",
     )
     intersection_enabled: BoolProperty(default=True)
-    intersection_target: PointerProperty(type=bpy.types.Object)
     intersection_thickness: FloatProperty(default=0.0005, min=0.0001, max=1.0)
 
     use_camera_compensation: BoolProperty(default=False)

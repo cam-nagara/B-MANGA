@@ -96,6 +96,7 @@ class BMANGA_LINE_OT_remove(bpy.types.Operator):
             if PROP_LINES_HIDDEN in obj:
                 del obj[PROP_LINES_HIDDEN]
 
+        intersection_lines.refresh_scene_intersections(context.scene)
         self.report({"INFO"}, f"{count} オブジェクトからラインを削除しました")
         return {"FINISHED"}
 

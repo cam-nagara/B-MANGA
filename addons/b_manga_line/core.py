@@ -28,6 +28,7 @@ GENERATED_LINE_ATTR = "BML_GeneratedLine"
 GN_MODIFIER_NAME = "BML_InnerLines"
 GN_TREE_NAME = "BML_InnerLines"
 INTERSECTION_MODIFIER_NAME = "BML_IntersectionLines"
+INTERSECTION_MODIFIER_PREFIX = INTERSECTION_MODIFIER_NAME + "__"
 INTERSECTION_TREE_BOOLEAN = "BML_Intersection_Boolean"
 INTERSECTION_TREE_SDF = "BML_Intersection_SDF"
 AO_ATTR_NAME = "BML_AO"
@@ -44,7 +45,6 @@ REF_MODE_LOCKED = "LOCKED"
 LINE_MODIFIER_NAMES = (
     MODIFIER_NAME,
     GN_MODIFIER_NAME,
-    INTERSECTION_MODIFIER_NAME,
 )
 
 
@@ -310,13 +310,14 @@ def _on_intersection_enabled_changed(self, context):
             mat = outline_setup.get_outline_material(owner)
             intersection_lines.apply_intersection_lines(
                 owner,
-                target=self.intersection_target,
                 thickness=self.intersection_thickness,
                 material=mat,
                 method=self.intersection_method,
+                scene=context.scene,
             )
         else:
             intersection_lines.remove_intersection_lines(owner)
+        intersection_lines.refresh_scene_intersections(context.scene)
     _propagate(self, context, "intersection_enabled")
 
 
@@ -327,22 +328,13 @@ def _on_intersection_method_changed(self, context):
         mat = outline_setup.get_outline_material(owner)
         intersection_lines.apply_intersection_lines(
             owner,
-            target=self.intersection_target,
             thickness=self.intersection_thickness,
             material=mat,
             method=self.intersection_method,
+            scene=context.scene,
         )
+        intersection_lines.refresh_scene_intersections(context.scene)
     _propagate(self, context, "intersection_method")
-
-
-def _on_intersection_target_changed(self, context):
-    from . import intersection_lines
-    owner = self.id_data
-    if owner.type == "MESH":
-        intersection_lines.update_parameters(
-            owner, target=self.intersection_target,
-        )
-    _propagate(self, context, "intersection_target")
 
 
 def _on_intersection_thickness_changed(self, context):
@@ -509,11 +501,9 @@ def _refresh_visibility_rules(self, context):
             camera_comp.refresh(context)
         else:
             visible = not bool(owner.get(PROP_LINES_HIDDEN, False))
-            for mod_name in LINE_MODIFIER_NAMES:
-                mod = owner.modifiers.get(mod_name)
-                if mod is not None:
-                    mod.show_viewport = visible
-                    mod.show_render = visible
+            for mod in iter_line_modifiers(owner):
+                mod.show_viewport = visible
+                mod.show_render = visible
 
 
 # ------------------------------------------------------------------
@@ -681,13 +671,6 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         description="他のオブジェクトとの交差部分に線を描画する",
         default=True,
         update=_on_intersection_enabled_changed,
-    )  # type: ignore[valid-type]
-
-    intersection_target: PointerProperty(
-        type=bpy.types.Object,
-        name="交差対象",
-        description="交差線を検出する対象オブジェクト",
-        update=_on_intersection_target_changed,
     )  # type: ignore[valid-type]
 
     intersection_thickness: FloatProperty(
@@ -944,6 +927,19 @@ def iter_line_modifiers(obj: bpy.types.Object):
     for name in LINE_MODIFIER_NAMES:
         mod = obj.modifiers.get(name)
         if mod is not None:
+            yield mod
+    yield from iter_intersection_modifiers(obj)
+
+
+def is_intersection_modifier_name(name: str) -> bool:
+    return name == INTERSECTION_MODIFIER_NAME or name.startswith(INTERSECTION_MODIFIER_PREFIX)
+
+
+def iter_intersection_modifiers(obj: bpy.types.Object):
+    if obj.type != "MESH":
+        return
+    for mod in obj.modifiers:
+        if is_intersection_modifier_name(mod.name):
             yield mod
 
 

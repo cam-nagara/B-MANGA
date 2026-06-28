@@ -127,6 +127,7 @@ def _assert_panels_draw_items() -> None:
         "intersection_enabled",
     ):
         assert prop_name in records["props"], f"{prop_name} がパネルにありません"
+    assert "intersection_target" not in records["props"], "交差対象欄が残っています"
     for operator_id in (
         "bmanga_line.apply",
         "bmanga_line.set_visibility",

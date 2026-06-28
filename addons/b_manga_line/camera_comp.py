@@ -14,7 +14,6 @@ from mathutils import Vector
 
 from .core import (
     GN_MODIFIER_NAME,
-    INTERSECTION_MODIFIER_NAME,
     MODIFIER_NAME,
     PROP_LINES_HIDDEN,
     PROP_BASE_THICKNESS,
@@ -26,6 +25,7 @@ from .core import (
     VG_INNER_LINE_WIDTH,
     VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
+    iter_intersection_modifiers,
 )
 
 
@@ -349,12 +349,12 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd):
 
         outline_mod = obj.modifiers.get(MODIFIER_NAME)
         inner_mod = obj.modifiers.get(GN_MODIFIER_NAME)
-        intersection_mod = obj.modifiers.get(INTERSECTION_MODIFIER_NAME)
-        if outline_mod is None and inner_mod is None and intersection_mod is None:
+        intersection_mods = list(iter_intersection_modifiers(obj))
+        if outline_mod is None and inner_mod is None and not intersection_mods:
             continue
 
         if bool(obj.get(PROP_LINES_HIDDEN, False)):
-            for mod in (outline_mod, inner_mod, intersection_mod):
+            for mod in (outline_mod, inner_mod, *intersection_mods):
                 if mod is not None:
                     mod.show_viewport = False
                     mod.show_render = False
@@ -390,7 +390,7 @@ def _update_visibility(scene, camera, cam_loc, cam_fwd):
             outline_mod.show_viewport = visible
             outline_mod.show_render = visible
 
-        if intersection_mod is not None:
+        for intersection_mod in intersection_mods:
             visible = in_view and intersection_in_range
             intersection_mod.show_viewport = visible
             intersection_mod.show_render = visible
