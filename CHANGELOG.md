@@ -19,12 +19,14 @@ Blender 5.1.1 を対象としています。
 - 設定変更時は、パネルから渡される選択情報だけでなく、現在のシーン上で実際に選択されているメッシュも拾って反映するようにした。
 - 頂点カラー、AO、線幅の詳細制御、カメラ補正、カメラ範囲外非表示の余白も、複数選択時に値と表示更新が揃うようにした。
 - 複数選択で線幅、線の色、リム面、線幅の均一化、線幅詳細、遠距離ライン非表示が選択中へ反映される実機テストを追加した。
+- 徹底チェックとして、透明面、面の厚み、頂点カラー、AO、内部線、交差線、カメラ補正、カメラ範囲外非表示、線種別の遠距離非表示も複数選択で反映されることを実機テストへ追加した。
 
 ### 検証 (Blender 5.1.2 実機)
 
 - `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\__init__.py test\blender_b_manga_line_preset_visibility_check.py`
 - `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
 - `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
 
 ---
 
