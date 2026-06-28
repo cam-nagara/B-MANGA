@@ -32,6 +32,7 @@ Blender 5.1.1 を対象としています。
 - `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_reading_order_check.py`
 - `blender.exe --factory-startup --background --python test\blender_coma_renumber_reading_order_check.py`
 - `git diff --check`
+- 追加徹底チェックとして、枠線カットのドラッグ終了から、分割、前後順差し込み、対象ページ再採番、コマ実体追従、画像・パターンカーブ・塗り・ラスターの親先追従、レイヤーリスト/アウトライナー同期までの処理経路を再確認し、上記の実機テストを再実行して PASS を確認。
 
 ---
 
