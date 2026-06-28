@@ -3,6 +3,38 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-28 — 枠線カット後の実体階層と再採番を修正 (v0.6.413)
+
+### 症状
+
+- 枠線カットツールでカットすると、レイヤーリスト上のコマ階層は維持されても、アウトライナー上のコマ実体の階層が変わる場合があった。
+- 特に輪郭ぼかしのコマでは、カット後の再同期でコマ面実体が古い持ち主として扱われ、削除・再作成される場合があった。
+- カットで生じた片方のコマが、元のコマ位置ではなく最背面に落ちる場合があった。
+- カット直後に、コマIDがページ上の順番通りへ自動再採番されていなかった。
+
+### 原因
+
+- 枠線カット後にページ全体のコマ前後順を読み順で再計算しており、元のコマが持っていた前後位置を分割後の2コマへ差し込めていなかった。
+- コマID再採番時に、コマ面・コママスク・枠線・白フチなどの実体オブジェクトの持ち主情報と名前を一緒に移し替えていなかった。
+
+### 修正
+
+- 枠線カット時は、分割前のコマ位置へ2コマを差し込み、右上側を前面、左下側を背面にするようにした。
+- 枠線カット直後に、対象ページのコマIDとコマ用ファイル名をページ上の順番通りへ自動で整理するようにした。
+- 再採番時に、輪郭ぼかしのコマ面を含むコマ実体の持ち主情報・名前・所属階層を新しいコマIDへ追従させるようにした。
+- 再採番時に、画像・パターンカーブ・塗り・ラスターの親先も新しいコマIDへ追従させるようにした。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile operators\coma_knife_cut_op.py operators\coma_renumber_op.py utils\coma_runtime_retarget.py utils\data_name_organizer.py test\blender_coma_knife_cut_finalize_check.py test\blender_coma_knife_cut_layer_order_check.py test\blender_coma_knife_cut_reading_order_check.py test\blender_coma_renumber_reading_order_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_finalize_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_layer_order_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_knife_cut_reading_order_check.py`
+- `blender.exe --factory-startup --background --python test\blender_coma_renumber_reading_order_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-28 — 枠線カット後のレイヤー順維持を修正 (v0.6.412)
 
 ### 症状

@@ -213,7 +213,12 @@ def _retarget_property_entries(scene, work, old_key: str, new_key: str, prefix: 
                 ref.page_id = new_key
     for folder in getattr(work, "layer_folders", []) or []:
         _replace_entry_parent_key(folder, old_key, new_key, prefix=prefix)
-    for collection_name in ("bmanga_raster_layers", "bmanga_image_layers"):
+    for collection_name in (
+        "bmanga_raster_layers",
+        "bmanga_image_layers",
+        "bmanga_image_path_layers",
+        "bmanga_fill_layers",
+    ):
         for entry in getattr(scene, collection_name, []) or []:
             _replace_entry_parent_key(entry, old_key, new_key, prefix=prefix)
 
@@ -272,18 +277,35 @@ def _retarget_scene_current(scene, old_key: str, new_key: str, prefix: bool) -> 
 def _retarget_keys(context, phases: list[tuple[str, str, bool]]) -> None:
     if not phases:
         return
+    from contextlib import ExitStack
+
+    from . import balloon_curve_object
+    from . import fill_real_object
+    from . import image_path_object
+    from . import image_real_object
+    from . import layer_object_sync as los
     from . import object_naming as on
+    from . import coma_runtime_retarget
+    from . import text_real_object
 
     scene = getattr(context, "scene", None)
     work = getattr(scene, "bmanga_work", None)
-    for old_key, new_key, prefix in phases:
-        _retarget_property_entries(scene, work, old_key, new_key, prefix)
-        keys = _collect_existing_parent_keys(scene, old_key, prefix, on)
-        _retarget_drawing_layers(context, keys, old_key, new_key, prefix)
-        for datablocks in (bpy.data.objects, bpy.data.collections):
-            for datablock in datablocks:
-                _retarget_datablock_keys(datablock, old_key, new_key, prefix, on)
-        _retarget_scene_current(scene, old_key, new_key, prefix)
+    with ExitStack() as stack:
+        stack.enter_context(los.suppress_sync())
+        stack.enter_context(balloon_curve_object.suspend_auto_sync())
+        stack.enter_context(text_real_object.suspend_auto_sync())
+        stack.enter_context(image_real_object.suspend_auto_sync())
+        stack.enter_context(image_path_object.suspend_auto_sync())
+        stack.enter_context(fill_real_object.suspend_auto_sync())
+        for old_key, new_key, prefix in phases:
+            keys = _collect_existing_parent_keys(scene, old_key, prefix, on)
+            for datablocks in (bpy.data.objects, bpy.data.collections):
+                for datablock in datablocks:
+                    _retarget_datablock_keys(datablock, old_key, new_key, prefix, on)
+            _retarget_property_entries(scene, work, old_key, new_key, prefix)
+            _retarget_drawing_layers(context, keys, old_key, new_key, prefix)
+            coma_runtime_retarget.retarget_coma_runtime_ids(old_key, new_key, prefix=prefix)
+            _retarget_scene_current(scene, old_key, new_key, prefix)
 
 
 def _page_retarget_phases(remaps: list[_PageRename]) -> list[tuple[str, str, bool]]:
@@ -345,7 +367,13 @@ def _apply_page_ids(remaps: list[_PageRename]) -> None:
         _set_spread_original_pages(remap.page, remap.new_id)
 
 
-def _collect_and_apply_coma_remaps(context, work, read_direction: str) -> tuple[list[_ComaRename], int]:
+def _collect_and_apply_coma_remaps(
+    context,
+    work,
+    read_direction: str,
+    *,
+    page_ids: set[str] | None = None,
+) -> tuple[list[_ComaRename], int]:
     all_remaps: list[_ComaRename] = []
     reorder_count = 0
     scene = getattr(context, "scene", None)
@@ -354,6 +382,8 @@ def _collect_and_apply_coma_remaps(context, work, read_direction: str) -> tuple[
         if comas is None or not comas:
             continue
         page_id = str(getattr(page, "id", "") or "")
+        if page_ids is not None and page_id not in page_ids:
+            continue
         ordered_indices = _reading_order_indices(page, read_direction)
         if ordered_indices != list(range(len(comas))):
             reorder_count += 1
@@ -485,6 +515,39 @@ def organize_data_names(context) -> DataNameOrganizeResult:
         coma_reorders=reorder_count,
     )
     result.changed = bool(result.page_renames or result.coma_renames or result.coma_reorders)
+    if result.changed:
+        _save_all_metadata(work_dir, work)
+        _sync_blender_state(context, work)
+    return result
+
+
+def organize_page_coma_names(context, page) -> DataNameOrganizeResult:
+    """指定ページのコマIDとコマ用ファイル名だけを現在の読み順へ揃える。"""
+    from ..core.work import get_work
+
+    work = get_work(context)
+    if work is None or not getattr(work, "loaded", False) or page is None:
+        return DataNameOrganizeResult()
+    page_id = str(getattr(page, "id", "") or "")
+    work_dir_raw = str(getattr(work, "work_dir", "") or "")
+    if not page_id or not work_dir_raw:
+        return DataNameOrganizeResult()
+    work_dir = Path(work_dir_raw)
+    read_direction = str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left")
+    coma_remaps, reorder_count = _collect_and_apply_coma_remaps(
+        context,
+        work,
+        read_direction,
+        page_ids={page_id},
+    )
+    if coma_remaps:
+        _rename_coma_dirs(work_dir, coma_remaps)
+        _retarget_keys(context, _coma_retarget_phases(coma_remaps))
+    result = DataNameOrganizeResult(
+        coma_renames=len(coma_remaps),
+        coma_reorders=reorder_count,
+    )
+    result.changed = bool(result.coma_renames or result.coma_reorders)
     if result.changed:
         _save_all_metadata(work_dir, work)
         _sync_blender_state(context, work)

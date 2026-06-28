@@ -271,6 +271,23 @@ def _ordered_split_polygons(
     return ordered[0], ordered[1]
 
 
+def _poly_center(poly: Sequence[tuple[float, float]]) -> tuple[float, float]:
+    left, bottom, right, top = _poly_bounds(poly)
+    return (left + right) * 0.5, (bottom + top) * 0.5
+
+
+def _poly_front_key(poly: Sequence[tuple[float, float]]) -> tuple[float, float]:
+    center_x, center_y = _poly_center(poly)
+    return center_y, center_x
+
+
+def _first_poly_is_front(
+    poly_a: Sequence[tuple[float, float]],
+    poly_b: Sequence[tuple[float, float]],
+) -> bool:
+    return _poly_front_key(poly_a) >= _poly_front_key(poly_b)
+
+
 def _coma_id_number(coma_id: str) -> int:
     text = str(coma_id or "")
     if text[:1].lower() == "c" and text[1:].isdigit():
@@ -278,20 +295,38 @@ def _coma_id_number(coma_id: str) -> int:
     return 1_000_000
 
 
-def _reassign_coma_z_order_by_reading_order(page, read_direction: str) -> None:
-    comas = list(getattr(page, "comas", []) or [])
-    if not comas:
-        return
-    ordered = sorted(
-        comas,
-        key=lambda coma: _reading_order_key_for_poly(_coma_polygon(coma), read_direction),
-    )
-    top_z = max(len(ordered) - 1, 0)
-    for rank, coma in enumerate(ordered):
+def _entry_pointer(entry) -> int:
+    try:
+        return int(entry.as_pointer())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _set_split_pair_z_order(page, panel, new_entry, front_is_panel: bool) -> None:
+    try:
+        base_z = max(0, int(getattr(panel, "z_order", 0) or 0))
+    except Exception:  # noqa: BLE001
+        base_z = 0
+    panel_ptr = _entry_pointer(panel)
+    new_ptr = _entry_pointer(new_entry)
+    for candidate in getattr(page, "comas", []) or []:
+        ptr = _entry_pointer(candidate)
+        if ptr in {panel_ptr, new_ptr}:
+            continue
         try:
-            coma.z_order = top_z - rank
+            if int(getattr(candidate, "z_order", 0) or 0) > base_z:
+                candidate.z_order = int(candidate.z_order) + 1
         except Exception:  # noqa: BLE001
             pass
+    try:
+        if front_is_panel:
+            panel.z_order = base_z + 1
+            new_entry.z_order = base_z
+        else:
+            panel.z_order = base_z
+            new_entry.z_order = base_z + 1
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _point_in_polygon(p: tuple[float, float], poly: Sequence[tuple[float, float]]) -> bool:
@@ -421,13 +456,12 @@ def _apply_cut_to_coma(
     if _coma_id_number(str(getattr(panel, "coma_id", "") or "")) <= _coma_id_number(new_stem):
         _set_coma_polygon(panel, first_poly)
         _set_coma_polygon(new_entry, second_poly)
+        panel_is_front = _first_poly_is_front(first_poly, second_poly)
     else:
         _set_coma_polygon(panel, second_poly)
         _set_coma_polygon(new_entry, first_poly)
-    _reassign_coma_z_order_by_reading_order(
-        page,
-        str(getattr(getattr(work, "paper", None), "read_direction", "left") or "left"),
-    )
+        panel_is_front = not _first_poly_is_front(first_poly, second_poly)
+    _set_split_pair_z_order(page, panel, new_entry, panel_is_front)
     try:
         coma_io.save_coma_meta(work_dir, page.id, panel)
         coma_io.save_coma_meta(work_dir, page.id, new_entry)
@@ -446,7 +480,7 @@ def _sync_layer_stack_after_cut(context) -> None:
     try:
         layer_stack_utils.sync_layer_stack_after_data_change(
             context,
-            align_coma_order=False,
+            align_coma_order=True,
         )
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: layer stack sync failed")
@@ -497,6 +531,20 @@ def _sync_layer_stack_after_cut(context) -> None:
                     _acs.request_active_coma(context, page_id, coma_id)
     except Exception:  # noqa: BLE001
         _logger.exception("knife_cut: active coma 復帰失敗")
+
+
+def _finalize_cut_after_data_change(context, work, page, work_dir: Path) -> None:
+    try:
+        from ..utils import data_name_organizer
+
+        data_name_organizer.organize_page_coma_names(context, page)
+    except Exception:  # noqa: BLE001
+        _logger.exception("knife_cut: coma id organize failed")
+    try:
+        page_io.save_pages_json(work_dir, work)
+    except Exception:  # noqa: BLE001
+        _logger.exception("knife_cut: save_pages_json failed")
+    _sync_layer_stack_after_cut(context)
 
 
 def _page_world_offset_mm(work, page_index: int, scene=None) -> tuple[float, float]:
@@ -964,11 +1012,7 @@ class BMANGA_OT_coma_knife_cut(Operator):
 
         ok = _apply_cut_to_coma(work, page, coma_idx, work_dir, A_local, B_local)
         if ok:
-            try:
-                page_io.save_pages_json(work_dir, work)
-            except Exception:  # noqa: BLE001
-                _logger.exception("knife_cut: save_pages_json failed")
-            _sync_layer_stack_after_cut(bpy.context)
+            _finalize_cut_after_data_change(bpy.context, work, page, work_dir)
             self._cut_count_total += 1
             # 1 回のカットを独立した undo step として記録
             # (modal 中のすべてのカットを 1 ステップにまとめず個別に undo/redo 可能に)

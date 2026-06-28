@@ -108,9 +108,18 @@ def _replace_parent_key_on_entry(entry, old_key: str, new_key: str) -> None:
 
 
 def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
+    from contextlib import ExitStack
+
+    from ..utils import balloon_curve_object
+    from ..utils import fill_real_object
     from ..utils import gp_layer_parenting as gp_parent
+    from ..utils import image_path_object
+    from ..utils import image_real_object
+    from ..utils import layer_object_sync as los
     from ..utils import layer_stack as layer_stack_utils
+    from ..utils import coma_runtime_retarget
     from ..utils import object_naming as on
+    from ..utils import text_real_object
 
     scene = getattr(context, "scene", None)
     phases = [
@@ -121,25 +130,41 @@ def _retarget_parent_keys(context, page, remaps: list[tuple[str, str]]) -> None:
         (f"{getattr(page, 'id', '')}:{_TEMP_KEY_PREFIX}{index}", new)
         for index, (_old, new) in enumerate(remaps)
     )
-    for old_key, new_key in phases:
-        for collection_name in ("balloons", "texts"):
-            for entry in getattr(page, collection_name, []) or []:
-                _replace_parent_key_on_entry(entry, old_key, new_key)
-        for folder in getattr(getattr(scene, "bmanga_work", None), "layer_folders", []) or []:
-            _replace_parent_key_on_entry(folder, old_key, new_key)
-        for collection_name in ("bmanga_raster_layers", "bmanga_image_layers", "bmanga_image_path_layers"):
-            for entry in getattr(scene, collection_name, []) or []:
-                _replace_parent_key_on_entry(entry, old_key, new_key)
-        for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):
-            gp_parent.set_parent_key(layer, new_key)
-        for layer in layer_stack_utils.effect_layers_for_parent_keys(context, {old_key}):
-            gp_parent.set_parent_key(layer, new_key)
-        for obj in bpy.data.objects:
-            if str(obj.get(on.PROP_PARENT_KEY, "") or "") == old_key:
-                obj[on.PROP_PARENT_KEY] = new_key
-        for coll in bpy.data.collections:
-            if str(coll.get(on.PROP_PARENT_KEY, "") or "") == old_key:
-                coll[on.PROP_PARENT_KEY] = new_key
+    with ExitStack() as stack:
+        stack.enter_context(los.suppress_sync())
+        stack.enter_context(balloon_curve_object.suspend_auto_sync())
+        stack.enter_context(text_real_object.suspend_auto_sync())
+        stack.enter_context(image_real_object.suspend_auto_sync())
+        stack.enter_context(image_path_object.suspend_auto_sync())
+        stack.enter_context(fill_real_object.suspend_auto_sync())
+        for old_key, new_key in phases:
+            coll = on.find_collection_by_bmanga_id(old_key, kind="coma")
+            if coll is not None:
+                coll[on.PROP_ID] = new_key
+            for collection_name in ("balloons", "texts"):
+                for entry in getattr(page, collection_name, []) or []:
+                    _replace_parent_key_on_entry(entry, old_key, new_key)
+            for folder in getattr(getattr(scene, "bmanga_work", None), "layer_folders", []) or []:
+                _replace_parent_key_on_entry(folder, old_key, new_key)
+            for collection_name in (
+                "bmanga_raster_layers",
+                "bmanga_image_layers",
+                "bmanga_image_path_layers",
+                "bmanga_fill_layers",
+            ):
+                for entry in getattr(scene, collection_name, []) or []:
+                    _replace_parent_key_on_entry(entry, old_key, new_key)
+            for layer in layer_stack_utils.gp_layers_for_parent_keys(context, {old_key}):
+                gp_parent.set_parent_key(layer, new_key)
+            for layer in layer_stack_utils.effect_layers_for_parent_keys(context, {old_key}):
+                gp_parent.set_parent_key(layer, new_key)
+            for obj in bpy.data.objects:
+                if str(obj.get(on.PROP_PARENT_KEY, "") or "") == old_key:
+                    obj[on.PROP_PARENT_KEY] = new_key
+            for coll in bpy.data.collections:
+                if str(coll.get(on.PROP_PARENT_KEY, "") or "") == old_key:
+                    coll[on.PROP_PARENT_KEY] = new_key
+            coma_runtime_retarget.retarget_coma_runtime_ids(old_key, new_key)
 
 
 def _retarget_coma_collections(page_id: str, remaps: list[tuple[str, str]]) -> None:

@@ -91,6 +91,16 @@ def _add_parented_entries(context, page, page_id: str) -> None:
     image.parent_kind = "coma"
     image.parent_key = f"{page_id}:c50"
 
+    image_path = context.scene.bmanga_image_path_layers.add()
+    image_path.id = "image_path_read_order"
+    image_path.parent_kind = "coma"
+    image_path.parent_key = f"{page_id}:c50"
+
+    fill = context.scene.bmanga_fill_layers.add()
+    fill.id = "fill_read_order"
+    fill.parent_kind = "coma"
+    fill.parent_key = f"{page_id}:c50"
+
     raster = context.scene.bmanga_raster_layers.add()
     raster.id = "raster_read_order"
     raster.parent_kind = "coma"
@@ -115,6 +125,8 @@ def _assert_parented_entries(context, page, page_id: str) -> None:
     assert page.texts[0].parent_key == f"{page_id}:c02"
     assert context.scene.bmanga_work.layer_folders[0].parent_key == f"{page_id}:c04"
     assert context.scene.bmanga_image_layers[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bmanga_image_path_layers[0].parent_key == f"{page_id}:c04"
+    assert context.scene.bmanga_fill_layers[0].parent_key == f"{page_id}:c04"
     assert context.scene.bmanga_raster_layers[0].parent_key == f"{page_id}:c04"
 
     gp_obj = gp_utils.get_master_gpencil()
