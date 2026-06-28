@@ -23,6 +23,8 @@ from .core import (
     PROP_REF_MODE,
     REF_MODE_LOCKED,
     REF_MODE_VIEW,
+    VG_INNER_LINE_WIDTH,
+    VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
 )
 
@@ -187,21 +189,15 @@ def _reference_width_for_mesh(scene, camera, obj, width_m: float) -> float:
     )
 
 
-def _has_style_width_weights(settings) -> bool:
-    return (
-        settings.use_vertex_color
-        or settings.use_ao_influence
-        or abs(settings.edge_smooth_factor) > 0.001
-    )
-
-
-def _prepare_style_weights(obj, settings) -> None:
+def _prepare_style_weights(obj, settings, target: str) -> bool:
     from . import vertex_analysis
 
-    if _has_style_width_weights(settings):
-        vertex_analysis.compute_and_apply_weights(obj, settings)
-    else:
-        vertex_analysis.reset_width_weights(obj)
+    group_name = vertex_analysis.width_group_name(target)
+    if vertex_analysis.has_width_controls(settings, target):
+        vertex_analysis.compute_and_apply_weights(obj, settings, target)
+        return True
+    vertex_analysis.reset_width_weights(obj, group_name=group_name)
+    return False
 
 
 def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
@@ -210,7 +206,7 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     if not obj.data.vertices:
         return
 
-    _prepare_style_weights(obj, settings)
+    _prepare_style_weights(obj, settings, "outline")
     outline_widths = _uniform_widths_for_mesh(
         scene, camera, obj, settings.outline_thickness,
     )
@@ -221,6 +217,21 @@ def _apply_uniform_line_width(scene, camera, obj, settings, mod) -> None:
     vertex_analysis.multiply_width_weights(
         obj,
         [width / max_outline for width in outline_widths],
+        group_name=VG_LINE_WIDTH,
+    )
+
+    _prepare_style_weights(obj, settings, "inner")
+    vertex_analysis.multiply_width_weights(
+        obj,
+        [width / max_outline for width in outline_widths],
+        group_name=VG_INNER_LINE_WIDTH,
+    )
+
+    _prepare_style_weights(obj, settings, "intersection")
+    vertex_analysis.multiply_width_weights(
+        obj,
+        [width / max_outline for width in outline_widths],
+        group_name=VG_INTERSECTION_LINE_WIDTH,
     )
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
@@ -242,12 +253,13 @@ def _apply_reference_line_width(scene, camera, obj, settings, mod) -> None:
     )
     mod.thickness = outline_width
 
-    if _has_style_width_weights(settings):
-        _prepare_style_weights(obj, settings)
+    if _prepare_style_weights(obj, settings, "outline"):
         mod.vertex_group = VG_LINE_WIDTH
         mod.thickness_vertex_group = 0.0
     else:
         mod.vertex_group = ""
+    _prepare_style_weights(obj, settings, "inner")
+    _prepare_style_weights(obj, settings, "intersection")
 
     outline_base = max(abs(float(settings.outline_thickness)), 1.0e-9)
     inner_scale = abs(float(settings.inner_line_thickness)) / outline_base

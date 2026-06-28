@@ -203,6 +203,28 @@ def _assert_multi_select_manual_setting_propagation(
     assert math.isclose(target.edge_width_curve_50, 0.3, rel_tol=0.001)
     assert math.isclose(target.edge_width_curve_75, 0.4, rel_tol=0.001)
 
+    source.inner_edge_smooth_factor = -0.35
+    source.inner_edge_midpoint_jitter_percent = 8.0
+    source.inner_edge_width_curve_25 = 0.15
+    source.inner_edge_width_curve_50 = 0.25
+    source.inner_edge_width_curve_75 = 0.35
+    assert math.isclose(target.inner_edge_smooth_factor, -0.35, rel_tol=0.001)
+    assert math.isclose(target.inner_edge_midpoint_jitter_percent, 8.0, rel_tol=0.001)
+    assert math.isclose(target.inner_edge_width_curve_25, 0.15, rel_tol=0.001)
+    assert math.isclose(target.inner_edge_width_curve_50, 0.25, rel_tol=0.001)
+    assert math.isclose(target.inner_edge_width_curve_75, 0.35, rel_tol=0.001)
+
+    source.intersection_edge_smooth_factor = -0.45
+    source.intersection_edge_midpoint_jitter_percent = 9.0
+    source.intersection_edge_width_curve_25 = 0.18
+    source.intersection_edge_width_curve_50 = 0.28
+    source.intersection_edge_width_curve_75 = 0.38
+    assert math.isclose(target.intersection_edge_smooth_factor, -0.45, rel_tol=0.001)
+    assert math.isclose(target.intersection_edge_midpoint_jitter_percent, 9.0, rel_tol=0.001)
+    assert math.isclose(target.intersection_edge_width_curve_25, 0.18, rel_tol=0.001)
+    assert math.isclose(target.intersection_edge_width_curve_50, 0.28, rel_tol=0.001)
+    assert math.isclose(target.intersection_edge_width_curve_75, 0.38, rel_tol=0.001)
+
     source.use_uniform_line_width = False
     assert target.use_uniform_line_width is False
 
@@ -321,6 +343,10 @@ def main() -> None:
     settings.edge_width_curve_25 = 0.1
     settings.edge_width_curve_50 = 0.4
     settings.edge_width_curve_75 = 0.8
+    settings.inner_edge_smooth_factor = -0.55
+    settings.inner_edge_width_curve_50 = 0.45
+    settings.intersection_edge_smooth_factor = -0.65
+    settings.intersection_edge_width_curve_50 = 0.35
 
     scene = bpy.context.scene
     scene.bmanga_line_preset_name = "太線テスト"
@@ -346,6 +372,10 @@ def main() -> None:
         assert applied.intersection_method == "SDF"
         assert applied.intersection_target == target
         assert abs(applied.edge_width_curve_50 - 0.4) < 1.0e-7
+        assert abs(applied.inner_edge_smooth_factor + 0.55) < 1.0e-7
+        assert abs(applied.inner_edge_width_curve_50 - 0.45) < 1.0e-7
+        assert abs(applied.intersection_edge_smooth_factor + 0.65) < 1.0e-7
+        assert abs(applied.intersection_edge_width_curve_50 - 0.35) < 1.0e-7
         _assert_line_state(obj, visible=True)
 
     _assert_multi_select_manual_setting_propagation(scene, first, second, target)

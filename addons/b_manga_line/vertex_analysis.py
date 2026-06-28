@@ -15,6 +15,8 @@ import bpy
 from .core import (
     AO_ATTR_NAME,
     COLOR_ATTR_NAME,
+    VG_INNER_LINE_WIDTH,
+    VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
 )
 
@@ -24,12 +26,13 @@ from .core import (
 # ------------------------------------------------------------------
 
 _ANCHOR_PROP = "bml_subsurf_anchors"
+_ANCHOR_THRESHOLD_PROP = "bml_subsurf_anchor_threshold"
 
 
-def _apply_subsurf_for_midpoint(obj) -> set[int]:
+def _apply_subsurf_for_midpoint(obj, threshold: float) -> set[int]:
     """SubSurfがあれば適用して頂点密度を確保.
 
-    適用前にベースメッシュのアンカー頂点（≥90°エッジ）を検出し、
+    適用前にベースメッシュのアンカー頂点（検出角度以上のエッジ）を検出し、
     カスタムプロパティに保存。SubSurf後はエッジ角度が平滑化
     されるため、適用前の情報が必要。
     戻り値: アンカー頂点インデックスのset（SubSurfなしなら空set）
@@ -41,7 +44,6 @@ def _apply_subsurf_for_midpoint(obj) -> set[int]:
     if not subsurf_names:
         return set()
 
-    threshold = math.pi / 2 - 0.001
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.edges.ensure_lookup_table()
@@ -86,13 +88,18 @@ def _apply_subsurf_for_midpoint(obj) -> set[int]:
             obj.modifiers.remove(m)
 
     obj[_ANCHOR_PROP] = list(base_anchors)
+    obj[_ANCHOR_THRESHOLD_PROP] = float(threshold)
     return base_anchors
 
 
-def _get_saved_anchors(obj) -> set[int] | None:
+def _get_saved_anchors(obj, threshold: float | None = None) -> set[int] | None:
     """カスタムプロパティに保存されたアンカーインデックスを取得."""
     raw = obj.get(_ANCHOR_PROP)
     if raw is not None:
+        saved_threshold = obj.get(_ANCHOR_THRESHOLD_PROP)
+        if threshold is not None and saved_threshold is not None:
+            if abs(float(saved_threshold) - float(threshold)) > 1.0e-6:
+                return None
         return set(int(i) for i in raw)
     return None
 
@@ -241,32 +248,93 @@ def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
+def _normalize_target(target: str) -> str:
+    if target in {"inner", "intersection"}:
+        return target
+    return "outline"
+
+
+def width_group_name(target: str = "outline") -> str:
+    """線種ごとの線幅用頂点グループ名を返す."""
+    target = _normalize_target(target)
+    if target == "inner":
+        return VG_INNER_LINE_WIDTH
+    if target == "intersection":
+        return VG_INTERSECTION_LINE_WIDTH
+    return VG_LINE_WIDTH
+
+
+def has_width_controls(settings, target: str = "outline") -> bool:
+    """線種別の中間頂点・色・AOによる線幅制御が有効か返す."""
+    target = _normalize_target(target)
+    if target == "inner":
+        return abs(getattr(settings, "inner_edge_smooth_factor", 0.0)) > 0.001
+    if target == "intersection":
+        return abs(getattr(settings, "intersection_edge_smooth_factor", 0.0)) > 0.001
+    return (
+        bool(getattr(settings, "use_vertex_color", False))
+        or bool(getattr(settings, "use_ao_influence", False))
+        or abs(getattr(settings, "edge_smooth_factor", 0.0)) > 0.001
+    )
+
+
+def _target_midpoint_props(settings, target: str) -> tuple[float, float, tuple[float, float, float]]:
+    target = _normalize_target(target)
+    if target == "inner":
+        return (
+            float(getattr(settings, "inner_edge_smooth_factor", 0.0)),
+            float(getattr(settings, "inner_edge_midpoint_jitter_percent", 0.0)),
+            _curve_points_from_settings(settings, target),
+        )
+    if target == "intersection":
+        return (
+            float(getattr(settings, "intersection_edge_smooth_factor", 0.0)),
+            float(getattr(settings, "intersection_edge_midpoint_jitter_percent", 0.0)),
+            _curve_points_from_settings(settings, target),
+        )
+    return (
+        float(getattr(settings, "edge_smooth_factor", 0.0)),
+        float(getattr(settings, "edge_midpoint_jitter_percent", 0.0)),
+        _curve_points_from_settings(settings, target),
+    )
+
+
+def _angle_threshold(settings) -> float:
+    return max(0.0, float(getattr(settings, "inner_line_angle", math.pi / 2)))
+
+
 def _write_vertex_group_weights(
     obj: bpy.types.Object,
     weights: list[float],
+    group_name: str = VG_LINE_WIDTH,
 ) -> int:
     """線幅用頂点グループへウェイトを書き込む."""
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    vg = obj.vertex_groups.get(group_name)
     if vg is None:
-        vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
+        vg = obj.vertex_groups.new(name=group_name)
     for i, value in enumerate(weights):
         vg.add([i], _clamp01(value), "REPLACE")
     return len(weights)
 
 
-def reset_width_weights(obj: bpy.types.Object, value: float = 1.0) -> int:
+def reset_width_weights(
+    obj: bpy.types.Object,
+    value: float = 1.0,
+    group_name: str = VG_LINE_WIDTH,
+) -> int:
     """線幅用頂点グループを均一値に戻す."""
     if obj.type != "MESH" or obj.data is None:
         return 0
     count = len(obj.data.vertices)
     if count == 0:
         return 0
-    return _write_vertex_group_weights(obj, [_clamp01(value)] * count)
+    return _write_vertex_group_weights(obj, [_clamp01(value)] * count, group_name)
 
 
 def multiply_width_weights(
     obj: bpy.types.Object,
     multipliers: list[float],
+    group_name: str = VG_LINE_WIDTH,
 ) -> int:
     """既存の線幅ウェイトへ追加倍率を掛けて書き戻す."""
     if obj.type != "MESH" or obj.data is None:
@@ -274,7 +342,7 @@ def multiply_width_weights(
     count = len(obj.data.vertices)
     if count == 0:
         return 0
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    vg = obj.vertex_groups.get(group_name)
     weights = []
     for i in range(count):
         base = 1.0
@@ -285,14 +353,33 @@ def multiply_width_weights(
                 base = 1.0
         mult = multipliers[i] if i < len(multipliers) else 1.0
         weights.append(base * mult)
-    return _write_vertex_group_weights(obj, weights)
+    return _write_vertex_group_weights(obj, weights, group_name)
 
 
-def _curve_points_from_settings(settings) -> tuple[float, float, float]:
+def _curve_points_from_settings(settings, target: str = "outline") -> tuple[float, float, float]:
+    target = _normalize_target(target)
+    if target == "inner":
+        names = (
+            "inner_edge_width_curve_25",
+            "inner_edge_width_curve_50",
+            "inner_edge_width_curve_75",
+        )
+    elif target == "intersection":
+        names = (
+            "intersection_edge_width_curve_25",
+            "intersection_edge_width_curve_50",
+            "intersection_edge_width_curve_75",
+        )
+    else:
+        names = (
+            "edge_width_curve_25",
+            "edge_width_curve_50",
+            "edge_width_curve_75",
+        )
     return (
-        _clamp01(getattr(settings, "edge_width_curve_25", 0.25)),
-        _clamp01(getattr(settings, "edge_width_curve_50", 0.50)),
-        _clamp01(getattr(settings, "edge_width_curve_75", 0.75)),
+        _clamp01(getattr(settings, names[0], 0.25)),
+        _clamp01(getattr(settings, names[1], 0.50)),
+        _clamp01(getattr(settings, names[2], 0.75)),
     )
 
 
@@ -326,6 +413,7 @@ def _calc_midpoint_factor(
     forced_anchors: set[int] | None = None,
     jitter_percent: float = 0.0,
     curve_points: tuple[float, float, float] | None = None,
+    threshold: float = math.pi / 2,
 ) -> dict[int, float]:
     """鋭角アンカー頂点間の中間度を計算.
 
@@ -334,8 +422,6 @@ def _calc_midpoint_factor(
     戻り値: {vertex_index: midpoint_factor}
     0.0 = アンカー頂点（鋭角）, 1.0 = アンカー間の最も遠い中間点
     """
-    threshold = math.pi / 2 - 0.001
-
     bm = bmesh.new()
     bm.from_mesh(obj.data)
     bm.edges.ensure_lookup_table()
@@ -356,7 +442,7 @@ def _calc_midpoint_factor(
 
     if not graph_anchors:
         bm.free()
-        return {i: (0.0 if sharp_neighbors[i] else 1.0) for i in range(n)}
+        return {i: 0.0 for i in range(n)}
 
     result = {i: 0.0 for i in range(n)}
     used_midpoint_bins: set[int] = set()
@@ -378,34 +464,18 @@ def _calc_midpoint_factor(
 # 統合ウェイト計算
 # ------------------------------------------------------------------
 
-def compute_and_apply_weights(obj, settings) -> int:
-    """全ソースから最終頂点ウェイトを計算して頂点グループに書き込み.
-
-    合成順序:
-    1. 手動頂点カラー（BML_LineWidth）の明度 → ベースウェイト
-    2. AO（BML_AO）の暗さ → 暗い部分ほど太い線
-    3. エッジ角度 → 鋭角 vs 平坦部の線幅差
-    """
-    if obj.type != "MESH":
-        return 0
-
+def _base_weights(obj, settings, n: int, *, use_color: bool, use_ao: bool) -> list[float]:
     mesh = obj.data
-    n = len(mesh.vertices)
-    if n == 0:
-        return 0
-
     weights = [1.0] * n
 
-    # 1. 手動頂点カラー
-    if settings.use_vertex_color:
+    if use_color:
         attr = mesh.color_attributes.get(COLOR_ATTR_NAME)
         if attr is not None and attr.domain == "POINT":
             for i in range(min(n, len(attr.data))):
                 c = attr.data[i].color
                 weights[i] = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
 
-    # 2. AO
-    if settings.use_ao_influence:
+    if use_ao:
         attr_ao = mesh.color_attributes.get(AO_ATTR_NAME)
         if attr_ao is not None and attr_ao.domain == "POINT":
             strength = settings.ao_influence_strength
@@ -415,33 +485,45 @@ def compute_and_apply_weights(obj, settings) -> int:
                 ao_thick = 1.0 - ao_lum
                 weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
 
+    return weights
+
+
+def compute_and_apply_weights(obj, settings, target: str = "outline") -> int:
+    """全ソースから最終頂点ウェイトを計算して頂点グループに書き込み.
+
+    合成順序:
+    1. 手動頂点カラー（BML_LineWidth）の明度 → ベースウェイト
+    2. AO（BML_AO）の暗さ → 暗い部分ほど太い線
+    3. 検出角度で見つけた角と角の間 → 中間頂点の線幅差
+    """
+    if obj.type != "MESH":
+        return 0
+
+    mesh = obj.data
+    n = len(mesh.vertices)
+    if n == 0:
+        return 0
+
+    target = _normalize_target(target)
+    use_color = target == "outline" and settings.use_vertex_color
+    use_ao = target == "outline" and settings.use_ao_influence
+    weights = _base_weights(obj, settings, n, use_color=use_color, use_ao=use_ao)
+
     # 3. 中間頂点の線幅調整
-    factor = settings.edge_smooth_factor
+    factor, jitter, curve_points = _target_midpoint_props(settings, target)
     if abs(factor) > 0.001:
-        base_anchors = _apply_subsurf_for_midpoint(obj) or _get_saved_anchors(obj)
-        if base_anchors:
+        threshold = _angle_threshold(settings)
+        before_mesh = obj.data
+        before_count = n
+        base_anchors = _apply_subsurf_for_midpoint(obj, threshold)
+        saved_anchors = _get_saved_anchors(obj, threshold)
+        base_anchors = base_anchors or saved_anchors
+        if obj.data is not before_mesh or len(obj.data.vertices) != before_count:
             mesh = obj.data
             n = len(mesh.vertices)
-            weights = [1.0] * n
-            if settings.use_vertex_color:
-                attr = mesh.color_attributes.get(COLOR_ATTR_NAME)
-                if attr is not None and attr.domain == "POINT":
-                    for i in range(min(n, len(attr.data))):
-                        c = attr.data[i].color
-                        weights[i] = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
-            if settings.use_ao_influence:
-                attr_ao = mesh.color_attributes.get(AO_ATTR_NAME)
-                if attr_ao is not None and attr_ao.domain == "POINT":
-                    strength = settings.ao_influence_strength
-                    for i in range(min(n, len(attr_ao.data))):
-                        c = attr_ao.data[i].color
-                        ao_lum = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]
-                        ao_thick = 1.0 - ao_lum
-                        weights[i] = weights[i] * (1.0 - strength) + ao_thick * strength
-        jitter = getattr(settings, "edge_midpoint_jitter_percent", 0.0)
-        curve_points = _curve_points_from_settings(settings)
+            weights = _base_weights(obj, settings, n, use_color=use_color, use_ao=use_ao)
         midpoint = _calc_midpoint_factor(
-            obj, base_anchors or None, jitter, curve_points,
+            obj, base_anchors or None, jitter, curve_points, threshold,
         )
         for i in range(n):
             m = midpoint.get(i, 0.0)
@@ -454,7 +536,7 @@ def compute_and_apply_weights(obj, settings) -> int:
             weights[i] = max(0.0, min(1.0, weights[i] * edge_mult))
 
     # 頂点グループに書き込み
-    return _write_vertex_group_weights(obj, weights)
+    return _write_vertex_group_weights(obj, weights, width_group_name(target))
 
 
 # ------------------------------------------------------------------

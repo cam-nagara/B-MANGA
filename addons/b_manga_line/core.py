@@ -21,6 +21,8 @@ from . import registration
 MODIFIER_NAME = "BML_Outline"
 MATERIAL_NAME = "BML_Outline"
 VG_LINE_WIDTH = "BML_LineWidth"
+VG_INNER_LINE_WIDTH = "BML_InnerLineWidth"
+VG_INTERSECTION_LINE_WIDTH = "BML_IntersectionLineWidth"
 COLOR_ATTR_NAME = "BML_LineWidth"
 GENERATED_LINE_ATTR = "BML_GeneratedLine"
 GN_MODIFIER_NAME = "BML_InnerLines"
@@ -136,17 +138,79 @@ def _make_propagator(prop_name):
 def _make_weight_refresh_propagator(prop_name):
     """線幅ウェイトを再計算してから選択中オブジェクトへ伝搬."""
     def _callback(self, context):
-        _refresh_line_width_weights(self, context)
+        _refresh_line_width_weights(self, context, _line_width_target_for_prop(prop_name))
         _propagate(self, context, prop_name)
     return _callback
 
 
-def _needs_line_width_weights(settings) -> bool:
+def _line_width_target_for_prop(prop_name: str) -> str:
+    if prop_name.startswith("inner_edge_"):
+        return "inner"
+    if prop_name.startswith("intersection_edge_"):
+        return "intersection"
+    return "outline"
+
+
+def _needs_line_width_weights(settings, target: str = "outline") -> bool:
+    if settings.use_uniform_line_width:
+        return True
+    if target == "inner":
+        return abs(settings.inner_edge_smooth_factor) > 0.001
+    if target == "intersection":
+        return abs(settings.intersection_edge_smooth_factor) > 0.001
     return (
-        settings.use_uniform_line_width
-        or abs(settings.edge_smooth_factor) > 0.001
+        abs(settings.edge_smooth_factor) > 0.001
         or settings.use_vertex_color
         or settings.use_ao_influence
+    )
+
+
+def _ensure_vertex_group(owner: bpy.types.Object, name: str) -> bpy.types.VertexGroup | None:
+    if owner.type != "MESH" or owner.data is None:
+        return None
+    vg = owner.vertex_groups.get(name)
+    if vg is None:
+        vg = owner.vertex_groups.new(name=name)
+    if owner.data.vertices:
+        vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
+    return vg
+
+
+def _midpoint_factor_property(prop_name: str, description: str):
+    return FloatProperty(
+        name="中間頂点の線幅調整",
+        description=description,
+        default=0.0,
+        min=-1.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_make_weight_refresh_propagator(prop_name),
+    )
+
+
+def _midpoint_jitter_property(prop_name: str, description: str):
+    return FloatProperty(
+        name="中間頂点の乱れ (%)",
+        description=description,
+        default=0.0,
+        min=0.0,
+        max=50.0,
+        precision=1,
+        step=5,
+        subtype="PERCENTAGE",
+        update=_make_weight_refresh_propagator(prop_name),
+    )
+
+
+def _curve_point_property(prop_name: str, label: str, description: str, default: float):
+    return FloatProperty(
+        name=label,
+        description=description,
+        default=default,
+        min=0.0,
+        max=1.0,
+        subtype="FACTOR",
+        update=_make_weight_refresh_propagator(prop_name),
     )
 
 
@@ -225,6 +289,7 @@ def _on_inner_angle_changed(self, context):
     owner = self.id_data
     if owner.type == "MESH":
         inner_lines.update_parameters(owner, angle=self.inner_line_angle)
+        _refresh_line_width_weights(self, context)
     _propagate(self, context, "inner_line_angle")
 
 
@@ -291,36 +356,58 @@ def _on_intersection_thickness_changed(self, context):
     _propagate(self, context, "intersection_thickness")
 
 
-def _refresh_line_width_weights(self, context) -> None:
+def _refresh_line_width_weights(self, context, target: str | None = None) -> None:
     from . import vertex_analysis
     owner = self.id_data
     if owner.type == "MESH":
-        mod = owner.modifiers.get(MODIFIER_NAME)
-        if mod is not None:
-            need_vg = _needs_line_width_weights(self)
-            if need_vg:
-                vg = owner.vertex_groups.get(VG_LINE_WIDTH)
-                if vg is None:
-                    vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
-                    vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
-                mod.vertex_group = vg.name
-                mod.thickness_vertex_group = 0.0
-                if self.use_uniform_line_width:
-                    _refresh_print_widths(context)
-                else:
-                    vertex_analysis.compute_and_apply_weights(owner, self)
+        if self.use_uniform_line_width:
+            mod = owner.modifiers.get(MODIFIER_NAME)
+            if mod is not None:
+                vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
+                if vg is not None:
+                    mod.vertex_group = vg.name
+                    mod.thickness_vertex_group = 0.0
+            _refresh_print_widths(context)
+            return
+
+        targets = ("outline", "inner", "intersection") if target is None else (target,)
+        for item in targets:
+            if item == "outline":
+                _refresh_outline_width_weights(owner, self, vertex_analysis)
             else:
-                mod.vertex_group = ""
-                vertex_analysis.reset_width_weights(owner)
+                _refresh_generated_width_weights(owner, self, item, vertex_analysis)
+
+
+def _refresh_outline_width_weights(owner, settings, vertex_analysis) -> None:
+    mod = owner.modifiers.get(MODIFIER_NAME)
+    if mod is None:
+        return
+    if _needs_line_width_weights(settings, "outline"):
+        vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
+        if vg is not None:
+            mod.vertex_group = vg.name
+            mod.thickness_vertex_group = 0.0
+        vertex_analysis.compute_and_apply_weights(owner, settings, "outline")
+    else:
+        mod.vertex_group = ""
+        vertex_analysis.reset_width_weights(owner, group_name=VG_LINE_WIDTH)
+
+
+def _refresh_generated_width_weights(owner, settings, target, vertex_analysis) -> None:
+    group_name = vertex_analysis.width_group_name(target)
+    if _needs_line_width_weights(settings, target):
+        vertex_analysis.compute_and_apply_weights(owner, settings, target)
+    else:
+        vertex_analysis.reset_width_weights(owner, group_name=group_name)
 
 
 def _on_edge_smooth_changed(self, context):
-    _refresh_line_width_weights(self, context)
+    _refresh_line_width_weights(self, context, "outline")
     _propagate(self, context, "edge_smooth_factor")
 
 
 def _on_edge_midpoint_jitter_changed(self, context):
-    _refresh_line_width_weights(self, context)
+    _refresh_line_width_weights(self, context, "outline")
     _propagate(self, context, "edge_midpoint_jitter_percent")
 
 
@@ -353,26 +440,20 @@ def _on_camera_influence_changed(self, context):
 
 
 def _on_uniform_line_width_changed(self, context):
-    from . import camera_comp, vertex_analysis
+    from . import camera_comp
     owner = self.id_data
     if owner.type == "MESH":
         mod = owner.modifiers.get(MODIFIER_NAME)
         if mod is not None:
             if self.use_uniform_line_width:
-                vg = owner.vertex_groups.get(VG_LINE_WIDTH)
-                if vg is None:
-                    vg = owner.vertex_groups.new(name=VG_LINE_WIDTH)
-                    vg.add(list(range(len(owner.data.vertices))), 1.0, "REPLACE")
-                mod.vertex_group = vg.name
-                mod.thickness_vertex_group = 0.0
+                vg = _ensure_vertex_group(owner, VG_LINE_WIDTH)
+                if vg is not None:
+                    mod.vertex_group = vg.name
+                    mod.thickness_vertex_group = 0.0
                 camera_comp.refresh(context)
             else:
                 mod.thickness = abs(self.outline_thickness)
-                if _needs_line_width_weights(self):
-                    vertex_analysis.compute_and_apply_weights(owner, self)
-                else:
-                    mod.vertex_group = ""
-                    vertex_analysis.reset_width_weights(owner)
+                _refresh_line_width_weights(self, context)
                 from . import inner_lines, intersection_lines
                 inner_lines.update_parameters(owner, thickness=self.inner_line_thickness)
                 intersection_lines.update_parameters(
@@ -721,6 +802,48 @@ class BMangaLineSettings(bpy.types.PropertyGroup):
         max=1.0,
         subtype="FACTOR",
         update=_make_weight_refresh_propagator("edge_width_curve_75"),
+    )  # type: ignore[valid-type]
+
+    inner_edge_smooth_factor: _midpoint_factor_property(
+        "inner_edge_smooth_factor",
+        "検出角度で見つけた角と角の間の内部線幅を調整（正: 太く / 負: 細く）",
+    )  # type: ignore[valid-type]
+    inner_edge_midpoint_jitter_percent: _midpoint_jitter_property(
+        "inner_edge_midpoint_jitter_percent",
+        "内部線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
+    )  # type: ignore[valid-type]
+    inner_edge_width_curve_25: _curve_point_property(
+        "inner_edge_width_curve_25", "25%",
+        "内部線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
+    )  # type: ignore[valid-type]
+    inner_edge_width_curve_50: _curve_point_property(
+        "inner_edge_width_curve_50", "50%",
+        "内部線の角から中間頂点まで50%進んだ地点の細り具合", 0.50,
+    )  # type: ignore[valid-type]
+    inner_edge_width_curve_75: _curve_point_property(
+        "inner_edge_width_curve_75", "75%",
+        "内部線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
+    )  # type: ignore[valid-type]
+
+    intersection_edge_smooth_factor: _midpoint_factor_property(
+        "intersection_edge_smooth_factor",
+        "検出角度で見つけた角と角の間の交差線幅を調整（正: 太く / 負: 細く）",
+    )  # type: ignore[valid-type]
+    intersection_edge_midpoint_jitter_percent: _midpoint_jitter_property(
+        "intersection_edge_midpoint_jitter_percent",
+        "交差線の中間頂点位置を辺の中央から前後何%の範囲でずらす",
+    )  # type: ignore[valid-type]
+    intersection_edge_width_curve_25: _curve_point_property(
+        "intersection_edge_width_curve_25", "25%",
+        "交差線の角から中間頂点まで25%進んだ地点の細り具合", 0.25,
+    )  # type: ignore[valid-type]
+    intersection_edge_width_curve_50: _curve_point_property(
+        "intersection_edge_width_curve_50", "50%",
+        "交差線の角から中間頂点まで50%進んだ地点の細り具合", 0.50,
+    )  # type: ignore[valid-type]
+    intersection_edge_width_curve_75: _curve_point_property(
+        "intersection_edge_width_curve_75", "75%",
+        "交差線の角から中間頂点まで75%進んだ地点の細り具合", 0.75,
     )  # type: ignore[valid-type]
 
     # --- カメラ範囲カリング ---

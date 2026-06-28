@@ -10,8 +10,14 @@ import math
 
 import bpy
 
-from .core import GN_MODIFIER_NAME, GN_TREE_NAME, MATERIAL_NAME, MODIFIER_NAME, VG_LINE_WIDTH
-from .core import GENERATED_LINE_ATTR
+from .core import (
+    GENERATED_LINE_ATTR,
+    GN_MODIFIER_NAME,
+    GN_TREE_NAME,
+    MATERIAL_NAME,
+    MODIFIER_NAME,
+    VG_INNER_LINE_WIDTH,
+)
 
 
 _GENERATED_LINE_NODE_LABEL = "BML_GeneratedLineMark"
@@ -120,11 +126,11 @@ def _create_node_tree() -> bpy.types.NodeTree:
     links.new(del_shell.outputs["Geometry"], m2c.inputs[0])  # 元メッシュのみ
     links.new(compare.outputs[0], m2c.inputs[1])  # Selection
 
-    # 頂点グループの線幅値を内部線にも反映する。
+    # 内部線専用の線幅値を反映する。
     width_attr = nodes.new("GeometryNodeInputNamedAttribute")
     width_attr.location = (-220, 120)
     width_attr.data_type = "FLOAT"
-    width_attr.inputs["Name"].default_value = VG_LINE_WIDTH
+    width_attr.inputs["Name"].default_value = VG_INNER_LINE_WIDTH
 
     width_switch = nodes.new("GeometryNodeSwitch")
     width_switch.location = (-20, 120)
@@ -211,6 +217,9 @@ def _get_or_create_tree() -> bpy.types.NodeTree:
         if not any(n.bl_idname == "GeometryNodeInputNamedAttribute" for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
+        if not _uses_named_attribute(tree, VG_INNER_LINE_WIDTH):
+            bpy.data.node_groups.remove(tree)
+            return _create_node_tree()
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return _create_node_tree()
@@ -233,6 +242,16 @@ def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
         if getattr(item, "name", None) == name and getattr(item, "in_out", None) == "INPUT":
             return item
     return None
+
+
+def _uses_named_attribute(tree: bpy.types.NodeTree, attr_name: str) -> bool:
+    for node in tree.nodes:
+        if node.bl_idname != "GeometryNodeInputNamedAttribute":
+            continue
+        name_input = node.inputs.get("Name")
+        if name_input is not None and name_input.default_value == attr_name:
+            return True
+    return False
 
 
 def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
@@ -304,9 +323,9 @@ def apply_inner_lines(
         mod[sid_line_material] = line_material_index
 
     # 頂点グループ: 元メッシュ頂点 = weight 1.0
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    vg = obj.vertex_groups.get(VG_INNER_LINE_WIDTH)
     if vg is None:
-        vg = obj.vertex_groups.new(name=VG_LINE_WIDTH)
+        vg = obj.vertex_groups.new(name=VG_INNER_LINE_WIDTH)
         vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
     # 内部線は Solidify（アウトライン）の後ろに配置する。

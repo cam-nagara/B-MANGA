@@ -9,6 +9,23 @@ import bpy
 MATERIAL_NAME = "BML_EdgeWidthCurve_UI"
 NODE_NAME = "BML_EdgeWidthCurve"
 SOURCE_PROP = "bml_edge_width_curve_source"
+_TARGET_PROPS = {
+    "outline": (
+        "edge_width_curve_25",
+        "edge_width_curve_50",
+        "edge_width_curve_75",
+    ),
+    "inner": (
+        "inner_edge_width_curve_25",
+        "inner_edge_width_curve_50",
+        "inner_edge_width_curve_75",
+    ),
+    "intersection": (
+        "intersection_edge_width_curve_25",
+        "intersection_edge_width_curve_50",
+        "intersection_edge_width_curve_75",
+    ),
+}
 DEFAULT_POINTS = (
     (0.0, 0.0),
     (0.25, 0.25),
@@ -18,53 +35,74 @@ DEFAULT_POINTS = (
 )
 
 
-def points_from_settings(settings) -> tuple[tuple[float, float], ...]:
+def _normalize_target(target: str) -> str:
+    return target if target in _TARGET_PROPS else "outline"
+
+
+def _node_name(target: str) -> str:
+    target = _normalize_target(target)
+    return NODE_NAME if target == "outline" else f"{NODE_NAME}_{target}"
+
+
+def _source_prop(target: str) -> str:
+    target = _normalize_target(target)
+    return SOURCE_PROP if target == "outline" else f"{SOURCE_PROP}_{target}"
+
+
+def points_from_settings(settings, target: str = "outline") -> tuple[tuple[float, float], ...]:
+    props = _TARGET_PROPS[_normalize_target(target)]
     return (
         (0.0, 0.0),
-        (0.25, _clamp01(getattr(settings, "edge_width_curve_25", 0.25))),
-        (0.50, _clamp01(getattr(settings, "edge_width_curve_50", 0.50))),
-        (0.75, _clamp01(getattr(settings, "edge_width_curve_75", 0.75))),
+        (0.25, _clamp01(getattr(settings, props[0], 0.25))),
+        (0.50, _clamp01(getattr(settings, props[1], 0.50))),
+        (0.75, _clamp01(getattr(settings, props[2], 0.75))),
         (1.0, 1.0),
     )
 
 
-def ensure_node(settings):
+def ensure_node(settings, target: str = "outline"):
     mat = bpy.data.materials.get(MATERIAL_NAME) or bpy.data.materials.new(MATERIAL_NAME)
     mat.use_nodes = True
     nt = mat.node_tree
     if nt is None:
         return None
-    node = nt.nodes.get(NODE_NAME)
+    target = _normalize_target(target)
+    node_name = _node_name(target)
+    source_prop = _source_prop(target)
+    node = nt.nodes.get(node_name)
     if node is not None and node.bl_idname != "ShaderNodeFloatCurve":
         nt.nodes.remove(node)
         node = None
     if node is None:
         node = nt.nodes.new("ShaderNodeFloatCurve")
-        node.name = NODE_NAME
+        node.name = node_name
     node.label = "中間頂点への変化グラフ"
-    source = _points_text(points_from_settings(settings))
-    last_source = str(mat.get(SOURCE_PROP, "") or "")
+    source = _points_text(points_from_settings(settings, target))
+    last_source = str(mat.get(source_prop, "") or "")
     if last_source != source:
-        _apply_points_to_node(node, points_from_settings(settings))
-        mat[SOURCE_PROP] = source
+        _apply_points_to_node(node, points_from_settings(settings, target))
+        mat[source_prop] = source
     return node
 
 
-def sync_node_to_settings(settings) -> bool:
+def sync_node_to_settings(settings, target: str = "outline") -> bool:
     mat = bpy.data.materials.get(MATERIAL_NAME)
     nt = getattr(mat, "node_tree", None) if mat is not None else None
-    node = nt.nodes.get(NODE_NAME) if nt is not None else None
+    target = _normalize_target(target)
+    node = nt.nodes.get(_node_name(target)) if nt is not None else None
     if node is None or node.bl_idname != "ShaderNodeFloatCurve":
         return False
-    source = _points_text(points_from_settings(settings))
-    if str(mat.get(SOURCE_PROP, "") or "") != source:
+    source_prop = _source_prop(target)
+    source = _points_text(points_from_settings(settings, target))
+    if str(mat.get(source_prop, "") or "") != source:
         return False
     points = _read_node_points(node)
+    props = _TARGET_PROPS[target]
     changed = False
-    changed |= _set_attr(settings, "edge_width_curve_25", _evaluate(points, 0.25))
-    changed |= _set_attr(settings, "edge_width_curve_50", _evaluate(points, 0.50))
-    changed |= _set_attr(settings, "edge_width_curve_75", _evaluate(points, 0.75))
-    mat[SOURCE_PROP] = _points_text(points_from_settings(settings))
+    changed |= _set_attr(settings, props[0], _evaluate(points, 0.25))
+    changed |= _set_attr(settings, props[1], _evaluate(points, 0.50))
+    changed |= _set_attr(settings, props[2], _evaluate(points, 0.75))
+    mat[source_prop] = _points_text(points_from_settings(settings, target))
     return changed
 
 

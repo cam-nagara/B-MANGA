@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineの中間頂点線幅調整を線種別に分離 (B-MANGA Line v0.3.23)
+
+### 症状
+
+- 「中間頂点の線幅調整」がアウトライン、内部線、交差線で別々に設定できなかった。
+- アウトライン側の中間頂点判定が、画面上の「検出角度」ではなく90度固定の角度判定になっていた。
+- 交差線には中間頂点の線幅調整が反映されていなかった。
+
+### 原因
+
+- アウトラインと内部線が同じ線幅情報を共有し、交差線は線幅情報を読まない作りになっていた。
+- 中間頂点の解析で、アウトラインだけ内部線の「検出角度」を使わず固定角度で角を探していた。
+
+### 修正
+
+- 「線幅の詳細制御」に、アウトライン、内部線、交差線それぞれの「中間頂点の線幅調整」「中間頂点の乱れ」「中間頂点への変化グラフ」を追加した。
+- アウトライン、内部線、交差線がそれぞれ専用の線幅情報を持つようにし、片方の設定変更が別の線種へ混ざらないようにした。
+- アウトラインの中間頂点判定も、内部線と同じ「検出角度」で見つけた角と角の間を対象にした。
+- プリセット保存、複数選択への反映、線幅の均一化、手動のウェイト更新を線種別設定に対応させた。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `python -m py_compile addons\b_manga_line\core.py addons\b_manga_line\vertex_analysis.py addons\b_manga_line\inner_lines.py addons\b_manga_line\intersection_lines.py addons\b_manga_line\camera_comp.py addons\b_manga_line\presets.py addons\b_manga_line\panels.py addons\b_manga_line\edge_width_curve.py addons\b_manga_line\operators.py addons\b_manga_line\outline_setup.py test\blender_b_manga_line_midpoint_targets_check.py test\blender_b_manga_line_inner_width_check.py test\blender_b_manga_line_midpoint_jitter_check.py test\blender_b_manga_line_preset_visibility_check.py test\blender_b_manga_line_uniform_width_check.py test\blender_b_manga_line_curve_and_linked_batch_check.py test\blender_b_manga_line_register_reenable_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_jitter_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_curve_and_linked_batch_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineのラインのみ表示をAOV表示へ変更 (B-MANGA Line v0.3.22)
 
 ### 症状

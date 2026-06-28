@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "addons"))
 
 import b_manga_line  # noqa: E402
 from b_manga_line import inner_lines  # noqa: E402
-from b_manga_line.core import VG_LINE_WIDTH  # noqa: E402
+from b_manga_line.core import VG_INNER_LINE_WIDTH  # noqa: E402
 
 
 def _clear_scene() -> None:
@@ -58,7 +58,7 @@ def _make_folded_strip() -> bpy.types.Object:
     )
     assert ok, "内部線を追加できませんでした"
 
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
+    vg = obj.vertex_groups.get(VG_INNER_LINE_WIDTH)
     assert vg is not None
     for i in range(levels):
         t = i / (levels - 1)

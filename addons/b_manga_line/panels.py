@@ -144,16 +144,30 @@ def _draw_camera(layout, context, settings) -> None:
 def _draw_width_details(layout, context, settings) -> None:
     has_any = any(has_outline(o) for o in context.selected_objects)
     col = layout.column(align=True)
-    col.prop(settings, "edge_smooth_factor")
-    col.prop(settings, "edge_midpoint_jitter_percent")
-    curve = col.column(align=True)
-    curve.label(text="中間頂点への変化グラフ")
-    edge_width_curve.sync_node_to_settings(settings)
-    curve_node = edge_width_curve.ensure_node(settings)
-    if curve_node is not None:
-        curve.template_curve_mapping(curve_node, "mapping", type="NONE")
-    else:
-        curve.label(text="グラフを表示できません", icon="ERROR")
+    _draw_midpoint_width_controls(
+        col,
+        settings,
+        "outline",
+        "アウトライン",
+        "edge_smooth_factor",
+        "edge_midpoint_jitter_percent",
+    )
+    _draw_midpoint_width_controls(
+        col,
+        settings,
+        "inner",
+        "内部線",
+        "inner_edge_smooth_factor",
+        "inner_edge_midpoint_jitter_percent",
+    )
+    _draw_midpoint_width_controls(
+        col,
+        settings,
+        "intersection",
+        "交差線",
+        "intersection_edge_smooth_factor",
+        "intersection_edge_midpoint_jitter_percent",
+    )
     col.separator()
     col.prop(settings, "use_ao_influence")
     sub = col.column(align=True)
@@ -165,6 +179,29 @@ def _draw_width_details(layout, context, settings) -> None:
     row = col.row(align=True)
     row.enabled = has_any
     row.operator("bmanga_line.sync_weights", icon="VPAINT_HLT")
+
+
+def _draw_midpoint_width_controls(
+    layout,
+    settings,
+    target: str,
+    label: str,
+    factor_prop: str,
+    jitter_prop: str,
+) -> None:
+    box = layout.box()
+    col = box.column(align=True)
+    col.label(text=label)
+    col.prop(settings, factor_prop)
+    col.prop(settings, jitter_prop)
+    curve = col.column(align=True)
+    curve.label(text="中間頂点への変化グラフ")
+    edge_width_curve.sync_node_to_settings(settings, target)
+    curve_node = edge_width_curve.ensure_node(settings, target)
+    if curve_node is not None:
+        curve.template_curve_mapping(curve_node, "mapping", type="NONE")
+    else:
+        curve.label(text="グラフを表示できません", icon="ERROR")
 
 
 def _draw_inner_line(layout, context, settings) -> None:

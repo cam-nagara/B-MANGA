@@ -30,6 +30,7 @@ from .core import (
     INTERSECTION_TREE_BOOLEAN,
     INTERSECTION_TREE_SDF,
     MODIFIER_NAME,
+    VG_INTERSECTION_LINE_WIDTH,
 )
 
 
@@ -186,6 +187,30 @@ def _add_effective_radius(nodes, links, gin, has_line_faces, loc):
 
 def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
     """カーブ → チューブメッシュ → マテリアル設定 → Join を構築して join ノードを返す."""
+    width_attr = nodes.new("GeometryNodeInputNamedAttribute")
+    width_attr.location = (x_offset - 220, -80)
+    width_attr.data_type = "FLOAT"
+    width_attr.inputs["Name"].default_value = VG_INTERSECTION_LINE_WIDTH
+
+    width_switch = nodes.new("GeometryNodeSwitch")
+    width_switch.location = (x_offset - 20, -80)
+    width_switch.input_type = "FLOAT"
+    width_switch.inputs["False"].default_value = 1.0
+    links.new(width_attr.outputs["Exists"], width_switch.inputs["Switch"])
+    links.new(width_attr.outputs["Attribute"], width_switch.inputs["True"])
+
+    width_min = nodes.new("ShaderNodeMath")
+    width_min.location = (x_offset + 160, -80)
+    width_min.operation = "MAXIMUM"
+    width_min.inputs[1].default_value = 0.0
+    links.new(width_switch.outputs["Output"], width_min.inputs[0])
+
+    width_max = nodes.new("ShaderNodeMath")
+    width_max.location = (x_offset + 340, -80)
+    width_max.operation = "MINIMUM"
+    width_max.inputs[1].default_value = 1.0
+    links.new(width_min.outputs[0], width_max.inputs[0])
+
     circle = nodes.new("GeometryNodeCurvePrimitiveCircle")
     circle.location = (x_offset + 0, -550)
     circle.mode = "RADIUS"
@@ -198,7 +223,11 @@ def _add_tube_nodes(nodes, links, curve_output, gin, radius_output, x_offset=0):
     c2m.location = (x_offset + 200, -300)
     links.new(curve_output, c2m.inputs[0])
     links.new(circle.outputs[0], c2m.inputs[1])
-    if len(c2m.inputs) > 2:
+    if "Scale" in c2m.inputs:
+        links.new(width_max.outputs[0], c2m.inputs["Scale"])
+    if "Fill Caps" in c2m.inputs:
+        c2m.inputs["Fill Caps"].default_value = True
+    elif len(c2m.inputs) > 2:
         c2m.inputs[2].default_value = True
 
     mark_generated = nodes.new("GeometryNodeStoreNamedAttribute")
@@ -463,6 +492,9 @@ def _get_or_create_tree(method: str = "BOOLEAN") -> bpy.types.NodeTree:
         if not any(getattr(n, "label", "") == _GENERATED_LINE_NODE_LABEL for n in tree.nodes):
             bpy.data.node_groups.remove(tree)
             return creator()
+        if not _uses_named_attribute(tree, VG_INTERSECTION_LINE_WIDTH):
+            bpy.data.node_groups.remove(tree)
+            return creator()
         radius_socket = _find_interface_socket(tree, "線の太さ")
         if radius_socket is not None and getattr(radius_socket, "max_value", 0.0) < 1.0:
             bpy.data.node_groups.remove(tree)
@@ -479,6 +511,16 @@ def _find_interface_socket(tree: bpy.types.NodeTree, name: str):
         ):
             return item
     return None
+
+
+def _uses_named_attribute(tree: bpy.types.NodeTree, attr_name: str) -> bool:
+    for node in tree.nodes:
+        if node.bl_idname != "GeometryNodeInputNamedAttribute":
+            continue
+        name_input = node.inputs.get("Name")
+        if name_input is not None and name_input.default_value == attr_name:
+            return True
+    return False
 
 
 def _find_socket_id(tree: bpy.types.NodeTree, name: str) -> str | None:
@@ -554,6 +596,11 @@ def apply_intersection_lines(
         sid_mat = _find_socket_id(tree, "マテリアル")
         if sid_mat is not None:
             mod[sid_mat] = material
+
+    vg = obj.vertex_groups.get(VG_INTERSECTION_LINE_WIDTH)
+    if vg is None:
+        vg = obj.vertex_groups.new(name=VG_INTERSECTION_LINE_WIDTH)
+        vg.add(list(range(len(obj.data.vertices))), 1.0, "REPLACE")
 
     # Solidify（アウトライン）の後ろ、内部線の前に配置する。
     # 内部線の生成後に交差線を追加しても、交差検出が内部線ジオメトリに

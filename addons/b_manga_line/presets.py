@@ -41,6 +41,16 @@ _SETTING_FIELDS = (
     "edge_width_curve_25",
     "edge_width_curve_50",
     "edge_width_curve_75",
+    "inner_edge_smooth_factor",
+    "inner_edge_midpoint_jitter_percent",
+    "inner_edge_width_curve_25",
+    "inner_edge_width_curve_50",
+    "inner_edge_width_curve_75",
+    "intersection_edge_smooth_factor",
+    "intersection_edge_midpoint_jitter_percent",
+    "intersection_edge_width_curve_25",
+    "intersection_edge_width_curve_50",
+    "intersection_edge_width_curve_75",
     "use_camera_culling",
     "culling_margin",
     "use_outline_distance_limit",
@@ -115,9 +125,7 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     settings = obj.bmanga_line_settings
     use_vg = (
         settings.use_uniform_line_width
-        or settings.use_vertex_color
-        or settings.use_ao_influence
-        or abs(settings.edge_smooth_factor) > 0.001
+        or vertex_analysis.has_width_controls(settings, "outline")
     )
     ok = outline_setup.apply_outline(
         obj,
@@ -158,8 +166,13 @@ def apply_line_settings(obj: bpy.types.Object, context) -> bool:
     if settings.use_camera_compensation:
         camera_comp.store_unit_reference(obj, context.scene)
 
-    if use_vg:
-        vertex_analysis.compute_and_apply_weights(obj, settings)
+    if not settings.use_uniform_line_width:
+        for target in ("outline", "inner", "intersection"):
+            group_name = vertex_analysis.width_group_name(target)
+            if vertex_analysis.has_width_controls(settings, target):
+                vertex_analysis.compute_and_apply_weights(obj, settings, target)
+            else:
+                vertex_analysis.reset_width_weights(obj, group_name=group_name)
 
     if bool(obj.get(core.PROP_LINES_HIDDEN, False)):
         core.set_line_visibility(obj, False)
@@ -215,6 +228,18 @@ class BMangaLinePreset(bpy.types.PropertyGroup):
     edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
     edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
     edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
+
+    inner_edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    inner_edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    inner_edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
+    inner_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
+    inner_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
+
+    intersection_edge_smooth_factor: FloatProperty(default=0.0, min=-1.0, max=1.0)
+    intersection_edge_midpoint_jitter_percent: FloatProperty(default=0.0, min=0.0, max=50.0)
+    intersection_edge_width_curve_25: FloatProperty(default=0.25, min=0.0, max=1.0)
+    intersection_edge_width_curve_50: FloatProperty(default=0.50, min=0.0, max=1.0)
+    intersection_edge_width_curve_75: FloatProperty(default=0.75, min=0.0, max=1.0)
 
     use_camera_culling: BoolProperty(default=False)
     culling_margin: FloatProperty(default=0.1745329252, min=0.0, max=1.5707963268)

@@ -269,9 +269,9 @@ class BMANGA_LINE_OT_sync_weights(bpy.types.Operator):
         for obj in context.selected_objects:
             if obj.type != "MESH":
                 continue
-            total += vertex_analysis.compute_and_apply_weights(
-                obj, obj.bmanga_line_settings
-            )
+            settings = obj.bmanga_line_settings
+            for target in ("outline", "inner", "intersection"):
+                total += vertex_analysis.compute_and_apply_weights(obj, settings, target)
 
         self.report({"INFO"}, f"{total} 頂点のウェイトを更新しました")
         return {"FINISHED"}
@@ -310,7 +310,7 @@ class BMANGA_LINE_OT_bake_ao(bpy.types.Operator):
             for obj in meshes:
                 settings = obj.bmanga_line_settings
                 if settings.use_ao_influence:
-                    vertex_analysis.compute_and_apply_weights(obj, settings)
+                    vertex_analysis.compute_and_apply_weights(obj, settings, "outline")
 
         self.report({"INFO"}, f"{count} オブジェクトにAOを焼き付けました")
         return {"FINISHED"}

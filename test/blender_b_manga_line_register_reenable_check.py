@@ -121,6 +121,8 @@ def _assert_panels_draw_items() -> None:
         "outline_color",
         "use_camera_compensation",
         "edge_smooth_factor",
+        "inner_edge_smooth_factor",
+        "intersection_edge_smooth_factor",
         "inner_line_enabled",
         "intersection_enabled",
     ):

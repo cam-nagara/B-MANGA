@@ -21,6 +21,8 @@ from .core import (
     PROP_LINE_ONLY_MATERIALS,
     PROP_BASE_THICKNESS,
     PROP_REF_DISTANCE,
+    VG_INNER_LINE_WIDTH,
+    VG_INTERSECTION_LINE_WIDTH,
     VG_LINE_WIDTH,
 )
 
@@ -469,9 +471,10 @@ def remove_outline(obj: bpy.types.Object) -> bool:
             removed = True
 
     # 頂点グループ
-    vg = obj.vertex_groups.get(VG_LINE_WIDTH)
-    if vg is not None:
-        obj.vertex_groups.remove(vg)
+    for name in (VG_LINE_WIDTH, VG_INNER_LINE_WIDTH, VG_INTERSECTION_LINE_WIDTH):
+        vg = obj.vertex_groups.get(name)
+        if vg is not None:
+            obj.vertex_groups.remove(vg)
 
     return removed
 
