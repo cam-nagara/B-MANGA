@@ -223,3 +223,22 @@ def restore_modal_cursor(context) -> None:
         window.cursor_modal_restore()
     except Exception:  # noqa: BLE001
         pass
+
+
+def sync_modal_cursor_for_event_region(context, event, op, cursor: str) -> None:
+    """VIEW_3D の作業領域外ではツールカーソルを一時的に戻す."""
+    try:
+        from . import view_event_region
+
+        in_view = view_event_region.is_view3d_window_event(context, event)
+    except Exception:  # noqa: BLE001
+        return
+    if in_view:
+        if getattr(op, "_cursor_temporarily_restored", False):
+            op._cursor_modal_set = set_modal_cursor(context, cursor)
+        op._cursor_temporarily_restored = False
+        return
+    if getattr(op, "_cursor_modal_set", False):
+        restore_modal_cursor(context)
+        op._cursor_modal_set = False
+        op._cursor_temporarily_restored = True

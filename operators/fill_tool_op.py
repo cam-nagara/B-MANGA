@@ -201,6 +201,7 @@ class BMANGA_OT_fill_tool(Operator):
             coma_modal_state.clear_active(TOOL_NAME, self, context)
             return {"FINISHED"}
 
+        coma_modal_state.sync_modal_cursor_for_event_region(context, event, self, "CROSSHAIR")
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
 

@@ -3,6 +3,46 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — ツールプリセット切替とカーソル復帰を修正 (v0.6.418)
+
+### 症状
+
+- フキダシツールで「なめらか自由形状」を使ったあと、プリセットを「標準」や他の形状へ戻しても、作成方式がなめらか自由形状のまま残る場合があった。
+- ツール使用中にカーソルがパネルやサイドバー上へ移っても、作業領域用の十字カーソルが残る場合があった。
+- ツールパネル下の各プリセットドロップダウンについて、候補を一つずつ実機確認する必要があった。
+
+### 原因
+
+- フキダシプリセットのドロップダウン変更時に、選択値は記憶していたが、実行中のフキダシ作成方式までは切り替えていなかった。
+- 十字カーソルを使う各ツールで、作業領域外へ出た時に一時的に通常カーソルへ戻す共通処理がなかった。
+
+### 修正
+
+- フキダシツール実行中に「なめらか自由形状」と通常のフキダシ形状を切り替えた時、実行中ツールも選択中プリセットへ合わせて切り替えるようにした。
+- フキダシ、しっぽ、コマ作成、効果線、囲い塗り、グラデーション、パターンカーブの各ツールで、パネルやサイドバー上では通常カーソルへ一時復帰し、作業領域へ戻ると十字カーソルへ戻すようにした。
+- 全ツールドロップダウンの候補を列挙して、選択・適用・パネル表示を確認する実機テストを追加した。
+- 枠線プリセット管理の既存実機テストを、現行の共通プリセット保存先へ合わせ、ユーザー設定を汚さないよう一時フォルダへ隔離した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- `blender.exe --background --factory-startup --python test\blender_tool_preset_switching_check.py`
+- 確認済み候補: フキダシ「標準 / なめらか自由形状 / 矩形 / 楕円 / 雲 / もやもや / トゲ（直線） / トゲ（曲線） / 八角形」
+- 確認済み候補: 囲い塗り「ベタ塗り (黒) / ベタ塗り (白) / ベタ塗り (50%) / ベタ塗り (黒 半透明)」
+- 確認済み候補: グラデーション「黒→白 / 白→黒 / 黒→白 (円形) / 黒→白 (半透明)」
+- 確認済み候補: テキスト「セリフ（標準） / ナレーション」
+- 確認済み候補: 効果線「集中線 / ウニフラ / ベタフラ / 流線 / 白抜き線」
+- 確認済み候補: しっぽ「標準 (三角) / 曲線 / ペン線 (抜き) / 心の声 (楕円)」
+- 確認済み候補: パターンカーブ「標準スタンプ / 一枚リボン / 円形スタンプ / 標準リボン」
+- 確認済み候補: コマ作成の枠線「標準 / 輪郭ぼかし / 極太 / 線無し」
+- `blender.exe --background --factory-startup --python test\blender_balloon_tool_unification_check.py`
+- `blender.exe --background --factory-startup --python test\blender_effect_line_preset_ui_check.py`
+- `blender.exe --background --factory-startup --python test\blender_tail_and_line_decor_check.py`
+- `blender.exe --background --factory-startup --python test\blender_border_preset_management_check.py`
+- `python -m py_compile operators\preset_op.py operators\coma_modal_state.py operators\balloon_nurbs_tool_op.py operators\balloon_op.py operators\balloon_tail_tool_op.py operators\coma_create_op.py operators\effect_line_op.py operators\fill_tool_op.py operators\gradient_tool_op.py operators\image_path_tool_op.py test\blender_tool_preset_switching_check.py test\blender_border_preset_management_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — 直近修正の実機AI目視と徹底チェックを実施 (v0.6.417)
 
 ### 症状

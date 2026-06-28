@@ -293,6 +293,37 @@ def _balloon_tool_preset_enum_items(_self, context):
 def _on_balloon_tool_preset_selector_change(self, context):
     value = str(getattr(self, "bmanga_balloon_tool_preset_selector", "") or "")
     _remember_tool_preset(context, "last_balloon_tool_preset", value)
+    _switch_active_balloon_tool_for_preset(context, value)
+
+
+def _switch_active_balloon_tool_for_preset(context, value: str) -> None:
+    """実行中のフキダシツールを、選択中の作成方式へ合わせる."""
+    if _SUPPRESS_TOOL_PRESET_REMEMBER:
+        return
+    want_nurbs = value == BALLOON_TOOL_NURBS_PRESET
+    drag_active = coma_modal_state.get_active("balloon_tool") is not None
+    nurbs_active = coma_modal_state.get_active("balloon_nurbs_tool") is not None
+    if want_nurbs:
+        if nurbs_active or not drag_active:
+            return
+        coma_modal_state.finish_active("balloon_tool", context, keep_selection=True)
+        _invoke_balloon_tool_operator("balloon_nurbs_tool")
+        return
+    if drag_active or not nurbs_active:
+        return
+    coma_modal_state.finish_active("balloon_nurbs_tool", context, keep_selection=True)
+    _invoke_balloon_tool_operator("balloon_tool")
+
+
+def _invoke_balloon_tool_operator(op_name: str) -> None:
+    try:
+        op = getattr(bpy.ops.bmanga, op_name)
+        if not op.poll():
+            _logger.debug("balloon tool preset switch skipped by poll: %s", op_name)
+            return
+        op("INVOKE_DEFAULT")
+    except Exception:  # noqa: BLE001
+        _logger.exception("balloon tool preset switch failed: %s", op_name)
 
 
 def selected_balloon_tool_shape(context) -> tuple[str, str]:

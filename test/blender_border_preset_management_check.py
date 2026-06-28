@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import sys
 import tempfile
@@ -173,7 +174,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     )
     assert "FINISHED" in result, result
     assert "管理A" in _names(border_presets, work_dir)
-    assert _source(border_presets, work_dir, "管理A") == "local"
+    assert _source(border_presets, work_dir, "管理A") == "user"
     assert wm.bmanga_border_preset_selector == "管理A"
     assert coma.border.preset_name == "管理A"
 
@@ -195,7 +196,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     assert "FINISHED" in result, result
     names = _names(border_presets, work_dir)
     assert "標準" in names and "標準コピー管理" in names
-    assert _source(border_presets, work_dir, "標準コピー管理") == "local"
+    assert _source(border_presets, work_dir, "標準コピー管理") == "user"
 
     _assert_rejected(
         lambda: bpy.ops.bmanga.border_preset_rename(
@@ -215,7 +216,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     names = _names(border_presets, work_dir)
     assert "輪郭ぼかし" not in names and "ぼかし改名管理" in names
     assert "輪郭ぼかし" in {preset.name for preset in border_presets.list_global_presets()}
-    assert _source(border_presets, work_dir, "ぼかし改名管理") == "local"
+    assert _source(border_presets, work_dir, "ぼかし改名管理") == "user"
 
     result = bpy.ops.bmanga.border_preset_delete(preset_name="管理B")
     assert "FINISHED" in result, result
@@ -279,7 +280,7 @@ def _assert_management_ops(context, work, page, coma) -> None:
     names = _names(border_presets, work_dir)
     assert names.index("並べ替えA") < names.index("並べ替えC") < names.index("並べ替えB")
 
-    index_path = work_dir / "assets" / "borders" / border_presets.PRESET_INDEX_FILENAME
+    index_path = border_presets._local_index_path(work_dir)
     assert index_path.is_file(), "プリセットの並び順ファイルがありません"
     assert "並べ替えC" in _names(border_presets, work_dir)
 
@@ -292,6 +293,8 @@ def _assert_management_ops(context, work, page, coma) -> None:
 
 def main() -> None:
     temp_root = Path(tempfile.mkdtemp(prefix="bmanga_border_preset_manage_"))
+    old_config = os.environ.get("BMANGA_USER_CONFIG_DIR")
+    os.environ["BMANGA_USER_CONFIG_DIR"] = str(temp_root / "config")
     mod = None
     try:
         bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -313,6 +316,10 @@ def main() -> None:
                 mod.unregister()
             except Exception:
                 pass
+        if old_config is None:
+            os.environ.pop("BMANGA_USER_CONFIG_DIR", None)
+        else:
+            os.environ["BMANGA_USER_CONFIG_DIR"] = old_config
         shutil.rmtree(temp_root, ignore_errors=True)
 
 

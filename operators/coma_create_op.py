@@ -241,6 +241,7 @@ class BMANGA_OT_coma_create_tool(Operator):
             return {"RUNNING_MODAL"}
         if view_event_region.modal_navigation_ui_passthrough(self, context, event):
             return {"PASS_THROUGH"}
+        coma_modal_state.sync_modal_cursor_for_event_region(context, event, self, "CROSSHAIR")
         if not view_event_region.is_view3d_window_event(context, event):
             return {"PASS_THROUGH"}
 
