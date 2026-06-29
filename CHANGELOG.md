@@ -3,6 +3,40 @@
 このファイルは B-MANGA の主要な変更履歴を記録します。
 Blender 5.1.1 を対象としています。
 
+## 2026-06-29 — B-MANGA Lineのライン用マテリアルAOVを自動補修 (B-MANGA Line v0.3.25)
+
+### 症状
+
+- BML_Line AOV自体は自動追加される設計だが、古いファイルや途中状態のライン用マテリアルでAOV出力ノードだけが欠けている場合、ラインのみ表示やAOV出力で線が拾えない余地があった。
+- 「ラインのみを表示」はAOV表示へ切り替えるため、ライン用マテリアル側にもAOV出力が常に入っている必要があった。
+
+### 原因
+
+- ライン用マテリアルの新規作成と再適用ではAOV出力を作っていたが、既存マテリアルを取得するだけの経路や線色更新の経路では、AOV出力ノードの欠落を必ず補修する形になっていなかった。
+
+### 修正
+
+- 既存のライン用マテリアルを取得・更新する時も、AOV出力ノードが無ければ自動で作り直すようにした。
+- 透明面越しのライン抑制設定と線色を更新する時も、AOV出力が欠けないよう同じ補修経路に統一した。
+- 既存マテリアルからAOV出力ノードを削除した状態を実機テストで作り、マテリアル取得と線色更新で自動復旧することを確認した。
+
+### 検証 (Blender 5.1.2 実機)
+
+- 追跡中スクリプト 581 ファイル / 208,343 行を全行読み込み。
+- `python -m py_compile` 追跡中 Python 578 ファイル。
+- `python -m py_compile addons\b_manga_line\outline_setup.py test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_camera_aov_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_aov_view_line_only_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_auto_intersection_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_preset_visibility_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_uniform_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_midpoint_targets_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_inner_width_check.py`
+- `blender.exe --factory-startup --background --python test\blender_b_manga_line_register_reenable_check.py`
+- `git diff --check`
+
+---
+
 ## 2026-06-29 — B-MANGA Lineの交差対象を自動化 (B-MANGA Line v0.3.24)
 
 ### 症状

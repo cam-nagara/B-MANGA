@@ -208,6 +208,24 @@ def _has_aov_node(mat: bpy.types.Material) -> bool:
     return False
 
 
+def _repair_outline_material(
+    mat: bpy.types.Material,
+    color: tuple[float, ...],
+    *,
+    hide_through_transparent: bool,
+) -> None:
+    current = bool(mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False))
+    if not _has_aov_node(mat) or current != hide_through_transparent:
+        _build_outline_nodes(
+            mat,
+            color,
+            hide_through_transparent=hide_through_transparent,
+        )
+    else:
+        _update_emission_color(mat, color)
+    _configure_material(mat)
+
+
 def _configure_material(mat: bpy.types.Material) -> None:
     if hasattr(mat, "use_backface_culling"):
         mat.use_backface_culling = True
@@ -227,16 +245,11 @@ def get_or_create_material(
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
             mat = slot.material
-            current = bool(mat.get(PROP_HIDE_THROUGH_TRANSPARENT, False))
-            if not _has_aov_node(mat) or current != hide_through_transparent:
-                _build_outline_nodes(
-                    mat,
-                    color,
-                    hide_through_transparent=hide_through_transparent,
-                )
-            else:
-                _update_emission_color(mat, color)
-            _configure_material(mat)
+            _repair_outline_material(
+                mat,
+                color,
+                hide_through_transparent=hide_through_transparent,
+            )
             return mat
 
     mat = bpy.data.materials.new(name=MATERIAL_NAME)
@@ -276,8 +289,16 @@ def _ensure_outline_material_slots(
 
 def get_outline_material(obj: bpy.types.Object) -> bpy.types.Material | None:
     """オブジェクトのアウトラインマテリアルを取得."""
+    settings = getattr(obj, "bmanga_line_settings", None)
+    color = tuple(getattr(settings, "outline_color", (0.0, 0.0, 0.0, 1.0)))
+    hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
+            _repair_outline_material(
+                slot.material,
+                color,
+                hide_through_transparent=hide_transparent,
+            )
             return slot.material
     return None
 
@@ -297,8 +318,15 @@ def _update_emission_color(mat: bpy.types.Material, color: tuple[float, ...]) ->
 
 def update_material_color(obj: bpy.types.Object, color: tuple[float, ...]) -> None:
     """オブジェクトのアウトラインマテリアルの色を更新."""
+    settings = getattr(obj, "bmanga_line_settings", None)
+    hide_transparent = bool(getattr(settings, "hide_through_transparent", False))
     for slot in obj.material_slots:
         if slot.material and _is_outline_material(slot.material):
+            _repair_outline_material(
+                slot.material,
+                color,
+                hide_through_transparent=hide_transparent,
+            )
             _update_emission_color(slot.material, color)
             return
 

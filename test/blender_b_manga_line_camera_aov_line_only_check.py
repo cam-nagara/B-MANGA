@@ -51,6 +51,20 @@ def _assert_aov(scene: bpy.types.Scene) -> None:
         assert any(aov.name == core.AOV_NAME for aov in view_layer.aovs), view_layer.name
 
 
+def _outline_material(obj: bpy.types.Object) -> bpy.types.Material:
+    mat = outline_setup.get_outline_material(obj)
+    assert mat is not None, "ライン用マテリアルがありません"
+    return mat
+
+
+def _has_line_aov_node(mat: bpy.types.Material) -> bool:
+    assert mat.use_nodes, "ライン用マテリアルがノード化されていません"
+    return any(
+        getattr(node, "aov_name", "") == core.AOV_NAME
+        for node in mat.node_tree.nodes
+    )
+
+
 def _make_two_material_cube() -> bpy.types.Object:
     bpy.ops.mesh.primitive_cube_add(size=1.0, location=(0.0, 0.0, 0.0))
     obj = bpy.context.object
@@ -138,6 +152,25 @@ def _test_line_only_restore() -> None:
     assert obj.modifiers.get(outline_setup.LINE_ONLY_WIREFRAME_NAME) is None
 
 
+def _test_outline_material_aov_repair() -> None:
+    obj = bpy.data.objects["BML_two_material_cube"]
+    mat = _outline_material(obj)
+    for node in list(mat.node_tree.nodes):
+        if getattr(node, "aov_name", "") == core.AOV_NAME:
+            mat.node_tree.nodes.remove(node)
+    assert not _has_line_aov_node(mat), "テスト用にAOVノードを削除できていません"
+
+    mat = outline_setup.get_outline_material(obj)
+    assert mat is not None
+    assert _has_line_aov_node(mat), "ライン用マテリアルのAOVノードが自動復旧しません"
+
+    for node in list(mat.node_tree.nodes):
+        if getattr(node, "aov_name", "") == core.AOV_NAME:
+            mat.node_tree.nodes.remove(node)
+    outline_setup.update_material_color(obj, (0.1, 0.2, 0.3, 1.0))
+    assert _has_line_aov_node(mat), "線色更新時にAOVノードが自動復旧しません"
+
+
 def _test_inner_line_keeps_multimaterial_source() -> None:
     obj = bpy.data.objects["BML_two_material_cube"]
     settings = obj.bmanga_line_settings
@@ -169,6 +202,7 @@ def main() -> None:
     _assert_aov(bpy.context.scene)
     _test_camera_selection_and_aov()
     _test_line_only_restore()
+    _test_outline_material_aov_repair()
     _test_inner_line_keeps_multimaterial_source()
     print("[PASS] B-MANGA Line camera/AOV/line-only/inner-line checks")
 

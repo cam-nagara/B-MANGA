@@ -5,7 +5,7 @@ from __future__ import annotations
 bl_info = {
     "name": "B-MANGA Line",
     "author": "B-MANGA Project",
-    "version": (0, 3, 24),
+    "version": (0, 3, 25),
     "blender": (4, 3, 0),
     "description": "背面法（反転ハル）によるマンガ風アウトライン",
     "category": "Render",
